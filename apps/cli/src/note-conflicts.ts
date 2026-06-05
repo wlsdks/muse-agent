@@ -74,6 +74,49 @@ export function selectConflictCandidatePairs(
   return pairs.slice(0, maxPairs);
 }
 
+export interface SemanticNote {
+  readonly path: string;
+  readonly body: string;
+  readonly centroid: readonly number[];
+}
+
+export interface SemanticCandidatePair {
+  readonly a: SemanticNote;
+  readonly b: SemanticNote;
+  readonly cosine: number;
+}
+
+export interface SemanticCandidateOptions {
+  readonly minCosine?: number;
+  readonly maxPairs?: number;
+}
+
+/**
+ * EMBEDDING-based candidate pairs — notes whose centroid cosine is at least
+ * `minCosine` (i.e. about the same TOPIC even when they share little vocabulary,
+ * which the lexical `selectConflictCandidatePairs` would miss: "rent is 2000/mo"
+ * vs "monthly housing cost: 1800"). The cosine function is injected so this stays
+ * a pure, dependency-free helper. Ranked by cosine descending, capped at
+ * `maxPairs`. A note is never paired with itself.
+ */
+export function selectSemanticConflictCandidatePairs(
+  notes: readonly SemanticNote[],
+  cosineFn: (a: readonly number[], b: readonly number[]) => number,
+  options: SemanticCandidateOptions = {}
+): readonly SemanticCandidatePair[] {
+  const minCosine = options.minCosine ?? 0.55;
+  const maxPairs = Math.max(1, Math.trunc(options.maxPairs ?? 12));
+  const pairs: SemanticCandidatePair[] = [];
+  for (let i = 0; i < notes.length; i += 1) {
+    for (let j = i + 1; j < notes.length; j += 1) {
+      const score = cosineFn(notes[i]!.centroid, notes[j]!.centroid);
+      if (score >= minCosine) pairs.push({ a: notes[i]!, b: notes[j]!, cosine: score });
+    }
+  }
+  pairs.sort((x, y) => y.cosine - x.cosine);
+  return pairs.slice(0, maxPairs);
+}
+
 export type NoteContradictionVerdict = "contradict" | "agree" | "unrelated" | "uncertain";
 
 const NOTE_CONFLICT_SYSTEM_PROMPT =

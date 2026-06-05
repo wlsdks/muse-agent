@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { classifyNoteContradiction, formatNoteConflicts, salientTokens, selectConflictCandidatePairs } from "./note-conflicts.js";
+import { classifyNoteContradiction, formatNoteConflicts, salientTokens, selectConflictCandidatePairs, selectSemanticConflictCandidatePairs } from "./note-conflicts.js";
 
 describe("salientTokens", () => {
   it("keeps content words ≥4 chars and drops stopwords / short tokens", () => {
@@ -46,6 +46,26 @@ describe("selectConflictCandidatePairs", () => {
   it("returns nothing when no pair clears the threshold", () => {
     expect(selectConflictCandidatePairs(notes, { minShared: 5 })).toEqual([]);
     expect(selectConflictCandidatePairs([{ path: "lone.md", body: "only one note here" }])).toEqual([]);
+  });
+});
+
+describe("selectSemanticConflictCandidatePairs", () => {
+  // A toy cosine: vectors are 1-D "topic ids"; cosine = 1 when equal, 0 otherwise.
+  const cosine = (a: readonly number[], b: readonly number[]): number => (a[0] === b[0] ? 1 : 0.2);
+  const note = (path: string, topic: number) => ({ body: `body of ${path}`, centroid: [topic], path });
+
+  it("pairs notes whose centroid cosine clears minCosine (same topic), excluding low-similarity pairs", () => {
+    const notes = [note("a.md", 1), note("b.md", 1), note("c.md", 2)];
+    const pairs = selectSemanticConflictCandidatePairs(notes, cosine, { minCosine: 0.55 });
+    expect(pairs).toHaveLength(1); // a↔b are topic 1 (cosine 1); pairs with c are 0.2 < 0.55
+    expect([pairs[0]!.a.path, pairs[0]!.b.path].sort()).toEqual(["a.md", "b.md"]);
+  });
+
+  it("ranks by cosine descending and caps at maxPairs; never pairs a note with itself", () => {
+    const notes = [note("a.md", 1), note("b.md", 1), note("c.md", 1)];
+    const pairs = selectSemanticConflictCandidatePairs(notes, cosine, { maxPairs: 2, minCosine: 0.5 });
+    expect(pairs).toHaveLength(2); // 3 same-topic pairs exist, capped at 2
+    expect(pairs.every((p) => p.a.path !== p.b.path)).toBe(true);
   });
 });
 

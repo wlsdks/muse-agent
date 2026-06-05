@@ -26,7 +26,7 @@ import type { Command } from "commander";
 
 import { parsePdfBuffer } from "./commands-read.js";
 import { embed } from "./embed.js";
-import { classifyNoteContradiction, formatNoteConflicts, selectConflictCandidatePairs, type ConflictNote, type NoteConflict } from "./note-conflicts.js";
+import { classifyNoteContradiction, formatNoteConflicts, selectConflictCandidatePairs, selectSemanticConflictCandidatePairs, type ConflictNote, type NoteConflict } from "./note-conflicts.js";
 import type { ProgramIO } from "./program.js";
 
 export const DEFAULT_EMBED_MODEL = "nomic-embed-text";
@@ -673,9 +673,10 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
     .description("Find places your OWN notes disagree — pairs that assert contradictory facts (two different WiFi passwords, prices, dates) so you can fix them before Muse grounds an answer on the wrong one. Read-only; uses the local model. Use when you suspect stale/duplicated notes; not for finding RELATED notes (that is `notes related`).")
     .option("--dir <path>", "Notes directory (default MUSE_NOTES_DIR or ~/.muse/notes)")
     .option("--max <n>", "Max candidate pairs to check with the model (cost cap)", "12")
+    .option("--semantic", "ALSO pair notes by embedding similarity (catches conflicts that share little vocabulary, e.g. 'rent 2000/mo' vs 'monthly housing 1800'). Needs an index (`muse notes reindex`).")
     .option("--model <tag>", "Model override")
     .option("--json", "Print structured conflicts instead of the grouped list")
-    .action(async (options: { readonly dir?: string; readonly max: string; readonly model?: string; readonly json?: boolean }) => {
+    .action(async (options: { readonly dir?: string; readonly max: string; readonly semantic?: boolean; readonly model?: string; readonly json?: boolean }) => {
       const dir = options.dir ?? resolveNotesDir(process.env as Record<string, string | undefined>);
       const maxPairs = parseRagBoundedInt(options.max, "--max", 1, 100, 12);
 
@@ -701,7 +702,33 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
         return;
       }
 
-      const candidates = selectConflictCandidatePairs(noteBodies, { maxPairs });
+      const candidates: { readonly a: ConflictNote; readonly b: ConflictNote }[] =
+        selectConflictCandidatePairs(noteBodies, { maxPairs }).map((p) => ({ a: p.a, b: p.b }));
+
+      if (options.semantic) {
+        const index = await loadIndex(defaultIndexPath());
+        if (!index) {
+          io.stderr("muse notes conflicts --semantic needs a notes index. Run `muse notes reindex` first.\n");
+          process.exitCode = 1;
+          return;
+        }
+        const semNotes = index.files
+          .filter((file) => file.chunks.length > 0)
+          .map((file) => ({
+            body: file.chunks.map((chunk) => chunk.text).join("\n"),
+            centroid: noteCentroid(file.chunks),
+            path: (pathRelative(dir, file.path) || pathBasename(file.path)).split(pathSep).join("/")
+          }));
+        const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
+        const seen = new Set(candidates.map((p) => pairKey(p.a.path, p.b.path)));
+        for (const pair of selectSemanticConflictCandidatePairs(semNotes, cosine, { maxPairs })) {
+          const key = pairKey(pair.a.path, pair.b.path);
+          if (seen.has(key) || candidates.length >= maxPairs) continue;
+          seen.add(key);
+          candidates.push({ a: { body: pair.a.body, path: pair.a.path }, b: { body: pair.b.body, path: pair.b.path } });
+        }
+      }
+
       if (candidates.length === 0) {
         io.stdout(options.json ? `${JSON.stringify({ checked: 0, conflicts: [] }, null, 2)}\n` : "✓ No overlapping note pairs to compare.\n");
         return;

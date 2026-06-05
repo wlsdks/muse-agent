@@ -3078,6 +3078,37 @@ graph intact as the corpus evolves, so a power-user's Zettelkasten doesn't rot.
   `checked: 1, conflicts: []` (it WAS a candidate, so the model gate, not just lexical overlap, did the
   discriminating). (79c10d4d)
 
+- [x] **P42-12 `muse notes conflicts --semantic` now catches PARAPHRASED contradictions the lexical
+  pass misses — "the apartment rent comes to 2000 dollars each month" vs "monthly housing cost: 1800"
+  share NO vocabulary, yet both are about your monthly rent and disagree.** P42-11's conflict detector
+  generated candidate pairs from SHARED SALIENT TOKENS, so two notes contradicting the same fact in
+  DIFFERENT words (no token overlap) were never even compared — exactly the conflicts most likely to
+  rot unnoticed. Added an embedding candidate generator: a pure `selectSemanticConflictCandidatePairs(
+  notes, cosineFn, {minCosine=0.55, maxPairs})` (apps/cli/src/note-conflicts.ts) pairs notes whose
+  CENTROID cosine clears a same-topic threshold (the cosine fn is injected, so the helper stays pure /
+  dependency-free / unit-testable), ranked by similarity, capped. Wired a `--semantic` flag into `muse
+  notes conflicts` (apps/cli/src/commands-notes-rag.ts) that loads the notes index (hinting `muse notes
+  reindex` if absent), builds each note's centroid (the in-file `noteCentroid`) + body (its chunk
+  text), generates semantic candidates, and UNIONS them with the lexical candidates de-duped by note
+  pair (capped at --max) before the SAME local-Qwen polarity classifier rules each pair. Default
+  behaviour is byte-for-byte unchanged (lexical only, no index needed); `--semantic` is the opt-in
+  deeper pass, where the small-model false-positive risk is acceptable because the user ran an AUDIT to
+  review. This STRENGTHENS the edge's corpus-integrity floor (a self-contradicting corpus is a
+  fabrication risk, and this catches a whole class of it the lexical pass couldn't), distinct from the
+  recently-churned felt/csv/calendar work. Verified deterministically AND live: 2 unit tests
+  (selectSemanticConflictCandidatePairs pairs only above minCosine, ranks by cosine desc + caps at
+  maxPairs, never self-pairs — apps/cli/src/note-conflicts.test.ts) + the full @muse/cli suite (190
+  files / 2167 tests) + tsc build + `pnpm lint` 0/0 + 0 raw control bytes + a FULL LIVE run on the loop
+  PC: a corpus with lease.md ("The apartment rent comes to 2000 dollars each month") and budget.md
+  ("Monthly housing cost: 1800") → `muse notes reindex` (nomic-embed) → `muse notes conflicts` (lexical)
+  returned `checked: 0` (the disjoint vocabulary meant they were never even a candidate — MISSED) while
+  `muse notes conflicts --semantic` returned `checked: 1, conflicts: [budget.md ↔ lease.md]` (the
+  embedding centroids matched the shared topic → candidate → qwen3:8b ruled the 2000-vs-1800 monthly
+  cost a contradiction). Also recorded a code-verified finding: backlog #1 (`--with-tools` agent RGV)
+  is ALREADY shipped — `createRunResult` surfaces `execution.toolResults` into `groundingSources`
+  (runtime-internals.ts), which feeds the grounding verdict, so the edge is gated on the agent surface
+  too. (9c1ecff4)
+
 **P38 — Grounding edge: measure → catch → repair (delivered 2026-06-02,
 conversational session — NOT a loop fire).** The edge gained an instrument,
 closed its deepest hole, and became constructive. Each verified live on
