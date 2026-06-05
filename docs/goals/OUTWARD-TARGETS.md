@@ -699,6 +699,33 @@ P43 bullet is unbuilt.
   backlog GROWING … Avg time to done: 5 days … ~3× faster than you finish them" and the matching `--json`.
   Honest scope: local store read (the common personal case); a proactive brief beat is a follow-on. (b1b3d67c)
 
+- [x] **P43-16 `muse benford <file> <column>` — a forensic-accounting check on a numeric CSV column:
+  does its leading-digit distribution follow Benford's Law, or does it look unnatural (data-entry errors,
+  rounding/caps, duplicates)?** Eleventh slice of the cross-field research direction — a distinctive,
+  genuinely-useful personal-finance capability (check your OWN expense data) on fresh, non-graph code. The
+  mechanism: BENFORD'S LAW (Newcomb 1881; Benford, "The Law of Anomalous Numbers", Proc. Amer. Phil. Soc.
+  78(4):551-572, 1938) — in naturally-occurring multi-magnitude data the leading digit d follows P(d) =
+  log10(1 + 1/d) (so "1" leads ~30%, "9" ~4.6%), and a column that deviates is worth a look; conformity
+  judged by PEARSON'S CHI-SQUARE goodness-of-fit (df 8). Pure `apps/cli/src/benford.ts` (`leadingDigit`,
+  `benfordExpected`, `analyzeBenford`, `formatBenford`) + a dedicated `muse benford` command reusing the
+  csv parser (`parseCsv`/`resolveColumn`/`toNumber`). Deterministic, no model. SHOWS-ITS-WORK on my own
+  diff: I first graded conformity with Nigrini's fixed-threshold MAD, but the LIVE test FALSE-FLAGGED a
+  genuinely Benford-distributed 250-row column as "nonconforming" (MAD 0.0177 > 0.015) — because MAD is
+  sample-size-INdependent and cries wolf on a small personal dataset; pivoted to chi-square, whose critical
+  value (15.51 at p<0.05) scales the bar to the sample, so the same column now reads "consistent". Honest:
+  the report STATES Benford only applies to multi-magnitude naturally-occurring numbers (not ages/scores)
+  and flags "worth a look", not "fraud"; below 30 values it reports "insufficient". Verified
+  deterministically AND live: 11 unit tests (leadingDigit over int/decimal/negative/large + 0/NaN
+  undefined; the log law sums to 1; a Benford-conforming sample is consistent with low chi-square; a
+  single-digit-dominated column is a strong deviation naming the standout; too-few → insufficient; zeros/
+  non-finite ignored; format renders the table + verdict + applicability note — apps/cli/src/benford.test.ts)
+  + `pnpm lint` 0/0 + `@muse/shared` byte-hygiene 30 + cli 2228 + 0 raw control bytes + a LIVE run on the
+  loop PC: a CSV whose `amount` column is log-uniform (genuine Benford) and whose `fudged` column is all
+  700s → `muse benford data.csv amount` printed "chi-square 7.82 … ✓ Consistent with Benford's Law" while
+  `muse benford data.csv fudged` flagged "Strongly deviates (p<0.01) … Leading digit 7 appears 100.0% vs
+  an expected 5.8%". Honest scope: CSV input; a `muse csv --benford` flag and other distributions (second-
+  digit) are follow-ons. (e2944793)
+
 - [x] **P43-7 The evening recap's "Coming up" now includes tomorrow's CALENDAR EVENTS
   and BIRTHDAYS — your `muse recap` forward view finally matches the brief + `muse today`.**
   The evening recap (P43-4) is the retrospective sibling of the morning brief, and its
