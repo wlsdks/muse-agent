@@ -53,6 +53,12 @@ export interface PersistedReminder {
    * Telegram"); the daemon stays a single tick.
    */
   readonly via?: ReminderVia;
+  /**
+   * The calendar event this reminder is the "remind me before" heads-up for
+   * (`muse calendar add --remind`). When the event is deleted, the linked
+   * reminder is removed too — so a cancelled meeting can't keep firing.
+   */
+  readonly eventId?: string;
 }
 
 export type ReminderStatusFilter = "pending" | "fired" | "all" | "due";
@@ -121,7 +127,8 @@ export function serializeReminder(reminder: PersistedReminder): JsonObject {
     ...(reminder.firedAt ? { firedAt: reminder.firedAt } : {}),
     ...(reminder.via
       ? { via: { destination: reminder.via.destination, providerId: reminder.via.providerId } }
-      : {})
+      : {}),
+    ...(reminder.eventId ? { eventId: reminder.eventId } : {})
   };
 }
 
@@ -422,6 +429,9 @@ function isPersistedReminder(value: unknown): value is PersistedReminder {
       || typeof candidate.via.destination !== "string") {
       return false;
     }
+  }
+  if (candidate.eventId !== undefined && typeof candidate.eventId !== "string") {
+    return false;
   }
   return true;
 }

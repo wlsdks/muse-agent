@@ -359,6 +359,32 @@ P43 bullet is unbuilt.
   showed "[rem_…] 2026-07-01 13:30  Dentist — in 30 min" (the reminder really landed in the store, 30
   min before, pending) — plus `--remind 10 --json` carried the linked reminder. (e9ee8a81)
 
+- [x] **P41-33 Cancelling an event now CLEARS its `--remind` reminder — no more zombie reminders
+  firing for meetings that no longer exist — closing the reliability hole P41-32 opened.** P41-32's
+  `muse calendar add --remind N` created a reminder but stored NO link to the event, and `muse
+  calendar delete` never touched reminders — so cancelling a meeting left "Standup — in 30 min"
+  firing for an event that was gone (a code-confirmed reliability defect + trust hit; found by a
+  code-grounded direction-review workflow). Fixed deterministically with a back-reference: added an
+  optional `eventId?: string` to `PersistedReminder` (mirroring the existing `via`/`recurrence`/
+  `firedAt` optionals — serialized when present, round-trips through `readReminders`, a non-string
+  value dropped at the read boundary like the others); `buildEventReminder` now carries the event id,
+  `muse calendar add --remind` stores it, and `muse calendar delete` removes any reminder whose
+  `eventId` EXACTLY matches the deleted event (a pure `removeRemindersForEvent` — matches by id, NEVER
+  by title, so other events' and unlinked reminders are untouched), reporting "Also cleared N linked
+  reminder(s)." (+ `clearedReminders` in `--json`). Best-effort: a reminders-store error never aborts
+  the event deletion. Back-compatible (pre-P41-32 reminders have no eventId → simply not auto-cleaned,
+  no regression). Reach / actuator-reliability hardening (the human-directed "a proven-once actuator
+  that breaks on a real-world failure mode is a USER-FACING reliability defect — closing it is
+  outward"). Verified: 5 unit tests (serializeReminder includes/omits eventId; eventId survives write→
+  read AND a non-string eventId is dropped at load — personal-reminders-serialize.test.ts;
+  buildEventReminder links the event id; removeRemindersForEvent removes ONLY the exact-eventId matches
+  and nothing when none match — commands-calendar.test.ts) + the full `pnpm check` exit 0 (@muse/mcp
+  1542, @muse/cli 2107, @muse/api 849, …, since the PersistedReminder interface is shared core) +
+  `pnpm lint` 0/0 + 0 raw control bytes + a LIVE run on the loop PC: `muse calendar add "Standup" --at
+  2026-09-01T10:00 --remind 30` (→ "Standup — in 30 min" in `muse remind list`), then `muse calendar
+  delete <id>` printed "Cancelled: Standup …" + "Also cleared 1 linked reminder.", and `muse remind
+  list` then showed the reminder GONE. (2a1dc078)
+
 - [x] **P43-6 Muse notices a NOTE FAMILY gone quiet — "you usually update your
   project-apollo notes every few days; nothing in three weeks."** The filesystem
   sibling of P43-4's topic-absence (which baselines episode-CONVERSATION cadence):

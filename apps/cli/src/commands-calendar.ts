@@ -110,7 +110,8 @@ export function buildEventReminder(
   eventStart: Date,
   minutesBefore: number,
   now: Date,
-  id: string
+  id: string,
+  eventId?: string
 ): PersistedReminder {
   const mins = Math.max(0, Math.trunc(minutesBefore));
   return {
@@ -118,8 +119,20 @@ export function buildEventReminder(
     dueAt: new Date(eventStart.getTime() - mins * 60_000).toISOString(),
     id,
     status: "pending",
-    text: mins === 0 ? `${title} — starting now` : `${title} — in ${mins.toString()} min`
+    text: mins === 0 ? `${title} — starting now` : `${title} — in ${mins.toString()} min`,
+    ...(eventId ? { eventId } : {})
   };
+}
+
+/** Drop the reminders linked (by exact event id) to a deleted event, so a cancelled
+ *  meeting can't keep firing. Matches ONLY on `eventId` (never title), so unrelated
+ *  reminders and reminders for other events are untouched. Pure. */
+export function removeRemindersForEvent(
+  reminders: readonly PersistedReminder[],
+  eventId: string
+): { readonly kept: readonly PersistedReminder[]; readonly removed: number } {
+  const kept = reminders.filter((reminder) => reminder.eventId !== eventId);
+  return { kept, removed: reminders.length - kept.length };
 }
 
 /** Events across a wide (±10y) window — enough to resolve any realistic personal event by id. */
@@ -503,7 +516,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
         if (!Number.isFinite(mins) || mins < 0) {
           throw new Error("--remind must be a non-negative number of minutes");
         }
-        reminder = buildEventReminder(title, startsAt, mins, new Date(), `rem_${randomUUID()}`);
+        reminder = buildEventReminder(title, startsAt, mins, new Date(), `rem_${randomUUID()}`, event.id);
         const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
         await writeReminders(remindersFile, [...await readReminders(remindersFile), reminder]);
       }
@@ -545,11 +558,28 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       }
       const match = resolved.event;
       await provider.deleteEvent(match.id);
+      // Clean up any reminder linked to this event (muse calendar add --remind), so a
+      // cancelled meeting can't keep firing. Best-effort: a reminders-store error must
+      // NOT abort the event deletion (the primary action already succeeded).
+      let clearedReminders = 0;
+      try {
+        const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
+        const { kept, removed } = removeRemindersForEvent(await readReminders(remindersFile), match.id);
+        if (removed > 0) {
+          await writeReminders(remindersFile, kept);
+          clearedReminders = removed;
+        }
+      } catch {
+        // reminders cleanup is best-effort
+      }
       if (options.json) {
-        helpers.writeOutput(io, { deleted: true, id: match.id, title: match.title });
+        helpers.writeOutput(io, { deleted: true, id: match.id, title: match.title, ...(clearedReminders > 0 ? { clearedReminders } : {}) });
         return;
       }
       io.stdout(`Cancelled: ${match.title} — ${match.startsAt.toISOString()}\n`);
+      if (clearedReminders > 0) {
+        io.stdout(`Also cleared ${clearedReminders.toString()} linked reminder${clearedReminders === 1 ? "" : "s"}.\n`);
+      }
     });
 
   calendar

@@ -1,11 +1,17 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
   formatReminderDueLocal,
   type PersistedReminder,
   readReminderStatusFilter,
+  readReminders,
   serializeReminder,
   serializeReminderForModel,
+  writeReminders,
 } from "../src/personal-reminders-store.js";
 
 const base: PersistedReminder = {
@@ -47,6 +53,27 @@ describe("serializeReminder", () => {
     expect(out).not.toHaveProperty("via");
     expect(out).not.toHaveProperty("recurrence");
     expect(out).not.toHaveProperty("firedAt");
+  });
+
+  it("includes the linked eventId when present, omits it otherwise", () => {
+    expect(serializeReminder({ ...base, eventId: "evt_123" }).eventId).toBe("evt_123");
+    expect(serializeReminder(base)).not.toHaveProperty("eventId");
+  });
+});
+
+describe("eventId round-trip + read-boundary (calendar add --remind link)", () => {
+  const tmp = async (): Promise<string> => join(await mkdtemp(join(tmpdir(), "muse-rem-")), "reminders.json");
+
+  it("a reminder's eventId survives write → read", async () => {
+    const file = await tmp();
+    await writeReminders(file, [{ ...base, eventId: "evt_abc" }]);
+    expect((await readReminders(file))[0]!.eventId).toBe("evt_abc");
+  });
+
+  it("drops a reminder with a non-string eventId (hand-edited bad value)", async () => {
+    const file = await tmp();
+    await writeFile(file, JSON.stringify({ reminders: [{ ...base, eventId: 42 }] }), "utf8");
+    expect(await readReminders(file)).toEqual([]); // the malformed reminder is rejected at load
   });
 });
 

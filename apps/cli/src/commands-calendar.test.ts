@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { LocalCalendarProvider } from "@muse/calendar";
+import { type PersistedReminder } from "@muse/mcp";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -12,6 +13,7 @@ import {
   buildEventReminder,
   conflictWarningForNewEvent,
   formatConflicts,
+  removeRemindersForEvent,
   maxOfNumbers,
   minOfNumbers,
   parseEventStart,
@@ -67,6 +69,28 @@ describe("buildEventReminder — the 'remind me N min before' reminder for muse 
     expect(buildEventReminder("Standup", start, 0, now, "rem_y").text).toBe("Standup — starting now");
     expect(buildEventReminder("Standup", start, -5, now, "rem_z").dueAt).toBe("2026-07-01T14:00:00.000Z"); // clamped to 0
     expect(buildEventReminder("Standup", start, 15.9, now, "rem_w").dueAt).toBe("2026-07-01T13:45:00.000Z"); // truncated to 15
+  });
+
+  it("links the reminder to its event id (so delete can clean it up)", () => {
+    expect(buildEventReminder("Dentist", start, 30, now, "rem_x", "evt_42").eventId).toBe("evt_42");
+    expect(buildEventReminder("Dentist", start, 30, now, "rem_x")).not.toHaveProperty("eventId"); // omitted when no event id
+  });
+});
+
+describe("removeRemindersForEvent — drop the reminders linked to a deleted event (no zombie reminders)", () => {
+  const rem = (id: string, eventId?: string): PersistedReminder =>
+    ({ createdAt: "2026-01-01T00:00:00Z", dueAt: "2026-07-01T13:30:00Z", id, status: "pending", text: id, ...(eventId ? { eventId } : {}) });
+
+  it("removes ONLY reminders whose eventId matches the deleted event", () => {
+    const reminders = [rem("a", "evt_1"), rem("b", "evt_2"), rem("c") /* unlinked */, rem("d", "evt_1")];
+    const { kept, removed } = removeRemindersForEvent(reminders, "evt_1");
+    expect(removed).toBe(2);
+    expect(kept.map((r) => r.id)).toEqual(["b", "c"]); // evt_2 + the unlinked one survive
+  });
+
+  it("removes nothing when no reminder is linked to the event", () => {
+    const reminders = [rem("a", "evt_2"), rem("b")];
+    expect(removeRemindersForEvent(reminders, "evt_1")).toEqual({ kept: reminders, removed: 0 });
   });
 });
 
