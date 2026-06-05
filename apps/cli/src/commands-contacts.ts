@@ -11,6 +11,8 @@
 
 import { resolveContactsFile } from "@muse/autoconfigure";
 import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, isContactsEncrypted, linkContacts, queryContacts, resolveContact, resolveUpcomingBirthdays, type Contact } from "@muse/mcp";
+
+import { findDuplicateContacts, formatDuplicateContacts } from "./contact-dupes.js";
 import { createRunId } from "@muse/shared";
 import type { Command } from "commander";
 
@@ -216,6 +218,20 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
         const when = daysUntil === 0 ? "today" : daysUntil === 1 ? "tomorrow" : `in ${daysUntil.toString()} days`;
         io.stdout(`🎂 ${contact.name} — ${when} (${date})\n`);
       }
+    });
+
+  contacts
+    .command("dupes")
+    .description("Find likely-duplicate contacts — cards sharing an email, phone, handle, or name — so you can clean up your people graph (e.g. after a vCard import). Read-only; deterministic. Use when contacts feel cluttered; not for finding how people relate (that is `muse contacts network`).")
+    .option("--json", "Print the structured duplicate pairs")
+    .action(async (options: { readonly json?: boolean }) => {
+      const all = await queryContacts(contactsFile());
+      const pairs = findDuplicateContacts(all);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ pairs, total: pairs.length }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(formatDuplicateContacts(pairs));
     });
 
   contacts

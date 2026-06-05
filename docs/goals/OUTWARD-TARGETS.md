@@ -993,6 +993,32 @@ data, never the user's real ~/.muse. Value-to-creep ranked; each is read-only
   → "Dana Wu — your manager", `muse find hiking` → "Sam — loves hiking, allergic to nuts", and `muse
   find allergic` → the same Sam. (a1791298)
 
+- [x] **P37-44 `muse contacts dupes` — find duplicate contacts (the same person on two cards) so
+  you can clean up your people graph after a vCard import or years of manual adds.** Contact IMPORT
+  already de-dupes by exact email/phone at import time, but nothing could SCAN the existing store for
+  duplicates that slipped in another way — a card with a different name, a manual re-add, a name-only
+  duplicate with no shared email — so cruft just accumulated invisibly. Added a pure module
+  apps/cli/src/contact-dupes.ts: `findDuplicateContacts(contacts)` flags a PAIR when both cards share a
+  normalized email, phone (≥7 digits, punctuation/spaces stripped so "+1 (555) 010-0000" matches
+  "15550100000"), handle, or name (case + whitespace folded) — in that CONFIDENCE order, each pair
+  reported once and labelled by its strongest shared signal (so a pair sharing email AND name shows
+  "same email", not "same name"); `formatDuplicateContacts` renders the pairs or an all-clear line.
+  Wired a `muse contacts dupes` subcommand (apps/cli/src/commands-contacts.ts), read-only, `--json` for
+  the structured pairs. Deterministic — NO model (exact/normalized key matching), so it is the
+  people-graph counterpart to `muse notes conflicts` but with zero false-fabrication surface; name
+  matching is the weakest signal (two genuinely different same-name people would be flagged) but that
+  is acceptable for an opt-in audit the user reviews. Fresh axis (contacts) off the recently-churned
+  calendar/notes/csv work. Verified deterministically AND live: 5 unit tests (findDuplicateContacts
+  flags a case-insensitive email match labelled by email; flags a normalized-phone match AND a
+  case-folded name match; reports a pair sharing email+name ONCE by the stronger email signal; ignores
+  a <7-digit phone and returns nothing for distinct contacts; formatDuplicateContacts lists pairs with
+  the reason / an all-clear line — apps/cli/src/contact-dupes.test.ts) + the full @muse/cli suite (191
+  files / 2172 tests) + tsc build + `pnpm lint` 0/0 + 0 raw control bytes + a FULL LIVE run on the loop
+  PC: contacts seeded with Bob (bob@x.com) + Bob Smith (BOB@X.com) + Dana (+1 (555) 010-0000) + Dana W
+  (15550100000) + Alice (unique) → `muse contacts dupes` printed "Bob ↔ Bob Smith — same email
+  (bob@x.com)" and "Dana ↔ Dana W — same phone (15550100000)" while Alice was correctly not flagged,
+  and `--json` reported total 2. (6d0e5805)
+
 - [x] **P37-43 `muse episode list --days 7` / `--since 2026-06-01` — recall just your RECENT
   sessions ("what was I working on last week?"), not the whole history.** Muse auto-captures a summary
   of every session (`muse episode list/show/search`), but `list` could only scope by user + a count
