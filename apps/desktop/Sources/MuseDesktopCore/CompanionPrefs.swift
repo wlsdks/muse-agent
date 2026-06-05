@@ -7,11 +7,13 @@ public struct CompanionPrefs: Codable, Equatable, Sendable {
     public var look: String?
     public var originX: Double?
     public var originY: Double?
+    public var language: String?
 
-    public init(look: String? = nil, originX: Double? = nil, originY: Double? = nil) {
+    public init(look: String? = nil, originX: Double? = nil, originY: Double? = nil, language: String? = nil) {
         self.look = look
         self.originX = originX
         self.originY = originY
+        self.language = language
     }
 
     public func encoded() -> String {

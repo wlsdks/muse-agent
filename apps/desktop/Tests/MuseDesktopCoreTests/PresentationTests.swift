@@ -172,3 +172,32 @@ final class CompanionPrefsTests: XCTestCase {
         XCTAssertFalse(CompanionGeometry.isVisible(sliver, on: [screen]))
     }
 }
+
+final class LocalizationTests: XCTestCase {
+    func testResolveLanguagePicksExplicitOrFollowsSystem() {
+        XCTAssertEqual(resolveLanguage(.korean, systemIsKorean: false), .korean)
+        XCTAssertEqual(resolveLanguage(.english, systemIsKorean: true), .english)
+        XCTAssertEqual(resolveLanguage(.system, systemIsKorean: true), .korean)
+        XCTAssertEqual(resolveLanguage(.system, systemIsKorean: false), .english)
+    }
+
+    func testResolvedLanguageMapsLocaleAndStrings() {
+        XCTAssertEqual(ResolvedLanguage.korean.speechLocale, "ko-KR")
+        XCTAssertEqual(ResolvedLanguage.english.speechLocale, "en-US")
+        XCTAssertTrue(ResolvedLanguage.korean.askPlaceholder.contains("물어보세요"))
+        XCTAssertTrue(ResolvedLanguage.english.askPlaceholder.contains("Ask Muse"))
+    }
+
+    func testAppLanguageRoundTripsInPrefs() {
+        let prefs = CompanionPrefs(look: "orb", language: AppLanguage.korean.rawValue)
+        XCTAssertEqual(CompanionPrefs.decode(prefs.encoded())?.language, "korean")
+        XCTAssertEqual(AppLanguage(rawValue: "korean"), .korean)
+    }
+
+    func testPresentLocalizesTheCliError() {
+        let ko = MusePresenter.present(.failure(.cliFailed(status: 1, stderr: "")), language: .korean)
+        XCTAssertTrue(ko.bubbleText.contains("연결하지 못했어요"))
+        let en = MusePresenter.present(.failure(.cliFailed(status: 1, stderr: "")), language: .english)
+        XCTAssertTrue(en.bubbleText.contains("couldn't reach"))
+    }
+}

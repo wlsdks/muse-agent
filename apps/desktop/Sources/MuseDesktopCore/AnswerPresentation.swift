@@ -17,22 +17,20 @@ public struct AnswerPresentation: Equatable, Sendable {
 }
 
 public enum MusePresenter {
-    /// Map a CLI result to what the bubble shows and what (if anything) is spoken.
-    public static func present(_ result: Result<String, MuseBridgeError>) -> AnswerPresentation {
+    /// Map a CLI result to what the bubble shows and what (if anything) is spoken,
+    /// in the companion's chosen language.
+    public static func present(_ result: Result<String, MuseBridgeError>, language: ResolvedLanguage = .english) -> AnswerPresentation {
         switch result {
         case .success(let answer):
             let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty {
-                return AnswerPresentation(bubbleText: "I don't have anything on that in your notes.", speechText: nil)
+                return AnswerPresentation(bubbleText: language == .korean ? "그건 노트에서 찾지 못했어요." : "I don't have anything on that in your notes.", speechText: nil)
             }
             return AnswerPresentation(bubbleText: trimmed, speechText: stripCitationsForSpeech(trimmed))
         case .failure(.emptyQuery):
-            return AnswerPresentation(bubbleText: "Ask me something about your notes.", speechText: nil)
+            return AnswerPresentation(bubbleText: language == .korean ? "노트에 대해 무엇이든 물어보세요." : "Ask me something about your notes.", speechText: nil)
         case .failure(.cliFailed):
-            return AnswerPresentation(
-                bubbleText: "I couldn't reach the Muse CLI. Is `muse` on your PATH (or set MUSE_BIN)?",
-                speechText: nil
-            )
+            return AnswerPresentation(bubbleText: language.cliUnreachable, speechText: nil)
         }
     }
 

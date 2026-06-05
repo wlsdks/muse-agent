@@ -15,12 +15,13 @@ final class SpeechCapture {
         case alreadyRunning
     }
 
-    private let locale = Locale(identifier: "en-US")
+    /// Set from the language preference (ko-KR / en-US); the recognizer is built
+    /// per-start so a language change takes effect.
+    var localeIdentifier = "en-US"
     private let endSilence: TimeInterval = 1.2
     private let maxDuration: TimeInterval = 55
 
     private let engine = AVAudioEngine()
-    private let recognizer: SFSpeechRecognizer?
     // `request` is touched by the audio-thread tap AND the main thread (finish),
     // so every access is guarded by `lock` to avoid a data race / use-after-end.
     private let lock = NSLock()
@@ -32,8 +33,6 @@ final class SpeechCapture {
     private var lastText = ""
     private var onPartial: ((String) -> Void)?
     private var onFinal: ((String) -> Void)?
-
-    init() { recognizer = SFSpeechRecognizer(locale: locale) }
 
     /// True only inside a real .app bundle that declares both usage strings.
     /// Requesting mic/speech authorization without them HARD-CRASHES the process,
@@ -48,6 +47,7 @@ final class SpeechCapture {
         guard !running else { throw CaptureError.alreadyRunning }
         guard usageStringsPresent else { throw CaptureError.unavailable }
 
+        let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeIdentifier))
         let speechOK = await requestSpeechAuth()
         let micOK = await requestMicAuth()
         switch VoiceGate.decide(

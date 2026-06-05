@@ -1139,6 +1139,17 @@ user-verified — a window can't be auto-asserted headlessly).
   loads on launch (env > saved look > orb default; saved origin only if visible), saves on a Character
   switch + on window move. Verified: `swift build` + `swift test` 30 (was 26; +4 prefs/geometry) + the
   `.app` relaunched + `pnpm lint` 0/0; restore-across-restart is user-verified._
+- [x] **P45-11 The companion UI is now modern SwiftUI glass + has a language setting (한국어/English).**
+  (413c114b) Jinan: "디자인이 모던하지 않다, 말풍선도 별로, swiftui 아닌가?, 한/영 선택". Tech answer: SwiftUI runs on
+  macOS; the floating NSPanel stays AppKit (for the non-activating always-on-top window) but its CONTENT is
+  now SwiftUI via NSHostingView. Researched glassmorphism / Apple Liquid-Glass: the answer card + input are
+  frosted `.ultraThinMaterial` over the desktop with spring transitions (`CompanionView` + `CompanionModel`
+  + `OrbRepresentable`). Interaction fix: clicking the orb INSTANTLY opens a glass capsule input (always
+  works; voice = the mic button) — was click-tries-voice-first which felt broken when on-device speech is
+  unavailable. Language: menu bar → Language (System/한국어/English), persisted, drives the speech locale
+  (no more hardcoded en-US), placeholders/greeting, and the localized error text. Verified: `swift build` +
+  `swift test` 34 (was 30; +4 language) + the `.app` relaunched + `pnpm lint` 0/0; the glass look is
+  user-verified on the real desktop._
 - [x] **P44-1 `muse memory encrypt` encrypts your user-memory at rest.** The
   most sensitive store (facts / preferences / the typed user model) can now be
   AES-256-GCM encrypted, so a stolen/seized laptop or a leaked backup can't read

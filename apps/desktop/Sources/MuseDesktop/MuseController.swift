@@ -55,6 +55,19 @@ final class MuseController: NSObject {
         characterItem.submenu = characterMenu
         menu.addItem(characterItem)
 
+        let languageItem = NSMenuItem(title: "Language", action: nil, keyEquivalent: "")
+        let languageMenu = NSMenu()
+        let current = AppLanguage(rawValue: PrefsStore.load().language ?? "") ?? .system
+        for lang in AppLanguage.allCases {
+            let mi = NSMenuItem(title: lang.menuTitle, action: #selector(pickLanguage(_:)), keyEquivalent: "")
+            mi.representedObject = lang.rawValue
+            mi.target = self
+            mi.state = (lang == current) ? .on : .off
+            languageMenu.addItem(mi)
+        }
+        languageItem.submenu = languageMenu
+        menu.addItem(languageItem)
+
         muteItem = add(menu, "Mute voice", #selector(toggleMute))
         menu.addItem(.separator())
         add(menu, "Quit Muse", #selector(quit), key: "q")
@@ -78,6 +91,12 @@ final class MuseController: NSObject {
         panel.setCharacter(name)
         sender.menu?.items.forEach { $0.state = ($0 === sender) ? .on : .off }
         if !panel.isVisible { toggleVisibility() }
+    }
+
+    @objc private func pickLanguage(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let lang = AppLanguage(rawValue: raw) else { return }
+        panel.setLanguage(lang)
+        sender.menu?.items.forEach { $0.state = ($0 === sender) ? .on : .off }
     }
 
     @objc private func toggleMute() {
