@@ -71,6 +71,17 @@ describe("muse.tasks list — dueWithinDays filter", () => {
     expect(out.status).toBe("all");
     expect(out.total).toBe(TASKS.length); // every task, no due filtering
   });
+
+  it("caps the returned tasks at maxListEntries but reports the TRUE total (so the model can say 'and N more')", async () => {
+    // A small local model chokes on a huge tool result; the agent path caps the
+    // list, but `total` must stay the real count or the model thinks there are
+    // only `shown` tasks. Open tasks in TASKS: overdue, today, in3, in10, undated, bad = 6.
+    const capped = createTasksMcpServer({ file, maxListEntries: 2, now: () => NOW }).tools.find((t) => t.name === "list")!;
+    const out = await capped.execute({ status: "open" }) as { shown: number; total: number; tasks: Array<{ id: string }> };
+    expect(out.tasks).toHaveLength(2);
+    expect(out.shown).toBe(2);
+    expect(out.total).toBe(6); // true count, not the capped 2
+  });
 });
 
 describe("tasks `list` tool keywords — list-intent reaches the tool, not just due-intent", () => {

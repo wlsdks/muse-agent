@@ -138,24 +138,25 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           const tasks = await readTasks(file);
           const dueRaw = (args as Record<string, unknown>)["dueWithinDays"];
           if (typeof dueRaw === "number" && Number.isFinite(dueRaw)) {
-            const due = selectTasksDueWithin(tasks, { now: now(), withinDays: dueRaw })
-              .map((entry) => entry.task)
-              .slice(0, maxListEntries);
+            const allDue = selectTasksDueWithin(tasks, { now: now(), withinDays: dueRaw }).map((entry) => entry.task);
+            const due = allDue.slice(0, maxListEntries);
             return {
               dueWithinDays: Math.max(0, Math.trunc(dueRaw)),
+              shown: due.length,
               tasks: due.map((task) => serializeTaskForModel(task, now)) as JsonValue,
-              total: due.length
+              total: allDue.length
             };
           }
           const status = readTaskStatusFilter(readString(args, "status"));
-          const filtered = tasks
+          const matching = tasks
             .filter((task) => status === "all" || task.status === status)
-            .sort(compareTasksByDueDate)
-            .slice(0, maxListEntries);
+            .sort(compareTasksByDueDate);
+          const filtered = matching.slice(0, maxListEntries);
           return {
+            shown: filtered.length,
             status,
             tasks: filtered.map((task) => serializeTaskForModel(task, now)) as JsonValue,
-            total: filtered.length
+            total: matching.length
           };
         },
         inputSchema: {

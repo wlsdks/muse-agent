@@ -38,7 +38,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { MuseTool } from "@muse/tools";
 import type { ModelProvider } from "@muse/model";
 
-import { parseBoolean } from "./env-parsers.js";
+import { parseBoolean, parseInteger } from "./env-parsers.js";
 import type { MuseEnvironment } from "./index.js";
 
 export interface LoopbackToolsDeps {
@@ -122,7 +122,9 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
     : [];
 
   const tasks = parseBoolean(env.MUSE_TASKS_ENABLED, true)
-    ? createLoopbackMcpMuseTools(createTasksMcpServer({ file: deps.tasksFile }))
+    ? createLoopbackMcpMuseTools(
+        createTasksMcpServer({ file: deps.tasksFile, maxListEntries: parseInteger(env.MUSE_TASKS_LIST_MAX, 12) })
+      )
     : [];
 
   // Tasks registry MCP surface (`muse.tasks-multi`): symmetric with
