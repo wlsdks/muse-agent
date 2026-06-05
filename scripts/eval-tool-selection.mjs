@@ -146,6 +146,38 @@ async function buildTimeToolsScenario() {
 // [UNVERIFIED-LIVE]); this scenario is the live selection proof. Built with
 // stub deps because only `.definition` (name/description/inputSchema) is read —
 // `execute` (which is what the deps feed) is never called here.
+// Personal-CRUD: the 3-domain add/list disambiguation hardened across the
+// 2026-06 routing campaign (tasks vs reminders vs calendar). Same verb ("추가
+// 해줘" / "보여줘"), different domain NOUN — the model must route by the noun, or
+// "일정 추가" silently becomes a TASK (wrong store, fabricated success). Projects
+// the real loopback tool DEFINITIONS (selection only; a stub registry suffices).
+async function buildPersonalCrudScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const stubCalendar = { createEvent: async () => ({}), deleteEvent: async () => undefined, listEvents: async () => [], updateEvent: async () => ({}) };
+    const servers = [
+      mcp.createTasksMcpServer({ file: "/tmp/eval-crud-tasks.json" }),
+      mcp.createRemindersMcpServer({ file: "/tmp/eval-crud-reminders.json" }),
+      mcp.createCalendarMcpServer({ registry: stubCalendar })
+    ];
+    const addOrList = (name) => { const leaf = name.split(".").pop(); return leaf === "add" || leaf === "list"; };
+    const muse = servers.flatMap((s) => mcp.createLoopbackMcpMuseTools(s)).filter((t) => addOrList(t.definition.name));
+    const tools = muse.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "우유 사기를 할 일에 추가해줘", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "KO add a TO-DO → tasks.add (NOT reminders/calendar)" },
+      { prompt: "내일 오전 9시 회의 리마인더 추가해줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], note: "KO add a REMINDER → reminders.add (NOT tasks)" },
+      { prompt: "내일 오후 3시 팀 미팅 일정 추가해줘", expectTool: "muse.calendar.add", requireArgs: ["title", "startsAtIso"], note: "KO add a calendar EVENT → calendar.add (NOT tasks)" },
+      { prompt: "오늘 할 일 보여줘", expectTool: "muse.tasks.list", note: "KO list to-dos → tasks.list" },
+      { prompt: "내 리마인더 다 보여줘", expectTool: "muse.reminders.list", note: "KO list reminders → reminders.list (NOT calendar.list)" },
+      { prompt: "이번 주 일정 보여줘", expectTool: "muse.calendar.list", note: "KO list events → calendar.list (NOT tasks/reminders)" }
+    ];
+    return { label: "personal-crud (3-domain add/list disambiguation)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "personal-crud", skip: `@muse/mcp not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 async function buildActuatorScenario() {
   try {
     const mcp = await import("../packages/mcp/dist/index.js");
@@ -231,7 +263,8 @@ async function main() {
     { label: "synthetic", tools: SYNTHETIC_TOOLS, cases: SYNTHETIC_CASES },
     await buildRealScenario(),
     await buildTimeToolsScenario(),
-    await buildActuatorScenario()
+    await buildActuatorScenario(),
+    await buildPersonalCrudScenario()
   ];
 
   // Solver: elicit the model's one-shot tool selection for a case's prompt.
