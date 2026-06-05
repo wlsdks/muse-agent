@@ -6,6 +6,13 @@ import WhisperKit
 
 let arguments = CommandLine.arguments
 
+// Print which Muse CLI the bridge resolves from THIS bundle context, then exit —
+// used to confirm a built .app uses its bundled self-contained binary.
+if arguments.contains("--print-bin") {
+    print(MuseBridge.defaultBin())
+    exit(0)
+}
+
 /// Keep a user-supplied pixel scale in a sane range so a typo can't request a
 /// multi-gigabyte bitmap (or a zero/negative one).
 func clampScale(_ value: Int) -> Int { min(max(value, 1), 256) }
