@@ -37,6 +37,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   private readonly nativeFetch: typeof globalThis.fetch;
   private readonly nativeDefaultModel?: string;
   private readonly numCtx: number;
+  private static traceSeq = 0;
 
   constructor(options: OllamaProviderOptions = {}) {
     const baseUrl = options.baseUrl ?? "http://127.0.0.1:11434/v1";
@@ -250,9 +251,25 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   }
 
   private async nativeFetchOrThrow(url: string, init: RequestInit): Promise<Response> {
+    // Opt-in latency trace (MUSE_MODEL_TRACE=1): one line per chat call with a
+    // sequence id + start/end + duration, so a turn's call pattern (how many,
+    // sequential vs overlapping) is visible without a profiler.
+    const trace = process.env.MUSE_MODEL_TRACE === "1";
+    let id = 0;
+    let t0 = 0;
+    if (trace) {
+      id = ++OllamaProvider.traceSeq;
+      t0 = Date.now();
+      let model = "";
+      try { model = (JSON.parse(String(init.body)) as { model?: string }).model ?? ""; } catch { /* ignore */ }
+      process.stderr.write(`[modeltrace] #${id.toString()} START t=${new Date(t0).toISOString()} model=${model}\n`);
+    }
     try {
-      return await this.nativeFetch(url, init);
+      const response = await this.nativeFetch(url, init);
+      if (trace) process.stderr.write(`[modeltrace] #${id.toString()} END   +${(Date.now() - t0).toString()}ms\n`);
+      return response;
     } catch (cause) {
+      if (trace) process.stderr.write(`[modeltrace] #${id.toString()} ERR   +${(Date.now() - t0).toString()}ms\n`);
       // fetch() rejects with no HTTP status on a connection-level
       // failure — Ollama not running, restarting, or evicting a
       // cold-loaded model. Transient like a 5xx, so retryable
