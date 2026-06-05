@@ -1104,12 +1104,16 @@ user-verified — a window can't be auto-asserted headlessly).
   MuseBridge concurrent stdout/stderr drain (sequential read could deadlock on a full stderr pipe),
   Sprite.isRectangular validates override rows. Verified: `swift build` + `swift test` 24 (was 22) + launch
   + `pnpm lint` 0/0._
-
-**P44 — Trust: encryption at rest (the discretion refusal, made real against
-storage access — not just network egress).** "It can't tell anyone" was true
-against the network (cloud egress refused in code) but FALSE against the disk:
-the confided life sat in plaintext JSON behind OS file-perms only.
-
+- [x] **P45-7 The avatar is now a glowing ORB — the modern AI-assistant visual, after Jinan found the
+  character "이상한" and asked to research references + try a non-character.** (96705b04) Web-researched the
+  space (Siri / Apple Intelligence / ChatGPT voice / ElevenLabs all use a glowing orb); Jinan chose the
+  orb; built `VoiceOrb` (pure Core Graphics) as the new DEFAULT: an iridescent violet→cyan→pink 3D sphere
+  with a soft glow, glassy rim, off-center highlight, and state-reactive animation (breathing pulse idle /
+  expanding cyan ripples listening / orbiting bead thinking / stronger pulse speaking). Original art. The
+  avatar is pluggable — `CharacterView.Look` = orb (default) | vector mascot | pixel sprites — switchable
+  from the menu bar + `MUSE_DESKTOP_CHARACTER`. Iterated visually via new headless `--render-orb` /
+  `--render-vector` modes. Verified: `swift build` + `swift test` 24 + launch (orb default) + `pnpm lint`
+  0/0 + I inspected the final renders (a premium glowing sphere). Animation user-verified via `swift run`._
 - [x] **P44-1 `muse memory encrypt` encrypts your user-memory at rest.** The
   most sensitive store (facts / preferences / the typed user model) can now be
   AES-256-GCM encrypted, so a stolen/seized laptop or a leaked backup can't read

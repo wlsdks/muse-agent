@@ -22,9 +22,9 @@ swift run MuseDesktop          # the companion appears bottom-right; drag it any
 - Click the character → **speak your question** (on-device; from the `.app`
   bundle) → she answers in the bubble and reads it aloud. In a bare `swift run`
   (no mic permission) a click opens a **text field** instead.
-- **Pick a character**: `MUSE_DESKTOP_CHARACTER=aria` (default — a girl with
-  headphones, enjoying the music) or `=celestial` (an ethereal starlit Muse) —
-  or switch live from the **menu-bar ♪ → Character**.
+- **Pick the look** (menu-bar ♪ → Character, or `MUSE_DESKTOP_CHARACTER`):
+  `orb` (default — a glowing, state-reactive voice orb, the modern AI-assistant
+  visual), `muse` (a vector mascot), or the pixel sprites `aria` / `celestial`.
 - **Summon from anywhere**: ⌃⌥Space (Control-Option-Space) shows/hides her.
 - **Real app bundle** (needed for the mic permission): `./scripts/make-app.sh`
   then `open MuseDesktop.app`.
@@ -54,11 +54,12 @@ swift run MuseDesktop --render out.png 24   # render the Muse sprite to a PNG (n
    (on-device `AVSpeechSynthesizer`, local, citations dropped from the speech;
    `MUSE_DESKTOP_SPEAK=0` mutes). Faintly alive: breathes, blinks, mouths the
    words, shows a music note when listening/speaking.
-3. **(done)** Genuinely pretty, **selectable** characters via a data-driven
-   sprite system (`Sprite` + `SpriteLibrary`, designed by a multi-agent panel):
-   `aria` (default — a girl with headphones enjoying music, the look you asked
-   for) and `celestial` (an ethereal starlit Muse). Swap with
-   `MUSE_DESKTOP_CHARACTER`; preview any candidate JSON with `--render-json`.
+3. **(done)** A selectable avatar. The default is a glowing **voice orb**
+   (`VoiceOrb`, Core Graphics — the Siri/Apple-Intelligence style, state-reactive
+   pulse + ripples), chosen after researching how modern AI assistants present
+   themselves. Alternates: a vector mascot (`muse`) and pixel sprites
+   (`aria` / `celestial`). Switch via `MUSE_DESKTOP_CHARACTER` or the menu bar;
+   preview headlessly with `--render-orb` / `--render-vector` / `--render-json`.
 4. **(done)** Shell + packaging: a **menu-bar item** (♪ → Show/Hide, switch
    Character, Mute voice, Quit), a **global hotkey** (⌃⌥Space, Carbon — no
    Accessibility permission needed), and a real **`.app` bundle**

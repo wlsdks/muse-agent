@@ -1,20 +1,36 @@
 import AppKit
 import MuseDesktopCore
 
-/// Renders a `Sprite` as a pretty, faintly-alive pixel-art Muse. She breathes
-/// (gentle bob), blinks, mouths the words while speaking, and shows a little
-/// gold music note when listening/speaking — the "woman enjoying music" feel,
-/// Muse-styled. Swapping `sprite` (e.g. for an artist sprite) restyles her with
-/// no other change.
+/// The on-screen avatar. The default look is the glowing **voice orb** (the
+/// modern AI-assistant visual); a clean vector mascot and the pixel sprites
+/// (aria / celestial) are selectable alternates. All are pure-code original art.
+/// It breathes/pulses, blinks, mouths the words / ripples while speaking, and
+/// shows activity when listening.
 final class CharacterView: NSView {
     enum State { case idle, listening, thinking, speaking }
+    enum Look { case orb, vector, pixel }
 
     var state: State = .idle { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
     var sprite: Sprite = SpriteLibrary.default {
-        // Reset animation state on a swap, or the new sprite's eye/mouth rows get
-        // toggled at the old `tick` phase (stale blink/mouth on a different grid).
         didSet { rebuildColorCache(); tick = 0; blinking = false; mouthOpen = false; needsDisplay = true }
+    }
+    private var look: Look = .orb
+
+    /// `orb`/default → the glowing orb; `muse`/`vector` → the vector mascot;
+    /// `aria`/`celestial` → those pixel sprites.
+    func setCharacterNamed(_ name: String?) {
+        switch (name ?? "").lowercased() {
+        case "aria", "celestial":
+            look = .pixel
+            sprite = SpriteLibrary.named((name ?? "").lowercased())
+        case "muse", "vector":
+            look = .vector
+            tick = 0; needsDisplay = true
+        default:
+            look = .orb
+            tick = 0; needsDisplay = true
+        }
     }
 
     private var tick = 0
@@ -37,28 +53,44 @@ final class CharacterView: NSView {
         }
     }
 
-    override var isFlipped: Bool { true }
+    // Standard (non-flipped) coordinates: the orb is symmetric, the vector
+    // mascot sets up its own y-down space, and the pixel sprite flips its rows.
+    override var isFlipped: Bool { false }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         timer?.invalidate()
         guard window != nil else { return }
-        let timer = Timer(timeInterval: 0.16, repeats: true) { [weak self] _ in self?.animate() }
+        // ~25fps so the orb's pulse + ripples are smooth.
+        let timer = Timer(timeInterval: 0.04, repeats: true) { [weak self] _ in self?.animate() }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }
 
     private func animate() {
         tick += 1
-        blinking = (tick % 19 == 0)                              // a blink every ~3s
-        mouthOpen = (state == .speaking) && (tick % 2 == 0)      // flap while speaking
+        blinking = (tick % 75 == 0)                                   // a blink every ~3s
+        mouthOpen = (state == .speaking) && ((tick / 6) % 2 == 0)     // flap while speaking
         needsDisplay = true
     }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        ctx.setShouldAntialias(false)
+        let phase = CGFloat(tick) * 0.08
 
+        switch look {
+        case .orb:
+            VoiceOrb.draw(in: bounds, state: state, phase: phase)
+            return
+        case .vector:
+            let bob: CGFloat = (tick % 50 < 25) ? 0 : 2
+            VectorMuse.draw(in: bounds, state: state, blink: blinking, mouthOpen: mouthOpen, breathe: bob)
+            return
+        case .pixel:
+            break
+        }
+
+        ctx.setShouldAntialias(false)
         let cols = sprite.width
         let rowsN = sprite.height
         guard cols > 0, rowsN > 0 else { return }
@@ -66,29 +98,27 @@ final class CharacterView: NSView {
         let artW = cell * CGFloat(cols)
         let artH = cell * CGFloat(rowsN)
         let originX = (bounds.width - artW) / 2
-        let bob = (tick % 12 < 6) ? CGFloat(0) : cell * 0.18     // gentle breathing
+        let bob = (tick % 50 < 25) ? CGFloat(0) : cell * 0.18
         let originY = (bounds.height - artH) / 2 + bob
 
         for (r, baseRow) in sprite.rows.enumerated() {
             var row = baseRow
             if r == sprite.eyeRowIndex, blinking, let closed = sprite.closedEyesRow { row = closed }
             if r == sprite.mouthRowIndex, mouthOpen, let open = sprite.openMouthRow { row = open }
+            // row 0 is the TOP of the sprite; in non-flipped coords that is high y.
+            let y = originY + CGFloat(rowsN - 1 - r) * cell
             for (c, ch) in row.enumerated() {
                 guard let color = colorCache[ch] else { continue }
                 color.setFill()
-                ctx.fill(CGRect(x: originX + CGFloat(c) * cell, y: originY + CGFloat(r) * cell, width: cell, height: cell))
+                ctx.fill(CGRect(x: originX + CGFloat(c) * cell, y: y, width: cell, height: cell))
             }
         }
 
         if state == .listening || state == .speaking {
-            let note = "\u{266A}" // ♪
+            let note = "\u{266A}"
             let size = max(12, cell * 2)
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: size, weight: .bold),
-                .foregroundColor: noteColor
-            ]
-            let wobble: CGFloat = (tick % 8 < 4) ? 0 : cell * 0.4
-            note.draw(at: NSPoint(x: originX + artW - cell, y: originY - wobble), withAttributes: attrs)
+            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: size, weight: .bold), .foregroundColor: noteColor]
+            note.draw(at: NSPoint(x: originX + artW - cell, y: originY + artH - cell * 2), withAttributes: attrs)
         }
     }
 

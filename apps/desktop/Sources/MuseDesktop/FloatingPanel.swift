@@ -18,7 +18,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
     var voiceMuted = false
 
     /// Switch the on-screen character live (menu bar → Character submenu).
-    func setCharacter(_ name: String) { character.sprite = SpriteLibrary.named(name) }
+    func setCharacter(_ name: String) { character.setCharacterNamed(name) }
 
     init() {
         super.init(
@@ -69,7 +69,7 @@ final class FloatingPanel: NSPanel, NSTextFieldDelegate {
         setBubble("Hi, I'm Muse. Click me and ask about your notes.")
 
         character.frame = NSRect(x: 18, y: 18, width: 132, height: 150)
-        character.sprite = SpriteLibrary.named(ProcessInfo.processInfo.environment["MUSE_DESKTOP_CHARACTER"])
+        character.setCharacterNamed(ProcessInfo.processInfo.environment["MUSE_DESKTOP_CHARACTER"])
         character.onClick = { [weak self] in self?.handleClick() }
         content.addSubview(character)
 

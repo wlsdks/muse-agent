@@ -22,6 +22,45 @@ if let flag = arguments.firstIndex(of: "--render"), flag + 1 < arguments.count {
     }
 }
 
+// Headless preview of the ORB: `MuseDesktop --render-orb <png> [size] [state] [phase]`.
+if let flag = arguments.firstIndex(of: "--render-orb"), flag + 1 < arguments.count {
+    let path = arguments[flag + 1]
+    let size = min(max((flag + 2 < arguments.count ? Int(arguments[flag + 2]) : nil) ?? 320, 64), 2048)
+    let stateName = flag + 3 < arguments.count ? arguments[flag + 3] : "idle"
+    let phase = CGFloat((flag + 4 < arguments.count ? Double(arguments[flag + 4]) : nil) ?? 0)
+    let state: CharacterView.State = stateName == "listening" ? .listening : stateName == "speaking" ? .speaking : stateName == "thinking" ? .thinking : .idle
+    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size,
+                                     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                     colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+          let gctx = NSGraphicsContext(bitmapImageRep: rep) else { exit(1) }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = gctx
+    VoiceOrb.draw(in: NSRect(x: 0, y: 0, width: CGFloat(size), height: CGFloat(size)), state: state, phase: phase)
+    NSGraphicsContext.restoreGraphicsState()
+    if let data = rep.representation(using: .png, properties: [:]) {
+        try? data.write(to: URL(fileURLWithPath: path)); exit(0)
+    }
+    exit(1)
+}
+
+// Headless preview of the VECTOR mascot: `MuseDesktop --render-vector <png> [size]`.
+if let flag = arguments.firstIndex(of: "--render-vector"), flag + 1 < arguments.count {
+    let path = arguments[flag + 1]
+    let size = min(max((flag + 2 < arguments.count ? Int(arguments[flag + 2]) : nil) ?? 320, 64), 2048)
+    guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: Int(Double(size) * 1.2),
+                                     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                     colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+          let gctx = NSGraphicsContext(bitmapImageRep: rep) else { exit(1) }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = gctx
+    VectorMuse.draw(in: NSRect(x: 0, y: 0, width: CGFloat(size), height: CGFloat(size) * 1.2), state: .idle, blink: false, mouthOpen: false, breathe: 0)
+    NSGraphicsContext.restoreGraphicsState()
+    if let data = rep.representation(using: .png, properties: [:]) {
+        try? data.write(to: URL(fileURLWithPath: path)); exit(0)
+    }
+    exit(1)
+}
+
 // Headless preview of ANY candidate design: `MuseDesktop --render-json <sprite.json> <png> [scale]`.
 if let flag = arguments.firstIndex(of: "--render-json"), flag + 2 < arguments.count {
     let jsonPath = arguments[flag + 1]
