@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ModelProviderError, OllamaProvider } from "../src/index.js";
 import type { ModelEvent, ModelRequest } from "../src/index.js";
@@ -56,6 +56,23 @@ const userReq = (over: Partial<ModelRequest> = {}): ModelRequest => ({
   messages: [{ content: "hi", role: "user" }],
   model: "ollama/qwen3:8b",
   ...over
+});
+
+describe("OllamaProvider — keep_alive (model warmth) is tunable for an always-on companion", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("defaults to 30m", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    await p.generate(userReq());
+    expect(lastBody().keep_alive).toBe("30m");
+  });
+
+  it("honours MUSE_OLLAMA_KEEP_ALIVE (e.g. '-1' = hold the model resident indefinitely)", async () => {
+    vi.stubEnv("MUSE_OLLAMA_KEEP_ALIVE", "-1");
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    await p.generate(userReq());
+    expect(lastBody().keep_alive).toBe("-1");
+  });
 });
 
 describe("OllamaProvider — native /api/chat request wire shape", () => {

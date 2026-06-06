@@ -339,9 +339,12 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       },
       stream,
       // Keep the model resident between turns so each request doesn't pay the
-      // multi-second reload, and so it's less likely to be evicted mid-session
-      // (an eviction surfaces to the user as a failed turn). Local-first speed.
-      keep_alive: "30m",
+      // multi-second (cold: tens of seconds) reload, and so it's less likely to
+      // be evicted mid-session (an eviction surfaces as a failed turn). Default
+      // 30m; an ALWAYS-ON companion can hold it warm longer via
+      // MUSE_OLLAMA_KEEP_ALIVE ("2h", "-1" = indefinite, "0" = unload now) —
+      // trading RAM for instant responses after an idle gap. Local-first speed.
+      keep_alive: process.env.MUSE_OLLAMA_KEEP_ALIVE?.trim() || "30m",
       // Native reasoning is OFF by default (fast, deterministic, reliable tool
       // calls) and opt-in per request: when `reasoning` is set, Qwen emits its
       // chain-of-thought in a SEPARATE `thinking` channel (captured below), not
