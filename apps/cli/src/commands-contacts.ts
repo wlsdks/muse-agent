@@ -9,7 +9,9 @@
  * outbound-safety approval gate applies here.
  */
 
-import { resolveContactsFile, resolveNotesDir } from "@muse/autoconfigure";
+import { overdueContacts, type ContactInteractions, type OverdueContact } from "@muse/agent-core";
+import { resolveContactsFile, resolveLocalCalendarFile, resolveNotesDir } from "@muse/autoconfigure";
+import { promises as fsp } from "node:fs";
 import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, isContactsEncrypted, linkContacts, queryContacts, resolveContact, resolveUpcomingBirthdays, type Contact } from "@muse/mcp";
 
 import { relatedByCooccurrence } from "./contact-cooccurrence.js";
@@ -79,6 +81,51 @@ interface AddOptions {
 }
 
 const BIRTHDAY_RE = /^(?:\d{4}-)?(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u;
+
+interface CalendarEventLike {
+  readonly title?: string;
+  readonly notes?: string;
+  readonly startsAt?: string;
+}
+
+/**
+ * Derive each contact's interaction timestamps from calendar events that MENTION
+ * their name (or an alias) — the most reliable "we met / talked" signal without
+ * reading any message content. Case-insensitive substring; names < 2 chars are
+ * skipped (too ambiguous). Pure + testable.
+ */
+export function interactionsFromEvents(
+  contacts: readonly { readonly name: string; readonly aliases?: readonly string[] }[],
+  events: readonly CalendarEventLike[]
+): ContactInteractions[] {
+  const haystacks = events
+    .map((event) => ({ ms: Date.parse(event.startsAt ?? ""), text: `${event.title ?? ""} ${event.notes ?? ""}`.toLowerCase() }))
+    .filter((event) => Number.isFinite(event.ms));
+  return contacts.map((contact) => {
+    const needles = [contact.name, ...(contact.aliases ?? [])]
+      .map((alias) => alias.trim().toLowerCase())
+      .filter((alias) => alias.length >= 2);
+    return {
+      name: contact.name,
+      timestampsMs: haystacks.filter((event) => needles.some((needle) => event.text.includes(needle))).map((event) => event.ms)
+    };
+  });
+}
+
+/** Render the overdue-contacts nudge. Pure + draft-first (nothing is ever sent). */
+export function formatOverdue(overdue: readonly OverdueContact[]): string {
+  if (overdue.length === 0) {
+    return "💬 No one's overdue — you're keeping up with your people.\n";
+  }
+  const lines = ["💬 People you might reconnect with (from your calendar; nothing is sent):"];
+  for (const contact of overdue) {
+    lines.push(
+      `  • ${contact.name} — you usually connect about every ${Math.round(contact.cadenceDays).toString()}d, ` +
+        `last was ~${Math.round(contact.gapDays).toString()}d ago (${contact.overdueRatio.toFixed(1)}× your usual)`
+    );
+  }
+  return `${lines.join("\n")}\n`;
+}
 
 export function registerContactsCommands(program: Command, io: ProgramIO): void {
   const contacts = program.command("contacts").description("Manage and resolve your people graph (~/.muse/contacts.json)");
@@ -266,6 +313,32 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
       for (const contact of shown) {
         io.stdout(`${describeContact(contact)}\n`);
       }
+    });
+
+  contacts
+    .command("overdue")
+    .description("People you haven't connected with in longer than your usual cadence (from calendar timestamps; draft-first, nothing is sent)")
+    .option("--json", "Print the raw overdue list")
+    .action(async (options: { readonly json?: boolean }) => {
+      const all = await queryContacts(contactsFile());
+      if (all.length === 0) {
+        io.stdout("No contacts yet. Add one with `muse contacts add <name>`.\n");
+        return;
+      }
+      let events: CalendarEventLike[] = [];
+      try {
+        const raw = await fsp.readFile(resolveLocalCalendarFile(process.env as Record<string, string | undefined>), "utf8");
+        const parsed = JSON.parse(raw) as { events?: CalendarEventLike[] };
+        events = Array.isArray(parsed.events) ? parsed.events : [];
+      } catch {
+        // no local calendar → no interaction history → nothing overdue
+      }
+      const overdue = overdueContacts(interactionsFromEvents(all, events), { nowMs: Date.now() });
+      if (options.json) {
+        io.stdout(`${JSON.stringify(overdue, null, 2)}\n`);
+        return;
+      }
+      io.stdout(formatOverdue(overdue));
     });
 
   contacts

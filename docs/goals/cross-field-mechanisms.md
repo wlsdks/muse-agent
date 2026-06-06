@@ -42,7 +42,7 @@ change is a regression.**
 
 ## Group B — fill a NEW axis (compounding personalization + background self-learning)
 
-- [ ] **B1 · Dunbar tie-strength decay → relationship nudges** (Roberts & Dunbar 2011; Sapiezynski et al., Sci. Rep. 2022).
+- [x] **B1 · Dunbar tie-strength decay → relationship nudges** (`muse contacts overdue`, calendar-derived) (Roberts & Dunbar 2011; Sapiezynski et al., Sci. Rep. 2022).
   - *Mechanism:* ties decay without contact at a layer-dependent rate; gap ≫ your
     usual cadence ⇒ overdue. Computable from contact TIMESTAMPS only (no content).
   - *Muse:* `muse relationships nudge` — "you haven't connected with X in a while

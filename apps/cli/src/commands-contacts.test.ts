@@ -6,7 +6,32 @@ import { queryContacts, type Contact } from "@muse/mcp";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { filterContactsBySearch, registerContactsCommands } from "./commands-contacts.js";
+import { filterContactsBySearch, formatOverdue, interactionsFromEvents, registerContactsCommands } from "./commands-contacts.js";
+
+describe("B1 relationship decay — interactionsFromEvents + formatOverdue", () => {
+  it("derives interaction timestamps from calendar events that mention a contact (name or alias)", () => {
+    const events = [
+      { title: "coffee with Mina", startsAt: "2026-05-01T10:00:00Z" },
+      { title: "lunch", notes: "caught up with Mimi", startsAt: "2026-05-20T10:00:00Z" },
+      { title: "team standup", startsAt: "2026-05-25T10:00:00Z" } // no mention → not counted
+    ];
+    const [mina] = interactionsFromEvents([{ name: "Mina", aliases: ["Mimi"] }], events);
+    expect(mina!.timestampsMs).toHaveLength(2);
+  });
+
+  it("skips a name shorter than 2 chars (too ambiguous)", () => {
+    const [x] = interactionsFromEvents([{ name: "A" }], [{ title: "A team standup", startsAt: "2026-05-01T10:00:00Z" }]);
+    expect(x!.timestampsMs).toEqual([]);
+  });
+
+  it("formatOverdue renders the nudge (or an honest all-clear), draft-first", () => {
+    expect(formatOverdue([])).toContain("No one's overdue");
+    const out = formatOverdue([{ name: "Mina", cadenceDays: 7, gapDays: 35, overdueRatio: 5 }]);
+    expect(out).toContain("Mina");
+    expect(out).toContain("nothing is sent");
+    expect(out).toMatch(/every 7d/);
+  });
+});
 
 async function run(file: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
