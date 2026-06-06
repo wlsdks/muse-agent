@@ -275,6 +275,30 @@ describe("autoconfigure", () => {
     }
   });
 
+  it("createOllamaEmbedder passes keep_alive so the embed model stays warm (MUSE_OLLAMA_KEEP_ALIVE, default 30m)", async () => {
+    const { createOllamaEmbedder } = await import("../src/context-engineering-builders.js");
+    const bodies: string[] = [];
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(String(init?.body ?? ""));
+      return new Response(JSON.stringify({ embedding: [0.1] }), { status: 200 });
+    }) as typeof globalThis.fetch;
+    const origKeep = process.env.MUSE_OLLAMA_KEEP_ALIVE;
+    try {
+      process.env.MUSE_OLLAMA_KEEP_ALIVE = "2h";
+      await createOllamaEmbedder("nomic-embed-text")("hello");
+      expect(JSON.parse(bodies[0]!).keep_alive).toBe("2h");
+
+      delete process.env.MUSE_OLLAMA_KEEP_ALIVE;
+      await createOllamaEmbedder("nomic-embed-text")("world");
+      expect(JSON.parse(bodies[1]!).keep_alive).toBe("30m");
+    } finally {
+      globalThis.fetch = origFetch;
+      if (origKeep === undefined) delete process.env.MUSE_OLLAMA_KEEP_ALIVE;
+      else process.env.MUSE_OLLAMA_KEEP_ALIVE = origKeep;
+    }
+  });
+
   it("assembles auth and API options when JWT secret is configured", () => {
     const options = createApiServerOptions({
       env: {

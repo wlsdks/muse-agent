@@ -223,9 +223,14 @@ export function createOllamaEmbedder(model: string): (text: string) => Promise<r
   // mirroring `resolveOllamaUrl` and the goal-478 merge fix.
   const trimmed = process.env.OLLAMA_BASE_URL?.trim();
   const base = ((trimmed && trimmed.length > 0) ? trimmed : "http://127.0.0.1:11434").replace(/\/+$/u, "");
+  // Keep the embed model warm with the SAME knob as the chat model (01717219):
+  // grounding embeds the query every turn, so an embed model that cold-reloads
+  // after a 5-minute idle gap would stall the FIRST grounded answer after a
+  // break — the always-on companion sets this to 2h via MuseBridge.
+  const keepAlive = process.env.MUSE_OLLAMA_KEEP_ALIVE?.trim() || "30m";
   return async (text: string) => {
     const resp = await fetch(`${base}/api/embeddings`, {
-      body: JSON.stringify({ model, prompt: text }),
+      body: JSON.stringify({ model, prompt: text, keep_alive: keepAlive }),
       headers: { "content-type": "application/json" },
       method: "POST"
     });
