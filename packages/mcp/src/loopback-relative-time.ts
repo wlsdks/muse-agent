@@ -325,6 +325,17 @@ export function withTimeOfDay(date: Date, time: Date): Date {
   return out;
 }
 
+// `resolveRelativeTimePhrase` lands a bare DATE ("다음 주 월요일", "2026-06-20") at
+// UTC midnight — its no-time default. This is the reliable signal that a
+// reschedule phrase carried a date but no time (so the item's own time-of-day
+// should be kept), distinguishing it from a relative OFFSET ("in 30 minutes")
+// that resolves to now-plus-delta, NOT midnight. Pair with `hasTimeComponent` so
+// an explicit "오전 9시" (= 00:00Z in KST) is never mistaken for a bare date.
+export function isUtcMidnight(date: Date): boolean {
+  return date.getUTCHours() === 0 && date.getUTCMinutes() === 0
+    && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0;
+}
+
 export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date | undefined {
   const trimmed = phrase.trim().toLowerCase();
   if (trimmed.length === 0) {

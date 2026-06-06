@@ -4,7 +4,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 
 import type { LoopbackMcpServer } from "./loopback.js";
 import { readString, readStringArray, errorMessage } from "./loopback-helpers.js";
-import { hasTimeComponent, isTimeOnlyPhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
+import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
 import {
   compareTasksByDueDate,
   parseTaskDueAt,
@@ -280,7 +280,10 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
               if (parsed instanceof Error) {
                 return { error: parsed.message };
               }
-              const isDateOnly = !/^\d{4}-\d{2}-\d{2}T/u.test(dueArg) && !isTimeOnlyPhrase(dueArg) && !hasTimeComponent(dueArg);
+              // isUtcMidnight excludes a relative OFFSET ("in 2 hours"), which
+              // resolves to now-plus-delta rather than a bare date's midnight.
+              const isDateOnly = !/^\d{4}-\d{2}-\d{2}T/u.test(dueArg) && !isTimeOnlyPhrase(dueArg)
+                && !hasTimeComponent(dueArg) && isUtcMidnight(new Date(parsed));
               patched.dueAt = isDateOnly && haveExisting
                 ? withTimeOfDay(new Date(parsed), existingDue!).toISOString()
                 : parsed;

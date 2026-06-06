@@ -4731,6 +4731,28 @@ describe("muse.reminders loopback server", () => {
     expect(snoozedDue.toDateString()).toBe(new Date("2026-06-06T03:00:00.000Z").toDateString()); // today, not 2026-06-01
     expect(snoozedDue.getHours()).toBe(18);
   });
+
+  it("a DATE-only reschedule ('2026-06-20', no time) keeps the reminder's TIME-of-day", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-dateonly-"));
+    let counter = 0;
+    const connection = createLoopbackMcpConnection(createRemindersMcpServer({
+      file: join(dir, "reminders.json"),
+      idFactory: () => `rem_${++counter}`,
+      now: () => new Date("2026-06-06T03:00:00.000Z")
+    }));
+    const seedIso = "2026-06-12T05:00:00.000Z"; // Friday, a non-midnight time
+    await connection.callTool!("add", { dueAt: seedIso, text: "약 먹기" });
+
+    const moved = await connection.callTool!("snooze", { dueAt: "2026-06-20", id: "rem_1" }) as { reminder: { dueAt: string } };
+    const due = new Date(moved.reminder.dueAt);
+    expect(due.getHours()).toBe(new Date(seedIso).getHours()); // TIME-of-day preserved (TZ-safe)
+    expect(due.getMinutes()).toBe(new Date(seedIso).getMinutes());
+    expect(due.toDateString()).not.toBe(new Date(seedIso).toDateString()); // moved to a different day
+    expect(due.getTime()).toBeGreaterThan(new Date(seedIso).getTime());
+  });
 });
 
 describe("runDueReminders", () => {

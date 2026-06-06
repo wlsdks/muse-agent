@@ -11,7 +11,7 @@ import { detectCalendarConflicts } from "./calendar-conflicts.js";
 import { formatDueLocal } from "./local-due-format.js";
 import { readBoolean, readString, readStringArray, errorMessage } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
-import { hasTimeComponent, isTimeOnlyPhrase, resolveRelativeTimePhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
+import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, resolveRelativeTimePhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
 
 /**
  * `muse.calendar` loopback MCP server.
@@ -329,7 +329,9 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
             && !/^\d{4}-\d{2}-\d{2}T/u.test(startsAtRaw)
             && !isTimeOnlyPhrase(startsAtRaw)
             && !hasTimeComponent(startsAtRaw);
-          const newStartsAt = resolvedStartsAt && startIsDateOnly
+          // isUtcMidnight excludes a relative OFFSET ("in 2 hours"), which resolves
+          // to now-plus-delta rather than a bare date's midnight default.
+          const newStartsAt = resolvedStartsAt && startIsDateOnly && isUtcMidnight(resolvedStartsAt)
             ? withTimeOfDay(resolvedStartsAt, resolved.event.startsAt)
             : resolvedStartsAt;
           // Moving only the start preserves the event's DURATION — shift the end

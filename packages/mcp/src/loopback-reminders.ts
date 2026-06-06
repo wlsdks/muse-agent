@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { errorMessage, readString } from "./loopback-helpers.js";
-import { isTimeOnlyPhrase, recurrenceFromPhrase, startOfLocalDay } from "./loopback-relative-time.js";
+import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
 import { readReminderHistory } from "./personal-reminder-history-store.js";
 import {
@@ -295,14 +295,22 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             // firing/overdue reminder snoozes to later TODAY (now-anchor), the
             // ordinary snooze meaning. Date-bearing phrases resolve against now.
             const existingDue = new Date(reminders[index]!.dueAt);
-            const anchor = isTimeOnlyPhrase(dueAtRaw) && !Number.isNaN(existingDue.getTime()) && existingDue.getTime() > now().getTime()
+            const haveExisting = !Number.isNaN(existingDue.getTime());
+            const anchor = isTimeOnlyPhrase(dueAtRaw) && haveExisting && existingDue.getTime() > now().getTime()
               ? () => startOfLocalDay(existingDue)
               : now;
             const parsed = parseReminderDueAt(dueAtRaw, anchor);
             if (parsed instanceof Error) {
               return { error: parsed.message };
             }
-            nextDueAt = parsed;
+            // A bare DATE ("다음 주 월요일로 옮겨줘") keeps the reminder's time-of-day,
+            // not the resolver's default midnight. The UTC-midnight check excludes
+            // a relative OFFSET ("in 30 minutes"), which resolves to now-plus-delta.
+            const isDateOnly = !/^\d{4}-\d{2}-\d{2}T/u.test(dueAtRaw) && !isTimeOnlyPhrase(dueAtRaw)
+              && !hasTimeComponent(dueAtRaw) && isUtcMidnight(new Date(parsed));
+            nextDueAt = isDateOnly && haveExisting
+              ? withTimeOfDay(new Date(parsed), existingDue).toISOString()
+              : parsed;
           } else {
             // Default snooze: 10 minutes from now. The LLM can still
             // override with an explicit phrase when the user is more
@@ -327,7 +335,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           additionalProperties: false,
           properties: {
             dueAt: {
-              description: "New due time. Same grammar as `add` (ISO or relative phrase). Omit for a 10-minute snooze.",
+              description: "New due moment in the user's own words — a TIME alone ('오후 6시' keeps the date), a DATE alone ('다음 주 월요일' keeps the current time), or BOTH ('월요일 오전 9시'). Also accepts an offset ('in 30 minutes') or ISO. Pass the user's exact phrase; do NOT ask for a time they didn't give. Omit for a 10-minute snooze.",
               type: "string"
             },
             id: { description: "The reminder's id (from `due` / `search`) OR a distinct word from its text, e.g. 'dentist'. An ambiguous word returns the matching candidates instead of guessing.", type: "string" }
@@ -335,7 +343,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           required: ["id"],
           type: "object"
         },
-        keywords: ["reminder", "리마인더", "리마인드", "알림", "remind", "snooze", "postpone", "미뤄", "미루", "연기", "늦춰", "뒤로", "나중에"],
+        keywords: ["reminder", "리마인더", "리마인드", "알림", "remind", "snooze", "postpone", "reschedule", "move", "change", "미뤄", "미루", "연기", "늦춰", "뒤로", "나중에", "옮겨", "바꿔", "변경"],
         domain: "tasks",
         name: "snooze",
         risk: "write"
