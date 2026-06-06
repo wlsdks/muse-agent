@@ -26,6 +26,8 @@ import type { Command } from "commander";
 import { answerClaimsAction, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, classifyTaskListQuery, requestsToolAction } from "@muse/agent-core";
 
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
+import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
+import { detectDateDiffQuery, formatDateDiff } from "./date-diff-query.js";
 import { conversationMatches, factKeysToInject, gateChatAnswer, groundedNoteSources, isChatAbstention, retrieveChatGrounding, stripFabricatedCitations, stripTruncatedCitation, withGroundingReceipt } from "./chat-grounding.js";
 import { isRecord } from "./credential-store.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
@@ -344,6 +346,30 @@ export async function runLocalChat(
         runId: "local-arithmetic",
         toolsUsed: []
       };
+    }
+  }
+
+  // Sibling deterministic compute fast-paths — the 8B is confidently off-by-days
+  // on calendar math (it answered "189 days" and "209 days" for counts whose
+  // exact values are 201 and 217). Count those EXACTLY from the host clock, same
+  // as the arithmetic path. Each detector is precision-first (falls through to
+  // grounded recall unless the query is NOTHING but that computation).
+  {
+    const countdown = detectCountdownQuery(message);
+    if (countdown) {
+      const { parseReminderDueAt } = await import("@muse/mcp");
+      const now = new Date();
+      const resolved = parseReminderDueAt(countdown.targetPhrase, () => now);
+      if (!(resolved instanceof Error)) {
+        const days = countdownDays(now, resolved);
+        if (days >= 0) {
+          return { response: formatCountdown(countdown.unit, days, resolved), runId: "local-countdown", toolsUsed: [] };
+        }
+      }
+    }
+    const dateDiff = detectDateDiffQuery(message, new Date());
+    if (dateDiff) {
+      return { response: formatDateDiff(dateDiff), runId: "local-date-diff", toolsUsed: [] };
     }
   }
 
