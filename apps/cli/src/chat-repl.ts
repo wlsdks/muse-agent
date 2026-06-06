@@ -20,7 +20,7 @@
 
 import type { Readable } from "node:stream";
 
-import { createMuseRuntimeAssembly, resolveNotesDir } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 import { classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt } from "@muse/agent-core";
@@ -37,6 +37,7 @@ import {
   writeRunLog
 } from "./program-helpers.js";
 import { closestCommandName } from "./closest-command.js";
+import { isTaskCompletionReport, matchCompletedTask } from "./task-completion.js";
 import type { ProgramIO } from "./program.js";
 
 const AGENT_MODES: readonly string[] = ["react", "plan_execute"];
@@ -369,11 +370,44 @@ export async function runLocalChat(
   // ask — better than silence, and not a deferral ("잠시만요…"), it admits the miss.
   const response = withReceipt.trim().length > 0 ? withReceipt : emptyAnswerFallback(message);
 
+  // "빨래 다 했어" — a past-tense REPORT of finishing a task. The model only acts
+  // on the imperative ("완료로 표시해줘") and just acknowledges this, leaving the
+  // task open. If the user reported a completion the model didn't act on, mark
+  // the ONE matching open task done (reversible) and confirm it.
+  let toolsUsed = result.toolsUsed ?? [];
+  let finalResponse = response;
+  if (isTaskCompletionReport(message) && !toolsUsed.some((tool) => tool.includes("tasks.complete"))) {
+    const done = await autoCompleteReportedTask(message).catch(() => null);
+    if (done) {
+      toolsUsed = [...toolsUsed, "muse.tasks.complete"];
+      finalResponse = `${response}\n\n${/[가-힣]/u.test(message) ? `✅ 할 일 '${done}'을(를) 완료로 표시했어요.` : `✅ Marked the task "${done}" as done.`}`;
+    }
+  }
+
   return {
-    response,
+    response: finalResponse,
     runId: result.runId,
-    toolsUsed: result.toolsUsed ?? []
+    toolsUsed
   };
+}
+
+/**
+ * Mark the single open task a completion report names as done (reversible).
+ * Returns the completed task's title, or null when nothing matched or it was
+ * ambiguous. The @muse/mcp store is a HEAVY async-init module, so it is loaded
+ * lazily here — a STATIC import would break the bun-compiled desktop binary.
+ */
+async function autoCompleteReportedTask(message: string): Promise<string | null> {
+  const { readTasks, writeTasks } = await import("@muse/mcp");
+  const file = resolveTasksFile(process.env as Record<string, string | undefined>);
+  const tasks = await readTasks(file);
+  const openTasks = tasks.filter((task) => task.status === "open");
+  const index = matchCompletedTask(message, openTasks.map((task) => task.title));
+  if (index === null) return null;
+  const target = openTasks[index]!;
+  const completedAt = new Date().toISOString();
+  await writeTasks(file, tasks.map((task) => task.id === target.id ? { ...task, status: "done" as const, completedAt } : task));
+  return target.title;
 }
 
 /** Honest stand-in when the model returns a blank completion — never a blank bubble. */
