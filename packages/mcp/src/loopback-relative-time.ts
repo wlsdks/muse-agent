@@ -289,6 +289,23 @@ export function recurrenceFromPhrase(phrase: string): "daily" | "weekly" | "mont
   return undefined;
 }
 
+// A phrase that is ONLY a time-of-day ("오후 4시", "4pm", "16:00") — no date. A
+// reschedule given one of these must keep the existing item's DATE, so callers
+// anchor it to that item's own day instead of resolving against `now` (which
+// silently moves the event/task to today).
+const TIME_ONLY_PHRASE_RE = /^(오전|오후)?\s*\d{1,2}\s*시(\s*반|\s*\d{1,2}\s*분)?$|^\d{1,2}:\d{2}\s*(am|pm)?$|^\d{1,2}\s*(am|pm)$/iu;
+
+export function isTimeOnlyPhrase(phrase: string): boolean {
+  return TIME_ONLY_PHRASE_RE.test(phrase.trim());
+}
+
+/** Local midnight of `date`'s calendar day — the anchor for a time-only reschedule. */
+export function startOfLocalDay(date: Date): Date {
+  const day = new Date(date);
+  day.setHours(0, 0, 0, 0);
+  return day;
+}
+
 export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date | undefined {
   const trimmed = phrase.trim().toLowerCase();
   if (trimmed.length === 0) {

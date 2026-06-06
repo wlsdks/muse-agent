@@ -4,6 +4,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 
 import type { LoopbackMcpServer } from "./loopback.js";
 import { readString, readStringArray, errorMessage } from "./loopback-helpers.js";
+import { isTimeOnlyPhrase, startOfLocalDay } from "./loopback-relative-time.js";
 import {
   compareTasksByDueDate,
   parseTaskDueAt,
@@ -268,7 +269,15 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             if (dueArg.length === 0 || dueArg.toLowerCase() === "none") {
               delete patched.dueAt;
             } else {
-              const parsed = parseTaskDueAt(dueArg, now);
+              // A bare time-of-day ("오후 6시로 바꿔줘") keeps the task's existing
+              // DATE — resolving it against `now` silently moved the deadline to
+              // today. Anchor a time-only phrase to the current due day; any
+              // date-bearing phrase resolves against now as before.
+              const existingDue = typeof tasks[index]!.dueAt === "string" ? new Date(tasks[index]!.dueAt!) : undefined;
+              const anchor = isTimeOnlyPhrase(dueArg) && existingDue && !Number.isNaN(existingDue.getTime())
+                ? () => startOfLocalDay(existingDue)
+                : now;
+              const parsed = parseTaskDueAt(dueArg, anchor);
               if (parsed instanceof Error) {
                 return { error: parsed.message };
               }

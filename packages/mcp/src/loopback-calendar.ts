@@ -11,7 +11,7 @@ import { detectCalendarConflicts } from "./calendar-conflicts.js";
 import { formatDueLocal } from "./local-due-format.js";
 import { readBoolean, readString, readStringArray, errorMessage } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
-import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
+import { isTimeOnlyPhrase, resolveRelativeTimePhrase, startOfLocalDay } from "./loopback-relative-time.js";
 
 /**
  * `muse.calendar` loopback MCP server.
@@ -320,7 +320,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           // A bare time-of-day keeps the event's DATE (anchor to its own day);
           // a date-bearing phrase resolves against now as before.
           const anchorFor = (raw: string): (() => Date) =>
-            TIME_ONLY_PHRASE_RE.test(raw.trim()) ? () => startOfLocalDay(resolved.event.startsAt) : () => new Date();
+            isTimeOnlyPhrase(raw) ? () => startOfLocalDay(resolved.event.startsAt) : () => new Date();
           const newStartsAt = startsAtRaw ? parseIsoDate(startsAtRaw, anchorFor(startsAtRaw)) : undefined;
           // Moving only the start preserves the event's DURATION — shift the end
           // by the same delta so a later start can't land before the old end.
@@ -484,18 +484,4 @@ function parseIsoDate(value: string | undefined, anchor: () => Date = () => new 
     }
   }
   return resolveRelativeTimePhrase(value, anchor);
-}
-
-// A reschedule given ONLY a time-of-day ("오후 4시", "4pm", "16:00") must keep the
-// event's existing DATE — resolving such a phrase against `now` silently moves
-// the event to today (observed: "치과 예약을 오후 4시로 변경" jumped a next-Tuesday
-// event to today). The update handler anchors a time-only phrase to the event's
-// own day instead; any date-bearing phrase ("금요일 3시", "내일") still resolves
-// against now, so that path is unchanged.
-const TIME_ONLY_PHRASE_RE = /^(오전|오후)?\s*\d{1,2}\s*시(\s*반|\s*\d{1,2}\s*분)?$|^\d{1,2}:\d{2}\s*(am|pm)?$|^\d{1,2}\s*(am|pm)$/iu;
-
-function startOfLocalDay(date: Date): Date {
-  const day = new Date(date);
-  day.setHours(0, 0, 0, 0);
-  return day;
 }

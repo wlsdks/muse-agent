@@ -2439,6 +2439,31 @@ describe("muse.tasks loopback server", () => {
     expect(search.tasks[0]?.dueAt).toBe("2026-05-15T18:00:00.000Z");
   });
 
+  it("a time-only reschedule keeps the task's existing DATE (does not jump to today)", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const tmpdir = await import("node:os").then((m) => m.tmpdir());
+    const dir = mkdtempSync(`${tmpdir}/muse-tasks-reschedule-`);
+    let counter = 0;
+    const connection = createLoopbackMcpConnection(createTasksMcpServer({
+      file: `${dir}/tasks.json`,
+      idFactory: () => `task_${++counter}`,
+      now: () => new Date("2026-06-06T03:00:00.000Z") // "today" — deliberately far from the due day
+    }));
+    const seedIso = "2026-06-12T05:00:00.000Z"; // the original due day (a Friday)
+    const added = await connection.callTool!("add", { dueAt: seedIso, title: "Submit report" }) as { task: { id: string } };
+
+    // The bug: "오후 6시로 바꿔줘" resolved against `now`, moving the deadline to
+    // today. A time-only phrase must keep the task's existing DATE.
+    const updated = await connection.callTool!("update", { dueAt: "오후 6시", id: added.task.id }) as { task: { dueAt?: string } };
+    const due = new Date(updated.task.dueAt!);
+    expect(due.toDateString()).toBe(new Date(seedIso).toDateString()); // DATE preserved (TZ-independent)
+    expect(due.getHours()).toBe(18); // 오후 6시 local
+
+    // A date-bearing / ISO reschedule is honored exactly, not re-anchored.
+    const moved = await connection.callTool!("update", { dueAt: "2026-06-20T01:00:00.000Z", id: added.task.id }) as { task: { dueAt?: string } };
+    expect(moved.task.dueAt).toBe("2026-06-20T01:00:00.000Z");
+  });
+
   it("rejects an invalid dueAt with a clear error", async () => {
     const { mkdtempSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
