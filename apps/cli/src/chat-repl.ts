@@ -25,7 +25,7 @@ import type { Command } from "commander";
 
 import { classifyCasualPrompt } from "@muse/agent-core";
 
-import { conversationMatches, factKeysToInject, gateChatAnswer, groundedNoteSources, retrieveChatGrounding, withGroundingReceipt } from "./chat-grounding.js";
+import { conversationMatches, factKeysToInject, gateChatAnswer, groundedNoteSources, retrieveChatGrounding, stripTruncatedCitation, withGroundingReceipt } from "./chat-grounding.js";
 import { isRecord } from "./credential-store.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import { loadActivePersonaPreamble } from "./persona-store.js";
@@ -277,9 +277,13 @@ export async function runLocalChat(
   const knownFactKeys = userMemory ? Object.keys(userMemory.facts ?? {}) : [];
   const gated = gateChatAnswer(message, result.response.output, evidence, knownFactKeys);
 
+  // The local model sometimes stops mid-citation, leaving a broken "[from …"
+  // fragment; drop it so the clean 📎 receipt can stand in for the source.
+  const repaired = stripTruncatedCitation(gated);
+
   // "Answers from your notes, source quoted": render the source receipt the model
   // often omits inline, so a grounded answer shows WHERE it came from.
-  const response = withGroundingReceipt(gated, groundedNoteSources(matches, gated), /[가-힣]/u.test(message));
+  const response = withGroundingReceipt(repaired, groundedNoteSources(matches, repaired), /[가-힣]/u.test(message));
 
   return {
     response,

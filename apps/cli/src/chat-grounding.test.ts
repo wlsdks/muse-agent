@@ -11,6 +11,7 @@ import {
   groundedNoteSources,
   isPersonalFactRecall,
   shortCitationRef,
+  stripTruncatedCitation,
   withGroundingReceipt
 } from "./chat-grounding.js";
 import type { RecallHit } from "./commands-recall.js";
@@ -96,6 +97,20 @@ describe("groundingReceipt (source quoted)", () => {
 function hit(over: Partial<RecallHit> = {}): RecallHit {
   return { source: "notes", ref: "vpn.md", score: 0.7, snippet: "Office VPN MTU is 1380.", ...over };
 }
+
+describe("stripTruncatedCitation (repair a mid-citation runtime truncation)", () => {
+  it("drops an UNCLOSED trailing '[from …' fragment so the 📎 receipt can stand in", () => {
+    expect(stripTruncatedCitation("비밀번호는 muse2026입니다. [from wifi_passwords/seoul_office."))
+      .toBe("비밀번호는 muse2026입니다.");
+  });
+  it("leaves a COMPLETE inline citation untouched", () => {
+    const complete = "비밀번호는 muse2026입니다. [from wifi_passwords/seoul_office.md]";
+    expect(stripTruncatedCitation(complete)).toBe(complete);
+  });
+  it("leaves an answer with no citation untouched", () => {
+    expect(stripTruncatedCitation("그건 아직 기억하고 있지 않아요.")).toBe("그건 아직 기억하고 있지 않아요.");
+  });
+});
 
 describe("shortCitationRef", () => {
   it("strips the absolute notes-dir prefix so a citation is clean + leaks no home dir", () => {

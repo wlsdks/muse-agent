@@ -200,6 +200,20 @@ export function groundedNoteSources(
   return [...new Set(refs)];
 }
 
+/**
+ * Drop a DANGLING inline citation. In the grounded-recall runtime context the
+ * local model sometimes stops mid-citation (`done_reason=stop`, e.g. "…[from
+ * wifi_passwords/seoul_office." with no closing "]"), leaving a broken,
+ * path-leaky fragment AND blocking the 📎 receipt (which skips when the answer
+ * "[from"-contains a citation). Stripping the unclosed fragment lets the clean
+ * receipt stand in. A COMPLETE inline citation (has a "]") is left untouched.
+ */
+export function stripTruncatedCitation(answer: string): string {
+  const idx = answer.lastIndexOf("[from");
+  if (idx < 0 || answer.indexOf("]", idx) >= 0) return answer;
+  return answer.slice(0, idx).trimEnd();
+}
+
 /** Append a "shows its work" source receipt when chat answered FROM the user's
  * notes — the model often forgets to render [from <source>] inline, but the
  * "answers from your notes, source quoted" promise should still be visible. */
