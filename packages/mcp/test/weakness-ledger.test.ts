@@ -78,6 +78,15 @@ describe("read/write/recordWeakness — persistence round-trip", () => {
     expect(entries[0]).toMatchObject({ axis: "grounding-gap", topic: "office vpn mtu", count: 2 });
   });
 
+  it("recordWeakness returns the upserted entry with its new count (drives the knowledge-gap nudge)", async () => {
+    const file = tmpFile();
+    const first = await recordWeakness(file, { axis: "grounding-gap", message: "what's my office VPN MTU?", nowIso: "2026-06-06T00:00:00Z" });
+    expect(first?.count).toBe(1);
+    const second = await recordWeakness(file, { axis: "grounding-gap", message: "office vpn mtu", nowIso: "2026-06-07T00:00:00Z" });
+    expect(second?.count).toBe(2);
+    expect(await recordWeakness(file, { axis: "grounding-gap", message: "뭐야" })).toBeUndefined(); // no salient topic
+  });
+
   it("recordWeakness is a no-op when the message has no salient topic", async () => {
     const file = tmpFile();
     await recordWeakness(file, { axis: "grounding-gap", message: "뭐야 알려줘", nowIso: "2026-06-06T00:00:00Z" });

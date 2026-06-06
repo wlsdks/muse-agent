@@ -440,7 +440,16 @@ export async function runLocalChat(
   if (unbackedAction) {
     await recordChatWeakness(message, "unbacked-action");
   } else if (!isCasual && (usedEmptyFallback || isChatAbstention(finalResponse) || looksLikeRefusal(finalResponse))) {
-    await recordChatWeakness(message, "grounding-gap");
+    const recorded = await recordChatWeakness(message, "grounding-gap");
+    // Whetstone remediation (knowledge-gap nudge): a topic Muse has now failed to
+    // answer 2+ times is a gap the USER can close — gently suggest a note. Only on
+    // a repeat, so a one-off refusal stays clean. Reinforces the floor (it does
+    // NOT push a guess), and points at the fix the user actually controls.
+    if (recorded !== undefined && recorded >= 2) {
+      finalResponse += /[가-힣]/u.test(message)
+        ? "\n\n(이 주제는 전에도 여쭤보셨는데 제 노트엔 없어요. 관련 메모를 추가해두시면 다음엔 답해드릴 수 있어요.)"
+        : "\n\n(You've asked about this before and it isn't in your notes yet — add a note and I'll be able to answer next time.)";
+    }
   }
 
   return {
@@ -465,14 +474,16 @@ function looksLikeRefusal(text: string): boolean {
  * modules breaks the bun-compiled desktop binary (top-level await in a sync
  * context). Best-effort; swallows every error.
  */
-async function recordChatWeakness(message: string, axis: "grounding-gap" | "unbacked-action"): Promise<void> {
+async function recordChatWeakness(message: string, axis: "grounding-gap" | "unbacked-action"): Promise<number | undefined> {
   try {
     const { recordWeakness } = await import("@muse/mcp");
     const { resolveWeaknessesFile } = await import("@muse/autoconfigure");
     const file = resolveWeaknessesFile(process.env as Record<string, string | undefined>);
-    await recordWeakness(file, { axis, message });
+    const entry = await recordWeakness(file, { axis, message });
+    return entry?.count;
   } catch {
     // a ledger write must never surface as a chat error
+    return undefined;
   }
 }
 

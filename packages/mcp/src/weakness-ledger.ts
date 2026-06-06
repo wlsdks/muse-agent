@@ -160,10 +160,10 @@ export async function writeWeaknesses(file: string, entries: readonly WeaknessEn
 export async function recordWeakness(
   file: string,
   signal: { readonly axis: WeaknessAxis; readonly message: string; readonly nowIso?: string; readonly hint?: string }
-): Promise<void> {
+): Promise<WeaknessEntry | undefined> {
   const topic = topicKeyFromMessage(signal.message);
   if (topic.length === 0) {
-    return;
+    return undefined;
   }
   const entries = await readWeaknesses(file);
   const next = upsertWeakness(entries, {
@@ -173,4 +173,5 @@ export async function recordWeakness(
     ...(signal.hint ? { hint: signal.hint } : {})
   });
   await writeWeaknesses(file, next);
+  return next.find((entry) => entry.axis === signal.axis && entry.topic === topic);
 }
