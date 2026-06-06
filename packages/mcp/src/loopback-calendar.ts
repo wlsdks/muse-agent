@@ -317,10 +317,23 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           }
           const startsAtRaw = readString(args, "startsAt") ?? readString(args, "startsAtIso");
           const endsAtRaw = readString(args, "endsAt") ?? readString(args, "endsAtIso");
+          // A bare time-of-day keeps the event's DATE (anchor to its own day);
+          // a date-bearing phrase resolves against now as before.
+          const anchorFor = (raw: string): (() => Date) =>
+            TIME_ONLY_PHRASE_RE.test(raw.trim()) ? () => startOfLocalDay(resolved.event.startsAt) : () => new Date();
+          const newStartsAt = startsAtRaw ? parseIsoDate(startsAtRaw, anchorFor(startsAtRaw)) : undefined;
+          // Moving only the start preserves the event's DURATION — shift the end
+          // by the same delta so a later start can't land before the old end.
+          const durationMs = resolved.event.endsAt ? resolved.event.endsAt.getTime() - resolved.event.startsAt.getTime() : 0;
+          const newEndsAt = endsAtRaw
+            ? parseIsoDate(endsAtRaw, anchorFor(endsAtRaw))
+            : newStartsAt && durationMs > 0
+              ? new Date(newStartsAt.getTime() + durationMs)
+              : undefined;
           const update: CalendarEventUpdate = {
             ...(readString(args, "title") ? { title: readString(args, "title")! } : {}),
-            ...(startsAtRaw ? { startsAt: parseIsoDate(startsAtRaw)! } : {}),
-            ...(endsAtRaw ? { endsAt: parseIsoDate(endsAtRaw)! } : {}),
+            ...(newStartsAt ? { startsAt: newStartsAt } : {}),
+            ...(newEndsAt ? { endsAt: newEndsAt } : {}),
             ...(readBoolean(args, "allDay") !== undefined ? { allDay: readBoolean(args, "allDay") } : {}),
             ...("location" in args ? { location: readString(args, "location") ?? null } : {}),
             ...("notes" in args ? { notes: readString(args, "notes") ?? null } : {})
@@ -396,6 +409,9 @@ export interface EventRefLike {
   readonly providerId: string;
   readonly title: string;
   readonly startsAt: Date;
+  // The resolved events come from `listEvents` (full CalendarEvents), so this is
+  // present at runtime; optional only so hand-built test fixtures stay valid.
+  readonly endsAt?: Date;
 }
 
 export type EventRefResolution =
@@ -457,7 +473,7 @@ function serializeEvent(event: CalendarEvent): JsonObject {
   };
 }
 
-function parseIsoDate(value: string | undefined): Date | undefined {
+function parseIsoDate(value: string | undefined, anchor: () => Date = () => new Date()): Date | undefined {
   if (!value) {
     return undefined;
   }
@@ -467,5 +483,19 @@ function parseIsoDate(value: string | undefined): Date | undefined {
       return parsed;
     }
   }
-  return resolveRelativeTimePhrase(value, () => new Date());
+  return resolveRelativeTimePhrase(value, anchor);
+}
+
+// A reschedule given ONLY a time-of-day ("오후 4시", "4pm", "16:00") must keep the
+// event's existing DATE — resolving such a phrase against `now` silently moves
+// the event to today (observed: "치과 예약을 오후 4시로 변경" jumped a next-Tuesday
+// event to today). The update handler anchors a time-only phrase to the event's
+// own day instead; any date-bearing phrase ("금요일 3시", "내일") still resolves
+// against now, so that path is unchanged.
+const TIME_ONLY_PHRASE_RE = /^(오전|오후)?\s*\d{1,2}\s*시(\s*반|\s*\d{1,2}\s*분)?$|^\d{1,2}:\d{2}\s*(am|pm)?$|^\d{1,2}\s*(am|pm)$/iu;
+
+function startOfLocalDay(date: Date): Date {
+  const day = new Date(date);
+  day.setHours(0, 0, 0, 0);
+  return day;
 }

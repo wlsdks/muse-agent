@@ -104,3 +104,38 @@ describe("calendar add result carries LOCAL-time fields so the model echoes the 
     expect(String(event["startsAtLocal"])).toMatch(/2026/u);
   });
 });
+
+describe("calendar update — a time-only reschedule keeps the event's DATE (and duration)", () => {
+  const seedStart = new Date("2026-06-09T05:00:00.000Z"); // a Tuesday, the original day
+  const seedEnd = new Date("2026-06-09T06:00:00.000Z"); // +1h duration
+  const seed = { allDay: false, endsAt: seedEnd, id: "e1", providerId: "local", startsAt: seedStart, title: "Dentist" };
+
+  const updateWith = async (args: Record<string, unknown>): Promise<{ startsAt: Date; endsAt: Date }> => {
+    let captured: { startsAt?: Date; endsAt?: Date } = {};
+    const registry = {
+      createEvent: async () => ({}),
+      deleteEvent: async () => undefined,
+      listEvents: async () => [seed],
+      updateEvent: async (_pid: string, _id: string, update: { startsAt?: Date; endsAt?: Date }) => {
+        captured = update;
+        return { ...seed, ...update };
+      }
+    } as unknown as Parameters<typeof createCalendarMcpServer>[0]["registry"];
+    const server = createCalendarMcpServer({ registry });
+    await server.tools.find((t) => t.name === "update")!.execute(args);
+    return { endsAt: captured.endsAt!, startsAt: captured.startsAt! };
+  };
+
+  it("'오후 4시' (time only) stays on the original day, moves to 16:00, and keeps the 1h duration", async () => {
+    // The bug: resolving "오후 4시" against `now` jumped a future event to today.
+    const { startsAt, endsAt } = await updateWith({ id: "Dentist", startsAt: "오후 4시" });
+    expect(startsAt.toDateString()).toBe(seedStart.toDateString()); // DATE preserved (TZ-independent)
+    expect(startsAt.getHours()).toBe(16); // 오후 4시 local
+    expect(endsAt.getTime() - startsAt.getTime()).toBe(seedEnd.getTime() - seedStart.getTime()); // duration kept
+  });
+
+  it("a DATE-bearing phrase still resolves normally (anchor unchanged) — an explicit ISO date is honored", async () => {
+    const { startsAt } = await updateWith({ id: "Dentist", startsAt: "2026-06-20T01:00:00.000Z" });
+    expect(startsAt.toISOString()).toBe("2026-06-20T01:00:00.000Z"); // not anchored to the event's day
+  });
+});
