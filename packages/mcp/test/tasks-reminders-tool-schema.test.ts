@@ -36,6 +36,21 @@ describe("tasks + reminders loopback tools meet the one-shot tool-calling bar", 
     expect(kwOf("update")).toEqual(expect.arrayContaining(["변경", "update", "할 일"]));
   });
 
+  it("the title/text `id` ref tells the model NOT to translate it (a Korean '운동하기'/'약 먹기' got matched only ~2/3 when translated)", () => {
+    const idDesc = (server: { tools: readonly { name: string; inputSchema?: unknown }[] }, name: string): string =>
+      ((server.tools.find((t) => t.name === name)?.inputSchema as { properties?: Record<string, { description?: string }> })?.properties?.id?.description ?? "");
+    const tasks = createTasksMcpServer({ file: "/tmp/muse-test-tasks.json" });
+    for (const name of ["complete", "update", "delete"]) {
+      expect(idDesc(tasks, name).toLowerCase()).toContain("translate");
+      expect(idDesc(tasks, name)).toMatch(/운동|보고서/u);
+    }
+    const reminders = createRemindersMcpServer({ file: "/tmp/muse-test-reminders.json" });
+    for (const name of ["snooze", "clear"]) {
+      expect(idDesc(reminders, name).toLowerCase()).toContain("translate");
+      expect(idDesc(reminders, name)).toMatch(/약|운동/u);
+    }
+  });
+
   it("tasks-registry tools describe ALL their parameters", () => {
     const server = createTasksRegistryMcpServer({ registry: stubRegistry });
     expect(validateToolDefinitions(asMuseTools(server.tools)).filter((i) => i.code === "undescribed_parameter")).toEqual([]);

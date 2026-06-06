@@ -214,7 +214,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         inputSchema: {
           additionalProperties: false,
           properties: {
-            id: { description: "The task's id (from `list` / `search`) OR a distinct word from its title, e.g. 'milk'. An ambiguous word returns candidates.", type: "string" }
+            id: { description: "The task's id (from `list` / `search`) OR a distinct word from its title — copy it EXACTLY as the task is titled, in its own language; do NOT translate (e.g. 'milk', '운동', '보고서'). An ambiguous word returns candidates.", type: "string" }
           },
           required: ["id"],
           type: "object"
@@ -303,7 +303,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           additionalProperties: false,
           properties: {
             dueAt: { description: "New due date — ISO-8601 (e.g. 2026-05-15T18:00:00Z) or a relative phrase (e.g. 'Friday 9am', '내일 오후 3시'). Pass 'none' to clear.", type: "string" },
-            id: { description: "The task's id (from `list` / `search`) OR a distinct word from its title, e.g. 'milk'. An ambiguous word returns candidates.", type: "string" },
+            id: { description: "The task's id (from `list` / `search`) OR a distinct word from its title — copy it EXACTLY as the task is titled, in its own language; do NOT translate (e.g. 'milk', '운동', '보고서'). An ambiguous word returns candidates.", type: "string" },
             notes: { description: "New free-text notes; pass an empty string to clear.", type: "string" },
             title: { description: "New title for the task, e.g. 'Email the Q3 deck'.", type: "string" },
             urgent: { description: "true to mark high-priority (fired even in quiet hours), false to clear it.", type: "boolean" }
@@ -348,7 +348,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         inputSchema: {
           additionalProperties: false,
           properties: {
-            id: { description: "The task's id (from `list` / `search`) OR a distinct word from its title, e.g. 'milk'. An ambiguous word returns candidates.", type: "string" }
+            id: { description: "The task's id (from `list` / `search`) OR a distinct word from its title — copy it EXACTLY as the task is titled, in its own language; do NOT translate (e.g. 'milk', '운동', '보고서'). An ambiguous word returns candidates.", type: "string" }
           },
           required: ["id"],
           type: "object"

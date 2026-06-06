@@ -338,7 +338,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
               description: "New due moment in the user's own words — a TIME alone ('오후 6시' keeps the date), a DATE alone ('다음 주 월요일' keeps the current time), or BOTH ('월요일 오전 9시'). Also accepts an offset ('in 30 minutes') or ISO. Pass the user's exact phrase; do NOT ask for a time they didn't give. Omit for a 10-minute snooze.",
               type: "string"
             },
-            id: { description: "The reminder's id (from `due` / `search`) OR a distinct word from its text, e.g. 'dentist'. An ambiguous word returns the matching candidates instead of guessing.", type: "string" }
+            id: { description: "The reminder's id (from `due` / `search`) OR a distinct word from its text — copy it EXACTLY as the reminder is worded, in its own language; do NOT translate (e.g. 'dentist', '약', '운동'). An ambiguous word returns the matching candidates instead of guessing.", type: "string" }
           },
           required: ["id"],
           type: "object"
@@ -397,7 +397,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
               description: "Optional ISO-8601 timestamp; defaults to now.",
               type: "string"
             },
-            id: { description: "The reminder's id (from `due` / `search`) OR a distinct word from its text, e.g. 'dentist'. An ambiguous word returns candidates.", type: "string" }
+            id: { description: "The reminder's id (from `due` / `search`) OR a distinct word from its text — copy it EXACTLY as the reminder is worded, in its own language; do NOT translate (e.g. 'dentist', '약', '운동'). An ambiguous word returns candidates.", type: "string" }
           },
           required: ["id"],
           type: "object"
@@ -432,7 +432,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
         inputSchema: {
           additionalProperties: false,
           properties: {
-            id: { description: "The reminder's id (from `due` / `search`) OR a distinct word from its text, e.g. 'dentist'. An ambiguous word returns candidates.", type: "string" }
+            id: { description: "The reminder's id (from `due` / `search`) OR a distinct word from its text — copy it EXACTLY as the reminder is worded, in its own language; do NOT translate (e.g. 'dentist', '약', '운동'). An ambiguous word returns candidates.", type: "string" }
           },
           required: ["id"],
           type: "object"
