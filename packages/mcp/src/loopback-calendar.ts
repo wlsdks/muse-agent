@@ -11,7 +11,7 @@ import { detectCalendarConflicts } from "./calendar-conflicts.js";
 import { formatDueLocal } from "./local-due-format.js";
 import { readBoolean, readString, readStringArray, errorMessage } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
-import { isTimeOnlyPhrase, resolveRelativeTimePhrase, startOfLocalDay } from "./loopback-relative-time.js";
+import { hasTimeComponent, isTimeOnlyPhrase, resolveRelativeTimePhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
 
 /**
  * `muse.calendar` loopback MCP server.
@@ -321,7 +321,17 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           // a date-bearing phrase resolves against now as before.
           const anchorFor = (raw: string): (() => Date) =>
             isTimeOnlyPhrase(raw) ? () => startOfLocalDay(resolved.event.startsAt) : () => new Date();
-          const newStartsAt = startsAtRaw ? parseIsoDate(startsAtRaw, anchorFor(startsAtRaw)) : undefined;
+          const resolvedStartsAt = startsAtRaw ? parseIsoDate(startsAtRaw, anchorFor(startsAtRaw)) : undefined;
+          // A DATE-only reschedule ("월요일로 옮겨줘") keeps the event's time-of-day —
+          // otherwise the resolver defaults it to midnight and a 2pm event lands at
+          // 9am. A full ISO (has a `T`) or any phrase that names a time is left as-is.
+          const startIsDateOnly = startsAtRaw !== undefined
+            && !/^\d{4}-\d{2}-\d{2}T/u.test(startsAtRaw)
+            && !isTimeOnlyPhrase(startsAtRaw)
+            && !hasTimeComponent(startsAtRaw);
+          const newStartsAt = resolvedStartsAt && startIsDateOnly
+            ? withTimeOfDay(resolvedStartsAt, resolved.event.startsAt)
+            : resolvedStartsAt;
           // Moving only the start preserves the event's DURATION — shift the end
           // by the same delta so a later start can't land before the old end.
           const durationMs = resolved.event.endsAt ? resolved.event.endsAt.getTime() - resolved.event.startsAt.getTime() : 0;
@@ -354,7 +364,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
             location: { description: "New location (only if changing it).", type: "string" },
             notes: { description: "New notes (only if changing it).", type: "string" },
             providerId: { description: "Optional — narrow the search to one provider when you have several. Resolved from the matched event when omitted.", type: "string" },
-            startsAt: { description: "New start time in the user's own words ('금요일 오후 3시', 'Friday 3pm') — only if changing it. Do not pre-compute a date/timezone.", type: "string" },
+            startsAt: { description: "New start in the user's own words — a TIME alone ('오후 4시' moves the time, keeps the date), a DATE alone ('다음 주 월요일' moves the day, keeps the current time), or BOTH ('금요일 오후 3시'). Pass the user's exact phrase; do NOT ask for a time they didn't give, and do NOT pre-compute a date/timezone. Only if changing it.", type: "string" },
             title: { description: "New title (only if changing it).", type: "string" }
           },
           required: ["id"],

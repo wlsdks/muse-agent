@@ -138,4 +138,13 @@ describe("calendar update — a time-only reschedule keeps the event's DATE (and
     const { startsAt } = await updateWith({ id: "Dentist", startsAt: "2026-06-20T01:00:00.000Z" });
     expect(startsAt.toISOString()).toBe("2026-06-20T01:00:00.000Z"); // not anchored to the event's day
   });
+
+  it("a DATE-only move ('2026-06-20', no time) keeps the event's TIME-of-day, not a default midnight", async () => {
+    // The dual bug: moving a 2pm event to another DAY reset it to midnight/9am.
+    const { startsAt } = await updateWith({ id: "Dentist", startsAt: "2026-06-20" });
+    expect(startsAt.getHours()).toBe(seedStart.getHours()); // original time-of-day preserved (TZ-safe)
+    expect(startsAt.getMinutes()).toBe(seedStart.getMinutes());
+    expect(startsAt.toDateString()).not.toBe(seedStart.toDateString()); // moved to a different day
+    expect(startsAt.getTime()).toBeGreaterThan(seedStart.getTime()); // forward to the 20th
+  });
 });

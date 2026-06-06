@@ -306,6 +306,25 @@ export function startOfLocalDay(date: Date): Date {
   return day;
 }
 
+// Does the phrase name a clock time at all? A DATE-only reschedule ("월요일로
+// 옮겨줘") has none — it must keep the item's existing time-of-day rather than
+// reset to a default midnight. Inclusive on purpose: a missed time marker only
+// preserves the original time (a safe default), while never overriding a time
+// the user DID state.
+const TIME_COMPONENT_RE = /\d{1,2}\s*시|\d{1,2}:\d{2}|\b\d{1,2}\s*(?:am|pm)\b|오전|오후|정각|noon|midnight|morning|afternoon|evening|night|새벽|아침|점심|저녁|밤/iu;
+
+export function hasTimeComponent(phrase: string): boolean {
+  return TIME_COMPONENT_RE.test(phrase);
+}
+
+/** Combine `date`'s calendar day with `time`'s local clock time — for a date-only
+ *  reschedule that must keep the item's original time-of-day. */
+export function withTimeOfDay(date: Date, time: Date): Date {
+  const out = new Date(date);
+  out.setHours(time.getHours(), time.getMinutes(), time.getSeconds(), time.getMilliseconds());
+  return out;
+}
+
 export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date | undefined {
   const trimmed = phrase.trim().toLowerCase();
   if (trimmed.length === 0) {
