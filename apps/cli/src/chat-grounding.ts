@@ -1,6 +1,8 @@
+import { readFile } from "node:fs/promises";
+
 import { independentWitnessCount, quorumVerdict, verifyGrounding, type KnowledgeMatch } from "@muse/agent-core";
 
-import { searchRecall, type RecallHit } from "./commands-recall.js";
+import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
 
 // Per-turn grounding for the conversational surface (`muse chat`).
 //
@@ -113,6 +115,44 @@ function hitsToMatches(hits: readonly RecallHit[]): KnowledgeMatch[] {
  * evidence feeds the deterministic `gateChatAnswer` so an un-grounded personal
  * fact can be refused by CODE, not left to a prompt instruction qwen3:8b ignores.
  */
+/**
+ * Auto-refresh the notes index on a chat turn unless explicitly opted out
+ * (`MUSE_CHAT_AUTO_REINDEX=0`). The desktop companion only ever runs `chat`, so
+ * this is what lets it answer from a note the user just added.
+ */
+export function chatAutoReindexEnabled(env: Record<string, string | undefined>): boolean {
+  return env.MUSE_CHAT_AUTO_REINDEX !== "0";
+}
+
+/**
+ * Preserve the embedding model a stale index was built with, so a chat-path
+ * refresh never silently re-embeds a custom-model index with the default.
+ */
+export function pickReindexModel(existingModel: string | undefined, requested: string): string {
+  return existingModel && existingModel.trim().length > 0 ? existingModel : requested;
+}
+
+/**
+ * If the notes index is stale, incrementally rebuild it — targeting the SAME
+ * file `searchRecall` reads (`defaultNotesIndexFile`), so a chat refresh can
+ * never write where the search won't look. Lazy-imports the heavy notes-rag
+ * module so it stays out of the bundled desktop binary's startup graph.
+ */
+async function refreshStaleNotesIndexForChat(env: Record<string, string | undefined>, embedModel: string): Promise<void> {
+  const indexPath = defaultNotesIndexFile();
+  const { resolveNotesDir } = await import("@muse/autoconfigure");
+  const { isNotesIndexStale, reindexNotes } = await import("./commands-notes-rag.js");
+  const notesDir = resolveNotesDir(env);
+  if (!(await isNotesIndexStale(notesDir, indexPath))) return;
+  let existingModel: string | undefined;
+  try {
+    existingModel = (JSON.parse(await readFile(indexPath, "utf8")) as { model?: string }).model;
+  } catch {
+    existingModel = undefined;
+  }
+  await reindexNotes({ dir: notesDir, indexPath, model: pickReindexModel(existingModel, embedModel) });
+}
+
 export async function retrieveChatGrounding(
   message: string,
   opts: {
@@ -126,6 +166,13 @@ export async function retrieveChatGrounding(
   const env = opts.env ?? (process.env as Record<string, string | undefined>);
   if (env.MUSE_CHAT_GROUNDING === "0") return { block: "", matches: [] };
   const embedModel = opts.embedModel ?? env.MUSE_RECALL_EMBED_MODEL?.trim() ?? "nomic-embed-text";
+  // Refresh a stale notes index before searching — the courtesy `muse ask`
+  // already extends. The desktop companion only ever calls `chat`, so without
+  // this a note the user just added is unreachable until they remember to run
+  // `muse notes reindex`. Fail-soft: search whatever index exists.
+  if (chatAutoReindexEnabled(env)) {
+    await refreshStaleNotesIndexForChat(env, embedModel).catch(() => undefined);
+  }
   try {
     const hits = await searchRecall({
       query: trimmed,

@@ -47,7 +47,7 @@ export interface RecallHit {
   readonly snippet: string;
 }
 
-function defaultNotesIndexFile(): string {
+export function defaultNotesIndexFile(): string {
   const fromEnv = process.env.MUSE_NOTES_INDEX_FILE?.trim();
   if (fromEnv && fromEnv.length > 0) return fromEnv;
   return join(homedir(), ".muse", "notes-index.json");

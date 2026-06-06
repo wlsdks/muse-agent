@@ -4,12 +4,14 @@ import {
   CHAT_GROUNDING_MAX_HITS,
   CHAT_GROUNDING_MIN_SCORE,
   chatAbstention,
+  chatAutoReindexEnabled,
   conversationMatches,
   formatChatGroundingBlock,
   gateChatAnswer,
   groundChatTurn,
   groundedNoteSources,
   isPersonalFactRecall,
+  pickReindexModel,
   resolveGroundingMinScore,
   shortCitationRef,
   stripFabricatedCitations,
@@ -17,6 +19,22 @@ import {
   withGroundingReceipt
 } from "./chat-grounding.js";
 import type { RecallHit } from "./commands-recall.js";
+
+describe("chat-path auto-reindex — the desktop reads a freshly-added note without a manual reindex", () => {
+  it("is on by default and off only when explicitly disabled", () => {
+    expect(chatAutoReindexEnabled({})).toBe(true);
+    expect(chatAutoReindexEnabled({ MUSE_CHAT_AUTO_REINDEX: "1" })).toBe(true);
+    expect(chatAutoReindexEnabled({ MUSE_CHAT_AUTO_REINDEX: "" })).toBe(true);
+    expect(chatAutoReindexEnabled({ MUSE_CHAT_AUTO_REINDEX: "0" })).toBe(false);
+  });
+
+  it("preserves a stale index's own embedding model, falling back to the requested one", () => {
+    expect(pickReindexModel("mxbai-embed-large", "nomic-embed-text")).toBe("mxbai-embed-large");
+    expect(pickReindexModel(undefined, "nomic-embed-text")).toBe("nomic-embed-text");
+    expect(pickReindexModel("", "nomic-embed-text")).toBe("nomic-embed-text");
+    expect(pickReindexModel("   ", "nomic-embed-text")).toBe("nomic-embed-text");
+  });
+});
 
 describe("resolveGroundingMinScore — the conformal-calibrated threshold is opt-in via env (A1c)", () => {
   it("defaults to CHAT_GROUNDING_MIN_SCORE (0.5) when the env is unset", () => {
