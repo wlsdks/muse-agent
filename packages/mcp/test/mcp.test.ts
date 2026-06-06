@@ -2834,6 +2834,16 @@ describe("muse.tasks loopback server", () => {
       expect(parseTaskDueAt("100 days from now", now)).toMatch(/^2026-09-15/u);
     });
 
+    it("resolves a Korean absolute date ('2026년 8월 15일' / '8월 15일')", async () => {
+      const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
+      const now = () => new Date("2026-06-07T12:00:00Z");
+      // Full Korean date → that exact ISO day (2026-08-15 is a Saturday).
+      expect(parseTaskDueAt("2026년 8월 15일", now)).toMatch(/^2026-08-15/u);
+      // Year-less Korean month-day → its NEXT occurrence (Aug 15 is still ahead of Jun 7).
+      expect(parseTaskDueAt("8월 15일", now)).toMatch(/^2026-08-15/u);
+      expect(parseTaskDueAt("12월 25일", now)).toMatch(/^2026-12-25/u);
+    });
+
     it("rejects impossible calendar dates instead of silently rolling them over", async () => {
       const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
       const { parseReminderDueAt } = await import("../src/personal-reminders-store.js");

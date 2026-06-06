@@ -247,13 +247,35 @@ export function resolveTasksDueLine(
  * input was rejected — callers map that to their surface (HTTP 400,
  * MCP error response, CLI exit message).
  */
+const EN_MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"] as const;
+
+/**
+ * Rewrite a leading Korean absolute date into a form the grammar already
+ * resolves: "2026년 8월 15일" → ISO "2026-08-15"; a year-less "8월 15일" → the
+ * English month-day "August 15" (which rolls to its next occurrence, like
+ * "March 1"). Trailing text (a time) is preserved. Returns the input unchanged
+ * when it isn't a Korean date — purely additive, since these Korean forms
+ * otherwise fail to parse at all.
+ */
+function normalizeKoreanAbsoluteDate(text: string): string {
+  const full = /^(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일/u;
+  if (full.test(text)) {
+    return text.replace(full, (_m, y: string, mo: string, d: string) => `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`);
+  }
+  return text.replace(/^(\d{1,2})\s*월\s*(\d{1,2})\s*일/u, (m, mo: string, d: string) => {
+    const n = Number(mo);
+    return n >= 1 && n <= 12 ? `${EN_MONTH_NAMES[n - 1]} ${d}` : m;
+  });
+}
+
 export function parseTaskDueAt(raw: string, now: () => Date): string | Error {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
     return new Error("dueAt is empty");
   }
-  const isoParsed = new Date(trimmed);
-  const dateHead = /^(\d{4})-(\d{2})-(\d{2})/u.exec(trimmed);
+  const parseText = normalizeKoreanAbsoluteDate(trimmed);
+  const isoParsed = new Date(parseText);
+  const dateHead = /^(\d{4})-(\d{2})-(\d{2})/u.exec(parseText);
   if (!Number.isNaN(isoParsed.getTime()) && dateHead) {
     // `new Date("2026-02-30")` silently rolls over to Mar 2 rather
     // than failing — accepting it would schedule the reminder ~2
@@ -272,7 +294,7 @@ export function parseTaskDueAt(raw: string, now: () => Date): string | Error {
   // "<n> <unit> from now/today" form to the "in <n> <unit>" form so both phrasings
   // land on the same parse. Purely additive: a phrase that already parses has no
   // "from now/today" tail, so this only rescues inputs that would otherwise error.
-  const normalized = trimmed.replace(
+  const normalized = parseText.replace(
     /(\d+)\s+(seconds?|minutes?|hours?|days?|weeks?|months?|years?)\s+from\s+(?:now|today)\b/iu,
     "in $1 $2"
   );
