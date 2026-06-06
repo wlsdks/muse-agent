@@ -28,6 +28,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   extractCurrentSessionTurns,
+  peakEndDigest,
   summariseSession,
   summaryGroundedInTranscript,
   type SessionBoundaryRef,
@@ -120,13 +121,23 @@ export async function captureEndOfSessionEpisode(options: CaptureEndOfSessionOpt
     };
   }
 
-  const summary = await summariseSession({
+  let summary = await summariseSession({
     model: options.model,
     modelProvider: options.modelProvider,
     turns: range.turns
   });
+  // Peak-end fallback (C3; Kahneman 1993): when the LLM summariser is unavailable
+  // or errors, don't LOSE the session — capture a deterministic two-point digest
+  // (its peak + closing turns) instead. It quotes the transcript verbatim, so it
+  // is grounded by construction and skips the grounding gate below.
+  let groundedByConstruction = false;
   if (!summary) {
-    return { reason: "summariser returned undefined (model error or empty output)", status: "skipped" };
+    const digest = peakEndDigest(range.turns);
+    if (!digest) {
+      return { reason: "summariser returned undefined and no peak-end digest possible", status: "skipped" };
+    }
+    summary = { summary: digest, topics: [] };
+    groundedByConstruction = true;
   }
 
   // Grounding gate for the one INGEST surface of the edge: the summary is
@@ -134,7 +145,7 @@ export async function captureEndOfSessionEpisode(options: CaptureEndOfSessionOpt
   // citable [session: …] source the recall gate trusts. DROP it — never persist —
   // when it isn't grounded in the transcript it claims to summarise, so a
   // hallucinated decision can't later be served back as a cited fact.
-  if (!summaryGroundedInTranscript(summary.summary, range.turns)) {
+  if (!groundedByConstruction && !summaryGroundedInTranscript(summary.summary, range.turns)) {
     return {
       reason: "summary not grounded in the session transcript — dropped to avoid persisting a fabricated memory",
       status: "skipped"

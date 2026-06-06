@@ -4218,7 +4218,7 @@ describe("cli program", () => {
     }
   });
 
-  it("captureEndOfSessionEpisode fails soft and writes nothing when the summariser errors", async () => {
+  it("captureEndOfSessionEpisode falls back to a grounded peak-end digest when the summariser errors (C3 — don't lose the session)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-eos-soft-"));
     const fsp = await import("node:fs/promises");
     const prevHome = process.env.HOME;
@@ -4228,7 +4228,7 @@ describe("cli program", () => {
     try {
       const { appendLastChatTurn, appendSessionBoundary } = await import("../src/chat-history.js");
       await appendSessionBoundary({ tsIso: "2026-05-13T08:00:00.000Z", userId: "stark" });
-      await appendLastChatTurn({ message: "Hi", response: "Hello" });
+      await appendLastChatTurn({ message: "I decided to move out on June 12", response: "Noted." });
 
       const { captureEndOfSessionEpisode } = await import("../src/chat-end-session.js");
       const errorProvider = {
@@ -4243,13 +4243,12 @@ describe("cli program", () => {
         modelProvider: errorProvider,
         userId: "stark"
       });
-      expect(result).toMatchObject({
-        status: "skipped",
-        reason: expect.stringContaining("summariser returned undefined")
-      });
+      // The session is captured (not lost) via a peak-end digest of the real turns.
+      expect(result.status).not.toBe("skipped");
 
-      // No episodes.json should have been written.
-      await expect(fsp.readFile(path.join(root, ".muse", "episodes.json"), "utf8")).rejects.toThrow();
+      // episodes.json IS written, and the digest quotes the actual transcript (grounded).
+      const written = await fsp.readFile(path.join(root, ".muse", "episodes.json"), "utf8");
+      expect(written).toContain("move out on June 12");
     } finally {
       if (prevHome !== undefined) process.env.HOME = prevHome;
       else delete process.env.HOME;

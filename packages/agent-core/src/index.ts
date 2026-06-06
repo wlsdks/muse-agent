@@ -211,6 +211,7 @@ export { selectEarnedThemes, type EarnedProactivityOptions, type EarnedTheme, ty
 export { dailyCounts, mostAnomalousDays, type AnomalyOptions, type DayAnomaly, type DayCount } from "./activity-anomaly.js";
 export { openLoops, type OpenLoop, type OpenLoopOptions, type TaskLike } from "./open-loops.js";
 export { detectChangePoint, type ChangePoint, type ChangePointOptions } from "./change-point.js";
+export { peakEndDigest, type DigestTurn } from "./peak-end.js";
 export {
   createConfidenceGatedInvestigator,
   decideProactiveRecall,
