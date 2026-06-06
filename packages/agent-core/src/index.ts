@@ -203,7 +203,7 @@ export {
   type AttributedRepairPromptInput,
   type AttributedRepairResult
 } from "./attributed-repair.js";
-export { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, type CasualPromptKind } from "./casual-prompt.js";
+export { answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, requestsToolAction, type CasualPromptKind } from "./casual-prompt.js";
 export {
   createConfidenceGatedInvestigator,
   decideProactiveRecall,

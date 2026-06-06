@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt } from "../src/index.js";
+import { answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, requestsToolAction } from "../src/index.js";
 
 describe("classifyCasualPrompt — pure social prompts only (precision-first)", () => {
   it("classifies greetings (EN + KO), tolerating trailing punctuation and repeats", () => {
@@ -153,6 +153,67 @@ describe("answerPromisesAction — catches a false 'I'll remind you' in the ANSW
     ]) {
       expect(answerPromisesAction(a)).toBe(false);
     }
+  });
+});
+
+describe("requestsToolAction — an imperative DO-something request, KO + EN", () => {
+  it("matches Korean action requests (noun + verb + imperative ending)", () => {
+    for (const q of [
+      "내일 오후 3시 회의 일정 추가해줘",
+      "이번 주 토요일 오후 2시 친구 만나는 일정 추가해줘",
+      "내일 9시 약 먹으라고 알림 맞춰줘",
+      "우유 사기 할 일에 추가해줘",
+      "다음 주 월요일 미팅 일정 등록해 주세요",
+      "치과 예약 잡아줘"
+    ]) {
+      expect(requestsToolAction(q)).toBe(true);
+    }
+  });
+
+  it("does NOT match a Korean QUESTION about an action (no imperative ending) — a re-run would duplicate", () => {
+    for (const q of [
+      "방금 회의 일정 추가했어?",
+      "내 리마인더 다 보여줘",
+      "오늘 일정 뭐 있어?",
+      "회의 일정을 추가하고 싶은데 어떻게 해?"
+    ]) {
+      expect(requestsToolAction(q)).toBe(false);
+    }
+  });
+
+  it("still matches the English imperative path", () => {
+    expect(requestsToolAction("remind me to call the dentist tomorrow")).toBe(true);
+    expect(requestsToolAction("what reminders do I have?")).toBe(false);
+  });
+});
+
+describe("answerClaimsAction — the answer CLAIMS a tool action was done, KO + EN", () => {
+  it("matches the Korean false 'done' the desktop companion actually emits", () => {
+    for (const a of [
+      "진안 씨, 회의 일정이 내일 오후 3시에 추가되었습니다.",
+      "친구 만나기 일정이 추가되었습니다.",
+      "약 먹기 알림을 내일 오전 9시에 설정했어요.",
+      "할 일에 추가했어요.",
+      "리마인더 맞췄어요.",
+      "치과 예약 잡아놨어요."
+    ]) {
+      expect(answerClaimsAction(a)).toBe(true);
+    }
+  });
+
+  it("does NOT match a Korean answer that only DISCUSSES an action (no done-phrase)", () => {
+    for (const a of [
+      "회의 일정을 추가하고 싶으시면 말씀해 주세요.",
+      "오늘 일정은 회의 하나뿐이에요.",
+      "어떤 리마인더를 원하세요?"
+    ]) {
+      expect(answerClaimsAction(a)).toBe(false);
+    }
+  });
+
+  it("still matches the English promise and stays quiet on a plain cited answer", () => {
+    expect(answerClaimsAction("I've set a reminder to renew the passport.")).toBe(true);
+    expect(answerClaimsAction("Your rent is 1,250,000 KRW [from lease.md].")).toBe(false);
   });
 });
 

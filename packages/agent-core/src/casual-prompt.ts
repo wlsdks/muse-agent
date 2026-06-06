@@ -116,6 +116,45 @@ export function answerPromisesAction(answer: string): boolean {
   return ACTION_PROMISE_RE.test(answer);
 }
 
+// The desktop companion runs in KOREAN; the EN ACTION_*_RE above never match a
+// Korean turn, so a false "…추가되었습니다" with no tool call went undetected.
+// A scheduling/reminder/task NOUN the Korean action surfaces center on.
+const KO_ACTION_NOUN = "일정|이벤트|약속|미팅|회의|리마인더|알림|할\\s*일|투두|태스크|예약";
+
+// A Korean ACTION REQUEST: the noun + an action verb + an imperative ending
+// (해줘 / 잡아줘 / 맞춰줘 …). A QUESTION ("회의 일정 추가했어?") lacks the
+// imperative ending, so it stays out — the gate must not fire on questions, or
+// a re-run would create a duplicate event.
+const KO_ACTION_REQUEST_RE = new RegExp(
+  `(${KO_ACTION_NOUN})[^?]{0,40}(추가|등록|설정|예약|잡아|맞춰|넣어|만들어|생성)\\s*(해|하)?\\s*(줘|주세요|줄래|드려|드릴래|라|자)`,
+  "u"
+);
+
+/** True when the prompt imperatively asks Muse to DO a tool action — EN or KO. */
+export function requestsToolAction(query: string): boolean {
+  const q = query.trim();
+  if (q.length === 0 || q.length > 200) {
+    return false;
+  }
+  return classifyActionRequest(q) || KO_ACTION_REQUEST_RE.test(q);
+}
+
+// A Korean answer that CLAIMS the action is done (or imminently will be): the
+// noun + an explicit completion/promise phrase. Phrase-list (not a strict
+// adjacency regex) because Korean fuses tense into the verb stem
+// (추가됐/맞췄/잡았). A conditional offer ("…추가하고 싶으면") has the noun but
+// no done-phrase, so it does NOT match.
+const KO_ACTION_DONE_RE =
+  /(추가했|추가됐|추가되었|추가해\s*[드놨]|등록했|등록됐|등록되었|설정했|설정됐|예약했|예약됐|예약\s*완료|맞췄|맞춰\s*[놨드]|잡았|잡아\s*놨|넣었|넣어\s*놨|생성했|생성됐|완료했|완료됐|완료로\s*표시|추가할게|등록할게|맞춰\s*드릴게|추가해\s*드릴게|예약해\s*드릴게)/u;
+
+/** True when the answer CLAIMS it performed / will perform a tool action — EN or KO. */
+export function answerClaimsAction(answer: string): boolean {
+  if (ACTION_PROMISE_RE.test(answer)) {
+    return true;
+  }
+  return new RegExp(`(${KO_ACTION_NOUN})`, "u").test(answer) && KO_ACTION_DONE_RE.test(answer);
+}
+
 /** True when the prompt asks for a whole-corpus overview/listing, not a specific recall. */
 export function classifyCorpusOverview(query: string): boolean {
   const q = query.trim().toLowerCase();

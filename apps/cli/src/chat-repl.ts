@@ -23,7 +23,7 @@ import type { Readable } from "node:stream";
 import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
-import { classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt } from "@muse/agent-core";
+import { answerClaimsAction, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, requestsToolAction } from "@muse/agent-core";
 
 import { conversationMatches, factKeysToInject, gateChatAnswer, groundedNoteSources, retrieveChatGrounding, stripFabricatedCitations, stripTruncatedCitation, withGroundingReceipt } from "./chat-grounding.js";
 import { isRecord } from "./credential-store.js";
@@ -41,6 +41,12 @@ import { isTaskCompletionReport, matchCompletedTask } from "./task-completion.js
 import type { ProgramIO } from "./program.js";
 
 const AGENT_MODES: readonly string[] = ["react", "plan_execute"];
+
+// A tool name that actually CHANGES state (added an event, set a reminder,
+// completed a task, posted to the web). Used to tell a real action from a
+// model that only CLAIMED one. Read tools (.list / .get / search) never match.
+const ACTION_TOOL_RE = /\.(add|update|delete|complete|save|create|remove)\b|_action\b/u;
+const actionToolRan = (used: readonly string[]): boolean => used.some((tool) => ACTION_TOOL_RE.test(tool));
 
 export type AgentMode = "react" | "plan_execute";
 
@@ -351,6 +357,23 @@ export async function runLocalChat(
     if (retry.response.output.trim().length > 0) result = retry;
   }
 
+  // Honesty backstop — the continuous-session false "done". The model claims it
+  // performed the action ("…일정이 추가되었습니다") but NO action tool ran. In a
+  // running session, prior assistant turns that CLAIMED a done action poison the
+  // history: the model reads them as "already done" and skips the tool while
+  // still saying it acted (measured 1/8 real adds with a poisoned history vs 8/8
+  // with a clean one). Re-run the action turn with NO prior history to clear the
+  // poisoning, and keep the retry only when it ACTUALLY acted — never let an
+  // unbacked "done" stand.
+  if (requestsToolAction(message) && answerClaimsAction(result.response.output) && !actionToolRan(result.toolsUsed ?? [])) {
+    const actNow = await assembly.agentRuntime.run({
+      messages: [{ content: systemContent, role: "system" as const }, { content: message, role: "user" as const }],
+      ...(hasMetadata ? { metadata } : {}),
+      model: model ?? assembly.defaultModel ?? "default"
+    });
+    if (actionToolRan(actNow.toolsUsed ?? [])) result = actNow;
+  }
+
   // Deterministic anti-fabrication gate: for a recall of the user's OWN data,
   // refuse honestly when the answer isn't grounded in the evidence (retrieved
   // notes/episodes + this conversation). The durable user-memory is handled by
@@ -392,6 +415,16 @@ export async function runLocalChat(
       toolsUsed = [...toolsUsed, "muse.tasks.complete"];
       finalResponse = `${response}\n\n${/[가-힣]/u.test(message) ? `✅ 할 일 '${done}'을(를) 완료로 표시했어요.` : `✅ Marked the task "${done}" as done.`}`;
     }
+  }
+
+  // If the answer STILL claims an action no tool performed (the re-run above also
+  // didn't act), don't let the false "done" stand — admit it honestly so the
+  // user knows nothing happened, matching the cited-recall edge ("I'm not sure"
+  // over a confident fabrication).
+  if (requestsToolAction(message) && answerClaimsAction(finalResponse) && !actionToolRan(toolsUsed)) {
+    finalResponse = `${finalResponse}\n\n${/[가-힣]/u.test(message)
+      ? "⚠️ 그런데 방금은 실제로 처리하지 못했어요. 한 번 더 말씀해 주시겠어요?"
+      : "⚠️ Heads up — I didn't actually do that just now. Could you say it once more?"}`;
   }
 
   return {
