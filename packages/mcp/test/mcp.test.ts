@@ -4680,6 +4680,35 @@ describe("muse.reminders loopback server", () => {
     const bad = await connection.callTool!("snooze", { dueAt: "lolwhen", id: "rem_1" });
     expect(bad).toMatchObject({ error: expect.stringContaining("ISO-8601") });
   });
+
+  it("a time-only reschedule keeps a FUTURE reminder's date, but snoozes a firing one to today", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-reschedule-"));
+    let counter = 0;
+    const connection = createLoopbackMcpConnection(createRemindersMcpServer({
+      file: join(dir, "reminders.json"),
+      idFactory: () => `rem_${++counter}`,
+      now: () => new Date("2026-06-06T03:00:00.000Z") // "today"
+    }));
+
+    // FUTURE reminder (next Friday) → "오후 6시" keeps Friday, just changes the time.
+    const futureIso = "2026-06-12T05:00:00.000Z";
+    await connection.callTool!("add", { dueAt: futureIso, text: "약 먹기" });
+    const rescheduled = await connection.callTool!("snooze", { dueAt: "오후 6시", id: "rem_1" }) as { reminder: { dueAt: string } };
+    const due = new Date(rescheduled.reminder.dueAt);
+    expect(due.toDateString()).toBe(new Date(futureIso).toDateString()); // DATE preserved
+    expect(due.getHours()).toBe(18);
+
+    // FIRING/overdue reminder (already past) → "오후 6시" is the ordinary snooze:
+    // later TODAY, anchored to now — NOT its stale past date.
+    await connection.callTool!("add", { dueAt: "2026-06-01T05:00:00.000Z", text: "운동하기" });
+    const snoozed = await connection.callTool!("snooze", { dueAt: "오후 6시", id: "rem_2" }) as { reminder: { dueAt: string } };
+    const snoozedDue = new Date(snoozed.reminder.dueAt);
+    expect(snoozedDue.toDateString()).toBe(new Date("2026-06-06T03:00:00.000Z").toDateString()); // today, not 2026-06-01
+    expect(snoozedDue.getHours()).toBe(18);
+  });
 });
 
 describe("runDueReminders", () => {

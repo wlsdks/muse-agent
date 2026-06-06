@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { errorMessage, readString } from "./loopback-helpers.js";
-import { recurrenceFromPhrase } from "./loopback-relative-time.js";
+import { isTimeOnlyPhrase, recurrenceFromPhrase, startOfLocalDay } from "./loopback-relative-time.js";
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
 import { readReminderHistory } from "./personal-reminder-history-store.js";
 import {
@@ -278,10 +278,27 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           if (!ref) {
             return { error: "id is required" };
           }
+          const reminders = await readReminders(file);
+          const resolution = resolveReminderRef(reminders, ref);
+          if (resolution.status === "ambiguous") {
+            return { error: `"${ref}" matches multiple reminders — say which one`, candidates: resolution.candidates.map((r) => ({ id: r.id, text: r.text })) as JsonValue };
+          }
+          if (resolution.status !== "resolved") {
+            return { error: `reminder not found: ${ref}` };
+          }
+          const index = reminders.findIndex((reminder) => reminder.id === resolution.reminder.id);
           const dueAtRaw = readString(args, "dueAt")?.trim();
           let nextDueAt: string;
           if (dueAtRaw && dueAtRaw.length > 0) {
-            const parsed = parseReminderDueAt(dueAtRaw, now);
+            // A bare time-of-day ("오후 6시로 바꿔줘") on a still-FUTURE reminder keeps
+            // its DATE — you're rescheduling it, not snoozing a firing one. A
+            // firing/overdue reminder snoozes to later TODAY (now-anchor), the
+            // ordinary snooze meaning. Date-bearing phrases resolve against now.
+            const existingDue = new Date(reminders[index]!.dueAt);
+            const anchor = isTimeOnlyPhrase(dueAtRaw) && !Number.isNaN(existingDue.getTime()) && existingDue.getTime() > now().getTime()
+              ? () => startOfLocalDay(existingDue)
+              : now;
+            const parsed = parseReminderDueAt(dueAtRaw, anchor);
             if (parsed instanceof Error) {
               return { error: parsed.message };
             }
@@ -292,15 +309,6 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
             // specific ("snooze 30 mins", "until tomorrow morning").
             nextDueAt = new Date(now().getTime() + 10 * 60_000).toISOString();
           }
-          const reminders = await readReminders(file);
-          const resolution = resolveReminderRef(reminders, ref);
-          if (resolution.status === "ambiguous") {
-            return { error: `"${ref}" matches multiple reminders — say which one`, candidates: resolution.candidates.map((r) => ({ id: r.id, text: r.text })) as JsonValue };
-          }
-          if (resolution.status !== "resolved") {
-            return { error: `reminder not found: ${ref}` };
-          }
-          const index = reminders.findIndex((reminder) => reminder.id === resolution.reminder.id);
           const snoozed: PersistedReminder = {
             ...reminders[index]!,
             dueAt: nextDueAt,
