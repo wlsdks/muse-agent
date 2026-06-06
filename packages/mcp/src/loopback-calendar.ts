@@ -11,7 +11,10 @@ import { detectCalendarConflicts } from "./calendar-conflicts.js";
 import { formatDueLocal } from "./local-due-format.js";
 import { readBoolean, readString, readStringArray, errorMessage } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
-import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, resolveRelativeTimePhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
+import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, resolveRelativeTimePhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
+
+/** Recurrence cadences the calendar `add` tool accepts (mapped to an RRULE FREQ). */
+const CALENDAR_CADENCES = new Set(["daily", "weekly", "monthly", "yearly"]);
 
 /**
  * `muse.calendar` loopback MCP server.
@@ -265,6 +268,14 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           const location = readString(args, "location") ?? undefined;
           const notes = readString(args, "notes") ?? undefined;
           const tags = readStringArray(args, "tags") ?? undefined;
+          // Recurring events: "매주 월요일 팀 회의" must REPEAT, not silently become a
+          // one-time event. Take the explicit `recurrence` cadence, else infer it
+          // from the start phrase ("매주"/"every week"). Map to an iCalendar RRULE,
+          // which the local provider already expands (CLI `--repeat`, P41-37).
+          const cadenceArg = readString(args, "recurrence")?.trim().toLowerCase();
+          const cadence = (cadenceArg && CALENDAR_CADENCES.has(cadenceArg) ? cadenceArg : undefined)
+            ?? recurrenceFromPhrase(startsAtRaw ?? "");
+          const recurrence = cadence ? `FREQ=${cadence.toUpperCase()}` : undefined;
           const input: CalendarEventInput = {
             allDay,
             endsAt,
@@ -272,7 +283,8 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
             title,
             ...(location ? { location } : {}),
             ...(notes ? { notes } : {}),
-            ...(tags ? { tags } : {})
+            ...(tags ? { tags } : {}),
+            ...(recurrence ? { recurrence } : {})
           };
           try {
             const created = await registry.createEvent(providerId, input);
@@ -289,6 +301,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
             location: { description: "Where the event is, e.g. 'Room 4' or an address.", type: "string" },
             notes: { description: "Free-text notes / agenda for the event.", type: "string" },
             providerId: { description: "Calendar provider id (default: the primary provider).", type: "string" },
+            recurrence: { description: "Repeat cadence for a RECURRING event — set when the user says '매주'/'매일'/'every week' etc. One of 'daily', 'weekly', 'monthly', 'yearly'. Omit for a one-time event.", enum: ["daily", "weekly", "monthly", "yearly"], type: "string" },
             startsAt: { description: "Start time in the user's OWN WORDS — 'tomorrow 3pm', '내일 오후 3시', '이번 주 토요일 오후 2시'. Do NOT compute a date or convert the timezone; the server resolves it.", type: "string" },
             tags: { description: "Optional labels for the event.", items: { type: "string" }, type: "array" },
             title: { description: "Event title, e.g. 'Dentist appointment'.", type: "string" }

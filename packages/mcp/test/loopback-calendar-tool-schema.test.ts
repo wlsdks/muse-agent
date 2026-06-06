@@ -105,6 +105,42 @@ describe("calendar add result carries LOCAL-time fields so the model echoes the 
   });
 });
 
+describe("calendar add — recurring events ('매주 회의' must REPEAT, not silently become one-time)", () => {
+  const addAndCapture = async (args: Record<string, unknown>): Promise<{ recurrence?: string }> => {
+    let captured: { recurrence?: string } = {};
+    const registry = {
+      createEvent: async (_p: string, input: { recurrence?: string }) => { captured = input; return { ...input, id: "e1", providerId: "local" }; },
+      deleteEvent: async () => undefined,
+      listEvents: async () => [],
+      updateEvent: async () => ({})
+    } as unknown as Parameters<typeof createCalendarMcpServer>[0]["registry"];
+    const server = createCalendarMcpServer({ registry });
+    await server.tools.find((t) => t.name === "add")!.execute(args);
+    return captured;
+  };
+
+  it("maps an explicit `recurrence` cadence to an iCalendar RRULE", async () => {
+    expect((await addAndCapture({ recurrence: "weekly", startsAt: "next monday 9am", title: "Standup" })).recurrence).toBe("FREQ=WEEKLY");
+    expect((await addAndCapture({ recurrence: "monthly", startsAt: "2026-07-01T09:00:00.000Z", title: "Rent" })).recurrence).toBe("FREQ=MONTHLY");
+  });
+
+  it("INFERS recurrence from the start phrase when the model omits the cadence", async () => {
+    expect((await addAndCapture({ startsAt: "매주 월요일 오전 9시", title: "팀 회의" })).recurrence).toBe("FREQ=WEEKLY");
+    expect((await addAndCapture({ startsAt: "매일 오전 7시", title: "운동" })).recurrence).toBe("FREQ=DAILY");
+  });
+
+  it("leaves a one-time event with NO recurrence", async () => {
+    expect((await addAndCapture({ startsAt: "내일 오후 3시", title: "치과" })).recurrence).toBeUndefined();
+  });
+
+  it("the add schema exposes recurrence as an enum so the model fills it correctly", () => {
+    const server = createCalendarMcpServer({ registry: stubRegistry });
+    const add = server.tools.find((t) => t.name === "add")!;
+    const prop = (add.inputSchema as { properties: Record<string, { enum?: string[] }> }).properties["recurrence"];
+    expect(prop?.enum).toEqual(["daily", "weekly", "monthly", "yearly"]);
+  });
+});
+
 describe("calendar update — a time-only reschedule keeps the event's DATE (and duration)", () => {
   const seedStart = new Date("2026-06-09T05:00:00.000Z"); // a Tuesday, the original day
   const seedEnd = new Date("2026-06-09T06:00:00.000Z"); // +1h duration
