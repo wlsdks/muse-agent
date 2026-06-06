@@ -259,12 +259,50 @@ function addCalendarMonths(reference: Date, amount: number): Date {
   return next;
 }
 
+/**
+ * A recurring-reminder phrase carries a cadence PREFIX the date resolver
+ * doesn't need: "매주 월요일 오전 9시" / "매일 아침 8시" / "every monday 9am" /
+ * "every day 8am". Strip it so the FIRST occurrence resolves (the reminders
+ * tool infers the cadence separately via `recurrenceFromPhrase`). Returns the
+ * phrase unchanged when no recurrence prefix is present — the `!==` guard in
+ * the caller then prevents re-stripping / infinite recursion.
+ */
+export function stripRecurrencePrefix(phrase: string): string {
+  return phrase
+    .replace(/^\s*매\s*(?:주|일|달|월|년|해)\s+/u, "")
+    .replace(/^\s*(?:every|each)\s+(?:day|week|month|year)\s+/iu, "")
+    .replace(/^\s*(?:every|each)\s+(?=mon|tue|wed|thu|fri|sat|sun)/iu, "");
+}
+
+/**
+ * The repeat cadence a phrase implies, or undefined for a one-shot. Lets the
+ * reminders tool set `recurrence` deterministically when the local model fills
+ * the time ("매주 월요일 아침 9시") but FORGETS the separate `recurrence` arg —
+ * a weekly medication reminder must not silently become a one-time one.
+ */
+export function recurrenceFromPhrase(phrase: string): "daily" | "weekly" | "monthly" | "yearly" | undefined {
+  const t = phrase.toLowerCase();
+  if (/매일|daily|every\s+day/u.test(t)) return "daily";
+  if (/매주|weekly|every\s+week|every\s+(?:mon|tue|wed|thu|fri|sat|sun)/u.test(t)) return "weekly";
+  if (/매달|매월|monthly|every\s+month/u.test(t)) return "monthly";
+  if (/매년|매해|yearly|annually|every\s+year/u.test(t)) return "yearly";
+  return undefined;
+}
+
 export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date | undefined {
   const trimmed = phrase.trim().toLowerCase();
   if (trimmed.length === 0) {
     return undefined;
   }
   const reference = now();
+
+  // Recurring phrases ("매주 월요일 오전 9시", "every monday 9am") fail every
+  // pattern below because of the leading cadence word — strip it and resolve
+  // the remainder as the first occurrence.
+  const deRecurred = stripRecurrencePrefix(phrase.trim());
+  if (deRecurred !== phrase.trim() && deRecurred.length > 0) {
+    return resolveRelativeTimePhrase(deRecurred, now);
+  }
 
   // Korean is the user's native input language; "내일 오후 3시"
   // must resolve as readily as "tomorrow 3pm". Tried before the

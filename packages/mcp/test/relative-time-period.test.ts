@@ -1,10 +1,45 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveRelativeTimePhrase } from "../src/loopback-relative-time.js";
+import { recurrenceFromPhrase, resolveRelativeTimePhrase, stripRecurrencePrefix } from "../src/loopback-relative-time.js";
 
 // Reference: Wednesday 2026-06-03 09:30 UTC. Assertions are timezone-robust
 // (day counts / local getHours / KO-equals-EN), never a hard-coded ISO.
 const now = (): Date => new Date("2026-06-03T09:30:00Z");
+
+describe("recurring-reminder phrases — cadence prefix stripped for the FIRST occurrence + cadence inferred", () => {
+  // "매주 월요일 아침 9시" used to ERROR: the resolver rejected the whole phrase
+  // because of the leading cadence word, so a weekly medication reminder was lost.
+  it("resolves '매주 <요일> <time>' to the same future date as the bare weekday", () => {
+    const monday = resolveRelativeTimePhrase("매주 월요일 아침 9시", now);
+    const bareMonday = resolveRelativeTimePhrase("월요일 아침 9시", now);
+    expect(monday?.toISOString()).toBe(bareMonday?.toISOString());
+    expect(monday && monday.getTime() > now().getTime()).toBe(true);
+  });
+
+  it("resolves '매일 <time>' and 'every monday <time>' instead of returning undefined", () => {
+    expect(resolveRelativeTimePhrase("매일 아침 8시", now)).toBeInstanceOf(Date);
+    expect(resolveRelativeTimePhrase("every monday 9am", now)?.toISOString())
+      .toBe(resolveRelativeTimePhrase("monday 9am", now)?.toISOString());
+  });
+
+  it("stripRecurrencePrefix removes only a genuine leading cadence token", () => {
+    expect(stripRecurrencePrefix("매주 월요일 아침 9시")).toBe("월요일 아침 9시");
+    expect(stripRecurrencePrefix("매일 아침 8시")).toBe("아침 8시");
+    expect(stripRecurrencePrefix("every week monday")).toBe("monday");
+    expect(stripRecurrencePrefix("every monday 9am")).toBe("monday 9am");
+    expect(stripRecurrencePrefix("내일 오후 3시")).toBe("내일 오후 3시");
+    expect(stripRecurrencePrefix("월요일 9시")).toBe("월요일 9시");
+  });
+
+  it("recurrenceFromPhrase infers the cadence (KO + EN), undefined for one-shot", () => {
+    expect(recurrenceFromPhrase("매일 아침 8시")).toBe("daily");
+    expect(recurrenceFromPhrase("매주 월요일 아침 9시")).toBe("weekly");
+    expect(recurrenceFromPhrase("every friday 6pm")).toBe("weekly");
+    expect(recurrenceFromPhrase("매달 1일")).toBe("monthly");
+    expect(recurrenceFromPhrase("매년 생일")).toBe("yearly");
+    expect(recurrenceFromPhrase("내일 오후 3시")).toBeUndefined();
+  });
+});
 
 describe("resolveRelativeTimePhrase — period phrases (next week/month/year + KO parity)", () => {
   it("resolves next week / month / year (EN) to future dates", () => {

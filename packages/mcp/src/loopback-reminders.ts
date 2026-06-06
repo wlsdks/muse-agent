@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { errorMessage, readString } from "./loopback-helpers.js";
+import { recurrenceFromPhrase } from "./loopback-relative-time.js";
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
 import { readReminderHistory } from "./personal-reminder-history-store.js";
 import {
@@ -140,7 +141,12 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           // model filled with "none"/"once" (instead of omitting) must still be
           // CREATED, not dropped — otherwise a multi-step "add the event AND
           // remind me" request silently loses the reminder.
-          const { recurrence, note: recurrenceNote } = normalizeReminderRecurrence(readString(args, "recurrence"));
+          // Deterministic fallback: when the local model fills the recurring
+          // TIME ("매주 월요일 아침 9시") but FORGETS the `recurrence` arg, infer
+          // the cadence from the phrase so a weekly reminder doesn't silently
+          // become one-time. The explicit arg always wins.
+          const recurrenceArg = readString(args, "recurrence") ?? recurrenceFromPhrase(dueAtRaw);
+          const { recurrence, note: recurrenceNote } = normalizeReminderRecurrence(recurrenceArg);
           // `via` is deliberately NOT model-settable: the chat model can't ground
           // a delivery destination and was observed FABRICATING one (a made-up
           // telegram chat id), which would mis-route the reminder. Reminders fire
