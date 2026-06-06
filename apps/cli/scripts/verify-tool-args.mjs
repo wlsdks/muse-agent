@@ -46,7 +46,7 @@ const cases = [
   // it from the schema; native structured output should keep the model from
   // inventing a delivery destination).
   { prompt: "remind me to call mom at 6pm", tool: "muse.reminders.add", check: (a) => /mom|call/i.test(String(a.text ?? "")) && Boolean(a.dueAt) && a.via === undefined },
-  { prompt: "add a meeting with Sam this friday at 3pm", tool: "muse.calendar.add", check: (a) => String(a.title ?? "").length > 0 && Boolean(a.startsAtIso) },
+  { prompt: "add a meeting with Sam this friday at 3pm", tool: "muse.calendar.add", check: (a) => String(a.title ?? "").length > 0 && Boolean(a.startsAt ?? a.startsAtIso) },
   { prompt: "save a note that the standup moved to friday", tool: "muse.notes.save", check: (a) => /friday|standup|moved/i.test(String(a.content ?? "")) && String(a.path ?? "").length > 0 }
 ];
 

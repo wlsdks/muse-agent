@@ -229,11 +229,11 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
       },
       {
         description:
-          "Create a new calendar event. `startsAtIso` is required; `endsAtIso` defaults to startsAt + 60 minutes. " +
-          "Both fields accept either an ISO-8601 timestamp OR a relative phrase. " +
+          "Create a new calendar event. `startsAt` is required; `endsAt` defaults to startsAt + 60 minutes. " +
+          "Pass the user's time IN THEIR OWN WORDS — do NOT compute a date or convert the timezone yourself; the server resolves the phrase against the current local time. " +
           "English: 'tomorrow 3pm', 'today at 14:30', 'in 2 hours', 'next Friday', 'next Monday at 9am'. " +
-          "Korean: '내일 오후 3시', '오늘 14시 30분', '2시간 후', '다음 주 금요일', '다음 주 월요일 오전 9시'. " +
-          "Pass the user's natural-language phrase directly (in their own language) — the server resolves it against the current local time. " +
+          "Korean: '내일 오후 3시', '오늘 14시 30분', '2시간 후', '이번 주 토요일 오후 2시', '다음 주 월요일 오전 9시'. " +
+          "Only pass an ISO-8601 timestamp when the user literally gave one. " +
           "If `providerId` is omitted, the primary (first registered) provider is used. " +
           "When you confirm the event back to the user, state the time using the result's `startsAtLocal` / `endsAtLocal` fields (the local-timezone time, e.g. 'Fri, Jun 5, 2026, 3:00 PM'), NEVER the raw ISO `startsAtIso` / `endsAtIso`, which are UTC and read back the wrong hour. " +
           "USE WHEN the user schedules a calendar EVENT / appointment / meeting at a date+time ('내일 오후 3시 팀 미팅 일정 추가해줘', 'schedule a dentist appointment Friday 2pm'); " +
@@ -241,21 +241,26 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
         keywords: ["일정", "캘린더", "calendar", "event", "meeting", "미팅", "약속", "appointment", "schedule", "스케줄", "추가", "add", "등록", "잡아"],
         execute: async (args): Promise<JsonObject> => {
           const title = readString(args, "title")?.trim();
-          const startsAtIso = readString(args, "startsAtIso");
-          const endsAtIso = readString(args, "endsAtIso");
+          // `startsAt` is the exposed field; `startsAtIso` is accepted as a
+          // fallback for any caller still on the old name. The neutral name
+          // matters: the "Iso" suffix made the local model pre-compute a
+          // (wrong, un-timezone-converted) ISO instead of passing the user's
+          // phrase to the server-side resolver.
+          const startsAtRaw = readString(args, "startsAt") ?? readString(args, "startsAtIso");
+          const endsAtRaw = readString(args, "endsAt") ?? readString(args, "endsAtIso");
           const providerId = readString(args, "providerId");
           if (!title) {
             return { error: "title is required" };
           }
-          const startsAt = parseIsoDate(startsAtIso);
+          const startsAt = parseIsoDate(startsAtRaw);
           if (!startsAt) {
             return {
               error:
-                `startsAtIso must be an ISO-8601 timestamp or a supported relative phrase (got ${JSON.stringify(startsAtIso ?? "")}). ` +
-                `Examples: "tomorrow 9am", "in 2 hours", "next monday 6pm", "내일 오후 3시", "3일 후", "다음 주 월요일".`
+                `startsAt must be a natural-language time phrase or an ISO-8601 timestamp (got ${JSON.stringify(startsAtRaw ?? "")}). ` +
+                `Examples: "내일 오후 3시", "이번 주 토요일 오후 2시", "3일 후", "tomorrow 9am", "next monday 6pm".`
             };
           }
-          const endsAt = parseIsoDate(endsAtIso) ?? new Date(startsAt.getTime() + 60 * 60_000);
+          const endsAt = parseIsoDate(endsAtRaw) ?? new Date(startsAt.getTime() + 60 * 60_000);
           const allDay = readBoolean(args, "allDay") ?? false;
           const location = readString(args, "location") ?? undefined;
           const notes = readString(args, "notes") ?? undefined;
@@ -280,15 +285,15 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           additionalProperties: false,
           properties: {
             allDay: { description: "True for an all-day event (no specific time).", type: "boolean" },
-            endsAtIso: { description: "End time — ISO-8601 or a relative phrase; defaults to start + 60 min.", type: "string" },
+            endsAt: { description: "End time in the user's own words ('오후 4시', '5pm'); defaults to start + 60 min. Do not pre-compute a date/timezone.", type: "string" },
             location: { description: "Where the event is, e.g. 'Room 4' or an address.", type: "string" },
             notes: { description: "Free-text notes / agenda for the event.", type: "string" },
             providerId: { description: "Calendar provider id (default: the primary provider).", type: "string" },
-            startsAtIso: { description: "Start time — ISO-8601 OR a natural phrase like 'tomorrow 3pm' / '내일 오후 3시'.", type: "string" },
+            startsAt: { description: "Start time in the user's OWN WORDS — 'tomorrow 3pm', '내일 오후 3시', '이번 주 토요일 오후 2시'. Do NOT compute a date or convert the timezone; the server resolves it.", type: "string" },
             tags: { description: "Optional labels for the event.", items: { type: "string" }, type: "array" },
             title: { description: "Event title, e.g. 'Dentist appointment'.", type: "string" }
           },
-          required: ["title", "startsAtIso"],
+          required: ["title", "startsAt"],
           type: "object"
         },
         domain: "calendar",
@@ -310,10 +315,12 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           if ("error" in resolved) {
             return resolved.candidates ? { candidates: resolved.candidates, error: resolved.error } : { error: resolved.error };
           }
+          const startsAtRaw = readString(args, "startsAt") ?? readString(args, "startsAtIso");
+          const endsAtRaw = readString(args, "endsAt") ?? readString(args, "endsAtIso");
           const update: CalendarEventUpdate = {
             ...(readString(args, "title") ? { title: readString(args, "title")! } : {}),
-            ...(readString(args, "startsAtIso") ? { startsAt: parseIsoDate(readString(args, "startsAtIso")!)! } : {}),
-            ...(readString(args, "endsAtIso") ? { endsAt: parseIsoDate(readString(args, "endsAtIso")!)! } : {}),
+            ...(startsAtRaw ? { startsAt: parseIsoDate(startsAtRaw)! } : {}),
+            ...(endsAtRaw ? { endsAt: parseIsoDate(endsAtRaw)! } : {}),
             ...(readBoolean(args, "allDay") !== undefined ? { allDay: readBoolean(args, "allDay") } : {}),
             ...("location" in args ? { location: readString(args, "location") ?? null } : {}),
             ...("notes" in args ? { notes: readString(args, "notes") ?? null } : {})
@@ -329,12 +336,12 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           additionalProperties: false,
           properties: {
             allDay: { description: "Set true/false to change the all-day flag (only if changing it).", type: "boolean" },
-            endsAtIso: { description: "New end time — ISO-8601 or a relative phrase (only if changing it).", type: "string" },
+            endsAt: { description: "New end time in the user's own words (only if changing it). Do not pre-compute a date/timezone.", type: "string" },
             id: { description: "The event's id (from `list`) OR a distinct word from its title, e.g. 'dentist'. An ambiguous word returns the matching events.", type: "string" },
             location: { description: "New location (only if changing it).", type: "string" },
             notes: { description: "New notes (only if changing it).", type: "string" },
             providerId: { description: "Optional — narrow the search to one provider when you have several. Resolved from the matched event when omitted.", type: "string" },
-            startsAtIso: { description: "New start time — ISO-8601 or a relative phrase (only if changing it).", type: "string" },
+            startsAt: { description: "New start time in the user's own words ('금요일 오후 3시', 'Friday 3pm') — only if changing it. Do not pre-compute a date/timezone.", type: "string" },
             title: { description: "New title (only if changing it).", type: "string" }
           },
           required: ["id"],

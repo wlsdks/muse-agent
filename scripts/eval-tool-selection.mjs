@@ -167,7 +167,7 @@ async function buildPersonalCrudScenario() {
     const cases = [
       { prompt: "우유 사기를 할 일에 추가해줘", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "KO add a TO-DO → tasks.add (NOT reminders/calendar)" },
       { prompt: "내일 오전 9시 회의 리마인더 추가해줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], note: "KO add a REMINDER → reminders.add (NOT tasks)" },
-      { prompt: "내일 오후 3시 팀 미팅 일정 추가해줘", expectTool: "muse.calendar.add", requireArgs: ["title", "startsAtIso"], note: "KO add a calendar EVENT → calendar.add (NOT tasks)" },
+      { prompt: "내일 오후 3시 팀 미팅 일정 추가해줘", expectTool: "muse.calendar.add", requireArgs: ["title", "startsAt"], note: "KO add a calendar EVENT → calendar.add (NOT tasks)" },
       { prompt: "오늘 할 일 보여줘", expectTool: "muse.tasks.list", note: "KO list to-dos → tasks.list" },
       { prompt: "내 리마인더 다 보여줘", expectTool: "muse.reminders.list", note: "KO list reminders → reminders.list (NOT calendar.list)" },
       { prompt: "이번 주 일정 보여줘", expectTool: "muse.calendar.list", note: "KO list events → calendar.list (NOT tasks/reminders)" }

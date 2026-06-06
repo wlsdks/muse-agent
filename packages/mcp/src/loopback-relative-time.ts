@@ -1,6 +1,6 @@
 /**
  * Relative-time phrase resolver shared by `muse.tasks.add` (dueAt)
- * and `muse.calendar.add` (startsAtIso / endsAtIso).
+ * and `muse.calendar.add` (startsAt / endsAt).
  *
  * The LLM tool-composition path (call `time_now` → `time_add`)
  * works on capable models but Gemini-flash and similar small

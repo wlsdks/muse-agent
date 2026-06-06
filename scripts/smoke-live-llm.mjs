@@ -403,7 +403,7 @@ try {
     const response = await fetch(`${baseUrl}/api/chat`, {
       body: JSON.stringify({
         message:
-          "Call the tool muse.calendar.add exactly once with title=\"Smoke test event\", startsAtIso=\"2099-01-15T10:00:00Z\", endsAtIso=\"2099-01-15T11:00:00Z\". After the tool call returns, reply with the literal text DONE and nothing else.",
+          "Call the tool muse.calendar.add exactly once with title=\"Smoke test event\", startsAt=\"2099-01-15T10:00:00Z\", endsAt=\"2099-01-15T11:00:00Z\". After the tool call returns, reply with the literal text DONE and nothing else.",
         runId: "live-calendar-add"
       }),
       headers: { "content-type": "application/json" },
