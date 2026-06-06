@@ -4,6 +4,13 @@ Tests are the only form of verification. New behavior gets the
 narrowest useful test first — direct unit test before integration
 test before HTTP smoke.
 
+This file is the **gate list** (which command proves what). For HOW to
+test Muse as an *agent* — grade outcomes not paths, `pass^k`
+reliability, tool-calling + irrelevance, multi-agent hand-off asserts,
+binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (method)
+and [`docs/agent-eval-strategy.md`](../../docs/agent-eval-strategy.md)
+(the living catalogue).
+
 ## Verification gates (cheapest first)
 
 1. **Single-package narrow check** while developing:
