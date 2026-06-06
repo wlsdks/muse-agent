@@ -44,6 +44,16 @@ describe("calendar loopback tools meet the one-shot tool-calling bar", () => {
     expect(props.startsAt.description ?? "").toMatch(/오후 3시|tomorrow 3pm/u);
   });
 
+  it("update/delete `id` tells the model NOT to translate the title (a Korean event got deleted only 1/5 when the model passed 'dentist')", () => {
+    const server = createCalendarMcpServer({ registry: stubRegistry });
+    for (const name of ["update", "delete"]) {
+      const tool = server.tools.find((t) => t.name === name)!;
+      const idDesc = (tool.inputSchema as { properties: Record<string, { description?: string }> }).properties.id.description ?? "";
+      expect(idDesc.toLowerCase()).toContain("translate"); // the "do NOT translate" guidance
+      expect(idDesc).toMatch(/회의|치과/u); // a Korean example so the model keeps the title's language
+    }
+  });
+
   it("calendar add/list own the event NOUN keywords so '일정 추가/보여줘' isn't hijacked by tasks/reminders", () => {
     // "내일 3시 일정 추가해줘" was creating a TASK because calendar.add had no
     // keywords (score 0) and tasks.add matched "추가" (score 1). The event NOUN

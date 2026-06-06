@@ -375,7 +375,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           properties: {
             allDay: { description: "Set true/false to change the all-day flag (only if changing it).", type: "boolean" },
             endsAt: { description: "New end time in the user's own words (only if changing it). Do not pre-compute a date/timezone.", type: "string" },
-            id: { description: "The event's id (from `list`) OR a distinct word from its title, e.g. 'dentist'. An ambiguous word returns the matching events.", type: "string" },
+            id: { description: "The event's id (from `list`) OR a distinct word from its title — copy it EXACTLY as the event is titled, in the event's own language; do NOT translate (e.g. 'standup', '회의', '치과'). An ambiguous word returns the matching events.", type: "string" },
             location: { description: "New location (only if changing it).", type: "string" },
             notes: { description: "New notes (only if changing it).", type: "string" },
             providerId: { description: "Optional — narrow the search to one provider when you have several. Resolved from the matched event when omitted.", type: "string" },
@@ -414,7 +414,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
         inputSchema: {
           additionalProperties: false,
           properties: {
-            id: { description: "The event's id (from `list`) OR a distinct word from its title, e.g. 'standup'. An ambiguous word returns the matching events.", type: "string" },
+            id: { description: "The event's id (from `list`) OR a distinct word from its title — copy it EXACTLY as the event is titled, in the event's own language; do NOT translate (e.g. 'standup', '회의', '치과'). An ambiguous word returns the matching events.", type: "string" },
             providerId: { description: "Optional — narrow the search to one provider when you have several. Resolved from the matched event when omitted.", type: "string" }
           },
           required: ["id"],
