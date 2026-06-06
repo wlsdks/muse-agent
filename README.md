@@ -32,6 +32,26 @@ textbook 1500), instead of confabulating; nothing relevant in your notes ⇒ it
 stays on the refusal floor. Every surface Muse gains plugs into the gate.
 Full rationale: [`docs/strategy/the-edge.md`](docs/strategy/the-edge.md).
 
+### Three core axes
+
+1. **Grounding edge** — never fabricate; cite the real source or say "I'm not
+   sure" (the floor, enforced in code).
+2. **Playbook** — reinforce the strategies that *work* for you (RL-flavoured
+   reward/decay of learned plays).
+3. **Whetstone** *(designed; building incrementally)* — the metacognitive
+   complement to the Playbook: Muse **identifies its own weaknesses and
+   systematically grinds them down**, the way a disciplined human learner
+   improves a fixed brain — no weight changes, all in process/memory/prompts.
+   A modest model kept sharp out-performs a finer one left dull. Grounded in
+   real learning-science and 2024-2026 agent research; it strengthens the
+   grounding edge (records and remediates the gate's own misses, with a
+   calibration brake against over-confidence) and never bypasses it.
+   Design + citations: [`docs/strategy/whetstone.md`](docs/strategy/whetstone.md).
+
+A native **macOS desktop companion** (a floating, voice-capable orb;
+on-device speech via WhisperKit + Qwen3-TTS) is the newest surface — same
+local-only, grounded runtime.
+
 [한국어 README →](README.ko.md)
 
 <!--LIVE_URL-->📊 **Live progress:** _not exposed yet — start it with `pnpm dashboard:tunnel` (needs the `cloudflared` binary; no account). The loop writes the current public URL on this line and refreshes it when it rotates. Locally any time: `node scripts/dashboard-server.mjs` → <http://127.0.0.1:8787> (read-only, 127.0.0.1-only)._<!--/LIVE_URL-->
