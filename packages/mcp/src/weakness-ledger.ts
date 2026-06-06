@@ -152,6 +152,40 @@ export async function writeWeaknesses(file: string, entries: readonly WeaknessEn
   await fs.writeFile(file, JSON.stringify({ weaknesses: entries }, null, 2), "utf8");
 }
 
+/** A recurring weakness worth surfacing to the user as an actionable nudge. */
+export interface RemediableWeakness {
+  readonly topic: string;
+  readonly count: number;
+}
+
+/**
+ * The Whetstone REMEDIATION selector: pick the recurring `grounding-gap` topics
+ * — the user asked about something Muse had no note for, repeatedly — so the
+ * recap can nudge "add a note and I'll answer next time". Only `grounding-gap`
+ * is surfaced: it is the axis the USER can fix (by adding a note); the other
+ * axes (unbacked-action, wrong-tool, time-parse) are Muse's own bugs, not the
+ * user's to remediate. Filters to count ≥ minCount, seen within recentDays;
+ * most-asked first; capped. Pure.
+ */
+export function selectRemediableWeaknesses(
+  entries: readonly WeaknessEntry[],
+  opts: { readonly nowMs: number; readonly minCount?: number; readonly recentDays?: number; readonly maxResults?: number }
+): readonly RemediableWeakness[] {
+  const minCount = Math.max(2, Math.trunc(opts.minCount ?? 2));
+  const recentMs = Math.max(1, opts.recentDays ?? 30) * 86_400_000;
+  const max = Math.max(1, Math.trunc(opts.maxResults ?? 3));
+  return entries
+    .filter((entry) => entry.axis === "grounding-gap" && entry.count >= minCount)
+    .filter((entry) => {
+      const seen = Date.parse(entry.lastSeen);
+      return Number.isFinite(seen) && opts.nowMs - seen <= recentMs;
+    })
+    .slice()
+    .sort((a, b) => b.count - a.count || Date.parse(b.lastSeen) - Date.parse(a.lastSeen))
+    .slice(0, max)
+    .map((entry) => ({ count: entry.count, topic: entry.topic }));
+}
+
 /**
  * Read → cluster the message into a topic → upsert the `(axis, topic)` row →
  * write. A no-op when the message carries no salient topic. Best-effort: the

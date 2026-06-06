@@ -1,6 +1,6 @@
 import { openLoops, overdueContacts } from "@muse/agent-core";
-import { resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
-import { detectNoteFamilyAbsence, detectTopicAbsence, type NoteActivityEvent, readActionLog, readContacts, readEpisodes, readFollowups, readReminders, readTasks, resolveUpcomingBirthdays } from "@muse/mcp";
+import { resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, resolveWeaknessesFile } from "@muse/autoconfigure";
+import { detectNoteFamilyAbsence, detectTopicAbsence, type NoteActivityEvent, readActionLog, readContacts, readEpisodes, readFollowups, readReminders, readTasks, readWeaknesses, resolveUpcomingBirthdays, selectRemediableWeaknesses } from "@muse/mcp";
 import type { Command } from "commander";
 import { type Dirent, promises as fs } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -55,6 +55,13 @@ export interface EveningRecapInput {
    * cadence with them (Dunbar tie-strength decay, from calendar timestamps only).
    */
   readonly reconnect: readonly string[];
+  /**
+   * WHETSTONE — recurring topics Muse repeatedly couldn't answer because you have
+   * no note on them (the metacognition ledger's `grounding-gap` axis). Surfacing
+   * them turns "I'm not sure" from a dead end into an actionable nudge: add a
+   * note and Muse answers next time. "<topic> (asked N×)" lines.
+   */
+  readonly weaknesses: readonly string[];
   readonly openFollowups: number;
 }
 
@@ -122,6 +129,15 @@ export function composeEveningRecap(input: EveningRecapInput): string {
     lines.push("", `💬 Reconnect — out of touch longer than usual (${input.reconnect.length.toString()}):`);
     for (const item of input.reconnect.slice(0, 5)) {
       lines.push(`  💬 ${item}`);
+    }
+  }
+
+  // Whetstone: topics you keep asking about that Muse can't answer (no note) —
+  // metacognition turned into a fix you can make. Honest about its own blind spot.
+  if (input.weaknesses.length > 0) {
+    lines.push("", `🔧 I keep coming up short on — add a note and I'll have it next time (${input.weaknesses.length.toString()}):`);
+    for (const item of input.weaknesses.slice(0, 5)) {
+      lines.push(`  🔧 ${item}`);
     }
   }
 
@@ -290,7 +306,16 @@ export async function gatherEveningRecap(
       reconnect.push(`${tie.name} — last ~${Math.round(tie.gapDays).toString()}d ago (usually every ~${Math.round(tie.cadenceDays).toString()}d)`);
     }
   } catch { /* fail-soft — no contacts / calendar */ }
-  return { comingUp, goneQuiet, now, openFollowups, openLoops: openLoopLines, performedToday, reconnect, sessionsToday, slipping };
+  // Whetstone: recurring topics Muse couldn't answer for lack of a note — turn the
+  // metacognition ledger into an actionable "add a note" nudge (top 3).
+  const weaknesses: string[] = [];
+  try {
+    const entries = await readWeaknesses(resolveWeaknessesFile(env));
+    for (const gap of selectRemediableWeaknesses(entries, { maxResults: 3, nowMs: now.getTime() })) {
+      weaknesses.push(`${gap.topic} (asked ${gap.count.toString()}×)`);
+    }
+  } catch { /* fail-soft — no ledger */ }
+  return { comingUp, goneQuiet, now, openFollowups, openLoops: openLoopLines, performedToday, reconnect, sessionsToday, slipping, weaknesses };
 }
 
 /**

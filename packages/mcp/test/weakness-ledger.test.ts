@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { readWeaknesses, recordWeakness, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
+import { readWeaknesses, recordWeakness, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
 
 describe("topicKeyFromMessage — deterministic topic clustering", () => {
   it("keeps salient content words, drops filler, lowercases (EN)", () => {
@@ -98,5 +98,31 @@ describe("read/write/recordWeakness — persistence round-trip", () => {
     const entries: WeaknessEntry[] = [{ axis: "unbacked-action", count: 3, firstSeen: "2026-06-01T00:00:00Z", lastSeen: "2026-06-06T00:00:00Z", topic: "회의 일정" }];
     await writeWeaknesses(file, entries);
     expect(await readWeaknesses(file)).toEqual(entries);
+  });
+});
+
+describe("selectRemediableWeaknesses — the Whetstone remediation nudge (grounding-gap only)", () => {
+  const nowMs = Date.parse("2026-06-07T02:00:00.000Z");
+  const e = (over: Partial<WeaknessEntry>): WeaknessEntry => ({
+    axis: "grounding-gap", count: 2, firstSeen: "2026-06-01T00:00:00.000Z", lastSeen: "2026-06-07T00:00:00.000Z", topic: "x", ...over
+  });
+
+  it("keeps recurring, recent grounding-gaps; ranks most-asked first; caps", () => {
+    const out = selectRemediableWeaknesses([
+      e({ topic: "office vpn mtu", count: 3 }),
+      e({ topic: "wifi password", count: 2 }),
+      e({ topic: "a", count: 4 })
+    ], { nowMs, maxResults: 2 });
+    expect(out.map((w) => w.topic)).toEqual(["a", "office vpn mtu"]); // 4× then 3×, capped at 2
+  });
+
+  it("excludes a single ask (count 1), a stale gap (>30d), and non-grounding axes", () => {
+    const out = selectRemediableWeaknesses([
+      e({ topic: "asked once", count: 1 }),
+      e({ topic: "old", count: 9, lastSeen: "2026-01-01T00:00:00.000Z" }),
+      e({ topic: "unbacked", axis: "unbacked-action", count: 5 }),
+      e({ topic: "real gap", count: 2 })
+    ], { nowMs });
+    expect(out.map((w) => w.topic)).toEqual(["real gap"]);
   });
 });

@@ -11,7 +11,7 @@ import type { ProgramIO } from "./program.js";
 
 describe("composeEveningRecap — deterministic evening digest", () => {
   const base = (over: Partial<EveningRecapInput> = {}): EveningRecapInput => ({
-    comingUp: [], goneQuiet: [], now: new Date("2026-06-04T21:00:00"), openFollowups: 0, openLoops: [], performedToday: [], reconnect: [], sessionsToday: 0, slipping: [], ...over
+    comingUp: [], goneQuiet: [], now: new Date("2026-06-04T21:00:00"), openFollowups: 0, openLoops: [], performedToday: [], reconnect: [], sessionsToday: 0, slipping: [], weaknesses: [], ...over
   });
 
   it("surfaces open loops (unfinished + unscheduled) as a distinct section", () => {
@@ -24,6 +24,12 @@ describe("composeEveningRecap — deterministic evening digest", () => {
     const out = composeEveningRecap(base({ reconnect: ["Mina — last ~35d ago (usually every ~7d)"] }));
     expect(out).toContain("💬 Reconnect");
     expect(out).toContain("Mina — last ~35d ago");
+  });
+
+  it("surfaces a Whetstone remediation nudge for recurring grounding gaps", () => {
+    const out = composeEveningRecap(base({ weaknesses: ["office vpn mtu (asked 3×)"] }));
+    expect(out).toContain("🔧 I keep coming up short on");
+    expect(out).toContain("office vpn mtu (asked 3×)");
   });
 
   it("renders the retrospective (actions + sessions), what's coming up, and open follow-ups", () => {
@@ -284,7 +290,7 @@ describe("shouldFireRecap — once-a-day evening gate (pure)", () => {
 
 describe("deliverEveningRecapIfDue — proactive fire + dedup (pure deps)", () => {
   const sampleInput: EveningRecapInput = {
-    comingUp: [], goneQuiet: [], now: new Date("2026-06-04T21:30:00"), openFollowups: 0, openLoops: [], performedToday: ["did a thing"], reconnect: [], sessionsToday: 1, slipping: []
+    comingUp: [], goneQuiet: [], now: new Date("2026-06-04T21:30:00"), openFollowups: 0, openLoops: [], performedToday: ["did a thing"], reconnect: [], sessionsToday: 1, slipping: [], weaknesses: []
   };
   it("fires when due: composes, sends, and records the fire", async () => {
     const sent: string[] = [];

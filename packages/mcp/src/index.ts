@@ -900,9 +900,11 @@ export {
 export {
   readWeaknesses,
   recordWeakness,
+  selectRemediableWeaknesses,
   topicKeyFromMessage,
   upsertWeakness,
   writeWeaknesses,
+  type RemediableWeakness,
   type WeaknessAxis,
   type WeaknessEntry
 } from "./weakness-ledger.js";
