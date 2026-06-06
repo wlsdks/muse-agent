@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { emptyAnswerFallback, filterFactsToKeys, formatNotesOverview, parseAgentMode } from "./chat-repl.js";
+import { emptyAnswerFallback, filterFactsToKeys, formatNotesOverview, formatTaskList, parseAgentMode } from "./chat-repl.js";
 
 describe("emptyAnswerFallback (never a blank chat bubble)", () => {
   it("gives an honest KO retry-ask for a Korean message", () => {
@@ -26,6 +26,23 @@ describe("formatNotesOverview (deterministic corpus inventory, KO/EN)", () => {
     const out = formatNotesOverview(["a.md"], 5, false);
     expect(out).toContain("You have 5 notes");
     expect(out).toContain("… and 4 more");
+  });
+});
+
+describe("formatTaskList (deterministic 'what are my tasks' answer, KO/EN)", () => {
+  it("lists open tasks with a KO header + their pre-rendered LOCAL due time", () => {
+    const out = formatTaskList(
+      [{ title: "보고서 제출", dueLocal: "Mon, Jun 8, 2026, 9:00 AM" }, { title: "우유 사기", urgent: true }],
+      true
+    );
+    expect(out).toContain("열린 할 일이 2개");
+    expect(out).toContain("• 보고서 제출 — Mon, Jun 8, 2026, 9:00 AM 마감");
+    expect(out).toContain("⚡ 우유 사기"); // urgent flag, no due
+    expect(out).not.toContain("T00:00"); // never a raw UTC ISO
+  });
+  it("says there are none when the open list is empty (KO + EN)", () => {
+    expect(formatTaskList([], true)).toContain("열린 할 일이 없어요");
+    expect(formatTaskList([], false)).toContain("no open tasks");
   });
 });
 import { factKeysToInject } from "./chat-grounding.js";

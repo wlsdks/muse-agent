@@ -23,7 +23,7 @@ import type { Readable } from "node:stream";
 import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
-import { answerClaimsAction, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, requestsToolAction } from "@muse/agent-core";
+import { answerClaimsAction, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, classifyTaskListQuery, requestsToolAction } from "@muse/agent-core";
 
 import { conversationMatches, factKeysToInject, gateChatAnswer, groundedNoteSources, isChatAbstention, retrieveChatGrounding, stripFabricatedCitations, stripTruncatedCitation, withGroundingReceipt } from "./chat-grounding.js";
 import { isRecord } from "./credential-store.js";
@@ -209,6 +209,26 @@ export function formatNotesOverview(noteFiles: readonly string[], total: number,
   return [head, ...lines, ...more].join("\n");
 }
 
+/** Render the open-task list for the deterministic "내 할일 뭐 있어?" short-circuit.
+ *  `dueLocal` is a pre-rendered LOCAL-time string (never the raw UTC ISO). */
+export function formatTaskList(
+  tasks: readonly { readonly title: string; readonly dueLocal?: string; readonly urgent?: boolean }[],
+  korean: boolean
+): string {
+  if (tasks.length === 0) {
+    return korean ? "지금은 열린 할 일이 없어요." : "You have no open tasks right now.";
+  }
+  const lines = tasks.map((task) => {
+    const due = task.dueLocal ? (korean ? ` — ${task.dueLocal} 마감` : ` — due ${task.dueLocal}`) : "";
+    const flag = task.urgent ? "⚡ " : "";
+    return `  • ${flag}${task.title}${due}`;
+  });
+  const head = korean
+    ? `열린 할 일이 ${tasks.length.toString()}개 있어요:`
+    : `You have ${tasks.length.toString()} open task${tasks.length === 1 ? "" : "s"}:`;
+  return [head, ...lines].join("\n");
+}
+
 /** Keep only the named keys from a fact map (preserving values). */
 export function filterFactsToKeys(facts: Readonly<Record<string, string>>, keys: readonly string[]): Record<string, string> {
   const allow = new Set(keys);
@@ -280,6 +300,32 @@ export async function runLocalChat(
         toolsUsed: []
       };
     }
+  }
+
+  // "내 할일 뭐 있어?" — the to-do LIST intent. qwen3:8b reads the possessive
+  // "뭐 있어" as a memory question and won't call tasks.list (it DOES for the
+  // identical "내 일정 뭐 있어?" → calendar.list), so without this the recall gate
+  // wrongly abstains "그건 아직 기억하고 있지 않아요" while open tasks sit on disk.
+  // List them deterministically — same remedy as the notes corpus overview above.
+  if (classifyTaskListQuery(message)) {
+    const { readTasks, compareTasksByDueDate, formatDueLocal } = await import("@muse/mcp");
+    const { resolveTasksFile } = await import("@muse/autoconfigure");
+    const tasksFile = resolveTasksFile(process.env as Record<string, string | undefined>);
+    const open = (await readTasks(tasksFile).catch(() => []))
+      .filter((task) => task.status === "open")
+      .sort(compareTasksByDueDate);
+    return {
+      response: formatTaskList(
+        open.map((task) => ({
+          title: task.title,
+          ...(task.dueAt ? { dueLocal: formatDueLocal(task.dueAt) } : {}),
+          ...(task.urgent ? { urgent: true } : {})
+        })),
+        /[가-힣]/u.test(message)
+      ),
+      runId: "local-tasks",
+      toolsUsed: []
+    };
   }
 
   // A bare greeting / social prompt never needs a tool — but projecting the tool

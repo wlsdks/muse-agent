@@ -167,3 +167,28 @@ export function classifyCorpusOverview(query: string): boolean {
   }
   return OVERVIEW_PATTERNS.some((re) => re.test(q));
 }
+
+// "내 할일 뭐 있어?" wants the to-do LIST, but the local model reads the
+// possessive "뭐 있어" as a memory question and won't call tasks.list (whereas
+// it DOES call calendar.list for the identical "내 일정 뭐 있어?" — a stubborn
+// selection asymmetry that tool descriptions don't move). So the chat surface
+// short-circuits this intent to a deterministic list, the same way
+// `classifyCorpusOverview` handles "내 노트 뭐 있어?".
+const TASK_LIST_PATTERNS: readonly RegExp[] = [
+  /(내|제)?\s*(할\s*일|할일|투두|to-?dos?|tasks?)\s*(이|가|들|은|는)?\s*(뭐|목록|어떤|몇|있|남았|알려|보여|정리)/u,
+  /\bwhat\s+(tasks?|to-?dos?)\s+(do\s+i\s+have|are\s+there|are\s+left)\b/u,
+  /\b(list|show|view)\s+(me\s+)?(all\s+)?(my\s+)?(open\s+)?(tasks?|to-?dos?)\b/u
+];
+
+/** True when the prompt asks to SEE the task list — not to add / complete / move one. */
+export function classifyTaskListQuery(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (q.length === 0 || q.length > 80) {
+    return false;
+  }
+  // A clear write/mutate intent is NOT a list request.
+  if (/추가|등록|기억해|완료|끝냈|다\s*했|삭제|지워|제거|없애|미뤄|미루|연기|바꿔|변경|옮겨|\b(add|create|complete|done|finish|delete|remove|reschedule|move|change)\b/u.test(q)) {
+    return false;
+  }
+  return TASK_LIST_PATTERNS.some((re) => re.test(q));
+}

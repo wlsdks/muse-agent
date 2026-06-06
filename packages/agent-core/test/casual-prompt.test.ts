@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, requestsToolAction } from "../src/index.js";
+import { answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, classifyTaskListQuery, requestsToolAction } from "../src/index.js";
 
 describe("classifyCasualPrompt — pure social prompts only (precision-first)", () => {
   it("classifies greetings (EN + KO), tolerating trailing punctuation and repeats", () => {
@@ -241,6 +241,41 @@ describe("classifyCorpusOverview — whole-corpus overview, not a specific recal
       "what did I write about the migration plan"
     ]) {
       expect(classifyCorpusOverview(q)).toBe(false);
+    }
+  });
+});
+
+describe("classifyTaskListQuery — the VIEW-my-tasks intent the model fumbles, not a mutate", () => {
+  it("matches a request to SEE the task list (EN + KO)", () => {
+    for (const q of [
+      "내 할일 뭐 있어?",
+      "할 일 뭐 남았어?",
+      "할일 알려줘",
+      "할 일 목록 보여줘",
+      "what tasks do I have?",
+      "list my tasks",
+      "show me my to-dos"
+    ]) {
+      expect(classifyTaskListQuery(q)).toBe(true);
+    }
+  });
+
+  it("does NOT match an ADD / complete / move intent (those need the real tool)", () => {
+    for (const q of [
+      "우유 사기 할일 추가해줘",
+      "보고서 제출 할일 완료로 표시해줘",
+      "그 할일 삭제해줘",
+      "할일을 오후 6시로 바꿔줘",
+      "add buy milk to my tasks",
+      "mark the report task done"
+    ]) {
+      expect(classifyTaskListQuery(q)).toBe(false);
+    }
+  });
+
+  it("does NOT hijack a calendar or note overview (those route elsewhere)", () => {
+    for (const q of ["내 일정 뭐 있어?", "이번 주 일정 보여줘", "내 노트 뭐 있어?"]) {
+      expect(classifyTaskListQuery(q)).toBe(false);
     }
   });
 });
