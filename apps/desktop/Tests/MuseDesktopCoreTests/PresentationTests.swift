@@ -12,6 +12,16 @@ final class AnswerPresentationTests: XCTestCase {
         XCTAssertEqual(MusePresenter.stripCitationsForSpeech("A [from a.md] and B [from b.md]"), "A and B")
     }
 
+    func testStripsTheReceiptLineFromSpeech() {
+        // withGroundingReceipt appends "\n\n📎 노트: seoul_office.md" — the bubble
+        // keeps it, but the voice must not read the file path aloud.
+        let answer = "비밀번호는 muse2026입니다.\n\n📎 노트: seoul_office.md"
+        let p = MusePresenter.present(.success(answer))
+        XCTAssertEqual(p.bubbleText, answer)               // bubble keeps the receipt
+        XCTAssertEqual(p.speechText, "비밀번호는 muse2026입니다.") // speech drops it
+        XCTAssertEqual(MusePresenter.stripCitationsForSpeech("Done. [from vpn.md]\n\n📎 from: vpn.md"), "Done.")
+    }
+
     func testStaysSilentOnEmptyAnswer() {
         let p = MusePresenter.present(.success("   "))
         XCTAssertNil(p.speechText)

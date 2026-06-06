@@ -34,14 +34,21 @@ public enum MusePresenter {
         }
     }
 
-    /// Drop "[from <source>]" citation markers from the SPOKEN text — they read
-    /// badly aloud ("from v-p-n dot m-d") — while the bubble keeps them visible.
+    /// Drop citation markers from the SPOKEN text — they read badly aloud ("from
+    /// v-p-n dot m-d") — while the bubble keeps them visible. Strips BOTH the
+    /// inline "[from <source>]" and the trailing "📎 노트: …" / "📎 from: …" receipt
+    /// line that `withGroundingReceipt` appends (a spoken file path is just noise).
     public static func stripCitationsForSpeech(_ text: String) -> String {
-        let withoutCitations = text.replacingOccurrences(
+        var spoken = text.replacingOccurrences(
             of: "\\s*\\[from[^\\]]*\\]",
             with: "",
             options: .regularExpression
         )
-        return withoutCitations.trimmingCharacters(in: .whitespacesAndNewlines)
+        spoken = spoken.replacingOccurrences(
+            of: "\\s*📎[^\\n]*",
+            with: "",
+            options: .regularExpression
+        )
+        return spoken.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
