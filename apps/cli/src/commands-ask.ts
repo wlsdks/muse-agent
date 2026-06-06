@@ -1686,7 +1686,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         if (!(resolved instanceof Error)) {
           const days = countdownDays(now, resolved);
           if (days >= 0) {
-            const answer = formatCountdown(countdown.unit, days, resolved);
+            const answer = formatCountdown(countdown.unit, days, resolved, countdown.ko);
             if (options.json) {
               io.stdout(`${JSON.stringify({ answer, countdown: { days, target: resolved, unit: countdown.unit }, query })}\n`);
             } else {

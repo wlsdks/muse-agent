@@ -377,7 +377,7 @@ export async function runLocalChat(
       if (!(resolved instanceof Error)) {
         const days = countdownDays(now, resolved);
         if (days >= 0) {
-          return { response: formatCountdown(countdown.unit, days, resolved), runId: "local-countdown", toolsUsed: [] };
+          return { response: formatCountdown(countdown.unit, days, resolved, countdown.ko), runId: "local-countdown", toolsUsed: [] };
         }
       }
     }
