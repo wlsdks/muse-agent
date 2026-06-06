@@ -10,6 +10,22 @@ describe("detectDateQuery — extract the date phrase from a date question", () 
     expect(detectDateQuery("what day of the week is 2026-12-25?")).toBe("2026-12-25");
   });
 
+  it("extracts the phrase from a Korean suffix-framed date question", () => {
+    expect(detectDateQuery("100일 후가 며칠이야?")).toBe("100일 후");
+    expect(detectDateQuery("3주 후는 며칠?")).toBe("3주 후");
+    expect(detectDateQuery("내일 며칠이야")).toBe("내일");
+    expect(detectDateQuery("다음 주 금요일은 무슨 요일이야?")).toBe("다음 주 금요일");
+  });
+
+  it("does NOT grab a Korean countdown ('…까지 며칠 남았어') as a date phrase", () => {
+    expect(detectDateQuery("크리스마스까지 며칠 남았어?")).toBeNull();
+  });
+
+  it("answers a Korean phrase in Korean with the right topic particle", () => {
+    expect(formatDateAnswer("100일 후", "2026-09-15T12:00:00Z")).toMatch(/^100일 후는 .*입니다\.$/u);
+    expect(formatDateAnswer("내일", "2026-06-08T12:00:00Z")).toMatch(/^내일은 /u); // batchim → 은
+  });
+
   it("defaults to 'today' for a bare date question", () => {
     expect(detectDateQuery("what's the date?")).toBe("today");
     expect(detectDateQuery("what day is it?")).toBe("today");

@@ -20,8 +20,19 @@ const DATE_FRAMING =
  * caller still validates the phrase with `parseReminderDueAt`, so a non-date
  * remainder ("my meeting") never hijacks retrieval.
  */
+// Korean date questions are SUFFIX-framed ("100일 후가 며칠이야?", "다음 주 금요일은
+// 무슨 요일?") — the question word trails the phrase, the opposite of English. The
+// terminal "며칠"/"무슨 요일"/"날짜" + optional particle is the marker; what precedes
+// it is the date phrase parseReminderDueAt resolves. Anchored at end so a
+// countdown ("크리스마스까지 며칠 남았어") — which trails with "남았어" — doesn't match.
+const KO_DATE_FRAMING = /\s*(?:은|는|이|가)?\s*(?:며칠|무슨\s*요일|날짜)(?:이야|이에요|예요|인가요|인지|이지|일까|야)?$/u;
+
 export function detectDateQuery(query: string): string | null {
   const trimmed = query.trim().replace(/[?.!\s]+$/u, "");
+  if (/[가-힣]/u.test(trimmed)) {
+    const ko = trimmed.replace(KO_DATE_FRAMING, "").replace(/\s*(?:은|는|이|가)\s*$/u, "").trim();
+    return ko.length > 0 && ko !== trimmed ? ko : null;
+  }
   const match = DATE_FRAMING.exec(trimmed);
   if (!match) {
     return null;
@@ -37,6 +48,16 @@ export function detectDateQuery(query: string): string | null {
 /** "Next Friday is Friday, June 12, 2026." — the phrase + the resolved calendar date (+ time if the phrase set one). */
 export function formatDateAnswer(phrase: string, iso: string, opts?: { readonly includeTime?: boolean }): string {
   const date = new Date(iso);
+  // A Korean phrase ("100일 후") gets a Korean answer — the fast-path bypasses the
+  // model, so an English sentence here would be jarring for a KO-primary user.
+  if (/[가-힣]/u.test(phrase)) {
+    const dateStr = date.toLocaleDateString("ko-KR", { day: "numeric", month: "long", weekday: "long", year: "numeric" });
+    const timeStr = opts?.includeTime ? ` ${date.toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit" })}` : "";
+    // Topic-particle agreement: 은 after a final consonant (batchim), 는 otherwise.
+    const lastCode = phrase.charCodeAt(phrase.length - 1) - 0xac00;
+    const particle = lastCode >= 0 && lastCode <= 11171 && lastCode % 28 !== 0 ? "은" : "는";
+    return `${phrase}${particle} ${dateStr}${timeStr}입니다.`;
+  }
   const dateStr = date.toLocaleDateString("en-US", { day: "numeric", month: "long", weekday: "long", year: "numeric" });
   const timeStr = opts?.includeTime ? `, ${date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : "";
   const label = phrase === "today" ? "Today" : phrase.charAt(0).toUpperCase() + phrase.slice(1);
