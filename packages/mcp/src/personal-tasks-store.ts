@@ -267,7 +267,16 @@ export function parseTaskDueAt(raw: string, now: () => Date): string | Error {
       return isoParsed.toISOString();
     }
   }
-  const relative = resolveRelativeTimePhrase(trimmed, now);
+  // "100 days from now" / "45 days from today" are the spoken equivalents of
+  // "in 100 days" — which the grammar already resolves. Rewrite that trailing
+  // "<n> <unit> from now/today" form to the "in <n> <unit>" form so both phrasings
+  // land on the same parse. Purely additive: a phrase that already parses has no
+  // "from now/today" tail, so this only rescues inputs that would otherwise error.
+  const normalized = trimmed.replace(
+    /(\d+)\s+(seconds?|minutes?|hours?|days?|weeks?|months?|years?)\s+from\s+(?:now|today)\b/iu,
+    "in $1 $2"
+  );
+  const relative = resolveRelativeTimePhrase(normalized, now);
   if (!relative) {
     return new Error(
       `dueAt must be an ISO-8601 timestamp or a supported relative phrase (got ${JSON.stringify(trimmed)}). ` +

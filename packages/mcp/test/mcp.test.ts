@@ -2823,6 +2823,17 @@ describe("muse.tasks loopback server", () => {
       }
     });
 
+    it("resolves the 'N <unit> from now/today' phrasing the same as 'in N <unit>'", async () => {
+      const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
+      const now = () => new Date("2026-06-07T12:00:00Z");
+      // The spoken form must land on the same date the "in N" form already did.
+      expect(parseTaskDueAt("100 days from now", now)).toBe(parseTaskDueAt("in 100 days", now));
+      expect(parseTaskDueAt("45 days from today", now)).toBe(parseTaskDueAt("in 45 days", now));
+      expect(parseTaskDueAt("2 weeks from now", now)).toBe(parseTaskDueAt("in 2 weeks", now));
+      // 100 days after 2026-06-07 is 2026-09-15 (the 8B answered "June 10").
+      expect(parseTaskDueAt("100 days from now", now)).toMatch(/^2026-09-15/u);
+    });
+
     it("rejects impossible calendar dates instead of silently rolling them over", async () => {
       const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
       const { parseReminderDueAt } = await import("../src/personal-reminders-store.js");

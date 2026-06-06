@@ -27,6 +27,7 @@ import { answerClaimsAction, classifyCasualPrompt, classifyCorpusOverview, class
 
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
 import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
+import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
 import { detectDateDiffQuery, formatDateDiff } from "./date-diff-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
 import { conversationMatches, factKeysToInject, gateChatAnswer, groundedNoteSources, isChatAbstention, retrieveChatGrounding, stripFabricatedCitations, stripTruncatedCitation, withGroundingReceipt } from "./chat-grounding.js";
@@ -356,6 +357,18 @@ export async function runLocalChat(
   // as the arithmetic path. Each detector is precision-first (falls through to
   // grounded recall unless the query is NOTHING but that computation).
   {
+    const datePhrase = detectDateQuery(message);
+    if (datePhrase !== null) {
+      const { parseReminderDueAt } = await import("@muse/mcp");
+      const resolved = parseReminderDueAt(datePhrase, () => new Date());
+      if (!(resolved instanceof Error)) {
+        return {
+          response: formatDateAnswer(datePhrase, resolved, { includeTime: phraseHasTime(datePhrase) }),
+          runId: "local-date",
+          toolsUsed: []
+        };
+      }
+    }
     const countdown = detectCountdownQuery(message);
     if (countdown) {
       const { parseReminderDueAt } = await import("@muse/mcp");
