@@ -11,13 +11,19 @@ import type { ProgramIO } from "./program.js";
 
 describe("composeEveningRecap — deterministic evening digest", () => {
   const base = (over: Partial<EveningRecapInput> = {}): EveningRecapInput => ({
-    comingUp: [], goneQuiet: [], now: new Date("2026-06-04T21:00:00"), openFollowups: 0, openLoops: [], performedToday: [], sessionsToday: 0, slipping: [], ...over
+    comingUp: [], goneQuiet: [], now: new Date("2026-06-04T21:00:00"), openFollowups: 0, openLoops: [], performedToday: [], reconnect: [], sessionsToday: 0, slipping: [], ...over
   });
 
   it("surfaces open loops (unfinished + unscheduled) as a distinct section", () => {
     const out = composeEveningRecap(base({ openLoops: ["file taxes — open 40d", "call dentist — open 15d"] }));
     expect(out).toContain("🔓 Open loops");
     expect(out).toContain("file taxes — open 40d");
+  });
+
+  it("surfaces a reconnect nudge for ties gone quiet past your cadence", () => {
+    const out = composeEveningRecap(base({ reconnect: ["Mina — last ~35d ago (usually every ~7d)"] }));
+    expect(out).toContain("💬 Reconnect");
+    expect(out).toContain("Mina — last ~35d ago");
   });
 
   it("renders the retrospective (actions + sessions), what's coming up, and open follow-ups", () => {
@@ -278,7 +284,7 @@ describe("shouldFireRecap — once-a-day evening gate (pure)", () => {
 
 describe("deliverEveningRecapIfDue — proactive fire + dedup (pure deps)", () => {
   const sampleInput: EveningRecapInput = {
-    comingUp: [], goneQuiet: [], now: new Date("2026-06-04T21:30:00"), openFollowups: 0, openLoops: [], performedToday: ["did a thing"], sessionsToday: 1, slipping: []
+    comingUp: [], goneQuiet: [], now: new Date("2026-06-04T21:30:00"), openFollowups: 0, openLoops: [], performedToday: ["did a thing"], reconnect: [], sessionsToday: 1, slipping: []
   };
   it("fires when due: composes, sends, and records the fire", async () => {
     const sent: string[] = [];

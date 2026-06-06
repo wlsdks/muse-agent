@@ -1,10 +1,11 @@
-import { openLoops } from "@muse/agent-core";
+import { openLoops, overdueContacts } from "@muse/agent-core";
 import { resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import { detectNoteFamilyAbsence, detectTopicAbsence, type NoteActivityEvent, readActionLog, readContacts, readEpisodes, readFollowups, readReminders, readTasks, resolveUpcomingBirthdays } from "@muse/mcp";
 import type { Command } from "commander";
 import { type Dirent, promises as fs } from "node:fs";
 import { join, relative, sep } from "node:path";
 
+import { interactionsFromEvents } from "./commands-contacts.js";
 import { readLocalEvents } from "./commands-today.js";
 
 import type { ProgramIO } from "./program.js";
@@ -49,6 +50,11 @@ export interface EveningRecapInput {
    * dueAt): these are the planless tasks that nag and fall through the cracks.
    */
   readonly openLoops: readonly string[];
+  /**
+   * RECONNECT — people you haven't been in touch with for longer than your usual
+   * cadence with them (Dunbar tie-strength decay, from calendar timestamps only).
+   */
+  readonly reconnect: readonly string[];
   readonly openFollowups: number;
 }
 
@@ -107,6 +113,15 @@ export function composeEveningRecap(input: EveningRecapInput): string {
     }
     if (input.openLoops.length > 5) {
       lines.push(`  …and ${(input.openLoops.length - 5).toString()} more — give one a plan to close it.`);
+    }
+  }
+
+  // Reconnect: a tie you usually keep up with has gone quiet past your own
+  // cadence — a gentle nudge, never an autonomous message.
+  if (input.reconnect.length > 0) {
+    lines.push("", `💬 Reconnect — out of touch longer than usual (${input.reconnect.length.toString()}):`);
+    for (const item of input.reconnect.slice(0, 5)) {
+      lines.push(`  💬 ${item}`);
     }
   }
 
@@ -264,7 +279,18 @@ export async function gatherEveningRecap(
   try {
     openFollowups = (await readFollowups(resolveFollowupsFile(env))).length;
   } catch { /* fail-soft */ }
-  return { comingUp, goneQuiet, now, openFollowups, openLoops: openLoopLines, performedToday, sessionsToday, slipping };
+  // Reconnect: ties overdue vs your own cadence, from PAST calendar events that
+  // mention each contact (timestamps only, no content). Top 3 to keep it gentle.
+  const reconnect: string[] = [];
+  try {
+    const contacts = await readContacts(resolveContactsFile(env));
+    const pastEvents = await readLocalEvents(resolveLocalCalendarFile(env), new Date(now.getTime() - 365 * 86_400_000), now);
+    const interactions = interactionsFromEvents(contacts, pastEvents.map((event) => ({ startsAt: event.startsAtIso, title: event.title })));
+    for (const tie of overdueContacts(interactions, { maxResults: 3, nowMs: now.getTime() })) {
+      reconnect.push(`${tie.name} — last ~${Math.round(tie.gapDays).toString()}d ago (usually every ~${Math.round(tie.cadenceDays).toString()}d)`);
+    }
+  } catch { /* fail-soft — no contacts / calendar */ }
+  return { comingUp, goneQuiet, now, openFollowups, openLoops: openLoopLines, performedToday, reconnect, sessionsToday, slipping };
 }
 
 /**
