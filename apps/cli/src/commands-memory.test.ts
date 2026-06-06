@@ -1,7 +1,7 @@
 import type { RecallHitRecord } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { promoteRecalledMemories, searchMemoryEntries } from "./commands-memory.js";
+import { formatConsolidationPlan, promoteRecalledMemories, searchMemoryEntries } from "./commands-memory.js";
 
 const facts = { name: "Jin", city: "Seoul", role: "engineer" };
 const prefs = { reply_style: "concise", language: "Korean" };
@@ -71,5 +71,23 @@ describe("promoteRecalledMemories — dreaming pass (store injected)", () => {
     const res = await promoteRecalledMemories({ store, userId: "stark", readHits: async () => [{ hits: 1, key: "x", lastHitMs: NOW.getTime() }], now: () => NOW });
     expect(res.promoted).toEqual([]);
     expect(Object.keys(facts)).toEqual([]);
+  });
+});
+
+describe("formatConsolidationPlan — the sleep-consolidation readout (B2)", () => {
+  it("shows promote + fade halves and labels it non-destructive", () => {
+    const out = formatConsolidationPlan({
+      promote: [{ key: "standup", hits: 12, score: 12 }],
+      fade: [{ key: "old-trip", hits: 1, score: 0.02, ageDays: 120 }]
+    });
+    expect(out).toContain("promoting 1 salient");
+    expect(out).toContain("standup");
+    expect(out).toContain("fading 1");
+    expect(out).toContain("old-trip");
+    expect(out).toContain("not deleted");
+  });
+
+  it("says so when there is nothing to consolidate", () => {
+    expect(formatConsolidationPlan({ promote: [], fade: [] })).toContain("nothing to consolidate");
   });
 });

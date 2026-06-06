@@ -50,7 +50,7 @@ change is a regression.**
   - *Check:* synthetic contact log with a known overdue tie → assert it (and only
     it) is flagged.
 
-- [ ] **B2 · Synaptic tagging & capture / hippocampal replay → background consolidation** (Tetzlaff 2021; Cairney et al., Trends Neurosci. 2025).
+- [x] **B2 · Synaptic tagging & capture → consolidation** (forget-half engine + `muse memory consolidate`; daemon hook = follow-up) (Tetzlaff 2021; Cairney et al., Trends Neurosci. 2025).
   - *Mechanism:* salient/re-engaged traces get consolidated; the rest decay
     (salience × recency × cross-reference → replay probability).
   - *Muse:* `muse consolidate` / a **background Sleep daemon** that, when idle,

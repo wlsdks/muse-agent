@@ -87,3 +87,76 @@ export function selectPromotableMemories(
     .sort((left, right) => right.score - left.score)
     .slice(0, maxPromoted);
 }
+
+const DAY_MS_FADE = 24 * 60 * 60_000;
+const DEFAULT_FADE_MAX_SCORE = 0.25;
+const DEFAULT_FADE_MIN_AGE_DAYS = 30;
+const DEFAULT_MAX_FADING = 10;
+
+export interface SelectForgettableOptions {
+  readonly nowMs: number;
+  readonly halfLifeDays?: number;
+  /** A memory fades only when its recency-weighted score is at/below this (well under the promote floor). Default 0.25. */
+  readonly maxScore?: number;
+  /** …AND its last hit was at least this many days ago — never fade something recalled recently, however low its tally. Default 30. */
+  readonly minAgeDays?: number;
+  /** Cap the fading list. Default 10. */
+  readonly maxFading?: number;
+}
+
+export interface ForgettingMemory {
+  readonly key: string;
+  readonly hits: number;
+  readonly score: number;
+  readonly ageDays: number;
+}
+
+/**
+ * The "forget" half of sleep consolidation (synaptic tagging & capture; Tetzlaff
+ * 2021): a memory that was NOT re-engaged within its window fades, while the
+ * salient ones are captured/promoted. A fade candidate is one whose recency-
+ * weighted recall score has decayed at/below `maxScore` AND whose last hit was
+ * ≥ `minAgeDays` ago — so a recently-useful memory is never a candidate however
+ * small its tally. Ranked least-useful first. PURE + non-destructive: it only
+ * NAMES what is fading; the caller decides whether to down-rank/archive (Muse
+ * never silently deletes the user's data).
+ */
+export function selectForgettable(
+  records: readonly RecallHitLike[],
+  options: SelectForgettableOptions
+): readonly ForgettingMemory[] {
+  const maxScore = Number.isFinite(options.maxScore) ? Math.max(0, options.maxScore!) : DEFAULT_FADE_MAX_SCORE;
+  const minAgeDays = Number.isFinite(options.minAgeDays) ? Math.max(0, options.minAgeDays!) : DEFAULT_FADE_MIN_AGE_DAYS;
+  const maxFading = Number.isFinite(options.maxFading) ? Math.max(1, Math.trunc(options.maxFading!)) : DEFAULT_MAX_FADING;
+  return records
+    .map((record) => ({
+      ageDays: Math.max(0, (options.nowMs - record.lastHitMs) / DAY_MS_FADE),
+      hits: Number.isFinite(record.hits) ? Math.max(0, record.hits) : 0,
+      key: record.key,
+      score: scoreRecallHit(record, options.nowMs, options.halfLifeDays)
+    }))
+    .filter((memory) => memory.score <= maxScore && memory.ageDays >= minAgeDays)
+    .sort((left, right) => left.score - right.score)
+    .slice(0, maxFading);
+}
+
+export interface ConsolidationPlan {
+  readonly promote: readonly PromotedMemory[];
+  readonly fade: readonly ForgettingMemory[];
+}
+
+/**
+ * One sleep-consolidation pass: which memories to PROMOTE (re-engaged, salient)
+ * and which are FADING (decayed + idle). Pure — a background daemon resolves the
+ * hit records from disk and runs this when the machine is idle. Non-destructive:
+ * the fade list is a report, not a delete.
+ */
+export function consolidationPlan(
+  records: readonly RecallHitLike[],
+  options: SelectPromotableOptions & SelectForgettableOptions
+): ConsolidationPlan {
+  return {
+    fade: selectForgettable(records, options),
+    promote: selectPromotableMemories(records, options)
+  };
+}

@@ -21,7 +21,7 @@
 
 import { readFile } from "node:fs/promises";
 
-import { defaultBeliefProvenanceFile, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, selectPromotableMemories } from "@muse/memory";
+import { consolidationPlan, defaultBeliefProvenanceFile, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, selectPromotableMemories, type ConsolidationPlan } from "@muse/memory";
 import { resolveRecallHitsFile } from "@muse/autoconfigure";
 import { readRecallHits, type RecallHitRecord } from "@muse/mcp";
 import type { Command } from "commander";
@@ -155,6 +155,27 @@ export function buildFactTimeline(
  * store returned. Uses the latest (records[0]); a forgotten/untracked key
  * yields a friendly note. Pure for testability.
  */
+/** Render one sleep-consolidation pass as an honest, non-destructive readout. Pure. */
+export function formatConsolidationPlan(plan: ConsolidationPlan): string {
+  if (plan.promote.length === 0 && plan.fade.length === 0) {
+    return "🌙 Sleep consolidation: nothing to consolidate yet — recall a few memories first.\n";
+  }
+  const lines = ["🌙 Sleep consolidation (recall-driven; non-destructive)"];
+  if (plan.promote.length > 0) {
+    lines.push(`  ↑ promoting ${plan.promote.length.toString()} salient (re-engaged):`);
+    for (const memory of plan.promote) {
+      lines.push(`    • ${memory.key}  (score ${memory.score.toFixed(2)}, ${memory.hits.toString()}× recalled)`);
+    }
+  }
+  if (plan.fade.length > 0) {
+    lines.push(`  ↓ fading ${plan.fade.length.toString()} (idle + decayed — kept, not deleted):`);
+    for (const memory of plan.fade) {
+      lines.push(`    • ${memory.key}  (score ${memory.score.toFixed(2)}, idle ${Math.round(memory.ageDays).toString()}d)`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 export function formatBeliefWhy(
   records: ReadonlyArray<{ readonly kind: string; readonly key: string; readonly value: string; readonly learnedAt: string; readonly evidenceExcerpt?: string; readonly sessionId?: string; readonly source?: "auto" | "user" }>,
   key: string
@@ -219,6 +240,25 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
       }
       const merged = { userId, ...(payload ?? {}) };
       io.stdout(formatMemoryShow(merged as unknown as Parameters<typeof formatMemoryShow>[0]));
+    });
+
+  memory
+    .command("consolidate")
+    .description("Sleep consolidation: which recalled memories are PROMOTING (salient) vs FADING (idle + decayed) — report only, never deletes")
+    .option("--json", "Print the raw plan")
+    .action(async (options: { readonly json?: boolean }) => {
+      const file = resolveRecallHitsFile(process.env as Record<string, string | undefined>);
+      const records = await readRecallHits(file);
+      const nowMs = Date.now();
+      const plan = consolidationPlan(
+        records.map((record) => ({ hits: record.hits, key: record.key, lastHitMs: record.lastHitMs })),
+        { nowMs }
+      );
+      if (options.json) {
+        helpers.writeOutput(io, plan);
+        return;
+      }
+      io.stdout(formatConsolidationPlan(plan));
     });
 
   memory

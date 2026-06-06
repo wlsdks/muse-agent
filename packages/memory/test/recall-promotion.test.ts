@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { scoreRecallHit, selectPromotableMemories, type RecallHitLike } from "../src/index.js";
+import { consolidationPlan, scoreRecallHit, selectForgettable, selectPromotableMemories, type RecallHitLike } from "../src/index.js";
 
 const NOW = Date.UTC(2026, 4, 1, 0, 0, 0);
 const daysAgo = (d: number): number => NOW - d * 24 * 60 * 60_000;
@@ -86,5 +86,45 @@ describe("selectPromotableMemories", () => {
     const out = selectPromotableMemories(recs, { maxPromoted: 2, nowMs: NOW });
     expect(out.map((p) => p.key)).toEqual(["top", "mid"]); // "low" dropped by the cap, order by score
     expect(out[0]!.score).toBeGreaterThan(out[1]!.score);
+  });
+});
+
+describe("selectForgettable — the FORGET half of sleep consolidation (non-destructive)", () => {
+  it("flags a memory that is BOTH decayed (low score) AND idle (old last hit)", () => {
+    const records: RecallHitLike[] = [
+      { key: "fresh-useful", hits: 8, lastHitMs: daysAgo(2) },     // high score, recent → keep
+      { key: "stale-unused", hits: 1, lastHitMs: daysAgo(120) },   // low score + old → FADE
+      { key: "low-but-recent", hits: 1, lastHitMs: daysAgo(3) }    // low score but recent → keep
+    ];
+    const fading = selectForgettable(records, { nowMs: NOW });
+    expect(fading.map((m) => m.key)).toEqual(["stale-unused"]);
+    expect(fading[0]!.ageDays).toBeGreaterThanOrEqual(30);
+  });
+
+  it("never fades a recently-hit memory however small its tally (minAgeDays guard)", () => {
+    const records: RecallHitLike[] = [{ key: "tiny-recent", hits: 1, lastHitMs: daysAgo(5) }];
+    expect(selectForgettable(records, { nowMs: NOW })).toEqual([]);
+  });
+
+  it("ranks least-useful first and caps the list", () => {
+    const records: RecallHitLike[] = Array.from({ length: 15 }, (_, i) => ({ key: `m${i}`, hits: 1, lastHitMs: daysAgo(60 + i) }));
+    const fading = selectForgettable(records, { nowMs: NOW, maxFading: 5 });
+    expect(fading).toHaveLength(5);
+    for (let i = 1; i < fading.length; i++) expect(fading[i]!.score).toBeGreaterThanOrEqual(fading[i - 1]!.score);
+  });
+});
+
+describe("consolidationPlan — one sleep pass: promote the salient, name the fading", () => {
+  it("returns both halves over one record set", () => {
+    const records: RecallHitLike[] = [
+      { key: "star", hits: 9, lastHitMs: daysAgo(1) },        // promote
+      { key: "ghost", hits: 1, lastHitMs: daysAgo(200) }      // fade
+    ];
+    const plan = consolidationPlan(records, { nowMs: NOW });
+    expect(plan.promote.map((m) => m.key)).toContain("star");
+    expect(plan.fade.map((m) => m.key)).toContain("ghost");
+    // a promoted memory is never also a fade candidate
+    const overlap = plan.promote.filter((p) => plan.fade.some((f) => f.key === p.key));
+    expect(overlap).toEqual([]);
   });
 });

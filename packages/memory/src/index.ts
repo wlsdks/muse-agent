@@ -430,10 +430,15 @@ export {
 // `Record<string,string>` facts/preferences. Persistence + runtime
 // wiring lands in subsequent iters.
 export {
+  consolidationPlan,
   scoreRecallHit,
+  selectForgettable,
   selectPromotableMemories,
+  type ConsolidationPlan,
+  type ForgettingMemory,
   type PromotedMemory,
   type RecallHitLike,
+  type SelectForgettableOptions,
   type SelectPromotableOptions
 } from "./recall-promotion.js";
 
