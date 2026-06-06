@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatFiredList, parseConfidence, parseLimit } from "./commands-pattern.js";
+import { formatFiredList, formatShift, parseConfidence, parseLimit } from "./commands-pattern.js";
 
 describe("parseLimit (goal 177)", () => {
   it("returns the fallback when the flag is absent or blank", () => {
@@ -62,5 +62,20 @@ describe("formatFiredList — a corrupt firedAtMs can't crash the whole listing"
 
   it("empty list is unchanged", () => {
     expect(formatFiredList([])).toBe("No patterns have fired yet.\n");
+  });
+});
+
+describe("formatShift — routine change-point readout (C5)", () => {
+  const days = Array.from({ length: 20 }, (_, i) => ({ count: i < 10 ? 3 : 12, date: `2026-05-${String(i + 1).padStart(2, "0")}` }));
+  it("needs enough history", () => {
+    expect(formatShift(null, days.slice(0, 5))).toContain("Not enough history");
+  });
+  it("all-clear when no shift", () => {
+    expect(formatShift(null, days)).toContain("No clear routine shift");
+  });
+  it("reports the shift date, direction, and before/after levels", () => {
+    const out = formatShift({ index: 10, beforeMean: 3, afterMean: 12, magnitude: 1.3, direction: "up" }, days);
+    expect(out).toContain("picked up around 2026-05-11");
+    expect(out).toContain("3.0/day to 12.0/day");
   });
 });

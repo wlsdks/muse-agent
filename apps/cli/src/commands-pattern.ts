@@ -33,13 +33,31 @@ import {
   type PatternFiredRecord
 } from "@muse/mcp";
 import { resolvePatternsFiredFile } from "@muse/autoconfigure";
+import { dailyCounts, detectChangePoint, type ChangePoint, type DayCount } from "@muse/agent-core";
 import type { Command } from "commander";
 
+import { gatherActivityTimestamps } from "./commands-anomaly.js";
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
 
 interface SharedOptions {
   readonly json?: boolean;
+}
+
+/** Render the routine-shift readout. Pure. */
+export function formatShift(shift: ChangePoint | null, days: readonly DayCount[]): string {
+  if (days.length < 8) {
+    return "🔀 Not enough history yet to spot a routine shift — keep using Muse for a couple of weeks.\n";
+  }
+  if (!shift) {
+    return `🔀 No clear routine shift across your ${days.length.toString()}-day history — your rhythm's been steady.\n`;
+  }
+  const onDate = days[shift.index]?.date ?? "?";
+  const verb = shift.direction === "up" ? "picked up" : "dropped off";
+  return (
+    `🔀 Your activity ${verb} around ${onDate} — from about ${shift.beforeMean.toFixed(1)}/day to ${shift.afterMean.toFixed(1)}/day ` +
+    `(${shift.magnitude.toFixed(1)}σ shift).\n`
+  );
 }
 
 function localPatternsFiredFile(): string {
@@ -78,6 +96,20 @@ export function registerPatternCommands(program: Command, io: ProgramIO): void {
         return;
       }
       io.stdout(formatPatternList(all));
+    });
+
+  pattern
+    .command("shifts")
+    .description("Detect WHEN your routine changed regime — the onset of a new normal in your activity (local, draft-first)")
+    .option("--json", "Print the raw change-point")
+    .action(async (options: SharedOptions) => {
+      const days = dailyCounts(await gatherActivityTimestamps(process.env as Record<string, string | undefined>));
+      const shift = days.length >= 8 ? detectChangePoint(days.map((day) => day.count)) : null;
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ days: days.length, shift, shiftDate: shift ? days[shift.index]?.date : undefined }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(formatShift(shift, days));
     });
 
   pattern

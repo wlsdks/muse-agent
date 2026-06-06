@@ -210,6 +210,7 @@ export { overdueContacts, type ContactInteractions, type OverdueContact, type Ov
 export { selectEarnedThemes, type EarnedProactivityOptions, type EarnedTheme, type ThemeOccurrence, type ThemeSignal } from "./earned-proactivity.js";
 export { dailyCounts, mostAnomalousDays, type AnomalyOptions, type DayAnomaly, type DayCount } from "./activity-anomaly.js";
 export { openLoops, type OpenLoop, type OpenLoopOptions, type TaskLike } from "./open-loops.js";
+export { detectChangePoint, type ChangePoint, type ChangePointOptions } from "./change-point.js";
 export {
   createConfidenceGatedInvestigator,
   decideProactiveRecall,

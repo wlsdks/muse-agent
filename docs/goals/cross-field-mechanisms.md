@@ -66,7 +66,7 @@ change is a regression.**
 - [~] **C2 · C1 feed-forward-loop persistence gate** — pure `selectEarnedThemes` engine ✅ (proven); daemon wiring (needs a theme-occurrence source) next. (Mangan & Alon 2003) → earned-proactivity: a nudge fires only when a theme persists across multiple sources over a dwell window (the north-star "earned proactivity", 3 counters + threshold).
 - [ ] **C3 · Peak-end rule** (Kahneman et al. 1993) → `muse recap` stores an episode as its PEAK + END (cited), cheaper retrieval.
 - [x] **C4 · Zeigarnik / Ovsiankina open-loops** (`muse tasks open-loops`) (Masicampo & Baumeister 2011) → `muse open-loops`: surface unfinished tasks + attach a when/where plan.
-- [ ] **C5 · Bayesian online change-point** (Adams & MacKay 2007) → `muse patterns --shifts`: detect the START of a new routine regime (complements CUSUM).
+- [x] **C5 · change-point detection** (`muse pattern shifts`) (Adams & MacKay 2007) → `muse patterns --shifts`: detect the START of a new routine regime (complements CUSUM).
 
 ## Sequencing (compounding order)
 
