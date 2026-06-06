@@ -50,7 +50,24 @@ Read these five and you know exactly what kind of agent this is.
 
 Principle 1 is *why* you can tell it everything; principles 2–3 are *what it
 then does for you*; principle 4 is *how* it keeps getting capabilities a copycat
-can't. Deep dives: [the edge](docs/strategy/the-edge.md) ·
+can't.
+
+### Borrowed from nature (principle 4, in the flesh)
+
+Concrete examples of mechanism 4 — a real result from biology / life-sciences
+turned into a live-verified Muse capability (the full 20-mechanism catalog
+across all fields is [further down](#cross-field-mechanism-distillation-the-moat)):
+
+| Field | Mechanism (paper) | Muse capability |
+| --- | --- | --- |
+| Ecology | Optimal foraging / Marginal Value Theorem (Charnov 1976) | `muse recall --adaptive` — the evidence decides how many sources to return |
+| Ecology / biodiversity | Shannon & Simpson diversity indices (Shannon 1948; Simpson 1949) | `muse diversity` — is a column concentrated in one bucket, or genuinely varied? |
+| Ant colonies | Stigmergy / pheromone trails (Grassé 1959; Vittori 2006) | `muse notes trails` / `hubs` — an evaporating co-recall relatedness graph |
+| Physiology / neuroscience | Allostasis — predictive regulation (Sterling 2012) | `muse pattern upcoming` — anticipate a recurring need before its slot |
+| Ecology / network science | Keystone species + brokerage (Paine 1966; Freeman 1977) | `muse notes bridges` — the notes connecting your otherwise-separate topics |
+| Network science | k-shell influential spreaders (Kitsak et al. 2010) | `muse notes hubs` — the load-bearing core of your notes (depth, not degree) |
+
+Deep dives: [the edge](docs/strategy/the-edge.md) ·
 [Whetstone](docs/strategy/whetstone.md) ·
 [cross-field catalog](docs/strategy/cross-field-research.md).
 
@@ -445,25 +462,32 @@ fields** — biology, ecology, neuroscience, network science, control theory,
 decision & information theory, linguistics, psychology, forensic & environmental
 statistics — distilling a real mechanism into a deterministic, live-verified
 capability. A rival can copy a feature; copying a *research-distillation
-discipline yoked to a fabrication-zero floor* is far harder. A sample (full
-catalog + negative results in
+discipline yoked to a fabrication-zero floor* is far harder. The complete
+catalog (with negative results — mechanisms tried and rejected — in
 [`docs/strategy/cross-field-research.md`](docs/strategy/cross-field-research.md)):
 
-| Field | Mechanism | Capability |
+| Field | Mechanism (paper) | Muse capability |
 | --- | --- | --- |
-| Ecology | Marginal Value Theorem (Charnov 1976) | `muse recall --adaptive` |
-| Ecology (biodiversity) | Shannon & Simpson diversity (Shannon 1948; Simpson 1949) | `muse diversity` |
-| Collective behaviour | Stigmergy / ant trails (Grassé; Vittori) | `muse notes trails` / `hubs` |
-| Physiology | Allostasis (Sterling 2012) | `muse pattern upcoming` |
-| Control theory | CUSUM change-point (Page 1954) | `muse pattern lapsed` |
-| Queueing theory | Little's Law (Little 1961) | `muse tasks flow` |
-| Forensic statistics | Benford's Law (Benford 1938) | `muse benford` |
-| Environmental statistics | Mann-Kendall trend (Mann 1945) | `muse trend` |
-| Cognitive psychology | Date-cued autobiographical recall (Rubin 1986) | `muse on-this-day` |
-| Information science | Luhn extractive summary (Luhn 1958) | `muse summarize` |
-| Org. psychology | Attention residue / deep work (Leroy 2009) | `muse calendar focus` / `block` |
-| Network science / ecology | Betweenness / brokerage (Freeman 1977) + keystone species (Paine 1966) | `muse notes bridges` |
-| Real-time scheduling | Earliest Deadline First (Liu & Layland 1973) + aging | `muse tasks next` |
+| Ecology | Optimal foraging / Marginal Value Theorem (Charnov 1976) | `muse recall --adaptive` — the evidence picks how many sources to return |
+| Ecology / biodiversity | Shannon & Simpson diversity + Pielou evenness (Shannon 1948; Simpson 1949) | `muse diversity` — is a category column diverse or concentrated? |
+| Collective behaviour / biology | Stigmergy, ant pheromone trails (Grassé 1959; Vittori 2006) | `muse notes trails` / `hubs` — an evaporating co-recall relatedness graph |
+| Physiology / neuroscience | Allostasis — predictive regulation (Sterling 2012) | `muse pattern upcoming` — anticipate a recurring need before its slot |
+| Network science | k-shell decomposition / influential spreaders (Kitsak et al. 2010) | `muse notes hubs` — the load-bearing core of your notes (depth, not degree) |
+| Network science / ecology | Betweenness / brokerage (Freeman 1977; Burt 1992) + keystone species (Paine 1966) | `muse notes bridges` — the notes connecting your separate topic clusters |
+| Control theory / SPC | CUSUM change-point (Page 1954) | `muse pattern lapsed` — a recurring habit that has STOPPED |
+| Decision / information theory | Expected information gain / EVPI (Lindley 1956; Howard 1966) | `muse ask` clarify arm — ask when divergent sources tie, vs guess or abstain |
+| Computer science (web-scale) | Broder resemblance / shingling (Broder 1997) | `muse feeds` near-duplicate collapse (same story across outlets) |
+| Information science | Luhn extractive summarization (Luhn 1958) | `muse summarize` — a document's own key sentences (cannot fabricate) |
+| NLP | RAKE keyphrase extraction (Rose et al. 2010) | `muse keywords` — a document's key phrases (topics) |
+| Computational linguistics | Pointwise mutual information (Church & Hanks 1990) | `muse contacts related` — inferred relationship edges from co-mention |
+| Queueing / operations research | Little's Law L=λW (Little 1961) | `muse tasks flow` — are you finishing tasks as fast as you add them? |
+| Real-time systems / scheduling | Earliest Deadline First (Liu & Layland 1973) + aging | `muse tasks next` — what to do NOW, with a why-now; old tasks aged up |
+| Forensic statistics | Benford's Law + Pearson χ² (Benford 1938; Pearson 1900) | `muse benford` — unnatural patterns in a numeric column |
+| Environmental statistics | Mann-Kendall trend + Sen's slope (Mann 1945; Kendall 1975) | `muse trend` — is a tracking column rising, falling, or wandering? |
+| Cognitive psychology | Autobiographical / date-cued recall (Rubin et al. 1986) | `muse on-this-day` — notes from today's date in earlier years |
+| Organizational psychology | Attention residue / deep work (Leroy 2009) | `muse calendar focus` — your longest uninterrupted block |
+| Psychology | Implementation intentions / time-blocking (Gollwitzer 1999) | `muse calendar block` — book the next free slot to protect focus |
+| Cognition / strategy | First-principles (Musk) + contrarian question (Thiel) | reasoning principles in `muse ask` — the engine; the grounding floor is the brake |
 
 Each mechanism cites its paper in the module header comment; every slice is
 recorded in [`CAPABILITIES.md`](docs/goals/CAPABILITIES.md).
