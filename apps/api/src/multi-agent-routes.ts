@@ -744,12 +744,15 @@ const SYNTHESIZER_REQUEST_TIMEOUT_MS = 20_000;
 export function createWorkerSynthesizer(
   modelProvider: ModelProvider | undefined,
   model: string
-): ((parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<string>) | undefined {
+): ((parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>, guidance?: string) => Promise<string>) | undefined {
   if (!modelProvider) {
     return undefined;
   }
-  return async (parts) => {
-    const userContent = parts.map((p) => `### ${p.workerId}\n${p.output}`).join("\n\n");
+  return async (parts, guidance) => {
+    // `guidance` is the verifier's gap (evaluator-optimizer retry) — steer the
+    // re-synthesis to cover it, still grounded in the sub-agents' outputs.
+    const guidanceLine = guidance && guidance.trim().length > 0 ? `\n\n[Guidance: ${guidance.trim()}]` : "";
+    const userContent = `${parts.map((p) => `### ${p.workerId}\n${p.output}`).join("\n\n")}${guidanceLine}`;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const response = await Promise.race([

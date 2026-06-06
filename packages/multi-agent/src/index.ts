@@ -107,7 +107,7 @@ export interface OrchestrationRunOptions {
    * stays model-agnostic; fail-soft — if it throws or returns empty, the
    * orchestration falls back to the concatenation (never loses the answer).
    */
-  readonly synthesizeFinalAnswer?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<string>;
+  readonly synthesizeFinalAnswer?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>, guidance?: string) => Promise<string>;
   /**
    * Verification against the ORIGINAL objective (MAST, arXiv 2503.13657: a verify
    * step focused on the high-level task → +15.6% success; most multi-agent
@@ -664,7 +664,7 @@ async function buildOrchestrationResponse(
   results: readonly OrchestrationStepResult[],
   maxOutputCharsPerWorker: number | undefined,
   summarizeWorkerOutput: ((workerId: string, output: string) => Promise<string>) | undefined,
-  synthesizeFinalAnswer?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<string>,
+  synthesizeFinalAnswer?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>, guidance?: string) => Promise<string>,
   objective?: string,
   verifyFinalAnswer?: (objective: string, output: string) => Promise<{ readonly satisfied: boolean; readonly missing?: string }>
 ): Promise<AgentRunResult["response"]> {
@@ -684,31 +684,42 @@ async function buildOrchestrationResponse(
   // Optional final-answer synthesis: fuse the completed workers into ONE
   // coherent answer. Fail-soft — a throwing / empty synthesizer keeps the
   // concatenation, so the orchestration never loses its output.
-  let output = concatenated;
-  if (synthesizeFinalAnswer) {
-    const completedParts = results
-      .filter((r) => r.status === "completed")
-      .map((r) => ({ output: r.result?.response.output ?? "", workerId: r.workerId }));
-    if (completedParts.length > 0) {
-      try {
-        const synthesized = await synthesizeFinalAnswer(completedParts);
-        if (typeof synthesized === "string" && synthesized.trim().length > 0) {
-          output = synthesized;
-        }
-      } catch {
-        // keep the concatenation
-      }
-    }
-  }
+  const completedParts = results
+    .filter((r) => r.status === "completed")
+    .map((r) => ({ output: r.result?.response.output ?? "", workerId: r.workerId }));
 
-  // Verification against the original objective (the MAST +15.6% lever). A SEPARATE
-  // judge confirms the synthesised answer satisfies the user's request; an
-  // unsatisfied verdict is recorded AND surfaced honestly. Fail-soft — a throwing
-  // verifier never breaks the run (the answer still ships).
+  // Fuse the workers into one answer, optionally steered by `guidance` (the gap
+  // the verifier found). Fail-soft — empty/throw keeps the prior output.
+  const trySynthesize = async (guidance?: string): Promise<string | undefined> => {
+    if (!synthesizeFinalAnswer || completedParts.length === 0) {
+      return undefined;
+    }
+    try {
+      const s = await synthesizeFinalAnswer(completedParts, guidance);
+      return typeof s === "string" && s.trim().length > 0 ? s : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  let output = (await trySynthesize()) ?? concatenated;
+
+  // Verify against the original objective, then the evaluator-OPTIMIZER half: on an
+  // incomplete verdict, RE-SYNTHESISE ONCE with the missing piece as guidance and
+  // re-verify — MAST's +15.6% is catch AND fix, not just flag. The answer is only
+  // marked incomplete if it's STILL missing something after the single retry (bounded
+  // — small-model coherence degrades past 2 hops). Fail-soft throughout.
   let verification: { readonly satisfied: boolean; readonly missing?: string } | undefined;
   if (verifyFinalAnswer && objective && objective.trim().length > 0 && output.trim().length > 0) {
     try {
-      const verdict = await verifyFinalAnswer(objective, output);
+      let verdict = await verifyFinalAnswer(objective, output);
+      if (!verdict.satisfied && verdict.missing && verdict.missing.trim().length > 0) {
+        const fixed = await trySynthesize(`Make sure the final answer also fully covers: ${verdict.missing.trim()}`);
+        if (fixed && fixed.trim() !== output.trim()) {
+          output = fixed;
+          verdict = await verifyFinalAnswer(objective, output);
+        }
+      }
       verification = verdict.missing ? { missing: verdict.missing, satisfied: verdict.satisfied } : { satisfied: verdict.satisfied };
       if (!verdict.satisfied) {
         const gap = verdict.missing?.trim();

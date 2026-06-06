@@ -85,6 +85,46 @@ describe("MultiAgentOrchestrator — verification against the original objective
     expect((result.response.raw as { verification?: { satisfied: boolean } }).verification).toEqual({ satisfied: true });
   });
 
+  it("evaluator-optimizer: an incomplete answer is RE-SYNTHESIZED with the gap as guidance and re-verified — fixed answers ship clean (no ⚠ note)", async () => {
+    const orchestrator = new MultiAgentOrchestrator({ idFactory: () => "v4", workers: twoWorkers() });
+    let synthCalls = 0;
+    const seenGuidance: Array<string | undefined> = [];
+    const result = await orchestrator.run(
+      { messages: [{ content: "should we cache, and the risks?", role: "user" }], model: "m" },
+      {
+        // First synth drops the risks; the guided retry includes them.
+        synthesizeFinalAnswer: async (_parts, guidance) => {
+          synthCalls += 1;
+          seenGuidance.push(guidance);
+          return guidance ? "Cache in Redis. Risks: stale data." : "Cache in Redis.";
+        },
+        verifyFinalAnswer: async (_obj, output) =>
+          output.toLowerCase().includes("risk") ? { satisfied: true } : { missing: "the risks", satisfied: false }
+      }
+    );
+    expect(synthCalls).toBe(2); // initial + one guided retry
+    expect(seenGuidance[1]).toContain("the risks"); // the gap is fed back as guidance
+    expect(result.response.output).toBe("Cache in Redis. Risks: stale data."); // the FIXED answer
+    expect(result.response.output).not.toContain("incomplete"); // re-verify passed → no flag
+    expect((result.response.raw as { verification?: { satisfied: boolean } }).verification).toEqual({ satisfied: true });
+  });
+
+  it("evaluator-optimizer: if the retry STILL can't cover the gap, the answer is flagged honestly (bounded — no infinite loop)", async () => {
+    const orchestrator = new MultiAgentOrchestrator({ idFactory: () => "v5", workers: twoWorkers() });
+    let synthCalls = 0;
+    const result = await orchestrator.run(
+      { messages: [{ content: "and the risks?", role: "user" }], model: "m" },
+      {
+        synthesizeFinalAnswer: async () => { synthCalls += 1; return "Cache in Redis."; }, // never covers risks
+        verifyFinalAnswer: async (_obj, output) =>
+          output.toLowerCase().includes("risk") ? { satisfied: true } : { missing: "the risks", satisfied: false }
+      }
+    );
+    expect(synthCalls).toBe(2); // initial + one retry, then STOP (bounded)
+    expect(result.response.output).toContain("⚠ This answer may be incomplete");
+    expect(result.response.output).toContain("still missing: the risks");
+  });
+
   it("a throwing verifier is fail-soft — the answer still ships, no verification field", async () => {
     const orchestrator = new MultiAgentOrchestrator({ idFactory: () => "v3", workers: twoWorkers() });
     const result = await orchestrator.run(
