@@ -1,6 +1,45 @@
 import { describe, expect, it } from "vitest";
 
-import { RECALL_SOURCE_VALUES, clampLimit, filterLiveEpisodeEntries, filterLiveNoteIndexFiles, rankRecallCandidates, resolveSource } from "./commands-recall.js";
+import { RECALL_SOURCE_VALUES, clampLimit, filterLiveEpisodeEntries, filterLiveNoteIndexFiles, rankRecallCandidates, relevantExcerpt, resolveSource } from "./commands-recall.js";
+
+const tokens = (...t: string[]): ReadonlySet<string> => new Set(t);
+
+describe("relevantExcerpt — never drops the answer line when the note fits the budget", () => {
+  const NOTE =
+    "# 회사 정보\n" +
+    "사내 와이파이 비밀번호는 Muse2026! 이고, 회의실 예약은 김지원 매니저에게 문의한다.\n" +
+    "다음 전사 회의는 2026년 7월 3일 오후 4시에 3층 대강당에서 열린다.";
+
+  it("returns the WHOLE note (both facts) when it fits, so a '회의' query can't drop the '전사 회의' answer", () => {
+    // Live-observed bug: excerpting to the single best-overlap line let "회의실"
+    // win over the "전사 회의" answer line, which was then discarded — chat
+    // answered the wrong fact while `ask` (full chunk) was correct.
+    const out = relevantExcerpt(NOTE, tokens("다음", "전사", "회의", "언제", "어디서"));
+    expect(out).toContain("전사 회의");
+    expect(out).toContain("대강당");
+    expect(out).toContain("와이파이");
+    expect(out).not.toContain("# 회사 정보");
+  });
+
+  it("falls back to the single best-overlap line when the note EXCEEDS the budget", () => {
+    const long = `${"가".repeat(150)} 와이파이 비밀번호는 secret\n${"나".repeat(150)} 전사 회의는 대강당`;
+    const out = relevantExcerpt(long, tokens("전사", "회의", "대강당"), 200);
+    expect(out).toContain("전사 회의는 대강당");
+    expect(out).not.toContain("와이파이");
+    expect(out.length).toBeLessThanOrEqual(200);
+  });
+
+  it("returns the first content line when no query token overlaps and the note is over budget", () => {
+    const long = `first ${"x".repeat(210)}\nsecond ${"y".repeat(210)}`;
+    const out = relevantExcerpt(long, tokens("zzz"), 200);
+    expect(out.startsWith("first ")).toBe(true);
+    expect(out.length).toBeLessThanOrEqual(200);
+  });
+
+  it("returns a short header-less blob intact", () => {
+    expect(relevantExcerpt("just one short line", tokens("one"))).toBe("just one short line");
+  });
+});
 
 describe("rankRecallCandidates — hybrid keyword+vector", () => {
   const notes = [
@@ -16,22 +55,23 @@ describe("rankRecallCandidates — hybrid keyword+vector", () => {
     expect(rankRecallCandidates({ ...base, queryText: "quarterly budget" })[0]?.ref).toBe("b.md");
   });
 
-  it("the snippet PREVIEWS the query-relevant line of a multi-line chunk, not the opening (and skips the heading)", () => {
+  it("includes the query-relevant line of a short multi-line chunk (and skips the heading)", () => {
+    // A chunk within the excerpt budget is returned whole — so the answer line
+    // is never dropped (see the relevantExcerpt suite for the live-bug rationale).
     const multiLine = [{
       path: "log.md",
       text: "# Meeting log\nGeneral standup chatter about the weather.\nThe Q3 board deck must cover the new pricing tiers.",
       embedding: [1, 0]
     }];
     const hit = rankRecallCandidates({ episodeEntries: [], limit: 1, noteChunks: multiLine, queryText: "Q3 board deck pricing", queryVec: [1, 0], source: "notes" })[0];
-    expect(hit?.snippet).toBe("The Q3 board deck must cover the new pricing tiers.");
-    expect(hit?.snippet).not.toContain("# Meeting log"); // heading excluded
-    expect(hit?.snippet).not.toContain("standup chatter"); // not the opening
+    expect(hit?.snippet).toContain("The Q3 board deck must cover the new pricing tiers."); // the answer line survives
+    expect(hit?.snippet).not.toContain("# Meeting log"); // heading still excluded
   });
 
-  it("falls back to the opening when no query text is given (back-compat)", () => {
+  it("keeps the opening content when no query text is given (back-compat)", () => {
     const chunk = [{ path: "n.md", text: "first line here\nsecond line there", embedding: [1, 0] }];
     const hit = rankRecallCandidates({ episodeEntries: [], limit: 1, noteChunks: chunk, queryVec: [1, 0], source: "notes" })[0];
-    expect(hit?.snippet).toBe("first line here");
+    expect(hit?.snippet).toContain("first line here");
   });
 });
 

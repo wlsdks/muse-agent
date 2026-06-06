@@ -111,13 +111,21 @@ function lexicalOverlap(queryTokens: ReadonlySet<string>, text: string): number 
  * content). No query overlap (or a single-line chunk) ⇒ the opening, so it's
  * never worse than the old `slice(0, max)`.
  */
-function relevantExcerpt(text: string, queryTokens: ReadonlySet<string>, max = 200): string {
+export function relevantExcerpt(text: string, queryTokens: ReadonlySet<string>, max = 200): string {
   const lines = text.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line.length > 0);
   if (lines.length === 0) {
     return text.replace(/\s+/gu, " ").trim().slice(0, max);
   }
   const content = lines.filter((line) => !/^#{1,6}(\s|$)/u.test(line));
   const candidates = content.length > 0 ? content : lines;
+  // A note that fits the budget is returned WHOLE. Excerpting a short multi-fact
+  // note down to its single best-overlap line can DROP the very fact the question
+  // asks about: observed live, a "회의" query token matched "회의실" in one line,
+  // so that line won and the "전사 회의" answer in the next line was discarded —
+  // `chat` then answered the wrong fact while `ask` (which grounds on the full
+  // chunk) was correct. Within budget, more context never hurts grounding.
+  const joined = candidates.join(" ");
+  if (joined.length <= max) return joined;
   if (queryTokens.size > 0) {
     let best = candidates[0]!;
     let bestScore = 0;
