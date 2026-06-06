@@ -11,7 +11,7 @@
 
 import { overdueContacts, type ContactInteractions, type OverdueContact } from "@muse/agent-core";
 import { resolveContactsFile, resolveLocalCalendarFile, resolveNotesDir } from "@muse/autoconfigure";
-import { promises as fsp } from "node:fs";
+import { readLocalEvents } from "./commands-today.js";
 import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, isContactsEncrypted, linkContacts, queryContacts, resolveContact, resolveUpcomingBirthdays, type Contact } from "@muse/mcp";
 
 import { relatedByCooccurrence } from "./contact-cooccurrence.js";
@@ -327,9 +327,12 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
       }
       let events: CalendarEventLike[] = [];
       try {
-        const raw = await fsp.readFile(resolveLocalCalendarFile(process.env as Record<string, string | undefined>), "utf8");
-        const parsed = JSON.parse(raw) as { events?: CalendarEventLike[] };
-        events = Array.isArray(parsed.events) ? parsed.events : [];
+        // Read via the calendar PROVIDER (same path as the evening recap's
+        // reconnect section) — so the two never diverge, and a recurring event
+        // (a weekly standup with Bob) is expanded into its instances, giving a
+        // real interaction history instead of a single stored row.
+        const provided = await readLocalEvents(resolveLocalCalendarFile(process.env as Record<string, string | undefined>), new Date(0), new Date());
+        events = provided.map((event) => ({ startsAt: event.startsAtIso, title: event.title }));
       } catch {
         // no local calendar → no interaction history → nothing overdue
       }
