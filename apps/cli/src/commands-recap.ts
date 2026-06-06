@@ -1,3 +1,4 @@
+import { openLoops } from "@muse/agent-core";
 import { resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import { detectNoteFamilyAbsence, detectTopicAbsence, type NoteActivityEvent, readActionLog, readContacts, readEpisodes, readFollowups, readReminders, readTasks, resolveUpcomingBirthdays } from "@muse/mcp";
 import type { Command } from "commander";
@@ -42,6 +43,12 @@ export interface EveningRecapInput {
    * than its own baseline. Each line cites the last session that touched it.
    */
   readonly goneQuiet: readonly string[];
+  /**
+   * OPEN LOOPS — unfinished tasks with NO due date (no plan) that have been open
+   * a while (Zeigarnik/Ovsiankina). Distinct from `slipping` (which needs a
+   * dueAt): these are the planless tasks that nag and fall through the cracks.
+   */
+  readonly openLoops: readonly string[];
   readonly openFollowups: number;
 }
 
@@ -88,6 +95,18 @@ export function composeEveningRecap(input: EveningRecapInput): string {
     lines.push("", `🔕 Gone quiet — a usual habit you haven't returned to (${input.goneQuiet.length.toString()}):`);
     for (const item of input.goneQuiet.slice(0, 5)) {
       lines.push(`  🔕 ${item}`);
+    }
+  }
+
+  // Open loops: unfinished + unscheduled — the planless tasks that nag (distinct
+  // from "slipping", which are PAST a due date). A concrete plan closes the loop.
+  if (input.openLoops.length > 0) {
+    lines.push("", `🔓 Open loops — unfinished, no plan yet (${input.openLoops.length.toString()}):`);
+    for (const item of input.openLoops.slice(0, 5)) {
+      lines.push(`  🔓 ${item}`);
+    }
+    if (input.openLoops.length > 5) {
+      lines.push(`  …and ${(input.openLoops.length - 5).toString()} more — give one a plan to close it.`);
     }
   }
 
@@ -212,8 +231,10 @@ export async function gatherEveningRecap(
       }
     }
   } catch { /* fail-soft */ }
+  const openLoopLines: string[] = [];
   try {
-    for (const task of await readTasks(resolveTasksFile(env))) {
+    const tasks = await readTasks(resolveTasksFile(env));
+    for (const task of tasks) {
       if (task.status === "open" && task.dueAt !== undefined) {
         const due = new Date(task.dueAt);
         if (!Number.isNaN(due.getTime()) && due < now) {
@@ -229,6 +250,9 @@ export async function gatherEveningRecap(
         }
       }
     }
+    for (const loop of openLoops(tasks, { nowMs: now.getTime() })) {
+      openLoopLines.push(`${loop.title} — open ${Math.round(loop.ageDays).toString()}d`);
+    }
   } catch { /* fail-soft */ }
   try {
     // Upcoming BIRTHDAYS — the whole point of storing them is not to miss one; the
@@ -240,7 +264,7 @@ export async function gatherEveningRecap(
   try {
     openFollowups = (await readFollowups(resolveFollowupsFile(env))).length;
   } catch { /* fail-soft */ }
-  return { comingUp, goneQuiet, now, openFollowups, performedToday, sessionsToday, slipping };
+  return { comingUp, goneQuiet, now, openFollowups, openLoops: openLoopLines, performedToday, sessionsToday, slipping };
 }
 
 /**
