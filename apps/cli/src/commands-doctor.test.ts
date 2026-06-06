@@ -10,11 +10,34 @@ import {
   localOnlyCheck,
   modelEnvCheck,
   notesIndexHealth,
+  formatWeaknesses,
   parseNotesIndexEmbedModel,
   resolveMuseEnvPath,
   selfLearningCheck,
   type OllamaTagsEntry
 } from "./commands-doctor.js";
+
+describe("formatWeaknesses — the Whetstone ledger as an honest self-report", () => {
+  it("renders an honest 'nothing yet' line for an empty ledger", () => {
+    expect(formatWeaknesses([])).toContain("no weak spots recorded yet");
+  });
+
+  it("sorts busiest-first, labels the axis, and shows count + last day", () => {
+    const out = formatWeaknesses([
+      { axis: "grounding-gap", count: 1, firstSeen: "2026-06-01T00:00:00Z", lastSeen: "2026-06-01T00:00:00Z", topic: "vpn mtu" },
+      { axis: "unbacked-action", count: 5, firstSeen: "2026-06-02T00:00:00Z", lastSeen: "2026-06-06T00:00:00Z", topic: "회의 일정" }
+    ]);
+    expect(out.indexOf("회의 일정")).toBeLessThan(out.indexOf("vpn mtu")); // higher count first
+    expect(out).toContain("said it acted but didn't");
+    expect(out).toContain("5×");
+    expect(out).toContain("2026-06-06");
+  });
+
+  it("renders a hint line when present", () => {
+    const out = formatWeaknesses([{ axis: "grounding-gap", count: 2, firstSeen: "2026-06-01T00:00:00Z", lastSeen: "2026-06-06T00:00:00Z", topic: "rent", hint: "ask the user to add a note" }]);
+    expect(out).toContain("ask the user to add a note");
+  });
+});
 
 describe("episodeIndexHealth — are past sessions searchable by recall / today --connect", () => {
   it("ok (silent-friendly) when there are no episodes captured yet", () => {

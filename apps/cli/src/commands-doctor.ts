@@ -15,8 +15,8 @@ import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { evaluateLocalOnlyPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir } from "@muse/autoconfigure";
-import { isLearningPaused, parseHomeAlertChecks, readEpisodes, webWatchesFromConfig } from "@muse/mcp";
+import { evaluateLocalOnlyPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveWeaknessesFile } from "@muse/autoconfigure";
+import { isLearningPaused, parseHomeAlertChecks, readEpisodes, readWeaknesses, webWatchesFromConfig, type WeaknessEntry } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { resolveLaunchAgentFile } from "./commands-daemon.js";
@@ -58,6 +58,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
     .option("--json", "Emit JSON even for the summary form")
     .option("--local", "Probe local-only signals (skip the API daemon)")
     .option("--grounding", "Score the bundled faithfulness + false-refusal corpus on the local model and print the two rates")
+    .option("--weaknesses", "Show the Whetstone weakness ledger — what Muse has noticed it can't answer / didn't actually do")
     .option("--watch", "Re-run on a fixed cadence until Ctrl-C (default 5s)")
     .option(
       "--interval <seconds>",
@@ -69,6 +70,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
         readonly json?: boolean;
         readonly local?: boolean;
         readonly grounding?: boolean;
+        readonly weaknesses?: boolean;
         readonly watch?: boolean;
         readonly interval?: string;
       },
@@ -82,6 +84,11 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
         if (status === "fail") {
           process.exitCode = 1;
         }
+        return;
+      }
+      // --weaknesses is a read-only view of the Whetstone ledger.
+      if (options.weaknesses) {
+        await runWeaknessesDoctor(io, options.json === true);
         return;
       }
       const renderLocal = async (): Promise<"ok" | "warn" | "fail"> => {
@@ -883,4 +890,41 @@ function formatBytes(bytes: number | undefined): string {
   if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(0)} MB`;
   if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(0)} kB`;
   return `${bytes.toString()} B`;
+}
+
+const WEAKNESS_AXIS_LABEL: Record<string, string> = {
+  "grounding-gap": "couldn't answer (may be a missing note)",
+  "unbacked-action": "said it acted but didn't",
+  "wrong-tool": "picked the wrong tool",
+  "time-parse": "misread a date/time",
+  other: "other"
+};
+
+/**
+ * Render the Whetstone weakness ledger as an honest self-report: the topics
+ * Muse has noticed it keeps getting wrong, busiest first. Pure (no I/O) so it is
+ * unit-testable. Empty ledger → an honest "nothing noticed yet" line.
+ */
+export function formatWeaknesses(entries: readonly WeaknessEntry[]): string {
+  if (entries.length === 0) {
+    return "🪨 Whetstone: no weak spots recorded yet — I haven't hit a gap I noticed.\n";
+  }
+  const sorted = [...entries].sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen));
+  const lines = sorted.map((entry) => {
+    const label = WEAKNESS_AXIS_LABEL[entry.axis] ?? entry.axis;
+    const times = entry.count === 1 ? "1×" : `${entry.count.toString()}×`;
+    const day = entry.lastSeen.slice(0, 10);
+    return `  • ${entry.topic}  — ${label} (${times}, last ${day})${entry.hint ? `\n      ↳ ${entry.hint}` : ""}`;
+  });
+  return `🪨 Whetstone — what I've noticed I'm weak at (${sorted.length.toString()} topic${sorted.length === 1 ? "" : "s"}):\n${lines.join("\n")}\n`;
+}
+
+async function runWeaknessesDoctor(io: ProgramIO, asJson: boolean): Promise<void> {
+  const file = resolveWeaknessesFile(process.env as Record<string, string | undefined>);
+  const entries = await readWeaknesses(file);
+  if (asJson) {
+    io.stdout(`${JSON.stringify({ weaknesses: entries }, null, 2)}\n`);
+    return;
+  }
+  io.stdout(formatWeaknesses(entries));
 }
