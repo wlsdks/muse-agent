@@ -41,13 +41,38 @@ const STOPWORDS = new Set([
   "who", "when", "where", "why", "how", "of", "for", "to", "in", "on", "about", "me", "i", "you",
   "please", "tell", "show", "give", "can", "could", "would", "and", "or", "그", "내", "제", "나",
   "너", "뭐", "뭐야", "무슨", "어떤", "누구", "언제", "어디", "왜", "어떻게", "해줘", "알려줘",
-  "보여줘", "있어", "있나", "좀", "그리고", "또", "의", "을", "를", "은", "는", "이", "가", "에", "에서"
+  "보여줘", "있어", "있나", "좀", "그리고", "또", "의", "을", "를", "은", "는", "이", "가", "에", "에서",
+  "뭐였지", "뭐였어", "뭐지", "뭔지", "뭘까", "뭔가", "어딨", "어딨어", "있었", "이야", "인가"
 ]);
+
+// Korean particles (조사) attach to a noun with no space — "일련번호가",
+// "회의를", "학교에서" — so the same topic looks like a different token each
+// time. Strip a trailing particle to cluster them, but ONLY when the remaining
+// STEM is ≥ 2 chars, so a real word that merely ends in a particle syllable
+// ("포도" → 도, "도서관" → 관-isn't-a-particle) is never truncated.
+const KO_MULTI_PARTICLES = ["이라고", "으로", "에서", "에게", "한테", "까지", "부터", "라고", "처럼", "보다", "께서", "에다"];
+const KO_SINGLE_PARTICLES = new Set(["은", "는", "이", "가", "을", "를", "의", "에", "도", "로", "와", "과", "만"]);
+
+function stripKoreanParticle(token: string): string {
+  if (!/[가-힣]/u.test(token)) {
+    return token;
+  }
+  for (const particle of KO_MULTI_PARTICLES) {
+    if (token.endsWith(particle) && token.length - particle.length >= 2) {
+      return token.slice(0, -particle.length);
+    }
+  }
+  if (token.length >= 3 && KO_SINGLE_PARTICLES.has(token.slice(-1))) {
+    return token.slice(0, -1);
+  }
+  return token;
+}
 
 /**
  * A deterministic topic cluster key: NFC-normalise (the macOS desktop passes KO
- * args in NFD), lowercase, keep word/Hangul tokens, drop filler, keep up to 4
- * salient tokens. Returns "" when nothing salient remains (caller skips those).
+ * args in NFD), lowercase, keep word/Hangul tokens, strip a trailing Korean
+ * particle, drop filler, keep up to 4 salient tokens. Returns "" when nothing
+ * salient remains (caller skips those).
  */
 export function topicKeyFromMessage(message: string): string {
   const tokens = message
@@ -55,6 +80,7 @@ export function topicKeyFromMessage(message: string): string {
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .split(/\s+/u)
+    .map(stripKoreanParticle)
     .filter((token) => token.length > 1 && !STOPWORDS.has(token));
   return tokens.slice(0, 4).join(" ");
 }

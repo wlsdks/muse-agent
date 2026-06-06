@@ -18,6 +18,20 @@ describe("topicKeyFromMessage — deterministic topic clustering", () => {
     expect(topicKeyFromMessage("내 오피스 와이파이 비밀번호 뭐야")).toContain("오피스");
   });
 
+  it("strips Korean particles so the same topic clusters regardless of phrasing", () => {
+    // "일련번호가 뭐였지" and "일련번호 알려줘" must produce the SAME topic key.
+    expect(topicKeyFromMessage("내 비밀 금고 일련번호가 뭐였지?")).toBe(topicKeyFromMessage("비밀 금고 일련번호 알려줘"));
+    expect(topicKeyFromMessage("회의를 언제 했지")).toContain("회의");
+    expect(topicKeyFromMessage("학교에서 뭐 했어")).toContain("학교");
+  });
+
+  it("never truncates a real word that merely ends in a particle syllable", () => {
+    // stem would be 1 char → left intact: 포도(→포), 바다(→바) must NOT happen.
+    expect(topicKeyFromMessage("포도 가격")).toContain("포도");
+    expect(topicKeyFromMessage("바다 날씨")).toContain("바다");
+    expect(topicKeyFromMessage("도서관 위치")).toContain("도서관"); // 관 is not a particle
+  });
+
   it("caps at 4 tokens, drops single-char tokens, returns '' for pure filler", () => {
     expect(topicKeyFromMessage("alpha beta gamma delta epsilon zeta").split(" ")).toHaveLength(4);
     expect(topicKeyFromMessage("a b c d")).toBe(""); // single chars dropped
