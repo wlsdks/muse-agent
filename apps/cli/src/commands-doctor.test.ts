@@ -10,12 +10,46 @@ import {
   localOnlyCheck,
   modelEnvCheck,
   notesIndexHealth,
+  buildCalibrationReport,
+  formatCalibration,
   formatWeaknesses,
+  parseAlpha,
   parseNotesIndexEmbedModel,
   resolveMuseEnvPath,
   selfLearningCheck,
   type OllamaTagsEntry
 } from "./commands-doctor.js";
+
+describe("conformal abstention calibration (muse doctor --calibration)", () => {
+  it("parseAlpha clamps to (0,1), defaults 0.1 on bad input", () => {
+    expect(parseAlpha("0.2")).toBe(0.2);
+    expect(parseAlpha(undefined)).toBe(0.1);
+    expect(parseAlpha("nope")).toBe(0.1);
+    expect(parseAlpha("0")).toBe(0.1);
+    expect(parseAlpha("1")).toBe(0.1);
+    expect(parseAlpha("-0.3")).toBe(0.1);
+  });
+
+  it("buildCalibrationReport keeps answerable items (coverage ≥ target) and counts refuse items held below", () => {
+    // answerable scores are HIGH (0.6-0.9), should-refuse scores are LOW (0.1-0.4).
+    const positives = [0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.62, 0.78, 0.83];
+    const negatives = [0.1, 0.2, 0.3, 0.4, 0.15];
+    const report = buildCalibrationReport(positives, negatives, 0.1);
+    expect(report.n).toBe(10);
+    expect(report.calibrationCoverage).toBeGreaterThanOrEqual(report.targetCoverage);
+    // a threshold tuned to the high answerable scores holds all the low refuse scores below it
+    expect(report.refuseHeld).toBe(5);
+    expect(report.refuseTotal).toBe(5);
+  });
+
+  it("formatCalibration renders an honest table, and an empty calibration set says so", () => {
+    expect(formatCalibration([buildCalibrationReport([], [], 0.1)])).toContain("nothing to calibrate");
+    const out = formatCalibration([buildCalibrationReport([0.6, 0.7, 0.8, 0.9, 0.65, 0.75, 0.85, 0.95, 0.62, 0.72], [0.2, 0.3], 0.1)]);
+    expect(out).toContain("conformal");
+    expect(out).toContain("0.10");
+    expect(out).toMatch(/refuse-held/);
+  });
+});
 
 describe("formatWeaknesses — the Whetstone ledger as an honest self-report", () => {
   it("renders an honest 'nothing yet' line for an empty ledger", () => {

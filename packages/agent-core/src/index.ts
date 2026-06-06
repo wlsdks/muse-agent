@@ -204,6 +204,7 @@ export {
   type AttributedRepairResult
 } from "./attributed-repair.js";
 export { answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, requestsToolAction, type CasualPromptKind } from "./casual-prompt.js";
+export { calibrateAbstention, conformalThreshold, empiricalCoverage, type CalibrationResult } from "./conformal.js";
 export {
   createConfidenceGatedInvestigator,
   decideProactiveRecall,

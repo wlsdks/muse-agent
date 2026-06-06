@@ -62,6 +62,7 @@ is yoked to a fabrication-zero floor is far harder.
 | Environmental statistics | Mann-Kendall trend + Sen's slope (Mann 1945; Kendall 1975) | `muse trend` — is a tracking column rising, falling, or wandering? |
 | Cognition / strategy | First-principles thinking (Musk) + contrarian question (Thiel) | reasoning principles in `muse ask` — engine; the grounding floor is the brake ([reasoning-principles.md](reasoning-principles.md)) |
 | Network science / ecology | Betweenness centrality / brokerage (Freeman 1977; Brandes 2001) + structural holes (Burt 1992) + keystone species (Paine 1966) | `muse notes bridges` — the notes connecting your otherwise-separate topic clusters (where cross-domain insight lives) |
+| Statistics / ML | Split-conformal prediction (Angelopoulos & Bates 2022; Mohri & Hashimoto ICML 2024) | `muse doctor --calibration` — the "I'm not sure" threshold calibrated for a distribution-free coverage guarantee (≥1-α of answerable items answered) |
 | Real-time systems / OS scheduling | Earliest Deadline First (Liu & Layland 1973) + aging anti-starvation | `muse tasks next` — your open tasks ranked by what to do NOW, with a why-now reason; old undated tasks aged up so they don't starve |
 
 ## Negative results (recorded so we don't repeat them)

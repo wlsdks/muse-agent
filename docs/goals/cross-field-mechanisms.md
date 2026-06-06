@@ -18,7 +18,7 @@ change is a regression.**
 
 ## Group A — harden the grounding/calibration FLOOR (do FIRST: floor + Whetstone + moat triple-align)
 
-- [ ] **A1 · Conformal calibrated abstention** (Angelopoulos & Bates 2022; Mohri & Hashimoto ICML 2024).
+- [~] **A1 · Conformal calibrated abstention** — A1a (core) ✅ + A1b (`doctor --calibration`) ✅ shipped; A1c (live abstention wiring) next. (Angelopoulos & Bates 2022; Mohri & Hashimoto ICML 2024).
   - *Mechanism:* a held-out calibration set of `(score, correct?)` pairs gives a
     distribution-free score threshold guaranteeing target coverage; below it →
     provably abstain.
