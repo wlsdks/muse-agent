@@ -11,9 +11,11 @@ protocol Speaker {
 /// Natural on-device speech via TTSKit (Argmax, MIT) running Qwen3-TTS
 /// (Apache-2.0 weights) on CoreML + the Neural Engine. Local by construction —
 /// the spoken reply never leaves the Mac, no cloud, no key. The model
-/// (~1GB, 0.6b) downloads once from HuggingFace then is cached; it is warmed at
-/// launch. While it is still loading, the first reply falls back to the system
-/// voice so nothing is ever silent.
+/// (~1GB, 0.6b) downloads once from HuggingFace then is cached, and is loaded
+/// lazily on the FIRST spoken reply (not at launch — see `ensureLoaded`, which
+/// defers it so it doesn't contend with the speech-to-text model load). The
+/// cold load is ~22s; while it runs, that first reply falls back to the system
+/// voice so nothing is ever silent, and subsequent replies use the neural voice.
 final class QwenSpeaker: Speaker {
     private let fallback = SystemSpeaker()
     private var tts: TTSKit?
