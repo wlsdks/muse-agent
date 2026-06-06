@@ -372,15 +372,19 @@ export async function runLocalChat(
   const { block: groundingBlock, matches } = isCasual
     ? { block: "", matches: [] as Awaited<ReturnType<typeof retrieveChatGrounding>>["matches"] }
     : await retrieveChatGrounding(message);
-  // Reply in the user's language. Without this the local model drifts to English
+  // Reply in the user's language: without this the local model drifts to English
   // for "assistant-y" replies — a Korean "회의 취소해줘" got an English "sir,
-  // please provide…" clarification ~2/3 of the time, jarring for a KO-primary
-  // companion. Detected from the message, stated explicitly (the strongest form
-  // for a small model), and placed FIRST so it isn't buried under the persona.
+  // please provide…" ~2/3 of the time, jarring for a KO-primary companion. CRUCIAL
+  // wording: a first/imperative "한국어로 답하세요" made the model emit Korean PROSE
+  // instead of CALLING A TOOL (action tool-calling cratered 0/5). So the directive
+  // (a) explicitly preserves tool use ("도구가 필요하면 평소처럼 호출하고"), scopes
+  // the rule to the TEXT reply only, and (b) sits LAST, not first. With it: tool
+  // calls 5/5 AND Korean 5/5. English turns get no directive (the model defaults
+  // to English).
   const languageDirective = /[가-힣]/u.test(message)
-    ? "사용자가 한국어로 말했습니다. 한국어로 답하세요. (단, 비밀번호·파일명·인용 출처 같은 고유값은 원문 그대로 두세요.)"
-    : "Reply in English, matching the user's language.";
-  const systemContent = [languageDirective, personaPreamble, userMemoryBlock, formatCurrentContextLine()]
+    ? "사용자는 한국어를 씁니다. 도구 사용이 필요하면 평소처럼 도구를 호출하고, 사용자에게 보이는 텍스트 답변만 한국어로 작성하세요 (비밀번호·파일명·인용 출처 같은 고유값은 원문 그대로)."
+    : "";
+  const systemContent = [personaPreamble, userMemoryBlock, formatCurrentContextLine(), languageDirective]
     .filter((part) => part.length > 0)
     .join("\n\n") + groundingBlock;
   const messages = [
