@@ -192,3 +192,26 @@ export function classifyTaskListQuery(query: string): boolean {
   }
   return TASK_LIST_PATTERNS.some((re) => re.test(q));
 }
+
+// "리마인더 뭐 있어?" wants the reminder LIST, but — exactly like the task case
+// above — the local model reads the possessive "뭐 있어" as a memory question and
+// won't call reminders.list, so the recall gate wrongly abstains "없습니다" while
+// pending reminders sit on disk. Short-circuit it to a deterministic list.
+const REMINDER_LIST_PATTERNS: readonly RegExp[] = [
+  /(내|제)?\s*(리마인더|알림|reminders?)\s*(이|가|들|은|는)?\s*(뭐|목록|어떤|몇|있|남았|알려|보여|정리)/u,
+  /\bwhat\s+reminders?\s+(do\s+i\s+have|are\s+there|are\s+set)\b/u,
+  /\b(list|show|view)\s+(me\s+)?(all\s+)?(my\s+)?reminders?\b/u
+];
+
+/** True when the prompt asks to SEE the reminder list — not to set / snooze / clear one. */
+export function classifyReminderListQuery(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (q.length === 0 || q.length > 80) {
+    return false;
+  }
+  // A clear write/mutate intent is NOT a list request.
+  if (/추가|등록|설정|만들|기억해|삭제|지워|제거|없애|취소|미뤄|미루|연기|스누즈|바꿔|변경|\b(add|create|set|delete|remove|clear|cancel|snooze|reschedule|change)\b/u.test(q)) {
+    return false;
+  }
+  return REMINDER_LIST_PATTERNS.some((re) => re.test(q));
+}

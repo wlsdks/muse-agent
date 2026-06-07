@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, classifyTaskListQuery, requestsToolAction } from "../src/index.js";
+import { answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction } from "../src/index.js";
 
 describe("classifyCasualPrompt — pure social prompts only (precision-first)", () => {
   it("classifies greetings (EN + KO), tolerating trailing punctuation and repeats", () => {
@@ -276,6 +276,26 @@ describe("classifyTaskListQuery — the VIEW-my-tasks intent the model fumbles, 
   it("does NOT hijack a calendar or note overview (those route elsewhere)", () => {
     for (const q of ["내 일정 뭐 있어?", "이번 주 일정 보여줘", "내 노트 뭐 있어?"]) {
       expect(classifyTaskListQuery(q)).toBe(false);
+    }
+  });
+});
+
+describe("classifyReminderListQuery — the VIEW-my-reminders intent the model fumbles, not a mutate", () => {
+  it("matches a request to SEE the reminder list (EN + KO)", () => {
+    for (const q of ["리마인더 뭐 있어?", "내 알림 목록 보여줘", "리마인더 알려줘", "what reminders do I have?", "list my reminders", "show me my reminders"]) {
+      expect(classifyReminderListQuery(q)).toBe(true);
+    }
+  });
+
+  it("does NOT match a set / snooze / clear intent (those need the real tool)", () => {
+    for (const q of ["약 먹기 리마인더 추가해줘", "운동 리마인더 설정해줘", "그 리마인더 삭제해줘", "리마인더 30분 미뤄줘", "set a reminder for 5pm", "clear the dentist reminder"]) {
+      expect(classifyReminderListQuery(q)).toBe(false);
+    }
+  });
+
+  it("does NOT hijack a task or calendar overview", () => {
+    for (const q of ["내 할일 뭐 있어?", "내 일정 뭐 있어?"]) {
+      expect(classifyReminderListQuery(q)).toBe(false);
     }
   });
 });

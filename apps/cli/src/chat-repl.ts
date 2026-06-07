@@ -23,7 +23,7 @@ import type { Readable } from "node:stream";
 import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
-import { answerClaimsAction, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, classifyTaskListQuery, requestsToolAction } from "@muse/agent-core";
+import { answerClaimsAction, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction } from "@muse/agent-core";
 
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
 import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
@@ -234,6 +234,24 @@ export function formatTaskList(
   return [head, ...lines].join("\n");
 }
 
+/** A deterministic reminder list for the chat surface (parity with formatTaskList). */
+export function formatReminderList(
+  reminders: readonly { readonly text: string; readonly dueLocal?: string }[],
+  korean: boolean
+): string {
+  if (reminders.length === 0) {
+    return korean ? "지금은 예정된 리마인더가 없어요." : "You have no upcoming reminders right now.";
+  }
+  const lines = reminders.map((reminder) => {
+    const due = reminder.dueLocal ? (korean ? ` — ${reminder.dueLocal}` : ` — ${reminder.dueLocal}`) : "";
+    return `  • ${reminder.text}${due}`;
+  });
+  const head = korean
+    ? `예정된 리마인더가 ${reminders.length.toString()}개 있어요:`
+    : `You have ${reminders.length.toString()} upcoming reminder${reminders.length === 1 ? "" : "s"}:`;
+  return [head, ...lines].join("\n");
+}
+
 /** Keep only the named keys from a fact map (preserving values). */
 export function filterFactsToKeys(facts: Readonly<Record<string, string>>, keys: readonly string[]): Record<string, string> {
   const allow = new Set(keys);
@@ -329,6 +347,27 @@ export async function runLocalChat(
         /[가-힣]/u.test(message)
       ),
       runId: "local-tasks",
+      toolsUsed: []
+    };
+  }
+
+  // "리마인더 뭐 있어?" — the reminder LIST intent, the exact sibling of the
+  // task-list case above (the 8B reads "뭐 있어" as a memory question and won't
+  // call reminders.list, so the recall gate wrongly abstains "없습니다" while
+  // pending reminders sit on disk). List the pending ones deterministically.
+  if (classifyReminderListQuery(message)) {
+    const { readReminders, formatDueLocal } = await import("@muse/mcp");
+    const { resolveRemindersFile } = await import("@muse/autoconfigure");
+    const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
+    const pending = (await readReminders(remindersFile).catch(() => []))
+      .filter((reminder) => reminder.status === "pending")
+      .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
+    return {
+      response: formatReminderList(
+        pending.map((reminder) => ({ dueLocal: formatDueLocal(reminder.dueAt), text: reminder.text })),
+        /[가-힣]/u.test(message)
+      ),
+      runId: "local-reminders",
       toolsUsed: []
     };
   }
