@@ -445,6 +445,30 @@ export function answerAssertsUnsupportedNumber(
   return false;
 }
 
+const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/giu;
+
+/**
+ * Does the answer assert an EMAIL ADDRESS present in neither the evidence nor
+ * the question? Same rationale as {@link answerAssertsUnsupportedNumber}: an
+ * email is a verbatim-copied identifier (never paraphrased), so requiring it to
+ * appear in the evidence text is false-positive-safe yet catches the highest-harm
+ * contact drift — a right local-part with a WRONG domain ("jinan@acme.com" for
+ * the note's "jinan@foundry.io"), which the `noteGroundedAnswer` token shortcut
+ * waves through because the local-part overlaps the note. A wrong contact address
+ * is an outbound-safety hazard, so the chat gate must refuse it as ask does
+ * (agent-core's value escalation). Addresses are compared whole, case-insensitively.
+ */
+export function answerAssertsUnsupportedEmail(
+  answer: string,
+  matches: readonly KnowledgeMatch[],
+  question: string
+): boolean {
+  const emails = answer.replace(/\[[^\]]*\]/gu, " ").match(EMAIL_RE) ?? [];
+  if (emails.length === 0) return false;
+  const haystack = `${question} ${matches.map((match) => match.text).join(" ")}`.toLowerCase();
+  return emails.some((address) => !haystack.includes(address.toLowerCase()));
+}
+
 export function gateChatAnswer(
   question: string,
   answer: string,
@@ -462,6 +486,9 @@ export function gateChatAnswer(
   // through (a single wrong number barely dents token coverage). Refuse
   // deterministically: the sync chat counterpart to ask's value escalation.
   if (answerAssertsUnsupportedNumber(answer, matches, question)) return chatAbstention(question);
+  // Same deterministic guard for a verbatim EMAIL identifier — a wrong domain on
+  // a right local-part is an outbound-safety hazard the token shortcut misses.
+  if (answerAssertsUnsupportedEmail(answer, matches, question)) return chatAbstention(question);
   // The answer actually QUOTES distinctive content from a retrieved note
   // (e.g. "muse2026" from seoul_office.md) → grounded for real, no matter how
   // verifyGrounding's borderline rubric falls on the model's varied phrasing.

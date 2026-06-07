@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { KnowledgeMatch } from "@muse/agent-core";
 
 import {
+  answerAssertsUnsupportedEmail,
   answerAssertsUnsupportedNumber,
   CHAT_GROUNDING_MAX_HITS,
   CHAT_GROUNDING_MIN_SCORE,
@@ -156,6 +157,37 @@ describe("gateChatAnswer (deterministic anti-fabrication gate)", () => {
     const q = "내 월세 1,500,000 맞아?";
     const a = "네, 1,500,000 맞아요.";
     expect(gateChatAnswer(q, a, [lease])).toBe(a);
+  });
+
+  // Wrong-EMAIL drift: the local-part overlaps the note so noteGroundedAnswer
+  // waves it through — only the deterministic email check catches the wrong domain.
+  const me: KnowledgeMatch = {
+    cosine: 0.7, score: 0.7, source: "me.md",
+    text: "My work email is jinan@foundry.io, personal is jinan@gmail.com."
+  };
+  it("REFUSES a wrong email domain (acme vs the note's foundry.io)", () => {
+    const q = "내 회사 이메일 뭐야?";
+    expect(gateChatAnswer(q, "당신의 회사 이메일은 jinan@acme.com 입니다.", [me])).toBe(chatAbstention(q));
+  });
+  it("PASSES the correct email grounded in the note", () => {
+    const a = "당신의 회사 이메일은 jinan@foundry.io 입니다.";
+    expect(gateChatAnswer("내 회사 이메일 뭐야?", a, [me])).toBe(a);
+  });
+});
+
+describe("answerAssertsUnsupportedEmail", () => {
+  const note = (text: string): KnowledgeMatch => ({ cosine: 0.7, score: 0.7, source: "n.md", text });
+  it("flags a whole address absent from evidence and question", () => {
+    expect(answerAssertsUnsupportedEmail("email jinan@acme.com", [note("email jinan@foundry.io")], "내 이메일?")).toBe(true);
+  });
+  it("does not flag the correct address (case-insensitive, verbatim)", () => {
+    expect(answerAssertsUnsupportedEmail("email Jinan@Foundry.io", [note("jinan@foundry.io")], "내 이메일?")).toBe(false);
+  });
+  it("allows an address the user supplied in the question", () => {
+    expect(answerAssertsUnsupportedEmail("yes, a@b.com", [note("no email here")], "is it a@b.com?")).toBe(false);
+  });
+  it("returns false when the answer asserts no email", () => {
+    expect(answerAssertsUnsupportedEmail("your landlord is Mr. Park", [note("landlord Mr. Park")], "who?")).toBe(false);
   });
 });
 
