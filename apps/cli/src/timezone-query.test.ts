@@ -23,6 +23,13 @@ describe("detectTimezoneQuery — only a real timezone question short-circuits",
     expect(detectTimezoneQuery("what's the time in London right now")).toMatchObject({ kind: "now" });
   });
 
+  it("parses the Korean suffix-framed forms ('<from> <time> <to> 몇 시', '지금 <zone> 몇 시')", () => {
+    expect(detectTimezoneQuery("뉴욕 오후 3시는 서울로 몇 시야?")).toMatchObject({ from: { iana: "America/New_York" }, ko: true, kind: "convert", minutes: 900, to: { iana: "Asia/Seoul" } });
+    expect(detectTimezoneQuery("서울 오전 9시는 뉴욕으로 몇 시?")).toMatchObject({ ko: true, kind: "convert", minutes: 540 });
+    expect(detectTimezoneQuery("지금 도쿄 몇 시야?")).toMatchObject({ ko: true, kind: "now", to: { iana: "Asia/Tokyo" } });
+    expect(detectTimezoneQuery("내 회의 몇 시야?")).toBeNull(); // not a timezone (no resolvable zone)
+  });
+
   it("returns null when a named zone doesn't resolve or it isn't a timezone question", () => {
     expect(detectTimezoneQuery("what time is the meeting?")).toBeNull();      // "the meeting" isn't a zone
     expect(detectTimezoneQuery("how many people are coming?")).toBeNull();
