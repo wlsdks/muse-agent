@@ -7,7 +7,7 @@ describe("CITATION_INSTRUCTION_LINES — the recall answer-behaviour contract ca
     const joined = CITATION_INSTRUCTION_LINES.join("\n");
     expect(joined).toMatch(/CONFLICT/u);
     expect(joined).toMatch(/which is current/u); // the explicit conflict phrasing
-    expect(joined).toMatch(/UPDATES the other|updates\/corrects/u); // the don't-over-flag-an-update carve-out
+    expect(joined).toMatch(/UPDATES\/corrects the other|UPDATED VALUE/u); // the don't-over-flag-an-update carve-out (UPDATE-first)
   });
 
   it("instructs the model NOT to claim it saved a fact (a one-shot ask can't persist) and to direct to `muse remember` / `muse chat`", () => {
