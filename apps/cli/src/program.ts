@@ -114,7 +114,6 @@ import { loadActivePersonaPreamble } from "./persona-store.js";
 import { registerReadCommand } from "./commands-read.js";
 import { registerRecallCommand } from "./commands-recall.js";
 import { registerShowCommand } from "./commands-show.js";
-import { registerVisionCommand } from "./commands-vision.js";
 import { registerTimeCommand } from "./timezone.js";
 import { registerPrivacyCommand } from "./commands-privacy.js";
 import { registerWeekCommand } from "./commands-week.js";
@@ -528,7 +527,6 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerCompletionCommand(program, io);
   registerMetricsCommands(program, io, { apiRequest, writeOutput });
   registerMaintenanceCommand(program, io);
-  registerVisionCommand(program, io);
   registerShowCommand(program, io);
   registerWeatherCommand(program, io);
   registerPrivacyCommand(program, io);

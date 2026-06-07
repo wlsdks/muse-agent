@@ -961,7 +961,7 @@ export interface AskTierModels {
   readonly heavy: string;
 }
 
-// Tier models come from env (parallel to MUSE_MODEL / MUSE_VISION_MODEL);
+// Tier models come from env (parallel to MUSE_MODEL);
 // either unset falls back to the configured default model, so --tiered
 // with no tier env still answers (on the default for both tiers).
 export function resolveAskTierModels(defaultModel: string, env: NodeJS.ProcessEnv): AskTierModels {
