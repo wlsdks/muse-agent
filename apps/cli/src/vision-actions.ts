@@ -1,0 +1,127 @@
+import { extractStructuredFromImage } from "@muse/agent-core";
+import type { JsonObject } from "@muse/shared";
+import type { ModelProvider } from "@muse/model";
+
+/**
+ * Autonomous grounded vision routing (`muse ask --image --auto`): in ONE
+ * grounded extraction, gemma4 classifies the image (event / receipt / contact /
+ * other) AND pulls the fields for that kind, so a single photo routes to the
+ * right draft-first action — calendar event, expense note, or new contact. The
+ * grounding floor still holds (the primitive omits any field not visible, never
+ * invents), and the caller stays draft-first (show the draft, write only on
+ * --apply).
+ */
+export type VisionActionKind = "event" | "receipt" | "contact" | "other";
+
+export interface VisionAction {
+  readonly kind: VisionActionKind;
+  /** The extracted fields relevant to `kind` (only the visible ones). */
+  readonly fields: JsonObject;
+  /** Human-readable draft shown before any write. */
+  readonly draftText: string;
+  /** The actuator route, or "none" for `other`. */
+  readonly route: "calendar" | "note" | "contact" | "none";
+}
+
+const CLASSIFY_SCHEMA: JsonObject = {
+  properties: { kind: { enum: ["event", "receipt", "contact", "other"], type: "string" } },
+  required: ["kind"],
+  type: "object"
+};
+const CLASSIFY_INSTRUCTION =
+  "Classify this image as exactly one kind: 'event' (a flyer/poster/invite with a date and time), " +
+  "'receipt' (a purchase receipt or bill), 'contact' (a business card or someone's contact details), or 'other'. " +
+  "Return only the kind.";
+
+// Per-kind FOCUSED schemas — a small, single-purpose schema extracts far more
+// reliably on a local model than one wide all-kinds schema (proven by the
+// --extract / --to-calendar paths). Each runs only after the image is classified.
+const KIND_EXTRACT: Record<"event" | "receipt" | "contact", { schema: JsonObject; instruction: string }> = {
+  contact: {
+    instruction: "Extract this person's contact details: name, email, phone, and how they relate to the user (relationship, e.g. 'dentist') if stated. Omit any field not visible.",
+    schema: { properties: { email: { type: "string" }, name: { type: "string" }, phone: { type: "string" }, relationship: { type: "string" } }, required: ["name"], type: "object" }
+  },
+  event: {
+    instruction: "Extract the calendar event: title, startsAt (the date/time copied EXACTLY as shown), location, and notes. Omit any field not visible.",
+    schema: { properties: { location: { type: "string" }, notes: { type: "string" }, startsAt: { type: "string" }, title: { type: "string" } }, required: ["title", "startsAt"], type: "object" }
+  },
+  receipt: {
+    instruction: "Extract the receipt: merchant name, total amount, and date. Omit any field not visible.",
+    schema: { properties: { date: { type: "string" }, merchant: { type: "string" }, total: { type: "string" } }, required: ["merchant"], type: "object" }
+  }
+};
+
+const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined);
+
+/**
+ * Normalize an extracted `startsAt` for the calendar actuator. The model returns
+ * the date EXACTLY as printed (e.g. "July 18, 2026, 8:00 PM") — and the calendar
+ * parser accepts ISO-8601 or a relative phrase but not every absolute format. So
+ * when (and only when) the string is an absolute date JS can parse, convert it to
+ * ISO **in code** (deterministic, uses the local TZ) — never ask the model to
+ * compute the timestamp (it gets weekday/TZ wrong). A relative phrase ("tomorrow
+ * 3pm", "내일 오후 3시") isn't JS-parseable, so it passes through unchanged for the
+ * calendar's own natural-language resolver.
+ */
+export function normalizeStartsAt(value: string): string {
+  const t = value.trim();
+  // Already ISO-ish — leave it.
+  if (/^\d{4}-\d{2}-\d{2}/u.test(t)) return t;
+  const ms = Date.parse(t);
+  return Number.isNaN(ms) ? t : new Date(ms).toISOString();
+}
+
+/** Classify the image, then run a kind-specific focused extraction, and shape a
+ *  draft-first action. Two grounded calls (classify → extract) — more reliable on
+ *  a local model than one wide schema. Returns route "none" when it can't
+ *  confidently route; the caller falls back to a plain description. */
+export async function classifyVisionAction(
+  provider: ModelProvider,
+  input: { readonly model: string; readonly imageBase64: string; readonly mimeType: string }
+): Promise<VisionAction | { readonly ok: false; readonly error: string }> {
+  const cls = await extractStructuredFromImage(provider, {
+    imageBase64: input.imageBase64,
+    instruction: CLASSIFY_INSTRUCTION,
+    mimeType: input.mimeType,
+    model: input.model,
+    schema: CLASSIFY_SCHEMA
+  });
+  if (!cls.ok || !cls.data) {
+    return { error: cls.error ?? "could not read the image", ok: false };
+  }
+  const kind = cls.data.kind;
+  if (kind !== "event" && kind !== "receipt" && kind !== "contact") {
+    return shapeVisionAction({ kind: "other" });
+  }
+  const ex = await extractStructuredFromImage(provider, {
+    imageBase64: input.imageBase64,
+    instruction: KIND_EXTRACT[kind].instruction,
+    mimeType: input.mimeType,
+    model: input.model,
+    schema: KIND_EXTRACT[kind].schema
+  });
+  if (!ex.ok || !ex.data) {
+    return { error: ex.error ?? `could not extract ${kind} fields`, ok: false };
+  }
+  return shapeVisionAction({ kind, ...ex.data });
+}
+
+/** Pure shaping of an extracted object into a routed, draft-first action — split
+ *  out so it's unit-testable without a model. */
+export function shapeVisionAction(data: JsonObject): VisionAction {
+  const kind = data.kind === "event" || data.kind === "receipt" || data.kind === "contact" ? data.kind : "other";
+  if (kind === "event" && str(data.title) && str(data.startsAt)) {
+    const f = { title: str(data.title)!, startsAt: str(data.startsAt)!, ...(str(data.location) ? { location: str(data.location)! } : {}), ...(str(data.notes) ? { notes: str(data.notes)! } : {}) };
+    return { draftText: `📅 Calendar event:\n  title: ${f.title}\n  startsAt: ${f.startsAt}${f.location ? `\n  location: ${f.location}` : ""}${f.notes ? `\n  notes: ${f.notes}` : ""}`, fields: f, kind, route: "calendar" };
+  }
+  if (kind === "receipt" && (str(data.merchant) || str(data.total))) {
+    const f = { ...(str(data.merchant) ? { merchant: str(data.merchant)! } : {}), ...(str(data.total) ? { total: str(data.total)! } : {}), ...(str(data.date) ? { date: str(data.date)! } : {}) };
+    const note = `Expense — ${f.merchant ?? "purchase"}: ${f.total ?? "?"}${f.date ? ` on ${f.date}` : ""}`;
+    return { draftText: `🧾 Expense note:\n  ${note}`, fields: { ...f, note }, kind, route: "note" };
+  }
+  if (kind === "contact" && str(data.name) && (str(data.email) || str(data.phone))) {
+    const f = { name: str(data.name)!, ...(str(data.email) ? { email: str(data.email)! } : {}), ...(str(data.phone) ? { phone: str(data.phone)! } : {}), ...(str(data.relationship) ? { relationship: str(data.relationship)! } : {}) };
+    return { draftText: `👤 Contact:\n  name: ${f.name}${f.email ? `\n  email: ${f.email}` : ""}${f.phone ? `\n  phone: ${f.phone}` : ""}${f.relationship ? `\n  relationship: ${f.relationship}` : ""}`, fields: f, kind, route: "contact" };
+  }
+  return { draftText: "(couldn't route this image to an action — try --extract or a plain --image question)", fields: {}, kind: "other", route: "none" };
+}

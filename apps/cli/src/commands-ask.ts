@@ -940,6 +940,7 @@ interface AskOptions {
   readonly image?: string;
   readonly extract?: string;
   readonly toCalendar?: boolean;
+  readonly auto?: boolean;
   readonly apply?: boolean;
   readonly top?: string;
   readonly embedModel?: string;
@@ -1645,6 +1646,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
     .option(
       "--to-calendar",
       "With --image: extract a calendar event from the image and DRAFT it (title/startsAt/location/notes). Draft-first — prints the proposed event; re-run with --apply to actually create it. e.g. `muse ask --image flyer.jpg --to-calendar`."
+    )
+    .option(
+      "--auto",
+      "With --image: AUTO-detect the image kind (event / receipt / contact) and draft the matching action — calendar event, expense note, or new contact. Draft-first; re-run with --apply to perform it. e.g. `muse ask --image photo.jpg --auto`."
     )
     .option(
       "--apply",
@@ -2355,13 +2360,49 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // Grounded vision actions: --extract / --to-calendar read the IMAGE (not
       // notes) and emit structured output / a draft action, so they short-circuit
       // the normal recall+grounding flow. Both require --image.
-      if (options.extract || options.toCalendar) {
+      if (options.extract || options.toCalendar || options.auto) {
         if (imageAttachments.length === 0) {
-          io.stderr("--extract / --to-calendar require --image <path>\n");
+          io.stderr("--extract / --to-calendar / --auto require --image <path>\n");
           process.exitCode = 1;
           return;
         }
         const img = imageAttachments[0]!;
+        if (options.auto) {
+          const { classifyVisionAction, normalizeStartsAt } = await import("./vision-actions.js");
+          const action = await classifyVisionAction(assembly.modelProvider, { imageBase64: img.dataBase64, mimeType: img.mimeType, model });
+          if ("ok" in action && action.ok === false) {
+            io.stderr(`muse ask --auto: ${action.error}\n`);
+            process.exitCode = 1;
+            return;
+          }
+          const act = action as import("./vision-actions.js").VisionAction;
+          io.stdout(`${act.draftText}\n`);
+          if (act.route === "none") {
+            return;
+          }
+          if (options.apply !== true) {
+            io.stdout("\n(draft only — re-run with --apply to perform it)\n");
+            return;
+          }
+          const env = process.env as MuseEnvironment;
+          let result: unknown;
+          if (act.route === "calendar") {
+            const { createCalendarMcpServer } = await import("@muse/mcp");
+            const addTool = createCalendarMcpServer({ registry: buildCalendarRegistry(env) }).tools.find((t) => t.name === "add");
+            result = await addTool?.execute({ ...act.fields, startsAt: normalizeStartsAt(String(act.fields.startsAt)) });
+          } else if (act.route === "note") {
+            const { createNotesMcpServer } = await import("@muse/mcp");
+            const appendTool = createNotesMcpServer({ notesDir: resolveNotesDir(env) }).tools.find((t) => t.name === "append");
+            result = await appendTool?.execute({ content: `- ${String(act.fields.note)}\n`, path: "expenses.md" });
+          } else {
+            const { createContactsAddTool, readContacts, writeContacts } = await import("@muse/mcp");
+            const file = resolveContactsFile(env);
+            const addContact = createContactsAddTool({ save: async (c) => writeContacts(file, [...(await readContacts(file)), c], env) });
+            result = await addContact.execute(act.fields, { runId: "vision-auto", userId: userKey });
+          }
+          io.stdout(result && typeof result === "object" && "error" in result ? `\n❌ ${String((result as { error: unknown }).error)}\n` : `\n✅ Done: ${JSON.stringify(result)}\n`);
+          return;
+        }
         if (options.toCalendar) {
           const ex = await extractStructuredFromImage(assembly.modelProvider, {
             imageBase64: img.dataBase64,
