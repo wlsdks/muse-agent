@@ -203,7 +203,7 @@ export {
   type AttributedRepairPromptInput,
   type AttributedRepairResult
 } from "./attributed-repair.js";
-export { answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction, type CasualPromptKind } from "./casual-prompt.js";
+export { answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction, type CasualPromptKind } from "./casual-prompt.js";
 export { calibrateAbstention, conformalThreshold, empiricalCoverage, type CalibrationResult } from "./conformal.js";
 export { DEFAULT_QUORUM, independentWitnessCount, quorumVerdict, type QuorumVerdict } from "./quorum.js";
 export { overdueContacts, type ContactInteractions, type OverdueContact, type OverdueOptions } from "./relationship-decay.js";

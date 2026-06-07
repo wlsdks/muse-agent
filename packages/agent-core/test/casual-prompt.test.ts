@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction } from "../src/index.js";
+import { answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction } from "../src/index.js";
 
 describe("classifyCasualPrompt — pure social prompts only (precision-first)", () => {
   it("classifies greetings (EN + KO), tolerating trailing punctuation and repeats", () => {
@@ -296,6 +296,22 @@ describe("classifyReminderListQuery — the VIEW-my-reminders intent the model f
   it("does NOT hijack a task or calendar overview", () => {
     for (const q of ["내 할일 뭐 있어?", "내 일정 뭐 있어?"]) {
       expect(classifyReminderListQuery(q)).toBe(false);
+    }
+  });
+});
+
+describe("classifyContactLookup — extract the contact name from a details lookup (the 8B abstains)", () => {
+  it("returns the name token for a detail lookup (KO + EN)", () => {
+    expect(classifyContactLookup("박지훈 전화번호 알려줘")).toBe("박지훈");
+    expect(classifyContactLookup("박지훈 연락처 뭐야")).toBe("박지훈");
+    expect(classifyContactLookup("박지훈은 나랑 무슨 관계야?")).toBe("박지훈");
+    expect(classifyContactLookup("박지훈 생일 언제야")).toBe("박지훈");
+    expect(classifyContactLookup("Sarah's email")).toBe("Sarah");
+  });
+
+  it("returns null for an outbound ACTION or a non-contact phrase (resolveContact never gets a bad ref)", () => {
+    for (const q of ["박지훈한테 전화해줘", "박지훈한테 이메일 보내줘", "이 식당 전화번호", "내 전화번호 뭐야", "오늘 날씨 어때", "안녕"]) {
+      expect(classifyContactLookup(q)).toBeNull();
     }
   });
 });

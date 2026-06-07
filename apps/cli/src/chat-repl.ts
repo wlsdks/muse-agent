@@ -23,7 +23,7 @@ import type { Readable } from "node:stream";
 import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
-import { answerClaimsAction, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction } from "@muse/agent-core";
+import { answerClaimsAction, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction } from "@muse/agent-core";
 
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
 import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
@@ -252,6 +252,24 @@ export function formatReminderList(
   return [head, ...lines].join("\n");
 }
 
+/** One contact's known details on a single line — the deterministic answer to a
+ *  "<name> 전화번호 / 관계 / 이메일" lookup the 8B fumbles. */
+export function formatContactDetails(
+  contact: { readonly name: string; readonly phone?: string; readonly email?: string; readonly handle?: string; readonly relationship?: string; readonly birthday?: string },
+  korean: boolean
+): string {
+  const parts: string[] = [];
+  if (contact.phone) parts.push(korean ? `전화 ${contact.phone}` : `phone ${contact.phone}`);
+  if (contact.email) parts.push(korean ? `이메일 ${contact.email}` : `email ${contact.email}`);
+  if (contact.handle) parts.push(korean ? `핸들 ${contact.handle}` : `handle ${contact.handle}`);
+  if (contact.relationship) parts.push(korean ? `관계 ${contact.relationship}` : `relationship ${contact.relationship}`);
+  if (contact.birthday) parts.push(korean ? `생일 ${contact.birthday}` : `birthday ${contact.birthday}`);
+  if (parts.length === 0) {
+    return korean ? `${contact.name} 연락처는 있지만 세부 정보가 저장돼 있지 않아요.` : `${contact.name} is saved, but with no details.`;
+  }
+  return `${contact.name} — ${parts.join(", ")}`;
+}
+
 /** Keep only the named keys from a fact map (preserving values). */
 export function filterFactsToKeys(facts: Readonly<Record<string, string>>, keys: readonly string[]): Record<string, string> {
   const allow = new Set(keys);
@@ -370,6 +388,32 @@ export async function runLocalChat(
       runId: "local-reminders",
       toolsUsed: []
     };
+  }
+
+  // "박지훈 전화번호 알려줘" — a contact-detail lookup. The 8B won't call
+  // find_contact for these (it abstains, even claiming it has no contact feature),
+  // so resolve the named contact deterministically. resolveContact is the
+  // precision gate: an unknown name (or a non-contact phrase) falls through to the
+  // normal path instead of short-circuiting.
+  const contactName = classifyContactLookup(message);
+  if (contactName) {
+    const { queryContacts, resolveContact } = await import("@muse/mcp");
+    const { resolveContactsFile } = await import("@muse/autoconfigure");
+    const contacts = await queryContacts(resolveContactsFile(process.env as Record<string, string | undefined>)).catch(() => []);
+    const resolution = resolveContact(contacts, contactName);
+    const korean = /[가-힣]/u.test(message);
+    if (resolution.status === "resolved") {
+      return { response: formatContactDetails(resolution.contact, korean), runId: "local-contact", toolsUsed: [] };
+    }
+    if (resolution.status === "ambiguous") {
+      const names = resolution.matches.map((contact) => contact.name).join(", ");
+      return {
+        response: korean ? `여러 명이 있어요: ${names}. 누구를 말씀하시는 건가요?` : `Several match: ${names}. Which one?`,
+        runId: "local-contact",
+        toolsUsed: []
+      };
+    }
+    // status "unknown" → not a known contact; fall through to the normal path.
   }
 
   // Pure arithmetic ("12 times 4", "what is (1200+850)/2") — the local 8B

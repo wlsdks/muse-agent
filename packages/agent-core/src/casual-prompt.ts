@@ -203,6 +203,38 @@ const REMINDER_LIST_PATTERNS: readonly RegExp[] = [
   /\b(list|show|view)\s+(me\s+)?(all\s+)?(my\s+)?reminders?\b/u
 ];
 
+// "박지훈 전화번호 알려줘" / "박지훈은 나랑 무슨 관계?" — a lookup of ONE contact's
+// details. The 8B won't reliably call find_contact for these (it reads them as
+// memory questions and abstains, even claiming it has no contact feature), so the
+// chat surface extracts the candidate name and resolves it deterministically. The
+// name is a single token (the char class excludes spaces) so a multi-word phrase
+// ("이 식당 전화번호") isn't captured; resolveContact is the precision gate (an
+// unknown name falls through to recall).
+const CONTACT_LOOKUP_PATTERNS: readonly RegExp[] = [
+  /^([가-힣A-Za-z][가-힣A-Za-z·.]{1,18})(?:의|님|씨|은|는|이|가)?\s*(?:전화번호|연락처|핸드폰|휴대폰|이메일|메일\s*주소|메일|생일)/u,
+  /^([가-힣A-Za-z][가-힣A-Za-z·.]{1,18})(?:은|는|이|가)\s+(?:나|저)(?:랑|와|하고)?\s*(?:무슨\s*)?관계/u,
+  /^(?:what(?:'s| is)?\s+)?([A-Za-z가-힣][A-Za-z가-힣·.]{1,18})(?:'s|s)?\s+(?:phone|number|email|birthday|contact|handle)\b/iu
+];
+
+/** The candidate contact NAME if the prompt asks for ONE person's details, else null. */
+export function classifyContactLookup(query: string): string | null {
+  const q = query.trim();
+  if (q.length === 0 || q.length > 60) {
+    return null;
+  }
+  // An outbound ACTION (call/text/email someone) is not a detail lookup.
+  if (/전화\s*해|문자\s*(?:보내|해)|메시지\s*보내|연락\s*해|(?:이메일|메일)\s*보내|\b(?:call|text|email|message|dm)\s+/iu.test(q)) {
+    return null;
+  }
+  for (const re of CONTACT_LOOKUP_PATTERNS) {
+    const m = re.exec(q);
+    if (m?.[1]) {
+      return m[1].trim();
+    }
+  }
+  return null;
+}
+
 /** True when the prompt asks to SEE the reminder list — not to set / snooze / clear one. */
 export function classifyReminderListQuery(query: string): boolean {
   const q = query.trim().toLowerCase();
