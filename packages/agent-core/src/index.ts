@@ -325,6 +325,8 @@ export {
   type ToolCallNotDuplicate
 } from "./tool-call-deduplicator.js";
 
+export { groundToolArguments, type ToolArgumentGrounding } from "./tool-argument-grounding.js";
+
 export {
   createAgentCheckpointState,
   decodeCheckpointMessages,

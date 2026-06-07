@@ -51,6 +51,8 @@ import {
 
 import type { ActiveContextProvider, ActiveContextSnapshot } from "./active-context.js";
 import { applyAttachmentContext as applyAttachmentContextFn } from "./attachment-context.js";
+import { joinUserMessages } from "./internals.js";
+import { groundToolArguments } from "./tool-argument-grounding.js";
 import {
   applyActiveContext as applyActiveContextFn,
   applyAgentSpec as applyAgentSpecFn,
@@ -822,8 +824,17 @@ export class AgentRuntime {
       return executed;
     }
 
+    // Deterministic arg grounding: drop a free-text actuator arg the 8B
+    // fabricated (a calendar location/notes the user never said) — a schema
+    // "omit if unspecified" instruction is ~0% effective on a small model, so
+    // the fabrication=0 edge is enforced in code at the tool boundary.
+    const groundedArgs = exposed?.groundedArgs ?? [];
+    const finalArguments = groundedArgs.length > 0
+      ? (groundToolArguments(coercedArguments, groundedArgs, joinUserMessages(context.input.messages)).args as typeof coercedArguments)
+      : coercedArguments;
+
     const result = await this.toolExecutor.execute({
-      arguments: coercedArguments,
+      arguments: finalArguments,
       context: {
         runId: context.runId,
         userId: metadataString(context.input.metadata, "userId")

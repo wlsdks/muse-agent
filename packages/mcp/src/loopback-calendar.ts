@@ -310,6 +310,10 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           type: "object"
         },
         domain: "calendar",
+        // The 8B fabricates these free-text annotations (a location/notes the
+        // user never said) and they get persisted; the runtime drops either
+        // when it isn't grounded in the user's utterance.
+        groundedArgs: ["location", "notes"],
         name: "add",
         risk: "write"
       },

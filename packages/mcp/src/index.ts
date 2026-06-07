@@ -83,6 +83,14 @@ export interface McpRemoteTool {
    * the whole domain.
    */
   readonly keywords?: readonly string[];
+  /**
+   * Free-text argument names that must be GROUNDED in the user's utterance,
+   * forwarded to `MuseToolDefinition.groundedArgs`. The runtime drops any such
+   * arg the model fabricated (an 8B invents a calendar `location`/`notes` the
+   * user never said). Loopback actuator tools set this; external MCP tools
+   * usually don't.
+   */
+  readonly groundedArgs?: readonly string[];
 }
 
 export interface McpConnection {
@@ -229,6 +237,7 @@ export function createMcpMuseTool(serverName: string, tool: McpRemoteTool, conne
       description: tool.description,
       ...(tool.domain ? { domain: tool.domain } : {}),
       ...(tool.keywords && tool.keywords.length > 0 ? { keywords: tool.keywords } : {}),
+      ...(tool.groundedArgs && tool.groundedArgs.length > 0 ? { groundedArgs: tool.groundedArgs } : {}),
       inputSchema: tool.inputSchema ?? {},
       name: `${serverName}.${tool.name}`,
       risk: tool.risk ?? "read"

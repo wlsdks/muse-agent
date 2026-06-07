@@ -1,7 +1,7 @@
-import { validateToolDefinitions, type MuseTool } from "@muse/tools";
+import { toModelTool, validateToolDefinitions, type MuseTool } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
-import { createCalendarMcpServer } from "../src/index.js";
+import { createCalendarMcpServer, createLoopbackMcpMuseTools } from "../src/index.js";
 
 // Only the tool DEFINITIONS are inspected here — the registry is never
 // called — so a typed stub is enough to build the server.
@@ -30,6 +30,20 @@ describe("calendar loopback tools meet the one-shot tool-calling bar", () => {
     // Sanity: the write tools the model fills the most are present.
     const names = server.tools.map((t) => t.name);
     expect(names).toEqual(expect.arrayContaining(["add", "update", "delete"]));
+  });
+
+  it("marks the 'add' tool's free-text location/notes as groundedArgs all the way to ModelTool", () => {
+    const server = createCalendarMcpServer({ registry: stubRegistry });
+    const add = server.tools.find((t) => t.name === "add")!;
+    // declared on the loopback tool…
+    expect(add.groundedArgs).toEqual(["location", "notes"]);
+    // …survives the loopback → MuseTool projection…
+    const museTool = createLoopbackMcpMuseTools(server).find((t) => t.definition.name.endsWith(".add"))!;
+    expect(museTool.definition.groundedArgs).toEqual(["location", "notes"]);
+    // …and the MuseTool → ModelTool projection the runtime reads (never the schema → provider).
+    const modelTool = toModelTool(museTool);
+    expect(modelTool.groundedArgs).toEqual(["location", "notes"]);
+    expect("groundedArgs" in (modelTool.inputSchema as object)).toBe(false);
   });
 
   it("the 'add' tool's title + startsAt carry concrete, example-bearing descriptions", () => {

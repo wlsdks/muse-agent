@@ -61,6 +61,14 @@ export interface ModelTool {
   readonly description: string;
   readonly inputSchema: JsonObject;
   readonly risk: "read" | "write" | "execute";
+  /**
+   * Optional free-text argument names that must be GROUNDED in the user's
+   * utterance — the runtime drops any such arg the model fabricated (an 8B
+   * invents a calendar `location`/`notes` the user never said). Muse-side
+   * metadata like `risk`; never serialized into the provider request (providers
+   * read only `inputSchema`).
+   */
+  readonly groundedArgs?: readonly string[];
 }
 
 export interface ModelToolCall {

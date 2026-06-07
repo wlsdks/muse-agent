@@ -53,6 +53,7 @@ export function createLoopbackMcpConnection(server: LoopbackMcpServer): McpConne
     listTools: async () =>
       server.tools.map((tool) => ({
         description: tool.description,
+        ...(tool.groundedArgs && tool.groundedArgs.length > 0 ? { groundedArgs: tool.groundedArgs } : {}),
         inputSchema: tool.inputSchema ?? {},
         name: tool.name,
         ...(tool.risk ? { risk: tool.risk } : {})
@@ -72,6 +73,7 @@ export function createLoopbackMcpMuseTools(server: LoopbackMcpServer): readonly 
       {
         description: tool.description,
         ...(tool.domain ? { domain: tool.domain } : {}),
+        ...(tool.groundedArgs && tool.groundedArgs.length > 0 ? { groundedArgs: tool.groundedArgs } : {}),
         ...(tool.keywords && tool.keywords.length > 0 ? { keywords: tool.keywords } : {}),
         inputSchema: tool.inputSchema ?? {},
         name: tool.name,

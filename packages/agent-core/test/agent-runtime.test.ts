@@ -1061,6 +1061,64 @@ describe("AgentRuntime", () => {
     expect(seen.args?.count).toBe(5); // number, not the string "5"
   });
 
+  it("drops a fabricated groundedArg the user never said before execute (location not in utterance)", async () => {
+    const seen: { args?: Record<string, unknown> } = {};
+    const executeTool = vi.fn((args: Record<string, unknown>) => { seen.args = args; return { ok: true }; });
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Add a calendar event.",
+          groundedArgs: ["location", "notes"],
+          inputSchema: { type: "object", properties: { title: { type: "string" }, location: { type: "string" } }, required: ["title"] },
+          keywords: ["회의", "잡아", "calendar"],
+          name: "calendar_add",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        { id: "tool", model: "test-model", output: "Adding.", toolCalls: [{ arguments: { title: "회의", location: "강남역" }, id: "tc-1", name: "calendar_add" }] },
+        { id: "final", model: "test-model", output: "Done." }
+      ]),
+      toolRegistry
+    });
+    await runtime.run({ messages: [{ content: "회의 잡아줘", role: "user" }], model: "provider/model", runId: "run-ground-drop" });
+    expect(executeTool).toHaveBeenCalledOnce();
+    expect(seen.args).toEqual({ title: "회의" }); // fabricated location dropped, required title kept
+  });
+
+  it("keeps a groundedArg the user actually stated (location present in utterance)", async () => {
+    const seen: { args?: Record<string, unknown> } = {};
+    const executeTool = vi.fn((args: Record<string, unknown>) => { seen.args = args; return { ok: true }; });
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Add a calendar event.",
+          groundedArgs: ["location", "notes"],
+          inputSchema: { type: "object", properties: { title: { type: "string" }, location: { type: "string" } }, required: ["title"] },
+          keywords: ["회의", "잡아", "calendar"],
+          name: "calendar_add",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        { id: "tool", model: "test-model", output: "Adding.", toolCalls: [{ arguments: { title: "회의", location: "강남역" }, id: "tc-1", name: "calendar_add" }] },
+        { id: "final", model: "test-model", output: "Done." }
+      ]),
+      toolRegistry
+    });
+    await runtime.run({ messages: [{ content: "강남역에서 회의 잡아줘", role: "user" }], model: "provider/model", runId: "run-ground-keep" });
+    expect(executeTool).toHaveBeenCalledOnce();
+    expect(seen.args).toEqual({ title: "회의", location: "강남역" }); // grounded location kept
+  });
+
   it("executes normally when all required arguments are present", async () => {
     const executeTool = vi.fn(() => ({ ok: true }));
     const toolRegistry = new ToolRegistry([

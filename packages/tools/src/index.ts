@@ -22,6 +22,13 @@ export interface MuseToolDefinition {
    * the prefix-based heuristic in `inferDomain`.
    */
   readonly domain?: string;
+  /**
+   * Optional free-text argument names that must be GROUNDED in the user's
+   * utterance. The runtime drops any such arg the model fabricated (an 8B
+   * invents a calendar `location`/`notes` the user never said). Muse-side
+   * metadata; never sent to the provider (only `inputSchema` is).
+   */
+  readonly groundedArgs?: readonly string[];
 }
 
 export interface MuseToolContext {
@@ -374,7 +381,8 @@ export function toModelTool(tool: MuseTool): ModelTool {
     description: shortenToolDescription(tool.definition.description),
     inputSchema: tool.definition.inputSchema,
     name: tool.definition.name,
-    risk: tool.definition.risk
+    risk: tool.definition.risk,
+    ...(tool.definition.groundedArgs ? { groundedArgs: tool.definition.groundedArgs } : {})
   };
 }
 
