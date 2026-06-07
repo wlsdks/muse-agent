@@ -197,10 +197,16 @@ export function registerSkillsCommands(program: Command, io: ProgramIO): void {
       }
       const { mergeSkillsIntoUmbrella, validateUmbrellaCoverage } = await import("@muse/agent-core");
       const store = new AuthoredSkillStore({ dir: resolveAuthoredSkillsDir() });
-      const merge = (cluster: Parameters<typeof mergeSkillsIntoUmbrella>[0]) =>
+      const merge = (
+        cluster: Parameters<typeof mergeSkillsIntoUmbrella>[0],
+        feedback?: { readonly avoidDropping: readonly string[] }
+      ) =>
         mergeSkillsIntoUmbrella(cluster, {
           model,
-          modelProvider: assembly.modelProvider as Parameters<typeof mergeSkillsIntoUmbrella>[1]["modelProvider"]
+          modelProvider: assembly.modelProvider as Parameters<typeof mergeSkillsIntoUmbrella>[1]["modelProvider"],
+          // Forward the coverage gate's dropped-skill feedback so a self-consistency
+          // retry STEERS away from the miss instead of re-sampling blindly.
+          ...(feedback ? { feedback } : {})
         });
       // SkillOpt held-out gate: commit a merge only if the umbrella semantically
       // covers every clustered skill (shared embedder). Fail-closed on no embedder.
@@ -208,7 +214,11 @@ export function registerSkillsCommands(program: Command, io: ProgramIO): void {
       const plan = await store.consolidate(merge, {
         threshold,
         dryRun: options.apply !== true,
-        validate: (cluster, umbrella) => validateUmbrellaCoverage(cluster, umbrella, { embed }).then((v) => v.accept)
+        // Self-consistency: gemma4 sometimes under-covers on a single try, so
+        // sample up to 5 times and take the first umbrella that passes the
+        // coverage gate (later tries steer away from the reported `lost` skills).
+        attempts: 5,
+        validate: (cluster, umbrella) => validateUmbrellaCoverage(cluster, umbrella, { embed })
       });
       if (plan.length === 0) {
         io.stdout("No authored skills cohere into an umbrella — nothing to consolidate.\n");

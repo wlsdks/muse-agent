@@ -61,18 +61,33 @@ const cases = [
 
 let failures = 0;
 for (const c of cases) {
-  const out = await mergeSkillsIntoUmbrella(c.cluster, { model, modelProvider });
   let ok;
   let gateNote = "";
+  let out;
   if (c.kind === "umbrella") {
-    const blob = `${out?.name ?? ""} ${out?.description ?? ""} ${out?.body ?? ""}`.toLowerCase();
-    const coherent = Boolean(out?.name) && Boolean(out?.description) && Boolean(out?.body) && c.needles.some((n) => blob.includes(n.toLowerCase()));
-    // Held-out gate must ACCEPT a coherent real umbrella — a rejection here is a
-    // false-reject regression, not the gate doing its job.
-    const verdict = out ? await validateUmbrellaCoverage(c.cluster, out, { embed }) : { accept: false, reason: "no umbrella produced" };
+    // Self-consistency (mirrors production `consolidate({ attempts: 5 })`): a
+    // stochastic local model sometimes under-covers on one try, so sample up to
+    // 5 times and take the first umbrella the held-out gate accepts, steering
+    // each retry away from the reported `lost` skills. The gate still does real
+    // work — a non-covering umbrella is rejected on every attempt.
+    let coherent = false;
+    let verdict = { accept: false, reason: "no umbrella produced", lost: [] };
+    let lost = [];
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      out = await mergeSkillsIntoUmbrella(c.cluster, { model, modelProvider, ...(lost.length > 0 ? { feedback: { avoidDropping: lost } } : {}) });
+      if (!out) break;
+      const blob = `${out.name ?? ""} ${out.description ?? ""} ${out.body ?? ""}`.toLowerCase();
+      coherent = Boolean(out.name) && Boolean(out.description) && Boolean(out.body) && c.needles.some((n) => blob.includes(n.toLowerCase()));
+      verdict = await validateUmbrellaCoverage(c.cluster, out, { embed });
+      lost = verdict.lost ?? [];
+      if (coherent && verdict.accept) break;
+    }
     ok = coherent && verdict.accept;
     gateNote = `\n   gate: ${verdict.accept ? "ACCEPT" : "REJECT"} — ${verdict.reason}`;
   } else {
+    // Negative cases must NOT merge — a single try is correct (retrying can't
+    // turn a should-be-NONE into a pass).
+    out = await mergeSkillsIntoUmbrella(c.cluster, { model, modelProvider });
     ok = out === undefined;
   }
   console.log(`${ok ? "PASS" : "FAIL"} — ${c.name}\n   out: ${JSON.stringify(out)?.slice(0, 200)}${gateNote}`);

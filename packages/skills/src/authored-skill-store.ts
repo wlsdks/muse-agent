@@ -271,6 +271,15 @@ export class AuthoredSkillStore {
        */
       readonly feedbackRetry?: boolean;
       /**
+       * Self-consistency sampling: propose the umbrella up to `attempts` times and
+       * commit the FIRST that passes `validate`, steering each retry away from the
+       * gate-reported `lost` skills. Raises the merge-success rate on a stochastic
+       * local model (gemma4) where a single try sometimes under-covers — without
+       * weakening the gate (a non-covering umbrella is still rejected every time).
+       * Default 1 (or 2 when `feedbackRetry` is set, for back-compat).
+       */
+      readonly attempts?: number;
+      /**
        * Cross-tick reject COOLDOWN (injected so this package stays IO-free): a
        * cluster the gate keeps rejecting shouldn't be recomputed (a local-LLM
        * merge + embeds) every idle tick forever. `shouldSkipCluster` is consulted
@@ -295,25 +304,29 @@ export class AuthoredSkillStore {
       // Cooldown: a cluster that has been rejected too many times is skipped
       // BEFORE the costly merge call, until a member's content changes.
       if (options.shouldSkipCluster && (await options.shouldSkipCluster(drafts))) continue;
-      let umbrella = await merge(drafts);
-      if (!umbrella) continue; // cluster didn't cohere — leave the skills alone (no reject recorded)
-      if (options.validate) {
-        const verdict = await options.validate(drafts, umbrella);
-        let accept = typeof verdict === "boolean" ? verdict : verdict.accept;
-        const lost = typeof verdict === "boolean" ? [] : (verdict.lost ?? []);
-        if (!accept && options.feedbackRetry && lost.length > 0) {
-          // Steered re-proposal: tell the merger which skills it dropped.
-          const retry = await merge(drafts, { avoidDropping: lost });
-          if (retry) {
-            const v2 = await options.validate(drafts, retry);
-            accept = typeof v2 === "boolean" ? v2 : v2.accept;
-            if (accept) umbrella = retry;
-          }
-        }
-        if (!accept) {
-          await options.recordReject?.(drafts); // held-out reject → count toward cooldown
-          continue; // roll back: originals intact
-        }
+      // Self-consistency: a small local model (gemma4) sometimes produces a
+      // non-covering umbrella on a single try, so sample up to `attempts` times
+      // and accept the FIRST that passes the held-out coverage gate (a later
+      // attempt steers away from the previously-dropped skills when the gate
+      // reports them). `feedbackRetry` stays as the back-compat one-retry alias.
+      const attempts = Math.max(1, Math.trunc(options.attempts ?? (options.feedbackRetry ? 2 : 1)));
+      let umbrella: SkillDraft | undefined;
+      let accepted = !options.validate; // no gate ⇒ first cohere wins
+      let lost: readonly string[] = [];
+      for (let attempt = 0; attempt < attempts; attempt += 1) {
+        const candidate = await merge(drafts, lost.length > 0 ? { avoidDropping: lost } : undefined);
+        if (!candidate) break; // cluster didn't cohere — leave the skills alone (no reject)
+        umbrella = candidate;
+        if (!options.validate) break;
+        const verdict = await options.validate(drafts, candidate);
+        accepted = typeof verdict === "boolean" ? verdict : verdict.accept;
+        lost = typeof verdict === "boolean" ? [] : (verdict.lost ?? []);
+        if (accepted) break;
+      }
+      if (!umbrella) continue; // never cohered — no reject recorded
+      if (!accepted) {
+        await options.recordReject?.(drafts); // held-out reject → count toward cooldown
+        continue; // roll back: originals intact
       }
       if (options.dryRun) {
         out.push({ merged: cluster.map((s) => s.name), umbrella: umbrella.name });
