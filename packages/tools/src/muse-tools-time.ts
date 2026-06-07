@@ -22,7 +22,8 @@ export function createTimeNowTool(now: () => Date): MuseTool {
       description:
         "Returns the CURRENT wall-clock instant right now: ISO-8601 UTC, epoch milliseconds, the current day-of-week (e.g. 'Tuesday'), and the resolved IANA timezone. " +
         "Use when the user asks what the time, date, or day-of-week IS RIGHT NOW or today (e.g. 'what time is it', 'what day is it today in Seoul', \"what's today's date\", Korean '지금 몇 시야', '오늘 며칠이야', '오늘 무슨 요일이야'). " +
-        "Do NOT use to find the date of a FUTURE named weekday ('when is next Monday') — that is next_weekday_date.",
+        "Do NOT use to find the date of a FUTURE named weekday ('when is next Monday') — that is next_weekday_date. " +
+        "Do NOT use to compute the duration BETWEEN two given times ('how many hours between 9am and 5:30pm') — that is time_diff.",
       inputSchema: {
         additionalProperties: false,
         properties: {
@@ -73,7 +74,8 @@ export function createTimeDiffTool(): MuseTool {
       description:
         "Computes the signed duration between two ISO-8601 timestamps. Returns milliseconds plus a humanized string. " +
         "Negative durations indicate `to` precedes `from`. " +
-        "Use when you have TWO explicit timestamps to compare; for 'how long ago / until' relative to NOW, use time_relative instead.",
+        "Use when the user gives TWO explicit times/dates to compare — including clock times ('how many hours between 9am and 5:30pm today') and two dates ('days between 2026-05-01 and 2026-06-15'). " +
+        "Not for the CURRENT time (time_now); for 'how long ago / until' relative to NOW, use time_relative.",
       inputSchema: {
         additionalProperties: false,
         properties: {

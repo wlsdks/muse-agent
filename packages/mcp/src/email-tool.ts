@@ -261,7 +261,7 @@ export function createEmailSearchTool(deps: EmailSearchToolDeps): MuseTool {
   return {
     definition: {
       description:
-        "Find inbox messages MATCHING a query — a sender, subject word, or keyword the user named ('the email from the bank', 'emails about the Paris trip', 'invoice from Acme'). Returns the matches (sender, subject, unread flag, snippet, id). Use this whenever the user is looking for SPECIFIC mail; for just the latest messages with no search terms, use `email_recent`. Read-only — never sends anything.",
+        "Find inbox messages MATCHING a query — a sender, subject word, or keyword the user named ('the email from the bank', 'emails about the Paris trip', 'invoice from Acme'). Returns the matches (sender, subject, unread flag, snippet, id). Use this whenever the user is looking for SPECIFIC mail; for just the latest messages with no search terms, use `email_recent`. Read-only — never sends anything. Do NOT use when the user is only DESCRIBING or quoting an email they already received and asking what to make of it ('I got an email saying reply YES to confirm — should I trust it?', 'is this email a scam?') — that is a question to answer, not a request to search the inbox.",
       domain: "messaging",
       inputSchema: {
         additionalProperties: false,
