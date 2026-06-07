@@ -201,6 +201,9 @@ export function cursorCoords(state: InputState): { line: number; col: number } {
 export interface ChatTurnMessage {
   readonly role: "system" | "user" | "assistant";
   readonly content: string;
+  /** Inline image attachments (gemma4 vision) — set when the turn referenced an
+   *  image via `@photo.png`. Forwarded to the model's per-message images. */
+  readonly attachments?: ReadonlyArray<{ readonly mimeType: string; readonly dataBase64: string }>;
 }
 
 /** Active-context window (Context-Folding, arXiv:2510.11967): the max number
@@ -217,7 +220,8 @@ export function buildTurnMessages(
   systemContent: string,
   history: readonly ChatTurnMessage[],
   userMessage: string,
-  maxHistoryMessages?: number
+  maxHistoryMessages?: number,
+  attachments?: ReadonlyArray<{ readonly mimeType: string; readonly dataBase64: string }>
 ): ChatTurnMessage[] {
   const conversation = history.filter((m) => m.role === "user" || m.role === "assistant");
   const windowed = maxHistoryMessages !== undefined && maxHistoryMessages >= 0 && conversation.length > maxHistoryMessages
@@ -226,7 +230,7 @@ export function buildTurnMessages(
   return [
     { content: systemContent, role: "system" },
     ...windowed,
-    { content: userMessage, role: "user" }
+    { content: userMessage, role: "user", ...(attachments && attachments.length > 0 ? { attachments } : {}) }
   ];
 }
 
@@ -385,6 +389,18 @@ export function extractAttachmentPaths(message: string): string[] {
     if (path && !out.includes(path)) out.push(path);
   }
   return out;
+}
+
+const IMAGE_MIME_BY_EXT: Record<string, string> = {
+  bmp: "image/bmp", gif: "image/gif", heic: "image/heic", jpeg: "image/jpeg",
+  jpg: "image/jpeg", png: "image/png", webp: "image/webp"
+};
+
+/** The image MIME type for an `@path` by extension, or undefined for a non-image
+ *  (read as text). Routes `@photo.png` to gemma4 vision, `@notes.md` to text. */
+export function imageMimeForPath(path: string): string | undefined {
+  const ext = path.split(".").pop()?.toLowerCase();
+  return ext ? IMAGE_MIME_BY_EXT[ext] : undefined;
 }
 
 /** Model completions while typing `/model <partial>` (substring match). */

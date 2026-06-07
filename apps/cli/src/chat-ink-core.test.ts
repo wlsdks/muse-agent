@@ -9,6 +9,7 @@ import {
   displayWidth,
   emptyInput,
   extractAttachmentPaths,
+  imageMimeForPath,
   friendlyError,
   buildRecap,
   chatToolApprovalGate,
@@ -519,5 +520,35 @@ describe("formatMemoryView — episodic memory line", () => {
   });
   it("no episodes → no past-sessions line", () => {
     expect(formatMemoryView({ facts: { name: "x" }, preferences: {}, recentTopics: [] })).not.toContain("Past sessions");
+  });
+});
+
+describe("imageMimeForPath", () => {
+  it("maps image extensions to MIME types (case-insensitive)", () => {
+    expect(imageMimeForPath("photo.png")).toBe("image/png");
+    expect(imageMimeForPath("a/b/Receipt.JPG")).toBe("image/jpeg");
+    expect(imageMimeForPath("scan.webp")).toBe("image/webp");
+    expect(imageMimeForPath("card.heic")).toBe("image/heic");
+  });
+
+  it("returns undefined for non-image files (read as text)", () => {
+    expect(imageMimeForPath("notes.md")).toBeUndefined();
+    expect(imageMimeForPath("data.json")).toBeUndefined();
+    expect(imageMimeForPath("noext")).toBeUndefined();
+  });
+});
+
+describe("buildTurnMessages with image attachments", () => {
+  it("attaches images to the user message only", () => {
+    const atts = [{ dataBase64: "QQ==", mimeType: "image/png" }];
+    const msgs = buildTurnMessages("sys", [], "look at this", undefined, atts);
+    const user = msgs.find((m) => m.role === "user");
+    expect(user?.attachments).toEqual(atts);
+    expect(msgs.find((m) => m.role === "system")?.attachments).toBeUndefined();
+  });
+
+  it("omits the attachments field when there are none", () => {
+    const user = buildTurnMessages("sys", [], "hi", undefined, []).find((m) => m.role === "user");
+    expect(user && "attachments" in user).toBe(false);
   });
 });

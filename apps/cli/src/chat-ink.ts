@@ -36,6 +36,7 @@ import {
   cursorCoords,
   emptyInput,
   extractAttachmentPaths,
+  imageMimeForPath,
   firstOpenToday,
   formatJobsList,
   greetingName,
@@ -181,6 +182,7 @@ export function MuseChatApp(props: {
   readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
   readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<boolean>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
   readonly readFile: (relativePath: string) => Promise<string | undefined>;
+  readonly readImage?: (relativePath: string) => Promise<{ readonly mimeType: string; readonly dataBase64: string } | undefined>;
   readonly saveText: (text: string) => Promise<string | undefined>;
   readonly copyToClipboard: (text: string) => Promise<boolean>;
   readonly onCommit: (user: string, assistant: string) => void;
@@ -496,7 +498,15 @@ export function MuseChatApp(props: {
     // so the model can answer about them. Missing/oversize files fail soft.
     const attachmentPaths = extractAttachmentPaths(message);
     let attachmentBlock = "";
+    const imageAttachments: { readonly mimeType: string; readonly dataBase64: string }[] = [];
     for (const rel of attachmentPaths) {
+      // An image `@photo.png` goes to gemma4 vision (inline attachment); any other
+      // file is read as text and prepended as before.
+      if (imageMimeForPath(rel) !== undefined && props.readImage) {
+        const img = await props.readImage(rel);
+        if (img) imageAttachments.push(img);
+        continue;
+      }
       try {
         const body = await props.readFile(rel);
         if (body !== undefined) attachmentBlock += `\n\n[Attached file: ${rel}]\n${body}`;
@@ -510,7 +520,7 @@ export function MuseChatApp(props: {
     const agentPrefix = activeAgent ? `${activeAgent.prompt}\n\n` : "";
     const groundingBlock = props.groundingFor ? await props.groundingFor(message).catch(() => "") : "";
     const system = agentPrefix + base + groundingBlock + props.skillsPromptFor(message);
-    const messages = buildTurnMessages(system, historyRef.current, message + attachmentBlock, props.historyWindow);
+    const messages = buildTurnMessages(system, historyRef.current, message + attachmentBlock, props.historyWindow, imageAttachments);
     let accumulated = "";
     let turnTokens = 0;
     const iter = toolsOn
@@ -851,7 +861,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const provider = assembly.modelProvider;
   type ChatStream = AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
   const stream = (messages: readonly ChatTurnMessage[], useModel: string): ChatStream =>
-    provider.stream({ messages: messages as { role: "system" | "user" | "assistant"; content: string }[], model: useModel });
+    provider.stream({ messages: messages as { role: "system" | "user" | "assistant"; content: string; attachments?: ReadonlyArray<{ mimeType: string; dataBase64: string }> }[], model: useModel });
 
   // Tools-on path: route through the agent runtime so the tool loop + guards
   // fire. Outbound actuators stay forbidden (no autonomous third-party send);
@@ -864,7 +874,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   ): ChatStream => {
     if (!agentRuntime) return stream(messages, useModel);
     return agentRuntime.stream({
-      messages: messages as { role: "system" | "user" | "assistant"; content: string }[],
+      messages: messages as { role: "system" | "user" | "assistant"; content: string; attachments?: ReadonlyArray<{ mimeType: string; dataBase64: string }> }[],
       // `localMode` exposes execute-risk tools (email/web/home actuators, shell)
       // to the chat model; the fail-closed gate below is what keeps them safe —
       // every write/execute call must be confirmed by the user with its content
@@ -883,6 +893,21 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
       const abs = isAbsolute(relativePath) ? relativePath : join(process.cwd(), relativePath);
       const body = await fsReadFile(abs, "utf8");
       return body.length > 8000 ? `${body.slice(0, 8000)}\n…(truncated)` : body;
+    } catch {
+      return undefined;
+    }
+  };
+
+  // `@photo.png` → an inline base64 image attachment for gemma4 vision (the
+  // adapter forwards it to Ollama per-message images). Fail-soft.
+  const readImage = async (relativePath: string): Promise<{ readonly mimeType: string; readonly dataBase64: string } | undefined> => {
+    const mimeType = imageMimeForPath(relativePath);
+    if (!mimeType) return undefined;
+    try {
+      const abs = isAbsolute(relativePath) ? relativePath : join(process.cwd(), relativePath);
+      const bytes = await fsReadFile(abs);
+      if (bytes.length === 0) return undefined;
+      return { dataBase64: bytes.toString("base64"), mimeType };
     } catch {
       return undefined;
     }
@@ -1276,6 +1301,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     proactiveCheck,
     proactiveNudges,
     readFile,
+    readImage,
     saveText,
     copyToClipboard,
     proactiveOn,
