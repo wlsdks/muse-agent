@@ -316,18 +316,30 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   private buildNativeChatBody(request: ModelRequest, stream: boolean): Record<string, unknown> {
     const modelName = (request.model ?? this.nativeDefaultModel ?? "").replace(/^ollama\//, "");
     return {
-      messages: request.messages.map((msg) => ({
-        ...(msg.role === "tool"
-          ? { content: msg.content, role: "tool", tool_call_id: msg.toolCallId }
-          : { content: msg.content, role: msg.role }),
-        ...(msg.toolCalls && msg.toolCalls.length > 0 ? {
-          tool_calls: msg.toolCalls.map((tc) => ({
-            function: { arguments: tc.arguments, name: tc.name },
-            id: tc.id,
-            type: "function"
-          }))
-        } : {})
-      })),
+      messages: request.messages.map((msg) => {
+        // Multimodal: forward inline image attachments as Ollama's per-message
+        // `images: [base64]` (no data: prefix) so a local vision model (gemma4)
+        // can SEE them. URL-only refs / non-image types are skipped — Ollama
+        // needs inline bytes. Tool messages never carry images.
+        const images = msg.role === "tool"
+          ? []
+          : (msg.attachments ?? [])
+              .filter((a) => a.mimeType.startsWith("image/") && typeof a.dataBase64 === "string" && a.dataBase64.length > 0)
+              .map((a) => a.dataBase64 as string);
+        return {
+          ...(msg.role === "tool"
+            ? { content: msg.content, role: "tool", tool_call_id: msg.toolCallId }
+            : { content: msg.content, role: msg.role }),
+          ...(images.length > 0 ? { images } : {}),
+          ...(msg.toolCalls && msg.toolCalls.length > 0 ? {
+            tool_calls: msg.toolCalls.map((tc) => ({
+              function: { arguments: tc.arguments, name: tc.name },
+              id: tc.id,
+              type: "function"
+            }))
+          } : {})
+        };
+      }),
       model: modelName,
       options: {
         // Ollama defaults num_ctx low (2048–4096) and silently

@@ -132,6 +132,30 @@ describe("OllamaProvider — native /api/chat request wire shape", () => {
     `);
   });
 
+  it("forwards an inline image attachment as the message's `images` (Ollama vision)", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "a red square" } }) });
+    await p.generate(
+      userReq({
+        model: "ollama/gemma4:12b",
+        messages: [{
+          content: "what's in this image?",
+          role: "user",
+          attachments: [{ mimeType: "image/png", dataBase64: "QkFTRTY0UE5H" }]
+        }]
+      }),
+    );
+    const msg = (lastBody().messages as Array<Record<string, unknown>>)[0]!;
+    expect(msg.content).toBe("what's in this image?");
+    expect(msg.images).toEqual(["QkFTRTY0UE5H"]); // base64, no data: prefix
+  });
+
+  it("does NOT add `images` when a message has no image attachment", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    await p.generate(userReq({ messages: [{ content: "hi", role: "user" }] }));
+    const msg = (lastBody().messages as Array<Record<string, unknown>>)[0]!;
+    expect("images" in msg).toBe(false);
+  });
+
   it("targets /api/chat, strips the ollama/ model prefix, and sends think:false by default", async () => {
     const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
     await p.generate(userReq());
