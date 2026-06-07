@@ -685,6 +685,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           leadMinutes,
           messagingRegistry,
           providerId: provider,
+          ...(quietHours ? { quietHours } : {}),
           sidecarFile,
           tasksFile,
           trustLedgerFile,

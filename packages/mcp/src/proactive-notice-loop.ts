@@ -24,6 +24,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import { redactSecretsInText } from "@muse/shared";
 
 import { sendWithRetry } from "./messaging-retry.js";
+import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";
 
 /**
  * Structural shape of the Phase D broker (defined in
@@ -343,6 +344,13 @@ export interface RunDueProactiveNoticesOptions {
   readonly leadMinutes?: number;
   /** Dedupe sidecar path. Required — without it, every tick re-fires. */
   readonly sidecarFile: string;
+  /**
+   * Quiet-hours window during which a "nice to know" notice is suppressed on
+   * EITHER sink. The terminal sink is already gated by `gateProactiveNoticeSink`,
+   * but the messaging sink delivers directly — without this, a notice would still
+   * message the user at night. Gating here closes that bypass uniformly.
+   */
+  readonly quietHours?: QuietHourRange;
   /** Injectable clock for tests. Default `() => new Date()`. */
   readonly now?: () => Date;
   /**
@@ -612,8 +620,15 @@ export async function runDueProactiveNotices(
     const noticeText = redactSecretsInText(rawNoticeText);
 
     const firedAtIso = now().toISOString();
+    // Quiet-hours suppression applied to BOTH sinks (the messaging sink would
+    // otherwise bypass the terminal-only `gateProactiveNoticeSink` and nag at
+    // night). Matches the terminal gate's drop semantics: the notice is skipped,
+    // not deferred — these are "nice to know" ambient notices.
+    const quietNow = options.quietHours !== undefined && isQuietHour(now().getHours(), options.quietHours);
     try {
-      if (sinkChoice === "terminal" && options.terminalSink) {
+      if (quietNow) {
+        // suppressed — deliver nothing on either sink
+      } else if (sinkChoice === "terminal" && options.terminalSink) {
         await options.terminalSink.deliver({ kind: item.kind, text: noticeText, title: item.title });
       } else {
         await sendWithRetry(

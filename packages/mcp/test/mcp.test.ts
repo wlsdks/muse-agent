@@ -5639,6 +5639,53 @@ describe("runDueProactiveNotices", () => {
     expect(attempts.length).toBe(3);
   });
 
+  it("suppresses the MESSAGING sink during quiet hours (no night-time nag bypass)", async () => {
+    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-proactive-quiet-"));
+
+    const fixedNow = new Date("2026-05-12T14:55:00Z");
+    const localHour = fixedNow.getHours();
+    // A window that definitely includes the local hour of fixedNow, TZ-agnostic.
+    const quietHours = { startHour: localHour, endHour: (localHour + 1) % 24 };
+    const makeCal = () => makeFakeCalendarRegistry([
+      { endsAt: new Date("2026-05-12T16:00:00Z"), id: "evt-quiet", startsAt: new Date("2026-05-12T15:00:00Z"), title: "Standup" }
+    ]);
+    const sent: string[] = [];
+    const registry = {
+      send: async (providerId: string, msg: { destination: string; text: string }) => {
+        sent.push(`${providerId}:${msg.destination}`);
+        return { destination: msg.destination, messageId: "ok", providerId };
+      }
+    } as unknown as Parameters<typeof runDueProactiveNotices>[0]["messagingRegistry"];
+
+    // During quiet hours: the event is imminent but the messaging sink must NOT fire.
+    const quiet = await runDueProactiveNotices({
+      calendarRegistry: makeCal() as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: registry,
+      now: () => fixedNow,
+      providerId: "telegram",
+      quietHours,
+      sidecarFile: join(dir, "quiet.json")
+    });
+    expect(quiet.imminent).toBe(1); // the event WAS detected as imminent…
+    expect(sent).toEqual([]); // …but nothing was messaged (suppressed, no nag)
+
+    // Same input, no quiet window → it DOES message (proves the suppression is what gated it).
+    await runDueProactiveNotices({
+      calendarRegistry: makeCal() as unknown as Parameters<typeof runDueProactiveNotices>[0]["calendarRegistry"],
+      destination: "@me",
+      messagingRegistry: registry,
+      now: () => fixedNow,
+      providerId: "telegram",
+      sidecarFile: join(dir, "loud.json")
+    });
+    expect(sent).toEqual(["telegram:@me"]);
+  });
+
   it("treats a non-finite leadMinutes as the default instead of silently surfacing nothing", async () => {
     const { runDueProactiveNotices } = await import("../src/index.js");
     const { mkdtempSync } = await import("node:fs");
