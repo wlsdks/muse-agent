@@ -72,7 +72,18 @@ binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (the method).
    ONLY**; each battery skips (exit 0) when Ollama is unreachable. Run
    after touching tool names/descriptions/schemas, the eval harness, or
    any battery's cases.
-8. **Lint gate**:
+8. **Grounded-vision gate** (image → grounded extraction → routed action):
+   ```bash
+   pnpm eval:vision
+   ```
+   Feeds checked-in document fixtures (`apps/cli/scripts/fixtures/vision/`:
+   receipt / flyer / business card) to the multimodal default (gemma4) and
+   asserts each routes to the right draft-first action with the key fields
+   extracted (`muse ask --image --auto`). **LOCAL OLLAMA ONLY**; skips
+   (exit 0) when Ollama is unreachable. Run after touching the vision
+   extraction primitive, the `--auto`/`--extract` routing, or the Ollama
+   image path.
+9. **Lint gate**:
    ```bash
    pnpm lint
    ```
