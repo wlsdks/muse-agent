@@ -30,6 +30,36 @@ describe("FileUserMemoryStore", () => {
     expect(memory?.recentTopics).toEqual([]);
   });
 
+  it("degrades a corrupt/missing stored date to epoch instead of crashing the next write", async () => {
+    const { file, store } = await newStore();
+    // A hand-edited / legacy / bad-sync memory file: updatedAt is garbage and a
+    // factHistory entry is missing replacedAt. Before the fix these became Invalid
+    // Dates and the next upsert's .toISOString() threw, losing every future write.
+    await writeFile(file, JSON.stringify({
+      version: 1,
+      users: {
+        stark: {
+          facts: { name: "Stark" },
+          preferences: {},
+          recentTopics: [],
+          updatedAt: "not-a-date",
+          userId: "stark",
+          factHistory: [{ key: "city", previousValue: "NYC" }]
+        }
+      }
+    }), "utf8");
+
+    const memory = await store.findByUserId("stark");
+    expect(memory?.facts).toEqual({ name: "Stark" });
+    expect(memory?.updatedAt.getTime()).toBe(0); // epoch sentinel, not Invalid Date (NaN)
+    expect(Number.isFinite(memory?.factHistory?.[0]?.replacedAt.getTime())).toBe(true);
+
+    // The real failure mode: the NEXT write must not throw on the salvaged dates.
+    await expect(store.upsertFact("stark", "city", "Seoul")).resolves.not.toThrow();
+    const reread = await new FileUserMemoryStore({ file }).findByUserId("stark");
+    expect(reread?.facts).toEqual({ name: "Stark", city: "Seoul" });
+  });
+
   it("forget removes one fact/preference key, leaves the rest, and reports whether it hit", async () => {
     const { file, store } = await newStore();
     await store.upsertFact("stark", "name", "Stark");

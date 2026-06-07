@@ -98,16 +98,27 @@ function memoryToStored(memory: UserMemory): StoredMemory {
   };
 }
 
+// A stored date that is missing / empty / corrupt (a hand-edited memory file, a
+// pre-`updatedAt` legacy entry, a bad backup/sync) would become an Invalid Date,
+// and the very next write — `memoryToStored` calls `.toISOString()` — would throw
+// and crash EVERY future memory mutation, silently losing the user's updates. The
+// memory file is the user's own (`Tell it everything`), so degrade to the epoch
+// sentinel instead of throwing; a valid date is untouched (no false correction).
+function parseStoredDate(value: unknown): Date {
+  const date = new Date(value as string | number | Date);
+  return Number.isFinite(date.getTime()) ? date : new Date(0);
+}
+
 function storedToMemory(stored: StoredMemory): UserMemory {
   return {
     facts: { ...stored.facts },
     preferences: { ...stored.preferences },
     recentTopics: [...stored.recentTopics],
-    updatedAt: new Date(stored.updatedAt),
+    updatedAt: parseStoredDate(stored.updatedAt),
     userId: stored.userId,
     ...(stored.userModel ? { userModel: stored.userModel } : {}),
     ...(stored.factHistory
-      ? { factHistory: stored.factHistory.map((entry): FactSupersession => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: new Date(entry.replacedAt) })) }
+      ? { factHistory: stored.factHistory.map((entry): FactSupersession => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: parseStoredDate(entry.replacedAt) })) }
       : {})
   };
 }
