@@ -26,6 +26,12 @@ describe("tasks + reminders loopback tools meet the one-shot tool-calling bar", 
     expect((add.inputSchema as { properties: Record<string, { description?: string }> }).properties.title.description ?? "").toContain("e.g.");
   });
 
+  it("marks the tasks 'add' free-text notes as a groundedArg (drop fabricated notes)", () => {
+    const server = createTasksMcpServer({ file: "/tmp/muse-test-tasks.json" });
+    const add = server.tools.find((t) => t.name === "add")!;
+    expect((add as { groundedArgs?: readonly string[] }).groundedArgs).toEqual(["notes"]);
+  });
+
   it("every lifecycle tool (complete/update/delete) carries action keywords so it isn't starved by add/list", () => {
     // "삭제해줘" was hitting tasks.add and "완료로 표시해줘" hit nothing, because only
     // add/list had keywords. Each lifecycle write needs its own verb + the task NOUN.

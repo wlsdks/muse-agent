@@ -391,6 +391,9 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
         },
         keywords: ["일정", "캘린더", "calendar", "event", "미팅", "약속", "meeting", "update", "change", "reschedule", "수정", "변경", "바꿔", "옮겨", "연기", "미뤄"],
         domain: "calendar",
+        // Same free-text fabrication risk as `add` — drop a location/notes the
+        // user didn't state (an unmentioned field is left unchanged, not invented).
+        groundedArgs: ["location", "notes"],
         name: "update",
         risk: "write"
       },

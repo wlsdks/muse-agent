@@ -46,6 +46,12 @@ describe("calendar loopback tools meet the one-shot tool-calling bar", () => {
     expect("groundedArgs" in (modelTool.inputSchema as object)).toBe(false);
   });
 
+  it("marks the 'update' tool's location/notes as groundedArgs too", () => {
+    const server = createCalendarMcpServer({ registry: stubRegistry });
+    const update = server.tools.find((t) => t.name === "update")!;
+    expect(update.groundedArgs).toEqual(["location", "notes"]);
+  });
+
   it("the 'add' tool's title + startsAt carry concrete, example-bearing descriptions", () => {
     const server = createCalendarMcpServer({ registry: stubRegistry });
     const add = server.tools.find((t) => t.name === "add")!;
