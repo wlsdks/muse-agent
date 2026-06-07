@@ -54,6 +54,11 @@ const cases = [
     name: "business card → route contact, name+phone extracted",
     file: "card.png",
     assert: (a) => a.route === "contact" && /sarah kim/i.test(String(a.fields.name ?? "")) && /9876/.test(String(a.fields.phone ?? "") + String(a.fields.email ?? ""))
+  },
+  {
+    name: "document → route note, title + transcribed body",
+    file: "document.png",
+    assert: (a) => a.route === "note" && /kickoff|action/i.test(String(a.fields.title ?? "")) && /api contract|staging|design review/i.test(String(a.fields.body ?? ""))
   }
 ];
 

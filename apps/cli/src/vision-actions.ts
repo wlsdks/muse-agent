@@ -11,7 +11,7 @@ import type { ModelProvider } from "@muse/model";
  * invents), and the caller stays draft-first (show the draft, write only on
  * --apply).
  */
-export type VisionActionKind = "event" | "receipt" | "contact" | "other";
+export type VisionActionKind = "event" | "receipt" | "contact" | "document" | "other";
 
 export interface VisionAction {
   readonly kind: VisionActionKind;
@@ -24,19 +24,24 @@ export interface VisionAction {
 }
 
 const CLASSIFY_SCHEMA: JsonObject = {
-  properties: { kind: { enum: ["event", "receipt", "contact", "other"], type: "string" } },
+  properties: { kind: { enum: ["event", "receipt", "contact", "document", "other"], type: "string" } },
   required: ["kind"],
   type: "object"
 };
 const CLASSIFY_INSTRUCTION =
   "Classify this image as exactly one kind: 'event' (a flyer/poster/invite with a date and time), " +
-  "'receipt' (a purchase receipt or bill), 'contact' (a business card or someone's contact details), or 'other'. " +
+  "'receipt' (a purchase receipt or bill), 'contact' (a business card or someone's contact details), " +
+  "'document' (a page of text, notes, a whiteboard, or an article worth keeping), or 'other'. " +
   "Return only the kind.";
 
 // Per-kind FOCUSED schemas — a small, single-purpose schema extracts far more
 // reliably on a local model than one wide all-kinds schema (proven by the
 // --extract / --to-calendar paths). Each runs only after the image is classified.
-const KIND_EXTRACT: Record<"event" | "receipt" | "contact", { schema: JsonObject; instruction: string }> = {
+const KIND_EXTRACT: Record<"event" | "receipt" | "contact" | "document", { schema: JsonObject; instruction: string }> = {
+  document: {
+    instruction: "Extract a short descriptive title for this document and its main text content (body), transcribing what is written. Omit a field only if there is genuinely no text.",
+    schema: { properties: { body: { type: "string" }, title: { type: "string" } }, required: ["title", "body"], type: "object" }
+  },
   contact: {
     instruction: "Extract this person's contact details: name, email, phone, and how they relate to the user (relationship, e.g. 'dentist') if stated. Omit any field not visible.",
     schema: { properties: { email: { type: "string" }, name: { type: "string" }, phone: { type: "string" }, relationship: { type: "string" } }, required: ["name"], type: "object" }
@@ -90,7 +95,7 @@ export async function classifyVisionAction(
     return { error: cls.error ?? "could not read the image", ok: false };
   }
   const kind = cls.data.kind;
-  if (kind !== "event" && kind !== "receipt" && kind !== "contact") {
+  if (kind !== "event" && kind !== "receipt" && kind !== "contact" && kind !== "document") {
     return shapeVisionAction({ kind: "other" });
   }
   const ex = await extractStructuredFromImage(provider, {
@@ -109,7 +114,7 @@ export async function classifyVisionAction(
 /** Pure shaping of an extracted object into a routed, draft-first action — split
  *  out so it's unit-testable without a model. */
 export function shapeVisionAction(data: JsonObject): VisionAction {
-  const kind = data.kind === "event" || data.kind === "receipt" || data.kind === "contact" ? data.kind : "other";
+  const kind = data.kind === "event" || data.kind === "receipt" || data.kind === "contact" || data.kind === "document" ? data.kind : "other";
   if (kind === "event" && str(data.title) && str(data.startsAt)) {
     const f = { title: str(data.title)!, startsAt: str(data.startsAt)!, ...(str(data.location) ? { location: str(data.location)! } : {}), ...(str(data.notes) ? { notes: str(data.notes)! } : {}) };
     return { draftText: `📅 Calendar event:\n  title: ${f.title}\n  startsAt: ${f.startsAt}${f.location ? `\n  location: ${f.location}` : ""}${f.notes ? `\n  notes: ${f.notes}` : ""}`, fields: f, kind, route: "calendar" };
@@ -122,6 +127,12 @@ export function shapeVisionAction(data: JsonObject): VisionAction {
   if (kind === "contact" && str(data.name) && (str(data.email) || str(data.phone))) {
     const f = { name: str(data.name)!, ...(str(data.email) ? { email: str(data.email)! } : {}), ...(str(data.phone) ? { phone: str(data.phone)! } : {}), ...(str(data.relationship) ? { relationship: str(data.relationship)! } : {}) };
     return { draftText: `👤 Contact:\n  name: ${f.name}${f.email ? `\n  email: ${f.email}` : ""}${f.phone ? `\n  phone: ${f.phone}` : ""}${f.relationship ? `\n  relationship: ${f.relationship}` : ""}`, fields: f, kind, route: "contact" };
+  }
+  if (kind === "document" && str(data.title) && str(data.body)) {
+    const title = str(data.title)!;
+    const body = str(data.body)!;
+    const slug = title.toLowerCase().replace(/[^a-z0-9가-힣]+/gu, "-").replace(/^-+|-+$/gu, "").slice(0, 60) || "note";
+    return { draftText: `📝 Note "${title}":\n  ${body.length > 200 ? `${body.slice(0, 200)}…` : body}`, fields: { body, note: `# ${title}\n\n${body}\n`, path: `${slug}.md`, title }, kind, route: "note" };
   }
   return { draftText: "(couldn't route this image to an action — try --extract or a plain --image question)", fields: {}, kind: "other", route: "none" };
 }

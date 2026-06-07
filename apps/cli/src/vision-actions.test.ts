@@ -22,6 +22,13 @@ describe("shapeVisionAction", () => {
     expect(a.fields).toMatchObject({ name: "Dr. Park", phone: "010-1234-5678", relationship: "dentist" });
   });
 
+  it("routes a document (title+body) to a note with a titled path and markdown body", () => {
+    const a = shapeVisionAction({ kind: "document", title: "Meeting Notes", body: "discuss roadmap" });
+    expect(a.route).toBe("note");
+    expect(a.fields.path).toBe("meeting-notes.md");
+    expect(String(a.fields.note)).toBe("# Meeting Notes\n\ndiscuss roadmap\n");
+  });
+
   it("falls back to 'none' when the kind's required fields are missing (no fabrication)", () => {
     expect(shapeVisionAction({ kind: "event", title: "No date here" }).route).toBe("none"); // missing startsAt
     expect(shapeVisionAction({ kind: "contact", name: "Anon" }).route).toBe("none"); // no email/phone

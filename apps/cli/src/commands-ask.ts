@@ -2393,7 +2393,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           } else if (act.route === "note") {
             const { createNotesMcpServer } = await import("@muse/mcp");
             const appendTool = createNotesMcpServer({ notesDir: resolveNotesDir(env) }).tools.find((t) => t.name === "append");
-            result = await appendTool?.execute({ content: `- ${String(act.fields.note)}\n`, path: "expenses.md" });
+            const notePath = typeof act.fields.path === "string" ? act.fields.path : "expenses.md";
+            const noteContent = act.kind === "receipt" ? `- ${String(act.fields.note)}\n` : `${String(act.fields.note)}\n`;
+            result = await appendTool?.execute({ content: noteContent, path: notePath });
           } else {
             const { createContactsAddTool, readContacts, writeContacts } = await import("@muse/mcp");
             const file = resolveContactsFile(env);
