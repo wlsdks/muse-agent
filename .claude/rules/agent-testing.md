@@ -16,7 +16,7 @@ onto Muse. When you ship an agent-facing capability, you ship its eval.
 1. **An agent capability ships with an agent-level check, not just a
    unit test.** A tool whose handler is unit-tested but that the model
    never SELECTS is not delivered (`tool-calling.md`). The proof is a
-   live round-trip on local Qwen, not `tsc`.
+   live round-trip on the local model (gemma4:12b default), not `tsc`.
 2. **Grade the OUTCOME / terminal state, not the exact path.** A
    capable agent reaches a goal by several valid tool routes; asserting
    one exact trajectory is brittle and wrong. Assert the resulting

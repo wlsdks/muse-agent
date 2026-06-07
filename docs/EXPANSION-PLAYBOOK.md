@@ -14,7 +14,7 @@
 
 ```
 /goal docs/EXPANSION-PLAYBOOK.md 를 처음부터 끝까지 읽고 그 계약대로 따른다.
-가장 가치 높은 슬라이스 하나를 골라 라이브 검증(LOCAL Ollama qwen3:8b)까지
+가장 가치 높은 슬라이스 하나를 골라 라이브 검증(LOCAL Ollama gemma4:12b)까지
 끝내라. 검증 안 된 건 done 아님.
 ```
 
@@ -80,9 +80,9 @@ B. 에이전트 자체 성능 — 코드에 실재하는 것들:
 2. 근거를 명시한다: 1번 조사에서 가져온 공개 출처(URL)와 그 기법이 Muse 코드의 어디에 어떻게
    매핑되는지 1~2줄. 출처 없는 변경 금지.
 3. 최소 범위로 구현한다: 보안·정책·게이트·종료조건은 deterministic 코드(프롬프트 지시 아님).
-   maker≠judge(검증은 별도 호출). 소형 8B(qwen3:8b)는 "프롬프트로 시키기"보다 "코드로 보장"이
+   maker≠judge(검증은 별도 호출). 소형 로컬 모델(gemma4:12b 기본)는 "프롬프트로 시키기"보다 "코드로 보장"이
    거의 항상 옳다. 관련 없는 리팩터/동작변경 금지.
-4. 라이브로 검증한다 — done의 유일한 근거(LOCAL OLLAMA qwen3:8b, 클라우드 금지):
+4. 라이브로 검증한다 — done의 유일한 근거(LOCAL OLLAMA gemma4:12b, 클라우드 금지):
    · 닿는 게이트의 실제 배터리: eval:tools / eval:judge / eval:adversarial / eval:self-improving /
      eval:agent / eval:plan-quality 중 해당 것
    · 요청/응답 경로면 smoke:live · grounding이면 `muse doctor --grounding`

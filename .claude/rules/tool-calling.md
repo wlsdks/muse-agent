@@ -43,10 +43,12 @@ underlying code.
    Don't design flows that need the small model to chain 3+ calls;
    prefer one tool that does the whole job, or split across turns.
 
-6. **Qwen specifics.** Use the **Hermes-style** tool format the Qwen
-   adapter emits; keep `reasoning=false`. Do NOT use ReAct /
-   stopword-template prompting — a reasoning model can emit the
-   stopword inside its thoughts and break parsing.
+6. **Local-model specifics.** The Ollama adapter uses Ollama's **native
+   `tool_calls`** API (works for gemma4:12b and qwen alike — no hand-rolled
+   text parsing); keep reasoning/think **off** (the adapter's default). Do NOT
+   use ReAct / stopword-template prompting — a thinking-capable model (gemma4
+   and Qwen both have a thinking mode) can emit the stopword inside its thoughts
+   and break parsing, which is the other reason think stays off.
 
 7. **Validate + repair deterministically, don't re-reason in a loop.**
    Parse tool args against the schema in code; on an invalid call,
@@ -63,7 +65,7 @@ underlying code.
 - Correct risk classification (read / write / execute) — fail-close
   for state-changing actions per `outbound-safety.md`.
 - **Verify the model actually SELECTS it**: a `smoke:live` (local
-  Qwen) round-trip that asserts the tool was called with the right
+  model, gemma4:12b default) round-trip that asserts the tool was called with the right
   args — not a unit test of the handler alone. A handler that works
   but is never selected is not delivered. The lean, repeatable gate
   for this is `pnpm eval:tools` (a golden prompt→expected-tool dataset
