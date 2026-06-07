@@ -4336,14 +4336,19 @@ describe("muse.messaging loopback server", () => {
     const list = await connection.callTool!("providers", {});
     expect(list).toMatchObject({ providers: [{ id: "telegram", displayName: "Telegram" }] });
 
+    // Outbound-safety: a messaging server built WITHOUT approval-gate + action-log
+    // wiring must REFUSE to send (fail-closed) — never transmit unguarded to a
+    // third party. The contract-faithful HTTP fake proves NO external effect: the
+    // Telegram endpoint is never hit.
     const sent = await connection.callTool!("send", {
       destination: "@me",
       providerId: "telegram",
       text: "hi"
     });
-    expect(sent).toMatchObject({ destination: "@me", messageId: "42", providerId: "telegram" });
-    expect(seenUrl).toBe("https://tg.test/botFAKE-TOKEN/sendMessage");
-    expect(JSON.parse(seenBody)).toMatchObject({ chat_id: "@me", text: "hi" });
+    expect(sent).toMatchObject({ refused: true });
+    expect(String(sent.error)).toMatch(/refusing to send unguarded/);
+    expect(seenUrl).toBe(""); // no HTTP call was made — fail-closed, no external effect
+    expect(seenBody).toBe("");
   });
 
   it("errors (no send) when NO messaging provider is configured", async () => {

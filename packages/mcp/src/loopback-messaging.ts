@@ -1,6 +1,5 @@
 import {
   MessagingProviderError,
-  MessagingValidationError,
   type MessagingProviderRegistry
 } from "@muse/messaging";
 import type { JsonObject, JsonValue } from "@muse/shared";
@@ -323,26 +322,15 @@ export function createMessagingMcpServer(options: MessagingMcpServerOptions): Lo
             }
             return { error: outcome.detail, ...(outcome.reason === "denied" ? { refused: true } : {}) };
           }
-          try {
-            const receipt = await registry.send(providerId, { destination, text });
-            return {
-              destination: receipt.destination,
-              messageId: receipt.messageId,
-              providerId: receipt.providerId
-            };
-          } catch (error) {
-            if (error instanceof MessagingValidationError) {
-              return { error: `${error.field}: ${error.message}` };
-            }
-            if (error instanceof MessagingProviderError) {
-              return {
-                error: error.message,
-                providerErrorCode: error.code,
-                ...(error.status !== undefined ? { upstreamStatus: error.status } : {})
-              };
-            }
-            return { error: errorMessage(error) };
-          }
+          // Fail-closed (outbound-safety.md): a third-party send is only allowed
+          // through the approval gate + action log. When the server was built
+          // WITHOUT that wiring (no actionLogFile/userId), refuse rather than
+          // transmit unguarded — a wrong autonomous send can't be rolled back, so
+          // a missing gate is a refusal, never a silent send.
+          return {
+            error: "messaging send is not configured for safe delivery (no approval gate / action log) — refusing to send unguarded",
+            refused: true
+          };
         },
         inputSchema: {
           additionalProperties: false,
