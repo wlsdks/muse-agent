@@ -66,6 +66,13 @@ export const GROUNDING_EVAL_CORPUS: GroundingEvalCorpus = {
     // faithfulness drops below the floor — so this corpus now GUARDS that fix.
     { kind: "drift", query: "what MTU did I set for the office VPN?", answer: "You set the MTU to 9000 on the wg0 interface for the office VPN [from vpn-wireguard.md].", note: "wrong VALUE 9000 vs evidence 1380 — only the number is fabricated" },
     { kind: "drift", query: "what is my monthly rent?", answer: "Your monthly rent is 1,500,000 KRW, due on the 1st [from lease.md].", note: "wrong VALUE 1,500,000 vs evidence 1,250,000" },
-    { kind: "drift", query: "who is my landlord?", answer: "Your landlord is Mr. Lee [from lease.md].", note: "wrong NAMED ENTITY Lee vs evidence Park — only the name is fabricated" }
+    { kind: "drift", query: "who is my landlord?", answer: "Your landlord is Mr. Lee [from lease.md].", note: "wrong NAMED ENTITY Lee vs evidence Park — only the name is fabricated" },
+
+    // wrong-EMAIL drift — a right local-part with a WRONG domain. The most
+    // dangerous contact drift (a misdirected outbound message), and the lexical
+    // rubric is blind to it: an email tokenises to its parts, so the drifted
+    // DOMAIN is neither a digit nor a capitalised entity. Only whole-address
+    // value escalation catches it — this corpus now GUARDS that branch.
+    { kind: "drift", query: "what is Sarah's email?", answer: "Sarah Chen's email is sarah.chen@acme.com [from contacts-sarah.md].", note: "wrong DOMAIN acme.com vs evidence foundry.io" }
   ]
 };
