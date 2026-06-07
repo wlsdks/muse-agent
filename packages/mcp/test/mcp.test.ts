@@ -2834,6 +2834,16 @@ describe("muse.tasks loopback server", () => {
       expect(parseTaskDueAt("100 days from now", now)).toMatch(/^2026-09-15/u);
     });
 
+    it("resolves a small spelled-out number before a time unit ('in two weeks', 'three days from now')", async () => {
+      const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
+      const now = () => new Date("2026-06-07T12:00:00Z");
+      expect(parseTaskDueAt("in two weeks", now)).toBe(parseTaskDueAt("in 2 weeks", now));
+      expect(parseTaskDueAt("two weeks from today", now)).toBe(parseTaskDueAt("in 2 weeks", now));
+      expect(parseTaskDueAt("three days from now", now)).toMatch(/^2026-06-10/u);
+      // A spelled number NOT before a time unit is left alone (still unparseable prose).
+      expect(parseTaskDueAt("call three people", now)).toBeInstanceOf(Error);
+    });
+
     it("resolves a Korean absolute date ('2026년 8월 15일' / '8월 15일'), with or without a time", async () => {
       const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
       const now = () => new Date("2026-06-07T12:00:00Z");

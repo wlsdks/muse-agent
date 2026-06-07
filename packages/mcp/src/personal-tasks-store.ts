@@ -247,6 +247,11 @@ export function resolveTasksDueLine(
  * input was rejected — callers map that to their surface (HTTP 400,
  * MCP error response, CLI exit message).
  */
+const SPELLED_NUMBERS: Record<string, string> = {
+  one: "1", two: "2", three: "3", four: "4", five: "5", six: "6",
+  seven: "7", eight: "8", nine: "9", ten: "10", eleven: "11", twelve: "12"
+};
+
 export function parseTaskDueAt(raw: string, now: () => Date): string | Error {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
@@ -267,12 +272,20 @@ export function parseTaskDueAt(raw: string, now: () => Date): string | Error {
       return isoParsed.toISOString();
     }
   }
+  // A small spelled-out number right before a time unit ("in two weeks",
+  // "three days from now") becomes its digit so it resolves like "2 weeks" /
+  // "3 days" — the grammar's number patterns only accept digits. Scoped to a
+  // number IMMEDIATELY before a unit, so prose ("one of them") is untouched.
+  const deSpelled = trimmed.replace(
+    /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(seconds?|minutes?|hours?|days?|weeks?|months?|years?)\b/giu,
+    (_m, num: string, unit: string) => `${SPELLED_NUMBERS[num.toLowerCase()] ?? num} ${unit}`
+  );
   // "100 days from now" / "45 days from today" are the spoken equivalents of
   // "in 100 days" — which the grammar already resolves. Rewrite that trailing
   // "<n> <unit> from now/today" form to the "in <n> <unit>" form so both phrasings
   // land on the same parse. Purely additive: a phrase that already parses has no
   // "from now/today" tail, so this only rescues inputs that would otherwise error.
-  const normalized = trimmed.replace(
+  const normalized = deSpelled.replace(
     /(\d+)\s+(seconds?|minutes?|hours?|days?|weeks?|months?|years?)\s+from\s+(?:now|today)\b/iu,
     "in $1 $2"
   );
