@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 
 process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "muse-eff-"));
-process.env.MUSE_DEFAULT_MODEL = "ollama/qwen3:8b";
+process.env.MUSE_DEFAULT_MODEL = "ollama/gemma4:12b";
 process.env.MUSE_HOMEASSISTANT_URL = "http://x";
 process.env.MUSE_HOMEASSISTANT_TOKEN = "t";
 

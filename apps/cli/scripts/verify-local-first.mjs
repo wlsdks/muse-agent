@@ -19,7 +19,7 @@ for (const k of [
   "OPENROUTER_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "COHERE_API_KEY"
 ]) delete process.env[k];
 // Realistic local-first setup: a local Ollama model configured, ZERO cloud keys.
-process.env.MUSE_DEFAULT_MODEL = "ollama/qwen3:8b";
+process.env.MUSE_DEFAULT_MODEL = "ollama/gemma4:12b";
 process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "muse-lf-"));
 
 const { createMuseRuntimeAssembly } = await import("@muse/autoconfigure");

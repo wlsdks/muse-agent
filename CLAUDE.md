@@ -35,7 +35,7 @@ pnpm check                             # build + test for every workspace
 
 # before claiming "this works" on the full system:
 pnpm smoke:broad                       # broad HTTP smoke, diagnostic provider (no key)
-pnpm smoke:live                        # real LLM round-trip — LOCAL OLLAMA QWEN ONLY (no cloud APIs)
+pnpm smoke:live                        # real LLM round-trip — LOCAL OLLAMA ONLY, gemma4:12b default (no cloud APIs)
 
 # before commit (lint gate):
 pnpm lint                              # 0 errors / 0 warnings required
@@ -72,7 +72,7 @@ For depth, read the matching file under `.claude/rules/`:
 - [`commits.md`](.claude/rules/commits.md) — Conventional Commits + push policy + after-correction protocol.
 - [`code-style.md`](.claude/rules/code-style.md) — ESLint gate, naming, comment policy, dead-import rule.
 - [`outbound-safety.md`](.claude/rules/outbound-safety.md) — fail-close gate for any send/act toward a third party; banking out of scope.
-- [`tool-calling.md`](.claude/rules/tool-calling.md) — the local Qwen must pick the right tool in ONE shot: small tool sets, unambiguous names, rich schemas, verify selection with `smoke:live`.
+- [`tool-calling.md`](.claude/rules/tool-calling.md) — the local model (gemma4:12b default) must pick the right tool in ONE shot: small tool sets, unambiguous names, rich schemas, verify selection with `smoke:live`.
 - [`agent-testing.md`](.claude/rules/agent-testing.md) — how we evaluate the AGENT (not just code): grade outcomes not paths, `pass^k` reliability, tool-calling + irrelevance, multi-agent hand-off/termination asserts, binary LLM-judge w/ meta-eval; research-grounded.
 - [`codegraph.md`](.claude/rules/codegraph.md) — prefer the CodeGraph (`.codegraph/`) index for structural code questions; answer directly in a few calls, never a grep/read loop.
 - [`harness.md`](.claude/rules/harness.md) — for non-trivial multi-step work, operate under the portable agent harness in `harness/` (roles, fail-closed gates, handoff, pass^k verification); entrypoint `harness/AGENTS.md`.

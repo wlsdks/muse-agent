@@ -9,13 +9,13 @@
  * wiring as an option. LOCAL OLLAMA ONLY; skips (exit 0) when unreachable.
  *
  *   pnpm eval:tools:nl
- *   MUSE_EVAL_MODEL=qwen3:8b MUSE_EVAL_REPEAT=3 pnpm eval:tools:nl
+ *   MUSE_EVAL_MODEL=gemma4:12b MUSE_EVAL_REPEAT=3 pnpm eval:tools:nl
  */
 
 import { OllamaProvider } from "../packages/model/dist/index.js";
 import { parseNaturalLanguageToolSelection } from "../packages/tools/dist/nl-tool-selection.js";
 
-const MODEL = process.env.MUSE_EVAL_MODEL ?? "qwen3:8b";
+const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
 

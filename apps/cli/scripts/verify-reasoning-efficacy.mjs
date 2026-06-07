@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 const CLI = join(fileURLToPath(new URL("../dist/index.js", import.meta.url)));
 const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
-const ANSWER_MODEL = process.env.MUSE_EFFICACY_MODEL ?? "qwen3:8b";
+const ANSWER_MODEL = process.env.MUSE_EFFICACY_MODEL ?? "gemma4:12b";
 const repeats = Math.max(1, Number(process.argv[2] ?? "2") || 2);
 
 async function reachable() {

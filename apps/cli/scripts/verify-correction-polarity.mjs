@@ -11,7 +11,7 @@
  *   node apps/cli/scripts/verify-correction-polarity.mjs   (qwen3:8b)
  *
  * Exit 0 if every case passes AND there are zero false-CONTRADICT, 1 otherwise.
- * LOCAL OLLAMA QWEN ONLY.
+ * LOCAL OLLAMA ONLY.
  */
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
@@ -20,8 +20,8 @@ import path from "node:path";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import { classifyCorrectionContradiction } from "@muse/agent-core";
 
-const model = process.argv[2] ?? "ollama/qwen3:8b";
-if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA QWEN ONLY"); process.exit(2); }
+const model = process.argv[2] ?? "ollama/gemma4:12b";
+if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
 process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "muse-polarity-"));
 process.env.MUSE_DEFAULT_MODEL = model;
 

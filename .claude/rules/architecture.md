@@ -56,7 +56,7 @@ cloud LLM/voice API. Deterministic, fail-close (`local-only-policy.ts`):
 - The model router (`createModelProvider`) throws `LocalOnlyViolationError`
   (loud, not a silent disable) before instantiating a cloud provider.
 - **Local-first default model.** When local-only is on (the default),
-  `resolveDefaultModel` returns the local model (`ollama/qwen3:8b`) and
+  `resolveDefaultModel` returns the local model (`ollama/gemma4:12b`) and
   IGNORES ambient cloud keys — cloud-credential inference (GEMINI → OPENAI →
   …) applies ONLY under an explicit `MUSE_LOCAL_ONLY=false`. Without this a
   stray `GEMINI_API_KEY` would make the zero-config default a cloud model that

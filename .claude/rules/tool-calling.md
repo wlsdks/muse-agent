@@ -1,7 +1,7 @@
 # Tool-calling reliability — the local model must pick the RIGHT tool in ONE shot
 
-Muse runs on a **local Qwen (qwen3:8b, reasoning=false)**, never an
-expensive cloud model. On a small model every extra reasoning round is
+Muse runs on a **local model (gemma4:12b default, reasoning/thinking off)**,
+never an expensive cloud model. On a small local model every extra reasoning round is
 slower AND less reliable — coherence degrades after 2–3 steps. So the
 design goal is not "let the model think its way there"; it is **make
 the FIRST tool call correct**. Every tool Muse exposes is designed so

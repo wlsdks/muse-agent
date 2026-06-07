@@ -7,14 +7,14 @@
  * prove the judge ITSELF is reliable: on clear-cut (rubric, output, verdict)
  * cases it must return the right PASS/FAIL. This battery is that proof.
  *
- * LOCAL OLLAMA ONLY (qwen3:8b by default); skips (exit 0) when unreachable.
+ * LOCAL OLLAMA ONLY (gemma4:12b by default); skips (exit 0) when unreachable.
  * Each case is run MUSE_EVAL_REPEAT times (default 2) and must pass every run.
  */
 
 import { OllamaProvider } from "../packages/model/dist/index.js";
 import { llmJudge, runEvalSuite } from "./eval-harness.mjs";
 
-const MODEL = process.env.MUSE_EVAL_MODEL ?? "qwen3:8b";
+const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/u, "");
 const THRESHOLD = Number(process.env.MUSE_EVAL_THRESHOLD ?? "0.85");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "2")));

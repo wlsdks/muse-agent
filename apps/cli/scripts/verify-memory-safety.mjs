@@ -5,7 +5,7 @@
  *
  *   node apps/cli/scripts/verify-memory-safety.mjs            (qwen3:8b)
  *
- * Exit 0 = both hold, 1 = a miss, 2 = setup error. LOCAL OLLAMA QWEN ONLY.
+ * Exit 0 = both hold, 1 = a miss, 2 = setup error. LOCAL OLLAMA ONLY.
  */
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
@@ -13,8 +13,8 @@ import path from "node:path";
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 
-const model = process.argv[2] ?? "ollama/qwen3:8b";
-if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA QWEN ONLY"); process.exit(2); }
+const model = process.argv[2] ?? "ollama/gemma4:12b";
+if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
 process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "muse-ms-"));
 process.env.MUSE_DEFAULT_MODEL = model;
 

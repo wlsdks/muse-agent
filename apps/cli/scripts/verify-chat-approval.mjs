@@ -19,9 +19,9 @@ import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), "muse-approval-"));
 const tasksFile = path.join(tmp, "tasks.json");
-// LOCAL OLLAMA QWEN ONLY (testing.md) — pin the model so this never reaches a
+// LOCAL OLLAMA ONLY (testing.md) — pin the model so this never reaches a
 // cloud API even if the user's config defaults to one.
-const model = process.env.MUSE_APPROVAL_VERIFY_MODEL ?? "ollama/qwen3:8b";
+const model = process.env.MUSE_APPROVAL_VERIFY_MODEL ?? "ollama/gemma4:12b";
 const env = { ...process.env, MUSE_DEFAULT_MODEL: model, MUSE_TASKS_FILE: tasksFile };
 
 const assembly = createMuseRuntimeAssembly({ env });
@@ -30,7 +30,7 @@ if (!assembly.agentRuntime) {
   process.exit(2);
 }
 if (!model.startsWith("ollama/")) {
-  console.error(`FAIL: refusing to run against non-local model '${model}' (LOCAL OLLAMA QWEN ONLY)`);
+  console.error(`FAIL: refusing to run against non-local model '${model}' (LOCAL OLLAMA ONLY)`);
   process.exit(2);
 }
 const TITLE = `buy oat milk ${Date.now()}`;

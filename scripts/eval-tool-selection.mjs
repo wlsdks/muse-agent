@@ -19,15 +19,15 @@
  * LOCAL OLLAMA ONLY. Skips (exit 0) when Ollama is unreachable. temperature=0
  * for reproducibility; reports a reliability score against a threshold.
  *
- *   pnpm eval:tools                       # qwen3:8b by default
- *   MUSE_EVAL_MODEL=qwen3:8b MUSE_EVAL_THRESHOLD=0.85 pnpm eval:tools
+ *   pnpm eval:tools                       # gemma4:12b by default
+ *   MUSE_EVAL_MODEL=gemma4:12b MUSE_EVAL_THRESHOLD=0.85 pnpm eval:tools
  *   MUSE_EVAL_REPEAT=5 pnpm eval:tools    # run each case 5x; pass only if all pass
  */
 
 import { OllamaProvider } from "../packages/model/dist/index.js";
 import { combineScorers, runEvalSuite, toolScorers } from "./eval-harness.mjs";
 
-const MODEL = process.env.MUSE_EVAL_MODEL ?? "qwen3:8b";
+const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const THRESHOLD = Number(process.env.MUSE_EVAL_THRESHOLD ?? "0.85");
 // The model is stochastic; one pass isn't proof of reliability. MUSE_EVAL_REPEAT

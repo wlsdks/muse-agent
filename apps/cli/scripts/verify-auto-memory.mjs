@@ -3,9 +3,9 @@
  * right things and, crucially, NOT pollute memory from questions/tasks/noise?
  * EN + KO, facts + prefs, plus negatives (must extract nothing).
  *
- *   node apps/cli/scripts/verify-auto-memory.mjs   (defaults qwen3:8b)
+ *   node apps/cli/scripts/verify-auto-memory.mjs   (defaults gemma4:12b)
  *
- * Exit 0 if every case passes, 1 otherwise. LOCAL OLLAMA QWEN ONLY.
+ * Exit 0 if every case passes, 1 otherwise. LOCAL OLLAMA ONLY.
  */
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
@@ -13,8 +13,8 @@ import path from "node:path";
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 
-const model = process.argv[2] ?? "ollama/qwen3:8b";
-if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA QWEN ONLY"); process.exit(2); }
+const model = process.argv[2] ?? "ollama/gemma4:12b";
+if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
 process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "muse-vam-"));
 process.env.MUSE_DEFAULT_MODEL = model;
 

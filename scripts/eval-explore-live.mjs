@@ -28,7 +28,7 @@
 
 import { OllamaProvider } from "../packages/model/dist/index.js";
 
-const MODEL = process.env.MUSE_EVAL_MODEL ?? "qwen3:8b";
+const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const N_PER = Math.max(1, Math.trunc(Number(process.env.MUSE_EXPLORE_N ?? "8")));
 const INTENT_THRESHOLD = Number(process.env.MUSE_EXPLORE_THRESHOLD ?? "0.85");

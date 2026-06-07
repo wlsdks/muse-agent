@@ -23,7 +23,7 @@ import { buildPlanningSystemPrompt } from "../packages/prompts/dist/index.js";
 import { parsePlan } from "../packages/agent-core/dist/index.js";
 import { runEvalSuite } from "./eval-harness.mjs";
 
-const MODEL = process.env.MUSE_EVAL_MODEL ?? "qwen3:8b";
+const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const THRESHOLD = Number(process.env.MUSE_EVAL_THRESHOLD ?? "0.85");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));

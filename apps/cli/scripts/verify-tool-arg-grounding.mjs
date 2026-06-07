@@ -10,7 +10,7 @@
  *   node apps/cli/scripts/verify-tool-arg-grounding.mjs   (qwen3:8b)
  *
  * Exit 0 if it passes (or Ollama unreachable — a skip is not a pass), 1
- * otherwise. LOCAL OLLAMA QWEN ONLY. TZ pinned so local time resolves.
+ * otherwise. LOCAL OLLAMA ONLY. TZ pinned so local time resolves.
  */
 process.env.TZ = "Asia/Seoul";
 
@@ -20,8 +20,8 @@ import path from "node:path";
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 
-const model = process.argv[2] ?? "ollama/qwen3:8b";
-if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA QWEN ONLY"); process.exit(2); }
+const model = process.argv[2] ?? "ollama/gemma4:12b";
+if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
 process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "muse-tag-"));
 process.env.MUSE_DEFAULT_MODEL = model;
 

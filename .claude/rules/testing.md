@@ -27,13 +27,13 @@ binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (the method).
    ```bash
    pnpm smoke:live
    ```
-   **LOCAL OLLAMA QWEN ONLY by policy** — probes
-   `${OLLAMA_BASE_URL:-http://localhost:11434}` and uses a Qwen
-   model. Cloud APIs (GEMINI/ANTHROPIC/OPENAI) are never used; do
-   not re-add them. Skips only if local Ollama is unreachable, and
-   a skip is **not** a substitute for the round-trip — fixing the
-   environment so it runs is itself priority work.
-5. **Tool-selection reliability gate** (local-Qwen one-shot tool choice):
+   **LOCAL OLLAMA ONLY by policy** — probes
+   `${OLLAMA_BASE_URL:-http://localhost:11434}` and uses the local
+   default model (gemma4:12b). Cloud APIs (GEMINI/ANTHROPIC/OPENAI) are
+   never used; do not re-add them. Skips only if local Ollama is
+   unreachable, and a skip is **not** a substitute for the round-trip —
+   fixing the environment so it runs is itself priority work.
+5. **Tool-selection reliability gate** (local one-shot tool choice):
    ```bash
    pnpm eval:tools
    ```

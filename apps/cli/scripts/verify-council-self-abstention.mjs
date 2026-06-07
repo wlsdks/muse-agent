@@ -31,8 +31,8 @@ import {
   synthesizeCouncilAnswer
 } from "@muse/agent-core";
 
-const model = process.argv[2] ?? "ollama/qwen3:8b";
-if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA QWEN ONLY"); process.exit(2); }
+const model = process.argv[2] ?? "ollama/gemma4:12b";
+if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
 const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
 const EMBED_MODEL = "nomic-embed-text";
 

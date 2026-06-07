@@ -9,7 +9,7 @@
  *   node apps/cli/scripts/verify-council-grounding.mjs        (ollama/qwen3:8b)
  *
  * Exit 0 if every case passes; skip (exit 0) if Ollama is unreachable.
- * LOCAL OLLAMA QWEN ONLY.
+ * LOCAL OLLAMA ONLY.
  */
 import {
   buildGroundingReverifyPrompt,
@@ -19,8 +19,8 @@ import {
 } from "@muse/agent-core";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 
-const model = process.argv[2] ?? "ollama/qwen3:8b";
-if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA QWEN ONLY"); process.exit(2); }
+const model = process.argv[2] ?? "ollama/gemma4:12b";
+if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
 const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
 
 async function reachable() {

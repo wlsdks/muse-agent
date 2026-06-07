@@ -16,7 +16,7 @@
 import { OllamaProvider } from "../packages/model/dist/index.js";
 import { llmJudge, runEvalSuite } from "./eval-harness.mjs";
 
-const MODEL = process.env.MUSE_EVAL_MODEL ?? "qwen3:8b";
+const MODEL = process.env.MUSE_EVAL_MODEL ?? "gemma4:12b";
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/u, "");
 const THRESHOLD = Number(process.env.MUSE_EVAL_THRESHOLD ?? "0.85");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "2")));

@@ -708,6 +708,13 @@ export function selectSmokeLiveModel(names, override) {
   if (override) {
     return override;
   }
+  // Prefer the shipped default (gemma4) when it's installed — smoke:live should
+  // exercise the model Muse actually runs. Fall back to the qwen heuristic for
+  // setups that don't have gemma4 yet.
+  const gemma = names.find((n) => /gemma4/i.test(n));
+  if (gemma) {
+    return gemma;
+  }
   const qwens = names.filter((n) => /qwen/i.test(n));
   if (qwens.length === 0) {
     return names[0];

@@ -14,7 +14,7 @@
  *   node apps/cli/scripts/verify-calendar-local-time.mjs   (qwen3:8b)
  *
  * Exit 0 if it passes (or Ollama unreachable — a skip is not a pass), 1
- * otherwise. LOCAL OLLAMA QWEN ONLY. TZ pinned to Asia/Seoul so local ≠ UTC.
+ * otherwise. LOCAL OLLAMA ONLY. TZ pinned to Asia/Seoul so local ≠ UTC.
  */
 process.env.TZ = "Asia/Seoul";
 
@@ -26,8 +26,8 @@ import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import { CalendarProviderRegistry, LocalCalendarProvider } from "@muse/calendar";
 import { createCalendarMcpServer } from "@muse/mcp";
 
-const model = process.argv[2] ?? "ollama/qwen3:8b";
-if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA QWEN ONLY"); process.exit(2); }
+const model = process.argv[2] ?? "ollama/gemma4:12b";
+if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
 process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "muse-callocal-"));
 process.env.MUSE_DEFAULT_MODEL = model;
 

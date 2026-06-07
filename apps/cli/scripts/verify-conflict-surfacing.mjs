@@ -9,7 +9,7 @@
  *
  *   node apps/cli/scripts/verify-conflict-surfacing.mjs   (qwen3:8b)
  *
- * Exit 0 if both cases pass, 1 otherwise. LOCAL OLLAMA QWEN ONLY.
+ * Exit 0 if both cases pass, 1 otherwise. LOCAL OLLAMA ONLY.
  */
 import { mkdtempSync } from "node:fs";
 import os from "node:os";
@@ -19,8 +19,8 @@ import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
 
 import { CITATION_INSTRUCTION_LINES } from "../dist/commands-ask.js";
 
-const model = process.argv[2] ?? "ollama/qwen3:8b";
-if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA QWEN ONLY"); process.exit(2); }
+const model = process.argv[2] ?? "ollama/gemma4:12b";
+if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
 process.env.HOME = mkdtempSync(path.join(os.tmpdir(), "muse-conflict-"));
 process.env.MUSE_DEFAULT_MODEL = model;
 

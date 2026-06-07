@@ -14,7 +14,7 @@
  * the loop fixes it before new work). Exit 0 with a SKIP when local Ollama is
  * unreachable — a skip is not a pass, but it keeps the gate green on a machine
  * with no model up (getting Ollama up is then the priority work, same policy as
- * smoke:live). LOCAL OLLAMA QWEN ONLY by policy.
+ * smoke:live). LOCAL OLLAMA ONLY by policy.
  */
 
 import { spawnSync } from "node:child_process";
