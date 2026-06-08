@@ -11,6 +11,22 @@
 > Priority: ★ = do next · ◦ = ready · ⏳ = blocked (reason noted).
 > Each item: **what** — why (source) — the smallest verifiable slice.
 
+## Open — refilled 2026-06-09 (gap-finding scout, clean autonomous slices)
+
+- ★ **Harden `groundToolArguments` against substring false-positives** — `isGrounded`
+  (tool-argument-grounding.ts:42) uses raw `haystack.includes(token)`, so a fabricated value token
+  "art" is "grounded" by *"start the meeting"*. Change to a token-boundary match for whitespace-delimited
+  scripts (reuse contentTokens membership / `\b`), KEEPING substring for CJK (강남역 ⊂ 강남역에서 must
+  still pass). Add Latin false-positive cases. Strengthens the anti-fabrication edge
+  ([[project_tool_arg_fabrication]]). Verify: `pnpm --filter @muse/agent-core test -t groundToolArguments`
+  + build (existing 11 cases incl. Korean particle stay green). Risk: one pure function, fully tested.
+- ★ **Add a `noWrite` over-invocation scorer to the eval harness** — `scripts/eval-harness.mjs`
+  toolScorers (line ~99) has `noTool` (zero calls) but no scorer for "READ tools OK, NO write/execute
+  tool may fire" (a greeting may call knowledge_search but must never call calendar_add/web_action).
+  Add `toolScorers.noWrite(writeToolNames)`; pin in eval-harness.test.mjs beside `noTool`. Gives every
+  battery the missing IrrelAcc primitive for ACTUATOR over-firing (highest blast radius). Verify:
+  `node --test scripts/eval-harness.test.mjs`. Risk: pure additive in the dep-free harness; no battery forced to adopt.
+
 ## Open — grounding edge (the maintained floor → frontier)
 
 - ◦ **(follow-up) SQuAD drift arm — STABILIZE before optimizing** — a fire (2026-06-09)
@@ -116,6 +132,11 @@
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-09 ninth `improve-muse` fire (20-min loop) — **REFILL + outbound-safety guard test**:
+  the clean backlog had drained, so FIND WORK (c) ran a gap-finding scout → 3 fresh clean ★ slices
+  added (contacts negative-invariant, groundToolArguments substring-hardening, noWrite scorer). Then
+  built the top one: resolve-contact.test.ts now pins that relationship/about/connections NEVER resolve
+  a recipient (outbound-safety rule 3) — 7/7. The loop un-stuck itself via the prescribed refill.
 - ✓ 2026-06-09 eighth `improve-muse` fire (20-min loop) — **NEGATIVE result, recorded**: tried the
   disjoint-drift sharpen on the SQuAD arm; it dropped Δ +0.63→+0.13 (catch 5/8→1/8), so verify-before-claim
   REVERTED it. Real finding: the SQuAD drift catch is high-variance (stochastic gemma reverify) — the
