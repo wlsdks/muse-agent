@@ -16,17 +16,26 @@
 - ★ **Public-dataset ABSTENTION arm for the grounding-delta** — make the
   architectural-delta number externally citable, not self-authored. Source:
   2026-06-08 best-OSS-agent review ([[project_best_oss_agent_review]]).
-  SCOPE (precise — a review found the naive framing fails on the first fire):
-  use **SQuAD-2.0 UNANSWERABLE questions ONLY → `refuse` cases**. The runner's
-  `GroundingEvalCorpus` requires a pre-written cited `answer` string for
-  `answerable`/`drift` kinds (grounding-eval.ts:39-40), which SQuAD does NOT
-  provide — so answerable/drift are OUT OF SCOPE for this no-judge arm (authoring
-  them would reintroduce the generate step = maker=judge ceiling). `refuse` cases
-  need no answer, so they map cleanly. Report the Δ in RESULTS.md as the
-  **abstention / retrieval-confidence axis ONLY** — NOT "full faithfulness"
-  (over-claiming was the trap). Vendor a pinned SQuAD-2.0 slice under
+  SCOPE (precise — corrected TWICE; a first improve-muse fire caught that even the
+  re-scoped "unanswerable→refuse" framing fails, by reading the scoring code):
+  the `refuse` path scores `classify(matches) !== "confident"`
+  (scoreGroundingEval, grounding-eval.ts:142-145), and `classifyRetrievalConfidence`
+  returns "confident" on a high top-cosine (knowledge-recall.ts). SQuAD-2.0
+  unanswerable questions are ADVERSARIALLY similar to their paragraph by
+  construction, so if the paragraph is in the corpus, retrieval stays "confident"
+  → gate-ON ALSO fails to catch → **Δ ≈ 0**; the refuse path demonstrates nothing
+  on this data. The gate's real value on SQuAD-unanswerable lives in the
+  ANSWER-GROUNDING (`drift`) path — the model answers from the similar paragraph and
+  the gate must catch the answer as ungrounded. So the correct slice: put SQuAD
+  paragraphs in `corpus.notes` and build `drift` cases with a DETERMINISTICALLY
+  TEMPLATED unfaithful answer (from SQuAD answer spans / paragraph entities — NOT
+  model-generated, so no maker=judge), assert gate-ON catches (ungrounded) vs
+  gate-OFF passes. Report the Δ as **answer-faithfulness on adversarial-unanswerable
+  inputs** (a sharper claim than "abstention"). Vendor a pinned SQuAD-2.0 slice under
   `apps/cli/scripts/fixtures/` (checksum-pinned, committed for offline repro —
-  a public-dataset fetch IS allowed; MUSE_LOCAL_ONLY gates LLM/voice egress, not data).
+  public-dataset fetch IS allowed; MUSE_LOCAL_ONLY gates LLM/voice egress, not data).
+  (Pure out-of-corpus refuse — paragraphs NOT in notes — is the trivial fallback but
+  only grows the refuse set; it does not test adversarial similarity, so it is weaker.)
 - ★ **Poisoned-source / grounded≠true battery** — the biggest open hole: the gate
   verifies claim↔SOURCE match, never source VERACITY, so a false note / poisoned
   episode / hostile MCP output is faithfully cited as "grounded". Source: the same
@@ -100,6 +109,10 @@
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-08 first real `improve-muse` fire: BUILD's verify-before-claim caught that the
+  top item's "SQuAD-unanswerable→refuse" mapping yields Δ≈0 (refuse=retrieval-confidence;
+  SQuAD-unanswerable is adversarially similar → stays confident). Re-scoped the item to the
+  drift/answer-grounding path with templated answers, before any fixture work was wasted.
 - ✓ 2026-06-08 `feat/grounding-ci-gate`: fabrication=0 grounded-surface ratchet (self-eval)
   · live pre-push grounding tripwire (`precheck:grounding`) · grounding-delta benchmark
   (`eval:grounding-delta`, Δ+0.94 gate ON vs OFF on gemma4) · self-eval ENOENT fix.
