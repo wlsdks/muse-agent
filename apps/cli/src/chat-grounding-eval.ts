@@ -59,7 +59,12 @@ export const CHAT_GROUNDING_EVAL_CORPUS: GroundingEvalCorpus = {
     { kind: "drift", query: "what is my monthly rent?", answer: "Your monthly rent is 1,500,000 KRW, due on the 1st.", note: "wrong rent 1,500,000 vs 1,250,000" },
     { kind: "drift", query: "what is my office VPN MTU?", answer: "Your office VPN MTU is 1500 on the wg0 interface.", note: "wrong MTU 1500 vs 1380" },
     { kind: "drift", query: "what is my work email?", answer: "Your work email is jinan@acme.com.", note: "wrong email domain acme vs foundry.io" },
-    { kind: "drift", query: "what is my home wifi SSID?", answer: "Your home wifi SSID is Linksys-2G.", note: "wrong SSID (non-numeric identifier) Linksys-2G vs Nest-5G — the string-drift hole the number guard misses" }
+    { kind: "drift", query: "what is my home wifi SSID?", answer: "Your home wifi SSID is Linksys-2G.", note: "wrong SSID (non-numeric identifier) Linksys-2G vs Nest-5G — the string-drift hole the number guard misses" },
+    // ABSENT-FACT fabrication: no note holds a pet name / wifi password, so a
+    // confident pure-alphabetic answer is invented — verifyGrounding's coverage
+    // floor must catch it (the value is absent from every retrieved passage).
+    { kind: "drift", query: "what is my cat's name?", answer: "Your cat's name is Mochi.", note: "absent fact (no pet note) + pure-alpha fabrication → must abstain" },
+    { kind: "drift", query: "what is my wifi password?", answer: "Your wifi password is swordfish.", note: "absent fact (wifi note has SSID, no password) + pure-alpha fabrication → must abstain" }
   ]
 };
 
