@@ -29,6 +29,13 @@ export interface KnowledgeMatch {
   readonly score: number;
   /** Absolute cosine similarity to the query — the signal for retrieval-confidence grading (CRAG). */
   readonly cosine?: number;
+  /**
+   * Provenance trust. `false` = an UNTRUSTED source (e.g. an allowlisted-but-hostile
+   * MCP tool-output, per architecture.md). Absent/`true` = the user's own data. The
+   * grounding gate verifies faithfulness, not source veracity (grounded≠true); this
+   * bit lets a caller flag a grounded answer that rests only on data not the user's.
+   */
+  readonly trusted?: boolean;
 }
 
 export interface RankKnowledgeOptions {
@@ -516,6 +523,38 @@ export function citedSourcesIn(text: string): string[] {
     if (src) out.push(src);
   }
   return out;
+}
+
+/**
+ * grounded≠true MITIGATION (source-trust segregation). A grounded answer can be
+ * perfectly faithful to its source yet the source itself be UNTRUSTED. Source
+ * VERACITY is unknowable on a fixed local model; source TRUST is a known
+ * provenance bit (`KnowledgeMatch.trusted`). Returns `true` when EVERY citation in
+ * the answer that resolves to a retrieved match resolves ONLY to untrusted ones —
+ * i.e. the user is being handed a grounded claim resting entirely on data that is
+ * not their own (e.g. MCP tool-output). A single trusted backing source makes it
+ * `false`. The caller surfaces a distinct marker so the user applies extra scrutiny.
+ * Unresolved citations are NOT this function's concern — verifyGrounding already
+ * rejects a fabricated citation as ungrounded.
+ */
+export function groundedOnUntrustedOnly(answer: string, matches: readonly KnowledgeMatch[]): boolean {
+  const cited = citedSourcesIn(answer);
+  if (cited.length === 0) {
+    return false;
+  }
+  const trustBySource = new Map(matches.map((m) => [m.source.trim().toLowerCase(), m.trusted !== false]));
+  let anyResolved = false;
+  for (const src of cited) {
+    const trusted = trustBySource.get(src.trim().toLowerCase());
+    if (trusted === undefined) {
+      continue;
+    }
+    anyResolved = true;
+    if (trusted) {
+      return false;
+    }
+  }
+  return anyResolved;
 }
 
 export interface CitationEnforcement {

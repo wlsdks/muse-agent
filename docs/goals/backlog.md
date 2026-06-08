@@ -18,7 +18,13 @@
   answer shares tokens with the cited paragraph (coverage doesn't fully fail). Sharpen:
   pick drift answers with NO lexical overlap (distinct entities/numbers), or add the
   SQuAD-unanswerable→fabricated-answer drift variant. Smaller, well-specified now.
-- ★ **Source-trust segregation — the grounded≠true MITIGATION** — the boundary is now
+- ★ **Source-trust segregation — WIRE the foundation through** — FOUNDATION SHIPPED (see Done):
+  `KnowledgeMatch.trusted` provenance bit + the pure detector `groundedOnUntrustedOnly` (flags a
+  grounded answer resting ONLY on untrusted sources), agent-core, 4 tests. REMAINING sub-slices:
+  (1) set `trusted: false` where matches are built from MCP tool-output (tool-output-evidence.ts)
+  and thread it through the recall path; (2) surface a distinct marker on the answer when
+  `groundedOnUntrustedOnly` is true so the user applies extra scrutiny; (3) a live battery.
+  Below is the original framing (kept for context):
   NAMED (see Done: grounded-not-true.test.ts locks that a false-but-source-supported answer
   is "grounded", while a fabricated citation is still caught). The user's OWN false note is
   unfixable by design ("it's yours"), but an UNTRUSTED source (hostile/allowlisted MCP
@@ -98,6 +104,11 @@
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-08 fourth `improve-muse` fire (first 20-min-loop iteration) — **source-trust
+  FOUNDATION**: `KnowledgeMatch.trusted` provenance bit + pure `groundedOnUntrustedOnly`
+  detector (additive — verifyGrounding/the gate untouched), agent-core, 7/7 tests. Live
+  gate unchanged (eval:grounding-delta still Δ+0.94). The grounded≠true mitigation now has
+  a foundation; wiring it through tool-output-evidence → recall → answer-marker is the next ★.
 - ✓ 2026-06-08 third `improve-muse` fire — **grounded≠true boundary NAMED**:
   `packages/agent-core/src/grounded-not-true.test.ts` (3 cases, deterministic) locks that the
   gate marks a false-but-source-supported answer "grounded" (faithfulness is to the source,

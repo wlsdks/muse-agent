@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { verifyGrounding } from "./knowledge-recall.js";
+import { groundedOnUntrustedOnly, verifyGrounding } from "./knowledge-recall.js";
 import type { KnowledgeMatch } from "./knowledge-recall.js";
 
 /**
@@ -43,5 +43,28 @@ describe("grounded ≠ true (named boundary)", () => {
     const v = verifyGrounding("The Eiffel Tower is in Berlin [from trusted-encyclopedia.md].", matches, "Where is the Eiffel Tower?");
     expect(v.verdict).toBe("ungrounded"); // a source the user never had cannot be cited, even for a token-supported claim
     expect(v.invalidCitations).toContain("trusted-encyclopedia.md");
+  });
+});
+
+describe("groundedOnUntrustedOnly (source-trust segregation — the grounded≠true mitigation)", () => {
+  const untrusted = (source: string): KnowledgeMatch => ({ score: 1, source, text: "x", trusted: false });
+  const trusted = (source: string): KnowledgeMatch => ({ score: 1, source, text: "x" }); // absent = user's own data
+
+  it("flags an answer that cites ONLY untrusted (tool-output) sources", () => {
+    expect(groundedOnUntrustedOnly("It costs $9 [from mcp-shop.json].", [untrusted("mcp-shop.json")])).toBe(true);
+  });
+
+  it("does NOT flag when a TRUSTED source also backs the claim", () => {
+    const matches = [untrusted("mcp-shop.json"), trusted("my-notes.md")];
+    expect(groundedOnUntrustedOnly("It costs $9 [from mcp-shop.json] [from my-notes.md].", matches)).toBe(false);
+  });
+
+  it("does NOT flag a purely user-data answer, and treats absent `trusted` as the user's own", () => {
+    expect(groundedOnUntrustedOnly("Rent is 1,250,000 [from lease.md].", [trusted("lease.md")])).toBe(false);
+  });
+
+  it("returns false when nothing is cited or no citation resolves (verifyGrounding owns those)", () => {
+    expect(groundedOnUntrustedOnly("Rent is 1,250,000.", [trusted("lease.md")])).toBe(false);
+    expect(groundedOnUntrustedOnly("Rent is 1,250,000 [from ghost.md].", [untrusted("mcp-shop.json")])).toBe(false);
   });
 });
