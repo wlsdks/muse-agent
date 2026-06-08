@@ -67,6 +67,9 @@ const env = {
   MUSE_CALENDAR_FILE: calendarFile,
   MUSE_CALENDAR_PROVIDERS: "local",
   MUSE_CREDENTIALS_FILE: credentialsFile,
+  // The PII input guard is OFF by default under local-only (no cloud egress to
+  // protect); force it on so the PII-block case actually exercises the guard.
+  MUSE_INPUT_GUARD_PII_ENABLED: "true",
   MUSE_MODEL: provider.model,
   MUSE_MODEL_PROVIDER_ID: provider.providerId,
   MUSE_NOTES_DIR: notesDir,
