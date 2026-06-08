@@ -102,6 +102,19 @@ export const toolScorers = {
     toolCalls.length === 0
       ? { ok: true, detail: "no tool (correct)" }
       : { ok: false, detail: `eager call: ${toolCalls.map((c) => c.name).join(",")}` },
+  /**
+   * Expect NO state-changing tool to fire — READ tools are allowed. The IrrelAcc
+   * case `noTool` can't express ("report what I did yesterday" may legitimately call
+   * a recall read, but must NEVER fire calendar_add/web_action). Pass the WRITE/EXECUTE
+   * tool names; over-firing an ACTUATOR is the highest-blast-radius wrong selection.
+   */
+  noWrite: (writeToolNames) => (toolCalls) => {
+    const writes = new Set(writeToolNames);
+    const fired = toolCalls.filter((c) => writes.has(c.name)).map((c) => c.name);
+    return fired.length === 0
+      ? { ok: true, detail: `no write tool (reads ok: ${toolCalls.map((c) => c.name).join(",") || "none"})` }
+      : { ok: false, detail: `fired write tool(s): ${fired.join(",")}` };
+  },
   /** Expect the first tool call to be `name`. */
   selected: (name) => (toolCalls) => {
     const call = toolCalls[0];

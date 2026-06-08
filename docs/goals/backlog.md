@@ -13,13 +13,6 @@
 
 ## Open — refilled 2026-06-09 (gap-finding scout, clean autonomous slices)
 
-- ★ **Add a `noWrite` over-invocation scorer to the eval harness** — `scripts/eval-harness.mjs`
-  toolScorers (line ~99) has `noTool` (zero calls) but no scorer for "READ tools OK, NO write/execute
-  tool may fire" (a greeting may call knowledge_search but must never call calendar_add/web_action).
-  Add `toolScorers.noWrite(writeToolNames)`; pin in eval-harness.test.mjs beside `noTool`. Gives every
-  battery the missing IrrelAcc primitive for ACTUATOR over-firing (highest blast radius). Verify:
-  `node --test scripts/eval-harness.test.mjs`. Risk: pure additive in the dep-free harness; no battery forced to adopt.
-
 ## Open — grounding edge (the maintained floor → frontier)
 
 - ◦ **(follow-up) SQuAD drift arm — STABILIZE before optimizing** — a fire (2026-06-09)
@@ -125,6 +118,10 @@
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-09 eleventh `improve-muse` fire (20-min loop) — **`noWrite` over-invocation scorer**:
+  `toolScorers.noWrite(writeToolNames)` in eval-harness.mjs — reads allowed, any write/execute
+  (actuator) tool fails. The IrrelAcc primitive `noTool` couldn't express ("report yesterday" may
+  call a recall read but must never fire calendar_add). 14/14. The refill's 3 ★ are now all shipped.
 - ✓ 2026-06-09 tenth `improve-muse` fire (20-min loop) — **groundToolArguments substring-hardening**:
   isGrounded now matches a value token at a WORD START (prefix), not as a raw substring — so a fabricated
   "art" is no longer grounded by "start the meeting", while morphology (meeting→meetings) and Korean

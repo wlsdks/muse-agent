@@ -28,6 +28,14 @@ test("toolScorers.noTool — passes on zero calls, fails on any call", () => {
   assert.match(bad.detail, /eager call: get_weather/);
 });
 
+test("toolScorers.noWrite — reads allowed, any write/execute tool fails (actuator IrrelAcc)", () => {
+  assert.equal(toolScorers.noWrite(["calendar_add"])([]).ok, true);
+  assert.equal(toolScorers.noWrite(["calendar_add", "web_action"])([call("knowledge_search", {})]).ok, true);
+  const bad = toolScorers.noWrite(["calendar_add", "web_action"])([call("knowledge_search", {}), call("calendar_add", {})]);
+  assert.equal(bad.ok, false);
+  assert.match(bad.detail, /fired write tool\(s\): calendar_add/);
+});
+
 test("toolScorers.selected — fails with no call, matches the FIRST call, ignores later calls", () => {
   assert.equal(toolScorers.selected("x")([]).ok, false);
   assert.match(toolScorers.selected("x")([]).detail, /no tool selected/);
