@@ -38,7 +38,7 @@ if (changed.length === 0) {
 const RULES = [
   { test: (f) => /packages\/tools\/|tool-?(filter|projection|registry)|adapter-ollama/i.test(f),
     evals: ["eval:tools"], passK: true, why: "tool names/descriptions/schemas/projection/adapter → one-shot tool selection" },
-  { test: (f) => /knowledge-recall|grounding|citation|rubric|reverify|recall|chat-grounding|faithful/i.test(f),
+  { test: (f) => /knowledge-recall|grounded|grounding|citation|rubric|reverify|recall|chat-grounding|faithful/i.test(f),
     evals: ["precheck:grounding", "eval:grounding-delta"], passK: true, why: "grounding gate / recall / citation → fabrication=0 floor + architectural Δ" },
   { test: (f) => /vision|image|multimodal/i.test(f),
     evals: ["eval:vision"], passK: false, why: "vision surface → grounded-vision routing" },

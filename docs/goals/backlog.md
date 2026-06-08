@@ -20,10 +20,15 @@
   SQuAD-unanswerable→fabricated-answer drift variant. Smaller, well-specified now.
 - ★ **Source-trust segregation — WIRE the foundation through** — FOUNDATION SHIPPED (see Done):
   `KnowledgeMatch.trusted` provenance bit + the pure detector `groundedOnUntrustedOnly` (flags a
-  grounded answer resting ONLY on untrusted sources), agent-core, 4 tests. REMAINING sub-slices:
-  (1) set `trusted: false` where matches are built from MCP tool-output (tool-output-evidence.ts)
-  and thread it through the recall path; (2) surface a distinct marker on the answer when
-  `groundedOnUntrustedOnly` is true so the user applies extra scrutiny; (3) a live battery.
+  grounded answer resting ONLY on untrusted sources), agent-core, 4 tests. REMAINING — RE-SCOPED
+  2026-06-09 (a fire found the naive wiring target wrong): tool-output does NOT become a
+  `KnowledgeMatch` — it produces `VerifiedSource` (tool-output-evidence.ts) consumed by the
+  response-filters path, SEPARATE from the grounding evidence set (`KnowledgeMatch` today comes only
+  from the user's own notes, i.e. always trusted). So `groundedOnUntrustedOnly` has no untrusted input
+  in the CURRENT graph — it is a forward-looking guard. Correct sub-slices: (1) DECIDE the design —
+  merge tool-output INTO the grounding set with `trusted:false` (architectural), OR mark trust on the
+  VerifiedSource/response-filters path where tool-derived citations actually live; (2) surface a marker
+  when a cited claim rests only on untrusted provenance; (3) a live battery. Start with (1)'s decision.
   Below is the original framing (kept for context):
   NAMED (see Done: grounded-not-true.test.ts locks that a false-but-source-supported answer
   is "grounded", while a fabricated citation is still caught). The user's OWN false note is
@@ -67,9 +72,6 @@
   count unchanged, so self-eval's ratchet is blind to a dropped case. Slice: sum the
   case-array lengths across the registered verify-*.mjs / corpus datasets so a removed
   case fails self-eval. Source: will-it-work review must-fix #3.
-- ◦ **pick-evals misses grounding TEST files** — its RULES match `/grounding/` but not
-  `grounded-not-true.test.ts` ("grounded"), so a pure grounding test scopes to lint-only.
-  One-line fix: add `grounded` to the grounding RULES regex (scripts/pick-evals.mjs). Trivial.
 - ◦ **Backlog refill is the autonomy ceiling** — write-back records the provenance of
   the consumed item but does NOT mint net-new actionable work, so autonomy lasts ~the
   seed length (~7 fires) then degrades to gap-scout. The durable refill is error-analysis,
@@ -104,6 +106,11 @@
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-09 fifth `improve-muse` fire (20-min loop) — **pick-evals matches grounding TEST
+  files** (regex `grounded` added → `grounded-not-true.test.ts` now maps to the grounding
+  batteries, not lint-only). Same fire RE-SCOPED the source-trust ★: a graph trace found
+  tool-output produces `VerifiedSource` (response-filters path), SEPARATE from the grounding
+  `KnowledgeMatch` set — so the wiring target was wrong; corrected before code was wasted.
 - ✓ 2026-06-08 fourth `improve-muse` fire (first 20-min-loop iteration) — **source-trust
   FOUNDATION**: `KnowledgeMatch.trusted` provenance bit + pure `groundedOnUntrustedOnly`
   detector (additive — verifyGrounding/the gate untouched), agent-core, 7/7 tests. Live
