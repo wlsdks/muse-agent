@@ -18,12 +18,16 @@
   answer shares tokens with the cited paragraph (coverage doesn't fully fail). Sharpen:
   pick drift answers with NO lexical overlap (distinct entities/numbers), or add the
   SQuAD-unanswerable→fabricated-answer drift variant. Smaller, well-specified now.
-- ★ **Poisoned-source / grounded≠true battery** — the biggest open hole: the gate
-  verifies claim↔SOURCE match, never source VERACITY, so a false note / poisoned
-  episode / hostile MCP output is faithfully cited as "grounded". Source: the same
-  review's adversarial completeness critic. Slice: a battery injecting 5-10 false
-  notes and asserting Muse measures-and-names the gap (does NOT silently launder a
-  confident grounded lie). Distinct from prompt-injection (already defended).
+- ★ **Source-trust segregation — the grounded≠true MITIGATION** — the boundary is now
+  NAMED (see Done: grounded-not-true.test.ts locks that a false-but-source-supported answer
+  is "grounded", while a fabricated citation is still caught). The user's OWN false note is
+  unfixable by design ("it's yours"), but an UNTRUSTED source (hostile/allowlisted MCP
+  tool-output, per architecture.md) being treated as ground-truth IS fixable. Slice: tag
+  evidence provenance (user-note vs tool-output) through the recall→gate path and surface a
+  distinct verdict/marker when a grounded answer rests ONLY on untrusted tool-output, so the
+  user knows the citation is not their own data. Source-veracity is impossible on a fixed 12B;
+  source-TRUST segregation is not. (tool-output-evidence.ts already treats tool output as
+  untrusted — thread that signal into verifyGrounding's evidence set.)
 - ◦ **Best-of-N recall gated by EXISTING deterministic verifiers** — turn the gate
   from a pass/fail filter into a selector: draw n recall drafts, keep the best-grounded
   survivor (verifyGrounding), else "I'm not sure". Higher answered-rate at SAME
@@ -57,6 +61,9 @@
   count unchanged, so self-eval's ratchet is blind to a dropped case. Slice: sum the
   case-array lengths across the registered verify-*.mjs / corpus datasets so a removed
   case fails self-eval. Source: will-it-work review must-fix #3.
+- ◦ **pick-evals misses grounding TEST files** — its RULES match `/grounding/` but not
+  `grounded-not-true.test.ts` ("grounded"), so a pure grounding test scopes to lint-only.
+  One-line fix: add `grounded` to the grounding RULES regex (scripts/pick-evals.mjs). Trivial.
 - ◦ **Backlog refill is the autonomy ceiling** — write-back records the provenance of
   the consumed item but does NOT mint net-new actionable work, so autonomy lasts ~the
   seed length (~7 fires) then degrades to gap-scout. The durable refill is error-analysis,
@@ -91,6 +98,12 @@
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-08 third `improve-muse` fire — **grounded≠true boundary NAMED**:
+  `packages/agent-core/src/grounded-not-true.test.ts` (3 cases, deterministic) locks that the
+  gate marks a false-but-source-supported answer "grounded" (faithfulness is to the source,
+  not truth) while STILL catching a fabricated citation (integrity protected). The biggest open
+  hole is now a tracked, named property; the actionable mitigation (source-trust segregation)
+  is the new top ★. testFiles 847→848.
 - ✓ 2026-06-08 second `improve-muse` fire — **public-dataset grounding-delta arm SHIPPED**:
   `buildSquadGroundingCorpus` maps a pinned SQuAD-2.0 slice (8 paras, no model-generation —
   templated answers) → `eval:grounding-delta:squad` writes `docs/benchmarks/RESULTS-squad.md`.
