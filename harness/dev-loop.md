@@ -93,7 +93,8 @@ updated: 2026-06-08
    사소하면(오타·한 줄) 생략하고 5로 단락(skill 자가 게이트).
 4. **BUILD** — 한 수직 슬라이스, 최소 범위, 결정론 코드(프롬프트 아님). 프롬프트/스키마/제어흐름을
    소유; 게이트 하나를 강화하거나 verb_noun 도구 하나 추가. 새 프레임워크 추상화 금지.
-5. **VERIFY (fail-closed)** — diff→정확한 eval/smoke 부분집합(외워서가 아니라 매핑) + 불변식
+5. **VERIFY (fail-closed)** — `node scripts/pick-evals.mjs`가 diff→정확한 eval/smoke 부분집합을
+   매핑해 출력(외워서가 아니라 코드; grounding/safety엔 MUSE_EVAL_REPEAT=3 자동) + 불변식
    (fabrication=0 *실트레이스에도*, lint 0/0, 변경 패키지 test, 교차패키지면 `pnpm check`).
    grounding/safety는 pass^k k≥3. 독립 evaluator = harness-evaluator 서브에이전트(write 도구 없음),
    eval:judge 메타평가로 보정. green 아니면 done 아님.
@@ -124,7 +125,28 @@ updated: 2026-06-08
 - **하네스 무한 연마.** scaffold 이득은 일찍 compound하고 곧 saturate(METR은 이미 elicited된
   에이전트에 +8pp 비유의). 루프가 타이트해지면 메타 엔지니어링을 멈추고 capability로 복귀.
 
-## 5. 출처 (1차, 검증됨)
+## 5. 정직한 한계 (2026-06-08 will-it-work 적대적 리뷰)
+
+이 루프가 *무엇을 못 하는지* — 6-경로 리뷰가 코드로 확인한 천장. 무시하면 깨진다.
+
+- **네트워크/데이터 절.** `MUSE_LOCAL_ONLY`는 **LLM/음성 egress만** 막는다 — 공개 eval 데이터셋
+  내려받기는 허용. 단 `apps/cli/scripts/fixtures/`에 vendoring + checksum 고정 + 커밋해 오프라인
+  재현 가능하게. (이 절이 없으면 에이전트가 스킬이 세운 게이트에 *스스로* 막혀 멈춘다.)
+- **단일 모델에선 maker=judge — `eval:judge`는 advisory.** 같은 gemma가 같은 gemma를 toy
+  fixture로 채점하니 이번 슬라이스의 진위에 신호가 거의 없다. fabrication-critical 주장은
+  **결정론 스코어러 우선**, 아니면 **opus harness-evaluator(별도의 더 강한 모델 세션, write 도구 제거)**.
+  이게 환원 불가능한 "더 강한 모델/사람이 필요한 지점"이다 — 고정 12B는 자기가 막 만든 grounding
+  주장을 self-certify 못 한다.
+- **WRITE-BACK은 이제 기계적이다.** `scripts/guard-writeback.mjs`(commit-msg 훅)가 non-trivial
+  `feat`/`fix`에 test/golden-case/backlog 갱신 중 하나를 스테이지하도록 강제(escape `[writeback: n/a]`).
+  prose 게이트가 아니라 코드. 그래도 *내용*(좋은 golden case인가)은 사람/리뷰의 판단.
+- **자율은 시드 길이만큼만.** write-back은 *소비한* 항목의 출처를 적을 뿐 새 actionable 일을
+  만들지 않는다("한 줄 추가 시 한 줄 prune"이 성장을 캡). 영속 refill은 error-analysis인데 그건
+  트레이스 결과 로깅에 막혀 있고, 그 연료는 *진안이 Muse를 쓰는 데서* 쌓이지 dev fire에서가 아니다.
+  → ★ OPEN이 마르면 refill fire(gap-scout 또는 사람 방향)가 그 자체로 일. 자율을 "무한 자기개선"으로
+  과대평가하지 말 것 — 이건 *검증된 슬라이스 실행을 싸게 + 누적되게* 만드는 도구지, 감독 없는 자기진화가 아니다.
+
+## 6. 출처 (1차, 검증됨)
 
 - Anthropic: [Building effective agents](https://www.anthropic.com/research/building-effective-agents) · [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) · [Writing tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents)
 - OpenAI: [A practical guide to building agents](https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf) · Google: [ADK eval criteria](https://google.github.io/adk-docs/evaluate/) · [Agents Companion 백서](https://www.kaggle.com/whitepaper-agent-companion)

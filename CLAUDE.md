@@ -43,6 +43,10 @@ pnpm lint                              # 0 errors / 0 warnings required
 
 These commands are the ground truth. If any fails, stop and triage.
 
+**To pick + ship the next slice, run the `improve-muse` skill** — it finds the
+work (regression → backlog → gap-scout), builds, verifies, and compounds, so you
+never hand-write "what should I build". Contract: [`harness/dev-loop.md`](harness/dev-loop.md).
+
 ## Non-negotiables
 
 - `agent-core` is model-agnostic. Provider SDKs live behind `packages/model` adapters only.

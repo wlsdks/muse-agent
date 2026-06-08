@@ -13,13 +13,20 @@
 
 ## Open — grounding edge (the maintained floor → frontier)
 
-- ★ **Public-dataset arm for the grounding-delta** — make the architectural-delta
-  number externally citable, not self-authored (the whole point of "prove best").
-  Source: 2026-06-08 best-OSS-agent review ([[project_best_oss_agent_review]]).
-  Slice: add a SQuAD-2.0-unanswerable (or FACTS-Grounding) slice as a second corpus
-  the existing `eval:grounding-delta` runs gate-ON/OFF over; report Δ on it. SQuAD-2.0
-  preferred — its native answerable/unanswerable split maps to the gate's abstention
-  axis WITHOUT a generation-judge (FACTS needs generate+judge = maker=judge ceiling).
+- ★ **Public-dataset ABSTENTION arm for the grounding-delta** — make the
+  architectural-delta number externally citable, not self-authored. Source:
+  2026-06-08 best-OSS-agent review ([[project_best_oss_agent_review]]).
+  SCOPE (precise — a review found the naive framing fails on the first fire):
+  use **SQuAD-2.0 UNANSWERABLE questions ONLY → `refuse` cases**. The runner's
+  `GroundingEvalCorpus` requires a pre-written cited `answer` string for
+  `answerable`/`drift` kinds (grounding-eval.ts:39-40), which SQuAD does NOT
+  provide — so answerable/drift are OUT OF SCOPE for this no-judge arm (authoring
+  them would reintroduce the generate step = maker=judge ceiling). `refuse` cases
+  need no answer, so they map cleanly. Report the Δ in RESULTS.md as the
+  **abstention / retrieval-confidence axis ONLY** — NOT "full faithfulness"
+  (over-claiming was the trap). Vendor a pinned SQuAD-2.0 slice under
+  `apps/cli/scripts/fixtures/` (checksum-pinned, committed for offline repro —
+  a public-dataset fetch IS allowed; MUSE_LOCAL_ONLY gates LLM/voice egress, not data).
 - ★ **Poisoned-source / grounded≠true battery** — the biggest open hole: the gate
   verifies claim↔SOURCE match, never source VERACITY, so a false note / poisoned
   episode / hostile MCP output is faithfully cited as "grounded". Source: the same
@@ -51,6 +58,20 @@
 - ◦ **`hallucinations_v1`-style per-sentence groundedness** — finer than the answer-level
   gate: label each sentence supported/unsupported/contradictory so eval:self-improving
   reports WHICH sentence was un-groundable. Source: Google ADK eval criteria.
+
+## Open — dev-loop hardening (from the 2026-06-08 will-it-work review)
+
+- ★ **`groundedSurfaces` ratchet should count CASES, not battery FILES** — adding a
+  golden case to an EXISTING battery (the most common write-back) leaves the file
+  count unchanged, so self-eval's ratchet is blind to a dropped case. Slice: sum the
+  case-array lengths across the registered verify-*.mjs / corpus datasets so a removed
+  case fails self-eval. Source: will-it-work review must-fix #3.
+- ◦ **Backlog refill is the autonomy ceiling** — write-back records the provenance of
+  the consumed item but does NOT mint net-new actionable work, so autonomy lasts ~the
+  seed length (~7 fires) then degrades to gap-scout. The durable refill is error-analysis,
+  which is BLOCKED on trace outcome-logging (the fuel accrues from Jinan USING Muse, not
+  from dev fires). Not a single slice — a standing truth: when ★ OPEN runs low, a refill
+  fire (gap-scout or a human direction) is itself the work. Source: review honest-ceiling.
 
 ## Open — agent core
 

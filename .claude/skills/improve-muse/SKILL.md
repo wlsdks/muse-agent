@@ -37,11 +37,14 @@ handoff for the non-trivial path), [`docs/EXPANSION-PLAYBOOK.md`](../../../docs/
    `harness/handoff-template.md`. Trivial slice → skip (self-gate below).
 4. **BUILD** — one vertical slice, smallest scope, deterministic code (not
    prompt). Strengthen exactly one gate or add one verb_noun tool.
-5. **VERIFY (fail-closed)** — map the diff → the exact eval/smoke subset + run
-   invariants (fabrication=0 on real traces too, lint 0/0, changed-package test,
-   `pnpm check` if cross-package). pass^k k≥3 for grounding/safety. Independent
-   `harness-evaluator` subagent (no write tools) + `eval:judge` meta-eval. No
-   green → not done.
+5. **VERIFY (fail-closed)** — run `node scripts/pick-evals.mjs` to get the exact
+   battery subset for your diff (it already sets `MUSE_EVAL_REPEAT=3` on
+   grounding/safety, so pass^k is mechanical), run what it prints + invariants
+   (fabrication=0 on real traces too, lint 0/0, changed-package test, `pnpm check`
+   if cross-package). For a fabrication-critical claim the same-model `eval:judge`
+   is **ADVISORY only** (gemma judging gemma on toy fixtures = correlated error) —
+   require a deterministic scorer OR an independent `harness-evaluator` subagent (a
+   separate stronger-model session, write tools removed). No green → not done.
 6. **WRITE-BACK (completion gate — cannot declare done without all four)** —
    (a) the fixed miss → a STABLE-3/3 golden case; (b) any recurring correction →
    one line in the matching `.claude/rules/*.md`; (c) chosen + rejected direction
@@ -63,9 +66,13 @@ handoff for the non-trivial path), [`docs/EXPANSION-PLAYBOOK.md`](../../../docs/
 
 ## Self-gate — don't make trivial work ceremony
 
-A one-line / typo / obvious fix SHORT-CIRCUITS: skip PLAN + analyze, go straight
-BUILD → VERIFY → COMMIT. If this skill ever makes a 3-line fix take 6 steps, it
-has failed — route around it and fix the skill.
+A one-line / typo / obvious fix SHORT-CIRCUITS the **ceremony**: skip PLAN +
+analyze + subagent dispatch, go straight BUILD → VERIFY → COMMIT. **Short-circuit
+NEVER skips VERIFY or WRITE-BACK** — those hold for every slice. WRITE-BACK is now
+mechanically enforced (the commit-msg guard blocks a `feat`/`fix` that stages no
+test / golden-case / backlog advance unless the message carries `[writeback: n/a]`),
+so "it's trivial" cannot quietly drop the compounding step. If this skill ever makes
+a 3-line fix take 6 steps, fix the skill — don't drop the gates.
 
 ## Red flags — STOP
 

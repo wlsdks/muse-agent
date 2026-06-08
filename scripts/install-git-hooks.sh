@@ -10,11 +10,13 @@ repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 commit_hook="$repo/.git/hooks/commit-msg"
 cat > "$commit_hook" <<'EOF'
 #!/usr/bin/env bash
-# commit-msg: deterministic immutable-core guard (fail-close).
-exec node "$(git rev-parse --show-toplevel)/scripts/guard-immutable.mjs" "$1"
+# commit-msg: deterministic guards (fail-close) — immutable-core, then write-back.
+root="$(git rev-parse --show-toplevel)"
+node "$root/scripts/guard-immutable.mjs" "$1" || exit 1
+exec node "$root/scripts/guard-writeback.mjs" "$1"
 EOF
 chmod +x "$commit_hook"
-echo "installed: $commit_hook -> scripts/guard-immutable.mjs"
+echo "installed: $commit_hook -> guard-immutable.mjs + guard-writeback.mjs"
 
 push_hook="$repo/.git/hooks/pre-push"
 cat > "$push_hook" <<'EOF'
