@@ -1,0 +1,63 @@
+{
+  "source": "SQuAD-2.0 dev-v2.0 (rajpurkar)",
+  "url": "https://rajpurkar.github.io/SQuAD-explorer/dataset/dev-v2.0.json",
+  "note": "pinned slice for grounding-delta; deterministic first-answerable-QA per article",
+  "items": [
+    {
+      "title": "Normans",
+      "context": "The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse (\"Norman\" comes from \"Norseman\") raiders and pirates from Denmark, Iceland and Norway who, under their leader Rollo, agreed to swear fealty to King Charles III of West Francia. Through generations of assimilation and mixing with the native Frankish and Roman-Gaulish populations, their descendants would gradually merge with the Carolingian-based cultures of West Francia. The distinct cultural and ethnic identity of the Normans emerged initially in the first half of the 10th century, and it continued to evolve over the succeeding centuries.",
+      "question": "In what country is Normandy located?",
+      "answer": "France",
+      "unanswerable_question": "Who gave their name to Normandy in the 1000's and 1100's"
+    },
+    {
+      "title": "Computational_complexity_theory",
+      "context": "Computational complexity theory is a branch of the theory of computation in theoretical computer science that focuses on classifying computational problems according to their inherent difficulty, and relating those classes to each other. A computational problem is understood to be a task that is in principle amenable to being solved by a computer, which is equivalent to stating that the problem may be solved by mechanical application of mathematical steps, such as an algorithm.",
+      "question": "What branch of theoretical computer science deals with broadly classifying computational problems by difficulty and class of relationship?",
+      "answer": "Computational complexity theory",
+      "unanswerable_question": "What is computational complexity principle?"
+    },
+    {
+      "title": "Southern_California",
+      "context": "Southern California, often abbreviated SoCal, is a geographic and cultural region that generally comprises California's southernmost 10 counties. The region is traditionally described as \"eight counties\", based on demographics and economic ties: Imperial, Los Angeles, Orange, Riverside, San Bernardino, San Diego, Santa Barbara, and Ventura. The more extensive 10-county definition, including Kern and San Luis Obispo counties, is also used based on historical political divisions. Southern California is a major economic center for the state of California and the United States.",
+      "question": "What is Southern California often abbreviated as?",
+      "answer": "SoCal",
+      "unanswerable_question": "What counties does the more extensive eight county definition of SoCal include?"
+    },
+    {
+      "title": "Sky_(United_Kingdom)",
+      "context": "Formed in November 1990 by the equal merger of Sky Television and British Satellite Broadcasting, BSkyB became the UK's largest digital subscription television company. Following BSkyB's 2014 acquisition of Sky Italia and a majority 90.04% interest in Sky Deutschland in November 2014, its holding company British Sky Broadcasting Group plc changed its name to Sky plc. The United Kingdom operations also changed the company name from British Sky Broadcasting Limited to Sky UK Limited, still trading as Sky.",
+      "question": "What company was formed by the merger of Sky Television and British Satellite Broadcasting?",
+      "answer": "BSkyB",
+      "unanswerable_question": "What company was angry about the merger of Sky Television and British Satellite Broadcasting?"
+    },
+    {
+      "title": "Victoria_(Australia)",
+      "context": "The economy of Victoria is highly diversified: service sectors including financial and property services, health, education, wholesale, retail, hospitality and manufacturing constitute the majority of employment. Victoria's total gross state product (GSP) is ranked second in Australia, although Victoria is ranked fourth in terms of GSP per capita because of its limited mining activity. Culturally, Melbourne is home to a number of museums, art galleries and theatres and is also described as the \"sporting capital of Australia\". The Melbourne Cricket Ground is the largest stadium in Australia, and the host of the 1956 Summer Olympics and the 2006 Commonwealth Games. The ground is also considered the \"spiritual home\" of Australian cricket and Australian rules football, and hosts the grand final of the Australian Football League (AFL) each year, usually drawing crowds of over 95,000 people. Victoria includes eight public universities, with the oldest, the University of Melbourne, having been founded in 1853.",
+      "question": "What kind of economy does Victoria have?",
+      "answer": "diversified",
+      "unanswerable_question": "What kind of education does Victoria have?"
+    },
+    {
+      "title": "Huguenot",
+      "context": "Huguenot numbers peaked near an estimated two million by 1562, concentrated mainly in the southern and central parts of France, about one-eighth the number of French Catholics. As Huguenots gained influence and more openly displayed their faith, Catholic hostility grew, in spite of increasingly liberal political concessions and edicts of toleration from the French crown. A series of religious conflicts followed, known as the Wars of Religion, fought intermittently from 1562 to 1598. The wars finally ended with the granting of the Edict of Nantes, which granted the Huguenots substantial religious, political and military autonomy.",
+      "question": "Where was France's Huguenot population largely centered?",
+      "answer": "the southern and central parts of France",
+      "unanswerable_question": "When did the Huguenot movement start?"
+    },
+    {
+      "title": "Steam_engine",
+      "context": "Steam engines are external combustion engines, where the working fluid is separate from the combustion products. Non-combustion heat sources such as solar power, nuclear power or geothermal energy may be used. The ideal thermodynamic cycle used to analyze this process is called the Rankine cycle. In the cycle, water is heated and transforms into steam within a boiler operating at a high pressure. When expanded through pistons or turbines, mechanical work is done. The reduced-pressure steam is then condensed and pumped back into the boiler.",
+      "question": "Along with geothermal and nuclear, what is a notable non-combustion heat source?",
+      "answer": "solar",
+      "unanswerable_question": "Along with geothermal and nuclear, what is a notable combustion heat source?"
+    },
+    {
+      "title": "Oxygen",
+      "context": "Oxygen is a chemical element with symbol O and atomic number 8. It is a member of the chalcogen group on the periodic table and is a highly reactive nonmetal and oxidizing agent that readily forms compounds (notably oxides) with most elements. By mass, oxygen is the third-most abundant element in the universe, after hydrogen and helium. At standard temperature and pressure, two atoms of the element bind to form dioxygen, a colorless and odorless diatomic gas with the formula O\n2. Diatomic oxygen gas constitutes 20.8% of the Earth's atmosphere. However, monitoring of atmospheric oxygen levels show a global downward trend, because of fossil-fuel burning. Oxygen is the most abundant element by mass in the Earth's crust as part of oxide compounds such as silicon dioxide, making up almost half of the crust's mass.",
+      "question": "The atomic number of the periodic table for oxygen?",
+      "answer": "8",
+      "unanswerable_question": "What element has an atomic symbol of O?"
+    }
+  ]
+}

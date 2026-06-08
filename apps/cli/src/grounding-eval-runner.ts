@@ -6,7 +6,7 @@ import {
   scoreGroundingEval,
   verifyGroundingWithReverify
 } from "@muse/agent-core";
-import type { GroundingEvalCorpus, GroundingEvalResult, GroundingReverify, GroundingVerification } from "@muse/agent-core";
+import type { GroundingEvalCase, GroundingEvalCorpus, GroundingEvalResult, GroundingReverify, GroundingVerification } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
 
 export interface GroundingThresholds {
@@ -147,4 +147,56 @@ export function renderGroundingDelta(on: GroundingEvalResult, off: GroundingEval
     `**Reading:** with the gate OFF the fixed model lets ${(off.guardable - off.caught).toString()}/${off.guardable.toString()} fabrications through; the gate ON catches ${on.caught.toString()}/${on.guardable.toString()} — a ${signed(dFaith)} faithfulness lift the SAME model cannot reach alone, at a ${signed(dRefuse)} false-refusal cost.`,
     ""
   ].join("\n");
+}
+
+export interface SquadSliceItem {
+  readonly title: string;
+  readonly context: string;
+  readonly question: string;
+  readonly answer: string;
+}
+
+export interface SquadSlice {
+  readonly items: readonly SquadSliceItem[];
+}
+
+const squadSlug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "");
+
+/**
+ * Map a pinned SQuAD-2.0 slice to a GroundingEvalCorpus that exercises the
+ * answer-FAITHFULNESS axis with DETERMINISTIC, templated answers — no model
+ * generation, so no maker=judge ceiling. Each paragraph becomes a note; each
+ * answerable question yields BOTH (a) an `answerable` case with its real cited
+ * answer (the gate must verify GROUNDED → measures false-refusal) and (b) a
+ * `drift` case whose answer is the span from a DIFFERENT paragraph but cited to
+ * THIS one (unsupported by the cited evidence → the gate must catch it as
+ * UNGROUNDED). The Δ on the drift cases is the gate's faithfulness contribution
+ * on a public dataset — the first improve-muse fire proved the naive
+ * SQuAD-unanswerable→refuse mapping yields Δ≈0 (refuse scores retrieval
+ * confidence, which adversarial-similar unanswerables defeat), so the value lives
+ * here, on the answer-grounding path.
+ */
+export function buildSquadGroundingCorpus(slice: SquadSlice): GroundingEvalCorpus {
+  const items = slice.items;
+  const notes = items.map((item, i) => ({ source: `squad-${squadSlug(item.title)}-${i.toString()}`, text: item.context }));
+  const cases: GroundingEvalCase[] = [];
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i]!;
+    const source = notes[i]!.source;
+    cases.push({
+      answer: `${item.answer} [from ${source}]`,
+      kind: "answerable",
+      note: `squad answerable (${item.title})`,
+      query: item.question
+    });
+    // A real answer span from a DIFFERENT paragraph, cited to THIS one — unsupported here.
+    const wrong = items[(i + 1) % items.length]!.answer;
+    cases.push({
+      answer: `${wrong} [from ${source}]`,
+      kind: "drift",
+      note: `squad drift: "${wrong}" is not in ${item.title}`,
+      query: item.question
+    });
+  }
+  return { cases, notes };
 }
