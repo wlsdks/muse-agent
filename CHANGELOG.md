@@ -9,6 +9,25 @@ move from `Unreleased` to dated/versioned headings.
 
 ### Added
 
+- **`fabrication=0` is now enforced by code, not discipline.** CLAUDE.md calls
+  fabrication=0 a release gate and "grounded-surface count never drops", but the
+  only git hook was the immutable-core commit-msg guard — a grounding regression
+  could land on a green `pnpm check`. Two layers close that:
+  - **Deterministic grounded-surface ratchet** (`self-eval`): `countGroundedSurfaces`
+    counts the live batteries registered in the `eval:self-improving` release gate
+    and exposes them as a numeric scoreboard gate, so `detectRegressions` fails the
+    moment a surface is dropped from the gate (no Ollama; runs at the top of every
+    loop fire). Proven: dropping one surface yields `groundedSurfaces: 27→26` +
+    exit 1.
+  - **Live pre-push tripwire** (`pnpm precheck:grounding`): re-spawns the
+    fabrication-critical batteries (faithfulness-rate, recall-citation-gate,
+    rubric-reverify) `MUSE_EVAL_REPEAT` times each and requires every run to pass
+    (pass^k). Installed as a `pre-push` hook by `scripts/install-git-hooks.sh`.
+    Fail-open ONLY on a broken environment (Ollama unreachable, or a battery
+    exceeds its per-battery timeout → that battery skips); a battery that RUNS and
+    FAILS blocks the push. Emergency escape: `MUSE_SKIP_PREPUSH=1`. Proven live:
+    3/3 batteries green at pass^2 on `gemma4:12b`.
+
 - **Default local model → `gemma4:12b`** (was `qwen3:8b`). Chosen for native
   multimodal vision plus stronger grounding; verified across every agent-eval
   gate (tools, faithfulness, adversarial safety, judge meta-eval, plan-quality,
