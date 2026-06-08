@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  countGroundedSurfaces,
   countTestFileNames,
   countVerifiedCapabilityLines,
   detectRegressions,
@@ -24,6 +25,26 @@ test("countVerifiedCapabilityLines counts only lines citing a test file or scrip
     "[Autonomy] baz — surface — (no citation yet)"
   ].join("\n");
   assert.equal(countVerifiedCapabilityLines(text), 2);
+});
+
+test("countGroundedSurfaces counts registered release-gate batteries, ignoring other file refs", () => {
+  const src = [
+    "const BATTERIES = [",
+    '  { axis: "★ WEDGE: cited recall", file: "apps/cli/scripts/verify-cited-recall.mjs", name: "cited-recall" },',
+    '  { axis: "★ WEDGE: rubric re-verify", file: "apps/cli/scripts/verify-rubric-reverify.mjs", name: "rubric-reverify" },',
+    '  { axis: "★ VISION", file: "apps/cli/scripts/verify-vision-grounding.mjs", name: "vision-grounding" },',
+    "];",
+    '// a stray reference with no `file:` prefix must NOT count: apps/cli/scripts/verify-helper.mjs',
+    'const other = "scripts/eval-agent.mjs";'
+  ].join("\n");
+  assert.equal(countGroundedSurfaces(src), 3);
+  assert.equal(countGroundedSurfaces(""), 0);
+});
+
+test("countGroundedSurfaces: a dropped surface is a numeric regression via detectRegressions", () => {
+  const prev = { gates: { groundedSurfaces: { status: "pass", value: 27 } } };
+  const curr = { gates: { groundedSurfaces: { status: "pass", value: 26 } } };
+  assert.deepEqual(detectRegressions(prev, curr), ["groundedSurfaces: 27→26"]);
 });
 
 test("detectRegressions: pass→fail and numeric drops are regressions", () => {

@@ -49,6 +49,20 @@ export function countVerifiedCapabilityLines(capabilitiesText) {
 }
 
 /**
+ * Count the live batteries registered in the fabrication=0 release gate
+ * (scripts/eval-self-improving.mjs's BATTERIES array). CLAUDE.md's invariant —
+ * "grounded-surface count never drops" — was enforced only by discipline; the
+ * only git hook is the immutable-core commit-msg guard, so a commit that quietly
+ * drops a surface from the release battery passed a green `pnpm check`. Counting
+ * the registry deterministically (no Ollama) turns the invariant into a numeric
+ * ratchet: detectRegressions fails self-eval the moment the count falls.
+ */
+export function countGroundedSurfaces(selfImprovingSource) {
+  const matches = selfImprovingSource.match(/file:\s*"apps\/cli\/scripts\/verify-[\w-]+\.mjs"/gu);
+  return matches ? matches.length : 0;
+}
+
+/**
  * Regressions between the previous scoreboard entry and the current one: a
  * boolean gate that went pass→fail, or a numeric gate whose value dropped.
  * No previous entry ⇒ nothing to regress against.
@@ -143,6 +157,9 @@ function main() {
     ? readFileSync(join(ROOT, "docs/goals/CAPABILITIES.md"), "utf8")
     : "";
   gates.verifiedCapabilities = { status: "pass", value: countVerifiedCapabilityLines(capText) };
+  const releaseGatePath = join(ROOT, "scripts/eval-self-improving.mjs");
+  const releaseGateSrc = existsSync(releaseGatePath) ? readFileSync(releaseGatePath, "utf8") : "";
+  gates.groundedSurfaces = { status: "pass", value: countGroundedSurfaces(releaseGateSrc) };
   if (full) {
     gates.tests = gateExit("pnpm -s -r test");
   }
