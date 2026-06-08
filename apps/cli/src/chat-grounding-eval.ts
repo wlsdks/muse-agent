@@ -52,6 +52,7 @@ export const CHAT_GROUNDING_EVAL_CORPUS: GroundingEvalCorpus = {
     { kind: "answerable", query: "how much is my gym membership?", answer: "Your gym membership is 89,000 KRW per month.", note: "gym fee" },
     { kind: "answerable", query: "what is my home wifi SSID?", answer: "Your home wifi SSID is Nest-5G.", note: "wifi ssid (no number)" },
     { kind: "answerable", query: "what is my wifi network name?", answer: "Your wifi SSID is Nest-5G.", note: "correct identifier must NOT be refused (false-refusal control for the identifier guard)" },
+    { kind: "answerable", query: "what is my router admin IP?", answer: "Your router admin page is at 192.168.0.1.", note: "correct IP must NOT be refused (false-refusal control for the IP guard)" },
     { kind: "answerable", query: "when does my passport expire?", answer: "Your passport expires on 2029-11-03.", note: "passport expiry date" },
     { kind: "answerable", query: "what is my work email?", answer: "Your work email is jinan@foundry.io.", note: "work email" },
 
@@ -64,7 +65,11 @@ export const CHAT_GROUNDING_EVAL_CORPUS: GroundingEvalCorpus = {
     // confident pure-alphabetic answer is invented — verifyGrounding's coverage
     // floor must catch it (the value is absent from every retrieved passage).
     { kind: "drift", query: "what is my cat's name?", answer: "Your cat's name is Mochi.", note: "absent fact (no pet note) + pure-alpha fabrication → must abstain" },
-    { kind: "drift", query: "what is my wifi password?", answer: "Your wifi password is swordfish.", note: "absent fact (wifi note has SSID, no password) + pure-alpha fabrication → must abstain" }
+    { kind: "drift", query: "what is my wifi password?", answer: "Your wifi password is swordfish.", note: "absent fact (wifi note has SSID, no password) + pure-alpha fabrication → must abstain" },
+    // wrong IPv4 — the per-octet number guard sees identical {192,168} (or {} for
+    // 10.0.0.5) and waves it through; the whole-address IP guard catches it.
+    { kind: "drift", query: "what is my router admin IP?", answer: "Your router admin page is at 192.168.1.1.", note: "wrong router IP 192.168.1.1 vs 192.168.0.1 — 1-digit octet drift the number guard misses" },
+    { kind: "drift", query: "what is my router admin IP?", answer: "Your router admin page is at 10.0.0.5.", note: "wrong IP 10.0.0.5 — all octets <3 digits, the number guard extracts nothing" }
   ]
 };
 

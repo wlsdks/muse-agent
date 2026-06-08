@@ -520,6 +520,41 @@ export function answerAssertsUnsupportedIdentifier(
   return answerIds.some((id) => !haystack.includes(id));
 }
 
+// Each octet is constrained to 0-255, so the pattern matches a real IPv4 and
+// NOT an IP-shaped non-address: a version string ("1.2.3" — only 3 groups), a
+// decimal ("3.14"), or a date ("2029-11-03" — hyphens, not dots).
+const IPV4_RE = /\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b/gu;
+
+// Collapse the only legitimate re-render of an octet (leading zeros: "01" → "1")
+// so a correct address written either way compares equal.
+function canonicalIp(ip: string): string {
+  return ip.split(".").map((octet) => String(Number.parseInt(octet, 10))).join(".");
+}
+
+/**
+ * Does the answer assert a whole IPv4 address present in neither the evidence
+ * nor the question? {@link answerAssertsUnsupportedNumber} compares >=3-digit
+ * runs, so it judges an IP octet-by-octet: "192.168.0.1" and a drifted
+ * "192.168.1.1" both reduce to the supported set {192,168} (the 0/1 octets are
+ * 1-digit and dropped), and "10.0.0.5" reduces to {} — so a wrong router/admin
+ * IP is waved through and surfaced. An IPv4 literal is a verbatim, copy-only
+ * identifier that never paraphrases, so matching the WHOLE address is
+ * false-refusal-safe; it must run before the number guard splits it into octets.
+ */
+export function answerAssertsUnsupportedIpAddress(
+  answer: string,
+  matches: readonly KnowledgeMatch[],
+  question: string
+): boolean {
+  const answerIps = (answer.replace(/\[[^\]]*\]/gu, " ").match(IPV4_RE) ?? []).map(canonicalIp);
+  if (answerIps.length === 0) return false;
+  const supported = new Set<string>([
+    ...(question.match(IPV4_RE) ?? []).map(canonicalIp),
+    ...matches.flatMap((match) => (match.text.match(IPV4_RE) ?? []).map(canonicalIp))
+  ]);
+  return answerIps.some((ip) => !supported.has(ip));
+}
+
 export function gateChatAnswer(
   question: string,
   answer: string,
@@ -536,6 +571,9 @@ export function gateChatAnswer(
   // and `verifyGrounding`'s whole-answer coverage below would otherwise wave it
   // through (a single wrong number barely dents token coverage). Refuse
   // deterministically: the sync chat counterpart to ask's value escalation.
+  // A whole IPv4 first — judged as one unit before the number guard would split
+  // it into individually-"supported" octets and miss a wrong router/admin IP.
+  if (answerAssertsUnsupportedIpAddress(answer, matches, question)) return chatAbstention(question);
   if (answerAssertsUnsupportedNumber(answer, matches, question)) return chatAbstention(question);
   // Same deterministic guard for a verbatim EMAIL identifier — a wrong domain on
   // a right local-part is an outbound-safety hazard the token shortcut misses.

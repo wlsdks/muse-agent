@@ -5,6 +5,7 @@ import type { KnowledgeMatch } from "@muse/agent-core";
 import {
   answerAssertsUnsupportedEmail,
   answerAssertsUnsupportedIdentifier,
+  answerAssertsUnsupportedIpAddress,
   answerAssertsUnsupportedNumber,
   CHAT_GROUNDING_MAX_HITS,
   CHAT_GROUNDING_MIN_SCORE,
@@ -235,6 +236,29 @@ describe("answerAssertsUnsupportedIdentifier (non-numeric string drift)", () => 
   });
   it("ignores an identifier inside a [from …] citation", () => {
     expect(answerAssertsUnsupportedIdentifier("set it [from vpn-wg0.md]", [note("no match")], "vpn?")).toBe(false);
+  });
+});
+
+describe("answerAssertsUnsupportedIpAddress (whole-IPv4 drift the per-octet number guard misses)", () => {
+  const note = (text: string): KnowledgeMatch => ({ cosine: 0.9, score: 0.9, source: "n.md", text });
+  const ev = [note("router admin page at 192.168.0.1")];
+  it("flags a wrong octet the number guard waves through (1-digit drift)", () => {
+    expect(answerAssertsUnsupportedIpAddress("admin is at 192.168.1.1", ev, "router ip?")).toBe(true);
+  });
+  it("flags an all-small-octet IP the number guard extracts nothing from", () => {
+    expect(answerAssertsUnsupportedIpAddress("admin is at 10.0.0.5", ev, "router ip?")).toBe(true);
+  });
+  it("does not flag the correct IP, incl. a leading-zero re-render", () => {
+    expect(answerAssertsUnsupportedIpAddress("admin is at 192.168.0.1", ev, "router ip?")).toBe(false);
+    expect(answerAssertsUnsupportedIpAddress("admin is at 192.168.00.1", ev, "router ip?")).toBe(false);
+  });
+  it("never matches an IP-shaped non-address (version / decimal / date)", () => {
+    expect(answerAssertsUnsupportedIpAddress("use version 1.2.3", ev, "v?")).toBe(false);
+    expect(answerAssertsUnsupportedIpAddress("pi is 3.14", ev, "pi?")).toBe(false);
+    expect(answerAssertsUnsupportedIpAddress("expires 2029-11-03", ev, "expiry?")).toBe(false);
+  });
+  it("ignores an IP inside a [from …] citation", () => {
+    expect(answerAssertsUnsupportedIpAddress("see the note [from 10.0.0.1-config.md]", [note("no ip here")], "ip?")).toBe(false);
   });
 });
 
