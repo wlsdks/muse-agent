@@ -66,6 +66,7 @@ import { formatNoteFocusSection, selectNoteFocus, type NoteMtime } from "./note-
 import { loadActivePersonaPreamble } from "./persona-store.js";
 import type { ProgramIO } from "./program.js";
 import { colorize } from "./tty-color.js";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 import {
   loadDefaultTts,
   parseAudioFormat,
@@ -560,7 +561,7 @@ export function formatConnectionsSection(hits: readonly RecallHit[]): string {
 }
 
 /** Search the notes + episode indices for knowledge related to today's items. */
-async function findTodayConnections(query: string, embedModel = "nomic-embed-text"): Promise<readonly RecallHit[]> {
+async function findTodayConnections(query: string, embedModel = DEFAULT_EMBED_MODEL): Promise<readonly RecallHit[]> {
   if (query.trim().length === 0) {
     return [];
   }

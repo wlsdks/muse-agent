@@ -31,7 +31,9 @@ import { classifyNoteContradiction, formatNoteConflicts, selectConflictCandidate
 import { coreShellRanking, readTrails, resolveTrailsFile, topCoRecalled } from "./recall-trail.js";
 import type { ProgramIO } from "./program.js";
 
-export const DEFAULT_EMBED_MODEL = "nomic-embed-text";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
+
+export { DEFAULT_EMBED_MODEL, LEGACY_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
 const DEFAULT_CHUNK_CHARS = 600;
 
 /**

@@ -62,7 +62,8 @@
     "typecheck": "pnpm -r --sort --if-present typecheck",
     "self-eval": "node scripts/self-eval.mjs",
     "self-eval:test": "node --test scripts/*.test.mjs",
-    "precheck:grounding": "pnpm --filter \"@muse/autoconfigure...\" build && pnpm --filter @muse/cli build && node scripts/precheck-grounding.mjs"
+    "precheck:grounding": "pnpm --filter \"@muse/autoconfigure...\" build && pnpm --filter @muse/cli build && node scripts/precheck-grounding.mjs",
+    "eval:embedder-ab": "pnpm --filter @muse/cli build && node apps/cli/scripts/eval-embedder-ab.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -97,6 +97,7 @@ import { createIndexedProactiveInvestigator } from "./proactive-notes-recall.js"
 import { consolidatePlaybook } from "./playbook-consolidate.js";
 import type { ProgramIO } from "./program.js";
 import { randomUUID } from "node:crypto";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 
 type FollowupModel = {
   readonly modelProvider: Parameters<typeof runDueFollowups>[0]["modelProvider"];
@@ -406,7 +407,7 @@ async function defaultKnowledgeEnrich(env: NodeJS.ProcessEnv): Promise<((query: 
     const { LocalDirNotesProvider } = await import("@muse/mcp");
     const notesDir = resolveNotesDir(env as unknown as Parameters<typeof resolveNotesDir>[0]);
     return createKnowledgeEnricher({
-      embed: createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() ?? "nomic-embed-text"),
+      embed: createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL),
       notesProvider: new LocalDirNotesProvider({ notesDir })
     });
   } catch {

@@ -30,6 +30,7 @@ import { closestCommandName } from "./closest-command.js";
 import { embed, cosineSimilarity } from "./embed.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import type { ProgramIO } from "./program.js";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 
 interface RecallOptions {
   readonly limit?: string;
@@ -383,7 +384,7 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
       const source = sourceResolution.source;
       const embedModel = options.embedModel?.trim() && options.embedModel.trim().length > 0
         ? options.embedModel.trim()
-        : "nomic-embed-text";
+        : DEFAULT_EMBED_MODEL;
 
       let hits: readonly RecallHit[];
       try {

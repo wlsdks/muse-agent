@@ -16,6 +16,7 @@ import { LOCAL_FIRST_DEFAULT_MODEL, resolveNotesDir } from "@muse/autoconfigure"
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 
 export interface OnboardingState {
   readonly ollamaReachable: boolean;
@@ -134,7 +135,7 @@ async function gatherState(io: ProgramIO): Promise<OnboardingState> {
     ollamaReachable = false;
   }
   const chatModel = (env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL ?? LOCAL_FIRST_DEFAULT_MODEL).replace(/^ollama\//u, "");
-  const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || "nomic-embed-text";
+  const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
   const notesDir = resolveNotesDir(env as Record<string, string | undefined>);
   const noteFileCount = countCorpusFiles(notesDir);
   const indexFile = env.MUSE_NOTES_INDEX_FILE?.trim() || join(homedir(), ".muse", "notes-index.json");

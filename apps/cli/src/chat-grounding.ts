@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { independentWitnessCount, quorumVerdict, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
+import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
 
 // Per-turn grounding for the conversational surface (`muse chat`).
 //
@@ -126,10 +127,12 @@ export function chatAutoReindexEnabled(env: Record<string, string | undefined>):
 
 /**
  * Preserve the embedding model a stale index was built with, so a chat-path
- * refresh never silently re-embeds a custom-model index with the default.
+ * refresh never silently re-embeds a custom-model index with the default —
+ * except the LEGACY default, which migrates once to the shipped multilingual
+ * default (resolveIndexModel) so the upgrade reaches existing users.
  */
 export function pickReindexModel(existingModel: string | undefined, requested: string): string {
-  return existingModel && existingModel.trim().length > 0 ? existingModel : requested;
+  return resolveIndexModel(existingModel, requested);
 }
 
 /**
@@ -165,7 +168,7 @@ export async function retrieveChatGrounding(
   if (trimmed.length < MIN_QUERY_CHARS) return { block: "", matches: [] };
   const env = opts.env ?? (process.env as Record<string, string | undefined>);
   if (env.MUSE_CHAT_GROUNDING === "0") return { block: "", matches: [] };
-  const embedModel = opts.embedModel ?? env.MUSE_RECALL_EMBED_MODEL?.trim() ?? "nomic-embed-text";
+  const embedModel = opts.embedModel ?? env.MUSE_RECALL_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL;
   // Refresh a stale notes index before searching — the courtesy `muse ask`
   // already extends. The desktop companion only ever calls `chat`, so without
   // this a note the user just added is unreachable until they remember to run

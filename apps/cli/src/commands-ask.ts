@@ -66,6 +66,7 @@ import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./pr
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
 import { resolveDefaultUserKey } from "./user-id.js";
+import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
 
 /**
  * SB-1: rank past-session episode summaries against the query so `muse ask`
@@ -1601,7 +1602,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
     .option("--persona <slot>", "Persona slot")
     .option("--model <tag>", "Chat model override")
     .option("--top <k>", "Top-K notes chunks to inject as context (default 3)", "3")
-    .option("--embed-model <tag>", "Embedding model (must match the index)", "nomic-embed-text")
+    .option("--embed-model <tag>", "Embedding model (must match the index)", DEFAULT_EMBED_MODEL)
     .option(
       "--no-auto-reindex",
       "Skip the auto-stale check before search (default: reindex incrementally when a note's mtime is newer than the index)"
@@ -1924,7 +1925,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
 
       const userKey = defaultUserKey(options.user, options.persona);
       const topK = parseBoundedInt(options.top, "--top", 1, 20, 3);
-      const embedModel = options.embedModel ?? "nomic-embed-text";
+      const embedModel = options.embedModel ?? DEFAULT_EMBED_MODEL;
 
       // Auto-stale check + incremental reindex (default on). JARVIS
       // shouldn't make the user remember to run reindex; if a note
@@ -1947,7 +1948,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             const summary = await reindexNotes({
               dir: notesDir,
               indexPath: notesIndexPath(),
-              model: existingIndexModel ?? embedModel,
+              // resolveIndexModel preserves a custom index model but migrates
+              // the legacy default to the shipped multilingual default.
+              model: resolveIndexModel(existingIndexModel, embedModel),
               // Stream per-file progress so a first ingest of a real
               // corpus (PDFs embed slowly on CPU) shows life instead of
               // a silent multi-second hang, and a skipped unreadable
@@ -1977,9 +1980,26 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         throw cause;
       }
       if (index.model !== embedModel) {
-        io.stderr(`Index was built with embed model '${index.model}', not '${embedModel}'. Re-index or pass --embed-model ${index.model}.\n`);
-        process.exitCode = 1;
-        return;
+        // One-time legacy migration: an index built with the OLD default
+        // re-embeds with the new multilingual default instead of dead-ending —
+        // otherwise the embedder upgrade would brick every existing install.
+        // A CUSTOM index model still gets the explicit mismatch error.
+        if (resolveIndexModel(index.model, embedModel) === embedModel && options.autoReindex !== false) {
+          io.stderr(`(embedding default upgraded '${index.model}' → '${embedModel}' — re-indexing your notes once)\n`);
+          try {
+            await reindexNotes({ dir: notesDir, indexPath: notesIndexPath(), model: embedModel, onProgress: (line) => io.stderr(`  ${line}\n`) });
+            index = JSON.parse(await readFile(notesIndexPath(), "utf8")) as NotesIndex;
+          } catch (cause) {
+            io.stderr(`Re-index failed (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${embedModel}\n`);
+            process.exitCode = 1;
+            return;
+          }
+        }
+        if (index.model !== embedModel) {
+          io.stderr(`Index was built with embed model '${index.model}', not '${embedModel}'. Re-index or pass --embed-model ${index.model}.\n`);
+          process.exitCode = 1;
+          return;
+        }
       }
 
       // First-run on-ramp: an empty corpus still answers honestly (refusal),
@@ -2807,7 +2827,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // surfaces, instead of pure lexical token-overlap. Off by default (it
         // adds a local nomic pass per strategy); fail-soft back to lexical.
         if (process.env.MUSE_PLAYBOOK_EMBED_RANK === "true") {
-          const embedModel = process.env.MUSE_PLAYBOOK_EMBED_MODEL?.trim() || "nomic-embed-text";
+          const embedModel = process.env.MUSE_PLAYBOOK_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
           const mapped = entries.map((entry) => ({
             text: entry.text,
             ...(entry.tag ? { tag: entry.tag } : {}),
@@ -2832,19 +2852,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const systemPrompt = [
         ...(personaTemplatePreamble.length > 0 ? [personaTemplatePreamble, ""] : []),
         ...(personaPrompt ? [personaPrompt, ""] : []),
-        // Date/time line is ALWAYS present, even with no persona —
-        // questions like "anything due today?" / "is the dentist
-        // tomorrow?" require the model to know `now`, regardless of
-        // whether any facts have been remembered. When a persona is
-        // injected, this duplicates the line buildMusePersona
-        // emits; that's harmless. When persona is absent, this is
-        // the only path that grounds the model in time.
-        formatCurrentContextLine(),
-        "",
         "You are Muse, the user's JARVIS-style personal AI conductor.",
         "Answer the user's question USING ONLY the notes, open tasks, upcoming events, pending reminders, matching contacts, past session summaries, and recent feed headlines provided below as context.",
         "If none of the provided context contains enough information, say so directly — do not invent facts.",
-        ...(notesFraming.guidance ? [notesFraming.guidance] : []),
         "Reply in the user's preferred language (from persona prefs).",
         "Keep it concise — 2–4 sentences unless the question explicitly needs more.",
         "Do NOT include the raw '<<note N — ...>>' / '<<task N>>' / '<<event N>>' / '<<reminder N>>' wrapper markers in your answer; speak naturally.",
@@ -2863,6 +2873,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // disables it — used by the A/B efficacy eval (verify-reasoning-efficacy.mjs)
         // to MEASURE whether the principles actually improve answers, not just run.
         ...(process.env.MUSE_ASK_REASONING_PRINCIPLES === "0" ? [] : REASONING_PRINCIPLE_LINES),
+        "",
+        // Volatile lines live BELOW the stable instruction block so the long
+        // static prefix stays byte-identical across turns — Ollama reuses the
+        // KV cache for a shared prompt prefix, and a time string near the top
+        // was breaking that reuse on every turn. The date/time line itself is
+        // still ALWAYS present ("anything due today?" needs `now`); when a
+        // persona is injected it duplicates buildMusePersona's line — harmless.
+        ...(notesFraming.guidance ? [notesFraming.guidance] : []),
+        formatCurrentContextLine(),
         "",
         notesFraming.header,
         contextBlock,

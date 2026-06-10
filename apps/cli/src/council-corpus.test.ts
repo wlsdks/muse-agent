@@ -68,12 +68,12 @@ describe("councilCorpusMatches — local corpus retrieval for self-abstention", 
     expect(await councilCorpusMatches("q", { embedFn: throwing, env })).toEqual([]);
   });
 
-  it("isCouncilGroundedMode parses the opt-in env; defaultEmbedModel falls back to nomic-embed-text", () => {
+  it("isCouncilGroundedMode parses the opt-in env; defaultEmbedModel falls back to the shipped default", () => {
     expect(isCouncilGroundedMode({ MUSE_A2A_COUNCIL_GROUNDED: "true" })).toBe(true);
     expect(isCouncilGroundedMode({ MUSE_A2A_COUNCIL_GROUNDED: "ON" })).toBe(true);
     expect(isCouncilGroundedMode({})).toBe(false);
     expect(isCouncilGroundedMode({ MUSE_A2A_COUNCIL_GROUNDED: "false" })).toBe(false);
-    expect(defaultEmbedModel({})).toBe("nomic-embed-text");
+    expect(defaultEmbedModel({})).toBe("nomic-embed-text-v2-moe");
     expect(defaultEmbedModel({ MUSE_EMBED_MODEL: "custom-embed" })).toBe("custom-embed");
   });
 });

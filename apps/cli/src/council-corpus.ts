@@ -21,6 +21,7 @@ import { cosineSimilarity, type KnowledgeMatch } from "@muse/agent-core";
 
 import { filterLiveNoteIndexFiles } from "./commands-recall.js";
 import { embed } from "./embed.js";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 
 interface NotesIndexShape {
   readonly model?: string;
@@ -31,7 +32,7 @@ interface NotesIndexShape {
 }
 
 export function defaultEmbedModel(env: Record<string, string | undefined> = process.env): string {
-  return env.MUSE_EMBED_MODEL?.trim() || "nomic-embed-text";
+  return env.MUSE_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
 }
 
 function notesIndexFile(env: Record<string, string | undefined> = process.env): string {

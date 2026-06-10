@@ -78,6 +78,7 @@ import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import { resolvePersona } from "./program-helpers.js";
 import { idleLearnedNoticeForUser } from "./commands-learned.js";
 import { resolveDefaultUserKey } from "./user-id.js";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 
 const h = React.createElement;
 
@@ -1059,7 +1060,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const recallSearch = async (query: string): Promise<string> => {
     const q = query.trim();
     if (q.length === 0) return "What should I recall? — /recall <query>";
-    const embedModel = process.env.MUSE_RECALL_EMBED_MODEL?.trim() || "nomic-embed-text";
+    const embedModel = process.env.MUSE_RECALL_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
     try {
       const warnings: string[] = [];
       const hits = await searchRecall({ query: q, source: "all", limit: 5, embedModel, env: process.env, onWarn: (m) => warnings.push(m.trim()) });
