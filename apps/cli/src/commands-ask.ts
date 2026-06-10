@@ -61,7 +61,7 @@ import { detectPercentageQuery, formatPercentage } from "./percentage-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
 import { docxToText, emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isPdfDocument, isPptxDocument, parsePdfBuffer, pptxToText } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
-import { resolvePersona } from "./program-helpers.js";
+import { resolvePersona, writeRunLog } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
@@ -573,6 +573,20 @@ export function shouldSuggestRepair(args: {
   readonly evidenceCount: number;
 }): boolean {
   return args.verdictFired && !args.repairRequested && !args.json && args.evidenceCount > 0;
+}
+
+/**
+ * The outcome label lifted onto a cli.local run-log trace. A refusal is an
+ * `abstain` (the gate held — distinct from an answer that failed the rubric),
+ * otherwise the rubric verdict passes through; `null` means the verdict never
+ * ran this turn (json mode / vision skip).
+ */
+export function askOutcomeLabel(args: {
+  readonly refusal: boolean;
+  readonly verdict: "grounded" | "ungrounded" | null;
+}): "abstain" | "grounded" | "ungrounded" | null {
+  if (args.refusal) return "abstain";
+  return args.verdict;
 }
 
 /**
@@ -3141,6 +3155,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // signal the citation gate alone can't see. The ambiguous `weak` band
       // spends ONE extra local-Qwen inference (MaTTS) to re-check the answer
       // against the evidence — fail-close, so a judge error still warns.
+      let groundedVerdictLabel: "grounded" | "ungrounded" | null = null;
       if (!options.json) {
         const provider = assembly.modelProvider;
         const reverify: GroundingReverify | undefined = provider
@@ -3238,6 +3253,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         const verdictNotice = imageAttachments.length > 0
           ? undefined
           : await groundingVerdictNotice(verdictAnswer, scoredMatches, query, reverify);
+        if (imageAttachments.length === 0) {
+          groundedVerdictLabel = verdictNotice ? "ungrounded" : "grounded";
+        }
         if (verdictNotice) {
           io.stderr(verdictNotice);
           // Constructive grounding (RARR, arXiv:2210.08726): rather than only
@@ -3397,6 +3415,21 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       if (!options.json && probationSuggestion && !appliedStrategy && !answerIsRefusal(collectedAnswer)) {
         io.stderr(`\n💡 You've corrected me on this before — I noted: "${probationSuggestion.text}". Apply it going forward with \`muse playbook reward ${probationSuggestion.id.slice(0, 8)}\`.\n`);
       }
+
+      // Outcome-labeled trace — parity with the remote path: writeRunLog lifts
+      // `grounded`/`success` to the top level, so error-analysis can grep real
+      // labels off cli.local runs instead of an unlabeled corpus.
+      await writeRunLog(io.workspaceDir ?? process.cwd(), {
+        message: query,
+        model,
+        response: {
+          grounded: askOutcomeLabel({ refusal: refusalAnswer, verdict: groundedVerdictLabel }),
+          response: collectedAnswer,
+          success: true,
+          toolsUsed
+        },
+        source: "cli.local"
+      });
 
       if (options.json) {
         // Emit a single JSON object on stdout — consumers can pipe

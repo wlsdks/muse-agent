@@ -55,17 +55,11 @@
 
 ## Open — dev-loop fuel & measurement (makes the loop compound)
 
-- ★ **Trace outcome-logging — POPULATE cli.local `grounded`** — the top-level outcome-label SCHEMA
-  shipped (see Done: writeRunLog now lifts `success`/`grounded` to the top of every trace via
-  readResponseSuccess/readResponseGrounded; null for cli.local until populated). REMAINING (the
-  medium-risk part): thread the `grounded` verdict the local ask path already computes
-  (commands-ask.ts ~3413) into the writeRunLog input so cli.local traces carry a real label — THEN
-  error-analysis has fuel. PREREQUISITE for any
-  error-analysis. Verified 2026-06-08: 1078/1095 `.muse/runs` traces (cli.local) carry
-  only {message,response,toolsUsed,runId} — NO success/grounded/errorCode; only the 16
-  cli.remote traces do. So failures are not yet machine-readable. Slice: write
-  success/grounded/abstain onto each cli.local trace (parity with the remote path), so
-  real misses accumulate greppably. THEN — and only then — an analyzer has fuel.
+- ◦ **(follow-up) outcome labels for the remaining cli.local surfaces** — `muse ask` now
+  labels every trace (see Done 2026-06-10); still `grounded:null`: ask `--json` mode and
+  `--image` (the verdict doesn't run there by design), and `muse chat --local` (the chat
+  gate is the sync NUMBER-only check, a different verdict shape). Label chat-local when
+  the error-analysis fuel from ask proves insufficient — don't build ahead of need.
 - ⏳ **`error-analysis.mjs` — cluster `.muse/runs` failures into a ranked taxonomy**
   — the missing ANALYZE half. BLOCKED on the instrumentation above (no labels = no
   Pareto; clustering a passing-looking corpus with the same 8B is maker=judge theater).
@@ -118,6 +112,14 @@
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-10 **Trace outcome-logging COMPLETE for `muse ask` — cli.local traces carry real labels**
+  (the standing ★ PREREQUISITE): the ask path now writes a run-log trace per answered run with the
+  top-level `grounded` label the run already computed — `abstain` (refusal), `grounded`/`ungrounded`
+  (rubric verdict), `null` only where the verdict doesn't run (`--json`/`--image`). Pure
+  `askOutcomeLabel` (TDD, 3/3) + writeRunLog wiring before the output split; full CLI suite 210
+  files/2426 green; LIVE both polarities on gemma4 (혈액형→abstain, notes question→grounded, source
+  receipt shown). Error-analysis fuel now accrues from real usage; the analyzer stays deferred until
+  ~20-30 labeled failures exist.
 - ✓ 2026-06-10 **improve-muse restructured: finder/recommender, not full build loop** — a real
   invocation ended with "할 게 없다" (the ★ refill had all shipped; remaining = 1 medium-risk ★ +
   2 ⏳-on-Jinan), exactly the autonomy-ceiling failure dev-loop.md §5 predicted. Per Jinan's direction
