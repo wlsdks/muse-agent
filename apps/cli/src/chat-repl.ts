@@ -30,7 +30,7 @@ import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdow
 import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
 import { detectDateDiffQuery, formatDateDiff } from "./date-diff-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
-import { conversationMatches, factKeysToInject, gateChatAnswer, gateChatAnswerWithReverify, groundedNoteSources, isChatAbstention, retrieveChatGrounding, stripFabricatedCitations, stripTruncatedCitation, withGroundingReceipt } from "./chat-grounding.js";
+import { buildQueryRewritePrompt, conversationMatches, factKeysToInject, gateChatAnswer, gateChatAnswerWithReverify, groundedNoteSources, isChatAbstention, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding, stripFabricatedCitations, stripTruncatedCitation, withGroundingReceipt } from "./chat-grounding.js";
 import { createQwenReverify } from "./grounding-eval-runner.js";
 import { isRecord } from "./credential-store.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
@@ -521,9 +521,33 @@ export async function runLocalChat(
     : userMemory;
   const userMemoryBlock = personaMemory ? (buildMusePersona(personaMemory, userId) ?? "").trim() : "";
   const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
+  // Multi-turn recall: resolve an anaphoric turn into a self-contained
+  // retrieval query (one constrained inference, fail-open to the raw turn).
+  // ONLY the retrieval query is rewritten — the model still answers the
+  // user's actual message, so a bad rewrite can at worst rank notes poorly,
+  // never alter the answer's evidence gate or wording.
+  let retrievalQuery = message;
+  const rewriteProvider = assembly.modelProvider;
+  if (!isCasual && needsContextualRewrite(message, (options.priorHistory ?? []).length) && rewriteProvider && "generate" in rewriteProvider) {
+    try {
+      const rewritten = await rewriteProvider.generate({
+        maxOutputTokens: 80,
+        messages: [
+          { content: QUERY_REWRITE_SYSTEM_PROMPT, role: "system" },
+          { content: buildQueryRewritePrompt(options.priorHistory ?? [], message), role: "user" }
+        ],
+        model: model ?? assembly.defaultModel ?? "default",
+        responseFormat: QUERY_REWRITE_RESPONSE_FORMAT,
+        temperature: 0
+      });
+      retrievalQuery = parseQueryRewrite(rewritten.output ?? "", message);
+    } catch {
+      retrievalQuery = message;
+    }
+  }
   const { block: groundingBlock, matches } = isCasual
     ? { block: "", matches: [] as Awaited<ReturnType<typeof retrieveChatGrounding>>["matches"] }
-    : await retrieveChatGrounding(message);
+    : await retrieveChatGrounding(retrievalQuery);
   // Reply in the user's language: without this the local model drifts to English
   // for "assistant-y" replies — a Korean "회의 취소해줘" got an English "sir,
   // please provide…" ~2/3 of the time, jarring for a KO-primary companion. CRUCIAL

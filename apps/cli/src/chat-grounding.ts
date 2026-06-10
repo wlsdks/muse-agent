@@ -156,6 +156,53 @@ async function refreshStaleNotesIndexForChat(env: Record<string, string | undefi
   await reindexNotes({ dir: notesDir, indexPath, model: pickReindexModel(existingModel, embedModel) });
 }
 
+/**
+ * Multi-turn retrieval gap (Rewrite-Retrieve-Read, arXiv:2305.14283): an
+ * anaphoric turn ("그거 언제 바뀌었지?") embeds onto the PRONOUN, not the topic,
+ * so recall misses the note the conversation is plainly about. Fire only on a
+ * short turn that carries an anaphor AND has history to resolve it from — a
+ * self-contained question must never pay the extra inference.
+ */
+export function needsContextualRewrite(message: string, historyLength: number): boolean {
+  if (historyLength === 0) return false;
+  const trimmed = message.trim();
+  if (trimmed.length === 0 || trimmed.length > 60) return false;
+  return /(그게|그거|그건|그때|거기|아까|방금|걔|이건|저건|그 사람|\bit\b|\bthat\b|\bthen\b|\bthere\b|\bhe\b|\bshe\b|\bthey\b)/iu.test(trimmed);
+}
+
+export const QUERY_REWRITE_RESPONSE_FORMAT = {
+  properties: { query: { type: "string" } },
+  required: ["query"],
+  type: "object"
+};
+
+export const QUERY_REWRITE_SYSTEM_PROMPT =
+  "Rewrite the user's LAST message as ONE self-contained search query by resolving its pronouns/references from the conversation. Keep the user's language. Use ONLY words and facts present in the conversation — never invent new ones. Reply as JSON: {\"query\": \"...\"}.";
+
+export function buildQueryRewritePrompt(
+  history: readonly { readonly role: string; readonly content: string }[],
+  message: string
+): string {
+  const recent = history.slice(-4).map((turn) => `${turn.role}: ${turn.content}`);
+  return [...recent, `user (LAST message to rewrite): ${message}`].join("\n");
+}
+
+/** Fail-open parse: anything but a sane constrained JSON keeps the original query. */
+export function parseQueryRewrite(output: string, fallback: string): string {
+  try {
+    const parsed: unknown = JSON.parse(output.trim());
+    if (parsed && typeof parsed === "object" && "query" in parsed) {
+      const query = (parsed as { query: unknown }).query;
+      if (typeof query === "string" && query.trim().length > 0 && query.length <= 200) {
+        return query.trim();
+      }
+    }
+  } catch {
+    // fall through to the original message
+  }
+  return fallback;
+}
+
 export async function retrieveChatGrounding(
   message: string,
   opts: {
