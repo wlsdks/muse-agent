@@ -8,7 +8,7 @@
 
 - model: `ollama/gemma4:12b`
 - corpus: bundled grounding corpus (self-authored — a public-dataset arm is the next slice) (17 guardable + 12 answerable cases)
-- generated: 2026-06-08T12:55:08.342Z by `pnpm eval:grounding-delta` — regenerated, never hand-edited
+- generated: 2026-06-10T11:58:57.661Z by `pnpm eval:grounding-delta` — regenerated, never hand-edited
 
 | arm | faithfulness (fabrication caught) | false-refusal (in-corpus answer wrongly refused) |
 |---|---|---|

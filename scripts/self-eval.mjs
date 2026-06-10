@@ -75,6 +75,16 @@ export function countGroundedCases(corpusSource) {
 }
 
 /**
+ * Case-count ratchet for the OTHER golden sets (eval:tools / adversarial /
+ * plan-quality): their cases all carry a `prompt:` literal, so a silently
+ * dropped case becomes a numeric regression exactly like groundedCases.
+ */
+export function countPromptCases(batterySource) {
+  const matches = batterySource.match(/\bprompt:\s*"/gu);
+  return matches ? matches.length : 0;
+}
+
+/**
  * Regressions between the previous scoreboard entry and the current one: a
  * boolean gate that went pass→fail, or a numeric gate whose value dropped.
  * No previous entry ⇒ nothing to regress against.
@@ -175,6 +185,15 @@ function main() {
   const corpusPath = join(ROOT, "apps/cli/src/grounding-eval-corpus.ts");
   const corpusSrc = existsSync(corpusPath) ? readFileSync(corpusPath, "utf8") : "";
   gates.groundedCases = { status: "pass", value: countGroundedCases(corpusSrc) };
+  for (const [gateName, batteryFile] of [
+    ["toolCases", "scripts/eval-tool-selection.mjs"],
+    ["adversarialCases", "scripts/eval-adversarial.mjs"],
+    ["planCases", "scripts/eval-plan-quality.mjs"]
+  ]) {
+    const batteryPath = join(ROOT, batteryFile);
+    const batterySrc = existsSync(batteryPath) ? readFileSync(batteryPath, "utf8") : "";
+    gates[gateName] = { status: "pass", value: countPromptCases(batterySrc) };
+  }
   if (full) {
     gates.tests = gateExit("pnpm -s -r test");
   }

@@ -94,3 +94,17 @@ test("summarize flags regressions and renders gate values", () => {
   assert.match(summarize(entry, []), /\[self-eval ok\].*lint:pass.*testFiles=42/u);
   assert.match(summarize(entry, ["lint: pass→fail"]), /REGRESSION \(1\).*lint: pass→fail/u);
 });
+
+test("countPromptCases counts prompt-bearing battery cases (ratchet for every golden set)", async () => {
+  const { countPromptCases } = await import("./self-eval.mjs");
+  const src = `
+  const CASES = [
+    { prompt: "What's the weather?", expectTool: "get_weather" },
+    { prompt: "서울 날씨", expectNoTool: true },
+  ];
+  const BANK = [{ prompt: "지금 몇 시야?", tool: "time_now" }];
+  // not a case: prompt mentioned in prose
+  `;
+  assert.equal(countPromptCases(src), 3);
+  assert.equal(countPromptCases(""), 0);
+});

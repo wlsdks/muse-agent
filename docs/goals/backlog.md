@@ -24,11 +24,13 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   golden set is near-saturated, so the lift must be demonstrated on REAL failing prompts.
   When labeled traces accumulate misses, extract an exemplar bank from successful traces and
   wire injection into the runtime tool path; promote on a measured eval:tools + replay win.
-- ◦ **`format` schema constraint on the remaining judge paths** (lever #5) — reverify verdict,
-  llmJudge, polarity, preference (4/~7 done in-repo). Slice: reverify judge first + malformed
-  regression test.
 - ◦ **Local reranker on recall top-8** (lever #4) — Ollama has no rerank API; yes/no-logit
   workaround, flag-gated, A/B on the embedder-ab corpus + grounding battery.
+- ◦ **`format` constraint on the non-reverify judge paths** — reverify judge DONE (see Done);
+  remaining: llmJudge (eval-harness), correction-polarity, preference-inference.
+- ◦ **source-trust live battery** — the marker + trusted bit shipped (see Done); remaining: a
+  live `--with-tools` battery asserting the external-provenance heading appears on a
+  web-grounded answer and NOT on a notes-grounded one.
 - ✗ rejected this refill: "expose `muse notes graph/links`" (ALREADY exist — the -rag split
   trap again); "desktop lazy index load" (FALSIFIED — no startup parse); "REPL query-embedding
   cache" (near-zero hit rate; the real latency lever was prefix reuse, now shipped).
@@ -43,10 +45,12 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   hypothesis does not dominate the catch. So the right next step is STABILITY first: run the SQuAD
   arm at MUSE_EVAL_REPEAT≥3 (pass^k) and/or grow to 20-30 cases to get a stable number, THEN optimize.
   (Rejected: the disjoint-drift sharpen, as an unverified — in fact negative — win.)
-- ⏳ **Source-trust segregation — NEEDS JINAN'S DESIGN CALL** (architectural fork; an autonomous
-  fire should not pick it). The decision: merge tool-output INTO the grounding set with `trusted:false`
-  (touches the core recall/gate path) vs mark trust on the VerifiedSource/response-filters path where
-  tool-derived citations already live. FOUNDATION SHIPPED (see Done):
+- ⏳→✓ **Source-trust segregation — DECIDED 2026-06-10 (option B, per the standing
+  decide-and-do directive) and the core shipped** (see Done): tool-derived citations live on the
+  VerifiedSource/response-filters path, so the provenance marker went THERE (the sources block
+  heading now names itself external/tool-fetched), plus `trusted:false` on the ask path's tool
+  evidence so `groundedOnUntrustedOnly` has real input. Remaining: the live battery (Open above).
+  Original framing kept below for context:
   `KnowledgeMatch.trusted` provenance bit + the pure detector `groundedOnUntrustedOnly` (flags a
   grounded answer resting ONLY on untrusted sources), agent-core, 4 tests. REMAINING — RE-SCOPED
   2026-06-09 (a fire found the naive wiring target wrong): tool-output does NOT become a
@@ -128,6 +132,18 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-10 **Top-5 batch (Jinan-directed "do all 5")**: ① reverify judge now
+  format-CONSTRAINED on all 4 call sites (REVERIFY_RESPONSE_FORMAT + parseGroundingReverifyJson,
+  fail-close, legacy YES-parse fallback; precheck:grounding pass^3 live) — a verdict can no longer
+  be lost to parse drift. ② source-trust DECIDED (option B) + shipped: the verified-sources block
+  heading names itself external/tool-fetched (KO/EN), tool evidence carries trusted:false.
+  ③ multi-turn query rewriting (needsContextualRewrite → one constrained inference → retrieval-only
+  rewrite, fail-open): LIVE 2-turn proof — "그거 언제 바뀌었지?" resolved the anaphor and answered
+  6월 2일 [from wifi.md]. ④ plan-cache reuse Jaccard→embedding blend
+  (selectPlanExemplarByRelevance, cosine floor 0.75, fail-open lexical; wired via createGateEmbedder
+  whose fallback also moved to the v2-moe default). ⑤ self-eval case ratchet extended to ALL golden
+  sets (toolCases=84, adversarialCases=16, planCases=10). Gates: pnpm check exit 0 · CLI 2452 ·
+  agent-core 1583 · autoconfigure 503 · lint 0/0 · precheck:grounding pass^3.
 - ✓ 2026-06-10 **Lever #1 SHIPPED — multilingual embedder default + one-time legacy migration**
   (6caaa6ac): measured A/B (eval:embedder-ab, production ranking config, paraphrase queries) —
   v1 `nomic-embed-text` KO hit@1 **50%** vs `nomic-embed-text-v2-moe` **100%** (EN 100% too,
