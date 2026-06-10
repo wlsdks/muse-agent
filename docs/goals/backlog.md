@@ -13,6 +13,33 @@
 
 ## Open — refilled 2026-06-09 (gap-finding scout, clean autonomous slices)
 
+## Open — frontier research pass 2026-06-10 (3 fresh tracks; full table → docs/strategy/frontier-research-2026-06.md)
+
+KEY UNLOCK (first-hand verified): Ollama 0.30.6 native API exposes `logprobs`/`top_logprobs`
+for gemma4 — token-level confidence is no longer blocked (`<|channel>` marker tokens must be
+excluded when scoring).
+
+- ★ **Logprob confidence instrumentation** — plumb `logprobs:true` through the Ollama adapter
+  (flag-gated), record mean/min token logprob + perplexity beside each trace's `grounded` label.
+  Pure instrumentation, zero behavior change — the fuel line for the risk-coverage tuner,
+  KnowNo conformal tool sets, and CoCoA-style blends. (T3-1)
+- ◦ **BM25 hybrid retrieval slice** — lexical index + reciprocal-rank fusion beside the dense
+  index (zero inference); A/B on embedder-ab + grounding battery. Contextual chunk annotation
+  (Anthropic, −49% retrieval failure) is slice 2. (T1-2)
+- ◦ **KnowNo conformal tool selection, offline report** — MCQA logprobs over the 84 eval:tools
+  cases, conformal set at α=0.1, report would-have-clarified rate on the confusable family.
+  Extends the abstention floor from answers to ACTIONS with a statistical guarantee. (T3-2)
+- ◦ **ACT-R base-level activation for recall ranking** — frequency×spacing activation over the
+  existing access logs replaces the single recency half-life; positive+negative unit battery. (T2-1)
+- ◦ **ACE deterministic playbook delta-merge** — replace the LLM-rewrite merge with itemized
+  deterministic deltas + an anti-collapse invariant test (+10.6% AppWorld for the pattern). (T1-1)
+- ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
+  each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
+- (queued behind fuel/prereqs: sleep-time compute · semantic-entropy battery · Mem0 UPDATE op ·
+  Bayesian surprise/SDT proactivity · AWM workflow mining · conformal factuality back-off)
+- ✗ blocked, recorded: SEPs / DoLa / contrastive decoding (need hidden states / decode-time
+  intervention; Ollama logprobs are observational only).
+
 ## Open — agent-performance levers (ranked research pass 2026-06-10)
 
 Full ranked list + sources: [`docs/strategy/agent-performance-levers.md`](../strategy/agent-performance-levers.md).
