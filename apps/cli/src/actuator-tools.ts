@@ -81,6 +81,8 @@ export interface ActuatorToolsDeps {
    * threading can be verified without a TTY.
    */
   readonly confirmAction?: (message: string) => Promise<boolean>;
+  /** Injectable TTY check so tests exercise the non-interactive fail-close. */
+  readonly isInteractive?: () => boolean;
   readonly fetchImpl?: typeof fetch;
 }
 
@@ -108,6 +110,52 @@ export function buildMessagingApprovalGate(deps: {
   };
 }
 
+const DEFAULT_INTERACTIVE = (): boolean => Boolean(process.stdout.isTTY && process.stdin.isTTY);
+
+/**
+ * Shared fail-closed approval gate for web/home actions. Same contract as the
+ * messaging gate: in a NON-interactive context the confirm cannot be delivered,
+ * so the action is DENIED, never performed (outbound-safety rule 2 — a piped
+ * stdin byte must not be consumable as the confirmation keypress).
+ */
+export function buildWebApprovalGate(deps: {
+  readonly io: ProgramIO;
+  readonly confirmAction: (message: string) => Promise<boolean>;
+  readonly prompt: string;
+  readonly isInteractive?: () => boolean;
+}): WebActionApprovalGate {
+  const interactive = deps.isInteractive ?? DEFAULT_INTERACTIVE;
+  return async (action) => {
+    if (!interactive()) {
+      return { approved: false, reason: "non-interactive — actions need a live confirm" };
+    }
+    deps.io.stdout(
+      `\n${action.summary}\n${action.request.method ?? "POST"} ${action.request.url}\n${action.request.body ? `${action.request.body}\n` : ""}\n`
+    );
+    return (await deps.confirmAction(deps.prompt))
+      ? { approved: true }
+      : { approved: false, reason: "user did not confirm" };
+  };
+}
+
+/** Fail-closed email draft gate — same non-interactive deny as the other actuators. */
+export function buildEmailApprovalGate(deps: {
+  readonly io: ProgramIO;
+  readonly confirmAction: (message: string) => Promise<boolean>;
+  readonly isInteractive?: () => boolean;
+}): EmailApprovalGate {
+  const interactive = deps.isInteractive ?? DEFAULT_INTERACTIVE;
+  return async (draft) => {
+    if (!interactive()) {
+      return { approved: false, reason: "non-interactive — review and send interactively" };
+    }
+    deps.io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
+    return (await deps.confirmAction("Send this email?"))
+      ? { approved: true }
+      : { approved: false, reason: "user did not confirm" };
+  };
+}
+
 export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
   const { env, io, userId } = deps;
   const fetchImpl = deps.fetchImpl ?? io.fetch ?? globalThis.fetch;
@@ -117,25 +165,22 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
   const actionLogFile = resolveActionLogFile(env);
   const tools: MuseTool[] = [];
 
-  const webGate: WebActionApprovalGate = async (action) => {
-    io.stdout(
-      `\n${action.summary}\n${action.request.method ?? "POST"} ${action.request.url}\n${action.request.body ? `${action.request.body}\n` : ""}\n`
-    );
-    return (await confirmAction("Perform this web action?"))
-      ? { approved: true }
-      : { approved: false, reason: "user did not confirm" };
-  };
+  const webGate = buildWebApprovalGate({
+    confirmAction,
+    io,
+    ...(deps.isInteractive ? { isInteractive: deps.isInteractive } : {}),
+    prompt: "Perform this web action?"
+  });
   tools.push(createWebActionTool({ actionLogFile, approvalGate: webGate, fetchImpl, userId }));
 
   const gmailToken = env.MUSE_GMAIL_TOKEN?.trim();
   if (gmailToken) {
     const contactsFile = resolveContactsFile(env);
-    const emailGate: EmailApprovalGate = async (draft) => {
-      io.stdout(`\nTo: ${draft.recipientName} <${draft.to}>\nSubject: ${draft.subject}\n\n${draft.body}\n\n`);
-      return (await confirmAction("Send this email?"))
-        ? { approved: true }
-        : { approved: false, reason: "user did not confirm" };
-    };
+    const emailGate = buildEmailApprovalGate({
+      confirmAction,
+      io,
+      ...(deps.isInteractive ? { isInteractive: deps.isInteractive } : {})
+    });
     const gmail = new GmailEmailProvider(gmailToken, fetchImpl);
     tools.push(
       createEmailSendTool({
@@ -166,14 +211,12 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
   const haUrl = env.MUSE_HOMEASSISTANT_URL?.trim();
   const haToken = env.MUSE_HOMEASSISTANT_TOKEN?.trim();
   if (haUrl && haToken) {
-    const homeGate: WebActionApprovalGate = async (action) => {
-      io.stdout(
-        `\n${action.summary}\n${action.request.method ?? "POST"} ${action.request.url}\n${action.request.body ? `${action.request.body}\n` : ""}\n`
-      );
-      return (await confirmAction("Perform this smart-home action?"))
-        ? { approved: true }
-        : { approved: false, reason: "user did not confirm" };
-    };
+    const homeGate = buildWebApprovalGate({
+      confirmAction,
+      io,
+      ...(deps.isInteractive ? { isInteractive: deps.isInteractive } : {}),
+      prompt: "Perform this smart-home action?"
+    });
     tools.push(
       createHomeActionTool({ actionLogFile, approvalGate: homeGate, baseUrl: haUrl, fetchImpl, token: haToken, userId })
     );

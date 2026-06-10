@@ -161,6 +161,18 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-10 **AUDIT FIX (HIGH-adjacent): non-TTY fail-close unified across ALL actuator gates**
+  — the stores/safety audit found web/email/home approval gates lacked the non-interactive deny
+  the messaging gate had (outbound-safety rule 2: an undeliverable confirm must deny — a piped
+  stdin byte must never act as the confirmation keypress). buildWebApprovalGate /
+  buildEmailApprovalGate extracted with the shared contract; approvals re-run threads
+  isInteractive (headless approve stays fail-close). 3 new gate tests; CLI 2455 green.
+- ✓ 2026-06-10 **F7 semantic entropy: NEGATIVE result, recorded** — discrete SE (Nature 2024)
+  AUROC 0.375 vs retrieval-confidence baseline 0.813 on answerable-vs-refuse: Muse's
+  abstention-trained prompt makes refusals CONSISTENT ("NOT IN NOTES" × k), so sample
+  scatter never appears — SE adds no signal here; do not adopt
+  (docs/benchmarks/RESULTS-semantic-entropy.md, scripts/eval-semantic-entropy.mjs kept for re-runs).
+
 - ✓ 2026-06-10 **Top-5 batch (Jinan-directed "do all 5")**: ① reverify judge now
   format-CONSTRAINED on all 4 call sites (REVERIFY_RESPONSE_FORMAT + parseGroundingReverifyJson,
   fail-close, legacy YES-parse fallback; precheck:grounding pass^3 live) — a verdict can no longer
