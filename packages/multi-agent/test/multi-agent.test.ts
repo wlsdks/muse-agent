@@ -521,9 +521,3 @@ describe("MultiAgentOrchestrator", () => {
   });
 });
 
-function makeDelayedWorker(id: string, output: string, delayMs: number): RuleBasedAgentWorker {
-  return new RuleBasedAgentWorker(id, id, [], async (input) => {
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    return createWorkerResult(id, output, input);
-  });
-}
