@@ -582,6 +582,28 @@ export function shouldSuggestRepair(args: {
  * otherwise the rubric verdict passes through; `null` means the verdict never
  * ran this turn (json mode / vision skip).
  */
+/**
+ * Wall-clock stage accumulator for the ask pipeline — the first per-stage
+ * latency breakdown (retrieval vs generation vs verdict), recorded onto the
+ * run-log trace so the next performance lever is data-driven, not assumed.
+ */
+export function createStageTimer(now: () => number = () => Date.now()): {
+  readonly mark: (stage: string) => void;
+  readonly timings: () => Record<string, number>;
+} {
+  const startedAt = now();
+  let last = startedAt;
+  const stages: Record<string, number> = {};
+  return {
+    mark: (stage) => {
+      const at = now();
+      stages[stage] = (stages[stage] ?? 0) + (at - last);
+      last = at;
+    },
+    timings: () => ({ ...stages, totalMs: now() - startedAt })
+  };
+}
+
 export function askOutcomeLabel(args: {
   readonly refusal: boolean;
   readonly verdict: "grounded" | "ungrounded" | null;
@@ -2059,6 +2081,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // `--clipboard` answer (nothing to open). Notes / files are absent here and
       // keep their normal local path.
       const adHocVerifyTargets = new Map<string, string | null>();
+      const askStages = createStageTimer();
       try {
         // S3 narrate-the-wait (B2): a REAL stage delta before the embed —
         // on a 10–40s local model the pre-answer gap reads as a hang; this
@@ -2986,6 +3009,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // before the first token on a 10–40s local model. A static, honest
       // line so the wait reads as working, not frozen (latency-honest: it
       // names the actual local-model step, invents nothing).
+      askStages.mark("retrievalMs");
       if (!options.json) {
         io.stderr("💭 generating your answer on the local model…\n");
       }
@@ -3171,6 +3195,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // isn't injected) cites a persona-known fact as `[from car_license_plate]`.
       // Rewrite a `[from <key>]` whose key is a known memory fact to `[memory: …]`.
       collectedAnswer = normalizeMemoryCitations(collectedAnswer, allMemoryFacts.map((f) => f.key));
+      askStages.mark("generationMs");
       const citationAllowed = {
         actions: matchedActions.map((a) => a.what),
         commands: matchedCommands,
@@ -3544,10 +3569,16 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // Outcome-labeled trace — parity with the remote path: writeRunLog lifts
       // `grounded`/`success` to the top level, so error-analysis can grep real
       // labels off cli.local runs instead of an unlabeled corpus.
+      askStages.mark("verdictMs");
+      if (process.env.MUSE_TIMINGS === "1" && !options.json) {
+        const t = askStages.timings();
+        io.stderr(`(timings: ${Object.entries(t).map(([k, v]) => `${k}=${(v / 1000).toFixed(1)}s`).join(" · ")})\n`);
+      }
       await writeRunLog(io.workspaceDir ?? process.cwd(), {
         message: query,
         model,
         response: {
+          timings: askStages.timings(),
           ...(answerLogprobs ? { confidence: summarizeTokenConfidence(answerLogprobs) ?? null } : {}),
           grounded: askOutcomeLabel({ refusal: refusalAnswer, verdict: groundedVerdictLabel }),
           response: collectedAnswer,

@@ -194,6 +194,13 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-11 **fresh-pass batch #2-#4**: README model-claim drift fixed (identity doc said
+  qwen3:8b default — stale since 6/7; EN+KO). Duplicate date/time prompt line dropped on persona
+  turns (~20 tokens/turn). **ask stage-latency instrumentation** (createStageTimer →
+  trace `timings` + MUSE_TIMINGS=1 stderr): FIRST real breakdown = retrieval 0.2s (0.7%) ·
+  generation 20.2s (75%) · verdict 6.5s (24%) of 26.8s — perf work should target generation
+  (KV prefix env, sleep-compute) and reverify cost, NOT retrieval. Known-flake note: synthetic
+  EN-weather case invents a tool name ~1/3 at temp 0 (pre-existing; REPEAT=3 surfaces it).
 - ✓ 2026-06-11 **fresh-pass #1: --json carries the gate verdict** — the verdict now computes in
   json mode too (emissions stay non-json; best-of stays inert there); payload gains
   `groundedVerdict`; json traces now carry REAL labels instead of null (more error-analysis

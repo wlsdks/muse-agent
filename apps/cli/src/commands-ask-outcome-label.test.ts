@@ -27,3 +27,15 @@ describe("askOutcomeLabel coverage for the --json verdict field", () => {
     expect(askOutcomeLabel({ refusal: false, verdict: null })).toBeNull();
   });
 });
+
+describe("createStageTimer", () => {
+  it("accumulates per-stage deltas and a running total", async () => {
+    const { createStageTimer } = await import("./commands-ask.js");
+    let t = 1000;
+    const timer = createStageTimer(() => t);
+    t = 1500; timer.mark("retrievalMs");
+    t = 4000; timer.mark("generationMs");
+    t = 4200; timer.mark("verdictMs");
+    expect(timer.timings()).toEqual({ generationMs: 2500, retrievalMs: 500, totalMs: 3200, verdictMs: 200 });
+  });
+});
