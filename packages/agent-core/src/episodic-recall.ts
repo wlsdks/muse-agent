@@ -11,6 +11,7 @@
 
 import { stripUntrustedTerminalChars } from "@muse/shared";
 
+import { computeActivationBoost } from "./actr-activation.js";
 import { humanizeRelativeFromIso } from "./time-helpers.js";
 
 export interface EpisodicMatch {
@@ -112,6 +113,12 @@ export interface StoredEpisode {
   readonly narrative: string;
   readonly createdAtIso?: string;
   readonly userId?: string;
+  /**
+   * Recall-access timestamps. When present, ranking uses ACT-R base-level
+   * activation over the full history (frequency × recency × spacing) instead
+   * of the single-creation-time half-life decay.
+   */
+  readonly accessTimesIso?: readonly string[];
 }
 
 export interface InMemoryEpisodicRecallProviderOptions {
@@ -216,7 +223,7 @@ export class InMemoryEpisodicRecallProvider implements EpisodicRecallProvider {
       if (baseSim < this.minScore) {
         continue;
       }
-      const recencyBoost = computeRecencyBoost(episode.createdAtIso, nowMs, this.recencyWeight, this.recencyHalfLifeDays);
+      const recencyBoost = episodeTimeBoost(episode, nowMs, this.recencyWeight, this.recencyHalfLifeDays);
       scored.push({
         createdAtIso: episode.createdAtIso,
         narrative: episode.narrative,
@@ -329,7 +336,7 @@ export class EmbeddingEpisodicRecallProvider implements EpisodicRecallProvider {
       if (baseSim < this.minScore) {
         continue;
       }
-      const recencyBoost = computeRecencyBoost(episode.createdAtIso, nowMs, this.recencyWeight, this.recencyHalfLifeDays);
+      const recencyBoost = episodeTimeBoost(episode, nowMs, this.recencyWeight, this.recencyHalfLifeDays);
       scored.push({
         createdAtIso: episode.createdAtIso,
         narrative: episode.narrative,
@@ -405,6 +412,21 @@ const DEFAULT_RECENCY_HALF_LIFE_DAYS = 14;
  * Returns 0 when `createdAtIso` is missing / unparseable, or when
  * the configured weight is 0 (feature disabled).
  */
+function episodeTimeBoost(
+  episode: StoredEpisode,
+  nowMs: number,
+  weight: number,
+  halfLifeDays: number
+): number {
+  if (episode.accessTimesIso && episode.accessTimesIso.length > 0) {
+    const times = [episode.createdAtIso, ...episode.accessTimesIso]
+      .map((iso) => (iso ? Date.parse(iso) : Number.NaN))
+      .filter((ms) => Number.isFinite(ms));
+    return computeActivationBoost(times, nowMs, weight);
+  }
+  return computeRecencyBoost(episode.createdAtIso, nowMs, weight, halfLifeDays);
+}
+
 function computeRecencyBoost(
   createdAtIso: string | undefined,
   nowMs: number,

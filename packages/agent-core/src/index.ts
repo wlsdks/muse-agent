@@ -404,3 +404,4 @@ export { sanitiseCitations, type SanitiseCitationsResult } from "./citation-sani
 export { applyCitationSanitisation, buildModelRequestWithWebSearch } from "./model-invocation.js";
 export { renderToolExemplarSection, selectToolExemplars, type ToolExemplar } from "./tool-exemplars.js";
 export { summarizeTokenConfidence, type TokenConfidenceSummary } from "./token-confidence.js";
+export { baseLevelActivation, computeActivationBoost } from "./actr-activation.js";
