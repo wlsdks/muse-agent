@@ -860,6 +860,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       // result can't blow the working budget. Tunable via
       // MUSE_MAX_TOOL_OUTPUT_CHARS; 0 disables the cap.
       maxToolOutputChars: parseInteger(env.MUSE_MAX_TOOL_OUTPUT_CHARS, 8_000),
+      // Opt-in system-prompt token cap: sections evict lowest-priority-first
+      // when the combined muse-sectioned footprint exceeds it (0/unset = off).
+      ...(parseInteger(env.MUSE_PROMPT_TOKEN_BUDGET, 0) > 0
+        ? { systemPromptTokenBudget: parseInteger(env.MUSE_PROMPT_TOKEN_BUDGET, 0) }
+        : {}),
       metrics: runtimeAgentMetrics,
       modelProvider,
       // Grounding-first answer temperature, set explicitly so the runtime

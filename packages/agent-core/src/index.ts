@@ -304,6 +304,8 @@ export {
   measureSystemPromptBudget,
   measureSystemPromptText,
   promptBudgetSpanAttributes,
+  enforceSystemPromptBudget,
+  type PromptBudgetEnforcement,
   type PromptBudgetReport,
   type PromptBudgetSection
 } from "./prompt-budget.js";

@@ -74,6 +74,8 @@ export interface AgentRuntimeOptions {
   readonly toolExecutor?: ToolExecutor;
   readonly toolExposurePolicy?: ToolExposurePolicy;
   readonly maxToolCalls?: number;
+  /** Hard token cap for the muse-sectioned system prompt; sections evict lowest-priority-first when exceeded. Off when unset. */
+  readonly systemPromptTokenBudget?: number;
   /**
    * Wall-clock cap, in ms, for a single agent run's tool-loop.
    * Default 300_000 (5 min). CLAUDE.md non-negotiable: tool loops
