@@ -26,9 +26,11 @@ excluded when scoring).
   with bm25 on OR off — the default lexical-overlap arm already handles identifier tokens.
   Default stays off (no unverified win); revisit only if real-trace misses provide
   discriminating cases. Contextual chunk annotation (Anthropic slice 2) remains a candidate.
-- ◦ **KnowNo conformal tool selection, offline report** — MCQA logprobs over the 84 eval:tools
-  cases, conformal set at α=0.1, report would-have-clarified rate on the confusable family.
-  Extends the abstention floor from answers to ACTIONS with a statistical guarantee. (T3-2)
+- ✓→Done **F3 KnowNo conformal tool selection (offline)** — `pnpm eval:conformal-tools`:
+  MCQA top_logprobs + leave-one-out conformal at α=0.1 over the 14-case time family →
+  coverage 13/14 (92.9% ≥ 90% target), wrong-but-confident 0, unnecessary clarifies 0
+  (docs/benchmarks/RESULTS-conformal-tools.md). Runtime wiring (set>1 ⇒ clarify-directive)
+  is the follow-up once a larger calibration set exists.
 - ◦ **ACT-R base-level activation for recall ranking** — frequency×spacing activation over the
   existing access logs replaces the single recency half-life; positive+negative unit battery. (T2-1)
 - ◦ **ACE deterministic playbook delta-merge** — replace the LLM-rewrite merge with itemized
