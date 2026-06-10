@@ -27,7 +27,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyVerdict, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyVerdict, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectBestGroundedDraft, selectByMmr, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -589,6 +589,47 @@ export function askOutcomeLabel(args: {
   return args.verdict;
 }
 
+export interface BestOfRedrawArgs {
+  /** How many fresh drafts to draw (the n-1 of --best-of n). */
+  readonly attempts: number;
+  /** One fresh model draft, already bound to the run's prompt + temperature. */
+  readonly draw: () => Promise<string>;
+  /** The same normalize + citation gate the first draft went through. */
+  readonly clean: (draft: string) => string;
+  readonly isRefusal: (draft: string) => boolean;
+  /** Content-citation expansion so the verdict scores claims, not markers. */
+  readonly expand: (draft: string) => string;
+  /** Deterministic best-grounded pick over the expanded drafts. */
+  readonly select: (drafts: readonly string[]) => { readonly index: number } | undefined;
+  /** The full (reverify-backed) gate — undefined means grounded. */
+  readonly confirm: (verdictText: string) => Promise<string | undefined>;
+}
+
+/**
+ * The --best-of resample: draw fresh drafts, let the deterministic verifier
+ * pick the best grounded survivor, then require the FULL gate to confirm it.
+ * Returns the confirmed survivor or undefined — fail-close, so no survivor
+ * means the original warning path stands and a fabrication is never admitted.
+ */
+export async function drawBestGroundedRedraft(args: BestOfRedrawArgs): Promise<string | undefined> {
+  const redrafts: string[] = [];
+  for (let draw = 0; draw < args.attempts; draw += 1) {
+    const cleaned = args.clean(await args.draw());
+    if (cleaned.trim().length > 0 && !args.isRefusal(cleaned)) {
+      redrafts.push(cleaned);
+    }
+  }
+  const best = args.select(redrafts.map((draft) => args.expand(draft)));
+  if (!best) {
+    return undefined;
+  }
+  const survivor = redrafts[best.index];
+  if (survivor === undefined) {
+    return undefined;
+  }
+  return (await args.confirm(args.expand(survivor))) === undefined ? survivor : undefined;
+}
+
 /**
  * Whether to surface the "Removed N citation(s) … treat those claims as
  * unverified" notice. Fires only when the gate actually stripped something AND
@@ -977,6 +1018,7 @@ interface AskOptions {
   readonly tiered?: boolean;
   readonly connect?: boolean;
   readonly repair?: boolean;
+  readonly bestOf?: string;
   readonly why?: boolean;
   readonly verifyClaims?: boolean;
   /**
@@ -1640,6 +1682,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
     .option(
       "--repair",
       "When an answer fails the grounding check, attempt ONE local rewrite constrained to your retrieved notes and show it as a 'Corrected from your notes' offer — but ONLY if the rewrite then re-verifies grounded (else the honest refusal stands; a fix is never fabricated). Off by default; spends one extra local inference."
+    )
+    .option(
+      "--best-of <n>",
+      "When an answer fails the grounding check, redraw up to n-1 fresh drafts and keep the best one the deterministic verifier grounds (confirmed by the full gate before it replaces the answer; no survivor = the honest warning stands). Raises the answered rate at the same fabrication=0. 2-5; off by default; spends up to n-1 extra local inferences. Chat-only path (--json/--image/--with-tools unaffected)."
     )
     .option(
       "--why",
@@ -3091,7 +3137,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // isn't injected) cites a persona-known fact as `[from car_license_plate]`.
       // Rewrite a `[from <key>]` whose key is a known memory fact to `[memory: …]`.
       collectedAnswer = normalizeMemoryCitations(collectedAnswer, allMemoryFacts.map((f) => f.key));
-      const citationGate = enforceAnswerCitations(collectedAnswer, {
+      const citationAllowed = {
         actions: matchedActions.map((a) => a.what),
         commands: matchedCommands,
         commits: matchedCommits.map((c) => c.subject),
@@ -3103,7 +3149,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         reminders: pendingReminders.map((r) => r.text),
         sessions: episodeHits.map((e) => e.summary),
         tasks: openTasks.map((t) => t.title)
-      });
+      };
+      const citationGate = enforceAnswerCitations(collectedAnswer, citationAllowed);
       collectedAnswer = citationGate.text;
       const refusalAnswer = answerIsRefusal(collectedAnswer);
       // The stripping always runs; the WARNING is suppressed for (a) an action
@@ -3243,16 +3290,53 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // expand them inline for the verdict ONLY — their content is grounded by
         // construction and is present in `scoredMatches`. `[from …]` note
         // provenance is left alone (it carries no claim).
-        const verdictAnswer = collectedAnswer.replace(
+        const expandContentCitations = (answer: string): string => answer.replace(
           /\[(?:task|event|reminder|contact|session|feed|command|commit|memory|action):\s*([^\]]*)\]/giu,
           " $1 "
         );
+        let verdictAnswer = expandContentCitations(collectedAnswer);
         // A vision query (`--image`) is grounded in the IMAGE the user supplied,
         // not in their notes — so the notes-grounding verdict is irrelevant here
         // and its "unverified" warning would be misleading. Skip it.
-        const verdictNotice = imageAttachments.length > 0
+        let verdictNotice = imageAttachments.length > 0
           ? undefined
           : await groundingVerdictNotice(verdictAnswer, scoredMatches, query, reverify);
+        // Best-of-N resample (--best-of): when the first draft fails the
+        // verdict, redraw fresh drafts and let the DETERMINISTIC verifier pick
+        // the best grounded survivor; the full (reverify-backed) gate then
+        // confirms it before it replaces the answer. No survivor ⇒ the honest
+        // warning path stands untouched, so resampling can only raise the
+        // answered rate, never admit a fabrication. Chat-only path — a
+        // --with-tools redraw would re-execute side-effecting tools.
+        const bestOfTotal = parseBoundedInt(options.bestOf, "--best-of", 1, 5, 1);
+        if (verdictNotice && bestOfTotal > 1 && provider && !options.withTools && imageAttachments.length === 0 && !refusalAnswer) {
+          const survivor = await drawBestGroundedRedraft({
+            attempts: bestOfTotal - 1,
+            clean: (draft) => enforceAnswerCitations(stripEchoedCiteAs(draft), citationAllowed).text,
+            confirm: (verdictText) => groundingVerdictNotice(verdictText, scoredMatches, query, reverify),
+            draw: async () => {
+              const drawn = await provider.generate({
+                messages: [
+                  { content: composeChatSystemContent(systemPrompt, playbookSection), role: "system" },
+                  { content: query, role: "user" }
+                ],
+                model,
+                temperature: resolveAnswerTemperature(process.env as MuseEnvironment)
+              });
+              return drawn.output ?? "";
+            },
+            expand: expandContentCitations,
+            isRefusal: answerIsRefusal,
+            select: (drafts) => selectBestGroundedDraft(drafts, scoredMatches, query)
+          });
+          if (survivor !== undefined) {
+            collectedAnswer = survivor;
+            verdictAnswer = expandContentCitations(survivor);
+            verdictNotice = undefined;
+            io.stderr(`\n🎯 Best-of-${bestOfTotal.toString()}: the first draft didn't verify against your notes — this re-drawn one did:\n`);
+            io.stdout(`${survivor}\n`);
+          }
+        }
         if (imageAttachments.length === 0) {
           groundedVerdictLabel = verdictNotice ? "ungrounded" : "grounded";
         }

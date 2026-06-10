@@ -910,6 +910,42 @@ export function verifyGrounding(
   return { invalidCitations, reason: "evidence only weakly supports the answer", rubric, verdict: "weak" };
 }
 
+export interface BestGroundedDraft {
+  readonly index: number;
+  readonly draft: string;
+  readonly verification: GroundingVerification;
+}
+
+/**
+ * Best-of-N selection over recall drafts: verify every draft with the same
+ * deterministic rubric and keep the best GROUNDED survivor — "weak" is never
+ * accepted, so re-sampling can only raise the answered rate, not admit a
+ * fabrication (small models can't self-verify; the owned verifier selects).
+ */
+export function selectBestGroundedDraft(
+  drafts: readonly string[],
+  matches: readonly KnowledgeMatch[],
+  query: string,
+  options?: VerifyGroundingOptions
+): BestGroundedDraft | undefined {
+  let best: BestGroundedDraft | undefined;
+  let bestScore = -1;
+  for (let index = 0; index < drafts.length; index += 1) {
+    const draft = drafts[index]!;
+    const verification = verifyGrounding(draft, matches, query, options);
+    if (verification.verdict !== "grounded") {
+      continue;
+    }
+    const { answerability, citationValidity, confidence, coverage } = verification.rubric;
+    const score = answerability + citationValidity + confidence + coverage;
+    if (score > bestScore) {
+      best = { draft, index, verification };
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 export interface GroundingExplanationOptions {
   /** The top match's ABSOLUTE cosine — the rubric stores the categorical confidence, not the raw value. */
   readonly topCosine?: number;

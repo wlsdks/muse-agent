@@ -47,11 +47,12 @@
   user knows the citation is not their own data. Source-veracity is impossible on a fixed 12B;
   source-TRUST segregation is not. (tool-output-evidence.ts already treats tool output as
   untrusted — thread that signal into verifyGrounding's evidence set.)
-- ◦ **Best-of-N recall gated by EXISTING deterministic verifiers** — turn the gate
-  from a pass/fail filter into a selector: draw n recall drafts, keep the best-grounded
-  survivor (verifyGrounding), else "I'm not sure". Higher answered-rate at SAME
-  fabrication=0. Small models can't self-verify (arXiv 2504.04718) but Muse owns
-  deterministic verifiers, so this is principled. Flag-gated, safety-critical recall only.
+- ◦ **(follow-up) measure --best-of's answered-rate lift on a drift-prone corpus** —
+  the mechanism shipped (see Done 2026-06-10) but its LIVE adoption path never fired in 3
+  adversarial attempts (gemma4 + the gate are robust enough that a natural first-draft
+  verdict failure is rare on a clean corpus — itself a positive finding). When labeled
+  `ungrounded` traces accumulate from real usage, replay those queries with --best-of 3
+  and report the adoption rate; promote the flag to default-on only with that number.
 
 ## Open — dev-loop fuel & measurement (makes the loop compound)
 
@@ -112,6 +113,17 @@
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-10 **Best-of-N recall shipped — the gate is now a SELECTOR, not just a filter**
+  (`muse ask --best-of <n>`, 2-5): when the first draft fails the grounding verdict, redraw n-1
+  fresh drafts, `selectBestGroundedDraft` (agent-core, deterministic rubric-sum ranking, "weak"
+  never accepted, TDD 5/5) picks the best grounded survivor, and the FULL reverify-backed gate
+  confirms it before it replaces the answer — fail-close, so resampling can only raise the
+  answered rate at the same fabrication=0. Orchestration extracted as `drawBestGroundedRedraft`
+  (4/4 unit, composed with the REAL selector). Gates: pnpm check all-workspace green, lint 0/0,
+  precheck:grounding pass^3 3/3, eval:grounding-delta Δ+0.94 unchanged, live happy-path ×4.
+  HONEST LIMIT: the live adoption path (🎯) never fired in 3 adversarial forcing attempts —
+  measured follow-up recorded above. Source: backlog ◦ (arXiv 2504.04718 — small models can't
+  self-verify; Muse's owned verifier selects instead).
 - ✓ 2026-06-10 **Trace outcome-logging COMPLETE for `muse ask` — cli.local traces carry real labels**
   (the standing ★ PREREQUISITE): the ask path now writes a run-log trace per answered run with the
   top-level `grounded` label the run already computed — `abstain` (refusal), `grounded`/`ungrounded`
