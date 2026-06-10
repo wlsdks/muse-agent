@@ -13,6 +13,23 @@
 
 ## Open — refilled 2026-06-09 (gap-finding scout, clean autonomous slices)
 
+## Open — refilled 2026-06-10 (gap-scout, scope: user-felt features + performance)
+
+- ★ **Chat grounding parity — reverify escalation on the front-door surface** — `muse chat`'s
+  gate is the sync deterministic check only (chat-grounding.ts:500 `verifyGrounding`, by design —
+  the path streams), while `ask` escalates the ambiguous weak band through the reverify judge
+  (`verifyGroundingWithReverify`). Named-entity drift on chat is a RECORDED open gap. Slice:
+  post-stream reverify escalation on the weak band (warn/abstain after the stream, the same
+  post-hoc pattern ask uses), so chat refuses drift as reliably as ask. groundedSurfaces +1.
+- ◦ **Perf pair: chat-REPL query-embedding cache + desktop lazy index load** — (a) the REPL
+  re-embeds every turn's query via HTTP (embed.ts is stateless; one-shot `muse ask` is a fresh
+  process so a cache only pays inside the REPL/desktop session); (b) chat-ink parses the notes
+  index at startup even if /recall is never used — lazy-load it like the episode index. Honest
+  scale: tens-to-hundreds of ms each, felt in the desktop companion, NOT a 10s win.
+- ✗ rejected this refill: "expose `muse notes graph/links`" — they ALREADY exist
+  (commands-notes-rag.ts:848/886); the scout missed the -rag split exactly as
+  feedback_verify_cli_command_sites warned. Re-verified, not re-derived.
+
 ## Open — grounding edge (the maintained floor → frontier)
 
 - ◦ **(follow-up) SQuAD drift arm — STABILIZE before optimizing** — a fire (2026-06-09)
