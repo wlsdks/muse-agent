@@ -20,7 +20,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename as pathBasename, join as pathJoin, relative as pathRelative, resolve as pathResolve, sep as pathSep } from "node:path";
 
-import { applyOverlap } from "@muse/agent-core";
+import { annotateNoteChunks, applyOverlap } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolveNotesDir } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
@@ -506,10 +506,15 @@ export async function reindexNotes(
     }
     const overlap = Math.min(200, Math.max(0, Math.floor(chunkChars / 20)));
     const chunks = chunkText(body, chunkChars, overlap);
+    // Contextual annotation (measured: bare-value chunks 5/6 → 6/6): the
+    // EMBEDDED text carries "[<file> · <nearest heading>]" so a chunk that is
+    // meaningless alone keeps its referent; the STORED text stays raw so the
+    // gate, citations, and receipts are unchanged.
+    const annotated = annotateNoteChunks(pathBasename(path), body, chunks);
     const out: IndexChunk[] = [];
     for (let i = 0; i < chunks.length; i += 1) {
       try {
-        const embedding = await embed(chunks[i]!, options.model, options.fetchImpl ? { fetchImpl: options.fetchImpl } : {});
+        const embedding = await embed(annotated[i]?.embedText ?? chunks[i]!, options.model, options.fetchImpl ? { fetchImpl: options.fetchImpl } : {});
         out.push({ chunkIndex: i, embedding, file: path, text: chunks[i]! });
       } catch (cause) {
         options.onProgress?.(`embed failed for ${path} chunk ${i.toString()}: ${cause instanceof Error ? cause.message : String(cause)}`);

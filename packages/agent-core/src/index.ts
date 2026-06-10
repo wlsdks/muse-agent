@@ -156,6 +156,8 @@ export {
   normalizeFromPrefixedCitations,
   normalizeMemoryCitations,
   normalizeSlotCitations,
+  annotateNoteChunks,
+  nearestHeading,
   rankKnowledgeChunks,
   rankKnowledgeChunksWithHop,
   renderKnowledgeMatches,

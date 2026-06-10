@@ -1,4 +1,4 @@
-import { chunkText, classifyRetrievalConfidence, edgeLoadByRelevance, rankKnowledgeChunksWithHop, renderKnowledgeMatches, type KnowledgeChunk } from "@muse/agent-core";
+import { annotateNoteChunks, chunkText, classifyRetrievalConfidence, edgeLoadByRelevance, rankKnowledgeChunksWithHop, renderKnowledgeMatches, type KnowledgeChunk } from "@muse/agent-core";
 import type { NotesProvider, TasksProvider } from "@muse/mcp";
 import type { MuseTool } from "@muse/tools";
 
@@ -247,8 +247,13 @@ export async function assembleKnowledgeCorpus(
       // keeps a fact that straddles a chunk boundary whole in chunk i.
       const overlap = Math.min(200, Math.max(0, Math.floor(maxChars / 20)));
       const pieces = chunkText(body, maxChars, overlap);
+      const annotated = annotateNoteChunks(`notes/${entry.id}`, body, pieces);
       pieces.forEach((piece, index) => {
-        chunks.push({ source: pieces.length > 1 ? `notes/${entry.id}#${(index + 1).toString()}` : `notes/${entry.id}`, text: piece });
+        chunks.push({
+          ...(annotated[index]?.embedText ? { embedText: annotated[index]!.embedText } : {}),
+          source: pieces.length > 1 ? `notes/${entry.id}#${(index + 1).toString()}` : `notes/${entry.id}`,
+          text: piece
+        });
       });
     }
   }

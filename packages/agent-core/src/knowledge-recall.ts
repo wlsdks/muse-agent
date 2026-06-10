@@ -20,6 +20,12 @@ import { cosineSimilarity } from "./episodic-recall.js";
 export interface KnowledgeChunk {
   readonly source: string;
   readonly text: string;
+  /**
+   * Optional contextualized text for EMBEDDING ONLY (Anthropic contextual
+   * retrieval): "[source · heading] chunk" so a bare list/pronoun chunk keeps
+   * its referent in embedding space. Evidence/gate always use the raw `text`.
+   */
+  readonly embedText?: string;
 }
 
 export interface KnowledgeMatch {
@@ -298,7 +304,7 @@ export async function rankKnowledgeChunks(
     for (const chunk of chunks) {
       const k = key(chunk);
       byKey.set(k, chunk);
-      const embedding = await options.embed(chunk.text);
+      const embedding = await options.embed(chunk.embedText ?? chunk.text);
       embByKey.set(k, embedding);
       cosByKey.set(k, cosineSimilarity(queryVec, embedding));
       lexByKey.set(k, lexicalOverlap(queryTokens, chunk.text));
@@ -341,7 +347,7 @@ export async function rankKnowledgeChunks(
 
   const scored: Array<{ readonly match: KnowledgeMatch; readonly embedding: readonly number[] }> = [];
   for (const chunk of chunks) {
-    const embedding = await options.embed(chunk.text);
+    const embedding = await options.embed(chunk.embedText ?? chunk.text);
     const score = cosineSimilarity(queryVec, embedding);
     if (score < minScore) {
       continue;
@@ -1396,6 +1402,39 @@ export function reorderForLongContext<T extends { readonly score: number }>(item
  * slightly exceed `maxChars` — embedding models tolerate this; the
  * limit is a soft target.
  */
+
+/** The closest markdown heading PRECEDING the chunk's position in its note. */
+export function nearestHeading(noteText: string, chunkText: string): string | undefined {
+  const at = noteText.indexOf(chunkText.slice(0, 80).trim());
+  if (at < 0) return undefined;
+  const before = noteText.slice(0, at);
+  const headings = [...before.matchAll(/^#{1,6}[ \t]+(.+)$/gmu)];
+  const last = headings[headings.length - 1]?.[1]?.trim();
+  // The note TITLE (# h1) is carried by the source name already; prefer a
+  // section heading, fall back to the title only when it is not the sole match.
+  if (!last) return undefined;
+  return last;
+}
+
+/**
+ * Contextual chunk annotation (Anthropic contextual retrieval, deterministic
+ * slice): the EMBEDDED text gets "[<source> · <nearest heading>]" prepended so
+ * a context-free chunk (a bare list under "## 준비물") keeps its referent in
+ * embedding space; the stored/evidence text stays raw, so the grounding gate
+ * and citations are unchanged.
+ */
+export function annotateNoteChunks(
+  source: string,
+  noteText: string,
+  pieces: readonly string[]
+): KnowledgeChunk[] {
+  return pieces.map((piece) => {
+    const heading = nearestHeading(noteText, piece);
+    const context = heading ? `[${source} · ${heading}]` : `[${source}]`;
+    return { embedText: `${context} ${piece}`, source, text: piece };
+  });
+}
+
 export function chunkText(text: string, maxChars: number, overlapChars: number = 0): string[] {
   const trimmed = text.trim();
   const limit = Number.isFinite(maxChars) ? Math.max(1, Math.trunc(maxChars)) : 4_000;
