@@ -108,6 +108,19 @@ export interface ModelRequest {
    * fast deterministic internal calls (tool routing, rubric scoring).
    */
   readonly reasoning?: boolean;
+  /**
+   * Request per-token log-probabilities (Ollama ≥0.30.6 native API). Cheap and
+   * observational-only — feeds deterministic confidence scoring; never alters
+   * decoding. Providers without the capability ignore it.
+   */
+  readonly logprobs?: boolean;
+  /** Number of alternative tokens per position (Ollama `top_logprobs`, 0-20). */
+  readonly topLogprobs?: number;
+}
+
+export interface TokenLogprob {
+  readonly token: string;
+  readonly logprob: number;
 }
 
 export interface WebSearchCitation {
@@ -126,6 +139,8 @@ export interface ModelResponse {
   readonly citations?: readonly WebSearchCitation[];
   /** Native reasoning trace (Qwen `thinking`), present only when `reasoning` was requested. */
   readonly reasoning?: string;
+  /** Per-token log-probabilities, present only when `logprobs` was requested. */
+  readonly logprobs?: readonly TokenLogprob[];
   readonly raw?: unknown;
 }
 

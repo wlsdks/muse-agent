@@ -27,7 +27,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectBestGroundedDraft, selectByMmr, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectBestGroundedDraft, selectByMmr, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -1476,11 +1476,14 @@ export interface AskStreamEvent {
   readonly type: string;
   readonly text?: string;
   readonly error?: { readonly message?: string };
+  readonly response?: { readonly logprobs?: readonly { readonly token: string; readonly logprob: number }[] };
 }
 
 export interface AskStreamResult {
   readonly answer: string;
   readonly error?: string;
+  /** Observational token logprobs from the done event (MUSE_LOGPROBS=1). */
+  readonly logprobs?: readonly { readonly token: string; readonly logprob: number }[];
 }
 
 /**
@@ -1554,6 +1557,7 @@ export async function consumeAskStream(
   isAborted: () => boolean
 ): Promise<AskStreamResult> {
   let answer = "";
+  let logprobs: AskStreamResult["logprobs"];
   for await (const event of events) {
     if (isAborted()) break;
     if (event.type === "error") {
@@ -1563,8 +1567,11 @@ export async function consumeAskStream(
       answer += event.text;
       onDelta(event.text);
     }
+    if (event.type === "done" && event.response?.logprobs && event.response.logprobs.length > 0) {
+      logprobs = event.response.logprobs;
+    }
   }
-  return { answer };
+  return { answer, ...(logprobs ? { logprobs } : {}) };
 }
 
 /**
@@ -2965,6 +2972,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         : undefined;
 
       let collectedAnswer = "";
+      let answerLogprobs: AskStreamResult["logprobs"];
       let toolsUsed: readonly string[] = [];
       // The agent's read-tool outputs (web fetches, knowledge_search, …) — the
       // evidence the --with-tools answer was grounded in. Fed into the output
@@ -3075,6 +3083,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
                 { content: composeChatSystemContent(systemPrompt, playbookSection), role: "system" },
                 { content: query, role: "user", ...(imageAttachments.length > 0 ? { attachments: imageAttachments } : {}) }
               ],
+              // Observational confidence instrumentation (frontier F1): opt-in,
+              // never alters decoding; summarized onto the run-log trace below.
+              ...(process.env.MUSE_LOGPROBS === "1" || process.env.MUSE_LOGPROBS === "true" ? { logprobs: true } : {}),
               ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
               model,
               // Grounding-first answer temperature, set explicitly so the
@@ -3088,6 +3099,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           if (!options.json) io.stdout(streamCiteFilter.flush());
           collectedAnswer = res.answer;
           streamError = res.error;
+          answerLogprobs = res.logprobs;
         }, { onSigint: () => { if (!options.json) io.stderr("\n(Ctrl-C — aborting…)\n"); } });
         if (streamError !== undefined) {
           const rendered = renderAskStreamError({
@@ -3529,6 +3541,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         message: query,
         model,
         response: {
+          ...(answerLogprobs ? { confidence: summarizeTokenConfidence(answerLogprobs) ?? null } : {}),
           grounded: askOutcomeLabel({ refusal: refusalAnswer, verdict: groundedVerdictLabel }),
           response: collectedAnswer,
           success: true,

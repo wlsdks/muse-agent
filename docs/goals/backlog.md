@@ -19,13 +19,13 @@ KEY UNLOCK (first-hand verified): Ollama 0.30.6 native API exposes `logprobs`/`t
 for gemma4 — token-level confidence is no longer blocked (`<|channel>` marker tokens must be
 excluded when scoring).
 
-- ★ **Logprob confidence instrumentation** — plumb `logprobs:true` through the Ollama adapter
-  (flag-gated), record mean/min token logprob + perplexity beside each trace's `grounded` label.
-  Pure instrumentation, zero behavior change — the fuel line for the risk-coverage tuner,
-  KnowNo conformal tool sets, and CoCoA-style blends. (T3-1)
-- ◦ **BM25 hybrid retrieval slice** — lexical index + reciprocal-rank fusion beside the dense
-  index (zero inference); A/B on embedder-ab + grounding battery. Contextual chunk annotation
-  (Anthropic, −49% retrieval failure) is slice 2. (T1-2)
+- ✓→Done **F1 logprob instrumentation** (shipped, independent-evaluator PASS — see Done).
+- ✓→measured **F2 BM25 promotion: NO DELTA** — bm25Scores + RRF already existed
+  (knowledge-recall.ts, env `MUSE_RECALL_BM25`); A/B on the embedder-ab corpus AND a targeted
+  exact-string identifier probe (ERR codes, license key, IP, model tag) both saturate 100%
+  with bm25 on OR off — the default lexical-overlap arm already handles identifier tokens.
+  Default stays off (no unverified win); revisit only if real-trace misses provide
+  discriminating cases. Contextual chunk annotation (Anthropic slice 2) remains a candidate.
 - ◦ **KnowNo conformal tool selection, offline report** — MCQA logprobs over the 84 eval:tools
   cases, conformal set at α=0.1, report would-have-clarified rate on the confusable family.
   Extends the abstention floor from answers to ACTIONS with a statistical guarantee. (T3-2)
