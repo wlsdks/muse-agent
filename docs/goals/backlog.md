@@ -192,7 +192,32 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   (labels) exists yet; building the pipeline first is infrastructure for a flywheel with
   no gas. Instrument first (above), analyze later.
 
+## Open — browser control (low-spec model drives Chrome; track started 2026-06-11)
+
+- ◦ **same-origin iframe piercing** — snapshot stops at iframe boundaries (embedded
+  forms/widgets invisible); walk same-origin frames like shadow roots. Cross-origin
+  stays out (CDP can't without per-frame contexts — scope honestly).
+- ◦ **element paging past the 50 cap** — long pages truncate silently at
+  BROWSER_MAX_ELEMENTS; `browser_read find` mitigates but a `more`/offset arg (or
+  viewport-priority ordering) closes it. Log what was dropped (no silent caps).
+- ◦ **agent-level multi-step live battery** — eval:tools proves one-shot selection;
+  a real gemma4-driven open→type→read task against a local fixture server would prove
+  the CHAIN (grade terminal state, not path).
+
 ## Done (recent — newest first)
+
+- ✓ 2026-06-11 **browser: see the real web — SPA settle + shadow DOM + <select> grounding**:
+  bounded settle-and-retry (`looksUnsettled`, 2×700ms) so late-rendering SPAs aren't a blank
+  page; composed-tree walk + `pierce/` ref resolution so open shadow roots are observed AND
+  actable; `browser_type` on a dropdown grounds the option in code (`matchOption`, fail-close —
+  unmatchable option throws, page untouched); position:fixed controls no longer filtered
+  (offsetParent check dropped); +combobox/searchbox/checkbox/radio/menuitem/tab roles.
+  NEW standing gate `pnpm smoke:browser` (real headless Chrome, file:// fixtures, no network,
+  skip-if-no-Chrome) 10/10. Tool-description fix: browser_open gained the "NOT for acting on
+  the already-open page" line — the KO type case was 0/3 ON THIS MACHINE even at HEAD (the
+  7/7 STABLE claim didn't reproduce — T=0 varies across machines); now 7/7 STABLE 3/3, full
+  eval:tools 97/97. Also: removed a raw NUL byte committed into puppeteer-controller.ts
+  (git saw the file as binary; byte-hygiene).
 
 - ✓ 2026-06-11 **fresh-pass batch #2-#4**: README model-claim drift fixed (identity doc said
   qwen3:8b default — stale since 6/7; EN+KO). Duplicate date/time prompt line dropped on persona

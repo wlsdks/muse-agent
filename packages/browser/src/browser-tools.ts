@@ -88,7 +88,8 @@ export function createBrowserOpenTool(deps: BrowserReadToolDeps): MuseTool {
         "wants to go to / open / visit a website or look something up on a specific page — e.g. 'open " +
         "example.com', 'go to the GitHub trending page and tell me the top repo', '이 사이트 열어서 내용 " +
         "정리해줘'. This browses + reads the page so you can then act on it; it is NOT for just launching a " +
-        "URL for the user to look at, and NOT web_action (a one-shot HTTP submit).",
+        "URL for the user to look at, NOT web_action (a one-shot HTTP submit), and NOT for typing into or " +
+        "clicking things on the page that is already open — browser_type / browser_click do that.",
       domain: "browser",
       groundedArgs: ["url"],
       inputSchema: {
@@ -246,6 +247,7 @@ export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {
         "Type text into a field on the page in Muse's browser. Say WHICH field in `target` — its label or " +
         "placeholder — and Muse finds it; set `submit` true to press Enter after. Use to fill a search box " +
         "or form field — e.g. target 'search', text 'wireless mouse', submit true; '검색창에 ... 입력해줘'. " +
+        "Dropdowns too: put the option to choose in `text` (target 'Country', text 'Korea'). " +
         "The user MUST confirm before Muse types (it can submit a form / post to a site); absent " +
         "confirmation nothing happens.",
       domain: "browser",

@@ -16,7 +16,18 @@
  * textbox for type). No match ⇒ undefined (the tool then re-reads / asks).
  */
 
-import type { SnapshotElement } from "./controller.js";
+import type { PageSnapshot, SnapshotElement } from "./controller.js";
+
+const SETTLED_TEXT_MIN = 40;
+
+/**
+ * True when a snapshot looks like a not-yet-rendered SPA shell (no
+ * interactive elements AND only a stub of text) — the controller then
+ * waits briefly and re-observes instead of showing the model a blank page.
+ */
+export function looksUnsettled(snapshot: PageSnapshot): boolean {
+  return snapshot.elements.length === 0 && snapshot.text.trim().length < SETTLED_TEXT_MIN;
+}
 
 export type MatchIntent = "click" | "type";
 
@@ -60,6 +71,31 @@ export function matchElement(
     if (!best || score > best.score) best = { element, score };
   }
   return best?.element;
+}
+
+export interface SelectOption {
+  readonly value: string;
+  readonly label: string;
+}
+
+/**
+ * Best `<select>` option for a free-text choice, or undefined when nothing
+ * matches — the dropdown analog of `matchElement`: the model names the option
+ * ("Canada"), code picks it; an unmatchable option is refused, never guessed.
+ */
+export function matchOption(options: readonly SelectOption[], text: string): SelectOption | undefined {
+  const needle = text.trim().toLowerCase();
+  if (needle.length === 0) return undefined;
+  let best: { option: SelectOption; score: number } | undefined;
+  for (const option of options) {
+    const score = Math.max(
+      baseScore(option.label.trim().toLowerCase(), needle),
+      baseScore(option.value.trim().toLowerCase(), needle)
+    );
+    if (score <= 0) continue;
+    if (!best || score > best.score) best = { option, score };
+  }
+  return best?.option;
 }
 
 /** Elements whose name loosely matches `query` — for a focused `browser_read`. */

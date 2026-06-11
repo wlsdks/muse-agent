@@ -65,7 +65,8 @@
     "precheck:grounding": "pnpm --filter \"@muse/autoconfigure...\" build && pnpm --filter @muse/cli build && node scripts/precheck-grounding.mjs",
     "eval:embedder-ab": "pnpm --filter @muse/cli build && node apps/cli/scripts/eval-embedder-ab.mjs",
     "eval:conformal-tools": "pnpm --filter @muse/model build && node scripts/eval-conformal-tools.mjs",
-    "eval:orchestration": "pnpm --filter @muse/model build && pnpm --filter @muse/multi-agent build && node scripts/verify-orchestration.mjs"
+    "eval:orchestration": "pnpm --filter @muse/model build && pnpm --filter @muse/multi-agent build && node scripts/verify-orchestration.mjs",
+    "smoke:browser": "pnpm --filter @muse/browser build && node scripts/smoke-browser.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

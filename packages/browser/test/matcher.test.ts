@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SnapshotElement } from "../src/controller.js";
-import { filterElements, matchElement } from "../src/matcher.js";
+import { filterElements, looksUnsettled, matchElement, matchOption } from "../src/matcher.js";
 
 const els: SnapshotElement[] = [
   { name: "Sign in", ref: 0, role: "button" },
@@ -50,5 +50,52 @@ describe("filterElements — focused browser_read", () => {
 
   it("an empty query returns everything", () => {
     expect(filterElements(els, "")).toHaveLength(5);
+  });
+});
+
+describe("matchOption — deterministic <select> option grounding", () => {
+  const options = [
+    { label: "Select a country", value: "" },
+    { label: "Canada", value: "CA" },
+    { label: "South Korea", value: "KR" },
+    { label: "United States", value: "US" }
+  ];
+
+  it("exact label wins (case-insensitive)", () => {
+    expect(matchOption(options, "canada")?.value).toBe("CA");
+  });
+
+  it("substring of the label resolves ('korea' → South Korea)", () => {
+    expect(matchOption(options, "korea")?.value).toBe("KR");
+  });
+
+  it("matches by value when the label misses ('US')", () => {
+    expect(matchOption(options, "US")?.value).toBe("US");
+  });
+
+  it("prefers the exact label over a substring hit", () => {
+    const shadowed = [
+      { label: "Red wine", value: "rw" },
+      { label: "Red", value: "r" }
+    ];
+    expect(matchOption(shadowed, "red")?.value).toBe("r");
+  });
+
+  it("returns undefined when nothing matches or the text is blank", () => {
+    expect(matchOption(options, "Mars")).toBeUndefined();
+    expect(matchOption(options, "  ")).toBeUndefined();
+  });
+});
+
+describe("looksUnsettled — SPA delayed-render detection", () => {
+  it("an element-less, near-empty snapshot is unsettled (worth a retry)", () => {
+    expect(looksUnsettled({ elements: [], text: "", title: "", url: "https://a.test/" })).toBe(true);
+    expect(looksUnsettled({ elements: [], text: "Loading…", title: "App", url: "https://a.test/" })).toBe(true);
+  });
+
+  it("any interactive element or real text means settled", () => {
+    expect(looksUnsettled({ elements: [{ name: "Go", ref: 0, role: "button" }], text: "", title: "", url: "https://a.test/" })).toBe(false);
+    const text = "A real paragraph of rendered page content that is clearly more than a loading stub.";
+    expect(looksUnsettled({ elements: [], text, title: "Docs", url: "https://a.test/" })).toBe(false);
   });
 });
