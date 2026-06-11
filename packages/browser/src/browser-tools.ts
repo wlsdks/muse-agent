@@ -102,7 +102,7 @@ export function createBrowserOpenTool(deps: BrowserReadToolDeps): MuseTool {
       },
       keywords: ["browser", "web", "page", "페이지", "site", "사이트", "open", "visit", "navigate", "url", "website", "브라우저"],
       name: "browser_open",
-      risk: "execute"
+      risk: "read"
     },
     execute: async (args): Promise<JsonObject> => {
       const url = typeof args["url"] === "string" ? args["url"].trim() : "";
@@ -170,7 +170,7 @@ export function createBrowserBackTool(deps: BrowserReadToolDeps): MuseTool {
       inputSchema: { additionalProperties: false, properties: {}, type: "object" },
       keywords: ["browser", "back", "뒤로", "previous", "이전", "return", "브라우저"],
       name: "browser_back",
-      risk: "execute"
+      risk: "read"
     },
     execute: async (): Promise<JsonObject> => {
       try {

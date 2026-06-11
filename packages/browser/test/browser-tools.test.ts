@@ -31,6 +31,7 @@ class FakeController implements BrowserController {
   async screenshot(path: string): Promise<{ readonly path: string }> { this.calls.push("shot"); return { path }; }
   describeElement(ref: number): SnapshotElement | undefined { return this.elements.get(ref); }
   currentUrl(): string { return "https://example.test/"; }
+  async disconnect(): Promise<void> { this.calls.push("disconnect"); }
   async close(): Promise<void> { this.calls.push("close"); }
 }
 
@@ -53,8 +54,14 @@ describe("browser tools — well-formed definitions", () => {
       expect(tool.definition.domain).toBe("browser");
       expect(validateToolDefinitions([tool])).toEqual([]);
     }
-    // reads/nav are not outbound; only click/type carry the act risk.
+    // reads/nav are not outbound; only click/type carry the act risk. The
+    // exposure policy hides execute-risk tools outside localMode, so a
+    // mis-classified read tool silently disappears from `--with-tools`.
+    expect(createBrowserOpenTool({ controller: c }).definition.risk).toBe("read");
     expect(createBrowserReadTool({ controller: c }).definition.risk).toBe("read");
+    expect(createBrowserBackTool({ controller: c }).definition.risk).toBe("read");
+    expect(createBrowserClickTool({ approvalGate: allow, controller: c }).definition.risk).toBe("execute");
+    expect(createBrowserTypeTool({ approvalGate: allow, controller: c }).definition.risk).toBe("execute");
   });
 });
 

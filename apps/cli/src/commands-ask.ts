@@ -2438,9 +2438,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // --with-tools — not gated behind --actuators. Reads/navigation are free;
       // browser_click/type carry the draft-first confirm. Chrome launches lazily
       // on first use, so registering the tools costs nothing.
+      let browserControllerToRelease: { disconnect(): Promise<void> } | undefined;
       if (options.withTools === true) {
         const actuatorMod = await import("./actuator-tools.js");
-        const browserTools = actuatorMod.buildBrowserTools({ io });
+        const browserTools = actuatorMod.buildBrowserTools({
+          io,
+          onController: (controller) => { browserControllerToRelease = controller; }
+        });
         extraTools = extraTools ? [...extraTools, ...browserTools] : browserTools;
       }
       // The agent's `muse.messaging.send` (a default loopback tool whenever a
@@ -2892,8 +2896,19 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         ...(personaTemplatePreamble.length > 0 ? [personaTemplatePreamble, ""] : []),
         ...(personaPrompt ? [personaPrompt, ""] : []),
         "You are Muse, the user's JARVIS-style personal AI conductor.",
-        "Answer the user's question USING ONLY the notes, open tasks, upcoming events, pending reminders, matching contacts, past session summaries, and recent feed headlines provided below as context.",
-        "If none of the provided context contains enough information, say so directly — do not invent facts.",
+        // The chat-only path is context-locked; the --with-tools path must NOT
+        // be, or the lock wins over the armed tools and the model never calls
+        // them (observed live: browser_open 0 calls under the ONLY phrasing).
+        ...(options.withTools === true
+          ? [
+              "Answer the user's question from the context provided below, plus your TOOLS when the context is not enough.",
+              "When the user asks to open / read / act on a web page or live resource the context below does not contain, CALL the matching tool (e.g. browser_open for a URL) instead of refusing or answering from memory.",
+              "If neither the provided context nor a tool result contains enough information, say so directly — do not invent facts."
+            ]
+          : [
+              "Answer the user's question USING ONLY the notes, open tasks, upcoming events, pending reminders, matching contacts, past session summaries, and recent feed headlines provided below as context.",
+              "If none of the provided context contains enough information, say so directly — do not invent facts."
+            ]),
         "Reply in the user's preferred language (from persona prefs).",
         "Keep it concise — 2–4 sentences unless the question explicitly needs more.",
         "Do NOT include the raw '<<note N — ...>>' / '<<task N>>' / '<<event N>>' / '<<reminder N>>' wrapper markers in your answer; speak naturally.",
@@ -3066,6 +3081,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           toolsUsed = result.toolsUsed ?? [];
           agentGroundingSources = result.groundingSources ?? [];
         } catch (cause) {
+          await browserControllerToRelease?.disconnect().catch(() => { /* best-effort */ });
           // Same --json contract as the chat-only path: an agent
           // failure must be a parseable stdout object, not an
           // uncaught throw that leaves stdout empty.
@@ -3081,6 +3097,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           process.exitCode = 1;
           return;
         }
+        await browserControllerToRelease?.disconnect().catch(() => { /* best-effort */ });
         if (!options.json && toolsUsed.length > 0) {
           io.stderr(`(tools used: ${toolsUsed.join(", ")})\n`);
         }
