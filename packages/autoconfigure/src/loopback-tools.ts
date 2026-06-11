@@ -118,7 +118,7 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
     : [];
 
   const calendar = parseBoolean(env.MUSE_CALENDAR_ENABLED, true) && deps.calendarRegistry.list().length > 0
-    ? createLoopbackMcpMuseTools(createCalendarMcpServer({ registry: deps.calendarRegistry }))
+    ? createLoopbackMcpMuseTools(createCalendarMcpServer({ registry: deps.calendarRegistry, remindersFile: deps.remindersFile }))
     : [];
 
   const tasks = parseBoolean(env.MUSE_TASKS_ENABLED, true)

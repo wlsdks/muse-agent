@@ -44,6 +44,27 @@ describe("resolveContact", () => {
     expect(resolveContact(contacts, "   ")).toEqual({ status: "unknown" });
     expect(resolveContact(contacts, "zzz")).toEqual({ status: "unknown" });
   });
+
+  it("NEVER resolves a recipient from relationship / about-facts / connections (outbound-safety rule 3)", () => {
+    // The Contact interface documents relationship/about/connections as NON-identifiers:
+    // they are recall material, never a send target. A wrong-recipient send is irreversible,
+    // so this guard (matchesExact/matchesPartial consult only name/aliases/phone/email/handle)
+    // gets the regression test, not just the happy path.
+    const rich: readonly Contact[] = [
+      {
+        about: "allergic to peanuts; loves jazz",
+        connections: [{ as: "manager", to: "Dana" }],
+        id: "9",
+        name: "Erin",
+        relationship: "manager"
+      }
+    ];
+    expect(resolveContact(rich, "manager")).toEqual({ status: "unknown" }); // relationship role
+    expect(resolveContact(rich, "peanuts")).toEqual({ status: "unknown" }); // about-fact
+    expect(resolveContact(rich, "jazz")).toEqual({ status: "unknown" }); // about-fact
+    expect(resolveContact(rich, "Dana")).toEqual({ status: "unknown" }); // a connection label is not the contact
+    expect(resolveContact(rich, "erin")).toMatchObject({ contact: { id: "9" }, status: "resolved" }); // the name still resolves
+  });
 });
 
 describe("contactIdentifier", () => {

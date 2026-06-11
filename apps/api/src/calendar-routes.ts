@@ -23,6 +23,8 @@ import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
+import { syncRemindersOnEventDelete } from "@muse/mcp";
+import { resolveRemindersFile } from "@muse/autoconfigure";
 
 interface CalendarRoutesGate {
   readonly authService: ServerOptions["authService"];
@@ -146,6 +148,9 @@ export function registerCalendarRoutes(server: FastifyInstance, gate: CalendarRo
     }
     try {
       await gate.registry.deleteEvent(providerId, id);
+      // Lifecycle-link contract: a deleted event's linked reminders go with it
+      // on EVERY surface (best-effort — a sync failure never fails the delete).
+      await syncRemindersOnEventDelete(resolveRemindersFile(process.env as Record<string, string | undefined>), id);
       return reply.status(204).send();
     } catch (error) {
       return reply.status(502).send({ code: "CALENDAR_DELETE_FAILED", message: error instanceof Error ? error.message : String(error) });

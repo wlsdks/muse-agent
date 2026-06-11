@@ -13,6 +13,60 @@
 import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
 import { redactSecretsInText } from "@muse/shared";
 
+import { lexicalTokens } from "./knowledge-recall.js";
+
+/**
+ * ACE-style deterministic delta merge (arXiv 2510.04618): iterative LLM
+ * REWRITING of a strategy cluster erodes detail ("context collapse"), so try
+ * non-LLM delta ops FIRST — collapse whitespace-variant duplicates, and when
+ * one strategy token-covers another keep only the MORE SPECIFIC one. Anything
+ * the deterministic ops cannot reduce stays for the caller (the LLM merge +
+ * coverage gate, unchanged). Never invents words, so the anti-collapse
+ * invariant holds by construction: the survivor covers every merged input.
+ */
+export function deltaMergePlaybookStrategies(texts: readonly string[]): string | undefined {
+  if (texts.length < 2) return undefined;
+  const normalize = (text: string): string => text.replace(/\s+/gu, " ").trim();
+  const unique = [...new Set(texts.map(normalize))];
+  if (unique.length === 1) return unique[0];
+
+  const tokenSets = unique.map((text) => lexicalTokens(text));
+  // Korean conjugation/particles make exact token equality too strict
+  // (정리한다 vs 정리하고 share the stem, not the token) — treat a token as
+  // covered when a counterpart shares at least half of the LONGER token as a
+  // prefix (min 2 chars). Conservative enough inside a similarity cluster:
+  // a text is only dropped when EVERY token is covered, and anything not
+  // reduced falls through to the coverage-gated LLM merge unchanged.
+  const sharesStem = (a: string, b: string): boolean => {
+    const required = Math.max(2, Math.ceil(Math.max(a.length, b.length) / 2));
+    if (a.length < required || b.length < required) return false;
+    return a.slice(0, required) === b.slice(0, required);
+  };
+  const covers = (a: Set<string>, b: Set<string>): boolean => {
+    for (const token of b) {
+      if (a.has(token)) continue;
+      let stemmed = false;
+      for (const candidate of a) {
+        if (sharesStem(candidate, token)) { stemmed = true; break; }
+      }
+      if (!stemmed) return false;
+    }
+    return true;
+  };
+  const survivors = unique.filter((_, i) =>
+    // An empty token set (tokenizer dropped everything) is vacuously covered
+    // by anything — never let it be subsumed, and never let it subsume.
+    tokenSets[i]!.size === 0
+    || !unique.some((_, j) =>
+      i !== j
+      && tokenSets[j]!.size > 0
+      && covers(tokenSets[j]!, tokenSets[i]!)
+      && (tokenSets[j]!.size > tokenSets[i]!.size || (tokenSets[j]!.size === tokenSets[i]!.size && j < i))
+    )
+  );
+  return survivors.length === 1 ? survivors[0] : undefined;
+}
+
 /**
  * Greedy similarity clustering: each unclustered item seeds a cluster that
  * pulls in every other unclustered item with `similarity(text) >= threshold`.
@@ -70,6 +124,10 @@ export async function mergePlaybookStrategies(
   options: MergePlaybookOptions
 ): Promise<string | undefined> {
   if (texts.length < 2) return undefined;
+  // Deterministic delta ops first (ACE): a cluster that reduces without the
+  // model costs zero inference and cannot lose detail to a rewrite.
+  const delta = deltaMergePlaybookStrategies(texts);
+  if (delta !== undefined) return delta;
   const redact = options.redact ?? redactSecretsInText;
   const input = texts.map((t, i) => `${(i + 1).toString()}. ${redact(t)}`).join("\n");
   const avoid = options.feedback?.avoidDropping ?? [];

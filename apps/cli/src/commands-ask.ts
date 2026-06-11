@@ -27,7 +27,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyVerdict, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectByMmr, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectBestGroundedDraft, selectByMmr, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -61,11 +61,12 @@ import { detectPercentageQuery, formatPercentage } from "./percentage-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
 import { docxToText, emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isPdfDocument, isPptxDocument, parsePdfBuffer, pptxToText } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
-import { resolvePersona } from "./program-helpers.js";
+import { resolvePersona, writeRunLog } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
 import { resolveDefaultUserKey } from "./user-id.js";
+import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
 
 /**
  * SB-1: rank past-session episode summaries against the query so `muse ask`
@@ -576,6 +577,83 @@ export function shouldSuggestRepair(args: {
 }
 
 /**
+ * The outcome label lifted onto a cli.local run-log trace. A refusal is an
+ * `abstain` (the gate held — distinct from an answer that failed the rubric),
+ * otherwise the rubric verdict passes through; `null` means the verdict never
+ * ran this turn (json mode / vision skip).
+ */
+/**
+ * Wall-clock stage accumulator for the ask pipeline — the first per-stage
+ * latency breakdown (retrieval vs generation vs verdict), recorded onto the
+ * run-log trace so the next performance lever is data-driven, not assumed.
+ */
+export function createStageTimer(now: () => number = () => Date.now()): {
+  readonly mark: (stage: string) => void;
+  readonly timings: () => Record<string, number>;
+} {
+  const startedAt = now();
+  let last = startedAt;
+  const stages: Record<string, number> = {};
+  return {
+    mark: (stage) => {
+      const at = now();
+      stages[stage] = (stages[stage] ?? 0) + (at - last);
+      last = at;
+    },
+    timings: () => ({ ...stages, totalMs: now() - startedAt })
+  };
+}
+
+export function askOutcomeLabel(args: {
+  readonly refusal: boolean;
+  readonly verdict: "grounded" | "ungrounded" | null;
+}): "abstain" | "grounded" | "ungrounded" | null {
+  if (args.refusal) return "abstain";
+  return args.verdict;
+}
+
+export interface BestOfRedrawArgs {
+  /** How many fresh drafts to draw (the n-1 of --best-of n). */
+  readonly attempts: number;
+  /** One fresh model draft, already bound to the run's prompt + temperature. */
+  readonly draw: () => Promise<string>;
+  /** The same normalize + citation gate the first draft went through. */
+  readonly clean: (draft: string) => string;
+  readonly isRefusal: (draft: string) => boolean;
+  /** Content-citation expansion so the verdict scores claims, not markers. */
+  readonly expand: (draft: string) => string;
+  /** Deterministic best-grounded pick over the expanded drafts. */
+  readonly select: (drafts: readonly string[]) => { readonly index: number } | undefined;
+  /** The full (reverify-backed) gate — undefined means grounded. */
+  readonly confirm: (verdictText: string) => Promise<string | undefined>;
+}
+
+/**
+ * The --best-of resample: draw fresh drafts, let the deterministic verifier
+ * pick the best grounded survivor, then require the FULL gate to confirm it.
+ * Returns the confirmed survivor or undefined — fail-close, so no survivor
+ * means the original warning path stands and a fabrication is never admitted.
+ */
+export async function drawBestGroundedRedraft(args: BestOfRedrawArgs): Promise<string | undefined> {
+  const redrafts: string[] = [];
+  for (let draw = 0; draw < args.attempts; draw += 1) {
+    const cleaned = args.clean(await args.draw());
+    if (cleaned.trim().length > 0 && !args.isRefusal(cleaned)) {
+      redrafts.push(cleaned);
+    }
+  }
+  const best = args.select(redrafts.map((draft) => args.expand(draft)));
+  if (!best) {
+    return undefined;
+  }
+  const survivor = redrafts[best.index];
+  if (survivor === undefined) {
+    return undefined;
+  }
+  return (await args.confirm(args.expand(survivor))) === undefined ? survivor : undefined;
+}
+
+/**
  * Whether to surface the "Removed N citation(s) … treat those claims as
  * unverified" notice. Fires only when the gate actually stripped something AND
  * the answer makes claims to doubt — NOT on a REFUSAL (which asserts nothing, so
@@ -963,6 +1041,7 @@ interface AskOptions {
   readonly tiered?: boolean;
   readonly connect?: boolean;
   readonly repair?: boolean;
+  readonly bestOf?: string;
   readonly why?: boolean;
   readonly verifyClaims?: boolean;
   /**
@@ -1419,11 +1498,14 @@ export interface AskStreamEvent {
   readonly type: string;
   readonly text?: string;
   readonly error?: { readonly message?: string };
+  readonly response?: { readonly logprobs?: readonly { readonly token: string; readonly logprob: number }[] };
 }
 
 export interface AskStreamResult {
   readonly answer: string;
   readonly error?: string;
+  /** Observational token logprobs from the done event (MUSE_LOGPROBS=1). */
+  readonly logprobs?: readonly { readonly token: string; readonly logprob: number }[];
 }
 
 /**
@@ -1497,6 +1579,7 @@ export async function consumeAskStream(
   isAborted: () => boolean
 ): Promise<AskStreamResult> {
   let answer = "";
+  let logprobs: AskStreamResult["logprobs"];
   for await (const event of events) {
     if (isAborted()) break;
     if (event.type === "error") {
@@ -1506,8 +1589,11 @@ export async function consumeAskStream(
       answer += event.text;
       onDelta(event.text);
     }
+    if (event.type === "done" && event.response?.logprobs && event.response.logprobs.length > 0) {
+      logprobs = event.response.logprobs;
+    }
   }
-  return { answer };
+  return { answer, ...(logprobs ? { logprobs } : {}) };
 }
 
 /**
@@ -1545,7 +1631,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
     .option("--persona <slot>", "Persona slot")
     .option("--model <tag>", "Chat model override")
     .option("--top <k>", "Top-K notes chunks to inject as context (default 3)", "3")
-    .option("--embed-model <tag>", "Embedding model (must match the index)", "nomic-embed-text")
+    .option("--embed-model <tag>", "Embedding model (must match the index)", DEFAULT_EMBED_MODEL)
     .option(
       "--no-auto-reindex",
       "Skip the auto-stale check before search (default: reindex incrementally when a note's mtime is newer than the index)"
@@ -1626,6 +1712,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
     .option(
       "--repair",
       "When an answer fails the grounding check, attempt ONE local rewrite constrained to your retrieved notes and show it as a 'Corrected from your notes' offer — but ONLY if the rewrite then re-verifies grounded (else the honest refusal stands; a fix is never fabricated). Off by default; spends one extra local inference."
+    )
+    .option(
+      "--best-of <n>",
+      "When an answer fails the grounding check, redraw up to n-1 fresh drafts and keep the best one the deterministic verifier grounds (confirmed by the full gate before it replaces the answer; no survivor = the honest warning stands). Raises the answered rate at the same fabrication=0. 2-5; off by default; spends up to n-1 extra local inferences. Chat-only path (--json/--image/--with-tools unaffected)."
     )
     .option(
       "--why",
@@ -1864,7 +1954,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
 
       const userKey = defaultUserKey(options.user, options.persona);
       const topK = parseBoundedInt(options.top, "--top", 1, 20, 3);
-      const embedModel = options.embedModel ?? "nomic-embed-text";
+      const embedModel = options.embedModel ?? DEFAULT_EMBED_MODEL;
 
       // Auto-stale check + incremental reindex (default on). JARVIS
       // shouldn't make the user remember to run reindex; if a note
@@ -1887,7 +1977,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             const summary = await reindexNotes({
               dir: notesDir,
               indexPath: notesIndexPath(),
-              model: existingIndexModel ?? embedModel,
+              // resolveIndexModel preserves a custom index model but migrates
+              // the legacy default to the shipped multilingual default.
+              model: resolveIndexModel(existingIndexModel, embedModel),
               // Stream per-file progress so a first ingest of a real
               // corpus (PDFs embed slowly on CPU) shows life instead of
               // a silent multi-second hang, and a skipped unreadable
@@ -1917,9 +2009,26 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         throw cause;
       }
       if (index.model !== embedModel) {
-        io.stderr(`Index was built with embed model '${index.model}', not '${embedModel}'. Re-index or pass --embed-model ${index.model}.\n`);
-        process.exitCode = 1;
-        return;
+        // One-time legacy migration: an index built with the OLD default
+        // re-embeds with the new multilingual default instead of dead-ending —
+        // otherwise the embedder upgrade would brick every existing install.
+        // A CUSTOM index model still gets the explicit mismatch error.
+        if (resolveIndexModel(index.model, embedModel) === embedModel && options.autoReindex !== false) {
+          io.stderr(`(embedding default upgraded '${index.model}' → '${embedModel}' — re-indexing your notes once)\n`);
+          try {
+            await reindexNotes({ dir: notesDir, indexPath: notesIndexPath(), model: embedModel, onProgress: (line) => io.stderr(`  ${line}\n`) });
+            index = JSON.parse(await readFile(notesIndexPath(), "utf8")) as NotesIndex;
+          } catch (cause) {
+            io.stderr(`Re-index failed (${cause instanceof Error ? cause.message : String(cause)}). Try: ollama pull ${embedModel}\n`);
+            process.exitCode = 1;
+            return;
+          }
+        }
+        if (index.model !== embedModel) {
+          io.stderr(`Index was built with embed model '${index.model}', not '${embedModel}'. Re-index or pass --embed-model ${index.model}.\n`);
+          process.exitCode = 1;
+          return;
+        }
       }
 
       // First-run on-ramp: an empty corpus still answers honestly (refusal),
@@ -1972,6 +2081,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // `--clipboard` answer (nothing to open). Notes / files are absent here and
       // keep their normal local path.
       const adHocVerifyTargets = new Map<string, string | null>();
+      const askStages = createStageTimer();
       try {
         // S3 narrate-the-wait (B2): a REAL stage delta before the embed —
         // on a 10–40s local model the pre-answer gap reads as a hang; this
@@ -2747,7 +2857,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // surfaces, instead of pure lexical token-overlap. Off by default (it
         // adds a local nomic pass per strategy); fail-soft back to lexical.
         if (process.env.MUSE_PLAYBOOK_EMBED_RANK === "true") {
-          const embedModel = process.env.MUSE_PLAYBOOK_EMBED_MODEL?.trim() || "nomic-embed-text";
+          const embedModel = process.env.MUSE_PLAYBOOK_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
           const mapped = entries.map((entry) => ({
             text: entry.text,
             ...(entry.tag ? { tag: entry.tag } : {}),
@@ -2772,19 +2882,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const systemPrompt = [
         ...(personaTemplatePreamble.length > 0 ? [personaTemplatePreamble, ""] : []),
         ...(personaPrompt ? [personaPrompt, ""] : []),
-        // Date/time line is ALWAYS present, even with no persona —
-        // questions like "anything due today?" / "is the dentist
-        // tomorrow?" require the model to know `now`, regardless of
-        // whether any facts have been remembered. When a persona is
-        // injected, this duplicates the line buildMusePersona
-        // emits; that's harmless. When persona is absent, this is
-        // the only path that grounds the model in time.
-        formatCurrentContextLine(),
-        "",
         "You are Muse, the user's JARVIS-style personal AI conductor.",
         "Answer the user's question USING ONLY the notes, open tasks, upcoming events, pending reminders, matching contacts, past session summaries, and recent feed headlines provided below as context.",
         "If none of the provided context contains enough information, say so directly — do not invent facts.",
-        ...(notesFraming.guidance ? [notesFraming.guidance] : []),
         "Reply in the user's preferred language (from persona prefs).",
         "Keep it concise — 2–4 sentences unless the question explicitly needs more.",
         "Do NOT include the raw '<<note N — ...>>' / '<<task N>>' / '<<event N>>' / '<<reminder N>>' wrapper markers in your answer; speak naturally.",
@@ -2803,6 +2903,18 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // disables it — used by the A/B efficacy eval (verify-reasoning-efficacy.mjs)
         // to MEASURE whether the principles actually improve answers, not just run.
         ...(process.env.MUSE_ASK_REASONING_PRINCIPLES === "0" ? [] : REASONING_PRINCIPLE_LINES),
+        "",
+        // Volatile lines live BELOW the stable instruction block so the long
+        // static prefix stays byte-identical across turns — Ollama reuses the
+        // KV cache for a shared prompt prefix, and a time string near the top
+        // was breaking that reuse on every turn. The date/time line itself is
+        // still ALWAYS present ("anything due today?" needs `now`); when a
+        // persona is injected it duplicates buildMusePersona's line — harmless.
+        ...(notesFraming.guidance ? [notesFraming.guidance] : []),
+        // Persona already carries its own date/time line (buildMusePersona);
+        // only the persona-less path needs this one — the duplicate was ~20
+        // wasted tokens every persona turn (subtraction sweep).
+        ...(personaPrompt ? [] : [formatCurrentContextLine()]),
         "",
         notesFraming.header,
         contextBlock,
@@ -2886,6 +2998,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         : undefined;
 
       let collectedAnswer = "";
+      let answerLogprobs: AskStreamResult["logprobs"];
       let toolsUsed: readonly string[] = [];
       // The agent's read-tool outputs (web fetches, knowledge_search, …) — the
       // evidence the --with-tools answer was grounded in. Fed into the output
@@ -2896,6 +3009,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // before the first token on a 10–40s local model. A static, honest
       // line so the wait reads as working, not frozen (latency-honest: it
       // names the actual local-model step, invents nothing).
+      askStages.mark("retrievalMs");
       if (!options.json) {
         io.stderr("💭 generating your answer on the local model…\n");
       }
@@ -2996,6 +3110,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
                 { content: composeChatSystemContent(systemPrompt, playbookSection), role: "system" },
                 { content: query, role: "user", ...(imageAttachments.length > 0 ? { attachments: imageAttachments } : {}) }
               ],
+              // Observational confidence instrumentation (frontier F1): opt-in,
+              // never alters decoding; summarized onto the run-log trace below.
+              ...(process.env.MUSE_LOGPROBS === "1" || process.env.MUSE_LOGPROBS === "true" ? { logprobs: true } : {}),
               ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
               model,
               // Grounding-first answer temperature, set explicitly so the
@@ -3009,6 +3126,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           if (!options.json) io.stdout(streamCiteFilter.flush());
           collectedAnswer = res.answer;
           streamError = res.error;
+          answerLogprobs = res.logprobs;
         }, { onSigint: () => { if (!options.json) io.stderr("\n(Ctrl-C — aborting…)\n"); } });
         if (streamError !== undefined) {
           const rendered = renderAskStreamError({
@@ -3077,7 +3195,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // isn't injected) cites a persona-known fact as `[from car_license_plate]`.
       // Rewrite a `[from <key>]` whose key is a known memory fact to `[memory: …]`.
       collectedAnswer = normalizeMemoryCitations(collectedAnswer, allMemoryFacts.map((f) => f.key));
-      const citationGate = enforceAnswerCitations(collectedAnswer, {
+      askStages.mark("generationMs");
+      const citationAllowed = {
         actions: matchedActions.map((a) => a.what),
         commands: matchedCommands,
         commits: matchedCommits.map((c) => c.subject),
@@ -3089,7 +3208,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         reminders: pendingReminders.map((r) => r.text),
         sessions: episodeHits.map((e) => e.summary),
         tasks: openTasks.map((t) => t.title)
-      });
+      };
+      const citationGate = enforceAnswerCitations(collectedAnswer, citationAllowed);
       collectedAnswer = citationGate.text;
       const refusalAnswer = answerIsRefusal(collectedAnswer);
       // The stripping always runs; the WARNING is suppressed for (a) an action
@@ -3141,12 +3261,18 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // signal the citation gate alone can't see. The ambiguous `weak` band
       // spends ONE extra local-Qwen inference (MaTTS) to re-check the answer
       // against the evidence — fail-close, so a judge error still warns.
-      if (!options.json) {
+      let groundedVerdictLabel: "grounded" | "ungrounded" | null = null;
+      // The verdict now runs in --json mode too (previously skipped): a JSON
+      // consumer (desktop bridge, scripts) could not tell a gated answer from
+      // an unchecked one, and json traces carried grounded:null. Emissions
+      // below stay non-json-only; the COMPUTATION is unconditional.
+      {
         const provider = assembly.modelProvider;
         const reverify: GroundingReverify | undefined = provider
           ? async ({ answer, evidence, query: q }) => {
               const judged = await provider.generate({
-                maxOutputTokens: 8,
+                maxOutputTokens: 24,
+      responseFormat: REVERIFY_RESPONSE_FORMAT,
                 messages: [
                   { content: REVERIFY_SYSTEM_PROMPT, role: "system" },
                   { content: buildGroundingReverifyPrompt({ answer, evidence, query: q }), role: "user" }
@@ -3154,7 +3280,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
                 model,
                 temperature: 0
               });
-              return parseGroundingReverifyVerdict(judged.output ?? "");
+              return parseGroundingReverifyJson(judged.output ?? "");
             }
           : undefined;
         // The verdict scores the answer's coverage against retrieved evidence. A
@@ -3218,7 +3344,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // notes-only set above and false-flags "not backed by your notes".
           // Still fabrication-safe: only REAL tool outputs are added, so a claim
           // in none of them (notes OR tool results) stays uncovered → ungrounded.
-          ...agentGroundingSources.map((s) => exactMatch(`tool: ${s.source}`, s.text))
+          // trusted:false — tool output is NOT the user's own data; the
+          // provenance bit feeds groundedOnUntrustedOnly (grounded≠true).
+          ...agentGroundingSources.map((s) => ({ ...exactMatch(`tool: ${s.source}`, s.text), trusted: false }))
         ];
         // The coverage check strips citation markers before scoring, so a LIST
         // answer whose claims live only inside `[task: …]` / `[event: …]` markers
@@ -3228,17 +3356,57 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // expand them inline for the verdict ONLY — their content is grounded by
         // construction and is present in `scoredMatches`. `[from …]` note
         // provenance is left alone (it carries no claim).
-        const verdictAnswer = collectedAnswer.replace(
+        const expandContentCitations = (answer: string): string => answer.replace(
           /\[(?:task|event|reminder|contact|session|feed|command|commit|memory|action):\s*([^\]]*)\]/giu,
           " $1 "
         );
+        let verdictAnswer = expandContentCitations(collectedAnswer);
         // A vision query (`--image`) is grounded in the IMAGE the user supplied,
         // not in their notes — so the notes-grounding verdict is irrelevant here
         // and its "unverified" warning would be misleading. Skip it.
-        const verdictNotice = imageAttachments.length > 0
+        let verdictNotice = imageAttachments.length > 0
           ? undefined
           : await groundingVerdictNotice(verdictAnswer, scoredMatches, query, reverify);
-        if (verdictNotice) {
+        // Best-of-N resample (--best-of): when the first draft fails the
+        // verdict, redraw fresh drafts and let the DETERMINISTIC verifier pick
+        // the best grounded survivor; the full (reverify-backed) gate then
+        // confirms it before it replaces the answer. No survivor ⇒ the honest
+        // warning path stands untouched, so resampling can only raise the
+        // answered rate, never admit a fabrication. Chat-only path — a
+        // --with-tools redraw would re-execute side-effecting tools.
+        const bestOfTotal = parseBoundedInt(options.bestOf, "--best-of", 1, 5, 1);
+        if (verdictNotice && bestOfTotal > 1 && provider && !options.withTools && !options.json && imageAttachments.length === 0 && !refusalAnswer) {
+          const survivor = await drawBestGroundedRedraft({
+            attempts: bestOfTotal - 1,
+            clean: (draft) => enforceAnswerCitations(stripEchoedCiteAs(draft), citationAllowed).text,
+            confirm: (verdictText) => groundingVerdictNotice(verdictText, scoredMatches, query, reverify),
+            draw: async () => {
+              const drawn = await provider.generate({
+                messages: [
+                  { content: composeChatSystemContent(systemPrompt, playbookSection), role: "system" },
+                  { content: query, role: "user" }
+                ],
+                model,
+                temperature: resolveAnswerTemperature(process.env as MuseEnvironment)
+              });
+              return drawn.output ?? "";
+            },
+            expand: expandContentCitations,
+            isRefusal: answerIsRefusal,
+            select: (drafts) => selectBestGroundedDraft(drafts, scoredMatches, query)
+          });
+          if (survivor !== undefined) {
+            collectedAnswer = survivor;
+            verdictAnswer = expandContentCitations(survivor);
+            verdictNotice = undefined;
+            io.stderr(`\n🎯 Best-of-${bestOfTotal.toString()}: the first draft didn't verify against your notes — this re-drawn one did:\n`);
+            io.stdout(`${survivor}\n`);
+          }
+        }
+        if (imageAttachments.length === 0) {
+          groundedVerdictLabel = verdictNotice ? "ungrounded" : "grounded";
+        }
+        if (verdictNotice && !options.json) {
           io.stderr(verdictNotice);
           // Constructive grounding (RARR, arXiv:2210.08726): rather than only
           // warning, attempt ONE rewrite constrained to the retrieved evidence
@@ -3267,7 +3435,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           } else if (shouldSuggestRepair({ evidenceCount: scoredMatches.length, json: Boolean(options.json), repairRequested: Boolean(options.repair), verdictFired: true })) {
             io.stderr("(Re-run with --repair and I'll rewrite this using only your notes — shown only if it then checks out.)\n");
           }
-        } else if (options.verifyClaims && reverify && !answerIsRefusal(collectedAnswer)) {
+        } else if (options.verifyClaims && reverify && !options.json && !answerIsRefusal(collectedAnswer)) {
           // --verify-claims: per-claim ISSUP refinement of an answer the whole-
           // answer gate just PASSED (no verdictNotice). One fabricated clause can
           // ride through because it barely dents whole-answer coverage — re-judge
@@ -3305,7 +3473,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // would vouch for a fabrication (the edge must not "show its work" for
         // work that failed its own check); the warning above stands alone there.
         // A refusal asserts no claim so it never reaches here with citations.
-        if (!verdictNotice) {
+        if (!verdictNotice && !options.json) {
           const receipts = formatSourceReceipts(
             collectedAnswer,
             notesDir,
@@ -3398,6 +3566,28 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         io.stderr(`\n💡 You've corrected me on this before — I noted: "${probationSuggestion.text}". Apply it going forward with \`muse playbook reward ${probationSuggestion.id.slice(0, 8)}\`.\n`);
       }
 
+      // Outcome-labeled trace — parity with the remote path: writeRunLog lifts
+      // `grounded`/`success` to the top level, so error-analysis can grep real
+      // labels off cli.local runs instead of an unlabeled corpus.
+      askStages.mark("verdictMs");
+      if (process.env.MUSE_TIMINGS === "1" && !options.json) {
+        const t = askStages.timings();
+        io.stderr(`(timings: ${Object.entries(t).map(([k, v]) => `${k}=${(v / 1000).toFixed(1)}s`).join(" · ")})\n`);
+      }
+      await writeRunLog(io.workspaceDir ?? process.cwd(), {
+        message: query,
+        model,
+        response: {
+          timings: askStages.timings(),
+          ...(answerLogprobs ? { confidence: summarizeTokenConfidence(answerLogprobs) ?? null } : {}),
+          grounded: askOutcomeLabel({ refusal: refusalAnswer, verdict: groundedVerdictLabel }),
+          response: collectedAnswer,
+          success: true,
+          toolsUsed
+        },
+        source: "cli.local"
+      });
+
       if (options.json) {
         // Emit a single JSON object on stdout — consumers can pipe
         // through `jq` to extract the answer, grounded sources, or
@@ -3408,6 +3598,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           query,
           model,
           answer: collectedAnswer,
+          // The gate's verdict, so a JSON consumer can render trust honestly:
+          // "grounded" | "ungrounded" | "abstain" | null (verdict didn't run).
+          groundedVerdict: askOutcomeLabel({ refusal: refusalAnswer, verdict: groundedVerdictLabel }),
           ...(citationGate.stripped.length > 0 ? { strippedCitations: citationGate.stripped } : {}),
           ...(options.withTools ? { toolsUsed } : {}),
           grounded: {

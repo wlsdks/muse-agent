@@ -305,7 +305,9 @@ describe("MuseChatApp render — plain chat + editing", () => {
     }
     const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
       groundingFor: async (msg: string) =>
-        msg.includes("VPN") ? "\n\n[NOTES] Office VPN MTU is 1380. [from vpn.md]" : "",
+        msg.includes("VPN")
+          ? { block: "\n\n[NOTES] Office VPN MTU is 1380. [from vpn.md]", matches: [{ cosine: 0.9, score: 0.9, source: "vpn.md", text: "Office VPN MTU is 1380." }] }
+          : { block: "", matches: [] },
       stream: (messages: readonly { role: string; content: string }[]) => {
         capturedSystem = messages.find((m) => m.role === "system")?.content ?? "";
         return reply();
@@ -319,6 +321,25 @@ describe("MuseChatApp render — plain chat + editing", () => {
     expect(capturedSystem).toContain("[from vpn.md]");
   });
 
+  it("applies finalizeAnswer to the streamed bubble AND the committed history (the audit's ink-gate hole)", async () => {
+    let committed = "";
+    async function* fabricated(): AsyncGenerator<{ type: string; text?: string }> {
+      yield { text: "my cat is called Nabi", type: "text-delta" };
+      yield { type: "done" };
+    }
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+      finalizeAnswer: async () => "I don't have that recorded yet.",
+      onCommit: (_q: string, answer: string) => { committed = answer; },
+      stream: () => fabricated()
+    })));
+    await tick();
+    stdin.write("what is my cat's name?"); await tick(); stdin.write("\r");
+    await waitForFrame(lastFrame, ["recorded yet"]);
+    expect(committed).toContain("recorded yet");
+    expect(committed).not.toContain("Nabi");
+    unmount();
+  });
+
   it("injects nothing when groundingFor finds nothing relevant (casual chat unaffected)", async () => {
     let capturedSystem = "__unset__";
     async function* reply(): AsyncGenerator<{ type: string; text?: string }> {
@@ -326,7 +347,7 @@ describe("MuseChatApp render — plain chat + editing", () => {
       yield { type: "done" };
     }
     const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
-      groundingFor: async () => "",
+      groundingFor: async () => ({ block: "", matches: [] }),
       stream: (messages: readonly { role: string; content: string }[]) => {
         capturedSystem = messages.find((m) => m.role === "system")?.content ?? "";
         return reply();

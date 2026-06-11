@@ -21,6 +21,7 @@ import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { defaultBuildVoiceProviders, defaultShells, type ListenShells } from "./commands-listen.js";
 import type { ProgramIO } from "./program.js";
 import { captureVoiceText } from "./voice-capture.js";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 
 function pad(n: number): string {
   return n.toString().padStart(2, "0");
@@ -110,7 +111,7 @@ export function registerNoteCommand(program: Command, io: ProgramIO, helpers: No
     .command("note")
     .description("Frictionless capture: append a one-line thought to today's inbox note and auto-index it (pass text, pipe via stdin `pbpaste | muse note`, or speak it with --voice)")
     .argument("[text...]", "The thought to capture, e.g. `muse note buy milk after the dentist` — omit to read from a stdin pipe or use --voice")
-    .option("--embed-model <tag>", "Embedding model for the auto-index", "nomic-embed-text")
+    .option("--embed-model <tag>", "Embedding model for the auto-index", DEFAULT_EMBED_MODEL)
     .option("--voice", "Speak the thought: record a short mic clip and transcribe it via the configured STT")
     .option("--clip-seconds <n>", "Seconds to record with --voice (default 6, clamped 1–30)", "6")
     .option("--lang <code>", "STT language hint for --voice, e.g. 'ko'")
@@ -171,7 +172,7 @@ export function registerNoteCommand(program: Command, io: ProgramIO, helpers: No
       let indexed = false;
       try {
         if (await isNotesIndexStale(notesDir, notesIndexPath())) {
-          const summary = await reindexNotes({ dir: notesDir, indexPath: notesIndexPath(), model: options.embedModel ?? "nomic-embed-text" });
+          const summary = await reindexNotes({ dir: notesDir, indexPath: notesIndexPath(), model: options.embedModel ?? DEFAULT_EMBED_MODEL });
           indexed = summary.embedded > 0 || summary.skipped > 0;
         } else {
           indexed = true;
@@ -186,7 +187,7 @@ export function registerNoteCommand(program: Command, io: ProgramIO, helpers: No
       // without being asked. A bonus; never fails the capture.
       if (indexed) {
         try {
-          const hits = await findConnections(text, options.embedModel ?? "nomic-embed-text");
+          const hits = await findConnections(text, options.embedModel ?? DEFAULT_EMBED_MODEL);
           const connections = selectConnections(hits, path, 0.5, 2);
           if (connections.length > 0) {
             io.stdout("💡 Related in your brain:\n");

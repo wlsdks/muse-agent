@@ -49,6 +49,42 @@ export function countVerifiedCapabilityLines(capabilitiesText) {
 }
 
 /**
+ * Count the live batteries registered in the fabrication=0 release gate
+ * (scripts/eval-self-improving.mjs's BATTERIES array). CLAUDE.md's invariant —
+ * "grounded-surface count never drops" — was enforced only by discipline; the
+ * only git hook is the immutable-core commit-msg guard, so a commit that quietly
+ * drops a surface from the release battery passed a green `pnpm check`. Counting
+ * the registry deterministically (no Ollama) turns the invariant into a numeric
+ * ratchet: detectRegressions fails self-eval the moment the count falls.
+ */
+export function countGroundedSurfaces(selfImprovingSource) {
+  const matches = selfImprovingSource.match(/file:\s*"apps\/cli\/scripts\/verify-[\w-]+\.mjs"/gu);
+  return matches ? matches.length : 0;
+}
+
+/**
+ * Count the labelled CASES in the grounding eval corpus. The surface ratchet counts
+ * battery FILES, so adding (or silently DROPPING) a case inside an existing corpus
+ * leaves it blind — the most common write-back is a new golden case, not a new file.
+ * Counting `kind:` entries in the corpus turns a dropped case into a numeric
+ * regression too. Deterministic (no Ollama); pairs with countGroundedSurfaces.
+ */
+export function countGroundedCases(corpusSource) {
+  const matches = corpusSource.match(/\bkind:\s*"/gu);
+  return matches ? matches.length : 0;
+}
+
+/**
+ * Case-count ratchet for the OTHER golden sets (eval:tools / adversarial /
+ * plan-quality): their cases all carry a `prompt:` literal, so a silently
+ * dropped case becomes a numeric regression exactly like groundedCases.
+ */
+export function countPromptCases(batterySource) {
+  const matches = batterySource.match(/\bprompt:\s*"/gu);
+  return matches ? matches.length : 0;
+}
+
+/**
  * Regressions between the previous scoreboard entry and the current one: a
  * boolean gate that went pass→fail, or a numeric gate whose value dropped.
  * No previous entry ⇒ nothing to regress against.
@@ -143,6 +179,21 @@ function main() {
     ? readFileSync(join(ROOT, "docs/goals/CAPABILITIES.md"), "utf8")
     : "";
   gates.verifiedCapabilities = { status: "pass", value: countVerifiedCapabilityLines(capText) };
+  const releaseGatePath = join(ROOT, "scripts/eval-self-improving.mjs");
+  const releaseGateSrc = existsSync(releaseGatePath) ? readFileSync(releaseGatePath, "utf8") : "";
+  gates.groundedSurfaces = { status: "pass", value: countGroundedSurfaces(releaseGateSrc) };
+  const corpusPath = join(ROOT, "apps/cli/src/grounding-eval-corpus.ts");
+  const corpusSrc = existsSync(corpusPath) ? readFileSync(corpusPath, "utf8") : "";
+  gates.groundedCases = { status: "pass", value: countGroundedCases(corpusSrc) };
+  for (const [gateName, batteryFile] of [
+    ["toolCases", "scripts/eval-tool-selection.mjs"],
+    ["adversarialCases", "scripts/eval-adversarial.mjs"],
+    ["planCases", "scripts/eval-plan-quality.mjs"]
+  ]) {
+    const batteryPath = join(ROOT, batteryFile);
+    const batterySrc = existsSync(batteryPath) ? readFileSync(batteryPath, "utf8") : "";
+    gates[gateName] = { status: "pass", value: countPromptCases(batterySrc) };
+  }
   if (full) {
     gates.tests = gateExit("pnpm -s -r test");
   }

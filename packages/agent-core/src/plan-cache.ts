@@ -52,6 +52,73 @@ export function selectPlanExemplar(
   return best;
 }
 
+/**
+ * Cosine floor for embedding-based plan reuse — deliberately high-precision:
+ * a wrongly reused plan steers the small model's whole tool sequence, so only
+ * a near-paraphrase may match semantically. Lexical Jaccard keeps its own
+ * lower floor (token overlap is already precise about WHICH words matched).
+ */
+const DEFAULT_MIN_COSINE = 0.75;
+
+function cosine(a: readonly number[], b: readonly number[]): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+    dot += a[index]! * b[index]!;
+    normA += a[index]! * a[index]!;
+    normB += b[index]! * b[index]!;
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+/**
+ * Embedding-blended plan reuse: Jaccard token overlap misses paraphrases and
+ * Korean particle attachment ("회의 일정" vs "미팅 약속"), so score each cached
+ * plan on BOTH lexical overlap and embedding cosine and reuse the best
+ * candidate that clears either floor. Fail-open per embed call — a down
+ * embedder degrades to exactly the lexical selector.
+ */
+export async function selectPlanExemplarByRelevance(
+  entries: readonly CachedPlan[],
+  prompt: string,
+  embed: (text: string) => Promise<readonly number[]>,
+  options?: SelectPlanExemplarOptions & { readonly minCosine?: number }
+): Promise<CachedPlan | undefined> {
+  const minScore = options?.minScore ?? DEFAULT_MIN_SCORE;
+  const minCosine = options?.minCosine ?? DEFAULT_MIN_COSINE;
+  let queryVec: readonly number[] | undefined;
+  try {
+    queryVec = await embed(prompt);
+  } catch {
+    queryVec = undefined;
+  }
+  let best: CachedPlan | undefined;
+  let bestScore = 0;
+  for (const entry of entries) {
+    if (entry.steps.length === 0) {
+      continue;
+    }
+    const lexical = strategyTextSimilarity(prompt, entry.prompt);
+    let semantic = 0;
+    if (queryVec && queryVec.length > 0) {
+      try {
+        semantic = cosine(queryVec, await embed(entry.prompt));
+      } catch {
+        semantic = 0;
+      }
+    }
+    const eligible = lexical >= minScore || semantic >= minCosine;
+    const score = Math.max(lexical, semantic);
+    if (eligible && score > bestScore) {
+      bestScore = score;
+      best = entry;
+    }
+  }
+  return best;
+}
+
 const MAX_EXEMPLAR_CHARS = 800;
 
 export function renderPlanExemplar(plan: CachedPlan): string {

@@ -104,11 +104,11 @@ describe("isEmbedModelPulled (goal 167)", () => {
   });
 
   it("is true for the bare name or the implicit :latest tag", () => {
-    expect(isEmbedModelPulled(new Set(["qwen3:8b", "nomic-embed-text"]))).toBe(true);
-    expect(isEmbedModelPulled(new Set(["nomic-embed-text:latest"]))).toBe(true);
+    expect(isEmbedModelPulled(new Set(["qwen3:8b", "nomic-embed-text-v2-moe"]))).toBe(true);
+    expect(isEmbedModelPulled(new Set(["nomic-embed-text-v2-moe:latest"]))).toBe(true);
   });
 
   it("does not match a different embedding model (the setup hint only knows the default)", () => {
-    expect(isEmbedModelPulled(new Set(["mxbai-embed-large", "nomic-embed-text-v2"]))).toBe(false);
+    expect(isEmbedModelPulled(new Set(["mxbai-embed-large", "nomic-embed-text"]))).toBe(false);
   });
 });

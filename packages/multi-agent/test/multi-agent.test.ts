@@ -287,43 +287,29 @@ describe("MultiAgentOrchestrator", () => {
     ).rejects.toThrow(NoAgentWorkerError);
   });
 
-  it("race mode resolves with the first successful worker (faster wins)", async () => {
-    const fast = makeDelayedWorker("fast", "fast won", 10);
-    const slow = makeDelayedWorker("slow", "slow won", 200);
+  it("race mode is PARKED — accepted on the wire, runs sequentially (single-GPU reality)", async () => {
+    const order: string[] = [];
     const orchestrator = new MultiAgentOrchestrator({
-      idFactory: () => "orchestration-race-1",
-      workers: [slow, fast]
+      workers: [
+        new RuleBasedAgentWorker("slow", "slow worker", ["task"], async (input) => {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          order.push("slow");
+          return createWorkerResult("slow", "slow answer", input);
+        }),
+        new RuleBasedAgentWorker("fast", "fast worker", ["task"], async (input) => {
+          order.push("fast");
+          return createWorkerResult("fast", "fast answer", input);
+        })
+      ]
     });
-
     const result = await orchestrator.run(
-      { messages: [{ content: "race test", role: "user" }], model: "model-1" },
+      { messages: [{ content: "task", role: "user" }], model: "diagnostic" },
       { mode: "race" }
     );
-
     expect(result.mode).toBe("race");
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0]).toMatchObject({ status: "completed", workerId: "fast" });
-    expect(result.response.output).toContain("fast won");
-  });
-
-  it("race mode skips a faster failure and resolves with the next successful worker", async () => {
-    const fastFail = new RuleBasedAgentWorker("fast-fail", "Fast fail", [], async () => {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      throw new Error("flaky");
-    });
-    const slow = makeDelayedWorker("slow-success", "slow won", 50);
-    const orchestrator = new MultiAgentOrchestrator({
-      idFactory: () => "orchestration-race-2",
-      workers: [fastFail, slow]
-    });
-
-    const result = await orchestrator.run(
-      { messages: [{ content: "race test 2", role: "user" }], model: "model-1" },
-      { mode: "race" }
-    );
-
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0]).toMatchObject({ status: "completed", workerId: "slow-success" });
+    // sequential under the hood: BOTH workers ran, in registration order.
+    expect(order).toEqual(["slow", "fast"]);
+    expect(result.results).toHaveLength(2);
   });
 
   it("race mode throws NoAgentWorkerError when every worker fails", async () => {
@@ -535,9 +521,3 @@ describe("MultiAgentOrchestrator", () => {
   });
 });
 
-function makeDelayedWorker(id: string, output: string, delayMs: number): RuleBasedAgentWorker {
-  return new RuleBasedAgentWorker(id, id, [], async (input) => {
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    return createWorkerResult(id, output, input);
-  });
-}

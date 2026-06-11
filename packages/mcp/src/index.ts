@@ -905,6 +905,7 @@ export {
   type ReminderStatusFilter,
   type ReminderVia
 } from "./personal-reminders-store.js";
+export { removeRemindersForEvent, rescheduleRemindersForEvent, syncRemindersOnEventDelete, syncRemindersOnEventReschedule } from "./event-reminder-link.js";
 
 export {
   readWeaknesses,

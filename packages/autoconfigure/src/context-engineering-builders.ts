@@ -10,7 +10,7 @@ import {
   detectCorrections,
   detectUserCommitments,
   inferPreferenceFromCorrection,
-  selectPlanExemplar,
+  selectPlanExemplarByRelevance,
   type ActiveContextProvider,
   type BackgroundReviewInput,
   type EpisodicRecallProvider,
@@ -27,7 +27,7 @@ import {
 } from "@muse/agent-core";
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
 import type { JsonObject } from "@muse/shared";
-import { appendCheckins, readCheckins, readReminders, readVetoes, queryPlaybook, queryPlanCache, recordPlanTemplate, recordRecallHits, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
+import { appendCheckins, readCheckins, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore, UserModelSlot } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 
@@ -253,7 +253,9 @@ export function createOllamaEmbedder(model: string): (text: string) => Promise<r
  * miscalibrated threshold. Use this instead of hand-rolling createOllamaEmbedder.
  */
 export function createGateEmbedder(env: NodeJS.ProcessEnv): (text: string) => Promise<readonly number[]> {
-  return createCachingEmbedder(createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text"));
+  return createCachingEmbedder(createOllamaEmbedder(
+    env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || env.MUSE_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe"
+  ));
 }
 
 export function buildEpisodicRecallProvider(
@@ -277,10 +279,19 @@ export function buildEpisodicRecallProvider(
   // fail-open to Jaccard if unreachable). Opt out with
   // MUSE_EPISODIC_RECALL_EMBED=false.
   const embedEnabled = env.MUSE_EPISODIC_RECALL_EMBED?.trim().toLowerCase() !== "false";
-  const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || "nomic-embed-text";
+  const embedModel = env.MUSE_EPISODIC_RECALL_EMBED_MODEL?.trim() || env.MUSE_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe";
+  // ACT-R activation fuel: the recall-hits ledger this same provider already
+  // writes (withRecallHitRecording below) feeds frequency × recency ranking —
+  // an episode the user keeps coming back to outranks an equally-similar
+  // one-off. Fail-soft loader: unreadable ledger ⇒ legacy half-life ranking.
+  const recallHitsFile = resolveRecallHitsFile(env);
   const provider = new StoreBackedEpisodicRecallProvider({
     maxFetched,
     minScore,
+    recallStats: async () => {
+      const records = await readRecallHits(recallHitsFile).catch(() => []);
+      return new Map(records.map((record) => [record.key, { hits: record.hits, lastHitMs: record.lastHitMs }]));
+    },
     store: summaryStore,
     topK,
     ...(embedEnabled ? { embed: createOllamaEmbedder(embedModel) } : {})
@@ -548,7 +559,10 @@ export function buildPlanCacheProvider(env: MuseEnvironment): PlanCacheProvider 
         // Store args are JSON-sourced; narrow Record<string,unknown> → JsonObject at the boundary.
         steps: entry.steps.map((step) => ({ args: step.args as JsonObject, description: step.description, tool: step.tool }))
       }));
-      return selectPlanExemplar(entries, prompt);
+      // Embedding-blended reuse so a paraphrased / Korean-particle prompt
+      // still hits a cached plan; degrades to the lexical selector when the
+      // embedder is down (selectPlanExemplarByRelevance is fail-open).
+      return selectPlanExemplarByRelevance(entries, prompt, createGateEmbedder(env));
     },
     recordPlan: async (userId, prompt, steps) => {
       await recordPlanTemplate(file, {

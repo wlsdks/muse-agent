@@ -1,8 +1,9 @@
 import { readFile } from "node:fs/promises";
 
-import { independentWitnessCount, quorumVerdict, verifyGrounding, type KnowledgeMatch } from "@muse/agent-core";
+import { independentWitnessCount, quorumVerdict, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
+import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
 
 // Per-turn grounding for the conversational surface (`muse chat`).
 //
@@ -126,10 +127,12 @@ export function chatAutoReindexEnabled(env: Record<string, string | undefined>):
 
 /**
  * Preserve the embedding model a stale index was built with, so a chat-path
- * refresh never silently re-embeds a custom-model index with the default.
+ * refresh never silently re-embeds a custom-model index with the default —
+ * except the LEGACY default, which migrates once to the shipped multilingual
+ * default (resolveIndexModel) so the upgrade reaches existing users.
  */
 export function pickReindexModel(existingModel: string | undefined, requested: string): string {
-  return existingModel && existingModel.trim().length > 0 ? existingModel : requested;
+  return resolveIndexModel(existingModel, requested);
 }
 
 /**
@@ -153,6 +156,53 @@ async function refreshStaleNotesIndexForChat(env: Record<string, string | undefi
   await reindexNotes({ dir: notesDir, indexPath, model: pickReindexModel(existingModel, embedModel) });
 }
 
+/**
+ * Multi-turn retrieval gap (Rewrite-Retrieve-Read, arXiv:2305.14283): an
+ * anaphoric turn ("그거 언제 바뀌었지?") embeds onto the PRONOUN, not the topic,
+ * so recall misses the note the conversation is plainly about. Fire only on a
+ * short turn that carries an anaphor AND has history to resolve it from — a
+ * self-contained question must never pay the extra inference.
+ */
+export function needsContextualRewrite(message: string, historyLength: number): boolean {
+  if (historyLength === 0) return false;
+  const trimmed = message.trim();
+  if (trimmed.length === 0 || trimmed.length > 60) return false;
+  return /(그게|그거|그건|그때|거기|아까|방금|걔|이건|저건|그 사람|\bit\b|\bthat\b|\bthen\b|\bthere\b|\bhe\b|\bshe\b|\bthey\b)/iu.test(trimmed);
+}
+
+export const QUERY_REWRITE_RESPONSE_FORMAT = {
+  properties: { query: { type: "string" } },
+  required: ["query"],
+  type: "object"
+};
+
+export const QUERY_REWRITE_SYSTEM_PROMPT =
+  "Rewrite the user's LAST message as ONE self-contained search query by resolving its pronouns/references from the conversation. Keep the user's language. Use ONLY words and facts present in the conversation — never invent new ones. Reply as JSON: {\"query\": \"...\"}.";
+
+export function buildQueryRewritePrompt(
+  history: readonly { readonly role: string; readonly content: string }[],
+  message: string
+): string {
+  const recent = history.slice(-4).map((turn) => `${turn.role}: ${turn.content}`);
+  return [...recent, `user (LAST message to rewrite): ${message}`].join("\n");
+}
+
+/** Fail-open parse: anything but a sane constrained JSON keeps the original query. */
+export function parseQueryRewrite(output: string, fallback: string): string {
+  try {
+    const parsed: unknown = JSON.parse(output.trim());
+    if (parsed && typeof parsed === "object" && "query" in parsed) {
+      const query = (parsed as { query: unknown }).query;
+      if (typeof query === "string" && query.trim().length > 0 && query.length <= 200) {
+        return query.trim();
+      }
+    }
+  } catch {
+    // fall through to the original message
+  }
+  return fallback;
+}
+
 export async function retrieveChatGrounding(
   message: string,
   opts: {
@@ -165,7 +215,7 @@ export async function retrieveChatGrounding(
   if (trimmed.length < MIN_QUERY_CHARS) return { block: "", matches: [] };
   const env = opts.env ?? (process.env as Record<string, string | undefined>);
   if (env.MUSE_CHAT_GROUNDING === "0") return { block: "", matches: [] };
-  const embedModel = opts.embedModel ?? env.MUSE_RECALL_EMBED_MODEL?.trim() ?? "nomic-embed-text";
+  const embedModel = opts.embedModel ?? env.MUSE_RECALL_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL;
   // Refresh a stale notes index before searching — the courtesy `muse ask`
   // already extends. The desktop companion only ever calls `chat`, so without
   // this a note the user just added is unreachable until they remember to run
@@ -196,6 +246,39 @@ export async function groundChatTurn(
   } = {}
 ): Promise<string> {
   return (await retrieveChatGrounding(message, opts)).block;
+}
+
+
+export interface FinalizeGatedChatAnswerArgs {
+  readonly question: string;
+  readonly answer: string;
+  readonly matches: readonly KnowledgeMatch[];
+  readonly history?: readonly { readonly role: string; readonly content: string }[];
+  readonly toolsUsed?: readonly string[];
+  readonly knownFactKeys?: readonly string[];
+  readonly reverify?: GroundingReverify;
+}
+
+/**
+ * The ONE post-stream pipeline every conversational surface must run — the
+ * audit found the Ink chat rendered the raw stream (no gate, no citation
+ * strip, no receipt) while runLocalChat had all four steps inline, and the
+ * divergence let a fabrication persist into the history as cosine-1
+ * "conversation evidence". Shared here so the surfaces cannot drift again:
+ * gate (reverify-backed when a judge is supplied) → truncated-citation strip →
+ * fabricated-citation strip → source receipt.
+ */
+export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs): Promise<string> {
+  const evidence = [...args.matches, ...conversationMatches(args.history ?? [])];
+  const toolGrounded = (args.toolsUsed ?? []).length > 0;
+  const gated = toolGrounded
+    ? args.answer
+    : args.reverify
+      ? await gateChatAnswerWithReverify(args.question, args.answer, evidence, args.knownFactKeys ?? [], args.reverify)
+      : gateChatAnswer(args.question, args.answer, evidence, args.knownFactKeys ?? []);
+  const repaired = stripTruncatedCitation(gated);
+  const deFabbed = stripFabricatedCitations(repaired, args.matches.map((match) => match.source));
+  return withGroundingReceipt(deFabbed, groundedNoteSources(args.matches, deFabbed), /[가-힣]/u.test(args.question));
 }
 
 const HANGUL = /[가-힣]/u;
@@ -555,17 +638,19 @@ export function answerAssertsUnsupportedIpAddress(
   return answerIps.some((ip) => !supported.has(ip));
 }
 
-export function gateChatAnswer(
+type ChatGateDecision = "pass" | "abstain" | "verify";
+
+function chatGatePrecheck(
   question: string,
   answer: string,
   matches: readonly KnowledgeMatch[],
-  knownFactKeys: readonly string[] = []
-): string {
-  if (!isPersonalFactRecall(question)) return answer;
+  knownFactKeys: readonly string[]
+): ChatGateDecision {
+  if (!isPersonalFactRecall(question)) return "pass";
   // Muse genuinely HAS a fact for this SPECIFIC topic → real-data-backed
   // (cross-language tolerant); pass. Otherwise the lexical gate decides, so a
   // cross-entity conflation ("the cat is 보리", the dog's name) is refused.
-  if (asksAboutStoredFact(question, knownFactKeys)) return answer;
+  if (asksAboutStoredFact(question, knownFactKeys)) return "pass";
   // A substantive number the notes don't contain is a fabricated value even when
   // the rest of the answer overlaps a note — the `noteGroundedAnswer` shortcut
   // and `verifyGrounding`'s whole-answer coverage below would otherwise wave it
@@ -573,23 +658,57 @@ export function gateChatAnswer(
   // deterministically: the sync chat counterpart to ask's value escalation.
   // A whole IPv4 first — judged as one unit before the number guard would split
   // it into individually-"supported" octets and miss a wrong router/admin IP.
-  if (answerAssertsUnsupportedIpAddress(answer, matches, question)) return chatAbstention(question);
-  if (answerAssertsUnsupportedNumber(answer, matches, question)) return chatAbstention(question);
+  if (answerAssertsUnsupportedIpAddress(answer, matches, question)) return "abstain";
+  if (answerAssertsUnsupportedNumber(answer, matches, question)) return "abstain";
   // Same deterministic guard for a verbatim EMAIL identifier — a wrong domain on
   // a right local-part is an outbound-safety hazard the token shortcut misses.
-  if (answerAssertsUnsupportedEmail(answer, matches, question)) return chatAbstention(question);
+  if (answerAssertsUnsupportedEmail(answer, matches, question)) return "abstain";
   // Same deterministic guard for a mixed letter+digit identifier — a wrong SSID
   // / code the lexical-coverage rubric waves through (non-numeric string drift).
-  if (answerAssertsUnsupportedIdentifier(answer, matches, question)) return chatAbstention(question);
+  if (answerAssertsUnsupportedIdentifier(answer, matches, question)) return "abstain";
   // The answer actually QUOTES distinctive content from a retrieved note
   // (e.g. "muse2026" from seoul_office.md) → grounded for real, no matter how
   // verifyGrounding's borderline rubric falls on the model's varied phrasing.
   // A fabrication (no note holds the invented value) won't match, so it's safe.
   const answerLower = answer.toLowerCase();
   if (matches.some((match) => (match.cosine ?? match.score) >= resolveGroundingMinScore() && noteGroundedAnswer(match.text, answerLower))) {
-    return answer;
+    return "pass";
   }
+  return "verify";
+}
+
+export function gateChatAnswer(
+  question: string,
+  answer: string,
+  matches: readonly KnowledgeMatch[],
+  knownFactKeys: readonly string[] = []
+): string {
+  const decision = chatGatePrecheck(question, answer, matches, knownFactKeys);
+  if (decision === "pass") return answer;
+  if (decision === "abstain") return chatAbstention(question);
   const { verdict } = verifyGrounding(answer, matches, question);
+  return verdict === "grounded" ? answer : chatAbstention(question);
+}
+
+/**
+ * The chat gate with ask-parity escalation: the deterministic prechecks are
+ * identical to {@link gateChatAnswer}, but the borderline bands (weak
+ * retrieval, coverage-only failure, an unsupported asserted value) spend ONE
+ * reverify inference instead of hard-falling on the lexical rubric — so chat
+ * refuses drift, and rescues cross-lingual phrasing, as reliably as ask.
+ * Fail-close: a judge error keeps the abstention.
+ */
+export async function gateChatAnswerWithReverify(
+  question: string,
+  answer: string,
+  matches: readonly KnowledgeMatch[],
+  knownFactKeys: readonly string[],
+  reverify: GroundingReverify
+): Promise<string> {
+  const decision = chatGatePrecheck(question, answer, matches, knownFactKeys);
+  if (decision === "pass") return answer;
+  if (decision === "abstain") return chatAbstention(question);
+  const { verdict } = await verifyGroundingWithReverify(answer, matches, question, reverify);
   return verdict === "grounded" ? answer : chatAbstention(question);
 }
 

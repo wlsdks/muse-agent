@@ -127,7 +127,7 @@ describe("approvePendingApproval — re-run completion", () => {
     const f = file();
     await recordPendingApproval(f, webEntry({ id: "go" }));
     const { fetchImpl, calls } = recordingFetch();
-    const result = await approvePendingApproval({
+    const result = await approvePendingApproval({ isInteractive: () => true,
       confirmAction: async () => true,
       env,
       fetchImpl,
@@ -139,7 +139,7 @@ describe("approvePendingApproval — re-run completion", () => {
     expect(calls).toEqual(["http://x.test/book"]);
     // Cleared → a second approve can't re-fire.
     expect(await listPendingApprovals(f)).toHaveLength(0);
-    const replay = await approvePendingApproval({ confirmAction: async () => true, env, fetchImpl, id: "go", io: fakeIo(), pendingFile: f });
+    const replay = await approvePendingApproval({ isInteractive: () => true, confirmAction: async () => true, env, fetchImpl, id: "go", io: fakeIo(), pendingFile: f });
     expect(replay.status).toBe("not-found");
     expect(calls).toHaveLength(1); // no second request
   });
@@ -148,7 +148,7 @@ describe("approvePendingApproval — re-run completion", () => {
     const f = file();
     await recordPendingApproval(f, webEntry({ id: "no" }));
     const { fetchImpl, calls } = recordingFetch();
-    const result = await approvePendingApproval({ confirmAction: async () => false, env, fetchImpl, id: "no", io: fakeIo(), pendingFile: f });
+    const result = await approvePendingApproval({ isInteractive: () => true, confirmAction: async () => false, env, fetchImpl, id: "no", io: fakeIo(), pendingFile: f });
     expect(result.status).toBe("declined");
     expect(calls).toHaveLength(0);
     expect((await listPendingApprovals(f)).map((e) => e.id)).toEqual(["no"]); // still pending
@@ -158,15 +158,15 @@ describe("approvePendingApproval — re-run completion", () => {
     const f = file();
     await recordPendingApproval(f, webEntry({ expiresAt: "2020-01-01T00:00:00.000Z", id: "stale" }));
     const { fetchImpl, calls } = recordingFetch();
-    expect((await approvePendingApproval({ confirmAction: async () => true, env, fetchImpl, id: "ghost", io: fakeIo(), pendingFile: f })).status).toBe("not-found");
-    expect((await approvePendingApproval({ confirmAction: async () => true, env, fetchImpl, id: "stale", io: fakeIo(), pendingFile: f })).status).toBe("not-found");
+    expect((await approvePendingApproval({ isInteractive: () => true, confirmAction: async () => true, env, fetchImpl, id: "ghost", io: fakeIo(), pendingFile: f })).status).toBe("not-found");
+    expect((await approvePendingApproval({ isInteractive: () => true, confirmAction: async () => true, env, fetchImpl, id: "stale", io: fakeIo(), pendingFile: f })).status).toBe("not-found");
     expect(calls).toHaveLength(0);
   });
 
   it("a pending entry for a non-actuator tool → no-tool, not cleared", async () => {
     const f = file();
     await recordPendingApproval(f, webEntry({ id: "x", tool: "muse.notes.save" }));
-    const result = await approvePendingApproval({ confirmAction: async () => true, env, id: "x", io: fakeIo(), pendingFile: f });
+    const result = await approvePendingApproval({ isInteractive: () => true, confirmAction: async () => true, env, id: "x", io: fakeIo(), pendingFile: f });
     expect(result.status).toBe("no-tool");
     expect((await listPendingApprovals(f)).map((e) => e.id)).toEqual(["x"]);
   });

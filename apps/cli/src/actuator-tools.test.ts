@@ -7,7 +7,7 @@ import type { ModelProvider, ModelResponse } from "@muse/model";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
-import { buildActuatorTools, buildMessagingApprovalGate, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
+import { buildActuatorTools, buildEmailApprovalGate, buildMessagingApprovalGate, buildWebApprovalGate, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
 import type { ProgramIO } from "./program.js";
 
 describe("buildMessagingApprovalGate — draft-first, fail-closed in non-TTY", () => {
@@ -159,7 +159,8 @@ describe("summarizeActuators — armed-state visibility + config hints", () => {
 
 describe("buildActuatorTools — the agent invokes a wired tool through its clack-confirm gate", () => {
   function runWebAction(confirmAction: () => Promise<boolean>, fetchImpl: typeof fetch) {
-    const tools = buildActuatorTools({ confirmAction, env: env(), fetchImpl, io: fakeIo(), userId: "stark" });
+    const tools = buildActuatorTools({
+      isInteractive: () => true, confirmAction, env: env(), fetchImpl, io: fakeIo(), userId: "stark" });
     return createAgentRuntime({
       maxToolCalls: 1,
       modelProvider: sequenceProvider([
@@ -189,5 +190,27 @@ describe("buildActuatorTools — the agent invokes a wired tool through its clac
     const { fetchImpl, calls } = recordingFetch();
     await runWebAction(async () => false, fetchImpl);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("web/email/home approval gates — fail-closed in non-TTY (outbound-safety rule 2 parity)", () => {
+  const webAction = { request: { method: "POST", url: "https://example.com/x" }, summary: "post a comment" };
+  const emailDraft = { body: "hi", recipientName: "Sam", subject: "hello", to: "sam@example.com" };
+
+  it("web gate DENIES when non-interactive even if confirmAction would return true", async () => {
+    const gate = buildWebApprovalGate({ confirmAction: async () => true, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => false, prompt: "Perform this web action?" });
+    expect(await gate(webAction)).toMatchObject({ approved: false });
+  });
+
+  it("email gate DENIES when non-interactive even if confirmAction would return true", async () => {
+    const gate = buildEmailApprovalGate({ confirmAction: async () => true, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => false });
+    expect(await gate(emailDraft)).toMatchObject({ approved: false });
+  });
+
+  it("web gate still approves on interactive confirm and denies on decline", async () => {
+    const yes = buildWebApprovalGate({ confirmAction: async () => true, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => true, prompt: "Perform this web action?" });
+    expect(await yes(webAction)).toMatchObject({ approved: true });
+    const no = buildWebApprovalGate({ confirmAction: async () => false, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => true, prompt: "Perform this web action?" });
+    expect(await no(webAction)).toMatchObject({ approved: false });
   });
 });

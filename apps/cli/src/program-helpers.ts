@@ -540,11 +540,17 @@ export async function writeRunLog(workspaceDir: string, input: RunLogInput, now 
   const filePath = path.join(runDir, `${runId}.jsonl`);
   const event = {
     apiUrl: input.apiUrl ?? process.env.MUSE_API_URL ?? "http://127.0.0.1:3030",
+    // Outcome labels lifted to the TOP LEVEL so a trace is greppable for error-analysis
+    // without descending into `response`. cli.remote responses carry these; cli.local
+    // responses do not yet (populating them in the local ask path is the next sub-slice),
+    // so they are null there for now — but the schema error-analysis will read is fixed here.
+    grounded: readResponseGrounded(input.response) ?? null,
     message: input.message,
     model: input.model ?? null,
     recordedAt: now.toISOString(),
     response: input.response,
     source: input.source ?? "cli.remote",
+    success: readResponseSuccess(input.response) ?? null,
     type: "chat.completed"
   };
 
@@ -558,6 +564,22 @@ export function readResponseRunId(value: unknown): string | undefined {
     return value.runId;
   }
 
+  return undefined;
+}
+
+/** Lift a boolean `success` outcome from a response, if it carries one (cli.remote does). */
+export function readResponseSuccess(value: unknown): boolean | undefined {
+  if (isRecord(value) && typeof value.success === "boolean") {
+    return value.success;
+  }
+  return undefined;
+}
+
+/** Lift the `grounded` verdict from a response, if present (may be an object or explicit null). */
+export function readResponseGrounded(value: unknown): unknown {
+  if (isRecord(value) && "grounded" in value) {
+    return value.grounded;
+  }
   return undefined;
 }
 

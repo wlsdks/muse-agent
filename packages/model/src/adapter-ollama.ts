@@ -29,7 +29,8 @@ import type {
   ModelRequest,
   ModelResponse,
   ModelToolCall,
-  OllamaProviderOptions
+  OllamaProviderOptions,
+  TokenLogprob
 } from "./index.js";
 
 export class OllamaProvider extends OpenAICompatibleProvider {
@@ -116,7 +117,8 @@ export class OllamaProvider extends OpenAICompatibleProvider {
               outputTokens: json.eval_count ?? 0
             }
           }
-        : {})
+        : {}),
+      ...(json.logprobs && json.logprobs.length > 0 ? { logprobs: mapTokenLogprobs(json.logprobs) } : {})
     };
   }
 
@@ -154,6 +156,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     let output = "";
     let reasoning = "";
     let lastJson: OllamaNativeChatResponse | undefined;
+    const collectedLogprobs: TokenLogprob[] = [];
     let streamError: ModelProviderError | undefined;
     const streamedToolCalls: ModelToolCall[] = [];
     const seenToolKeys = new Set<string>();
@@ -175,6 +178,9 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         return;
       }
       lastJson = parsed;
+      if (parsed.logprobs && parsed.logprobs.length > 0) {
+        collectedLogprobs.push(...mapTokenLogprobs(parsed.logprobs));
+      }
       // Native reasoning streams in a SEPARATE `thinking` channel — surface it
       // as reasoning-delta so a UI can show a live "thinking" process distinct
       // from the answer.
@@ -256,7 +262,8 @@ export class OllamaProvider extends OpenAICompatibleProvider {
               outputTokens: lastJson.eval_count ?? 0
             }
           }
-        : {})
+        : {}),
+      ...(collectedLogprobs.length > 0 ? { logprobs: collectedLogprobs } : {})
     };
     yield { response: final, type: "done" };
   }
@@ -366,6 +373,8 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       // constrains decoding to it — guaranteed schema-valid JSON, not
       // parse-and-hope. Sent only when the caller requested it.
       ...(request.responseFormat ? { format: request.responseFormat } : {}),
+      // Observational token logprobs (Ollama ≥0.30.6) — never alters decoding.
+      ...(request.logprobs ? { logprobs: true, ...(request.topLogprobs ? { top_logprobs: request.topLogprobs } : {}) } : {}),
       ...(request.tools && request.tools.length > 0
         ? {
             tools: request.tools.map((t) => ({
@@ -376,6 +385,14 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         : {})
     };
   }
+}
+
+function mapTokenLogprobs(
+  entries: readonly { readonly token?: string; readonly logprob?: number }[]
+): TokenLogprob[] {
+  return entries
+    .filter((entry) => typeof entry.token === "string" && typeof entry.logprob === "number")
+    .map((entry) => ({ logprob: entry.logprob as number, token: entry.token as string }));
 }
 
 interface OllamaNativeChatResponse {
@@ -393,6 +410,7 @@ interface OllamaNativeChatResponse {
   readonly prompt_eval_count?: number;
   readonly done?: boolean;
   readonly error?: string;
+  readonly logprobs?: readonly { readonly token?: string; readonly logprob?: number }[];
 }
 
 function safeParseToolArgs(raw: string): unknown {

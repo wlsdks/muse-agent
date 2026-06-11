@@ -181,7 +181,14 @@ function hasInsightMarker(output: string): boolean {
 }
 
 function buildVerifiedSourcesBlock(userPrompt: string, sources: readonly VerifiedSource[]): string {
-  const heading = containsHangul(userPrompt) ? "출처" : "Sources";
+  // Source-trust segregation: every entry here is by construction TOOL-FETCHED
+  // external data (URLs extracted from tool output), never the user's own
+  // notes — name that provenance in the heading so a grounded-looking citation
+  // to an outside source is never mistaken for "from my own data"
+  // (grounded≠true: the gate checks claim↔source match, not source veracity).
+  const heading = containsHangul(userPrompt)
+    ? "출처 (외부 — 도구가 가져온 정보, 내 노트 아님)"
+    : "Sources (external — tool-fetched, not your own notes)";
   const lines = sources.map((source) => `- [${escapeMarkdownTitle(source.title)}](${source.url})`);
   return `${heading}\n${lines.join("\n")}`;
 }

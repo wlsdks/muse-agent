@@ -118,3 +118,79 @@ export function promptBudgetSpanAttributes(
   }
   return out;
 }
+
+/**
+ * Priority order for budget eviction — HIGHER stays longer. Time/persona and
+ * the learned-strategy blocks are load-bearing for correctness; feeds/ambient
+ * are flavor. Unknown sections sit in the middle so a new transform is never
+ * silently most-evictable.
+ */
+const SECTION_PRIORITY: Readonly<Record<string, number>> = {
+  "active-context": 100,
+  "user-memory": 90,
+  playbook: 80,
+  "veto-avoidance": 75,
+  attachments: 70,
+  "episodic-recall": 60,
+  skills: 50,
+  inbox: 40,
+  ambient: 30,
+  feeds: 20
+};
+const DEFAULT_SECTION_PRIORITY = 55;
+
+export interface PromptBudgetEnforcement {
+  readonly messages: readonly ModelMessage[];
+  readonly dropped: readonly PromptBudgetSection[];
+}
+
+/**
+ * The meter's missing half: when the combined section footprint exceeds
+ * `maxTokens`, evict whole sections lowest-priority-first until the prompt
+ * fits. The prelude (core instructions before any marker) is never touched.
+ * Deterministic, fail-open: no system message / no sections ⇒ unchanged.
+ */
+export function enforceSystemPromptBudget(
+  messages: readonly ModelMessage[],
+  options: { readonly maxTokens: number }
+): PromptBudgetEnforcement {
+  const report = measureSystemPromptBudget(messages);
+  if (!report || report.totalEstimatedTokens <= options.maxTokens || report.sections.length === 0) {
+    return { dropped: [], messages };
+  }
+  const byPriority = [...report.sections].sort((a, b) =>
+    (SECTION_PRIORITY[a.id] ?? DEFAULT_SECTION_PRIORITY) - (SECTION_PRIORITY[b.id] ?? DEFAULT_SECTION_PRIORITY)
+  );
+  const dropIds = new Set<string>();
+  const dropped: PromptBudgetSection[] = [];
+  let total = report.totalEstimatedTokens;
+  for (const candidate of byPriority) {
+    if (total <= options.maxTokens) break;
+    dropIds.add(candidate.id);
+    dropped.push(candidate);
+    total -= candidate.estimatedTokens;
+  }
+  if (dropped.length === 0) {
+    return { dropped: [], messages };
+  }
+  const systemIndex = messages.findIndex((message) => message.role === "system");
+  const content = String(messages[systemIndex]!.content);
+  // Rebuild: walk markers, keep prelude + surviving sections in order.
+  const marker = /<!--\s*muse:([\w-]+)\s*-->/gu;
+  const pieces: { id?: string; start: number }[] = [{ start: 0 }];
+  for (const match of content.matchAll(marker)) {
+    pieces.push({ id: match[1], start: match.index });
+  }
+  let rebuilt = "";
+  for (let index = 0; index < pieces.length; index += 1) {
+    const piece = pieces[index]!;
+    const end = pieces[index + 1]?.start ?? content.length;
+    if (piece.id === undefined || !dropIds.has(piece.id)) {
+      rebuilt += content.slice(piece.start, end);
+    }
+  }
+  const next = messages.map((message, index) =>
+    index === systemIndex ? { ...message, content: rebuilt.trimEnd() } : message
+  );
+  return { dropped, messages: next };
+}

@@ -39,9 +39,16 @@ export function groundToolArguments(
   if (haystack.trim().length === 0 || groundedArgs.length === 0) {
     return { args, dropped: [] };
   }
+  // Match a value token at a WORD START (preceded by start-of-string or a
+  // non-letter/digit), not as a raw substring: a fabricated "art" is NOT grounded
+  // by "start the meeting", while morphology ("meeting" prefixes "meetings") and
+  // Korean particle attachment ("강남역" prefixes "강남역에서") still ground — both
+  // are prefix matches. contentTokens yields [\p{L}\p{N}] runs only, so the token
+  // carries no regex metacharacters and needs no escaping.
+  const tokenGrounded = (token: string): boolean => new RegExp(`(^|[^\\p{L}\\p{N}])${token}`, "u").test(haystack);
   const isGrounded = (value: string): boolean => {
     const tokens = contentTokens(value);
-    return tokens.length === 0 || tokens.some((token) => haystack.includes(token));
+    return tokens.length === 0 || tokens.some(tokenGrounded);
   };
   const dropped: string[] = [];
   const next: Record<string, unknown> = { ...args };

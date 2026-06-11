@@ -34,6 +34,8 @@ export async function approvePendingApproval(opts: {
   readonly env: Record<string, string | undefined>;
   readonly io: ProgramIO;
   readonly confirmAction?: (message: string) => Promise<boolean>;
+  /** Injectable TTY check (tests). Headless approve stays fail-close per outbound-safety. */
+  readonly isInteractive?: () => boolean;
   readonly fetchImpl?: typeof fetch;
   readonly now?: () => Date;
 }): Promise<ApproveResult> {
@@ -48,6 +50,7 @@ export async function approvePendingApproval(opts: {
     io: opts.io,
     userId: entry.userId ?? `${entry.providerId}:${entry.source}`,
     ...(opts.confirmAction ? { confirmAction: opts.confirmAction } : {}),
+    ...(opts.isInteractive ? { isInteractive: opts.isInteractive } : {}),
     ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {})
   });
   const tool = tools.find((t) => t.definition.name === entry.tool);

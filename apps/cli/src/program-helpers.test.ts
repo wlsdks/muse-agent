@@ -1,6 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { defaultConfigPath, firstNonEmpty, setConfigValue, unsetConfigValue } from "./program-helpers.js";
+import { defaultConfigPath, firstNonEmpty, readResponseGrounded, readResponseSuccess, setConfigValue, unsetConfigValue } from "./program-helpers.js";
+
+describe("readResponseSuccess / readResponseGrounded (trace outcome labels)", () => {
+  it("lifts a boolean success and a present grounded (object or explicit null)", () => {
+    expect(readResponseSuccess({ success: true })).toBe(true);
+    expect(readResponseSuccess({ success: false })).toBe(false);
+    expect(readResponseGrounded({ grounded: { verdict: "grounded" } })).toEqual({ verdict: "grounded" });
+    expect(readResponseGrounded({ grounded: null })).toBeNull(); // explicit null is a real label, kept distinct from absent
+  });
+
+  it("returns undefined when the field is absent or the wrong type (cli.local today)", () => {
+    expect(readResponseSuccess({ runId: "x" })).toBeUndefined();
+    expect(readResponseSuccess({ success: "yes" })).toBeUndefined();
+    expect(readResponseGrounded({ runId: "x" })).toBeUndefined();
+    expect(readResponseSuccess(undefined)).toBeUndefined();
+  });
+});
 
 describe("defaultConfigPath", () => {
   beforeEach(() => {

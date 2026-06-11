@@ -41,6 +41,7 @@ import {
 } from "./episode-index.js";
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 
 interface SharedOptions {
   readonly json?: boolean;
@@ -311,11 +312,11 @@ export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
   episode
     .command("reindex")
     .description("Embed every episode summary into ~/.muse/episodes-index.json")
-    .option("--embed-model <tag>", "Embedding model id (default 'nomic-embed-text')", "nomic-embed-text")
+    .option("--embed-model <tag>", "Embedding model id (default 'nomic-embed-text')", DEFAULT_EMBED_MODEL)
     .option("--force", "Re-embed every entry even when an existing index could be reused")
     .option("--json", "Emit a structured summary")
     .action(async (options: { readonly embedModel?: string; readonly force?: boolean; readonly json?: boolean }) => {
-      const model = options.embedModel ?? "nomic-embed-text";
+      const model = options.embedModel ?? DEFAULT_EMBED_MODEL;
       const indexFile = defaultEpisodeIndexFile();
       const previous = await loadEpisodeIndex(indexFile);
       const episodes = await readEpisodes(localEpisodesFile());

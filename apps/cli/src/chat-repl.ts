@@ -30,7 +30,8 @@ import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdow
 import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
 import { detectDateDiffQuery, formatDateDiff } from "./date-diff-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
-import { conversationMatches, factKeysToInject, gateChatAnswer, groundedNoteSources, isChatAbstention, retrieveChatGrounding, stripFabricatedCitations, stripTruncatedCitation, withGroundingReceipt } from "./chat-grounding.js";
+import { buildQueryRewritePrompt, factKeysToInject, finalizeGatedChatAnswer, isChatAbstention, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding } from "./chat-grounding.js";
+import { createQwenReverify } from "./grounding-eval-runner.js";
 import { isRecord } from "./credential-store.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import { loadActivePersonaPreamble } from "./persona-store.js";
@@ -520,9 +521,33 @@ export async function runLocalChat(
     : userMemory;
   const userMemoryBlock = personaMemory ? (buildMusePersona(personaMemory, userId) ?? "").trim() : "";
   const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
+  // Multi-turn recall: resolve an anaphoric turn into a self-contained
+  // retrieval query (one constrained inference, fail-open to the raw turn).
+  // ONLY the retrieval query is rewritten — the model still answers the
+  // user's actual message, so a bad rewrite can at worst rank notes poorly,
+  // never alter the answer's evidence gate or wording.
+  let retrievalQuery = message;
+  const rewriteProvider = assembly.modelProvider;
+  if (!isCasual && needsContextualRewrite(message, (options.priorHistory ?? []).length) && rewriteProvider && "generate" in rewriteProvider) {
+    try {
+      const rewritten = await rewriteProvider.generate({
+        maxOutputTokens: 80,
+        messages: [
+          { content: QUERY_REWRITE_SYSTEM_PROMPT, role: "system" },
+          { content: buildQueryRewritePrompt(options.priorHistory ?? [], message), role: "user" }
+        ],
+        model: model ?? assembly.defaultModel ?? "default",
+        responseFormat: QUERY_REWRITE_RESPONSE_FORMAT,
+        temperature: 0
+      });
+      retrievalQuery = parseQueryRewrite(rewritten.output ?? "", message);
+    } catch {
+      retrievalQuery = message;
+    }
+  }
   const { block: groundingBlock, matches } = isCasual
     ? { block: "", matches: [] as Awaited<ReturnType<typeof retrieveChatGrounding>>["matches"] }
-    : await retrieveChatGrounding(message);
+    : await retrieveChatGrounding(retrievalQuery);
   // Reply in the user's language: without this the local model drifts to English
   // for "assistant-y" replies — a Korean "회의 취소해줘" got an English "sir,
   // please provide…" ~2/3 of the time, jarring for a KO-primary companion. CRUCIAL
@@ -589,31 +614,26 @@ export async function runLocalChat(
   // the topic→stored-key check (knownFactKeys), and deliberately NOT folded into
   // the lexical evidence — doing so let a stored value satisfy ANY question and
   // whitewashed a cross-entity conflation ("the cat is 보리", the dog's name).
-  const evidence = [...matches, ...conversationMatches(options.priorHistory ?? [])];
   const knownFactKeys = userMemory ? Object.keys(userMemory.facts ?? {}) : [];
-  // A tool that actually RAN (tasks.list, calendar.list, reminders.list, …) IS
-  // the grounding for a "what are my X?" recall — its data answered the question.
-  // The notes/episodes anti-fabrication gate must not override a real tool result
-  // with a false "I don't remember that" (observed: "내 할일 뭐 있어?" ran
-  // tasks.list and found the task, yet the gate abstained on the possessive
-  // "내 … 뭐"). The gate still guards a tool-less, ungrounded personal-fact recall.
-  const toolGrounded = (result.toolsUsed ?? []).length > 0;
-  const gated = toolGrounded
-    ? result.response.output
-    : gateChatAnswer(message, result.response.output, evidence, knownFactKeys);
-
-  // The local model sometimes stops mid-citation, leaving a broken "[from …"
-  // fragment; drop it so the clean 📎 receipt can stand in for the source.
-  const repaired = stripTruncatedCitation(gated);
-
-  // Drop a FABRICATED "[from X]" (e.g. "[from weather]" with no weather tool
-  // call) — a fake source marker betrays the cited-recall edge. Only citations
-  // naming a real retrieved source survive.
-  const deFabbed = stripFabricatedCitations(repaired, matches.map((m) => m.source));
-
-  // "Answers from your notes, source quoted": render the source receipt the model
-  // often omits inline, so a grounded answer shows WHERE it came from.
-  const withReceipt = withGroundingReceipt(deFabbed, groundedNoteSources(matches, deFabbed), /[가-힣]/u.test(message));
+  // Ask-parity escalation: when a model provider is available the borderline
+  // bands get the same one-shot reverify judge ask uses (fires only on those
+  // bands — the common grounded turn costs zero extra inference). Without a
+  // provider the sync deterministic gate stands alone, as before. The whole
+  // post-stream pipeline (gate → strips → receipt) is the SHARED
+  // finalizeGatedChatAnswer so this surface and the Ink chat cannot drift.
+  const chatProvider = assembly.modelProvider;
+  const reverifyJudge = chatProvider && "generate" in chatProvider
+    ? createQwenReverify(chatProvider, model ?? assembly.defaultModel ?? "default")
+    : undefined;
+  const withReceipt = await finalizeGatedChatAnswer({
+    answer: result.response.output,
+    history: options.priorHistory ?? [],
+    knownFactKeys,
+    matches,
+    question: message,
+    ...(reverifyJudge ? { reverify: reverifyJudge } : {}),
+    toolsUsed: result.toolsUsed ?? []
+  });
 
   // Never hand the desktop a BLANK answer. qwen3:8b occasionally returns an empty
   // completion for a specific phrasing (observed deterministically on "오늘 할 일

@@ -16,7 +16,8 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { resolveLocalCalendarFile, resolveRemindersFile } from "@muse/autoconfigure";
 import { eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent } from "@muse/calendar";
-import { computeAvailability, detectCalendarConflicts, readReminders, resolveRelativeTimePhrase, writeReminders, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict, type ConflictEventLike, type PersistedReminder } from "@muse/mcp";
+import { computeAvailability, detectCalendarConflicts, readReminders, resolveRelativeTimePhrase, writeReminders, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict, type ConflictEventLike, type PersistedReminder, removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/mcp";
+export { removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { analyzeFocusWindows, buildDayWindows, findFirstFreeBlock, formatFocus } from "./calendar-focus.js";
@@ -139,49 +140,6 @@ export function recurrenceRuleFor(cadence: string): string | undefined {
   if (c === "monthly") return "FREQ=MONTHLY";
   if (c === "yearly") return "FREQ=YEARLY";
   return undefined;
-}
-
-/** Drop the reminders linked (by exact event id) to a deleted event, so a cancelled
- *  meeting can't keep firing. Matches ONLY on `eventId` (never title), so unrelated
- *  reminders and reminders for other events are untouched. Pure. */
-export function removeRemindersForEvent(
-  reminders: readonly PersistedReminder[],
-  eventId: string
-): { readonly kept: readonly PersistedReminder[]; readonly removed: number } {
-  const kept = reminders.filter((reminder) => reminder.eventId !== eventId);
-  return { kept, removed: reminders.length - kept.length };
-}
-
-/**
- * Shift the reminders linked (by exact event id) to a RESCHEDULED event by the
- * same start-time delta, so a "remind me 30 min before" reminder stays 30 min
- * before the NEW start (its offset is reproduced exactly: newDueAt = oldDueAt +
- * (newStart − oldStart)). Other events' and unlinked reminders are untouched; a
- * start that didn't move, or a reminder with an unparseable dueAt, is left as-is. Pure.
- */
-export function rescheduleRemindersForEvent(
-  reminders: readonly PersistedReminder[],
-  eventId: string,
-  oldStart: Date,
-  newStart: Date
-): { readonly next: readonly PersistedReminder[]; readonly shifted: number } {
-  const deltaMs = newStart.getTime() - oldStart.getTime();
-  if (deltaMs === 0 || !Number.isFinite(deltaMs)) {
-    return { next: reminders, shifted: 0 };
-  }
-  let shifted = 0;
-  const next = reminders.map((reminder) => {
-    if (reminder.eventId !== eventId) {
-      return reminder;
-    }
-    const due = Date.parse(reminder.dueAt);
-    if (Number.isNaN(due)) {
-      return reminder;
-    }
-    shifted += 1;
-    return { ...reminder, dueAt: new Date(due + deltaMs).toISOString() };
-  });
-  return { next, shifted };
 }
 
 /** Events across a wide (±10y) window — enough to resolve any realistic personal event by id. */

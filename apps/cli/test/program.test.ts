@@ -5942,7 +5942,7 @@ describe("cli program", () => {
     const fsp = await import("node:fs/promises");
     const notesIndexPath = path.join(root, "notes-index.json");
     await fsp.writeFile(notesIndexPath, JSON.stringify({
-      version: 1, model: "nomic-embed-text", builtAtIso: "2026-05-13T00:00:00Z",
+      version: 1, model: "nomic-embed-text-v2-moe", builtAtIso: "2026-05-13T00:00:00Z",
       files: [{
         path: "q3.md", mtimeMs: 1,
         chunks: [{ chunkIndex: 0, text: "Q3 body", embedding: [1, 0, 0, 0] }]

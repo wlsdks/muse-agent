@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildGroundingReverifyPrompt, parseGroundingReverifyVerdict, REVERIFY_SYSTEM_PROMPT, synthesizeReflections, type GroundingReverify, type Reflection, type ReflectionInput } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, REVERIFY_SYSTEM_PROMPT, synthesizeReflections, type GroundingReverify, type Reflection, type ReflectionInput } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
 import { createMuseRuntimeAssembly, resolveEpisodesFile } from "@muse/autoconfigure";
 import {
@@ -50,7 +50,8 @@ export async function runReflectionPass(inputs: readonly ReflectionInput[], opti
   // confabulated "dream" that cites real-but-unrelated sources is dropped.
   const reverify: GroundingReverify = async ({ answer, evidence, query }) => {
     const judged = await options.modelProvider.generate({
-      maxOutputTokens: 8,
+      maxOutputTokens: 24,
+      responseFormat: REVERIFY_RESPONSE_FORMAT,
       messages: [
         { content: REVERIFY_SYSTEM_PROMPT, role: "system" },
         { content: buildGroundingReverifyPrompt({ answer, evidence, query }), role: "user" }
@@ -58,7 +59,7 @@ export async function runReflectionPass(inputs: readonly ReflectionInput[], opti
       model: options.model,
       temperature: 0
     });
-    return parseGroundingReverifyVerdict(judged.output ?? "");
+    return parseGroundingReverifyJson(judged.output ?? "");
   };
   const fresh = await synthesizeReflections(usable, { model: options.model, modelProvider: options.modelProvider, reverify });
   return addReflections(

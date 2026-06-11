@@ -24,6 +24,7 @@
  *   MUSE_EVAL_REPEAT=5 pnpm eval:tools    # run each case 5x; pass only if all pass
  */
 
+import { renderToolExemplarSection, selectToolExemplars } from "../packages/agent-core/dist/index.js";
 import { OllamaProvider } from "../packages/model/dist/index.js";
 import { combineScorers, runEvalSuite, toolScorers } from "./eval-harness.mjs";
 
@@ -294,6 +295,33 @@ function caseScorer(testCase) {
   return combineScorers(...checks);
 }
 
+// Few-shot exemplar A/B arm (agent-performance lever #2): the SAME confusable
+// time set, with 2-3 lexically similar PAST request→tool exemplars injected as
+// a system section. The bank deliberately contains NO test prompt (paraphrases
+// only — measuring imitation of a pattern, not leakage) and includes no-tool
+// exemplars so restraint is taught alongside selection.
+const TIME_EXEMPLAR_BANK = [
+  { prompt: "지금 몇 시야?", tool: "time_now" },
+  { prompt: "What's today's date?", tool: "time_now" },
+  { prompt: "회의가 오후 2시부터 5시까지면 몇 시간 동안 하는 거야?", tool: "time_diff" },
+  { prompt: "From 2026-01-01 to 2026-03-01, how many days is that?", tool: "time_diff" },
+  { prompt: "What date is 10 days after 2026-07-01?", tool: "time_add" },
+  { prompt: "2026-08-01에서 2주 뒤는 며칠이야?", tool: "time_add" },
+  { prompt: "그 일이 2026-04-02에 있었는데 지금까지 얼마나 지났지?", tool: "time_relative" },
+  { prompt: "How long has it been since 2026-02-14?", tool: "time_relative" },
+  { prompt: "When is the next Monday?", tool: "next_weekday_date" },
+  { prompt: "다음 일요일 날짜 알려줘.", tool: "next_weekday_date" },
+  { prompt: "Give me the cron line for 2027-01-01 00:00.", tool: "cron_for_datetime" },
+  { prompt: "시간 정말 빨리 가네, 벌써 연말이야.", tool: null },
+  { prompt: "Mondays always feel so long.", tool: null }
+];
+
+async function buildTimeToolsExemplarScenario() {
+  const base = await buildTimeToolsScenario();
+  if (base.skip) return { ...base, label: "real-time-tools+exemplars" };
+  return { ...base, exemplarBank: TIME_EXEMPLAR_BANK, label: "real-time-tools+exemplars (A/B arm)" };
+}
+
 async function main() {
   if (!(await ollamaReachable())) {
     console.log(`eval:tools skipped — Ollama (${OLLAMA_BASE}) or model ${MODEL} unreachable. Start \`ollama serve\` with ${MODEL}.`);
@@ -304,14 +332,24 @@ async function main() {
     { label: "synthetic", tools: SYNTHETIC_TOOLS, cases: SYNTHETIC_CASES },
     await buildRealScenario(),
     await buildTimeToolsScenario(),
+    await buildTimeToolsExemplarScenario(),
     await buildActuatorScenario(),
     await buildPersonalCrudScenario(),
     await buildRecallVsCrudScenario()
   ];
 
   // Solver: elicit the model's one-shot tool selection for a case's prompt.
-  const solve = async (testCase, scenario) =>
-    (await provider.generate({ model: MODEL, messages: [{ role: "user", content: testCase.prompt }], tools: scenario.tools, temperature: 0, maxOutputTokens: 160 })).toolCalls ?? [];
+  // A scenario carrying an exemplarBank gets a per-case few-shot system section
+  // (the 2-3 most similar past request→tool exemplars).
+  const solve = async (testCase, scenario) => {
+    const messages = [];
+    if (scenario.exemplarBank) {
+      const section = renderToolExemplarSection(selectToolExemplars(testCase.prompt, scenario.exemplarBank, 3));
+      if (section) messages.push({ role: "system", content: section });
+    }
+    messages.push({ role: "user", content: testCase.prompt });
+    return (await provider.generate({ model: MODEL, messages, tools: scenario.tools, temperature: 0, maxOutputTokens: 160 })).toolCalls ?? [];
+  };
   // Scorer: deterministic per-case (selection + args), via the shared harness.
   const score = (toolCalls, testCase) => caseScorer(testCase)(toolCalls);
 

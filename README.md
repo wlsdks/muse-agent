@@ -15,8 +15,8 @@ not a setting, it's enforced in the code.
 Read these five and you know exactly what kind of agent this is.
 
 1. **Local by construction — _so you can tell it everything._**
-   Runs entirely on a local open-source model (qwen3:8b via Ollama, or any
-   weights you run locally); cloud egress is **refused in code**
+   Runs entirely on a local open-source model (gemma4:12b via Ollama by
+   default — multimodal + grounding-strong — or any weights you run locally); cloud egress is **refused in code**
    (`MUSE_LOCAL_ONLY` on by default). Not your agent on someone else's cloud —
    actually yours.
 
@@ -128,8 +128,8 @@ notes, tasks, messaging, the web — always draft-first, never an autonomous
 send.
 
 And it runs **entirely on your own machine**. By default Muse uses a local
-open-source model (qwen3:8b via Ollama, or any HuggingFace weights you run
-locally) and **refuses cloud egress in code** — `MUSE_LOCAL_ONLY` is on by
+open-source model (gemma4:12b via Ollama by default, or any HuggingFace
+weights you run locally) and **refuses cloud egress in code** — `MUSE_LOCAL_ONLY` is on by
 default, so the runtime won't even start against a cloud provider unless you
 explicitly opt out (and forfeit the guarantee). Not your agent on someone
 else's cloud. Actually yours. The same runtime drives the CLI, the API, and
@@ -255,7 +255,7 @@ The full command surface (`muse --help`):
 muse chat --local --user me
 
 # Stdin piping for ad-hoc summarisation:
-cat note.md | muse chat --local --no-tools --model ollama/qwen2.5:7b-instruct "한 단락으로 요약"
+cat note.md | muse chat --local --no-tools "한 단락으로 요약"   # gemma4:12b by default
 
 # Real-time proactive daemon (Ctrl-C to stop). Notices are
 # personalised — they address you by name in your preferred language:
@@ -362,12 +362,12 @@ Tests are the only form of verification. The repo ships these gates:
 ```bash
 pnpm check                                      # build + test for every workspace (~4,460 tests)
 pnpm smoke:broad                                # 51 HTTP endpoints, diagnostic provider
-pnpm smoke:live                                 # real LLM round-trip — LOCAL OLLAMA QWEN ONLY (auto-skips if Ollama is unreachable)
+pnpm smoke:live                                 # real LLM round-trip — LOCAL OLLAMA ONLY, gemma4:12b default (auto-skips if Ollama is unreachable)
 ```
 
-`smoke:live` (`scripts/smoke-live-llm.mjs`) is **local Ollama Qwen only
-by deliberate policy** — it probes `${OLLAMA_BASE_URL:-http://localhost:11434}`,
-picks a Qwen model (or `MUSE_SMOKE_LIVE_MODEL`), and asserts the
+`smoke:live` (`scripts/smoke-live-llm.mjs`) is **local Ollama only by
+deliberate policy** — it probes `${OLLAMA_BASE_URL:-http://localhost:11434}`,
+prefers the installed gemma4 (or `MUSE_SMOKE_LIVE_MODEL`), and asserts the
 model→tool→model loop end-to-end across direct chat, streaming SSE,
 plan-execute, input guards, multi-agent orchestration,
 `muse.notes.search`, `muse.tasks.add`, and `muse.calendar.add`. Cloud
@@ -391,7 +391,7 @@ Free / offline path — Ollama with an open-source model:
 
 ```bash
 brew install ollama && ollama serve &
-ollama pull qwen2.5:7b-instruct        # 4.7 GB, proven 201 ms first-token — recommended daily-driver
+ollama pull gemma4:12b                 # the shipped default — multimodal + grounding-strong
 muse setup local                       # wires defaultModel into ~/.config/muse/config.json
 ```
 

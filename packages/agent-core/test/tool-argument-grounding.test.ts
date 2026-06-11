@@ -20,6 +20,18 @@ describe("groundToolArguments — drop a fabricated free-text arg the utterance 
     expect(out.dropped).toEqual([]);
   });
 
+  it("does NOT ground a value token that is only a MID-word substring of an unrelated word", () => {
+    // The old raw-substring matcher let a fabricated "art" survive on "start" (and "cat" on "catch").
+    const out = groundToolArguments({ location: "art studio" }, ["location"], "let's start the meeting");
+    expect(out.args).toEqual({});
+    expect(out.dropped).toEqual(["location"]);
+  });
+
+  it("still grounds across morphology — a token that PREFIXES a longer utterance word (meeting → meetings)", () => {
+    const out = groundToolArguments({ notes: "meeting agenda" }, ["notes"], "set up the meetings tomorrow");
+    expect(out.dropped).toEqual([]); // "meeting" begins the word "meetings" — a word-start match, kept
+  });
+
   it("drops fabricated notes but keeps grounded ones", () => {
     const out = groundToolArguments(
       { notes: "bring your passport", location: "공항" },

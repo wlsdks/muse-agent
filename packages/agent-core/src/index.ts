@@ -119,7 +119,7 @@ export { detectSkillCandidates, draftSkillFromSignal, parseConstrainedSkillDraft
 export { mergeSkillsIntoUmbrella, type MergeSkillsOptions } from "./skill-merge.js";
 export { validateMergeCoverage, validateUmbrellaCoverage, type CoverageItem, type MergeCoverageVerdict, type UmbrellaCoverageVerdict, type ValidateUmbrellaOptions } from "./skill-merge-gate.js";
 export { comparableScript, dominantScriptFamily, type ScriptFamily } from "./script-family.js";
-export { clusterByTextSimilarity, mergePlaybookStrategies, type MergePlaybookOptions } from "./playbook-merge.js";
+export { clusterByTextSimilarity, deltaMergePlaybookStrategies, mergePlaybookStrategies, type MergePlaybookOptions } from "./playbook-merge.js";
 export type { SkillReviewSignal, SkillDraft, DetectSkillCandidatesOptions, DraftSkillOptions, ReviewSkillsOptions, ReviewSkillsResult } from "./skill-review.js";
 
 export {
@@ -156,19 +156,26 @@ export {
   normalizeFromPrefixedCitations,
   normalizeMemoryCitations,
   normalizeSlotCitations,
+  annotateNoteChunks,
+  nearestHeading,
   rankKnowledgeChunks,
+  rankKnowledgeChunksWithHop,
   renderKnowledgeMatches,
   reorderForLongContext,
   buildGroundingReverifyPrompt,
+  parseGroundingReverifyJson,
   parseGroundingReverifyVerdict,
+  REVERIFY_RESPONSE_FORMAT,
   REVERIFY_SYSTEM_PROMPT,
   segmentClaims,
+  selectBestGroundedDraft,
   selectByMarginalValue,
   selectByMmr,
   verifyGrounding,
   verifyGroundingPerClaim,
   verifyGroundingWithReverify,
   type AllowedCitations,
+  type BestGroundedDraft,
   type CitationEnforcement,
   type GroundingExplanationOptions,
   type GroundingReverify,
@@ -297,6 +304,8 @@ export {
   measureSystemPromptBudget,
   measureSystemPromptText,
   promptBudgetSpanAttributes,
+  enforceSystemPromptBudget,
+  type PromptBudgetEnforcement,
   type PromptBudgetReport,
   type PromptBudgetSection
 } from "./prompt-budget.js";
@@ -353,7 +362,7 @@ export {
   type PlanValidationResult,
   type StepExecutionResult
 } from "./plan-execute.js";
-export { renderPlanExemplar, selectPlanExemplar } from "./plan-cache.js";
+export { renderPlanExemplar, selectPlanExemplar, selectPlanExemplarByRelevance } from "./plan-cache.js";
 export type { CachedPlan, PlanCacheProvider, SelectPlanExemplarOptions } from "./plan-cache.js";
 
 export { HookRegistry } from "./hook-registry.js";
@@ -398,3 +407,7 @@ export {
 
 export { sanitiseCitations, type SanitiseCitationsResult } from "./citation-sanitiser.js";
 export { applyCitationSanitisation, buildModelRequestWithWebSearch } from "./model-invocation.js";
+export { renderToolExemplarSection, selectToolExemplars, type ToolExemplar } from "./tool-exemplars.js";
+export { summarizeTokenConfidence, type TokenConfidenceSummary } from "./token-confidence.js";
+export { baseLevelActivation, computeActivationBoost } from "./actr-activation.js";
+export { adjustConfidenceFloor, sdtCriterion, summarizeNoticeResponses, type NoticeResponseStats } from "./sdt-criterion.js";

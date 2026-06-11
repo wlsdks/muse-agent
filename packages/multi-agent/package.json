@@ -14,7 +14,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "eval:orchestration": "pnpm --filter @muse/model build && pnpm --filter @muse/multi-agent build && node scripts/verify-orchestration.mjs"
   },
   "dependencies": {
     "@muse/agent-core": "workspace:*",

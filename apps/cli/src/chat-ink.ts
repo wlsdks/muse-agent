@@ -64,7 +64,8 @@ import {
 } from "./chat-ink-core.js";
 import { renderMuseBanner } from "./muse-banner.js";
 import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.js";
-import { groundChatTurn } from "./chat-grounding.js";
+import { finalizeGatedChatAnswer, retrieveChatGrounding, type ChatGrounding } from "./chat-grounding.js";
+import { createQwenReverify } from "./grounding-eval-runner.js";
 import { searchRecall } from "./commands-recall.js";
 import { readTrust } from "./commands-trust.js";
 import { appendInputHistory, loadInputHistory } from "./chat-input-history.js";
@@ -78,6 +79,7 @@ import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import { resolvePersona } from "./program-helpers.js";
 import { idleLearnedNoticeForUser } from "./commands-learned.js";
 import { resolveDefaultUserKey } from "./user-id.js";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 
 const h = React.createElement;
 
@@ -176,7 +178,19 @@ export function MuseChatApp(props: {
   readonly skills: readonly SkillInfo[];
   readonly skillsDir: string;
   readonly skillsPromptFor: (prompt: string) => string;
-  readonly groundingFor?: (prompt: string) => Promise<string>;
+  readonly groundingFor?: (prompt: string) => Promise<ChatGrounding>;
+  /**
+   * The shared post-stream pipeline (gate -> citation strips -> receipt). The
+   * audit found this surface rendered the raw stream ungated while every other
+   * chat path was gated — wired as a prop so ink stays runtime-agnostic.
+   */
+  readonly finalizeAnswer?: (args: {
+    readonly question: string;
+    readonly answer: string;
+    readonly matches: ChatGrounding["matches"];
+    readonly history: readonly { readonly role: string; readonly content: string }[];
+    readonly toolsUsed: readonly string[];
+  }) => Promise<string>;
   readonly historyWindow?: number;
   readonly personaPrompt: () => string | undefined;
   readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
@@ -518,11 +532,14 @@ export function MuseChatApp(props: {
 
     const base = props.personaPrompt() ?? formatCurrentContextLine();
     const agentPrefix = activeAgent ? `${activeAgent.prompt}\n\n` : "";
-    const groundingBlock = props.groundingFor ? await props.groundingFor(message).catch(() => "") : "";
-    const system = agentPrefix + base + groundingBlock + props.skillsPromptFor(message);
+    const grounding: ChatGrounding = props.groundingFor
+      ? await props.groundingFor(message).catch(() => ({ block: "", matches: [] }))
+      : { block: "", matches: [] };
+    const system = agentPrefix + base + grounding.block + props.skillsPromptFor(message);
     const messages = buildTurnMessages(system, historyRef.current, message + attachmentBlock, props.historyWindow, imageAttachments);
     let accumulated = "";
     let turnTokens = 0;
+    const toolsRan: string[] = [];
     const iter = toolsOn
       ? props.streamWithTools(messages, currentModel, requestApproval)
       : props.stream(messages, currentModel);
@@ -533,8 +550,9 @@ export function MuseChatApp(props: {
           const err = event.error;
           throw err instanceof Error ? err : new Error(typeof err === "string" ? err : "model stream failed");
         }
-        if (event.type === "tool-call-started" && typeof event.name === "string" && accumulated.length === 0) {
-          setStreaming(`🔧 using ${event.name}…`);
+        if (event.type === "tool-call-started" && typeof event.name === "string") {
+          toolsRan.push(event.name);
+          if (accumulated.length === 0) setStreaming(`🔧 using ${event.name}…`);
         }
         if (event.type === "text-delta" && typeof event.text === "string") {
           accumulated += event.text;
@@ -549,6 +567,22 @@ export function MuseChatApp(props: {
       accumulated = `⚠ ${friendlyError(error instanceof Error ? error.message : String(error))}`;
     }
     if (turnTokens > 0) setSessionTokens((t) => t + turnTokens);
+    // The same deterministic gate every other chat surface runs — post-hoc on
+    // the streamed bubble (ask warns post-hoc too); fail-open keeps the raw
+    // answer only if the finalizer itself crashes, never on a gate verdict.
+    if (props.finalizeAnswer && !interruptRef.current && !accumulated.startsWith("⚠")) {
+      const finalized = await props.finalizeAnswer({
+        answer: accumulated,
+        history: historyRef.current,
+        matches: grounding.matches,
+        question: message,
+        toolsUsed: toolsRan
+      }).catch(() => accumulated);
+      if (finalized !== accumulated) {
+        accumulated = finalized;
+        setStreaming(accumulated);
+      }
+    }
     historyRef.current.push({ content: message, role: "user" });
     historyRef.current.push({ content: accumulated, role: "assistant" });
     setTurns((prev) => [...prev, { role: "assistant", text: accumulated }]);
@@ -1059,7 +1093,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const recallSearch = async (query: string): Promise<string> => {
     const q = query.trim();
     if (q.length === 0) return "What should I recall? — /recall <query>";
-    const embedModel = process.env.MUSE_RECALL_EMBED_MODEL?.trim() || "nomic-embed-text";
+    const embedModel = process.env.MUSE_RECALL_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
     try {
       const warnings: string[] = [];
       const hits = await searchRecall({ query: q, source: "all", limit: 5, embedModel, env: process.env, onWarn: (m) => warnings.push(m.trim()) });
@@ -1308,7 +1342,18 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     skills: skillInfos,
     skillsDir,
     skillsPromptFor,
-    groundingFor: (prompt: string) => groundChatTurn(prompt),
+    finalizeAnswer: async (args) => {
+      const snap = await memorySnapshot().catch(() => undefined);
+      const judge = assembly.modelProvider && "generate" in assembly.modelProvider
+        ? createQwenReverify(assembly.modelProvider, assembly.defaultModel ?? "default")
+        : undefined;
+      return finalizeGatedChatAnswer({
+        ...args,
+        knownFactKeys: Object.keys(snap?.facts ?? {}),
+        ...(judge ? { reverify: judge } : {})
+      });
+    },
+    groundingFor: (prompt: string) => retrieveChatGrounding(prompt),
     historyWindow: resolveChatHistoryWindow(process.env),
     stream,
     streamWithTools,

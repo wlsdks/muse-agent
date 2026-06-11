@@ -32,6 +32,15 @@ for (const root of SOURCE_ROOTS) {
 }
 
 // 2. Parse capability lines; collect cited test files + script paths.
+// A MISSING ledger is a clean baseline, not drift: docs/goals/CAPABILITIES.md
+// was intentionally removed (the task-list docs are deliberately deleted per
+// EXPANSION-PLAYBOOK). Before this guard, readFileSync ENOENT-crashed the
+// process, which self-eval recorded as a permanent `capabilities: fail` — a red
+// fitness signal the operator learns to ignore. No ledger ⇒ nothing to drift.
+if (!existsSync(CAP)) {
+  console.log("✓ CAPABILITIES.md absent — no capability ledger to drift-check (clean baseline).");
+  process.exit(0);
+}
 const lines = readFileSync(CAP, "utf8").split("\n");
 const TEST_RE = /\b([\w.-]+\.test\.tsx?)\b/g;
 const SCRIPT_RE = /\b(scripts\/[\w.-]+\.mjs)\b/g;

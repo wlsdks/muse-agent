@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { decideProactiveRecall, type KnowledgeMatch } from "@muse/agent-core";
 
 import { cosineSimilarity, embed } from "./embed.js";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 
 interface IndexChunk {
   readonly file: string;
@@ -76,7 +77,7 @@ export function createIndexedProactiveInvestigator(
     if (chunks.length === 0) return undefined;
     let queryVec: readonly number[];
     try {
-      queryVec = await embedText(query, options.embedModel ?? index.model ?? "nomic-embed-text");
+      queryVec = await embedText(query, options.embedModel ?? index.model ?? DEFAULT_EMBED_MODEL);
     } catch {
       return undefined;
     }

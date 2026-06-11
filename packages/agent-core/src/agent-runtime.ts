@@ -103,7 +103,7 @@ import {
   executePlanExecuteLoop as executePlanExecuteLoopFn,
   streamPlanExecute as streamPlanExecuteFn
 } from "./plan-execute-loop.js";
-import { measureSystemPromptBudget, promptBudgetSpanAttributes } from "./prompt-budget.js";
+import { enforceSystemPromptBudget, measureSystemPromptBudget, promptBudgetSpanAttributes } from "./prompt-budget.js";
 import {
   failMissingProvider,
   latestUserPrompt,
@@ -183,6 +183,7 @@ export class AgentRuntime {
   private readonly toolExecutor?: ToolExecutor;
   private readonly toolExposurePolicy?: ToolExposurePolicy;
   private readonly maxToolCalls: number;
+  private readonly systemPromptTokenBudget?: number;
   private readonly maxRunWallclockMs: number;
   private readonly maxToolOutputChars: number;
   private readonly contextReferenceStore?: ContextReferenceStore;
@@ -243,6 +244,9 @@ export class AgentRuntime {
     // option would make `count >= NaN` / `elapsed >= NaN` always
     // false and SILENTLY DISABLE the bound, so guard finiteness.
     this.maxToolCalls = clampRunLimit(options.maxToolCalls, 10);
+    this.systemPromptTokenBudget = Number.isFinite(options.systemPromptTokenBudget) && (options.systemPromptTokenBudget ?? 0) > 0
+      ? Math.trunc(options.systemPromptTokenBudget as number)
+      : undefined;
     this.maxRunWallclockMs = clampRunLimit(options.maxRunWallclockMs, 300_000);
     this.maxToolOutputChars = Math.max(0, options.maxToolOutputChars ?? 0);
     if (options.contextReferenceStore) {
@@ -492,7 +496,17 @@ export class AgentRuntime {
       this.userMemoryProvider,
       this.userMemoryMaxEntries
     );
-    const preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
+    let preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
+    // Budget ENFORCEMENT (opt-in): the meter alone never stopped an
+    // over-budget turn — when a cap is configured, whole sections are evicted
+    // lowest-priority-first so the 12B's window is spent on what matters.
+    if (this.systemPromptTokenBudget !== undefined) {
+      const enforced = enforceSystemPromptBudget(preparedRequest.request.messages, { maxTokens: this.systemPromptTokenBudget });
+      if (enforced.dropped.length > 0) {
+        preparedRequest = { ...preparedRequest, request: { ...preparedRequest.request, messages: enforced.messages } };
+        runSpan.setAttribute("ctx.budget.dropped_sections", enforced.dropped.map((section) => section.id).join(","));
+      }
+    }
     recordContextWindowSpanAttributes(runSpan, preparedRequest.contextWindow);
     recordContextEngineeringSpanAttributes(runSpan, summaryAppliedContext.input.metadata);
     const promptBudget = measureSystemPromptBudget(preparedRequest.request.messages);
@@ -735,6 +749,18 @@ export class AgentRuntime {
     toolsUsed: readonly string[]
   ): Promise<void> {
     if (!this.responseCache) {
+      return;
+    }
+    // A run that ACTED must never be replayed: a cache hit skips the model
+    // loop, the executor, AND the approval gate, so an identical follow-up
+    // request would get a "done" confirmation with no action performed
+    // (terminal state ≠ claim). Cache only runs whose every tool is a known
+    // read — an unknown tool (registry drift) counts as acting, fail-close.
+    const acted = toolsUsed.some((name) => {
+      const definition = this.toolRegistry?.get(name)?.definition;
+      return !definition || definition.risk !== "read";
+    });
+    if (acted) {
       return;
     }
 

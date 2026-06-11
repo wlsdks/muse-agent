@@ -9,6 +9,38 @@ move from `Unreleased` to dated/versioned headings.
 
 ### Added
 
+- **Grounding gate — architectural-delta benchmark (`pnpm eval:grounding-delta`).**
+  The honest "best" claim for a fixed ~12B local model is not an absolute
+  faithfulness score (a bigger model beats that) — it is the DELTA a deterministic
+  gate buys on the SAME model. This runs the corpus through the real recall stack
+  twice — gate ON vs gate OFF (a no-op verdict injected into `runGroundingEval`,
+  in the eval harness only, never a production bypass) — and writes
+  `docs/benchmarks/RESULTS.md` with the Δ table. First measured number on
+  `gemma4:12b`: gate OFF lets 17/17 fabrications through (faithfulness 0.00); gate
+  ON catches 16/17 (**0.94**) at **0.00** false-refusal — a **+0.94** lift that is
+  purely the gate's architectural contribution, not the model's. (Same-model judge
+  ⇒ an internal-validity delta; a public-dataset arm — SQuAD-2.0-style
+  answerable/unanswerable — is the next slice to make it externally citable.)
+
+- **`fabrication=0` is now enforced by code, not discipline.** CLAUDE.md calls
+  fabrication=0 a release gate and "grounded-surface count never drops", but the
+  only git hook was the immutable-core commit-msg guard — a grounding regression
+  could land on a green `pnpm check`. Two layers close that:
+  - **Deterministic grounded-surface ratchet** (`self-eval`): `countGroundedSurfaces`
+    counts the live batteries registered in the `eval:self-improving` release gate
+    and exposes them as a numeric scoreboard gate, so `detectRegressions` fails the
+    moment a surface is dropped from the gate (no Ollama; runs at the top of every
+    loop fire). Proven: dropping one surface yields `groundedSurfaces: 27→26` +
+    exit 1.
+  - **Live pre-push tripwire** (`pnpm precheck:grounding`): re-spawns the
+    fabrication-critical batteries (faithfulness-rate, recall-citation-gate,
+    rubric-reverify) `MUSE_EVAL_REPEAT` times each and requires every run to pass
+    (pass^k). Installed as a `pre-push` hook by `scripts/install-git-hooks.sh`.
+    Fail-open ONLY on a broken environment (Ollama unreachable, or a battery
+    exceeds its per-battery timeout → that battery skips); a battery that RUNS and
+    FAILS blocks the push. Emergency escape: `MUSE_SKIP_PREPUSH=1`. Proven live:
+    3/3 batteries green at pass^2 on `gemma4:12b`.
+
 - **Default local model → `gemma4:12b`** (was `qwen3:8b`). Chosen for native
   multimodal vision plus stronger grounding; verified across every agent-eval
   gate (tools, faithfulness, adversarial safety, judge meta-eval, plan-quality,

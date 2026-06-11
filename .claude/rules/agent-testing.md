@@ -171,3 +171,13 @@ termination*). So assert at the seam:
 - Outcome-state benchmarks — AppWorld [2407.18901](https://arxiv.org/abs/2407.18901) · SWE-bench [2310.06770](https://arxiv.org/abs/2310.06770) · GAIA [2311.12983](https://arxiv.org/abs/2311.12983)
 - Inspect AI (UK AISI; dataset/solver/scorer) — [inspect.aisi.org.uk](https://inspect.aisi.org.uk/) · promptfoo agent red-team — [promptfoo.dev](https://www.promptfoo.dev/docs/red-team/agents/)
 - Local-model tool-calling eval (qwen3:8b ≈ 0.93 F1) — [Docker](https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/)
+
+## Reflection-schedule guard (policy, pinned by `scripts/reflection-guard.test.mjs`)
+
+Self-reflection helps ONLY with an external verifier: a bare "think again"
+pass repeats the original failure **85.36%** of the time on open-ended tasks
+(arXiv 2510.18254). Every retry/reflection surface (repair rewrite, best-of
+resample, reverify escalation, merge self-consistency, false-done re-run)
+MUST be backed by a deterministic or judge-backed verifier; the guard test's
+registry enumerates them, and a NEW retry surface ships with a registry
+entry + its verifier, never as an unverified loop.

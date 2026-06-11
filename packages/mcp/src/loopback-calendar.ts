@@ -12,6 +12,7 @@ import { formatDueLocal } from "./local-due-format.js";
 import { readBoolean, readString, readStringArray, errorMessage } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
 import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, resolveRelativeTimePhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
+import { syncRemindersOnEventDelete, syncRemindersOnEventReschedule } from "./event-reminder-link.js";
 
 /** Recurrence cadences the calendar `add` tool accepts (mapped to an RRULE FREQ). */
 const CALENDAR_CADENCES = new Set(["daily", "weekly", "monthly", "yearly"]);
@@ -30,10 +31,12 @@ const CALENDAR_CADENCES = new Set(["daily", "weekly", "monthly", "yearly"]);
 
 export interface CalendarMcpServerOptions {
   readonly registry: CalendarProviderRegistry;
+  /** When set, event delete/update keeps the eventId-linked reminders in sync. */
+  readonly remindersFile?: string;
 }
 
 export function createCalendarMcpServer(options: CalendarMcpServerOptions): LoopbackMcpServer {
-  const { registry } = options;
+  const { registry, remindersFile } = options;
 
   // List a generous window and resolve the agent's event ref (id OR title word)
   // so update/delete don't force a list→find-id→act chain. Returns the matched
@@ -369,7 +372,12 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           };
           try {
             const updated = await registry.updateEvent(resolved.event.providerId, resolved.event.id, update);
-            return { event: serializeEvent(updated) as JsonValue };
+            // Keep the eventId-linked reminders in step with the move — the
+            // lifecycle-link contract holds on EVERY surface, not just the CLI.
+            const remindersShifted = remindersFile && update.startsAt
+              ? await syncRemindersOnEventReschedule(remindersFile, resolved.event.id, resolved.event.startsAt, update.startsAt)
+              : 0;
+            return { event: serializeEvent(updated) as JsonValue, ...(remindersShifted > 0 ? { remindersShifted } : {}) };
           } catch (error) {
             return { error: errorMessage(error) };
           }
@@ -413,7 +421,10 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           }
           try {
             await registry.deleteEvent(resolved.event.providerId, resolved.event.id);
-            return { deleted: true, id: resolved.event.id, providerId: resolved.event.providerId, title: resolved.event.title };
+            const remindersRemoved = remindersFile
+              ? await syncRemindersOnEventDelete(remindersFile, resolved.event.id)
+              : 0;
+            return { deleted: true, id: resolved.event.id, providerId: resolved.event.providerId, ...(remindersRemoved > 0 ? { remindersRemoved } : {}), title: resolved.event.title };
           } catch (error) {
             return { error: errorMessage(error) };
           }

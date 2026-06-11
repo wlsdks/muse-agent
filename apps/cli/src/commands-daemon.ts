@@ -36,7 +36,7 @@ import {
   type DecayContradictedDeps,
   type DistillQueuedDeps
 } from "@muse/autoconfigure";
-import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, synthesizePatternSuggestion, validateMergeCoverage } from "@muse/agent-core";
+import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, synthesizePatternSuggestion, validateMergeCoverage, adjustConfidenceFloor, sdtCriterion, summarizeNoticeResponses } from "@muse/agent-core";
 import type { PatternMatch } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import {
@@ -80,7 +80,8 @@ import {
   type BriefingCalendarLister,
   type ChromeSnapshotConnection,
   type ProactiveNoticeSink,
-  type WebWatchRunner
+  type WebWatchRunner,
+  readProactiveHistory
 } from "@muse/mcp";
 import type { MuseTool } from "@muse/tools";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -97,6 +98,7 @@ import { createIndexedProactiveInvestigator } from "./proactive-notes-recall.js"
 import { consolidatePlaybook } from "./playbook-consolidate.js";
 import type { ProgramIO } from "./program.js";
 import { randomUUID } from "node:crypto";
+import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 
 type FollowupModel = {
   readonly modelProvider: Parameters<typeof runDueFollowups>[0]["modelProvider"];
@@ -406,7 +408,7 @@ async function defaultKnowledgeEnrich(env: NodeJS.ProcessEnv): Promise<((query: 
     const { LocalDirNotesProvider } = await import("@muse/mcp");
     const notesDir = resolveNotesDir(env as unknown as Parameters<typeof resolveNotesDir>[0]);
     return createKnowledgeEnricher({
-      embed: createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() ?? "nomic-embed-text"),
+      embed: createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL),
       notesProvider: new LocalDirNotesProvider({ notesDir })
     });
   } catch {
@@ -771,9 +773,22 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           io.stdout(`[${new Date().toISOString()}] pattern: held (quiet hours)\n`);
           return;
         }
+        // SDT criterion (Green & Swets): the pattern category's firing floor
+        // adapts to the user's OWN response history — dismiss-heavy raises it,
+        // acted-on lowers it. Fail-soft to the default floor on any error.
+        let minConfidence: number | undefined;
+        try {
+          const history = await readProactiveHistory(resolveProactiveHistoryFile(e));
+          const stats = summarizeNoticeResponses(history.map((entry) => ({ kind: entry.kind, text: entry.text })));
+          const patternStats = stats.get("pattern");
+          if (patternStats && patternStats.acted + patternStats.dismissed >= 3) {
+            minConfidence = adjustConfidenceFloor(0.7, sdtCriterion(patternStats));
+          }
+        } catch { /* default floor */ }
         const summary = await runDuePatternNotices({
           destination,
           patternsFiredFile: resolvePatternsFiredFile(e),
+          ...(minConfidence !== undefined ? { select: { minConfidence } } : {}),
           providerId: provider,
           registry: messagingRegistry,
           ...(followupModel

@@ -415,6 +415,59 @@ export function localOnlyCheck(env: Record<string, string | undefined>): LocalCh
   return { detail: posture.detail, name: "local-only", status: posture.status };
 }
 
+export interface OllamaPerfEnv {
+  readonly flashAttention?: string | undefined;
+  readonly kvCacheType?: string | undefined;
+}
+
+/**
+ * Inference-performance posture of the OLLAMA SERVER (not this process):
+ * flash attention + a quantized KV cache roughly halve KV memory, which on a
+ * 12B with Muse's long grounded prompts means faster long-context turns and
+ * more usable num_ctx on the same RAM. Advisory — warn, never fail.
+ */
+export function ollamaPerfPostureCheck(values: OllamaPerfEnv): LocalCheck {
+  const flashOn = values.flashAttention === "1" || values.flashAttention?.toLowerCase() === "true";
+  const kv = values.kvCacheType?.toLowerCase();
+  const kvQuantized = kv === "q8_0" || kv === "q4_0";
+  if (flashOn && kvQuantized) {
+    return { detail: `flash attention on, KV cache ${kv ?? ""} — long-context turns run lighter`, name: "ollama-perf", status: "ok" };
+  }
+  const missing = [
+    ...(flashOn ? [] : ["OLLAMA_FLASH_ATTENTION=1"]),
+    ...(kvQuantized ? [] : ["OLLAMA_KV_CACHE_TYPE=q8_0"])
+  ];
+  return {
+    detail: `set ${missing.join(" + ")} on the Ollama server (macOS app: \`launchctl setenv NAME VALUE\` then restart Ollama) — ~halves KV memory for faster long-context turns`,
+    name: "ollama-perf",
+    status: "warn"
+  };
+}
+
+/**
+ * Resolve the Ollama SERVER's perf env: this process's env first (covers
+ * `ollama serve` from the same shell), then macOS launchd (covers Ollama.app,
+ * which inherits `launchctl setenv`). Fail-soft — unreadable means unset.
+ */
+export async function readOllamaPerfEnv(env: Record<string, string | undefined>): Promise<OllamaPerfEnv> {
+  const fromLaunchctl = async (name: string): Promise<string | undefined> => {
+    if (process.platform !== "darwin") return undefined;
+    try {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const { stdout } = await promisify(execFile)("launchctl", ["getenv", name]);
+      const value = stdout.trim();
+      return value.length > 0 ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  return {
+    flashAttention: env.OLLAMA_FLASH_ATTENTION ?? await fromLaunchctl("OLLAMA_FLASH_ATTENTION"),
+    kvCacheType: env.OLLAMA_KV_CACHE_TYPE ?? await fromLaunchctl("OLLAMA_KV_CACHE_TYPE")
+  };
+}
+
 /**
  * Report whether background self-learning (B1) is actually running — the
  * verifiable-autonomy check (Slice 7). Pure of IO so it's directly testable;
@@ -464,6 +517,7 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   const muse_model = resolveDefaultModel(env);
 
   checks.push(localOnlyCheck(env));
+  checks.push(ollamaPerfPostureCheck(await readOllamaPerfEnv(env)));
 
   // At-rest encryption — the discretion ("can't tell anyone") half of the
   // identity, alongside the cloud-egress ("can't reach a cloud") posture above.
@@ -871,14 +925,14 @@ export function parseNotesIndexEmbedModel(rawJson: string | undefined): string |
   try {
     parsed = JSON.parse(rawJson);
   } catch {
-    return "nomic-embed-text";
+    return DEFAULT_EMBED_MODEL;
   }
-  if (!parsed || typeof parsed !== "object") return "nomic-embed-text";
+  if (!parsed || typeof parsed !== "object") return DEFAULT_EMBED_MODEL;
   const candidate = (parsed as { model?: unknown }).model;
   if (typeof candidate === "string" && candidate.trim().length > 0) {
     return candidate.trim();
   }
-  return "nomic-embed-text";
+  return DEFAULT_EMBED_MODEL;
 }
 
 async function readNotesIndexEmbedModel(path: string): Promise<string | undefined> {

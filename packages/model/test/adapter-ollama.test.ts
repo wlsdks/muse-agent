@@ -382,3 +382,44 @@ describe("OllamaProvider.stream — NDJSON event stream", () => {
     expect(err.retryable).toBe(true);
   });
 });
+
+describe("logprobs plumbing (token-level confidence)", () => {
+  it("generate: sends the logprobs flags and maps returned token logprobs", async () => {
+    const provider = new OllamaProvider({
+      defaultModel: "gemma4:12b",
+      fetch: jsonFetch({
+        logprobs: [{ logprob: -0.1, token: "<|channel>" }, { logprob: -0.2, token: "OK" }],
+        message: { content: "OK" },
+        model: "gemma4:12b"
+      }) as never
+    });
+    const res = await provider.generate(userReq({ logprobs: true, topLogprobs: 3 }));
+    expect(lastBody().logprobs).toBe(true);
+    expect(lastBody().top_logprobs).toBe(3);
+    expect(res.logprobs).toEqual([{ logprob: -0.1, token: "<|channel>" }, { logprob: -0.2, token: "OK" }]);
+  });
+
+  it("generate: without the flag nothing is sent and nothing is mapped", async () => {
+    const provider = new OllamaProvider({
+      defaultModel: "gemma4:12b",
+      fetch: jsonFetch({ message: { content: "OK" }, model: "gemma4:12b" }) as never
+    });
+    const res = await provider.generate(userReq());
+    expect(lastBody().logprobs).toBeUndefined();
+    expect(res.logprobs).toBeUndefined();
+  });
+
+  it("stream: accumulates per-chunk logprobs into the done response", async () => {
+    const chunks = [
+      `${JSON.stringify({ logprobs: [{ logprob: -0.3, token: "Hel" }], message: { content: "Hel" }, model: "gemma4:12b" })}\n`,
+      `${JSON.stringify({ done: true, logprobs: [{ logprob: -0.4, token: "lo" }], message: { content: "lo" }, model: "gemma4:12b" })}\n`
+    ];
+    const provider = new OllamaProvider({ defaultModel: "gemma4:12b", fetch: streamFetch(chunks) as never });
+    const events = await collect(provider.stream(userReq({ logprobs: true })));
+    const done = events.find((event) => event.type === "done");
+    expect(done && done.type === "done" ? done.response.logprobs : undefined).toEqual([
+      { logprob: -0.3, token: "Hel" },
+      { logprob: -0.4, token: "lo" }
+    ]);
+  });
+});

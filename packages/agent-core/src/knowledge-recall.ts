@@ -20,6 +20,12 @@ import { cosineSimilarity } from "./episodic-recall.js";
 export interface KnowledgeChunk {
   readonly source: string;
   readonly text: string;
+  /**
+   * Optional contextualized text for EMBEDDING ONLY (Anthropic contextual
+   * retrieval): "[source · heading] chunk" so a bare list/pronoun chunk keeps
+   * its referent in embedding space. Evidence/gate always use the raw `text`.
+   */
+  readonly embedText?: string;
 }
 
 export interface KnowledgeMatch {
@@ -29,6 +35,13 @@ export interface KnowledgeMatch {
   readonly score: number;
   /** Absolute cosine similarity to the query — the signal for retrieval-confidence grading (CRAG). */
   readonly cosine?: number;
+  /**
+   * Provenance trust. `false` = an UNTRUSTED source (e.g. an allowlisted-but-hostile
+   * MCP tool-output, per architecture.md). Absent/`true` = the user's own data. The
+   * grounding gate verifies faithfulness, not source veracity (grounded≠true); this
+   * bit lets a caller flag a grounded answer that rests only on data not the user's.
+   */
+  readonly trusted?: boolean;
 }
 
 export interface RankKnowledgeOptions {
@@ -291,7 +304,7 @@ export async function rankKnowledgeChunks(
     for (const chunk of chunks) {
       const k = key(chunk);
       byKey.set(k, chunk);
-      const embedding = await options.embed(chunk.text);
+      const embedding = await options.embed(chunk.embedText ?? chunk.text);
       embByKey.set(k, embedding);
       cosByKey.set(k, cosineSimilarity(queryVec, embedding));
       lexByKey.set(k, lexicalOverlap(queryTokens, chunk.text));
@@ -316,8 +329,14 @@ export async function rankKnowledgeChunks(
     };
     if (options.diversify === true && eligible.length > topK) {
       const lambda = Math.min(1, Math.max(0, finiteOr(options.mmrLambda, 0.5)));
+      // MMR relevance must share the diversity penalty's scale: the penalty is
+      // a raw cosine in [0,1], while an RRF score tops out near 2/(k+1)≈0.03 —
+      // feeding RRF here let the similarity term dominate ~30×, so after the
+      // first pick MMR maximized DISSIMILARITY and a near-noise chunk displaced
+      // the second-most-relevant one (audit finding). Rank by fused order, but
+      // diversify on cosine relevance like the non-hybrid path.
       const order = selectByMmr(
-        eligible.map((k) => ({ embedding: embByKey.get(k) ?? [], key: k, relevance: fused.get(k) ?? 0 })),
+        eligible.map((k) => ({ embedding: embByKey.get(k) ?? [], key: k, relevance: cosByKey.get(k) ?? 0 })),
         lambda,
         topK
       );
@@ -328,7 +347,7 @@ export async function rankKnowledgeChunks(
 
   const scored: Array<{ readonly match: KnowledgeMatch; readonly embedding: readonly number[] }> = [];
   for (const chunk of chunks) {
-    const embedding = await options.embed(chunk.text);
+    const embedding = await options.embed(chunk.embedText ?? chunk.text);
     const score = cosineSimilarity(queryVec, embedding);
     if (score < minScore) {
       continue;
@@ -516,6 +535,38 @@ export function citedSourcesIn(text: string): string[] {
     if (src) out.push(src);
   }
   return out;
+}
+
+/**
+ * grounded≠true MITIGATION (source-trust segregation). A grounded answer can be
+ * perfectly faithful to its source yet the source itself be UNTRUSTED. Source
+ * VERACITY is unknowable on a fixed local model; source TRUST is a known
+ * provenance bit (`KnowledgeMatch.trusted`). Returns `true` when EVERY citation in
+ * the answer that resolves to a retrieved match resolves ONLY to untrusted ones —
+ * i.e. the user is being handed a grounded claim resting entirely on data that is
+ * not their own (e.g. MCP tool-output). A single trusted backing source makes it
+ * `false`. The caller surfaces a distinct marker so the user applies extra scrutiny.
+ * Unresolved citations are NOT this function's concern — verifyGrounding already
+ * rejects a fabricated citation as ungrounded.
+ */
+export function groundedOnUntrustedOnly(answer: string, matches: readonly KnowledgeMatch[]): boolean {
+  const cited = citedSourcesIn(answer);
+  if (cited.length === 0) {
+    return false;
+  }
+  const trustBySource = new Map(matches.map((m) => [m.source.trim().toLowerCase(), m.trusted !== false]));
+  let anyResolved = false;
+  for (const src of cited) {
+    const trusted = trustBySource.get(src.trim().toLowerCase());
+    if (trusted === undefined) {
+      continue;
+    }
+    anyResolved = true;
+    if (trusted) {
+      return false;
+    }
+  }
+  return anyResolved;
 }
 
 export interface CitationEnforcement {
@@ -871,6 +922,91 @@ export function verifyGrounding(
   return { invalidCitations, reason: "evidence only weakly supports the answer", rubric, verdict: "weak" };
 }
 
+export interface BestGroundedDraft {
+  readonly index: number;
+  readonly draft: string;
+  readonly verification: GroundingVerification;
+}
+
+/**
+ * Best-of-N selection over recall drafts: verify every draft with the same
+ * deterministic rubric and keep the best GROUNDED survivor — "weak" is never
+ * accepted, so re-sampling can only raise the answered rate, not admit a
+ * fabrication (small models can't self-verify; the owned verifier selects).
+ */
+export function selectBestGroundedDraft(
+  drafts: readonly string[],
+  matches: readonly KnowledgeMatch[],
+  query: string,
+  options?: VerifyGroundingOptions
+): BestGroundedDraft | undefined {
+  let best: BestGroundedDraft | undefined;
+  let bestScore = -1;
+  for (let index = 0; index < drafts.length; index += 1) {
+    const draft = drafts[index]!;
+    const verification = verifyGrounding(draft, matches, query, options);
+    if (verification.verdict !== "grounded") {
+      continue;
+    }
+    const { answerability, citationValidity, confidence, coverage } = verification.rubric;
+    const score = answerability + citationValidity + confidence + coverage;
+    if (score > bestScore) {
+      best = { draft, index, verification };
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+
+/**
+ * Deterministic second-hop retrieval (pseudo-relevance feedback, Rocchio
+ * lineage): a two-hop question ("the team of the person who recommended the
+ * book") names only hop 1 — the bridging note shares no tokens with the
+ * query, so single-shot recall measured 2/6 joint@4 on the multi-hop battery.
+ * Re-query with the TOP primary hits' own text (the bridge entity lives
+ * there), then RRF-merge primary + hop lists. Zero model calls — two extra
+ * embeds; `secondHop` is opt-in so the base path is byte-identical without it.
+ */
+export async function rankKnowledgeChunksWithHop(
+  query: string,
+  notes: ReadonlyArray<{ readonly source: string; readonly text: string }>,
+  options: RankKnowledgeOptions & { readonly secondHop?: boolean }
+): Promise<KnowledgeMatch[]> {
+  const primary = await rankKnowledgeChunks(query, notes, options);
+  if (options.secondHop !== true || primary.length === 0) {
+    return primary;
+  }
+  const keyOf = (match: KnowledgeMatch): string => `${match.source}|${match.text}`;
+  const byKey = new Map<string, KnowledgeMatch>();
+  const lists: string[][] = [primary.map((match) => { byKey.set(keyOf(match), match); return keyOf(match); })];
+  for (const seed of primary.slice(0, 2)) {
+    try {
+      const hop = await rankKnowledgeChunks(seed.text, notes, options);
+      lists.push(hop.map((match) => {
+        const key = keyOf(match);
+        const known = byKey.get(key);
+        if (!known || (match.cosine ?? 0) > (known.cosine ?? 0)) byKey.set(key, match);
+        return key;
+      }));
+    } catch {
+      // hop retrieval is best-effort — a failed hop keeps the primary list
+    }
+  }
+  // AUGMENT, never displace: the primary ranking is the measured single-hop
+  // optimum (hit@1 15/15), so it keeps its exact order; hop-only bridges are
+  // APPENDED (best-fused first, max 2) — multi-hop gains joint coverage while
+  // single-hop behavior stays byte-identical.
+  const fused = fuseByReciprocalRank(lists);
+  const primaryKeys = new Set(primary.map((match) => keyOf(match)));
+  const additions = [...byKey.keys()]
+    .filter((key) => !primaryKeys.has(key))
+    .sort((a, b) => (fused.get(b) ?? 0) - (fused.get(a) ?? 0))
+    .slice(0, 2)
+    .map((key) => byKey.get(key)!);
+  return [...primary, ...additions];
+}
+
 export interface GroundingExplanationOptions {
   /** The top match's ABSOLUTE cosine — the rubric stores the categorical confidence, not the raw value. */
   readonly topCosine?: number;
@@ -959,6 +1095,35 @@ export function buildGroundingReverifyPrompt(input: GroundingReverifyInput): str
  */
 export function parseGroundingReverifyVerdict(output: string): boolean {
   return /^\s*(yes|y|true|supported)\b/iu.test(output.trim());
+}
+
+/**
+ * Schema for Ollama's `format` constrained decoding on the reverify judge —
+ * the verdict can no longer be lost to parse drift (a hedge, an explanation,
+ * an empty completion). Safe here because the judge call carries NO tools
+ * (Ollama can't compose format+tools — #6002; tool calls stay unconstrained).
+ */
+export const REVERIFY_RESPONSE_FORMAT = {
+  properties: { supported: { type: "boolean" } },
+  required: ["supported"],
+  type: "object"
+};
+
+/**
+ * Parse the format-constrained verdict; a non-JSON reply (older runtime, env
+ * without format support) degrades to the legacy YES-word parse. Both layers
+ * fail-close — anything unclear is unsupported.
+ */
+export function parseGroundingReverifyJson(output: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(output.trim());
+    if (parsed && typeof parsed === "object" && "supported" in parsed) {
+      return (parsed as { supported: unknown }).supported === true;
+    }
+    return false;
+  } catch {
+    return parseGroundingReverifyVerdict(output);
+  }
 }
 
 // Month / day names: a correct date answer renders "September" for an evidence
@@ -1237,6 +1402,39 @@ export function reorderForLongContext<T extends { readonly score: number }>(item
  * slightly exceed `maxChars` — embedding models tolerate this; the
  * limit is a soft target.
  */
+
+/** The closest markdown heading PRECEDING the chunk's position in its note. */
+export function nearestHeading(noteText: string, chunkText: string): string | undefined {
+  const at = noteText.indexOf(chunkText.slice(0, 80).trim());
+  if (at < 0) return undefined;
+  const before = noteText.slice(0, at);
+  const headings = [...before.matchAll(/^#{1,6}[ \t]+(.+)$/gmu)];
+  const last = headings[headings.length - 1]?.[1]?.trim();
+  // The note TITLE (# h1) is carried by the source name already; prefer a
+  // section heading, fall back to the title only when it is not the sole match.
+  if (!last) return undefined;
+  return last;
+}
+
+/**
+ * Contextual chunk annotation (Anthropic contextual retrieval, deterministic
+ * slice): the EMBEDDED text gets "[<source> · <nearest heading>]" prepended so
+ * a context-free chunk (a bare list under "## 준비물") keeps its referent in
+ * embedding space; the stored/evidence text stays raw, so the grounding gate
+ * and citations are unchanged.
+ */
+export function annotateNoteChunks(
+  source: string,
+  noteText: string,
+  pieces: readonly string[]
+): KnowledgeChunk[] {
+  return pieces.map((piece) => {
+    const heading = nearestHeading(noteText, piece);
+    const context = heading ? `[${source} · ${heading}]` : `[${source}]`;
+    return { embedText: `${context} ${piece}`, source, text: piece };
+  });
+}
+
 export function chunkText(text: string, maxChars: number, overlapChars: number = 0): string[] {
   const trimmed = text.trim();
   const limit = Number.isFinite(maxChars) ? Math.max(1, Math.trunc(maxChars)) : 4_000;

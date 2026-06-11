@@ -329,6 +329,29 @@ Override paths with env: `MUSE_WHISPER_CPP_PATH`,
 The voice provider tests pass with mocked runners (no binaries) so
 the integration shape is verified even when the toolchain is missing.
 
+## Inference performance posture (KV cache + flash attention)
+
+Two Ollama **server-side** env vars roughly halve KV-cache memory, which
+on a 12B with Muse's long grounded prompts means faster long-context
+turns and more usable `num_ctx` on the same RAM:
+
+```bash
+# shell-started server:
+OLLAMA_FLASH_ATTENTION=1 OLLAMA_KV_CACHE_TYPE=q8_0 ollama serve
+
+# macOS Ollama.app (inherits launchd env; restart the app afterwards):
+launchctl setenv OLLAMA_FLASH_ATTENTION 1
+launchctl setenv OLLAMA_KV_CACHE_TYPE q8_0
+```
+
+`muse doctor` reports this posture as the `ollama-perf` check (advisory
+warn when unset — quality is unaffected either way; `q8_0` is the
+safe quantization, `q4_0` saves more at a small fidelity cost).
+
+Muse's prompts also keep their long instruction block byte-stable across
+turns (volatile time/context lines come last) so Ollama's KV prefix
+reuse skips re-prefilling the static part on consecutive turns.
+
 ## Troubleshooting
 
 **`Ollama daemon not reachable`** — `ollama serve &` not running. On
