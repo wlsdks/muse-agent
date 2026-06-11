@@ -208,9 +208,15 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ◦ **ask latency on the browser path** — ~90s/turn measured (10K-token prompt eval ≈ 40s × 2
   rounds on gemma4). Levers: prompt diet under --with-tools (skip notes blocks on clear
   browse intent?), KV prefix reuse across rounds, smaller tool list (above).
-- ◦ **injection-pattern cross-span tightening** — the guard regexes use /s `.*` across the whole
-  joined input, so distant unrelated words can combine to a hit even within user messages;
-  bound the match window (e.g. per-line / ≤80 chars) and add false-positive cases to the test.
+- ✓→Done **injection-pattern cross-span tightening** — the EN role_override family + 2 KO
+  role_override + 1 KO extraction regexes used unbounded `.*`/`/s`, so three unrelated words from
+  DIFFERENT sentences combined into a false hit (live repro: "disregard the noise … finally …
+  assembly instructions" → role_override, with `all` matching the substring inside "fin**all**y").
+  Bounded the inter-token spans to `.{0,50}` (EN) / `.{0,30}` (KO, denser script) and word-boundary-
+  anchored `all`. TDD: 3 cross-span false-positive cases (EN + KO) + a true-positive-preserved case;
+  all 127 policy tests green incl. the multilingual battery (true positives intact), agent-core
+  guards 1622, byte-hygiene 30, precheck:grounding pass^2. Real injections keep trigger→target→noun
+  within a clause, so detection is unchanged; only the cross-sentence false combinations are killed.
 
 - ◦ **same-origin iframe piercing** — snapshot stops at iframe boundaries (embedded
   forms/widgets invisible); walk same-origin frames like shadow roots. Cross-origin

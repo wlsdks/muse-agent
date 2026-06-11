@@ -85,23 +85,29 @@ export const sharedInjectionPatterns: readonly InjectionPattern[] = [
   // blocking the recall turn on first-party notes. The explicit noun set keeps
   // (and widens) genuine "ignore all previous rules/prompts/instructions"
   // coverage that bare `instructions?` alone would have narrowed.
-  { name: "role_override", regex: /(ignore|forget|disregard).*(previous|above|prior|all|earlier|preceding).*(instructions?|prompts?|rules?|directions?|guidelines?|commands?|messages?|context)/is },
+  // Spans are BOUNDED (the .{0,50} windows, not .*): a real injection keeps
+  // trigger to target to noun within one clause. An unbounded dot-star with
+  // the s flag let three unrelated words from different sentences combine
+  // into a false hit (disregard ... 200 chars ... finally ... assembly
+  // instructions). The window word "all" is word-boundary anchored so it
+  // does not match inside "finally" or "wall".
+  { name: "role_override", regex: /(ignore|forget|disregard).{0,50}(previous|above|prior|\ball\b|earlier|preceding).{0,50}(instructions?|prompts?|rules?|directions?|guidelines?|commands?|messages?|context)/is },
   { name: "role_override", regex: /you\s+are\s+now/i },
   { name: "role_override", regex: /\bact as (a |an )?(unrestricted|unfiltered|different|new|evil|hacker|jailbroken)/i },
-  { name: "role_override", regex: /disregard.*(your|the|my).*(programming|rules|guidelines|constraints)/is },
+  { name: "role_override", regex: /disregard.{0,40}(your|the|my).{0,40}(programming|rules|guidelines|constraints)/is },
   { name: "role_override", regex: /^\s*SYSTEM\s*:/im },
-  { name: "role_override", regex: /pretend.*(you|that).*(no|have no|without).*(restrictions?|limits?|filters?|rules?)/is },
-  { name: "role_override", regex: /override.*(your|the|my|all).*(instructions?|rules?|programming|guidelines)/is },
-  { name: "role_override", regex: /\b(unrestricted|unfiltered|uncensored|jailbr[eo]ak)\b.*(ai|model|assistant|mode)/is },
-  { name: "role_override", regex: /(switch|enter|enable|activate).*(jailbreak|developer|debug|admin|god)\s*mode/is },
+  { name: "role_override", regex: /pretend.{0,40}(you|that).{0,40}(no|have no|without).{0,40}(restrictions?|limits?|filters?|rules?)/is },
+  { name: "role_override", regex: /override.{0,40}(your|the|my|all).{0,40}(instructions?|rules?|programming|guidelines)/is },
+  { name: "role_override", regex: /\b(unrestricted|unfiltered|uncensored|jailbr[eo]ak)\b.{0,40}(ai|model|assistant|mode)/is },
+  { name: "role_override", regex: /(switch|enter|enable|activate).{0,40}(jailbreak|developer|debug|admin|god)\s*mode/is },
   { name: "role_override", regex: /(do anything now|act as DAN|you are DAN|DAN mode|be DAN|DAN jailbreak|pretend.*DAN)/is },
   { name: "system_delimiter", regex: /\[SYSTEM\]|<\|im_start\|>|<\|im_end\|>|<\|assistant\|>/ },
   { name: "prompt_override", regex: /from\s+now\s+on/i },
   { name: "punctuation_obfuscation", regex: /s[.\-_\s]y[.\-_\s]s[.\-_\s]t[.\-_\s]e[.\-_\s]m[.\-_\s]*p[.\-_\s]r[.\-_\s]o[.\-_\s]m[.\-_\s]p[.\-_\s]t/i },
   { name: "korean_role_override", regex: /(앞의|이전|위의|위에서).{0,10}(대화|지시|명령).{0,10}(무시|잊어|취소)/s },
-  { name: "korean_role_override", regex: /(이전|위의|위에서|모든|기존).*(지시|명령|규칙|프롬프트).*(무시|잊어|버려|취소)/s },
-  { name: "korean_role_override", regex: /(무시|잊어|버려|취소).*(이전|위의|위에서|모든|기존).*(지시|명령|규칙|프롬프트)/s },
-  { name: "korean_prompt_extraction", regex: /(보여|알려|공개|출력|말해).*(시스템|원래|초기|너의|네).*(프롬프트|지시|명령|설정|인스트럭션)/s },
+  { name: "korean_role_override", regex: /(이전|위의|위에서|모든|기존).{0,30}(지시|명령|규칙|프롬프트).{0,30}(무시|잊어|버려|취소)/s },
+  { name: "korean_role_override", regex: /(무시|잊어|버려|취소).{0,30}(이전|위의|위에서|모든|기존).{0,30}(지시|명령|규칙|프롬프트)/s },
+  { name: "korean_prompt_extraction", regex: /(보여|알려|공개|출력|말해).{0,30}(시스템|원래|초기|너의|네).{0,30}(프롬프트|지시|명령|설정|인스트럭션)/s },
   { name: "korean_prompt_extraction", regex: /시스템\s*프롬프트(를|을|\s+(보여|알려|공개|출력|말해))/ },
   { name: "skeleton_key", regex: /(연구|테스트|실험|검증|안전)\s*(모드|필터|제한|보호).{0,10}(전환|비활성|해제|끄|꺼|off|disable|override)/is },
   { name: "skeleton_key", regex: /(research|test|debug|maintenance|god)\s*(mode|filter).{0,10}(activat|enabl|on|override|switch)/is },
