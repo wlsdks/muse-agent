@@ -32,6 +32,7 @@ import {
   createMacMediaControlTool,
   createMacMessageSendTool,
   createMacSayTool,
+  createMacScreenReadTool,
   createMacScreenshotTool,
   createMacShortcutRunTool,
   createMacSpotlightSearchTool,
@@ -86,7 +87,7 @@ export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
   // box never arms an iMessage send, on when the user sets the flag.
   if (macActuatorsEnabled(env)) {
     armed.push(
-      "mac_shortcut_run", "mac_app_read", "mac_app_open", "mac_media_control", "mac_system_set",
+      "mac_shortcut_run", "mac_screen_read", "mac_app_read", "mac_app_open", "mac_media_control", "mac_system_set",
       "mac_screenshot", "mac_clipboard_set", "mac_spotlight_search", "mac_say", "mac_message_send"
     );
   }
@@ -127,6 +128,12 @@ export interface ActuatorToolsDeps {
   /** Injectable TTY check so tests exercise the non-interactive fail-close. */
   readonly isInteractive?: () => boolean;
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Local vision callback for mac_screen_read (bound by the CLI to the
+   * assembly's model AFTER assembly creation — hence resolved lazily at
+   * call time). Absent ⇒ the tool reports the vision model unavailable.
+   */
+  readonly describeScreenImage?: (input: { readonly imageBase64: string; readonly mimeType: string; readonly question?: string }) => Promise<{ readonly ok: boolean; readonly text?: string; readonly error?: string }>;
 }
 
 /**
@@ -340,6 +347,9 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
     });
     tools.push(
       createMacShortcutRunTool(),
+      createMacScreenReadTool({
+        describeImage: deps.describeScreenImage ?? (async () => ({ error: "the local vision model is not available in this run", ok: false }))
+      }),
       createMacAppReadTool(),
       createMacAppOpenTool(),
       createMacMediaControlTool(),

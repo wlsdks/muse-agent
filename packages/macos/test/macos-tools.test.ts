@@ -8,12 +8,14 @@ import {
   createMacMediaControlTool,
   createMacMessageSendTool,
   createMacSayTool,
+  createMacScreenReadTool,
   createMacScreenshotTool,
   createMacShortcutRunTool,
   createMacSpotlightSearchTool,
   createMacSystemSetTool,
   type MacActionLogEntry,
   type MacCommandResult,
+  type MacScreenReadToolDeps,
   type MacMessageSendToolDeps,
   type MacOsascriptRunner,
   type ShortcutsRunner
@@ -548,5 +550,66 @@ describe("mac_message_send — Tier 2 draft-first, fail-closed (outbound-safety)
     expect(script).toContain('buddy "jane@icloud.com"');
     expect(script).toContain('send "say \\"hi\\""'); // body quote escaped for AppleScript
     expect(logged[0]).toMatchObject({ result: "performed" });
+  });
+});
+
+describe("mac_screen_read — capture + local vision description", () => {
+  const deps = (over: Partial<MacScreenReadToolDeps> = {}): MacScreenReadToolDeps => ({
+    cleanup: async () => {},
+    describeImage: async () => ({ ok: true, text: "A terminal window running tests." }),
+    pathFactory: () => "/tmp/screen.png",
+    readImageBase64: async () => "aW1n",
+    runner: async () => ok(""),
+    ...over
+  });
+
+  it("is a well-formed READ tool (observation, not an act)", () => {
+    const tool = createMacScreenReadTool(deps());
+    expect(tool.definition.name).toBe("mac_screen_read");
+    expect(tool.definition.risk).toBe("read");
+    expect(tool.definition.keywords).toContain("화면");
+    expect(validateToolDefinitions([tool])).toEqual([]);
+  });
+
+  it("captures, describes via the injected vision callback, and cleans up the temp image", async () => {
+    const calls: string[] = [];
+    const tool = createMacScreenReadTool(deps({
+      cleanup: async (p) => { calls.push(`cleanup:${p}`); },
+      describeImage: async (input) => { calls.push(`describe:${input.mimeType}:${input.imageBase64}`); return { ok: true, text: "A terminal window running tests." }; },
+      runner: async (p) => { calls.push(`capture:${p}`); return ok(""); }
+    }));
+    expect(await tool.execute({}, ctx)).toEqual({ described: true, text: "A terminal window running tests." });
+    expect(calls).toEqual(["capture:/tmp/screen.png", "describe:image/png:aW1n", "cleanup:/tmp/screen.png"]);
+  });
+
+  it("passes the optional question through to the vision callback", async () => {
+    let question: string | undefined;
+    const tool = createMacScreenReadTool(deps({
+      describeImage: async (input) => { question = input.question; return { ok: true, text: "Disk full error." }; }
+    }));
+    await tool.execute({ question: "what does the error say?" }, ctx);
+    expect(question).toBe("what does the error say?");
+  });
+
+  it("a failed capture reports described:false and never calls the vision model", async () => {
+    let described = false;
+    const tool = createMacScreenReadTool(deps({
+      describeImage: async () => { described = true; return { ok: true, text: "x" }; },
+      runner: async () => fail("no screen recording permission")
+    }));
+    const out = await tool.execute({}, ctx);
+    expect(out).toMatchObject({ described: false });
+    expect(JSON.stringify(out)).toContain("permission");
+    expect(described).toBe(false);
+  });
+
+  it("a vision failure reports described:false with the reason (still cleans up)", async () => {
+    const calls: string[] = [];
+    const tool = createMacScreenReadTool(deps({
+      cleanup: async (p) => { calls.push(`cleanup:${p}`); },
+      describeImage: async () => ({ error: "model offline", ok: false })
+    }));
+    expect(await tool.execute({}, ctx)).toMatchObject({ described: false, reason: expect.stringContaining("model offline") });
+    expect(calls).toEqual(["cleanup:/tmp/screen.png"]);
   });
 });

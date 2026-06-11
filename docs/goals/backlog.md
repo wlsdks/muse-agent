@@ -217,6 +217,17 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 
 ## Done (recent — newest first)
 
+- ✓ 2026-06-11 **mac_screen_read — "지금 화면에 뭐 떠있어?" 원샷** (tool-audit batch #2): screencapture →
+  injected LOCAL vision callback (describeImage in agent-core: abstention-prompted free-text, fail-soft,
+  never invents) → text; @muse/macos stays model-free (CLI binds gemma4 lazily via a holder ref since
+  actuator tools build before the assembly). risk:read, behind MUSE_MACOS_ACTUATORS. mac_screenshot gained
+  the not-when line (file vs describe). Proof: agent-core 1622 + macos 66 unit; eval:tools mac scenario
+  28/28 STABLE 3/3 (2 new cases incl. the screenshot confusable); LIVE e2e described the real screen
+  (Chrome+Example Domain+popup) accurately. ALSO from the audit: clipboard READ already existed
+  (mac_app_read app='clipboard', eval-covered) — no duplicate tool built; live e2e returned pbcopy'd
+  text verbatim.
+
+
 - ✓ 2026-06-11 **browser: LIVE end-to-end — `muse ask`가 실제로 Chrome을 부린다** (4 commits):
   driving the REAL front door exposed a chain of four blockers, each fixed + verified live:
   ① injection input guard self-blocked every --with-tools ask (its own anti-injection guidance

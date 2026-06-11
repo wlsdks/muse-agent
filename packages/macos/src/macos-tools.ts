@@ -26,6 +26,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -953,9 +954,10 @@ export function createMacScreenshotTool(deps: MacScreenshotToolDeps = {}): MuseT
   return {
     definition: {
       description:
-        "Capture the whole screen to an image file (silent, non-interactive) and return its path. Use " +
-        "when the user asks to take / grab a screenshot or capture the screen — e.g. 'take a screenshot', " +
-        "'capture my screen', '스크린샷 찍어줘', '화면 캡처해줘'. Optionally pass `path` to choose where the " +
+        "Capture the whole screen to an image FILE (silent, non-interactive) and return its path. Use " +
+        "when the user asks to take / grab / save a screenshot — e.g. 'take a screenshot', " +
+        "'capture my screen', '스크린샷 찍어줘', '화면 캡처해줘'. NOT for telling the user what is on the " +
+        "screen — mac_screen_read does that. Optionally pass `path` to choose where the " +
         ".png is saved; omit it to use a temp file. Note: macOS requires the Screen Recording permission " +
         "(System Settings → Privacy & Security → Screen Recording) or the capture may be blank.",
       domain: "system",
@@ -989,6 +991,95 @@ export function createMacScreenshotTool(deps: MacScreenshotToolDeps = {}): MuseT
         return { captured: false, reason: result.stderr.trim().slice(0, 300) || `screencapture exited with code ${result.exitCode?.toString() ?? "null"}` };
       }
       return { captured: true, path };
+    }
+  };
+}
+
+// ── Tier 0: mac_screen_read (screencapture + local vision) ───────────
+
+export interface MacScreenReadDescribeInput {
+  readonly imageBase64: string;
+  readonly mimeType: string;
+  readonly question?: string;
+}
+
+export interface MacScreenReadDescribeResult {
+  readonly ok: boolean;
+  readonly text?: string;
+  readonly error?: string;
+}
+
+export interface MacScreenReadToolDeps {
+  /** Runs `screencapture -x <path>`. Injected in tests. */
+  readonly runner?: (path: string) => Promise<MacCommandResult>;
+  readonly pathFactory?: () => string;
+  readonly readImageBase64?: (path: string) => Promise<string>;
+  readonly cleanup?: (path: string) => Promise<void>;
+  /**
+   * The local vision model, injected by the CLI — this package stays
+   * model-free. The capture never leaves the machine.
+   */
+  readonly describeImage: (input: MacScreenReadDescribeInput) => Promise<MacScreenReadDescribeResult>;
+}
+
+export function createMacScreenReadTool(deps: MacScreenReadToolDeps): MuseTool {
+  const runner = deps.runner ?? ((path: string) => runChild(SCREENCAPTURE_PATH, ["-x", path], undefined, SCREENSHOT_TIMEOUT_MS));
+  const pathFactory = deps.pathFactory ?? (() => join(tmpdir(), `muse-screen-read-${Date.now().toString()}.png`));
+  const readImageBase64 = deps.readImageBase64 ?? (async (path: string) => (await readFile(path)).toString("base64"));
+  const cleanup = deps.cleanup ?? (async (path: string) => { await rm(path, { force: true }); });
+  return {
+    definition: {
+      description:
+        "Look at the user's screen and SAY what is on it — captures the screen and describes the visible " +
+        "windows, text, and content with the LOCAL vision model (the image never leaves this Mac). Use when " +
+        "the user asks what is on / visible on their screen, or to read an error or dialog they are looking " +
+        "at — e.g. '지금 화면에 뭐 떠있어?', \"what's this error on my screen?\", '화면에 보이는 거 읽어줘'. Pass " +
+        "`question` to focus the look (e.g. 'what does the error dialog say?'). NOT for saving a screenshot " +
+        "file — mac_screenshot does that. Needs the macOS Screen Recording permission.",
+      domain: "system",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          question: {
+            description: "Optional focus for the description, e.g. 'what does the error dialog say?'.",
+            type: "string"
+          }
+        },
+        required: [],
+        type: "object"
+      },
+      keywords: ["screen", "화면", "보여", "떠있", "look", "read screen", "what's on", "dialog", "error", "에러", "창"],
+      name: "mac_screen_read",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const path = pathFactory();
+      let captureResult: MacCommandResult;
+      try {
+        captureResult = await runner(path);
+      } catch (cause) {
+        return { described: false, reason: `screencapture spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+      }
+      if (captureResult.timedOut || captureResult.exitCode !== 0) {
+        return {
+          described: false,
+          reason: captureResult.stderr.trim().slice(0, 300) ||
+            (captureResult.timedOut ? "screencapture timed out" : "screencapture failed — check the Screen Recording permission")
+        };
+      }
+      try {
+        const imageBase64 = await readImageBase64(path);
+        const question = typeof args["question"] === "string" && args["question"].trim().length > 0 ? args["question"].trim() : undefined;
+        const described = await deps.describeImage({ imageBase64, mimeType: "image/png", ...(question ? { question } : {}) });
+        if (!described.ok || !described.text) {
+          return { described: false, reason: described.error ?? "the vision model could not describe the screen" };
+        }
+        return { described: true, text: described.text };
+      } catch (cause) {
+        return { described: false, reason: cause instanceof Error ? cause.message : String(cause) };
+      } finally {
+        await cleanup(path).catch(() => { /* best-effort */ });
+      }
     }
   };
 }

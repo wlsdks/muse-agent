@@ -84,3 +84,56 @@ export async function extractStructuredFromImage(
   }
   return { data: parsed as JsonObject, ok: true, raw };
 }
+
+export interface VisionDescribeInput {
+  readonly imageBase64: string;
+  readonly mimeType: string;
+  readonly model: string;
+  /** Optional focus, e.g. "what does the error dialog say?" */
+  readonly question?: string;
+}
+
+export interface VisionDescribeResult {
+  readonly ok: boolean;
+  readonly text?: string;
+  readonly error?: string;
+}
+
+const DESCRIBE_SYSTEM_PROMPT =
+  "You describe images for the user. State ONLY what is actually visible — concrete apps, windows, text, " +
+  "and content you can read. Quote on-screen text exactly where it matters. If something is unclear or " +
+  "cut off, say so — never guess, infer, or invent. Keep it to a few sentences.";
+
+/**
+ * Free-text description of an image (the screen-read primitive). Fail-soft
+ * like `extractStructuredFromImage`: a generate error or blank output returns
+ * `{ ok: false }` with a reason — never a throw, never an invented description.
+ */
+export async function describeImage(
+  provider: ModelProvider,
+  input: VisionDescribeInput
+): Promise<VisionDescribeResult> {
+  let text = "";
+  try {
+    const response = await provider.generate({
+      maxOutputTokens: 400,
+      messages: [
+        { content: DESCRIBE_SYSTEM_PROMPT, role: "system" },
+        {
+          attachments: [{ dataBase64: input.imageBase64, mimeType: input.mimeType }],
+          content: input.question?.trim() ? `Describe what is visible, focusing on: ${input.question.trim()}` : "Describe what is visible in this image.",
+          role: "user"
+        }
+      ],
+      model: input.model,
+      temperature: 0
+    });
+    text = (response.output ?? "").trim();
+  } catch (cause) {
+    return { error: `vision description failed: ${cause instanceof Error ? cause.message : String(cause)}`, ok: false };
+  }
+  if (text.length === 0) {
+    return { error: "the vision model returned no description", ok: false };
+  }
+  return { ok: true, text };
+}

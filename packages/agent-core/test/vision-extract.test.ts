@@ -1,7 +1,7 @@
 import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
 import { describe, expect, it } from "vitest";
 
-import { extractStructuredFromImage } from "../src/vision-extract.js";
+import { describeImage, extractStructuredFromImage } from "../src/vision-extract.js";
 
 function stubProvider(output: string, capture?: (req: ModelRequest) => void): ModelProvider {
   return {
@@ -62,5 +62,42 @@ describe("extractStructuredFromImage", () => {
     const out = await extractStructuredFromImage(throwing, input());
     expect(out.ok).toBe(false);
     expect(out.error).toMatch(/ollama down/u);
+  });
+});
+
+describe("describeImage — free-text screen/image description (fail-soft)", () => {
+  const base = { imageBase64: "aW1n", mimeType: "image/png", model: "m" };
+
+  it("returns the model's description text", async () => {
+    const provider = stubProvider("A code editor with a failing test panel.");
+    const result = await describeImage(provider, base);
+    expect(result).toEqual({ ok: true, text: "A code editor with a failing test panel." });
+  });
+
+  it("passes the focusing question through and attaches the image", async () => {
+    let seen: ModelRequest | undefined;
+    const provider = stubProvider("The dialog says disk full.", (req) => { seen = req; });
+    await describeImage(provider, { ...base, question: "what does the error dialog say?" });
+    const user = seen?.messages.find((m) => m.role === "user");
+    expect(user?.attachments).toEqual([{ dataBase64: "aW1n", mimeType: "image/png" }]);
+    expect(user?.content).toContain("what does the error dialog say?");
+  });
+
+  it("a generate error returns ok:false instead of throwing", async () => {
+    const provider = {
+      generate: async () => { throw new Error("model offline"); },
+      id: "boom",
+      listModels: async () => [],
+      stream: async function* () { throw new Error("unused"); }
+    } as unknown as ModelProvider;
+    const result = await describeImage(provider, base);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("model offline");
+  });
+
+  it("an empty model output is ok:false (never a fabricated description)", async () => {
+    const provider = stubProvider("   ");
+    const result = await describeImage(provider, base);
+    expect(result.ok).toBe(false);
   });
 });

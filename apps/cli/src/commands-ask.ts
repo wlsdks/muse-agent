@@ -28,7 +28,7 @@ import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative } from "node:path";
 
 import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectBestGroundedDraft, selectByMmr, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
-import { buildAttributedRepairPrompt, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
+import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
@@ -2428,11 +2428,21 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         io.stderr("(--actuators has no effect without --with-tools)\n");
       }
       let extraTools: MuseTool[] | undefined;
+      // mac_screen_read's vision callback resolves lazily through this holder:
+      // the actuator tools are built BEFORE the assembly/model exist, but the
+      // tool only ever runs long after both are set below.
+      const screenVision: { current?: (input: { readonly imageBase64: string; readonly mimeType: string; readonly question?: string }) => Promise<{ readonly ok: boolean; readonly text?: string; readonly error?: string }> } = {};
       if (useActuators) {
         const actuatorMod = await import("./actuator-tools.js");
         const actuatorEnv = process.env as MuseEnvironment;
         io.stderr(actuatorMod.formatActuatorBanner(actuatorMod.summarizeActuators(actuatorEnv)));
-        extraTools = actuatorMod.buildActuatorTools({ env: actuatorEnv, io, userId: userKey });
+        extraTools = actuatorMod.buildActuatorTools({
+          describeScreenImage: async (input) =>
+            screenVision.current ? screenVision.current(input) : { error: "the local vision model is not available in this run", ok: false },
+          env: actuatorEnv,
+          io,
+          userId: userKey
+        });
       }
       // Browser control (Hermes-style browser_*) is available BY DEFAULT under
       // --with-tools — not gated behind --actuators. Reads/navigation are free;
@@ -2478,6 +2488,16 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const model = tierRoute?.model ?? baseModel;
       if (tierRoute) {
         io.stderr(`(tier: ${tierRoute.tier} → ${model})\n`);
+      }
+      if (assembly.modelProvider) {
+        const visionProvider = assembly.modelProvider;
+        screenVision.current = (input) =>
+          describeImage(visionProvider, {
+            imageBase64: input.imageBase64,
+            mimeType: input.mimeType,
+            model,
+            ...(input.question ? { question: input.question } : {})
+          });
       }
 
       // Grounded vision actions: --extract / --to-calendar read the IMAGE (not
