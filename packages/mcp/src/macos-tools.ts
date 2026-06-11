@@ -26,6 +26,8 @@
  */
 
 import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
@@ -35,6 +37,9 @@ import type { MessageApprovalGate, MessageDraft } from "./message-send.js";
 
 const OSASCRIPT_PATH = "/usr/bin/osascript";
 const SHORTCUTS_PATH = "/usr/bin/shortcuts";
+const SCREENCAPTURE_PATH = "/usr/sbin/screencapture";
+const PBCOPY_PATH = "/usr/bin/pbcopy";
+const MDFIND_PATH = "/usr/bin/mdfind";
 const OSASCRIPT_TIMEOUT_MS = 30_000;
 /** A shortcut can do real work (network, HomeKit) — give it a longer leash. */
 const SHORTCUTS_TIMEOUT_MS = 120_000;
@@ -837,6 +842,177 @@ export function createMacMessageSendTool(deps: MacMessageSendToolDeps): MuseTool
       return outcome.sent
         ? { sent: true, to }
         : { detail: outcome.detail, reason: outcome.reason, sent: false };
+    }
+  };
+}
+
+// ── Tier 1: mac_screenshot (screencapture) ────────────────────────────
+
+const SCREENSHOT_TIMEOUT_MS = 15_000;
+
+export interface MacScreenshotToolDeps {
+  /** Runs `screencapture -x <path>`. Injected in tests. */
+  readonly runner?: (path: string) => Promise<MacCommandResult>;
+  /** Path factory for the default save location (tests inject a fixed one). */
+  readonly pathFactory?: () => string;
+}
+
+export function createMacScreenshotTool(deps: MacScreenshotToolDeps = {}): MuseTool {
+  const runner = deps.runner ?? ((path: string) => runChild(SCREENCAPTURE_PATH, ["-x", path], undefined, SCREENSHOT_TIMEOUT_MS));
+  const pathFactory = deps.pathFactory ?? (() => join(tmpdir(), `muse-screenshot-${Date.now().toString()}.png`));
+  return {
+    definition: {
+      description:
+        "Capture the whole screen to an image file (silent, non-interactive) and return its path. Use " +
+        "when the user asks to take / grab a screenshot or capture the screen — e.g. 'take a screenshot', " +
+        "'capture my screen', '스크린샷 찍어줘', '화면 캡처해줘'. Optionally pass `path` to choose where the " +
+        ".png is saved; omit it to use a temp file. Note: macOS requires the Screen Recording permission " +
+        "(System Settings → Privacy & Security → Screen Recording) or the capture may be blank.",
+      domain: "system",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          path: {
+            description: "Optional .png destination path, e.g. '~/Desktop/shot.png'. Omit for a temp file.",
+            type: "string"
+          }
+        },
+        required: [],
+        type: "object"
+      },
+      keywords: ["screenshot", "스크린샷", "capture", "캡처", "screen", "화면", "grab", "snapshot"],
+      name: "mac_screenshot",
+      risk: "execute"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const path = typeof args["path"] === "string" && args["path"].trim().length > 0 ? args["path"].trim() : pathFactory();
+      let result: MacCommandResult;
+      try {
+        result = await runner(path);
+      } catch (cause) {
+        return { captured: false, reason: `screencapture spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+      }
+      if (result.timedOut) {
+        return { captured: false, reason: `screencapture timed out after ${SCREENSHOT_TIMEOUT_MS.toString()}ms` };
+      }
+      if (result.exitCode !== 0) {
+        return { captured: false, reason: result.stderr.trim().slice(0, 300) || `screencapture exited with code ${result.exitCode?.toString() ?? "null"}` };
+      }
+      return { captured: true, path };
+    }
+  };
+}
+
+// ── Tier 1: mac_clipboard_set (pbcopy) ────────────────────────────────
+
+export interface MacClipboardSetToolDeps {
+  /** Runs `pbcopy` with the text on stdin. Injected in tests. */
+  readonly runner?: (text: string) => Promise<MacCommandResult>;
+}
+
+export function createMacClipboardSetTool(deps: MacClipboardSetToolDeps = {}): MuseTool {
+  const runner = deps.runner ?? ((text: string) => runChild(PBCOPY_PATH, [], text, 5_000));
+  return {
+    definition: {
+      description:
+        "Put text onto the Mac clipboard (so the user can paste it). Use when the user asks to copy " +
+        "something to their clipboard — e.g. 'copy this to my clipboard', 'put my address on the " +
+        "clipboard', '이거 클립보드에 복사해줘'. To READ what's currently on the clipboard, use mac_app_read " +
+        "(app='clipboard') instead.",
+      domain: "system",
+      groundedArgs: ["text"],
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          text: { description: "The text to place on the clipboard, e.g. '123 Main St'.", type: "string" }
+        },
+        required: ["text"],
+        type: "object"
+      },
+      keywords: ["clipboard", "클립보드", "copy", "복사", "paste"],
+      name: "mac_clipboard_set",
+      risk: "execute"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const text = typeof args["text"] === "string" ? args["text"] : "";
+      if (text.length === 0) {
+        return { reason: "mac_clipboard_set requires non-empty 'text'", set: false };
+      }
+      let result: MacCommandResult;
+      try {
+        result = await runner(text);
+      } catch (cause) {
+        return { reason: `pbcopy spawn failed: ${cause instanceof Error ? cause.message : String(cause)}`, set: false };
+      }
+      if (result.timedOut || result.exitCode !== 0) {
+        return { reason: `pbcopy failed: ${result.stderr.trim().slice(0, 200) || "timed out"}`, set: false };
+      }
+      return { chars: text.length, set: true };
+    }
+  };
+}
+
+// ── Tier 0: mac_spotlight_search (mdfind) ─────────────────────────────
+
+const SPOTLIGHT_TIMEOUT_MS = 15_000;
+const SPOTLIGHT_MAX_RESULTS = 25;
+
+export interface MacSpotlightSearchToolDeps {
+  readonly runner?: (args: readonly string[]) => Promise<MacCommandResult>;
+}
+
+export function createMacSpotlightSearchTool(deps: MacSpotlightSearchToolDeps = {}): MuseTool {
+  const runner = deps.runner ?? ((args: readonly string[]) => runChild(MDFIND_PATH, args, undefined, SPOTLIGHT_TIMEOUT_MS));
+  return {
+    definition: {
+      description:
+        "Find FILES on the Mac by name (or content) using Spotlight, returning their PATHS on disk. Use " +
+        "when the user wants to LOCATE a file, document, or app on their computer — e.g. 'find the file " +
+        "called budget.xlsx', 'where is my résumé PDF', '내 컴퓨터에서 발표자료 파일 찾아줘'. Set " +
+        "`nameOnly` true to match the filename only (the default also matches content). This searches the " +
+        "FILESYSTEM and returns paths — it is NOT knowledge_search (which recalls what you NOTED or " +
+        "discussed) and NOT web_search (the public web).",
+      domain: "system",
+      groundedArgs: ["query"],
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          nameOnly: { description: "true to match the file NAME only (default matches content too).", type: "boolean" },
+          query: { description: "Filename or text to find on disk, e.g. 'budget.xlsx' or 'tax return'.", type: "string" }
+        },
+        required: ["query"],
+        type: "object"
+      },
+      keywords: ["file", "파일", "파일명", "spotlight", "disk", "folder", "폴더", "document", "pdf", "locate", "컴퓨터"],
+      name: "mac_spotlight_search",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const query = typeof args["query"] === "string" ? args["query"].trim() : "";
+      if (query.length === 0) {
+        return { error: "mac_spotlight_search requires a non-empty 'query'" };
+      }
+      const nameOnly = args["nameOnly"] === true;
+      const argv = nameOnly ? ["-name", query] : [query];
+      let result: MacCommandResult;
+      try {
+        result = await runner(argv);
+      } catch (cause) {
+        return { error: `mdfind spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+      }
+      if (result.timedOut) {
+        return { error: `mdfind timed out after ${SPOTLIGHT_TIMEOUT_MS.toString()}ms` };
+      }
+      if (result.exitCode !== 0) {
+        return { error: `mdfind failed: ${result.stderr.trim().slice(0, 200)}` };
+      }
+      const all = result.stdout.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line.length > 0);
+      return {
+        paths: all.slice(0, SPOTLIGHT_MAX_RESULTS) as unknown as JsonValue,
+        query,
+        total: all.length,
+        ...(all.length > SPOTLIGHT_MAX_RESULTS ? { truncated: true } : {})
+      };
     }
   };
 }

@@ -8,9 +8,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createMacAppOpenTool,
   createMacAppReadTool,
+  createMacClipboardSetTool,
   createMacMediaControlTool,
   createMacMessageSendTool,
+  createMacScreenshotTool,
   createMacShortcutRunTool,
+  createMacSpotlightSearchTool,
   createMacSystemSetTool,
   type MacCommandResult,
   type MacMessageSendToolDeps,
@@ -322,6 +325,93 @@ describe("mac_system_set — Tier 1 volume / mute / display sleep", () => {
     expect(await tool.execute({ setting: "display_sleep" }, ctx)).toEqual({ set: true, setting: "display_sleep" });
     expect(pmsetArgs).toEqual(["displaysleepnow"]);
     expect(osascriptCalled).toBe(false);
+  });
+});
+
+describe("mac_screenshot — Tier 1 capture screen", () => {
+  it("is a well-formed execute tool with no required args", () => {
+    const tool = createMacScreenshotTool();
+    expect(tool.definition.name).toBe("mac_screenshot");
+    expect(tool.definition.risk).toBe("execute");
+    expect((tool.definition.inputSchema as { required: string[] }).required).toEqual([]);
+    expect(tool.definition.keywords).toContain("스크린샷");
+    expect(validateToolDefinitions([tool])).toEqual([]);
+  });
+
+  it("captures to a default temp path (screencapture -x) and returns it", async () => {
+    let captured = "";
+    const tool = createMacScreenshotTool({ pathFactory: () => "/tmp/fixed.png", runner: async (p) => { captured = p; return ok(""); } });
+    expect(await tool.execute({}, ctx)).toEqual({ captured: true, path: "/tmp/fixed.png" });
+    expect(captured).toBe("/tmp/fixed.png");
+  });
+
+  it("honors a caller-supplied path", async () => {
+    let captured = "";
+    const tool = createMacScreenshotTool({ runner: async (p) => { captured = p; return ok(""); } });
+    await tool.execute({ path: "~/Desktop/shot.png" }, ctx);
+    expect(captured).toBe("~/Desktop/shot.png");
+  });
+
+  it("maps a nonzero exit to captured:false", async () => {
+    const tool = createMacScreenshotTool({ runner: async () => fail("could not create image") });
+    expect(await tool.execute({}, ctx)).toMatchObject({ captured: false });
+  });
+});
+
+describe("mac_clipboard_set — Tier 1 set clipboard", () => {
+  it("is a well-formed execute tool requiring text", () => {
+    const tool = createMacClipboardSetTool();
+    expect(tool.definition.name).toBe("mac_clipboard_set");
+    expect(tool.definition.risk).toBe("execute");
+    expect((tool.definition.inputSchema as { required: string[] }).required).toEqual(["text"]);
+    expect(validateToolDefinitions([tool])).toEqual([]);
+  });
+
+  it("rejects empty text WITHOUT spawning pbcopy", async () => {
+    let called = false;
+    const tool = createMacClipboardSetTool({ runner: async () => { called = true; return ok(""); } });
+    expect(await tool.execute({ text: "" }, ctx)).toMatchObject({ set: false });
+    expect(called).toBe(false);
+  });
+
+  it("pipes the text to pbcopy and reports the char count", async () => {
+    let piped = "";
+    const tool = createMacClipboardSetTool({ runner: async (t) => { piped = t; return ok(""); } });
+    expect(await tool.execute({ text: "123 Main St" }, ctx)).toEqual({ chars: 11, set: true });
+    expect(piped).toBe("123 Main St");
+  });
+});
+
+describe("mac_spotlight_search — Tier 0 find files", () => {
+  it("is a well-formed read tool requiring query", () => {
+    const tool = createMacSpotlightSearchTool();
+    expect(tool.definition.name).toBe("mac_spotlight_search");
+    expect(tool.definition.risk).toBe("read");
+    expect((tool.definition.inputSchema as { required: string[] }).required).toEqual(["query"]);
+    expect(validateToolDefinitions([tool])).toEqual([]);
+  });
+
+  it("runs mdfind by content by default and caps + reports paths", async () => {
+    let argv: readonly string[] = [];
+    const tool = createMacSpotlightSearchTool({ runner: async (a) => { argv = a; return ok("/a/budget.xlsx\n/b/old budget.xlsx\n"); } });
+    expect(await tool.execute({ query: "budget" }, ctx)).toEqual({ paths: ["/a/budget.xlsx", "/b/old budget.xlsx"], query: "budget", total: 2 });
+    expect(argv).toEqual(["budget"]);
+  });
+
+  it("uses -name when nameOnly is true", async () => {
+    let argv: readonly string[] = [];
+    const tool = createMacSpotlightSearchTool({ runner: async (a) => { argv = a; return ok(""); } });
+    await tool.execute({ nameOnly: true, query: "résumé.pdf" }, ctx);
+    expect(argv).toEqual(["-name", "résumé.pdf"]);
+  });
+
+  it("flags truncation past the result cap", async () => {
+    const many = Array.from({ length: 40 }, (_v, i) => `/f/${i.toString()}.txt`).join("\n");
+    const tool = createMacSpotlightSearchTool({ runner: async () => ok(many) });
+    const out = await tool.execute({ query: "x" }, ctx) as { paths: string[]; total: number; truncated?: boolean };
+    expect(out.paths).toHaveLength(25);
+    expect(out.total).toBe(40);
+    expect(out.truncated).toBe(true);
   });
 });
 

@@ -20,9 +20,12 @@ import {
   createHomeActionTool,
   createMacAppOpenTool,
   createMacAppReadTool,
+  createMacClipboardSetTool,
   createMacMediaControlTool,
   createMacMessageSendTool,
+  createMacScreenshotTool,
   createMacShortcutRunTool,
+  createMacSpotlightSearchTool,
   createMacSystemSetTool,
   createWebActionTool,
   queryContacts,
@@ -68,7 +71,10 @@ export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
   // explicit opt-in power feature (darwin only) — off by default so a stray
   // box never arms an iMessage send, on when the user sets the flag.
   if (macActuatorsEnabled(env)) {
-    armed.push("mac_shortcut_run", "mac_app_read", "mac_app_open", "mac_media_control", "mac_system_set", "mac_message_send");
+    armed.push(
+      "mac_shortcut_run", "mac_app_read", "mac_app_open", "mac_media_control", "mac_system_set",
+      "mac_screenshot", "mac_clipboard_set", "mac_spotlight_search", "mac_message_send"
+    );
   }
 
   return { armed, unavailable };
@@ -261,6 +267,9 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
       createMacAppOpenTool(),
       createMacMediaControlTool(),
       createMacSystemSetTool(),
+      createMacScreenshotTool(),
+      createMacClipboardSetTool(),
+      createMacSpotlightSearchTool(),
       createMacMessageSendTool({ actionLogFile, approvalGate: macMessageGate, userId })
     );
   }
