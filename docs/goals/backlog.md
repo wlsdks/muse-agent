@@ -194,6 +194,17 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 
 ## Open — browser control (low-spec model drives Chrome; track started 2026-06-11)
 
+- ◦ **ask --with-tools tool-set diet** — the live run exposes 28 tools (browser_open sorted
+  first by relevance, so it works), far over tool-calling.md's ≤5–7; metadata.maxTools is
+  already honoured by the exposure plan — pick a cap, verify against eval:tools + a notes-recall
+  live probe (don't starve muse.notes.search on note-ish prompts).
+- ◦ **ask latency on the browser path** — ~90s/turn measured (10K-token prompt eval ≈ 40s × 2
+  rounds on gemma4). Levers: prompt diet under --with-tools (skip notes blocks on clear
+  browse intent?), KV prefix reuse across rounds, smaller tool list (above).
+- ◦ **injection-pattern cross-span tightening** — the guard regexes use /s `.*` across the whole
+  joined input, so distant unrelated words can combine to a hit even within user messages;
+  bound the match window (e.g. per-line / ≤80 chars) and add false-positive cases to the test.
+
 - ◦ **same-origin iframe piercing** — snapshot stops at iframe boundaries (embedded
   forms/widgets invisible); walk same-origin frames like shadow roots. Cross-origin
   stays out (CDP can't without per-frame contexts — scope honestly).
@@ -205,6 +216,22 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   the CHAIN (grade terminal state, not path).
 
 ## Done (recent — newest first)
+
+- ✓ 2026-06-11 **browser: LIVE end-to-end — `muse ask`가 실제로 Chrome을 부린다** (4 commits):
+  driving the REAL front door exposed a chain of four blockers, each fixed + verified live:
+  ① injection input guard self-blocked every --with-tools ask (its own anti-injection guidance
+  quotes attack strings; now scans USER messages only). ② browser_open/back were execute-risk →
+  hidden without --actuators (now read; reads are free). ③ the ask prompt's "USING ONLY the
+  notes" lock beat the armed tools (forked under --with-tools). ④ num_ctx 8192 vs 32K-budget
+  mismatch → prompt truncated to done_reason:length, EMPTY answer (DEFAULT_OLLAMA_NUM_CTX=32768,
+  live-verified the runner honours request num_ctx). PLUS: puppeteer.launch child pinned the
+  event loop (ask answered then hung forever) → Chrome now spawns DETACHED and every invocation
+  CONNECTs via DevToolsActivePort; ask disconnects post-run. Toolchain: Node 24.16 (nvm default),
+  puppeteer-core 25.1 (clickCount→count), Locator API on click/type. PROOF: back-to-back live
+  asks — ASK1 93s exit 0 (browser_open, grounded, external-source cite), ASK2 92s exit 0
+  (reconnects, browser_read reads the SAME page). smoke:browser 13/13; pnpm check exit 0 on
+  Node 24; precheck:grounding pass^2. LESSON: eval:tools 7/7 ≠ the surface works — only driving
+  the assembled path catches exposure/prompt/window/process-lifecycle blockers.
 
 - ✓ 2026-06-11 **browser: see the real web — SPA settle + shadow DOM + <select> grounding**:
   bounded settle-and-retry (`looksUnsettled`, 2×700ms) so late-rendering SPAs aren't a blank

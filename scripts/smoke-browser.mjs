@@ -51,6 +51,9 @@ const SELECT_HTML = `<!doctype html><html><head><title>Select</title></head><bod
   <option value="KR">South Korea</option>
 </select>
 <div id="chosen">chose:none</div>
+<input aria-label="Search" placeholder="Search"
+  oninput="document.getElementById('typed').textContent='typed:'+this.value">
+<div id="typed">typed:none</div>
 <a href="#a">Pricing</a><a href="#b">Pricing</a><a href="#c">Pricing</a>
 <button style="position:fixed;bottom:0;left:0">Accept cookies</button>
 </body></html>`;
@@ -107,10 +110,21 @@ try {
   snap = await controller.type(select.ref, "korea", false);
   assert(snap.text.includes("chose:KR"), "free-text 'korea' grounded to the South Korea option");
 
+  console.log("3b) text input — locator fill emits real input events");
+  const searchBox = snap.elements.find((el) => el.role === "textbox" && el.name === "Search");
+  assert(searchBox !== undefined, "search input is listed");
+  snap = await controller.type(searchBox.ref, "wireless mouse", false);
+  assert(snap.text.includes("typed:wireless mouse"), "fill typed the text and fired input events");
+
   console.log("4) dedup + 5) fixed-position visibility");
   const pricing = snap.elements.filter((el) => el.name === "Pricing");
   assert(pricing.length === 1, "3 identical nav links collapse to 1");
   assert(snap.elements.some((el) => el.name === "Accept cookies"), "position:fixed button is visible");
+
+  console.log("6) cross-invocation reconnect — a second controller drives the SAME Chrome");
+  const second = new PuppeteerBrowserController({ headless: true, userDataDir: join(dir, "profile") });
+  const reSnap = await second.snapshot();
+  assert(reSnap.url === snap.url, "new controller reconnected to the running browser (no profile-lock crash)");
 
   console.log("\nsmoke:browser PASS");
 } finally {

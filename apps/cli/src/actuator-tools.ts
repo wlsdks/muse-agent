@@ -44,7 +44,8 @@ import {
   createBrowserOpenTool,
   createBrowserReadTool,
   createBrowserTypeTool,
-  type BrowserApprovalGate
+  type BrowserApprovalGate,
+  type BrowserController
 } from "@muse/browser";
 import type { MuseTool } from "@muse/tools";
 import { confirm, isCancel } from "@clack/prompts";
@@ -227,6 +228,8 @@ export interface BrowserToolsDeps {
   readonly io: ProgramIO;
   readonly confirmAction?: (message: string) => Promise<boolean>;
   readonly isInteractive?: () => boolean;
+  /** Receives the live controller so the caller can disconnect() after a one-shot run. */
+  readonly onController?: (controller: BrowserController) => void;
 }
 
 /**
@@ -241,6 +244,10 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
     deps.confirmAction ??
     ((message: string) => confirm({ message }).then((answer) => !isCancel(answer) && answer === true));
   const controller = new PuppeteerBrowserController();
+  // One-shot callers (muse ask) MUST disconnect after the run: the open CDP
+  // socket pins the Node event loop, so without this the process never exits
+  // (Chrome itself stays up for the next invocation to reconnect to).
+  deps.onController?.(controller);
   const gate = buildBrowserApprovalGate({
     confirmAction,
     io: deps.io,

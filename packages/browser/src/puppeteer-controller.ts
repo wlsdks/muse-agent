@@ -11,9 +11,16 @@
  * type() resolve the ref back to the live element via that attribute.
  */
 
+import { spawn } from "node:child_process";
+import { readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import {
+  Browser as InstalledBrowser,
+  ChromeReleaseChannel,
+  computeSystemExecutablePath
+} from "@puppeteer/browsers";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 
 import {
@@ -54,16 +61,63 @@ export class PuppeteerBrowserController implements BrowserController {
     this.options = options;
   }
 
+  private get userDataDir(): string {
+    return this.options.userDataDir ?? join(homedir(), ".muse", "chrome-profile");
+  }
+
+  /**
+   * The CLI exits after each answer but the (headful) Muse Chrome stays up —
+   * so a later invocation must RECONNECT to it, not relaunch into a locked
+   * profile. Chrome writes its CDP port to `DevToolsActivePort` inside the
+   * profile dir; a stale file just fails the probe and we fall through to a
+   * fresh launch. Loopback-only, Muse's dedicated profile.
+   */
+  private async connectToExisting(): Promise<Browser | undefined> {
+    try {
+      const portFile = await readFile(join(this.userDataDir, "DevToolsActivePort"), "utf8");
+      const port = Number(portFile.split("\n")[0]);
+      if (!Number.isInteger(port) || port <= 0) return undefined;
+      return await puppeteer.connect({ browserURL: `http://127.0.0.1:${port.toString()}`, defaultViewport: null });
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Chrome is spawned DETACHED and only ever driven over a CDP connect —
+   * never as a puppeteer-owned child. A puppeteer.launch() child pins the
+   * one-shot CLI's event loop (stdio handles + exit hooks), so `muse ask`
+   * would answer and then hang forever; a detached browser outlives the
+   * process and the next invocation reconnects to it.
+   */
+  private async launchDetached(): Promise<Browser> {
+    const executable =
+      this.options.executablePath ??
+      process.env.MUSE_CHROME_PATH ??
+      computeSystemExecutablePath({ browser: InstalledBrowser.CHROME, channel: ChromeReleaseChannel.STABLE });
+    // A stale port file must not race the fresh launch's probe loop.
+    await rm(join(this.userDataDir, "DevToolsActivePort"), { force: true }).catch(() => { /* best-effort */ });
+    const child = spawn(executable, [
+      `--user-data-dir=${this.userDataDir}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--remote-debugging-port=0",
+      ...(this.options.headless ?? false ? ["--headless"] : []),
+      "about:blank"
+    ], { detached: true, stdio: "ignore" });
+    child.unref();
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const browser = await this.connectToExisting();
+      if (browser) return browser;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    throw new Error("Chrome did not expose its DevTools port within 10s — is Chrome installed?");
+  }
+
   private async ensurePage(): Promise<Page> {
     if (this.page && !this.page.isClosed()) return this.page;
     if (!this.browser || !this.browser.connected) {
-      this.browser = await puppeteer.launch({
-        defaultViewport: null,
-        headless: this.options.headless ?? false,
-        userDataDir: this.options.userDataDir ?? join(homedir(), ".muse", "chrome-profile"),
-        args: ["--no-first-run", "--no-default-browser-check"],
-        ...(this.options.executablePath ? { executablePath: this.options.executablePath } : { channel: "chrome" })
-      });
+      this.browser = (await this.connectToExisting()) ?? (await this.launchDetached());
     }
     const pages = await this.browser.pages();
     this.page = pages[0] ?? (await this.browser.newPage());
@@ -162,8 +216,11 @@ export class PuppeteerBrowserController implements BrowserController {
 
   async click(ref: number): Promise<PageSnapshot> {
     const page = await this.ensurePage();
-    const handle = await this.elementHandle(ref);
-    await handle.click();
+    await this.elementHandle(ref);
+    // Locator (not the raw handle): auto-waits for visible/enabled/stable
+    // before acting — the reliable-interaction pattern from the Puppeteer
+    // guide; the handle lookup above keeps the fast "no such ref" error.
+    await page.locator(`pierce/[data-muse-ref="${ref.toString()}"]`).setTimeout(this.timeout).click();
     await page.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* page may not navigate */ });
     return this.snapshot();
   }
@@ -189,8 +246,13 @@ export class PuppeteerBrowserController implements BrowserController {
       await handle.select(matched.value);
       return this.snapshot();
     }
-    await handle.click({ clickCount: 3 });
-    await handle.type(text);
+    try {
+      await page.locator(`pierce/[data-muse-ref="${ref.toString()}"]`).setTimeout(this.timeout).fill(text);
+    } catch {
+      // Custom widgets that reject fill() still accept raw keystrokes.
+      await handle.click({ count: 3 });
+      await handle.type(text);
+    }
     if (submit) {
       await page.keyboard.press("Enter");
       await page.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* may not navigate */ });
@@ -216,6 +278,14 @@ export class PuppeteerBrowserController implements BrowserController {
 
   currentUrl(): string {
     return this.lastUrl;
+  }
+
+  async disconnect(): Promise<void> {
+    try {
+      await this.browser?.disconnect();
+    } catch { /* best-effort */ }
+    this.browser = undefined;
+    this.page = undefined;
   }
 
   async close(): Promise<void> {

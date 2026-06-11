@@ -47,6 +47,12 @@ export interface BrowserController {
   describeElement(ref: number): SnapshotElement | undefined;
   /** The current page URL (for the approval draft). */
   currentUrl(): string;
+  /**
+   * Release the CDP connection but LEAVE the browser running — the open
+   * socket otherwise pins the Node event loop and a one-shot CLI never
+   * exits. The surviving browser is what the next invocation reconnects to.
+   */
+  disconnect(): Promise<void>;
   /** Close the browser (best-effort). */
   close(): Promise<void>;
 }
