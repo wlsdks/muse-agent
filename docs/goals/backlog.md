@@ -218,9 +218,17 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ◦ **element paging past the 50 cap** — long pages truncate silently at
   BROWSER_MAX_ELEMENTS; `browser_read find` mitigates but a `more`/offset arg (or
   viewport-priority ordering) closes it. Log what was dropped (no silent caps).
-- ◦ **agent-level multi-step live battery** — eval:tools proves one-shot selection;
-  a real gemma4-driven open→type→read task against a local fixture server would prove
-  the CHAIN (grade terminal state, not path).
+- ✓→Done **agent-level multi-step live battery** — `pnpm eval:browser-agent`: gemma4 drives
+  open→type+submit on a local fixture shop (file://, no network) and answers from the rendered
+  result; graded on TERMINAL STATE (the page records the query it actually received — a
+  fabricated "I searched" cannot pass) + answer must carry the name+price that only render
+  post-search. 3/3 STABLE. Built it the hard way: ① matcher bug — "search box" landed on the
+  'Search' BUTTON (substring 60 > shared-words 35); type-intent now prefers ANY matching
+  typeable element. ② harness initially omitted metadata.localMode → runtime hid the
+  execute-risk type/click and gemma FABRICATED a result ("Wireless Mouse Pro $29.99") —
+  recorded evidence that the gate-less raw model invents on tool failure; the ask path's
+  verdict gate is the standing protection. ③ launchDetached probe window 10s→30s (a fresh
+  profile's cold start exceeded 10s under load — "slow" misread as "missing").
 
 ## Done (recent — newest first)
 

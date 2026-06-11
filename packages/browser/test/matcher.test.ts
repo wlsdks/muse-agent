@@ -99,3 +99,18 @@ describe("looksUnsettled — SPA delayed-render detection", () => {
     expect(looksUnsettled({ elements: [], text, title: "Docs", url: "https://a.test/" })).toBe(false);
   });
 });
+
+describe("matchElement — type intent must not land on untypeable elements", () => {
+  it("'search box' resolves to the INPUT, not the higher-substring-scoring 'Search' button", () => {
+    const shop: SnapshotElement[] = [
+      { name: "Search", ref: 0, role: "button" },
+      { name: "Search products", ref: 1, role: "textbox" }
+    ];
+    expect(matchElement(shop, "search box", "type")?.ref).toBe(1);
+  });
+
+  it("falls back to a button only when NO typeable element matches at all", () => {
+    const onlyButton: SnapshotElement[] = [{ name: "Search", ref: 0, role: "button" }];
+    expect(matchElement(onlyButton, "search", "type")?.ref).toBe(0);
+  });
+});

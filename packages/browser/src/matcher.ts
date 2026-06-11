@@ -57,6 +57,8 @@ export interface MatchResult {
 }
 
 /** Best element for a free-text `target`, or undefined when nothing matches. */
+const TYPEABLE_ROLES = new Set(["textbox", "combobox", "searchbox"]);
+
 export function matchElement(
   elements: readonly SnapshotElement[],
   target: string,
@@ -65,11 +67,20 @@ export function matchElement(
   const needle = target.trim().toLowerCase();
   if (needle.length === 0) return undefined;
   let best: MatchResult | undefined;
+  let bestTypeable: MatchResult | undefined;
   for (const element of elements) {
-    const score = baseScore(element.name.toLowerCase(), needle) + (baseScore(element.name.toLowerCase(), needle) > 0 ? roleBonus(element.role, intent) : 0);
-    if (score <= 0) continue;
+    const base = baseScore(element.name.toLowerCase(), needle);
+    if (base <= 0) continue;
+    const score = base + roleBonus(element.role, intent);
     if (!best || score > best.score) best = { element, score };
+    if (TYPEABLE_ROLES.has(element.role) && (!bestTypeable || score > bestTypeable.score)) {
+      bestTypeable = { element, score };
+    }
   }
+  // Typing into a button/link is a no-op that strands the whole task — for a
+  // type intent ANY matching field beats a better-scoring untypeable element
+  // ("search box" must mean the input, not the adjacent "Search" button).
+  if (intent === "type" && bestTypeable) return bestTypeable.element;
   return best?.element;
 }
 

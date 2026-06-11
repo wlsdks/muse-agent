@@ -106,12 +106,14 @@ export class PuppeteerBrowserController implements BrowserController {
       "about:blank"
     ], { detached: true, stdio: "ignore" });
     child.unref();
-    for (let attempt = 0; attempt < 50; attempt += 1) {
+    // 150 × 200ms = 30s: a FRESH profile's first start can take >10s on a
+    // loaded machine, and a too-short window misreads slow as missing.
+    for (let attempt = 0; attempt < 150; attempt += 1) {
       const browser = await this.connectToExisting();
       if (browser) return browser;
       await new Promise((resolve) => setTimeout(resolve, 200));
     }
-    throw new Error("Chrome did not expose its DevTools port within 10s — is Chrome installed?");
+    throw new Error("Chrome did not expose its DevTools port within 30s — is Chrome installed?");
   }
 
   private async ensurePage(): Promise<Page> {
