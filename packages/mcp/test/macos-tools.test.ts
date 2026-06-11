@@ -206,6 +206,35 @@ describe("mac_app_read — Tier 0 read", () => {
     const tool = createMacAppReadTool({ runner: async () => fail("execution error: Not authorized to send Apple events (-1743)") });
     expect(await tool.execute({ app: "music" }, ctx)).toMatchObject({ error: expect.stringContaining("Privacy & Security") });
   });
+
+  it("parses a Safari front tab into url/title (and a closed browser into running:false)", async () => {
+    const open = createMacAppReadTool({ runner: async () => ok("https://example.com\tExample Domain") });
+    expect(await open.execute({ app: "safari_tab" }, ctx)).toEqual({ app: "safari_tab", running: true, title: "Example Domain", url: "https://example.com" });
+    const closed = createMacAppReadTool({ runner: async () => ok("not running") });
+    expect(await closed.execute({ app: "chrome_tab" }, ctx)).toEqual({ app: "chrome_tab", running: false });
+  });
+
+  it("parses volume settings into outputVolume + muted", async () => {
+    const tool = createMacAppReadTool({ runner: async () => ok("45\tfalse") });
+    expect(await tool.execute({ app: "volume" }, ctx)).toEqual({ app: "volume", muted: false, outputVolume: 45 });
+  });
+
+  it("reads battery via pmset (not osascript) and parses percent + charging", async () => {
+    let osascriptCalled = false;
+    let pmsetArgs: readonly string[] = [];
+    const tool = createMacAppReadTool({
+      runner: async () => { osascriptCalled = true; return ok(""); },
+      pmset: async (a) => { pmsetArgs = a; return ok("Now drawing from 'AC Power'\n -InternalBattery-0 (id=1) 95%; charged; 0:00 remaining present: true"); }
+    });
+    expect(await tool.execute({ app: "battery" }, ctx)).toEqual({ app: "battery", charging: true, percent: 95, state: "charged" });
+    expect(pmsetArgs).toEqual(["-g", "batt"]);
+    expect(osascriptCalled).toBe(false);
+  });
+
+  it("battery on battery power reports charging:false", async () => {
+    const tool = createMacAppReadTool({ pmset: async () => ok("Now drawing from 'Battery Power'\n -InternalBattery-0 (id=1) 62%; discharging; 3:12 remaining present: true") });
+    expect(await tool.execute({ app: "battery" }, ctx)).toEqual({ app: "battery", charging: false, percent: 62, state: "discharging" });
+  });
 });
 
 describe("mac_media_control — Tier 1 Music transport", () => {

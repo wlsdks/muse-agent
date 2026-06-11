@@ -180,8 +180,13 @@ export function createMacShortcutRunTool(deps: MacShortcutRunToolDeps = {}): Mus
 
 // ── Tier 0: mac_app_read ──────────────────────────────────────────────
 
-const MAC_APP_READ_APPS = ["clipboard", "music", "frontmost_window", "contacts", "mail_unread"] as const;
-type MacReadApp = (typeof MAC_APP_READ_APPS)[number];
+// osascript-backed read sources (each maps to an AppleScript snippet)…
+const MAC_OSASCRIPT_READ_APPS = [
+  "clipboard", "music", "frontmost_window", "contacts", "mail_unread", "safari_tab", "chrome_tab", "volume"
+] as const;
+type MacReadApp = (typeof MAC_OSASCRIPT_READ_APPS)[number];
+// …plus `battery`, which reads from the `pmset` shell tool, not osascript.
+const MAC_APP_READ_APPS = [...MAC_OSASCRIPT_READ_APPS, "battery"] as const;
 
 function buildReadScript(app: MacReadApp, query: string): string {
   switch (app) {
@@ -245,6 +250,31 @@ function buildReadScript(app: MacReadApp, query: string): string {
         `  return output`,
         `end tell`
       ].join("\n");
+    case "safari_tab":
+      return [
+        `tell application "Safari"`,
+        `  if it is running and (count of windows) > 0 then`,
+        `    return (URL of current tab of front window) & tab & (name of current tab of front window)`,
+        `  else`,
+        `    return "not running"`,
+        `  end if`,
+        `end tell`
+      ].join("\n");
+    case "chrome_tab":
+      return [
+        `tell application "Google Chrome"`,
+        `  if it is running and (count of windows) > 0 then`,
+        `    return (URL of active tab of front window) & tab & (title of active tab of front window)`,
+        `  else`,
+        `    return "not running"`,
+        `  end if`,
+        `end tell`
+      ].join("\n");
+    case "volume":
+      return [
+        `set s to (get volume settings)`,
+        `return (output volume of s as text) & tab & (output muted of s as text)`
+      ].join("\n");
   }
 }
 
@@ -293,31 +323,62 @@ function parseReadOutput(app: MacReadApp, stdout: string): JsonObject {
         });
       return { app, recent, unreadCount: Number.isFinite(unreadCount) ? unreadCount : 0 };
     }
+    case "safari_tab":
+    case "chrome_tab": {
+      if (raw.trim() === "not running") {
+        return { app, running: false };
+      }
+      const [url = "", title = ""] = raw.split("\t");
+      return { app, running: true, title, url };
+    }
+    case "volume": {
+      const [vol = "0", muted = "false"] = raw.split("\t");
+      const outputVolume = Number.parseInt(vol, 10);
+      return { app, muted: muted.trim() === "true", outputVolume: Number.isFinite(outputVolume) ? outputVolume : 0 };
+    }
   }
+}
+
+/** Parses `pmset -g batt` into percent + charging state. */
+function parseBatteryOutput(stdout: string): JsonObject {
+  const percentMatch = /(\d+)%/u.exec(stdout);
+  const percent = percentMatch ? Number.parseInt(percentMatch[1]!, 10) : null;
+  const onAc = /AC Power/iu.test(stdout);
+  const stateMatch = /;\s*(charged|charging|discharging|finishing charge|AC attached)/iu.exec(stdout);
+  return {
+    app: "battery",
+    charging: onAc,
+    percent,
+    ...(stateMatch ? { state: stateMatch[1]!.toLowerCase() } : {})
+  };
 }
 
 export interface MacAppReadToolDeps {
   readonly runner?: MacOsascriptRunner;
+  /** Shell runner for the `battery` source (`pmset -g batt`). */
+  readonly pmset?: (args: readonly string[]) => Promise<MacCommandResult>;
 }
 
 export function createMacAppReadTool(deps: MacAppReadToolDeps = {}): MuseTool {
   const runner = deps.runner ?? defaultOsascriptRunner;
+  const pmset = deps.pmset ?? ((args: readonly string[]) => runChild(PMSET_PATH, args, undefined, 10_000));
   return {
     definition: {
       description:
-        "Read the CURRENT state of a native macOS app — read-only, changes nothing. `app` selects what " +
-        "to read: 'clipboard' (current clipboard text), 'music' (what Music.app is playing), " +
-        "'frontmost_window' (the app + window the user is looking at), 'contacts' (look up a person by " +
-        "name — requires `query`), 'mail_unread' (Mail inbox unread count + recent unread subjects). " +
-        "Use when the user asks what's on the clipboard, what song is playing, what they're looking at, " +
-        "for someone's phone/email, or how many unread mails they have. Do NOT use it to send or change " +
-        "anything (that is mac_message_send / mac_shortcut_run).",
+        "Read the CURRENT state of the Mac — read-only, changes nothing. `app` selects what to read: " +
+        "'clipboard' (clipboard text), 'music' (what Music is playing), 'frontmost_window' (the app + " +
+        "window in focus), 'contacts' (look up a person by name — requires `query`), 'mail_unread' (inbox " +
+        "unread count + recent subjects), 'safari_tab' / 'chrome_tab' (front browser tab URL + title), " +
+        "'volume' (output volume + muted), 'battery' (charge % + charging). Use when the user asks what's " +
+        "on the clipboard, what song is playing, what page/tab they're on, the volume or battery level, a " +
+        "contact's phone/email, or unread mail. Do NOT use it to send or change anything " +
+        "(mac_message_send / mac_media_control / mac_system_set).",
       domain: "system",
       inputSchema: {
         additionalProperties: false,
         properties: {
           app: {
-            description: "Which app's state to read, e.g. 'music'.",
+            description: "Which state to read, e.g. 'battery' or 'safari_tab'.",
             enum: [...MAC_APP_READ_APPS],
             type: "string"
           },
@@ -330,16 +391,29 @@ export function createMacAppReadTool(deps: MacAppReadToolDeps = {}): MuseTool {
         type: "object"
       },
       keywords: [
-        "clipboard", "클립보드", "music", "playing", "song", "재생", "노래", "음악",
-        "contact", "연락처", "phone", "email", "window", "frontmost", "mail", "unread", "메일", "안읽은"
+        "clipboard", "클립보드", "music", "playing", "song", "노래", "음악",
+        "contact", "연락처", "phone", "email", "window", "frontmost", "mail", "unread", "메일", "안읽은",
+        "battery", "배터리", "volume", "볼륨", "tab", "탭", "safari", "사파리", "chrome", "크롬", "browser"
       ],
       name: "mac_app_read",
       risk: "read"
     },
     execute: async (args): Promise<JsonObject> => {
       const app = typeof args["app"] === "string" ? args["app"].trim() : "";
-      if (!MAC_APP_READ_APPS.includes(app as MacReadApp)) {
+      if (!MAC_APP_READ_APPS.includes(app as (typeof MAC_APP_READ_APPS)[number])) {
         return { error: `app must be one of: ${MAC_APP_READ_APPS.join(", ")}` };
+      }
+      if (app === "battery") {
+        let battResult: MacCommandResult;
+        try {
+          battResult = await pmset(["-g", "batt"]);
+        } catch (cause) {
+          return { error: `pmset spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+        }
+        if (battResult.timedOut || battResult.exitCode !== 0) {
+          return { error: `pmset failed: ${battResult.stderr.trim().slice(0, 200) || "timed out"}` };
+        }
+        return parseBatteryOutput(battResult.stdout);
       }
       const query = typeof args["query"] === "string" ? args["query"].trim() : "";
       if (app === "contacts" && query.length === 0) {
