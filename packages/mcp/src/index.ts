@@ -730,10 +730,12 @@ export {
   type HomeStateToolDeps
 } from "./smart-home-tool.js";
 export {
+  createMacAppOpenTool,
   createMacAppReadTool,
   createMacMessageSendTool,
   createMacShortcutRunTool,
   sendImessageWithApproval,
+  type MacAppOpenToolDeps,
   type MacAppReadToolDeps,
   type MacCommandResult,
   type MacMessageSendToolDeps,

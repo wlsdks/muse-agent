@@ -18,6 +18,7 @@ import {
   createEmailReplyTool,
   createEmailSendTool,
   createHomeActionTool,
+  createMacAppOpenTool,
   createMacAppReadTool,
   createMacMessageSendTool,
   createMacShortcutRunTool,
@@ -65,7 +66,7 @@ export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
   // explicit opt-in power feature (darwin only) — off by default so a stray
   // box never arms an iMessage send, on when the user sets the flag.
   if (macActuatorsEnabled(env)) {
-    armed.push("mac_shortcut_run", "mac_app_read", "mac_message_send");
+    armed.push("mac_shortcut_run", "mac_app_read", "mac_app_open", "mac_message_send");
   }
 
   return { armed, unavailable };
@@ -255,6 +256,7 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
     tools.push(
       createMacShortcutRunTool(),
       createMacAppReadTool(),
+      createMacAppOpenTool(),
       createMacMessageSendTool({ actionLogFile, approvalGate: macMessageGate, userId })
     );
   }

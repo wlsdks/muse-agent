@@ -6,6 +6,7 @@ import { validateToolDefinitions } from "@muse/tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  createMacAppOpenTool,
   createMacAppReadTool,
   createMacMessageSendTool,
   createMacShortcutRunTool,
@@ -83,6 +84,59 @@ describe("mac_shortcut_run — Tier 1 keystone", () => {
     const runner: ShortcutsRunner = async () => timedOut;
     const tool = createMacShortcutRunTool({ runner });
     expect(await tool.execute({ name: "Slow" }, ctx)).toMatchObject({ ran: false });
+  });
+});
+
+describe("mac_app_open — Tier 1 open app/URL/file", () => {
+  it("is a well-formed execute tool requiring target", () => {
+    const tool = createMacAppOpenTool();
+    expect(tool.definition.name).toBe("mac_app_open");
+    expect(tool.definition.risk).toBe("execute");
+    const schema = tool.definition.inputSchema as { required: string[] };
+    expect(schema.required).toEqual(["target"]);
+    expect(tool.definition.keywords).toContain("열어");
+    expect(validateToolDefinitions([tool])).toEqual([]);
+  });
+
+  it("rejects an empty target WITHOUT spawning open", async () => {
+    let called = false;
+    const tool = createMacAppOpenTool({ runner: async () => { called = true; return ok(""); } });
+    expect(await tool.execute({ target: "  " }, ctx)).toMatchObject({ opened: false });
+    expect(called).toBe(false);
+  });
+
+  it("opens a bare app name with -a", async () => {
+    let argv: readonly string[] = [];
+    const tool = createMacAppOpenTool({ runner: async (a) => { argv = a; return ok(""); } });
+    expect(await tool.execute({ target: "Safari" }, ctx)).toEqual({ opened: true, target: "Safari" });
+    expect(argv).toEqual(["-a", "Safari"]);
+  });
+
+  it("opens a URL directly (no -a)", async () => {
+    let argv: readonly string[] = [];
+    const tool = createMacAppOpenTool({ runner: async (a) => { argv = a; return ok(""); } });
+    await tool.execute({ target: "https://example.com" }, ctx);
+    expect(argv).toEqual(["https://example.com"]);
+  });
+
+  it("opens a file path directly (no -a)", async () => {
+    let argv: readonly string[] = [];
+    const tool = createMacAppOpenTool({ runner: async (a) => { argv = a; return ok(""); } });
+    await tool.execute({ target: "~/report.pdf" }, ctx);
+    expect(argv).toEqual(["~/report.pdf"]);
+  });
+
+  it("forces a URL into a specific app via -a app target", async () => {
+    let argv: readonly string[] = [];
+    const tool = createMacAppOpenTool({ runner: async (a) => { argv = a; return ok(""); } });
+    const out = await tool.execute({ app: "Google Chrome", target: "https://example.com" }, ctx);
+    expect(out).toEqual({ app: "Google Chrome", opened: true, target: "https://example.com" });
+    expect(argv).toEqual(["-a", "Google Chrome", "https://example.com"]);
+  });
+
+  it("maps a nonzero exit to opened:false", async () => {
+    const tool = createMacAppOpenTool({ runner: async () => fail("Unable to find application named 'Nope'") });
+    expect(await tool.execute({ target: "Nope" }, ctx)).toMatchObject({ opened: false });
   });
 });
 
