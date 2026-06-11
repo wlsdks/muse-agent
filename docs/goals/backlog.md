@@ -194,10 +194,16 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 
 ## Open — browser control (low-spec model drives Chrome; track started 2026-06-11)
 
-- ◦ **ask --with-tools tool-set diet** — the live run exposes 28 tools (browser_open sorted
-  first by relevance, so it works), far over tool-calling.md's ≤5–7; metadata.maxTools is
-  already honoured by the exposure plan — pick a cap, verify against eval:tools + a notes-recall
-  live probe (don't starve muse.notes.search on note-ish prompts).
+- ✓→Done **ask --with-tools tool-set diet** — maxTools 10 default (MUSE_ASK_MAX_TOOLS, 0/off
+  uncaps); relevance-sorted top-N. MEASURED side win: browse turn 93s → 42s (smaller tool
+  schemas = less prompt eval). Found+fixed en route: 1-char CJK keyword containment ("비" ranked
+  weather on 비밀번호 prompts → exact-only) and weather's calendar words (내일/주말) outranking
+  reminders.add. Probes: browse→browser_open, recall→grounded cite, reminder plan→reminders.add
+  first; eval:tools 125/125. Follow-up below.
+- ◦ **muse.* loopback tools carry no keywords** — relevance 0 on every prompt → alphabetical
+  tie under the cap (muse.notes.search absent from a notes prompt's top-10; harmless for ask
+  because retrieval injects notes pre-agent, but selection-quality debt). Add KO+EN keywords to
+  the high-traffic loopback tools (notes/tasks/reminders/calendar).
 - ◦ **ask latency on the browser path** — ~90s/turn measured (10K-token prompt eval ≈ 40s × 2
   rounds on gemma4). Levers: prompt diet under --with-tools (skip notes blocks on clear
   browse intent?), KV prefix reuse across rounds, smaller tool list (above).

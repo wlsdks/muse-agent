@@ -116,3 +116,39 @@ describe("DefaultToolExposurePolicy.select", () => {
     expect(res.tools).toEqual(["read_x"]); // equal relevance → safer read wins
   });
 });
+
+describe("single-character CJK keywords match exactly, never by containment", () => {
+  const weatherish: MuseTool = {
+    definition: {
+      description: "d", inputSchema: { properties: {}, type: "object" },
+      keywords: ["비", "날씨"], name: "weatherish", risk: "read"
+    },
+    execute: async () => ({})
+  };
+  const notesish: MuseTool = {
+    definition: {
+      description: "d", inputSchema: { properties: {}, type: "object" },
+      keywords: ["노트", "비밀번호"], name: "notesish", risk: "read"
+    },
+    execute: async () => ({})
+  };
+
+  it("'비' does NOT match '비밀번호' — the wifi-password prompt must not rank weather", () => {
+    const policy = createDefaultToolExposurePolicy();
+    const selection = policy.select([weatherish, notesish], { prompt: "내 노트에서 사무실 와이파이 비밀번호 찾아줘" });
+    expect(selection.blocked.map((b) => b.toolName)).toContain("weatherish");
+    expect(selection.tools.map((t) => t.definition.name)).toEqual(["notesish"]);
+  });
+
+  it("'비' still matches the exact token ('비 와?')", () => {
+    const policy = createDefaultToolExposurePolicy();
+    const selection = policy.select([weatherish], { prompt: "오늘 비 와?" });
+    expect(selection.tools.map((t) => t.definition.name)).toEqual(["weatherish"]);
+  });
+
+  it("multi-char CJK keywords keep containment (particle attachment: 비밀번호를)", () => {
+    const policy = createDefaultToolExposurePolicy();
+    const selection = policy.select([notesish], { prompt: "비밀번호를 알려줘" });
+    expect(selection.tools.map((t) => t.definition.name)).toEqual(["notesish"]);
+  });
+});

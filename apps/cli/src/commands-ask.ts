@@ -1514,6 +1514,21 @@ export interface AskStreamResult {
  * learned feedback that otherwise only reaches the --with-tools agent
  * runtime. Empty / absent block ⇒ the prompt is unchanged.
  */
+
+/**
+ * The --with-tools exposure cap. tool-calling.md: every extra tool raises the
+ * wrong-selection probability on a small local model — the relevance-sorted
+ * plan keeps the best N, so a browse prompt still sees browser_open and an
+ * action prompt its actuator. MUSE_ASK_MAX_TOOLS overrides; 0/'off' uncaps.
+ */
+export function resolveAskMaxTools(env: Record<string, string | undefined>): number | undefined {
+  const raw = env.MUSE_ASK_MAX_TOOLS?.trim().toLowerCase();
+  if (raw === "0" || raw === "off") return undefined;
+  const parsed = Number(raw);
+  if (raw && Number.isInteger(parsed) && parsed > 0) return parsed;
+  return 10;
+}
+
 export function composeChatSystemContent(systemPrompt: string, playbookSection: string | undefined): string {
   return playbookSection && playbookSection.trim().length > 0 ? `${playbookSection}\n\n${systemPrompt}` : systemPrompt;
 }
@@ -3091,6 +3106,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               // RECALL_FORBIDDEN_TOOL_NAMES and readSkipAutoExtract.
               forbiddenToolNames: [...RECALL_FORBIDDEN_TOOL_NAMES],
               skipUserMemoryAutoExtract: true,
+              ...(resolveAskMaxTools(process.env) !== undefined ? { maxTools: resolveAskMaxTools(process.env) } : {}),
               ...(useActuators ? { localMode: true } : {}),
               ...(options.notesOnly ? { allowedToolNames: [...NOTES_ONLY_TOOL_ALLOWLIST] } : {}),
               ...(webSearchPolicy ? { webSearchPolicy } : {})

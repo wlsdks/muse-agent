@@ -244,9 +244,10 @@ export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {
   return {
     definition: {
       description:
-        "Type text into a field on the page in Muse's browser. Say WHICH field in `target` — its label or " +
-        "placeholder — and Muse finds it; set `submit` true to press Enter after. Use to fill a search box " +
-        "or form field — e.g. target 'search', text 'wireless mouse', submit true; '검색창에 ... 입력해줘'. " +
+        "Type text into a field on the page open in Muse's browser. '검색창에 X 입력하고 검색해줘' / 'type X " +
+        "into the search box' means THIS tool — never browser_open (there is no URL to open; the field is on " +
+        "the current page). Say WHICH field in `target` — its label or placeholder — and Muse finds it; set " +
+        "`submit` true to press Enter after — e.g. target 'search', text 'wireless mouse', submit true. " +
         "Dropdowns too: put the option to choose in `text` (target 'Country', text 'Korea'). " +
         "The user MUST confirm before Muse types (it can submit a form / post to a site); absent " +
         "confirmation nothing happens.",

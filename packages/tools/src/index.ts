@@ -599,7 +599,9 @@ function tokenMatchesKeywordWord(token: string, word: string): boolean {
   // word-boundary rewrite regressed). ASCII keeps the word-boundary + short-
   // suffix rule so "research" never matches "search".
   if (/[^\u0000-\u007f]/u.test(word)) {
-    return token.includes(word);
+    // A single CJK character ("비") contained in an unrelated token
+    // ("비밀번호") is noise, not relevance — containment needs ≥2 chars.
+    return word.length >= 2 ? token.includes(word) : false;
   }
   return word.length >= 4 && token.startsWith(word) && token.length - word.length <= 3;
 }
