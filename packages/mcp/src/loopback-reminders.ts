@@ -101,6 +101,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
     },
     domain: "tasks",
     name: "history",
+    keywords: ["reminder", "알림", "리마인더", "history", "기록", "지난"],
     risk: "read"
   }] : [];
 
@@ -264,6 +265,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
         },
         domain: "tasks",
         name: "search",
+        keywords: ["reminder", "알림", "리마인더", "search", "찾아", "검색"],
         risk: "read"
       },
       {

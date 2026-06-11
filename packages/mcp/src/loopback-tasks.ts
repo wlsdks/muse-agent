@@ -402,6 +402,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         },
         domain: "tasks",
         name: "search",
+        keywords: ["task", "todo", "할일", "할 일", "search", "찾아", "검색"],
         risk: "read"
       }
     ]

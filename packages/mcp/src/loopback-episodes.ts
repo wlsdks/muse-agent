@@ -171,6 +171,7 @@ export function createEpisodesMcpServer(options: EpisodesMcpServerOptions): Loop
         },
         domain: "memory",
         name: "search",
+        keywords: ["session", "conversation", "대화", "세션", "지난번", "search", "찾아", "검색"],
         risk: "read"
       },
       {

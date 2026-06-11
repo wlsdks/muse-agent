@@ -163,6 +163,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
         },
         domain: "notes",
         name: "list",
+        keywords: ["notes", "노트", "메모", "list", "목록"],
         risk: "read"
       },
       {
@@ -206,6 +207,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
         },
         domain: "notes",
         name: "read",
+        keywords: ["notes", "노트", "메모", "read", "읽어"],
         risk: "read"
       },
       {
@@ -317,6 +319,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
         },
         domain: "notes",
         name: "search",
+        keywords: ["notes", "노트", "메모", "search", "찾아", "검색"],
         risk: "read"
       },
       {
@@ -376,6 +379,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
         },
         domain: "notes",
         name: "save",
+        keywords: ["notes", "노트", "메모", "save", "저장", "적어"],
         risk: "write"
       },
       {
@@ -424,6 +428,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
         },
         domain: "notes",
         name: "append",
+        keywords: ["notes", "노트", "메모", "append", "추가", "적어"],
         risk: "write"
       },
       {
@@ -464,6 +469,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
         },
         domain: "notes",
         name: "delete",
+        keywords: ["notes", "노트", "메모", "delete", "삭제", "지워"],
         risk: "write"
       }
     ]

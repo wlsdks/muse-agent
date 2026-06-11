@@ -200,10 +200,11 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   weather on 비밀번호 prompts → exact-only) and weather's calendar words (내일/주말) outranking
   reminders.add. Probes: browse→browser_open, recall→grounded cite, reminder plan→reminders.add
   first; eval:tools 125/125. Follow-up below.
-- ◦ **muse.* loopback tools carry no keywords** — relevance 0 on every prompt → alphabetical
-  tie under the cap (muse.notes.search absent from a notes prompt's top-10; harmless for ask
-  because retrieval injects notes pre-agent, but selection-quality debt). Add KO+EN keywords to
-  the high-traffic loopback tools (notes/tasks/reminders/calendar).
+- ✓→Done **muse.* loopback keywords** — recall family keyworded (notes×6, tasks.search,
+  reminders.search/history, episode.search; calendar/tasks-CRUD/reminders-CRUD already had them
+  in a different def position — the audit's "no keywords" claim was PARTIALLY wrong). Plan probes:
+  노트→muse.notes.search 1st, 지난번 대화→episode.search 1st, 할일 검색→tasks.search 1st.
+  Still bare (low-traffic tail, fine): context/messaging/followup/pattern/status/skills.
 - ◦ **ask latency on the browser path** — ~90s/turn measured (10K-token prompt eval ≈ 40s × 2
   rounds on gemma4). Levers: prompt diet under --with-tools (skip notes blocks on clear
   browse intent?), KV prefix reuse across rounds, smaller tool list (above).
