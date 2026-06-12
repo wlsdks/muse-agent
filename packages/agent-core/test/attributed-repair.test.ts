@@ -81,6 +81,15 @@ describe("repairToEvidence — attributed self-repair (RARR), fail-closed", () =
     expect(result.repaired).toBeUndefined();
     expect(result.reason).toContain("failed");
   });
+
+  it("fail-closes (does not throw) when the VERIFIER itself errors — honest refusal stands", async () => {
+    const result = await repairToEvidence("draft", evidence, query, {
+      rewrite: async () => "MTU 1380 [from notes/vpn.md].",
+      verify: async () => { throw new Error("reverify judge unreachable"); }
+    });
+    expect(result.repaired).toBeUndefined();
+    expect(result.reason).toContain("verification failed");
+  });
 });
 
 describe("buildAttributedRepairPrompt", () => {
