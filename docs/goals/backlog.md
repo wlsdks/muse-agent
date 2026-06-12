@@ -232,8 +232,16 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   network) → a MutationObserver-based `settleDom` waits for the DOM to go quiet (fast on
   static pages, capped). ③ disabled controls were listed (wasted clicks) → skipped in the
   walk. Verified: unit 36, smoke 12/12 exit 0, eval:browser-agent PASS.
-- ◦ **more real-web probes** — next gap-finding passes: native file upload, hover-reveal
-  menus, multi-tab/target=_blank, autocomplete/typeahead, cross-origin iframe (scope honestly).
+- ✓→Done **new-tab following + autocomplete** (probe batch 2) — a target=_blank link /
+  window.open popup spawned a tab the controller never followed (it kept observing the
+  stale opener; window.open even hung 8s). Fix: arm a `targetcreated` listener BEFORE the
+  click/submit (checking pages() after races and misses it) and adopt the new tab, within
+  a 500ms window so a normal no-new-tab click isn't taxed (2943ms → 1446ms). Autocomplete
+  (type → suggestion) already works via the DOM-stable settle. Locked: smoke 13 (new tab
+  followed) + 14 (autocomplete observed); unit 36, eval:browser-agent PASS.
+- ◦ **more real-web probes** — remaining gap-finding passes: native file upload
+  (`<input type=file>` → CDP uploadFile, needs a path arg/tool), hover-reveal menus
+  (no hover action yet), cross-origin iframe (per-frame contexts — scope honestly).
 - ✓→Done **browser_scroll** — the snapshot only saw rendered DOM, so below-the-fold /
   lazy-loaded content (infinite feeds, long lists) was invisible. New read tool scrolls
   (down/up/top/bottom) + settles + re-observes. Unit (enum + reject-unknown + scrolls);

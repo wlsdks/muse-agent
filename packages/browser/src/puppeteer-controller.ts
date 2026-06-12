@@ -46,6 +46,9 @@ export interface PuppeteerBrowserControllerOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+// How long to wait for a click/submit to spawn a new tab before assuming none —
+// `targetcreated` fires at click time, so this only taxes a no-new-tab action.
+const NEW_TAB_WINDOW_MS = 500;
 // Bounded re-observe for SPA shells that render after domcontentloaded:
 // an unsettled snapshot (no elements, stub text) waits and retries, max twice.
 const SETTLE_RETRIES = 2;
@@ -125,18 +128,58 @@ export class PuppeteerBrowserController implements BrowserController {
     }
     const pages = await this.browser.pages();
     this.page = pages[0] ?? (await this.browser.newPage());
-    // A JS dialog (alert/confirm/prompt/beforeunload) BLOCKS the page until it's
-    // answered — with no handler, the next click/goto hangs to the timeout. The
-    // act that triggers it was already draft-first approved by the human upstream
-    // (outbound-safety), so we ACCEPT to complete that intent, and RECORD the
-    // dialog so the result stays transparent. Registered once per page.
-    if (this.page.listenerCount("dialog") === 0) {
-      this.page.on("dialog", (dialog) => {
-        this.lastDialog = { message: dialog.message(), type: dialog.type() };
-        dialog.accept().catch(() => { /* already handled / page gone */ });
-      });
-    }
+    this.registerDialogHandler(this.page);
     return this.page;
+  }
+
+  /**
+   * A JS dialog (alert/confirm/prompt/beforeunload) BLOCKS the page until it's
+   * answered — with no handler, the next click/goto hangs to the timeout. The act
+   * that triggers it was already draft-first approved by the human upstream
+   * (outbound-safety), so we ACCEPT to complete that intent, and RECORD the dialog
+   * so the result stays transparent. Registered once per page.
+   */
+  private registerDialogHandler(page: Page): void {
+    if (page.listenerCount("dialog") > 0) return;
+    page.on("dialog", (dialog) => {
+      this.lastDialog = { message: dialog.message(), type: dialog.type() };
+      dialog.accept().catch(() => { /* already handled / page gone */ });
+    });
+  }
+
+  /**
+   * Run an action that MIGHT open a new tab (`target=_blank`, `window.open`) and
+   * follow it if it does — the model must observe the new tab, not the stale
+   * original. The `targetcreated` listener is armed BEFORE the action (a new tab
+   * registers asynchronously, so checking `pages()` after the click races and
+   * misses it); if nothing opens within a short window we keep the current page.
+   */
+  private async withNewTabFollow(action: () => Promise<void>): Promise<void> {
+    const browser = this.browser;
+    if (!browser) { await action(); return; }
+    let resolveNew: (page: Page | null) => void = () => { /* set below */ };
+    const opened = new Promise<Page | null>((resolve) => { resolveNew = resolve; });
+    const onTarget = (target: { page: () => Promise<Page | null> }): void => {
+      target.page().then((page) => resolveNew(page)).catch(() => resolveNew(null));
+    };
+    browser.once("targetcreated", onTarget);
+    try {
+      await action();
+      // A new tab fires `targetcreated` essentially at click time, so a short
+      // window catches it; a normal click (no new tab) isn't taxed beyond it.
+      const newest = await Promise.race([
+        opened,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), NEW_TAB_WINDOW_MS))
+      ]);
+      if (newest && !newest.isClosed()) {
+        this.page = newest;
+        this.registerDialogHandler(newest);
+        await newest.bringToFront().catch(() => { /* best-effort */ });
+        await newest.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* static popup */ });
+      }
+    } finally {
+      browser.off("targetcreated", onTarget);
+    }
   }
 
   private get timeout(): number {
@@ -277,12 +320,14 @@ export class PuppeteerBrowserController implements BrowserController {
   }
 
   async click(ref: number): Promise<PageSnapshot> {
-    const page = await this.ensurePage();
+    await this.ensurePage();
     const { frame, selector } = await this.resolveRef(ref);
     // Locator (not a raw handle): auto-waits for visible/enabled/stable before
     // acting — the reliable-interaction pattern from the Puppeteer guide. Scoped
-    // to the resolved frame so iframe-embedded controls work.
-    await frame.locator(selector).setTimeout(this.timeout).click();
+    // to the resolved frame so iframe-embedded controls work. Wrapped so a
+    // target=_blank / window.open new tab is followed.
+    await this.withNewTabFollow(() => frame.locator(selector).setTimeout(this.timeout).click());
+    const page = await this.ensurePage();
     await page.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* page may not navigate */ });
     await this.settleDom(page);
     return this.snapshot();
@@ -321,10 +366,12 @@ export class PuppeteerBrowserController implements BrowserController {
       await handle.type(text);
     }
     if (submit) {
-      await page.keyboard.press("Enter");
-      await page.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* may not navigate */ });
+      await this.withNewTabFollow(() => page.keyboard.press("Enter"));
+      const active = await this.ensurePage();
+      await active.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* may not navigate */ });
     }
-    await this.settleDom(page);
+    const current = await this.ensurePage();
+    await this.settleDom(current);
     return this.snapshot();
   }
 

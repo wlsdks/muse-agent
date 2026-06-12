@@ -16,6 +16,8 @@
  *  10. JS dialog       — confirm/alert is auto-handled (no hang) and reported
  *  11. async-after-act — DOM-stable settle catches content inserted post-click
  *  12. disabled        — disabled controls are omitted (no wasted clicks)
+ *  13. new tab         — a target=_blank click is FOLLOWED (new page observed)
+ *  14. autocomplete    — typing reveals suggestions (settle catches them)
  *
  * Skips (exit 0) when Chrome is not installed — a skip is not a pass.
  */
@@ -104,6 +106,16 @@ const DISABLED_HTML = `<!doctype html><html><head><title>Disabled</title></head>
 <button disabled>Submit</button><button>Active button</button>
 </body></html>`;
 
+const NEWTAB_TARGET_HTML = `<!doctype html><html><head><title>Report</title></head><body><h1>Report detail page</h1></body></html>`;
+const NEWTAB_HTML = `<!doctype html><html><head><title>Newtab</title></head><body>
+<a href="newtab-target.html" target="_blank">Open report</a>
+</body></html>`;
+
+const AUTOCOMPLETE_HTML = `<!doctype html><html><head><title>Auto</title></head><body>
+<input aria-label="Search" oninput="document.getElementById('s').innerHTML=this.value?'<button>Result: '+this.value+'</button>':''">
+<div id="s"></div>
+</body></html>`;
+
 function assert(condition, label) {
   if (!condition) throw new Error(`ASSERT FAILED: ${label}`);
   console.log(`  ✓ ${label}`);
@@ -126,6 +138,9 @@ try {
   await writeFile(join(dir, "dialog.html"), DIALOG_HTML);
   await writeFile(join(dir, "ajax.html"), AJAX_HTML);
   await writeFile(join(dir, "disabled.html"), DISABLED_HTML);
+  await writeFile(join(dir, "newtab.html"), NEWTAB_HTML);
+  await writeFile(join(dir, "newtab-target.html"), NEWTAB_TARGET_HTML);
+  await writeFile(join(dir, "autocomplete.html"), AUTOCOMPLETE_HTML);
 
   console.log("1) SPA settle — late-rendered content is observed");
   let snap;
@@ -211,6 +226,16 @@ try {
   snap = await controller.open(pathToFileURL(join(dir, "disabled.html")).href);
   assert(!snap.elements.some((el) => el.name === "Submit"), "disabled button is omitted from the element list");
   assert(snap.elements.some((el) => el.name === "Active button"), "enabled button is still listed");
+
+  console.log("13) new tab — a target=_blank click is followed (new page observed)");
+  snap = await controller.open(pathToFileURL(join(dir, "newtab.html")).href);
+  snap = await controller.click(snap.elements.find((el) => el.name === "Open report").ref);
+  assert(snap.text.includes("Report detail page"), "the controller follows the new tab, not the stale opener");
+
+  console.log("14) autocomplete — typing reveals suggestions");
+  snap = await controller.open(pathToFileURL(join(dir, "autocomplete.html")).href);
+  snap = await controller.type(snap.elements.find((el) => el.role === "textbox").ref, "laptop", false);
+  assert(snap.elements.some((el) => el.name.includes("Result: laptop")), "the suggestion rendered on input is observed");
 
   console.log("\nsmoke:browser PASS");
 } finally {
