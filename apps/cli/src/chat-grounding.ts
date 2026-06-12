@@ -136,24 +136,53 @@ export function pickReindexModel(existingModel: string | undefined, requested: s
 }
 
 /**
- * If the notes index is stale, incrementally rebuild it — targeting the SAME
- * file `searchRecall` reads (`defaultNotesIndexFile`), so a chat refresh can
- * never write where the search won't look. Lazy-imports the heavy notes-rag
- * module so it stays out of the bundled desktop binary's startup graph.
+ * A chat refresh already re-embeds on a stale CONTENT change; it must ALSO
+ * re-embed when the index's stored model no longer resolves to itself — i.e.
+ * the legacy→default migration. Without this a chat-only user (the desktop
+ * companion never runs `muse ask`, which is the only other reindex trigger)
+ * keeps ranking new v2-moe query vectors against a v1 index forever: cross-model
+ * cosine noise that floats above the authoritative-score floor. Custom models
+ * resolve to themselves, so they are NOT flagged.
  */
-async function refreshStaleNotesIndexForChat(env: Record<string, string | undefined>, embedModel: string): Promise<void> {
+export function notesIndexNeedsModelMigration(existingModel: string | undefined, requested: string): boolean {
+  return existingModel !== undefined && resolveIndexModel(existingModel, requested) !== existingModel;
+}
+
+async function defaultReadIndexModel(indexPath: string): Promise<string | undefined> {
+  try {
+    return (JSON.parse(await readFile(indexPath, "utf8")) as { model?: string }).model;
+  } catch {
+    return undefined;
+  }
+}
+
+export interface RefreshStaleNotesIndexDeps {
+  readonly isStale?: (notesDir: string, indexPath: string) => Promise<boolean>;
+  readonly reindex?: (args: { dir: string; indexPath: string; model: string }) => Promise<unknown>;
+  readonly readIndexModel?: (indexPath: string) => Promise<string | undefined>;
+}
+
+/**
+ * Rebuild the notes index when it is stale by CONTENT *or* by MODEL — targeting
+ * the SAME file `searchRecall` reads (`defaultNotesIndexFile`), so a chat refresh
+ * can never write where the search won't look. Lazy-imports the heavy notes-rag
+ * module so it stays out of the bundled desktop binary's startup graph; deps are
+ * injectable for tests (the real reindex needs a running embedder).
+ */
+export async function refreshStaleNotesIndexForChat(
+  env: Record<string, string | undefined>,
+  embedModel: string,
+  deps: RefreshStaleNotesIndexDeps = {}
+): Promise<void> {
   const indexPath = defaultNotesIndexFile();
   const { resolveNotesDir } = await import("@muse/autoconfigure");
-  const { isNotesIndexStale, reindexNotes } = await import("./commands-notes-rag.js");
   const notesDir = resolveNotesDir(env);
-  if (!(await isNotesIndexStale(notesDir, indexPath))) return;
-  let existingModel: string | undefined;
-  try {
-    existingModel = (JSON.parse(await readFile(indexPath, "utf8")) as { model?: string }).model;
-  } catch {
-    existingModel = undefined;
-  }
-  await reindexNotes({ dir: notesDir, indexPath, model: pickReindexModel(existingModel, embedModel) });
+  const existingModel = await (deps.readIndexModel ?? defaultReadIndexModel)(indexPath);
+  const modelStale = notesIndexNeedsModelMigration(existingModel, embedModel);
+  const isStale = deps.isStale ?? (async (d: string, i: string) => (await import("./commands-notes-rag.js")).isNotesIndexStale(d, i));
+  if (!modelStale && !(await isStale(notesDir, indexPath))) return;
+  const reindex = deps.reindex ?? (async (a: { dir: string; indexPath: string; model: string }) => (await import("./commands-notes-rag.js")).reindexNotes(a));
+  await reindex({ dir: notesDir, indexPath, model: pickReindexModel(existingModel, embedModel) });
 }
 
 /**

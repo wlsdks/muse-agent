@@ -314,9 +314,19 @@ replay (this commit). Remaining, severity order:
   events from an otherwise-valid array — a partial-loss path (logs nothing); separate slice.
 - ✓→Done **toolGrounded blanket bypass** — fixed; keys on non-empty toolGroundingSources, value checks
   always-on, single-source helper shared run()+stream. See the Done entry up top. (CLI audit #4)
-- ◦ **Chat-only users never get the embedder migration** — refreshStaleNotesIndexForChat doesn't
-  treat legacy-model as stale → v2-moe queries ranked against v1 vectors (cross-model cosine noise
-  above the 0.5 authoritative floor). Treat model mismatch as stale. (CLI audit #5)
+- ✓→Done **Chat-only users never get the embedder migration** (CLI audit #5) —
+  `refreshStaleNotesIndexForChat` gated re-embed on CONTENT staleness only and returned early when
+  notes were unchanged, so a chat-only user (the desktop companion never runs `muse ask`, the only
+  other reindex trigger) kept ranking v2-moe query vectors against a legacy v1 index forever
+  (cross-model cosine noise above the 0.5 floor). FIX: read the index model BEFORE the staleness
+  gate; re-embed on `modelStale || contentStale`, where `notesIndexNeedsModelMigration` =
+  `resolveIndexModel(existing, requested) !== existing` (legacy→default migrates; custom/default/none
+  unflagged so no every-turn loop). Made the fn exported + deps-injectable (isStale/reindex/
+  readIndexModel) for an Ollama-free OUTCOME test. TDD 5 (1 helper unit + 4 DI behavioral: legacy-fresh
+  reindexes to default, default/custom-fresh don't, content-stale still does) RED→GREEN; cli 2525,
+  check 0, lint 0. Fable-5 verifier PASS. RESIDUAL (separate slice): if the embedder is DOWN during a
+  model-mismatch rebuild, `reindexNotes` drops prior-entry carry-forward → saves an empty index until
+  notes change / manual reindex (fail-close: zero hits → refusal, not fabrication; pre-existing path).
 - ◦ **ask error paths skip the run-log trace** (failed runs are exactly the error-analysis fuel) +
   Ctrl-C still runs the verdict pipeline and logs success:true. try/finally + success:false entries.
   (CLI audit #6/#7)
