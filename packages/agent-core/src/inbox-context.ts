@@ -34,6 +34,12 @@ export interface InboxContextProvider {
 }
 
 const DEFAULT_TEXT_PREVIEW = 200;
+// Per-group message cap. The provider returns everything since the last cursor,
+// so a busy channel can dump 100+ messages into one turn — unbounded prompt cost
+// (every other context block caps: events/reminders slice to 8, skills to 40).
+// Keep the MOST RECENT this many per group (the freshest are the useful soft
+// context) and note the omission; the group header still shows the true total.
+const MAX_MESSAGES_PER_GROUP = 10;
 
 export function renderInboxSection(
   snapshot: InboxSnapshot | undefined,
@@ -82,7 +88,15 @@ export function renderInboxSection(
       }
       return a.receivedAtIso.localeCompare(b.receivedAtIso);
     });
-    for (const message of sortedMessages) {
+    // Cap to the most-recent N (sorted ascending, so the tail is freshest);
+    // note how many earlier ones were omitted so the bound is visible.
+    const shown = sortedMessages.length > MAX_MESSAGES_PER_GROUP
+      ? sortedMessages.slice(-MAX_MESSAGES_PER_GROUP)
+      : sortedMessages;
+    if (sortedMessages.length > shown.length) {
+      lines.push(`  · …${(sortedMessages.length - shown.length).toString()} earlier omitted`);
+    }
+    for (const message of shown) {
       // Slack / Discord display names are author-controlled —
       // anyone can set a multi-line "display name" containing
       // `\n[System Override]\n…`. The text body already gets
