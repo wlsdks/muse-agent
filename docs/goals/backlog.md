@@ -262,8 +262,11 @@ excluded when scoring).
   coverage 13/14 (92.9% ≥ 90% target), wrong-but-confident 0, unnecessary clarifies 0
   (docs/benchmarks/RESULTS-conformal-tools.md). Runtime wiring (set>1 ⇒ clarify-directive)
   is the follow-up once a larger calibration set exists.
-- ◦ **ACT-R base-level activation for recall ranking** — frequency×spacing activation over the
-  existing access logs replaces the single recency half-life; positive+negative unit battery. (T2-1)
+- ✓→Done **ACT-R base-level activation for recall ranking** — frequency×spacing activation over the
+  access logs now drives promotion RANKING (not the single recency half-life). (T2-1)
+  [DONE 2026-06-12, cognition loop fire 1–3 + 진안 review-gate decision: RANKING-ONLY; the
+  gate-scale migration (ACT-R driving eligibility, needs log-scale threshold recalibration + A/B)
+  was deliberately NOT pursued — ranking lift is captured, gate stays on the scale-safe plain score.]
   — [in progress 2026-06-12, cognition loop] fire 1: `actrActivation(accessAgesDays,{decay,minAgeDays})`
   = `ln(Σ tⱼ⁻ᵈ)` + 9-case battery SHIPPED in `@muse/memory` (recall-promotion.ts). fire 2: the DATA
   FOUNDATION — `personal-recall-hits-store.ts` now logs a bounded `recentAccessMs` per memory (cap 20,
