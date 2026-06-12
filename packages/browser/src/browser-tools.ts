@@ -204,6 +204,44 @@ export function createBrowserBackTool(deps: BrowserReadToolDeps): MuseTool {
   };
 }
 
+const SCROLL_DIRECTIONS = ["down", "up", "top", "bottom"] as const;
+
+export function createBrowserScrollTool(deps: BrowserReadToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "Scroll the page in Muse's browser to reveal content that isn't visible yet — below-the-fold or " +
+        "lazily-loaded items (infinite-scroll feeds, long product lists). `direction` is 'down' / 'up' / " +
+        "'top' / 'bottom'. Use when the page text or elements seem cut off, or the user asks to scroll / see " +
+        "more / go to the bottom — e.g. 'scroll down', '더 아래로', '맨 아래로 가줘'. Returns the page after " +
+        "scrolling (new content included). Read-only.",
+      domain: "browser",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          direction: { description: "Where to scroll: 'down', 'up', 'top', or 'bottom'.", enum: [...SCROLL_DIRECTIONS], type: "string" }
+        },
+        required: ["direction"],
+        type: "object"
+      },
+      keywords: ["browser", "scroll", "스크롤", "down", "아래", "up", "위", "bottom", "맨아래", "more", "더보기", "브라우저"],
+      name: "browser_scroll",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const direction = typeof args["direction"] === "string" ? args["direction"].trim() : "";
+      if (!SCROLL_DIRECTIONS.includes(direction as (typeof SCROLL_DIRECTIONS)[number])) {
+        return { error: `direction must be one of: ${SCROLL_DIRECTIONS.join(", ")}` };
+      }
+      try {
+        return snapshotToJson(await deps.controller.scroll(direction as (typeof SCROLL_DIRECTIONS)[number]));
+      } catch (cause) {
+        return errorResult(cause);
+      }
+    }
+  };
+}
+
 export interface BrowserActToolDeps {
   readonly controller: BrowserController;
   readonly approvalGate: BrowserApprovalGate;

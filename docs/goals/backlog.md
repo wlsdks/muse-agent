@@ -223,6 +223,12 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   honestly skipped. Ref resolution searches EVERY frame (`page.frames()`), so an
   iframe-embedded control is both visible AND clickable. Real-Chrome smoke (local http,
   same-origin iframe button): button appears in the snapshot + cross-frame click succeeds.
+- ✓→Done **browser_scroll** — the snapshot only saw rendered DOM, so below-the-fold /
+  lazy-loaded content (infinite feeds, long lists) was invisible. New read tool scrolls
+  (down/up/top/bottom) + settles + re-observes. Unit (enum + reject-unknown + scrolls);
+  eval 9/9 STABLE 3/3 (scroll EN+KO); real-Chrome smoke: a button lazy-appended on scroll
+  is absent before and present after scroll('bottom'). Completes the observation-
+  completeness trio with iframe + paging.
 - ✓→Done **element paging past the 50 cap** — no more silent truncation. The controller
   collects up to BROWSER_ELEMENT_CEILING (200) so grounding matches the WHOLE set in code;
   every tool RESPONSE shows ≤BROWSER_MAX_ELEMENTS (50) and reports `total` +

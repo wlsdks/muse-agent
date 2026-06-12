@@ -29,6 +29,7 @@ import {
   BROWSER_MAX_TEXT,
   type BrowserController,
   type PageSnapshot,
+  type ScrollDirection,
   type SnapshotElement
 } from "./controller.js";
 import { looksUnsettled, matchOption } from "./matcher.js";
@@ -287,6 +288,19 @@ export class PuppeteerBrowserController implements BrowserController {
   async back(): Promise<PageSnapshot> {
     const page = await this.ensurePage();
     await page.goBack({ timeout: this.timeout, waitUntil: "domcontentloaded" }).catch(() => { /* nothing to go back to */ });
+    return this.snapshot();
+  }
+
+  async scroll(direction: ScrollDirection): Promise<PageSnapshot> {
+    const page = await this.ensurePage();
+    await page.evaluate((dir: string) => {
+      const by = Math.round(window.innerHeight * 0.9);
+      if (dir === "top") window.scrollTo({ top: 0 });
+      else if (dir === "bottom") window.scrollTo({ top: document.body.scrollHeight });
+      else window.scrollBy({ top: dir === "up" ? -by : by });
+    }, direction);
+    // Lazy-loaders fire on scroll — let the new content settle before observing.
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* static page */ });
     return this.snapshot();
   }
 

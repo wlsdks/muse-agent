@@ -6,6 +6,7 @@ import {
   createBrowserClickTool,
   createBrowserOpenTool,
   createBrowserReadTool,
+  createBrowserScrollTool,
   createBrowserTypeTool,
   type BrowserApprovalGate
 } from "../src/browser-tools.js";
@@ -28,6 +29,7 @@ class FakeController implements BrowserController {
   async click(ref: number): Promise<PageSnapshot> { this.calls.push(`click:${ref.toString()}`); return SNAP; }
   async type(ref: number, text: string, submit: boolean): Promise<PageSnapshot> { this.calls.push(`type:${ref.toString()}:${text}:${submit.toString()}`); return SNAP; }
   async back(): Promise<PageSnapshot> { this.calls.push("back"); return SNAP; }
+  async scroll(direction: string): Promise<PageSnapshot> { this.calls.push(`scroll:${direction}`); return SNAP; }
   async screenshot(path: string): Promise<{ readonly path: string }> { this.calls.push("shot"); return { path }; }
   describeElement(ref: number): SnapshotElement | undefined { return this.elements.get(ref); }
   currentUrl(): string { return "https://example.test/"; }
@@ -44,11 +46,12 @@ describe("browser tools — well-formed definitions", () => {
       createBrowserOpenTool({ controller: c }),
       createBrowserReadTool({ controller: c }),
       createBrowserBackTool({ controller: c }),
+      createBrowserScrollTool({ controller: c }),
       createBrowserClickTool({ approvalGate: allow, controller: c }),
       createBrowserTypeTool({ approvalGate: allow, controller: c })
     ];
     expect(tools.map((t) => t.definition.name)).toEqual([
-      "browser_open", "browser_read", "browser_back", "browser_click", "browser_type"
+      "browser_open", "browser_read", "browser_back", "browser_scroll", "browser_click", "browser_type"
     ]);
     for (const tool of tools) {
       expect(tool.definition.domain).toBe("browser");
@@ -90,6 +93,32 @@ describe("browser_open / read / back — free (no gate)", () => {
   });
 });
 
+describe("browser_scroll — reveal below-the-fold content", () => {
+  it("is a well-formed read tool with a direction enum", () => {
+    const c = new FakeController();
+    const tool = createBrowserScrollTool({ controller: c });
+    expect(tool.definition.name).toBe("browser_scroll");
+    expect(tool.definition.risk).toBe("read");
+    expect((tool.definition.inputSchema as { required: string[]; properties: { direction: { enum: string[] } } }).required).toEqual(["direction"]);
+    expect((tool.definition.inputSchema as { properties: { direction: { enum: string[] } } }).properties.direction.enum).toEqual(["down", "up", "top", "bottom"]);
+    expect(validateToolDefinitions([tool])).toEqual([]);
+  });
+
+  it("rejects an unknown direction without scrolling", async () => {
+    const c = new FakeController();
+    const tool = createBrowserScrollTool({ controller: c });
+    expect(await tool.execute({ direction: "sideways" }, ctx)).toMatchObject({ error: expect.stringContaining("direction must be one of") });
+    expect(c.calls).toEqual([]);
+  });
+
+  it("scrolls and returns the new page snapshot", async () => {
+    const c = new FakeController();
+    const tool = createBrowserScrollTool({ controller: c });
+    expect(await tool.execute({ direction: "bottom" }, ctx)).toMatchObject({ title: "Example" });
+    expect(c.calls).toEqual(["scroll:bottom"]);
+  });
+});
+
 describe("browser_read — paging a long page (no silent truncation)", () => {
   function bigController(n: number): BrowserController {
     const elements: SnapshotElement[] = Array.from({ length: n }, (_v, i) => ({ name: `link ${i.toString()}`, ref: i, role: "link" }));
@@ -97,7 +126,7 @@ describe("browser_read — paging a long page (no silent truncation)", () => {
     return {
       back: async () => snap, click: async () => snap, close: async () => {}, currentUrl: () => "https://big.test/",
       describeElement: (ref) => elements[ref], disconnect: async () => {}, open: async () => snap,
-      screenshot: async (path) => ({ path }), snapshot: async () => snap, type: async () => snap
+      screenshot: async (path) => ({ path }), scroll: async () => snap, snapshot: async () => snap, type: async () => snap
     };
   }
 

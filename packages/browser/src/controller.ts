@@ -30,6 +30,8 @@ export interface PageSnapshot {
   readonly elements: readonly SnapshotElement[];
 }
 
+export type ScrollDirection = "down" | "up" | "top" | "bottom";
+
 export interface BrowserController {
   /** Navigate to a URL and return the resulting page snapshot. */
   open(url: string): Promise<PageSnapshot>;
@@ -41,6 +43,11 @@ export interface BrowserController {
   type(ref: number, text: string, submit: boolean): Promise<PageSnapshot>;
   /** Go back in history; returns the new snapshot. */
   back(): Promise<PageSnapshot>;
+  /**
+   * Scroll the page and re-observe — reveals below-the-fold and lazily-loaded
+   * content the snapshot can't see until it renders.
+   */
+  scroll(direction: ScrollDirection): Promise<PageSnapshot>;
   /** Capture the page to a .png file. */
   screenshot(path: string): Promise<{ readonly path: string }>;
   /** The element a ref points at in the last snapshot (for the approval draft). */
