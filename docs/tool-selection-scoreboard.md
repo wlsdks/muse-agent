@@ -63,3 +63,19 @@ The real unlock is SYSTEMATIC real-usage failure fuel (run-outcome logging →
 error-analysis), the improve-muse-deferred infra — building it is a loop-objective
 change. Surfaced to Jinan as a premise fork rather than spinning fires on
 saturated metrics.
+
+## 2026-06-12 PIVOT (Jinan's decision) — loop objective → real-usage failure-fuel pipeline
+
+All three measurable levers saturated (above). Jinan chose: build the real-usage
+failure-fuel pipeline so future measurement regains headroom (improve-muse's
+deferred unlock). Loop upgraded v3→v4 (cron 32b23ef1).
+
+Explored infra (don't rebuild): weakness-ledger.ts (SINK), writeRunLog (run-log
++ outcome label), askOutcomeLabel. GAP: only chat-repl feeds recordWeakness —
+the ASK path's ungrounded/abstain outcomes are run-logged but never mined into
+the ledger, and no analyzer turns run-logs into weakness patterns.
+
+v4 backlog: (1) wire ask-path `ungrounded` → grounding-gap weakness (mirror
+chat-repl); (2) run-log → weakness analyzer surfaced in `muse doctor`; (3) the
+error-analysis report ranking remediable weaknesses. Each verified by a REAL
+`muse ask` that then shows a weakness entry in the ledger.
