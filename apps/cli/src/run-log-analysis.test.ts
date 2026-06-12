@@ -19,6 +19,19 @@ describe("isFailureEvent (what counts as a signal worth turning into work)", () 
   it("does NOT treat an unlabeled (grounded:null, success:null) trace as a failure (no signal)", () => {
     expect(isFailureEvent({ grounded: null, message: "hi", success: null })).toBe(false);
   });
+
+  it("does NOT treat an ungrounded EMPTY answer as a failure (a non-answer / dev no-op is not actionable work)", () => {
+    expect(isFailureEvent({ answer: "", grounded: "ungrounded", message: "open example.com", success: true })).toBe(false);
+    expect(isFailureEvent({ answer: "   ", grounded: "ungrounded", message: "open example.com", success: true })).toBe(false);
+  });
+
+  it("DOES treat an ungrounded NON-EMPTY answer as a failure (a real missed attempt)", () => {
+    expect(isFailureEvent({ answer: "the page says hello", grounded: "ungrounded", message: "open example.com", success: true })).toBe(true);
+  });
+
+  it("still treats a failed run as a failure even with an empty answer (the run errored)", () => {
+    expect(isFailureEvent({ answer: "", grounded: null, message: "deploy", success: false })).toBe(true);
+  });
 });
 
 describe("analyzeRunLogSignals (failing traces → ranked candidate work)", () => {

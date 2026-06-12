@@ -9,6 +9,11 @@
 
 ---
 
+## 1.8.1 — 2026-06-12
+신호 scout 하드닝(loop fire 6): 빈-답(non-answer) ungrounded를 실패로 안 셈 — scout의 첫 실
+발견이 dev 테스트 노이즈(빈 답)였음. `isFailureEvent`가 success===false는 먼저 카운트하고
+ungrounded+빈답만 제외. 실데이터 재실행 1→0 클러스터. (코어 `run-log-analysis.ts`.)
+
 ## 1.8.0 — 2026-06-12
 **신호 기반 gap-scout**(진안 지시 — 조사: 2026 주류는 신호-triage 발굴). 발굴(§1.3)을 3단
 사다리로: (a) **신호 먼저** `scripts/scout-signals.mjs`가 `.muse/runs/` 실패 트레이스

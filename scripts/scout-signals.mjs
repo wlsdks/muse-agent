@@ -25,7 +25,10 @@ async function readEvents(dir) {
       const trimmed = line.trim();
       if (!trimmed) continue;
       try {
-        events.push(JSON.parse(trimmed));
+        const event = JSON.parse(trimmed);
+        // Lift the answer text up so the analyzer can drop empty (no-op) answers.
+        const answer = event?.response?.response;
+        events.push(typeof answer === "string" ? { ...event, answer } : event);
       } catch {
         // a half-written line — skip, never crash the scout
       }
