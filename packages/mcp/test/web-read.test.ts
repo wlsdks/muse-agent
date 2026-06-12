@@ -179,3 +179,27 @@ describe("extractReadableText — strips nav/footer boilerplate (cleaner groundi
     expect(out.text).not.toContain("Privacy Terms");
   });
 });
+
+describe("createWebReadMcpServer.read — PDF URLs are extracted, not rejected", () => {
+  it("reads a PDF response via the injected extractor (content-type application/pdf)", async () => {
+    const server = createWebReadMcpServer({
+      lookup: publicLookup,
+      extractPdfText: async () => "Extracted PDF body about Q3 revenue.",
+      fetch: async () => new Response(new Uint8Array(Buffer.from("%PDF-1.7 ...binary...")), { status: 200, headers: { "content-type": "application/pdf" } })
+    });
+    const out = await callRead(server, "https://files.example.com/report.pdf");
+    expect(out.error).toBeUndefined();
+    expect(String(out.text)).toContain("Q3 revenue");
+  });
+
+  it("still routes a normal HTML page through the text extractor", async () => {
+    const server = createWebReadMcpServer({
+      lookup: publicLookup,
+      extractPdfText: async () => "SHOULD NOT BE USED",
+      fetch: async () => htmlResponse("<title>Doc</title><p>html body</p>")
+    });
+    const out = await callRead(server, "https://example.com/a");
+    expect(String(out.text)).toContain("html body");
+    expect(String(out.text)).not.toContain("SHOULD NOT BE USED");
+  });
+});

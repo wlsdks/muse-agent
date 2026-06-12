@@ -4,6 +4,7 @@ import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
 import type { LoopbackMcpServer } from "./loopback.js";
 import { readString } from "./loopback-helpers.js";
 import { extractReadableText } from "./web-readable.js";
+import { extractPdfTextWithPdfjs } from "./file-read-tool.js";
 import { assertPublicHttpUrl, type HostLookup } from "./web-url-guard.js";
 
 export interface WebReadMcpServerOptions {
@@ -19,6 +20,21 @@ export interface WebReadMcpServerOptions {
   readonly fetch?: typeof globalThis.fetch;
   /** Injectable DNS lookup for the SSRF guard (tests). */
   readonly lookup?: HostLookup;
+  /** PDF text extractor; defaults to the lazy pdfjs implementation (tests inject a fake). */
+  readonly extractPdfText?: (data: Buffer) => Promise<string>;
+  /** Byte cap for a PDF body (larger than the text cap — PDFs are bigger). Default 10MB. */
+  readonly pdfMaxBytes?: number;
+}
+
+function isPdfContentType(contentType: string | null): boolean {
+  return contentType !== null && contentType.toLowerCase().includes("application/pdf");
+}
+
+async function readBytesCapped(response: Response, maxBytes: number): Promise<{ readonly bytes: Buffer; readonly truncated: boolean }> {
+  const buf = Buffer.from(await response.arrayBuffer());
+  return buf.byteLength > maxBytes
+    ? { bytes: buf.subarray(0, maxBytes), truncated: true }
+    : { bytes: buf, truncated: false };
 }
 
 function isReadableContentType(contentType: string | null): boolean {
@@ -69,6 +85,8 @@ export function createWebReadMcpServer(options: WebReadMcpServerOptions = {}): L
   const maxChars = options.maxChars ?? 16_000;
   const timeoutMs = options.timeoutMs ?? 10_000;
   const fetchImpl = options.fetch ?? globalThis.fetch;
+  const extractPdf = options.extractPdfText ?? extractPdfTextWithPdfjs;
+  const pdfMaxBytes = options.pdfMaxBytes ?? 10 * 1024 * 1024;
 
   return {
     description: "Built-in readable web-page reader (loopback MCP, SSRF-guarded, public hosts only).",
@@ -110,8 +128,26 @@ export function createWebReadMcpServer(options: WebReadMcpServerOptions = {}): L
               return { error: `redirected to a blocked host: ${finalGuard.error}` };
             }
           }
-          if (!isReadableContentType(response.headers.get("content-type"))) {
-            return { error: `not a readable text page (content-type: ${response.headers.get("content-type")})` };
+          const contentType = response.headers.get("content-type");
+          // A PDF URL ("summarize this report.pdf link") is extracted locally
+          // via pdfjs rather than rejected as non-text.
+          if (isPdfContentType(contentType)) {
+            const { bytes, truncated: pdfTruncated } = await readBytesCapped(response, pdfMaxBytes);
+            try {
+              const pdfText = await extractPdf(bytes);
+              const capped = pdfText.length > maxChars;
+              return {
+                text: capped ? pdfText.slice(0, maxChars) : pdfText,
+                title: "",
+                truncated: capped || pdfTruncated,
+                url: response.url || guard.url.toString()
+              } satisfies JsonObject;
+            } catch (error) {
+              return { error: `could not extract PDF text: ${error instanceof Error ? error.message : String(error)}` };
+            }
+          }
+          if (!isReadableContentType(contentType)) {
+            return { error: `not a readable text page (content-type: ${contentType})` };
           }
           const { body, truncated: bodyTruncated } = await readBodyCapped(response, maxBytes);
           const extracted = extractReadableText(body, { maxChars });

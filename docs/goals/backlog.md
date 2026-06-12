@@ -17,6 +17,13 @@ The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing 
 Every slice ships its eval/test and never weakens the grounding floor. Ranked:
 
 EXPAND (new reach):
+- ✓→Done **web_read reads PDF URLs (not just HTML)** — `isReadableContentType` rejected
+  application/pdf, so "summarize this report.pdf link" failed with "not a readable text page". Now a
+  PDF content-type response is read as bytes (10MB cap) and extracted via the same pdfjs already used
+  by file_read (injectable `extractPdfText`, default lazy pdfjs); HTML still routes through the text
+  extractor. One-step "summarize this PDF link" instead of download-then-read. TDD 2 (PDF via injected
+  extractor, HTML still uses text path); LIVE — a real Chrome-generated PDF fetched through web_read's
+  pdfjs path returns the body text. mcp 1640, check 0, lint 0.
 - ✓→Done **web search wired into the default agent (muse.search)** — `muse.search` (web search, zero-config
   DuckDuckGo fallback, SearXNG when MUSE_SEARXNG_URL is set) existed + was tested but was ONLY reachable
   behind the opt-in MUSE_LOOPBACK_MCP_ENABLED flag, so by default the agent could not answer fresh-web
