@@ -160,7 +160,11 @@ function evaluateArithmetic(expression: string): number {
       throw new Error("expected number");
     }
     const literal = stripped.slice(start, cursor);
-    const value = Number.parseFloat(literal);
+    // Strict Number(), NOT parseFloat: the scanner greedily consumes dots, so a
+    // malformed "1.2.3" reaches here — parseFloat would silently return 1.2 (stops at
+    // the 2nd dot) and the NaN guard never fires, so "1.2.3 * 100" computes 120. The
+    // math tool's whole contract is an EXACT digit, so a malformed literal must throw.
+    const value = Number(literal);
     if (Number.isNaN(value)) {
       throw new Error(`invalid number literal: ${literal}`);
     }

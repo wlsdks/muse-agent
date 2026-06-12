@@ -3,14 +3,14 @@ title: 권한 매트릭스 (Permission Matrix)
 audience: [개발자, AI 에이전트]
 purpose: 모든 도구·행동을 위험 등급으로 분류하고, 등급별로 무엇을 통과/승인/거부할지 정한다
 status: draft
-updated: 2026-05-31
+updated: 2026-06-13
 sources_basis: [Muse ToolApprovalGate/ToolRiskLevel, Muse SYSTEM-MAP #3/#9/#12 (신뢰목록·게이트), outbound-safety rule, 2026 least-privilege agent refs]
-related: [tool-design.md, verification-and-guardrails.md, skills-and-mcp.md, architecture.md, README.md]
+related: [../reference/tool-design.md, verification-and-guardrails.md, ../reference/skills-and-mcp.md, ../reference/architecture.md, ../README.md]
 ---
 
 # 권한 매트릭스 (Permission Matrix)
 
-> **왜 이 칸인가?** [architecture](../reference/architecture.md) 자가평가의 🟡. 게이트가 있어도 "어떤 행동이 어느
+> **왜 이 칸인가?** [architecture](../reference/architecture.md) 자가평가에서 비어 있던 칸(현재 ✅). 게이트가 있어도 "어떤 행동이 어느
 > 등급이고, 등급마다 어떻게 처리하나"가 한 표로 정해져 있지 않으면 일관성이 무너집니다. Muse는 이미
 > 도구를 읽기/쓰기/실행으로 나누고 신뢰 게이트를 거치니(아래), 그 규약을 **위험 등급 × 처리** 매트릭스로
 > 명문화합니다. 말로만(코드 없음).
@@ -23,10 +23,21 @@ related: [tool-design.md, verification-and-guardrails.md, skills-and-mcp.md, arc
 ## 1. 위험 등급 (Risk Tiers)
 
 - **읽기(read)** — 상태를 바꾸지 않는 조회·인지.
-- **쓰기(write)** — 내 데이터(메모·할일·일정 등)를 바꿈.
+- **쓰기(write)** — 상태를 바꿈: 작업 중인 소스/문서, 또는 내 데이터(메모·할일·일정 등).
 - **실행(execute)** — 로컬 명령·프로세스 실행.
 - **외부 전송(outbound)** — 제3자에게 메시지·제출·예약 등(밖으로 나감).
 - **금지(forbidden)** — 은행·결제·송금 등 영구 범위 밖.
+
+## 1.5 개발 작업의 기본 매핑 (부트스트랩 — 작업 자체가 게이트에 막히지 않게)
+
+새 프로젝트에 신뢰 목록이 아직 없어도 소프트웨어 작업이 멈추면 안 됩니다. 기본 매핑:
+
+- **작업 범위 안 소스/문서 편집** = 쓰기, **통과** — 그게 작업 자체입니다(범위 밖 파일·시스템
+  설정이면 모호 = 막힘 우선).
+- **프로젝트 자체의 빌드·테스트·린트 실행** = 실행. **신뢰 목록 = 호스트 도구의 권한 시스템**입니다
+  (Claude Code면 `/permissions`·`.claude/settings.json` allowlist 등). 목록이 비어 있으면
+  **첫 실행의 사람 승인이 곧 등록** — 무조건 거부가 아니라 승인-후-기록.
+- 그 밖의 실행(패키지 설치·시스템 변경·네트워크)과 외부 전송·금지는 §2 그대로 fail-closed.
 
 ## 2. 매트릭스 (등급 × 처리)
 

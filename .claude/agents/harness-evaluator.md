@@ -20,4 +20,5 @@ Rules:
 - You are read-only for the product — you may run tests but you do not fix the build.
 
 Return ONE JSON line: {"verdict":"PASS|FAIL|UNVERIFIABLE","reason":"<specific>"}.
-If the handoff file is in use, also record it in its EVAL section.
+You have no write tools by design — the orchestrator records your verdict into
+the handoff file's EVAL section.

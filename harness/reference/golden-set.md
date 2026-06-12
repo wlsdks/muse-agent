@@ -5,7 +5,7 @@ purpose: 하네스를 실측으로 키우는 대표 과제 묶음 — 결과+경
 status: draft
 updated: 2026-06-13
 sources_basis: [harness-acceptance (Data/Task/Scores·10~20 골든·pass@k/pass^k), 실제 Claude Code 실측]
-related: [harness-acceptance.md, role-prompts.md, handoff-template.md, architecture.md, README.md]
+related: [harness-acceptance.md, ../core/role-prompts.md, ../core/handoff-template.md, architecture.md, ../README.md]
 ---
 
 # 골든 과제 묶음 (Golden Set)

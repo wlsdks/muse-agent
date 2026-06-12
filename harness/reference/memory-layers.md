@@ -3,14 +3,14 @@ title: 메모리 계층 (Memory Layers)
 audience: [개발자, AI 에이전트]
 purpose: 에이전트가 무엇을 어디에 기억하고, 언제 쓰고 줄이나 — 계층별 메모리 구조
 status: draft
-updated: 2026-05-31
+updated: 2026-06-13
 sources_basis: [Muse UserMemoryStore/ConversationSummaryStore/EpisodicRecallProvider/selectPromotableMemories/UserModelSlot, Muse SYSTEM-MAP #5, 2026 layered-memory refs]
-related: [context-compaction.md, handoff-template.md, team-roles.md, architecture.md, README.md]
+related: [context-compaction.md, ../core/handoff-template.md, ../core/team-roles.md, architecture.md, ../README.md]
 ---
 
 # 메모리 계층 (Memory Layers)
 
-> **왜 이 칸인가?** [architecture](architecture.md) 자가평가의 🟡. 에이전트가 "무엇을 어디에 기억하나"가
+> **왜 이 칸인가?** [architecture](architecture.md) 자가평가에서 비어 있던 칸(현재 ✅). 에이전트가 "무엇을 어디에 기억하나"가
 > 계층으로 정리돼 있지 않으면, 맥락이 부풀거나 정작 필요한 걸 못 떠올립니다. Muse는 이미 사실·세션요약·
 > 회상·승격·구조화 모델을 갖췄으니(아래), 그 구조를 **계층 메모리**로 명문화합니다. 말로만(코드 없음).
 

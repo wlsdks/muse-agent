@@ -2,7 +2,7 @@
 title: 관측 (Observability — 트레이스)
 audience: [개발자, AI 에이전트]
 purpose: 실행의 모든 단계를 상관 ID 하나로 기록해 재현·감사·비용 집계가 되게 하는 정통 하네스 레이어
-updated: 2026-05-31
+updated: 2026-06-13
 ---
 
 # 관측 (Observability)
@@ -38,5 +38,5 @@ updated: 2026-05-31
 ## 한계 / 다음
 
 지금은 **인메모리 트레이스 + JSON 영속**까지. 토큰/비용은 호스트가 `cost` 필드로 넣어주면 합산된다
-(에이전트 CLI가 비용을 노출하면 배선). 남은 정통 요소: **세션 영속(state persistence·재개)**,
-그리고 메모리 런타임 컴포넌트.
+(에이전트 CLI가 비용을 노출하면 배선). (세션 영속·메모리 런타임도 이후 코드로 채워짐 —
+[architecture §4](architecture.md).)

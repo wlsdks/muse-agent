@@ -390,3 +390,11 @@
 - **왜:** 실패 chat run = error-analysis 연료인데 소실됐음(#6의 chat판). 다양성 가드: 최근 보안×3+decompose×1이라 behavioral-observability fix로 KIND 전환. chat 핸들러는 작은 함수라 6b의 2000줄 추출 없이 직접 wrap 가능 → 6b와 독립.
 - **리뷰지점:** chat-repl.ts createTuiChatSubmitter(DI runner + 실패 try/catch, source 호이스트) + chat-repl.test.ts(throwing runner → .muse/runs에 success:false trace + 원본 re-throw; success 경로 무회귀) RED→GREEN. cli 2530, check 0, lint 0. Fable-5 검증자 PASS(성공 경로 byte-identical·double-log 없음·default 비inert).
 - **리스크:** 거의 없음 — 추가 관측만(실패 trace), 성공 경로 불변, .catch로 로그 실패가 원본 에러 안 가림. RATCHET: testFiles 888 무변동(+2 케이스), fabrication 0 유지. #6 family는 6a(빌더)+6d(chat) Done; 6b(ask body wrap, 전용 fire)+6c(abort) OPEN. grounding floor 무관.
+
+
+## [TOOL loop] fire 9 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** muse.math.evaluate의 parseNumber가 다중-dot 숫자("1.2.3")를 parseFloat로 1.2로 조용히 절단 → "1.2.3 * 100"이 120 반환. 1줄 수정: parseFloat → strict Number (NaN→기존 throw).
+- **왜:** 이 도구의 전체 계약이 "8B가 못 하는 정확한 계산"인데 틀린 숫자가 모델 검증 없이 사용자 답으로 흐름(shared core라 ask/chat arithmetic fast-path까지). EXPANSION 스카웃 발굴. 다양성: 보안×3→decompose→observability 다음 parsing-correctness로 KIND 다양.
+- **리뷰지점:** loopback-math-server.ts:163(parseFloat→Number) + mcp.test.ts(다중-dot→error + 5./.5 컨트롤) RED→GREEN. mcp 1687, check 0, lint 0. Fable-5 검증자 PASS(유효 입력 무회귀 node-검증·shared core 도달·1..2도 수정). runner-up(json.query 프로토타입-체인 walk → Object.hasOwn)을 새 ◦로 backlog 기록.
+- **리스크:** 없음에 가까움 — Number는 parseFloat보다 엄격하나 parseNumber가 이미 digits/dots만 통과시켜 다중-dot 외 발산 없음(검증됨). RATCHET: testFiles 888 무변동(+1 케이스), fabrication 0 유지. grounding floor 무관(산술 파서 correctness, 게이트 무변경).

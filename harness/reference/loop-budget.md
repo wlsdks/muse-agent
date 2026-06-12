@@ -3,14 +3,14 @@ title: 루프 종료 & 예산 (Loop Control & Budget)
 audience: [개발자, AI 에이전트]
 purpose: 에이전트 루프가 무한 반복·비용 폭주 없이 반드시 끝나게 하는 종료 조건과 예산 한도
 status: draft
-updated: 2026-05-31
+updated: 2026-06-13
 sources_basis: [호스트 CLAUDE.md(예: Muse) (tool loops have explicit limits/timeouts), 호스트 architecture 규약 (deterministic budgets/stop conditions), Claude Code agent-loop (max_turns/max_budget_usd), 2026 runaway-cost prevention guides]
-related: [team-roles.md, failure-modes-and-observability.md, verification-and-guardrails.md, architecture.md, README.md]
+related: [../core/team-roles.md, failure-modes-and-observability.md, ../core/verification-and-guardrails.md, architecture.md, ../README.md]
 ---
 
 # 루프 종료 & 예산 (Loop Control & Budget)
 
-> **왜 이 칸인가?** [architecture](architecture.md) 자가평가의 🟡(부분) 중 하나. 에이전트 루프는
+> **왜 이 칸인가?** [architecture](architecture.md) 자가평가에서 비어 있던 칸(현재 ✅). 에이전트 루프는
 > "모델 호출 → 출력 파싱 → 도구 실행"을 반복하는데, **반드시 끝나게** 만들지 않으면 무한 반복·비용
 > 폭주가 납니다(2026엔 한 루프가 수만 달러를 태운 사례도). Muse는 이미 도구 루프에 한도·타임아웃을
 > 두지만(SYSTEM-MAP #1·CLAUDE.md), 그 종료 규약을 하네스 차원에서 명문화합니다.
@@ -45,7 +45,7 @@ related: [team-roles.md, failure-modes-and-observability.md, verification-and-gu
 ## 4. 비용을 줄이는 운용 (한도와 함께)
 
 - **컨텍스트가 비용** — 맥락이 길수록 매 호출이 비쌉니다. 10~15 도구 호출마다 **압축**을 예약하면
-  품질을 지키며 토큰을 크게 아낍니다(컨텍스트 압축은 별도 칸에서 심화 — 🟡).
+  품질을 지키며 토큰을 크게 아낍니다(심화: [context-compaction](context-compaction.md)).
 - **싼 검사 먼저** — 비싼 모델 호출 전에 싼 가드레일/검증을 병렬로([verification-and-guardrails](../core/verification-and-guardrails.md)).
 - **모델 티어링** — 간단한 일은 빠른 모델, 깊은 추론만 강한 모델([team-roles](../core/team-roles.md)).
 

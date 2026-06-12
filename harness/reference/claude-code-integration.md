@@ -4,7 +4,7 @@ audience: [개발자, AI 에이전트]
 purpose: 이 하네스를 Claude Code의 네이티브 서브에이전트·에이전트 팀 기능으로 실제 운용하는 법
 updated: 2026-06-13
 sources_basis: [Claude Code Subagents 공식 문서, Claude Code Hooks 문서, 2026-05 서브에이전트 플레이북]
-related: [AGENTS.md, team-roles.md, role-prompts.md, handoff-template.md, runner/README.md]
+related: [../AGENTS.md, ../core/team-roles.md, ../core/role-prompts.md, ../core/handoff-template.md, ../README.md]
 ---
 
 # Claude Code 통합 — 서브에이전트·에이전트 팀

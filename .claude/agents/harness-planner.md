@@ -18,5 +18,5 @@ Rules:
 - You are read-only — you investigate and specify, you do not write code.
 
 Return to the main thread a **compressed summary**: the acceptance criteria as a
-short list. If the harness handoff file is in use, write the criteria into its
-PLAN section (disk is how isolated subagents hand off). Stop after planning.
+short list. You have no write tools by design — the orchestrator records your
+criteria into the handoff file's PLAN section. Stop after planning.

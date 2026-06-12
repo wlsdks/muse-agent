@@ -5,7 +5,7 @@ purpose: 비결정적 에이전트 실패를 사람이 읽고·재현·고치고
 status: draft
 updated: 2026-05-31
 sources_basis: [Muse SYSTEM-MAP #12 (트레이스·실패 재현), Braintrust agent observability 2026, Maxim debugging AI agents 2026, deterministic replay / time-travel debugging 2026]
-related: [failure-modes-and-observability.md, harness-acceptance.md, verification-and-guardrails.md, architecture.md, README.md]
+related: [failure-modes-and-observability.md, harness-acceptance.md, ../core/verification-and-guardrails.md, architecture.md, ../README.md]
 ---
 
 # 디버깅 & 개발자 경험 (Debugging & DX)

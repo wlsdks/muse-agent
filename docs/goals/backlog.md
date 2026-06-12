@@ -43,6 +43,22 @@
 ## ★ Open — TOOL expansion & hardening (loop theme, 진안-directed 2026-06-12)
 
 The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing tools.
+- ✓→Done **muse.math.evaluate silently truncated a malformed multi-dot number** (EXPANSION gap-scout) —
+  `parseNumber` scans a literal by greedily consuming digits AND dots, then did `Number.parseFloat(literal)`:
+  `parseFloat("1.2.3")` returns 1.2 (stops at the 2nd dot, NOT NaN), so the NaN guard never fired and
+  `evaluate("1.2.3 * 100")` silently returned 120. The math tool's WHOLE contract is an exact digit the
+  local 8B can't compute, and this is the shared core behind the muse.math MCP tool AND the muse ask /
+  chat-repl arithmetic fast-paths — a wrong digit flows into a user answer with NO model in the loop.
+  FIX: one line, `Number.parseFloat(literal)` → strict `Number(literal)` (Number("1.2.3")=NaN → existing
+  `invalid number literal` throw; "5."/".5"/integers/decimals still parse — node-verified no valid number
+  regresses; "1..2" also now rejected). TDD 1 (multi-dot → error + 5./.5 controls) RED→GREEN; mcp 1687,
+  check 0, lint 0. Fable-5 verifier PASS (no valid-input regression, reaches ask/chat fast-path). Matches
+  code-style.md "strict Number() not parseFloat".
+- ◦ **muse.json.query walks the prototype chain** (EXPANSION gap-scout runner-up) — path resolution uses
+  `segment.key in cursor` so a path like `constructor`/`__proto__` on a plain object returns `found:true`
+  with an inherited (often function) value that JSON-serialization silently drops to `{found:true}` (no
+  value), and `__proto__` leaks Object.prototype. FIX: `Object.hasOwn(cursor, segment.key)` (own-property
+  only). Sibling of the fire-4 __proto__ merge fix. 1 line + 1 test.
 - ✓→Done **atomicWriteFile leaked its tmp on failure** (EXPANSION gap-scout runner-up) — `atomicWriteFile`
   (the shared sidecar-store write primitive) opened `<file>.tmp-<pid>-<uuid>`, wrote+fsync+closed it, then
   `fs.rename(tmp, file)`. On ANY failure after the tmp was opened (writeFile/sync error OR the rename

@@ -3,9 +3,9 @@ title: 하네스 러너 스펙 (Harness Runner)
 audience: [개발자, AI 에이전트]
 purpose: 핸드오프·역할·게이트를 "사람이 양식을 채움"에서 "런타임이 강제"로 올리는 실행 규약
 status: draft
-updated: 2026-05-31
+updated: 2026-06-13
 sources_basis: [harness-acceptance 실측 9회, team-roles·role-prompts·handoff-template·verification-and-guardrails·loop-budget, Anthropic 3-agent harness(컨텍스트 리셋·핸드오프 아티팩트)]
-related: [team-roles.md, handoff-template.md, role-prompts.md, verification-and-guardrails.md, loop-budget.md, architecture.md, README.md]
+related: [../core/team-roles.md, ../core/handoff-template.md, ../core/role-prompts.md, ../core/verification-and-guardrails.md, loop-budget.md, architecture.md, ../README.md]
 ---
 
 # 하네스 러너 스펙 (Harness Runner)
@@ -32,6 +32,8 @@ related: [team-roles.md, handoff-template.md, role-prompts.md, verification-and-
                                   FAIL ─▶ 피드백 → [BUILD] (반복 한도까지)
 ```
 
+- ([LEARN] 큐레이터는 DONE *이후*의 비차단 학습 단계 — 러너 상태기계는 DONE까지를 강제하고,
+  학습은 게이트가 아니다.)
 - 각 단계는 [role-prompts](../core/role-prompts.md)의 해당 블록을 **자동 주입**받는다(사람이 안 붙임).
 - 단계 산출은 [handoff-template](../core/handoff-template.md)의 자기 섹션에만 기록되고, 다음 단계는 그
   양식만 입력으로 받는다(컨텍스트 리셋).
@@ -65,7 +67,7 @@ related: [team-roles.md, handoff-template.md, role-prompts.md, verification-and-
 
 ## 5. 지금과의 간극 (정직)
 
-- **현재**: 역할·양식·게이트가 **문서로 정의**됐고 사람이 claude를 손으로 이어 9회 돌려 흐름을 입증.
+- **출발점(2026-05-31 이전)**: 역할·양식·게이트가 문서로 정의됐고 사람이 claude를 손으로 이어 9회 돌려 흐름을 입증.
 - **이 스펙이 정의하는 것**: 그 강제·자동 끼움·게이트 통과를 **러너가** 하는 계약.
 - **이제 된 것(2026-05-31)**: 최소 **코드 러너**가 이 계약을 강제합니다 — [`runner/`](../runner/)의
   `harness-runner.mjs`(의존성 0)가 상태기계·계획/완료/권한 게이트를 결정론 코드로 거부하고,

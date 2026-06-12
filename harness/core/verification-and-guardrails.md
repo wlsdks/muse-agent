@@ -5,7 +5,7 @@ purpose: 하네스의 평가자·게이트를 실제로 신뢰할 수 있게 —
 status: draft
 updated: 2026-06-13
 sources_basis: [LLM-as-a-Judge practical guide, OpenAI Agents SDK guardrails, Anthropic building-effective-agents, Cognition don't-build-multi-agents]
-related: [team-roles.md, handoff-template.md, muse-mapping.md, README.md]
+related: [team-roles.md, handoff-template.md, ../host/muse-mapping.md, ../README.md]
 ---
 
 # 검증 게이트 & 가드레일 (Verification & Guardrails)

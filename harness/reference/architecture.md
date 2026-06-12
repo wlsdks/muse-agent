@@ -5,7 +5,7 @@ purpose: 하네스가 어떻게 짜였는지 한눈에(구성도) + 2026 권위 
 status: draft
 updated: 2026-06-13
 sources_basis: [awesome-harness-engineering (component checklist), Agent Harness Engineering — AI Control Plane (Masood 2026), Atlan harness tools 2026, Braintrust observability 2026, Anthropic harness-design-long-running-apps 2026-03 (pruning), Anthropic managed-agents 2026-04 (staleness)]
-related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verification-and-guardrails.md, failure-modes-and-observability.md, harness-acceptance.md, muse-mapping.md]
+related: [../README.md, ../core/team-roles.md, ../core/handoff-template.md, ../core/role-prompts.md, ../core/verification-and-guardrails.md, failure-modes-and-observability.md, harness-acceptance.md, ../host/muse-mapping.md]
 ---
 
 # 하네스 구성도 & 자가평가 (Architecture & Self-Assessment)
@@ -101,20 +101,19 @@ related: [README.md, team-roles.md, handoff-template.md, role-prompts.md, verifi
 
 **모든 칸 ✅ + 활성·포터블 + 코드 강제까지 완료:** ① **최소 코드 러너 구현·검증** — [runner/](../runner/)가
 게이트를 결정론 코드로 강제, §7 거부 매트릭스 `node --test` **13/13** ② **평가자 사람-라벨 보정** —
-[judge-calibration](judge-calibration.md) TPR 2/2·**TNR 4/4=100%**(일반 판정자 TNR<25% 기준선 상회)
+[judge-calibration](judge-calibration.md) 당시 n=6 TPR 2/2·TNR 4/4 → 현재 **n=12 TPR 4/4·TNR 8/8=100%**(일반 판정자 TNR<25% 기준선 상회)
 ③ **모호 골든 확장** — G11(부분충족)·G12(의미버그/TNR).
 
 **L4 실행통합·CI·적대까지(2026-05-31):** ④ **러너가 실제 구동** — [runner/orchestrator.mjs](../runner/orchestrator.mjs)가
 plan→build→eval을 코드 게이트로 막으며 실제 `claude -p`로 구동, end-to-end **3/3 DONE** + 트레이스
-⑤ **적대 9/9 차단**(게이트 우회 시도 전부 BLOCKED) ⑥ **CI 게이트** harness.yml(`node --test` 27/27).
+⑤ **적대 9/9 차단**(게이트 우회 시도 전부 BLOCKED) ⑥ **CI 게이트** harness.yml(`node --test` 당시 27/27 — 현재 64/64).
 성숙도: 설계/근거/코드강제 + **실행통합·CI·적대**까지 도달. **L5 진행:** 실전형 과제 G13·G14를 통합
 러너로 실제 구동(누적 5/5 DONE)·판정자 보정 n=6→**12**(TPR 4/4·TNR 8/8). 남은 것: 대형 다단계·실
 코드베이스 작업, 보정셋 더 키우기+반복, 트레이스 관측 확장.
 
-**정통 5계층(Boris Cherny/Claude Code) 대비 현황:** 메모리 [memory-layers](memory-layers.md)(규약) ·
-도구 [tool-design](tool-design.md)·[skills-and-mcp](skills-and-mcp.md)(규약) · **권한** [permission-matrix](../core/permission-matrix.md)+`permissionGate` 코드 ✅ · **훅** [hooks](hooks.md)+`hooks.mjs` 코드 ✅(PreToolUse
+**정통 5계층(Boris Cherny/Claude Code) 대비 현황:** **권한** [permission-matrix](../core/permission-matrix.md)+`permissionGate` 코드 ✅ · **훅** [hooks](hooks.md)+`hooks.mjs` 코드 ✅(PreToolUse
 우회불가·fail-closed) · **관측** [observability](observability.md)+`tracer.mjs` 코드 ✅(상관 ID·요약·
-redaction, 오케스트레이터 배선). **권한·훅·관측 3계층이 코드로 강제/기록됨**, 메모리·도구는 규약 단계.
+redaction, 오케스트레이터 배선) — 처음 규약-단계였던 **메모리·도구도 아래처럼 코드로 채워짐**.
 추가 제어플레인 요소 **세션 영속**(체크포인트·재개, [session-persistence](session-persistence.md)+
 `session.mjs`)도 코드 ✅ — 멈춘 실행을 완료 단계 재실행 없이 재개. **메모리 런타임**([memory-layers](memory-layers.md)+`memory.mjs`)도 코드 ✅. **도구 레지스트리**([tool-design](tool-design.md)+`tools.mjs`:
 등록·스키마검증·allow/deny·소수노출·위험등급)도 코드 ✅. → **정통 5계층(메모리·도구·권한·훅·관측) 전부

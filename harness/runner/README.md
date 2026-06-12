@@ -87,6 +87,8 @@ REQUESTED --plan(계획 게이트)--> PLANNED --build--> BUILT --evaluate(만든
    그 외 모든 전이 --> BLOCKED (fail-closed)
 ```
 
+([LEARN] 큐레이터 단계는 DONE 이후의 비차단 학습 — 상태기계가 강제하는 게이트가 아닙니다.)
+
 ## 한계
 
 최소 러너입니다 — 상태기계·게이트의 **결정론 강제**가 핵심이고, 모델은 각 상태 *안에서* 추론합니다

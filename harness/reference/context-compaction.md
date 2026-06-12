@@ -5,12 +5,12 @@ purpose: 유한한 문맥 창이 넘치지 않게 — 무엇을 언제 줄이고
 status: draft
 updated: 2026-06-13
 sources_basis: [Muse context-engineering-roadmap Phase 5 (importance-weighted compaction), Muse 에피소드 압축 요약, Anthropic multi-agent (subagent 1-2K token summaries), 2026 context compression governance refs]
-related: [loop-budget.md, failure-modes-and-observability.md, team-roles.md, architecture.md, README.md]
+related: [loop-budget.md, failure-modes-and-observability.md, ../core/team-roles.md, architecture.md, ../README.md]
 ---
 
 # 컨텍스트 압축 (Context Compaction)
 
-> **왜 이 칸인가?** [architecture](architecture.md) 자가평가의 🟡. 문맥 창은 유한한데 긴 작업은
+> **왜 이 칸인가?** [architecture](architecture.md) 자가평가에서 비어 있던 칸(현재 ✅). 문맥 창은 유한한데 긴 작업은
 > 맥락이 계속 불어납니다 — 넘치면 모델이 한계 근처에서 소심해지거나 정보를 잃습니다([failure-modes
 > §1 맥락부패](failure-modes-and-observability.md)). 또 **맥락이 곧 비용**이라([loop-budget §4]
 > (loop-budget.md)) 줄이는 건 안정성과 비용 둘 다의 문제입니다. Muse는 이미 중요도 가중 압축을

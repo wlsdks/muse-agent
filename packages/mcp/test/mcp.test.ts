@@ -885,6 +885,22 @@ describe("loopback MCP servers", () => {
     });
   });
 
+  it("muse.math#evaluate rejects a malformed multi-dot number, not silently truncate it", async () => {
+    const server = createMathMcpServer();
+    const connection = createLoopbackMcpConnection(server);
+    // parseFloat("1.2.3") === 1.2 → "1.2.3 * 100" would SILENTLY return 120. The math
+    // tool's entire contract is an EXACT digit the local model can't compute, so a wrong
+    // digit with no model in the loop is the worst failure — it must error, not guess.
+    expect(await connection.callTool!("evaluate", { expression: "1.2.3 * 100" })).toEqual({
+      error: expect.stringContaining("invalid number literal: 1.2.3")
+    });
+    // controls: a leading/trailing dot is still a valid number (parity with the old behavior)
+    expect(await connection.callTool!("evaluate", { expression: "5. + .5" })).toEqual({
+      expression: "5. + .5",
+      result: 5.5
+    });
+  });
+
   it("returns a structured error when an unknown tool is called", async () => {
     const server = createMathMcpServer();
     const connection = createLoopbackMcpConnection(server);
