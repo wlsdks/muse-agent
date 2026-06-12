@@ -1,6 +1,7 @@
 import {
   readFile as nodeReadFile,
   readdir as nodeReaddir,
+  realpath as nodeRealpath,
   stat as nodeStat
 } from "node:fs/promises";
 import { resolve as nodePathResolve, sep as nodePathSep } from "node:path";
@@ -34,11 +35,12 @@ export interface FilesystemMcpServerOptions {
   readonly maxBodyBytes?: number;
   /** Cap on entries returned by `list`. Default 256. */
   readonly maxListEntries?: number;
-  /** Optional fs override (used in tests). Must implement readFile/readdir/stat with the node:fs/promises shape. */
+  /** Optional fs override (used in tests). Must implement readFile/readdir/stat with the node:fs/promises shape. Provide realpath to enable symlink-escape detection; omitting it disables the realpath guard (use only in tests that have no symlinks). */
   readonly fs?: {
     readFile(path: string): Promise<Buffer>;
     readdir(path: string, options: { withFileTypes: true }): Promise<readonly { name: string; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }[]>;
     stat(path: string): Promise<{ size: number; mtime: Date; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }>;
+    realpath?(path: string): Promise<string>;
   };
   /** Optional path module override (used in tests). */
   readonly path?: { resolve(...segments: string[]): string; sep: string };
@@ -57,20 +59,42 @@ export function createFilesystemMcpServer(options: FilesystemMcpServerOptions): 
   const fsLib: NonNullable<FilesystemMcpServerOptions["fs"]> = options.fs ?? {
     readFile: (path) => nodeReadFile(path),
     readdir: (path, opts) => nodeReaddir(path, opts) as ReturnType<NonNullable<FilesystemMcpServerOptions["fs"]>["readdir"]>,
+    realpath: (path) => nodeRealpath(path),
     stat: (path) => nodeStat(path)
   };
   const maxBodyBytes = options.maxBodyBytes ?? 65_536;
   const maxListEntries = options.maxListEntries ?? 256;
   const roots = options.allowedRoots.map((root) => pathLib.resolve(root));
 
-  function checkAllowed(rawPath: string): { readonly allowed: true; readonly resolved: string } | { readonly allowed: false; readonly error: string } {
+  async function checkAllowed(rawPath: string): Promise<{ readonly allowed: true; readonly resolved: string } | { readonly allowed: false; readonly error: string }> {
     if (typeof rawPath !== "string" || rawPath.length === 0) {
       return { allowed: false, error: "path is required" };
     }
     const resolved = pathLib.resolve(rawPath);
-    const allowed = roots.some((root) => resolved === root || resolved.startsWith(`${root}${pathLib.sep}`));
-    if (!allowed) {
+    const lexicallyAllowed = roots.some((root) => resolved === root || resolved.startsWith(`${root}${pathLib.sep}`));
+    if (!lexicallyAllowed) {
       return { allowed: false, error: `path '${rawPath}' is not under any configured allowlist root` };
+    }
+    if (fsLib.realpath !== undefined) {
+      let real: string;
+      try {
+        real = await fsLib.realpath(resolved);
+      } catch {
+        return { allowed: false, error: `path '${rawPath}' could not be resolved (dangling symlink or missing path)` };
+      }
+      const realRoots = await Promise.all(
+        roots.map(async (root) => {
+          try {
+            return fsLib.realpath !== undefined ? await fsLib.realpath(root) : root;
+          } catch {
+            return root;
+          }
+        })
+      );
+      const realAllowed = realRoots.some((root) => real === root || real.startsWith(`${root}${pathLib.sep}`));
+      if (!realAllowed) {
+        return { allowed: false, error: `path '${rawPath}' resolves outside the configured allowlist roots (symlink escape)` };
+      }
     }
     return { allowed: true, resolved };
   }
@@ -96,7 +120,7 @@ export function createFilesystemMcpServer(options: FilesystemMcpServerOptions): 
         description:
           "Reads a UTF-8 text file inside the configured allowlist and returns { content, bytes, truncated }. Output is truncated at maxBodyBytes (default 64KB). Binary files may produce replacement characters.",
         execute: async (args): Promise<JsonObject> => {
-          const decision = checkAllowed(readString(args, "path") ?? "");
+          const decision = await checkAllowed(readString(args, "path") ?? "");
           if (!decision.allowed) {
             return { error: decision.error };
           }
@@ -126,7 +150,7 @@ export function createFilesystemMcpServer(options: FilesystemMcpServerOptions): 
         description:
           "Lists the immediate entries of a directory inside the configured allowlist. Returns { entries: [{ name, kind }] } where kind is directory|file|symlink|other. Capped at maxListEntries (default 256).",
         execute: async (args): Promise<JsonObject> => {
-          const decision = checkAllowed(readString(args, "path") ?? "");
+          const decision = await checkAllowed(readString(args, "path") ?? "");
           if (!decision.allowed) {
             return { error: decision.error };
           }
@@ -156,7 +180,7 @@ export function createFilesystemMcpServer(options: FilesystemMcpServerOptions): 
         description:
           "Returns metadata for a path inside the configured allowlist: { kind, size, mtime }. mtime is an ISO-8601 string. Symlinks are reported as kind=symlink without following.",
         execute: async (args): Promise<JsonObject> => {
-          const decision = checkAllowed(readString(args, "path") ?? "");
+          const decision = await checkAllowed(readString(args, "path") ?? "");
           if (!decision.allowed) {
             return { error: decision.error };
           }

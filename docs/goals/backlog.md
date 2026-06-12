@@ -60,6 +60,15 @@ The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing 
   test fixed → re-verified PASS.
 Every slice ships its eval/test and never weakens the grounding floor. Ranked:
 
+- ✓→Done **loopback-filesystem symlink-escape closed** (EXPANSION-scout runner-up): the MCP
+  filesystem server's allowlist checked paths LEXICALLY only — a symlink inside an allowed root
+  pointing outside (/allowed/x -> /etc/passwd) passed and was read/listed/statted. Fix: a 2nd gate in
+  checkAllowed realpath-resolves the path AND the roots (symmetric, handles macOS /var->/private/var)
+  and refuses if the real path escapes (fail-closed on throw/ENOENT); applied to read/list/stat. 8
+  behavioral tests (escape→error, normal→content, dangling→refused). Verifier confirmed production
+  always wires the default realpath (the optional dep is test-only, no skip-hole). mcp 1678·lint 0.
+  (file_read already had a realpath guard; this was the MCP-server variant's gap.)
+
 - ✓→Dropped (NOISE, fire 6) **browser-read ungrounded ×7** — the scout's first hit turned out to
   be dev-test NOISE: 7 traces from the 2026-06-11 browser-testing session, all EMPTY answers
   (ans_len 0, tools []) — a no-op the gate correctly marked ungrounded, NOT a real grounding miss.
