@@ -424,7 +424,11 @@ async function buildMacActuatorScenario() {
       { prompt: "오늘 일정 보여줘.", expectTool: "mac_app_read", requireArgs: ["app"], note: "KO today's events → mac_app_read(calendar), user's language" },
       { prompt: "What notes do I have?", expectTool: "mac_app_read", requireArgs: ["app"], note: "EN list note titles → mac_app_read(notes), NOT knowledge_search" },
       { prompt: "내 노트 목록 보여줘.", expectTool: "mac_app_read", requireArgs: ["app"], note: "KO list note titles → mac_app_read(notes), user's language" },
-      { prompt: "와이파이 꺼줘.", expectTool: "mac_system_set", requireArgs: ["setting"], note: "KO turn Wi-Fi off → mac_system_set(wifi_off)" },
+      { prompt: "Am I on WiFi right now?", expectTool: "mac_app_read", requireArgs: ["app"], note: "EN wifi read → mac_app_read(wifi_status) NOT mac_system_set" },
+      { prompt: "What network am I connected to?", expectTool: "mac_app_read", requireArgs: ["app"], note: "EN current network name → mac_app_read(wifi_status)" },
+      { prompt: "지금 와이파이 연결돼 있어?", expectTool: "mac_app_read", requireArgs: ["app"], note: "KO wifi connected? → mac_app_read(wifi_status) NOT mac_system_set" },
+      { prompt: "지금 어떤 네트워크에 연결돼 있어?", expectTool: "mac_app_read", requireArgs: ["app"], note: "KO current network → mac_app_read(wifi_status)" },
+      { prompt: "와이파이 꺼줘.", expectTool: "mac_system_set", requireArgs: ["setting"], note: "KO turn Wi-Fi off → mac_system_set(wifi_off) NOT mac_app_read" },
       { prompt: "Put my Mac to sleep.", expectTool: "mac_system_set", requireArgs: ["setting"], note: "EN system sleep → mac_system_set(sleep)" },
       { prompt: "Read this out loud: the build passed.", expectTool: "mac_say", requireArgs: ["text"], note: "EN speak aloud → mac_say" },
       // knowledge_search must still win for a RECALL question even with spotlight present.

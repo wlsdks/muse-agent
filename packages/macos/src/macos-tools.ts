@@ -230,7 +230,7 @@ const MAC_OSASCRIPT_READ_APPS = [
 ] as const;
 type MacReadApp = (typeof MAC_OSASCRIPT_READ_APPS)[number];
 // …plus shell-backed sources that don't go through osascript.
-const MAC_SHELL_READ_APPS = ["battery", "storage"] as const;
+const MAC_SHELL_READ_APPS = ["battery", "storage", "wifi_status"] as const;
 const MAC_APP_READ_APPS = [...MAC_OSASCRIPT_READ_APPS, ...MAC_SHELL_READ_APPS] as const;
 
 function buildReadScript(app: MacReadApp, query: string): string {
@@ -500,6 +500,15 @@ function parseStorageOutput(stdout: string): JsonObject {
   };
 }
 
+/** Parses `networksetup -getairportnetwork <dev>` into connected + network name. */
+function parseWifiStatusOutput(stdout: string): JsonObject {
+  const nameMatch = /^Current Wi-Fi Network:\s*(.+)$/mu.exec(stdout.trim());
+  if (nameMatch) {
+    return { app: "wifi_status", connected: true, network: nameMatch[1]!.trim() };
+  }
+  return { app: "wifi_status", connected: false, network: null };
+}
+
 type MacShellRead = (typeof MAC_SHELL_READ_APPS)[number];
 
 export interface MacAppReadToolDeps {
@@ -519,14 +528,17 @@ export function createMacAppReadTool(deps: MacAppReadToolDeps = {}): MuseTool {
         "window in focus), 'contacts' (look up a person by name — requires `query`), 'mail_unread' (inbox " +
         "unread count + recent subjects), 'safari_tab' / 'chrome_tab' (front browser tab URL + title), " +
         "'volume' (output volume + muted), 'battery' (charge % + charging), 'storage' (disk space free/" +
-        "used), 'reminders' (all incomplete reminders with optional due dates), " +
+        "used), 'wifi_status' (whether Wi-Fi is connected and the current network name), " +
+        "'reminders' (all incomplete reminders with optional due dates), " +
         "'calendar' (today's events from Calendar.app with start times), " +
         "'notes' (recent note titles from Notes.app, up to 20). " +
         "Use when the user asks what's on the clipboard, what song is playing, what page/tab " +
         "they're on, the volume / battery / free disk space, a contact's phone/email, unread mail, " +
-        "what reminders / to-dos are pending, what's on their calendar today, or what notes they have. " +
+        "what reminders / to-dos are pending, what's on their calendar today, what notes they have, " +
+        "or whether they are on Wi-Fi and which network. " +
         "Do NOT use it to send or change anything (mac_message_send / mac_media_control / mac_system_set). " +
         "Do NOT use it to ADD a reminder (use muse.reminders.add). " +
+        "Do NOT use it to turn Wi-Fi on/off (use mac_system_set). " +
         "Do NOT use it to create calendar events or notes.",
       domain: "system",
       inputSchema: {
@@ -550,6 +562,7 @@ export function createMacAppReadTool(deps: MacAppReadToolDeps = {}): MuseTool {
         "contact", "연락처", "phone", "email", "window", "frontmost", "mail", "unread", "메일", "안읽은",
         "battery", "배터리", "volume", "볼륨", "tab", "탭", "safari", "사파리", "chrome", "크롬", "browser",
         "storage", "disk", "디스크", "저장공간", "용량",
+        "wifi", "wi-fi", "와이파이", "network", "네트워크", "connected", "연결",
         "reminder", "reminders", "리마인더", "할일", "todo", "to-do", "pending",
         "calendar", "캘린더", "일정", "schedule", "event", "오늘 일정", "today",
         "notes", "노트", "메모", "note titles"
@@ -563,6 +576,31 @@ export function createMacAppReadTool(deps: MacAppReadToolDeps = {}): MuseTool {
         return { error: `app must be one of: ${MAC_APP_READ_APPS.join(", ")}` };
       }
       if (MAC_SHELL_READ_APPS.includes(app as MacShellRead)) {
+        if (app === "wifi_status") {
+          let ports: MacCommandResult;
+          try {
+            ports = await shell(NETWORKSETUP_PATH, ["-listallhardwareports"]);
+          } catch (cause) {
+            return { error: `wifi_status read spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+          }
+          if (ports.timedOut || ports.exitCode !== 0) {
+            return { error: `wifi_status read failed: ${ports.stderr.trim().slice(0, 200) || "timed out"}` };
+          }
+          const device = parseWifiDevice(ports.stdout);
+          if (!device) {
+            return { app: "wifi_status", connected: false, network: null };
+          }
+          let status: MacCommandResult;
+          try {
+            status = await shell(NETWORKSETUP_PATH, ["-getairportnetwork", device]);
+          } catch (cause) {
+            return { error: `wifi_status read spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+          }
+          if (status.timedOut || status.exitCode !== 0) {
+            return { error: `wifi_status read failed: ${status.stderr.trim().slice(0, 200) || "timed out"}` };
+          }
+          return parseWifiStatusOutput(status.stdout);
+        }
         const [bin, argv] = app === "battery" ? [PMSET_PATH, ["-g", "batt"]] : [DF_PATH, ["-h", "/"]];
         let shellResult: MacCommandResult;
         try {

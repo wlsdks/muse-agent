@@ -247,3 +247,16 @@
 - **왜:** fire12 tick은 plan을 surface만 했음. 실제 가치=유휴시 가장 recall-useful 메모리를 persona에 graduate(loop-v2 Sleep daemon). brake-and-proof-first: 백그라운드 persona mutation은 전용 flag 뒤 기본 OFF.
 - **리뷰지점:** `apps/cli/src/memory-consolidate-tick.ts`(persist 분기, fail-soft) + `commands-daemon.ts`(MUSE_SLEEP_PROMOTE 게이트 + FileUserMemoryStore/resolveMemoryUserId로 promoteRecalledMemories 바인딩, 수동 경로 미러) + test +5건. judge=Opus(나)가 persist 분기(throw→fail-soft·state 전진)·default-OFF(flag 없으면 persist undefined→report-only)·brake-fail/disabled시 persist 미호출·resolveMemoryUserId 실존 확인 + cli 2520 독립 green.
 - **리스크:** 백그라운드 persona 쓰기지만 **기본 OFF**(opt-in) + idempotent(PROMOTED_ 키만 clear+rewrite)·비파괴(실 user facts 무관)·비-outbound. brake+SELFLEARN 게이트 유지. 라이브 daemon 검증은 미실행(장기 프로세스); persist fn은 수동 promote 경로와 공유돼 이미 검증됨. grounding floor 무관. (사이클2 fires 16-18.)
+## fire (TOOL loop) — 2026-06-13 · 정직 보고 + backlog hygiene (skill v1.9.0)
+
+- **무엇:** 비싼 build 대신 "둘 다 마르면 정직 보고" 티어 실행 — backlog의 중복 항목(이전 fire들이 PROGRESS 추가하며 남긴 `(orig)` 짝)을 정리하고 TOOL 테마 상태를 정직 기록.
+- **왜:** self-eval green·신호 scout clean(0)·보안 sweep 완료(scout가 입력경계 hardened 확인). 남은 ◦는 not-when/groundedArgs의 incremental 연속뿐 = 고가치 슬라이스 고갈. 가짜 일감 만들기 금지 → 정직 보고가 이번 fire의 산출.
+- **리뷰지점:** `backlog.md`(not-when `(orig)` 제거, tool-arg grounding 2항목→1 통합, done-list 정리). 코드 변경 0. (origin 대비 미머지 0 — 진안이 비동기 머지 중, non-blocking 설계대로.)
+- **리스크:** 없음. **추천: TOOL 고가치 벤이 말라 새 테마 필요** — 계속 같은 테마면 marginal increment(spotlight query-cap, web_download content-type 등)만 나옴. 다음 fire는 다양성 가드로 그 incremental 중 하나 또는 새 테마.
+
+## fire (TOOL loop) — 2026-06-13 · mac wifi_status read (capability), gate PASS (skill v1.9.0)
+
+- **무엇:** `mac_app_read`에 `wifi_status` shell-read source — "와이파이 연결됐어? 어떤 네트워크?"에 답. networksetup(-listallhardwareports→device, -getairportnetwork→파싱) read-only. 행동 테스트(연결/미연결) + eval 읽기-vs-쓰기 디스앰비그.
+- **왜:** 보안 벤 고갈 후 capability scout가 발굴 — `mac_system_set`은 wifi 토글만 있고 read 없던 write/read 비대칭(calendar/notes 때와 같은 갭 패턴). value-first 역량·다른 KIND(보안 아님).
+- **리뷰지점:** `macos-tools.ts`(parseWifiStatusOutput + wifi_status 브랜치, parseWifiDevice 재사용) + test 2건 + eval 5건. 게이팅 검증자(Opus)가 enum 도달·read-only(-setairportpower는 mac_system_set에 그대로)·읽기/쓰기 디스앰비그·무회귀 PASS.
+- **리스크:** 없음. macos 85·lint 0. **scout 정직 노트: 표면 이제 broadly capable → 다음은 테마 전환 권장**(남은 capability 갭은 niche/live-only).

@@ -241,6 +241,47 @@ describe("mac_app_read — Tier 0 read", () => {
     expect(shellArgs).toEqual(["-h", "/"]);
   });
 
+  it("reads wifi_status (connected) via networksetup — parses device + network name, skips osascript", async () => {
+    const LIST_PORTS = [
+      "Hardware Port: Wi-Fi",
+      "Device: en0",
+      "Ethernet Address: aa:bb:cc:dd:ee:ff",
+      ""
+    ].join("\n");
+    const GET_AIRPORT = "Current Wi-Fi Network: HomeNetwork";
+    let osascriptCalled = false;
+    const calls: Array<{ bin: string; args: readonly string[] }> = [];
+    const tool = createMacAppReadTool({
+      runner: async () => { osascriptCalled = true; return ok(""); },
+      shell: async (b, a) => {
+        calls.push({ bin: b, args: a });
+        if (a[0] === "-listallhardwareports") return ok(LIST_PORTS);
+        return ok(GET_AIRPORT);
+      }
+    });
+    expect(await tool.execute({ app: "wifi_status" }, ctx)).toEqual({
+      app: "wifi_status",
+      connected: true,
+      network: "HomeNetwork"
+    });
+    expect(osascriptCalled).toBe(false);
+    expect(calls[0]?.args).toEqual(["-listallhardwareports"]);
+    expect(calls[1]?.args).toEqual(["-getairportnetwork", "en0"]);
+  });
+
+  it("reads wifi_status (disconnected) when not associated with any network", async () => {
+    const LIST_PORTS = "Hardware Port: Wi-Fi\nDevice: en1\nEthernet Address: 11:22:33:44:55:66\n";
+    const GET_AIRPORT = "You are not associated with an Airport base station.";
+    const tool = createMacAppReadTool({
+      shell: async (_b, a) => a[0] === "-listallhardwareports" ? ok(LIST_PORTS) : ok(GET_AIRPORT)
+    });
+    expect(await tool.execute({ app: "wifi_status" }, ctx)).toEqual({
+      app: "wifi_status",
+      connected: false,
+      network: null
+    });
+  });
+
   it("reads reminders via osascript and parses title + optional dueDate", async () => {
     let script = "";
     const runner: MacOsascriptRunner = async (s) => {
