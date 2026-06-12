@@ -119,6 +119,31 @@ describe("InMemoryAgentInitiatedNoticeBroker", () => {
     expect(delivered).toEqual(["first", "third", "fourth"]);
   });
 
+  it("unsubscribe mid-drain stops delivery of already-queued notices to a dead consumer", async () => {
+    // The consumer blocks on its FIRST delivery; while it's pinned, more notices
+    // queue. Unsubscribing (e.g. a closed SSE stream) must stop the in-flight
+    // drain from delivering the rest to a consumer that's gone.
+    const broker = new InMemoryAgentInitiatedNoticeBroker();
+    const delivered: string[] = [];
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const unsubscribe = broker.subscribe("stark", async (n) => {
+      delivered.push(n.text);
+      if (n.text === "first") await gate;
+    });
+    broker.publish("stark", notice("first"));
+    await Promise.resolve();
+    expect(delivered).toEqual(["first"]); // in-flight, awaiting the gate
+    broker.publish("stark", notice("second"));
+    broker.publish("stark", notice("third"));
+    unsubscribe(); // consumer goes away mid-drain
+    release();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(delivered).toEqual(["first"]); // second/third NOT delivered after unsubscribe
+  });
+
   it("awaits async onMessage callbacks in order", async () => {
     const broker = new InMemoryAgentInitiatedNoticeBroker();
     const order: string[] = [];
