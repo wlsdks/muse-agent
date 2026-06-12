@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildCouncilPrompt,
   buildDebateQuestion,
+  councilMemberSupports,
+  DEFAULT_COUNCIL_AGREE_AT,
+  hasCouncilConsensus,
   parseCouncilAnswer,
   produceCouncilReasoning,
   screenCouncilOutliers,
@@ -221,5 +224,86 @@ describe("screenCouncilOutliers — pure deterministic outlier screen", () => {
     const r2 = screenCouncilOutliers([...input]);
     expect(r1.kept.map((u) => u.peerId)).toEqual(r2.kept.map((u) => u.peerId));
     expect(r1.excluded.map((e) => e.peerId)).toEqual(r2.excluded.map((e) => e.peerId));
+  });
+
+  it("test 9 (refactor check): screenCouncilOutliers is behaviourally identical after extracting councilMemberSupports", () => {
+    // The fire-28 cases above already cover this; this test explicitly asserts the helper's values
+    // match what screenCouncilOutliers would compute internally, so the refactor is non-regressive.
+    const input: CouncilUtterance[] = [
+      topicUtterance("alice"),
+      topicUtterance("bob"),
+      topicUtterance("carol"),
+      offTopicUtterance("dave")
+    ];
+    const supports = councilMemberSupports(input);
+    // On-topic peers should have high mutual support; off-topic peer should be low.
+    expect(supports[0]).toBeGreaterThan(0.1); // alice
+    expect(supports[1]).toBeGreaterThan(0.1); // bob
+    expect(supports[2]).toBeGreaterThan(0.1); // carol
+    expect(supports[3]).toBeLessThan(0.1);    // dave (off-topic → near-zero Jaccard with others)
+    // screenCouncilOutliers result must still exclude dave.
+    const { kept, excluded } = screenCouncilOutliers(input);
+    expect(excluded.map((e) => e.peerId)).toContain("dave");
+    expect(kept.map((u) => u.peerId)).not.toContain("dave");
+  });
+});
+
+// ── ReConcile consensus gate (arXiv:2309.13007) ──
+
+describe("hasCouncilConsensus — ReConcile consensus-gated round budget", () => {
+  const onTopic1 = "The database should use PostgreSQL because it handles concurrent writes and relational integrity well.";
+  const onTopic2 = "PostgreSQL is the better choice given its reliable handling of concurrent writes.";
+  const onTopic3 = "For this use case, PostgreSQL handles concurrent writes reliably and is the right pick.";
+  const offTopic = "Bananas are yellow tropical fruit grown in warm climates near the equator.";
+
+  const u = (peerId: string, reasoning: string): CouncilUtterance => ({ peerId, reasoning });
+
+  it("n=0 → true (empty panel trivially agrees)", () => {
+    expect(hasCouncilConsensus([])).toBe(true);
+  });
+
+  it("n=1 → true (solo panel trivially agrees)", () => {
+    expect(hasCouncilConsensus([u("a", onTopic1)])).toBe(true);
+  });
+
+  it("3-panel, identical reasoning → true", () => {
+    expect(hasCouncilConsensus([u("a", onTopic1), u("b", onTopic1), u("c", onTopic1)])).toBe(true);
+  });
+
+  it("3-panel, paraphrased agreement → true (above DEFAULT_COUNCIL_AGREE_AT)", () => {
+    // Paraphrased: min support ~0.19, threshold 0.16
+    expect(hasCouncilConsensus([u("a", onTopic1), u("b", onTopic2), u("c", onTopic3)])).toBe(true);
+  });
+
+  it("3-panel, one off-topic dissenter → false (below threshold)", () => {
+    expect(hasCouncilConsensus([u("a", onTopic1), u("b", onTopic2), u("c", offTopic)])).toBe(false);
+  });
+
+  it("3-panel, all diverse topics → false (symmetric low Jaccard)", () => {
+    expect(hasCouncilConsensus([
+      u("a", "quantum entanglement is a form of nonlocal correlation in physics"),
+      u("b", "the impressionist movement began in nineteenth century paris france"),
+      u("c", "mitochondria produce atp via oxidative phosphorylation in cells")
+    ])).toBe(false);
+  });
+
+  it("empty-reasoning member → support 0 → not consensus", () => {
+    expect(hasCouncilConsensus([u("a", onTopic1), u("b", onTopic2), u("c", "")])).toBe(false);
+  });
+
+  it("custom agreeAt: lower threshold → agreeing diverse panel flips to true", () => {
+    // With agreeAt=0 every panel trivially agrees.
+    expect(hasCouncilConsensus([u("a", onTopic1), u("b", offTopic)], { agreeAt: 0 })).toBe(true);
+  });
+
+  it("order-stability: same 3 utterances in any order → same result", () => {
+    const panel = [u("a", onTopic1), u("b", onTopic2), u("c", offTopic)];
+    const r1 = hasCouncilConsensus(panel);
+    const r2 = hasCouncilConsensus([panel[2]!, panel[0]!, panel[1]!]);
+    expect(r1).toBe(r2);
+  });
+
+  it("DEFAULT_COUNCIL_AGREE_AT is 0.16 (2× outlier absFloor, pinned to prevent silent drift)", () => {
+    expect(DEFAULT_COUNCIL_AGREE_AT).toBe(0.16);
   });
 });

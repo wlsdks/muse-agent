@@ -68,6 +68,48 @@ export interface CouncilScreenResult {
 }
 
 /**
+ * Each member's mean pairwise Jaccard token-similarity to all OTHER members.
+ * Empty reasoning → support 0 (a silent/failed peer can't claim high agreement).
+ * Pure, deterministic, order-stable.
+ */
+export function councilMemberSupports(utterances: readonly CouncilUtterance[]): number[] {
+  const n = utterances.length;
+  if (n === 0) return [];
+  const tokens: Set<string>[] = utterances.map((u) => lexicalTokens(u.reasoning));
+  return utterances.map((_, i) => {
+    if (n === 1) return 1;
+    let sum = 0;
+    for (let j = 0; j < n; j++) {
+      if (j !== i) {
+        sum += jaccardSimilarity(tokens[i] ?? new Set<string>(), tokens[j] ?? new Set<string>());
+      }
+    }
+    return sum / (n - 1);
+  });
+}
+
+/**
+ * True iff n ≤ 1 (solo panel trivially agrees) OR every member's support ≥ agreeAt.
+ * ReConcile consensus gate (arXiv:2309.13007): terminates the debate round budget
+ * early when the panel has converged, avoiding wasted inference on already-agreed results.
+ * Never throws — an empty-reasoning member gets support 0 → not consensus.
+ */
+export const DEFAULT_COUNCIL_AGREE_AT = 0.16;
+// 2× the outlier absFloor (0.08): paraphrased agreement scores ~0.19+, divergent panels
+// score 0.02–0.06. This gap is wide enough to be stable across realistic lexical variation.
+
+export function hasCouncilConsensus(
+  utterances: readonly CouncilUtterance[],
+  opts?: { readonly agreeAt?: number }
+): boolean {
+  const n = utterances.length;
+  if (n <= 1) return true;
+  const agreeAt = opts?.agreeAt ?? DEFAULT_COUNCIL_AGREE_AT;
+  const supports = councilMemberSupports(utterances);
+  return supports.every((s) => s >= agreeAt);
+}
+
+/**
  * Consensus-outlier screen (arXiv:2503.05856 — MoA deception robustness): a peer
  * whose reasoning diverges from the panel consensus is quarantined BEFORE
  * aggregation, so a deceptive/broken/off-topic member can't steer the synthesis
@@ -88,20 +130,8 @@ export function screenCouncilOutliers(
   const n = utterances.length;
   if (n < minPanel) return { kept: [...utterances], excluded: [] };
 
-  // Compute mean pairwise Jaccard support for each member.
-  const tokens: Set<string>[] = utterances.map((u) => lexicalTokens(u.reasoning));
-  const supports: number[] = utterances.map((_, i) => {
-    if (n === 1) return 1;
-    let sum = 0;
-    for (let j = 0; j < n; j++) {
-      if (j !== i) {
-        const ti = tokens[i] ?? new Set<string>();
-        const tj = tokens[j] ?? new Set<string>();
-        sum += jaccardSimilarity(ti, tj);
-      }
-    }
-    return sum / (n - 1);
-  });
+  // Compute mean pairwise Jaccard support for each member (reuse shared helper).
+  const supports = councilMemberSupports(utterances);
 
   // Median of supports.
   const sorted = [...supports].sort((a, b) => a - b);

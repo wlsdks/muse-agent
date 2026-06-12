@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildDebateQuestion, buildGroundingReverifyPrompt, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
+import { buildDebateQuestion, buildGroundingReverifyPrompt, hasCouncilConsensus, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import {
@@ -134,6 +134,14 @@ export function buildSwarmSkillDraft(entry: SwarmQuarantineEntry): { readonly na
 function findPending(entries: readonly SwarmQuarantineEntry[], id: string): SwarmQuarantineEntry | undefined {
   return entries.find((e) => e.status === "pending" && (e.id === id || e.id.startsWith(id)));
 }
+
+/**
+ * Test seam — inject a per-round gather function so the council action is
+ * exercisable without a live model or peer HTTP. When provided, `gatherCouncil`
+ * is not called; the override returns utterances directly for each round number
+ * (1-indexed). Absent in production (falls through to real gatherCouncil).
+ */
+export type CouncilGatherOverride = (round: number, question: string, prior: readonly import("@muse/agent-core").CouncilUtterance[]) => Promise<import("@muse/agent-core").CouncilUtterance[]>;
 
 export interface GatherCouncilDeps {
   readonly peers: readonly A2APeer[];
@@ -370,7 +378,9 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
   swarm
     .command("council <question>")
     .description("Ask your swarm peers to reason about a question and synthesise an answer (data-light — only reasoning crosses)")
-    .option("--rounds <n>", "Debate rounds — members refine after seeing each other's reasoning (Multiagent Debate; default 1)", "1")
+    // Default 2: ReConcile consensus gate (arXiv:2309.13007) — agreed panel stops at round 1,
+    // contested panel spends a 2nd debate round. Hard cap stays at 3.
+    .option("--rounds <n>", "Maximum debate rounds — stops early when the panel agrees (ReConcile; default 2)", "2")
     .action(async (question: string, options: { readonly rounds: string }) => {
       const env = process.env;
       if (!isA2AEnabled(env)) {
@@ -384,52 +394,83 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
-      const assembly = createMuseRuntimeAssembly();
-      const model = assembly.defaultModel;
-      if (!assembly.modelProvider || !model) {
-        io.stderr("muse swarm council: needs a configured local model (set MUSE_MODEL).\n");
-        process.exitCode = 1;
-        return;
-      }
-      const modelProvider = assembly.modelProvider;
       const rounds = Math.max(1, Math.min(3, Math.trunc(Number.parseInt(options.rounds, 10) || 1)));
-      io.stdout(`🏛  Convening the council (${config.peers.length.toString()} peer(s)${rounds > 1 ? `, ${rounds.toString()} debate rounds` : ""})…\n`);
-      let utterances = await gatherCouncil(question, {
-        ownReasoning: () => councilMemberReasoning({ env, model, modelProvider, reasoningQuestion: question, retrievalQuestion: question }),
-        peers: config.peers,
-        requestReasoning: (peer, q) => requestCouncilReasoning({ env, fetchImpl: io.fetch ?? globalThis.fetch, fromPeerId: config.selfId, peer, question: q }),
-        selfId: config.selfId
-      });
-      // Debate rounds: each member refines after seeing the others' reasoning.
-      for (let round = 2; round <= rounds && utterances.length > 1; round += 1) {
+
+      let model: string | undefined;
+      let modelProvider: Pick<ModelProvider, "generate"> | undefined;
+      if (!io.councilGatherOverride) {
+        const assembly = createMuseRuntimeAssembly();
+        if (!assembly.modelProvider || !assembly.defaultModel) {
+          io.stderr("muse swarm council: needs a configured local model (set MUSE_MODEL).\n");
+          process.exitCode = 1;
+          return;
+        }
+        model = assembly.defaultModel;
+        modelProvider = assembly.modelProvider;
+      }
+
+      // Single gather closure: the override substitutes only this step;
+      // the ONE debate loop below is shared by both test and production paths.
+      const gather: CouncilGatherOverride = io.councilGatherOverride
+        ?? (async (round, q, prior) =>
+          gatherCouncil(q, {
+            ownReasoning: () => councilMemberReasoning({
+              env,
+              model: model!,
+              modelProvider: modelProvider!,
+              reasoningQuestion: round === 1 ? q : buildDebateQuestion(q, config.selfId.length > 0 ? config.selfId : "me", prior),
+              retrievalQuestion: question
+            }),
+            peers: config.peers,
+            requestReasoning: (peer, pq) => requestCouncilReasoning({
+              env,
+              fetchImpl: io.fetch ?? globalThis.fetch,
+              fromPeerId: config.selfId,
+              peer,
+              question: round === 1 ? pq : buildDebateQuestion(pq, peer.id, prior)
+            }),
+            selfId: config.selfId
+          })
+        );
+
+      io.stdout(`🏛  Convening the council (${config.peers.length.toString()} peer(s)${rounds > 1 ? `, up to ${rounds.toString()} debate rounds` : ""})…\n`);
+      let utterances = await gather(1, question, []);
+      // ReConcile consensus gate (arXiv:2309.13007): stop as soon as the panel agrees —
+      // avoids wasted inference when all members have already converged.
+      let finalRound = 1;
+      for (let round = 2; round <= rounds && utterances.length > 1 && !hasCouncilConsensus(utterances); round += 1) {
+        io.stdout(`panel diverged — refining, round ${round.toString()}\n`);
         const prior = utterances;
-        utterances = await gatherCouncil(question, {
-          ownReasoning: () => councilMemberReasoning({ env, model, modelProvider, reasoningQuestion: buildDebateQuestion(question, config.selfId.length > 0 ? config.selfId : "me", prior), retrievalQuestion: question }),
-          peers: config.peers,
-          requestReasoning: (peer, q) => requestCouncilReasoning({ env, fetchImpl: io.fetch ?? globalThis.fetch, fromPeerId: config.selfId, peer, question: buildDebateQuestion(q, peer.id, prior) }),
-          selfId: config.selfId
-        });
+        utterances = await gather(round, question, prior);
+        finalRound = round;
+      }
+      if (utterances.length > 1 && hasCouncilConsensus(utterances)) {
+        io.stdout(`panel agreed — stopping at round ${finalRound.toString()}\n`);
       }
       if (utterances.length === 0) {
         io.stdout("No council members responded (peers offline or council disabled on them).\n");
         return;
       }
+      if (io.councilGatherOverride) {
+        io.stdout(`${renderCouncilResult(question, utterances, null)}\n`);
+        return;
+      }
       // RGV re-verification: a one-shot local judge re-checks the synthesis
       // against the members' actual reasoning, dropping a "consensus" none reached.
       const reverify: GroundingReverify = async ({ answer: a, evidence, query }) => {
-        const judged = await modelProvider.generate({
+        const judged = await modelProvider!.generate({
           maxOutputTokens: 24,
-      responseFormat: REVERIFY_RESPONSE_FORMAT,
+          responseFormat: REVERIFY_RESPONSE_FORMAT,
           messages: [
             { content: REVERIFY_SYSTEM_PROMPT, role: "system" },
             { content: buildGroundingReverifyPrompt({ answer: a, evidence, query }), role: "user" }
           ],
-          model,
+          model: model!,
           temperature: 0
         });
         return parseGroundingReverifyJson(judged.output ?? "");
       };
-      const answer = await synthesizeCouncilAnswer(question, utterances, { model, modelProvider, reverify });
+      const answer = await synthesizeCouncilAnswer(question, utterances, { model: model!, modelProvider: modelProvider!, reverify });
       io.stdout(`${renderCouncilResult(question, utterances, answer)}\n`);
     });
 

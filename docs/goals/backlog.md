@@ -479,6 +479,23 @@ excluded when scoring).
   refreshes when a human runs it. Wire `writeFadedMemoryKeys` into `memory-consolidate-tick.ts` +
   `commands-daemon.ts` behind the existing `MUSE_SELFLEARN_ENABLED` gate so fade refreshes automatically
   on the background tick. (fire-30 remainder; also: FadeMem-style importance term in `selectForgettable`.)
+- ✓→Done **ReConcile consensus-gated council rounds** — `muse swarm council` ran a fixed round count
+  blind to convergence (MAST step-repetition + termination-unawareness, arXiv:2309.13007 Chen/Saha/Bansal
+  ACL 2024). [DONE 2026-06-13, cognition loop fire 31: `hasCouncilConsensus` (every member's mean pairwise
+  Jaccard support ≥ DEFAULT_COUNCIL_AGREE_AT=0.16) added to the debate loop condition; `--rounds` default
+  bumped 1→2 (required — the loop is dormant at 1) so an agreed panel stops at round 1 and only a contested
+  panel spends the (previously dormant) debate round, bounded by the unchanged cap 3. Single gather-closure
+  seam → the assembled-path test drives the real production loop. Judge PASS: both counterfactuals
+  non-vacuous, refactor behavior-preserving, floor-safe (gate only shortens; dedupe/screen/id-gate/reverify
+  unchanged).]
+- ◦ **Council cross-lingual consensus (KO/EN agreeing panel)** — `hasCouncilConsensus` uses Jaccard token
+  overlap, so a genuinely-agreeing KO+EN panel scores support ~0 → falsely "diverged" → wastes one bounded
+  round (no floor violation; cap holds). Same CJK hazard family as fire-28's outlier screen. Needs an
+  embedding-based cross-lingual similarity to fix both. (judge-flagged fire 31)
+- ◦ **Stabilize mcp playbook-store weighted-eviction test flake** — `playbook-store.test.ts:309`
+  (recordPlaybookStrategy weighted eviction, added fire 27) times out at the 5000ms per-test default under
+  full-suite parallel load; passes 1696/1696 in isolation. Raise the per-test timeout or reduce its async
+  file-write count. (judge-flagged fire 31; same family as the cli chat-grounding concurrency flake)
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
   each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
 - (queued behind fuel/prereqs: sleep-time compute · Mem0 UPDATE op · AWM workflow mining ·

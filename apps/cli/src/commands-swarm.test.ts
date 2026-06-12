@@ -8,7 +8,7 @@ import { AuthoredSkillStore } from "@muse/skills";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { buildSwarmSkillDraft, gatherCouncil, registerSwarmCommands, renderCouncilResult, renderPending, renderShareDraft } from "./commands-swarm.js";
+import { buildSwarmSkillDraft, gatherCouncil, registerSwarmCommands, renderCouncilResult, renderPending, renderShareDraft, type CouncilGatherOverride } from "./commands-swarm.js";
 import type { ProgramIO } from "./program.js";
 
 describe("gatherCouncil + renderCouncilResult", () => {
@@ -194,6 +194,130 @@ describe("personal swarm — send → quarantine → promote (end to end)", () =
     // Execute-gate: a SkillDraft has no `requires`, so the promoted skill can
     // never declare runnable bins → muse.skills.run refuses to execute it.
     expect(authored[0]!.frontmatter.requires).toBeUndefined();
+  });
+});
+
+// ── ReConcile consensus-gated round budget — assembled-path counterfactual ──
+// Uses the councilGatherOverride seam so the REAL registered action exercises
+// the consensus gate without a live model or peer HTTP.
+
+describe("muse swarm council — ReConcile consensus gate (assembled-path, no Ollama)", () => {
+  let dir: string;
+  let out: string[];
+  const prevEnv: Record<string, string | undefined> = {};
+  const setEnv = (k: string, v: string) => { prevEnv[k] = process.env[k]; process.env[k] = v; };
+
+  const AGREEING = [
+    { peerId: "laptop", reasoning: "The database should use PostgreSQL because it handles concurrent writes and relational integrity well." },
+    { peerId: "phone",  reasoning: "PostgreSQL is the better choice given its reliable handling of concurrent writes." },
+    { peerId: "server", reasoning: "For this use case, PostgreSQL handles concurrent writes reliably and is the right pick." }
+  ];
+  const DIVERGING = [
+    { peerId: "laptop", reasoning: "The database should use PostgreSQL because it handles concurrent writes and relational integrity well." },
+    { peerId: "phone",  reasoning: "Bananas are yellow tropical fruit grown in warm climates near the equator." }
+  ];
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "muse-council-"));
+    out = [];
+    setEnv("MUSE_A2A_ENABLED", "true");
+    setEnv("MUSE_A2A_PEERS_FILE", join(dir, "a2a-peers.json"));
+    await writeFile(join(dir, "a2a-peers.json"), JSON.stringify({
+      peers: [
+        { id: "phone", secret: "s1", url: "https://phone.test/a2a" },
+        { id: "server", secret: "s2", url: "https://server.test/a2a" }
+      ],
+      selfId: "laptop"
+    }), "utf8");
+  });
+  afterEach(async () => {
+    for (const [k, v] of Object.entries(prevEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    await rm(dir, { force: true, recursive: true });
+  });
+
+  const makeProgram = (gatherOverride: CouncilGatherOverride) => {
+    const io: ProgramIO = {
+      councilGatherOverride: gatherOverride,
+      fetch: (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch,
+      readPipedStdin: async () => "",
+      stderr: (m: string) => out.push(m),
+      stdout: (m: string) => out.push(m)
+    } as unknown as ProgramIO;
+    const cmd = new Command();
+    registerSwarmCommands(cmd, io);
+    return cmd;
+  };
+
+  it("DIVERGING peers + default rounds → gatherFn called TWICE (loop fires by default)", async () => {
+    let callCount = 0;
+    const gatherOverride: CouncilGatherOverride = async (round) => {
+      callCount += 1;
+      // round 1: diverging; round 2: still diverging (reaches cap)
+      return round === 1 ? [...DIVERGING] : [...DIVERGING];
+    };
+    await makeProgram(gatherOverride).parseAsync(["node", "x", "swarm", "council", "which database?"], { from: "node" });
+    // Default is 2 rounds; diverging panel → loop runs round 2 → gather called twice
+    expect(callCount).toBe(2);
+    const text = out.join("");
+    expect(text).toContain("refining, round 2"); // audit trail: loop ran
+  });
+
+  it("AGREEING peers + default rounds → gatherFn called ONCE (consensus short-circuits)", async () => {
+    let callCount = 0;
+    const gatherOverride: CouncilGatherOverride = async (_round) => {
+      callCount += 1;
+      return [...AGREEING];
+    };
+    await makeProgram(gatherOverride).parseAsync(["node", "x", "swarm", "council", "which database?"], { from: "node" });
+    // Panel agrees after round 1 → loop never enters → gather called only once
+    expect(callCount).toBe(1);
+    const text = out.join("");
+    expect(text).toContain("panel agreed — stopping at round 1");
+    expect(text).not.toContain("refining, round 2");
+  });
+
+  it("--rounds 3 + consensus reached after round 2 → stops at round 2 (early termination)", async () => {
+    let callCount = 0;
+    const gatherOverride: CouncilGatherOverride = async (round) => {
+      callCount += 1;
+      // round 1: diverging; round 2: panel agrees
+      return round === 1 ? [...DIVERGING] : [...AGREEING];
+    };
+    await makeProgram(gatherOverride).parseAsync(["node", "x", "swarm", "council", "--rounds", "3", "which database?"], { from: "node" });
+    expect(callCount).toBe(2); // stopped at round 2, never reached round 3
+    const text = out.join("");
+    expect(text).toContain("panel agreed — stopping at round 2");
+    expect(text).not.toContain("refining, round 3");
+  });
+
+  it("never-converging fixtures → hard stop at cap 3", async () => {
+    let callCount = 0;
+    const gatherOverride: CouncilGatherOverride = async (_round) => {
+      callCount += 1;
+      return [...DIVERGING]; // always diverging
+    };
+    await makeProgram(gatherOverride).parseAsync(["node", "x", "swarm", "council", "--rounds", "3", "which database?"], { from: "node" });
+    expect(callCount).toBe(3); // ran all 3 rounds
+    const text = out.join("");
+    expect(text).not.toContain("panel agreed"); // no consensus reached
+  });
+
+  it("failed/empty peer in round 2 → degrades gracefully, never throws", async () => {
+    let callCount = 0;
+    const gatherOverride: CouncilGatherOverride = async (round) => {
+      callCount += 1;
+      if (round === 2) {
+        // Only one responder in round 2 (peer failed) — loop exits because utterances.length <= 1
+        return [{ peerId: "laptop", reasoning: "Only one voice remains." }];
+      }
+      return [...DIVERGING];
+    };
+    await expect(
+      makeProgram(gatherOverride).parseAsync(["node", "x", "swarm", "council", "which database?"], { from: "node" })
+    ).resolves.not.toThrow();
+    expect(callCount).toBe(2);
+    const text = out.join("");
+    expect(text).toContain("Council on:"); // result still rendered
   });
 });
 

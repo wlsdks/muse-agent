@@ -61,7 +61,7 @@ import { registerOnboardCommand } from "./commands-onboard.js";
 import { registerProactiveCommands } from "./commands-proactive.js";
 import { registerReflectionsCommand } from "./commands-reflections.js";
 import { registerLearnedCommand } from "./commands-learned.js";
-import { registerSwarmCommands } from "./commands-swarm.js";
+import { registerSwarmCommands, type CouncilGatherOverride } from "./commands-swarm.js";
 import { registerProposeCommands } from "./commands-propose.js";
 import { registerSkillsCommands } from "./commands-skills.js";
 import { registerOrchestrateCommands } from "./commands-orchestrate.js";
@@ -197,6 +197,12 @@ export interface ProgramIO {
    * configured voice registry + afplay/aplay.
    */
   readonly todayShells?: TodayCommandShells;
+  /**
+   * Test seam — bypass createMuseRuntimeAssembly + real peer HTTP in the
+   * council action. When present, replaces the gatherCouncil call for each
+   * debate round. Absent in production.
+   */
+  readonly councilGatherOverride?: CouncilGatherOverride;
 }
 
 const defaultIO: ProgramIO = {
