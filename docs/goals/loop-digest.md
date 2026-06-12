@@ -282,3 +282,11 @@
 - **리스크:** stripped>0 경로의 코드블록은 여전히 collapse될 수 있으나(드묾: 코드답+invalid citation) 잔여로 기록. grounding floor 무관(citation 게이트 verdict 무변경, 출력 정리만).
 
 > ✅ **자율 리뷰관문 (fires 16–18, 진안 묻지 않음):** 사이클2 — #5 promotion-persistence(16)·#2 correction-polarity 강건화(17)·grounding-surface whitespace fix(18). maker≠judge 매 fire PASS. **사이클3 방향(스스로): gap-scout로 line-296 audit 클러스터 잔여 버그(casual-prompt 말해줘 over-match, dedup write-memoize 등) + agent-performance levers 중 결정적 슬라이스 우선.** fires-16-18 배치 머지는 main clean시 자동.
+
+
+## [TOOL loop] fire 1 (v1.10.0, cron 23eff34a) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** notes 패밀리 도구선택 커버리지(eval:tools buildNotesScenario 6케이스) + save/append 설명에 use-when/NOT-when 절. 부수로 main의 사전존재 회귀 2건 청소: scout raw-NUL byte-hygiene, SSRF-가드 fallout(web_action reserved-TLD 호스트 테스트 4건).
+- **왜:** notes는 not-when 0개 + eval 부재였고, RED 베이스라인(live gemma4 3런)이 실제 save-vs-append 혼동(KO 노트 쓰기 → append 0/3 instead of save)을 드러냄 → 절 추가로 GREEN 12/12 STABLE 3/3. 회귀 2건은 pnpm check가 red여서(quick self-eval은 못 잡음) 커밋 전 필수 정리 — 회귀-우선 원칙.
+- **리뷰지점:** loopback-notes.ts(save/append 설명) + eval-tool-selection.mjs(buildNotesScenario+등록) / run-log-analysis.ts:85(raw NUL을 backslash-u0000 escape로) / actuator-tools.ts·commands-approvals.ts(optional lookup DI seam)+테스트 4건. Fable-5 게이팅 검증자 PASS(SSRF: production은 lookup 미주입 → defaultLookup → 가드 무손상; notes 케이스 discriminating + 미과적합). 3 게이트 green: check 0·lint 0·eval notes 12/12.
+- **리스크:** buildNotesScenario의 cases.filter(byName.has)는 도구명 drift 시 케이스를 조용히 드롭(검증자 비차단 노트). 남은 not-when 타깃: messaging/episodes/context. grounding floor 무관(설명·테스트·회귀픽스만, 게이트 로직 무변경).

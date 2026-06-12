@@ -326,7 +326,10 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
         description:
           "Write a markdown note to `path` relative to the notes directory. " +
           "Creates parent directories as needed. With `overwrite: false` (default), errors if the file exists; " +
-          "with `overwrite: true`, replaces the file in place. Returns `{ path, sizeBytes, created }`.",
+          "with `overwrite: true`, replaces the file in place. Returns `{ path, sizeBytes, created }`. " +
+          "Use when CREATING a new note or REPLACING a note's whole contents at a path ('save a note', '노트 새로 만들어 적어줘'). " +
+          "NOT when adding a line to an EXISTING note (use muse.notes.append), nor for a to-do (use muse.tasks.add) " +
+          "or a timed reminder (use muse.reminders.add) — a note is a markdown FILE, not a scheduled item.",
         execute: async (args): Promise<JsonObject> => {
           const path = readString(args, "path");
           const content = readString(args, "content");
@@ -384,8 +387,11 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
       },
       {
         description:
-          "Append `content` to a note at `path`. Creates the file (and parent directories) if missing. " +
-          "Useful for daily journals, running task lists, append-only logs.",
+          "Append `content` to the END of a note at `path`. Creates the file (and parent directories) if missing. " +
+          "Useful for daily journals, running task lists, append-only logs. " +
+          "Use when ADDING to an EXISTING note ('append to my journal', '일지에 한 줄 덧붙여줘'). " +
+          "NOT when creating or replacing a whole note (use muse.notes.save), nor for a to-do " +
+          "(use muse.tasks.add) or a timed reminder (use muse.reminders.add).",
         execute: async (args): Promise<JsonObject> => {
           const path = readString(args, "path");
           const content = readString(args, "content");

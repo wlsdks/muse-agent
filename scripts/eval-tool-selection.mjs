@@ -179,6 +179,40 @@ async function buildPersonalCrudScenario() {
   }
 }
 
+// Notes file tools (muse.notes.save / append) vs their closest confusables:
+// tasks and reminders. A note is durable markdown written to a FILE at a path;
+// the model must keep a "write this in my notes file" intent on notes.* and a
+// to-do / timed-alarm intent on tasks.add / reminders.add. The disambiguation
+// is the value — the KO 추가/적어 verbs collide with the notes keywords, so a
+// "할 일에 추가" (task) or "알림 맞춰" (reminder) prompt must NOT land on a note tool.
+async function buildNotesScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const servers = [
+      mcp.createNotesMcpServer({ notesDir: "/tmp/eval-notes" }),
+      mcp.createTasksMcpServer({ file: "/tmp/eval-notes-tasks.json" }),
+      mcp.createRemindersMcpServer({ file: "/tmp/eval-notes-reminders.json" })
+    ];
+    const interesting = new Set(["save", "append", "add"]);
+    const muse = servers.flatMap((s) => mcp.createLoopbackMcpMuseTools(s)).filter((t) => interesting.has(t.definition.name.split(".").pop()));
+    const tools = muse.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      // POSITIVE: an explicit note-FILE write/append → notes.save / notes.append
+      { prompt: "Save a markdown note at ideas.md with: explore a local reranker on recall top-8.", expectTool: "muse.notes.save", requireArgs: ["content", "path"], note: "EN write a named note file → notes.save (NOT tasks/reminders)" },
+      { prompt: "Append to my journal note journal.md: shipped the grounding gate today.", expectTool: "muse.notes.append", requireArgs: ["content", "path"], note: "EN append to an existing note file → notes.append" },
+      { prompt: "ideas.md 노트를 새로 만들어서 적어줘: 로컬 리랭커 실험해보기", expectTool: "muse.notes.save", requireArgs: ["content", "path"], note: "KO create a new note file → notes.save, NOT append (새로 만들어 = create)" },
+      // DISAMBIGUATION: a to-do or a reminder must NOT route to a note tool
+      { prompt: "우유 사기를 할 일에 추가해줘", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "KO add a TO-DO → tasks.add, NOT notes.append (추가 collides)" },
+      { prompt: "Add 'renew passport' to my tasks.", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "EN add a task → tasks.add, NOT notes.save" },
+      { prompt: "내일 오전 9시에 약 먹으라고 알림 맞춰줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], note: "KO timed reminder → reminders.add, NOT notes.* (알림 ≠ 노트)" }
+    ];
+    return { label: "notes-vs-tasks-reminders (notes-file disambiguation)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "notes-vs-tasks-reminders", skip: `@muse/mcp not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Followup tools (muse.followup.*) vs their closest confusables: tasks and
 // reminders. A followup is an agent-auto-captured "circle back" thread — the
 // model must route viewing/managing those to followup.list/cancel/snooze and
@@ -563,6 +597,7 @@ async function main() {
     await buildFileScenario(),
     await buildBrowserScenario(),
     await buildPersonalCrudScenario(),
+    await buildNotesScenario(),
     await buildFollowupScenario(),
     await buildRecallVsCrudScenario(),
     await buildWebSearchScenario()
