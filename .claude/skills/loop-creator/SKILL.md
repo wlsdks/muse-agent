@@ -1,6 +1,6 @@
 ---
 name: loop-creator
-version: 1.6.1
+version: 1.7.0
 description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘", "loop 등록", "X를 계속 강화하는 루프", or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from its bundled loop-engineering.md contract AND registers the cron itself, then reports the prompt + cron id + how to stop. The autonomous successor to hand-written ad-hoc loop prompts.
 ---
 
@@ -38,9 +38,9 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 
 - **테마/목적이 있으면** (예: "브라우저 강화", "agent-core 하드닝") → 그걸 목적으로 채운다.
 - **간격이 있으면** (예: "20분") → 그 간격. 없으면 기본 **20m**(세션 루프).
-- **아무것도 없으면** → `docs/goals/backlog.md` 최상단 ★ 테마를 목적으로 제안하고 진행
-  (improve-muse처럼 "할 게 없다"는 금지 — backlog가 **비거나 파일이 없으면** gap-scout
-  리필/시드가 곧 목적; §1 ORIENT의 부재 처리 참고).
+- **테마가 없으면** → 스킬의 **1번 작업이 곧 "무엇을 할지 알아내기"**다(§1 DECIDE THE WORK):
+  backlog가 명확하면 거기서, 얇거나/없으면 **gap-scout를 즉시 돌려 발굴**해 정한다.
+  "할 게 없다"는 금지 — 모르면 멈추는 게 아니라 스카웃한다.
 
 - **자율성 티어** — 기본 **Tier1**(로컬 커밋, push 없음). "더 자율적으로"/"PR로"/"브랜치
   파서"/"무인으로 머지 전까지" 같은 신호가 있으면 **Tier2**(브랜치+draft PR, 사람이 머지)로,
@@ -50,13 +50,24 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 
 ## 파이프라인 (생성, 그다음 등록)
 
-### 1. ORIENT — 계약과 현재 상태를 읽는다
-- [`loop-engineering.md`](references/loop-engineering.md)의 §1 표와 §4 체크리스트를 읽는다.
-- `docs/goals/backlog.md` 최상단(작업 소스), `git log --oneline -5`(최근 무엇), `pnpm self-eval`(회귀?).
-- **backlog.md는 스킬이 *읽는* 기존 repo 아티팩트지 만드는 게 아니다**(dev loop·improve-muse·
-  gap-scout가 유지). 단 **부재 시**(fresh repo / 과거 doc-reset [[project_loop_docs_reset]]):
-  최소 스켈레톤(`# Muse dev backlog` + 헤더)을 만들고 **gap-scout로 시드**한 뒤 진행 = "비면"과
-  동일 처리. 절대 "할 게 없다"로 멈추지 않는다(파일 없음 ≠ 일감 없음).
+### 1. DECIDE THE WORK — 무엇을 할지 *결정*한다 (모르면 *알아낸다*)
+
+이 스킬의 **1번 작업은 "이번 루프가 무엇을 할지 결정"하는 것**이다 — backlog를 *읽기만* 하는
+게 아니라, 모르면 *능동적으로 알아낸다*. 결정 순서(위에서 멈추는 곳이 답):
+
+1. **기준선 먼저.** `pnpm self-eval` non-zero면 **등록하지 않고** 회귀를 보고한다(아래 상세 불릿)
+   — 깨진 기준선 위엔 루프를 안 띄운다. (루프가 *돌 때* 회귀를 만나면 그건 그 fire의 일.)
+2. **테마가 정해졌고 backlog에 그 항목이 있으면** → 가치 우선 top ◦(§2). 끝.
+3. **테마가 없거나 / backlog가 얇거나(≤2) / stale / 부재면 → 지금 알아낸다:**
+   **gap-scout를 *즉시* 돌려**(EXPANSION-PLAYBOOK / 코드·CI·최근 커밋 스캔) 무엇이 가장 가치
+   있는지 발굴하고, 그 결과를 **backlog.md에 써넣은 뒤** 그걸로 테마/슬라이스를 정한다. 이게
+   "스킬 호출되자마자 무엇을 할지 알아보는 1번 작업". **"할 게 없다"는 금지** — 모르면 멈추는
+   게 아니라 스카웃하는 것이다(파일 없음/빈 목록 ≠ 일감 없음).
+
+보조 입력: [`loop-engineering.md`](references/loop-engineering.md) §1 표·§4 체크리스트,
+`git log --oneline -5`(최근 무엇), 동시 자동-push 루프 여부.
+**backlog.md는 스킬이 *읽고/스카웃으로 채우는* repo 아티팩트지(dev loop·improve-muse·gap-scout가
+유지) 매번 새로 만드는 건 아니다** — 부재 시 최소 스켈레톤(`# Muse dev backlog`)을 만들고 위 3을 탄다.
 - **기준선이 초록이어야 등록한다.** `self-eval`이 non-zero면 루프를 띄우지 않고 회귀를
   진안에게 보고한다 — 깨진 기준선 위 루프는 매 fire가 그 회귀를 보고, 정지조건
   (`self-eval` exit 0)에 영영 못 닿는다(improve-muse와 같은 규칙).
