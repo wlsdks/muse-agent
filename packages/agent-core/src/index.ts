@@ -239,6 +239,7 @@ export {
   abstainIfUngrounded,
   buildCouncilPrompt,
   buildDebateQuestion,
+  dedupeUtterancesByPeer,
   parseCouncilAnswer,
   produceCouncilReasoning,
   produceGroundedCouncilReasoning,

@@ -428,6 +428,14 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   the judge caught + relaxed an over-strict draft that would have dropped legitimate reasoning when a
   peer's selfPeerId is unset, which handler.ts emits as ""). a2a 141 green.
 
+- ✓→Done **Council synthesis: one member, one voice (per-peer dedup)** — [2026-06-12, cognition loop
+  fire 9, multi-agent #3] `synthesizeCouncilAnswer` fed raw utterances into the synthesis without
+  deduping by peer — a duplicate peerId (dup registry entry, or the initiator's selfId colliding with
+  a peer id, both reachable via `gatherCouncil`) double-weighted that member (MAST duplicated-work,
+  skews a deliberation). Added pure `dedupeUtterancesByPeer` (last-wins, order-preserving) applied at
+  the synthesis boundary. agent-core 1712 green incl. a prompt-capture integration (dup peer → the
+  synthesis prompt shows the LAST reasoning once, 2 members not 3).
+
 ## Blocked / deferred
 
 - ⏳ **Grammar-constrained tool-call decoding** — INFEASIBLE on Ollama today: `format`

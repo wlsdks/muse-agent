@@ -5,6 +5,7 @@ import {
   abstainIfUngrounded,
   buildCouncilPrompt,
   buildDebateQuestion,
+  dedupeUtterancesByPeer,
   parseCouncilAnswer,
   produceCouncilReasoning,
   produceGroundedCouncilReasoning,
@@ -173,5 +174,40 @@ describe("council self-abstention — a member speaks only with confident corpus
     );
     expect(synth?.contributors).toEqual(["alice"]);
     expect(synth?.contributors).not.toContain("bob");
+  });
+});
+
+describe("dedupeUtterancesByPeer — one member, one voice", () => {
+  it("preserves all entries and their order when peers are distinct", () => {
+    const result = dedupeUtterancesByPeer([utt("a", "x"), utt("b", "y")]);
+    expect(result).toHaveLength(2);
+    expect(result.map((u) => u.peerId)).toEqual(["a", "b"]);
+  });
+
+  it("keeps last value for a duplicate peer, preserving first-seen slot order", () => {
+    const result = dedupeUtterancesByPeer([utt("a", "first"), utt("b", "y"), utt("a", "second")]);
+    expect(result).toHaveLength(2);
+    expect(result.map((u) => u.peerId)).toEqual(["a", "b"]);
+    expect(result.find((u) => u.peerId === "a")?.reasoning).toBe("second");
+  });
+
+  it("returns an empty array for empty input", () => {
+    expect(dedupeUtterancesByPeer([])).toHaveLength(0);
+  });
+});
+
+describe("synthesizeCouncilAnswer — dedup integration: duplicate peer is not double-weighted", () => {
+  it("feeds only 2 distinct peer lines to the synthesis prompt when one peer appears twice", async () => {
+    const sink: { request?: ModelRequest } = {};
+    // alice appears twice — a dup registry entry scenario
+    const withDup = [utt("alice", "plan A is safer"), utt("bob", "plan B is faster"), utt("alice", "still prefer plan A")];
+    await synthesizeCouncilAnswer("Q?", withDup, { ...opts('{"answer":"go A","contributors":["alice","bob"]}', sink) });
+    const userContent = sink.request?.messages.find((m) => m.role === "user")?.content ?? "";
+    // the prompt must contain alice's LAST reasoning (last-wins), not the first
+    expect(userContent).toContain("still prefer plan A");
+    expect(userContent).not.toContain("plan A is safer");
+    // exactly 2 [id] lines, not 3
+    const idLines = (userContent.match(/^\[[\w-]+\]/gmu) ?? []);
+    expect(idLines).toHaveLength(2);
   });
 });
