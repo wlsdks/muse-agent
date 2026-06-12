@@ -53,6 +53,15 @@ EXPAND (new reach):
   read-risk, so "what's on my calendar today" works without a configured provider.
 
 HARDEN (make existing tools more reliable):
+- ✓→Done **regex_extract ReDoS guard** — the tool ran a model/untrusted-supplied regex with no
+  backtracking protection; a nested-quantifier pattern like `(a+)+$` against just 50 chars hung the
+  whole agent for ~90s (measured by the RED test). JS regex can't be timed out on the main thread,
+  so added `hasNestedUnboundedQuantifier` (the safe-regex star-height heuristic, escape-aware proper
+  paren matching) and reject the pattern BEFORE compile. Catches the common catastrophic class
+  ((a+)+, (.*)*, ([a-z]+){2,}); overlapping-alternation ReDoS ((a|ab)+) is out of scope (still
+  bounded by the 100k input cap) — documented honestly. TDD 5 (flags nested shapes, accepts ordinary
+  patterns the model writes, escaped parens, tool rejects-not-hangs, normal extract still works);
+  tools 242, byte-hygiene 30, check 0, lint 0.
 - ✓→Done **muse.search snippet length cap** — result snippets were sanitized but not LENGTH-bounded, so a
   SearXNG/DDG engine returning a full paragraph × up to 10 rows blew the local 8B's context. Added a 280-char
   word-boundary cap (`capSnippet`) on both the DDG and SearXNG paths; titles/urls untouched. A search result is

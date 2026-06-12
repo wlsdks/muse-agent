@@ -170,6 +170,46 @@ const REGEX_EXTRACT_MAX_PATTERN_LENGTH = 500;
 const REGEX_EXTRACT_MAX_MATCHES = 1_000;
 const REGEX_EXTRACT_ALLOWED_FLAGS = /^[gimsuy]*$/u;
 
+/** True when a body fragment contains an unescaped unbounded quantifier (* + {n,}). */
+function fragmentHasUnboundedQuantifier(body: string): boolean {
+  for (let i = 0; i < body.length; i += 1) {
+    const c = body[i];
+    if (c === "\\") { i += 1; continue; }
+    if (c === "*" || c === "+") return true;
+    if (c === "{" && /^\{\d*,\}/u.test(body.slice(i))) return true;
+  }
+  return false;
+}
+
+/**
+ * Detect the nested-quantifier shape that causes catastrophic backtracking —
+ * a group that is itself unbounded-quantified AND whose body contains another
+ * unbounded quantifier ((a+)+, (.*)*, ([a-z]+){2,}). Proper paren matching
+ * (stack, escape-aware) so nesting and literal `\(` are handled. This is the
+ * `safe-regex` star-height heuristic: it catches the common catastrophic class
+ * (a 50-char input made regex_extract hang for ~90s), NOT every ReDoS — e.g.
+ * overlapping alternation `(a|ab)+` is out of scope and still bounded only by
+ * the input-length cap. Exported for direct unit coverage.
+ */
+export function hasNestedUnboundedQuantifier(pattern: string): boolean {
+  const stack: number[] = [];
+  for (let i = 0; i < pattern.length; i += 1) {
+    const c = pattern[i];
+    if (c === "\\") { i += 1; continue; }
+    if (c === "(") { stack.push(i); continue; }
+    if (c === ")") {
+      const start = stack.pop();
+      if (start === undefined) continue;
+      const after = pattern.slice(i + 1);
+      const groupQuantified = /^[*+]/u.test(after) || /^\{\d*,\}/u.test(after);
+      if (groupQuantified && fragmentHasUnboundedQuantifier(pattern.slice(start + 1, i))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 function createRegexExtractTool(): MuseTool {
   return {
     definition: {
@@ -211,6 +251,12 @@ function createRegexExtractTool(): MuseTool {
       }
       if (!REGEX_EXTRACT_ALLOWED_FLAGS.test(flagsInput)) {
         return { error: "flags must be a subset of g/i/m/s/u/y" };
+      }
+      // Reject the nested-quantifier catastrophic-backtracking shape BEFORE
+      // compiling/running — JS regex can't be timed out on the main thread, so
+      // a pattern like (a+)+ against a long string would hang the whole agent.
+      if (hasNestedUnboundedQuantifier(pattern)) {
+        return { error: "pattern looks vulnerable to catastrophic backtracking (a quantified group whose body is also unbounded, e.g. (a+)+) — simplify it" };
       }
       const flags = flagsInput.includes("g") ? flagsInput : `${flagsInput}g`;
       let regex: RegExp;
