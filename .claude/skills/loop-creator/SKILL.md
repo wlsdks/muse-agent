@@ -70,6 +70,20 @@ grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지.
 
 테마별로 ④의 eval과 ②의 backlog 섹션을 정확히 바꿔 넣는다(브라우저 루프면 eval:browser-agent 등).
 
+### 3.5 자가검증 (등록 전, 필수 — "신뢰할 검증자라야 손을 뗀다")
+
+등록은 행동이다. 등록 *전에* 생성물을 §4 체크리스트에 대고 스스로 PASS/FAIL한다:
+
+- [ ] §4의 9항목이 전부 **채워졌거나 "N/A — 이유"로 명시**됐나? 빈 칸이 있으면 FAIL.
+- [ ] 정지조건이 **실제로 실행 가능한 명령**인가(`pnpm self-eval`/`eval:*`이 이 레포에 존재)?
+      "느낌상 됐다"면 FAIL — 띄우지 않고 블로커 보고.
+- [ ] 프롬프트의 ④ eval이 테마와 맞나(브라우저인데 eval:browser-agent 빠지지 않았나)?
+- [ ] push 금지·fabrication=0·IMMUTABLE-CORE 문구가 프롬프트에 살아있나?
+- [ ] 모델 티어링 라인이 테마에 맞나(정형 위주면 Sonnet 위임이 실제로 토큰을 아끼나)?
+
+하나라도 FAIL이면 §3으로 돌아가 고친다. 전부 PASS여야 §4로 간다. (maker≠judge 정신:
+이 점검을 별도 인스턴스/서브에이전트로 돌리면 더 신뢰할 수 있다.)
+
 ### 4. 등록한다 (cron)
 생성한 프롬프트로 **`/loop` 스킬을 호출**해 등록한다(스케줄 매핑·클라우드 오퍼는 /loop이 소유):
 `Skill(skill: "loop", args: "<간격> <생성한 프롬프트>")`.
@@ -86,6 +100,25 @@ grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지.
 - **push하지 않는다** — 등록된 루프도 커밋만, 머지는 진안이.
 - **불변식을 약화하지 않는다** — fabrication=0 / IMMUTABLE-CORE / 아웃바운드 fail-close.
 - **정지조건 없이 띄우지 않는다** — 검증가능 조건을 못 쓰면 블로커로 보고하고 멈춘다.
+
+## 워크드 예시 (입력 한 줄 → 등록)
+
+> 진안: "browser 강화하는 루프 돌려줘"
+
+1. **ORIENT** — backlog의 "★ TOOL expansion & hardening" 읽음; `pnpm self-eval` 그린.
+2. **계약 채움** — 목적="브라우저 도구 확장+강화"; 정지조건=`pnpm check` + `pnpm eval:browser-agent` ≥ threshold + "backlog browser ◦ 항목 Done"; eval=**eval:browser-agent**; 모델=정형 CDP 배선은 Sonnet, 프레임/grounding 설계는 Opus; connector=N/A(로컬 Chrome라 외부 트래커 불필요).
+3. **프롬프트 생성** — §3 골격에 위 값 박음(④가 `pnpm eval:browser-agent`로, ②가 browser 섹션으로).
+4. **자가검증** — 9항목 PASS(정지조건 `eval:browser-agent` 실재 확인), push-금지·floor 문구 살아있음 → 통과.
+5. **등록** — `Skill(skill:"loop", args:"20m <생성한 프롬프트>")` → cron id 반환.
+6. **보고** — 프롬프트 전문 + cron id + "각 fire: browser ◦ 1슬라이스 TDD→check→eval:browser-agent→커밋" + `CronDelete <id>`로 중단 + fire당 1슬라이스 비용 경계.
+
+## 계보·출처 (왜 이 모양인가)
+
+이 스킬의 원칙은 2026-06 "Loop Engineering" 합의에서 왔다 — **Peter Steinberger**
+("designing loops that prompt your agents"), **Boris Cherny**(Anthropic, "I don't
+prompt Claude anymore"), **Addy Osmani**(명명·정리). 전체 출처·심화 글은
+[`harness/loop-engineering.md`](../../../harness/loop-engineering.md) §5. 토큰 효율
+(모델 티어링)은 그 합의가 "Agent Orchestrator"의 핵심 craft로 꼽은 것과 일치.
 
 ## 멈추기
 
