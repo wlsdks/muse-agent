@@ -296,3 +296,12 @@
 - **왜:** 출처 표시는 Muse의 핵심(grounded+cited). "말해줘"는 인사가 아니라 흔한 recall 명령 → 출처 억제는 제품 가치 훼손. casual "농담 말해줘"는 어차피 출처 없어 무해 → 제거가 net win. gap-scout가 line-297 클러스터의 실 버그 발굴.
 - **리뷰지점:** `response-filters-verified-sources.ts`(정규식 1토큰 + WHY 주석) + `is-casual-prompt-text.test.ts`(recall imperative→false 3·social 여전 casual 4·greeting 경계 regression). **maker=Sonnet / judge=Fable 5**: Fable judge가 old-vs-new 시뮬레이션으로 non-vacuous(전엔 true·후엔 false)·over-removal 없음(casual 유지)·유일 consumer가 의도된 효과임 확인 → VERDICT PASS. agent-core 1741 green.
 - **리스크:** 잔여 `전해줘`도 유사 over-match 소지 있으나 빈도 낮아 유지(차후). grounding floor 강화 방향(출처 더 보존). (사이클3 fires 19-21.)
+
+## [cognition loop] fire 21 — 2026-06-13 · 사이클3 · 테마: anti-fabrication arg-grounding (API 정확성) · ⚠️ 3-FIRE 리뷰 관문(자율)
+
+- **무엇:** `groundToolArguments`의 `dropped` 리포트 수정 — string-ARRAY 부분 드롭(일부 fabricated, 일부 grounded) 시 survivor를 keep하면서도 arg name을 `dropped`에 넣던 오보고. 이제 `dropped`=완전 제거된 arg만(부분 정리는 survivor keep + 미보고).
+- **왜:** `dropped` 계약은 "드롭된 arg 이름". 부분-정리된 (살아있는) arg를 dropped로 보고하면 투명성 consumer가 "tags 드롭됨"으로 오인. .args 정리(보호)는 불변 — 리포트 정확성 버그. audit 클러스터의 in-scope 마지막 항목.
+- **리뷰지점:** `tool-argument-grounding.ts`(array 분기 2-way + JSDoc) + `tool-argument-grounding.test.ts`(부분→미보고·전부fabricated→보고+제거·전부grounded→무변경·string regression; **버그 인코딩 테스트 1개 flip**). **maker=Sonnet / judge=Fable 5**: Fable judge가 **test flip이 정당한지**(old가 버그 인코딩, full-removal 테스트는 여전히 dropped 단언) + .args 보호 불변 + 3분기 전수 확인 → VERDICT PASS. agent-core 1746 green.
+- **리스크:** .dropped는 런타임 미사용(agent-runtime:859는 .args만) → API 정확성 fix(저severity but 계약 정합). grounding floor 무관.
+
+> ✅ **자율 리뷰관문 (fires 19–21, 진안 묻지 않음):** 사이클3 — line-295 audit 클러스터의 in-scope 버그 3종 정리: dedup stale-read-after-write(19)·말해줘 casual over-match(20)·groundToolArguments partial-array 오보고(21). 모두 Fable-5 judge 적대검증 PASS. **사이클4 방향(스스로): audit 클러스터 in-scope 소진 — 남은(consent header/web URL/encryption)은 범위밖/동시루프 영역. cycle4=fresh gap-scout(frontier queued: Mem0 UPDATE / ACT-R 후속 등) 또는 미감사 모듈 1개 정밀감사.** fires-19-21 배치는 main clean시 자동 머지.

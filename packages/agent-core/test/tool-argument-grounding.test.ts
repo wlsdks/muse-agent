@@ -54,14 +54,15 @@ describe("groundToolArguments — drop a fabricated free-text arg the utterance 
     expect(out.dropped).toEqual([]);
   });
 
-  it("drops fabricated tag elements but keeps grounded ones (string array)", () => {
+  it("drops fabricated tag elements but keeps grounded ones — partial array NOT reported as dropped", () => {
     const out = groundToolArguments(
       { tags: ["운동", "회의", "강남"], title: "운동" },
       ["tags"],
       "운동 일정 추가해줘"
     );
     expect(out.args).toEqual({ tags: ["운동"], title: "운동" });
-    expect(out.dropped).toEqual(["tags"]);
+    // partial clean: the arg survives with the grounded element, so it is NOT in dropped
+    expect(out.dropped).toEqual([]);
   });
 
   it("removes the tags arg entirely when every element is fabricated", () => {
@@ -73,6 +74,56 @@ describe("groundToolArguments — drop a fabricated free-text arg the utterance 
   it("keeps a fully-grounded tag array untouched (not reported as dropped)", () => {
     const out = groundToolArguments({ tags: ["운동"] }, ["tags"], "운동 일정");
     expect(out.args).toEqual({ tags: ["운동"] });
+    expect(out.dropped).toEqual([]);
+  });
+
+  it("partial array: cleaned survivors kept, name absent from dropped", () => {
+    const out = groundToolArguments(
+      { tags: ["work", "fabricated"] },
+      ["tags"],
+      "tag it work and urgent"
+    );
+    expect(out.args).toEqual({ tags: ["work"] });
+    expect(out.dropped).not.toContain("tags");
+  });
+
+  it("all-fabricated array: arg removed AND reported in dropped", () => {
+    const out = groundToolArguments(
+      { tags: ["xyz", "qwe"] },
+      ["tags"],
+      "add a task for today"
+    );
+    expect(Object.prototype.hasOwnProperty.call(out.args, "tags")).toBe(false);
+    expect(out.dropped).toContain("tags");
+  });
+
+  it("all-grounded array: unchanged and not in dropped", () => {
+    const out = groundToolArguments(
+      { tags: ["work", "urgent"] },
+      ["tags"],
+      "tag it work and urgent"
+    );
+    expect(out.args).toEqual({ tags: ["work", "urgent"] });
+    expect(out.dropped).toEqual([]);
+  });
+
+  it("string full drop still reported in dropped (regression)", () => {
+    const out = groundToolArguments(
+      { notes: "completely fabricated content" },
+      ["notes"],
+      "add a task"
+    );
+    expect(Object.prototype.hasOwnProperty.call(out.args, "notes")).toBe(false);
+    expect(out.dropped).toContain("notes");
+  });
+
+  it("string grounded kept and not in dropped (regression)", () => {
+    const out = groundToolArguments(
+      { notes: "urgent task" },
+      ["notes"],
+      "add an urgent task"
+    );
+    expect(out.args).toEqual({ notes: "urgent task" });
     expect(out.dropped).toEqual([]);
   });
 

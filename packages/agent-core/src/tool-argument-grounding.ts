@@ -27,8 +27,10 @@ function contentTokens(text: string): string[] {
  * "강남역에서") survives, and only a value with NO overlap at all is dropped.
  * Empty values and an empty utterance are left untouched (fail-open: never drop
  * when grounding can't be assessed). A string-ARRAY arg (e.g. task `tags`) keeps
- * its grounded elements and drops only the fabricated ones. Required args are
- * the caller's concern — pass only optional free-text arg names in `groundedArgs`.
+ * its grounded elements and drops only the fabricated ones; a partially-cleaned
+ * array keeps the surviving elements and is NOT listed in `dropped` — `dropped`
+ * contains only args whose value was removed entirely. Required args are the
+ * caller's concern — pass only optional free-text arg names in `groundedArgs`.
  */
 export function groundToolArguments(
   args: Record<string, unknown>,
@@ -65,10 +67,14 @@ export function groundToolArguments(
     // grounded ones; remove the arg entirely only if nothing survives.
     if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
       const kept = (value as string[]).filter((item) => item.trim().length === 0 || isGrounded(item));
-      if (kept.length < value.length) {
+      if (kept.length === 0 && value.length > 0) {
+        // every element fabricated → the arg itself is dropped
+        delete next[name];
         dropped.push(name);
-        if (kept.length === 0) delete next[name];
-        else next[name] = kept;
+      } else if (kept.length < value.length) {
+        // partial: keep the grounded elements; the arg SURVIVES, so it is NOT
+        // reported as "dropped" (dropped = args removed entirely, per the contract)
+        next[name] = kept;
       }
     }
   }
