@@ -142,23 +142,36 @@ const GROUNDING_SOURCE_TEXT_CAP = 4000;
  * non-completed (blocked/failed) results — whose output is an error string, not
  * evidence — are skipped.
  */
+/**
+ * What ONE executed tool contributes as grounding evidence, or `undefined` if it
+ * contributed none. Single source of truth shared by the non-streaming run path
+ * ({@link groundingSourcesFromToolResults}) and the streamed `tool-result` event,
+ * so "what counts as tool grounding" cannot diverge between surfaces. Only a
+ * COMPLETED tool with non-empty text counts — a blocked/failed result's output is
+ * an error string (not evidence), and an empty output is an actuator's "sent".
+ */
+export function groundingSourceFromExecuted(
+  executed: ExecutedToolResult
+): { readonly source: string; readonly text: string } | undefined {
+  if (executed.result.status !== "completed") {
+    return undefined;
+  }
+  const raw = typeof executed.result.output === "string" ? executed.result.output.trim() : "";
+  if (raw.length === 0) {
+    return undefined;
+  }
+  return { source: executed.result.name, text: raw.length > GROUNDING_SOURCE_TEXT_CAP ? raw.slice(0, GROUNDING_SOURCE_TEXT_CAP) : raw };
+}
+
 function groundingSourcesFromToolResults(
   toolResults: readonly ExecutedToolResult[]
 ): readonly { readonly source: string; readonly text: string }[] {
   const out: { source: string; text: string }[] = [];
   for (const executed of toolResults) {
-    // Only a COMPLETED tool produced evidence. A blocked/failed result's output
-    // is an error string ("Error: max tool call limit reached", a thrown
-    // message) — counting it as a grounding source would inflate the grounded
-    // signal and let an error masquerade as evidence, weakening the floor.
-    if (executed.result.status !== "completed") {
-      continue;
+    const source = groundingSourceFromExecuted(executed);
+    if (source) {
+      out.push(source);
     }
-    const raw = typeof executed.result.output === "string" ? executed.result.output.trim() : "";
-    if (raw.length === 0) {
-      continue;
-    }
-    out.push({ source: executed.result.name, text: raw.length > GROUNDING_SOURCE_TEXT_CAP ? raw.slice(0, GROUNDING_SOURCE_TEXT_CAP) : raw });
   }
   return out;
 }

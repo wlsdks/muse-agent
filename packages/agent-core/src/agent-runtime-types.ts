@@ -221,7 +221,7 @@ export type ToolApprovalGate = (
 export type AgentRuntimeStreamEvent =
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "text-delta" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call" }>)
-  | { readonly runId: string; readonly toolCall: ModelToolCall; readonly type: "tool-result" }
+  | { readonly runId: string; readonly toolCall: ModelToolCall; readonly type: "tool-result"; readonly grounding?: { readonly source: string; readonly text: string } }
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call-started" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call-finished" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "citations" }>)

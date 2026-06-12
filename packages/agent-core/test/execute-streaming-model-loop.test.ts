@@ -80,6 +80,42 @@ describe("executeStreamingModelLoop", () => {
     expect(execution.finalResponse.output).toBe("final");
   });
 
+  it("attaches grounding to the tool-result event for a completed non-empty tool (the streaming surface's evidence)", async () => {
+    const run = {
+      maxToolCalls: 5,
+      tracer: { startSpan: () => noopSpan },
+      metrics: { recordTokenUsage() {} },
+      executeToolCall: async (_ctx: AgentRunContext, toolCall: ModelToolCall): Promise<ExecutedToolResult> => ({
+        result: { id: toolCall.id, name: toolCall.name, output: "rent is 1,250,000 KRW", status: "completed" }, toolCall,
+      }),
+    } as unknown as ModelLoopRunner;
+    const prov = provider([
+      [done("calling", [{ id: "t1", name: "knowledge_search", arguments: {} }])],
+      [{ type: "text-delta", text: "final" }, done("")],
+    ]);
+    const { events } = await drive(prov, run, context(), true);
+    const toolResult = events.find((e) => e.type === "tool-result");
+    expect((toolResult as { grounding?: unknown }).grounding).toEqual({ source: "knowledge_search", text: "rent is 1,250,000 KRW" });
+  });
+
+  it("omits grounding for a failed tool-result (an error string is not evidence — floor integrity on the stream)", async () => {
+    const run = {
+      maxToolCalls: 5,
+      tracer: { startSpan: () => noopSpan },
+      metrics: { recordTokenUsage() {} },
+      executeToolCall: async (_ctx: AgentRunContext, toolCall: ModelToolCall): Promise<ExecutedToolResult> => ({
+        result: { id: toolCall.id, name: toolCall.name, output: "Error: boom", status: "failed" }, toolCall,
+      }),
+    } as unknown as ModelLoopRunner;
+    const prov = provider([
+      [done("calling", [{ id: "t1", name: "web_read", arguments: {} }])],
+      [{ type: "text-delta", text: "final" }, done("")],
+    ]);
+    const { events } = await drive(prov, run, context(), true);
+    const toolResult = events.find((e) => e.type === "tool-result");
+    expect((toolResult as { grounding?: unknown }).grounding).toBeUndefined();
+  });
+
   it("cuts the REST of a batch with the wall-clock reason when the deadline crosses MID-batch (injected clock)", async () => {
     // The streaming loop has the same mid-batch wall-clock guard as the
     // non-streaming one but no deadline test at all. Inject a clock: two calls in

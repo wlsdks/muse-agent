@@ -39,6 +39,7 @@ import type { PlanCacheProvider } from "./plan-cache.js";
 import { appendSystemSection, recordUsageSpanAttributes } from "./runtime-helpers.js";
 import {
   blockedToolResult,
+  groundingSourceFromExecuted,
   type ExecutedToolResult,
   type ModelLoopExecution,
   type StreamExecutionOptions,
@@ -100,7 +101,7 @@ export interface ModelLoopRunner {
 export type ModelLoopStreamEvent =
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "text-delta" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call" }>)
-  | { readonly runId: string; readonly toolCall: ModelToolCall; readonly type: "tool-result" }
+  | { readonly runId: string; readonly toolCall: ModelToolCall; readonly type: "tool-result"; readonly grounding?: { readonly source: string; readonly text: string } }
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call-started" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "tool-call-finished" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "citations" }>)
@@ -301,7 +302,8 @@ export async function* executeStreamingModelLoop(
               ? "Error: run wall-clock deadline reached"
               : "Error: max tool call limit reached");
 
-      yield { runId: context.runId, toolCall, type: "tool-result" };
+      const grounding = groundingSourceFromExecuted(executed);
+      yield { runId: context.runId, toolCall, type: "tool-result", ...(grounding ? { grounding } : {}) };
       toolCallCount += canRun ? 1 : 0;
       deduplicator.record(toolCall, executed.result);
       toolsUsed.push(toolCall.name);

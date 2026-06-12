@@ -255,6 +255,15 @@ export interface FinalizeGatedChatAnswerArgs {
   readonly matches: readonly KnowledgeMatch[];
   readonly history?: readonly { readonly role: string; readonly content: string }[];
   readonly toolsUsed?: readonly string[];
+  /**
+   * The `{ source, text }` evidence the read-tools actually produced this turn
+   * (the agent run's `groundingSources`). When NON-EMPTY the semantic coverage
+   * gate is skipped (a tool/web answer legitimately scores low note-coverage),
+   * but the deterministic value checks STILL run against this evidence — so a
+   * number/email the tool did not return is caught. A tool that RAN but produced
+   * nothing leaves this empty, so the full gate runs (no blanket bypass).
+   */
+  readonly toolGroundingSources?: readonly { readonly source: string; readonly text: string }[];
   readonly knownFactKeys?: readonly string[];
   readonly reverify?: GroundingReverify;
 }
@@ -269,10 +278,17 @@ export interface FinalizeGatedChatAnswerArgs {
  * fabricated-citation strip → source receipt.
  */
 export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs): Promise<string> {
-  const evidence = [...args.matches, ...conversationMatches(args.history ?? [])];
-  const toolGrounded = (args.toolsUsed ?? []).length > 0;
+  // A tool's own output is evidence too — fold it in so the value checks treat a
+  // value the tool actually returned as supported (cosine 1, like conversation).
+  const toolEvidence: KnowledgeMatch[] = (args.toolGroundingSources ?? []).map(
+    (source) => ({ cosine: 1, score: 1, source: source.source, text: source.text })
+  );
+  // Grounded by a tool ONLY when it produced real evidence — not merely because a
+  // tool was called (a tool that ran but returned nothing must not bypass).
+  const toolGrounded = toolEvidence.length > 0;
+  const evidence = [...args.matches, ...conversationMatches(args.history ?? []), ...toolEvidence];
   const gated = toolGrounded
-    ? args.answer
+    ? gateChatAnswerDeterministic(args.question, args.answer, evidence, args.knownFactKeys ?? [])
     : args.reverify
       ? await gateChatAnswerWithReverify(args.question, args.answer, evidence, args.knownFactKeys ?? [], args.reverify)
       : gateChatAnswer(args.question, args.answer, evidence, args.knownFactKeys ?? []);
@@ -688,6 +704,25 @@ export function gateChatAnswer(
   if (decision === "abstain") return chatAbstention(question);
   const { verdict } = verifyGrounding(answer, matches, question);
   return verdict === "grounded" ? answer : chatAbstention(question);
+}
+
+/**
+ * The DETERMINISTIC half of the chat gate — the always-on value checks (wrong
+ * number / email / IP / identifier) WITHOUT the semantic `verifyGrounding`
+ * coverage stage. For a tool/web-grounded answer the coverage rubric (calibrated
+ * for notes) would false-refuse a faithful answer, so the semantic stage is
+ * skipped; but a value the evidence does NOT contain is still abstained. The
+ * tool's own output is in `matches`, so a value it actually returned is supported.
+ */
+export function gateChatAnswerDeterministic(
+  question: string,
+  answer: string,
+  matches: readonly KnowledgeMatch[],
+  knownFactKeys: readonly string[] = []
+): string {
+  return chatGatePrecheck(question, answer, matches, knownFactKeys) === "abstain"
+    ? chatAbstention(question)
+    : answer;
 }
 
 /**

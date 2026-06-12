@@ -6,6 +6,7 @@ import type { ModelResponse } from "@muse/model";
 import {
   blockedToolResult,
   createRunResult,
+  groundingSourceFromExecuted,
   planExecuteIntermediateMessages,
   responseFilterEvidenceFromExecution,
   type ExecutedToolResult,
@@ -115,6 +116,31 @@ const sampleResponse: ModelResponse = {
   model: "diagnostic/smoke",
   output: "ok"
 };
+
+describe("groundingSourceFromExecuted (the single source of truth for what counts as tool grounding)", () => {
+  it("returns {source,text} for a completed tool with non-empty output", () => {
+    const executed: ExecutedToolResult = { result: { id: "c1", name: "web_search", output: "Paris is the capital.", status: "completed" }, toolCall: { args: {}, id: "c1", name: "web_search" } };
+    expect(groundingSourceFromExecuted(executed)).toEqual({ source: "web_search", text: "Paris is the capital." });
+  });
+
+  it("returns undefined for an empty / whitespace-only output (an actuator's 'sent', a no-results lookup)", () => {
+    const blank: ExecutedToolResult = { result: { id: "c2", name: "messaging_send", output: "   ", status: "completed" }, toolCall: { args: {}, id: "c2", name: "messaging_send" } };
+    expect(groundingSourceFromExecuted(blank)).toBeUndefined();
+  });
+
+  it("returns undefined for a blocked/failed tool (error string is not evidence — floor integrity)", () => {
+    const blocked: ExecutedToolResult = { result: { id: "c3", name: "web_search", output: "Error: max tool call limit reached", status: "blocked" }, toolCall: { args: {}, id: "c3", name: "web_search" } };
+    const failed: ExecutedToolResult = { result: { id: "c4", name: "file_read", output: "Error: ENOENT", status: "failed" }, toolCall: { args: {}, id: "c4", name: "file_read" } };
+    expect(groundingSourceFromExecuted(blocked)).toBeUndefined();
+    expect(groundingSourceFromExecuted(failed)).toBeUndefined();
+  });
+
+  it("caps the evidence text so a huge page can't bloat downstream prompts", () => {
+    const big = "x".repeat(5000);
+    const executed: ExecutedToolResult = { result: { id: "c5", name: "web_read", output: big, status: "completed" }, toolCall: { args: {}, id: "c5", name: "web_read" } };
+    expect(groundingSourceFromExecuted(executed)?.text).toHaveLength(4000);
+  });
+});
 
 describe("createRunResult", () => {
   it("returns the minimum shape (response + runId) when no extras are supplied", () => {

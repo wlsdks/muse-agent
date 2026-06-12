@@ -93,6 +93,11 @@ describe("createContactsAddTool — capture a person", () => {
     await tool.execute({ email: "x@y.com", name: "Plain" });
     expect(saved[0]).not.toHaveProperty("relationship");
   });
+
+  it("declares relationship as groundedArgs so the runtime drops a fabricated role the user never stated", () => {
+    const { tool } = addTool();
+    expect((tool.definition as { groundedArgs?: readonly string[] }).groundedArgs).toContain("relationship");
+  });
 });
 
 describe("createContactsRemoveTool — delete a person (fail-close)", () => {

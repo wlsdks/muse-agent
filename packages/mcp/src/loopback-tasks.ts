@@ -322,6 +322,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           type: "object"
         },
         domain: "tasks",
+        groundedArgs: ["notes"],
         keywords: ["task", "todo", "할일", "할 일", "update", "change", "edit", "reschedule", "수정", "변경", "바꿔", "고쳐", "연기", "미뤄", "옮겨"],
         name: "update",
         risk: "write"

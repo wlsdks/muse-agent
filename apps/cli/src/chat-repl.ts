@@ -626,7 +626,8 @@ export async function runLocalChat(
     matches,
     question: message,
     ...(reverifyJudge ? { reverify: reverifyJudge } : {}),
-    toolsUsed: result.toolsUsed ?? []
+    toolsUsed: result.toolsUsed ?? [],
+    toolGroundingSources: result.groundingSources ?? []
   });
 
   // Never hand the desktop a BLANK answer. qwen3:8b occasionally returns an empty

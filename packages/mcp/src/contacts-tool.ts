@@ -87,6 +87,7 @@ export function createContactsAddTool(deps: ContactsAddToolDeps): MuseTool {
         required: ["name"],
         type: "object"
       },
+      groundedArgs: ["relationship"],
       keywords: ["contact", "add", "save", "remember", "person", "phone", "number"],
       name: "add_contact",
       risk: "write"

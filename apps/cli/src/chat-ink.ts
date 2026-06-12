@@ -190,11 +190,12 @@ export function MuseChatApp(props: {
     readonly matches: ChatGrounding["matches"];
     readonly history: readonly { readonly role: string; readonly content: string }[];
     readonly toolsUsed: readonly string[];
+    readonly toolGroundingSources?: readonly { readonly source: string; readonly text: string }[];
   }) => Promise<string>;
   readonly historyWindow?: number;
   readonly personaPrompt: () => string | undefined;
-  readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
-  readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<boolean>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
+  readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
+  readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<boolean>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
   readonly readFile: (relativePath: string) => Promise<string | undefined>;
   readonly readImage?: (relativePath: string) => Promise<{ readonly mimeType: string; readonly dataBase64: string } | undefined>;
   readonly saveText: (text: string) => Promise<string | undefined>;
@@ -540,6 +541,7 @@ export function MuseChatApp(props: {
     let accumulated = "";
     let turnTokens = 0;
     const toolsRan: string[] = [];
+    const toolGrounding: { source: string; text: string }[] = [];
     const iter = toolsOn
       ? props.streamWithTools(messages, currentModel, requestApproval)
       : props.stream(messages, currentModel);
@@ -553,6 +555,9 @@ export function MuseChatApp(props: {
         if (event.type === "tool-call-started" && typeof event.name === "string") {
           toolsRan.push(event.name);
           if (accumulated.length === 0) setStreaming(`🔧 using ${event.name}…`);
+        }
+        if (event.type === "tool-result" && event.grounding) {
+          toolGrounding.push(event.grounding);
         }
         if (event.type === "text-delta" && typeof event.text === "string") {
           accumulated += event.text;
@@ -576,7 +581,8 @@ export function MuseChatApp(props: {
         history: historyRef.current,
         matches: grounding.matches,
         question: message,
-        toolsUsed: toolsRan
+        toolsUsed: toolsRan,
+        toolGroundingSources: toolGrounding
       }).catch(() => accumulated);
       if (finalized !== accumulated) {
         accumulated = finalized;
