@@ -1,6 +1,6 @@
 ---
 name: loop-creator
-description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘", "loop 등록", "X를 계속 강화하는 루프", or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from harness/loop-engineering.md AND registers the cron itself, then reports the prompt + cron id + how to stop. The autonomous successor to hand-written ad-hoc loop prompts.
+description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘", "loop 등록", "X를 계속 강화하는 루프", or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from its bundled loop-engineering.md contract AND registers the cron itself, then reports the prompt + cron id + how to stop. The autonomous successor to hand-written ad-hoc loop prompts.
 ---
 
 # loop-creator — 원칙을 지키는 자율 루프를 생성하고 등록한다
@@ -11,9 +11,20 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 재귀 루프 프롬프트를 생성 → cron으로 등록 → 멈추는 법까지 보고.** 진안이 루프를
 자주 돌리므로, 매번 손으로 ad-hoc 프롬프트를 짜지 않게 이 스킬이 대신한다.
 
-계약 본체는 [`harness/loop-engineering.md`](../../../harness/loop-engineering.md) —
+계약 본체는 [`loop-engineering.md`](references/loop-engineering.md) —
 6 프리미티브 · 검증가능 정지조건 · maker≠judge · 3대 실패모드 가드. 이 스킬은 그
 계약을 *적용*하는 생성기다. 단일 슬라이스 빌드는 하지 않는다(그건 루프가 돌며 함).
+
+## 결합 (정직하게 — "스킬만 빼가도 되나?")
+
+- **고유 계약은 번들됨.** loop-engineering 원칙은 단일 소비자라 `references/`에 함께 들어
+  있다 — 스킬 폴더가 자기 계약을 들고 다닌다.
+- **단, 이건 Muse-native 스킬이다**(improve-muse처럼). 생성하는 루프가 Muse의 실제 seam을
+  가리킨다: `backlog.md` · `self-eval` · `eval:*` · 진짜 공유 harness 레이어
+  ([`dev-loop.md`](../../../harness/dev-loop.md) — improve-muse도 씀 · `loop-budget.md` ·
+  `team-roles.md`). 그래서 *폴더만* 다른 레포에 떨궈도 그대로 돌지 않는다 — 그 배선을
+  바꿔야 한다. **완전 이식**(Muse 배선 파라미터화)은 별도 작업. 지금 범위 = "고유 계약은
+  스킬과 함께, 공유 harness 레이어는 참조".
 
 ## 입력 해석
 
@@ -31,7 +42,7 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 ## 파이프라인 (생성, 그다음 등록)
 
 ### 1. ORIENT — 계약과 현재 상태를 읽는다
-- [`harness/loop-engineering.md`](../../../harness/loop-engineering.md)의 §1 표와 §4 체크리스트를 읽는다.
+- [`loop-engineering.md`](references/loop-engineering.md)의 §1 표와 §4 체크리스트를 읽는다.
 - `docs/goals/backlog.md` 최상단(작업 소스), `git log --oneline -5`(최근 무엇), `pnpm self-eval`(회귀?).
 - **기준선이 초록이어야 등록한다.** `self-eval`이 non-zero면 루프를 띄우지 않고 회귀를
   진안에게 보고한다 — 깨진 기준선 위 루프는 매 fire가 그 회귀를 보고, 정지조건
@@ -52,11 +63,11 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 | 목적 한 줄 | 입력에서 / backlog ★에서 |
 | 6 프리미티브 | Automation=cron · Worktree=/tmp(레포 밖, [[project_worktree_instability]]) · Skill=improve-muse+dev-loop · Connector=MCP · Sub-agent=harness planner→worker→evaluator · State=backlog.md+MEMORY.md |
 | 검증가능 정지조건 | `pnpm self-eval` exit 0 + 관련 eval(eval:tools/eval:browser-agent/eval:agent/precheck:grounding) ≥ threshold + "backlog ★ 항목 Done"(이 'Done' 판정은 **독립 evaluator/진안**이 — 루프 자신이 maker=judge로 판정하지 않는다) |
-| **게이팅 검증자** | 빌드와 별개 **강한-티어(Opus) 적대 judge**가 슬라이스를 판정 → **PASS여야 ⑤ 커밋, FAIL이면 롤백**(`git restore`)+블로커 기록. 결정적 게이트(test/check/eval) 1차, judge 2차. ([`loop-engineering.md`](../../../harness/loop-engineering.md) §3-1) |
+| **게이팅 검증자** | 빌드와 별개 **강한-티어(Opus) 적대 judge**가 슬라이스를 판정 → **PASS여야 ⑤ 커밋, FAIL이면 롤백**(`git restore`)+블로커 기록. 결정적 게이트(test/check/eval) 1차, judge 2차. ([`loop-engineering.md`](references/loop-engineering.md) §3-1) |
 | **이해 체크포인트** | 매 fire가 `docs/goals/loop-digest.md`에 4줄(무엇/왜/리뷰지점/리스크) append + **N fire(기본 3)마다 빌드 멈추고 리뷰 관문** — 진안 확인 전 새 슬라이스 시작 안 함. §3-2 |
 | **자율성 티어** | **Tier1**(로컬 커밋, push 없음 — 기본) 또는 **Tier2**(`loop/<theme>` 브랜치 push + draft PR, 사람이 머지 — 명시 opt-in). 하드 floor: main 자동머지·자율 outbound·banking·`--no-verify` 절대 불가. §3.5 |
 | 토큰/스텝 캡 | fire당 1슬라이스, retry 2–3 상한, 예산 캡([`loop-budget.md`](../../../harness/loop-budget.md)) |
-| **모델 티어링** | 정형 빌드/검색/문서 → Sonnet 서브에이전트(`Agent`/`Workflow` `model:"sonnet"`); 설계·모호함·적대적 검증 → Opus. maker=Sonnet / **judge=Opus**. 오케스트레이터는 얇게. (Muse 런타임 모델 gemma4는 고정 — [`loop-engineering.md`](../../../harness/loop-engineering.md) §1.5) |
+| **모델 티어링** | 정형 빌드/검색/문서 → Sonnet 서브에이전트(`Agent`/`Workflow` `model:"sonnet"`); 설계·모호함·적대적 검증 → Opus. maker=Sonnet / **judge=Opus**. 오케스트레이터는 얇게. (Muse 런타임 모델 gemma4는 고정 — [`loop-engineering.md`](references/loop-engineering.md) §1.5) |
 | State 파일 | `docs/goals/backlog.md`에 Done/다음 write-back |
 | 불변식 | fabrication=0 floor + IMMUTABLE-CORE 불가침 |
 | 중단 방법 | cron id 기록 + CronDelete/cmux |
@@ -147,7 +158,7 @@ grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지. 하드 floo
 이 스킬의 원칙은 2026-06 "Loop Engineering" 합의에서 왔다 — **Peter Steinberger**
 ("designing loops that prompt your agents"), **Boris Cherny**(Anthropic, "I don't
 prompt Claude anymore"), **Addy Osmani**(명명·정리). 전체 출처·심화 글은
-[`harness/loop-engineering.md`](../../../harness/loop-engineering.md) §5. 토큰 효율
+[`loop-engineering.md`](references/loop-engineering.md) §5. 토큰 효율
 (모델 티어링)은 그 합의가 "Agent Orchestrator"의 핵심 craft로 꼽은 것과 일치.
 
 ## 멈추기

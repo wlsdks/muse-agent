@@ -14,7 +14,7 @@
 ## Done — loop infrastructure (2026-06-12, 진안-directed)
 
 - ✓→Done **loop-engineering contract + loop-creator skill** — distilled Addy
-  Osmani's "Loop Engineering" into `harness/loop-engineering.md` (6 primitives →
+  Osmani's "Loop Engineering" into `.claude/skills/loop-creator/references/loop-engineering.md` (6 primitives →
   Muse seams · verifiable stopping condition `/goal` · 3 failure-mode guards:
   unattended-verification / comprehension-debt / cognitive-surrender) and a
   generative `.claude/skills/loop-creator/SKILL.md` that fills the checklist,
