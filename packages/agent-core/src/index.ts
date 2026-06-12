@@ -367,6 +367,14 @@ export {
 export { renderPlanExemplar, selectPlanExemplar, selectPlanExemplarByRelevance } from "./plan-cache.js";
 export type { CachedPlan, PlanCacheProvider, SelectPlanExemplarOptions } from "./plan-cache.js";
 
+export {
+  DEFAULT_SENTENCE_GROUNDING_FLOOR,
+  reportSentenceGroundedness,
+  type GroundednessReport,
+  type SentenceGroundedness,
+  type SentenceGroundednessLabel
+} from "./sentence-groundedness.js";
+
 export { HookRegistry } from "./hook-registry.js";
 
 export {
