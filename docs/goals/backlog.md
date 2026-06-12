@@ -43,6 +43,15 @@
 ## ★ Open — TOOL expansion & hardening (loop theme, 진안-directed 2026-06-12)
 
 The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing tools.
+- ✓→Done **atomicWriteFile leaked its tmp on failure** (EXPANSION gap-scout runner-up) — `atomicWriteFile`
+  (the shared sidecar-store write primitive) opened `<file>.tmp-<pid>-<uuid>`, wrote+fsync+closed it, then
+  `fs.rename(tmp, file)`. On ANY failure after the tmp was opened (writeFile/sync error OR the rename
+  failing), the tmp was orphaned → `*.tmp-*` litter accumulating in every sidecar dir (memory/tasks/
+  reminders/action-log/…). FIX: wrap open→write→rename→chmod in try/catch; on failure
+  `fs.rm(tmp,{force:true}).catch(()=>undefined)` then rethrow the ORIGINAL error (rm errors swallowed, never
+  substituted; force no-ops if open never created the tmp). TDD 1 behavioral (target=directory → rename
+  throws → assert rejection AND zero `.tmp-` entries) RED→GREEN; mcp 1681, check 0, lint 0. Fable-5 verifier
+  PASS (swapped HEAD source to reproduce RED; no cross-writer race — rm targets only this call's UUID tmp).
 - ✓→Done **muse.fs.stat lied about symlinks** (EXPANSION gap-scout runner-up) — the tool's description
   promises "Symlinks are reported as kind=symlink without following", but it called `fsLib.stat` (which
   FOLLOWS the link), so `entryKind`'s `isSymbolicLink()` was always false → a symlink was ALWAYS reported

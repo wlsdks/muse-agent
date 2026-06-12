@@ -1,4 +1,4 @@
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -43,6 +43,15 @@ describe("atomicWriteFile", () => {
     const file = join(dir, "d");
     await atomicWriteFile(file, "nofsync", { fsync: false });
     expect(await readFile(file, "utf8")).toBe("nofsync");
+  });
+
+  it("removes the tmp orphan when the write/rename fails (no litter left in the store dir)", async () => {
+    // Force the rename to fail: the target path is an existing DIRECTORY, so
+    // rename(tmp, target) throws. The tmp must not be left behind as litter.
+    const target = join(dir, "store.json");
+    await mkdir(target);
+    await expect(atomicWriteFile(target, '{"x":1}')).rejects.toBeTruthy();
+    expect((await readdir(dir)).filter((e) => e.includes(".tmp-"))).toEqual([]);
   });
 });
 
