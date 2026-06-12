@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { extractFirstJsonArray, iterateJsonArrayCandidates } from "../src/json-array-scan.js";
+import {
+  extractFirstJsonArray,
+  extractFirstJsonObject,
+  iterateJsonArrayCandidates,
+  iterateJsonObjectCandidates
+} from "../src/json-array-scan.js";
 
 describe("extractFirstJsonArray", () => {
   it("returns a plain top-level array verbatim", () => {
@@ -65,6 +70,38 @@ describe("iterateJsonArrayCandidates", () => {
   it("terminates (bounded scan) on repetition-degenerate unbalanced input instead of hanging", () => {
     const degenerate = "[".repeat(50_000);
     expect([...iterateJsonArrayCandidates(degenerate)]).toEqual([]);
+  });
+});
+
+describe("extractFirstJsonObject / iterateJsonObjectCandidates", () => {
+  it("returns a plain top-level object verbatim", () => {
+    expect(extractFirstJsonObject('{"a":1}')).toBe('{"a":1}');
+  });
+
+  it("returns null when no balanced span parses as an object (arrays are not objects)", () => {
+    expect(extractFirstJsonObject("no braces here")).toBeNull();
+    expect(extractFirstJsonObject('{"a":1')).toBeNull();
+    expect(extractFirstJsonObject("[1,2,3]")).toBeNull();
+  });
+
+  it("extracts the object even when trailing prose carries a stray } (the council parse bug)", () => {
+    // first-`{`-to-last-`}` would span into the prose brace and fail JSON.parse;
+    // the balanced scan stops at the object's own close.
+    expect(extractFirstJsonObject('{"answer":"x"}\nThanks! (note: see item 3} below)')).toBe('{"answer":"x"}');
+  });
+
+  it("does not let a } inside a string value close the span early", () => {
+    expect(extractFirstJsonObject('{"k":"a}b"}')).toBe('{"k":"a}b"}');
+  });
+
+  it("skips a leading non-object candidate and the prose, finding the real object", () => {
+    const [first] = [...iterateJsonObjectCandidates('prefix {"answer":"hi","contributors":["a"]} suffix')];
+    expect(first?.text).toBe('{"answer":"hi","contributors":["a"]}');
+    expect(first?.value).toEqual({ answer: "hi", contributors: ["a"] });
+  });
+
+  it("terminates (bounded scan) on repetition-degenerate unbalanced input", () => {
+    expect([...iterateJsonObjectCandidates("{".repeat(50_000))]).toEqual([]);
   });
 });
 

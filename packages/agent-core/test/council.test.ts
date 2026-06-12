@@ -49,6 +49,16 @@ describe("parseCouncilAnswer — the grounding gate (Council can't invent a memb
     const out = parseCouncilAnswer('Here you go: {"answer":"do it","contributors":["bob"]} — done', valid);
     expect(out).toEqual({ answer: "do it", contributors: ["bob"] });
   });
+
+  it("parses when trailing prose carries a stray } (first-{-to-last-} would have swallowed it)", () => {
+    const out = parseCouncilAnswer('{"answer":"go A","contributors":["alice"]}\nNote: revisit item 3} next week.', valid);
+    expect(out).toEqual({ answer: "go A", contributors: ["alice"] });
+  });
+
+  it("does not let a } inside the answer string break the parse", () => {
+    const out = parseCouncilAnswer('{"answer":"use the set {a,b}","contributors":["bob"]}', valid);
+    expect(out).toEqual({ answer: "use the set {a,b}", contributors: ["bob"] });
+  });
 });
 
 describe("buildDebateQuestion / buildCouncilPrompt — pure renderers", () => {
