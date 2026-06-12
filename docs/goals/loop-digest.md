@@ -267,3 +267,12 @@
 - **왜:** 기존 de-negation은 NOT/NO/NEVER/DOESN'T+직결 CONTRADICT만 잡음 — 모델이 "WON'T CONTRADICT"/"NOT A CONTRADICTION"처럼 답하면 phantom CONTRADICT → 사용자가 가르친 전략을 잘못 decay(자기강화 무결성 훼손). gap-scout가 stale backlog 항목의 실 잔여 갭 발굴.
 - **리뷰지점:** `packages/agent-core/src/correction-distiller.ts`(deNegated 정규식 1개 + 주석) + `correction-distiller.test.ts`(부정형 12+·genuine 5·passthrough). judge=Opus(나)가 genuine contradiction 미-over-strip(CONTRADICT/CONTRADICTS/THIS CONTRADICTS THE RULE → "contradict") + over-strip 잔여는 conservative-by-design(no-decay로 fail, phantom-decay 회피가 함수의 명시 posture)임 확인 + agent-core 99 독립 green.
 - **리스크:** {0,2} window가 "NO ... CONTRADICTS"류 다중절을 over-strip할 수 있으나 "one word" 프롬프트라 비현실적 + over-strip은 안전방향(decay 안 함). grounding floor 무관. (사이클2 fires 16-18, fire 18 후 자율 관문.)
+
+## [cognition loop] fire 18 — 2026-06-13 · 사이클2 · 테마: grounding-surface 품질 · ⚠️ 3-FIRE 리뷰 관문(자율)
+
+- **무엇:** `enforceAnswerCitations`의 whitespace 정리(`[ \t]{2,}→" "` 등)를 **citation이 실제 stripped된 경우에만** 실행하도록 게이트. clean 답변은 byte-for-byte 보존.
+- **왜:** 정리 로직은 제거된 `[...]` 마커의 seam을 닫으려는 것인데 무조건 전체 답변에 돌아 — citation 없는 clean 답변의 코드블록 들여쓰기/정렬 표를 뭉갬. gap-scout가 line-296 audit 클러스터의 실 버그 발굴.
+- **리뷰지점:** `packages/agent-core/src/knowledge-recall.ts`(3 replace를 `if(stripped.length>0)`로 래핑) + `knowledge-recall-citation-gate.test.ts`(clean 코드블록 verbatim·stripping seam 정리 유지·valid citation+코드 verbatim 3건). judge=Opus(나)가 stripping 경로 불변(case2)·clean verbatim(case1) 실제 코드 확인 + agent-core 1732 독립 green.
+- **리스크:** stripped>0 경로의 코드블록은 여전히 collapse될 수 있으나(드묾: 코드답+invalid citation) 잔여로 기록. grounding floor 무관(citation 게이트 verdict 무변경, 출력 정리만).
+
+> ✅ **자율 리뷰관문 (fires 16–18, 진안 묻지 않음):** 사이클2 — #5 promotion-persistence(16)·#2 correction-polarity 강건화(17)·grounding-surface whitespace fix(18). maker≠judge 매 fire PASS. **사이클3 방향(스스로): gap-scout로 line-296 audit 클러스터 잔여 버그(casual-prompt 말해줘 over-match, dedup write-memoize 등) + agent-performance levers 중 결정적 슬라이스 우선.** fires-16-18 배치 머지는 main clean시 자동.

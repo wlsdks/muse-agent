@@ -296,7 +296,7 @@ replay (this commit). Remaining, severity order:
   (2026-06-13 fire 17: core de-negation existed; HARDENED to cover contraction auxiliaries
   WON'T/CANNOT/WOULDN'T/SHOULDN'T/COULDN'T + 0-2 intervening words "NOT A CONTRADICTION"/"DOESN'T
   REALLY CONTRADICT"; conservative-by-design over-strip = fail toward no-decay; 99 agent-core green) ·
-  enforceAnswerCitations whitespace rewrite on clean answers (breaks code-block quotes) ·
+  ~~enforceAnswerCitations whitespace rewrite on clean answers~~ ✓DONE (fire 18: cleanup gated on stripped.length>0 — clean answers verbatim, code blocks preserved; 1732 green) ·
   casual-prompt 말해줘 over-match suppresses source blocks · dedup memoizes write results ·
   groundToolArguments partial-array reported as dropped · consented-action header override ·
   web_action URL vetting · encryption coverage (calendar credentials!). (audit LOW/MED tail)

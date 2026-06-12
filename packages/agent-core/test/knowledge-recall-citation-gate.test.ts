@@ -176,6 +176,26 @@ describe("enforceAnswerCitations — output-side recall grounding gate", () => {
     expect(out.text).toBe("I'm not sure — nothing in your notes covers that.");
     expect(out.stripped).toEqual([]);
   });
+
+  it("clean answer with multi-space indentation is returned byte-for-byte (no whitespace mangling)", () => {
+    const answer = "Here:\n\n    def f():\n        return  1\n\nDone.";
+    const out = enforceAnswerCitations(answer, { notes: [] });
+    expect(out.stripped).toEqual([]);
+    expect(out.text).toBe(answer);
+  });
+
+  it("stripping a citation tidies the leftover seam whitespace (regression: stripping path unchanged)", () => {
+    const out = enforceAnswerCitations("The value is 42 [from nope.md] .", { notes: [] });
+    expect(out.stripped).toEqual(["nope.md"]);
+    expect(out.text).toBe("The value is 42.");
+  });
+
+  it("valid citation kept + code block whitespace preserved (kept-citation path is verbatim)", () => {
+    const answer = "Use:\n\n    cmd  --flag\n\nSee [from real.md].";
+    const out = enforceAnswerCitations(answer, { notes: ["real.md"] });
+    expect(out.stripped).toEqual([]);
+    expect(out.text).toBe(answer);
+  });
 });
 
 describe("normalizeContactCitations — repair the model's contact-citation mis-forms before the gate", () => {

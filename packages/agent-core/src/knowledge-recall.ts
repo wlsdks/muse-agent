@@ -804,10 +804,16 @@ export function enforceAnswerCitations(answer: string, allowed: AllowedCitations
   strip(/\[commit:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.commits ?? []));
   strip(/\[memory:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.memories ?? []));
   strip(/\[action:\s*([^\]]+?)\s*\]/giu, (value) => resolvesByOverlap(value, allowed.actions ?? []));
-  text = text
-    .replace(/[ \t]{2,}/gu, " ")
-    .replace(/[ \t]+([.,;!?])/gu, "$1")
-    .replace(/[ \t]+\n/gu, "\n");
+  // Only tidy whitespace when a citation marker was actually removed (the cleanup
+  // exists to close the seam a stripped `[...]` leaves). Running it on a CLEAN
+  // answer collapses multi-space runs and mangles code-block indentation / aligned
+  // columns — so leave an un-stripped answer byte-for-byte verbatim.
+  if (stripped.length > 0) {
+    text = text
+      .replace(/[ \t]{2,}/gu, " ")
+      .replace(/[ \t]+([.,;!?])/gu, "$1")
+      .replace(/[ \t]+\n/gu, "\n");
+  }
   return { stripped, text };
 }
 
