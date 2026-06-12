@@ -453,6 +453,23 @@ HARDEN (make existing tools more reliable):
   + buildFollowupScenario in eval-tool-selection.mjs (6 positive + 4 disambiguation cases). Verifier
   confirmed the disambig cases are discriminating + wired. Other families (tasks/reminders/calendar)
   already have not-when. REMAINING: spot-audit any other tool families that lack it.
+- ✓→Done **muse.status.notes_index promised "size" but never returned it** (EXPANSION gap-scout, fire 24;
+  tool-contract output drift) — the tool description says "Returns relative path + size — no contents. Use this as a
+  discovery surface before deciding to embed/search", but `execute` mapped each file to `{ name }` ONLY — `size` was
+  silently absent, so the model couldn't use size (the embedding-cost signal the description sells) to decide what to
+  embed. FIX: map to `{ name, size: await fileSize(pathJoin(dir, e.name)) }` reusing the pre-existing `fileSize` helper
+  (returns `number | undefined`, swallows a TOCTOU-delete so one racing file can't blank the index); map became
+  `Promise.all`. TDD 1 (2 .md files of 5 + 6 bytes → each entry's size === byte length) RED(size undefined)→GREEN; mcp
+  1721, check 0 (all pkgs green), lint 0. Fable-5 PASS (RED re-confirmed by stashing src; total/error-path untouched; no
+  other test pinned the old `{name}`-only shape — the tool output was previously untested). Picked over the tasks.search
+  total runner-up for KIND diversity (fire 22 was the episode total-post-slice, same KIND).
+- ◦ **muse.tasks.search `total` is post-slice (capped at 50)** (EXPANSION gap-scout fire-24 runner-up; misleading-value,
+  diversity-deferred) — `loopback-tasks.ts:406-411`: matches are `…sort().slice(0,50)` then `total: matches.length`, so
+  `total` caps at 50 not the true match count — and unlike the SAME file's `list` tool (which reports pre-slice `total`
+  + `shown`), search is internally inconsistent and has no `shown`. Distinct from the contested followups.total: here
+  `list` vs `search` in ONE module disagree. Only test uses 2 tasks (total 1/0), so the cap is undocumented. FIX: pre-
+  slice `total = filtered.length`, return the 50-cap slice + add `shown`. Slice: 1 file + 1 test (51 matching tasks →
+  total 51, shown 50). NOT this fire (same KIND as the fire-22 episode total fix — pick a different KIND first).
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`

@@ -283,9 +283,14 @@ export function createStatusMcpServer(options: StatusMcpServerOptions = {}): Loo
       const dir = fromEnv && fromEnv.length > 0 ? fromEnv : pathJoin(homedir(), ".muse", "notes");
       try {
         const entries = await readdir(dir, { withFileTypes: true });
-        const files = entries
-          .filter((e) => e.isFile() && /\.(md|markdown|txt)$/i.test(e.name))
-          .map((e) => ({ name: e.name }));
+        // The description promises "relative path + size"; stat each file for its
+        // byte size (fileSize returns undefined on a TOCTOU delete, so one racing
+        // file can't blank the whole index).
+        const files = await Promise.all(
+          entries
+            .filter((e) => e.isFile() && /\.(md|markdown|txt)$/i.test(e.name))
+            .map(async (e) => ({ name: e.name, size: await fileSize(pathJoin(dir, e.name)) }))
+        );
         return {
           dir,
           files: files as unknown as JsonValue,

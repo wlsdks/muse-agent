@@ -8499,6 +8499,29 @@ describe("muse.status loopback server", () => {
     }
   });
 
+  it("notes_index returns each file's byte size — the description promises 'relative path + size'", async () => {
+    const { createStatusMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const notesDir = mkdtempSync(join(tmpdir(), "muse-notes-index-"));
+    writeFileSync(join(notesDir, "a.md"), "hello", "utf8"); // 5 bytes
+    writeFileSync(join(notesDir, "b.md"), "héllo", "utf8"); // 6 bytes (é encodes to 2)
+    const prev = process.env.MUSE_NOTES_DIR;
+    process.env.MUSE_NOTES_DIR = notesDir;
+    try {
+      const connection = createLoopbackMcpConnection(createStatusMcpServer({}));
+      const out = (await connection.callTool!("notes_index", {})) as { files: { name: string; size: number }[]; total: number };
+      expect(out.total).toBe(2);
+      const bySize = Object.fromEntries(out.files.map((f) => [f.name, f.size]));
+      expect(bySize["a.md"]).toBe(5);
+      expect(bySize["b.md"]).toBe(6); // the size field is the contract the description promises
+    } finally {
+      if (prev === undefined) delete process.env.MUSE_NOTES_DIR;
+      else process.env.MUSE_NOTES_DIR = prev;
+    }
+  });
+
   it("snapshot surfaces reminders / followups / episodes / patterns summaries from their respective stores", async () => {
     const { createStatusMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
     const { mkdtempSync, writeFileSync } = await import("node:fs");

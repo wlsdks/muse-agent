@@ -577,3 +577,11 @@
 - **왜:** EXPANSION 코드 gap-scout(신호 스카웃 clean) — data-integrity + fail-open-to-crash. parseDuckDuckGoHtml는 execute()의 fetch try/catch가 닫힌 뒤(191) 호출되어 URIError가 execute()를 탈출 → 공격자-영향 결과 URL 하나로 muse.search 전체 크래시. 다른 표면(search/DDG)·다른 KIND(double-decode)로 다양성. 부수: web-search-policy "fuzz" ⏳를 결정적 fixed-corpus 테스트(fire-22 실패=환경적)로 조사·Closed.
 - **리뷰지점:** loopback-search.ts:369(이중 디코드 제거+WHY 코멘트) + parse-duckduckgo-html.test.ts(리터럴 %20 보존 + 맨몸 % no-throw 2케이스) RED(맨몸 % 케이스 URIError 관측)→GREEN 9/9. mcp 1720, check 0(cli/api green; mcp 격리 184파일 재실행 green — playbook-store 5000ms는 동시-루프 env flake), lint 0. Fable-5 PASS: src만 stash해 RED 독립 재확인, get() 1회 디코드 기계검증, 합법적 이중인코딩 경로 없음(DDG는 encodeURIComponent로 1회 인코딩).
 - **리스크:** 없음에 가까움 — 잉여 디코드 1줄 제거만, 기존 redirect 테스트(single-pass uddg, 둘째 디코드 idempotent) 무회귀; 빈-문자열 target truthiness 동일. RATCHET: testFiles 896 무변동(기존 테스트 파일에 2케이스 추가), fabrication 0 유지. grounding floor 무관(search 결과 URL 무결성·게이트 무변경).
+
+
+## [TOOL loop] fire 24 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** muse.status.notes_index 도구 계약 드리프트 — description은 "relative path + size 반환"을 약속하나 execute는 파일당 `{name}`만 반환, size 침묵 누락. fileSize 헬퍼(기존, stat 실패시 undefined→TOCTOU-robust)로 `{name, size}` 반환(map→Promise.all).
+- **왜:** EXPANSION 코드 gap-scout(신호 clean) — 도구가 자기 description보다 적게 반환 = 계약 거짓말. 모델은 이 도구로 "embed/search 결정"을 하라는데 그 판단의 핵심 신호(size=임베딩 비용)가 빠져 무용. 다른 표면(status)·다른 KIND(contract-output-drift)로 다양성(최근: regex DoS/episode total/DDG crash). TOP PICK였던 tasks.search total은 fire-22 episode total과 동일 KIND라 회피→backlog ◦ 기록.
+- **리뷰지점:** loopback-status.ts:286-293(`{name,size}` + Promise.all + WHY 코멘트) + mcp.test.ts "muse.status loopback server"에 1케이스(5+6 byte .md 2개 → size===byte length) RED(size undefined)→GREEN. mcp 1721, check 0(전 패키지 green: agent-core 1831·cli 2535·api 850), lint 0. Fable-5 PASS: src만 stash해 RED 독립 재확인, héllo=6byte 검증, total/error-path 무변경, 타 테스트가 옛 shape 미고정(도구 출력 무테스트였음).
+- **리스크:** 없음에 가까움 — 출력에 size 추가 + 동기 map→async Promise.all만, total=file count·readdir-throw 에러경로 무변경, size:undefined는 JSON.stringify에서 드롭(benign). RATCHET: testFiles 896 무변동(기존 파일에 1케이스), fabrication 0 유지. nit(non-blocking): 기존 `as unknown as JsonValue` 캐스트가 size?를 가림(기존부터)·TOCTOU-undefined 분기 무테스트. grounding floor 무관(도구 출력 완전성, 게이트 무변경).
