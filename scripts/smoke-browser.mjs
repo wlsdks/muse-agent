@@ -9,6 +9,10 @@
  *                        option throws and changes NOTHING (fail-close)
  *   4. dedup           — repeated nav links collapse to one entry
  *   5. fixed-position  — position:fixed controls (cookie banners) are visible
+ *   6. reconnect       — a second controller drives the SAME running Chrome
+ *   7. same-origin iframe — embedded controls are observed AND clickable cross-frame
+ *   8. element paging  — the controller collects past the 50-element display cap
+ *   9. scroll          — scrolling reveals lazily-loaded content
  *
  * Skips (exit 0) when Chrome is not installed — a skip is not a pass.
  */
@@ -58,6 +62,28 @@ const SELECT_HTML = `<!doctype html><html><head><title>Select</title></head><bod
 <button style="position:fixed;bottom:0;left:0">Accept cookies</button>
 </body></html>`;
 
+// srcdoc inherits the parent's origin → same-origin (NOT a cross-origin frame).
+// The onclick uses String.fromCharCode (no nested quotes) so the srcdoc value
+// survives HTML-attribute parsing intact; clicking sets the text to "OK".
+const IFRAME_HTML = `<!doctype html><html><head><title>Iframe</title></head><body>
+<p>Parent page around the embed.</p>
+<iframe srcdoc='<button id="b" onclick="this.textContent=String.fromCharCode(79,75)">Embedded action</button>'></iframe>
+</body></html>`;
+
+const PAGING_HTML = `<!doctype html><html><head><title>Paging</title></head><body>
+${Array.from({ length: 60 }, (_v, i) => `<a href="#l${String(i)}">link ${String(i)}</a>`).join("")}
+</body></html>`;
+
+const SCROLL_HTML = `<!doctype html><html><head><title>Scroll</title></head><body>
+<div style="height:3000px">tall spacer</div>
+<script>addEventListener("scroll", () => {
+  if (window.scrollY > 500 && !document.getElementById("lazy")) {
+    const b = document.createElement("button");
+    b.id = "lazy"; b.textContent = "Lazy loaded"; document.body.appendChild(b);
+  }
+});</script>
+</body></html>`;
+
 function assert(condition, label) {
   if (!condition) throw new Error(`ASSERT FAILED: ${label}`);
   console.log(`  ✓ ${label}`);
@@ -74,6 +100,9 @@ try {
   await writeFile(join(dir, "spa.html"), SPA_HTML);
   await writeFile(join(dir, "shadow.html"), SHADOW_HTML);
   await writeFile(join(dir, "select.html"), SELECT_HTML);
+  await writeFile(join(dir, "iframe.html"), IFRAME_HTML);
+  await writeFile(join(dir, "paging.html"), PAGING_HTML);
+  await writeFile(join(dir, "scroll.html"), SCROLL_HTML);
 
   console.log("1) SPA settle — late-rendered content is observed");
   let snap;
@@ -126,8 +155,29 @@ try {
   const reSnap = await second.snapshot();
   assert(reSnap.url === snap.url, "new controller reconnected to the running browser (no profile-lock crash)");
 
+  console.log("7) same-origin iframe — embedded control observed AND clickable cross-frame");
+  snap = await controller.open(pathToFileURL(join(dir, "iframe.html")).href);
+  const embedded = snap.elements.find((el) => el.name === "Embedded action");
+  assert(embedded !== undefined, "button inside a same-origin iframe is listed");
+  snap = await controller.click(embedded.ref);
+  assert(snap.elements.some((el) => el.name === "OK"), "clicking the iframe-embedded button fires its handler (cross-frame)");
+
+  console.log("8) element paging — collects past the 50-element display cap");
+  snap = await controller.open(pathToFileURL(join(dir, "paging.html")).href);
+  const links = snap.elements.filter((el) => el.role === "link");
+  assert(links.length === 60, "all 60 links collected (ceiling > 50, grounding sees the whole set)");
+
+  console.log("9) scroll — reveals lazily-loaded content");
+  snap = await controller.open(pathToFileURL(join(dir, "scroll.html")).href);
+  assert(!snap.elements.some((el) => el.name === "Lazy loaded"), "lazy content absent before scroll");
+  snap = await controller.scroll("bottom");
+  assert(snap.elements.some((el) => el.name === "Lazy loaded"), "lazy content revealed after scroll");
+
   console.log("\nsmoke:browser PASS");
 } finally {
   if (launched) await controller.close();
-  await rm(dir, { force: true, recursive: true });
+  // close() terminates the detached Chrome over CDP, but the OS process releases
+  // its profile file handles a beat later — retry the temp cleanup so the race
+  // never turns a green smoke into a non-zero exit (and never fail on cleanup).
+  await rm(dir, { force: true, maxRetries: 10, recursive: true, retryDelay: 200 }).catch(() => { /* temp dir; OS reaps it */ });
 }
