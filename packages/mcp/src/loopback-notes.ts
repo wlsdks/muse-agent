@@ -53,6 +53,13 @@ export interface NotesMcpServerOptions {
   readonly judgePreviewChars?: number;
   /** Cap on notes considered in a single LLM-judge call. Default 200. */
   readonly judgeMaxCandidates?: number;
+  /**
+   * Existence probe for the `save` tool's pre-write check. Defaults to a
+   * `stat`-based check. Injectable so a test can simulate the TOCTOU window
+   * (probe says absent, then a concurrent create lands before the write) and
+   * assert the atomic `wx` write refuses to clobber it.
+   */
+  readonly probeExists?: (absolutePath: string) => Promise<boolean>;
 }
 
 interface NotesPathSafe {
@@ -67,6 +74,16 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
   const maxQueryLength = Math.max(16, Math.trunc(options.maxQueryLength ?? 500));
   const maxFileBytes = Math.max(1_024, Math.trunc(options.maxFileBytes ?? 1_048_576));
   const maxListEntries = Math.max(1, Math.trunc(options.maxListEntries ?? 500));
+  const probeExists =
+    options.probeExists ??
+    (async (absolutePath: string): Promise<boolean> => {
+      try {
+        await nodeStat(absolutePath);
+        return true;
+      } catch {
+        return false;
+      }
+    });
 
   function resolveSafe(input: string): NotesPathSafe | string {
     const trimmed = input.trim();
@@ -347,21 +364,21 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           if (typeof safe === "string") {
             return { error: safe };
           }
-          let exists: boolean;
-          try {
-            await nodeStat(safe.absolute);
-            exists = true;
-          } catch {
-            exists = false;
-          }
+          const exists = await probeExists(safe.absolute);
           if (exists && !overwrite) {
             return { error: `note already exists at ${safe.relative}; pass overwrite: true to replace` };
           }
           const parent = nodePathResolve(safe.absolute, "..");
           try {
             await nodeMkdir(parent, { recursive: true });
-            await nodeWriteFile(safe.absolute, content, "utf8");
+            // Under !overwrite, write create-exclusive (`wx`): if the probe was
+            // stale and a concurrent create landed in the TOCTOU window, the write
+            // fails with EEXIST instead of clobbering it.
+            await nodeWriteFile(safe.absolute, content, overwrite ? "utf8" : { encoding: "utf8", flag: "wx" });
           } catch (error) {
+            if (!overwrite && (error as NodeJS.ErrnoException).code === "EEXIST") {
+              return { error: `note already exists at ${safe.relative}; pass overwrite: true to replace` };
+            }
             return { error: `cannot write note: ${error instanceof Error ? error.message : String(error)}` };
           }
           return {

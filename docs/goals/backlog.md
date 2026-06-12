@@ -510,13 +510,19 @@ HARDEN (make existing tools more reliable):
   argv carries `--` before the text, spoke:true; the existing argv assertion updated (incidental characterization, no
   masked regression). macos 95/95, check 0 (all pkgs), lint 0. Fable-5 PASS (runner seam contract-faithful; voice not a
   vector — consumed as the `-v` value, no shell). KIND security (argv injection), fresh surface.
-- ◦ **mac_spotlight_search / muse.notes.save hardening (fire-28 rejected for THIS slice, recorded)** — (1)
-  `mac_spotlight_search` (macos-tools.ts:1439) has the SAME leading-dash argv-injection as mac_say, BUT `mdfind` rejects
-  `--` (`mdfind -- q` → "Unknown option"), so there's no one-line terminator fix — needs query-rewriting/escaping logic
-  (a real ◦, not trivial). (2) `muse.notes.save` (loopback-notes.ts:351-363) does stat-then-writeFile (TOCTOU) so a
-  concurrent create is silently clobbered under overwrite:false; the clean fix is the `wx` open flag, but
-  `nodeWriteFile`/`nodeStat` are top-level `node:fs/promises` imports (not injected), so the race isn't deterministically
-  testable until a writer seam is added — slice = add the injectable writer seam THEN the `wx` fix + race test.
+- ✓→Done **muse.notes.save TOCTOU clobber** (fire 29; data-integrity / TOCTOU) — save did stat-then-writeFile, so a
+  concurrent create landing between the stat and `nodeWriteFile(..., "utf8")` (flag `w`) was silently CLOBBERED under
+  overwrite:false. FIX: write create-exclusive under !overwrite (`{ encoding: "utf8", flag: "wx" }`) so a stale probe +
+  concurrent create yields EEXIST → "already exists" error instead of a clobber; added an injectable `probeExists` option
+  (defaults to the prior stat-based check, byte-identical) so the TOCTOU window is deterministically testable. TDD 2
+  (injected absent-probe + real pre-existing file → "already exists" + content unchanged; overwrite:true still replaces)
+  RED(reverting wx → file clobbered to "CLOBBER")→GREEN; mcp 1728, check 0 (all pkgs), lint 0. Fable-5 PASS
+  (contract-faithful real-fs write, only the probe injected; EEXIST mapping scoped to !overwrite so EACCES still surfaces
+  as "cannot write note"; atomic guarantee is in `wx`, not the probe). KIND TOCTOU, fresh surface.
+- ◦ **mac_spotlight_search argv-injection (fire-28 rejected, recorded)** — `mac_spotlight_search` (macos-tools.ts:1439)
+  has the SAME leading-dash argv-injection as mac_say (fixed fire 28), BUT `mdfind` rejects `--` (`mdfind -- q` →
+  "Unknown option"), so there's no one-line terminator fix — needs query-rewriting/escaping logic (a real ◦, not
+  trivial). KIND security (argv injection).
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`
