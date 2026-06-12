@@ -628,16 +628,24 @@ export type AskWeaknessAxis = "grounding-gap" | "unbacked-action";
  * Whetstone fuel: the weakness axis (if any) an ask turn signals. Mirrors
  * chat-repl's precedence — an `unbacked-action` (the answer CLAIMED a tool
  * action the user asked for, but no actuator ran: a false promise) takes
- * precedence; otherwise `abstain` / `ungrounded` (couldn't answer from the
- * user's notes) is a `grounding-gap`. `grounded` / `null` (json/vision skip)
- * are not failures.
+ * precedence; otherwise `abstain` / `ungrounded` is a `grounding-gap`.
+ *
+ * A `grounding-gap` is a RECALL knowledge gap (the fix is "add a note"). An
+ * ACTION request (`isActionRequest`) the ask path couldn't fulfil is NOT a
+ * knowledge gap — it's either an unbacked-action (a false claim) or just "ask
+ * couldn't act" (honest offer) — so it must NOT be logged as a grounding-gap, or
+ * it pollutes the user-remediable fuel with "add a note about 치과 예약" nonsense
+ * (a real probe recorded exactly that). `grounded` / `null` are not failures.
  */
 export function askWeaknessAxis(
   outcome: AskOutcome,
-  opts: { readonly claimedUnbackedAction?: boolean } = {}
+  opts: { readonly claimedUnbackedAction?: boolean; readonly isActionRequest?: boolean } = {}
 ): AskWeaknessAxis | null {
   if (opts.claimedUnbackedAction) {
     return "unbacked-action";
+  }
+  if (opts.isActionRequest) {
+    return null;
   }
   return outcome === "abstain" || outcome === "ungrounded" ? "grounding-gap" : null;
 }
@@ -3741,8 +3749,12 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // the ledger. An UNBACKED-ACTION (the answer claimed a tool action the user
       // asked for, but no actuator ran — a false promise) takes precedence over a
       // grounding miss, mirroring chat-repl.
-      const askUnbackedAction = requestsToolAction(query) && answerClaimsAction(collectedAnswer) && !actionToolRan(toolsUsed);
-      await recordAskWeaknessLive(query, askWeaknessAxis(askOutcome, { claimedUnbackedAction: askUnbackedAction }));
+      const askIsActionRequest = requestsToolAction(query);
+      const askUnbackedAction = askIsActionRequest && answerClaimsAction(collectedAnswer) && !actionToolRan(toolsUsed);
+      await recordAskWeaknessLive(
+        query,
+        askWeaknessAxis(askOutcome, { claimedUnbackedAction: askUnbackedAction, isActionRequest: askIsActionRequest })
+      );
 
       if (options.json) {
         // Emit a single JSON object on stdout — consumers can pipe

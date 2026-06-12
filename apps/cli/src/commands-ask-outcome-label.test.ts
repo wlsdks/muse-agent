@@ -42,6 +42,15 @@ describe("askWeaknessAxis (ask-path failure → weakness fuel)", () => {
     expect(askWeaknessAxis("abstain", { claimedUnbackedAction: true })).toBe("unbacked-action");
     expect(askWeaknessAxis(null, { claimedUnbackedAction: true })).toBe("unbacked-action");
   });
+  it("an action request the ask path couldn't fulfil is NOT a grounding-gap (it's no missing note)", () => {
+    expect(askWeaknessAxis("ungrounded", { isActionRequest: true })).toBeNull();
+    expect(askWeaknessAxis("abstain", { isActionRequest: true })).toBeNull();
+  });
+  it("an action request that ALSO falsely claimed the action is still an unbacked-action", () => {
+    expect(askWeaknessAxis("ungrounded", { isActionRequest: true, claimedUnbackedAction: true })).toBe(
+      "unbacked-action"
+    );
+  });
 });
 
 describe("recordAskWeakness (feeds the weakness ledger by AXIS, best-effort)", () => {
