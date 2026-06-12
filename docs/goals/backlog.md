@@ -17,6 +17,18 @@ The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing 
 Every slice ships its eval/test and never weakens the grounding floor. Ranked:
 
 EXPAND (new reach):
+- ✓→Done **browser_look — describe the current browser page visually (local vision)** — browser_read
+  returns DOM text + elements, so a VISUAL page (chart, graph, map, diagram, image, a rendered error
+  dialog) was invisible to the model. New browser_look captures the page (controller.screenshotBase64,
+  added to the BrowserController interface) and describes it with the local vision model (injected
+  describeImage; the CLI binds it via the same screenVision holder as mac_screen_read — omitted when no
+  model). Completes "vision everywhere": screen (mac_screen_read) · local image (file_read) · image URL
+  (web_read) · browser page (browser_look). Sharpened browser_read with a not-when line (visual content
+  → browser_look) so the model doesn't default to text-read. TDD 4 (well-formed, capture+describe+mime,
+  question passthrough, vision-error); eval:tools browser scenario 9/9 STABLE 3/3 (browser_look vs
+  browser_read on chart/graph prompts); eval:browser-agent 1/1 (act-path untouched); LIVE — a real
+  Chrome page captured and described via gemma4, no error. browser 41, full eval:tools 138/139 (1
+  known synthetic flake), check 0, lint 0.
 - ✓→Done **web_read describes IMAGE URLs via local vision** — web_read read HTML and PDF URLs but
   rejected image content-types ("not a readable text page"), even though file_read reads LOCAL images
   via vision. Now an image/* response is read as bytes (10MB cap) and described by an injected

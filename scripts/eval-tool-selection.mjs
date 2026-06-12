@@ -413,6 +413,7 @@ async function buildBrowserScenario() {
     const instances = [
       browser.createBrowserOpenTool({ controller: stubController }),
       browser.createBrowserReadTool({ controller: stubController }),
+      browser.createBrowserLookTool({ controller: stubController, describeImage: async () => ({ ok: true, text: "x" }) }),
       browser.createBrowserClickTool({ controller: stubController, approvalGate: allowGate }),
       browser.createBrowserTypeTool({ controller: stubController, approvalGate: allowGate }),
       mcp.createWebActionTool({ fetchImpl: fetch, approvalGate: {}, actionLogFile: "/tmp/eval-browser.json", userId: "eval" }),
@@ -424,6 +425,8 @@ async function buildBrowserScenario() {
       { prompt: "Open https://news.example.com in the browser and read the page.", expectTool: "browser_open", requireArgs: ["url"], note: "EN open+browse a page → browser_open (NOT web_action)" },
       { prompt: "브라우저로 이 페이지 열어줘: https://example.com", expectTool: "browser_open", requireArgs: ["url"], note: "KO open a page → browser_open (user's language)" },
       { prompt: "Read the page that's open in the browser right now.", expectTool: "browser_read", note: "EN re-read current page → browser_read (NOT knowledge_search)" },
+      { prompt: "이 페이지에 있는 차트가 뭘 보여주는지 설명해줘.", expectTool: "browser_look", note: "KO describe a chart on the page → browser_look (visual, NOT browser_read text)" },
+      { prompt: "What does the graph on this page show?", expectTool: "browser_look", note: "EN visual graph question → browser_look (NOT browser_read)" },
       { prompt: "Click the Sign in button.", expectTool: "browser_click", requireArgs: ["target"], argIncludes: /sign/i, note: "EN natural click → browser_click, target grounded from the prompt (code resolves the element)" },
       { prompt: "검색창에 '무선 마우스' 입력하고 검색해줘.", expectTool: "browser_type", requireArgs: ["target", "text"], note: "KO natural type+submit → browser_type, target named in words (deterministic grounding)" },
       { prompt: "Post a comment on the forum thread saying it works: https://forum.example.com/t/42", expectTool: "web_action", requireArgs: ["summary", "url"], note: "EN one-shot web submit → web_action, NOT browser_open" },

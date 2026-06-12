@@ -41,6 +41,7 @@ import {
 import {
   PuppeteerBrowserController,
   createBrowserBackTool,
+  createBrowserLookTool,
   createBrowserClickTool,
   createBrowserOpenTool,
   createBrowserReadTool,
@@ -237,6 +238,8 @@ export interface BrowserToolsDeps {
   readonly isInteractive?: () => boolean;
   /** Receives the live controller so the caller can disconnect() after a one-shot run. */
   readonly onController?: (controller: BrowserController) => void;
+  /** Local vision callback for browser_look (bound by the CLI to the assembly's model). Absent ⇒ browser_look is omitted. */
+  readonly describeImage?: (input: { readonly imageBase64: string; readonly mimeType: string; readonly question?: string }) => Promise<{ readonly ok: boolean; readonly text?: string; readonly error?: string }>;
 }
 
 /**
@@ -265,7 +268,9 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
     createBrowserReadTool({ controller }),
     createBrowserBackTool({ controller }),
     createBrowserClickTool({ approvalGate: gate, controller }),
-    createBrowserTypeTool({ approvalGate: gate, controller })
+    createBrowserTypeTool({ approvalGate: gate, controller }),
+    // browser_look (vision over the page) only when a vision callback is wired.
+    ...(deps.describeImage ? [createBrowserLookTool({ controller, describeImage: deps.describeImage })] : [])
   ];
 }
 

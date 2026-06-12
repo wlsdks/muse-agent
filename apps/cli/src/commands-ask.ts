@@ -2468,7 +2468,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         const actuatorMod = await import("./actuator-tools.js");
         const browserTools = actuatorMod.buildBrowserTools({
           io,
-          onController: (controller) => { browserControllerToRelease = controller; }
+          onController: (controller) => { browserControllerToRelease = controller; },
+          // browser_look reads the page visually via the same local vision the
+          // screen-read/file-read paths use (lazy holder; model bound below).
+          describeImage: async (input) => screenVision.current ? screenVision.current(input) : { error: "the local vision model is not available in this run", ok: false }
         });
         extraTools = extraTools ? [...extraTools, ...browserTools] : browserTools;
         // file_read rides along by default too: reading the user's own

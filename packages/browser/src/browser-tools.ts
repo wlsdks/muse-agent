@@ -177,8 +177,10 @@ export function createBrowserReadTool(deps: BrowserReadToolDeps): MuseTool {
       description:
         "Re-read the page currently open in Muse's browser — returns the title, page text, and the " +
         "interactive elements. Pass `find` to get only the elements matching a description (e.g. 'search', " +
-        "'sign in') instead of the whole list — handy for locating one control. Use to see what's on the " +
-        "page after it changed — e.g. 'what's on the page now?', 'read this page'. Read-only.",
+        "'sign in') instead of the whole list — handy for locating one control. Use to see the TEXT and " +
+        "clickable elements on the page — e.g. 'what's on the page now?', 'read this page'. NOT for " +
+        "describing VISUAL content like a chart, graph, image, or diagram (use browser_look — this returns " +
+        "DOM text, not a picture). Read-only.",
       domain: "browser",
       inputSchema: {
         additionalProperties: false,
@@ -233,6 +235,52 @@ export function createBrowserBackTool(deps: BrowserReadToolDeps): MuseTool {
       } catch (cause) {
         return errorResult(cause);
       }
+    }
+  };
+}
+
+export interface BrowserLookToolDeps {
+  readonly controller: BrowserController;
+  /** Local vision callback (the CLI binds it to the assembly's multimodal model). */
+  readonly describeImage: (input: { readonly imageBase64: string; readonly mimeType: string; readonly question?: string }) => Promise<{ readonly ok: boolean; readonly text?: string; readonly error?: string }>;
+}
+
+export function createBrowserLookTool(deps: BrowserLookToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "LOOK at the page open in Muse's browser and describe what it shows visually — captures the page " +
+        "and reads it with the local vision model. Use when the page is VISUAL and browser_read's text " +
+        "misses it: a chart, graph, map, diagram, image, design, or an error/dialog the user is looking at " +
+        "— e.g. 'what does this chart show?', '이 페이지 그래프 설명해줘', 'describe what's on the page'. Pass " +
+        "`question` to focus the look. For the page's TEXT and clickable elements use browser_read instead; " +
+        "this is for the pixels.",
+      domain: "browser",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          question: { description: "Optional focus, e.g. 'what's the trend in the chart?'.", type: "string" }
+        },
+        required: [],
+        type: "object"
+      },
+      keywords: ["browser", "look", "see", "chart", "그래프", "차트", "graph", "diagram", "그림", "보여", "시각", "visual", "브라우저"],
+      name: "browser_look",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      let imageBase64: string;
+      try {
+        imageBase64 = await deps.controller.screenshotBase64();
+      } catch (cause) {
+        return { described: false, ...errorResult(cause) };
+      }
+      const question = typeof args["question"] === "string" && args["question"].trim().length > 0 ? args["question"].trim() : undefined;
+      const described = await deps.describeImage({ imageBase64, mimeType: "image/png", ...(question ? { question } : {}) });
+      if (!described.ok || !described.text) {
+        return { described: false, reason: described.error ?? "the vision model could not read the page" };
+      }
+      return { described: true, text: described.text };
     }
   };
 }

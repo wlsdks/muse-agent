@@ -311,6 +311,11 @@ export class PuppeteerBrowserController implements BrowserController {
     return { path };
   }
 
+  async screenshotBase64(): Promise<string> {
+    const page = await this.ensurePage();
+    return page.screenshot({ encoding: "base64", type: "png" }) as Promise<string>;
+  }
+
   describeElement(ref: number): SnapshotElement | undefined {
     return this.lastElements.get(ref);
   }

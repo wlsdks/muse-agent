@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createBrowserBackTool,
+  createBrowserLookTool,
   createBrowserClickTool,
   createBrowserOpenTool,
   createBrowserReadTool,
@@ -29,6 +30,7 @@ class FakeController implements BrowserController {
   async type(ref: number, text: string, submit: boolean): Promise<PageSnapshot> { this.calls.push(`type:${ref.toString()}:${text}:${submit.toString()}`); return SNAP; }
   async back(): Promise<PageSnapshot> { this.calls.push("back"); return SNAP; }
   async screenshot(path: string): Promise<{ readonly path: string }> { this.calls.push("shot"); return { path }; }
+  async screenshotBase64(): Promise<string> { this.calls.push("shot-base64"); return "aW1n"; }
   describeElement(ref: number): SnapshotElement | undefined { return this.elements.get(ref); }
   currentUrl(): string { return "https://example.test/"; }
   async disconnect(): Promise<void> { this.calls.push("disconnect"); }
@@ -179,6 +181,7 @@ describe("display cap — model sees a small list, matcher sees all (long-page s
     async type(): Promise<PageSnapshot> { return bigSnap; }
     async back(): Promise<PageSnapshot> { return bigSnap; }
     async screenshot(path: string): Promise<{ readonly path: string }> { return { path }; }
+    async screenshotBase64(): Promise<string> { return "aW1n"; }
     describeElement(ref: number): SnapshotElement | undefined { return manyElements[ref]; }
     currentUrl(): string { return "https://shop.test/"; }
     async disconnect(): Promise<void> {}
@@ -239,5 +242,46 @@ describe("browser_open — scheme guard (http/https only; no local-file read via
     const c = new FakeController();
     await createBrowserOpenTool({ controller: c }).execute({ url: "example.com" }, ctx);
     expect(c.calls).toEqual(["open:https://example.com/"]);
+  });
+});
+
+describe("browser_look — describe the current page visually (local vision)", () => {
+  it("is a well-formed READ tool", () => {
+    const c = new FakeController();
+    const tool = createBrowserLookTool({ controller: c, describeImage: async () => ({ ok: true, text: "x" }) });
+    expect(tool.definition.name).toBe("browser_look");
+    expect(tool.definition.risk).toBe("read");
+    expect(tool.definition.domain).toBe("browser");
+    expect(validateToolDefinitions([tool])).toEqual([]);
+  });
+
+  it("captures the page and returns the vision description", async () => {
+    const c = new FakeController();
+    let seenMime = "";
+    const tool = createBrowserLookTool({
+      controller: c,
+      describeImage: async (input) => { seenMime = input.mimeType; return { ok: true, text: "A line chart trending upward, titled Revenue." }; }
+    });
+    const out = await tool.execute({}, ctx) as { described: boolean; text?: string };
+    expect(out.described).toBe(true);
+    expect(out.text).toContain("line chart");
+    expect(seenMime).toBe("image/png");
+    expect(c.calls).toContain("shot-base64");
+  });
+
+  it("passes an optional question to the vision model", async () => {
+    const c = new FakeController();
+    let q = "";
+    const tool = createBrowserLookTool({ controller: c, describeImage: async (input) => { q = input.question ?? ""; return { ok: true, text: "ok" }; } });
+    await tool.execute({ question: "what does the error banner say?" }, ctx);
+    expect(q).toBe("what does the error banner say?");
+  });
+
+  it("a vision failure reports described:false with the reason", async () => {
+    const c = new FakeController();
+    const tool = createBrowserLookTool({ controller: c, describeImage: async () => ({ ok: false, error: "vision offline" }) });
+    const out = await tool.execute({}, ctx) as { described: boolean; reason?: string };
+    expect(out.described).toBe(false);
+    expect(String(out.reason)).toContain("offline");
   });
 });
