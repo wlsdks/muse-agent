@@ -24,8 +24,19 @@ import { iterateJsonObjectCandidates } from "./json-array-scan.js";
 import {
   classifyRetrievalConfidence,
   type GroundingReverify,
-  type KnowledgeMatch
+  type KnowledgeMatch,
+  lexicalTokens
 } from "./knowledge-recall.js";
+
+// Jaccard similarity between two token sets (arXiv:2503.05856 — outlier screen).
+// Two EMPTY sets return 0 (no shared content) — not 1 — so a content-empty peer
+// cannot masquerade as high-support.
+function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const t of a) { if (b.has(t)) inter++; }
+  return inter / (a.size + b.size - inter);
+}
 
 export interface CouncilUtterance {
   /** The participating peer's id (e.g. "phone", "alice"). */
@@ -38,6 +49,97 @@ export interface CouncilAnswer {
   readonly answer: string;
   /** Peer ids whose reasoning the answer drew on — always a subset of the inputs. */
   readonly contributors: readonly string[];
+  /** Peers quarantined by the consensus-outlier screen before synthesis (arXiv:2503.05856). Omitted when none. */
+  readonly excludedPeers?: readonly { readonly peerId: string; readonly reason: string }[];
+}
+
+export interface OutlierScreenOptions {
+  /** Minimum panel size before any exclusion is attempted. Default 3. */
+  readonly minPanel?: number;
+  /** A member's mean pairwise similarity below this absolute floor is suspect. Default 0.08. */
+  readonly absFloor?: number;
+  /** Suspect only when support is also below relFloor × median(support). Default 0.5. */
+  readonly relFloor?: number;
+}
+
+export interface CouncilScreenResult {
+  readonly kept: readonly CouncilUtterance[];
+  readonly excluded: readonly { readonly peerId: string; readonly reason: "consensus-outlier" }[];
+}
+
+/**
+ * Consensus-outlier screen (arXiv:2503.05856 — MoA deception robustness): a peer
+ * whose reasoning diverges from the panel consensus is quarantined BEFORE
+ * aggregation, so a deceptive/broken/off-topic member can't steer the synthesis
+ * (the GROUNDED≠TRUE hole at the council hand-off). Each member's SUPPORT = mean
+ * pairwise Jaccard token-similarity to the OTHER members. Quarantine a member
+ * only when ALL hold: panel size ≥ minPanel; its support < absFloor AND <
+ * relFloor × median(support); and never exclude beyond floor((n-1)/2) (majority
+ * preserved). Pure, deterministic, stable order.
+ */
+export function screenCouncilOutliers(
+  utterances: readonly CouncilUtterance[],
+  options?: OutlierScreenOptions
+): CouncilScreenResult {
+  const minPanel = options?.minPanel ?? 3;
+  const absFloor = options?.absFloor ?? 0.08;
+  const relFloor = options?.relFloor ?? 0.5;
+
+  const n = utterances.length;
+  if (n < minPanel) return { kept: [...utterances], excluded: [] };
+
+  // Compute mean pairwise Jaccard support for each member.
+  const tokens: Set<string>[] = utterances.map((u) => lexicalTokens(u.reasoning));
+  const supports: number[] = utterances.map((_, i) => {
+    if (n === 1) return 1;
+    let sum = 0;
+    for (let j = 0; j < n; j++) {
+      if (j !== i) {
+        const ti = tokens[i] ?? new Set<string>();
+        const tj = tokens[j] ?? new Set<string>();
+        sum += jaccardSimilarity(ti, tj);
+      }
+    }
+    return sum / (n - 1);
+  });
+
+  // Median of supports.
+  const sorted = [...supports].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const isEven = sorted.length % 2 === 0;
+  const median = isEven
+    ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
+    : (sorted[mid] ?? 0);
+
+  // Candidates: members with support < absFloor AND support < relFloor * median.
+  type Candidate = { index: number; support: number };
+  const candidates: Candidate[] = [];
+  for (let i = 0; i < n; i++) {
+    const s = supports[i] ?? 1;
+    if (s < absFloor && s < relFloor * median) {
+      candidates.push({ index: i, support: s });
+    }
+  }
+
+  // Sort candidates by support ASC (lowest first); ties preserve input order.
+  candidates.sort((a, b) => a.support !== b.support ? a.support - b.support : a.index - b.index);
+
+  // Never exclude more than floor((n-1)/2).
+  const maxExclude = Math.floor((n - 1) / 2);
+  const toExclude = new Set(candidates.slice(0, maxExclude).map((c) => c.index));
+
+  const kept: CouncilUtterance[] = [];
+  const excluded: { peerId: string; reason: "consensus-outlier" }[] = [];
+  for (let i = 0; i < n; i++) {
+    const u = utterances[i];
+    if (u === undefined) continue;
+    if (toExclude.has(i)) {
+      excluded.push({ peerId: u.peerId, reason: "consensus-outlier" });
+    } else {
+      kept.push(u);
+    }
+  }
+  return { kept, excluded };
 }
 
 export interface CouncilModelOptions {
@@ -211,9 +313,17 @@ export async function synthesizeCouncilAnswer(
 ): Promise<CouncilAnswer | null> {
   const usable = dedupeUtterancesByPeer(utterances.filter((u) => u.peerId.length > 0 && u.reasoning.trim().length > 0));
   if (question.trim().length === 0 || usable.length === 0) return null;
+
+  // Consensus-outlier screen (arXiv:2503.05856): quarantine divergent peers before
+  // aggregation so a deceptive/broken member can't steer synthesis.
+  const { kept, excluded } = screenCouncilOutliers(usable);
+  // Never screen the entire panel away (the majority cap should prevent it, but
+  // fall back to usable as a hard safety net).
+  const forSynthesis = kept.length > 0 ? kept : usable;
+
   const messages: readonly ModelMessage[] = [
     { content: SYNTHESIS_SYSTEM_PROMPT, role: "system" },
-    { content: buildCouncilPrompt(question, usable), role: "user" }
+    { content: buildCouncilPrompt(question, forSynthesis), role: "user" }
   ];
   const request: ModelRequest = {
     maxOutputTokens: options.maxOutputTokens ?? 300,
@@ -227,9 +337,12 @@ export async function synthesizeCouncilAnswer(
   } catch {
     return null;
   }
-  const council = parseCouncilAnswer(output, new Set(usable.map((u) => u.peerId)));
-  if (!council || !options.reverify) return council;
-  return verifyCouncilGrounding(council, question, usable, options.reverify);
+  const council = parseCouncilAnswer(output, new Set(forSynthesis.map((u) => u.peerId)));
+  const excludedPeers = excluded.length > 0 ? excluded : undefined;
+  const withExcluded = council && excludedPeers ? { ...council, excludedPeers } : council;
+  if (!withExcluded || !options.reverify) return withExcluded;
+  const reverified = await verifyCouncilGrounding(withExcluded, question, forSynthesis, options.reverify);
+  return reverified && excludedPeers ? { ...reverified, excludedPeers } : reverified;
 }
 
 /**

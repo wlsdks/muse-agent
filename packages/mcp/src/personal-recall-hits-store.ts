@@ -136,6 +136,44 @@ export async function recordRecallHits(file: string, entries: readonly RecallHit
   return next;
 }
 
+// --- Ebbinghaus fade sidecar (arXiv:2305.10250, MemoryBank) ---
+// The consolidation pass (`consolidationPlan`) names which sessions are fading
+// (decayed + idle). Writing that set here closes the loop: the episodic ranker
+// reads it and down-ranks those sessions so stale memories stop competing with
+// active ones. Overwrite-on-every-run = automatic reinstatement: a session that
+// gets recalled again drops out of `selectForgettable` on the next consolidation
+// pass, so the rewritten file no longer penalises it.
+
+const FADED_MEMORIES_FILE_ENCODING = "utf8" as const;
+
+export async function writeFadedMemoryKeys(file: string, keys: readonly string[], _atMs: number): Promise<void> {
+  const payload = `${JSON.stringify({ fadedAt: _atMs, keys: [...keys] }, null, 2)}\n`;
+  const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
+  await fs.mkdir(dirname(file), { recursive: true });
+  await fs.writeFile(tmp, payload, FADED_MEMORIES_FILE_ENCODING);
+  await fs.rename(tmp, file);
+}
+
+export async function readFadedMemoryKeys(file: string): Promise<ReadonlySet<string>> {
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, FADED_MEMORIES_FILE_ENCODING);
+  } catch {
+    return new Set();
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return new Set();
+  }
+  if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as { keys?: unknown }).keys)) {
+    return new Set();
+  }
+  const keys = (parsed as { keys: unknown[] }).keys.filter((k): k is string => typeof k === "string" && k.length > 0);
+  return new Set(keys);
+}
+
 function normalizeRecord(record: RecallHitRecord): RecallHitRecord {
   const raw = (record as { recentAccessMs?: unknown }).recentAccessMs;
   if (!Array.isArray(raw)) return record;

@@ -84,6 +84,7 @@ describe("formatConsolidationPlan — the sleep-consolidation readout (B2)", () 
     expect(out).toContain("standup");
     expect(out).toContain("fading 1");
     expect(out).toContain("old-trip");
+    expect(out).toContain("down-ranked in recall");
     expect(out).toContain("not deleted");
   });
 

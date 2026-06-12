@@ -152,6 +152,10 @@ export function resolveRecallHitsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_RECALL_HITS_FILE", "recall-hits.json");
 }
 
+export function resolveFadedMemoriesFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_FADED_MEMORIES_FILE", "memory-fade.json");
+}
+
 export function resolveCheckinsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_CHECKINS_FILE", "checkins.json");
 }

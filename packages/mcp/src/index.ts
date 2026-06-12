@@ -775,8 +775,10 @@ export {
 } from "./personal-patterns-fired-store.js";
 
 export {
+  readFadedMemoryKeys,
   readRecallHits,
   recordRecallHits,
+  writeFadedMemoryKeys,
   writeRecallHits,
   type RecallHitInput,
   type RecallHitRecord

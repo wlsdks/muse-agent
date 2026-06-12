@@ -536,6 +536,30 @@ excluded when scoring).
   ahead of the LLM merge; the MISSING piece — a DIRECT anti-collapse invariant battery — was added
   (7 cases incl. the non-vacuous property "if it returns a survivor, that survivor token-covers EVERY
   input", so a learned strategy is never silently dropped). Test-only; agent-core 1691 green.]
+- ✓→Done **Multi-group/multivalid conformal UQ for abstention** — pooled abstention calibration
+  over an EN-only corpus silently loses its coverage guarantee on the Korean subgroup (the exact
+  failure of arXiv:2407.21057, Liu & Wu). [DONE 2026-06-13, cognition loop fire 29:
+  `calibrateAbstentionByGroup` (per-`dominantScriptFamily` conformal tau, pooled fallback for thin
+  groups) in conformal.ts + additive `groups`/`calibration`/`groupCoverageViolations` in
+  `scoreGroundingEval` + per-group rows & ⚠ violation render in grounding-eval-runner; made LIVE by
+  adding a Korean subgroup (12 answerable + 4 must-refuse + 12 grounded notes) to the production
+  `GROUNDING_EVAL_CORPUS` — `muse doctor --grounding` now renders latin+hangul groups (judge v1 FAIL
+  caught it inert on the EN-only corpus; v2 PASS proved live on real Ollama). Additive measurement
+  only, verdict/threshold unchanged (fabrication-floor safe).]
+- ◦ **Per-group abstention threshold at serve time** — `calibrateAbstentionByGroup` now MEASURES the
+  per-script-family gap; the follow-up is to SERVE the per-group tau (route a Korean query through the
+  hangul threshold, not pooled) once the per-group calibration set is large enough to trust. (next)
+- ✓→Done **MemoryBank Ebbinghaus forgetting loop — close the inert fade seam** — fade was COMPUTED
+  (`selectForgettable`) but applied nowhere (report-only across 3 surfaces, arXiv:2305.10250 Zhong et
+  al. AAAI 2024). [DONE 2026-06-13, cognition loop fire 30: `muse memory consolidate` writes `plan.fade`
+  keys to `~/.muse/memory-fade.json`; the default-ON `StoreBackedEpisodicRecallProvider.resolve` reads
+  it and down-ranks faded sessions ×FADE_PENALTY=0.5 (post-minScore-gate, ranking-only, never deletes);
+  re-recalled memories auto-reinstate via consolidate overwrite + lastHitMs reset. Judge PASS: session-key
+  identity holds end-to-end, counterfactual robust, fail-open 3 layers, fabrication floor intact.]
+- ◦ **MemoryBank daemon auto-refresh** — consolidate is manual/on-demand, so the fade sidecar only
+  refreshes when a human runs it. Wire `writeFadedMemoryKeys` into `memory-consolidate-tick.ts` +
+  `commands-daemon.ts` behind the existing `MUSE_SELFLEARN_ENABLED` gate so fade refreshes automatically
+  on the background tick. (fire-30 remainder; also: FadeMem-style importance term in `selectForgettable`.)
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
   each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
 - (queued behind fuel/prereqs: sleep-time compute · Mem0 UPDATE op · AWM workflow mining ·
@@ -655,6 +679,24 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   fire (gap-scout or a human direction) is itself the work. Source: review honest-ceiling.
 
 ## Open — agent core
+
+- ✓→Done **Council consensus-outlier screen (MoA deception robustness, arXiv:2503.05856)** — [2026-06-13,
+  cognition loop fire 28, PAPER-GROUNDED, Fable scout+judge] An A2A council peer is an EXTERNAL untrusted
+  agent; a deceptive/off-topic peer's reasoning flowed straight into `synthesizeCouncilAnswer`'s synthesis
+  prompt and the reverify judge then PASSED it (the lie IS the cited evidence — GROUNDED≠TRUE at the
+  council hand-off). Added pure `screenCouncilOutliers` (per-member mean pairwise Jaccard support over
+  CJK-aware `lexicalTokens`; quarantine below absFloor AND relFloor×median, panel≥3, majority-preserving
+  cap floor((n-1)/2)), run inside `synthesizeCouncilAnswer` after dedupe (prompt + validPeerIds from `kept`;
+  `CouncilAnswer.excludedPeers`). Subtractive on untrusted input; reverify/id-gate/floor unchanged.
+  Scout avoided the DEAD `orchestrateAnswer` seam (zero prod callers) → wired the LIVE council. Fable judge
+  FAILed v1 (inline `\w+` tokenizer ASCII-only → broken for Korean, Muse's primary language: deceptive
+  Korean peer never screened) → fixed to CJK-aware `lexicalTokens` + jaccard(∅)→0 + Korean tests
+  (counterfactual: 9 tests fail on the old tokenizer). agent-core 1815 green.
+- ◦ **Council screen: cross-lingual similarity** — the fire-28 outlier screen uses lexical Jaccard, so a
+  legitimate minority-LANGUAGE peer among a different-language majority has structurally-0 token overlap and
+  is wrongly quarantined (documented limitation). Homogeneous-language panels (the common case) + the
+  security-critical deceptive-peer case work. FIX needs an embedding-based cross-lingual similarity fallback
+  (or a script-disjoint exception) — deferred (needs the embedder at the council seam).
 
 - ✓→Done **Evidence-tallied playbook lifecycle (Memp, arXiv:2508.06433)** — [2026-06-13, cognition
   loop fire 27, PAPER-GROUNDED, Fable scout+judge] Playbook reward was a clamped NET scalar that

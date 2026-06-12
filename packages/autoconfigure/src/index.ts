@@ -203,6 +203,7 @@ export {
   mergeModelKeysFromFile,
   resolveContactsFile,
   resolveEpisodesFile,
+  resolveFadedMemoriesFile,
   resolveFollowupsFile,
   resolvePatternsFiredFile,
   resolveRecallHitsFile,

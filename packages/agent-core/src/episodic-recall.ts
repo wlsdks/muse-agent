@@ -391,6 +391,10 @@ const TOKEN_NON_WORD_RE = /[^a-z0-9가-힯一-鿿぀-ゟ゠-ヿ]+/u;
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const DEFAULT_RECENCY_WEIGHT = 0.15;
 const DEFAULT_RECENCY_HALF_LIFE_DAYS = 14;
+// Ebbinghaus penalty for sessions the consolidation pass flagged as fading.
+// Applied post-minScore-gate so it can only LOWER a surviving session, never
+// add or remove one from the candidate set (arXiv:2305.10250, MemoryBank).
+const FADE_PENALTY = 0.5;
 
 /**
  * recency boost. Returns an additive contribution to the
@@ -543,6 +547,14 @@ export interface StoreBackedEpisodicRecallProviderOptions {
    * silently falls back to Jaccard so recall never breaks.
    */
   readonly embed?: (text: string) => Promise<readonly number[]>;
+  /**
+   * Ebbinghaus closed forgetting loop (arXiv:2305.10250, MemoryBank): sessions
+   * the consolidation pass marked as fading (decayed + idle) are down-ranked by
+   * FADE_PENALTY applied to their similarity score. Fail-open — a loader error
+   * or corrupt sidecar is treated as an empty set so ranking is unchanged.
+   * Down-rank only, never delete (Muse's non-destructive contract).
+   */
+  readonly fadedKeys?: () => Promise<ReadonlySet<string>> | ReadonlySet<string>;
 }
 
 /**
@@ -567,11 +579,13 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
   private readonly recencyHalfLifeDays: number;
   private readonly now: () => number;
   private readonly embed?: (text: string) => Promise<readonly number[]>;
+  private readonly fadedKeysLoader?: StoreBackedEpisodicRecallProviderOptions["fadedKeys"];
 
   constructor(options: StoreBackedEpisodicRecallProviderOptions) {
     this.recallStatsLoader = options.recallStats;
     this.store = options.store;
     this.embed = options.embed;
+    this.fadedKeysLoader = options.fadedKeys;
     this.topK = Math.max(1, finiteOr(options.topK, 3));
     this.minScore = Math.max(0, finiteOr(options.minScore, 0.15));
     this.maxFetched = Math.max(1, finiteOr(options.maxFetched, 200));
@@ -616,6 +630,16 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
         recallStats = undefined;
       }
     }
+    let fadedKeys: ReadonlySet<string>;
+    if (this.fadedKeysLoader) {
+      try {
+        fadedKeys = await this.fadedKeysLoader();
+      } catch {
+        fadedKeys = new Set();
+      }
+    } else {
+      fadedKeys = new Set();
+    }
     const scored: EpisodicMatch[] = [];
     for (const summary of summaries) {
       if (!isVisibleToUser(userId, summary.userId, this.allowAnonymousEpisodes)) {
@@ -645,11 +669,15 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
             this.recencyWeight
           )
         : computeRecencyBoost(createdAtIso, nowMs, this.recencyWeight, this.recencyHalfLifeDays);
+      // Ebbinghaus down-rank: a session the consolidation pass marked fading
+      // has its similarity halved (post-gate, so it can never suppress a match
+      // that would otherwise be excluded, only lower a surviving one).
+      const fadePenalty = fadedKeys.has(summary.sessionId) ? FADE_PENALTY : 1;
       scored.push({
         createdAtIso,
         narrative: summary.narrative,
         sessionId: summary.sessionId,
-        similarity: baseSim + recencyBoost
+        similarity: (baseSim + recencyBoost) * fadePenalty
       });
     }
     scored.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));

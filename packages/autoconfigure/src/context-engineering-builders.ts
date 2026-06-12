@@ -27,12 +27,13 @@ import {
 } from "@muse/agent-core";
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
 import type { JsonObject } from "@muse/shared";
-import { appendCheckins, readCheckins, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
+import { appendCheckins, readCheckins, readFadedMemoryKeys, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore, UserModelSlot } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 
 import {
   resolveDiscordInboxFile,
+  resolveFadedMemoriesFile,
   resolveInboxInjectionCursorFile,
   resolveLineInboxFile,
   resolveMessagingCredentialsFile,
@@ -285,7 +286,9 @@ export function buildEpisodicRecallProvider(
   // an episode the user keeps coming back to outranks an equally-similar
   // one-off. Fail-soft loader: unreadable ledger ⇒ legacy half-life ranking.
   const recallHitsFile = resolveRecallHitsFile(env);
+  const fadedMemoriesFile = resolveFadedMemoriesFile(env);
   const provider = new StoreBackedEpisodicRecallProvider({
+    fadedKeys: () => readFadedMemoryKeys(fadedMemoriesFile).catch(() => new Set()),
     maxFetched,
     minScore,
     recallStats: async () => {

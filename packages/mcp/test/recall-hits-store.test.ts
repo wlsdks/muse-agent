@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { readRecallHits, recordRecallHits } from "../src/personal-recall-hits-store.js";
+import { readFadedMemoryKeys, readRecallHits, recordRecallHits, writeFadedMemoryKeys } from "../src/personal-recall-hits-store.js";
 
 let dir: string;
 let file: string;
@@ -73,6 +73,44 @@ describe("recall-hits store", () => {
       ]);
       expect((await readRecallHits(file))[0]).toMatchObject({ key: "a", hits: 10, lastHitMs: 1_000 });
       expect((await readRecallHits(fileB))[0]).toMatchObject({ key: "b", hits: 10, lastHitMs: 1_000 });
+    });
+  });
+
+  describe("faded-memory sidecar — Ebbinghaus closed loop (arXiv:2305.10250)", () => {
+    it("write + read roundtrip returns the written keys", async () => {
+      const fadeFile = join(dir, "memory-fade.json");
+      await writeFadedMemoryKeys(fadeFile, ["sess-a", "sess-b"], Date.now());
+      const keys = await readFadedMemoryKeys(fadeFile);
+      expect(keys.has("sess-a")).toBe(true);
+      expect(keys.has("sess-b")).toBe(true);
+      expect(keys.size).toBe(2);
+    });
+
+    it("missing file → empty set (tolerant read)", async () => {
+      const fadeFile = join(dir, "nonexistent-fade.json");
+      expect((await readFadedMemoryKeys(fadeFile)).size).toBe(0);
+    });
+
+    it("corrupt file → empty set (tolerant read)", async () => {
+      const fadeFile = join(dir, "corrupt-fade.json");
+      await writeFile(fadeFile, "NOT_JSON{{{", "utf8");
+      expect((await readFadedMemoryKeys(fadeFile)).size).toBe(0);
+    });
+
+    it("wrong-shape JSON → empty set (tolerant read)", async () => {
+      const fadeFile = join(dir, "wrong-shape.json");
+      await writeFile(fadeFile, JSON.stringify({ keys: "not-an-array" }), "utf8");
+      expect((await readFadedMemoryKeys(fadeFile)).size).toBe(0);
+    });
+
+    it("overwrite replaces the entire set (latest wins)", async () => {
+      const fadeFile = join(dir, "memory-fade.json");
+      await writeFadedMemoryKeys(fadeFile, ["old-a", "old-b"], 1_000);
+      await writeFadedMemoryKeys(fadeFile, ["new-x"], 2_000);
+      const keys = await readFadedMemoryKeys(fadeFile);
+      expect(keys.has("old-a")).toBe(false);
+      expect(keys.has("new-x")).toBe(true);
+      expect(keys.size).toBe(1);
     });
   });
 

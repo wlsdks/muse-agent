@@ -22,8 +22,8 @@
 import { readFile } from "node:fs/promises";
 
 import { consolidationPlan, defaultBeliefProvenanceFile, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, selectPromotableMemories, type ConsolidationPlan } from "@muse/memory";
-import { resolveRecallHitsFile } from "@muse/autoconfigure";
-import { readRecallHits, type RecallHitRecord } from "@muse/mcp";
+import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
+import { readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -168,7 +168,7 @@ export function formatConsolidationPlan(plan: ConsolidationPlan): string {
     }
   }
   if (plan.fade.length > 0) {
-    lines.push(`  ↓ fading ${plan.fade.length.toString()} (idle + decayed — kept, not deleted):`);
+    lines.push(`  ↓ fading ${plan.fade.length.toString()} (idle + decayed — down-ranked in recall; kept, not deleted):`);
     for (const memory of plan.fade) {
       lines.push(`    • ${memory.key}  (score ${memory.score.toFixed(2)}, idle ${Math.round(memory.ageDays).toString()}d)`);
     }
@@ -244,16 +244,24 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
 
   memory
     .command("consolidate")
-    .description("Sleep consolidation: which recalled memories are PROMOTING (salient) vs FADING (idle + decayed) — report only, never deletes")
+    .description("Sleep consolidation: promotes salient recalled memories, down-ranks fading ones in recall (never deletes)")
     .option("--json", "Print the raw plan")
     .action(async (options: { readonly json?: boolean }) => {
-      const file = resolveRecallHitsFile(process.env as Record<string, string | undefined>);
+      const env = process.env as Record<string, string | undefined>;
+      const file = resolveRecallHitsFile(env);
       const records = await readRecallHits(file);
       const nowMs = Date.now();
       const plan = consolidationPlan(
         records.map((record) => ({ hits: record.hits, key: record.key, lastHitMs: record.lastHitMs, recentAccessMs: record.recentAccessMs })),
         { nowMs, useActrRanking: true }
       );
+      // Close the Ebbinghaus forgetting loop (arXiv:2305.10250, MemoryBank):
+      // write fading keys to the sidecar so the episodic ranker can down-rank
+      // them. Overwrite every run — reinstatement is automatic: a session
+      // re-engaged between runs drops out of selectForgettable, so the
+      // next consolidation writes a file that no longer contains it.
+      const fadeKeys = plan.fade.map((m) => m.key);
+      await writeFadedMemoryKeys(resolveFadedMemoriesFile(env), fadeKeys, nowMs);
       if (options.json) {
         helpers.writeOutput(io, plan);
         return;

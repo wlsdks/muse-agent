@@ -57,6 +57,7 @@ export {
   resolveDiscordAfterFile,
   resolveDiscordInboxFile,
   resolveEpisodesFile,
+  resolveFadedMemoriesFile,
   resolveFeedsFile,
   resolveFollowupLlmBudgetFile,
   resolveFollowupsFile,

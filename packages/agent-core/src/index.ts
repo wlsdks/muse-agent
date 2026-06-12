@@ -206,7 +206,8 @@ export {
   type GroundingEvalCorpus,
   type GroundingEvalDeps,
   type GroundingEvalKind,
-  type GroundingEvalResult
+  type GroundingEvalResult,
+  type GroundingGroupTally
 } from "./grounding-eval.js";
 export {
   buildAttributedRepairPrompt,
@@ -217,7 +218,7 @@ export {
   type AttributedRepairResult
 } from "./attributed-repair.js";
 export { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction, type CasualPromptKind } from "./casual-prompt.js";
-export { calibrateAbstention, conformalThreshold, empiricalCoverage, type CalibrationResult } from "./conformal.js";
+export { calibrateAbstention, calibrateAbstentionByGroup, conformalThreshold, empiricalCoverage, type CalibrationResult, type GroupCalibrationResult, type GroupedScore } from "./conformal.js";
 export { DEFAULT_QUORUM, independentWitnessCount, quorumVerdict, type QuorumVerdict } from "./quorum.js";
 export { overdueContacts, type ContactInteractions, type OverdueContact, type OverdueOptions } from "./relationship-decay.js";
 export { selectEarnedThemes, type EarnedProactivityOptions, type EarnedTheme, type ThemeOccurrence, type ThemeSignal } from "./earned-proactivity.js";
@@ -249,12 +250,15 @@ export {
   parseCouncilAnswer,
   produceCouncilReasoning,
   produceGroundedCouncilReasoning,
+  screenCouncilOutliers,
   synthesizeCouncilAnswer,
   verifyCouncilGrounding,
   type CouncilAbstentionOptions,
   type CouncilAnswer,
   type CouncilModelOptions,
-  type CouncilUtterance
+  type CouncilScreenResult,
+  type CouncilUtterance,
+  type OutlierScreenOptions
 } from "./council.js";
 export {
   DEFAULT_ROLES,

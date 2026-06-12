@@ -502,3 +502,46 @@
 - **왜:** fresh 표면(contacts). 데이터 무결성 + 수신자-해결 영구 손상(outbound-safety 핵심). EXPANSION 스카웃 라이브 확인. 다른 KIND(중복/upsert).
 - **리뷰지점:** contacts-tool.ts(contacts? 리더 + 이름매치 id재사용+merge) + autoconfigure:710(리더 추가) + commands-ask:2658(raw append→addContact+리더) + contacts-tool.test.ts(재추가 id재사용+merge, case-insensitive, no-reader back-compat) RED→GREEN. mcp 1703, check 0, lint 0. Fable-5 검증자 PASS(back-compat 7 테스트 무회귀·양쪽 seam live·merge 필드드롭 불가·HEAD length 2 재현). 스카웃 "테스트 없음" 정정(있었으나 중복을 의도 문서화 안 함).
 - **리스크:** 없음에 가까움 — 리더 없으면 old 동작(optional dep). 잔여(비차단): exact-name-only(alias 재추가는 중복 가능), commands-ask read→save 비원자(save만 큐). RATCHET: testFiles 893 무변동(+3 케이스), fabrication 0 유지. runner-up(crypto base64/hex U+FFFD) 기록. grounding floor 무관(contacts upsert, 게이트 무변경).
+## [TOOL loop] fire 7 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** 새 v1.11.2 DECOMPOSE-ON-DEFER 가드를 deferred 빅아이템 #6(ask error-path run-log)에 적용 — 4개 loop-sized 슬라이스(6a/6b/6c/6d)로 쪼개 backlog 기록 + 슬라이스 6a ship: 공유 buildAskRunLog 빌더(success/failure payload) 추출 + 성공 경로 배선.
+- **왜:** 최근 3 fire가 모두 scout 보안버그 同KIND라 다양성 가드상 다른 KIND 필요 + 내 v1.11.0 평가의 "큰 항목 rot" 발견을 새 가드로 직접 처방(defer→decompose 파이프라인). #6 핵심(실패 trace)은 ~2000줄 본문 wrap이라 6b를 전용 fire로 정직히 사이징.
+- **리뷰지점:** program-helpers.ts(buildAskRunLog: success/failure 단일 소스) + commands-ask.ts:3734(성공 경로 배선, byte-identical) + program-helpers.test.ts(3 케이스: success payload·failure success:false+error·confidence/error omit) RED→GREEN. backlog #6 분해(6b=2000줄 body extract 전용 fire, 6c=Ctrl-C abort, 6d=chat-repl parity, exact seam). cli 2528·check 0·lint 0. Fable-5 검증자 PASS(성공 written JSONL byte-identical·분해 actionable).
+- **리스크:** 6a의 failure 분기는 테스트됐으나 6b가 catch를 배선하기 전까진 미호출(inert 아님 — 성공 경로는 live, backlog가 6b를 명시). RATCHET: testFiles 888 무변동(기존 파일에 +3 케이스), fabrication 0 유지, decompose-enablement 진척. grounding floor 무관(run-log payload 빌더, 게이트 무변경).
+
+
+## [TOOL loop] fire 8 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** #6 슬라이스 6d — chat-repl 실패 run의 trace 소실 수정. createTuiChatSubmitter가 happy-path에서만 run-log를 썼는데, runner(runLocalChat/apiRequest)가 throw하면 trace 전무. 주입가능 runChat 파라미터(기본=실제 dispatch) + try/catch로 success:false 엔트리 기록 후 원본 에러 re-throw.
+- **왜:** 실패 chat run = error-analysis 연료인데 소실됐음(#6의 chat판). 다양성 가드: 최근 보안×3+decompose×1이라 behavioral-observability fix로 KIND 전환. chat 핸들러는 작은 함수라 6b의 2000줄 추출 없이 직접 wrap 가능 → 6b와 독립.
+- **리뷰지점:** chat-repl.ts createTuiChatSubmitter(DI runner + 실패 try/catch, source 호이스트) + chat-repl.test.ts(throwing runner → .muse/runs에 success:false trace + 원본 re-throw; success 경로 무회귀) RED→GREEN. cli 2530, check 0, lint 0. Fable-5 검증자 PASS(성공 경로 byte-identical·double-log 없음·default 비inert).
+- **리스크:** 거의 없음 — 추가 관측만(실패 trace), 성공 경로 불변, .catch로 로그 실패가 원본 에러 안 가림. RATCHET: testFiles 888 무변동(+2 케이스), fabrication 0 유지. #6 family는 6a(빌더)+6d(chat) Done; 6b(ask body wrap, 전용 fire)+6c(abort) OPEN. grounding floor 무관.
+
+
+## [TOOL loop] fire 9 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** muse.math.evaluate의 parseNumber가 다중-dot 숫자("1.2.3")를 parseFloat로 1.2로 조용히 절단 → "1.2.3 * 100"이 120 반환. 1줄 수정: parseFloat → strict Number (NaN→기존 throw).
+- **왜:** 이 도구의 전체 계약이 "8B가 못 하는 정확한 계산"인데 틀린 숫자가 모델 검증 없이 사용자 답으로 흐름(shared core라 ask/chat arithmetic fast-path까지). EXPANSION 스카웃 발굴. 다양성: 보안×3→decompose→observability 다음 parsing-correctness로 KIND 다양.
+- **리뷰지점:** loopback-math-server.ts:163(parseFloat→Number) + mcp.test.ts(다중-dot→error + 5./.5 컨트롤) RED→GREEN. mcp 1687, check 0, lint 0. Fable-5 검증자 PASS(유효 입력 무회귀 node-검증·shared core 도달·1..2도 수정). runner-up(json.query 프로토타입-체인 walk → Object.hasOwn)을 새 ◦로 backlog 기록.
+- **리스크:** 없음에 가까움 — Number는 parseFloat보다 엄격하나 parseNumber가 이미 digits/dots만 통과시켜 다중-dot 외 발산 없음(검증됨). RATCHET: testFiles 888 무변동(+1 케이스), fabrication 0 유지. grounding floor 무관(산술 파서 correctness, 게이트 무변경).
+
+## [cognition loop] fire 28 — 2026-06-13 · 사이클6 · 테마: 멀티에이전트 robustness (PAPER-GROUNDED)
+
+- **무엇:** **MoA deception robustness (arXiv:2503.05856, 공개)** 적용 — `screenCouncilOutliers`: 패널 합의 대비 outlier(기만/off-topic) peer를 합성 前 격리(per-member 평균 pairwise Jaccard support, absFloor AND relFloor×median, panel≥3, majority-preserving cap). `synthesizeCouncilAnswer`에 dedupe 後 배선(prompt+validPeerIds는 kept만, excludedPeers 추가). DEAD `orchestrateAnswer` 회피, LIVE council seam.
+- **왜:** A2A peer는 외부 untrusted agent — 기만 peer reasoning이 합성에 흘러들면 reverify judge가 "거짓이 곧 인용 증거"라 PASS(GROUNDED≠TRUE 구멍, 6번째 표면). 멀티에이전트 robustness(fire25-27과 다른 KIND).
+- **리뷰지점:** `council.ts`(screen fn + 배선) + `index.ts` + `council.test.ts`. **maker=Sonnet / scout+judge=Fable 5**: scout가 inert seam(orchestrateAnswer dead) 회피 확인. judge **v1 FAIL** — 인라인 `\w+` 토크나이저가 ASCII-only라 **한국어(Muse 주언어)에서 깨짐**(기만 한국어 peer 영영 미screen) 실증 → CJK-aware `lexicalTokens` 재사용 + jaccard(∅)→0 + 한국어 테스트로 수정(counterfactual: old 토크나이저면 9 테스트 fail). agent-core 1815 green.
+- **리스크:** **문서화된 한계** — cross-LANGUAGE 패널(EN 다수 속 정당 KO peer)은 token overlap 0이라 오격리(동종 패널·기만-peer 보안케이스는 정상). embedding 기반 cross-lingual 유사도 필요 → backlog ◦. 격리는 subtractive(floor/reverify 불변). RATCHET: testFiles +0(기존 파일), fabrication 0, 신규 방어 표면(council outlier). 교훈: 유사도/토크나이저 슬라이스는 영어 테스트만으로 green이어도 한국어에서 깨질 수 있음 — CJK 테스트 필수.
+
+## [cognition loop] fire 29 — 2026-06-13 · 사이클6 · 테마: calibration/abstention 품질 (PAPER-GROUNDED)
+
+- **무엇:** **Multi-group/multivalid conformal UQ (arXiv:2407.21057, Liu & Wu, CMU, open-access)** 적용 — `calibrateAbstentionByGroup`(conformal.ts: 그룹별 n≥minGroupN이면 자체 conformal tau, 얇은 그룹은 pooled fallback) + `scoreGroundingEval`에 per-`dominantScriptFamily` tally/calibration/`groupCoverageViolations`(pooled tau 하 coverage<1−α 그룹) 가산 + `renderGroundingEvalReport`가 per-group 행 + ⚠ 위반 줄 렌더. 더해 production `GROUNDING_EVAL_CORPUS`에 한국어 서브그룹(12 answerable + 4 must-refuse + 12 노트) 추가.
+- **왜:** abstention 보정이 POOLED-only인데 보정 코퍼스가 EN-only → pooled "≥90% coverage"가 한국어(Muse 주언어) 서브그룹에서 60%로 조용히 무너지는 게 논문의 정확한 실패 모드. per-group 측정으로 그 격차를 드러냄. fire25-28(HippoRAG/BoN-MAV/Memp/MoA-robustness)과 다른 KIND(calibration). 가산 측정만 — verdict/threshold 무변경(fabrication floor 안전).
+- **리뷰지점:** `conformal.ts`+`grounding-eval.ts`(+테스트) agent-core, `grounding-eval-runner.ts`+`grounding-eval-corpus.ts`(+테스트) cli. **maker=Sonnet / scout+judge=Fable 5**: judge **v1 FAIL(INERT)** — 메커니즘은 옳으나 production 코퍼스가 EN-only라 hangul 그룹이 영영 안 생겨 ⚠ 렌더 도달 불가(fixture에서만 발화). 한국어 코퍼스 추가로 수정 → judge **v2 PASS**: 실제 `muse doctor --grounding`(live Ollama, exit 0)가 latin+hangul 2그룹 렌더(hangul 0/12 FR, 4/4 faithfulness), 12 한국어 answerable 전부 hangul 라우팅·own tau(pooledFallback=false). counterfactual: production-corpus 테스트가 HEAD 코퍼스에서 hangul-assertion에 fail. cli 2533, agent-core 1825, lint 0.
+- **리스크:** 낮음 — 가산 측정 + EN 케이스 byte-identical + verdict 불변. fabrication floor: 한국어 answerable 12개 모두 인용 노트가 답을 실제 포함(judge 검증), must-refuse 4개는 진짜 ungrounded. RATCHET: testFiles +1(conformal.test.ts)·+한국어 케이스 16, fabrication 0 유지, 신규 진단 표면(per-script-family coverage violation). 교훈: 측정 슬라이스는 "계산됨"이 아니라 "production 입력이 그 코드 경로에 실제 도달"해야 non-inert — fire27/28에 이은 inert-trap 재확인.
+
+## [cognition loop] fire 30 — 2026-06-13 · 사이클6 · 테마: 메모리관리 (PAPER-GROUNDED)
+
+- **무엇:** **MemoryBank Ebbinghaus 망각 루프 (arXiv:2305.10250, Zhong et al., AAAI 2024, open-access)** 적용 — 이미 *계산만* 되던 fade(`selectForgettable`, 3표면 report-only inert)를 닫음. `muse memory consolidate`가 `plan.fade` 키를 사이드카(`~/.muse/memory-fade.json`)에 WRITE → production 에피소드 recall 랭커(`StoreBackedEpisodicRecallProvider.resolve`, default-ON)가 READ해 faded 세션 similarity ×FADE_PENALTY=0.5(minScore 게이트 後, ranking-only) → 재recall된 메모리는 consolidate 재실행이 사이드카를 덮어쓰며 자동 reinstatement(추가 state 0).
+- **왜:** fade가 세 표면 깊이 계산되나 *어디서도 적용 안 됨* = judge가 3 fire 연속 잡은 inert 씨앗 — 이번엔 닫음(신규 inert가 아니라 기존 inert 해소). KIND=메모리관리(fire27 playbook·28 multi-agent·29 calibration과 다름). 망각이 retrieval로 피드백되고 recall이 망각을 되돌리는 게 논문 핵심.
+- **리뷰지점:** personal-recall-hits-store.ts(write/readFadedMemoryKeys)+index.ts(mcp)·provider-paths.ts(resolveFadedMemoriesFile)+context-engineering-builders.ts(autoconfigure)·episodic-recall.ts(fadedKeys+penalty)·commands-memory.ts(write+문구). **maker=Sonnet / judge=Fable 5 PASS**: 세션키 동일성 end-to-end(sessionId 전 hop 동일, file:line 추적)·default-ON reader·실writer·counterfactual robust(FADE_PENALTY=1.0이면 assembled+down-rank 테스트 5/5 fail, tie-break 아닌 strict inequality)·post-gate multiply-only(삭제 없음)·fail-open 3층. mcp1696·agent-core1831·cli2535·check0·lint0.
+- **리스크:** 낮음 — ranking-only+additive+fail-open, down-rank만(삭제 안 함), fabrication 표면은 줄기만 함. 정직한 한계: consolidate는 수동/on-demand라 사이드카가 그때만 갱신 — 데몬 tick 자동갱신은 backlog remainder. RATCHET: testFiles +2(episodic-recall-fade, memory-fade-assembled), fabrication 0 유지, 신규: 닫힌 망각 루프(첫 fade-적용 표면). grounding floor 무관.
