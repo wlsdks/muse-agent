@@ -41,6 +41,15 @@ export interface PlaybookStrategy {
    * synthesis at equal standing. Absent = treated as non-reflected.
    */
   readonly origin?: string;
+  /**
+   * Memp (arXiv 2508.06433): per-entry outcome tallies for evidence-gated
+   * lifecycle. Separates "never used" (both 0 / absent) from "used N times
+   * with a mixed record" — the net-reward scalar conflates these two states.
+   * A VALID tally = both fields present, finite integers ≥ 0, and
+   * reinforcements + decays ≥ 1. Missing/garbage → legacy reward path.
+   */
+  readonly reinforcements?: number;
+  readonly decays?: number;
 }
 
 export interface PlaybookProvider {
@@ -185,6 +194,78 @@ export function clampReward(value: number | undefined): number {
 }
 
 /**
+ * Standard Wilson score interval — the Memp (arXiv 2508.06433) confidence
+ * gate so lifecycle decisions require sufficient evidence, not a single event.
+ * z=1.96 ≈ 95% confidence by default.
+ */
+export function wilsonInterval(
+  successes: number,
+  total: number,
+  z = 1.96
+): { lower: number; upper: number } {
+  if (!Number.isFinite(successes) || !Number.isFinite(total) || !Number.isFinite(z) || total <= 0) {
+    return { lower: 0, upper: 1 };
+  }
+  const pHat = successes / total;
+  const z2 = z * z;
+  const denom = 1 + z2 / total;
+  const centre = (pHat + z2 / (2 * total)) / denom;
+  const margin = (z / denom) * Math.sqrt(pHat * (1 - pHat) / total + z2 / (4 * total * total));
+  return { lower: Math.max(0, centre - margin), upper: Math.min(1, centre + margin) };
+}
+
+function hasValidTally(s: PlaybookStrategy): boolean {
+  const r = s.reinforcements;
+  const d = s.decays;
+  return (
+    typeof r === "number" && Number.isFinite(r) && r >= 0 && Number.isInteger(r) &&
+    typeof d === "number" && Number.isFinite(d) && d >= 0 && Number.isInteger(d) &&
+    r + d >= 1
+  );
+}
+
+/**
+ * Evidence-damped reward: when a valid tally exists (Memp, arXiv 2508.06433)
+ * derive the effective score from outcome tallies with a shrinkage factor so a
+ * single trial stays near neutral. Falls back to the legacy clamped reward for
+ * entries without a valid tally — byte-identical to the pre-change path.
+ */
+export function effectiveStrategyReward(s: PlaybookStrategy): number {
+  if (!hasValidTally(s)) {
+    return clampReward(s.reward);
+  }
+  const r = s.reinforcements as number;
+  const d = s.decays as number;
+  const n = r + d;
+  const pHat = r / n;
+  // Shrinkage: n/(n+3) pulls sparse evidence toward neutral (0.5)
+  return Math.max(PLAYBOOK_REWARD_MIN, Math.min(PLAYBOOK_REWARD_MAX, (2 * pHat - 1) * PLAYBOOK_REWARD_MAX * (n / (n + 3))));
+}
+
+/** Lifecycle action from Memp (arXiv 2508.06433): deprecate a confidently-bad entry, graduate a confidently-good probation entry, retain otherwise. */
+export type StrategyLifecycleAction = "retain" | "deprecate" | "graduate";
+
+export function planStrategyLifecycle(
+  s: PlaybookStrategy,
+  _opts?: Record<string, unknown>
+): StrategyLifecycleAction {
+  if (!hasValidTally(s)) {
+    return "retain";
+  }
+  const r = s.reinforcements as number;
+  const d = s.decays as number;
+  const n = r + d;
+  const { lower, upper } = wilsonInterval(r, n);
+  if (upper < 0.4 && n >= 5) {
+    return "deprecate";
+  }
+  if (s.probation === true && lower > 0.5 && n >= 3) {
+    return "graduate";
+  }
+  return "retain";
+}
+
+/**
  * Learned avoidance: a strategy whose reward has sunk to or below this is
  * EXCLUDED from injection entirely (not merely deranked) — even in a small bank
  * where ranking would otherwise return everything. The soft, reversible
@@ -194,14 +275,31 @@ export function clampReward(value: number | undefined): number {
  */
 export const PLAYBOOK_AVOID_BELOW = -4;
 
-/** True when a strategy has been corrected enough that it is avoided (never injected). */
+/**
+ * True when a strategy is avoided (never injected). Checks the legacy
+ * reward floor OR a Memp-evidence-gated deprecation (arXiv 2508.06433)
+ * so a confidently-bad entry is excluded even if its net reward hasn't
+ * crossed the floor yet.
+ */
 export function isAvoidedStrategy(strategy: PlaybookStrategy): boolean {
-  return clampReward(strategy.reward) <= PLAYBOOK_AVOID_BELOW;
+  return clampReward(strategy.reward) <= PLAYBOOK_AVOID_BELOW || planStrategyLifecycle(strategy) === "deprecate";
 }
 
-/** A strategy is injectable when it is neither avoided (reward floor) nor on probation. */
+/**
+ * A strategy is injectable when it is neither avoided (reward floor / evidence
+ * deprecation) nor on probation without sufficient good evidence to graduate.
+ * Memp (arXiv 2508.06433): a probation entry whose lifecycle action is
+ * "graduate" becomes injectable; one with insufficient evidence stays guarded.
+ */
 export function isInjectableStrategy(strategy: PlaybookStrategy): boolean {
-  return !isAvoidedStrategy(strategy) && strategy.probation !== true;
+  if (isAvoidedStrategy(strategy)) {
+    return false;
+  }
+  if (strategy.probation !== true) {
+    return true;
+  }
+  // Evidence-gated graduation: probation clears only when Memp says graduate
+  return planStrategyLifecycle(strategy) === "graduate";
 }
 
 /**
@@ -240,7 +338,9 @@ function scoreStrategy(strategy: PlaybookStrategy, query: ReadonlySet<string>, c
     ? 0
     : rankOverlap(query, rankTokens(strategy.text)) + 2 * (strategy.tag ? rankOverlap(query, rankTokens(strategy.tag)) : 0);
   const semantic = typeof cosine === "number" && Number.isFinite(cosine) ? EMBED_RANK_WEIGHT * cosine : 0;
-  return relevance + semantic + REWARD_RANK_WEIGHT * clampReward(strategy.reward)
+  // Use evidence-damped reward when tallies exist (Memp, arXiv 2508.06433),
+  // falls back to legacy clampReward for entries without tallies.
+  return relevance + semantic + REWARD_RANK_WEIGHT * effectiveStrategyReward(strategy)
     - (strategy.origin === "reflected" ? REFLECTED_RANK_PENALTY : 0);
 }
 

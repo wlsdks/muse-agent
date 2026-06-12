@@ -535,7 +535,14 @@ export function buildPlaybookProvider(env: MuseEnvironment): PlaybookProvider | 
   const file = resolvePlaybookFile(env);
   return {
     listStrategies: async (userId: string) =>
-      (await queryPlaybook(file, userId)).map((entry) => ({ reward: entry.reward, tag: entry.tag, text: entry.text }))
+      (await queryPlaybook(file, userId)).map((entry) => ({
+        ...(typeof entry.decays === "number" ? { decays: entry.decays } : {}),
+        ...(entry.probation ? { probation: true } : {}),
+        ...(typeof entry.reinforcements === "number" ? { reinforcements: entry.reinforcements } : {}),
+        ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
+        ...(entry.tag ? { tag: entry.tag } : {}),
+        text: entry.text
+      }))
   };
 }
 

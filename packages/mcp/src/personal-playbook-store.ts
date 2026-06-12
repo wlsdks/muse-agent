@@ -82,6 +82,14 @@ export interface PlaybookEntry {
    * `muse learned` honestly show "you've raised this N×". Absent ⇒ observed once.
    */
   readonly timesObserved?: number;
+  /**
+   * Memp (arXiv 2508.06433): per-entry outcome tallies for evidence-gated
+   * lifecycle. Incremented by `adjustPlaybookReward` alongside the net reward so
+   * agent-core's `planStrategyLifecycle` can distinguish "never used" from "used
+   * N times with mixed results". Optional for legacy compat — absent → legacy path.
+   */
+  readonly reinforcements?: number;
+  readonly decays?: number;
 }
 
 async function quarantineCorruptStore(file: string): Promise<void> {
@@ -212,6 +220,11 @@ export async function adjustPlaybookReward(
       return {
         ...e,
         reward: updated,
+        // Memp (arXiv 2508.06433): increment the tally side that matches the
+        // delta so planStrategyLifecycle can distinguish conflation cases.
+        ...(delta > 0
+          ? { reinforcements: (e.reinforcements ?? 0) + 1 }
+          : { decays: (e.decays ?? 0) + 1 }),
         // Graduation (B1 §5): a probation strategy with net-positive reward has
         // earned evidence — clear probation so it becomes injectable.
         ...(e.probation && updated > 0 ? { probation: false } : {}),
@@ -311,6 +324,8 @@ function isPlaybookEntry(value: unknown): value is PlaybookEntry {
   if (e.origin !== undefined && typeof e.origin !== "string") return false;
   if (e.source !== undefined && typeof e.source !== "string") return false;
   if (e.timesObserved !== undefined && (typeof e.timesObserved !== "number" || !Number.isFinite(e.timesObserved))) return false;
+  if (e.reinforcements !== undefined && (typeof e.reinforcements !== "number" || !Number.isFinite(e.reinforcements))) return false;
+  if (e.decays !== undefined && (typeof e.decays !== "number" || !Number.isFinite(e.decays))) return false;
   return true;
 }
 

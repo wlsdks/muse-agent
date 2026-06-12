@@ -541,6 +541,20 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 
 ## Open — agent core
 
+- ✓→Done **Evidence-tallied playbook lifecycle (Memp, arXiv:2508.06433)** — [2026-06-13, cognition
+  loop fire 27, PAPER-GROUNDED, Fable scout+judge] Playbook reward was a clamped NET scalar that
+  conflated "never used" with "used 10× / 5↑5↓"; deprecation needed a near-pure losing streak;
+  probation graduated on a single net-positive bump. Applied Memp's update regimen (public preprint;
+  reimplemented): per-entry outcome TALLIES (`reinforcements`/`decays`) + `wilsonInterval` +
+  `effectiveStrategyReward` (evidence-damped; legacy-identical without a tally) + `planStrategyLifecycle`
+  (deprecate when wilsonUpper<0.4 & n≥5; graduate when probation & wilsonLower>0.5 & n≥3). Wired
+  END-TO-END: `adjustPlaybookReward` (store) writes the tallies; the 4 production projections
+  (`buildPlaybookProvider` + 3 commands-ask mappers) now CARRY them; `scoreStrategy`/`isAvoidedStrategy`/
+  `isInjectableStrategy` consume them on the live `applyPlaybook` ranking path. Fable judge FAILed v1
+  (the lifecycle was INERT — projections stripped the tallies) → completed the wiring + an assembled-path
+  test (confident-bad {0,8} excluded THROUGH the real provider; counterfactual proves the stripped
+  projection let it through). Playbook = prompt-ranking only (floor untouched). agent-core 1805 + autoconfigure 509 + cli 2528 green.
+
 - ✓→Done **Multi-aspect verifier vote on the MoA fallback (BoN-MAV, arXiv:2502.20379)** — [2026-06-13,
   cognition loop fire 26, PAPER-GROUNDED, Fable scout+judge] When the MoA aggregator threw/returned empty,
   `orchestrateAnswer` blindly picked the `"thorough"` proposal — even if off-topic while another was on-point;

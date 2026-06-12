@@ -1619,7 +1619,7 @@ export function composeChatSystemContent(systemPrompt: string, playbookSection: 
  * empty bank ⇒ undefined (no block).
  */
 export function selectPlaybookSection(
-  entries: readonly { readonly text: string; readonly tag?: string; readonly reward?: number }[],
+  entries: readonly { readonly text: string; readonly tag?: string; readonly reward?: number; readonly reinforcements?: number; readonly decays?: number }[],
   queryText: string,
   topK?: number
 ): string | undefined {
@@ -1627,7 +1627,9 @@ export function selectPlaybookSection(
     entries.map((entry) => ({
       text: entry.text,
       ...(entry.tag ? { tag: entry.tag } : {}),
-      ...(typeof entry.reward === "number" ? { reward: entry.reward } : {})
+      ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
+      ...(typeof entry.reinforcements === "number" ? { reinforcements: entry.reinforcements } : {}),
+      ...(typeof entry.decays === "number" ? { decays: entry.decays } : {})
     })),
     queryText,
     topK === undefined ? undefined : { topK }
@@ -1644,7 +1646,7 @@ export function selectPlaybookSection(
  * to the question, so a recency-floor pick never overclaims "applied".
  */
 export function topAppliedStrategy(
-  entries: readonly { readonly text: string; readonly tag?: string; readonly reward?: number; readonly probation?: boolean }[],
+  entries: readonly { readonly text: string; readonly tag?: string; readonly reward?: number; readonly probation?: boolean; readonly reinforcements?: number; readonly decays?: number }[],
   queryText: string,
   topK?: number
 ): string | undefined {
@@ -1653,7 +1655,9 @@ export function topAppliedStrategy(
       text: entry.text,
       ...(entry.tag ? { tag: entry.tag } : {}),
       ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
-      ...(entry.probation ? { probation: true } : {})
+      ...(entry.probation ? { probation: true } : {}),
+      ...(typeof entry.reinforcements === "number" ? { reinforcements: entry.reinforcements } : {}),
+      ...(typeof entry.decays === "number" ? { decays: entry.decays } : {})
     })),
     queryText,
     topK === undefined ? undefined : { topK }
@@ -3004,7 +3008,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             text: entry.text,
             ...(entry.tag ? { tag: entry.tag } : {}),
             ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
-            ...(entry.probation ? { probation: true } : {})
+            ...(entry.probation ? { probation: true } : {}),
+            ...(typeof entry.reinforcements === "number" ? { reinforcements: entry.reinforcements } : {}),
+            ...(typeof entry.decays === "number" ? { decays: entry.decays } : {})
           }));
           const ranked = await rankPlaybookStrategiesByRelevance(
             mapped, query, (text) => embed(text, embedModel), topK === undefined ? undefined : { topK }

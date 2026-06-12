@@ -19,7 +19,7 @@
  *  - BRAKE-FIRST. A paused learner's bank is frozen (no classification, no decay).
  */
 
-import { classifyCorrectionContradiction, PLAYBOOK_AVOID_BELOW, type CorrectionPolarity } from "@muse/agent-core";
+import { classifyCorrectionContradiction, isInjectableStrategy, PLAYBOOK_AVOID_BELOW, type CorrectionPolarity } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
 import { adjustPlaybookReward, isLearningPaused, queryPlaybook } from "@muse/mcp";
 
@@ -68,10 +68,9 @@ export async function decayContradictedStrategies(deps: DecayContradictedDeps): 
   const nowMs = (deps.now ?? (() => new Date()))().getTime();
 
   const bank = await queryPlaybook(deps.playbookFile, deps.userId);
-  // INJECTED = the strategies actually steering the agent: not on probation, and
-  // not already avoided (reward above the floor). Inline of agent-core's
-  // `isInjectableStrategy` so we don't depend on the cross-package strategy type.
-  const injected = bank.filter((e) => e.probation !== true && (e.reward ?? 0) > PLAYBOOK_AVOID_BELOW);
+  // INJECTED = the strategies actually steering the agent: injectable per
+  // agent-core's gate (non-probation, non-avoided, evidence-gated graduation).
+  const injected = bank.filter(isInjectableStrategy);
   if (injected.length === 0) {
     return [];
   }
