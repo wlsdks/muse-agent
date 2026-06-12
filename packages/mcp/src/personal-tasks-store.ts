@@ -19,6 +19,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { formatDueLocal } from "./local-due-format.js";
 import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
+import { withFileLock } from "./encrypted-file.js";
 
 export interface PersistedTask {
   readonly id: string;
@@ -84,6 +85,26 @@ export async function readTasks(file: string): Promise<readonly PersistedTask[]>
   return (parsed as { tasks: unknown[] }).tasks.flatMap((entry): readonly PersistedTask[] =>
     isPersistedTask(entry) ? [entry] : []
   );
+}
+
+/**
+ * Serialized read-modify-write: run `fn` over the current tasks and persist its
+ * result under a CROSS-PROCESS file lock, so the proactive daemon and a chat
+ * `add` (separate processes) can't both read the same list, each change it, and
+ * clobber the other (last-writer-wins lost the unseen write). Returns the
+ * persisted list. Every RMW caller must go through this, never read+write
+ * directly. Mirrors mutateReminders.
+ */
+export async function mutateTasks(
+  file: string,
+  fn: (current: readonly PersistedTask[]) => readonly PersistedTask[] | Promise<readonly PersistedTask[]>
+): Promise<readonly PersistedTask[]> {
+  return withFileLock(file, async () => {
+    const current = await readTasks(file);
+    const next = await fn(current);
+    await writeTasks(file, next);
+    return next;
+  });
 }
 
 export async function writeTasks(file: string, tasks: readonly PersistedTask[]): Promise<void> {

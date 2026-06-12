@@ -188,8 +188,11 @@ replay (this commit). Remaining, severity order:
   which now re-reads current and marks fired by id, merging with concurrent adds). TDD 3 (two
   concurrent adds both persist, mutate returns+persists, serial sequence keeps all); mcp 1651, check
   0, lint 0. FOLLOW-UP: the TASKS store has the same shape — apply mutateTasks next.
-- ◦ **Tasks store unserialized RMW** — same fix as reminders (mutateTasks + withFileLock at the
-  add/complete/update/delete RMW sites). (stores audit #2, tasks half)
+- ✓→Done (tasks) **Tasks store unserialized RMW → serialized via mutateTasks** — same fix as
+  reminders: `mutateTasks(file, fn)` = read→fn→write under the cross-process `withFileLock`;
+  converted EVERY RMW site (add/complete/update/delete in loopback-tasks). mutate-tasks.test.ts
+  proves two concurrent adds both persist (lost-update gone). mcp build + 1654 tests green, lint 0.
+  (stores audit #2, tasks half — completes the reminders FOLLOW-UP)
 - ◦ **Calendar store + credential store: corrupt file → silent full wipe** — adopt the sibling
   stores' quarantine-on-corrupt posture + atomic writes. (stores audit #3)
 - ◦ **toolGrounded blanket bypass** — chat gate skipped on ANY tool call even when the tool returned

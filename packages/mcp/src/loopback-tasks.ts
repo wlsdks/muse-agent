@@ -8,12 +8,12 @@ import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, startOfLocalDay, wit
 import {
   compareTasksByDueDate,
   parseTaskDueAt,
+  mutateTasks,
   readTasks,
   readTaskStatusFilter,
   resolveTaskRef,
   selectTasksDueWithin,
   serializeTaskForModel,
-  writeTasks,
   type PersistedTask
 } from "./personal-tasks-store.js";
 
@@ -100,7 +100,6 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             }
             dueAt = parsed;
           }
-          const tasks = await readTasks(file);
           const created: PersistedTask = {
             createdAt: now().toISOString(),
             id: idFactory(),
@@ -112,7 +111,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             ...(urgent ? { urgent: true } : {})
           };
           try {
-            await writeTasks(file, [...tasks, created]);
+            await mutateTasks(file, (current) => [...current, created]);
           } catch (error) {
             return { error: errorMessage(error) };
           }
@@ -205,10 +204,14 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             completedAt: now().toISOString(),
             status: "done"
           };
-          const next = [...tasks];
-          next[index] = completed;
           try {
-            await writeTasks(file, next);
+            await mutateTasks(file, (current) => {
+              const i = current.findIndex((task) => task.id === resolution.task.id);
+              if (i < 0) return current;
+              const updatedList = [...current];
+              updatedList[i] = { ...current[i]!, completedAt: completed.completedAt, status: "done" };
+              return updatedList;
+            });
           } catch (error) {
             return { error: errorMessage(error) };
           }
@@ -293,10 +296,14 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             }
           }
           const updated = patched as unknown as PersistedTask;
-          const next = [...tasks];
-          next[index] = updated;
           try {
-            await writeTasks(file, next);
+            await mutateTasks(file, (current) => {
+              const i = current.findIndex((task) => task.id === resolution.task.id);
+              if (i < 0) return current;
+              const updatedList = [...current];
+              updatedList[i] = updated;
+              return updatedList;
+            });
           } catch (error) {
             return { error: errorMessage(error) };
           }
@@ -340,9 +347,8 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           if (resolution.status !== "resolved") {
             return { error: `task not found: ${ref}` };
           }
-          const next = tasks.filter((task) => task.id !== resolution.task.id);
           try {
-            await writeTasks(file, next);
+            await mutateTasks(file, (current) => current.filter((task) => task.id !== resolution.task.id));
           } catch (error) {
             return { error: errorMessage(error) };
           }
