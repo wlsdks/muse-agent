@@ -283,9 +283,15 @@ export class PuppeteerBrowserController implements BrowserController {
         const role =
           el.getAttribute("role") ||
           (tag === "a" ? "link" : tag === "button" ? "button" : tag === "select" ? "combobox" : isField ? "textbox" : "button");
-        const key = `${role}\u0000${name}`;
-        if (name && seen.has(key)) continue;
-        if (name) seen.add(key);
+        // Collapse only TRULY redundant links — same text AND same href, which is
+        // a responsive nav rendered twice. Distinct buttons/actions are NEVER
+        // deduped: a per-row "Add to cart" or a repeated "View" must each stay
+        // targetable (the model picks one by ordinal — "the second Add to cart").
+        if (tag === "a" && name) {
+          const key = `${name} ${el.getAttribute("href") || ""}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+        }
         el.setAttribute("data-muse-ref", String(ref));
         out.push({ name, ref, role });
         ref += 1;

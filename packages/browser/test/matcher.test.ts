@@ -43,6 +43,40 @@ describe("matchElement — deterministic grounding (model names, code resolves)"
   });
 });
 
+describe("matchElement — ordinal targeting among repeated controls", () => {
+  const rows: SnapshotElement[] = [
+    { name: "View", ref: 0, role: "button" },
+    { name: "View", ref: 1, role: "button" },
+    { name: "View", ref: 2, role: "button" }
+  ];
+
+  it("'the second View' picks the 2nd in DOM order", () => {
+    expect(matchElement(rows, "the second View", "click")?.ref).toBe(1);
+  });
+
+  it("'2nd View' (numeric) works too", () => {
+    expect(matchElement(rows, "2nd View", "click")?.ref).toBe(1);
+  });
+
+  it("'last View' picks the final one", () => {
+    expect(matchElement(rows, "last View", "click")?.ref).toBe(2);
+  });
+
+  it("an out-of-range ordinal clamps to the last match", () => {
+    expect(matchElement(rows, "fifth View", "click")?.ref).toBe(2);
+  });
+
+  it("a literal label that starts with an ordinal word is NOT mis-stripped", () => {
+    // only one 'First name' field exists → 'first' is part of the label, not an ordinal
+    const fields: SnapshotElement[] = [
+      { name: "First name", ref: 0, role: "textbox" },
+      { name: "Last name", ref: 1, role: "textbox" }
+    ];
+    expect(matchElement(fields, "First name", "type")?.ref).toBe(0);
+    expect(matchElement(fields, "Last name", "type")?.ref).toBe(1);
+  });
+});
+
 describe("filterElements — focused browser_read", () => {
   it("returns only loosely-matching elements", () => {
     expect(filterElements(els, "sign").map((e) => e.ref)).toEqual([0, 1]);

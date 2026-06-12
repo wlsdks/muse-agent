@@ -239,9 +239,20 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   a 500ms window so a normal no-new-tab click isn't taxed (2943ms → 1446ms). Autocomplete
   (type → suggestion) already works via the DOM-stable settle. Locked: smoke 13 (new tab
   followed) + 14 (autocomplete observed); unit 36, eval:browser-agent PASS.
-- ◦ **more real-web probes** — remaining gap-finding passes: native file upload
-  (`<input type=file>` → CDP uploadFile, needs a path arg/tool), hover-reveal menus
-  (no hover action yet), cross-origin iframe (per-frame contexts — scope honestly).
+- ✓→Done **repeated-control targeting** (probe batch 3, click/select) — a per-row
+  "Add to cart" / repeated "View" was DEDUPED to one entry, so the model could never
+  target the 2nd (product lists, tables, search results — a huge real-web class). Fix:
+  (a) dedup now collapses only TRULY redundant LINKS — same text AND same href (a
+  responsive nav rendered twice); distinct buttons/actions are kept. (b) matcher gained
+  ORDINAL targeting ("the second Add to cart", "2nd View", "last") that picks the Nth
+  among equally-matched controls in DOM order — guarded so a literal label that starts
+  with an ordinal word ("First name") is never mis-stripped (only applies when `rest`
+  truly has >1 match). Custom (non-native) dropdowns + tabs already worked (settle).
+  Locked: matcher unit +5, smoke 15 (repeated buttons distinct + ordinal→Banana), agent
+  battery PASS.
+- ◦ **more real-web probes** — remaining: hover-reveal menus (needs a hover action),
+  native file upload (`<input type=file>` → CDP uploadFile + path arg/tool), cross-origin
+  iframe (per-frame contexts — scope honestly).
 - ✓→Done **browser_scroll** — the snapshot only saw rendered DOM, so below-the-fold /
   lazy-loaded content (infinite feeds, long lists) was invisible. New read tool scrolls
   (down/up/top/bottom) + settles + re-observes. Unit (enum + reject-unknown + scrolls);

@@ -18,6 +18,7 @@
  *  12. disabled        — disabled controls are omitted (no wasted clicks)
  *  13. new tab         — a target=_blank click is FOLLOWED (new page observed)
  *  14. autocomplete    — typing reveals suggestions (settle catches them)
+ *  15. repeated actions — per-row buttons stay distinct + ordinal targets the right one
  *
  * Skips (exit 0) when Chrome is not installed — a skip is not a pass.
  */
@@ -26,7 +27,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { PuppeteerBrowserController } from "../packages/browser/dist/index.js";
+import { PuppeteerBrowserController, matchElement } from "../packages/browser/dist/index.js";
 
 const SPA_HTML = `<!doctype html><html><head><title>SPA</title></head><body><div id="root"></div>
 <script>setTimeout(() => {
@@ -63,7 +64,7 @@ const SELECT_HTML = `<!doctype html><html><head><title>Select</title></head><bod
 <input aria-label="Search" placeholder="Search"
   oninput="document.getElementById('typed').textContent='typed:'+this.value">
 <div id="typed">typed:none</div>
-<a href="#a">Pricing</a><a href="#b">Pricing</a><a href="#c">Pricing</a>
+<a href="#pricing">Pricing</a><a href="#pricing">Pricing</a><a href="#pricing">Pricing</a>
 <button style="position:fixed;bottom:0;left:0">Accept cookies</button>
 </body></html>`;
 
@@ -116,6 +117,13 @@ const AUTOCOMPLETE_HTML = `<!doctype html><html><head><title>Auto</title></head>
 <div id="s"></div>
 </body></html>`;
 
+// Two products, each with an identically-labelled "Add to cart" — they must stay
+// distinct (NOT collapsed) so ordinal grounding can target the right one.
+const REPEAT_HTML = `<!doctype html><html><head><title>Shop</title></head><body>
+<div>Apple <button onclick="document.title='apple'">Add to cart</button></div>
+<div>Banana <button onclick="document.title='banana'">Add to cart</button></div>
+</body></html>`;
+
 function assert(condition, label) {
   if (!condition) throw new Error(`ASSERT FAILED: ${label}`);
   console.log(`  ✓ ${label}`);
@@ -141,6 +149,7 @@ try {
   await writeFile(join(dir, "newtab.html"), NEWTAB_HTML);
   await writeFile(join(dir, "newtab-target.html"), NEWTAB_TARGET_HTML);
   await writeFile(join(dir, "autocomplete.html"), AUTOCOMPLETE_HTML);
+  await writeFile(join(dir, "repeat.html"), REPEAT_HTML);
 
   console.log("1) SPA settle — late-rendered content is observed");
   let snap;
@@ -185,7 +194,7 @@ try {
 
   console.log("4) dedup + 5) fixed-position visibility");
   const pricing = snap.elements.filter((el) => el.name === "Pricing");
-  assert(pricing.length === 1, "3 identical nav links collapse to 1");
+  assert(pricing.length === 1, "3 same-href nav links collapse to 1 (distinct hrefs would stay)");
   assert(snap.elements.some((el) => el.name === "Accept cookies"), "position:fixed button is visible");
 
   console.log("6) cross-invocation reconnect — a second controller drives the SAME Chrome");
@@ -236,6 +245,13 @@ try {
   snap = await controller.open(pathToFileURL(join(dir, "autocomplete.html")).href);
   snap = await controller.type(snap.elements.find((el) => el.role === "textbox").ref, "laptop", false);
   assert(snap.elements.some((el) => el.name.includes("Result: laptop")), "the suggestion rendered on input is observed");
+
+  console.log("15) repeated actions — per-row buttons stay distinct + ordinal targets the right one");
+  snap = await controller.open(pathToFileURL(join(dir, "repeat.html")).href);
+  assert(snap.elements.filter((el) => el.name === "Add to cart").length === 2, "both per-row 'Add to cart' buttons are listed (not deduped)");
+  const secondAdd = matchElement(snap.elements, "the second Add to cart", "click");
+  snap = await controller.click(secondAdd.ref);
+  assert(snap.title === "banana", "'the second Add to cart' grounds to Banana's button, not Apple's");
 
   console.log("\nsmoke:browser PASS");
 } finally {
