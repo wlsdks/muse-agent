@@ -1,6 +1,6 @@
 ---
 name: loop-creator
-version: 1.11.0
+version: 1.11.1
 description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘", "loop 등록", "X를 계속 강화하는 루프", or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from its bundled loop-engineering.md contract AND registers the cron itself, then reports the prompt + cron id + how to stop. The autonomous successor to hand-written ad-hoc loop prompts.
 ---
 
@@ -108,6 +108,8 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 Muse 자율 개선 루프 — 테마: <목적>. 반드시 Node 24(nvm default).
 ① docs/goals/backlog.md를 먼저 읽고 `pnpm self-eval`로 회귀를 확인 — 있으면 그게 이번 이터레이션.
 ② <테마>의 **최상단 ◦(가치 우선, "검증 쉬운 것" 아님)**. 최근 3 fire가 같은 KIND였으면 다른 KIND를 고른다(다양성). 비면 gap-scout 리필.
+   **논문-근거 우선(가능할 때)**: 강한-티어(Fable5) scout가 **WebSearch로 검증된 2024-2026 AI-agent 논문**(내부 프로세스·자기개선·검증/grounding·메모리·오케스트레이션)을 확인하고 *적용가능 메커니즘 + arXiv ID*로 슬라이스를 스펙 → verify-then-apply. 단순 correctness 버그픽스보다 논문-기반 capability/방법 적용을 우선(floor를 깨는 회귀면 예외적으로 먼저). 적용 시 소스/다이제스트/커밋에 arXiv ID 인용.
+   **공개/오픈 논문만**(진안 지시): arXiv preprint·오픈액세스 등 *누구나 자유롭게 참조·사용 가능한* 논문에 한정. published 방법/알고리즘을 **적용**하는 것이지 proprietary/비공개 자료나 코드를 복사하는 게 아님 — 출처(arXiv ID) 명시 + 자체 재구현.
    **DECOMPOSE-ON-DEFER**: 너무 커서(>1 fire) defer하면 *조용히 쉬운 걸로 안 내려가고* — 강한-티어(Fable5/Opus) 1스텝으로 그 항목을 loop-sized ◦ 슬라이스들로 **쪼개 backlog에 기록**(Anthropic planner 패턴), 또는 "loop-decompose 불가, 진안 필요"를 명시. 같은 항목이 2회 defer되면 3-fire 알림에 escalate(defer가 일방 ratchet이 되지 않게).
 ③ harness/dev-loop.md §3에 따라 검증가능 슬라이스를 TDD-first로. **행동 acceptance: 결과 상태(OUTCOME)를 채점 — 선언/config-only 테스트 금지(fabricated 값이 실제 드롭/동작하는 end-to-end 케이스).** 사소한 동종 변경(예: 남은 actuator들)은 **한 슬라이스로 배칭**(토큰 절약). 새 도구는 tool-calling.md + eval:tools 골든.
 ④ 결정적 검증(정지조건): **먼저 만진 패키지를 빌드**(pnpm --filter @muse/<pkg> build) → 가장 좁은 테스트 → pnpm check → 관련 eval(<해당 eval>) → pnpm lint. **pnpm check가 실패하면 첫 진단은 clean-rebuild 재실행**(cross-package 실패는 대개 동시 루프發 stale-dist — [[project_stale_dist_from_loop]]; 한 번 재실행 後에도 빨가면 진짜 회귀).
