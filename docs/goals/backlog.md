@@ -11,6 +11,28 @@
 > Priority: ★ = do next · ◦ = ready · ⏳ = blocked (reason noted).
 > Each item: **what** — why (source) — the smallest verifiable slice.
 
+## Done — loop infrastructure (2026-06-12, 진안-directed)
+
+- ✓→Done **loop-engineering contract + loop-creator skill** — distilled Addy
+  Osmani's "Loop Engineering" into `harness/loop-engineering.md` (6 primitives →
+  Muse seams · verifiable stopping condition `/goal` · 3 failure-mode guards:
+  unattended-verification / comprehension-debt / cognitive-surrender) and a
+  generative `.claude/skills/loop-creator/SKILL.md` that fills the checklist,
+  generates a principle-compliant recurring loop prompt, and registers the cron
+  itself (delegating scheduling to `/loop`). Replaces hand-written ad-hoc loop
+  prompts. FOLLOW-UP: pre-verify the skill end-to-end (theme → generated prompt →
+  registered cron → reported stop method) on a real theme before relying on it.
+
+## ★ Open — chat-gate toolGrounded blanket bypass (PAUSED mid-design, 2026-06-12)
+
+- ◦ **toolGrounded blanket bypass** — chat gate skipped on ANY tool call even
+  when the tool returned nothing; narrow to non-empty groundingSources, keep
+  number/email checks always-on. Spec (brainstorm + grill-hardened) at
+  `docs/superpowers/specs/2026-06-12-chat-gate-toolgrounded-bypass-design.md`:
+  surfaces tool grounding on the `tool-result` stream event (additive, shared
+  helper) so BOTH chat-repl (run() result) and chat-ink (stream) are gated on
+  one contract. Resume at writing-plans → TDD. (audit CLI #4)
+
 ## ★ Open — TOOL expansion & hardening (loop theme, 진안-directed 2026-06-12)
 
 The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing tools.
