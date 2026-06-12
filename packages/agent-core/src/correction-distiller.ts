@@ -278,7 +278,14 @@ export async function classifyCorrectionContradiction(
   } catch {
     return "uncertain";
   }
-  const match = output.match(/CONTRADICT|AGREE|UNRELATED/u);
+  // A false CONTRADICT decays a user's learned strategy, so detect it
+  // conservatively. The bare alternation grabbed "CONTRADICT" out of a NEGATED
+  // answer ("NOT CONTRADICT", "does not contradict the rule") and wrongly
+  // decayed — strip negated contradiction forms before matching, so a negated
+  // verdict falls through to a genuine AGREE/UNRELATED or to fail-closed
+  // "uncertain" (no decay) rather than a phantom contradiction.
+  const deNegated = output.replace(/\b(?:NOT|NO|NEVER|DOES\s*N'?T|DOESN'?T|DO\s*N'?T|DON'?T|IS\s*N'?T|ISN'?T)\s+CONTRADICT\w*/gu, " ");
+  const match = deNegated.match(/CONTRADICT|AGREE|UNRELATED/u);
   if (!match) return "uncertain";
   return match[0] === "CONTRADICT" ? "contradict" : match[0] === "AGREE" ? "agree" : "unrelated";
 }

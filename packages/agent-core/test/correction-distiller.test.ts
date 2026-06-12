@@ -29,6 +29,20 @@ describe("classifyCorrectionContradiction — polarity gate parse + fail-closed 
     expect(await run("maybe?")).toBe("uncertain");
     expect(await run("")).toBe("uncertain");
   });
+
+  it("does NOT read a NEGATED contradiction as a contradiction (no phantom decay of a learned strategy)", async () => {
+    // the bug: the bare /CONTRADICT/ match grabbed the word out of a negation
+    // and wrongly decayed the user's strategy.
+    for (const negated of ["NOT CONTRADICT", "does not contradict the rule", "It doesn't contradict.", "no, this does not contradict"]) {
+      expect(await run(negated), negated).not.toBe("contradict");
+    }
+  });
+
+  it("still reads a genuine contradiction and a negated-other verdict correctly", async () => {
+    expect(await run("CONTRADICT")).toBe("contradict");
+    expect(await run("The rule should be dropped — CONTRADICT")).toBe("contradict");
+    expect(await run("AGREE — it does not contradict")).toBe("agree"); // AGREE wins, negation stripped harmlessly
+  });
 });
 
 describe("detectCorrections — reliable failure signal (ReasoningBank 2509.25140; no LLM self-judge per 2404.17140)", () => {
