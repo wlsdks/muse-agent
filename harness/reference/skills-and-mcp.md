@@ -23,7 +23,7 @@ related: [tool-design.md, verification-and-guardrails.md, team-roles.md, archite
 ## 1. 무엇을 끌어오나 (두 종류)
 
 - **외부 도구 서버(MCP)** — 다른 곳이 만든 도구를 프로토콜로 연결(예: 내 실제 크롬을 모는 도구).
-- **자작 스킬** — 교정에서 스스로 써둔 절차형 스킬([team-roles](team-roles.md)의 자기개선과 연결).
+- **자작 스킬** — 교정에서 스스로 써둔 절차형 스킬([team-roles](../core/team-roles.md)의 자기개선과 연결).
 
 둘 다 "능력을 늘리되 신뢰 경계를 넘지 않게"가 핵심입니다.
 
@@ -44,8 +44,7 @@ related: [tool-design.md, verification-and-guardrails.md, team-roles.md, archite
 
 ## 4. 최소 권한 + 쓰기는 사람 손 (least privilege + HITL)
 
-- 도구 접근은 필요한 만큼만(읽기/인지가 기본). 상태를 바꾸는 행동은 [verification-and-guardrails]
-  (verification-and-guardrails.md)의 게이트를 거칩니다.
+- 도구 접근은 필요한 만큼만(읽기/인지가 기본). 상태를 바꾸는 행동은 [verification-and-guardrails](../core/verification-and-guardrails.md)의 게이트를 거칩니다.
 - 외부로 나가거나(제출·전송) 시스템을 바꾸는 외부 도구 호출은 **draft-first·사람 확인** 뒤에만.
 
 ## 5. 유출 차단 (egress)

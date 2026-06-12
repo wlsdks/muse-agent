@@ -18,9 +18,9 @@ related: [verification-and-guardrails.md, team-roles.md, muse-mapping.md, README
 ## 1. 하네스가 무너지는 곳 (실패 모드)
 
 - **맥락 부패(context rot).** 긴 작업에서 맥락이 넘쳐 모델이 한계 근처에서 소심해지거나 정보를
-  잃습니다 → "작업 메모리 예산"을 두고, 합치기보다 **압축/리셋**합니다([handoff-template](handoff-template.md)).
+  잃습니다 → "작업 메모리 예산"을 두고, 합치기보다 **압축/리셋**합니다([handoff-template](../core/handoff-template.md)).
 - **충돌하는 암묵적 결정.** 병렬 워커가 서로의 전체 맥락을 못 보면 어긋난 가정으로 일합니다
-  ([team-roles §0](team-roles.md)의 단일 스레드 반대원칙).
+  ([team-roles §0](../core/team-roles.md)의 단일 스레드 반대원칙).
 - **도구 오작동.** 잘못된 도구 설명이 에이전트를 엉뚱한 길로 보냅니다 → 도구 설계에 사람-인터페이스
   수준의 공을 들입니다.
 - **연쇄 실패.** 긴 자율 작업에서 사소한 실패가 큰 행동 변화로 번집니다 → 재시작이 아니라
@@ -28,7 +28,7 @@ related: [verification-and-guardrails.md, team-roles.md, muse-mapping.md, README
 - **무한 탐색/과다 스폰.** 간단한 일에 서브에이전트를 과다 생성하거나 없는 것을 끝없이 찾습니다 →
   넓게 시작해 좁히고, 작업 규모에 맞춰 에이전트 수를 정합니다.
 - **데이터 결함.** 엔터프라이즈 실패의 상당수는 모델이 아니라 하네스에 들어가는 **데이터** 문제입니다
-  → 입력 품질·출처를 가드레일로 거릅니다([verification-and-guardrails](verification-and-guardrails.md)).
+  → 입력 품질·출처를 가드레일로 거릅니다([verification-and-guardrails](../core/verification-and-guardrails.md)).
 - **조정 실패 > 능력 실패 (MAST).** 1,600+ 실측 트레이스의 14 실패 모드는 ① 시스템 설계 결함
   ② 에이전트 간 불일치(핸드오프) ③ 검증 부재, 세 범주로 묶입니다(arXiv 2503.13657) — 처방은
   핸드오프마다 명시적 스키마 검증·명시적 종료 조건·독립 검증 단계이고, 우리 양식 강제·루프

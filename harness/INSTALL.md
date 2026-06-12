@@ -17,10 +17,10 @@ updated: 2026-06-13
    # 전체 설치 (레퍼런스·러너 포함)
    cp -r harness /path/to/your-project/harness
 
-   # 최소 설치 (T1 코어 계약 6장 — 지시-층 하네스로 충분; README §포터블 구조)
+   # 최소 설치 (T1 코어 계약 — 지시-층 하네스로 충분; README §포터블 구조)
    mkdir -p /path/to/your-project/harness
-   cp harness/{AGENTS,handoff-template,role-prompts,team-roles,verification-and-guardrails,permission-matrix}.md \
-      /path/to/your-project/harness/
+   cp harness/AGENTS.md /path/to/your-project/harness/
+   cp -r harness/core /path/to/your-project/harness/core
    ```
    - `runner/`는 **헤드리스 자동화·게이트 코드 강제가 필요할 때만** 가져갑니다([AGENTS.md §3.5](AGENTS.md)).
    - **측정 기록은 리셋합니다** — golden-set의 진행표와 harness-acceptance §7.5는 *이 레포의* 실측
@@ -39,22 +39,22 @@ updated: 2026-06-13
      `CLAUDE.md`에도 두거나, `CLAUDE.md` 안에 `@AGENTS.md` 한 줄로 import하세요(공식 권장; 심링크
      `ln -s AGENTS.md CLAUDE.md`는 Unix/Mac 한정).
 
-3. **프로젝트에 맞추기** — `harness/muse-mapping.md`를 복제해 **당신 프로젝트용 매핑**으로 바꿉니다
+3. **프로젝트에 맞추기** — `harness/host/muse-mapping.md`를 복제해 **당신 프로젝트용 매핑**으로 바꿉니다
    (추상 역할 ↔ 당신의 실제 런타임/도구). 이 파일만 프로젝트마다 다르고, 나머지는 그대로 재사용.
 
 ## 확인 (활성화됐는지)
 
 설치 후, 에이전트에게 위험한 요청(예: "제3자에게 지금 바로 메일 보내")을 시켜 보세요.
 하네스가 활성화됐다면 **자동 전송 대신 초안+사람 확인(외부전송 게이트)** 으로 응답해야 합니다.
-빈 수용 기준으로 판정을 시키면 **"검증 불가"로 막혀야** 합니다([harness-acceptance](harness-acceptance.md)의
+빈 수용 기준으로 판정을 시키면 **"검증 불가"로 막혀야** 합니다([harness-acceptance](reference/harness-acceptance.md)의
 실측 케이스가 그 검사들입니다).
 
 ## 무엇이 들어있나 (폴더 내용)
 
 - **[AGENTS.md](AGENTS.md)** — 진입점(에이전트가 읽고 따르는 운영 계약). **여기부터.**
 - **[README.md](README.md)** — 사람용 인덱스(읽는 순서).
-- **역할·흐름** — [architecture](architecture.md) · [team-roles](team-roles.md) · [role-prompts](role-prompts.md) · [handoff-template](handoff-template.md)
-- **게이트·안전** — [verification-and-guardrails](verification-and-guardrails.md) · [permission-matrix](permission-matrix.md) · [failure-modes-and-observability](failure-modes-and-observability.md)
-- **토대** — [memory-layers](memory-layers.md) · [context-compaction](context-compaction.md) · [loop-budget](loop-budget.md) · [tool-design](tool-design.md) · [skills-and-mcp](skills-and-mcp.md) · [debugging-and-dx](debugging-and-dx.md)
-- **검증** — [golden-set](golden-set.md) · [harness-acceptance](harness-acceptance.md) · [runner-spec](runner-spec.md)
-- **프로젝트 매핑(교체용 예시)** — [muse-mapping](muse-mapping.md)
+- **역할·흐름** — [architecture](reference/architecture.md) · [team-roles](core/team-roles.md) · [role-prompts](core/role-prompts.md) · [handoff-template](core/handoff-template.md)
+- **게이트·안전** — [verification-and-guardrails](core/verification-and-guardrails.md) · [permission-matrix](core/permission-matrix.md) · [failure-modes-and-observability](reference/failure-modes-and-observability.md)
+- **토대** — [memory-layers](reference/memory-layers.md) · [context-compaction](reference/context-compaction.md) · [loop-budget](reference/loop-budget.md) · [tool-design](reference/tool-design.md) · [skills-and-mcp](reference/skills-and-mcp.md) · [debugging-and-dx](reference/debugging-and-dx.md)
+- **검증** — [golden-set](reference/golden-set.md) · [harness-acceptance](reference/harness-acceptance.md) · [runner-spec](reference/runner-spec.md)
+- **프로젝트 매핑(교체용 예시)** — [muse-mapping](host/muse-mapping.md)

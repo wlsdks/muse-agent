@@ -57,6 +57,45 @@ export interface RunLogInput {
   readonly source?: "cli.local" | "cli.remote" | "cli.remote.stream";
 }
 
+export interface AskRunLogParams {
+  readonly query: string;
+  readonly model?: string;
+  readonly timings: Record<string, number>;
+  /** summarizeTokenConfidence output (may be null); omitted from the entry when undefined. */
+  readonly confidence?: unknown;
+  /** The outcome label (askOutcomeLabel); an explicit null is a real label, kept distinct from absent. */
+  readonly grounded: string | null;
+  readonly response: string;
+  readonly success: boolean;
+  readonly toolsUsed: readonly string[];
+  /** Present on a FAILED run — the seam #6 needs so a thrown ask leaves a success:false trace. */
+  readonly errorMessage?: string;
+}
+
+/**
+ * Build the cli.local `muse ask` run-log entry. Single source of truth for the
+ * SUCCESS path (today's inline payload) AND the FAILURE path (#6: a thrown run
+ * must still leave a `success:false` trace for error-analysis, not vanish). The
+ * caller's catch passes `success:false` + `errorMessage`; everything else mirrors
+ * the success entry so both rows are shaped identically for the analyzer.
+ */
+export function buildAskRunLog(params: AskRunLogParams): RunLogInput {
+  return {
+    message: params.query,
+    ...(params.model !== undefined ? { model: params.model } : {}),
+    response: {
+      timings: params.timings,
+      ...(params.confidence !== undefined ? { confidence: params.confidence } : {}),
+      grounded: params.grounded,
+      response: params.response,
+      success: params.success,
+      toolsUsed: params.toolsUsed,
+      ...(params.errorMessage !== undefined ? { error: params.errorMessage } : {})
+    },
+    source: "cli.local"
+  };
+}
+
 export function defaultConfigPath(home?: string): string {
   const explicit = typeof home === "string" ? home.trim() : "";
   if (explicit.length > 0) return path.join(explicit, ".config", "muse", "config.json");

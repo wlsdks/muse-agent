@@ -29,7 +29,7 @@ related: [loop-budget.md, failure-modes-and-observability.md, team-roles.md, arc
 - **주기적으로** — 도구 호출 10~15회마다 압축을 예약하면 품질을 지키며 토큰을 크게 아낍니다.
 - **구조 경계에서 폴딩** — 토큰 임계가 아니라 **서브태스크 경계**에서 분기→완료 요약으로 접는
   편이 낫습니다(context-folding: active context 10× 축소에 성능 동등, 2510.11967). 우리
-  [project.mjs](runner/project.mjs)의 서브태스크 합성·1~2K 압축 반환이 그 형태입니다.
+  [project.mjs](../runner/project.mjs)의 서브태스크 합성·1~2K 압축 반환이 그 형태입니다.
 - **예산 인지** — 남은 예산이 빠듯해지면(HIGH→CRITICAL) 더 공격적으로 줄입니다([loop-budget](loop-budget.md)와 맞물림).
 
 ## 2. 무엇을 남기나 (선택적 보존)

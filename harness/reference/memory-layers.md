@@ -21,10 +21,9 @@ related: [context-compaction.md, handoff-template.md, team-roles.md, architectur
 
 ## 1. 계층 (Layers)
 
-- **작업 메모리(working)** — 지금 작업의 살아있는 문맥 창. 한도·압축의 대상([context-compaction]
-  (context-compaction.md)·[loop-budget](loop-budget.md)).
+- **작업 메모리(working)** — 지금 작업의 살아있는 문맥 창. 한도·압축의 대상([context-compaction](context-compaction.md)·[loop-budget](loop-budget.md)).
 - **단기(short-term)** — 최근 대화·세션 스크래치패드. 핸드오프 양식의 상태 로그가 여기에 해당
-  ([handoff-template](handoff-template.md)).
+  ([handoff-template](../core/handoff-template.md)).
 - **장기(long-term)** — 세션을 가로지르는 **사실·선호**. Muse는 이를 사실 저장소로 보존하고 답에
   반영합니다.
 - **구조화 사용자 모델(user model)** — 흩어진 사실과 별개로, 선호·금기·목표를 **신뢰도·갱신시각이
@@ -69,7 +68,7 @@ related: [context-compaction.md, handoff-template.md, team-roles.md, architectur
 
 ## 런타임 컴포넌트 (코드)
 
-위 계층·동작을 결정론 코드로 구현: [runner/memory.mjs](runner/memory.mjs) (의존성 0). **모델이 무엇을
+위 계층·동작을 결정론 코드로 구현: [runner/memory.mjs](../runner/memory.mjs) (의존성 0). **모델이 무엇을
 기억할지 판단**하고, **코드가 저장/검색/정리/감쇠/승격을 결정론적으로** 수행합니다.
 
 - `write({text, kind, durable, confidence, source})` — 쓰기. **`durable:false`(일회성)는 장기 저장 안 함**,
@@ -79,7 +78,7 @@ related: [context-compaction.md, handoff-template.md, team-roles.md, architectur
 - `decay({at})` — **추론(inference)** 항목만 신뢰도 반감기로 감쇠, 바닥 미만 드롭. 명시 사실/선호는 불변.
 - `promote({minRecalls})` — 자주 회상된 항목을 **항상-켜진 코어**로 승격. `core()`로 조회.
 
-검증: [runner/memory.test.mjs](runner/memory.test.mjs) — `node --test "harness/runner/*.test.mjs"`:
+검증: [runner/memory.test.mjs](../runner/memory.test.mjs) — `node --test "harness/runner/*.test.mjs"`:
 쓰기(일회성 드롭·빈 거부)·관련성 읽기+회상·중복 병합·추론 감쇠(반감기·바닥 드롭, 사실 불변)·승격.
 **5/5**(러너 스위트 누적 **50/50**).
 

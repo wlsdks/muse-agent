@@ -61,7 +61,7 @@ import { detectPercentageQuery, formatPercentage } from "./percentage-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
 import { docxToText, emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isPdfDocument, isPptxDocument, parsePdfBuffer, pptxToText } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
-import { resolvePersona, writeRunLog } from "./program-helpers.js";
+import { buildAskRunLog, resolvePersona, writeRunLog } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
@@ -3731,19 +3731,16 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         io.stderr(`(timings: ${Object.entries(t).map(([k, v]) => `${k}=${(v / 1000).toFixed(1)}s`).join(" · ")})\n`);
       }
       const askOutcome = askOutcomeLabel({ refusal: refusalAnswer, verdict: groundedVerdictLabel });
-      await writeRunLog(io.workspaceDir ?? process.cwd(), {
-        message: query,
+      await writeRunLog(io.workspaceDir ?? process.cwd(), buildAskRunLog({
+        query,
         model,
-        response: {
-          timings: askStages.timings(),
-          ...(answerLogprobs ? { confidence: summarizeTokenConfidence(answerLogprobs) ?? null } : {}),
-          grounded: askOutcome,
-          response: collectedAnswer,
-          success: true,
-          toolsUsed
-        },
-        source: "cli.local"
-      });
+        timings: askStages.timings(),
+        ...(answerLogprobs ? { confidence: summarizeTokenConfidence(answerLogprobs) ?? null } : {}),
+        grounded: askOutcome,
+        response: collectedAnswer,
+        success: true,
+        toolsUsed
+      }));
       // Whetstone fuel: an ASK failure becomes a weakness-ledger entry so doctor
       // / error-analysis can mine real-usage gaps — previously only chat-repl fed
       // the ledger. An UNBACKED-ACTION (the answer claimed a tool action the user

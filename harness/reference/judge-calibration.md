@@ -70,7 +70,7 @@ Reliability Harness, 2603.05399). 어려운 응답 쌍에선 강한 판정자도
 
 ## 재현 레시피
 
-평가자 역할 프롬프트([role-prompts](role-prompts.md))에 위 루브릭을 주고 표의 각 (기준, 빌드)을
+평가자 역할 프롬프트([role-prompts](../core/role-prompts.md))에 위 루브릭을 주고 표의 각 (기준, 빌드)을
 판정시킨 뒤 라벨과 비교해 TPR/TNR을 셉니다. 무효 케이스를 더 넣을수록 TNR 추정이 단단해집니다.
 판정자도 [golden-set](golden-set.md)의 G8~G12와 함께 회귀로 관리합니다.
 

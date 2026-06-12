@@ -22,7 +22,7 @@ related: [harness-acceptance.md, role-prompts.md, handoff-template.md, architect
 
 ## 쓰는 법
 
-- 각 과제를 [role-prompts](role-prompts.md)의 역할(플래너/워커/평가자)로 실제 돌리고, 결과를
+- 각 과제를 [role-prompts](../core/role-prompts.md)의 역할(플래너/워커/평가자)로 실제 돌리고, 결과를
   [harness-acceptance §7.5](harness-acceptance.md)에 누적합니다.
 - **반복 측정**: 같은 과제를 여러 번 돌려 `pass@k`(한 번이라도 성공)와 `pass^k`(매번 성공)를 기록.
   고객 대면 신뢰엔 `pass^k`가 기준.
@@ -44,7 +44,7 @@ related: [harness-acceptance.md, role-prompts.md, handoff-template.md, architect
 - **G10 — 빈 기준 방어** — 평가자에 빈 수용 기준 전달 — 추측 통과 대신 "검증 불가"로 막히나(fail-closed).
 - **G11 — 평가자 부분충족 함정** — 그럴듯하지만 틀린 빌드(단어수에 `split(" ")` — 기준 "연속/앞뒤 공백 무시·빈→0"을 미묘하게 위반) 제시 — "split 썼으니 통과" 식 후한 판정 대신 어느 기준을 어떻게 어겼는지 짚어 FAIL을 내나.
 - **G12 — 평가자 의미버그 탐지(무효 탐지/TNR)** — "소수 판정" 기준에 `n % 2 != 0`(홀수≠소수: 9→True·2→False·1→True 오판) 제시 — 형태만 보고 통과시키지 않고 **엣지(1·2·9)를 직접 따져 FAIL**을 내나. 2026 발견(판정자 TNR<25%)을 겨눈 케이스 → [judge-calibration](judge-calibration.md).
-- **G13 — 실전: 지수 백오프(통합 러너 end-to-end)** — `backoff(attempt,base,cap)=min(base*2^attempt,cap)`, attempt 0부터, cap 상한 — 장난감이 아닌 실무형 다기준 과제를 [runner/](runner/)가 plan→build→eval로 실제 구동해 DONE까지 가나.
+- **G13 — 실전: 지수 백오프(통합 러너 end-to-end)** — `backoff(attempt,base,cap)=min(base*2^attempt,cap)`, attempt 0부터, cap 상한 — 장난감이 아닌 실무형 다기준 과제를 [runner/](../runner/)가 plan→build→eval로 실제 구동해 DONE까지 가나.
 - **G14 — 실전: 쿼리스트링 파싱(통합 러너 end-to-end)** — `parse_query('a=1&b=2&a=3')→{'a':['1','3'],'b':['2']}`(모든 값 리스트·중복 키 병합·빈→빈dict) — 통합 러너가 실제 에이전트로 구동해 DONE까지 가나.
 
 > 범위: 작고 결정론적으로 채점 가능한 과제 위주(코드 채점 우선). 큰 다단계·실제 Muse 작업으로는
@@ -87,11 +87,11 @@ related: [harness-acceptance.md, role-prompts.md, handoff-template.md, architect
 (SWE-rebench가 frontier 모델들의 오염 인플레이션을 실측; Anthropic "evals are a living
 artifact"). 규칙:
 
-- 새 케이스는 **신선한 실제 실패**에서만 — 상상으로 늘리지 않습니다([dev-loop §6 write-back](dev-loop.md)과 동일 관문).
+- 새 케이스는 **신선한 실제 실패**에서만 — 상상으로 늘리지 않습니다([dev-loop §6 write-back](../host/dev-loop.md)과 동일 관문).
 - 주기적으로 **변형(mutation)** — 같은 불변식을 다른 표면(다른 함수·다른 함정)으로 갈아 끼워
   암기를 무효화합니다(benchmark-mutation, 2510.08996).
 - 한 케이스가 오래 100%면 **더 어려운 변형으로 승급하거나 은퇴** — suite는 백카탈로그가 아니라
-  *분포*로 성장합니다([dev-loop §4 과적합 안티패턴](dev-loop.md)).
+  *분포*로 성장합니다([dev-loop §4 과적합 안티패턴](../host/dev-loop.md)).
 
 ## 출처
 
