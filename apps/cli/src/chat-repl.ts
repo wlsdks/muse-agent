@@ -157,15 +157,30 @@ export async function readPipedStdin(options: ReadPipedStdinOptions = {}): Promi
 export function createTuiChatSubmitter(
   io: ProgramIO,
   command: Command,
-  options: { readonly local: boolean; readonly model?: string }
+  options: { readonly local: boolean; readonly model?: string },
+  // The chat runner is injectable so the FAILURE path is testable without a live
+  // model/API; production keeps the real local/remote dispatch.
+  runChat: (message: string) => Promise<unknown> = (message) =>
+    options.local
+      ? runLocalChat(io, message, options.model)
+      : apiRequest(io, command, "/api/chat", { message, model: options.model })
 ): (message: string) => Promise<string> {
+  const source = options.local ? "cli.local" : "cli.remote";
   return async (message: string) => {
-    const body = options.local
-      ? await runLocalChat(io, message, options.model)
-      : await apiRequest(io, command, "/api/chat", {
+    let body: unknown;
+    try {
+      body = await runChat(message);
+    } catch (error) {
+      // A FAILED chat run must still leave a `success:false` trace — error-analysis
+      // fuel that previously vanished (the run-log was happy-path only). #6 slice 6d.
+      await writeRunLog(io.workspaceDir ?? process.cwd(), {
         message,
-        model: options.model
-      });
+        ...(options.model !== undefined ? { model: options.model } : {}),
+        response: { error: error instanceof Error ? error.message : String(error), success: false },
+        source
+      }).catch(() => undefined); // best-effort: a logging failure must not mask the original error
+      throw error;
+    }
     const apiOptions = await readApiOptions(io, command, { includeStoredToken: false });
 
     await writeRunLog(io.workspaceDir ?? process.cwd(), {
@@ -173,7 +188,7 @@ export function createTuiChatSubmitter(
       message,
       model: options.model,
       response: body,
-      source: options.local ? "cli.local" : "cli.remote"
+      source
     });
 
     return readChatResponseText(body);

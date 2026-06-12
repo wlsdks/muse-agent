@@ -91,8 +91,12 @@ The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing 
     bundled. 6a already provides the payload so the catch is one-liner.
   - ◦ **6c — #7 Ctrl-C/abort does NOT log success:true**: once 6b's catch exists, an AbortError/SIGINT reaching
     it logs success:false (or skips), never success:true. RED: simulate abort → assert no success:true entry. Small.
-  - ◦ **6d — chat-repl parity**: same happy-path-only writeRunLog at chat-repl.ts:171 → apply the 6b seam +
-    buildAskRunLog. Small, mirrors 6b.
+  - ✓→Done **6d — chat-repl failure trace**: `createTuiChatSubmitter` wrote a run-log only on the happy
+    path; a thrown runner left no trace. Added an injectable `runChat` param (default = real local/remote
+    dispatch) + a try/catch that writes a `success:false` entry (response {error, success:false}) best-effort
+    then re-throws the original error. TDD 2 (throwing runner → success:false trace + re-throw; success path
+    unchanged) RED→GREEN. cli 2530, check 0, lint 0. Fable-5 PASS (success path byte-identical, no double-log).
+    Note: done independently of 6b (chat handler is a small fn, no 2000-line extraction needed).
 - ⏳ **calendar credential encryption-at-rest — DEFERRED (architectural cost)**: `FileCalendarCredentialStore`
   stores caldav passwords / google tokens plaintext (0600). The proven envelope lives in `@muse/memory`,
   but `@muse/mcp`→`@muse/calendar` already, and `@muse/memory` pulls `@muse/db`+`@muse/model` — encrypting

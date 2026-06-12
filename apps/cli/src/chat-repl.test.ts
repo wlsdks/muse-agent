@@ -1,6 +1,41 @@
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import type { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { emptyAnswerFallback, filterFactsToKeys, formatNotesOverview, formatTaskList, parseAgentMode } from "./chat-repl.js";
+import { createTuiChatSubmitter, emptyAnswerFallback, filterFactsToKeys, formatNotesOverview, formatTaskList, parseAgentMode } from "./chat-repl.js";
+import type { ProgramIO } from "./program.js";
+
+describe("createTuiChatSubmitter — a FAILED chat run still leaves a success:false trace (#6 slice 6d)", () => {
+  it("writes a success:false run-log entry when the chat runner throws, then re-throws the original error", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-chat-fail-"));
+    const io: ProgramIO = { stderr: () => undefined, stdout: () => undefined, workspaceDir: dir };
+    const submit = createTuiChatSubmitter(io, {} as unknown as Command, { local: true, model: "ollama/gemma4:12b" }, async () => {
+      throw new Error("model down");
+    });
+    await expect(submit("hi there")).rejects.toThrow("model down"); // the original error still surfaces
+    const files = readdirSync(join(dir, ".muse", "runs"));
+    expect(files).toHaveLength(1); // the failed run was NOT lost
+    const event = JSON.parse(readFileSync(join(dir, ".muse", "runs", files[0]!), "utf8").trim()) as Record<string, unknown>;
+    expect(event.success).toBe(false); // traceable as a failure for error-analysis
+    expect(event.message).toBe("hi there");
+    expect(event.source).toBe("cli.local");
+    expect((event.response as { error?: string }).error).toBe("model down");
+  });
+
+  it("does NOT change the success path (the runner resolves → success entry, no error field)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-chat-ok-"));
+    const io: ProgramIO = { stderr: () => undefined, stdout: () => undefined, workspaceDir: dir };
+    const command = { optsWithGlobals: () => ({}) } as unknown as Command;
+    const submit = createTuiChatSubmitter(io, command, { local: true }, async () => ({ runId: "r1", success: true, text: "hello" }));
+    await submit("hi");
+    const files = readdirSync(join(dir, ".muse", "runs"));
+    const event = JSON.parse(readFileSync(join(dir, ".muse", "runs", files[0]!), "utf8").trim()) as Record<string, unknown>;
+    expect(event.success).toBe(true); // success path unchanged
+  });
+});
 
 describe("emptyAnswerFallback (never a blank chat bubble)", () => {
   it("gives an honest KO retry-ask for a Korean message", () => {
