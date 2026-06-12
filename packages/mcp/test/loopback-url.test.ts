@@ -82,6 +82,20 @@ describe("muse.url#encode_query", () => {
     });
   });
 
+  it("skips null / undefined ARRAY items (matching the scalar branch), never encodes them as 'null'", () => {
+    // The scalar branch skips null/undefined (above); the array branch must too —
+    // otherwise ["a", null, "b"] silently emits a corrupt tags=null param.
+    expect(tool("encode_query").execute({ params: { tags: ["a", null, undefined, "b"] } })).toEqual({
+      query: "tags=a&tags=b",
+    });
+    // a nested object inside an array is still rejected (not skipped)
+    expect(tool("encode_query").execute({ params: { tags: ["a", { x: 1 }] } })).toEqual({
+      error: expect.stringContaining("string/number/boolean"),
+    });
+    // falsy-but-VALID scalars (0, false, "") must still encode — the skip is strict null/undefined only
+    expect(tool("encode_query").execute({ params: { v: [0, false, ""] } })).toEqual({ query: "v=0&v=false&v=" });
+  });
+
   it("percent-encodes reserved characters (space, &, =) in values", () => {
     expect(tool("encode_query").execute({ params: { q: "a b&c=d" } })).toEqual({ query: "q=a+b%26c%3Dd" });
   });

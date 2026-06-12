@@ -77,9 +77,14 @@ export function createUrlMcpServer(): LoopbackMcpServer {
           for (const [key, raw] of Object.entries(params as Record<string, unknown>)) {
             if (Array.isArray(raw)) {
               for (const item of raw) {
+                // Skip null/undefined items, exactly as the scalar branch below does —
+                // otherwise String(null) leaks a corrupt `key=null` param.
+                if (item === null || item === undefined) {
+                  continue;
+                }
                 // A nested object/array would String()-coerce to "[object Object]" — a
                 // silently corrupt query param. Reject it instead of encoding garbage.
-                if (item !== null && item !== undefined && !isScalar(item)) {
+                if (!isScalar(item)) {
                   return { error: `params['${key}'] array items must be string/number/boolean, not a nested object/array` };
                 }
                 search.append(key, String(item));

@@ -547,6 +547,16 @@ HARDEN (make existing tools more reliable):
   stream-flag fix) → rolled back → real fix applied + PASS. Judge drill 3/3 (fire 10 json.query, fire 21 regex, fire 31
   fetch). Optional follow-up (verifier note): a multi-chunk-stream test would pin the cross-chunk decoder-state case
   (currently proven ad hoc, not by a committed test).
+- ✓→Done **muse.url.encode_query encoded null/undefined ARRAY items as "null"/"undefined"** (EXPANSION gap-scout,
+  fire 32; contract-output-drift / inconsistent null handling) — the array branch guard
+  `if (item !== null && item !== undefined && !isScalar(item)) return error` let a null/undefined item FALL THROUGH to
+  `search.append(key, String(item))`, so `{tags:["a",null,"b"]}` emitted a corrupt `tags=a&tags=null&tags=b`. The SCALAR
+  branch one line below explicitly skips null/undefined (and a unit test pins that skip as the contract) — so the array
+  branch was internally inconsistent. FIX: `if (item === null || item === undefined) continue;` before the object check,
+  matching the scalar branch. TDD (`["a",null,undefined,"b"]` → `tags=a&tags=b`; nested-object-in-array still rejected;
+  falsy-but-valid `[0,false,""]` → `v=0&v=false&v=` still encode — strict null/undefined skip only) RED(`tags=null...`)
+  →GREEN; mcp 1738, check 0 (all pkgs), lint 0. Fable-5 PASS (RED re-confirmed by stashing src; nested object AND array
+  still rejected; 0/false/"" still encode; no test pinned the old corrupt output). KIND contract-drift, fresh surface.
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`
