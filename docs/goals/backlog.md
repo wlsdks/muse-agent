@@ -38,8 +38,13 @@ HARDEN (make existing tools more reliable):
   line; measure eager-invocation drop on eval:tools negative cases.
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator that persists a model-named field; one eval:tool-arg-grounding case each.
-- ◦ **content-sniff over extension** — file_read currently routes by extension; a `.txt` that is
-  actually a PDF, or no extension, should sniff magic bytes.
+- ✓→Done **content-sniff over extension** — file_read now classifies by CONTENT
+  (`sniffFileKind`/`resolveFileKind`): `%PDF` magic always wins (a mislabeled `.txt`-that-is-a-PDF
+  routes to the extractor), an extensionless download with text bytes reads (extension-only refused
+  it), a NUL/binary blob is still refused. Extension stays the fast path; the sniff is the
+  correction. Also fixed classifyFileKind's no-dot bug (`split('.').pop()` returned the whole name).
+  TDD 10 cases (sniff + resolve + 2 tool integration); eval:file-read gains the no-ext + mislabeled
+  real-file round-trips; mcp 1616, check 0, lint 0.
 - ◦ **web_action URL vetting** — validate/normalize the URL before the one-shot submit (audit LOW tail).
 
 ## Open — 2026-06-10 full-feature audit (3 reviewers; VERIFIED findings → fix queue)

@@ -60,6 +60,16 @@ try {
   assert(out.read === true, "fragment 'invoice pdf' resolved to the PDF");
   assert(String(out.text).includes("Quantum Flux"), "tool returned the PDF text");
 
+  console.log("2b) content-sniff — a no-extension file with text bytes reads (extension-only would refuse)");
+  await writeFile(join(downloads, "meeting-notes"), "Q3 roadmap: ship the Quantum Flux integration by August.");
+  const noExt = await tool.execute({ file: "meeting-notes" }, ctx);
+  assert(noExt.read === true && String(noExt.text).includes("Quantum Flux"), "extensionless text file read via content-sniff");
+
+  console.log("2c) content-sniff — a .txt that is REALLY a PDF routes through the extractor");
+  await writeFile(join(downloads, "scan.txt"), pdf); // real PDF bytes under a .txt name
+  const mislabeled = await tool.execute({ file: "scan.txt" }, ctx);
+  assert(mislabeled.read === true && String(mislabeled.text).includes("Quantum Flux"), "mislabeled .txt-is-PDF extracted as PDF");
+
   console.log("3) fail-closed bounds");
   const outside = await tool.execute({ file: join(dir, "outside-secret.txt") }, ctx);
   assert(outside.read === false, "absolute path outside the roots is refused");

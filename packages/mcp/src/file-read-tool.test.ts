@@ -5,6 +5,8 @@ import {
   classifyFileKind,
   createFileReadTool,
   rankFileCandidates,
+  resolveFileKind,
+  sniffFileKind,
   type FileCandidate
 } from "./file-read-tool.js";
 
@@ -46,7 +48,11 @@ describe("classifyFileKind — extension routing", () => {
 describe("file_read tool — bounded, fail-closed resolution", () => {
   const fakeFs = {
     listCandidates: async () => candidates,
-    readFile: async (path: string) => Buffer.from(path.endsWith(".md") ? "# Report\nAll good." : "%PDF"),
+    readFile: async (path: string) => {
+      if (path.endsWith(".md")) return Buffer.from("# Report\nAll good.");
+      if (path.endsWith(".png")) return Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d, 0x0a]); // real PNG header (NUL → binary)
+      return Buffer.from("%PDF-1.4 ...");
+    },
     stat: async () => ({ mtimeMs: 300, size: 1000 })
   };
 
@@ -95,5 +101,61 @@ describe("file_read tool — bounded, fail-closed resolution", () => {
     const out = await tool.execute({ file: "holiday-photo" }, ctx) as { read: boolean; reason?: string };
     expect(out.read).toBe(false);
     expect(out.reason).toContain("photo.png");
+  });
+});
+
+describe("sniffFileKind — content classification by magic bytes / printable ratio", () => {
+  it("recognizes a PDF by its %PDF magic regardless of name", () => {
+    expect(sniffFileKind(Buffer.from("%PDF-1.7\n..."))).toBe("pdf");
+  });
+
+  it("treats high-printable UTF-8 content as text", () => {
+    expect(sniffFileKind(Buffer.from("# Title\n한국어도 OK\nplain text body"))).toBe("text");
+  });
+
+  it("treats NUL-containing / binary content as unsupported", () => {
+    expect(sniffFileKind(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01, 0x02]))).toBe("unsupported"); // PNG header + NUL
+    expect(sniffFileKind(Buffer.from([0x00, 0x01, 0x02, 0x03]))).toBe("unsupported");
+  });
+
+  it("empty data is unsupported", () => {
+    expect(sniffFileKind(Buffer.from(""))).toBe("unsupported");
+  });
+});
+
+describe("resolveFileKind — extension + content, magic wins on mismatch", () => {
+  it("a .txt whose bytes are actually a PDF routes to pdf", () => {
+    expect(resolveFileKind("invoice.txt", Buffer.from("%PDF-1.4 ..."))).toBe("pdf");
+  });
+
+  it("a NO-extension file with text bytes reads as text (extension allowlist would have refused)", () => {
+    expect(resolveFileKind("README", Buffer.from("just some notes"))).toBe("text");
+  });
+
+  it("a known text extension is trusted even with odd content", () => {
+    expect(resolveFileKind("script.ts", Buffer.from("const x = 1;"))).toBe("text");
+  });
+
+  it("an unknown extension with binary bytes stays unsupported", () => {
+    expect(resolveFileKind("blob.dat", Buffer.from([0x00, 0xff, 0x00]))).toBe("unsupported");
+  });
+});
+
+describe("file_read tool — content-sniff integration", () => {
+  it("reads a no-extension file whose bytes are text (was refused by extension-only)", async () => {
+    const cands: FileCandidate[] = [{ modifiedMs: 1, name: "meeting-notes", path: "/dl/meeting-notes" }];
+    const fs = { listCandidates: async () => cands, readFile: async () => Buffer.from("Q3 plan: ship the thing") };
+    const tool = createFileReadTool({ extractPdfText: async () => "", fsImpl: fs, roots: ["/dl"] });
+    const out = await tool.execute({ file: "meeting-notes" }, ctx) as { read: boolean; text?: string };
+    expect(out.read).toBe(true);
+    expect(out.text).toContain("Q3 plan");
+  });
+
+  it("routes a mislabeled .txt-that-is-a-PDF through the extractor", async () => {
+    const cands: FileCandidate[] = [{ modifiedMs: 1, name: "scan.txt", path: "/dl/scan.txt" }];
+    const fs = { listCandidates: async () => cands, readFile: async () => Buffer.from("%PDF-1.5 binary...") };
+    const tool = createFileReadTool({ extractPdfText: async () => "EXTRACTED PDF", fsImpl: fs, roots: ["/dl"] });
+    const out = await tool.execute({ file: "scan.txt" }, ctx) as { read: boolean; text?: string };
+    expect(out).toMatchObject({ read: true, text: "EXTRACTED PDF" });
   });
 });

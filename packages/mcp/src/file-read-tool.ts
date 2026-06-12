@@ -30,10 +30,49 @@ const TEXT_EXTENSIONS = new Set([
 ]);
 
 export function classifyFileKind(name: string): FileKind {
-  const ext = name.toLowerCase().split(".").pop() ?? "";
+  // A name with no dot has no extension — `split(".").pop()` would return the
+  // whole name, so guard that explicitly (an extensionless file is "unknown").
+  const lower = name.toLowerCase();
+  const ext = lower.includes(".") ? (lower.split(".").pop() ?? "") : "";
   if (ext === "pdf") return "pdf";
   if (TEXT_EXTENSIONS.has(ext)) return "text";
   return "unsupported";
+}
+
+/**
+ * Classify by CONTENT, not name — so a misnamed `.txt` that is really a PDF, or
+ * an extensionless download, still routes correctly. `%PDF` magic → pdf; a head
+ * sample that is NUL-free and overwhelmingly printable (ASCII or UTF-8) → text;
+ * anything else → unsupported (binary).
+ */
+export function sniffFileKind(data: Buffer): FileKind {
+  if (data.length === 0) return "unsupported";
+  if (data.length >= 4 && data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46) {
+    return "pdf";
+  }
+  const sample = data.subarray(0, 4096);
+  if (sample.includes(0x00)) return "unsupported";
+  let printable = 0;
+  for (const byte of sample) {
+    if (byte === 0x09 || byte === 0x0a || byte === 0x0d || (byte >= 0x20 && byte <= 0x7e) || byte >= 0x80) {
+      printable += 1;
+    }
+  }
+  return printable / sample.length >= 0.85 ? "text" : "unsupported";
+}
+
+/**
+ * The kind actually used to read a file: PDF magic always wins (catch a
+ * mislabeled .txt), then a trusted text/pdf extension, then — for an unknown or
+ * missing extension — whatever the bytes say. Extension is the fast path; the
+ * sniff is the correction.
+ */
+export function resolveFileKind(name: string, data: Buffer): FileKind {
+  const bySniff = sniffFileKind(data);
+  if (bySniff === "pdf") return "pdf";
+  const byName = classifyFileKind(name);
+  if (byName !== "unsupported") return byName;
+  return bySniff;
 }
 
 /**
@@ -182,13 +221,15 @@ export function createFileReadTool(deps: FileReadToolDeps = {}): MuseTool {
             return { read: false, reason: `no file matching "${query}" — recent files listed`, recent: recent as unknown as JsonValue };
           }
         }
-        const kind = classifyFileKind(target.name);
-        if (kind === "unsupported") {
-          return { read: false, reason: `'${target.name}' is not a readable document (PDF or text files only)` };
-        }
         const data = await fsImpl.readFile(target.path);
         if (data.byteLength > maxFileBytes) {
           return { read: false, reason: `'${target.name}' is too large (${Math.round(data.byteLength / 1024 / 1024).toString()}MB > 25MB)` };
+        }
+        // Classify by CONTENT (with the extension as a hint): an extensionless
+        // download or a misnamed file still reads, a binary blob is still refused.
+        const kind = resolveFileKind(target.name, data);
+        if (kind === "unsupported") {
+          return { read: false, reason: `'${target.name}' is not a readable document (PDF or text files only)` };
         }
         const text = kind === "pdf" ? await extractPdf(data) : data.toString("utf8");
         const truncated = text.length > maxTextChars;
