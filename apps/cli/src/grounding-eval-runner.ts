@@ -6,7 +6,7 @@ import {
   scoreGroundingEval,
   verifyGroundingWithReverify
 } from "@muse/agent-core";
-import type { GroundingEvalCase, GroundingEvalCorpus, GroundingEvalResult, GroundingReverify, GroundingVerification } from "@muse/agent-core";
+import type { GroundingEvalCase, GroundingEvalCorpus, GroundingEvalResult, GroundingGroupTally, GroundingReverify, GroundingVerification } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
 
 export interface GroundingThresholds {
@@ -104,6 +104,21 @@ export function renderGroundingEvalReport(result: GroundingEvalResult, threshold
       lines.push(`    · [${outcome.kind}] "${outcome.query}" — ${outcome.detail}${outcome.note ? ` (${outcome.note})` : ""}`);
     }
   }
+
+  // Per-group rows (arXiv:2407.21057): only when more than one script family is present.
+  const groups: readonly GroundingGroupTally[] = result.groups ?? [];
+  if (groups.length > 1) {
+    lines.push("  per-group (script family):");
+    for (const g of groups) {
+      lines.push(`    ${g.group}: false-refusal ${g.falseRefusalRate.toFixed(2)} (${g.falseRefusals.toString()}/${g.answerable.toString()})  faithfulness ${g.faithfulnessRate.toFixed(2)} (${g.caught.toString()}/${g.guardable.toString()})`);
+    }
+  }
+
+  // Coverage-violation warnings (arXiv:2407.21057 headline diagnostic).
+  for (const violatedGroup of result.groupCoverageViolations ?? []) {
+    lines.push(`⚠ ${violatedGroup} subgroup coverage below target — pooled calibration doesn't hold for ${violatedGroup === "hangul" ? "Korean" : violatedGroup} (arXiv:2407.21057)`);
+  }
+
   return { status: faithOk && refuseOk ? "ok" : "fail", text: lines.join("\n") };
 }
 

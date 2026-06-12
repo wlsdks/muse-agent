@@ -455,6 +455,19 @@ excluded when scoring).
   ahead of the LLM merge; the MISSING piece — a DIRECT anti-collapse invariant battery — was added
   (7 cases incl. the non-vacuous property "if it returns a survivor, that survivor token-covers EVERY
   input", so a learned strategy is never silently dropped). Test-only; agent-core 1691 green.]
+- ✓→Done **Multi-group/multivalid conformal UQ for abstention** — pooled abstention calibration
+  over an EN-only corpus silently loses its coverage guarantee on the Korean subgroup (the exact
+  failure of arXiv:2407.21057, Liu & Wu). [DONE 2026-06-13, cognition loop fire 29:
+  `calibrateAbstentionByGroup` (per-`dominantScriptFamily` conformal tau, pooled fallback for thin
+  groups) in conformal.ts + additive `groups`/`calibration`/`groupCoverageViolations` in
+  `scoreGroundingEval` + per-group rows & ⚠ violation render in grounding-eval-runner; made LIVE by
+  adding a Korean subgroup (12 answerable + 4 must-refuse + 12 grounded notes) to the production
+  `GROUNDING_EVAL_CORPUS` — `muse doctor --grounding` now renders latin+hangul groups (judge v1 FAIL
+  caught it inert on the EN-only corpus; v2 PASS proved live on real Ollama). Additive measurement
+  only, verdict/threshold unchanged (fabrication-floor safe).]
+- ◦ **Per-group abstention threshold at serve time** — `calibrateAbstentionByGroup` now MEASURES the
+  per-script-family gap; the follow-up is to SERVE the per-group tau (route a Korean query through the
+  hangul threshold, not pooled) once the per-group calibration set is large enough to trust. (next)
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
   each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
 - (queued behind fuel/prereqs: sleep-time compute · Mem0 UPDATE op · AWM workflow mining ·

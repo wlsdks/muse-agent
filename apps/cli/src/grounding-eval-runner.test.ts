@@ -1,15 +1,25 @@
-import type { GroundingEvalResult } from "@muse/agent-core";
+import { scoreGroundingEval } from "@muse/agent-core";
+import type { GroundingEvalResult, KnowledgeMatch } from "@muse/agent-core";
 import { describe, expect, it } from "vitest";
+import { GROUNDING_EVAL_CORPUS } from "./grounding-eval-corpus.js";
 import { buildSquadGroundingCorpus, GROUNDING_THRESHOLDS, renderGroundingDelta, renderGroundingEvalReport } from "./grounding-eval-runner.js";
+
+const emptyCalibration: GroundingEvalResult["calibration"] = {
+  groups: [],
+  pooled: { calibrationCoverage: 1, n: 0, targetCoverage: 0.9, threshold: Number.NEGATIVE_INFINITY }
+};
 
 function result(overrides: Partial<GroundingEvalResult>): GroundingEvalResult {
   return {
     answerable: 12,
+    calibration: emptyCalibration,
     caught: 13,
     drift: 5,
     falseRefusalRate: 0,
     falseRefusals: 0,
     faithfulnessRate: 1,
+    groupCoverageViolations: [],
+    groups: [],
     guardable: 13,
     outcomes: [],
     refuse: 8,
@@ -54,8 +64,8 @@ describe("renderGroundingEvalReport", () => {
         caught: 12,
         faithfulnessRate: 0.92,
         outcomes: [
-          { detail: "retrieval=confident", kind: "refuse", note: "no spending log", passed: false, query: "groceries last month?" },
-          { detail: "verdict=grounded", kind: "answerable", passed: true, query: "rent?" }
+          { detail: "retrieval=confident", kind: "refuse", note: "no spending log", passed: false, query: "groceries last month?", topScore: 0.9 },
+          { detail: "verdict=grounded", kind: "answerable", passed: true, query: "rent?", topScore: 0.8 }
         ]
       }),
       GROUNDING_THRESHOLDS
@@ -70,6 +80,31 @@ describe("renderGroundingEvalReport", () => {
     // floor is a regression detector with headroom, not the current quality.
     expect(GROUNDING_THRESHOLDS.minFaithfulness).toBeLessThanOrEqual(11 / 13);
     expect(GROUNDING_THRESHOLDS.minFaithfulness).toBeGreaterThan(10 / 13);
+  });
+
+  it("render (non-inert proof): emits ⚠ violation line for a result with groupCoverageViolations", () => {
+    const r = result({
+      groupCoverageViolations: ["hangul"],
+      groups: [
+        { answerable: 12, caught: 0, falseRefusalRate: 0, falseRefusals: 0, faithfulnessRate: 1, group: "latin", guardable: 0 },
+        { answerable: 4, caught: 0, falseRefusalRate: 1, falseRefusals: 4, faithfulnessRate: 1, group: "hangul", guardable: 0 }
+      ]
+    });
+    const report = renderGroundingEvalReport(r, GROUNDING_THRESHOLDS);
+    expect(report.text).toContain("⚠ hangul subgroup coverage below target");
+    expect(report.text).toContain("Korean");
+    expect(report.text).toContain("arXiv:2407.21057");
+  });
+
+  it("render: clean single-group result emits no ⚠ line and no per-group rows (today's output unchanged)", () => {
+    const r = result({
+      groupCoverageViolations: [],
+      groups: [{ answerable: 12, caught: 13, falseRefusalRate: 0, falseRefusals: 0, faithfulnessRate: 1, group: "latin", guardable: 13 }]
+    });
+    const report = renderGroundingEvalReport(r, GROUNDING_THRESHOLDS);
+    expect(report.text).not.toContain("⚠");
+    expect(report.text).not.toContain("per-group");
+    expect(report.text).not.toContain("arXiv:2407.21057");
   });
 });
 
@@ -120,5 +155,38 @@ describe("buildSquadGroundingCorpus", () => {
     // the next item's answer ("Computational complexity theory"), cited to squad-normans-0 → unsupported there.
     expect(d?.answer).toBe("Computational complexity theory [from squad-normans-0]");
     expect(corpus.cases.filter((c) => c.kind === "drift")).toHaveLength(2);
+  });
+});
+
+describe("GROUNDING_EVAL_CORPUS (production corpus) — non-inert multi-script proof", () => {
+  // Stub deps: every answerable answer is treated as grounded, every drift as ungrounded,
+  // every refuse gets a low-cosine match (non-confident). No Ollama needed.
+  const stubMatch = (cosine: number): KnowledgeMatch => ({ cosine, score: cosine, source: "stub.md", text: "stub" });
+  const refuseQueries = new Set(
+    GROUNDING_EVAL_CORPUS.cases.filter((c) => c.kind === "refuse").map((c) => c.query)
+  );
+
+  it("hangul group has ≥10 answerable cases (enough for its own conformal tau)", async () => {
+    const result = await scoreGroundingEval(GROUNDING_EVAL_CORPUS, {
+      classify: (matches) => ((matches[0]?.cosine ?? 1) < 0.5 ? "ambiguous" : "confident"),
+      rank: (query) => Promise.resolve([stubMatch(refuseQueries.has(query) ? 0.2 : 0.8)]),
+      verify: (_answer, _matches, query) =>
+        Promise.resolve({
+          invalidCitations: [],
+          reason: "stub",
+          rubric: { answerability: 1, citationValidity: 1, confidence: 1, coverage: 1 },
+          verdict: refuseQueries.has(query) ? ("ungrounded" as const) : ("grounded" as const)
+        })
+    });
+
+    const hangul = result.groups.find((g) => g.group === "hangul");
+    expect(hangul).toBeDefined();
+    expect(hangul!.answerable).toBeGreaterThanOrEqual(10);
+
+    expect(result.groups.length).toBeGreaterThanOrEqual(2);
+
+    const hangulCal = result.calibration.groups.find((g) => g.group === "hangul");
+    expect(hangulCal).toBeDefined();
+    expect(hangulCal!.pooledFallback).toBe(false);
   });
 });

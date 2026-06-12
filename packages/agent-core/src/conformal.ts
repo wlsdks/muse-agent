@@ -100,3 +100,60 @@ export function calibrateAbstention(positiveScores: readonly number[], alpha = 0
     threshold
   };
 }
+
+export interface GroupedScore {
+  readonly score: number;
+  readonly group: string;
+}
+
+export interface GroupCalibrationResult extends CalibrationResult {
+  readonly group: string;
+  /** True when the group had fewer than minGroupN items and fell back to the pooled threshold. */
+  readonly pooledFallback: boolean;
+}
+
+/**
+ * Multivalid conformal calibration (arXiv:2407.21057): a pooled threshold can be
+ * well-calibrated on average yet lose its guarantee on a subgroup. Give each group
+ * with n ≥ minGroupN its OWN conformalThreshold; thinner groups fall back to the
+ * pooled tau (pooledFallback:true). Preserves conformal.ts degenerate contracts
+ * (empty → −Infinity; never invents a refusal).
+ */
+export function calibrateAbstentionByGroup(
+  items: readonly GroupedScore[],
+  alpha = 0.1,
+  minGroupN = 10
+): { readonly pooled: CalibrationResult; readonly groups: readonly GroupCalibrationResult[] } {
+  const a = clamp01(alpha);
+  const allScores = items.map((item) => item.score);
+  const pooled = calibrateAbstention(allScores, a);
+
+  const byGroup = new Map<string, number[]>();
+  for (const item of items) {
+    let bucket = byGroup.get(item.group);
+    if (bucket === undefined) {
+      bucket = [];
+      byGroup.set(item.group, bucket);
+    }
+    bucket.push(item.score);
+  }
+
+  const groups: GroupCalibrationResult[] = [];
+  for (const [group, scores] of byGroup) {
+    if (scores.length >= minGroupN) {
+      const result = calibrateAbstention(scores, a);
+      groups.push({ ...result, group, pooledFallback: false });
+    } else {
+      groups.push({
+        calibrationCoverage: empiricalCoverage(scores, pooled.threshold),
+        group,
+        n: scores.length,
+        pooledFallback: true,
+        targetCoverage: 1 - a,
+        threshold: pooled.threshold
+      });
+    }
+  }
+
+  return { groups, pooled };
+}

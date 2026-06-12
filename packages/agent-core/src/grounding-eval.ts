@@ -1,5 +1,8 @@
+import { calibrateAbstentionByGroup, empiricalCoverage } from "./conformal.js";
+import type { GroupCalibrationResult, CalibrationResult } from "./conformal.js";
 import { classifyRetrievalConfidence } from "./knowledge-recall.js";
 import type { GroundingVerification, KnowledgeMatch, RetrievalConfidence } from "./knowledge-recall.js";
+import { dominantScriptFamily } from "./script-family.js";
 
 /**
  * Scored, held-out measurement of the "shows its work" edge — turns the
@@ -67,6 +70,19 @@ export interface GroundingCaseOutcome {
   /** answerable: false ⇒ a faithful in-corpus answer was wrongly refused. refuse/drift: false ⇒ fabrication slipped. */
   readonly passed: boolean;
   readonly detail: string;
+  /** Top retrieval cosine for this case (match.cosine ?? match.score of the first match, or 0 if no matches). */
+  readonly topScore: number;
+}
+
+/** Per-script-family tally across answerable and guardable cases (arXiv:2407.21057). */
+export interface GroundingGroupTally {
+  readonly group: string;
+  readonly answerable: number;
+  readonly falseRefusals: number;
+  readonly falseRefusalRate: number;
+  readonly guardable: number;
+  readonly caught: number;
+  readonly faithfulnessRate: number;
 }
 
 export interface GroundingEvalResult {
@@ -85,6 +101,16 @@ export interface GroundingEvalResult {
   /** `caught / guardable` — 1 when there are no guardable cases. Higher is better. */
   readonly faithfulnessRate: number;
   readonly outcomes: readonly GroundingCaseOutcome[];
+  /** Per-script-family tallies (arXiv:2407.21057 multivalid UQ). */
+  readonly groups: readonly GroundingGroupTally[];
+  /** Per-group conformal calibration over answerable cases' topScores, grouped by script family. */
+  readonly calibration: { readonly pooled: CalibrationResult; readonly groups: readonly GroupCalibrationResult[] };
+  /**
+   * Groups whose empirical coverage under the POOLED tau falls below 1 − alpha (default 0.9).
+   * A non-empty list means the pooled calibration doesn't hold for that subgroup — the
+   * headline diagnostic from arXiv:2407.21057.
+   */
+  readonly groupCoverageViolations: readonly string[];
 }
 
 /**
@@ -106,6 +132,7 @@ export async function scoreGroundingEval(
 
   for (const testCase of corpus.cases) {
     const matches = await deps.rank(testCase.query);
+    const topScore = matches.length > 0 ? (matches[0]!.cosine ?? matches[0]!.score) : 0;
 
     if (testCase.kind === "answerable") {
       answerable += 1;
@@ -117,7 +144,8 @@ export async function scoreGroundingEval(
         kind: testCase.kind,
         note: testCase.note,
         passed: !refused,
-        query: testCase.query
+        query: testCase.query,
+        topScore
       });
       continue;
     }
@@ -132,7 +160,8 @@ export async function scoreGroundingEval(
         kind: testCase.kind,
         note: testCase.note,
         passed: ok,
-        query: testCase.query
+        query: testCase.query,
+        topScore
       });
       continue;
     }
@@ -148,18 +177,72 @@ export async function scoreGroundingEval(
       kind: testCase.kind,
       note: testCase.note,
       passed: ok,
-      query: testCase.query
+      query: testCase.query,
+      topScore
     });
   }
 
   const guardable = refuse + drift;
+
+  // Per-group tallies (arXiv:2407.21057): group by script family of the query.
+  const groupMap = new Map<string, { answerable: number; falseRefusals: number; guardable: number; caught: number }>();
+  for (const outcome of outcomes) {
+    const group = dominantScriptFamily(outcome.query);
+    let tally = groupMap.get(group);
+    if (tally === undefined) {
+      tally = { answerable: 0, caught: 0, falseRefusals: 0, guardable: 0 };
+      groupMap.set(group, tally);
+    }
+    if (outcome.kind === "answerable") {
+      tally.answerable += 1;
+      if (!outcome.passed) tally.falseRefusals += 1;
+    } else {
+      tally.guardable += 1;
+      if (outcome.passed) tally.caught += 1;
+    }
+  }
+  const groups: GroundingGroupTally[] = [];
+  for (const [group, tally] of groupMap) {
+    groups.push({
+      answerable: tally.answerable,
+      caught: tally.caught,
+      falseRefusalRate: tally.answerable === 0 ? 0 : tally.falseRefusals / tally.answerable,
+      falseRefusals: tally.falseRefusals,
+      faithfulnessRate: tally.guardable === 0 ? 1 : tally.caught / tally.guardable,
+      group,
+      guardable: tally.guardable
+    });
+  }
+
+  // Multivalid conformal calibration over answerable cases' topScores (arXiv:2407.21057).
+  const answerableItems = outcomes
+    .filter((o) => o.kind === "answerable")
+    .map((o) => ({ group: dominantScriptFamily(o.query), score: o.topScore }));
+  const calibration = calibrateAbstentionByGroup(answerableItems);
+
+  // Groups whose empirical coverage under the POOLED tau falls below 1 − alpha (0.9).
+  const alpha = 0.1;
+  const groupCoverageViolations: string[] = [];
+  for (const gc of calibration.groups) {
+    if (!gc.pooledFallback) {
+      const groupScores = answerableItems.filter((it) => it.group === gc.group).map((it) => it.score);
+      const cov = empiricalCoverage(groupScores, calibration.pooled.threshold);
+      if (cov < 1 - alpha) {
+        groupCoverageViolations.push(gc.group);
+      }
+    }
+  }
+
   return {
     answerable,
+    calibration,
     caught,
     drift,
     falseRefusalRate: answerable === 0 ? 0 : falseRefusals / answerable,
     falseRefusals,
     faithfulnessRate: guardable === 0 ? 1 : caught / guardable,
+    groupCoverageViolations,
+    groups,
     guardable,
     outcomes,
     refuse,
