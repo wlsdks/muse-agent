@@ -297,7 +297,7 @@ replay (this commit). Remaining, severity order:
   WON'T/CANNOT/WOULDN'T/SHOULDN'T/COULDN'T + 0-2 intervening words "NOT A CONTRADICTION"/"DOESN'T
   REALLY CONTRADICT"; conservative-by-design over-strip = fail toward no-decay; 99 agent-core green) ·
   ~~enforceAnswerCitations whitespace rewrite on clean answers~~ ✓DONE (fire 18: cleanup gated on stripped.length>0 — clean answers verbatim, code blocks preserved; 1732 green) ·
-  casual-prompt 말해줘 over-match suppresses source blocks · ~~dedup memoizes write results~~ ✓DONE (fire 19: real bug was stale-READ-after-write — a memoized read went stale after an intervening write in-loop; fix = mutating record invalidates read entries, keeps write entries/anti-double-write; Fable-judge PASS, agent-core 1738 green) ·
+  ~~casual-prompt 말해줘 over-match suppresses source blocks~~ ✓DONE (fire 20: removed 말해줘 from isCasualPromptText social regex — "내 일정 말해줘" etc are recall imperatives, were wrongly classed casual → source footer suppressed; Fable-judge PASS, agent-core 1741 green) · ~~dedup memoizes write results~~ ✓DONE (fire 19: real bug was stale-READ-after-write — a memoized read went stale after an intervening write in-loop; fix = mutating record invalidates read entries, keeps write entries/anti-double-write; Fable-judge PASS, agent-core 1738 green) ·
   groundToolArguments partial-array reported as dropped · consented-action header override ·
   web_action URL vetting · encryption coverage (calendar credentials!). (audit LOW/MED tail)
 

@@ -115,7 +115,9 @@ export function isCasualPromptText(prompt: string): boolean {
   // follows) is the real "whole-token" boundary: matches "안녕" / "네"
   // / "thanks" but not "네이버" / "thanksgiving".
   return /^(안녕|고마워|감사|thanks?|thank you|응|ㅇㅇ|네|넵|오키|좋아|하이)(?![\p{L}\p{N}])/iu.test(cleaned) ||
-    /(고맙|감사|반가워|수고|파이팅|화이팅|먹고\s*싶|전해줘|말해줘)/i.test(cleaned);
+    // 말해줘 is a recall imperative ("내 일정 말해줘"), not a social phrase —
+    // keeping it here suppressed the source footer on real recall answers.
+    /(고맙|감사|반가워|수고|파이팅|화이팅|먹고\s*싶|전해줘)/i.test(cleaned);
 }
 
 function buildFallbackVerifiedResponse(
