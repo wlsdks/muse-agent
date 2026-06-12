@@ -197,16 +197,19 @@ async function buildWebSearchScenario() {
     const ac = await import("../packages/autoconfigure/dist/index.js");
     const search = mcp.createLoopbackMcpMuseTools(mcp.createSearchMcpServer())[0];
     const webRead = mcp.createLoopbackMcpMuseTools(mcp.createWebReadMcpServer())[0];
-    const instances = [search, webRead, ac.createNotesKnowledgeSearchTool({})];
+    const download = mcp.createWebDownloadTool({ fetchImpl: fetch });
+    const instances = [search, webRead, download, ac.createNotesKnowledgeSearchTool({})];
     const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
     const byName = new Set(tools.map((t) => t.name));
     const cases = [
       { prompt: "Search the web for the best noise-cancelling headphones in 2026.", expectTool: "muse.search.search", requireArgs: ["query"], note: "EN web search -> muse.search (NOT notes/url-read)" },
       { prompt: "오늘 비트코인 시세 웹에서 검색해줘.", expectTool: "muse.search.search", requireArgs: ["query"], note: "KO web search -> muse.search (user's language)" },
       { prompt: "내 노트에서 Q3 로드맵 관련 내가 적은 내용 찾아줘.", expectTool: "knowledge_search", requireArgs: ["query"], note: "KO notes recall -> knowledge_search, NOT web search" },
-      { prompt: "Read https://example.com/article and summarize what it says.", expectTool: "muse.web.read", note: "read a specific URL -> web_read, NOT web search" }
+      { prompt: "Read https://example.com/article and summarize what it says.", expectTool: "muse.web.read", note: "read a specific URL -> web_read, NOT web search" },
+      { prompt: "Download https://example.com/report.pdf and save it to my downloads.", expectTool: "web_download", requireArgs: ["url"], note: "SAVE a file from a URL -> web_download (NOT read/search)" },
+      { prompt: "이 파일 다운받아줘: https://files.example.com/budget.xlsx", expectTool: "web_download", requireArgs: ["url"], note: "KO download a file -> web_download (user's language)" }
     ];
-    return { label: "web-search (muse.search vs knowledge_search vs web_read)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+    return { label: "web-search (muse.search vs web_read vs web_download vs knowledge_search)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
     return { label: "web-search", skip: `deps not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
   }

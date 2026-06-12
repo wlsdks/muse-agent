@@ -47,8 +47,16 @@ EXPAND (new reach):
   generates a REAL .docx at runtime (self-contained minimal-zip writer via node:zlib crc32/deflate —
   no committed binary) → mammoth extracts → tool round-trip; eval:tools file scenario 6/6 STABLE 3/3
   (KO '계약서 워드 파일' → file_read), full 131/131; check 0, lint 0. Follow-up: .xlsx — see the ⏳ dep-decision blocker in HARDEN.
-- ◦ **browser: save/download a file** — the page has a PDF/image the user wants saved to Downloads;
-  draft-first (it writes to disk), allowlist-rooted.
+- ✓→Done **web_download — save a file from a URL to Downloads** — chose the URL-based design over
+  browser-element download (no controller interface change, no live Chrome, fully deterministic
+  verification). New `web_download` tool: SSRF-guarded (loopback/internal refused via the shared
+  assertPublicHttpUrl), 50MB size cap, basename-only filename (`safeDownloadName` — no path escape).
+  The write-side companion to file_read; file_read then reads/summarizes what was saved. Wired
+  default-on under --with-tools next to file_read. TDD 9 (safeDownloadName 3 + tool 6: well-formed,
+  download+write, SSRF refuse, non-http refuse, size cap no-write, filename sanitize); eval:tools
+  web scenario 6/6 STABLE 3/3 (web_download vs web_read vs search vs knowledge_search); LIVE — a real
+  http server's file fetched and written to disk with matching bytes. mcp 1638, full eval:tools
+  137/137, check 0, lint 0.
 - ◦ **mac: read Calendar.app / Notes.app / Reminders.app** — osascript readers in the mac family,
   read-risk, so "what's on my calendar today" works without a configured provider.
 

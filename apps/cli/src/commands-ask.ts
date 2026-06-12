@@ -2474,8 +2474,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // file_read rides along by default too: reading the user's own
         // Downloads/Desktop/Documents is the local-first product's bread and
         // butter (read-risk, allowlist-rooted, fail-closed outside the roots).
-        const { createFileReadTool } = await import("@muse/mcp");
-        extraTools = [...extraTools, createFileReadTool()];
+        const { createFileReadTool, createWebDownloadTool } = await import("@muse/mcp");
+        // web_download saves a file from a public URL into ~/Downloads — the
+        // write-side companion to file_read (SSRF-guarded, size-capped,
+        // basename-only). file_read can then read/summarize what was saved.
+        extraTools = [...extraTools, createFileReadTool(), createWebDownloadTool({ fetchImpl: globalThis.fetch })];
       }
       // The agent's `muse.messaging.send` (a default loopback tool whenever a
       // messenger is configured) gets a draft-first confirm gate under --with-tools:
