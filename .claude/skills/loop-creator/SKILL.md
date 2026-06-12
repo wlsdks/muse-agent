@@ -22,6 +22,10 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 - **아무것도 없으면** → `docs/goals/backlog.md` 최상단 ★ 테마를 목적으로 제안하고 진행
   (improve-muse처럼 "할 게 없다"는 금지 — backlog가 비면 gap-scout 리필이 곧 목적).
 
+- **자율성 티어** — 기본 **Tier1**(로컬 커밋, push 없음). "더 자율적으로"/"PR로"/"브랜치
+  파서"/"무인으로 머지 전까지" 같은 신호가 있으면 **Tier2**(브랜치+draft PR, 사람이 머지)로,
+  단 그건 push 권한 부여라 등록 시 진안의 명시 opt-in을 1회 확인한다(§3.5).
+
 요지: 진안이 한 줄만 던져도 나머지는 스스로 채운다. 모호한 포크가 있을 때만 1개 질문.
 
 ## 파이프라인 (생성, 그다음 등록)
@@ -48,8 +52,9 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 | 목적 한 줄 | 입력에서 / backlog ★에서 |
 | 6 프리미티브 | Automation=cron · Worktree=/tmp(레포 밖, [[project_worktree_instability]]) · Skill=improve-muse+dev-loop · Connector=MCP · Sub-agent=harness planner→worker→evaluator · State=backlog.md+MEMORY.md |
 | 검증가능 정지조건 | `pnpm self-eval` exit 0 + 관련 eval(eval:tools/eval:browser-agent/eval:agent/precheck:grounding) ≥ threshold + "backlog ★ 항목 Done"(이 'Done' 판정은 **독립 evaluator/진안**이 — 루프 자신이 maker=judge로 판정하지 않는다) |
-| maker ≠ judge | 빌드 인스턴스와 별개의 evaluator(harness 또는 Agent 서브에이전트) |
-| 사람-읽는 체크포인트 | **push 금지**(명시 승인 전), draft-first, 커밋만 |
+| **게이팅 검증자** | 빌드와 별개 **강한-티어(Opus) 적대 judge**가 슬라이스를 판정 → **PASS여야 ⑤ 커밋, FAIL이면 롤백**(`git restore`)+블로커 기록. 결정적 게이트(test/check/eval) 1차, judge 2차. ([`loop-engineering.md`](../../../harness/loop-engineering.md) §3-1) |
+| **이해 체크포인트** | 매 fire가 `docs/goals/loop-digest.md`에 4줄(무엇/왜/리뷰지점/리스크) append + **N fire(기본 3)마다 빌드 멈추고 리뷰 관문** — 진안 확인 전 새 슬라이스 시작 안 함. §3-2 |
+| **자율성 티어** | **Tier1**(로컬 커밋, push 없음 — 기본) 또는 **Tier2**(`loop/<theme>` 브랜치 push + draft PR, 사람이 머지 — 명시 opt-in). 하드 floor: main 자동머지·자율 outbound·banking·`--no-verify` 절대 불가. §3.5 |
 | 토큰/스텝 캡 | fire당 1슬라이스, retry 2–3 상한, 예산 캡([`loop-budget.md`](../../../harness/loop-budget.md)) |
 | **모델 티어링** | 정형 빌드/검색/문서 → Sonnet 서브에이전트(`Agent`/`Workflow` `model:"sonnet"`); 설계·모호함·적대적 검증 → Opus. maker=Sonnet / **judge=Opus**. 오케스트레이터는 얇게. (Muse 런타임 모델 gemma4는 고정 — [`loop-engineering.md`](../../../harness/loop-engineering.md) §1.5) |
 | State 파일 | `docs/goals/backlog.md`에 Done/다음 write-back |
@@ -68,15 +73,16 @@ Muse 자율 개선 루프 — 테마: <목적>. 반드시 Node 24(nvm default).
 ② <테마>의 최상단 ★/◦ 항목 하나(비면 gap-scout 리필이 작업).
 ③ harness/dev-loop.md §3에 따라 가장 작은 검증가능 슬라이스를 TDD-first로.
    새 도구는 tool-calling.md 체크리스트 + eval:tools 골든 케이스.
-④ 검증(정지조건): 가장 좁은 테스트 → pnpm check → 관련 eval(<해당 eval>) → pnpm lint.
-   maker≠judge: 검증은 빌드와 별개 인스턴스/서브에이전트로.
-⑤ write-back(테스트/eval/backlog Done) 포함 커밋. **push 절대 금지.**
+④ 결정적 검증(정지조건): 가장 좁은 테스트 → pnpm check → 관련 eval(<해당 eval>) → pnpm lint.
+④b 게이팅 검증자: 별개 Opus 서브에이전트가 슬라이스를 적대 판정(acceptance 충족? 불변식 약화 없음? 무관 state 안 깸?).
+   PASS여야 ⑤로. FAIL이면 슬라이스 롤백(git restore)+backlog에 블로커 기록 후 멈춤. (미검증 코드 통과 금지)
+⑤ write-back(테스트/eval/backlog Done) 포함 커밋. **자율성: <Tier1=로컬 커밋, push 금지 / Tier2=loop/<theme> 브랜치 push+draft PR, 사람이 머지>.**
+⑤b 이해 다이제스트: docs/goals/loop-digest.md에 4줄 append(무엇/왜/리뷰지점/리스크). 3 fire마다 빌드 멈추고 누적 리뷰 관문 — 진안 확인 전 새 슬라이스 시작 금지.
 모델 티어링(토큰 절약): 정형 빌드/검색은 Sonnet 서브에이전트(Agent/Workflow model:"sonnet")로
-위임하고, 이 Opus 컨텍스트는 설계·모호한 포크·적대적 검증만; judge는 worker보다 강한 티어(Opus).
+위임하고, 이 Opus 컨텍스트는 설계·모호한 포크·④b 적대 검증만; judge는 worker보다 강한 티어(Opus).
 한 fire에 슬라이스 하나; 막히면 backlog에 블로커 기록 후 멈춤.
 예산 캡: harness/loop-budget.md 한도 준수 — 토큰/비용이 캡에 닿으면 fire 중단 후 보고.
-grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지.
-무인 실수 방지: diff는 진안이 읽고 머지(comprehension debt 가드).
+grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지. 하드 floor: main 자동머지·자율 outbound·banking·--no-verify 절대 불가.
 ```
 
 테마별로 ④의 eval과 ②의 backlog 섹션을 정확히 바꿔 넣는다(브라우저 루프면 eval:browser-agent 등).
@@ -85,13 +91,17 @@ grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지.
 
 등록은 행동이다. 등록 *전에* 생성물을 §4 체크리스트에 대고 스스로 PASS/FAIL한다:
 
-- [ ] §4의 **10항목**이 전부 **채워졌거나 "N/A — 이유"로 명시**됐나? 빈 칸이 있으면 FAIL.
+- [ ] §4의 **11항목**이 전부 **채워졌거나 "N/A — 이유"로 명시**됐나? 빈 칸이 있으면 FAIL.
 - [ ] 정지조건이 **실제로 실행 가능한 명령**인가 — `<해당 eval>` 자리에 실재하는
       `pnpm <script>`(package.json에 있는)가 들어갔나? placeholder가 안 치환됐거나
       "느낌상 됐다"면 FAIL — 띄우지 않고 블로커 보고.
 - [ ] 프롬프트의 ④ eval이 테마와 맞나(브라우저인데 eval:browser-agent 빠지지 않았나)?
 - [ ] push 금지·fabrication=0·IMMUTABLE-CORE·**예산 캡** 문구가 프롬프트에 살아있나?
 - [ ] 모델 티어링 라인이 테마에 맞나(정형 위주면 Sonnet 위임이 실제로 토큰을 아끼나)?
+- [ ] **게이팅 검증자**가 프롬프트에 살아있나 — ④b Opus 적대 judge가 커밋을 GATE, FAIL=롤백?
+- [ ] **이해 체크포인트**가 살아있나 — ⑤b 다이제스트 append + N fire마다 리뷰 관문?
+- [ ] **자율성 티어가 명시**됐나 — Tier1/Tier2 중 무엇인지 ⑤에 박혔고, Tier2면 진안 opt-in 받았나?
+      하드 floor(main 자동머지·자율 outbound·banking·--no-verify) 금지 문구가 살아있나?
 - [ ] **같은 테마의 활성 cron이 이미 있나** — `CronList`로 확인. 있으면 등록 대신
       보고(중복 루프는 worktree·backlog·push에서 레이스를 낸다).
 
@@ -128,7 +138,7 @@ grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지.
 1. **ORIENT** — backlog의 "★ TOOL expansion & hardening" 읽음; `pnpm self-eval` 그린(기준선 OK); main에 동시 푸시 루프 없음 확인.
 2. **계약 채움** — 목적="브라우저 도구 확장+강화"; 정지조건=`pnpm check` + `pnpm eval:browser-agent` ≥ threshold + "backlog browser ◦ 항목 Done(독립 판정)"; eval=**eval:browser-agent**; 모델=정형 CDP 배선은 Sonnet, 프레임/grounding 설계는 Opus; connector=N/A(로컬 Chrome라 외부 트래커 불필요); 예산=loop-budget 한도.
 3. **프롬프트 생성** — §3 골격에 위 값 박음(④가 `pnpm eval:browser-agent`로, ②가 browser 섹션으로, 예산 캡 줄 포함).
-3.5 **자가검증** — 10항목 PASS(정지조건 `eval:browser-agent` 실재 확인, 같은 테마 cron 없음 `CronList`), push-금지·floor·예산 문구 살아있음 → 통과.
+3.5 **자가검증** — 11항목 PASS(정지조건 `eval:browser-agent` 실재 확인, 같은 테마 cron 없음 `CronList`, 게이팅 검증자·이해 체크포인트·자율성 티어(Tier1) 박힘), push-금지·floor·예산 문구 살아있음 → 통과.
 4. **등록** — `Skill(skill:"loop", args:"20m <생성한 프롬프트>")` → 세션 cron id 반환 + 첫 fire 즉시 실행.
 5. **보고** — 프롬프트 전문 + cron id(세션) + "각 fire: browser ◦ 1슬라이스 TDD→check→eval:browser-agent→커밋" + 첫 fire 결과 + `CronDelete <id>`로 중단 + fire당 1슬라이스 비용 경계.
 
