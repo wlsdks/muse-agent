@@ -66,6 +66,35 @@ describe("hook orchestration", () => {
     expect(failed?.error).toBe("hook A boom");
   });
 
+  it("does NOT hang the loop on a hook that never resolves — times out, records 'failed', continues", async () => {
+    const hanging = (): Promise<void> => new Promise<void>(() => { /* never settles */ });
+    const surviving = vi.fn();
+    const hookTraceStore = new InMemoryHookTraceStore();
+
+    await expect(invokeHooks("beforeStart", buildContext(), {
+      hookTimeoutMs: 10,
+      hookTraceStore,
+      hooks: [
+        { beforeStart: hanging, id: "hook-hang" },
+        { beforeStart: surviving, id: "hook-after" }
+      ]
+    })).resolves.toBeUndefined();
+
+    expect(surviving).toHaveBeenCalledTimes(1); // a hang no longer blocks later hooks / the loop
+    const traces = await hookTraceStore.listRecent();
+    const hung = traces.find((t) => t.hookId === "hook-hang");
+    expect(hung?.status).toBe("failed");
+    expect(hung?.error).toContain("timeout");
+  });
+
+  it("a fast hook completes normally under the timeout (no false cut-off)", async () => {
+    const fast = vi.fn().mockResolvedValue(undefined);
+    const hookTraceStore = new InMemoryHookTraceStore();
+    await invokeHooks("beforeStart", buildContext(), { hookTimeoutMs: 1000, hookTraceStore, hooks: [{ beforeStart: fast, id: "fast" }] });
+    expect(fast).toHaveBeenCalledTimes(1);
+    expect((await hookTraceStore.listRecent()).find((t) => t.hookId === "fast")?.status).toBe("completed");
+  });
+
   it("mergedHooks lets a HookRegistry entry override a static hook with the same id", () => {
     const staticHook: HookStage = { beforeStart: () => undefined, id: "shared" };
     const dynamicHook: HookStage = { beforeStart: () => undefined, id: "shared" };
