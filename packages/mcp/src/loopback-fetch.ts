@@ -97,7 +97,12 @@ export function createFetchMcpServer(options: FetchMcpServerOptions): LoopbackMc
         const remaining = maxBodyBytes - bytesRead;
         if (value.byteLength > remaining) {
           const head = value.subarray(0, Math.max(0, remaining));
-          bodyText += decoder.decode(head);
+          // Decode the truncating chunk WITH the stream flag and never flush
+          // (the truncated branch skips the final `decode()`), so a partial
+          // multi-byte sequence at the cap is dropped, not flushed to U+FFFD —
+          // otherwise a Korean body (3 bytes/char) gets a replacement char at
+          // the truncation tail ~2/3 of the time.
+          bodyText += decoder.decode(head, { stream: true });
           truncated = true;
           await reader.cancel();
           break;

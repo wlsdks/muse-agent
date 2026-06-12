@@ -1350,6 +1350,30 @@ describe("muse.fetch loopback server", () => {
     expect(result.truncated).toBe(true);
   });
 
+  it("truncates a multi-byte UTF-8 body on a character boundary — no U+FFFD at the cut", async () => {
+    // "가나다라" is 12 bytes (3/char); an 8-byte cap lands inside "다". A raw
+    // non-streaming decode of the cut chunk flushes the partial sequence to a
+    // replacement char ("가나�"); the stream-flag decode drops it → "가나".
+    const fakeFetch = (async () =>
+      new Response("가나다라", { headers: {}, status: 200 })) as unknown as typeof globalThis.fetch;
+    const server = createFetchMcpServer({ allowedHosts: ["api.example.test"], fetch: fakeFetch, maxBodyBytes: 8 });
+    const connection = createLoopbackMcpConnection(server);
+    const result = await connection.callTool!("get", { url: "https://api.example.test/" });
+    expect(result.truncated).toBe(true);
+    expect(result.body).toBe("가나");
+    expect(result.body as string).not.toContain("�");
+  });
+
+  it("drops a first character split by the cap rather than emitting U+FFFD (cap < one char)", async () => {
+    const fakeFetch = (async () =>
+      new Response("가나", { headers: {}, status: 200 })) as unknown as typeof globalThis.fetch;
+    const server = createFetchMcpServer({ allowedHosts: ["api.example.test"], fetch: fakeFetch, maxBodyBytes: 2 });
+    const connection = createLoopbackMcpConnection(server);
+    const result = await connection.callTool!("get", { url: "https://api.example.test/" });
+    expect(result.truncated).toBe(true);
+    expect(result.body).toBe(""); // 2 bytes is mid-"가" → dropped, not "�"
+  });
+
   it("forwards caller-supplied headers (string values only)", async () => {
     let capturedInit: RequestInit | undefined;
     const fakeFetch = (async (_url: string, init: RequestInit) => {

@@ -534,11 +534,19 @@ HARDEN (make existing tools more reliable):
   (all pkgs), lint 0. Fable-5 PASS (RED re-confirmed; helper fuzzed 2000+ cases vs an optimal-prefix oracle — never
   over-shoots the cap, never over-trims a fitting char, longest valid prefix; ASCII test stays green). KIND
   encoding-boundary, fresh surface — directly fixes garbled tails in 진안's Korean notes.
-- ◦ **loopback-fetch readBodyWithCap same UTF-8 boundary bug (fire-30 sibling, reuse the helper)** — `loopback-fetch.ts`
-  (~line 97-99) decodes a capped HTTP body's truncating chunk WITHOUT boundary backoff, so a size-capped web fetch gets
-  the same U+FFFD tail as the fs read did. FIX: route the final-chunk decode through `utf8SafeSliceEnd` (now exported
-  from loopback-filesystem.ts). Slice: 1 wiring change + 1 test (capped multi-byte body → no replacement char). Same
-  fix shape, fresh surface (web fetch).
+- ✓→Done **loopback-fetch readBodyWithCap U+FFFD at the truncation tail** (fire 31; encoding-boundary + the ~10-fire
+  JUDGE FAILURE DRILL) — `readBodyWithCap` decoded the truncating chunk with a NON-streaming `decoder.decode(head)`,
+  flushing a partial multi-byte sequence at the cap to U+FFFD (a Korean body got "가나�"). KEY: the correct fix is NOT
+  `utf8SafeSliceEnd(head)` as this ◦ originally guessed — that helper treats `head` as a standalone buffer and misreads
+  leading continuation bytes when an earlier full chunk left pending bytes in the STREAMING decoder. The right fix is
+  `decoder.decode(head, { stream: true })` + never flushing on the truncated branch (the `if (!truncated)` guard already
+  skips the flush), so the partial char straddling the cap is buffered and dropped. TDD 2 ("가나다라" cap 8 → "가나";
+  "가나" cap 2 → "") RED("가나�")→GREEN; mcp 1737, check 0 (all pkgs), lint 0. JUDGE DRILL: an inert slice (comment-only
+  code change + a declaration-only test asserting just truncated:true/length>0) was planted FIRST; the Fable-5 verifier
+  correctly FAILED it (traced result.body="가나�", flagged the test as declaration-only, AND independently derived the
+  stream-flag fix) → rolled back → real fix applied + PASS. Judge drill 3/3 (fire 10 json.query, fire 21 regex, fire 31
+  fetch). Optional follow-up (verifier note): a multi-chunk-stream test would pin the cross-chunk decoder-state case
+  (currently proven ad hoc, not by a committed test).
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`
