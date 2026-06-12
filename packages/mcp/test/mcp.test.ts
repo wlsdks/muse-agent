@@ -1055,6 +1055,22 @@ describe("loopback MCP servers", () => {
     });
   });
 
+  it("muse.url#encode_query rejects a nested object value instead of silently encoding '[object Object]'", async () => {
+    const connection = createLoopbackMcpConnection(createUrlMcpServer());
+    // String({nested:1}) === "[object Object]" — a silently corrupt query param. Must error.
+    expect(await connection.callTool!("encode_query", { params: { a: { nested: 1 } } })).toEqual({
+      error: expect.stringContaining("string/number/boolean")
+    });
+    // an object INSIDE an array value is also rejected (not "[object Object]")
+    expect(await connection.callTool!("encode_query", { params: { a: ["ok", { bad: 1 }] } })).toEqual({
+      error: expect.stringContaining("string/number/boolean")
+    });
+    // scalars + scalar arrays still encode fine (no regression)
+    expect(await connection.callTool!("encode_query", { params: { arr: [1, 2], b: true, n: 5 } })).toEqual({
+      query: "arr=1&arr=2&b=true&n=5"
+    });
+  });
+
   it("muse.crypto#hash returns deterministic digests for known inputs", async () => {
     const connection = createLoopbackMcpConnection(createCryptoMcpServer());
     expect(await connection.callTool!("hash", { text: "muse", algorithm: "sha256" })).toEqual({

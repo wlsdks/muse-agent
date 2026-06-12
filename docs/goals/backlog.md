@@ -51,10 +51,16 @@ The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing 
   map, so __proto__/constructor land as plain own DATA keys and the `existing === undefined` dedup works for
   every key. TDD 1 (__proto__=a → own "a", constructor=c → "c", x="1") RED→GREEN; mcp 1696, check 0, lint 0.
   Fable-5 PASS (dedup string/array shapes preserved, JSON serializes null-proto own keys, no downstream consumer).
-- ◦ **muse.text.stats whitespace-only short-circuit lies** (gap-scout runner-up) — `stats("\n\n\n")` returns
-  `{characters:0, lines:0}` though the text has 3 chars / 4 lines (loopback-text-utils-server.ts:~20). 1 fix + 1 test.
-- ◦ **muse.url.encode_query encodes a nested object as literal "[object Object]"** via `String(raw)` instead of
-  erroring (loopback-url-server.ts:~74). 1 fix + 1 test.
+- ⏳ **muse.text.stats whitespace→zero — NOT a clean bug (documented behavior, needs 진안)** — `stats("   ")` returns
+  `{characters:0, lines:0, words:0}` but an existing test (mcp.test.ts "treats whitespace as zero") DOCUMENTS this as
+  intended. Unlike encode_query's incidental "[object Object]", the whitespace→zero is a named design choice — changing
+  it alters documented behavior. Deferred to 진안: is whitespace-only meant to count as zero, or report factual chars/lines?
+- ✓→Done **muse.url.encode_query encoded a nested object as "[object Object]"** (gap-scout runner-up; shipped fire 14) —
+  `String(raw)` coerced a nested object/array value to the literal "[object Object]" — a silently-corrupt query param.
+  FIX: an isScalar guard returns `{error: must be string/number/boolean}` for a non-scalar value or array item (scalars,
+  scalar arrays, null/undefined skipping unchanged). TDD (nested-object value + object-in-array → error; scalar control
+  encodes) RED→GREEN; updated an existing unit that incidentally characterized the "[object Object]" output (Fable-5
+  judged the change legitimate — the test's intent was scalars). mcp 1697, check 0, lint 0.
 - ✓→Done **muse.calendar.add mis-anchored a time-only endsAt** (EXPANSION gap-scout, live EN+KO) — `add`
   resolved `endsAt` with `parseIsoDate(endsAtRaw)` whose default anchor is now(today), so a bare time-of-day
   end ("4pm"/"오후 4시") for a NOT-today event resolved against TODAY while startsAt resolved to tomorrow →

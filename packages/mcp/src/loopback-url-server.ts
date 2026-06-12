@@ -71,13 +71,23 @@ export function createUrlMcpServer(): LoopbackMcpServer {
           if (!params || typeof params !== "object" || Array.isArray(params)) {
             return { error: "params must be a JSON object" };
           }
+          const isScalar = (v: unknown): v is string | number | boolean =>
+            typeof v === "string" || typeof v === "number" || typeof v === "boolean";
           const search = new URLSearchParams();
           for (const [key, raw] of Object.entries(params as Record<string, unknown>)) {
             if (Array.isArray(raw)) {
               for (const item of raw) {
+                // A nested object/array would String()-coerce to "[object Object]" — a
+                // silently corrupt query param. Reject it instead of encoding garbage.
+                if (item !== null && item !== undefined && !isScalar(item)) {
+                  return { error: `params['${key}'] array items must be string/number/boolean, not a nested object/array` };
+                }
                 search.append(key, String(item));
               }
             } else if (raw !== undefined && raw !== null) {
+              if (!isScalar(raw)) {
+                return { error: `params['${key}'] must be a string/number/boolean or an array of those, not a nested object` };
+              }
               search.append(key, String(raw));
             }
           }

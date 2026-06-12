@@ -72,8 +72,14 @@ describe("muse.url#encode_query", () => {
 
   it("stringifies non-string scalars and skips null / undefined values", () => {
     expect(
-      tool("encode_query").execute({ params: { n: 5, bool: true, nul: null, und: undefined, obj: { x: 1 } } }),
-    ).toEqual({ query: "n=5&bool=true&obj=%5Bobject+Object%5D" });
+      tool("encode_query").execute({ params: { n: 5, bool: true, nul: null, und: undefined } }),
+    ).toEqual({ query: "n=5&bool=true" });
+    // A nested object is NOT a scalar — it must error, not encode "[object Object]"
+    // (covered end-to-end in mcp.test.ts). Asserting the rejection here too keeps this
+    // unit honest about what encode_query accepts.
+    expect(tool("encode_query").execute({ params: { obj: { x: 1 } } })).toEqual({
+      error: expect.stringContaining("string/number/boolean"),
+    });
   });
 
   it("percent-encodes reserved characters (space, &, =) in values", () => {

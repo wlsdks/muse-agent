@@ -454,3 +454,11 @@
 - **왜:** fire-4 json.merge __proto__의 sibling을 URL 표면에서 발견(라이브 확인). 다양성: fire 11/12 캘린더 다음 non-calendar 보안 표면(URL 파싱)으로 전환. EXPANSION 스카웃.
 - **리뷰지점:** loopback-url-server.ts:29(query map Object.create(null)) + mcp.test.ts(__proto__=a→own "a", constructor=c→"c", x="1") RED→GREEN. mcp 1696, check 0, lint 0. Fable-5 검증자 PASS(dedup string/array 무회귀·JSON이 null-proto own 키 직렬화·downstream 구조 소비자 없음·node로 양쪽 의미 실행 확인). runner-up 2개(text.stats whitespace-only lie, url.encode_query [object Object]) backlog 기록.
 - **리스크:** 없음에 가까움 — null-proto map은 정상 키/dedup 동일, JSON 직렬화 정상. RATCHET: testFiles 893 무변동(+1 케이스), fabrication 0 유지. grounding floor 무관(URL 파서 보안, 게이트 무변경).
+
+
+## [TOOL loop] fire 14 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** muse.url.encode_query가 중첩 객체 값을 String(raw)로 "[object Object]"로 조용히 인코딩(silent corruption). isScalar 가드 추가 — 비-scalar 값/배열 아이템은 {error: must be string/number/boolean}. scalar/scalar-array/null-skip 무변경.
+- **왜:** fire-13 runner-up. 다른 표면(url.encode_query)·다른 KIND(input-validation/silent-corruption). 처음 후보였던 text.stats whitespace→zero는 기존 테스트가 "treats whitespace as zero"로 의도 문서화 → clean 버그 아님(진안 판단으로 ⏳ defer); encode_query의 "[object Object]"는 incidental characterization이라 fix 적합.
+- **리뷰지점:** loopback-url-server.ts(isScalar 가드) + mcp.test.ts(중첩객체+배열내객체→error, scalar 컨트롤) + loopback-url.test.ts(incidental obj 케이스를 error 기대로 갱신) RED→GREEN. mcp 1697, check 0(stale-dist 재실행 후), lint 0. Fable-5 검증자 PASS(기존 테스트 변경 LEGITIMATE 판정·커버리지 강화·scalar 무회귀).
+- **리스크:** 없음에 가까움 — scalar/배열/null skip byte-identical, 객체만 거부. RATCHET: testFiles 893 무변동(+1 케이스, 1 갱신), fabrication 0 유지. grounding floor 무관(URL 인코더 입력검증, 게이트 무변경).
