@@ -90,6 +90,12 @@ export function detectUserCommitments(
         // A stated-intent clause whose verb is stative ("I'll be late", "I'll
         // see") is a remark, not a task — don't surface it as a commitment.
         if (rule.kind === "will" && WILL_STATIVE_STARTERS.has((text.split(/\s+/u)[0] ?? "").toLowerCase())) continue;
+        // A NEGATED clause ("I will not email Bob", "I'll never call", "I should
+        // not ship it") captures "not email Bob" / "never call" as the action —
+        // a non-commitment. Surfacing it would nag the user about a thing they
+        // said they would NOT do; drop it (conservative bias: a missed loop
+        // beats a spurious capture).
+        if (/^(?:not|never)\s/iu.test(text)) continue;
         const key = `${rule.kind}:${text.toLowerCase()}`;
         if (seen.has(key)) continue;
         seen.add(key);
