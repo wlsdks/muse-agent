@@ -383,3 +383,10 @@
 - **리스크:** opt-in·flag-off byte-identical·verdict 무변경(floor-safe). LLM OpenIE/synonym edge는 deferred(결정적 rare-token 그래프로 대체 — PPR 코어가 충실한 부분). CLI ask 배선은 live multi-hop battery 後 follow-up. RATCHET: testFiles +1, fabrication 0 유지, 신규 capability(associative recall) 추가.
 
 > NOTE: 이 fire는 **loop-creator skill v1.11.2로 신규 등록된 cron fecd6aef의 첫 fire** — 논문-근거(arXiv 인용)+공개논문-only+Fable scout/judge 모드의 첫 실증. 사이클5 fires 25-27.
+
+## [cognition loop] fire 26 — 2026-06-13 · 사이클5 · 테마: 멀티에이전트 검증 (PAPER-GROUNDED, skill v1.11.2)
+
+- **무엇:** **BoN-MAV (arXiv:2502.20379, 공개 CC-BY preprint)** 적용 — `verifier-vote.ts`: `aggregateVerifierVotes`(binary aspect 투표 합산, AggScore=approvals/count, argmax, 결정적 tie-break) + `DEFAULT_ASPECT_VERIFIERS`(on-topic/substantive/non-hedging). MoA aggregator 실패 fallback이 "thorough"를 맹목 선택하던 것 → 검증 투표로 best candidate 선택.
+- **왜:** Muse는 "Bo-n"(MoA proposers)만 있고 "MAV"(후보 검증) 없었음 — aggregator throw 시 off-topic "thorough"도 그냥 골랐음. 다중 약한 검증기 투표 합산이 단일 verdict보다 낫다(논문). 멀티에이전트 테마 논문-근거 capability(fire25 메모리와 다른 KIND, 다양성).
+- **리뷰지점:** 신규 `verifier-vote.ts` + `index.ts` + `orchestrate.ts`(fallback 한 줄, happy path 불변) + 테스트 14+. **maker=Sonnet / scout+judge=Fable 5**: Fable judge가 **orchestrate.ts를 HEAD로 revert해 behavior delta가 non-vacuous임 실증**(off-topic thorough vs on-topic skeptic → skeptic 선택, pre-change는 thorough) + honesty-safe(non-hedging은 상대 랭킹, all-hedge도 선택 반환, abstention 미전환, grounding/citation 파일 무수정) 확인 → VERDICT PASS. agent-core 1786 green.
+- **리스크:** fallback 경로만 변경, happy path byte-identical, verdict/floor 무관. LLM aspect verifier + happy-path 적용은 deferred(현 슬라이스는 결정적 AV + 실패경로). RATCHET: testFiles +1(143), fabrication 0 유지, 신규 capability(candidate verification).

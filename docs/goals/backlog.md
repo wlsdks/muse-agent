@@ -541,6 +541,16 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 
 ## Open — agent core
 
+- ✓→Done **Multi-aspect verifier vote on the MoA fallback (BoN-MAV, arXiv:2502.20379)** — [2026-06-13,
+  cognition loop fire 26, PAPER-GROUNDED, Fable scout+judge] When the MoA aggregator threw/returned empty,
+  `orchestrateAnswer` blindly picked the `"thorough"` proposal — even if off-topic while another was on-point;
+  no candidate was ever verified ("Bo-n" without "MAV"). Applied BoN-MAV (public CC-BY; reimplemented): NEW
+  `verifier-vote.ts` — `aggregateVerifierVotes` (binary aspect votes, AggScore=approvals/count, argmax,
+  deterministic tie-break, NaN-guarded) + `DEFAULT_ASPECT_VERIFIERS` (on-topic/substantive/non-hedging —
+  relative ranking, NEVER abstains). Wired into the aggregator-failure fallback only (happy path byte-identical;
+  no grounding/citation/abstention semantics touched). Fable judge PASS — reverted-to-HEAD proved the delta
+  non-vacuous (off-topic thorough vs on-topic skeptic → skeptic). agent-core 1786 green.
+
 - ✓→Done **Associative recall via Personalized PageRank (HippoRAG 2, arXiv:2502.14802)** — [2026-06-13,
   cognition loop fire 25, PAPER-GROUNDED, Fable scout+judge] Muse recall was isolated (cosine+BM25+ACT-R)
   with zero graph/spreading-activation structure. Applied HippoRAG 2 (public ICML 2025 preprint;

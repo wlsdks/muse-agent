@@ -266,6 +266,12 @@ export {
   type OrchestrationRole
 } from "./orchestrate.js";
 export {
+  aggregateVerifierVotes,
+  DEFAULT_ASPECT_VERIFIERS,
+  type AspectVerifier,
+  type ScoredCandidate
+} from "./verifier-vote.js";
+export {
   A2A_MAX_CONTENT_CHARS,
   A2ASafetyError,
   classifyInbound,

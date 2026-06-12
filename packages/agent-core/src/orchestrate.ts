@@ -2,6 +2,7 @@ import type { ModelMessage } from "@muse/model";
 
 import type { CouncilModelOptions } from "./council.js";
 import { lexicalTokens } from "./knowledge-recall.js";
+import { aggregateVerifierVotes, DEFAULT_ASPECT_VERIFIERS } from "./verifier-vote.js";
 
 /**
  * Multi-agent orchestration for one answer — the **Mixture-of-Agents** pattern
@@ -226,8 +227,10 @@ export async function orchestrateAnswer(question: string, options: OrchestrateOp
     merged = "";
   }
   if (merged.length === 0) {
-    // Aggregator returned nothing → fall back to the thorough proposal if present.
-    const fallback = proposals.find((p) => p.id === "thorough") ?? proposals[0] ?? { id: primary.id, text: "" };
+    // Aggregator returned nothing → BoN-MAV vote aggregation picks the best candidate
+    // (arXiv:2502.20379): each aspect verifier casts a binary vote; argmax wins.
+    // preferOnTie="thorough" preserves prior behavior when all candidates score equal.
+    const fallback = aggregateVerifierVotes(proposals, DEFAULT_ASPECT_VERIFIERS, question, "thorough").selected;
     return { answer: fallback.text, contributors: [fallback.id], mode: "orchestrated", proposals, ...degraded };
   }
   return { answer: merged, contributors: attributeContributors(merged, proposals), mode: "orchestrated", proposals, ...degraded };
