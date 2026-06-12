@@ -45,12 +45,13 @@ HARDEN (make existing tools more reliable):
   http(s) (bare host → https; host:port preserved) and refuses every other scheme. TDD 4 cases;
   eval:browser-agent migrated to a loopback http server (was file://) and still 3/3; smoke unaffected
   (uses the controller directly). mcp/browser 37, check 0, lint 0.
-- ◦ **command_injection pattern over-fires on legit loopback URLs** — `(curl|wget|fetch|http).{0,10}
-  (localhost|127\.0\.0|10\.|...)` flags ANY "http://localhost:3000"/"http://127.0.0.1" the user
-  names (e.g. "open my dev server in the browser"), so the injection guard blocks a legitimate
-  browser_open before it runs. Tighten to require a command CONTEXT (a shell verb / pipe / backtick
-  near the host), not a bare URL; add false-positive cases. (found this fire; eval used [::1] to
-  sidestep.) SECURITY pattern — keep all true-positive SSRF-instruction cases.
+- ✓→Done **command_injection pattern over-fired on legit loopback URLs** — dropped the bare `http`
+  trigger so the pattern requires a command VERB (curl|wget|fetch) near an internal host. "open
+  http://localhost:3000 in the browser" / "내 dev 서버 http://127.0.0.1:8080 열어줘" no longer trip the
+  input guard (it was blocking the whole turn); curl/wget/fetch-toward-internal still fire. TDD 3
+  false-positive + 3 true-positive cases; eval:browser-agent reverted off the [::1] workaround back
+  to 127.0.0.1 and still 3/3 (proves the guard fix end-to-end); policy 129, byte-hygiene 30, check 0,
+  lint 0, precheck:grounding pass^2.
 - ✓→Done **file_read symlink-escape guard** — the absolute-path check was LEXICAL only: a file
   lexically inside the roots could be a symlink to /etc/passwd, and readFile followed it. Now
   realpath-verifies the target (and the roots — /tmp is itself a symlink on macOS) before reading;

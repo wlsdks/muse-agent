@@ -63,11 +63,8 @@ await writeFile(join(dir, "shop.html"), SHOP_HTML);
 // not read arbitrary local files via the browser; file_read is the bounded
 // local path). Loopback-only on an ephemeral port.
 const server = createServer((_req, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(SHOP_HTML); });
-await new Promise((resolve) => server.listen(0, "::1", resolve));
-// IPv6 loopback [::1] (not 127.0.0.1/localhost) so the URL in the task prompt
-// does not trip the command_injection guard pattern (a separate false-positive
-// recorded in the backlog).
-const url = `http://[::1]:${server.address().port}/shop`;
+await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+const url = `http://127.0.0.1:${server.address().port}/shop`;
 
 const controller = new PuppeteerBrowserController({ headless: true, userDataDir: join(dir, "profile") });
 const allow = () => ({ approved: true });
