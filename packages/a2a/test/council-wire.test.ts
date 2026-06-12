@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildCouncilRequest,
   COUNCIL_METHOD,
+  MAX_COUNCIL_REASONING_CHARS,
   parseCouncilRequest,
+  parseCouncilResponse,
   requestCouncilReasoning,
   signCouncilRequest,
   verifyCouncilRequest
@@ -63,7 +65,7 @@ describe("requestCouncilReasoning — the council initiator (outbound)", () => {
   });
 
   it("signs + POSTs the council request and returns the peer's reasoning on success", async () => {
-    const { calls, fetchImpl } = recordingFetch(() => json({ kind: "council-reasoning", reasoning: "because X" }));
+    const { calls, fetchImpl } = recordingFetch(() => json({ kind: "council-reasoning", fromPeerId: "peer-p", reasoning: "because X" }));
     const out = await requestCouncilReasoning({ env: ENV, fetchImpl, fromPeerId: "me", peer, question: "what?" });
     expect(out).toBe("because X");
     expect(calls[0]!.url).toBe("https://peer/a2a");
@@ -74,9 +76,61 @@ describe("requestCouncilReasoning — the council initiator (outbound)", () => {
   it("returns null for a non-OK response, a wrong kind, a non-string / blank reasoning, or a thrown fetch", async () => {
     const mk = (responder: () => Response) => requestCouncilReasoning({ env: ENV, fetchImpl: recordingFetch(responder).fetchImpl, fromPeerId: "me", peer, question: "q" });
     expect(await mk(() => json({ kind: "council-reasoning", reasoning: "x" }, 500))).toBeNull(); // non-OK
-    expect(await mk(() => json({ kind: "other", reasoning: "x" }))).toBeNull(); // wrong kind
-    expect(await mk(() => json({ kind: "council-reasoning", reasoning: "   " }))).toBeNull(); // blank reasoning
-    expect(await mk(() => json({ kind: "council-reasoning" }))).toBeNull(); // missing reasoning
+    expect(await mk(() => json({ kind: "other", fromPeerId: "p", reasoning: "x" }))).toBeNull(); // wrong kind
+    expect(await mk(() => json({ kind: "council-reasoning", fromPeerId: "p", reasoning: "   " }))).toBeNull(); // blank reasoning
+    expect(await mk(() => json({ kind: "council-reasoning", fromPeerId: "p" }))).toBeNull(); // missing reasoning
     expect(await requestCouncilReasoning({ env: ENV, fetchImpl: (async () => { throw new Error("net"); }) as unknown as typeof fetch, fromPeerId: "me", peer, question: "q" })).toBeNull();
+  });
+
+  it("truncates an over-long peer reasoning to MAX_COUNCIL_REASONING_CHARS", async () => {
+    const overlong = "x".repeat(MAX_COUNCIL_REASONING_CHARS + 500);
+    const { fetchImpl } = recordingFetch(() => json({ kind: "council-reasoning", fromPeerId: "bob", reasoning: overlong }));
+    const out = await requestCouncilReasoning({ env: ENV, fetchImpl, fromPeerId: "me", peer, question: "q?" });
+    expect(out).not.toBeNull();
+    expect(out!.length).toBe(MAX_COUNCIL_REASONING_CHARS);
+  });
+});
+
+describe("parseCouncilResponse — accepting-side boundary", () => {
+  it("round-trips a valid response unchanged", () => {
+    expect(parseCouncilResponse({ kind: "council-reasoning", fromPeerId: "bob", reasoning: "because X" })).toEqual({
+      kind: "council-reasoning",
+      fromPeerId: "bob",
+      reasoning: "because X"
+    });
+  });
+
+  it("returns null for null / a string / a number", () => {
+    expect(parseCouncilResponse(null)).toBeNull();
+    expect(parseCouncilResponse("a string")).toBeNull();
+    expect(parseCouncilResponse(42)).toBeNull();
+  });
+
+  it("returns null for a wrong kind", () => {
+    expect(parseCouncilResponse({ kind: "other-kind", fromPeerId: "bob", reasoning: "r" })).toBeNull();
+    expect(parseCouncilResponse({ fromPeerId: "bob", reasoning: "r" })).toBeNull();
+  });
+
+  it("returns null for missing or blank reasoning", () => {
+    expect(parseCouncilResponse({ kind: "council-reasoning", fromPeerId: "bob" })).toBeNull();
+    expect(parseCouncilResponse({ kind: "council-reasoning", fromPeerId: "bob", reasoning: "" })).toBeNull();
+    expect(parseCouncilResponse({ kind: "council-reasoning", fromPeerId: "bob", reasoning: "   " })).toBeNull();
+    expect(parseCouncilResponse({ kind: "council-reasoning", fromPeerId: "bob", reasoning: 123 })).toBeNull();
+  });
+
+  it("carries fromPeerId through (coerced to \"\" when absent/non-string) — NOT a rejection reason (the producer emits \"\" when selfPeerId is unset, and the caller discards it)", () => {
+    expect(parseCouncilResponse({ kind: "council-reasoning", reasoning: "r" })).toEqual({ kind: "council-reasoning", fromPeerId: "", reasoning: "r" });
+    expect(parseCouncilResponse({ kind: "council-reasoning", fromPeerId: "", reasoning: "r" })).toEqual({ kind: "council-reasoning", fromPeerId: "", reasoning: "r" });
+    expect(parseCouncilResponse({ kind: "council-reasoning", fromPeerId: 7, reasoning: "r" })).toEqual({ kind: "council-reasoning", fromPeerId: "", reasoning: "r" });
+    expect(parseCouncilResponse({ kind: "council-reasoning", fromPeerId: "alice", reasoning: "r" })?.fromPeerId).toBe("alice");
+  });
+
+  it("truncates an over-long reasoning to MAX_COUNCIL_REASONING_CHARS, preserving kind + fromPeerId", () => {
+    const overlong = "x".repeat(MAX_COUNCIL_REASONING_CHARS + 500);
+    const result = parseCouncilResponse({ kind: "council-reasoning", fromPeerId: "bob", reasoning: overlong });
+    expect(result).not.toBeNull();
+    expect(result!.reasoning.length).toBe(MAX_COUNCIL_REASONING_CHARS);
+    expect(result!.kind).toBe("council-reasoning");
+    expect(result!.fromPeerId).toBe("bob");
   });
 });

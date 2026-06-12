@@ -41,8 +41,10 @@ export {
 } from "./handler.js";
 export {
   COUNCIL_METHOD,
+  MAX_COUNCIL_REASONING_CHARS,
   buildCouncilRequest,
   parseCouncilRequest,
+  parseCouncilResponse,
   requestCouncilReasoning,
   signCouncilRequest,
   verifyCouncilRequest,

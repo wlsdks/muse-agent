@@ -159,6 +159,19 @@ export function buildDebateQuestion(question: string, ownPeerId: string, utteran
     "2-4 sentences, plain text, no personal data.";
 }
 
+/**
+ * One member, one voice: collapse utterances to a single one per peerId (last
+ * wins — a peer's latest/retried reasoning supersedes an earlier one). Without
+ * this a duplicate peer (a dup registry entry, or the initiator's selfId
+ * colliding with a peer id) would be double-weighted in the synthesis — a MAST
+ * duplicated-work failure that skews a deliberation. Preserves first-seen order.
+ */
+export function dedupeUtterancesByPeer(utterances: readonly CouncilUtterance[]): readonly CouncilUtterance[] {
+  const byPeer = new Map<string, CouncilUtterance>();
+  for (const u of utterances) byPeer.set(u.peerId, u);
+  return [...byPeer.values()];
+}
+
 /** Render the council reasoning as an `[id] reasoning` list for the synthesiser. */
 export function buildCouncilPrompt(question: string, utterances: readonly CouncilUtterance[]): string {
   const lines = utterances.map((u) => `[${u.peerId}] ${u.reasoning.replace(/\s+/gu, " ").trim()}`);
@@ -196,7 +209,7 @@ export async function synthesizeCouncilAnswer(
   utterances: readonly CouncilUtterance[],
   options: CouncilModelOptions
 ): Promise<CouncilAnswer | null> {
-  const usable = utterances.filter((u) => u.peerId.length > 0 && u.reasoning.trim().length > 0);
+  const usable = dedupeUtterancesByPeer(utterances.filter((u) => u.peerId.length > 0 && u.reasoning.trim().length > 0));
   if (question.trim().length === 0 || usable.length === 0) return null;
   const messages: readonly ModelMessage[] = [
     { content: SYNTHESIS_SYSTEM_PROMPT, role: "system" },

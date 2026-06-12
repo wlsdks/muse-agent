@@ -67,6 +67,33 @@ export function parseCouncilRequest(body: unknown): { readonly fromPeerId: strin
   return { fromPeerId, question };
 }
 
+/** Max accepted peer-reasoning length — a trust-boundary bound so a buggy/compromised
+ *  (even allowlisted) peer can't flood the initiator's local synthesis context. A valid
+ *  but over-long reasoning is TRUNCATED (kept, bounded), not rejected — the council still
+ *  uses its content, capped. */
+export const MAX_COUNCIL_REASONING_CHARS = 4000;
+
+/**
+ * Pull a well-formed council RESPONSE out of a parsed body, or null if it isn't
+ * one — the symmetric accepting-side boundary to parseCouncilRequest. Rejects on
+ * a bad kind or a missing/empty reasoning (the load-bearing content); an
+ * over-long reasoning is truncated to MAX_COUNCIL_REASONING_CHARS (bounded
+ * compute at the trust seam — a buggy/compromised peer can't flood local
+ * synthesis). `fromPeerId` is carried through (coerced to "" when absent) but is
+ * NOT a rejection reason: the producer itself emits "" when selfPeerId is unset
+ * (handler.ts), and the caller discards it, so requiring it would only drop
+ * legitimate reasoning.
+ */
+export function parseCouncilResponse(body: unknown): CouncilResponse | null {
+  if (!body || typeof body !== "object") return null;
+  const b = body as { kind?: unknown; fromPeerId?: unknown; reasoning?: unknown };
+  if (b.kind !== "council-reasoning") return null;
+  if (typeof b.reasoning !== "string" || b.reasoning.trim().length === 0) return null;
+  const reasoning = b.reasoning.length > MAX_COUNCIL_REASONING_CHARS ? b.reasoning.slice(0, MAX_COUNCIL_REASONING_CHARS) : b.reasoning;
+  const fromPeerId = typeof b.fromPeerId === "string" ? b.fromPeerId : "";
+  return { kind: "council-reasoning", fromPeerId, reasoning };
+}
+
 export interface RequestCouncilReasoningOptions {
   readonly env: A2AEnv;
   readonly peer: A2APeer;
@@ -91,10 +118,8 @@ export async function requestCouncilReasoning(options: RequestCouncilReasoningOp
       method: "POST"
     });
     if (!response.ok) return null;
-    const json = await response.json() as { kind?: unknown; reasoning?: unknown };
-    return json.kind === "council-reasoning" && typeof json.reasoning === "string" && json.reasoning.trim().length > 0
-      ? json.reasoning
-      : null;
+    const parsed = parseCouncilResponse(await response.json());
+    return parsed ? parsed.reasoning : null;
   } catch {
     return null;
   }

@@ -1,6 +1,7 @@
 import type { ModelMessage } from "@muse/model";
 
 import type { CouncilModelOptions } from "./council.js";
+import { lexicalTokens } from "./knowledge-recall.js";
 
 /**
  * Multi-agent orchestration for one answer — the **Mixture-of-Agents** pattern
@@ -96,6 +97,31 @@ const AGGREGATOR_SYSTEM_PROMPT =
   "incorrect, or merely hedging. Answer the user directly, in the user's language. Do NOT mention the candidates " +
   "or that you merged anything. Output only the answer.";
 
+/**
+ * Which proposals the merged answer ACTUALLY drew on — a proposal counts as a
+ * contributor when the merge lexically covers at least `floor` of its content
+ * tokens (the aggregator discards off-topic/incorrect proposals, so a dropped
+ * one shows near-zero overlap). Honest attribution for the audit trail (MAST:
+ * the `contributors` claim must match what aggregation did, not list everyone).
+ * If NO proposal clears the floor (a heavy paraphrase), fall back to ALL ids —
+ * never under-claim to an empty trail on a real merged answer.
+ */
+export function attributeContributors(
+  merged: string,
+  proposals: readonly OrchestrationProposal[],
+  floor = 0.4
+): readonly string[] {
+  const mergedTokens = lexicalTokens(merged);
+  const drawn = proposals.filter((p) => {
+    const pt = lexicalTokens(p.text);
+    if (pt.size === 0) return false;
+    let covered = 0;
+    for (const t of pt) if (mergedTokens.has(t)) covered += 1;
+    return covered / pt.size >= floor;
+  });
+  return (drawn.length > 0 ? drawn : proposals).map((p) => p.id);
+}
+
 /** aggregate = merge the parallel proposals into the single best answer (MoA). */
 async function aggregate(question: string, proposals: readonly OrchestrationProposal[], options: OrchestrateOptions): Promise<string> {
   const candidates = proposals.map((p, i) => `### Candidate ${(i + 1).toString()}\n${p.text}`).join("\n\n");
@@ -176,5 +202,5 @@ export async function orchestrateAnswer(question: string, options: OrchestrateOp
     const fallback = proposals.find((p) => p.id === "thorough") ?? proposals[0] ?? { id: primary.id, text: "" };
     return { answer: fallback.text, contributors: [fallback.id], mode: "orchestrated", proposals, ...degraded };
   }
-  return { answer: merged, contributors: proposals.map((p) => p.id), mode: "orchestrated", proposals, ...degraded };
+  return { answer: merged, contributors: attributeContributors(merged, proposals), mode: "orchestrated", proposals, ...degraded };
 }
