@@ -3,7 +3,7 @@ title: 컨텍스트 압축 (Context Compaction)
 audience: [개발자, AI 에이전트]
 purpose: 유한한 문맥 창이 넘치지 않게 — 무엇을 언제 줄이고, 무엇을 잃지 말아야 하나
 status: draft
-updated: 2026-05-31
+updated: 2026-06-13
 sources_basis: [Muse context-engineering-roadmap Phase 5 (importance-weighted compaction), Muse 에피소드 압축 요약, Anthropic multi-agent (subagent 1-2K token summaries), 2026 context compression governance refs]
 related: [loop-budget.md, failure-modes-and-observability.md, team-roles.md, architecture.md, README.md]
 ---
@@ -23,8 +23,13 @@ related: [loop-budget.md, failure-modes-and-observability.md, team-roles.md, arc
 
 ## 1. 언제 줄이나 (트리거)
 
-- **한계 전에 미리** — 창이 꽉 찬 뒤가 아니라 일정 비율에서 선제적으로.
+- **한계 전에 미리 — '덤 존' 기준으로.** 실무 데이터(~10만 개발 세션)에서 컨텍스트 창이
+  **~40% 차는 시점부터** 회상·추론이 저하됩니다(Horthy "dumb zone") — 창의 절반 한참 전을
+  선제 압축선으로 잡습니다.
 - **주기적으로** — 도구 호출 10~15회마다 압축을 예약하면 품질을 지키며 토큰을 크게 아낍니다.
+- **구조 경계에서 폴딩** — 토큰 임계가 아니라 **서브태스크 경계**에서 분기→완료 요약으로 접는
+  편이 낫습니다(context-folding: active context 10× 축소에 성능 동등, 2510.11967). 우리
+  [project.mjs](runner/project.mjs)의 서브태스크 합성·1~2K 압축 반환이 그 형태입니다.
 - **예산 인지** — 남은 예산이 빠듯해지면(HIGH→CRITICAL) 더 공격적으로 줄입니다([loop-budget](loop-budget.md)와 맞물림).
 
 ## 2. 무엇을 남기나 (선택적 보존)
@@ -49,6 +54,12 @@ related: [loop-budget.md, failure-modes-and-observability.md, team-roles.md, arc
 - 무분별한 압축은 **답을 맞게 만들던 디테일·출처를 지웁니다**. "작업을 보여준다"(인용 가능)를 깨지
   않도록, 인용 근거가 된 출처는 보존합니다([the-edge]는 SYSTEM-MAP 참고).
 - 압축은 **명시적으로 예약**돼야 효과적입니다 — "알아서 잊겠지"는 품질 손실로 이어집니다.
+- **압축 결과도 검증 대상입니다** — 요약이 결정·출처·앞으로의 의도(forward intent)를 보존했는지
+  점검을 거친 압축이 맹목 요약보다 정확도 +8.8pp(Slipstream 2605.08580). §4.5 실측(pass^2)이
+  그 점검의 수동 형태 — 압축마다 "결정·출처 보존?"을 묻고 통과해야 대체합니다.
+- **컨텍스트 윈도를 넘는 장기 작업엔 압축만으론 부족합니다**(Anthropic effective-harnesses:
+  "compaction isn't sufficient") — 기능 목록·진행 파일 같은 **구조적 상태**가 필요합니다 →
+  [session-persistence](session-persistence.md).
 
 ## 4.5 실측 (실제 Claude Code로 압축 보존 규칙 검증, 2026-05-31)
 
@@ -80,3 +91,5 @@ related: [loop-budget.md, failure-modes-and-observability.md, team-roles.md, arc
 - Anthropic — [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (서브에이전트 1~2K 토큰 압축 요약·외부 파일로 빼기)
 - Atlan — [Context Compression: Techniques, Risks, Governance 2026](https://atlan.com/know/context-compression/) (요약·가지치기 6기법 + 거버넌스 위험)
 - [Context compaction in agent frameworks 2026](https://dev.to/crabtalk/context-compaction-in-agent-frameworks-4ckk) (선제·주기적 압축, 예산 인지)
+- Dex Horthy/HumanLayer — [RPI·dumb zone](https://linearb.io/dev-interrupted/podcast/dex-horthy-humanlayer-rpi-methodology-ralph-loop) (~10만 세션: 창 ~40%부터 성능 저하 — 의도적 선제 압축)
+- [Context-Folding (2510.11967)](https://arxiv.org/abs/2510.11967) (서브태스크 경계 폴딩, active context 10×↓) · [Slipstream (2605.08580)](https://arxiv.org/abs/2605.08580) (압축 검증 +8.8pp) · Anthropic — [Effective harnesses](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents) (장기엔 압축만으론 부족 — 구조적 상태)

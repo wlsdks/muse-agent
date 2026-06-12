@@ -2,7 +2,7 @@
 title: 평가자(LLM-as-judge) 보정 (Judge Calibration)
 audience: [개발자, AI 에이전트]
 purpose: 평가자가 "유효는 통과·무효는 탈락"을 사람 라벨 대비 얼마나 맞히나 — TPR/TNR로 측정
-updated: 2026-05-31
+updated: 2026-06-13
 ---
 
 # 평가자 보정 (Judge Calibration)
@@ -60,6 +60,14 @@ updated: 2026-05-31
 > 좁히려면 무효 케이스를 계속 늘리고 여러 번 반복해 비결정성까지 봐야 합니다. 이 문서는 그
 > **방법·데이터·재현 레시피**를 고정해 둡니다(케이스 추가 시 이 표에 한 줄씩).
 
+## 주기적 스트레스 (일회 측정이 아니라 배터리)
+
+판정자 신뢰도는 한 번의 합의율 숫자가 아니라 **반복 스트레스 배터리**로 관리합니다(Judge
+Reliability Harness, 2603.05399). 어려운 응답 쌍에선 강한 판정자도 동전던지기 근처입니다
+(최고 ~64%, GPT-4o는 무작위 수준 — JudgeBench 2410.12784). 그래서: 보정셋을 키울 때
+"미묘하게 무효"를 계속 추가하고, **하네스 프롬프트나 모델이 바뀔 때마다 이 표를 재측정**합니다
+— 보정은 자산이 아니라 구독입니다.
+
 ## 재현 레시피
 
 평가자 역할 프롬프트([role-prompts](role-prompts.md))에 위 루브릭을 주고 표의 각 (기준, 빌드)을
@@ -70,3 +78,4 @@ updated: 2026-05-31
 
 - Hamel Husain — [Using LLM-as-a-Judge](https://hamel.dev/blog/posts/llm-judge/) (사람 라벨 대비 보정)
 - [How to Correctly Report LLM-as-a-Judge Evaluations](https://arxiv.org/pdf/2511.21140) · [futureagi — LLM-as-Judge Best Practices 2026](https://futureagi.com/blog/llm-as-judge-best-practices-2026) (TPR>96%/TNR<25% 편향, 혼동행렬 역산·Rogan–Gladen)
+- [JudgeBench (2410.12784)](https://arxiv.org/abs/2410.12784) (어려운 쌍에서 판정자 ~무작위 — 메타평가 없인 신뢰 금지) · [Judge Reliability Harness (2603.05399)](https://arxiv.org/abs/2603.05399) (반복 스트레스 배터리)

@@ -3,7 +3,7 @@ title: 에이전트 하네스 운영 계약 (Agent Harness — Operating Contrac
 audience: [AI 에이전트, 개발자, 기획자]
 purpose: 이 파일을 읽은 에이전트가 "하네스대로" 일하게 만드는 진입점 — 역할·핸드오프·게이트·검증을 한 장으로 강제
 format: AGENTS.md (vendor-neutral, 어떤 에이전트/도구든 읽음)
-updated: 2026-05-31
+updated: 2026-06-13
 ---
 
 # 에이전트 하네스 — 운영 계약
@@ -75,6 +75,21 @@ updated: 2026-05-31
 
 게이트 정의·통과 조건은 [verification-and-guardrails](verification-and-guardrails.md).
 
+## 3.5 두 층을 구분하라 — 지시(advisory) vs 강제(enforced)
+
+하네스는 두 층으로 작동한다(2026 합의: Claude Code 게이트 사다리 "지시는 advisory, 훅은 보장" ·
+Thoughtworks "Guides & Sensors"):
+
+- **지시 층(Guides)** — 이 폴더의 md 계약·역할 프롬프트·핸드오프 양식. 모델이 *따르기로 선택*하는
+  조향 입력. **대화형 세션(Claude Code/Codex가 이 파일을 읽는 보통의 경우)에선 이 층만으로 하네스가
+  완전하다.**
+- **강제 층(Sensors/Gates)** — 훅·린트·테스트·[runner/](runner/) 게이트. 모델이 말로 우회할 수 없는
+  결정론 코드. 같은 규칙이 반복 위반되면 지시에서 이 층으로 **승급**시킨다.
+
+**runner는 하네스의 전제조건이 아니다.** runner가 *필수*인 곳은 ① 헤드리스 자동화(`claude -p`
+사이클 — 지시가 아무것도 강제 못 하는 곳) ② 게이트가 실제로 fail-closed임을 테스트로 증명할 때
+③ 다른 에이전트 CLI로 포팅할 때, 셋뿐이다.
+
 ## 4. 토대 (모든 단계에 적용)
 
 - **루프 한도** — 횟수·시간·예산 하드캡(반복 2~3회 상한). → [loop-budget](loop-budget.md).
@@ -82,6 +97,8 @@ updated: 2026-05-31
 - **압축** — 한계 전 선제·주기적으로 줄이되 **결정·출처는 보존**. → [context-compaction](context-compaction.md).
 - **도구·스킬·MCP** — 한-shot 선택 가능한 이름·스키마, 허용목록·격리. → [tool-design](tool-design.md) · [skills-and-mcp](skills-and-mcp.md).
 - **관측·복구** — 전 과정 상관 ID 트레이스, 체크포인트 재개. → [failure-modes-and-observability](failure-modes-and-observability.md) · [debugging-and-dx](debugging-and-dx.md).
+- **래칫·가지치기** — 규칙 한 줄은 관찰된 실패 하나에서 오고(실패→지시 한 줄→반복되면 훅/코드로
+  승급), 모델이 좋아져 하중을 안 받는 컴포넌트는 삭제한다. → [architecture §5](architecture.md).
 
 ## 5. 검증 (이게 진짜 되는지 — 안 하면 한 걸로 안 침)
 

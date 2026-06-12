@@ -3,8 +3,8 @@ title: 에이전트 팀 구성 (Agent Team Roles)
 audience: [기획자, 개발자, AI 에이전트]
 purpose: 어떤 에이전트가 들어와도 동일하게 일하도록, 팀의 역할·경계·핸드오프를 한곳에서 정의
 status: draft
-updated: 2026-05-30
-sources_basis: [Anthropic building-effective-agents, Anthropic multi-agent research system, Anthropic 3-agent harness (InfoQ 2026-04), Addy Osmani — Code Agent Orchestra]
+updated: 2026-06-13
+sources_basis: [Anthropic building-effective-agents, Anthropic multi-agent research system, Anthropic 3-agent harness (InfoQ 2026-04), Addy Osmani — Code Agent Orchestra, Cognition multi-agents-working 2026-04 (clean-context reviewer)]
 related: [team-roles.md, ../README.md]
 ---
 
@@ -54,6 +54,9 @@ related: [team-roles.md, ../README.md]
   채점 기준으로 점수와 **구체적 피드백**을 제너레이터에 돌려줍니다. **반드시 만든 에이전트와 분리** —
   이게 과신을 막는 가장 강한 지렛대입니다.
 - **리뷰어(Reviewer, 선택)** — 병합 전 읽기 전용으로 전체를 보는 검토자. 강한 모델을 씁니다.
+  **작업 이력이 없는 클린 컨텍스트가 기능**입니다 — Cognition 실측(2026): 태스크 이력 없는
+  리뷰어가 PR당 ~2버그(그중 58% 심각)를 잡음; 같은 이유로 리뷰어에겐 diff+기준만 주고,
+  "정확성에 영향 있는 갭만 표시"를 명시합니다(갭을 찾으라면 늘 찾아내므로).
 - **피처 리드(Feature Lead, 선택)** — 큰 기능을 받아 다시 하위 작업으로 쪼개 자기 전문가들을
   스폰합니다. 한 사람의 컨텍스트를 터뜨리지 않고 **3배 깊은 분해**를 얻는 층입니다.
 - **큐레이터/학습자(Curator / Learner)** — 작업이 끝난 뒤 **무엇이 통했고 무엇이 교정됐는지에서
@@ -142,3 +145,4 @@ related: [team-roles.md, ../README.md]
 - Anthropic — [How we built our multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (lead/subagent 위임·압축 반환·토큰 경제학·실패 모드)
 - InfoQ — [Anthropic Designs Three-Agent Harness](https://www.infoq.com/news/2026/04/anthropic-three-agent-harness-ai/) (planner/generator/evaluator + 컨텍스트 리셋·핸드오프 아티팩트, 2026-04)
 - Addy Osmani — [The Code Agent Orchestra](https://addyosmani.com/blog/code-agent-orchestra/) (3~5 팀·AGENTS.md 인간 큐레이션·검증 병목·worktree 격리)
+- Cognition — [Multi-Agents: What's Actually Working](https://cognition.ai/blog/multi-agents-working) (2026-04; 클린-컨텍스트 리뷰어 PR당 ~2버그/58% 심각 — 신선함이 기능)

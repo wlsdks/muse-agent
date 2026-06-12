@@ -3,7 +3,7 @@ title: 스킬 & 외부 도구 통합 (Skills & MCP)
 audience: [개발자, AI 에이전트]
 purpose: 외부 도구(MCP 서버)·자작 스킬을 하네스에 안전하게 끌어오는 규약 — 허용목록·격리·신뢰 경계
 status: draft
-updated: 2026-05-31
+updated: 2026-06-13
 sources_basis: [호스트 .claude(예: Muse)/rules/architecture.md (MCP allowlist), 호스트 tool-calling 규약, MCP Security Best Practices 2026, OWASP secure MCP, NVIDIA sandboxing agentic workflows]
 related: [tool-design.md, verification-and-guardrails.md, team-roles.md, architecture.md, README.md]
 ---
@@ -58,6 +58,24 @@ related: [tool-design.md, verification-and-guardrails.md, team-roles.md, archite
 - 신뢰된 맥락(내 데이터·계획)과 불신 맥락(외부 도구 출력)을 섞지 않습니다.
 - 외부 도구가 준 텍스트를 그대로 "명령"으로 따르지 않습니다 — 가드를 거쳐 데이터로만 씁니다.
 
+## 6.5 구조적 인젝션 방어 (프롬프트가 아니라 설계 패턴)
+
+§3·§6의 "불신"을 **구조로** 강제하는 검증된 패턴들(2025–26) — 인젝션 방어는 지시문이 아니라
+아키텍처 속성입니다:
+
+- **치명적 삼합(lethal trifecta) 금지** — ① 사적 데이터 접근 ② 불신 콘텐츠 수신 ③ 외부 전송
+  채널, 셋이 **한 에이전트/한 턴에 공존하지 않게** 설계합니다(Willison). 권한 매트릭스로 옮기면:
+  불신 입력을 읽은 컨텍스트에서는 outbound 등급을 승인이 아니라 **거부**로 올립니다.
+- **제어흐름은 불신 데이터를 읽기 *전에* 고정** — 신뢰된 사용자 질의에서 계획(어떤 도구를 어떤
+  순서로)을 먼저 뽑고, 불신 도구 출력은 인자만 채울 뿐 **계획 자체를 다시 쓰지 못하게** 합니다
+  (plan-then-execute). CaMeL이 이 방식으로 AgentDojo 과제 77%를 *증명 가능한* 보안으로 해결.
+- **최소권한의 효과는 수치로 증명됨** — 도구·인자 단위 권한 정책의 결정론 강제만으로 간접
+  인젝션 공격 성공률 **41.2%→2.2%**(Progent), 유틸리티 유지. 권한 *확장*은 항상 사람 승인
+  (우리 draft-first와 동형).
+- 과제에 맞는 **가장 약한 패턴을 고릅니다** — action-selector / plan-then-execute / LLM
+  맵리듀스 / 이중 LLM(특권+격리) / code-then-execute / context-minimization 여섯 패턴 중
+  유틸리티를 최소로 깎는 것(2506.08837).
+
 ## 7. 외부 도구/스킬을 들일 때 (체크리스트)
 
 1. **허용목록에 추가**했나(이름 정확, 와일드카드 아님)?
@@ -82,3 +100,6 @@ related: [tool-design.md, verification-and-guardrails.md, team-roles.md, archite
 - [MCP Security Best Practices 2026](https://www.digitalapplied.com/blog/mcp-server-security-best-practices-2026-engineering-guide) (allowlist deny-precedence·정확호스트·auth/secrets/egress)
 - OWASP — [Secure MCP Server Development](https://genai.owasp.org/resource/a-practical-guide-for-secure-mcp-server-development/) (신뢰/불신 분리·쓰기 HITL)
 - NVIDIA — [Sandboxing Agentic Workflows](https://developer.nvidia.com/blog/practical-security-guidance-for-sandboxing-agentic-workflows-and-managing-execution-risk/) (격리 실행·블라스트 반경)
+- Simon Willison — [The lethal trifecta](https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/) (사적 데이터+불신 콘텐츠+외부 전송의 공존 금지 — 아키텍처 속성)
+- Google DeepMind — [CaMeL: Defeating Prompt Injections by Design (2503.18813)](https://arxiv.org/abs/2503.18813) (제어흐름을 신뢰 질의에서 먼저 고정 → AgentDojo 77% 증명 가능 보안)
+- [Progent (2504.11703)](https://arxiv.org/abs/2504.11703) (도구·인자 단위 최소권한 DSL — 간접 인젝션 ASR 41.2%→2.2%) · [Design Patterns for Securing LLM Agents (2506.08837)](https://arxiv.org/abs/2506.08837) (6대 증명 가능 패턴)

@@ -3,7 +3,7 @@ title: 골든 과제 묶음 (Golden Set)
 audience: [개발자, AI 에이전트]
 purpose: 하네스를 실측으로 키우는 대표 과제 묶음 — 결과+경로를 반복 측정해 신뢰도를 쌓는다
 status: draft
-updated: 2026-05-31
+updated: 2026-06-13
 sources_basis: [harness-acceptance (Data/Task/Scores·10~20 골든·pass@k/pass^k), 실제 Claude Code 실측]
 related: [harness-acceptance.md, role-prompts.md, handoff-template.md, architecture.md, README.md]
 ---
@@ -81,7 +81,20 @@ related: [harness-acceptance.md, role-prompts.md, handoff-template.md, architect
 > (judge-calibration.md)에서 **n=12로 TPR 4/4·TNR 8/8** 정량화. G13·G14는 **통합 러너 end-to-end 실측**
 > (실제 에이전트 5/5 DONE). 다음: 보정셋·실전 과제 계속 확대.
 
+## 유지보수 — 골든셋은 감가상각 자산
+
+고정 벤치마크는 부패합니다 — 모델/프롬프트가 셋에 과적합하고, 오염이 점수를 부풀립니다
+(SWE-rebench가 frontier 모델들의 오염 인플레이션을 실측; Anthropic "evals are a living
+artifact"). 규칙:
+
+- 새 케이스는 **신선한 실제 실패**에서만 — 상상으로 늘리지 않습니다([dev-loop §6 write-back](dev-loop.md)과 동일 관문).
+- 주기적으로 **변형(mutation)** — 같은 불변식을 다른 표면(다른 함수·다른 함정)으로 갈아 끼워
+  암기를 무효화합니다(benchmark-mutation, 2510.08996).
+- 한 케이스가 오래 100%면 **더 어려운 변형으로 승급하거나 은퇴** — suite는 백카탈로그가 아니라
+  *분포*로 성장합니다([dev-loop §4 과적합 안티패턴](dev-loop.md)).
+
 ## 출처
 
 - [harness-acceptance](harness-acceptance.md) (Data/Task/Scores·골든 10~20·pass@k/pass^k·코드우선 채점)
 - 실측 기록: [harness-acceptance §7.5](harness-acceptance.md) (실제 Claude Code 4종)
+- 벤치마크 부패 — [SWE-rebench (2505.20411)](https://arxiv.org/abs/2505.20411) (오염 인플레이션 실측) · [Saving SWE-Bench: benchmark mutation (2510.08996)](https://arxiv.org/abs/2510.08996) · Anthropic — [Demystifying evals](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) (living artifact·실제 실패 20~50개에서 시작)

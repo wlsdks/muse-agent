@@ -2,7 +2,7 @@
 title: 하네스 설치 (Install) — 아무 프로젝트에든 까는 법
 audience: [개발자, AI 에이전트]
 purpose: 이 harness/ 폴더를 어떤 프로젝트에든 복사해 활성화하는 3단계
-updated: 2026-05-31
+updated: 2026-06-13
 ---
 
 # 하네스 설치 — 아무 프로젝트에든
@@ -12,10 +12,20 @@ updated: 2026-05-31
 
 ## 3단계
 
-1. **복사** — 이 `harness/` 폴더를 대상 프로젝트 루트에 그대로 복사합니다.
+1. **복사** — 이 `harness/` 폴더를 대상 프로젝트 루트에 복사합니다. 두 가지 크기:
    ```
+   # 전체 설치 (레퍼런스·러너 포함)
    cp -r harness /path/to/your-project/harness
+
+   # 최소 설치 (T1 코어 계약 6장 — 지시-층 하네스로 충분; README §포터블 구조)
+   mkdir -p /path/to/your-project/harness
+   cp harness/{AGENTS,handoff-template,role-prompts,team-roles,verification-and-guardrails,permission-matrix}.md \
+      /path/to/your-project/harness/
    ```
+   - `runner/`는 **헤드리스 자동화·게이트 코드 강제가 필요할 때만** 가져갑니다([AGENTS.md §3.5](AGENTS.md)).
+   - **측정 기록은 리셋합니다** — golden-set의 진행표와 harness-acceptance §7.5는 *이 레포의* 실측
+     기록이니, 새 프로젝트에선 표를 비우고 그 프로젝트의 실측으로 다시 쌓으세요(틀은 재사용).
+   - `dev-loop.md`는 호스트(예: Muse) 전용 개발 루프 — 가져가려면 당신 프로젝트의 루프로 재작성합니다.
 
 2. **진입점 연결** — 대상 프로젝트 루트의 `AGENTS.md`(없으면 새로 만듦)에 한 줄 추가:
    ```
@@ -24,8 +34,10 @@ updated: 2026-05-31
    작업 전 harness/AGENTS.md 를 먼저 읽고 그 역할·게이트·핸드오프·검증을 따른다.
    ```
    - `AGENTS.md`는 Codex·Cursor·Copilot·Windsurf·Amp·Devin 등이 **네이티브로** 읽는 교차도구 표준입니다.
-   - **Claude Code**를 쓰면 같은 한 줄을 `CLAUDE.md`에도 두거나, `CLAUDE.md`가 `AGENTS.md`를 가리키게
-     하세요(많은 팀이 `CLAUDE.md` → `AGENTS.md` 심링크로 통일).
+   - **Claude Code는 `CLAUDE.md`만 자동 로드합니다 — `AGENTS.md`는 import하지 않으면 무시됩니다**
+     (공식: [code.claude.com/docs/en/memory](https://code.claude.com/docs/en/memory.md)). 그래서 같은 한 줄을
+     `CLAUDE.md`에도 두거나, `CLAUDE.md` 안에 `@AGENTS.md` 한 줄로 import하세요(공식 권장; 심링크
+     `ln -s AGENTS.md CLAUDE.md`는 Unix/Mac 한정).
 
 3. **프로젝트에 맞추기** — `harness/muse-mapping.md`를 복제해 **당신 프로젝트용 매핑**으로 바꿉니다
    (추상 역할 ↔ 당신의 실제 런타임/도구). 이 파일만 프로젝트마다 다르고, 나머지는 그대로 재사용.
