@@ -397,6 +397,94 @@ describe("mac_app_read — Tier 0 read", () => {
     const tool = createMacAppReadTool({ runner: async () => ok("") });
     expect(await tool.execute({ app: "notes" }, ctx)).toEqual({ app: "notes", count: 0, items: [] });
   });
+
+  it("reads ip_address via shell (ipconfig getifaddr <device>) and parses the IP", async () => {
+    const LIST_PORTS = [
+      "Hardware Port: Wi-Fi",
+      "Device: en0",
+      "Ethernet Address: aa:bb:cc:dd:ee:ff",
+      ""
+    ].join("\n");
+    const IP_ADDR = "192.168.1.42\n";
+    let osascriptCalled = false;
+    const calls: Array<{ bin: string; args: readonly string[] }> = [];
+    const tool = createMacAppReadTool({
+      runner: async () => { osascriptCalled = true; return ok(""); },
+      shell: async (b, a) => {
+        calls.push({ bin: b, args: a });
+        if (a[0] === "-listallhardwareports") return ok(LIST_PORTS);
+        return ok(IP_ADDR);
+      }
+    });
+    expect(await tool.execute({ app: "ip_address" }, ctx)).toEqual({ app: "ip_address", ip: "192.168.1.42" });
+    expect(osascriptCalled).toBe(false);
+    expect(calls[0]?.args).toEqual(["-listallhardwareports"]);
+    expect(calls[1]?.args).toEqual(["getifaddr", "en0"]);
+  });
+
+  it("ip_address: returns ip:null when not connected (empty ipconfig output)", async () => {
+    const LIST_PORTS = "Hardware Port: Wi-Fi\nDevice: en1\nEthernet Address: 11:22:33:44:55:66\n";
+    const tool = createMacAppReadTool({
+      shell: async (_b, a) => a[0] === "-listallhardwareports" ? ok(LIST_PORTS) : ok("")
+    });
+    expect(await tool.execute({ app: "ip_address" }, ctx)).toEqual({ app: "ip_address", ip: null });
+  });
+
+  it("ip_address: 'ip_address' is in the tool enum", () => {
+    const tool = createMacAppReadTool();
+    const schema = tool.definition.inputSchema as { properties: { app: { enum: string[] } } };
+    expect(schema.properties.app.enum).toContain("ip_address");
+  });
+
+  it("ip_address: description mentions 'ip' and the not-when clause", () => {
+    const tool = createMacAppReadTool();
+    const d = tool.definition.description.toLowerCase();
+    expect(d).toContain("ip");
+    expect(d).toContain("do not");
+  });
+
+  it("reads running_apps via osascript (System Events) and parses app names", async () => {
+    let script = "";
+    const runner: MacOsascriptRunner = async (s) => {
+      script = s;
+      return ok("Safari, Finder, Terminal, Visual Studio Code\n");
+    };
+    const tool = createMacAppReadTool({ runner });
+    const out = await tool.execute({ app: "running_apps" }, ctx);
+    expect(out).toEqual({
+      app: "running_apps",
+      count: 4,
+      apps: ["Safari", "Finder", "Terminal", "Visual Studio Code"]
+    });
+    expect(script).toContain("System Events");
+    expect(script).toContain("background only is false");
+  });
+
+  it("running_apps: returns empty list with count 0 when no foreground apps", async () => {
+    const tool = createMacAppReadTool({ runner: async () => ok("") });
+    expect(await tool.execute({ app: "running_apps" }, ctx)).toEqual({ app: "running_apps", count: 0, apps: [] });
+  });
+
+  it("running_apps: parses newline-delimited output too", async () => {
+    const tool = createMacAppReadTool({ runner: async () => ok("Safari\nFinder\nTerminal\n") });
+    const out = await tool.execute({ app: "running_apps" }, ctx) as { apps: string[]; count: number };
+    expect(out.apps).toContain("Safari");
+    expect(out.apps).toContain("Finder");
+    expect(out.count).toBe(3);
+  });
+
+  it("running_apps: 'running_apps' is in the tool enum", () => {
+    const tool = createMacAppReadTool();
+    const schema = tool.definition.inputSchema as { properties: { app: { enum: string[] } } };
+    expect(schema.properties.app.enum).toContain("running_apps");
+  });
+
+  it("running_apps: description mentions 'running' apps and the not-when clause", () => {
+    const tool = createMacAppReadTool();
+    const d = tool.definition.description.toLowerCase();
+    expect(d).toContain("running");
+    expect(d).toContain("do not");
+  });
 });
 
 describe("mac_media_control — Tier 1 Music transport", () => {

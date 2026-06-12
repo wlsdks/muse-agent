@@ -78,6 +78,7 @@ const PMSET_PATH = "/usr/bin/pmset";
 const DF_PATH = "/bin/df";
 const SAY_PATH = "/usr/bin/say";
 const NETWORKSETUP_PATH = "/usr/sbin/networksetup";
+const IPCONFIG_PATH = "/usr/sbin/ipconfig";
 const OSASCRIPT_TIMEOUT_MS = 30_000;
 /** A shortcut can do real work (network, HomeKit) — give it a longer leash. */
 const SHORTCUTS_TIMEOUT_MS = 120_000;
@@ -226,11 +227,11 @@ export function createMacShortcutRunTool(deps: MacShortcutRunToolDeps = {}): Mus
 // osascript-backed read sources (each maps to an AppleScript snippet)…
 const MAC_OSASCRIPT_READ_APPS = [
   "clipboard", "music", "frontmost_window", "contacts", "mail_unread", "safari_tab", "chrome_tab", "volume",
-  "reminders", "calendar", "notes"
+  "reminders", "calendar", "notes", "running_apps"
 ] as const;
 type MacReadApp = (typeof MAC_OSASCRIPT_READ_APPS)[number];
 // …plus shell-backed sources that don't go through osascript.
-const MAC_SHELL_READ_APPS = ["battery", "storage", "wifi_status"] as const;
+const MAC_SHELL_READ_APPS = ["battery", "storage", "wifi_status", "ip_address"] as const;
 const MAC_APP_READ_APPS = [...MAC_OSASCRIPT_READ_APPS, ...MAC_SHELL_READ_APPS] as const;
 
 function buildReadScript(app: MacReadApp, query: string): string {
@@ -374,6 +375,17 @@ function buildReadScript(app: MacReadApp, query: string): string {
         `  return output`,
         `end tell`
       ].join("\n");
+    case "running_apps":
+      return [
+        `tell application "System Events"`,
+        `  set appNames to name of every process whose background only is false`,
+        `  set output to ""`,
+        `  repeat with n in appNames`,
+        `    set output to output & n & ","`,
+        `  end repeat`,
+        `  return output`,
+        `end tell`
+      ].join("\n");
   }
 }
 
@@ -469,6 +481,10 @@ function parseReadOutput(app: MacReadApp, stdout: string): JsonObject {
         .map((line): JsonObject => ({ title: line }));
       return { app, count: items.length, items };
     }
+    case "running_apps": {
+      const apps = parseRunningAppsOutput(raw);
+      return { app, apps, count: apps.length };
+    }
   }
 }
 
@@ -509,6 +525,21 @@ function parseWifiStatusOutput(stdout: string): JsonObject {
   return { app: "wifi_status", connected: false, network: null };
 }
 
+/** Parses `ipconfig getifaddr <dev>` (single-line IP or empty) into an IP string or null. */
+function parseIpAddressOutput(stdout: string): string | null {
+  const ip = stdout.trim();
+  return ip.length > 0 ? ip : null;
+}
+
+/** Parses comma- or newline-delimited app names from System Events `running_apps` output. */
+function parseRunningAppsOutput(raw: string): string[] {
+  const delimiter = raw.includes(",") ? "," : "\n";
+  return raw
+    .split(delimiter)
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+}
+
 type MacShellRead = (typeof MAC_SHELL_READ_APPS)[number];
 
 export interface MacAppReadToolDeps {
@@ -529,12 +560,15 @@ export function createMacAppReadTool(deps: MacAppReadToolDeps = {}): MuseTool {
         "unread count + recent subjects), 'safari_tab' / 'chrome_tab' (front browser tab URL + title), " +
         "'volume' (output volume + muted), 'battery' (charge % + charging), 'storage' (disk space free/" +
         "used), 'wifi_status' (whether Wi-Fi is connected and the current network name), " +
+        "'ip_address' (the current Wi-Fi IP address, or null if not connected), " +
         "'reminders' (all incomplete reminders with optional due dates), " +
         "'calendar' (today's events from Calendar.app with start times), " +
-        "'notes' (recent note titles from Notes.app, up to 20). " +
+        "'notes' (recent note titles from Notes.app, up to 20), " +
+        "'running_apps' (names of all currently running foreground apps). " +
         "Use when the user asks what's on the clipboard, what song is playing, what page/tab " +
         "they're on, the volume / battery / free disk space, a contact's phone/email, unread mail, " +
         "what reminders / to-dos are pending, what's on their calendar today, what notes they have, " +
+        "what's their IP address, what apps are open / running right now, " +
         "or whether they are on Wi-Fi and which network. " +
         "Do NOT use it to send or change anything (mac_message_send / mac_media_control / mac_system_set). " +
         "Do NOT use it to ADD a reminder (use muse.reminders.add). " +
@@ -563,9 +597,11 @@ export function createMacAppReadTool(deps: MacAppReadToolDeps = {}): MuseTool {
         "battery", "배터리", "volume", "볼륨", "tab", "탭", "safari", "사파리", "chrome", "크롬", "browser",
         "storage", "disk", "디스크", "저장공간", "용량",
         "wifi", "wi-fi", "와이파이", "network", "네트워크", "connected", "연결",
+        "ip", "ip address", "아이피", "주소", "ip 주소",
         "reminder", "reminders", "리마인더", "할일", "todo", "to-do", "pending",
         "calendar", "캘린더", "일정", "schedule", "event", "오늘 일정", "today",
-        "notes", "노트", "메모", "note titles"
+        "notes", "노트", "메모", "note titles",
+        "running apps", "open apps", "실행 중인 앱", "실행중인 앱", "앱 목록", "running", "open applications"
       ],
       name: "mac_app_read",
       risk: "read"
@@ -600,6 +636,28 @@ export function createMacAppReadTool(deps: MacAppReadToolDeps = {}): MuseTool {
             return { error: `wifi_status read failed: ${status.stderr.trim().slice(0, 200) || "timed out"}` };
           }
           return parseWifiStatusOutput(status.stdout);
+        }
+        if (app === "ip_address") {
+          let ports: MacCommandResult;
+          try {
+            ports = await shell(NETWORKSETUP_PATH, ["-listallhardwareports"]);
+          } catch (cause) {
+            return { error: `ip_address read spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+          }
+          if (ports.timedOut || ports.exitCode !== 0) {
+            return { error: `ip_address read failed: ${ports.stderr.trim().slice(0, 200) || "timed out"}` };
+          }
+          const device = parseWifiDevice(ports.stdout);
+          if (!device) {
+            return { app: "ip_address", ip: null };
+          }
+          let ipResult: MacCommandResult;
+          try {
+            ipResult = await shell(IPCONFIG_PATH, ["getifaddr", device]);
+          } catch (cause) {
+            return { error: `ip_address read spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+          }
+          return { app: "ip_address", ip: parseIpAddressOutput(ipResult.stdout) };
         }
         const [bin, argv] = app === "battery" ? [PMSET_PATH, ["-g", "batt"]] : [DF_PATH, ["-h", "/"]];
         let shellResult: MacCommandResult;
