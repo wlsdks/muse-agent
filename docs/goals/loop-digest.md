@@ -430,3 +430,11 @@
 - **리스크:** playbook=prompt-ranking only(floor 무관). delta===0→decay 잠재이슈 노트(현 미도달). RATCHET: testFiles +다수, fabrication 0, 신규 capability(evidence playbook lifecycle). 교훈: "store write + consume" 슬라이스는 중간 projection layer가 필드를 strip하면 inert — assembled-path 테스트로 end-to-end 증명 필수.
 
 > ✅ **자율 리뷰관문 (fires 25–27, 진안 묻지 않음):** 사이클5 = **논문-근거 3연속**(전부 공개 arXiv, 자체 재구현, Fable scout 발굴+Fable judge 적대검증): 25 HippoRAG PPR 연상recall(2502.14802)·26 BoN-MAV verifier vote(2502.20379)·27 Memp playbook lifecycle(2508.06433). Fable judge가 25·27을 v1 FAIL시키고(누락 floor/inert) 재구현으로 통과 — verify-then-apply가 실제로 작동. **사이클6 방향(스스로): 계속 논문-근거 라운드로빈(서브에이전트·백그라운드 테마 차례) — gap-scout/Fable scout.** fires-25-27 배치는 main clean시 자동 머지.
+
+
+## [TOOL loop] fire 11 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** muse.calendar.add의 time-only endsAt("4pm"/"오후 4시")가 start의 날이 아니라 오늘에 anchor → not-today 이벤트 + 구어체 종료시간이 INVALID_TIME_RANGE로 거부. 1식 수정: time-only endsAt를 startOfLocalDay(startsAt)에 anchor (sibling update 패턴 mirror).
+- **왜:** 캘린더 add는 핵심 actuator인데 "내일 3시~4시" 같은 흔한 입력이 실패. EXPANSION 스카웃이 EN+KO 라이브 확인. 다양성: 최근 보안/parsing/json 다음 date-anchoring correctness(actuator)로 KIND 전환. 검증된 sibling 패턴 재사용.
+- **리뷰지점:** loopback-calendar.ts:269(time-only endsAt anchor) + loopback-calendar-add-anchor.test.ts(provider-가드 흉내 registry로 EN+KO end-to-end: end on start's day 16:00, no error) RED→GREEN. mcp 1694, check 0, lint 0. Fable-5 검증자 PASS(부재/date-bearing/ISO endsAt 무회귀·guard 무손상·update old-day 버그 없음). runner-up 2개(update cross-day endsAt OLD-day anchor, "this weekend" on Sat→today) backlog 기록.
+- **리스크:** 없음에 가까움 — time-only 분기만 변경, 다른 endsAt 형태 byte-identical. RATCHET: testFiles 888→889(+1 파일), fabrication 0 유지. grounding floor 무관(캘린더 날짜-anchoring, 게이트 무변경).

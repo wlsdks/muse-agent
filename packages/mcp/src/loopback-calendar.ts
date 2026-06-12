@@ -266,7 +266,12 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
                 `Examples: "내일 오후 3시", "이번 주 토요일 오후 2시", "3일 후", "tomorrow 9am", "next monday 6pm".`
             };
           }
-          const endsAt = parseIsoDate(endsAtRaw) ?? new Date(startsAt.getTime() + 60 * 60_000);
+          // A bare time-of-day endsAt ("4pm" / "오후 4시") anchors to the START's day,
+          // not today — else a not-today event resolves the end against now and the
+          // provider rejects it ("endsAt must be at or after startsAt"). Mirrors `update`.
+          const endsAt = (endsAtRaw && isTimeOnlyPhrase(endsAtRaw)
+            ? parseIsoDate(endsAtRaw, () => startOfLocalDay(startsAt))
+            : parseIsoDate(endsAtRaw)) ?? new Date(startsAt.getTime() + 60 * 60_000);
           const allDay = readBoolean(args, "allDay") ?? false;
           const location = readString(args, "location") ?? undefined;
           const notes = readString(args, "notes") ?? undefined;

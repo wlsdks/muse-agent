@@ -43,6 +43,23 @@
 ## ★ Open — TOOL expansion & hardening (loop theme, 진안-directed 2026-06-12)
 
 The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing tools.
+- ✓→Done **muse.calendar.add mis-anchored a time-only endsAt** (EXPANSION gap-scout, live EN+KO) — `add`
+  resolved `endsAt` with `parseIsoDate(endsAtRaw)` whose default anchor is now(today), so a bare time-of-day
+  end ("4pm"/"오후 4시") for a NOT-today event resolved against TODAY while startsAt resolved to tomorrow →
+  the LocalCalendarProvider INVALID_TIME_RANGE guard rejected it ("endsAt must be at or after startsAt").
+  The sibling `update` already anchors a time-only end to the event day (`anchorFor`); `add` never did. FIX
+  (1 expr): anchor a time-only endsAt to the resolved START's day — `isTimeOnlyPhrase(endsAtRaw) ?
+  parseIsoDate(endsAtRaw, () => startOfLocalDay(startsAt)) : parseIsoDate(endsAtRaw)`. Date-bearing/ISO/absent
+  endsAt unchanged. TDD 2 (EN "tomorrow 3pm"+"4pm", KO "다음 주 월요일 오후 3시"+"오후 4시" → end on start's
+  day 16:00, no error) RED→GREEN via a registry mirroring the provider guard; mcp 1694, check 0, lint 0.
+  Fable-5 PASS (no regression on other endsAt shapes; guard untouched).
+- ◦ **muse.calendar.update cross-day move anchors a time-only endsAt to the OLD day** (gap-scout runner-up) —
+  update's `anchorFor` uses `resolved.event.startsAt` (the original day), so "move it to Monday, ending 5pm"
+  lands the end on the original day, not Monday. FIX: anchor the time-only endsAt to `newStartsAt` when the
+  start moved. 1 expr + 1 test. (Sibling of the add fix above.)
+- ◦ **relative-time "this weekend" asked ON a Saturday resolves to today 09:00 (possibly past)** (runner-up) —
+  loopback-relative-time.ts:~477 delta `% 7` = 0 with no roll-forward (unlike the bare-weekday handler that
+  forces delta=7). FIX: roll forward to next Saturday when today is already Sat. 1 line + 1 test.
 - ✓→Done **muse.math.evaluate silently truncated a malformed multi-dot number** (EXPANSION gap-scout) —
   `parseNumber` scans a literal by greedily consuming digits AND dots, then did `Number.parseFloat(literal)`:
   `parseFloat("1.2.3")` returns 1.2 (stops at the 2nd dot, NOT NaN), so the NaN guard never fired and
