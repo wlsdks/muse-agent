@@ -43,6 +43,26 @@
 ## ★ Open — TOOL expansion & hardening (loop theme, 진안-directed 2026-06-12)
 
 The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing tools.
+- ✓→Done **muse.json.merge prototype-pollution** (EXPANSION gap-scout, Fable-5) — `deepMerge` did
+  `result[key] = …` for every key of model-supplied `overrides`; model args arrive via JSON.parse, which
+  makes `"__proto__"` an OWN data key, so `result["__proto__"] = …` hit the Object.prototype SETTER and
+  HIJACKED the merged object's prototype (silently injected inherited fields like `isAdmin`, dropped the
+  key). FIX: special-case `key === "__proto__"` — read any existing own value via
+  `Object.getOwnPropertyDescriptor`, deep-merge, write back via `Object.defineProperty` as an own
+  enumerable data prop (never the setter); other keys unchanged. Verifier confirmed `__proto__` is the
+  ONLY setter vector here (constructor/prototype create plain own props, no pollution) and the guard
+  recurses to every depth. TDD 1 behavioral (JSON.parse'd `__proto__` overrides → prototype intact +
+  no injected field + key preserved as data) RED→GREEN; mcp 1679, check 0, lint 0. Fable-5 verifier PASS.
+- ⏳ **ask error-path run-log trace (#6/#7) — DEFERRED (big refactor, needs design)**: writeRunLog(success:true)
+  is inline at the END of the ~2000-line `muse ask` action (commands-ask.ts:3734) with NO enclosing
+  try/catch, so a thrown run leaves no trace (error-analysis fuel lost) + Ctrl-C logs success:true. Same
+  pattern in chat-repl (writeRunLog at 171, happy-path only). A correct fix wraps/extracts the run with a
+  success:false failure-log seam across BOTH surfaces — not a 1-fire slice; deserves a small design.
+- ⏳ **calendar credential encryption-at-rest — DEFERRED (architectural cost)**: `FileCalendarCredentialStore`
+  stores caldav passwords / google tokens plaintext (0600). The proven envelope lives in `@muse/memory`,
+  but `@muse/mcp`→`@muse/calendar` already, and `@muse/memory` pulls `@muse/db`+`@muse/model` — encrypting
+  the lean calendar package would bloat its dep graph (and the desktop binary). Needs a shared low-level
+  crypto seam or a key-provider injection decision (Jinan-level), not an autonomous fire.
 - ✓→Done **notes-family tool-selection coverage + sharpened save/append not-when** (per-tool not-when
   audit follow-up): `muse.notes` save/append had ZERO not-when clauses and were ABSENT from eval:tools.
   RED baseline (live gemma4, 3 runs) caught a real save-vs-append confusion (KO "write to a note" →
