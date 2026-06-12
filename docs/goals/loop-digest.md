@@ -204,3 +204,12 @@
 - **왜:** 기존엔 fulfilled proposer를 무조건 proposal로 push — 빈/공백 텍스트(안 throw한 degraded 서브에이전트)도 포함 → aggregator candidate 오염 + proposals.length 부풀림. MAST "failure propagation surfaces, never silently swallowed".
 - **리뷰지점:** `packages/agent-core/src/orchestrate.ts`(forEach 조건 1개) + `orchestrate.test.ts`(빈→failedRoles·whitespace·all-empty fail-close·회귀 4건). judge=Opus(나)가 partition 조건·non-vacuous(빈 thorough → proposals 2개·failedRoles=["thorough"])·onProposal/fail-close/aggregate 무변경 실제 코드 확인 + agent-core 1722 독립 green.
 - **리스크:** onProposal은 빈 proposer에도 여전히 fire(스트리밍 표시 후 결과서 제외 — 경미, 콜백은 라이브 표시용). 비-빈 동작 불변. grounding floor 무관. (fires-10-12 배치는 이번 fire에 main clean돼 **머지 완료** `cac55bb0`; fires 13-14는 다음 관문서.)
+
+## [cognition loop] fire 15 — 2026-06-13 · 테마: agent-core 인지 강화 (서브에이전트 #4) · ⚠️ 3-FIRE 리뷰 관문(자율)
+
+- **무엇:** MoA **aggregator 실패 복원력** — `aggregate()` 호출을 try/catch로 감싸 throw→빈 merge→기존 fallback(best proposal). proposers는 allSettled로 복원력 있었지만 aggregator만 무방비였음.
+- **왜:** 플레이키 로컬모델 aggregator throw가 전체 orchestration을 reject → 성공한 proposer 작업 전부 손실. proposer가 fail-soft면 aggregator도 그래야(반쪽 복원력 X). MAST graceful-degradation.
+- **리뷰지점:** `orchestrate.ts`(aggregate 호출 wrap만; fallback/final-return/single-survivor 불변) + `orchestrate.test.ts`(throws→resolves·empty→fallback·success→merged 3건). judge=Opus(나)가 wrap·throws테스트가 reject 아닌 resolves(thorough proposal 반환)임 실제 확인 + agent-core 1725 독립 green.
+- **리스크:** 없음 — 동작 보존 + aggregator throw만 graceful화. grounding floor 무관.
+
+> ✅ **자율 리뷰관문 (fires 13–15, 진안 묻지 않음):** 서브에이전트(#4) 3슬라이스 — 중복역할 dedup(13)·빈 proposer→failedRoles(14)·aggregator 복원력(15). **5대 테마 1바퀴 완주**(메모리1-3·playbook4·grounding진단5-6·멀티에이전트7-9·백그라운드10-12·서브에이전트13-15). maker≠judge 매 fire PASS. **사이클2 방향(스스로 결정): #5 promotion-PERSISTENCE 잔여**(report-only daemon tick → 안전가드 동반 실제 persona graduate)부터 — 이후 gap-scout로 agent-performance levers 등. fires-13-15 배치 머지는 main clean되는 ORIENT에서 자동.

@@ -135,6 +135,52 @@ describe("orchestrateAnswer", () => {
     expect(res.failedRoles).toBeUndefined();
     expect(res.proposals).toHaveLength(3);
   });
+
+  it("aggregator throws → graceful degrade to best single proposal (regression of crash)", async () => {
+    // Aggregator is distinguished by its system prompt containing "candidate answers".
+    const provider: OrchestrateOptions["modelProvider"] = {
+      async generate(request) {
+        const sys = request.messages.find((m) => m.role === "system")?.content ?? "";
+        if (sys.includes("candidate answers")) throw new Error("aggregator flaked");
+        if (/practical/u.test(sys)) return { id: "x", model: "fake", output: "proposal-from-practical" };
+        if (/thorough/u.test(sys)) return { id: "x", model: "fake", output: "proposal-from-thorough" };
+        return { id: "x", model: "fake", output: "proposal-from-skeptic" };
+      }
+    };
+    // Before this fix this would reject; now it must resolve.
+    await expect(
+      orchestrateAnswer(substantive, opts({ modelProvider: provider }))
+    ).resolves.toMatchObject({
+      mode: "orchestrated",
+      answer: "proposal-from-thorough",
+      contributors: ["thorough"]
+    });
+    const res = await orchestrateAnswer(substantive, opts({ modelProvider: provider }));
+    expect(res.proposals.map((p) => p.id)).toEqual(["practical", "thorough", "skeptic"]);
+  });
+
+  it("aggregator returns empty string → fallback to thorough proposal (existing behavior)", async () => {
+    const provider: OrchestrateOptions["modelProvider"] = {
+      async generate(request) {
+        const sys = request.messages.find((m) => m.role === "system")?.content ?? "";
+        if (sys.includes("candidate answers")) return { id: "x", model: "fake", output: "" };
+        if (/practical/u.test(sys)) return { id: "x", model: "fake", output: "proposal-from-practical" };
+        if (/thorough/u.test(sys)) return { id: "x", model: "fake", output: "proposal-from-thorough" };
+        return { id: "x", model: "fake", output: "proposal-from-skeptic" };
+      }
+    };
+    const res = await orchestrateAnswer(substantive, opts({ modelProvider: provider }));
+    expect(res.mode).toBe("orchestrated");
+    expect(res.answer).toBe("proposal-from-thorough");
+    expect(res.contributors).toEqual(["thorough"]);
+  });
+
+  it("aggregator succeeds → normal merged answer flows through (regression)", async () => {
+    const res = await orchestrateAnswer(substantive, opts());
+    expect(res.mode).toBe("orchestrated");
+    expect(res.answer).toBe("merged best answer");
+    expect(res.contributors).toEqual(["practical", "thorough", "skeptic"]);
+  });
 });
 
 describe("attributeContributors", () => {

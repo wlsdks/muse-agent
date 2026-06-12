@@ -217,8 +217,14 @@ export async function orchestrateAnswer(question: string, options: OrchestrateOp
     return { answer: only.text, contributors: [only.id], mode: "orchestrated", proposals, ...degraded };
   }
 
-  // aggregate = merge proposals into the single best answer (keeps detail, drops nonsense).
-  const merged = await aggregate(question, proposals, options);
+  // A flaky aggregator call must degrade like a proposer (allSettled above), not sink the
+  // whole panel — a throw becomes an empty merge, which the fallback below handles.
+  let merged: string;
+  try {
+    merged = await aggregate(question, proposals, options);
+  } catch {
+    merged = "";
+  }
   if (merged.length === 0) {
     // Aggregator returned nothing → fall back to the thorough proposal if present.
     const fallback = proposals.find((p) => p.id === "thorough") ?? proposals[0] ?? { id: primary.id, text: "" };

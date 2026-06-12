@@ -500,6 +500,13 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   change (`&& outcome.value.text.trim().length > 0`); fail-close/single-survivor/aggregate/onProposal
   unchanged. agent-core 1722 green (empty→failedRoles, whitespace, all-empty fail-close, regression).
 
+- ✓→Done **MoA aggregator failure resilience** — [2026-06-13, cognition loop fire 15, sub-agents #4]
+  the proposers run under allSettled (resilient) but the AGGREGATOR call was unguarded — a flaky
+  local-model aggregator throw REJECTED the whole orchestration, discarding every successful
+  proposer's work. Wrapped `aggregate()` in try/catch → a throw becomes an empty merge → the EXISTING
+  fallback returns the best proposal (the "thorough" one). MAST graceful-degradation / don't-lose-
+  sub-agent-work. agent-core 1725 green (throws→resolves-with-proposal, empty→fallback, success→merged).
+
 ## Blocked / deferred
 
 - ⏳ **Grammar-constrained tool-call decoding** — INFEASIBLE on Ollama today: `format`
