@@ -1,6 +1,6 @@
 ---
 name: loop-creator
-version: 1.6.0
+version: 1.6.1
 description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘", "loop 등록", "X를 계속 강화하는 루프", or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from its bundled loop-engineering.md contract AND registers the cron itself, then reports the prompt + cron id + how to stop. The autonomous successor to hand-written ad-hoc loop prompts.
 ---
 
@@ -39,7 +39,8 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 - **테마/목적이 있으면** (예: "브라우저 강화", "agent-core 하드닝") → 그걸 목적으로 채운다.
 - **간격이 있으면** (예: "20분") → 그 간격. 없으면 기본 **20m**(세션 루프).
 - **아무것도 없으면** → `docs/goals/backlog.md` 최상단 ★ 테마를 목적으로 제안하고 진행
-  (improve-muse처럼 "할 게 없다"는 금지 — backlog가 비면 gap-scout 리필이 곧 목적).
+  (improve-muse처럼 "할 게 없다"는 금지 — backlog가 **비거나 파일이 없으면** gap-scout
+  리필/시드가 곧 목적; §1 ORIENT의 부재 처리 참고).
 
 - **자율성 티어** — 기본 **Tier1**(로컬 커밋, push 없음). "더 자율적으로"/"PR로"/"브랜치
   파서"/"무인으로 머지 전까지" 같은 신호가 있으면 **Tier2**(브랜치+draft PR, 사람이 머지)로,
@@ -52,6 +53,10 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 ### 1. ORIENT — 계약과 현재 상태를 읽는다
 - [`loop-engineering.md`](references/loop-engineering.md)의 §1 표와 §4 체크리스트를 읽는다.
 - `docs/goals/backlog.md` 최상단(작업 소스), `git log --oneline -5`(최근 무엇), `pnpm self-eval`(회귀?).
+- **backlog.md는 스킬이 *읽는* 기존 repo 아티팩트지 만드는 게 아니다**(dev loop·improve-muse·
+  gap-scout가 유지). 단 **부재 시**(fresh repo / 과거 doc-reset [[project_loop_docs_reset]]):
+  최소 스켈레톤(`# Muse dev backlog` + 헤더)을 만들고 **gap-scout로 시드**한 뒤 진행 = "비면"과
+  동일 처리. 절대 "할 게 없다"로 멈추지 않는다(파일 없음 ≠ 일감 없음).
 - **기준선이 초록이어야 등록한다.** `self-eval`이 non-zero면 루프를 띄우지 않고 회귀를
   진안에게 보고한다 — 깨진 기준선 위 루프는 매 fire가 그 회귀를 보고, 정지조건
   (`self-eval` exit 0)에 영영 못 닿는다(improve-muse와 같은 규칙).
