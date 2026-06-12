@@ -53,6 +53,11 @@ EXPAND (new reach):
   read-risk, so "what's on my calendar today" works without a configured provider.
 
 HARDEN (make existing tools more reliable):
+- ✓→Done **muse.search snippet length cap** — result snippets were sanitized but not LENGTH-bounded, so a
+  SearXNG/DDG engine returning a full paragraph × up to 10 rows blew the local 8B's context. Added a 280-char
+  word-boundary cap (`capSnippet`) on both the DDG and SearXNG paths; titles/urls untouched. A search result is
+  for TRIAGE (pick a URL to read), not the full text. TDD 1 (long snippet capped, short snippet + title intact);
+  mcp 1629, byte-hygiene 30, check 0, lint 0.
 - ✓→Done **web_read readability — strip nav/footer boilerplate** — extractReadableText dropped
   script/style/head but kept <nav> menus and <footer> (copyright/link farms), so a "summarize this
   URL" answer grounded on site chrome, not the article. Added nav|footer to the element-strip regex

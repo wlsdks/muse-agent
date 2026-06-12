@@ -44,3 +44,15 @@ describe("parseDuckDuckGoHtml", () => {
     expect(rows.map((r) => r.url)).toEqual(["https://1.test", "https://2.test"]);
   });
 });
+
+describe("parseDuckDuckGoHtml — snippet length is capped (tight context for the local model)", () => {
+  it("caps a very long snippet but leaves the title and short snippets intact", () => {
+    const longSnippet = "word ".repeat(200).trim(); // ~1000 chars
+    const [row] = parseDuckDuckGoHtml(block("https://a.test/x", "Short Title", longSnippet), 10);
+    expect(row.title).toBe("Short Title");
+    expect(row.snippet.length).toBeLessThanOrEqual(300);
+    expect(row.snippet.length).toBeGreaterThan(100); // not over-truncated
+    const short = parseDuckDuckGoHtml(block("https://b.test/y", "T", "A concise result snippet."), 10)[0];
+    expect(short.snippet).toBe("A concise result snippet.");
+  });
+});

@@ -285,7 +285,7 @@ async function querySearxng(args: QuerySearxngArgs): Promise<readonly SearchResu
       if (typeof row.url !== "string" || typeof row.title !== "string") continue;
       const snippet = typeof row.content === "string" ? row.content : "";
       out.push({
-        snippet: sanitizeSearchField(snippet),
+        snippet: capSnippet(snippet),
         title: sanitizeSearchField(row.title),
         url: sanitizeSearchField(row.url)
       });
@@ -314,6 +314,19 @@ function sanitizeSearchField(raw: string): string {
   return stripUntrustedTerminalChars(raw).replace(/\s+/gu, " ").trim();
 }
 
+// A search result is for TRIAGE (pick a URL to read), not the full text. Some
+// engines return a whole paragraph as the snippet; 10 uncapped paragraphs blow
+// the local model's context. Cap to ~280 chars on a word boundary.
+const MAX_SNIPPET_CHARS = 280;
+
+function capSnippet(raw: string): string {
+  const clean = sanitizeSearchField(raw);
+  if (clean.length <= MAX_SNIPPET_CHARS) return clean;
+  const slice = clean.slice(0, MAX_SNIPPET_CHARS);
+  const lastSpace = slice.lastIndexOf(" ");
+  return `${(lastSpace > MAX_SNIPPET_CHARS - 40 ? slice.slice(0, lastSpace) : slice).trimEnd()}…`;
+}
+
 /**
  * Regex-extract result rows from DuckDuckGo's html.duckduckgo.com/html/
  * markup. Two stable class names since 2019:
@@ -329,7 +342,7 @@ export function parseDuckDuckGoHtml(html: string, max: number): readonly SearchR
   while ((match = blockRe.exec(html)) !== null && out.length < max) {
     const href = sanitizeSearchField(decodeDuckDuckGoRedirect(match[1] ?? ""));
     const title = sanitizeSearchField(stripTags(match[2] ?? ""));
-    const snippet = sanitizeSearchField(stripTags(match[3] ?? ""));
+    const snippet = capSnippet(stripTags(match[3] ?? ""));
     if (href && title) {
       out.push({ snippet, title, url: href });
     }
