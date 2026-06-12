@@ -131,3 +131,15 @@ still counts) — improves chat's fuel too. Unit: actionToolRan + offer-vs-promi
 "회의 추가해줘" → actuator ran (calendar.add) → NO false entry; (b) pure-RAG
 "알림 추가해줘" → agent OFFERED ("…드릴까요?") → NO spurious unbacked-action (was
 wrongly recorded before the fix).
+
+## v4 Fire 5 — surface dev-fixable fuel in the DEFAULT doctor (SLICE SHIPPED)
+
+The fuel was only visible behind `--weaknesses`/`--run-outcomes` flags, so an
+operator running plain `muse doctor` never saw it. Added `weaknessFuelCheck` —
+an INFORMATIONAL (status "ok", never flips `worst`) doctor line that surfaces the
+dev-fixable recurring agent bugs, wired into runLocalDoctor (best-effort ledger
+read). Returns undefined when there's no fuel, so plain doctor stays quiet until
+real fuel accrues. Unit: 2 cases (empty → undefined; counts + top + "+N more").
+REAL muse: `doctor --local` with a seeded unbacked-action shows "✓ weakness
+ledger: 1 recurring agent bug — top: …" and stays SILENT on an empty ledger.
+Pipeline payoff now proactively visible.

@@ -504,6 +504,25 @@ interface LocalDoctorReport {
   readonly worst: "ok" | "warn" | "fail";
 }
 
+/**
+ * Surface the dev-fixable weakness fuel as an INFORMATIONAL doctor line (status
+ * "ok" — a recurring agent bug is self-knowledge, not a doctor health failure,
+ * so it never flips `worst` to warn). Returns undefined when there's nothing to
+ * surface, so plain `muse doctor` stays quiet until real fuel accrues. Pure.
+ */
+export function weaknessFuelCheck(devFixable: readonly DevFixableWeakness[]): LocalCheck | undefined {
+  const top = devFixable[0];
+  if (!top) {
+    return undefined;
+  }
+  const more = devFixable.length > 1 ? ` (+${(devFixable.length - 1).toString()} more)` : "";
+  return {
+    detail: `${devFixable.length.toString()} recurring agent bug${devFixable.length === 1 ? "" : "s"} — top: ${top.topic} (${top.axis} ${top.count.toString()}×)${more}. See \`muse doctor --weaknesses\`.`,
+    name: "weakness ledger",
+    status: "ok"
+  };
+}
+
 async function runLocalDoctor(): Promise<LocalDoctorReport> {
   const checks: LocalCheck[] = [];
 
@@ -759,6 +778,18 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
     installed: existsSync(resolveLaunchAgentFile(process.env)),
     paused: await isLearningPaused(resolveLearningPauseFile(env)).catch(() => false)
   }));
+
+  // Surface the real-usage failure fuel (dev-fixable recurring agent bugs) so a
+  // plain `muse doctor` shows what the agent keeps getting wrong — best-effort,
+  // never fails the doctor on a ledger read.
+  try {
+    const fuel = weaknessFuelCheck(selectDevFixableWeaknesses(await readWeaknesses(resolveWeaknessesFile(env))));
+    if (fuel) {
+      checks.push(fuel);
+    }
+  } catch {
+    // ledger read is best-effort observability — never block the health check
+  }
 
   const worst = checks.reduce<"ok" | "warn" | "fail">((acc, c) => {
     if (c.status === "fail" || acc === "fail") return "fail";

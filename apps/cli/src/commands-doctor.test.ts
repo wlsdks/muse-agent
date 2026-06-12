@@ -16,6 +16,7 @@ import {
   formatRunOutcomes,
   formatWeaknesses,
   parseAlpha,
+  weaknessFuelCheck,
   parseNotesIndexEmbedModel,
   resolveMuseEnvPath,
   selfLearningCheck,
@@ -91,6 +92,23 @@ describe("formatRunOutcomes — the failure-RATE the cumulative ledger lacks", (
     expect(out).toContain("2 grounded · 1 abstain · 1 ungrounded");
     expect(out).toContain("office vpn mtu (2×)");
     expect(out).toContain("dentist (1×)");
+  });
+});
+
+describe("weaknessFuelCheck — surface dev-fixable fuel in the default doctor (informational)", () => {
+  it("returns undefined when there's no fuel (plain doctor stays quiet)", () => {
+    expect(weaknessFuelCheck([])).toBeUndefined();
+  });
+  it("is an OK (not warn/fail) info line counting the recurring agent bugs + the top one", () => {
+    const check = weaknessFuelCheck([
+      { topic: "calendar add silent fail", axis: "unbacked-action", count: 4 },
+      { topic: "next friday wrong", axis: "time-parse", count: 3 }
+    ]);
+    expect(check?.status).toBe("ok"); // self-knowledge, not a health failure → won't flip doctor to warn
+    expect(check?.name).toBe("weakness ledger");
+    expect(check?.detail).toContain("2 recurring agent bugs");
+    expect(check?.detail).toContain("calendar add silent fail (unbacked-action 4×)");
+    expect(check?.detail).toContain("+1 more");
   });
 });
 
