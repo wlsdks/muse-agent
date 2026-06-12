@@ -861,7 +861,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-export { createMuseTools, type MuseToolFactoryOptions } from "./muse-tools.js";
+export { createMuseTools, hasNestedUnboundedQuantifier, type MuseToolFactoryOptions } from "./muse-tools.js";
 
 /**
  * Rust runner integration. Implementation lives in `./runner.ts`

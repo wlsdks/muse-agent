@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue } from "@muse/shared";
+import { hasNestedUnboundedQuantifier } from "@muse/tools";
 
 import type { LoopbackMcpServer } from "./loopback.js";
 import { readString } from "./loopback-helpers.js";
@@ -31,6 +32,14 @@ export function createRegexMcpServer(): LoopbackMcpServer {
       return { error: `pattern must be at most ${maxPatternLength} characters` };
     }
     const safeFlags = (flags ?? "").replace(/[^gimsuy]/gu, "");
+    // A nested unbounded quantifier ((a+)+, (.*)*, ([a-z]+){2,}, …) causes catastrophic
+    // backtracking that HANGS the whole agent process (a sync regex run on the main
+    // thread can't be timed out). Reject it BEFORE `new RegExp`, reusing the proven
+    // escape-aware star-height check `regex_extract` already uses — same bug class,
+    // previously unfixed on this surface.
+    if (hasNestedUnboundedQuantifier(pattern)) {
+      return { error: "pattern looks vulnerable to catastrophic backtracking (a quantified group whose body is also unbounded, e.g. (a+)+) — simplify it" };
+    }
     try {
       return new RegExp(pattern, safeFlags);
     } catch (error) {

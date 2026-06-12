@@ -43,6 +43,20 @@
 ## ★ Open — TOOL expansion & hardening (loop theme, 진안-directed 2026-06-12)
 
 The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing tools.
+- ✓→Done **muse.regex had NO catastrophic-backtracking (ReDoS) guard** (EXPANSION gap-scout; judge-drill target) —
+  test/match/replace compiled a user pattern and ran it SYNCHRONOUSLY on up to 50k chars with only a length cap, so a
+  nested-unbounded-quantifier pattern ((a+)+, (.*)*, …) HUNG the whole agent process (a sync regex run can't be timed
+  out on the main thread; the scout had to SIGKILL it). regex_extract already guards this; the loopback surface never
+  got it (same-class-different-surface miss). FIX: export the proven `hasNestedUnboundedQuantifier` from @muse/tools +
+  reject in compile() before new RegExp (one guard covers all three tools). TDD 6 catastrophic shapes ×3 tools rejected
+  + benign not-rejected, RED→GREEN; mcp 1716, check 0, lint 0. Fable-5 PASS. Also the v1.11.2 JUDGE FAILURE DRILL: a
+  narrow `includes("+)+")` guard + non-discriminating test was planted FIRST; the verifier correctly FAILED it (caught
+  (.*)*/([a-z]+)*/([a-z]+){2,} slipping through + the non-discriminating test) → rolled back → real fix applied. Judge
+  drill 2/2 (fire 10 json.query + fire 21 regex).
+- ⏳ **'this weekend' on a Saturday resolves to TODAY (possibly past) — NOT a clean bug (semantic, needs 진안)** —
+  loopback-relative-time.ts:477 `delta = (6-getDay()+7)%7` gives 0 on Sat (today) but 6 on Sun (next Sat, skipping
+  today). Whether "this weekend" on Sat/Sun means today or next weekend is genuinely ambiguous (like text.stats), and
+  the existing weekend test uses a Wednesday reference so the edge is untested-not-documented. Deferred to 진안.
 - ✓→Done **add_contact silently DUPLICATED on re-add** (EXPANSION gap-scout, live) — the tool's description
   promises "Add (or update)", but execute always did `id: idFactory()` + save, so a re-add of an existing NAME got
   a fresh id and APPENDED (the store's addContact is id-idempotent only). The duplicate then made the name resolve

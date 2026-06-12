@@ -9,6 +9,23 @@ const tool = (name: string) => {
 };
 const tooLong = "a".repeat(50_001);
 
+describe("muse.regex ReDoS guard — rejects nested-unbounded-quantifier patterns (catastrophic backtracking)", () => {
+  // These hang the whole agent process on a long non-matching input (JS regex can't
+  // be timed out on the main thread). The guard rejects at COMPILE time, so a SHORT
+  // text here never runs the dangerous regex — and the guard covers all three tools.
+  for (const pattern of ["(a+)+$", "(.*)*", "([a-z]+)*", "(a*)*", "([a-z]+){2,}", "(\\d+)+"]) {
+    it(`rejects ${pattern} across test/match/replace`, () => {
+      expect(tool("test").execute({ pattern, text: "aaa" })).toMatchObject({ error: expect.stringContaining("catastrophic") });
+      expect(tool("match").execute({ pattern, text: "aaa" })).toMatchObject({ error: expect.stringContaining("catastrophic") });
+      expect(tool("replace").execute({ pattern, replacement: "x", text: "aaa" })).toMatchObject({ error: expect.stringContaining("catastrophic") });
+    });
+  }
+  it("does NOT reject a benign pattern (no nested unbounded quantifier)", () => {
+    expect(tool("test").execute({ pattern: "a+b+", text: "aab" })).toEqual({ matched: true });
+    expect(tool("test").execute({ pattern: "(\\d+)-(\\d+)", text: "1-2" })).toEqual({ matched: true });
+  });
+});
+
 describe("muse.regex#test", () => {
   it("reports a match and a non-match with RegExp.test semantics", () => {
     expect(tool("test").execute({ text: "hello", pattern: "ell" })).toEqual({ matched: true });

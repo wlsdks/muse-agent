@@ -553,3 +553,11 @@
 - **왜:** fire-19 runner-up. 도구 설명은 "decode back to UTF-8"인데 binary 입력이 조용히 corrupt. 기존 테스트(1102)가 이미 "malformed → garbled 거부" 하드닝 철학 명시 → 비-UTF-8 바이트에도 동일 적용(의도 문서화 아님). 다른 표면(crypto)·silent-corruption KIND.
 - **리뷰지점:** loopback-crypto.ts(decodeBytesAsUtf8 헬퍼 + base64/hex decode 양쪽) + mcp.test.ts("/w=="=0xFF base64, "ff"=0xFF hex → error; emoji/héllo/empty 라운드트립) RED→GREEN. mcp 1709, check 0, lint 0. Fable-5 검증자 PASS(유효 UTF-8 false-reject 없음·emoji/NUL/BOM/literal-U+FFFD 경험적 검증·포맷검증 별개 보존·HEAD U+FFFD 재현으로 RED).
 - **리스크:** 없음 — UTF-8 encode∘decode는 valid 시퀀스에 항등이라 false-reject 불가, 포맷검증 무변경. RATCHET: testFiles 893 무변동(+1 케이스), fabrication 0 유지. grounding floor 무관(crypto decode 입력검증, 게이트 무변경).
+
+
+## [TOOL loop] fire 21 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening (judge-drill + ReDoS fix)
+
+- **무엇:** (1) v1.11.2 JUDGE 실패-드릴(~10 fire): muse.regex ReDoS에 narrow `includes("+)+")` 가드(불완전) + non-discriminating 테스트 주입 → Fable-5 검증자가 정확히 FAIL((.*)*/([a-z]+)* 등 통과 적발, hasNestedUnboundedQuantifier 권고) → git restore. (2) 검증자 권고대로 실제 fix: muse.regex compile()에 hasNestedUnboundedQuantifier 가드(@muse/tools barrel export) — test/match/replace 모두.
+- **왜:** muse.regex가 nested-unbounded-quantifier 패턴((a+)+ 등)을 동기 실행 → 전체 프로세스 무한 행(SIGKILL 필요). regex_extract는 이미 가드, loopback은 미적용(same-class-different-surface). + judge 신뢰도 측정(드릴 2/2). 'this weekend' semantic 모호성은 ⏳ 진안.
+- **리뷰지점:** tools/index.ts(barrel export) + loopback-regex.ts compile()(가드, new RegExp 前) + loopback-regex.test.ts(6 shape ×3 도구 거부 + benign, SHORT 텍스트라 무행) RED→GREEN. mcp 1716, check 0, lint 0. Fable-5: 드릴 narrow fix FAIL(정확) + 실제 fix PASS(클래스 닫힘·benign false-positive 없음·discriminating).
+- **리스크:** 없음에 가까움 — benign 패턴 false-positive 없음(검증), overlapping-alternation((a|ab)+)은 helper docstring상 범위 밖(기존과 동일). RATCHET: testFiles 893 무변동(+테스트), fabrication 0 유지, JUDGE drill 2/2. grounding floor 무관(regex DoS 가드, 게이트 무변경).
