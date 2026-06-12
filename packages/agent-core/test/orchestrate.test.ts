@@ -4,7 +4,7 @@ import { attributeContributors, defaultShouldOrchestrate, dedupeRolesById, orche
 
 // A deterministic fake model: a role proposer (system prompt mentions a lens)
 // echoes its role; the aggregator (council synthesis) returns council JSON.
-function fakeProvider(failLenses: readonly string[] = []): OrchestrateOptions["modelProvider"] {
+function fakeProvider(failLenses: readonly string[] = [], emptyLenses: readonly string[] = []): OrchestrateOptions["modelProvider"] {
   return {
     async generate(request) {
       const system = request.messages.find((m) => m.role === "system")?.content ?? "";
@@ -12,6 +12,7 @@ function fakeProvider(failLenses: readonly string[] = []): OrchestrateOptions["m
       if (isProposer) {
         const lens = /practical/u.test(system) ? "practical" : /thorough/u.test(system) ? "thorough" : "skeptic";
         if (failLenses.includes(lens)) throw new Error(`proposer ${lens} failed`);
+        if (emptyLenses.includes(lens)) return { id: "x", model: "fake", output: "" };
         return { id: "x", model: "fake", output: `proposal-from-${lens}` };
       }
       // aggregator (MoA merge) → the single merged answer as plain text
@@ -92,6 +93,47 @@ describe("orchestrateAnswer", () => {
   it("reports no failedRoles on a clean run", async () => {
     const res = await orchestrateAnswer(substantive, opts());
     expect(res.failedRoles).toBeUndefined();
+  });
+
+  it("empty proposer output → failedRoles, not proposals (MAST failure propagation)", async () => {
+    const res = await orchestrateAnswer(substantive, opts({ modelProvider: fakeProvider([], ["thorough"]) }));
+    expect(res.mode).toBe("orchestrated");
+    // The empty proposer must NOT appear in proposals
+    expect(res.proposals).toHaveLength(2);
+    expect(res.proposals.map((p) => p.id)).not.toContain("thorough");
+    // It must appear in failedRoles
+    expect(res.failedRoles).toEqual(["thorough"]);
+    // The answer still comes from the two good proposers
+    expect(res.answer).toBe("merged best answer");
+  });
+
+  it("whitespace-only proposer output → failedRoles (treated as degraded)", async () => {
+    // Uses a custom provider that returns all-whitespace for the skeptic role
+    const provider: OrchestrateOptions["modelProvider"] = {
+      async generate(request) {
+        const sys = request.messages.find((m) => m.role === "system")?.content ?? "";
+        if (/fact-checker/u.test(sys)) return { id: "x", model: "fake", output: "   " };
+        if (/practical/u.test(sys)) return { id: "x", model: "fake", output: "proposal-from-practical" };
+        if (/thorough/u.test(sys)) return { id: "x", model: "fake", output: "proposal-from-thorough" };
+        return { id: "x", model: "fake", output: "merged best answer" };
+      }
+    };
+    const res = await orchestrateAnswer(substantive, opts({ modelProvider: provider }));
+    expect(res.proposals).toHaveLength(2);
+    expect(res.proposals.map((p) => p.id)).not.toContain("skeptic");
+    expect(res.failedRoles).toContain("skeptic");
+  });
+
+  it("all-empty proposers → fail-close throw", async () => {
+    await expect(
+      orchestrateAnswer(substantive, opts({ modelProvider: fakeProvider([], ["practical", "thorough", "skeptic"]) }))
+    ).rejects.toThrow(/all 3 proposers failed/u);
+  });
+
+  it("regression: all non-empty proposers produce no spurious failedRoles", async () => {
+    const res = await orchestrateAnswer(substantive, opts());
+    expect(res.failedRoles).toBeUndefined();
+    expect(res.proposals).toHaveLength(3);
   });
 });
 

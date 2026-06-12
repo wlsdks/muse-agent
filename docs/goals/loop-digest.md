@@ -197,3 +197,10 @@
 - **왜:** roleList의 각 role을 병렬 proposer로 돌리는데 id dedup 없음 — dup-id role이면 ① 중복 서브에이전트 추론(낭비) ② dup-id proposal이 fire-7 attributeContributors/contributors를 오염(id 충돌). MAST "no duplicated sub-agent work". 실제 상호작용 버그(fire-7 정합성 보호).
 - **리뷰지점:** `packages/agent-core/src/orchestrate.ts`(헬퍼 + roleList 한 줄) + `orchestrate.test.ts`(헬퍼 3 + 통합 1). judge=Opus(나)가 통합테스트가 dedup FILTER 실제로 침(2 dup + 1 → proposals 정확히 2·unique ids, redundant proposer 미실행)·DEFAULT_ROLES 무영향(distinct→no-op) 실제 코드 확인 + agent-core 1718 독립 green.
 - **리스크:** dup roles는 misconfig라 일상 빈도 낮음 — but 사실상 fire-7 attribution 정합성을 보호(dup-id면 contributors 깨짐) + 낭비 추론 차단. answer/aggregation 불변. grounding floor 무관. (fires-10-12 배치 머지는 main dirty라 계속 deferred — clean되면 자동.)
+
+## [cognition loop] fire 14 — 2026-06-12 · 테마: agent-core 인지 강화 (서브에이전트 #4)
+
+- **무엇:** MoA fan-out에서 **빈 proposer 출력 → failedRoles**(유효 proposal 아님). 한 조건 추가(`&& outcome.value.text.trim().length > 0`)로 fulfilled-but-empty를 throw처럼 failedRoles로.
+- **왜:** 기존엔 fulfilled proposer를 무조건 proposal로 push — 빈/공백 텍스트(안 throw한 degraded 서브에이전트)도 포함 → aggregator candidate 오염 + proposals.length 부풀림. MAST "failure propagation surfaces, never silently swallowed".
+- **리뷰지점:** `packages/agent-core/src/orchestrate.ts`(forEach 조건 1개) + `orchestrate.test.ts`(빈→failedRoles·whitespace·all-empty fail-close·회귀 4건). judge=Opus(나)가 partition 조건·non-vacuous(빈 thorough → proposals 2개·failedRoles=["thorough"])·onProposal/fail-close/aggregate 무변경 실제 코드 확인 + agent-core 1722 독립 green.
+- **리스크:** onProposal은 빈 proposer에도 여전히 fire(스트리밍 표시 후 결과서 제외 — 경미, 콜백은 라이브 표시용). 비-빈 동작 불변. grounding floor 무관. (fires-10-12 배치는 이번 fire에 main clean돼 **머지 완료** `cac55bb0`; fires 13-14는 다음 관문서.)

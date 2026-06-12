@@ -196,9 +196,13 @@ export async function orchestrateAnswer(question: string, options: OrchestrateOp
   );
   const proposals: OrchestrationProposal[] = [];
   const failedRoles: string[] = [];
+  // An empty/whitespace proposer output is a degraded sub-agent, not a candidate.
   settled.forEach((outcome, index) => {
-    if (outcome.status === "fulfilled") proposals.push(outcome.value);
-    else failedRoles.push(roleList[index]?.id ?? `role-${index.toString()}`);
+    if (outcome.status === "fulfilled" && outcome.value.text.trim().length > 0) {
+      proposals.push(outcome.value);
+    } else {
+      failedRoles.push(roleList[index]?.id ?? `role-${index.toString()}`);
+    }
   });
   // fail-close: every proposer failed → nothing to synthesize, surface it loudly.
   if (proposals.length === 0) {

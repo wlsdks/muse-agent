@@ -492,6 +492,14 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   agent-core 1718 green incl. an integration (2 dup-id roles + 1 → exactly 2 proposals, unique ids).
   DEFAULT_ROLES path unaffected (distinct ids → no-op).
 
+- ✓→Done **MoA fan-out: empty proposer output → failedRoles (failure surfacing)** — [2026-06-12,
+  cognition loop fire 14, sub-agents #4] `orchestrateAnswer` kept EVERY fulfilled proposer as a
+  proposal, even one returning empty/whitespace text (a degraded sub-agent that didn't throw) —
+  polluting the aggregator candidate list + inflating proposals.length. Now a fulfilled-but-empty
+  proposal falls into `failedRoles` like a throw (MAST "failure propagation surfaces"). One-condition
+  change (`&& outcome.value.text.trim().length > 0`); fail-close/single-survivor/aggregate/onProposal
+  unchanged. agent-core 1722 green (empty→failedRoles, whitespace, all-empty fail-close, regression).
+
 ## Blocked / deferred
 
 - ⏳ **Grammar-constrained tool-call decoding** — INFEASIBLE on Ollama today: `format`
