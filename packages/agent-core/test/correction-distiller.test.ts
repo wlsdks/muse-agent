@@ -31,11 +31,54 @@ describe("classifyCorrectionContradiction — polarity gate parse + fail-closed 
   });
 
   it("does NOT read a NEGATED contradiction as a contradiction (no phantom decay of a learned strategy)", async () => {
-    // the bug: the bare /CONTRADICT/ match grabbed the word out of a negation
-    // and wrongly decayed the user's strategy.
+    // regression cases — already worked before this change
     for (const negated of ["NOT CONTRADICT", "does not contradict the rule", "It doesn't contradict.", "no, this does not contradict"]) {
       expect(await run(negated), negated).not.toBe("contradict");
     }
+  });
+
+  it("does NOT read contraction-auxiliary negations as a contradiction", async () => {
+    // contraction auxiliaries added in hardening: WON'T, CANNOT, CAN'T, etc.
+    for (const negated of [
+      "WON'T CONTRADICT",
+      "CANNOT CONTRADICT",
+      "CAN'T CONTRADICT",
+      "WOULDN'T CONTRADICT",
+      "SHOULDN'T CONTRADICT"
+    ]) {
+      expect(await run(negated), negated).not.toBe("contradict");
+    }
+  });
+
+  it("does NOT read negation + intervening words as a contradiction", async () => {
+    // up to 2 intervening words between negator and CONTRADICT
+    for (const negated of [
+      "NO CONTRADICTION",
+      "NOT A CONTRADICTION",
+      "DOESN'T REALLY CONTRADICT",
+      "DOES NOT DIRECTLY CONTRADICT"
+    ]) {
+      expect(await run(negated), negated).not.toBe("contradict");
+    }
+  });
+
+  it("still reads a genuine contradiction as 'contradict' (not over-stripped)", async () => {
+    for (const genuine of [
+      "CONTRADICT",
+      "CONTRADICTS",
+      "CONTRADICTION",
+      "THIS CONTRADICTS THE RULE",
+      "YES, CONTRADICT"
+    ]) {
+      expect(await run(genuine), genuine).toBe("contradict");
+    }
+  });
+
+  it("pass-through: AGREE → 'agree', UNRELATED → 'unrelated', empty/gibberish → 'uncertain'", async () => {
+    expect(await run("AGREE")).toBe("agree");
+    expect(await run("UNRELATED")).toBe("unrelated");
+    expect(await run("")).toBe("uncertain");
+    expect(await run("maybe yes")).toBe("uncertain");
   });
 
   it("still reads a genuine contradiction and a negated-other verdict correctly", async () => {

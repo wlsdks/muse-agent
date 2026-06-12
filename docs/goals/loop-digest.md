@@ -260,3 +260,10 @@
 - **왜:** 보안 벤 고갈 후 capability scout가 발굴 — `mac_system_set`은 wifi 토글만 있고 read 없던 write/read 비대칭(calendar/notes 때와 같은 갭 패턴). value-first 역량·다른 KIND(보안 아님).
 - **리뷰지점:** `macos-tools.ts`(parseWifiStatusOutput + wifi_status 브랜치, parseWifiDevice 재사용) + test 2건 + eval 5건. 게이팅 검증자(Opus)가 enum 도달·read-only(-setairportpower는 mac_system_set에 그대로)·읽기/쓰기 디스앰비그·무회귀 PASS.
 - **리스크:** 없음. macos 85·lint 0. **scout 정직 노트: 표면 이제 broadly capable → 다음은 테마 전환 권장**(남은 capability 갭은 niche/live-only).
+
+## [cognition loop] fire 17 — 2026-06-13 · 사이클2 · 테마: 자기강화 #2 (correction-polarity 강건화)
+
+- **무엇:** `classifyCorrectionContradiction`의 de-negation 정규식 강건화 — contraction 보조동사(WON'T/CANNOT/CAN'T/WOULDN'T/SHOULDN'T/COULDN'T) + 부정어와 CONTRADICT 사이 0-2개 끼어든 단어("NOT A CONTRADICTION"/"DOESN'T REALLY CONTRADICT") 커버.
+- **왜:** 기존 de-negation은 NOT/NO/NEVER/DOESN'T+직결 CONTRADICT만 잡음 — 모델이 "WON'T CONTRADICT"/"NOT A CONTRADICTION"처럼 답하면 phantom CONTRADICT → 사용자가 가르친 전략을 잘못 decay(자기강화 무결성 훼손). gap-scout가 stale backlog 항목의 실 잔여 갭 발굴.
+- **리뷰지점:** `packages/agent-core/src/correction-distiller.ts`(deNegated 정규식 1개 + 주석) + `correction-distiller.test.ts`(부정형 12+·genuine 5·passthrough). judge=Opus(나)가 genuine contradiction 미-over-strip(CONTRADICT/CONTRADICTS/THIS CONTRADICTS THE RULE → "contradict") + over-strip 잔여는 conservative-by-design(no-decay로 fail, phantom-decay 회피가 함수의 명시 posture)임 확인 + agent-core 99 독립 green.
+- **리스크:** {0,2} window가 "NO ... CONTRADICTS"류 다중절을 over-strip할 수 있으나 "one word" 프롬프트라 비현실적 + over-strip은 안전방향(decay 안 함). grounding floor 무관. (사이클2 fires 16-18, fire 18 후 자율 관문.)

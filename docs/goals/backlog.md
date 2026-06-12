@@ -292,7 +292,10 @@ replay (this commit). Remaining, severity order:
 - ◦ **ask error paths skip the run-log trace** (failed runs are exactly the error-analysis fuel) +
   Ctrl-C still runs the verdict pipeline and logs success:true. try/finally + success:false entries.
   (CLI audit #6/#7)
-- ◦ smaller: correction-polarity regex unanchored ("NOT CONTRADICT"→contradict decay) ·
+- ◦ smaller: ~~correction-polarity regex unanchored ("NOT CONTRADICT"→contradict decay)~~ ✓DONE
+  (2026-06-13 fire 17: core de-negation existed; HARDENED to cover contraction auxiliaries
+  WON'T/CANNOT/WOULDN'T/SHOULDN'T/COULDN'T + 0-2 intervening words "NOT A CONTRADICTION"/"DOESN'T
+  REALLY CONTRADICT"; conservative-by-design over-strip = fail toward no-decay; 99 agent-core green) ·
   enforceAnswerCitations whitespace rewrite on clean answers (breaks code-block quotes) ·
   casual-prompt 말해줘 over-match suppresses source blocks · dedup memoizes write results ·
   groundToolArguments partial-array reported as dropped · consented-action header override ·
