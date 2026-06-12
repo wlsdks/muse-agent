@@ -81,12 +81,10 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 ```
 Muse 자율 개선 루프 — 테마: <목적>. 반드시 Node 24(nvm default).
 ① docs/goals/backlog.md를 먼저 읽고 `pnpm self-eval`로 회귀를 확인 — 있으면 그게 이번 이터레이션.
-② <테마>의 최상단 ★/◦ 항목 하나(비면 gap-scout 리필이 작업).
-③ harness/dev-loop.md §3에 따라 가장 작은 검증가능 슬라이스를 TDD-first로.
-   새 도구는 tool-calling.md 체크리스트 + eval:tools 골든 케이스.
+② <테마>의 **최상단 ◦(가치 우선, "검증 쉬운 것" 아님)**. 어려워서 defer하면 loop-digest에 *왜* deferred인지 명시(조용히 쉬운 걸로 안 내려감). 최근 3 fire가 같은 KIND였으면 다른 KIND를 고른다(다양성). 비면 gap-scout 리필.
+③ harness/dev-loop.md §3에 따라 검증가능 슬라이스를 TDD-first로. **행동 acceptance: 결과 상태(OUTCOME)를 채점 — 선언/config-only 테스트 금지(fabricated 값이 실제 드롭/동작하는 end-to-end 케이스).** 사소한 동종 변경(예: 남은 actuator들)은 **한 슬라이스로 배칭**(토큰 절약). 새 도구는 tool-calling.md + eval:tools 골든.
 ④ 결정적 검증(정지조건): 가장 좁은 테스트 → pnpm check → 관련 eval(<해당 eval>) → pnpm lint.
-④b 게이팅 검증자: 별개 Opus 서브에이전트가 슬라이스를 적대 판정(acceptance 충족? 불변식 약화 없음? 무관 state 안 깸?).
-   PASS여야 ⑤로. FAIL이면 슬라이스 롤백(git restore)+backlog에 블로커 기록 후 멈춤. (미검증 코드 통과 금지)
+④b 게이팅 검증자: 별개 Opus 서브에이전트가 적대 판정(acceptance가 *행동*을 검증하나 — **선언-only면 FAIL**? 불변식 약화 없음? 무관 state 안 깸?). 깊이는 리스크에 비례(정형 저위험은 가볍게, 새 경로/불변식 접촉은 풀 추적)하되 항상 돈다. PASS여야 ⑤로; FAIL이면 git restore 롤백+backlog 블로커 후 멈춤.
 ⑤ write-back(테스트/eval/backlog Done) 포함 커밋. **자율성: <Tier1=로컬 커밋, push 금지 / Tier2=loop/<theme> 브랜치 push+draft PR, 사람이 머지>.**
 ⑤b 이해 다이제스트: docs/goals/loop-digest.md에 4줄 append(무엇/왜/리뷰지점/리스크). 3 fire마다 빌드 멈추고 누적 리뷰 관문 — 진안 확인 전 새 슬라이스 시작 금지.
 모델 티어링(토큰 절약): 정형 빌드/검색은 Sonnet 서브에이전트(Agent/Workflow model:"sonnet")로
