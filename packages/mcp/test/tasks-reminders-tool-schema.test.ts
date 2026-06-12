@@ -104,4 +104,10 @@ describe("tasks + reminders loopback tools meet the one-shot tool-calling bar", 
     for (const w of ["리마인더", "미뤄", "snooze"]) expect(kwOf("snooze")).toContain(w);
     for (const w of ["리마인더", "삭제", "clear"]) expect(kwOf("clear")).toContain(w);
   });
+
+  it("marks the tasks 'update' optional notes as groundedArgs (drop fabricated notes on update)", () => {
+    const server = createTasksMcpServer({ file: "/tmp/muse-test-tasks.json" });
+    const update = server.tools.find((t) => t.name === "update")!;
+    expect((update as { groundedArgs?: readonly string[] }).groundedArgs).toContain("notes");
+  });
 });
