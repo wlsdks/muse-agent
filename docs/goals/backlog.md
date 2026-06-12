@@ -480,13 +480,17 @@ HARDEN (make existing tools more reliable):
   3 (the 31st/30th/29th @ Jan, each → March same-day) RED(getDate 3≠31)→GREEN; relative-time file 44/44, mcp 1722, check
   0 (all pkgs), lint 0. Fable-5 PASS (RED re-confirmed by stashing src; loop terminates, returns first future occurrence,
   final guard rejects nothing valid; no existing test documented the overflow).
-- ◦ **relative-time SIBLING year-roll overflows (same class, fire-25 deferred)** — two more sites skip the validity
-  re-check after a roll: (1) `resolveAbsoluteMonthDate` +1-year roll (loopback-relative-time.ts:230-231) — "feb 29"
-  asked in a leap year AFTER it passed (ref 2028-03-01) → `new Date(2029,1,29)` = **Mar 1, 2029** silently; (2) the
-  Korean `koAbsDate` roll (~747-749) — same for "2월 29일". Initial builds are guarded (227-229) so only the post-roll
-  result is wrong. FIX each: after the +1-year `new Date`, re-validate `getMonth()/getDate()` and return undefined on
-  overflow (cleaner than the day-of-month loop — a year-roll only ever needs ONE re-check). Slice: 1 file + 2 tests
-  (en + ko feb-29). Different branch/KIND-shape from the month-roll, so a separate fire.
+- ✓→Done **relative-time SIBLING year-roll overflows** (fire 26; completes the fire-25 date-overflow class) — both
+  +1-year roll sites skipped re-validation: (A) `resolveAbsoluteMonthDate` (loopback-relative-time.ts:230-236) and (B)
+  the Korean `koAbsDate` roll (~750-758) — "feb 29" / "2월 29일" asked in a leap year AFTER it passed (ref 2028-06-01)
+  rolled into the non-leap next year where `new Date(2029,1,29)` silently became **Mar 1, 2029** (a date the user never
+  asked for, persisted into a reminder/task). FIX: re-check the rolled date's month/day and return undefined (fail-safe)
+  instead of a wrong date — consistent with the file's reject-don't-roll philosophy for impossible dates. TDD 3 (en + ko
+  feb-29 → undefined; mar-5 valid-roll → 2027 no-regression guard) RED(both gave 2029-03-01)→GREEN; relative-time 47/47,
+  mcp 1725, check 0 (all pkgs), lint 0. Fable-5 PASS (RED re-confirmed by stashing src; both are the ONLY two +1-year
+  roll sites; getMonth-only suffices for B since day≤31 pre-validated; 413 tests across 3 files green). NOTE: returns
+  undefined rather than finding the next leap year (2032) — a fail-safe minimal fix; next-leap resolution is a separate
+  enhancement if 진안 wants it.
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`

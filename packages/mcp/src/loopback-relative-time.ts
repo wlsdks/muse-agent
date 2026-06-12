@@ -228,7 +228,11 @@ function resolveAbsoluteMonthDate(phrase: string, reference: Date): Date | undef
     return undefined;
   }
   if (yearStr === undefined && built.getTime() < reference.getTime()) {
-    return new Date(year + 1, monthIndex, day, time.hour, time.minute, 0, 0);
+    // Re-validate the +1-year roll: "feb 29" in a leap year rolls into a
+    // non-leap next year where new Date silently overflows to March 1. Fail
+    // safe — return undefined, never a date the user did not ask for.
+    const rolled = new Date(year + 1, monthIndex, day, time.hour, time.minute, 0, 0);
+    return rolled.getMonth() === monthIndex && rolled.getDate() === day ? rolled : undefined;
   }
   return built;
 }
@@ -748,7 +752,13 @@ function resolveKoreanRelativePhrase(phrase: string, reference: Date): Date | un
       return undefined;
     }
     if (!koAbsDate[1] && koAbsTarget.getTime() < startOfDay(reference).getTime()) {
-      koAbsTarget = new Date(koAbsYear + 1, koAbsMonth - 1, koAbsDay);
+      // Same overflow as the EN path: "2월 29일" rolled into a non-leap next
+      // year becomes March 1 silently. Re-check; fail safe to undefined.
+      const koRolled = new Date(koAbsYear + 1, koAbsMonth - 1, koAbsDay);
+      if (koRolled.getMonth() !== koAbsMonth - 1) {
+        return undefined;
+      }
+      koAbsTarget = koRolled;
     }
     koAbsTarget.setHours(koAbsTime.hour, koAbsTime.minute, 0, 0);
     return koAbsTarget;

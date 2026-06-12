@@ -306,3 +306,27 @@ describe("resolveRelativeTimePhrase — a BARE duration ('2 hours', '30 minutes'
     expect(resolveRelativeTimePhrase("5", now)!.getHours()).toBe(5); // bare number = 24h clock hour, NOT 5 of a unit
   });
 });
+
+describe("resolveRelativeTimePhrase — Feb 29 year-roll must not overflow into a wrong date", () => {
+  // The single +1-year roll built new Date(year+1, monthIndex, day) with no
+  // re-check, so "feb 29" asked after it passed in a leap year silently became
+  // March 1 of the (non-leap) next year. Fail safe: return undefined, never a
+  // date the user did not ask for.
+  it("en: 'feb 29' after it passed in a leap year does NOT become March 1 next year", () => {
+    // ref 2028-06-01 (2028 leap; Feb 29 2028 already passed) → roll would give
+    // new Date(2029,1,29) = Feb 29 2029 → 2029 non-leap → March 1.
+    expect(resolveRelativeTimePhrase("feb 29", () => new Date(2028, 5, 1, 12, 0, 0, 0))).toBeUndefined();
+  });
+
+  it("ko: '2월 29일' after it passed in a leap year does NOT become March 1 next year", () => {
+    expect(resolveRelativeTimePhrase("2월 29일", () => new Date(2028, 5, 1, 12, 0, 0, 0))).toBeUndefined();
+  });
+
+  it("a valid day still rolls a year forward when this year's has passed (no false undefined)", () => {
+    const r = resolveRelativeTimePhrase("mar 5", () => new Date(2026, 5, 1, 12, 0, 0, 0))!;
+    expect(r).toBeDefined();
+    expect(r.getMonth()).toBe(2); // March
+    expect(r.getDate()).toBe(5);
+    expect(r.getFullYear()).toBe(2027); // rolled to next year, day intact
+  });
+});
