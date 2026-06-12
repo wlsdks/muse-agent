@@ -8442,9 +8442,13 @@ describe("cli program", () => {
     const prev = process.env.MUSE_ACTIVITY_FILE;
     process.env.MUSE_ACTIVITY_FILE = activityFile;
     try {
+      // Dates RELATIVE to now — the routine window is `Date.now() - 30d`, so
+      // hardcoded calendar dates age out of the window and the test reads 0
+      // sessions once enough real time passes (the goal-129 brittleness).
+      const daysAgoIso = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
       // Singular: one session on one day → "across 1 day".
       await fsp.writeFile(activityFile, JSON.stringify({
-        tsIso: "2026-05-13T09:00:00Z",
+        tsIso: daysAgoIso(3),
         userId: "stark",
         kind: "repl-start"
       }) + "\n", "utf8");
@@ -8458,9 +8462,9 @@ describe("cli program", () => {
 
       // Plural: three distinct days → "across 3 days".
       await fsp.writeFile(activityFile, [
-        { tsIso: "2026-05-13T09:00:00Z", userId: "stark", kind: "repl-start" },
-        { tsIso: "2026-05-14T10:00:00Z", userId: "stark", kind: "repl-start" },
-        { tsIso: "2026-05-15T11:00:00Z", userId: "stark", kind: "repl-start" }
+        { tsIso: daysAgoIso(1), userId: "stark", kind: "repl-start" },
+        { tsIso: daysAgoIso(2), userId: "stark", kind: "repl-start" },
+        { tsIso: daysAgoIso(3), userId: "stark", kind: "repl-start" }
       ].map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
 
       const { io: io2, output: out2 } = captureOutput();
