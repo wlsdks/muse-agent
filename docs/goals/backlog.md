@@ -409,6 +409,15 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 
 ## Open — agent core
 
+- ✓→Done **MoA orchestrator: honest contributor attribution** — [2026-06-12, cognition loop fire 7,
+  multi-agent #3] the MoA aggregate path set `contributors = all proposers`, but the field is
+  documented as "ids the synthesized answer ACTUALLY drew on" and the aggregator discards off-topic
+  proposals — a MAST reasoning-action-mismatch (the audit trail over-claimed). Added
+  `attributeContributors(merged, proposals, floor=0.4)` (a proposer counts only when the merge
+  lexically covers ≥floor of its tokens; fallback to all if none clear it) wired into the multi-merge
+  return only. Other return paths (single / single-survivor / aggregator-empty) were already correct.
+  agent-core 1708 green incl. a non-vacuous regression (3 proposers, merge echoes 2 → exactly 2 credited).
+
 ## Blocked / deferred
 
 - ⏳ **Grammar-constrained tool-call decoding** — INFEASIBLE on Ollama today: `format`

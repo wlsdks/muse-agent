@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { defaultShouldOrchestrate, orchestrateAnswer, type OrchestrateOptions } from "../src/orchestrate.js";
+import { attributeContributors, defaultShouldOrchestrate, orchestrateAnswer, type OrchestrateOptions } from "../src/orchestrate.js";
 
 // A deterministic fake model: a role proposer (system prompt mentions a lens)
 // echoes its role; the aggregator (council synthesis) returns council JSON.
@@ -92,5 +92,76 @@ describe("orchestrateAnswer", () => {
   it("reports no failedRoles on a clean run", async () => {
     const res = await orchestrateAnswer(substantive, opts());
     expect(res.failedRoles).toBeUndefined();
+  });
+});
+
+describe("attributeContributors", () => {
+  it("includes a proposal whose tokens mostly appear in the merged text and excludes one whose tokens are absent", () => {
+    const merged = "deploy with docker compose up";
+    const proposals = [
+      { id: "a", text: "deploy with docker compose up the stack" },
+      { id: "b", text: "knit a wool sweater by hand" }
+    ];
+    expect(attributeContributors(merged, proposals)).toEqual(["a"]);
+  });
+
+  it("falls back to all ids when no proposal overlaps the merged text", () => {
+    const merged = "completely unrelated output zephyr";
+    const proposals = [
+      { id: "x", text: "apple cider vinegar recipes" },
+      { id: "y", text: "quantum entanglement physics" }
+    ];
+    expect(new Set(attributeContributors(merged, proposals))).toEqual(new Set(["x", "y"]));
+  });
+
+  it("skips empty-token proposals (not a contributor) unless fallback applies", () => {
+    const merged = "deploy with docker compose";
+    const proposals = [
+      { id: "good", text: "deploy with docker compose up" },
+      { id: "empty", text: "--- ---" }
+    ];
+    const result = attributeContributors(merged, proposals);
+    expect(result).toContain("good");
+    expect(result).not.toContain("empty");
+  });
+});
+
+describe("orchestrateAnswer — multi-merge attribution", () => {
+  it("multi-merge path attributes only the proposers whose text is covered by the merged answer (regression: no over-claim)", async () => {
+    // Three roles; the aggregator echoes the alpha + beta content, ignoring gamma.
+    const roles = [
+      { id: "alpha", systemPrompt: "You are alpha assistant. Answer the user's question directly." },
+      { id: "beta",  systemPrompt: "You are beta assistant. Answer the user's question directly." },
+      { id: "gamma", systemPrompt: "You are gamma assistant. Answer the user's question directly." }
+    ];
+    const provider: OrchestrateOptions["modelProvider"] = {
+      async generate(request) {
+        const sys = request.messages.find((m) => m.role === "system")?.content ?? "";
+        if (/alpha assistant/u.test(sys)) return { id: "x", model: "fake", output: "container orchestration with kubernetes scaling" };
+        if (/beta assistant/u.test(sys))  return { id: "x", model: "fake", output: "kubernetes scaling container pods horizontally" };
+        if (/gamma assistant/u.test(sys)) return { id: "x", model: "fake", output: "bake sourdough bread with levain starter culture" };
+        // aggregator: merges alpha+beta language only
+        return { id: "x", model: "fake", output: "container orchestration with kubernetes scaling pods horizontally" };
+      }
+    };
+    const res = await orchestrateAnswer(
+      "How do I scale containers with kubernetes?",
+      { model: "fake", modelProvider: provider, roles, shouldOrchestrate: () => true }
+    );
+    expect(res.mode).toBe("orchestrated");
+    expect(res.proposals.map((p) => p.id)).toEqual(["alpha", "beta", "gamma"]);
+    // gamma's text (bread/sourdough) has no overlap with the merged answer — must NOT be a contributor
+    const contributors = new Set(res.contributors);
+    expect(contributors.has("gamma")).toBe(false);
+    expect(contributors.has("alpha")).toBe(true);
+    expect(contributors.has("beta")).toBe(true);
+    // Exactly two contributors (no over-claim)
+    expect(res.contributors).toHaveLength(2);
+  });
+
+  it("single-survivor path still returns only that survivor as contributor", async () => {
+    const substantive = "에이전트를 병렬화하는 가장 좋은 방법은 무엇인가요?";
+    const res = await orchestrateAnswer(substantive, opts({ modelProvider: fakeProvider(["practical", "thorough"]) }));
+    expect(res.contributors).toEqual(["skeptic"]);
   });
 });
