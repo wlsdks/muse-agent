@@ -65,6 +65,14 @@ export function createContactsFindTool(deps: ContactsFindToolDeps): MuseTool {
 export interface ContactsAddToolDeps {
   readonly save: (contact: Contact) => Promise<void>;
   readonly idFactory?: () => string;
+  /**
+   * Optional reader so a re-add of an EXISTING name UPDATES in place (reuses the
+   * contact's id + merges fields) instead of creating a duplicate — the tool's
+   * description promises "Add (or update)", and a duplicate makes the name resolve
+   * ambiguous FOREVER (breaking outbound-safety recipient resolution). Needs an
+   * id-idempotent `save` (the store's `addContact`) for the reuse to actually replace.
+   */
+  readonly contacts?: () => Promise<readonly Contact[]> | readonly Contact[];
 }
 
 export function createContactsAddTool(deps: ContactsAddToolDeps): MuseTool {
@@ -108,17 +116,33 @@ export function createContactsAddTool(deps: ContactsAddToolDeps): MuseTool {
       if (birthday.length > 0 && !BIRTHDAY_RE.test(birthday)) {
         return { added: false, reason: `birthday must be MM-DD or YYYY-MM-DD (got '${birthday}')` };
       }
+      // Re-add of an existing name UPDATES in place: reuse the id (so an id-idempotent
+      // save replaces, not appends) and merge — a newly-given field wins, an unmentioned
+      // one is preserved. Without this the "(or update)" path silently duplicated, after
+      // which the name resolved ambiguous forever.
+      const existing = deps.contacts
+        ? (await deps.contacts()).find((c) => c.name.trim().toLowerCase() === name.toLowerCase())
+        : undefined;
+      const keep = (value: string, prior: string | undefined): { value: string } | undefined =>
+        value.length > 0 ? { value } : prior ? { value: prior } : undefined;
+      const merged = {
+        birthday: keep(birthday, existing?.birthday),
+        email: keep(email, existing?.email),
+        handle: keep(handle, existing?.handle),
+        phone: keep(phone, existing?.phone),
+        relationship: keep(relationship, existing?.relationship)
+      };
       const contact: Contact = {
-        id: idFactory(),
+        id: existing?.id ?? idFactory(),
         name,
-        ...(email.length > 0 ? { email } : {}),
-        ...(handle.length > 0 ? { handle } : {}),
-        ...(phone.length > 0 ? { phone } : {}),
-        ...(birthday.length > 0 ? { birthday } : {}),
-        ...(relationship.length > 0 ? { relationship } : {})
+        ...(merged.email ? { email: merged.email.value } : {}),
+        ...(merged.handle ? { handle: merged.handle.value } : {}),
+        ...(merged.phone ? { phone: merged.phone.value } : {}),
+        ...(merged.birthday ? { birthday: merged.birthday.value } : {}),
+        ...(merged.relationship ? { relationship: merged.relationship.value } : {})
       };
       await deps.save(contact);
-      return { added: true, id: contact.id, name: contact.name, ...(relationship.length > 0 ? { relationship } : {}) };
+      return { added: true, id: contact.id, name: contact.name, ...(existing ? { updated: true } : {}), ...(relationship.length > 0 ? { relationship } : {}) };
     }
   };
 }

@@ -707,7 +707,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => [createRememberFactTool({ store: userMemoryStore })],
     () => [
       createContactsFindTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
-      createContactsAddTool({ save: (contact) => addContact(resolveContactsFile(env), contact) }),
+      createContactsAddTool({ contacts: () => queryContacts(resolveContactsFile(env)), save: (contact) => addContact(resolveContactsFile(env), contact) }),
       createContactsRemoveTool({ contacts: () => queryContacts(resolveContactsFile(env)), remove: (id) => removeContact(resolveContactsFile(env), id) })
     ],
     () => options.extraTools ?? [],

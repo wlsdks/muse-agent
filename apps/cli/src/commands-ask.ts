@@ -2653,10 +2653,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             const noteContent = act.kind === "receipt" ? `- ${String(act.fields.note)}\n` : `${String(act.fields.note)}\n`;
             result = await appendTool?.execute({ content: noteContent, path: notePath });
           } else {
-            const { createContactsAddTool, readContacts, writeContacts } = await import("@muse/mcp");
+            const { addContact, createContactsAddTool, readContacts } = await import("@muse/mcp");
             const file = resolveContactsFile(env);
-            const addContact = createContactsAddTool({ save: async (c) => writeContacts(file, [...(await readContacts(file)), c], env) });
-            result = await addContact.execute(act.fields, { runId: "vision-auto", userId: userKey });
+            // Use the store's id-idempotent + queued addContact (not a raw read+append):
+            // with the tool's name-match id-reuse this UPDATES an existing contact in
+            // place instead of duplicating, and is lost-update safe under concurrency.
+            const addContactTool = createContactsAddTool({ contacts: () => readContacts(file, env), save: (c) => addContact(file, c, env) });
+            result = await addContactTool.execute(act.fields, { runId: "vision-auto", userId: userKey });
           }
           io.stdout(result && typeof result === "object" && "error" in result ? `\n❌ ${String((result as { error: unknown }).error)}\n` : `\n✅ Done: ${JSON.stringify(result)}\n`);
           return;

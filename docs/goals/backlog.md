@@ -43,6 +43,21 @@
 ## ★ Open — TOOL expansion & hardening (loop theme, 진안-directed 2026-06-12)
 
 The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing tools.
+- ✓→Done **add_contact silently DUPLICATED on re-add** (EXPANSION gap-scout, live) — the tool's description
+  promises "Add (or update)", but execute always did `id: idFactory()` + save, so a re-add of an existing NAME got
+  a fresh id and APPENDED (the store's addContact is id-idempotent only). The duplicate then made the name resolve
+  AMBIGUOUS forever (find_contact returns candidates, never a person) — breaking outbound-safety rule 3 (recipient
+  must resolve unambiguously) AND remove_contact was equally ambiguous (can't clean up by name). FIX: an optional
+  `contacts?` reader on ContactsAddToolDeps; on an exact case-insensitive name match, reuse the existing id + merge
+  (new field wins, unmentioned preserved) so an id-idempotent save REPLACES. Wired through BOTH production seams —
+  autoconfigure (already addContact-idempotent) + commands-ask vision-auto (CHANGED from a raw read+append
+  `writeContacts` to the store's addContact + reader, so it's now id-idempotent + queued). TDD 3 (re-add reuses id +
+  merges; case-insensitive; no-reader back-compat) RED→GREEN; mcp 1703, check 0, lint 0. Fable-5 PASS (back-compat
+  intact, both seams live). RESIDUAL (non-blocking, separate): exact-name-only match (an ALIAS re-add could still
+  duplicate); commands-ask read→save isn't atomic across the merge window (only the save is queued).
+- ◦ **loopback-crypto base64/hex decode of non-UTF-8 bytes emits U+FFFD silently** (gap-scout runner-up) — a
+  round-trip of valid-but-non-UTF-8 bytes silently corrupts to replacement chars instead of erroring
+  (loopback-crypto.ts:~86,122). FIX: detect lossy decode (re-encode mismatch) → error. 1 fix + 1 test.
 - ✓→Done **web_download silently clobbered an existing file** (EXPANSION gap-scout, live) — wrote bytes with a
   plain `writeFile(path, bytes)` (flag "w"), so downloading a name that already exists in the user's Downloads
   dir SILENTLY OVERWROTE the unrelated existing file (irreversible data loss, not even flagged) — AppWorld

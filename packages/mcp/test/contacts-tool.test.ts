@@ -100,6 +100,52 @@ describe("createContactsAddTool — capture a person", () => {
   });
 });
 
+describe("createContactsAddTool — re-add of an existing name UPDATES in place (no duplicate)", () => {
+  // A store mirroring the real `addContact`: id-idempotent (replace on a known id,
+  // else append) — so the tool's name-match id-reuse REPLACES instead of duplicating.
+  function idempotentStore() {
+    const list: Contact[] = [];
+    let n = 0;
+    const tool = createContactsAddTool({
+      contacts: () => list,
+      idFactory: () => `c${(++n).toString()}`,
+      save: async (c: Contact) => { const i = list.findIndex((x) => x.id === c.id); if (i >= 0) list[i] = c; else list.push(c); }
+    });
+    return { list, tool };
+  }
+
+  it("a second add for the same name reuses the id and merges fields (was a duplicate → ambiguous forever)", async () => {
+    const { list, tool } = idempotentStore();
+    const first = await tool.execute({ email: "bob@old.com", name: "Bob", phone: "415-555-0101" }) as { id: string; updated?: boolean };
+    expect(list).toHaveLength(1);
+    expect(first.updated).toBeUndefined();
+    const second = await tool.execute({ email: "bob@new.com", name: "Bob" }) as { id: string; updated?: boolean };
+    expect(list).toHaveLength(1); // STILL one Bob — not a duplicate
+    expect(second.id).toBe(first.id); // existing id reused → the store REPLACES
+    expect(second.updated).toBe(true);
+    expect(list[0]!.email).toBe("bob@new.com"); // new value wins
+    expect(list[0]!.phone).toBe("415-555-0101"); // unmentioned field preserved
+  });
+
+  it("matches the name case-insensitively", async () => {
+    const { list, tool } = idempotentStore();
+    await tool.execute({ email: "bob@x.com", name: "Bob" });
+    await tool.execute({ name: "bob", phone: "555" });
+    expect(list).toHaveLength(1);
+    expect(list[0]!.email).toBe("bob@x.com");
+    expect(list[0]!.phone).toBe("555");
+  });
+
+  it("without a contacts reader keeps the old new-id-each-time behavior (back-compat — the optional dep)", async () => {
+    const list: Contact[] = [];
+    let n = 0;
+    const tool = createContactsAddTool({ idFactory: () => `c${(++n).toString()}`, save: async (c) => { list.push(c); } });
+    await tool.execute({ email: "a@x.com", name: "Bob" });
+    await tool.execute({ email: "b@x.com", name: "Bob" });
+    expect(list).toHaveLength(2); // no reader → no dedup; the production seams pass the reader
+  });
+});
+
 describe("createContactsRemoveTool — delete a person (fail-close)", () => {
   function removeTool(people: Contact[] = PEOPLE) {
     const removed: string[] = [];

@@ -494,3 +494,11 @@
 - **왜:** 옛 테스트는 OLLAMA_BASE_URL을 unreachable 포트로 가리키고 embed 재시도 backoff(~5s)에 의존 → vitest 5000ms 기본 타임아웃 경계(5159ms)에서 flake. 루프 자체 하드닝(게이트 신뢰성). 다른 KIND(테스트 hermeticity).
 - **리뷰지점:** chat-grounding.ts(searchRecall? opt + opts.searchRecall ?? searchRecall) + chat-grounding.test.ts(주입 throw + reindex off, called===true 단언) — production 무변경. cli 2530, check 0(첫 시도 통과·더 이상 flake 안 함), lint 0. Fable-5 검증자 PASS(production recall 동일·fail-soft 여전히 검증·23ms로 빨라짐·strictly stronger 커버리지).
 - **리스크:** 없음 — DI seam은 test-only(production 호출부 미주입), 타입 sound. RATCHET: testFiles 893 무변동(테스트 1개 hermetic화), fabrication 0 유지, **게이트 flake 제거**(2 fire 낭비 종결). grounding floor 무관(테스트 인프라).
+
+
+## [TOOL loop] fire 19 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** add_contact "Add (or update)"가 재추가 시 항상 새 id로 중복 생성 → 이름이 영영 ambiguous(remove도 불가) → outbound-safety rule 3 영구 위반. fix: optional contacts 리더 추가, 이름 매치 시 기존 id 재사용+필드 병합(id-idempotent save가 REPLACE). 양쪽 production seam 배선(commands-ask는 raw writeContacts→store addContact로도 변경).
+- **왜:** fresh 표면(contacts). 데이터 무결성 + 수신자-해결 영구 손상(outbound-safety 핵심). EXPANSION 스카웃 라이브 확인. 다른 KIND(중복/upsert).
+- **리뷰지점:** contacts-tool.ts(contacts? 리더 + 이름매치 id재사용+merge) + autoconfigure:710(리더 추가) + commands-ask:2658(raw append→addContact+리더) + contacts-tool.test.ts(재추가 id재사용+merge, case-insensitive, no-reader back-compat) RED→GREEN. mcp 1703, check 0, lint 0. Fable-5 검증자 PASS(back-compat 7 테스트 무회귀·양쪽 seam live·merge 필드드롭 불가·HEAD length 2 재현). 스카웃 "테스트 없음" 정정(있었으나 중복을 의도 문서화 안 함).
+- **리스크:** 없음에 가까움 — 리더 없으면 old 동작(optional dep). 잔여(비차단): exact-name-only(alias 재추가는 중복 가능), commands-ask read→save 비원자(save만 큐). RATCHET: testFiles 893 무변동(+3 케이스), fabrication 0 유지. runner-up(crypto base64/hex U+FFFD) 기록. grounding floor 무관(contacts upsert, 게이트 무변경).
