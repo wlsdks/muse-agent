@@ -133,7 +133,12 @@ export function detectApprovals(
   for (let index = 1; index < turns.length; index += 1) {
     const turn = turns[index]!;
     const prior = turns[index - 1]!;
-    if (turn.role !== "user" || prior.role !== "assistant" || !isApprovalTurn(turn.content)) {
+    // Correction takes precedence: a turn that ALSO pushes back ("no, but the
+    // format's perfect") must never count as an approval — else the same
+    // exchange drives BOTH a reward (reinforce) and a decay on one strategy, a
+    // contradictory self-reinforcement signal. Conservative: when in doubt,
+    // never reinforce a turn carrying a correction.
+    if (turn.role !== "user" || prior.role !== "assistant" || !isApprovalTurn(turn.content) || isCorrectionTurn(turn.content)) {
       continue;
     }
     const request = index >= 2 && turns[index - 2]!.role === "user" ? turns[index - 2]!.content : undefined;

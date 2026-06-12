@@ -337,6 +337,18 @@ describe("detectApprovals — the POSITIVE reward signal (RL reinforce; precisio
     }
   });
 
+  it("correction takes precedence: a turn that ALSO corrects is NOT an approval (no contradictory reward+decay)", () => {
+    // these match both an approval and a correction pattern; the same exchange
+    // must not feed both the reinforce and decay signals at once.
+    for (const phrase of ["no, that's not it — though the format is perfect", "그게 아니야, 근데 정확해"]) {
+      expect(detectOne(phrase), phrase).toHaveLength(0); // approval suppressed by the correction match
+    }
+    // sanity: the same turns ARE seen as corrections
+    expect(
+      detectCorrections([t("user", "req"), t("assistant", "ans"), t("user", "no, that's not it — though the format is perfect")])
+    ).toHaveLength(1);
+  });
+
   it("requires the assistant→user pairing and backfills the request", () => {
     expect(detectApprovals([t("user", "q"), t("user", "perfect")])).toHaveLength(0); // no assistant before
     const out = detectApprovals([t("user", "REQ"), t("assistant", "A"), t("user", "perfect")]);
