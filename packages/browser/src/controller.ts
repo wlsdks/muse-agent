@@ -41,6 +41,12 @@ export interface BrowserController {
   snapshot(): Promise<PageSnapshot>;
   /** Click the element with this ref (from the last snapshot); returns the new snapshot. */
   click(ref: number): Promise<PageSnapshot>;
+  /**
+   * Move the mouse over the element and re-observe — reveals hover-triggered
+   * menus / tooltips (CSS :hover, mouseover handlers) the snapshot can't see
+   * until the pointer is over them.
+   */
+  hover(ref: number): Promise<PageSnapshot>;
   /** Type into the element with this ref; optionally press Enter to submit. */
   type(ref: number, text: string, submit: boolean): Promise<PageSnapshot>;
   /** Go back in history; returns the new snapshot. */

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   createBrowserBackTool,
   createBrowserClickTool,
+  createBrowserHoverTool,
   createBrowserOpenTool,
   createBrowserReadTool,
   createBrowserScrollTool,
@@ -27,6 +28,7 @@ class FakeController implements BrowserController {
   async open(url: string): Promise<PageSnapshot> { this.calls.push(`open:${url}`); return SNAP; }
   async snapshot(): Promise<PageSnapshot> { this.calls.push("snapshot"); return SNAP; }
   async click(ref: number): Promise<PageSnapshot> { this.calls.push(`click:${ref.toString()}`); return SNAP; }
+  async hover(ref: number): Promise<PageSnapshot> { this.calls.push(`hover:${ref.toString()}`); return SNAP; }
   async type(ref: number, text: string, submit: boolean): Promise<PageSnapshot> { this.calls.push(`type:${ref.toString()}:${text}:${submit.toString()}`); return SNAP; }
   async back(): Promise<PageSnapshot> { this.calls.push("back"); return SNAP; }
   async scroll(direction: string): Promise<PageSnapshot> { this.calls.push(`scroll:${direction}`); return SNAP; }
@@ -47,11 +49,12 @@ describe("browser tools — well-formed definitions", () => {
       createBrowserReadTool({ controller: c }),
       createBrowserBackTool({ controller: c }),
       createBrowserScrollTool({ controller: c }),
+      createBrowserHoverTool({ controller: c }),
       createBrowserClickTool({ approvalGate: allow, controller: c }),
       createBrowserTypeTool({ approvalGate: allow, controller: c })
     ];
     expect(tools.map((t) => t.definition.name)).toEqual([
-      "browser_open", "browser_read", "browser_back", "browser_scroll", "browser_click", "browser_type"
+      "browser_open", "browser_read", "browser_back", "browser_scroll", "browser_hover", "browser_click", "browser_type"
     ]);
     for (const tool of tools) {
       expect(tool.definition.domain).toBe("browser");
@@ -102,6 +105,24 @@ describe("dialog passthrough — an auto-handled JS dialog is surfaced to the mo
   });
 });
 
+describe("browser_hover — reveal hover menus", () => {
+  it("is a well-formed read tool grounding a target", () => {
+    const tool = createBrowserHoverTool({ controller: new FakeController() });
+    expect(tool.definition.name).toBe("browser_hover");
+    expect(tool.definition.risk).toBe("read");
+    expect((tool.definition.inputSchema as { required: string[] }).required).toEqual(["target"]);
+    expect(validateToolDefinitions([tool])).toEqual([]);
+  });
+
+  it("grounds the target and hovers it, returning the revealed page", async () => {
+    const c = new FakeController();
+    const tool = createBrowserHoverTool({ controller: c });
+    expect(await tool.execute({ target: "Sign in" }, ctx)).toMatchObject({ title: "Example" });
+    // snapshot (to resolve target) then hover the resolved ref
+    expect(c.calls).toEqual(["snapshot", "hover:3"]);
+  });
+});
+
 describe("browser_scroll — reveal below-the-fold content", () => {
   it("is a well-formed read tool with a direction enum", () => {
     const c = new FakeController();
@@ -134,7 +155,7 @@ describe("browser_read — paging a long page (no silent truncation)", () => {
     const snap: PageSnapshot = { elements, text: "x", title: "Big", url: "https://big.test/" };
     return {
       back: async () => snap, click: async () => snap, close: async () => {}, currentUrl: () => "https://big.test/",
-      describeElement: (ref) => elements[ref], disconnect: async () => {}, open: async () => snap,
+      describeElement: (ref) => elements[ref], disconnect: async () => {}, hover: async () => snap, open: async () => snap,
       screenshot: async (path) => ({ path }), scroll: async () => snap, snapshot: async () => snap, type: async () => snap
     };
   }

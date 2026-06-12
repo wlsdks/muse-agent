@@ -19,6 +19,7 @@
  *  13. new tab         — a target=_blank click is FOLLOWED (new page observed)
  *  14. autocomplete    — typing reveals suggestions (settle catches them)
  *  15. repeated actions — per-row buttons stay distinct + ordinal targets the right one
+ *  16. hover menu      — hovering reveals a submenu, then its item is clickable
  *
  * Skips (exit 0) when Chrome is not installed — a skip is not a pass.
  */
@@ -124,6 +125,15 @@ const REPEAT_HTML = `<!doctype html><html><head><title>Shop</title></head><body>
 <div>Banana <button onclick="document.title='banana'">Add to cart</button></div>
 </body></html>`;
 
+// A submenu hidden until the (link) nav item is hovered — the realistic dropdown
+// nav. Hovering "Account" must reveal "Billing", then clicking it must work (the
+// nested item keeps :hover active).
+const HOVER_HTML = `<!doctype html><html><head><title>Nav</title><style>#m{display:none} li:hover #m{display:block}</style></head><body>
+<ul><li style="list-style:none;display:inline-block;padding:20px">
+<a href="#account">Account</a>
+<div id="m"><button onclick="document.title='BILLING'">Billing</button></div>
+</li></ul></body></html>`;
+
 function assert(condition, label) {
   if (!condition) throw new Error(`ASSERT FAILED: ${label}`);
   console.log(`  ✓ ${label}`);
@@ -150,6 +160,7 @@ try {
   await writeFile(join(dir, "newtab-target.html"), NEWTAB_TARGET_HTML);
   await writeFile(join(dir, "autocomplete.html"), AUTOCOMPLETE_HTML);
   await writeFile(join(dir, "repeat.html"), REPEAT_HTML);
+  await writeFile(join(dir, "hover.html"), HOVER_HTML);
 
   console.log("1) SPA settle — late-rendered content is observed");
   let snap;
@@ -252,6 +263,15 @@ try {
   const secondAdd = matchElement(snap.elements, "the second Add to cart", "click");
   snap = await controller.click(secondAdd.ref);
   assert(snap.title === "banana", "'the second Add to cart' grounds to Banana's button, not Apple's");
+
+  console.log("16) hover menu — hovering reveals a submenu, then its item is clickable");
+  snap = await controller.open(pathToFileURL(join(dir, "hover.html")).href);
+  assert(!snap.elements.some((el) => el.name === "Billing"), "submenu item is hidden before hover");
+  snap = await controller.hover(matchElement(snap.elements, "Account", "click").ref);
+  const billing = matchElement(snap.elements, "Billing", "click");
+  assert(billing !== undefined, "hovering the nav item reveals the submenu");
+  snap = await controller.click(billing.ref);
+  assert(snap.title === "BILLING", "the revealed submenu item is clickable (hover stays active)");
 
   console.log("\nsmoke:browser PASS");
 } finally {

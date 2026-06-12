@@ -230,7 +230,8 @@ export class PuppeteerBrowserController implements BrowserController {
     const elements = (await page.evaluate((maxEls: number, maxName: number) => {
       const selector =
         "a[href], button, input, textarea, select, [role=button], [role=link], [role=textbox], " +
-        "[role=combobox], [role=searchbox], [role=checkbox], [role=radio], [role=menuitem], [role=tab], [onclick]";
+        "[role=combobox], [role=searchbox], [role=checkbox], [role=radio], [role=menuitem], [role=tab], " +
+        "[aria-haspopup], [onclick]";
       // Composed-tree walk — open shadow roots AND same-origin iframes are
       // pierced so web-component UIs and embedded forms/widgets (login,
       // checkout, comment boxes) aren't a blank page to the model. Cross-origin
@@ -335,6 +336,17 @@ export class PuppeteerBrowserController implements BrowserController {
     await this.withNewTabFollow(() => frame.locator(selector).setTimeout(this.timeout).click());
     const page = await this.ensurePage();
     await page.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* page may not navigate */ });
+    await this.settleDom(page);
+    return this.snapshot();
+  }
+
+  async hover(ref: number): Promise<PageSnapshot> {
+    const page = await this.ensurePage();
+    const { frame, selector } = await this.resolveRef(ref);
+    // The pointer STAYS on the element after this, so a CSS :hover / mouseover
+    // submenu rendered into the hovered subtree is observed AND remains clickable
+    // (moving to a nested item keeps :hover true).
+    await frame.locator(selector).setTimeout(this.timeout).hover();
     await this.settleDom(page);
     return this.snapshot();
   }

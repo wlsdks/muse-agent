@@ -250,9 +250,17 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   truly has >1 match). Custom (non-native) dropdowns + tabs already worked (settle).
   Locked: matcher unit +5, smoke 15 (repeated buttons distinct + ordinal→Banana), agent
   battery PASS.
-- ◦ **more real-web probes** — remaining: hover-reveal menus (needs a hover action),
-  native file upload (`<input type=file>` → CDP uploadFile + path arg/tool), cross-origin
-  iframe (per-frame contexts — scope honestly).
+- ✓→Done **browser_hover** (probe batch 4) — hover-triggered dropdown navs / tooltips were
+  invisible (the submenu only renders on :hover/mouseover). New read-risk `browser_hover`
+  tool grounds a target (the menu label) and moves the pointer over it, then re-observes —
+  the pointer STAYS, so a nested submenu item stays clickable (moving to it keeps :hover).
+  Also added `[aria-haspopup]` to the snapshot selector so explicit (possibly non-link)
+  menu triggers are listed. Locked: unit +2, eval 10/10 STABLE 3/3 (hover→browser_hover,
+  not click), smoke 16 (hover reveals Billing then clicks it), agent PASS. (Limit: a hover
+  trigger that's a bare non-interactive `<div>` without aria-haspopup still isn't listed.)
+- ◦ **more real-web probes** — remaining: native file upload (`<input type=file>` → CDP
+  uploadFile + path arg/tool), cross-origin iframe (per-frame contexts — scope honestly),
+  drag-and-drop / sliders.
 - ✓→Done **browser_scroll** — the snapshot only saw rendered DOM, so below-the-fold /
   lazy-loaded content (infinite feeds, long lists) was invisible. New read tool scrolls
   (down/up/top/bottom) + settles + re-observes. Unit (enum + reject-unknown + scrolls);
