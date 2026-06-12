@@ -21,6 +21,14 @@ import { dirname } from "node:path";
 
 export const MAX_WEAKNESS_ENTRIES = 2000;
 
+// Bayesian Knowledge Tracing constants (arXiv:2105.00385, Badrinath/Wang/Pardos, pyBKT, EDM'21).
+// P(L0)=prior, P(T)=learn, P(G)=guess, P(S)=slip, mastered threshold.
+export const BKT_PRIOR = 0.1;
+export const BKT_LEARN = 0.2;
+export const BKT_GUESS = 0.2;
+export const BKT_SLIP = 0.1;
+export const WEAKNESS_MASTERED_AT = 0.95;
+
 export type WeaknessAxis = "grounding-gap" | "unbacked-action" | "wrong-tool" | "time-parse" | "other";
 
 export interface WeaknessEntry {
@@ -32,6 +40,10 @@ export interface WeaknessEntry {
   readonly lastSeen: string;
   /** A remediation hint (populated by later Whetstone slices). */
   readonly hint?: string;
+  /** BKT mastery estimate: P(known). Absent on legacy entries → treated as not mastered. */
+  readonly pKnown?: number;
+  /** ISO timestamp of the most recent successful grounded answer for this topic. */
+  readonly lastResolved?: string;
 }
 
 // Drop conversational filler so the topic key keeps only the salient nouns —
@@ -93,13 +105,19 @@ export function topicKeyFromMessage(message: string): string {
  */
 export function upsertWeakness(
   entries: readonly WeaknessEntry[],
-  signal: { readonly axis: WeaknessAxis; readonly topic: string; readonly nowIso: string; readonly hint?: string }
+  signal: { readonly axis: WeaknessAxis; readonly topic: string; readonly nowIso: string; readonly hint?: string; readonly pKnown?: number }
 ): WeaknessEntry[] {
   const existing = entries.find((entry) => entry.axis === signal.axis && entry.topic === signal.topic);
   if (existing) {
     return entries.map((entry) =>
       entry === existing
-        ? { ...entry, count: entry.count + 1, lastSeen: signal.nowIso, ...(signal.hint ? { hint: signal.hint } : {}) }
+        ? {
+            ...entry,
+            count: entry.count + 1,
+            lastSeen: signal.nowIso,
+            ...(signal.hint ? { hint: signal.hint } : {}),
+            ...(signal.pKnown !== undefined ? { pKnown: signal.pKnown } : {})
+          }
         : entry
     );
   }
@@ -111,9 +129,35 @@ export function upsertWeakness(
       firstSeen: signal.nowIso,
       lastSeen: signal.nowIso,
       topic: signal.topic,
-      ...(signal.hint ? { hint: signal.hint } : {})
+      ...(signal.hint ? { hint: signal.hint } : {}),
+      ...(signal.pKnown !== undefined ? { pKnown: signal.pKnown } : {})
     }
   ];
+}
+
+/**
+ * BKT update: given the current mastery estimate and whether the observation was
+ * a success, returns the updated P(known) after applying the observation and
+ * the learning step (arXiv:2105.00385, Badrinath/Wang/Pardos, pyBKT, EDM'21).
+ * Absent/NaN/out-of-range input coerces to BKT_PRIOR.
+ */
+export function bktUpdate(pKnown: number | undefined, observedSuccess: boolean): number {
+  const pL = (typeof pKnown === "number" && Number.isFinite(pKnown) && pKnown >= 0 && pKnown <= 1)
+    ? pKnown
+    : BKT_PRIOR;
+  const pLGivenObs = observedSuccess
+    ? (pL * (1 - BKT_SLIP)) / (pL * (1 - BKT_SLIP) + (1 - pL) * BKT_GUESS)
+    : (pL * BKT_SLIP) / (pL * BKT_SLIP + (1 - pL) * (1 - BKT_GUESS));
+  const pLNext = pLGivenObs + (1 - pLGivenObs) * BKT_LEARN;
+  return Math.min(1, Math.max(0, pLNext));
+}
+
+/**
+ * Returns true when a weakness entry has been mastered (pKnown ≥ WEAKNESS_MASTERED_AT).
+ * Legacy entries without pKnown are never mastered — they behave exactly as before.
+ */
+export function isMasteredWeakness(entry: WeaknessEntry): boolean {
+  return typeof entry.pKnown === "number" && entry.pKnown >= WEAKNESS_MASTERED_AT;
 }
 
 function isWeaknessEntry(value: unknown): value is WeaknessEntry {
@@ -187,7 +231,7 @@ export function selectRemediableWeaknesses(
   const recentMs = Math.max(1, opts.recentDays ?? 30) * 86_400_000;
   const max = Math.max(1, Math.trunc(opts.maxResults ?? 3));
   return entries
-    .filter((entry) => entry.axis === "grounding-gap" && entry.count >= minCount)
+    .filter((entry) => entry.axis === "grounding-gap" && entry.count >= minCount && !isMasteredWeakness(entry))
     .filter((entry) => {
       const seen = Date.parse(entry.lastSeen);
       return Number.isFinite(seen) && opts.nowMs - seen <= recentMs;
@@ -243,12 +287,45 @@ export async function recordWeakness(
     return undefined;
   }
   const entries = await readWeaknesses(file);
+  const prev = entries.find((e) => e.axis === signal.axis && e.topic === topic);
   const next = upsertWeakness(entries, {
     axis: signal.axis,
     nowIso: signal.nowIso ?? new Date().toISOString(),
     topic,
+    pKnown: bktUpdate(prev?.pKnown, false),
     ...(signal.hint ? { hint: signal.hint } : {})
   });
   await writeWeaknesses(file, next);
   return next.find((entry) => entry.axis === signal.axis && entry.topic === topic);
+}
+
+/**
+ * Record a SUCCESSFUL grounded answer for the given message's topic, updating the BKT
+ * mastery estimate. Exact topic-key match only — a missed resolve is status quo, never
+ * a false resolve. Returns undefined when no matching grounding-gap entry exists
+ * (no write performed — no partial side-effect).
+ */
+export async function recordWeaknessResolved(
+  file: string,
+  message: string,
+  nowIso?: string
+): Promise<WeaknessEntry | undefined> {
+  const topic = topicKeyFromMessage(message);
+  if (topic.length === 0) {
+    return undefined;
+  }
+  const entries = await readWeaknesses(file);
+  const existing = entries.find((e) => e.axis === "grounding-gap" && e.topic === topic);
+  if (!existing) {
+    return undefined;
+  }
+  const resolvedAt = nowIso ?? new Date().toISOString();
+  const updated: WeaknessEntry = {
+    ...existing,
+    pKnown: bktUpdate(existing.pKnown, true),
+    lastResolved: resolvedAt
+  };
+  const next = entries.map((e) => (e === existing ? updated : e));
+  await writeWeaknesses(file, next);
+  return updated;
 }

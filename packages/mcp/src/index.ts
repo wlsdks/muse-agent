@@ -910,8 +910,16 @@ export {
 export { removeRemindersForEvent, rescheduleRemindersForEvent, syncRemindersOnEventDelete, syncRemindersOnEventReschedule } from "./event-reminder-link.js";
 
 export {
+  BKT_GUESS,
+  BKT_LEARN,
+  BKT_PRIOR,
+  BKT_SLIP,
+  WEAKNESS_MASTERED_AT,
+  bktUpdate,
+  isMasteredWeakness,
   readWeaknesses,
   recordWeakness,
+  recordWeaknessResolved,
   selectDevFixableWeaknesses,
   selectRemediableWeaknesses,
   topicKeyFromMessage,

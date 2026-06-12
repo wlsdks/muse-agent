@@ -691,6 +691,41 @@ async function recordAskWeaknessLive(query: string, axis: AskWeaknessAxis | null
   }
 }
 
+export interface AskWeaknessResolverDeps {
+  readonly recordWeaknessResolved: (file: string, message: string) => Promise<unknown>;
+  readonly weaknessesFile: string;
+}
+
+/**
+ * Feed a successful grounded answer to the weakness ledger's BKT mastery estimator so
+ * topics the user asks about repeatedly, but that Muse now answers correctly, can
+ * graduate out of the recap/doctor nudge list. Best-effort — a throwing ledger write
+ * must never break the ask command. Deps injected for testing.
+ */
+export async function recordAskWeaknessResolved(query: string, deps: AskWeaknessResolverDeps): Promise<void> {
+  if (query.trim().length === 0) {
+    return;
+  }
+  try {
+    await deps.recordWeaknessResolved(deps.weaknessesFile, query);
+  } catch {
+    // a ledger write must never break the ask command
+  }
+}
+
+async function recordAskWeaknessResolvedLive(query: string): Promise<void> {
+  try {
+    const { recordWeaknessResolved } = await import("@muse/mcp");
+    const { resolveWeaknessesFile } = await import("@muse/autoconfigure");
+    await recordAskWeaknessResolved(query, {
+      recordWeaknessResolved,
+      weaknessesFile: resolveWeaknessesFile(process.env as Record<string, string | undefined>)
+    });
+  } catch {
+    // lazy-import / path resolution failure is non-fatal
+  }
+}
+
 export interface BestOfRedrawArgs {
   /** How many fresh drafts to draw (the n-1 of --best-of n). */
   readonly attempts: number;
@@ -3766,6 +3801,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         askHint = worstUnsupportedSentence(reportSentenceGroundedness(collectedAnswer, evidenceTexts));
       }
       await recordAskWeaknessLive(query, askAxis, askHint);
+      if (askOutcome === "grounded" && !askIsActionRequest) {
+        await recordAskWeaknessResolvedLive(query);
+      }
 
       if (options.json) {
         // Emit a single JSON object on stdout — consumers can pipe

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { MAX_WEAKNESS_ENTRIES, readWeaknesses, recordWeakness, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
+import { BKT_PRIOR, MAX_WEAKNESS_ENTRIES, bktUpdate, isMasteredWeakness, readWeaknesses, recordWeakness, recordWeaknessResolved, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
 
 describe("topicKeyFromMessage — deterministic topic clustering", () => {
   it("keeps salient content words, drops filler, lowercases (EN)", () => {
@@ -216,5 +216,196 @@ describe("selectDevFixableWeaknesses — the dev loop's fix targets (Muse's OWN 
       e({ topic: "real agent bug", axis: "unbacked-action", count: 2 })
     ]);
     expect(out.map((w) => w.topic)).toEqual(["real agent bug"]);
+  });
+});
+
+// BKT constants: BKT_PRIOR=0.1, BKT_LEARN=0.2, BKT_GUESS=0.2, BKT_SLIP=0.1, MASTERED_AT=0.95
+// Exact dynamics (arXiv:2105.00385, Badrinath/Wang/Pardos, pyBKT, EDM'21):
+//   from 0.2: success → 0.62353, → 0.90543, → 0.98186 (≥0.95 mastered)
+//   from 0.96: failure → 0.80 (re-activated, below 0.95)
+
+describe("bktUpdate — Bayesian Knowledge Tracing mastery estimator", () => {
+  const near = (a: number, b: number) => expect(Math.abs(a - b) < 0.0001).toBe(true);
+
+  it("repeated failures hold pKnown near 0.2 (slip/guess absorb noise)", () => {
+    const after1 = bktUpdate(BKT_PRIOR, false); // from prior 0.1
+    near(after1, 0.2110); // ≈ 0.21
+    const after2 = bktUpdate(after1, false);
+    // converges; stays in 0.2-0.25 range
+    expect(after2).toBeGreaterThan(0.19);
+    expect(after2).toBeLessThan(0.30);
+  });
+
+  it("from 0.2: three successes → ~0.62 → ~0.90 → ~0.98 (mastered)", () => {
+    const p1 = bktUpdate(0.2, true);  // first success
+    near(p1, 0.62353);
+    const p2 = bktUpdate(p1, true);  // second
+    near(p2, 0.90543);
+    const p3 = bktUpdate(p2, true);  // third
+    near(p3, 0.98186);
+    expect(p3).toBeGreaterThanOrEqual(0.95); // mastered
+  });
+
+  it("failure from near-mastery (0.96) → ~0.80 — re-activated below threshold", () => {
+    const pAfterFail = bktUpdate(0.96, false);
+    near(pAfterFail, 0.80);
+    expect(pAfterFail).toBeLessThan(0.95); // no longer mastered
+  });
+
+  it("success raises pKnown, failure lowers it", () => {
+    const base = 0.5;
+    expect(bktUpdate(base, true)).toBeGreaterThan(base);
+    expect(bktUpdate(base, false)).toBeLessThan(base);
+  });
+
+  it("garbage / missing / out-of-range input coerces to BKT_PRIOR before computing", () => {
+    const fromPrior = bktUpdate(BKT_PRIOR, true);
+    expect(bktUpdate(undefined, true)).toBeCloseTo(fromPrior, 5);
+    expect(bktUpdate(Number.NaN, true)).toBeCloseTo(fromPrior, 5);
+    expect(bktUpdate(-0.5, true)).toBeCloseTo(fromPrior, 5);
+    expect(bktUpdate(1.5, true)).toBeCloseTo(fromPrior, 5);
+  });
+
+  it("output is always in [0, 1]", () => {
+    for (const p of [0, 0.01, 0.5, 0.99, 1]) {
+      const s = bktUpdate(p, true);
+      const f = bktUpdate(p, false);
+      expect(s).toBeGreaterThanOrEqual(0);
+      expect(s).toBeLessThanOrEqual(1);
+      expect(f).toBeGreaterThanOrEqual(0);
+      expect(f).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("ONE success does NOT master — counterfactual: pKnown after first success is below 0.95", () => {
+    // From 0.2 (a realistic weak starting point), one success → ~0.62, NOT mastered.
+    // If mastery were cleared on the first success, selectRemediableWeaknesses would
+    // stop surfacing it — this test confirms that DOESN'T happen.
+    const p = bktUpdate(0.2, true);
+    expect(p).toBeLessThan(0.95);
+  });
+});
+
+describe("isMasteredWeakness", () => {
+  const e = (pKnown?: number): WeaknessEntry => ({
+    axis: "grounding-gap", count: 3, firstSeen: "2026-06-01T00:00:00Z",
+    lastSeen: "2026-06-13T00:00:00Z", topic: "vpn mtu",
+    ...(pKnown !== undefined ? { pKnown } : {})
+  });
+
+  it("returns true when pKnown ≥ 0.95", () => {
+    expect(isMasteredWeakness(e(0.95))).toBe(true);
+    expect(isMasteredWeakness(e(0.98))).toBe(true);
+    expect(isMasteredWeakness(e(1.0))).toBe(true);
+  });
+
+  it("returns false when pKnown < 0.95", () => {
+    expect(isMasteredWeakness(e(0.94))).toBe(false);
+    expect(isMasteredWeakness(e(0.62))).toBe(false);
+    expect(isMasteredWeakness(e(0))).toBe(false);
+  });
+
+  it("legacy entry (no pKnown) is never mastered — back-compat", () => {
+    expect(isMasteredWeakness(e(undefined))).toBe(false);
+  });
+});
+
+describe("selectRemediableWeaknesses — mastered entries suppressed", () => {
+  const nowMs = Date.parse("2026-06-13T02:00:00.000Z");
+  const e = (over: Partial<WeaknessEntry>): WeaknessEntry => ({
+    axis: "grounding-gap", count: 3, firstSeen: "2026-06-01T00:00:00.000Z",
+    lastSeen: "2026-06-13T00:00:00.000Z", topic: "vpn mtu", ...over
+  });
+
+  it("mastered entry (pKnown ≥ 0.95) is NOT surfaced", () => {
+    const out = selectRemediableWeaknesses([
+      e({ topic: "vpn mtu", count: 5, pKnown: 0.98 }),
+      e({ topic: "wifi password", count: 3 })
+    ], { nowMs });
+    expect(out.map((w) => w.topic)).toEqual(["wifi password"]);
+  });
+
+  it("non-vacuity: entry with pKnown 0.62 (after 1 success) is still surfaced", () => {
+    const out = selectRemediableWeaknesses([
+      e({ topic: "vpn mtu", count: 3, pKnown: 0.62 })
+    ], { nowMs });
+    expect(out.map((w) => w.topic)).toEqual(["vpn mtu"]);
+  });
+
+  it("legacy entry (no pKnown) is still surfaced — back-compat unchanged", () => {
+    const legacy = e({ topic: "vpn mtu", count: 3 });
+    const out = selectRemediableWeaknesses([legacy], { nowMs });
+    expect(out.map((w) => w.topic)).toEqual(["vpn mtu"]);
+  });
+
+  it("failure-after-mastery (0.96 → 0.80) re-activates the entry", () => {
+    const reactivated = e({ topic: "vpn mtu", count: 4, pKnown: bktUpdate(0.96, false) });
+    expect(reactivated.pKnown).toBeLessThan(0.95);
+    const out = selectRemediableWeaknesses([reactivated], { nowMs });
+    expect(out.map((w) => w.topic)).toEqual(["vpn mtu"]);
+  });
+});
+
+describe("recordWeaknessResolved — BKT success update + no partial side-effects", () => {
+  const tmpFile = (): string => join(mkdtempSync(join(tmpdir(), "muse-weak-resolved-")), "weaknesses.json");
+  const QUERY = "오피스 VPN MTU 뭐야";
+
+  it("no match → returns undefined WITHOUT writing (no partial side-effect)", async () => {
+    const file = tmpFile();
+    await recordWeakness(file, { axis: "grounding-gap", message: "wifi password reset", nowIso: "2026-06-01T00:00:00Z" });
+    const before = await readWeaknesses(file);
+    const result = await recordWeaknessResolved(file, QUERY);
+    expect(result).toBeUndefined();
+    const after = await readWeaknesses(file);
+    // File content unchanged — byte-identical comparison via topic lists
+    expect(after.map((e) => e.topic)).toEqual(before.map((e) => e.topic));
+    expect(after.map((e) => e.pKnown)).toEqual(before.map((e) => e.pKnown));
+  });
+
+  it("match → updates pKnown upward (success observation)", async () => {
+    const file = tmpFile();
+    await recordWeakness(file, { axis: "grounding-gap", message: QUERY, nowIso: "2026-06-01T00:00:00Z" });
+    const before = (await readWeaknesses(file))[0]!;
+    const result = await recordWeaknessResolved(file, QUERY, "2026-06-13T12:00:00Z");
+    expect(result).toBeDefined();
+    expect(result!.pKnown).toBeGreaterThan(before.pKnown ?? 0);
+    expect(result!.lastResolved).toBe("2026-06-13T12:00:00Z");
+  });
+
+  it("missing file → no-op (undefined, no throw)", async () => {
+    const result = await recordWeaknessResolved(join(tmpdir(), "does-not-exist-resolved.json"), QUERY);
+    expect(result).toBeUndefined();
+  });
+});
+
+describe("assembled-path: record×2 → select → resolve×3 → select empty (NON-INERT end-to-end)", () => {
+  const tmpFile = (): string => join(mkdtempSync(join(tmpdir(), "muse-weak-e2e-")), "weaknesses.json");
+  const QUERY = "오피스 VPN MTU 뭐야";
+  const nowMs = Date.parse("2026-06-13T12:00:00.000Z");
+
+  it("select surfaces the gap, then 3 grounded answers master it and select returns empty", async () => {
+    const file = tmpFile();
+
+    // Two failures to exceed minCount threshold
+    await recordWeakness(file, { axis: "grounding-gap", message: QUERY, nowIso: "2026-06-12T10:00:00Z" });
+    await recordWeakness(file, { axis: "grounding-gap", message: QUERY, nowIso: "2026-06-12T11:00:00Z" });
+
+    // Selector surfaces it (count=2, recent, not mastered)
+    const before = selectRemediableWeaknesses(await readWeaknesses(file), { nowMs });
+    expect(before.map((w) => w.topic).some((t) => t.includes("vpn") || t.includes("mtu") || t.includes("오피스"))).toBe(true);
+
+    // Three successful grounded answers push pKnown above WEAKNESS_MASTERED_AT
+    await recordWeaknessResolved(file, QUERY, "2026-06-13T09:00:00Z");
+    await recordWeaknessResolved(file, QUERY, "2026-06-13T10:00:00Z");
+    await recordWeaknessResolved(file, QUERY, "2026-06-13T11:00:00Z");
+
+    // Verify pKnown ≥ 0.95 in the real store
+    const entries = await readWeaknesses(file);
+    const entry = entries.find((e) => e.axis === "grounding-gap");
+    expect(entry?.pKnown).toBeGreaterThanOrEqual(0.95);
+
+    // Selector now returns empty for this topic — mastered
+    const after = selectRemediableWeaknesses(entries, { nowMs });
+    expect(after.map((w) => w.topic).some((t) => t.includes("vpn") || t.includes("mtu") || t.includes("오피스"))).toBe(false);
   });
 });

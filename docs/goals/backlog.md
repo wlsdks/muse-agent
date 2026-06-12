@@ -496,6 +496,23 @@ excluded when scoring).
   (recordPlaybookStrategy weighted eviction, added fire 27) times out at the 5000ms per-test default under
   full-suite parallel load; passes 1696/1696 in isolation. Raise the per-test timeout or reduce its async
   file-write count. (judge-flagged fire 31; same family as the cli chat-grounding concurrency flake)
+- ✓→Done **BKT weakness resolution — close the Whetstone loop** — the weakness ledger was append-only
+  (nothing recorded a gap got FIXED), so `muse recap` nagged about already-remediated grounding gaps for
+  30 days (arXiv:2105.00385 Bayesian Knowledge Tracing, pyBKT EDM'21). [DONE 2026-06-13, cognition loop
+  fire 32: `WeaknessEntry.pKnown` BKT mastery estimate raised by the grounding gate's own SUCCESS verdicts
+  (`muse ask` grounded non-action → `recordWeaknessResolved`); `selectRemediableWeaknesses` drops mastered
+  (pKnown≥0.95) entries. One grounded answer does NOT clear a weakness (needs 3 — slip/guess noise, pass^k
+  spirit). Judge PASS: writer default-ON, reader = the selector recap reads, BKT math recomputed exact,
+  both counterfactuals non-vacuous, answer path byte-identical, legacy entries unaffected.]
+- ◦ **Doctor weakness nudge uses a different selector** — `muse doctor`'s fuel/--weaknesses nudge calls
+  `selectDevFixableWeaknesses` (DEV_FIXABLE_AXES excludes grounding-gap), so BKT mastery (fire 32) doesn't
+  affect it, and doctor's raw `formatWeaknesses` inventory still lists mastered topics (honest dump, not a
+  nag). If desired, apply `!isMasteredWeakness` to the doctor inventory view too. (judge-flagged fire 32)
+- ◦ **Whetstone resolution — remaining axes & decay** — fire 32 closed grounding-gap resolution only.
+  Remainder: dev-axis resolution (clear `unbacked-action`/`wrong-tool` when the tool later succeeds);
+  chat-path resolution (needs chat's wrong-value check as the success signal — chat has no grounded label);
+  BKT+Forget P(F)>0 mastery decay for long-idle topics (pairs with fire 30's fade); surface the stored
+  `hint` in the recap nudge line. (fire 32 remainder, arXiv:2105.00385)
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
   each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
 - (queued behind fuel/prereqs: sleep-time compute · Mem0 UPDATE op · AWM workflow mining ·
