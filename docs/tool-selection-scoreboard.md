@@ -46,3 +46,20 @@ switch the primary lever to **grounding false-refusal recall** (documented 0.08
 baseline = real headroom, core edge, high user value), verified with real
 `muse ask` on grounded questions — not to manufacture harder golden cases without
 real-usage failures to draw from.
+
+| 2026-06-12 | — | eval:vision: **4/4 PASS** | none | Third lever (grounded-vision routing: receipt/flyer/card/doc → note/calendar/contact) also SATURATED on gemma4:12b. |
+
+## Fire 3 — ALL THREE measurable levers saturated; doctrine chain exhausted
+
+eval:tools 100% · grounding 1.00/0.00 · eval:vision 4/4. Two real assembled-agent
+probes (ungrounded personal recall; compound "show schedule AND tasks") surfaced
+no INDISPUTABLE failure — honest refusal held, and the compound case gave a
+reasonable conversational offer (not a clear tool-selection miss). The whole
+doctrine lever chain (tools → grounding → vision → plan-quality) is at ceiling on
+bundled corpora, and casual probing isn't yielding clear misses either.
+
+**Decisive conclusion:** measured-improvement on EXISTING corpora has no headroom.
+The real unlock is SYSTEMATIC real-usage failure fuel (run-outcome logging →
+error-analysis), the improve-muse-deferred infra — building it is a loop-objective
+change. Surfaced to Jinan as a premise fork rather than spinning fires on
+saturated metrics.
