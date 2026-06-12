@@ -24,6 +24,19 @@ describe("adjustConfidenceFloor", () => {
     expect(adjustConfidenceFloor(0.7, 1)).toBeCloseTo(0.7, 5);
     expect(adjustConfidenceFloor(0.7, 1000)).toBeLessThanOrEqual(0.95);
   });
+
+  it("never returns NaN — a non-finite/non-positive beta falls back to the base floor (gate stays usable)", () => {
+    // beta=0 with baseFloor=1 is 0/0 → NaN in the naive formula; a NaN floor
+    // silently disables the gate, so it must fall back instead.
+    for (const beta of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const out = adjustConfidenceFloor(1, beta);
+      expect(Number.isFinite(out)).toBe(true);
+      expect(out).toBeGreaterThanOrEqual(0.05);
+      expect(out).toBeLessThanOrEqual(0.95);
+    }
+    // a non-finite baseFloor is also coerced to a usable number, never NaN
+    expect(Number.isFinite(adjustConfidenceFloor(Number.NaN, 2))).toBe(true);
+  });
 });
 
 describe("summarizeNoticeResponses", () => {

@@ -37,7 +37,15 @@ export function sdtCriterion(stats: NoticeResponseStats): number {
  * category or open the floodgates.
  */
 export function adjustConfidenceFloor(baseFloor: number, beta: number): number {
-  const adjusted = 1 - (1 - baseFloor) / beta;
+  const safeBase = Number.isFinite(baseFloor) ? baseFloor : 0.5;
+  // A non-finite or non-positive beta carries no usable adaptation signal — and
+  // would yield a NaN floor (beta=0 with baseFloor=1 is 0/0). A NaN floor
+  // SILENTLY disables the gate downstream (every `score >= NaN` is false), so
+  // fall back to the unadjusted base rather than emit NaN.
+  if (!Number.isFinite(beta) || beta <= 0) {
+    return Math.min(0.95, Math.max(0.05, safeBase));
+  }
+  const adjusted = 1 - (1 - safeBase) / beta;
   return Math.min(0.95, Math.max(0.05, adjusted));
 }
 
