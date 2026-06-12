@@ -188,6 +188,30 @@ async function buildPersonalCrudScenario() {
 // STABLE 5/5 by probe before landing (the ambiguous "when was my dentist appt"
 // — knowledge_search's corpus includes calendar, so either tool is defensible —
 // is deliberately EXCLUDED rather than over-fit to one answer).
+// muse.search (web search) vs its confusables: knowledge_search (the user's OWN
+// notes) and muse.web.read (read a SPECIFIC URL already given). "search the web
+// for X" must route to web search, not notes recall or a URL read.
+async function buildWebSearchScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const ac = await import("../packages/autoconfigure/dist/index.js");
+    const search = mcp.createLoopbackMcpMuseTools(mcp.createSearchMcpServer())[0];
+    const webRead = mcp.createLoopbackMcpMuseTools(mcp.createWebReadMcpServer())[0];
+    const instances = [search, webRead, ac.createNotesKnowledgeSearchTool({})];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "Search the web for the best noise-cancelling headphones in 2026.", expectTool: "muse.search.search", requireArgs: ["query"], note: "EN web search -> muse.search (NOT notes/url-read)" },
+      { prompt: "오늘 비트코인 시세 웹에서 검색해줘.", expectTool: "muse.search.search", requireArgs: ["query"], note: "KO web search -> muse.search (user's language)" },
+      { prompt: "내 노트에서 Q3 로드맵 관련 내가 적은 내용 찾아줘.", expectTool: "knowledge_search", requireArgs: ["query"], note: "KO notes recall -> knowledge_search, NOT web search" },
+      { prompt: "Read https://example.com/article and summarize what it says.", expectTool: "muse.web.read", note: "read a specific URL -> web_read, NOT web search" }
+    ];
+    return { label: "web-search (muse.search vs knowledge_search vs web_read)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "web-search", skip: `deps not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 async function buildRecallVsCrudScenario() {
   try {
     const mcp = await import("../packages/mcp/dist/index.js");
@@ -474,7 +498,8 @@ async function main() {
     await buildFileScenario(),
     await buildBrowserScenario(),
     await buildPersonalCrudScenario(),
-    await buildRecallVsCrudScenario()
+    await buildRecallVsCrudScenario(),
+    await buildWebSearchScenario()
   ];
   // Optional substring filter (MUSE_EVAL_SCENARIO) so a single scenario can be
   // iterated live without paying for the whole suite each run.

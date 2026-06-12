@@ -17,6 +17,14 @@ The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing 
 Every slice ships its eval/test and never weakens the grounding floor. Ranked:
 
 EXPAND (new reach):
+- ✓→Done **web search wired into the default agent (muse.search)** — `muse.search` (web search, zero-config
+  DuckDuckGo fallback, SearXNG when MUSE_SEARXNG_URL is set) existed + was tested but was ONLY reachable
+  behind the opt-in MUSE_LOOPBACK_MCP_ENABLED flag, so by default the agent could not answer fresh-web
+  questions. Added it to the always-on buildLoopbackTools bundle (MUSE_SEARCH_ENABLED opt-out), gave the
+  tool KO+EN keywords + use-when/not-when + an example schema (it had none, so it ranked 0 under the diet
+  cap). TDD 3 (bundle present / default-on / opt-out) + eval:tools web-search scenario 4/4 STABLE 3/3
+  (muse.search vs knowledge_search vs web_read); LIVE: `muse ask --with-tools` searched the web and
+  answered with puppeteer 25.1.0. autoconfigure 505, full eval:tools 135/135, check 0, lint 0.
 - ✓→Done **browser: uncapped deterministic matching, capped display** — scan/match cap raised
   50→150 (BROWSER_MAX_ELEMENTS), model-facing display capped at 40 (BROWSER_DISPLAY_ELEMENTS) with a
   truncated/shownElements/totalElements + "showing N of M" hint (no silent caps). click/type/find

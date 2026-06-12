@@ -598,6 +598,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const statusLoopbackTools = loopback.status;
   const webReadLoopbackTools = loopback.webRead;
   const mathLoopbackTools = loopback.math;
+  const searchLoopbackTools = loopback.search;
   const schedulerHandle: { current: DynamicScheduler | undefined } = { current: undefined };
 
   // P20 knowledge: expose `knowledge_search` over the user's live
@@ -695,6 +696,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => statusLoopbackTools,
     () => webReadLoopbackTools,
     () => mathLoopbackTools,
+    () => searchLoopbackTools,
     () => runnerTools,
     () => skillTools,
     () => knowledgeSearchTools,

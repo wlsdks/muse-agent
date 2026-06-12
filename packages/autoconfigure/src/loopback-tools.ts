@@ -29,6 +29,7 @@ import {
   createStatusMcpServer,
   createTasksMcpServer,
   createTasksRegistryMcpServer,
+  createSearchMcpServer,
   createWebReadMcpServer,
   type MessageApprovalGate
 } from "@muse/mcp";
@@ -93,6 +94,7 @@ export interface LoopbackToolsBundle {
   readonly status: readonly MuseTool[];
   readonly webRead: readonly MuseTool[];
   readonly math: readonly MuseTool[];
+  readonly search: readonly MuseTool[];
 }
 
 export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle {
@@ -241,6 +243,21 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
     ? createLoopbackMcpMuseTools(createMathMcpServer())
     : [];
 
+  // Web search — `muse.search`. Default-on with a zero-config DuckDuckGo
+  // fallback (no API key); a self-hosted SearXNG instance takes over when
+  // MUSE_SEARXNG_URL is set. A JARVIS-class assistant on a local model has no
+  // built-in web_search, so without this it can't answer "what did Apple
+  // announce today?". Read-only + outbound to the public web like muse.web.read
+  // (MUSE_LOCAL_ONLY governs cloud-LLM egress, not reading the web).
+  const searxngUrl = env.MUSE_SEARXNG_URL?.trim();
+  const searxngEngines = env.MUSE_SEARXNG_ENGINES?.trim();
+  const search = parseBoolean(env.MUSE_SEARCH_ENABLED, true)
+    ? createLoopbackMcpMuseTools(createSearchMcpServer({
+        ...(searxngUrl && searxngUrl.length > 0 ? { searxngUrl } : {}),
+        ...(searxngEngines && searxngEngines.length > 0 ? { searxngEngines } : {})
+      }))
+    : [];
+
   return {
     calendar,
     episodes,
@@ -254,6 +271,7 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
     proactive,
     reminders,
     status,
+    search,
     tasks,
     tasksRegistry,
     webRead

@@ -56,7 +56,7 @@ const duckRegistry = (count: number) => ({ list: () => Array.from({ length: coun
 describe("buildLoopbackTools — gating", () => {
   it("with minimal deps exposes the always-on groups and notes/tasks (default-on), but omits the dependency-gated ones", () => {
     const bundle = buildLoopbackTools(baseDeps());
-    expect(populated(bundle)).toEqual(["episodes", "followups", "history", "math", "notes", "patterns", "proactive", "reminders", "status", "tasks", "webRead"]);
+    expect(populated(bundle)).toEqual(["episodes", "followups", "history", "math", "notes", "patterns", "proactive", "reminders", "search", "status", "tasks", "webRead"]);
     // gated groups absent without their dependency:
     expect(bundle.calendar).toEqual([]);
     expect(bundle.messaging).toEqual([]);
@@ -68,6 +68,17 @@ describe("buildLoopbackTools — gating", () => {
     const bundle = buildLoopbackTools(baseDeps());
     expect(bundle.math.some((t) => t.definition.name.endsWith("evaluate"))).toBe(true);
     expect(bundle.math.every((t) => t.definition.risk === "read")).toBe(true);
+  });
+
+  it("wires web search (muse.search) into the default tool set — a JARVIS-class assistant must answer fresh-web questions", () => {
+    const bundle = buildLoopbackTools(baseDeps());
+    expect(bundle.search.map((t) => t.definition.name)).toContain("muse.search.search");
+    expect(bundle.search[0]?.definition.risk).toBe("read");
+  });
+
+  it("respects MUSE_SEARCH_ENABLED=false (web search is opt-out)", () => {
+    const bundle = buildLoopbackTools(baseDeps({ env: { MUSE_SEARCH_ENABLED: "false" } as LoopbackToolsDeps["env"] }));
+    expect(bundle.search).toEqual([]);
   });
 
   it("respects MUSE_MATH_ENABLED=false (math is opt-out)", () => {
