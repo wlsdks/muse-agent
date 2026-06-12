@@ -6,7 +6,33 @@ Each fire appends: date · `eval:tools` pass^k score · failing cases · the cha
 
 | date | k | eval:tools | failing cases | change / note |
 |------|---|------------|---------------|---------------|
-| 2026-06-12 | 1 | **134/134 (100%)** | none | **Fire 1 baseline.** Single-run accuracy is SATURATED (threshold 85%). No single-run headroom on the current golden set. pass^k (k=3) measurement running to find reliability flakiness — if clean, the lever is exhausted and the loop switches to grounding false-refusal recall per the plan's decision 6. |
+| 2026-06-12 | 1 | **134/134 (100%)** | none | **Fire 1 baseline.** Single-run accuracy SATURATED (threshold 85%). |
+| 2026-06-12 | 3 | **18/18 at 3/3 then stopped** | none | pass^k partial: first 18 cases all 3/3, 0 fail — reliability also clean. Stopped early (Ollama needed for the next lever); k=1 100% + 18/18 3/3 = eval:tools EXHAUSTED. |
+| 2026-06-12 | — | grounding: **faithfulness 1.00, false-refusal 0.00** | none | Fallback lever (grounding false-refusal recall) measured via `doctor --grounding` (29 cases: 12 answerable / 8 refuse / 9 drift) on fresh build — 17/17 unfaithful caught, 0/12 wrongly refused. ALSO SATURATED. |
+
+## Fire 2 finding (decisive): BOTH levers saturated on the bundled corpora
+
+`eval:tools` = 100% (k=1) / 18-18 3-of-3 (k=3 partial), and grounding =
+faithfulness 1.00 / false-refusal 0.00. The primary lever AND the first fallback
+have ZERO headroom on the existing golden/bundled sets. The remaining doctrine
+levers (eval:vision, eval:plan-quality) are golden-corpus-scored too and will
+almost certainly hit the same ceiling.
+
+**Why:** the bundled corpora are small, curated, and the 12B already one-shots
+them. Per agent-testing.md the only legitimate way to expose real headroom is
+HARDER cases drawn from REAL usage misses — and per the improve-muse memory the
+error-analysis / real-trace outcome-logging fuel that would supply those is not
+wired yet. Manufacturing fake-fail golden cases to create headroom would violate
+decision 4 (no gaming) and agent-testing.md ("from real misses, not imagination").
+
+**Principled pivot (decide-and-do, not defer):** the loop's highest-value move is
+no longer "nudge a saturated number" but **probe the assembled agent for a GENUINE
+failure** (compound/multi-step intent, partial-grounding, code-switching, vague
+imperative) via real `muse ask` / the agent path; a real miss becomes a golden
+case + a fix (true measured headroom). If sustained probing finds no real miss,
+the honest conclusion is the agent is at ceiling on what we can currently measure,
+and the next real lever is building real-trace failure fuel (infra) — a direction
+call for Jinan. Recorded here so the loop doesn't burn fires gaming saturated sets.
 
 ## Key finding (Fire 1)
 
