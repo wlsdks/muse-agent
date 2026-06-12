@@ -282,3 +282,10 @@
 - **리스크:** stripped>0 경로의 코드블록은 여전히 collapse될 수 있으나(드묾: 코드답+invalid citation) 잔여로 기록. grounding floor 무관(citation 게이트 verdict 무변경, 출력 정리만).
 
 > ✅ **자율 리뷰관문 (fires 16–18, 진안 묻지 않음):** 사이클2 — #5 promotion-persistence(16)·#2 correction-polarity 강건화(17)·grounding-surface whitespace fix(18). maker≠judge 매 fire PASS. **사이클3 방향(스스로): gap-scout로 line-296 audit 클러스터 잔여 버그(casual-prompt 말해줘 over-match, dedup write-memoize 등) + agent-performance levers 중 결정적 슬라이스 우선.** fires-16-18 배치 머지는 main clean시 자동.
+
+## [cognition loop] fire 19 — 2026-06-13 · 사이클3 · 테마: 메모리/상태일관성 (tool-call dedup)
+
+- **무엇:** `ToolCallDeduplicator`가 모든 completed 결과를 memoize해 READ 결과가 in-loop write 후 stale되던 버그 수정 — 각 엔트리에 `mutating` 플래그, mutating(write/execute) record 시 READ 엔트리 무효화(write 엔트리는 유지=anti-double-write 보존). model-loop 양 record 사이트가 tool risk로 `mutating` 전달.
+- **왜:** `tasks_list → tasks_add → tasks_list`(동일 args)가 add 이전 stale 리스트를 반환 → 에이전트가 낡은 상태로 행동. write 후 read 무효화로 fresh 재실행. (메모리 round-robin 사이클3, gap-scout가 line-297 audit 클러스터의 실 버그 발굴.)
+- **리뷰지점:** `tool-call-deduplicator.ts`(MemoEntry+mutating 무효화) + `model-loop.ts`(2 사이트 risk 룩업) + test +6. **maker=Sonnet worker / judge=Fable 5 서브에이전트**(model:"fable", 새 티어링 첫 적용) — Fable judge가 anti-double-write 보존·not-inert(실 write 툴 risk 흐름)·양 사이트·1738 green을 적대 검증 후 VERDICT PASS.
+- **리스크:** 비차단 nit 2(eviction 테스트 주석 오해소지·loop-level 통합테스트 없음=후속). unknown 툴→mutating false(수용). grounding floor 무관. (사이클3 fires 19-21.)

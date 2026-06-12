@@ -13,6 +13,12 @@ import type { ToolExecutionResult } from "@muse/tools";
  *
  * Argument canonicalization is stable under key reordering: `{a,b}` and
  * `{b,a}` produce the same signature.
+ *
+ * Read-invalidation-on-write: when a mutating (write/execute) tool completes,
+ * all previously memoized READ entries are deleted so a subsequent identical
+ * read re-executes against fresh state instead of returning a stale result.
+ * Write entries are not invalidated by other writes — anti-double-execution
+ * is preserved for write/execute tools.
  */
 
 export interface ToolCallDuplicate {
@@ -28,10 +34,15 @@ export interface ToolCallNotDuplicate {
 
 export type ToolCallDeduplicationDecision = ToolCallDuplicate | ToolCallNotDuplicate;
 
+interface MemoEntry {
+  readonly result: ToolExecutionResult;
+  readonly mutating: boolean;
+}
+
 const DEFAULT_MAX_DEDUP_ENTRIES = 256;
 
 export class ToolCallDeduplicator {
-  readonly #completedResults = new Map<string, ToolExecutionResult>();
+  readonly #completedResults = new Map<string, MemoEntry>();
   readonly #maxEntries: number;
 
   constructor(maxEntries: number = DEFAULT_MAX_DEDUP_ENTRIES) {
@@ -49,16 +60,16 @@ export class ToolCallDeduplicator {
 
   check(toolCall: ModelToolCall): ToolCallDeduplicationDecision {
     const signature = this.buildSignature(toolCall);
-    const result = this.#completedResults.get(signature);
+    const entry = this.#completedResults.get(signature);
 
-    if (!result) {
+    if (!entry) {
       return { duplicate: false, signature };
     }
 
     return {
       duplicate: true,
       result: {
-        ...result,
+        ...entry.result,
         id: toolCall.id,
         name: toolCall.name
       },
@@ -66,12 +77,23 @@ export class ToolCallDeduplicator {
     };
   }
 
-  record(toolCall: ModelToolCall, result: ToolExecutionResult): void {
+  record(toolCall: ModelToolCall, result: ToolExecutionResult, mutating = false): void {
     if (result.status !== "completed") {
       return;
     }
 
-    this.#completedResults.set(this.buildSignature(toolCall), result);
+    if (mutating) {
+      // Invalidate stale read entries so a subsequent identical read re-executes
+      // against the state that the write just changed. Write entries are left
+      // intact — anti-double-execution for write/execute tools is preserved.
+      for (const [key, entry] of this.#completedResults) {
+        if (!entry.mutating) {
+          this.#completedResults.delete(key);
+        }
+      }
+    }
+
+    this.#completedResults.set(this.buildSignature(toolCall), { mutating, result });
     if (this.#completedResults.size > this.#maxEntries) {
       // Oldest-first (insertion-order) eviction so a long tool loop
       // can't pin unbounded memory in full tool outputs; an evicted

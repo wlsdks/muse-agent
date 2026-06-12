@@ -109,4 +109,81 @@ describe("ToolCallDeduplicator", () => {
     // landed on the default rather than disabling eviction.
     expect(d.check(call({ arguments: { n: 0 }, id: "probe" }))).toMatchObject({ duplicate: false });
   });
+
+  // --- read-invalidation-on-write tests ---
+
+  it("read entry is memoized (non-mutating record returns duplicate)", () => {
+    const d = new ToolCallDeduplicator();
+    const readCall = call({ name: "tasks_list", arguments: {} });
+    const resultA = completed({ name: "tasks_list", output: "[task1]" });
+    d.record(readCall, resultA, false);
+    expect(d.check(readCall)).toMatchObject({ duplicate: true, result: { output: "[task1]" } });
+  });
+
+  it("write invalidates prior read entries — subsequent identical read is NOT a duplicate", () => {
+    const d = new ToolCallDeduplicator();
+    const readCall = call({ name: "tasks_list", arguments: {} });
+    const writeCall = call({ name: "tasks_add", arguments: { title: "new task" } });
+
+    d.record(readCall, completed({ name: "tasks_list", output: "[task1]" }), false);
+    // Confirm read is memoized before the write
+    expect(d.check(readCall)).toMatchObject({ duplicate: true });
+
+    // Write completes — must invalidate the read entry
+    d.record(writeCall, completed({ name: "tasks_add", output: "added" }), true);
+
+    // The read must now re-execute against fresh state
+    expect(d.check(readCall)).toMatchObject({ duplicate: false });
+  });
+
+  it("write entries survive a later write — anti-double-write is preserved", () => {
+    const d = new ToolCallDeduplicator();
+    const writeCallA = call({ name: "tasks_add", arguments: { title: "task A" } });
+    const writeCallB = call({ name: "tasks_add", arguments: { title: "task B" } });
+
+    d.record(writeCallA, completed({ name: "tasks_add", output: "added A" }), true);
+    d.record(writeCallB, completed({ name: "tasks_add", output: "added B" }), true);
+
+    // Write A must still be duplicate — it was not invalidated by write B
+    const decision = d.check(writeCallA);
+    expect(decision).toMatchObject({ duplicate: true, result: { output: "added A" } });
+  });
+
+  it("read after write re-memoizes with fresh result", () => {
+    const d = new ToolCallDeduplicator();
+    const readCall = call({ name: "tasks_list", arguments: {} });
+    const writeCall = call({ name: "tasks_add", arguments: { title: "new task" } });
+
+    // Initial read, then write invalidates it
+    d.record(readCall, completed({ name: "tasks_list", output: "[task1]" }), false);
+    d.record(writeCall, completed({ name: "tasks_add", output: "added" }), true);
+    expect(d.check(readCall)).toMatchObject({ duplicate: false });
+
+    // Re-execute the read and record fresh result
+    const freshResult = completed({ name: "tasks_list", output: "[task1, new task]" });
+    d.record(readCall, freshResult, false);
+    expect(d.check(readCall)).toMatchObject({ duplicate: true, result: { output: "[task1, new task]" } });
+  });
+
+  it("non-completed results are not memoized regardless of mutating flag", () => {
+    const d = new ToolCallDeduplicator();
+    const c = call({ arguments: { q: "x" } });
+    d.record(c, { id: "t-1", name: "search", output: "", status: "failed", error: "err" }, false);
+    expect(d.check(c)).toMatchObject({ duplicate: false });
+    d.record(c, { id: "t-1", name: "search", output: "denied", status: "blocked" }, true);
+    expect(d.check(c)).toMatchObject({ duplicate: false });
+  });
+
+  it("eviction cap still works with wrapped entries — oldest evicted regardless of mutating flag", () => {
+    const d = new ToolCallDeduplicator(2);
+    const a = call({ arguments: { n: 10 }, id: "a", name: "read_a" });
+    const b = call({ arguments: { n: 20 }, id: "b", name: "write_b" });
+    const c = call({ arguments: { n: 30 }, id: "c", name: "read_c" });
+    d.record(a, completed({ output: "A" }), false);
+    d.record(b, completed({ output: "B" }), true);
+    d.record(c, completed({ output: "C" }), false);
+    expect(d.check(a)).toMatchObject({ duplicate: false }); // evicted (oldest)
+    expect(d.check(b)).toMatchObject({ duplicate: true });
+    expect(d.check(c)).toMatchObject({ duplicate: true });
+  });
 });

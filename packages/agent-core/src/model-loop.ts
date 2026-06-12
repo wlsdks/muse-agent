@@ -200,7 +200,9 @@ export async function executeModelLoop(
               : "Error: max tool call limit reached");
 
       toolCallCount += canRun ? 1 : 0;
-      deduplicator.record(toolCall, executed.result);
+      const toolRisk = (activeTools ?? []).find((t) => t.name === toolCall.name)?.risk;
+      const mutating = toolRisk === "write" || toolRisk === "execute";
+      deduplicator.record(toolCall, executed.result, mutating);
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
       // cap individual tool results so a single big
@@ -305,7 +307,9 @@ export async function* executeStreamingModelLoop(
       const grounding = groundingSourceFromExecuted(executed);
       yield { runId: context.runId, toolCall, type: "tool-result", ...(grounding ? { grounding } : {}) };
       toolCallCount += canRun ? 1 : 0;
-      deduplicator.record(toolCall, executed.result);
+      const toolRisk = (activeTools ?? []).find((t) => t.name === toolCall.name)?.risk;
+      const mutating = toolRisk === "write" || toolRisk === "execute";
+      deduplicator.record(toolCall, executed.result, mutating);
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
       // cap individual tool results so a single big
