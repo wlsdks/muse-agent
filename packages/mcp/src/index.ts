@@ -918,6 +918,12 @@ export {
   type WeaknessAxis,
   type WeaknessEntry
 } from "./weakness-ledger.js";
+export {
+  analyzeRunOutcomes,
+  type RunOutcomeEntry,
+  type RunOutcomeSummary,
+  type RunOutcomeTopic
+} from "./run-outcome-analysis.js";
 
 export {
   appendReminderHistory,

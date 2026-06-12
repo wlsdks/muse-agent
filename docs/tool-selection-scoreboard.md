@@ -91,3 +91,15 @@ fuel. Unit: 5 cases (axis mapping + record/no-record/empty/throws). REAL muse:
 `grounding-gap` ledger entry {topic:"여동생 생일 언제지", count:1} appeared. First
 real-usage fuel now flows; next slices mine .muse/runs run-logs + rank
 remediable weaknesses.
+
+## v4 Fire 2 — run-log failure-RATE analyzer + `muse doctor --run-outcomes` (SLICE SHIPPED)
+
+The cumulative ledger counts failures but not the DENOMINATOR. Added
+`analyzeRunOutcomes` (pure, @muse/mcp): tallies run-log outcomes (grounded/
+abstain/ungrounded) into a fail-RATE + top failing topics (clustered via
+topicKeyFromMessage). Surfaced via `muse doctor --run-outcomes` (reads
+.muse/runs/*.jsonl). Unit: 4 analyzer + 2 formatter cases. REAL muse: 2 asks
+(1 ungrounded→abstain, 1 grounded) → `doctor --run-outcomes` = "fail-rate 50%
+(1 grounded · 1 abstain · 0 ungrounded), top: 여동생 생일 언제지". The fail-RATE
+is a real metric with headroom (moves with real usage), unlike the saturated
+golden sets — the measurement the loop needs to tell "improving" from "more use".

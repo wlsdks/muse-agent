@@ -12,6 +12,7 @@ import {
   notesIndexHealth,
   buildCalibrationReport,
   formatCalibration,
+  formatRunOutcomes,
   formatWeaknesses,
   parseAlpha,
   parseNotesIndexEmbedModel,
@@ -70,6 +71,25 @@ describe("formatWeaknesses — the Whetstone ledger as an honest self-report", (
   it("renders a hint line when present", () => {
     const out = formatWeaknesses([{ axis: "grounding-gap", count: 2, firstSeen: "2026-06-01T00:00:00Z", lastSeen: "2026-06-06T00:00:00Z", topic: "rent", hint: "ask the user to add a note" }]);
     expect(out).toContain("ask the user to add a note");
+  });
+});
+
+describe("formatRunOutcomes — the failure-RATE the cumulative ledger lacks", () => {
+  it("reports a fresh-start line when nothing is graded yet", () => {
+    expect(formatRunOutcomes({ labelled: 0, grounded: 0, abstain: 0, ungrounded: 0, failRate: 0, topFailingTopics: [] }))
+      .toContain("no graded runs yet");
+  });
+
+  it("renders the rate, the outcome breakdown, and the top failing topics", () => {
+    const out = formatRunOutcomes({
+      labelled: 4, grounded: 2, abstain: 1, ungrounded: 1, failRate: 0.5,
+      topFailingTopics: [{ topic: "office vpn mtu", count: 2 }, { topic: "dentist", count: 1 }]
+    });
+    expect(out).toContain("4 graded runs");
+    expect(out).toContain("fail-rate 50%");
+    expect(out).toContain("2 grounded · 1 abstain · 1 ungrounded");
+    expect(out).toContain("office vpn mtu (2×)");
+    expect(out).toContain("dentist (1×)");
   });
 });
 
