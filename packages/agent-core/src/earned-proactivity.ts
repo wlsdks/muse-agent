@@ -76,11 +76,17 @@ export function selectEarnedThemes(
 
   const earned: EarnedTheme[] = [];
   for (const signal of themes) {
-    const times = signal.occurrences.map((o) => o.atMs).filter((t) => Number.isFinite(t));
+    // Persistence is accumulated PAST recurrence. A future-dated occurrence (an
+    // upcoming calendar event) is a plan, not evidence the theme has persisted —
+    // counting it would push recencyDays negative (a stale theme falsely reads
+    // "just seen", resurrecting it) and inflate the dwell span. Score only what
+    // has actually happened (atMs <= now).
+    const past = signal.occurrences.filter((o) => Number.isFinite(o.atMs) && o.atMs <= options.nowMs);
+    const times = past.map((o) => o.atMs);
     if (times.length < minOccurrences) {
       continue;
     }
-    const distinctSources = new Set(signal.occurrences.map((o) => o.source.trim()).filter((s) => s.length > 0)).size;
+    const distinctSources = new Set(past.map((o) => o.source.trim()).filter((s) => s.length > 0)).size;
     if (distinctSources < minSources) {
       continue;
     }

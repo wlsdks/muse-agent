@@ -179,7 +179,19 @@ function unwrapToolData(output: string): string {
 }
 
 function extractTextUrls(text: string): readonly string[] {
-  return [...new Set(text.match(/https?:\/\/[^\s)>"']+/g) ?? [])].filter(isUsableSourceUrl);
+  const matched = (text.match(/https?:\/\/[^\s)>"']+/g) ?? []).map(stripTrailingUrlPunctuation);
+  return [...new Set(matched)].filter(isUsableSourceUrl);
+}
+
+/**
+ * A URL in free text absorbs the sentence's trailing punctuation
+ * ("see https://x.com." / "…https://x.com, and"), so the cited / fetched source
+ * fails to resolve. The match regex already stops at )"'> ; this trims the
+ * remaining dangling sentence punctuation. URLs effectively never legitimately
+ * end in these, and a real trailing `/` is preserved.
+ */
+function stripTrailingUrlPunctuation(url: string): string {
+  return url.replace(/[.,;:!?\]}]+$/u, "");
 }
 
 function isUsableSourceUrl(url: string): boolean {

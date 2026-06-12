@@ -26,12 +26,26 @@ export function selectToolExemplars(
   k: number
 ): ToolExemplar[] {
   const queryTokens = lexicalTokens(query);
-  return bank
+  const scored = bank
     .map((exemplar, index) => ({ exemplar, index, overlap: lexicalOverlap(queryTokens, exemplar.prompt) }))
     .filter((entry) => entry.overlap > 0)
-    .sort((a, b) => (b.overlap - a.overlap) || (a.index - b.index))
-    .slice(0, Math.max(0, k))
-    .map((entry) => entry.exemplar);
+    .sort((a, b) => (b.overlap - a.overlap) || (a.index - b.index));
+  const cap = Math.max(0, Math.trunc(k));
+  const top = scored.slice(0, cap);
+  // Restraint representation (IrrelAcc): few-shot exemplars bias the model
+  // toward FIRING, and the `tool: null` cases exist to counter that — but a pure
+  // top-k by similarity can crowd every no-tool case out, leaving an
+  // all-positive block that over-fires on a lookalike query. When the selection
+  // is full, has no no-tool exemplar, yet a RELEVANT (overlap>0) one exists,
+  // swap the weakest positive for the best relevant no-tool case — keeping ≥1
+  // positive so the strongest match is never displaced.
+  if (cap >= 2 && top.length === cap && !top.some((entry) => entry.exemplar.tool === null)) {
+    const bestNull = scored.find((entry) => entry.exemplar.tool === null && !top.includes(entry));
+    if (bestNull) {
+      top[top.length - 1] = bestNull;
+    }
+  }
+  return top.map((entry) => entry.exemplar);
 }
 
 export function renderToolExemplarSection(exemplars: readonly ToolExemplar[]): string {

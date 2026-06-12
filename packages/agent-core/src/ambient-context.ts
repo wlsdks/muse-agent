@@ -36,13 +36,22 @@ const MAX_SELECTED_CHARS = 2048;
 const MAX_CLIPBOARD_CHARS = 2048;
 const MAX_NOTIFICATIONS_CHARS = 2048;
 
+// Slice without splitting a surrogate pair: if the cut lands between a high+low
+// surrogate (an emoji / astral char), drop the trailing lone high surrogate so
+// the bounded field never emits a malformed `�`. Mirrors inbox-context's truncate.
+function sliceWithoutSplittingSurrogate(value: string, end: number): string {
+  const head = value.slice(0, end);
+  const last = head.charCodeAt(head.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? head.slice(0, -1) : head;
+}
+
 function sanitizeAndBound(raw: string, max: number): string {
   // Pre-slice to 2*max BEFORE the regex pass so a multi-MB
   // clipboard doesn't burn whole-string CPU just to be truncated
   // to a few KB afterwards. Same shape as attachment-context.ts.
-  const limited = raw.length > max * 2 ? raw.slice(0, max * 2) : raw;
+  const limited = raw.length > max * 2 ? sliceWithoutSplittingSurrogate(raw, max * 2) : raw;
   const sanitized = stripUntrustedTerminalChars(limited).replace(/\s+/gu, " ").trim();
-  return sanitized.length > max ? `${sanitized.slice(0, max - 1)}…` : sanitized;
+  return sanitized.length > max ? `${sliceWithoutSplittingSurrogate(sanitized, max - 1)}…` : sanitized;
 }
 
 export function renderAmbientContextSection(snapshot: AmbientSnapshot | undefined): string | undefined {

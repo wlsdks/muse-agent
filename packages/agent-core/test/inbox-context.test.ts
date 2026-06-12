@@ -166,6 +166,26 @@ describe("renderInboxSection", () => {
     expect(messageLines[2]).toContain("last");
   });
 
+  it("caps a flooded group to the most-recent N and notes how many were omitted", () => {
+    const messages = Array.from({ length: 15 }, (_unused, i) => ({
+      providerId: "slack",
+      receivedAtIso: `2026-05-11T08:${i.toString().padStart(2, "0")}:00.000Z`,
+      sender: "u",
+      source: "C1",
+      text: `msg-${i.toString()}`
+    }));
+    const rendered = renderInboxSection({ messages, totalByProvider: { slack: 15 } });
+    expect(rendered).toBeDefined();
+    const block = rendered as string;
+    expect(block).toContain("(15):"); // header still shows the true total
+    expect(block).toContain("…5 earlier omitted");
+    const contentLines = block.split(/\n/u).filter((l) => /\bmsg-\d+/u.test(l));
+    expect(contentLines).toHaveLength(10); // only the 10 most-recent rendered
+    expect(block).toContain("msg-14"); // freshest kept
+    expect(block).toContain("msg-5"); // boundary: msg-5..msg-14 kept
+    expect(block).not.toContain("msg-4"); // oldest five dropped
+  });
+
   it("humanises receivedAtIso into relative time when nowIso is passed", () => {
     // JARVIS-class freshness affordance: with `nowIso` threaded
     // through, the agent reads "[5 min ago]" / "[1h ago]" instead

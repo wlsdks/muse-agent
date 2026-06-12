@@ -88,6 +88,16 @@ describe("renderAmbientContextSection — an ambient change measurably alters th
     expect(shortRendered).not.toContain("…");
   });
 
+  it("does not split a surrogate pair when bounding a long field (no lone surrogate / �)", () => {
+    // An emoji (surrogate pair) straddling the 2048-char clipboard cap boundary:
+    // a naive slice(0, max-1) keeps the lone high surrogate → a malformed char.
+    const clipboard = `${"x".repeat(2046)}😀${"y".repeat(20)}`;
+    const rendered = renderAmbientContextSection({ clipboard }) ?? "";
+    expect(rendered).toContain("…"); // it WAS truncated at the cap
+    // no lone (unpaired) high surrogate left dangling at the cut
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/u.test(rendered)).toBe(false);
+  });
+
   it("sanitises an injection-bearing field (no spliced fake section, no control bytes)", () => {
     const esc = String.fromCharCode(0x1b);
     const del = String.fromCharCode(0x7f);

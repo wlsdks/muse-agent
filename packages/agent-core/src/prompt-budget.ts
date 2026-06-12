@@ -154,6 +154,13 @@ export function enforceSystemPromptBudget(
   messages: readonly ModelMessage[],
   options: { readonly maxTokens: number }
 ): PromptBudgetEnforcement {
+  // A non-finite / non-positive budget (a NaN from a bad config parse, say) must
+  // NOT silently strip every injected section: `total <= NaN` is always false,
+  // so the eviction loop would drop ALL of memory/playbook/active-context. Treat
+  // an unusable budget as "no enforcement" (fail-safe — keep the context).
+  if (!Number.isFinite(options.maxTokens) || options.maxTokens <= 0) {
+    return { dropped: [], messages };
+  }
   const report = measureSystemPromptBudget(messages);
   if (!report || report.totalEstimatedTokens <= options.maxTokens || report.sections.length === 0) {
     return { dropped: [], messages };

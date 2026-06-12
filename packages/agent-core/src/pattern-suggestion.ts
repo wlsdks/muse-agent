@@ -76,5 +76,17 @@ export async function synthesizePatternSuggestion(
     return undefined;
   }
   if (output.length === 0 || /^NONE\b/iu.test(output)) return undefined;
+  // Deterministic anti-fabrication (the documented core risk): an unasked OFFER
+  // that asserts a NUMBER — a time, count, or date — absent from the grounded
+  // facts is invented ("draft before your 3pm meeting" when no 3pm is in the
+  // facts). The prompt forbids it, but a prompt is not a guarantee on an 8B
+  // (tool-calling.md), so drop such an offer and let the caller keep the
+  // verbatim detector fallback. Mirrors the correction-distiller number guard;
+  // language-neutral. The facts carry the real weekday/action/counts, so a
+  // genuine count echoed back is in `factNums` and survives.
+  const factNums = new Set(redact(input.groundedFacts).match(/\d+/gu) ?? []);
+  if ((output.match(/\d+/gu) ?? []).some((n) => !factNums.has(n))) {
+    return undefined;
+  }
   return output;
 }

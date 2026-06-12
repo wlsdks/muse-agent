@@ -34,6 +34,14 @@ const SHAREABLE_KINDS: ReadonlySet<string> = new Set<A2APayloadKind>([
   "council-utterance"
 ]);
 
+/**
+ * Upper bound on know-how payload size. Inbound content is untrusted peer data;
+ * an unbounded payload is a memory-exhaustion vector when quarantined/stored, so
+ * the gate is fail-closed on size too (a skill doc is well under this). Applied
+ * to outbound as well so an oversized local payload is refused before it leaves.
+ */
+export const A2A_MAX_CONTENT_CHARS = 65_536;
+
 export interface A2AOutbound {
   readonly kind: A2APayloadKind;
   /** The skill markdown / strategy text / reasoning utterance. NEVER a note, fact, or credential. */
@@ -82,17 +90,21 @@ export function prepareOutbound(
   if (typeof payload.content !== "string" || payload.content.trim().length === 0) {
     throw new A2ASafetyError("A2A outbound content is empty.");
   }
+  if (payload.content.length > A2A_MAX_CONTENT_CHARS) {
+    throw new A2ASafetyError(
+      `A2A outbound content exceeds the ${A2A_MAX_CONTENT_CHARS.toString()}-char limit (${payload.content.length.toString()}).`
+    );
+  }
   if (fromPeerId.trim().length === 0) {
     throw new A2ASafetyError("A2A outbound requires a sender peer id.");
   }
   const content = redact(payload.content);
-  const envelope: A2AEnvelope = {
-    content,
-    fromPeerId,
-    kind: payload.kind,
-    redacted: content !== payload.content
-  };
-  return payload.label !== undefined ? { ...envelope, label: redact(payload.label) } : envelope;
+  const label = payload.label !== undefined ? redact(payload.label) : undefined;
+  // `redacted` is the audit record that scrubbing happened — it must flip if
+  // EITHER the content OR the label was changed, not the content alone.
+  const redacted = content !== payload.content || (label !== undefined && label !== payload.label);
+  const envelope: A2AEnvelope = { content, fromPeerId, kind: payload.kind, redacted };
+  return label !== undefined ? { ...envelope, label } : envelope;
 }
 
 /** Inbound is ALWAYS inert — quarantine (execute-gated) or reject. There is no "execute". */
@@ -132,6 +144,12 @@ export function classifyInbound(message: unknown, allowedPeers: ReadonlySet<stri
     return {
       disposition: "reject",
       reason: `kind '${String(message.kind)}' is not shareable know-how — only skill / strategy / council-utterance are accepted, and never to execute`
+    };
+  }
+  if (message.content.length > A2A_MAX_CONTENT_CHARS) {
+    return {
+      disposition: "reject",
+      reason: `inbound content exceeds the ${A2A_MAX_CONTENT_CHARS.toString()}-char limit (${message.content.length.toString()}) — refused as untrusted oversized payload`
     };
   }
   return {

@@ -15,6 +15,7 @@
 
 import { stripUntrustedTerminalChars } from "@muse/shared";
 
+import { lexicalOverlap, lexicalTokens } from "./knowledge-recall.js";
 import type { AgentRunContext, AgentRunInput } from "./types.js";
 import { appendSystemSection } from "./runtime-helpers.js";
 
@@ -97,6 +98,37 @@ function sanitizeInline(value: string): string {
   return stripUntrustedTerminalChars(value).replace(/\s+/gu, " ").trim();
 }
 
+function latestUserText(messages: readonly { readonly role: string; readonly content: string }[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message && message.role === "user" && typeof message.content === "string") return message.content;
+  }
+  return "";
+}
+
+/**
+ * Order the catalog most-relevant-to-this-turn first (token overlap of the
+ * user's latest message against each skill's name + description), so the
+ * MAX_SKILLS_PER_PROMPT cap can't HIDE the one skill the turn actually needs
+ * behind 40 registration-order entries. NOTHING is dropped — render still slices
+ * to the cap and reports "…and N more"; this only reorders so the survivors are
+ * the relevant ones. A query with no usable tokens (a greeting) leaves the order
+ * untouched. Reuses the canonical recall tokeniser (no bespoke copy).
+ */
+export function selectRelevantSkills(
+  entries: readonly SkillCatalogEntry[],
+  queryText: string
+): readonly SkillCatalogEntry[] {
+  const query = lexicalTokens(queryText);
+  if (query.size === 0) {
+    return entries;
+  }
+  return entries
+    .map((entry, index) => ({ entry, index, overlap: lexicalOverlap(query, `${entry.name}. ${entry.description}`) }))
+    .sort((a, b) => b.overlap - a.overlap || a.index - b.index)
+    .map((scored) => scored.entry);
+}
+
 export async function applySkillsContext(
   context: AgentRunContext,
   provider: SkillCatalogProvider | undefined
@@ -116,7 +148,7 @@ export async function applySkillsContext(
       }
     };
   }
-  const rendered = renderSkillsCatalogSection(entries);
+  const rendered = renderSkillsCatalogSection(selectRelevantSkills(entries, latestUserText(context.input.messages)));
   if (!rendered) {
     return context.input;
   }

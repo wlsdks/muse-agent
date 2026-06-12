@@ -25,6 +25,38 @@ interface InvokeHooksDeps {
   readonly hooks: readonly HookStage[];
   readonly hookRegistry?: HookRegistryLike;
   readonly hookTraceStore?: HookTraceStore;
+  /**
+   * Per-hook wall-clock bound. Hooks fail OPEN on a throw, but a hook that
+   * HANGS (an await that never settles) would block the agent loop forever —
+   * fail-open must cover that too. Defaults to DEFAULT_HOOK_TIMEOUT_MS; a hook
+   * exceeding it is recorded as a `failed` trace and the loop moves on (the
+   * hook promise keeps running detached — hooks are reactive, never gates, so
+   * proceeding is safe). Set <=0 / non-finite to disable.
+   */
+  readonly hookTimeoutMs?: number;
+}
+
+/** Default per-hook timeout — generous, so only a pathological hang is cut. */
+export const DEFAULT_HOOK_TIMEOUT_MS = 30_000;
+
+async function invokeWithTimeout(invoke: () => Awaitable<void>, timeoutMs: number): Promise<void> {
+  const work = (async () => { await invoke(); })();
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    await work;
+    return;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`hook exceeded ${timeoutMs.toString()}ms timeout`)), timeoutMs);
+    (timer as { unref?: () => void }).unref?.();
+  });
+  try {
+    // A late rejection of `work` after the timeout wins is still observed by
+    // race's attached handler, so it never surfaces as an unhandled rejection.
+    await Promise.race([work, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }
 
 type InvokeHookValue<Name extends keyof HookStage> =
@@ -47,6 +79,7 @@ export async function invokeHooks<Name extends keyof HookStage>(
   deps: InvokeHooksDeps,
   value?: InvokeHookValue<Name>
 ): Promise<void> {
+  const timeoutMs = deps.hookTimeoutMs ?? DEFAULT_HOOK_TIMEOUT_MS;
   for (const hook of mergedHooks(deps)) {
     const invoke = hookInvocation(hook, name, context, value);
     if (!invoke) {
@@ -55,7 +88,7 @@ export async function invokeHooks<Name extends keyof HookStage>(
     const startedAt = new Date();
     const startedAtMs = Date.now();
     try {
-      await invoke();
+      await invokeWithTimeout(invoke, timeoutMs);
       await recordHookTrace(deps.hookTraceStore, context, hook.id, name as HookLifecycle, "completed", startedAt, startedAtMs);
     } catch (error) {
       await recordHookTrace(

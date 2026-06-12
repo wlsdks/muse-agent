@@ -22,6 +22,27 @@ describe("extractFollowupPromises — future-horizon sanity bound", () => {
   });
 });
 
+describe("extractFollowupPromises — negated promises are not queued (assistant declined)", () => {
+  it("suppresses a follow-up the assistant explicitly REFUSED (won't / will not / can't / never)", () => {
+    expect(extractFollowupPromises("I won't remind you in 30 minutes.", { now })).toHaveLength(0);
+    expect(extractFollowupPromises("I will not check tomorrow morning.", { now })).toHaveLength(0);
+    expect(extractFollowupPromises("I can't follow up in 2 hours.", { now })).toHaveLength(0);
+    expect(extractFollowupPromises("I never reach back out tomorrow.", { now })).toHaveLength(0);
+  });
+
+  it("still queues a genuine (non-negated) promise with the same time phrase", () => {
+    expect(extractFollowupPromises("I'll remind you in 30 minutes.", { now })).toHaveLength(1);
+    expect(extractFollowupPromises("I'll check tomorrow morning.", { now })).toHaveLength(1);
+  });
+
+  it("does not let a distant earlier 'not' suppress a later genuine promise", () => {
+    // the negation window is local to the time phrase; an unrelated "not" far
+    // earlier in the turn must not swallow a real follow-up.
+    const text = "That's not what I meant earlier. Anyway, I'll ping you in 15 minutes.";
+    expect(extractFollowupPromises(text, { now })).toHaveLength(1);
+  });
+});
+
 describe("extractFollowupPromises — English relative", () => {
   it("matches `in N minutes`", () => {
     const result = extractFollowupPromises("I'll check back in 30 minutes.", { now });

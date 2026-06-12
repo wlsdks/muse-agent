@@ -22,6 +22,81 @@ function sanitizeInline(value: string): string {
   return value.replace(/\s+/gu, " ").trim();
 }
 
+/**
+ * Max vetoes injected into the `[Learned Avoidance]` block. A correction store
+ * grows with every "no, don't" — dumping all of it bloats the prompt and dilutes
+ * a small local model's focus (`tool-calling.md`: ≤5-7 directives). Bounding the
+ * SOFT prompt nudge is safe: the deterministic consented-action gate still
+ * enforces EVERY recorded veto regardless of what this block shows.
+ */
+const DEFAULT_MAX_VETOES = 8;
+
+// CJK-aware token-overlap (mirrors playbook's ReasoningBank ranker) so a Korean
+// reason still matches a Korean turn; Hangul/Han/Kana are word chars.
+const VETO_NON_WORD_RE = /[^a-z0-9가-힯一-鿿぀-ゟ゠-ヿ]+/u;
+const VETO_CJK_RE = /[가-힯一-鿿぀-ゟ゠-ヿ]/u;
+
+function vetoTokens(value: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const raw of value.toLowerCase().split(VETO_NON_WORD_RE)) {
+    if (raw.length < 2) continue;
+    if (VETO_CJK_RE.test(raw)) {
+      for (let index = 0; index < raw.length - 1; index += 1) tokens.add(raw.slice(index, index + 2));
+    } else {
+      tokens.add(raw);
+    }
+  }
+  return tokens;
+}
+
+function vetoKey(veto: LearnedVeto): string {
+  return `${sanitizeInline(veto.scope).toLowerCase()}\u0000${sanitizeInline(veto.objectiveId ?? "").toLowerCase()}`;
+}
+
+function latestUserText(messages: readonly { readonly role: string; readonly content: string }[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message && message.role === "user" && typeof message.content === "string") return message.content;
+  }
+  return "";
+}
+
+/**
+ * Dedupe exact-duplicate vetoes (same class + objective), then — only when the
+ * store exceeds `maxVetoes` — keep the ones most RELEVANT to this turn
+ * (token-overlap over scope/objective/reason), preserving original order among
+ * the kept set. Under the cap every (deduped) veto is kept unchanged. The hard
+ * gate enforces all vetoes; this only tightens the prompt nudge.
+ */
+export function selectRelevantVetoes(
+  vetoes: readonly LearnedVeto[],
+  queryText: string,
+  maxVetoes: number = DEFAULT_MAX_VETOES
+): readonly LearnedVeto[] {
+  const seen = new Set<string>();
+  const deduped: LearnedVeto[] = [];
+  for (const veto of vetoes) {
+    const key = vetoKey(veto);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(veto);
+  }
+  const cap = Math.max(1, Math.trunc(maxVetoes));
+  if (deduped.length <= cap) return deduped;
+  const query = vetoTokens(queryText);
+  const scored = deduped.map((veto, index) => {
+    const tokens = vetoTokens([veto.scope, veto.objectiveId ?? "", veto.reason ?? ""].join(" "));
+    let overlap = 0;
+    for (const token of tokens) if (query.has(token)) overlap += 1;
+    return { index, overlap, veto };
+  });
+  return scored
+    .sort((a, b) => b.overlap - a.overlap || a.index - b.index)
+    .slice(0, cap)
+    .sort((a, b) => a.index - b.index)
+    .map((entry) => entry.veto);
+}
+
 export function renderVetoAvoidanceSection(vetoes: readonly LearnedVeto[]): string | undefined {
   if (vetoes.length === 0) {
     return undefined;
@@ -68,7 +143,8 @@ export async function applyVetoAvoidance(
   } catch {
     return context.input;
   }
-  const rendered = renderVetoAvoidanceSection(vetoes);
+  const ranked = selectRelevantVetoes(vetoes, latestUserText(context.input.messages));
+  const rendered = renderVetoAvoidanceSection(ranked);
   if (!rendered) {
     return context.input;
   }

@@ -49,6 +49,14 @@ describe("detectUserCommitments — rule-only, conservative (EN + KO)", () => {
     expect(detectUserCommitments(["I love this", "what time is it?", "그건 별로야"])).toEqual([]);
   });
 
+  it("does NOT capture a NEGATED intent as a commitment (no nag about what the user won't do)", () => {
+    expect(detectUserCommitments(["I will not email Bob about this."])).toEqual([]);
+    expect(detectUserCommitments(["I'll never use that vendor again."])).toEqual([]);
+    expect(detectUserCommitments(["I should not ship it tonight."])).toEqual([]);
+    // a real commitment whose action merely CONTAINS "not" later is unaffected
+    expect(detectUserCommitments(["I need to note the address"])).toHaveLength(1);
+  });
+
   it("does NOT mistake a question for a commitment", () => {
     expect(detectUserCommitments(["Do I need to call the dentist?"])).toEqual([]);
     expect(detectUserCommitments(["Why do I have to do this?"])).toEqual([]);

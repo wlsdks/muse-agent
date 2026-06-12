@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import {
   applySkillsContext,
   renderSkillsCatalogSection,
+  selectRelevantSkills,
   type SkillCatalogProvider
 } from "../src/skills-context.js";
 
@@ -156,6 +157,32 @@ describe("renderSkillsCatalogSection", () => {
     expect(out).toContain("…and 5 more");
     expect(out).toContain("skill-40");
     expect(out).not.toContain("skill-41");
+  });
+});
+
+describe("selectRelevantSkills", () => {
+  it("orders a query-relevant skill to the front so the MAX_SKILLS cap can't hide it", () => {
+    const entries = Array.from({ length: 45 }, (_unused, i) => ({ name: `skill-${i.toString()}`, description: "a generic helper" }));
+    entries[44] = { name: "deploy-rollback", description: "Use when you need to roll back a production deployment" };
+    const ranked = selectRelevantSkills(entries, "how do I roll back the production deployment?");
+    expect(ranked[0]?.name).toBe("deploy-rollback"); // surfaced ahead of the 40-cap
+    expect(ranked).toHaveLength(45); // nothing dropped — render applies the cap
+  });
+
+  it("leaves order untouched when the query has no usable tokens (a greeting)", () => {
+    const entries = [{ name: "a", description: "x" }, { name: "b", description: "y" }];
+    expect(selectRelevantSkills(entries, "  ").map((e) => e.name)).toEqual(["a", "b"]);
+  });
+
+  it("is stable for zero-overlap entries (original order preserved among non-matches)", () => {
+    const entries = [
+      { name: "alpha", description: "unrelated" },
+      { name: "beta", description: "unrelated" },
+      { name: "calendar-sync", description: "sync your calendar events" }
+    ];
+    const ranked = selectRelevantSkills(entries, "sync calendar");
+    expect(ranked[0]?.name).toBe("calendar-sync");
+    expect(ranked.slice(1).map((e) => e.name)).toEqual(["alpha", "beta"]); // non-matches keep order
   });
 });
 

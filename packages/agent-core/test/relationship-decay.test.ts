@@ -47,4 +47,19 @@ describe("overdueContacts — Dunbar tie-strength decay (personalised cadence)",
     expect(mina!.cadenceDays).toBeCloseTo(7, 0);
     expect(mina!.gapDays).toBeCloseTo(35, 0);
   });
+
+  it("counts contact OCCASIONS not message volume — a bursty same-day conversation is one contact", () => {
+    const HOUR = 3_600_000;
+    // weekly occasions (5, last 35d ago), but each is a 3-message same-UTC-day
+    // burst. Without same-day collapse the intra-day ~0 gaps drag the median
+    // cadence to ~0.04d (nonsense) instead of the true 7d.
+    const bursty: ContactInteractions = {
+      name: "Burst",
+      timestampsMs: [63, 56, 49, 42, 35].flatMap((g) => [daysAgo(g), daysAgo(g) + HOUR, daysAgo(g) + 2 * HOUR])
+    };
+    const [out] = overdueContacts([bursty], { nowMs: NOW });
+    expect(out!.cadenceDays).toBeCloseTo(7, 0); // true occasion cadence, not message spacing
+    const [clean] = overdueContacts([cadence("Clean", 7, 5, 35)], { nowMs: NOW });
+    expect(out!.cadenceDays).toBeCloseTo(clean!.cadenceDays, 1); // == single-stamp-per-occasion equivalent
+  });
 });

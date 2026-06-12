@@ -14,11 +14,11 @@ export interface JsonArrayCandidate {
 }
 
 /**
- * Index of the `]` that balances the `[` at `start`, or `-1` if it never
- * closes. Brackets inside JSON strings (and their escapes) are ignored so a
- * `]` in a string value can't close the array early.
+ * Index of the `close` delimiter that balances the `open` at `start`, or `-1` if
+ * it never closes. Delimiters inside JSON strings (and their escapes) are ignored
+ * so a `]`/`}` in a string value can't close the span early.
  */
-function balancedArrayEnd(text: string, start: number): number {
+function balancedSpanEnd(text: string, start: number, open: string, close: string): number {
   let depth = 0;
   let inString = false;
   let escape = false;
@@ -39,9 +39,9 @@ function balancedArrayEnd(text: string, start: number): number {
     if (inString) {
       continue;
     }
-    if (character === "[") {
+    if (character === open) {
       depth += 1;
-    } else if (character === "]") {
+    } else if (character === close) {
       depth -= 1;
       if (depth === 0) {
         return index;
@@ -49,6 +49,10 @@ function balancedArrayEnd(text: string, start: number): number {
     }
   }
   return -1;
+}
+
+function balancedArrayEnd(text: string, start: number): number {
+  return balancedSpanEnd(text, start, "[", "]");
 }
 
 /**
@@ -98,6 +102,57 @@ export function* iterateJsonArrayCandidates(text: string): Generator<JsonArrayCa
 /** The substring of the first balanced span that parses as a JSON array. */
 export function extractFirstJsonArray(text: string): string | null {
   for (const candidate of iterateJsonArrayCandidates(text)) {
+    return candidate.text;
+  }
+  return null;
+}
+
+export interface JsonObjectCandidate {
+  readonly text: string;
+  readonly value: Record<string, unknown>;
+}
+
+/**
+ * Object twin of `iterateJsonArrayCandidates`: yields each top-level balanced
+ * `{ … }` span, in order, that parses as a JSON OBJECT (not an array). The local
+ * synthesiser/judge models wrap their JSON in prose, and that prose collides with
+ * the `}` delimiter — anchoring first-`{`-to-last-`}` swallows any trailing
+ * brace-bearing prose and fails the parse. Same string/escape awareness and
+ * total-scan bound as the array scanner.
+ */
+export function* iterateJsonObjectCandidates(text: string): Generator<JsonObjectCandidate> {
+  let searchFrom = 0;
+  let scanned = 0;
+  for (;;) {
+    const start = text.indexOf("{", searchFrom);
+    if (start < 0) {
+      return;
+    }
+    const end = balancedSpanEnd(text, start, "{", "}");
+    scanned += (end < 0 ? text.length : end) - start;
+    if (scanned > MAX_SCAN_CHARS) {
+      return;
+    }
+    if (end < 0) {
+      searchFrom = start + 1;
+      continue;
+    }
+    const candidate = text.slice(start, end + 1);
+    try {
+      const value: unknown = JSON.parse(candidate);
+      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+        yield { text: candidate, value: value as Record<string, unknown> };
+      }
+    } catch {
+      // not valid JSON — fall through to the next top-level `{`
+    }
+    searchFrom = end + 1;
+  }
+}
+
+/** The substring of the first balanced span that parses as a JSON object. */
+export function extractFirstJsonObject(text: string): string | null {
+  for (const candidate of iterateJsonObjectCandidates(text)) {
     return candidate.text;
   }
   return null;

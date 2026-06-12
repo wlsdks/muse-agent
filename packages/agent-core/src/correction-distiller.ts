@@ -133,7 +133,12 @@ export function detectApprovals(
   for (let index = 1; index < turns.length; index += 1) {
     const turn = turns[index]!;
     const prior = turns[index - 1]!;
-    if (turn.role !== "user" || prior.role !== "assistant" || !isApprovalTurn(turn.content)) {
+    // Correction takes precedence: a turn that ALSO pushes back ("no, but the
+    // format's perfect") must never count as an approval — else the same
+    // exchange drives BOTH a reward (reinforce) and a decay on one strategy, a
+    // contradictory self-reinforcement signal. Conservative: when in doubt,
+    // never reinforce a turn carrying a correction.
+    if (turn.role !== "user" || prior.role !== "assistant" || !isApprovalTurn(turn.content) || isCorrectionTurn(turn.content)) {
       continue;
     }
     const request = index >= 2 && turns[index - 2]!.role === "user" ? turns[index - 2]!.content : undefined;
@@ -273,7 +278,14 @@ export async function classifyCorrectionContradiction(
   } catch {
     return "uncertain";
   }
-  const match = output.match(/CONTRADICT|AGREE|UNRELATED/u);
+  // A false CONTRADICT decays a user's learned strategy, so detect it
+  // conservatively. The bare alternation grabbed "CONTRADICT" out of a NEGATED
+  // answer ("NOT CONTRADICT", "does not contradict the rule") and wrongly
+  // decayed — strip negated contradiction forms before matching, so a negated
+  // verdict falls through to a genuine AGREE/UNRELATED or to fail-closed
+  // "uncertain" (no decay) rather than a phantom contradiction.
+  const deNegated = output.replace(/\b(?:NOT|NO|NEVER|DOES\s*N'?T|DOESN'?T|DO\s*N'?T|DON'?T|IS\s*N'?T|ISN'?T)\s+CONTRADICT\w*/gu, " ");
+  const match = deNegated.match(/CONTRADICT|AGREE|UNRELATED/u);
   if (!match) return "uncertain";
   return match[0] === "CONTRADICT" ? "contradict" : match[0] === "AGREE" ? "agree" : "unrelated";
 }

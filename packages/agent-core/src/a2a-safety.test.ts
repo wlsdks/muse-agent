@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  A2A_MAX_CONTENT_CHARS,
   A2ASafetyError,
   classifyInbound,
   isA2AEnabled,
@@ -43,6 +44,25 @@ describe("prepareOutbound — only know-how crosses, PII redacted", () => {
     expect(() => prepareOutbound({ content: "   ", kind: "skill" }, "p")).toThrow(A2ASafetyError);
     expect(() => prepareOutbound({ content: "x", kind: "skill" }, "  ")).toThrow(A2ASafetyError);
   });
+
+  it("refuses an oversized payload (fail-closed on size)", () => {
+    const huge = "x".repeat(A2A_MAX_CONTENT_CHARS + 1);
+    expect(() => prepareOutbound({ content: huge, kind: "skill" }, "p")).toThrow(A2ASafetyError);
+    // exactly at the limit is allowed
+    const atLimit = "y".repeat(A2A_MAX_CONTENT_CHARS);
+    expect(prepareOutbound({ content: atLimit, kind: "skill" }, "p").content).toHaveLength(A2A_MAX_CONTENT_CHARS);
+  });
+
+  it("records redacted=true when only the LABEL carried a secret (audit-trail honesty)", () => {
+    const env = prepareOutbound(
+      { content: "clean how-to, no secrets", kind: "skill", label: "token=sk-secret-99" },
+      "my-laptop",
+      (t) => t.replace(/sk-secret-\d+/g, "[redacted]")
+    );
+    expect(env.content).toBe("clean how-to, no secrets"); // content untouched
+    expect(env.label).not.toContain("sk-secret-99");
+    expect(env.redacted).toBe(true); // flips on the label scrub, not just content
+  });
 });
 
 describe("classifyInbound — inert: quarantine or reject, NEVER execute", () => {
@@ -76,5 +96,14 @@ describe("classifyInbound — inert: quarantine or reject, NEVER execute", () =>
     expect(classifyInbound(null, peers)).toMatchObject({ disposition: "reject" });
     expect(classifyInbound({ kind: "skill" }, peers)).toMatchObject({ disposition: "reject" });
     expect(classifyInbound("not an object", peers)).toMatchObject({ disposition: "reject" });
+  });
+
+  it("rejects an oversized inbound payload from an allowlisted peer (untrusted size guard)", () => {
+    const huge = env({ content: "x".repeat(A2A_MAX_CONTENT_CHARS + 1) });
+    const d = classifyInbound(huge, peers);
+    expect(d.disposition).toBe("reject");
+    expect(d.reason).toContain("limit");
+    // a payload exactly at the limit from the same peer still quarantines
+    expect(classifyInbound(env({ content: "z".repeat(A2A_MAX_CONTENT_CHARS) }), peers).disposition).toBe("quarantine");
   });
 });

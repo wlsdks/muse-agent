@@ -40,4 +40,17 @@ describe("enforceSystemPromptBudget", () => {
     expect(result.dropped.length).toBe(2);
     expect(content).toContain("muse:active-context");
   });
+
+  it("a non-finite / non-positive budget is fail-safe — it does NOT strip every section", () => {
+    const big = "z".repeat(2_000);
+    const messages = [
+      sys(section("active-context", big), section("feeds", big)),
+      { content: "q", role: "user" as const }
+    ];
+    for (const maxTokens of [Number.NaN, 0, -1, Number.POSITIVE_INFINITY]) {
+      const result = enforceSystemPromptBudget(messages, { maxTokens });
+      expect(result.dropped, `maxTokens=${String(maxTokens)}`).toEqual([]);
+      expect(result.messages).toBe(messages); // untouched — context preserved
+    }
+  });
 });

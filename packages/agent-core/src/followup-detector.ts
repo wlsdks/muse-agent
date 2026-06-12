@@ -106,7 +106,13 @@ export function extractFollowupPromises(
   const out: FollowupPromise[] = [];
   const seenMinute = new Set<number>();
   const slots = { ...DEFAULT_SLOTS, ...options.slotHours };
-  const push = (promise: FollowupPromise): void => {
+  const push = (promise: FollowupPromise, matchIndex: number): void => {
+    // A refusal right before the time phrase ("I won't remind you in 30 min",
+    // "I will NOT check tomorrow") means the assistant DECLINED — it is not a
+    // promise to queue. Suppress it; the module's documented bias is toward
+    // false negatives over spurious queueings. (English negation only — Korean
+    // 안/않 morphology is too ambiguous to window-match safely here.)
+    if (negatedBefore(text, matchIndex)) return;
     // `setHours(NaN, ...)` (e.g. from a corrupt slotHours config —
     // NaN-poisoning via env / settings parse upstream) yields an
     // Invalid Date. Downstream the followup-capture-hook calls
@@ -139,7 +145,7 @@ export function extractFollowupPromises(
       kind: ms >= 86_400_000 ? "relative-days" : ms >= 3_600_000 ? "relative-hours" : "relative-minutes",
       originalText: match[0] ?? "",
       scheduledFor: new Date(options.now.getTime() + ms)
-    });
+    }, match.index ?? 0);
   }
 
   for (const match of text.matchAll(/(\d{1,4})\s*분\s*(?:뒤|후|이?내?에?)/gu)) {
@@ -150,7 +156,7 @@ export function extractFollowupPromises(
       kind: "korean-relative-minutes",
       originalText: match[0] ?? "",
       scheduledFor: new Date(options.now.getTime() + value * 60_000)
-    });
+    }, match.index ?? 0);
   }
   for (const match of text.matchAll(/(\d{1,3})\s*시간\s*(?:뒤|후|이?내?에?)/gu)) {
     const value = Number.parseInt(match[1] ?? "", 10);
@@ -160,7 +166,7 @@ export function extractFollowupPromises(
       kind: "korean-relative-hours",
       originalText: match[0] ?? "",
       scheduledFor: new Date(options.now.getTime() + value * 3_600_000)
-    });
+    }, match.index ?? 0);
   }
   // Stricter tail than 분/시간 (require 뒤|후|이내, not a bare 에):
   // "30일에" is a day-of-month, not "30 days later".
@@ -172,7 +178,7 @@ export function extractFollowupPromises(
       kind: "korean-relative-days",
       originalText: match[0] ?? "",
       scheduledFor: new Date(options.now.getTime() + value * 86_400_000)
-    });
+    }, match.index ?? 0);
   }
 
   for (const match of text.matchAll(/\btomorrow(?:\s+(morning|afternoon|evening|night))?\b/giu)) {
@@ -184,7 +190,7 @@ export function extractFollowupPromises(
       kind: "tomorrow-slot",
       originalText: match[0] ?? "",
       scheduledFor
-    });
+    }, match.index ?? 0);
   }
   for (const match of text.matchAll(/내일(?:\s*(아침|오전|점심|오후|저녁|밤))?/gu)) {
     const slotKr = match[1] ?? "아침";
@@ -196,7 +202,7 @@ export function extractFollowupPromises(
       kind: "korean-tomorrow-slot",
       originalText: match[0] ?? "",
       scheduledFor
-    });
+    }, match.index ?? 0);
   }
 
   for (const match of text.matchAll(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?\b/giu)) {
@@ -212,7 +218,7 @@ export function extractFollowupPromises(
       kind: "today-at",
       originalText: match[0] ?? "",
       scheduledFor: nextOccurrenceAtHourMinute(options.now, hour24, minuteRaw)
-    });
+    }, match.index ?? 0);
   }
   for (const match of text.matchAll(/(?:오늘\s*)?(\d{1,2})\s*시(?:\s*(\d{1,2})\s*분)?(?:에|쯤)?/gu)) {
     // Avoid matching "5 시간" which is "hours" (e.g. "5시간 후").
@@ -227,10 +233,17 @@ export function extractFollowupPromises(
       kind: "korean-today-at",
       originalText: match[0] ?? "",
       scheduledFor: nextOccurrenceAtHourMinute(options.now, hourRaw, minuteRaw)
-    });
+    }, match.index ?? 0);
   }
 
   return out;
+}
+
+// A negation of the promise verb in the short window before a time phrase. The
+// `\b` anchors keep it from firing inside words ("cannot" handled explicitly).
+const NEGATION_BEFORE_RE = /\b(?:not|never|cannot)\b|won['’]?t|can['’]?t|wouldn['’]?t|won['’]?t\s+be\s+able/iu;
+function negatedBefore(text: string, index: number): boolean {
+  return NEGATION_BEFORE_RE.test(text.slice(Math.max(0, index - 28), index));
 }
 
 function unitToMs(unit: string, value: number): number | undefined {

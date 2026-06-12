@@ -64,7 +64,18 @@ export function deltaMergePlaybookStrategies(texts: readonly string[]): string |
       && (tokenSets[j]!.size > tokenSets[i]!.size || (tokenSets[j]!.size === tokenSets[i]!.size && j < i))
     )
   );
-  return survivors.length === 1 ? survivors[0] : undefined;
+  if (survivors.length !== 1) return undefined;
+  const survivor = survivors[0]!;
+  // Anti-collapse invariant guard: fuzzy stem coverage is NON-transitive
+  // (A⊇B and B⊇C does NOT imply A⊇C — `required` scales with each token-pair's
+  // length), so a chain of drops can leave a lone survivor that misses some
+  // input's tokens. Verify the survivor truly covers EVERY input; if not, defer
+  // to the LLM merge + coverage gate rather than silently dropping a strategy.
+  const survivorTokens = lexicalTokens(survivor);
+  for (const tokens of tokenSets) {
+    if (tokens.size > 0 && !covers(survivorTokens, tokens)) return undefined;
+  }
+  return survivor;
 }
 
 /**

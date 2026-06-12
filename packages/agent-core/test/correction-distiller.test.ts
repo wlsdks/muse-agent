@@ -29,6 +29,20 @@ describe("classifyCorrectionContradiction — polarity gate parse + fail-closed 
     expect(await run("maybe?")).toBe("uncertain");
     expect(await run("")).toBe("uncertain");
   });
+
+  it("does NOT read a NEGATED contradiction as a contradiction (no phantom decay of a learned strategy)", async () => {
+    // the bug: the bare /CONTRADICT/ match grabbed the word out of a negation
+    // and wrongly decayed the user's strategy.
+    for (const negated of ["NOT CONTRADICT", "does not contradict the rule", "It doesn't contradict.", "no, this does not contradict"]) {
+      expect(await run(negated), negated).not.toBe("contradict");
+    }
+  });
+
+  it("still reads a genuine contradiction and a negated-other verdict correctly", async () => {
+    expect(await run("CONTRADICT")).toBe("contradict");
+    expect(await run("The rule should be dropped — CONTRADICT")).toBe("contradict");
+    expect(await run("AGREE — it does not contradict")).toBe("agree"); // AGREE wins, negation stripped harmlessly
+  });
 });
 
 describe("detectCorrections — reliable failure signal (ReasoningBank 2509.25140; no LLM self-judge per 2404.17140)", () => {
@@ -335,6 +349,18 @@ describe("detectApprovals — the POSITIVE reward signal (RL reinforce; precisio
     for (const phrase of ["ok", "okay", "thanks", "good", "좋아", "고마워", "알겠어", "응", "sure"]) {
       expect(detectOne(phrase), phrase).toHaveLength(0);
     }
+  });
+
+  it("correction takes precedence: a turn that ALSO corrects is NOT an approval (no contradictory reward+decay)", () => {
+    // these match both an approval and a correction pattern; the same exchange
+    // must not feed both the reinforce and decay signals at once.
+    for (const phrase of ["no, that's not it — though the format is perfect", "그게 아니야, 근데 정확해"]) {
+      expect(detectOne(phrase), phrase).toHaveLength(0); // approval suppressed by the correction match
+    }
+    // sanity: the same turns ARE seen as corrections
+    expect(
+      detectCorrections([t("user", "req"), t("assistant", "ans"), t("user", "no, that's not it — though the format is perfect")])
+    ).toHaveLength(1);
   });
 
   it("requires the assistant→user pairing and backfills the request", () => {

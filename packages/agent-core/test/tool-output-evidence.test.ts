@@ -22,6 +22,20 @@ describe("extractVerifiedSources", () => {
     ]);
   });
 
+  it("strips sentence punctuation a free-text URL absorbed (so the cited source resolves)", () => {
+    const sources = extractVerifiedSources("web_search", "primary https://example.com/a. also https://example.com/b, and https://example.com/c!");
+    expect(sources.map((s) => s.url)).toEqual([
+      "https://example.com/a",
+      "https://example.com/b",
+      "https://example.com/c"
+    ]);
+  });
+
+  it("dedupes a URL that appears both bare and with a trailing period", () => {
+    const sources = extractVerifiedSources("web_search", "https://example.com/x and again https://example.com/x.");
+    expect(sources.map((s) => s.url)).toEqual(["https://example.com/x"]);
+  });
+
   it("filters out attachment download URLs", () => {
     const sources = extractVerifiedSources(
       "file_search",

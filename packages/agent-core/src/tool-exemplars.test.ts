@@ -28,6 +28,38 @@ describe("selectToolExemplars", () => {
     const picked = selectToolExemplars("alpha", bank, 1);
     expect(picked[0]?.tool).toBe("a");
   });
+
+  it("keeps a RELEVANT no-tool exemplar in the set (restraint) instead of an all-positive block", () => {
+    const bank = [
+      { prompt: "remind me about the dentist", tool: "set_reminder" },
+      { prompt: "add dentist appointment to calendar", tool: "calendar_add" },
+      { prompt: "do I have a dentist thing", tool: null } // relevant no-tool precedent
+    ];
+    const picked = selectToolExemplars("dentist", bank, 2);
+    expect(picked).toHaveLength(2);
+    expect(picked.some((e) => e.tool === null)).toBe(true); // restraint example survives
+    expect(picked[0]?.tool).toBe("set_reminder"); // the strongest match is never displaced
+  });
+
+  it("does not force a no-tool exemplar when none is relevant", () => {
+    const bank = [
+      { prompt: "remind me dentist", tool: "set_reminder" },
+      { prompt: "add dentist calendar", tool: "calendar_add" }
+    ];
+    const picked = selectToolExemplars("dentist", bank, 2);
+    expect(picked).toHaveLength(2);
+    expect(picked.every((e) => e.tool !== null)).toBe(true);
+  });
+
+  it("never sacrifices the only slot (k=1) to restraint — keeps the best match", () => {
+    const bank = [
+      { prompt: "remind me about the dentist", tool: "set_reminder" },
+      { prompt: "do I have a dentist thing", tool: null }
+    ];
+    const picked = selectToolExemplars("dentist", bank, 1);
+    expect(picked).toHaveLength(1);
+    expect(picked[0]?.tool).toBe("set_reminder");
+  });
 });
 
 describe("renderToolExemplarSection", () => {

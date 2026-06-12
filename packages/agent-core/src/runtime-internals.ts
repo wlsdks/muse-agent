@@ -138,13 +138,22 @@ const GROUNDING_SOURCE_TEXT_CAP = 4000;
  * `{ source: toolName, text: output }`. A caller's output-side grounding verdict
  * scores the answer against THIS — the evidence the agent was shown — so a
  * web-grounded `--with-tools` answer isn't false-flagged against a notes-only
- * set. Empty outputs (an actuator's "sent", a no-results lookup) are skipped.
+ * set. Empty outputs (an actuator's "sent", a no-results lookup) and
+ * non-completed (blocked/failed) results — whose output is an error string, not
+ * evidence — are skipped.
  */
 function groundingSourcesFromToolResults(
   toolResults: readonly ExecutedToolResult[]
 ): readonly { readonly source: string; readonly text: string }[] {
   const out: { source: string; text: string }[] = [];
   for (const executed of toolResults) {
+    // Only a COMPLETED tool produced evidence. A blocked/failed result's output
+    // is an error string ("Error: max tool call limit reached", a thrown
+    // message) — counting it as a grounding source would inflate the grounded
+    // signal and let an error masquerade as evidence, weakening the floor.
+    if (executed.result.status !== "completed") {
+      continue;
+    }
     const raw = typeof executed.result.output === "string" ? executed.result.output.trim() : "";
     if (raw.length === 0) {
       continue;

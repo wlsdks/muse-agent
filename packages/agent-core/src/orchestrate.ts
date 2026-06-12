@@ -38,6 +38,12 @@ export interface OrchestratedAnswer {
   readonly proposals: readonly OrchestrationProposal[];
   /** Proposer ids the synthesized answer actually drew on. */
   readonly contributors: readonly string[];
+  /**
+   * Role ids whose proposer call threw — the panel degraded to the survivors but
+   * still produced an answer. Empty/absent on a clean run; surfaced (never
+   * swallowed) so a caller can see the panel ran short.
+   */
+  readonly failedRoles?: readonly string[];
 }
 
 export interface OrchestrateOptions extends CouncilModelOptions {
@@ -134,21 +140,41 @@ export async function orchestrateAnswer(question: string, options: OrchestrateOp
   }
 
   // communicate = parallel independent proposers (the GPU batches them).
-  const proposals: OrchestrationProposal[] = await Promise.all(
-    roleList.map(async (role) => {
+  // Resilient by allSettled: one proposer failing (a flaky local-model call) must
+  // not sink the whole panel — degrade to the survivors and surface which dropped.
+  const settled = await Promise.allSettled(
+    roleList.map(async (role): Promise<OrchestrationProposal> => {
       const text = await runRole(question, role, options);
       const proposal: OrchestrationProposal = { id: role.id, text };
       options.onProposal?.(proposal);
       return proposal;
     })
   );
+  const proposals: OrchestrationProposal[] = [];
+  const failedRoles: string[] = [];
+  settled.forEach((outcome, index) => {
+    if (outcome.status === "fulfilled") proposals.push(outcome.value);
+    else failedRoles.push(roleList[index]?.id ?? `role-${index.toString()}`);
+  });
+  // fail-close: every proposer failed → nothing to synthesize, surface it loudly.
+  if (proposals.length === 0) {
+    throw new Error(`orchestrateAnswer: all ${roleList.length.toString()} proposers failed`);
+  }
+  const degraded = failedRoles.length > 0 ? { failedRoles } : {};
+
+  // One survivor → its answer IS the panel result; a merge of a single candidate
+  // only risks the aggregator mangling a good answer, so skip the wasted call.
+  const [only] = proposals;
+  if (proposals.length === 1 && only) {
+    return { answer: only.text, contributors: [only.id], mode: "orchestrated", proposals, ...degraded };
+  }
 
   // aggregate = merge proposals into the single best answer (keeps detail, drops nonsense).
   const merged = await aggregate(question, proposals, options);
   if (merged.length === 0) {
     // Aggregator returned nothing → fall back to the thorough proposal if present.
     const fallback = proposals.find((p) => p.id === "thorough") ?? proposals[0] ?? { id: primary.id, text: "" };
-    return { answer: fallback.text, contributors: [fallback.id], mode: "orchestrated", proposals };
+    return { answer: fallback.text, contributors: [fallback.id], mode: "orchestrated", proposals, ...degraded };
   }
-  return { answer: merged, contributors: proposals.map((p) => p.id), mode: "orchestrated", proposals };
+  return { answer: merged, contributors: proposals.map((p) => p.id), mode: "orchestrated", proposals, ...degraded };
 }

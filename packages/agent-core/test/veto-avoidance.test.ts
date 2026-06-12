@@ -5,6 +5,7 @@ import {
   applyVetoAvoidance,
   createAgentRuntime,
   renderVetoAvoidanceSection,
+  selectRelevantVetoes,
   type VetoAvoidanceProvider
 } from "../src/index.js";
 
@@ -88,6 +89,42 @@ describe("applyVetoAvoidance — conservative, fail-open gating", () => {
   it("emits one bullet line per veto", () => {
     const rendered = renderVetoAvoidanceSection([{ scope: "a:write" }, { scope: "b:write" }, { scope: "c:write" }]) ?? "";
     expect(rendered.match(/^- /gmu)?.length).toBe(3);
+  });
+});
+
+describe("selectRelevantVetoes — dedupe + relevance-bounded injection", () => {
+  it("dedupes exact-duplicate vetoes (same class + objective)", () => {
+    const out = selectRelevantVetoes(
+      [
+        { objectiveId: "o", reason: "r1", scope: "email:send" },
+        { objectiveId: "o", reason: "r2 differs", scope: "email:send" }, // dup key → dropped
+        { scope: "github:issues:write" }
+      ],
+      "anything"
+    );
+    expect(out.map((v) => v.scope)).toEqual(["email:send", "github:issues:write"]);
+  });
+
+  it("keeps every (deduped) veto when under the cap — no drop", () => {
+    const vetoes = [{ scope: "a:write" }, { scope: "b:write" }, { scope: "c:write" }];
+    expect(selectRelevantVetoes(vetoes, "unrelated query", 8)).toEqual(vetoes);
+  });
+
+  it("over the cap, keeps the vetoes most relevant to the current turn (gate still enforces all)", () => {
+    const vetoes = Array.from({ length: 12 }, (_unused, i) => ({ scope: `topic${i.toString()}:write` }));
+    const kept = selectRelevantVetoes(vetoes, "please handle topic7 now", 3);
+    expect(kept).toHaveLength(3);
+    expect(kept.some((v) => v.scope === "topic7:write")).toBe(true); // the relevant one survived
+  });
+
+  it("applyVetoAvoidance caps the injected block when the store is large", async () => {
+    const many = Array.from({ length: 20 }, (_unused, i) => ({ scope: `scope${i.toString()}:write` }));
+    const out = await applyVetoAvoidance(ctx([{ content: "do scope5 work", role: "user" }], "stark"), {
+      listVetoes: async () => many
+    });
+    const system = out.messages.find((m) => m.role === "system");
+    expect(system?.content?.match(/^- /gmu)?.length).toBe(8); // DEFAULT_MAX_VETOES, not 20
+    expect(system?.content).toContain("scope5:write");
   });
 });
 

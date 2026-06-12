@@ -20,6 +20,7 @@
 import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
 import { redactSecretsInText } from "@muse/shared";
 
+import { iterateJsonObjectCandidates } from "./json-array-scan.js";
 import {
   classifyRetrievalConfidence,
   type GroundingReverify,
@@ -174,25 +175,19 @@ interface RawCouncilAnswer {
  * members; an answer with no real contributors falls back to listing none. Pure.
  */
 export function parseCouncilAnswer(raw: string, validPeerIds: ReadonlySet<string>): CouncilAnswer | null {
-  // The synthesiser emits an OBJECT; reuse the array scanner by wrapping isn't
-  // needed — find the first {...}. extractJsonArray handles arrays; for an object
-  // we scan manually but tolerantly.
-  const start = raw.indexOf("{");
-  const end = raw.lastIndexOf("}");
-  if (start < 0 || end <= start) return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.slice(start, end + 1)) as unknown;
-  } catch {
-    return null;
+  // The synthesiser emits an OBJECT, often wrapped in prose. Walk each balanced
+  // {…} span (string/escape-aware) and take the first that carries a real answer
+  // — robust where first-`{`-to-last-`}` would swallow trailing brace-bearing
+  // prose and fail the parse.
+  for (const candidate of iterateJsonObjectCandidates(raw)) {
+    const { answer, contributors } = candidate.value as RawCouncilAnswer;
+    if (typeof answer !== "string" || answer.trim().length === 0) continue;
+    const grounded = Array.isArray(contributors)
+      ? [...new Set(contributors.filter((c): c is string => typeof c === "string" && validPeerIds.has(c)))]
+      : [];
+    return { answer: answer.trim(), contributors: grounded };
   }
-  if (!parsed || typeof parsed !== "object") return null;
-  const { answer, contributors } = parsed as RawCouncilAnswer;
-  if (typeof answer !== "string" || answer.trim().length === 0) return null;
-  const grounded = Array.isArray(contributors)
-    ? [...new Set(contributors.filter((c): c is string => typeof c === "string" && validPeerIds.has(c)))]
-    : [];
-  return { answer: answer.trim(), contributors: grounded };
+  return null;
 }
 
 /** Synthesise the council's reasoning into one grounded answer. Needs ≥1 utterance. */

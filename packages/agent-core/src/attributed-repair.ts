@@ -91,7 +91,15 @@ export async function repairToEvidence(
   if (deps.isRefusal?.(gated) === true) {
     return { reason: "evidence does not support an answer — honest refusal stands" };
   }
-  const verification = await deps.verify(gated, matches, query);
+  let verification: GroundingVerification;
+  try {
+    verification = await deps.verify(gated, matches, query);
+  } catch {
+    // The verifier itself errored (the reverify judge is a model call and can
+    // throw). "Fail-closed by construction" must cover this too: a repair we
+    // cannot verify is never shown — the honest refusal stands.
+    return { reason: "rewrite verification failed — dropped (fail-closed)" };
+  }
   if (verification.verdict !== "grounded") {
     return { reason: `rewrite re-verified ${verification.verdict} — dropped (fail-closed)` };
   }

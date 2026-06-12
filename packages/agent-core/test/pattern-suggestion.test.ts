@@ -38,6 +38,19 @@ describe("synthesizePatternSuggestion", () => {
     expect(await synthesizePatternSuggestion(input, { model: "m", modelProvider: fakeProvider("   \n\t ") })).toBeUndefined();
   });
 
+  it("drops an offer that fabricates a NUMBER absent from the facts (anti-fabrication)", async () => {
+    // facts carry weekday + "4 of last 5 weeks"; an invented "3pm" / "오후 3시" is
+    // a number not in the facts → the offer must be dropped (caller keeps fallback).
+    expect(await synthesizePatternSuggestion(input, { model: "m", modelProvider: fakeProvider("오후 3시 회의 전에 주간 보고서 초안 잡아둘까요?") })).toBeUndefined();
+    expect(await synthesizePatternSuggestion(input, { model: "m", modelProvider: fakeProvider("Want me to draft it before your 9am standup?") })).toBeUndefined();
+  });
+
+  it("keeps an offer whose number is grounded in the facts (a real count echoed back)", async () => {
+    // "4" and "5" appear in the facts ("seen 4 of last 5 weeks") → not fabricated.
+    const out = await synthesizePatternSuggestion(input, { model: "m", modelProvider: fakeProvider("지난 5주 중 4주나 보고서를 쓰셨던데, 지금 초안 잡아둘까요?") });
+    expect(out).toBe("지난 5주 중 4주나 보고서를 쓰셨던데, 지금 초안 잡아둘까요?");
+  });
+
   it("trims surrounding whitespace from a valid offer", async () => {
     const out = await synthesizePatternSuggestion(input, { model: "m", modelProvider: fakeProvider("  지금 초안 잡아둘까요?  ") });
     expect(out).toBe("지금 초안 잡아둘까요?");

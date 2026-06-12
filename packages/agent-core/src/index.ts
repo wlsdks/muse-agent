@@ -98,7 +98,7 @@ export {
   resolveAmbientSnapshot
 } from "./ambient-context.js";
 export type { AmbientSnapshot, AmbientSnapshotProvider } from "./ambient-context.js";
-export { applyVetoAvoidance, renderVetoAvoidanceSection } from "./veto-avoidance.js";
+export { applyVetoAvoidance, renderVetoAvoidanceSection, selectRelevantVetoes } from "./veto-avoidance.js";
 export type { LearnedVeto, VetoAvoidanceProvider } from "./veto-avoidance.js";
 export { applyPlaybook, clampReward, isAvoidedStrategy, isInjectableStrategy, PLAYBOOK_AVOID_BELOW, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, strategyTextSimilarity } from "./playbook.js";
 export type { PlaybookStrategy, PlaybookProvider, RankPlaybookOptions } from "./playbook.js";
@@ -259,6 +259,7 @@ export {
   type OrchestrationRole
 } from "./orchestrate.js";
 export {
+  A2A_MAX_CONTENT_CHARS,
   A2ASafetyError,
   classifyInbound,
   isA2AEnabled,
@@ -297,6 +298,7 @@ export {
 export {
   applySkillsContext,
   renderSkillsCatalogSection,
+  selectRelevantSkills,
   type SkillCatalogEntry,
   type SkillCatalogProvider
 } from "./skills-context.js";

@@ -51,6 +51,28 @@ export interface OverdueOptions {
   readonly maxResults?: number;
 }
 
+/**
+ * Tie strength tracks contact OCCASIONS, not message volume (Dunbar): a burst of
+ * messages in one conversation is ONE contact, not many. Collapse same-UTC-day
+ * timestamps to a single representative (the latest that day) before estimating
+ * cadence — otherwise intra-day gaps (~0) drag the median cadence toward zero and
+ * over-flag a contact you actually keep up with on a normal weekly rhythm.
+ */
+function collapseToDailyOccasions(sortedAscending: readonly number[]): number[] {
+  const occasions: number[] = [];
+  let currentDay = Number.NaN;
+  for (const timestamp of sortedAscending) {
+    const day = Math.floor(timestamp / DAY_MS);
+    if (day !== currentDay) {
+      occasions.push(timestamp);
+      currentDay = day;
+    } else {
+      occasions[occasions.length - 1] = timestamp;
+    }
+  }
+  return occasions;
+}
+
 function median(sortedAscending: readonly number[]): number {
   const n = sortedAscending.length;
   if (n === 0) {
@@ -77,18 +99,19 @@ export function overdueContacts(
   const overdue: OverdueContact[] = [];
   for (const contact of contacts) {
     const times = [...contact.timestampsMs].filter((t) => Number.isFinite(t)).sort((a, b) => a - b);
-    if (times.length < minInteractions) {
+    const occasions = collapseToDailyOccasions(times);
+    if (occasions.length < minInteractions) {
       continue;
     }
     const gaps: number[] = [];
-    for (let i = 1; i < times.length; i++) {
-      gaps.push((times[i]! - times[i - 1]!) / DAY_MS);
+    for (let i = 1; i < occasions.length; i++) {
+      gaps.push((occasions[i]! - occasions[i - 1]!) / DAY_MS);
     }
     const cadenceDays = median([...gaps].sort((a, b) => a - b));
     if (cadenceDays <= 0) {
       continue;
     }
-    const gapDays = (options.nowMs - times[times.length - 1]!) / DAY_MS;
+    const gapDays = (options.nowMs - occasions[occasions.length - 1]!) / DAY_MS;
     const overdueRatio = gapDays / cadenceDays;
     if (gapDays >= minGapDays && overdueRatio > ratio) {
       overdue.push({ cadenceDays, gapDays, name: contact.name, overdueRatio });

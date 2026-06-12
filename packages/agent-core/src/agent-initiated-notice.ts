@@ -95,7 +95,7 @@ export class InMemoryAgentInitiatedNoticeBroker implements AgentInitiatedNoticeB
     userId: string,
     onMessage: (notice: AgentInitiatedNotice) => void | Promise<void>
   ): () => void {
-    const sub: Subscription = { onMessage, queue: [], draining: false };
+    const sub: Subscription = { onMessage, queue: [], draining: false, active: true };
     let bucket = this.subscribers.get(userId);
     if (!bucket) {
       bucket = new Set<Subscription>();
@@ -103,6 +103,12 @@ export class InMemoryAgentInitiatedNoticeBroker implements AgentInitiatedNoticeB
     }
     bucket.add(sub);
     return () => {
+      // Mark inactive FIRST: an in-flight drain (awaiting a slow onMessage
+      // started before this unsubscribe) must stop delivering queued notices to
+      // a now-dead consumer (e.g. a closed SSE stream), not just be hidden from
+      // future publishes.
+      sub.active = false;
+      sub.queue.length = 0;
       const stillThere = this.subscribers.get(userId);
       if (!stillThere) return;
       stillThere.delete(sub);
@@ -126,7 +132,7 @@ export class InMemoryAgentInitiatedNoticeBroker implements AgentInitiatedNoticeB
     }
     sub.draining = true;
     try {
-      while (sub.queue.length > 0) {
+      while (sub.active && sub.queue.length > 0) {
         const next = sub.queue.shift();
         if (!next) continue;
         try {
@@ -146,4 +152,6 @@ interface Subscription {
   readonly onMessage: (notice: AgentInitiatedNotice) => void | Promise<void>;
   readonly queue: AgentInitiatedNotice[];
   draining: boolean;
+  /** Cleared on unsubscribe so an in-flight drain stops delivering to a dead consumer. */
+  active: boolean;
 }

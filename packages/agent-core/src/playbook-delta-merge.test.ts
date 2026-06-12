@@ -47,4 +47,22 @@ describe("deltaMergePlaybookStrategies (ACE: deterministic delta ops, no LLM rew
     expect(deltaMergePlaybookStrategies([])).toBeUndefined();
     expect(deltaMergePlaybookStrategies(["하나뿐"])).toBeUndefined();
   });
+
+  it("defers (undefined) rather than return a survivor that misses an input — stem coverage is non-transitive", () => {
+    // "planningboard" stem-covers "planning" (share ≥7-char prefix), "planning"
+    // stem-covers "plan" (share 4), but "planningboard" does NOT cover "plan"
+    // (plan is shorter than its required 7-char prefix). A naive drop-chain would
+    // keep only "planningboard" and silently lose "plan"; the invariant guard
+    // detects the miss and defers to the LLM merge instead.
+    const merged = deltaMergePlaybookStrategies(["planningboard", "planning", "plan"]);
+    if (merged !== undefined) {
+      // if it ever DOES merge, the invariant must hold: the survivor covers every input
+      const mergedTokens = lexicalTokens(merged);
+      for (const input of ["planningboard", "planning", "plan"]) {
+        for (const token of lexicalTokens(input)) expect(mergedTokens.has(token)).toBe(true);
+      }
+    } else {
+      expect(merged).toBeUndefined();
+    }
+  });
 });
