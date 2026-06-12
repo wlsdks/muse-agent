@@ -470,6 +470,23 @@ HARDEN (make existing tools more reliable):
   `list` vs `search` in ONE module disagree. Only test uses 2 tasks (total 1/0), so the cap is undocumented. FIX: pre-
   slice `total = filtered.length`, return the 50-cap slice + add `shown`. Slice: 1 file + 1 test (51 matching tasks →
   total 51, shown 50). NOT this fire (same KIND as the fire-22 episode total fix — pick a different KIND first).
+- ✓→Done **bare day-of-month roll silently overflowed to a WRONG date** (EXPANSION gap-scout, fire 25;
+  data-integrity / silent-wrong-value) — `resolveRelativeTimePhrase`'s `dayOfMonthMatch` branch
+  (loopback-relative-time.ts:537-541) rolled a past/absent day forward with a SINGLE `new Date(y, month+1, dom)` and no
+  re-validation, so a short +1 month overflowed: "the 31st" late on Jan 31 → `new Date(2026,1,31)` = Feb 31 → silently
+  **March 3** (not March 31); "the 30th"→Mar 2, "the 29th"→Mar 1. The file's own comment promised "the next month that
+  has it". That wrong date persisted into a reminder/task. FIX: bounded loop (ahead 1..12) advancing month-by-month,
+  re-checking `getDate()===dom && getTime()>reference` each step, `return getDate()===dom ? finiteDate : undefined`. TDD
+  3 (the 31st/30th/29th @ Jan, each → March same-day) RED(getDate 3≠31)→GREEN; relative-time file 44/44, mcp 1722, check
+  0 (all pkgs), lint 0. Fable-5 PASS (RED re-confirmed by stashing src; loop terminates, returns first future occurrence,
+  final guard rejects nothing valid; no existing test documented the overflow).
+- ◦ **relative-time SIBLING year-roll overflows (same class, fire-25 deferred)** — two more sites skip the validity
+  re-check after a roll: (1) `resolveAbsoluteMonthDate` +1-year roll (loopback-relative-time.ts:230-231) — "feb 29"
+  asked in a leap year AFTER it passed (ref 2028-03-01) → `new Date(2029,1,29)` = **Mar 1, 2029** silently; (2) the
+  Korean `koAbsDate` roll (~747-749) — same for "2월 29일". Initial builds are guarded (227-229) so only the post-roll
+  result is wrong. FIX each: after the +1-year `new Date`, re-validate `getMonth()/getDate()` and return undefined on
+  overflow (cleaner than the day-of-month loop — a year-roll only ever needs ONE re-check). Slice: 1 file + 2 tests
+  (en + ko feb-29). Different branch/KIND-shape from the month-roll, so a separate fire.
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`

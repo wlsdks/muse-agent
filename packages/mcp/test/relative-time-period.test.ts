@@ -146,6 +146,23 @@ describe("resolveRelativeTimePhrase — bare day-of-month ('the 25th', 'on the 1
     expect(resolveRelativeTimePhrase("the 0th", now)).toBeUndefined();
   });
 
+  it("rolls a day absent from the next month onto the month that HAS it — no JS Date overflow", () => {
+    // "the 31st" late on Jan 31 must land on March 31, NOT March 3
+    // (new Date(2026, 1, 31) overflows Feb → March 3). getDate is the discriminator.
+    const r31 = resolveRelativeTimePhrase("the 31st", () => new Date(2026, 0, 31, 22, 0, 0, 0))!;
+    expect(r31).toBeDefined();
+    expect(r31.getMonth()).toBe(2); // March
+    expect(r31.getDate()).toBe(31);
+    // "the 30th" on Jan 30 → Feb has no 30th → March 30 (old code gave March 2)
+    const r30 = resolveRelativeTimePhrase("the 30th", () => new Date(2026, 0, 30, 22, 0, 0, 0))!;
+    expect(r30.getMonth()).toBe(2);
+    expect(r30.getDate()).toBe(30);
+    // "the 29th" on Jan 29 2026 (non-leap) → March 29 (old code gave March 1)
+    const r29 = resolveRelativeTimePhrase("the 29th", () => new Date(2026, 0, 29, 22, 0, 0, 0))!;
+    expect(r29.getMonth()).toBe(2);
+    expect(r29.getDate()).toBe(29);
+  });
+
   it("does NOT regress weekday / duration phrases sharing nearby grammar", () => {
     expect(resolveRelativeTimePhrase("next monday", now)!.getDay()).toBe(1);
     expect(Math.round((resolveRelativeTimePhrase("in 2 weeks", now)!.getTime() - now().getTime()) / 86_400_000)).toBe(14);

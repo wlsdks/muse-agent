@@ -534,11 +534,14 @@ export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date
       if (domTime === "invalid") {
         return undefined;
       }
+      // Roll forward month-by-month to the next one that ACTUALLY HAS this day,
+      // re-checking getDate() each step. A single +1-month roll overflows a short
+      // month (new Date(2026, 1, 31) = Feb 31 → March 3); the loop lands on March 31.
       let domTarget = new Date(reference.getFullYear(), reference.getMonth(), dom, domTime.hour, domTime.minute, 0, 0);
-      if (domTarget.getDate() !== dom || domTarget.getTime() <= reference.getTime()) {
-        domTarget = new Date(reference.getFullYear(), reference.getMonth() + 1, dom, domTime.hour, domTime.minute, 0, 0);
+      for (let ahead = 1; (domTarget.getDate() !== dom || domTarget.getTime() <= reference.getTime()) && ahead <= 12; ahead += 1) {
+        domTarget = new Date(reference.getFullYear(), reference.getMonth() + ahead, dom, domTime.hour, domTime.minute, 0, 0);
       }
-      return finiteDate(domTarget);
+      return domTarget.getDate() === dom ? finiteDate(domTarget) : undefined;
     }
   }
 
