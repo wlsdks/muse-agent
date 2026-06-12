@@ -115,6 +115,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           required: ["id"],
           type: "object"
         },
+        groundedArgs: ["reason"],
         domain: "tasks",
         name: "cancel",
         risk: "write"

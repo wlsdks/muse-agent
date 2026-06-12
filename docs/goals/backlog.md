@@ -188,7 +188,12 @@ HARDEN (make existing tools more reliable):
   shipped via mammoth ~2MB, which was proportionate.)
 - ◦ **per-tool not-when audit** — every built-in tool description gets a "use when … ; NOT when …"
   line; measure eager-invocation drop on eval:tools negative cases.
-- ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
+- ◦ **tool-arg grounding coverage** — PROGRESS (loop fire): `followup.cancel.reason` now grounded
+  (8B can fabricate a cancel reason; server-side default 'agent-cancelled' fallback). Reminders has
+  NO fabricable free-text field (text=user-stated, dueAt=time, recurrence=enum) — honestly pivoted.
+  Done so far: tasks add/update, add_contact, calendar, followup.cancel. Behavioral drop test +
+  verifier traced the wired path. Remaining: audit other actuators' optional free-text fields.
+- ◦ **tool-arg grounding coverage (orig)** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator that persists a model-named field; one eval:tool-arg-grounding case each.
   PROGRESS (loop, 2026-06-12): fire 1 `muse.tasks.update.notes` · fire 2 `add_contact.relationship`
   now grounded (Opus gating-verifier traced BOTH paths — MCP-loopback for tasks, direct-MuseTool for

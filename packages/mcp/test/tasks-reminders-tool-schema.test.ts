@@ -1,7 +1,7 @@
 import { validateToolDefinitions, type MuseTool } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
-import { createRemindersMcpServer, createTasksMcpServer, createTasksRegistryMcpServer } from "../src/index.js";
+import { createFollowupsMcpServer, createRemindersMcpServer, createTasksMcpServer, createTasksRegistryMcpServer } from "../src/index.js";
 
 function asMuseTools(tools: readonly { name: string; description: string; inputSchema?: unknown; risk?: unknown }[]): MuseTool[] {
   return tools.map((tool) => ({
@@ -109,5 +109,11 @@ describe("tasks + reminders loopback tools meet the one-shot tool-calling bar", 
     const server = createTasksMcpServer({ file: "/tmp/muse-test-tasks.json" });
     const update = server.tools.find((t) => t.name === "update")!;
     expect((update as { groundedArgs?: readonly string[] }).groundedArgs).toContain("notes");
+  });
+
+  it("marks the followup 'cancel' optional reason as groundedArgs (drop fabricated cancel reasons)", () => {
+    const server = createFollowupsMcpServer({ file: "/tmp/muse-test-followups.json" });
+    const cancel = server.tools.find((t) => t.name === "cancel")!;
+    expect((cancel as { groundedArgs?: readonly string[] }).groundedArgs).toContain("reason");
   });
 });
