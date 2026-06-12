@@ -140,6 +140,30 @@ export function selectForgettable(
     .slice(0, maxFading);
 }
 
+/**
+ * ACT-R base-level activation (Anderson & Schooler 1991): B = ln(Σ_j tⱼ^(-d))
+ * over the age of EACH past access tⱼ (days), decay d (default 0.5). Unlike a
+ * single last-hit half-life, summing over every access captures BOTH frequency
+ * (more terms ⇒ higher B) AND spacing (each access decays on its own clock, so a
+ * memory practised in a distributed way retains activation a massed one loses).
+ * Ages are clamped to `minAgeDays` (default 1/24 ≈ 1h) so a just-now access can't
+ * blow the power term to Infinity; a future-dated access (negative age) clamps too.
+ * Empty access list ⇒ -Infinity (no activation; the caller floors/filters it).
+ */
+export function actrActivation(
+  accessAgesDays: readonly number[],
+  options: { readonly decay?: number; readonly minAgeDays?: number } = {}
+): number {
+  const decay = Number.isFinite(options.decay) && options.decay! > 0 ? options.decay! : 0.5;
+  const minAgeDays = Number.isFinite(options.minAgeDays) && options.minAgeDays! > 0 ? options.minAgeDays! : 1 / 24;
+  let sum = 0;
+  for (const age of accessAgesDays) {
+    if (!Number.isFinite(age)) continue;
+    sum += Math.pow(Math.max(age, minAgeDays), -decay);
+  }
+  return sum <= 0 ? -Infinity : Math.log(sum);
+}
+
 export interface ConsolidationPlan {
   readonly promote: readonly PromotedMemory[];
   readonly fade: readonly ForgettingMemory[];

@@ -430,6 +430,7 @@ export {
 // `Record<string,string>` facts/preferences. Persistence + runtime
 // wiring lands in subsequent iters.
 export {
+  actrActivation,
   consolidationPlan,
   scoreRecallHit,
   selectForgettable,
