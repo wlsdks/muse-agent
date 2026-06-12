@@ -273,8 +273,16 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   re-observes (Enter wrapped in the new-tab follow). Verified: a modal opened by a button
   and closable only by Escape is dismissed; Tab fires its handler. Locked: smoke 18, eval
   11/11 STABLE 3/3 (Escape→browser_key, not click), unit 46, agent PASS.
+- ✓→Done **multi-step agent reliability** (the frontier) — eval:browser-agent was a single
+  1-2-step task; added a genuine multi-step scenario (open → search → CLICK the result →
+  read the DETAIL page → answer the stock count that appears ONLY there). gemma4:12b carries
+  the full chain STABLE 3/3 (terminal state = ended on the detail page; grounded answer = the
+  "7 units" that's unreachable without clicking; fabricating or stopping at the results fails).
+  Proves low-spec multi-step web autonomy is reliable, not just one-shot. The battery is now a
+  scenarios[] array — add a scenario per new capability.
 - ◦ **more real-web probes** — native file upload (`<input type=file>` → CDP uploadFile +
-  path arg/tool), cross-origin iframe (per-frame contexts — scope honestly), drag-and-drop.
+  path arg/tool), cross-origin iframe (per-frame contexts — scope honestly), drag-and-drop;
+  and harder multi-step chains (3-4 clicks, a form fill across pages).
 - ✓→Done **browser_scroll** — the snapshot only saw rendered DOM, so below-the-fold /
   lazy-loaded content (infinite feeds, long lists) was invisible. New read tool scrolls
   (down/up/top/bottom) + settles + re-observes. Unit (enum + reject-unknown + scrolls);
