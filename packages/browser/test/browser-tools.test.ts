@@ -79,7 +79,7 @@ describe("browser_open / read / back — free (no gate)", () => {
     const out = await tool.execute({ url: "https://example.test" }, ctx) as { url: string; title: string; elements: unknown[] };
     expect(out).toMatchObject({ title: "Example", url: "https://example.test/" });
     expect(out.elements).toEqual([{ name: "Sign in", ref: 3, role: "button" }]);
-    expect(c.calls).toEqual(["open:https://example.test"]);
+    expect(c.calls).toEqual(["open:https://example.test/"]);
   });
 
   it("read and back return snapshots", async () => {
@@ -207,5 +207,37 @@ describe("display cap — model sees a small list, matcher sees all (long-page s
     const c = new FakeController();
     const out = await createBrowserOpenTool({ controller: c }).execute({ url: "https://example.test" }, ctx) as { truncated?: boolean; totalElements?: number };
     expect(out.truncated).toBeFalsy();
+  });
+});
+
+describe("browser_open — scheme guard (http/https only; no local-file read via file://)", () => {
+  it("refuses file:// without touching the browser (file_read is the bounded local path)", async () => {
+    const c = new FakeController();
+    const out = await createBrowserOpenTool({ controller: c }).execute({ url: "file:///etc/passwd" }, ctx) as { error?: string };
+    expect(out.error).toBeTruthy();
+    expect(String(out.error).toLowerCase()).toMatch(/http|scheme|file/);
+    expect(c.calls).toEqual([]);
+  });
+
+  it("refuses chrome:// / view-source: / javascript: / data: schemes", async () => {
+    const c = new FakeController();
+    for (const url of ["chrome://settings", "view-source:https://x.test", "javascript:alert(1)", "data:text/html,<h1>x</h1>"]) {
+      const out = await createBrowserOpenTool({ controller: c }).execute({ url }, ctx) as { error?: string };
+      expect(out.error).toBeTruthy();
+    }
+    expect(c.calls).toEqual([]);
+  });
+
+  it("still opens a normal https URL", async () => {
+    const c = new FakeController();
+    const out = await createBrowserOpenTool({ controller: c }).execute({ url: "https://example.test" }, ctx) as { title?: string };
+    expect(out.title).toBe("Example");
+    expect(c.calls).toEqual(["open:https://example.test/"]);
+  });
+
+  it("accepts a bare host and normalizes it to https", async () => {
+    const c = new FakeController();
+    await createBrowserOpenTool({ controller: c }).execute({ url: "example.com" }, ctx);
+    expect(c.calls).toEqual(["open:https://example.com/"]);
   });
 });

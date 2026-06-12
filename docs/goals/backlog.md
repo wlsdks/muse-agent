@@ -38,6 +38,19 @@ EXPAND (new reach):
   read-risk, so "what's on my calendar today" works without a configured provider.
 
 HARDEN (make existing tools more reliable):
+- ✓→Done **browser_open scheme guard (no local-file read via file://)** — browser_open passed any
+  URL straight to page.goto, so `file:///etc/passwd` (or chrome://, view-source:, javascript:, data:)
+  would load+return arbitrary local files — a broader local read than file_read's allowlisted,
+  symlink-guarded path, and a prompt-injection exfil vector. Now `normalizeBrowserUrl` accepts only
+  http(s) (bare host → https; host:port preserved) and refuses every other scheme. TDD 4 cases;
+  eval:browser-agent migrated to a loopback http server (was file://) and still 3/3; smoke unaffected
+  (uses the controller directly). mcp/browser 37, check 0, lint 0.
+- ◦ **command_injection pattern over-fires on legit loopback URLs** — `(curl|wget|fetch|http).{0,10}
+  (localhost|127\.0\.0|10\.|...)` flags ANY "http://localhost:3000"/"http://127.0.0.1" the user
+  names (e.g. "open my dev server in the browser"), so the injection guard blocks a legitimate
+  browser_open before it runs. Tighten to require a command CONTEXT (a shell verb / pipe / backtick
+  near the host), not a bare URL; add false-positive cases. (found this fire; eval used [::1] to
+  sidestep.) SECURITY pattern — keep all true-positive SSRF-instruction cases.
 - ✓→Done **file_read symlink-escape guard** — the absolute-path check was LEXICAL only: a file
   lexically inside the roots could be a symlink to /etc/passwd, and readFile followed it. Now
   realpath-verifies the target (and the roots — /tmp is itself a symlink on macOS) before reading;

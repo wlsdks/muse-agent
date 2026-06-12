@@ -12,10 +12,10 @@
  * LOCAL OLLAMA ONLY; skips (exit 0) when Ollama or Chrome is unavailable.
  *   MUSE_EVAL_REPEAT=3 node scripts/eval-browser-agent.mjs   # pass^k
  */
+import { createServer } from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import {
   createBrowserBackTool,
@@ -59,7 +59,15 @@ function search(e) {
 
 const dir = await mkdtemp(join(tmpdir(), "muse-browser-agent-"));
 await writeFile(join(dir, "shop.html"), SHOP_HTML);
-const url = pathToFileURL(join(dir, "shop.html")).href;
+// Serve the fixture over http — browser_open now refuses file:// (a model must
+// not read arbitrary local files via the browser; file_read is the bounded
+// local path). Loopback-only on an ephemeral port.
+const server = createServer((_req, res) => { res.writeHead(200, { "content-type": "text/html" }); res.end(SHOP_HTML); });
+await new Promise((resolve) => server.listen(0, "::1", resolve));
+// IPv6 loopback [::1] (not 127.0.0.1/localhost) so the URL in the task prompt
+// does not trip the command_injection guard pattern (a separate false-positive
+// recorded in the backlog).
+const url = `http://[::1]:${server.address().port}/shop`;
 
 const controller = new PuppeteerBrowserController({ headless: true, userDataDir: join(dir, "profile") });
 const allow = () => ({ approved: true });
@@ -118,6 +126,7 @@ try {
   }
 } finally {
   await controller.close().catch(() => {});
+  server.close();
   // Chrome flushes its profile asynchronously after close — retry the sweep.
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {

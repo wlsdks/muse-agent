@@ -66,6 +66,40 @@ function errorResult(cause: unknown): JsonObject {
   return { error: cause instanceof Error ? cause.message : String(cause) };
 }
 
+/**
+ * Accept only http(s) web pages for browser_open, and assume https for a bare
+ * host. file:// / chrome:// / view-source: / javascript: / data: are refused —
+ * otherwise browser_open would read ANY local file (a prompt-injected page
+ * could steer it at ~/.ssh/id_rsa), bypassing file_read's allowlisted,
+ * symlink-guarded local-read path. A `host:port` (digits after the colon) is a
+ * bare host, not a scheme.
+ */
+export function normalizeBrowserUrl(raw: string): { readonly ok: true; readonly url: string } | { readonly ok: false; readonly error: string } {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return { error: "browser_open requires a non-empty 'url'", ok: false };
+  }
+  const schemeMatch = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
+  if (schemeMatch) {
+    const scheme = (schemeMatch[1] ?? "").toLowerCase();
+    const afterColon = trimmed.slice(schemeMatch[0].length);
+    const looksLikeScheme = afterColon.startsWith("//") || !/^\d/.test(afterColon);
+    if (looksLikeScheme && scheme !== "http" && scheme !== "https") {
+      return { error: `browser_open only opens http(s) web pages — '${scheme}:' is refused. Use file_read for local files.`, ok: false };
+    }
+  }
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed.replace(/^\/+/u, "")}`;
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { error: `browser_open only opens http(s) web pages — '${parsed.protocol}' is refused. Use file_read for local files.`, ok: false };
+    }
+    return { ok: true, url: parsed.href };
+  } catch {
+    return { error: `not a valid web URL: ${raw}`, ok: false };
+  }
+}
+
 type ResolveResult = { readonly ref: number; readonly label: string } | { readonly error: JsonObject };
 
 /**
@@ -123,12 +157,13 @@ export function createBrowserOpenTool(deps: BrowserReadToolDeps): MuseTool {
       risk: "read"
     },
     execute: async (args): Promise<JsonObject> => {
-      const url = typeof args["url"] === "string" ? args["url"].trim() : "";
-      if (url.length === 0) {
-        return { error: "browser_open requires a non-empty 'url'" };
+      const raw = typeof args["url"] === "string" ? args["url"] : "";
+      const normalized = normalizeBrowserUrl(raw);
+      if (!normalized.ok) {
+        return { error: normalized.error };
       }
       try {
-        return snapshotToJson(await deps.controller.open(url));
+        return snapshotToJson(await deps.controller.open(normalized.url));
       } catch (cause) {
         return errorResult(cause);
       }
