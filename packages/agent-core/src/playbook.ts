@@ -333,15 +333,33 @@ function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-function scoreStrategy(strategy: PlaybookStrategy, query: ReadonlySet<string>, cosine?: number): number {
-  const relevance = query.size === 0
+/**
+ * MemRL (arXiv:2601.03192): λ=0.5 is the paper's empirical optimum for the
+ * value-aware composite score combining z-normalised relevance and utility.
+ */
+const MEMRL_VALUE_WEIGHT = 0.5;
+
+function relevanceScore(strategy: PlaybookStrategy, query: ReadonlySet<string>, cosine?: number): number {
+  const lexical = query.size === 0
     ? 0
     : rankOverlap(query, rankTokens(strategy.text)) + 2 * (strategy.tag ? rankOverlap(query, rankTokens(strategy.tag)) : 0);
   const semantic = typeof cosine === "number" && Number.isFinite(cosine) ? EMBED_RANK_WEIGHT * cosine : 0;
-  // Use evidence-damped reward when tallies exist (Memp, arXiv 2508.06433),
-  // falls back to legacy clampReward for entries without tallies.
-  return relevance + semantic + REWARD_RANK_WEIGHT * effectiveStrategyReward(strategy)
-    - (strategy.origin === "reflected" ? REFLECTED_RANK_PENALTY : 0);
+  return lexical + semantic;
+}
+
+/** z-score normalise an array; σ=0 contributes 0 for all entries (composite degrades to the other component). */
+function zScoreNorm(values: readonly number[]): number[] {
+  const n = values.length;
+  if (n === 0) {
+    return [];
+  }
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+  const sigma = Math.sqrt(variance);
+  if (sigma === 0) {
+    return values.map(() => 0);
+  }
+  return values.map((v) => (v - mean) / sigma);
 }
 
 function byScoreDescThenIndexAsc(
@@ -358,36 +376,90 @@ function finiteOr(value: number | undefined, fallback: number): number {
 function rankEligible(
   strategies: readonly PlaybookStrategy[],
   options: RankPlaybookOptions | undefined,
-  scoreOf: (strategy: PlaybookStrategy) => number
+  relevanceOf: (strategy: PlaybookStrategy) => number,
+  utilityOf: (strategy: PlaybookStrategy) => number
 ): readonly PlaybookStrategy[] {
   const topK = Math.max(1, Math.trunc(finiteOr(options?.topK, DEFAULT_RANK_TOPK)));
   const minScore = finiteOr(options?.minScore, 0);
-  // Learned avoidance: a strategy corrected into the floor is never injected,
-  // even when the bank is at/below topK (where ranking returns everything).
-  // Probation: an unattended idle-distilled strategy is recorded + visible but
-  // never injected until a real signal graduates it (self-confirmation guard).
+  // Learned avoidance and probation exclusion run before ranking.
   const eligible = strategies.filter(isInjectableStrategy);
   // Input is oldest→newest insertion order, so `index` doubles as a recency
   // proxy (higher = more recent) for the floor below.
-  const scored = eligible.map((strategy, index) => ({ index, score: scoreOf(strategy), strategy }));
+  const withRel = eligible.map((strategy, index) => ({
+    index,
+    relevance: relevanceOf(strategy),
+    strategy
+  }));
 
   if (eligible.length <= topK) {
+    // Small-bank path: inject all, ordered by composite (relevance + reward − penalty).
+    const scored = withRel.map((e) => ({
+      ...e,
+      score: e.relevance + REWARD_RANK_WEIGHT * utilityOf(e.strategy)
+        - (e.strategy.origin === "reflected" ? REFLECTED_RANK_PENALTY : 0)
+    }));
     return [...scored].sort(byScoreDescThenIndexAsc).map((s) => s.strategy);
   }
 
-  const selected = scored.filter((s) => s.score > minScore).sort(byScoreDescThenIndexAsc).slice(0, topK);
+  // MemRL two-phase value-aware retrieval (arXiv:2601.03192):
+  // Phase A — relevance gates eligibility. Reward can never lift an off-topic strategy in.
+  const k1 = 2 * topK;
+  const candidates = withRel
+    .filter((e) => e.relevance > minScore)
+    .sort((a, b) => b.relevance - a.relevance || a.index - b.index)
+    .slice(0, k1);
+
+  if (candidates.length === 0) {
+    // Recency floor: non-empty bank must never inject zero strategies.
+    const recentFirst = withRel.slice().sort((a, b) => b.index - a.index);
+    const floor: typeof withRel = [];
+    for (const candidate of recentFirst) {
+      if (floor.length >= topK) {
+        break;
+      }
+      floor.push(candidate);
+    }
+    const scored = floor.map((e) => ({
+      ...e,
+      score: e.relevance + REWARD_RANK_WEIGHT * utilityOf(e.strategy)
+        - (e.strategy.origin === "reflected" ? REFLECTED_RANK_PENALTY : 0)
+    }));
+    return [...scored].sort(byScoreDescThenIndexAsc).map((s) => s.strategy);
+  }
+
+  // Phase B — within the candidate pool, z-score normalise relevance and utility,
+  // then pick top-K by composite. λ=0.5 per MEMRL_VALUE_WEIGHT.
+  const relValues = candidates.map((e) => e.relevance);
+  const utilValues = candidates.map((e) => utilityOf(e.strategy));
+  const relNorm = zScoreNorm(relValues);
+  const utilNorm = zScoreNorm(utilValues);
+
+  const phaseB = candidates.map((e, i) => ({
+    ...e,
+    score: MEMRL_VALUE_WEIGHT * (relNorm[i] ?? 0) + MEMRL_VALUE_WEIGHT * (utilNorm[i] ?? 0)
+      - (e.strategy.origin === "reflected" ? REFLECTED_RANK_PENALTY : 0)
+  }));
+
+  const selected = phaseB.sort(byScoreDescThenIndexAsc).slice(0, topK);
+
   if (selected.length < topK) {
-    // Recency floor: a non-empty bank must never inject zero strategies, so
-    // top up with the most-recent strategies that didn't clear minScore.
+    // Recency floor: top up with most-recent strategies not already selected.
     const chosen = new Set(selected.map((s) => s.index));
-    const recentFirst = scored.filter((s) => !chosen.has(s.index)).sort((a, b) => b.index - a.index);
+    const recentFirst = withRel
+      .filter((e) => !chosen.has(e.index))
+      .sort((a, b) => b.index - a.index);
     for (const candidate of recentFirst) {
       if (selected.length >= topK) {
         break;
       }
-      selected.push(candidate);
+      selected.push({
+        ...candidate,
+        score: candidate.relevance + REWARD_RANK_WEIGHT * utilityOf(candidate.strategy)
+          - (candidate.strategy.origin === "reflected" ? REFLECTED_RANK_PENALTY : 0)
+      });
     }
   }
+
   return [...selected].sort(byScoreDescThenIndexAsc).map((s) => s.strategy);
 }
 
@@ -397,7 +469,7 @@ export function rankPlaybookStrategies(
   options?: RankPlaybookOptions
 ): readonly PlaybookStrategy[] {
   const query = rankTokens(queryText);
-  return rankEligible(strategies, options, (s) => scoreStrategy(s, query));
+  return rankEligible(strategies, options, (s) => relevanceScore(s, query), effectiveStrategyReward);
 }
 
 /**
@@ -437,7 +509,7 @@ export async function rankPlaybookStrategiesByRelevance(
       }
     }
   }
-  return rankEligible(strategies, options, (s) => scoreStrategy(s, query, cosineByText.get(s.text)));
+  return rankEligible(strategies, options, (s) => relevanceScore(s, query, cosineByText.get(s.text)), effectiveStrategyReward);
 }
 
 function latestUserText(messages: readonly { readonly role: string; readonly content: string }[]): string {

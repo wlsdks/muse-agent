@@ -513,6 +513,23 @@ excluded when scoring).
   chat-path resolution (needs chat's wrong-value check as the success signal — chat has no grounded label);
   BKT+Forget P(F)>0 mastery decay for long-idle topics (pairs with fire 30's fade); surface the stored
   `hint` in the recap nudge line. (fire 32 remainder, arXiv:2105.00385)
+- ✓→Done **MemRL two-phase value-aware playbook retrieval** — `scoreStrategy` blended RAW unbounded
+  token-overlap relevance with a bounded ±2.5 reward, so fire-27's Memp tallies vanished on verbose
+  queries and leaked past relevance on sparse ones (arXiv:2601.03192 MemRL, Zhang et al. 2026). [DONE
+  2026-06-13, cognition loop fire 33: two-phase `rankEligible` — Phase A relevance gates eligibility
+  (relevanceOnly>minScore, k1=2·topK), Phase B z-score-normalized `0.5·rel̂+0.5·Q̂−reflected` re-ranks
+  among candidates so utility can never lift an off-topic strategy into the prompt. scoreStrategy removed;
+  both lexical + embed rankers rewired. Judge PASS via real revert: raw blend fails the verbose-include,
+  sparse-exclude, and applyPlaybook-render tests. Selection-only, floor untouched.]
+- ◦ **Playbook recency-floor score-scale mix** — recency-floor top-ups (below-minScore banks) carry
+  raw-composite scores into the final sort alongside Phase-B z-scores, so a top-up can render ABOVE a
+  higher-value Phase-B pick in the [Learned Strategies] block ORDER (membership is correct; ordering only).
+  Normalize top-ups onto the composite scale or append them after Phase-B picks. (judge-flagged fire 33)
+- ◦ **MemRL remainder** — (a) Q-update EMA `Q ← Q + α(r−Q)` as an alternative to net tallies in
+  adjustPlaybookReward; (b) close the bandit loop with automatic per-turn reinforcement from turn outcome
+  (today reward writes are manual CLI + correction-decay only — the real cold-start fix); (c) λ sensitivity
+  A/B (eval:playbook-rank) before tuning off the paper's 0.5; (d) tuned δ for the cosine channel.
+  (fire 33 remainder, arXiv:2601.03192)
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
   each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
 - (queued behind fuel/prereqs: sleep-time compute · Mem0 UPDATE op · AWM workflow mining ·

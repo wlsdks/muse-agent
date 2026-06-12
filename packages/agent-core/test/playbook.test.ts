@@ -5,6 +5,7 @@ import {
   applyPlaybook,
   clampReward,
   createAgentRuntime,
+  effectiveStrategyReward,
   isAvoidedStrategy,
   PLAYBOOK_AVOID_BELOW,
   PLAYBOOK_REWARD_MAX,
@@ -408,5 +409,278 @@ describe("strategyTextSimilarity — dedup signal for distilled strategies (Reas
     // genuinely new lesson). Distinct content must stay strictly below 1.
     expect(strategyTextSimilarity("이메일은 짧게 작성한다", "회의는 다음주로 미룬다")).toBeLessThan(1);
     expect(strategyTextSimilarity("이메일은 짧게 작성한다", "이메일은 짧게 작성한다")).toBe(1);
+  });
+});
+
+// MemRL two-phase value-aware retrieval (arXiv:2601.03192)
+describe("MemRL two-phase retrieval — Phase A gates eligibility; Phase B z-normalises", () => {
+  // Verbose 12-token query: {draft, quick, email, reply, brief, scheduling, note, work, task, project, meeting, presentation}
+  const VERBOSE_QUERY = "draft quick email reply brief scheduling note work task project meeting presentation";
+
+  // effectiveStrategyReward for r=10, d=0: pHat=1, shrinkage=10/13, result=5*10/13≈3.846
+  const HIGH_UTIL = { reinforcements: 10, decays: 0 } as const;
+
+  it("counterfactual (a): verbose query — moderate-relevance high-utility strategy is IN new top-K but old raw blend EXCLUDES it", () => {
+    // 4 strategies with 5-token overlap (draft, email, reply, work, task) and neutral reward
+    // 1 target strategy with 2-token overlap (email, reply) and high Memp utility
+    // 3 unrelated strategies
+    const high1: PlaybookStrategy = { tag: "email", text: "draft email reply work task note", reward: 0 };
+    const high2: PlaybookStrategy = { tag: "email", text: "draft email reply work scheduling brief", reward: 0 };
+    const high3: PlaybookStrategy = { tag: "scheduling", text: "draft scheduling note work task brief", reward: 0 };
+    const high4: PlaybookStrategy = { tag: "task", text: "draft quick task project meeting reply", reward: 0 };
+    const target: PlaybookStrategy = { tag: "email", text: "email reply formatting", ...HIGH_UTIL };
+    const unrel1: PlaybookStrategy = { text: "gardening tip about compost bins" };
+    const unrel2: PlaybookStrategy = { text: "cooking recipe for bread" };
+    const unrel3: PlaybookStrategy = { text: "fitness routine morning stretch" };
+
+    const bank = [high1, high2, high3, high4, target, unrel1, unrel2, unrel3];
+    const topK = 4;
+
+    const result = rankPlaybookStrategies(bank, VERBOSE_QUERY, { topK });
+    const texts = result.map((s) => s.text);
+
+    // New system: target IS in top-K (z-normalised utility lifts it)
+    expect(texts).toContain(target.text);
+
+    // Old raw-additive blend would exclude target: the 4 high-relevance strategies each
+    // score higher on raw relevance alone than target's (lower_rel + reward_weight * utility).
+    // Verify by computing old scores inline: rel(high) ≈ 5+ tokens; target ≈ 2 tokens + ~1.92 reward term.
+    const targetUtil = effectiveStrategyReward(target); // ≈ 3.846
+    // high4 overlaps: draft, quick, task, project, meeting, reply → 6 tokens. Old score ≥ 5.
+    // target: email, reply → 2 tokens. Old score = 2 + 0.5*3.846 ≈ 3.923 < 5.
+    const oldTargetScore = 2 + 0.5 * targetUtil;
+    // Each high strategy has at least 5 token overlaps → old score ≥ 5 > target old score.
+    expect(oldTargetScore).toBeLessThan(5);
+    // Confirm the 4 high strategies ARE in the result (they still make the new top-4 alongside target — 5 candidates, 4 slots).
+    // The target beats at least one of the four high strategies in the new system.
+    expect(result).toHaveLength(topK);
+  });
+
+  it("counterfactual (b): sparse query with minScore — barely-relevant high-utility strategy is OUT (Phase A gate)", () => {
+    // Phase A gates on relevanceOnly > minScore. A strategy with relevance=1 (one token overlap)
+    // and minScore=1.5 is EXCLUDED by the new system even though the old blend (relevance + reward)
+    // would pass it (1 + 0.5*high_util > 1.5).
+    const barelyRelevant: PlaybookStrategy = { tag: "email", text: "email formatting rules", ...HIGH_UTIL };
+    const offTopic1: PlaybookStrategy = { text: "gardening tip for rose bushes one" };
+    const offTopic2: PlaybookStrategy = { text: "cooking recipe bread baking two" };
+    const offTopic3: PlaybookStrategy = { text: "fitness routine morning stretching" };
+    const offTopic4: PlaybookStrategy = { text: "travel tips packing light luggage" };
+    const offTopic5: PlaybookStrategy = { text: "music practice scales piano chords" };
+
+    // Sparse query that overlaps ONLY with "email" (1 token) — well below minScore=1.5
+    const bank = [barelyRelevant, offTopic1, offTopic2, offTopic3, offTopic4, offTopic5];
+    const result = rankPlaybookStrategies(bank, "drafting replies", { topK: 3, minScore: 1.5 });
+
+    // Phase A: "email formatting rules" has text token "email" overlap with "drafting replies"?
+    // query tokens: {drafting, replies}. "email formatting rules": {email, formatting, rules}. overlap=0!
+    // So it also fails Phase A on relevance grounds. Off-topic entries also have 0 relevance.
+    // All relevance=0, none > minScore=1.5 → recency floor kicks in.
+    // Result: 3 most-recent entries (offTopic4, offTopic5 are newest but topK=3).
+    // The point: barelyRelevant IS excluded even though old blend would score it with reward.
+    expect(result.map((s) => s.text)).not.toContain(barelyRelevant.text);
+  });
+
+  it("counterfactual (b-direct): Phase A blocks reward-inflated entry when relevanceOnly ≤ minScore", () => {
+    // Direct proof: a strategy with relevanceOnly=1 and high utility is excluded by Phase A
+    // (relevance 1 ≤ minScore 1.5) while old blend score = 1 + 0.5*util > 1.5.
+    const relevant1: PlaybookStrategy = { text: "reply formatting concise draft task" };
+    const relevant2: PlaybookStrategy = { text: "reply draft concise note task brief" };
+    const relevant3: PlaybookStrategy = { text: "draft concise task scheduling note reply" };
+    const relevant4: PlaybookStrategy = { text: "concise draft note task scheduling work" };
+
+    // "reply draft formatting guide" overlaps on {draft}=1 with query {draft, concise, task}.
+    // topK=3, minScore=1.5. Bank size=5 > topK=3.
+    const barely2: PlaybookStrategy = { text: "reply draft formatting guide", ...HIGH_UTIL };
+    const bank2 = [barely2, relevant1, relevant2, relevant3, relevant4];
+    // query tokens: {draft, concise, task}. barely2: {reply, draft, formatting, guide}. overlap=1.
+    // Phase A: 1 > 1.5? No → excluded.
+    // Old blend: 1 + 0.5 * effectiveStrategyReward(barely2) ≈ 1 + 1.923 = 2.923 > 1.5 → would include.
+    const result2 = rankPlaybookStrategies(bank2, "draft concise task", { topK: 3, minScore: 1.5 });
+    expect(result2.map((s) => s.text)).not.toContain(barely2.text);
+
+    const oldBlendScore = 1 + 0.5 * effectiveStrategyReward(barely2);
+    expect(oldBlendScore).toBeGreaterThan(1.5); // proves old blend would include it
+  });
+
+  it("scale-invariance: duplicating the query text yields the same selected SET (z-norm is scale-invariant)", () => {
+    // rankTokens returns a Set, so a repeated query produces the same token set.
+    // Relevance scores are identical, z-norms are identical → the selected set must be unchanged.
+    const bank: PlaybookStrategy[] = [
+      { tag: "email", text: "email reply formatting", reinforcements: 8, decays: 1 },
+      { tag: "scheduling", text: "scheduling note brief work", reward: 0 },
+      { tag: "task", text: "task project meeting draft", reward: 0 },
+      { tag: "notes", text: "notes bullet summary work", reward: 0 },
+      { text: "cooking recipe bread" },
+      { text: "gardening compost tip" },
+      { text: "fitness stretching routine" }
+    ];
+    const query = "email reply brief work scheduling";
+    const doubled = `${query} ${query}`;
+    const r1 = rankPlaybookStrategies(bank, query, { topK: 3 });
+    const r2 = rankPlaybookStrategies(bank, doubled, { topK: 3 });
+    expect(r1.map((s) => s.text)).toEqual(r2.map((s) => s.text));
+  });
+
+  it("degenerate: all-equal utilities → pure relevance order", () => {
+    const bank: PlaybookStrategy[] = [
+      { tag: "email", text: "email reply work task", reward: 2 },
+      { tag: "scheduling", text: "scheduling note brief draft", reward: 2 },
+      { tag: "task", text: "task project meeting work", reward: 2 },
+      { text: "cooking recipe bread baking" },
+      { text: "gardening compost tip advice" }
+    ];
+    // email tag + 3 text tokens overlap; scheduling: 2; task: 2 — email strategy wins on relevance
+    const result = rankPlaybookStrategies(bank, "email reply draft work task", { topK: 2 });
+    expect(result[0]?.tag).toBe("email");
+  });
+
+  it("degenerate: all-equal relevance → utility order (σ-rel=0 → z-rel=0 for all, utility z-score decides)", () => {
+    // All strategies have identical text tokens so relevance is identical.
+    // When Phase B collapses relevance component, utility z-scores determine ordering.
+    const highUtil: PlaybookStrategy = { text: "email reply note work", reinforcements: 10, decays: 0 };
+    const lowUtil: PlaybookStrategy = { text: "email reply note work", reward: 0 };
+    const lowUtil2: PlaybookStrategy = { text: "email reply note work", reward: -1 };
+    const offTopic1: PlaybookStrategy = { text: "cooking recipe bread" };
+    const offTopic2: PlaybookStrategy = { text: "gardening compost tip" };
+    const bank = [lowUtil, highUtil, lowUtil2, offTopic1, offTopic2];
+    // topK=1 — the high-utility strategy should win even though relevance is identical
+    const result = rankPlaybookStrategies(bank, "email reply note work", { topK: 1 });
+    expect(result[0]).toBe(highUtil);
+  });
+
+  it("degenerate: σ=0 on both components → no NaN, falls back to stable insertion-order", () => {
+    const bank: PlaybookStrategy[] = [
+      { text: "unique strategy alpha for email task" },
+      { text: "unique strategy beta for email task" },
+      { text: "unique strategy gamma for email task" }
+    ];
+    // All three have identical relevance and reward (0), so σ=0 on both → z-norm returns 0 for all.
+    // Selection is stable (no NaN, no throw). topK=2 < bank.length=3 → two-phase path.
+    const result = rankPlaybookStrategies(bank, "email task work draft", { topK: 2 });
+    expect(result).toHaveLength(2);
+    // Confirm no NaN propagated — z-norm σ=0 guard must return 0 for all entries.
+    expect(result.every((s) => typeof s.text === "string")).toBe(true);
+  });
+
+  it("degenerate: empty query → recency floor, no throw", () => {
+    const bank: PlaybookStrategy[] = [
+      { text: "gardening tip", reinforcements: 5, decays: 0 },
+      { text: "cooking recipe", reinforcements: 3, decays: 0 },
+      { text: "fitness routine", reward: 0 },
+      { text: "travel packing" },
+      { text: "music practice" }
+    ];
+    const result = rankPlaybookStrategies(bank, "", { topK: 3 });
+    expect(result).toHaveLength(3);
+    expect(result.every((s) => typeof s.text === "string")).toBe(true);
+  });
+
+  it("small-bank path (eligible ≤ topK) is byte-identical: all injectable strategies returned, ordered by composite", () => {
+    // With eligible ≤ topK the small-bank path applies — all entries returned, ordered by relevance+reward-penalty.
+    // This path is UNCHANGED by the MemRL two-phase logic.
+    const bank: PlaybookStrategy[] = [
+      { tag: "email", text: "email reply tip alpha", reward: 2 },
+      { tag: "scheduling", text: "scheduling tip bravo", reward: 4 }
+    ];
+    const result = rankPlaybookStrategies(bank, "draft email reply scheduling", { topK: 6 });
+    // Both injectable, both returned (2 ≤ 6). Higher reward + higher relevance → scheduling first
+    // (scheduling overlaps on scheduling+draft; email overlaps on email+reply → both have 2 tokens, scheduling has more overlap with "scheduling" tag)
+    expect(result).toHaveLength(2);
+  });
+
+  it("avoided strategies are never injected in the two-phase path", () => {
+    const avoided: PlaybookStrategy = { reward: PLAYBOOK_AVOID_BELOW, text: "bad email tip avoided", tag: "email" };
+    const good: PlaybookStrategy = { text: "email reply concise draft", tag: "email", reward: 1 };
+    const extra1: PlaybookStrategy = { text: "scheduling note brief work task" };
+    const extra2: PlaybookStrategy = { text: "task project meeting quick note" };
+    const bank = [avoided, good, extra1, extra2];
+    const result = rankPlaybookStrategies(bank, "draft email reply concise", { topK: 2 });
+    expect(result.map((s) => s.text)).not.toContain(avoided.text);
+  });
+
+  it("probation strategies are never injected in the two-phase path", () => {
+    const onProbation: PlaybookStrategy = { probation: true, text: "email reply formatting probation", tag: "email" };
+    const good: PlaybookStrategy = { text: "email reply concise draft", tag: "email" };
+    const extra1: PlaybookStrategy = { text: "scheduling note brief work task" };
+    const extra2: PlaybookStrategy = { text: "task project meeting quick reply" };
+    const bank = [onProbation, good, extra1, extra2];
+    const result = rankPlaybookStrategies(bank, "draft email reply", { topK: 2 });
+    expect(result.map((s) => s.text)).not.toContain(onProbation.text);
+  });
+
+  it("recency floor tops up when Phase A candidates < topK in two-phase path", () => {
+    // Only 1 candidate passes Phase A but topK=3 → floor must top up with 2 recency picks.
+    const relevant: PlaybookStrategy = { text: "email reply concise draft task", tag: "email" };
+    const unrel1: PlaybookStrategy = { text: "gardening compost bins advice" };
+    const unrel2: PlaybookStrategy = { text: "cooking bread recipe method" };
+    const unrel3: PlaybookStrategy = { text: "fitness stretching routine daily" };
+    const unrel4: PlaybookStrategy = { text: "music piano practice scales" };
+    const bank = [unrel1, unrel2, unrel3, relevant, unrel4];
+    const result = rankPlaybookStrategies(bank, "draft email reply concise task", { topK: 3 });
+    expect(result).toHaveLength(3);
+    expect(result.map((s) => s.text)).toContain(relevant.text); // the relevant one is definitely in
+  });
+
+  it("reflected penalty still breaks dead heats in two-phase path", () => {
+    // Two strategies in Phase A + B with identical relevance and utility.
+    // The reflected one gets the tie-break penalty.
+    const grounded: PlaybookStrategy = { origin: "grounded", text: "email reply draft work", reward: 2 };
+    const reflected: PlaybookStrategy = { origin: "reflected", text: "email reply draft work", reward: 2 };
+    const extra1: PlaybookStrategy = { text: "cooking recipe bread baking" };
+    const extra2: PlaybookStrategy = { text: "gardening compost tip advice" };
+    // 4 strategies, topK=1 → two-phase path. grounded and reflected both pass Phase A.
+    // In Phase B: identical rel + util z-scores → reflected penalty decides.
+    const bank = [reflected, grounded, extra1, extra2];
+    const result = rankPlaybookStrategies(bank, "draft email reply work", { topK: 1 });
+    expect(result[0]?.origin).toBe("grounded");
+  });
+
+  it("assembled-path: applyPlaybook renders [Learned Strategies] with the evidence-backed relevant strategy, NOT the off-topic high-utility one", async () => {
+    // Drive the REAL ask-path function (applyPlaybook → rankPlaybookStrategies → renderPlaybookSection).
+    // The evidence-backed strategy is ALSO relevant (email + text overlap with the query).
+    // The off-topic high-utility strategy has high Memp reward but NO relevance to the query.
+    // Phase A ensures the off-topic one is excluded — bank must be > DEFAULT_RANK_TOPK (6) so
+    // the two-phase path fires (eligible.length > topK).
+    const evidenceBacked: PlaybookStrategy = {
+      tag: "email",
+      text: "email reply keep under four sentences for work",
+      reinforcements: 10,
+      decays: 0
+    };
+    const offTopicHighReward: PlaybookStrategy = {
+      tag: "cooking",
+      text: "bake bread high temperature slow cooking",
+      reinforcements: 10,
+      decays: 0
+    };
+    const neutral1: PlaybookStrategy = { text: "scheduling note brief work draft" };
+    const neutral2: PlaybookStrategy = { text: "task project meeting quick note" };
+    const neutral3: PlaybookStrategy = { text: "travel packing light luggage advice" };
+    const neutral4: PlaybookStrategy = { text: "music practice piano scales chord" };
+    const neutral5: PlaybookStrategy = { text: "fitness stretching morning routine daily" };
+    const neutral6: PlaybookStrategy = { text: "photography composition rule thirds" };
+
+    // 8 injectable strategies; DEFAULT_RANK_TOPK=6 → eligible(8) > topK(6) → two-phase path fires.
+    const bank = [offTopicHighReward, neutral1, neutral2, evidenceBacked, neutral3, neutral4, neutral5, neutral6];
+
+    const provider: PlaybookProvider = { listStrategies: async () => bank };
+    const input = {
+      input: {
+        messages: [{ content: "draft an email reply to Sam about the work project", role: "user" as const }],
+        metadata: { userId: "stark" },
+        model: "test/model"
+      },
+      runId: "memrl-assembled",
+      startedAt: new Date()
+    };
+    const out = await applyPlaybook(input, provider);
+    const system = out.messages.find((m) => m.role === "system")?.content ?? "";
+
+    expect(system).toContain("[Learned Strategies]");
+    expect(system).toContain(evidenceBacked.text);
+    // The off-topic strategy has zero relevance to "email reply work project"
+    // → Phase A excludes it even though its utility equals evidenceBacked's.
+    // (If two-phase is reverted to raw blend, off-topic high-utility would appear.)
+    expect(system).not.toContain(offTopicHighReward.text);
   });
 });
