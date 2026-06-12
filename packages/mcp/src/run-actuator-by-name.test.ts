@@ -25,11 +25,13 @@ function logFile(): string {
 const approveEmail = () => ({ approved: true });
 const approveWeb = () => ({ approved: true });
 const denyWeb = () => ({ approved: false, reason: "declined" });
+const publicLookup = async () => [{ address: "93.184.216.34", family: 4 }];
 
 function deps(overrides: Partial<RunActuatorByNameDeps> & { fetchImpl: typeof fetch }): RunActuatorByNameDeps {
   return {
     actionLogFile: logFile(),
     emailApprovalGate: approveEmail,
+    lookup: publicLookup,
     userId: "stark",
     webApprovalGate: approveWeb,
     ...overrides

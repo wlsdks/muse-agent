@@ -13,7 +13,7 @@ import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { performWebActionWithApproval, type WebActionApprovalGate } from "./web-action.js";
-import { assertPublicHttpUrl, assertPublicHttpUrlSync, type HostLookup } from "./web-url-guard.js";
+import { assertPublicHttpUrl, type HostLookup } from "./web-url-guard.js";
 
 export interface WebActionToolDeps {
   readonly fetchImpl: typeof fetch;
@@ -60,9 +60,7 @@ export function createWebActionTool(deps: WebActionToolDeps): MuseTool {
       // must never reach a loopback/private/link-local host (cloud metadata,
       // intranet admin) or a non-http(s) scheme. muse.web.read already vets this;
       // web_action is the higher-risk tool and must not be the unguarded path.
-      // Literal-IP/protocol/blocked-host always (sync); the DNS-rebinding layer
-      // runs when a resolver is wired (deps.lookup).
-      const vetted = deps.lookup ? await assertPublicHttpUrl(url, { lookup: deps.lookup }) : assertPublicHttpUrlSync(url);
+      const vetted = await assertPublicHttpUrl(url, deps.lookup ? { lookup: deps.lookup } : {});
       if (!vetted.ok) {
         return { detail: vetted.error, performed: false, reason: "unsafe-url" };
       }

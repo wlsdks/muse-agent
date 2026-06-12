@@ -81,4 +81,26 @@ describe("groundToolArguments — drop a fabricated free-text arg the utterance 
     groundToolArguments(input, ["location"], "회의");
     expect(input).toEqual({ location: "강남역", title: "회의" });
   });
+
+  it("drops a fabricated followup-cancel reason the user never stated", () => {
+    // The 8B fabricates a reason like "user changed plans" when the user
+    // merely said "cancel that followup". The reason must be dropped.
+    const out = groundToolArguments(
+      { id: "fu_123", reason: "user changed plans" },
+      ["reason"],
+      "cancel that followup"
+    );
+    expect(out.args).toEqual({ id: "fu_123" });
+    expect(out.dropped).toEqual(["reason"]);
+  });
+
+  it("keeps a followup-cancel reason the user explicitly stated", () => {
+    const out = groundToolArguments(
+      { id: "fu_123", reason: "rescheduled" },
+      ["reason"],
+      "cancel the followup — rescheduled"
+    );
+    expect(out.args).toEqual({ id: "fu_123", reason: "rescheduled" });
+    expect(out.dropped).toEqual([]);
+  });
 });

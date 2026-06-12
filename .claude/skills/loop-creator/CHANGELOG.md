@@ -9,6 +9,13 @@
 
 ---
 
+## 1.9.0 — 2026-06-12
+**이해 체크포인트를 "막는 STOP" → "비동기 non-blocking 알림"으로**(진안 지적 — 재검토 결과 내
+설계가 연구보다 과하게 보수적이었음). 블로그/실천가(Cherny: 무한 자율+PR 비동기 머지)는 검토를
+*루프 halt*가 아니라 *비동기 리뷰 표면*으로 처리. 이제 루프는 **절대 안 멈춤**: digest는 아무때나
+읽는 비동기 로그, N fire마다 막지 않고 PushNotification 알림만 + 계속 진행. comprehension debt는
+읽기 쉬운 digest로 처리하지 루프 정지로 처리하지 않음. (§3-2.)
+
 ## 1.8.1 — 2026-06-12
 신호 scout 하드닝(loop fire 6): 빈-답(non-answer) ungrounded를 실패로 안 셈 — scout의 첫 실
 발견이 dev 테스트 노이즈(빈 답)였음. `isFailureEvent`가 success===false는 먼저 카운트하고

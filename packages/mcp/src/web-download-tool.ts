@@ -16,7 +16,7 @@ import { basename, join, resolve as pathResolve } from "node:path";
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import { assertPublicHttpUrl, assertPublicHttpUrlSync, type HostLookup } from "./web-url-guard.js";
+import { assertPublicHttpUrl, type HostLookup } from "./web-url-guard.js";
 
 export interface WebDownloadToolDeps {
   readonly fetchImpl: typeof fetch;
@@ -77,7 +77,7 @@ export function createWebDownloadTool(deps: WebDownloadToolDeps): MuseTool {
       if (url.length === 0) {
         return { reason: "web_download requires a 'url'", saved: false };
       }
-      const vetted = deps.lookup ? await assertPublicHttpUrl(url, { lookup: deps.lookup }) : assertPublicHttpUrlSync(url);
+      const vetted = await assertPublicHttpUrl(url, deps.lookup ? { lookup: deps.lookup } : {});
       if (!vetted.ok) {
         return { reason: vetted.error, saved: false };
       }
@@ -86,6 +86,13 @@ export function createWebDownloadTool(deps: WebDownloadToolDeps): MuseTool {
         const response = await deps.fetchImpl(vetted.url.href, { redirect: "follow" });
         if (!response.ok) {
           return { reason: `download failed: HTTP ${response.status.toString()}`, saved: false };
+        }
+        // A redirect chain can land on a private host the first guard never saw.
+        if (response.url && response.url !== vetted.url.href) {
+          const finalGuard = await assertPublicHttpUrl(response.url, deps.lookup ? { lookup: deps.lookup } : {});
+          if (!finalGuard.ok) {
+            return { reason: `redirected to a blocked host: ${finalGuard.error}`, saved: false };
+          }
         }
         const buf = Buffer.from(await response.arrayBuffer());
         if (buf.byteLength > maxBytes) {

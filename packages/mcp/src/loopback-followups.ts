@@ -52,7 +52,9 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           "List followups the agent has promised. `status` filter: 'scheduled' (default), 'fired', 'cancelled', or 'all'. " +
           "Sorted by scheduledFor ascending up to `" + maxListEntries.toString() + "` entries. " +
           "Use 'scheduled' to see what's still pending; 'all' to look back at history when the user says " +
-          "'did you follow up on that?'.",
+          "'did you follow up on that?'. " +
+          "Use when the user asks to SEE the agent's own pending follow-up commitments ('what are you supposed to check back on?', '팔로업 목록 보여줘'). " +
+          "NOT when the user wants their personal to-do list (use muse.tasks.list) or their reminders/alerts (use muse.reminders.list) — a followup is a thread the agent auto-captured; a task and a reminder are things the USER explicitly added.",
         execute: async (args): Promise<JsonObject> => {
           const status = readFollowupStatusFilter(readString(args, "status"));
           const all = await readFollowups(file);
@@ -81,7 +83,9 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
         description:
           "Cancel a scheduled followup. Only works on entries with status='scheduled' — already-fired or " +
           "already-cancelled entries return an error rather than silently no-op. `reason` is recorded on " +
-          "the entry (default 'agent-cancelled'). Use this when the user revokes a prior commitment.",
+          "the entry (default 'agent-cancelled'). " +
+          "Use when the user wants to DROP one of the agent's auto-captured follow-up commitments ('cancel that check-in you promised', '팔로업 취소해줘'). " +
+          "NOT when the user wants to delete a task they added themselves (use muse.tasks.delete) or clear a timed reminder (use muse.reminders.clear) — followups are agent-originated threads, not user-entered items.",
         execute: async (args): Promise<JsonObject> => {
           const id = readString(args, "id");
           if (!id) {
@@ -115,6 +119,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           required: ["id"],
           type: "object"
         },
+        groundedArgs: ["reason"],
         domain: "tasks",
         name: "cancel",
         risk: "write"
@@ -124,7 +129,9 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           "Push a scheduled followup's `scheduledFor` to a new time. `scheduledFor` accepts the same " +
           "grammar as `muse.reminders.snooze` — either ISO-8601 or relative ('in 2 hours', 'tomorrow at 9am', " +
           "'2시간 뒤'). Lifecycle-guarded: only scheduled entries can be snoozed; resurrecting fired or " +
-          "cancelled entries would be a surprise.",
+          "cancelled entries would be a surprise. " +
+          "Use when the user wants to DELAY one of the agent's follow-up commitments to a later time ('push that follow-up to tomorrow', '팔로업 내일로 미뤄줘'). " +
+          "NOT when the user wants to snooze a reminder they set themselves (use muse.reminders.snooze) or reschedule a task (use muse.tasks.update) — this only moves agent-captured followups.",
         execute: async (args): Promise<JsonObject> => {
           const id = readString(args, "id");
           if (!id) {

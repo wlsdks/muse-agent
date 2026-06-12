@@ -18,6 +18,7 @@ import type { EmailApprovalGate } from "./email-send.js";
 import { createHomeActionTool } from "./smart-home-tool.js";
 import { createWebActionTool } from "./web-action-tool.js";
 import type { WebActionApprovalGate } from "./web-action.js";
+import type { HostLookup } from "./web-url-guard.js";
 
 export interface RunActuatorByNameDeps {
   readonly actionLogFile: string;
@@ -29,6 +30,8 @@ export interface RunActuatorByNameDeps {
   readonly gmailToken?: string;
   readonly homeAssistantBaseUrl?: string;
   readonly homeAssistantToken?: string;
+  /** DNS resolver for SSRF guard on web_action; defaults to the system lookup (tests inject a fake). */
+  readonly lookup?: HostLookup;
 }
 
 export type RunActuatorResult =
@@ -68,7 +71,8 @@ export async function runActuatorByName(
       actionLogFile: deps.actionLogFile,
       approvalGate: deps.webApprovalGate,
       fetchImpl,
-      userId: deps.userId
+      userId: deps.userId,
+      ...(deps.lookup !== undefined ? { lookup: deps.lookup } : {})
     }).execute(args, ctx)) as Record<string, unknown>;
     return result["performed"] === true ? { ran: true } : classifyFailure(result);
   }

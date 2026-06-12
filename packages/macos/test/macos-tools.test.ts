@@ -240,6 +240,122 @@ describe("mac_app_read — Tier 0 read", () => {
     expect(bin).toContain("df");
     expect(shellArgs).toEqual(["-h", "/"]);
   });
+
+  it("reads reminders via osascript and parses title + optional dueDate", async () => {
+    let script = "";
+    const runner: MacOsascriptRunner = async (s) => {
+      script = s;
+      return ok("Buy milk\t\nCall dentist\tThursday, June 13, 2026 at 9:00:00 AM\nReview PR\t\n");
+    };
+    const tool = createMacAppReadTool({ runner });
+    const out = await tool.execute({ app: "reminders" }, ctx);
+    expect(out).toEqual({
+      app: "reminders",
+      count: 3,
+      items: [
+        { title: "Buy milk" },
+        { dueDate: "Thursday, June 13, 2026 at 9:00:00 AM", title: "Call dentist" },
+        { title: "Review PR" }
+      ]
+    });
+    expect(script).toContain("Reminders");
+    expect(script).toContain("completed is false");
+  });
+
+  it("reminders: 'reminders' is in the tool enum", () => {
+    const tool = createMacAppReadTool();
+    const schema = tool.definition.inputSchema as { properties: { app: { enum: string[] } } };
+    expect(schema.properties.app.enum).toContain("reminders");
+  });
+
+  it("reminders: description mentions 'reminders' and the not-when clause", () => {
+    const tool = createMacAppReadTool();
+    const d = tool.definition.description.toLowerCase();
+    expect(d).toContain("reminders");
+    expect(d).toContain("do not");
+  });
+
+  it("reminders: returns empty list with count 0 when no incomplete items exist", async () => {
+    const tool = createMacAppReadTool({ runner: async () => ok("") });
+    expect(await tool.execute({ app: "reminders" }, ctx)).toEqual({ app: "reminders", count: 0, items: [] });
+  });
+
+  it("reads calendar via osascript and parses title + start time", async () => {
+    let script = "";
+    const runner: MacOsascriptRunner = async (s) => {
+      script = s;
+      return ok("Team standup\tThursday, June 12, 2026 at 9:00:00 AM\nLunch with Alex\tThursday, June 12, 2026 at 12:30:00 PM\n");
+    };
+    const tool = createMacAppReadTool({ runner });
+    const out = await tool.execute({ app: "calendar" }, ctx);
+    expect(out).toEqual({
+      app: "calendar",
+      count: 2,
+      items: [
+        { start: "Thursday, June 12, 2026 at 9:00:00 AM", title: "Team standup" },
+        { start: "Thursday, June 12, 2026 at 12:30:00 PM", title: "Lunch with Alex" }
+      ]
+    });
+    expect(script).toContain("Calendar");
+    expect(script).toContain("start date");
+  });
+
+  it("calendar: 'calendar' is in the tool enum", () => {
+    const tool = createMacAppReadTool();
+    const schema = tool.definition.inputSchema as { properties: { app: { enum: string[] } } };
+    expect(schema.properties.app.enum).toContain("calendar");
+  });
+
+  it("calendar: description mentions 'calendar' and the not-when clause", () => {
+    const tool = createMacAppReadTool();
+    const d = tool.definition.description.toLowerCase();
+    expect(d).toContain("calendar");
+    expect(d).toContain("do not");
+  });
+
+  it("calendar: returns empty list with count 0 when no events today", async () => {
+    const tool = createMacAppReadTool({ runner: async () => ok("") });
+    expect(await tool.execute({ app: "calendar" }, ctx)).toEqual({ app: "calendar", count: 0, items: [] });
+  });
+
+  it("reads notes via osascript and parses note titles (up to 20)", async () => {
+    let script = "";
+    const runner: MacOsascriptRunner = async (s) => {
+      script = s;
+      return ok("Project ideas\nMeeting notes Q2\nRecipe: pasta\n");
+    };
+    const tool = createMacAppReadTool({ runner });
+    const out = await tool.execute({ app: "notes" }, ctx);
+    expect(out).toEqual({
+      app: "notes",
+      count: 3,
+      items: [
+        { title: "Project ideas" },
+        { title: "Meeting notes Q2" },
+        { title: "Recipe: pasta" }
+      ]
+    });
+    expect(script).toContain("Notes");
+    expect(script).toContain("name of n");
+  });
+
+  it("notes: 'notes' is in the tool enum", () => {
+    const tool = createMacAppReadTool();
+    const schema = tool.definition.inputSchema as { properties: { app: { enum: string[] } } };
+    expect(schema.properties.app.enum).toContain("notes");
+  });
+
+  it("notes: description mentions 'notes' and the not-when clause", () => {
+    const tool = createMacAppReadTool();
+    const d = tool.definition.description.toLowerCase();
+    expect(d).toContain("notes");
+    expect(d).toContain("do not");
+  });
+
+  it("notes: returns empty list with count 0 when there are no notes", async () => {
+    const tool = createMacAppReadTool({ runner: async () => ok("") });
+    expect(await tool.execute({ app: "notes" }, ctx)).toEqual({ app: "notes", count: 0, items: [] });
+  });
 });
 
 describe("mac_media_control — Tier 1 Music transport", () => {

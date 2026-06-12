@@ -43,6 +43,21 @@
 ## ★ Open — TOOL expansion & hardening (loop theme, 진안-directed 2026-06-12)
 
 The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing tools.
+- ✓→Done **web_download post-redirect SSRF re-check** (EXPANSION-scouted): the SSRF guard ran only
+  on the INITIAL url, so a public URL redirecting to a private/link-local host (169.254.169.254
+  metadata, 127.0.0.1) was followed and WRITTEN TO DISK. Now re-applies assertPublicHttpUrl to the
+  final `response.url` AFTER fetch, BEFORE any write (mirrors loopback-web-read + fetch-readable-url —
+  web_download was the only fetch path missing it). Behavioral test (redirect→private = refused +
+  nothing written) RED→GREEN; Opus security-grade verifier PASS. mcp 1668·lint 0.
+- ✓→Done **SSRF DNS-rebinding closed** — the web fetch tools (web_download, web_action) had a
+  `deps.lookup ? async : sync` bypass: with no lookup wired (production), the SYNC guard ran, catching
+  only LITERAL private IPs, not a public hostname that *resolves* to a private IP (rebinding). Fix:
+  drop the bypass, always call `assertPublicHttpUrl` (its defaultLookup = node:dns/promises resolves +
+  checks) — so the no-lookup production path now catches rebinding. Hermetic tests: injected
+  privateLookup→refused + a dns-stubbed no-lookup test that the verifier confirmed discriminates the
+  fix (reverting the bypass makes it fail). web_action fixed too. (loopback-web-read was already
+  correct.) mcp 1670·lint 0. Note: this fire FAILED first (test proved NXDOMAIN not rebinding) →
+  test fixed → re-verified PASS.
 Every slice ships its eval/test and never weakens the grounding floor. Ranked:
 
 - ✓→Dropped (NOISE, fire 6) **browser-read ungrounded ×7** — the scout's first hit turned out to
@@ -131,8 +146,13 @@ EXPAND (new reach):
   web scenario 6/6 STABLE 3/3 (web_download vs web_read vs search vs knowledge_search); LIVE — a real
   http server's file fetched and written to disk with matching bytes. mcp 1638, full eval:tools
   137/137, check 0, lint 0.
-- ◦ **mac: read Calendar.app / Notes.app / Reminders.app** — osascript readers in the mac family,
-  read-risk, so "what's on my calendar today" works without a configured provider.
+- ✓→Done **mac: read Calendar.app / Notes.app / Reminders.app** — all three shipped as SOURCES on
+  the already-wired `mac_app_read` tool (`reminders` incomplete items+due, `calendar` today's events,
+  `notes` recent titles) — not new tools, keeps the exposed set small (tool-calling.md). Each:
+  reachable in the model-facing app enum (verifier confirmed), behavioral parse test (fake osascript
+  runner), eval:tools golden cases (EN+KO). risk=read (snippets never mutate). The earlier INERT
+  separate-tool attempt was rolled back; done the COMPLETE way (extend wired tool + eval). So
+  "what's on my calendar today / what reminders do I have / what notes" works locally.
 
 HARDEN (make existing tools more reliable):
 - ✓→Done **regex_extract ReDoS guard** — the tool ran a model/untrusted-supplied regex with no
@@ -181,9 +201,20 @@ HARDEN (make existing tools more reliable):
   is exceljs (~21MB unpacked) and SheetJS `xlsx` on npm is the old CVE-flagged build. A 21MB dep or a
   fragile hand-rolled OOXML parser is too much to adopt autonomously; surface the choice. (.docx
   shipped via mammoth ~2MB, which was proportionate.)
-- ◦ **per-tool not-when audit** — every built-in tool description gets a "use when … ; NOT when …"
+- ◦ **per-tool not-when audit** — PROGRESS (loop fire): the `followup` tools (list/cancel/snooze)
+  were the ONLY personal-tool family with ZERO not-when clauses → added "use when / NOT when"
+  disambiguating them from tasks/reminders (followup = agent auto-captured thread, not a user item)
+  + buildFollowupScenario in eval-tool-selection.mjs (6 positive + 4 disambiguation cases). Verifier
+  confirmed the disambig cases are discriminating + wired. Other families (tasks/reminders/calendar)
+  already have not-when. REMAINING: spot-audit any other tool families that lack it.
+- ◦ **per-tool not-when audit (orig)** — every built-in tool description gets a "use when … ; NOT when …"
   line; measure eager-invocation drop on eval:tools negative cases.
-- ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
+- ◦ **tool-arg grounding coverage** — PROGRESS (loop fire): `followup.cancel.reason` now grounded
+  (8B can fabricate a cancel reason; server-side default 'agent-cancelled' fallback). Reminders has
+  NO fabricable free-text field (text=user-stated, dueAt=time, recurrence=enum) — honestly pivoted.
+  Done so far: tasks add/update, add_contact, calendar, followup.cancel. Behavioral drop test +
+  verifier traced the wired path. Remaining: audit other actuators' optional free-text fields.
+- ◦ **tool-arg grounding coverage (orig)** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator that persists a model-named field; one eval:tool-arg-grounding case each.
   PROGRESS (loop, 2026-06-12): fire 1 `muse.tasks.update.notes` · fire 2 `add_contact.relationship`
   now grounded (Opus gating-verifier traced BOTH paths — MCP-loopback for tasks, direct-MuseTool for

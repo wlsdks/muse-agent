@@ -19,10 +19,12 @@ afterEach(async () => {
 });
 
 const okFetch = (async () => new Response("", { status: 200 })) as unknown as typeof fetch;
+const publicLookup = async () => [{ address: "93.184.216.34", family: 4 }];
 const deps = (over: Partial<WebActionToolDeps> = {}): WebActionToolDeps => ({
   actionLogFile,
   approvalGate: () => ({ approved: true }),
   fetchImpl: okFetch,
+  lookup: publicLookup,
   userId: "u1",
   ...over
 });
