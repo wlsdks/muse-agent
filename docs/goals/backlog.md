@@ -436,6 +436,14 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   the synthesis boundary. agent-core 1712 green incl. a prompt-capture integration (dup peer → the
   synthesis prompt shows the LAST reasoning once, 2 members not 3).
 
+- ◦ **Background memory consolidation (sleep daemon)** — [in progress 2026-06-12, cognition loop
+  fire 10, background #5] `consolidationPlan` (recall promote/fade) only runs on the manual `muse
+  memory consolidate` CLI — the daemon consolidates the PLAYBOOK but never MEMORY. fire 10 shipped
+  the brake-first gate `shouldConsolidateMemory({nowMs,lastRunMs,newHitsSinceLastRun,…})` in
+  `@muse/memory` (run only when ≥minNewHits material AND ≥minIntervalMs since last run — non-straining;
+  10-case battery). NEXT: WIRE it into the daemon tick — gate a `consolidationPlan` run on idle, then
+  surface promote/fade. (The ACT-R ranking from T2-1 already feeds consolidationPlan via useActrRanking.)
+
 ## Blocked / deferred
 
 - ⏳ **Grammar-constrained tool-call decoding** — INFEASIBLE on Ollama today: `format`
