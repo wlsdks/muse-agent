@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { readWeaknesses, recordWeakness, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
+import { MAX_WEAKNESS_ENTRIES, readWeaknesses, recordWeakness, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
 
 describe("topicKeyFromMessage — deterministic topic clustering", () => {
   it("keeps salient content words, drops filler, lowercases (EN)", () => {
@@ -98,6 +98,71 @@ describe("read/write/recordWeakness — persistence round-trip", () => {
     const entries: WeaknessEntry[] = [{ axis: "unbacked-action", count: 3, firstSeen: "2026-06-01T00:00:00Z", lastSeen: "2026-06-06T00:00:00Z", topic: "회의 일정" }];
     await writeWeaknesses(file, entries);
     expect(await readWeaknesses(file)).toEqual(entries);
+  });
+});
+
+describe("writeWeaknesses — bounded growth cap", () => {
+  const tmpFile = (): string => join(mkdtempSync(join(tmpdir(), "muse-weak-cap-")), "weaknesses.json");
+
+  const makeEntry = (i: number, count = 1, lastSeen = "2026-06-01T00:00:00Z"): WeaknessEntry => ({
+    axis: "grounding-gap",
+    count,
+    firstSeen: "2026-06-01T00:00:00Z",
+    lastSeen,
+    topic: `topic-${i.toString().padStart(6, "0")}`
+  });
+
+  it("under cap: all entries written verbatim, order preserved", async () => {
+    const file = tmpFile();
+    const entries: WeaknessEntry[] = [
+      makeEntry(1, 3, "2026-06-05T00:00:00Z"),
+      makeEntry(2, 1, "2026-06-06T00:00:00Z"),
+      makeEntry(3, 2, "2026-06-04T00:00:00Z")
+    ];
+    await writeWeaknesses(file, entries);
+    const back = await readWeaknesses(file);
+    expect(back).toEqual(entries);
+  });
+
+  it("over cap: trims to MAX_WEAKNESS_ENTRIES", async () => {
+    const file = tmpFile();
+    const entries = Array.from({ length: MAX_WEAKNESS_ENTRIES + 50 }, (_, i) => makeEntry(i));
+    await writeWeaknesses(file, entries);
+    const back = await readWeaknesses(file);
+    expect(back).toHaveLength(MAX_WEAKNESS_ENTRIES);
+  });
+
+  it("trim keeps highest-count entry and evicts stale count-1 entries", async () => {
+    const file = tmpFile();
+    const highCount = makeEntry(9999, 99, "2026-06-01T00:00:00Z");
+    const stale = makeEntry(8888, 1, "2020-01-01T00:00:00Z");
+    const filler = Array.from({ length: MAX_WEAKNESS_ENTRIES }, (_, i) => makeEntry(i, 2, "2026-06-02T00:00:00Z"));
+    await writeWeaknesses(file, [highCount, stale, ...filler]);
+    const back = await readWeaknesses(file);
+    expect(back).toHaveLength(MAX_WEAKNESS_ENTRIES);
+    expect(back.some((e) => e.topic === highCount.topic)).toBe(true);
+    expect(back.some((e) => e.topic === stale.topic)).toBe(false);
+  });
+
+  it("tiebreak by recency: more-recent lastSeen is kept at the cap boundary", async () => {
+    const file = tmpFile();
+    const recent = makeEntry(9001, 5, "2026-06-10T00:00:00Z");
+    const older = makeEntry(9002, 5, "2026-01-01T00:00:00Z");
+    const filler = Array.from({ length: MAX_WEAKNESS_ENTRIES - 1 }, (_, i) => makeEntry(i, 5, "2026-06-05T00:00:00Z"));
+    await writeWeaknesses(file, [older, recent, ...filler]);
+    const back = await readWeaknesses(file);
+    expect(back).toHaveLength(MAX_WEAKNESS_ENTRIES);
+    expect(back.some((e) => e.topic === recent.topic)).toBe(true);
+    expect(back.some((e) => e.topic === older.topic)).toBe(false);
+  });
+
+  it("bad lastSeen in an over-cap set does not throw (sorts as oldest)", async () => {
+    const file = tmpFile();
+    const badDate: WeaknessEntry = { ...makeEntry(9999, 1), lastSeen: "not-a-date" };
+    const filler = Array.from({ length: MAX_WEAKNESS_ENTRIES }, (_, i) => makeEntry(i, 2, "2026-06-01T00:00:00Z"));
+    await expect(writeWeaknesses(file, [badDate, ...filler])).resolves.toBeUndefined();
+    const back = await readWeaknesses(file);
+    expect(back).toHaveLength(MAX_WEAKNESS_ENTRIES);
   });
 });
 

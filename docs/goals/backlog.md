@@ -573,6 +573,12 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   fallback returns the best proposal (the "thorough" one). MAST graceful-degradation / don't-lose-
   sub-agent-work. agent-core 1725 green (throws→resolves-with-proposal, empty→fallback, success→merged).
 
+- ✓→Done **Weakness-ledger bounded growth** — [2026-06-13, cognition loop fire 23, Fable-scout
+  runner-up] `writeWeaknesses` wrote all rows uncapped (unlike recall-hits' 5000-trim) → the ledger
+  grew without bound as novel topic rows accrued. Added `MAX_WEAKNESS_ENTRIES=2000` trim: on overflow
+  keep what the selectors surface (count desc, then recency), evict stale one-offs; under the cap =
+  verbatim/unreordered. mcp 1683 green; Fable-judge PASS (under-cap order-pin non-vacuous, evictions genuine).
+
 ## Blocked / deferred
 
 - ⏳ **Grammar-constrained tool-call decoding** — INFEASIBLE on Ollama today: `format`

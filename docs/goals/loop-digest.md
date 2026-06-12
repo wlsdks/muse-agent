@@ -327,3 +327,10 @@
 - **왜:** `KnowledgeMatch.cosine` 계약 = "query에 대한 절대 cosine"(CRAG 신호). near-dup 노트(seed 0.95/query 0.48)가 약한 retrieval을 "confident"로 뒤집어 → LOW-confidence 경고 억제 + proactive stay-quiet 게이트 무력화 + phantom clarify. "약하면 조용히" 아키텍처의 입력 신호 정합성 복구(verdict 로직 불변=IMMUTABLE-CORE safe).
 - **리뷰지점:** `knowledge-recall.ts`(rankKnowledgeChunksWithHop append 재계산 + fail-safe; primary/score/RRF/cap/no-op 불변) + `two-hop-recall.test.ts`(+7: query-relative cosine·confidence-inflation regression·bridge 유지·primary 불변·embedText 선호·fail-safe·no-op). **maker=Sonnet / judge=Fable 5**: Fable judge가 **소스를 HEAD로 revert해 regression이 진짜 무는지 실증**(pre-fix 0.9997→confident 4 테스트 실패, post 0.48→ambiguous) + fail-OPEN 경로 없음 + verdict 미변경 확인 → VERDICT PASS. agent-core 1753 green, dependent autoconfigure 빌드 OK.
 - **리스크:** 없음 — 입력 복구(verdict 무변경)·fail-safe·prod 추가 라운드트립 없음(caching embedder cache hit). gap-scout(Fable)가 발굴한 실 버그 — maturity-wall에서 진짜 가치 슬라이스. (사이클4 fires 22-24.)
+
+## [cognition loop] fire 23 — 2026-06-13 · 사이클4 · 테마: weakness-ledger 바운드 성장
+
+- **무엇:** `writeWeaknesses`에 `MAX_WEAKNESS_ENTRIES=2000` 캡 — overflow 시 selectors가 쓰는 순서(count desc, then recency)로 정렬·slice, stale one-off 축출. under-cap은 verbatim(무재정렬).
+- **왜:** recall-hits(5000 trim)와 달리 무제한 — 새 (axis,topic) 행이 영원히 쌓여 디스크·read 비용 증가. Fable scout(fire22) runner-up #1. bounded-growth posture 일관성.
+- **리뷰지점:** `packages/mcp/src/weakness-ledger.ts`(const+trim) + `weakness-ledger.test.ts`(+5). maker=Sonnet / judge=Fable 5 — under-cap order-pin이 non-vacuous([3,1,2] 입력)·over-cap 축출 genuine·scope가 tasks/browser/calendar 안 샘 확인 → VERDICT PASS. mcp 1683 green.
+- **리스크:** 캡 2000 높아 일상 미발동. under-cap 동작 불변. grounding floor 무관. (사이클4 fires 22-24.)

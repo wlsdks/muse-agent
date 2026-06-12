@@ -19,6 +19,8 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+export const MAX_WEAKNESS_ENTRIES = 2000;
+
 export type WeaknessAxis = "grounding-gap" | "unbacked-action" | "wrong-tool" | "time-parse" | "other";
 
 export interface WeaknessEntry {
@@ -148,8 +150,18 @@ export async function readWeaknesses(file: string): Promise<readonly WeaknessEnt
 }
 
 export async function writeWeaknesses(file: string, entries: readonly WeaknessEntry[]): Promise<void> {
+  // Bounded growth: novel (axis,topic) rows accrue forever without a cap.
+  // Keep the entries the selectors surface — highest count, then most recent —
+  // and evict stale one-offs. Date.parse on a bad value → NaN, treated as oldest.
+  const bounded = entries.length > MAX_WEAKNESS_ENTRIES
+    ? [...entries].sort((a, b) =>
+        b.count - a.count
+        || (Number.isFinite(Date.parse(b.lastSeen)) ? Date.parse(b.lastSeen) : 0)
+           - (Number.isFinite(Date.parse(a.lastSeen)) ? Date.parse(a.lastSeen) : 0)
+      ).slice(0, MAX_WEAKNESS_ENTRIES)
+    : entries;
   await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify({ weaknesses: entries }, null, 2), "utf8");
+  await fs.writeFile(file, JSON.stringify({ weaknesses: bounded }, null, 2), "utf8");
 }
 
 /** A recurring weakness worth surfacing to the user as an actionable nudge. */
