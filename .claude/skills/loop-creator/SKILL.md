@@ -1,6 +1,6 @@
 ---
 name: loop-creator
-version: 1.8.1
+version: 1.9.0
 description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘", "loop 등록", "X를 계속 강화하는 루프", or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from its bundled loop-engineering.md contract AND registers the cron itself, then reports the prompt + cron id + how to stop. The autonomous successor to hand-written ad-hoc loop prompts.
 ---
 
@@ -90,7 +90,7 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 | 6 프리미티브 | Automation=cron · Worktree=/tmp(레포 밖, [[project_worktree_instability]]) · Skill=improve-muse+dev-loop · Connector=MCP · Sub-agent=harness planner→worker→evaluator · State=backlog.md+MEMORY.md |
 | 검증가능 정지조건 | `pnpm self-eval` exit 0 + 관련 eval(eval:tools/eval:browser-agent/eval:agent/precheck:grounding) ≥ threshold + "backlog ★ 항목 Done"(이 'Done' 판정은 **독립 evaluator/진안**이 — 루프 자신이 maker=judge로 판정하지 않는다) |
 | **게이팅 검증자** | 빌드와 별개 **강한-티어(Opus) 적대 judge**가 슬라이스를 판정 → **PASS여야 ⑤ 커밋, FAIL이면 롤백**(`git restore`)+블로커 기록. 결정적 게이트(test/check/eval) 1차, judge 2차. ([`loop-engineering.md`](references/loop-engineering.md) §3-1) |
-| **이해 체크포인트** | 매 fire가 `docs/goals/loop-digest.md`에 4줄(무엇/왜/리뷰지점/리스크) append + **N fire(기본 3)마다 빌드 멈추고 리뷰 관문** — 진안 확인 전 새 슬라이스 시작 안 함. §3-2 |
+| **이해 표면 (비동기·non-blocking)** | 매 fire가 `docs/goals/loop-digest.md`에 4줄 append(아무때나 읽는 비동기 리뷰 로그) + **N fire(기본 3)마다 막지 않고 PushNotification 알림만 + 계속 진행** — 루프는 절대 안 멈춘다. 검토/머지는 사람의 비동기 선택. §3-2 |
 | **자율성 티어** | **Tier1**(로컬 커밋, push 없음 — 기본) 또는 **Tier2**(`loop/<theme>` 브랜치 push + draft PR, 사람이 머지 — 명시 opt-in). 하드 floor: main 자동머지·자율 outbound·banking·`--no-verify` 절대 불가. §3.5 |
 | 토큰/스텝 캡 | fire당 1슬라이스, retry 2–3 상한, 예산 캡([`loop-budget.md`](../../../harness/loop-budget.md)) |
 | **모델 티어링** | 정형 빌드/검색/문서 → Sonnet 서브에이전트(`Agent`/`Workflow` `model:"sonnet"`); 설계·모호함·적대적 검증 → Opus. maker=Sonnet / **judge=Opus**. 오케스트레이터는 얇게. (Muse 런타임 모델 gemma4는 고정 — [`loop-engineering.md`](references/loop-engineering.md) §1.5) |
@@ -112,7 +112,7 @@ Muse 자율 개선 루프 — 테마: <목적>. 반드시 Node 24(nvm default).
 ④ 결정적 검증(정지조건): 가장 좁은 테스트 → pnpm check → 관련 eval(<해당 eval>) → pnpm lint.
 ④b 게이팅 검증자: 별개 Opus 서브에이전트가 적대 판정(acceptance가 *행동*을 검증하나 — **선언-only면 FAIL**? 불변식 약화 없음? 무관 state 안 깸?). 깊이는 리스크에 비례(정형 저위험은 가볍게, 새 경로/불변식 접촉은 풀 추적)하되 항상 돈다. PASS여야 ⑤로; FAIL이면 git restore 롤백+backlog 블로커 후 멈춤.
 ⑤ write-back(테스트/eval/backlog Done) 포함 커밋. **자율성: <Tier1=로컬 커밋, push 금지 / Tier2=loop/<theme> 브랜치 push+draft PR, 사람이 머지>.**
-⑤b 이해 다이제스트: docs/goals/loop-digest.md에 4줄 append(무엇/왜/리뷰지점/리스크). 3 fire마다 빌드 멈추고 누적 리뷰 관문 — 진안 확인 전 새 슬라이스 시작 금지.
+⑤b 이해 다이제스트: docs/goals/loop-digest.md에 4줄 append(비동기 리뷰 로그). 3 fire마다 막지 않고 PushNotification "N개 쌓였어요" 알림만 + **계속 진행**(루프는 절대 안 멈춤; 검토/머지는 진안의 비동기 선택).
 모델 티어링(토큰 절약): 정형 빌드/검색은 Sonnet 서브에이전트(Agent/Workflow model:"sonnet")로
 위임하고, 이 Opus 컨텍스트는 설계·모호한 포크·④b 적대 검증만; judge는 worker보다 강한 티어(Opus).
 한 fire에 슬라이스 하나; 막히면 backlog에 블로커 기록 후 멈춤.
@@ -134,7 +134,7 @@ grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지. 하드 floo
 - [ ] push 금지·fabrication=0·IMMUTABLE-CORE·**예산 캡** 문구가 프롬프트에 살아있나?
 - [ ] 모델 티어링 라인이 테마에 맞나(정형 위주면 Sonnet 위임이 실제로 토큰을 아끼나)?
 - [ ] **게이팅 검증자**가 프롬프트에 살아있나 — ④b Opus 적대 judge가 커밋을 GATE, FAIL=롤백?
-- [ ] **이해 체크포인트**가 살아있나 — ⑤b 다이제스트 append + N fire마다 리뷰 관문?
+- [ ] **이해 표면**이 살아있나 — ⑤b 다이제스트 append + N fire마다 알림(막지 않음, 루프 무한)?
 - [ ] **자율성 티어가 명시**됐나 — Tier1/Tier2 중 무엇인지 ⑤에 박혔고, Tier2면 진안 opt-in 받았나?
       하드 floor(main 자동머지·자율 outbound·banking·--no-verify) 금지 문구가 살아있나?
 - [ ] **같은 테마의 활성 cron이 이미 있나** — `CronList`로 확인. 있으면 등록 대신
