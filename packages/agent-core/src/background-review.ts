@@ -135,6 +135,10 @@ export function createBackgroundReviewHook(options: BackgroundReviewHookOptions 
   const skillEveryIters = Number.isFinite(options.skillEveryIters) ? options.skillEveryIters! : DEFAULT_SKILL_EVERY_ITERS;
   const counters = options.counters ?? createInMemoryReviewCounterStore();
   const runReview = options.runReview ?? ((): void => undefined);
+  // One review per user in flight at a time (Hermes runs a single review
+  // daemon). Without this, a fast follow-up turn can start a second review pass
+  // while the first is still writing — racing the memory/skill store's RMW.
+  const inFlight = new Set<string>();
 
   return {
     id: BACKGROUND_REVIEW_HOOK_ID,
@@ -151,12 +155,19 @@ export function createBackgroundReviewHook(options: BackgroundReviewHookOptions 
       const state = counters.increment(userId, { turns: 1 });
       const decision = evaluateReviewTriggers(state, { memoryEveryTurns, skillEveryIters });
       if (!decision.reviewMemory && !decision.reviewSkill) return;
+      // A trigger tripped while this user's prior review is still running: do
+      // NOT start a concurrent pass. Leave the counters unreset so the trigger
+      // stays tripped and the review re-fires (coalesced into one) on the next
+      // turn after the in-flight pass clears — no trigger is lost.
+      if (inFlight.has(userId)) return;
+      inFlight.add(userId);
       // Reset only the channels that fired, so each keeps its own cadence.
       counters.reset(userId, { iters: decision.reviewSkill, turns: decision.reviewMemory });
       // Fire-and-forget: do NOT await — the turn returns immediately.
       void Promise.resolve()
         .then(() => runReview({ context, response, reviewMemory: decision.reviewMemory, reviewSkill: decision.reviewSkill, userId }))
-        .catch((error) => options.onError?.(error));
+        .catch((error) => options.onError?.(error))
+        .finally(() => { inFlight.delete(userId); });
     }
   };
 }

@@ -97,6 +97,43 @@ describe("createBackgroundReviewHook", () => {
     expect((errors[0] as Error).message).toBe("review boom");
   });
 
+  it("runs only ONE review per user at a time, then coalesces the skipped trigger into a re-fire", async () => {
+    const reviews: BackgroundReviewInput[] = [];
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const hook = createBackgroundReviewHook({
+      memoryEveryTurns: 1,
+      runReview: async (i) => { reviews.push(i); await gate; },
+      skillEveryIters: 999
+    });
+    await hook.afterComplete!(context(), response); // turn 1 → trips, review starts and BLOCKS on gate
+    await flush();
+    expect(reviews).toHaveLength(1);
+    await hook.afterComplete!(context(), response); // turn 2 → trips again, but a review is in flight → skipped
+    await flush();
+    expect(reviews).toHaveLength(1); // no concurrent second pass
+    release!(); // first review finishes → in-flight clears
+    await flush();
+    await hook.afterComplete!(context(), response); // turn 3 → counter was never reset while skipped → fires now
+    await flush();
+    expect(reviews).toHaveLength(2);
+  });
+
+  it("isolates the in-flight guard per user (one user's running review never blocks another's)", async () => {
+    const reviews: BackgroundReviewInput[] = [];
+    const gate = new Promise<void>(() => { /* never resolves */ });
+    const hook = createBackgroundReviewHook({
+      memoryEveryTurns: 1,
+      runReview: async (i) => { reviews.push(i); await gate; },
+      skillEveryIters: 999
+    });
+    await hook.afterComplete!(context("alice"), response); // alice's review starts and hangs
+    await flush();
+    await hook.afterComplete!(context("bob"), response); // bob is independent → still fires
+    await flush();
+    expect(reviews.map((r) => r.userId).sort()).toEqual(["alice", "bob"]);
+  });
+
   it("skips a run with no resolvable userId (no metadata, no default)", async () => {
     const reviews: BackgroundReviewInput[] = [];
     const hook = createBackgroundReviewHook({ memoryEveryTurns: 1, runReview: (i) => { reviews.push(i); } });
