@@ -232,6 +232,69 @@ describe("segmentClaims — atomic claims for per-claim grounding (Self-RAG ISSU
   });
 });
 
+describe("verifyGroundingWithReverify — sentence-opener stoplist (connectives not treated as named entities)", () => {
+  // Answer with a sentence-opener + a citation + strong token overlap so the
+  // base verdict reaches `grounded`. If "However" / "Based" / "Therefore" were
+  // treated as named entities the value-escalation path would fire (they are
+  // absent from the evidence); with the stoplist they are ignored.
+  const mtuMatches = [match("notes/vpn.md", "The office VPN needs MTU 1380 on wg0 to stop handshake drops.", 0.72)];
+
+  it("does NOT escalate when the answer starts with 'However' but the number is supported", async () => {
+    const out = await verifyGroundingWithReverify(
+      "However, the office VPN MTU is 1380 on wg0 [from notes/vpn.md].",
+      mtuMatches, query, async () => false
+    );
+    expect(out.verdict).toBe("grounded");
+  });
+
+  it("does NOT escalate when the answer starts with 'Based' but the number is supported", async () => {
+    const out = await verifyGroundingWithReverify(
+      "Based on your notes, the office VPN MTU is 1380 on wg0 [from notes/vpn.md].",
+      mtuMatches, query, async () => false
+    );
+    expect(out.verdict).toBe("grounded");
+  });
+
+  it("does NOT escalate when the answer starts with 'Therefore' but the number is supported", async () => {
+    const out = await verifyGroundingWithReverify(
+      "Therefore the office VPN MTU is 1380 on wg0 [from notes/vpn.md].",
+      mtuMatches, query, async () => false
+    );
+    expect(out.verdict).toBe("grounded");
+  });
+
+  it("still escalates (genuine wrong named entity) when a proper noun is absent from evidence", async () => {
+    // Identical token coverage but wrong entity — reaches `grounded` on coverage
+    // then the value-escalation path fires because "Patel" ∉ evidence tokens.
+    const contactMatches = [match("notes/contacts.md", "The office contact lead engineer is Dr. Kim at the office.", 0.72)];
+    const out = await verifyGroundingWithReverify(
+      "The office contact lead engineer is Dr. Patel [from notes/contacts.md].",
+      contactMatches, "who is the lead engineer", async () => false
+    );
+    expect(out.verdict).toBe("ungrounded");
+    expect(out.reason).toContain("value the evidence does not support");
+  });
+
+  it("still escalates (number drift) when the answer asserts a number absent from evidence", async () => {
+    const out = await verifyGroundingWithReverify("The office VPN MTU is 9000 on wg0 [from notes/vpn.md].", mtuMatches, query, async () => false);
+    expect(out.verdict).toBe("ungrounded");
+    expect(out.reason).toContain("value the evidence does not support");
+  });
+
+  it("still escalates (email drift) when the answer asserts a wrong email domain", async () => {
+    const emailMatches = [match("notes/contacts.md", "Jane Park leads sales; her email is jane@globex.com.", 0.72)];
+    const out = await verifyGroundingWithReverify("Jane Park leads sales; her email is jane@acme.com [from notes/contacts.md].", emailMatches, "what is Jane's email", async () => false);
+    expect(out.verdict).toBe("ungrounded");
+    expect(out.reason).toContain("value the evidence does not support");
+  });
+
+  it("does NOT escalate when the entity 'Stark' is present in evidence", async () => {
+    const starkMatches = [match("notes/user.md", "Stark is the user with admin access on the system.", 0.72)];
+    const out = await verifyGroundingWithReverify("Stark is the user with admin access [from notes/user.md].", starkMatches, "who is the user", async () => false);
+    expect(out.verdict).toBe("grounded");
+  });
+});
+
 describe("verifyGroundingPerClaim — surgically drop only the unsupported claim", () => {
   const ev = [match("notes", "Mina owns pricing. The budget is unspecified.", 0.9)];
 

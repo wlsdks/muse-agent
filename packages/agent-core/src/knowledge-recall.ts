@@ -1177,6 +1177,22 @@ const VALUE_WORD_STOPLIST = new Set([
   "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
 ]);
 
+// Sentence-opener / connective words a chatty model capitalizes only because
+// they start a sentence — NOT named entities. Excluded so "However, …" /
+// "Based on your notes, …" don't trigger a needless value-escalation judge pass.
+const SENTENCE_OPENER_STOPLIST = new Set([
+  "however", "based", "according", "additionally", "moreover", "furthermore",
+  "therefore", "thus", "hence", "consequently", "meanwhile", "instead",
+  "otherwise", "nonetheless", "nevertheless", "although", "though", "because",
+  "since", "while", "when", "where", "whereas", "also", "finally", "firstly",
+  "secondly", "next", "then", "overall", "generally", "specifically", "note",
+  "here", "there", "currently", "recently", "unfortunately", "fortunately",
+  "importantly", "notably", "similarly", "conversely", "regarding", "given",
+  "considering", "despite", "besides", "alternatively", "basically",
+  "essentially", "ultimately", "first", "second", "third",
+  "yes", "sure", "okay", "well"
+]);
+
 /**
  * The VALUE tokens the answer asserts that the evidence does NOT contain — a
  * pure-digit NUMBER ("MTU 9000" vs the note's "1380"), a whole EMAIL ADDRESS
@@ -1212,7 +1228,7 @@ function answerAssertsUnsupportedValue(answer: string, matches: readonly Knowled
   }
   const namedEntities = (stripped.match(/\b[A-Z][a-zA-Z]{2,}\b/gu) ?? [])
     .map((word) => word.toLowerCase())
-    .filter((word) => !LEXICAL_STOPWORDS.has(word) && !VALUE_WORD_STOPLIST.has(word));
+    .filter((word) => !LEXICAL_STOPWORDS.has(word) && !VALUE_WORD_STOPLIST.has(word) && !SENTENCE_OPENER_STOPLIST.has(word));
   return namedEntities.some((entity) => !evidence.has(entity));
 }
 

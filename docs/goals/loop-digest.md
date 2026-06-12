@@ -334,3 +334,12 @@
 - **왜:** recall-hits(5000 trim)와 달리 무제한 — 새 (axis,topic) 행이 영원히 쌓여 디스크·read 비용 증가. Fable scout(fire22) runner-up #1. bounded-growth posture 일관성.
 - **리뷰지점:** `packages/mcp/src/weakness-ledger.ts`(const+trim) + `weakness-ledger.test.ts`(+5). maker=Sonnet / judge=Fable 5 — under-cap order-pin이 non-vacuous([3,1,2] 입력)·over-cap 축출 genuine·scope가 tasks/browser/calendar 안 샘 확인 → VERDICT PASS. mcp 1683 green.
 - **리스크:** 캡 2000 높아 일상 미발동. under-cap 동작 불변. grounding floor 무관. (사이클4 fires 22-24.)
+
+## [cognition loop] fire 24 — 2026-06-13 · 사이클4 · 테마: grounding value-escalation 비용 · ⚠️ 3-FIRE 리뷰 관문(자율)
+
+- **무엇:** `answerAssertsUnsupportedValue`가 문장초두 connective("However"/"Based"/"Therefore", LEXICAL_STOPWORDS에 없음)를 named entity로 오인해 불필요한 value-escalation judge 패스를 태우던 것 → `SENTENCE_OPENER_STOPLIST` 추가로 제외. 진짜 wrong-entity/number/email 검출은 불변(보존).
+- **왜:** 챗봇이 문장을 connective로 자주 시작 → 매번 로컬 12B judge 추론 낭비(call-site는 fail-open이라 오escalation은 무해하지만 비용). gap-scout runner-up #2.
+- **리뷰지점:** `knowledge-recall.ts`(stoplist+filter 한 줄) + `knowledge-recall-reverify.test.ts`. **maker=Sonnet / judge=Fable 5 — judge가 1차 FAIL**: 양성 테스트가 vacuous(throwing `never` judge를 fail-open catch가 삼킴 → fix 없어도 통과)를 stash-counterfactual로 적발 → `async()=>false`로 교정해 verdict가 갈리게 + **revert 시 3 opener 테스트 FAIL 직접 확인**(non-vacuous). agent-core 1760 green.
+- **리스크:** stoplist의 "Given"/"Note" 등이 희귀 고유명사와 충돌 가능하나 fail-open이라 무해(escalation 한 번 덜 탈 뿐). genuine drift 불변. 교훈: fail-open 경로의 "judge 안 불림" 테스트는 throwing judge 말고 verdict-차이/call-count로 검증해야 non-vacuous.
+
+> ✅ **자율 리뷰관문 (fires 22–24, 진안 묻지 않음):** 사이클4 — second-hop CRAG confidence 부풀림(22, Fable scout 발굴, 헤드라인)·weakness-ledger 바운드(23)·sentence-opener 오escalation(24). Fable judge가 22를 revert-counterfactual로 실증 PASS, 24는 vacuous-test 적발→교정. **사이클5 방향(스스로): Fable scout 재가동해 cognition 코어 다음 고가치 슬라이스 발굴(audit 클러스터 소진, 22가 보여준 scout의 가치) — 또는 진안이 원하는 "최신 논문 기반 검증-적용" 쪽으로.** fires-22-24 배치는 main clean시 자동 머지.

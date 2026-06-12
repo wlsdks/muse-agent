@@ -490,6 +490,16 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 
 ## Open — agent core
 
+- ✓→Done **No needless judge escalation on sentence-opener connectives** — [2026-06-13, cognition loop
+  fire 24, Fable-scout runner-up] `answerAssertsUnsupportedValue` flagged sentence-initial capitalized
+  connectives ("However"/"Based"/"Therefore"/"Additionally", all absent from LEXICAL_STOPWORDS) as
+  named entities → a needless value-escalation judge pass (wasted local inference) whenever an answer
+  opened a sentence that way. Added `SENTENCE_OPENER_STOPLIST` to the named-entity filter; genuine
+  wrong-entity/number/email drift detection is structurally untouched (preserved). Fable judge FAILed
+  the first attempt (positive tests were vacuous — used a THROWING judge that the fail-open escalation
+  swallowed); remediated to `async () => false` so the verdict differs, and counterfactual-verified
+  (revert src → the 3 opener tests now FAIL). agent-core 1760 green.
+
 - ✓→Done **Second-hop retrieval no longer inflates CRAG confidence** — [2026-06-13, cognition loop
   fire 22, Fable-scout-found] `rankKnowledgeChunksWithHop` appended hop "bridge" matches carrying a
   SEED-relative cosine, but `KnowledgeMatch.cosine` is contractually "cosine to the QUERY" (the CRAG
