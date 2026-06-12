@@ -976,6 +976,19 @@ describe("loopback MCP servers", () => {
     });
   });
 
+  it("muse.json#merge does NOT let a __proto__ key hijack the result's prototype (pollution vector)", async () => {
+    const connection = createLoopbackMcpConnection(createJsonMcpServer());
+    // Model tool args arrive via JSON.parse, which makes "__proto__" an OWN data
+    // property (a literal `{__proto__:…}` in source would set the prototype instead).
+    const overrides = JSON.parse('{"__proto__":{"isAdmin":true},"b":2}') as Record<string, unknown>;
+    const out = (await connection.callTool!("merge", { base: { a: 1 }, overrides })) as { merged: Record<string, unknown> };
+    const merged = out.merged;
+    expect(Object.getPrototypeOf(merged)).toBe(Object.prototype); // prototype NOT swapped
+    expect((merged as { isAdmin?: unknown }).isAdmin).toBeUndefined(); // no inherited field injected
+    expect(merged.b).toBe(2); // the real data still merges
+    expect(({} as { isAdmin?: unknown }).isAdmin).toBeUndefined(); // global prototype clean
+  });
+
   it("muse.url#parse splits a URL into components and surfaces its query map", async () => {
     const connection = createLoopbackMcpConnection(createUrlMcpServer());
     expect(

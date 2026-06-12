@@ -1,4 +1,5 @@
 import {
+  lstat as nodeLstat,
   readFile as nodeReadFile,
   readdir as nodeReaddir,
   realpath as nodeRealpath,
@@ -40,6 +41,8 @@ export interface FilesystemMcpServerOptions {
     readFile(path: string): Promise<Buffer>;
     readdir(path: string, options: { withFileTypes: true }): Promise<readonly { name: string; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }[]>;
     stat(path: string): Promise<{ size: number; mtime: Date; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }>;
+    /** Like `stat` but does NOT follow a symlink — lets `stat` honor its "symlinks reported as kind=symlink without following" contract. Falls back to `stat` when absent. */
+    lstat?(path: string): Promise<{ size: number; mtime: Date; isDirectory(): boolean; isFile(): boolean; isSymbolicLink(): boolean }>;
     realpath?(path: string): Promise<string>;
   };
   /** Optional path module override (used in tests). */
@@ -59,6 +62,7 @@ export function createFilesystemMcpServer(options: FilesystemMcpServerOptions): 
   const fsLib: NonNullable<FilesystemMcpServerOptions["fs"]> = options.fs ?? {
     readFile: (path) => nodeReadFile(path),
     readdir: (path, opts) => nodeReaddir(path, opts) as ReturnType<NonNullable<FilesystemMcpServerOptions["fs"]>["readdir"]>,
+    lstat: (path) => nodeLstat(path),
     realpath: (path) => nodeRealpath(path),
     stat: (path) => nodeStat(path)
   };
@@ -185,7 +189,10 @@ export function createFilesystemMcpServer(options: FilesystemMcpServerOptions): 
             return { error: decision.error };
           }
           try {
-            const stats = await fsLib.stat(decision.resolved);
+            // lstat (not stat) so a symlink is reported as kind=symlink, NOT silently
+            // followed to its target's kind — the documented contract. Falls back to
+            // stat for a test fs seam that doesn't implement lstat.
+            const stats = await (fsLib.lstat ?? fsLib.stat)(decision.resolved);
             return {
               kind: entryKind(stats),
               mtime: stats.mtime.toISOString(),

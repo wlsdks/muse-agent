@@ -9,6 +9,32 @@
 
 ---
 
+## 1.11.2 — 2026-06-13
+**논문-근거 우선 라인에 테마-스코프 절**(진안 확인): capability/method/research 테마에선 논문-우선이
+맞지만, hardening/correctness/security 테마에선 그 보안·correctness 작업 자체가 곧 가치 — "단순
+버그픽스"로 깎아 deprioritize하지 않는다(프로토타입 오염·계약 위반 수정은 하드닝 루프의 최고 산출이었음).
+모호함이 하드닝 루프로 하여금 자기 최고 산출을 건너뛰게 만드는 충돌을 제거. 함께: 진안이 추가한
+"공개/오픈 논문만" 라인(arXiv/오픈액세스 한정, 자체 재구현, proprietary 복사 아님) 보존.
+
+## 1.11.1 — 2026-06-13
+생성-프롬프트 ②에 **논문-근거 우선(가능할 때)** 라인 추가(작업트리에 있던 미커밋 편집을 보존) —
+강한-티어 scout가 WebSearch로 검증된 2024-2026 AI-agent 논문에서 *적용가능 메커니즘 + arXiv ID*를
+스펙해 단순 correctness 버그픽스보다 논문-기반 capability 적용을 우선. standing 디렉티브
+[[project_research_application]]와 일치하고 v1.11.0 평가의 "작은-버그 편향" 발견을 보완(가치-우선의 구체화).
+
+## 1.11.0 — 2026-06-13
+**라이브 평가發 5개 가드**(6 fire 실측 + Osmani/Cherny/Karpathy/Anthropic 2026-06 대조). 메커니즘은
+최상급이나 "게이트의 가장자리" 3곳이 약했음 — 전부 프롬프트/계약 한 줄급으로 수정:
+- **게이트가 최종 diff를 덮음**(§4.5-6, 생성프롬프트 ⑤): write-back/digest 後 staged diff에 lint+byte-hygiene
+  재확인. fire-1이 NUL 바이트를 게이트-後-편집 구멍으로 흘렸고 fire-2가 잡은 *증명된 사고*를 닫음.
+- **decompose-on-defer**(§4.5-7, ②): 큰 항목 defer 시 loop-sized로 쪼개 backlog 기록(Anthropic planner
+  패턴) 또는 "진안 필요" 명시; 2회 defer면 escalate. 작은-버그 편향(defer 일방 ratchet)을 파이프라인으로.
+- **RATCHET 지표**(§4.5-8, ⑤b): 매 fire digest에 스코어보드 델타 1줄, 알림은 추세(Karpathy immutable number).
+- **stale-dist 복구 인코딩**(④): 만진 패키지 빌드-먼저 + check 실패 시 첫 진단은 clean-rebuild 재실행
+  (2/6 fire에서 flake로 진단 사이클 낭비, 이미 MEMORY에 있던 교훈).
+- **judge 실패-드릴 CADENCE**(§4.5-5): 1회→N fire(10)/버전bump마다 재드릴 + digest에 judge PASS-rate.
+데이터 판정: 6 fire는 메커니즘 smoke test엔 충분, 스킬 판정엔 시기상조 — 계측 깔고 ~25–30 fire에 재평가.
+
 ## 1.10.0 — 2026-06-13
 **계획 티어에 Fable 5**(진안 지시): 계획/설계/모호한 포크/적대적 검증(강한-reasoning 티어)은
 **Fable 5(`model:"fable"`)를 가능할 때** 쓰고, 불가하면 **Opus 4.8(1M, `claude-opus-4-8[1m]`)**로

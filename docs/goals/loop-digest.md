@@ -321,6 +321,37 @@
 
 > ✅ **자율 리뷰관문 (fires 19–21, 진안 묻지 않음):** 사이클3 — line-295 audit 클러스터의 in-scope 버그 3종 정리: dedup stale-read-after-write(19)·말해줘 casual over-match(20)·groundToolArguments partial-array 오보고(21). 모두 Fable-5 judge 적대검증 PASS. **사이클4 방향(스스로): audit 클러스터 in-scope 소진 — 남은(consent header/web URL/encryption)은 범위밖/동시루프 영역. cycle4=fresh gap-scout(frontier queued: Mem0 UPDATE / ACT-R 후속 등) 또는 미감사 모듈 1개 정밀감사.** fires-19-21 배치는 main clean시 자동 머지.
 
+
+## [TOOL loop] fire 3 (v1.10.0, cron 23eff34a) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** chat 경로의 embedder 마이그레이션 누락 수정 — refreshStaleNotesIndexForChat가 CONTENT 변경만 보고 early-return해, chat-only 사용자(desktop은 ask 안 함)의 레거시 v1 인덱스가 영영 v2-moe 쿼리와 mismatch. 모델 불일치도 staleness 트리거로.
+- **왜:** v2-moe 쿼리 벡터를 v1 인덱스에 매칭 = cross-model cosine 노이즈가 0.5 authoritative floor 위로 떠 recall 품질 저하(grounding 품질 버그). ask는 재임베드하지만 chat은 안 했음.
+- **리뷰지점:** chat-grounding.ts — 순수 헬퍼 notesIndexNeedsModelMigration(resolveIndexModel(existing,req)!=existing) + refreshStaleNotesIndexForChat을 export+DI deps화(staleness 게이트 前 모델 읽기, modelStale||contentStale로 재임베드). TDD 5(헬퍼 단위 1 + DI 행동 4: legacy-fresh→default 재임베드, default/custom-fresh→안함, content-stale→여전히 함) RED→GREEN. cli 2525, check 0, lint 0. Fable-5 검증자 PASS(매-턴 루프 없음·production 배선 live·fail-soft).
+- **리스크:** embedder DOWN 중 model-mismatch 재빌드 시 reindexNotes가 prior-entry carry-forward 드롭 → 빈 인덱스 저장 가능(fail-close: zero hits→refusal, 날조 아님; 기존 경로). 별도 슬라이스로 backlog 기록. grounding floor 무관(인덱싱 경로, 게이트 로직 무변경).
+
+
+## [TOOL loop] fire 4 (v1.10.0, cron 23eff34a) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** muse.json.merge의 deepMerge 프로토타입 오염 수정 — 모델 args(JSON.parse)의 own "__proto__" 키가 result["__proto__"]= 할당으로 Object.prototype 셋터를 건드려 result 프로토타입 교체 + 상속 필드(isAdmin 등) 주입 + 키 소실. __proto__만 특수처리: getOwnPropertyDescriptor로 기존값 읽고 deepMerge 후 defineProperty로 own 데이터 prop 기록.
+- **왜:** 모델-facing 도구 핸들러의 실제 프로토타입 오염 벡터. signal scout가 clean(0 cluster)이라 tier-2 codebase EXPANSION 스카우트(Fable-5)로 발굴. 큰 리팩터(#6 ask error-path)·architectural(calendar 암호화)·반복(not-when) 회피하고 작고 깨끗한 보안 슬라이스 선택.
+- **리뷰지점:** loopback-json-server.ts deepMerge(__proto__ 분기) + mcp.test.ts(JSON.parse'd __proto__ overrides → 프로토타입 무손상 + 주입 필드 없음 + 키 데이터 보존) TDD 1 RED→GREEN. mcp 1679, check 0, lint 0. Fable-5 검증자 PASS(__proto__가 유일 셋터 벡터·constructor/prototype는 plain own·재귀 모든 깊이 보호). 부수로 #6/#7(big refactor)·calendar 암호화(architectural dep)를 ⏳ DEFERRED로 backlog 기록(WHY 명시).
+- **리스크:** 없음에 가까움 — 정상 merge 의미 불변(키 strict 매칭), __proto__ 키를 충실히 데이터로 보존. grounding floor 무관(JSON 유틸 도구, 게이트 무변경). DEFERRED 2건은 다음 fire가 재선택 안 하도록 사유 기록.
+
+
+## [TOOL loop] fire 5 (v1.10.0, cron 23eff34a) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** muse.fs.stat의 symlink 계약 위반 수정 — 설명은 "symlink를 안 따르고 kind=symlink 보고"인데 fsLib.stat(따라감)을 써 절대 symlink로 못 냄. fs seam에 optional lstat 추가 + 기본 impl 배선 + 도구가 (fsLib.lstat ?? fsLib.stat) 사용.
+- **왜:** 모델-facing 도구의 문서화된 계약이 충족 불가였음(symlink가 항상 target의 kind로 보고). fire-4 EXPANSION 스카우트의 runner-up. signal 보드 clean이라 codebase 갭.
+- **리뷰지점:** loopback-filesystem.ts(lstat seam + 기본 + stat 도구 1줄) + loopback-filesystem.test.ts(lstat→isSymbolicLink → kind=symlink vs stat-follow → file) TDD 1 RED→GREEN. mcp 1680, check 0, lint 0. Fable-5 검증자 PASS(HEAD 샌드박스 컴파일로 RED 재현·realpath escape 가드 무손상·read/list 무변경). lexical path에 lstat이라 escape 가드는 stat 전에 이미 실행됨.
+- **리스크:** read/list는 여전히 lexical path에서 symlink를 따름(설계상; realpath 가드가 escape 차단하나 symlink-swap TOCTOU 창 잔존 → 별도 슬라이스 backlog). runner-up atomicWriteFile tmp 누수 OPEN. grounding floor 무관(fs 메타 도구, 게이트 무변경).
+
+
+## [TOOL loop] fire 6 (v1.10.0, cron 23eff34a) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** atomicWriteFile(공유 sidecar-store 쓰기 프리미티브)의 tmp 누수 수정 — open→write→rename 중 어디서든 실패하면 <file>.tmp-<pid>-<uuid>가 고아로 남아 모든 sidecar 디렉터리(memory/tasks/reminders/action-log/…)에 litter 누적. open→write→rename→chmod를 try/catch로 감싸 실패 시 fs.rm(tmp,{force}) 후 원본 에러 rethrow.
+- **왜:** 리소스 누수(디스크 litter) — fire-4/5 EXPANSION 스카우트의 마지막 runner-up. signal 보드 clean이라 codebase 갭.
+- **리뷰지점:** atomic-file-store.ts(try/catch + rm) + atomic-file-store.test.ts(target=디렉터리→rename throw→rejection AND .tmp- 0개). TDD 1 RED→GREEN. mcp 1681, check 0, lint 0. Fable-5 검증자 PASS(HEAD 소스 swap으로 RED 재현·원본 에러 미swallow·UUID라 cross-writer race 없음). 비차단 노트: finally의 close()가 throw하면 writeFile 에러를 가릴 수 있음(기존 JS 의미, 본 수정과 무관).
+- **리스크:** 없음에 가까움 — happy path 무변경, rm은 이 호출의 tmp만(UUID), force라 open 실패 시 no-op. grounding floor 무관(파일 IO 프리미티브, 게이트 무변경).
 ## [cognition loop] fire 22 — 2026-06-13 · 사이클4 · 테마: grounding/CRAG confidence integrity
 
 - **무엇:** `rankKnowledgeChunksWithHop`의 second-hop "bridge" 매치가 SEED-relative cosine을 달고 append돼 CRAG retrieval-confidence를 부풀리던 버그 수정 — bridge cosine을 **원 query 기준**으로 재계산(query 1회 embed, embedText 우선, 일관 공간), embed 에러 시 **fail-safe cosine:0**(절대 confidence 안 올림).

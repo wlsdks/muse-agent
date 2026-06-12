@@ -40,17 +40,25 @@ export async function atomicWriteFile(file: string, contents: string, options: A
   const mode = options.mode ?? 0o600;
   const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
   await fs.mkdir(dirname(file), { recursive: true });
-  const handle = await fs.open(tmp, "w", mode);
   try {
-    await handle.writeFile(contents, "utf8");
-    // fsync before rename: a crash can otherwise commit the rename pointing at
-    // a zero-length / partial file (metadata and data journal separately).
-    if (options.fsync !== false) await handle.sync();
-  } finally {
-    await handle.close();
+    const handle = await fs.open(tmp, "w", mode);
+    try {
+      await handle.writeFile(contents, "utf8");
+      // fsync before rename: a crash can otherwise commit the rename pointing at
+      // a zero-length / partial file (metadata and data journal separately).
+      if (options.fsync !== false) await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await fs.rename(tmp, file);
+    await fs.chmod(file, mode).catch(() => undefined);
+  } catch (error) {
+    // A write/fsync/rename failure must not leave the tmp as an orphan — it
+    // would accumulate as `*.tmp-*` litter in the sidecar store dir. Best-effort
+    // cleanup, then surface the original error.
+    await fs.rm(tmp, { force: true }).catch(() => undefined);
+    throw error;
   }
-  await fs.rename(tmp, file);
-  await fs.chmod(file, mode).catch(() => undefined);
 }
 
 const mutationQueues = new Map<string, Promise<unknown>>();

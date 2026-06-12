@@ -43,6 +43,47 @@
 ## ★ Open — TOOL expansion & hardening (loop theme, 진안-directed 2026-06-12)
 
 The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing tools.
+- ✓→Done **atomicWriteFile leaked its tmp on failure** (EXPANSION gap-scout runner-up) — `atomicWriteFile`
+  (the shared sidecar-store write primitive) opened `<file>.tmp-<pid>-<uuid>`, wrote+fsync+closed it, then
+  `fs.rename(tmp, file)`. On ANY failure after the tmp was opened (writeFile/sync error OR the rename
+  failing), the tmp was orphaned → `*.tmp-*` litter accumulating in every sidecar dir (memory/tasks/
+  reminders/action-log/…). FIX: wrap open→write→rename→chmod in try/catch; on failure
+  `fs.rm(tmp,{force:true}).catch(()=>undefined)` then rethrow the ORIGINAL error (rm errors swallowed, never
+  substituted; force no-ops if open never created the tmp). TDD 1 behavioral (target=directory → rename
+  throws → assert rejection AND zero `.tmp-` entries) RED→GREEN; mcp 1681, check 0, lint 0. Fable-5 verifier
+  PASS (swapped HEAD source to reproduce RED; no cross-writer race — rm targets only this call's UUID tmp).
+- ✓→Done **muse.fs.stat lied about symlinks** (EXPANSION gap-scout runner-up) — the tool's description
+  promises "Symlinks are reported as kind=symlink without following", but it called `fsLib.stat` (which
+  FOLLOWS the link), so `entryKind`'s `isSymbolicLink()` was always false → a symlink was ALWAYS reported
+  as its target's kind, never `symlink`. The contract was unsatisfiable. FIX: added an optional `lstat?`
+  to the injectable fs seam + wired real `node:fs/promises` lstat into the default; the stat tool now
+  calls `(fsLib.lstat ?? fsLib.stat)(decision.resolved)` (lexical path → lstat sees the link). The
+  realpath-escape guard still runs first (unchanged), so no path guard was weakened. TDD 1 behavioral
+  (lstat→isSymbolicLink → kind=symlink, vs stat-follow → file) RED→GREEN; mcp 1680, check 0, lint 0.
+  Fable-5 verifier PASS (sandbox-compiled HEAD reproduced RED). RESIDUAL: read/list still FOLLOW symlinks
+  on the lexical path (by design — realpath guard prevents escape; a symlink-swap TOCTOU window remains,
+  separate slice). Runner-up still OPEN: `atomicWriteFile` leaks `*.tmp-*` on a write/rename failure (no
+  unlink on the error path — accumulates litter in sidecar store dirs).
+- ✓→Done **muse.json.merge prototype-pollution** (EXPANSION gap-scout, Fable-5) — `deepMerge` did
+  `result[key] = …` for every key of model-supplied `overrides`; model args arrive via JSON.parse, which
+  makes `"__proto__"` an OWN data key, so `result["__proto__"] = …` hit the Object.prototype SETTER and
+  HIJACKED the merged object's prototype (silently injected inherited fields like `isAdmin`, dropped the
+  key). FIX: special-case `key === "__proto__"` — read any existing own value via
+  `Object.getOwnPropertyDescriptor`, deep-merge, write back via `Object.defineProperty` as an own
+  enumerable data prop (never the setter); other keys unchanged. Verifier confirmed `__proto__` is the
+  ONLY setter vector here (constructor/prototype create plain own props, no pollution) and the guard
+  recurses to every depth. TDD 1 behavioral (JSON.parse'd `__proto__` overrides → prototype intact +
+  no injected field + key preserved as data) RED→GREEN; mcp 1679, check 0, lint 0. Fable-5 verifier PASS.
+- ⏳ **ask error-path run-log trace (#6/#7) — DEFERRED (big refactor, needs design)**: writeRunLog(success:true)
+  is inline at the END of the ~2000-line `muse ask` action (commands-ask.ts:3734) with NO enclosing
+  try/catch, so a thrown run leaves no trace (error-analysis fuel lost) + Ctrl-C logs success:true. Same
+  pattern in chat-repl (writeRunLog at 171, happy-path only). A correct fix wraps/extracts the run with a
+  success:false failure-log seam across BOTH surfaces — not a 1-fire slice; deserves a small design.
+- ⏳ **calendar credential encryption-at-rest — DEFERRED (architectural cost)**: `FileCalendarCredentialStore`
+  stores caldav passwords / google tokens plaintext (0600). The proven envelope lives in `@muse/memory`,
+  but `@muse/mcp`→`@muse/calendar` already, and `@muse/memory` pulls `@muse/db`+`@muse/model` — encrypting
+  the lean calendar package would bloat its dep graph (and the desktop binary). Needs a shared low-level
+  crypto seam or a key-provider injection decision (Jinan-level), not an autonomous fire.
 - ✓→Done **notes-family tool-selection coverage + sharpened save/append not-when** (per-tool not-when
   audit follow-up): `muse.notes` save/append had ZERO not-when clauses and were ABSENT from eval:tools.
   RED baseline (live gemma4, 3 runs) caught a real save-vs-append confusion (KO "write to a note" →
@@ -314,9 +355,19 @@ replay (this commit). Remaining, severity order:
   events from an otherwise-valid array — a partial-loss path (logs nothing); separate slice.
 - ✓→Done **toolGrounded blanket bypass** — fixed; keys on non-empty toolGroundingSources, value checks
   always-on, single-source helper shared run()+stream. See the Done entry up top. (CLI audit #4)
-- ◦ **Chat-only users never get the embedder migration** — refreshStaleNotesIndexForChat doesn't
-  treat legacy-model as stale → v2-moe queries ranked against v1 vectors (cross-model cosine noise
-  above the 0.5 authoritative floor). Treat model mismatch as stale. (CLI audit #5)
+- ✓→Done **Chat-only users never get the embedder migration** (CLI audit #5) —
+  `refreshStaleNotesIndexForChat` gated re-embed on CONTENT staleness only and returned early when
+  notes were unchanged, so a chat-only user (the desktop companion never runs `muse ask`, the only
+  other reindex trigger) kept ranking v2-moe query vectors against a legacy v1 index forever
+  (cross-model cosine noise above the 0.5 floor). FIX: read the index model BEFORE the staleness
+  gate; re-embed on `modelStale || contentStale`, where `notesIndexNeedsModelMigration` =
+  `resolveIndexModel(existing, requested) !== existing` (legacy→default migrates; custom/default/none
+  unflagged so no every-turn loop). Made the fn exported + deps-injectable (isStale/reindex/
+  readIndexModel) for an Ollama-free OUTCOME test. TDD 5 (1 helper unit + 4 DI behavioral: legacy-fresh
+  reindexes to default, default/custom-fresh don't, content-stale still does) RED→GREEN; cli 2525,
+  check 0, lint 0. Fable-5 verifier PASS. RESIDUAL (separate slice): if the embedder is DOWN during a
+  model-mismatch rebuild, `reindexNotes` drops prior-entry carry-forward → saves an empty index until
+  notes change / manual reindex (fail-close: zero hits → refusal, not fabrication; pre-existing path).
 - ◦ **ask error paths skip the run-log trace** (failed runs are exactly the error-analysis fuel) +
   Ctrl-C still runs the verdict pipeline and logs success:true. try/finally + success:false entries.
   (CLI audit #6/#7)

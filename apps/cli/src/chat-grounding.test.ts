@@ -18,13 +18,16 @@ import {
   groundChatTurn,
   groundedNoteSources,
   isPersonalFactRecall,
+  notesIndexNeedsModelMigration,
   pickReindexModel,
+  refreshStaleNotesIndexForChat,
   resolveGroundingMinScore,
   shortCitationRef,
   stripFabricatedCitations,
   stripTruncatedCitation,
   withGroundingReceipt
 } from "./chat-grounding.js";
+import { DEFAULT_EMBED_MODEL, LEGACY_EMBED_MODEL } from "./embed-model-default.js";
 import type { RecallHit } from "./commands-recall.js";
 
 describe("chat-path auto-reindex — the desktop reads a freshly-added note without a manual reindex", () => {
@@ -40,6 +43,47 @@ describe("chat-path auto-reindex — the desktop reads a freshly-added note with
     expect(pickReindexModel(undefined, "nomic-embed-text")).toBe("nomic-embed-text");
     expect(pickReindexModel("", "nomic-embed-text")).toBe("nomic-embed-text");
     expect(pickReindexModel("   ", "nomic-embed-text")).toBe("nomic-embed-text");
+  });
+});
+
+describe("notesIndexNeedsModelMigration — a chat-only user's legacy index must be re-embedded", () => {
+  it("flags a legacy-model index for the default, but NOT a custom or already-default one", () => {
+    expect(notesIndexNeedsModelMigration(LEGACY_EMBED_MODEL, DEFAULT_EMBED_MODEL)).toBe(true);
+    expect(notesIndexNeedsModelMigration(DEFAULT_EMBED_MODEL, DEFAULT_EMBED_MODEL)).toBe(false);
+    expect(notesIndexNeedsModelMigration("mxbai-embed-large", DEFAULT_EMBED_MODEL)).toBe(false);
+    expect(notesIndexNeedsModelMigration(undefined, DEFAULT_EMBED_MODEL)).toBe(false);
+  });
+});
+
+describe("refreshStaleNotesIndexForChat — re-embeds on a MODEL change even when content is fresh", () => {
+  const calls: { dir: string; indexPath: string; model: string }[] = [];
+  afterEach(() => { calls.length = 0; });
+  const deps = (existingModel: string | undefined, contentStale: boolean) => ({
+    isStale: async () => contentStale,
+    readIndexModel: async () => existingModel,
+    reindex: async (a: { dir: string; indexPath: string; model: string }) => { calls.push(a); }
+  });
+
+  it("a legacy-model index with FRESH content is still re-embedded to the default (the migration bug)", async () => {
+    await refreshStaleNotesIndexForChat({}, DEFAULT_EMBED_MODEL, deps(LEGACY_EMBED_MODEL, false));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.model).toBe(DEFAULT_EMBED_MODEL); // migrated, not left on v1
+  });
+
+  it("an already-default index with FRESH content is NOT re-embedded (no wasted work)", async () => {
+    await refreshStaleNotesIndexForChat({}, DEFAULT_EMBED_MODEL, deps(DEFAULT_EMBED_MODEL, false));
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a CUSTOM-model index with fresh content is preserved, not migrated", async () => {
+    await refreshStaleNotesIndexForChat({}, DEFAULT_EMBED_MODEL, deps("mxbai-embed-large", false));
+    expect(calls).toHaveLength(0);
+  });
+
+  it("the existing CONTENT-stale path still re-embeds (no regression)", async () => {
+    await refreshStaleNotesIndexForChat({}, DEFAULT_EMBED_MODEL, deps(DEFAULT_EMBED_MODEL, true));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.model).toBe(DEFAULT_EMBED_MODEL);
   });
 });
 

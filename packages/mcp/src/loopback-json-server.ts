@@ -192,6 +192,20 @@ function deepMerge(base: unknown, overrides: unknown): unknown {
   }
   const result: Record<string, unknown> = { ...(base as Record<string, unknown>) };
   for (const [key, value] of Object.entries(overrides as Record<string, unknown>)) {
+    if (key === "__proto__") {
+      // Model args arrive via JSON.parse, which makes "__proto__" an OWN data key.
+      // A plain `result["__proto__"] = …` would hit the Object.prototype setter and
+      // HIJACK the merged object's prototype (a prototype-pollution vector: silently
+      // injects inherited fields and drops the key). Merge it as an own data property.
+      const existing = Object.getOwnPropertyDescriptor(result, key)?.value;
+      Object.defineProperty(result, key, {
+        configurable: true,
+        enumerable: true,
+        value: deepMerge(existing, value),
+        writable: true
+      });
+      continue;
+    }
     result[key] = deepMerge(result[key], value);
   }
   return result;

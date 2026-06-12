@@ -156,6 +156,31 @@ describe("loopback-filesystem — symlink escape prevention (realpath guard)", (
       expect(result).not.toHaveProperty("error");
       expect(result).toHaveProperty("kind");
     });
+
+    it("reports a symlink as kind=symlink WITHOUT following it (honors the documented contract)", async () => {
+      // The path IS a symlink: lstat sees the link, stat would follow it to a file.
+      // The tool must use lstat so it reports kind=symlink, as its description promises.
+      const symlinkFs = {
+        ...makeFs(),
+        lstat: async (_p: string) => ({
+          isDirectory: () => false,
+          isFile: () => false,
+          isSymbolicLink: () => true,
+          mtime: new Date(),
+          size: 0
+        }),
+        realpath: async (p: string) => p
+      };
+      const server = createFilesystemMcpServer({
+        allowedRoots: [ALLOWED_ROOT],
+        fs: symlinkFs
+      });
+      const tool = findTool(server, "stat");
+      const result = await tool.execute({ path: `${ALLOWED_ROOT}/link` }) as Record<string, unknown>;
+
+      expect(result).not.toHaveProperty("error");
+      expect(result.kind).toBe("symlink"); // NOT "file" (which stat-follow would yield)
+    });
   });
 
   describe("lexical allowlist still gates paths not under any root", () => {

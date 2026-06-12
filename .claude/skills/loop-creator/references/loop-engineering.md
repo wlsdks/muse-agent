@@ -154,6 +154,9 @@ post — outbound-safety.md) · banking/송금 · `--no-verify`/게이트 우회
 - [ ] **모델 티어링** — 정형 작업 Sonnet; **계획/설계는 Fable 5(가능 시) 아니면 Opus 4.8(1M)**; judge는 강한 티어. §1.5.
 - [ ] **State 파일** — 무엇이 Done·다음은 무엇. 디스크에([`backlog.md`](../../../../docs/goals/backlog.md)).
 - [ ] **불변식 불가침** — fabrication=0 floor + IMMUTABLE-CORE는 절대 약화 안 함.
+- [ ] **게이트가 최종 diff를 덮나** — write-back/digest 後 staged diff에 lint+byte-hygiene 재확인. §4.5-6.
+- [ ] **decompose-on-defer** — 큰 항목 defer 시 loop-sized로 쪼개거나 "진안 필요" 명시. §4.5-7.
+- [ ] **ratchet 지표** — digest에 스코어보드 델타 1줄, 알림은 추세. §4.5-8.
 - [ ] **중단 방법** — cron id 기록, 어떻게 멈추나(CronDelete/cmux), 무인 비용 경계.
 
 ## 4.5 루프 품질 가드 (2026-06-12, 라이브 dogfood 평가에서)
@@ -177,9 +180,28 @@ post — outbound-safety.md) · banking/송금 · `--no-verify`/게이트 우회
    빌드·한 번 검증(고정 검증비를 N개에 분산). 자연히 슬라이스가 커져 1·3을 같이 고친다.
    (b) **검증 깊이는 리스크에 비례** — 정형 저위험 변경엔 가벼운 체크, 새 경로·불변식 접촉·큰
    변경에만 Opus 풀 추적. 단 검증자는 *항상* 돈다(끄지 않는다 — floor).
-5. **실패 드릴 — 롤백 경로를 *증명*한다.** 게이팅 검증자가 실제로 FAIL→`git restore` 롤백→
-   블로커 기록하는지, **고의로 나쁜 슬라이스 1건**(불변식 약화 / inert / 깨진 테스트)을 주입해
-   최소 1회 드릴-검증한다 — happy-path만 보고 "막아줄 것"이라 가정하지 않는다.
+5. **실패 드릴 — 롤백 경로를 *증명*한다 (CADENCE).** 게이팅 검증자가 실제로 FAIL→`git restore`
+   롤백→블로커 기록하는지, **고의로 나쁜 슬라이스 1건**(불변식 약화 / inert / 깨진 테스트)을
+   주입해 드릴-검증한다. 1회로 끝이 아니라 **N fire(기본 10)마다 또는 스킬 버전 bump마다** 재드릴
+   — 그리고 digest에 judge PASS-rate를 기록한다. *장기 all-PASS 구간은 "worker가 좋아진 것"과
+   "judge가 물러진 것"을 구분 못 하므로*(maker=judge인 단일-모델 honest constraint, agent-testing.md),
+   all-PASS가 길어지면 드릴이 자동 트리거.
+
+다음 셋은 **2026-06-13 라이브 평가**(6 fire 실측 + Osmani/Cherny/Karpathy/Anthropic 2026-06 대조)에서 추가:
+
+6. **게이트가 최종 diff를 덮는다 — "게이트 後 트리 무편집".** ④ 게이트 통과 *후* write-back/digest로
+   트리를 또 편집하면 그 바이트는 미검증으로 커밋된다(fire-1이 NUL 바이트를 이 구멍으로 흘렸고
+   fire-2가 잡음). 커밋 *직전 마지막 행동*으로 **staged diff에 lint + byte-hygiene 재확인**.
+   Osmani: "ship code you *confirmed* works" — 슬라이스만이 아니라 커밋의 모든 바이트.
+7. **DECOMPOSE-ON-DEFER — defer는 막다른 길이 아니라 파이프라인.** 큰 항목을 defer-with-reason만
+   하면 고가치 항목이 영원히 제자리(작은-버그 편향 = Karpathy가 관찰한 RLHF "cagy and scared"의
+   루프 버전). Anthropic harness의 planner는 *큰 의도를 게이트-검증 가능한 작은 리스트로 쪼개는*
+   것이 일. defer 시 강한-티어 1스텝으로 loop-sized ◦로 decompose해 backlog 기록(또는 "진안 필요"
+   명시); 같은 항목 2회 defer면 escalate. *쪼개지 않는 defer가 안티패턴, 셋으로 쪼개는 defer가 처방.*
+8. **RATCHET 지표 — 루프가 *나아짐을 증명*해야 한다.** boolean 게이트 통과만으론 Muse가 측정 가능하게
+   좋아졌는지 알 수 없다(Karpathy의 immutable number 부재). 매 fire digest에 스코어보드 델타 1줄,
+   3-fire 알림은 누적 개수가 아니라 *추세*를 보고. self-eval 스코어보드가 이미 있으니 digest에 델타로
+   노출만 하면 됨.
 
 ## 5. 출처 (2026-06, 1차 → 심화)
 
