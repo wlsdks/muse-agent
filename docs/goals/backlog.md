@@ -484,6 +484,14 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   memories into the persona in the background) with its own safety guards — currently the tick
   surfaces the plan, doesn't mutate. (ACT-R ranking from T2-1 already feeds consolidationPlan via useActrRanking.)
 
+- ✓→Done **MoA fan-out: no duplicated sub-agent work (dedupe roles by id)** — [2026-06-12, cognition
+  loop fire 13, sub-agents #4] `orchestrateAnswer` ran every role as a parallel proposer without
+  deduping by id — duplicate-id roles ran a redundant sub-agent (wasted inference) AND yielded dup-id
+  proposals that corrupt fire-7's `attributeContributors`/`contributors`. Added pure `dedupeRolesById`
+  (first-wins, order-preserving) at the roleList resolution. MAST "no duplicated sub-agent work".
+  agent-core 1718 green incl. an integration (2 dup-id roles + 1 → exactly 2 proposals, unique ids).
+  DEFAULT_ROLES path unaffected (distinct ids → no-op).
+
 ## Blocked / deferred
 
 - ⏳ **Grammar-constrained tool-call decoding** — INFEASIBLE on Ollama today: `format`

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { attributeContributors, defaultShouldOrchestrate, orchestrateAnswer, type OrchestrateOptions } from "../src/orchestrate.js";
+import { attributeContributors, defaultShouldOrchestrate, dedupeRolesById, orchestrateAnswer, type OrchestrateOptions } from "../src/orchestrate.js";
 
 // A deterministic fake model: a role proposer (system prompt mentions a lens)
 // echoes its role; the aggregator (council synthesis) returns council JSON.
@@ -163,5 +163,72 @@ describe("orchestrateAnswer — multi-merge attribution", () => {
     const substantive = "에이전트를 병렬화하는 가장 좋은 방법은 무엇인가요?";
     const res = await orchestrateAnswer(substantive, opts({ modelProvider: fakeProvider(["practical", "thorough"]) }));
     expect(res.contributors).toEqual(["skeptic"]);
+  });
+});
+
+describe("dedupeRolesById", () => {
+  it("preserves length and order when all ids are distinct", () => {
+    const roles = [
+      { id: "a", systemPrompt: "A" },
+      { id: "b", systemPrompt: "B" },
+      { id: "c", systemPrompt: "C" }
+    ];
+    const result = dedupeRolesById(roles);
+    expect(result).toHaveLength(3);
+    expect(result.map((r) => r.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("keeps first occurrence and drops later duplicates", () => {
+    const roles = [
+      { id: "a", systemPrompt: "P1" },
+      { id: "b", systemPrompt: "B" },
+      { id: "a", systemPrompt: "P2" }
+    ];
+    const result = dedupeRolesById(roles);
+    expect(result.map((r) => r.id)).toEqual(["a", "b"]);
+    expect(result.find((r) => r.id === "a")?.systemPrompt).toBe("P1");
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(dedupeRolesById([])).toEqual([]);
+  });
+});
+
+describe("orchestrateAnswer — duplicate-role guard", () => {
+  it("dedups duplicate-id roles: only one proposer runs per id, proposals have unique ids", async () => {
+    const invocations: string[] = [];
+    const provider: OrchestrateOptions["modelProvider"] = {
+      async generate(request) {
+        const sys = request.messages.find((m) => m.role === "system")?.content ?? "";
+        if (/dup-role/u.test(sys)) {
+          invocations.push("dup");
+          return { id: "x", model: "fake", output: `proposal-dup-${invocations.length.toString()}` };
+        }
+        if (/other-role/u.test(sys)) {
+          invocations.push("other");
+          return { id: "x", model: "fake", output: "proposal-other" };
+        }
+        // aggregator
+        return { id: "x", model: "fake", output: "merged" };
+      }
+    };
+
+    const roles = [
+      { id: "dup", systemPrompt: "You are dup-role assistant. Answer the user's question directly." },
+      { id: "dup", systemPrompt: "You are dup-role assistant. Answer the user's question directly." },
+      { id: "other", systemPrompt: "You are other-role assistant. Answer the user's question directly." }
+    ];
+
+    const res = await orchestrateAnswer(
+      "How do I parallelize agents effectively?",
+      { model: "fake", modelProvider: provider, roles, shouldOrchestrate: () => true }
+    );
+
+    // exactly 2 proposals: "dup" once + "other"
+    expect(res.proposals).toHaveLength(2);
+    const proposalIds = res.proposals.map((p) => p.id);
+    expect(new Set(proposalIds).size).toBe(proposalIds.length); // all unique
+    expect(proposalIds).toContain("dup");
+    expect(proposalIds).toContain("other");
   });
 });

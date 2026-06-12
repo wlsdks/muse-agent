@@ -57,6 +57,24 @@ export interface OrchestrateOptions extends CouncilModelOptions {
   readonly onProposal?: (proposal: OrchestrationProposal) => void;
 }
 
+/**
+ * Dedupe proposer roles by id (first occurrence wins) — MAST "no duplicated
+ * sub-agent work": two roles with the same id would run a redundant proposer
+ * (wasted inference) AND yield two proposals sharing an id, corrupting
+ * contributor attribution. Order-preserving. Empty/blank-id roles are kept as-is
+ * (id integrity is the caller's; this only collapses exact-id duplicates).
+ */
+export function dedupeRolesById(roles: readonly OrchestrationRole[]): readonly OrchestrationRole[] {
+  const seen = new Set<string>();
+  const out: OrchestrationRole[] = [];
+  for (const role of roles) {
+    if (seen.has(role.id)) continue;
+    seen.add(role.id);
+    out.push(role);
+  }
+  return out;
+}
+
 /** Three complementary lenses — diverse enough to cover, aligned with the grounding edge. */
 export const DEFAULT_ROLES: readonly OrchestrationRole[] = [
   {
@@ -155,7 +173,7 @@ async function runRole(question: string, role: OrchestrationRole, options: Orche
 
 export async function orchestrateAnswer(question: string, options: OrchestrateOptions): Promise<OrchestratedAnswer> {
   const decide = options.shouldOrchestrate ?? defaultShouldOrchestrate;
-  const roleList = options.roles && options.roles.length > 0 ? options.roles : DEFAULT_ROLES;
+  const roleList = dedupeRolesById(options.roles && options.roles.length > 0 ? options.roles : DEFAULT_ROLES);
   const primary = roleList[0];
   if (!primary) throw new Error("orchestrateAnswer requires at least one role");
 
