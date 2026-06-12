@@ -398,3 +398,11 @@
 - **왜:** 이 도구의 전체 계약이 "8B가 못 하는 정확한 계산"인데 틀린 숫자가 모델 검증 없이 사용자 답으로 흐름(shared core라 ask/chat arithmetic fast-path까지). EXPANSION 스카웃 발굴. 다양성: 보안×3→decompose→observability 다음 parsing-correctness로 KIND 다양.
 - **리뷰지점:** loopback-math-server.ts:163(parseFloat→Number) + mcp.test.ts(다중-dot→error + 5./.5 컨트롤) RED→GREEN. mcp 1687, check 0, lint 0. Fable-5 검증자 PASS(유효 입력 무회귀 node-검증·shared core 도달·1..2도 수정). runner-up(json.query 프로토타입-체인 walk → Object.hasOwn)을 새 ◦로 backlog 기록.
 - **리스크:** 없음에 가까움 — Number는 parseFloat보다 엄격하나 parseNumber가 이미 digits/dots만 통과시켜 다중-dot 외 발산 없음(검증됨). RATCHET: testFiles 888 무변동(+1 케이스), fabrication 0 유지. grounding floor 무관(산술 파서 correctness, 게이트 무변경).
+
+
+## [TOOL loop] fire 10 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** (1) v1.11.2 §4.5-5 JUDGE 실패-드릴(~10 fire cadence): 고의 나쁜 슬라이스(json.query에 plausible-but-WRONG fix `in && value!==undefined` + non-discriminating 테스트) 주입 → Fable-5 게이팅 검증자가 정확히 FAIL(라이브 실행으로 constructor 여전히 통과 적발 + 테스트 비변별 적발 + secondary defect까지 발견) → git restore 롤백 검증. (2) 검증자가 권고한 올바른 fix를 실제 ship: muse.json.query의 `key in cursor`(프로토타입 체인 walk) → `Object.hasOwn`.
+- **왜:** judge 신뢰도 측정(내 평가의 "9/9 PASS가 worker-good인지 judge-soft인지 불명" 발견 처리 → worker-good 확인). 그리고 json.query가 `constructor`/`__proto__`/`toString` 경로로 상속 값(함수/Object.prototype)을 tool 결과로 누출하던 실 보안버그(fire-4 __proto__ merge의 sibling) 수정. 드릴은 롤백되니 sweep 문제도 회피.
+- **리뷰지점:** loopback-json-server.ts:88(in→Object.hasOwn) + mcp.test.ts(constructor/__proto__/toString/hasOwnProperty→found:false + own-key positive, discriminating) RED→GREEN. mcp 1688, check 0, lint 0. Fable-5 검증자: 드릴 슬라이스 FAIL(정확) + 실제 fix PASS(walk 닫힘·무회귀·null-proto 안전).
+- **리스크:** 없음에 가까움 — array 분기 무변경, 정상 own 키·JSON.parse'd own __proto__ 데이터 키 정상 resolve(value-agnostic). RATCHET: testFiles 888 무변동(+1 케이스), fabrication 0 유지, JUDGE PASS-rate 드릴 1/1(나쁜 슬라이스 정확히 FAIL). grounding floor 무관(JSON 유틸 보안, 게이트 무변경).

@@ -54,7 +54,7 @@ The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing 
   regresses; "1..2" also now rejected). TDD 1 (multi-dot → error + 5./.5 controls) RED→GREEN; mcp 1687,
   check 0, lint 0. Fable-5 verifier PASS (no valid-input regression, reaches ask/chat fast-path). Matches
   code-style.md "strict Number() not parseFloat".
-- ◦ **muse.json.query walks the prototype chain** (EXPANSION gap-scout runner-up) — path resolution uses
+- ✓→Done **muse.json.query walked the prototype chain** (EXPANSION gap-scout runner-up; shipped fire 10) — path resolution uses
   `segment.key in cursor` so a path like `constructor`/`__proto__` on a plain object returns `found:true`
   with an inherited (often function) value that JSON-serialization silently drops to `{found:true}` (no
   value), and `__proto__` leaks Object.prototype. FIX: `Object.hasOwn(cursor, segment.key)` (own-property

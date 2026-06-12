@@ -85,7 +85,10 @@ export function createJsonMcpServer(): LoopbackMcpServer {
           let cursor: unknown = target;
           for (const segment of segments) {
             if (segment.kind === "key") {
-              if (cursor && typeof cursor === "object" && !Array.isArray(cursor) && segment.key in (cursor as Record<string, unknown>)) {
+              // Object.hasOwn, NOT `key in cursor`: `in` walks the prototype chain, so a
+              // path of `constructor` / `__proto__` / `toString` resolved to an inherited
+              // value (a function / Object.prototype) and leaked it into the tool result.
+              if (cursor && typeof cursor === "object" && !Array.isArray(cursor) && Object.hasOwn(cursor as Record<string, unknown>, segment.key)) {
                 cursor = (cursor as Record<string, unknown>)[segment.key];
               } else {
                 return { found: false, value: null } satisfies JsonObject;

@@ -971,6 +971,16 @@ describe("loopback MCP servers", () => {
     });
   });
 
+  it("muse.json#query resolves OWN keys only — an inherited prototype key never leaks", async () => {
+    const connection = createLoopbackMcpConnection(createJsonMcpServer());
+    expect(await connection.callTool!("query", { value: { a: 1 }, path: "a" })).toEqual({ found: true, value: 1 });
+    // `key in cursor` walked the prototype chain, so these leaked an inherited value
+    // (a function / Object.prototype) into the tool result — must be found:false.
+    for (const proto of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+      expect(await connection.callTool!("query", { value: { a: 1 }, path: proto })).toEqual({ found: false, value: null });
+    }
+  });
+
   it("muse.json#merge deep-merges objects with override-wins semantics", async () => {
     const connection = createLoopbackMcpConnection(createJsonMcpServer());
     expect(
