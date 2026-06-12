@@ -1,7 +1,15 @@
 ---
 name: loop-creator
+version: 1.7.0
 description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘", "loop 등록", "X를 계속 강화하는 루프", or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from its bundled loop-engineering.md contract AND registers the cron itself, then reports the prompt + cron id + how to stop. The autonomous successor to hand-written ad-hoc loop prompts.
 ---
+
+> **Versioning.** This skill carries a `version` (above). On any change to the
+> skill or its `references/loop-engineering.md` contract, **bump it** (patch =
+> wording, minor = new guard/behavior) and add a `CHANGELOG.md` entry. Stamp the
+> current version into each `loop-digest.md` fire entry (`(skill vX.Y.Z)`) so that
+> after many loops we can correlate fire OUTCOMES ↔ skill version and improve.
+> History: [`CHANGELOG.md`](CHANGELOG.md).
 
 # loop-creator — 원칙을 지키는 자율 루프를 생성하고 등록한다
 
@@ -30,8 +38,9 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 
 - **테마/목적이 있으면** (예: "브라우저 강화", "agent-core 하드닝") → 그걸 목적으로 채운다.
 - **간격이 있으면** (예: "20분") → 그 간격. 없으면 기본 **20m**(세션 루프).
-- **아무것도 없으면** → `docs/goals/backlog.md` 최상단 ★ 테마를 목적으로 제안하고 진행
-  (improve-muse처럼 "할 게 없다"는 금지 — backlog가 비면 gap-scout 리필이 곧 목적).
+- **테마가 없으면** → 스킬의 **1번 작업이 곧 "무엇을 할지 알아내기"**다(§1 DECIDE THE WORK):
+  backlog가 명확하면 거기서, 얇거나/없으면 **gap-scout를 즉시 돌려 발굴**해 정한다.
+  "할 게 없다"는 금지 — 모르면 멈추는 게 아니라 스카웃한다.
 
 - **자율성 티어** — 기본 **Tier1**(로컬 커밋, push 없음). "더 자율적으로"/"PR로"/"브랜치
   파서"/"무인으로 머지 전까지" 같은 신호가 있으면 **Tier2**(브랜치+draft PR, 사람이 머지)로,
@@ -41,9 +50,24 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 
 ## 파이프라인 (생성, 그다음 등록)
 
-### 1. ORIENT — 계약과 현재 상태를 읽는다
-- [`loop-engineering.md`](references/loop-engineering.md)의 §1 표와 §4 체크리스트를 읽는다.
-- `docs/goals/backlog.md` 최상단(작업 소스), `git log --oneline -5`(최근 무엇), `pnpm self-eval`(회귀?).
+### 1. DECIDE THE WORK — 무엇을 할지 *결정*한다 (모르면 *알아낸다*)
+
+이 스킬의 **1번 작업은 "이번 루프가 무엇을 할지 결정"하는 것**이다 — backlog를 *읽기만* 하는
+게 아니라, 모르면 *능동적으로 알아낸다*. 결정 순서(위에서 멈추는 곳이 답):
+
+1. **기준선 먼저.** `pnpm self-eval` non-zero면 **등록하지 않고** 회귀를 보고한다(아래 상세 불릿)
+   — 깨진 기준선 위엔 루프를 안 띄운다. (루프가 *돌 때* 회귀를 만나면 그건 그 fire의 일.)
+2. **테마가 정해졌고 backlog에 그 항목이 있으면** → 가치 우선 top ◦(§2). 끝.
+3. **테마가 없거나 / backlog가 얇거나(≤2) / stale / 부재면 → 지금 알아낸다:**
+   **gap-scout를 *즉시* 돌려**(EXPANSION-PLAYBOOK / 코드·CI·최근 커밋 스캔) 무엇이 가장 가치
+   있는지 발굴하고, 그 결과를 **backlog.md에 써넣은 뒤** 그걸로 테마/슬라이스를 정한다. 이게
+   "스킬 호출되자마자 무엇을 할지 알아보는 1번 작업". **"할 게 없다"는 금지** — 모르면 멈추는
+   게 아니라 스카웃하는 것이다(파일 없음/빈 목록 ≠ 일감 없음).
+
+보조 입력: [`loop-engineering.md`](references/loop-engineering.md) §1 표·§4 체크리스트,
+`git log --oneline -5`(최근 무엇), 동시 자동-push 루프 여부.
+**backlog.md는 스킬이 *읽고/스카웃으로 채우는* repo 아티팩트지(dev loop·improve-muse·gap-scout가
+유지) 매번 새로 만드는 건 아니다** — 부재 시 최소 스켈레톤(`# Muse dev backlog`)을 만들고 위 3을 탄다.
 - **기준선이 초록이어야 등록한다.** `self-eval`이 non-zero면 루프를 띄우지 않고 회귀를
   진안에게 보고한다 — 깨진 기준선 위 루프는 매 fire가 그 회귀를 보고, 정지조건
   (`self-eval` exit 0)에 영영 못 닿는다(improve-muse와 같은 규칙).
@@ -81,12 +105,10 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 ```
 Muse 자율 개선 루프 — 테마: <목적>. 반드시 Node 24(nvm default).
 ① docs/goals/backlog.md를 먼저 읽고 `pnpm self-eval`로 회귀를 확인 — 있으면 그게 이번 이터레이션.
-② <테마>의 최상단 ★/◦ 항목 하나(비면 gap-scout 리필이 작업).
-③ harness/dev-loop.md §3에 따라 가장 작은 검증가능 슬라이스를 TDD-first로.
-   새 도구는 tool-calling.md 체크리스트 + eval:tools 골든 케이스.
+② <테마>의 **최상단 ◦(가치 우선, "검증 쉬운 것" 아님)**. 어려워서 defer하면 loop-digest에 *왜* deferred인지 명시(조용히 쉬운 걸로 안 내려감). 최근 3 fire가 같은 KIND였으면 다른 KIND를 고른다(다양성). 비면 gap-scout 리필.
+③ harness/dev-loop.md §3에 따라 검증가능 슬라이스를 TDD-first로. **행동 acceptance: 결과 상태(OUTCOME)를 채점 — 선언/config-only 테스트 금지(fabricated 값이 실제 드롭/동작하는 end-to-end 케이스).** 사소한 동종 변경(예: 남은 actuator들)은 **한 슬라이스로 배칭**(토큰 절약). 새 도구는 tool-calling.md + eval:tools 골든.
 ④ 결정적 검증(정지조건): 가장 좁은 테스트 → pnpm check → 관련 eval(<해당 eval>) → pnpm lint.
-④b 게이팅 검증자: 별개 Opus 서브에이전트가 슬라이스를 적대 판정(acceptance 충족? 불변식 약화 없음? 무관 state 안 깸?).
-   PASS여야 ⑤로. FAIL이면 슬라이스 롤백(git restore)+backlog에 블로커 기록 후 멈춤. (미검증 코드 통과 금지)
+④b 게이팅 검증자: 별개 Opus 서브에이전트가 적대 판정(acceptance가 *행동*을 검증하나 — **선언-only면 FAIL**? 불변식 약화 없음? 무관 state 안 깸?). 깊이는 리스크에 비례(정형 저위험은 가볍게, 새 경로/불변식 접촉은 풀 추적)하되 항상 돈다. PASS여야 ⑤로; FAIL이면 git restore 롤백+backlog 블로커 후 멈춤.
 ⑤ write-back(테스트/eval/backlog Done) 포함 커밋. **자율성: <Tier1=로컬 커밋, push 금지 / Tier2=loop/<theme> 브랜치 push+draft PR, 사람이 머지>.**
 ⑤b 이해 다이제스트: docs/goals/loop-digest.md에 4줄 append(무엇/왜/리뷰지점/리스크). 3 fire마다 빌드 멈추고 누적 리뷰 관문 — 진안 확인 전 새 슬라이스 시작 금지.
 모델 티어링(토큰 절약): 정형 빌드/검색은 Sonnet 서브에이전트(Agent/Workflow model:"sonnet")로
