@@ -290,6 +290,7 @@ async function buildFileScenario() {
     const cases = [
       { prompt: "다운로드 폴더에 있는 invoice.pdf 읽고 요약해줘.", expectTool: "file_read", requireArgs: ["file"], argIncludes: /invoice/i, note: "KO read+summarize a download → file_read" },
       { prompt: "Read the report.md on my Desktop and tell me the key points.", expectTool: "file_read", requireArgs: ["file"], argIncludes: /report/i, note: "EN read a Desktop file → file_read" },
+      { prompt: "다운로드에 있는 계약서 워드 파일 열어서 핵심 조건 요약해줘.", expectTool: "file_read", requireArgs: ["file"], note: "KO read a .docx Word file → file_read" },
       { prompt: "발표자료 키노트 파일이 어디 있는지 위치만 찾아줘.", expectTool: "mac_spotlight_search", note: "KO locate-only → spotlight (NOT file_read)" },
       { prompt: "지난 회의에서 결정한 내용 내 노트에서 찾아줘.", expectTool: "knowledge_search", note: "KO Muse-notes recall → knowledge_search (NOT file_read)" },
       { prompt: "맥에서 쓸만한 PDF 뷰어 하나 추천해줘.", expectNoTool: true, note: "KO talking ABOUT PDFs, nothing to read → NO tool" }

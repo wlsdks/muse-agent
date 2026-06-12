@@ -26,8 +26,12 @@ EXPAND (new reach):
   3/3, check 0, lint 0.
 - ◦ **browser: same-origin iframe piercing** — snapshot stops at iframe boundaries (embedded
   forms/widgets invisible); walk same-origin frames like shadow roots. Cross-origin honestly out.
-- ◦ **file_read: .docx / .xlsx extraction** — pdfjs pattern, add a lazy mammoth/xlsx extractor;
-  content-sniff the kind, not just the extension. Real-file round-trip gate like eval:file-read.
+- ✓→Done **file_read: .docx (Word) extraction** — `docx` FileKind + lazy mammoth (extractRawText,
+  injectable like extractPdfText); routes by extension since a .docx is a zip (sniffs unsupported).
+  Description gains the Word cue. TDD 4 cases (classify/resolve/route/description); eval:file-read
+  generates a REAL .docx at runtime (self-contained minimal-zip writer via node:zlib crc32/deflate —
+  no committed binary) → mammoth extracts → tool round-trip; eval:tools file scenario 6/6 STABLE 3/3
+  (KO '계약서 워드 파일' → file_read), full 131/131; check 0, lint 0. Follow-up: .xlsx (sheetjs).
 - ◦ **browser: save/download a file** — the page has a PDF/image the user wants saved to Downloads;
   draft-first (it writes to disk), allowlist-rooted.
 - ◦ **mac: read Calendar.app / Notes.app / Reminders.app** — osascript readers in the mac family,

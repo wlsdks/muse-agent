@@ -22,7 +22,7 @@ export interface FileCandidate {
   readonly modifiedMs: number;
 }
 
-export type FileKind = "pdf" | "text" | "unsupported";
+export type FileKind = "pdf" | "docx" | "text" | "unsupported";
 
 const TEXT_EXTENSIONS = new Set([
   "txt", "md", "markdown", "json", "csv", "tsv", "log", "yaml", "yml", "toml", "ini",
@@ -35,6 +35,7 @@ export function classifyFileKind(name: string): FileKind {
   const lower = name.toLowerCase();
   const ext = lower.includes(".") ? (lower.split(".").pop() ?? "") : "";
   if (ext === "pdf") return "pdf";
+  if (ext === "docx") return "docx";
   if (TEXT_EXTENSIONS.has(ext)) return "text";
   return "unsupported";
 }
@@ -110,6 +111,8 @@ export interface FileReadToolDeps {
   readonly fsImpl?: FileReadFsImpl;
   /** PDF text extractor; defaults to the lazy pdfjs-dist implementation. */
   readonly extractPdfText?: (data: Buffer) => Promise<string>;
+  /** DOCX (Word) text extractor; defaults to the lazy mammoth implementation. */
+  readonly extractDocxText?: (data: Buffer) => Promise<string>;
   /** Cap on returned characters. Default 20,000. */
   readonly maxTextChars?: number;
   /** Files larger than this are refused. Default 25MB. */
@@ -166,22 +169,29 @@ export async function extractPdfTextWithPdfjs(data: Buffer, maxPages = 50): Prom
   }
 }
 
+export async function extractDocxTextWithMammoth(data: Buffer): Promise<string> {
+  const mammoth = await import("mammoth");
+  const result = await mammoth.extractRawText({ buffer: data });
+  return result.value.replace(/[ \t]+/g, " ").trim();
+}
+
 export function createFileReadTool(deps: FileReadToolDeps = {}): MuseTool {
   const roots = (deps.roots ?? [join(homedir(), "Downloads"), join(homedir(), "Desktop"), join(homedir(), "Documents")])
     .map((root) => pathResolve(root));
   const fsImpl: FileReadFsImpl = deps.fsImpl ?? { listCandidates: walkCandidates, readFile: (path) => nodeReadFile(path) };
   const extractPdf = deps.extractPdfText ?? extractPdfTextWithPdfjs;
+  const extractDocx = deps.extractDocxText ?? extractDocxTextWithMammoth;
   const maxTextChars = deps.maxTextChars ?? 20_000;
   const maxFileBytes = deps.maxFileBytes ?? 25 * 1024 * 1024;
   return {
     definition: {
       description:
         "Read a document FILE from the user's Downloads, Desktop, or Documents folder and return its text " +
-        "— PDFs included (text is extracted locally). Say WHICH file in `file` — a filename or part of one " +
-        "('invoice pdf', 'report.md') — and Muse finds the newest match. Use when the user asks to read / " +
-        "open / summarize a file on their computer — e.g. '다운로드에 있는 invoice.pdf 요약해줘', 'read the " +
-        "report on my Desktop'. NOT for the user's Muse notes (muse.notes.search) and NOT for just locating " +
-        "a file's path (mac_spotlight_search).",
+        "— PDF and Word (.docx) included (text is extracted locally). Say WHICH file in `file` — a filename " +
+        "or part of one ('invoice pdf', 'report.md', '계약서 워드') — and Muse finds the newest match. Use " +
+        "when the user asks to read / open / summarize a file on their computer — e.g. '다운로드에 있는 " +
+        "invoice.pdf 요약해줘', 'read the Word doc on my Desktop'. NOT for the user's Muse notes " +
+        "(muse.notes.search) and NOT for just locating a file's path (mac_spotlight_search).",
       domain: "files",
       groundedArgs: ["file"],
       inputSchema: {
@@ -231,7 +241,7 @@ export function createFileReadTool(deps: FileReadToolDeps = {}): MuseTool {
         if (kind === "unsupported") {
           return { read: false, reason: `'${target.name}' is not a readable document (PDF or text files only)` };
         }
-        const text = kind === "pdf" ? await extractPdf(data) : data.toString("utf8");
+        const text = kind === "pdf" ? await extractPdf(data) : kind === "docx" ? await extractDocx(data) : data.toString("utf8");
         const truncated = text.length > maxTextChars;
         return {
           name: target.name,

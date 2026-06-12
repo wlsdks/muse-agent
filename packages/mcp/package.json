@@ -25,6 +25,7 @@
     "@muse/shared": "workspace:*",
     "@muse/tools": "workspace:*",
     "kysely": "^0.29.2",
-    "pdfjs-dist": "^6.0.227"
+    "pdfjs-dist": "^6.0.227",
+    "mammoth": "^1.12.0"
   }
 }

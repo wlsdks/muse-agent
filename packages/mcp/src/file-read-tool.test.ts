@@ -159,3 +159,28 @@ describe("file_read tool — content-sniff integration", () => {
     expect(out).toMatchObject({ read: true, text: "EXTRACTED PDF" });
   });
 });
+
+describe("file_read — .docx (Word) support", () => {
+  it("classifyFileKind routes .docx", () => {
+    expect(classifyFileKind("contract.docx")).toBe("docx");
+    expect(classifyFileKind("CONTRACT.DOCX")).toBe("docx");
+  });
+
+  it("resolveFileKind: a .docx (a zip → sniffs unsupported) routes by extension", () => {
+    const zipMagic = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x01]); // PK.. + NUL → sniff says unsupported
+    expect(resolveFileKind("report.docx", zipMagic)).toBe("docx");
+  });
+
+  it("routes a .docx through the injected docx extractor", async () => {
+    const cands: FileCandidate[] = [{ modifiedMs: 1, name: "report.docx", path: "/dl/report.docx" }];
+    const fs = { listCandidates: async () => cands, readFile: async () => Buffer.from([0x50, 0x4b, 0x03, 0x04]) };
+    const tool = createFileReadTool({ extractDocxText: async () => "WORD BODY TEXT", extractPdfText: async () => "", fsImpl: fs, roots: ["/dl"] });
+    const out = await tool.execute({ file: "report" }, ctx) as { read: boolean; text?: string; path?: string };
+    expect(out).toMatchObject({ path: "/dl/report.docx", read: true, text: "WORD BODY TEXT" });
+  });
+
+  it("the tool description mentions Word documents (selection cue)", () => {
+    const tool = createFileReadTool({ extractDocxText: async () => "", extractPdfText: async () => "", fsImpl: { listCandidates: async () => [], readFile: async () => Buffer.from("") }, roots: ["/dl"] });
+    expect(tool.definition.description.toLowerCase()).toContain("word");
+  });
+});
