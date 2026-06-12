@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -71,8 +71,57 @@ describe("recall-hits store", () => {
         ...Array.from({ length: 10 }, () => recordRecallHits(file, [{ key: "a" }], 1_000)),
         ...Array.from({ length: 10 }, () => recordRecallHits(fileB, [{ key: "b" }], 1_000)),
       ]);
-      expect((await readRecallHits(file))).toEqual([{ key: "a", hits: 10, lastHitMs: 1_000 }]);
-      expect((await readRecallHits(fileB))).toEqual([{ key: "b", hits: 10, lastHitMs: 1_000 }]);
+      expect((await readRecallHits(file))[0]).toMatchObject({ key: "a", hits: 10, lastHitMs: 1_000 });
+      expect((await readRecallHits(fileB))[0]).toMatchObject({ key: "b", hits: 10, lastHitMs: 1_000 });
+    });
+  });
+
+  describe("recentAccessMs — ACT-R access timestamp list", () => {
+    it("accumulates timestamps chronologically across successive hits", async () => {
+      await recordRecallHits(file, [{ key: "s1" }], 1_000);
+      await recordRecallHits(file, [{ key: "s1" }], 2_000);
+      await recordRecallHits(file, [{ key: "s1" }], 3_000);
+      const records = await readRecallHits(file);
+      const s1 = records.find((r) => r.key === "s1");
+      expect(s1?.hits).toBe(3);
+      expect(s1?.lastHitMs).toBe(3_000);
+      expect(s1?.recentAccessMs).toEqual([1_000, 2_000, 3_000]);
+    });
+
+    it("trims to the last 20 when more than 20 hits are recorded", async () => {
+      for (let i = 1; i <= 25; i++) {
+        await recordRecallHits(file, [{ key: "s2" }], i * 100);
+      }
+      const records = await readRecallHits(file);
+      const s2 = records.find((r) => r.key === "s2");
+      expect(s2?.recentAccessMs?.length).toBe(20);
+      expect(s2?.recentAccessMs?.[0]).toBe(6 * 100);
+      expect(s2?.recentAccessMs?.[19]).toBe(25 * 100);
+    });
+
+    it("tolerates old records without recentAccessMs (no crash, field stays absent)", async () => {
+      await writeFile(file, JSON.stringify({ hits: [{ key: "old", hits: 2, lastHitMs: 500 }] }), "utf8");
+      const before = await readRecallHits(file);
+      expect(before).toHaveLength(1);
+      expect(before[0]?.recentAccessMs).toBeUndefined();
+
+      await recordRecallHits(file, [{ key: "old" }], 600);
+      const after = await readRecallHits(file);
+      const old = after.find((r) => r.key === "old");
+      expect(old?.hits).toBe(3);
+      expect(old?.recentAccessMs).toEqual([600]);
+    });
+
+    it("sanitizes garbage entries in recentAccessMs, keeping only finite numbers", async () => {
+      await writeFile(
+        file,
+        JSON.stringify({ hits: [{ key: "dirty", hits: 1, lastHitMs: 10, recentAccessMs: ["x", null, 5, null, 7] }] }),
+        "utf8",
+      );
+      const records = await readRecallHits(file);
+      const dirty = records.find((r) => r.key === "dirty");
+      expect(dirty).toBeDefined();
+      expect(dirty?.recentAccessMs).toEqual([5, 7]);
     });
   });
 });

@@ -33,6 +33,15 @@ export interface RecallHitRecord {
    * already had it.
    */
   readonly summary?: string;
+  /**
+   * Epoch-ms of the most recent accesses (chronological, oldest→newest), capped
+   * at MAX_RECENT_ACCESS. The single `lastHitMs` only gives last-access recency;
+   * this list lets the promotion pass compute ACT-R base-level activation
+   * (B = ln(Σ tⱼ⁻ᵈ)) which needs EACH access age to capture spacing, not just
+   * frequency. Optional so pre-existing records (written before this field) read
+   * back fine.
+   */
+  readonly recentAccessMs?: readonly number[];
 }
 
 /** One memory surfaced by a recall: its stable key + (optionally) its narrative. */
@@ -43,6 +52,7 @@ export interface RecallHitInput {
 
 const MAX_RECALL_HIT_ENTRIES = 5_000;
 const MAX_SUMMARY_CHARS = 160;
+const MAX_RECENT_ACCESS = 20;
 
 export async function readRecallHits(file: string): Promise<readonly RecallHitRecord[]> {
   let raw: string;
@@ -61,7 +71,7 @@ export async function readRecallHits(file: string): Promise<readonly RecallHitRe
     return [];
   }
   return (parsed as { hits: unknown[] }).hits.flatMap((entry): readonly RecallHitRecord[] =>
-    isRecallHitRecord(entry) ? [entry] : []
+    isRecallHitRecord(entry) ? [normalizeRecord(entry)] : []
   );
 }
 
@@ -110,10 +120,12 @@ export async function recordRecallHits(file: string, entries: readonly RecallHit
     for (const [key, input] of byInputKey) {
       const priorRecord = byKey.get(key);
       const summary = input.summary?.replace(/\s+/gu, " ").trim().slice(0, MAX_SUMMARY_CHARS) || priorRecord?.summary;
+      const recentAccessMs = [...(priorRecord?.recentAccessMs ?? []), atMs].slice(-MAX_RECENT_ACCESS);
       byKey.set(key, {
         hits: (priorRecord?.hits ?? 0) + 1,
         key,
         lastHitMs: atMs,
+        recentAccessMs,
         ...(summary ? { summary } : {})
       });
     }
@@ -122,6 +134,18 @@ export async function recordRecallHits(file: string, entries: readonly RecallHit
   const next = prior.then(op, op);
   recordQueues.set(file, next.then(() => undefined, () => undefined));
   return next;
+}
+
+function normalizeRecord(record: RecallHitRecord): RecallHitRecord {
+  const raw = (record as { recentAccessMs?: unknown }).recentAccessMs;
+  if (!Array.isArray(raw)) return record;
+  const cleaned = (raw as unknown[]).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+  if (cleaned.length === 0) {
+    const out: Record<string, unknown> = { ...record };
+    delete out["recentAccessMs"];
+    return out as unknown as RecallHitRecord;
+  }
+  return { ...record, recentAccessMs: cleaned.slice(-MAX_RECENT_ACCESS) };
 }
 
 function isRecallHitRecord(value: unknown): value is RecallHitRecord {

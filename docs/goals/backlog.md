@@ -264,11 +264,12 @@ excluded when scoring).
   is the follow-up once a larger calibration set exists.
 - ◦ **ACT-R base-level activation for recall ranking** — frequency×spacing activation over the
   existing access logs replaces the single recency half-life; positive+negative unit battery. (T2-1)
-  — [in progress 2026-06-12, cognition loop fire 1] `actrActivation(accessAgesDays, {decay,minAgeDays})`
-  = `ln(Σ tⱼ⁻ᵈ)` + 9-case positive/negative battery SHIPPED in `@muse/memory` (recall-promotion.ts).
-  NEXT slice: WIRE it into the promotion data-path — needs per-access timestamps (RecallHitLike today
-  carries only `lastHitMs`+`hits`; the spacing term needs each access age), then replace the single
-  half-life in `scoreRecallHit`/`selectPromotable`/`selectForgettable` behind a measured A/B.
+  — [in progress 2026-06-12, cognition loop] fire 1: `actrActivation(accessAgesDays,{decay,minAgeDays})`
+  = `ln(Σ tⱼ⁻ᵈ)` + 9-case battery SHIPPED in `@muse/memory` (recall-promotion.ts). fire 2: the DATA
+  FOUNDATION — `personal-recall-hits-store.ts` now logs a bounded `recentAccessMs` per memory (cap 20,
+  tolerant migration of old records, garbage-sanitizing read). NEXT slice: WIRE — map `recentAccessMs`
+  → per-access ages in the promotion caller, have `scoreRecallHit` use `actrActivation` when the list
+  is present (else fall back to the half-life), behind a measured A/B; then graduate the default.
 - ◦ **ACE deterministic playbook delta-merge** — replace the LLM-rewrite merge with itemized
   deterministic deltas + an anti-collapse invariant test (+10.6% AppWorld for the pattern). (T1-1)
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
