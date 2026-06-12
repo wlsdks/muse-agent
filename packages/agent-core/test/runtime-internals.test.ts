@@ -138,6 +138,22 @@ describe("createRunResult", () => {
     expect(createRunResult("run-i", sampleResponse, undefined, undefined, {}).groundingSources).toBeUndefined();
   });
 
+  it("never treats a blocked/failed tool's error output as grounding evidence (floor integrity)", () => {
+    const toolResults: ExecutedToolResult[] = [
+      { result: { id: "c1", name: "web_search", output: "Error: max tool call limit reached", status: "blocked" }, toolCall: { args: {}, id: "c1", name: "web_search" } },
+      { result: { id: "c2", name: "file_read", output: "Error: ENOENT", status: "failed" }, toolCall: { args: {}, id: "c2", name: "file_read" } }
+    ];
+    // both produced text, but neither COMPLETED → no grounding source, no signal inflation
+    expect(createRunResult("run-err", sampleResponse, undefined, undefined, { toolResults }).groundingSources).toBeUndefined();
+    // a completed tool alongside a failed one contributes only the completed one
+    const mixed: ExecutedToolResult[] = [
+      ...toolResults,
+      { result: { id: "c3", name: "knowledge_search", output: "rent is $2000", status: "completed" }, toolCall: { args: {}, id: "c3", name: "knowledge_search" } }
+    ];
+    expect(createRunResult("run-mix", sampleResponse, undefined, undefined, { toolResults: mixed }).groundingSources)
+      .toEqual([{ source: "knowledge_search", text: "rent is $2000" }]);
+  });
+
   it("merges injected inbox messages into groundingSources alongside tool outputs (a recalled inbound is citeable)", () => {
     const toolResults: ExecutedToolResult[] = [
       { result: { id: "c1", name: "web_search", output: "Paris is the capital.", status: "completed" }, toolCall: { args: {}, id: "c1", name: "web_search" } }
