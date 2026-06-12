@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clusterByTextSimilarity, mergePlaybookStrategies } from "../src/playbook-merge.js";
+import { clusterByTextSimilarity, deltaMergePlaybookStrategies, mergePlaybookStrategies } from "../src/playbook-merge.js";
 
 function fakeProvider(output: string) {
   return { generate: async () => ({ output }) } as unknown as Parameters<typeof mergePlaybookStrategies>[1]["modelProvider"];
@@ -14,6 +14,59 @@ function jaccard(a: string, b: string): number {
   for (const t of sa) if (sb.has(t)) inter += 1;
   return inter / (sa.size + sb.size - inter);
 }
+
+describe("deltaMergePlaybookStrategies (ACE deterministic delta-merge)", () => {
+  it("returns undefined for empty input", () => {
+    expect(deltaMergePlaybookStrategies([])).toBeUndefined();
+  });
+
+  it("returns undefined for a single-element input", () => {
+    expect(deltaMergePlaybookStrategies(["only one"])).toBeUndefined();
+  });
+
+  it("collapses whitespace-variant duplicates to the normalized form", () => {
+    expect(deltaMergePlaybookStrategies(["clean up the logs", "clean up   the    logs"])).toBe("clean up the logs");
+  });
+
+  it("keeps the more-specific (longer-token) strategy and drops the less-specific one", () => {
+    const result = deltaMergePlaybookStrategies(["log errors", "log errors carefully and promptly every time"]);
+    expect(result).toBe("log errors carefully and promptly every time");
+  });
+
+  it("returns undefined when strategies are genuinely distinct (anti-collapse: NONE)", () => {
+    expect(deltaMergePlaybookStrategies(["batch the database writes", "validate all user input"])).toBeUndefined();
+  });
+
+  it("returns the shared string when all inputs are identical", () => {
+    expect(deltaMergePlaybookStrategies(["do X", "do X"])).toBe("do X");
+  });
+
+  it("ANTI-COLLAPSE INVARIANT: survivor token-covers every input that yielded a string", () => {
+    function coversAllWords(survivor: string, inputs: readonly string[]): boolean {
+      const survivorLower = survivor.toLowerCase();
+      for (const input of inputs) {
+        const tokens = input.toLowerCase().split(/\s+/u).filter(Boolean);
+        for (const token of tokens) {
+          if (!survivorLower.includes(token)) return false;
+        }
+      }
+      return true;
+    }
+
+    const testSets: [readonly string[], string][] = [
+      [["clean up the logs", "clean up   the    logs"], "whitespace-variant duplicates"],
+      [["log errors", "log errors carefully and promptly every time"], "subsumption (short vs long)"],
+      [["sort items", "sort items by date", "sort items by date ascending"], "3-element chain"],
+    ];
+
+    for (const [inputs, label] of testSets) {
+      const result = deltaMergePlaybookStrategies(inputs);
+      if (result !== undefined) {
+        expect(coversAllWords(result, inputs), `invariant failed for: ${label}`).toBe(true);
+      }
+    }
+  });
+});
 
 describe("clusterByTextSimilarity", () => {
   it("groups similar items, leaves a distinct one alone", () => {

@@ -276,8 +276,13 @@ excluded when scoring).
   consolidate`/promote call sites. ⏳ REMAINING (review-gate decision): a measured A/B on whether ACT-R
   should also drive the eligibility GATE (needs threshold recalibration to the log scale) before
   graduating — ordering is live now, gate-migration is the open call. Then this item → Done.
-- ◦ **ACE deterministic playbook delta-merge** — replace the LLM-rewrite merge with itemized
-  deterministic deltas + an anti-collapse invariant test (+10.6% AppWorld for the pattern). (T1-1)
+- ✓→Done **ACE deterministic playbook delta-merge** — itemized deterministic deltas replace the
+  LLM-rewrite first pass + an anti-collapse invariant test (+10.6% AppWorld for the pattern). (T1-1)
+  [DONE 2026-06-12, cognition loop fire 4: `deltaMergePlaybookStrategies` (whitespace-dedup +
+  token-coverage subsumption + non-transitive anti-collapse GUARD) was already implemented & wired
+  ahead of the LLM merge; the MISSING piece — a DIRECT anti-collapse invariant battery — was added
+  (7 cases incl. the non-vacuous property "if it returns a survivor, that survivor token-covers EVERY
+  input", so a learned strategy is never silently dropped). Test-only; agent-core 1691 green.]
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
   each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
 - (queued behind fuel/prereqs: sleep-time compute · Mem0 UPDATE op · AWM workflow mining ·
