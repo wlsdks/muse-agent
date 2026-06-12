@@ -103,3 +103,16 @@ topicKeyFromMessage). Surfaced via `muse doctor --run-outcomes` (reads
 (1 grounded · 1 abstain · 0 ungrounded), top: 여동생 생일 언제지". The fail-RATE
 is a real metric with headroom (moves with real usage), unlike the saturated
 golden sets — the measurement the loop needs to tell "improving" from "more use".
+
+## v4 Fire 3 — dev-fixable weakness selector + doctor surface (SLICE SHIPPED)
+
+selectRemediableWeaknesses gives the USER-fixable gaps (grounding-gap → "add a
+note", surfaced in recap). Added its DEV-side mirror `selectDevFixableWeaknesses`
+(@muse/mcp): the recurring weaknesses that are MUSE'S OWN bug (unbacked-action /
+wrong-tool / time-parse), count≥2, most-recurring first — the dev loop's fix
+targets. Surfaced via `muse doctor --weaknesses` (new 🔧 "Recurring agent bugs"
+section, separate from the user gaps). Unit: 2 selector + 2 formatter cases.
+REAL muse: seeded ledger (1 unbacked-action + 1 grounding-gap) → real
+`doctor --weaknesses` lists both cumulatively AND shows ONLY the unbacked-action
+under 🔧 dev-fixable. Closes the error-analysis loop: fuel → ledger → split into
+user-remediable (recap) vs dev-fixable (the loop's targets).

@@ -12,6 +12,7 @@ import {
   notesIndexHealth,
   buildCalibrationReport,
   formatCalibration,
+  formatDevFixableWeaknesses,
   formatRunOutcomes,
   formatWeaknesses,
   parseAlpha,
@@ -90,6 +91,21 @@ describe("formatRunOutcomes — the failure-RATE the cumulative ledger lacks", (
     expect(out).toContain("2 grounded · 1 abstain · 1 ungrounded");
     expect(out).toContain("office vpn mtu (2×)");
     expect(out).toContain("dentist (1×)");
+  });
+});
+
+describe("formatDevFixableWeaknesses — the dev loop's own-bug fix list", () => {
+  it("is empty (no noise) when there are no dev-fixable bugs", () => {
+    expect(formatDevFixableWeaknesses([])).toBe("");
+  });
+  it("lists each recurring agent bug with its axis + count", () => {
+    const out = formatDevFixableWeaknesses([
+      { topic: "calendar add silent fail", axis: "unbacked-action", count: 4 },
+      { topic: "next friday wrong", axis: "time-parse", count: 3 }
+    ]);
+    expect(out).toContain("Recurring agent bugs");
+    expect(out).toContain("calendar add silent fail  — unbacked-action (4×)");
+    expect(out).toContain("next friday wrong  — time-parse (3×)");
   });
 });
 

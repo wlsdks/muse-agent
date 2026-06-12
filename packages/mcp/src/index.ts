@@ -910,10 +910,12 @@ export { removeRemindersForEvent, rescheduleRemindersForEvent, syncRemindersOnEv
 export {
   readWeaknesses,
   recordWeakness,
+  selectDevFixableWeaknesses,
   selectRemediableWeaknesses,
   topicKeyFromMessage,
   upsertWeakness,
   writeWeaknesses,
+  type DevFixableWeakness,
   type RemediableWeakness,
   type WeaknessAxis,
   type WeaknessEntry

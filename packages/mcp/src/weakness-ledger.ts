@@ -186,6 +186,37 @@ export function selectRemediableWeaknesses(
     .map((entry) => ({ count: entry.count, topic: entry.topic }));
 }
 
+export interface DevFixableWeakness {
+  readonly topic: string;
+  readonly axis: WeaknessAxis;
+  readonly count: number;
+}
+
+/** The axes that are MUSE'S OWN bug to fix (not the user's to remediate with a note). */
+const DEV_FIXABLE_AXES: ReadonlySet<WeaknessAxis> = new Set<WeaknessAxis>(["unbacked-action", "wrong-tool", "time-parse"]);
+
+/**
+ * The DEV-side mirror of {@link selectRemediableWeaknesses}: the recurring
+ * weaknesses that are MUSE'S OWN bug, not the user's — unbacked-action (claimed
+ * an action it didn't do), wrong-tool, time-parse. `grounding-gap` is excluded
+ * (that one the USER fixes by adding a note; the recap nudges it). These are the
+ * dev loop's fix targets — what the agent keeps getting wrong on its own.
+ * Filters to count ≥ minCount; most-recurring first; capped. Pure.
+ */
+export function selectDevFixableWeaknesses(
+  entries: readonly WeaknessEntry[],
+  opts: { readonly minCount?: number; readonly maxResults?: number } = {}
+): readonly DevFixableWeakness[] {
+  const minCount = Math.max(2, Math.trunc(opts.minCount ?? 2));
+  const max = Math.max(1, Math.trunc(opts.maxResults ?? 5));
+  return entries
+    .filter((entry) => DEV_FIXABLE_AXES.has(entry.axis) && entry.count >= minCount)
+    .slice()
+    .sort((a, b) => b.count - a.count || Date.parse(b.lastSeen) - Date.parse(a.lastSeen))
+    .slice(0, max)
+    .map((entry) => ({ axis: entry.axis, count: entry.count, topic: entry.topic }));
+}
+
 /**
  * Read → cluster the message into a topic → upsert the `(axis, topic)` row →
  * write. A no-op when the message carries no salient topic. Best-effort: the

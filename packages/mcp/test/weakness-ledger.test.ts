@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { readWeaknesses, recordWeakness, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
+import { readWeaknesses, recordWeakness, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
 
 describe("topicKeyFromMessage — deterministic topic clustering", () => {
   it("keeps salient content words, drops filler, lowercases (EN)", () => {
@@ -124,5 +124,32 @@ describe("selectRemediableWeaknesses — the Whetstone remediation nudge (ground
       e({ topic: "real gap", count: 2 })
     ], { nowMs });
     expect(out.map((w) => w.topic)).toEqual(["real gap"]);
+  });
+});
+
+describe("selectDevFixableWeaknesses — the dev loop's fix targets (Muse's OWN recurring bugs)", () => {
+  const e = (over: Partial<WeaknessEntry>): WeaknessEntry => ({
+    axis: "unbacked-action", count: 2, firstSeen: "2026-06-01T00:00:00.000Z", lastSeen: "2026-06-07T00:00:00.000Z", topic: "x", ...over
+  });
+
+  it("keeps recurring non-grounding axes (unbacked-action/wrong-tool/time-parse), most-recurring first, capped", () => {
+    const out = selectDevFixableWeaknesses([
+      e({ topic: "calendar add silent fail", axis: "unbacked-action", count: 4 }),
+      e({ topic: "picked search not recall", axis: "wrong-tool", count: 2 }),
+      e({ topic: "next friday wrong", axis: "time-parse", count: 3 })
+    ], { maxResults: 2 });
+    expect(out.map((w) => `${w.axis}:${w.topic}`)).toEqual([
+      "unbacked-action:calendar add silent fail", // 4×
+      "time-parse:next friday wrong" // 3×, capped at 2
+    ]);
+  });
+
+  it("EXCLUDES grounding-gap (that's the user's to fix) and a single occurrence", () => {
+    const out = selectDevFixableWeaknesses([
+      e({ topic: "user note gap", axis: "grounding-gap", count: 9 }), // user-fixable → excluded
+      e({ topic: "once", axis: "unbacked-action", count: 1 }), // below minCount → excluded
+      e({ topic: "real agent bug", axis: "unbacked-action", count: 2 })
+    ]);
+    expect(out.map((w) => w.topic)).toEqual(["real agent bug"]);
   });
 });

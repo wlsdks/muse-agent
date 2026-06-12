@@ -17,7 +17,7 @@ import { join } from "node:path";
 
 import { calibrateAbstention } from "@muse/agent-core";
 import { evaluateLocalOnlyPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveWeaknessesFile } from "@muse/autoconfigure";
-import { analyzeRunOutcomes, isLearningPaused, parseHomeAlertChecks, readEpisodes, readWeaknesses, webWatchesFromConfig, type RunOutcomeEntry, type RunOutcomeSummary, type WeaknessEntry } from "@muse/mcp";
+import { analyzeRunOutcomes, isLearningPaused, parseHomeAlertChecks, readEpisodes, readWeaknesses, selectDevFixableWeaknesses, webWatchesFromConfig, type DevFixableWeakness, type RunOutcomeEntry, type RunOutcomeSummary, type WeaknessEntry } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { resolveLaunchAgentFile } from "./commands-daemon.js";
@@ -990,14 +990,30 @@ export function formatWeaknesses(entries: readonly WeaknessEntry[]): string {
   return `🪨 Whetstone — what I've noticed I'm weak at (${sorted.length.toString()} topic${sorted.length === 1 ? "" : "s"}):\n${lines.join("\n")}\n`;
 }
 
+/**
+ * Render the dev-fixable callout — Muse's OWN recurring bugs (unbacked-action /
+ * wrong-tool / time-parse), separate from the user-fixable grounding gaps. This
+ * is the dev loop's fix list. Empty list → "" (no noise when there's nothing).
+ * Pure.
+ */
+export function formatDevFixableWeaknesses(list: readonly DevFixableWeakness[]): string {
+  if (list.length === 0) {
+    return "";
+  }
+  const lines = list.map((w) => `  • ${w.topic}  — ${w.axis} (${w.count.toString()}×)`);
+  return `🔧 Recurring agent bugs (dev-fixable — Muse's own, not your notes):\n${lines.join("\n")}\n`;
+}
+
 async function runWeaknessesDoctor(io: ProgramIO, asJson: boolean): Promise<void> {
   const file = resolveWeaknessesFile(process.env as Record<string, string | undefined>);
   const entries = await readWeaknesses(file);
+  const devFixable = selectDevFixableWeaknesses(entries);
   if (asJson) {
-    io.stdout(`${JSON.stringify({ weaknesses: entries }, null, 2)}\n`);
+    io.stdout(`${JSON.stringify({ devFixable, weaknesses: entries }, null, 2)}\n`);
     return;
   }
   io.stdout(formatWeaknesses(entries));
+  io.stdout(formatDevFixableWeaknesses(devFixable));
 }
 
 /**
