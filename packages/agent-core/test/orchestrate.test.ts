@@ -4,13 +4,14 @@ import { defaultShouldOrchestrate, orchestrateAnswer, type OrchestrateOptions } 
 
 // A deterministic fake model: a role proposer (system prompt mentions a lens)
 // echoes its role; the aggregator (council synthesis) returns council JSON.
-function fakeProvider(): OrchestrateOptions["modelProvider"] {
+function fakeProvider(failLenses: readonly string[] = []): OrchestrateOptions["modelProvider"] {
   return {
     async generate(request) {
       const system = request.messages.find((m) => m.role === "system")?.content ?? "";
       const isProposer = /assistant\. Answer the user's question|fact-checker/u.test(system);
       if (isProposer) {
         const lens = /practical/u.test(system) ? "practical" : /thorough/u.test(system) ? "thorough" : "skeptic";
+        if (failLenses.includes(lens)) throw new Error(`proposer ${lens} failed`);
         return { id: "x", model: "fake", output: `proposal-from-${lens}` };
       }
       // aggregator (MoA merge) → the single merged answer as plain text
@@ -62,5 +63,34 @@ describe("orchestrateAnswer", () => {
       shouldOrchestrate: () => false
     }));
     expect(res.mode).toBe("single");
+  });
+
+  const substantive = "에이전트를 병렬화하는 가장 좋은 방법은 무엇인가요?";
+
+  it("degrades to the surviving proposers when one fails, and surfaces the failed role", async () => {
+    const res = await orchestrateAnswer(substantive, opts({ modelProvider: fakeProvider(["thorough"]) }));
+    expect(res.mode).toBe("orchestrated");
+    expect(res.proposals.map((p) => p.id)).toEqual(["practical", "skeptic"]);
+    expect(res.failedRoles).toEqual(["thorough"]);
+    expect(res.answer).toBe("merged best answer"); // survivors still aggregated
+  });
+
+  it("with a single survivor returns its answer directly (no wasted merge call)", async () => {
+    const res = await orchestrateAnswer(substantive, opts({ modelProvider: fakeProvider(["practical", "thorough"]) }));
+    expect(res.mode).toBe("orchestrated");
+    expect(res.contributors).toEqual(["skeptic"]);
+    expect(res.failedRoles).toEqual(["practical", "thorough"]);
+    expect(res.answer).toBe("proposal-from-skeptic"); // NOT "merged best answer" → aggregate was skipped
+  });
+
+  it("throws (fail-close) when every proposer fails — never returns an empty answer", async () => {
+    await expect(
+      orchestrateAnswer(substantive, opts({ modelProvider: fakeProvider(["practical", "thorough", "skeptic"]) }))
+    ).rejects.toThrow(/all 3 proposers failed/u);
+  });
+
+  it("reports no failedRoles on a clean run", async () => {
+    const res = await orchestrateAnswer(substantive, opts());
+    expect(res.failedRoles).toBeUndefined();
   });
 });
