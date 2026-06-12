@@ -175,10 +175,15 @@ function main() {
   gates.lint = gateExit("pnpm -s lint");
   gates.capabilities = gateExit("pnpm -s check:capabilities");
   gates.testFiles = { status: "pass", value: countTestFiles() };
-  const capText = existsSync(join(ROOT, "docs/goals/CAPABILITIES.md"))
-    ? readFileSync(join(ROOT, "docs/goals/CAPABILITIES.md"), "utf8")
-    : "";
-  gates.verifiedCapabilities = { status: "pass", value: countVerifiedCapabilityLines(capText) };
+  // The prescribed CAPABILITIES.md ledger was intentionally removed (f4c195df —
+  // "so the agent discovers work itself"). Only emit this count WHEN the file
+  // exists: an absent ledger otherwise reads as a permanent 35→0 regression on
+  // EVERY run, poisoning the loop's fitness signal. The count auto-resumes if a
+  // ledger is ever restored; the pure helper + its test stay valid meanwhile.
+  const capabilitiesPath = join(ROOT, "docs/goals/CAPABILITIES.md");
+  if (existsSync(capabilitiesPath)) {
+    gates.verifiedCapabilities = { status: "pass", value: countVerifiedCapabilityLines(readFileSync(capabilitiesPath, "utf8")) };
+  }
   const releaseGatePath = join(ROOT, "scripts/eval-self-improving.mjs");
   const releaseGateSrc = existsSync(releaseGatePath) ? readFileSync(releaseGatePath, "utf8") : "";
   gates.groundedSurfaces = { status: "pass", value: countGroundedSurfaces(releaseGateSrc) };

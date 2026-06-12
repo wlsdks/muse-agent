@@ -21,7 +21,11 @@ it). Each entry holds the gate results:
 - `lint` — `pnpm lint` exit (pass/fail)
 - `capabilities` — `pnpm check:capabilities` drift guard (pass/fail)
 - `testFiles` — count of `*.test.ts(x)` across `packages/` + `apps/` (numeric)
-- `verifiedCapabilities` — `CAPABILITIES.md` lines citing a real proof (numeric)
+- `verifiedCapabilities` — `docs/goals/CAPABILITIES.md` lines citing a real
+  proof (numeric). **Conditional**: emitted ONLY when that ledger exists — it
+  was intentionally removed (f4c195df) so the agent discovers work itself, and a
+  missing file would otherwise read as a permanent `→0` regression every run. The
+  count auto-resumes if a ledger is restored.
 - `tests` — full suite pass/fail (only with `--full`)
 
 ## Fail-close on regression
