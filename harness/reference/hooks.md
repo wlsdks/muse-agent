@@ -19,13 +19,13 @@ updated: 2026-05-31
 
 ## 왜 게이트와 별개인가
 
-권한 게이트([permission-matrix](permission-matrix.md))는 "이 등급을 허용하나"를 판정하는 규칙이고,
+권한 게이트([permission-matrix](../core/permission-matrix.md))는 "이 등급을 허용하나"를 판정하는 규칙이고,
 훅은 그 규칙들을 **모든 도구 호출 길목에 끼우는 실행 장치**다. 그래서 우리 코드에선 **권한 게이트가
 곧 기본 PreToolUse 훅**(`permissionHook`)으로 들어가 있다 — 권한 enforcement = 훅의 한 사례.
 
 ## 어떻게 쓰나 (코드)
 
-[runner/hooks.mjs](runner/hooks.mjs) (의존성 0):
+[runner/hooks.mjs](../runner/hooks.mjs) (의존성 0):
 
 - `createHookPipeline()` → `onPreToolUse(fn)` · `onPostToolUse(fn)`
 - `dispatchTool(pipeline, call, execute)` — **도구를 도는 유일한 정식 경로**. pre-훅이 막으면
@@ -42,7 +42,7 @@ const r = await dispatchTool(p, { kind: 'outbound', recipientResolved: true, con
 
 ## 검증
 
-[runner/hooks.test.mjs](runner/hooks.test.mjs) — `node --test harness/runner/`:
+[runner/hooks.test.mjs](../runner/hooks.test.mjs) — `node --test "harness/runner/*.test.mjs"`:
 PreToolUse 거부가 실행을 막음·통과 시 실행+PostToolUse 관측·훅 예외는 fail-closed 차단·다중 훅
 첫 거부 우선·권한 훅(은행/외부전송 차단·read 허용)·PostToolUse 예외는 결과 불변. **6/6.**
 

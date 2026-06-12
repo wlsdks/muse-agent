@@ -3,7 +3,7 @@ title: 검증 게이트 & 가드레일 (Verification & Guardrails)
 audience: [개발자, AI 에이전트]
 purpose: 하네스의 평가자·게이트를 실제로 신뢰할 수 있게 — 채점 루브릭, 입출력 가드레일, 게이트 운용 규칙
 status: draft
-updated: 2026-05-30
+updated: 2026-06-13
 sources_basis: [LLM-as-a-Judge practical guide, OpenAI Agents SDK guardrails, Anthropic building-effective-agents, Cognition don't-build-multi-agents]
 related: [team-roles.md, handoff-template.md, muse-mapping.md, README.md]
 ---
@@ -61,6 +61,12 @@ related: [team-roles.md, handoff-template.md, muse-mapping.md, README.md]
   단계/병합.
 - **막힘 우선(fail-closed).** 검증이 실패·불확실하면 통과시키지 않습니다. 근거 없이 PASS 금지.
 - **루프 한도.** 무한 반복을 막는 명시적 종료 조건(반복 횟수·시간 상한). 안 끝나면 사람에게 올림.
+- **재시도·반성엔 외부 검증자 필수.** 검증 신호 없는 "다시 생각해봐" 재시도는 같은 위반을
+  ~85% 반복하고(arXiv 2510.18254), 내재적 자기교정은 오히려 정확도를 떨어뜨립니다(2310.01798) —
+  효과가 있는 건 도구로 접지된 비평뿐(CRITIC: 코드 실행·검색 결과를 들고 하는 수정). 그래서
+  BUILD↔EVAL 반복은 반드시 평가자의 구체 피드백(어느 기준을 어떻게 어겼나)을 들고 돌아야 하고,
+  피드백 없는 맨 재시도는 루프 낭비로 간주해 끊습니다. (Muse 쪽 강제:
+  `.claude/rules/agent-testing.md`의 reflection-schedule guard — 모든 재시도 표면에 검증자 등록.)
 
 ## 4. 실패에 강하게 (관측 & 복구)
 
@@ -89,4 +95,5 @@ related: [team-roles.md, handoff-template.md, muse-mapping.md, README.md]
 - Anthropic — [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (단순성·투명성·게이트)
 - Anthropic — [Outcomes: agents that verify their own work](https://platform.claude.com/cookbook/managed-agents-cma-verify-with-outcome-grader) (2026-05; 출력만 보는 별도 grading agent → 모델 불변 +8.4%/+10.1%)
 - Cognition — [Don't Build Multi-Agents](https://cognition.ai/blog/dont-build-multi-agents) (전체 맥락 공유·충돌하는 암묵적 결정·단일 스레드 우선)
+- 자기교정의 한계 — [Illusions of Reflection (2510.18254)](https://arxiv.org/abs/2510.18254) (반성 재시도가 같은 위반 ~85% 반복) · [LLMs Cannot Self-Correct Reasoning Yet (2310.01798)](https://arxiv.org/abs/2310.01798) · [CRITIC (2305.11738)](https://arxiv.org/abs/2305.11738) (도구 접지 비평만 효과)
 - Boris Cherny (Claude Code 창시자) — [Latent Space 인터뷰](https://www.latent.space/p/claude-code) (검증이 품질에서 가장 중요; 자기검증 피드백 루프가 최종 품질 2~3배; harness=모델 위 최소 래퍼)

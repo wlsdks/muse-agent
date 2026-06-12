@@ -26,8 +26,7 @@ related: [failure-modes-and-observability.md, harness-acceptance.md, verificatio
 Muse 런타임은 실행 단계별 기록(트레이스)과 실패 재현(debug replay)을 이미 갖추고 있습니다
 (SYSTEM-MAP #12). 하네스 디버깅은 그 위에 얹습니다:
 - 각 단계(span)에 입력·출력·소요시간·비용·오류 상태를 남깁니다.
-- 도구 호출엔 이름·인자·원본 출력·재시도 횟수를 남깁니다([failure-modes-and-observability §2]
-  (failure-modes-and-observability.md)).
+- 도구 호출엔 이름·인자·원본 출력·재시도 횟수를 남깁니다([failure-modes-and-observability §2](failure-modes-and-observability.md)).
 
 ## 2. 실패를 고치는 5단계 흐름
 
@@ -50,7 +49,7 @@ Muse 런타임은 실행 단계별 기록(트레이스)과 실패 재현(debug r
 - 트레이스를 **계층 트리**(오케스트레이터→워커→도구)로 보여줘 한눈에 흐름이 읽히게 합니다.
 - 실패한 단계가 **무엇이·왜 어긋났는지** 한 줄로 드러나야 합니다(원본 입출력 링크 포함).
 - 핸드오프 양식의 `## 상태 로그`(append-only)와 `## 열린 질문`이 사람 디버깅의 진입점입니다
-  ([handoff-template](handoff-template.md)).
+  ([handoff-template](../core/handoff-template.md)).
 
 ## 5. 한 줄 요약 (디버깅 체크리스트)
 

@@ -3,7 +3,7 @@ title: 도구 설계 규약 (Tool Design)
 audience: [개발자, AI 에이전트]
 purpose: 에이전트가 한 번에 올바른 도구를 고르고 인자를 채우도록, 도구를 어떻게 설계·노출하나
 status: draft
-updated: 2026-05-31
+updated: 2026-06-13
 sources_basis: [호스트 .claude(예: Muse)/rules/tool-calling.md, Anthropic building-effective-agents (ACI), Anthropic multi-agent research system (tool descriptions), awesome-harness-engineering (tool design category)]
 related: [team-roles.md, verification-and-guardrails.md, architecture.md, README.md]
 ---
@@ -49,10 +49,23 @@ related: [team-roles.md, verification-and-guardrails.md, architecture.md, README
 - 작은 모델이 3개 이상 도구를 연쇄하게 설계하지 않습니다.
 - 한 도구가 한 일을 끝내게 하거나, 단계를 여러 턴으로 나눕니다.
 
+## 5.5 응답 쪽도 설계한다 (도구 출력 토큰 예산)
+
+입력 스키마만큼 **응답이 컨텍스트를 차지합니다** — 도구가 무엇을 얼마나 돌려줄지도 규약입니다:
+
+- 모든 조회 도구에 **페이지네이션·범위·필터·절단 기본값**을 둡니다(참고: Claude Code의 도구 응답
+  기본 캡은 25K 토큰).
+- 절단했으면 **다음에 무엇을 좁혀 물을지 안내를 함께** 돌려줍니다 — 무음 절단 금지(§런타임
+  `expose`의 dropped 보고와 같은 원칙).
+- `response_format: concise|detailed` 같은 **상세도 enum**, UUID 대신 **의미 있는 식별자**
+  (semantic ID)를 씁니다 — 모델이 결과를 다음 호출에 재사용할 수 있게.
+- 도구가 많아지면 정의를 통째로 싣지 말고 **필요할 때 읽는 점진 공개**로 — 도구를 코드
+  API/검색 대상으로 노출하면 정의 토큰 98.7% 절감 실측(Anthropic code-execution-with-MCP).
+
 ## 6. 위험 등급 + 게이트 (도구 설계의 일부)
 
 - 모든 도구를 **읽기 / 쓰기 / 실행**으로 분류합니다(위험 taxonomy).
-- 상태를 바꾸는 도구는 [verification-and-guardrails](verification-and-guardrails.md)의 게이트를 거칩니다
+- 상태를 바꾸는 도구는 [verification-and-guardrails](../core/verification-and-guardrails.md)의 게이트를 거칩니다
   (읽기 통과 / 실행은 신뢰목록 / 차단목록 거부, 외부 전송은 draft-first).
 
 ## 7. 검증은 코드로 (재추론 루프 금지)
@@ -83,7 +96,7 @@ related: [team-roles.md, verification-and-guardrails.md, architecture.md, README
 
 ## 런타임 컴포넌트 (코드)
 
-위 규약을 결정론 코드로: [runner/tools.mjs](runner/tools.mjs) (의존성 0). 모델은 도구를 고르고 채우고,
+위 규약을 결정론 코드로: [runner/tools.mjs](../runner/tools.mjs) (의존성 0). 모델은 도구를 고르고 채우고,
 코드는 **등록·스키마 검증·allow/deny·소수 노출·위험등급**을 결정론적으로 강제.
 
 - `register(tool)` — `name`은 **verb_noun**(정규식 강제)·중복 거부, `description`·`inputSchema` 필수,
@@ -92,9 +105,9 @@ related: [team-roles.md, verification-and-guardrails.md, architecture.md, README
   "actionable errors") — 결정론 검증·수리 계약.
 - `isAllowed(name)` — **denylist가 allowlist를 이김**, 빈 allowlist=전체 허용(opt-in, MCP 레지스트리 규범).
 - `expose(names?)` — `maxExposed`(기본 7)까지만 노출하고 **잘린 수를 보고**(소수 노출·무음 절단 금지).
-- `riskOf(name)` — 도구 위험등급을 [permission-matrix](permission-matrix.md) 게이트/훅에 넘김.
+- `riskOf(name)` — 도구 위험등급을 [permission-matrix](../core/permission-matrix.md) 게이트/훅에 넘김.
 
-검증: [runner/tools.test.mjs](runner/tools.test.mjs) — `node --test harness/runner/`: 등록 거부·denylist
+검증: [runner/tools.test.mjs](../runner/tools.test.mjs) — `node --test "harness/runner/*.test.mjs"`: 등록 거부·denylist
 우선·빈 allowlist=전체·validateArgs(required/타입/enum/범위)·expose 캡+dropped·위험등급 권한게이트 합성.
 **6/6**(러너 스위트 누적 **56/56**).
 
@@ -104,3 +117,4 @@ related: [team-roles.md, verification-and-guardrails.md, architecture.md, README
 - Anthropic — [Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents) (ACI: 도구 인터페이스를 HCI 수준으로 설계)
 - Anthropic — [Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system) (도구 설명이 행동을 좌우 — 나쁜 설명은 엉뚱한 길)
 - [awesome-harness-engineering](https://github.com/ai-boost/awesome-harness-engineering) (tool design 카테고리)
+- Anthropic — [Writing effective tools for agents](https://www.anthropic.com/engineering/writing-tools-for-agents) (응답 토큰 예산·페이지네이션/절단+후속 안내·response_format·semantic ID) · [Code execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp) (점진 공개 — 정의 토큰 98.7% 절감)

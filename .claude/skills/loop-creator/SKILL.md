@@ -29,7 +29,7 @@ description: Use when 진안 wants to start (register) an autonomous improvement
   있다 — 스킬 폴더가 자기 계약을 들고 다닌다.
 - **단, 이건 Muse-native 스킬이다**(improve-muse처럼). 생성하는 루프가 Muse의 실제 seam을
   가리킨다: `backlog.md` · `self-eval` · `eval:*` · 진짜 공유 harness 레이어
-  ([`dev-loop.md`](../../../harness/dev-loop.md) — improve-muse도 씀 · `loop-budget.md` ·
+  ([`dev-loop.md`](../../../harness/host/dev-loop.md) — improve-muse도 씀 · `loop-budget.md` ·
   `team-roles.md`). 그래서 *폴더만* 다른 레포에 떨궈도 그대로 돌지 않는다 — 그 배선을
   바꿔야 한다. **완전 이식**(Muse 배선 파라미터화)은 별도 작업. 지금 범위 = "고유 계약은
   스킬과 함께, 공유 harness 레이어는 참조".
@@ -92,7 +92,7 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 | **게이팅 검증자** | 빌드와 별개 **강한-티어(Opus) 적대 judge**가 슬라이스를 판정 → **PASS여야 ⑤ 커밋, FAIL이면 롤백**(`git restore`)+블로커 기록. 결정적 게이트(test/check/eval) 1차, judge 2차. ([`loop-engineering.md`](references/loop-engineering.md) §3-1) |
 | **이해 표면 (비동기·non-blocking)** | 매 fire가 `docs/goals/loop-digest.md`에 4줄 append(아무때나 읽는 비동기 리뷰 로그) + **N fire(기본 3)마다 막지 않고 PushNotification 알림만 + 계속 진행** — 루프는 절대 안 멈춘다. 검토/머지는 사람의 비동기 선택. §3-2 |
 | **자율성 티어** | **Tier1**(로컬 커밋, push 없음 — 기본) 또는 **Tier2**(`loop/<theme>` 브랜치 push + draft PR, 사람이 머지 — 명시 opt-in). 하드 floor: main 자동머지·자율 outbound·banking·`--no-verify` 절대 불가. §3.5 |
-| 토큰/스텝 캡 | fire당 1슬라이스, retry 2–3 상한, 예산 캡([`loop-budget.md`](../../../harness/loop-budget.md)) |
+| 토큰/스텝 캡 | fire당 1슬라이스, retry 2–3 상한, 예산 캡([`loop-budget.md`](../../../harness/reference/loop-budget.md)) |
 | **모델 티어링** | 정형 빌드/검색/문서 → Sonnet(`model:"sonnet"`); **계획·설계·모호함·적대적 검증 → Fable 5(`model:"fable"`)를 *가능할 때*, 불가하면 Opus 4.8(1M)**. 개발은 Opus/Sonnet 무관. maker=Sonnet / **judge=강한 티어(Fable5 가능 시, 아니면 Opus)**. 오케스트레이터는 얇게. (Muse 런타임 모델 gemma4는 고정 — [`loop-engineering.md`](references/loop-engineering.md) §1.5) |
 | State 파일 | `docs/goals/backlog.md`에 Done/다음 write-back |
 | 불변식 | fabrication=0 floor + IMMUTABLE-CORE 불가침 |
@@ -111,7 +111,7 @@ Muse 자율 개선 루프 — 테마: <목적>. 반드시 Node 24(nvm default).
    **논문-근거 우선(가능할 때, 테마-스코프)**: 강한-티어(Fable5) scout가 **WebSearch로 검증된 2024-2026 AI-agent 논문**(내부 프로세스·자기개선·검증/grounding·메모리·오케스트레이션)을 확인하고 *적용가능 메커니즘 + arXiv ID*로 슬라이스를 스펙 → verify-then-apply. 단순 correctness 버그픽스보다 논문-기반 capability/방법 적용을 우선 — **단 이는 capability/method/research 테마에 한한다; hardening/correctness/security 테마에선 그 보안·correctness 작업 자체가 곧 가치이므로 "단순 버그픽스"로 깎아 deprioritize하지 않는다**(예: 프로토타입 오염·계약 위반 수정은 하드닝 루프의 최고 산출). floor를 깨는 회귀면 예외적으로 먼저. 적용 시 소스/다이제스트/커밋에 arXiv ID 인용.
    **공개/오픈 논문만**(진안 지시): arXiv preprint·오픈액세스 등 *누구나 자유롭게 참조·사용 가능한* 논문에 한정. published 방법/알고리즘을 **적용**하는 것이지 proprietary/비공개 자료나 코드를 복사하는 게 아님 — 출처(arXiv ID) 명시 + 자체 재구현.
    **DECOMPOSE-ON-DEFER**: 너무 커서(>1 fire) defer하면 *조용히 쉬운 걸로 안 내려가고* — 강한-티어(Fable5/Opus) 1스텝으로 그 항목을 loop-sized ◦ 슬라이스들로 **쪼개 backlog에 기록**(Anthropic planner 패턴), 또는 "loop-decompose 불가, 진안 필요"를 명시. 같은 항목이 2회 defer되면 3-fire 알림에 escalate(defer가 일방 ratchet이 되지 않게).
-③ harness/dev-loop.md §3에 따라 검증가능 슬라이스를 TDD-first로. **행동 acceptance: 결과 상태(OUTCOME)를 채점 — 선언/config-only 테스트 금지(fabricated 값이 실제 드롭/동작하는 end-to-end 케이스).** 사소한 동종 변경(예: 남은 actuator들)은 **한 슬라이스로 배칭**(토큰 절약). 새 도구는 tool-calling.md + eval:tools 골든.
+③ harness/host/dev-loop.md §3에 따라 검증가능 슬라이스를 TDD-first로. **행동 acceptance: 결과 상태(OUTCOME)를 채점 — 선언/config-only 테스트 금지(fabricated 값이 실제 드롭/동작하는 end-to-end 케이스).** 사소한 동종 변경(예: 남은 actuator들)은 **한 슬라이스로 배칭**(토큰 절약). 새 도구는 tool-calling.md + eval:tools 골든.
 ④ 결정적 검증(정지조건): **먼저 만진 패키지를 빌드**(pnpm --filter @muse/<pkg> build) → 가장 좁은 테스트 → pnpm check → 관련 eval(<해당 eval>) → pnpm lint. **pnpm check가 실패하면 첫 진단은 clean-rebuild 재실행**(cross-package 실패는 대개 동시 루프發 stale-dist — [[project_stale_dist_from_loop]]; 한 번 재실행 後에도 빨가면 진짜 회귀).
 ④b 게이팅 검증자: 별개 강한-티어 서브에이전트가 적대 판정(acceptance가 *행동*을 검증하나 — **선언-only면 FAIL**? 불변식 약화 없음? 무관 state 안 깸?). 깊이는 리스크에 비례(정형 저위험은 가볍게, 새 경로/불변식 접촉은 풀 추적)하되 항상 돈다. PASS여야 ⑤로; FAIL이면 git restore 롤백+backlog 블로커 후 멈춤.
 ⑤ write-back(테스트/eval/backlog Done) 포함 커밋. **게이트 後 트리 무편집 규칙**: write-back/digest 편집은 ④ 게이트를 다시 통과해야 한다 — 커밋 *직전 마지막 행동*으로 **staged diff에 lint + byte-hygiene 재확인**(게이트 後 트리를 또 건드렸으니; fire-1이 NUL 바이트를 이 구멍으로 흘렸음). **자율성: <Tier1=로컬 커밋, push 금지 / Tier2=loop/<theme> 브랜치 push+draft PR, 사람이 머지>.**
@@ -119,7 +119,7 @@ Muse 자율 개선 루프 — 테마: <목적>. 반드시 Node 24(nvm default).
 모델 티어링(토큰 절약): 정형 빌드/검색은 Sonnet 서브에이전트(Agent/Workflow model:"sonnet")로
 위임하고, 계획/설계/모호한 포크/④b 적대 검증은 **Fable 5(가능 시) 아니면 Opus 4.8(1M)**로; 개발은 Sonnet/Opus 무관; judge는 worker보다 강한 티어(Fable5 가능 시, 아니면 Opus).
 한 fire에 슬라이스 하나; 막히면 backlog에 블로커 기록 후 멈춤.
-예산 캡: harness/loop-budget.md 한도 준수 — 토큰/비용이 캡에 닿으면 fire 중단 후 보고.
+예산 캡: harness/reference/loop-budget.md 한도 준수 — 토큰/비용이 캡에 닿으면 fire 중단 후 보고.
 grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지. 하드 floor: main 자동머지·자율 outbound·banking·--no-verify 절대 불가.
 ```
 

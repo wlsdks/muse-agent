@@ -1,6 +1,49 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { defaultConfigPath, firstNonEmpty, readResponseGrounded, readResponseSuccess, setConfigValue, unsetConfigValue } from "./program-helpers.js";
+import { buildAskRunLog, defaultConfigPath, firstNonEmpty, readResponseGrounded, readResponseSuccess, setConfigValue, unsetConfigValue } from "./program-helpers.js";
+
+describe("buildAskRunLog (cli.local ask run-log payload — shared success/failure builder, #6 slice 6a)", () => {
+  it("builds a success entry whose response carries success:true and the lifted fields", () => {
+    const entry = buildAskRunLog({
+      query: "what's my rent?",
+      model: "ollama/gemma4:12b",
+      timings: { totalMs: 1200 },
+      confidence: 0.9,
+      grounded: "grounded",
+      response: "Your rent is $2000 [from notes/rent.md].",
+      success: true,
+      toolsUsed: []
+    });
+    expect(entry.source).toBe("cli.local");
+    expect(entry.message).toBe("what's my rent?");
+    expect(entry.model).toBe("ollama/gemma4:12b");
+    expect(readResponseSuccess(entry.response)).toBe(true);
+    expect((entry.response as { grounded: string }).grounded).toBe("grounded");
+  });
+
+  it("builds a FAILURE entry (success:false + error) — the seam #6 needs to trace a thrown run", () => {
+    const entry = buildAskRunLog({
+      query: "broken run",
+      model: "ollama/gemma4:12b",
+      timings: { totalMs: 50 },
+      grounded: "error",
+      response: "",
+      success: false,
+      toolsUsed: [],
+      errorMessage: "model timeout"
+    });
+    expect(readResponseSuccess(entry.response)).toBe(false); // a failed run is now traceable, not lost
+    expect((entry.response as { error?: string }).error).toBe("model timeout");
+  });
+
+  it("omits confidence and error when not provided (parity with the current success-path payload)", () => {
+    const entry = buildAskRunLog({
+      query: "q", model: "m", timings: {}, grounded: "grounded", response: "a", success: true, toolsUsed: []
+    });
+    expect((entry.response as Record<string, unknown>).confidence).toBeUndefined();
+    expect((entry.response as Record<string, unknown>).error).toBeUndefined();
+  });
+});
 
 describe("readResponseSuccess / readResponseGrounded (trace outcome labels)", () => {
   it("lifts a boolean success and a present grounded (object or explicit null)", () => {

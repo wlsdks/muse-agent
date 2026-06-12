@@ -9,7 +9,7 @@ related: [team-roles.md, role-prompts.md, handoff-template.md, README.md]
 
 # 하네스 ↔ Muse 런타임 매핑 (Harness ↔ Muse)
 
-> **왜 이게 필요한가?** [team-roles](team-roles.md)·[role-prompts](role-prompts.md)·[handoff-template](handoff-template.md)는
+> **왜 이게 필요한가?** [team-roles](../core/team-roles.md)·[role-prompts](../core/role-prompts.md)·[handoff-template](../core/handoff-template.md)는
 > 벤더 중립의 "이상적 팀"입니다. 그런데 Muse에는 **이미 멀티에이전트 런타임이 있습니다.** 이 문서는
 > 추상 역할이 Muse의 어느 실제 부품과 맞물리는지, 그래서 무엇이 곧바로 가능하고 무엇이 아직
 > 양식(문서) 단계인지 정직하게 짚습니다. (코드는 코드베이스를 직접 확인했고, 여기서는 말로만 옮깁니다.)
@@ -27,7 +27,7 @@ related: [team-roles.md, role-prompts.md, handoff-template.md, README.md]
 | 이력·관측 | 각 오케스트레이션의 모드·소요시간·성공/실패 수를 남기는 **이력 저장소**. | ✅ 런타임 존재 |
 | 평가자(만든 자 ≠ 판정하는 자) | 별도의 독립 평가 역할은 **런타임에 전용 부품이 아직 없음** — 현재는 워커/명세로 흉내내거나 양식의 "3. 평가" 칸으로 운용. | ⚙️ 양식 단계 |
 | 큐레이터/학습자(작업에서 배움) | **실재** — 스킬 자작·정돈(보관/통합), 플레이북 보상/감쇠(통한 전략 강화·교정 전략 약화), 회고 합성이 런타임에 있다. 받은 스킬은 사람 승격 전 격리. | ✅ 런타임 존재 |
-| 핸드오프 아티팩트(컨텍스트 리셋) | 단일 양식([handoff-template](handoff-template.md))으로 운용 — 런타임이 강제하는 형식은 아직 아님. | ⚙️ 양식 단계 |
+| 핸드오프 아티팩트(컨텍스트 리셋) | 단일 양식([handoff-template](../core/handoff-template.md))으로 운용 — 런타임이 강제하는 형식은 아직 아님. | ⚙️ 양식 단계 |
 | 검증 게이트(완료 훅·체크포인트) | 양식의 "검증 방법" 칸까지. 자동 실행 훅·재개 체크포인트는 다음 조각. | ⚙️ 예정 |
 
 ## 그래서 지금 무엇이 가능한가
@@ -37,7 +37,7 @@ related: [team-roles.md, role-prompts.md, handoff-template.md, README.md]
   이미 합니다. 즉 하네스의 **오케스트레이터-워커 + 일의 모양 + 위임/메시지** 축은 실재합니다.
 - **아직 양식(문서) 단계**: "만든 자와 판정하는 자의 분리(독립 평가자)", 핸드오프 아티팩트의
   **강제**, 검증 게이트의 **자동 실행**. 이 세 가지가 하네스를 "완전 자동으로 동일하게"의 마지막
-  간극입니다 — 현재는 [team-roles](team-roles.md)·[handoff-template](handoff-template.md)로 사람이
+  간극입니다 — 현재는 [team-roles](../core/team-roles.md)·[handoff-template](../core/handoff-template.md)로 사람이
   운용합니다.
 
 ## 정직한 간극 (다음 조각)
@@ -47,4 +47,4 @@ related: [team-roles.md, role-prompts.md, handoff-template.md, README.md]
 3. **검증 게이트**(완료 시 자동 테스트·재개 체크포인트)의 실행 형태.
 
 > 이 매핑은 코드 사실에 근거합니다(직접 확인). 런타임이 바뀌면 위 표의 상태(✅/⚙️)를 갱신하세요.
-> 기능 관점 설명은 SYSTEM-MAP #11, 역할 정의는 [team-roles](team-roles.md).
+> 기능 관점 설명은 SYSTEM-MAP #11, 역할 정의는 [team-roles](../core/team-roles.md).

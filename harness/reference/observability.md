@@ -13,7 +13,7 @@ updated: 2026-05-31
 
 ## 무엇인가
 
-[runner/tracer.mjs](runner/tracer.mjs) (의존성 0):
+[runner/tracer.mjs](../runner/tracer.mjs) (의존성 0):
 
 - `createTracer({ runId, now, redact })` — 실행 단위 트레이서.
   - `.add(event, data)` — 구조화 이벤트를 기록. 모든 이벤트에 **상관 ID(runId)** + 단조 증가 `seq` + 시각 `t`.
@@ -31,7 +31,7 @@ updated: 2026-05-31
 
 ## 검증
 
-[runner/tracer.test.mjs](runner/tracer.test.mjs) — `node --test harness/runner/`:
+[runner/tracer.test.mjs](../runner/tracer.test.mjs) — `node --test "harness/runner/*.test.mjs"`:
 상관 ID·seq 부여 / 요약 롤업(카운트·blocked·duration·cost) / redaction / toJSON 직렬화 /
 오케스트레이터가 트레이스+요약을 냄 / 훅→트레이서 합성. **6/6**(러너 스위트 누적 **39/39**).
 

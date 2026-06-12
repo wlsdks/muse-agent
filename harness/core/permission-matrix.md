@@ -10,7 +10,7 @@ related: [tool-design.md, verification-and-guardrails.md, skills-and-mcp.md, arc
 
 # 권한 매트릭스 (Permission Matrix)
 
-> **왜 이 칸인가?** [architecture](architecture.md) 자가평가의 🟡. 게이트가 있어도 "어떤 행동이 어느
+> **왜 이 칸인가?** [architecture](../reference/architecture.md) 자가평가의 🟡. 게이트가 있어도 "어떤 행동이 어느
 > 등급이고, 등급마다 어떻게 처리하나"가 한 표로 정해져 있지 않으면 일관성이 무너집니다. Muse는 이미
 > 도구를 읽기/쓰기/실행으로 나누고 신뢰 게이트를 거치니(아래), 그 규약을 **위험 등급 × 처리** 매트릭스로
 > 명문화합니다. 말로만(코드 없음).
@@ -44,13 +44,13 @@ related: [tool-design.md, verification-and-guardrails.md, skills-and-mcp.md, arc
 ## 3. 최소 권한 (Least Privilege)
 
 - 도구 접근은 필요한 만큼만 — 기본은 읽기/인지.
-- 외부 도구(MCP)는 허용목록 + 격리([skills-and-mcp](skills-and-mcp.md)).
-- 등급은 도구 설계의 일부로 선언됩니다([tool-design §6](tool-design.md)).
+- 외부 도구(MCP)는 허용목록 + 격리([skills-and-mcp](../reference/skills-and-mcp.md)).
+- 등급은 도구 설계의 일부로 선언됩니다([tool-design §6](../reference/tool-design.md)).
 
 ## 4. 기록 (감사 추적)
 
 - **허용이든 거부든** 모든 게이트 판정을 이유와 함께 기록합니다(되돌리기·학습 대상).
-- 거부도 실행 기록에 남아 사후 분석·재현이 됩니다([failure-modes-and-observability](failure-modes-and-observability.md)).
+- 거부도 실행 기록에 남아 사후 분석·재현이 됩니다([failure-modes-and-observability](../reference/failure-modes-and-observability.md)).
 
 ## 4.5 실측 (실제 Claude Code로 권한 게이트 역할 검증, 2026-05-31)
 

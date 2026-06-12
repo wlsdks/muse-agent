@@ -8,7 +8,7 @@ updated: 2026-06-08
 
 # 개발 루프 — Development Loop
 
-> **이 파일은 "무엇을·어떻게 개발하는가"의 계약입니다.** [`AGENTS.md`](AGENTS.md)가
+> **이 파일은 "무엇을·어떻게 개발하는가"의 계약입니다.** [`AGENTS.md`](../AGENTS.md)가
 > *역할·핸드오프·게이트*(한 슬라이스를 어떻게 실행하나)라면, 이 파일은 *그 슬라이스를
 > 어떻게 고르고, 검증하고, 학습을 누적하나*입니다. `.claude/skills/improve-muse`가
 > 0–2단계(ORIENT+FIND)를 돌려 다음 슬라이스를 *추천*하고 — "할 게 없다"는 금지 출력 —
@@ -21,15 +21,15 @@ updated: 2026-06-08
 절반이 없다** → 매 세션이 오리엔테이션 비용을 처음부터 다시 낸다(treadmill). 두 얼굴:
 
 1. **방향이 누적되지 않는다.** 단일 진입점이 없고, 영속 backlog가 삭제돼 있어 "다음에 뭘"을
-   매 슬라이스마다 비싼 scout 서브에이전트로 재발견하고 버린다. → 고친다: [`backlog.md`](../docs/goals/backlog.md)를
+   매 슬라이스마다 비싼 scout 서브에이전트로 재발견하고 버린다. → 고친다: [`backlog.md`](../../docs/goals/backlog.md)를
    한 번 쓰면 다음 fire가 먼저 읽는다.
 2. **데이터가 슬라이스를 안 고른다.** `.muse/runs/`에 트레이스가 쌓이는데 아무도 안 읽고,
    "느낌상 가치 높은 것"으로 고른다. → 고친다(점진적): 결과 로깅 계측 → 실패 클러스터링이
-   슬라이스를 고르게. (지금은 라벨이 없으니 backlog가 우선; [`backlog.md`](../docs/goals/backlog.md) 참고.)
+   슬라이스를 고르게. (지금은 라벨이 없으니 backlog가 우선; [`backlog.md`](../../docs/goals/backlog.md) 참고.)
 
 ## 1. 원칙 (공개 방법론 전반의 합의 — 따를 것)
 
-모두 1차 출처로 교차 검증됨(§4). 충돌 시 [`CLAUDE.md`](../CLAUDE.md) + `.claude/rules/*.md`가 우선.
+모두 1차 출처로 교차 검증됨(§4). 충돌 시 [`CLAUDE.md`](../../CLAUDE.md) + `.claude/rules/*.md`가 우선.
 
 1. **데이터가 슬라이스를 고른다, 느낌이 아니라.** 자기 트레이스를 읽고 → 실패를 분류하고 →
    빈도로 순위를 매겨 Pareto가 일을 고르게. AI 개발에서 가장 ROI 높은 활동(Husain; NurtureBoss는
@@ -37,7 +37,7 @@ updated: 2026-06-08
 2. **고정된 작은 모델에서는 *하네스*가 레버다 — 모델 크기가 아니라.** 에이전트=LLM이 도구를
    루프로 도는 것; 역량=도구×플래너(Weng·Willison·Huyen·Ng; Ng의 "GPT-3.5 루프 > GPT-4 zero-shot").
    약한 모델일수록 하네스 품질에 성능이 크게 흔들린다(METR ~23.8pt). 단, 첫 액션을 맞혀라 —
-   8B는 3+스텝 추론에서 일관성이 무너진다([`tool-calling.md`](../.claude/rules/tool-calling.md)).
+   8B는 3+스텝 추론에서 일관성이 무너진다([`tool-calling.md`](../../.claude/rules/tool-calling.md)).
 3. **뺄셈으로 개선한다.** 도구를 ablate해 기여 없는 건 제거(Huyen); CLAUDE.md 100줄 상한;
    subtractive correction-decay. 계약·스킬·backlog는 늘리기만 하면 8B가 무시하는 소음이 된다 —
    한 줄 추가하면 한 줄 쳐낸다.
@@ -87,12 +87,12 @@ updated: 2026-06-08
    동시 auto-push 루프와 reconcile; 만진 의존 패키지 rebuild(stale dist가 버그로 위장하는 세금 제거).
 1. **ORIENT (회귀 우선)** — `pnpm self-eval`. 이전에 통과하던 게이트가 떨어졌으면 *그걸* 고치는 게
    이번 fire의 전부 — 여기서 멈추고 고친다.
-2. **FIND WORK (자율 — 점진적 강등)** — (a) 회귀 있으면 그게 일. (b) 없으면 [`backlog.md`](../docs/goals/backlog.md)
+2. **FIND WORK (자율 — 점진적 강등)** — (a) 회귀 있으면 그게 일. (b) 없으면 [`backlog.md`](../../docs/goals/backlog.md)
    최상단 ★ OPEN 항목 — 단 ★ OPEN 중 다른 항목의 선행조건(PREREQUISITE)으로 선언된 것이 그게 막는
    기능보다 우선. (c) backlog가 비었으면 EXPANSION-PLAYBOOK의 gap-finding(scout 서브에이전트:
    현재상태+공개레퍼런스+격차합성)으로 후보를 *생성*하고 backlog에 적어 누적. (d) 라벨된 실패가
    ~20-30개 쌓이면 에러분석이 (b)보다 우선. **사람에게 "뭘 만들까" 안 묻는다 — 데이터/backlog가 고른다.**
-3. **PLAN** — WHAT+WHY+강화할 게이트를 [`handoff-template.md`](handoff-template.md)에 한 줄 계약으로.
+3. **PLAN** — WHAT+WHY+강화할 게이트를 [`handoff-template.md`](../core/handoff-template.md)에 한 줄 계약으로.
    사소하면(오타·한 줄) 생략하고 5로 단락(skill 자가 게이트).
 4. **BUILD** — 한 수직 슬라이스, 최소 범위, 결정론 코드(프롬프트 아님). 프롬프트/스키마/제어흐름을
    소유; 게이트 하나를 강화하거나 verb_noun 도구 하나 추가. 새 프레임워크 추상화 금지.
@@ -103,7 +103,7 @@ updated: 2026-06-08
    eval:judge 메타평가로 보정. green 아니면 done 아님.
 6. **WRITE-BACK (완료 게이트 — 이거 없이 done 선언 불가)** — (a) 고친 실패를 STABLE-3/3 golden case로;
    (b) 진안의 반복 교정을 `.claude/rules/*.md` 한 줄로(after-correction); (c) 고른+버린 방향+출처를
-   [`backlog.md`](../docs/goals/backlog.md)에, 영속 사실을 MEMORY.md에; (d) before→after를 self-eval 스코어보드에.
+   [`backlog.md`](../../docs/goals/backlog.md)에, 영속 사실을 MEMORY.md에; (d) before→after를 self-eval 스코어보드에.
    set이 늘면 stale 한 줄 prune.
 7. **COMMIT** — Conventional Commit 하나(커밋만; push는 진안 명시 승인 시에만) + 짧은 한국어 보고
    (무엇/왜+URL/before→after/잔여 리스크). 다음 fire의 ORIENT는 더 두꺼운 rule·golden suite·backlog를

@@ -27,7 +27,7 @@ verification discipline (golden-set + pass^k). The `harness/` folder is
 self-contained — copy it into any project and point that project's
 `AGENTS.md`/`CLAUDE.md` at `harness/AGENTS.md` to reuse it
 ([`harness/INSTALL.md`](harness/INSTALL.md)). Muse-runtime mapping:
-[`harness/muse-mapping.md`](harness/muse-mapping.md).
+[`harness/host/muse-mapping.md`](harness/host/muse-mapping.md).
 
 ## Stack
 

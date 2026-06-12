@@ -15,7 +15,7 @@ Rules:
 - Record a reusable procedure (skill) from any correction received; consolidate
   near-duplicates (don't let memory bloat).
 - Store only durable, sourced facts/preferences — drop one-off details; hold weak
-  inferences at low confidence (no guess-storage). See `harness/memory-layers.md`.
+  inferences at low confidence (no guess-storage). See `harness/reference/memory-layers.md`.
 - Anything needing execution rights or that smells contaminated goes through a
   human promotion gate — never auto-activate.
 

@@ -32,8 +32,8 @@ related: [team-roles.md, handoff-template.md, role-prompts.md, verification-and-
                                   FAIL ─▶ 피드백 → [BUILD] (반복 한도까지)
 ```
 
-- 각 단계는 [role-prompts](role-prompts.md)의 해당 블록을 **자동 주입**받는다(사람이 안 붙임).
-- 단계 산출은 [handoff-template](handoff-template.md)의 자기 섹션에만 기록되고, 다음 단계는 그
+- 각 단계는 [role-prompts](../core/role-prompts.md)의 해당 블록을 **자동 주입**받는다(사람이 안 붙임).
+- 단계 산출은 [handoff-template](../core/handoff-template.md)의 자기 섹션에만 기록되고, 다음 단계는 그
   양식만 입력으로 받는다(컨텍스트 리셋).
 
 ## 2. 러너가 강제하는 것 (계약)
@@ -54,7 +54,7 @@ related: [team-roles.md, handoff-template.md, role-prompts.md, verification-and-
 ## 3. 사람이 개입하는 지점 (HITL)
 
 러너는 자동이되, **이 셋은 반드시 사람**:
-- **외부 전송/상태 변경** — draft-first, 사람 확인 후에만([verification-and-guardrails](verification-and-guardrails.md)).
+- **외부 전송/상태 변경** — draft-first, 사람 확인 후에만([verification-and-guardrails](../core/verification-and-guardrails.md)).
 - **받은 노하우 승격** — 격리된 스킬은 사람이 올려야 활성([skills-and-mcp](skills-and-mcp.md)).
 - **BLOCKED 해소** — 열린 질문·한도 초과는 사람이 판단.
 
@@ -67,9 +67,9 @@ related: [team-roles.md, handoff-template.md, role-prompts.md, verification-and-
 
 - **현재**: 역할·양식·게이트가 **문서로 정의**됐고 사람이 claude를 손으로 이어 9회 돌려 흐름을 입증.
 - **이 스펙이 정의하는 것**: 그 강제·자동 끼움·게이트 통과를 **러너가** 하는 계약.
-- **이제 된 것(2026-05-31)**: 최소 **코드 러너**가 이 계약을 강제합니다 — [`runner/`](runner/)의
+- **이제 된 것(2026-05-31)**: 최소 **코드 러너**가 이 계약을 강제합니다 — [`runner/`](../runner/)의
   `harness-runner.mjs`(의존성 0)가 상태기계·계획/완료/권한 게이트를 결정론 코드로 거부하고,
-  `conformance.test.mjs`가 §7 거부 매트릭스를 **13/13 통과**(`node --test harness/runner/`). 즉
+  `conformance.test.mjs`가 §7 거부 매트릭스를 **13/13 통과**(`node --test "harness/runner/*.test.mjs"`). 즉
   게이트가 "지시"에서 "코드 강제"로 올라갔습니다.
 - **아직 아닌 것**: 러너를 실제 오케스트레이션 런타임(프로세스 스폰·도구 배선)에 붙이는 것은 호스트
   몫 — 이 러너는 그 위에서 전이 허용을 판정하는 게이트 코어입니다.
@@ -84,7 +84,7 @@ related: [team-roles.md, handoff-template.md, role-prompts.md, verification-and-
 |---|---|---|
 | 계획 게이트 — 빈 기준 거부 | 수용 기준이 비면 다음 단계로 못 감 | G10 빈 기준 → "검증 불가" **pass^5**(추측 통과 0) |
 | 완료 게이트 — 틀린 빌드 FAIL | 기준 위반 산출물은 PASS 안 됨 | G8 null 빌드 → **pass^10** FAIL · G9 올바른 빌드 → pass^5 PASS |
-| 외부전송 게이트(HITL) | 자동 전송 금지·draft-first | 권한 실측: outbound→approve·은행→refuse([permission-matrix §4.5](permission-matrix.md)) |
+| 외부전송 게이트(HITL) | 자동 전송 금지·draft-first | 권한 실측: outbound→approve·은행→refuse([permission-matrix §4.5](../core/permission-matrix.md)) |
 
 ## 7. 코드 러너가 통과해야 할 적합성 매트릭스 (미래 구현 계약)
 
@@ -116,6 +116,6 @@ related: [team-roles.md, handoff-template.md, role-prompts.md, verification-and-
 ## 출처 (근거)
 
 - [harness-acceptance §7.5](harness-acceptance.md) (실제 Claude Code 9회 실측 — 현재는 사람이 사이클을 이어붙임)
-- [team-roles](team-roles.md) · [handoff-template](handoff-template.md) · [role-prompts](role-prompts.md) (강제 대상)
-- [verification-and-guardrails](verification-and-guardrails.md) · [loop-budget](loop-budget.md) · [debugging-and-dx](debugging-and-dx.md) (게이트·한도·관측)
+- [team-roles](../core/team-roles.md) · [handoff-template](../core/handoff-template.md) · [role-prompts](../core/role-prompts.md) (강제 대상)
+- [verification-and-guardrails](../core/verification-and-guardrails.md) · [loop-budget](loop-budget.md) · [debugging-and-dx](debugging-and-dx.md) (게이트·한도·관측)
 - Anthropic — [3-agent harness](https://www.infoq.com/news/2026/04/anthropic-three-agent-harness-ai/) (컨텍스트 리셋 + 구조화 핸드오프 아티팩트)

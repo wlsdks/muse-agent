@@ -33,8 +33,7 @@ related: [team-roles.md, failure-modes-and-observability.md, verification-and-gu
 
 - **작업 완료 신호** — 수용 기준 충족 시 정상 종료([harness-acceptance](harness-acceptance.md)).
 - **진전 없음 감지** — 같은 행동을 반복하거나 새 진전이 없으면(루프 정체) 끊고 사람에게 올림.
-- **막힘(BLOCKED)** — 답을 모르면 추측하지 말고 멈춰 `## 열린 질문`에 적습니다([handoff-template]
-  (handoff-template.md)).
+- **막힘(BLOCKED)** — 답을 모르면 추측하지 말고 멈춰 `## 열린 질문`에 적습니다([handoff-template](../core/handoff-template.md)).
 
 ## 3. 폭주를 끊는 안전장치
 
@@ -47,9 +46,8 @@ related: [team-roles.md, failure-modes-and-observability.md, verification-and-gu
 
 - **컨텍스트가 비용** — 맥락이 길수록 매 호출이 비쌉니다. 10~15 도구 호출마다 **압축**을 예약하면
   품질을 지키며 토큰을 크게 아낍니다(컨텍스트 압축은 별도 칸에서 심화 — 🟡).
-- **싼 검사 먼저** — 비싼 모델 호출 전에 싼 가드레일/검증을 병렬로([verification-and-guardrails]
-  (verification-and-guardrails.md)).
-- **모델 티어링** — 간단한 일은 빠른 모델, 깊은 추론만 강한 모델([team-roles](team-roles.md)).
+- **싼 검사 먼저** — 비싼 모델 호출 전에 싼 가드레일/검증을 병렬로([verification-and-guardrails](../core/verification-and-guardrails.md)).
+- **모델 티어링** — 간단한 일은 빠른 모델, 깊은 추론만 강한 모델([team-roles](../core/team-roles.md)).
 
 ## 5. 한 줄 요약 (루프 종료 체크리스트)
 
