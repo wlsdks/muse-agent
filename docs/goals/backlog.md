@@ -223,6 +223,44 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   honestly skipped. Ref resolution searches EVERY frame (`page.frames()`), so an
   iframe-embedded control is both visible AND clickable. Real-Chrome smoke (local http,
   same-origin iframe button): button appears in the snapshot + cross-frame click succeeds.
+- ✓→Done **empirical real-web hardening (probe → fix → lock)** — a gap-probe of 7 real
+  patterns on puppeteer-core 25.1.0 / Node 24 surfaced 3 bugs, all fixed + locked in
+  smoke:browser (now 12 scenarios): ① a JS dialog (confirm/alert/prompt) BLOCKED the
+  page → the next action hung to the timeout; now auto-accepted (the act was draft-first
+  approved upstream) + reported in the snapshot `dialog` field. ② content inserted by
+  setTimeout/fetch AFTER a click was missed (networkidle returns instantly with no
+  network) → a MutationObserver-based `settleDom` waits for the DOM to go quiet (fast on
+  static pages, capped). ③ disabled controls were listed (wasted clicks) → skipped in the
+  walk. Verified: unit 36, smoke 12/12 exit 0, eval:browser-agent PASS.
+- ✓→Done **new-tab following + autocomplete** (probe batch 2) — a target=_blank link /
+  window.open popup spawned a tab the controller never followed (it kept observing the
+  stale opener; window.open even hung 8s). Fix: arm a `targetcreated` listener BEFORE the
+  click/submit (checking pages() after races and misses it) and adopt the new tab, within
+  a 500ms window so a normal no-new-tab click isn't taxed (2943ms → 1446ms). Autocomplete
+  (type → suggestion) already works via the DOM-stable settle. Locked: smoke 13 (new tab
+  followed) + 14 (autocomplete observed); unit 36, eval:browser-agent PASS.
+- ✓→Done **repeated-control targeting** (probe batch 3, click/select) — a per-row
+  "Add to cart" / repeated "View" was DEDUPED to one entry, so the model could never
+  target the 2nd (product lists, tables, search results — a huge real-web class). Fix:
+  (a) dedup now collapses only TRULY redundant LINKS — same text AND same href (a
+  responsive nav rendered twice); distinct buttons/actions are kept. (b) matcher gained
+  ORDINAL targeting ("the second Add to cart", "2nd View", "last") that picks the Nth
+  among equally-matched controls in DOM order — guarded so a literal label that starts
+  with an ordinal word ("First name") is never mis-stripped (only applies when `rest`
+  truly has >1 match). Custom (non-native) dropdowns + tabs already worked (settle).
+  Locked: matcher unit +5, smoke 15 (repeated buttons distinct + ordinal→Banana), agent
+  battery PASS.
+- ✓→Done **browser_hover** (probe batch 4) — hover-triggered dropdown navs / tooltips were
+  invisible (the submenu only renders on :hover/mouseover). New read-risk `browser_hover`
+  tool grounds a target (the menu label) and moves the pointer over it, then re-observes —
+  the pointer STAYS, so a nested submenu item stays clickable (moving to it keeps :hover).
+  Also added `[aria-haspopup]` to the snapshot selector so explicit (possibly non-link)
+  menu triggers are listed. Locked: unit +2, eval 10/10 STABLE 3/3 (hover→browser_hover,
+  not click), smoke 16 (hover reveals Billing then clicks it), agent PASS. (Limit: a hover
+  trigger that's a bare non-interactive `<div>` without aria-haspopup still isn't listed.)
+- ◦ **more real-web probes** — remaining: native file upload (`<input type=file>` → CDP
+  uploadFile + path arg/tool), cross-origin iframe (per-frame contexts — scope honestly),
+  drag-and-drop / sliders.
 - ✓→Done **browser_scroll** — the snapshot only saw rendered DOM, so below-the-fold /
   lazy-loaded content (infinite feeds, long lists) was invisible. New read tool scrolls
   (down/up/top/bottom) + settles + re-observes. Unit (enum + reject-unknown + scrolls);

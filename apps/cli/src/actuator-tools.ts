@@ -42,6 +42,7 @@ import {
   PuppeteerBrowserController,
   createBrowserBackTool,
   createBrowserClickTool,
+  createBrowserHoverTool,
   createBrowserOpenTool,
   createBrowserReadTool,
   createBrowserScrollTool,
@@ -266,6 +267,7 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
     createBrowserReadTool({ controller }),
     createBrowserBackTool({ controller }),
     createBrowserScrollTool({ controller }),
+    createBrowserHoverTool({ controller }),
     createBrowserClickTool({ approvalGate: gate, controller }),
     createBrowserTypeTool({ approvalGate: gate, controller })
   ];

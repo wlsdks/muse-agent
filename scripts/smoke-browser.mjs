@@ -9,6 +9,17 @@
  *                        option throws and changes NOTHING (fail-close)
  *   4. dedup           — repeated nav links collapse to one entry
  *   5. fixed-position  — position:fixed controls (cookie banners) are visible
+ *   6. reconnect       — a second controller drives the SAME running Chrome
+ *   7. same-origin iframe — embedded controls are observed AND clickable cross-frame
+ *   8. element paging  — the controller collects past the 50-element display cap
+ *   9. scroll          — scrolling reveals lazily-loaded content
+ *  10. JS dialog       — confirm/alert is auto-handled (no hang) and reported
+ *  11. async-after-act — DOM-stable settle catches content inserted post-click
+ *  12. disabled        — disabled controls are omitted (no wasted clicks)
+ *  13. new tab         — a target=_blank click is FOLLOWED (new page observed)
+ *  14. autocomplete    — typing reveals suggestions (settle catches them)
+ *  15. repeated actions — per-row buttons stay distinct + ordinal targets the right one
+ *  16. hover menu      — hovering reveals a submenu, then its item is clickable
  *
  * Skips (exit 0) when Chrome is not installed — a skip is not a pass.
  */
@@ -17,7 +28,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { PuppeteerBrowserController } from "../packages/browser/dist/index.js";
+import { PuppeteerBrowserController, matchElement } from "../packages/browser/dist/index.js";
 
 const SPA_HTML = `<!doctype html><html><head><title>SPA</title></head><body><div id="root"></div>
 <script>setTimeout(() => {
@@ -54,9 +65,74 @@ const SELECT_HTML = `<!doctype html><html><head><title>Select</title></head><bod
 <input aria-label="Search" placeholder="Search"
   oninput="document.getElementById('typed').textContent='typed:'+this.value">
 <div id="typed">typed:none</div>
-<a href="#a">Pricing</a><a href="#b">Pricing</a><a href="#c">Pricing</a>
+<a href="#pricing">Pricing</a><a href="#pricing">Pricing</a><a href="#pricing">Pricing</a>
 <button style="position:fixed;bottom:0;left:0">Accept cookies</button>
 </body></html>`;
+
+// srcdoc inherits the parent's origin → same-origin (NOT a cross-origin frame).
+// The onclick uses String.fromCharCode (no nested quotes) so the srcdoc value
+// survives HTML-attribute parsing intact; clicking sets the text to "OK".
+const IFRAME_HTML = `<!doctype html><html><head><title>Iframe</title></head><body>
+<p>Parent page around the embed.</p>
+<iframe srcdoc='<button id="b" onclick="this.textContent=String.fromCharCode(79,75)">Embedded action</button>'></iframe>
+</body></html>`;
+
+const PAGING_HTML = `<!doctype html><html><head><title>Paging</title></head><body>
+${Array.from({ length: 60 }, (_v, i) => `<a href="#l${String(i)}">link ${String(i)}</a>`).join("")}
+</body></html>`;
+
+const SCROLL_HTML = `<!doctype html><html><head><title>Scroll</title></head><body>
+<div style="height:3000px">tall spacer</div>
+<script>addEventListener("scroll", () => {
+  if (window.scrollY > 500 && !document.getElementById("lazy")) {
+    const b = document.createElement("button");
+    b.id = "lazy"; b.textContent = "Lazy loaded"; document.body.appendChild(b);
+  }
+});</script>
+</body></html>`;
+
+// A confirm() blocks the page until answered — with no handler the next action
+// hangs to the timeout. The controller auto-accepts (the act was already
+// approved upstream) and reports the dialog.
+const DIALOG_HTML = `<!doctype html><html><head><title>Dialog</title></head><body>
+<button onclick="if(confirm('Delete this item?'))document.title='CONFIRMED'">Delete</button>
+</body></html>`;
+
+// Content inserted 600ms after the click — no network, so networkidle alone
+// misses it; the DOM-stable settle must catch it.
+const AJAX_HTML = `<!doctype html><html><head><title>Ajax</title></head><body>
+<button onclick="setTimeout(() => document.body.insertAdjacentHTML('beforeend','<p>Results loaded</p>'), 600)">Load results</button>
+</body></html>`;
+
+const DISABLED_HTML = `<!doctype html><html><head><title>Disabled</title></head><body>
+<button disabled>Submit</button><button>Active button</button>
+</body></html>`;
+
+const NEWTAB_TARGET_HTML = `<!doctype html><html><head><title>Report</title></head><body><h1>Report detail page</h1></body></html>`;
+const NEWTAB_HTML = `<!doctype html><html><head><title>Newtab</title></head><body>
+<a href="newtab-target.html" target="_blank">Open report</a>
+</body></html>`;
+
+const AUTOCOMPLETE_HTML = `<!doctype html><html><head><title>Auto</title></head><body>
+<input aria-label="Search" oninput="document.getElementById('s').innerHTML=this.value?'<button>Result: '+this.value+'</button>':''">
+<div id="s"></div>
+</body></html>`;
+
+// Two products, each with an identically-labelled "Add to cart" — they must stay
+// distinct (NOT collapsed) so ordinal grounding can target the right one.
+const REPEAT_HTML = `<!doctype html><html><head><title>Shop</title></head><body>
+<div>Apple <button onclick="document.title='apple'">Add to cart</button></div>
+<div>Banana <button onclick="document.title='banana'">Add to cart</button></div>
+</body></html>`;
+
+// A submenu hidden until the (link) nav item is hovered — the realistic dropdown
+// nav. Hovering "Account" must reveal "Billing", then clicking it must work (the
+// nested item keeps :hover active).
+const HOVER_HTML = `<!doctype html><html><head><title>Nav</title><style>#m{display:none} li:hover #m{display:block}</style></head><body>
+<ul><li style="list-style:none;display:inline-block;padding:20px">
+<a href="#account">Account</a>
+<div id="m"><button onclick="document.title='BILLING'">Billing</button></div>
+</li></ul></body></html>`;
 
 function assert(condition, label) {
   if (!condition) throw new Error(`ASSERT FAILED: ${label}`);
@@ -74,6 +150,17 @@ try {
   await writeFile(join(dir, "spa.html"), SPA_HTML);
   await writeFile(join(dir, "shadow.html"), SHADOW_HTML);
   await writeFile(join(dir, "select.html"), SELECT_HTML);
+  await writeFile(join(dir, "iframe.html"), IFRAME_HTML);
+  await writeFile(join(dir, "paging.html"), PAGING_HTML);
+  await writeFile(join(dir, "scroll.html"), SCROLL_HTML);
+  await writeFile(join(dir, "dialog.html"), DIALOG_HTML);
+  await writeFile(join(dir, "ajax.html"), AJAX_HTML);
+  await writeFile(join(dir, "disabled.html"), DISABLED_HTML);
+  await writeFile(join(dir, "newtab.html"), NEWTAB_HTML);
+  await writeFile(join(dir, "newtab-target.html"), NEWTAB_TARGET_HTML);
+  await writeFile(join(dir, "autocomplete.html"), AUTOCOMPLETE_HTML);
+  await writeFile(join(dir, "repeat.html"), REPEAT_HTML);
+  await writeFile(join(dir, "hover.html"), HOVER_HTML);
 
   console.log("1) SPA settle — late-rendered content is observed");
   let snap;
@@ -118,7 +205,7 @@ try {
 
   console.log("4) dedup + 5) fixed-position visibility");
   const pricing = snap.elements.filter((el) => el.name === "Pricing");
-  assert(pricing.length === 1, "3 identical nav links collapse to 1");
+  assert(pricing.length === 1, "3 same-href nav links collapse to 1 (distinct hrefs would stay)");
   assert(snap.elements.some((el) => el.name === "Accept cookies"), "position:fixed button is visible");
 
   console.log("6) cross-invocation reconnect — a second controller drives the SAME Chrome");
@@ -126,8 +213,71 @@ try {
   const reSnap = await second.snapshot();
   assert(reSnap.url === snap.url, "new controller reconnected to the running browser (no profile-lock crash)");
 
+  console.log("7) same-origin iframe — embedded control observed AND clickable cross-frame");
+  snap = await controller.open(pathToFileURL(join(dir, "iframe.html")).href);
+  const embedded = snap.elements.find((el) => el.name === "Embedded action");
+  assert(embedded !== undefined, "button inside a same-origin iframe is listed");
+  snap = await controller.click(embedded.ref);
+  assert(snap.elements.some((el) => el.name === "OK"), "clicking the iframe-embedded button fires its handler (cross-frame)");
+
+  console.log("8) element paging — collects past the 50-element display cap");
+  snap = await controller.open(pathToFileURL(join(dir, "paging.html")).href);
+  const links = snap.elements.filter((el) => el.role === "link");
+  assert(links.length === 60, "all 60 links collected (ceiling > 50, grounding sees the whole set)");
+
+  console.log("9) scroll — reveals lazily-loaded content");
+  snap = await controller.open(pathToFileURL(join(dir, "scroll.html")).href);
+  assert(!snap.elements.some((el) => el.name === "Lazy loaded"), "lazy content absent before scroll");
+  snap = await controller.scroll("bottom");
+  assert(snap.elements.some((el) => el.name === "Lazy loaded"), "lazy content revealed after scroll");
+
+  console.log("10) JS dialog — confirm() auto-handled (no hang) and reported");
+  snap = await controller.open(pathToFileURL(join(dir, "dialog.html")).href);
+  snap = await controller.click(snap.elements.find((el) => el.name === "Delete").ref);
+  assert(snap.title === "CONFIRMED", "confirm() accepted so the approved action completed (no timeout hang)");
+  assert(snap.dialog?.type === "confirm", "the dialog is reported transparently in the snapshot");
+
+  console.log("11) async-after-action — DOM-stable settle catches post-click content");
+  snap = await controller.open(pathToFileURL(join(dir, "ajax.html")).href);
+  snap = await controller.click(snap.elements.find((el) => el.name === "Load results").ref);
+  assert(snap.text.includes("Results loaded"), "content inserted 600ms after the click is observed");
+
+  console.log("12) disabled controls — omitted so the model never wastes a turn on them");
+  snap = await controller.open(pathToFileURL(join(dir, "disabled.html")).href);
+  assert(!snap.elements.some((el) => el.name === "Submit"), "disabled button is omitted from the element list");
+  assert(snap.elements.some((el) => el.name === "Active button"), "enabled button is still listed");
+
+  console.log("13) new tab — a target=_blank click is followed (new page observed)");
+  snap = await controller.open(pathToFileURL(join(dir, "newtab.html")).href);
+  snap = await controller.click(snap.elements.find((el) => el.name === "Open report").ref);
+  assert(snap.text.includes("Report detail page"), "the controller follows the new tab, not the stale opener");
+
+  console.log("14) autocomplete — typing reveals suggestions");
+  snap = await controller.open(pathToFileURL(join(dir, "autocomplete.html")).href);
+  snap = await controller.type(snap.elements.find((el) => el.role === "textbox").ref, "laptop", false);
+  assert(snap.elements.some((el) => el.name.includes("Result: laptop")), "the suggestion rendered on input is observed");
+
+  console.log("15) repeated actions — per-row buttons stay distinct + ordinal targets the right one");
+  snap = await controller.open(pathToFileURL(join(dir, "repeat.html")).href);
+  assert(snap.elements.filter((el) => el.name === "Add to cart").length === 2, "both per-row 'Add to cart' buttons are listed (not deduped)");
+  const secondAdd = matchElement(snap.elements, "the second Add to cart", "click");
+  snap = await controller.click(secondAdd.ref);
+  assert(snap.title === "banana", "'the second Add to cart' grounds to Banana's button, not Apple's");
+
+  console.log("16) hover menu — hovering reveals a submenu, then its item is clickable");
+  snap = await controller.open(pathToFileURL(join(dir, "hover.html")).href);
+  assert(!snap.elements.some((el) => el.name === "Billing"), "submenu item is hidden before hover");
+  snap = await controller.hover(matchElement(snap.elements, "Account", "click").ref);
+  const billing = matchElement(snap.elements, "Billing", "click");
+  assert(billing !== undefined, "hovering the nav item reveals the submenu");
+  snap = await controller.click(billing.ref);
+  assert(snap.title === "BILLING", "the revealed submenu item is clickable (hover stays active)");
+
   console.log("\nsmoke:browser PASS");
 } finally {
   if (launched) await controller.close();
-  await rm(dir, { force: true, recursive: true });
+  // close() terminates the detached Chrome over CDP, but the OS process releases
+  // its profile file handles a beat later — retry the temp cleanup so the race
+  // never turns a green smoke into a non-zero exit (and never fail on cleanup).
+  await rm(dir, { force: true, maxRetries: 10, recursive: true, retryDelay: 200 }).catch(() => { /* temp dir; OS reaps it */ });
 }

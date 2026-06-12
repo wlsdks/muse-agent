@@ -46,6 +46,9 @@ export interface PuppeteerBrowserControllerOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+// How long to wait for a click/submit to spawn a new tab before assuming none —
+// `targetcreated` fires at click time, so this only taxes a no-new-tab action.
+const NEW_TAB_WINDOW_MS = 500;
 // Bounded re-observe for SPA shells that render after domcontentloaded:
 // an unsettled snapshot (no elements, stub text) waits and retries, max twice.
 const SETTLE_RETRIES = 2;
@@ -57,6 +60,7 @@ export class PuppeteerBrowserController implements BrowserController {
   private readonly options: PuppeteerBrowserControllerOptions;
   private lastElements = new Map<number, SnapshotElement>();
   private lastUrl = "";
+  private lastDialog: { readonly type: string; readonly message: string } | undefined;
 
   constructor(options: PuppeteerBrowserControllerOptions = {}) {
     this.options = options;
@@ -124,16 +128,88 @@ export class PuppeteerBrowserController implements BrowserController {
     }
     const pages = await this.browser.pages();
     this.page = pages[0] ?? (await this.browser.newPage());
+    this.registerDialogHandler(this.page);
     return this.page;
+  }
+
+  /**
+   * A JS dialog (alert/confirm/prompt/beforeunload) BLOCKS the page until it's
+   * answered — with no handler, the next click/goto hangs to the timeout. The act
+   * that triggers it was already draft-first approved by the human upstream
+   * (outbound-safety), so we ACCEPT to complete that intent, and RECORD the dialog
+   * so the result stays transparent. Registered once per page.
+   */
+  private registerDialogHandler(page: Page): void {
+    if (page.listenerCount("dialog") > 0) return;
+    page.on("dialog", (dialog) => {
+      this.lastDialog = { message: dialog.message(), type: dialog.type() };
+      dialog.accept().catch(() => { /* already handled / page gone */ });
+    });
+  }
+
+  /**
+   * Run an action that MIGHT open a new tab (`target=_blank`, `window.open`) and
+   * follow it if it does — the model must observe the new tab, not the stale
+   * original. The `targetcreated` listener is armed BEFORE the action (a new tab
+   * registers asynchronously, so checking `pages()` after the click races and
+   * misses it); if nothing opens within a short window we keep the current page.
+   */
+  private async withNewTabFollow(action: () => Promise<void>): Promise<void> {
+    const browser = this.browser;
+    if (!browser) { await action(); return; }
+    let resolveNew: (page: Page | null) => void = () => { /* set below */ };
+    const opened = new Promise<Page | null>((resolve) => { resolveNew = resolve; });
+    const onTarget = (target: { page: () => Promise<Page | null> }): void => {
+      target.page().then((page) => resolveNew(page)).catch(() => resolveNew(null));
+    };
+    browser.once("targetcreated", onTarget);
+    try {
+      await action();
+      // A new tab fires `targetcreated` essentially at click time, so a short
+      // window catches it; a normal click (no new tab) isn't taxed beyond it.
+      const newest = await Promise.race([
+        opened,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), NEW_TAB_WINDOW_MS))
+      ]);
+      if (newest && !newest.isClosed()) {
+        this.page = newest;
+        this.registerDialogHandler(newest);
+        await newest.bringToFront().catch(() => { /* best-effort */ });
+        await newest.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* static popup */ });
+      }
+    } finally {
+      browser.off("targetcreated", onTarget);
+    }
   }
 
   private get timeout(): number {
     return this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
+  /**
+   * Wait for the DOM to stop mutating after an action — catches content inserted
+   * by setTimeout / fetch-then-render that `networkidle` alone misses (a click
+   * that AJAXes in the next step, no network = idle returns immediately). Resolves
+   * as soon as there are no mutations for `quietMs`; returns fast on a static page,
+   * hard-capped so a forever-animating page can't wedge it.
+   */
+  private async settleDom(page: Page): Promise<void> {
+    await page.evaluate((quietMs: number, capMs: number) => new Promise<void>((resolve) => {
+      const target = document.body;
+      if (!target) { resolve(); return; }
+      let quiet: ReturnType<typeof setTimeout>;
+      const finish = (): void => { clearTimeout(quiet); clearTimeout(cap); observer.disconnect(); resolve(); };
+      const observer = new MutationObserver(() => { clearTimeout(quiet); quiet = setTimeout(finish, quietMs); });
+      observer.observe(target, { attributes: true, characterData: true, childList: true, subtree: true });
+      quiet = setTimeout(finish, quietMs);
+      const cap = setTimeout(finish, capMs);
+    }), 400, 4_000).catch(() => { /* page navigated away mid-wait */ });
+  }
+
   async open(url: string): Promise<PageSnapshot> {
     const page = await this.ensurePage();
     await page.goto(url, { timeout: this.timeout, waitUntil: "domcontentloaded" });
+    await this.settleDom(page);
     return this.snapshot();
   }
 
@@ -154,7 +230,8 @@ export class PuppeteerBrowserController implements BrowserController {
     const elements = (await page.evaluate((maxEls: number, maxName: number) => {
       const selector =
         "a[href], button, input, textarea, select, [role=button], [role=link], [role=textbox], " +
-        "[role=combobox], [role=searchbox], [role=checkbox], [role=radio], [role=menuitem], [role=tab], [onclick]";
+        "[role=combobox], [role=searchbox], [role=checkbox], [role=radio], [role=menuitem], [role=tab], " +
+        "[aria-haspopup], [onclick]";
       // Composed-tree walk — open shadow roots AND same-origin iframes are
       // pierced so web-component UIs and embedded forms/widgets (login,
       // checkout, comment boxes) aren't a blank page to the model. Cross-origin
@@ -187,6 +264,10 @@ export class PuppeteerBrowserController implements BrowserController {
         // drop position:fixed controls (cookie banners, sticky navs) and
         // shadow-root elements — both must stay visible.
         if (rect.width <= 0 || rect.height <= 0) continue;
+        // Disabled controls aren't actionable — listing them just lets the model
+        // waste a turn clicking something the locator will reject. Skip them (the
+        // page text still mentions them, so context isn't lost).
+        if ((el as HTMLButtonElement).disabled || el.getAttribute("aria-disabled") === "true") continue;
         const tag = el.tagName.toLowerCase();
         const htmlEl = el as HTMLElement & { value?: string };
         const name = (
@@ -203,9 +284,15 @@ export class PuppeteerBrowserController implements BrowserController {
         const role =
           el.getAttribute("role") ||
           (tag === "a" ? "link" : tag === "button" ? "button" : tag === "select" ? "combobox" : isField ? "textbox" : "button");
-        const key = `${role}\u0000${name}`;
-        if (name && seen.has(key)) continue;
-        if (name) seen.add(key);
+        // Collapse only TRULY redundant links — same text AND same href, which is
+        // a responsive nav rendered twice. Distinct buttons/actions are NEVER
+        // deduped: a per-row "Add to cart" or a repeated "View" must each stay
+        // targetable (the model picks one by ordinal — "the second Add to cart").
+        if (tag === "a" && name) {
+          const key = `${name} ${el.getAttribute("href") || ""}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+        }
         el.setAttribute("data-muse-ref", String(ref));
         out.push({ name, ref, role });
         ref += 1;
@@ -213,7 +300,11 @@ export class PuppeteerBrowserController implements BrowserController {
       return out;
     }, BROWSER_ELEMENT_CEILING, BROWSER_MAX_NAME)) as SnapshotElement[];
     this.lastElements = new Map(elements.map((element) => [element.ref, element]));
-    return { elements, text, title, url: this.lastUrl };
+    // Surface a dialog that fired since the last observation (auto-accepted), then
+    // clear it so it's reported exactly once.
+    const dialog = this.lastDialog;
+    this.lastDialog = undefined;
+    return { elements, text, title, url: this.lastUrl, ...(dialog ? { dialog } : {}) };
   }
 
   /**
@@ -236,13 +327,27 @@ export class PuppeteerBrowserController implements BrowserController {
   }
 
   async click(ref: number): Promise<PageSnapshot> {
-    const page = await this.ensurePage();
+    await this.ensurePage();
     const { frame, selector } = await this.resolveRef(ref);
     // Locator (not a raw handle): auto-waits for visible/enabled/stable before
     // acting — the reliable-interaction pattern from the Puppeteer guide. Scoped
-    // to the resolved frame so iframe-embedded controls work.
-    await frame.locator(selector).setTimeout(this.timeout).click();
+    // to the resolved frame so iframe-embedded controls work. Wrapped so a
+    // target=_blank / window.open new tab is followed.
+    await this.withNewTabFollow(() => frame.locator(selector).setTimeout(this.timeout).click());
+    const page = await this.ensurePage();
     await page.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* page may not navigate */ });
+    await this.settleDom(page);
+    return this.snapshot();
+  }
+
+  async hover(ref: number): Promise<PageSnapshot> {
+    const page = await this.ensurePage();
+    const { frame, selector } = await this.resolveRef(ref);
+    // The pointer STAYS on the element after this, so a CSS :hover / mouseover
+    // submenu rendered into the hovered subtree is observed AND remains clickable
+    // (moving to a nested item keeps :hover true).
+    await frame.locator(selector).setTimeout(this.timeout).hover();
+    await this.settleDom(page);
     return this.snapshot();
   }
 
@@ -279,9 +384,12 @@ export class PuppeteerBrowserController implements BrowserController {
       await handle.type(text);
     }
     if (submit) {
-      await page.keyboard.press("Enter");
-      await page.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* may not navigate */ });
+      await this.withNewTabFollow(() => page.keyboard.press("Enter"));
+      const active = await this.ensurePage();
+      await active.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* may not navigate */ });
     }
+    const current = await this.ensurePage();
+    await this.settleDom(current);
     return this.snapshot();
   }
 
@@ -301,6 +409,7 @@ export class PuppeteerBrowserController implements BrowserController {
     }, direction);
     // Lazy-loaders fire on scroll — let the new content settle before observing.
     await page.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* static page */ });
+    await this.settleDom(page);
     return this.snapshot();
   }
 

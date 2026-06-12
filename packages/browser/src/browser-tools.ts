@@ -57,7 +57,8 @@ function snapshotToJson(snapshot: PageSnapshot, offset = 0): JsonObject {
     total,
     url: snapshot.url,
     ...(start > 0 ? { offset: start } : {}),
-    ...(end < total ? { hasMore: true, nextOffset: end } : {})
+    ...(end < total ? { hasMore: true, nextOffset: end } : {}),
+    ...(snapshot.dialog ? { dialog: snapshot.dialog as unknown as JsonValue } : {})
   };
 }
 
@@ -235,6 +236,48 @@ export function createBrowserScrollTool(deps: BrowserReadToolDeps): MuseTool {
       }
       try {
         return snapshotToJson(await deps.controller.scroll(direction as (typeof SCROLL_DIRECTIONS)[number]));
+      } catch (cause) {
+        return errorResult(cause);
+      }
+    }
+  };
+}
+
+export function createBrowserHoverTool(deps: BrowserReadToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "Move the mouse over an element in Muse's browser to REVEAL a menu or tooltip that only appears on " +
+        "hover — say WHAT to hover in `target` (the menu label or link text). Use when a dropdown nav or " +
+        "submenu won't show until hovered — e.g. 'hover over Account to see the menu', '계정 메뉴 위에 " +
+        "올려줘'. Returns the page with the now-revealed items (then browser_click one). Read-only — it " +
+        "changes nothing, just reveals.",
+      domain: "browser",
+      groundedArgs: ["target"],
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          target: { description: "What to hover over — the menu label or link text, e.g. 'Account' or 'Products'.", type: "string" }
+        },
+        required: ["target"],
+        type: "object"
+      },
+      keywords: ["browser", "hover", "호버", "메뉴", "menu", "submenu", "tooltip", "올려", "mouseover", "브라우저"],
+      name: "browser_hover",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      let resolved: ResolveResult;
+      try {
+        resolved = await resolveTarget(deps.controller, args, "click");
+      } catch (cause) {
+        return errorResult(cause);
+      }
+      if ("error" in resolved) {
+        return resolved.error;
+      }
+      try {
+        return snapshotToJson(await deps.controller.hover(resolved.ref));
       } catch (cause) {
         return errorResult(cause);
       }
