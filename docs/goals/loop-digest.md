@@ -438,3 +438,11 @@
 - **왜:** 캘린더 add는 핵심 actuator인데 "내일 3시~4시" 같은 흔한 입력이 실패. EXPANSION 스카웃이 EN+KO 라이브 확인. 다양성: 최근 보안/parsing/json 다음 date-anchoring correctness(actuator)로 KIND 전환. 검증된 sibling 패턴 재사용.
 - **리뷰지점:** loopback-calendar.ts:269(time-only endsAt anchor) + loopback-calendar-add-anchor.test.ts(provider-가드 흉내 registry로 EN+KO end-to-end: end on start's day 16:00, no error) RED→GREEN. mcp 1694, check 0, lint 0. Fable-5 검증자 PASS(부재/date-bearing/ISO endsAt 무회귀·guard 무손상·update old-day 버그 없음). runner-up 2개(update cross-day endsAt OLD-day anchor, "this weekend" on Sat→today) backlog 기록.
 - **리스크:** 없음에 가까움 — time-only 분기만 변경, 다른 endsAt 형태 byte-identical. RATCHET: testFiles 888→889(+1 파일), fabrication 0 유지. grounding floor 무관(캘린더 날짜-anchoring, 게이트 무변경).
+
+
+## [TOOL loop] fire 12 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening
+
+- **무엇:** muse.calendar.update의 time-only endsAt가 이벤트의 ORIGINAL 날에 anchor → "월요일로 옮기고 5시까지"가 end를 옛 날에 떨어뜨림. fix: endAnchorDay = newStartsAt ?? event.startsAt — start가 이동하면 end도 NEW 날 따라감. fire-11 add fix의 sibling(runner-up).
+- **왜:** add(fire 11)·update가 같은 endsAt-anchoring 버그 가족 — add는 고쳤으나 update는 cross-day 이동 시 여전히 OLD 날. 캘린더 reschedule은 핵심 actuator. 검증된 패턴으로 가족 완성.
+- **리뷰지점:** loopback-calendar.ts:365(endAnchorDay로 endsAt anchor) + loopback-calendar-add-anchor.test.ts(Jan-10 이벤트를 June-20 ISO+"5pm"으로 이동 → end가 June 20 17:00, Jan 아님) RED→GREEN. mcp 1695, check 0, lint 0. Fable-5 검증자 PASS(only-endsAt/date-bearing/absent 무회귀·start anchorFor 무손상·over-correction 없음).
+- **리스크:** 없음에 가까움 — moved-time-only endsAt 분기만 변경, 나머지 byte-identical. RATCHET: testFiles 893 무변동(+1 케이스), fabrication 0 유지. 남은 runner-up: "this weekend" on Sat→today. grounding floor 무관(캘린더 날짜-anchoring, 게이트 무변경).

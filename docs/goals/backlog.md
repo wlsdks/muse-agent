@@ -53,7 +53,7 @@ The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing 
   endsAt unchanged. TDD 2 (EN "tomorrow 3pm"+"4pm", KO "다음 주 월요일 오후 3시"+"오후 4시" → end on start's
   day 16:00, no error) RED→GREEN via a registry mirroring the provider guard; mcp 1694, check 0, lint 0.
   Fable-5 PASS (no regression on other endsAt shapes; guard untouched).
-- ◦ **muse.calendar.update cross-day move anchors a time-only endsAt to the OLD day** (gap-scout runner-up) —
+- ✓→Done **muse.calendar.update cross-day move anchored a time-only endsAt to the OLD day** (gap-scout runner-up; shipped fire 12) —
   update's `anchorFor` uses `resolved.event.startsAt` (the original day), so "move it to Monday, ending 5pm"
   lands the end on the original day, not Monday. FIX: anchor the time-only endsAt to `newStartsAt` when the
   start moved. 1 expr + 1 test. (Sibling of the add fix above.)

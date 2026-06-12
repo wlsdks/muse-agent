@@ -51,3 +51,25 @@ describe("muse.calendar.add — a time-only endsAt anchors to the START's day, n
     expect(c.endsAt.getTime()).toBeGreaterThan(c.startsAt.getTime());
   });
 });
+
+describe("muse.calendar.update — moving to a new day re-anchors a time-only endsAt to the NEW day", () => {
+  it("'move to 2026-06-20 15:00, ending 5pm' lands the end on June 20, not the original (Jan 10) day", async () => {
+    const existing = { endsAt: new Date(2026, 0, 10, 16, 0), id: "e1", providerId: "local", startsAt: new Date(2026, 0, 10, 15, 0), title: "Standup" };
+    let captured: { startsAt: Date; endsAt: Date } | undefined;
+    const registry = {
+      createEvent: async () => ({}),
+      deleteEvent: async () => undefined,
+      listEvents: async () => [existing],
+      updateEvent: async (_pid: string, _id: string, update: { startsAt: Date; endsAt: Date }) => { captured = update; return { ...existing, ...update }; }
+    } as unknown as Parameters<typeof createCalendarMcpServer>[0]["registry"];
+    const server = createCalendarMcpServer({ registry });
+    const update = server.tools.find((t) => t.name === "update")!;
+    const result = await update.execute({ endsAt: "5pm", id: "e1", startsAt: "2026-06-20T15:00:00" }) as Record<string, unknown>;
+    expect(result).not.toHaveProperty("error");
+    const c = captured!;
+    expect(c.endsAt.getMonth()).toBe(5); // June — the NEW day, not January (the original)
+    expect(c.endsAt.getDate()).toBe(20);
+    expect(c.endsAt.getHours()).toBe(17);
+    expect(c.endsAt.getTime()).toBeGreaterThan(c.startsAt.getTime());
+  });
+});

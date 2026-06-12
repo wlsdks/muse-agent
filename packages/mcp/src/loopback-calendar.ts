@@ -362,8 +362,12 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           // Moving only the start preserves the event's DURATION — shift the end
           // by the same delta so a later start can't land before the old end.
           const durationMs = resolved.event.endsAt ? resolved.event.endsAt.getTime() - resolved.event.startsAt.getTime() : 0;
+          // A time-only endsAt anchors to the (possibly moved) START's day, not the
+          // event's ORIGINAL day — else "move it to Monday, ending 5pm" lands the end
+          // back on the old day. anchorFor uses the old event day, so override here.
+          const endAnchorDay = newStartsAt ?? resolved.event.startsAt;
           const newEndsAt = endsAtRaw
-            ? parseIsoDate(endsAtRaw, anchorFor(endsAtRaw))
+            ? parseIsoDate(endsAtRaw, isTimeOnlyPhrase(endsAtRaw) ? () => startOfLocalDay(endAnchorDay) : () => new Date())
             : newStartsAt && durationMs > 0
               ? new Date(newStartsAt.getTime() + durationMs)
               : undefined;
