@@ -38,6 +38,7 @@ import {
   type DistillQueuedDeps
 } from "@muse/autoconfigure";
 import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW, strategyTextSimilarity, synthesizePatternSuggestion, validateMergeCoverage, adjustConfidenceFloor, sdtCriterion, summarizeNoticeResponses } from "@muse/agent-core";
+import { FileUserMemoryStore } from "@muse/memory";
 import type { PatternMatch } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import {
@@ -99,6 +100,7 @@ import { syncEmailsToNotes } from "./email-sync.js";
 import { createIndexedProactiveInvestigator } from "./proactive-notes-recall.js";
 import { consolidatePlaybook } from "./playbook-consolidate.js";
 import { runMemoryConsolidationTick } from "./memory-consolidate-tick.js";
+import { promoteRecalledMemories, resolveMemoryUserId } from "./commands-memory.js";
 import type { ProgramIO } from "./program.js";
 import { randomUUID } from "node:crypto";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
@@ -1148,12 +1150,26 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
 
       let lastMemoryConsolidateMs: number | undefined;
       const memoryConsolidateTick = async (): Promise<void> => {
+        const sleepPromoteEnabled = parseBoolean(e.MUSE_SLEEP_PROMOTE, false);
+        const persist = sleepPromoteEnabled
+          ? async () => {
+              const userId = resolveMemoryUserId(undefined);
+              const store = new FileUserMemoryStore();
+              const result = await promoteRecalledMemories({
+                store,
+                userId,
+                readHits: () => readRecallHits(resolveRecallHitsFile(e))
+              });
+              return { promoted: result.promoted.length };
+            }
+          : undefined;
         const nextState = await runMemoryConsolidationTick({
           enabled: parseBoolean(e.MUSE_SELFLEARN_ENABLED, false),
           nowMs: Date.now(),
           lastRunMs: lastMemoryConsolidateMs,
           readHits: () => readRecallHits(resolveRecallHitsFile(e)),
-          log: (line) => io.stdout(line + "\n")
+          log: (line) => io.stdout(line + "\n"),
+          ...(persist !== undefined ? { persist } : {})
         });
         lastMemoryConsolidateMs = nextState.lastRunMs;
       };

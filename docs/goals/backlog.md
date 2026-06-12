@@ -485,8 +485,8 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   the synthesis boundary. agent-core 1712 green incl. a prompt-capture integration (dup peer → the
   synthesis prompt shows the LAST reasoning once, 2 members not 3).
 
-- ◦ **Background memory consolidation (sleep daemon)** — [in progress 2026-06-12, cognition loop
-  fire 10, background #5] `consolidationPlan` (recall promote/fade) only runs on the manual `muse
+- ✓→Done **Background memory consolidation (sleep daemon)** — [DONE 2026-06-13, cognition loop
+  fires 10-12+16, background #5] `consolidationPlan` (recall promote/fade) only ran on the manual `muse
   memory consolidate` CLI — the daemon consolidates the PLAYBOOK but never MEMORY. fire 10 shipped
   the brake-first gate `shouldConsolidateMemory({nowMs,lastRunMs,newHitsSinceLastRun,…})` in
   `@muse/memory` (run only when ≥minNewHits material AND ≥minIntervalMs since last run — non-straining;
@@ -497,10 +497,14 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   fire 12: WIRED into the daemon — `runMemoryConsolidationTick` (sibling fn, testable) reads recall
   hits → planMemoryConsolidationTick → logs promote/fade, registered as a daemon tick next to
   playbookConsolidateTick (MUSE_SELFLEARN_ENABLED-gated, fail-soft, in-closure lastRunMs). Background
-  memory consolidation now RUNS on the daemon schedule (brake-gated). REPORT-ONLY (logs the plan;
-  cli 2515 green, 4 glue cases). REMAINING sub-slice: promotion-PERSISTENCE (graduate promoted
-  memories into the persona in the background) with its own safety guards — currently the tick
-  surfaces the plan, doesn't mutate. (ACT-R ranking from T2-1 already feeds consolidationPlan via useActrRanking.)
+  memory consolidation now RUNS on the daemon schedule (brake-gated). fire 16: promotion-PERSISTENCE
+  — `runMemoryConsolidationTick` gains an optional `persist` dep; the daemon binds it to the existing
+  `promoteRecalledMemories` (idempotent: clears prior PROMOTED_FACT_ + writes the current top-N into
+  the persona; non-destructive, never touches real user facts, never outbound) behind a DEDICATED
+  opt-in flag `MUSE_SLEEP_PROMOTE` (default OFF ⇒ report-only preserved). So with the flag on, the
+  daemon graduates the most recall-useful memories into the always-on persona in the background,
+  brake-gated. cli 2520 green (persist-on-brake-pass, not-on-fail/disabled, fail-soft on throw).
+  (ACT-R ranking from T2-1 feeds the selection via useActrRanking.) #5 thread COMPLETE.
 
 - ✓→Done **MoA fan-out: no duplicated sub-agent work (dedupe roles by id)** — [2026-06-12, cognition
   loop fire 13, sub-agents #4] `orchestrateAnswer` ran every role as a parallel proposer without
