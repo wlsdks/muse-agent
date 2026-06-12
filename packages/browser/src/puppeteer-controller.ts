@@ -28,6 +28,7 @@ import {
   BROWSER_MAX_NAME,
   BROWSER_MAX_TEXT,
   type BrowserController,
+  type BrowserKey,
   type PageSnapshot,
   type ScrollDirection,
   type SnapshotElement
@@ -364,6 +365,15 @@ export class PuppeteerBrowserController implements BrowserController {
     // (moving to a nested item keeps :hover true).
     await frame.locator(selector).setTimeout(this.timeout).hover();
     await this.settleDom(page);
+    return this.snapshot();
+  }
+
+  async pressKey(key: BrowserKey): Promise<PageSnapshot> {
+    const page = await this.ensurePage();
+    // Enter on a focused link/form can navigate or open a tab — follow it.
+    await this.withNewTabFollow(() => page.keyboard.press(key));
+    const active = await this.ensurePage();
+    await this.settleDom(active);
     return this.snapshot();
   }
 

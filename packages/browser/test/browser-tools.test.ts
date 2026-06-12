@@ -5,6 +5,7 @@ import {
   createBrowserBackTool,
   createBrowserClickTool,
   createBrowserHoverTool,
+  createBrowserKeyTool,
   createBrowserOpenTool,
   createBrowserReadTool,
   createBrowserScrollTool,
@@ -29,6 +30,7 @@ class FakeController implements BrowserController {
   async snapshot(): Promise<PageSnapshot> { this.calls.push("snapshot"); return SNAP; }
   async click(ref: number): Promise<PageSnapshot> { this.calls.push(`click:${ref.toString()}`); return SNAP; }
   async hover(ref: number): Promise<PageSnapshot> { this.calls.push(`hover:${ref.toString()}`); return SNAP; }
+  async pressKey(key: string): Promise<PageSnapshot> { this.calls.push(`key:${key}`); return SNAP; }
   async type(ref: number, text: string, submit: boolean): Promise<PageSnapshot> { this.calls.push(`type:${ref.toString()}:${text}:${submit.toString()}`); return SNAP; }
   async back(): Promise<PageSnapshot> { this.calls.push("back"); return SNAP; }
   async scroll(direction: string): Promise<PageSnapshot> { this.calls.push(`scroll:${direction}`); return SNAP; }
@@ -50,11 +52,12 @@ describe("browser tools — well-formed definitions", () => {
       createBrowserBackTool({ controller: c }),
       createBrowserScrollTool({ controller: c }),
       createBrowserHoverTool({ controller: c }),
+      createBrowserKeyTool({ controller: c }),
       createBrowserClickTool({ approvalGate: allow, controller: c }),
       createBrowserTypeTool({ approvalGate: allow, controller: c })
     ];
     expect(tools.map((t) => t.definition.name)).toEqual([
-      "browser_open", "browser_read", "browser_back", "browser_scroll", "browser_hover", "browser_click", "browser_type"
+      "browser_open", "browser_read", "browser_back", "browser_scroll", "browser_hover", "browser_key", "browser_click", "browser_type"
     ]);
     for (const tool of tools) {
       expect(tool.definition.domain).toBe("browser");
@@ -102,6 +105,30 @@ describe("dialog passthrough — an auto-handled JS dialog is surfaced to the mo
     const controller = { ...new FakeController(), open: async () => snap } as unknown as BrowserController;
     const out = await createBrowserOpenTool({ controller }).execute({ url: "https://x.test" }, ctx) as { dialog?: { type: string; message: string } };
     expect(out.dialog).toEqual({ message: "Delete this?", type: "confirm" });
+  });
+});
+
+describe("browser_key — keyboard (Escape/Tab/arrows)", () => {
+  it("is a well-formed read tool with a key enum", () => {
+    const tool = createBrowserKeyTool({ controller: new FakeController() });
+    expect(tool.definition.name).toBe("browser_key");
+    expect(tool.definition.risk).toBe("read");
+    expect((tool.definition.inputSchema as { properties: { key: { enum: string[] } } }).properties.key.enum).toContain("Escape");
+    expect(validateToolDefinitions([tool])).toEqual([]);
+  });
+
+  it("rejects an unknown key without pressing", async () => {
+    const c = new FakeController();
+    const tool = createBrowserKeyTool({ controller: c });
+    expect(await tool.execute({ key: "F13" }, ctx)).toMatchObject({ error: expect.stringContaining("key must be one of") });
+    expect(c.calls).toEqual([]);
+  });
+
+  it("presses the key and returns the new page", async () => {
+    const c = new FakeController();
+    const tool = createBrowserKeyTool({ controller: c });
+    expect(await tool.execute({ key: "Escape" }, ctx)).toMatchObject({ title: "Example" });
+    expect(c.calls).toEqual(["key:Escape"]);
   });
 });
 
@@ -156,7 +183,7 @@ describe("browser_read — paging a long page (no silent truncation)", () => {
     return {
       back: async () => snap, click: async () => snap, close: async () => {}, currentUrl: () => "https://big.test/",
       describeElement: (ref) => elements[ref], disconnect: async () => {}, hover: async () => snap, open: async () => snap,
-      screenshot: async (path) => ({ path }), scroll: async () => snap, snapshot: async () => snap, type: async () => snap
+      pressKey: async () => snap, screenshot: async (path) => ({ path }), scroll: async () => snap, snapshot: async () => snap, type: async () => snap
     };
   }
 

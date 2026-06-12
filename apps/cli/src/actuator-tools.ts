@@ -43,6 +43,7 @@ import {
   createBrowserBackTool,
   createBrowserClickTool,
   createBrowserHoverTool,
+  createBrowserKeyTool,
   createBrowserOpenTool,
   createBrowserReadTool,
   createBrowserScrollTool,
@@ -268,6 +269,7 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
     createBrowserBackTool({ controller }),
     createBrowserScrollTool({ controller }),
     createBrowserHoverTool({ controller }),
+    createBrowserKeyTool({ controller }),
     createBrowserClickTool({ approvalGate: gate, controller }),
     createBrowserTypeTool({ approvalGate: gate, controller })
   ];

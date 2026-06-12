@@ -15,7 +15,7 @@
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import { BROWSER_MAX_ELEMENTS, type BrowserController, type PageSnapshot } from "./controller.js";
+import { BROWSER_KEYS, BROWSER_MAX_ELEMENTS, type BrowserController, type BrowserKey, type PageSnapshot } from "./controller.js";
 import { filterElements, matchElement, type MatchIntent } from "./matcher.js";
 
 export interface BrowserActionDraft {
@@ -236,6 +236,42 @@ export function createBrowserScrollTool(deps: BrowserReadToolDeps): MuseTool {
       }
       try {
         return snapshotToJson(await deps.controller.scroll(direction as (typeof SCROLL_DIRECTIONS)[number]));
+      } catch (cause) {
+        return errorResult(cause);
+      }
+    }
+  };
+}
+
+export function createBrowserKeyTool(deps: BrowserReadToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "Press a keyboard key in Muse's browser: 'Escape' (close a modal / dropdown / popup), 'Enter' " +
+        "(confirm the focused control), 'Tab' (move focus to the next field), or an arrow key " +
+        "('ArrowDown' / 'ArrowUp' / 'ArrowLeft' / 'ArrowRight', e.g. to move through a dropdown). Use when a " +
+        "dialog or menu won't go away, or to navigate by keyboard — e.g. 'close this popup', 'press escape', " +
+        "'esc 눌러줘'. Returns the page after the keypress.",
+      domain: "browser",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          key: { description: "Which key to press, e.g. 'Escape' or 'ArrowDown'.", enum: [...BROWSER_KEYS], type: "string" }
+        },
+        required: ["key"],
+        type: "object"
+      },
+      keywords: ["browser", "key", "키", "escape", "esc", "닫", "close", "enter", "tab", "arrow", "화살표", "키보드", "브라우저"],
+      name: "browser_key",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const key = typeof args["key"] === "string" ? args["key"].trim() : "";
+      if (!BROWSER_KEYS.includes(key as BrowserKey)) {
+        return { error: `key must be one of: ${BROWSER_KEYS.join(", ")}` };
+      }
+      try {
+        return snapshotToJson(await deps.controller.pressKey(key as BrowserKey));
       } catch (cause) {
         return errorResult(cause);
       }

@@ -21,6 +21,7 @@
  *  15. repeated actions — per-row buttons stay distinct + ordinal targets the right one
  *  16. hover menu      — hovering reveals a submenu, then its item is clickable
  *  17. form labels     — radio/checkbox/input named by VISIBLE label, not value
+ *  18. keyboard        — Escape closes a modal (browser_key)
  *
  * Skips (exit 0) when Chrome is not installed — a skip is not a pass.
  */
@@ -143,6 +144,14 @@ const FORM_HTML = `<!doctype html><html><head><title>Form</title></head><body>
 <label for="em">Email address</label><input id="em" type="email">
 </body></html>`;
 
+// A modal opened by a button and dismissed by Escape — only a keyboard action can
+// close it (no visible close button).
+const MODAL_HTML = `<!doctype html><html><head><title>Modal</title></head><body>
+<button onclick="document.getElementById('m').style.display='block'">Open dialog</button>
+<div id="m" style="display:none"><p>MODAL OPEN</p></div>
+<script>addEventListener("keydown", (e) => { if (e.key === "Escape") document.getElementById("m").style.display = "none"; });</script>
+</body></html>`;
+
 function assert(condition, label) {
   if (!condition) throw new Error(`ASSERT FAILED: ${label}`);
   console.log(`  ✓ ${label}`);
@@ -171,6 +180,7 @@ try {
   await writeFile(join(dir, "repeat.html"), REPEAT_HTML);
   await writeFile(join(dir, "hover.html"), HOVER_HTML);
   await writeFile(join(dir, "form.html"), FORM_HTML);
+  await writeFile(join(dir, "modal.html"), MODAL_HTML);
 
   console.log("1) SPA settle — late-rendered content is observed");
   let snap;
@@ -290,6 +300,13 @@ try {
   assert(matchElement(snap.elements, "Email", "type")?.name === "Email address", "input is named by its <label for>");
   snap = await controller.click(proRadio.ref);
   assert(snap.title === "chose:pro", "the label-grounded radio actually toggles");
+
+  console.log("18) keyboard — Escape closes a modal");
+  snap = await controller.open(pathToFileURL(join(dir, "modal.html")).href);
+  snap = await controller.click(matchElement(snap.elements, "Open dialog", "click").ref);
+  assert(snap.text.includes("MODAL OPEN"), "the modal opens on click");
+  snap = await controller.pressKey("Escape");
+  assert(!snap.text.includes("MODAL OPEN"), "Escape closes the modal (no visible close button needed)");
 
   console.log("\nsmoke:browser PASS");
 } finally {

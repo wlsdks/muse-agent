@@ -34,6 +34,9 @@ export interface PageSnapshot {
 
 export type ScrollDirection = "down" | "up" | "top" | "bottom";
 
+export const BROWSER_KEYS = ["Escape", "Enter", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"] as const;
+export type BrowserKey = (typeof BROWSER_KEYS)[number];
+
 export interface BrowserController {
   /** Navigate to a URL and return the resulting page snapshot. */
   open(url: string): Promise<PageSnapshot>;
@@ -51,6 +54,11 @@ export interface BrowserController {
   type(ref: number, text: string, submit: boolean): Promise<PageSnapshot>;
   /** Go back in history; returns the new snapshot. */
   back(): Promise<PageSnapshot>;
+  /**
+   * Press a keyboard key (Escape / Enter / Tab / arrows) and re-observe — closes
+   * modals & dropdowns (Escape), moves focus (Tab), drives keyboard menus.
+   */
+  pressKey(key: BrowserKey): Promise<PageSnapshot>;
   /**
    * Scroll the page and re-observe — reveals below-the-fold and lazily-loaded
    * content the snapshot can't see until it renders.
