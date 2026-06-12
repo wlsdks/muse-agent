@@ -486,3 +486,11 @@
 - **왜:** fire-15 runner-up. 다른 KIND(resource-exhaustion/DoS, fire15 overwrite·fire16 concurrency와 구별). 서버가 CL 거짓/생략 가능하니 스트리밍 abort가 실 방어.
 - **리뷰지점:** web-download-tool.ts(CL 사전검사 + getReader 스트림 + 조기 abort + no-body fallback) + web-download-tool.test.ts(계측 20×100B 스트림, cap 250B → ~3청크 後 abort, 미작성) RED→GREEN. mcp 1700, check 0(flaky cli 재실행 후), lint 0. Fable-5 검증자 PASS(under-cap byte-identical·absent/garbage CL 오거부 없음·HEAD 21 pull 재현으로 RED 확인).
 - **리스크:** 없음에 가까움 — under-cap 다운로드는 스트림 재조립이 byte-identical, CL 0/NaN은 스트림으로 폴스루. RATCHET: testFiles 893 무변동(+1 케이스), fabrication 0 유지. 부수: 2 fire 연속 flaky cli 테스트(chat-grounding "fails soft") ⏳ backlog 기록. grounding floor 무관(다운로드 자원안전, 게이트 무변경).
+
+
+## [TOOL loop] fire 18 (skill v1.11.2, cron 5388335b) — 2026-06-13 · 테마: TOOL expansion & hardening (loop self-hardening)
+
+- **무엇:** 내 게이트를 fire 16·17 연속 망친 flaky cli 테스트(chat-grounding "fails soft when retrieval throws")를 hermetic하게 수정. retrieveChatGrounding/groundChatTurn에 주입가능 searchRecall DI seam(production 기본=실제 recall) 추가; 테스트는 sync-throwing recall 주입 + MUSE_CHAT_AUTO_REINDEX=0 → 무네트워크.
+- **왜:** 옛 테스트는 OLLAMA_BASE_URL을 unreachable 포트로 가리키고 embed 재시도 backoff(~5s)에 의존 → vitest 5000ms 기본 타임아웃 경계(5159ms)에서 flake. 루프 자체 하드닝(게이트 신뢰성). 다른 KIND(테스트 hermeticity).
+- **리뷰지점:** chat-grounding.ts(searchRecall? opt + opts.searchRecall ?? searchRecall) + chat-grounding.test.ts(주입 throw + reindex off, called===true 단언) — production 무변경. cli 2530, check 0(첫 시도 통과·더 이상 flake 안 함), lint 0. Fable-5 검증자 PASS(production recall 동일·fail-soft 여전히 검증·23ms로 빨라짐·strictly stronger 커버리지).
+- **리스크:** 없음 — DI seam은 test-only(production 호출부 미주입), 타입 sound. RATCHET: testFiles 893 무변동(테스트 1개 hermetic화), fabrication 0 유지, **게이트 flake 제거**(2 fire 낭비 종결). grounding floor 무관(테스트 인프라).

@@ -59,10 +59,13 @@ The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing 
   a no-body fallback still caps via arrayBuffer. TDD (instrumented 20×100B stream, cap 250B → aborts after ~3
   chunks, nothing written) RED→GREEN; mcp 1700, check 0, lint 0. Fable-5 PASS (under-cap byte-identical, no false
   reject on absent/garbage CL).
-- ⏳ **FLAKY: cli chat-grounding.test "fails soft to '' when retrieval throws"** — failed `pnpm check` transiently
+- ✓→Done **FLAKY cli chat-grounding.test "fails soft when retrieval throws" — made hermetic (fire 18)** — failed `pnpm check` transiently
   in fires 16 AND 17 (~5s, Ollama-timing dependent), passes on isolated re-run. Not a loop-slice regression but a
   real flaky gate. NEEDS: make the test hermetic (it should fail-soft without a live/slow Ollama path) — small fix
-  but on the chat-grounding surface, separate from the TOOL theme; flag to 진안 / a chat-grounding fire.
+  but on the chat-grounding surface, separate from the TOOL theme; flag to 진안 / a chat-grounding fire. RESOLVED: added an optional injectable `searchRecall` DI seam to
+  groundChatTurn/retrieveChatGrounding (production default = real recall); the test now injects a sync-throwing
+  recall + MUSE_CHAT_AUTO_REINDEX=0 → NO network, runs in ms (was ~5s), and asserts `called===true` (strictly
+  stronger). Fable-5 PASS (production unchanged, fail-soft still exercised). cli 2530, check 0 first-try, lint 0.
 - ✓→Done **muse.tasks.update lost-update TOCTOU** (gap-scout runner-up; shipped fire 16) — built a WHOLE stale
   snapshot (`{...tasks[index]}`) outside the write queue and wrote it back inside mutateTasks, so two concurrent
   updates to DIFFERENT fields lost-update (last-writer-wins on the whole object). FIX: build a field-level DELTA

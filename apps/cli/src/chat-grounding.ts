@@ -238,6 +238,8 @@ export async function retrieveChatGrounding(
     readonly embedModel?: string;
     readonly env?: Record<string, string | undefined>;
     readonly minScore?: number;
+    /** Injectable recall (tests force a throw without a live/slow Ollama round-trip). */
+    readonly searchRecall?: typeof searchRecall;
   } = {}
 ): Promise<ChatGrounding> {
   const trimmed = message.trim();
@@ -253,7 +255,7 @@ export async function retrieveChatGrounding(
     await refreshStaleNotesIndexForChat(env, embedModel).catch(() => undefined);
   }
   try {
-    const hits = await searchRecall({
+    const hits = await (opts.searchRecall ?? searchRecall)({
       query: trimmed,
       source: "all",
       limit: CHAT_GROUNDING_MAX_HITS,
@@ -272,6 +274,8 @@ export async function groundChatTurn(
     readonly embedModel?: string;
     readonly env?: Record<string, string | undefined>;
     readonly minScore?: number;
+    /** Injectable recall (tests force a throw without a live/slow Ollama round-trip). */
+    readonly searchRecall?: typeof searchRecall;
   } = {}
 ): Promise<string> {
   return (await retrieveChatGrounding(message, opts)).block;
