@@ -18,7 +18,10 @@ import type { BrowserController, PageSnapshot, SnapshotElement } from "../src/co
 const ctx = { runId: "r", userId: "u1" };
 
 const SNAP: PageSnapshot = {
-  elements: [{ name: "Sign in", ref: 3, role: "button" }],
+  elements: [
+    { name: "Sign in", ref: 3, role: "button" },
+    { name: "Email", ref: 5, role: "textbox" }
+  ],
   text: "welcome",
   title: "Example",
   url: "https://example.test/"
@@ -26,7 +29,10 @@ const SNAP: PageSnapshot = {
 
 class FakeController implements BrowserController {
   calls: string[] = [];
-  private readonly elements = new Map<number, SnapshotElement>([[3, { name: "Sign in", ref: 3, role: "button" }]]);
+  private readonly elements = new Map<number, SnapshotElement>([
+    [3, { name: "Sign in", ref: 3, role: "button" }],
+    [5, { name: "Email", ref: 5, role: "textbox" }]
+  ]);
   async open(url: string): Promise<PageSnapshot> { this.calls.push(`open:${url}`); return SNAP; }
   async snapshot(): Promise<PageSnapshot> { this.calls.push("snapshot"); return SNAP; }
   async click(ref: number): Promise<PageSnapshot> { this.calls.push(`click:${ref.toString()}`); return SNAP; }
@@ -89,7 +95,10 @@ describe("browser_open / read / back — free (no gate)", () => {
     const tool = createBrowserOpenTool({ controller: c });
     const out = await tool.execute({ url: "https://example.test" }, ctx) as { url: string; title: string; elements: unknown[] };
     expect(out).toMatchObject({ title: "Example", url: "https://example.test/" });
-    expect(out.elements).toEqual([{ name: "Sign in", ref: 3, role: "button" }]);
+    expect(out.elements).toEqual([
+      { name: "Sign in", ref: 3, role: "button" },
+      { name: "Email", ref: 5, role: "textbox" }
+    ]);
     expect(c.calls).toEqual(["open:https://example.test/"]);
   });
 
@@ -246,7 +255,7 @@ describe("browser_click — deterministic target grounding + draft-first", () =>
     const tool = createBrowserClickTool({ approvalGate: allow, controller: c });
     const out = await tool.execute({ target: "checkout" }, ctx) as { clicked: boolean; available?: string[] };
     expect(out.clicked).toBe(false);
-    expect(out.available).toEqual(['button: Sign in']);
+    expect(out.available).toEqual(['button: Sign in', 'textbox: Email']);
     expect(c.calls).toEqual(["snapshot"]);
   });
 
@@ -336,6 +345,39 @@ describe("browser_click — ambiguous target is refused (fail-close), never a si
   });
 });
 
+describe("browser_type — target that is not a field is refused (fail-close), never typed into a button", () => {
+  const buttonSnap: PageSnapshot = {
+    elements: [
+      { name: "Sign in", ref: 0, role: "button" },
+      { name: "Email", ref: 1, role: "textbox" }
+    ],
+    text: "login page", title: "Login", url: "https://login.test/"
+  };
+  function buttonController(): BrowserController & { calls: string[] } {
+    const calls: string[] = [];
+    return {
+      back: async () => buttonSnap, calls, click: async () => buttonSnap, close: async () => {}, currentUrl: () => "https://login.test/",
+      describeElement: (ref) => buttonSnap.elements[ref], disconnect: async () => {}, hover: async () => buttonSnap, open: async () => buttonSnap,
+      pressKey: async () => buttonSnap, screenshot: async (path) => ({ path }), screenshotBase64: async () => "aW1n", scroll: async () => buttonSnap,
+      snapshot: async () => { calls.push("snapshot"); return buttonSnap; },
+      type: async (ref, text, submit) => { calls.push(`type:${ref.toString()}:${text}:${submit.toString()}`); return buttonSnap; }
+    };
+  }
+
+  it("typing into a button-only match: no type, no approval, lists the typeable fields", async () => {
+    const c = buttonController();
+    let gateCalled = false;
+    const tool = createBrowserTypeTool({ approvalGate: () => { gateCalled = true; return { approved: true }; }, controller: c });
+    const out = await tool.execute({ target: "Sign in", text: "secret" }, ctx) as { typed: boolean; fields?: { ref: number; name: string }[]; reason?: string };
+    expect(out.typed).toBe(false);
+    expect(gateCalled).toBe(false);
+    expect(out.fields).toEqual([{ name: "Email", ref: 1, role: "textbox" }]);
+    expect(String(out.reason).toLowerCase()).toMatch(/field|type|text/);
+    // grounded the target (snapshot) but never typed
+    expect(c.calls).toEqual(["snapshot"]);
+  });
+});
+
 describe("browser_type — target grounding + draft-first", () => {
   it("rejects empty text without typing", async () => {
     const c = new FakeController();
@@ -347,7 +389,7 @@ describe("browser_type — target grounding + draft-first", () => {
   it("a DENIED gate produces no type", async () => {
     const c = new FakeController();
     const tool = createBrowserTypeTool({ approvalGate: () => ({ approved: false }), controller: c });
-    expect(await tool.execute({ target: "Sign in", text: "hi" }, ctx)).toMatchObject({ typed: false });
+    expect(await tool.execute({ target: "Email", text: "hi" }, ctx)).toMatchObject({ typed: false });
     expect(c.calls).toEqual(["snapshot"]);
   });
 
@@ -355,7 +397,7 @@ describe("browser_type — target grounding + draft-first", () => {
     const c = new FakeController();
     let seen: { text?: string } | undefined;
     const tool = createBrowserTypeTool({ approvalGate: (d) => { seen = d; return { approved: false }; }, controller: c });
-    await tool.execute({ submit: true, target: "Sign in", text: "laptop" }, ctx);
+    await tool.execute({ submit: true, target: "Email", text: "laptop" }, ctx);
     expect(seen?.text).toContain("laptop");
     expect(seen?.text).toContain("submit");
   });
@@ -363,8 +405,8 @@ describe("browser_type — target grounding + draft-first", () => {
   it("a CONFIRMED type resolves the target and acts with (ref, text, submit)", async () => {
     const c = new FakeController();
     const tool = createBrowserTypeTool({ approvalGate: allow, controller: c });
-    expect(await tool.execute({ submit: true, target: "Sign in", text: "laptop" }, ctx)).toMatchObject({ typed: true });
-    expect(c.calls).toEqual(["snapshot", "type:3:laptop:true"]);
+    expect(await tool.execute({ submit: true, target: "Email", text: "laptop" }, ctx)).toMatchObject({ typed: true });
+    expect(c.calls).toEqual(["snapshot", "type:5:laptop:true"]);
   });
 });
 

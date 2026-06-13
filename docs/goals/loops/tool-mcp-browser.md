@@ -67,3 +67,22 @@ ratchet: testFiles +1 (mcp-stack-official-presets.test.ts, 10 cases) · @muse/au
 - **리스크:** 자격증명 해석(키체인 PAT/OAuth)·draft-first write e2e·doctor provenance는 남은 ◦.
   `pnpm check` SIGABRT는 무관 @muse/memory 병렬-부하 flake(격리 417/417). eval:agent는 로컬모델
   바운드로 wrapper 타임아웃(만진 코드가 tool selection 무관이라 직교).
+
+## fire 4 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=micro-fix · pkg=@muse/browser · kind=C-browser · verdict=PASS · firesSinceDrill=4
+
+ratchet: testFiles +0 (2 browser test files extended, 72 cases) · @muse/browser 72 tests pass · fabrication 0 · eval:browser-agent 1/1 LIVE PASS · lint 0/0
+
+- **무엇:** `browser_type`가 비입력 요소(버튼/링크)를 타겟으로 잡던 fail-open 교정. `type` 인텐트의
+  유일 매치가 untypeable면 매처가 새 결과 `notypeable`을 반환하고 `browser_type`은 승인 게이트
+  도달 전에 거부 — `{typed:false, fields:[실제 텍스트필드], reason}`로 모델을 올바른 필드로 유도.
+  click/hover는 불변(버튼은 여전히 매치). fire-1(동점-모호)과 구별되는 "잘못된 종류의 타겟" 케이스.
+- **왜:** 옛 동작은 "type 'password' into Sign in button" 드래프트를 사용자가 confirm한 뒤 fill()이
+  버튼에서 throw — (1) 성공 불가한 outbound-safety 승인 드래프트 (2) 저사양 모델 confirm 라운드 낭비
+  (3) 재타겟 신호 없는 bare error. 이제 한 번에 올바른 필드로 유도.
+- **리뷰지점:** judge가 src revert해 4 RED 재확인; **수정된 기존 테스트 3개**(버튼에 타이핑하던 옛
+  버그 동작 인코딩)가 정당한 교정이지 게이밍 아님을 git diff로 확인; 거부가 게이트/`type` 호출 전
+  (`c.calls===["snapshot"]`, gateCalled:false)임을 확인.
+- **리스크:** 낮음 — `notypeable.fields`는 점수정렬 안 한 전체 typeable 목록(흔한 로그인/검색/체크아웃은
+  짧음, 많은 필드면 향후 정렬 가능). ref-only 고급 경로·`<select>` 경로 불변.

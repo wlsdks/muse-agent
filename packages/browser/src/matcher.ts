@@ -97,6 +97,7 @@ function scoreAll(elements: readonly SnapshotElement[], needle: string, intent: 
 export type MatchElementResult =
   | { readonly kind: "match"; readonly element: SnapshotElement }
   | { readonly kind: "ambiguous"; readonly candidates: readonly SnapshotElement[] }
+  | { readonly kind: "notypeable"; readonly fields: readonly SnapshotElement[] }
   | { readonly kind: "none" };
 
 export function matchElementResult(
@@ -133,6 +134,12 @@ export function matchElementResult(
       if (tied.length > 1) return { candidates: tied.map((scored) => scored.element), kind: "ambiguous" };
       return { element: typeable[0]!.element, kind: "match" };
     }
+    // The target matched an element but NONE is typeable (a button/link). Filling
+    // a button would fail AFTER the user already confirmed the act — fail-close
+    // instead of matching it, and surface the page's actual fields so the model
+    // retargets one. (A literal label match on a button is still wrong for a
+    // type; the click intent keeps matching buttons as before.)
+    return { fields: elements.filter((element) => TYPEABLE_ROLES.has(element.role)), kind: "notypeable" };
   }
   const top = scored[0]!.score;
   const tied = scored.filter((scored) => scored.score === top);
@@ -148,6 +155,7 @@ export function matchElement(
   const result = matchElementResult(elements, target, intent);
   if (result.kind === "match") return result.element;
   if (result.kind === "ambiguous") return result.candidates[0];
+  if (result.kind === "notypeable") return result.fields[0];
   return undefined;
 }
 
