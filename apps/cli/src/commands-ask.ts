@@ -37,7 +37,6 @@ import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, for
 import { redactSecretsInText } from "@muse/shared";
 import { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
-export type { MemoryFact } from "@muse/recall";
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource };
 import { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource } from "@muse/recall";
@@ -53,9 +52,6 @@ import { drawBestGroundedRedraft, groundingVerdictNotice } from "@muse/recall";
 export { drawBestGroundedRedraft, groundingVerdictNotice };
 import { buildAskConnections } from "@muse/recall";
 export { buildAskConnections };
-export type { BestOfRedrawArgs } from "@muse/recall";
-export type { AskOutcome, AskWeaknessAxis, AskWeaknessRecorderDeps, AskWeaknessResolverDeps } from "@muse/recall";
-export type { FileEntry, IndexChunk, ScoredChunk } from "@muse/recall";
 import type { FileEntry, IndexChunk } from "@muse/recall";
 
 import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.js";
@@ -172,7 +168,7 @@ export const CITATION_INSTRUCTION_LINES: readonly string[] = [
 // to the grounding rules above (docs/strategy/reasoning-principles.md): the
 // thinking style is the engine, the citation/refusal rules are the brake. None
 // of these may produce a claim the context can't support.
-export const REASONING_PRINCIPLE_LINES: readonly string[] = [
+const REASONING_PRINCIPLE_LINES: readonly string[] = [
   "HOW TO REASON (within the rules above): reason from first principles — break the question down and build the answer UP from the specific facts in the context, not from generic assumptions or what is 'usually' true.",
   "Prefer the specific and concrete — a date, number, or name WITH its source — over a vague generality; but never state a specific you cannot point to in the context.",
   "You may surface a non-obvious angle or gently question an assumption, but offer it as a question to check, NOT a verdict — state as FACT only what the context supports, and say you are not sure about the rest."
@@ -301,7 +297,7 @@ export const NOTES_ONLY_TOOL_ALLOWLIST = ["muse.notes", "muse.notes-multi", "mus
  * what you told me", a provenance fabrication the user never made. Forbidding it
  * deterministically keeps recall read-only for memory.
  */
-export const RECALL_FORBIDDEN_TOOL_NAMES = ["remember_fact"] as const;
+const RECALL_FORBIDDEN_TOOL_NAMES = ["remember_fact"] as const;
 
 export interface AskTierModels {
   readonly fast: string;
@@ -453,7 +449,7 @@ async function userMemoryHasFacts(userId: string, env: Record<string, string | u
   }
 }
 
-export async function userHasOtherPersonalData(
+async function userHasOtherPersonalData(
   userId: string,
   env: Record<string, string | undefined>
 ): Promise<boolean> {
@@ -475,7 +471,7 @@ export async function userHasOtherPersonalData(
 }
 
 /** S2 warm honesty (B2): the deterministic, on-brand close on an honest refusal. */
-export const WARM_REFUSAL_CLOSE =
+const WARM_REFUSAL_CLOSE =
   "(I'd rather tell you that than guess — add a note on this and I'll have it next time.)";
 
 
