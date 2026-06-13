@@ -45,7 +45,7 @@ public enum MusePresenter {
             options: .regularExpression
         )
         spoken = spoken.replacingOccurrences(
-            of: "\\s*📎[^\\n]*",
+            of: "\\s*📎[\\s\\S]*",
             with: "",
             options: .regularExpression
         )

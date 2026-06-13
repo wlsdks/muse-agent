@@ -11,6 +11,7 @@ import {
   createBrowserReadTool,
   createBrowserScrollTool,
   createBrowserTypeTool,
+  statusFields,
   type BrowserApprovalGate
 } from "../src/browser-tools.js";
 import type { BrowserController, PageSnapshot, SnapshotElement } from "../src/controller.js";
@@ -107,6 +108,104 @@ describe("browser_open / read / back — free (no gate)", () => {
     expect(await createBrowserReadTool({ controller: c }).execute({}, ctx)).toMatchObject({ title: "Example" });
     expect(await createBrowserBackTool({ controller: c }).execute({}, ctx)).toMatchObject({ title: "Example" });
     expect(c.calls).toEqual(["snapshot", "back"]);
+  });
+});
+
+describe("link destinations — a link's url flows through to the model", () => {
+  const LINKED: PageSnapshot = {
+    elements: [
+      { name: "Pricing", ref: 0, role: "link", url: "https://example.test/pricing" },
+      { name: "Sign in", ref: 1, role: "button" },
+      { name: "Docs", ref: 2, role: "link", url: "https://docs.example.test/" }
+    ],
+    text: "home",
+    title: "Home",
+    url: "https://example.test/"
+  };
+
+  it("browser_read returns each link's url so the model can report a destination without navigating", async () => {
+    const controller = { ...new FakeController(), snapshot: async () => LINKED } as unknown as BrowserController;
+    const out = await createBrowserReadTool({ controller }).execute({}, ctx) as { elements: Array<{ name: string; ref: number; role: string; url?: string }> };
+    const pricing = out.elements.find((element) => element.name === "Pricing");
+    expect(pricing?.url).toBe("https://example.test/pricing");
+    const signIn = out.elements.find((element) => element.name === "Sign in");
+    expect(signIn && "url" in signIn).toBe(false);
+  });
+
+  it("browser_open carries link urls in its snapshot too", async () => {
+    const controller = { ...new FakeController(), open: async () => LINKED } as unknown as BrowserController;
+    const out = await createBrowserOpenTool({ controller }).execute({ url: "https://example.test" }, ctx) as { elements: Array<{ name: string; url?: string }> };
+    expect(out.elements.find((element) => element.name === "Docs")?.url).toBe("https://docs.example.test/");
+  });
+
+  it("browser_read with find keeps the matched link's url", async () => {
+    const controller = { ...new FakeController(), snapshot: async () => LINKED } as unknown as BrowserController;
+    const out = await createBrowserReadTool({ controller }).execute({ find: "Pricing" }, ctx) as { elements: Array<{ name: string; url?: string }> };
+    expect(out.elements).toEqual([{ name: "Pricing", ref: 0, role: "link", url: "https://example.test/pricing" }]);
+  });
+});
+
+describe("navigation-status fidelity — an HTTP error page must not pass for the requested content (open/back only)", () => {
+  const withStatus = (status: number | undefined): PageSnapshot => ({
+    elements: [],
+    text: "Not Found",
+    title: "404 Not Found",
+    url: "https://example.test/missing",
+    ...(status === undefined ? {} : { httpStatus: status })
+  });
+
+  it("statusFields flags a 404 with an advisory statusError mentioning the status", () => {
+    const fields = statusFields(withStatus(404)) as { httpStatus: number; statusError: string };
+    expect(fields.httpStatus).toBe(404);
+    expect(fields.statusError).toContain("404");
+    expect(fields.statusError.toLowerCase()).toContain("error page");
+  });
+
+  it("statusFields flags a 503 (any >= 400)", () => {
+    const fields = statusFields(withStatus(503)) as { httpStatus: number; statusError: string };
+    expect(fields.httpStatus).toBe(503);
+    expect(fields.statusError).toContain("503");
+  });
+
+  it("statusFields stays SILENT on a 200 (success < 400 → no false alarm)", () => {
+    expect(statusFields(withStatus(200))).toEqual({});
+  });
+
+  it("statusFields stays SILENT when the status is absent", () => {
+    expect(statusFields(withStatus(undefined))).toEqual({});
+  });
+
+  it("statusFields stays SILENT on a non-finite / NaN status", () => {
+    expect(statusFields(withStatus(Number.NaN))).toEqual({});
+  });
+
+  it("browser_open on a 404 surfaces statusError but still flows the title/text", async () => {
+    const controller = { ...new FakeController(), open: async () => withStatus(404) } as unknown as BrowserController;
+    const out = await createBrowserOpenTool({ controller }).execute({ url: "https://example.test/missing" }, ctx) as { httpStatus?: number; statusError?: string; title: string };
+    expect(out.httpStatus).toBe(404);
+    expect(out.statusError).toContain("404");
+    expect(out.title).toBe("404 Not Found");
+  });
+
+  it("browser_open on a 200 carries NO httpStatus / statusError (silent success)", async () => {
+    const controller = { ...new FakeController(), open: async () => withStatus(200) } as unknown as BrowserController;
+    const out = await createBrowserOpenTool({ controller }).execute({ url: "https://example.test/" }, ctx) as Record<string, unknown>;
+    expect("httpStatus" in out).toBe(false);
+    expect("statusError" in out).toBe(false);
+  });
+
+  it("browser_back surfaces a 500 error-page status", async () => {
+    const controller = { ...new FakeController(), back: async () => withStatus(500) } as unknown as BrowserController;
+    const out = await createBrowserBackTool({ controller }).execute({}, ctx) as { httpStatus?: number; statusError?: string };
+    expect(out.httpStatus).toBe(500);
+    expect(out.statusError).toContain("500");
+  });
+
+  it("a bare browser_read NEVER carries status (consume-once: the field is open/back-only)", async () => {
+    const controller = { ...new FakeController(), snapshot: async () => withStatus(404) } as unknown as BrowserController;
+    const out = await createBrowserReadTool({ controller }).execute({}, ctx) as Record<string, unknown>;
+    expect("httpStatus" in out).toBe(false);
+    expect("statusError" in out).toBe(false);
   });
 });
 

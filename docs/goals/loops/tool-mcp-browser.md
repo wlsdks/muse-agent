@@ -106,3 +106,80 @@ ratchet: testFiles +1 (official-mcp-write-draft-first.test.ts, 6 cases) · @muse
   정확히 1회 send임을 assert(블랭킷-차단 게이트 배제). 트리 test-only(git diff --stat 빈값).
 - **리스크:** GitHub 프리셋이 대표 — Notion create-page는 동일 seam을 타므로 구조적 커버. 남은
   axis-B ◦: 키체인 자격증명 · doctor provenance.
+
+## fire 6 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/browser · kind=C-browser · verdict=PASS · firesSinceDrill=6
+
+ratchet: testFiles +0 (browser-tools.test.ts +3 cases, 75 total) · @muse/browser 75 tests pass · fabrication 0 · eval:browser-agent 1/1 LIVE · eval:tools 194/199 (97%, threshold 85%) · smoke #19 LIVE · lint 0/0
+
+- **무엇:** 읽기-측 누락 역량 — 링크 요소가 목적지 URL 없이 노출돼(스냅샷이 href를 dedup용으로만
+  읽고 버림) 모델이 링크를 클릭할 순 있어도 "이동하지 않고" 어디로 가는지 답할 수 없었음. 이제
+  `SnapshotElement.url`이 각 앵커의 resolved ABSOLUTE href를 browser_read/browser_open 요소 JSON에
+  실어줌(있을 때만 emit, 버튼/필드 불변) + browser_read 설명이 링크-목적지 답변을 광고. 새 도구 없음
+  (read 경로 증강, 9-도구 셋 유지 — tool-calling.md 혼동쌍 회피).
+- **왜:** "그들 가격 페이지 링크가 뭐야?"·"공유하게 top 결과 URL 줘"·"링크들과 목적지 나열" 같은
+  웹-리서치 작업이 inexpressible이었음. fires 1·4(act-target fail-close)와 구별되는 *역량 추가*.
+- **리뷰지점:** judge가 src revert해 3 RED 재확인; url이 실제 HTMLAnchorElement.href(IDL=절대)에서
+  채워짐을 라이브 smoke #19로 확인(절대+상대해소+비링크-none); browser_read 설명 변경이 eval:tools
+  mis-selection 안 냄(97% 통과, browser 셀렉션 전부 green).
+- **리스크:** cross-origin iframe 링크는 여전히 범위 밖(CDP가 page context서 도달 불가, 불변).
+  url은 additive/optional이라 dedup·비링크 컨트롤·act 경로 불변, 보안 surface 무변경.
+
+## fire 7 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=wiring · pkg=@muse/autoconfigure · kind=B-mcp · verdict=PASS · firesSinceDrill=7
+
+ratchet: testFiles +1 (official-mcp-credentials.test.ts; mcp-stack-official-presets +8) · @muse/autoconfigure 567 tests pass · fabrication 0 · pnpm check 0 · lint 0/0
+
+- **무엇:** fire 3가 토글을 배선했지만 `preset.create()`에 headers가 없어 사용자가 손으로
+  `~/.muse/mcp.json`에 Authorization을 써야 했음. 이제 새 `official-mcp-credentials.ts`가
+  `GITHUB_MCP_TOKEN`/`NOTION_MCP_TOKEN` env → `~/.muse/mcp-credentials.json` 순(기존
+  readCredentialsSync env-wins-then-file 시드, model/messaging 키와 동일 패턴)으로 토큰을 해석해
+  `Authorization: Bearer <token>` 주입. 자격증명 없으면 preset 미활성+미allowlist(fail-closed,
+  blank-auth half-connection 없음). secret은 직렬화/로그 가능 safe-config에 절대 안 남음.
+- **왜:** 외부 MCP를 실제로 인증해 쓰게 만드는 마지막 조각(헤드라인 요청 완성). 보안: 키체인은 아직
+  없어 기존 파일 시드 재사용(judge가 새 평문 경로 아님을 확인), secret 미로그.
+- **리뷰지점:** judge가 resolver를 상수 헤더로 neuter해 5 RED 재확인; secret-leak 테스트가 토큰 AND
+  "Bearer"를 모두 잡음(RED-able 검증); 작업 트리가 정확히 4 슬라이스 파일뿐(동시 루프 stash 오염 0).
+- **리스크:** Notion hosted 엔드포인트는 OAuth-선호(Bearer 거부시 향후 OAuth 분기 필요, 현재는
+  토큰 없으면 클린 fail-close). 파일경로 whitespace-only 토큰 미트림(cosmetic, upstream 인증 실패,
+  누출 없음) + 네이티브 키체인 백엔드 = backlog 후속 ◦.
+
+## fire 8 · 2026-06-13 · skill v1.14.0 · ROLLED BACK (no slice commit)
+
+meta: value-class=new-capability(attempted) · pkg=@muse/browser · kind=C-browser · verdict=FAIL→rollback · firesSinceDrill=8
+
+ratchet: testFiles +0 (slice reverted) · fabrication 0 · @muse/browser unchanged · gate=④b independent judge FAIL
+
+- **무엇(시도):** browser_open/back 네비게이션 상태 충실도 — page.goto가 4xx/5xx에 throw 안 해
+  에러 페이지가 콘텐츠로 둔갑하던 grounding 구멍에 PageSnapshot.httpStatus + statusError를 추가.
+- **왜 FAIL(④b judge):** open/back 부분은 견고+RED-able이었으나, 슬라이스가 **post-click 500
+  플래깅을 과대청구** — 실제 PuppeteerBrowserController.click은 lastHttpStatus를 절대 설정 안 함
+  (open/back만 함). 그 케이스 테스트가 `c.click=async()=>errSnap`로 500 스냅샷을 가짜 주입해
+  실제 경로와 무관하게 통과 = 프로젝트 금지 happy-path/fake-injection 안티패턴(testing.md
+  "fall-back 어서션 금지"). maker≠judge 게이트가 정확히 이걸 잡음.
+- **조치:** git restore로 4 파일 전체 롤백(브랜치 HEAD=pre-pull 머지 5c3d6d6f 불변). 정직히
+  스코프된 재작업을 backlog ◦로 기록(open/back ONLY + 가짜 click 테스트 제거, 또는 click nav
+  status를 main-frame page.once("response")로 실제 캡처). 다음 fire가 픽업.
+- **리스크/교훈:** 동종 act-경로 상태 캡처를 "한 슬라이스로 배칭"하려다 미구현 경로를 가짜 테스트로
+  덮음 — 배칭 시 각 경로가 REAL인지 확인 필수. 연속 allPASS 스트릭 7에서 끊김(이 catch가 곧
+  9에 예정됐던 judge-드릴의 실효 — 검증자가 진짜 나쁜 슬라이스를 잡음 입증).
+
+## fire 9 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/browser · kind=C-browser · verdict=PASS · firesSinceDrill=1 (reset — fire-8 real verifier-catch served as the drill)
+
+ratchet: testFiles +0 (browser-tools.test.ts +9 cases, 84 total) · @muse/browser 84 tests pass · fabrication 0 · eval:browser-agent 1/1 LIVE · smoke #20 LIVE (real Chrome vs localhost 404/200) · lint 0/0
+
+- **무엇:** fire-8(롤백)의 정직 재작업 — browser_open/browser_back 네비게이션 상태 충실도. goto/goBack
+  HTTPResponse에서 PageSnapshot.httpStatus 캡처(snapshot()의 settle-retry 루프 後 consume-once,
+  lastDialog 패턴), browser_open/back이 status≥400일 때만 {httpStatus, statusError} emit(200/부재 침묵).
+- **왜:** page.goto가 4xx/5xx에 throw 안 해 404/500 에러 페이지가 요청 콘텐츠로 둔갑하던 grounding
+  구멍. fire-8 실패 교훈 반영: **open/back로만 스코프, click/type 무관/무청구, 가짜 주입 테스트 0.**
+- **리뷰지점:** judge가 (1)fire-8 안티패턴 재발 0 확인(click/type 경로 byte 불변, fake-injection 없음)
+  (2)src revert해 7 RED (3)라이브 smoke #20이 실제 localhost 404/200을 헤드리스 Chrome으로 왕복해
+  실제 goto-status 경로 증명(가짜 아님) (4)consume-once가 looksUnsettled 재캡처 後에도 보존되는 실제
+  버그 수정 확인. 라이브 실행이 그 consume-once 버그를 노출(unit fake로는 못 잡았을 것).
+- **리스크:** click/type 네비게이션 status는 의도적 범위 밖(실제 click이 document HTTPResponse를 안 봄,
+  main-frame page.once("response") race 필요) → backlog 후속 ◦. byte-hygiene check red는 외부(타 루프 문서).

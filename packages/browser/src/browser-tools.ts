@@ -36,7 +36,12 @@ export interface BrowserApprovalDecision {
 export type BrowserApprovalGate = (draft: BrowserActionDraft) => Promise<BrowserApprovalDecision> | BrowserApprovalDecision;
 
 function elementsJson(elements: readonly PageSnapshot["elements"][number][]): JsonValue {
-  return elements.map((element) => ({ name: element.name, ref: element.ref, role: element.role })) as unknown as JsonValue;
+  return elements.map((element) => ({
+    name: element.name,
+    ref: element.ref,
+    role: element.role,
+    ...(element.url ? { url: element.url } : {})
+  })) as unknown as JsonValue;
 }
 
 /**
@@ -59,6 +64,23 @@ function snapshotToJson(snapshot: PageSnapshot, offset = 0): JsonObject {
     ...(start > 0 ? { offset: start } : {}),
     ...(end < total ? { hasMore: true, nextOffset: end } : {}),
     ...(snapshot.dialog ? { dialog: snapshot.dialog as unknown as JsonValue } : {})
+  };
+}
+
+/**
+ * A navigation's HTTP status, advisory-flagged ONLY when it is an error (>= 400).
+ * `page.goto`/`goBack` resolve on a 4xx/5xx, so a 404/500 error page would
+ * otherwise read to the model as the requested content — a silent grounding
+ * hole. `statusError` is advisory (the user may legitimately want a 404 page's
+ * content), not a hard refusal. Success (< 400), absent, or non-finite status
+ * stays SILENT — no false alarm. Used by browser_open / browser_back only.
+ */
+export function statusFields(snapshot: PageSnapshot): JsonObject {
+  const status = snapshot.httpStatus;
+  if (status === undefined || !Number.isFinite(status) || status < 400) return {};
+  return {
+    httpStatus: status,
+    statusError: `the page returned HTTP ${status.toString()} — this is likely an error page, not the requested content; verify before relying on it`
   };
 }
 
@@ -187,7 +209,8 @@ export function createBrowserOpenTool(deps: BrowserReadToolDeps): MuseTool {
         return { error: normalized.error };
       }
       try {
-        return snapshotToJson(await deps.controller.open(normalized.url));
+        const snapshot = await deps.controller.open(normalized.url);
+        return { ...snapshotToJson(snapshot), ...statusFields(snapshot) };
       } catch (cause) {
         return errorResult(cause);
       }
@@ -200,10 +223,12 @@ export function createBrowserReadTool(deps: BrowserReadToolDeps): MuseTool {
     definition: {
       description:
         "Re-read the page currently open in Muse's browser — returns the title, page text, and the " +
-        "interactive elements. Pass `find` to get only the elements matching a description (e.g. 'search', " +
-        "'sign in') instead of the whole list. A long page reports `total` + `hasMore`/`nextOffset`; pass " +
-        "`offset` to read the next batch. Use to see the TEXT and clickable elements after the page changed " +
-        "— e.g. 'what's on the page now?', 'read this page'. NOT for describing VISUAL content like a chart, " +
+        "interactive elements (each link also carries its destination `url`, so you can tell the user WHERE " +
+        "a link goes or hand them a shareable link without clicking it). Pass `find` to get only the " +
+        "elements matching a description (e.g. 'search', 'sign in') instead of the whole list. A long page " +
+        "reports `total` + `hasMore`/`nextOffset`; pass `offset` to read the next batch. Use to see the TEXT " +
+        "and clickable elements after the page changed, or to get a link's URL — e.g. 'what's on the page " +
+        "now?', 'read this page', 'what's the link to their pricing page?'. NOT for describing VISUAL content like a chart, " +
         "graph, image, or diagram (use browser_look — this returns DOM text, not a picture). Read-only.",
       domain: "browser",
       inputSchema: {
@@ -265,7 +290,8 @@ export function createBrowserBackTool(deps: BrowserReadToolDeps): MuseTool {
     },
     execute: async (): Promise<JsonObject> => {
       try {
-        return snapshotToJson(await deps.controller.back());
+        const snapshot = await deps.controller.back();
+        return { ...snapshotToJson(snapshot), ...statusFields(snapshot) };
       } catch (cause) {
         return errorResult(cause);
       }

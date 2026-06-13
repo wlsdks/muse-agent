@@ -16,6 +16,38 @@
 
 ## Levers (newest first)
 
+### L7 — An outbound action toward a third party is fail-closed: no recorded scoped consent → no send (fire 14)
+
+An autonomous agent that acts on the world is one wrong send away from a message the
+user never wrote arriving in someone else's inbox. Muse's `performConsentedAction`
+(`@muse/mcp`) gates every standing-objective outbound action deterministically: a
+recorded **veto** (checked first) overrides prior consent, **no recorded consent**
+means the scoped credential is never resolved and no request is made, a consent bound
+to an **allowedHost** refuses a different host (so a caller-controlled URL can't
+exfiltrate the token), and a **hung endpoint times out** bounded — only a recorded,
+scope+host-matched consent lets the request go. Rivals' value proposition is
+*autonomy*: hermes and openclaw act on the world on the model's judgement; a
+fail-closed, recorded-scoped-consent gate over every send is off-brand cost for a
+throughput agent, but for a single-user "a wrong autonomous send is not a bug you can
+roll back" assistant it *is* the contract (`outbound-safety.md`: deny / timeout /
+ambiguous-recipient / absent-consent produces no external effect).
+
+**Shipped (fire 14):** `scripts/eval-consent-fail-close.mjs` (`pnpm eval:consent-fail-close`)
+— a deterministic battery driving the real `performConsentedAction` with a
+contract-faithful HTTP fake (never a fake registry), proving all five fail-close
+vectors (no-consent / scope-mismatch / host-mismatch / veto / timeout) make ZERO
+external effect (fetch never called) while only a recorded scoped consent sends the
+credential. Imports `@muse/mcp` read-only; engine untouched; folded into the
+`differentiationBatteries` ratchet (4→5).
+>
+> **Widened (fire 15) — recipient is resolved, never guessed (rule 3):**
+> `scripts/eval-recipient-resolution.mjs` (`pnpm eval:recipient-resolution`) proves
+> `resolveContact` (`@muse/mcp`) resolves a unique match, returns `ambiguous` with ALL
+> candidates on multiple matches (never silently best-guesses one), and `unknown` on
+> no match / empty query / a relationship word — so "message Alex" with two Alexes
+> clarifies instead of auto-sending to the wrong one. Falsifying `=== 1`→`>= 1`
+> (best-guess) makes the battery fail; ratchet (5→6).
+
 ### L6 — Safety guards are deterministic, model-independent, multilingual code over the live turn — not output-only, English-only, or a bolt-on (fire 12)
 
 Muse's `@muse/policy` runs the SAME normalize-then-match code on every input
