@@ -50,6 +50,16 @@ describe("PII patterns", () => {
     expect(findPii("Review the Q3 budget by Friday")).toEqual([]);
   });
 
+  it("reports the finding COUNT, accumulating one per match across repeats (privacy-audit accuracy)", () => {
+    // maskPii increments per redacted match: three distinct emails → count 3.
+    const masked = maskPii("a@x.com b@y.com c@z.com");
+    expect(masked.findings.find((f) => f.name === "email")?.count).toBe(3);
+    expect(masked.text).not.toContain("@x.com");
+
+    // findPii accumulates matches.length over the normalised scan: two SSNs → count 2.
+    expect(findPii("123-45-6789 and 987-65-4321").find((f) => f.name === "us-ssn")?.count).toBe(2);
+  });
+
   it("masks representative private identifiers", () => {
     const result = maskPii(
       [
