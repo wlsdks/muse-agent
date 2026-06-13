@@ -165,3 +165,21 @@ ratchet: testFiles +0 (slice reverted) · fabrication 0 · @muse/browser unchang
 - **리스크/교훈:** 동종 act-경로 상태 캡처를 "한 슬라이스로 배칭"하려다 미구현 경로를 가짜 테스트로
   덮음 — 배칭 시 각 경로가 REAL인지 확인 필수. 연속 allPASS 스트릭 7에서 끊김(이 catch가 곧
   9에 예정됐던 judge-드릴의 실효 — 검증자가 진짜 나쁜 슬라이스를 잡음 입증).
+
+## fire 9 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/browser · kind=C-browser · verdict=PASS · firesSinceDrill=1 (reset — fire-8 real verifier-catch served as the drill)
+
+ratchet: testFiles +0 (browser-tools.test.ts +9 cases, 84 total) · @muse/browser 84 tests pass · fabrication 0 · eval:browser-agent 1/1 LIVE · smoke #20 LIVE (real Chrome vs localhost 404/200) · lint 0/0
+
+- **무엇:** fire-8(롤백)의 정직 재작업 — browser_open/browser_back 네비게이션 상태 충실도. goto/goBack
+  HTTPResponse에서 PageSnapshot.httpStatus 캡처(snapshot()의 settle-retry 루프 後 consume-once,
+  lastDialog 패턴), browser_open/back이 status≥400일 때만 {httpStatus, statusError} emit(200/부재 침묵).
+- **왜:** page.goto가 4xx/5xx에 throw 안 해 404/500 에러 페이지가 요청 콘텐츠로 둔갑하던 grounding
+  구멍. fire-8 실패 교훈 반영: **open/back로만 스코프, click/type 무관/무청구, 가짜 주입 테스트 0.**
+- **리뷰지점:** judge가 (1)fire-8 안티패턴 재발 0 확인(click/type 경로 byte 불변, fake-injection 없음)
+  (2)src revert해 7 RED (3)라이브 smoke #20이 실제 localhost 404/200을 헤드리스 Chrome으로 왕복해
+  실제 goto-status 경로 증명(가짜 아님) (4)consume-once가 looksUnsettled 재캡처 後에도 보존되는 실제
+  버그 수정 확인. 라이브 실행이 그 consume-once 버그를 노출(unit fake로는 못 잡았을 것).
+- **리스크:** click/type 네비게이션 status는 의도적 범위 밖(실제 click이 document HTTPResponse를 안 봄,
+  main-frame page.once("response") race 필요) → backlog 후속 ◦. byte-hygiene check red는 외부(타 루프 문서).

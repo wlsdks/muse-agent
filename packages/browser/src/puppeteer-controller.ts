@@ -62,6 +62,7 @@ export class PuppeteerBrowserController implements BrowserController {
   private lastElements = new Map<number, SnapshotElement>();
   private lastUrl = "";
   private lastDialog: { readonly type: string; readonly message: string } | undefined;
+  private lastHttpStatus: number | undefined;
 
   constructor(options: PuppeteerBrowserControllerOptions = {}) {
     this.options = options;
@@ -209,7 +210,10 @@ export class PuppeteerBrowserController implements BrowserController {
 
   async open(url: string): Promise<PageSnapshot> {
     const page = await this.ensurePage();
-    await page.goto(url, { timeout: this.timeout, waitUntil: "domcontentloaded" });
+    // goto RESOLVES on a 4xx/5xx (the error page loaded fine) — capture the
+    // status so a 404/500 error page isn't surfaced as the requested content.
+    const response = await page.goto(url, { timeout: this.timeout, waitUntil: "domcontentloaded" });
+    this.lastHttpStatus = response?.status();
     await this.settleDom(page);
     return this.snapshot();
   }
@@ -220,6 +224,11 @@ export class PuppeteerBrowserController implements BrowserController {
       await new Promise((resolve) => setTimeout(resolve, SETTLE_DELAY_MS));
       snapshot = await this.captureSnapshot();
     }
+    // Consume the navigation status ONCE per observation — AFTER the settle-retry
+    // loop, so a 4xx/5xx error page (no elements + stub text → looksUnsettled,
+    // so it re-captures) doesn't drop the status on the retry. A later bare
+    // snapshot() then carries no stale status.
+    this.lastHttpStatus = undefined;
     return snapshot;
   }
 
@@ -326,7 +335,18 @@ export class PuppeteerBrowserController implements BrowserController {
     // clear it so it's reported exactly once.
     const dialog = this.lastDialog;
     this.lastDialog = undefined;
-    return { elements, text, title, url: this.lastUrl, ...(dialog ? { dialog } : {}) };
+    // Read the navigation's HTTP status (set by open/back). NOT cleared here:
+    // snapshot()'s settle-retry can re-capture the SAME navigation, so the status
+    // is consumed once in snapshot() after the loop, not per capture.
+    const httpStatus = this.lastHttpStatus;
+    return {
+      elements,
+      text,
+      title,
+      url: this.lastUrl,
+      ...(dialog ? { dialog } : {}),
+      ...(httpStatus === undefined ? {} : { httpStatus })
+    };
   }
 
   /**
@@ -426,7 +446,8 @@ export class PuppeteerBrowserController implements BrowserController {
 
   async back(): Promise<PageSnapshot> {
     const page = await this.ensurePage();
-    await page.goBack({ timeout: this.timeout, waitUntil: "domcontentloaded" }).catch(() => { /* nothing to go back to */ });
+    const response = await page.goBack({ timeout: this.timeout, waitUntil: "domcontentloaded" }).catch(() => null);
+    this.lastHttpStatus = response?.status();
     return this.snapshot();
   }
 
