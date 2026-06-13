@@ -15,6 +15,9 @@
   "references": [
     {
       "path": "../agent-core"
+    },
+    {
+      "path": "../mcp"
     }
   ]
 }

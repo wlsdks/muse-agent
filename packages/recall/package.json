@@ -17,6 +17,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@muse/agent-core": "workspace:*"
+    "@muse/agent-core": "workspace:*",
+    "@muse/mcp": "workspace:*"
   }
 }
