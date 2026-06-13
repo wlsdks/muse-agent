@@ -160,6 +160,7 @@
 - ✓ ALCE citation-precision wired to the live ask path — citationPrecisionNotice surfaces a 'right source, wrong claim' cue (a [from src] citation resolving to a note that doesn't support its sentence) on grounded ask answers, alongside the untrusted/conflict cues — grounding-integrity fire 15
 - ✓ ALCE citation RECALL (arXiv:2305.14627) — reportCitationRecall flags groundable-but-uncited claims (a claim in evidence with no [from] marker), complement to precision; wired to ask as citationRecallNotice; completes the precision/recall/groundedness triad — grounding-integrity fire 16
 - ✓ citation-precision aggregates all chunks of a cited source — fire-14 reportCitationPrecision used a last-wins source→text map, so a file retrieved as multiple chunks would false-flag a faithful sentence supported by a different chunk (live ask cue false-positive); now concatenates all chunks per source (last-wins mutation verified) — grounding-integrity fire 17
+- ✓ citation precision+recall cues on the chat surface (parity) — chatCitationPrecisionNotice/chatCitationRecallNotice added to finalizeGatedChatAnswer; ask+chat now both surface mis-citation/missing-attribution. ALSO: JUDGE-DRILL passed (④ test caught floor-weakening; ④b judge caught an inert no-op slice) — grounding-integrity fire 18
 
 <!-- Going-forward: `- ✓ <item title> — <slug> fire N` so the scout dedups without the verbose block. -->
 - ✓ Adaptive-k score-gap recall cutoff (trim grounding-window decoys, floor-neutral; arXiv:2506.08479) — agent-core-cognition fire 1
