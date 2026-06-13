@@ -990,3 +990,12 @@ ratchet: testFiles 978→979(+today-brief-tool.test) · fabrication 0 유지 · 
 - **왜:** bug-hunt 양 vein 고갈(fire 94/96) → RATCHET "EXPANSION 절반 0건 실패" 명시 → value-class 상향. Opus EXPANSION scout가 **evidence-backed 갭** 발굴(1c: today 집계가 CLI/`/today`/API/web엔 있으나 agent 도구 미배선 — week는 fire 79에 받음 = 비대칭; 1a: commands-today.ts:596 in-code 주석이 4-call-chain 실패 명시). week_agenda는 forward planning(overdue 개념 없음) → carve real.
 - **리뷰지점:** today-brief-tool.ts(aggregator+tool)+index.ts(배선+export)+today-brief-tool.test(599 green: overdue-lead·lookahead-window·unparseable-drop)+eval scenario(today_brief+week_agenda 둘 다 노출). **make-or-break confusability: eval 8/8 STABLE 3/3**(today/overdue→today_brief, week→week_agenda, cross-leak 0). pnpm check exit=0, lint clean. ④b judge PASS 5/5(eval 독립 재현 24 inference, week_agenda overdue-grep 0=carve 코드상 real). 첫 시도 inert(barrel export 누락→eval SKIP) 발견·수정.
 - **리스크:** 거의 없음 — read-only(mutation 0, 새 write 표면 없음), agent-core 무관, 기존 week_agenda 선택 무회귀(carve 검증). EXPANSION 검증: 빌드+배선+단위+selection 모두 통과(inert 아님).
+
+
+## fire 98 · 2026-06-14 · skill v1.14.0 · 6b53a9f1
+meta: value-class=hardening · pkg=scripts(eval infra) · kind=irrelevance-coverage(today_brief IrrelAcc, fire-97 triad 완성) · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 980 유지(scripts-only) · fabrication 0 유지 · eval:tools week-agenda 8→**10/10 STABLE 3/3**(today_brief IrrelAcc)
+- **무엇:** week-agenda 시나리오에 today_brief IrrelAcc 네거티브 2건 — KO "고마워, 오늘 도움 많이 됐어!"·EN "I'm in such a good mood today" → casual "오늘"/"today" 언급이 NO tool(today_brief over-fire 안 함). 전부 PASS 3/3.
+- **왜:** fire 97이 today_brief를 selection+confusability 케이스로 ship했으나 IrrelAcc 누락. today_brief 주키워드 "today"/"오늘"은 **최고빈도 casual 충돌어**(thanks for today, good mood today) = eager-invocation 트랩. agent-testing.md triad(selection+confusability+irrelevance) 완성 — 새 도구의 trap 키워드 가드. fire 97(capability-extension)과 다른 KIND(IrrelAcc), fire 91 패턴.
+- **리뷰지점:** eval buildWeekAgendaScenario +2 expectNoTool(순수 additive, week-agenda는 이전 IrrelAcc 0). strict noTool scorer. 10/10 STABLE 3/3(today_brief selection+week carve+casual-today 무발화 동시 검증). lint clean, harness 17. ④b judge PASS 5/5(fair·real-teeth: "오늘"은 today_brief 주키워드+casual 빈출, fire-86보다 강한 teeth). scripts-only라 pnpm check 무관(live eval+harness가 gate).
+- **리스크:** 없음 — scripts-only, 순수 additive. GREEN-on-arrival이나 high-freq 트랩어("오늘")라 description/keyword 저하 regression 가드. firesSinceDrill=6.
