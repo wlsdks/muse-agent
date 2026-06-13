@@ -26,6 +26,7 @@
 - ✓ `on_this_day_notes` agent tool — conversational date-cued note recall (muse on-this-day was CLI-only; pure recall logic moved to @muse/mcp, CLI re-exports) — tool-hardening fire 48
 - ✓ `feeds_search` agent tool — conversational watched-feed archive search (CLI-only + only knowledge_search covered it, off by default → default-posture gap) — tool-hardening fire 49
 - ✓ `find_contact` hardening — surfaces `about`/`connections` (recall material the handler dropped, e.g. "allergic to nuts") so "what do I know about Bob?" answers from the tool; reverse-lookup by phone/email/@handle locked + advertised — tool-hardening fire 50
+- ✓ `muse.tasks.list` tag filter — "show my tasks tagged work" was inexpressible (list filtered only by status/dueWithinDays, search ignores tags) though tags are first-class + CLI `--tag` exists; added optional `tag` (case-insensitive exact, both branches) — tool-hardening fire 51
 
 ## Done — loop infrastructure (2026-06-12, 진안-directed)
 

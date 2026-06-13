@@ -84,6 +84,51 @@ describe("muse.tasks list — dueWithinDays filter", () => {
   });
 });
 
+describe("muse.tasks list — tag filter", () => {
+  let dir: string;
+  let file: string;
+  const TAGGED: PersistedTask[] = [
+    { createdAt: "2026-05-01T00:00:00", dueAt: "2026-05-26T09:00:00", id: "t-work1", status: "open", tags: ["work"], title: "ship report" }, // due +1
+    { createdAt: "2026-05-01T00:00:00", dueAt: "2026-05-26T09:00:00", id: "t-home", status: "open", tags: ["home"], title: "water plants" },
+    { createdAt: "2026-05-01T00:00:00", id: "t-work2", status: "open", tags: ["Work", "urgent"], title: "email client" }, // undated, mixed-case tag
+    { createdAt: "2026-05-01T00:00:00", id: "t-untagged", status: "open", title: "nap" }
+  ];
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "muse-tasks-tag-"));
+    file = join(dir, "tasks.json");
+    await writeTasks(file, TAGGED);
+  });
+  afterEach(async () => {
+    await rm(dir, { force: true, recursive: true });
+  });
+  const listTool = () => createTasksMcpServer({ file, now: () => NOW }).tools.find((t) => t.name === "list")!;
+
+  it("filters to only tasks carrying the tag (case-insensitive exact label), echoing the tag; value flows", async () => {
+    const out = await listTool().execute({ tag: "work" }) as { tag: string; total: number; tasks: Array<{ id: string; tags?: string[] }> };
+    expect(out.tag).toBe("work");
+    expect(out.tasks.map((t) => t.id).sort()).toEqual(["t-work1", "t-work2"]); // "Work" matches case-insensitively
+    expect(out.total).toBe(2);
+    expect(out.tasks.find((t) => t.id === "t-work1")?.tags).toContain("work"); // the tag really rides on the returned task
+  });
+
+  it("requires an EXACT label — no substring/partial match", async () => {
+    const out = await listTool().execute({ tag: "wor" }) as { total: number; tasks: unknown[] };
+    expect(out.total).toBe(0);
+    expect(out.tasks).toEqual([]);
+  });
+
+  it("an empty / whitespace tag is ignored (lists normally, not zero)", async () => {
+    const out = await listTool().execute({ tag: "   ", status: "all" }) as { total: number };
+    expect(out.total).toBe(TAGGED.length);
+  });
+
+  it("combines with the dueWithinDays window — 'work tasks due this week' excludes the undated work task and the due-but-home task", async () => {
+    const out = await listTool().execute({ dueWithinDays: 7, tag: "work" }) as { total: number; tasks: Array<{ id: string }> };
+    expect(out.tasks.map((t) => t.id)).toEqual(["t-work1"]); // t-work2 undated, t-home not work
+    expect(out.total).toBe(1);
+  });
+});
+
 describe("tasks `list` tool keywords — list-intent reaches the tool, not just due-intent", () => {
   it("carries list-intent words (so '할 일 목록' / 'show my task list' relevance-match) plus the due words", () => {
     const server = createTasksMcpServer({ file: "/tmp/unused-tasks.json" });
