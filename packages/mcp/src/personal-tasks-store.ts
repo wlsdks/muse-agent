@@ -18,7 +18,7 @@ import { dirname } from "node:path";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { formatDueLocal } from "./local-due-format.js";
-import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
+import { isoDateHeadRoundTrips, resolveRelativeTimePhrase } from "./loopback-relative-time.js";
 import { withFileLock } from "./encrypted-file.js";
 
 export interface PersistedTask {
@@ -285,11 +285,7 @@ export function parseTaskDueAt(raw: string, now: () => Date): string | Error {
     // than failing — accepting it would schedule the reminder ~2
     // days off. A real calendar date round-trips its Y-M-D through
     // Date.UTC unchanged; a rolled-over one does not.
-    const y = Number(dateHead[1]);
-    const mo = Number(dateHead[2]);
-    const d = Number(dateHead[3]);
-    const probe = new Date(Date.UTC(y, mo - 1, d));
-    if (probe.getUTCFullYear() === y && probe.getUTCMonth() === mo - 1 && probe.getUTCDate() === d) {
+    if (isoDateHeadRoundTrips(Number(dateHead[1]), Number(dateHead[2]), Number(dateHead[3]))) {
       return isoParsed.toISOString();
     }
   }
