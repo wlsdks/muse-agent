@@ -49,7 +49,7 @@ ratchet: desktop swift tests 48/48 (+2) · fabrication 0 · self-eval exit 0 · 
 - **리뷰지점**: JSONDecoder는 미지의 키 무시 → `{"runId":…}`도 response/answer nil→"". 비-JSON(bare string/number/array/ANSI)은 decode 실패 → cleanAnswer 경로 보존.
 - **리스크**: 없음(empty-text 가드 1개 제거 + 2 테스트, cleanAnswer/유일 caller ask() 무변, 독립 Opus judge가 leak 수정·폴백 보존·잘못된 빈값 없음 probe 검증 후 PASS, 48/48).
 
-## fire 6 · 2026-06-13 · skill v1.14.0 · <commit>
+## fire 6 · 2026-06-13 · skill v1.14.0 · 6c93d7c1
 meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=input-validation-consistency · verdict=PASS · firesSinceDrill=6
 ratchet: cli tests 2576/2576 (contacts 22, +2) · fabrication 0 · self-eval exit 0 · consecutive allPASS=6 · 표면 균형 web2·desktop2·cli2
 
