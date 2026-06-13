@@ -36,6 +36,15 @@
 - ✓ `muse.tasks.search` matches tags — a task tagged "work" (word not in title/notes) is now found by searching "work" (completes the fire-51 tag story: list FILTERS by tag, search now FINDS by tag) + JUDGE-DRILL (verifier caught a deliberately-inert version) — tool-hardening fire 53
 - ✓ `muse.tasks.list` tag filter — "show my tasks tagged work" was inexpressible (list filtered only by status/dueWithinDays, search ignores tags) though tags are first-class + CLI `--tag` exists; added optional `tag` (case-insensitive exact, both branches) — tool-hardening fire 51
 - ✓ browser act-path ambiguous-target fail-close — element matcher silently clicked/typed the FIRST of several tied "best" matches (two "Delete" buttons → guessed); now `matchElementResult` → `ambiguous` refuses `browser_click`/`browser_type` BEFORE snapshot-mutation/approval-gate, returns candidates + ordinal hint (closes an outbound-safety fail-open hole) — tool-mcp-browser fire 1
+- ✓ official-public-MCP preset registry (axis B) — `packages/mcp/src/official-mcp-presets.ts`: curated `createGitHubMcpServer` (`https://api.githubcopilot.com/mcp/`) + `createNotionMcpServer` (`https://mcp.notion.com/mcp`) streamable factories, each carrying an official anyone-may-connect provenance URL + a FAIL-CLOSE `toolRisk` classifier (read tools listed, every write/unknown → `write`) + `withOfficialMcpRisk` projection (domain `external`); wired through the existing `allowedServerNames` allowlist; contract-faithful transport-fake test proves allowlisted connects/read-surfaces & non-allowlisted refuses & write stays gated — tool-mcp-browser fire 2
+
+### tool-mcp-browser theme — axis B (external official-public MCP) remaining sub-slices
+
+- ◦ wire `OFFICIAL_MCP_PRESETS` into `assembleMcpStack` via an env toggle (e.g. `MUSE_GITHUB_MCP_ENABLED` / `MUSE_NOTION_MCP_ENABLED`, mirroring `MUSE_CHROME_DEVTOOLS_ENABLED`) so a user enables a preset without hand-writing `~/.muse/mcp.json`; honor the strict-allowlist intent like the chrome wiring does.
+- ◦ apply `withOfficialMcpRisk` in the CLI/api agent-tool projection path (where `withChromeDevToolsRisk` is applied) so the risk re-stamp actually reaches the live `toolApprovalGate` — currently the projection helper exists but isn't yet called in the assembled runtime.
+- ◦ credential resolution for the presets — read the user's GitHub PAT / Notion OAuth token from the keychain/auth store (NOT plaintext config) and inject as the streamable `headers`; never ship or log a secret.
+- ◦ draft-first write-tool e2e — once a write tool is reachable, a contract-faithful HTTP-fake test (NOT a fake registry) proving deny / timeout / ambiguous-recipient / absent-consent produces NO external mutation (create issue / page never sent), alongside the confirmed-path send (`outbound-safety.md`).
+- ◦ `muse doctor` reports each official preset's allow/deny + provenance so a user can audit which external servers are eligible.
 
 ## Done — loop infrastructure (2026-06-12, 진안-directed)
 
