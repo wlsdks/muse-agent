@@ -266,6 +266,36 @@ async function buildOnThisDayScenario() {
   }
 }
 
+// Feed archive search (feeds_search) vs its closest confusables in the DEFAULT
+// posture: a fresh public web search and an email-inbox search. The value is
+// the discrimination — "news in the feeds I follow" must route to feeds_search
+// (the user's subscribed sources), NOT a web search (the open internet) or
+// search_email (their inbox). knowledge_search is intentionally absent: it's
+// off by default, which is exactly why feeds_search exists.
+async function buildFeedsScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const instances = [
+      mcp.createFeedsSearchTool({ feedEntries: () => [] }),
+      mcp.createEmailSearchTool({ searcher: { search: async () => [] } })
+    ];
+    const tools = [
+      ...instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema })),
+      SYNTHETIC_TOOLS.find((t) => t.name === "web_search")
+    ].filter(Boolean);
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "Any news about the Mars mission in the feeds I follow?", expectTool: "feeds_search", requireArgs: ["query"], note: "EN feed archive search → feeds_search (NOT web_search/search_email)" },
+      { prompt: "내가 구독한 피드에 화성 미션 관련 소식 있어?", expectTool: "feeds_search", requireArgs: ["query"], note: "KO feed archive search → feeds_search (NOT search_email)" },
+      { prompt: "Search the web for the latest TypeScript release notes.", expectTool: "web_search", requireArgs: ["query"], note: "fresh public web → web_search (NOT feeds_search)" },
+      { prompt: "Find the email from the bank about my statement.", expectTool: "search_email", requireArgs: ["query"], note: "inbox → search_email (NOT feeds_search)" }
+    ];
+    return { label: "feeds (feed-archive search vs web/email)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "feeds", skip: `@muse/mcp not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Followup tools (muse.followup.*) vs their closest confusables: tasks and
 // reminders. A followup is an agent-auto-captured "circle back" thread — the
 // model must route viewing/managing those to followup.list/cancel/snooze and
@@ -652,6 +682,7 @@ async function main() {
     await buildPersonalCrudScenario(),
     await buildContactsScenario(),
     await buildOnThisDayScenario(),
+    await buildFeedsScenario(),
     await buildNotesScenario(),
     await buildFollowupScenario(),
     await buildRecallVsCrudScenario(),

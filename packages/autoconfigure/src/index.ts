@@ -48,6 +48,7 @@ import {
   createHomeEntitiesTool,
   createHomeStateTool,
   collectDatedNotes,
+  createFeedsSearchTool,
   createLoopbackMcpMuseTools,
   createOnThisDayTool,
   createRememberFactTool,
@@ -710,6 +711,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => [createWorldTimeTool()],
     () => [createRememberFactTool({ store: userMemoryStore })],
     () => [createOnThisDayTool({ datedNotes: () => collectDatedNotes(notesDir) })],
+    () => [createFeedsSearchTool({ feedEntries: () => readFeedKnowledgeEntries(resolveFeedsFile(env), 200) })],
     () => [
       createContactsFindTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
       createUpcomingBirthdaysTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
