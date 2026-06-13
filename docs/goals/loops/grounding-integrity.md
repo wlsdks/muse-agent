@@ -226,3 +226,11 @@ ratchet: agent-core +1 OUTCOME test (background-review 10) · agent-core 2230 ·
 - 왜: 모듈 자신이 문서화한 "no trigger is lost" 불변(in-flight-skip 경로는 지킴)을 실패 경로가 위반하던 비대칭. axis B 새 모듈(background-review 엔진, 이 루프에서 처음). MAST fail-close(arXiv:2503.13657): 실패한 sub-step은 retrigger를 조용히 버리면 안 됨.
 - 리뷰지점: strictly more fail-close(실패→재시도, 덜 안전해질 수 없음). 성공 cadence 불변(기존 Nth-turn reset 테스트 통과), in-flight 가드가 빠른 2nd 턴을 reset 전에 차단(double-fire 없음), `.finally(delete)` 양 경로 실행(inFlight 누수 없음). 학습 경로(afterComplete)라 grounding 게이트 무관. 독립 Opus judge가 reset-before-review mutation으로 red 확인 → 5/5 PASS.
 - 리스크: 낮음(학습 신뢰성 강화). pnpm check의 @muse/resilience SIGABRT는 동시-루프 메모리 압박 OOM(격리 26/26 green, agent-core 2230 green) — 환경, 내 변경 무관. vein: axis B background-review 엔진 진입 — 다음=pattern-suggestion/preference-inference 잔여 또는 axis A/C.
+
+## fire 29 · 2026-06-14 · skill v1.14.0 · 962d4778
+meta: value-class=meta-eval · pkg=scripts(eval-judge) · kind=C · verdict=PASS · firesSinceDrill=2
+ratchet: scripts +2 live judge cases (eval:judge 11→13, both STABLE 3/3) · lint 0/0 · fabrication 0 · coverage-guard (judge already resists; locks property)
+- 무엇: **LLM-judge verbosity/length-bias 저항을 meta-eval에 고정**. eval-judge.mjs가 arXiv:2411.15594를 content-injection 케이스에 인용하면서 논문의 headline 편향(verbosity/length)은 미커버 — 기존 11케이스 전부 짧음. length-통제 PAIR 추가: 긴 hedge-padded 답변이 구체 계좌번호를 여전히 invent→FAIL, 동일 길이의 정직한 "추측 안 함" 쌍둥이→PASS. 두 케이스가 거의 동일한 careful opener를 공유해 변수는 groundedness뿐 → length가 verdict를 못 움직임을 증명.
+- 왜: axis C(self-judge 한계 보완) — 27·28 연속 axis B라 diversity가 non-B 강제. 단일 로컬 모델=maker=judge라 judge가 length에 흔들리면 모든 배터리(eval:adversarial 등)가 누수 상속. 논문이 명시한 #1-2 편향 중 verbosity가 미검증이던 hole.
+- 리뷰지점: PAIR가 length를 고립(동일 opener, fabrication만 차이) — asserting-easy-half 아님. 라이브 gemma4 13/13, 두 신규 STABLE 3/3(padded fabrication→FAIL, long honest→PASS). **정직: 커버리지 가드**(judge가 이미 저항 → 라이브 버그 아님, 문서화된 속성을 회귀-고정). position bias는 코드에 symmetric pairwise judge 경로 없어 적용불가(near-miss 기각). 독립 Opus judge가 고립성·안정성·구분성 검증 → 5/5 PASS.
+- 리스크: 낮음(데이터-only 케이스, 게이트/코드 불변). vein: axis C는 content-injection+verbosity 커버. 다음 후보=shadowTrial HOLD-path meta-eval, 또는 axis A episode-poisoning, 또는 axis B 잔여(pattern-suggestion).
