@@ -426,3 +426,20 @@ ratchet: testFiles +2 (browser-upload.test 9 + upload-path-validator.test 7; bro
   (3)deny/non-file-input→업로드 0 (4)smoke #24가 실제 this.files.length 읽음(fake 아님) (5)혼동쌍 무회귀.
 - **리스크:** eval:browser-agent에 업로드 멀티스텝 체인은 아직 미포함(smoke#24+unit+선택 eval로 커버, 후속 ◦).
   full-suite eval:tools의 time-tool 비결정 miss는 무관 외부 flake.
+
+## fire 23 · 2026-06-14 · skill v1.14.0 · (honest STOP, no code slice)
+
+meta: value-class=scout · pkg=@muse/browser(investigated) · kind=C-browser · verdict=NO-GAP/EXHAUSTION · firesSinceDrill=7
+
+ratchet: testFiles +0 · fabrication 0 · no code change (3rd consecutive axis-C candidate already-handled)
+
+- **무엇:** axis-C scout — same-origin iframe 콘텐츠가 스냅샷에 안 보이는 갭인지 조사. **이미 처리됨**:
+  captureSnapshot의 walk()가 shadow DOM + same-origin iframe(contentDocument)을 이미 피어싱하고 cross-origin은
+  catch로 우아하게 스킵(commit 178c953a, 2026-06-12); 통합 ref 스킴·cap 유지·resolveRef frame 순회·live smoke #7
+  이미 존재. 코드 변경 없음(honest-stop).
+- **왜 EXHAUSTION:** axis-C 후보 3연속 already-handled(fire-21 select · fire-23 callTool-timeout · iframe) —
+  브라우저 마이크로픽스 vein 고갈. 강제 low-value churn 대신 정직 정지(EEXHAUSTION 규칙).
+- **리뷰지점:** 루프 성숙 — C(브라우저) 12+ 슬라이스 포괄 완료, B(외부 MCP) 4서버+풀 머신러리 하드닝 완료,
+  A(Muse-native tools)는 동시 tool-hardening 루프에 의도적 양보(충돌 회피). 이 루프의 distinct lane(B+C) 거의 완료.
+- **리스크/권고:** 진안 방향 결정 필요(루프가 새 테마를 자가-할당 불가 = scope는 사용자 소유): (1)와인드다운
+  CronDelete d410848c (2)테마 repoint (3)계속하되 낮은 marginal value 수용. 코드 진화로 새 갭이 가끔 생기긴 함.
