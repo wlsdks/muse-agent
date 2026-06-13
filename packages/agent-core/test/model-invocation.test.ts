@@ -320,4 +320,21 @@ describe("buildModelRequestWithWebSearch — injects the resolved web-search pol
     expect(built.messages).toBe(request.messages); // request fields carried through
     expect(request.metadata).toEqual({ existing: "keep" }); // input not mutated
   });
+
+  it("wires settings through to the resolved policy VALUE (enabled + maxUses), not just presence", () => {
+    const built = buildModelRequestWithWebSearch(
+      { messages: [{ content: "x", role: "user" }], model: "openai/gpt-4o" },
+      { env: {}, override: undefined, settings: { webSearch: { enabled: true, maxUses: 4 } } }
+    );
+    expect((built.metadata as { webSearchPolicy?: { enabled: boolean; maxUses: number } }).webSearchPolicy)
+      .toEqual({ enabled: true, maxUses: 4 });
+  });
+
+  it("wires override=false through, suppressing enabled even when settings.enabled is true (per-call kill)", () => {
+    const built = buildModelRequestWithWebSearch(
+      { messages: [{ content: "x", role: "user" }], model: "openai/gpt-4o" },
+      { env: {}, override: false, settings: { webSearch: { enabled: true, maxUses: 5 } } }
+    );
+    expect((built.metadata as { webSearchPolicy?: { enabled: boolean } }).webSearchPolicy?.enabled).toBe(false);
+  });
 });

@@ -174,7 +174,13 @@ async function buildPersonalCrudScenario() {
       { prompt: "이번 주 일정 보여줘", expectTool: "muse.calendar.list", note: "KO list events → calendar.list (NOT tasks/reminders)" },
       { prompt: "Find my meeting with Bob on the calendar this week.", expectTool: "muse.calendar.list", requireArgs: ["query"], argIncludes: /bob/i, note: "EN find a specific event → calendar.list with query (ArgumentCorrectness)" },
       { prompt: "Show my tasks tagged work", expectTool: "muse.tasks.list", requireArgs: ["tag"], argIncludes: /work/i, note: "EN tag filter → tasks.list with tag arg (ArgumentCorrectness)" },
-      { prompt: "work 태그된 할 일 보여줘", expectTool: "muse.tasks.list", requireArgs: ["tag"], argIncludes: /work/i, note: "KO tag filter → tasks.list with tag arg" }
+      { prompt: "work 태그된 할 일 보여줘", expectTool: "muse.tasks.list", requireArgs: ["tag"], argIncludes: /work/i, note: "KO tag filter → tasks.list with tag arg" },
+      // IrrelAcc (over-invocation): a PAST-TENSE report is a statement, not a request.
+      // A write tool firing here writes spurious state (a phantom task/event/reminder)
+      // — agent-testing.md's eager-invocation trap, the costliest false-positive.
+      { prompt: "어제 우유 샀어.", expectNoTool: true, note: "KO past-tense report ('I bought milk yesterday') → NO tool (NOT tasks.add — it already happened)" },
+      { prompt: "방금 약 먹었어.", expectNoTool: true, note: "KO past-tense report ('I just took my medicine') → NO tool (NOT reminders.add)" },
+      { prompt: "I already finished the quarterly report.", expectNoTool: true, note: "EN past-tense report → NO tool (NOT tasks.add — it's done, not a to-do)" }
     ];
     return { label: "personal-crud (3-domain add/list disambiguation)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
