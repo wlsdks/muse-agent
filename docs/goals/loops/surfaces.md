@@ -237,3 +237,12 @@ ratchet: desktop swift tests 60/60 (+1) · testFiles 976 · fabrication 0 · sel
 - **왜**: 드릴은 verifier 신뢰성 보상통제(maker=judge 같은-모델이라) — vacuous 슬라이스를 정말 잡는지 8-fire마다 실증. 실 fix는 env-fed 파스의 robustness 갭(fire 15 `:latest`·fire 22 falsy 동족, 실 입력원=env var, 비투기적).
 - **리뷰지점**: 드릴 판정이 진짜 적대적(judge가 스스로 소스 mutation해 RED 없음을 증명). 실 fix는 named 시그니처·case-insensitive·nil/empty/unknown→default 보존, whitespace-only→default. judge가 mutation-test로 비-vacuous 확인. 주의: `setCharacterNamed`는 named 미호출(별도 switch)이나 main.swift:158+CompanionModel가 env로 named를 먹어 갭은 실재.
 - **리스크**: 없음(순수 캐릭터-룩 파스, network/grounding 무접촉; 드릴 verifier FAIL 확인+롤백 완료, 실 fix는 독립 Opus judge가 mutation-test로 RED-before·비-vacuous·behavior-preserving 검증 후 PASS, swift 60/60).
+
+## fire 27 · 2026-06-14 · skill v1.14.0 · b5a8963c
+meta: surface=cli · value-class=new-capability · pkg=@muse/cli · kind=list-search-parity-completion · verdict=PASS · firesSinceDrill=1
+ratchet: cli tests 2636 (+3) · testFiles 977 · fabrication 0 · self-eval exit 0 · 표면 균형 web9·desktop8·cli10
+
+- **무엇**: `muse checkins list`에 `--search <text>` 추가 — list 계열(tasks/remind/followup/contacts) 중 유일하게 빠져 있던 holdout. 각 check-in의 `question`(표시 필드, line 124)에 대소문자 무시 부분일치, `--status` 필터 後 적용, `--json`의 `total`은 매치 수 반영.
+- **왜**: Opus scout가 list-command 파리티 매트릭스에서 checkins만 `--search` 결여로 식별(question은 이미 로드·표시되는 자유텍스트 필드, 사용자가 grep할 바로 그 필드). fire 23(followup `summary`)와 동족이나 distinct 명령 — 매트릭스 완성 = 실 일관성 가치, busywork 아님.
+- **리뷰지점**: case-insensitive(양측 toLowerCase). `--status` 검증(fire 14 sibling) 먼저 early-return 後 status-filter→search 순. `total: scoped.length`로 필터 반영. 빈/부재 `--search`→falsy→byStatus(무필터, 무회귀). `question` 검색은 followup의 `summary`와 정확한 파리티(둘 다 표시 필드).
+- **리스크**: 없음(list action 한정 +7/-2 + 신규 3 테스트, cancel/snooze/scan 무변; 독립 Opus judge가 mutation-test(필터 no-op→RED)로 비-vacuous·RED-before·composition·total·무회귀 검증 후 PASS, cli 2636/2636·self-eval exit 0).
