@@ -322,3 +322,23 @@ ratchet: testFiles 935 · differentiationBatteries 5→6 (fire-13 ratchet 자동
   mcp src 0줄(git status 2파일). lint:pass · self-eval differentiationBatteries=6.
 - **리스크/residual (비차단)**: clarify-directive 실제 발화는 agent-core wiring(미포함, seam
   증명에 집중). 다음은 fresh 축 또는 정직히 thinning 판단.
+
+## fire 16 · 2026-06-13 · skill v1.14.0 · `1f4b4b1d`
+meta: value-class=research(EXHAUSTION) · pkg=docs · kind=vein-exhaustion-record · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 939 · differentiationBatteries 6 (불변) · fabrication 0 · 코드 슬라이스 없음(정직한 고갈)
+
+- **무엇**: EXHAUSTION 판정. Opus 스카웃(WebSearch+레포 감사)이 7개 레버 후 **genuinely
+  새 비붐빔 차별 축 없음**을 정직히 보고. 유일한 fresh 경쟁사 약점(self-authored-skill
+  admission: hermes #25833 write-time validation 전무·#7072 Skills Guard 우회, openclaw
+  Dreaming 평문 vetting 부재)은 **Muse가 이미 닫음**(`scanSkillBodyForRisks`→quarantine·
+  `skillDraftConstraintViolations` reject·execute-gating·`validateUmbrellaCoverage`) →
+  L2+L6의 *이미-구축된* 확장이지 새 L8 아님. 차별-원장에 vein-status 기록.
+- **왜**: 7번째 레버를 가진 상태에서 8번째를 *억지로* 만드는 건 정직성 위반(약한 레버 제조
+  금지). 이 축이 *이미 방어됨*을 확인한 것 자체가 산출물 — 차별 thesis가 포괄적임을 입증.
+- **리뷰지점**: 스카웃 주장 직접 grep 검증 — `scanSkillBodyForRisks`/quarantine/
+  `skillDraftConstraintViolations`/`validateUmbrellaCoverage` 실재 확인, `validateSkillToolReferences`
+  부재 확인(유일 갭, but packages/skills+agent-core 소유-루프 영역). 출처는 스카웃 WebSearch
+  (Repello threat model·hermes #25833/#7072·openclaw privacy guides) 인용.
+- **리스크/residual**: 갭 후보 #1(skill tool-reference 무결성, #25833 dangling-ref)을
+  agent-core/skill-authoring 소유 루프 백로그로 hand-off 권고. 차별 루프는 다음 fire도
+  계속하되, 새 강한 축이 없으면 widening/consolidation 또는 진안이 theme retheme 고려.

@@ -165,7 +165,8 @@
 
 ## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
 
-- ◦ **(next) Fresh lever on a different moat axis** — fires 1/2/4/5/7 deepened local-by-construction (L1/L3), fire 8 opened "shows its work" (L4). Keep diversifying: a NEW lever on grounding (fabrication=0) or another shows-its-work facet vs hermes/openclaw. Source: differentiation fire 7 note.
+- ⏳ **fresh non-contended axis VEIN EXHAUSTED (fire 16)** — after 7 levers (L1–L7) + 6 CI-defended batteries, a research pass found no genuinely new non-contended axis; the one fresh competitor weakness (self-authored-skill admission, hermes #25833 / openclaw plaintext Dreaming) is ALREADY closed in Muse (scanSkillBodyForRisks→quarantine, deterministic draft reject, execute-gating) so it's an L2+L6 extension, not a new lever. The differentiation thesis is comprehensive. Future fires: widen/consolidate existing levers, or 진안 may retheme the loop. (differentiation fire 16)
+- ◦ **(hand-off → agent-core/skill-authoring loop) `validateSkillToolReferences`** — the one genuine gap Muse lacks (Hermes #25833 dangling-reference half): validate a self-authored skill body references only tools in the live registry. Touches `packages/skills` + skill-review = owned-loop territory, not the differentiation loop's. Source: differentiation fire 16 scout.
 
 ## ◦ Open — tool-mcp-browser axis C (browser)
 
