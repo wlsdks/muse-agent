@@ -6,6 +6,16 @@ import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { UserMemoryResponse } from "../api/types.js";
+import type { Translate } from "../i18n/index.js";
+
+// The label that introduces the timestamp lives in `memory.updated`, NOT
+// baked onto `memory.subtitle` — otherwise the subtitle dangles a bare
+// "Updated" with no value whenever the memory has no `updatedAt` yet.
+export function memorySubtitle(t: Translate, locale: string, updatedAt?: string): string {
+  const base = t("memory.subtitle");
+  if (!updatedAt) return base;
+  return `${base} · ${t("memory.updated", { when: new Date(updatedAt).toLocaleString(locale) })}`;
+}
 
 /**
  * Read-only window into what Muse remembers about the user — the facts
@@ -38,8 +48,7 @@ export function MemoryView({ client }: { client: ApiClient }) {
       <p className="eyebrow">{t("group.knowledge")}</p>
       <h1 className="page-title">{t("nav.memory")}</h1>
       <p className="muted" style={{ marginTop: 4 }}>
-        {t("memory.subtitle")}
-        {memory.data?.updatedAt ? ` · ${new Date(memory.data.updatedAt).toLocaleString(locale)}` : ""}
+        {memorySubtitle(t, locale, memory.data?.updatedAt)}
       </p>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", margin: "16px 0" }}>
