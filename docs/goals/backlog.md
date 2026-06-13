@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ Phase 3 cont.: extracted inline memoryBlock -> buildMemoryContextBlock in @muse/recall/select.ts (+test, zero new imports) — codebase-quality fire 30
 - ✓ decompose @muse/cli: moved selfLearningCheck + weaknessFuelCheck LocalCheck classifiers commands-doctor -> commands-doctor-checks.ts (939->899 LOC, continues fire 25) — codebase-quality fire 29
 - ✓ followup.cancel/snooze one-shot selection 60%→100% — root cause was a bare `id` (forced a prior list); added resolveFollowupRef (word/id ref, ambiguous→candidates) + example-bearing id descriptions, so cancel/snooze act one-shot (parity with reminders) — tool-hardening fire 70 (resolves the fire-69 followup FINDING)
 - ✓ Phase 3 cont.: extracted inline reminderBlock -> buildReminderContextBlock in @muse/recall (+test); formatDueLocal orphan removed from commands-ask — codebase-quality fire 28
