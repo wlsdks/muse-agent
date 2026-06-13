@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildHomeAssistantServiceCall, performHomeActionWithApproval } from "../src/smart-home.js";
+import { createHomeActionTool } from "../src/smart-home-tool.js";
 
 describe("buildHomeAssistantServiceCall", () => {
   it("builds the HA REST service-call request: URL, Bearer auth, entity_id + data body, summary", () => {
@@ -88,5 +89,35 @@ describe("performHomeActionWithApproval — draft-first / fail-closed (outbound-
     const outcome = await performHomeActionWithApproval(base({ approvalGate: () => ({ approved: true }), fetchImpl, sleep: async () => {} }) as never);
     expect(outcome).toMatchObject({ performed: false, reason: "failed" });
     expect(i).toBe(1);
+  });
+});
+
+describe("createHomeActionTool — fail-closed: a call with no CONCRETE target is refused (no whole-domain blast)", () => {
+  // fetch/approval must never be reached on the refuse path — the guard returns first.
+  const tool = () =>
+    createHomeActionTool({
+      actionLogFile: "/tmp/muse-ha-should-not-write.json",
+      approvalGate: (() => {
+        throw new Error("approvalGate reached — the guard should have refused first");
+      }) as never,
+      baseUrl: "http://ha.local",
+      fetchImpl: (() => {
+        throw new Error("fetch reached — the guard should have refused before any service call");
+      }) as unknown as typeof fetch,
+      token: "T",
+      userId: "u"
+    });
+
+  it("refuses 'light.turn_off' with no entity and no data target (would hit EVERY light)", async () => {
+    const r = (await tool().execute({ service: "light.turn_off" })) as Record<string, unknown>;
+    expect(r).toMatchObject({ performed: false });
+    expect(String(r["reason"])).toContain("target");
+  });
+
+  it("an EMPTY/blank data target must NOT bypass the whole-domain fail-close", async () => {
+    for (const data of [{ target: {} }, { entity_id: [] }, { entity_id: "" }, { target: { entity_id: [] } }] as const) {
+      const r = (await tool().execute({ data, service: "light.turn_off" })) as Record<string, unknown>;
+      expect(r, `data=${JSON.stringify(data)} must be refused (empty target is no target)`).toMatchObject({ performed: false });
+    }
   });
 });

@@ -293,7 +293,6 @@ export { adminDiagnostic } from "./compat-doctor.js";
 // User-memory + auth-identity helpers live in apps/api/src/compat-user-memory-store.ts.
 export {
   canAccessUserMemory,
-  currentAuthIdentity,
   deleteUserMemory,
   readUserMemory,
   toUserMemoryResponse,
@@ -418,8 +417,6 @@ export { parseRuntimeSettingType } from "./server-input-utils.js";
 
 // Body/query parsers + JSON normalizers live in apps/api/src/compat-parsers.ts.
 export {
-  chunkText,
-  epochMillisOrNull,
   isRecord,
   jsonObjectField,
   nowIso,
@@ -437,20 +434,15 @@ export {
   coerceStringSet,
   sanitizeFilename,
   stringField,
-  stringMapField,
   toBody,
   toJsonObject
 } from "./compat-parsers.js";
 
 // Error envelopes + ParseResult/ApiError types live in apps/api/src/compat-responses.ts.
 export {
-  badRequest,
   clampLimit,
   errorResponse,
   invalid,
-  notFound,
-  prefixValidationDetails,
-  validationErrorResponse,
   type ApiError,
   type ParseResult
 } from "./compat-responses.js";
