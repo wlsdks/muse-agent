@@ -340,6 +340,18 @@ export function isUtcMidnight(date: Date): boolean {
     && date.getUTCSeconds() === 0 && date.getUTCMilliseconds() === 0;
 }
 
+/**
+ * Does a YYYY-MM-DD head (year, month 1-12, day) round-trip through `Date.UTC`
+ * unchanged? `new Date("2026-02-30")` silently rolls over to Mar 2 rather than
+ * failing; a real calendar date does not. The shared rollover guard behind the
+ * task / calendar / time date parsers — reject a head this returns false for
+ * (each caller keeps its own fall-through: Error / undefined / relative-phrase).
+ */
+export function isoDateHeadRoundTrips(year: number, month1to12: number, day: number): boolean {
+  const probe = new Date(Date.UTC(year, month1to12 - 1, day));
+  return probe.getUTCFullYear() === year && probe.getUTCMonth() === month1to12 - 1 && probe.getUTCDate() === day;
+}
+
 export function resolveRelativeTimePhrase(phrase: string, now: () => Date): Date | undefined {
   const trimmed = phrase.trim().toLowerCase();
   if (trimmed.length === 0) {

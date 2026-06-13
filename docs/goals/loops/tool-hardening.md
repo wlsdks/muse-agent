@@ -954,3 +954,12 @@ ratchet: testFiles 976 유지(+createHomeActionTool 첫 테스트 3 it) · fabri
 - **왜:** home 도구는 어느 prior scout도 examine 안 한 fresh 표면(genuinely un-examined). createHomeActionTool은 **테스트 전무**. outbound-safety의 fail-close 우회 = 高harm 보안 홀(되돌릴 수 없는 whole-domain 액션). KIND=fail-close-bypass(rollover/IrrelAcc/recall과 구별).
 - **리뷰지점:** smart-home-tool.ts dataHasTarget만 변경(service-format·entityId·performHomeActionWithApproval 불변). 테스트 = **승인 게이트 + fetch 스파이**(가드만이 콜 차단 가능): empty-target RED("expected performed:true,status:200" — 승인 액션이 fetch escape)→GREEN(calls=[]) + no-target refuse + concrete entity proceed. 첫 weak 시도(performed:false만)는 throwing-gate가 catch→false-green이라 fetch-spy로 강화. 전 suite 1872, pnpm check exit=0, lint clean. ④b judge PASS 5/5(pre-fix revert로 RED 재현, 전 HA 타깃 shape over-rejection 없음 확인).
 - **리스크:** 없음 — 가드를 더 fail-closed로(legitimate concrete 타깃은 전부 통과 확인). 교훈: fail-close 가드는 키 존재가 아닌 concrete 값 검사여야(empty가 우회). fetch-spy + 승인-게이트가 보안 fail-close의 올바른 teeth(performed:false만으론 false-green).
+
+
+## fire 94 · 2026-06-14 · skill v1.14.0 · (no-slice)
+meta: value-class=exhaustion-report · pkg=none · kind=fresh-handler-bug-vein-exhausted(6 버그 수정 후 clean) · verdict=NO-SLICE · firesSinceDrill=2
+ratchet: testFiles 977 유지 · fabrication 0 유지 · 코드 변경 0(EXHAUSTION honest-close)
+- **무엇:** 슬라이스 없음(honest-close). 이 fire 직접 clean 검증: web_action(URL length·method allow-set·SSRF guard 전부 concrete)·remember_fact(key/value non-empty·slug sanitize)·mac_spotlight `--`(non-viable: mdfind `--` 미지원, 작성자 인지, leading-dash는 error 반환=read-only 무해). tight scout: scheduler(없음)·skills(allowlist+spawn 안전)·feeds/objectives(read, clamp 정확)·loopback-helpers(공유 numeric helper 부재)·relative-time(~50 phrase 라이브 정확) 전부 clean.
+- **왜:** fresh-handler 버그 vein이 fires 87-93(contacts·calendar·time·on_this_day·home_action 5 버그 + drill 1)에서 productive였으나 이제 **고갈** — 3 scout(87/89/92) + tight scout(94) + 직접 grep이 표면 well-hardened 확정. EXHAUSTION 규칙: value-class 상향(bug-hunt scout) 시도 → dry. "할 게 없다" 아님: 6 fire 연속 genuine 수정 후의 정직한 maturity.
+- **리뷰지점:** 코드 변경 0. 미수행 옵션: (a) DRY-refactor(rollover 가드 3-copy → 공유 helper) = risky(보안 date 파서 3개 fiddly rewire) + codebase-quality territory(backlog ◦ 유지). (b) week-agenda daysUntil 정수-가드 = scout가 non-user-reachable·not-a-bug 판정("could be stricter" 안티패턴). 둘 다 이 fire 슬라이스로 부적합.
+- **리스크:** 없음 — 코드 무변경. 다음 fire: 진안 unblock 레버(email/handle grounding=agent-core-hot, MCP-risk posture, undo/veto) 또는 새 신호(.muse/runs 실패 클러스터) 또는 재-fresh-scout(다른 표면). vein 고갈 backlog 기록.
