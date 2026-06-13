@@ -150,6 +150,7 @@ describe("runActuatorByName — outbound-safety acceptance + action log", () => 
     const file = logFile();
     const result = await runActuatorByName("web_action", { summary: "Book", url: "http://x.test/book" } as JsonObject, deps({ actionLogFile: file, fetchImpl }));
     expect(result).toMatchObject({ ran: false, reason: "failed" });
+    expect((result as { detail: string }).detail).toContain("HTTP 500"); // the failure detail surfaces the upstream status
     expect(calls).toEqual(["http://x.test/book"]); // the attempt fired once (no retry — a retried POST can double-act)
     expect((await readActionLog(file)).map((e) => e.result)).toEqual(["failed"]);
   });

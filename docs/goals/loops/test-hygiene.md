@@ -182,3 +182,11 @@ ratchet: testFiles 964 (케이스 +1, 파일수 불변) · netCoverage +2 branch
 - **왜:** 결정적 retry/stop-condition 정책 코드(CLAUDE.md "policy/budget/stop은 결정적 코드"). NaN 가드와 같은 오설정-방어 계열인데 — multiplier<1이면 재시도 간격이 *줄어* 실패 중인 provider를 더 때림(조용한 회귀 가능).
 - **어떻게-증명(MUTATION-FIRST ADD):** multiplier `Math.max(1,…)` 제거 시 0.5→`100*0.5²=25`로 multiplier-assert만 RED; maxDelay `Math.max(initial,…)` 제거 시 50으로 cap→maxDelay-assert만 RED. 각 assert가 자기 clamp만 잡음(독립·비-동어반복), 다른 25 green. 독립 ④b Opus judge가 양 mutation 재현 + 양 clamp 미커버 + 값(둘 다 100) 정확성 확인 → **VERDICT: PASS**.
 - **리스크:** 테스트-only, 소스 무변경, resilience 격리 green. ★`pnpm check` red 1건은 **무관 환경**(apps/api `messaging-webhooks` buildServer 20s timeout, 격리 4/4 8.6s — fire 18과 동일 부하 아티팩트, backlog既기록).
+
+## fire 22 · 2026-06-14 · skill v1.14.0 · 6e17c3b9
+meta: kind=prune(consolidate) · pkg=@muse/mcp · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 966→965 (−1 통합, 유니크 assert 1 이식) · netCoverage 0 (overlap만 제거) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** mcp 동명 쌍 `run-actuator-by-name` **통합**(fire 20 vein, 2번째 mcp 쌍) — 콜로케이트 `src/`(12케이스, **outbound-safety acceptance + action-log** describe 포함: performed/refused/failed 로깅·throwing-approval fail-close·ambiguous-recipient 거절)가 thinner `test/`(5케이스)를 1개 빼고 전부 동등-이상 커버. 그 1개("실패 detail이 `HTTP 500` 포함")만 src/ 500-케이스에 이식, `test/` 삭제. 더 fuller한 쪽이 src/라 src/ 유지.
+- **왜:** outbound 액추에이터 디스패처(outbound-safety.md 핵심) — 두 파일 중복 실행. src/는 fail-close·action-log까지 더 강하나, test/의 "detail이 HTTP status 노출" assert만 src/에 없었음(손실 금지).
+- **어떻게-증명(MUTATION-FIRST):** `web-action.ts:173`의 `server rejected (HTTP ${status})`에서 status 텍스트 제거 시 이식한 assert만 RED(`'server rejected' to contain 'HTTP 500'`), 나머지 11 green → 진짜 가드 + 유일성. 복원+클린리빌드 12/12 green. ④b 독립 Opus judge가 삭제본 5개 행동 전수 매핑(전부 equal-or-stronger, fail-close/approval/action-log 손실 0) + mutation 재현 → **VERDICT: PASS**.
+- **리스크:** 소스(비-test) 무변경. 변경 −58L(test/ 삭제) +1L(이식) 2건뿐. mcp dist 클린리빌드 1회. 남은 mcp 동명 쌍 12개.
