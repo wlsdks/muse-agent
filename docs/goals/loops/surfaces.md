@@ -157,7 +157,7 @@ ratchet: cli tests 2618/2618 (tasks +2) · fabrication 0 · self-eval exit 0 · 
 - **리뷰지점**: 락은 `.description()`(=`--help` 출력) 문자열 — 내부 상수 아닌 사용자 표면. 새 텍스트는 `compareTasksByDueDate`(soonest-first·undated-last)와 정확히 일치(새 거짓 아님). 순서 테스트만으로는 help-fix를 못 잠금(드릴이 입증).
 - **리스크**: 없음(description 1줄 + 2 테스트, 다른 명령 무변, 독립 Opus judge 2회(inert FAIL→real PASS, 둘 다 revert로 실증) 검증, cli 2618/2618).
 
-## fire 18 · 2026-06-13 · skill v1.14.0 · <commit>
+## fire 18 · 2026-06-13 · skill v1.14.0 · ad46fb40
 meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=pluralization · verdict=PASS · firesSinceDrill=1
 ratchet: cli tests 2619/2619 (today +1) · fabrication 0 · self-eval exit 0 · ⚠️cli vein도 얇아짐(scout) → 향후 행동 갭/누락 플래그·cross-command 일관성 권장
 
