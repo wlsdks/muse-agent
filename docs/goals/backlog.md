@@ -123,6 +123,8 @@
 
 ## GROUNDING INTEGRITY theme — open
 
+- ◦ wire reportCitationPrecision into a surface — the ALCE per-citation support diagnostic (fire 14) is pure+tested but not called; surface it (ask/chat receipt cue when precision<1, or a `muse doctor --grounding` metric) with an e2e test. (scouted fire 14)
+
 - ◦ untrusted-only provenance e2e firing-rate (ask AND chat) — the untrusted-only cue on both the ask (`untrustedOnlyGroundingNotice`, fire 1) and chat (`untrustedOnlyChatNotice`, fire 3) surfaces is unit-pinned, but production firing depends on the model citing tool sources as `[from <src>]`. Measure/repair the real firing rate via `eval:grounding-delta` on a `--with-tools` poisoned-source case; if firing is too low, make the cue depend on tool-only grounding directly (toolGrounded + no trusted-note coverage) rather than citation presence. (scouted grounding-integrity fire 1, broadened fire 3)
 - ◦ broaden source-conflict value extraction — the `label: value` regex truncates values at comma/period (`Address: 12 Baker St, London` → only "12 Baker St"), a partial false-negative. Broaden extraction (handle comma-bearing values like addresses) without re-introducing the prose/clock-time false positives. (noted fires 7-9)
 
@@ -141,6 +143,7 @@
 - ✓ empty-evidence fail-close on the PRIMARY reverify gate — verifyGroundingWithReverify escalated to the judge with evidence="" (high-cosine empty-text match → confidence>0), and a YES upgraded a fabrication to grounded — the floor leak f4 closed for council/reflection, still open on the main recall/ask/chat gate; now fail-closes without consulting the judge (strictly tightens, isolated-removal verified) — grounding-integrity fire 11
 - ✓ enricher CRAG gate fail-open fixed — the ambient "Related:" brief enricher classified confidence on `[top]` only, zeroing the runner-up and disabling the near-tie margin guard, so an ambiguous recall rode into the daily brief as confident; now classifies the full post-exclusion candidate list via pure selectEnricherLine (isolated-mutation verified) — grounding-integrity fire 12
 - ✓ date-drift guard on the sync chat gate — the chat gate guarded IP/number/email/identifier but not DATES; valueNumbers drops month/day so a same-year drifted ISO date (2026-09-13 vs -14) passed; added answerAssertsUnsupportedDate (ISO-only, evidence-must-have-a-date so false-refusal≈0) before the number guard — grounding-integrity fire 13
+- ✓ ALCE per-citation support precision (arXiv:2305.14627) — added reportCitationPrecision: scores each cited sentence against ONLY its cited source's text (right-source/wrong-claim), distinct from existence (enforceAnswerCitations) and union-groundedness; diagnostic primitive, existence-only mutation verified — grounding-integrity fire 14
 
 <!-- Going-forward: `- ✓ <item title> — <slug> fire N` so the scout dedups without the verbose block. -->
 - ✓ Adaptive-k score-gap recall cutoff (trim grounding-window decoys, floor-neutral; arXiv:2506.08479) — agent-core-cognition fire 1
