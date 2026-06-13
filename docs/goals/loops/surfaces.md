@@ -184,7 +184,7 @@ ratchet: testFiles 961 (+1) · web tests 29/29 (+3) · fabrication 0 · self-eva
 - **리뷰지점**: 추출은 render-equivalent(NAV/GROUPS·`.active`·아이콘·라벨·tasks 배지 보존, onClick=onSelect→setView 배선). `nav.primary` en/ko 양쪽 추가(파리티). `aria-current` 값은 올바른 `"page"` 토큰. cosmetic: `<nav>` 래퍼가 그룹을 한 단계 더 중첩하나 `.sidebar-foot margin-top:auto`로 무해.
 - **리스크**: 없음(App.tsx 추출+a11y + strings 2키 + 신규 테스트, brand/sidebar-foot 무변, 독립 Opus judge가 RED-before·추출 충실성·parity 검증 후 PASS, web 29/29).
 
-## fire 21 · 2026-06-14 · skill v1.14.0 · <commit>
+## fire 21 · 2026-06-14 · skill v1.14.0 · b67f2676
 meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=a11y-toggle-aria-pressed · verdict=PASS · firesSinceDrill=4
 ratchet: testFiles 965 (+1) · web tests 30/30 (+1) · fabrication 0 · self-eval exit 0 · ⚠️순수 props-injected a11y vein 거의 소진(scout) — 이후는 추출/Button aria 배선 필요
 
