@@ -35,7 +35,7 @@ import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
 import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, listReflections, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
-import { allUserMemoryFacts, buildDiskContents, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, escapeSystemPromptMarkers, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
+import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, escapeSystemPromptMarkers, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, buildDiskContents, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource };
@@ -1906,11 +1906,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // action log missing or unreadable — silently skip
         }
       }
-      const actionBlock = matchedActions.length === 0
-        ? "(no matching actions)"
-        : matchedActions
-          .map((a, i) => `<<action ${(i + 1).toString()} — ${a.when.slice(0, 10)}>>\n${a.what} — ${a.result}${a.detail ? ` (${a.detail})` : ""}\n<<end>>`)
-          .join("\n\n");
+      const actionBlock = buildActionContextBlock(matchedActions);
 
       // Phase 2 (runtime self-tuning): the ACE playbook's [Learned
       // Strategies] reach the agent-runtime (--with-tools) path via the

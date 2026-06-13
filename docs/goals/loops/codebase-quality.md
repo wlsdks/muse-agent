@@ -626,3 +626,21 @@ ratchet: testFiles 954 · fabrication 0 · groundedSurfaces 27 · commands-docto
   (the latest-tag-normalize matching), isOllamaTagsEntry exported for runLocalDoctor, re-export keeps doctor tests
   green (2613 cli), formatBytes correctly NOT entangled (embedModelCheck stayed).
 - **Risk:** low — pure relocation of pure tag-matching utils; no IO, no floor path.
+
+## fire 34 · 2026-06-13 · loop-creator v1.14.0 · 1b83c016
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 955 · fabrication 0 · groundedSurfaces 27 · ask god-file: 6th inline block extracted
+- **What:** Phase 3 continuation — extracted the inline `actionBlock` builder (`<<action N>>` grounding block)
+  from commands-ask.ts into a pure `buildActionContextBlock(actions)` in @muse/recall/present.ts, using a
+  structural input type `{when, what, result, detail?}` (so ActionLogEntry[] is assignable, no @muse/mcp ActionLogEntry
+  import). This is the fire-33 JUDGE-DRILL target done CORRECTLY: `a.when.slice(0, 10)` (YYYY-MM-DD), the exact value
+  the drill had sabotaged to slice(0,7). Body byte-identical to the original inline; 4-case OUTCOME test added
+  (incl. a regression assert that the date is the FULL YYYY-MM-DD, not month-only). selectGroundingActions/
+  readActionLog/ActionLogEntry stay in commands-ask (source fetch) → no orphans.
+- **Why:** continues moving the ask pipeline's inline blocks to recall; 6 of ~12 now extracted (task/reminder/
+  memory/shell/git/action). compose@recall 4/8 in the window (within ceiling). The drill having targeted this block
+  makes its correct extraction a natural, well-understood follow-through.
+- **Review point:** 4b judge — actionBlock body byte-identical (esp. slice(0,10) NOT slice(0,7) — the drilled bug;
+  the `${a.what} — ${a.result}` + detail-conditional template); structural type accepts ActionLogEntry[]; new test
+  pins the full-date format (would catch the slice(0,7) regression); recall 193 + cli 2613 green.
+- **Risk:** low — pure presentation relocation; the test now guards the exact field the drill exposed as untested.
