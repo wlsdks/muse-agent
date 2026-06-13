@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ dead-code @muse/messaging: removed dead MessagingValidationError re-export from telegram-provider (index already re-exports it; knip-clean) — codebase-quality fire 44
+- ◦ **macos-tools capture cluster decompose (DEFERRED fire 44 — needs untangling)** — screenshot/screenread tools share the path-validator helpers (tryRealpath/screenshotAllowedRoots/expandTilde/resolveScreenshotPath, the screenshot output-path security sandbox) + basename/dirname/homedir node imports with non-capture tools. Step 1: relocate the path-validator sandbox to a sibling (it is capture-only) + confirm no other tool uses those 4 fns; THEN move screenshot/screenread over the macos-exec base (like fire 43).
 - ✓ notes.append no-partial-side-effect: an over-cap append now CHECKS the resulting size BEFORE writing → a failed append mutates NOTHING (was: wrote the oversized bytes THEN errored, leaving the note past its cap = next read fails as oversized) — tool-hardening fire 80
 - ✓ decompose @muse/macos: extracted 3 utility tools (clipboard/spotlight/say) + consts -> macos-utility-tools.ts (1519->1352 LOC; resumes fire-19 DECOMPOSE-ON-DEFER) — codebase-quality fire 43
 - ✓ Phase 3 cont.: extracted inline contactBlock -> buildContactContextBlock in @muse/recall/select.ts (10/12 ask blocks; +test) — codebase-quality fire 42
