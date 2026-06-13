@@ -287,7 +287,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           // Recurring events: "매주 월요일 팀 회의" must REPEAT, not silently become a
           // one-time event. Take the explicit `recurrence` cadence, else infer it
           // from the start phrase ("매주"/"every week"). Map to an iCalendar RRULE,
-          // which the local provider already expands (CLI `--repeat`, P41-37).
+          // which the local provider already expands (CLI `--repeat`).
           const cadenceArg = readString(args, "recurrence")?.trim().toLowerCase();
           const cadence = (cadenceArg && CALENDAR_CADENCES.has(cadenceArg) ? cadenceArg : undefined)
             ?? recurrenceFromPhrase(startsAtRaw ?? "");

@@ -245,7 +245,7 @@ export function registerPatternCommands(program: Command, io: ProgramIO): void {
 }
 
 // Absent flag → fallback. An explicitly-provided bad value
-// rejects (per the strict-numeric line, goals 143/144/155)
+// rejects (per the strict-numeric line)
 // instead of silently masking the user's intent with the
 // default.
 export function parseLimit(raw: string | undefined, fallback: number, cap: number): number {

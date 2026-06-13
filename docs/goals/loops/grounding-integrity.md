@@ -66,3 +66,11 @@ ratchet: recall +3 tests (13 pass) · cli 2584 pass · lint 0/0 · fabrication 0
 - 왜: detector가 존재·테스트됐지만 호출이 0이라 모순 출처가 여전히 사용자에게 하나의 깔끔한 receipt로 도달했음 — wiring이 그 갭을 닫음.
 - 리뷰지점: `--connect` 무관(안전 cue), conflict 있을 때만 발화(fire 7 hardening이 prose/시각 오발 차단), stdout/--json 불변. 합성은 recall에서 단위테스트(note-note + note-vs-episode cross-source), CLI glue는 thin emit. 독립 Opus judge 5/5 PASS(cli 2584 green).
 - 리스크: 없음 수준(conflict 없으면 무출력). chat 표면 동일 wiring은 후속(현재 ask만).
+
+## fire 9 · 2026-06-13 · skill v1.14.0 · 70814c0a (JUDGE-DRILL + real fix)
+meta: value-class=redteam-defense · pkg=@muse/recall+@muse/cli · kind=A · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: recall +2 tests (15 pass) · cli 2591 pass · lint 0/0 · fabrication 0 · JUDGE-DRILL 통과 (RATCHET: A·B·A·C·B·C·A·A·A — pkg 5종)
+- JUDGE-DRILL(연속 allPASS 8 도달): 고의 나쁜 슬라이스 주입 — detectSourceConflict를 `return []`로 무력화(capability 제거/floor 회귀) + 그걸 못 잡는 inert 테스트(`toBeDefined()`만, 빈 배열도 통과). inert 테스트는 무력화된 detector에도 green 통과(위험 상태 재현). 독립 Opus judge가 **VERDICT: FAIL** — inert 테스트 vacuous + detector 무력화 + 실제 테스트 red 될 것까지 정확히 적발. → verifier가 8연속 green에 무뎌지지 않았음 증명(maker≠judge 보상통제 작동). 드릴 아티팩트 git restore 롤백(clean 확인).
+- 진짜 fix: fire 8의 conflict cue를 **chat 표면으로 확장**(every-surface parity) — `conflictCueFromMatches(matches)`(recall, KnowledgeMatch형→hits) + finalizeGatedChatAnswer에서 사용자 자신의 grounding(args.matches)에 적용해 모순 시 답에 append. ask(fire8)+chat 둘 다 이제 모순 표면화.
+- 리뷰지점: conflict 있을 때만 append(fire7 hardening이 오발 차단), gate 결정/untrusted cue/receipt 불변. 합성은 recall 단위테스트, CLI glue는 thin append. 독립 Opus judge 5/5 PASS(cli 2591 green).
+- 리스크: 없음 수준. v1 regex comma-truncation false-negative는 여전(허용). chat도 ask와 동일 caveat.

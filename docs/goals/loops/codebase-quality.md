@@ -351,3 +351,25 @@ ratchet: testFiles 939 · fabrication 0 · groundedSurfaces 27 · macos-tools.ts
   tests + 226 cli files stay green. New test is real behavior, not declaration.
 - **Risk:** low — native macOS tools are injection-tested via deps; no grounding/floor/outbound
   path touched (mac_message_send approval gate untouched). agent-core/mcp left alone (hot loops).
+
+## fire 20 · 2026-06-13 · loop-creator v1.14.0 · 6d260349
+meta: value-class=refactor · pkg=multi(model/mcp/api/cli) · kind=comment-hygiene · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 941 · fabrication 0 · groundedSurfaces 27 · markers stripped 5
+- **What:** comment-hygiene sweep — stripped 5 forbidden goal/task-id markers from source
+  comments (code-style.md hard rule: "Task / PR / caller references", "Goal NNN" = rot, delete
+  on sight), preserving the load-bearing WHY in each: adapter-ollama.ts ("mirroring the embed-model
+  hints in goals 164/167/168" → "…hints."), weather-tool.ts ("goal-795 rain heads-up" → "rain
+  heads-up"), loopback-calendar.ts ("CLI --repeat, P41-37" → "CLI --repeat"), history-routes.ts
+  ("goal-554 CLI convention" → "CLI convention"), commands-pattern.ts ("strict-numeric line,
+  goals 143/144/155" → "strict-numeric line"). Only the bare id tokens removed; every surrounding
+  reason kept.
+- **Why:** diversity — fires 18/19 were both decompose; comment-hygiene was 0/8 recent + a fresh
+  KIND. These task-id refs are exactly the rot code-style.md says lives in git/CHANGELOG, not source.
+  Scoped to cold/cold-ish files (model/mcp-calendar/mcp-weather/api/cli-pattern) to dodge merge
+  collisions with the hot concurrent loops (agent-core mid-merge; skipped agent-core/autoconfigure-P43
+  + recall/select.ts which other loops actively churn).
+- **Review point:** 4b judge — every removal is a bare goal/task-id token, NOT a load-bearing WHY
+  (the surrounding reason stays); behavior unchanged (comment-only; 4 touched-pkg tsc -b builds pass,
+  comments stripped by compiler anyway); no leftover id markers in the 5 files.
+- **Risk:** none — comment-only, no code/type/behavior change. Merge-collision risk mitigated by
+  cold-file scoping; if a comment line conflicts at merge it resolves trivially.

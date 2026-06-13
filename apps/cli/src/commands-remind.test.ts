@@ -6,7 +6,7 @@ import { readReminders, writeReminders, type PersistedReminder } from "@muse/mcp
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { registerRemindCommands, resolveLocalReminderId, type RemindCommandHelpers } from "./commands-remind.js";
+import { filterRemindersBySearch, registerRemindCommands, resolveLocalReminderId, type RemindCommandHelpers } from "./commands-remind.js";
 
 interface ApiCall {
   readonly path: string;
@@ -279,5 +279,44 @@ describe("resolveLocalReminderId — by TEXT (CLI parity with the agent's by-nam
 
   it("still throws not-found when neither id nor text matches", () => {
     expect(() => resolveLocalReminderId("nonexistent", reminders)).toThrow(/reminder not found: nonexistent/u);
+  });
+});
+
+describe("muse remind list --search — text filter (sibling parity with `tasks list`)", () => {
+  const reminder = (o: Partial<PersistedReminder>): PersistedReminder => ({
+    createdAt: "2026-05-20T00:00:00.000Z",
+    dueAt: "2026-05-21T10:00:00Z",
+    id: "r",
+    status: "pending",
+    text: "x",
+    ...o
+  });
+  const prevEnv = process.env.MUSE_REMINDERS_FILE;
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.MUSE_REMINDERS_FILE;
+    else process.env.MUSE_REMINDERS_FILE = prevEnv;
+  });
+
+  it("narrows the list to reminders whose text matches, case-insensitive", async () => {
+    const f = join(mkdtempSync(join(tmpdir(), "muse-rem-search-")), "reminders.json");
+    process.env.MUSE_REMINDERS_FILE = f;
+    await writeReminders(f, [
+      reminder({ id: "a", text: "Call the dentist" }),
+      reminder({ id: "b", text: "buy milk" })
+    ]);
+    const r = await runRemind(["list", "--local", "--json", "--search", "DENTIST"]);
+    expect(r.error).toBeUndefined();
+    const payload = JSON.parse(r.stdout) as { reminders: { text: string }[]; total: number };
+    expect(payload.reminders).toHaveLength(1);
+    expect(payload.reminders[0]!.text).toBe("Call the dentist");
+    expect(payload.total).toBe(1);
+  });
+});
+
+describe("filterRemindersBySearch", () => {
+  it("matches text case-insensitively and returns all on a blank query", () => {
+    const rems = [{ text: "Alpha" }, { text: "beta" }];
+    expect(filterRemindersBySearch(rems, "ALPHA")).toHaveLength(1);
+    expect(filterRemindersBySearch(rems, "   ")).toHaveLength(2);
   });
 });

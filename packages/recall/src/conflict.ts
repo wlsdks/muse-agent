@@ -87,6 +87,21 @@ export function groundingConflictCue(
   return formatSourceConflictWarning(hits);
 }
 
+/**
+ * Source-conflict cue from a flat list of grounding matches ({source, text} — the
+ * KnowledgeMatch shape the chat path carries). Maps them to hits and runs the
+ * hardened detector; non-undefined means two of the user's own grounded sources
+ * disagree. Pure. (The ask path uses `groundingConflictCue`; this is its chat-side
+ * sibling for the already-flat match list.)
+ */
+export function conflictCueFromMatches(
+  matches: ReadonlyArray<{ readonly source: string; readonly text: string }>
+): string | undefined {
+  return formatSourceConflictWarning(
+    matches.map((m) => ({ ref: m.source, score: 1, snippet: m.text, source: "notes" as const }))
+  );
+}
+
 export function formatSourceConflictWarning(hits: readonly RecallHit[]): string | undefined {
   const conflicts = detectSourceConflict(hits);
   if (conflicts.length === 0) return undefined;

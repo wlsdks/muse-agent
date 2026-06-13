@@ -75,3 +75,12 @@ ratchet: desktop swift tests 49/49 (+1) · fabrication 0 · self-eval exit 0 · 
 - **왜**: consecutive allPASS=7로 검증자가 PASS만 해와, 실제로 나쁜 슬라이스를 FAIL시키는지 점검 필요(maker=judge 보상통제 — agent-testing.md). 동시에 영수증 멀티라인 누출은 진짜 desktop 음성 버그(파일경로 낭독).
 - **리뷰지점**: 영수증은 항상 trailing(`present.ts` 38/163/328) → 📎-to-end strip 안전. 드릴이 검증자가 rubber-stamp가 아님을 증명; firesSinceDrill 0 리셋.
 - **리스크**: 없음(정규식 1줄 + 행동 테스트, 기존 single-line/inline 테스트 무변, bubbleText 무영향, 독립 Opus judge 2회(inert FAIL→real PASS) 검증, 49/49). ⚠️동시 codebase-quality 루프 주석편집이 worktree에 bleed-over → 비-desktop 8파일 `git checkout`으로 복원 후 내 슬라이스만 커밋.
+
+## fire 9 · 2026-06-13 · skill v1.14.0 · 69ab0056
+meta: surface=cli · value-class=new-capability · pkg=@muse/cli · kind=sibling-parity-flag · verdict=PASS · firesSinceDrill=1
+ratchet: cli tests 2593/2593 (remind 25, +2) · fabrication 0 · self-eval exit 0 · 표면 균형 web3·desktop3·cli3 · value-class 다양화(micro-fix 연속 깨고 new-capability)
+
+- **무엇**: `muse remind list`에 `--search <text>` 자유텍스트 필터 추가(sibling `muse tasks list`의 `filterTasksBySearch` 패턴 미러). 순수 export 헬퍼 `filterRemindersBySearch`(trim·lowercase·blank→전체·`text` substring) + 옵션 + payload 해소 後 필터(local/API/fallback 전 경로) + `total` 보정.
+- **왜**: tasks-list엔 텍스트 검색이 있는데 병렬 reminders-list엔 없어, 리마인더가 많은 사용자가 내용으로 못 좁혔다(병렬 명령 capability 불일치). 리마인더는 `text` 단일 검색필드 보유.
+- **리뷰지점**: 필터는 payload 할당 後 적용 → 세 경로(local store/API/api-unreachable fallback) 모두 커버. 빈 쿼리는 진짜 no-op(`options.search?.trim()` undefined). MCP reminders 도구는 tool-hardening 소관이라 미변경(CLI 명령만).
+- **리스크**: 없음(commands-remind.ts 헬퍼+옵션+필터블록 + 2 테스트, 다른 remind 서브커맨드/명령 무변, 독립 Opus judge가 RED-before·total보정·전경로·sibling패리티 검증 후 PASS, cli 2593/2593).

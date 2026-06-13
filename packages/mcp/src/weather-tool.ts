@@ -3,7 +3,7 @@
  * a place, so a `muse ask` conversation can answer "what's the weather
  * in Seoul?" / "will it rain this afternoon?". Read-only; open-meteo
  * needs no API key (zero-cost), so it's always available. Reuses
- * `resolveWeatherLine` (incl. the goal-795 rain heads-up).
+ * `resolveWeatherLine` (incl. the rain heads-up).
  */
 
 import type { JsonObject } from "@muse/shared";

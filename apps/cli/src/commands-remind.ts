@@ -87,6 +87,20 @@ const remindLocalFallback = <T>(
   api: () => Promise<T>
 ): Promise<T> => withApiLocalFallback(io, useLocal, local, api, "reminders");
 
+// Sibling of `filterTasksBySearch` (commands-tasks.ts): narrow a reminder list
+// by a free-text substring of its `text`, case-insensitive. A blank query
+// returns everything (the flag is a no-op when empty).
+export function filterRemindersBySearch<T extends { readonly text?: unknown }>(
+  reminders: readonly T[],
+  query: string
+): T[] {
+  const q = query.trim().toLowerCase();
+  if (q.length === 0) {
+    return [...reminders];
+  }
+  return reminders.filter((r) => (typeof r.text === "string" ? r.text.toLowerCase() : "").includes(q));
+}
+
 export function registerRemindCommands(program: Command, io: ProgramIO, helpers: RemindCommandHelpers): void {
   const remind = program.command("remind").description("Personal reminders (passive — surfaced in `muse today`)");
 
@@ -197,7 +211,8 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
     )
     .option("--local", "Read directly from the local reminders file instead of the API")
     .option("--json", "Print the raw response instead of the formatted list")
-    .action(async (options: { readonly status: string } & SharedOptions, command) => {
+    .option("--search <text>", "Only reminders whose text contains this text (case-insensitive)")
+    .action(async (options: { readonly status: string; readonly search?: string } & SharedOptions, command) => {
       // Throws before dispatch so a typo'd --status doesn't return
       // a silently-wrong "pending" list.
       assertReminderStatusInput(options.status);
@@ -228,6 +243,11 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
           io.stderr("muse: API not reachable — reading reminders from the local store.\n");
           payload = await readLocalReminders();
         }
+      }
+      const query = options.search?.trim();
+      if (query) {
+        const matched = filterRemindersBySearch(payload.reminders, query);
+        payload = { ...payload, reminders: matched, total: matched.length };
       }
       if (options.json) {
         helpers.writeOutput(io, payload);
