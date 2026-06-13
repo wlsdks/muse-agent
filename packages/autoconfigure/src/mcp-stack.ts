@@ -4,6 +4,7 @@ import {
   DefaultMcpTransportConnector,
   McpManager,
   McpSecurityPolicyProvider,
+  OFFICIAL_MCP_PRESETS,
   type McpSecurityPolicyStore,
   type McpServerInput,
   type McpServerStore,
@@ -60,19 +61,41 @@ export function assembleMcpStack(
       ...(browserUrl && browserUrl.length > 0 ? { browserUrl } : {})
     }));
   }
+  // Official-public preset opt-in (mirrors the Chrome turnkey above):
+  // MUSE_GITHUB_MCP_ENABLED / MUSE_NOTION_MCP_ENABLED register the
+  // curated GitHub / Notion remote preset behind an explicit toggle.
+  // Default OFF; skipped if the user already declared that server in
+  // mcp.json. NO secret is shipped — the official server runs its own
+  // OAuth, or the user supplies a header credential in mcp.json; absent
+  // a credential the connect simply fails, it is never invented here.
+  // The fail-close write classification reaches the live approval gate
+  // via `withOfficialMcpRisk` in the runtime projection.
+  const enabledOfficialPresets = Object.values(OFFICIAL_MCP_PRESETS).filter(
+    (preset) =>
+      parseBoolean(env[`MUSE_${preset.name.toUpperCase()}_MCP_ENABLED`], false)
+      && !externalServerInputs.some((server) => server.name === preset.name)
+  );
+  for (const preset of enabledOfficialPresets) {
+    externalServerInputs.push(preset.create());
+  }
   const configuredAllowedServers = parseCsv(env.MUSE_MCP_ALLOWED_SERVERS);
-  // An explicit Chrome enable must not be silently denied by an
-  // unrelated strict allowlist. A non-empty allowlist is strict
-  // (undefined / empty = allow-all), so if the user pinned other servers
-  // AND turned Chrome on, honor that intent by allowing chrome-devtools
-  // too. An empty/absent allowlist is left untouched — adding to it would
-  // flip allow-all into a 1-entry strict list that blocks everything else.
+  // An explicit turnkey enable (Chrome or an official preset) must not be
+  // silently denied by an unrelated strict allowlist. A non-empty
+  // allowlist is strict (undefined / empty = allow-all), so if the user
+  // pinned other servers AND turned a turnkey server on, honor that intent
+  // by allowing that server too. An empty/absent allowlist is left
+  // untouched — adding to it would flip allow-all into a strict list that
+  // blocks everything else.
+  const turnkeyEnabledServers = [
+    ...(parseBoolean(env.MUSE_CHROME_DEVTOOLS_ENABLED, false) ? [CHROME_DEVTOOLS_MCP_SERVER_NAME] : []),
+    ...enabledOfficialPresets.map((preset) => preset.name)
+  ];
   const allowedServerNames =
-    parseBoolean(env.MUSE_CHROME_DEVTOOLS_ENABLED, false)
-    && configuredAllowedServers
-    && configuredAllowedServers.length > 0
-    && !configuredAllowedServers.includes(CHROME_DEVTOOLS_MCP_SERVER_NAME)
-      ? [...configuredAllowedServers, CHROME_DEVTOOLS_MCP_SERVER_NAME]
+    configuredAllowedServers && configuredAllowedServers.length > 0
+      ? [
+          ...configuredAllowedServers,
+          ...turnkeyEnabledServers.filter((name) => !configuredAllowedServers.includes(name))
+        ]
       : configuredAllowedServers;
   const initialPolicy = {
     allowedServerNames,

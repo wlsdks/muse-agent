@@ -64,6 +64,7 @@ import {
   resolveUpcomingBirthdays,
   upsertFollowup,
   withChromeDevToolsRisk,
+  withOfficialMcpRisk,
   type LoopbackMcpServer,
   type McpManager,
   type McpTransportConnector,
@@ -746,7 +747,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       createContactsRemoveTool({ contacts: () => queryContacts(resolveContactsFile(env)), remove: (id) => removeContact(resolveContactsFile(env), id) })
     ],
     () => options.extraTools ?? [],
-    () => withChromeDevToolsRisk(mcp.manager.toMuseTools()),
+    () => withOfficialMcpRisk(withChromeDevToolsRisk(mcp.manager.toMuseTools())),
     () => schedulerHandle.current ? createSchedulerTools(schedulerHandle.current) : []
   ]);
   const autoExtractHook: HookStage | undefined = parseBoolean(env.MUSE_USER_MEMORY_AUTO_EXTRACT, true) && modelProvider && defaultModel

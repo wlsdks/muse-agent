@@ -122,6 +122,36 @@ describe("matchElementResult — surfaces ambiguity instead of guessing (fail-cl
     expect(matchElementResult(els, "checkout", "click").kind).toBe("none");
   });
 
+  it("a TYPE intent whose only match is an untypeable button → notypeable, NOT a match (no fill into a button)", () => {
+    // The page has no text field; "Sign in" matches the button. Typing into it
+    // would fail after the user already confirmed — fail-close instead: refuse
+    // and report the typeable fields the model should target.
+    const buttonsOnly: SnapshotElement[] = [
+      { name: "Sign in", ref: 3, role: "button" },
+      { name: "Sign up", ref: 4, role: "link" }
+    ];
+    const result = matchElementResult(buttonsOnly, "Sign in", "type");
+    expect(result.kind).toBe("notypeable");
+    expect(result.kind === "notypeable" && result.fields).toEqual([]);
+  });
+
+  it("a TYPE intent matching a button BUT with a typeable field on the page lists that field", () => {
+    const mixed: SnapshotElement[] = [
+      { name: "Sign in", ref: 0, role: "button" },
+      { name: "Email", ref: 1, role: "textbox" }
+    ];
+    // "Sign in" matches only the button (untypeable) → notypeable, and the
+    // available typeable field is surfaced so the model retargets it.
+    const result = matchElementResult(mixed, "Sign in", "type");
+    expect(result.kind).toBe("notypeable");
+    expect(result.kind === "notypeable" && result.fields.map((f) => f.ref)).toEqual([1]);
+  });
+
+  it("a CLICK intent on a button is unaffected (still matches)", () => {
+    const buttonsOnly: SnapshotElement[] = [{ name: "Sign in", ref: 3, role: "button" }];
+    expect(matchElementResult(buttonsOnly, "Sign in", "click")).toMatchObject({ kind: "match", element: { ref: 3 } });
+  });
+
   it("matchElement (back-compat) still returns the first of an ambiguous set", () => {
     const twins: SnapshotElement[] = [
       { name: "Delete", ref: 0, role: "button" },
@@ -197,8 +227,10 @@ describe("matchElement — type intent must not land on untypeable elements", ()
     expect(matchElement(shop, "search box", "type")?.ref).toBe(1);
   });
 
-  it("falls back to a button only when NO typeable element matches at all", () => {
+  it("never lands on a button when NO typeable element matches — refuses (notypeable), no silent fill into a button", () => {
     const onlyButton: SnapshotElement[] = [{ name: "Search", ref: 0, role: "button" }];
-    expect(matchElement(onlyButton, "search", "type")?.ref).toBe(0);
+    expect(matchElementResult(onlyButton, "search", "type")).toMatchObject({ kind: "notypeable" });
+    // matchElement (back-compat) returns undefined here — there is nothing typeable to fill.
+    expect(matchElement(onlyButton, "search", "type")).toBeUndefined();
   });
 });

@@ -129,6 +129,19 @@ async function resolveTarget(controller: BrowserController, args: JsonObject, in
         }
       };
     }
+    if (result.kind === "notypeable") {
+      // The target named a button/link, not a text field — typing into it would
+      // fail after the user already confirmed. Refuse and list the page's actual
+      // typeable fields so the model retargets one (it never reaches the gate).
+      const fieldNames = result.fields.map((field) => field.name).filter((name) => name.length > 0);
+      const hint = fieldNames.length > 0 ? ` — type into one of these fields instead: ${fieldNames.join(", ")}` : " — there is no text field on this page";
+      return {
+        error: {
+          fields: result.fields as unknown as JsonValue,
+          reason: `"${target}" is not a text field${hint}.`
+        }
+      };
+    }
     return { label: `${result.element.role} "${result.element.name}"`, ref: result.element.ref };
   }
   if (Number.isInteger(refArg) && refArg >= 0) {
