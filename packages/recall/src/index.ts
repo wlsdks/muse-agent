@@ -6,3 +6,4 @@ export * from "./weakness.js";
 export * from "./verdict.js";
 export * from "./hit.js";
 export * from "./conflict.js";
+export * from "./prompt-escape.js";

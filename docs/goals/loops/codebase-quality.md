@@ -396,3 +396,23 @@ ratchet: testFiles 942 · fabrication 0 · groundedSurfaces 27 · isRecord dups 
   test merged ahead of its feature commit f685161b; resolved by re-syncing main) + a stale-dist api
   flake (passed on clean rerun) — neither is my slice.
 - **Risk:** none — pure re-export of an identical pure guard; no behavior/floor change.
+
+## fire 22 · 2026-06-13 · loop-creator v1.14.0 · f5fcbef5
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 942 · fabrication 0 · groundedSurfaces 27 · Phase3 3a done (3b unblocked)
+- **What:** Phase 3 sub-slice 3a — relocated the injection-defense primitive `escapeSystemPromptMarkers`
+  (+ its MARKER_KEYWORDS/REPLACEMENTS module constants + full JSDoc) from `apps/cli/src/prompt-escape.ts`
+  to `packages/recall/src/prompt-escape.ts` (verbatim, byte-identical), exported it from the @muse/recall
+  index, updated commands-ask.ts's import to `@muse/recall`, moved the 7-case test to
+  `packages/recall/src/prompt-escape.test.ts` (no duplication), and deleted the two CLI files. A true
+  move (caller import updated, test relocated), not a shim.
+- **Why:** this is the hard PREREQUISITE for Phase 3's #1 item — `buildNoteContextBlock` (the <<note N>>
+  grounding prompt block) can't move to @muse/recall while its escape dep is CLI-local. With the escaper
+  now in recall (alongside relativizeNoteSource), 3b is unblocked. Diversity: KIND=compose was 0/8 recent
+  (last fires decompose/comment-hygiene/cohere); pkg=recall advances the stated #1 thread, not @cli again.
+- **Review point:** 4b judge — SECURITY-sensitive: the escape logic (the 3 REPLACEMENTS regexes that
+  neutralize <<end>>/forged-opener/forged-citation break-outs) must be byte-identical (it defends the
+  fabrication=0 floor in front of verifyGrounding); the 7-case break-out test moved intact + passes in
+  recall (139 tests); commands-ask + buildNoteContextBlock still resolve the escaper; no behavior change.
+- **Risk:** low-medium — touches an injection-defense primitive, but it's a pure verbatim relocation
+  (no regex/logic edit) with its full adversarial test moved alongside. Floor strictly unchanged.
