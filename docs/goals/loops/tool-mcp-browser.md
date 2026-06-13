@@ -239,3 +239,21 @@ ratchet: testFiles +0 (existing preset/cred/posture tests +cases; mcp 14, autoco
   gitlab→undefined 테스트) (4)secret 미동봉.
 - **리스크:** Linear read-도구 목록을 단일 공식 페이지서 못 얻어 제3자 분석(Fiberplane) 참조 — 단
   fail-close라 stale read-list는 over-gate만(절대 under-gate 아님), 안전 회귀 불가.
+
+## fire 13 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=micro-fix · pkg=@muse/browser · kind=C-browser · verdict=PASS · firesSinceDrill=5
+
+ratchet: testFiles +0 (smoke #21 + controller; 89 tests) · @muse/browser 89 tests pass · fabrication 0 · eval:browser-agent 1/1 LIVE · smoke #21 LIVE (real CDP hang) · lint 0/0
+
+- **무엇:** CDP protocolTimeout 바운드. puppeteer 기본 180초가 unset이고 스냅샷 캡처 page.evaluate
+  (innerText/element-walk)는 상위 타임아웃조차 없어 멈춘 CDP 왕복이 에이전트를 ~3분 행(복구 불가).
+  이제 connect()에 protocolTimeout = max(requested, timeoutMs+15s)(기본 30초) 주입 — 항상 per-op
+  timeout 위라 정상 느린 nav/click/fill은 절대 먼저 안 죽음. protocolTimeoutMs 옵션도 floor로 클램프.
+- **왜:** 전송층 신뢰성 구멍 — prod 에이전트는 SIGKILL 불가. fires 1·4·6·9·11(관측/act 의미론)과
+  구별되는 transport/hang-recovery seam.
+- **리뷰지점:** judge가 (1)smoke #21이 REAL 경로(HANG_HTML innerText 무한 getter→실제 captureSnapshot
+  →page.evaluate, fake-injection 아님) 실행 통과(19.5초) (2)threading revert시 45초+ pending=RED 재현
+  (3)클램프 math가 항상 protocolTimeout>timeout(조기 kill 경로 없음) 확인.
+- **리스크:** 기본 천장 30초 — >30초 단일 CDP op(거대 DOM innerText 등)은 이제 에러(전엔 180초 대기).
+  허용가능(15s per-op가 이미 nav/click/fill 관장, >30초 단일 왕복은 병리), protocolTimeoutMs로 튜닝 가능.
