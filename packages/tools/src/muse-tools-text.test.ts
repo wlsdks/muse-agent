@@ -20,10 +20,13 @@ describe("text_stats", () => {
       .toEqual({ characters: 23, lines: 2, words: 4 });
   });
 
-  it("counts a user-perceived grapheme (emoji / flag) as one character, not its UTF-16 length", () => {
+  it("counts a user-perceived grapheme (emoji / flag / ZWJ sequence) as one character, not its UTF-16 length", () => {
     // "👍" is 2 UTF-16 code units; "🇰🇷" (regional-indicator flag) is 4.
     expect((call(createTextStatsTool(), { text: "👍" }))["characters"]).toBe(1);
     expect((call(createTextStatsTool(), { text: "🇰🇷" }))["characters"]).toBe(1);
+    // a + family-emoji (man-ZWJ-woman-ZWJ-girl, many code units) + b → 3 graphemes.
+    // \u escapes so the source carries no raw zero-width (ZWJ) byte (byte-hygiene gate).
+    expect((call(createTextStatsTool(), { text: "a\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}b" }))["characters"]).toBe(3);
   });
 
   it("returns zero across all dimensions for whitespace-only / empty / missing input", () => {
@@ -102,6 +105,15 @@ describe("markdown_table", () => {
       rows: [{ name: "Bob", age: 30 }, { name: "Amy", age: 25 }] as unknown as JsonObject[]
     })["markdown"];
     expect(out).toBe("| name | age |\n| --- | --- |\n| Bob | 30 |\n| Amy | 25 |");
+  });
+
+  it("derives the column UNION across rows with differing keys and leaves an absent cell empty", () => {
+    // row1 has a,b; row2 has a,c → union a,b,c; each row's missing key renders as
+    // an empty cell (exercises the merge-across-rows + undefined→"" fill).
+    const out = call(createMarkdownTableTool(), {
+      rows: [{ a: 1, b: 2 }, { a: 3, c: 4 }] as unknown as JsonObject[]
+    })["markdown"];
+    expect(out).toBe("| a | b | c |\n| --- | --- | --- |\n| 1 | 2 |  |\n| 3 |  | 4 |");
   });
 
   it("renders a nested object/array cell as compact JSON, not [object Object]", () => {

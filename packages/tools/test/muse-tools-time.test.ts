@@ -31,6 +31,16 @@ describe("time_now", () => {
     });
   });
 
+  it("honors a valid non-UTC IANA zone — Seoul rolls the day-of-week, never silently UTC", () => {
+    // Sat 16:00 UTC is already Sun 01:00 in Seoul (UTC+9). A tool that ignored
+    // the zone would report Saturday (the UTC day) — the confident wrong answer
+    // for a "what day is it in Seoul" prompt.
+    const at16 = createTimeNowTool(() => new Date("2026-05-30T16:00:00.000Z"));
+    const out = run(at16, { timezone: "Asia/Seoul" });
+    expect(out["timezone"]).toBe("Asia/Seoul");
+    expect(out["dayOfWeek"]).toBe("Sunday");
+  });
+
   it("errors (does not throw) on an unsupported timezone", () => {
     expect(run(createTimeNowTool(now), { timezone: "Mars/Phobos" })).toEqual({ error: "unsupported timezone: Mars/Phobos" });
   });
@@ -94,8 +104,10 @@ describe("time_relative", () => {
 });
 
 describe("next_weekday_date", () => {
-  it("resolves the NEXT upcoming occurrence (strictly future) of a named weekday", () => {
+  it("resolves the NEXT upcoming occurrence (strictly future) of a named weekday, case-insensitively", () => {
     expect(run(createNextWeekdayTool(now), { weekday: "monday" })).toEqual({ iso: "2026-06-01", weekday: "monday" });
+    // an UPPERCASE name normalizes the same way (the model may emit "MONDAY")
+    expect(run(createNextWeekdayTool(now), { weekday: "MONDAY" })).toEqual({ iso: "2026-06-01", weekday: "monday" });
   });
 
   it("returns the occurrence ONE WEEK later when the reference is itself that weekday", () => {
