@@ -3,8 +3,72 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "composite": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["dist"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "dist"
+  ],
+  "references": [
+    {
+      "path": "../../packages/agent-core"
+    },
+    {
+      "path": "../../packages/agent-specs"
+    },
+    {
+      "path": "../../packages/auth"
+    },
+    {
+      "path": "../../packages/autoconfigure"
+    },
+    {
+      "path": "../../packages/calendar"
+    },
+    {
+      "path": "../../packages/mcp"
+    },
+    {
+      "path": "../../packages/memory"
+    },
+    {
+      "path": "../../packages/messaging"
+    },
+    {
+      "path": "../../packages/model"
+    },
+    {
+      "path": "../../packages/multi-agent"
+    },
+    {
+      "path": "../../packages/observability"
+    },
+    {
+      "path": "../../packages/policy"
+    },
+    {
+      "path": "../../packages/runtime-settings"
+    },
+    {
+      "path": "../../packages/runtime-state"
+    },
+    {
+      "path": "../../packages/scheduler"
+    },
+    {
+      "path": "../../packages/shared"
+    },
+    {
+      "path": "../../packages/skills"
+    },
+    {
+      "path": "../../packages/tools"
+    },
+    {
+      "path": "../../packages/voice"
+    }
+  ]
 }

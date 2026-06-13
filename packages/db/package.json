@@ -12,7 +12,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -b",
     "test": "vitest run",
     "test:postgres": "MUSE_DB_POSTGRES_TEST=1 vitest run test/postgres-runtime.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
