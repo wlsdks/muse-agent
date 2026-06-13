@@ -151,7 +151,8 @@ const en = {
   "msg.sent": "Sent.",
   "msg.noInbound": "No inbound messages.",
 
-  "memory.subtitle": "What Muse has learned about you. Updated",
+  "memory.subtitle": "What Muse has learned about you.",
+  "memory.updated": "Updated {when}",
   "memory.userId": "User",
   "memory.facts": "Facts",
   "memory.preferences": "Preferences",
@@ -328,7 +329,8 @@ const ko: Strings = {
   "msg.sent": "발송됨.",
   "msg.noInbound": "받은 메시지가 없습니다.",
 
-  "memory.subtitle": "Muse가 당신에 대해 학습한 것. 업데이트",
+  "memory.subtitle": "Muse가 당신에 대해 학습한 것.",
+  "memory.updated": "{when} 업데이트",
   "memory.userId": "사용자",
   "memory.facts": "사실",
   "memory.preferences": "선호",
