@@ -25,6 +25,7 @@ import {
 } from "./index.js";
 import { isLoopbackUrl } from "@muse/model";
 
+import { resolveEmbedderBase } from "./embedder-base.js";
 import { OPENAI_COMPAT_PRESETS } from "./openai-compat-presets.js";
 import { createModelProvider } from "./autoconfigure-model-provider.js";
 
@@ -130,7 +131,7 @@ export function evaluateLocalOnlyPosture(env: Readonly<Record<string, string | u
       // loopback chat model + a remote OLLAMA_BASE_URL clears createModelProvider
       // yet egresses the user's note/memory text. Mirror the embedder's own
       // construction-time fail-close so doctor surfaces it instead of reporting ok.
-      const embedBase = (env.OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434").replace(/\/+$/u, "");
+      const embedBase = resolveEmbedderBase(env);
       if (!isLoopbackUrl(embedBase)) {
         return { detail: `🔒 on, but OLLAMA_BASE_URL points off-box (${embedBase}) — the embedder fails closed, so recall/memory embedding refuses; point OLLAMA_BASE_URL at localhost`, enabled, status: "fail" };
       }
