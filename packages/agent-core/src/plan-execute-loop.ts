@@ -20,7 +20,7 @@ import type {
 
 import {
   classifyStepEffect,
-  dedupeExactSteps,
+  dedupeNearDuplicateSteps,
   PlanExecutionError,
   PlanValidationFailedError,
   parsePlan,
@@ -112,8 +112,11 @@ export async function* streamPlanExecute(
 
   // ISR-LLM (arXiv:2308.13724): deterministic dedup first (no model call),
   // then validate before any tool executes. A bad plan never reaches execution.
+  // dedupeNearDuplicateSteps is a superset of dedupeExactSteps: also collapses
+  // formatting variants (whitespace/numeric-string/case) that slip the exact key,
+  // preventing both wasted budget slots and double-acts on WRITE tools.
   const PLAN_REPAIR_MAX_ROUNDS = 1;
-  let steps = dedupeExactSteps(plan);
+  let steps = dedupeNearDuplicateSteps(plan);
 
   yield { plan: steps, runId: context.runId, type: "plan-generated" };
 
@@ -146,7 +149,7 @@ export async function* streamPlanExecute(
     ].join("\n");
     const repairedRaw = await generatePlan(runner, context, provider, request, repairPrompt, toolDescriptions, userId);
     if (repairedRaw !== null) {
-      steps = dedupeExactSteps(repairedRaw);
+      steps = dedupeNearDuplicateSteps(repairedRaw);
       validation = validatePlan({ availableToolNames, steps, toolSchemas });
     }
   }

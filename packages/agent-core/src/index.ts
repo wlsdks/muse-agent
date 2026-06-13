@@ -406,6 +406,7 @@ export {
   MAX_PLAN_STEPS,
   PlanExecutionError,
   PlanValidationFailedError,
+  dedupeNearDuplicateSteps,
   extractJsonArray,
   parsePlan,
   validatePlan,

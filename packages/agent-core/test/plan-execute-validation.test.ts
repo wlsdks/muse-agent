@@ -1,7 +1,7 @@
 import type { JsonValue } from "@muse/shared";
 import { describe, expect, it } from "vitest";
 
-import { dedupeExactSteps, validatePlan, type PlanStep } from "../src/plan-execute.js";
+import { dedupeExactSteps, dedupeNearDuplicateSteps, validatePlan, type PlanStep } from "../src/plan-execute.js";
 
 // Unit tests for ISR-LLM (arXiv:2308.13724) plan validation extensions:
 // arg-presence checks, exact-duplicate detection, and deduplication.
@@ -186,5 +186,117 @@ describe("dedupeExactSteps", () => {
     ];
     const result = dedupeExactSteps(steps);
     expect(result).toHaveLength(3);
+  });
+});
+
+describe("dedupeNearDuplicateSteps (Mem0 arXiv:2504.19413 consolidate-before-add)", () => {
+  it("positive collapse — trailing whitespace variant: {q:'Paris '} vs {q:'Paris'} → length 1", () => {
+    const steps = [
+      makeStep("search", { q: "Paris " }, "first"),
+      makeStep("search", { q: "Paris" }, "second")
+    ];
+    const result = dedupeNearDuplicateSteps(steps);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.description).toBe("first");
+    expect(result[0]?.args).toEqual({ q: "Paris " });
+  });
+
+  it("positive collapse — case variant: {q:'Paris '} vs {q:'paris'} → length 1", () => {
+    const steps = [
+      makeStep("search", { q: "Paris " }, "first"),
+      makeStep("search", { q: "paris" }, "second")
+    ];
+    const result = dedupeNearDuplicateSteps(steps);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.description).toBe("first");
+    // Original args of the FIRST occurrence are kept unmutated.
+    expect(result[0]?.args).toEqual({ q: "Paris " });
+  });
+
+  it("positive collapse — numeric-string vs number: {n:'5'} vs {n:5} → length 1", () => {
+    const steps = [
+      makeStep("count_items", { n: "5" }, "first"),
+      makeStep("count_items", { n: 5 }, "second")
+    ];
+    const result = dedupeNearDuplicateSteps(steps);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.description).toBe("first");
+    expect(result[0]?.args).toEqual({ n: "5" });
+  });
+
+  it("positive collapse — numeric-string with decimal: {x:'5.0'} vs {x:5} → length 1", () => {
+    const steps = [
+      makeStep("count_items", { x: "5.0" }, "first"),
+      makeStep("count_items", { x: 5 }, "second")
+    ];
+    const result = dedupeNearDuplicateSteps(steps);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.args).toEqual({ x: "5.0" });
+  });
+
+  it("OVER-MERGE counterfactual — different values {q:'Paris'} vs {q:'London'} → length 2 (NOT merged)", () => {
+    const steps = [
+      makeStep("search", { q: "Paris" }),
+      makeStep("search", { q: "London" })
+    ];
+    const result = dedupeNearDuplicateSteps(steps);
+    expect(result).toHaveLength(2);
+  });
+
+  it("OVER-MERGE counterfactual — different tools same args → length 2 (NOT merged)", () => {
+    const steps = [
+      makeStep("tool_a", { x: 1 }),
+      makeStep("tool_b", { x: 1 })
+    ];
+    const result = dedupeNearDuplicateSteps(steps);
+    expect(result).toHaveLength(2);
+  });
+
+  it("order-preserving: first occurrence kept with ORIGINAL args unmutated", () => {
+    const steps = [
+      makeStep("search", { q: "Paris " }, "original"),
+      makeStep("search", { q: "paris" }, "duplicate")
+    ];
+    const result = dedupeNearDuplicateSteps(steps);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.description).toBe("original");
+    expect(result[0]?.args).toEqual({ q: "Paris " });
+  });
+
+  it("superset parity: collapses every byte-identical case that dedupeExactSteps would collapse", () => {
+    const steps = [
+      makeStep("echo_value", { value: "x" }),
+      makeStep("echo_value", { value: "x" })
+    ];
+    expect(dedupeExactSteps(steps)).toHaveLength(1);
+    expect(dedupeNearDuplicateSteps(steps)).toHaveLength(1);
+  });
+
+  it("empty plan stays empty", () => {
+    expect(dedupeNearDuplicateSteps([])).toHaveLength(0);
+  });
+
+  it("single-step plan unchanged", () => {
+    const steps = [makeStep("search", { q: "test" })];
+    expect(dedupeNearDuplicateSteps(steps)).toHaveLength(1);
+  });
+
+  it("internal whitespace collapsed: {q:'New  York'} vs {q:'New York'} → length 1", () => {
+    const steps = [
+      makeStep("search", { q: "New  York" }, "first"),
+      makeStep("search", { q: "New York" }, "second")
+    ];
+    const result = dedupeNearDuplicateSteps(steps);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.args).toEqual({ q: "New  York" });
+  });
+
+  it("genuinely different numeric values are NOT merged: {n:5} vs {n:6} → length 2", () => {
+    const steps = [
+      makeStep("count_items", { n: 5 }),
+      makeStep("count_items", { n: 6 })
+    ];
+    const result = dedupeNearDuplicateSteps(steps);
+    expect(result).toHaveLength(2);
   });
 });

@@ -378,6 +378,95 @@ export function dedupeExactSteps(steps: readonly PlanStep[]): readonly PlanStep[
 }
 
 /**
+ * Normalizes a single JSON arg value for near-duplicate key comparison.
+ * Conservative: only formatting variants are collapsed — a different VALUE
+ * after normalization is never treated as equal.
+ *
+ * Rules (Mem0 arXiv:2504.19413 consolidate-before-add principle applied to
+ * plan steps: emit only when no semantically-equivalent step exists):
+ *  - string  → trim() + collapse internal whitespace runs to one space +
+ *              lowercase (case-folding is FOR THE KEY ONLY; the kept step
+ *              retains its original args — see dedupeNearDuplicateSteps).
+ *              Risk: a case-sensitive arg value would wrongly collide.
+ *              Mitigation: we never merge different values or different tools;
+ *              a planner emitting two case-variant steps is overwhelmingly a
+ *              glitch, not intent. The kept step's ORIGINAL args are preserved.
+ *  - numeric-string that round-trips → canonical String(Number(x)), so "5",
+ *              "5.0", and 5 all produce "5". Non-round-trip strings ("4h",
+ *              "hello") are treated as plain strings (trim+lower).
+ *  - boolean/null → returned as-is (no ambiguity, no normalization needed).
+ *  - object/array → recurse (objects) / positional recurse (arrays).
+ */
+function normalizeArgValue(value: JsonValue): JsonValue {
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number") return String(value);
+  if (typeof value === "string") {
+    const trimmed = value.trim().replace(/\s+/g, " ").toLowerCase();
+    // Numeric-string that parses to a finite number → canonical String(Number(x)).
+    // This collapses "5", "5.0", and 5 to the same key. We do NOT require round-trip
+    // equality (String(Number(x)) === x) — "5.0" parses to 5 whose canonical form is
+    // "5", which is the intended merge. Non-numeric strings ("4h", "hello") have
+    // Number() = NaN or Infinity → left as plain strings.
+    const asNum = Number(trimmed);
+    if (trimmed.length > 0 && isFinite(asNum) && !isNaN(asNum)) {
+      return String(asNum);
+    }
+    return trimmed;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeArgValue(item as JsonValue));
+  }
+  // object — recurse
+  const normalized: Record<string, JsonValue> = {};
+  for (const key of Object.keys(value as Record<string, JsonValue>).sort()) {
+    normalized[key] = normalizeArgValue((value as Record<string, JsonValue>)[key] as JsonValue);
+  }
+  return normalized;
+}
+
+function normalizeArgs(args: JsonObject): JsonObject {
+  return normalizeArgValue(args as JsonValue) as JsonObject;
+}
+
+/**
+ * Normalized key for near-duplicate detection: tool is trimmed+lowercased,
+ * args have formatting-only variants collapsed (whitespace, numeric-string,
+ * case). Falls back to the raw stepKey if normalization throws (never throws
+ * itself — degenerate args produce the raw key, not an error).
+ */
+function normalizedStepKey(step: PlanStep): string {
+  try {
+    const tool = step.tool.trim().toLowerCase();
+    return `${tool}::${stableStringify(normalizeArgs(step.args))}`;
+  } catch {
+    return stepKey(step);
+  }
+}
+
+/**
+ * Order-preserving removal of near-duplicate steps: same tool (normalized) +
+ * args that differ only by formatting (whitespace, numeric-string, case).
+ * A strict superset of dedupeExactSteps — collapses everything exact did,
+ * plus formatting variants. The first occurrence is kept with its ORIGINAL
+ * args unmutated; only the normalized key is used for comparison.
+ *
+ * Grounded in Mem0 (arXiv:2504.19413, Chhikara et al. 2025): ADD only when
+ * no semantically-equivalent entry exists. Applied here: emit a plan step
+ * only when no formatting-equivalent step was already emitted — preventing
+ * both a wasted maxToolCalls budget slot and, critically, a double-act on a
+ * WRITE/actuator tool (outbound-safety).
+ */
+export function dedupeNearDuplicateSteps(steps: readonly PlanStep[]): readonly PlanStep[] {
+  const seen = new Set<string>();
+  return steps.filter((step) => {
+    const key = normalizedStepKey(step);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
  * Returns true when the supplied run metadata explicitly requests the
  * Plan-Execute strategy. Case-insensitive on the value, defensive on the
  * shape of the metadata object.
