@@ -175,7 +175,7 @@ ratchet: cli tests 2625/2625 (contacts +2) · fabrication 0 · self-eval exit 0 
 - **리뷰지점**: json 분기를 human empty-state 앞에 둠 — human 경로는 `all.length===0`("No contacts yet")→`shown.length===0`("No contacts match") 순서 보존. json empty는 human 카피 아닌 `[]`. JSON 형태는 raw `shown`(overdue/dupes 패턴과 일치).
 - **리스크**: 없음(list 액션 한정, 다른 contacts 서브커맨드 무변, 독립 Opus judge가 commander unknownOption RED·human 무회귀·--search 합성 검증 후 PASS, contacts 24/24 · cli 2625/2625).
 
-## fire 20 · 2026-06-14 · skill v1.14.0 · <commit>
+## fire 20 · 2026-06-14 · skill v1.14.0 · 81de13e3
 meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=a11y-nav-landmark+aria-current · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles 961 (+1) · web tests 29/29 (+3) · fabrication 0 · self-eval exit 0
 
