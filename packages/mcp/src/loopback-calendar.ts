@@ -11,7 +11,7 @@ import { detectCalendarConflicts } from "./calendar-conflicts.js";
 import { formatDueLocal } from "./local-due-format.js";
 import { readBoolean, readString, readStringArray, errorMessage } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
-import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, resolveRelativeTimePhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
+import { hasTimeComponent, isoDateHeadRoundTrips, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, resolveRelativeTimePhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
 import { syncRemindersOnEventDelete, syncRemindersOnEventReschedule } from "./event-reminder-link.js";
 
 /** Recurrence cadences the calendar `add` tool accepts (mapped to an RRULE FREQ). */
@@ -565,11 +565,7 @@ function parseIsoDate(value: string | undefined, anchor: () => Date = () => new 
       // `new Date("2026-02-30")` silently rolls over to Mar 2 — accepting it would
       // schedule the event ~2 days off. A real date round-trips its Y-M-D through
       // Date.UTC unchanged; a rolled-over one does not. Mirrors parseTaskDueAt.
-      const y = Number(dateHead[1]);
-      const mo = Number(dateHead[2]);
-      const d = Number(dateHead[3]);
-      const probe = new Date(Date.UTC(y, mo - 1, d));
-      if (probe.getUTCFullYear() === y && probe.getUTCMonth() === mo - 1 && probe.getUTCDate() === d) {
+      if (isoDateHeadRoundTrips(Number(dateHead[1]), Number(dateHead[2]), Number(dateHead[3]))) {
         return parsed;
       }
       return undefined;

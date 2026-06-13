@@ -945,3 +945,21 @@ ratchet: testFiles 976 유지(+1 케이스 on-this-day boundary) · fabrication 
 - **왜:** firesSinceDrill 10 → 드릴 미루기 불가(롤백 경로 재검증). 실수정: tight scout(fresh 핸들러 proactive/context/dev-utility/aggregators 한정, budget-efficient)가 발굴. grounded-recall 표면의 silent miss(New-Year's-Eve 노트가 1월 초에 안 뜸). 주석은 "handles year boundaries cleanly" 거짓 주장했음. KIND=date-window-boundary(rollover/IrrelAcc와 구별).
 - **리뷰지점:** on-this-day-tool.ts window-gap 계산만 변경(prior-year filter·sort·yearsAgo 불변). 테스트 RED("expected +0 to be 1", Dec-31 drop)→GREEN + far-July negative(@window7 무매치). **직접 검증:** src fix stash→RED, 복원→GREEN(1869). pnpm check: apps/cli chat-ink-render 74s 부하 timeout flake(isolated 2631 green, 무관). ④b judge PASS 5/5(exhaustive sweep: 전 day×month-day → 0 spurious·0 missed, min-of-3는 wrap-around 정확).
 - **리스크:** 없음 — window-gap만 변경, mid-year 무변동. 드릴+실수정 같은 fire(드릴 규약). firesSinceDrill=0. scout는 fix까지 적용(maker)했으나 ④b judge는 별개 fresh 인스턴스(maker≠judge 유지).
+
+
+## fire 93 · 2026-06-14 · skill v1.14.0 · b9d6460a
+meta: value-class=micro-fix(real security bug) · pkg=@muse/mcp · kind=fail-close-bypass-fix(home_action empty-target가 whole-domain 가드 우회) · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 976 유지(+createHomeActionTool 첫 테스트 3 it) · fabrication 0 유지 · eval 무변동(security fail-close)
+- **무엇:** home_action(risk:execute)의 fail-close 가드 — 타깃 없는 서비스 콜은 HA의 whole-domain 경로(light.turn_off=온 집 소등, lock.unlock=전 잠금 해제). 가드의 dataHasTarget이 **키 존재만** 검사 → empty target(`{target:{}}`/`{entity_id:[]}`/`{entity_id:""}`)이 우회 → 승인된 서비스 콜이 도메인 전체 blast. **concrete(non-empty 문자열/배열) 타깃 요구**로 수정(top-level + nested target).
+- **왜:** home 도구는 어느 prior scout도 examine 안 한 fresh 표면(genuinely un-examined). createHomeActionTool은 **테스트 전무**. outbound-safety의 fail-close 우회 = 高harm 보안 홀(되돌릴 수 없는 whole-domain 액션). KIND=fail-close-bypass(rollover/IrrelAcc/recall과 구별).
+- **리뷰지점:** smart-home-tool.ts dataHasTarget만 변경(service-format·entityId·performHomeActionWithApproval 불변). 테스트 = **승인 게이트 + fetch 스파이**(가드만이 콜 차단 가능): empty-target RED("expected performed:true,status:200" — 승인 액션이 fetch escape)→GREEN(calls=[]) + no-target refuse + concrete entity proceed. 첫 weak 시도(performed:false만)는 throwing-gate가 catch→false-green이라 fetch-spy로 강화. 전 suite 1872, pnpm check exit=0, lint clean. ④b judge PASS 5/5(pre-fix revert로 RED 재현, 전 HA 타깃 shape over-rejection 없음 확인).
+- **리스크:** 없음 — 가드를 더 fail-closed로(legitimate concrete 타깃은 전부 통과 확인). 교훈: fail-close 가드는 키 존재가 아닌 concrete 값 검사여야(empty가 우회). fetch-spy + 승인-게이트가 보안 fail-close의 올바른 teeth(performed:false만으론 false-green).
+
+
+## fire 94 · 2026-06-14 · skill v1.14.0 · (no-slice)
+meta: value-class=exhaustion-report · pkg=none · kind=fresh-handler-bug-vein-exhausted(6 버그 수정 후 clean) · verdict=NO-SLICE · firesSinceDrill=2
+ratchet: testFiles 977 유지 · fabrication 0 유지 · 코드 변경 0(EXHAUSTION honest-close)
+- **무엇:** 슬라이스 없음(honest-close). 이 fire 직접 clean 검증: web_action(URL length·method allow-set·SSRF guard 전부 concrete)·remember_fact(key/value non-empty·slug sanitize)·mac_spotlight `--`(non-viable: mdfind `--` 미지원, 작성자 인지, leading-dash는 error 반환=read-only 무해). tight scout: scheduler(없음)·skills(allowlist+spawn 안전)·feeds/objectives(read, clamp 정확)·loopback-helpers(공유 numeric helper 부재)·relative-time(~50 phrase 라이브 정확) 전부 clean.
+- **왜:** fresh-handler 버그 vein이 fires 87-93(contacts·calendar·time·on_this_day·home_action 5 버그 + drill 1)에서 productive였으나 이제 **고갈** — 3 scout(87/89/92) + tight scout(94) + 직접 grep이 표면 well-hardened 확정. EXHAUSTION 규칙: value-class 상향(bug-hunt scout) 시도 → dry. "할 게 없다" 아님: 6 fire 연속 genuine 수정 후의 정직한 maturity.
+- **리뷰지점:** 코드 변경 0. 미수행 옵션: (a) DRY-refactor(rollover 가드 3-copy → 공유 helper) = risky(보안 date 파서 3개 fiddly rewire) + codebase-quality territory(backlog ◦ 유지). (b) week-agenda daysUntil 정수-가드 = scout가 non-user-reachable·not-a-bug 판정("could be stricter" 안티패턴). 둘 다 이 fire 슬라이스로 부적합.
+- **리스크:** 없음 — 코드 무변경. 다음 fire: 진안 unblock 레버(email/handle grounding=agent-core-hot, MCP-risk posture, undo/veto) 또는 새 신호(.muse/runs 실패 클러스터) 또는 재-fresh-scout(다른 표면). vein 고갈 backlog 기록.

@@ -65,8 +65,18 @@ export function createHomeActionTool(deps: HomeActionToolDeps): MuseTool {
       // every lock — and the approval summary shows no target, so the user
       // isn't warned. Fail closed unless an entity arg OR a target key in `data`
       // (entity_id / area_id / device_id / target) resolves a concrete scope.
+      // A target key must resolve a CONCRETE scope — an EMPTY one (`target: {}`,
+      // `entity_id: []` / `""`) is no target: Home Assistant treats it as the
+      // whole-domain path, so a mere key-presence check would let an empty target
+      // bypass this fail-close and blast every device.
+      const isConcreteTarget = (value: unknown): boolean =>
+        (typeof value === "string" && value.trim().length > 0) || (Array.isArray(value) && value.length > 0);
+      const nested = data && typeof data["target"] === "object" && data["target"] !== null && !Array.isArray(data["target"])
+        ? data["target"] as Record<string, unknown>
+        : undefined;
       const dataHasTarget = data !== undefined
-        && (data["entity_id"] !== undefined || data["area_id"] !== undefined || data["device_id"] !== undefined || data["target"] !== undefined);
+        && (isConcreteTarget(data["entity_id"]) || isConcreteTarget(data["area_id"]) || isConcreteTarget(data["device_id"])
+          || (nested !== undefined && (isConcreteTarget(nested["entity_id"]) || isConcreteTarget(nested["area_id"]) || isConcreteTarget(nested["device_id"]))));
       if (!entityId && !dataHasTarget) {
         return {
           performed: false,

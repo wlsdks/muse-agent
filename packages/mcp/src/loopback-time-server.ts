@@ -1,6 +1,7 @@
 import type { JsonObject } from "@muse/shared";
 
 import { buildJsonToolSchema } from "./loopback-helpers.js";
+import { isoDateHeadRoundTrips } from "./loopback-relative-time.js";
 import type { BuiltinLoopbackOptions, LoopbackMcpServer } from "./loopback.js";
 
 /**
@@ -79,14 +80,8 @@ function readDate(args: JsonObject, key: string): Date | undefined {
   // compute a diff ~2 days off, contradicting the tool's "valid ISO-8601"
   // contract. A real date round-trips its Y-M-D through Date.UTC unchanged.
   const dateHead = /^(\d{4})-(\d{2})-(\d{2})/u.exec(value);
-  if (dateHead) {
-    const y = Number(dateHead[1]);
-    const mo = Number(dateHead[2]);
-    const d = Number(dateHead[3]);
-    const probe = new Date(Date.UTC(y, mo - 1, d));
-    if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== mo - 1 || probe.getUTCDate() !== d) {
-      return undefined;
-    }
+  if (dateHead && !isoDateHeadRoundTrips(Number(dateHead[1]), Number(dateHead[2]), Number(dateHead[3]))) {
+    return undefined;
   }
   return parsed;
 }
