@@ -153,6 +153,13 @@ export interface PlanValidationInput {
    * one bounded repair round. Absent → byte-identical to prior behaviour.
    */
   readonly toolSchemas?: ReadonlyMap<string, JsonValue>;
+  /**
+   * ISR-LLM (arXiv:2308.13724) precondition check: when supplied, write/execute
+   * steps whose string args are unfilled placeholders are rejected before any
+   * tool runs — a write with a garbage arg is a partial side-effect the τ-bench
+   * no-partial-side-effects property forbids. Absent → byte-identical to prior behaviour.
+   */
+  readonly toolRisks?: ReadonlyMap<string, "read" | "write" | "execute">;
 }
 
 /**
@@ -282,6 +289,51 @@ function extractDependencyRefs(value: string): number[] {
   return refs;
 }
 
+/**
+ * ISR-LLM (arXiv:2308.13724) precondition check: a write/execute step whose
+ * mutating arg is an unfilled placeholder sails through required-arg checks
+ * but would commit a write with garbage — a τ-bench / outbound-safety
+ * partial-side-effect violation. This function gates those BEFORE execution.
+ *
+ * Only risk:"write"|"execute" steps are checked — reads are idempotent and
+ * exempt so the common read path is never slowed or over-rejected.
+ *
+ * Whole-value-anchored: flags ONLY when the trimmed arg value IS EXACTLY a
+ * placeholder token. Real content that merely CONTAINS a placeholder token
+ * ("send the TODO list") is never flagged.
+ */
+// Anchored to the whole trimmed value: angle-bracket template, mustache template,
+// or a recognised sentinel word. Case-insensitive; the `N\/?A` branch matches "N/A" and "NA".
+const UNFILLED_PLACEHOLDER_RE = /^(<[^>]*>|\{\{[^}]*\}\}|TODO|TBD|XXX|null|undefined|N\/?A)$/i;
+
+export function validateWritePreconditions(
+  steps: readonly PlanStep[],
+  toolRisks: ReadonlyMap<string, "read" | "write" | "execute">
+): readonly PlanValidationError[] {
+  const errors: PlanValidationError[] = [];
+  for (let i = 0; i < steps.length; i += 1) {
+    const step = steps[i];
+    if (!step) continue;
+    const risk = toolRisks.get(step.tool);
+    // reads are idempotent — exempt from precondition check
+    if (risk !== "write" && risk !== "execute") continue;
+    for (const [key, value] of Object.entries(step.args)) {
+      if (typeof value !== "string") continue;
+      const trimmed = value.trim();
+      // Empty/whitespace-only is the simplest unfilled placeholder (the regex
+      // alternation can't express "empty"), so check it explicitly first.
+      if (trimmed.length === 0 || UNFILLED_PLACEHOLDER_RE.test(trimmed)) {
+        errors.push({
+          reason: `write/execute step has unfilled placeholder arg '${key}' ('${value}') — would commit a partial side-effect`,
+          stepIndex: i,
+          tool: step.tool
+        });
+      }
+    }
+  }
+  return errors;
+}
+
 export function validatePlan(input: PlanValidationInput): PlanValidationResult {
   const errors: PlanValidationError[] = [];
   // A small local planner can loop / repeat itself; an oversized
@@ -353,6 +405,15 @@ export function validatePlan(input: PlanValidationInput): PlanValidationResult {
   // un-dispatchable — reject before any tool runs (no partial side-effects).
   for (const depError of validateStepDependencies(input.steps)) {
     errors.push(depError);
+  }
+
+  // ISR-LLM (arXiv:2308.13724) precondition check: a write/execute step with
+  // an unfilled placeholder arg would commit a partial side-effect — fail-close
+  // before execution so no garbage write ever reaches the store.
+  if (input.toolRisks) {
+    for (const precondError of validateWritePreconditions(input.steps, input.toolRisks)) {
+      errors.push(precondError);
+    }
   }
 
   return {

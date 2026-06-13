@@ -14,6 +14,8 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 
+import { isRecord } from "@muse/shared";
+
 import { parseBoolean, parseBooleanTriState, parseInteger } from "./env-parsers.js";
 import {
   mergeModelKeysFromFile,
@@ -559,8 +561,4 @@ export async function readTaskCount(file: string): Promise<number | undefined> {
   } catch {
     return undefined;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

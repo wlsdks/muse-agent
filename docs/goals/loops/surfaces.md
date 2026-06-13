@@ -192,3 +192,12 @@ ratchet: testFiles 965 (+1) · web tests 30/30 (+1) · fabrication 0 · self-eva
 - **왜**: 즉시-동작 토글 그룹의 정식 WAI-ARIA 패턴은 toggle-button(`aria-pressed`)이며 group+label은 이미 있어 패턴 완성. fire 20 SidebarNav와 같은 순수 props-injected 형태라 renderToStaticMarkup 직접 테스트.
 - **리뷰지점**: `aria-pressed`는 양 버튼이 각자 상태 반영(정확히 하나 true), radiogroup/listbox 아님(즉시 동작). `.active`/onClick/onChange 무변. judge가 aria-pressed strip으로 RED 실증.
 - **리스크**: 없음(3줄: export + 2 속성, 다른 컴포넌트 무변, Console가 계속 렌더, 독립 Opus judge가 패턴 정확성·RED-before·pressedLabel 식별 검증 후 PASS, web 30/30).
+
+## fire 22 · 2026-06-14 · skill v1.14.0 · 607c0cc1
+meta: surface=desktop · value-class=micro-fix · pkg=apps/desktop(MuseDesktopCore) · kind=voice-toggle-falsy-robustness · verdict=PASS · firesSinceDrill=5
+ratchet: desktop swift tests 55/55 (+4) · fabrication 0 · self-eval exit 0 · 표면 균형 web8·desktop6·cli8
+
+- **무엇**: `SpeakerFactory.make`(AppKit)가 `MUSE_DESKTOP_SPEAK`을 정확히 `"0"`일 때만 무음 처리 → 사용자가 `false`/`no`/`off`로 끄려 해도 여전히 말하는 footgun. 순수 `selectSpeakerKind(env)→SpeakerKind`(MuseDesktopCore)로 추출, falsy set {0,false,no,off}(trim·소문자) 허용으로 하드닝; SpeakerFactory는 enum switch로 위임.
+- **왜**: 음성 on/off/system/qwen 라우팅이 AppKit에 인라인·미테스트였고 무음 토글이 너무 좁았다. 추출로 헤드리스 테스트 가능 + 흔한 falsy 표기 수용(env-falsy 관행)으로 실제 사용자 의도 반영.
+- **리뷰지점**: 구-계약 보존("0"→silent·"system"→system·unset→qwen·silence 우선), TTS 매치는 trim/소문자 superset(회귀 아님). `"1"`/`"true"`/`""`는 qwen(과확장 아님). 추출은 dead-code 아님(SpeakerFactory가 실사용).
+- **리스크**: 없음(신규 코어 파일 + 팩토리 body + 신규 테스트, Speaker 프로토콜·3 impl 무변, 독립 Opus judge가 mutation(falsy set→["0"])로 RED 입증·parity·exhaustive switch 검증 후 PASS, swift build clean·55/55).

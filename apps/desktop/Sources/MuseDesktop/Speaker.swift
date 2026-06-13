@@ -107,8 +107,10 @@ final class SilentSpeaker: Speaker {
 
 enum SpeakerFactory {
     static func make(environment: [String: String] = ProcessInfo.processInfo.environment) -> Speaker {
-        if environment["MUSE_DESKTOP_SPEAK"] == "0" { return SilentSpeaker() }
-        if environment["MUSE_DESKTOP_TTS"] == "system" { return SystemSpeaker() }
-        return QwenSpeaker()
+        switch selectSpeakerKind(environment) {
+        case .silent: return SilentSpeaker()
+        case .system: return SystemSpeaker()
+        case .qwen: return QwenSpeaker()
+        }
     }
 }

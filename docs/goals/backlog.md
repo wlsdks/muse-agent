@@ -1,9 +1,16 @@
 # Muse dev backlog — the living ledger
 
+- ✓ cohere @muse/autoconfigure: deduped local isRecord type-guard onto canonical @muse/shared isRecord (byte-identical; dups 4->3; voice/agent-core remain hard) — codebase-quality fire 47
+- ✓ reminders.fire no-collateral-damage: a failed fire (ambiguous word OR unknown ref) now asserted to flip NO reminder's status (all stay pending, deep-equal) — mutation-verified (guess-fire makes only this test RED, clear/snooze tests stay green); COMPLETES the reminders destructive-verb no-collateral parity (clear ✓83, snooze ✓84, fire ✓85) — tool-hardening fire 85
+
+- ✓ decompose @muse/macos: moved capture tools (createMacScreenshotTool/createMacScreenReadTool + 4 type interfaces + consts) macos-tools -> macos-screen-tools.ts (1297->1143 LOC; re-export keeps 109 tests green; COMPLETES the capture-cluster decompose fires 43/45/46, 1519->1143 across the thread) — codebase-quality fire 46
+- ✓ decompose @muse/macos: extracted screenshot output-path security sandbox (resolveScreenshotPath + 3 helpers) macos-tools -> macos-screen-path.ts (1352->1297 LOC; +4 traversal-guard tests; Step 1 of fire-44 capture untangle) — codebase-quality fire 45
 - ✓ dead-code @muse/messaging: removed dead MessagingValidationError re-export from telegram-provider (index already re-exports it; knip-clean) — codebase-quality fire 44
-- ◦ **macos-tools capture cluster decompose (DEFERRED fire 44 — needs untangling)** — screenshot/screenread tools share the path-validator helpers (tryRealpath/screenshotAllowedRoots/expandTilde/resolveScreenshotPath, the screenshot output-path security sandbox) + basename/dirname/homedir node imports with non-capture tools. Step 1: relocate the path-validator sandbox to a sibling (it is capture-only) + confirm no other tool uses those 4 fns; THEN move screenshot/screenread over the macos-exec base (like fire 43).
 - ✓ notes.append no-partial-side-effect: an over-cap append now CHECKS the resulting size BEFORE writing → a failed append mutates NOTHING (was: wrote the oversized bytes THEN errored, leaving the note past its cap = next read fails as oversized) — tool-hardening fire 80
 - ✓ KO notes.append selection coverage: 2 positive cases (덧붙여 / collide-verb 추가 + a .md path → notes.append, NOT tasks.add) — probed the fire-76 KO-verb confusable, no mis-route, fills the untested KO-append gap (notes eval 12→14/14 STABLE 3/3) — tool-hardening fire 81
+- ✓ dueAt rollover guard datetime coverage: an impossible date on a FULL ISO datetime ("2026-02-30T09:00:00Z") is now asserted-rejected — mutation-verified the date-only cases miss the "full datetimes skip the day-check" shortcut; this fire also ran the JUDGE-DRILL (softball FAILed→rolled back) — tool-hardening fire 82
+- ✓ reminders.clear no-collateral-damage: a failed clear (ambiguous word OR unknown ref) now asserted to delete NOTHING from a populated store — mutation-verified (guess-and-delete-first-candidate makes only this test RED); covers agent-testing.md's #1 invariant where only happy-path + empty-store existed — tool-hardening fire 83
+- ✓ reminders.snooze no-collateral-damage: a failed snooze (ambiguous word OR unknown ref) now asserted to bump NO reminder's dueAt (deep-equal under a fixed now) — mutation-verified (guess-snooze makes only this test RED, clear's test stays green); closes the snooze gap fire 83 discovered — tool-hardening fire 84
 - ✓ decompose @muse/macos: extracted 3 utility tools (clipboard/spotlight/say) + consts -> macos-utility-tools.ts (1519->1352 LOC; resumes fire-19 DECOMPOSE-ON-DEFER) — codebase-quality fire 43
 - ✓ Phase 3 cont.: extracted inline contactBlock -> buildContactContextBlock in @muse/recall/select.ts (10/12 ask blocks; +test) — codebase-quality fire 42
 - ✓ week_agenda now merges DUE REMINDERS too (EXPANSION) — the holistic "what's my week" view was missing time-anchored reminders; now events+reminders+tasks+birthdays in one call (8B avoids the unreliable 4-chain), reminders-only still routes to reminders.list (eval 5/5 STABLE) — tool-hardening fire 79
@@ -159,6 +166,10 @@
 
 ## ✓ Fixed (dedup ledger — one line each; detail in the per-loop journal)
 
+- ✓ hedge-overclaim (certainty escalation) grounding guard — token coverage ignored modal certainty so a categorical claim grounded in hedged evidence (may→does); added detectHedgeOverclaim + fail-close (FActScore arXiv:2305.14251). Completes the sentence-vs-evidence semantic guard trio (negation/numeric/hedge) — grounding-integrity fire 22
+
+- ✓ numeric/unit mismatch grounding guard — token coverage missed unit swaps (5 g vs 5 mg) and ≥3-digit magnitude errors; added detectNumericMismatch + fail-close in reportSentenceGroundedness (FactCC arXiv:1910.12840; guard-removal verified) — grounding-integrity fire 21
+
 - ✓ polarity-mismatch (negation) grounding guard — token coverage stripped no/not so a negated contradiction scored supported; added detectPolarityMismatch + fail-close in reportSentenceGroundedness (arXiv:2305.16819; guard-removal verified) — grounding-integrity fire 20
 
 - ✓ untrusted-only provenance marker on grounded ask answers — wired the dead `groundedOnUntrustedOnly` grounded≠true mitigation into the `muse ask` verdict path (re-export + `untrustedOnlyGroundingNotice` + verdict wiring); faithful answers resting only on untrusted MCP/web sources now surface a scrutiny cue, label stays "grounded", floor untouched — grounding-integrity fire 1
@@ -207,6 +218,7 @@
 - ✓ web sidebar nav marked the active view only with a CSS class — added a `<nav>` landmark + `aria-current="page"` (extracted i18n-free `SidebarNav` for renderToStaticMarkup testing); a11y on the every-screen control — surfaces fire 20
 - ✓ web LangToggle (EN/한) conveyed the active language only via CSS class — added `aria-pressed` (canonical toggle-button pattern; container role=group+aria-label already present) — surfaces fire 21
 - ◦ NOTE (surfaces fire 21 scout): cheap pure-props-injected a11y vein ~exhausted (SidebarNav, LangToggle done). Remaining a11y (CommandPalette combobox/listbox, Tasks filter aria-pressed) needs a presentational extraction or threading aria props through the shared Button — still real, but "extraction/wiring" slices, not one-attribute micro-fixes.
+- ✓ desktop `MUSE_DESKTOP_SPEAK` silence toggle only honored exact "0" → `false`/`no`/`off` still spoke; extracted pure `selectSpeakerKind(env)` (MuseDesktopCore) accepting common falsy values + delegated SpeakerFactory to it — surfaces fire 22
 - ◦ NOTE (surfaces fire 18 scout): cli `@muse/cli` format-string/validation vein thinning (most counts already `===1`-guarded, validation families hardened). ~1-2 high-conf format slices left; future fires likely more productive on behavioral gaps (missing flags, cross-command consistency) than format bugs.
 - ✓ `upcoming_birthdays` agent tool — conversational "whose birthday is coming up?" (resolveUpcomingBirthdays was CLI/brief-only, no agent tool) — tool-hardening fire 47
 - ✓ `on_this_day_notes` agent tool — conversational date-cued note recall (muse on-this-day was CLI-only; pure recall logic moved to @muse/mcp, CLI re-exports) — tool-hardening fire 48
@@ -285,6 +297,8 @@
 - ◦ **(hand-off → agent-core/skill-authoring loop) `validateSkillToolReferences`** — the one genuine gap Muse lacks (Hermes #25833 dangling-reference half): validate a self-authored skill body references only tools in the live registry. Touches `packages/skills` + skill-review = owned-loop territory, not the differentiation loop's. Source: differentiation fire 16 scout.
 
 ## ◦ Open — tool-mcp-browser axis C (browser)
+
+- ◦ (scout finding, fire 21) browser `<select>` dropdown selection is ALREADY handled — browser_type on a role=combobox/<select> grounds the text to an option via matchOption (fail-close: unmatchable option refused, options listed), confirmed in puppeteer-controller.ts type(). NOT a gap; future scouts skip it. **Browser micro-fix vein is thinning** (fires 1/4/6/9/11/13/15/16/17/18 covered ambiguity/non-typeable/link-url/nav-status/prompt/CDP-timeout/wait/linkCount/fill-form; select handled). Remaining candidate distinct C gaps to verify next: same-origin iframe read · file upload · a real CDP error-surfacing edge. If next 2 scouts also come up clean, rotate value-class per EXHAUSTION. (fire 21 deferred its code slice — API was rate-limiting subagent dispatch, so an independent ④b judge couldn't run; no unverified code committed.)
 
 - ◦ doctor posture allowlist display nuance — `describeOfficialMcpPosture` reports `blocked` for an enabled preset absent from a NON-empty allowlist, but `assembleMcpStack` auto-adds a turnkey-enabled preset to the allowlist so it isn't actually denied at assembly; align the doctor detail to the assembled reality (report it as allowed-via-turnkey-auto-add) so the audit matches runtime. (fire-10 follow-up, cosmetic)
 
@@ -1323,12 +1337,16 @@ excluded when scoring).
   Judge PASS via real revert (no-partial-side-effects test fails 6 ways without the arg-check); registered
   in reflection-guard. Validation runs before any tool executes; back-compat preserved.]
 - ◦ **Plan-validation remainder** — (a) `plan-repaired` PlanExecuteStreamEvent so eval:plan-quality/traces
-  can count runtime repair rate (deferred — strict event union needs downstream changes); (c) write-step
-  precondition checks; (d) plan-cache hygiene — cache the REPAIRED plan, never the invalid original.
+  can count runtime repair rate (deferred — strict event union needs downstream changes); (d) plan-cache
+  hygiene — cache the REPAIRED plan, never the invalid original.
   (fire 37 remainder, arXiv:2308.13724) — NEW sub-items from fire 8: (e) tighten the still-open false-negative
   classes (bare `$N` and bare `{{N}}` dropped as currency/template-ambiguous → undetected); (f) wire backward-ref
-  SUBSTITUTION (LLMCompiler Task Fetching Unit — resolve `{{step1.output}}` to the prior step's output, not just validate).
+  SUBSTITUTION (LLMCompiler Task Fetching Unit — resolve `{{step1.output}}` to the prior step's output, not just validate);
+  (g) extend write-precondition to non-string args (empty array / `{}` on a write — fire 21 covered string args).
 - ✓ Plan-validation remainder (b) ordering/dependency validation — agent-core-cognition fire 8
+- ✓ Plan-validation remainder (c) write-step precondition checks (ISR-LLM arXiv:2308.13724) — a write/execute step with an unfilled-placeholder arg is rejected before any tool runs (no partial side-effect) — agent-core-cognition fire 21
+- ✓ Playbook staleness re-probation gate (SSGM arXiv:2603.11768) — a once-reinforced strategy gone cold (>120d, sparse) is withheld from injection until re-reinforced — agent-core-cognition fire 22
+- ◦ **Playbook staleness-gate remainder** — tune PLAYBOOK_STALE_AFTER_DAYS (120) + the tally<3 sparsity bar on real reinforcement-interval data (chosen from SSGM framing + synthetic fixtures; a rarely-triggered useful/seasonal strategy could be withheld until re-reinforced — reversible + re-distillable so safe-direction, but untuned). Optionally a `muse doctor` "N strategies withheld as stale" surface. (fire 22 remainder, arXiv:2603.11768)
 - ✓ Playbook temporal reward discounting (Discounted-UCB arXiv:0805.3415) — agent-core-cognition fire 9
 - ◦ **Playbook recency-discount remainder** — (a) carry recency anchors into the `@muse/recall` non-embed
   `selectPlaybookSection` path too (this slice scoped to the agent-runtime applyPlaybook path); (b) tune

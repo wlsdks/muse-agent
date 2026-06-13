@@ -25,10 +25,6 @@
  * watchdog kills a wedged osascript so a tool call never hangs forever.
  */
 
-import { realpathSync } from "node:fs";
-import { readFile, rm } from "node:fs/promises";
-import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join, resolve as resolvePath } from "node:path";
 
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
@@ -72,7 +68,6 @@ export type MacMessageApprovalGate = (draft: MacMessageDraft) => Promise<MacAppr
 
 const OSASCRIPT_PATH = "/usr/bin/osascript";
 const SHORTCUTS_PATH = "/usr/bin/shortcuts";
-const SCREENCAPTURE_PATH = "/usr/sbin/screencapture";
 const PMSET_PATH = "/usr/bin/pmset";
 const DF_PATH = "/bin/df";
 const NETWORKSETUP_PATH = "/usr/sbin/networksetup";
@@ -1127,220 +1122,6 @@ export function createMacMessageSendTool(deps: MacMessageSendToolDeps): MuseTool
   };
 }
 
-// ── Tier 1: mac_screenshot (screencapture) ────────────────────────────
-
-const SCREENSHOT_TIMEOUT_MS = 15_000;
-
-function tryRealpath(p: string): string {
-  try {
-    return realpathSync(p);
-  } catch {
-    return p;
-  }
-}
-
-function screenshotAllowedRoots(): readonly string[] {
-  const home = homedir();
-  return [
-    join(home, "Desktop"),
-    join(home, "Downloads"),
-    tryRealpath(tmpdir()),
-    tryRealpath("/tmp")
-  ];
-}
-
-function expandTilde(p: string): string {
-  return p.startsWith("~/") ? join(homedir(), p.slice(2)) : p;
-}
-
-function resolveScreenshotPath(
-  raw: string,
-  realpath: (p: string) => string = tryRealpath
-): { ok: true; resolved: string } | { ok: false; error: string } {
-  const expanded = expandTilde(raw.trim());
-  const name = basename(expanded);
-  if (!name || name === "." || name === "..") {
-    return { ok: false, error: `path must include a filename, got: ${raw}` };
-  }
-  const lexicalParent = resolvePath(dirname(expanded));
-  const parent = tryRealpath(lexicalParent);
-  const allowed = screenshotAllowedRoots();
-  const withinRoot = (dir: string): boolean =>
-    allowed.some((root) => dir === root || dir.startsWith(root + "/"));
-  if (!withinRoot(parent)) {
-    return {
-      ok: false,
-      error: `screenshot path must be under ~/Desktop, ~/Downloads, or the system temp dir — got parent: ${parent}`
-    };
-  }
-  const resolved = resolvePath(parent, name);
-  // A pre-existing symlink AT the target is FOLLOWED on write (`screencapture -x`
-  // opens with O_TRUNC), so the parent-dir check alone lets `<allowed>/shot.png ->
-  // /etc/passwd` escape. Realpath the FULL target and re-check the real write
-  // location is still within an allowed root — mirrors the loopback-filesystem
-  // symlink-escape fix. A non-existent target realpaths to itself (no escape).
-  const realTarget = realpath(resolved);
-  if (realTarget !== resolved && !withinRoot(tryRealpath(dirname(realTarget)))) {
-    return { ok: false, error: `screenshot path resolves through a symlink outside the allowed dirs: ${realTarget}` };
-  }
-  return { ok: true, resolved };
-}
-
-export interface MacScreenshotToolDeps {
-  /** Runs `screencapture -x <path>`. Injected in tests. */
-  readonly runner?: (path: string) => Promise<MacCommandResult>;
-  /** Path factory for the default save location (tests inject a fixed one). */
-  readonly pathFactory?: () => string;
-  /** Resolves a target's real path (symlink check); injected in tests. */
-  readonly realpath?: (p: string) => string;
-}
-
-export function createMacScreenshotTool(deps: MacScreenshotToolDeps = {}): MuseTool {
-  const runner = deps.runner ?? ((path: string) => runChild(SCREENCAPTURE_PATH, ["-x", path], undefined, SCREENSHOT_TIMEOUT_MS));
-  const pathFactory = deps.pathFactory ?? (() => join(tmpdir(), `muse-screenshot-${Date.now().toString()}.png`));
-  const realpath = deps.realpath ?? tryRealpath;
-  return {
-    definition: {
-      description:
-        "Capture the whole screen to an image FILE (silent, non-interactive) and return its path. Use " +
-        "when the user asks to take / grab / save a screenshot — e.g. 'take a screenshot', " +
-        "'capture my screen', '스크린샷 찍어줘', '화면 캡처해줘'. NOT for telling the user what is on the " +
-        "screen — mac_screen_read does that. Optionally pass `path` to choose where the " +
-        ".png is saved; omit it to use a temp file. Note: macOS requires the Screen Recording permission " +
-        "(System Settings → Privacy & Security → Screen Recording) or the capture may be blank.",
-      domain: "system",
-      inputSchema: {
-        additionalProperties: false,
-        properties: {
-          path: {
-            description: "Optional .png destination path under ~/Desktop, ~/Downloads, or /tmp, e.g. '~/Desktop/shot.png'. Omit for a temp file.",
-            type: "string"
-          }
-        },
-        required: [],
-        type: "object"
-      },
-      keywords: ["screenshot", "스크린샷", "capture", "캡처", "screen", "화면", "grab", "snapshot"],
-      name: "mac_screenshot",
-      risk: "execute"
-    },
-    execute: async (args): Promise<JsonObject> => {
-      let targetPath: string;
-      if (typeof args["path"] === "string" && args["path"].trim().length > 0) {
-        const guard = resolveScreenshotPath(args["path"], realpath);
-        if (!guard.ok) {
-          return { captured: false, reason: guard.error };
-        }
-        targetPath = guard.resolved;
-      } else {
-        targetPath = pathFactory();
-      }
-      let result: MacCommandResult;
-      try {
-        result = await runner(targetPath);
-      } catch (cause) {
-        return { captured: false, reason: `screencapture spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
-      }
-      if (result.timedOut) {
-        return { captured: false, reason: `screencapture timed out after ${SCREENSHOT_TIMEOUT_MS.toString()}ms` };
-      }
-      if (result.exitCode !== 0) {
-        return { captured: false, reason: result.stderr.trim().slice(0, 300) || `screencapture exited with code ${result.exitCode?.toString() ?? "null"}` };
-      }
-      return { captured: true, path: targetPath };
-    }
-  };
-}
-
-// ── Tier 0: mac_screen_read (screencapture + local vision) ───────────
-
-export interface MacScreenReadDescribeInput {
-  readonly imageBase64: string;
-  readonly mimeType: string;
-  readonly question?: string;
-}
-
-export interface MacScreenReadDescribeResult {
-  readonly ok: boolean;
-  readonly text?: string;
-  readonly error?: string;
-}
-
-export interface MacScreenReadToolDeps {
-  /** Runs `screencapture -x <path>`. Injected in tests. */
-  readonly runner?: (path: string) => Promise<MacCommandResult>;
-  readonly pathFactory?: () => string;
-  readonly readImageBase64?: (path: string) => Promise<string>;
-  readonly cleanup?: (path: string) => Promise<void>;
-  /**
-   * The local vision model, injected by the CLI — this package stays
-   * model-free. The capture never leaves the machine.
-   */
-  readonly describeImage: (input: MacScreenReadDescribeInput) => Promise<MacScreenReadDescribeResult>;
-}
-
-export function createMacScreenReadTool(deps: MacScreenReadToolDeps): MuseTool {
-  const runner = deps.runner ?? ((path: string) => runChild(SCREENCAPTURE_PATH, ["-x", path], undefined, SCREENSHOT_TIMEOUT_MS));
-  const pathFactory = deps.pathFactory ?? (() => join(tmpdir(), `muse-screen-read-${Date.now().toString()}.png`));
-  const readImageBase64 = deps.readImageBase64 ?? (async (path: string) => (await readFile(path)).toString("base64"));
-  const cleanup = deps.cleanup ?? (async (path: string) => { await rm(path, { force: true }); });
-  return {
-    definition: {
-      description:
-        "Look at the user's screen and SAY what is on it — captures the screen and describes the visible " +
-        "windows, text, and content with the LOCAL vision model (the image never leaves this Mac). Use when " +
-        "the user asks what is on / visible on their screen, or to read an error or dialog they are looking " +
-        "at — e.g. '지금 화면에 뭐 떠있어?', \"what's this error on my screen?\", '화면에 보이는 거 읽어줘'. Pass " +
-        "`question` to focus the look (e.g. 'what does the error dialog say?'). NOT for saving a screenshot " +
-        "file — mac_screenshot does that. Needs the macOS Screen Recording permission.",
-      domain: "system",
-      inputSchema: {
-        additionalProperties: false,
-        properties: {
-          question: {
-            description: "Optional focus for the description, e.g. 'what does the error dialog say?'.",
-            type: "string"
-          }
-        },
-        required: [],
-        type: "object"
-      },
-      keywords: ["screen", "화면", "보여", "떠있", "look", "read screen", "what's on", "dialog", "error", "에러", "창"],
-      name: "mac_screen_read",
-      risk: "read"
-    },
-    execute: async (args): Promise<JsonObject> => {
-      const path = pathFactory();
-      let captureResult: MacCommandResult;
-      try {
-        captureResult = await runner(path);
-      } catch (cause) {
-        return { described: false, reason: `screencapture spawn failed: ${cause instanceof Error ? cause.message : String(cause)}` };
-      }
-      if (captureResult.timedOut || captureResult.exitCode !== 0) {
-        return {
-          described: false,
-          reason: captureResult.stderr.trim().slice(0, 300) ||
-            (captureResult.timedOut ? "screencapture timed out" : "screencapture failed — check the Screen Recording permission")
-        };
-      }
-      try {
-        const imageBase64 = await readImageBase64(path);
-        const question = typeof args["question"] === "string" && args["question"].trim().length > 0 ? args["question"].trim() : undefined;
-        const described = await deps.describeImage({ imageBase64, mimeType: "image/png", ...(question ? { question } : {}) });
-        if (!described.ok || !described.text) {
-          return { described: false, reason: described.error ?? "the vision model could not describe the screen" };
-        }
-        return { described: true, text: described.text };
-      } catch (cause) {
-        return { described: false, reason: cause instanceof Error ? cause.message : String(cause) };
-      } finally {
-        await cleanup(path).catch(() => { /* best-effort */ });
-      }
-    }
-  };
-}
-
 export {
   createMacClipboardSetTool,
   createMacSayTool,
@@ -1349,3 +1130,12 @@ export {
   type MacSayToolDeps,
   type MacSpotlightSearchToolDeps
 } from "./macos-utility-tools.js";
+
+export {
+  createMacScreenReadTool,
+  createMacScreenshotTool,
+  type MacScreenReadDescribeInput,
+  type MacScreenReadDescribeResult,
+  type MacScreenReadToolDeps,
+  type MacScreenshotToolDeps
+} from "./macos-screen-tools.js";

@@ -3131,7 +3131,13 @@ describe("muse.tasks loopback server", () => {
         "2026-09-31",
         "2026-11-31",
         "2026-00-10",
-        "2026-13-01"
+        "2026-13-01",
+        // The impossible date carried on a FULL ISO datetime — the shape the
+        // chat model actually emits for a reminder. The date-only forms above
+        // can't catch a "full datetimes are valid, skip the day-check" shortcut;
+        // these do (Date silently rolls "2026-02-30T..." to Mar 2 ~2 days off).
+        "2026-02-30T09:00:00Z",
+        "2026-04-31T23:59:59Z"
       ]) {
         expect(parseTaskDueAt(bad, now)).toBeInstanceOf(Error);
         expect(parseReminderDueAt(bad, now)).toBeInstanceOf(Error);
@@ -4870,6 +4876,102 @@ describe("muse.reminders loopback server", () => {
 
     const noQuery = await connection.callTool!("search", {});
     expect(noQuery).toMatchObject({ error: expect.stringContaining("query is required") });
+  });
+
+  it("a failed clear (ambiguous word OR unknown ref) deletes NOTHING — the populated store is left intact", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-clear-"));
+    let counter = 0;
+    const connection = createLoopbackMcpConnection(
+      createRemindersMcpServer({ file: join(dir, "reminders.json"), idFactory: () => `rem_${++counter}` })
+    );
+    await connection.callTool!("add", { dueAt: "2026-05-12T09:00:00Z", text: "dentist appointment" });
+    await connection.callTool!("add", { dueAt: "2026-05-13T09:00:00Z", text: "dentist follow-up" });
+    await connection.callTool!("add", { dueAt: "2026-05-14T09:00:00Z", text: "buy milk" });
+
+    // An ambiguous WORD ("dentist" matches two) must return candidates, not delete a guess.
+    const ambiguous = await connection.callTool!("clear", { id: "dentist" });
+    expect(ambiguous).toMatchObject({ error: expect.stringContaining("multiple") });
+    expect((ambiguous.candidates as unknown[]).length).toBe(2);
+    expect(await connection.callTool!("list", { status: "all" })).toMatchObject({ total: 3 });
+
+    // An unknown ref must error WITHOUT touching the store.
+    const unknown = await connection.callTool!("clear", { id: "passport" });
+    expect(unknown).toMatchObject({ error: expect.stringContaining("not found") });
+    expect(await connection.callTool!("list", { status: "all" })).toMatchObject({ total: 3 });
+  });
+
+  it("a failed snooze (ambiguous word OR unknown ref) bumps NO reminder's dueAt — the store is left intact", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-snooze-"));
+    let counter = 0;
+    const connection = createLoopbackMcpConnection(
+      // A FIXED now so that, had a guess-and-snooze regression fired, the bumped
+      // dueAt would land on this now-anchored value — distinct from every seeded
+      // dueAt, so the unchanged-assertion below would catch it.
+      createRemindersMcpServer({ file: join(dir, "reminders.json"), idFactory: () => `rem_${++counter}`, now: () => new Date("2026-05-11T08:00:00Z") })
+    );
+    await connection.callTool!("add", { dueAt: "2026-05-12T09:00:00Z", text: "dentist appointment" });
+    await connection.callTool!("add", { dueAt: "2026-05-13T09:00:00Z", text: "dentist follow-up" });
+    await connection.callTool!("add", { dueAt: "2026-05-14T09:00:00Z", text: "buy milk" });
+
+    const dueByText = async (): Promise<Record<string, string>> => {
+      const all = await connection.callTool!("list", { status: "all" });
+      return Object.fromEntries((all.reminders as Array<{ text: string; dueAt: string }>).map((r) => [r.text, r.dueAt]));
+    };
+    const original = {
+      "dentist appointment": "2026-05-12T09:00:00.000Z",
+      "dentist follow-up": "2026-05-13T09:00:00.000Z",
+      "buy milk": "2026-05-14T09:00:00.000Z"
+    };
+    expect(await dueByText()).toEqual(original);
+
+    // An ambiguous WORD ("dentist" matches two) must return candidates, not snooze a guess.
+    const ambiguous = await connection.callTool!("snooze", { id: "dentist" });
+    expect(ambiguous).toMatchObject({ error: expect.stringContaining("multiple") });
+    expect((ambiguous.candidates as unknown[]).length).toBe(2);
+    expect(await dueByText()).toEqual(original);
+
+    // An unknown ref must error WITHOUT bumping any dueAt.
+    const unknown = await connection.callTool!("snooze", { id: "passport" });
+    expect(unknown).toMatchObject({ error: expect.stringContaining("not found") });
+    expect(await dueByText()).toEqual(original);
+  });
+
+  it("a failed fire (ambiguous word OR unknown ref) flips NO reminder's status — all stay pending", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-fire-"));
+    let counter = 0;
+    const connection = createLoopbackMcpConnection(
+      createRemindersMcpServer({ file: join(dir, "reminders.json"), idFactory: () => `rem_${++counter}` })
+    );
+    await connection.callTool!("add", { dueAt: "2026-05-12T09:00:00Z", text: "dentist appointment" });
+    await connection.callTool!("add", { dueAt: "2026-05-13T09:00:00Z", text: "dentist follow-up" });
+    await connection.callTool!("add", { dueAt: "2026-05-14T09:00:00Z", text: "buy milk" });
+
+    const statusByText = async (): Promise<Record<string, string>> => {
+      const all = await connection.callTool!("list", { status: "all" });
+      return Object.fromEntries((all.reminders as Array<{ text: string; status: string }>).map((r) => [r.text, r.status]));
+    };
+    const allPending = { "dentist appointment": "pending", "dentist follow-up": "pending", "buy milk": "pending" };
+    expect(await statusByText()).toEqual(allPending);
+
+    // An ambiguous WORD ("dentist" matches two) must return candidates, not fire a guess.
+    const ambiguous = await connection.callTool!("fire", { id: "dentist" });
+    expect(ambiguous).toMatchObject({ error: expect.stringContaining("multiple") });
+    expect((ambiguous.candidates as unknown[]).length).toBe(2);
+    expect(await statusByText()).toEqual(allPending);
+
+    // An unknown ref must error WITHOUT flipping any status to fired.
+    const unknown = await connection.callTool!("fire", { id: "passport" });
+    expect(unknown).toMatchObject({ error: expect.stringContaining("not found") });
+    expect(await statusByText()).toEqual(allPending);
   });
 
   it("search greps reminder text case-insensitively, defaulting to status=all", async () => {

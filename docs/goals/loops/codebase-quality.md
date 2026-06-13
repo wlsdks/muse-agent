@@ -823,3 +823,27 @@ ratchet: testFiles 966 · fabrication 0 · groundedSurfaces 27 · 1 dead re-expo
   from "./errors.js"`; api route imports it from @muse/messaging unaffected); telegram-provider no longer references
   it (0 refs); MessagingProviderError import retained; knip drops it; messaging 368 + full check green.
 - **Risk:** none — removed a redundant re-export whose symbol is still exposed via the package index; no behavior change.
+
+## fire 45 · 2026-06-14 · loop-creator v1.14.0 · 62577971
+meta: value-class=refactor · pkg=@muse/macos · kind=decompose · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 968 · fabrication 0 · groundedSurfaces 27 · macos-tools 1352->1297 LOC · +4 sandbox tests
+- What: Step 1 of the fire-44-deferred macos capture untangle. Extracted the screenshot output-path security sandbox (tryRealpath + screenshotAllowedRoots + expandTilde + resolveScreenshotPath) from macos-tools.ts into a new sibling macos-screen-path.ts. The 4 fns are capture-only (grep-confirmed: used solely by createMacScreenshotTool); macos-tools imports resolveScreenshotPath+tryRealpath back. Dropped 3 now-unused node imports (realpathSync, homedir, basename/dirname/resolvePath). Added macos-screen-path.test.ts (4 OUTCOME cases for a previously-untested-in-isolation traversal guard).
+- Why: completes the top open defer-blocker (avoid defer-ratchet) + isolates a security-sensitive path-traversal sandbox into a directly unit-testable module. Unblocks Step 2 (move the screenshot/screenread tools). Diversity: macos 2/8, decompose 3/8 — clean.
+- Review point: 4b judge — the 4 fns moved BYTE-IDENTICAL (incl. the load-bearing symlink-O_TRUNC WHY comment); the existing screenshot-tool tests (traversal/symlink-escape/allowlist) stay green; macos-tools no longer references the dropped node imports.
+- Risk: low — pure relocation behind the same call; existing tool-level tests + 4 new direct tests both pass.
+
+## fire 46 · 2026-06-14 · loop-creator v1.14.0 · 37c110b8
+meta: value-class=refactor · pkg=@muse/macos · kind=decompose · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 968 · fabrication 0 · groundedSurfaces 27 · macos-tools 1297->1143 LOC · capture cluster COMPLETE
+- What: Step 2 (final) of the macos capture untangle. Moved createMacScreenshotTool + createMacScreenReadTool (+ MacScreenshotToolDeps/MacScreenReadToolDeps/MacScreenReadDescribeInput/MacScreenReadDescribeResult + SCREENSHOT_TIMEOUT_MS + SCREENCAPTURE_PATH) from macos-tools.ts into a new sibling macos-screen-tools.ts (imports resolveScreenshotPath/tryRealpath from macos-screen-path.js + runChild from macos-exec.js). macos-tools re-exports all 6 names so the package API + tests are unchanged. Dropped 4 now-capture-only imports from macos-tools (node:fs/promises readFile/rm, node:os tmpdir, node:path join, macos-screen-path).
+- Why: completes the capture-cluster decompose (fires 43/45/46) — macos-tools 1519->1143 LOC across the thread. The screen tools now live beside their path sandbox; macos-tools holds only the osascript/app/message families. Diversity: macos 3/8, decompose 4/8 (both <6/8).
+- Review point: 4b judge — the 2 tools + 4 type interfaces moved BYTE-IDENTICAL; re-export keeps macos-tools.test.ts (imports both tools from macos-tools.js) green (109 tests incl. the screenshot sandbox-through-tool cases); the 4 dropped imports are genuinely capture-only (lint caught node:path join — array .join() is unrelated).
+- Risk: low — pure relocation behind a re-export; existing tool tests + the fire-45 sandbox tests both pass.
+
+## fire 47 · 2026-06-14 · loop-creator v1.14.0 · 8f54ee82
+meta: value-class=refactor · pkg=@muse/autoconfigure · kind=cohere · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 970 · fabrication 0 · groundedSurfaces 27 · isRecord dups 4->3
+- What: deduped the local isRecord type-guard in autoconfigure/setup-status.ts onto the canonical @muse/shared isRecord. The local copy was byte-identical to shared's; autoconfigure already deps @muse/shared (package.json + tsconfig ref, 4 sibling files import it), used internally only (459/493), not exported. Replaced the local function with `import { isRecord } from "@muse/shared"`.
+- Why: genuine pivot off the 3x macos/decompose run — FRESH kind (cohere, 0/8 in window) + a package this loop hasn't touched. Continues the fire-21 isRecord dedup (was 5->3 after model/api; now 4->3 wait — 3 defs remain: shared canonical, voice no-shared-dep, agent-core hot/exported). Diversity: autoconfigure 1/8, cohere 1/8.
+- Review point: 4b judge — behavior-preserving (impl byte-identical, so the 459/493 token-from-file checks are unchanged); setup-status's 595 tests stay green proving isRecord-from-shared works identically; isRecord not exported from autoconfigure (no external caller); no new dep added (already present).
+- Risk: low — setup-status.ts is warm (differentiation loop touches its embedder logic) but my edit is the import block + the deleted fn at EOF, line-disjoint from that work; if a merge conflict surfaces, retry next fire.
