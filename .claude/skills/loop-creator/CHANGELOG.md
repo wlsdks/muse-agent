@@ -9,6 +9,27 @@
 
 ---
 
+## 1.12.0 — 2026-06-13
+**Fable-5 완전 제거 + 28-fire 냉정 평가 3대 개선**(진안 지시). 배경: 28 fire(v1.11.2) 실측 후 Opus
+적대 평가가 B(B-flat) — floor(안전)는 A급이나 ceiling(생성 가치)이 `@muse/mcp` micro-fix 모노컬처에
+수렴(EXPANSION 절반 0건). 그리고 Fable-5가 런타임에서 ~6 fire 연속 불가.
+- **Fable-5 제거 → Opus 4.8 강티어 고정.** scout/계획/설계/모호한 포크/④b 적대 검증 = Opus 4.8
+  (`claude-opus-4-8[1m]`). 모델-티어링 표·생성-프롬프트·§1.5·§4 체크리스트·레버 목록에서 `fable`
+  전부 제거. (W3 해소: Fable-5-다운→maker+judge가 조용히 Opus로 collapse하던 *기록 없는* 약화를,
+  티어를 Opus로 *안정화*하고 보상통제를 명시함으로써 제거.)
+- **maker≠judge 정직화(§1.5-3, 표).** Opus가 천장이라 Opus-빌드↔Opus-judge는 *같은 모델*이 됨 —
+  분리는 "다른 모델"이 아니라 **독립 서브에이전트(fresh context)+적대 프레이밍+judge-실패-드릴**이
+  지탱한다고 명시. judge는 항상 빌더와 별개 독립 인스턴스.
+- **W1 VALUE-CLASS RATCHET(§4.5-9 + ② + ④b + ⑤b).** KIND-다양성이 버그-KIND 회전으로 만족돼 value
+  단조를 못 막은 실패를 교정. 최근 8 fire를 (패키지×value-class{micro-fix·new-capability·wiring·
+  refactor})로 카운트; ≥6/8 same-package micro-fix면 다음 fire는 다른 value-class/패키지 강제, ④b judge가
+  위반 FAIL. "가치 우선"을 측정불가 산문에서 *세는 속성*으로. + §4.5-10 EXHAUSTION(scout 2회 고갈→3번째
+  안 태우고 value-class 전환/정직 종료).
+- **W2 JUDGE-DRILL 하드-카운터(§4.5-5 + ⑤b).** "~10 fire" 산문이 14-fire(드릴 10·21·31·45)로 미끄러진
+  실측 교정. RATCHET 줄에 `firesSinceDrill=N`, `≥10 OR 연속 allPASS≥8`이면 미루기-불가 드릴.
+유지(과잉교정 경계): maker≠judge 게이팅 verifier(실제 인접-구멍 적발), RATCHET/write-back/게이트-後
+byte-hygiene, 정직-defer, KIND 다양성 가드(문제는 한 층 위 value-class).
+
 ## 1.11.2 — 2026-06-13
 **논문-근거 우선 라인에 테마-스코프 절**(진안 확인): capability/method/research 테마에선 논문-우선이
 맞지만, hardening/correctness/security 테마에선 그 보안·correctness 작업 자체가 곧 가치 — "단순

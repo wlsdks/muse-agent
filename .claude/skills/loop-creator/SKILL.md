@@ -1,6 +1,6 @@
 ---
 name: loop-creator
-version: 1.11.2
+version: 1.12.0
 description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘", "loop 등록", "X를 계속 강화하는 루프", or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from its bundled loop-engineering.md contract AND registers the cron itself, then reports the prompt + cron id + how to stop. The autonomous successor to hand-written ad-hoc loop prompts.
 ---
 
@@ -93,7 +93,7 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 | **이해 표면 (비동기·non-blocking)** | 매 fire가 `docs/goals/loop-digest.md`에 4줄 append(아무때나 읽는 비동기 리뷰 로그) + **N fire(기본 3)마다 막지 않고 PushNotification 알림만 + 계속 진행** — 루프는 절대 안 멈춘다. 검토/머지는 사람의 비동기 선택. §3-2 |
 | **자율성 티어** | **Tier1**(로컬 커밋, push 없음 — 기본) 또는 **Tier2**(`loop/<theme>` 브랜치 push + draft PR, 사람이 머지 — 명시 opt-in). 하드 floor: main 자동머지·자율 outbound·banking·`--no-verify` 절대 불가. §3.5 |
 | 토큰/스텝 캡 | fire당 1슬라이스, retry 2–3 상한, 예산 캡([`loop-budget.md`](../../../harness/reference/loop-budget.md)) |
-| **모델 티어링** | 정형 빌드/검색/문서 → Sonnet(`model:"sonnet"`); **계획·설계·모호함·적대적 검증 → Fable 5(`model:"fable"`)를 *가능할 때*, 불가하면 Opus 4.8(1M)**. 개발은 Opus/Sonnet 무관. maker=Sonnet / **judge=강한 티어(Fable5 가능 시, 아니면 Opus)**. 오케스트레이터는 얇게. (Muse 런타임 모델 gemma4는 고정 — [`loop-engineering.md`](references/loop-engineering.md) §1.5) |
+| **모델 티어링** | 정형 빌드/검색/문서 → Sonnet(`model:"sonnet"`); **scout·계획·설계·모호한 포크·④b 적대 검증 → Opus 4.8(`claude-opus-4-8[1m]`)** — 강한 티어(**Fable-5는 쓰지 않는다**). **maker≠judge: ④b judge는 항상 슬라이스 빌더와 별개의 *독립 서브에이전트*(fresh context·적대 프레이밍). Opus가 최강 티어라 Opus-빌드 슬라이스를 Opus-judge가 볼 땐 모델이 같아지므로(더 센 티어 없음) 분리는 context-독립+적대+**judge-실패-드릴(§4.5 하드-카운터, ≤10 fire)**이 보상통제다 — 드릴을 거르지 않는다.** 오케스트레이터는 얇게. (Muse 런타임 모델 gemma4는 고정 — [`loop-engineering.md`](references/loop-engineering.md) §1.5) |
 | State 파일 | `docs/goals/backlog.md`에 Done/다음 write-back |
 | 불변식 | fabrication=0 floor + IMMUTABLE-CORE 불가침 |
 | 중단 방법 | cron id 기록 + CronDelete/cmux |
@@ -108,16 +108,18 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 Muse 자율 개선 루프 — 테마: <목적>. 반드시 Node 24(nvm default).
 ① docs/goals/backlog.md를 먼저 읽고 `pnpm self-eval`로 회귀를 확인 — 있으면 그게 이번 이터레이션.
 ② <테마>의 **최상단 ◦(가치 우선, "검증 쉬운 것" 아님)**. 최근 3 fire가 같은 KIND였으면 다른 KIND를 고른다(다양성). 비면 gap-scout 리필.
-   **논문-근거 우선(가능할 때, 테마-스코프)**: 강한-티어(Fable5) scout가 **WebSearch로 검증된 2024-2026 AI-agent 논문**(내부 프로세스·자기개선·검증/grounding·메모리·오케스트레이션)을 확인하고 *적용가능 메커니즘 + arXiv ID*로 슬라이스를 스펙 → verify-then-apply. 단순 correctness 버그픽스보다 논문-기반 capability/방법 적용을 우선 — **단 이는 capability/method/research 테마에 한한다; hardening/correctness/security 테마에선 그 보안·correctness 작업 자체가 곧 가치이므로 "단순 버그픽스"로 깎아 deprioritize하지 않는다**(예: 프로토타입 오염·계약 위반 수정은 하드닝 루프의 최고 산출). floor를 깨는 회귀면 예외적으로 먼저. 적용 시 소스/다이제스트/커밋에 arXiv ID 인용.
+   **VALUE-CLASS RATCHET(②의 강제 게이트 — "쉬운 걸 잘 하고 어려운 거라 부르지" 않게)**: KIND 다양성만으론 *value 단조*를 못 막는다(버그-KIND를 돌리며 같은 micro-fix 우물에 머묾). 그래서 최근 8 fire를 **(a)만진 패키지 (b)value-class∈{micro-fix·new-capability(EXPANSION)·wiring·refactor}**로 센다. **≥6/8이 같은 패키지 AND value-class=micro-fix면, 이번 fire는 반드시 *다른 value-class*(새 도구 역량/논문-capability/배선) 또는 *다른 패키지*다 — 같은-패키지 micro-fix를 또 고르면 ④b judge가 inert처럼 FAIL시킨다.** value-class는 ⑤b RATCHET 줄에 카운트로 박아 세는 속성이지 문구가 아니다. (테마가 "X expansion & hardening"이면 EXPANSION 절반을 28 fire 내내 0건으로 두는 게 이 게이트가 막는 실패다.)
+   **논문-근거 우선(가능할 때, 테마-스코프)**: 강한-티어(Opus) scout가 **WebSearch로 검증된 2024-2026 AI-agent 논문**(내부 프로세스·자기개선·검증/grounding·메모리·오케스트레이션)을 확인하고 *적용가능 메커니즘 + arXiv ID*로 슬라이스를 스펙 → verify-then-apply. 단순 correctness 버그픽스보다 논문-기반 capability/방법 적용을 우선 — **단 이는 capability/method/research 테마에 한한다; hardening/correctness/security 테마에선 그 보안·correctness 작업 자체가 곧 가치이므로 "단순 버그픽스"로 깎아 deprioritize하지 않는다**(예: 프로토타입 오염·계약 위반 수정은 하드닝 루프의 최고 산출). floor를 깨는 회귀면 예외적으로 먼저. 적용 시 소스/다이제스트/커밋에 arXiv ID 인용.
    **공개/오픈 논문만**(진안 지시): arXiv preprint·오픈액세스 등 *누구나 자유롭게 참조·사용 가능한* 논문에 한정. published 방법/알고리즘을 **적용**하는 것이지 proprietary/비공개 자료나 코드를 복사하는 게 아님 — 출처(arXiv ID) 명시 + 자체 재구현.
-   **DECOMPOSE-ON-DEFER**: 너무 커서(>1 fire) defer하면 *조용히 쉬운 걸로 안 내려가고* — 강한-티어(Fable5/Opus) 1스텝으로 그 항목을 loop-sized ◦ 슬라이스들로 **쪼개 backlog에 기록**(Anthropic planner 패턴), 또는 "loop-decompose 불가, 진안 필요"를 명시. 같은 항목이 2회 defer되면 3-fire 알림에 escalate(defer가 일방 ratchet이 되지 않게).
+   **DECOMPOSE-ON-DEFER**: 너무 커서(>1 fire) defer하면 *조용히 쉬운 걸로 안 내려가고* — 강한-티어(Opus) 1스텝으로 그 항목을 loop-sized ◦ 슬라이스들로 **쪼개 backlog에 기록**(Anthropic planner 패턴), 또는 "loop-decompose 불가, 진안 필요"를 명시. 같은 항목이 2회 defer되면 3-fire 알림에 escalate(defer가 일방 ratchet이 되지 않게).
+   **EXHAUSTION(쉬운 버그 vein 고갈 — 정직한 출구)**: gap-scout가 2회 연속 "clean·objectively-correct·1-file 버그 없음"을 보고하면, 3번째 스카웃으로 토큰을 더 태우지 말고 — VALUE-CLASS RATCHET이 가리키는 *다른 value-class*(EXPANSION 새 도구/논문-capability/큰 ◦ decompose)로 즉시 전환하거나, 그것도 없으면 backlog에 "vein 고갈, <후보>" 블로커 기록 후 이 fire 정직히 종료(루프는 다음 fire 계속). "할 게 없다 금지"는 *스카웃을 더 하드하게*가 아니라 *value-class를 올리라*는 뜻이다.
 ③ harness/host/dev-loop.md §3에 따라 검증가능 슬라이스를 TDD-first로. **행동 acceptance: 결과 상태(OUTCOME)를 채점 — 선언/config-only 테스트 금지(fabricated 값이 실제 드롭/동작하는 end-to-end 케이스).** 사소한 동종 변경(예: 남은 actuator들)은 **한 슬라이스로 배칭**(토큰 절약). 새 도구는 tool-calling.md + eval:tools 골든.
 ④ 결정적 검증(정지조건): **먼저 만진 패키지를 빌드**(pnpm --filter @muse/<pkg> build) → 가장 좁은 테스트 → pnpm check → 관련 eval(<해당 eval>) → pnpm lint. **pnpm check가 실패하면 첫 진단은 clean-rebuild 재실행**(cross-package 실패는 대개 동시 루프發 stale-dist — [[project_stale_dist_from_loop]]; 한 번 재실행 後에도 빨가면 진짜 회귀).
-④b 게이팅 검증자: 별개 강한-티어 서브에이전트가 적대 판정(acceptance가 *행동*을 검증하나 — **선언-only면 FAIL**? 불변식 약화 없음? 무관 state 안 깸?). 깊이는 리스크에 비례(정형 저위험은 가볍게, 새 경로/불변식 접촉은 풀 추적)하되 항상 돈다. PASS여야 ⑤로; FAIL이면 git restore 롤백+backlog 블로커 후 멈춤.
+④b 게이팅 검증자: 별개 강한-티어(Opus) **독립** 서브에이전트가 적대 판정(acceptance가 *행동*을 검증하나 — **선언-only면 FAIL**? 불변식 약화 없음? 무관 state 안 깸? **VALUE-CLASS RATCHET 위반(최근 8 fire ≥6 same-package micro-fix인데 또 same)이면 FAIL**?). 깊이는 리스크에 비례(정형 저위험은 가볍게, 새 경로/불변식 접촉은 풀 추적)하되 항상 돈다. PASS여야 ⑤로; FAIL이면 git restore 롤백+backlog 블로커 후 멈춤.
 ⑤ write-back(테스트/eval/backlog Done) 포함 커밋. **게이트 後 트리 무편집 규칙**: write-back/digest 편집은 ④ 게이트를 다시 통과해야 한다 — 커밋 *직전 마지막 행동*으로 **staged diff에 lint + byte-hygiene 재확인**(게이트 後 트리를 또 건드렸으니; fire-1이 NUL 바이트를 이 구멍으로 흘렸음). **자율성: <Tier1=로컬 커밋, push 금지 / Tier2=loop/<theme> 브랜치 push+draft PR, 사람이 머지>.**
-⑤b 이해 다이제스트: docs/goals/loop-digest.md에 4줄 append(무엇/왜/리뷰지점/리스크) + **RATCHET 1줄: 이번 fire의 스코어보드 델타**(예: eval:tools 0.91→0.93 · testFiles 888→889 · fabrication 0 유지 — 변화 없으면 "지표 무변동, 하드닝"). 3 fire마다 막지 않고 PushNotification — "N개 쌓였어요"가 아니라 **추세**("eval X, 커버리지 Y, 회귀 0") 알림 + **계속 진행**(루프는 절대 안 멈춤; 검토/머지는 진안의 비동기 선택).
-모델 티어링(토큰 절약): 정형 빌드/검색은 Sonnet 서브에이전트(Agent/Workflow model:"sonnet")로
-위임하고, 계획/설계/모호한 포크/④b 적대 검증은 **Fable 5(가능 시) 아니면 Opus 4.8(1M)**로; 개발은 Sonnet/Opus 무관; judge는 worker보다 강한 티어(Fable5 가능 시, 아니면 Opus).
+⑤b 이해 다이제스트: docs/goals/loop-digest.md에 4줄 append(무엇/왜/리뷰지점/리스크) + **RATCHET 1줄: 이번 fire의 스코어보드 델타 + 카운트**(예: testFiles 888→889 · fabrication 0 유지 · **value-class=micro-fix·pkg=@muse/mcp** · **firesSinceDrill=N** — 변화 없으면 "지표 무변동, 하드닝"). value-class·pkg를 매 fire 박는 건 VALUE-CLASS RATCHET이 셀 수 있게 하기 위함(②). **JUDGE-DRILL 하드-카운터**: `firesSinceDrill≥10 OR 연속 allPASS≥8`이면 이번 fire 슬라이스가 곧 judge-드릴(고의 나쁜-슬라이스 주입→verifier FAIL 확인→롤백→진짜 fix) — *미루기 불가, 다음 fire로 넘기지 않는다*; 드릴 완료 시에만 카운터 0 리셋. 3 fire마다 막지 않고 PushNotification — **추세**("eval X, 커버리지 Y, 회귀 0") 알림 + **계속 진행**.
+모델 티어링(토큰 절약·Fable-5 미사용): 정형 빌드/검색은 Sonnet 서브에이전트(Agent/Workflow model:"sonnet")로
+위임하고, scout/계획/설계/모호한 포크/④b 적대 검증은 **Opus 4.8(`claude-opus-4-8[1m]`)**로; ④b judge는 빌더와 *별개의 독립 서브에이전트*(같은 Opus여도 fresh context·적대) — maker≠judge의 보상통제는 위 JUDGE-DRILL이다.
 한 fire에 슬라이스 하나; 막히면 backlog에 블로커 기록 후 멈춤.
 예산 캡: harness/reference/loop-budget.md 한도 준수 — 토큰/비용이 캡에 닿으면 fire 중단 후 보고.
 grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지. 하드 floor: main 자동머지·자율 outbound·banking·--no-verify 절대 불가.
@@ -135,7 +137,9 @@ grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지. 하드 floo
       "느낌상 됐다"면 FAIL — 띄우지 않고 블로커 보고.
 - [ ] 프롬프트의 ④ eval이 테마와 맞나(브라우저인데 eval:browser-agent 빠지지 않았나)?
 - [ ] push 금지·fabrication=0·IMMUTABLE-CORE·**예산 캡** 문구가 프롬프트에 살아있나?
-- [ ] 모델 티어링 라인이 테마에 맞나(정형 위주면 Sonnet 위임이 실제로 토큰을 아끼나)?
+- [ ] 모델 티어링 라인이 테마에 맞나(정형 위주면 Sonnet 위임이 실제로 토큰을 아끼나) — **Fable-5 참조가 0인가(scout/judge=Opus 4.8)**, judge가 빌더와 별개 독립 서브에이전트로 박혔나?
+- [ ] **VALUE-CLASS RATCHET**(②)가 프롬프트에 살아있나 — 최근 8 fire ≥6 same-package micro-fix면 다른 value-class/패키지 강제, ④b judge가 위반을 FAIL, ⑤b RATCHET에 value-class·pkg 카운트?
+- [ ] **JUDGE-DRILL 하드-카운터**(⑤b)가 프롬프트에 살아있나 — `firesSinceDrill≥10 OR 연속 allPASS≥8`이면 미루기-불가 드릴, 완료 시에만 리셋?
 - [ ] **게이팅 검증자**가 프롬프트에 살아있나 — ④b Opus 적대 judge가 커밋을 GATE, FAIL=롤백?
 - [ ] **이해 표면**이 살아있나 — ⑤b 다이제스트 append + N fire마다 알림(막지 않음, 루프 무한)?
 - [ ] **자율성 티어가 명시**됐나 — Tier1/Tier2 중 무엇인지 ⑤에 박혔고, Tier2면 진안 opt-in 받았나?
