@@ -19,12 +19,19 @@ import { BROWSER_KEYS, BROWSER_MAX_ELEMENTS, type BrowserController, type Browse
 import { filterElements, matchElementResult, type MatchIntent } from "./matcher.js";
 
 export interface BrowserActionDraft {
-  readonly action: "click" | "type" | "key";
+  readonly action: "click" | "type" | "key" | "fill";
   readonly url: string;
   /** Human label of the target element ("Sign in" button), or the key for `key`. */
   readonly target: string;
   /** The text being typed (for `type` only). */
   readonly text?: string;
+  /**
+   * The resolved field→value pairs for a multi-field `fill` (browser_fill_form).
+   * Each `target` is the RESOLVED element label (role + name), not the raw model
+   * input, so the user confirms exactly what every field gets. Present only for
+   * `action: "fill"` — the gate shows ALL of them in ONE confirm.
+   */
+  readonly fields?: ReadonlyArray<{ readonly target: string; readonly value: string }>;
 }
 
 export interface BrowserApprovalDecision {
@@ -669,6 +676,137 @@ export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {
       } catch (cause) {
         return { typed: false, ...errorResult(cause) };
       }
+    }
+  };
+}
+
+interface FillFieldInput {
+  readonly target: string;
+  readonly value: string;
+}
+
+/**
+ * Parse + validate the `fields` argument into typed {target, value} pairs.
+ * Returns an error envelope (never a partial list) if the shape is wrong or
+ * fewer than two fields are given — a one-field "form" is browser_type's job,
+ * and a malformed list must NOT reach the resolve/fill stage half-built.
+ */
+function parseFillFields(raw: JsonValue | undefined): { readonly fields: readonly FillFieldInput[] } | { readonly error: JsonObject } {
+  if (!Array.isArray(raw)) {
+    return { error: { reason: "browser_fill_form requires 'fields': a list of {target, value} pairs, e.g. [{\"target\":\"Email\",\"value\":\"a@b.com\"},{\"target\":\"Password\",\"value\":\"x\"}]" } };
+  }
+  const parsed: FillFieldInput[] = [];
+  for (let i = 0; i < raw.length; i += 1) {
+    const entry = raw[i];
+    const target = entry && typeof entry === "object" && !Array.isArray(entry) && typeof (entry as JsonObject)["target"] === "string" ? ((entry as JsonObject)["target"] as string).trim() : "";
+    const value = entry && typeof entry === "object" && !Array.isArray(entry) && typeof (entry as JsonObject)["value"] === "string" ? ((entry as JsonObject)["value"] as string) : "";
+    if (target.length === 0) {
+      return { error: { reason: `field ${i.toString()} is missing a 'target' (the field label, e.g. 'Email')` } };
+    }
+    if (value.length === 0) {
+      return { error: { reason: `field "${target}" is missing a non-empty 'value'` } };
+    }
+    parsed.push({ target, value });
+  }
+  if (parsed.length < 2) {
+    return { error: { reason: "browser_fill_form fills 2+ fields at once — for a single field use browser_type" } };
+  }
+  return { fields: parsed };
+}
+
+export function createBrowserFillFormTool(deps: BrowserActToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "Fill SEVERAL fields of a form on the page open in Muse's browser in ONE go — pass `fields`, a list " +
+        "of {target, value} pairs (each `target` is the field's label/placeholder, `value` is what to type " +
+        "into it). Set `submit` true to press Enter after the last field. Use when the user gives 2+ field " +
+        "values for one form at once — a login (email + password), a sign-up, a checkout / address form — " +
+        "e.g. 'log in with email a@b.com and password hunter2', '이름·이메일·전화번호 한 번에 채워줘'. Do NOT use " +
+        "for a SINGLE field (use browser_type) or to click a button (use browser_click). The user MUST " +
+        "confirm ONCE — Muse shows every field→value pair and fills them all only on confirm; absent " +
+        "confirmation nothing is typed.",
+      domain: "browser",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          fields: {
+            description: "The fields to fill, each {target, value} — e.g. [{\"target\":\"Email\",\"value\":\"a@b.com\"},{\"target\":\"Password\",\"value\":\"hunter2\"}]. Give 2 or more.",
+            items: {
+              additionalProperties: false,
+              properties: {
+                target: { description: "Which field — its label or placeholder, e.g. 'Email' or 'First name'.", type: "string" },
+                value: { description: "The text to type into that field, e.g. 'a@b.com'.", type: "string" }
+              },
+              required: ["target", "value"],
+              type: "object"
+            },
+            minItems: 2,
+            type: "array"
+          },
+          submit: { description: "true to press Enter after the last field (submit the form). Default false.", type: "boolean" }
+        },
+        required: ["fields"],
+        type: "object"
+      },
+      keywords: ["browser", "form", "폼", "fill", "채워", "login", "로그인", "signup", "가입", "checkout", "결제", "fields", "입력", "브라우저"],
+      name: "browser_fill_form",
+      risk: "execute"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const parsed = parseFillFields(args["fields"]);
+      if ("error" in parsed) {
+        return { filled: false, ...parsed.error };
+      }
+      const submit = args["submit"] === true;
+      // Resolve EVERY field FIRST, before any approval or fill. If a single
+      // target is unfound / ambiguous / not a text field, fail closed: zero
+      // type calls, no partial fill (outbound-safety — a confirmed login that
+      // only typed the email and stranded the password is a wrong external
+      // effect). Surface WHICH field failed so the model retargets just it.
+      const resolved: Array<{ readonly ref: number; readonly label: string; readonly value: string }> = [];
+      for (const field of parsed.fields) {
+        let result: ResolveResult;
+        try {
+          result = await resolveTarget(deps.controller, { target: field.target }, "type");
+        } catch (cause) {
+          return { filled: false, field: field.target, ...errorResult(cause) };
+        }
+        if ("error" in result) {
+          return { filled: false, field: field.target, ...result.error };
+        }
+        resolved.push({ label: result.label, ref: result.ref, value: field.value });
+      }
+      const draftFields = resolved.map((entry) => ({ target: entry.label, value: entry.value }));
+      const draft: BrowserActionDraft = {
+        action: "fill",
+        fields: submit ? draftFields.map((entry, i) => (i === draftFields.length - 1 ? { ...entry, value: `${entry.value} ⏎(submit)` } : entry)) : draftFields,
+        target: `${resolved.length.toString()} fields`,
+        url: deps.controller.currentUrl()
+      };
+      let decision: BrowserApprovalDecision;
+      try {
+        decision = await deps.approvalGate(draft);
+      } catch (cause) {
+        decision = { approved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
+      }
+      if (!decision.approved) {
+        return { filled: false, reason: decision.reason ?? "not approved" };
+      }
+      let snapshot: PageSnapshot | undefined;
+      try {
+        for (let i = 0; i < resolved.length; i += 1) {
+          const entry = resolved[i]!;
+          // Only the LAST field carries `submit` — submitting mid-form would
+          // post before the rest is typed (the same hazard the resolve-first
+          // pass guards against, now at the fill stage).
+          const isLast = i === resolved.length - 1;
+          snapshot = await deps.controller.type(entry.ref, entry.value, submit && isLast);
+        }
+      } catch (cause) {
+        return { filled: false, ...errorResult(cause) };
+      }
+      return { filled: true, fields: resolved.length, ...(snapshot ? { ...snapshotToJson(snapshot), ...statusFields(snapshot) } : {}) };
     }
   };
 }

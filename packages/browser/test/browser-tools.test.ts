@@ -5,6 +5,7 @@ import {
   createBrowserBackTool,
   createBrowserLookTool,
   createBrowserClickTool,
+  createBrowserFillFormTool,
   createBrowserHoverTool,
   createBrowserKeyTool,
   createBrowserOpenTool,
@@ -778,5 +779,145 @@ describe("browser_look — describe the current page visually (local vision)", (
     const out = await tool.execute({}, ctx) as { described: boolean; reason?: string };
     expect(out.described).toBe(false);
     expect(String(out.reason)).toContain("offline");
+  });
+});
+
+describe("browser_fill_form — multi-field, ONE draft-first approval, fail-close", () => {
+  // A login-style page: two text fields + a submit button. The default
+  // FakeController has only one typeable field, so fill_form needs a richer one.
+  const FORM_SNAP: PageSnapshot = {
+    elements: [
+      { name: "Email", ref: 1, role: "textbox" },
+      { name: "Password", ref: 2, role: "textbox" },
+      { name: "Log in", ref: 3, role: "button" }
+    ],
+    text: "login",
+    title: "Login",
+    url: "https://app.test/login"
+  };
+  class FormController implements BrowserController {
+    calls: string[] = [];
+    private readonly map = new Map<number, SnapshotElement>(FORM_SNAP.elements.map((e) => [e.ref, e]));
+    async open(): Promise<PageSnapshot> { return FORM_SNAP; }
+    async snapshot(): Promise<PageSnapshot> { this.calls.push("snapshot"); return FORM_SNAP; }
+    async click(ref: number): Promise<PageSnapshot> { this.calls.push(`click:${ref.toString()}`); return FORM_SNAP; }
+    async hover(ref: number): Promise<PageSnapshot> { this.calls.push(`hover:${ref.toString()}`); return FORM_SNAP; }
+    async pressKey(key: string): Promise<PageSnapshot> { this.calls.push(`key:${key}`); return FORM_SNAP; }
+    async type(ref: number, text: string, submit: boolean): Promise<PageSnapshot> { this.calls.push(`type:${ref.toString()}:${text}:${submit.toString()}`); return FORM_SNAP; }
+    async back(): Promise<PageSnapshot> { return FORM_SNAP; }
+    async scroll(): Promise<PageSnapshot> { return FORM_SNAP; }
+    async waitFor(): Promise<WaitOutcome> { return { matched: true, snapshot: FORM_SNAP }; }
+    async screenshot(path: string): Promise<{ readonly path: string }> { return { path }; }
+    async screenshotBase64(): Promise<string> { return "aW1n"; }
+    describeElement(ref: number): SnapshotElement | undefined { return this.map.get(ref); }
+    currentUrl(): string { return "https://app.test/login"; }
+    async disconnect(): Promise<void> {}
+    async close(): Promise<void> {}
+  }
+  const twoFields = [{ target: "Email", value: "a@b.com" }, { target: "Password", value: "hunter2" }];
+
+  it("is a well-formed execute-risk tool requiring a `fields` array of >=2 items", () => {
+    const tool = createBrowserFillFormTool({ approvalGate: allow, controller: new FormController() });
+    expect(tool.definition.name).toBe("browser_fill_form");
+    expect(tool.definition.risk).toBe("execute");
+    expect((tool.definition.inputSchema as { required: string[] }).required).toEqual(["fields"]);
+    expect((tool.definition.inputSchema as { properties: { fields: { minItems: number } } }).properties.fields.minItems).toBe(2);
+    expect(validateToolDefinitions([tool])).toEqual([]);
+  });
+
+  it("CONFIRMED ⇒ every field filled (one type call per resolved field, in order)", async () => {
+    const c = new FormController();
+    const tool = createBrowserFillFormTool({ approvalGate: allow, controller: c });
+    const out = await tool.execute({ fields: twoFields }, ctx) as { filled: boolean; fields: number };
+    expect(out.filled).toBe(true);
+    expect(out.fields).toBe(2);
+    expect(c.calls).toEqual(["snapshot", "snapshot", "type:1:a@b.com:false", "type:2:hunter2:false"]);
+  });
+
+  it("submit true presses Enter ONLY on the last field (no mid-form submit)", async () => {
+    const c = new FormController();
+    const tool = createBrowserFillFormTool({ approvalGate: allow, controller: c });
+    await tool.execute({ fields: twoFields, submit: true }, ctx);
+    expect(c.calls).toEqual(["snapshot", "snapshot", "type:1:a@b.com:false", "type:2:hunter2:true"]);
+  });
+
+  it("the ONE approval draft contains ALL field→value pairs (resolved labels)", async () => {
+    const c = new FormController();
+    let seen: { action?: string; fields?: { target: string; value: string }[] } = {};
+    const tool = createBrowserFillFormTool({ approvalGate: (d) => { seen = d; return { approved: true }; }, controller: c });
+    await tool.execute({ fields: twoFields }, ctx);
+    expect(seen.action).toBe("fill");
+    expect(seen.fields).toEqual([
+      { target: 'textbox "Email"', value: "a@b.com" },
+      { target: 'textbox "Password"', value: "hunter2" }
+    ]);
+  });
+
+  it("DENIED gate ⇒ ZERO type calls (no partial fill)", async () => {
+    const c = new FormController();
+    const tool = createBrowserFillFormTool({ approvalGate: () => ({ approved: false, reason: "declined" }), controller: c });
+    const out = await tool.execute({ fields: twoFields }, ctx) as { filled: boolean; reason?: string };
+    expect(out.filled).toBe(false);
+    expect(out.reason).toBe("declined");
+    expect(c.calls.some((call) => call.startsWith("type:"))).toBe(false);
+  });
+
+  it("an approval-gate THROW fails closed ⇒ no fill", async () => {
+    const c = new FormController();
+    const tool = createBrowserFillFormTool({ approvalGate: () => { throw new Error("gate down"); }, controller: c });
+    const out = await tool.execute({ fields: twoFields }, ctx) as { filled: boolean; reason?: string };
+    expect(out.filled).toBe(false);
+    expect(String(out.reason)).toContain("gate down");
+    expect(c.calls.some((call) => call.startsWith("type:"))).toBe(false);
+  });
+
+  it("ONE unfound target ⇒ fail-close, ZERO type calls, the bad field + available surfaced (no gate)", async () => {
+    const c = new FormController();
+    let gateCalled = false;
+    const tool = createBrowserFillFormTool({ approvalGate: () => { gateCalled = true; return { approved: true }; }, controller: c });
+    const out = await tool.execute({ fields: [{ target: "Email", value: "a@b.com" }, { target: "Nonexistent box", value: "x" }] }, ctx) as { filled: boolean; field?: string; available?: string[] };
+    expect(out.filled).toBe(false);
+    expect(out.field).toBe("Nonexistent box");
+    expect(Array.isArray(out.available)).toBe(true);
+    expect(gateCalled).toBe(false);
+    expect(c.calls.some((call) => call.startsWith("type:"))).toBe(false);
+  });
+
+  it("ONE non-typeable target (a button) ⇒ fail-close, ZERO type calls, fields listed (no gate)", async () => {
+    const c = new FormController();
+    let gateCalled = false;
+    const tool = createBrowserFillFormTool({ approvalGate: () => { gateCalled = true; return { approved: true }; }, controller: c });
+    const out = await tool.execute({ fields: [{ target: "Email", value: "a@b.com" }, { target: "Log in", value: "x" }] }, ctx) as { filled: boolean; field?: string; fields?: unknown };
+    expect(out.filled).toBe(false);
+    expect(out.field).toBe("Log in");
+    expect(gateCalled).toBe(false);
+    expect(c.calls.some((call) => call.startsWith("type:"))).toBe(false);
+  });
+
+  it("a single-field list is refused (that is browser_type's job) — no browser touch", async () => {
+    const c = new FormController();
+    const tool = createBrowserFillFormTool({ approvalGate: allow, controller: c });
+    const out = await tool.execute({ fields: [{ target: "Email", value: "a@b.com" }] }, ctx) as { filled: boolean; reason?: string };
+    expect(out.filled).toBe(false);
+    expect(String(out.reason)).toContain("browser_type");
+    expect(c.calls).toEqual([]);
+  });
+
+  it("a field with an empty value is rejected before any resolve/fill", async () => {
+    const c = new FormController();
+    const tool = createBrowserFillFormTool({ approvalGate: allow, controller: c });
+    const out = await tool.execute({ fields: [{ target: "Email", value: "a@b.com" }, { target: "Password", value: "" }] }, ctx) as { filled: boolean; reason?: string };
+    expect(out.filled).toBe(false);
+    expect(String(out.reason)).toContain("Password");
+    expect(c.calls).toEqual([]);
+  });
+
+  it("a non-array fields arg is rejected with guidance (no browser touch)", async () => {
+    const c = new FormController();
+    const tool = createBrowserFillFormTool({ approvalGate: allow, controller: c });
+    const out = await tool.execute({ fields: "Email=a@b.com" }, ctx) as { filled: boolean; reason?: string };
+    expect(out.filled).toBe(false);
+    expect(String(out.reason)).toContain("fields");
+    expect(c.calls).toEqual([]);
   });
 });

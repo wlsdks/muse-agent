@@ -713,3 +713,21 @@ ratchet: testFiles 959 · fabrication 0 · groundedSurfaces 27 · ask god-file: 
   conditional + both escapeSystemPromptMarkers calls); escapeSystemPromptMarkers removed from commands-ask (lint-clean,
   0 refs there now); new test pins both escapes; recentFeedHeadlines retained; recall 207 + cli 2618 green.
 - **Risk:** low — pure relocation; untrusted title/summary escape (grounding-floor defense) moved verbatim + tested.
+
+## fire 39 · 2026-06-14 · loop-creator v1.14.0 · 485fb366
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 959 · fabrication 0 · groundedSurfaces 27 · commands-doctor.ts 785->739 LOC
+- **What:** FINISHED the commands-doctor classifier decompose (fires 25/29/31/33/37) — moved the last one,
+  `embedModelCheck`, plus its `formatBytes` helper (a doctor-LOCAL copy — 4 same-named formatBytes exist across
+  CLI files, this one had no external importer) to the sibling commands-doctor-checks.ts. formatBytes is now
+  `export`ed (runLocalDoctor's ollama-model line at 396 imports it back); embedModelCheck re-exported (test).
+  ALSO fixed a fire-37 MISS: relocated the dangling `parseNotesIndexEmbedModel` JSDoc (fire 37 moved the function
+  but left its load-bearing WHY behind, orphaned in commands-doctor) onto parseNotesIndexEmbedModel in the sibling.
+- **Why:** diversity — compose@recall was 4/8; decompose@cli finishes the doctor god-file shrink (785→739, ~250
+  LOC lighter across the 6-fire arc) and corrects my own orphaned-comment debt. All doctor classifiers now live
+  in the sibling; commands-doctor.ts is the command registration + orchestration only.
+- **Review point:** 4b judge — embedModelCheck + formatBytes bodies byte-identical (the pulled/NOT-pulled branch
+  + the GB/MB/kB promotion); formatBytes exported for runLocalDoctor's 396 site; re-export keeps the embedModelCheck
+  test green (2623 cli); the relocated JSDoc is the SAME orphaned text now attached to its real function (WHY
+  preserved, not deleted); lint clean.
+- **Risk:** low — pure relocation + a comment-debt fix; no floor path (embed-model probe is advisory).

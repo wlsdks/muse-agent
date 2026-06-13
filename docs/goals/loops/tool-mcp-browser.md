@@ -334,3 +334,22 @@ ratchet: testFiles +0 (browser-tools.test +2 discriminating; 100 tests) · fabri
   그 처방을 구현하고 판별성을 self-증명(impl을 .length로 되돌리면 RED, 올바르면 100 pass).
 - **리스크:** linkCount는 modest 편의 필드(요소 목록+fire6 링크 URL이 이미 있음) — 드릴 bait를 정직하게
   올바른 형태로 완성한 것. 낮은 가치지만 정확+판별 검증됨.
+
+## fire 18 · 2026-06-14 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/browser+@muse/cli · kind=C-browser · verdict=PASS · firesSinceDrill=1
+
+ratchet: testFiles +0 (browser-tools.test +12; browser 111, cli 2616) · fabrication 0 · eval:tools 14/15 93% (fill_form 3/3 + type 3/3 no regression) · eval:browser-agent 1/1 LIVE · lint 0/0
+
+- **무엇:** 새 역량 browser_fill_form — 다중 필드 폼을 한 번의 draft-first 승인으로 충전. fields:[{target,
+  value}](minItems 2, optional submit), 모든 타겟 먼저 resolve(fire-1/4 matcher fail-close 재사용), 전
+  field→value 쌍을 한 승인 드래프트에 표시, confirm시에만 순서대로 충전. ANY none/ambiguous/non-typeable
+  타겟이면 게이트 전 fail-close(충전 0, 부분변형 없음), submit은 마지막 필드만 Enter. risk:execute.
+- **왜:** 로그인/가입/체크아웃 등 다중 필드 폼이 필드별 browser_type=승인 라운드 다발(저사양 모델엔 느림)
+  이었음 — 한 번의 승인으로 모든 필드값을 보여주고 채움(outbound-safety 정렬: 한 드래프트에 전체 내용).
+- **리뷰지점:** judge가 (1)outbound-safety RED-able 두 방식(deny 우회·실패타겟 continue→안전테스트 RED)
+  (2)resolve-all-first라 field[0] 충전 후 field[1] 실패 경로 없음(코드 추적) (3)eval:tools 혼동쌍 무회귀
+  (fill_form 3/3 multi + type 3/3 single, 임계 통과) (4)real execute 경로(contract-faithful FormController,
+  실제 controller.type 합성, fake-injection 아님) (5)스키마 verb_noun·minItems2·use-when/not-when.
+- **리스크:** 라이브-CDP smoke 미추가 — 이미 라이브 증명된 controller.type를 합성할 뿐 새 CDP 동작 없어
+  eval:browser-agent 실 라운드트립으로 충분. pnpm check의 apps/api 타임아웃은 무관 외부 flake(격리 통과).

@@ -18,6 +18,8 @@ export type { CalibrationReport } from "./commands-doctor-calibration.js";
 import { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, readOllamaPerfEnv, selfLearningCheck, weaknessFuelCheck, type LocalCheck } from "./commands-doctor-checks.js";
 import { findOllamaModelTag, isOllamaTagsEntry, type OllamaTagsEntry } from "./commands-doctor-ollama.js";
 import { readNotesIndexEmbedModel } from "./commands-doctor-checks.js";
+import { embedModelCheck, formatBytes } from "./commands-doctor-checks.js";
+export { embedModelCheck } from "./commands-doctor-checks.js";
 export { parseNotesIndexEmbedModel } from "./commands-doctor-checks.js";
 export { findOllamaModelTag } from "./commands-doctor-ollama.js";
 export type { OllamaTagsEntry } from "./commands-doctor-ollama.js";
@@ -613,56 +615,8 @@ function formatLocalDoctor(report: LocalDoctorReport): string {
 }
 
 
-/**
- * Verdict for the "ollama embed model" doctor check. `hasIndex`
- * distinguishes "an index records this model" from "no index yet,
- * checking the default" so the message is actionable in both
- * cases. `pulledSizeBytes` is the matched tag size, or undefined
- * when the model isn't pulled. Pure so it tests directly.
- */
 
-export function embedModelCheck(
-  embedModel: string,
-  hasIndex: boolean,
-  pulledSizeBytes: number | undefined
-): { readonly detail: string; readonly status: "ok" | "warn" } {
-  if (pulledSizeBytes !== undefined) {
-    return {
-      detail: hasIndex
-        ? `${embedModel} pulled (${formatBytes(pulledSizeBytes)}) — RAG over ~/notes works`
-        : `${embedModel} pulled (${formatBytes(pulledSizeBytes)}) — notes RAG ready once you run \`muse notes reindex\``,
-      status: "ok"
-    };
-  }
-  return {
-    detail: hasIndex
-      ? `${embedModel} NOT pulled — \`ollama pull ${embedModel}\` (notes RAG will degrade on next search)`
-      : `${embedModel} NOT pulled — \`ollama pull ${embedModel}\` (notes RAG / \`muse ask\` unavailable until then)`,
-    status: "warn"
-  };
-}
 
-/**
- * Pure parser pulled out for direct testing. Returns
- * the recorded embed model name (or the documented default,
- * `nomic-embed-text`, when the file exists but doesn't carry one)
- * when notes RAG is in use on this host; `undefined` when no
- * index has ever been written.
- *
- * `rawJson` is the literal file body, or `undefined` to mean
- * "ENOENT". Malformed JSON / missing-field cases fall through to
- * the documented default — a noisy probe is better than a silent
- * gap when the user has clearly opted into RAG.
- */
-
-/** GB / MB / kB formatter for doctor's model-pulled detail line. */
-function formatBytes(bytes: number | undefined): string {
-  if (bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return "size unknown";
-  if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
-  if (bytes >= 1_000_000) return `${(bytes / 1_000_000).toFixed(0)} MB`;
-  if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(0)} kB`;
-  return `${bytes.toString()} B`;
-}
 
 const WEAKNESS_AXIS_LABEL: Record<string, string> = {
   "grounding-gap": "couldn't answer (may be a missing note)",
