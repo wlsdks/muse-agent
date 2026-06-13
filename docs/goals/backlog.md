@@ -1,7 +1,7 @@
 # Muse dev backlog — the living ledger
 
 - ✓ calendar parseIsoDate rollover: an impossible date ("2026-02-30") was silently rolled to Mar 2 and scheduled ~2 days off with no error (the sibling parseTaskDueAt had the Date.UTC round-trip guard; calendar's parser never got it) — now rejected → the add/update handler errors, createEvent never called — tool-hardening fire 89
-
+- ✓ compose @muse/recall (Phase 3): extracted the 11 optional-grounding-section labels+order into recall `optionalGroundingSections` (commands-ask passes just {body,present}; byte-identical labels; +4 OUTCOME tests; groundedSurfaces 27 held) — codebase-quality fire 51
 - ✓ dead-code @muse/autoconfigure: removed 2 dead re-exports (resolveUserSkillsDir/resolveWorkspaceSkillsDir) from personal-providers.ts — consumers import from provider-paths.js directly; stays imported for internal use; knip-clean — codebase-quality fire 50
 - ✓ add_contact update data-loss: an update-in-place ("save Bob's new email") silently dropped about/aliases/connections (only 5 of 8 persisted fields were carried into the wholesale id-replace) — now preserved from the existing contact; about is cited grounding evidence so this was grounding-floor-adjacent silent loss — tool-hardening fire 87
 - ✓ dead-code @muse/cli: de-exported 3 internal-only commands-export helpers (defaultNotesDir/defaultExportOutput/resolveExportPassphrase) — knip-clean, grep-verified no external importer; + JUDGE-DRILL (6th, judge FAILed a load-bearing security-WHY comment removal) — codebase-quality fire 49

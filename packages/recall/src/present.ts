@@ -275,6 +275,52 @@ export function groundingSectionLines(
   return sections.flatMap((section) => (section.present ? [section.header, section.body, section.footer, ""] : []));
 }
 
+/** One optional grounding source: its rendered block + whether it has content this turn. */
+export interface OptionalGroundingSource {
+  readonly body: string;
+  readonly present: boolean;
+}
+
+/** The optional grounding sources, keyed by surface, in no particular order (render order is fixed below). */
+export interface OptionalGroundingSources {
+  readonly tasks: OptionalGroundingSource;
+  readonly calendar: OptionalGroundingSource;
+  readonly reminders: OptionalGroundingSource;
+  readonly contacts: OptionalGroundingSource;
+  readonly memories: OptionalGroundingSource;
+  readonly shell: OptionalGroundingSource;
+  readonly git: OptionalGroundingSource;
+  readonly actions: OptionalGroundingSource;
+  readonly episodes: OptionalGroundingSource;
+  readonly feeds: OptionalGroundingSource;
+  readonly reflection: OptionalGroundingSource;
+}
+
+/**
+ * The optional grounding-prompt sections in their fixed render order, each paired
+ * with its header/footer label. Feed to groundingSectionLines, which drops any
+ * section whose `present` is false — an empty block bloats the small model's
+ * prompt and invites a spurious "[reminder: none]"-style citation. (The notes
+ * section is always present and assembled separately.)
+ */
+export function optionalGroundingSections(
+  sources: OptionalGroundingSources
+): Array<{ readonly header: string; readonly body: string; readonly footer: string; readonly present: boolean }> {
+  return [
+    { body: sources.tasks.body, footer: "=== END TASKS ===", header: "=== USER OPEN TASKS (sorted by due date, most imminent first) ===", present: sources.tasks.present },
+    { body: sources.calendar.body, footer: "=== END CALENDAR ===", header: "=== UPCOMING CALENDAR EVENTS (sorted chronologically) ===", present: sources.calendar.present },
+    { body: sources.reminders.body, footer: "=== END REMINDERS ===", header: "=== PENDING REMINDERS (sorted by due date) ===", present: sources.reminders.present },
+    { body: sources.contacts.body, footer: "=== END CONTACTS ===", header: "=== MATCHING CONTACTS (from your address book) ===", present: sources.contacts.present },
+    { body: sources.memories.body, footer: "=== END REMEMBERED FACTS ===", header: "=== FACTS YOU TOLD MUSE TO REMEMBER (cite as [memory: <topic>]) ===", present: sources.memories.present },
+    { body: sources.shell.body, footer: "=== END SHELL COMMANDS ===", header: "=== MATCHING SHELL COMMANDS (from your shell history) ===", present: sources.shell.present },
+    { body: sources.git.body, footer: "=== END GIT COMMITS ===", header: "=== YOUR RECENT GIT COMMITS (from this repo, newest first) ===", present: sources.git.present },
+    { body: sources.actions.body, footer: "=== END ACTIONS ===", header: "=== ACTIONS MUSE HAS TAKEN ON YOUR BEHALF (your audit log) ===", present: sources.actions.present },
+    { body: sources.episodes.body, footer: "=== END PAST SESSIONS ===", header: "=== PAST SESSION SUMMARIES (your prior conversations) ===", present: sources.episodes.present },
+    { body: sources.feeds.body, footer: "=== END FEED HEADLINES ===", header: "=== RECENT FEED HEADLINES (your watched RSS/Atom feeds, newest first) ===", present: sources.feeds.present },
+    { body: sources.reflection.body, footer: "=== END NOTICED ===", header: "=== WHAT MUSE HAS NOTICED ABOUT YOU (high-level, from past sessions) ===", present: sources.reflection.present }
+  ];
+}
+
 /**
  * The "shows its work, FELT" receipt for the NON-note sources the answer cited
  * (S1 completion) — calendar / tasks / reminders / contacts / shell. Parses the
