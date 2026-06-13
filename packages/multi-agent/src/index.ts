@@ -1,7 +1,7 @@
 import type { AgentRunInput, AgentRunResult, AgentRuntime } from "@muse/agent-core";
 import { trimToolOutput } from "@muse/memory";
 import type { ModelMessage } from "@muse/model";
-import { createRunId, type JsonObject } from "@muse/shared";
+import { clamp, createRunId, type JsonObject } from "@muse/shared";
 import { parseWorkerResult, validateWorkerHandoff } from "./worker-result.js";
 export { createWorkerResult, parseWorkerResult, validateWorkerHandoff } from "./worker-result.js";
 export type { ParsedWorkerResult, WorkerHandoff } from "./worker-result.js";
@@ -761,6 +761,3 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown error";
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}

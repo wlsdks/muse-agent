@@ -5,7 +5,7 @@
  * all unit-testable without an Ink render.
  */
 
-import { stripUntrustedTerminalChars } from "@muse/shared";
+import { clamp, stripUntrustedTerminalChars } from "@muse/shared";
 
 export interface InkKeyEvent {
   readonly backspace?: boolean;
@@ -77,9 +77,6 @@ function codepoints(value: string): string[] {
   return [...value];
 }
 
-function clamp(n: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, n));
-}
 
 /** Index of the line start (after the previous `\n`) for a cursor index. */
 function lineStart(chars: readonly string[], cursor: number): number {
