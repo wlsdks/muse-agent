@@ -263,3 +263,8 @@ export function levenshteinDistance(a: string, b: string): number {
   }
   return previous[b.length] ?? 0;
 }
+
+/** Type guard for a non-null, non-array object (the canonical shape-inspection helper). */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}

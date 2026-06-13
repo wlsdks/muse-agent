@@ -1,5 +1,9 @@
 # Muse dev backlog — the living ledger
 
+- ◦ **Consolidate remaining 8 isRecord dups → @muse/shared** — tools(×2)/auth/voice/model/agent-core/autoconfigure/api each hand-roll isRecord; migrate per-package (re-export the exported ones). fire 13 did @muse/shared canonical + apps/cli (3). 
+- ✓ isRecord canonical → @muse/shared + apps/cli 3 dups consolidated — codebase-quality fire 13
+
+
 ## ◦ Open — @muse/recall extraction (codebase-quality loop)
 
 - ✓ Relocate RecallHit into @muse/recall + move buildAskConnections — codebase-quality fire 9
