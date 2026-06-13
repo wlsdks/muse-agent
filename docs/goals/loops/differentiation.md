@@ -283,3 +283,24 @@ ratchet: testFiles 930 · self-eval +1 gate (differentiationBatteries=4) + eval:
   소유-루프 0줄.
 - **리스크/residual (비차단)**: 마커가 문자열 리터럴에도 매칭 가능하나 방향이 *over-count*라
   floor 약화 없음(judge 관찰). 차별 vein이 두터워졌으니 다음은 fresh L7 또는 또 다른 컨솔리데이션.
+
+## fire 14 · 2026-06-13 · skill v1.14.0 · `<pending-commit>`
+meta: value-class=new-capability · pkg=scripts(@muse/mcp proof) · kind=adversarial-proof-battery · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 931 · differentiationBatteries 4→5 (fire-13 ratchet 자동 카운트) · fabrication 0 · 소유-루프 파일 미수정
+
+- **무엇**: L7(새 축 = outbound draft-first/fail-close). 새 결정적 배터리
+  `scripts/eval-consent-fail-close.mjs`(`pnpm eval:consent-fail-close`). @muse/mcp의
+  `performConsentedAction`을 contract-faithful fetch fake(실제 네트워크 없음)로 구동해
+  **3자 outbound 액션이 fail-closed**임을 증명: no-consent/scope-mismatch/host-mismatch/
+  veto/timeout 5개 벡터 전부 *외부효과 0*(fetch 0회=credential 미유출), 기록된 scope+host
+  matched consent만 Bearer로 전송. fire-13 ratchet이 자동으로 4→5 카운트.
+- **왜 (어떤 경쟁 레버 대비)**: 경쟁사 가치제안은 *자율성* — hermes/openclaw는 모델
+  판단으로 세상에 액션. 기록된 scoped-consent fail-close 게이트는 throughput 제품엔 off-brand
+  비용이나, single-user "잘못된 자율 전송은 롤백 못 하는 버그"(outbound-safety.md) 정체성엔
+  계약 그 자체. 구조적 비대칭.
+- **리뷰지점**: 배터리 PASS 11/11. ④b 독립 Opus judge **4/4 PASS** + falsification 재현
+  (host-binding 가드 `if(...)`→`if(false)` → 배터리 exit 1, host-mismatch가 evil 호스트로
+  fetch=credential 유출 → Edit 복원). 실제 의사결정 체인(veto→no-consent→host-bind→fetch)
+  통과 judge 확인. mcp src byte-clean(git status 2파일). lint:pass·self-eval differentiationBatteries=5.
+- **리스크/residual (비차단)**: 배터리는 *consented-action seam*을 증명; ambiguous-recipient
+  (P13 contacts clarify)는 별 seam이라 미포함(outbound-safety의 다른 rule). 향후 L7 확장 여지.
