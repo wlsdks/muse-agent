@@ -212,8 +212,18 @@ export async function extractDocxTextWithMammoth(data: Buffer): Promise<string> 
   return result.value.replace(/[ \t]+/g, " ").trim();
 }
 
+/**
+ * The folders `file_read` reads by default — the user's everyday document
+ * folders. Exported so a sibling capability that must read from the SAME
+ * allowlist (e.g. `browser_upload`'s path validator) can be wired to the
+ * identical roots instead of re-deriving them.
+ */
+export function defaultFileReadRoots(home: string = homedir()): readonly string[] {
+  return [join(home, "Downloads"), join(home, "Desktop"), join(home, "Documents")];
+}
+
 export function createFileReadTool(deps: FileReadToolDeps = {}): MuseTool {
-  const roots = (deps.roots ?? [join(homedir(), "Downloads"), join(homedir(), "Desktop"), join(homedir(), "Documents")])
+  const roots = (deps.roots ?? defaultFileReadRoots())
     .map((root) => pathResolve(root));
   const fsImpl: FileReadFsImpl = deps.fsImpl ?? { listCandidates: walkCandidates, readFile: (path) => nodeReadFile(path), realpath: (path) => nodeRealpath(path) };
   // When the fs provides no realpath (a test fake with no symlinks), treat each
