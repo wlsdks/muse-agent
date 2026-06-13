@@ -831,3 +831,11 @@ ratchet: testFiles 968 · fabrication 0 · groundedSurfaces 27 · macos-tools 13
 - Why: completes the top open defer-blocker (avoid defer-ratchet) + isolates a security-sensitive path-traversal sandbox into a directly unit-testable module. Unblocks Step 2 (move the screenshot/screenread tools). Diversity: macos 2/8, decompose 3/8 — clean.
 - Review point: 4b judge — the 4 fns moved BYTE-IDENTICAL (incl. the load-bearing symlink-O_TRUNC WHY comment); the existing screenshot-tool tests (traversal/symlink-escape/allowlist) stay green; macos-tools no longer references the dropped node imports.
 - Risk: low — pure relocation behind the same call; existing tool-level tests + 4 new direct tests both pass.
+
+## fire 46 · 2026-06-14 · loop-creator v1.14.0 · 37c110b8
+meta: value-class=refactor · pkg=@muse/macos · kind=decompose · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 968 · fabrication 0 · groundedSurfaces 27 · macos-tools 1297->1143 LOC · capture cluster COMPLETE
+- What: Step 2 (final) of the macos capture untangle. Moved createMacScreenshotTool + createMacScreenReadTool (+ MacScreenshotToolDeps/MacScreenReadToolDeps/MacScreenReadDescribeInput/MacScreenReadDescribeResult + SCREENSHOT_TIMEOUT_MS + SCREENCAPTURE_PATH) from macos-tools.ts into a new sibling macos-screen-tools.ts (imports resolveScreenshotPath/tryRealpath from macos-screen-path.js + runChild from macos-exec.js). macos-tools re-exports all 6 names so the package API + tests are unchanged. Dropped 4 now-capture-only imports from macos-tools (node:fs/promises readFile/rm, node:os tmpdir, node:path join, macos-screen-path).
+- Why: completes the capture-cluster decompose (fires 43/45/46) — macos-tools 1519->1143 LOC across the thread. The screen tools now live beside their path sandbox; macos-tools holds only the osascript/app/message families. Diversity: macos 3/8, decompose 4/8 (both <6/8).
+- Review point: 4b judge — the 2 tools + 4 type interfaces moved BYTE-IDENTICAL; re-export keeps macos-tools.test.ts (imports both tools from macos-tools.js) green (109 tests incl. the screenshot sandbox-through-tool cases); the 4 dropped imports are genuinely capture-only (lint caught node:path join — array .join() is unrelated).
+- Risk: low — pure relocation behind a re-export; existing tool tests + the fire-45 sandbox tests both pass.
