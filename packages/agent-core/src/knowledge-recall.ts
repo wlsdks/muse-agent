@@ -1391,6 +1391,15 @@ export async function verifyGroundingWithReverify(
 ): Promise<GroundingVerification> {
   const base = verifyGrounding(answer, matches, query, options);
   const evidence = matches.map((m) => m.text).join("\n");
+  // Empty evidence is unverifiable BY DEFINITION — a high-cosine match with empty
+  // text gives confidence>0 yet evidence="". No band may escalate UP to grounded
+  // by asking the judge about nothing (a YES on "" would be a fabrication-floor
+  // leak — the exact hole fail-closed for council/reflection). Fail-close WITHOUT
+  // consulting the judge; a `grounded` base is left to the value band below (which
+  // can only tighten), so a grounded refusal is never demoted here.
+  if (evidence.trim().length === 0 && base.verdict !== "grounded") {
+    return { ...base, reason: "empty evidence — unverifiable, fail-closed", verdict: "ungrounded" };
+  }
   const samples = Math.min(5, Math.max(1, options?.reverifySamples ?? 1));
 
   /** Collect up to `samples` verdicts, short-circuiting on the first false (unanimous). */

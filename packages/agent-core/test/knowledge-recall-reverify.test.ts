@@ -494,3 +494,34 @@ describe("verifyGroundingWithReverify — reverifySamples=3 catches judge dissen
     expect(calls).toBe(1);
   });
 });
+
+describe("verifyGroundingWithReverify — empty-evidence fail-close (no judge escalation on '')", () => {
+  // A high-cosine match whose TEXT is empty gives confidence>0 but evidence="".
+  // The coverage-failure band would otherwise consult the judge on ""; a YES would
+  // upgrade a fabricated answer to grounded — the fabrication-floor leak f4 closed
+  // for council/reflection, here on the PRIMARY recall/ask/chat gate.
+  it("fail-closes to ungrounded WITHOUT consulting the judge when evidence text is empty", async () => {
+    const emptyMatch: KnowledgeMatch = { cosine: 0.9, score: 0.9, source: "notes/x.md", text: "" };
+    let called = false;
+    const out = await verifyGroundingWithReverify(
+      "Your flight is at 9am.",
+      [emptyMatch],
+      "when is my flight",
+      async () => { called = true; return true; }
+    );
+    expect(out.verdict).toBe("ungrounded");
+    expect(called).toBe(false);
+  });
+
+  it("still consults the judge when there IS real evidence text (guard is empty-only)", async () => {
+    const realMatch: KnowledgeMatch = { cosine: 0.5, score: 0.5, source: "notes/vpn.md", text: "The office VPN MTU is 1380 on wg0." };
+    let called = false;
+    await verifyGroundingWithReverify(
+      "The VPN MTU is 1380 on wg0 [from notes/vpn.md].",
+      [realMatch],
+      "what MTU for the office VPN",
+      async () => { called = true; return true; }
+    );
+    expect(called).toBe(true);
+  });
+});
