@@ -1,13 +1,15 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   formatLocalDay,
   incrementFollowupLlmBudget,
-  isFollowupLlmBudgetExhausted
+  isFollowupLlmBudgetExhausted,
+  readFollowupLlmBudget,
+  writeFollowupLlmBudget
 } from "../src/personal-followup-llm-budget-store.js";
 
 describe("formatLocalDay", () => {
@@ -45,5 +47,28 @@ describe("incrementFollowupLlmBudget", () => {
     expect(await incrementFollowupLlmBudget(file, "2026-06-01")).toEqual({ calls: 1, date: "2026-06-01" });
     expect(await incrementFollowupLlmBudget(file, "2026-06-01")).toEqual({ calls: 2, date: "2026-06-01" });
     expect(await incrementFollowupLlmBudget(file, "2026-06-02")).toEqual({ calls: 1, date: "2026-06-02" }); // rollover
+  });
+});
+
+describe("writeFollowupLlmBudget — atomic write survives same-millisecond concurrent writers", () => {
+  let file: string;
+  let dir: string;
+  beforeEach(async () => { dir = await mkdtemp(join(tmpdir(), "muse-llm-budget-atomic-")); file = join(dir, "budget.json"); });
+  afterEach(async () => { vi.restoreAllMocks(); await rm(dir, { force: true, recursive: true }); });
+
+  it("two concurrent writes with a frozen clock both resolve and leave no .tmp orphan", async () => {
+    // Freeze Date.now so the OLD hand-rolled `tmp-${pid}-${Date.now()}` name collides
+    // by construction — the slower rename hit ENOENT and rejected. The shared
+    // atomicWriteFile uses a randomUUID tmp, so both writes succeed with no litter.
+    vi.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+    await Promise.all([
+      writeFollowupLlmBudget(file, { calls: 1, date: "2026-06-01" }),
+      writeFollowupLlmBudget(file, { calls: 2, date: "2026-06-01" })
+    ]);
+    const persisted = await readFollowupLlmBudget(file);
+    expect(persisted?.date).toBe("2026-06-01");
+    expect([1, 2]).toContain(persisted?.calls); // one write won; neither crashed on rename
+    const leftover = (await readdir(dir)).filter((n) => n.includes(".tmp-"));
+    expect(leftover).toEqual([]); // no orphaned tmp litter
   });
 });

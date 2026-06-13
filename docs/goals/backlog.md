@@ -628,6 +628,28 @@ HARDEN (make existing tools more reliable):
   pre-existing and shared by every store on the queue. FIX (if it ever bites): a file lock (lockfile / flock) around the
   RMW. Slice = a cross-process lock primitive + wire the patterns-fired RMWs + a two-process race test (spawn). Larger;
   gated on whether single-user concurrency is real enough to justify the complexity.
+- ✓→Done **writeFollowupLlmBudget hand-rolled write (same-ms ENOENT crash + orphaned tmp)** (EXPANSION gap-scout,
+  fire 38; resource-leak / race-induced crash) — `writeFollowupLlmBudget` hand-rolled `tmp-${pid}-${Date.now()}` then
+  open/write/sync/rename with NO catch-cleanup, while the SAME package's `atomicWriteFile` already fixes exactly this
+  class (randomUUID tmp + fsync + 0o600 + orphan cleanup) and the module already imports `withFileMutationQueue` from it.
+  Two same-ms writers → identical tmp → the slower rename ENOENT-crashes; any write/rename failure orphans the tmp
+  (UNCONDITIONALLY real, independent of concurrency). FIX: replace the body with `atomicWriteFile(file, payload)` (byte-
+  identical payload, same fsync/0o600 durability). TDD (frozen Date.now → 2 concurrent writes both resolve + no `.tmp-`
+  orphan) RED(ENOENT rename on `budget.json.tmp-<pid>-1700000000000`)→GREEN; mcp 1749, check 0 (all pkgs), lint 0.
+  Fable-5 PASS (durability preserved; both defects closed; the one production caller composes inside its queue). The
+  collision is defense-in-depth (writeFollowupLlmBudget is a public export) but the orphan defect was unconditionally
+  real. KIND resource-leak, fresh surface.
+- ◦ **appendReminderHistory hand-rolls the same tmp write (fire-38 runner-up)** — `personal-reminder-history-store.ts`
+  (~line 64-68) hand-rolls `tmp-${pid}-${Date.now()}` with NO fsync and no leak cleanup. Same one-line `atomicWriteFile`
+  adoption. Lower urgency: it sits inside the mutation queue so the in-process collision is unreachable and the fsync gap
+  isn't behaviorally testable — but adopting the shared primitive removes the orphan-on-failure leak + the fsync gap.
+  Slice: swap to atomicWriteFile + a no-orphan-on-injected-failure test (or accept it's covered by the primitive's tests).
+- ◦ **cleanupFollowupTempFiles is dead-wired (fire-37/38 runner-up, NOT a crisp fix)** — `personal-followups-store.ts`
+  `cleanupFollowupTempFiles` docstring claims "Called by readFollowups" but has ZERO production callers (only a test), so
+  crash-orphaned followup tmp files accumulate forever. The naive wiring (call it from readFollowups) is NOT objectively
+  correct — readFollowups runs unqueued from the list tool, so cleanup could unlink an in-flight atomicWriteFile tmp
+  before its rename and kill a concurrent write; the safe fix needs an mtime age-gate whose threshold is a judgment call.
+  Real leak but needs a design decision — record, don't auto-pick.
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`

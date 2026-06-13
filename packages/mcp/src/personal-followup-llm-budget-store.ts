@@ -18,9 +18,8 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
-import { withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface FollowupLlmBudgetRecord {
   /** Local-day key — `YYYY-MM-DD`. Used so the count resets each day automatically. */
@@ -54,18 +53,11 @@ export async function readFollowupLlmBudget(file: string): Promise<FollowupLlmBu
 }
 
 export async function writeFollowupLlmBudget(file: string, record: FollowupLlmBudgetRecord): Promise<void> {
-  const payload = `${JSON.stringify(record, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  // fsync before rename, matching the other personal stores.
-  const handle = await fs.open(tmp, "w", 0o600);
-  try {
-    await handle.writeFile(payload, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await fs.rename(tmp, file);
+  // Use the shared atomic primitive (randomUUID tmp + fsync + 0o600 + orphan
+  // cleanup): the old hand-rolled `tmp-${pid}-${Date.now()}` name collided between
+  // two same-millisecond writers (the slower rename hit ENOENT and CRASHED) and left
+  // the tmp orphaned on any write/rename failure.
+  await atomicWriteFile(file, `${JSON.stringify(record, null, 2)}\n`);
 }
 
 /**
