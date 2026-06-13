@@ -353,3 +353,22 @@ ratchet: testFiles +0 (browser-tools.test +12; browser 111, cli 2616) · fabrica
   실제 controller.type 합성, fake-injection 아님) (5)스키마 verb_noun·minItems2·use-when/not-when.
 - **리스크:** 라이브-CDP smoke 미추가 — 이미 라이브 증명된 controller.type를 합성할 뿐 새 CDP 동작 없어
   eval:browser-agent 실 라운드트립으로 충분. pnpm check의 apps/api 타임아웃은 무관 외부 flake(격리 통과).
+
+## fire 19 · 2026-06-14 · skill v1.14.0 · (this commit)
+
+meta: value-class=micro-fix(hardening) · pkg=@muse/mcp · kind=B-mcp · verdict=PASS · firesSinceDrill=2
+
+ratchet: testFiles +0 (mcp.test +3; 1860 tests) · fabrication 0 · pnpm check 0 · lint 0/0 · architecture.md retry-classification 준수
+
+- **무엇:** 외부 MCP 연결 실패 retry 분류. connect/healthCheck가 모든 에러에 무조건 scheduleReconnect했고
+  connector가 SDK HTTP status를 드롭 → 취소/만료 토큰(401/403) 서버가 maxAttempts 재시도(영원히 hammering).
+  수정: isRetryableMcpConnectStatus(4xx→fast-fail terminal disabled, 루프 없음; 429/5xx→bounded backoff;
+  undefined/network→fail-OPEN retryable), McpConnectionError가 status/retryable 보유, mcpConnectErrorStatus가
+  SDK .code 추출(100-599 클램프, -1 sentinel 무시).
+- **왜:** architecture.md "4xx MUST fail fast; 5xx/unknown MAY retry" 위반 — 죽은 자격증명으로 외부 서버를
+  무한 두드리던 실 버그. fires 16·17·18(C)에서 B로 다양성 회전. 레포의 isRetryableNotesStatus 패턴 미러.
+- **리뷰지점:** judge가 (1)architecture.md 위반 실 갭 확인 (2)401 테스트가 REAL manager.connect를 실제
+  McpConnectionError(401)(SDK 1.29.0 byte-faithful)로 구동, 브랜치 revert시 RED 재현, disabled+호출1회+루프없음
+  (3)503 여전히 bounded-retry(과교정 없음) (4)unknown shape fail-OPEN(전이성 blip에 잘못 terminal-disable 안 함).
+- **리스크:** stdio/bare-network는 status 없어 retryable(전이성 보존, 올바름). mid-session callTool 실패
+  재분류는 범위 밖(별도 future ◦). SDK 에러 shape 변경시 retryable로 degrade(fail-open, 잘못 terminal 아님).

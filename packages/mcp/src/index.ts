@@ -209,6 +209,7 @@ export {
   McpSecurityPolicyProvider,
   McpRegistryError,
   McpConnectionError,
+  isRetryableMcpConnectStatus,
   normalizeMcpServerInput,
   normalizeMcpSecurityPolicy,
   normalizeReconnectPolicy
