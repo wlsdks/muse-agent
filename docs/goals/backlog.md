@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ decompose @muse/cli: extracted weather+headlines external-data cluster (resolveTodayWeatherLine/formatWeatherLine/resolveTodayFeedHeadlines/formatHeadlines + cap) commands-today -> commands-today-feeds.ts (1397->1327 LOC; re-export keeps 2626 tests green) — codebase-quality fire 48
 - ✓ cohere @muse/autoconfigure: deduped local isRecord type-guard onto canonical @muse/shared isRecord (byte-identical; dups 4->3; voice/agent-core remain hard) — codebase-quality fire 47
 - ◦ reminders.fire no-collateral test: the `fire` verb (pending→fired flip) shares clear/snooze's resolveReminderRef ambiguous@380/not-found branches; its no-mutation invariant is the last untested sibling. Add an OUTCOME test: a failed fire (ambiguous word / unknown ref) flips NO reminder's status. Mirror fire 84's snooze test — completes reminders destructive-verb parity (clear ✓83, snooze ✓84, fire ◦).
 
