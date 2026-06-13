@@ -171,7 +171,9 @@ async function buildPersonalCrudScenario() {
       { prompt: "내일 오후 3시 팀 미팅 일정 추가해줘", expectTool: "muse.calendar.add", requireArgs: ["title", "startsAt"], note: "KO add a calendar EVENT → calendar.add (NOT tasks)" },
       { prompt: "오늘 할 일 보여줘", expectTool: "muse.tasks.list", note: "KO list to-dos → tasks.list" },
       { prompt: "내 리마인더 다 보여줘", expectTool: "muse.reminders.list", note: "KO list reminders → reminders.list (NOT calendar.list)" },
-      { prompt: "이번 주 일정 보여줘", expectTool: "muse.calendar.list", note: "KO list events → calendar.list (NOT tasks/reminders)" }
+      { prompt: "이번 주 일정 보여줘", expectTool: "muse.calendar.list", note: "KO list events → calendar.list (NOT tasks/reminders)" },
+      { prompt: "Show my tasks tagged work", expectTool: "muse.tasks.list", requireArgs: ["tag"], argIncludes: /work/i, note: "EN tag filter → tasks.list with tag arg (ArgumentCorrectness)" },
+      { prompt: "work 태그된 할 일 보여줘", expectTool: "muse.tasks.list", requireArgs: ["tag"], argIncludes: /work/i, note: "KO tag filter → tasks.list with tag arg" }
     ];
     return { label: "personal-crud (3-domain add/list disambiguation)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
@@ -232,11 +234,38 @@ async function buildContactsScenario() {
       { prompt: "Whose birthday is coming up this week?", expectTool: "upcoming_birthdays", note: "EN list of upcoming birthdays (no name) → upcoming_birthdays" },
       { prompt: "이번 주에 생일인 사람 있어?", expectTool: "upcoming_birthdays", note: "KO list of upcoming birthdays → upcoming_birthdays (NOT find_contact — no name given)" },
       { prompt: "What's Jane Doe's email address?", expectTool: "find_contact", requireArgs: ["name"], note: "EN named-person lookup → find_contact (NOT upcoming_birthdays)" },
-      { prompt: "Bob 생일이 언제야?", expectTool: "find_contact", requireArgs: ["name"], note: "KO named-person birthday → find_contact, NOT upcoming_birthdays (a specific person, the list tool can't answer)" }
+      { prompt: "Bob 생일이 언제야?", expectTool: "find_contact", requireArgs: ["name"], note: "KO named-person birthday → find_contact, NOT upcoming_birthdays (a specific person, the list tool can't answer)" },
+      { prompt: "Who is +1 415 555 0101?", expectTool: "find_contact", requireArgs: ["name"], argIncludes: /415|555|0101/, note: "EN reverse lookup by PHONE → find_contact, identifier passed as the name arg (ArgumentCorrectness)" },
+      { prompt: "Whose email is bob@acme.com?", expectTool: "find_contact", requireArgs: ["name"], argIncludes: /bob@acme/i, note: "EN reverse lookup by EMAIL → find_contact, the email passed as the name arg" }
     ];
     return { label: "contacts (find-one vs upcoming-birthdays-list)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
     return { label: "contacts", skip: `@muse/mcp not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
+// Relationship-maintenance nudge (overdue_contacts — "who've I lost touch
+// with?") vs looking up ONE specific person (find_contact). The value is the
+// discrimination: a "who haven't I talked to in a while?" intent is a LIST of
+// drifting ties, not a named-person lookup.
+async function buildOverdueScenario() {
+  try {
+    const ac = await import("../packages/autoconfigure/dist/index.js");
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const instances = [
+      ac.createOverdueContactsTool({ interactions: () => [] }),
+      mcp.createContactsFindTool({ contacts: () => [] })
+    ];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "Who haven't I talked to in a while?", expectTool: "overdue_contacts", note: "EN relationship-decay nudge → overdue_contacts (NOT find_contact — no name)" },
+      { prompt: "누구한테 연락이 뜸했지?", expectTool: "overdue_contacts", note: "KO who've I lost touch with → overdue_contacts" },
+      { prompt: "What's Bob's email address?", expectTool: "find_contact", requireArgs: ["name"], note: "EN named-person lookup → find_contact (NOT overdue_contacts)" }
+    ];
+    return { label: "overdue-contacts (relationship nudge vs find-one)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "overdue-contacts", skip: `@muse/autoconfigure not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
   }
 }
 
@@ -263,6 +292,36 @@ async function buildOnThisDayScenario() {
     return { label: "on-this-day (date-cued recall vs note search)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
     return { label: "on-this-day", skip: `@muse/mcp not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
+// Feed archive search (feeds_search) vs its closest confusables in the DEFAULT
+// posture: a fresh public web search and an email-inbox search. The value is
+// the discrimination — "news in the feeds I follow" must route to feeds_search
+// (the user's subscribed sources), NOT a web search (the open internet) or
+// search_email (their inbox). knowledge_search is intentionally absent: it's
+// off by default, which is exactly why feeds_search exists.
+async function buildFeedsScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const instances = [
+      mcp.createFeedsSearchTool({ feedEntries: () => [] }),
+      mcp.createEmailSearchTool({ searcher: { search: async () => [] } })
+    ];
+    const tools = [
+      ...instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema })),
+      SYNTHETIC_TOOLS.find((t) => t.name === "web_search")
+    ].filter(Boolean);
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "Any news about the Mars mission in the feeds I follow?", expectTool: "feeds_search", requireArgs: ["query"], note: "EN feed archive search → feeds_search (NOT web_search/search_email)" },
+      { prompt: "내가 구독한 피드에 화성 미션 관련 소식 있어?", expectTool: "feeds_search", requireArgs: ["query"], note: "KO feed archive search → feeds_search (NOT search_email)" },
+      { prompt: "Search the web for the latest TypeScript release notes.", expectTool: "web_search", requireArgs: ["query"], note: "fresh public web → web_search (NOT feeds_search)" },
+      { prompt: "Find the email from the bank about my statement.", expectTool: "search_email", requireArgs: ["query"], note: "inbox → search_email (NOT feeds_search)" }
+    ];
+    return { label: "feeds (feed-archive search vs web/email)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "feeds", skip: `@muse/mcp not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
   }
 }
 
@@ -651,7 +710,9 @@ async function main() {
     await buildBrowserScenario(),
     await buildPersonalCrudScenario(),
     await buildContactsScenario(),
+    await buildOverdueScenario(),
     await buildOnThisDayScenario(),
+    await buildFeedsScenario(),
     await buildNotesScenario(),
     await buildFollowupScenario(),
     await buildRecallVsCrudScenario(),

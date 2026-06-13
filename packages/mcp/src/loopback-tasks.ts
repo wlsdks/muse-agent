@@ -140,37 +140,49 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         description:
           "List tasks due-soonest first (undated last). `status`: \"open\" (default), \"done\", or \"all\". " +
           "Pass `dueWithinDays` to answer 'what's due today / this week?' — it returns ONLY open tasks due within that many days, OVERDUE included, soonest first (0 = today + overdue, 7 = this week). " +
+          "Pass `tag` to answer 'show my tasks tagged work' — keeps only tasks carrying that label (case-insensitive). " +
           `Returns up to ${maxListEntries} entries.`,
         execute: async (args): Promise<JsonObject> => {
           const tasks = await readTasks(file);
+          const tagRaw = (args as Record<string, unknown>)["tag"];
+          const tagLabel = typeof tagRaw === "string" ? tagRaw.trim() : "";
+          const wantTag = tagLabel.toLowerCase();
+          const matchesTag = (taskTags: readonly string[] | undefined): boolean =>
+            wantTag.length === 0 || (taskTags?.some((t) => t.toLowerCase() === wantTag) ?? false);
           const dueRaw = (args as Record<string, unknown>)["dueWithinDays"];
           if (typeof dueRaw === "number" && Number.isFinite(dueRaw)) {
-            const allDue = selectTasksDueWithin(tasks, { now: now(), withinDays: dueRaw }).map((entry) => entry.task);
+            const allDue = selectTasksDueWithin(tasks, { now: now(), withinDays: dueRaw })
+              .map((entry) => entry.task)
+              .filter((task) => matchesTag(task.tags));
             const due = allDue.slice(0, maxListEntries);
             return {
               dueWithinDays: Math.max(0, Math.trunc(dueRaw)),
               shown: due.length,
               tasks: due.map((task) => serializeTaskForModel(task, now)) as JsonValue,
-              total: allDue.length
+              total: allDue.length,
+              ...(tagLabel ? { tag: tagLabel } : {})
             };
           }
           const status = readTaskStatusFilter(readString(args, "status"));
           const matching = tasks
             .filter((task) => status === "all" || task.status === status)
+            .filter((task) => matchesTag(task.tags))
             .sort(compareTasksByDueDate);
           const filtered = matching.slice(0, maxListEntries);
           return {
             shown: filtered.length,
             status,
             tasks: filtered.map((task) => serializeTaskForModel(task, now)) as JsonValue,
-            total: matching.length
+            total: matching.length,
+            ...(tagLabel ? { tag: tagLabel } : {})
           };
         },
         inputSchema: {
           additionalProperties: false,
           properties: {
             dueWithinDays: { description: "Only OPEN tasks due within this many days (overdue included), e.g. 0 = today + overdue, 7 = this week. Omit to list by status.", type: "number" },
-            status: { description: "Which tasks to list: 'open' (default), 'done', or 'all'. Ignored when dueWithinDays is set.", enum: ["open", "done", "all"], type: "string" }
+            status: { description: "Which tasks to list: 'open' (default), 'done', or 'all'. Ignored when dueWithinDays is set.", enum: ["open", "done", "all"], type: "string" },
+            tag: { description: "Only tasks carrying this label, e.g. 'work'. Case-insensitive exact match. Combines with status / dueWithinDays.", type: "string" }
           },
           type: "object"
         },
@@ -179,7 +191,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         // then the dueWithinDays-filter words. Without the list words a plain
         // "할 일 목록 보여줘" missed this tool and only the keyword-less
         // `search` surfaced, which the model didn't map to a list intent.
-        keywords: ["list", "tasks", "task", "todo", "to-do", "할일", "할 일", "목록", "투두", "due", "overdue", "deadline", "마감"],
+        keywords: ["list", "tasks", "task", "todo", "to-do", "할일", "할 일", "목록", "투두", "due", "overdue", "deadline", "마감", "tag", "tagged", "label", "태그"],
         name: "list",
         risk: "read"
       },

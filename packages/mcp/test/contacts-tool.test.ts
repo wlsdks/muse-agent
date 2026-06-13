@@ -45,6 +45,22 @@ describe("createContactsFindTool — look up a person", () => {
     expect(await tool().execute({ name: "Carol" })).toMatchObject({ found: false });
     expect(await tool().execute({ name: "  " })).toMatchObject({ found: false });
   });
+
+  it("surfaces `about` (recall material) and `connections` so 'what do I know about Bob?' / 'what is Bob allergic to?' answers from the tool", async () => {
+    const rich = createContactsFindTool({ contacts: () => [
+      { about: "allergic to nuts; likes hiking", connections: [{ as: "works with", to: "Alice" }], email: "bob@r.com", id: "r1", name: "Bob Rich" }
+    ] });
+    const out = await rich.execute({ name: "Bob Rich" }) as { found: boolean; about?: string; connections?: { to: string; as?: string }[] };
+    expect(out.found).toBe(true);
+    expect(out.about).toBe("allergic to nuts; likes hiking");
+    expect(out.connections).toEqual([{ as: "works with", to: "Alice" }]);
+  });
+
+  it("resolves by a reverse-lookup identifier — phone / email / @handle — not only a name (engine already supports it; lock it)", async () => {
+    expect(await tool().execute({ name: "+1 415 555 0101" })).toMatchObject({ found: true, name: "Mom" });
+    expect(await tool().execute({ name: "bob@acme.com" })).toMatchObject({ found: true, name: "Bob Acme" });
+    expect(await tool().execute({ name: "@jane" })).toMatchObject({ found: true, name: "Jane Doe" });
+  });
 });
 
 describe("createContactsAddTool — capture a person", () => {

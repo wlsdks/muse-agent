@@ -40,6 +40,8 @@ export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, con
 export type { MemoryFact } from "@muse/recall";
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource };
+import { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource } from "@muse/recall";
+export { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource };
 import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy } from "@muse/recall";
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
 import { diversifyAskChunks, notesGroundingFraming } from "@muse/recall";
@@ -109,21 +111,6 @@ export const ACTION_GUIDE =
 
 
 
-/**
- * Whether to nudge the user toward `--repair` after an ungrounded verdict. Only
- * when: the verdict actually fired, `--repair` wasn't already requested, we're
- * not in `--json`, and there IS retrieved evidence to rewrite from (with no
- * evidence the repair would just refuse, so the tip would mislead). Surfaces the
- * constructive-repair capability exactly when it can help. Pure + exported.
- */
-export function shouldSuggestRepair(args: {
-  readonly verdictFired: boolean;
-  readonly repairRequested: boolean;
-  readonly json: boolean;
-  readonly evidenceCount: number;
-}): boolean {
-  return args.verdictFired && !args.repairRequested && !args.json && args.evidenceCount > 0;
-}
 
 /**
  * The outcome label lifted onto a cli.local run-log trace. A refusal is an
@@ -316,49 +303,8 @@ export async function drawBestGroundedRedraft(args: BestOfRedrawArgs): Promise<s
   return (await args.confirm(args.expand(survivor))) === undefined ? survivor : undefined;
 }
 
-/**
- * Whether to surface the "Removed N citation(s) … treat those claims as
- * unverified" notice. Fires only when the gate actually stripped something AND
- * the answer makes claims to doubt — NOT on a REFUSAL (which asserts nothing, so
- * "treat those claims as unverified" is nonsensical) and NOT on an ACTION request
- * (the model citing a tool name is a harmless quirk). The spurious citation is
- * stripped from the text either way; this gates only the user-facing warning.
- */
-export function shouldWarnStrippedCitations(args: {
-  readonly strippedCount: number;
-  readonly json: boolean;
-  readonly isActionRequest: boolean;
-  readonly isRefusal: boolean;
-}): boolean {
-  return args.strippedCount > 0 && !args.json && !args.isActionRequest && !args.isRefusal;
-}
 
-// Unmistakable intent words for the OPT-IN perception sources. Precision-first:
-// a git-specific token (commit/git/branch/…), never the ambiguous "work on", so
-// a non-git refusal ("what's my rent?") never gets a spurious --git tip.
-const GIT_INTENT_RE = /\b(commit|commits|committed|committing|git|branch|branches|rebase|rebased|repo|repository|codebase|pull request)\b/iu;
-const SHELL_INTENT_RE = /\b(command|commands|terminal|shell|bash|zsh|cli command|docker|kubectl)\b/iu;
 
-/**
- * On a REFUSAL, surface the opt-in perception source that would likely answer
- * the question — so an undiscoverable `--git` / `--shell` flag becomes findable
- * (a user asking "what did I commit?" otherwise just gets "not in your notes" and
- * never learns Muse can read their git history). Precision-first: only an
- * unmistakable intent fires, and only when the matching flag is NOT already on.
- * Pure + exported.
- */
-export function suggestOptInSource(
-  query: string,
-  enabled: { readonly git: boolean; readonly shell: boolean }
-): string | undefined {
-  if (!enabled.git && GIT_INTENT_RE.test(query)) {
-    return "(tip: add --git to also ground on your recent git commits in this repo)";
-  }
-  if (!enabled.shell && SHELL_INTENT_RE.test(query)) {
-    return "(tip: add --shell to also ground on your recent shell-history commands)";
-  }
-  return undefined;
-}
 
 
 
@@ -1722,7 +1668,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // messenger is configured) gets a draft-first confirm gate under --with-tools:
       // show the exact {provider, destination, text} and fire ONLY on confirm,
       // fail-closed in a non-TTY. Without this gate the send fail-closes entirely
-      // (P41-11). Built independently of --actuators so a benign "send X" isn't
+      // Built independently of --actuators so a benign "send X" isn't
       // blocked by the actuator tool descriptions' injection-guard false-positive.
       let messagingApprovalGate: MessageApprovalGate | undefined;
       if (options.withTools === true) {
@@ -2843,7 +2789,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // notes, close with one on-brand line so the refusal feels cared-for,
       // not blocked. Empty corpus gets the on-ramp hint instead; a real cited
       // answer gets nothing. Deterministic line, no note pointer (so it can't
-      // reintroduce the spurious-citation-on-a-refusal confusion P34-11 fixed).
+      // reintroduce the spurious-citation-on-a-refusal confusion that was fixed).
       if (!options.json && shouldWarmClose(collectedAnswer, noteFileCount)) {
         io.stderr(`\n${WARM_REFUSAL_CLOSE}\n`);
       }
@@ -2868,7 +2814,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         io.stderr(`\n💡 Applied a preference you taught me: "${appliedStrategy}". (Not right? \`muse playbook undo\`.)\n`);
       }
 
-      // Felt self-learning (P43-1): when a topic the user CORRECTED resurfaces,
+      // Felt self-learning: when a topic the user CORRECTED resurfaces,
       // surface the strategy the daemon distilled from that correction — recorded
       // unattended but still on PROBATION (not applied) — so the user is reminded
       // at the relevant moment and can choose to apply it. Surface-only: it never

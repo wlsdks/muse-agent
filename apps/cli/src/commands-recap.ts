@@ -14,8 +14,8 @@ import type { ProgramIO } from "./program.js";
  * `muse recap` — the EVENING, retrospective sibling of `muse brief` (which is
  * the morning, prospective briefing). Deterministic (no model): a digest of
  * what actually got done today (the action log + sessions) plus what's coming
- * up next, so the day closes with a felt summary instead of vanishing. P43-4
- * "evening recap"; the proactive (daemon-fired) version is a follow-on.
+ * up next, so the day closes with a felt summary instead of vanishing — an
+ * evening recap; the proactive (daemon-fired) version is a follow-on.
  */
 
 const DAY_MS = 86_400_000;

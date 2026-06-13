@@ -9,8 +9,8 @@
  * outbound-safety approval gate applies here.
  */
 
-import { overdueContacts, type ContactInteractions, type OverdueContact } from "@muse/agent-core";
-import { resolveContactsFile, resolveLocalCalendarFile, resolveNotesDir } from "@muse/autoconfigure";
+import { overdueContacts, type OverdueContact } from "@muse/agent-core";
+import { interactionsFromEvents, resolveContactsFile, resolveLocalCalendarFile, resolveNotesDir } from "@muse/autoconfigure";
 import { readLocalEvents } from "./commands-today.js";
 import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, isContactsEncrypted, linkContacts, queryContacts, resolveContact, resolveUpcomingBirthdays, type Contact } from "@muse/mcp";
 
@@ -88,29 +88,9 @@ interface CalendarEventLike {
   readonly startsAt?: string;
 }
 
-/**
- * Derive each contact's interaction timestamps from calendar events that MENTION
- * their name (or an alias) — the most reliable "we met / talked" signal without
- * reading any message content. Case-insensitive substring; names < 2 chars are
- * skipped (too ambiguous). Pure + testable.
- */
-export function interactionsFromEvents(
-  contacts: readonly { readonly name: string; readonly aliases?: readonly string[] }[],
-  events: readonly CalendarEventLike[]
-): ContactInteractions[] {
-  const haystacks = events
-    .map((event) => ({ ms: Date.parse(event.startsAt ?? ""), text: `${event.title ?? ""} ${event.notes ?? ""}`.toLowerCase() }))
-    .filter((event) => Number.isFinite(event.ms));
-  return contacts.map((contact) => {
-    const needles = [contact.name, ...(contact.aliases ?? [])]
-      .map((alias) => alias.trim().toLowerCase())
-      .filter((alias) => alias.length >= 2);
-    return {
-      name: contact.name,
-      timestampsMs: haystacks.filter((event) => needles.some((needle) => event.text.includes(needle))).map((event) => event.ms)
-    };
-  });
-}
+// `interactionsFromEvents` moved to @muse/autoconfigure so the `overdue_contacts`
+// agent tool and this command share one implementation; re-exported for callers.
+export { interactionsFromEvents };
 
 /** Render the overdue-contacts nudge. Pure + draft-first (nothing is ever sent). */
 export function formatOverdue(overdue: readonly OverdueContact[]): string {

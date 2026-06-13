@@ -14,10 +14,10 @@ import { isJsonValue, isRecord } from "./server-input-utils.js";
 export type CompatBody = Record<string, unknown>;
 
 // Re-exported so the compat-* sibling modules can keep importing
-// `isRecord` / `isJsonValue` from this hub without import-site edits.
-// The truth lives in `./server-input-utils.js`, the canonical
-// home for shape-inspection helpers across the API package.
-export { isJsonValue, isRecord };
+// `isRecord` from this hub without import-site edits. The truth lives
+// in `./server-input-utils.js`, the canonical home for shape-inspection
+// helpers across the API package.
+export { isRecord };
 
 export function toBody(value: unknown): CompatBody {
   return isRecord(value) ? value : {};
@@ -41,11 +41,6 @@ export function stringField(value: unknown, fallback: string): string {
 
 export function coerceStringArray(value: unknown): readonly string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
-}
-
-export function stringArrayField(value: unknown, fallback: string[]): string[] {
-  const parsed = coerceStringArray(value);
-  return parsed ? [...parsed] : fallback;
 }
 
 export function coerceStringSet(value: unknown): string[] {
@@ -75,11 +70,6 @@ export function stringMapField(value: unknown): Record<string, string> {
   );
 }
 
-export function numberField(value: JsonObject, key: string): number {
-  const item = value[key];
-  return typeof item === "number" && Number.isFinite(item) ? item : 0;
-}
-
 export function coerceNumber(value: unknown, fallback: number): number {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -91,15 +81,6 @@ export function coerceNumber(value: unknown, fallback: number): number {
   }
 
   return fallback;
-}
-
-export function coerceNullableNumber(value: unknown): number | undefined {
-  const parsed = coerceNumber(value, Number.NaN);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-export function numberOrString(value: unknown, fallback: number): number | string {
-  return typeof value === "string" && value.trim().length > 0 ? value : coerceNumber(value, fallback);
 }
 
 export function coerceBoolean(value: unknown, fallback: boolean): boolean {
@@ -114,18 +95,9 @@ export function coerceBoolean(value: unknown, fallback: boolean): boolean {
   return fallback;
 }
 
-export function containsIgnoreCase(value: string, needle: string): boolean {
-  return value.toLowerCase().includes(needle.toLowerCase());
-}
-
 export function readQueryString(request: FastifyRequest, key: string): string | undefined {
   const value = (request.query as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
-}
-
-export function readQueryStringSet(request: FastifyRequest, key: string): Set<string> {
-  const query = request.query as Record<string, unknown>;
-  return new Set(coerceStringSet(query[key]));
 }
 
 export function readQueryInteger(request: FastifyRequest, key: string, fallback: number): number {
@@ -138,17 +110,6 @@ export function readQueryInteger(request: FastifyRequest, key: string, fallback:
   if (!/^[+-]?\d+$/u.test(trimmed)) return fallback;
   const parsed = Number(trimmed);
   return Number.isInteger(parsed) ? parsed : fallback;
-}
-
-export function readQueryInstantMillis(request: FastifyRequest, key: string): number | undefined {
-  const raw = readQueryString(request, key);
-
-  if (!raw) {
-    return undefined;
-  }
-
-  const parsed = Date.parse(raw);
-  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 export function readQueryBoolean(request: FastifyRequest, key: string, fallback: boolean): boolean {
@@ -176,22 +137,8 @@ export function readBodyNullableString(value: unknown, key: string): string | nu
   return item === null || typeof item === "string" ? item : undefined;
 }
 
-export function readNullableStringField(value: CompatBody, key: string): string | null {
-  const item = value[key];
-  return typeof item === "string" ? item : null;
-}
-
-export function readOptionalStringField(value: CompatBody, key: string, fallback: unknown): string | null {
-  const item = value[key];
-  return typeof item === "string" ? item : nullableStringResponse(fallback);
-}
-
 export function nullableStringResponse(value: unknown): string | null {
   return typeof value === "string" ? value : null;
-}
-
-export function nullableNumberResponse(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 export function nowIso(): string {
@@ -221,15 +168,6 @@ export function epochMillisOrNull(value: unknown): number | null {
   }
 
   return null;
-}
-
-export function dateOrUndefined(value: unknown): Date | undefined {
-  const millis = epochMillisOrNull(value);
-  return millis === null ? undefined : new Date(millis);
-}
-
-export function dateOrNull(value: unknown): Date | null {
-  return dateOrUndefined(value) ?? null;
 }
 
 export function compatEnumString(value: unknown, fallback: string): string {

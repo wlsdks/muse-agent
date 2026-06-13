@@ -161,3 +161,64 @@ export function shouldWarmClose(answer: string, noteFileCount: number): boolean 
 export function composeChatSystemContent(systemPrompt: string, playbookSection: string | undefined): string {
   return playbookSection && playbookSection.trim().length > 0 ? `${playbookSection}\n\n${systemPrompt}` : systemPrompt;
 }
+
+/**
+ * Whether to nudge the user toward `--repair` after an ungrounded verdict. Only
+ * when: the verdict actually fired, `--repair` wasn't already requested, we're
+ * not in `--json`, and there IS retrieved evidence to rewrite from (with no
+ * evidence the repair would just refuse, so the tip would mislead). Surfaces the
+ * constructive-repair capability exactly when it can help. Pure + exported.
+ */
+export function shouldSuggestRepair(args: {
+  readonly verdictFired: boolean;
+  readonly repairRequested: boolean;
+  readonly json: boolean;
+  readonly evidenceCount: number;
+}): boolean {
+  return args.verdictFired && !args.repairRequested && !args.json && args.evidenceCount > 0;
+}
+
+/**
+ * Whether to surface the "Removed N citation(s) … treat those claims as
+ * unverified" notice. Fires only when the gate actually stripped something AND
+ * the answer makes claims to doubt — NOT on a REFUSAL (which asserts nothing, so
+ * "treat those claims as unverified" is nonsensical) and NOT on an ACTION request
+ * (the model citing a tool name is a harmless quirk). The spurious citation is
+ * stripped from the text either way; this gates only the user-facing warning.
+ */
+export function shouldWarnStrippedCitations(args: {
+  readonly strippedCount: number;
+  readonly json: boolean;
+  readonly isActionRequest: boolean;
+  readonly isRefusal: boolean;
+}): boolean {
+  return args.strippedCount > 0 && !args.json && !args.isActionRequest && !args.isRefusal;
+}
+
+// Unmistakable intent words for the OPT-IN perception sources. Precision-first:
+// a git-specific token (commit/git/branch/…), never the ambiguous "work on", so
+// a non-git refusal ("what's my rent?") never gets a spurious --git tip.
+const GIT_INTENT_RE = /\b(commit|commits|committed|committing|git|branch|branches|rebase|rebased|repo|repository|codebase|pull request)\b/iu;
+
+const SHELL_INTENT_RE = /\b(command|commands|terminal|shell|bash|zsh|cli command|docker|kubectl)\b/iu;
+
+/**
+ * On a REFUSAL, surface the opt-in perception source that would likely answer
+ * the question — so an undiscoverable `--git` / `--shell` flag becomes findable
+ * (a user asking "what did I commit?" otherwise just gets "not in your notes" and
+ * never learns Muse can read their git history). Precision-first: only an
+ * unmistakable intent fires, and only when the matching flag is NOT already on.
+ * Pure + exported.
+ */
+export function suggestOptInSource(
+  query: string,
+  enabled: { readonly git: boolean; readonly shell: boolean }
+): string | undefined {
+  if (!enabled.git && GIT_INTENT_RE.test(query)) {
+    return "(tip: add --git to also ground on your recent git commits in this repo)";
+  }
+  if (!enabled.shell && SHELL_INTENT_RE.test(query)) {
+    return "(tip: add --shell to also ground on your recent shell-history commands)";
+  }
+  return undefined;
+}

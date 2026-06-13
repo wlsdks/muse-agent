@@ -22,17 +22,17 @@ export function createContactsFindTool(deps: ContactsFindToolDeps): MuseTool {
   return {
     definition: {
       description:
-        "Look up one of the user's contacts by name or alias and return their email / handle / phone / birthday / relationship (their role, e.g. 'doctor'). Use when you need a person's contact details, their phone number, their birthday, their role, or to confirm who someone is. An ambiguous name returns the candidate names (never a guess); an unknown name returns found:false. Read-only.",
+        "Look up one of the user's contacts and return their email / handle / phone / birthday / relationship (their role, e.g. 'doctor'), plus what the user knows about them (about: facts like 'allergic to nuts') and their connections (who they work/relate with). Look up by name or alias, OR reverse-look-up by an identifier — a phone number ('who is +1 415 555 0101?'), an email ('whose email is bob@acme.com?'), or an @handle. Use to get a person's details, identify who a number/email/handle belongs to, or recall what you know about someone. An ambiguous query returns the candidate names (never a guess); an unknown one returns found:false. Read-only.",
       domain: "messaging",
       inputSchema: {
         additionalProperties: false,
         properties: {
-          name: { description: "Contact name or alias to look up, e.g. 'Bob' or 'Jane Doe'.", type: "string" }
+          name: { description: "Who to look up: a contact name or alias (e.g. 'Bob'), OR an identifier to reverse-look-up — a phone number (e.g. '+1 415 555 0101'), an email (e.g. 'bob@acme.com'), or an @handle (e.g. '@bob').", type: "string" }
         },
         required: ["name"],
         type: "object"
       },
-      keywords: ["contact", "email", "address", "who", "person", "handle", "birthday", "phone", "number", "call", "text"],
+      keywords: ["contact", "email", "address", "who", "whose", "person", "handle", "birthday", "phone", "number", "call", "text", "about", "allergic"],
       name: "find_contact",
       risk: "read"
     },
@@ -51,7 +51,15 @@ export function createContactsFindTool(deps: ContactsFindToolDeps): MuseTool {
           ...(c.handle ? { handle: c.handle } : {}),
           ...(c.phone ? { phone: c.phone } : {}),
           ...(c.birthday ? { birthday: c.birthday } : {}),
-          ...(c.relationship ? { relationship: c.relationship } : {})
+          ...(c.relationship ? { relationship: c.relationship } : {}),
+          // `about` (free-text recall material) and `connections` are the
+          // contact's "what do I know about this person" content — the tool
+          // resolved them but dropped them, so "what is Bob allergic to?" /
+          // "who does Bob work with?" couldn't answer from find_contact.
+          ...(c.about ? { about: c.about } : {}),
+          ...(c.connections && c.connections.length > 0
+            ? { connections: c.connections.map((x) => ({ to: x.to, ...(x.as ? { as: x.as } : {}) })) }
+            : {})
         };
       }
       if (resolution.status === "ambiguous") {

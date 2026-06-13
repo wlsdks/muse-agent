@@ -1,7 +1,7 @@
 /**
  * `muse telemetry` command group.
  *
- * Closes the loop from iter 38: the runtime's `InMemoryTelemetryAggregator`
+ * Closes the read loop: the runtime's `InMemoryTelemetryAggregator`
  * was wired into autoconfigure and exposed via `/admin/telemetry/summary`
  * and `/admin/telemetry/recent`, but the user had no way to ASK for the
  * data — they'd have to know the endpoint and curl it. This module

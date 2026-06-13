@@ -8,8 +8,11 @@ import {
   formatGraphLinksSection,
   looksLikeBinaryContent,
   queryHasAdHocGrounding,
+  shouldSuggestRepair,
   shouldWarmClose,
+  shouldWarnStrippedCitations,
   stripEchoedCiteAs,
+  suggestOptInSource,
   urlGroundingSource
 } from "@muse/recall";
 
@@ -106,5 +109,35 @@ describe("composeChatSystemContent", () => {
   it("returns the bare system prompt when no playbook", () => {
     expect(composeChatSystemContent("SYS", undefined)).toBe("SYS");
     expect(composeChatSystemContent("SYS", "  ")).toBe("SYS");
+  });
+});
+
+describe("shouldSuggestRepair", () => {
+  it("fires only when the verdict fired, repair wasn't requested, not json, and there is evidence", () => {
+    expect(shouldSuggestRepair({ verdictFired: true, repairRequested: false, json: false, evidenceCount: 2 })).toBe(true);
+    expect(shouldSuggestRepair({ verdictFired: false, repairRequested: false, json: false, evidenceCount: 2 })).toBe(false);
+    expect(shouldSuggestRepair({ verdictFired: true, repairRequested: true, json: false, evidenceCount: 2 })).toBe(false);
+    expect(shouldSuggestRepair({ verdictFired: true, repairRequested: false, json: true, evidenceCount: 2 })).toBe(false);
+    expect(shouldSuggestRepair({ verdictFired: true, repairRequested: false, json: false, evidenceCount: 0 })).toBe(false);
+  });
+});
+
+describe("shouldWarnStrippedCitations", () => {
+  it("warns only on a non-json, non-action, non-refusal answer that had citations stripped", () => {
+    expect(shouldWarnStrippedCitations({ strippedCount: 1, json: false, isActionRequest: false, isRefusal: false })).toBe(true);
+    expect(shouldWarnStrippedCitations({ strippedCount: 0, json: false, isActionRequest: false, isRefusal: false })).toBe(false);
+    expect(shouldWarnStrippedCitations({ strippedCount: 1, json: true, isActionRequest: false, isRefusal: false })).toBe(false);
+    expect(shouldWarnStrippedCitations({ strippedCount: 1, json: false, isActionRequest: false, isRefusal: true })).toBe(false);
+  });
+});
+
+describe("suggestOptInSource", () => {
+  it("tips --git on git intent when git is off, and nothing when already enabled", () => {
+    expect(suggestOptInSource("what did I commit yesterday?", { git: false, shell: false })).toContain("--git");
+    expect(suggestOptInSource("what did I commit yesterday?", { git: true, shell: false })).toBeUndefined();
+  });
+  it("tips --shell on shell intent, and nothing for an unrelated query", () => {
+    expect(suggestOptInSource("which docker command did I run?", { git: false, shell: false })).toContain("--shell");
+    expect(suggestOptInSource("what is my rent?", { git: false, shell: false })).toBeUndefined();
   });
 });

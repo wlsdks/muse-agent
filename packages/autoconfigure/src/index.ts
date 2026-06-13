@@ -48,6 +48,7 @@ import {
   createHomeEntitiesTool,
   createHomeStateTool,
   collectDatedNotes,
+  createFeedsSearchTool,
   createLoopbackMcpMuseTools,
   createOnThisDayTool,
   createRememberFactTool,
@@ -147,6 +148,7 @@ import {
   parseSloErrorRate
 } from "./env-parsers.js";
 import { createAuthService } from "./auth-wiring.js";
+import { createOverdueContactsTool, interactionsFromEvents } from "./relationship-tool.js";
 import { createResponseFilters } from "./response-filters.js";
 import { createMessagingPollDispatchers } from "./messaging-poll-dispatchers.js";
 import { createSkillRuntime } from "./skills-runtime.js";
@@ -710,6 +712,16 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => [createWorldTimeTool()],
     () => [createRememberFactTool({ store: userMemoryStore })],
     () => [createOnThisDayTool({ datedNotes: () => collectDatedNotes(notesDir) })],
+    () => [createFeedsSearchTool({ feedEntries: () => readFeedKnowledgeEntries(resolveFeedsFile(env), 200) })],
+    () => [createOverdueContactsTool({
+      interactions: async () => {
+        const contacts = await queryContacts(resolveContactsFile(env));
+        const events = calendarRegistry
+          ? (await calendarRegistry.listEvents({ from: new Date(0), to: new Date() })).map((e) => ({ notes: e.notes, startsAt: e.startsAt.toISOString(), title: e.title }))
+          : [];
+        return interactionsFromEvents(contacts, events);
+      }
+    })],
     () => [
       createContactsFindTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
       createUpcomingBirthdaysTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
@@ -1014,6 +1026,7 @@ export {
   type NotesKnowledgeSearchToolOptions
 } from "./knowledge-corpus.js";
 
+export { createOverdueContactsTool, interactionsFromEvents, type EventMentionLike, type OverdueContactsToolDeps } from "./relationship-tool.js";
 export { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
 export { resolveDefaultUserId } from "./user-id.js";
 
