@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ add_contact update data-loss: an update-in-place ("save Bob's new email") silently dropped about/aliases/connections (only 5 of 8 persisted fields were carried into the wholesale id-replace) — now preserved from the existing contact; about is cited grounding evidence so this was grounding-floor-adjacent silent loss — tool-hardening fire 87
+
 - ✓ calendar read-verb selection coverage: golden eval scenario for list/availability/conflicts (7 KO+EN cases, all PASS 3/3) — confirmed the local model selects them robustly (no mis-route); structural-regression guard + documented negative result — tool-hardening fire 86
 
 - ✓ decompose @muse/cli: extracted weather+headlines external-data cluster (resolveTodayWeatherLine/formatWeatherLine/resolveTodayFeedHeadlines/formatHeadlines + cap) commands-today -> commands-today-feeds.ts (1397->1327 LOC; re-export keeps 2626 tests green) — codebase-quality fire 48

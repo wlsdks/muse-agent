@@ -891,3 +891,12 @@ ratchet: testFiles 970 유지(scripts-only) · fabrication 0 유지 · eval:tool
 - **왜:** eval 스위트에 calendar read-verb 커버리지 0. "언제 시간 돼?"(availability)가 list로 샐 가설 검증 → negative(robust). backlog 최상단 ◦들은 codebase-quality 소유(refactor), tool-hardening backlog 실질 비어 gap-scout. EXPANSION은 fire 83 Opus-confirmed dry.
 - **리뷰지점:** eval-tool-selection.mjs buildCalendarReadScenario(+배열 등록, 순수 additive 31줄). **정직 teeth disclosure:** availability 설명을 list-like로 blur해도 케이스 통과(7/7) — 모델이 tool NAME+키워드로 선택, description 의존 안 함 → description-edit regression엔 약함, **structural regression(rename/merge/confusable-추가) guard**. 골든 스위트 전체가 이렇게 robust-pass(rename/merge lock) → 일관. ④b judge PASS 5/5(disclosure 정직 평가, KIND-diverse 확인).
 - **리스크:** 없음 — scripts-only(loopback-calendar.ts 변조 복원, clean), 순수 additive. **교훈 적용:** ④b 후 즉시 커밋(fire 85 동시-루프 git add -A sweep 재발 방지). 다음 fire는 또 다른 KIND 또는 honest-close(테마 mature, 고가치 진안-blocked).
+
+
+## fire 87 · 2026-06-14 · skill v1.14.0 · 4c0ebf78
+meta: value-class=micro-fix(real correctness/data-loss bug) · pkg=@muse/mcp · kind=silent-data-loss-fix(add_contact update가 about/aliases/connections drop) · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 970 유지(+1 케이스 contacts-tool update-preserves) · fabrication 0 유지 · eval 무변동(handler correctness)
+- **무엇:** add_contact("Add or update")가 기존 이름 업데이트 시 id 재사용 → id-idempotent addContact가 contact을 wholesale REPLACE. 그런데 재구성된 contact이 5필드만 carry → **about(grounding evidence)·connections(people-graph)·aliases(resolution-critical)를 silent drop**. existing에서 carry-forward하도록 수정(+RED→GREEN 테스트).
+- **왜:** Opus correctness-bug 스카웃(미-examined 핸들러 대상, EXHAUSTION→value-class 상향)이 발굴한 real 버그. "save Bob's new email" 같은 update-by-chat에서 발화(production 배선: autoconfigure:754·commands-ask:1627 둘 다 real addContact+reader). about은 타입 주석(:54-57)이 "grounding evidence … cite"라 명시 → **grounding-floor-adjacent 데이터 손실**(silent·irreversible). no-collateral/selection coverage와 다른 KIND(real fix, fire-80 계열).
+- **리뷰지점:** contacts-tool.ts 머지에 `existing?.about/aliases/connections` 3 spread 추가(전부 existing? guard → fresh add는 no-op·byte-identical). 테스트 RED("expected undefined to be 'allergic to nuts'")→GREEN, 전 suite 1864 green, pnpm check exit=0, lint clean. ④b judge PASS 5/5(자체 pre-fix revert로 검증, over-reach/fabrication 없음·schema에 clear 입력 없으니 preserve가 유일한 non-lossy). 스카웃 negative: followups/history/week-agenda/contacts-other 핸들러는 correct.
+- **리스크:** 없음 — update-merge만 변경(validation/dedup/fresh-add 불변), aliases 보존은 outbound-safety rule 3(recipient 해소)을 도움. **교훈 적용:** fix+test 빌드 통과 즉시 커밋(sweep 방지).
