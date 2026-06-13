@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ KO followup.cancel selection FIXED 0/3→3/3 STABLE (was a persistent 3x weakness, fires 71/75) — "그 체크인 팔로업 취소해줘" mis-routed to followup.list; fixed by description disambiguation (list "NOT when" excludes cancel/delay intent + cancel leads with "취소해줘 means THIS tool not list") — tool-hardening fire 76 (resolves the fire-75 KO-cancel FINDING)
+
 - ✓ Phase 3 cont.: extracted inline episodeBlock -> buildEpisodeContextBlock in @muse/recall (escapes untrusted summary; +injection-defense test) — codebase-quality fire 36
 - ✓ IrrelAcc destructive over-firing parity: a status QUESTION mentioning a task/reminder by a resolvable word → tasks.list/reminders.list NOT the destructive delete/clear (extends fire 71's followup guard to the sibling destructive tools) — tool-hardening fire 75
 - ✓ dead-code @muse/cli: de-exported 4 internal-only program-helpers (parseSseEvent/readSseField/readResponseRunId/promptPassword) — knip-clean, grep-verified no external importer — codebase-quality fire 35
