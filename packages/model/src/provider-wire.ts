@@ -26,6 +26,7 @@
  * diagnostic provider so they don't deserve their own file yet.
  */
 
+import { escapeRegex } from "@muse/shared";
 import type { ModelCapabilities } from "./index.js";
 import { localModelCapabilities } from "./provider-shared.js";
 
@@ -157,6 +158,3 @@ function planningPromptListsTool(systemPrompt: string, toolName: string): boolea
   return new RegExp(`(^|\\n)\\s*-\\s*${escapeRegex(toolName)}\\s*:`, "u").test(systemPrompt);
 }
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}

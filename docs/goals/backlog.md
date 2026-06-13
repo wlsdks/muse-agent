@@ -1,7 +1,10 @@
 # Muse dev backlog — the living ledger
 
+- ✓ today_brief IrrelAcc: 2 negatives (casual "오늘"/"today" mentions → NO tool) complete today_brief's agent-testing.md triad (selection+confusability shipped fire 97, irrelevance here) — guards the high-frequency casual collision word "today" from over-firing the tool — tool-hardening fire 98
+
 - ✓ today_brief agent tool (EXPANSION): the today/triage merge (overdue-led + today's events/reminders/tasks) existed for muse today / /today / web-API but was never an agent tool, unlike week_agenda — closed the asymmetry; eval:tools 8/8 STABLE 3/3 proves the 12B holds the today-vs-week carve (no confusability) — tool-hardening fire 97
 
+- ✓ cohere @muse/shared: DRY'd escapeRegex (4 hand-rolled copies) → canonical @muse/shared escapeRegex + deduped cache/model/policy (agent-core left, hot); +OUTCOME test; dups 4→2 — codebase-quality fire 59
 - ✓ dead-code @muse/cli: de-exported 5 internal-only helpers (defangMemoryValue/looksLikeImage/shortMessageId/logPendingApproval/readActivity) — knip-clean, grep-verified no external/test importer; skipped friendlyFetchError(test)/isNodeError(ext) false-positives — codebase-quality fire 58
 - ⚠ tool-hardening delivery-layer vein EXHAUSTED (fire 96 honest-close): fire 95 fixed the one bug (mutation-intent substring false-positive); fire 96 verified the rest of the tool-delivery/security layer clean — @muse/tools exposure (select/relevance filter/comparator/maxTools), MCP projection (createLoopbackMcpMuseTools risk mapping), MCP allowlist (McpManager register+connect). Both veins now examined (per-handler fire 94, delivery fire 95/96). Next candidates: 진안-blocked levers (MCP-risk-annotation default posture, undo/veto tool, email/handle arg-grounding=agent-core HOT); external-MCP tool projection schema (deeper); or a new .muse/runs failure cluster.
 

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { knownModelPrefixes, parseModelName, type ModelRequest, type ModelResponse } from "@muse/model";
 import type { JsonObject, JsonValue } from "@muse/shared";
+import { escapeRegex } from "@muse/shared";
 
 export type Awaitable<T> = T | Promise<T>;
 
@@ -499,9 +500,6 @@ function numberValue(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
 
 const defaultPricing = [0.001 / 1_000, 0.002 / 1_000] as const;
 
