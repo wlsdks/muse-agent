@@ -175,7 +175,7 @@ ratchet: testFiles 922 · new battery eval:receipt-drift (no Ollama) · recall 8
   ad-hoc `--url`/`--clipboard` 스킵이 자체 테스트 필요) → backlog ◦. 그 전까진 로직은
   라이브·검증됨이나 사용자 노출은 deferred.
 
-## fire 9 · 2026-06-13 · skill v1.14.0 · `<pending-commit>`
+## fire 9 · 2026-06-13 · skill v1.14.0 · `8dc2f44d`
 meta: value-class=test-coverage(JUDGE-DRILL) · pkg=@muse/recall · kind=judge-drill · verdict=PASS · firesSinceDrill=0
 ratchet: testFiles 922 · recall 89/89 · fabrication 0 · grounding 엔진 미수정
 
