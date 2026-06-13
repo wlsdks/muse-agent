@@ -56,7 +56,7 @@ export interface TasksMcpServerOptions {
  *   - `muse.tasks.delete({ id })` — REMOVE a task entirely (by id
  *     or title word) — for one added by mistake; not a "done".
  *   - `muse.tasks.search({ query, status? })` — substring match on
- *     title and notes (case-insensitive).
+ *     title, notes, and tags (case-insensitive).
  */
 export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMcpServer {
   const file = options.file;
@@ -395,7 +395,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
       },
       {
         description:
-          "Substring search across title + notes (case-insensitive). `status` filter optional. " +
+          "Substring search across title, notes, and tags (case-insensitive) — so a task tagged 'work' is found by searching 'work' even when the word isn't in its title. `status` filter optional. " +
           "Returns up to 50 matches newest-first.",
         execute: async (args): Promise<JsonObject> => {
           const query = readString(args, "query")?.trim() ?? "";
@@ -413,6 +413,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
             .filter((task) =>
               task.title.toLowerCase().includes(needle)
               || (task.notes?.toLowerCase().includes(needle) ?? false)
+              || (task.tags?.some((tag) => tag.toLowerCase().includes(needle)) ?? false)
             )
             .sort((left, right) => (right.createdAt ?? "").localeCompare(left.createdAt ?? ""))
             .slice(0, 50);
@@ -426,7 +427,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         inputSchema: {
           additionalProperties: false,
           properties: {
-            query: { description: "Text to find in task titles/notes, e.g. 'milk' or 'Q3'.", type: "string" },
+            query: { description: "Text to find in task titles, notes, or tags, e.g. 'milk', 'Q3', or 'work'.", type: "string" },
             status: { description: "Which tasks to search: 'open' (default), 'done', or 'all'.", enum: ["open", "done", "all"], type: "string" }
           },
           required: ["query"],
@@ -434,7 +435,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         },
         domain: "tasks",
         name: "search",
-        keywords: ["task", "todo", "할일", "할 일", "search", "찾아", "검색"],
+        keywords: ["task", "todo", "할일", "할 일", "search", "찾아", "검색", "tag", "태그"],
         risk: "read"
       }
     ]
