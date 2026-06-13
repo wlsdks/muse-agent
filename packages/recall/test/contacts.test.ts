@@ -42,4 +42,12 @@ describe("contactMatchScore", () => {
     expect(contactMatchScore(dana, new Set())).toBe(0);
     expect(contactMatchScore(dana, new Set(["xylophone"]))).toBe(0);
   });
+  it("accumulates one point per matching token across fields (score is the count, not capped at 1)", () => {
+    // "Dana Lee" → {dana, lee}; relationship "manager" → {manager}: all three hit.
+    expect(contactMatchScore(dana, new Set(["dana", "lee", "manager"]))).toBe(3);
+  });
+  it("matches a query token that only appears in an alias", () => {
+    const withAlias: Contact = { name: "Bob", aliases: ["sparky"] };
+    expect(contactMatchScore(withAlias, new Set(["sparky"]))).toBe(1);
+  });
 });
