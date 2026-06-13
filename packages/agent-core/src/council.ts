@@ -25,6 +25,7 @@ import { iterateJsonObjectCandidates } from "./json-array-scan.js";
 import {
   classifyRetrievalConfidence,
   type GroundingReverify,
+  judgeConsensus,
   type KnowledgeMatch,
   lexicalTokens
 } from "./knowledge-recall.js";
@@ -376,6 +377,14 @@ export interface CouncilModelOptions {
    */
   readonly reverify?: GroundingReverify;
   /**
+   * k judge samples for the synthesis re-verification (self-consistency,
+   * arXiv:2203.11171). >1 collapses k verdicts unanimously (one NO drops the
+   * synthesis) so a single flaky YES can't promote a baseless consensus —
+   * parity with recall's `reverifySamples`. Clamped to [1,5]. Default 1 (single
+   * judge, back-compat).
+   */
+  readonly reverifySamples?: number;
+  /**
    * Optional embedder for semantic outlier screening (arXiv:2507.14649 — Cleanse).
    * When provided, `screenCouncilOutliers` uses embedding cosine instead of Jaccard
    * so cross-lingual and paraphrase agreement is not falsely quarantined.
@@ -594,7 +603,7 @@ export async function synthesizeCouncilAnswer(
   const excludedPeers = allExcluded.length > 0 ? allExcluded : undefined;
   const withExcluded = council && excludedPeers ? { ...council, excludedPeers } : council;
   if (!withExcluded || !options.reverify) return withExcluded;
-  const reverified = await verifyCouncilGrounding(withExcluded, question, forSynthesis, options.reverify);
+  const reverified = await verifyCouncilGrounding(withExcluded, question, forSynthesis, options.reverify, options.reverifySamples);
   return reverified && excludedPeers ? { ...reverified, excludedPeers } : reverified;
 }
 
@@ -611,7 +620,8 @@ export async function verifyCouncilGrounding(
   council: CouncilAnswer,
   question: string,
   utterances: readonly CouncilUtterance[],
-  reverify: GroundingReverify
+  reverify: GroundingReverify,
+  reverifySamples?: number
 ): Promise<CouncilAnswer | null> {
   const cited = new Set(council.contributors);
   const drawnFrom = utterances.filter((u) => cited.size === 0 || cited.has(u.peerId));
@@ -622,8 +632,18 @@ export async function verifyCouncilGrounding(
   if (evidence.trim().length === 0) {
     return null;
   }
+  const samples = Math.min(5, Math.max(1, reverifySamples ?? 1));
   try {
-    return (await reverify({ answer: council.answer, evidence, query: question })) ? council : null;
+    // Collect up to k verdicts, short-circuiting on the first NO (unanimous-keep):
+    // one dissent among k samples drops the synthesis, so a single flaky YES on a
+    // borderline consensus can't promote it (single-judge intra-rater variance).
+    const verdicts: boolean[] = [];
+    for (let i = 0; i < samples; i++) {
+      const v = await reverify({ answer: council.answer, evidence, query: question });
+      verdicts.push(v);
+      if (!v) break;
+    }
+    return judgeConsensus(verdicts, "unanimous-keep") ? council : null;
   } catch {
     return null;
   }

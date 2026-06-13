@@ -253,3 +253,19 @@ ratchet: testFiles 930 · fabrication 0 · groundedSurfaces 27 · commands-docto
   tests / 5 config tests. chat-ink-render full-check failure was a CPU-contention flake (40/40 isolated).
 - **Risk:** none. commands-doctor still ~1121 LOC — the check-cluster (modelEnvCheck/localOnlyCheck/
   notesIndexHealth/… returning LocalCheck) is a follow-up decompose ◦.
+
+## fire 15 · 2026-06-13 · loop-creator v1.14.0 · 2d9754e9
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 931 · fabrication 0 · groundedSurfaces 27 · commands-doctor 1121→1073 LOC
+- **What:** continued the commands-doctor decompose — extracted the 3 PURE health checks
+  (messagingConfigCheck, notesIndexHealth, episodeIndexHealth) into sibling commands-doctor-checks.ts
+  (zero imports). import+re-export; fixed 2 misplaced JSDocs (notesIndexHealth's was stacked above
+  messagingConfigCheck; removal also restored embedModelCheck's doc placement). Added checks test (10).
+- **Why:** decompose KIND (finding #3, oversized CLI); pure subset = clean closed set (the heavier
+  check-orchestration cluster with runtime deps stays — deferred).
+- **Review point:** ④b judged the commit (`git show 2d9754e9`) → PASS: byte-identical bodies, docs
+  correctly paired + embedModelCheck doc preserved, zero imports/no cycle, 3 files, cli build 0 /
+  lint 0 / pnpm check 0 (clean) / 85 doctor+checks tests.
+- **Risk:** none. commands-doctor still ~1073 LOC — the LocalCheck-orchestration cluster
+  (modelEnvCheck/localOnlyCheck/ollamaPerf/selfLearning/embedModelCheck, mixed w/ runtime deps) is a
+  further decompose ◦ (needs runtime-dep handling).

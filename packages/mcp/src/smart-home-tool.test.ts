@@ -63,6 +63,28 @@ describe("createHomeActionTool", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("BLAST-RADIUS: refuses a service call with NO target (entity-less) BEFORE any HTTP — would hit every device in the domain", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    // `light.turn_off` with no entity/target is HA's "apply to EVERY light" path —
+    // an easy 8B under-specification that would turn off the whole house.
+    const out = await createHomeActionTool(deps(approve, fetchImpl)).execute({ service: "light.turn_off" }, ctx) as Record<string, unknown>;
+    expect(out.performed).toBe(false);
+    expect(String(out.reason)).toMatch(/target|entity|every device/i);
+    expect(calls).toHaveLength(0); // no HTTP fired — the domain-wide call never leaves
+  });
+
+  it("BLAST-RADIUS: a scene/script activation (carries entity) still fires — the guard is selective", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    await createHomeActionTool(deps(approve, fetchImpl)).execute({ entity: "scene.movie_mode", service: "scene.turn_on" }, ctx);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("BLAST-RADIUS: a data-targeted call (area_id in data, no entity arg) still fires — a real broadcast target is allowed", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    await createHomeActionTool(deps(approve, fetchImpl)).execute({ data: { area_id: "kitchen" }, service: "light.turn_off" }, ctx);
+    expect(calls).toHaveLength(1);
+  });
+
   it("HA rejects the approved call (5xx) → the TOOL surfaces performed:false + reason/detail, logged failed", async () => {
     // The agent invokes this tool, not the shared helper — so the tools own
     // failure projection (outcome → { performed:false, reason, detail }) must

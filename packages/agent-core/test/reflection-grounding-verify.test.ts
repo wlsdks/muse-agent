@@ -43,6 +43,20 @@ describe("verifyReflectionsGrounding — RGV re-verification applied to the refl
     expect(judge).not.toHaveBeenCalled();
   });
 
+  it("with k samples (reverifySamples=2), one NO among the verdicts drops the reflection (a flaky YES can't promote a dream)", async () => {
+    const judge = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const out = await verifyReflectionsGrounding([reflection("Values family time", "ep-1", "ep-2")], sources, judge, 2);
+    expect(out).toEqual([]);
+    expect(judge).toHaveBeenCalledTimes(2);
+  });
+
+  it("with k samples, an all-YES run keeps the reflection and consults the judge exactly k times", async () => {
+    const judge = vi.fn(async () => true);
+    const out = await verifyReflectionsGrounding([reflection("Values family time", "ep-1", "ep-2")], sources, judge, 3);
+    expect(out.map((r) => r.insight)).toEqual(["Values family time"]);
+    expect(judge).toHaveBeenCalledTimes(3);
+  });
+
   it("assembles the evidence the judge sees from the cited source TEXTS, not the ids", async () => {
     let seen = "";
     await verifyReflectionsGrounding([reflection("Protects weekends", "ep-2")], sources, async ({ evidence }) => {

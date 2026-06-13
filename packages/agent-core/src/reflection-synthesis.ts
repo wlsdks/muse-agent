@@ -19,7 +19,7 @@
 import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
 import { redactSecretsInText } from "@muse/shared";
 
-import type { GroundingReverify } from "./knowledge-recall.js";
+import { type GroundingReverify, judgeConsensus } from "./knowledge-recall.js";
 import { extractJsonArray } from "./plan-execute.js";
 
 export interface ReflectionInput {
@@ -55,6 +55,13 @@ export interface SynthesizeReflectionsOptions {
    * that cites real-but-unrelated episodes. Omitted ⇒ id-gate only (back-compat).
    */
   readonly reverify?: GroundingReverify;
+  /**
+   * k judge samples per reflection (self-consistency, arXiv:2203.11171). >1
+   * collapses k verdicts unanimously (one NO drops the reflection) so a single
+   * flaky YES can't promote a confabulated "dream" — parity with recall's
+   * `reverifySamples`. Clamped to [1,5]. Default 1 (single judge, back-compat).
+   */
+  readonly reverifySamples?: number;
 }
 
 const DEFAULT_MAX_REFLECTIONS = 5;
@@ -161,7 +168,7 @@ export async function synthesizeReflections(
   });
   if (!options.reverify) return reflections;
   const sources = new Map(usable.map((i) => [i.id, i.text]));
-  return verifyReflectionsGrounding(reflections, sources, options.reverify);
+  return verifyReflectionsGrounding(reflections, sources, options.reverify, options.reverifySamples);
 }
 
 export const REFLECTION_GROUNDING_QUERY = "What genuinely recurs about this user across these items?";
@@ -177,9 +184,11 @@ export const REFLECTION_GROUNDING_QUERY = "What genuinely recurs about this user
 export async function verifyReflectionsGrounding(
   reflections: readonly Reflection[],
   sources: ReadonlyMap<string, string>,
-  reverify: GroundingReverify
+  reverify: GroundingReverify,
+  reverifySamples?: number
 ): Promise<Reflection[]> {
   const kept: Reflection[] = [];
+  const samples = Math.min(5, Math.max(1, reverifySamples ?? 1));
   for (const reflection of reflections) {
     const evidence = reflection.sourceIds
       .map((id) => sources.get(id))
@@ -193,7 +202,16 @@ export async function verifyReflectionsGrounding(
     }
     let supported: boolean;
     try {
-      supported = await reverify({ answer: reflection.insight, evidence, query: REFLECTION_GROUNDING_QUERY });
+      // Collect up to k verdicts, short-circuiting on first NO (unanimous-pass):
+      // one dissent drops the reflection, so a single flaky YES can't promote a
+      // confabulated insight (single-judge intra-rater variance).
+      const verdicts: boolean[] = [];
+      for (let i = 0; i < samples; i++) {
+        const v = await reverify({ answer: reflection.insight, evidence, query: REFLECTION_GROUNDING_QUERY });
+        verdicts.push(v);
+        if (!v) break;
+      }
+      supported = judgeConsensus(verdicts, "unanimous-pass");
     } catch {
       supported = false;
     }
