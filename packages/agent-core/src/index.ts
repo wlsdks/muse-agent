@@ -218,6 +218,11 @@ export {
   type CitationPrecisionReport
 } from "./citation-precision.js";
 export {
+  reportCitationRecall,
+  DEFAULT_CITATION_RECALL_FLOOR,
+  type CitationRecallReport
+} from "./citation-recall.js";
+export {
   scoreGroundingEval,
   type GroundingCaseOutcome,
   type GroundingEvalCase,

@@ -783,3 +783,12 @@ ratchet: testFiles 954 유지(3 resolver test +각 1 케이스) · fabrication 0
 - **왜:** 4개 resolver 전부 destructive 게이트(followup.cancel/snooze·reminders.snooze/clear·tasks.delete·calendar.delete). 전부 `.includes`(literal)이나 fire 72는 followup만 가드 → 나머지 3개는 미래 regex-refactor 시 ".*" ref가 match-all→엉뚱한 항목 cancel/delete(injection) 미보호. fire 73 honest-close(테마 mature) 후 진안 미응답 → genuine safety-parity coverage(lower-value지만 실재).
 - **리뷰지점:** reminders-recurrence/personal-tasks-serialize/calendar-availability.test.ts 각 +1 가드(determinate not-found 단언, tautology 아님). src 무변경. mutation 검증: 3 resolver `.includes`→regex 시 3 가드 모두 RED, 복원 green. mcp 1857, lint clean, pnpm check green. Opus judge PASS 5/5(mutation 독립 재실행, 각 resolver의 destructive 게이트 확인).
 - **리스크:** 없음 — test-only additive(src 불변, 약화 0), 회귀 보호만. 4 resolver 안전 property(literal match) 완비.
+
+
+## fire 75 · 2026-06-13 · skill v1.14.0 · c74f7737
+meta: value-class=hardening · pkg=scripts(eval infra) · kind=irrelevance-coverage(IrrelAcc parity, destructive over-firing tasks/reminders) · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 957 유지(eval +2 케이스) · fabrication 0 유지 · followup 시나리오 가드 2개 STABLE 3/3 · KO cancel 0/3 지속(독립)
+- **무엇:** followup 시나리오에 IrrelAcc 네거티브 2개 — status 질문("What tasks…about the report?"/"Which reminders mention the dentist?")이 read 도구(tasks.list/reminders.list)로 가야지 destructive tasks.delete/reminders.clear 오발 금지. PASS 3/3. fire 71의 followup 가드를 형제 destructive 도구로 parity 확장.
+- **왜:** fires 67-72가 word-ref로 destructive(delete/clear)를 selectable하게 만듦 → casual 언급이 비가역 삭제 오발 위험(안전). fire 71은 followup.cancel만 가드. mature 테마에서 진안-blocked 고가치 대신 productive safety-parity coverage. KIND=irrelevance(최근 regression-guard와 다름).
+- **리뷰지점:** eval-tool-selection.mjs buildFollowupScenario +네거티브 2개(순수 additive). 시나리오가 tasks.delete+reminders.clear 노출→탐지 가능. harness 15 pass(scripts는 eslint ignore). Opus judge PASS 5/5(zero-shot 독립 기계 확인, teeth, parity 정당).
+- **리스크:** 없음 — 순수 additive coverage. ★KO followup.cancel "그 체크인 팔로업 취소해줘" 3회 연속 0/3(fire70 3/3은 가벼운 부하) = **지속적 8B KO-cancel 약점 확정**(borderline 아님), 슬라이스 무관(zero-shot 독립), backlog finding 강화 — verb-final KO 취소+referent를 모델이 list로 오선택. 전용 fix 시도 또는 진안 escalate 후보.

@@ -122,3 +122,11 @@ ratchet: cli +3 tests (commands-ask-grounding-verdict; full cli 2613 pass) · li
 - 왜: fire 14 진단을 실제 사용자 OUTCOME으로 완결(backlog ◦). per-citation support는 whole-answer verdict가 놓치는 클래스 — provenance-trust(untrusted)·evidence-vs-evidence(conflict)와 구별되는 distinct 축.
 - 리뷰지점: precision<1일 때만 발화(fire14 floor 체크), supported/uncited는 silent. gate 결정/floor/--json 불변, 순수 delegation. stub mutation 시 warn 테스트 red. 독립 Opus judge 5/5 PASS(cli 2613 green).
 - 리스크: 없음(additive stderr cue). 발화는 답이 [from X] 인용을 달아야 함(ask/chat 공통 caveat). chat 표면 wiring은 후속 가능.
+
+## fire 16 · 2026-06-13 · skill v1.14.0 · d4c92334
+meta: value-class=new-capability(paper)+wiring · pkg=@muse/agent-core+@muse/cli · kind=A · verdict=PASS · firesSinceDrill=7
+ratchet: agent-core +5, cli +3 tests (agent-core 2078, cli 2616 pass) · lint 0/0 · fabrication 0 · citable=false mutation verified
+- 무엇: **ALCE citation RECALL**(arXiv:2305.14627) — fire15 precision의 보완. groundable한 주장(증거 union에 ≥floor 커버)인데 `[from]` 인용이 없는 "uncited-but-citable" 문장을 잡음. `reportCitationRecall` 순수 모듈 + `citationRecallNotice` ask 경로 wiring(grounded만, stderr, additive).
+- 왜: precision="인용 출처 맞나", recall="groundable 주장이 다 인용 다나" — sentence-groundedness는 citation-agnostic이라 못 잡던 누락 attribution. precision/recall/groundedness triad 완성.
+- 리뷰지점: U+E000 sentinel 마스킹(멀티닷 source·2자리 카운터 검증), citable 문장만 분모(일반 주장은 recall miss 아님). 높은-overlap recommendation 오발 위험 있으나 비-게이팅 stderr cue라 허용(judge 확인). citable=false mutation으로 recall 테스트 red 증명. 독립 Opus judge 5/5 PASS.
+- 리스크: 없음(additive, 진단 only). **vein 상태: grounding triad 완성 → 결정론적 fail-open vein 사실상 고갈. 다음 fire는 value-class 피벗 권고**(예: precision/recall를 muse doctor 추적 메트릭으로, 또는 retrieval-quality/다른 축). backlog ◦에 기록.

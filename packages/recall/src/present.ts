@@ -460,3 +460,13 @@ export function buildGitContextBlock(commits: readonly { readonly hash: string; 
     .map((c, i) => `<<commit ${(i + 1).toString()} — ${c.hash}>>\n${c.subject}\n[commit: ${c.subject}]\n<<end>>`)
     .join("\n\n");
 }
+
+/** Build the <<action N>> grounding block from matched action-log entries. Pure. */
+export function buildActionContextBlock(actions: readonly { readonly when: string; readonly what: string; readonly result: string; readonly detail?: string }[]): string {
+  if (actions.length === 0) {
+    return "(no matching actions)";
+  }
+  return actions
+    .map((a, i) => `<<action ${(i + 1).toString()} — ${a.when.slice(0, 10)}>>\n${a.what} — ${a.result}${a.detail ? ` (${a.detail})` : ""}\n<<end>>`)
+    .join("\n\n");
+}

@@ -626,3 +626,38 @@ ratchet: testFiles 954 · fabrication 0 · groundedSurfaces 27 · commands-docto
   (the latest-tag-normalize matching), isOllamaTagsEntry exported for runLocalDoctor, re-export keeps doctor tests
   green (2613 cli), formatBytes correctly NOT entangled (embedModelCheck stayed).
 - **Risk:** low — pure relocation of pure tag-matching utils; no IO, no floor path.
+
+## fire 34 · 2026-06-13 · loop-creator v1.14.0 · 1b83c016
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 955 · fabrication 0 · groundedSurfaces 27 · ask god-file: 6th inline block extracted
+- **What:** Phase 3 continuation — extracted the inline `actionBlock` builder (`<<action N>>` grounding block)
+  from commands-ask.ts into a pure `buildActionContextBlock(actions)` in @muse/recall/present.ts, using a
+  structural input type `{when, what, result, detail?}` (so ActionLogEntry[] is assignable, no @muse/mcp ActionLogEntry
+  import). This is the fire-33 JUDGE-DRILL target done CORRECTLY: `a.when.slice(0, 10)` (YYYY-MM-DD), the exact value
+  the drill had sabotaged to slice(0,7). Body byte-identical to the original inline; 4-case OUTCOME test added
+  (incl. a regression assert that the date is the FULL YYYY-MM-DD, not month-only). selectGroundingActions/
+  readActionLog/ActionLogEntry stay in commands-ask (source fetch) → no orphans.
+- **Why:** continues moving the ask pipeline's inline blocks to recall; 6 of ~12 now extracted (task/reminder/
+  memory/shell/git/action). compose@recall 4/8 in the window (within ceiling). The drill having targeted this block
+  makes its correct extraction a natural, well-understood follow-through.
+- **Review point:** 4b judge — actionBlock body byte-identical (esp. slice(0,10) NOT slice(0,7) — the drilled bug;
+  the `${a.what} — ${a.result}` + detail-conditional template); structural type accepts ActionLogEntry[]; new test
+  pins the full-date format (would catch the slice(0,7) regression); recall 193 + cli 2613 green.
+- **Risk:** low — pure presentation relocation; the test now guards the exact field the drill exposed as untested.
+
+## fire 35 · 2026-06-13 · loop-creator v1.14.0 · 1bab154f
+meta: value-class=refactor · pkg=@muse/cli · kind=dead-code · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 957 · fabrication 0 · groundedSurfaces 27 · 4 over-broad exports narrowed
+- **What:** dead-code (over-export tightening) in apps/cli/program-helpers.ts — knip flagged parseSseEvent,
+  readSseField, readResponseRunId, promptPassword as unused exports; repo-wide grep confirmed each is referenced
+  ONLY inside program-helpers.ts (real internal call sites: parseSseEvent 447/454, readSseField 498/503,
+  readResponseRunId 578, promptPassword 139) with ZERO external/test importers. So per code-style "internal use
+  → drop export only": kept all 4 functions, removed their `export` keyword. knip now clean on all 4.
+- **Why:** diversity — compose@recall + decompose@cli were both 4/8; dead-code was 0/8 in the window (last fire 24).
+  These 4 were exported speculatively but only ever used internally — narrowing the module's public surface is
+  genuine cleanup. Most other knip "unused exports" are barrel re-export / test-only false positives (left alone,
+  as in fire 24).
+- **Review point:** 4b judge — all 4 still internally called (de-export, NOT deletion — functions unchanged);
+  zero external/test importers (grep-confirmed, so no breakage); knip drops all 4; cli build + 2616 tests green;
+  no behavior change (export visibility only).
+- **Risk:** none — export-visibility narrowing of internal-only helpers; no runtime/behavior/floor change.

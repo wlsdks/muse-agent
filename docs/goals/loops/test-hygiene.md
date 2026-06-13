@@ -133,3 +133,11 @@ ratchet: testFiles 952→951 (−1 중복 삭제, judge 승인) · netCoverage +
 - **왜:** tools 4쌍 이중-실행 정리 완결(helpers·time·text·data). test의 DoS 경계 케이스("mutation-surfaced gap")는 src가 없던 진짜 보안 커버 — 보존 필수.
 - **어떻게-증명(MUTATION-FIRST PRUNE):** CsvParse 200k 경계 무력화(`>MAX`→`>999999999`) 시 RED; Base64 500k도 동일 메커니즘(judge 독립 확인). padBase64는 Node Buffer가 unpadded 관대 디코드라 mutation-immune(decode round-trip은 src url-safe가 커버, encode 출력은 assert) — 무해한 over-preservation. ④b judge **1차 PASS**(사전 전수 대조로 FAIL-재작업 회피, time/text 교훈): 17→23 전 행동 생존 + trailing-tokens는 다른 스위트가 커버 + 양쪽 DoS mutation-caught 확인.
 - **리스크:** 소스 무변경. full `pnpm check` red지만 **무관 일시 아티팩트** — (1차) judge 서브에이전트의 동시 tools-mutation 빌드가 agent-core 테스트와 레이스("Failed to resolve @muse/tools"), (2차) apps/cli Ink-render `"echoes typed command"`가 동시-루프 부하서 5735ms timeout(다른 테스트 → 일시적). 둘 다 본 슬라이스·tools와 무관. LESSON: judge가 같은 패키지 dist를 mutation-churn하는 동안 full check를 돌리면 resolve 레이스 — judge 완료 후 check.
+
+## fire 16 · 2026-06-13 · skill v1.14.0 · 06fb7452
+meta: kind=add · pkg=@muse/recall · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles 954→954 (케이스 +2, 파일수 불변) · netCoverage +2 branch (accumulation·alias, 패키지-로컬 직접) · fabrication 0 · pnpm check FULL GREEN (첫 시도)
+- **무엇:** `contactMatchScore`(recall/select.ts, grounding 연락처 매칭)에 직접 단위 케이스 2개 추가(`contacts.test.ts`) — ①**누적**(매칭 토큰 *수*가 score, cap 1 아님): `{dana,lee,manager}`→3 ②**alias 매칭**: alias-only 토큰 `sparky`→1. 기존엔 단일 name 매칭 `>0`만.
+- **왜:** 연락처 해소 스코어링(grounding). 기존 `>0`는 cap된 score로도 통과 → 누적/alias 동작 미보장(패키지-로컬).
+- **어떻게-증명(MUTATION-FIRST):** `score += 1`→`= 1` 시 누적 케이스만 RED(3→1); alias loop 제거 시 alias 케이스만 RED(1→0); 복원+클린리빌드 8/8 green. ④b judge가 격리·값 정확(lexicalTokens "Dana Lee"→{dana,lee}) 확인 후 **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경. ★정직한 caveat(judge 지적): 두 분기는 **repo-전역으론 이미 간접 커버**됨 — `apps/cli/commands-ask-contacts.test.ts`가 alias `>0`·누적을 `email sarah chen > email sarah`로 간접 검증. 본 슬라이스는 **함수 홈 패키지(@muse/recall)에 더 타이트한 절대값 직접 커버**를 추가(가치 있으나 "제로→커버"는 아님). recall 직접-테스트 갭이 거의 채워졌다는 신호 — 쉬운 ADD vein 얇음.

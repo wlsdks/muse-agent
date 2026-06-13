@@ -29,13 +29,13 @@ import { basename, join, relative } from "node:path";
 
 import { assessContextSufficiency, buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, groundedOnUntrustedOnly, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
-import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportCitationPrecision, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
+import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportCitationPrecision, reportCitationRecall, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
 import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, listReflections, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
-import { allUserMemoryFacts, buildDiskContents, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, escapeSystemPromptMarkers, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
+import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, escapeSystemPromptMarkers, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, buildDiskContents, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource };
@@ -209,6 +209,24 @@ export function citationPrecisionNotice(
   if (sentence === undefined) return undefined;
   const shown = sentence.length > 80 ? `${sentence.slice(0, 80)}…` : sentence;
   return `\n⚠️  Citation check: a cited source doesn't actually support "${shown}" — verify the citation.\n`;
+}
+
+/**
+ * ALCE citation-RECALL cue (arXiv:2305.14627), the complement to the precision
+ * cue: a sentence whose claim IS in the retrieved evidence but that omits its
+ * `[from <source>]` marker — a groundable claim handed over with no attribution.
+ * Surfaces the first such missing-citation claim. Undefined when every citable
+ * sentence is cited.
+ */
+export function citationRecallNotice(
+  answer: string,
+  matches: readonly KnowledgeMatch[]
+): string | undefined {
+  const report = reportCitationRecall(answer, matches);
+  const sentence = report.uncited[0];
+  if (sentence === undefined) return undefined;
+  const shown = sentence.length > 80 ? `${sentence.slice(0, 80)}…` : sentence;
+  return `\n⚠️  Attribution check: "${shown}" matches your notes but carries no citation — its source isn't shown.\n`;
 }
 
 
@@ -1906,11 +1924,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // action log missing or unreadable — silently skip
         }
       }
-      const actionBlock = matchedActions.length === 0
-        ? "(no matching actions)"
-        : matchedActions
-          .map((a, i) => `<<action ${(i + 1).toString()} — ${a.when.slice(0, 10)}>>\n${a.what} — ${a.result}${a.detail ? ` (${a.detail})` : ""}\n<<end>>`)
-          .join("\n\n");
+      const actionBlock = buildActionContextBlock(matchedActions);
 
       // Phase 2 (runtime self-tuning): the ACE playbook's [Learned
       // Strategies] reach the agent-runtime (--with-tools) path via the
@@ -2511,6 +2525,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           : undefined;
         if (citationNotice && !options.json) {
           io.stderr(citationNotice);
+        }
+        // ALCE citation RECALL: a groundable claim handed over with no [from …]
+        // attribution. Complement to the precision cue; grounded answers only.
+        const recallNotice = !verdictNotice && imageAttachments.length === 0
+          ? citationRecallNotice(verdictAnswer, scoredMatches)
+          : undefined;
+        if (recallNotice && !options.json) {
+          io.stderr(recallNotice);
         }
         if (verdictNotice && !options.json) {
           io.stderr(verdictNotice);

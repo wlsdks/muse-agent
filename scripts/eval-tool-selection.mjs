@@ -459,6 +459,11 @@ async function buildFollowupScenario() {
       // DISAMBIGUATION: confusable task/reminder prompts that must NOT route to a followup tool
       { prompt: "Add 'buy milk' to my tasks.", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "EN user-added task → tasks.add, NOT followup.* (user-entered, not agent-captured)" },
       { prompt: "우유 사기를 할 일에 추가해줘", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "KO user-added task → tasks.add, NOT followup.list (tasks ≠ followups)" },
+      // IrrelAcc guard (destructive over-firing, parity with the followup cancel guard):
+      // a STATUS QUESTION mentioning a task/reminder by a resolvable word must route to
+      // the READ tool, NOT the destructive delete/clear (word-ref made those selectable).
+      { prompt: "What tasks do I have about the report?", expectTool: "muse.tasks.list", note: "EN status question about tasks → tasks.list, NOT tasks.delete (a question is not a delete)" },
+      { prompt: "Which reminders mention the dentist?", expectTool: "muse.reminders.list", note: "EN status question about reminders → reminders.list, NOT reminders.clear (asking ≠ clearing)" },
       { prompt: "Remind me tomorrow at 9am to call Sam.", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], argFieldIncludes: { field: "dueAt", regex: /tomorrow/i }, note: "EN timed reminder → reminders.add, NOT followup.snooze; dueAt carries the PHRASE not a precomputed ISO" },
       { prompt: "내일 9시에 회의 준비하라고 알림 맞춰줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], argFieldIncludes: { field: "dueAt", regex: /내일/ }, note: "KO timed reminder → reminders.add, NOT followup.* (알림 ≠ 팔로업); dueAt is the PHRASE" }
     ];
