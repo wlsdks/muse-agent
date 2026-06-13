@@ -529,7 +529,7 @@
 > ✅ **자율 리뷰관문 (fires 34–36, 진안 묻지 않음):** 사이클8 = 2 ship + 1 정직한 defer(전부 공개 arXiv, Fable scout+judge): 34 MemoryBank-계열 compaction salient-fact 보존(2511.17208, FLOOR 5라운드 하드닝)·35 RAG-Fusion 복합쿼리 검색(2402.03367, 1라운드 PASS)·36 Prompt-Infection council injection quarantine(2410.07283, **DEFERRED** — 탐지기 calibration tar-pit, 4라운드 over-quarantine FP, 슬라이스 revert + backlog 블로커). 교훈: fire34/36 둘 다 "공유 컴포넌트를 다른 입력분포에 재사용하면 양방향 miscalibrate"(numeric verbatim≠faithful / user-pattern을 model-prose에) — maker≠judge가 floor 회귀를 반복 차단. **사이클9 방향(스스로): 저-floor-risk 형태(ranking/selection/validation) 우선 유지; 후보 = orchestration/검증(prose-safe 새 탐지기 아닌 다른 메커니즘) 또는 planning-quality 또는 신규 메모리/recall 메커니즘 — defer된 council-screen은 전용 calibration 슬라이스 필요시에만.** fires-31-35 배치는 로컬 main에 머지 완료(1b06c408, -r build green, push 안 함); fire-36은 defer(코드 무변동).
 
 
-## fire 47 · 2026-06-13 · skill v1.14.0 · 1b19e34b
+## fire 47 · 2026-06-13 · skill v1.14.0 · 90723a4d
 meta: value-class=new-capability · pkg=@muse/mcp(+@muse/autoconfigure) · kind=new-tool(EXPANSION) · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles 906 무변동(기존 contacts-tool.test.ts +3케이스) · fabrication 0 유지 · eval:tools contacts 신규 4/4 STABLE 3/3
 - **무엇:** `upcoming_birthdays` 에이전트 도구 신설 — `resolveUpcomingBirthdays`는 이미 모든 비대화 표면(brief/today/week/recap/daemon)+CLI `muse contacts birthdays`에 배선됐는데 *대화(ask/chat)엔 도구가 없어* 모델이 "누구 생일 다가와?"를 답 못했다(`find_contact`는 name required→특정인만). read-only 도구로 래핑+등록.
