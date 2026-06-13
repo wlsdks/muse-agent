@@ -449,8 +449,8 @@ async function buildFollowupScenario() {
       { prompt: "팔로업 목록 보여줘", expectTool: "muse.followup.list", note: "KO list follow-ups → followup.list (NOT tasks.list)" },
       { prompt: "Cancel the follow-up you promised about the report.", expectTool: "muse.followup.cancel", requireArgs: ["id"], note: "EN cancel an agent-captured follow-up → followup.cancel (NOT tasks.delete)" },
       { prompt: "그 체크인 팔로업 취소해줘.", expectTool: "muse.followup.cancel", requireArgs: ["id"], note: "KO cancel a follow-up commitment → followup.cancel (NOT tasks.delete)" },
-      { prompt: "Push that follow-up to tomorrow morning.", expectTool: "muse.followup.snooze", requireArgs: ["id", "scheduledFor"], note: "EN delay a follow-up → followup.snooze (NOT reminders.snooze)" },
-      { prompt: "팔로업 내일 오전으로 미뤄줘.", expectTool: "muse.followup.snooze", requireArgs: ["id", "scheduledFor"], note: "KO delay a follow-up → followup.snooze (NOT reminders.snooze)" },
+      { prompt: "Push the report follow-up to tomorrow morning.", expectTool: "muse.followup.snooze", requireArgs: ["id", "scheduledFor"], note: "EN delay a follow-up → followup.snooze (NOT reminders.snooze); a referent word (report) lets it snooze one-shot, no prior list" },
+      { prompt: "그 체크인 팔로업 내일 오전으로 미뤄줘.", expectTool: "muse.followup.snooze", requireArgs: ["id", "scheduledFor"], note: "KO delay a follow-up → followup.snooze (NOT reminders.snooze); referent word (체크인) → one-shot snooze" },
       // DISAMBIGUATION: confusable task/reminder prompts that must NOT route to a followup tool
       { prompt: "Add 'buy milk' to my tasks.", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "EN user-added task → tasks.add, NOT followup.* (user-entered, not agent-captured)" },
       { prompt: "우유 사기를 할 일에 추가해줘", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "KO user-added task → tasks.add, NOT followup.list (tasks ≠ followups)" },

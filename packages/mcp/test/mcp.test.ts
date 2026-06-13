@@ -7602,10 +7602,36 @@ describe("muse.followup loopback server", () => {
     expect(reFired).toMatchObject({ error: expect.stringContaining("already fired") });
 
     const missing = await connection.callTool!("cancel", { id: "fu_nope" });
-    expect(missing).toMatchObject({ error: expect.stringContaining("not found") });
+    expect(missing).toMatchObject({ error: expect.stringContaining("no followup matches") });
 
     const noId = await connection.callTool!("cancel", {});
     expect(noId).toMatchObject({ error: expect.stringContaining("id is required") });
+  });
+
+  it("cancel resolves a WORD from the summary (one-shot, no prior list) and refuses an ambiguous word", async () => {
+    const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const dir = mkdtempSync(join(tmpdir(), "muse-followup-mcp-ref-"));
+    const file = join(dir, "followups.json");
+    writeFileSync(file, JSON.stringify({
+      followups: [
+        { createdAt: "2026-05-10T00:00:00Z", id: "fu_budget", scheduledFor: "2026-05-11T09:00:00Z", status: "scheduled", summary: "check the Q3 budget memo", userId: "stark" },
+        { createdAt: "2026-05-10T00:00:00Z", id: "fu_sam", scheduledFor: "2026-05-11T10:00:00Z", status: "scheduled", summary: "email Sam back about budget", userId: "stark" }
+      ]
+    }), "utf8");
+    const connection = createLoopbackMcpConnection(createFollowupsMcpServer({ file }));
+
+    // an AMBIGUOUS word ("budget" is in both summaries) → candidates, nothing cancelled
+    const ambiguous = await connection.callTool!("cancel", { id: "budget" });
+    expect(ambiguous).toMatchObject({ error: expect.stringContaining("matches multiple"), candidates: expect.any(Array) });
+    const afterAmbiguous = JSON.parse(readFileSync(file, "utf8")) as { followups: Array<{ id: string; status: string }> };
+    expect(afterAmbiguous.followups.every((f) => f.status === "scheduled")).toBe(true); // no partial cancel
+
+    // a DISTINCT word ("memo" only in fu_budget) → cancels that one, no id needed
+    const ok = await connection.callTool!("cancel", { id: "memo" });
+    expect(ok).toMatchObject({ followup: { id: "fu_budget", status: "cancelled" } });
   });
 
   it("snooze parses relative scheduledFor and rejects non-scheduled entries", async () => {

@@ -300,3 +300,41 @@ function isPersistedFollowup(value: unknown): value is PersistedFollowup {
     || candidate.status === "fired"
     || candidate.status === "cancelled";
 }
+
+export type FollowupRefResolution =
+  | { readonly status: "resolved"; readonly followup: PersistedFollowup }
+  | { readonly status: "ambiguous"; readonly candidates: readonly PersistedFollowup[] }
+  | { readonly status: "not-found" };
+
+/**
+ * Resolve a cancel/snooze REFERENCE to a single followup — the followup's exact
+ * `id`, OR a distinct word from its `summary` — so the model can act in ONE shot
+ * without a prior `list` (parity with `resolveReminderRef`). Scheduled entries
+ * win a tie (a fired/cancelled match with the same word is not the target); an
+ * ambiguous word returns candidates instead of guessing (outbound-safety: never
+ * cancel the wrong commitment on a coin-flip).
+ */
+export function resolveFollowupRef(
+  followups: readonly PersistedFollowup[],
+  ref: string | undefined
+): FollowupRefResolution {
+  const trimmed = ref?.trim() ?? "";
+  if (trimmed.length === 0) {
+    return { status: "not-found" };
+  }
+  const byId = followups.find((followup) => followup.id === trimmed);
+  if (byId) {
+    return { status: "resolved", followup: byId };
+  }
+  const needle = trimmed.toLowerCase();
+  const matches = followups.filter((followup) => followup.summary.toLowerCase().includes(needle));
+  const scheduled = matches.filter((followup) => followup.status === "scheduled");
+  const pool = scheduled.length > 0 ? scheduled : matches;
+  if (pool.length === 1) {
+    return { status: "resolved", followup: pool[0]! };
+  }
+  if (pool.length > 1) {
+    return { status: "ambiguous", candidates: pool };
+  }
+  return { status: "not-found" };
+}

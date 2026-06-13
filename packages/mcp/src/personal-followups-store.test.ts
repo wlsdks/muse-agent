@@ -8,6 +8,7 @@ import {
   markFollowupFired,
   readFollowups,
   readFollowupStatusFilter,
+  resolveFollowupRef,
   serializeFollowup,
   upsertFollowup,
   writeFollowups,
@@ -187,5 +188,41 @@ describe("concurrent followup mutation", () => {
     const fired = await Promise.all((await readFollowups(file)).map((f) => markFollowupFired(file, f.id, "2026-05-13T11:00:00.000Z")));
     expect(fired.filter(Boolean)).toHaveLength(20);
     expect((await readFollowups(file)).every((f) => f.status === "fired")).toBe(true);
+  });
+});
+
+describe("resolveFollowupRef — one-shot cancel/snooze by id OR a word from the summary", () => {
+  it("resolves an exact id", () => {
+    const fs = [fixture({ id: "fu_a", summary: "check budget" }), fixture({ id: "fu_b", summary: "email Sam" })];
+    const r = resolveFollowupRef(fs, "fu_b");
+    expect(r.status).toBe("resolved");
+    expect(r.status === "resolved" ? r.followup.id : "").toBe("fu_b");
+  });
+
+  it("resolves a distinct word from the summary — no prior list needed", () => {
+    const fs = [fixture({ id: "fu_a", summary: "check Q3 budget memo" }), fixture({ id: "fu_b", summary: "email Sam back" })];
+    const r = resolveFollowupRef(fs, "budget");
+    expect(r.status === "resolved" ? r.followup.id : "").toBe("fu_a");
+  });
+
+  it("an ambiguous word returns candidates, never a guess", () => {
+    const fs = [fixture({ id: "fu_a", summary: "call the dentist" }), fixture({ id: "fu_b", summary: "the dentist invoice" })];
+    const r = resolveFollowupRef(fs, "dentist");
+    expect(r.status).toBe("ambiguous");
+    expect(r.status === "ambiguous" ? r.candidates.length : 0).toBe(2);
+  });
+
+  it("prefers a SCHEDULED match over a fired/cancelled one with the same word", () => {
+    const fs = [fixture({ id: "fu_done", status: "fired", summary: "budget review" }), fixture({ id: "fu_live", status: "scheduled", summary: "budget review" })];
+    const r = resolveFollowupRef(fs, "budget");
+    expect(r.status === "resolved" ? r.followup.id : "").toBe("fu_live");
+  });
+
+  it("an unknown word → not-found (no action)", () => {
+    expect(resolveFollowupRef([fixture()], "nonexistent").status).toBe("not-found");
+  });
+
+  it("an empty/whitespace ref → not-found", () => {
+    expect(resolveFollowupRef([fixture()], "   ").status).toBe("not-found");
   });
 });
