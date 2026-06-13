@@ -98,3 +98,22 @@ ratchet: testFiles 915 · fabrication 0 · groundedSurfaces 27 · src goal-id ma
 - **Risk / decision:** NOT fixing the daemon regression (cross-loop collision risk — it's
   that loop's code). Recorded as a backlog BLOCKER. This slice committed to BRANCH only;
   the fire-6 merge gate will keep it off main until `pnpm check` is green again.
+
+## fire 6 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=infra · kind=cleanup · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 917 · fabrication 0 · groundedSurfaces 27 · conflict-markers → 0
+- **What:** 진안 asked to fix the fire-5 daemon regression directly. Diagnosis: it was
+  ALREADY fixed upstream (de5eb7f9 "fix(proactive): firedKey space-join collide") — daemon
+  test now 71/71. The REAL defect found: fire 5's `git stash pop` had silently left git
+  conflict markers committed in backlog.md, INDEX.md AND scripts/self-eval.mjs (the last
+  broke `pnpm self-eval` with a SyntaxError). Stripped all markers (union preserved),
+  deduped the stale INDEX row, restored self-eval.mjs from main.
+- **Why:** self-eval is the loop's fitness gate — committed markers in it = silent
+  poison. Lesson recorded: never `git stash pop` on contended docs without checking for
+  conflict residue before committing.
+- **Review point:** self-eval EXIT 0 (testFiles 917, groundedSurfaces 27), daemon 71/71,
+  lint 0; the only `pnpm check` reds are the known messaging/model CPU-contention flakes
+  (pass on re-run). No conflict markers anywhere in the tree.
+- **Risk:** none — restorative cleanup + upstream-fixed regression confirmed. Recall TODO
+  unchanged: model-backed wrappers (drawBestGroundedRedraft/groundingVerdictNotice), graph
+  connections, then Phase 3 pipeline+API.
