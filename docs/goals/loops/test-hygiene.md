@@ -141,3 +141,11 @@ ratchet: testFiles 954→954 (케이스 +2, 파일수 불변) · netCoverage +2 
 - **왜:** 연락처 해소 스코어링(grounding). 기존 `>0`는 cap된 score로도 통과 → 누적/alias 동작 미보장(패키지-로컬).
 - **어떻게-증명(MUTATION-FIRST):** `score += 1`→`= 1` 시 누적 케이스만 RED(3→1); alias loop 제거 시 alias 케이스만 RED(1→0); 복원+클린리빌드 8/8 green. ④b judge가 격리·값 정확(lexicalTokens "Dana Lee"→{dana,lee}) 확인 후 **VERDICT: PASS**.
 - **리스크:** 테스트-only, 소스 무변경. ★정직한 caveat(judge 지적): 두 분기는 **repo-전역으론 이미 간접 커버**됨 — `apps/cli/commands-ask-contacts.test.ts`가 alias `>0`·누적을 `email sarah chen > email sarah`로 간접 검증. 본 슬라이스는 **함수 홈 패키지(@muse/recall)에 더 타이트한 절대값 직접 커버**를 추가(가치 있으나 "제로→커버"는 아님). recall 직접-테스트 갭이 거의 채워졌다는 신호 — 쉬운 ADD vein 얇음.
+
+## fire 17 · 2026-06-13 · skill v1.14.0 · 4ce37691
+meta: kind=prune · pkg=@muse/agent-core · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles 958→957 (−1 중복 삭제, judge 승인) · netCoverage 0 (surviving test/가 strict superset) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** agent-core 동명 쌍 `citation-sanitiser` 정리 — 콜로케이트 `src/citation-sanitiser.test.ts`(7케이스) 삭제, 더 thorough한 `test/citation-sanitiser.test.ts`(5케이스, strict superset) 유지. 새 vein 발견: agent-core/mcp/messaging/model/autoconfigure 등에 **30개 동명 src+test 쌍**(dist 이중-실행 아님 — config가 dist exclude; 같은 모듈을 보완/중복 테스트하는 두 source 파일).
+- **왜:** src/ 7케이스 전부 test/가 동등-이상으로 커버(https/http keep·js/data/empty/non-url drop·empty-input) + test/는 file/ftp/mailto·non-string·순서보존·mixed-partition까지 추가. 보안-관련(인용 링크 sanitise, grounding 표면) 모듈이라 우선. src/는 완전 redundant.
+- **어떻게-증명(MUTATION-FIRST PRUNE):** 생존 `test/`를 cite — `isSafeUrl`의 `ALLOWED_PROTOCOLS.has(protocol)`→`return true` 변형 시 test/ 2/5 RED(protocol-drop + mixed-partition); 변형 복원 후 5/5 green. ④b **독립 Opus judge가 git show로 삭제본 복원해 7케이스 전수 대조 + 자체 mutation 재현** → strict-subset 확인, **VERDICT: PASS**.
+- **리스크:** 소스 무변경, 삭제 1파일뿐(`git status` D 1줄). netCoverage 0(진짜 중복 제거). 남은 29쌍은 각각 superset 확인 필요(blanket 삭제 금지) — 향후 fire용 PRUNE vein.
