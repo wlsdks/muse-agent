@@ -178,3 +178,11 @@ ratchet: agent-core +8 tests (full suite 2155 pass) · lint 0/0 · fabrication 0
 - 왜: fire 20(negation)·21(numeric)에 이은 3번째 연속 논문 메커니즘. **문장-vs-증거 의미 가드 3종 완성**(부정·값/단위·확신) — token coverage가 구조적으로 못 보는 의미 축 3개를 결정론적으로 커버.
 - 리뷰지점: strictly tighten, pure, 한-방향(under-claim 제외), stray-hedge sentence-granularity로 회피. guard 제거 시 downgrade 테스트 red. 독립 Opus judge 5/5 PASS(2155 green). **알려진 좁은 FP(허용)**: 허가/능력 "may"("you may enter") — telemetry-only 소비자라 게이트 영향 없음.
 - 리스크: 낮음(진단-only). vein: 논문 메커니즘 축 fire 20-22 연속 실 구멍 3개 — 의미-가드 trio로 한 묶음 마무리. 이후 새 논문 의존(fire당 가치 들쭉날쭉).
+
+## fire 23 · 2026-06-14 · skill v1.14.0 · f5d9eb01
+meta: value-class=reliability-coverage · pkg=@muse/mcp · kind=B · verdict=PASS · firesSinceDrill=5
+ratchet: mcp +2 concurrency tests (full suite 42 pass) · agent-core racy boundary test pinned · check green · lint 0/0 · fabrication 0 · queue-removal mutation verified by judge
+- 무엇: **weakness-ledger 동시-쓰기 직렬화**. `recordWeakness`/`recordWeaknessResolved`가 bare read-modify-write + non-atomic fs.writeFile였음(11개 형제 store는 모두 withFileMutationQueue+atomicWriteFile). 실 동시 호출자(commands-ask, chat-repl)가 한 weaknesses.json을 경쟁 write → last-writer-wins로 서로 클로버/파일 wipe. 두 함수의 RMW를 큐로 감싸고 writeWeaknesses를 atomicWriteFile로. OUTCOME 테스트 2개(N개 distinct record 전부 persist · resolve↔record 경쟁 시 새 엔트리+mastery bump 둘 다 생존).
+- 왜: axis B(자기개선 서브시스템 신뢰성)로 전환 — fire 20-22가 agent-core grounding 의미-가드(kind A)에 집중돼 diversity+RATCHET이 다른 축/패키지/value-class를 강제. Whetstone 메타인지 산출물이 동시성에서 자기 학습 신호를 잃던 진짜 durability 구멍.
+- 리뷰지점: read를 큐 closure 안에서 수행(전체 RMW 원자화), empty-topic early-return은 큐 밖 유지(동작 불변), atomicWriteFile이 bounded-growth cap·JSON shape 보존. 독립 Opus judge가 큐 wrap 무력화→두 테스트 red 직접 확인(non-vacuous)→복원, 5/5 PASS. agent-core 변경은 test-only(source isStaleStrategy 불변).
+- 리스크: 낮음(데이터-계층 동시성 강화, 불변식 무관). vein: 인접 self-improve 모듈(playbook/correction-distiller/decay/reflection-synthesis/user-model-slots)은 scout가 well-hardened 확인 — 다음 axis B는 weakness-ledger 외 잔여 store 또는 axis C(self-judge meta-eval).

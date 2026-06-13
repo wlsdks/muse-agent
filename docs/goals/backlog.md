@@ -2035,6 +2035,7 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   detector (additive — verifyGrounding/the gate untouched), agent-core, 7/7 tests. Live
   gate unchanged (eval:grounding-delta still Δ+0.94). The grounded≠true mitigation now has
   a foundation; wiring it through tool-output-evidence → recall → answer-marker is the next ★.
+- ✓ weakness-ledger concurrent-write lost-update — grounding-integrity fire 23 (`f5d9eb01`): the lone self-improvement store doing bare RMW + non-atomic write now serialized via withFileMutationQueue + atomicWriteFile (sibling-pattern parity, 11/11). 2 OUTCOME concurrency tests.
 - ✓ 2026-06-08 third `improve-muse` fire — **grounded≠true boundary NAMED**:
   `packages/agent-core/src/grounded-not-true.test.ts` (3 cases, deterministic) locks that the
   gate marks a false-but-source-supported answer "grounded" (faithfulness is to the source,
