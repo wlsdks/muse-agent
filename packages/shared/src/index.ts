@@ -238,3 +238,28 @@ export function createCancellationToken(): CancellationToken {
     }
   };
 }
+
+/** Classic Levenshtein edit-distance, O(n·m) two-row DP. */
+export function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  let previous = new Array<number>(b.length + 1);
+  let current = new Array<number>(b.length + 1);
+  for (let j = 0; j <= b.length; j += 1) previous[j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+      current[j] = Math.min(
+        (current[j - 1] ?? 0) + 1,
+        (previous[j] ?? 0) + 1,
+        (previous[j - 1] ?? 0) + cost
+      );
+    }
+    [previous, current] = [current, previous];
+  }
+  return previous[b.length] ?? 0;
+}

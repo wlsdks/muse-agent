@@ -170,3 +170,20 @@ ratchet: testFiles 922 · fabrication 0 · groundedSurfaces 27 · recall tests 8
   re-run, messaging untouched by this slice.)
 - **Risk:** none. Remaining recall TODO: selectGraphConnections+NoteLinkGraph (next), then
   Phase 3 (runGroundedRecall pipeline + API route).
+
+## fire 10 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=@muse/shared · kind=cohere · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 924 · fabrication 0 · groundedSurfaces 27 · shared tests 33
+- **What:** relocated the generic pure `levenshteinDistance` (classic edit-distance) out of the
+  CLI file closest-command.ts into the leaf package @muse/shared, where a generic string util
+  belongs. closest-command.ts imports + re-exports it; notes-links.ts (other importer) unchanged
+  via the re-export. Added a shared package test.
+- **Why:** correct home for a generic util (cohere) AND the prerequisite for moving the
+  notes-links graph module into @muse/recall (selectGraphConnections needs levenshteinDistance
+  out of the CLI first — fire-8 backlog DECOMPOSE step A). Different package (@muse/shared) for
+  diversity. Layering correct: cli→shared, shared stays a leaf (zero deps).
+- **Review point:** independent Opus adversarial judge PASS — logically byte-identical body
+  (only inline WHAT comments dropped), leaf status intact, re-export chain verified (cli build 0),
+  lint 0. (pnpm check's only red = known messaging CPU-contention flake, 23/23 isolated.)
+- **Risk:** none. Next: notes-links graph module → @muse/recall (step B), then selectGraphConnections
+  (step C), then Phase 3 (runGroundedRecall pipeline + API).
