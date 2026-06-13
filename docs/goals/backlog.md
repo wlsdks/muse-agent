@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ decompose @muse/cli: extracted the macOS LaunchAgent cluster (LAUNCH_AGENT_LABEL/xmlEscape/buildLaunchAgentPlist/resolveLaunchAgentFile) commands-daemon -> commands-daemon-launchagent.ts (1330->1277 LOC; re-export keeps test+doctor green) — codebase-quality fire 53
 - ✓ IrrelAcc personal-crud: 3 past-tense-report negatives (어제 우유 샀어 / 방금 약 먹었어 / EN social report) assert the write tools (tasks/reminders/calendar add) fire NO tool on a statement — agent-testing.md's eager-invocation trap; teeth proven by a borderline probe ('finished the report') that DID over-fire tasks.list — tool-hardening fire 91
 
 - ✓ compose @muse/recall (Phase 3): extracted the "(grounded on …)" citation-banner builder into recall `groundedSourceSummary` (10 count-labels + order; notesPart stays caller-built; byte-identical; +4 OUTCOME tests) — codebase-quality fire 52

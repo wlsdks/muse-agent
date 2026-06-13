@@ -32,6 +32,22 @@ describe("createOnThisDayTool — date-cued 'on this day' note recall", () => {
     expect(out.onThisDay).toEqual([]);
   });
 
+  it("matches across the Jan-1 year boundary within the window (Dec 31 is 'on this day' for a Jan-1 now)", async () => {
+    const newYearNow = new Date(2026, 0, 1); // 2026-01-01
+    const dec31LastYear: DatedNote[] = [{ date: new Date(2024, 11, 31), id: "journal/2024-12-31.md" }]; // 1 day before, prior year
+    const t = createOnThisDayTool({ datedNotes: () => dec31LastYear, now: () => newYearNow });
+    // Outside the default 0-day window.
+    expect((await t.execute({}) as { count: number }).count).toBe(0);
+    // Within ±3 days, the Dec-31 anniversary IS one day off Jan 1 — must surface.
+    const windowed = await t.execute({ windowDays: 3 }) as { count: number; onThisDay: { id: string }[] };
+    expect(windowed.count).toBe(1);
+    expect(windowed.onThisDay[0]!.id).toBe("journal/2024-12-31.md");
+    // A note genuinely ~half a year away must NOT spuriously match the boundary.
+    const farJuly: DatedNote[] = [{ date: new Date(2024, 6, 1), id: "journal/2024-07-01.md" }];
+    const farTool = createOnThisDayTool({ datedNotes: () => farJuly, now: () => newYearNow });
+    expect((await farTool.execute({ windowDays: 7 }) as { count: number }).count).toBe(0);
+  });
+
   it("honors a windowDays window (±N days) and clamps out-of-range to the 0..7 bounds", async () => {
     // Jun 15 is 2 days off today (Jun 13): excluded at the default window 0, included at ±3.
     const near: DatedNote[] = [{ date: new Date(2024, 5, 15), id: "journal/2024-06-15.md" }];
