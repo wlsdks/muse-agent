@@ -147,7 +147,14 @@ export function createContactsAddTool(deps: ContactsAddToolDeps): MuseTool {
         ...(merged.handle ? { handle: merged.handle.value } : {}),
         ...(merged.phone ? { phone: merged.phone.value } : {}),
         ...(merged.birthday ? { birthday: merged.birthday.value } : {}),
-        ...(merged.relationship ? { relationship: merged.relationship.value } : {})
+        ...(merged.relationship ? { relationship: merged.relationship.value } : {}),
+        // `add_contact` has no input for these three, so on an UPDATE they can only
+        // be preserved-or-lost — preserve them: `about` is grounding evidence,
+        // `connections` the people-graph, `aliases` resolution-critical. Dropping
+        // them on an update-by-chat ("save Bob's new email") is silent data loss.
+        ...(existing?.about ? { about: existing.about } : {}),
+        ...(existing?.aliases && existing.aliases.length > 0 ? { aliases: existing.aliases } : {}),
+        ...(existing?.connections && existing.connections.length > 0 ? { connections: existing.connections } : {})
       };
       await deps.save(contact);
       return { added: true, id: contact.id, name: contact.name, ...(existing ? { updated: true } : {}), ...(relationship.length > 0 ? { relationship } : {}) };

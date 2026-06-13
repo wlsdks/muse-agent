@@ -73,13 +73,13 @@ export const DEFAULT_EXPORT_FILES: readonly string[] = [
  * coverage so a fixture can verify the tree is included when the
  * dir exists and quietly skipped when it doesn't.
  */
-export function defaultNotesDir(): string {
+function defaultNotesDir(): string {
   const fromEnv = process.env.MUSE_NOTES_DIR?.trim();
   if (fromEnv && fromEnv.length > 0) return fromEnv;
   return join(homedir(), ".muse", "notes");
 }
 
-export function defaultExportOutput(): string {
+function defaultExportOutput(): string {
   // ISO timestamp without colons (Windows + tar both prefer that).
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   return join(process.cwd(), `muse-backup-${stamp}.tar.gz`);
@@ -284,7 +284,7 @@ export async function buildMuseExport(args: {
  * test suite can patch `passphraseFromEnv` directly instead of
  * mocking the prompt library.
  */
-export async function resolveExportPassphrase(): Promise<string> {
+async function resolveExportPassphrase(): Promise<string> {
   const fromEnv = process.env.MUSE_EXPORT_PASSPHRASE?.trim();
   if (fromEnv && fromEnv.length > 0) return fromEnv;
   // Lazy import — `@clack/prompts` pulls in tty machinery we

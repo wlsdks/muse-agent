@@ -19,12 +19,14 @@ import { BROWSER_KEYS, BROWSER_MAX_ELEMENTS, type BrowserController, type Browse
 import { filterElements, matchElementResult, type MatchIntent } from "./matcher.js";
 
 export interface BrowserActionDraft {
-  readonly action: "click" | "type" | "key" | "fill";
+  readonly action: "click" | "type" | "key" | "fill" | "upload";
   readonly url: string;
   /** Human label of the target element ("Sign in" button), or the key for `key`. */
   readonly target: string;
   /** The text being typed (for `type` only). */
   readonly text?: string;
+  /** The local file path being attached (for `upload` only) — shown so the user confirms WHICH file leaves their machine. */
+  readonly path?: string;
   /**
    * The resolved field→value pairs for a multi-field `fill` (browser_fill_form).
    * Each `target` is the RESOLVED element label (role + name), not the raw model
@@ -807,6 +809,111 @@ export function createBrowserFillFormTool(deps: BrowserActToolDeps): MuseTool {
         return { filled: false, ...errorResult(cause) };
       }
       return { filled: true, fields: resolved.length, ...(snapshot ? { ...snapshotToJson(snapshot), ...statusFields(snapshot) } : {}) };
+    }
+  };
+}
+
+export type BrowserUploadPathValidationResult =
+  | { readonly allowed: true; readonly resolvedPath: string }
+  | { readonly allowed: false; readonly reason: string };
+
+/**
+ * Injected guard for the LOCAL file an upload would read. `browser_upload`
+ * uploading a file means READING it from disk, so a prompt-injected page must
+ * not be able to steer an upload at `~/.ssh/id_rsa`. The source path therefore
+ * goes through the SAME allowlist/symlink guard `file_read` uses — wired at the
+ * CLI boundary (dependency-injected, like the approval gate). `@muse/browser`
+ * never reads an arbitrary local path itself: absent this validator the tool
+ * fails closed (see `createBrowserUploadTool`).
+ */
+export type BrowserUploadPathValidator = (path: string) => Promise<BrowserUploadPathValidationResult>;
+
+export interface BrowserUploadToolDeps {
+  readonly controller: BrowserController;
+  readonly approvalGate: BrowserApprovalGate;
+  /**
+   * Allowlist guard for the upload's SOURCE file (see BrowserUploadPathValidator).
+   * Required in practice; if omitted, every upload is REFUSED (fail-closed — an
+   * unguarded local read is never shipped).
+   */
+  readonly validatePath?: BrowserUploadPathValidator;
+}
+
+export function createBrowserUploadTool(deps: BrowserUploadToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "Attach a local FILE from the user's computer to a file-upload control on the page open in Muse's " +
+        "browser — e.g. attach a résumé to a job application, a photo to a form, a receipt to a claim. Say " +
+        "WHICH upload control in `target` (its label or button text, e.g. 'Attach resume', 'Upload photo') " +
+        "and the file in `path` (a path under the user's Downloads/Desktop/Documents, e.g. " +
+        "'~/Downloads/resume.pdf'). Use ONLY to attach a file to a page's upload field — NOT to type text " +
+        "(browser_type), NOT to click a button (browser_click), NOT to read a local file (file_read). The " +
+        "file path is checked against the allowed folders and the user MUST confirm before Muse attaches it " +
+        "(the file then leaves toward that site); absent confirmation nothing is attached.",
+      domain: "browser",
+      groundedArgs: ["target", "path"],
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          path: { description: "The local file to attach — under Downloads/Desktop/Documents, e.g. '~/Downloads/resume.pdf'.", type: "string" },
+          ref: { description: "Advanced: exact file-input ref from a prior snapshot. Prefer `target` instead.", type: "number" },
+          target: { description: "Which upload control — its label or button text, e.g. 'Attach resume' or 'Upload photo'.", type: "string" }
+        },
+        required: ["target", "path"],
+        type: "object"
+      },
+      keywords: ["browser", "upload", "업로드", "attach", "첨부", "file", "파일", "resume", "이력서", "photo", "사진", "브라우저"],
+      name: "browser_upload",
+      risk: "execute"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const path = typeof args["path"] === "string" ? args["path"].trim() : "";
+      if (path.length === 0) {
+        return { reason: "browser_upload needs `path` — the local file to attach", uploaded: false };
+      }
+      // Resolve the target FIRST (so a bad target fails before anything reads
+      // the file), but do NOT act until the path clears the allowlist guard.
+      let resolved: ResolveResult;
+      try {
+        resolved = await resolveTarget(deps.controller, args, "click");
+      } catch (cause) {
+        return { uploaded: false, ...errorResult(cause) };
+      }
+      if ("error" in resolved) {
+        return { uploaded: false, ...resolved.error };
+      }
+      // Allowlist guard for the SOURCE file. Absent validator ⇒ fail-closed (an
+      // unguarded local read is never shipped). A rejected path is refused
+      // BEFORE the approval draft and BEFORE any read — the file never opens.
+      if (!deps.validatePath) {
+        return { reason: "no path validator wired — local file upload is fail-closed", uploaded: false };
+      }
+      let verdict: BrowserUploadPathValidationResult;
+      try {
+        verdict = await deps.validatePath(path);
+      } catch (cause) {
+        return { uploaded: false, reason: `path validation error: ${cause instanceof Error ? cause.message : String(cause)}` };
+      }
+      if (!verdict.allowed) {
+        return { reason: verdict.reason, uploaded: false };
+      }
+      const draft: BrowserActionDraft = { action: "upload", path, target: resolved.label, url: deps.controller.currentUrl() };
+      let decision: BrowserApprovalDecision;
+      try {
+        decision = await deps.approvalGate(draft);
+      } catch (cause) {
+        decision = { approved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
+      }
+      if (!decision.approved) {
+        return { reason: decision.reason ?? "not approved", uploaded: false };
+      }
+      try {
+        const snapshot = await deps.controller.uploadFile(resolved.ref, verdict.resolvedPath);
+        return { uploaded: true, ...snapshotToJson(snapshot), ...statusFields(snapshot) };
+      } catch (cause) {
+        return { uploaded: false, ...errorResult(cause) };
+      }
     }
   };
 }

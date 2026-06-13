@@ -57,7 +57,7 @@ final class MuseController: NSObject {
 
         let languageItem = NSMenuItem(title: "Language", action: nil, keyEquivalent: "")
         let languageMenu = NSMenu()
-        let current = AppLanguage(rawValue: PrefsStore.load().language ?? "") ?? .system
+        let current = AppLanguage.fromPersisted(PrefsStore.load().language)
         for lang in AppLanguage.allCases {
             let mi = NSMenuItem(title: lang.menuTitle, action: #selector(pickLanguage(_:)), keyEquivalent: "")
             mi.representedObject = lang.rawValue

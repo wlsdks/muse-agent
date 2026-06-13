@@ -23,7 +23,7 @@ final class CompanionModel: ObservableObject {
 
     init() {
         let prefs = PrefsStore.load()
-        let pref = AppLanguage(rawValue: prefs.language ?? "") ?? .system
+        let pref = AppLanguage.fromPersisted(prefs.language)
         let lang = resolveLanguage(pref, systemIsKorean: Self.systemIsKorean)
         lookName = ProcessInfo.processInfo.environment["MUSE_DESKTOP_CHARACTER"] ?? prefs.look
         language = lang

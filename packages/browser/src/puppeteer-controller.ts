@@ -21,7 +21,7 @@ import {
   ChromeReleaseChannel,
   computeSystemExecutablePath
 } from "@puppeteer/browsers";
-import puppeteer, { type Browser, type Frame, type HTTPResponse, type Page } from "puppeteer-core";
+import puppeteer, { type Browser, type ElementHandle, type Frame, type HTTPResponse, type Page } from "puppeteer-core";
 
 import {
   BROWSER_ELEMENT_CEILING,
@@ -543,6 +543,31 @@ export class PuppeteerBrowserController implements BrowserController {
     }
     const current = await this.ensurePage();
     await this.settleDom(current);
+    return this.snapshot();
+  }
+
+  async uploadFile(ref: number, path: string): Promise<PageSnapshot> {
+    const page = await this.ensurePage();
+    const { frame, selector } = await this.resolveRef(ref);
+    const handle = await frame.$(selector);
+    if (!handle) {
+      throw new Error(`no element with ref ${ref.toString()} on the current page — call browser_read again`);
+    }
+    // Fail-closed on a non-file element: setInputFiles is only meaningful on an
+    // <input type=file>. Attaching a file to anything else is a no-op that would
+    // leave the user thinking the file was attached — refuse it loudly instead,
+    // AFTER the user already confirmed (the tool also resolves before the gate).
+    const isFileInput = await handle.evaluate(
+      (el) => el instanceof HTMLInputElement && el.type === "file"
+    );
+    if (!isFileInput) {
+      await handle.dispose();
+      throw new Error("the chosen element is not a file input — pick the page's file-attach control");
+    }
+    // The evaluate above PROVED this handle is an <input type=file>; narrow it
+    // so puppeteer's uploadFile (typed for HTMLInputElement) accepts it.
+    await (handle as ElementHandle<HTMLInputElement>).uploadFile(path);
+    await this.settleDom(page);
     return this.snapshot();
   }
 

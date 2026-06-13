@@ -408,3 +408,21 @@ ratchet: testFiles +0 · fabrication 0 · no code change (scout finding + API-de
   error-surfacing edge) 다음 fire에 검증; 2연속 clean이면 EXHAUSTION대로 value-class 회전.
 - **리스크:** API 저하는 일시적 추정 — 다음 fire에 서브에이전트 회복되면 정상 슬라이스 재개. 진척 손실
   없음(스카웃 지식은 backlog에 보존).
+
+## fire 22 · 2026-06-14 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/browser+@muse/mcp+@muse/cli · kind=C-browser · verdict=PASS · firesSinceDrill=6
+
+ratchet: testFiles +2 (browser-upload.test 9 + upload-path-validator.test 7; browser 120, mcp 1868) · fabrication 0 · eval:tools 94% (upload 3/3, no regression) · eval:browser-agent 1/1 · smoke #24 LIVE · lint 0/0
+
+- **무엇:** 새 역량 browser_upload — 로컬 파일을 페이지 폼에 첨부. {target,path} → <input type=file> resolve
+  (ambiguous/비-file-input fail-close) → 주입된 allowlist 가드로 path 검증 → 한 번의 draft-first 승인
+  (file→field) → confirm시에만 setInputFiles. file upload은 진짜 갭이었음(업로드 경로 전무, 확인됨).
+- **왜:** 두 보안 표면 동시 처리 — (1)로컬 파일 읽기: @muse/mcp createAllowlistPathValidator가 file_read의
+  lexical-roots + symlink-realpath-escape 가드 재사용, @muse/browser는 fs 의존성 0(validator DI, 없으면 거부
+  =allow-all 없음, ~/.ssh exfil 차단) (2)outbound act: risk:execute, deny→setInputFiles 0.
+- **리뷰지점:** judge가 (1)가드가 file_read와 동일(substring 아님)·약화시 6 RED(symlink-escape 포함)
+  (2)가드가 read/act 전·rejected path는 파일 미개봉+게이트 미도달(gateCalls 0)·validator 없으면 fail-closed
+  (3)deny/non-file-input→업로드 0 (4)smoke #24가 실제 this.files.length 읽음(fake 아님) (5)혼동쌍 무회귀.
+- **리스크:** eval:browser-agent에 업로드 멀티스텝 체인은 아직 미포함(smoke#24+unit+선택 eval로 커버, 후속 ◦).
+  full-suite eval:tools의 time-tool 비결정 miss는 무관 외부 flake.

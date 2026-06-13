@@ -260,14 +260,17 @@ describe("isStaleStrategy — SSGM temporal-obsolescence gate (arXiv:2603.11768)
   });
 
   it("age exactly at threshold → false (boundary: ≤ PLAYBOOK_STALE_AFTER_DAYS is not stale)", () => {
+    // Pin ONE clock for both the anchor and nowMs: deriving the anchor from a
+    // first Date.now() and asserting against a second leaves ageDays = 120 + ε,
+    // which is > the threshold and (correctly) stale — a racy test, not a bug.
+    const now = Date.now();
     const s: PlaybookStrategy = {
       text: "boundary test",
       reinforcements: 1,
       decays: 0,
-      lastReinforcedAt: daysAgo(PLAYBOOK_STALE_AFTER_DAYS)
+      lastReinforcedAt: new Date(now - PLAYBOOK_STALE_AFTER_DAYS * 86_400_000).toISOString()
     };
-    // Age = exactly PLAYBOOK_STALE_AFTER_DAYS (or marginally under due to sub-ms timing) → false
-    expect(isStaleStrategy(s, Date.now())).toBe(false);
+    expect(isStaleStrategy(s, now)).toBe(false);
   });
 });
 

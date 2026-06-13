@@ -201,3 +201,21 @@ ratchet: desktop swift tests 55/55 (+4) · fabrication 0 · self-eval exit 0 · 
 - **왜**: 음성 on/off/system/qwen 라우팅이 AppKit에 인라인·미테스트였고 무음 토글이 너무 좁았다. 추출로 헤드리스 테스트 가능 + 흔한 falsy 표기 수용(env-falsy 관행)으로 실제 사용자 의도 반영.
 - **리뷰지점**: 구-계약 보존("0"→silent·"system"→system·unset→qwen·silence 우선), TTS 매치는 trim/소문자 superset(회귀 아님). `"1"`/`"true"`/`""`는 qwen(과확장 아님). 추출은 dead-code 아님(SpeakerFactory가 실사용).
 - **리스크**: 없음(신규 코어 파일 + 팩토리 body + 신규 테스트, Speaker 프로토콜·3 impl 무변, 독립 Opus judge가 mutation(falsy set→["0"])로 RED 입증·parity·exhaustive switch 검증 후 PASS, swift build clean·55/55).
+
+## fire 23 · 2026-06-14 · skill v1.14.0 · 5274893c
+meta: surface=cli · value-class=new-capability · pkg=@muse/cli · kind=list-search-flag-parity · verdict=PASS · firesSinceDrill=6
+ratchet: cli tests 2627 (+1) · fabrication 0 · self-eval exit 0 · 표면 균형 web8·desktop6·cli9
+
+- **무엇**: `muse followup list`에 `--search <text>` 추가 — sibling list 명령(tasks/remind/contacts)은 모두 텍스트 필터가 있는데 followup만 없었다. followup 레코드의 검색가능 필드 `summary`에 대소문자 무시 부분일치; `--status` 필터+정렬 後 적용, `total`은 매치 수로 재계산. json·formatted 경로 모두 `matched` 사용.
+- **왜**: format/validation vein이 마른 cli 표면(fire 18 NOTE)에서 micro-fix 대신 sibling-parity new-capability로 전환 — 실사용 가치(특정 followup 찾기) + RATCHET이 요구한 value-class 상향(micro-fix→new-capability).
+- **리뷰지점**: query=`options.search?.trim().toLowerCase()` falsy(absent/`""`)면 필터 미적용(matched===sorted, formatted 경로 무회귀). `--status` 검증(fire 14)이 먼저 early-return. remind의 trim+lowercase-substring 패턴과 동형. show/snooze/cancel 무변.
+- **리스크**: 없음(list action 한정 +7/-4 + 신규 테스트, 독립 Opus judge가 RED-before(commander unknown-option)·composition·total 재계산·무회귀 검증 후 PASS, cli 2627/2627·self-eval exit 0).
+
+## fire 24 · 2026-06-14 · skill v1.14.0 · bf368867
+meta: surface=desktop · value-class=refactor · pkg=apps/desktop(MuseDesktopCore) · kind=persisted-parse-consolidation · verdict=PASS · firesSinceDrill=7
+ratchet: desktop swift tests 59/59 (+4) · testFiles 972 · fabrication 0 · self-eval exit 0 · 표면 균형 web8·desktop7·cli9
+
+- **무엇**: 영속 언어 파싱 `AppLanguage(rawValue: prefs.language ?? "") ?? .system`이 AppKit 두 파일(MuseController의 메뉴 체크마크 · CompanionModel의 실제 사용 언어)에 byte-동일하게 중복 + 헤드리스 테스트 불가였다. 순수 `AppLanguage.fromPersisted(_:)`(MuseDesktopCore)로 추출, 두 사이트가 위임. 신규 AppLanguageTests가 fallback 진리표(nil/빈/미지값→.system, 정식 3값 라운드트립) 고정.
+- **왜**: 두 사이트가 갈라지면 메뉴 체크마크와 실제 해석 언어가 desync. 단일 source-of-truth + 헤드리스 테스트 가능 = fire 22(SpeakerSelection 추출) 패턴. cli format-vein·web pure-a11y vein 고갈 상태에서 표면 최저(desktop) + non-micro-fix value-class로 RATCHET 충족.
+- **리뷰지점**: fromPersisted body는 추출식과 byte-동일(behavior-preserving, case-fold/trim 안 끼움). "ko"→.system 정확(레거시 short-code 투기적 추가 안 함 — writer는 항상 `lang.rawValue` 정식값만 영속). resolveLanguage/ResolvedLanguage/CompanionPrefs/메뉴 배선 무변, 라운드트립 닫힘.
+- **리스크**: 없음(순수 UI 파싱, VoiceGate/egress/grounding 무접촉; 독립 Opus judge가 RED-before(HEAD~1 fromPersisted=0)·behavior-preserving·진리표 완전성·비투기성·무부수효과 검증 후 PASS, swift build clean·59/59).

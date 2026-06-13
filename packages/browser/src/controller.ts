@@ -95,6 +95,14 @@ export interface BrowserController {
   hover(ref: number): Promise<PageSnapshot>;
   /** Type into the element with this ref; optionally press Enter to submit. */
   type(ref: number, text: string, submit: boolean): Promise<PageSnapshot>;
+  /**
+   * Attach a local file to the file input with this ref (`setInputFiles`).
+   * Fail-closed on a non-file element: an element that is NOT an
+   * `<input type=file>` THROWS (so a confirmed upload can't silently no-op on
+   * the wrong control). The `path` is the already-allowlist-validated, real
+   * on-disk path — the controller does not re-validate it.
+   */
+  uploadFile(ref: number, path: string): Promise<PageSnapshot>;
   /** Go back in history; returns the new snapshot. */
   back(): Promise<PageSnapshot>;
   /**

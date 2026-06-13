@@ -41,6 +41,21 @@ describe("enforceSystemPromptBudget", () => {
     expect(content).toContain("muse:active-context");
   });
 
+  it("an UNKNOWN section gets the mid-priority default (55): evicted after a lower-known but kept over a higher-known — never silently most-evictable", () => {
+    const big = "y".repeat(4_000);
+    // skills=50 < unknown(default 55) < episodic-recall=60, so dropping 2-of-3
+    // sheds skills first, then the unknown; the higher-priority episodic survives.
+    const messages = [
+      sys(section("skills", big), section("brand-new-transform", big), section("episodic-recall", big)),
+      { content: "q", role: "user" as const }
+    ];
+    const result = enforceSystemPromptBudget(messages, { maxTokens: 1_100 });
+    expect(result.dropped.map((d) => d.id)).toEqual(["skills", "brand-new-transform"]);
+    const content = String(result.messages[0]?.content);
+    expect(content).toContain("muse:episodic-recall");
+    expect(content).not.toContain("muse:brand-new-transform");
+  });
+
   it("a non-finite / non-positive budget is fail-safe — it does NOT strip every section", () => {
     const big = "z".repeat(2_000);
     const messages = [

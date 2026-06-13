@@ -103,3 +103,18 @@ describe("muse.calendar.update — a provided-but-unparseable time errors, never
     expect(h.updateCalls()).toBe(0);
   });
 });
+
+describe("muse.calendar.add — an impossible calendar date is rejected, not rolled over", () => {
+  it("rejects '2026-02-30' (would roll to Mar 2) instead of scheduling the wrong day", async () => {
+    const { add, captured } = addTool();
+    const result = await add.execute({ startsAt: "2026-02-30", title: "Dentist" }) as Record<string, unknown>;
+    expect(result).toHaveProperty("error"); // was: no error, event silently created on Mar 2
+    expect(captured()).toBeUndefined();     // was: createEvent called with the rolled-over date
+  });
+
+  it("still accepts a real date, a full ISO timestamp, and the leap day", async () => {
+    expect(await addTool().add.execute({ startsAt: "2026-05-20", title: "ok" })).not.toHaveProperty("error");
+    expect(await addTool().add.execute({ startsAt: "2026-05-20T15:00:00Z", title: "ok" })).not.toHaveProperty("error");
+    expect(await addTool().add.execute({ startsAt: "2028-02-29", title: "leap" })).not.toHaveProperty("error"); // 2028 is a leap year
+  });
+});

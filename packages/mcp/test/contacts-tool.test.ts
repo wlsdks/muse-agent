@@ -143,6 +143,21 @@ describe("createContactsAddTool — re-add of an existing name UPDATES in place 
     expect(list[0]!.phone).toBe("415-555-0101"); // unmentioned field preserved
   });
 
+  it("an update preserves about / aliases / connections — the recall fields add_contact has no input for", async () => {
+    const { list, tool } = idempotentStore();
+    await tool.execute({ email: "bob@old.com", name: "Bob" });
+    // Fields set via OTHER paths the tool can't take as args: `muse contacts add
+    // --about/--alias` and `linkContacts`. `about` is grounding evidence + `aliases`
+    // are resolution-critical, so an update-by-chat must not silently drop them.
+    list[0] = { ...list[0]!, about: "allergic to nuts", aliases: ["Bobby"], connections: [{ as: "works with", to: "Alice" }] };
+    await tool.execute({ email: "bob@new.com", name: "Bob" }); // update ONLY the email
+    expect(list).toHaveLength(1);
+    expect(list[0]!.email).toBe("bob@new.com");
+    expect(list[0]!.about).toBe("allergic to nuts");
+    expect(list[0]!.aliases).toEqual(["Bobby"]);
+    expect(list[0]!.connections).toEqual([{ as: "works with", to: "Alice" }]);
+  });
+
   it("matches the name case-insensitively", async () => {
     const { list, tool } = idempotentStore();
     await tool.execute({ email: "bob@x.com", name: "Bob" });

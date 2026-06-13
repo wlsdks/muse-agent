@@ -882,3 +882,30 @@ ratchet: testFiles 970 유지(+1 케이스 mcp.test fire no-collateral) · fabri
 - **왜:** fire 84 mutation-discovery로 fire verb가 마지막 미검증 sibling 확정. fire는 row(clear)·dueAt(snooze) 아닌 **status**를 mutate → status 값 deep-equal로 검증. "linking/lifecycle → audit ALL ops, rot은 silent"(memory) — 2/3만 audit하면 latent 갭.
 - **리뷰지점:** mcp.test.ts 새 it(fire, 4945~). **mutation-verified 독립 teeth**: fire ambiguous를 guess-fire로 변조(fire-고유 `const next=fireReminder` 다음줄 타깃) → **새 테스트만 RED**(1/1863), clear·snooze 테스트 1862 green → fire 고유 경로 입증. 복원 GREEN(1863), pnpm check exit=0, lint clean. ④b judge PASS 5/5(mutation 독립 REPRODUCE, parity-completion 정당·3에서 정확히 멈춤). **⚠️ 패키징 사고:** 미커밋 test 편집이 동시 codebase-quality 루프의 `git add -A` merge(`00b91511`)에 쓸려 들어감 — test code는 거기에, 이 fire는 write-back만 별도 커밋. 향후 edit 직후 즉시 stage 교훈.
 - **리스크:** 없음 — test-only(src 무변경, 변조 복원됨), 순수 additive. no-collateral KIND 소진(3 verb 완결) → fire 86+ 강제 KIND 다양화.
+
+
+## fire 86 · 2026-06-14 · skill v1.14.0 · b7baadfa
+meta: value-class=hardening · pkg=scripts(eval infra) · kind=selection-confusable-coverage(calendar read-verb list/availability/conflicts; KIND 다양화) · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 970 유지(scripts-only) · fabrication 0 유지 · eval:tools +calendar-read 시나리오 7/7 STABLE 3/3
+- **무엇:** eval:tools에 calendar READ-verb golden 시나리오 추가 — list(일정 보기)/availability(빈 시간)/conflicts(겹침) 7 KO+EN 케이스. 전부 PASS 3/3 = 로컬 모델이 robustly 선택(real mis-route 없음). no-collateral KIND 소진 후 강제 다양화 → selection-confusable KIND(fire-76/81 계열).
+- **왜:** eval 스위트에 calendar read-verb 커버리지 0. "언제 시간 돼?"(availability)가 list로 샐 가설 검증 → negative(robust). backlog 최상단 ◦들은 codebase-quality 소유(refactor), tool-hardening backlog 실질 비어 gap-scout. EXPANSION은 fire 83 Opus-confirmed dry.
+- **리뷰지점:** eval-tool-selection.mjs buildCalendarReadScenario(+배열 등록, 순수 additive 31줄). **정직 teeth disclosure:** availability 설명을 list-like로 blur해도 케이스 통과(7/7) — 모델이 tool NAME+키워드로 선택, description 의존 안 함 → description-edit regression엔 약함, **structural regression(rename/merge/confusable-추가) guard**. 골든 스위트 전체가 이렇게 robust-pass(rename/merge lock) → 일관. ④b judge PASS 5/5(disclosure 정직 평가, KIND-diverse 확인).
+- **리스크:** 없음 — scripts-only(loopback-calendar.ts 변조 복원, clean), 순수 additive. **교훈 적용:** ④b 후 즉시 커밋(fire 85 동시-루프 git add -A sweep 재발 방지). 다음 fire는 또 다른 KIND 또는 honest-close(테마 mature, 고가치 진안-blocked).
+
+
+## fire 87 · 2026-06-14 · skill v1.14.0 · 4c0ebf78
+meta: value-class=micro-fix(real correctness/data-loss bug) · pkg=@muse/mcp · kind=silent-data-loss-fix(add_contact update가 about/aliases/connections drop) · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 970 유지(+1 케이스 contacts-tool update-preserves) · fabrication 0 유지 · eval 무변동(handler correctness)
+- **무엇:** add_contact("Add or update")가 기존 이름 업데이트 시 id 재사용 → id-idempotent addContact가 contact을 wholesale REPLACE. 그런데 재구성된 contact이 5필드만 carry → **about(grounding evidence)·connections(people-graph)·aliases(resolution-critical)를 silent drop**. existing에서 carry-forward하도록 수정(+RED→GREEN 테스트).
+- **왜:** Opus correctness-bug 스카웃(미-examined 핸들러 대상, EXHAUSTION→value-class 상향)이 발굴한 real 버그. "save Bob's new email" 같은 update-by-chat에서 발화(production 배선: autoconfigure:754·commands-ask:1627 둘 다 real addContact+reader). about은 타입 주석(:54-57)이 "grounding evidence … cite"라 명시 → **grounding-floor-adjacent 데이터 손실**(silent·irreversible). no-collateral/selection coverage와 다른 KIND(real fix, fire-80 계열).
+- **리뷰지점:** contacts-tool.ts 머지에 `existing?.about/aliases/connections` 3 spread 추가(전부 existing? guard → fresh add는 no-op·byte-identical). 테스트 RED("expected undefined to be 'allergic to nuts'")→GREEN, 전 suite 1864 green, pnpm check exit=0, lint clean. ④b judge PASS 5/5(자체 pre-fix revert로 검증, over-reach/fabrication 없음·schema에 clear 입력 없으니 preserve가 유일한 non-lossy). 스카웃 negative: followups/history/week-agenda/contacts-other 핸들러는 correct.
+- **리스크:** 없음 — update-merge만 변경(validation/dedup/fresh-add 불변), aliases 보존은 outbound-safety rule 3(recipient 해소)을 도움. **교훈 적용:** fix+test 빌드 통과 즉시 커밋(sweep 방지).
+
+
+## fire 88 · 2026-06-14 · skill v1.14.0 · 5e35f693(merge-resolve)
+meta: value-class=regression-fix(conflicted-main 머지 해소) · pkg=docs/INDEX(공유) · kind=broken-main-triage(동시 루프 머지 충돌) · verdict=N/A(결정적 검증) · firesSinceDrill=6
+ratchet: testFiles 972 유지 · fabrication 0 유지 · 회귀 해소(self-eval green·pnpm check exit=0)
+- **무엇:** fire 시작 시 main이 **conflicted merge IN PROGRESS**(동시 codebase-quality 루프가 남김) — INDEX.md에 `<<<<<<< / >>>>>>>` 마커, unmerged paths로 모든 루프의 커밋/머지 차단. INDEX 충돌(codebase-quality·tool-mcp-browser 두 row를 양쪽 갱신)을 **max-fire per row**로 해소(codebase-quality 49/c99be00d, tool-mcp-browser 22), backlog.md는 union auto-merge 확인, 머지 완료(5e35f693).
+- **왜:** ① 규칙 "회귀가 있으면 그게 이번 이터레이션". 깨진 공유 main은 후속 모든 커밋의 base가 되어 전파되므로 최우선 해소. 새 hardening 슬라이스보다 우선(한 fire 한 슬라이스 = 이번엔 회귀 해소).
+- **리뷰지점:** INDEX 해소 = 두 충돌 row를 각 루프의 최신 fire로(48 vs 49→49, 21 vs 22→22). 머지된 코드(commands-export.ts de-export = codebase-quality fire 49의 자체-judged 작업)는 내 작업 아님. 검증: 마커 0(git grep)·self-eval green(testFiles 972)·**pnpm check exit=0**(머지 semantic conflict 없음). behavioral slice 아니므로 ④b judge 불요.
+- **리스크:** 없음 — docs 충돌 해소 + 이미-judged 코드 머지 완료. 교훈: 공유 main 워크트리에서 동시 루프 머지가 충돌을 남기면 regression-first로 즉시 해소(전파 방지).

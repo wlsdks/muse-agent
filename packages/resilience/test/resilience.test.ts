@@ -268,6 +268,15 @@ describe("retry and timeout", () => {
     expect(delay).toBe(250);
     expect(delay).toBeLessThanOrEqual(250);
   });
+
+  it("clamps misconfigured floor knobs: multiplier < 1 can't shrink backoff, maxDelayMs < initial can't cap below the floor", () => {
+    // A multiplier below 1 would make each retry wait LESS (hammering a
+    // failing provider). Math.max(1, …) clamps it so backoff never shrinks.
+    expect(computeRetryDelay(3, { initialDelayMs: 100, multiplier: 0.5 })).toBe(100);
+    // A maxDelayMs below initialDelayMs would cap the very first delay below
+    // its configured floor. Math.max(initial, …) lifts the ceiling to initial.
+    expect(computeRetryDelay(1, { initialDelayMs: 100, maxDelayMs: 50, multiplier: 2 })).toBe(100);
+  });
 });
 
 describe("isCancellationLikeError", () => {

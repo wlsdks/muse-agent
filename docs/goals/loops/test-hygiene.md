@@ -174,3 +174,35 @@ ratchet: testFiles 960→959 (−1 통합, 유니크 케이스 1 이식) · netC
 - **왜:** 파일 무결성의 기반 프리미티브(모든 store가 의존)인데 두 파일 중복 실행. 진안 "중복 제거" — 단 양쪽 유니크(test/ 3개 보안·src/ 1개 동시성)는 손실 금지.
 - **어떻게-증명(MUTATION-FIRST):** 이식한 동시성 케이스 — tmp명에서 `-${randomUUID()}` 제거(same-pid 충돌 재현) 시 그 케이스만 RED(정확히 `ENOENT ... rename race.json.tmp-<pid>`), 나머지 9 green → 진짜 회귀 가드 + 유일성 증명. 복원+클린리빌드 10/10 green. ④b 독립 Opus judge가 삭제본 7개 행동 전수 매핑(전부 equal-or-stronger) + mutation 재현 → **VERDICT: PASS**.
 - **리스크:** 소스(비-test) 무변경. 변경 −68L(src/ 삭제) +8L(이식) 2건뿐. mcp dist 클린리빌드 1회 필요(stale-dist 패턴 [[project_stale_dist_from_loop]]). 남은 mcp 동명 쌍 13개 — 각각 subset/complementary 판별 후 처리.
+
+## fire 21 · 2026-06-14 · skill v1.14.0 · 679cd3c5
+meta: kind=add · pkg=@muse/resilience · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 964 (케이스 +1, 파일수 불변) · netCoverage +2 branch (multiplier·maxDelay floor-clamp) · fabrication 0 · resilience 26/26 green + lint 0
+- **무엇:** `computeRetryDelay`(resilience/index.ts)의 **오설정 knob floor-clamp 2개** 커버 추가 — `multiplier=Math.max(1,…)`(multiplier<1은 backoff를 *축소*시켜 실패 provider 폭격) + `maxDelay=Math.max(initial,…)`(maxDelayMs<initialDelayMs는 첫 delay를 floor 아래로 cap). 기존 테스트는 전부 multiplier≥2·maxDelayMs>initial이라 두 clamp 미커버. 한 테스트 2 assert(동종 floor-guard 배칭).
+- **왜:** 결정적 retry/stop-condition 정책 코드(CLAUDE.md "policy/budget/stop은 결정적 코드"). NaN 가드와 같은 오설정-방어 계열인데 — multiplier<1이면 재시도 간격이 *줄어* 실패 중인 provider를 더 때림(조용한 회귀 가능).
+- **어떻게-증명(MUTATION-FIRST ADD):** multiplier `Math.max(1,…)` 제거 시 0.5→`100*0.5²=25`로 multiplier-assert만 RED; maxDelay `Math.max(initial,…)` 제거 시 50으로 cap→maxDelay-assert만 RED. 각 assert가 자기 clamp만 잡음(독립·비-동어반복), 다른 25 green. 독립 ④b Opus judge가 양 mutation 재현 + 양 clamp 미커버 + 값(둘 다 100) 정확성 확인 → **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경, resilience 격리 green. ★`pnpm check` red 1건은 **무관 환경**(apps/api `messaging-webhooks` buildServer 20s timeout, 격리 4/4 8.6s — fire 18과 동일 부하 아티팩트, backlog既기록).
+
+## fire 22 · 2026-06-14 · skill v1.14.0 · 6e17c3b9
+meta: kind=prune(consolidate) · pkg=@muse/mcp · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 966→965 (−1 통합, 유니크 assert 1 이식) · netCoverage 0 (overlap만 제거) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** mcp 동명 쌍 `run-actuator-by-name` **통합**(fire 20 vein, 2번째 mcp 쌍) — 콜로케이트 `src/`(12케이스, **outbound-safety acceptance + action-log** describe 포함: performed/refused/failed 로깅·throwing-approval fail-close·ambiguous-recipient 거절)가 thinner `test/`(5케이스)를 1개 빼고 전부 동등-이상 커버. 그 1개("실패 detail이 `HTTP 500` 포함")만 src/ 500-케이스에 이식, `test/` 삭제. 더 fuller한 쪽이 src/라 src/ 유지.
+- **왜:** outbound 액추에이터 디스패처(outbound-safety.md 핵심) — 두 파일 중복 실행. src/는 fail-close·action-log까지 더 강하나, test/의 "detail이 HTTP status 노출" assert만 src/에 없었음(손실 금지).
+- **어떻게-증명(MUTATION-FIRST):** `web-action.ts:173`의 `server rejected (HTTP ${status})`에서 status 텍스트 제거 시 이식한 assert만 RED(`'server rejected' to contain 'HTTP 500'`), 나머지 11 green → 진짜 가드 + 유일성. 복원+클린리빌드 12/12 green. ④b 독립 Opus judge가 삭제본 5개 행동 전수 매핑(전부 equal-or-stronger, fail-close/approval/action-log 손실 0) + mutation 재현 → **VERDICT: PASS**.
+- **리스크:** 소스(비-test) 무변경. 변경 −58L(test/ 삭제) +1L(이식) 2건뿐. mcp dist 클린리빌드 1회. 남은 mcp 동명 쌍 12개.
+
+## fire 23 · 2026-06-14 · skill v1.14.0 · 4ff1310e
+meta: kind=add · pkg=@muse/agent-core · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 970 (케이스 +1, 파일수 불변) · netCoverage +1 branch (DEFAULT_SECTION_PRIORITY fallback) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** `enforceSystemPromptBudget`(prompt-budget.ts, 시스템프롬프트 토큰예산 eviction)의 **미지(未知) 섹션 mid-priority 기본값(`DEFAULT_SECTION_PRIORITY=55`)** 커버 추가. 기존 enforce 테스트 4개는 전부 *알려진* 섹션 id(active-context·feeds·episodic-recall)만 써서 `?? DEFAULT_SECTION_PRIORITY` fallback이 미커버였음. skills(50)<unknown(55)<episodic-recall(60)로 2/3 드롭 시 skills→unknown 순 evict, episodic 생존.
+- **왜:** "새 transform 섹션은 *조용히 가장 먼저 버려지지 않는다*"는 설계 불변식(코드 주석 명시) — grounding/runtime trimming 경로(CLAUDE.md "context 작으면 trimming"). 새 섹션이 priority 미등록이어도 중간에 위치해야 active-context/memory 같은 핵심 전에 안 버려짐.
+- **어떻게-증명(MUTATION-FIRST ADD):** `DEFAULT_SECTION_PRIORITY` 55→0 변형 시 unknown이 최우선-eviction 되어 drop 순서 뒤집힘(RED); 55→100 변형 시 unknown이 episodic보다 sticky해져 episodic이 대신 드롭(RED). 양 boundary가 55를 (50,60) 사이로 bracket — 각각 새 테스트만 RED, 다른 4개 무영향. 독립 ④b Opus judge가 양 mutation 재현 + fallback 미커버 + 순서/값 정확성 확인 → **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경, full check GREEN. 미지-섹션 우선순위는 새 transform 추가 시 회귀하기 쉬운 조용한 동작 — 이제 양방향 pin.
+
+## fire 24 · 2026-06-14 · skill v1.14.0 · 196fb1b6
+meta: kind=prune · pkg=@muse/mcp · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 972→971 (−1 strict-superset 삭제, 이식 불필요) · netCoverage 0 (진짜 중복) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** mcp 동명 쌍 `undo-action` **clean PRUNE**(fire 20·22 vein, 3번째 mcp 쌍, 이번엔 fire17처럼 strict-superset이라 이식 0) — 콜로케이트 `src/`(4케이스)가 thinner `test/`(3케이스)의 **strict superset**. src/ case1은 runDueObjectives→performConsentedAction→undo→재-tick 풀 e2e(reversible-reverse·veto-record·performed-log+detail 전부), case2 veto-overrides-consent-direct, case3 irreversible+veto, case4 hasVeto scope-exactness(src 유니크). test/ 3케이스는 src가 없는 행동 0 → test/ 삭제.
+- **왜:** outbound 자율행동 undo/veto(outbound-safety.md #4 "reversible-where-possible + veto") — 두 파일 중복 실행. src/가 모든 행동 더 강하게 커버.
+- **어떻게-증명(MUTATION-FIRST PRUNE):** 생존 src/ cite — recordVeto no-op化 시 src/ 3/4 RED; reverse() 제거 시 reversible case RED; veto scope 오염 시 fail-close 통합 2케이스 RED. ④b 독립 Opus judge가 삭제본 3개 행동(reversible-reverse+detail·irreversible·veto-overrides-consent fail-close) 전수 매핑(전부 equal-or-stronger, MISSING 없음) + 3 mutation 재현 → **VERDICT: PASS**.
+- **리스크:** 소스 무변경, 삭제 1파일(−83L)뿐. consent/veto fail-close 커버 손실 0(judge 명시 확인). mcp dist 클린리빌드 1회. 남은 mcp 동명 쌍 11개.
