@@ -54,6 +54,21 @@ describe("composeTodayBrief", () => {
     expect(brief.today).toEqual(["13:00 ⏰ soon"]);
   });
 
+  it("surfaces an IN-PROGRESS event (started before now, still running) — it's on the plate right now", () => {
+    const data: TodayBriefInput = {
+      tasks: [],
+      reminders: [],
+      followups: [],
+      events: [
+        { startsAtIso: at(11, 30), endsAtIso: at(12, 30), title: "design sync" }, // started 11:30, ends 12:30 — ongoing at noon
+        { startsAtIso: at(9), endsAtIso: at(10), title: "standup" } // ended before now — dropped
+      ]
+    };
+    const brief = composeTodayBrief(data, NOW);
+    expect(brief.today).toContain("11:30 design sync (now)");
+    expect(brief.today.join(" ")).not.toContain("standup");
+  });
+
   it("drops unparseable times instead of throwing", () => {
     const data: TodayBriefInput = {
       tasks: [{ dueAt: "not-a-date", title: "garbage" }],
