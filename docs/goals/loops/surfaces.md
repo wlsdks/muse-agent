@@ -112,7 +112,7 @@ ratchet: cli tests 2593/2593 (checkins +4) · fabrication 0 · self-eval exit 0 
 - **리뷰지점**: 기본 "scheduled"(생략 시)·대소문자(FIRED→fired) 정상 허용, 미지값만 거부. 검증을 파일 읽기 전에 둬 나쁜 status는 IO도 안 함. scan/snooze/cancel·happy/json 경로 무변.
 - **리스크**: 없음(import+const+검증 14줄, 독립 Opus judge가 revert로 RED 입증·enum 전체·--json·collateral 검증 후 PASS, checkins 4/4 · cli 2593/2593).
 
-## fire 13 · 2026-06-13 · skill v1.14.0 · <commit>
+## fire 13 · 2026-06-13 · skill v1.14.0 · 933ffa11
 meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=a11y-decorative-icon · verdict=PASS · firesSinceDrill=5
 ratchet: testFiles 947 (+1) · web tests 24/24 (+1) · fabrication 0 · self-eval exit 0
 
