@@ -35,7 +35,7 @@ import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
 import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, formatDueLocal, listReflections, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
-import { allUserMemoryFacts, buildDiskContents, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, escapeSystemPromptMarkers, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
+import { allUserMemoryFacts, buildDiskContents, buildNoteContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, escapeSystemPromptMarkers, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, buildDiskContents, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource };
@@ -192,43 +192,6 @@ export function untrustedOnlyGroundingNotice(
   return `\n⚠️  Source check: this answer is faithful to its sources, but rests ONLY on tool-fetched data (not your own notes) — verify before trusting.\n`;
 }
 
-/**
- * Build the <<note N>> context block from ranked note chunks, annotating any
- * detected value-conflict pair so the model receives reconciliation as DATA
- * rather than relying on a prompt instruction alone (arXiv:2504.19413,
- * Chhikara et al. 2025 — Mem0 contradiction-resolution, applied read-time).
- *
- * ADDITIVE ONLY: both notes always appear; the aIndex note carries a neutral ⚠
- * marker referencing bIndex by 1-based position. No recency claim is made —
- * score reflects query relevance, not recency. Never drops, reorders, or
- * rewrites any note.
- *
- * `contradictions` is pre-computed by `detectEvidenceContradictions` over the
- * same `chunks` array. `notesDir` is used only to relativize source paths.
- */
-export function buildNoteContextBlock(
-  chunks: ReadonlyArray<{ readonly chunk: { readonly text: string }; readonly file: string; readonly score: number }>,
-  contradictions: readonly ContradictionPair[],
-  notesDir: string
-): string {
-  if (chunks.length === 0) return "(no relevant notes found)";
-
-  // Build a map: chunk index → 1-based label of the note it conflicts with.
-  const conflictMarker = new Map<number, number>();
-  for (const cp of contradictions) {
-    conflictMarker.set(cp.aIndex, cp.bIndex + 1);
-  }
-
-  return chunks.map((r, i) => {
-    const src = relativizeNoteSource(r.file, notesDir);
-    const body = escapeSystemPromptMarkers(r.chunk.text);
-    const otherNoteNum = conflictMarker.get(i);
-    const marker = otherNoteNum !== undefined
-      ? `\n[⚠ this note and note ${otherNoteNum.toString()} give DIFFERENT values for what looks like the same point — treat as possibly-conflicting; do not assume either is current]`
-      : "";
-    return `<<note ${(i + 1).toString()} — ${src}>>\n${body}${marker}\n[from ${src}]\n<<end>>`;
-  }).join("\n\n");
-}
 
 
 
