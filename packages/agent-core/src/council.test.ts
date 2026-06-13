@@ -11,6 +11,7 @@ import {
   parseCouncilAnswer,
   QUESTION_RELEVANCE_FLOOR,
   produceCouncilReasoning,
+  rankUtterancesBySupport,
   screenCouncilOutliers,
   screenOffTopicUtterancesSemantic,
   synthesizeCouncilAnswer,
@@ -810,5 +811,263 @@ describe("synthesizeCouncilAnswer — relevance gate wired (fire-39 semantic red
     // No exclusions from a relevance gate (none ran)
     // (outlier screen may still run on the Jaccard path, but that is independent)
     expect(result?.answer).toBe("Use PostgreSQL.");
+  });
+});
+
+// ── Roundtable salience ordering (arXiv:2509.16839 — Yao/Dong/Yang/Li/Du 2025) ──
+
+const mkU = (peerId: string, reasoning: string): CouncilUtterance => ({ peerId, reasoning });
+
+describe("rankUtterancesBySupport — Roundtable salience ordering", () => {
+  const u0 = mkU("a", "reasoning a");
+  const u1 = mkU("b", "reasoning b");
+  const u2 = mkU("c", "reasoning c");
+
+  it("ranking correctness: supports [0.2,0.9,0.5] → output order [u1, u2, u0]", () => {
+    const ranked = rankUtterancesBySupport([u0, u1, u2], [0.2, 0.9, 0.5]);
+    expect(ranked.map((u) => u.peerId)).toEqual(["b", "c", "a"]);
+  });
+
+  it("non-vacuity/counterfactual: supports [0.9,0.2,0.5] → DIFFERENT order [u0, u2, u1]", () => {
+    const ranked = rankUtterancesBySupport([u0, u1, u2], [0.9, 0.2, 0.5]);
+    expect(ranked.map((u) => u.peerId)).toEqual(["a", "c", "b"]);
+  });
+
+  it("tie stability: [0.5,0.5,0.5] → input order preserved exactly", () => {
+    const ranked = rankUtterancesBySupport([u0, u1, u2], [0.5, 0.5, 0.5]);
+    expect(ranked.map((u) => u.peerId)).toEqual(["a", "b", "c"]);
+  });
+
+  it("permutation-preserving: output is a permutation of input (same peerId multiset, same length)", () => {
+    const ranked = rankUtterancesBySupport([u0, u1, u2], [0.2, 0.9, 0.5]);
+    expect(ranked.length).toBe(3);
+    expect(ranked.map((u) => u.peerId).sort()).toEqual(["a", "b", "c"]);
+  });
+
+  it("fail-open mismatch: supports.length !== utterances.length → input returned unchanged", () => {
+    const ranked = rankUtterancesBySupport([u0, u1, u2], [0.9, 0.5]);
+    expect(ranked.map((u) => u.peerId)).toEqual(["a", "b", "c"]);
+  });
+
+  it("fail-open: empty supports, non-empty utterances → unchanged", () => {
+    const ranked = rankUtterancesBySupport([u0, u1], []);
+    expect(ranked.map((u) => u.peerId)).toEqual(["a", "b"]);
+  });
+
+  it("empty inputs: both empty → empty output", () => {
+    expect(rankUtterancesBySupport([], [])).toEqual([]);
+  });
+});
+
+describe("synthesizeCouncilAnswer — Roundtable ordering assembled-path (arXiv:2509.16839)", () => {
+  // Use the Jaccard (no-embed) path to control support via text content.
+  //
+  // HIGH-SUPPORT text (hi1/hi2): heavily overlapping tokens — Jaccard ~0.9+ with each
+  // other, ~0.05 with lo. With a 3-peer panel the median support is ~0.5 and lo's
+  // support ~0.05 is below 0.5×median — BUT the majority cap (floor((3-1)/2)=1) and
+  // minPanel=3 guard means the outlier screen may or may not exclude lo. To guarantee
+  // lo survives the outlier screen but still has noticeably lower support, use a 2-peer
+  // panel (below minPanel=3, so screen is skipped entirely) — but then ranking still
+  // applies. However with only 2 peers the Jaccard-based ranking is: hi vs lo.
+  //
+  // Simpler approach: use 2-peer panel (minPanel=3 → no outlier exclusion, both kept)
+  // so the ordering is the ONLY change and is cleanly testable.
+
+  it("assembled-path: high-consensus peer leads the captured synthesis prompt", async () => {
+    // 2-peer panel → below minPanel=3, outlier screen skipped, both peers in forSynthesis.
+    // Peer 'lo' is placed FIRST in input; peer 'hi' is second. After ordering by support,
+    // 'hi' should appear first in the prompt because it has higher Jaccard with its partner.
+    //
+    // With 2 peers: support[hi] = jaccard(hi,lo); support[lo] = jaccard(lo,hi) — identical.
+    // Jaccard is symmetric → supports are equal → tie → input order preserved. Not useful.
+    //
+    // Use 3 peers with minPanel=3: screenCouncilOutliers fires BUT the majority cap means
+    // at most floor((3-1)/2)=1 peer can be excluded. If lo is excluded, the assembled-path
+    // proves membership is unchanged from the no-ordering case. We need lo to SURVIVE the
+    // screen. So use texts where all pairwise Jaccard values are above absFloor=0.08 AND
+    // above relFloor×median. Choose: hi1 and hi2 have Jaccard ~0.6, lo has Jaccard ~0.1
+    // with hi1/hi2 (above 0.08 but below relFloor×median only if median>0.2). The median
+    // of [0.6, 0.6, 0.1] = 0.6; relFloor×median = 0.3; lo=0.1 < 0.3 AND 0.1 > 0.08 —
+    // so lo IS excluded. This makes the ordering test not show [lo] in the prompt.
+    //
+    // Correct design: use a Jaccard-controlled inject via precomputedSupports OR use a
+    // fake embedder that returns distinct support values but all above COSINE_ABS_FLOOR.
+    //
+    // Fake embedder approach with controlled cosine: all peers above the 0.4 outlier floor
+    // (no exclusions), but hi1+hi2 have higher mutual cosine than lo.
+    // Vectors (all pass pairwise cosine > 0.4):
+    //   hi1 = [1, 0, 0, 0]
+    //   hi2 = [0.9, 0.436, 0, 0]  (normalized; cosine(hi1,hi2)≈0.9)
+    //   lo  = [0.6, 0, 0.8, 0]    (normalized; cosine(hi1,lo)≈0.6, cosine(hi2,lo)≈0.54)
+    //
+    // Supports (mean pairwise cosine):
+    //   hi1: (cosine(hi1,hi2) + cosine(hi1,lo)) / 2 = (0.9 + 0.6) / 2 = 0.75
+    //   hi2: (cosine(hi2,hi1) + cosine(hi2,lo)) / 2 = (0.9 + 0.54) / 2 ≈ 0.72
+    //   lo:  (cosine(lo,hi1)  + cosine(lo,hi2))  / 2 = (0.6 + 0.54) / 2 = 0.57
+    //
+    // Outlier screen (precomputedSupports=[0.75,0.72,0.57], absFloor=0.4):
+    //   all supports > 0.4 → no exclusions. All 3 peers survive.
+    //
+    // Ordering: hi1(0.75) > hi2(0.72) > lo(0.57) → hi1 first, hi2 second, lo third.
+    // Input order (lo first, hi1 second, hi2 third) is INVERTED → ordering is non-vacuous.
+
+    const hi1Vec: readonly number[] = [1, 0, 0, 0];
+    const hi2Vec: readonly number[] = [0.9, 0.436, 0, 0];   // cosine with hi1 ≈ 0.9
+    const loVec:  readonly number[] = [0.6, 0, 0.8, 0];     // cosine with hi1 ≈ 0.6
+
+    const vecMap = new Map<string, readonly number[]>([
+      ["hi1 reasoning", hi1Vec],
+      ["hi2 reasoning", hi2Vec],
+      ["lo reasoning",  loVec]
+    ]);
+    const embed = async (text: string): Promise<readonly number[]> => {
+      const v = vecMap.get(text);
+      if (v === undefined) throw new Error(`no vec for "${text}"`);
+      return v;
+    };
+
+    let capturedPrompt = "";
+    const provider = {
+      generate: async (req: { messages: { role: string; content: string }[] }) => {
+        capturedPrompt = req.messages.find((m) => m.role === "user")?.content ?? "";
+        return { output: '{"answer":"Synthesized.","contributors":["hi1","hi2","lo"]}' };
+      }
+    } as never;
+
+    // lo is placed FIRST in input — ordering must move hi1 or hi2 ahead of it
+    const utterances: CouncilUtterance[] = [
+      mkU("lo",  "lo reasoning"),
+      mkU("hi1", "hi1 reasoning"),
+      mkU("hi2", "hi2 reasoning")
+    ];
+    await synthesizeCouncilAnswer("test question?", utterances, { embed, model: "m", modelProvider: provider });
+
+    const hi1Pos = capturedPrompt.indexOf("[hi1]");
+    const hi2Pos = capturedPrompt.indexOf("[hi2]");
+    const loPos  = capturedPrompt.indexOf("[lo]");
+    expect(hi1Pos).toBeGreaterThan(-1);
+    expect(hi2Pos).toBeGreaterThan(-1);
+    expect(loPos).toBeGreaterThan(-1);
+    // High-support peers (hi1, hi2) must both appear BEFORE low-support peer (lo)
+    expect(hi1Pos).toBeLessThan(loPos);
+    expect(hi2Pos).toBeLessThan(loPos);
+  });
+
+  it("counterfactual: flip which peer has consensus → leading [peerId] in prompt flips", async () => {
+    // Same 3 utterances and input order. Two embed configs:
+    //   Config A: 'alpha' is the highest-support peer → alpha leads the prompt
+    //   Config B: 'gamma' is the highest-support peer → gamma leads the prompt
+    //
+    // All peers have pairwise cosine > COSINE_ABS_FLOOR=0.4 in BOTH configs → no exclusions.
+    //
+    // Vectors for config A (alpha high, beta mid, gamma low):
+    //   alpha = [1, 0, 0, 0]
+    //   beta  = [0.9, 0.436, 0, 0]   cosine(alpha,beta)≈0.9
+    //   gamma = [0.6, 0, 0.8, 0]     cosine(alpha,gamma)≈0.6, cosine(beta,gamma)≈0.54
+    //   supports: alpha≈0.75, beta≈0.72, gamma≈0.57 → alpha leads
+    //
+    // Vectors for config B (gamma high, beta mid, alpha low): swap alpha↔gamma
+    //   gamma = [1, 0, 0, 0]
+    //   beta  = [0.9, 0.436, 0, 0]   cosine(gamma,beta)≈0.9
+    //   alpha = [0.6, 0, 0.8, 0]     cosine(gamma,alpha)≈0.6, cosine(beta,alpha)≈0.54
+    //   supports: gamma≈0.75, beta≈0.72, alpha≈0.57 → gamma leads
+
+    const HIGH_VEC_CF: readonly number[] = [1, 0, 0, 0];
+    const MID_VEC_CF:  readonly number[] = [0.9, 0.436, 0, 0];
+    const LOW_VEC_CF:  readonly number[] = [0.6, 0, 0.8, 0];
+
+    const alphaText = "alpha reasoning text";
+    const betaText  = "beta reasoning text";
+    const gammaText = "gamma reasoning text";
+
+    // Config A: alpha=HIGH, beta=MID, gamma=LOW
+    const vecMapA = new Map<string, readonly number[]>([
+      [alphaText, HIGH_VEC_CF],
+      [betaText,  MID_VEC_CF],
+      [gammaText, LOW_VEC_CF]
+    ]);
+    const embedA = async (t: string): Promise<readonly number[]> => {
+      const v = vecMapA.get(t); if (!v) throw new Error(`no vec for "${t}"`); return v;
+    };
+    let capturedA = "";
+    const providerA = {
+      generate: async (req: { messages: { role: string; content: string }[] }) => {
+        capturedA = req.messages.find((m) => m.role === "user")?.content ?? "";
+        return { output: '{"answer":"A.","contributors":["alpha","beta","gamma"]}' };
+      }
+    } as never;
+    // Input order: gamma first (lowest support in config A) — ordering should move alpha ahead
+    await synthesizeCouncilAnswer("q?", [
+      mkU("gamma", gammaText),
+      mkU("beta",  betaText),
+      mkU("alpha", alphaText)
+    ], { embed: embedA, model: "m", modelProvider: providerA });
+
+    // Config B: gamma=HIGH, beta=MID, alpha=LOW
+    const vecMapB = new Map<string, readonly number[]>([
+      [alphaText, LOW_VEC_CF],
+      [betaText,  MID_VEC_CF],
+      [gammaText, HIGH_VEC_CF]
+    ]);
+    const embedB = async (t: string): Promise<readonly number[]> => {
+      const v = vecMapB.get(t); if (!v) throw new Error(`no vec for "${t}"`); return v;
+    };
+    let capturedB = "";
+    const providerB = {
+      generate: async (req: { messages: { role: string; content: string }[] }) => {
+        capturedB = req.messages.find((m) => m.role === "user")?.content ?? "";
+        return { output: '{"answer":"B.","contributors":["alpha","beta","gamma"]}' };
+      }
+    } as never;
+    // Input order: alpha first (lowest support in config B) — ordering should move gamma ahead
+    await synthesizeCouncilAnswer("q?", [
+      mkU("alpha", alphaText),
+      mkU("beta",  betaText),
+      mkU("gamma", gammaText)
+    ], { embed: embedB, model: "m", modelProvider: providerB });
+
+    // Config A: alpha should appear before gamma (alpha has highest support)
+    expect(capturedA.indexOf("[alpha]")).toBeLessThan(capturedA.indexOf("[gamma]"));
+
+    // Config B: gamma should appear before alpha (gamma has highest support)
+    expect(capturedB.indexOf("[gamma]")).toBeLessThan(capturedB.indexOf("[alpha]"));
+
+    // Counterfactual: the leading peer differs between the two configs
+    const leadsA = capturedA.indexOf("[alpha]") < capturedA.indexOf("[gamma]");
+    const leadsB = capturedB.indexOf("[gamma]") < capturedB.indexOf("[alpha]");
+    expect(leadsA).toBe(true);
+    expect(leadsB).toBe(true);
+  });
+
+  it("floor guard: outlier screen membership (kept/excluded) is unchanged by ordering", async () => {
+    // Verify the ORDER-ONLY contract: excluding dave happens identically to the
+    // existing assembled-path test (test 5 above) — ordering does not change who is kept.
+    const topicText = "The database should use PostgreSQL because it handles concurrent writes and relational integrity well.";
+    const offText   = "Bananas are yellow tropical fruit grown in warm climates near the equator.";
+
+    const promptSink: { content?: string } = {};
+    const provider = {
+      generate: async (req: { messages: { role: string; content: string }[] }) => {
+        promptSink.content = req.messages.find((m) => m.role === "user")?.content ?? "";
+        return { output: '{"answer":"Use PostgreSQL.","contributors":["alice","bob","carol"]}' };
+      }
+    } as never;
+
+    const utterances: CouncilUtterance[] = [
+      mkU("alice", topicText),
+      mkU("bob",   topicText),
+      mkU("carol", topicText),
+      mkU("dave",  offText)
+    ];
+    const result = await synthesizeCouncilAnswer("Which database?", utterances, { model: "m", modelProvider: provider });
+
+    // Membership: dave still excluded (ORDER-ONLY — no change to keep/drop)
+    expect(result?.excludedPeers?.map((e) => e.peerId)).toContain("dave");
+    // Synthesis prompt: dave's reasoning absent
+    expect(promptSink.content).not.toContain("Bananas are yellow");
+    // alice/bob/carol all present
+    expect(promptSink.content).toContain("[alice]");
+    expect(promptSink.content).toContain("[bob]");
+    expect(promptSink.content).toContain("[carol]");
   });
 });

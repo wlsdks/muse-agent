@@ -510,6 +510,28 @@ export function dedupeUtterancesByPeer(utterances: readonly CouncilUtterance[]):
   return [...byPeer.values()];
 }
 
+/**
+ * Rank utterances by descending consensus support — Roundtable salience ordering
+ * (arXiv:2509.16839 — Yao/Dong/Yang/Li/Du 2025): on a fixed local model (no logit
+ * weighting), the faithful analog is prompt-SALIENCE: present highest-consensus
+ * reasoning FIRST so the synthesis model encounters the strongest signal at the
+ * top of its context window. ORDER-ONLY: never drops or adds utterances.
+ *
+ * Fail-open on length mismatch: if supports.length !== utterances.length the
+ * input is returned unchanged — a misaligned signal is worse than no reordering.
+ * Ties preserve input order (stable sort: compare support DESC, then index ASC).
+ */
+export function rankUtterancesBySupport(
+  utterances: readonly CouncilUtterance[],
+  supports: readonly number[]
+): CouncilUtterance[] {
+  if (supports.length !== utterances.length) return [...utterances];
+  return utterances
+    .map((u, i) => ({ u, support: supports[i] ?? 0, index: i }))
+    .sort((a, b) => b.support !== a.support ? b.support - a.support : a.index - b.index)
+    .map(({ u }) => u);
+}
+
 /** Render the council reasoning as an `[id] reasoning` list for the synthesiser. */
 export function buildCouncilPrompt(question: string, utterances: readonly CouncilUtterance[]): string {
   const lines = utterances.map((u) => `[${u.peerId}] ${u.reasoning.replace(/\s+/gu, " ").trim()}`);
@@ -582,9 +604,27 @@ export async function synthesizeCouncilAnswer(
   // fall back to usable as a hard safety net).
   const forSynthesis = kept.length > 0 ? kept : forOutlier;
 
+  // Roundtable salience ordering (arXiv:2509.16839 — Yao/Dong/Yang/Li/Du 2025):
+  // order kept utterances by descending consensus support before synthesis so the
+  // highest-consensus reasoning appears first in the synthesis model's context window.
+  // Support is recomputed on forSynthesis (not projected from forOutlier) so the
+  // vector is always correctly aligned to the kept subset. Mirror the screen's choice:
+  // semantic cosine when embed is present, Jaccard otherwise.
+  let keptSupports: number[];
+  if (options.embed) {
+    try {
+      keptSupports = await councilMemberSupportsSemantic(forSynthesis, options.embed);
+    } catch {
+      keptSupports = councilMemberSupports(forSynthesis);
+    }
+  } else {
+    keptSupports = councilMemberSupports(forSynthesis);
+  }
+  const ordered = rankUtterancesBySupport(forSynthesis, keptSupports);
+
   const messages: readonly ModelMessage[] = [
     { content: SYNTHESIS_SYSTEM_PROMPT, role: "system" },
-    { content: buildCouncilPrompt(question, forSynthesis), role: "user" }
+    { content: buildCouncilPrompt(question, ordered), role: "user" }
   ];
   const request: ModelRequest = {
     maxOutputTokens: options.maxOutputTokens ?? 300,
