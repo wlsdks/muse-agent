@@ -76,9 +76,16 @@ export async function runDueObjectives(options: RunDueObjectivesOptions): Promis
   const nowMs = now().getTime();
   const all = await readObjectives(options.file);
   const due = all
-    .filter(
-      (o) => o.status === "active" && (!o.nextEvalAt || Date.parse(o.nextEvalAt) <= nowMs)
-    )
+    .filter((o) => {
+      if (o.status !== "active") return false;
+      if (!o.nextEvalAt) return true;
+      const nextMs = Date.parse(o.nextEvalAt);
+      // An unparseable nextEvalAt yields NaN; `NaN <= nowMs` is false, which would
+      // freeze the objective FOREVER (never evaluated, never escalated — the same
+      // NaN-poison class the maxPerTick guard above handles). Fail open to
+      // evaluation; the backoff path then rewrites a valid timestamp (self-heal).
+      return !Number.isFinite(nextMs) || nextMs <= nowMs;
+    })
     .slice(0, max);
 
   if (due.length === 0) {

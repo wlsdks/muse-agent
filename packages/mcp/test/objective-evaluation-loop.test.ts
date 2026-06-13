@@ -61,6 +61,18 @@ describe("runDueObjectives — standing-objective re-evaluation engine", () => {
     expect(await byId("o1")).toMatchObject({ resolution: "the repo was deleted", status: "escalated" });
   });
 
+  it("an unparseable nextEvalAt does NOT freeze the objective — it is due now and self-heals", async () => {
+    await addObjective(file, obj({ nextEvalAt: "not-a-date" })); // poisoned timestamp (hand-edit / foreign writer)
+    let evaluated = 0;
+    const summary = await run({ backoffBaseMs: 1000, evaluate: async () => { evaluated += 1; return { outcome: "unmet" }; } });
+    expect(evaluated).toBe(1); // the poisoned objective was evaluated, not silently frozen forever
+    expect(summary.retried).toEqual(["o1"]);
+    const after = await byId("o1");
+    // the loop rewrote a VALID, parseable nextEvalAt — the poison self-healed
+    expect(Number.isFinite(Date.parse(after!.nextEvalAt!))).toBe(true);
+    expect(Date.parse(after!.nextEvalAt!)).toBe(nowMs + 1000);
+  });
+
   it("UNMET: backs off with an exponential nextEvalAt and stays active (never spins)", async () => {
     await addObjective(file, obj());
     const summary = await run({ backoffBaseMs: 1000, evaluate: async () => ({ outcome: "unmet" }) });

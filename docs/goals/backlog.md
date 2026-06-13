@@ -650,6 +650,27 @@ HARDEN (make existing tools more reliable):
   correct — readFollowups runs unqueued from the list tool, so cleanup could unlink an in-flight atomicWriteFile tmp
   before its rename and kill a concurrent write; the safe fix needs an mtime age-gate whose threshold is a judgment call.
   Real leak but needs a design decision — record, don't auto-pick.
+- ✓→Done **active objective with an unparseable nextEvalAt was silently frozen forever** (EXPANSION gap-scout, fire 39;
+  silent-failure / NaN-poisoned date comparison) — the `due` filter was
+  `o.status === "active" && (!o.nextEvalAt || Date.parse(o.nextEvalAt) <= nowMs)`; a non-ISO nextEvalAt makes
+  `Date.parse` → NaN, `NaN <= nowMs` → false, and `!o.nextEvalAt` is false (truthy string), so the objective is EXCLUDED
+  from `due` on EVERY tick forever — never evaluated, never escalated (contradicts the module's "never silently dropped"
+  contract; the same file already guards this exact NaN-poison class for maxPerTick). Reachable via a hand-edited /
+  foreign-written objectives.json (isStandingObjective never validates nextEvalAt). FIX: fail-open to evaluation when
+  unparseable (`!Number.isFinite(nextMs) || nextMs <= nowMs`); the backoff path then rewrites a valid ISO (self-heal).
+  TDD (nextEvalAt:"not-a-date" → evaluated once, retried, persisted nextEvalAt now parseable === nowMs+1000)
+  RED(excluded → evaluated 0)→GREEN; mcp 1750, check 0 (all pkgs), lint 0. Fable-5 PASS (future-valid still excluded so
+  cooldown intact; no legitimate non-ISO sentinel — "never" is status not a magic string; self-heals after one eval).
+  KIND silent-failure, fresh surface.
+- ◦ **append-only stores silently DESTROY a forward-version entry on the next write (fire-39 runner-up)** —
+  `appendActionLog` (personal-action-log-store.ts:212-221) and `addObjective`/`patchObjective`
+  (personal-objectives-store.ts:97-130) round-trip through a validation-FILTERING read (`readActionLog`/`readObjectives`
+  flatMap-drop entries failing `isActionLogEntry`/`isStandingObjective`), so any stored entry a newer schema wrote (e.g.
+  a forward `result` value or unknown field) is permanently ERASED by the next unrelated append — violating the
+  documented "APPEND-ONLY… preserved verbatim / never silently destroyed (quarantine)" contract. FIX needs a RAW-read
+  path for the write (read+append+write on the raw array, validate only on the READ-for-consumers path) — bigger than
+  one filter line. Slice: add a raw passthrough reader + wire the append/patch RMWs + a forward-compat test (seed an
+  entry with an extra field, append another, assert the first survives byte-identical). Two stores share the KIND+shape.
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`
