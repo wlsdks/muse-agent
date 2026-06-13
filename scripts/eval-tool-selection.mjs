@@ -172,6 +172,7 @@ async function buildPersonalCrudScenario() {
       { prompt: "오늘 할 일 보여줘", expectTool: "muse.tasks.list", note: "KO list to-dos → tasks.list" },
       { prompt: "내 리마인더 다 보여줘", expectTool: "muse.reminders.list", note: "KO list reminders → reminders.list (NOT calendar.list)" },
       { prompt: "이번 주 일정 보여줘", expectTool: "muse.calendar.list", note: "KO list events → calendar.list (NOT tasks/reminders)" },
+      { prompt: "Find my meeting with Bob on the calendar this week.", expectTool: "muse.calendar.list", requireArgs: ["query"], argIncludes: /bob/i, note: "EN find a specific event → calendar.list with query (ArgumentCorrectness)" },
       { prompt: "Show my tasks tagged work", expectTool: "muse.tasks.list", requireArgs: ["tag"], argIncludes: /work/i, note: "EN tag filter → tasks.list with tag arg (ArgumentCorrectness)" },
       { prompt: "work 태그된 할 일 보여줘", expectTool: "muse.tasks.list", requireArgs: ["tag"], argIncludes: /work/i, note: "KO tag filter → tasks.list with tag arg" }
     ];
