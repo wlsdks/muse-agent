@@ -33,6 +33,15 @@ final class AnswerPresentationTests: XCTestCase {
         XCTAssertFalse(spoken.contains("net.md"))
     }
 
+    func testStaysSilentWhenAnswerIsReceiptOnly() {
+        // A model turn that emitted ONLY a grounding receipt strips to empty
+        // speech — speechText must be nil (silent), not "" (which the consumer's
+        // `if let speech` treats as a real answer → orb "speaks" an empty utterance).
+        let p = MusePresenter.present(.success("📎 노트: seoul_office.md"))
+        XCTAssertNil(p.speechText)
+        XCTAssertFalse(p.bubbleText.isEmpty)  // the bubble still shows the receipt
+    }
+
     func testStaysSilentOnEmptyAnswer() {
         let p = MusePresenter.present(.success("   "))
         XCTAssertNil(p.speechText)

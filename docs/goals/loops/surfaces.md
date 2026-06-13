@@ -93,3 +93,12 @@ ratchet: testFiles 943 (+1) · web tests 23/23 (+4) · fabrication 0 · self-eva
 - **왜**: Today 뷰의 다가오는 이벤트·대기 리마인더 행(가장 자주 보는 두 리스트)에 라이브로 노출되는 실제 카피 버그. "0분 후"는 "지금"이어야 함.
 - **리뷰지점**: `min===0`은 정확히 [0,30s)만 잡음(30s→"in 1m", 90s→"in 2m"). past(ms<0)·NaN·분/시/일 버킷 무변. 순수 함수라 export·min-선계산 부작용 없음.
 - **리스크**: 없음(timeUntil 1함수 + export + 4 테스트, 호출부 시그니처 무변, 독립 Opus judge가 경계워크·flakiness(10s+ 여유)·RED-before 검증 후 PASS, web 23/23).
+
+## fire 11 · 2026-06-13 · skill v1.14.0 · <commit>
+meta: surface=desktop · value-class=micro-fix · pkg=apps/desktop(MuseDesktopCore) · kind=nil-vs-empty-contract · verdict=PASS · firesSinceDrill=3
+ratchet: desktop swift tests 50/50 (+1) · fabrication 0 · self-eval exit 0
+
+- **무엇**: `MusePresenter.present(.success)`가 **영수증/인용-only 답변**(`"📎 노트: …"`)에 `stripCitationsForSpeech`→`""`를 `speechText`로 반환. 계약은 `nil⇒무음`인데 consumer(`CompanionModel.swift:104` `if let speech`)는 nil만 체크 → `""`면 orb가 "speaking" 애니메이션 + 빈 발화. `spoken.isEmpty ? nil : spoken`으로 붕괴.
+- **왜**: trimmed 비어있지 않아(`📎…`) 빈-답변 분기를 건너뛰고 strip 後 빈 문자열이 되는 경로 — fire 5(빈 JSON)·fire 8(멀티라인 strip)가 못 잡은 receipt-only 클래스의 별개 갭. 실제 다운스트림 결과(orb 무의미 발화) 확인됨.
+- **리뷰지점**: 정상 인용 답변("… [from vpn.md]")은 strip 後 비어있지 않아 음성 유지(empty→nil 붕괴는 진짜 빈 경우만 발동). bubbleText는 영수증 유지(무변).
+- **리스크**: 없음(success 분기 speechText 계산 1줄, error/empty 분기·bubbleText 무변, 독립 Opus judge가 isolation으로 RED 입증·회귀 5케이스·consumer 의존성 검증 후 PASS, 50/50).

@@ -26,7 +26,11 @@ public enum MusePresenter {
             if trimmed.isEmpty {
                 return AnswerPresentation(bubbleText: language == .korean ? "그건 노트에서 찾지 못했어요." : "I don't have anything on that in your notes.", speechText: nil)
             }
-            return AnswerPresentation(bubbleText: trimmed, speechText: stripCitationsForSpeech(trimmed))
+            // A receipt/citation-only answer strips to "" — collapse it to nil so
+            // the `nil ⇒ silent` contract holds (the consumer's `if let speech`
+            // would otherwise speak an empty utterance + animate the orb).
+            let spoken = stripCitationsForSpeech(trimmed)
+            return AnswerPresentation(bubbleText: trimmed, speechText: spoken.isEmpty ? nil : spoken)
         case .failure(.emptyQuery):
             return AnswerPresentation(bubbleText: language == .korean ? "노트에 대해 무엇이든 물어보세요." : "Ask me something about your notes.", speechText: nil)
         case .failure(.cliFailed):
