@@ -85,7 +85,7 @@ ratchet: cli tests 2593/2593 (remind 25, +2) · fabrication 0 · self-eval exit 
 - **리뷰지점**: 필터는 payload 할당 後 적용 → 세 경로(local store/API/api-unreachable fallback) 모두 커버. 빈 쿼리는 진짜 no-op(`options.search?.trim()` undefined). MCP reminders 도구는 tool-hardening 소관이라 미변경(CLI 명령만).
 - **리스크**: 없음(commands-remind.ts 헬퍼+옵션+필터블록 + 2 테스트, 다른 remind 서브커맨드/명령 무변, 독립 Opus judge가 RED-before·total보정·전경로·sibling패리티 검증 후 PASS, cli 2593/2593).
 
-## fire 10 · 2026-06-13 · skill v1.14.0 · <commit>
+## fire 10 · 2026-06-13 · skill v1.14.0 · c4981e54
 meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=relative-time-rounding · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles 943 (+1) · web tests 23/23 (+4) · fabrication 0 · self-eval exit 0
 
