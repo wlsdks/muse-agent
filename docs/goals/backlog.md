@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ mac_message_send ambiguous clarify names the candidate contacts (email parity) — the model asks "Jane Park or Jane Doe?" instead of a vague "which one?" on an irreversible send — tool-hardening fire 68
+
 - ✓ dead-code apps/api: removed dead compatRecord fn + de-exported internal-only sanitizeConfigValue (knip-verified, barrel re-export false-positives left alone) — codebase-quality fire 24
 - ✓ mac_message_send resolves a NAME → number from the contacts graph (Rule 3 parity with email; "text Jane" now completes, ambiguous/unknown fail closed, resolved-not-guessed) — tool-hardening fire 67
 - ✓ Phase 3 sub-slice 3b: moved buildNoteContextBlock (<<note N>> grounding block) commands-ask -> @muse/recall/present.ts (+test moved); 3a+3b relocate the whole note-block concern out of CLI — codebase-quality fire 23

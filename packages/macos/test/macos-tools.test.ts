@@ -881,6 +881,18 @@ describe("mac_message_send — Tier 2 draft-first, fail-closed (outbound-safety)
     expect(logged).toEqual([]);
   });
 
+  it("an AMBIGUOUS name surfaces the candidate NAMES so the model can ask precisely (email parity)", async () => {
+    const { tool } = makeSend({
+      resolveRecipient: () => ({ candidates: ["Jane Park", "Jane Doe"], matchCount: 2, status: "ambiguous" })
+    });
+    const out = await tool.execute({ body: "hi", recipientName: "Jane" }, ctx) as { candidates?: string[]; detail: string; sent: boolean };
+    expect(out.sent).toBe(false);
+    expect(out.candidates).toEqual(["Jane Park", "Jane Doe"]);
+    // the clarification names the candidates, not a vague "which one?"
+    expect(out.detail).toContain("Jane Park");
+    expect(out.detail).toContain("Jane Doe");
+  });
+
   it("an UNKNOWN name fails closed (resolver consulted) — needs-recipient, no send", async () => {
     let sent = false;
     let resolverCalled = false;

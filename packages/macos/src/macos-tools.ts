@@ -1014,6 +1014,8 @@ export interface MacRecipientResolution {
   readonly recipient?: string;
   readonly name?: string;
   readonly matchCount?: number;
+  /** Display names of the matching contacts, so an ambiguous clarify can name them. */
+  readonly candidates?: readonly string[];
 }
 
 export interface MacMessageSendToolDeps {
@@ -1080,8 +1082,12 @@ export function createMacMessageSendTool(deps: MacMessageSendToolDeps): MuseTool
       if (to.length === 0 && recipientName.length > 0 && deps.resolveRecipient) {
         const resolution = await deps.resolveRecipient(recipientName);
         if (resolution.status === "ambiguous") {
+          const names = resolution.candidates ?? [];
           return {
-            detail: `'${recipientName}' matches ${(resolution.matchCount ?? 0).toString()} contacts — which one? Tell me the number or a more specific name.`,
+            ...(names.length > 0 ? { candidates: names as JsonValue } : {}),
+            detail: names.length > 0
+              ? `'${recipientName}' matches ${names.length.toString()} contacts: ${names.join(", ")}. Which one — a more specific name, or the number?`
+              : `'${recipientName}' matches ${(resolution.matchCount ?? 0).toString()} contacts — which one? Tell me the number or a more specific name.`,
             reason: "ambiguous-recipient",
             sent: false
           };

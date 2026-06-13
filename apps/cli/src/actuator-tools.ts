@@ -384,7 +384,7 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
         resolveRecipient: async (name) => {
           const resolution = resolveContact(await queryContacts(resolveContactsFile(env)), name);
           if (resolution.status === "ambiguous") {
-            return { matchCount: resolution.matches.length, status: "ambiguous" };
+            return { candidates: resolution.matches.map((contact) => contact.name), matchCount: resolution.matches.length, status: "ambiguous" };
           }
           if (resolution.status === "unknown") {
             return { status: "unknown" };
