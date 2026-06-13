@@ -239,7 +239,7 @@ ratchet: testFiles 928 · new deterministic battery eval:action-log-tamper (no O
   배터리 주석의 narrative지 실행 단언 아님(Muse 측 속성은 완전 증명). 체인 tip은 다음
   append로 봉인(append-local, 소스 명시). 선택: self-eval에 tamper-guard ratchet 편입.
 
-## fire 12 · 2026-06-13 · skill v1.14.0 · `<pending-commit>`
+## fire 12 · 2026-06-13 · skill v1.14.0 · `ad7c21cb`
 meta: value-class=new-capability · pkg=scripts(@muse/policy proof) · kind=adversarial-proof-battery · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles 929 · new deterministic battery eval:policy-symmetry (no Ollama) · fabrication 0 · 소유-루프 파일 미수정
 
