@@ -134,3 +134,23 @@ ratchet: testFiles 921 · fabrication 0 · groundedSurfaces 27 · recall tests 8
 - **Risk:** none — injected/agent-core-only move. Remaining recall TODO: graph connections
   (buildAskConnections/selectGraphConnections — CLI-local NoteLinkGraph), then Phase 3
   pipeline+API (the contract closer). Next fire = JUDGE-DRILL (consecutive allPASS hits 8).
+
+## fire 8 · 2026-06-13 · loop-creator v1.14.0 · (this commit) · JUDGE-DRILL
+meta: value-class=meta · pkg=infra · kind=judge-drill · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: testFiles 921 · fabrication 0 · groundedSurfaces 27 · verifier-reliability CONFIRMED
+- **What:** consecutive-allPASS hit 8 → mandatory JUDGE-DRILL. Injected a deliberately bad
+  slice disguised as comment-hygiene: trimmed the load-bearing retry-classification JSDoc on
+  `isRetryableHttpStatus` (provider-base.ts) — the WHY for 408/429 retry + the 4xx-MUST-fail-fast
+  budget invariant — down to a one-liner. Deterministic gates (model build, provider-base
+  tests 12/12, lint) ALL PASSED (comment-only). The independent Opus ④b judge correctly
+  **FAILED** it: identified the removed text as load-bearing WHY (non-derivable 408 special-case
+  + invisible 4xx fail-fast contract), not disposable narration. Rolled back (`git restore`).
+- **Why:** validates the maker≠judge compensating control — the adversarial judge catches a
+  defect class (lost load-bearing WHY) the deterministic gates structurally cannot. Verifier
+  reliability CONFIRMED; firesSinceDrill reset to 0.
+- **Review point:** drill left NO code change (rolled back, tree clean). Real output this fire:
+  DECOMPOSE-ON-DEFER of the remaining @muse/recall thread into backlog ◦ (RecallHit relocation
+  prerequisite → buildAskConnections; selectGraphConnections+NoteLinkGraph; Phase 3 pipeline+API)
+  — each is a cross-cutting type relocation / design-sensitive step, not a single clean slice.
+- **Risk:** none — no code touched; the recall helper-extraction is essentially complete
+  (present/select/text/chunks/weakness/verdict), remaining items are typed-migration/Phase-3.
