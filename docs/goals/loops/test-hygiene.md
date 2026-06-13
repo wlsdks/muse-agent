@@ -157,3 +157,12 @@ ratchet: testFiles 958→957 (−1 통합, 유니크 케이스 1 이식) · netC
 - **왜:** 같은 모듈 enabled/maxUses 해소 로직이 두 파일에서 ~11 케이스 중복 실행(진안 "중복 제거"). 단 양쪽 유니크 케이스 손실 금지 — src/는 fuzz+kill-switch가 더 강하나 disabled-path maxUses 보존은 test/에만 있었음.
 - **어떻게-증명(MUTATION-FIRST):** `args.override===false` 분기를 `maxUses: DEFAULT_MAX_USES`로 변형 시 이식된 케이스 **딱 1개만 RED**(나머지 15 green incl. property-fuzz는 `>0`만 보장 → 5도 통과) — disabled-path maxUses의 유일 가드임을 증명. 변형 복원+클린리빌드 16/16 green. ④b 독립 Opus judge가 삭제본 git show로 **15개 행동 전수 매핑**(전부 equal-or-stronger) + mutation-uniqueness 재현 + `model` 필드 미사용(브랜치 은닉 없음) 확인 → **VERDICT: PASS**.
 - **리스크:** 소스(비-test) 무변경. 변경은 −87L(test/ 삭제) +11L(src/ 이식) 2건뿐. ★`pnpm check` red는 **무관 환경 아티팩트**(apps/api `messaging-webhooks` buildServer 테스트가 동시 6+ 루프 부하서 20s timeout; 격리 재실행 4/4 9.4s pass) — 본 @muse/model 슬라이스와 무관, backlog에 환경 이슈 기록.
+
+## fire 19 · 2026-06-14 · skill v1.14.0 · 5bc93add
+meta: kind=add · pkg=@muse/policy · verdict=PASS · firesSinceDrill=0 (★JUDGE-DRILL 완료 후 리셋)
+ratchet: testFiles 959 (케이스 +1, 파일수 불변) · netCoverage +1 (count accumulation, maskPii+findPii 양 경로) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **★JUDGE-DRILL(firesSinceDrill≥10 도달, 미루기 불가):** model/web-search-policy에 고의로 inert 테스트 주입 — env MAX_USES="8"이 "양의 정수"임만 assert(값 8을 pin 안 함; property-fuzz가 이미 보장하는 invariant 복붙). 독립 ④b Opus judge가 **VERDICT: FAIL**(mutation으로 strictPositiveInt→3 해도 green 유지 = value-blind, 이미 precedence/typo/disabled 케이스가 값을 pin) → `git checkout`으로 롤백. maker≠judge 게이트 신뢰성 재확인 → 카운터 0 리셋.
+- **무엇(진짜 슬라이스):** `@muse/policy` pii-patterns에 finding **count 누적** 커버 추가 — 기존 13개 테스트 전부 `.name`만 채점, `{name,count}`의 count(maskPii `(get??0)+1` per-match, findPii `+matches.length`)는 assert 0. 이메일 3개→count 3(maskPii), SSN 2개→count 2(findPii).
+- **왜:** PII 감사 정확도(privacy/grounding 인접) — "이메일 1건"인데 실제 3건이면 잘못된 감사 보고. 보안 게이트 패키지(injection/PII/leakage)인데 count 출력이 미검증이었음. 패키지 다양성도(policy는 이 루프 첫 터치).
+- **어떻게-증명(MUTATION-FIRST ADD):** maskPii 누적→상수 1 변형 시 email-count assert만 RED(7 green); findPii 누적→상수 1 변형 시 ssn-count assert만 RED — 양 경로 각각 pin, 다른 테스트는 무영향(진짜 미커버). 독립 ④b judge가 양 mutation 재현 + 값 정확성(패턴 overlap 없음) + 중복부재 확인 → **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경, full check GREEN. count 누적은 공개 API 필드라 회귀 시 조용한 부정확 — 이제 pin됨.
