@@ -33,9 +33,11 @@ describe("distillSessionCorrections — end-of-session auto-distillation (Reason
     const res = await distillSessionCorrections({
       model: "m",
       // Korean strategy (same script as the Korean correction) so the held-out
-      // support gate can verify it; supportive embed keeps the gate off the network.
+      // support gate can verify it. Embed simulates grounded-but-abstracted:
+      // correction ("그게 아니라") → [1,0,0]; strategy ("회의록은") → [0.8,0.6,0].
+      // Support cosine = 0.8 ≥ 0.50 (grounded). Gist cosine = 0.8 < 0.92 (abstracted → kept).
       modelProvider: stub("strategy: 회의록은 불릿으로 정리하기\ntag: notes"),
-      embed: async () => [1, 0],
+      embed: async (text: string) => text.startsWith("그게") ? [1, 0, 0] : [0.8, 0.6, 0],
       playbookFile: file,
       readBoundaries: async () => boundaries,
       readLines: async () => correctedSession
@@ -45,6 +47,23 @@ describe("distillSessionCorrections — end-of-session auto-distillation (Reason
     expect(saved).toHaveLength(1);
     expect(saved[0]!.text).toContain("불릿");
     expect(saved[0]!.tag).toBe("notes");
+  });
+
+  it("does NOT promote a near-verbatim restatement of the correction (gist gate, SIB arXiv:2603.01455)", async () => {
+    const file = await tmpPlaybook();
+    // Embed simulates a verbatim restatement: correction and strategy map to the
+    // SAME vector → gist cosine 1.0 ≥ 0.92 → dropped before recordPlaybookStrategy.
+    // This is the end-to-end seam guard: a verbatim strategy is NOT written.
+    const res = await distillSessionCorrections({
+      model: "m",
+      modelProvider: stub("strategy: 그게 아니라 한국어로\ntag: notes"),
+      embed: async () => [1, 0, 0],
+      playbookFile: file,
+      readBoundaries: async () => boundaries,
+      readLines: async () => correctedSession
+    });
+    expect(res.status).toBe("skipped");
+    expect(await queryPlaybook(file, "stark")).toHaveLength(0);
   });
 
   it("skips when the session has no correction", async () => {

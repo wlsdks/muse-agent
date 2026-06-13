@@ -14,9 +14,21 @@ import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
 import { redactSecretsInText } from "@muse/shared";
 
 import type { SessionTurnLine } from "./episodic-summariser.js";
+import { cosineSimilarity } from "./episodic-recall.js";
+import { comparableScript } from "./script-family.js";
 import { validateMergeCoverage } from "./skill-merge-gate.js";
 
 const DEFAULT_STRATEGY_SUPPORT_FLOOR = 0.5;
+
+/**
+ * Gist ceiling for the SIB verbatim-overfit gate (arXiv:2603.01455 Lian et al. ACL 2026 +
+ * ReasoningBank arXiv:2509.25140): a distilled strategy must ABSTRACT the correction, not
+ * restate it verbatim. High so only a near-identical restatement (overfit one-off that won't
+ * generalise) drops; a concise grounded abstraction (cosine ∈ [floor, ceiling)) is kept.
+ * Distinct from fire-17 inject-dedup (strategy-vs-OTHER-bank-strategies at inject time) —
+ * this compares the strategy against its SOURCE correction at distill time.
+ */
+export const DEFAULT_STRATEGY_VERBATIM_CEILING = 0.92;
 
 export interface CorrectionExchange {
   /** The assistant turn the user pushed back on. */
@@ -175,6 +187,13 @@ export interface DistillStrategyOptions {
   readonly embed?: (text: string) => Promise<readonly number[]>;
   /** Cosine floor for the support gate. Default 0.50. */
   readonly supportFloor?: number;
+  /**
+   * Cosine ceiling for the gist gate: a strategy at or above this cosine vs
+   * the correction is a verbatim restatement (overfit, won't generalise) and
+   * is dropped. Default DEFAULT_STRATEGY_VERBATIM_CEILING (0.92). Set > 1.0
+   * to disable. Cross-script pairs are exempt; fail-open when embed is absent.
+   */
+  readonly verbatimCeiling?: number;
 }
 
 const DISTILLER_SYSTEM_PROMPT =
@@ -228,12 +247,30 @@ export async function distillStrategyFromCorrection(
   // Held-out support gate (parity with the preference twin): the strategy must be
   // semantically grounded in the correction, else drop it. Cross-script pairs are
   // fail-closed inside the gate.
+  const redactedCorrection = redact(exchange.correction);
   const verdict = await validateMergeCoverage(
-    [{ label: "correction", text: redact(exchange.correction) }],
+    [{ label: "correction", text: redactedCorrection }],
     { label: "strategy", text: distilled.text },
     { embed: options.embed, floor: options.supportFloor ?? DEFAULT_STRATEGY_SUPPORT_FLOOR }
   );
-  return verdict.accept ? distilled : undefined;
+  if (!verdict.accept) return undefined;
+  // Gist ceiling (SIB arXiv:2603.01455 + ReasoningBank generalization constraint): a
+  // strategy too close to the correction verbatim is an overfit one-off, not a
+  // generalization — drop it. Cross-script pairs are unverifiable → exempt (same
+  // reason as the support gate). Fail-open: embed absent handled above.
+  const ceiling = options.verbatimCeiling ?? DEFAULT_STRATEGY_VERBATIM_CEILING;
+  if (comparableScript(redactedCorrection, distilled.text)) {
+    try {
+      const [corrVec, stratVec] = await Promise.all([
+        options.embed!(redactedCorrection),
+        options.embed!(distilled.text)
+      ]);
+      if (cosineSimilarity(corrVec, stratVec) >= ceiling) return undefined;
+    } catch {
+      // Fail-open: embedder error → skip the ceiling (today's behavior).
+    }
+  }
+  return distilled;
 }
 
 export type CorrectionPolarity = "contradict" | "agree" | "unrelated" | "uncertain";

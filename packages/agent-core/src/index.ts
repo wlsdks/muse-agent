@@ -104,7 +104,7 @@ export { applyVetoAvoidance, renderVetoAvoidanceSection, selectRelevantVetoes } 
 export type { LearnedVeto, VetoAvoidanceProvider } from "./veto-avoidance.js";
 export { applyPlaybook, clampReward, effectiveStrategyReward, isAvoidedStrategy, isInjectableStrategy, isStaleStrategy, planStrategyLifecycle, PLAYBOOK_AVOID_BELOW, PLAYBOOK_INJECT_DEDUP_THRESHOLD, PLAYBOOK_RECENCY_HALF_LIFE_DAYS, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, PLAYBOOK_STALE_AFTER_DAYS, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, recencyDiscount, renderPlaybookSection, strategyTextSimilarity, suppressNearDuplicateStrategies, wilsonInterval } from "./playbook.js";
 export type { PlaybookStrategy, PlaybookProvider, RankPlaybookOptions, StrategyLifecycleAction } from "./playbook.js";
-export { classifyCorrectionContradiction, detectApprovals, detectCorrections, distillStrategyFromCorrection } from "./correction-distiller.js";
+export { classifyCorrectionContradiction, DEFAULT_STRATEGY_VERBATIM_CEILING, detectApprovals, detectCorrections, distillStrategyFromCorrection } from "./correction-distiller.js";
 export { synthesizePatternSuggestion, type PatternSuggestionInput, type SynthesizePatternSuggestionOptions } from "./pattern-suggestion.js";
 export { inferPreferenceFromCorrection, parseInferredPreference, type InferredPreference, type InferPreferenceOptions } from "./preference-inference.js";
 export type {

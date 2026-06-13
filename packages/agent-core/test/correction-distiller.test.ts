@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   classifyCorrectionContradiction,
+  DEFAULT_STRATEGY_VERBATIM_CEILING,
   type CorrectionExchange,
   detectApprovals,
   detectCorrections,
@@ -493,11 +494,15 @@ describe("distillStrategyFromCorrection — held-out support gate (parity with p
   const bulletKeyed = (t: string): Promise<readonly number[]> => Promise.resolve(/bullet/u.test(t) ? [1, 0] : [0, 1]);
 
   it("keeps a strategy the correction supports", async () => {
+    // Embedder: correction (has "bullet") → [1,0,0]; strategy (no "bullet") → [0.8,0.6,0].
+    // Support-gate cosine = 0.8 ≥ 0.50 (grounded). Gist-ceiling cosine = 0.8 < 0.92 (abstracted → kept).
+    const groundedAbstractEmbed = (text: string): Promise<readonly number[]> =>
+      Promise.resolve(/bullet/u.test(text) ? [1, 0, 0] : [0.8, 0.6, 0]);
     const out = await distillStrategyFromCorrection(enExchange, {
-      model: "m", embed: bulletKeyed,
-      modelProvider: stubProvider("strategy: use bullet points when summarising\ntag: notes")
+      model: "m", embed: groundedAbstractEmbed,
+      modelProvider: stubProvider("strategy: prefer structured concise output\ntag: notes")
     });
-    expect(out?.text).toContain("bullet");
+    expect(out?.text).toBe("prefer structured concise output");
   });
 
   it("DROPS an unsupported strategy (cosine below floor)", async () => {
@@ -524,5 +529,111 @@ describe("distillStrategyFromCorrection — held-out support gate (parity with p
       modelProvider: stubProvider("strategy: anything goes here\ntag: -")
     });
     expect(out?.text).toBe("anything goes here");
+  });
+});
+
+describe("distillStrategyFromCorrection — gist ceiling (SIB verbatim-overfit gate)", () => {
+  // Exchange where correction = "no — give me concise bullet points, not prose"
+  // The default ceiling is DEFAULT_STRATEGY_VERBATIM_CEILING (0.92).
+  const exchange: CorrectionExchange = {
+    correction: "no — give me concise bullet points, not prose",
+    priorAnswer: "a long flowing paragraph",
+    request: "summarise the doc"
+  };
+
+  // Embedder that returns near-identical vectors → cosine ≈ 1.0 (verbatim)
+  const verbatimEmbed = (_t: string): Promise<readonly number[]> => Promise.resolve([1, 0, 0]);
+
+  // Embedder where correction → [1,0,0] and strategy → [0.8,0.6,0] (cosine ≈ 0.8, in [0.50, 0.92))
+  const abstractedEmbed = (text: string): Promise<readonly number[]> =>
+    Promise.resolve(text.includes("bullet") ? [1, 0, 0] : [0.8, 0.6, 0]);
+
+  // Provider that produces a strategy NOT containing numbers (avoids fact-restatement guard)
+  const provider = (strategyText: string) =>
+    stubProvider(`strategy: ${strategyText}\ntag: notes`);
+
+  it("DROPS a verbatim strategy (cosine ≥ DEFAULT_STRATEGY_VERBATIM_CEILING)", async () => {
+    // verbatimEmbed → cosine(correction, strategy) = 1.0 ≥ 0.92 → drop
+    const out = await distillStrategyFromCorrection(exchange, {
+      embed: verbatimEmbed,
+      model: "m",
+      modelProvider: provider("when asked, give concise bullet points not prose")
+    });
+    expect(out).toBeUndefined();
+  });
+
+  it("KEEPS a grounded-but-abstracted strategy (cosine ∈ [0.50, 0.92)) — over-drop guard", async () => {
+    // abstractedEmbed: correction (has "bullet") → [1,0,0]; strategy (no "bullet") → [0.8,0.6,0]
+    // cosine = 0.8 → in [0.50, 0.92) → keep
+    const out = await distillStrategyFromCorrection(exchange, {
+      embed: abstractedEmbed,
+      model: "m",
+      modelProvider: provider("prefer structured output over flowing prose")
+    });
+    expect(out).not.toBeUndefined();
+    expect(out?.text).toBe("prefer structured output over flowing prose");
+  });
+
+  it("counterfactual: verbatimCeiling 1.01 (disabled) → verbatim strategy kept; default ceiling → dropped", async () => {
+    const opts = {
+      embed: verbatimEmbed,
+      model: "m",
+      modelProvider: provider("when asked, give concise bullet points not prose")
+    };
+    // Ceiling disabled: cosine 1.0 < 1.01 → NOT dropped
+    const kept = await distillStrategyFromCorrection(exchange, { ...opts, verbatimCeiling: 1.01 });
+    expect(kept).not.toBeUndefined();
+    // Default ceiling: cosine 1.0 ≥ 0.92 → dropped
+    const dropped = await distillStrategyFromCorrection(exchange, opts);
+    expect(dropped).toBeUndefined();
+  });
+
+  it("below-floor still drops (existing support-gate regression unchanged)", async () => {
+    // abstractedEmbed: correction (has "bullet") → [1,0,0]; this strategy "confirm the meeting" (no bullet) → [0.8,0.6,0]
+    // BUT the SUPPORT gate: correction [1,0,0] vs strategy [0.8,0.6,0] → cosine 0.8 ≥ 0.50 → accept
+    // Then gist: 0.8 < 0.92 → keep. So for below-floor we need cosine < 0.50.
+    // Use an embed that gives cosine 0 between correction and strategy.
+    const zeroEmbed = (text: string): Promise<readonly number[]> =>
+      Promise.resolve(text.includes("bullet") ? [1, 0] : [0, 1]);
+    const out = await distillStrategyFromCorrection(exchange, {
+      embed: zeroEmbed,
+      model: "m",
+      modelProvider: provider("always confirm the meeting time")
+    });
+    expect(out).toBeUndefined();
+  });
+
+  it("cross-script exempt: gist ceiling code-path guards with comparableScript (ceiling never fires on cross-script)", async () => {
+    // Korean correction + English strategy → comparableScript(correction, strategy) = false.
+    // The support gate ALSO fails-closed for cross-script (marks unverified → !accept),
+    // so the pair is dropped before the ceiling is even checked. The ceiling's own
+    // comparableScript guard is the defense-in-depth: even if support gate were bypassed,
+    // the ceiling would be skipped for a cross-script pair.
+    const koExchange: CorrectionExchange = {
+      correction: "아니야, 총알 포인트로 요약해줘",
+      priorAnswer: "a long paragraph",
+      request: "summarise"
+    };
+    const out = await distillStrategyFromCorrection(koExchange, {
+      embed: verbatimEmbed, // returns identical vectors for all texts (cosine 1.0)
+      model: "m",
+      modelProvider: provider("prefer structured output over flowing prose")
+    });
+    // Cross-script → support gate: unverified → !accept → returned undefined (correct).
+    // Ceiling is structurally exempt for this pair.
+    expect(out).toBeUndefined();
+  });
+
+  it("no embedder → no gist gate (back-compat: fail-open)", async () => {
+    const out = await distillStrategyFromCorrection(exchange, {
+      model: "m",
+      modelProvider: provider("use bullet points when summarising")
+    });
+    // No embed → skips both support gate and gist gate → kept
+    expect(out).not.toBeUndefined();
+  });
+
+  it("DEFAULT_STRATEGY_VERBATIM_CEILING is exported and equals 0.92", () => {
+    expect(DEFAULT_STRATEGY_VERBATIM_CEILING).toBe(0.92);
   });
 });
