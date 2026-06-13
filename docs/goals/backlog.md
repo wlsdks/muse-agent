@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ cohere @muse/shared: DRY'd clamp (4 hand-rolled copies) → canonical @muse/shared clamp + deduped the 3 identical-impl copies (cache/multi-agent/cli); mcp left (Math.min(Math.max) order differs for min>max); +OUTCOME test; dups 4→2 — codebase-quality fire 60
 - ✓ today_brief IrrelAcc: 2 negatives (casual "오늘"/"today" mentions → NO tool) complete today_brief's agent-testing.md triad (selection+confusability shipped fire 97, irrelevance here) — guards the high-frequency casual collision word "today" from over-firing the tool — tool-hardening fire 98
 
 - ✓ today_brief agent tool (EXPANSION): the today/triage merge (overdue-led + today's events/reminders/tasks) existed for muse today / /today / web-API but was never an agent tool, unlike week_agenda — closed the asymmetry; eval:tools 8/8 STABLE 3/3 proves the 12B holds the today-vs-week carve (no confusability) — tool-hardening fire 97
