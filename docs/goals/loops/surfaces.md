@@ -264,3 +264,12 @@ ratchet: desktop swift tests 61/61 (+1) · testFiles 980 · fabrication 0 · sel
 - **왜**: 스프라이트는 "아티스트/JSON 드롭인으로 교체"가 명시 목적인데, 조용한 렌더 홀은 그 경로의 silent-corruption. desktop 표면(최저 8) + new-capability로 다양성.
 - **리뷰지점**: 검증이 렌더러와 *동일한* paletteMap(prefix(1) Character) 사용 → 실제 그릴 수 있는 것과 정확히 일치(근사 아님). 빈 rows의 allSatisfy vacuous-true는 isRectangular(width>0,height>0)가 먼저 걸러 무해. 가드는 isRectangular 後·renderPNG 前. paletteMap/isRectangular 본문 무변.
 - **리스크**: 없음(순수 스프라이트-데이터 검증, network/grounding 무접촉; 독립 Opus judge가 mutation-test(`return true`→테스트 RED)로 비-vacuous·RED-before·glyph-vs-key 의미 일치·가드 배선·무부수효과 검증 후 PASS, swift 61/61).
+
+## fire 30 · 2026-06-14 · skill v1.14.0 · 657a8111
+meta: surface=web · value-class=wiring · pkg=@muse/web · kind=i18n-a11y-dialog-name · verdict=PASS · firesSinceDrill=4
+ratchet: web unit 36/36 · palette e2e 3/3 (+1) · testFiles 984 · fabrication 0 · self-eval exit 0 · 표면 균형 web11·desktop9·cli10
+
+- **무엇**: ⌘K CommandPalette 다이얼로그가 `aria-label="Command palette"` 하드코딩 → 한국어 스크린리더 사용자가 다이얼로그 이름을 영어로 들음. `cmd.dialogLabel` 키 추가(en "Command palette" / ko "명령 팔레트") + `aria-label={t("cmd.dialogLabel")}` 배선.
+- **왜**: 키보드 런처(고빈도)의 접근명이 로캘 무시 영어 고정 = i18n+a11y 결함. fire 28 scout가 지목한 runner-up. en/ko 파리티 가드가 이미 양 로캘 키 일치 강제.
+- **리뷰지점**: ko e2e(localStorage muse.lang=ko)가 다이얼로그 접근명=한국어 문자열을 end-to-end 단언 — 비-vacuous(영어/en-fallback이면 FAIL). en 값=구 리터럴과 동일 → en 동작 무변(기존 en e2e 계속 통과). 단일 로캘만 키 추가하면 파리티 테스트가 RED.
+- **리스크**: 없음(CommandPalette 1줄 + strings 2키 + e2e 1테스트; 순수 presentational i18n/a11y, network/grounding 무접촉; 독립 Opus judge가 stash-revert로 RED-before·비-vacuous(ko 문자열 특정)·en 무회귀·파리티 검증 후 PASS, web build typecheck·unit 36/36·palette e2e 3/3).
