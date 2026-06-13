@@ -1,5 +1,8 @@
 # Muse dev backlog — the living ledger
 
+> ⚠ BLOCKER (codebase-quality fire 5, 2026-06-13): `apps/cli/src/commands-daemon.test.ts` 28/71 FAILED on main (proactive: fired N/N, message length, dest dedup). PRE-EXISTING + EXTERNAL — present with my fire-5 changes stashed; my slice is comment-only in packages/*. Belongs to the concurrent **tool-hardening** loop (daemon/proactive domain, auto-pushes main). NOT fixed here (cross-loop collision risk). main has a real daemon regression to resolve.
+
+
 > The ONE compounding artifact the dev loop reads FIRST. Resurrected after the
 > docs reset deleted it (which forced every session to re-discover "what to build"
 > with expensive scout subagents and throw the answer away). The `improve-muse`
@@ -34,7 +37,16 @@
 - ✓ `find_contact` hardening — surfaces `about`/`connections` (recall material the handler dropped, e.g. "allergic to nuts") so "what do I know about Bob?" answers from the tool; reverse-lookup by phone/email/@handle locked + advertised — tool-hardening fire 50
 - ✓ `muse.tasks.list` tag filter — "show my tasks tagged work" (list filtered only by status/dueWithinDays; tags first-class but unfilterable) — tool-hardening fire 51
 - ✓ `overdue_contacts` agent tool — "who haven't I talked to in a while?" relationship-decay nudge (overdueContacts was CLI-only; tool placed in @muse/autoconfigure to avoid a new dep edge, interactionsFromEvents moved there, CLI re-exports) — tool-hardening fire 52
+- ✓ `muse.tasks.search` matches tags — a task tagged "work" (word not in title/notes) is now found by searching "work" (completes the fire-51 tag story: list FILTERS by tag, search now FINDS by tag) + JUDGE-DRILL (verifier caught a deliberately-inert version) — tool-hardening fire 53
 - ✓ `muse.tasks.list` tag filter — "show my tasks tagged work" was inexpressible (list filtered only by status/dueWithinDays, search ignores tags) though tags are first-class + CLI `--tag` exists; added optional `tag` (case-insensitive exact, both branches) — tool-hardening fire 51
+- ✓ `egressGuards` self-eval ratchet — local-by-construction moat (cloud egress refused in code) promoted to a deterministic scoreboard regression gate, mirroring the grounding ratchet (a structural edge hermes/openclaw can't copy) — differentiation fire 1
+- ✓ `egressGuards` ratchet widened to the voice egress guard — mic audio's cloud STT/TTS path now ratcheted too (drop the MUSE_LOCAL_ONLY voice cloud-key-ignore → self-eval exits 1); value 5→6 — differentiation fire 2
+- ✓ `eval:memory-poisoning` adversarial proof battery — proves Muse drops a model-asserted/poisoned claim at WRITE time (`dropModelAssertedValues`) that rivals' frequency-promotion (OpenClaw dreaming minRecallCount 3) would promote; deterministic, no Ollama — differentiation fire 3
+- ✓ embedder local-only egress gap CLOSED — `createOllamaEmbedder` followed `OLLAMA_BASE_URL` with no local-only check (chat router only gates it for providerId ollama; daemon bypassed the router), so a remote `OLLAMA_BASE_URL` egressed the user's raw note/memory/episode text under MUSE_LOCAL_ONLY; added construction-time fail-close + 6 behavioural tests + folded the throw into the egressGuards ratchet (6→7) — differentiation fire 4
+
+## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
+
+- ◦ **`muse doctor` reports embedder OLLAMA_BASE_URL locality** — fire 4 closed the runtime egress gap (the embedder now fail-closes on a remote base under local-only), but `evaluateLocalOnlyPosture` / `muse doctor` still only re-runs the chat router, so the doctor posture never surfaces the embedder's base URL — a reporting blind spot. Slice: extend the posture snapshot to classify the embedder's `OLLAMA_BASE_URL` too. Source: differentiation fire 4 residual.
 
 ## Done — loop infrastructure (2026-06-12, 진안-directed)
 

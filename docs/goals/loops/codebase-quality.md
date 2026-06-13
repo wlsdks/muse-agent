@@ -61,3 +61,59 @@ ratchet: testFiles 913 · fabrication 0 · groundedSurfaces 27 · cli goal-id ma
 - **Risk:** none — no code touched; behavior/grounding trivially preserved. Remaining
   goal-id markers in packages/* (autoconfigure 3, recall 2, mcp 2, agent-core 1) are a
   future comment-hygiene ◦.
+
+## fire 4 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=@muse/recall · kind=cohere · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 914 · fabrication 0 · groundedSurfaces 27 · recall tests 76/7 files
+- **What:** moved the ask-outcome + weakness-ledger cluster into new `recall/weakness.ts`:
+  createStageTimer, AskOutcome+askOutcomeLabel, AskWeaknessAxis+askWeaknessAxis,
+  AskWeaknessRecorderDeps+recordAskWeakness, AskWeaknessResolverDeps+recordAskWeaknessResolved.
+  Fixed a misplaced askOutcomeLabel JSDoc en route. commands-ask.ts imports + re-exports.
+  commands-ask.ts 2,940 → 2,825 LOC.
+- **Why:** continues @muse/recall extraction (project_recall_extraction "weakness ledger").
+  The deps-injected/pure subset moves cleanly; the two autoconfigure-lazy-import Live
+  wrappers (recordAskWeakness*Live) STAY in the CLI so recall gains no autoconfigure dep
+  (deps stay agent-core+mcp; weakness.ts has zero imports).
+- **Review point:** independent Opus adversarial judge PASS — byte-identical bodies,
+  layering NOT inverted (recall deps unchanged, Live wrappers stayed), best-effort
+  try/catch intact, fabrication untouched, exactly 4 files, full pnpm check 0 (no flakes).
+- **Risk:** none — pure/injected move + comment fix. Remaining recall TODO: model-backed
+  wrappers (drawBestGroundedRedraft/groundingVerdictNotice — need runtime injection design),
+  graph connections, then Phase 3 pipeline+API.
+
+## fire 5 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=multi · kind=comment-hygiene · verdict=PASS(slice) · firesSinceDrill=5
+ratchet: testFiles 915 · fabrication 0 · groundedSurfaces 27 · src goal-id markers → 0 (whole repo)
+- **What:** stripped the 9 remaining goal-ID/iter markers from comments across
+  packages/* (agent-core, autoconfigure ×3, mcp ×2, memory, recall ×2), preserving each
+  WHY. With fire 3's apps/cli sweep, the ENTIRE src tree is now goal-id/iter-marker-free
+  (0 residual). Comments-only diff.
+- **Why:** completes the code-style.md marker ban repo-wide. Diversity: different package
+  set than recent fires.
+- **Review point / ⑤b note:** slice is provably comment-only + behavior-preserving (cli/
+  recall/etc. builds unaffected, lint 0, self-eval 0, groundedSurfaces=27). **④ `pnpm check`
+  is RED — but PRE-EXISTING & EXTERNAL:** `commands-daemon.test.ts` 28/71 fail with my
+  changes STASHED too (proven), a regression the concurrent tool-hardening loop pushed to
+  main (daemon/proactive domain). maker≠judge satisfied by that stash-proof of innocence.
+- **Risk / decision:** NOT fixing the daemon regression (cross-loop collision risk — it's
+  that loop's code). Recorded as a backlog BLOCKER. This slice committed to BRANCH only;
+  the fire-6 merge gate will keep it off main until `pnpm check` is green again.
+
+## fire 6 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=infra · kind=cleanup · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 917 · fabrication 0 · groundedSurfaces 27 · conflict-markers → 0
+- **What:** 진안 asked to fix the fire-5 daemon regression directly. Diagnosis: it was
+  ALREADY fixed upstream (de5eb7f9 "fix(proactive): firedKey space-join collide") — daemon
+  test now 71/71. The REAL defect found: fire 5's `git stash pop` had silently left git
+  conflict markers committed in backlog.md, INDEX.md AND scripts/self-eval.mjs (the last
+  broke `pnpm self-eval` with a SyntaxError). Stripped all markers (union preserved),
+  deduped the stale INDEX row, restored self-eval.mjs from main.
+- **Why:** self-eval is the loop's fitness gate — committed markers in it = silent
+  poison. Lesson recorded: never `git stash pop` on contended docs without checking for
+  conflict residue before committing.
+- **Review point:** self-eval EXIT 0 (testFiles 917, groundedSurfaces 27), daemon 71/71,
+  lint 0; the only `pnpm check` reds are the known messaging/model CPU-contention flakes
+  (pass on re-run). No conflict markers anywhere in the tree.
+- **Risk:** none — restorative cleanup + upstream-fixed regression confirmed. Recall TODO
+  unchanged: model-backed wrappers (drawBestGroundedRedraft/groundingVerdictNotice), graph
+  connections, then Phase 3 pipeline+API.

@@ -244,6 +244,29 @@ async function buildContactsScenario() {
   }
 }
 
+// tasks.list (tag FILTER, exact label) vs tasks.search (free-text find, now
+// also matches tags). Adding tag-matching + tag keywords to search risks
+// stealing "show tasks tagged X" from list — this guards that an exact-label
+// FILTER intent stays on list while a free-text FIND stays on search.
+async function buildTasksTagScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const server = mcp.createTasksMcpServer({ file: "/tmp/eval-tasks-tag.json" });
+    const interesting = new Set(["list", "search"]);
+    const muse = mcp.createLoopbackMcpMuseTools(server).filter((t) => interesting.has(t.definition.name.split(".").pop()));
+    const tools = muse.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "Show my tasks tagged work", expectTool: "muse.tasks.list", requireArgs: ["tag"], argIncludes: /work/i, note: "exact-label FILTER → tasks.list with tag (NOT search, despite search now matching tags)" },
+      { prompt: "work 태그된 할 일 보여줘", expectTool: "muse.tasks.list", requireArgs: ["tag"], argIncludes: /work/i, note: "KO tag filter → tasks.list" },
+      { prompt: "Search my tasks for anything mentioning the Q3 deck", expectTool: "muse.tasks.search", requireArgs: ["query"], note: "free-text FIND → tasks.search (NOT list)" }
+    ];
+    return { label: "tasks tag (list-filter vs search-find)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "tasks-tag", skip: `@muse/mcp not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Relationship-maintenance nudge (overdue_contacts — "who've I lost touch
 // with?") vs looking up ONE specific person (find_contact). The value is the
 // discrimination: a "who haven't I talked to in a while?" intent is a LIST of
@@ -710,6 +733,7 @@ async function main() {
     await buildBrowserScenario(),
     await buildPersonalCrudScenario(),
     await buildContactsScenario(),
+    await buildTasksTagScenario(),
     await buildOverdueScenario(),
     await buildOnThisDayScenario(),
     await buildFeedsScenario(),
