@@ -4878,6 +4878,31 @@ describe("muse.reminders loopback server", () => {
     expect(noQuery).toMatchObject({ error: expect.stringContaining("query is required") });
   });
 
+  it("a failed clear (ambiguous word OR unknown ref) deletes NOTHING — the populated store is left intact", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-clear-"));
+    let counter = 0;
+    const connection = createLoopbackMcpConnection(
+      createRemindersMcpServer({ file: join(dir, "reminders.json"), idFactory: () => `rem_${++counter}` })
+    );
+    await connection.callTool!("add", { dueAt: "2026-05-12T09:00:00Z", text: "dentist appointment" });
+    await connection.callTool!("add", { dueAt: "2026-05-13T09:00:00Z", text: "dentist follow-up" });
+    await connection.callTool!("add", { dueAt: "2026-05-14T09:00:00Z", text: "buy milk" });
+
+    // An ambiguous WORD ("dentist" matches two) must return candidates, not delete a guess.
+    const ambiguous = await connection.callTool!("clear", { id: "dentist" });
+    expect(ambiguous).toMatchObject({ error: expect.stringContaining("multiple") });
+    expect((ambiguous.candidates as unknown[]).length).toBe(2);
+    expect(await connection.callTool!("list", { status: "all" })).toMatchObject({ total: 3 });
+
+    // An unknown ref must error WITHOUT touching the store.
+    const unknown = await connection.callTool!("clear", { id: "passport" });
+    expect(unknown).toMatchObject({ error: expect.stringContaining("not found") });
+    expect(await connection.callTool!("list", { status: "all" })).toMatchObject({ total: 3 });
+  });
+
   it("search greps reminder text case-insensitively, defaulting to status=all", async () => {
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
