@@ -90,3 +90,11 @@ ratchet: agent-core +2 tests (62 pass; full suite green) · lint 0/0 · fabricat
 - 왜: classifyRetrievalConfidence는 confidence를 cosine로만 산정(text 무시) — 빈 텍스트 매치가 confidence=1을 받아 escalation 밴드 진입. wedge(주 게이트)의 fabrication-floor 직접 누수라 이번 세션 최고가치.
 - 리뷰지점: `evidence.trim()===0 && base.verdict!=="grounded"`만 단축(grounded base는 value 밴드로 — demote만 가능, refusal 오강등 방지). non-empty 경로 byte-불변. guard 격리 제거 시 empty 테스트만 red(1/62), judge-not-called까지 고정. 독립 Opus judge 5/5 PASS(full suite green).
 - 리스크: 없음 수준(strictly tighten, fail-close). council/reflection·recall 세 곳 모두 이제 empty-evidence fail-close 일관.
+
+## fire 12 · 2026-06-13 · skill v1.14.0 · 6cb7ac7d
+meta: value-class=redteam-defense · pkg=@muse/autoconfigure · kind=A · verdict=PASS · firesSinceDrill=3
+ratchet: autoconfigure +6 tests (581 pass) · lint 0/0 · fabrication 0 · isolated-mutation verified · floor STRICTER (RATCHET: C→A, pkg autoconfigure 재방문이나 다른 표면)
+- 무엇: ambient "Related:" brief enricher의 **CRAG margin 가드 fail-open 수정** — `createKnowledgeEnricher`가 `classifyRetrievalConfidence([top])`로 단일 매치만 넘겨 runnerUp=0 → flat-distribution(near-tie 모호성) 가드 영구 무력화. 0.57/0.56 near-tie도 confident로 daily brief에 surface. `selectEnricherLine` 순수 헬퍼로 추출해 full post-exclusion candidates를 classify.
+- 왜: 형제 proactive 경로는 full matches로 margin 체크하는데 이 표면만 diverge — 라이브 brief에 모호한 recall이 confident처럼 올라타는 grounded≠true fail-open. createKnowledgeEnricher→daemon→situational-briefing 경로로 도달.
+- 리뷰지점: 등가 리팩터(candidates[0]==기존 find, classify 내부 정렬로 순서 무관), confident/none 동일, near-tie만 추가 억제. `[top]` mutation 시 near-tie 테스트 2개만 red(2/6)로 격리 증명. 독립 Opus judge 5/5 PASS(581 green).
+- 리스크: 없음 수준(strictly tighten — clear-lead/single은 영향 없음). over-reach 없음 확인.
