@@ -26,6 +26,7 @@ import {
   type PlaybookProvider
 } from "@muse/agent-core";
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
+import { LocalOnlyViolationError, isLoopbackUrl } from "@muse/model";
 import type { JsonObject } from "@muse/shared";
 import { appendCheckins, readCheckins, readFadedMemoryKeys, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore, UserModelSlot } from "@muse/memory";
@@ -224,6 +225,18 @@ export function createOllamaEmbedder(model: string): (text: string) => Promise<r
   // mirroring `resolveOllamaUrl` and the goal-478 merge fix.
   const trimmed = process.env.OLLAMA_BASE_URL?.trim();
   const base = ((trimmed && trimmed.length > 0) ? trimmed : "http://127.0.0.1:11434").replace(/\/+$/u, "");
+  // Local-only / no-cloud-egress, fail-CLOSED at construction (the same
+  // posture createModelProvider enforces for the chat provider). The chat
+  // gate only fires when the CHAT provider id is `ollama` — it never sees
+  // this embedder's independent OLLAMA_BASE_URL, so a localhost chat model
+  // plus a REMOTE OLLAMA_BASE_URL would silently POST the user's note /
+  // memory / episode text off-box. Refusing here closes that egress hole
+  // before any caller can hand the embedder private text. MUSE_LOCAL_ONLY
+  // is ON by default; remote requires the explicit MUSE_LOCAL_ONLY=false
+  // opt-out that forfeits the zero-egress guarantee.
+  if (parseBoolean(process.env.MUSE_LOCAL_ONLY, true) && !isLoopbackUrl(base)) {
+    throw new LocalOnlyViolationError("ollama", base);
+  }
   // Keep the embed model warm with the SAME knob as the chat model (01717219):
   // grounding embeds the query every turn, so an embed model that cold-reloads
   // after a 5-minute idle gap would stall the FIRST grounded answer after a

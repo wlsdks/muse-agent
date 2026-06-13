@@ -190,6 +190,20 @@ function main() {
   const corpusPath = join(ROOT, "apps/cli/src/grounding-eval-corpus.ts");
   const corpusSrc = existsSync(corpusPath) ? readFileSync(corpusPath, "utf8") : "";
   gates.groundedCases = { status: "pass", value: countGroundedCases(corpusSrc) };
+<<<<<<< Updated upstream
+=======
+  const egressSources = [
+    "packages/model/src/local-only-policy.ts",
+    "packages/autoconfigure/src/autoconfigure-model-provider.ts",
+    "packages/autoconfigure/src/registry-builders/voice.ts",
+    "packages/autoconfigure/src/context-engineering-builders.ts"
+  ]
+    .map((rel) => join(ROOT, rel))
+    .filter((p) => existsSync(p))
+    .map((p) => readFileSync(p, "utf8"))
+    .join("\n");
+  gates.egressGuards = { status: "pass", value: countEgressGuards(egressSources) };
+>>>>>>> Stashed changes
   for (const [gateName, batteryFile] of [
     ["toolCases", "scripts/eval-tool-selection.mjs"],
     ["adversarialCases", "scripts/eval-adversarial.mjs"],

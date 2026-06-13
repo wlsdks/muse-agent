@@ -80,3 +80,21 @@ ratchet: testFiles 914 · fabrication 0 · groundedSurfaces 27 · recall tests 7
 - **Risk:** none — pure/injected move + comment fix. Remaining recall TODO: model-backed
   wrappers (drawBestGroundedRedraft/groundingVerdictNotice — need runtime injection design),
   graph connections, then Phase 3 pipeline+API.
+
+## fire 5 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=multi · kind=comment-hygiene · verdict=PASS(slice) · firesSinceDrill=5
+ratchet: testFiles 915 · fabrication 0 · groundedSurfaces 27 · src goal-id markers → 0 (whole repo)
+- **What:** stripped the 9 remaining goal-ID/iter markers from comments across
+  packages/* (agent-core, autoconfigure ×3, mcp ×2, memory, recall ×2), preserving each
+  WHY. With fire 3's apps/cli sweep, the ENTIRE src tree is now goal-id/iter-marker-free
+  (0 residual). Comments-only diff.
+- **Why:** completes the code-style.md marker ban repo-wide. Diversity: different package
+  set than recent fires.
+- **Review point / ⑤b note:** slice is provably comment-only + behavior-preserving (cli/
+  recall/etc. builds unaffected, lint 0, self-eval 0, groundedSurfaces=27). **④ `pnpm check`
+  is RED — but PRE-EXISTING & EXTERNAL:** `commands-daemon.test.ts` 28/71 fail with my
+  changes STASHED too (proven), a regression the concurrent tool-hardening loop pushed to
+  main (daemon/proactive domain). maker≠judge satisfied by that stash-proof of innocence.
+- **Risk / decision:** NOT fixing the daemon regression (cross-loop collision risk — it's
+  that loop's code). Recorded as a backlog BLOCKER. This slice committed to BRANCH only;
+  the fire-6 merge gate will keep it off main until `pnpm check` is green again.
