@@ -558,10 +558,21 @@ function parseIsoDate(value: string | undefined, anchor: () => Date = () => new 
   if (!value) {
     return undefined;
   }
-  if (/^\d{4}-\d{2}-\d{2}/u.test(value)) {
+  const dateHead = /^(\d{4})-(\d{2})-(\d{2})/u.exec(value);
+  if (dateHead) {
     const parsed = new Date(value);
     if (!Number.isNaN(parsed.getTime())) {
-      return parsed;
+      // `new Date("2026-02-30")` silently rolls over to Mar 2 — accepting it would
+      // schedule the event ~2 days off. A real date round-trips its Y-M-D through
+      // Date.UTC unchanged; a rolled-over one does not. Mirrors parseTaskDueAt.
+      const y = Number(dateHead[1]);
+      const mo = Number(dateHead[2]);
+      const d = Number(dateHead[3]);
+      const probe = new Date(Date.UTC(y, mo - 1, d));
+      if (probe.getUTCFullYear() === y && probe.getUTCMonth() === mo - 1 && probe.getUTCDate() === d) {
+        return parsed;
+      }
+      return undefined;
     }
   }
   return resolveRelativeTimePhrase(value, anchor);
