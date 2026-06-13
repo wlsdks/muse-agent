@@ -12,6 +12,7 @@
  */
 
 import { existsSync, promises as fs } from "node:fs";
+import { isRecord } from "@muse/shared";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -47,9 +48,6 @@ interface DoctorSummary {
   readonly generatedAt?: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: DoctorCommandHelpers): void {
   program
