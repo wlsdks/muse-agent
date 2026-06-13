@@ -44,3 +44,20 @@ ratchet: testFiles 913 · fabrication 0 · groundedSurfaces 27 · unused-exports
   the `compat-routes.ts` barrel (chunkText/epochMillisOrNull/badRequest/… re-exports) is
   ALREADY largely unused (pre-existing) — a bigger barrel-cleanup ◦. `pnpm check` had 2
   unrelated CPU-contention flakes (@muse/messaging, @muse/model) that pass on re-run.
+
+## fire 3 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=@muse/cli · kind=comment-hygiene · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 913 · fabrication 0 · groundedSurfaces 27 · cli goal-id markers 12→0
+- **What:** stripped 12 forbidden goal-ID / iteration markers (P43-1, P41-11, P22-6,
+  P37-20/36, P34-11, P41-32/33, P43-4, "iter 38" …) from source comments across 6
+  apps/cli files (commands-ask/daemon/recap/calendar/today/telemetry), preserving each
+  comment's WHY. Diff is comments-only (0 code lines).
+- **Why:** .claude/rules/code-style.md forbids round/goal/iteration markers in source
+  (history belongs in git/CHANGELOG). Diversity: fire1 recall/cohere, fire2 api/dead-code,
+  this cli/comment-hygiene — 3 distinct KINDs.
+- **Review point:** independent Opus adversarial judge PASS — comments-only confirmed
+  (zero non-comment changed lines), WHY clauses intact on all 12, cli build 0, lint 0,
+  self-eval 0 (groundedSurfaces=27).
+- **Risk:** none — no code touched; behavior/grounding trivially preserved. Remaining
+  goal-id markers in packages/* (autoconfigure 3, recall 2, mcp 2, agent-core 1) are a
+  future comment-hygiene ◦.

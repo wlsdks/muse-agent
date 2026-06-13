@@ -1239,7 +1239,7 @@ const NAME_TOKEN = /[^\p{L}\p{N}]+/u;
 /**
  * When a calendar event's title names a known contact who has a RELATIONSHIP to
  * the user, return the annotation to append — "Lunch with Dana" → " (your
- * manager)" — surfacing the relationship graph (P37-20/36) in the day view.
+ * manager)" — surfacing the relationship graph in the day view.
  * Matches a contact's name/alias TOKEN as a whole word in the title (so "Dana"
  * matches "Lunch with Dana"); only relationship-bearing contacts annotate (a
  * bare name adds nothing). Empty when nothing matches. Pure.

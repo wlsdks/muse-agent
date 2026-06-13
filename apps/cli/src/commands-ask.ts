@@ -1668,7 +1668,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // messenger is configured) gets a draft-first confirm gate under --with-tools:
       // show the exact {provider, destination, text} and fire ONLY on confirm,
       // fail-closed in a non-TTY. Without this gate the send fail-closes entirely
-      // (P41-11). Built independently of --actuators so a benign "send X" isn't
+      // Built independently of --actuators so a benign "send X" isn't
       // blocked by the actuator tool descriptions' injection-guard false-positive.
       let messagingApprovalGate: MessageApprovalGate | undefined;
       if (options.withTools === true) {
@@ -2789,7 +2789,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // notes, close with one on-brand line so the refusal feels cared-for,
       // not blocked. Empty corpus gets the on-ramp hint instead; a real cited
       // answer gets nothing. Deterministic line, no note pointer (so it can't
-      // reintroduce the spurious-citation-on-a-refusal confusion P34-11 fixed).
+      // reintroduce the spurious-citation-on-a-refusal confusion that was fixed).
       if (!options.json && shouldWarmClose(collectedAnswer, noteFileCount)) {
         io.stderr(`\n${WARM_REFUSAL_CLOSE}\n`);
       }
@@ -2814,7 +2814,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         io.stderr(`\n💡 Applied a preference you taught me: "${appliedStrategy}". (Not right? \`muse playbook undo\`.)\n`);
       }
 
-      // Felt self-learning (P43-1): when a topic the user CORRECTED resurfaces,
+      // Felt self-learning: when a topic the user CORRECTED resurfaces,
       // surface the strategy the daemon distilled from that correction — recorded
       // unattended but still on PROBATION (not applied) — so the user is reminded
       // at the relevant moment and can choose to apply it. Surface-only: it never

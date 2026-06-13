@@ -769,7 +769,7 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       }
       const updated = await provider.updateEvent(match.id, update);
       // When the START moved, shift any linked --remind reminder by the same delta
-      // so it stays the same minutes before the NEW start (P41-32/33's link kept
+      // so it stays the same minutes before the NEW start (the --remind link kept
       // daily-reliable across reschedules). Best-effort: a reminders-store error
       // must never break the edit (the event update already succeeded).
       let shiftedReminders = 0;
