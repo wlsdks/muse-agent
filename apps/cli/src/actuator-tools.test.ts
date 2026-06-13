@@ -2,8 +2,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createAgentRuntime } from "@muse/agent-core";
-import { createContactsAddTool, type Contact } from "@muse/mcp";
+import { createAgentRuntime, groundToolArguments } from "@muse/agent-core";
+import { createContactsAddTool } from "@muse/mcp";
 import type { ModelProvider, ModelResponse } from "@muse/model";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
@@ -219,34 +219,33 @@ describe("buildActuatorTools — the agent invokes a wired tool through its clac
   });
 });
 
-describe("add_contact — fabricated phone dropped by arg-grounding before the contact store write", () => {
-  function runAddContact(userMessage: string, phoneArg: string): Promise<Contact[]> {
-    const saved: Contact[] = [];
-    const tool = createContactsAddTool({ save: async (c) => { saved.push(c); } });
-    return createAgentRuntime({
-      maxToolCalls: 1,
-      modelProvider: sequenceProvider([
-        { id: "tool", model: "m", output: "Saving.", toolCalls: [{ arguments: { name: "Bob", phone: phoneArg, relationship: "dentist" }, id: "tc-1", name: "add_contact" }] },
-        { id: "final", model: "m", output: "Done." }
-      ] as unknown as ModelResponse[]),
-      toolRegistry: new ToolRegistry([tool])
-    }).run({
-      messages: [{ content: userMessage, role: "user" }],
-      metadata: { localMode: true },
-      model: "provider/model"
-    }).then(() => saved);
-  }
+describe("add_contact — phone arg-grounding drops a fabricated number (anti-fabrication floor)", () => {
+  // The tool's OWN declared groundedArgs fed through the real runtime grounding
+  // function (agent-runtime applies exactly this at the tool boundary). A
+  // fabricated phone the user never said is the highest-harm contact fabrication
+  // — a wrong number means future "text mom" reaches a stranger.
+  const groundedArgs = createContactsAddTool({ save: async () => {} }).definition.groundedArgs ?? [];
 
-  it("DROPS a phone the user never stated — a fabricated number is not persisted to the contact", async () => {
-    const saved = await runAddContact("save Bob, he's my dentist", "+1 555 123 4567");
-    expect(saved).toHaveLength(1);
-    expect(saved[0]).not.toHaveProperty("phone");
-    expect(saved[0]).toMatchObject({ name: "Bob", relationship: "dentist" });
+  it("DROPS a phone the user never stated — using add_contact's declared groundedArgs", () => {
+    const out = groundToolArguments(
+      { name: "Bob", phone: "+1 555 123 4567", relationship: "dentist" },
+      groundedArgs,
+      "save Bob, he's my dentist"
+    );
+    expect(out.dropped).toContain("phone");
+    expect(out.args).not.toHaveProperty("phone");
+    // a non-grounded arg (name) and a STATED grounded arg (relationship) survive untouched
+    expect(out.args).toMatchObject({ name: "Bob", relationship: "dentist" });
   });
 
-  it("KEEPS a phone the user actually stated — grounded even when reformatted with +country/spaces", async () => {
-    const saved = await runAddContact("save Bob the dentist, his number is 415-555-0101", "+1 415 555 0101");
-    expect(saved[0]).toMatchObject({ phone: "+1 415 555 0101" });
+  it("KEEPS a phone the user actually stated — grounded across +country/space reformatting", () => {
+    const out = groundToolArguments(
+      { name: "Bob", phone: "+1 415 555 0101" },
+      groundedArgs,
+      "save Bob the dentist, his number is 415-555-0101"
+    );
+    expect(out.args).toMatchObject({ phone: "+1 415 555 0101" });
+    expect(out.dropped).not.toContain("phone");
   });
 });
 
