@@ -42,11 +42,24 @@ export interface PuppeteerBrowserControllerOptions {
   readonly userDataDir?: string;
   /** Navigation/settle timeout in ms. Default 15000. */
   readonly timeoutMs?: number;
+  /**
+   * Hard ceiling on any single CDP roundtrip (ms). Puppeteer's own default is
+   * 180000 (3 min) — far longer than `timeoutMs`, and it bounds the calls that
+   * carry NO higher-level timeout (the snapshot `page.evaluate`s: innerText, the
+   * element walk). So a stuck/pathological page wedges the agent for 3 min with
+   * no recovery. Default here is `timeoutMs` + headroom, capped well under 180s.
+   */
+  readonly protocolTimeoutMs?: number;
   /** Run without a visible window (default false — Muse shows the browser). */
   readonly headless?: boolean;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+// Headroom over the per-operation timeout: a legitimate slow nav/settle runs to
+// `timeout`, and the protocol layer must NOT kill it first — so the CDP ceiling
+// sits a margin above. Still ~5× under puppeteer's silent 180s default, so a
+// genuinely stuck roundtrip fails fast and recoverably instead of hanging.
+const PROTOCOL_TIMEOUT_HEADROOM_MS = 15_000;
 // How long to wait for a click/submit to spawn a new tab before assuming none —
 // `targetcreated` fires at click time, so this only taxes a no-new-tab action.
 const NEW_TAB_WINDOW_MS = 500;
@@ -84,7 +97,11 @@ export class PuppeteerBrowserController implements BrowserController {
       const portFile = await readFile(join(this.userDataDir, "DevToolsActivePort"), "utf8");
       const port = Number(portFile.split("\n")[0]);
       if (!Number.isInteger(port) || port <= 0) return undefined;
-      return await puppeteer.connect({ browserURL: `http://127.0.0.1:${port.toString()}`, defaultViewport: null });
+      return await puppeteer.connect({
+        browserURL: `http://127.0.0.1:${port.toString()}`,
+        defaultViewport: null,
+        protocolTimeout: this.protocolTimeout
+      });
     } catch {
       return undefined;
     }
@@ -199,6 +216,17 @@ export class PuppeteerBrowserController implements BrowserController {
 
   private get timeout(): number {
     return this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  }
+
+  /**
+   * The CDP-roundtrip ceiling. Always kept ABOVE `timeout` so the protocol
+   * layer never kills a legitimately slow op the operation timeout would own;
+   * an explicit too-small value is clamped up to `timeout` + headroom.
+   */
+  private get protocolTimeout(): number {
+    const floor = this.timeout + PROTOCOL_TIMEOUT_HEADROOM_MS;
+    const requested = this.options.protocolTimeoutMs;
+    return requested === undefined ? floor : Math.max(requested, floor);
   }
 
   /**

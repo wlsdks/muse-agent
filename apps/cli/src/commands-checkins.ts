@@ -13,8 +13,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { readLastChatHistory } from "./chat-history.js";
+import { closestCommandName } from "./closest-command.js";
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
+
+const CHECKIN_STATUS_VALUES = ["scheduled", "fired", "all"] as const;
 
 export function checkinsFile(env: NodeJS.ProcessEnv = process.env): string {
   return env.MUSE_CHECKINS_FILE?.trim() || join(homedir(), ".muse", "checkins.json");
@@ -92,8 +95,17 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
     .option("--status <s>", "scheduled (default) | fired | all", "scheduled")
     .option("--json", "Print the raw payload")
     .action(async (options: { readonly status: string; readonly json?: boolean }) => {
-      const all = await readCheckins(checkinsFile()).catch(() => []);
       const status = options.status.trim().toLowerCase();
+      // Validate like `tasks list` — a typo'd --status must error loudly, not
+      // silently filter to an empty (misleading-as-"no check-ins") result.
+      if (!(CHECKIN_STATUS_VALUES as readonly string[]).includes(status)) {
+        const suggestion = closestCommandName(status, CHECKIN_STATUS_VALUES);
+        const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+        io.stderr(`muse checkins list: --status must be one of: ${CHECKIN_STATUS_VALUES.join(", ")} (got '${options.status}')${hint}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const all = await readCheckins(checkinsFile()).catch(() => []);
       const scoped = status === "all" ? all : all.filter((c) => c.status === status);
       if (options.json) {
         io.stdout(`${JSON.stringify({ checkins: scoped, status, total: scoped.length }, null, 2)}\n`);

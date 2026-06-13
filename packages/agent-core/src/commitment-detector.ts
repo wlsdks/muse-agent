@@ -18,6 +18,8 @@
  * reimplementation for Muse, no code copied. See THIRD_PARTY_NOTICES.md.
  */
 
+import { cosineSimilarity } from "./episodic-recall.js";
+
 export type CommitmentKind = "need-to" | "have-to" | "should" | "will" | "ko-haeya" | "ko-plan";
 
 export interface UserCommitment {
@@ -105,4 +107,77 @@ export function detectUserCommitments(
     }
   }
   return out;
+}
+
+/**
+ * Conservative SemDeDup threshold (arXiv:2303.09540, Abbas et al. 2023).
+ * 0.86 is high enough that only truly near-duplicate phrasings collapse
+ * (e.g. "email Bob the report" / "email Bob about the report") while
+ * topically related but distinct commitments (different recipient, task,
+ * or domain) are kept separate — the cluster is semantic identity, not
+ * topical proximity.
+ */
+export const COMMITMENT_DEDUP_COSINE = 0.86;
+
+/**
+ * Semantic near-duplicate collapse using a greedy single-pass algorithm
+ * (SemDeDup, arXiv:2303.09540, Abbas/Tirumala/Simig/Ganguli/Morcos 2023).
+ *
+ * Each commitment is embedded; items are visited in input order. An item
+ * joins the first existing cluster whose kept representative scores
+ * cosineSimilarity ≥ threshold against it; otherwise it starts a new
+ * cluster. The representative kept per cluster is the higher-confidence
+ * member ("high" beats "low"); on a tie the earlier / shorter form is
+ * kept (canonical: the first phrasing the user voiced).
+ *
+ * SUBTRACTIVE: every returned element is === an element from the input.
+ * FAIL-SOFT: any embedder error → input returned unchanged.
+ * NON-OVER-COLLAPSE: zero-norm → cosineSimilarity 0 → never falsely merges.
+ */
+export async function collapseNearDuplicateCommitments(
+  commitments: readonly UserCommitment[],
+  embed: (text: string) => Promise<readonly number[]>,
+  options?: { readonly threshold?: number }
+): Promise<readonly UserCommitment[]> {
+  if (commitments.length <= 1) return commitments;
+  const threshold = options?.threshold ?? COMMITMENT_DEDUP_COSINE;
+
+  let vectors: ReadonlyArray<readonly number[]>;
+  try {
+    vectors = await Promise.all(commitments.map((c) => embed(c.text)));
+  } catch {
+    return commitments;
+  }
+
+  // Each cluster entry: the index (in commitments) of the kept representative.
+  const clusterReps: number[] = [];
+
+  for (let i = 0; i < commitments.length; i += 1) {
+    const vec = vectors[i]!;
+    let joined = false;
+    for (const repIdx of clusterReps) {
+      const sim = cosineSimilarity(vec, vectors[repIdx]!);
+      if (sim >= threshold) {
+        // This item is a near-duplicate of the cluster rep. Pick the better
+        // representative: "high" confidence beats "low"; on a tie keep the
+        // shorter (canonical) form, which is always the earlier one since we
+        // walk in input order and the earlier item is already the rep.
+        const current = commitments[repIdx]!;
+        const incoming = commitments[i]!;
+        if (incoming.confidence === "high" && current.confidence !== "high") {
+          // Replace rep with the higher-confidence incoming item.
+          clusterReps[clusterReps.indexOf(repIdx)] = i;
+        }
+        joined = true;
+        break;
+      }
+    }
+    if (!joined) {
+      clusterReps.push(i);
+    }
+  }
+
+  // Preserve input order of kept representatives.
+  clusterReps.sort((a, b) => a - b);
+  return clusterReps.map((idx) => commitments[idx]!);
 }

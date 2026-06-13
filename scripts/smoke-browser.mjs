@@ -25,6 +25,11 @@
  *  20. nav status      — a real localhost 404/500 (goto resolves on it) surfaces
  *                        httpStatus so an error page can't pass for content; a
  *                        200 carries NO status (silent success)
+ *  21. protocol timeout — a CDP roundtrip that never returns (a page with a
+ *                        forever-blocking innerText getter, read by the snapshot
+ *                        evaluate which has no higher-level timeout) fails fast
+ *                        within the bound, not after puppeteer's silent 180s
+ *                        default — a stuck page can't wedge the agent
  *
  * Skips (exit 0) when Chrome is not installed — a skip is not a pass.
  */
@@ -171,6 +176,16 @@ const LINKS_HTML = `<!doctype html><html><head><title>Links</title></head><body>
 <a href="https://example.com/pricing">See pricing</a>
 <a href="docs/start">Docs</a>
 <button onclick="void 0">Just a button</button>
+</body></html>`;
+
+// A page whose body.innerText getter blocks the JS thread FOREVER. The snapshot
+// path reads innerText via page.evaluate — a CDP roundtrip that carries NO
+// higher-level timeout — so without a bounded protocolTimeout it hangs for
+// puppeteer's silent 180s default (a prod agent that can't be SIGKILLed wedges).
+// With the bound, the stuck roundtrip rejects fast and recoverably.
+const HANG_HTML = `<!doctype html><html><head><title>Hang</title></head><body><p>placeholder</p>
+<script>Object.defineProperty(document.body, "innerText",
+  { configurable: true, get() { while (true) {} } });</script>
 </body></html>`;
 
 function assert(condition, label) {
@@ -373,6 +388,30 @@ try {
   assert(snap.httpStatus === 200, "a 200 IS captured by the controller (real path)");
   assert(Object.keys(statusFields(snap)).length === 0, "but statusFields stays SILENT on a 200 — no false alarm to the model");
   assert(snap.text.includes("The real content"), "the 200 page content flows normally");
+
+  console.log("21) protocol-timeout — a CDP call that never returns fails fast, not after 180s");
+  await writeFile(join(dir, "hang.html"), HANG_HTML);
+  // A dedicated controller with a SMALL bound so the test is fast: the stuck
+  // innerText getter makes the snapshot evaluate hang; without protocolTimeout
+  // it would block for puppeteer's 180s default. Reconnects to the same Chrome.
+  const boundController = new PuppeteerBrowserController({
+    headless: true,
+    protocolTimeoutMs: 3_000,
+    timeoutMs: 4_000,
+    userDataDir: join(dir, "profile")
+  });
+  const startedAt = Date.now();
+  let rejected = false;
+  try {
+    await boundController.open(pathToFileURL(join(dir, "hang.html")).href);
+  } catch {
+    rejected = true;
+  } finally {
+    await boundController.disconnect();
+  }
+  const elapsedMs = Date.now() - startedAt;
+  assert(rejected, "a CDP call that never returns rejects (does not hang the agent forever)");
+  assert(elapsedMs < 60_000, `it fails fast within the bound, not puppeteer's 180s default (took ${String(elapsedMs)}ms)`);
 
   console.log("\nsmoke:browser PASS");
 } finally {

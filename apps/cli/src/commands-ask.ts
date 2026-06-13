@@ -35,7 +35,7 @@ import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
 import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, formatDueLocal, listReflections, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
-import { allUserMemoryFacts, buildDiskContents, buildNoteContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, escapeSystemPromptMarkers, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
+import { allUserMemoryFacts, buildDiskContents, buildNoteContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, escapeSystemPromptMarkers, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, buildDiskContents, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource };
@@ -1683,22 +1683,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // grounding still works
         }
       }
-      const taskBlock = openTasks.length === 0
-        ? "(no open tasks)"
-        : openTasks
-          .map((t, i) => {
-            // Human-readable LOCAL due + a relative hint (e.g. "(tomorrow)") so the
-            // model can reason about "what's due tomorrow/today/this week?" — a raw UTC
-            // ISO is opaque and got time-relative tasks SILENTLY DROPPED from the answer.
-            const due = t.dueAt ? ` (due ${formatDueLocal(t.dueAt)})` : "";
-            const urgent = t.urgent ? " [URGENT]" : "";
-            // Embed the canonical citation form (`[task: <title>]`) in the
-            // wrapper, exactly like the note wrapper embeds `[from <src>]` — else
-            // the local model cites the marker's id (`[task: t1]`), which the
-            // title-matching gate then false-strips as "a source you don't have".
-            return `<<task ${(i + 1).toString()} — ${t.id}${urgent}>>\n${t.title}${due}\n[task: ${t.title}]\n<<end>>`;
-          })
-          .join("\n\n");
+      const taskBlock = buildTaskContextBlock(openTasks);
 
       // Pull upcoming calendar events as a third grounding source.
       // "What's on my schedule this week?", "any meetings tomorrow?",

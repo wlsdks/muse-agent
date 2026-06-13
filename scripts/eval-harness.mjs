@@ -126,6 +126,21 @@ export const toolScorers = {
     const args = toolCalls[0]?.arguments ?? {};
     return regex.test(JSON.stringify(args)) ? { ok: true, detail: "args match" } : { ok: false, detail: `args ${JSON.stringify(args)} miss ${regex}` };
   },
+  /**
+   * The first call's SPECIFIC `field` arg (a string) must match `regex` — unlike
+   * argMatches, which tests the whole args blob and so passes when the token
+   * merely appears in a sibling field. Field-targeted, so a time phrase asserted
+   * on `dueAt` is NOT satisfied by the same word sitting in `text`. This is what
+   * re-arms the time-field regression class (a `*Iso` field name makes an 8B
+   * precompute a WRONG timestamp into the field instead of copying the user's
+   * phrase — an ISO carries no "tomorrow"/"내일", so the assertion catches it).
+   */
+  argFieldMatches: (field, regex) => (toolCalls) => {
+    const args = toolCalls[0]?.arguments ?? {};
+    const value = args[field];
+    if (typeof value !== "string") return { ok: false, detail: `arg '${field}' absent/non-string in ${JSON.stringify(args)}` };
+    return regex.test(value) ? { ok: true, detail: `${field} matches ${regex}` } : { ok: false, detail: `${field}=${JSON.stringify(value)} misses ${regex}` };
+  },
   /** Every required arg key must be present + non-empty on the first call (ArgumentCorrectness). */
   argsPresent: (keys) => (toolCalls) => {
     const args = toolCalls[0]?.arguments ?? {};

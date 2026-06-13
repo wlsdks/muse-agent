@@ -1,11 +1,54 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { readCheckins } from "@muse/mcp";
+import { Command } from "commander";
 
-import { checkinsFile, scanSessionCheckins } from "./commands-checkins.js";
+import { checkinsFile, registerCheckinsCommands, scanSessionCheckins } from "./commands-checkins.js";
+
+async function runCheckins(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const io = { stderr: (m: string) => stderr.push(m), stdout: (m: string) => stdout.push(m) };
+  const prevExit = process.exitCode;
+  process.exitCode = 0;
+  try {
+    const program = new Command();
+    program.exitOverride();
+    registerCheckinsCommands(program, io);
+    await program.parseAsync(["node", "muse", "checkins", ...args]);
+  } finally { /* leave exitCode for the caller to read */ }
+  const exitCode = process.exitCode === 0 ? undefined : process.exitCode;
+  process.exitCode = prevExit;
+  return { exitCode, stderr: stderr.join(""), stdout: stdout.join("") };
+}
+
+describe("checkins list --status — strict validation (sibling parity with `tasks list`)", () => {
+  const prevEnv = process.env.MUSE_CHECKINS_FILE;
+  beforeEach(() => {
+    process.env.MUSE_CHECKINS_FILE = join(mkdtempSync(join(tmpdir(), "muse-checkins-")), "checkins.json");
+  });
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.MUSE_CHECKINS_FILE;
+    else process.env.MUSE_CHECKINS_FILE = prevEnv;
+  });
+
+  it("rejects a typo'd --status with an actionable error + exit 1, not a silently-empty list", async () => {
+    const r = await runCheckins(["list", "--status", "fierd"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("--status must be one of: scheduled, fired, all");
+    expect(r.stderr).toContain("did you mean 'fired'");
+    expect(r.stdout).not.toContain("No fierd check-ins");
+  });
+
+  it("accepts a valid --status without erroring", async () => {
+    const r = await runCheckins(["list", "--status", "fired"]);
+    expect(r.exitCode).toBeUndefined();
+    expect(r.stderr).toBe("");
+  });
+});
 
 describe("checkinsFile", () => {
   it("honours MUSE_CHECKINS_FILE, else defaults under ~/.muse/checkins.json", () => {

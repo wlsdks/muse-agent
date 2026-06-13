@@ -102,3 +102,12 @@ ratchet: desktop swift tests 50/50 (+1) · fabrication 0 · self-eval exit 0
 - **왜**: trimmed 비어있지 않아(`📎…`) 빈-답변 분기를 건너뛰고 strip 後 빈 문자열이 되는 경로 — fire 5(빈 JSON)·fire 8(멀티라인 strip)가 못 잡은 receipt-only 클래스의 별개 갭. 실제 다운스트림 결과(orb 무의미 발화) 확인됨.
 - **리뷰지점**: 정상 인용 답변("… [from vpn.md]")은 strip 後 비어있지 않아 음성 유지(empty→nil 붕괴는 진짜 빈 경우만 발동). bubbleText는 영수증 유지(무변).
 - **리스크**: 없음(success 분기 speechText 계산 1줄, error/empty 분기·bubbleText 무변, 독립 Opus judge가 isolation으로 RED 입증·회귀 5케이스·consumer 의존성 검증 후 PASS, 50/50).
+
+## fire 12 · 2026-06-13 · skill v1.14.0 · fbae97e5
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=input-validation-consistency · verdict=PASS · firesSinceDrill=4
+ratchet: cli tests 2593/2593 (checkins +4) · fabrication 0 · self-eval exit 0 · 표면 균형 web4·desktop4·cli4
+
+- **무엇**: `muse checkins list --status`가 오타(`fierd`)를 삼켜 "No fierd check-ins."(stdout, exit0) — 정상 빈 결과와 구별 불가. enum {scheduled,fired,all} 검증 추가: 미일치면 stderr 에러+exit1+did-you-mean(`closestCommandName` 재사용). readCheckins/`--json` 분기 앞에 배치.
+- **왜**: sibling `tasks list --status`는 `assertTaskStatusInput`으로 엄격 검증("타이포가 조용히 틀린 리스트를 반환 않게")하는데 checkins만 누락 — 5개 스케줄 있는 사용자가 "없음"으로 오인하는 실제 버그(cross-surface 불일치).
+- **리뷰지점**: 기본 "scheduled"(생략 시)·대소문자(FIRED→fired) 정상 허용, 미지값만 거부. 검증을 파일 읽기 전에 둬 나쁜 status는 IO도 안 함. scan/snooze/cancel·happy/json 경로 무변.
+- **리스크**: 없음(import+const+검증 14줄, 독립 Opus judge가 revert로 RED 입증·enum 전체·--json·collateral 검증 후 PASS, checkins 4/4 · cli 2593/2593).

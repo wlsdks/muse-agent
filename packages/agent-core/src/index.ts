@@ -48,6 +48,8 @@ export {
   type FollowupPromise
 } from "./followup-detector.js";
 export {
+  COMMITMENT_DEDUP_COSINE,
+  collapseNearDuplicateCommitments,
   detectUserCommitments,
   type CommitmentKind,
   type DetectUserCommitmentsOptions,

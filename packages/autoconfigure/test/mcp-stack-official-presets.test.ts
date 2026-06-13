@@ -1,6 +1,7 @@
 import {
   GITHUB_MCP_SERVER_NAME,
   InMemoryMcpServerStore,
+  LINEAR_MCP_SERVER_NAME,
   McpManager,
   NOTION_MCP_SERVER_NAME,
   createGitHubMcpServer,
@@ -54,6 +55,28 @@ describe("assembleMcpStack — official MCP preset opt-in toggles (default OFF)"
     const env = { ...baseEnv, MUSE_GITHUB_MCP_ENABLED: "true", GITHUB_MCP_TOKEN: "ghp_x" } as MuseEnvironment;
     expect(entry(env, GITHUB_MCP_SERVER_NAME)).toBeDefined();
     expect(entry(env, NOTION_MCP_SERVER_NAME)).toBeUndefined();
+  });
+
+  it("does NOT register the Linear preset by default (absent from the assembled stack)", () => {
+    expect(entry(baseEnv, LINEAR_MCP_SERVER_NAME)).toBeUndefined();
+  });
+
+  it("registers the Linear preset only when MUSE_LINEAR_MCP_ENABLED=true AND a credential resolves (auto-derived toggle)", () => {
+    const lin = entry(
+      { ...baseEnv, MUSE_LINEAR_MCP_ENABLED: "true", LINEAR_MCP_TOKEN: "lin_api_test_token" } as MuseEnvironment,
+      LINEAR_MCP_SERVER_NAME
+    );
+    expect(lin).toBeDefined();
+    expect(lin!.transportType).toBe("streamable");
+    expect((lin!.config as { url: string }).url).toBe("https://mcp.linear.app/mcp");
+    expect(lin!.autoConnect).toBe(false);
+    const headers = (lin!.config as { headers?: Record<string, string> }).headers;
+    expect(headers!.Authorization).toBe("Bearer lin_api_test_token");
+  });
+
+  it("Linear toggle ON + NO credential ⇒ preset does NOT enable (fail-closed)", () => {
+    const env = { ...baseEnv, MUSE_LINEAR_MCP_ENABLED: "true" } as MuseEnvironment;
+    expect(entry(env, LINEAR_MCP_SERVER_NAME)).toBeUndefined();
   });
 });
 
