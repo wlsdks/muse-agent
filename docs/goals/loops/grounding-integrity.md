@@ -34,3 +34,11 @@ ratchet: agent-core +2 tests (14 pass; full suite 1954 pass) · lint 0/0 · fabr
 - 왜: 이 두 표면은 `verifyGroundingWithReverify`와 달리 결정론적 rubric 사전-게이트가 없어 judge가 유일 게이트 — "" evidence에 YES는 직접 fabrication-floor 누수(근거 0인 synthesis/dream이 검증 통과). 둘 다 프로덕션 도달 가능(contributor reasoning 공백 / cited sourceId 미해결).
 - 리뷰지점: 순수 강화 — 이전에 keep 가능하던 claim만 drop, 더 keep 안 함; judge-NO/error fail-close 경로 불변. red-without-fix(main에서 2테스트 실패)로 실재 버그 증명, `expect(judge).not.toHaveBeenCalled()`로 no-call 계약까지 고정. 독립 Opus judge 5/5 PASS.
 - 리스크: 없음 수준(strictly 강화). 후속: council/reflection은 recall과 달리 k-sample self-consistency 없음(단일 judge 호출) — ENHANCEMENT로 별도 fire 후보(backlog).
+
+## fire 5 · 2026-06-13 · skill v1.14.0 · d7326a29
+meta: value-class=reliability-coverage · pkg=@muse/mcp · kind=B · verdict=PASS · firesSinceDrill=5
+ratchet: mcp +1 test (6 pass; full mcp 1812 pass) · lint 0/0 · fabrication 0 · red-without-fix verified (RATCHET: A·B·A·C·B — value/pkg diverse, mcp 첫 진입)
+- 무엇: learn-queue의 **lost-update 버그 수정** — `markLearnEventsDone`(read-modify-write 전체 파일 재작성)과 `enqueueLearnEvent`(appendFile)이 둘 다 mutex 없이 동작 → drain 중 append된 correction이 clobber. 둘 다 공유 `withFileMutationQueue`(file-키)로 감싸 직렬화.
+- 왜: learn-queue는 사용자 correction을 백그라운드 distill로 나르는 substrate — 유실 = 진짜 교훈이 무인 경로에서 조용히 영영 학습 안 됨(에러도 없이). peer 스토어(playbook/action-log)는 이미 이 primitive 사용, learn-queue만 누락돼 있었음.
+- 리뷰지점: **markDone만 wrap하면 불완전**(enqueue의 appendFile이 mutex 우회) — 둘 다 같은 file-키로 감싸야 직렬화. judge가 partial fix가 여전히 red임을 경험적으로 재확인. 테스트는 promise-chain 순서로 결정론적(fs 타이밍 의존 아님), red-without-fix 증명, 독립 Opus judge 5/5 PASS(mcp 1812/autoconfigure 548/api 668 무충돌).
+- 리스크: 없음 수준(외부 계약 불변, 데드락 없음 — 중첩 mutex 호출 없음).

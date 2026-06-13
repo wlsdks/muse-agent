@@ -1,5 +1,9 @@
 # Muse dev backlog — the living ledger
 
+- ◦ **Decompose commands-doctor check-cluster → sibling** — fire 14 extracted config-classifiers; the LocalCheck-returning health checks (modelEnvCheck/localOnlyCheck/ollamaPerfPostureCheck/selfLearningCheck/notesIndexHealth/episodeIndexHealth/embedModelCheck…) are a further cohesive cluster to extract (commands-doctor still ~1121 LOC).
+- ✓ Decompose commands-doctor config-classifiers → commands-doctor-config.ts — codebase-quality fire 14
+
+
 - ◦ **Consolidate remaining 8 isRecord dups → @muse/shared** — tools(×2)/auth/voice/model/agent-core/autoconfigure/api each hand-roll isRecord; migrate per-package (re-export the exported ones). fire 13 did @muse/shared canonical + apps/cli (3). 
 - ✓ isRecord canonical → @muse/shared + apps/cli 3 dups consolidated — codebase-quality fire 13
 
@@ -78,6 +82,7 @@
 - ✓ distill-queue drain-idempotency + grounding-fence invariants pinned — the unattended distill-consumer's "dud/fail-soft event is drained not jammed, writes zero fabricated strategies" safety guarantees were untested; added 2 mutation-verified OUTCOME tests over the real file-backed stores — grounding-integrity fire 2
 - ✓ untrusted-only provenance parity on the chat surface — extended fire 1's defense to `finalizeGatedChatAnswer` (every conversational surface's shared pipeline): toolEvidence now tagged `trusted:false` + `untrustedOnlyChatNotice` cue when a faithful chat answer rests only on untrusted tool sources; purely additive, fabrication floor untouched — grounding-integrity fire 3
 - ✓ fail-close empty-evidence on council + reflection judge gates — verifyCouncilGrounding/verifyReflectionsGrounding called the judge with empty evidence and KEPT the claim on YES (fail-OPEN floor leak, no deterministic pre-gate); now fail-close without consulting the judge when evidence is empty (red-without-fix verified) — grounding-integrity fire 4
+- ✓ learn-queue lost-update fix — markLearnEventsDone (read-modify-write) and enqueueLearnEvent (appendFile) ran without a mutex, so a correction enqueued during a drain was clobbered (silently never learned, unattended path); wrapped BOTH in the shared per-file withFileMutationQueue (red-without-fix verified; wrapping only the drain is insufficient) — grounding-integrity fire 5
 
 <!-- Going-forward: `- ✓ <item title> — <slug> fire N` so the scout dedups without the verbose block. -->
 - ✓ Adaptive-k score-gap recall cutoff (trim grounding-window decoys, floor-neutral; arXiv:2506.08479) — agent-core-cognition fire 1
@@ -119,6 +124,7 @@
 
 - ✓ JUDGE-DRILL (verifier proven) + truncated-snippet disk-verify coverage — planted an inert test, the independent Opus judge correctly FAILED it (mutation-proven), then landed a real discriminating test locking down fire-8's `…`-truncation disk-verify path (mutation: break `snippetOnDisk` → real test fails) — differentiation fire 9
 - ✓ L4 LIVE — `muse ask` disk-verifies cited snippets — `buildDiskContents` (@muse/recall) reads each cited note's current content (ad-hoc skipped) and `commands-ask.ts` feeds it to the receipt, so a drifted/deleted note's snippet is now hidden from the user ("changed since" / "no longer on disk") instead of quoted as a fake citation; recall 95/95, grounding engine untouched — differentiation fire 10
+- ✓ L5 action-log tamper-evidence proof battery — `eval:action-log-tamper` proves every autonomous action (performed+refused) is sealed in a genesis-anchored SHA-256 chain: edit/deletion/reorder caught at a precise index, refused actions chained, undo extends (never breaks) the chain — an integrity guarantee rivals' snapshot-rollback (hermes) / un-undoable promoted memory (openclaw #62184) lack; imports @muse/mcp read-only, deterministic, no Ollama — differentiation fire 11
 
 ## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
 
