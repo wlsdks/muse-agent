@@ -4,6 +4,7 @@ import {
   filterNotesByScope,
   formatCoarseAge,
   formatNonNoteReceipts,
+  formatSourceReceipts,
   formatSourcesFooter,
   formatStalenessWarning,
   groundingSectionLines,
@@ -15,6 +16,53 @@ import {
 } from "@muse/recall";
 
 const DAY = 86_400_000;
+
+describe("formatSourceReceipts — disk-verified snippet (L4: receipt verifies the quote against the file ON DISK, not the index copy)", () => {
+  const answer = "WireGuard uses 1420 MTU [from vpn.md].";
+  const chunks = [{ file: "vpn.md", text: "WireGuard uses 1420 MTU on most links." }];
+
+  it("no diskContents ⇒ snippet shown verbatim (backward-compatible, unchanged)", () => {
+    const out = formatSourceReceipts(answer, "/notes", chunks, "wireguard mtu");
+    expect(out).toContain('"WireGuard uses 1420 MTU on most links."');
+  });
+
+  it("disk content STILL contains the snippet ⇒ verified, snippet shown", () => {
+    const disk = new Map([["vpn.md", "WireGuard uses 1420 MTU on most links."]]);
+    const out = formatSourceReceipts(answer, "/notes", chunks, "wireguard mtu", undefined, disk);
+    expect(out).toContain('"WireGuard uses 1420 MTU on most links."');
+  });
+
+  it("disk content DRIFTED (snippet no longer present) ⇒ snippet hidden, drift surfaced (not a fake citation)", () => {
+    const disk = new Map([["vpn.md", "WireGuard now uses 1500 MTU after the rewrite."]]);
+    const out = formatSourceReceipts(answer, "/notes", chunks, "wireguard mtu", undefined, disk) ?? "";
+    expect(out).not.toContain('"WireGuard uses 1420 MTU on most links."');
+    expect(out).toContain("changed since");
+    expect(out).toContain("vpn.md"); // still cites the note, just won't vouch for the stale quote
+  });
+
+  it("disk content NULL (source deleted after indexing) ⇒ snippet hidden, absence surfaced", () => {
+    const disk = new Map<string, string | null>([["vpn.md", null]]);
+    const out = formatSourceReceipts(answer, "/notes", chunks, "wireguard mtu", undefined, disk) ?? "";
+    expect(out).not.toContain('"WireGuard uses 1420 MTU on most links."');
+    expect(out).toContain("no longer on disk");
+  });
+
+  it("no collateral: a faithful note in the same batch still shows its snippet while a drifted one is downgraded", () => {
+    const ans = "MTU is 1420 [from vpn.md]. Cat's name is Mochi [from pets.md].";
+    const twoChunks = [
+      { file: "vpn.md", text: "WireGuard uses 1420 MTU on most links." },
+      { file: "pets.md", text: "My cat is named Mochi." }
+    ];
+    const disk = new Map([
+      ["vpn.md", "WireGuard now uses 1500 MTU after the rewrite."], // drifted
+      ["pets.md", "My cat is named Mochi."] // faithful
+    ]);
+    const out = formatSourceReceipts(ans, "/notes", twoChunks, undefined, undefined, disk) ?? "";
+    expect(out).toContain('"My cat is named Mochi."'); // faithful: shown
+    expect(out).not.toContain('"WireGuard uses 1420 MTU on most links."'); // drifted: hidden
+    expect(out).toContain("changed since");
+  });
+});
 
 describe("provenanceSnippet", () => {
   it("collapses whitespace and keeps short text verbatim", () => {
