@@ -608,3 +608,12 @@ ratchet: testFiles 921 무변동(기존 web-action.test.ts +1 it) · fabrication
 - **왜:** 비-개인데이터 고가치 hardening(보안). scout가 비대칭으로 버그 증명: READ 경로(fetchReadableUrl)는 redirect 後 최종 host 재검증하는데 더 위험한 WRITE 경로가 빠뜨림. RATCHET 압력 없음·KIND=security-fix(개인데이터-wrap 흐름 탈출). math_eval처럼 non-bug일까 scout가 핸들러+테스트 실독 검증 → 진짜 결함.
 - **리뷰지점:** web-action.ts(fetch init `redirect:"manual"` + response.ok 後 3xx 분기 fail-closed+log, 307/308 포함 >=300&&<400) + web-action.test.ts(+1 행동: fake fetch가 real 모사—follow→200 unless manual; RED는 performed:true=SSRF성공 실증→GREEN performed:false+`init.redirect==="manual"`+로그). mcp 1811(2xx/429/5xx/deny/timeout 계약 무회귀), check 0, lint 0. Opus PASS 6/6: fix real(redirect:manual 메커니즘)·behavioral RED→GREEN·no-collateral(브랜치 순서 .ok 後)·floor 강화·opaqueredirect 엣지도 fail-closed.
 - **리스크:** 없음 — floor 강화(outbound-safety SSRF), risk:execute 유지·approval 먼저 그대로, 정상 2xx/429/5xx 경로 무변경(3xx만 새 분기), 3xx는 미적용 redirect라 false-failed 아님. 동시 루프가 워크트리 churn(내 test를 먼저 커밋, fix는 별도 커밋 25913406으로 통합—HEAD test+fix green 확인). MUSE_LOCAL_ONLY·fabrication·banking 무관.
+
+
+## fire 56 · 2026-06-13 · skill v1.14.0 · (no slice — floor-blocker diagnosis)
+meta: value-class=diagnosis · pkg=none(@muse/recall grounding domain) · kind=regression-triage · verdict=ESCALATED · firesSinceDrill=2
+ratchet: testFiles 923 무변동 · fabrication FLOOR BREACHED (한국어 0/4 — 내 슬라이스 아님) · eval 무변경
+- **무엇:** TOOL 슬라이스 없음. ①의 회귀가 fabrication-floor breach(한국어 faithfulness 0/4, 모든 push 차단)라 그게 이번 fire — 진단+에스컬레이션. precheck:grounding 재실행 0/4 일관(real), latin 16/17 정상.
+- **왜:** fire 55가 ca7b1863(recall 리팩터)을 용의자로 지목했으나, 그 commands-ask.ts diff 정독 결과 **순수 byte-identical relocate**(buildAskConnections=`--connect` 푸터, faithfulness 경로 아님) → **무죄**. origin..HEAD에 다른 grounding 변경 없음. 한국어 케이스는 precheck-grounding.mjs에 없고 공유 grounding-eval 모듈에서 생성 → grounding 도메인 깊숙이, TOOL 테마 밖.
+- **리뷰지점:** 진단만 — 코드 변경 0(backlog 블로커 기록 + 이 저널). 패턴: 한국어 answerable이 un-retrieved 소스 인용(retrieval 실패) + refuse가 confident(추상 실패) → 양방향 Korean 캘리브레이션 회귀. grounding 루프/진안이 공유 grounding-eval 모듈 + Korean retrieval/embedder 확인 필요.
+- **리스크:** MUSE_SKIP_PREPUSH 절대 금지(IMMUTABLE-CORE) 준수 — floor 우회 안 함. tool-hardening 커밋(fire 55 SSRF 등)은 로컬 main에 안전하게 쌓이며 floor 풀리면 origin 도달. 이 fire는 코드 무변경이라 회귀 유발 0.
