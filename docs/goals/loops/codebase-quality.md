@@ -457,3 +457,24 @@ ratchet: testFiles 944 · fabrication 0 · groundedSurfaces 27 · 1 dead fn remo
   createRunId/nowIso still used 6× in compat-routes so no orphaned imports; sanitizeConfigValue still called
   internally (de-export is correct, not removal); api 850 tests + full check green; knip drops both.
 - **Risk:** none — one dead function removed, one over-broad export narrowed; no behavior/floor change.
+
+## fire 25 · 2026-06-13 · loop-creator v1.14.0 · 97d77c3b · JUDGE-DRILL
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: testFiles 944 · fabrication 0 · groundedSurfaces 27 · commands-doctor.ts 980->939 LOC
+- **What:** (drill) consecutive-allPASS hit 8 → mandatory JUDGE-DRILL: committed a bad "comment-hygiene"
+  slice that gutted `escapeSystemPromptMarkers`'s 32-line JSDoc (the indirect-prompt-injection rationale,
+  the break-out attack example, AND the load-bearing "apply to CONTENT only, NEVER source/name fields —
+  copy-exact for the citation gate" invariant) down to a WHAT-only one-liner. ALL deterministic gates
+  PASSED (recall build/153 tests/lint/byte). The independent Opus judge correctly **FAILED** it — traced
+  the two raw-vs-escaped call sites proving the constraint is silently relied upon and not code-enforced.
+  Rolled back (git reset --hard). (real) Decomposed the commands-doctor env-posture trio — `LocalCheck`
+  interface + `modelEnvCheck` + `localOnlyCheck` → the fire-15 sibling `commands-doctor-checks.ts`;
+  re-exported (tests import them from commands-doctor); dropped the now-orphaned `evaluateLocalOnlyPosture`
+  import (parseBoolean/resolveDefaultModel/LOCAL_FIRST_DEFAULT_MODEL stay — used elsewhere).
+- **Why:** drill validates the maker≠judge control (3rd drill, all 3 caught). The doctor decompose
+  diversifies off the recent compose@recall streak + continues shrinking the doctor god-file (980→939).
+- **Review point:** drill judge FAIL confirmed on the bad slice (load-bearing security WHY, not rot);
+  real slice 4b judge — classifier bodies byte-identical, re-export keeps commands-doctor.test green
+  (2590 cli tests), LocalCheck now sibling-owned (no external importer), evaluateLocalOnlyPosture orphan
+  removed cleanly, parseBoolean/resolveDefaultModel/LOCAL_FIRST_DEFAULT_MODEL still used so kept.
+- **Risk:** low — pure relocation; modelEnvCheck's local-only privacy WHY JSDoc moved verbatim with it.

@@ -15,15 +15,16 @@ import { existsSync, promises as fs } from "node:fs";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
 export type { CalibrationReport } from "./commands-doctor-calibration.js";
-import { episodeIndexHealth, messagingConfigCheck, notesIndexHealth } from "./commands-doctor-checks.js";
-export { episodeIndexHealth, messagingConfigCheck, notesIndexHealth } from "./commands-doctor-checks.js";
+import { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, type LocalCheck } from "./commands-doctor-checks.js";
+export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth } from "./commands-doctor-checks.js";
+export type { LocalCheck } from "./commands-doctor-checks.js";
 import { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
 export { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
 import { isRecord } from "@muse/shared";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { describeOfficialMcpPosture, evaluateLocalOnlyPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveWeaknessesFile, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
+import { describeOfficialMcpPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveWeaknessesFile, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
 import { analyzeRunOutcomes, isLearningPaused, readEpisodes, readWeaknesses, selectDevFixableWeaknesses, type DevFixableWeakness, type RunOutcomeEntry, type RunOutcomeSummary, type WeaknessEntry } from "@muse/mcp";
 import type { Command } from "commander";
 
@@ -207,41 +208,7 @@ export function registerDoctorCommand(program: Command, io: ProgramIO, helpers: 
  * the same parser contract.
  */
 
-export interface LocalCheck {
-  readonly name: string;
-  readonly status: "ok" | "warn" | "fail";
-  readonly detail: string;
-}
 
-/**
- * Report the model the runtime will ACTUALLY use, mirroring `resolveDefaultModel`.
- * Under local-only (the default) the runtime runs the local model and IGNORES any
- * ambient cloud key — so a box that happens to carry a `GEMINI_API_KEY` must NOT
- * be told "model env: inferred from GEMINI_API_KEY" (which makes a privacy-bound
- * user think their data goes to Gemini, contradicting the very guarantee
- * local-only provides). The cloud-credential inference is reported ONLY under an
- * explicit `MUSE_LOCAL_ONLY=false`, exactly as the router resolves it.
- */
-export function modelEnvCheck(env: Record<string, string | undefined>): LocalCheck {
-  const explicitModel = (env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL)?.trim();
-  if (explicitModel && explicitModel.length > 0) {
-    return { detail: explicitModel, name: "model env", status: "ok" };
-  }
-  if (parseBoolean(env.MUSE_LOCAL_ONLY, true)) {
-    return {
-      detail: `${resolveDefaultModel(env) ?? LOCAL_FIRST_DEFAULT_MODEL} (local-only default — ambient cloud keys ignored)`,
-      name: "model env",
-      status: "ok"
-    };
-  }
-  const anyKey = [
-    "GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
-    "OPENROUTER_API_KEY", "OLLAMA_BASE_URL"
-  ].find((k) => (env[k] ?? "").trim().length > 0);
-  return anyKey
-    ? { detail: `inferred from ${anyKey} (MUSE_LOCAL_ONLY=false)`, name: "model env", status: "warn" }
-    : { detail: "no MUSE_MODEL / provider key — chat/ask/brief will fail", name: "model env", status: "fail" };
-}
 
 /**
  * `muse doctor --grounding` — score the bundled held-out corpus on the REAL
@@ -301,15 +268,6 @@ async function runGroundingDoctor(io: ProgramIO): Promise<"ok" | "fail"> {
   return report.status;
 }
 
-/**
- * Report the local-only / no-cloud-egress posture as a doctor check.
- * Delegates to the canonical `evaluateLocalOnlyPosture` so `muse doctor`
- * and `muse setup status` can never disagree about the guarantee.
- */
-export function localOnlyCheck(env: Record<string, string | undefined>): LocalCheck {
-  const posture = evaluateLocalOnlyPosture(env);
-  return { detail: posture.detail, name: "local-only", status: posture.status };
-}
 
 /**
  * Render the official-public MCP presets (GitHub / Notion) as audit doctor

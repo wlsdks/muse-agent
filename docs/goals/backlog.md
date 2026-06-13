@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ JUDGE-DRILL (3rd, verifier FAILed a gutted injection-guard JSDoc) + decompose commands-doctor env-posture trio (LocalCheck/modelEnvCheck/localOnlyCheck) -> commands-doctor-checks.ts (980->939 LOC) — codebase-quality fire 25
 - ✓ mac_message_send ambiguous clarify names the candidate contacts (email parity) — the model asks "Jane Park or Jane Doe?" instead of a vague "which one?" on an irreversible send — tool-hardening fire 68
 
 - ✓ dead-code apps/api: removed dead compatRecord fn + de-exported internal-only sanitizeConfigValue (knip-verified, barrel re-export false-positives left alone) — codebase-quality fire 24
@@ -74,6 +75,7 @@
 - ⏳ **PRE-EXISTING daemon test regression on `main` (cli/daemon owners — NOT differentiation)** — `apps/cli/src/commands-daemon.test.ts:119` "`--once` delivers an imminent task" fails: expected output to match `/proactive: fired 1\/1 imminent/` but got `muse daemon — provider=telegram, dest…`. Reproduces on a CLEAN `origin/main` checkout WITHOUT any local change AND after a full `pnpm build` (not stale dist) — so it landed via a merged commit (P43-5 double-booking / P37-23 email ingestion area). Flagged by differentiation fire 4 (whose own slice is isolated to @muse/autoconfigure + passes). The daemon/cli loop or 진안 should fix; `pnpm self-eval` does not catch it (it doesn't run the cli vitest suite).
 
 - ✓ RESOLVED (fire 10 re-check): the fire-9 core-edge regression — add_contact dropping a user-stated phone, bisected to `5ec47842` — is FIXED on main (both `actuator-tools.test.ts` phone cases pass again). test-hygiene fire 9's blocker surfaced it; the owning loop repaired it.
+- ◦ **`packages/tools` double-run — `helpers` pair DONE (fire 11), data/text/time remain** — these are TWO INDEPENDENT suites per module (different it() wordings; mixed fuller-direction: data/text src is fuller, time test is fuller), NOT copies, both running. Each remaining pair needs per-function subset verification before deleting the lesser (helpers' `src/` was a clean strict superset → deleted `test/`; the others may have unique cases each way). `src/muse-tools-regex.test.ts` has no test/ twin (keep/migrate).
 
 ## test-hygiene theme — open (low-quality/flaky tests to fix, coverage gaps to fill)
 
@@ -120,6 +122,7 @@
 - ✓ source-conflict cue wired to the live ask path — added groundingConflictCue (@muse/recall, composes the answer's grounding) + emit in commands-ask (stderr, ungated by --connect, fires only on real conflict); the fire-7 detector now reaches the user — grounding-integrity fire 8
 - ✓ source-conflict cue on the chat surface (every-surface parity) — added conflictCueFromMatches (@muse/recall) + appended to finalizeGatedChatAnswer on the user's own grounding; ask+chat now both surface contradictory sources. ALSO: JUDGE-DRILL passed (neutered detector + inert test → verifier correctly FAILed) — grounding-integrity fire 9
 - ✓ reflections cap trims by recency not insertion order — the unattended dreaming store capped to 500 by insertion order while surfacing newest-first by createdAtMs, so a backfill/out-of-order write could evict a newer insight; now trims by createdAtMs (any-writer hardening, isolated-mutation verified) — grounding-integrity fire 10
+- ✓ empty-evidence fail-close on the PRIMARY reverify gate — verifyGroundingWithReverify escalated to the judge with evidence="" (high-cosine empty-text match → confidence>0), and a YES upgraded a fabrication to grounded — the floor leak f4 closed for council/reflection, still open on the main recall/ask/chat gate; now fail-closes without consulting the judge (strictly tightens, isolated-removal verified) — grounding-integrity fire 11
 
 <!-- Going-forward: `- ✓ <item title> — <slug> fire N` so the scout dedups without the verbose block. -->
 - ✓ Adaptive-k score-gap recall cutoff (trim grounding-window decoys, floor-neutral; arXiv:2506.08479) — agent-core-cognition fire 1
@@ -152,6 +155,7 @@
 - ✓ ADD `createToolResultQualityAuditFilter` empty-remainder (`rest.length===0`) branch — apology-only answer preserved, not mangled into an empty result header; mutation-pinned; + self-fixed raw U+200B pasted into the fire-7 journal/backlog while documenting the fire-7 byte fix — test-hygiene fire 8
 - ✓ JUDGE-DRILL (fire 9): injected an inert `typeof===string` test → ④b judge correctly returned FAIL (mutation-immune) → rolled back; proves the judge isn't rubber-stamping. + ADD `formatDueLocal` tomorrow/in-N-days branch-precise coverage (was only loose-OR-matched); redundant unparseable case removed per judge — test-hygiene fire 9
 - ✓ PRUNE model double-run: `isRetryableHttpStatus` tested by both `src/provider-base.test.ts` (8 cases, fuller) + `test/is-retryable-http-status.test.ts` (4); migrated test/'s unique `499→false` lower-boundary into src/ then deleted test/; mutation-pinned (≥500→≥499 reds 499); testFiles 943→942 — test-hygiene fire 10
+- ✓ PRUNE tools double-run (`muse-tools-helpers` pair): `src/`(11 cases) is a strict behavioral superset of `test/`(7) for the arg-parser helpers; deleted the lesser `test/muse-tools-helpers.test.ts`; readOptionalDate 3-state mutation-pinned (both invalid sub-branches); testFiles 944→943 — test-hygiene fire 11
 - ✓ `muse.tasks.search` matches tags — a task tagged "work" (word not in title/notes) is now found by searching "work" (completes the fire-51 tag story: list FILTERS by tag, search now FINDS by tag) + JUDGE-DRILL (verifier caught a deliberately-inert version) — tool-hardening fire 53
 - ✓ `week_agenda` agent tool — "what's my week look like?" ONE merged view of events+tasks+birthdays by day (muse week was CLI-only; groupWeekAgenda moved to @muse/autoconfigure, CLI re-exports) — tool-hardening fire 54
 - ✓ `recent_actions` agent tool — "what have you done for me?" lists Muse's autonomous action log (performed/refused/failed, what+why+when) most-recent-first; was CLI-only (muse actions); internal userId/id/prevHash not leaked — tool-hardening fire 63
