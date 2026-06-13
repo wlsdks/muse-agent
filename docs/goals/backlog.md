@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ on_this_day Jan-1 boundary: selectOnThisDay projected a prior-year note's month-day into now's year only, so a Dec-31 note never surfaced within a ±window of a Jan-1 now (the true 1-day anniversary read as ~364 days) — now min-gap across year before/of/after; fixes a silent grounded-recall miss on the on_this_day tool + CLI + morning-brief — tool-hardening fire 92 (JUDGE-DRILL fire)
+
 - ✓ decompose @muse/cli: extracted the macOS LaunchAgent cluster (LAUNCH_AGENT_LABEL/xmlEscape/buildLaunchAgentPlist/resolveLaunchAgentFile) commands-daemon -> commands-daemon-launchagent.ts (1330->1277 LOC; re-export keeps test+doctor green) — codebase-quality fire 53
 - ✓ IrrelAcc personal-crud: 3 past-tense-report negatives (어제 우유 샀어 / 방금 약 먹었어 / EN social report) assert the write tools (tasks/reminders/calendar add) fire NO tool on a statement — agent-testing.md's eager-invocation trap; teeth proven by a borderline probe ('finished the report') that DID over-fire tasks.list — tool-hardening fire 91
 
