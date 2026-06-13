@@ -237,3 +237,19 @@ ratchet: testFiles 928 · fabrication 0 · groundedSurfaces 27 · isRecord dups 
   fire's own commit (`git show <commit>` / merge-base), never `git diff main`.** Cron ④b line fixed.
 - **Risk:** none. Remaining isRecord dedup (8 defs in tools/auth/voice/model/agent-core/
   autoconfigure/api) recorded as a follow-up backlog ◦.
+
+## fire 14 · 2026-06-13 · loop-creator v1.14.0 · e13d7304
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 930 · fabrication 0 · groundedSurfaces 27 · commands-doctor 1234→1121 LOC
+- **What:** first decompose of the god-file commands-doctor.ts (orig review finding #3) — extracted
+  the 5 config/env classifiers (resolveMuseEnvPath, classifyMcpServersField, classifyWebWatchConfig,
+  classifyHomeAlertsConfig, resolveDoctorWatchIntervalMs) into a cohesive sibling
+  commands-doctor-config.ts (deps: isRecord@shared + webWatchesFromConfig/parseHomeAlertChecks@mcp).
+  import+re-export; dropped the now-orphaned mcp imports; added a config-module test (5).
+- **Why:** decompose KIND (first time) + finding #3 (oversized CLI). Unblocked by fire 13
+  (isRecord→shared removed the entangling dep).
+- **Review point:** ④b judged the COMMIT (`git show e13d7304`, the fixed diff-base) → PASS:
+  byte-identical bodies, closed deps, no cycle/orphan, 3 files, cli build 0 / lint 0 / 77 doctor
+  tests / 5 config tests. chat-ink-render full-check failure was a CPU-contention flake (40/40 isolated).
+- **Risk:** none. commands-doctor still ~1121 LOC — the check-cluster (modelEnvCheck/localOnlyCheck/
+  notesIndexHealth/… returning LocalCheck) is a follow-up decompose ◦.

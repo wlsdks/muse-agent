@@ -59,6 +59,20 @@ export function createHomeActionTool(deps: HomeActionToolDeps): MuseTool {
       const data = args["data"] && typeof args["data"] === "object" && !Array.isArray(args["data"])
         ? args["data"] as Record<string, unknown>
         : undefined;
+      // A service call with NO resolved target is Home Assistant's "apply to
+      // EVERY entity in the domain" path: a model emitting `light.turn_off` with
+      // no entity would turn off the whole house, `lock.unlock` would unlock
+      // every lock — and the approval summary shows no target, so the user
+      // isn't warned. Fail closed unless an entity arg OR a target key in `data`
+      // (entity_id / area_id / device_id / target) resolves a concrete scope.
+      const dataHasTarget = data !== undefined
+        && (data["entity_id"] !== undefined || data["area_id"] !== undefined || data["device_id"] !== undefined || data["target"] !== undefined);
+      if (!entityId && !dataHasTarget) {
+        return {
+          performed: false,
+          reason: `home_action needs a target — pass entity (e.g. 'light.living_room'). Refusing '${service}' with no entity: with no target it would hit EVERY device in the '${service.slice(0, dot)}' domain.`
+        };
+      }
       const outcome = await performHomeActionWithApproval({
         actionLogFile: deps.actionLogFile,
         approvalGate: deps.approvalGate,
