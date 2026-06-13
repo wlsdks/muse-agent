@@ -24,6 +24,14 @@ import type { McpServerInput } from "./index.js";
  *     `Authorization: Bearer <token>` header auth with a personal API
  *     key, which is the seam these presets use. Any Linear account
  *     holder may connect their own workspace.
+ *   - Sentry remote MCP — `https://mcp.sentry.dev/mcp`
+ *     (getsentry/sentry-mcp, the vendor-operated production endpoint at
+ *     mcp.sentry.dev). Streamable HTTP. The remote endpoint is
+ *     OAuth-2.0-primary (the hosted service runs the OAuth flow; token
+ *     header auth is a tracked request, getsentry/sentry-mcp#833) — the
+ *     `Authorization: Bearer <token>` header is the same credential seam
+ *     these presets use, so a user supplying a token connects their own
+ *     Sentry organization. Any Sentry account holder may connect.
  *
  * SAFETY: reading is free, but every preset's WRITE-capable tool
  * (create issue / PR / page, comment) is classified `write` here so it
@@ -65,6 +73,7 @@ export interface OfficialMcpPresetOptions {
 export const GITHUB_MCP_SERVER_NAME = "github";
 export const NOTION_MCP_SERVER_NAME = "notion";
 export const LINEAR_MCP_SERVER_NAME = "linear";
+export const SENTRY_MCP_SERVER_NAME = "sentry";
 
 const GITHUB_MCP_URL = "https://api.githubcopilot.com/mcp/";
 const GITHUB_MCP_PROVENANCE =
@@ -73,6 +82,8 @@ const NOTION_MCP_URL = "https://mcp.notion.com/mcp";
 const NOTION_MCP_PROVENANCE = "https://developers.notion.com/guides/mcp/get-started-with-mcp";
 const LINEAR_MCP_URL = "https://mcp.linear.app/mcp";
 const LINEAR_MCP_PROVENANCE = "https://linear.app/docs/mcp";
+const SENTRY_MCP_URL = "https://mcp.sentry.dev/mcp";
+const SENTRY_MCP_PROVENANCE = "https://github.com/getsentry/sentry-mcp";
 
 function buildStreamableInput(
   name: string,
@@ -185,6 +196,53 @@ export function createLinearMcpServer(options: OfficialMcpPresetOptions = {}): M
   );
 }
 
+// Sentry remote MCP read surface (the official getsentry/sentry-mcp
+// catalog's whoami / find_* / get_* / search_* query tools + the
+// read-only Seer analysis). Any tool not listed here — the create_*/
+// update_*/add_* mutations and any future tool — is fail-close `write`.
+const SENTRY_READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  "whoami",
+  "find_organizations",
+  "find_projects",
+  "find_teams",
+  "find_releases",
+  "find_dsns",
+  "find_alert_rules",
+  "find_dashboards",
+  "find_monitors",
+  "find_issues",
+  "get_issue_details",
+  "get_issue_activity",
+  "get_issue_tag_values",
+  "get_trace_details",
+  "get_event_attachment",
+  "get_alert_rule",
+  "get_dashboard_details",
+  "get_monitor_details",
+  "get_release_details",
+  "get_profile_details",
+  "get_replay_details",
+  "get_doc",
+  "search_events",
+  "search_issues",
+  "search_issue_events",
+  "search_docs",
+  "analyze_issue_with_seer"
+]);
+
+export function sentryMcpToolRisk(toolName: string): ToolRisk {
+  return SENTRY_READ_ONLY_TOOLS.has(toolName) ? "read" : "write";
+}
+
+export function createSentryMcpServer(options: OfficialMcpPresetOptions = {}): McpServerInput {
+  return buildStreamableInput(
+    SENTRY_MCP_SERVER_NAME,
+    SENTRY_MCP_URL,
+    "Read Sentry issues / errors / traces via Sentry's official remote MCP server (writes stay draft-first)",
+    options
+  );
+}
+
 /**
  * The curated set, keyed by server name. A new official-public server
  * is added here with its provenance URL; nothing else in the registry
@@ -211,6 +269,13 @@ export const OFFICIAL_MCP_PRESETS: Readonly<Record<string, OfficialMcpPreset>> =
     provenanceUrl: LINEAR_MCP_PROVENANCE,
     toolRisk: linearMcpToolRisk,
     url: LINEAR_MCP_URL
+  },
+  [SENTRY_MCP_SERVER_NAME]: {
+    create: createSentryMcpServer,
+    name: SENTRY_MCP_SERVER_NAME,
+    provenanceUrl: SENTRY_MCP_PROVENANCE,
+    toolRisk: sentryMcpToolRisk,
+    url: SENTRY_MCP_URL
   }
 };
 

@@ -8,14 +8,17 @@ import {
   McpSecurityPolicyProvider,
   NOTION_MCP_SERVER_NAME,
   OFFICIAL_MCP_PRESETS,
+  SENTRY_MCP_SERVER_NAME,
   createGitHubMcpServer,
   createLinearMcpServer,
   createNotionMcpServer,
+  createSentryMcpServer,
   githubMcpToolRisk,
   linearMcpToolRisk,
   normalizeMcpSecurityPolicy,
   notionMcpToolRisk,
   resolveOfficialMcpPreset,
+  sentryMcpToolRisk,
   validateMcpServer,
   withOfficialMcpRisk,
   type McpConnection
@@ -48,6 +51,15 @@ describe("official MCP presets — factory shape + officially-public provenance"
     expect("headers" in (server.config ?? {})).toBe(false);
   });
 
+  it("builds the Sentry streamable connector at the official remote endpoint (ships no secret)", () => {
+    const server = createSentryMcpServer();
+    expect(server.name).toBe(SENTRY_MCP_SERVER_NAME);
+    expect(server.transportType).toBe("streamable");
+    expect(server.autoConnect).toBe(false);
+    expect((server.config as { url: string }).url).toBe("https://mcp.sentry.dev/mcp");
+    expect("headers" in (server.config ?? {})).toBe(false);
+  });
+
   it("forwards user-supplied auth headers only when provided (ships no secret)", () => {
     const withAuth = createGitHubMcpServer({ headers: { Authorization: "Bearer ghp_x" } });
     expect((withAuth.config as { headers?: Record<string, string> }).headers).toEqual({
@@ -67,6 +79,10 @@ describe("official MCP presets — factory shape + officially-public provenance"
       /linear\.app\/docs\/mcp/u
     );
     expect(OFFICIAL_MCP_PRESETS[LINEAR_MCP_SERVER_NAME]?.url).toBe("https://mcp.linear.app/mcp");
+    expect(OFFICIAL_MCP_PRESETS[SENTRY_MCP_SERVER_NAME]?.provenanceUrl).toMatch(
+      /sentry/u
+    );
+    expect(OFFICIAL_MCP_PRESETS[SENTRY_MCP_SERVER_NAME]?.url).toBe("https://mcp.sentry.dev/mcp");
   });
 
   it("resolves a curated preset by name and refuses an arbitrary/unauthorized name", () => {
@@ -116,6 +132,26 @@ describe("official MCP presets — fail-close write classification (outbound-saf
     }
     for (const name of ["create_issue", "update_issue", "create_project", "create_comment", "some_future_tool"]) {
       expect(linearMcpToolRisk(name), name).toBe("write");
+    }
+  });
+
+  it("classifies Sentry read tools as read and EVERY write/unknown tool as write (gated)", () => {
+    for (const name of [
+      "whoami",
+      "find_organizations",
+      "find_projects",
+      "find_issues",
+      "get_issue_details",
+      "get_trace_details",
+      "search_events",
+      "search_issues",
+      "search_docs",
+      "analyze_issue_with_seer"
+    ]) {
+      expect(sentryMcpToolRisk(name), name).toBe("read");
+    }
+    for (const name of ["update_issue", "update_project", "create_project", "create_dsn", "create_team", "add_issue_note", "some_future_tool"]) {
+      expect(sentryMcpToolRisk(name), name).toBe("write");
     }
   });
 });
@@ -224,6 +260,46 @@ describe("official MCP presets — end-to-end via the manager (contract-faithful
     // The external server annotated create_issue "read"; withOfficialMcpRisk
     // re-stamps it write (fail-close) so the AgentRuntime approval gate fires.
     const writeTool = tools.find((t) => t.definition.name === "linear.create_issue");
+    expect(writeTool?.definition.risk).toBe("write");
+    expect(writeTool?.definition.domain).toBe("external");
+  });
+
+  it("registers the ALLOWLISTED Sentry preset, connects, and read/write tools project with fail-close risk", async () => {
+    const sentryConnection: McpConnection = {
+      callTool: async (toolName) => {
+        if (toolName === "find_issues") return JSON.stringify({ issues: [] });
+        if (toolName === "update_issue") return "issue updated";
+        return `Error: unknown tool ${toolName}`;
+      },
+      listTools: () => [
+        { description: "Find issues", inputSchema: { type: "object" }, name: "find_issues", risk: "read" },
+        { description: "Update an issue", inputSchema: { type: "object" }, name: "update_issue", risk: "read" }
+      ]
+    };
+    const manager = new McpManager(new InMemoryMcpServerStore(), {
+      connector: { connect: async () => sentryConnection },
+      securityPolicyProvider: new McpSecurityPolicyProvider(undefined, {
+        allowedServerNames: [SENTRY_MCP_SERVER_NAME]
+      })
+    });
+
+    const registered = await manager.register(createSentryMcpServer());
+    expect(registered).toBeDefined();
+    await expect(manager.connect(SENTRY_MCP_SERVER_NAME)).resolves.toBe(true);
+    expect(manager.getStatus(SENTRY_MCP_SERVER_NAME)).toBe("connected");
+
+    const tools = withOfficialMcpRisk(manager.toMuseTools());
+    const readTool = tools.find((t) => t.definition.name === "sentry.find_issues");
+    expect(readTool, "find_issues must be projected").toBeDefined();
+    expect(readTool?.definition.risk).toBe("read");
+    expect(readTool?.definition.domain).toBe("external");
+    await expect(readTool?.execute({}, { runId: "run-1" })).resolves.toBe(
+      JSON.stringify({ issues: [] })
+    );
+
+    // The external server annotated update_issue "read"; withOfficialMcpRisk
+    // re-stamps it write (fail-close) so the AgentRuntime approval gate fires.
+    const writeTool = tools.find((t) => t.definition.name === "sentry.update_issue");
     expect(writeTool?.definition.risk).toBe("write");
     expect(writeTool?.definition.domain).toBe("external");
   });

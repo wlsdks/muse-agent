@@ -257,3 +257,23 @@ ratchet: testFiles +0 (smoke #21 + controller; 89 tests) · @muse/browser 89 tes
   (3)클램프 math가 항상 protocolTimeout>timeout(조기 kill 경로 없음) 확인.
 - **리스크:** 기본 천장 30초 — >30초 단일 CDP op(거대 DOM innerText 등)은 이제 에러(전엔 180초 대기).
   허용가능(15s per-op가 이미 nav/click/fill 관장, >30초 단일 왕복은 병리), protocolTimeoutMs로 튜닝 가능.
+
+## fire 14 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/mcp+@muse/autoconfigure · kind=B-mcp · verdict=PASS · firesSinceDrill=6
+
+ratchet: testFiles +0 (preset/cred/posture/doctor tests +cases; mcp 17, autoconfigure 49, doctor 91) · fabrication 0 · pnpm check 0 · lint 0/0
+
+- **무엇:** 외부-MCP 레지스트리 EXPANSION — Sentry를 4번째 공식 공개 프리셋으로(mcp.sentry.dev/mcp,
+  provenance getsentry/sentry-mcp). 전체 기계장치 재사용(레지스트리 + fail-close sentryMcpToolRisk[27 read,
+  create/update/add/unknown→write] + 자동파생 MUSE_SENTRY_MCP_ENABLED + SENTRY_MCP_TOKEN + doctor posture).
+  에러/모니터링 = 코드/문서/이슈에 이은 4번째 dev 카테고리.
+- **왜:** GitHub/Notion/Linear 외 실용 카테고리 확장 — 레지스트리가 4개로 스케일됨 입증. pkg를 browser서
+  mcp로 회전(value-class new-capability).
+- **리뷰지점:** judge가 (1)provenance를 Sentry 자체 docs+repo로 확인(공식·anyone-may-connect) (2)
+  sentryMcpToolRisk always-read로 깨 RED 재현, unknown→write (3)토큰 없으면 미등록(fail-closed, blank-auth
+  없음) (4)secret 미동봉·기계장치 재사용·트리 클린. **AUTH NUANCE 정직 판정:** Sentry는 OAuth-primary,
+  Bearer는 upstream #833 미출시 → Muse Bearer seam은 forward-compatible, 토큰 없거나 거부되면 fail-close
+  (오도 아님, 프리셋에 문서화). judge가 "비기능적 거짓 아님"으로 PASS.
+- **리스크:** Bearer auth가 Sentry endpoint에 아직 수락 안 될 수 있음(#833 대기) — 단 fail-close라 무해,
+  #833 출시시 Muse 변경 0으로 동작. read-tool set은 fire-time 카탈로그 기준(신규 도구는 write 기본).
