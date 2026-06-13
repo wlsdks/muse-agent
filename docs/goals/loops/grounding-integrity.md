@@ -210,3 +210,11 @@ ratchet: agent-core +1 module +5 engine tests · cli +2 wiring tests (grounding-
 - 왜: untrustedOnlyGroundingNotice가 ALL-untrusted만 잡던 걸 per-claim으로 확장 — 데스크톱·CLI 양 표면. scout가 docstring에 명시된 설계 한계를 실 구멍으로 확인(추측 아님). citation-precision의 per-sentence 기계가 이미 같은 패키지에 있어 충실한 재사용.
 - 리뷰지점: additive(게이트 verdict·whole-answer 경로 불변), 신뢰 co-citation false-positive 차단, unresolved 인용 무시(verifyGrounding 관할), empty/all-trusted no-op. 독립 Opus judge가 return-[] mutation으로 flag+wiring 테스트 red 직접 확인 → 5/5 PASS. pnpm check의 @muse/model fuzz 5000ms 타임아웃은 동시-루프 env 포화(격리 재실행 16/16 green, 내 패키지 무관) — 진짜 회귀 아님.
 - 리스크: 낮음(진단 cue 추가). vein: axis A grounded≠true는 whole-answer→per-claim provenance까지 ask·chat 양면 완료. 다음=abstain-on-conflict(설계 결정 확인 필요) 또는 axis B/C. **다음 fire 27 = JUDGE-DRILL(연속 allPASS=7→8 도달)**.
+
+## fire 27 · 2026-06-14 · skill v1.14.0 · 51f53e03
+meta: value-class=reliability-coverage · pkg=@muse/agent-core · kind=B · verdict=PASS · firesSinceDrill=0 (JUDGE-DRILL reset)
+ratchet: agent-core +1 OUTCOME test (skill-merge-gate 15) · agent-core 2223 · check exit 0 · eval:self-improving skill-merge+playbook-merge PASS · lint 0/0 · fabrication 0 · revert-mutation reds test (judge-verified)
+- 무엇: **JUDGE-DRILL fire** (연속 allPASS≥8 도달) + 실 fix. ⓐ 드릴: skill-merge-gate `validateUmbrellaCoverage` 의 permissive-mode fail-open(asymmetric trigger/body loss)에 대해 **고의 vacuous 슬라이스**(declaration-only 테스트 `typeof accept==="boolean"`, 코드 변경 0) 주입 → 독립 Opus judge가 FAIL(선언-only·버그 미수정·non-vacuity 15/15 unfixed pass 직접 확인) → 롤백. ⓑ 실 fix: combined(양 표면 모두 covered) score를 minScore에 재게이트(`accept = trigger.accept && body.accept && combinedAccept`).
+- 왜: 두 표면이 각자 floor를 자기 부분 coverage에만 적용 → 트리거에서 A, 바디에서 B 각각 손실 시 각 표면 2/3≥0.6 통과인데 union은 1/3 < minScore. 자기개선 머지 게이트가 다수 스킬 드롭하는 파괴적 통합을 조용히 accept. verifier 자체가 나쁜 슬라이스를 잡는지 maker≠justify 보상통제 확인이 드릴 목적.
+- 리뷰지점: tightens-only(AND 한 conjunct 추가 → accept는 더 보수적만, floor 약화 불가). default strict 경로는 불변(both-accept ⇒ combined lost 0; 프로덕션 호출자는 이 경로 — 실효는 permissive 분기의 latent fail-open 차단, 정직히 명시). 합법 partial merge(2/3≥0.6) 여전히 accept. 독립 Opus judge가 실 fix를 revert→red로 non-vacuity 확인 5/5 PASS.
+- 리스크: 낮음(게이트 강화). **JUDGE-DRILL 결과: verifier 정상 작동**(bad→FAIL, good→PASS) → firesSinceDrill 0 리셋. vein: 드릴 소비, 다음은 일반 슬라이스(axis A abstain-on-conflict 또는 B 잔여 모듈 또는 C judge bias).
