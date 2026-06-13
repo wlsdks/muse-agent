@@ -129,7 +129,9 @@ export {
   type PageRankOptions
 } from "./associative-recall.js";
 export {
+  applyLateralInhibition,
   cosineSimilarity,
+  EPISODIC_INHIBITION_STRENGTH,
   EmbeddingEpisodicRecallProvider,
   InMemoryEpisodicRecallProvider,
   renderEpisodicSection,

@@ -504,6 +504,63 @@ function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): numb
   return unionSize === 0 ? 0 : intersection / unionSize;
 }
 
+// WHY inhibition ≠ MMR: MMR reorders for diversity, displacing a relevant
+// item with a less-relevant one to maximise coverage. Lateral inhibition
+// (arXiv:2601.02744) demotes a REDUNDANT candidate's score by its cosine
+// similarity to an already-selected stronger-activation match, then
+// re-applies the existing minScore gate. A non-redundant relevant episode
+// is never displaced; only near-duplicates that crowd out distinct memory
+// are suppressed. Winner-take-most, fail-soft: empty vecs or strength 0
+// produce output byte-identical to a plain topK slice.
+export const EPISODIC_INHIBITION_STRENGTH = 0.5;
+
+/**
+ * Greedy lateral-inhibition pass over pre-sorted episodic matches.
+ *
+ * For each candidate (highest-score first), compute the penalty from
+ * its cosine similarity to already-selected episodes. If the inhibited
+ * score still clears `minScore`, accept; otherwise drop. Stops at topK.
+ *
+ * narrativeVecs must be keyed by `EpisodicMatch.sessionId`. Any
+ * candidate or selected episode without a vec entry contributes 0
+ * similarity to the penalty (safe, not an error).
+ */
+export function applyLateralInhibition(
+  scored: readonly EpisodicMatch[],
+  narrativeVecs: ReadonlyMap<string, readonly number[]>,
+  options: { topK: number; minScore: number; inhibitionStrength: number }
+): EpisodicMatch[] {
+  const { topK, minScore, inhibitionStrength } = options;
+  if (inhibitionStrength === 0 || narrativeVecs.size === 0) {
+    return scored.filter((m) => (m.similarity ?? 0) >= minScore).slice(0, topK);
+  }
+  const selected: EpisodicMatch[] = [];
+  for (const candidate of scored) {
+    if (selected.length >= topK) {
+      break;
+    }
+    const candVec = narrativeVecs.get(candidate.sessionId);
+    let maxSim = 0;
+    if (candVec) {
+      for (const sel of selected) {
+        const selVec = narrativeVecs.get(sel.sessionId);
+        if (selVec) {
+          const sim = cosineSimilarity(candVec, selVec);
+          if (sim > maxSim) {
+            maxSim = sim;
+          }
+        }
+      }
+    }
+    const penalty = inhibitionStrength * maxSim;
+    const inhibited = (candidate.similarity ?? 0) - penalty;
+    if (inhibited >= minScore) {
+      selected.push(candidate);
+    }
+  }
+  return selected;
+}
+
 export interface SummaryListSource {
   listAll?(options?: { readonly userId?: string; readonly limit?: number }):
     | Promise<readonly { readonly sessionId: string; readonly narrative: string; readonly createdAt?: Date; readonly userId?: string }[]>
@@ -641,6 +698,7 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
       fadedKeys = new Set();
     }
     const scored: EpisodicMatch[] = [];
+    const narrativeVecs = new Map<string, readonly number[]>();
     for (const summary of summaries) {
       if (!isVisibleToUser(userId, summary.userId, this.allowAnonymousEpisodes)) {
         continue;
@@ -648,7 +706,9 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
       let baseSim: number;
       if (queryVec) {
         try {
-          baseSim = cosineSimilarity(queryVec, await this.embed!(summary.narrative));
+          const narrativeVec = await this.embed!(summary.narrative);
+          narrativeVecs.set(summary.sessionId, narrativeVec);
+          baseSim = cosineSimilarity(queryVec, narrativeVec);
         } catch {
           baseSim = jaccardSimilarity(queryTokens, tokenSet(summary.narrative));
         }
@@ -681,7 +741,12 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
       });
     }
     scored.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
-    const top = scored.slice(0, this.topK);
+    const strength = narrativeVecs.size > 0 ? EPISODIC_INHIBITION_STRENGTH : 0;
+    const top = applyLateralInhibition(scored, narrativeVecs, {
+      topK: this.topK,
+      minScore: this.minScore,
+      inhibitionStrength: strength
+    });
     return top.length === 0 ? undefined : { matches: top };
   }
 }
