@@ -86,3 +86,23 @@ ratchet: testFiles +0 (2 browser test files extended, 72 cases) · @muse/browser
   (`c.calls===["snapshot"]`, gateCalled:false)임을 확인.
 - **리스크:** 낮음 — `notypeable.fields`는 점수정렬 안 한 전체 typeable 목록(흔한 로그인/검색/체크아웃은
   짧음, 많은 필드면 향후 정렬 가능). ref-only 고급 경로·`<select>` 경로 불변.
+
+## fire 5 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/autoconfigure · kind=B-mcp · verdict=PASS · firesSinceDrill=5
+
+ratchet: testFiles +1 (official-mcp-write-draft-first.test.ts, 6 cases) · @muse/autoconfigure 548 tests pass · fabrication 0 · pnpm check 0 · lint 0/0
+
+- **무엇:** fire 3가 배선한 라이브 외부-MCP write 경로의 draft-first fail-close 증명 배터리(test-only).
+  REAL McpManager register/connect/toMuseTools + withOfficialMcpRisk + AgentRuntime toolApprovalGate를
+  구동(transport seam callTool만 vi.fn spy — fake 레지스트리 아님). 증명: GitHub create_issue(risk
+  write)가 게이트되고 deny/timeout-undeliverable/absent-consent ⇒ transport write 호출 0, confirmed ⇒
+  정확히 1, read(get_me) ungated. outbound-safety.md 규칙 1·2·4를 외부-MCP write에 적용.
+- **왜:** fire 2·3가 외부 MCP를 연결 가능하게 만들었으나 send capability는 happy-path만 테스트하면
+  미배달(outbound-safety.md). 이 배터리가 deny/timeout/absent 경로 외부효과 0을 증명해 헤드라인
+  기능 신뢰성 스토리를 닫음. 프로덕션 변경 0 — 경로는 이미 정확, 누락된 OUTCOME 증명.
+- **리뷰지점:** judge가 비공허성 두 방식 재확인 — test-side(restampRisk:false) + prod-side(실제
+  withOfficialMcpRisk를 pass-through로 도려냄, @muse/mcp 재빌드) 모두 deny 케이스 RED. confirmed가
+  정확히 1회 send임을 assert(블랭킷-차단 게이트 배제). 트리 test-only(git diff --stat 빈값).
+- **리스크:** GitHub 프리셋이 대표 — Notion create-page는 동일 seam을 타므로 구조적 커버. 남은
+  axis-B ◦: 키체인 자격증명 · doctor provenance.
