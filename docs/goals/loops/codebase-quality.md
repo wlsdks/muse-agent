@@ -373,3 +373,26 @@ ratchet: testFiles 941 · fabrication 0 · groundedSurfaces 27 · markers stripp
   comments stripped by compiler anyway); no leftover id markers in the 5 files.
 - **Risk:** none — comment-only, no code/type/behavior change. Merge-collision risk mitigated by
   cold-file scoping; if a comment line conflicts at merge it resolves trivially.
+
+## fire 21 · 2026-06-13 · loop-creator v1.14.0 · a5f0fbdb
+meta: value-class=refactor · pkg=multi(model/api) · kind=cohere · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 942 · fabrication 0 · groundedSurfaces 27 · isRecord dups 5->3
+- **What:** isRecord dedup — `@muse/model` (provider-shared.ts) and `@muse/api`
+  (server-input-utils.ts) each hand-rolled a byte-identical `isRecord` type guard; both now
+  `import { isRecord } from "@muse/shared"` (internal use) + `export { isRecord }` (re-export
+  preserves external importers: model's json-value-guards.test, api's compat/mcp/scheduler
+  parsers + server-helpers re-export). Both packages already value-import from @muse/shared, so
+  no new dep edge. The three impls were verified char-identical before the swap. isRecord dups 5→3
+  (remaining: agent-core + autoconfigure + voice — agent-core/autoconfigure are hot loops; voice
+  has no @muse/shared dep so not worth a new edge for one private 3-liner).
+- **Why:** diversity — fires 18/19 decompose, 20 comment-hygiene; cohere was 3 fires stale and the
+  isRecord consolidation is a tracked debt. Scoped to cold/cold-ish packages (model/api) to dodge
+  the hot concurrent loops. Phase 3 (recall pipeline) deferred a 4th time + DECOMPOSED in backlog
+  (it has a hard prerequisite — escapeSystemPromptMarkers is CLI-local, blocking buildNoteContextBlock's
+  move to @muse/recall).
+- **Review point:** 4b judge — impls byte-identical (behavior-preserving), re-export keeps every
+  importer (model 319 + api 850 tests pass), separate value-import line (not merged into `import type`
+  — fire-16 lesson), no new package dep. Note: the fire hit a STALE-SYNC false-alarm (actuator-tools
+  test merged ahead of its feature commit f685161b; resolved by re-syncing main) + a stale-dist api
+  flake (passed on clean rerun) — neither is my slice.
+- **Risk:** none — pure re-export of an identical pure guard; no behavior/floor change.

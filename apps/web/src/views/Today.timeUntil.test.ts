@@ -1,0 +1,31 @@
+import { describe, expect, it } from "vitest";
+
+import { timeUntil } from "./Today.js";
+
+import type { Translate } from "../i18n/index.js";
+
+// Stub Translate: echo the key (plus n) so assertions are deterministic and
+// locale-independent — we're testing the bucket choice, not the wording.
+const t = ((key: string, vars?: { readonly n?: number }) =>
+  vars?.n === undefined ? key : `${key}:${String(vars.n)}`) as unknown as Translate;
+
+describe("timeUntil — sub-minute future events read as 'now', not 'in 0m'", () => {
+  it("an event ~20s away is 'now' (was the bogus 'in 0m')", () => {
+    const iso = new Date(Date.now() + 20_000).toISOString();
+    expect(timeUntil(iso, t)).toBe("rel.now");
+  });
+
+  it("an event happening now is 'now'", () => {
+    expect(timeUntil(new Date().toISOString(), t)).toBe("rel.now");
+  });
+
+  it("still buckets real minutes / hours / days correctly", () => {
+    expect(timeUntil(new Date(Date.now() + 5 * 60_000).toISOString(), t)).toBe("rel.inMinutes:5");
+    expect(timeUntil(new Date(Date.now() + 3 * 3_600_000).toISOString(), t)).toBe("rel.inHours:3");
+    expect(timeUntil(new Date(Date.now() + 2 * 86_400_000).toISOString(), t)).toBe("rel.inDays:2");
+  });
+
+  it("returns empty for an unparseable timestamp", () => {
+    expect(timeUntil("not-a-date", t)).toBe("");
+  });
+});
