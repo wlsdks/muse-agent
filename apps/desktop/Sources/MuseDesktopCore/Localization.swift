@@ -12,6 +12,14 @@ public enum AppLanguage: String, Codable, CaseIterable, Sendable {
         case .english: return "English"
         }
     }
+
+    /// Resolve the persisted `CompanionPrefs.language` String? back to a choice,
+    /// falling back to `.system` for nil / empty / any unrecognized value. The
+    /// single source of truth so the menu checkmark and the resolved language
+    /// can't drift apart.
+    public static func fromPersisted(_ raw: String?) -> AppLanguage {
+        AppLanguage(rawValue: raw ?? "") ?? .system
+    }
 }
 
 /// A concrete language (system already resolved) with the user-facing strings +
