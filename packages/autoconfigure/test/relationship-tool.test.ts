@@ -53,4 +53,13 @@ describe("interactionsFromEvents — derive contact interaction timestamps from 
     const [mina] = interactionsFromEvents([{ aliases: ["Mimi"], name: "Mina" }], events);
     expect(mina?.timestampsMs).toHaveLength(2);
   });
+
+  it("drops an event with an unparseable startsAt even when its text mentions the contact", () => {
+    const events = [
+      { startsAt: "not-a-real-date", title: "Standup with Mina" },
+      { startsAt: "2026-05-01T10:00:00Z", title: "Coffee with Mina" }
+    ];
+    const [mina] = interactionsFromEvents([{ name: "Mina" }], events);
+    expect(mina?.timestampsMs).toEqual([Date.parse("2026-05-01T10:00:00Z")]);
+  });
 });

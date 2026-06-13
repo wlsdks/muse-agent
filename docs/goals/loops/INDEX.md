@@ -9,5 +9,6 @@
 | `tool-hardening` | TOOL expansion & hardening (main worktree) | [tool-hardening.md](tool-hardening.md) | 52 | `ef78baa8` | v1.14.0 | active (cron, session-only) |
 | `cognition` | agent-core 인지 강화 (worktree `agent-core-enhance`) | [cognition.md](cognition.md) | 39 | — | — | managed elsewhere — re-register to adopt v1.14.0 logging |
 | `codebase-quality` | 코드베이스 내부 품질 (decompose/cohere/dead-code/주석 · @muse/recall 추출) (worktree `codebase-quality`) | [codebase-quality.md](codebase-quality.md) | 3 | (fire 3) | v1.14.0 | active (cron `81ac643b`, session-only) |
+| `test-hygiene` | 테스트 스위트 위생 — 저가치/중복 제거 + 누락 고가치 추가 (mutation-first) (worktree `test-hygiene`) | [test-hygiene.md](test-hygiene.md) | 1 | (fire 1) | v1.14.0 | active (cron `a3abcba0`, session-only) |
 
 <!-- New loops: add a row here on first registration; update your own row's last-fire/commit each fire. -->
