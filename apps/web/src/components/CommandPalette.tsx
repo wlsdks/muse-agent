@@ -10,6 +10,12 @@ export interface Command {
   readonly run: () => void;
 }
 
+export const COMMAND_LIST_ID = "command-palette-listbox";
+
+export function commandOptionId(commandId: string): string {
+  return `command-palette-option-${commandId}`;
+}
+
 export function CommandPalette({
   open,
   commands,
@@ -71,6 +77,7 @@ export function CommandPalette({
     }
   };
 
+  const activeOption = filtered[index];
   return (
     <div className="palette-backdrop" onClick={onClose} role="presentation">
       <div className="palette" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Command palette">
@@ -81,12 +88,20 @@ export function CommandPalette({
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
+          role="combobox"
+          aria-expanded={true}
+          aria-controls={COMMAND_LIST_ID}
+          aria-autocomplete="list"
+          aria-activedescendant={activeOption ? commandOptionId(activeOption.id) : undefined}
         />
-        <div className="palette-list">
+        <div className="palette-list" id={COMMAND_LIST_ID} role="listbox">
           {filtered.length === 0 && <div className="palette-empty">{t("cmd.empty")}</div>}
           {filtered.map((cmd, i) => (
             <button
               key={cmd.id}
+              id={commandOptionId(cmd.id)}
+              role="option"
+              aria-selected={i === index}
               className={`palette-item${i === index ? " active" : ""}`}
               onMouseEnter={() => setIndex(i)}
               onClick={() => {
