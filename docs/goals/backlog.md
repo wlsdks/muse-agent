@@ -1,5 +1,9 @@
 # Muse dev backlog — the living ledger
 
+- ⚠ **differentiation loop commits raw zero-width/homoglyph bytes** → recurring @muse/shared byte-hygiene gate failures (fire 16 fixed 2: eval-policy-symmetry.mjs + differentiation.md). Their injection-test fixtures/journal should use \uNNNN escapes. Cross-loop — their process to fix.
+- ✓ isRecord dedup @muse/tools (2 defs) + byte-hygiene regression fix (2 files) — codebase-quality fire 16
+
+
 - ✓ Decompose commands-doctor health-check trio (messagingConfigCheck/notesIndexHealth/episodeIndexHealth) → commands-doctor-checks.ts — codebase-quality fire 15
 
 - ◦ **Decompose commands-doctor check-cluster → sibling** — fire 14 extracted config-classifiers; the LocalCheck-returning health checks (modelEnvCheck/localOnlyCheck/ollamaPerfPostureCheck/selfLearningCheck/notesIndexHealth/episodeIndexHealth/embedModelCheck…) are a further cohesive cluster to extract (commands-doctor still ~1121 LOC).
@@ -111,6 +115,7 @@
 - ✓ ADD SSRF coverage: `assertPublicHttpUrlSync` sync gate (mcp/web-url-guard.ts) had zero direct tests — 5 cases (protocol/blocked-host/private-addr/ok), each guard clause mutation-pinned — test-hygiene fire 5
 - ✓ `muse.tasks.search` matches tags — a task tagged "work" (word not in title/notes) is now found by searching "work" (completes the fire-51 tag story: list FILTERS by tag, search now FINDS by tag) + JUDGE-DRILL (verifier caught a deliberately-inert version) — tool-hardening fire 53
 - ✓ `week_agenda` agent tool — "what's my week look like?" ONE merged view of events+tasks+birthdays by day (muse week was CLI-only; groupWeekAgenda moved to @muse/autoconfigure, CLI re-exports) — tool-hardening fire 54
+- ✓ `muse.calendar.list` query filter — "find my meeting with Bob this week" was inexpressible (list had only from/to/provider, no text filter; reminders.list already has search); added optional `query` over title/location/notes — tool-hardening fire 62
 - ✓ `home_action` blast-radius guard — an entity-less service call (e.g. `light.turn_off` with no entity) is HA's "apply to EVERY device in the domain" path (whole-house off / every-lock unlock); now fail-closed unless entity or a data target (entity_id/area_id/device_id/target) resolves a scope — tool-hardening fire 60
 - ✓ `list_objectives` agent tool — "what objectives are you tracking for me?" lists Muse's live standing objectives (active/escalated); were CLI/passive-only, no agent tool — tool-hardening fire 59
 - ✓ `web_action` method validation — a model-emitted GET (read verb) for a book/post intent silently reported performed:true (false success); a garbage verb hit fetch opaquely. Now an allow-set {POST,PUT,PATCH,DELETE} shared by schema enum + handler, fail-closed before approval/HTTP — tool-hardening fire 58

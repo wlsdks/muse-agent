@@ -15,7 +15,7 @@
 =======
 | `differentiation` | 경쟁 차별점 발굴 → edge 확장 vs hermes/openclaw (worktree `/tmp/muse-differentiation`) | [differentiation.md](differentiation.md) | 11 | `f5bf7362` | v1.14.0 | active (cron `291e935d`, session-only) |
 | `differentiation` | 경쟁 차별점 발굴 → edge 확장 vs hermes/openclaw (worktree `/tmp/muse-differentiation`) | [differentiation.md](differentiation.md) | 10 | `1860c9a7` | v1.14.0 | active (cron `291e935d`, session-only) |
-| `codebase-quality` | 코드베이스 내부 품질 (decompose/cohere/dead-code/주석 · @muse/recall 추출) (worktree `codebase-quality`) | [codebase-quality.md](codebase-quality.md) | 15 | `2d9754e9` | v1.14.0 | active (cron `725247c7`, session-only) |
+| `codebase-quality` | 코드베이스 내부 품질 (decompose/cohere/dead-code/주석 · @muse/recall 추출) (worktree `codebase-quality`) | [codebase-quality.md](codebase-quality.md) | 16 | `c28bcd7e` | v1.14.0 | active (cron `725247c7`, session-only) |
 >>>>>>> codebase-quality
 | `tool-mcp-browser` | TOOL 확장+하드닝 · 공식 공개 외부 MCP(Notion/GitHub) · muse-in-chrome (worktree `tool-mcp-browser`) | [tool-mcp-browser.md](tool-mcp-browser.md) | 5 | (fire 5) | v1.14.0 | active (cron `d410848c`, session-only) |
 | `grounding-integrity` | grounded≠true ceiling + self-improvement reliability + self-judge meta-eval (worktree `grounding-integrity`) | [grounding-integrity.md](grounding-integrity.md) | 6 | `e373114c` | v1.14.0 | active (cron `8ed88aa8`, session-only) |

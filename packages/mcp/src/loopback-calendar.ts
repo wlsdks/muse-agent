@@ -95,6 +95,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
         description:
           "List the user's calendar EVENTS between `fromIso` and `toIso` (ISO 8601 timestamps). " +
           "If `providerId` is omitted, fans out across all providers. " +
+          "Pass `query` to find a specific event — keeps only events whose title / location / notes match that text (case-insensitive), e.g. 'find my meeting with Bob this week'. " +
           "Defaults: from = now, to = +30 days. " +
           "USE WHEN the user asks what's on their schedule ('이번 주 일정 보여줘', '내 캘린더 알려줘', \"what's on my calendar\"); " +
           "NOT for to-dos (tasks `list`) or reminders (reminders `list`).",
@@ -103,13 +104,19 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           const fromIso = readString(args, "fromIso");
           const toIso = readString(args, "toIso");
           const providerId = readString(args, "providerId");
+          const queryTrimmed = (readString(args, "query") ?? "").trim();
+          const needle = queryTrimmed.toLowerCase();
           const from = parseIsoDate(fromIso) ?? new Date();
           const to = parseIsoDate(toIso) ?? new Date(from.getTime() + 30 * 86_400_000);
           try {
-            const events = await registry.listEvents({ from, to }, providerId);
+            const all = await registry.listEvents({ from, to }, providerId);
+            const events = needle.length === 0
+              ? all
+              : all.filter((e) => `${e.title} ${e.location ?? ""} ${e.notes ?? ""}`.toLowerCase().includes(needle));
             return {
               events: events.map(serializeEvent) as JsonValue,
-              total: events.length
+              total: events.length,
+              ...(queryTrimmed ? { query: queryTrimmed } : {})
             };
           } catch (error) {
             return { error: errorMessage(error) };
@@ -120,6 +127,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           properties: {
             fromIso: { description: "ISO 8601 start (default: now)", type: "string" },
             providerId: { description: "Specific provider id (default: all)", type: "string" },
+            query: { description: "Optional text to match in an event's title / location / notes (case-insensitive substring), e.g. 'dentist' or 'Bob'. Filters the listed events.", type: "string" },
             toIso: { description: "ISO 8601 end (default: now + 30 days)", type: "string" }
           },
           type: "object"

@@ -664,3 +664,12 @@ ratchet: testFiles 무변동 · fabrication 0 유지 · eval 무변경
 - **왜:** ~14 substantive fire 후 깨끗한 고가치 단일파일 vein 고갈. scout 검증: ToolOutputSanitizer(50k cap·injection-defang) 커버, messaging send-gate 견고, official-MCP preset fail-close, loopback 서버들 검증됨. 구조적 타깃(DefaultToolFilter·capToolOutput)은 @muse/agent-core(hot, 동시 루프 충돌).
 - **리뷰지점:** 코드 변경 0(backlog 블로커 + 이 저널). ★실 발견: `riskFromMcpAnnotations`(transport.ts:254)가 annotation 없는 외부 MCP 도구를 "read" 기본값 → approval 우회 = MCP 스펙 위반 fail-open. 단 fix(gated 기본값)는 un-annotated read 도구 over-gating 트레이드오프라 **진안-결정 보안-포스처**(autonomous behavior change 부적절). opt-in 외부 MCP(allowlist) 스코프, official preset은 known 서버 re-stamp.
 - **리스크:** 없음 — 코드 무변경(회귀 0). 정직 종료가 EXHAUSTION 규칙의 의도(스카웃 더 하드하게가 아니라 value-class 올리거나 정직 보고). 루프는 다음 fire 계속 — 진안이 테마 pivot 또는 MCP-risk 포스처 결정 가능.
+
+
+## fire 62 · 2026-06-13 · skill v1.14.0 · 795097c0
+meta: value-class=schema-reach · pkg=@muse/mcp · kind=schema-reach(calendar.list query filter, calendar 표면) · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles 931→932(+loopback-calendar-list-filter.test.ts) · fabrication 0 유지 · eval:tools personal-crud +1 calendar query 케이스(9/9 STABLE)
+- **무엇:** `muse.calendar.list`에 optional `query` 텍스트 필터 추가 — from/to/provider만 있고 텍스트 필터 없어 "find my meeting with Bob this week"가 표현 불가(reminders.list는 search 있음). title+location+notes 대소문자무시 substring, registry.listEvents 後 적용, query echo. no-query는 byte-identical.
+- **왜:** fire 61 vein-thinning 후 scout 러너업(calendar.list 텍스트 필터)이 calendar loop churn으로 deprioritize됐으나 — 파일이 clean(머지 없음)이라 fast-commit으로 진행. tasks.list tag(fire 51)와 동일 패턴, 실 가치 schema-reach. KIND=schema-reach(최근 security-fix/new-tool과 다름).
+- **리뷰지점:** loopback-calendar.ts(list execute에 query 필터 + 스키마 query property + description, list 블록만 — add/update/delete 무손상) + loopback-calendar-list-filter.test.ts(+3: title/notes 매치·location 매치·non-match0·no-query 전부) RED→GREEN 1828. eval personal-crud +1(calendar query argIncludes /bob/i). check의 @muse/shared byte-hygiene 실패는 **동시 루프 파일 2개**(differentiation.md·eval-policy-symmetry.mjs)의 raw 바이트 — 내 슬라이스 무관(byte-clean). lint 0. Opus PASS 6/6: behavioral·필터 정확(undefined 가드)·no-query byte-identical·add/update/delete 무충돌·selection 무회귀.
+- **리스크:** 없음 — list 핸들러/스키마만(self-contained, calendar loop과 무충돌), no-query 경로 무변경, read-only, query는 사용자 검색어(tasks tag/reminders search와 동류, fabrication 무관). 별건: 공유 byte-hygiene 게이트가 동시-루프 파일 2개로 빨감(다음 단계 처리).

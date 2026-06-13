@@ -259,6 +259,6 @@ ratchet: testFiles 929 · new deterministic battery eval:policy-symmetry (no Oll
   (`normalizeForInjectionDetection` no-op → 배터리 exit 1, 난독화 4건 ✗ → Edit 복원, git
   checkout 금지). EN/KO/CN 탐지·비파괴마스킹·과차단0 judge가 직접 `node -e` 재현. policy
   src/agent-core/recall/mcp/grounding 0줄(git status 2파일만). lint:pass·self-eval 회귀 0.
-  zero-width은 `​` 이스케이프(raw byte 없음).
+  zero-width은 `` 이스케이프(raw byte 없음).
 - **리스크/residual (비차단)**: 경쟁사 비교 인용(hermes #5322 등)은 narrative지 실행 단언
   아님(Muse 측 속성은 완전 증명). 가드 wiring 라이브 검증은 owned-loop 영역이라 deferred.

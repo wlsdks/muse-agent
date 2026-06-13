@@ -1,4 +1,5 @@
 import type { ModelTool } from "@muse/model";
+import { isRecord } from "@muse/shared";
 import type { SanitizedToolOutput } from "@muse/policy";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
@@ -857,9 +858,6 @@ const mutationTargetHints = [
 
 const mutationTargetPatterns = [/\bpr\b/u] as const;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 export { createMuseTools, hasNestedUnboundedQuantifier, type MuseToolFactoryOptions } from "./muse-tools.js";
 
