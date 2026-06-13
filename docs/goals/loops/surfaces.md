@@ -165,3 +165,12 @@ ratchet: cli tests 2619/2619 (today +1) · fabrication 0 · self-eval exit 0 · 
 - **왜**: 세션 다음날 아침 brief에 라이브로 노출되는 비문법 카피. sibling 포매터는 전부 `=== 1` 가드 쓰는데 이 prose-count 라인만 누락(in-file 불일치).
 - **리뷰지점**: floor(1.4)=1→"1 day", floor(7.4)=7→"7 days", floor(0)=0→"0 days"(정상 영어). empty-episode·truncation 무변.
 - **리스크**: 없음(포매터 1줄, 독립 Opus judge가 전 버킷·revert로 RED→GREEN·collateral 검증 후 PASS, today 62/62 · cli 2619/2619).
+
+## fire 19 · 2026-06-14 · skill v1.14.0 · 45310010
+meta: surface=cli · value-class=new-capability · pkg=@muse/cli · kind=sibling-parity-flag · verdict=PASS · firesSinceDrill=2
+ratchet: cli tests 2625/2625 (contacts +2) · fabrication 0 · self-eval exit 0 · value-class 다양화(format 버그→capability add, vein 신호 따라 행동 갭으로 전환)
+
+- **무엇**: `muse contacts list`에 `--json` 추가 — 같은 그룹 sibling(overdue/dupes/related/import)은 전부 `--json`인데 풀 주소록+`--search` 가진 가장 스크립팅-필요한 명령만 누락이었다. `term`/`shown` 계산 후 json 분기(`--search`와 합성, 빈 store→`[]`), human 경로 무변.
+- **왜**: 사용자가 `jq`로 파이프할 1순위 명령(전체 연락처)이 기계가독 출력 불가였다(cross-command 불일치). vein 신호 따라 format 버그가 아닌 capability 갭으로 전환.
+- **리뷰지점**: json 분기를 human empty-state 앞에 둠 — human 경로는 `all.length===0`("No contacts yet")→`shown.length===0`("No contacts match") 순서 보존. json empty는 human 카피 아닌 `[]`. JSON 형태는 raw `shown`(overdue/dupes 패턴과 일치).
+- **리스크**: 없음(list 액션 한정, 다른 contacts 서브커맨드 무변, 독립 Opus judge가 commander unknownOption RED·human 무회귀·--search 합성 검증 후 PASS, contacts 24/24 · cli 2625/2625).

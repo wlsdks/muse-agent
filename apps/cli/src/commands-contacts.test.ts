@@ -262,3 +262,28 @@ describe("muse contacts list --search — filter the people graph end-to-end", (
     expect(miss.stdout).toContain("3 total");
   });
 });
+
+describe("muse contacts list --json — scripting parity with overdue/dupes/related", () => {
+  it("emits a structured array (and --search composes with it)", async () => {
+    const file = contactsFile();
+    await run(file, ["add", "Kim Park", "--email", "kim@x.com", "--relationship", "coworker"]);
+    await run(file, ["add", "Bob Lee", "--email", "bob@x.com"]);
+
+    const all = await run(file, ["list", "--json"]);
+    expect(all.exitCode).toBeUndefined();
+    const parsed = JSON.parse(all.stdout) as { name: string }[];
+    expect(parsed).toHaveLength(2);
+
+    const filtered = await run(file, ["list", "--search", "kim", "--json"]);
+    const onlyKim = JSON.parse(filtered.stdout) as { name: string }[];
+    expect(onlyKim).toHaveLength(1);
+    expect(onlyKim[0]!.name).toBe("Kim Park");
+  });
+
+  it("emits [] (not the human empty copy) when there are no contacts", async () => {
+    const file = contactsFile();
+    const r = await run(file, ["list", "--json"]);
+    expect(r.exitCode).toBeUndefined();
+    expect(JSON.parse(r.stdout)).toEqual([]);
+  });
+});

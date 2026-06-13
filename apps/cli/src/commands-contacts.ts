@@ -286,14 +286,19 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
     .command("list")
     .description("List your contacts (name-sorted); --search filters by name / role / email / alias")
     .option("--search <term...>", "Only show contacts matching this term (name, relationship, alias, email, handle, phone), e.g. 'coworker' or 'kim'")
-    .action(async (options: { readonly search?: readonly string[] }) => {
+    .option("--json", "Emit the (optionally --search-filtered) contacts as a structured array instead of human lines")
+    .action(async (options: { readonly search?: readonly string[]; readonly json?: boolean }) => {
       const all = await queryContacts(contactsFile());
+      const term = (options.search ?? []).join(" ").trim();
+      const shown = term.length > 0 ? filterContactsBySearch(all, term) : all;
+      if (options.json) {
+        io.stdout(`${JSON.stringify(shown, null, 2)}\n`);
+        return;
+      }
       if (all.length === 0) {
         io.stdout("No contacts yet. Add one with `muse contacts add <name> --email <e>`.\n");
         return;
       }
-      const term = (options.search ?? []).join(" ").trim();
-      const shown = term.length > 0 ? filterContactsBySearch(all, term) : all;
       if (shown.length === 0) {
         io.stdout(`No contacts match '${term}'. (${all.length.toString()} total — run \`muse contacts list\` to see all.)\n`);
         return;

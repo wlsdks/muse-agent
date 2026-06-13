@@ -12,7 +12,7 @@ import type {
   CredentialRequirement
 } from "./types.js";
 
-export interface CalDAVRetryOptions {
+interface CalDAVRetryOptions {
   /**
    * Extra attempts after the first. Bounds the idempotent events read (429/5xx)
    * AND a write's 429-only rate-limit retry (a write 5xx is never retried). Default 2.

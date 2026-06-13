@@ -731,3 +731,19 @@ ratchet: testFiles 959 · fabrication 0 · groundedSurfaces 27 · commands-docto
   test green (2623 cli); the relocated JSDoc is the SAME orphaned text now attached to its real function (WHY
   preserved, not deleted); lint clean.
 - **Risk:** low — pure relocation + a comment-debt fix; no floor path (embed-model probe is advisory).
+
+## fire 40 · 2026-06-14 · loop-creator v1.14.0 · ec6a6a15
+meta: value-class=refactor · pkg=@muse/calendar · kind=dead-code · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 959 · fabrication 0 · groundedSurfaces 27 · 2 over-broad exports narrowed
+- **What:** dead-code (over-export tightening) in @muse/calendar — knip flagged `CalDAVRetryOptions`
+  (caldav-provider.ts) + `GoogleCalendarRetryOptions` (google-provider.ts) as unused exports; repo-wide grep
+  confirmed each is referenced ONLY inside its own file (as a `readonly retry?: <Type>` field annotation) with
+  ZERO external/test importers. Per code-style "internal use → drop export only": kept both interfaces, removed
+  their `export` keyword. knip now clean on both.
+- **Why:** diversity (the ④b judge has flagged the cli/recall concentration) — this fire deliberately picks a
+  FRESH package never touched by this loop (@muse/calendar) + a different KIND (dead-code). Genuine pkg+kind
+  variety, narrows the calendar providers' public surface (retry-options are an internal config detail).
+- **Review point:** 4b judge — both interfaces still internally referenced (de-export, NOT deletion — bodies
+  unchanged); zero external/test importers (grep-confirmed, so no breakage); knip drops both; calendar build +
+  152 tests green; no behavior change (export visibility only); calendar is cold (no concurrent loop).
+- **Risk:** none — type-export-visibility narrowing of two internal-only interfaces; no runtime/behavior/floor change.

@@ -9,7 +9,7 @@ import type {
   CredentialRequirement
 } from "./types.js";
 
-export interface GoogleCalendarRetryOptions {
+interface GoogleCalendarRetryOptions {
   /** Extra attempts after the first, for idempotent GET reads only. Default 2. */
   readonly retries?: number;
   /** First backoff in ms; doubles each retry. Default 250. */
