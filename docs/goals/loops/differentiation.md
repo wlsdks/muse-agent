@@ -213,3 +213,28 @@ ratchet: testFiles 926 · recall 95/95 · cli 빌드 OK · fabrication 0 · grou
 - **리스크/residual (비차단)**: end-to-end drift 테스트는 빈/누락 내용도 drift 경로를
   타므로 "진짜 읽는지"는 test 1이 단독 핀(judge 관찰; test 2 이중핀은 선택 강화). L4
   네 케이스(L1/L2/L3/L4) 중 L4가 이제 완전 라이브.
+
+## fire 11 · 2026-06-13 · skill v1.14.0 · `<pending-commit>`
+meta: value-class=new-capability · pkg=scripts(@muse/mcp proof) · kind=adversarial-proof-battery · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 928 · new deterministic battery eval:action-log-tamper (no Ollama) · fabrication 0 · 소유-루프 파일 미수정
+
+- **무엇**: L5(새 축 = 감사가능성/tamper-evidence). 새 결정적 적대 배터리
+  `scripts/eval-action-log-tamper.mjs`(`pnpm eval:action-log-tamper`). 모든 자율 액션
+  (performed+refused)이 genesis-anchored SHA-256 해시체인으로 봉인됨을 REAL temp 파일로
+  end-to-end 증명: intact verify·content-tamper 탐지·deletion/reorder 탐지·refused 체인·
+  undo accountable+체인유지·no-collateral. @muse/mcp의 *이미 export된* 심볼
+  (`appendActionLog`/`verifyActionLogChainFile`/`undoLoggedAction`/`readVetoes`)을
+  read-only import(fire3 @muse/memory·fire8 @muse/recall 패턴).
+- **왜 (어떤 경쟁 레버 대비)**: 경쟁사는 액션/mutation 이력을 평범한 mutable state로 취급 —
+  hermes는 whole-skill 스냅샷-복원만(무결성 체크 없음), openclaw는 승급된 메모리 undo 불가
+  (#62184 not-planned). per-action 해시체인 무결성은 throughput 제품엔 비용일 뿐이고
+  "자유로운 자기-mutation" 피치와 구조적으로 상충 — single-user "조용히 못 고친다" 정체성엔
+  그 체인이 곧 trust contract. (정직한 scope: tamper-EVIDENT지 tamper-PROOF 아님 — 동기있는
+  공격자의 전체 재계산은 off-box anchor 필요, 소스에 out-of-scope 명시.)
+- **리뷰지점**: 배터리 PASS 10/10. ④b 독립 Opus judge **4/4 PASS** + falsification 재현
+  (`verifyActionLogChain` 무력화→배터리 exit 1, tamper/deletion/reorder 3건 ✗ → Edit 복원,
+  git checkout 금지). REAL export 구동(mock 아님) judge가 dist 확인. mcp src/agent-core/
+  recall/grounding 0줄(git status 2파일만). lint:pass·self-eval 회귀 0.
+- **리스크/residual (비차단)**: 경쟁사 비교 주장(hermes 무결성 없음·openclaw #62184)은
+  배터리 주석의 narrative지 실행 단언 아님(Muse 측 속성은 완전 증명). 체인 tip은 다음
+  append로 봉인(append-local, 소스 명시). 선택: self-eval에 tamper-guard ratchet 편입.

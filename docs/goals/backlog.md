@@ -112,6 +112,7 @@
 
 - ✓ JUDGE-DRILL (verifier proven) + truncated-snippet disk-verify coverage — planted an inert test, the independent Opus judge correctly FAILED it (mutation-proven), then landed a real discriminating test locking down fire-8's `…`-truncation disk-verify path (mutation: break `snippetOnDisk` → real test fails) — differentiation fire 9
 - ✓ L4 LIVE — `muse ask` disk-verifies cited snippets — `buildDiskContents` (@muse/recall) reads each cited note's current content (ad-hoc skipped) and `commands-ask.ts` feeds it to the receipt, so a drifted/deleted note's snippet is now hidden from the user ("changed since" / "no longer on disk") instead of quoted as a fake citation; recall 95/95, grounding engine untouched — differentiation fire 10
+- ✓ L5 action-log tamper-evidence proof battery — `eval:action-log-tamper` proves every autonomous action (performed+refused) is sealed in a genesis-anchored SHA-256 chain: edit/deletion/reorder caught at a precise index, refused actions chained, undo extends (never breaks) the chain — an integrity guarantee rivals' snapshot-rollback (hermes) / un-undoable promoted memory (openclaw #62184) lack; imports @muse/mcp read-only, deterministic, no Ollama — differentiation fire 11
 
 ## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
 
