@@ -26,6 +26,7 @@
 - ✓ `on_this_day_notes` agent tool — conversational date-cued note recall (muse on-this-day was CLI-only; pure recall logic moved to @muse/mcp, CLI re-exports) — tool-hardening fire 48
 - ✓ `egressGuards` self-eval ratchet — local-by-construction moat (cloud egress refused in code) promoted to a deterministic scoreboard regression gate, mirroring the grounding ratchet (a structural edge hermes/openclaw can't copy) — differentiation fire 1
 - ✓ `egressGuards` ratchet widened to the voice egress guard — mic audio's cloud STT/TTS path now ratcheted too (drop the MUSE_LOCAL_ONLY voice cloud-key-ignore → self-eval exits 1); value 5→6 — differentiation fire 2
+- ✓ `eval:memory-poisoning` adversarial proof battery — proves Muse drops a model-asserted/poisoned claim at WRITE time (`dropModelAssertedValues`) that rivals' frequency-promotion (OpenClaw dreaming minRecallCount 3) would promote; deterministic, no Ollama — differentiation fire 3
 
 ## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
 

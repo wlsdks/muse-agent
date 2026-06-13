@@ -54,3 +54,29 @@ ratchet: testFiles 912 · egressGuards 5→6 (voice guard now counted) · fabric
   리팩터하면 count가 *낮아져* loud 회귀(의도된 fail-loud지만 마커도 함께 업데이트
   필요). ② localhost-only embeddings 가드는 여전히 미포함(그 이름의 파일을 못 찾음 —
   위치 확인 필요) → 별도 ◦로 남김.
+
+## fire 3 · 2026-06-13 · skill v1.14.0 · `<pending-commit>`
+meta: value-class=new-capability · pkg=scripts(@muse/memory proof) · kind=adversarial-proof-battery · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 912 · new deterministic battery eval:memory-poisoning (no Ollama) · fabrication 0 · egressGuards 6 untouched
+
+- **무엇**: 새 결정적 적대 proof 배터리 `scripts/eval-memory-poisoning.mjs`
+  (`pnpm eval:memory-poisoning`). fire 1-2의 self-eval ratchet vein을 떠나 **다른
+  KIND·다른 surface**(@muse/memory 증명). 메모리 승급의 WRITE-시점 provenance 게이트
+  (`dropModelAssertedValues`)가 poisoned model-asserted claim을 5회 주입마다 드롭함을,
+  그리고 *같은* claim이 forged hits면 `selectPromotableMemories` frequency 게이트를
+  통과함을(=경쟁사는 승급, Muse write-gate가 막음), user-stated 값은 둘 다 통과함을
+  (no-collateral) 실측 증명.
+- **왜 (어떤 경쟁 레버 대비)**: L2 — OpenClaw "Dreaming"(minRecallCount 3 +
+  frequency score)·Hermes(FTS5+LLM summarize)는 자주 회상된 거짓 주장을 승급(GROUNDED≠TRUE
+  on memory surface). 그들 frequency-promotion에 write-time provenance drop을 더하면
+  "agent가 자기 답에서 학습" 기능을 죽이므로 구조적으로 못 따라온다. Muse는 그 drop이
+  곧 제품이라 비용 없음.
+- **리뷰지점**: 배터리 PASS 4/4. OUTCOME falsification 독립 재현(Opus judge, maker≠judge):
+  `dropModelAssertedValues` 무력화(`if(!modelAsserted)`→`if(true)`)+rebuild → 배터리
+  exit **1** scenario 1 ✗; 복원+rebuild → exit **0**. scenario 2가 *실제*
+  `selectPromotableMemories` export를 호출(하드코딩 아님)함을 judge가 dist에서 확인.
+  TS 소스 0줄 변경(순수 새 스크립트 + package.json 1줄). lint:pass · self-eval 회귀 0.
+- **리스크/residual (비차단)**: ① scenario 2의 forged-hits는 실제 recall pass가 아닌
+  inline 합성(결정적 unit 증명엔 적합하나, 주입이 실제 hit를 만든다까진 증명 안 함).
+  ② 배터리는 dist 빌드 의존(package.json 스크립트가 처리; bare `node`는 src 편집 後
+  수동 rebuild 필요). → CI 번들 편입 시 명시.
