@@ -246,3 +246,12 @@ ratchet: cli tests 2636 (+3) · testFiles 977 · fabrication 0 · self-eval exit
 - **왜**: Opus scout가 list-command 파리티 매트릭스에서 checkins만 `--search` 결여로 식별(question은 이미 로드·표시되는 자유텍스트 필드, 사용자가 grep할 바로 그 필드). fire 23(followup `summary`)와 동족이나 distinct 명령 — 매트릭스 완성 = 실 일관성 가치, busywork 아님.
 - **리뷰지점**: case-insensitive(양측 toLowerCase). `--status` 검증(fire 14 sibling) 먼저 early-return 後 status-filter→search 순. `total: scoped.length`로 필터 반영. 빈/부재 `--search`→falsy→byStatus(무필터, 무회귀). `question` 검색은 followup의 `summary`와 정확한 파리티(둘 다 표시 필드).
 - **리스크**: 없음(list action 한정 +7/-2 + 신규 3 테스트, cancel/snooze/scan 무변; 독립 Opus judge가 mutation-test(필터 no-op→RED)로 비-vacuous·RED-before·composition·total·무회귀 검증 후 PASS, cli 2636/2636·self-eval exit 0).
+
+## fire 28 · 2026-06-14 · skill v1.14.0 · 0b439fdd
+meta: surface=web · value-class=wiring · pkg=@muse/web · kind=a11y-icon-button-accessible-name · verdict=PASS · firesSinceDrill=2
+ratchet: web unit 36/36 (+2) · muse-console e2e 1/1 · testFiles 979 · fabrication 0 · self-eval exit 0 · 표면 균형 web10·desktop8·cli10
+
+- **무엇**: Chat의 아이콘-only 버튼(send/mic/speak)이 `title`(툴팁)만으로 접근명을 의존 — SVG가 aria-hidden이라 스크린리더엔 "button"으로만 읽힘(WCAG 4.1.2). 공유 `Button`에 optional `ariaLabel` prop 추가(→ `aria-label` 포워드, unset이면 attr 생략) + 세 아이콘-only Chat 버튼에 이미 title로 넘기던 i18n 문자열로 배선.
+- **왜**: title은 다수 스크린리더가 안 읽고 터치엔 절대 안 뜸 → 제품 최빈 액션(메시지 전송)의 이름이 사실상 없음. aria-label이 robust한 정식 접근명. Opus scout가 web 최고가치 a11y 갭으로 식별(fire 26 desktop core엔 동급 미테스트 분기 없음).
+- **리뷰지점**: ariaLabel undefined→React가 attr 생략(텍스트 버튼은 children 이름 유지, 빈 attr 덮어쓰기 없음 — 둘째 단위테스트로 실증). mic은 recording 상태 추적(title와 동일). title 보존(시각 툴팁). e2e가 렌더된 Send/mic의 aria-label을 toHaveAttribute로 단언(call-site 배선 검증, prop 존재만 아님).
+- **리스크**: 없음(ui.tsx Button + Chat 3 call-site + 2 테스트만; 타 Button 호출부는 ariaLabel 미전달→무변; 독립 Opus judge가 양 레이어 mutation-test(forwarding/call-site 제거→RED)로 비-vacuous·RED-before·undefined-omit·무부수효과 검증 후 PASS, web 36/36·e2e 라운드트립 유지).
