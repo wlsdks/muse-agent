@@ -1,5 +1,9 @@
 # Muse dev backlog — the living ledger
 
+- ◦ **Decompose commands-doctor check-cluster → sibling** — fire 14 extracted config-classifiers; the LocalCheck-returning health checks (modelEnvCheck/localOnlyCheck/ollamaPerfPostureCheck/selfLearningCheck/notesIndexHealth/episodeIndexHealth/embedModelCheck…) are a further cohesive cluster to extract (commands-doctor still ~1121 LOC).
+- ✓ Decompose commands-doctor config-classifiers → commands-doctor-config.ts — codebase-quality fire 14
+
+
 - ◦ **Consolidate remaining 8 isRecord dups → @muse/shared** — tools(×2)/auth/voice/model/agent-core/autoconfigure/api each hand-roll isRecord; migrate per-package (re-export the exported ones). fire 13 did @muse/shared canonical + apps/cli (3). 
 - ✓ isRecord canonical → @muse/shared + apps/cli 3 dups consolidated — codebase-quality fire 13
 
