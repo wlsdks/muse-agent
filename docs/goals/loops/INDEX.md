@@ -6,7 +6,7 @@
 
 | slug | theme | journal | last fire | last commit | skill | status |
 |---|---|---|---|---|---|---|
-| `tool-hardening` | TOOL expansion & hardening (main worktree) | [tool-hardening.md](tool-hardening.md) | 48 | `3dab1d8e` | v1.14.0 | active (cron, session-only) |
+| `tool-hardening` | TOOL expansion & hardening (main worktree) | [tool-hardening.md](tool-hardening.md) | 49 | `e509f8b5` | v1.14.0 | active (cron, session-only) |
 | `cognition` | agent-core 인지 강화 (worktree `agent-core-enhance`) | [cognition.md](cognition.md) | 39 | — | — | managed elsewhere — re-register to adopt v1.14.0 logging |
 
 <!-- New loops: add a row here on first registration; update your own row's last-fire/commit each fire. -->
