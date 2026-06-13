@@ -50,7 +50,7 @@ import type { AskWeaknessAxis } from "@muse/recall";
 export { askOutcomeLabel, askWeaknessAxis, createStageTimer, recordAskWeakness, recordAskWeaknessResolved };
 import { drawBestGroundedRedraft, groundingVerdictNotice } from "@muse/recall";
 export { drawBestGroundedRedraft, groundingVerdictNotice };
-import { buildAskConnections } from "@muse/recall";
+import { buildAskConnections, groundingConflictCue } from "@muse/recall";
 export { buildAskConnections };
 import type { FileEntry, IndexChunk } from "@muse/recall";
 
@@ -2800,6 +2800,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         io.stdout(`${JSON.stringify(payload, null, 2)}\n`);
       } else {
         io.stdout("\n");
+        // grounded≠true: if two of the sources backing this answer DISAGREE on a
+        // field, surface it — the receipt would otherwise vouch for whichever one
+        // got cited. Independent of --connect (a safety cue, not the opt-in footer).
+        const conflictCue = groundingConflictCue(
+          scored.map((r) => ({ file: r.file, text: r.chunk.text })),
+          episodeHits.map((e) => ({ id: e.id, summary: e.summary }))
+        );
+        if (conflictCue) io.stderr(`${conflictCue}\n`);
         // SB-3: a readable second-brain provenance footer the user can
         // scan — reuses the grounding already ranked this turn (no extra
         // search), only the strongest hits, shared formatter with `today`.
