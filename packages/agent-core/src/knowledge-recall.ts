@@ -1532,7 +1532,7 @@ export async function verifyGroundingPerClaim(
   matches: readonly KnowledgeMatch[],
   query: string,
   reverify: GroundingReverify,
-  options?: { readonly maxClaims?: number }
+  options?: { readonly maxClaims?: number; readonly suspectClaims?: ReadonlySet<string> }
 ): Promise<PerClaimRefinement> {
   const claims = segmentClaims(answer);
   if (claims.length <= 1) {
@@ -1544,6 +1544,12 @@ export async function verifyGroundingPerClaim(
   const overflow = claims.slice(cap);
   const verdicts: PerClaimVerdict[] = [];
   for (const claim of checked) {
+    // When a pre-filter screen has already classified non-suspect claims,
+    // skip the judge for them (only embed cost, not a model call).
+    if (options?.suspectClaims !== undefined && !options.suspectClaims.has(claim)) {
+      verdicts.push({ claim, supported: true });
+      continue;
+    }
     let supported: boolean;
     try {
       supported = await reverify({ answer: claim, evidence, query });

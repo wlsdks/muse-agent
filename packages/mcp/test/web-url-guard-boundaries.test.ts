@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isPrivateAddress, isPrivateIPv4, isPrivateIPv6 } from "../src/web-url-guard.js";
+import { assertPublicHttpUrlSync, isPrivateAddress, isPrivateIPv4, isPrivateIPv6 } from "../src/web-url-guard.js";
 
 // Complements web-read.test.ts (which checks representative positives):
 // here the focus is the SSRF-critical RANGE BOUNDARIES, where an
@@ -65,5 +65,35 @@ describe("isPrivateAddress dispatch", () => {
     expect(isPrivateAddress("::1")).toBe(true);
     expect(isPrivateAddress("::ffff:192.168.0.1")).toBe(true);
     expect(isPrivateAddress("2606:2800:220:1:248:1893:25c8:1946")).toBe(false);
+  });
+});
+
+// The SYNC entry point composes the boundary helpers above into the actual
+// SSRF gate callers use (assertPublicHttpUrl is the async DNS-resolving twin,
+// covered in web-read.test.ts). The orchestration — protocol, blocked
+// hostname, bracket-stripped IPv6, literal loopback — had no direct test, so a
+// regression in any single guard clause would pass silently.
+describe("assertPublicHttpUrlSync — composed SSRF gate (no DNS)", () => {
+  it("rejects a non-http(s) protocol (file://) without a network hop", () => {
+    const r = assertPublicHttpUrlSync("file:///etc/passwd");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("unsupported protocol");
+  });
+  it("rejects a malformed URL", () => {
+    expect(assertPublicHttpUrlSync("not a url").ok).toBe(false);
+  });
+  it("rejects a blocked hostname (localhost / *.internal)", () => {
+    expect(assertPublicHttpUrlSync("http://localhost/admin").ok).toBe(false);
+    expect(assertPublicHttpUrlSync("http://metadata.internal/").ok).toBe(false);
+  });
+  it("rejects a literal loopback IPv4 and a bracketed IPv6 loopback (no DNS lookup)", () => {
+    expect(assertPublicHttpUrlSync("http://127.0.0.1:8080/").ok).toBe(false);
+    expect(assertPublicHttpUrlSync("http://[::1]/").ok).toBe(false);
+    expect(assertPublicHttpUrlSync("http://169.254.169.254/latest/meta-data").ok).toBe(false); // cloud metadata
+  });
+  it("passes a public https URL and returns the parsed URL", () => {
+    const r = assertPublicHttpUrlSync("https://example.com/path");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.url.hostname).toBe("example.com");
   });
 });

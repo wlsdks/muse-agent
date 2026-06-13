@@ -45,3 +45,11 @@ ratchet: testFiles 924→919 (−5 의도된 중복 삭제, judge 승인) · net
 - **왜:** 같은 테스트가 매 run마다 2번 = 순수 낭비 + 리뷰 노이즈. 진안이 핵심으로 든 "의미없는 중복 제거".
 - **어떻게-증명(MUTATION-FIRST PRUNE):** 삭제 後 남은 `test/` twin이 행동을 여전히 잡음을 mutation으로 증명 — `verifySignature→true` 시 test/signing RED. ★④b judge가 **2회 FAIL로 진짜 손실을 잡음**: council-wire의 same-length-non-hex catch 분기 + peer-config의 빈-문자열 secretEnv 가드가 twin에 없었음(둘 다 보안 분기, mutation-detectable). → 두 유니크 케이스를 twin에 **이식**(migrate) + 각각 타깃 mutation으로 RED 증명(catch→true, `length>0`→`>=0`). 3차 judge가 전수 재확인 후 **VERDICT: PASS**.
 - **리스크:** 소스(비-test) 무변경, full `pnpm check` GREEN. stale-dist가 또 한 번 full-check를 오염(mv 복원→mtime 역전→`tsc -b` 리빌드 스킵) → `rm -rf dist+tsbuildinfo` 클린리빌드로 확정. LESSON: a2a/tools/model의 src+test 이중구조는 vitest.config로 근본 해결 가능하나(별 슬라이스), 우선 명백한 중복부터 안전 제거. PRUNE은 "더 많은 케이스=superset"이 **거짓일 수 있음**(유니크 보안 케이스 존재) — 케이스 단위 대조 필수, judge가 이를 강제.
+
+## fire 5 · 2026-06-13 · skill v1.14.0 · 7ee18256
+meta: kind=add · pkg=@muse/mcp · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 927→927 (케이스 +5, 파일수 불변) · netCoverage +4 branch (protocol·blocked-host·private-addr·ok) · fabrication 0 · pnpm check FULL GREEN
+- **무엇:** 검토 ★ 보안 ADD — `assertPublicHttpUrlSync`(mcp/web-url-guard.ts)의 **SSRF 가드 sync 진입점** 커버 추가(`web-url-guard-boundaries.test.ts`). async twin(`assertPublicHttpUrl`)·헬퍼(isPrivateIPv4/v6)는 테스트됐지만 **합성 sync 게이트는 테스트 0개**였음. 케이스: file:// 거부 / malformed URL / localhost·metadata.internal / 127.0.0.1·[::1]·169.254 메타데이터 / 공개 https 통과.
+- **왜:** SSRF는 보안 게이트 — 어느 한 절(protocol/blocked-host/private-addr)이 회귀해도 조용히 통과될 수 있었음. CLAUDE.md "every export gets a direct test" + agent-testing.md "보안은 코드로 테스트".
+- **어떻게-증명(MUTATION-FIRST):** `isBlockedHostname` 조건을 `false &&`로 무력화 시 blocked-hostname 케이스 RED(localhost 통과), 복원+클린리빌드 후 14/14 GREEN. ★④b judge가 **3개 가드 절을 각각 독립 mutate**해 모든 케이스가 mutation-caught(inert 없음)임을 재확인 + 값 정확성([::1] bracket-strip, 169.254 link-local) 검증 후 **VERDICT: PASS**.
+- **리스크:** 없음 수준 — 테스트-only, 소스 무변경, full `pnpm check` GREEN. (mcp dist 클린리빌드 1회 필요했음 — [[project_stale_dist_from_loop]] 반복 패턴.)
