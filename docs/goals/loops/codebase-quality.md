@@ -864,3 +864,11 @@ ratchet: testFiles 970 · fabrication 0 · groundedSurfaces 27 · 3 internal-onl
 - Why: dead-code KIND (diversity off the 4x decompose run); single COLD file (commands-export last touched by a docs comment-strip) so low conflict risk. Diversity: cli 2/8, dead-code 2/8.
 - Review point: 4b judge — the 3 are genuinely internal-only (no caller breaks: cli build clean, 2627 tests green); knip drops them post-de-export; functions unchanged (only `export` removed). chat-ink-render approval-box test false-timed-out under full-check CPU load (known fire-41 Ink flake) — passed standalone 2627/2627.
 - Risk: none — narrowing visibility of 3 already-internal helpers; no behavior change.
+
+## fire 50 · 2026-06-14 · loop-creator v1.14.0 · 1ddae31d
+meta: value-class=refactor · pkg=@muse/autoconfigure · kind=dead-code · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 972 · fabrication 0 · groundedSurfaces 27 · 2 dead re-exports removed
+- What: removed 2 dead re-exports (resolveUserSkillsDir/resolveWorkspaceSkillsDir) from personal-providers.ts's `export {...} from "./provider-paths.js"` block. knip-flagged: nothing imports these two FROM personal-providers (the test + all consumers import them from provider-paths.js directly). They STAY imported into personal-providers (separate import block) for internal use at lines 239/241; only the redundant re-export of these 2 names was dropped.
+- Why: dead-code KIND off the 4x decompose run; targeted the re-export block specifically (the import block has the same names — removed only the re-export occurrences). Diversity: autoconfigure 2/8, dead-code 3/8.
+- Review point: 4b judge — only the 2 re-export names removed (the many OTHER re-exports in that block + the internal import + the resolveUserSkillsDir(env)/resolveWorkspaceSkillsDir(env) call sites untouched); provider-paths.test.ts imports from provider-paths.js (not personal-providers) so unaffected; autoconfigure 595 tests green; knip drops both.
+- Risk: none — narrowing a re-export surface; the symbols stay available from their canonical home provider-paths.ts, still used internally.
