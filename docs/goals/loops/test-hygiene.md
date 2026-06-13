@@ -93,3 +93,11 @@ ratchet: testFiles 943→942 (−1 중복 삭제, judge 승인) · netCoverage 0
 - **왜:** 같은 함수를 두 파일이 매 run 중복 테스트(model double-run). fire-4 교훈: lesser 파일도 유니크 경계를 가질 수 있어 case-by-case 대조 필수.
 - **어떻게-증명(MUTATION-FIRST PRUNE):** `status >= 500`→`>= 499` 변형 시 이식한 499 케이스가 RED(삭제 파일이 지키던 하한 경계를 src/가 그대로 잡음), 복원 8/8 green. ④b judge가 삭제 파일의 *모든* assertion이 src/에 subsumed + 양쪽 경계(499 하한·600 상한) mutation-caught 재확인 후 **VERDICT: PASS**.
 - **리스크:** 소스 무변경. ★LESSON: `pnpm check` 전 whole-tree `rm -rf dist tsconfig.tsbuildinfo`는 빌드-순서 race 유발(의존 패키지가 dep dist를 test 중 못 찾아 "Failed to resolve @muse/model" 4파일 false-fail) → `pnpm -r build` 먼저 OR `rm` 없이 `pnpm check`만. 재실행으로 GREEN 확정([[project_stale_dist_from_loop]]).
+
+## fire 11 · 2026-06-13 · skill v1.14.0 · 6fc80a16
+meta: kind=prune · pkg=@muse/tools · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 944→943 (−1 중복 삭제, judge 승인) · netCoverage 0 (src/가 strict superset) · fabrication 0 · pnpm check FULL GREEN (첫 시도)
+- **무엇:** tools 이중-실행 중 `muse-tools-helpers`(arg-parser 헬퍼 readOptionalString/readRequiredDate/readOptionalDate[3-state]/readOptionalNumber) 쌍 정리 — `src/`(11케이스)가 `test/`(7케이스)의 strict behavioral superset임을 함수별 확인 후 lesser `test/muse-tools-helpers.test.ts` 삭제. src/가 추가로 null/missing-key/음수/0 엣지까지 커버 → 이식 불필요.
+- **왜:** 같은 헬퍼를 두 독립 스위트가 매 run 중복 테스트. readOptionalDate의 absent/invalid/date 3-state는 load-bearing(absent↔invalid 붕괴 시 도구가 잘못된 instant로 조용히 anchor).
+- **어떻게-증명(MUTATION-FIRST PRUNE):** readOptionalDate 비-string `invalid`→`absent` 변형 시 src/의 "present-but-unparseable→invalid" RED(`{kind:'absent'}≠{kind:'invalid'}`), 복원 11/11 green. ④b judge가 삭제 파일의 *모든* assertion이 src/에 subsumed + invalid **양쪽 서브분기**(비-string + NaN-string) mutation-caught 재확인 후 **VERDICT: PASS**.
+- **리스크:** 소스 무변경. ★data/text/time 쌍은 **독립 작성된 다른 스위트**(복사본 아님, 케이스 문구 다름)라 helpers처럼 깨끗한 subset이 아닐 수 있음 — 쌍마다 함수별 대조 필수(backlog 기록). fire-10 교훈 적용: whole-tree `rm -rf dist` 안 함 → stale-dist 캐스케이드 없이 첫 check GREEN.
