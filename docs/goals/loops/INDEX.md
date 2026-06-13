@@ -14,6 +14,6 @@
 | `tool-mcp-browser` | TOOL 확장+하드닝 · 공식 공개 외부 MCP(Notion/GitHub) · muse-in-chrome (worktree `tool-mcp-browser`) | [tool-mcp-browser.md](tool-mcp-browser.md) | 5 | (fire 5) | v1.14.0 | active (cron `d410848c`, session-only) |
 | `grounding-integrity` | grounded≠true ceiling + self-improvement reliability + self-judge meta-eval (worktree `grounding-integrity`) | [grounding-integrity.md](grounding-integrity.md) | 4 | `0b77bfe8` | v1.14.0 | active (cron `8ed88aa8`, session-only) |
 | `surfaces` | 제품 표면 강화 — CLI · macOS desktop · web (worktree `/tmp/muse-surfaces`, branch `loop/surfaces`) | [surfaces.md](surfaces.md) | 4 | `f27253c0` | v1.14.0 | active (cron `a55a7444`, session-only) |
-| `test-hygiene` | 테스트 스위트 위생 — 저가치/중복 제거 + 누락 고가치 추가 + flaky 수정 (mutation-first) (worktree `test-hygiene`) | [test-hygiene.md](test-hygiene.md) | 4 | (fire 4) | v1.14.0 | active (cron `b7a92bf5`, session-only) |
+| `test-hygiene` | 테스트 스위트 위생 — 저가치/중복 제거 + 누락 고가치 추가 + flaky 수정 (mutation-first) (worktree `test-hygiene`) | [test-hygiene.md](test-hygiene.md) | 5 | (fire 5) | v1.14.0 | active (cron `b7a92bf5`, session-only) |
 
 <!-- New loops: add a row here on first registration; update your own row's last-fire/commit each fire. -->

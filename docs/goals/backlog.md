@@ -53,7 +53,7 @@
 
 **ADD — genuinely uncovered high-value (security / grounding first):**
 - ◦ ★ **`createCitationStreamFilter` (agent-core, knowledge-recall/response path) has ZERO tests** — the grounding floor's STREAMING citation gate (the fix behind [[project_injection_defense]]'s "fabricated [from X] no longer flashes"); no regression test exists. (audit agent-core)
-- ◦ ★ **`assertPublicHttpUrlSync` (mcp/web-url-guard.ts) — SSRF guard sync path untested** — `file://`, `http://127.0.0.1`, `http://[::1]`, `http://metadata.internal` must block without DNS; none asserted (async twin is tested). Security gate. (audit mcp)
+- ✓ DONE (fire 5) **`assertPublicHttpUrlSync` SSRF sync gate** — covered: file://·malformed·localhost·metadata.internal·127.0.0.1·[::1]·169.254 all blocked, public https passes; each guard clause mutation-pinned.
 - ◦ **`groundToolArguments` nested-object multi-hop branch** (agent-core) — anti-fabrication gate untested on nested mixed grounded/fabricated leaves. (audit agent-core)
 - ◦ **`createLlmClassificationInputGuard` provider-throws fail-close** (agent-core/guards.ts) — classifier-outage path asserts no `GUARD_ERROR`/fail-close at unit level. (audit agent-core)
 - ◦ **`createToolResultQualityAuditFilter` early-return branches** (agent-core) — empty toolsUsed / empty verifiedSources / empty-remainder pass-throughs uncovered. (audit agent-core)
@@ -92,6 +92,7 @@
 - ✓ FIX flaky timeout: `@muse/mcp playbook-store "weighted eviction"` was intrinsically ~5.1s (121 sequential recordPlaybookStrategy disk writes) → rewrote setup to 1 writePlaybook pre-seed + 1 record overflow (285ms), same assertions, mutation-proven (FIFO mutant → RED) — test-hygiene fire 2
 - ✓ ADD coverage: `formatCoarseAge` ≥2-year branch (`.toFixed(0)` whole years) in @muse/recall — only the <2y 1-decimal path was tested; mutation-proven (toFixed(1) mutant → '2.2y'≠'2y' RED) — test-hygiene fire 3
 - ✓ PRUNE a2a double-run: deleted 5 subsumed `src/*.test.ts` (peer-config·receive-quarantine·signing·council-wire·handler), migrated 2 unique security cases to the `test/` twins; testFiles 924→919; mutation-proven, 3 judge rounds (2 caught real loss) — test-hygiene fire 4
+- ✓ ADD SSRF coverage: `assertPublicHttpUrlSync` sync gate (mcp/web-url-guard.ts) had zero direct tests — 5 cases (protocol/blocked-host/private-addr/ok), each guard clause mutation-pinned — test-hygiene fire 5
 - ✓ `muse.tasks.search` matches tags — a task tagged "work" (word not in title/notes) is now found by searching "work" (completes the fire-51 tag story: list FILTERS by tag, search now FINDS by tag) + JUDGE-DRILL (verifier caught a deliberately-inert version) — tool-hardening fire 53
 - ✓ `week_agenda` agent tool — "what's my week look like?" ONE merged view of events+tasks+birthdays by day (muse week was CLI-only; groupWeekAgenda moved to @muse/autoconfigure, CLI re-exports) — tool-hardening fire 54
 - ✓ `web_action` method validation — a model-emitted GET (read verb) for a book/post intent silently reported performed:true (false success); a garbage verb hit fetch opaquely. Now an allow-set {POST,PUT,PATCH,DELETE} shared by schema enum + handler, fail-closed before approval/HTTP — tool-hardening fire 58
