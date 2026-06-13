@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ comment-hygiene: stripped 5 forbidden goal/task-id markers (adapter-ollama/weather-tool/loopback-calendar/history-routes/commands-pattern), WHY preserved — codebase-quality fire 20
 - ✓ recent_actions `result` outcome filter (filter-BEFORE-limit so an old refusal/failure surfaces for "did you refuse anything?") + JUDGE-DRILL (inert/declaration-only/stub slice → verifier FAILed 4/4) — tool-hardening fire 64
 - ✓ Decompose @muse/macos macos-tools.ts step 1: shared exec primitives (runChild/escapeAppleScript/isPermissionError/MacCommandResult) -> macos-exec.ts (1522->1464 LOC) — codebase-quality fire 19
 - ◦ **Decompose macos-tools.ts (steps 2+, DECOMPOSE-ON-DEFER from fire 19)** — over macos-exec.ts base, move tool families to siblings, re-export from macos-tools: (2) outbound `mac_message_send`+`sendImessageWithApproval` cluster; (3) AppleScript app tools (shortcut_run/app_read/app_open/media_control/system_set); (4) capture/clipboard/spotlight/say. Each: move factory+its local consts, import shared base, keep re-export so callers/tests unchanged.
