@@ -186,3 +186,11 @@ ratchet: mcp +2 concurrency tests (full suite 42 pass) · agent-core racy bounda
 - 왜: axis B(자기개선 서브시스템 신뢰성)로 전환 — fire 20-22가 agent-core grounding 의미-가드(kind A)에 집중돼 diversity+RATCHET이 다른 축/패키지/value-class를 강제. Whetstone 메타인지 산출물이 동시성에서 자기 학습 신호를 잃던 진짜 durability 구멍.
 - 리뷰지점: read를 큐 closure 안에서 수행(전체 RMW 원자화), empty-topic early-return은 큐 밖 유지(동작 불변), atomicWriteFile이 bounded-growth cap·JSON shape 보존. 독립 Opus judge가 큐 wrap 무력화→두 테스트 red 직접 확인(non-vacuous)→복원, 5/5 PASS. agent-core 변경은 test-only(source isStaleStrategy 불변).
 - 리스크: 낮음(데이터-계층 동시성 강화, 불변식 무관). vein: 인접 self-improve 모듈(playbook/correction-distiller/decay/reflection-synthesis/user-model-slots)은 scout가 well-hardened 확인 — 다음 axis B는 weakness-ledger 외 잔여 store 또는 axis C(self-judge meta-eval).
+
+## fire 24 · 2026-06-14 · skill v1.14.0 · 889c9265
+meta: value-class=redteam-defense(wiring) · pkg=@muse/cli · kind=A · verdict=PASS · firesSinceDrill=6
+ratchet: cli +3 OUTCOME tests (chat-finalize) · check green (cli 2631 pass) · eval:adversarial 16/16 · lint 0/0 · fabrication 0 · cue-removal mutation verified by judge
+- 무엇: **chat 표면의 의미적 prose 값-충돌 표면화** (GROUNDED≠TRUE ask↔chat parity). 의미 충돌 탐지기 `detectEvidenceContradictions`(Mem0 arXiv:2504.19413, topic-cosine+neither-subset)가 ask 경로에만 배선돼 있었음 — chat은 labelled-field 탐지기(`label: value` 정규식)만 돌려 free prose 충돌("flight 3pm" vs "6pm")을 놓침. 답이 일치하는 쪽만 인용 → confident grounded 거짓말, 큐 없음. `finalizeGatedChatAnswer`에 주입가능 embed + `semanticConflictCueFromMatches`(두 출처 모두 명명) 추가, 두 표면(chat-repl·chat-ink) 실 임베더로 배선.
+- 왜: 의미 가드 trio(fire 20-22)는 답-vs-증거였고, 이건 증거-vs-증거를 **새 표면**에. 데스크톱 컴패니언의 유일 표면(chat)이 prose 충돌 grounded 거짓말을 조용히 통과시키던 진짜 axis-A 구멍. ask는 이미 방어, chat만 미배선이었음.
+- 리뷰지점: 순수 additive(게이트 verdict 불변, 기존 큐 미억제), fail-open 이중 가드(`.catch(()=>[])` + `args.embed?`), precision-first neither-subset로 elaboration over-fire 차단. no-embed 경로 = 오늘 동작 그대로. 독립 Opus judge가 큐 append 제거→충돌 테스트 red로 non-vacuity 직접 확인, 5/5 PASS. 두 호출부 실 배선 검증(test-only 아님).
+- 리스크: 낮음(큐 추가, 게이트 무관). 비용: turn당 매치 임베드 N회(ask와 동일 parity, ≥2 매치일 때만). vein: axis A는 prose-충돌까지 ask·chat 양면 방어 완료 — 다음은 충돌 시 답을 abstain까지 끌지(현재는 큐만), 또는 axis C self-judge meta-eval.
