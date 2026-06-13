@@ -3,8 +3,33 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "composite": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["dist"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "dist"
+  ],
+  "references": [
+    {
+      "path": "../calendar"
+    },
+    {
+      "path": "../db"
+    },
+    {
+      "path": "../memory"
+    },
+    {
+      "path": "../messaging"
+    },
+    {
+      "path": "../shared"
+    },
+    {
+      "path": "../tools"
+    }
+  ]
 }

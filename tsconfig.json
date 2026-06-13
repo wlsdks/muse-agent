@@ -1,0 +1,89 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/cli"
+    },
+    {
+      "path": "./packages/a2a"
+    },
+    {
+      "path": "./packages/agent-core"
+    },
+    {
+      "path": "./packages/agent-specs"
+    },
+    {
+      "path": "./packages/auth"
+    },
+    {
+      "path": "./packages/autoconfigure"
+    },
+    {
+      "path": "./packages/browser"
+    },
+    {
+      "path": "./packages/cache"
+    },
+    {
+      "path": "./packages/calendar"
+    },
+    {
+      "path": "./packages/db"
+    },
+    {
+      "path": "./packages/macos"
+    },
+    {
+      "path": "./packages/mcp"
+    },
+    {
+      "path": "./packages/memory"
+    },
+    {
+      "path": "./packages/messaging"
+    },
+    {
+      "path": "./packages/model"
+    },
+    {
+      "path": "./packages/multi-agent"
+    },
+    {
+      "path": "./packages/observability"
+    },
+    {
+      "path": "./packages/policy"
+    },
+    {
+      "path": "./packages/prompts"
+    },
+    {
+      "path": "./packages/resilience"
+    },
+    {
+      "path": "./packages/runtime-settings"
+    },
+    {
+      "path": "./packages/runtime-state"
+    },
+    {
+      "path": "./packages/scheduler"
+    },
+    {
+      "path": "./packages/shared"
+    },
+    {
+      "path": "./packages/skills"
+    },
+    {
+      "path": "./packages/tools"
+    },
+    {
+      "path": "./packages/voice"
+    }
+  ]
+}
