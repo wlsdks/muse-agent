@@ -164,6 +164,8 @@
 
 ## ✓ Fixed (dedup ledger — one line each; detail in the per-loop journal)
 
+- ✓ numeric/unit mismatch grounding guard — token coverage missed unit swaps (5 g vs 5 mg) and ≥3-digit magnitude errors; added detectNumericMismatch + fail-close in reportSentenceGroundedness (FactCC arXiv:1910.12840; guard-removal verified) — grounding-integrity fire 21
+
 - ✓ polarity-mismatch (negation) grounding guard — token coverage stripped no/not so a negated contradiction scored supported; added detectPolarityMismatch + fail-close in reportSentenceGroundedness (arXiv:2305.16819; guard-removal verified) — grounding-integrity fire 20
 
 - ✓ untrusted-only provenance marker on grounded ask answers — wired the dead `groundedOnUntrustedOnly` grounded≠true mitigation into the `muse ask` verdict path (re-export + `untrustedOnlyGroundingNotice` + verdict wiring); faithful answers resting only on untrusted MCP/web sources now surface a scrutiny cue, label stays "grounded", floor untouched — grounding-integrity fire 1

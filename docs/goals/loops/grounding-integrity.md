@@ -162,3 +162,11 @@ ratchet: agent-core +9 tests (full suite 2129 pass) · lint 0/0 · fabrication 0
 - 왜: fire 19에서 "vein 고갈" 신고했으나 EXHAUSTION 규칙의 "새 공개 논문 메커니즘" escape-hatch가 진짜 구멍을 찾음(arXiv:2305.16819, 2510.06265). 부정은 token gate가 구조적으로 못 보는 클래스 — detectEvidenceContradictions(evidence↔evidence)와도 distinct(answer↔evidence).
 - 리뷰지점: strictly tighten(downgrade만), pure, sentence-granularity로 stray 부정 오발 방지. guard 제거 mutation 시 downgrade 테스트 red. 독립 Opus judge 5/5 PASS(2129 green). **알려진 좁은 한계**: same-stem litotes("not uncommon" vs "common")는 over-fire — 유일 소비자가 진단 telemetry hint(게이트 불변)라 허용.
 - 리스크: 낮음(진단-only over-fire, 게이트/사용자 답변 영향 없음). vein 정정: 결정론 버그 vein은 dry지만 공개 논문 메커니즘은 가끔 실 구멍을 드러냄(이번이 그 사례).
+
+## fire 21 · 2026-06-14 · skill v1.14.0 · dc419bac
+meta: value-class=new-capability(paper) · pkg=@muse/agent-core · kind=A · verdict=PASS · firesSinceDrill=3
+ratchet: agent-core +9 tests (full suite 2147 pass) · lint 0/0 · fabrication 0 · guard-removal mutation verified
+- 무엇: **numeric/unit mismatch 가드**(FactCC arXiv:1910.12840, survey 2501.00269) — token coverage가 "5 mg"="5 g"(토큰 "5")로 unit swap을 못 보고 magnitude("13800" vs "1380")도 0.5로 통과. `detectNumericMismatch`: (a) unit-swap(numeral 일치+unit 불일치) (b) ≥3자리 numeral 부재, ≥0.5 overlap 문장에만. reportSentenceGroundedness에 fail-close wiring.
+- 왜: fire 20 negation에 이어 또 다른 공개-논문 floor 구멍(값/단위 오류). polarity·기존 number 가드와 distinct(unit-swap은 어디에도 없던 체크). union-of-evidence numeral로 멀티-fact 오발 방지.
+- 리뷰지점: strictly tighten, pure, ≥3자리+comma정규화로 word-form/separator FP 회피. guard 제거 시 unit-swap downgrade 테스트 red. 독립 Opus judge 5/5 PASS(2147 green). **알려진 FP(허용)**: 약어(1.25M)·복수형/percent-word unit·파생 합계 — 유일 소비자가 telemetry-only(게이트 불변).
+- 리스크: 낮음(진단-only). vein: 논문 메커니즘 축이 fire 20-21 연속 실 구멍을 냄(negation, numeric) — 건강한 정상상태.
