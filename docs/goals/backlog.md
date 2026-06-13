@@ -83,6 +83,7 @@
 ## GROUNDING INTEGRITY theme — open
 
 - ◦ untrusted-only provenance e2e firing-rate (ask AND chat) — the untrusted-only cue on both the ask (`untrustedOnlyGroundingNotice`, fire 1) and chat (`untrustedOnlyChatNotice`, fire 3) surfaces is unit-pinned, but production firing depends on the model citing tool sources as `[from <src>]`. Measure/repair the real firing rate via `eval:grounding-delta` on a `--with-tools` poisoned-source case; if firing is too low, make the cue depend on tool-only grounding directly (toolGrounded + no trusted-note coverage) rather than citation presence. (scouted grounding-integrity fire 1, broadened fire 3)
+- ◦ wire detectSourceConflict into the live receipt path — the `detectSourceConflict`/`formatSourceConflictWarning` primitive (@muse/recall, fire 7) exists + is tested but is NOT yet called at a receipt site. Splice `formatSourceConflictWarning(hits)` into the ask/chat receipt render (commands-ask + finalizeGatedChatAnswer) so contradictory sources actually surface "⚠️ your sources disagree" to the user; add an e2e test. Also consider broadening extraction beyond `label: value` (currently misses comma-truncated values). (scouted grounding-integrity fire 7)
 
 ## ✓ Fixed (dedup ledger — one line each; detail in the per-loop journal)
 
@@ -92,6 +93,7 @@
 - ✓ fail-close empty-evidence on council + reflection judge gates — verifyCouncilGrounding/verifyReflectionsGrounding called the judge with empty evidence and KEPT the claim on YES (fail-OPEN floor leak, no deterministic pre-gate); now fail-close without consulting the judge when evidence is empty (red-without-fix verified) — grounding-integrity fire 4
 - ✓ learn-queue lost-update fix — markLearnEventsDone (read-modify-write) and enqueueLearnEvent (appendFile) ran without a mutex, so a correction enqueued during a drain was clobbered (silently never learned, unattended path); wrapped BOTH in the shared per-file withFileMutationQueue (red-without-fix verified; wrapping only the drain is insufficient) — grounding-integrity fire 5
 - ✓ council/reflection judge k-sample self-consistency — both gated on a SINGLE judge call (flaky YES promotes a baseless synthesis/reflection), unlike recall's k-sample unanimity; added opt-in reverifySamples [1,5] mirroring recall (first-NO short-circuit + judgeConsensus), threaded from synthesize* options, floor strictly stronger (red-without-fix verified) — grounding-integrity fire 6
+- ✓ deterministic source-conflict detector (evidence vs evidence) — nothing screened EVIDENCE against EVIDENCE, so two notes giving different values for the same field (old vs new wifi password) were cited as one clean receipt; added pure no-model detectSourceConflict + formatSourceConflictWarning in @muse/recall, hardened against prose-prefix/clock-time false positives (mutation-verified) — grounding-integrity fire 7
 
 <!-- Going-forward: `- ✓ <item title> — <slug> fire N` so the scout dedups without the verbose block. -->
 - ✓ Adaptive-k score-gap recall cutoff (trim grounding-window decoys, floor-neutral; arXiv:2506.08479) — agent-core-cognition fire 1

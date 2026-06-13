@@ -50,3 +50,11 @@ ratchet: agent-core +4 tests (18 pass; full suite green) · lint 0/0 · fabricat
 - 왜: 단일-judge intra-rater variance(arXiv:2510.27106 "Rating Roulette") — borderline synthesis/reflection이 flaky YES 한 번에 장기 메모리로 승격. recall이 막던 그 구멍의 미방어 sibling. backlog ◦(fire 4 scouted) 해소.
 - 리뷰지점: recall 패턴 byte-exact 미러(clamp [1,5], first-NO short-circuit, judgeConsensus empty→false). 기본 1이면 동작 불변(14 기존 테스트 green), fire-4 empty-evidence fail-close가 샘플 루프 앞에 보존. floor는 STRICTER만(k>1이 k=1보다 더 keep하는 경로 없음). 독립 Opus judge 5/5 PASS.
 - 리스크: 없음 수준(opt-in, 기본 불변). 후속: 실제 호출자가 reverifySamples>1을 켜는 wiring은 별도(현재는 capability만 노출, recall처럼 호출부가 정책으로 켬).
+
+## fire 7 · 2026-06-13 · skill v1.14.0 · 075bbc2d
+meta: value-class=redteam-defense · pkg=@muse/recall · kind=A · verdict=PASS · firesSinceDrill=7
+ratchet: recall +10 tests (full recall 111+ pass) · lint 0/0 · fabrication 0 · mutation-verified + judge-flagged FP hardened in-fire (RATCHET: A·B·A·C·B·C·A — pkg 5종, recall 첫 진입)
+- 무엇: **evidence↔evidence 모순 감지 primitive** 신규 — 전 스택이 claim↔evidence만 보고 두 출처가 같은 필드에 다른 값을 줘도(옛/새 wifi 비번 등) 하나를 깔끔한 receipt로 자신만만하게 인용. `detectSourceConflict`+`formatSourceConflictWarning`(@muse/recall, pure, no-model, hot-path 가능).
+- 왜: grounded≠true의 미커버 벡터 — 기존 `muse notes conflicts`는 batch+model 의존(라이브 경로 아님). 결정론적 hot-path 감지가 빈 자리.
+- 리뷰지점: `label: value` 추출 + cross-hit 다른 값 flag(같은-hit 내 중복은 제외, case/whitespace 정규화로 일치는 안 flag). **judge가 흔한 prose 접두사(Note/TODO/Summary)·시각(9:30) 오발 지적 → 같은 fire에서 denylist+숫자-끝 label 제외로 hardening**(오발 테스트 2개 추가). mutation(stub→[])로 비-공허 증명, 독립 Opus judge PASS.
+- 리스크: primitive-first(detector+formatter만, receipt site 호출은 미연결). v1 regex는 comma/period에서 값 절단(부분 false-negative, 허용). 후속: receipt site wiring + e2e CLI 테스트(backlog ◦).
