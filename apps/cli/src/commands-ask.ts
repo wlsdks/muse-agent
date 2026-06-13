@@ -35,7 +35,7 @@ import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
 import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, listReflections, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
-import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
+import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildCalendarContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, buildDiskContents, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource };
@@ -1774,25 +1774,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // registry assembly failed — skip calendar grounding
         }
       }
-      const calendarBlock = upcomingEvents.length === 0
-        ? "(no upcoming events)"
-        : upcomingEvents
-          .map((e, i) => {
-            // Show a HUMAN-readable local date, not the raw ISO: the small model
-            // mis-derives the weekday from an ISO string (told the user the wrong
-            // day), and its reformatted prose then fails the verdict's token
-            // coverage. Hand it the rendered date it should echo (the system
-            // locale/tz is the user's), keeping the ISO for unambiguous precision.
-            const fmtWhen = (d: Date): string =>
-              d.toLocaleString("en-US", { day: "numeric", hour: "numeric", minute: "2-digit", month: "long", weekday: "long", year: "numeric" });
-            const when = e.allDay
-              ? `${fmtWhen(e.startsAt)} (all-day, ${e.startsAt.toISOString().slice(0, 10)})`
-              : `${fmtWhen(e.startsAt)} to ${fmtWhen(e.endsAt)} (${e.startsAt.toISOString()})`;
-            const loc = e.location ? ` @ ${e.location}` : "";
-            const provider = `[${e.providerId}]`;
-            return `<<event ${(i + 1).toString()} — ${provider}>>\n${e.title}${loc}\n${when}\n[event: ${e.title}]\n<<end>>`;
-          })
-          .join("\n\n");
+      const calendarBlock = buildCalendarContextBlock(upcomingEvents);
 
       // Pull pending reminders as a fourth grounding source.
       // Reminders are fire-once notifications ("ping me in 2 hours"),

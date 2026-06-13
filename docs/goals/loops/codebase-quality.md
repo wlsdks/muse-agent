@@ -747,3 +747,25 @@ ratchet: testFiles 959 · fabrication 0 · groundedSurfaces 27 · 2 over-broad e
   unchanged); zero external/test importers (grep-confirmed, so no breakage); knip drops both; calendar build +
   152 tests green; no behavior change (export visibility only); calendar is cold (no concurrent loop).
 - **Risk:** none — type-export-visibility narrowing of two internal-only interfaces; no runtime/behavior/floor change.
+
+## fire 41 · 2026-06-14 · loop-creator v1.14.0 · 7a573861 · JUDGE-DRILL
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: testFiles 960 · fabrication 0 · groundedSurfaces 27 · ask god-file: 9th inline block extracted
+- **What:** (drill, DUAL-DIRECTION validation) consecutive-allPASS hit 8 -> JUDGE-DRILL. Attempt 1: removed an inline
+  WHY comment in readNotesIndexEmbedModel ("flag the probe instead of silently dropping") — the judge correctly
+  PASSED it as legitimate, having traced that the WHY is already documented authoritatively in the adjacent
+  parseNotesIndexEmbedModel JSDoc (relocated fire 39) + the caller comment, so my comment was genuinely REDUNDANT.
+  That made the drill inconclusive (my "bad" slice wasn't clearly bad). Attempt 2: gutted the SOLE-carrier
+  escapeSystemPromptMarkers "apply to CONTENT only, NEVER source/name fields — copy-exact for the citation gate"
+  invariant — the judge correctly FAILED it (traced the raw-src call sites, confirmed sole carrier, flagged it as a
+  fire-25 repeat). Both rolled back. NET: verifier validated in BOTH directions (no false-FAIL on a defensible
+  removal + clean FAIL on a clearly-bad one) — stronger evidence than a bare catch. (real) extracted calendarBlock
+  -> buildCalendarContextBlock in @muse/recall (structural input type; the fmtWhen + the load-bearing weekday-WHY
+  comment moved verbatim).
+- **Why:** drill validates maker≠judge (5th drill); calendar block continues the recall thread (9/12: task/reminder/
+  memory/shell/git/action/episode/feed/calendar). compose@recall 4/8.
+- **Review point:** drills judged correctly (PASS-redundant + FAIL-sole-carrier); real slice 4b judge — calendarBlock
+  body byte-identical (the all-day vs timed `when`, the `[event: title]` citation, the fmtWhen locale opts + the
+  weekday-WHY comment); structural type accepts CalendarEvent[]; TZ-robust test (asserts structure not the locale
+  string); recall 217 + cli 2625 (one Ink approval-box test was a CPU-contention flake — passed isolated).
+- **Risk:** low — pure relocation; CalendarEvent stays in commands-ask (source fetch).
