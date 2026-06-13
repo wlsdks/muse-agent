@@ -41,7 +41,7 @@ import {
  * are pinned to a single attempt (no double-act).
  */
 const PLAN_STEP_MAX_ATTEMPTS = 2;
-import { renderPlanExemplar, type PlanCacheProvider } from "./plan-cache.js";
+import { renderPlanExemplar, selectSuccessfulPlanSteps, type PlanCacheProvider } from "./plan-cache.js";
 import { latestUserPrompt, metadataString } from "./runtime-helpers.js";
 import {
   blockedToolResult,
@@ -268,12 +268,17 @@ export async function* streamPlanExecute(
   // Agentic Plan Caching (arXiv 2506.14852): record the plan that just
   // executed so a similar future request can reuse it as a planning exemplar.
   // Reached only after at least one step succeeded (all-failed throws above).
+  // AWM (arXiv:2409.07429): outcome-conditioned — cache only the steps that
+  // actually succeeded so later retrievals don't teach failed tool sequences.
   // Fail-open — a cache write must never break the run.
-  if (runner.planCacheProvider && userId && steps.length > 0) {
-    try {
-      await runner.planCacheProvider.recordPlan(userId, userPrompt, steps);
-    } catch {
-      // ignore — caching is best-effort
+  if (runner.planCacheProvider && userId) {
+    const successfulSteps = selectSuccessfulPlanSteps(executed);
+    if (successfulSteps.length > 0) {
+      try {
+        await runner.planCacheProvider.recordPlan(userId, userPrompt, successfulSteps);
+      } catch {
+        // ignore — caching is best-effort
+      }
     }
   }
 

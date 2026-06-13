@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 
 import { createAgentRuntime, type CachedPlan, type PlanCacheProvider, type PlanStep } from "../src/index.js";
 
+type Recorded = { userId: string; prompt: string; steps: readonly PlanStep[] };
+
 function planResponse(steps: readonly PlanStep[]): ModelResponse {
   return { id: "plan", model: "m", output: JSON.stringify(steps) };
 }
@@ -118,5 +120,108 @@ describe("Agentic Plan Caching wired into plan-execute (arXiv 2506.14852)", () =
 
     expect(recorded).toHaveLength(0);
     expect(findCalls).toBe(0);
+  });
+});
+
+// AWM outcome-conditioning: only steps from a SUCCESSFUL trajectory are cached.
+describe("AWM outcome-conditioned plan caching (arXiv:2409.07429)", () => {
+  // Two tools: step_ok always succeeds; step_fail returns an effect-failed output.
+  function runtimeWithTwoTools(provider: ModelProvider, cacheProvider: PlanCacheProvider) {
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: { description: "Step that always succeeds", inputSchema: { type: "object" }, name: "step_ok", risk: "read" as const },
+        execute: async () => "result ok"
+      },
+      {
+        definition: { description: "Step that effect-fails", inputSchema: { type: "object" }, name: "step_fail", risk: "read" as const },
+        // Returns "Error: …" — status stays "completed" but classifyStepEffect marks it effectFailed.
+        execute: async () => "Error: simulated effect failure"
+      }
+    ]);
+    return createAgentRuntime({ modelProvider: provider, planCacheProvider: cacheProvider, toolRegistry });
+  }
+
+  // Distinct args prevent dedupeExactSteps (keyed on tool::args) from collapsing them.
+  const step1: PlanStep = { args: { q: "first" }, description: "step one", tool: "step_ok" };
+  const step2Fail: PlanStep = { args: {}, description: "step two fails", tool: "step_fail" };
+  const step2Ok: PlanStep = { args: { q: "second" }, description: "step two succeeds", tool: "step_ok" };
+
+  it("failed step is excluded from cached exemplar (only successful step recorded)", async () => {
+    const recorded: Recorded[] = [];
+    const cacheProvider: PlanCacheProvider = {
+      findSimilarPlan: async () => undefined,
+      recordPlan: async (userId, prompt, steps) => { recorded.push({ prompt, steps, userId }); }
+    };
+    const runtime = runtimeWithTwoTools(
+      sequenceProvider([
+        planResponse([step1, step2Fail]),
+        answerResponse("answer with partial success")
+      ]),
+      cacheProvider
+    );
+
+    await runtime.run({
+      messages: [{ content: "do two steps", role: "user" }],
+      metadata: { agentMode: "plan_execute", userId: "stark" },
+      model: "provider/model",
+      runId: "awm-fail-excluded"
+    });
+
+    expect(recorded).toHaveLength(1);
+    // Only step_ok (step1) should be cached; step_fail is excluded.
+    expect(recorded[0]!.steps).toHaveLength(1);
+    expect(recorded[0]!.steps[0]!.tool).toBe("step_ok");
+  });
+
+  it("counterfactual: when step-2 succeeds, both steps are cached", async () => {
+    const recorded: Recorded[] = [];
+    const cacheProvider: PlanCacheProvider = {
+      findSimilarPlan: async () => undefined,
+      recordPlan: async (userId, prompt, steps) => { recorded.push({ prompt, steps, userId }); }
+    };
+    const runtime = runtimeWithTwoTools(
+      sequenceProvider([
+        planResponse([step1, step2Ok]),
+        answerResponse("answer with full success")
+      ]),
+      cacheProvider
+    );
+
+    await runtime.run({
+      messages: [{ content: "do two steps", role: "user" }],
+      metadata: { agentMode: "plan_execute", userId: "stark" },
+      model: "provider/model",
+      runId: "awm-both-succeed"
+    });
+
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]!.steps).toHaveLength(2);
+    expect(recorded[0]!.steps[0]!.tool).toBe("step_ok");
+    expect(recorded[0]!.steps[1]!.tool).toBe("step_ok");
+  });
+
+  it("zero successful steps ⇒ nothing cached (all-failed path throws before cache)", async () => {
+    const recorded: Recorded[] = [];
+    const cacheProvider: PlanCacheProvider = {
+      findSimilarPlan: async () => undefined,
+      recordPlan: async (userId, prompt, steps) => { recorded.push({ prompt, steps, userId }); }
+    };
+    const runtime = runtimeWithTwoTools(
+      sequenceProvider([
+        planResponse([step2Fail]),
+        answerResponse("unreachable")
+      ]),
+      cacheProvider
+    );
+
+    // All-failed throws PLAN_ALL_STEPS_FAILED before reaching the cache call.
+    await expect(runtime.run({
+      messages: [{ content: "only failing step", role: "user" }],
+      metadata: { agentMode: "plan_execute", userId: "stark" },
+      model: "provider/model",
+      runId: "awm-all-fail"
+    })).rejects.toMatchObject({ code: "PLAN_ALL_STEPS_FAILED" });
+
+    expect(recorded).toHaveLength(0);
   });
 });
