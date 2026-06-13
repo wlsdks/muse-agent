@@ -442,3 +442,4 @@ export { renderToolExemplarSection, selectToolExemplars, type ToolExemplar } fro
 export { summarizeTokenConfidence, type TokenConfidenceSummary } from "./token-confidence.js";
 export { baseLevelActivation, computeActivationBoost } from "./actr-activation.js";
 export { adjustConfidenceFloor, sdtCriterion, summarizeNoticeResponses, type NoticeResponseStats } from "./sdt-criterion.js";
+export { splitCompoundQuery } from "./compound-query.js";

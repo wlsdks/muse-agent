@@ -548,6 +548,21 @@ excluded when scoring).
 - ◦ **Compaction legacy-line dedup** — fire 34 deduped only the `[Key details]` block; the legacy
   "Tools kept / Recent user topics / [Pinned entities]" lines still accumulate one copy per compaction round
   in `buildCompactionSummaryText`. Strip-and-re-emit them the same way. (fire 34 remainder)
+- ✓→Done **RAG-Fusion compound-query retrieval** — headline `muse ask` embedded the question once, so a
+  compound question blended between topics and dropped one answer chunk at topK=3 (half-answer/false-refusal
+  on a fully-covered corpus). [DONE 2026-06-13, cognition loop fire 35: `splitCompoundQuery` deterministically
+  splits KO/EN coordinated questions into 2–3 clauses (each ≥2 content tokens, else []); `diversifyAskChunks`
+  fuses each clause's cosine ranking into the existing RRF (arXiv:2402.03367 RAG-Fusion). Pure selection over
+  the user's own chunks — per-chunk score stays full-query cosine so confidence is never inflated; fail-open;
+  byte-identical when not compound. Judge PASS via real revert (non-vacuity test fails when fusion ignored).]
+- ◦ **Fusion must-refuse verdict assertion** — `commands-ask-fusion.test.ts`'s must-refuse-compound case
+  asserts only per-chunk score equality, not the `classifyRetrievalConfidence` verdict (the judge verified the
+  verdict invariant manually; it's deterministic given unchanged scores). Add the explicit `verdict` assertion
+  for defense-in-depth. (judge-flagged fire 35, low priority)
+- ◦ **RAG-Fusion remainder** — (a) LLM-backed decomposition (full RQ-RAG, arXiv:2404.00610) for implicit
+  compounds the deterministic splitter misses, gated like chat's `needsContextualRewrite`; (b) port the
+  knowledge-recall second-hop PRF to the headline ask path for sequential bridge-entity questions; (c) extend
+  the multi-hop A/B battery with compound-question joint@K cases to measure the live delta. (fire 35 remainder)
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
   each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
 - (queued behind fuel/prereqs: sleep-time compute · Mem0 UPDATE op · AWM workflow mining ·
