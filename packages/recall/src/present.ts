@@ -480,3 +480,13 @@ export function buildEpisodeContextBlock(episodes: readonly { readonly id: strin
     .map((e, i) => `<<session ${(i + 1).toString()} — ${e.id} (score ${e.score.toFixed(3)})>>\n${escapeSystemPromptMarkers(e.summary)}\n<<end>>`)
     .join("\n\n");
 }
+
+/** Build the <<feed N>> grounding block from recent feed headlines (untrusted title/summary escaped). Pure. */
+export function buildFeedContextBlock(headlines: readonly { readonly feedName: string; readonly title: string; readonly publishedAt: string; readonly summary: string }[]): string {
+  if (headlines.length === 0) {
+    return "(no recent feed headlines)";
+  }
+  return headlines
+    .map((h, i) => `<<feed ${(i + 1).toString()} — ${h.feedName} (${h.publishedAt})>>\n${escapeSystemPromptMarkers(h.title)}${h.summary ? `\n${escapeSystemPromptMarkers(h.summary)}` : ""}\n[feed: ${h.feedName}]\n<<end>>`)
+    .join("\n\n");
+}

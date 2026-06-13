@@ -695,3 +695,21 @@ ratchet: testFiles 958 · fabrication 0 · groundedSurfaces 27 · commands-docto
   fs branch); readNotesIndexEmbedModel exported for runLocalDoctor; re-export keeps the parse test green (2616 cli);
   parseNotesIndexEmbedModel NOT in the import line (re-export only — lint-clean); DEFAULT_EMBED_MODEL/fs retained.
 - **Risk:** low — pure relocation of a parser + a guarded fs read; no floor path.
+
+## fire 38 · 2026-06-13 · loop-creator v1.14.0 · b1d2913d
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 959 · fabrication 0 · groundedSurfaces 27 · ask god-file: 8th inline block extracted
+- **What:** Phase 3 continuation — extracted the inline `feedBlock` builder (`<<feed N>>` grounding block) into a
+  pure `buildFeedContextBlock(headlines)` in @muse/recall/present.ts (structural input type matching
+  recentFeedHeadlines' return). Escapes the untrusted feed title AND summary via escapeSystemPromptMarkers
+  (preserved verbatim). Body byte-identical; 3-case OUTCOME test incl. an injection-defense assert (title+summary).
+  NOTABLE: feedBlock was the LAST internal user of escapeSystemPromptMarkers in commands-ask — so this fire also
+  REMOVED escapeSystemPromptMarkers from commands-ask's @muse/recall import (lint-verified now-unused). The
+  injection escaper is now used EXCLUSIVELY inside @muse/recall (where it was relocated in fire 22 3a).
+- **Why:** continues moving the ask pipeline's inline blocks to recall; 8 of ~12 now extracted (task/reminder/
+  memory/shell/git/action/episode/feed). compose@recall 4/8 in the window (within ceiling). recentFeedHeadlines
+  stays in commands-ask (source fetch).
+- **Review point:** 4b judge — feedBlock body byte-identical (the <<feed N — name (date)>> header + optional-summary
+  conditional + both escapeSystemPromptMarkers calls); escapeSystemPromptMarkers removed from commands-ask (lint-clean,
+  0 refs there now); new test pins both escapes; recentFeedHeadlines retained; recall 207 + cli 2618 green.
+- **Risk:** low — pure relocation; untrusted title/summary escape (grounding-floor defense) moved verbatim + tested.
