@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ notes.append no-partial-side-effect: an over-cap append now CHECKS the resulting size BEFORE writing → a failed append mutates NOTHING (was: wrote the oversized bytes THEN errored, leaving the note past its cap = next read fails as oversized) — tool-hardening fire 80
+
 - ✓ Phase 3 cont.: extracted inline contactBlock -> buildContactContextBlock in @muse/recall/select.ts (10/12 ask blocks; +test) — codebase-quality fire 42
 - ✓ week_agenda now merges DUE REMINDERS too (EXPANSION) — the holistic "what's my week" view was missing time-anchored reminders; now events+reminders+tasks+birthdays in one call (8B avoids the unreliable 4-chain), reminders-only still routes to reminders.list (eval 5/5 STABLE) — tool-hardening fire 79
 - ✓ JUDGE-DRILL (5th, dual-direction: judge PASSed a redundant-comment removal + FAILed a sole-carrier invariant gutting) + extracted calendarBlock -> buildCalendarContextBlock in @muse/recall (9/12 ask blocks) — codebase-quality fire 41

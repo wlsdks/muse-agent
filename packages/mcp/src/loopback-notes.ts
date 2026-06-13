@@ -422,6 +422,20 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           if (typeof safe === "string") {
             return { error: safe };
           }
+          // Check the RESULTING size BEFORE writing (current bytes + the new bytes),
+          // so an append that would blow the cap mutates NOTHING — the oversized bytes
+          // never hit disk (no partial side-effect). For a non-existent file the
+          // current size is 0; both content and file are UTF-8 so the byte sum is exact.
+          const appendBytes = Buffer.byteLength(content, "utf8");
+          let currentBytes = 0;
+          try {
+            currentBytes = (await nodeStat(safe.absolute)).size;
+          } catch {
+            // the note doesn't exist yet → currentBytes stays 0 (the append creates it)
+          }
+          if (currentBytes + appendBytes > maxFileBytes) {
+            return { error: `note would exceed maxFileBytes ${maxFileBytes} (current=${currentBytes}, append=${appendBytes})`, path: safe.relative };
+          }
           const parent = nodePathResolve(safe.absolute, "..");
           try {
             await nodeMkdir(parent, { recursive: true });
@@ -429,16 +443,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           } catch (error) {
             return { error: `cannot append to note: ${error instanceof Error ? error.message : String(error)}` };
           }
-          let stat: Awaited<ReturnType<typeof nodeStat>>;
-          try {
-            stat = await nodeStat(safe.absolute);
-          } catch {
-            return { path: safe.relative };
-          }
-          if (stat.size > maxFileBytes) {
-            return { error: `note exceeds maxFileBytes ${maxFileBytes} after append (size=${stat.size})`, path: safe.relative, sizeBytes: stat.size };
-          }
-          return { path: safe.relative, sizeBytes: stat.size } satisfies JsonObject;
+          return { path: safe.relative, sizeBytes: currentBytes + appendBytes } satisfies JsonObject;
         },
         inputSchema: {
           additionalProperties: false,
