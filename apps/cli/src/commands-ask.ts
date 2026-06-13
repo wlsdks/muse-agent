@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectBestGroundedDraft, selectByMmr, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectBestGroundedDraft, selectByMmr, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch, type RetrievalConfidence } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -40,6 +40,8 @@ export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, con
 export type { MemoryFact } from "@muse/recall";
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource };
+import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy } from "@muse/recall";
+export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
 
 import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.js";
 import { parseShellHistory, selectShellCommands } from "./shell-history.js";
@@ -102,37 +104,6 @@ export const ACTION_GUIDE =
   "Reads stay silent; writes/sends always ask first.";
 
 
-/**
- * Note evidence the grounding VERDICT scores against, augmented for the agent
- * (`--with-tools`) path. The chat-only path's `scored` top-K IS exactly what
- * grounded the answer; but the agent can pull a chunk via `knowledge_search`
- * (often on a reformulated query) that the CLI's pre-retrieval top-K missed, so
- * scoring the agent's answer against `scored` alone would false-flag a
- * legitimately grounded answer "treat as unverified". This adds the FULL text
- * of every note the answer actually CITES (each already gate-validated against
- * the live corpus) so a cited note is always covered. Additive only: it can
- * prevent a false "ungrounded", never cause a false "grounded" — a drifted
- * value that appears in no cited note still scores uncovered. Pure + exported.
- */
-export function augmentNoteEvidenceWithCited(
-  baseNotes: readonly KnowledgeMatch[],
-  citedSources: readonly string[],
-  liveNotes: readonly { readonly source: string; readonly chunks: readonly { readonly text: string }[] }[]
-): KnowledgeMatch[] {
-  const out: KnowledgeMatch[] = baseNotes.map((m) => ({ ...m }));
-  const seen = new Set(out.map((m) => `${m.source} ${m.text}`));
-  const cited = new Set(citedSources);
-  for (const note of liveNotes) {
-    if (!cited.has(note.source)) continue;
-    for (const chunk of note.chunks) {
-      const key = `${note.source} ${chunk.text}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ cosine: 1, score: 1, source: note.source, text: chunk.text });
-    }
-  }
-  return out;
-}
 
 /**
  * Whether to nudge the user toward `--repair` after an ungrounded verdict. Only
@@ -436,76 +407,8 @@ export async function groundingVerdictNotice(
 
 
 
-/**
- * Select the passages of an ad-hoc `--file` to ground on: split into passages,
- * rank by lexical overlap with the question (file order breaks ties), and keep
- * the strongest up to `charBudget` so a large file never blows the small
- * model's context. Returned in ORIGINAL file order (so the model reads them
- * top-to-bottom). A tiny file → every passage; an empty file → none.
- */
-export function selectFilePassages(
-  raw: string,
-  query: string,
-  charBudget = 6000
-): readonly { readonly chunkIndex: number; readonly text: string }[] {
-  const qTokens = lexicalTokens(query);
-  const ranked = chunkText(raw, 1200)
-    .map((text, chunkIndex) => ({ chunkIndex, ov: lexicalOverlap(qTokens, text), text }))
-    .sort((a, b) => b.ov - a.ov || a.chunkIndex - b.chunkIndex);
-  const picked: { chunkIndex: number; text: string }[] = [];
-  let budget = charBudget;
-  for (const passage of ranked) {
-    if (budget <= 0) {
-      break;
-    }
-    picked.push({ chunkIndex: passage.chunkIndex, text: passage.text });
-    budget -= passage.text.length;
-  }
-  return picked.sort((a, b) => a.chunkIndex - b.chunkIndex);
-}
 
-/**
- * The action-log entries most relevant to the question, for `muse ask`
- * transparency grounding ("did you send that? / what have you done?"). Matches
- * by query-token overlap against each entry's `what` text; newest-first on a
- * tie, capped. 0-overlap entries are dropped so an unrelated question grounds on
- * nothing (→ honest refusal). Pure + testable.
- */
-export function selectGroundingActions(
-  entries: readonly ActionLogEntry[],
-  query: string,
-  max = 5
-): readonly ActionLogEntry[] {
-  const queryTokens = lexicalTokens(query);
-  if (queryTokens.size === 0) {
-    return [];
-  }
-  return entries
-    .map((entry, index) => ({ entry, index, score: lexicalOverlap(queryTokens, entry.what) }))
-    .filter((scored) => scored.score > 0)
-    .sort((a, b) => b.score - a.score || b.index - a.index)
-    .slice(0, max)
-    .map((scored) => scored.entry);
-}
 
-/**
- * The most query-relevant PROBATION strategy (one the daemon distilled UNATTENDED
- * from a past correction — recorded but NEVER injected) to surface as a recall-time
- * suggestion, so a correction resurfaces the moment its topic recurs. Ranks the
- * probation entries by lexical overlap with the query; returns the top one, or
- * undefined when none is relevant. Pure (no injection — surface-only). Exported for
- * direct coverage.
- */
-export function selectProbationSuggestion(
-  entries: readonly { readonly id: string; readonly text: string; readonly probation?: boolean }[],
-  query: string
-): { readonly text: string; readonly id: string } | undefined {
-  const queryToks = lexicalTokens(query);
-  return entries
-    .filter((e) => e.probation === true && typeof e.text === "string" && lexicalOverlap(queryToks, e.text) > 0)
-    .sort((a, b) => lexicalOverlap(queryToks, b.text) - lexicalOverlap(queryToks, a.text))
-    .map((e) => ({ id: e.id, text: e.text }))[0];
-}
 
 const IMAGE_MIME_BY_EXT: Readonly<Record<string, string>> = {
   ".bmp": "image/bmp",
@@ -1011,58 +914,7 @@ export function resolveAskMaxTools(env: Record<string, string | undefined>): num
 }
 
 
-/**
- * ReasoningBank (arXiv 2509.25140): rank the playbook entries by relevance to
- * the current question and render only the top-K as `[Learned Strategies]`,
- * instead of dumping the whole bank at the small local model. Deterministic;
- * empty bank ⇒ undefined (no block).
- */
-export function selectPlaybookSection(
-  entries: readonly { readonly text: string; readonly tag?: string; readonly reward?: number; readonly reinforcements?: number; readonly decays?: number }[],
-  queryText: string,
-  topK?: number
-): string | undefined {
-  const ranked = rankPlaybookStrategies(
-    entries.map((entry) => ({
-      text: entry.text,
-      ...(entry.tag ? { tag: entry.tag } : {}),
-      ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
-      ...(typeof entry.reinforcements === "number" ? { reinforcements: entry.reinforcements } : {}),
-      ...(typeof entry.decays === "number" ? { decays: entry.decays } : {})
-    })),
-    queryText,
-    topK === undefined ? undefined : { topK }
-  );
-  return renderPlaybookSection(ranked);
-}
 
-/**
- * The single learned strategy that most shaped this answer — the top-ranked
- * injectable entry (S6 "I learned this about you"). Same ranking + exclusions as
- * `selectPlaybookSection` (avoided/probation never injected), so this is exactly
- * the strategy at the head of the `[Learned Strategies]` block. Undefined when
- * nothing injectable. The caller still gates the surfaced beat on real relevance
- * to the question, so a recency-floor pick never overclaims "applied".
- */
-export function topAppliedStrategy(
-  entries: readonly { readonly text: string; readonly tag?: string; readonly reward?: number; readonly probation?: boolean; readonly reinforcements?: number; readonly decays?: number }[],
-  queryText: string,
-  topK?: number
-): string | undefined {
-  const ranked = rankPlaybookStrategies(
-    entries.map((entry) => ({
-      text: entry.text,
-      ...(entry.tag ? { tag: entry.tag } : {}),
-      ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
-      ...(entry.probation ? { probation: true } : {}),
-      ...(typeof entry.reinforcements === "number" ? { reinforcements: entry.reinforcements } : {}),
-      ...(typeof entry.decays === "number" ? { decays: entry.decays } : {})
-    })),
-    queryText,
-    topK === undefined ? undefined : { topK }
-  );
-  return ranked[0]?.text;
-}
 
 /**
  * Drain the chat-only fast-path model stream. A provider `error`
