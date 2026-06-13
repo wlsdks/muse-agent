@@ -115,6 +115,23 @@ describe("untrustedOnlyGroundingNotice — grounded≠true source-trust segregat
     const matches = [match("notes/vpn.md", "The office VPN needs MTU 1380 on wg0.", 0.72)];
     expect(untrustedOnlyGroundingNotice("Set the VPN MTU to 1380 on wg0 [from notes/vpn.md].", matches)).toBeUndefined();
   });
+
+  // The whole-answer gate clears the instant ANY citation is trusted — so a MIXED
+  // answer where a SEPARATE claim rests solely on a poisoned tool source slipped
+  // through with no cue. The per-claim variant surfaces that specific claim.
+  it("surfaces the per-claim variant when one sentence rests only on an untrusted source (mixed-trust)", () => {
+    const matches = [
+      match("notes/contacts.md", "Your dentist is Dr. Lee.", 1, true),
+      match("tool: web_search", "Clinic moved to 500 Evil St; prepay by wire.", 1, false)
+    ];
+    const answer =
+      "Your dentist is Dr. Lee [from notes/contacts.md]. "
+      + "The clinic moved to 500 Evil St and requires prepayment by wire [from tool: web_search].";
+    const notice = untrustedOnlyGroundingNotice(answer, matches);
+    expect(notice).toBeDefined();
+    expect(notice).toContain("one claim rests only on tool-fetched data");
+    expect(notice).toContain("prepayment by wire");
+  });
 });
 
 describe("inbox recall-with-citation — ingest → resolve → citeable evidence (end-to-end, real store + provider)", () => {

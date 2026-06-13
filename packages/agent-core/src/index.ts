@@ -221,6 +221,7 @@ export {
   type CitationPrecisionPair,
   type CitationPrecisionReport
 } from "./citation-precision.js";
+export { untrustedOnlySentences } from "./untrusted-sentences.js";
 export {
   reportCitationRecall,
   DEFAULT_CITATION_RECALL_FLOOR,
