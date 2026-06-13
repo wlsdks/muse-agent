@@ -571,3 +571,21 @@ ratchet: testFiles 950 · fabrication 0 · groundedSurfaces 27 · ask god-file: 
   renderMemoryFact call); placed in select.ts (renderMemoryFact's module) not present.ts; new test real OUTCOME;
   renderMemoryFact import retained in commands-ask (4 other uses); recall 175 + cli 2599 green.
 - **Risk:** low — pure presentation relocation, same-module dep; grounding gate consumes the block identically.
+
+## fire 31 · 2026-06-13 · loop-creator v1.14.0 · 66891731
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 950 · fabrication 0 · groundedSurfaces 27 · commands-doctor.ts 899->847 LOC
+- **What:** continued the commands-doctor decompose (fires 25/29) — moved the cohesive ollama-perf cluster
+  (`OllamaPerfEnv` type + `ollamaPerfPostureCheck` pure classifier + `readOllamaPerfEnv` env reader) from
+  commands-doctor.ts to the sibling commands-doctor-checks.ts (verbatim, incl. the load-bearing JSDoc). LocalCheck
+  was already in the sibling; readOllamaPerfEnv's deps are all dynamic (node:child_process/util) — so ZERO new
+  static imports. commands-doctor imports both fns back (runLocalDoctor calls them at line 371) + re-exports them
+  (commands-doctor-perf.test imports ollamaPerfPostureCheck). OllamaPerfEnv had no external importer → moved
+  without re-export.
+- **Why:** diversity — compose@recall was 4/8 (a 5th would near the ceiling); this is decompose@cli (the proven
+  sibling pattern), shrinking the doctor god-file 899→847. The model-tag cluster (OllamaTagsEntry/findOllamaModelTag/
+  embedModelCheck) is a separate cohesive unit — deferred to a later fire (DECOMPOSE-ON-DEFER).
+- **Review point:** 4b judge — all 3 symbols byte-identical (esp. ollamaPerfPostureCheck's flash/KV branch logic +
+  the launchctl-fallback readOllamaPerfEnv); re-export keeps commands-doctor-perf test green (2599 cli); no new
+  static import in the sibling; OllamaPerfEnv move-without-re-export safe (no external importer).
+- **Risk:** low — pure relocation; ollama-perf is advisory (warn, never fail), no floor path.
