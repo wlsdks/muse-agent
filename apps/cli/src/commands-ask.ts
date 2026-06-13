@@ -29,7 +29,7 @@ import { basename, join, relative } from "node:path";
 
 import { assessContextSufficiency, buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, groundedOnUntrustedOnly, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
-import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportCitationPrecision, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
+import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportCitationPrecision, reportCitationRecall, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -209,6 +209,24 @@ export function citationPrecisionNotice(
   if (sentence === undefined) return undefined;
   const shown = sentence.length > 80 ? `${sentence.slice(0, 80)}…` : sentence;
   return `\n⚠️  Citation check: a cited source doesn't actually support "${shown}" — verify the citation.\n`;
+}
+
+/**
+ * ALCE citation-RECALL cue (arXiv:2305.14627), the complement to the precision
+ * cue: a sentence whose claim IS in the retrieved evidence but that omits its
+ * `[from <source>]` marker — a groundable claim handed over with no attribution.
+ * Surfaces the first such missing-citation claim. Undefined when every citable
+ * sentence is cited.
+ */
+export function citationRecallNotice(
+  answer: string,
+  matches: readonly KnowledgeMatch[]
+): string | undefined {
+  const report = reportCitationRecall(answer, matches);
+  const sentence = report.uncited[0];
+  if (sentence === undefined) return undefined;
+  const shown = sentence.length > 80 ? `${sentence.slice(0, 80)}…` : sentence;
+  return `\n⚠️  Attribution check: "${shown}" matches your notes but carries no citation — its source isn't shown.\n`;
 }
 
 
@@ -2511,6 +2529,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           : undefined;
         if (citationNotice && !options.json) {
           io.stderr(citationNotice);
+        }
+        // ALCE citation RECALL: a groundable claim handed over with no [from …]
+        // attribution. Complement to the precision cue; grounded answers only.
+        const recallNotice = !verdictNotice && imageAttachments.length === 0
+          ? citationRecallNotice(verdictAnswer, scoredMatches)
+          : undefined;
+        if (recallNotice && !options.json) {
+          io.stderr(recallNotice);
         }
         if (verdictNotice && !options.json) {
           io.stderr(verdictNotice);

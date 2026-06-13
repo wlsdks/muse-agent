@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { inboxGroundingSources, type KnowledgeMatch } from "@muse/agent-core";
 import { appendInbound, FileBackedInboxContextProvider } from "@muse/messaging";
 
-import { citationPrecisionNotice, formatSourceReceipts, groundingVerdictNotice, untrustedOnlyGroundingNotice } from "./commands-ask.js";
+import { citationPrecisionNotice, citationRecallNotice, formatSourceReceipts, groundingVerdictNotice, untrustedOnlyGroundingNotice } from "./commands-ask.js";
 
 const match = (source: string, text: string, cosine: number, trusted?: boolean): KnowledgeMatch => ({
   cosine,
@@ -217,5 +217,24 @@ describe("citationPrecisionNotice — ALCE per-citation support cue (right sourc
 
   it("stays silent for an answer with no citations", () => {
     expect(citationPrecisionNotice("A general remark with no source.", [match("vpn.md", "irrelevant", 0.7)])).toBeUndefined();
+  });
+});
+
+describe("citationRecallNotice — ALCE citation recall cue (groundable-but-uncited claim)", () => {
+  it("warns when a citable claim carries no citation (missing attribution)", () => {
+    const matches = [match("vpn.md", "the office vpn mtu is 1380 on wg0", 0.7)];
+    const notice = citationRecallNotice("The office MTU is 1380.", matches);
+    expect(notice).toBeDefined();
+    expect(notice).toContain("Attribution check");
+    expect(notice).toContain("MTU");
+  });
+
+  it("stays silent when the citable claim carries its citation", () => {
+    const matches = [match("vpn.md", "the office vpn mtu is 1380 on wg0", 0.7)];
+    expect(citationRecallNotice("The office MTU is 1380 [from vpn.md].", matches)).toBeUndefined();
+  });
+
+  it("stays silent when the claim isn't supported by evidence (not a recall failure)", () => {
+    expect(citationRecallNotice("The weather is sunny.", [match("vpn.md", "the office vpn mtu is 1380", 0.7)])).toBeUndefined();
   });
 });
