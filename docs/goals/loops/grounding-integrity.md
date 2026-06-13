@@ -82,3 +82,11 @@ ratchet: mcp +2 tests (9 pass; full mcp 1835 pass) · lint 0/0 · fabrication 0 
 - 왜: 무인 학습-상태 위생 — 모순된 eviction은 grounded 자기지식을 조용히 잘못 버림. 단 현재 단일 호출자는 monotonic ts라 그 경로로는 오늘 미발현 → 공개 @muse/mcp 스토어에 monotonicity 계약 없어 ANY-writer hardening(judge가 정직히 caveat). floor 아님, learned-state hygiene.
 - 리뷰지점: `[...].sort(desc by createdAtMs).slice(0,MAX)` newest N 유지, over-cap에서만 작동(under-cap 불변), listReflections 재정렬하므로 저장순서 무관. backfill 테스트가 isolated insertion-order mutation에서만 red(1/9)로 trim 로직 격리 증명, 독립 Opus judge 5/5 PASS(mcp 1835 green).
 - 리스크: 없음 수준(persistence-only, 절대 fabricate 안 함). 단순 hardening(라이브 버그 아님)이라 가치는 중간.
+
+## fire 11 · 2026-06-13 · skill v1.14.0 · ebdd8a7c
+meta: value-class=redteam-defense · pkg=@muse/agent-core · kind=C · verdict=PASS · firesSinceDrill=2
+ratchet: agent-core +2 tests (62 pass; full suite green) · lint 0/0 · fabrication 0 · isolated-removal verified · floor STRICTER (RATCHET: B→C 다양성, agent-core)
+- 무엇: **주 grounding 게이트의 empty-evidence fail-OPEN 수정** — `verifyGroundingWithReverify`(recall/ask/chat 재검증)가 high-cosine+empty-text 매치(confidence>0, evidence="")에서 coverage 밴드가 judge를 ""로 호출, YES면 fabricated 답을 grounded로 승격. f4가 council/reflection에 닫은 구멍이 *메인 게이트*엔 열려 있었음. evidence 비면 base가 grounded 아닌 한 judge 호출 없이 ungrounded fail-close.
+- 왜: classifyRetrievalConfidence는 confidence를 cosine로만 산정(text 무시) — 빈 텍스트 매치가 confidence=1을 받아 escalation 밴드 진입. wedge(주 게이트)의 fabrication-floor 직접 누수라 이번 세션 최고가치.
+- 리뷰지점: `evidence.trim()===0 && base.verdict!=="grounded"`만 단축(grounded base는 value 밴드로 — demote만 가능, refusal 오강등 방지). non-empty 경로 byte-불변. guard 격리 제거 시 empty 테스트만 red(1/62), judge-not-called까지 고정. 독립 Opus judge 5/5 PASS(full suite green).
+- 리스크: 없음 수준(strictly tighten, fail-close). council/reflection·recall 세 곳 모두 이제 empty-evidence fail-close 일관.
