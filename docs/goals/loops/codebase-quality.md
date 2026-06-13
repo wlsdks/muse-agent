@@ -117,3 +117,20 @@ ratchet: testFiles 917 · fabrication 0 · groundedSurfaces 27 · conflict-marke
 - **Risk:** none — restorative cleanup + upstream-fixed regression confirmed. Recall TODO
   unchanged: model-backed wrappers (drawBestGroundedRedraft/groundingVerdictNotice), graph
   connections, then Phase 3 pipeline+API.
+
+## fire 7 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=@muse/recall · kind=cohere · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 921 · fabrication 0 · groundedSurfaces 27 · recall tests 82/8 files
+- **What:** moved the model-backed grounding-gate wrappers into new `recall/verdict.ts`:
+  BestOfRedrawArgs + drawBestGroundedRedraft (--best-of resample, fully callback-injected)
+  and groundingVerdictNotice (agent-core verifyGrounding + recall's answerIsRefusal).
+  commands-ask.ts imports + re-exports. commands-ask.ts 2,855 → 2,794 LOC.
+- **Why:** continues @muse/recall extraction (project_recall_extraction "model-backed
+  wrappers" — the last helper cluster before Phase 3). No new package dep (verdict.ts
+  imports only agent-core + ./text.js; recall deps stay agent-core+mcp).
+- **Review point:** independent Opus adversarial judge PASS — byte-identical bodies, the
+  drawBest fail-close + groundingVerdictNotice refusal-short-circuit invariants preserved,
+  no orphaned agent-core import in the CLI, full pnpm check 0 (no flakes), recall 82 tests.
+- **Risk:** none — injected/agent-core-only move. Remaining recall TODO: graph connections
+  (buildAskConnections/selectGraphConnections — CLI-local NoteLinkGraph), then Phase 3
+  pipeline+API (the contract closer). Next fire = JUDGE-DRILL (consecutive allPASS hits 8).
