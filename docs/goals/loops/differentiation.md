@@ -81,7 +81,7 @@ ratchet: testFiles 912 · new deterministic battery eval:memory-poisoning (no Ol
   ② 배터리는 dist 빌드 의존(package.json 스크립트가 처리; bare `node`는 src 편집 後
   수동 rebuild 필요). → CI 번들 편입 시 명시.
 
-## fire 4 · 2026-06-13 · skill v1.14.0 · `<pending-commit>`
+## fire 4 · 2026-06-13 · skill v1.14.0 · `ee50c9d5`
 meta: value-class=new-capability · pkg=@muse/autoconfigure · kind=egress-gap-closure(fail-close) · verdict=PASS · firesSinceDrill=4
 ratchet: testFiles 914→915 · egressGuards 6→7 (embedder guard folded in) · fabrication 0 · grounding floor 강화
 
