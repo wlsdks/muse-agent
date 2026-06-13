@@ -524,8 +524,25 @@ export function isWorkspaceMutationPrompt(prompt: string | undefined | null): bo
 }
 
 
+/**
+ * Match a hint against the (lowercased) prompt. A single ASCII word/abbrev is
+ * matched as a STANDALONE token — not embedded in the middle of an English word
+ * — so a short hint like "pr" (pull request), "spec", "repo", or "event" does
+ * NOT substring-match "approve"/"special"/"report"/"prevent" and over-expose
+ * write tools (the relevance-filter tokeniser already learned this lesson). A
+ * trailing plural 's' and a directly-attached Korean particle ("PR에") still
+ * match. Multi-word / hyphenated / non-ASCII (Korean) hints keep substring
+ * matching — they do not collide inside other words the same way.
+ */
+function promptHasHint(normalized: string, hint: string): boolean {
+  if (/^[a-z0-9]+$/u.test(hint)) {
+    return new RegExp(`(?<![a-z])${hint}s?(?![a-z])`, "u").test(normalized);
+  }
+  return normalized.includes(hint);
+}
+
 function hasWorkspaceHint(normalized: string): boolean {
-  return workspaceHints.some((hint) => normalized.includes(hint));
+  return workspaceHints.some((hint) => promptHasHint(normalized, hint));
 }
 
 function hasMutationHint(normalized: string): boolean {
@@ -542,7 +559,7 @@ function hasMutationHint(normalized: string): boolean {
 }
 
 function hasMutationTargetHint(normalized: string): boolean {
-  return mutationTargetHints.some((hint) => normalized.includes(hint))
+  return mutationTargetHints.some((hint) => promptHasHint(normalized, hint))
     || mutationTargetPatterns.some((pattern) => pattern.test(normalized));
 }
 

@@ -192,6 +192,13 @@ describe("tool utilities", () => {
     // the existing page as markdown", not "modify the workspace".
     expect(isWorkspaceMutationPrompt("이 페이지를 마크다운으로 정리해줘")).toBe(false);
     expect(isWorkspaceMutationPrompt("PR에 코멘트해줘")).toBe(true);
+    // Substring false-positive guard: a short hint must not match inside an
+    // unrelated English word. "special"/"surprise" contain "spec"/"pr" but name
+    // no workspace object — deleting them must NOT expose workspace write tools.
+    expect(isWorkspaceMutationPrompt("Delete the special surprise gift")).toBe(false);
+    // …while the real tokens still match (whole word, plural, and KO particle):
+    expect(isWorkspaceMutationPrompt("Update the spec on the endpoint")).toBe(true);
+    expect(isWorkspaceMutationPrompt("Delete the stale tickets")).toBe(true);
   });
 
   it("recognises personal-assistant write intents (post-pivot: add task / set reminder / 할 일 추가)", () => {
