@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { conflictCueFromMatches } from "@muse/recall";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
@@ -337,10 +337,35 @@ export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs)
   // grounded≠true: if two of the user's OWN grounded sources disagree on a field,
   // surface it on chat too (parity with `muse ask`, fire 8).
   const conflictCue = conflictCueFromMatches(args.matches);
+  // ALCE per-citation support + recall (parity with `muse ask`, fires 15-16):
+  // a cited source that doesn't support its sentence, or a citable claim with no
+  // citation. Computed on the user's OWN grounded matches.
+  const precisionCue = chatCitationPrecisionNotice(deFabbed, args.matches);
+  const recallCue = chatCitationRecallNotice(deFabbed, args.matches);
   let out = receipted;
   if (untrustedCue) out += untrustedCue;
   if (conflictCue) out += `\n\n${conflictCue}`;
+  if (precisionCue) out += `\n\n${precisionCue}`;
+  if (recallCue) out += `\n\n${recallCue}`;
   return out;
+}
+
+function truncateClaim(sentence: string): string {
+  return sentence.length > 80 ? `${sentence.slice(0, 80)}…` : sentence;
+}
+
+/** Chat parity of the ask path's citation-precision cue (ALCE, arXiv:2305.14627). */
+export function chatCitationPrecisionNotice(answer: string, matches: readonly KnowledgeMatch[]): string | undefined {
+  const sentence = reportCitationPrecision(answer, matches).unsupported[0];
+  if (sentence === undefined) return undefined;
+  return `⚠️ Citation check: a cited source doesn't actually support "${truncateClaim(sentence)}" — verify the citation.`;
+}
+
+/** Chat parity of the ask path's citation-recall cue (a groundable claim with no citation). */
+export function chatCitationRecallNotice(answer: string, matches: readonly KnowledgeMatch[]): string | undefined {
+  const sentence = reportCitationRecall(answer, matches).uncited[0];
+  if (sentence === undefined) return undefined;
+  return `⚠️ Attribution check: "${truncateClaim(sentence)}" matches your notes but carries no citation.`;
 }
 
 /**

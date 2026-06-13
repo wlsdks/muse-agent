@@ -4,6 +4,8 @@ import type { KnowledgeMatch } from "@muse/agent-core";
 
 import {
   answerAssertsUnsupportedDate,
+  chatCitationPrecisionNotice,
+  chatCitationRecallNotice,
   answerAssertsUnsupportedEmail,
   answerAssertsUnsupportedIdentifier,
   answerAssertsUnsupportedIpAddress,
@@ -529,5 +531,31 @@ describe("answerAssertsUnsupportedDate — drifted ISO date the number guard spl
 
   it("accepts a date the QUESTION supplies (question is part of the supported set)", () => {
     expect(answerAssertsUnsupportedDate("Yes, 2026-09-14 works.", [note("an unrelated 2026-09-13 note")], "is 2026-09-14 free?")).toBe(false);
+  });
+});
+
+describe("chat citation precision/recall cues — ALCE parity on the chat surface", () => {
+  const note = (source: string, text: string): KnowledgeMatch => ({ cosine: 0.8, score: 0.8, source, text });
+
+  it("precision cue: warns when a cited source doesn't support its sentence", () => {
+    const matches = [note("vpn.md", "the office vpn mtu is 1380 on wg0")];
+    const cue = chatCitationPrecisionNotice("The office MTU is 1380 [from vpn.md]. The flight departs at gate twelve [from vpn.md].", matches);
+    expect(cue).toBeDefined();
+    expect(cue).toContain("Citation check");
+    expect(cue).toContain("flight");
+  });
+
+  it("precision cue: silent when the cited source supports the sentence", () => {
+    expect(chatCitationPrecisionNotice("The office MTU is 1380 [from vpn.md].", [note("vpn.md", "the office vpn mtu is 1380 on wg0")])).toBeUndefined();
+  });
+
+  it("recall cue: warns when a citable claim carries no citation", () => {
+    const cue = chatCitationRecallNotice("The office MTU is 1380.", [note("vpn.md", "the office vpn mtu is 1380 on wg0")]);
+    expect(cue).toBeDefined();
+    expect(cue).toContain("Attribution check");
+  });
+
+  it("recall cue: silent when the claim is cited", () => {
+    expect(chatCitationRecallNotice("The office MTU is 1380 [from vpn.md].", [note("vpn.md", "the office vpn mtu is 1380 on wg0")])).toBeUndefined();
   });
 });
