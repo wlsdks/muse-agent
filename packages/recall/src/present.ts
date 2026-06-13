@@ -321,6 +321,66 @@ export function optionalGroundingSections(
   ];
 }
 
+/** Per-source counts for the "(grounded on …)" citation banner. */
+export interface GroundedSourceCounts {
+  /** Pre-built note-chunk summary (chunk count + file names + confidence), or null when no notes matched. */
+  readonly notesPart: string | null;
+  readonly openTasks: number;
+  readonly upcomingEvents: number;
+  readonly pendingReminders: number;
+  readonly contacts: number;
+  readonly memories: number;
+  readonly shellCommands: number;
+  readonly gitCommits: number;
+  readonly loggedActions: number;
+  readonly pastSessions: number;
+  readonly feedHeadlines: number;
+}
+
+/**
+ * The "(grounded on …)" citation-banner parts, in source order: the note-chunk
+ * summary first (when present), then one "N <label>" part per non-empty source.
+ * The notes part is built by the caller (it lists file names + a confidence
+ * suffix); the count-labelled parts live here. Pure + testable.
+ */
+export function groundedSourceSummary(counts: GroundedSourceCounts): string[] {
+  const parts: string[] = [];
+  if (counts.notesPart) {
+    parts.push(counts.notesPart);
+  }
+  if (counts.openTasks > 0) {
+    parts.push(`${counts.openTasks.toString()} open task(s)`);
+  }
+  if (counts.upcomingEvents > 0) {
+    parts.push(`${counts.upcomingEvents.toString()} upcoming event(s)`);
+  }
+  if (counts.pendingReminders > 0) {
+    parts.push(`${counts.pendingReminders.toString()} pending reminder(s)`);
+  }
+  if (counts.contacts > 0) {
+    parts.push(`${counts.contacts.toString()} contact(s)`);
+  }
+  if (counts.memories > 0) {
+    parts.push(`${counts.memories.toString()} remembered fact(s)`);
+  }
+  if (counts.shellCommands > 0) {
+    parts.push(`${counts.shellCommands.toString()} shell command(s)`);
+  }
+  if (counts.gitCommits > 0) {
+    parts.push(`${counts.gitCommits.toString()} git commit(s)`);
+  }
+  if (counts.loggedActions > 0) {
+    parts.push(`${counts.loggedActions.toString()} logged action(s)`);
+  }
+  if (counts.pastSessions > 0) {
+    parts.push(`${counts.pastSessions.toString()} past session(s)`);
+  }
+  if (counts.feedHeadlines > 0) {
+    parts.push(`${counts.feedHeadlines.toString()} feed headline(s)`);
+  }
+  return parts;
+}
+
 /**
  * The "shows its work, FELT" receipt for the NON-note sources the answer cited
  * (S1 completion) — calendar / tasks / reminders / contacts / shell. Parses the

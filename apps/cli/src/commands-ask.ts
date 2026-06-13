@@ -44,7 +44,7 @@ export { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource };
 import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy } from "@muse/recall";
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
 import { diversifyAskChunks, notesGroundingFraming } from "@muse/recall";
-import { optionalGroundingSections } from "@muse/recall";
+import { groundedSourceSummary, optionalGroundingSections } from "@muse/recall";
 export { diversifyAskChunks, notesGroundingFraming };
 import { askOutcomeLabel, askWeaknessAxis, createStageTimer, recordAskWeakness, recordAskWeaknessResolved } from "@muse/recall";
 import type { AskWeaknessAxis } from "@muse/recall";
@@ -1995,41 +1995,20 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
 
       // Show citation header before streaming the answer so the user
       // sees what's being grounded against, then the model output.
-      const groundedParts: string[] = [];
-      if (scored.length > 0) {
-        const conf = notesFraming.verdict === "ambiguous" ? " ⚠ LOW confidence — verify, may not be in your notes" : "";
-        groundedParts.push(`${scored.length.toString()} note chunk(s) — ${scored.map((r) => r.file.split("/").pop()).join(", ")}${conf}`);
-      }
-      if (openTasks.length > 0) {
-        groundedParts.push(`${openTasks.length.toString()} open task(s)`);
-      }
-      if (upcomingEvents.length > 0) {
-        groundedParts.push(`${upcomingEvents.length.toString()} upcoming event(s)`);
-      }
-      if (pendingReminders.length > 0) {
-        groundedParts.push(`${pendingReminders.length.toString()} pending reminder(s)`);
-      }
-      if (matchedContacts.length > 0) {
-        groundedParts.push(`${matchedContacts.length.toString()} contact(s)`);
-      }
-      if (matchedMemories.length > 0) {
-        groundedParts.push(`${matchedMemories.length.toString()} remembered fact(s)`);
-      }
-      if (matchedCommands.length > 0) {
-        groundedParts.push(`${matchedCommands.length.toString()} shell command(s)`);
-      }
-      if (matchedCommits.length > 0) {
-        groundedParts.push(`${matchedCommits.length.toString()} git commit(s)`);
-      }
-      if (matchedActions.length > 0) {
-        groundedParts.push(`${matchedActions.length.toString()} logged action(s)`);
-      }
-      if (episodeHits.length > 0) {
-        groundedParts.push(`${episodeHits.length.toString()} past session(s)`);
-      }
-      if (feedHeadlines.length > 0) {
-        groundedParts.push(`${feedHeadlines.length.toString()} feed headline(s)`);
-      }
+      const notesConf = notesFraming.verdict === "ambiguous" ? " ⚠ LOW confidence — verify, may not be in your notes" : "";
+      const groundedParts = groundedSourceSummary({
+        notesPart: scored.length > 0 ? `${scored.length.toString()} note chunk(s) — ${scored.map((r) => r.file.split("/").pop()).join(", ")}${notesConf}` : null,
+        openTasks: openTasks.length,
+        upcomingEvents: upcomingEvents.length,
+        pendingReminders: pendingReminders.length,
+        contacts: matchedContacts.length,
+        memories: matchedMemories.length,
+        shellCommands: matchedCommands.length,
+        gitCommits: matchedCommits.length,
+        loggedActions: matchedActions.length,
+        pastSessions: episodeHits.length,
+        feedHeadlines: feedHeadlines.length
+      });
       // Grounding diagnostic goes to stderr so `muse ask "?" > answer.txt`
       // and `| jq` style pipelines get a clean stdout. Same convention
       // as the auto-reindex banner above. The blank line separating

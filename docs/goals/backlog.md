@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ compose @muse/recall (Phase 3): extracted the "(grounded on …)" citation-banner builder into recall `groundedSourceSummary` (10 count-labels + order; notesPart stays caller-built; byte-identical; +4 OUTCOME tests) — codebase-quality fire 52
 - ◦ DRY: extract a shared `parseStrictIsoDateHead` (the YYYY-MM-DD Date.UTC round-trip rollover guard) — it now lives inline in 3 places (personal-tasks-store.ts parseTaskDueAt, loopback-calendar.ts parseIsoDate, loopback-time-server.ts readDate). Behavior-preserving extraction; the 3 callers have different fall-through contracts (Error vs undefined vs relative-phrase) so the helper is just the date-head probe. (codebase-quality territory — touches the security-sensitive date parsers, keep their tests green.)
 - ✓ time diff_ms rollover: an impossible date ("2026-02-30") was silently rolled to Mar 2 and a wrong duration returned, contradicting the tool's "valid ISO-8601" error-message contract — now rejected (same Date.UTC guard as calendar/tasks); completes the rollover guard across all 3 user-facing date parsers — tool-hardening fire 90
 
