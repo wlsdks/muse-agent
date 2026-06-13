@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ dead-code @muse/cli: de-exported 3 internal-only commands-export helpers (defaultNotesDir/defaultExportOutput/resolveExportPassphrase) — knip-clean, grep-verified no external importer; + JUDGE-DRILL (6th, judge FAILed a load-bearing security-WHY comment removal) — codebase-quality fire 49
 - ✓ calendar read-verb selection coverage: golden eval scenario for list/availability/conflicts (7 KO+EN cases, all PASS 3/3) — confirmed the local model selects them robustly (no mis-route); structural-regression guard + documented negative result — tool-hardening fire 86
 
 - ✓ decompose @muse/cli: extracted weather+headlines external-data cluster (resolveTodayWeatherLine/formatWeatherLine/resolveTodayFeedHeadlines/formatHeadlines + cap) commands-today -> commands-today-feeds.ts (1397->1327 LOC; re-export keeps 2626 tests green) — codebase-quality fire 48
