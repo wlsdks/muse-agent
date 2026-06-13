@@ -1,0 +1,163 @@
+// Precision-first refusal markers (EN + KO). A refusal grounds NO claim, so
+// ANY citation the small model tacks onto it ("…I don't have that. cite as:
+// [from preferences.md]") is spurious — and the followable Sources footer
+// must never present a source "to verify" for an answer that asserts nothing.
+// Kept high-precision (clear no-information phrases only) so a real cited
+// answer never matches; the rare partial answer ("I don't have X, but [from
+// Y]…") is the accepted precision-first cost (it loses Y's footer link).
+const REFUSAL_MARKERS: readonly string[] = [
+  "i'm not sure", "i am not sure", "i don't have", "i do not have",
+  "don't have access", "do not have access", "no information",
+  "none of the provided context", "couldn't find", "could not find",
+  "i don't know", "i do not know", "not in your notes", "nothing in your notes",
+  "don't have that information", "do not have that information",
+  "모르", "없습니다", "없어요", "없어", "정보가 없", "찾을 수 없", "알 수 없",
+  "저장하고 있지 않", "가지고 있지 않", "접근할 수 없"
+];
+
+// The citation instructions injected into the --with-tools agent system prompt.
+// NOTE: the injection-input-guard scans the WHOLE composed prompt (system role
+// included), so these lines must carry NO credential word (token / secret /
+// password / api key) near an extraction verb — "copy an existing `cite as:`
+// token, or a name shown…" once matched the `credential_extraction` pattern
+// ("token … shown") and false-blocked EVERY grounded --with-tools query. Use
+// "tag", never "token", and keep this dependency-free guard in the test.
+// The note marker hands the small model a copy-ready `cite as: [from FILE]`
+// token; qwen3:8b often copies the WHOLE line, leaking the "cite as:" label into
+// the answer ("…MTU 1380. cite as: [from vpn.md]") — visible on the demo (the
+// front door). Strip a "cite as:" that immediately precedes a real citation
+// bracket; deterministic, only touches the echoed label, never the citation
+// itself. (The chat path streams live, so the label can still flash there — the
+// known streaming limitation; buffered / --with-tools / demo paths are clean.)
+const ECHOED_CITE_AS_RE = /\bcite\s+as:?\s*(?=\[(?:from|task|event|reminder|session|feed|contact|command|commit|memory|action)\b)/giu;
+
+export function stripEchoedCiteAs(answer: string): string {
+  return answer.replace(ECHOED_CITE_AS_RE, "");
+}
+
+/**
+ * True when the answer is essentially a refusal / "I'm not sure" with no
+ * grounded claim — used to deterministically drop any citation the model
+ * spuriously attached to it. Pure + exported for direct coverage.
+ */
+export function answerIsRefusal(answer: string): boolean {
+  const lower = answer.toLowerCase();
+  return REFUSAL_MARKERS.some((m) => lower.includes(m));
+}
+
+/**
+ * Whether a `--file` payload is BINARY (a PDF, image, archive, office doc…)
+ * rather than readable text. Reading such a file as UTF-8 yields garbled bytes,
+ * and grounding on that garbage makes the small model HALLUCINATE plausible
+ * content and cite it `[from <file>]` — a fabrication. So we refuse to ground on
+ * it. Heuristic (deterministic, no deps): a NUL byte is the canonical binary
+ * signal (text never contains one); failing that, a high ratio of U+FFFD
+ * replacement chars from a lossy UTF-8 decode means the bytes were not text.
+ * Only the first ~8 KB is inspected — enough to classify, cheap on a big file.
+ */
+export function looksLikeBinaryContent(bytes: Uint8Array): boolean {
+  const sample = bytes.subarray(0, 8192);
+  if (sample.length === 0) {
+    return false;
+  }
+  for (const byte of sample) {
+    if (byte === 0) {
+      return true;
+    }
+  }
+  const decoded = new TextDecoder("utf-8", { fatal: false }).decode(sample);
+  let replacements = 0;
+  for (const char of decoded) {
+    if (char === "�") {
+      replacements += 1;
+    }
+  }
+  return replacements / decoded.length > 0.1;
+}
+
+/**
+ * The cite label for a `--url`-grounded answer: the page's host (`www.` stripped),
+ * so the model cites `[from example.com]` and the gate validates it like a note
+ * source. Falls back to the raw URL if it can't be parsed.
+ */
+export function urlGroundingSource(finalUrl: string): string {
+  try {
+    return new URL(finalUrl).hostname.replace(/^www\./u, "");
+  } catch {
+    return finalUrl;
+  }
+}
+
+/** Render the explicit-link neighbours as a scannable footer (empty when none). */
+export function formatGraphLinksSection(links: readonly string[]): string {
+  if (links.length === 0) {
+    return "";
+  }
+  const lines = links.map((id) => `  ↔ ${id}`);
+  return `\n🔗 Linked notes (your [[wiki-links]]):\n${lines.join("\n")}\n`;
+}
+
+/** Render a corpus-overview reply: the note inventory + how to use it. Pure. */
+export function formatCorpusOverview(noteFiles: readonly string[], totalCount: number): string {
+  const lines = noteFiles.map((file) => `  • ${file}`);
+  const more = totalCount > noteFiles.length ? [`  … and ${(totalCount - noteFiles.length).toString()} more`] : [];
+  return [
+    `You have ${totalCount.toString()} note${totalCount === 1 ? "" : "s"}. I answer specific questions from them — here's what you've got:`,
+    ...lines,
+    ...more,
+    "Ask me anything in them and I'll quote the source."
+  ].join("\n");
+}
+
+/**
+ * Whether this query EXPLICITLY supplied its own grounding source — a `--file`,
+ * `--url`, `--git`, or `--shell`. When it did, the empty-notes on-ramp is
+ * irrelevant noise (the user told Muse exactly what to ground on). Pure + exported.
+ */
+export function queryHasAdHocGrounding(options: {
+  readonly file?: string;
+  readonly url?: string;
+  readonly clipboard?: boolean;
+  readonly git?: boolean;
+  readonly shell?: boolean;
+}): boolean {
+  return Boolean(
+    (options.file && options.file.trim().length > 0)
+    || (options.url && options.url.trim().length > 0)
+    || options.clipboard
+    || options.git
+    || options.shell
+  );
+}
+
+export function corpusOnboardingHint(noteFileCount: number, hasOtherPersonalData = false): string | undefined {
+  // The first-run notes on-ramp. Suppressed once the user has notes OR any other
+  // personal data (contacts / tasks / reminders / remembered facts) — otherwise
+  // it both NAGS to "add notes" and falsely claims "Muse only answers from notes"
+  // on the very same turn it answered from your address book. A genuinely empty
+  // Muse still gets the hint.
+  if (noteFileCount > 0 || hasOtherPersonalData) {
+    return undefined;
+  }
+  return [
+    "(your notes corpus is empty — Muse only answers from notes you've added.",
+    "   • try a sample first:   muse demo",
+    "   • add one file:         muse read <file> --save-to-notes <id>",
+    "   • add a whole folder:   muse read <dir> --save-to-notes <prefix>",
+    "   • keep it live:         muse watch-folder --ingest --path <dir>)"
+  ].join("\n");
+}
+
+/**
+ * Whether to append the warm refusal close: ONLY when the answer is an honest
+ * refusal AND the user already has notes. An EMPTY corpus gets the on-ramp
+ * hint instead (so the two never double up), and a real cited answer never
+ * gets it. Pure + exported for direct coverage.
+ */
+export function shouldWarmClose(answer: string, noteFileCount: number): boolean {
+  return noteFileCount > 0 && answerIsRefusal(answer);
+}
+
+export function composeChatSystemContent(systemPrompt: string, playbookSection: string | undefined): string {
+  return playbookSection && playbookSection.trim().length > 0 ? `${playbookSection}\n\n${systemPrompt}` : systemPrompt;
+}
