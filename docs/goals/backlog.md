@@ -139,7 +139,10 @@
 
 - ◦ **(next) Fresh lever on a different moat axis** — fires 1/2/4/5/7 deepened local-by-construction (L1/L3), fire 8 opened "shows its work" (L4). Keep diversifying: a NEW lever on grounding (fabrication=0) or another shows-its-work facet vs hermes/openclaw. Source: differentiation fire 7 note.
 
-### tool-mcp-browser theme — axis B (external official-public MCP) remaining sub-slices
+## ◦ Open — tool-mcp-browser axis C (browser)
+
+- ◦ **navigation-status fidelity for browser_open / browser_back (fire-8 ROLLED BACK — redo honestly scoped)** — `page.goto`/`goBack` resolve (not throw) on HTTP 4xx/5xx, so a 404/500 error page is returned to the model AS IF it were the requested content (silent grounding hole). Slice: `PageSnapshot.httpStatus` captured from goto/goBack `HTTPResponse` (consume-once like `lastDialog`), emit `{httpStatus, statusError}` only when ≥400 (success stays silent). **fire-8 FAILed ④b: it also CLAIMED post-click 500 flagging but the real `click` path never sets `lastHttpStatus` (only open/back do), and its test FAKE-injected the 500 snapshot (`c.click=async()=>errSnap`) — happy-path/fake anti-pattern.** Redo = scope to open/back ONLY (both genuinely implemented + RED-able) and DROP the fake click test; OR (bigger) actually capture click-triggered nav status via a main-frame `page.once("response")` so the click case is real+RED-able. open/back design was judge-verified solid. — tool-mcp-browser fire 8 (rolled back)
+
 
 - ◦ `muse doctor` reports each official preset's allow/deny + provenance so a user can audit which external servers are eligible.
 - ◦ official-MCP cred file-path whitespace trim + native OS-keychain backend behind `resolveOfficialMcpToken` (fire-7 follow-ups: env path trims, file path passes a whitespace-only token through as literal `Bearer   ` — cosmetic, fails auth upstream, no leak; keychain is the secure-source upgrade behind the single resolver seam).

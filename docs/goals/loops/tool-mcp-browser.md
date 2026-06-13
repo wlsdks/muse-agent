@@ -145,3 +145,23 @@ ratchet: testFiles +1 (official-mcp-credentials.test.ts; mcp-stack-official-pres
 - **리스크:** Notion hosted 엔드포인트는 OAuth-선호(Bearer 거부시 향후 OAuth 분기 필요, 현재는
   토큰 없으면 클린 fail-close). 파일경로 whitespace-only 토큰 미트림(cosmetic, upstream 인증 실패,
   누출 없음) + 네이티브 키체인 백엔드 = backlog 후속 ◦.
+
+## fire 8 · 2026-06-13 · skill v1.14.0 · ROLLED BACK (no slice commit)
+
+meta: value-class=new-capability(attempted) · pkg=@muse/browser · kind=C-browser · verdict=FAIL→rollback · firesSinceDrill=8
+
+ratchet: testFiles +0 (slice reverted) · fabrication 0 · @muse/browser unchanged · gate=④b independent judge FAIL
+
+- **무엇(시도):** browser_open/back 네비게이션 상태 충실도 — page.goto가 4xx/5xx에 throw 안 해
+  에러 페이지가 콘텐츠로 둔갑하던 grounding 구멍에 PageSnapshot.httpStatus + statusError를 추가.
+- **왜 FAIL(④b judge):** open/back 부분은 견고+RED-able이었으나, 슬라이스가 **post-click 500
+  플래깅을 과대청구** — 실제 PuppeteerBrowserController.click은 lastHttpStatus를 절대 설정 안 함
+  (open/back만 함). 그 케이스 테스트가 `c.click=async()=>errSnap`로 500 스냅샷을 가짜 주입해
+  실제 경로와 무관하게 통과 = 프로젝트 금지 happy-path/fake-injection 안티패턴(testing.md
+  "fall-back 어서션 금지"). maker≠judge 게이트가 정확히 이걸 잡음.
+- **조치:** git restore로 4 파일 전체 롤백(브랜치 HEAD=pre-pull 머지 5c3d6d6f 불변). 정직히
+  스코프된 재작업을 backlog ◦로 기록(open/back ONLY + 가짜 click 테스트 제거, 또는 click nav
+  status를 main-frame page.once("response")로 실제 캡처). 다음 fire가 픽업.
+- **리스크/교훈:** 동종 act-경로 상태 캡처를 "한 슬라이스로 배칭"하려다 미구현 경로를 가짜 테스트로
+  덮음 — 배칭 시 각 경로가 REAL인지 확인 필수. 연속 allPASS 스트릭 7에서 끊김(이 catch가 곧
+  9에 예정됐던 judge-드릴의 실효 — 검증자가 진짜 나쁜 슬라이스를 잡음 입증).
