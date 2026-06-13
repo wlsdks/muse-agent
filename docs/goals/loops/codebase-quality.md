@@ -823,3 +823,11 @@ ratchet: testFiles 966 · fabrication 0 · groundedSurfaces 27 · 1 dead re-expo
   from "./errors.js"`; api route imports it from @muse/messaging unaffected); telegram-provider no longer references
   it (0 refs); MessagingProviderError import retained; knip drops it; messaging 368 + full check green.
 - **Risk:** none — removed a redundant re-export whose symbol is still exposed via the package index; no behavior change.
+
+## fire 45 · 2026-06-14 · loop-creator v1.14.0 · 62577971
+meta: value-class=refactor · pkg=@muse/macos · kind=decompose · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 968 · fabrication 0 · groundedSurfaces 27 · macos-tools 1352->1297 LOC · +4 sandbox tests
+- What: Step 1 of the fire-44-deferred macos capture untangle. Extracted the screenshot output-path security sandbox (tryRealpath + screenshotAllowedRoots + expandTilde + resolveScreenshotPath) from macos-tools.ts into a new sibling macos-screen-path.ts. The 4 fns are capture-only (grep-confirmed: used solely by createMacScreenshotTool); macos-tools imports resolveScreenshotPath+tryRealpath back. Dropped 3 now-unused node imports (realpathSync, homedir, basename/dirname/resolvePath). Added macos-screen-path.test.ts (4 OUTCOME cases for a previously-untested-in-isolation traversal guard).
+- Why: completes the top open defer-blocker (avoid defer-ratchet) + isolates a security-sensitive path-traversal sandbox into a directly unit-testable module. Unblocks Step 2 (move the screenshot/screenread tools). Diversity: macos 2/8, decompose 3/8 — clean.
+- Review point: 4b judge — the 4 fns moved BYTE-IDENTICAL (incl. the load-bearing symlink-O_TRUNC WHY comment); the existing screenshot-tool tests (traversal/symlink-escape/allowlist) stay green; macos-tools no longer references the dropped node imports.
+- Risk: low — pure relocation behind the same call; existing tool-level tests + 4 new direct tests both pass.
