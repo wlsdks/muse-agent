@@ -25,7 +25,8 @@ import { AuthoredSkillStore } from "@muse/skills";
 import type { ModelProvider } from "@muse/model";
 import type { Command } from "commander";
 
-import { councilCorpusMatches, isCouncilGroundedMode } from "./council-corpus.js";
+import { councilCorpusMatches, defaultEmbedModel, isCouncilGroundedMode } from "./council-corpus.js";
+import { embed } from "./embed.js";
 import type { ProgramIO } from "./program.js";
 
 /**
@@ -398,7 +399,12 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
 
       let model: string | undefined;
       let modelProvider: Pick<ModelProvider, "generate"> | undefined;
-      if (!io.councilGatherOverride) {
+      let synthesisEmbedFn: ((t: string) => Promise<readonly number[]>) | undefined;
+      if (io.councilSynthesisOverride) {
+        model = io.councilSynthesisOverride.model;
+        modelProvider = io.councilSynthesisOverride.modelProvider;
+        synthesisEmbedFn = io.councilSynthesisOverride.embed;
+      } else if (!io.councilGatherOverride) {
         const assembly = createMuseRuntimeAssembly();
         if (!assembly.modelProvider || !assembly.defaultModel) {
           io.stderr("muse swarm council: needs a configured local model (set MUSE_MODEL).\n");
@@ -451,7 +457,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         io.stdout("No council members responded (peers offline or council disabled on them).\n");
         return;
       }
-      if (io.councilGatherOverride) {
+      if (io.councilGatherOverride && !io.councilSynthesisOverride) {
         io.stdout(`${renderCouncilResult(question, utterances, null)}\n`);
         return;
       }
@@ -470,7 +476,8 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         });
         return parseGroundingReverifyJson(judged.output ?? "");
       };
-      const answer = await synthesizeCouncilAnswer(question, utterances, { model: model!, modelProvider: modelProvider!, reverify });
+      const embedFn = synthesisEmbedFn ?? ((t: string) => embed(t, defaultEmbedModel(env)));
+      const answer = await synthesizeCouncilAnswer(question, utterances, { embed: embedFn, model: model!, modelProvider: modelProvider!, reverify });
       io.stdout(`${renderCouncilResult(question, utterances, answer)}\n`);
     });
 

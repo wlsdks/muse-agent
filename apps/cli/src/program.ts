@@ -203,6 +203,16 @@ export interface ProgramIO {
    * debate round. Absent in production.
    */
   readonly councilGatherOverride?: CouncilGatherOverride;
+  /**
+   * Test seam — inject a fake model + embedder for the council synthesis step,
+   * so tests can exercise synthesizeCouncilAnswer (including semantic outlier
+   * screening) without a live Ollama. Absent in production.
+   */
+  readonly councilSynthesisOverride?: {
+    readonly model: string;
+    readonly modelProvider: import("@muse/model").ModelProvider;
+    readonly embed?: (text: string) => Promise<readonly number[]>;
+  };
 }
 
 const defaultIO: ProgramIO = {

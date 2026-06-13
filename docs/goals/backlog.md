@@ -1067,15 +1067,19 @@ excluded when scoring).
   kept, because it mimicked surface tokens). Korean agglutinative tokenization makes synonyms share 0 tokens by
   construction. Dropping an honest/dissenting voice is a real harm even though downstream gates protect
   fabrication=0. The cross-SCRIPT case is already guarded (dominantScriptFamily) but same-script paraphrase is not.
-- ⏳⏳ **ROOT-CAUSE (2 council-screening defers: fire 36 injection + fire 39 relevance) — build the SEMANTIC
-  SIMILARITY primitive for the council path FIRST** — both deferred council screens failed for the SAME reason:
-  a lexical/pattern signal over-screens Muse's multilingual + paraphrase content (lexical token overlap conflates
-  "different words" with "off-topic"/"malicious"; chat-guard injection patterns over-fire on model prose). The
-  unblocking PREREQUISITE is an embedding-cosine semantic-similarity helper on the council path (question↔reasoning
-  and peer↔peer), which BOTH the relevance gate AND a re-scoped injection/outlier screen can then use prose-safely.
-  This needs the embedder wired into the council path (it isn't today). Until that exists, do NOT attempt more
-  lexical council-screening slices. (escalated: 2 defers, same root — steer cycle 10 to the semantic primitive or
-  off the council surface entirely.)
+- ✓→PARTIAL **ROOT-CAUSE semantic-similarity primitive for the council path** — [DONE peer↔peer half,
+  2026-06-13 cognition loop fire 40: `councilMemberSupportsSemantic` (mean pairwise embedding cosine) replaces
+  Jaccard token-overlap in `screenCouncilOutliers` when an embedder is injected (arXiv:2507.14649 Cleanse);
+  embedder wired into the live `muse swarm council` synthesis path; COSINE_ABS_FLOOR=0.4; fail-open to Jaccard.
+  This UNBLOCKS the two deferred council screens — the embed seam + cosine-support primitive now exist on the path.]
+  REMAINING follow-ons (now thin, reuse the primitive):
+  - ◦ **fire-39 question-relevance gate, semantic version** — screen each utterance against the QUESTION embedding
+    (cosine), not lexical overlap → no same-script-paraphrase false-drop. Reuse the councilMemberSupportsSemantic embed seam.
+  - ◦ **fire-36 injection-quarantine, re-scoped** — semantic-divergence signal or a council-local prose-safe detector
+    instead of the chat-guard lexical patterns.
+  - ◦ **semantic hasCouncilConsensus (fire 31)** — fire 40 left consensus on Jaccard; give it cosine support too (cosine-calibrated agreeAt).
+  - ◦ **discriminating cross-lingual fix test** — fire 40's KO+EN fix-tests are partly vacuous (Jaccard all-zero → relFloor×0 keeps all under both paths); add a majority-KO + minority-EN fixture (dropped under Jaccard, kept under semantic) to prove the fix end-to-end. (judge-flagged fire 40)
+  - ◦ **tune COSINE_ABS_FLOOR on a live KO/EN council battery** — 0.4 is a best-guess default (smoke:live stalls; unvalidated on real nomic distributions). (fire 40)
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
   each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
 - (queued behind fuel/prereqs: sleep-time compute · Mem0 UPDATE op · AWM workflow mining ·

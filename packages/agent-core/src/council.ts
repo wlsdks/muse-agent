@@ -20,6 +20,7 @@
 import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
 import { redactSecretsInText } from "@muse/shared";
 
+import { cosineSimilarity } from "./episodic-recall.js";
 import { iterateJsonObjectCandidates } from "./json-array-scan.js";
 import {
   classifyRetrievalConfidence,
@@ -60,6 +61,12 @@ export interface OutlierScreenOptions {
   readonly absFloor?: number;
   /** Suspect only when support is also below relFloor × median(support). Default 0.5. */
   readonly relFloor?: number;
+  /**
+   * Precomputed per-member support values (e.g. from `councilMemberSupportsSemantic`).
+   * When provided, these replace the internally-computed Jaccard supports and the
+   * caller-supplied `absFloor` applies (or `COSINE_ABS_FLOOR` when not set).
+   */
+  readonly precomputedSupports?: readonly number[];
 }
 
 export interface CouncilScreenResult {
@@ -83,6 +90,57 @@ export function councilMemberSupports(utterances: readonly CouncilUtterance[]): 
       if (j !== i) {
         sum += jaccardSimilarity(tokens[i] ?? new Set<string>(), tokens[j] ?? new Set<string>());
       }
+    }
+    return sum / (n - 1);
+  });
+}
+
+/**
+ * Embedding cosine threshold for the semantic outlier screen (arXiv:2507.14649 — Cleanse:
+ * semantic consistency over embedding space instead of surface lexical overlap). These
+ * replace the Jaccard absFloor (0.08) when a `councilMemberSupportsSemantic` vector is
+ * fed to `screenCouncilOutliers`.
+ *
+ * Jaccard lives in ~[0, 0.2] for council text; nomic cosine lives in ~[0.1, 0.9].
+ * At cosine ~0.9 two texts agree (cross-lingual or paraphrase); ~0.1 they are
+ * semantically unrelated. Setting the floor at 0.4 keeps agreeing peers (cosine ≥ 0.6+)
+ * and quarantines genuine outliers (cosine ≤ 0.2). A single threshold applies to both
+ * directions — proven by the fake-embedder test pairs; tune on a live KO/EN battery
+ * (backlog item: calibrate COSINE_ABS_FLOOR on real nomic council runs).
+ */
+export const COSINE_ABS_FLOOR = 0.4;
+
+/**
+ * Each member's mean pairwise embedding cosine-similarity to all OTHER members.
+ * Implements the Cleanse semantic consistency signal (arXiv:2507.14649, Joo & Cho 2025):
+ * embedding space catches cross-lingual and paraphrase agreement that Jaccard misses.
+ *
+ * n===1 → [1] (sole speaker trivially agrees with no one).
+ * An empty vector (length 0) or a failed embed → that member's support = 0, mirroring
+ * the empty-Jaccard silent-peer rule — a failed embed cannot claim agreement.
+ * Never throws: embed errors are caught per-member; a failing member gets support 0.
+ */
+export async function councilMemberSupportsSemantic(
+  utterances: readonly CouncilUtterance[],
+  embed: (text: string) => Promise<readonly number[]>
+): Promise<number[]> {
+  const n = utterances.length;
+  if (n === 0) return [];
+  const vecs: (readonly number[])[] = await Promise.all(
+    utterances.map(async (u) => {
+      if (u.reasoning.trim().length === 0) return [];
+      try { return await embed(u.reasoning); } catch { return []; }
+    })
+  );
+  return utterances.map((_, i) => {
+    if (n === 1) return 1;
+    const vi = vecs[i] ?? [];
+    if (vi.length === 0) return 0;
+    let sum = 0;
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      const vj = vecs[j] ?? [];
+      sum += vj.length === 0 ? 0 : cosineSimilarity(vi, vj);
     }
     return sum / (n - 1);
   });
@@ -124,14 +182,19 @@ export function screenCouncilOutliers(
   options?: OutlierScreenOptions
 ): CouncilScreenResult {
   const minPanel = options?.minPanel ?? 3;
-  const absFloor = options?.absFloor ?? 0.08;
   const relFloor = options?.relFloor ?? 0.5;
 
   const n = utterances.length;
   if (n < minPanel) return { kept: [...utterances], excluded: [] };
 
-  // Compute mean pairwise Jaccard support for each member (reuse shared helper).
-  const supports = councilMemberSupports(utterances);
+  const usePrecomputed = options?.precomputedSupports !== undefined;
+  // When precomputed cosine supports are injected, use COSINE_ABS_FLOOR as the default
+  // (cosine ~[0.1, 0.9] vs Jaccard ~[0, 0.2]; the Jaccard floor of 0.08 would be
+  // nearly inert on cosine values).
+  const absFloor = options?.absFloor ?? (usePrecomputed ? COSINE_ABS_FLOOR : 0.08);
+  const supports = usePrecomputed
+    ? (options.precomputedSupports as readonly number[])
+    : councilMemberSupports(utterances);
 
   // Median of supports.
   const sorted = [...supports].sort((a, b) => a - b);
@@ -185,6 +248,13 @@ export interface CouncilModelOptions {
    * Omitted ⇒ id-gate only (back-compat).
    */
   readonly reverify?: GroundingReverify;
+  /**
+   * Optional embedder for semantic outlier screening (arXiv:2507.14649 — Cleanse).
+   * When provided, `screenCouncilOutliers` uses embedding cosine instead of Jaccard
+   * so cross-lingual and paraphrase agreement is not falsely quarantined.
+   * Omitted ⇒ Jaccard path (back-compat, all existing callers unchanged).
+   */
+  readonly embed?: (text: string) => Promise<readonly number[]>;
 }
 
 const REASONING_SYSTEM_PROMPT =
@@ -344,9 +414,20 @@ export async function synthesizeCouncilAnswer(
   const usable = dedupeUtterancesByPeer(utterances.filter((u) => u.peerId.length > 0 && u.reasoning.trim().length > 0));
   if (question.trim().length === 0 || usable.length === 0) return null;
 
-  // Consensus-outlier screen (arXiv:2503.05856): quarantine divergent peers before
-  // aggregation so a deceptive/broken member can't steer synthesis.
-  const { kept, excluded } = screenCouncilOutliers(usable);
+  // Consensus-outlier screen (arXiv:2503.05856 + arXiv:2507.14649): quarantine divergent
+  // peers before aggregation. When an embedder is injected, use semantic cosine support
+  // (Cleanse) so cross-lingual/paraphrase-agreeing peers are not falsely quarantined.
+  // Falls back to Jaccard when the embedder is absent or throws (fail-open).
+  let screenOpts: OutlierScreenOptions | undefined;
+  if (options.embed) {
+    try {
+      const semanticSupports = await councilMemberSupportsSemantic(usable, options.embed);
+      screenOpts = { precomputedSupports: semanticSupports };
+    } catch {
+      // fall through — Jaccard path
+    }
+  }
+  const { kept, excluded } = screenCouncilOutliers(usable, screenOpts);
   // Never screen the entire panel away (the majority cap should prevent it, but
   // fall back to usable as a hard safety net).
   const forSynthesis = kept.length > 0 ? kept : usable;
