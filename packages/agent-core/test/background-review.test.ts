@@ -97,6 +97,34 @@ describe("createBackgroundReviewHook", () => {
     expect((errors[0] as Error).message).toBe("review boom");
   });
 
+  it("a FAILED review does NOT consume its trigger — it re-fires next eligible turn (no trigger lost)", async () => {
+    // Same "no trigger is lost" invariant the in-flight-skip path holds: a review
+    // whose learning arm throws (local model down, store write error) must leave
+    // its trigger tripped so the accrued signal re-fires, not silently dropped
+    // (MAST fail-close, arXiv:2503.13657). memoryEveryTurns:2 exposes it — a reset
+    // BEFORE the (failing) review would drop turn-2's trigger and turn 3 (count 1)
+    // would not re-fire.
+    const reviews: BackgroundReviewInput[] = [];
+    let failNext = true;
+    const hook = createBackgroundReviewHook({
+      memoryEveryTurns: 2,
+      skillEveryIters: 999,
+      onError: () => {},
+      runReview: async (input) => {
+        if (failNext) { failNext = false; throw new Error("arm boom"); }
+        reviews.push(input);
+      }
+    });
+    await hook.afterComplete!(context(), response); // turn 1 → count 1, no trip
+    await flush();
+    await hook.afterComplete!(context(), response); // turn 2 → count 2 → trips → review FAILS
+    await flush();
+    expect(reviews).toHaveLength(0); // failed; nothing learned yet
+    await hook.afterComplete!(context(), response); // turn 3 → trigger survived → re-fires → succeeds
+    await flush();
+    expect(reviews).toHaveLength(1); // the lost trigger re-fired (was 0 with the pre-review reset)
+  });
+
   it("runs only ONE review per user at a time, then coalesces the skipped trigger into a re-fire", async () => {
     const reviews: BackgroundReviewInput[] = [];
     let release: (() => void) | undefined;

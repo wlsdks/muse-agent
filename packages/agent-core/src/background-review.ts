@@ -161,11 +161,14 @@ export function createBackgroundReviewHook(options: BackgroundReviewHookOptions 
       // turn after the in-flight pass clears — no trigger is lost.
       if (inFlight.has(userId)) return;
       inFlight.add(userId);
-      // Reset only the channels that fired, so each keeps its own cadence.
-      counters.reset(userId, { iters: decision.reviewSkill, turns: decision.reviewMemory });
-      // Fire-and-forget: do NOT await — the turn returns immediately.
+      // Fire-and-forget: do NOT await — the turn returns immediately. Reset the
+      // fired channels ONLY after the review actually RESOLVES, so a review whose
+      // arm throws leaves its trigger tripped and re-fires next turn — the same
+      // "no trigger is lost" invariant the in-flight-skip path holds (MAST
+      // fail-close: a failed sub-step must not silently discard its retrigger).
       void Promise.resolve()
         .then(() => runReview({ context, response, reviewMemory: decision.reviewMemory, reviewSkill: decision.reviewSkill, userId }))
+        .then(() => { counters.reset(userId, { iters: decision.reviewSkill, turns: decision.reviewMemory }); })
         .catch((error) => options.onError?.(error))
         .finally(() => { inFlight.delete(userId); });
     }
