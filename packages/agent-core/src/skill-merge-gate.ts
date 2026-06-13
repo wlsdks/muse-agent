@@ -207,8 +207,15 @@ export async function validateUmbrellaCoverage(
   const lost = [...new Set([...trigger.lost, ...body.lost])];
   const unverified = [...new Set([...trigger.unverified, ...body.unverified])];
   const covered = cluster.map((s) => s.name).filter((n) => !lost.includes(n) && !unverified.includes(n));
-  const accept = trigger.accept && body.accept;
   const score = cluster.length === 0 ? 0 : covered.length / cluster.length;
+  // Re-gate the COMBINED (covered-on-BOTH-surfaces) score: each surface applies
+  // its floor to its OWN partial coverage, so a skill lost on trigger and a
+  // different one lost on body each clear their surface (2/3 ≥ floor) yet the
+  // union drops a majority. requireAll → no combined loss; else combined ≥ minScore.
+  const requireAll = options.requireAllCovered ?? true;
+  const minScore = clamp01(options.minScore ?? 1);
+  const combinedAccept = requireAll ? lost.length === 0 : score >= minScore;
+  const accept = trigger.accept && body.accept && combinedAccept;
   const embedderError = [trigger.reason, body.reason].find((r) => r.includes("embedder unavailable"));
   const reason = accept
     ? `umbrella "${umbrella.name}" covers all ${covered.length.toString()} on trigger+body`

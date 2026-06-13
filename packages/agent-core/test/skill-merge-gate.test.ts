@@ -74,6 +74,24 @@ describe("validateUmbrellaCoverage (semantic)", () => {
     expect(verdict.lost).toEqual(["lost-c"]);
   });
 
+  it("requireAllCovered=false gates COMBINED trigger∧body coverage against minScore (asymmetric loss fail-open)", async () => {
+    // A lost on TRIGGER only, B lost on BODY only, C covered on both. Each surface
+    // sees just one loss (2/3 ≥ 0.6 → accepts), but the COMBINED coverage (covered
+    // on BOTH) is only C = 1/3, below minScore. The whole-answer gate must reject.
+    const embed = (t: string): Promise<readonly number[]> =>
+      Promise.resolve(/loseTrig|loseBody/u.test(t) ? [0, 1] : [1, 0]);
+    const cluster = [
+      { name: "A-loseTrig", description: "loseTrig", body: "good body A" },
+      { name: "B-fine", description: "Use when B", body: "loseBody bad body B" },
+      { name: "C-fine", description: "Use when C", body: "good body C" }
+    ];
+    const merged = { name: "u", description: "Use when B or C", body: "good merged body" };
+    const verdict = await validateUmbrellaCoverage(cluster, merged, { embed, minScore: 0.6, requireAllCovered: false });
+    expect(verdict.accept).toBe(false); // combined 1/3 < 0.6 — was WRONGLY true (fail-open)
+    expect([...verdict.lost].sort()).toEqual(["A-loseTrig", "B-fine"]);
+    expect(verdict.score).toBeCloseTo(1 / 3);
+  });
+
   it("is FAIL-CLOSED: an embedder error rejects (cannot verify ⇒ do not commit)", async () => {
     const cluster = [{ name: "cov-a", description: "Use when doing A", body: "x" }];
     const verdict = await validateUmbrellaCoverage(cluster, umbrella, {
