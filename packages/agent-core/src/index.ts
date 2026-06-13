@@ -102,7 +102,7 @@ export {
 export type { AmbientSnapshot, AmbientSnapshotProvider } from "./ambient-context.js";
 export { applyVetoAvoidance, renderVetoAvoidanceSection, selectRelevantVetoes } from "./veto-avoidance.js";
 export type { LearnedVeto, VetoAvoidanceProvider } from "./veto-avoidance.js";
-export { applyPlaybook, clampReward, effectiveStrategyReward, isAvoidedStrategy, isInjectableStrategy, isStaleStrategy, planStrategyLifecycle, PLAYBOOK_AVOID_BELOW, PLAYBOOK_INJECT_DEDUP_THRESHOLD, PLAYBOOK_RECENCY_HALF_LIFE_DAYS, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, PLAYBOOK_STALE_AFTER_DAYS, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, recencyDiscount, renderPlaybookSection, strategyTextSimilarity, suppressNearDuplicateStrategies, wilsonInterval } from "./playbook.js";
+export { applyPlaybook, clampReward, effectiveStrategyReward, isAvoidedStrategy, isInjectableStrategy, isStaleStrategy, planStrategyLifecycle, PLAYBOOK_AVOID_BELOW, PLAYBOOK_INJECT_DEDUP_THRESHOLD, PLAYBOOK_PEVI_LAMBDA, PLAYBOOK_RECENCY_HALF_LIFE_DAYS, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, PLAYBOOK_STALE_AFTER_DAYS, rankingUtility, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, recencyDiscount, renderPlaybookSection, strategyTextSimilarity, suppressNearDuplicateStrategies, wilsonInterval } from "./playbook.js";
 export type { PlaybookStrategy, PlaybookProvider, RankPlaybookOptions, StrategyLifecycleAction } from "./playbook.js";
 export { classifyCorrectionContradiction, DEFAULT_STRATEGY_VERBATIM_CEILING, detectApprovals, detectCorrections, distillStrategyFromCorrection } from "./correction-distiller.js";
 export { synthesizePatternSuggestion, type PatternSuggestionInput, type SynthesizePatternSuggestionOptions } from "./pattern-suggestion.js";

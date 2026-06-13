@@ -83,6 +83,14 @@ export function renderPlaybookSection(strategies: readonly PlaybookStrategy[]): 
 }
 
 /**
+ * PEVI pessimism constant (arXiv:2012.15085, Jin/Yang/Wang): the Wilson lower
+ * confidence bound is the pessimistic estimate used for ranking — a
+ * high-but-uncertain point estimate can never outrank a proven one.
+ * λ=1.96 matches the 95% Wilson interval already computed by wilsonInterval.
+ */
+export const PLAYBOOK_PEVI_LAMBDA = 1.96;
+
+/**
  * ReasoningBank (arXiv 2509.25140): a self-evolving agent retrieves only the
  * reasoning memory RELEVANT to the current task instead of dumping the whole
  * bank. Here it ranks the playbook's strategies against the current turn and
@@ -283,6 +291,40 @@ export function effectiveStrategyReward(s: PlaybookStrategy, nowMs?: number): nu
   const pHat = r / n;
   // Shrinkage: n/(n+3) pulls sparse evidence toward neutral (0.5)
   const raw = Math.max(PLAYBOOK_REWARD_MIN, Math.min(PLAYBOOK_REWARD_MAX, (2 * pHat - 1) * PLAYBOOK_REWARD_MAX * (n / (n + 3))));
+  if (nowMs !== undefined && raw > 0) {
+    return raw * recencyDiscount(s, nowMs);
+  }
+  return raw;
+}
+
+/**
+ * PEVI ranking utility (arXiv:2012.15085, Jin/Yang/Wang — pessimism under
+ * uncertainty): ranks by the Wilson lower confidence bound (value − λ·uncertainty)
+ * so a thin-but-perfect strategy (wide CI) can never outrank a proven one (tight CI).
+ * This is a CALIBRATION re-map for RANKING ONLY — the avoidance gate
+ * (isAvoidedStrategy / PLAYBOOK_AVOID_BELOW) stays on the existing point-estimate
+ * signal (clampReward) so the LCB never changes WHICH strategies are avoided.
+ *
+ * For a valid tally (r, d): n = r + d; lower = wilsonInterval(r, n).lower;
+ * raw = (2·lower − 1) · PLAYBOOK_REWARD_MAX, clamped to [MIN, MAX].
+ * The D-UCB recency discount on the positive component (fire 9, arXiv:0805.3415)
+ * is preserved — composition is unchanged.
+ * No-tally legacy branch and nowMs-undefined invariant are byte-identical to
+ * effectiveStrategyReward.
+ */
+export function rankingUtility(s: PlaybookStrategy, nowMs?: number): number {
+  if (!hasValidTally(s)) {
+    const base = clampReward(s.reward);
+    if (nowMs !== undefined && base > 0) {
+      return base * recencyDiscount(s, nowMs);
+    }
+    return base;
+  }
+  const r = s.reinforcements as number;
+  const d = s.decays as number;
+  const n = r + d;
+  const { lower } = wilsonInterval(r, n, PLAYBOOK_PEVI_LAMBDA);
+  const raw = Math.max(PLAYBOOK_REWARD_MIN, Math.min(PLAYBOOK_REWARD_MAX, (2 * lower - 1) * PLAYBOOK_REWARD_MAX));
   if (nowMs !== undefined && raw > 0) {
     return raw * recencyDiscount(s, nowMs);
   }
@@ -663,7 +705,7 @@ export function rankPlaybookStrategies(
   nowMs?: number
 ): readonly PlaybookStrategy[] {
   const query = rankTokens(queryText);
-  return rankEligible(strategies, options, (s) => relevanceScore(s, query), (s) => effectiveStrategyReward(s, nowMs), nowMs);
+  return rankEligible(strategies, options, (s) => relevanceScore(s, query), (s) => rankingUtility(s, nowMs), nowMs);
 }
 
 /**
@@ -704,7 +746,7 @@ export async function rankPlaybookStrategiesByRelevance(
       }
     }
   }
-  return rankEligible(strategies, options, (s) => relevanceScore(s, query, cosineByText.get(s.text)), (s) => effectiveStrategyReward(s, nowMs), nowMs);
+  return rankEligible(strategies, options, (s) => relevanceScore(s, query, cosineByText.get(s.text)), (s) => rankingUtility(s, nowMs), nowMs);
 }
 
 function latestUserText(messages: readonly { readonly role: string; readonly content: string }[]): string {

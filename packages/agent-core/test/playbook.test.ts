@@ -12,6 +12,7 @@ import {
   PLAYBOOK_RECENCY_HALF_LIFE_DAYS,
   PLAYBOOK_REWARD_MAX,
   PLAYBOOK_REWARD_MIN,
+  rankingUtility,
   rankPlaybookStrategies,
   rankPlaybookStrategiesByRelevance,
   recencyDiscount,
@@ -1132,5 +1133,158 @@ describe("suppressNearDuplicateStrategies — assembled-path via applyPlaybook (
     expect(system).toContain(alpha.text);
     expect(system).toContain(beta.text);
     expect(system).toContain(gamma.text);
+  });
+});
+
+// ─── PEVI Wilson-LCB ranking utility (arXiv:2012.15085, Jin/Yang/Wang) ────────
+
+describe("rankingUtility — PEVI pessimistic confidence-bound ranking (arXiv:2012.15085)", () => {
+  // Core calibration: point estimate orders A > B but Wilson LCB orders B > A.
+  // A = thin-perfect (r=1,d=0): pHat=1 (perfect) but n=1 → very wide CI.
+  // B = proven     (r=5,d=3): pHat=0.625 but n=8 → tighter CI.
+  // effectiveStrategyReward(A)≈1.25 > effectiveStrategyReward(B)≈0.909  (point estimate: A wins)
+  // rankingUtility(A)≈-2.935      < rankingUtility(B)≈-1.943            (LCB: B wins — pessimism)
+  it("core calibration: point estimate orders A>B but Wilson LCB orders B>A (proven outranks thin-perfect)", () => {
+    const A: PlaybookStrategy = { text: "strategy A thin perfect", reinforcements: 1, decays: 0 };
+    const B: PlaybookStrategy = { text: "strategy B proven mixed", reinforcements: 5, decays: 3 };
+
+    const pointA = effectiveStrategyReward(A);
+    const pointB = effectiveStrategyReward(B);
+    const lcbA = rankingUtility(A);
+    const lcbB = rankingUtility(B);
+
+    // Verify the disagreement: point estimate says A wins, LCB says B wins
+    expect(pointA).toBeGreaterThan(pointB);
+    expect(lcbB).toBeGreaterThan(lcbA);
+
+    // Exact values (from wilsonInterval): confirm they are in-range
+    expect(lcbA).toBeCloseTo(-2.9346, 3);
+    expect(lcbB).toBeCloseTo(-1.9426, 3);
+  });
+
+  it("monotonicity: more reinforcements at equal pHat → strictly higher LCB utility (interval narrows upward)", () => {
+    // Both have pHat=1 (all reinforcements, no decays), but n=3 vs n=6 → wider vs tighter CI.
+    const sparse: PlaybookStrategy = { text: "sparse perfect", reinforcements: 3, decays: 0 };
+    const denser: PlaybookStrategy = { text: "denser perfect", reinforcements: 6, decays: 0 };
+    expect(rankingUtility(denser)).toBeGreaterThan(rankingUtility(sparse));
+  });
+
+  it("avoidance-gate UNCHANGED: a borderline thin-mixed strategy (r=1,d=2) is not avoided before or after", () => {
+    // isAvoidedStrategy uses clampReward(strategy.reward) — for a tally-only strategy, reward is absent → 0.
+    // 0 > PLAYBOOK_AVOID_BELOW(-4) → NOT avoided. planStrategyLifecycle: n=3 < 5 → retain (not deprecate).
+    // The LCB never feeds isAvoidedStrategy, so membership is unchanged.
+    const borderline: PlaybookStrategy = { text: "borderline thin mixed", reinforcements: 1, decays: 2 };
+    expect(isAvoidedStrategy(borderline)).toBe(false);
+    // Confirm the LCB value is computed (does not throw, is in range)
+    const lcb = rankingUtility(borderline);
+    expect(lcb).toBeGreaterThanOrEqual(PLAYBOOK_REWARD_MIN);
+    expect(lcb).toBeLessThanOrEqual(PLAYBOOK_REWARD_MAX);
+  });
+
+  it("invariant — no-tally legacy branch is byte-identical to effectiveStrategyReward (nowMs absent)", () => {
+    const legacy: PlaybookStrategy = { text: "legacy reward only", reward: 3 };
+    expect(rankingUtility(legacy)).toBe(effectiveStrategyReward(legacy));
+    const absent: PlaybookStrategy = { text: "absent reward" };
+    expect(rankingUtility(absent)).toBe(effectiveStrategyReward(absent));
+    expect(rankingUtility(absent)).toBe(0);
+  });
+
+  it("invariant — output always in [PLAYBOOK_REWARD_MIN, PLAYBOOK_REWARD_MAX]", () => {
+    const cases: PlaybookStrategy[] = [
+      { text: "a", reinforcements: 0, decays: 10 },
+      { text: "b", reinforcements: 10, decays: 0 },
+      { text: "c", reinforcements: 5, decays: 5 },
+      { text: "d", reinforcements: 1, decays: 0 },
+      { text: "e", reinforcements: 50, decays: 5 },
+      { text: "f", reward: -5 },
+      { text: "g", reward: 5 }
+    ];
+    for (const s of cases) {
+      const u = rankingUtility(s);
+      expect(u).toBeGreaterThanOrEqual(PLAYBOOK_REWARD_MIN);
+      expect(u).toBeLessThanOrEqual(PLAYBOOK_REWARD_MAX);
+    }
+  });
+
+  it("invariant — nowMs-undefined: rankingUtility equals effectiveStrategyReward for legacy strategies", () => {
+    const s: PlaybookStrategy = { text: "x", reward: 3 };
+    expect(rankingUtility(s)).toBe(3);
+    expect(rankingUtility(s)).toBe(effectiveStrategyReward(s));
+  });
+
+  it("invariant — recency discount still applied to positive LCB result (nowMs provided)", () => {
+    // A strategy with large tally and recent reinforcement → positive LCB → discount applied.
+    // Without discount the value is higher; with a 90-day-old anchor and 30-day half-life
+    // the multiplier is 0.5^(90/30) = 0.125, so the discounted value is much lower.
+    const NOW_MS = Date.now();
+    const s: PlaybookStrategy = {
+      text: "heavily proven recent",
+      reinforcements: 30,
+      decays: 0,
+      lastReinforcedAt: new Date(NOW_MS - 90 * 86_400_000).toISOString()
+    };
+    const withNow = rankingUtility(s, NOW_MS);
+    const withoutNow = rankingUtility(s);
+    // withoutNow is the raw positive LCB; withNow must be strictly less (discount applied)
+    expect(withoutNow).toBeGreaterThan(0);
+    expect(withNow).toBeGreaterThan(0);
+    expect(withNow).toBeLessThan(withoutNow);
+  });
+
+  it("assembled-path (real-revert): proven strategy ranks first in [Learned Strategies]; counterfactual confirms LCB drove it", async () => {
+    // Two equal-relevance strategies: both share 3 tokens with the query (email, reply, note)
+    // but have distinct non-query tokens → Jaccard ≈ 0.27 (well below dedup threshold 0.8).
+    // Tally engineered so point estimate orders A > B but LCB orders B > A (proven wins).
+    // A = thin-perfect (r=1,d=0): point≈1.25, lcb≈-2.935
+    // B = proven-mixed (r=5,d=3): point≈0.909, lcb≈-1.943
+    const A: PlaybookStrategy = {
+      text: "email reply note alpha bravo charlie delta",   // extra tokens: alpha,bravo,charlie,delta
+      reinforcements: 1,
+      decays: 0
+    };
+    const B: PlaybookStrategy = {
+      text: "email reply note india juliet kilo lima",      // extra tokens: india,juliet,kilo,lima
+      reinforcements: 5,
+      decays: 3
+    };
+
+    // Verify the tally disagreement is real (LCB inverts the point-estimate order)
+    const pointA = effectiveStrategyReward(A);
+    const pointB = effectiveStrategyReward(B);
+    const lcbA = rankingUtility(A);
+    const lcbB = rankingUtility(B);
+    expect(pointA).toBeGreaterThan(pointB);   // point estimate: A wins
+    expect(lcbB).toBeGreaterThan(lcbA);       // LCB: B wins (proven)
+
+    // Drive the real ranking path (which uses rankingUtility as utilityOf)
+    const query = "email reply note";
+    const ranked = rankPlaybookStrategies([A, B], query, { topK: 6 });
+    const renderedText = renderPlaybookSection(ranked) ?? "";
+
+    // B (proven) must appear before A (thin) in the rendered block
+    const posA = renderedText.indexOf("email reply note alpha");
+    const posB = renderedText.indexOf("email reply note india");
+    expect(posA).toBeGreaterThanOrEqual(0);
+    expect(posB).toBeGreaterThanOrEqual(0);
+    expect(posB).toBeLessThan(posA);   // proven strategy (B) is listed first
+
+    // Counterfactual proof: if we were using the point estimate, A would rank above B.
+    // The wilsonInterval lower bound is what drives B above A — reverting to pHat shrinkage
+    // gives pointA > pointB, meaning A would be first. Verify this directly:
+    expect(pointA).toBeGreaterThan(pointB);   // confirmed: point estimate inverts the order
+
+    // Also drive via applyPlaybook to confirm the full assembled path is wired
+    const provider: PlaybookProvider = { listStrategies: async () => [A, B] };
+    const out = await applyPlaybook(
+      ctx([{ content: "email reply note", role: "user" }], "stark"),
+      provider
+    );
+    const system = out.messages.find((m) => m.role === "system")?.content ?? "";
+    expect(system).toContain("[Learned Strategies]");
+    const sysPosA = system.indexOf("email reply note alpha");
+    const sysPosB = system.indexOf("email reply note india");
+    expect(sysPosA).toBeGreaterThanOrEqual(0);
+    expect(sysPosB).toBeGreaterThanOrEqual(0);
+    expect(sysPosB).toBeLessThan(sysPosA);   // proven (B) is first in the injected block
   });
 });
