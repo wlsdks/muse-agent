@@ -133,8 +133,10 @@ export {
 export {
   applyLateralInhibition,
   cosineSimilarity,
+  EPISODIC_CLUSTER_DROP_RATIO,
   EPISODIC_INHIBITION_STRENGTH,
   EmbeddingEpisodicRecallProvider,
+  selectByClusterTransition,
   InMemoryEpisodicRecallProvider,
   renderEpisodicSection,
   StoreBackedEpisodicRecallProvider,

@@ -232,7 +232,8 @@ export class InMemoryEpisodicRecallProvider implements EpisodicRecallProvider {
       });
     }
     scored.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
-    const top = scored.slice(0, this.topK);
+    const k = selectByClusterTransition(scored.map((m) => m.similarity ?? 0), { topK: this.topK });
+    const top = scored.slice(0, k);
     if (top.length === 0) {
       return undefined;
     }
@@ -345,7 +346,8 @@ export class EmbeddingEpisodicRecallProvider implements EpisodicRecallProvider {
       });
     }
     scored.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
-    const top = scored.slice(0, this.topK);
+    const k = selectByClusterTransition(scored.map((m) => m.similarity ?? 0), { topK: this.topK });
+    const top = scored.slice(0, k);
     return top.length === 0 ? undefined : { matches: top };
   }
 }
@@ -513,6 +515,60 @@ function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): numb
 // are suppressed. Winner-take-most, fail-soft: empty vecs or strength 0
 // produce output byte-identical to a plain topK slice.
 export const EPISODIC_INHIBITION_STRENGTH = 0.5;
+
+// WHY relative-drop (CAR arXiv:2511.14769) vs absolute-max-gap (selectByScoreGap):
+// selectByScoreGap finds the single LARGEST absolute consecutive gap across all
+// scores — scale-dependent, so a uniform fade multiplier shifts the cliff.
+// selectByClusterTransition tests each adjacent pair with a RELATIVE ratio
+// so a uniform multiplier (e.g. FADE_PENALTY) leaves relative drops unchanged;
+// only a true relevance cliff (next item < half the previous) triggers the cut.
+// WHY 0.5 conservative: at 50% drop the cliff is sharp and unambiguous — marginal
+// episodes that are still somewhat relevant (e.g. 0.6 → 0.4, a 33% drop) survive.
+// Erring toward today's topK is the right default; a cliff that aggressive is
+// almost certainly a true relevance boundary. (CAR arXiv:2511.14769)
+export const EPISODIC_CLUSTER_DROP_RATIO = 0.5;
+
+/**
+ * Adaptive top-k cutoff via cluster-transition detection (CAR, arXiv:2511.14769).
+ *
+ * Walks already-sorted (high→low) scores and returns k = the index after the FIRST
+ * pair where the next score is less than `(1 - dropRatio)` of the current —
+ * i.e. a relative drop sharp enough to signal a cluster boundary.
+ *
+ * SELECTION-ONLY: result is always ≤ topK. Never adds an episode. Fail-soft: if no
+ * transition is found, or inputs are degenerate, returns topK (byte-identical to the
+ * previous fixed slice). Distinct from selectByScoreGap which finds the largest
+ * ABSOLUTE gap; this uses a RELATIVE drop ratio so a uniform fade multiplier (which
+ * scales all scores proportionally) does NOT move the cut.
+ */
+export function selectByClusterTransition(
+  scoresDescending: readonly number[],
+  options: { readonly topK: number; readonly dropRatio?: number }
+): number {
+  const n = scoresDescending.length;
+  if (n === 0) return 0;
+  const { topK } = options;
+  const dropRatio = typeof options.dropRatio === "number" && Number.isFinite(options.dropRatio)
+    ? options.dropRatio
+    : EPISODIC_CLUSTER_DROP_RATIO;
+  // Any non-finite (NaN/Infinity) or negative score in the array means we can't
+  // reason reliably about relative drops — fail-soft to topK.
+  for (let i = 0; i < Math.min(n, topK); i++) {
+    const s = scoresDescending[i] ?? 0;
+    if (!Number.isFinite(s) || s < 0) {
+      return topK;
+    }
+  }
+  for (let i = 0; i < Math.min(n - 1, topK - 1); i++) {
+    const cur = scoresDescending[i] ?? 0;
+    const next = scoresDescending[i + 1] ?? 0;
+    if (next < cur * (1 - dropRatio)) {
+      return i + 1;
+    }
+  }
+  // No transition found: return the actual available count capped at topK.
+  return Math.min(n, topK);
+}
 
 /**
  * Greedy lateral-inhibition pass over pre-sorted episodic matches.
@@ -741,9 +797,10 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
       });
     }
     scored.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+    const adaptiveK = selectByClusterTransition(scored.map((m) => m.similarity ?? 0), { topK: this.topK });
     const strength = narrativeVecs.size > 0 ? EPISODIC_INHIBITION_STRENGTH : 0;
     const top = applyLateralInhibition(scored, narrativeVecs, {
-      topK: this.topK,
+      topK: adaptiveK,
       minScore: this.minScore,
       inhibitionStrength: strength
     });
