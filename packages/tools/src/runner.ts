@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { isRecord } from "@muse/shared";
 import { spawn, type ChildProcess } from "node:child_process";
 
 import type { JsonObject } from "@muse/shared";
@@ -245,6 +246,3 @@ function readPositiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}

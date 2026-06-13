@@ -33,7 +33,7 @@ function check(label, cond) {
 }
 
 const inj = (t) => findInjectionPatterns(t).length;
-const ZW = "​"; // zero-width space
+const ZW = "\u200B"; // zero-width space
 const CYR_I = "і"; // Cyrillic small letter byelorussian-ukrainian i (homoglyph of 'i')
 
 // ── 1. Language symmetry — the SAME exfil intent is caught in EN, KO, and CN ────
