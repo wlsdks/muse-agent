@@ -183,3 +183,12 @@ ratchet: testFiles 961 (+1) · web tests 29/29 (+3) · fabrication 0 · self-eva
 - **왜**: 모든 화면의 최고-트래픽 컨트롤의 a11y 상태 누락(WAI-ARIA `aria-current`/landmark). 추출로 renderToStaticMarkup 단위테스트 가능(App은 useI18n→window라 직접 불가).
 - **리뷰지점**: 추출은 render-equivalent(NAV/GROUPS·`.active`·아이콘·라벨·tasks 배지 보존, onClick=onSelect→setView 배선). `nav.primary` en/ko 양쪽 추가(파리티). `aria-current` 값은 올바른 `"page"` 토큰. cosmetic: `<nav>` 래퍼가 그룹을 한 단계 더 중첩하나 `.sidebar-foot margin-top:auto`로 무해.
 - **리스크**: 없음(App.tsx 추출+a11y + strings 2키 + 신규 테스트, brand/sidebar-foot 무변, 독립 Opus judge가 RED-before·추출 충실성·parity 검증 후 PASS, web 29/29).
+
+## fire 21 · 2026-06-14 · skill v1.14.0 · <commit>
+meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=a11y-toggle-aria-pressed · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 965 (+1) · web tests 30/30 (+1) · fabrication 0 · self-eval exit 0 · ⚠️순수 props-injected a11y vein 거의 소진(scout) — 이후는 추출/Button aria 배선 필요
+
+- **무엇**: `LangToggle`(App.tsx) 언어 토글 2버튼이 `role="group" aria-label`은 있으나 선택 상태를 CSS `.active`로만 표시 — `aria-pressed` 없어 스크린리더가 활성 언어 모름. 양 버튼에 `aria-pressed={lang===…}`(정식 toggle-button 패턴) + export(테스트용).
+- **왜**: 즉시-동작 토글 그룹의 정식 WAI-ARIA 패턴은 toggle-button(`aria-pressed`)이며 group+label은 이미 있어 패턴 완성. fire 20 SidebarNav와 같은 순수 props-injected 형태라 renderToStaticMarkup 직접 테스트.
+- **리뷰지점**: `aria-pressed`는 양 버튼이 각자 상태 반영(정확히 하나 true), radiogroup/listbox 아님(즉시 동작). `.active`/onClick/onChange 무변. judge가 aria-pressed strip으로 RED 실증.
+- **리스크**: 없음(3줄: export + 2 속성, 다른 컴포넌트 무변, Console가 계속 렌더, 독립 Opus judge가 패턴 정확성·RED-before·pressedLabel 식별 검증 후 PASS, web 30/30).
