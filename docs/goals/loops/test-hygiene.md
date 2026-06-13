@@ -101,3 +101,11 @@ ratchet: testFiles 944→943 (−1 중복 삭제, judge 승인) · netCoverage 0
 - **왜:** 같은 헬퍼를 두 독립 스위트가 매 run 중복 테스트. readOptionalDate의 absent/invalid/date 3-state는 load-bearing(absent↔invalid 붕괴 시 도구가 잘못된 instant로 조용히 anchor).
 - **어떻게-증명(MUTATION-FIRST PRUNE):** readOptionalDate 비-string `invalid`→`absent` 변형 시 src/의 "present-but-unparseable→invalid" RED(`{kind:'absent'}≠{kind:'invalid'}`), 복원 11/11 green. ④b judge가 삭제 파일의 *모든* assertion이 src/에 subsumed + invalid **양쪽 서브분기**(비-string + NaN-string) mutation-caught 재확인 후 **VERDICT: PASS**.
 - **리스크:** 소스 무변경. ★data/text/time 쌍은 **독립 작성된 다른 스위트**(복사본 아님, 케이스 문구 다름)라 helpers처럼 깨끗한 subset이 아닐 수 있음 — 쌍마다 함수별 대조 필수(backlog 기록). fire-10 교훈 적용: whole-tree `rm -rf dist` 안 함 → stale-dist 캐스케이드 없이 첫 check GREEN.
+
+## fire 12 · 2026-06-13 · skill v1.14.0 · ef59ddca
+meta: kind=prune · pkg=@muse/tools · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 945→944 (−1 중복 삭제, judge 승인) · netCoverage 0 (2 유니크 케이스 test/로 이식) · fabrication 0 · pnpm check FULL GREEN
+- **무엇:** tools 이중-실행 `muse-tools-time` 쌍 정리 — 6개 time 도구를 두 독립 스위트가 테스트(src 13 / test 18). 더 완전한 `test/` 유지, lesser `src/muse-tools-time.test.ts` 삭제. 단 src/만 가진 유니크 2개를 test/로 이식: ①대문자 weekday `MONDAY`(case-insensitivity) ②**유효 non-UTC zone `Asia/Seoul`**(요일 롤오버).
+- **왜:** 같은 도구를 두 스위트가 중복. non-UTC zone은 "Seoul은 지금 무슨 요일?"의 조용한 오답을 막는 핵심 가드.
+- **어떻게-증명(MUTATION-FIRST PRUNE):** `.toLowerCase()` 제거→MONDAY RED; `timeZone: timezone`→`"UTC"`→Seoul 케이스 RED(`'Saturday'≠'Sunday'`). 복원 19/19 green. ★④b judge **1차 FAIL**로 내가 놓친 Seoul non-UTC zone 손실을 잡음(zone 무시해도 222 green이던 구멍) → 더 강한 케이스(Sat 16:00 UTC=Sun 01:00 KST, 요일 롤오버)로 이식 → 2차 judge 전수 sweep 후 **VERDICT: PASS**.
+- **리스크:** 소스 무변경. LESSON(반복): 독립 스위트 prune은 "fuller가 모든 걸 커버"가 거짓일 수 있음 — 함수별 전수 대조해도 사람(나)은 유니크를 놓침, judge가 보상통제. data/text 쌍 남음(backlog).
