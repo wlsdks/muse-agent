@@ -24,6 +24,16 @@ export interface WebActionToolDeps {
   readonly lookup?: HostLookup;
 }
 
+/**
+ * web_action is the STATE-CHANGING actuator — only mutating verbs are allowed.
+ * A read verb (GET/HEAD) would change nothing yet a 2xx would report
+ * `performed: true` (a silent false-success the user wouldn't notice), and a
+ * garbage verb would reach `fetch` as an opaque error. The allow-set is shared
+ * by the schema `enum` and the handler check so they can't drift. Reading a page
+ * is muse.web.read, not web_action.
+ */
+const WEB_ACTION_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+
 export function createWebActionTool(deps: WebActionToolDeps): MuseTool {
   return {
     definition: {
@@ -34,7 +44,7 @@ export function createWebActionTool(deps: WebActionToolDeps): MuseTool {
         additionalProperties: false,
         properties: {
           body: { description: "Request body (e.g. JSON).", type: "string" },
-          method: { description: "HTTP method (default POST).", type: "string" },
+          method: { description: "HTTP method — a state-changing verb only (default POST). Reading a page is muse.web.read, not web_action.", enum: WEB_ACTION_METHODS, type: "string" },
           summary: { description: "Human description of what this action does (shown for confirmation).", type: "string" },
           url: { description: "Target URL, e.g. 'https://forum.example.com/t/42'. Omit ONLY if the user has not given one yet — the tool then asks for it rather than guessing.", type: "string" }
         },
@@ -67,6 +77,16 @@ export function createWebActionTool(deps: WebActionToolDeps): MuseTool {
       const method = typeof args["method"] === "string" && args["method"].trim().length > 0
         ? args["method"].trim().toUpperCase()
         : "POST";
+      // Fail closed on a non-state-changing / unknown verb BEFORE the approval
+      // gate or any HTTP — a GET no-op must never report performed:true, and a
+      // garbage verb must not reach fetch as an opaque error.
+      if (!WEB_ACTION_METHODS.includes(method)) {
+        return {
+          detail: `web_action only performs state-changing requests (${WEB_ACTION_METHODS.join("/")}); '${method}' is not allowed — reading a page is muse.web.read, not web_action.`,
+          performed: false,
+          reason: "invalid-method"
+        };
+      }
       const body = typeof args["body"] === "string" ? args["body"] : undefined;
       const outcome = await performWebActionWithApproval({
         actionLogFile: deps.actionLogFile,

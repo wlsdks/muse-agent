@@ -50,6 +50,29 @@ describe("createWebActionTool", () => {
     expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "performed" });
   });
 
+  it("rejects a non-state-changing method (GET) BEFORE any HTTP — a read verb can't masquerade as a performed action", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    const tool = createWebActionTool({ actionLogFile: logFile(), approvalGate: approve, fetchImpl, lookup: publicLookup, userId: "stark" });
+    const out = await tool.execute({ summary: "Book a table", url: "https://book.test/x", method: "GET" }, ctx);
+    expect(out).toMatchObject({ performed: false, reason: "invalid-method" });
+    expect(calls).toHaveLength(0); // the GET no-op never fires (no false `performed:true`)
+  });
+
+  it("rejects a garbage method BEFORE any HTTP (caught as a bad arg, not an opaque fetch/405)", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    const tool = createWebActionTool({ actionLogFile: logFile(), approvalGate: approve, fetchImpl, lookup: publicLookup, userId: "stark" });
+    const out = await tool.execute({ summary: "Submit the form", url: "https://book.test/x", method: "frobnicate" }, ctx);
+    expect(out).toMatchObject({ performed: false, reason: "invalid-method" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("accepts a valid state-changing method case-insensitively (put → PUT)", async () => {
+    const { fetchImpl, calls } = recordingFetch();
+    const tool = createWebActionTool({ actionLogFile: logFile(), approvalGate: approve, fetchImpl, lookup: publicLookup, userId: "stark" });
+    await tool.execute({ body: "{}", summary: "Update the RSVP", url: "https://book.test/x", method: "put" }, ctx);
+    expect(calls).toEqual([{ method: "PUT", url: "https://book.test/x" }]);
+  });
+
   it("DENY: no request fires", async () => {
     const { fetchImpl, calls } = recordingFetch();
     const tool = createWebActionTool({ actionLogFile: logFile(), approvalGate: deny, fetchImpl, lookup: publicLookup, userId: "stark" });
