@@ -1,6 +1,11 @@
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
+  buildDiskContents,
   filterNotesByScope,
   formatCoarseAge,
   formatNonNoteReceipts,
@@ -16,6 +21,42 @@ import {
 } from "@muse/recall";
 
 const DAY = 86_400_000;
+
+describe("buildDiskContents — reads each cited note's CURRENT content for the receipt's disk-verify (L4 slice 2)", () => {
+  it("reads a present note's content, marks a missing one null, and SKIPS ad-hoc sources", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-bdc-"));
+    try {
+      writeFileSync(join(dir, "vpn.md"), "WireGuard uses 1420 MTU.");
+      const answer = "MTU [from vpn.md]. Gone [from gone.md]. See [from https://x.com].";
+      const chunks = [
+        { file: "vpn.md", text: "WireGuard uses 1420 MTU." },
+        { file: "gone.md", text: "deleted after indexing" }
+      ];
+      const adHoc = new Map<string, string | null>([["https://x.com", "https://x.com"]]);
+      const map = await buildDiskContents(answer, chunks, dir, adHoc);
+      expect(map.get("vpn.md")).toBe("WireGuard uses 1420 MTU."); // present → real content
+      expect(map.get("gone.md")).toBeNull(); // missing file → null (receipt downgrades)
+      expect(map.has("https://x.com")).toBe(false); // ad-hoc source skipped (carries own provenance)
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("the map it builds drives formatSourceReceipts to hide a drifted quote end-to-end", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-bdc2-"));
+    try {
+      writeFileSync(join(dir, "vpn.md"), "WireGuard now uses 1500 MTU."); // disk DRIFTED vs the index copy
+      const answer = "MTU [from vpn.md].";
+      const chunks = [{ file: "vpn.md", text: "WireGuard uses 1420 MTU." }]; // index copy
+      const map = await buildDiskContents(answer, chunks, dir);
+      const out = formatSourceReceipts(answer, dir, chunks, "mtu", undefined, map) ?? "";
+      expect(out).not.toContain('"WireGuard uses 1420 MTU."'); // stale index quote hidden
+      expect(out).toContain("changed since");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("formatSourceReceipts — disk-verified snippet (L4: receipt verifies the quote against the file ON DISK, not the index copy)", () => {
   const answer = "WireGuard uses 1420 MTU [from vpn.md].";

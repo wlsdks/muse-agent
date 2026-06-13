@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
 import { citedSourcesIn, lexicalOverlap, lexicalTokens } from "@muse/agent-core";
@@ -187,6 +187,38 @@ export function formatCoarseAge(ageMs: number): string {
  * skipped (never a false staleness claim). Mirrors `formatSourceReceipts`'s
  * note→path resolution.
  */
+/**
+ * Read the CURRENT on-disk content of each cited NOTE so `formatSourceReceipts`
+ * can verify its quote against the file (L4: render-time disk-verify, not the
+ * retrieval-index copy). A present note maps to its content, a gone/unreadable
+ * one to `null` (the receipt then says "no longer on disk"). Ad-hoc sources
+ * (`--url`/`--clipboard`/`--file` in `verifyTargets`) are skipped — they carry
+ * their own provenance, not a local note to re-read. Mirrors the note→path
+ * resolution of `collectCitedNoteAges`/`formatSourceReceipts` exactly.
+ */
+export async function buildDiskContents(
+  answer: string,
+  chunks: ReadonlyArray<{ readonly file: string; readonly text: string }>,
+  notesDir: string,
+  verifyTargets?: ReadonlyMap<string, string | null>
+): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  for (const note of [...new Set(citedSourcesIn(answer))]) {
+    if (verifyTargets?.has(note)) {
+      continue;
+    }
+    const base = note.split("/").pop();
+    const hit = chunks.find((c) => c.file === note || c.file.split("/").pop() === base);
+    const filePath = hit && isAbsolute(hit.file) ? hit.file : isAbsolute(note) ? note : join(notesDir, note);
+    try {
+      out.set(note, await readFile(filePath, "utf8"));
+    } catch {
+      out.set(note, null);
+    }
+  }
+  return out;
+}
+
 export async function collectCitedNoteAges(
   answer: string,
   chunks: ReadonlyArray<{ readonly file: string; readonly text: string }>,

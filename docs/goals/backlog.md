@@ -109,11 +109,11 @@
 - ✓ receipt verifies the quote against the file ON DISK (L4 shows-its-work) — `formatSourceReceipts` (@muse/recall) gained a disk-content map; a snippet edited/deleted after indexing is now hidden with a reason instead of quoted (fake-citation defense rivals can't pay for); proven by `eval:receipt-drift` (real temp files), backward-compat (recall 88/88) — differentiation fire 8
 
 - ✓ JUDGE-DRILL (verifier proven) + truncated-snippet disk-verify coverage — planted an inert test, the independent Opus judge correctly FAILED it (mutation-proven), then landed a real discriminating test locking down fire-8's `…`-truncation disk-verify path (mutation: break `snippetOnDisk` → real test fails) — differentiation fire 9
+- ✓ L4 LIVE — `muse ask` disk-verifies cited snippets — `buildDiskContents` (@muse/recall) reads each cited note's current content (ad-hoc skipped) and `commands-ask.ts` feeds it to the receipt, so a drifted/deleted note's snippet is now hidden from the user ("changed since" / "no longer on disk") instead of quoted as a fake citation; recall 95/95, grounding engine untouched — differentiation fire 10
 
 ## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
 
-- ◦ **(slice 2) Wire `commands-ask.ts` to populate `diskContents`** — fire 8 shipped the verify+downgrade logic in `formatSourceReceipts`; the live `muse ask` receipt won't disk-verify until the CLI caller reads each cited note's current content into the map. Needs: cited-note path resolution (mirror the receipt's note→path) + skip ad-hoc sources (`--url`/`--clipboard`/`--file` in `verifyTargets`) + its own tests. Then a drifted/deleted note stops being quoted to the user. Source: differentiation fire 8 residual (Opus judge: required to convert L4 to user value).
-- ◦ **(then) Fresh lever on a different moat axis** — fires 1/2/4/5/7 deepened local-by-construction (L1/L3), fire 8 opened "shows its work" (L4). Keep diversifying: a NEW lever on grounding (fabrication=0) or another shows-its-work facet vs hermes/openclaw. Source: differentiation fire 7 note.
+- ◦ **(next) Fresh lever on a different moat axis** — fires 1/2/4/5/7 deepened local-by-construction (L1/L3), fire 8 opened "shows its work" (L4). Keep diversifying: a NEW lever on grounding (fabrication=0) or another shows-its-work facet vs hermes/openclaw. Source: differentiation fire 7 note.
 
 ### tool-mcp-browser theme — axis B (external official-public MCP) remaining sub-slices
 
