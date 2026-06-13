@@ -14,7 +14,7 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { atomicWriteFile } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 /** `~/.muse/learn-queue.jsonl` by default; override via `MUSE_LEARN_QUEUE_FILE`. */
 export function resolveLearnQueueFile(env: Record<string, string | undefined> = process.env): string {
@@ -45,10 +45,16 @@ function isEvent(value: unknown): value is LearnCorrectionEvent {
     && typeof e.enqueuedAtMs === "number";
 }
 
-/** Append ONE correction event (one real signal = one job). Creates the dir if needed. */
+/**
+ * Append ONE correction event (one real signal = one job). Creates the dir if
+ * needed. Serialized on the per-file mutation queue so an append can't interleave
+ * between the drain's read and rewrite (markLearnEventsDone) and get clobbered.
+ */
 export async function enqueueLearnEvent(file: string, event: LearnCorrectionEvent): Promise<void> {
-  await mkdir(dirname(file), { recursive: true });
-  await appendFile(file, `${JSON.stringify(event)}\n`, "utf8");
+  await withFileMutationQueue(file, async () => {
+    await mkdir(dirname(file), { recursive: true });
+    await appendFile(file, `${JSON.stringify(event)}\n`, "utf8");
+  });
 }
 
 /** All pending (valid) events, oldest first; corrupt lines skipped. Missing file ⇒ []. */
@@ -75,10 +81,14 @@ export async function readPendingLearnEvents(file: string): Promise<readonly Lea
  * Remove the given event ids from the queue (called after they're distilled),
  * rewriting the file atomically with only the remaining pending events. Also
  * trims to the newest `MAX_LEARN_QUEUE_EVENTS` so the file can't grow forever.
+ * Serialized on the per-file mutation queue (shared with enqueueLearnEvent) so
+ * the read-modify-write can't lose an append that races it.
  */
 export async function markLearnEventsDone(file: string, doneIds: readonly string[]): Promise<void> {
   const done = new Set(doneIds);
-  const remaining = (await readPendingLearnEvents(file)).filter((e) => !done.has(e.id));
-  const trimmed = remaining.slice(-MAX_LEARN_QUEUE_EVENTS);
-  await atomicWriteFile(file, trimmed.map((e) => JSON.stringify(e)).join("\n") + (trimmed.length > 0 ? "\n" : ""));
+  await withFileMutationQueue(file, async () => {
+    const remaining = (await readPendingLearnEvents(file)).filter((e) => !done.has(e.id));
+    const trimmed = remaining.slice(-MAX_LEARN_QUEUE_EVENTS);
+    await atomicWriteFile(file, trimmed.map((e) => JSON.stringify(e)).join("\n") + (trimmed.length > 0 ? "\n" : ""));
+  });
 }
