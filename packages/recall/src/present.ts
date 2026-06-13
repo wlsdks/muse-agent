@@ -490,3 +490,27 @@ export function buildFeedContextBlock(headlines: readonly { readonly feedName: s
     .map((h, i) => `<<feed ${(i + 1).toString()} — ${h.feedName} (${h.publishedAt})>>\n${escapeSystemPromptMarkers(h.title)}${h.summary ? `\n${escapeSystemPromptMarkers(h.summary)}` : ""}\n[feed: ${h.feedName}]\n<<end>>`)
     .join("\n\n");
 }
+
+/** Build the <<event N>> grounding block from upcoming calendar events. Pure. */
+export function buildCalendarContextBlock(events: readonly { readonly title: string; readonly startsAt: Date; readonly endsAt: Date; readonly allDay: boolean; readonly location?: string; readonly providerId: string }[]): string {
+  if (events.length === 0) {
+    return "(no upcoming events)";
+  }
+  return events
+    .map((e, i) => {
+      // Show a HUMAN-readable local date, not the raw ISO: the small model
+      // mis-derives the weekday from an ISO string (told the user the wrong
+      // day), and its reformatted prose then fails the verdict's token
+      // coverage. Hand it the rendered date it should echo (the system
+      // locale/tz is the user's), keeping the ISO for unambiguous precision.
+      const fmtWhen = (d: Date): string =>
+        d.toLocaleString("en-US", { day: "numeric", hour: "numeric", minute: "2-digit", month: "long", weekday: "long", year: "numeric" });
+      const when = e.allDay
+        ? `${fmtWhen(e.startsAt)} (all-day, ${e.startsAt.toISOString().slice(0, 10)})`
+        : `${fmtWhen(e.startsAt)} to ${fmtWhen(e.endsAt)} (${e.startsAt.toISOString()})`;
+      const loc = e.location ? ` @ ${e.location}` : "";
+      const provider = `[${e.providerId}]`;
+      return `<<event ${(i + 1).toString()} — ${provider}>>\n${e.title}${loc}\n${when}\n[event: ${e.title}]\n<<end>>`;
+    })
+    .join("\n\n");
+}

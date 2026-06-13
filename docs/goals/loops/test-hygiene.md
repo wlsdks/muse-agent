@@ -166,3 +166,11 @@ ratchet: testFiles 959 (케이스 +1, 파일수 불변) · netCoverage +1 (count
 - **왜:** PII 감사 정확도(privacy/grounding 인접) — "이메일 1건"인데 실제 3건이면 잘못된 감사 보고. 보안 게이트 패키지(injection/PII/leakage)인데 count 출력이 미검증이었음. 패키지 다양성도(policy는 이 루프 첫 터치).
 - **어떻게-증명(MUTATION-FIRST ADD):** maskPii 누적→상수 1 변형 시 email-count assert만 RED(7 green); findPii 누적→상수 1 변형 시 ssn-count assert만 RED — 양 경로 각각 pin, 다른 테스트는 무영향(진짜 미커버). 독립 ④b judge가 양 mutation 재현 + 값 정확성(패턴 overlap 없음) + 중복부재 확인 → **VERDICT: PASS**.
 - **리스크:** 테스트-only, 소스 무변경, full check GREEN. count 누적은 공개 API 필드라 회귀 시 조용한 부정확 — 이제 pin됨.
+
+## fire 20 · 2026-06-14 · skill v1.14.0 · ff23c3e6
+meta: kind=prune(consolidate) · pkg=@muse/mcp · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 960→959 (−1 통합, 유니크 케이스 1 이식) · netCoverage 0 (overlap만 제거) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** mcp 동명 쌍 `atomic-file-store` **통합**(fire 17·18 vein 후속, 첫 mcp 쌍) — `atomicWriteFile`/`withFileMutationQueue`를 `src/`(68L)·`test/`(91L)가 둘 다 실행. queue 4케이스는 완전 중복, test/는 atomicWriteFile에 3케이스 더(0600 mode·fsync 옵션·rename-실패 시 tmp-orphan 정리). src/ 유일 케이스 1개("40 동시쓰기 ENOENT rename 크래시 없음 = randomUUID tmp 가드")만 test/로 이식하고 src/ 삭제.
+- **왜:** 파일 무결성의 기반 프리미티브(모든 store가 의존)인데 두 파일 중복 실행. 진안 "중복 제거" — 단 양쪽 유니크(test/ 3개 보안·src/ 1개 동시성)는 손실 금지.
+- **어떻게-증명(MUTATION-FIRST):** 이식한 동시성 케이스 — tmp명에서 `-${randomUUID()}` 제거(same-pid 충돌 재현) 시 그 케이스만 RED(정확히 `ENOENT ... rename race.json.tmp-<pid>`), 나머지 9 green → 진짜 회귀 가드 + 유일성 증명. 복원+클린리빌드 10/10 green. ④b 독립 Opus judge가 삭제본 7개 행동 전수 매핑(전부 equal-or-stronger) + mutation 재현 → **VERDICT: PASS**.
+- **리스크:** 소스(비-test) 무변경. 변경 −68L(src/ 삭제) +8L(이식) 2건뿐. mcp dist 클린리빌드 1회 필요(stale-dist 패턴 [[project_stale_dist_from_loop]]). 남은 mcp 동명 쌍 13개 — 각각 subset/complementary 판별 후 처리.

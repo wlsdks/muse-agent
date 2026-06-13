@@ -24,7 +24,7 @@ import { useShortcuts } from "./useShortcuts.js";
 import type { ApiClient } from "../api/client.js";
 import type { Command } from "../components/CommandPalette.js";
 import type { HealthResponse, TasksResponse } from "../api/types.js";
-import type { Lang, StringKey } from "../i18n/index.js";
+import type { Lang, StringKey, Translate } from "../i18n/index.js";
 import type { ComponentType } from "react";
 
 const queryClient = new QueryClient({
@@ -73,6 +73,47 @@ const NAV: readonly NavEntry[] = [
 ];
 
 const GROUPS: readonly GroupKey[] = ["group.workspace", "group.knowledge", "group.system"];
+
+// Primary sidebar nav. Pure + i18n-free (t injected) so the a11y semantics —
+// the navigation landmark and aria-current="page" on the active view — are
+// unit-testable via renderToStaticMarkup without a DOM.
+export function SidebarNav({
+  view,
+  taskCount,
+  t,
+  onSelect
+}: {
+  readonly view: ViewId;
+  readonly taskCount: number;
+  readonly t: Translate;
+  readonly onSelect: (id: ViewId) => void;
+}) {
+  return (
+    <nav className="sidebar-nav" aria-label={t("nav.primary")}>
+      {GROUPS.map((group) => (
+        <div key={group}>
+          <div className="nav-group-label">{t(group)}</div>
+          {NAV.filter((n) => n.group === group).map((n) => {
+            const NavIcon = n.icon;
+            const current = n.id === view;
+            return (
+              <button
+                key={n.id}
+                className={`nav-item${current ? " active" : ""}`}
+                aria-current={current ? "page" : undefined}
+                onClick={() => onSelect(n.id)}
+              >
+                <NavIcon />
+                <span>{t(n.labelKey)}</span>
+                {n.id === "tasks" && taskCount > 0 && <span className="nav-badge">{taskCount}</span>}
+              </button>
+            );
+          })}
+        </div>
+      ))}
+    </nav>
+  );
+}
 
 export function App() {
   return (
@@ -159,27 +200,7 @@ function Console() {
           </div>
         </div>
 
-        {GROUPS.map((group) => (
-          <div key={group}>
-            <div className="nav-group-label">{t(group)}</div>
-            {NAV.filter((n) => n.group === group).map((n) => {
-              const NavIcon = n.icon;
-              return (
-                <button
-                  key={n.id}
-                  className={`nav-item${n.id === view ? " active" : ""}`}
-                  onClick={() => setView(n.id)}
-                >
-                  <NavIcon />
-                  <span>{t(n.labelKey)}</span>
-                  {n.id === "tasks" && (openTasks.data?.total ?? 0) > 0 && (
-                    <span className="nav-badge">{openTasks.data?.total}</span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ))}
+        <SidebarNav view={view} taskCount={openTasks.data?.total ?? 0} t={t} onSelect={setView} />
 
         <div className="sidebar-foot">
           <LangToggle lang={lang} onChange={setLang} />

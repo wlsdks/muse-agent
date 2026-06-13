@@ -62,6 +62,8 @@ import {
   KyselyMcpServerStore,
   mapMcpSecurityPolicyRow,
   mapMcpServerRow,
+  McpConnectionError,
+  isRetryableMcpConnectStatus,
   McpManager,
   McpSecurityPolicyProvider,
   normalizeMcpSecurityPolicy,
@@ -610,6 +612,82 @@ describe("McpManager", () => {
     expect(manager.getHealth("local").reconnectAttempts).toBe(4);
     expect(manager.getHealth("local").nextReconnectAt).toBeUndefined();
     await expect(manager.reconnectDue()).resolves.toEqual([]);
+  });
+
+  it("classifies a permanent 401/403 auth failure as NON-retryable → fails fast, NO reconnect loop", () => {
+    // architecture.md retry classification: 4xx (bad key) fails fast; 5xx/429 may retry.
+    expect(isRetryableMcpConnectStatus(401)).toBe(false);
+    expect(isRetryableMcpConnectStatus(403)).toBe(false);
+    expect(isRetryableMcpConnectStatus(404)).toBe(false);
+    expect(isRetryableMcpConnectStatus(400)).toBe(false);
+    expect(isRetryableMcpConnectStatus(500)).toBe(true);
+    expect(isRetryableMcpConnectStatus(503)).toBe(true);
+    expect(isRetryableMcpConnectStatus(429)).toBe(true);
+    // No status (a bare network error) → transient, may retry.
+    expect(isRetryableMcpConnectStatus(undefined)).toBe(true);
+    expect(new McpConnectionError("Server returned 401", 401).retryable).toBe(false);
+    expect(new McpConnectionError("Error POSTing to endpoint: 503", 503).retryable).toBe(true);
+    expect(new McpConnectionError("network down").retryable).toBe(true);
+  });
+
+  it("does NOT arm a reconnect loop when an external server rejects the credential (401) — terminal, disabled", async () => {
+    let nowMs = 1_767_228_800_000;
+    // Contract-faithful: the REAL DefaultMcpTransportConnector wraps the SDK's
+    // StreamableHTTPError(401) into McpConnectionError(msg, 401). A revoked/expired
+    // external token (e.g. GitHub PAT) is permanent — retrying hammers the server
+    // with a credential that will never work.
+    const connector = {
+      connect: vi.fn().mockRejectedValue(
+        new McpConnectionError("Error POSTing to endpoint: Bad credentials", 401)
+      )
+    };
+    const manager = new McpManager(new InMemoryMcpServerStore(), {
+      connector,
+      now: () => new Date(nowMs),
+      reconnect: { initialDelayMs: 100, maxAttempts: 3 }
+    });
+    await manager.register({ config: { command: "node" }, name: "ext", transportType: "stdio" });
+
+    await expect(manager.connect("ext")).resolves.toBe(false);
+
+    const health = manager.getHealth("ext");
+    expect(manager.getStatus("ext")).toBe("disabled");
+    expect(health.status).toBe("unhealthy");
+    expect(health.nextReconnectAt).toBeUndefined();
+    expect(health.reconnectAttempts).toBe(0);
+
+    // No reconnect armed → reconnectDue does nothing and the connector is NOT called again.
+    nowMs += 100_000;
+    await expect(manager.reconnectDue()).resolves.toEqual([]);
+    expect(connector.connect).toHaveBeenCalledTimes(1);
+  });
+
+  it("STILL arms a bounded reconnect loop when the external server fails transiently (503)", async () => {
+    let nowMs = 1_767_228_800_000;
+    const connector = {
+      connect: vi.fn().mockRejectedValue(
+        new McpConnectionError("Error POSTing to endpoint: upstream down", 503)
+      )
+    };
+    const manager = new McpManager(new InMemoryMcpServerStore(), {
+      connector,
+      now: () => new Date(nowMs),
+      reconnect: { initialDelayMs: 100, maxAttempts: 3 }
+    });
+    await manager.register({ config: { command: "node" }, name: "ext", transportType: "stdio" });
+
+    await expect(manager.connect("ext")).resolves.toBe(false);
+
+    const health = manager.getHealth("ext");
+    expect(manager.getStatus("ext")).toBe("failed");
+    expect(health.status).toBe("unhealthy");
+    expect(health.reconnectAttempts).toBe(1);
+    expect(health.nextReconnectAt?.getTime()).toBe(nowMs + 100);
+
+    // The bound still holds: a transient failure escalates and eventually goes terminal.
+    nowMs = health.nextReconnectAt!.getTime();
+    await manager.reconnectDue();
+    expect(manager.getHealth("ext").reconnectAttempts).toBe(2);
   });
 
   it("reports local preflight diagnostics before live MCP execution", async () => {
