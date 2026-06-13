@@ -68,7 +68,7 @@ export function registerHistoryRoutes(server: FastifyInstance, gate: HistoryRout
 
     // Strict-parse via the shared helper so a `?limit=20x` /
     // unit-slip `?limit=5min` falls back to the default instead of
-    // silently becoming 20 / 5. Matches the goal-554 CLI convention
+    // silently becoming 20 / 5. Matches the CLI convention
     // and the `readQueryInteger` contract every other compat route
     // uses.
     const requested = readQueryInteger(request, "limit", DEFAULT_LIMIT);

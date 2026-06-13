@@ -34,8 +34,14 @@ export interface PageSnapshot {
   readonly text: string;
   /** Interactive elements the model can act on, capped. */
   readonly elements: readonly SnapshotElement[];
-  /** A JS dialog (alert/confirm/prompt) that fired and was auto-accepted, if any. */
-  readonly dialog?: { readonly type: string; readonly message: string };
+  /**
+   * A JS dialog (alert/confirm/prompt) that fired and was auto-accepted, if any.
+   * For a `prompt`, `response` is the text submitted to the page — the dialog's
+   * own `defaultValue` (the page's intended pre-fill), NOT a blank string, so a
+   * "Enter coupon code"/"Enter quantity" prompt doesn't silently receive empty
+   * input. Surfaced so the model can REPORT what was sent (and flag a blank one).
+   */
+  readonly dialog?: { readonly type: string; readonly message: string; readonly response?: string };
   /**
    * HTTP status of the navigation that produced this snapshot (open / back).
    * `page.goto`/`goBack` RESOLVE on a 4xx/5xx, so a 404/500 error page loads

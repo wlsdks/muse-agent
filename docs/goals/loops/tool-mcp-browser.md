@@ -183,3 +183,39 @@ ratchet: testFiles +0 (browser-tools.test.ts +9 cases, 84 total) · @muse/browse
   버그 수정 확인. 라이브 실행이 그 consume-once 버그를 노출(unit fake로는 못 잡았을 것).
 - **리스크:** click/type 네비게이션 status는 의도적 범위 밖(실제 click이 document HTTPResponse를 안 봄,
   main-frame page.once("response") race 필요) → backlog 후속 ◦. byte-hygiene check red는 외부(타 루프 문서).
+
+## fire 10 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/autoconfigure+@muse/cli · kind=B-mcp · verdict=PASS · firesSinceDrill=2
+
+ratchet: testFiles +1 (official-mcp-posture.test.ts 8 + doctor +5) · @muse/autoconfigure+cli tests pass (doctor 90) · fabrication 0 · pnpm check 0 · lint 0/0 · live doctor --local verified (secret 0×)
+
+- **무엇:** `muse doctor --local`이 공식 공개 MCP 프리셋(GitHub/Notion)별 posture를 보고 — enabled(env
+  토글) + credentialPresent(불린, 토큰 절대 미렌더) + allowed(allowlist) + 공식 provenanceUrl. pure
+  describeOfficialMcpPosture(env)를 autoconfigure에 두고 CLI doctor에 officialMcpChecks로 배선.
+- **왜:** 외부 MCP의 신뢰/관측 스토리 완결 — 프라이버시-우선 사용자가 "내 에이전트가 어떤 외부 서버에
+  연결 가능한지/왜인지"를 감사. Muse 정체성("tell it everything, it can't tell anyone")과 부합.
+- **리뷰지점:** judge가 leak-가드를 RED-able로 재확인(posture에 토큰 주입→테스트 RED; 라이브 doctor
+  --local에서 secret 0회), allowlist 시맨틱이 McpManager/assembleMcpStack과 일치(empty=allow-all,
+  non-empty=strict, 같은 MUSE_MCP_ALLOWED_SERVERS env)함을 확인, 4 상태 OUTCOME 채점 RED-able.
+- **리스크:** doctor가 enabled+strict-allowlist-제외를 "blocked"로 표시하나 assembleMcpStack은 turnkey
+  프리셋을 allowlist에 자동추가 → 런타임보다 약간 엄격(cosmetic follow-up ◦ 기록). posture는 env-only
+  (연결 프로브 아님, 연결성 아닌 *적격성* 보고 — 의도).
+
+## fire 11 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=micro-fix · pkg=@muse/browser · kind=C-browser · verdict=PASS · firesSinceDrill=3
+
+ratchet: testFiles +0 (browser-tools.test.ts +1 + smoke 10b) · @muse/browser 85 tests pass · fabrication 0 · eval:browser-agent 1/1 LIVE · smoke 10b LIVE (real Chrome prompt) · lint 0/0
+
+- **무엇:** 네이티브 JS prompt() 다이얼로그가 bare dialog.accept() = 빈 문자열 제출로 페이지의 defaultValue를
+  폐기하던 버그 수정. 이제 prompt는 다이얼로그 자신의 defaultValue로 수락(절대 텍스트 발명 안 함) + 제출
+  텍스트를 PageSnapshot.dialog.response로 노출. alert/confirm/beforeunload는 불변(bare accept).
+- **왜:** "쿠폰 적용"·"제안된 수량 입력" 같은 액션이 prompt(msg, default) 페이지에서 빈값을 보내 승인된
+  행동이 garbage로 진행되고 모델은 무엇이 보내졌는지 몰랐음. fires 1·4·6·9(요소 grounding·nav-status)와
+  구별되는 auto-accept 다이얼로그 응답 경로.
+- **리뷰지점:** judge가 (1)증거가 REAL 경로임 확인 — 라이브 smoke 10b가 실제 Chrome에서 prompt 픽스처를
+  구동하고 page가 캡처한 값(document.title=code:+prompt())을 readback(hand-injection 아님) (2)handler revert해
+  10b RED 재현 (3)defaultValue만 사용=텍스트 미발명(fabrication-into-world 구멍 없음) (4)alert/confirm 불변.
+- **리스크:** default 없는 prompt(msg)는 defaultValue="" → 여전히 빈값(불변)이나 response:""로 투명 기록.
+  파괴적 confirm()은 여전히 blind-accept(트리거 클릭이 이미 draft-first 승인됨 — 다이얼로그 재게이팅은 별도 큰 건).

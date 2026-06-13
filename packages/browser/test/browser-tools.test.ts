@@ -216,6 +216,13 @@ describe("dialog passthrough — an auto-handled JS dialog is surfaced to the mo
     const out = await createBrowserOpenTool({ controller }).execute({ url: "https://x.test" }, ctx) as { dialog?: { type: string; message: string } };
     expect(out.dialog).toEqual({ message: "Delete this?", type: "confirm" });
   });
+
+  it("surfaces a prompt dialog's submitted response so the model knows what text was sent", async () => {
+    const snap: PageSnapshot = { ...SNAP, dialog: { message: "Enter coupon code", response: "SAVE10", type: "prompt" } };
+    const controller = { ...new FakeController(), open: async () => snap } as unknown as BrowserController;
+    const out = await createBrowserOpenTool({ controller }).execute({ url: "https://x.test" }, ctx) as { dialog?: { type: string; message: string; response?: string } };
+    expect(out.dialog).toEqual({ message: "Enter coupon code", response: "SAVE10", type: "prompt" });
+  });
 });
 
 describe("browser_key — keyboard (Escape/Tab/arrows)", () => {
@@ -239,6 +246,40 @@ describe("browser_key — keyboard (Escape/Tab/arrows)", () => {
     const tool = createBrowserKeyTool({ controller: c });
     expect(await tool.execute({ key: "Escape" }, ctx)).toMatchObject({ title: "Example" });
     expect(c.calls).toEqual(["key:Escape"]);
+  });
+});
+
+describe("browser_key — Enter is a state-changing confirm and carries the draft-first gate", () => {
+  it("a navigation key (Escape/Tab/arrow) stays free — pressed with no gate", async () => {
+    const c = new FakeController();
+    const tool = createBrowserKeyTool({ controller: c });
+    await tool.execute({ key: "Tab" }, ctx);
+    expect(c.calls).toEqual(["key:Tab"]);
+  });
+
+  it("Enter with a DENYING gate is NOT pressed — a form submit cannot bypass approval", async () => {
+    const c = new FakeController();
+    const tool = createBrowserKeyTool({ approvalGate: () => ({ approved: false, reason: "declined" }), controller: c });
+    const out = await tool.execute({ key: "Enter" }, ctx);
+    expect(out).toMatchObject({ pressed: false });
+    expect(c.calls).toEqual([]);
+  });
+
+  it("Enter with NO gate wired fails closed — an ungated Enter never reaches the page", async () => {
+    const c = new FakeController();
+    const tool = createBrowserKeyTool({ controller: c });
+    const out = await tool.execute({ key: "Enter" }, ctx);
+    expect(out).toMatchObject({ pressed: false });
+    expect(c.calls).toEqual([]);
+  });
+
+  it("Enter with an APPROVING gate presses through, and the gate saw a key draft", async () => {
+    const c = new FakeController();
+    let seen: unknown;
+    const tool = createBrowserKeyTool({ approvalGate: (d) => { seen = d; return { approved: true }; }, controller: c });
+    await tool.execute({ key: "Enter" }, ctx);
+    expect(c.calls).toEqual(["key:Enter"]);
+    expect(seen).toMatchObject({ action: "key", target: "Enter" });
   });
 });
 

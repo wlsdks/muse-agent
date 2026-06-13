@@ -61,7 +61,7 @@ export class PuppeteerBrowserController implements BrowserController {
   private readonly options: PuppeteerBrowserControllerOptions;
   private lastElements = new Map<number, SnapshotElement>();
   private lastUrl = "";
-  private lastDialog: { readonly type: string; readonly message: string } | undefined;
+  private lastDialog: { readonly type: string; readonly message: string; readonly response?: string } | undefined;
   private lastHttpStatus: number | undefined;
 
   constructor(options: PuppeteerBrowserControllerOptions = {}) {
@@ -140,12 +140,25 @@ export class PuppeteerBrowserController implements BrowserController {
    * that triggers it was already draft-first approved by the human upstream
    * (outbound-safety), so we ACCEPT to complete that intent, and RECORD the dialog
    * so the result stays transparent. Registered once per page.
+   *
+   * A `prompt` is accepted with the dialog's OWN `defaultValue` — not the bare
+   * `accept()` empty string — because `dialog.accept()` with no argument submits
+   * "", discarding the page's intended pre-fill. So "Enter coupon code"
+   * (default "SAVE10") would receive blank and the page proceeds with garbage.
+   * We never invent text; we submit what the PAGE proposed, and record it in
+   * `response` so the model can see (and flag) what was sent.
    */
   private registerDialogHandler(page: Page): void {
     if (page.listenerCount("dialog") > 0) return;
     page.on("dialog", (dialog) => {
-      this.lastDialog = { message: dialog.message(), type: dialog.type() };
-      dialog.accept().catch(() => { /* already handled / page gone */ });
+      const isPrompt = dialog.type() === "prompt";
+      const response = isPrompt ? dialog.defaultValue() : undefined;
+      this.lastDialog = {
+        message: dialog.message(),
+        type: dialog.type(),
+        ...(isPrompt ? { response } : {})
+      };
+      dialog.accept(isPrompt ? response : undefined).catch(() => { /* already handled / page gone */ });
     });
   }
 

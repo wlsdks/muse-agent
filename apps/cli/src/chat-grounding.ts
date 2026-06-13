@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { conflictCueFromMatches } from "@muse/recall";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
@@ -333,7 +334,13 @@ export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs)
   // grounded≠true: a faithful chat answer resting only on untrusted tool sources
   // gets the same scrutiny cue the ask path surfaces (every-surface parity).
   const untrustedCue = untrustedOnlyChatNotice(deFabbed, evidence);
-  return untrustedCue ? `${receipted}${untrustedCue}` : receipted;
+  // grounded≠true: if two of the user's OWN grounded sources disagree on a field,
+  // surface it on chat too (parity with `muse ask`, fire 8).
+  const conflictCue = conflictCueFromMatches(args.matches);
+  let out = receipted;
+  if (untrustedCue) out += untrustedCue;
+  if (conflictCue) out += `\n\n${conflictCue}`;
+  return out;
 }
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectSourceConflict, formatSourceConflictWarning, groundingConflictCue } from "./conflict.js";
+import { conflictCueFromMatches, detectSourceConflict, formatSourceConflictWarning, groundingConflictCue } from "./conflict.js";
 import type { RecallHit } from "./hit.js";
 
 const hit = (ref: string, snippet: string, score = 0.7): RecallHit => ({ ref, score, snippet, source: "notes" });
@@ -110,5 +110,25 @@ describe("groundingConflictCue — compose answer grounding (notes + episodes) i
   it("returns undefined when the grounding is consistent / empty", () => {
     expect(groundingConflictCue([{ file: "a.md", text: "Capital: Paris" }], [])).toBeUndefined();
     expect(groundingConflictCue([], [])).toBeUndefined();
+  });
+});
+
+describe("conflictCueFromMatches — chat-side cue from a flat grounding-match list", () => {
+  it("flags two grounding matches that disagree on a field", () => {
+    const cue = conflictCueFromMatches([
+      { source: "wifi-old.md", text: "WiFi password: hunter2" },
+      { source: "wifi-new.md", text: "wifi password: swordfish99" }
+    ]);
+    expect(cue).toBeDefined();
+    expect(cue).toContain("hunter2");
+    expect(cue).toContain("swordfish99");
+  });
+
+  it("returns undefined when the matches agree or there is only one", () => {
+    expect(conflictCueFromMatches([
+      { source: "a.md", text: "Capital: Paris" },
+      { source: "b.md", text: "capital: paris" }
+    ])).toBeUndefined();
+    expect(conflictCueFromMatches([{ source: "a.md", text: "key: value" }])).toBeUndefined();
   });
 });

@@ -2,7 +2,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createAgentRuntime } from "@muse/agent-core";
+import { createAgentRuntime, groundToolArguments } from "@muse/agent-core";
+import { createContactsAddTool } from "@muse/mcp";
 import type { ModelProvider, ModelResponse } from "@muse/model";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
@@ -215,6 +216,36 @@ describe("buildActuatorTools — the agent invokes a wired tool through its clac
     const { fetchImpl, calls } = recordingFetch();
     await runWebAction(async () => false, fetchImpl);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("add_contact — phone arg-grounding drops a fabricated number (anti-fabrication floor)", () => {
+  // The tool's OWN declared groundedArgs fed through the real runtime grounding
+  // function (agent-runtime applies exactly this at the tool boundary). A
+  // fabricated phone the user never said is the highest-harm contact fabrication
+  // — a wrong number means future "text mom" reaches a stranger.
+  const groundedArgs = createContactsAddTool({ save: async () => {} }).definition.groundedArgs ?? [];
+
+  it("DROPS a phone the user never stated — using add_contact's declared groundedArgs", () => {
+    const out = groundToolArguments(
+      { name: "Bob", phone: "+1 555 123 4567", relationship: "dentist" },
+      groundedArgs,
+      "save Bob, he's my dentist"
+    );
+    expect(out.dropped).toContain("phone");
+    expect(out.args).not.toHaveProperty("phone");
+    // a non-grounded arg (name) and a STATED grounded arg (relationship) survive untouched
+    expect(out.args).toMatchObject({ name: "Bob", relationship: "dentist" });
+  });
+
+  it("KEEPS a phone the user actually stated — grounded across +country/space reformatting", () => {
+    const out = groundToolArguments(
+      { name: "Bob", phone: "+1 415 555 0101" },
+      groundedArgs,
+      "save Bob the dentist, his number is 415-555-0101"
+    );
+    expect(out.args).toMatchObject({ phone: "+1 415 555 0101" });
+    expect(out.dropped).not.toContain("phone");
   });
 });
 

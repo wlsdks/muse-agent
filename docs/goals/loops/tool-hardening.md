@@ -692,3 +692,21 @@ ratchet: testFiles 935 유지(+2 케이스 to recent-actions-tool.test.ts) · fa
 - **왜:** fire 63 recent_actions는 most-recent-first + limit cap. "did you refuse anything?"를 default limit로 물으면 최근 performed만 나오고 오래된 refusal을 놓쳐 잘못된 "아니오"(safety-relevant transparency 결함). 마지막 fire new-tool과 KIND 다양성(arg-filter/hardening). TOOL vein thin → 신선 표면(fire63) 하드닝이 가치.
 - **리뷰지점:** recent-actions-tool.ts(`result` enum schema + `(filter ? ordered.filter(a=>a.result===rf) : ordered).slice(0,limit)` — filter 후 slice) + 테스트 2개(오래된 refusal이 limit:2 밖인데 result:"refused"로 surface count1 / unknown→0) RED→GREEN 1833. limit-then-filter로 변이 시 RED(judge 실증). 선택 회귀 0(eval 3/3). lint clean. pnpm check: shared byte-hygiene가 동시-루프 저널(test-hygiene.md) raw바이트로 transient red였으나 신선 재실행 34 passed(churn 스냅샷, 내 슬라이스 무관).
 - **리스크:** 없음 — read-only 유지, 투영 불변(userId/id/prevHash 비노출), default(result 생략) 경로 byte-identical, strict equality(silent fall-through 없음), enum이 ActionResult 타입 일치. backlog에 phone arg-grounding 후보 기록(email/handle은 ANY-token으로 이름-토큰 false-ground → phone만 유효, agent-core 조용해지면).
+
+
+## fire 65 · 2026-06-13 · skill v1.14.0 · f685161b
+meta: value-class=hardening · pkg=@muse/mcp(+apps/cli test) · kind=arg-grounding(anti-fabrication floor, contacts 표면) · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 939→940(+actuator-tools phone describe in apps/cli) · fabrication 0 강화(highest-harm 필드 보호) · eval:tools 무영향(add_contact 케이스 없음)
+- **무엇:** `add_contact`의 `groundedArgs`에 `"phone"` 추가(["relationship"]→["relationship","phone"]). 모델이 fabricate한 전화번호(사용자 미발화)가 contact store 쓰기 전 결정적으로 drop. digit-token이 고유해 fabricated는 drop, stated(+country/spaces 재포맷 포함)는 생존. 드롭된 폰이 유일 연락수단이면 execute가 visible refusal("provide at least one…") — wrong number 무음 persist보다 안전.
+- **왜:** grounding FLOOR(제품 엣지) 강화. fabricated 전화번호 persist = 미래 "엄마한테 문자"가 모르는 사람에게 = 최고-해악 contact fabrication. email/handle은 ANY-token에서 local-part=이름 토큰으로 false-ground(false protection), birthday는 MM-DD 재포맷 brittle → phone만 ground(backlog FINDING 기록). RATCHET 패키지 단조(@muse/mcp 편중) 탈출: mcp 메타 + apps/cli 테스트 2패키지.
+- **리뷰지점:** contacts-tool.ts:106 한 줄 + apps/cli/actuator-tools.test.ts 신규 describe(도구의 **선언된** groundedArgs를 실 런타임 `groundToolArguments`(agent-runtime.ts:857-859와 동일 함수)에 먹여 fabricated DROP/stated KEEP 검증). live definition에 결합 → 메타 1줄 전 RED, 후 GREEN(2592→2593). 풀-런타임 노출은 write 도구가 isWorkspaceMutationPrompt 게이트(워크스페이스 변경용, contacts와 불일치)에 막혀 정책 주입 없이 불가 → grounding과 무관한 exposure 게이트 대신 grounding 함수 직접 검증(더 깨끗). pnpm check 전체 green, lint clean. Opus judge PASS 5/5(RED-before 결정적 재현).
+- **리스크:** 거의 없음 — 순수 additive(relationship grounding 유지, 타 arg default 경로 불변). 유일 한계: 사용자가 구분자로 쓴 번호를 모델이 무구분자로 concatenate하면 false-drop(좁음, 스키마가 구분자 보존 유도) — 기록됨. read 경로/타 도구 무영향, MUSE_LOCAL_ONLY/banking 무관.
+
+
+## fire 66 · 2026-06-13 · skill v1.14.0 · ce342ee5
+meta: value-class=hardening · pkg=@muse/browser(+apps/cli wiring) · kind=security-fix(outbound-safety fail-close, browser 표면) · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 942→942(+4 케이스 browser-tools.test) · fabrication 0 유지 · 패키지 다양성 ✓(@muse/mcp 8연속 탈출 → @muse/browser)
+- **무엇:** `browser_key`의 **Enter만** draft-first 게이트(browser_click/type와 동일 BrowserApprovalGate). navigation 키(Escape/Tab/Arrow)는 free 유지, 게이트 미배선 시 Enter fail-close(무게이트로 안 눌림). throwing 게이트는 catch→deny.
+- **왜:** browser_click/type은 게이트되나 `browser_key`(risk:read, 무게이트)의 Enter("confirm the focused control")가 포커스된 폼/버튼을 **제출/post** → outbound-safety 계약("state-changing acts carry the gate")의 fail-OPEN. browser_type submit=true는 이미 게이트된 submit 경로 → 갭은 **무게이트 Enter 프리미티brt** 한정. RATCHET 패키지 단조(@muse/mcp 8연속) 탈출.
+- **리뷰지점:** browser-tools.ts(BrowserActionDraft.action+"key"; BrowserKeyToolDeps optional approvalGate; execute에서 key==="Enter"만 게이트→미승인 시 pressKey 전 return {pressed:false}) + actuator-tools.ts buildBrowserTools(createBrowserKeyTool에 click/type와 동일 `gate` 배선, 이전 무게이트) + 테스트 4개(deny→pressKey 미호출/no-gate fail-close/approve→key draft 확인/Tab free) RED→GREEN. 게이트 블록 삭제 변이 시 정확히 3 RED(judge 실증). risk는 "read" 유지(navigation 자유 노출, Enter는 내부 게이트로 보호 — 라벨이 아닌 게이트가 보호). pnpm check 전체 green, lint clean.
+- **리스크:** 순수 additive(게이트 추가만, 약화 0). Escape/Tab/Arrow 무영향(over-gate 안 함), 기존 browser_key 테스트(Escape press·unknown-key reject) green. read 경로 무관, banking 무관. browser_type 게이트 경로 불변.

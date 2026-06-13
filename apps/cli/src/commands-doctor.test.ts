@@ -10,6 +10,7 @@ import {
   localOnlyCheck,
   modelEnvCheck,
   notesIndexHealth,
+  officialMcpChecks,
   buildCalibrationReport,
   formatCalibration,
   formatDevFixableWeaknesses,
@@ -457,6 +458,51 @@ describe("localOnlyCheck — local-only / no-cloud-egress posture", () => {
     const check = localOnlyCheck({ MUSE_MODEL: "ollama/llama3.2" });
     expect(check.status).toBe("ok");
     expect(check.detail).toContain("default");
+  });
+});
+
+describe("officialMcpChecks — external official-MCP audit surface", () => {
+  const noCredFile = { MUSE_MCP_CREDENTIALS_FILE: "/nonexistent/muse-doctor-creds.json" };
+  const SECRET = "ghp_doctor_secret_token_never_print";
+
+  it("emits one check per curated preset with its provenance URL", () => {
+    const checks = officialMcpChecks(noCredFile);
+    const names = checks.map((c) => c.name).sort();
+    expect(names).toEqual(["mcp:github", "mcp:notion"]);
+    for (const c of checks) {
+      expect(c.detail).toContain("provenance https://");
+    }
+  });
+
+  it("toggle OFF ⇒ disabled (ok)", () => {
+    const gh = officialMcpChecks(noCredFile).find((c) => c.name === "mcp:github");
+    expect(gh?.status).toBe("ok");
+    expect(gh?.detail).toContain("disabled");
+  });
+
+  it("toggle ON + credential ABSENT ⇒ warn surfacing WHY it won't connect", () => {
+    const gh = officialMcpChecks({ ...noCredFile, MUSE_GITHUB_MCP_ENABLED: "true" })
+      .find((c) => c.name === "mcp:github");
+    expect(gh?.status).toBe("warn");
+    expect(gh?.detail).toMatch(/credential/i);
+  });
+
+  it("toggle ON + credential present ⇒ ok eligible", () => {
+    const gh = officialMcpChecks({ ...noCredFile, MUSE_GITHUB_MCP_ENABLED: "true", GITHUB_MCP_TOKEN: SECRET })
+      .find((c) => c.name === "mcp:github");
+    expect(gh?.status).toBe("ok");
+    expect(gh?.detail).toContain("eligible");
+  });
+
+  it("NEVER prints the secret in any rendered check", () => {
+    const checks = officialMcpChecks({
+      ...noCredFile,
+      MUSE_GITHUB_MCP_ENABLED: "true",
+      MUSE_NOTION_MCP_ENABLED: "true",
+      GITHUB_MCP_TOKEN: SECRET,
+      NOTION_MCP_TOKEN: SECRET
+    });
+    expect(JSON.stringify(checks)).not.toContain(SECRET);
   });
 });
 

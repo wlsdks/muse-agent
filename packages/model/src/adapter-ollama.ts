@@ -316,8 +316,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     const bodyText = (await resp.text().catch(() => "")) || resp.statusText;
     let message = `Ollama ${label} failed with ${resp.status.toString()}: ${bodyText}`;
     // Name the exact fix for the canonical first-run footgun
-    // (model not pulled), mirroring the embed-model hints in
-    // goals 164 / 167 / 168.
+    // (model not pulled), mirroring the embed-model hints.
     if (resp.status === 404 && /not found/iu.test(bodyText)) {
       const model = (request.model ?? this.nativeDefaultModel ?? "").replace(/^ollama\//u, "");
       if (model.length > 0) {

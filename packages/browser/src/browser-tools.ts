@@ -19,9 +19,9 @@ import { BROWSER_KEYS, BROWSER_MAX_ELEMENTS, type BrowserController, type Browse
 import { filterElements, matchElementResult, type MatchIntent } from "./matcher.js";
 
 export interface BrowserActionDraft {
-  readonly action: "click" | "type";
+  readonly action: "click" | "type" | "key";
   readonly url: string;
-  /** Human label of the target element ("Sign in" button). */
+  /** Human label of the target element ("Sign in" button), or the key for `key`. */
   readonly target: string;
   /** The text being typed (for `type` only). */
   readonly text?: string;
@@ -383,7 +383,19 @@ export function createBrowserScrollTool(deps: BrowserReadToolDeps): MuseTool {
   };
 }
 
-export function createBrowserKeyTool(deps: BrowserReadToolDeps): MuseTool {
+export interface BrowserKeyToolDeps {
+  readonly controller: BrowserController;
+  /**
+   * Draft-first gate for the ONE state-changing key, Enter (it confirms/submits
+   * the focused control — a form post, a search submit). The navigation keys
+   * (Escape/Tab/arrows) never call it. Absent ⇒ Enter fails closed (never pressed
+   * ungated), so an Enter-submit can't slip past the approval the click/type
+   * tools enforce (outbound-safety: a state-changing act is never autonomous).
+   */
+  readonly approvalGate?: BrowserApprovalGate;
+}
+
+export function createBrowserKeyTool(deps: BrowserKeyToolDeps): MuseTool {
   return {
     definition: {
       description:
@@ -409,6 +421,22 @@ export function createBrowserKeyTool(deps: BrowserReadToolDeps): MuseTool {
       const key = typeof args["key"] === "string" ? args["key"].trim() : "";
       if (!BROWSER_KEYS.includes(key as BrowserKey)) {
         return { error: `key must be one of: ${BROWSER_KEYS.join(", ")}` };
+      }
+      // Enter confirms/submits the focused control — a state-changing act that
+      // must clear the same draft-first gate as a click. The navigation keys
+      // (Escape/Tab/arrows) change nothing on the server and stay free.
+      if (key === "Enter") {
+        let decision: BrowserApprovalDecision;
+        try {
+          decision = deps.approvalGate
+            ? await deps.approvalGate({ action: "key", target: "Enter", url: deps.controller.currentUrl() })
+            : { approved: false, reason: "no approval gate wired — Enter (a submit) is fail-closed" };
+        } catch (cause) {
+          decision = { approved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
+        }
+        if (!decision.approved) {
+          return { pressed: false, reason: decision.reason ?? "not approved" };
+        }
       }
       try {
         return snapshotToJson(await deps.controller.pressKey(key as BrowserKey));

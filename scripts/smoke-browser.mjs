@@ -104,6 +104,14 @@ const DIALOG_HTML = `<!doctype html><html><head><title>Dialog</title></head><bod
 <button onclick="if(confirm('Delete this item?'))document.title='CONFIRMED'">Delete</button>
 </body></html>`;
 
+// A prompt() with a default value — a bare dialog.accept() submits "" and the
+// page proceeds with blank input (silent garbage). The handler must accept the
+// dialog's OWN defaultValue ("SAVE10"), so the page receives the intended text
+// and the snapshot records what was sent.
+const PROMPT_HTML = `<!doctype html><html><head><title>Prompt</title></head><body>
+<button onclick="document.title='code:'+prompt('Enter coupon code','SAVE10')">Apply coupon</button>
+</body></html>`;
+
 // Content inserted 600ms after the click — no network, so networkidle alone
 // misses it; the DOM-stable settle must catch it.
 const AJAX_HTML = `<!doctype html><html><head><title>Ajax</title></head><body>
@@ -200,6 +208,7 @@ try {
   await writeFile(join(dir, "paging.html"), PAGING_HTML);
   await writeFile(join(dir, "scroll.html"), SCROLL_HTML);
   await writeFile(join(dir, "dialog.html"), DIALOG_HTML);
+  await writeFile(join(dir, "prompt.html"), PROMPT_HTML);
   await writeFile(join(dir, "ajax.html"), AJAX_HTML);
   await writeFile(join(dir, "disabled.html"), DISABLED_HTML);
   await writeFile(join(dir, "newtab.html"), NEWTAB_HTML);
@@ -285,6 +294,13 @@ try {
   snap = await controller.click(snap.elements.find((el) => el.name === "Delete").ref);
   assert(snap.title === "CONFIRMED", "confirm() accepted so the approved action completed (no timeout hang)");
   assert(snap.dialog?.type === "confirm", "the dialog is reported transparently in the snapshot");
+
+  console.log("10b) prompt() dialog — accepted with the page's defaultValue (not blank) and recorded");
+  snap = await controller.open(pathToFileURL(join(dir, "prompt.html")).href);
+  snap = await controller.click(snap.elements.find((el) => el.name === "Apply coupon").ref);
+  assert(snap.title === "code:SAVE10", "prompt received the page's defaultValue, not an empty string");
+  assert(snap.dialog?.type === "prompt", "the prompt dialog is reported transparently");
+  assert(snap.dialog?.response === "SAVE10", "the submitted prompt text is surfaced so the model knows what was sent");
 
   console.log("11) async-after-action — DOM-stable settle catches post-click content");
   snap = await controller.open(pathToFileURL(join(dir, "ajax.html")).href);
