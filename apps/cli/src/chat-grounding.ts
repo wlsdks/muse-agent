@@ -1,9 +1,10 @@
 import { readFile } from "node:fs/promises";
 
-import { groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { detectEvidenceContradictions, groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { conflictCueFromMatches } from "@muse/recall";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
+import { embed } from "./embed.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
 
 // Per-turn grounding for the conversational surface (`muse chat`).
@@ -300,6 +301,14 @@ export interface FinalizeGatedChatAnswerArgs {
   readonly toolGroundingSources?: readonly { readonly source: string; readonly text: string }[];
   readonly knownFactKeys?: readonly string[];
   readonly reverify?: GroundingReverify;
+  /**
+   * Injectable embedder for semantic intra-evidence conflict detection. When
+   * supplied (production wires the real recall embedder), two of the user's OWN
+   * notes that disagree on the same fact in FREE PROSE are surfaced — the
+   * labelled-field cue misses prose. Absent → fail-open (no semantic cue, the
+   * labelled cue still runs). Tests inject a deterministic embedder.
+   */
+  readonly embed?: (text: string) => Promise<readonly number[]>;
 }
 
 /**
@@ -337,6 +346,14 @@ export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs)
   // grounded≠true: if two of the user's OWN grounded sources disagree on a field,
   // surface it on chat too (parity with `muse ask`, fire 8).
   const conflictCue = conflictCueFromMatches(args.matches);
+  // grounded≠true: the labelled cue only sees `label: value` pairs. Two notes
+  // disagreeing in FREE PROSE ("flight at 3pm" vs "at 6pm") slipped through and
+  // the answer cited the matching half — a confident grounded lie. The semantic
+  // value-conflict detector (ask-only until now) closes that ask↔chat parity
+  // hole. Fail-open when no embedder is supplied (arXiv:2504.19413).
+  const semanticConflictCue = args.embed
+    ? await semanticConflictCueFromMatches(args.matches, args.embed)
+    : undefined;
   // ALCE per-citation support + recall (parity with `muse ask`, fires 15-16):
   // a cited source that doesn't support its sentence, or a citable claim with no
   // citation. Computed on the user's OWN grounded matches.
@@ -345,9 +362,46 @@ export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs)
   let out = receipted;
   if (untrustedCue) out += untrustedCue;
   if (conflictCue) out += `\n\n${conflictCue}`;
+  if (semanticConflictCue) out += `\n\n${semanticConflictCue}`;
   if (precisionCue) out += `\n\n${precisionCue}`;
   if (recallCue) out += `\n\n${recallCue}`;
   return out;
+}
+
+/**
+ * Chat parity of the ask path's semantic value-conflict surfacing: when two of
+ * the user's OWN retrieved notes assert a DIFFERENT value for the SAME fact in
+ * free prose, name BOTH sources so the user can reconcile — rather than letting
+ * the answer silently cite the half it happened to match (a grounded≠true lie).
+ * Precision-first via {@link detectEvidenceContradictions} (topic-cosine +
+ * neither-subset). Fail-open: any embed error → no cue. First pair only.
+ */
+/**
+ * The production embedder both chat surfaces pass as `embed` so the semantic
+ * conflict cue runs live — the same recall embed model the chat retrieval uses.
+ */
+export function defaultChatConflictEmbedder(
+  env: Record<string, string | undefined> = process.env as Record<string, string | undefined>
+): (text: string) => Promise<readonly number[]> {
+  const embedModel = env.MUSE_RECALL_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
+  return (text: string) => embed(text, embedModel);
+}
+
+export async function semanticConflictCueFromMatches(
+  matches: readonly KnowledgeMatch[],
+  embed: (text: string) => Promise<readonly number[]>
+): Promise<string | undefined> {
+  if (matches.length < 2) return undefined;
+  const pairs = await detectEvidenceContradictions(matches, embed).catch(() => []);
+  const pair = pairs[0];
+  if (pair === undefined) return undefined;
+  const a = matches[pair.aIndex];
+  const b = matches[pair.bIndex];
+  if (a === undefined || b === undefined) return undefined;
+  const isKo = /[가-힣]/u.test(`${a.text} ${b.text}`);
+  return isKo
+    ? `⚠️ 노트 충돌: '${a.source}'와 '${b.source}'가 같은 사실을 다르게 적고 있어요 — 어느 쪽이 맞는지 확인해 주세요.`
+    : `⚠️ Sources disagree: '${a.source}' and '${b.source}' state different values for the same fact — verify which is correct.`;
 }
 
 function truncateClaim(sentence: string): string {

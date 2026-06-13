@@ -30,7 +30,7 @@ import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdow
 import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
 import { detectDateDiffQuery, formatDateDiff } from "./date-diff-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
-import { buildQueryRewritePrompt, factKeysToInject, finalizeGatedChatAnswer, isChatAbstention, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding } from "./chat-grounding.js";
+import { buildQueryRewritePrompt, defaultChatConflictEmbedder, factKeysToInject, finalizeGatedChatAnswer, isChatAbstention, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding } from "./chat-grounding.js";
 import { createQwenReverify } from "./grounding-eval-runner.js";
 import { isRecord } from "./credential-store.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
@@ -640,6 +640,7 @@ export async function runLocalChat(
     knownFactKeys,
     matches,
     question: message,
+    embed: defaultChatConflictEmbedder(),
     ...(reverifyJudge ? { reverify: reverifyJudge } : {}),
     toolsUsed: result.toolsUsed ?? [],
     toolGroundingSources: result.groundingSources ?? []

@@ -64,7 +64,7 @@ import {
 } from "./chat-ink-core.js";
 import { renderMuseBanner } from "./muse-banner.js";
 import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.js";
-import { finalizeGatedChatAnswer, retrieveChatGrounding, type ChatGrounding } from "./chat-grounding.js";
+import { defaultChatConflictEmbedder, finalizeGatedChatAnswer, retrieveChatGrounding, type ChatGrounding } from "./chat-grounding.js";
 import { createQwenReverify } from "./grounding-eval-runner.js";
 import { searchRecall } from "./commands-recall.js";
 import { readTrust } from "./commands-trust.js";
@@ -1356,6 +1356,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
       return finalizeGatedChatAnswer({
         ...args,
         knownFactKeys: Object.keys(snap?.facts ?? {}),
+        embed: defaultChatConflictEmbedder(),
         ...(judge ? { reverify: judge } : {})
       });
     },
