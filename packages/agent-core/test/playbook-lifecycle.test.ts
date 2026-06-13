@@ -142,12 +142,16 @@ describe("evidence-gated graduation", () => {
 
 describe("ranking integration: confident-good tally outranks neutral legacy entry", () => {
   it("confident-good tally entry ranks above a reward=0 entry with equal text relevance", () => {
-    const confident: PlaybookStrategy = { text: "strategy about rescheduling", reinforcements: 8, decays: 0 };
-    const neutral: PlaybookStrategy = { text: "strategy about rescheduling" };
+    // Two strategies with identical text: dedup keeps the higher-composite one (confident).
+    // Use slightly different texts so both survive dedup, proving reward-ranking still holds.
+    const confident: PlaybookStrategy = { text: "strategy about rescheduling meetings", reinforcements: 8, decays: 0 };
+    const neutral: PlaybookStrategy = { text: "strategy about rescheduling tasks" };
     const ranked = rankPlaybookStrategies([neutral, confident], "rescheduling");
-    // confident has higher effectiveStrategyReward → should rank first (or equal-ties by index)
+    // confident has higher effectiveStrategyReward → should rank first
     const confidentIdx = ranked.findIndex((s) => s.reinforcements === 8);
     const neutralIdx = ranked.findIndex((s) => s.reinforcements === undefined);
+    expect(confidentIdx).toBeGreaterThanOrEqual(0);
+    expect(neutralIdx).toBeGreaterThanOrEqual(0);
     expect(confidentIdx).toBeLessThan(neutralIdx);
   });
 });

@@ -436,7 +436,39 @@ function finiteOr(value: number | undefined, fallback: number): number {
  */
 const MMR_DIVERSITY_LAMBDA = 0.7;
 
+/**
+ * Jaccard threshold above which two strategies are considered same-language paraphrases.
+ * High (0.8) so only genuine same-language paraphrases collapse; cross-lingual pairs
+ * (KO + EN) score ~0 → never collapsed, safe direction (missed dup = status quo).
+ * Extends the shipped MMR diversity principle (arXiv:2502.09017) to the small-bank path;
+ * grounded in budget-matched diversity (arXiv:2510.17940, Lin 2025).
+ */
+export const PLAYBOOK_INJECT_DEDUP_THRESHOLD = 0.8;
+
 type ScoredEntry = { readonly score: number; readonly index: number; readonly strategy: PlaybookStrategy };
+
+/**
+ * Greedy near-duplicate suppression over a composite-descending scored list.
+ * Admits an entry only if its Jaccard similarity to every already-admitted entry is
+ * below `threshold`; otherwise drops the lower-composite duplicate.
+ * Pure, order-preserving, never throws. Safe direction: cross-lingual pairs (Jaccard ~0)
+ * are always kept — a missed dup is status quo, a dropped distinct strategy is not.
+ */
+export function suppressNearDuplicateStrategies(
+  scored: readonly ScoredEntry[],
+  threshold = PLAYBOOK_INJECT_DEDUP_THRESHOLD
+): ScoredEntry[] {
+  const admitted: ScoredEntry[] = [];
+  for (const entry of scored) {
+    const isDup = admitted.some(
+      (a) => strategyTextSimilarity(entry.strategy.text, a.strategy.text) >= threshold
+    );
+    if (!isDup) {
+      admitted.push(entry);
+    }
+  }
+  return admitted;
+}
 
 function mmrSelectStrategies(scored: readonly ScoredEntry[], k: number): ScoredEntry[] {
   if (scored.length === 0 || k <= 0) {
@@ -497,7 +529,9 @@ function rankEligible(
       score: e.relevance + REWARD_RANK_WEIGHT * utilityOf(e.strategy)
         - (e.strategy.origin === "reflected" ? REFLECTED_RANK_PENALTY : 0)
     }));
-    return [...scored].sort(byScoreDescThenIndexAsc).map((s) => s.strategy);
+    const sorted = [...scored].sort(byScoreDescThenIndexAsc);
+    // Suppress near-duplicate paraphrases; keeps the higher-composite entry (sorted first).
+    return suppressNearDuplicateStrategies(sorted).map((s) => s.strategy);
   }
 
   // MemRL two-phase value-aware retrieval (arXiv:2601.03192):

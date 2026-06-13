@@ -8,6 +8,7 @@ import {
   effectiveStrategyReward,
   isAvoidedStrategy,
   PLAYBOOK_AVOID_BELOW,
+  PLAYBOOK_INJECT_DEDUP_THRESHOLD,
   PLAYBOOK_RECENCY_HALF_LIFE_DAYS,
   PLAYBOOK_REWARD_MAX,
   PLAYBOOK_REWARD_MIN,
@@ -16,6 +17,7 @@ import {
   recencyDiscount,
   renderPlaybookSection,
   strategyTextSimilarity,
+  suppressNearDuplicateStrategies,
   type PlaybookProvider,
   type PlaybookStrategy
 } from "../src/index.js";
@@ -301,14 +303,15 @@ describe("rankPlaybookStrategies — reward-weighted (RL over the bank)", () => 
 });
 
 describe("rankPlaybookStrategies — provenance tie-break (B1 §4, reflected never outranks grounded)", () => {
-  it("a synthetic reflected strategy ranks BELOW an otherwise-equal grounded one", () => {
+  it("a synthetic reflected strategy loses to an otherwise-equal grounded one (identical text → dedup keeps grounded)", () => {
+    // Two strategies with identical text dedup to one; grounded composite is higher (no penalty)
+    // so grounded is admitted and reflected is dropped — the stronger form of the tie-break guarantee.
     const bank: PlaybookStrategy[] = [
       { origin: "reflected", tag: "email", text: "email reply tip", reward: 2 },
       { origin: "grounded", tag: "email", text: "email reply tip", reward: 2 }
     ];
     const out = rankPlaybookStrategies(bank, "draft an email reply", { topK: 6 });
-    expect(out[0].origin).toBe("grounded"); // evidence beats synthesis at a dead heat
-    expect(out[1].origin).toBe("reflected");
+    expect(out[0].origin).toBe("grounded"); // evidence beats synthesis — grounded survives dedup
   });
 
   it("the penalty is a tie-break only — a more-relevant reflected strategy still wins", () => {
@@ -1031,5 +1034,103 @@ describe("buildPlaybookProvider — timestamp projection (no undefined keys)", (
     };
     expect("lastReinforcedAt" in mappedNoTs).toBe(false);
     expect("createdAt" in mappedNoTs).toBe(false);
+  });
+});
+
+// ─── suppressNearDuplicateStrategies — small-bank injection dedup ─────────────
+// arXiv:2510.17940 (Lin 2025, budget-matched diversity) + arXiv:2502.09017 (MMR)
+
+describe("suppressNearDuplicateStrategies — small-bank near-duplicate suppression", () => {
+  // Paraphrase pair with Jaccard ≈ 5/6 ≈ 0.833, above the 0.8 threshold.
+  // high: "reschedule next business day morning default" → {reschedule,next,business,day,morning,default}
+  // low:  "reschedule next business day morning"        → {reschedule,next,business,day,morning}
+  // intersection=5, union=6 → 5/6 ≈ 0.833 >= 0.8 → collapsed (low dropped, high kept).
+  const highParaphrase: PlaybookStrategy = { text: "reschedule next business day morning default", tag: "scheduling" };
+  const lowParaphrase: PlaybookStrategy = { text: "reschedule next business day morning", tag: "scheduling" };
+  const distinct: PlaybookStrategy = { text: "keep email replies brief for work", tag: "email" };
+
+  function entry(strategy: PlaybookStrategy, score: number, index: number) {
+    return { score, index, strategy };
+  }
+
+  it("positive (dedup fires): two near-paraphrase strategies → lower-composite one dropped, higher kept", () => {
+    // Input is composite-descending: highParaphrase (score=5) first, lowParaphrase (score=3) second, distinct third.
+    const scored = [entry(highParaphrase, 5, 0), entry(lowParaphrase, 3, 1), entry(distinct, 2, 2)];
+    const result = suppressNearDuplicateStrategies(scored);
+    expect(result).toHaveLength(2);
+    expect(result.map((e) => e.strategy.text)).toContain(highParaphrase.text);
+    expect(result.map((e) => e.strategy.text)).not.toContain(lowParaphrase.text);
+    expect(result.map((e) => e.strategy.text)).toContain(distinct.text);
+  });
+
+  it("non-vacuity/counterfactual: threshold=1.0 (never collapse) → all 3 survive, dedup is load-bearing", () => {
+    // Proves dedup is not a no-op: same input with threshold=1.0 retains all 3.
+    const scored = [entry(highParaphrase, 5, 0), entry(lowParaphrase, 3, 1), entry(distinct, 2, 2)];
+    const result = suppressNearDuplicateStrategies(scored, 1.0);
+    expect(result).toHaveLength(3);
+  });
+
+  it("distinct-survive (floor): 3 genuinely different strategies → all 3 kept, composite order unchanged", () => {
+    const alpha: PlaybookStrategy = { text: "keep email replies brief for work", tag: "email" };
+    const beta: PlaybookStrategy = { text: "summarise meeting notes as bullet points", tag: "notes" };
+    const gamma: PlaybookStrategy = { text: "fitness stretching routine morning daily", tag: "health" };
+    const scored = [entry(alpha, 5, 0), entry(beta, 3, 1), entry(gamma, 1, 2)];
+    const result = suppressNearDuplicateStrategies(scored);
+    expect(result).toHaveLength(3);
+    expect(result.map((e) => e.strategy.text)).toEqual([alpha.text, beta.text, gamma.text]);
+  });
+
+  it("cross-lingual safe direction: KO + EN paraphrase pair (Jaccard~0) → BOTH kept, never collapsed", () => {
+    const en: PlaybookStrategy = { text: "reschedule next business day morning default", tag: "scheduling" };
+    const ko: PlaybookStrategy = { text: "회의를 다음 영업일로 미룬다", tag: "scheduling" };
+    const scored = [entry(en, 5, 0), entry(ko, 3, 1)];
+    const result = suppressNearDuplicateStrategies(scored);
+    expect(result).toHaveLength(2);
+    expect(result.map((e) => e.strategy.text)).toContain(en.text);
+    expect(result.map((e) => e.strategy.text)).toContain(ko.text);
+  });
+});
+
+describe("suppressNearDuplicateStrategies — assembled-path via applyPlaybook (small-bank path)", () => {
+  it("two near-paraphrase reschedule strategies + one distinct → [Learned Strategies] has distinct + one paraphrase only", async () => {
+    // bank size=3 ≤ DEFAULT_RANK_TOPK=6 → small-bank path fires → dedup now active.
+    // Paraphrase pair: Jaccard = 8/10 = 0.8 >= PLAYBOOK_INJECT_DEDUP_THRESHOLD → lower composite dropped.
+    // high: alpha bravo charlie delta echo foxtrot golf hotel INDIA   (9 tokens)
+    // low:  alpha bravo charlie delta echo foxtrot golf hotel JULIET  (9 tokens)
+    // intersection=8, union=10 → Jaccard=0.8. "juliet" never appears in high's text → safe not.toContain.
+    const highParaphrase: PlaybookStrategy = {
+      text: "alpha bravo charlie delta echo foxtrot golf hotel india",
+      tag: "scheduling",
+      reward: 2
+    };
+    const lowParaphrase: PlaybookStrategy = {
+      text: "alpha bravo charlie delta echo foxtrot golf hotel juliet",
+      tag: "scheduling",
+      reward: 0
+    };
+    const distinctStrat: PlaybookStrategy = { text: "keep email replies brief for work", tag: "email", reward: 1 };
+
+    const provider: PlaybookProvider = { listStrategies: async () => [highParaphrase, lowParaphrase, distinctStrat] };
+    const out = await applyPlaybook(ctx([{ content: "reschedule the review", role: "user" }], "stark"), provider);
+    const system = out.messages.find((m) => m.role === "system")?.content ?? "";
+
+    expect(system).toContain("[Learned Strategies]");
+    expect(system).toContain(distinctStrat.text);
+    // High-composite paraphrase kept; low-composite paraphrase dropped — "juliet" is the unique distinguisher.
+    expect(system).toContain(highParaphrase.text);
+    expect(system).not.toContain("juliet");
+    expect(PLAYBOOK_INJECT_DEDUP_THRESHOLD).toBe(0.8);
+  });
+
+  it("counterfactual: no near-dups in small bank → all strategies injected (today's behavior unchanged)", async () => {
+    const alpha: PlaybookStrategy = { text: "keep email replies brief for work", tag: "email" };
+    const beta: PlaybookStrategy = { text: "summarise meeting notes as bullet points", tag: "notes" };
+    const gamma: PlaybookStrategy = { text: "fitness stretching routine morning daily", tag: "health" };
+    const provider: PlaybookProvider = { listStrategies: async () => [alpha, beta, gamma] };
+    const out = await applyPlaybook(ctx([{ content: "help me with tasks", role: "user" }], "stark"), provider);
+    const system = out.messages.find((m) => m.role === "system")?.content ?? "";
+    expect(system).toContain(alpha.text);
+    expect(system).toContain(beta.text);
+    expect(system).toContain(gamma.text);
   });
 });
