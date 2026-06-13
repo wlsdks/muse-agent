@@ -194,6 +194,21 @@ describe("muse contacts — people graph + recipient resolution", () => {
     const r = await run(file, ["birthdays"]);
     expect(r.stdout).toContain("No birthdays in the next 30 days");
   });
+
+  it("birthdays --within rejects a non-numeric window instead of silently defaulting", async () => {
+    const file = contactsFile();
+    const r = await run(file, ["birthdays", "--within", "abc"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toMatch(/--within must be a positive number/);
+    expect(r.stdout).toBe("");
+  });
+
+  it("birthdays --within rejects a non-positive window instead of printing a nonsense range", async () => {
+    const file = contactsFile();
+    const r = await run(file, ["birthdays", "--within", "-5"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).not.toContain("-5 days");
+  });
 });
 
 describe("filterContactsBySearch — find people in the graph by role / name / email", () => {
