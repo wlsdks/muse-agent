@@ -206,3 +206,11 @@ ratchet: testFiles 972→971 (−1 strict-superset 삭제, 이식 불필요) · 
 - **왜:** outbound 자율행동 undo/veto(outbound-safety.md #4 "reversible-where-possible + veto") — 두 파일 중복 실행. src/가 모든 행동 더 강하게 커버.
 - **어떻게-증명(MUTATION-FIRST PRUNE):** 생존 src/ cite — recordVeto no-op化 시 src/ 3/4 RED; reverse() 제거 시 reversible case RED; veto scope 오염 시 fail-close 통합 2케이스 RED. ④b 독립 Opus judge가 삭제본 3개 행동(reversible-reverse+detail·irreversible·veto-overrides-consent fail-close) 전수 매핑(전부 equal-or-stronger, MISSING 없음) + 3 mutation 재현 → **VERDICT: PASS**.
 - **리스크:** 소스 무변경, 삭제 1파일(−83L)뿐. consent/veto fail-close 커버 손실 0(judge 명시 확인). mcp dist 클린리빌드 1회. 남은 mcp 동명 쌍 11개.
+
+## fire 25 · 2026-06-14 · skill v1.14.0 · 6fba9fd8
+meta: kind=prune(consolidate) · pkg=@muse/agent-core · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 973→972 (−1 통합, 유니크 케이스 2 이식) · netCoverage +2 (test/의 약한 buildModelRequest 커버 강화) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** agent-core 동명 쌍 `model-invocation` **통합**(첫 agent-core 동명-쌍 consolidate) — 작은 콜로케이트 `src/`(6케이스)와 훨씬 풍부한 `test/`(invokeModel·failure-injection·token-usage + 두 순수함수, 323L)가 둘 다 실행. test/가 src/의 applyCitationSanitisation 2케이스(equal-or-stronger)·metadata-preserve를 이미 커버하나, buildModelRequestWithWebSearch는 "정의됨"만 확인하는 약한 1케이스뿐. src/의 유니크 2케이스(설정→정책 VALUE 배선·override=false 억제 배선)만 이식, src/ 삭제. case4(no-slash)는 SKIP(decideWebSearchPolicy가 model을 안 읽음 → dead input, judge 확인).
+- **왜:** 같은 모듈 두 파일 중복 실행 + test/의 web-search 정책 배선 커버가 약했음("정의됨"만). 이식으로 settings/override→정책 배선을 값으로 pin(강화).
+- **어떻게-증명(MUTATION-FIRST):** `settings: ctx.settings`→`{}` 변형 시 VALUE 케이스만 RED(maxUses 4→5); `override: ctx.override`→`undefined` 변형 시 override 케이스만 RED(enabled false→true) — 각 배선 독립 pin. ④b 독립 Opus judge가 삭제본 6개 행동 전수 매핑(전부 equal-or-stronger, MISSING 없음) + case4-SKIP 타당성(model=dead input) 소스 확인 + 양 mutation 재현 → **VERDICT: PASS**.
+- **리스크:** 소스(비-test) 무변경. 변경 −64L(src/ 삭제) +17L(이식 2케이스) 2건. agent-core dist 클린리빌드 1회.
