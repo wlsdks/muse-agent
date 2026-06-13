@@ -55,11 +55,13 @@ function snapshotToJson(snapshot: PageSnapshot, offset = 0): JsonObject {
   const start = Math.min(Math.max(0, offset), total);
   const page = snapshot.elements.slice(start, start + BROWSER_MAX_ELEMENTS);
   const end = start + page.length;
+  const linkCount = snapshot.elements.filter((element) => element.role === "link").length;
   return {
     elements: elementsJson(page),
     text: snapshot.text,
     title: snapshot.title,
     total,
+    ...(linkCount > 0 ? { linkCount } : {}),
     url: snapshot.url,
     ...(start > 0 ? { offset: start } : {}),
     ...(end < total ? { hasMore: true, nextOffset: end } : {}),

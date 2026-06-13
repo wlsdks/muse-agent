@@ -316,3 +316,21 @@ ratchet: testFiles +0 (browser-tools.test +4 + smoke #23; 98 tests) · fabricati
   (3)success silent·advisory·승인게이트 무회귀(post-approval 결과에만 적용) (4)리스너 정리·consume-once 확인.
 - **리스크:** 신규탭 target.page()가 finally 후 resolve되는 이론적 narrow edge(withNewTabFollow가 await해
   실무상 정리됨, 메인 리스너는 항상 제거) — 비차단 robustness nit. statusError는 advisory(refusal 아님).
+
+## fire 17 · 2026-06-13 · skill v1.14.0 · (this commit) · JUDGE-DRILL
+
+meta: value-class=new-capability · pkg=@muse/browser · kind=C-browser · verdict=PASS · firesSinceDrill=0 (RESET — drill completed)
+
+ratchet: testFiles +0 (browser-tools.test +2 discriminating; 100 tests) · fabrication 0 · pnpm check 0 · lint 0/0 · DRILL: verifier FAILed the planted bad slice
+
+- **무엇(드릴):** 8연속 PASS 하드-카운터 발동 → 고의 나쁜 슬라이스 주입(linkCount = elements.length =
+  링크 아닌 전체 요소 카운트, all-link 비판별 픽스처로 버그 숨김) → 독립 Opus verifier가 **잡음**(혼합
+  2링크/2비링크 픽스처로 4≠2 경험 증명 + 비판별 테스트 fire-8 선례로 지적) → FAIL → 롤백.
+- **무엇(진짜 fix):** linkCount = elements.filter(role==="link").length, >0일 때만 emit(거짓-0 노이즈
+  없음), **판별 테스트**(4요소 중 2링크 → linkCount:2 not 4; .length 버그시 새 테스트 2개 모두 RED 증명).
+- **왜:** 검증자가 rubber-stamp 안 하고 진짜 결함(미묘한 구현 버그 + 비판별 테스트)을 잡는지 주기적 증명 —
+  fire-8의 실제 catch에 이은 의도적 드릴. maker≠judge 보상통제가 살아있음 재확인.
+- **리뷰지점:** 드릴 verifier가 FAIL+정확한 처방(filter role==="link" + 혼합 픽스처) 반환; 진짜 fix가
+  그 처방을 구현하고 판별성을 self-증명(impl을 .length로 되돌리면 RED, 올바르면 100 pass).
+- **리스크:** linkCount는 modest 편의 필드(요소 목록+fire6 링크 URL이 이미 있음) — 드릴 bait를 정직하게
+  올바른 형태로 완성한 것. 낮은 가치지만 정확+판별 검증됨.

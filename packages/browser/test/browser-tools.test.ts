@@ -58,6 +58,31 @@ class FakeController implements BrowserController {
 
 const allow: BrowserApprovalGate = () => ({ approved: true });
 
+describe("browser_read — linkCount", () => {
+  it("counts ONLY links, not every element (discriminating: 2 links among 4 elements)", async () => {
+    const mixedSnap: PageSnapshot = {
+      elements: [
+        { name: "Home", ref: 1, role: "link", url: "https://example.test/home" },
+        { name: "Pricing", ref: 2, role: "link", url: "https://example.test/pricing" },
+        { name: "Sign in", ref: 3, role: "button" },
+        { name: "Email", ref: 5, role: "textbox" }
+      ],
+      text: "nav",
+      title: "Example",
+      url: "https://example.test/"
+    };
+    const c = new FakeController();
+    c.snapshot = async () => mixedSnap;
+    // 4 elements, 2 of them links — a "count all elements" bug would return 4.
+    expect(await createBrowserReadTool({ controller: c }).execute({}, ctx)).toMatchObject({ linkCount: 2, total: 4 });
+  });
+  it("omits linkCount entirely when the page has no links (no false zero noise)", async () => {
+    const c = new FakeController(); // default SNAP = 1 button + 1 textbox, 0 links
+    const out = await createBrowserReadTool({ controller: c }).execute({}, ctx) as Record<string, unknown>;
+    expect("linkCount" in out).toBe(false);
+  });
+});
+
 describe("browser tools — well-formed definitions", () => {
   it("all tools are validateToolDefinitions-clean with the browser domain", () => {
     const c = new FakeController();
