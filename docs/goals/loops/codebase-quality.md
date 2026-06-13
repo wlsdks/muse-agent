@@ -304,3 +304,50 @@ ratchet: testFiles 933 · fabrication 0 · groundedSurfaces 27 · isRecord dups 
   (value import, byte-identical, no cycle, 1 file). pnpm check green after the journal byte-strip.
 - **Risk:** none. LESSON: never put a literal zero-width/control char in journal prose — write
   "U+200B" as text. Remaining isRecord dups: model/agent-core/api (exported) + autoconfigure/voice.
+
+## fire 18 · 2026-06-13 · loop-creator v1.14.0 · 655a5893
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 935 · fabrication 0 · groundedSurfaces 27 · commands-doctor.ts 1073->955 LOC
+- **What:** extracted the self-contained `muse doctor calibration` sub-command out of the
+  commands-doctor god-file into a new sibling `commands-doctor-calibration.ts` — parseAlpha,
+  CalibrationReport, buildCalibrationReport, formatCalibration, the private `pct`/`cosine`
+  helpers, and `runCalibrationDoctor` (now exported). commands-doctor.ts imports
+  runCalibrationDoctor+parseAlpha for registerDoctorCommand and re-exports the three tested
+  symbols + the CalibrationReport type, so the existing commands-doctor.test.ts imports are
+  unchanged. Dropped the now-orphaned `import { calibrateAbstention } from "@muse/agent-core"`
+  (its only use moved with the cluster).
+- **Why:** diversity ratchet (last fires skewed dead-code/cohere×isRecord); decompose was the
+  freshest high-value KIND and commands-doctor was still ~1073 LOC after fires 14/15. The
+  calibration block is a clean contiguous vertical slice (one subcommand, few external deps),
+  so the extraction is behavior-preserving via import+re-export.
+- **Review point:** 4b judge — re-exports keep commands-doctor.test.ts green (225 files/2584
+  cli tests pass), runCalibrationDoctor still wired at registerDoctorCommand:110, no behavior
+  change, dropped import was genuinely orphaned. Also a sync-hygiene fix: stripped 3 raw U+200B
+  zero-width bytes that arrived via the main merge (backlog.md:123 + test-hygiene.md:68,70, the
+  concurrent test-hygiene loop's journal pollution) -> repo 0 forbidden bytes, `pnpm check` green.
+- **Risk:** low — pure relocation; calibration is a local-Ollama doctor subcommand, no grounding/
+  floor path touched. LESSON: the cross-loop journal byte-pollution keeps reappearing (fires 16/17/18);
+  the real fix is the ★진안 root-fix (every loop byte-scans its journal commit) noted in backlog.
+
+## fire 19 · 2026-06-13 · loop-creator v1.14.0 · adcbf535
+meta: value-class=refactor · pkg=@muse/macos · kind=decompose · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 939 · fabrication 0 · groundedSurfaces 27 · macos-tools.ts 1522->1464 LOC
+- **What:** first decompose step on the 1521-LOC `@muse/macos` god-file `macos-tools.ts`
+  (~12 tool factories sharing one base). Extracted the cross-tool low-level exec primitives —
+  `runChild` (the spawn+SIGKILL-watchdog helper every tool drives its Apple CLI through),
+  `escapeAppleScript`, `isPermissionError`, and the `MacCommandResult` result type — into a new
+  sibling `macos-exec.ts`. macos-tools.ts imports them back and re-exports `MacCommandResult`
+  (the existing test imports it from macos-tools). Dropped the now-unused `import { spawn }`.
+  Added `macos-exec.test.ts`: 11 OUTCOME cases for the two pure fns (escapeAppleScript quote/
+  backslash/newline-flatten; isPermissionError -1743/phrasing matrix) — their FIRST direct tests
+  (previously covered only transitively through the tool factories).
+- **Why:** diversity — last fires skewed @muse/cli (decompose/dead-code); @muse/macos is a fresh
+  package no loop touches. This is the behavior-preserving FOUNDATION step: with the shared base
+  in its own module, the remaining tool families can move out tool-by-tool (DECOMPOSE-ON-DEFER
+  slices recorded in backlog) without each re-declaring the spawn helper.
+- **Review point:** 4b judge — pure relocation (bodies byte-identical, runChild gained `export`),
+  spawn genuinely orphaned in macos-tools after the move (other "spawn" hits are strings/comments),
+  the default runners that call runChild stay + import it, MacCommandResult re-exported so 100 macos
+  tests + 226 cli files stay green. New test is real behavior, not declaration.
+- **Risk:** low — native macOS tools are injection-tested via deps; no grounding/floor/outbound
+  path touched (mac_message_send approval gate untouched). agent-core/mcp left alone (hot loops).

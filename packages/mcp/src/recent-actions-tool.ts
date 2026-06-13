@@ -27,7 +27,13 @@ export function createRecentActionsTool(deps: RecentActionsToolDeps): MuseTool {
       inputSchema: {
         additionalProperties: false,
         properties: {
-          limit: { description: "How many recent actions to return, e.g. 10. Defaults to 20.", maximum: 100, minimum: 1, type: "integer" }
+          limit: { description: "How many recent actions to return, e.g. 10. Defaults to 20.", maximum: 100, minimum: 1, type: "integer" },
+          result: {
+            description:
+              "Filter by outcome: 'performed' (carried out), 'refused' (declined — e.g. fail-closed safety), or 'failed' (errored). Omit to see all. Use when the user asks specifically about declines/failures, e.g. 'did you refuse anything?' → 'refused'.",
+            enum: ["performed", "refused", "failed"],
+            type: "string"
+          }
         },
         required: [],
         type: "object"
@@ -39,8 +45,13 @@ export function createRecentActionsTool(deps: RecentActionsToolDeps): MuseTool {
     execute: async (args): Promise<JsonObject> => {
       const raw = args["limit"];
       const limit = typeof raw === "number" && Number.isFinite(raw) && raw >= 1 ? Math.min(100, Math.trunc(raw)) : 20;
+      const resultFilter = typeof args["result"] === "string" ? args["result"] : undefined;
       const all = await Promise.resolve(deps.actions());
-      const recent = [...all].reverse().slice(0, limit); // most-recent first
+      // Filter by outcome BEFORE capping to `limit` — so a refusal/failure still
+      // surfaces for "did you refuse anything?" even when it is older than the
+      // most-recent window (limit-then-filter would wrongly answer "nothing").
+      const ordered = [...all].reverse(); // most-recent first
+      const recent = (resultFilter ? ordered.filter((a) => a.result === resultFilter) : ordered).slice(0, limit);
       return {
         count: recent.length,
         actions: recent.map((a) => ({

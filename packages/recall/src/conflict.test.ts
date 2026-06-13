@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectSourceConflict, formatSourceConflictWarning } from "./conflict.js";
+import { detectSourceConflict, formatSourceConflictWarning, groundingConflictCue } from "./conflict.js";
 import type { RecallHit } from "./hit.js";
 
 const hit = (ref: string, snippet: string, score = 0.7): RecallHit => ({ ref, score, snippet, source: "notes" });
@@ -84,5 +84,31 @@ describe("formatSourceConflictWarning — user-facing surfacing of evidence conf
       hit("a.md", "Capital: Paris"),
       hit("b.md", "capital: paris")
     ])).toBeUndefined();
+  });
+});
+
+describe("groundingConflictCue — compose answer grounding (notes + episodes) into a cue", () => {
+  it("warns when two grounded NOTES disagree on a field", () => {
+    const cue = groundingConflictCue(
+      [{ file: "wifi-old.md", text: "WiFi password: hunter2" }, { file: "wifi-new.md", text: "wifi password: swordfish99" }],
+      []
+    );
+    expect(cue).toBeDefined();
+    expect(cue).toContain("hunter2");
+    expect(cue).toContain("swordfish99");
+  });
+
+  it("detects a conflict ACROSS a note and an episode (mixed grounding sources)", () => {
+    const cue = groundingConflictCue(
+      [{ file: "note.md", text: "Office floor: 3" }],
+      [{ id: "ep-9", summary: "office floor: 7" }]
+    );
+    expect(cue).toBeDefined();
+    expect(cue).toContain("office floor");
+  });
+
+  it("returns undefined when the grounding is consistent / empty", () => {
+    expect(groundingConflictCue([{ file: "a.md", text: "Capital: Paris" }], [])).toBeUndefined();
+    expect(groundingConflictCue([], [])).toBeUndefined();
   });
 });

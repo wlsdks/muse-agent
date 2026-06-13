@@ -176,6 +176,112 @@ function stableStringify(obj: JsonObject): string {
   return JSON.stringify(sorted);
 }
 
+/**
+ * LLMCompiler (arXiv:2312.04511, Kim et al. ICML 2024): a task that references
+ * another task's output must reference an EARLIER task — a forward or
+ * non-existent target is un-dispatchable in a sequential plan and would execute
+ * with a literal garbage arg, causing partial side-effects AFTER prior steps
+ * already wrote to the store.
+ *
+ * Grammar is intentionally tight to avoid false-positives on currency ("$2",
+ * "$50 budget") or bare numbers. Delimited forms are always treated as refs.
+ * Bare `$N` is only a ref when the entire trimmed arg string value IS exactly
+ * `$N` — any embedded prose disqualifies it, so "$50 budget" is never a ref.
+ *
+ * Only forward/dangling references are flagged (un-satisfiable in the current
+ * sequential plan). Backward references are in-scope to detect but the
+ * substitution machinery is not yet wired; flagging them would over-reject
+ * valid plans that express intent the loop carries literally.
+ */
+export function validateStepDependencies(steps: readonly PlanStep[]): readonly PlanValidationError[] {
+  const errors: PlanValidationError[] = [];
+  for (let i = 0; i < steps.length; i += 1) {
+    const step = steps[i];
+    if (!step) continue;
+    for (const argValue of Object.values(step.args)) {
+      if (typeof argValue !== "string") continue;
+      for (const ref of extractDependencyRefs(argValue)) {
+        // ref is 1-based; step i is the (i+1)-th step.
+        // Forward/self: ref >= i+1 (can't be resolved yet).
+        // Dangling: ref < 1 or ref > steps.length.
+        const isSelf = ref === i + 1;
+        const isForward = ref > i + 1;
+        const isDangling = ref < 1 || ref > steps.length;
+        if (isSelf || isForward || isDangling) {
+          const kind = isDangling && ref >= 1 && ref <= steps.length ? "forward" :
+            isDangling ? "dangling" : "forward";
+          errors.push({
+            reason: `arg references step ${ref.toString()} (${kind}): un-dispatchable in a sequential plan`,
+            stepIndex: i,
+            tool: step.tool
+          });
+        }
+      }
+    }
+  }
+  return errors;
+}
+
+/**
+ * Returns all 1-based step-reference indices found in a single string arg
+ * value. Returns an empty array for plain strings with no reference tokens.
+ *
+ * Tight grammar (conservative — false-negative is today's behaviour;
+ * false-positive wrongly rejects a valid plan):
+ *  - Delimited (always a ref): {{stepN}}, {{step N …}},
+ *    <step N>, <result of step N>, <단계 N …>
+ *  - Explicit phrase: "step N output", "result of step N", "단계 N 결과"
+ *  - Bare $N: NOT detected — indistinguishable from currency ("$2 coffee",
+ *    "$50 budget"). Use a delimited form for inter-step wiring.
+ */
+function extractDependencyRefs(value: string): number[] {
+  const refs: number[] = [];
+  const seen = new Set<number>();
+  const push = (n: number): void => {
+    if (!seen.has(n)) { seen.add(n); refs.push(n); }
+  };
+
+  // Mustache delimited: {{stepN}}, {{step N}}, {{step N.output}}.
+  // step\s* covers both "step2" and "step 2" (planner may or may not space them).
+  // The "step" keyword is MANDATORY: a bare {{N}} is dropped because it
+  // collides with a literal numeric template value ({{2025}} a year,
+  // {{0}} a zero-index) — a missed bare ref is a harmless false-negative,
+  // a wrongly-rejected valid plan is not.
+  for (const m of value.matchAll(/\{\{\s*step\s*(\d+)(?:[^}]*)?\s*\}\}/gi)) {
+    const n = parseInt(m[1] ?? "", 10);
+    if (!isNaN(n)) push(n);
+  }
+
+  // Angle-bracket delimited: <step N>, <result of step N>, <단계 N …>
+  for (const m of value.matchAll(/<\s*(?:result\s+of\s+)?(?:step|단계)\s+(\d+)(?:[^>]*)?\s*>/gi)) {
+    const n = parseInt(m[1] ?? "", 10);
+    if (!isNaN(n)) push(n);
+  }
+
+  // Explicit phrase: "step N output", "result of step N"
+  for (const m of value.matchAll(/\bstep\s+(\d+)\s+output\b/gi)) {
+    const n = parseInt(m[1] ?? "", 10);
+    if (!isNaN(n)) push(n);
+  }
+  for (const m of value.matchAll(/\bresult\s+of\s+step\s+(\d+)\b/gi)) {
+    const n = parseInt(m[1] ?? "", 10);
+    if (!isNaN(n)) push(n);
+  }
+  // Korean phrase: 단계 N 결과
+  for (const m of value.matchAll(/단계\s+(\d+)\s+결과/g)) {
+    const n = parseInt(m[1] ?? "", 10);
+    if (!isNaN(n)) push(n);
+  }
+
+  // Bare $N is intentionally NOT detected: "$2" is indistinguishable from
+  // currency in a string arg ("$2 coffee", "$50 budget" are valid plan args).
+  // False-negative = today's behaviour (acceptable); false-positive = wrongly
+  // rejects a valid plan (not acceptable). Planners should use a delimited
+  // form above to express inter-step wiring unambiguously.
+
+  return refs;
+}
+
 export function validatePlan(input: PlanValidationInput): PlanValidationResult {
   const errors: PlanValidationError[] = [];
   // A small local planner can loop / repeat itself; an oversized
@@ -243,6 +349,12 @@ export function validatePlan(input: PlanValidationInput): PlanValidationResult {
       seenKeys.set(key, index);
     }
   }
+  // LLMCompiler (arXiv:2312.04511): forward/dangling dependency refs are
+  // un-dispatchable — reject before any tool runs (no partial side-effects).
+  for (const depError of validateStepDependencies(input.steps)) {
+    errors.push(depError);
+  }
+
   return {
     errors,
     steps: input.steps,

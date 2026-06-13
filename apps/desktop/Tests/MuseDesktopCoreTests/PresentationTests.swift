@@ -22,6 +22,17 @@ final class AnswerPresentationTests: XCTestCase {
         XCTAssertEqual(MusePresenter.stripCitationsForSpeech("Done. [from vpn.md]\n\n📎 from: vpn.md"), "Done.")
     }
 
+    func testStripsMultiLineReceiptFromSpeech() {
+        // The receipt is multi-line: a "📎 Sources…" header + one line per source.
+        // Speech must drop the WHOLE block — the old regex stripped only the header
+        // line and left the source file paths to be read aloud.
+        let answer = "The MTU is 1380. [from vpn.md]\n\n📎 Sources (open to verify):\n- vpn.md\n- net.md"
+        let spoken = MusePresenter.stripCitationsForSpeech(answer)
+        XCTAssertEqual(spoken, "The MTU is 1380.")
+        XCTAssertFalse(spoken.contains("vpn.md"))  // no leaked source line reaches the Speaker
+        XCTAssertFalse(spoken.contains("net.md"))
+    }
+
     func testStaysSilentOnEmptyAnswer() {
         let p = MusePresenter.present(.success("   "))
         XCTAssertNil(p.speechText)

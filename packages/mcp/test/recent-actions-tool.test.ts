@@ -38,4 +38,27 @@ describe("createRecentActionsTool — what Muse did on your behalf", () => {
     expect(out.count).toBe(0);
     expect(out.actions).toEqual([]);
   });
+
+  it("result filter surfaces a matching action even when it is OLDER than the limit window (filter before limit)", async () => {
+    // The only refusal is the OLDEST entry — it falls outside a small most-recent limit.
+    const entries: ActionLogEntry[] = [
+      { id: "old", result: "refused", userId: "u", what: "Declined to email the bank", when: "2026-06-01T00:00:00Z", why: "fail-closed: no consent" },
+      { id: "n1", result: "performed", userId: "u", what: "Posted comment A", when: "2026-06-10T00:00:00Z", why: "you asked" },
+      { id: "n2", result: "performed", userId: "u", what: "Posted comment B", when: "2026-06-11T00:00:00Z", why: "you asked" },
+      { id: "n3", result: "performed", userId: "u", what: "Posted comment C", when: "2026-06-12T00:00:00Z", why: "you asked" }
+    ];
+    const t = tool(entries);
+    // Without a filter, a small limit shows only the recent performed actions — the refusal is missed.
+    const noFilter = await t.execute({ limit: 2 }) as { actions: { result: string }[] };
+    expect(noFilter.actions.every((a) => a.result === "performed")).toBe(true);
+    // Filtering by 'refused' surfaces the OLD refusal despite the same small limit (filter, THEN limit).
+    const refused = await t.execute({ limit: 2, result: "refused" }) as { count: number; actions: { what: string; result: string }[] };
+    expect(refused.count).toBe(1);
+    expect(refused.actions[0]).toMatchObject({ result: "refused", what: "Declined to email the bank" });
+  });
+
+  it("an unknown result filter value matches nothing (no silent fall-through to all)", async () => {
+    const out = await tool().execute({ result: "bogus" }) as { count: number };
+    expect(out.count).toBe(0);
+  });
 });

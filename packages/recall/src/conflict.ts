@@ -70,6 +70,23 @@ function fieldsOf(snippet: string): Map<string, string> {
  * conflict). For each conflicting field the FIRST differing pair (in input order)
  * is returned. Pure and deterministic.
  */
+/**
+ * Compose the answer's grounding (ranked note chunks + past-session episodes)
+ * into a source-conflict cue. The caller passes the SAME grounding that backed
+ * the answer; a non-undefined return means two of those sources disagree on a
+ * field and should be surfaced before the user trusts the answer. Pure.
+ */
+export function groundingConflictCue(
+  notes: ReadonlyArray<{ readonly file: string; readonly text: string }>,
+  episodes: ReadonlyArray<{ readonly id: string; readonly summary: string }>
+): string | undefined {
+  const hits: RecallHit[] = [
+    ...notes.map((n) => ({ ref: n.file, score: 1, snippet: n.text, source: "notes" as const })),
+    ...episodes.map((e) => ({ ref: e.id, score: 1, snippet: e.summary, source: "episodes" as const }))
+  ];
+  return formatSourceConflictWarning(hits);
+}
+
 export function formatSourceConflictWarning(hits: readonly RecallHit[]): string | undefined {
   const conflicts = detectSourceConflict(hits);
   if (conflicts.length === 0) return undefined;

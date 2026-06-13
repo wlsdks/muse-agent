@@ -22,15 +22,19 @@
  *  16. hover menu      — hovering reveals a submenu, then its item is clickable
  *  17. form labels     — radio/checkbox/input named by VISIBLE label, not value
  *  18. keyboard        — Escape closes a modal (browser_key)
+ *  20. nav status      — a real localhost 404/500 (goto resolves on it) surfaces
+ *                        httpStatus so an error page can't pass for content; a
+ *                        200 carries NO status (silent success)
  *
  * Skips (exit 0) when Chrome is not installed — a skip is not a pass.
  */
+import { createServer } from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { PuppeteerBrowserController, matchElement } from "../packages/browser/dist/index.js";
+import { PuppeteerBrowserController, matchElement, statusFields } from "../packages/browser/dist/index.js";
 
 const SPA_HTML = `<!doctype html><html><head><title>SPA</title></head><body><div id="root"></div>
 <script>setTimeout(() => {
@@ -152,6 +156,15 @@ const MODAL_HTML = `<!doctype html><html><head><title>Modal</title></head><body>
 <script>addEventListener("keydown", (e) => { if (e.key === "Escape") document.getElementById("m").style.display = "none"; });</script>
 </body></html>`;
 
+// Links carry their resolved absolute destination in the snapshot so the model
+// can report WHERE a link goes (or hand the user a shareable URL) without
+// navigating. A relative href must resolve to absolute; a button has no url.
+const LINKS_HTML = `<!doctype html><html><head><title>Links</title></head><body>
+<a href="https://example.com/pricing">See pricing</a>
+<a href="docs/start">Docs</a>
+<button onclick="void 0">Just a button</button>
+</body></html>`;
+
 function assert(condition, label) {
   if (!condition) throw new Error(`ASSERT FAILED: ${label}`);
   console.log(`  ✓ ${label}`);
@@ -162,6 +175,21 @@ const controller = new PuppeteerBrowserController({
   headless: true,
   userDataDir: join(dir, "profile")
 });
+
+// A real localhost HTTP server so the navigation-status check exercises the
+// REAL goto/goBack → HTTPResponse.status() path (file:// has no HTTP status).
+// `/ok` → 200, anything else → a 404 error page whose body looks like content.
+const statusServer = createServer((req, res) => {
+  if (req.url === "/ok") {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end("<!doctype html><title>OK page</title><h1>The real content</h1>");
+    return;
+  }
+  res.writeHead(404, { "content-type": "text/html" });
+  res.end("<!doctype html><title>404 Not Found</title><h1>Not Found</h1><p>No such page.</p>");
+});
+await new Promise((resolve) => statusServer.listen(0, "127.0.0.1", resolve));
+const statusPort = statusServer.address().port;
 
 let launched = false;
 try {
@@ -181,6 +209,7 @@ try {
   await writeFile(join(dir, "hover.html"), HOVER_HTML);
   await writeFile(join(dir, "form.html"), FORM_HTML);
   await writeFile(join(dir, "modal.html"), MODAL_HTML);
+  await writeFile(join(dir, "links.html"), LINKS_HTML);
 
   console.log("1) SPA settle — late-rendered content is observed");
   let snap;
@@ -308,8 +337,30 @@ try {
   snap = await controller.pressKey("Escape");
   assert(!snap.text.includes("MODAL OPEN"), "Escape closes the modal (no visible close button needed)");
 
+  console.log("19) link destinations — a link's resolved url is in the snapshot, a button has none");
+  snap = await controller.open(pathToFileURL(join(dir, "links.html")).href);
+  const pricingLink = snap.elements.find((element) => element.name === "See pricing");
+  assert(pricingLink?.url === "https://example.com/pricing", "absolute link href surfaces as the element url");
+  const docsLink = snap.elements.find((element) => element.name === "Docs");
+  assert(typeof docsLink?.url === "string" && docsLink.url.endsWith("/docs/start"), "a relative href resolves to an absolute url");
+  const justButton = snap.elements.find((element) => element.name === "Just a button");
+  assert(justButton !== undefined && justButton.url === undefined, "a non-link control carries no url");
+
+  console.log("20) navigation status — a real 404 (goto resolves on it) is captured; consume-once; statusFields silences a 200");
+  snap = await controller.open(`http://127.0.0.1:${String(statusPort)}/missing`);
+  assert(snap.httpStatus === 404, "open on a real 404 captures httpStatus from goto's HTTPResponse (proves the real path)");
+  assert(snap.text.includes("Not Found"), "the 404 page's body still flows (advisory, not a hard refusal)");
+  assert(statusFields(snap).statusError?.includes("404") === true, "statusFields turns the captured 404 into an advisory statusError");
+  snap = await controller.snapshot();
+  assert(snap.httpStatus === undefined, "consume-once: the status is NOT repeated on a subsequent bare re-read");
+  snap = await controller.open(`http://127.0.0.1:${String(statusPort)}/ok`);
+  assert(snap.httpStatus === 200, "a 200 IS captured by the controller (real path)");
+  assert(Object.keys(statusFields(snap)).length === 0, "but statusFields stays SILENT on a 200 — no false alarm to the model");
+  assert(snap.text.includes("The real content"), "the 200 page content flows normally");
+
   console.log("\nsmoke:browser PASS");
 } finally {
+  statusServer.close();
   if (launched) await controller.close();
   // close() terminates the detached Chrome over CDP, but the OS process releases
   // its profile file handles a beat later — retry the temp cleanup so the race

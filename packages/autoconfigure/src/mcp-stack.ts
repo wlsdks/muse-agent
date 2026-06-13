@@ -15,6 +15,7 @@ import type { Kysely } from "kysely";
 
 import { parseBoolean, parseCsv, parseInteger } from "./env-parsers.js";
 import { loadExternalMcpConfig } from "./external-mcp-config.js";
+import { resolveOfficialMcpAuthHeaders } from "./official-mcp-credentials.js";
 import { createMcpSecurityPolicyStore, createMcpServerStore } from "./store-factories.js";
 
 import type { MuseEnvironment } from "./index.js";
@@ -65,18 +66,28 @@ export function assembleMcpStack(
   // MUSE_GITHUB_MCP_ENABLED / MUSE_NOTION_MCP_ENABLED register the
   // curated GitHub / Notion remote preset behind an explicit toggle.
   // Default OFF; skipped if the user already declared that server in
-  // mcp.json. NO secret is shipped — the official server runs its own
-  // OAuth, or the user supplies a header credential in mcp.json; absent
-  // a credential the connect simply fails, it is never invented here.
-  // The fail-close write classification reaches the live approval gate
-  // via `withOfficialMcpRisk` in the runtime projection.
-  const enabledOfficialPresets = Object.values(OFFICIAL_MCP_PRESETS).filter(
-    (preset) =>
-      parseBoolean(env[`MUSE_${preset.name.toUpperCase()}_MCP_ENABLED`], false)
-      && !externalServerInputs.some((server) => server.name === preset.name)
-  );
-  for (const preset of enabledOfficialPresets) {
-    externalServerInputs.push(preset.create());
+  // mcp.json. The credential is resolved from a SECURE source — a
+  // dedicated env var (GITHUB_MCP_TOKEN / NOTION_MCP_TOKEN) or the
+  // `~/.muse/mcp-credentials.json` file — through the same non-logging
+  // seam the model keys use, and injected ONLY as the streamable
+  // transport's `Authorization: Bearer` header. NO secret is shipped or
+  // logged. FAIL-CLOSED: a toggle ON with NO resolvable credential does
+  // NOT enable the preset (no blank-auth / broken half-connection); a
+  // credential is never invented here. The fail-close write
+  // classification reaches the live approval gate via
+  // `withOfficialMcpRisk` in the runtime projection.
+  const enabledOfficialPresets = Object.values(OFFICIAL_MCP_PRESETS)
+    .filter(
+      (preset) =>
+        parseBoolean(env[`MUSE_${preset.name.toUpperCase()}_MCP_ENABLED`], false)
+        && !externalServerInputs.some((server) => server.name === preset.name)
+    )
+    .map((preset) => ({ headers: resolveOfficialMcpAuthHeaders(env, preset.name), preset }))
+    .filter((candidate): candidate is { headers: Record<string, string>; preset: typeof candidate.preset } =>
+      candidate.headers !== undefined
+    );
+  for (const { preset, headers } of enabledOfficialPresets) {
+    externalServerInputs.push(preset.create({ headers }));
   }
   const configuredAllowedServers = parseCsv(env.MUSE_MCP_ALLOWED_SERVERS);
   // An explicit turnkey enable (Chrome or an official preset) must not be
@@ -88,7 +99,7 @@ export function assembleMcpStack(
   // blocks everything else.
   const turnkeyEnabledServers = [
     ...(parseBoolean(env.MUSE_CHROME_DEVTOOLS_ENABLED, false) ? [CHROME_DEVTOOLS_MCP_SERVER_NAME] : []),
-    ...enabledOfficialPresets.map((preset) => preset.name)
+    ...enabledOfficialPresets.map(({ preset }) => preset.name)
   ];
   const allowedServerNames =
     configuredAllowedServers && configuredAllowedServers.length > 0

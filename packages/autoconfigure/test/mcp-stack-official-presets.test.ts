@@ -29,27 +29,91 @@ describe("assembleMcpStack — official MCP preset opt-in toggles (default OFF)"
     expect(entry(baseEnv, NOTION_MCP_SERVER_NAME)).toBeUndefined();
   });
 
-  it("registers the GitHub preset only when MUSE_GITHUB_MCP_ENABLED=true", () => {
-    const gh = entry({ ...baseEnv, MUSE_GITHUB_MCP_ENABLED: "true" } as MuseEnvironment, GITHUB_MCP_SERVER_NAME);
+  it("registers the GitHub preset only when MUSE_GITHUB_MCP_ENABLED=true AND a credential resolves", () => {
+    const gh = entry(
+      { ...baseEnv, MUSE_GITHUB_MCP_ENABLED: "true", GITHUB_MCP_TOKEN: "ghp_test_token" } as MuseEnvironment,
+      GITHUB_MCP_SERVER_NAME
+    );
     expect(gh).toBeDefined();
     expect(gh!.transportType).toBe("streamable");
     expect((gh!.config as { url: string }).url).toBe("https://api.githubcopilot.com/mcp/");
     // No autoConnect for a remote server driving the user's account — opt-in.
     expect(gh!.autoConnect).toBe(false);
-    // Ships no secret — credential is user-supplied, absent here.
-    expect("headers" in (gh!.config ?? {})).toBe(false);
   });
 
-  it("registers the Notion preset only when MUSE_NOTION_MCP_ENABLED=true", () => {
-    const notion = entry({ ...baseEnv, MUSE_NOTION_MCP_ENABLED: "true" } as MuseEnvironment, NOTION_MCP_SERVER_NAME);
+  it("registers the Notion preset only when MUSE_NOTION_MCP_ENABLED=true AND a credential resolves", () => {
+    const notion = entry(
+      { ...baseEnv, MUSE_NOTION_MCP_ENABLED: "true", NOTION_MCP_TOKEN: "ntn_test_token" } as MuseEnvironment,
+      NOTION_MCP_SERVER_NAME
+    );
     expect(notion).toBeDefined();
     expect((notion!.config as { url: string }).url).toBe("https://mcp.notion.com/mcp");
   });
 
-  it("enabling GitHub does not register Notion (each toggle is independent)", () => {
-    const env = { ...baseEnv, MUSE_GITHUB_MCP_ENABLED: "true" } as MuseEnvironment;
+  it("enabling GitHub (with credential) does not register Notion (each toggle is independent)", () => {
+    const env = { ...baseEnv, MUSE_GITHUB_MCP_ENABLED: "true", GITHUB_MCP_TOKEN: "ghp_x" } as MuseEnvironment;
     expect(entry(env, GITHUB_MCP_SERVER_NAME)).toBeDefined();
     expect(entry(env, NOTION_MCP_SERVER_NAME)).toBeUndefined();
+  });
+});
+
+describe("assembleMcpStack — credential resolution + fail-closed when absent (FIRE 7)", () => {
+  it("toggle ON + GITHUB_MCP_TOKEN present ⇒ transport headers carry Authorization: Bearer <token>", () => {
+    const gh = entry(
+      { ...baseEnv, MUSE_GITHUB_MCP_ENABLED: "true", GITHUB_MCP_TOKEN: "ghp_secret_abc123" } as MuseEnvironment,
+      GITHUB_MCP_SERVER_NAME
+    );
+    expect(gh).toBeDefined();
+    const headers = (gh!.config as { headers?: Record<string, string> }).headers;
+    expect(headers).toBeDefined();
+    expect(headers!.Authorization).toBe("Bearer ghp_secret_abc123");
+  });
+
+  it("toggle ON + NOTION_MCP_TOKEN present ⇒ transport headers carry Authorization: Bearer <token>", () => {
+    const notion = entry(
+      { ...baseEnv, MUSE_NOTION_MCP_ENABLED: "true", NOTION_MCP_TOKEN: "ntn_secret_xyz789" } as MuseEnvironment,
+      NOTION_MCP_SERVER_NAME
+    );
+    expect(notion).toBeDefined();
+    const headers = (notion!.config as { headers?: Record<string, string> }).headers;
+    expect(headers!.Authorization).toBe("Bearer ntn_secret_xyz789");
+  });
+
+  it("toggle ON + NO credential ⇒ preset does NOT enable (fail-closed, no blank-auth connection)", () => {
+    const env = { ...baseEnv, MUSE_GITHUB_MCP_ENABLED: "true" } as MuseEnvironment;
+    expect(entry(env, GITHUB_MCP_SERVER_NAME)).toBeUndefined();
+  });
+
+  it("toggle ON + whitespace-only credential ⇒ treated as absent ⇒ preset does NOT enable", () => {
+    const env = { ...baseEnv, MUSE_NOTION_MCP_ENABLED: "true", NOTION_MCP_TOKEN: "   " } as MuseEnvironment;
+    expect(entry(env, NOTION_MCP_SERVER_NAME)).toBeUndefined();
+  });
+
+  it("toggle ON + NO credential ⇒ server is NOT auto-allowed (the disabled preset adds nothing)", async () => {
+    const env = {
+      ...baseEnv,
+      MUSE_GITHUB_MCP_ENABLED: "true",
+      MUSE_MCP_ALLOWED_SERVERS: "filesystem"
+    } as MuseEnvironment;
+    const allowed = await assembleMcpStack(env, undefined).securityPolicyProvider.isServerAllowed(GITHUB_MCP_SERVER_NAME);
+    expect(allowed).toBe(false);
+  });
+
+  it("the resolved secret never appears in a serialized safe view of the stack's external inputs", () => {
+    const secret = "ghp_must_never_be_logged_4242";
+    const env = { ...baseEnv, MUSE_GITHUB_MCP_ENABLED: "true", GITHUB_MCP_TOKEN: secret } as MuseEnvironment;
+    const stack = assembleMcpStack(env, undefined);
+    // A doctor/diagnostic surface lists server NAMES + transport, never
+    // the auth headers. Prove a name+transport projection (the kind a
+    // log line would carry) excludes the secret.
+    const safeView = stack.externalServerInputs.map((s) => ({
+      autoConnect: s.autoConnect,
+      name: s.name,
+      transportType: s.transportType,
+      url: (s.config as { url?: string }).url
+    }));
+    expect(JSON.stringify(safeView)).not.toContain(secret);
+    expect(JSON.stringify(safeView)).not.toContain("Bearer");
   });
 });
 
@@ -58,15 +122,20 @@ describe("assembleMcpStack — an explicit official enable is not silently denie
     return assembleMcpStack(env, undefined).securityPolicyProvider.isServerAllowed(name);
   }
 
-  it("a strict allowlist of OTHER servers + github enabled still allows github", async () => {
-    const env = { ...baseEnv, MUSE_GITHUB_MCP_ENABLED: "true", MUSE_MCP_ALLOWED_SERVERS: "filesystem" } as MuseEnvironment;
+  it("a strict allowlist of OTHER servers + github enabled (with credential) still allows github", async () => {
+    const env = {
+      ...baseEnv,
+      MUSE_GITHUB_MCP_ENABLED: "true",
+      GITHUB_MCP_TOKEN: "ghp_x",
+      MUSE_MCP_ALLOWED_SERVERS: "filesystem"
+    } as MuseEnvironment;
     expect(await allowed(env, GITHUB_MCP_SERVER_NAME)).toBe(true);
     expect(await allowed(env, "filesystem")).toBe(true);
     expect(await allowed(env, "some-random-server")).toBe(false);
   });
 
   it("an EMPTY allowlist stays allow-all (an official enable must not flip it into a strict list)", async () => {
-    const env = { ...baseEnv, MUSE_NOTION_MCP_ENABLED: "true" } as MuseEnvironment;
+    const env = { ...baseEnv, MUSE_NOTION_MCP_ENABLED: "true", NOTION_MCP_TOKEN: "ntn_x" } as MuseEnvironment;
     expect(await allowed(env, NOTION_MCP_SERVER_NAME)).toBe(true);
     expect(await allowed(env, "anything-else")).toBe(true);
   });
@@ -96,6 +165,7 @@ describe("official MCP preset — enabled server's tools project with fail-close
     const env = {
       ...baseEnv,
       MUSE_GITHUB_MCP_ENABLED: "true",
+      GITHUB_MCP_TOKEN: "ghp_x",
       MUSE_MCP_ALLOWED_SERVERS: "filesystem"
     } as MuseEnvironment;
     const stack = assembleMcpStack(env, undefined, { connect: async () => fakeConnection });

@@ -19,6 +19,12 @@ export interface SnapshotElement {
   readonly role: string;
   /** Accessible name / visible text / placeholder, capped. */
   readonly name: string;
+  /**
+   * For a link, its resolved absolute destination — so the model can REPORT
+   * where a link goes (or hand the user a shareable URL) without navigating to
+   * it. Absent for non-link controls (buttons, fields).
+   */
+  readonly url?: string;
 }
 
 export interface PageSnapshot {
@@ -30,6 +36,14 @@ export interface PageSnapshot {
   readonly elements: readonly SnapshotElement[];
   /** A JS dialog (alert/confirm/prompt) that fired and was auto-accepted, if any. */
   readonly dialog?: { readonly type: string; readonly message: string };
+  /**
+   * HTTP status of the navigation that produced this snapshot (open / back).
+   * `page.goto`/`goBack` RESOLVE on a 4xx/5xx, so a 404/500 error page loads
+   * "successfully" and its content would otherwise read as the requested page.
+   * Surfaced consume-once (like `dialog`) and only for navigations; a bare
+   * re-read carries no status.
+   */
+  readonly httpStatus?: number;
 }
 
 export type ScrollDirection = "down" | "up" | "top" | "bottom";

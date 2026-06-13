@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createAgentRuntime } from "@muse/agent-core";
+import { createContactsAddTool, type Contact } from "@muse/mcp";
 import type { ModelProvider, ModelResponse } from "@muse/model";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
@@ -215,6 +216,37 @@ describe("buildActuatorTools — the agent invokes a wired tool through its clac
     const { fetchImpl, calls } = recordingFetch();
     await runWebAction(async () => false, fetchImpl);
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("add_contact — fabricated phone dropped by arg-grounding before the contact store write", () => {
+  function runAddContact(userMessage: string, phoneArg: string): Promise<Contact[]> {
+    const saved: Contact[] = [];
+    const tool = createContactsAddTool({ save: async (c) => { saved.push(c); } });
+    return createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: sequenceProvider([
+        { id: "tool", model: "m", output: "Saving.", toolCalls: [{ arguments: { name: "Bob", phone: phoneArg, relationship: "dentist" }, id: "tc-1", name: "add_contact" }] },
+        { id: "final", model: "m", output: "Done." }
+      ] as unknown as ModelResponse[]),
+      toolRegistry: new ToolRegistry([tool])
+    }).run({
+      messages: [{ content: userMessage, role: "user" }],
+      metadata: { localMode: true },
+      model: "provider/model"
+    }).then(() => saved);
+  }
+
+  it("DROPS a phone the user never stated — a fabricated number is not persisted to the contact", async () => {
+    const saved = await runAddContact("save Bob, he's my dentist", "+1 555 123 4567");
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).not.toHaveProperty("phone");
+    expect(saved[0]).toMatchObject({ name: "Bob", relationship: "dentist" });
+  });
+
+  it("KEEPS a phone the user actually stated — grounded even when reformatted with +country/spaces", async () => {
+    const saved = await runAddContact("save Bob the dentist, his number is 415-555-0101", "+1 415 555 0101");
+    expect(saved[0]).toMatchObject({ phone: "+1 415 555 0101" });
   });
 });
 
