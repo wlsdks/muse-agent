@@ -120,3 +120,12 @@ ratchet: testFiles 947 (+1) · web tests 24/24 (+1) · fabrication 0 · self-eva
 - **왜**: 앱 전 아이콘이 장식용(가시 텍스트 옆 또는 title 가진 아이콘-only 버튼 안) — AT에서 숨기는 게 WCAG 정답. 한 팩토리 수정으로 전 뷰의 아이콘이 한 번에 고쳐지는 최고 적용범위 슬라이스.
 - **리뷰지점**: 아이콘-only 컨트롤(Tasks check/trash·Chat volume/mic/send·Calendar/Notes/Autonomy/Reminders trash)은 전부 `title`로 접근명 보유 → aria-hidden이 유일 이름을 제거하지 않음. `Spinner`(자체 aria-label `<span>`)는 무변, 앱에 다른 `<svg>` 없음.
 - **리스크**: 없음(팩토리 2줄, 표현용 속성이라 레이아웃 무영향, 독립 Opus judge가 전 call-site 장식성·stash로 RED·collateral 검증 후 PASS, web 24/24).
+
+## fire 14 · 2026-06-13 · skill v1.14.0 · <commit>
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=input-validation-consistency · verdict=PASS · firesSinceDrill=6
+ratchet: cli tests 2601/2601 (followup +2) · fabrication 0 · self-eval exit 0 · --status 패밀리 마지막 sibling 하드닝 완료(tasks·checkins·followup)
+
+- **무엇**: `muse followup list --status`가 lenient `readFollowupStatusFilter`(오타→"scheduled" 무음)로 잘못된 입력을 삼켜 *틀린 set*을 신호 없이 표시. enum {scheduled,fired,cancelled,all} 검증 추가: 미일치면 stderr 에러+exit1+did-you-mean(`closestCommandName`), 아니면 lowercased `raw`로 진행.
+- **왜**: sibling tasks/checkins(fire 12) list --status는 엄격 검증하는데 followup만 누락 — --status 패밀리의 마지막 미일관. raw 소문자화로 case도 복구("ALL"이 이제 동작).
+- **리뷰지점**: 검증 enum이 `readFollowupStatusFilter` 실제 수용집합({scheduled,fired,cancelled,all})과 정확히 일치(false-reject 없음). 기본값(생략→scheduled) 정상. fire 12 checkins의 stderr+exitCode 패턴 동일.
+- **리스크**: 없음(list 액션 검증 16줄, snooze/cancel/show·출력 경로 무변, 독립 Opus judge가 enum 일치·RED-before·case 복구·collateral 검증 후 PASS, followup 3/3 · cli 2601/2601).
