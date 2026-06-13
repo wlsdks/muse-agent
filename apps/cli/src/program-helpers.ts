@@ -150,7 +150,7 @@ export async function promptText(
   return readPromptValue(value, "Prompt was cancelled");
 }
 
-export async function promptPassword(io: ProgramIO, options: { readonly message: string }): Promise<string> {
+async function promptPassword(io: ProgramIO, options: { readonly message: string }): Promise<string> {
   const value = io.prompts
     ? await io.prompts.password(options)
     : await password(options);
@@ -485,7 +485,7 @@ async function* readResponseChunks(response: Response): AsyncIterable<string> {
   }
 }
 
-export function parseSseEvent(value: string): SseEvent | undefined {
+function parseSseEvent(value: string): SseEvent | undefined {
   if (value.trim().length === 0) {
     return undefined;
   }
@@ -510,7 +510,7 @@ export function parseSseEvent(value: string): SseEvent | undefined {
   };
 }
 
-export function readSseField(line: string): string {
+function readSseField(line: string): string {
   const value = line.slice(line.indexOf(":") + 1);
   return value.startsWith(" ") ? value.slice(1) : value;
 }
@@ -598,7 +598,7 @@ export async function writeRunLog(workspaceDir: string, input: RunLogInput, now 
   return filePath;
 }
 
-export function readResponseRunId(value: unknown): string | undefined {
+function readResponseRunId(value: unknown): string | undefined {
   if (isRecord(value) && typeof value.runId === "string" && value.runId.trim().length > 0) {
     return value.runId;
   }
