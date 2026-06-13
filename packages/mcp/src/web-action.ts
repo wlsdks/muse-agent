@@ -123,6 +123,13 @@ export async function performWebActionWithApproval(
     try {
       response = await options.fetchImpl(options.request.url, {
         method: options.request.method ?? "POST",
+        // A state-changing action must NOT silently follow a 3xx: the SSRF guard
+        // (assertPublicHttpUrl) vetted ONLY the original URL, so an auto-followed
+        // redirect could re-issue the request — body included on 307/308 — to a
+        // private/loopback host (169.254.169.254, 127.0.0.1) it never saw. The
+        // read path (fetchReadableUrl) already re-checks the final host; this
+        // write path fails closed instead of following.
+        redirect: "manual",
         signal: controller.signal,
         ...(options.request.body !== undefined ? { body: options.request.body } : {}),
         headers: {
@@ -143,6 +150,15 @@ export async function performWebActionWithApproval(
     if (response.ok) {
       await log("performed", `HTTP ${response.status.toString()}`);
       return { performed: true, status: response.status };
+    }
+    // A 3xx with redirect:"manual" is returned un-followed: refuse it. The new
+    // host was never approval-vetted nor SSRF-checked, and re-sending a
+    // state-changing request (with its body) there is exactly the attack.
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location") ?? "(no location)";
+      const detail = `refused to follow redirect to ${location} on a state-changing action (only the original host was vetted)`;
+      await log("failed", detail);
+      return { detail, performed: false, reason: "failed" };
     }
     // 429-only safe retry (idempotent actuators): the server rate-limited the
     // request BEFORE applying it, so honouring Retry-After can't double-act.
