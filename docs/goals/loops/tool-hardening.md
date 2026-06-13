@@ -846,3 +846,21 @@ ratchet: testFiles 966 유지(scripts-only) · fabrication 0 유지 · eval:tool
 - **왜:** notes 시나리오에 **KO append positive 부재**(KO save는 line 207 있음), "추가"가 tasks.add와 충돌(line 213 네거티브 "할 일에 추가→tasks.add"). fire-76 KO-verb mis-route 선례 → 잠복 confusable probe. 결과: mis-route 없음(genuine negative) + KO append coverage 갭 채움 + 추가/tasks.add 양방향 변별 가드.
 - **리뷰지점:** eval-tool-selection.mjs buildNotesScenario(+2 케이스, 순수 additive). selected scorer가 toolCalls[0] 채점→tasks.add 오라우팅이면 FAIL(teeth). no exemplarBank=zero-shot(siblings 무회귀). 14/14 STABLE 3/3. lint clean, harness 15 pass. Opus judge PASS 5/5(teeth·no-regression·genuine-coverage, fire-77 probe와 동급). [정리: 미추적 0바이트 정크 maxFileBytes 파일 제거]
 - **리스크:** 없음 — scripts-only, 기존 케이스 불변. GREEN-on-arrival이나 fire-76 선례+coexisting 네거티브로 동기화된 regression 가드. 테마 mature → 다음 fire는 진안 unblock 항목 또는 재-honest-close.
+
+
+## fire 82 · 2026-06-14 · skill v1.14.0 · 5b76004a
+meta: value-class=hardening · pkg=@muse/mcp(test) · kind=JUDGE-DRILL(softball FAIL 확인)+rollover-coverage(datetime impossible-date, mutation-verified) · verdict=PASS · firesSinceDrill=0(드릴 완료, 리셋)
+ratchet: testFiles 966 유지(+2 케이스 mcp.test rollover) · fabrication 0 유지 · eval 무변동(parser correctness guard)
+- **무엇:** (A) JUDGE-DRILL — 고의 softball eval 케이스(프롬프트가 `muse.notes.save` 도구 id를 리터럴 누설 → 선택 회귀 못 잡는 무-teeth) 주입 → ④b Opus judge **VERDICT: FAIL** 확인(teeth 없음·line 207 중복·churn) → git restore 롤백(트리 clean). (B) 진짜 fix — dueAt rollover 가드(parseTaskDueAt/parseReminderDueAt)에 **datetime 형태 불가능 날짜** 2건("2026-02-30T09:00:00Z"·"2026-04-31T23:59:59Z") 추가(기존 8개는 date-only).
+- **왜:** firesSinceDrill 10 도달 → 드릴 미루기 불가(롤백 경로 재검증, maker≠judge 보상통제). 실수정: 챗 모델이 reminder dueAt를 full ISO datetime로 emit하는데 date-only 케이스는 "full datetime은 valid니 day-check skip" mutation을 못 잡음 → 잘못된 날짜가 ~2일 어긋난 reminder 스케줄(correctness-critical). past-time/bare-time edge는 스카웃대로 judgment-call(의도된 "오늘 <시각>" 시맨틱, false-reject 위험) → skip 확정.
+- **리뷰지점:** mcp.test.ts "rejects impossible calendar dates" 루프에 datetime 2건(+주석). **mutation-verified 독립 teeth**: 가드를 `trimmed.includes("T")` early-return으로 변조 시 → datetime 케이스만 RED("2026-03-02T..."), date-only 8개는 GREEN 유지(‘T’ 없어 무영향) → 기존 케이스가 못 잡는 mutation 클래스 포착. 복원 후 GREEN(1860). pnpm check exit=0, lint clean. ④b judge가 mutation 독립 **REPRODUCE**해 PASS 5/5.
+- **리스크:** 없음 — test-only(src 무변경, 변조는 복원됨), 순수 additive(기존 assert 불변). 드릴+실수정 둘 다 같은 fire(드릴 규약). 테마 여전히 mature → 다음 fire는 진안 unblock 항목 또는 재-honest-close.
+
+
+## fire 83 · 2026-06-14 · skill v1.14.0 · 60f3460c
+meta: value-class=hardening · pkg=@muse/mcp(test) · kind=no-collateral-damage(reminders.clear 실패 시 store 불변, mutation-verified) · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 967 유지(+1 케이스 mcp.test clear no-collateral) · fabrication 0 유지 · eval 무변동(destructive-verb safety invariant)
+- **무엇:** reminders.clear(DESTRUCTIVE delete)가 실패(ambiguous word / unknown ref)할 때 **populated store가 불변**임을 검증하는 OUTCOME 테스트. dentist×2(ambiguous)+milk 3건 add → clear "dentist"→multiple 에러+2 candidates+list all total 3 / clear "passport"→not found+total 3.
+- **왜:** EXPANSION 시도가 dry — Opus 스카웃(26 tool)이 표면 mature 확정(unwired 0·add_contact 이미 update-in-place·multi-store merge 기존). 스카웃 fallback lead = under-tested destructive verb OUTCOME. clear 핸들러는 코드상 정확(ambiguous/not-found가 mutateReminders 전 return)이나 기존 테스트는 happy-path(exact id) + **빈 store** 에러 메시지뿐 → populated store no-collateral 미검증 = agent-testing.md #1 속성("실패 액션은 아무것도 mutate 안 함") 갭.
+- **리뷰지점:** mcp.test.ts 새 it(reminders clear). **mutation-verified 독립 teeth**: clear의 ambiguous 분기를 "첫 candidate 추측 삭제"로 변조 → **새 테스트만 RED**(1/1861), 기존 happy-path(4811, exact id라 ambiguous 안 탐)·empty-store(4874, total 미확인)는 green → 기존이 못 잡는 regression 포착. 복원 GREEN(1861), pnpm check exit=0, lint clean. ④b judge PASS 5/5(mutation 독립 REPRODUCE).
+- **리스크:** 없음 — test-only(src 무변경, 변조 복원됨), 순수 additive. **부수 발견:** snooze 핸들러의 동일 ambiguous-no-mutation 불변도 미검증(변조 시 무 RED) → 향후 fire 후보로 backlog 기록.

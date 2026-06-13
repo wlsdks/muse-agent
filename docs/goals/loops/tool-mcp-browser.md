@@ -391,3 +391,20 @@ ratchet: testFiles +1 (mcp-tool-call-error.test.ts 5 cases; 1859 tests) · fabri
   (catch 제거해도 통과=그 경로 안 건드림) (5)Bearer-only scope 정직(Muse 주입 유일 secret).
 - **리스크:** redaction은 Bearer 형태만 — query-string 등 다른 형태 토큰은 미커버(Muse 자체 주입은 Bearer
   전용이라 완전, 문서화된 residual). mid-session 외 경로는 fire-19가 커버.
+
+## fire 21 · 2026-06-14 · skill v1.14.0 · (scout + defer, no code slice)
+
+meta: value-class=scout · pkg=@muse/browser(investigated) · kind=C-browser · verdict=DEFER · firesSinceDrill=5
+
+ratchet: testFiles +0 · fabrication 0 · no code change (scout finding + API-degradation defer)
+
+- **무엇:** axis-C scout — browser `<select>` 드롭다운 선택이 갭인지 조사. **이미 처리됨**: browser_type이
+  role=combobox/<select>에서 matchOption으로 옵션을 grounding(fail-close, 매치 안 되면 옵션 나열+거부),
+  puppeteer-controller.ts type()서 확인. browser_select는 불필요. backlog에 scout 발견 기록(미래 스카웃 스킵).
+- **왜 DEFER:** 두 번의 worker 서브에이전트 디스패치가 API rate-limit/연결거부로 죽음(크래시 worker의
+  부분 변경은 롤백). 코드 슬라이스를 강행하면 ④b 독립 judge를 못 돌려(maker≠judge 미충족) 커밋 불가 —
+  검증 안 된 코드를 커밋하느니 정직히 연기. 브랜치 클린 유지, doc-only backlog 노트만 기록(judge 불필요).
+- **리뷰지점:** 브라우저 마이크로픽스 vein 얇아짐 — 남은 distinct C 후보(iframe read·file upload·CDP
+  error-surfacing edge) 다음 fire에 검증; 2연속 clean이면 EXHAUSTION대로 value-class 회전.
+- **리스크:** API 저하는 일시적 추정 — 다음 fire에 서브에이전트 회복되면 정상 슬라이스 재개. 진척 손실
+  없음(스카웃 지식은 backlog에 보존).

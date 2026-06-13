@@ -5,13 +5,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applyPlaybook,
   clampReward,
   effectiveStrategyReward,
   isAvoidedStrategy,
   isInjectableStrategy,
+  isStaleStrategy,
   planStrategyLifecycle,
+  PLAYBOOK_STALE_AFTER_DAYS,
   rankPlaybookStrategies,
   wilsonInterval,
+  type PlaybookProvider,
   type PlaybookStrategy
 } from "../src/index.js";
 
@@ -177,5 +181,203 @@ describe("garbage tallies → legacy path, no throw", () => {
       expect(() => planStrategyLifecycle(s)).not.toThrow();
       expect(planStrategyLifecycle(s)).toBe("retain");
     }
+  });
+});
+
+// SSGM temporal-decay governance (arXiv:2603.11768) — staleness gate unit tests
+describe("isStaleStrategy — SSGM temporal-obsolescence gate (arXiv:2603.11768)", () => {
+  const daysAgo = (d: number): string =>
+    new Date(Date.now() - d * 86_400_000).toISOString();
+
+  it("stale + sparse (reinforcements:1, lastReinforcedAt 150d ago, nowMs provided) → true", () => {
+    const s: PlaybookStrategy = {
+      text: "use bullet points for summaries",
+      reinforcements: 1,
+      decays: 0,
+      lastReinforcedAt: daysAgo(150)
+    };
+    expect(isStaleStrategy(s, Date.now())).toBe(true);
+  });
+
+  it("same strategy but lastReinforcedAt 10d ago → false (not cold yet)", () => {
+    const s: PlaybookStrategy = {
+      text: "use bullet points for summaries",
+      reinforcements: 1,
+      decays: 0,
+      lastReinforcedAt: daysAgo(10)
+    };
+    expect(isStaleStrategy(s, Date.now())).toBe(false);
+  });
+
+  it("no lastReinforcedAt → false (never-reinforced exemption: staleness only for evidence that WAS earned then went cold)", () => {
+    const s: PlaybookStrategy = {
+      text: "use bullet points for summaries",
+      reinforcements: 1,
+      decays: 0
+    };
+    expect(isStaleStrategy(s, Date.now())).toBe(false);
+  });
+
+  it("nowMs undefined → false (fail-safe: no clock = cannot measure age)", () => {
+    const s: PlaybookStrategy = {
+      text: "use bullet points for summaries",
+      reinforcements: 1,
+      decays: 0,
+      lastReinforcedAt: daysAgo(150)
+    };
+    expect(isStaleStrategy(s, undefined)).toBe(false);
+  });
+
+  it("deep tally (reinforcements:5, 150d old) → false (depth exemption: accumulated evidence)", () => {
+    const s: PlaybookStrategy = {
+      text: "use bullet points for summaries",
+      reinforcements: 5,
+      decays: 0,
+      lastReinforcedAt: daysAgo(150)
+    };
+    expect(isStaleStrategy(s, Date.now())).toBe(false);
+  });
+
+  it("deep tally via decays (reinforcements:1, decays:2, 150d old) → false (tally ≥ 3)", () => {
+    const s: PlaybookStrategy = {
+      text: "use bullet points for summaries",
+      reinforcements: 1,
+      decays: 2,
+      lastReinforcedAt: daysAgo(150)
+    };
+    expect(isStaleStrategy(s, Date.now())).toBe(false);
+  });
+
+  it("garbage lastReinforcedAt → false (no throw, fail-safe)", () => {
+    const s: PlaybookStrategy = {
+      text: "use bullet points for summaries",
+      reinforcements: 1,
+      decays: 0,
+      lastReinforcedAt: "not-a-date"
+    };
+    expect(() => isStaleStrategy(s, Date.now())).not.toThrow();
+    expect(isStaleStrategy(s, Date.now())).toBe(false);
+  });
+
+  it("age exactly at threshold → false (boundary: ≤ PLAYBOOK_STALE_AFTER_DAYS is not stale)", () => {
+    const s: PlaybookStrategy = {
+      text: "boundary test",
+      reinforcements: 1,
+      decays: 0,
+      lastReinforcedAt: daysAgo(PLAYBOOK_STALE_AFTER_DAYS)
+    };
+    // Age = exactly PLAYBOOK_STALE_AFTER_DAYS (or marginally under due to sub-ms timing) → false
+    expect(isStaleStrategy(s, Date.now())).toBe(false);
+  });
+});
+
+// SSGM rankEligible integration — staleness gate applied at eligibility stage
+describe("isStaleStrategy — rankEligible integration (eligibility-membership filter, not rank score)", () => {
+  const daysAgo = (d: number): string =>
+    new Date(Date.now() - d * 86_400_000).toISOString();
+
+  it("a stale-sparse strategy is filtered OUT of the ranked set", () => {
+    const stale: PlaybookStrategy = {
+      text: "stale sparse strategy about summaries",
+      reinforcements: 1,
+      decays: 0,
+      lastReinforcedAt: daysAgo(150)
+    };
+    const fresh: PlaybookStrategy = {
+      text: "fresh strategy about summaries"
+    };
+    const out = rankPlaybookStrategies([stale, fresh], "summaries", { topK: 6 }, Date.now());
+    expect(out.map((s) => s.text)).not.toContain(stale.text);
+    expect(out.map((s) => s.text)).toContain(fresh.text);
+  });
+
+  it("a fresh relevant strategy is kept even when a stale one is dropped (selective, not blanket)", () => {
+    const stale: PlaybookStrategy = {
+      text: "stale note about rescheduling tasks",
+      reinforcements: 1,
+      decays: 0,
+      lastReinforcedAt: daysAgo(200)
+    };
+    const fresh: PlaybookStrategy = {
+      text: "reschedule tasks to the next business day"
+    };
+    const out = rankPlaybookStrategies([stale, fresh], "rescheduling tasks", { topK: 6 }, Date.now());
+    expect(out.some((s) => s.text === stale.text)).toBe(false);
+    expect(out.some((s) => s.text === fresh.text)).toBe(true);
+  });
+
+  it("without nowMs the stale strategy is NOT filtered (legacy-identical: fail-safe)", () => {
+    const stale: PlaybookStrategy = {
+      text: "stale sparse strategy about summaries",
+      reinforcements: 1,
+      decays: 0,
+      lastReinforcedAt: daysAgo(150)
+    };
+    const out = rankPlaybookStrategies([stale], "summaries", { topK: 6 });
+    expect(out.map((s) => s.text)).toContain(stale.text);
+  });
+});
+
+// SSGM assembled-path: applyPlaybook real-revert proves the gate is wired end-to-end
+describe("isStaleStrategy — assembled applyPlaybook path (SSGM gate end-to-end)", () => {
+  const daysAgo = (d: number): string =>
+    new Date(Date.now() - d * 86_400_000).toISOString();
+
+  function ctx(messages: { role: "user" | "assistant" | "system"; content: string }[], userId?: string) {
+    return {
+      input: { messages, metadata: userId ? { userId } : undefined, model: "test/model" },
+      runId: "r",
+      startedAt: new Date()
+    };
+  }
+
+  it("stale-sparse strategy is OMITTED from [Learned Strategies] block; fresh strategy is KEPT", async () => {
+    const staleStrategy: PlaybookStrategy = {
+      text: "use bullet points for summaries",
+      reinforcements: 1,
+      decays: 0,
+      lastReinforcedAt: daysAgo(150)
+    };
+    const freshStrategy: PlaybookStrategy = {
+      text: "keep replies warm and brief for everyday requests"
+    };
+
+    const provider: PlaybookProvider = {
+      listStrategies: async () => [staleStrategy, freshStrategy]
+    };
+
+    const out = await applyPlaybook(
+      ctx([{ role: "user", content: "please summarise this for everyday use" }], "stark"),
+      provider
+    );
+
+    const system = out.messages.find((m) => m.role === "system")?.content ?? "";
+
+    // The stale strategy must be absent — the gate excluded it
+    expect(system).not.toContain("use bullet points for summaries");
+    // The fresh strategy is still present
+    expect(system).toContain("keep replies warm and brief");
+    // playbookApplied is true (the fresh strategy injected successfully)
+    expect(out.metadata?.playbookApplied).toBe(true);
+  });
+
+  it("WITHOUT the gate (nowMs absent / legacy path) the stale strategy WOULD appear — proving the gate is the delta", () => {
+    // rankPlaybookStrategies without nowMs does not apply the staleness gate
+    const staleStrategy: PlaybookStrategy = {
+      text: "use bullet points for summaries",
+      reinforcements: 1,
+      decays: 0,
+      lastReinforcedAt: daysAgo(150)
+    };
+    const freshStrategy: PlaybookStrategy = {
+      text: "keep replies warm and brief"
+    };
+
+    const withoutGate = rankPlaybookStrategies([staleStrategy, freshStrategy], "summaries", { topK: 6 });
+    expect(withoutGate.map((s) => s.text)).toContain("use bullet points for summaries");
+
+    const withGate = rankPlaybookStrategies([staleStrategy, freshStrategy], "summaries", { topK: 6 }, Date.now());
+    expect(withGate.map((s) => s.text)).not.toContain("use bullet points for summaries");
+    expect(withGate.map((s) => s.text)).toContain("keep replies warm and brief");
   });
 });

@@ -350,6 +350,65 @@ export function isInjectableStrategy(strategy: PlaybookStrategy): boolean {
 }
 
 /**
+ * SSGM temporal-decay governance (arXiv:2603.11768, Lam/Li/Zhang/Zhao 2026):
+ * discard/withhold entries whose evidence has gone cold since last successful
+ * reinforcement to mitigate temporal obsolescence and semantic drift.
+ *
+ * 120 days ≈ 4 D-UCB half-lives (fire 9, arXiv:0805.3415): at that age the
+ * recency discount has already shrunk the rank score to ~1/16 of its original,
+ * but the RANK penalty applies only to the SCORE — on the small-bank
+ * inject-all path the strategy is still INCLUDED in the eligible set and still
+ * shapes the local model on ancient evidence. This gate is a DISTINCT second
+ * stage (eligibility membership, not rank score) that removes cold-sparse
+ * strategies from the injected set entirely, where D-UCB only discounts them.
+ */
+export const PLAYBOOK_STALE_AFTER_DAYS = 120;
+
+/**
+ * Returns true when a strategy's evidence is both OLD and SPARSE, meaning it
+ * was reinforced once (or a few times) long ago and never since — the temporal
+ * obsolescence case SSGM targets (arXiv:2603.11768).
+ *
+ * Fail-safe exemptions (all return false without throwing):
+ * - nowMs absent → caller has no clock; can't measure age.
+ * - No lastReinforcedAt → never-reinforced strategy is fresh/grounded, not
+ *   cold; staleness applies only to evidence that WAS earned then went cold.
+ * - Unparseable timestamp → ignore, don't throw.
+ * - Age ≤ threshold → not cold yet.
+ * - Deep tally (reinforcements + decays ≥ 3) → accumulated evidence, not sparse.
+ *
+ * Distinct from D-UCB recencyDiscount (fire 9): recencyDiscount multiplies
+ * the positive reward magnitude for RANKING — a stale strategy still ranks
+ * (lower) and is still INJECTED on the inject-all path. isStaleStrategy is an
+ * ELIGIBILITY filter: membership drop, not rank penalty; a different pipeline
+ * stage with a different effect.
+ *
+ * Reversible: a new reinforcement updates lastReinforcedAt → instantly
+ * injectable again (parity with avoidance / probation lifecycle).
+ */
+export function isStaleStrategy(strategy: PlaybookStrategy, nowMs?: number): boolean {
+  if (nowMs === undefined) {
+    return false;
+  }
+  if (strategy.lastReinforcedAt === undefined) {
+    return false;
+  }
+  const anchorMs = Date.parse(strategy.lastReinforcedAt);
+  if (isNaN(anchorMs)) {
+    return false;
+  }
+  const ageDays = (nowMs - anchorMs) / 86_400_000;
+  if (ageDays <= PLAYBOOK_STALE_AFTER_DAYS) {
+    return false;
+  }
+  const tally = (strategy.reinforcements ?? 0) + (strategy.decays ?? 0);
+  if (tally >= 3) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Embedding cosine weight. A semantic match contributes up to this many points
  * — set above the max realistic lexical-overlap so a strategy the user phrased
  * DIFFERENTLY from the current query still surfaces (experience-following:
@@ -508,12 +567,13 @@ function rankEligible(
   strategies: readonly PlaybookStrategy[],
   options: RankPlaybookOptions | undefined,
   relevanceOf: (strategy: PlaybookStrategy) => number,
-  utilityOf: (strategy: PlaybookStrategy) => number
+  utilityOf: (strategy: PlaybookStrategy) => number,
+  nowMs?: number
 ): readonly PlaybookStrategy[] {
   const topK = Math.max(1, Math.trunc(finiteOr(options?.topK, DEFAULT_RANK_TOPK)));
   const minScore = finiteOr(options?.minScore, 0);
-  // Learned avoidance and probation exclusion run before ranking.
-  const eligible = strategies.filter(isInjectableStrategy);
+  // Learned avoidance, probation exclusion, and SSGM staleness gate run before ranking.
+  const eligible = strategies.filter((s) => isInjectableStrategy(s) && !isStaleStrategy(s, nowMs));
   // Input is oldest→newest insertion order, so `index` doubles as a recency
   // proxy (higher = more recent) for the floor below.
   const withRel = eligible.map((strategy, index) => ({
@@ -603,7 +663,7 @@ export function rankPlaybookStrategies(
   nowMs?: number
 ): readonly PlaybookStrategy[] {
   const query = rankTokens(queryText);
-  return rankEligible(strategies, options, (s) => relevanceScore(s, query), (s) => effectiveStrategyReward(s, nowMs));
+  return rankEligible(strategies, options, (s) => relevanceScore(s, query), (s) => effectiveStrategyReward(s, nowMs), nowMs);
 }
 
 /**
@@ -633,7 +693,7 @@ export async function rankPlaybookStrategiesByRelevance(
   }
   const cosineByText = new Map<string, number>();
   if (queryVec && queryVec.length > 0) {
-    for (const strategy of strategies.filter(isInjectableStrategy)) {
+    for (const strategy of strategies.filter((s) => isInjectableStrategy(s) && !isStaleStrategy(s, nowMs))) {
       if (cosineByText.has(strategy.text)) {
         continue;
       }
@@ -644,7 +704,7 @@ export async function rankPlaybookStrategiesByRelevance(
       }
     }
   }
-  return rankEligible(strategies, options, (s) => relevanceScore(s, query, cosineByText.get(s.text)), (s) => effectiveStrategyReward(s, nowMs));
+  return rankEligible(strategies, options, (s) => relevanceScore(s, query, cosineByText.get(s.text)), (s) => effectiveStrategyReward(s, nowMs), nowMs);
 }
 
 function latestUserText(messages: readonly { readonly role: string; readonly content: string }[]): string {

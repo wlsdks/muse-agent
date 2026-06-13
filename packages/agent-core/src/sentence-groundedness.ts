@@ -1,6 +1,8 @@
 import { lexicalTokens } from "./knowledge-recall.js";
 import { splitPreservingSentencePunctuation } from "./internals.js";
 import { detectPolarityMismatch } from "./polarity-mismatch.js";
+import { detectNumericMismatch } from "./numeric-mismatch.js";
+import { detectHedgeOverclaim } from "./hedge-overclaim.js";
 
 export type SentenceGroundedness = "supported" | "unsupported";
 
@@ -67,7 +69,9 @@ export function reportSentenceGroundedness(
     // A token-supported sentence that contradicts its overlapping evidence sentence
     // on negation polarity is fail-closed to unsupported (arXiv:2305.16819).
     const label: SentenceGroundedness =
-      coverage >= effectiveFloor && !detectPolarityMismatch(sentence, evidence) ? "supported" : "unsupported";
+      coverage >= effectiveFloor && !detectPolarityMismatch(sentence, evidence) && !detectNumericMismatch(sentence, evidence) && !detectHedgeOverclaim(sentence, evidence)
+        ? "supported"
+        : "unsupported";
     labelled.push({ sentence, label, coverage });
   }
 

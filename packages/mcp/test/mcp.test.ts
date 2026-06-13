@@ -3131,7 +3131,13 @@ describe("muse.tasks loopback server", () => {
         "2026-09-31",
         "2026-11-31",
         "2026-00-10",
-        "2026-13-01"
+        "2026-13-01",
+        // The impossible date carried on a FULL ISO datetime — the shape the
+        // chat model actually emits for a reminder. The date-only forms above
+        // can't catch a "full datetimes are valid, skip the day-check" shortcut;
+        // these do (Date silently rolls "2026-02-30T..." to Mar 2 ~2 days off).
+        "2026-02-30T09:00:00Z",
+        "2026-04-31T23:59:59Z"
       ]) {
         expect(parseTaskDueAt(bad, now)).toBeInstanceOf(Error);
         expect(parseReminderDueAt(bad, now)).toBeInstanceOf(Error);
@@ -4870,6 +4876,31 @@ describe("muse.reminders loopback server", () => {
 
     const noQuery = await connection.callTool!("search", {});
     expect(noQuery).toMatchObject({ error: expect.stringContaining("query is required") });
+  });
+
+  it("a failed clear (ambiguous word OR unknown ref) deletes NOTHING — the populated store is left intact", async () => {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-rem-clear-"));
+    let counter = 0;
+    const connection = createLoopbackMcpConnection(
+      createRemindersMcpServer({ file: join(dir, "reminders.json"), idFactory: () => `rem_${++counter}` })
+    );
+    await connection.callTool!("add", { dueAt: "2026-05-12T09:00:00Z", text: "dentist appointment" });
+    await connection.callTool!("add", { dueAt: "2026-05-13T09:00:00Z", text: "dentist follow-up" });
+    await connection.callTool!("add", { dueAt: "2026-05-14T09:00:00Z", text: "buy milk" });
+
+    // An ambiguous WORD ("dentist" matches two) must return candidates, not delete a guess.
+    const ambiguous = await connection.callTool!("clear", { id: "dentist" });
+    expect(ambiguous).toMatchObject({ error: expect.stringContaining("multiple") });
+    expect((ambiguous.candidates as unknown[]).length).toBe(2);
+    expect(await connection.callTool!("list", { status: "all" })).toMatchObject({ total: 3 });
+
+    // An unknown ref must error WITHOUT touching the store.
+    const unknown = await connection.callTool!("clear", { id: "passport" });
+    expect(unknown).toMatchObject({ error: expect.stringContaining("not found") });
+    expect(await connection.callTool!("list", { status: "all" })).toMatchObject({ total: 3 });
   });
 
   it("search greps reminder text case-insensitively, defaulting to status=all", async () => {
