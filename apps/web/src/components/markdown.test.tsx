@@ -40,4 +40,20 @@ describe("Markdown", () => {
     const out = html("<script>alert(1)</script>");
     expect(out).not.toContain("<script>");
   });
+
+  it("renders mailto: and tel: links so contact replies are clickable", () => {
+    const mail = html("reach me at [bob@x.com](mailto:bob@x.com)");
+    expect(mail).toContain('href="mailto:bob@x.com"');
+    const phone = html("call [the desk](tel:+15551234567)");
+    expect(phone).toContain('href="tel:+15551234567"');
+  });
+
+  it("blocks dangerous link schemes beyond javascript:", () => {
+    const data = html("[x](data:text/html,<script>alert(1)</script>)");
+    expect(data).not.toContain("data:text/html");
+    expect(data).toContain('href="#"');
+    const vbscript = html("[x](vbscript:msgbox(1))");
+    expect(vbscript).not.toContain("vbscript:");
+    expect(vbscript).toContain('href="#"');
+  });
 });
