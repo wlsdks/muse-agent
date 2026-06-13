@@ -94,7 +94,7 @@
 ## GROUNDING INTEGRITY theme — open
 
 - ◦ untrusted-only provenance e2e firing-rate (ask AND chat) — the untrusted-only cue on both the ask (`untrustedOnlyGroundingNotice`, fire 1) and chat (`untrustedOnlyChatNotice`, fire 3) surfaces is unit-pinned, but production firing depends on the model citing tool sources as `[from <src>]`. Measure/repair the real firing rate via `eval:grounding-delta` on a `--with-tools` poisoned-source case; if firing is too low, make the cue depend on tool-only grounding directly (toolGrounded + no trusted-note coverage) rather than citation presence. (scouted grounding-integrity fire 1, broadened fire 3)
-- ◦ wire source-conflict cue into the CHAT surface — fire 8 wired `groundingConflictCue` into `muse ask` (stderr cue); the chat path (finalizeGatedChatAnswer) still doesn't surface it. Add the same cue there + a test. Also consider broadening extraction beyond `label: value` (currently misses comma-truncated values). (ask done fire 8; chat remaining)
+- ◦ broaden source-conflict value extraction — the `label: value` regex truncates values at comma/period (`Address: 12 Baker St, London` → only "12 Baker St"), a partial false-negative. Broaden extraction (handle comma-bearing values like addresses) without re-introducing the prose/clock-time false positives. (noted fires 7-9)
 
 ## ✓ Fixed (dedup ledger — one line each; detail in the per-loop journal)
 
@@ -106,6 +106,7 @@
 - ✓ council/reflection judge k-sample self-consistency — both gated on a SINGLE judge call (flaky YES promotes a baseless synthesis/reflection), unlike recall's k-sample unanimity; added opt-in reverifySamples [1,5] mirroring recall (first-NO short-circuit + judgeConsensus), threaded from synthesize* options, floor strictly stronger (red-without-fix verified) — grounding-integrity fire 6
 - ✓ deterministic source-conflict detector (evidence vs evidence) — nothing screened EVIDENCE against EVIDENCE, so two notes giving different values for the same field (old vs new wifi password) were cited as one clean receipt; added pure no-model detectSourceConflict + formatSourceConflictWarning in @muse/recall, hardened against prose-prefix/clock-time false positives (mutation-verified) — grounding-integrity fire 7
 - ✓ source-conflict cue wired to the live ask path — added groundingConflictCue (@muse/recall, composes the answer's grounding) + emit in commands-ask (stderr, ungated by --connect, fires only on real conflict); the fire-7 detector now reaches the user — grounding-integrity fire 8
+- ✓ source-conflict cue on the chat surface (every-surface parity) — added conflictCueFromMatches (@muse/recall) + appended to finalizeGatedChatAnswer on the user's own grounding; ask+chat now both surface contradictory sources. ALSO: JUDGE-DRILL passed (neutered detector + inert test → verifier correctly FAILed) — grounding-integrity fire 9
 
 <!-- Going-forward: `- ✓ <item title> — <slug> fire N` so the scout dedups without the verbose block. -->
 - ✓ Adaptive-k score-gap recall cutoff (trim grounding-window decoys, floor-neutral; arXiv:2506.08479) — agent-core-cognition fire 1
