@@ -434,13 +434,21 @@ async function buildFeedsScenario() {
 async function buildFollowupScenario() {
   try {
     const mcp = await import("../packages/mcp/dist/index.js");
+    const stubCalendar = { createEvent: async () => ({}), deleteEvent: async () => undefined, listEvents: async () => [], updateEvent: async () => ({}) };
     const servers = [
       mcp.createFollowupsMcpServer({ file: "/tmp/eval-followups.json" }),
       mcp.createTasksMcpServer({ file: "/tmp/eval-followup-tasks.json" }),
-      mcp.createRemindersMcpServer({ file: "/tmp/eval-followup-reminders.json" })
+      mcp.createRemindersMcpServer({ file: "/tmp/eval-followup-reminders.json" }),
+      mcp.createCalendarMcpServer({ registry: stubCalendar })
     ];
-    const interestingNames = new Set(["list", "cancel", "snooze", "add", "delete", "clear"]);
-    const muse = servers.flatMap((s) => mcp.createLoopbackMcpMuseTools(s)).filter((t) => interestingNames.has(t.definition.name.split(".").pop()));
+    // Expose the destructive + read leaves; calendar.add is excluded so it does not
+    // compete with the reminders.add cases (calendar.delete uses the same "취소"/cancel
+    // verb as followup.cancel — the highest-risk place for the fire-76 KO mis-route).
+    const interestingNames = new Set(["list", "cancel", "snooze", "delete", "clear"]);
+    const muse = servers.flatMap((s) => mcp.createLoopbackMcpMuseTools(s)).filter((t) => {
+      const leaf = t.definition.name.split(".").pop();
+      return interestingNames.has(leaf) || (leaf === "add" && !t.definition.name.startsWith("muse.calendar"));
+    });
     const tools = muse.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
     const byName = new Set(tools.map((t) => t.name));
     const cases = [
@@ -464,6 +472,18 @@ async function buildFollowupScenario() {
       // the READ tool, NOT the destructive delete/clear (word-ref made those selectable).
       { prompt: "What tasks do I have about the report?", expectTool: "muse.tasks.list", note: "EN status question about tasks → tasks.list, NOT tasks.delete (a question is not a delete)" },
       { prompt: "Which reminders mention the dentist?", expectTool: "muse.reminders.list", note: "EN status question about reminders → reminders.list, NOT reminders.clear (asking ≠ clearing)" },
+      // Positive destructive INTENT (probe for the KO-verb mis-route fixed for followup.cancel
+      // in fire 76): an explicit DELETE/CLEAR intent with a referent word must select the
+      // destructive tool one-shot, NOT default to the read list. EN + KO so a KO-only failure
+      // surfaces the same verb-mapping weakness.
+      { prompt: "Delete the milk task.", expectTool: "muse.tasks.delete", requireArgs: ["id"], note: "EN delete intent → tasks.delete (NOT tasks.list)" },
+      { prompt: "그 우유 할 일 삭제해줘.", expectTool: "muse.tasks.delete", requireArgs: ["id"], note: "KO delete intent → tasks.delete one-shot (NOT tasks.list); 삭제해줘 = delete" },
+      { prompt: "Remove the dentist reminder.", expectTool: "muse.reminders.clear", requireArgs: ["id"], note: "EN remove intent → reminders.clear (NOT reminders.list)" },
+      { prompt: "치과 알림 지워줘.", expectTool: "muse.reminders.clear", requireArgs: ["id"], note: "KO remove intent → reminders.clear one-shot (NOT reminders.list); 지워줘 = remove" },
+      // calendar.delete uses the SAME "취소"/cancel verb as followup.cancel (the fire-76
+      // KO mis-route) → the highest-risk place for a KO cancel→list weakness on events.
+      { prompt: "Cancel my standup meeting on the calendar.", expectTool: "muse.calendar.delete", requireArgs: ["id"], note: "EN cancel an EVENT → calendar.delete (NOT calendar.list)" },
+      { prompt: "그 스탠드업 회의 일정 취소해줘.", expectTool: "muse.calendar.delete", requireArgs: ["id"], note: "KO cancel an event → calendar.delete one-shot (NOT calendar.list); the 취소-verb risk from fire 76" },
       { prompt: "Remind me tomorrow at 9am to call Sam.", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], argFieldIncludes: { field: "dueAt", regex: /tomorrow/i }, note: "EN timed reminder → reminders.add, NOT followup.snooze; dueAt carries the PHRASE not a precomputed ISO" },
       { prompt: "내일 9시에 회의 준비하라고 알림 맞춰줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], argFieldIncludes: { field: "dueAt", regex: /내일/ }, note: "KO timed reminder → reminders.add, NOT followup.* (알림 ≠ 팔로업); dueAt is the PHRASE" }
     ];

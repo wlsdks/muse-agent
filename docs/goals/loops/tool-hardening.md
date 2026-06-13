@@ -801,3 +801,12 @@ ratchet: testFiles 957 유지 · fabrication 0 유지 · eval:tools followup KO 
 - **왜:** 진단 — 같은 "그 체크인 팔로업" referent로 snooze("미뤄줘")는 3/3, cancel("취소해줘")만 0/3→list. "취소" verb→cancel 매핑 약함 + list가 fallback. 테마 #1(올바른 tool 한 방), destructive KO intent. fire 75가 다음 타겟으로 명시한 진짜 선택 버그.
 - **리뷰지점:** loopback-followups.ts list+cancel description만(execute/schema/risk/groundedArgs 불변). eval:tools 케이스 0/3→3/3 STABLE 2회 REPEAT=3(6/6), 시나리오 14/14 양쪽 — over-steering 회귀 없음(목록/status-질문/snooze/IrrelAcc 전부 유지). mcp 1857, lint clean. pnpm check @muse/cli flake(isolated 2616 green, 동시-루프 actuator 변경+부하). Opus judge PASS 5/5(독립 14/14 재현, no over-steer).
 - **리스크:** 없음 — description-only(fail-closed 게이트 불변), 회귀 0(전 케이스 14/14). 기존 골든 케이스가 향후 회귀 가드. KO-cancel finding 해소.
+
+
+## fire 77 · 2026-06-13 · skill v1.14.0 · e628814d
+meta: value-class=hardening · pkg=scripts(eval infra) · kind=destructive-selection-probe+coverage(fire-76 버그 클래스 배제) · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 958 유지(eval +6 케이스) · fabrication 0 유지 · followup 시나리오 14→**20/20(100%)**, 6 destructive-intent probe STABLE 3/3(2회 6/6)
+- **무엇:** destructive INTENT positive 골든 6개(tasks.delete/reminders.clear/calendar.delete, EN+KO) — "삭제해줘/지워줘/취소해줘"+referent가 destructive 도구 한방 선택. followup 시나리오에 calendar 서버 추가(delete/list 노출, calendar.add는 필터로 제외해 reminders.add 비간섭).
+- **왜:** fire 76 KO "취소" followup.cancel 버그가 verb-특정이었음 → 형제 destructive 도구(특히 calendar.delete가 **같은 "취소" verb**)에도 같은 mis-route가 있나 PROBE. probe→found-bug→fix(fire 76) 패턴 계승. 가장 유력 잠복 = calendar.delete "취소".
+- **리뷰지점:** eval-tool-selection.mjs buildFollowupScenario(calendar 서버 + 필터 tweak[calendar.add 제외] + 6 positive 케이스). PROBE 결과: 6개 전부 PASS 3/3 2회(6/6) → **버그는 followup.cancel 특정 확정, systemic 아님**(tasks/reminders/calendar 전부 KO destructive 한방 정상). 시나리오 20/20 양쪽 — calendar 추가가 기존 14 케이스 무회귀(fire-76 KO cancel fix·IrrelAcc 가드 포함). fire 75 IrrelAcc 네거티브(질문→delete 금지)를 positive(intent→delete)로 보완. harness 15 pass, lint clean. Opus judge PASS 5/5(무회귀·calendar.add 제외·teeth: fire-76 선례가 실패 가능 증명).
+- **리스크:** 없음 — 순수 additive(기존 케이스 불변), scripts-only. teeth 있음(같은 verb가 followup에서 실제 0/3였음). 버그 클래스 배제 = 진짜 negative 결과(다른 destructive 표면 안전 확인).

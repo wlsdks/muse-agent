@@ -1,5 +1,7 @@
 import { evaluateLocalOnlyPosture, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel } from "@muse/autoconfigure";
 import type { DevFixableWeakness } from "@muse/mcp";
+import { promises as fs } from "node:fs";
+import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
 
 /**
  * Which outbound messengers are wired (Telegram/Discord/Slack/LINE), by their
@@ -191,4 +193,32 @@ export async function readOllamaPerfEnv(env: Record<string, string | undefined>)
     flashAttention: env.OLLAMA_FLASH_ATTENTION ?? await fromLaunchctl("OLLAMA_FLASH_ATTENTION"),
     kvCacheType: env.OLLAMA_KV_CACHE_TYPE ?? await fromLaunchctl("OLLAMA_KV_CACHE_TYPE")
   };
+}
+
+export function parseNotesIndexEmbedModel(rawJson: string | undefined): string | undefined {
+  if (rawJson === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch {
+    return DEFAULT_EMBED_MODEL;
+  }
+  if (!parsed || typeof parsed !== "object") return DEFAULT_EMBED_MODEL;
+  const candidate = (parsed as { model?: unknown }).model;
+  if (typeof candidate === "string" && candidate.trim().length > 0) {
+    return candidate.trim();
+  }
+  return DEFAULT_EMBED_MODEL;
+}
+
+export async function readNotesIndexEmbedModel(path: string): Promise<string | undefined> {
+  try {
+    const raw = await fs.readFile(path, "utf8");
+    return parseNotesIndexEmbedModel(raw);
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    // Unreadable index (permissions?) — flag the probe instead of
+    // silently dropping.
+    return parseNotesIndexEmbedModel("");
+  }
 }

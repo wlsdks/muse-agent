@@ -17,6 +17,8 @@ export { buildCalibrationReport, formatCalibration, parseAlpha } from "./command
 export type { CalibrationReport } from "./commands-doctor-calibration.js";
 import { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, readOllamaPerfEnv, selfLearningCheck, weaknessFuelCheck, type LocalCheck } from "./commands-doctor-checks.js";
 import { findOllamaModelTag, isOllamaTagsEntry, type OllamaTagsEntry } from "./commands-doctor-ollama.js";
+import { readNotesIndexEmbedModel } from "./commands-doctor-checks.js";
+export { parseNotesIndexEmbedModel } from "./commands-doctor-checks.js";
 export { findOllamaModelTag } from "./commands-doctor-ollama.js";
 export type { OllamaTagsEntry } from "./commands-doctor-ollama.js";
 export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, readOllamaPerfEnv, selfLearningCheck, weaknessFuelCheck } from "./commands-doctor-checks.js";
@@ -652,33 +654,6 @@ export function embedModelCheck(
  * the documented default — a noisy probe is better than a silent
  * gap when the user has clearly opted into RAG.
  */
-export function parseNotesIndexEmbedModel(rawJson: string | undefined): string | undefined {
-  if (rawJson === undefined) return undefined;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawJson);
-  } catch {
-    return DEFAULT_EMBED_MODEL;
-  }
-  if (!parsed || typeof parsed !== "object") return DEFAULT_EMBED_MODEL;
-  const candidate = (parsed as { model?: unknown }).model;
-  if (typeof candidate === "string" && candidate.trim().length > 0) {
-    return candidate.trim();
-  }
-  return DEFAULT_EMBED_MODEL;
-}
-
-async function readNotesIndexEmbedModel(path: string): Promise<string | undefined> {
-  try {
-    const raw = await fs.readFile(path, "utf8");
-    return parseNotesIndexEmbedModel(raw);
-  } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    // Unreadable index (permissions?) — flag the probe instead of
-    // silently dropping.
-    return parseNotesIndexEmbedModel("");
-  }
-}
 
 /** GB / MB / kB formatter for doctor's model-pulled detail line. */
 function formatBytes(bytes: number | undefined): string {

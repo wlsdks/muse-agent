@@ -678,3 +678,20 @@ ratchet: testFiles 958 · fabrication 0 · groundedSurfaces 27 · ask god-file: 
   summary defense) preserved; new test pins the escape; escapeSystemPromptMarkers retained in commands-ask
   (feedBlock); recall 201 + cli 2616 green.
 - **Risk:** low — pure presentation relocation; the untrusted-summary escape (grounding-floor defense) moved verbatim + now has its own recall test.
+
+## fire 37 · 2026-06-13 · loop-creator v1.14.0 · 7cee328e
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 958 · fabrication 0 · groundedSurfaces 27 · commands-doctor.ts 810->785 LOC
+- **What:** continued the commands-doctor decompose (fires 25/29/31/33) — moved the notes-index embed-model pair
+  `parseNotesIndexEmbedModel` (pure JSON parse, DEFAULT_EMBED_MODEL fallback) + `readNotesIndexEmbedModel` (async
+  fs read) to the sibling commands-doctor-checks.ts (verbatim). The sibling gained `import { promises as fs }` +
+  `import { DEFAULT_EMBED_MODEL }`. commands-doctor imports readNotesIndexEmbedModel back (runLocalDoctor at 411) +
+  re-exports parseNotesIndexEmbedModel (test). DEFAULT_EMBED_MODEL/fs stay used in commands-doctor → no orphan.
+- **Why:** diversity — compose@recall was 4/8; decompose@cli (3/8) shrinks the doctor god-file 810→785. Only
+  embedModelCheck remains (formatBytes-entangled — deferred). LESSON re-confirmed: the lint gate caught that I'd
+  imported parseNotesIndexEmbedModel for internal use when it's only RE-EXPORTED (readNotesIndexEmbedModel is the
+  only internal user) — fixed to import-only-what's-used before commit.
+- **Review point:** 4b judge — both bodies byte-identical (the JSON-parse fallback chain + the ENOENT-vs-unreadable
+  fs branch); readNotesIndexEmbedModel exported for runLocalDoctor; re-export keeps the parse test green (2616 cli);
+  parseNotesIndexEmbedModel NOT in the import line (re-export only — lint-clean); DEFAULT_EMBED_MODEL/fs retained.
+- **Risk:** low — pure relocation of a parser + a guarded fs read; no floor path.

@@ -138,3 +138,11 @@ ratchet: agent-core +1 test (citation-precision 6; full suite 2089 pass) · lint
 - 왜: value-class 피벗(doctor-metric)을 시도하다 corpus(EN/KO 같은 source명) 채점 중 0.00 precision으로 이 버그 발견. 메트릭 자체는 (a) self-eval 경계([[project_self_eval]]: 자가-측정 인프라는 human-direction) (b) corpus dup-source + 토큰-coverage 조잡함으로 murky해 **정직히 폐기**, 대신 드러난 real 버그를 수정.
 - 리뷰지점: 방향-안전(토큰 추가는 supported로만 이동, 절대 false-negative 안 만듦), 진단-only(게이트 불변), recall은 이미 union이라 무영향. last-wins로 되돌리면 aggregation 테스트 red(지지 청크를 first에 배치). 독립 Opus judge PASS(주석 중복 결함 지적 → dedup 완료).
 - 리스크: 없음(방향-안전 hardening). vein: grounding 결정론 vein 고갈 유지 — 다음엔 value-class 피벗 또는 wind-down(self-eval 경계 밖 메트릭은 human-direction 필요).
+
+## fire 18 · 2026-06-13 · skill v1.14.0 · db4f56bd (JUDGE-DRILL + real fix)
+meta: value-class=redteam-defense(parity) · pkg=@muse/cli · kind=A · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: cli +4 tests (chat-grounding 89; full cli 2622 pass) · lint 0/0 · fabrication 0 · JUDGE-DRILL 통과(④+④b 양면)
+- JUDGE-DRILL(연속 allPASS 8): 두 검증 레이어 모두 재검증. (1) floor 약화 주입(fire-11 empty-evidence 가드 제거 = fail-open 재개방) → **기존 fire-11 테스트가 즉시 red**로 잡음(④ 결정론 게이트 작동). (2) 그건 ④b가 아니므로, 테스트는 통과하는 inert/no-op 슬라이스(`dropsPoisonedSource` 항상 false + type-only 테스트)를 별도 주입 → 독립 Opus judge가 **VERDICT: FAIL**(no-op·vacuous·unwired 3체크 전부). 양면 모두 rubber-stamp 아님 증명. 드릴 아티팩트 git clean 롤백.
+- 진짜 fix: ALCE citation precision/recall cue를 **chat 표면에 parity**(ask는 fire15/16, chat엔 없었음). `chatCitationPrecisionNotice`/`chatCitationRecallNotice`(검증된 reporter delegation) finalizeGatedChatAnswer에 append. ask+chat 둘 다 이제 mis-citation/missing-attribution 표면화.
+- 리뷰지점: 순수 additive(게이트/floor 불변), untrusted/conflict와 distinct reporter라 double-warn 없음, abstention/충실-인용은 silent. 독립 Opus judge 5/5 PASS(cli 2622 green).
+- 리스크: 없음(additive). 발화는 답이 [from] 인용 보유 시(ask/chat 공통 caveat). vein 고갈 유지.

@@ -149,3 +149,11 @@ ratchet: testFiles 958→957 (−1 중복 삭제, judge 승인) · netCoverage 0
 - **왜:** src/ 7케이스 전부 test/가 동등-이상으로 커버(https/http keep·js/data/empty/non-url drop·empty-input) + test/는 file/ftp/mailto·non-string·순서보존·mixed-partition까지 추가. 보안-관련(인용 링크 sanitise, grounding 표면) 모듈이라 우선. src/는 완전 redundant.
 - **어떻게-증명(MUTATION-FIRST PRUNE):** 생존 `test/`를 cite — `isSafeUrl`의 `ALLOWED_PROTOCOLS.has(protocol)`→`return true` 변형 시 test/ 2/5 RED(protocol-drop + mixed-partition); 변형 복원 후 5/5 green. ④b **독립 Opus judge가 git show로 삭제본 복원해 7케이스 전수 대조 + 자체 mutation 재현** → strict-subset 확인, **VERDICT: PASS**.
 - **리스크:** 소스 무변경, 삭제 1파일뿐(`git status` D 1줄). netCoverage 0(진짜 중복 제거). 남은 29쌍은 각각 superset 확인 필요(blanket 삭제 금지) — 향후 fire용 PRUNE vein.
+
+## fire 18 · 2026-06-13 · skill v1.14.0 · 6428bcd8
+meta: kind=prune(consolidate) · pkg=@muse/model · verdict=PASS · firesSinceDrill=9
+ratchet: testFiles 958→957 (−1 통합, 유니크 케이스 1 이식) · netCoverage 0 (overlap만 제거) · fabrication 0 · pnpm check: model GREEN(287); 무관 apps/api LINE-webhook 1건 20s timeout=동시-루프 부하(격리 4/4 9.4s) · lint 0
+- **무엇:** model 동명 쌍 `web-search-policy` **통합** — `src/`(213L, fuzz-rich)와 `test/`(87L)가 같은 `decideWebSearchPolicy`를 둘 다 테스트. src/가 test/ 행동을 1개 빼고 전부 동등-이상 커버 → 그 1개("disabled 정책도 resolved maxUses 유지 = 비활성화가 검색 예산을 0으로 만들지 않음")만 src/로 이식하고 `test/` 삭제. fire 17의 동명-쌍 vein 후속(이번엔 strict-subset 아님 — **상보적**이라 overlap만 제거하는 consolidate).
+- **왜:** 같은 모듈 enabled/maxUses 해소 로직이 두 파일에서 ~11 케이스 중복 실행(진안 "중복 제거"). 단 양쪽 유니크 케이스 손실 금지 — src/는 fuzz+kill-switch가 더 강하나 disabled-path maxUses 보존은 test/에만 있었음.
+- **어떻게-증명(MUTATION-FIRST):** `args.override===false` 분기를 `maxUses: DEFAULT_MAX_USES`로 변형 시 이식된 케이스 **딱 1개만 RED**(나머지 15 green incl. property-fuzz는 `>0`만 보장 → 5도 통과) — disabled-path maxUses의 유일 가드임을 증명. 변형 복원+클린리빌드 16/16 green. ④b 독립 Opus judge가 삭제본 git show로 **15개 행동 전수 매핑**(전부 equal-or-stronger) + mutation-uniqueness 재현 + `model` 필드 미사용(브랜치 은닉 없음) 확인 → **VERDICT: PASS**.
+- **리스크:** 소스(비-test) 무변경. 변경은 −87L(test/ 삭제) +11L(src/ 이식) 2건뿐. ★`pnpm check` red는 **무관 환경 아티팩트**(apps/api `messaging-webhooks` buildServer 테스트가 동시 6+ 루프 부하서 20s timeout; 격리 재실행 4/4 9.4s pass) — 본 @muse/model 슬라이스와 무관, backlog에 환경 이슈 기록.
