@@ -1056,6 +1056,8 @@ export { resolveDefaultUserId } from "./user-id.js";
 
 export { resolveFeedsFile } from "./personal-providers.js";
 
+export { describeOfficialMcpPosture, type OfficialMcpPresetPosture } from "./official-mcp-posture.js";
+
 export function requireEnv(env: MuseEnvironment, key: string): string {
   const value = env[key]?.trim();
 

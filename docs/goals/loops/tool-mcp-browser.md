@@ -183,3 +183,21 @@ ratchet: testFiles +0 (browser-tools.test.ts +9 cases, 84 total) · @muse/browse
   버그 수정 확인. 라이브 실행이 그 consume-once 버그를 노출(unit fake로는 못 잡았을 것).
 - **리스크:** click/type 네비게이션 status는 의도적 범위 밖(실제 click이 document HTTPResponse를 안 봄,
   main-frame page.once("response") race 필요) → backlog 후속 ◦. byte-hygiene check red는 외부(타 루프 문서).
+
+## fire 10 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/autoconfigure+@muse/cli · kind=B-mcp · verdict=PASS · firesSinceDrill=2
+
+ratchet: testFiles +1 (official-mcp-posture.test.ts 8 + doctor +5) · @muse/autoconfigure+cli tests pass (doctor 90) · fabrication 0 · pnpm check 0 · lint 0/0 · live doctor --local verified (secret 0×)
+
+- **무엇:** `muse doctor --local`이 공식 공개 MCP 프리셋(GitHub/Notion)별 posture를 보고 — enabled(env
+  토글) + credentialPresent(불린, 토큰 절대 미렌더) + allowed(allowlist) + 공식 provenanceUrl. pure
+  describeOfficialMcpPosture(env)를 autoconfigure에 두고 CLI doctor에 officialMcpChecks로 배선.
+- **왜:** 외부 MCP의 신뢰/관측 스토리 완결 — 프라이버시-우선 사용자가 "내 에이전트가 어떤 외부 서버에
+  연결 가능한지/왜인지"를 감사. Muse 정체성("tell it everything, it can't tell anyone")과 부합.
+- **리뷰지점:** judge가 leak-가드를 RED-able로 재확인(posture에 토큰 주입→테스트 RED; 라이브 doctor
+  --local에서 secret 0회), allowlist 시맨틱이 McpManager/assembleMcpStack과 일치(empty=allow-all,
+  non-empty=strict, 같은 MUSE_MCP_ALLOWED_SERVERS env)함을 확인, 4 상태 OUTCOME 채점 RED-able.
+- **리스크:** doctor가 enabled+strict-allowlist-제외를 "blocked"로 표시하나 assembleMcpStack은 turnkey
+  프리셋을 allowlist에 자동추가 → 런타임보다 약간 엄격(cosmetic follow-up ◦ 기록). posture는 env-only
+  (연결 프로브 아님, 연결성 아닌 *적격성* 보고 — 의도).
