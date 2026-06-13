@@ -1,14 +1,15 @@
 ---
 name: loop-creator
-version: 1.13.0
+version: 1.14.0
 description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘", "loop 등록", "X를 계속 강화하는 루프", or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from its bundled loop-engineering.md contract AND registers the cron itself, then reports the prompt + cron id + how to stop. The autonomous successor to hand-written ad-hoc loop prompts.
 ---
 
 > **Versioning.** This skill carries a `version` (above). On any change to the
 > skill or its `references/loop-engineering.md` contract, **bump it** (patch =
 > wording, minor = new guard/behavior) and add a `CHANGELOG.md` entry. Stamp the
-> current version into each `loop-digest.md` fire entry (`(skill vX.Y.Z)`) so that
-> after many loops we can correlate fire OUTCOMES ↔ skill version and improve.
+> current version into each per-loop journal entry (`docs/goals/loops/<slug>.md`,
+> `skill vX.Y.Z`) so that after many loops we can correlate fire OUTCOMES ↔ skill
+> version and improve.
 > History: [`CHANGELOG.md`](CHANGELOG.md).
 
 # loop-creator — 원칙을 지키는 자율 루프를 생성하고 등록한다
@@ -90,11 +91,11 @@ description: Use when 진안 wants to start (register) an autonomous improvement
 | 6 프리미티브 | Automation=cron · Worktree=/tmp(레포 밖, [[project_worktree_instability]]) · Skill=improve-muse+dev-loop · Connector=MCP · Sub-agent=harness planner→worker→evaluator · State=backlog.md+MEMORY.md |
 | 검증가능 정지조건 | `pnpm self-eval` exit 0 + 관련 eval(eval:tools/eval:browser-agent/eval:agent/precheck:grounding) ≥ threshold + "backlog ★ 항목 Done"(이 'Done' 판정은 **독립 evaluator/진안**이 — 루프 자신이 maker=judge로 판정하지 않는다) |
 | **게이팅 검증자** | 빌드와 별개 **강한-티어(Opus) 적대 judge**가 슬라이스를 판정 → **PASS여야 ⑤ 커밋, FAIL이면 롤백**(`git restore`)+블로커 기록. 결정적 게이트(test/check/eval) 1차, judge 2차. ([`loop-engineering.md`](references/loop-engineering.md) §3-1) |
-| **이해 표면 (비동기·non-blocking)** | 매 fire가 `docs/goals/loop-digest.md`에 4줄 append(아무때나 읽는 비동기 리뷰 로그) + **N fire(기본 3)마다 막지 않고 PushNotification 알림만 + 계속 진행** — 루프는 절대 안 멈춘다. 검토/머지는 사람의 비동기 선택. §3-2 |
+| **이해 표면 (비동기·non-blocking)** | 매 fire가 **자기 루프의 per-loop 저널** `docs/goals/loops/<slug>.md`에 한 엔트리 append(스키마: `## fire N · 날짜 · skill vX.Y.Z · commit` + `meta:`(value-class·pkg·kind·verdict·firesSinceDrill) + `ratchet:` + 무엇/왜/리뷰지점/리스크) + **N fire(기본 3)마다 막지 않고 PushNotification 알림만 + 계속 진행** — 루프는 절대 안 멈춘다. **공유 `loop-digest.md`에 쓰지 않는다**(동시 4 루프 → 충돌·오염). 규약 [`loops/README.md`](../../../docs/goals/loops/README.md). §3-2 |
 | **자율성 티어** | **Tier1**(로컬 커밋, push 없음 — 기본) 또는 **Tier2**(`loop/<theme>` 브랜치 push + draft PR, 사람이 머지 — 명시 opt-in). 하드 floor: main 자동머지·자율 outbound·banking·`--no-verify` 절대 불가. §3.5 |
 | 토큰/스텝 캡 | fire당 1슬라이스, retry 2–3 상한, 예산 캡([`loop-budget.md`](../../../harness/reference/loop-budget.md)) |
 | **모델 티어링** | 정형·기계적(깨끗한 단일-파일 TDD/검색/문서) → Sonnet(`model:"sonnet"`); **scout·계획·설계·모호한 포크·④b 적대 검증 + 복잡한 비즈니스 코드(여러 파일/아키텍처/얽힌·낯선 코드/red 테스트) → Opus 4.8(`claude-opus-4-8[1m]`)** — Fable-5는 쓰지 않는다. 기계적 escalation 신호: N개+ 파일·red 테스트면 Opus. **maker≠judge: ④b judge는 항상 빌더와 별개 독립 서브에이전트(fresh context·적대); Opus가 천장이라 같은-모델일 땐 judge-실패-드릴(§4.5 하드-카운터)이 보상통제.** 오케스트레이터는 얇게. (Muse 런타임 gemma4는 고정 — [`loop-engineering.md`](references/loop-engineering.md) §1.5) |
-| State 파일 | `docs/goals/backlog.md`에 Done/다음 write-back |
+| State 파일 | **공유 큐** `docs/goals/backlog.md`(open ◦/★/⏳ + `✓ Fixed` 한 줄 dedup 원장만 — Done 상세 아님) + **per-loop 저널** `docs/goals/loops/<slug>.md`(fire 상세). Done write-back = backlog ◦→`✓` 한 줄 + 저널에 풀 엔트리. |
 | 불변식 | fabrication=0 floor + IMMUTABLE-CORE 불가침 |
 | 중단 방법 | cron id 기록 + CronDelete/cmux |
 
@@ -116,8 +117,8 @@ Muse 자율 개선 루프 — 테마: <목적>. 반드시 Node 24(nvm default).
 ③ harness/host/dev-loop.md §3에 따라 검증가능 슬라이스를 TDD-first로. **행동 acceptance: 결과 상태(OUTCOME)를 채점 — 선언/config-only 테스트 금지(fabricated 값이 실제 드롭/동작하는 end-to-end 케이스).** 사소한 동종 변경(예: 남은 actuator들)은 **한 슬라이스로 배칭**(토큰 절약). 새 도구는 tool-calling.md + eval:tools 골든.
 ④ 결정적 검증(정지조건): **먼저 만진 패키지를 빌드**(pnpm --filter @muse/<pkg> build) → 가장 좁은 테스트 → pnpm check → 관련 eval(<해당 eval>) → pnpm lint. **pnpm check가 실패하면 첫 진단은 clean-rebuild 재실행**(cross-package 실패는 대개 동시 루프發 stale-dist — [[project_stale_dist_from_loop]]; 한 번 재실행 後에도 빨가면 진짜 회귀).
 ④b 게이팅 검증자: 별개 강한-티어(Opus) **독립** 서브에이전트가 적대 판정(acceptance가 *행동*을 검증하나 — **선언-only면 FAIL**? 불변식 약화 없음? 무관 state 안 깸? **VALUE-CLASS RATCHET 위반(최근 8 fire ≥6 same-package micro-fix인데 또 same)이면 FAIL**?). 깊이는 리스크에 비례(정형 저위험은 가볍게, 새 경로/불변식 접촉은 풀 추적)하되 항상 돈다. PASS여야 ⑤로; FAIL이면 git restore 롤백+backlog 블로커 후 멈춤.
-⑤ write-back(테스트/eval/backlog Done) 포함 커밋. **게이트 後 트리 무편집 규칙**: write-back/digest 편집은 ④ 게이트를 다시 통과해야 한다 — 커밋 *직전 마지막 행동*으로 **staged diff에 lint + byte-hygiene 재확인**(게이트 後 트리를 또 건드렸으니 미검증 바이트가 안 새게). **자율성: <Tier1=로컬 커밋, push 금지 / Tier2=loop/<theme> 브랜치 push+draft PR, 사람이 머지>.**
-⑤b 이해 다이제스트: docs/goals/loop-digest.md에 4줄 append(무엇/왜/리뷰지점/리스크) + **RATCHET 1줄: 이번 fire의 스코어보드 델타 + 카운트**(예: testFiles 888→889 · fabrication 0 유지 · **value-class=micro-fix·pkg=@muse/mcp** · **firesSinceDrill=N** — 변화 없으면 "지표 무변동, 하드닝"). value-class·pkg를 매 fire 박는 건 VALUE-CLASS RATCHET이 셀 수 있게 하기 위함(②). **JUDGE-DRILL 하드-카운터**: `firesSinceDrill≥10 OR 연속 allPASS≥8`이면 이번 fire 슬라이스가 곧 judge-드릴(고의 나쁜-슬라이스 주입→verifier FAIL 확인→롤백→진짜 fix) — *미루기 불가, 다음 fire로 넘기지 않는다*; 드릴 완료 시에만 카운터 0 리셋. 3 fire마다 막지 않고 PushNotification — **추세**("eval X, 커버리지 Y, 회귀 0") 알림 + **계속 진행**.
+⑤ write-back 포함 커밋. backlog는 **얇은 공유 큐** — 고른 ◦를 `✓ Fixed` 한 줄(dedup 원장: `✓ <항목> — <slug> fire N`)로 옮길 뿐, **Done 상세는 per-loop 저널(⑤b)에만**(backlog 비대·충돌 방지). 테스트/eval/backlog 큐 갱신 + 저널 엔트리. **게이트 後 트리 무편집 규칙**: write-back/저널 편집은 ④ 게이트를 다시 통과해야 한다 — 커밋 *직전 마지막 행동*으로 **staged diff에 lint + byte-hygiene 재확인**. **자율성: <Tier1=로컬 커밋, push 금지 / Tier2=loop/<theme> 브랜치 push+draft PR, 사람이 머지>.**
+⑤b 이해 저널(per-loop, 공유 digest 아님): **`docs/goals/loops/<slug>.md`**에 한 엔트리 append — 스키마 `## fire N · YYYY-MM-DD · skill vX.Y.Z · <commit>` + `meta: value-class=<micro-fix/new-capability/wiring/refactor> · pkg=@muse/… · kind=… · verdict=PASS · firesSinceDrill=N` + `ratchet: testFiles … · fabrication 0 · <eval델타>` + 무엇/왜/리뷰지점/리스크 4줄. `meta:`는 grep-가능 카운트(VALUE-CLASS RATCHET·firesSinceDrill·버전↔산출 상관이 ②/⑤b에서 셀 수 있게). INDEX.md의 자기 루프 줄(마지막 fire/commit)만 갱신. **공유 `loop-digest.md`엔 쓰지 않는다**(동시 루프 충돌·오염 — 규약 docs/goals/loops/README.md). **JUDGE-DRILL 하드-카운터**: `firesSinceDrill≥10 OR 연속 allPASS≥8`이면 이번 fire 슬라이스가 곧 judge-드릴(고의 나쁜-슬라이스 주입→verifier FAIL 확인→롤백→진짜 fix) — *미루기 불가, 다음 fire로 넘기지 않는다*; 드릴 완료 시에만 카운터 0 리셋. 3 fire마다 막지 않고 PushNotification — **추세**("eval X, 커버리지 Y, 회귀 0") 알림 + **계속 진행**.
 모델 티어링(토큰 절약·Fable-5 미사용): 정형 빌드/검색은 Sonnet 서브에이전트(Agent/Workflow model:"sonnet")로
 위임하고, scout/계획/설계/모호한 포크/④b 적대 검증은 **Opus 4.8(`claude-opus-4-8[1m]`)**로; ④b judge는 빌더와 *별개의 독립 서브에이전트*(같은 Opus여도 fresh context·적대) — maker≠judge의 보상통제는 위 JUDGE-DRILL이다.
 한 fire에 슬라이스 하나; 막히면 backlog에 블로커 기록 후 멈춤.
@@ -141,7 +142,7 @@ grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지. 하드 floo
 - [ ] **VALUE-CLASS RATCHET**(②)가 프롬프트에 살아있나 — 최근 8 fire ≥6 same-package micro-fix면 다른 value-class/패키지 강제, ④b judge가 위반을 FAIL, ⑤b RATCHET에 value-class·pkg 카운트?
 - [ ] **JUDGE-DRILL 하드-카운터**(⑤b)가 프롬프트에 살아있나 — `firesSinceDrill≥10 OR 연속 allPASS≥8`이면 미루기-불가 드릴, 완료 시에만 리셋?
 - [ ] **게이팅 검증자**가 프롬프트에 살아있나 — ④b Opus 적대 judge가 커밋을 GATE, FAIL=롤백?
-- [ ] **이해 표면**이 살아있나 — ⑤b 다이제스트 append + N fire마다 알림(막지 않음, 루프 무한)?
+- [ ] **이해 표면**이 살아있나 — ⑤b가 **per-loop 저널 `docs/goals/loops/<slug>.md`**(공유 digest 아님)에 스키마 엔트리 append + INDEX 자기 줄 갱신 + N fire마다 알림? backlog Done은 `✓` 한 줄(상세는 저널)?
 - [ ] **자율성 티어가 명시**됐나 — Tier1/Tier2 중 무엇인지 ⑤에 박혔고, Tier2면 진안 opt-in 받았나?
       하드 floor(main 자동머지·자율 outbound·banking·--no-verify) 금지 문구가 살아있나?
 - [ ] **같은 테마의 활성 cron이 이미 있나** — `CronList`로 확인. 있으면 등록 대신

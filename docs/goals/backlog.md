@@ -10,6 +10,17 @@
 >
 > Priority: ★ = do next · ◦ = ready · ⏳ = blocked (reason noted).
 > Each item: **what** — why (source) — the smallest verifiable slice.
+>
+> **Logging convention (loop-creator v1.14.0+):** this file is a **lean shared QUEUE** — open
+> `◦`/`★`/`⏳` items + a one-line `✓ Fixed` dedup ledger (below). **Per-fire Done DETAIL lives in the
+> per-loop journal** `docs/goals/loops/<slug>.md`, NOT here. Going-forward Done write-back = move the
+> picked `◦` to a `✓ Fixed` one-liner; the full story is the journal entry. (The verbose `✓→Done`
+> blocks below are pre-v1.14.0 history — kept for dedup, condensable when loops are paused. Convention:
+> [`loops/README.md`](loops/README.md).)
+
+## ✓ Fixed (dedup ledger — one line each; detail in the per-loop journal)
+
+<!-- Going-forward: `- ✓ <item title> — <slug> fire N` so the scout dedups without the verbose block. -->
 
 ## Done — loop infrastructure (2026-06-12, 진안-directed)
 
