@@ -218,3 +218,11 @@ ratchet: agent-core +1 OUTCOME test (skill-merge-gate 15) · agent-core 2223 · 
 - 왜: 두 표면이 각자 floor를 자기 부분 coverage에만 적용 → 트리거에서 A, 바디에서 B 각각 손실 시 각 표면 2/3≥0.6 통과인데 union은 1/3 < minScore. 자기개선 머지 게이트가 다수 스킬 드롭하는 파괴적 통합을 조용히 accept. verifier 자체가 나쁜 슬라이스를 잡는지 maker≠justify 보상통제 확인이 드릴 목적.
 - 리뷰지점: tightens-only(AND 한 conjunct 추가 → accept는 더 보수적만, floor 약화 불가). default strict 경로는 불변(both-accept ⇒ combined lost 0; 프로덕션 호출자는 이 경로 — 실효는 permissive 분기의 latent fail-open 차단, 정직히 명시). 합법 partial merge(2/3≥0.6) 여전히 accept. 독립 Opus judge가 실 fix를 revert→red로 non-vacuity 확인 5/5 PASS.
 - 리스크: 낮음(게이트 강화). **JUDGE-DRILL 결과: verifier 정상 작동**(bad→FAIL, good→PASS) → firesSinceDrill 0 리셋. vein: 드릴 소비, 다음은 일반 슬라이스(axis A abstain-on-conflict 또는 B 잔여 모듈 또는 C judge bias).
+
+## fire 28 · 2026-06-14 · skill v1.14.0 · 4c5eff57
+meta: value-class=reliability-coverage · pkg=@muse/agent-core · kind=B · verdict=PASS · firesSinceDrill=1
+ratchet: agent-core +1 OUTCOME test (background-review 10) · agent-core 2230 · eval:self-improving background-review+e2e+correction-polarity PASS · lint 0/0 · fabrication 0 · reset-before-review mutation reds test (judge-verified)
+- 무엇: **background-review가 review 실패 시 trigger를 잃지 않게** (no trigger lost). `createBackgroundReviewHook`가 fire-and-forget review 전에 trigger 카운터를 reset하고 에러를 catch — 학습 arm이 throw하면(로컬 모델 다운, skill/preference store write 에러; 프로덕션은 reviewSkill/Preferences/Commitments를 await) trigger가 이미 소비돼 누적 신호 영구 손실, 재시도 없음. reset을 runReview resolve 후로 이동(.then before .catch) → 실패 시 trigger 유지·다음 턴 재발화, 성공 시 기존대로 reset.
+- 왜: 모듈 자신이 문서화한 "no trigger is lost" 불변(in-flight-skip 경로는 지킴)을 실패 경로가 위반하던 비대칭. axis B 새 모듈(background-review 엔진, 이 루프에서 처음). MAST fail-close(arXiv:2503.13657): 실패한 sub-step은 retrigger를 조용히 버리면 안 됨.
+- 리뷰지점: strictly more fail-close(실패→재시도, 덜 안전해질 수 없음). 성공 cadence 불변(기존 Nth-turn reset 테스트 통과), in-flight 가드가 빠른 2nd 턴을 reset 전에 차단(double-fire 없음), `.finally(delete)` 양 경로 실행(inFlight 누수 없음). 학습 경로(afterComplete)라 grounding 게이트 무관. 독립 Opus judge가 reset-before-review mutation으로 red 확인 → 5/5 PASS.
+- 리스크: 낮음(학습 신뢰성 강화). pnpm check의 @muse/resilience SIGABRT는 동시-루프 메모리 압박 OOM(격리 26/26 green, agent-core 2230 green) — 환경, 내 변경 무관. vein: axis B background-review 엔진 진입 — 다음=pattern-suggestion/preference-inference 잔여 또는 axis A/C.
