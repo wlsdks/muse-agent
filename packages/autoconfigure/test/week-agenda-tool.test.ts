@@ -40,4 +40,17 @@ describe("createWeekAgendaTool — the week at a glance", () => {
     const out = await tool({ birthdays: [], events: [], tasks: [] }).execute({}) as { week: unknown[] };
     expect(out.week).toEqual([]);
   });
+
+  it("merges DUE REMINDERS too — a timed reminder shows in its day, sorted with events by time (⏰)", async () => {
+    const out = await tool({
+      birthdays: [],
+      events: [{ startsAtIso: "2026-06-05T15:00:00", title: "Standup" }], // today 3pm
+      reminders: [{ dueAt: "2026-06-05T09:00:00", text: "take meds" }], // today 9am
+      tasks: []
+    }).execute({}) as { week: { label: string; items: string[] }[] };
+    const today = out.week.find((d) => d.label.startsWith("Today"));
+    expect(today?.items.some((x) => x.includes("⏰") && x.includes("take meds"))).toBe(true);
+    // time-anchored: the 9am reminder sorts BEFORE the 3pm Standup (interleaved with events by time)
+    expect(today!.items.findIndex((x) => x.includes("take meds"))).toBeLessThan(today!.items.findIndex((x) => x.includes("Standup")));
+  });
 });

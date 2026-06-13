@@ -108,7 +108,7 @@ export class DefaultMcpTransportConnector implements McpTransportConnector {
       return new SdkMcpConnection(client, this.requestTimeoutMs);
     } catch (error) {
       await closeQuietly(client);
-      throw new McpConnectionError(toErrorMessage(error));
+      throw new McpConnectionError(toErrorMessage(error), mcpConnectErrorStatus(error));
     }
   }
 
@@ -193,7 +193,15 @@ class SdkMcpConnection implements McpConnection {
   ) {}
 
   async listTools(): Promise<readonly McpRemoteTool[]> {
-    const result = await this.client.listTools(undefined, { timeout: this.requestTimeoutMs });
+    // Wrap into the typed error carrying the HTTP status so the manager
+    // can fail-fast on a permanent 4xx (token revoked mid-session) here
+    // too — not just on the initial connect handshake.
+    let result;
+    try {
+      result = await this.client.listTools(undefined, { timeout: this.requestTimeoutMs });
+    } catch (error) {
+      throw new McpConnectionError(toErrorMessage(error), mcpConnectErrorStatus(error));
+    }
 
     return result.tools.map((tool) => ({
       description: tool.description ?? tool.title ?? tool.name,
@@ -348,4 +356,21 @@ async function closeQuietly(client: Client): Promise<void> {
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The SDK's HTTP transports surface the server's response status on a
+ * numeric `code` field (StreamableHTTPError, SseError). Extract it so
+ * the manager can fail-fast on a permanent 4xx (revoked/expired token)
+ * instead of arming a reconnect loop. The SDK's internal `code: -1`
+ * (e.g. an unexpected content-type, not an HTTP status) is ignored so a
+ * non-status sentinel never poses as a retry classification.
+ */
+function mcpConnectErrorStatus(error: unknown): number | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const code = (error as { code?: unknown }).code;
+  if (typeof code !== "number" || !Number.isFinite(code) || code < 100 || code > 599) {
+    return undefined;
+  }
+  return code;
 }

@@ -224,6 +224,7 @@ export {
   DEFAULT_CITATION_RECALL_FLOOR,
   type CitationRecallReport
 } from "./citation-recall.js";
+export { detectPolarityMismatch, POLARITY_OVERLAP_FLOOR } from "./polarity-mismatch.js";
 export {
   scoreGroundingEval,
   type GroundingCaseOutcome,

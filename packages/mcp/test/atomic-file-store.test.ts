@@ -45,6 +45,14 @@ describe("atomicWriteFile", () => {
     expect(await readFile(file, "utf8")).toBe("nofsync");
   });
 
+  it("survives many CONCURRENT writes to one file without an ENOENT rename crash (randomUUID tmp)", async () => {
+    // The old `${pid}-${Date.now()}` tmp name collided under concurrency → one rename hit ENOENT.
+    const file = join(dir, "race.json");
+    await Promise.all(Array.from({ length: 40 }, (_unused, i) => atomicWriteFile(file, `payload-${i.toString()}`)));
+    const final = await readFile(file, "utf8");
+    expect(final.startsWith("payload-")).toBe(true); // some writer won cleanly; none crashed
+  });
+
   it("removes the tmp orphan when the write/rename fails (no litter left in the store dir)", async () => {
     // Force the rename to fail: the target path is an existing DIRECTORY, so
     // rename(tmp, target) throws. The tmp must not be left behind as litter.

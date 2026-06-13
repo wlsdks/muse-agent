@@ -740,9 +740,12 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         const tasks = (await readTasks(tasksFile).catch(() => []))
           .filter((task) => task.status === "open" && typeof task.dueAt === "string")
           .map((task) => ({ dueAt: task.dueAt!, title: task.title }));
+        const reminders = (await readReminders(resolveRemindersFile(env)).catch(() => []))
+          .filter((reminder) => reminder.status === "pending" && typeof reminder.dueAt === "string")
+          .map((reminder) => ({ dueAt: reminder.dueAt, text: reminder.text }));
         const birthdays = resolveUpcomingBirthdays(await queryContacts(resolveContactsFile(env)), { withinDays: 14 })
           .map((b) => ({ daysUntil: b.daysUntil, name: b.contact.name }));
-        return { birthdays, events, tasks };
+        return { birthdays, events, reminders, tasks };
       }
     })],
     () => [

@@ -23,6 +23,7 @@ import type { MuseTool } from "@muse/tools";
 
 import {
   InMemoryMcpServerStore,
+  McpConnectionError,
   McpSecurityPolicyProvider,
   createMcpMuseTool,
   normalizeMcpServerInput,
@@ -180,6 +181,18 @@ export class McpManager {
       this.health.set(name, this.createHealthSnapshot(name, "healthy"));
       return true;
     } catch (error) {
+      if (error instanceof McpConnectionError && !error.retryable) {
+        // A permanent failure (revoked/expired token → 401/403, bad
+        // config → 4xx) is terminal, exactly like the allowlist and
+        // fingerprint-mismatch branches above: mark it disabled and do
+        // NOT arm a reconnect loop. Retrying an external server with a
+        // credential that will never work just hammers it; architecture.md
+        // requires a 4xx-class failure to fail fast, never retry like a 5xx.
+        this.statuses.set(name, "disabled");
+        this.health.set(name, this.createHealthSnapshot(name, "unhealthy", toErrorMessage(error)));
+        return false;
+      }
+
       this.statuses.set(name, "failed");
       this.scheduleReconnect(name, toErrorMessage(error));
       return false;
@@ -232,6 +245,16 @@ export class McpManager {
       await closeConnectionQuietly(connection);
       this.connections.delete(name);
       this.tools.delete(name);
+
+      if (error instanceof McpConnectionError && !error.retryable) {
+        // Token revoked / scope lost mid-session → permanent. Terminal,
+        // no reconnect loop (same fail-fast rule as connect()).
+        this.statuses.set(name, "disabled");
+        const snapshot = this.createHealthSnapshot(name, "unhealthy", toErrorMessage(error));
+        this.health.set(name, snapshot);
+        return snapshot;
+      }
+
       this.statuses.set(name, "failed");
       return this.scheduleReconnect(name, toErrorMessage(error));
     }

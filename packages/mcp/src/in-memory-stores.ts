@@ -44,10 +44,32 @@ export class McpRegistryError extends Error {
   }
 }
 
+/**
+ * Classify the HTTP status behind an MCP connect/list failure as
+ * retryable, mirroring `isRetryableNotesStatus` and architecture.md's
+ * rule: 4xx (bad/expired token, server-not-found) is a PERMANENT
+ * failure and MUST fail fast — retrying an external MCP server with a
+ * credential that will never work just hammers it. 5xx + 429 are
+ * transient and may retry. A bare network error carries no status
+ * (`undefined`) and is treated as transient.
+ */
+export function isRetryableMcpConnectStatus(status: number | undefined): boolean {
+  if (status === undefined || !Number.isFinite(status)) return true;
+  if (status === 429) return true;
+  return status >= 500 && status <= 599;
+}
+
 export class McpConnectionError extends Error {
-  constructor(message: string) {
+  readonly status?: number;
+  readonly retryable: boolean;
+
+  constructor(message: string, status?: number) {
     super(message);
     this.name = "McpConnectionError";
+    if (status !== undefined) {
+      this.status = status;
+    }
+    this.retryable = isRetryableMcpConnectStatus(status);
   }
 }
 

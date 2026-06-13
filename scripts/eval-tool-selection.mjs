@@ -280,7 +280,8 @@ async function buildWeekAgendaScenario() {
     const stubCalendar = { createEvent: async () => ({}), deleteEvent: async () => undefined, listEvents: async () => [], updateEvent: async () => ({}) };
     const lists = [
       ...mcp.createLoopbackMcpMuseTools(mcp.createCalendarMcpServer({ registry: stubCalendar })),
-      ...mcp.createLoopbackMcpMuseTools(mcp.createTasksMcpServer({ file: "/tmp/eval-week-tasks.json" }))
+      ...mcp.createLoopbackMcpMuseTools(mcp.createTasksMcpServer({ file: "/tmp/eval-week-tasks.json" })),
+      ...mcp.createLoopbackMcpMuseTools(mcp.createRemindersMcpServer({ file: "/tmp/eval-week-reminders.json" }))
     ].filter((t) => t.definition.name.endsWith(".list"));
     const week = ac.createWeekAgendaTool({ weekInput: () => ({ birthdays: [], events: [], tasks: [] }) });
     const tools = [week, ...lists].map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
@@ -289,7 +290,8 @@ async function buildWeekAgendaScenario() {
       { prompt: "What's my week look like?", expectTool: "week_agenda", note: "holistic merged week → week_agenda" },
       { prompt: "이번 주 나 뭐 있어? 한눈에 보여줘", expectTool: "week_agenda", note: "KO holistic 'what's on my week at a glance' → week_agenda" },
       { prompt: "Show just my calendar events for this week.", expectTool: "muse.calendar.list", note: "events-only → calendar.list (NOT week_agenda)" },
-      { prompt: "What tasks are due this week?", expectTool: "muse.tasks.list", note: "due tasks only → tasks.list (NOT week_agenda)" }
+      { prompt: "What tasks are due this week?", expectTool: "muse.tasks.list", note: "due tasks only → tasks.list (NOT week_agenda)" },
+      { prompt: "List just my reminders due this week.", expectTool: "muse.reminders.list", note: "reminders-only → reminders.list (NOT week_agenda, which now also merges reminders)" }
     ];
     return { label: "week-agenda (merged week vs calendar/tasks list)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
