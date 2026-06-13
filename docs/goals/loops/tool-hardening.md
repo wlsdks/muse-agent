@@ -819,3 +819,12 @@ ratchet: testFiles 959 유지 · fabrication 0 유지 · eval:tools full REPEAT=
 - **왜:** 스캔 결과 **actionable real-tool 선택 버그 0건**: (a) synthetic weather 0/3 = 합성 도구명 "weather_in_city" 환각(Muse 실제 도구 아님, 이름 바꾸면 gaming = non-actionable), (b) time_diff "between 9am and 5:30pm today" 1/3 flaky = time_now 설명이 **이미 이 정확한 케이스를 명시 배제**(muse-tools-time.ts:26)하므로 설명 갭 아님, 6+ 동시루프 부하 하 8B stochastic noise. KO cancel(fire 76)이 진짜 버그였고 수정됨 → 테마 mature 정의적 확인.
 - **리뷰지점:** 코드 변경 0. backlog에 두 finding 기록(synthetic 환각 non-actionable, time_diff 1/3 load-noise monitor). budget상 후반 시나리오 전 스캔 중단(real-tool 통과 확인 후); macos 42/42·followup 20/20은 최근 fire 검증됨. 고가치 레버(email/handle grounding=agent-core-hot, MCP-risk posture=진안, undo/veto=설계 진안) 여전히 blocked.
 - **리스크:** 없음 — 코드 무변경. "할 게 없다" 아님: fire 76 패턴(eval→버그→fix)으로 정의적 스캔 → 진짜 negative 결과(actionable 버그 없음=maturity). 다음 fire는 진안 unblock 시 그 항목, 아니면 부하 조용할 때 time_diff 재확인 또는 재-close.
+
+
+## fire 79 · 2026-06-14 · skill v1.14.0 · 6d454536
+meta: value-class=new-capability · pkg=@muse/autoconfigure(+scripts eval) · kind=capability-extension(week_agenda에 due reminders 병합, EXPANSION) · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 959 유지(+1 케이스 week-agenda.test) · fabrication 0 유지 · eval:tools week-agenda 4→**5/5 STABLE 3/3**
+- **무엇:** week_agenda(cross-store "이번 주" 뷰)가 **due 리마인더도 병합** — 기존 events+tasks+birthdays에 시간-앵커 리마인더("금요일 집세") 추가. groupWeekAgenda가 reminders를 timed bucket(⏰, 이벤트와 시간순 interleave). 설명+배선(autoconfigure weekInput이 pending 리마인더 read). **새 도구 아님**(daily_brief는 week_agenda+days=1 중복 = tool-calling.md 위반).
+- **왜:** 테마 mature(fire 78 eval 정의적 확인) → EXHAUSTION 규칙대로 value-class 상향(EXPANSION half underweighted). week_agenda가 8B의 불안정한 4-chain 대체인데 리마인더만 빠져 있었음 = 진짜 갭(시간-앵커 알림은 주간 뷰에 당연). KIND=capability-extension(최근 coverage/regression-guard와 다름).
+- **리뷰지점:** week-agenda-tool.ts(WeekAgendaInput.reminders? + groupWeekAgenda bucketing + 설명) + autoconfigure/index.ts(weekInput이 readReminders pending) + week-agenda.test(+1: 리마인더가 요일에 ⏰·시간순) RED→GREEN 595 + eval-tool-selection.mjs(reminders 서버 + reminders-only 네거티브). eval 5/5 STABLE 3/3(holistic→week_agenda 무회귀, reminders-only→reminders.list over-fire 안 함). lint clean. pnpm check cli chat-ink-render 부하 timeout flake(isolated 2625 green). Opus judge PASS 5/5(RED-before loop 제거 실증·production 배선·선택 무회귀).
+- **리스크:** 거의 없음 — read-only(risk 불변), fabrication 0(실 저장 text+dueAt), reminders optional(기존 caller/CLI week 뷰 무파손), empty/days-window 테스트 유지(595).
