@@ -26,8 +26,8 @@ describe("isRetryableHttpStatus (goal 106)", () => {
     expect(isRetryableHttpStatus(599)).toBe(true);
   });
 
-  it("classifies the rest of 4xx as fail-fast (caller's problem — bad key, bad model, malformed payload)", () => {
-    for (const status of [400, 401, 403, 404, 405, 409, 415, 418, 422, 428]) {
+  it("classifies the rest of 4xx as fail-fast (caller's problem — bad key, bad model, malformed payload), incl. 499 just below the 5xx range", () => {
+    for (const status of [400, 401, 403, 404, 405, 409, 415, 418, 422, 428, 499]) {
       expect(isRetryableHttpStatus(status)).toBe(false);
     }
   });

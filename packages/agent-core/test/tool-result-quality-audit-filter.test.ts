@@ -39,4 +39,13 @@ describe("createToolResultQualityAuditFilter — apology rewrite is gated on a v
     const out = await filter.apply(res(apology), ctx({ toolsUsed: [], verifiedSources: [source] }));
     expect(out.output).toContain("죄송합니다");
   });
+
+  it("does NOT rewrite when the apology IS the whole answer (nothing follows it) — must not emit an empty '조회한 결과를…' header", async () => {
+    // Single paragraph, no `\n\n` body after the apology → `rest` is empty, so
+    // the filter must return the response untouched rather than prefix a
+    // result-summary lead onto nothing.
+    const apologyOnly = "죄송합니다. Jira에서 사용자님의 계정을 확인할 수 없습니다.";
+    const out = await filter.apply(res(apologyOnly), ctx({}));
+    expect(out.output).toBe(apologyOnly);
+  });
 });

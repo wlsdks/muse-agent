@@ -65,7 +65,31 @@ ratchet: testFiles 929→930 (새 파일 1) · netCoverage +2 guard clause (veri
 ## fire 7 · 2026-06-13 · skill v1.14.0 · dedc0c4d
 meta: kind=prune · pkg=@muse/model (+baseline byte-hygiene fix) · verdict=PASS · firesSinceDrill=7
 ratchet: testFiles 932→931 (−1 type-only 삭제, judge 승인) · netCoverage 0 (tsc+test/model이 커버) · fabrication 0 · pnpm check FULL GREEN
-- **무엇:** (1) PRUNE `model/src/index.test.ts` 삭제 — `ModelResponse.citations`/`ModelEvent` union/`WebSearchCitation`를 구성하고 **방금 쓴 값을 다시 읽어 assert하는 type-conformance 동어반복** 3케이스. (2) ①-baseline 회귀 수정: 전체 레포 `pnpm check`를 막던 byte-hygiene 위반 2건(**differentiation 루프 파일** `scripts/eval-policy-symmetry.mjs:36` raw U+200B + `docs/goals/loops/differentiation.md:262` backtick 안 raw U+200B)을 `\\u200B` escape로(값 보존).
+- **무엇:** (1) PRUNE `model/src/index.test.ts` 삭제 — `ModelResponse.citations`/`ModelEvent` union/`WebSearchCitation`를 구성하고 **방금 쓴 값을 다시 읽어 assert하는 type-conformance 동어반복** 3케이스. (2) ①-baseline 회귀 수정: 전체 레포 `pnpm check`를 막던 byte-hygiene 위반 2건(**differentiation 루프 파일** `scripts/eval-policy-symmetry.mjs:36` raw U+200B + `docs/goals/loops/differentiation.md:262` backtick 안 raw U+200B)을 `\u200b` escape로(값 보존).
 - **왜:** type-tautology는 컴파일러가 이미 보장(`tsc`) + runtime citation 동작은 `test/model.test.ts`(count·items·empty-no-fabrication)·`provider-wire.test.ts`가 이중 커버 → 삭제해도 손실 0. byte 위반은 모든 루프 게이트를 red로 막는 baseline 회귀(① "그게 이번 이터레이션").
-- **어떻게-증명:** PRUNE — `provider-shared.ts:204` citations emit를 `items: []`로 변형 시 `test/model.test.ts`가 RED(살아남는 행동 커버 입증), 복원 green. ④b judge가 tsc-적합성이 provider 소스들에·runtime이 test/model+provider-wire에 있음 재확인 후 **VERDICT: PASS**. byte-fix — `\\u200B`는 런타임 U+200B 그대로(len 1, eval 입력값 불변), byte-hygiene 테스트 0 offender.
+- **어떻게-증명:** PRUNE — `provider-shared.ts:204` citations emit를 `items: []`로 변형 시 `test/model.test.ts`가 RED(살아남는 행동 커버 입증), 복원 green. ④b judge가 tsc-적합성이 provider 소스들에·runtime이 test/model+provider-wire에 있음 재확인 후 **VERDICT: PASS**. byte-fix — `\u200b`는 런타임 U+200B 그대로(len 1, eval 입력값 불변), byte-hygiene 테스트 0 offender.
 - **리스크:** 소스(런타임) 무변경. byte-fix가 다른 루프(differentiation) 파일을 건드림 — 1-char escape라 내용 충돌 위험 낮음(그쪽 다음 머지가 흡수). LESSON: 동시 루프가 raw forbidden 바이트를 main에 흘리면 전체 게이트가 red → 어느 루프든 먼저 만난 fire가 escape로 unblock하는 게 맞음(byte-hygiene는 공유 floor).
+
+## fire 8 · 2026-06-13 · skill v1.14.0 · 1efef75e
+meta: kind=add · pkg=@muse/agent-core (+self byte-hygiene fix) · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles 938→938 (케이스 +1, 파일수 불변) · netCoverage +1 branch (rest.length===0) · fabrication 0 · pnpm check FULL GREEN
+- **무엇:** (1) ADD `createToolResultQualityAuditFilter`의 마지막 미커버 분기 `rest.length===0`(fire 6가 backlog에 남긴 known-gap) — 사과가 출력 전체(뒤에 본문 없음)일 때 필터가 빈 '조회한 결과를…' 헤더로 둔갑시키지 않고 **원문 보존**. (2) self-fix: fire-7 저널/backlog에서 byte-fix를 *설명*하며 backtick 안에 raw U+200B를 또 붙여넣은 내 위반 3곳(test-hygiene.md:68/70, backlog.md:123)을 escape 텍스트로 교정.
+- **왜:** 이 필터는 grounding 인접 정직성 게이트 — 사과-only 응답을 내용 없는 가짜 '결과 정리' 헤더로 바꾸면 사용자를 오도. fire 6의 2개 게이트 + 이번 1개 분기로 필터 분기 커버 완결.
+- **어떻게-증명(MUTATION-FIRST):** `if (rest.length === 0) return response`를 `if (false)`로 변형 시 새 케이스만 RED(출력이 '조회한 결과를 정리해드릴게요.\\n\\n' 빈 헤더로 둔갑), 복원 4/4 GREEN. ④b judge가 케이스가 `!leadingApology`가 아닌 정확히 `rest===0` 분기를 침(extractApologyLead가 전체 문단 반환→rest="") + 형제/통합 테스트 미커버 재확인 후 **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경. ★LESSON(반복): byte-hygiene 위반을 *문서화*할 때 raw 바이트를 또 붙여넣지 말 것 — 저널/backlog에도 escape 텍스트(`\\u200b`)만. fire 7이 differentiation 실수를 고치며 같은 실수를 저질러 fire 8이 self-fix.
+
+## fire 9 · 2026-06-13 · skill v1.14.0 · 9e1b6732 · JUDGE-DRILL + add
+meta: kind=add · pkg=@muse/mcp · verdict=PASS · firesSinceDrill=0 (드릴 후 리셋)
+ratchet: testFiles 941→942 (새 파일 1) · netCoverage +2 branch (tomorrow·in-N-days) · fabrication 0 · pnpm check RED(무관 회귀, 아래)
+- **무엇:** (A) **JUDGE-DRILL**(연속 allPASS≥8 트리거) — 고의 inert 테스트(`formatCoarseAge`가 무엇을 반환하든 통과하는 `typeof==="string"`) 주입 → 변형(formatCoarseAge→"WRONG") 하에서도 통과(mutation-immune) 확인 → ④b judge가 **VERDICT: FAIL**(inert, 행동 미핀)로 정확히 잡음 → `git restore` 롤백. judge 신뢰성 입증. (B) 진짜 슬라이스: `formatDueLocal`(mcp)의 day-granularity 분기(tomorrow·in-N-days) 분기-정밀 커버 추가(`local-due-format.test.ts`). 기존엔 느슨한 OR-regex뿐.
+- **왜:** judge가 rubber-stamp가 아니라 진짜 가짜를 잡는지 주기적 검증(maker≠judge 보상통제). + day-hint는 채팅 확인 메시지에 노출되는 시간 표기.
+- **어떻게-증명(MUTATION-FIRST):** 드릴 — inert 테스트가 mutation-immune임을 결정적으로 보임. 슬라이스 — `days===1`→`days===999` 시 tomorrow RED, `in ${days} days`→`days+1` 시 in-3-days RED(judge 독립 재현), 복원 2/2 GREEN. TZ-robust(judge가 12개 zone+DST 검증). ④b judge **VERDICT: PASS**(단 내 3번째 케이스 unparseable-echo는 `formatReminderDueLocal` 별칭으로 이미 정밀 커버 → judge 지적 후 **중복 케이스 제거**, 위생 루프가 중복 안 싣도록).
+- **리스크:** 내 슬라이스 mcp green + judge PASS. 단 full `pnpm check`는 **무관·진짜 회귀로 red** — `apps/cli/src/actuator-tools.test.ts`의 add_contact arg-grounding 2케이스 실패(사용자가 *말한* 전화번호가 드롭됨). 격리+클린리빌드 후에도 fail = stale-dist 아님. ★원인 커밋 `5ec47842 fix(agent-core): groundToolArguments... (cognition loop fire 21)` — anti-fabrication 게이트가 grounded 값을 과드롭하는 **핵심-edge 회귀**. cognition 루프 도메인이라 내가 그들 의도적 변경을 안 고침(blocker로 backlog 기록, 소유 루프가 수정). 내 mcp 추가는 독립적이라 커밋·머지(main 이미 red).
+
+## fire 10 · 2026-06-13 · skill v1.14.0 · d09f864c
+meta: kind=prune · pkg=@muse/model · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 943→942 (−1 중복 삭제, judge 승인) · netCoverage 0 (499 경계 src/로 이식) · fabrication 0 · pnpm check FULL GREEN
+- **무엇:** model 이중-실행 중복 제거 — `isRetryableHttpStatus`를 두 파일이 테스트(`src/provider-base.test.ts` 8케이스 + `test/is-retryable-http-status.test.ts` 4케이스, 둘 다 돎). 더 완전한 `src/`(>=600·non-finite·ModelProviderError 추가)를 남기고 lesser `test/` 삭제. 단 `test/`만 가진 유니크 케이스 `499→false`(5xx 하한 경계)를 먼저 `src/`의 4xx 리스트에 **이식**.
+- **왜:** 같은 함수를 두 파일이 매 run 중복 테스트(model double-run). fire-4 교훈: lesser 파일도 유니크 경계를 가질 수 있어 case-by-case 대조 필수.
+- **어떻게-증명(MUTATION-FIRST PRUNE):** `status >= 500`→`>= 499` 변형 시 이식한 499 케이스가 RED(삭제 파일이 지키던 하한 경계를 src/가 그대로 잡음), 복원 8/8 green. ④b judge가 삭제 파일의 *모든* assertion이 src/에 subsumed + 양쪽 경계(499 하한·600 상한) mutation-caught 재확인 후 **VERDICT: PASS**.
+- **리스크:** 소스 무변경. ★LESSON: `pnpm check` 전 whole-tree `rm -rf dist tsconfig.tsbuildinfo`는 빌드-순서 race 유발(의존 패키지가 dep dist를 test 중 못 찾아 "Failed to resolve @muse/model" 4파일 false-fail) → `pnpm -r build` 먼저 OR `rm` 없이 `pnpm check`만. 재실행으로 GREEN 확정([[project_stale_dist_from_loop]]).
