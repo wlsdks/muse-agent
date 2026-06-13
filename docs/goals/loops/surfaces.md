@@ -40,7 +40,7 @@ ratchet: testFiles 926 (+1) · web tests 17/17 (+2) · fabrication 0 · self-eva
 - **리뷰지점**: `locale`은 `LOCALES`(en→en-US, ko→ko-KR) BCP-47 문자열. 헬퍼 추출은 Calendar.tsx의 기존 선례와 일치하며 React 하네스 없이 단위테스트 가능.
 - **리스크**: 없음(3줄 변경: 헬퍼+locale 추출+렌더 교체, tsc+vite build clean, 독립 Opus judge가 sibling 패턴·ICU-robust 검증 후 PASS, web 17/17).
 
-## fire 5 · 2026-06-13 · skill v1.14.0 · <commit>
+## fire 5 · 2026-06-13 · skill v1.14.0 · 1502e897
 meta: surface=desktop · value-class=micro-fix · pkg=apps/desktop(MuseDesktopCore) · kind=raw-json-leak · verdict=PASS · firesSinceDrill=5
 ratchet: desktop swift tests 48/48 (+2) · fabrication 0 · self-eval exit 0 · consecutive allPASS=5
 
