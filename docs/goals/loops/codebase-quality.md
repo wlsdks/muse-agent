@@ -554,3 +554,20 @@ ratchet: testFiles 947 · fabrication 0 · groundedSurfaces 27 · commands-docto
   commands-doctor test cases green; DevFixableWeakness retained in commands-doctor; LocalDoctorReport interface
   (between them) untouched.
 - **Risk:** low — pure relocation of two tested pure classifiers; no IO, no floor path.
+
+## fire 30 · 2026-06-13 · loop-creator v1.14.0 · 2e9e61a8
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 950 · fabrication 0 · groundedSurfaces 27 · ask god-file: 3rd inline block extracted
+- **What:** Phase 3 continuation (3rd block after task/reminder) — extracted the inline `memoryBlock` builder
+  (`<<memory N>>` grounding block) from commands-ask.ts into a pure `buildMemoryContextBlock(facts)` in
+  @muse/recall/**select.ts** (its natural home — beside renderMemoryFact + the MemoryFact type + selectMemoryFacts,
+  all recall-owned). ZERO new imports (renderMemoryFact + MemoryFact are file-local). The inline expr became a
+  one-line call. Body byte-identical; 3-case OUTCOME test added. renderMemoryFact stays imported in commands-ask
+  (4 other uses at 2151/2258/2391/2589) → no orphan.
+- **Why:** continues moving the ask pipeline's inline `<<...>>` block-builders to recall (presentation layer).
+  Last fire diversified to cli; compose@recall back to ~4/8 (within ceiling). This block was the cleanest yet —
+  its only dep (renderMemoryFact) already lives in recall's select.ts, so it slotted in with no import churn.
+- **Review point:** 4b judge — memoryBlock body byte-identical (<<memory>>/[memory:] wrapper, key-as-citation,
+  renderMemoryFact call); placed in select.ts (renderMemoryFact's module) not present.ts; new test real OUTCOME;
+  renderMemoryFact import retained in commands-ask (4 other uses); recall 175 + cli 2599 green.
+- **Risk:** low — pure presentation relocation, same-module dep; grounding gate consumes the block identically.
