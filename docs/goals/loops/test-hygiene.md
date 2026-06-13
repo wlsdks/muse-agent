@@ -37,3 +37,11 @@ ratchet: testFiles 920→920 (케이스 +1, 파일수 불변) · netCoverage +1 
 - **왜:** grounding presentation 함수(소스 인용 나이 표기 — 핵심 edge). "2.2y ago"가 아니라 "2y ago"로 읽히는 의도된 정밀도 분기가 검증 없이 회귀 가능했음. 패키지 다양성도 충족(fire1 autoconfigure·fire2 mcp와 다른 recall).
 - **어떻게-증명(MUTATION-FIRST):** `years.toFixed(years < 2 ? 1 : 0)`→`toFixed(1)` 변형 시 800d/1100d 테스트 RED(`'2.2y ago'`≠`'2y ago'`), 복원+클린리빌드 후 GREEN(파일 22/22). ※복원 직후 stale-dist로 한 번 빨갰다 — `rm -rf dist && tsc -b` 클린리빌드 후 green 확정([[project_stale_dist_from_loop]]). 별개 독립 Opus ④b judge가 양쪽 assertion이 mutant 잡음 + ≥730d 케이스 부재(진짜 미커버) 재확인 후 **VERDICT: PASS**.
 - **리스크:** 없음 수준 — 테스트-only, 소스 무변경, full `pnpm check` 이번엔 **완전 GREEN**(머신 부하 여유, fire2의 부하-timeout 부류 미발생). FIX 슬라이스 중 stale-dist가 mutation 증명을 한 번 오염시킬 수 있다는 교훈(클린리빌드로 확정 필요).
+
+## fire 4 · 2026-06-13 · skill v1.14.0 · cb49e2f9
+meta: kind=prune · pkg=@muse/a2a · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 924→919 (−5 의도된 중복 삭제, judge 승인) · netCoverage 0 (2 케이스 twin에 이식) · fabrication 0 · pnpm check FULL GREEN
+- **무엇:** 검토(audit)의 ★최상위 항목 — `packages/a2a` **이중 실행** 제거. vitest.config 부재로 `src/*.test.ts`가 `test/*.test.ts` 쌍둥이와 둘 다 돌던 것 중, test/가 **진짜 superset**인 5개(`peer-config·receive-quarantine·signing·council-wire·handler`)의 src/ 사본 삭제. `agent-card`(봉투 DataPart round-trip은 src에만)·`transport`(이름·내용 다름)는 상보적이라 **유지**.
+- **왜:** 같은 테스트가 매 run마다 2번 = 순수 낭비 + 리뷰 노이즈. 진안이 핵심으로 든 "의미없는 중복 제거".
+- **어떻게-증명(MUTATION-FIRST PRUNE):** 삭제 後 남은 `test/` twin이 행동을 여전히 잡음을 mutation으로 증명 — `verifySignature→true` 시 test/signing RED. ★④b judge가 **2회 FAIL로 진짜 손실을 잡음**: council-wire의 same-length-non-hex catch 분기 + peer-config의 빈-문자열 secretEnv 가드가 twin에 없었음(둘 다 보안 분기, mutation-detectable). → 두 유니크 케이스를 twin에 **이식**(migrate) + 각각 타깃 mutation으로 RED 증명(catch→true, `length>0`→`>=0`). 3차 judge가 전수 재확인 후 **VERDICT: PASS**.
+- **리스크:** 소스(비-test) 무변경, full `pnpm check` GREEN. stale-dist가 또 한 번 full-check를 오염(mv 복원→mtime 역전→`tsc -b` 리빌드 스킵) → `rm -rf dist+tsbuildinfo` 클린리빌드로 확정. LESSON: a2a/tools/model의 src+test 이중구조는 vitest.config로 근본 해결 가능하나(별 슬라이스), 우선 명백한 중복부터 안전 제거. PRUNE은 "더 많은 케이스=superset"이 **거짓일 수 있음**(유니크 보안 케이스 존재) — 케이스 단위 대조 필수, judge가 이를 강제.
