@@ -149,6 +149,18 @@ const DISABLED_HTML = `<!doctype html><html><head><title>Disabled</title></head>
 <button disabled>Submit</button><button>Active button</button>
 </body></html>`;
 
+// A real file-upload form: a labelled <input type=file> plus an unrelated text
+// button. uploadFile must call setInputFiles on the file input (files.length → 1)
+// and a NON-file element must be REFUSED (the controller throws, nothing attached).
+const UPLOAD_HTML = `<!doctype html><html><head><title>Apply</title></head><body>
+<h1>Job application</h1>
+<label for="cv">Attach resume</label>
+<input id="cv" type="file" aria-label="Attach resume"
+  onchange="document.getElementById('att').textContent='attached:'+this.files.length+':'+(this.files[0]?this.files[0].name:'')">
+<button type="button">Submit application</button>
+<div id="att">attached:0:</div>
+</body></html>`;
+
 const NEWTAB_TARGET_HTML = `<!doctype html><html><head><title>Report</title></head><body><h1>Report detail page</h1></body></html>`;
 const NEWTAB_HTML = `<!doctype html><html><head><title>Newtab</title></head><body>
 <a href="newtab-target.html" target="_blank">Open report</a>
@@ -257,6 +269,8 @@ try {
   await writeFile(join(dir, "ajax.html"), AJAX_HTML);
   await writeFile(join(dir, "wait.html"), WAIT_HTML);
   await writeFile(join(dir, "disabled.html"), DISABLED_HTML);
+  await writeFile(join(dir, "upload.html"), UPLOAD_HTML);
+  await writeFile(join(dir, "resume.txt"), "This is the resume content being attached.");
   await writeFile(join(dir, "newtab.html"), NEWTAB_HTML);
   await writeFile(join(dir, "newtab-target.html"), NEWTAB_TARGET_HTML);
   await writeFile(join(dir, "autocomplete.html"), AUTOCOMPLETE_HTML);
@@ -478,6 +492,26 @@ try {
   const elapsedMs = Date.now() - startedAt;
   assert(rejected, "a CDP call that never returns rejects (does not hang the agent forever)");
   assert(elapsedMs < 60_000, `it fails fast within the bound, not puppeteer's 180s default (took ${String(elapsedMs)}ms)`);
+
+  console.log("24) browser_upload — setInputFiles attaches a real file to a real <input type=file>; a non-file element is refused");
+  snap = await controller.open(pathToFileURL(join(dir, "upload.html")).href);
+  const fileInput = matchElement(snap.elements, "Attach resume", "click");
+  assert(fileInput !== undefined, "the labelled file input is listed and grounded by its label");
+  assert(snap.text.includes("attached:0:"), "no file attached before the upload (baseline)");
+  const resumePath = join(dir, "resume.txt");
+  snap = await controller.uploadFile(fileInput.ref, resumePath);
+  // The page's onchange records the REAL file count — a fabricated "uploaded"
+  // can't pass; setInputFiles must really have populated input.files.
+  assert(snap.text.includes("attached:1:resume.txt"), "the file input now holds exactly 1 file named resume.txt (setInputFiles really ran)");
+  // A NON-file element (the Submit button) must be refused — fail-close, nothing attached.
+  const submitBtn = matchElement(snap.elements, "Submit application", "click");
+  let refused = false;
+  try {
+    await controller.uploadFile(submitBtn.ref, resumePath);
+  } catch {
+    refused = true;
+  }
+  assert(refused, "uploadFile on a non-file element THROWS (fail-close — a file is never attached to the wrong control)");
 
   console.log("\nsmoke:browser PASS");
 } finally {

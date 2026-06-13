@@ -755,6 +755,7 @@ async function buildBrowserScenario() {
       browser.createBrowserClickTool({ controller: stubController, approvalGate: allowGate }),
       browser.createBrowserTypeTool({ controller: stubController, approvalGate: allowGate }),
       browser.createBrowserFillFormTool({ controller: stubController, approvalGate: allowGate }),
+      browser.createBrowserUploadTool({ controller: stubController, approvalGate: allowGate, validatePath: async (p) => ({ allowed: true, resolvedPath: p }) }),
       mcp.createWebActionTool({ fetchImpl: fetch, approvalGate: {}, actionLogFile: "/tmp/eval-browser.json", userId: "eval" }),
       ac.createNotesKnowledgeSearchTool({})
     ];
@@ -774,6 +775,7 @@ async function buildBrowserScenario() {
       { prompt: "Click the Sign in button.", expectTool: "browser_click", requireArgs: ["target"], argIncludes: /sign/i, note: "EN natural click → browser_click, target grounded from the prompt (code resolves the element)" },
       { prompt: "검색창에 '무선 마우스' 입력하고 검색해줘.", expectTool: "browser_type", requireArgs: ["target", "text"], note: "KO natural type+submit → browser_type (SINGLE field), NOT browser_fill_form — guards the confusable pair" },
       { prompt: "Log in on this page with email alex@example.com and password hunter2.", expectTool: "browser_fill_form", requireArgs: ["fields"], note: "EN multi-field login (2 fields at once) → browser_fill_form, NOT browser_type (one field) — STABLE 3/3" },
+      { prompt: "Attach my resume at ~/Downloads/resume.pdf to the Upload résumé field on this application.", expectTool: "browser_upload", requireArgs: ["target", "path"], note: "EN attach a local file to a page upload control → browser_upload (NOT browser_type text, NOT file_read which only reads locally) — guards the new confusable" },
       { prompt: "Post a comment on the forum thread saying it works: https://forum.example.com/t/42", expectTool: "web_action", requireArgs: ["summary", "url"], note: "EN one-shot web submit → web_action, NOT browser_open" },
       { prompt: "What did I note about the Q3 roadmap?", expectTool: "knowledge_search", requireArgs: ["query"], note: "EN recall → knowledge_search, NOT a browser tool" }
     ];

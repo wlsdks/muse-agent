@@ -20,6 +20,8 @@ import {
   createEmailSendTool,
   createHomeActionTool,
   createWebActionTool,
+  createAllowlistPathValidator,
+  defaultFileReadRoots,
   queryContacts,
   resolveContact,
   type EmailApprovalGate,
@@ -52,6 +54,7 @@ import {
   createBrowserReadTool,
   createBrowserScrollTool,
   createBrowserTypeTool,
+  createBrowserUploadTool,
   createBrowserWaitTool,
   type BrowserApprovalGate,
   type BrowserController
@@ -239,6 +242,9 @@ export function buildBrowserApprovalGate(deps: {
       const lines = (draft.fields ?? []).map((field) => `  • ${field.target}: ${field.value}`).join("\n");
       what = `Fill these fields:\n${lines}`;
       question = "Fill these fields in the browser?";
+    } else if (draft.action === "upload") {
+      what = `Attach file ${draft.path ?? ""}\n  → ${draft.target}`;
+      question = "Attach this file in the browser?";
     } else if (draft.action === "type") {
       what = `Type into ${draft.target}: ${draft.text ?? ""}`;
       question = "Type this in the browser?";
@@ -284,6 +290,10 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
     io: deps.io,
     ...(deps.isInteractive ? { isInteractive: deps.isInteractive } : {})
   });
+  // browser_upload reads a LOCAL file to attach it — so its source path goes
+  // through the SAME allowlist + symlink guard file_read uses (Downloads /
+  // Desktop / Documents). The validator is injected, never an allow-all read.
+  const validatePath = createAllowlistPathValidator({ roots: defaultFileReadRoots() });
   return [
     createBrowserOpenTool({ controller }),
     createBrowserReadTool({ controller }),
@@ -295,6 +305,7 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
     createBrowserClickTool({ approvalGate: gate, controller }),
     createBrowserTypeTool({ approvalGate: gate, controller }),
     createBrowserFillFormTool({ approvalGate: gate, controller }),
+    createBrowserUploadTool({ approvalGate: gate, controller, validatePath }),
     // browser_look (vision over the page) only when a vision callback is wired.
     ...(deps.describeImage ? [createBrowserLookTool({ controller, describeImage: deps.describeImage })] : [])
   ];
