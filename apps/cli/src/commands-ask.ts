@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, groundedOnUntrustedOnly, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, groundedOnUntrustedOnly, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -66,6 +66,7 @@ import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles } from "./commands-r
 import { linkExpandRefs, noteLinkView, resolveNoteId, type NoteLinkGraph } from "./notes-links.js";
 import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
+import { rankPlaybookEntriesByRelevance } from "./playbook-embed-rank.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
 import { readClipboardText } from "./clipboard-reader.js";
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
@@ -1920,18 +1921,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // adds a local nomic pass per strategy); fail-soft back to lexical.
         if (process.env.MUSE_PLAYBOOK_EMBED_RANK === "true") {
           const embedModel = process.env.MUSE_PLAYBOOK_EMBED_MODEL?.trim() || DEFAULT_EMBED_MODEL;
-          const mapped = entries.map((entry) => ({
-            text: entry.text,
-            ...(entry.tag ? { tag: entry.tag } : {}),
-            ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
-            ...(entry.probation ? { probation: true } : {}),
-            ...(typeof entry.reinforcements === "number" ? { reinforcements: entry.reinforcements } : {}),
-            ...(typeof entry.decays === "number" ? { decays: entry.decays } : {}),
-            ...(entry.lastReinforcedAt ? { lastReinforcedAt: entry.lastReinforcedAt } : {}),
-            ...(entry.createdAt ? { createdAt: entry.createdAt } : {})
-          }));
-          const ranked = await rankPlaybookStrategiesByRelevance(
-            mapped, query, (text) => embed(text, embedModel), topK === undefined ? undefined : { topK }
+          const ranked = await rankPlaybookEntriesByRelevance(
+            entries, query, (text) => embed(text, embedModel), topK, Date.now()
           );
           playbookSection = renderPlaybookSection(ranked);
           appliedStrategy = playbookSection ? ranked[0]?.text : undefined;

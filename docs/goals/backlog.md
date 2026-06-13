@@ -1237,9 +1237,9 @@ excluded when scoring).
 - ✓ Playbook temporal reward discounting (Discounted-UCB arXiv:0805.3415) — agent-core-cognition fire 9
 - ◦ **Playbook recency-discount remainder** — (a) carry recency anchors into the `@muse/recall` non-embed
   `selectPlaybookSection` path too (this slice scoped to the agent-runtime applyPlaybook path); (b) tune
-  PLAYBOOK_RECENCY_HALF_LIFE_DAYS (30) via A/B vs the daemon's 30-day decay step; (c) the cli embed-rank
-  mapper now projects the timestamps but `MUSE_PLAYBOOK_EMBED_RANK` doesn't pass `nowMs` (5th positional) →
-  still inert there; wire it to activate the discount on that path. (fire 9 remainder, arXiv:0805.3415)
+  PLAYBOOK_RECENCY_HALF_LIFE_DAYS (30) via A/B vs the daemon's 30-day decay step. (fire 9 remainder, arXiv:0805.3415)
+- ✓ Playbook recency-discount remainder (c) wire nowMs into the cli embed-rank path (+extract testable module) — agent-core-cognition fire 10
+- ✓ JUDGE-DRILL (firesSinceDrill≥10): injected inert reinforcementVelocity → independent Opus judge correctly FAILed it → rolled back — agent-core-cognition fire 10
 - ✓→Done **Self-consistency consensus for the grounding reverify judge** — the live default-on
   `verifyGroundingWithReverify` decided weak→grounded upgrades on a SINGLE high-variance judge sample
   (arXiv:2510.27106 Rating Roulette: LLM judges "almost arbitrary in the worst case"). [DONE 2026-06-13,
