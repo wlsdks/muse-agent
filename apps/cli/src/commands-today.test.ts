@@ -201,6 +201,12 @@ describe("selectEpisodeToRevisit — 'remember when' past-session resurfacing", 
     const line = formatEpisodeRevisitLine({ summary: "decided to\n  cut the Q3 budget", intervalDays: 7, ageDays: 7.4 });
     expect(line).toContain("💭 7 days ago: decided to cut the Q3 budget");
   });
+
+  it("uses singular 'day' at the 1-day resurface bucket (the most common one)", () => {
+    const line = formatEpisodeRevisitLine({ summary: "cut the Q3 budget", intervalDays: 1, ageDays: 1.4 });
+    expect(line).toContain("💭 1 day ago: cut the Q3 budget");
+    expect(line).not.toContain("1 days ago");
+  });
 });
 
 describe("formatRevisitSection — proactive spaced-revisit block in today", () => {

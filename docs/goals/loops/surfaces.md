@@ -156,3 +156,12 @@ ratchet: cli tests 2618/2618 (tasks +2) · fabrication 0 · self-eval exit 0 · 
 - **왜**: consecutive allPASS=8로 검증자 신뢰성 재점검 필요(maker=judge 보상통제). 동시에 help-text 거짓은 실제 사용자-노출 모순.
 - **리뷰지점**: 락은 `.description()`(=`--help` 출력) 문자열 — 내부 상수 아닌 사용자 표면. 새 텍스트는 `compareTasksByDueDate`(soonest-first·undated-last)와 정확히 일치(새 거짓 아님). 순서 테스트만으로는 help-fix를 못 잠금(드릴이 입증).
 - **리스크**: 없음(description 1줄 + 2 테스트, 다른 명령 무변, 독립 Opus judge 2회(inert FAIL→real PASS, 둘 다 revert로 실증) 검증, cli 2618/2618).
+
+## fire 18 · 2026-06-13 · skill v1.14.0 · <commit>
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=pluralization · verdict=PASS · firesSinceDrill=1
+ratchet: cli tests 2619/2619 (today +1) · fabrication 0 · self-eval exit 0 · ⚠️cli vein도 얇아짐(scout) → 향후 행동 갭/누락 플래그·cross-command 일관성 권장
+
+- **무엇**: `muse today` 과거-세션 resurface 라인 `formatEpisodeRevisitLine`이 첫 revisit 버킷(1일, 가장 흔함)에서 단수 가드 없이 "💭 1 days ago"를 출력. `day${days === 1 ? "" : "s"}` 가드 추가(같은 파일 `formatTimeUntil`·calendar-focus의 기존 idiom과 일치).
+- **왜**: 세션 다음날 아침 brief에 라이브로 노출되는 비문법 카피. sibling 포매터는 전부 `=== 1` 가드 쓰는데 이 prose-count 라인만 누락(in-file 불일치).
+- **리뷰지점**: floor(1.4)=1→"1 day", floor(7.4)=7→"7 days", floor(0)=0→"0 days"(정상 영어). empty-episode·truncation 무변.
+- **리스크**: 없음(포매터 1줄, 독립 Opus judge가 전 버킷·revert로 RED→GREEN·collateral 검증 후 PASS, today 62/62 · cli 2619/2619).

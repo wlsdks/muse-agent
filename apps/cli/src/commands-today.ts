@@ -539,7 +539,8 @@ export function formatEpisodeRevisitLine(episode: DueEpisode | undefined): strin
     return "";
   }
   const oneLine = episode.summary.replace(/\s+/gu, " ").trim().slice(0, 100);
-  return `\n💭 ${Math.floor(episode.ageDays).toString()} days ago: ${oneLine}\n`;
+  const days = Math.floor(episode.ageDays);
+  return `\n💭 ${days.toString()} day${days === 1 ? "" : "s"} ago: ${oneLine}\n`;
 }
 
 /** Render the proactive "Open a while — still relevant?" nudge (empty when none). */
