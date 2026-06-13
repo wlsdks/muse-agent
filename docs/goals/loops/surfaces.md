@@ -130,7 +130,7 @@ ratchet: cli tests 2601/2601 (followup +2) · fabrication 0 · self-eval exit 0 
 - **리뷰지점**: 검증 enum이 `readFollowupStatusFilter` 실제 수용집합({scheduled,fired,cancelled,all})과 정확히 일치(false-reject 없음). 기본값(생략→scheduled) 정상. fire 12 checkins의 stderr+exitCode 패턴 동일.
 - **리스크**: 없음(list 액션 검증 16줄, snooze/cancel/show·출력 경로 무변, 독립 Opus judge가 enum 일치·RED-before·case 복구·collateral 검증 후 PASS, followup 3/3 · cli 2601/2601).
 
-## fire 15 · 2026-06-13 · skill v1.14.0 · <commit>
+## fire 15 · 2026-06-13 · skill v1.14.0 · 28c65ac3
 meta: surface=desktop · value-class=micro-fix · pkg=apps/desktop(MuseDesktopCore) · kind=cross-surface-identity-parity · verdict=PASS · firesSinceDrill=7
 ratchet: desktop swift tests 51/51 (+1) · fabrication 0 · self-eval exit 0 · ⚠️desktop 순수모듈 vein 얇아짐(scout) → 다음 desktop 차례는 web/cli로 로테이션 권장
 
