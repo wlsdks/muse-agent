@@ -267,6 +267,35 @@ async function buildTasksTagScenario() {
   }
 }
 
+// week_agenda (ONE merged "what's my week" view: events+tasks+birthdays) vs its
+// component list tools (calendar.list = events only, tasks.list = due tasks
+// only). week_agenda overlaps both, so this guards the disambiguation: a
+// holistic "what's my week look like?" → week_agenda; an events-only or
+// tasks-only intent stays on the specific list tool.
+async function buildWeekAgendaScenario() {
+  try {
+    const ac = await import("../packages/autoconfigure/dist/index.js");
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const stubCalendar = { createEvent: async () => ({}), deleteEvent: async () => undefined, listEvents: async () => [], updateEvent: async () => ({}) };
+    const lists = [
+      ...mcp.createLoopbackMcpMuseTools(mcp.createCalendarMcpServer({ registry: stubCalendar })),
+      ...mcp.createLoopbackMcpMuseTools(mcp.createTasksMcpServer({ file: "/tmp/eval-week-tasks.json" }))
+    ].filter((t) => t.definition.name.endsWith(".list"));
+    const week = ac.createWeekAgendaTool({ weekInput: () => ({ birthdays: [], events: [], tasks: [] }) });
+    const tools = [week, ...lists].map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "What's my week look like?", expectTool: "week_agenda", note: "holistic merged week → week_agenda" },
+      { prompt: "이번 주 나 뭐 있어? 한눈에 보여줘", expectTool: "week_agenda", note: "KO holistic 'what's on my week at a glance' → week_agenda" },
+      { prompt: "Show just my calendar events for this week.", expectTool: "muse.calendar.list", note: "events-only → calendar.list (NOT week_agenda)" },
+      { prompt: "What tasks are due this week?", expectTool: "muse.tasks.list", note: "due tasks only → tasks.list (NOT week_agenda)" }
+    ];
+    return { label: "week-agenda (merged week vs calendar/tasks list)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "week-agenda", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Relationship-maintenance nudge (overdue_contacts — "who've I lost touch
 // with?") vs looking up ONE specific person (find_contact). The value is the
 // discrimination: a "who haven't I talked to in a while?" intent is a LIST of
@@ -734,6 +763,7 @@ async function main() {
     await buildPersonalCrudScenario(),
     await buildContactsScenario(),
     await buildTasksTagScenario(),
+    await buildWeekAgendaScenario(),
     await buildOverdueScenario(),
     await buildOnThisDayScenario(),
     await buildFeedsScenario(),

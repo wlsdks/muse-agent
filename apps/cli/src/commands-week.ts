@@ -6,9 +6,8 @@
  * `muse today` (which is the today-framed brief).
  */
 
-import { resolveContactsFile, resolveLocalCalendarFile, resolveTasksFile } from "@muse/autoconfigure";
+import { groupWeekAgenda, resolveContactsFile, resolveLocalCalendarFile, resolveTasksFile, type WeekDay } from "@muse/autoconfigure";
 import { OpenMeteoWeatherProvider, readTasks, type DailyForecast, type WeatherProvider } from "@muse/mcp";
-import { stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
 import { readLocalEvents, readUpcomingBirthdays } from "./commands-today.js";
@@ -16,27 +15,12 @@ import type { ProgramIO } from "./program.js";
 
 type Env = Record<string, string | undefined>;
 
-export interface WeekDay {
-  readonly label: string;
-  readonly lines: readonly string[];
-  /** This day's weather forecast summary, e.g. "Partly cloudy, 15–25°C, rain 30%" — present only when configured + available. */
-  readonly forecast?: string;
-}
-
-export interface WeekAgendaInput {
-  readonly events: readonly { readonly title: string; readonly startsAtIso: string }[];
-  readonly tasks: readonly { readonly title: string; readonly dueAt: string }[];
-  readonly birthdays: readonly { readonly name: string; readonly daysUntil: number }[];
-  /** Per-day forecast summaries keyed by local YYYY-MM-DD; attached to each day's header. */
-  readonly forecasts?: readonly { readonly dateIso: string; readonly summary: string }[];
-}
+// `groupWeekAgenda` + WeekDay/WeekAgendaInput moved to @muse/autoconfigure so the
+// `week_agenda` agent tool and this command share one implementation; re-exported
+// for callers/tests.
+export { groupWeekAgenda, type WeekAgendaInput, type WeekDay } from "@muse/autoconfigure";
 
 const DAY_MS = 86_400_000;
-const clean = (s: string): string => stripUntrustedTerminalChars(s).replace(/\s+/gu, " ").trim();
-const startOfLocalDay = (d: Date): number => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-const dayLabel = (d: Date): string => d.toLocaleDateString("en-US", { day: "numeric", month: "short", weekday: "short" });
-const localDateIso = (d: Date): string =>
-  `${d.getFullYear().toString()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
 
 /** A compact one-day forecast for the week header (no date prefix — the day's header already carries the date). Pure. */
 export function formatWeekForecast(day: DailyForecast): string {
@@ -77,53 +61,6 @@ export async function resolveWeekForecasts(
   }
 }
 
-/**
- * Bucket events / due tasks / birthdays into the next `days` LOCAL calendar
- * days from `now` and render each as a line (timed events first by time, then
- * untimed tasks/birthdays). Only days with something appear. Pure.
- */
-export function groupWeekAgenda(data: WeekAgendaInput, now: Date, days = 7): readonly WeekDay[] {
-  const today0 = startOfLocalDay(now);
-  const dayIndex = (ms: number): number => Math.floor((startOfLocalDay(new Date(ms)) - today0) / DAY_MS);
-  const buckets: { time: number; text: string }[][] = Array.from({ length: days }, () => []);
-  const push = (idx: number, text: string, time: number): void => {
-    if (idx >= 0 && idx < days) {
-      buckets[idx]!.push({ text, time });
-    }
-  };
-  for (const event of data.events) {
-    const ms = Date.parse(event.startsAtIso);
-    if (Number.isFinite(ms)) {
-      push(dayIndex(ms), `${new Date(ms).toTimeString().slice(0, 5)} ${clean(event.title)}`, ms);
-    }
-  }
-  for (const task of data.tasks) {
-    const ms = Date.parse(task.dueAt);
-    if (Number.isFinite(ms)) {
-      push(dayIndex(ms), `☑ ${clean(task.title)} (due)`, Number.POSITIVE_INFINITY);
-    }
-  }
-  for (const birthday of data.birthdays) {
-    push(birthday.daysUntil, `🎂 ${clean(birthday.name)}'s birthday`, Number.POSITIVE_INFINITY);
-  }
-  const forecastByDate = new Map((data.forecasts ?? []).map((f) => [f.dateIso, f.summary] as const));
-  const out: WeekDay[] = [];
-  for (let i = 0; i < days; i += 1) {
-    const items = buckets[i]!;
-    const date = new Date(today0 + i * DAY_MS);
-    const forecast = forecastByDate.get(localDateIso(date));
-    // A day appears if it has agenda items OR a forecast — so a free-but-known
-    // day still shows its weather (plan around it), while staying backward
-    // compatible: with no forecasts passed, empty days are skipped as before.
-    if (items.length === 0 && forecast === undefined) {
-      continue;
-    }
-    items.sort((a, b) => a.time - b.time);
-    const label = i === 0 ? `Today — ${dayLabel(date)}` : i === 1 ? `Tomorrow — ${dayLabel(date)}` : dayLabel(date);
-    out.push({ label, lines: items.map((item) => item.text), ...(forecast !== undefined ? { forecast } : {}) });
-  }
-  return out;
-}
 
 /** Human-readable week agenda. Pure. */
 export function formatWeekAgenda(week: readonly WeekDay[]): string {

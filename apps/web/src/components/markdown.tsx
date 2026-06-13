@@ -140,7 +140,10 @@ function renderInline(text: string): ReactNode[] {
     const link = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (link) {
       const href = link[2] ?? "";
-      const safe = /^https?:\/\//i.test(href) ? href : "#";
+      // Scheme allowlist: http(s)/mailto/tel are inert; anything else
+      // (javascript:, data:, vbscript:) collapses to "#" so untrusted
+      // model output can't smuggle an executable URL into an anchor.
+      const safe = /^(https?:\/\/|mailto:|tel:)/i.test(href) ? href : "#";
       return (
         <a key={idx} href={safe} target="_blank" rel="noreferrer">
           {link[1]}

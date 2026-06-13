@@ -60,6 +60,8 @@ import {
   readFollowups,
   readObjectives,
   readReminders,
+  readTasks,
+  resolveUpcomingBirthdays,
   upsertFollowup,
   withChromeDevToolsRisk,
   type LoopbackMcpServer,
@@ -149,6 +151,7 @@ import {
 } from "./env-parsers.js";
 import { createAuthService } from "./auth-wiring.js";
 import { createOverdueContactsTool, interactionsFromEvents } from "./relationship-tool.js";
+import { createWeekAgendaTool } from "./week-agenda-tool.js";
 import { createResponseFilters } from "./response-filters.js";
 import { createMessagingPollDispatchers } from "./messaging-poll-dispatchers.js";
 import { createSkillRuntime } from "./skills-runtime.js";
@@ -722,6 +725,20 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         return interactionsFromEvents(contacts, events);
       }
     })],
+    () => [createWeekAgendaTool({
+      weekInput: async () => {
+        const horizon = new Date();
+        const events = calendarRegistry
+          ? (await calendarRegistry.listEvents({ from: horizon, to: new Date(horizon.getTime() + 14 * 86_400_000) })).map((e) => ({ startsAtIso: e.startsAt.toISOString(), title: e.title }))
+          : [];
+        const tasks = (await readTasks(tasksFile).catch(() => []))
+          .filter((task) => task.status === "open" && typeof task.dueAt === "string")
+          .map((task) => ({ dueAt: task.dueAt!, title: task.title }));
+        const birthdays = resolveUpcomingBirthdays(await queryContacts(resolveContactsFile(env)), { withinDays: 14 })
+          .map((b) => ({ daysUntil: b.daysUntil, name: b.contact.name }));
+        return { birthdays, events, tasks };
+      }
+    })],
     () => [
       createContactsFindTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
       createUpcomingBirthdaysTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
@@ -1027,6 +1044,7 @@ export {
 } from "./knowledge-corpus.js";
 
 export { createOverdueContactsTool, interactionsFromEvents, type EventMentionLike, type OverdueContactsToolDeps } from "./relationship-tool.js";
+export { createWeekAgendaTool, groupWeekAgenda, type WeekAgendaInput, type WeekAgendaToolDeps, type WeekDay } from "./week-agenda-tool.js";
 export { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
 export { resolveDefaultUserId } from "./user-id.js";
 

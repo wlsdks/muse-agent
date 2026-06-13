@@ -16,7 +16,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { BROWSER_KEYS, BROWSER_MAX_ELEMENTS, type BrowserController, type BrowserKey, type PageSnapshot } from "./controller.js";
-import { filterElements, matchElement, type MatchIntent } from "./matcher.js";
+import { filterElements, matchElementResult, type MatchIntent } from "./matcher.js";
 
 export interface BrowserActionDraft {
   readonly action: "click" | "type";
@@ -113,12 +113,23 @@ async function resolveTarget(controller: BrowserController, args: JsonObject, in
   const refArg = typeof args["ref"] === "number" ? args["ref"] : Number.NaN;
   if (target.length > 0) {
     const snapshot = await controller.snapshot();
-    const element = matchElement(snapshot.elements, target, intent);
-    if (!element) {
+    const result = matchElementResult(snapshot.elements, target, intent);
+    if (result.kind === "none") {
       const available = snapshot.elements.slice(0, 12).map((entry) => `${entry.role}: ${entry.name}`);
       return { error: { available: available as unknown as JsonValue, reason: `couldn't find "${target}" on the page — re-read or pick from the listed elements` } };
     }
-    return { label: `${element.role} "${element.name}"`, ref: element.ref };
+    if (result.kind === "ambiguous") {
+      // Fail-close: several equally-good matches and no ordinal to pick one. Do
+      // NOT guess (a wrong click/type on someone else's page is irreversible).
+      // Return the candidates so the model re-targets by ordinal.
+      return {
+        error: {
+          ambiguous: result.candidates as unknown as JsonValue,
+          reason: `"${target}" matches ${result.candidates.length.toString()} elements — which one? Re-target with an ordinal, e.g. "the first ${target}" or "the second ${target}".`
+        }
+      };
+    }
+    return { label: `${result.element.role} "${result.element.name}"`, ref: result.element.ref };
   }
   if (Number.isInteger(refArg) && refArg >= 0) {
     const element = controller.describeElement(refArg);

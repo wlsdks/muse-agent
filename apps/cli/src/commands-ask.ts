@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, groundedOnUntrustedOnly, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -238,6 +238,23 @@ export async function groundingVerdictNotice(
     : verifyGrounding(answer, matches, query);
   if (verification.verdict !== "ungrounded") return undefined;
   return `\n⚠️  Grounding check: this answer's claims aren't fully backed by your notes (${verification.reason}) — treat as unverified.\n`;
+}
+
+/**
+ * grounded≠true SOURCE-TRUST marker. Distinct from `groundingVerdictNotice`,
+ * which flags an UNGROUNDED answer: this fires on a GROUNDED (faithful) answer
+ * whose every resolving citation points ONLY at untrusted provenance (MCP/web
+ * tool output, `trusted:false`). Source veracity is unknowable on a fixed local
+ * model, so we surface the untrusted-only provenance as a scrutiny cue rather
+ * than letting a poisonable tool-fetched claim be handed over as plain "grounded".
+ * A single trusted backing source clears it (see `groundedOnUntrustedOnly`).
+ */
+export function untrustedOnlyGroundingNotice(
+  answer: string,
+  matches: readonly KnowledgeMatch[]
+): string | undefined {
+  if (!groundedOnUntrustedOnly(answer, matches)) return undefined;
+  return `\n⚠️  Source check: this answer is faithful to its sources, but rests ONLY on tool-fetched data (not your own notes) — verify before trusting.\n`;
 }
 
 
@@ -2553,6 +2570,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         }
         if (imageAttachments.length === 0) {
           groundedVerdictLabel = verdictNotice ? "ungrounded" : "grounded";
+        }
+        // grounded≠true: a faithful answer (no verdictNotice) can still rest only
+        // on untrusted tool-fetched sources. The label stays "grounded" (it IS
+        // faithful), but surface the untrusted-only provenance as a scrutiny cue.
+        const untrustedNotice = !verdictNotice && imageAttachments.length === 0
+          ? untrustedOnlyGroundingNotice(verdictAnswer, scoredMatches)
+          : undefined;
+        if (untrustedNotice && !options.json) {
+          io.stderr(untrustedNotice);
         }
         if (verdictNotice && !options.json) {
           io.stderr(verdictNotice);

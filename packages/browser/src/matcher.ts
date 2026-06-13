@@ -86,11 +86,24 @@ function scoreAll(elements: readonly SnapshotElement[], needle: string, intent: 
     .sort((a, b) => b.score - a.score || a.element.ref - b.element.ref);
 }
 
-export function matchElement(
+/**
+ * Grounding outcome. `ambiguous` is the fail-close case for an ACT: two or more
+ * DISTINCT controls tie at the top score and no ordinal disambiguates, so a
+ * silent first-pick could click/type the wrong thing on a third party's page
+ * (the irreversible-act class `outbound-safety.md` guards). The act tool then
+ * refuses and asks the user to disambiguate (e.g. "the second Delete") rather
+ * than guessing.
+ */
+export type MatchElementResult =
+  | { readonly kind: "match"; readonly element: SnapshotElement }
+  | { readonly kind: "ambiguous"; readonly candidates: readonly SnapshotElement[] }
+  | { readonly kind: "none" };
+
+export function matchElementResult(
   elements: readonly SnapshotElement[],
   target: string,
   intent: MatchIntent
-): SnapshotElement | undefined {
+): MatchElementResult {
   // Ordinal targeting: among several identically-labelled controls (an "Add to
   // cart" per product row, the Nth search "View"), pick the requested one — but
   // ONLY when `rest` really has multiple matches, so "First name" stays literal.
@@ -101,19 +114,41 @@ export function matchElement(
     const tied = top === undefined ? [] : rest.filter((scored) => scored.score === top);
     if (tied.length > 1) {
       const index = ordinal.index < 0 ? tied.length - 1 : ordinal.index;
-      return (tied[index] ?? tied[tied.length - 1])?.element;
+      const chosen = (tied[index] ?? tied[tied.length - 1])?.element;
+      return chosen ? { element: chosen, kind: "match" } : { kind: "none" };
     }
   }
   const scored = scoreAll(elements, target.trim().toLowerCase(), intent);
-  if (scored.length === 0) return undefined;
+  if (scored.length === 0) return { kind: "none" };
   // Typing into a button/link is a no-op that strands the whole task — for a
   // type intent ANY matching field beats a better-scoring untypeable element
-  // ("search box" must mean the input, not the adjacent "Search" button).
+  // ("search box" must mean the input, not the adjacent "Search" button). A lone
+  // typeable winner is unambiguous even if untypeable elements share its score.
   if (intent === "type") {
-    const typeable = scored.find((scored) => TYPEABLE_ROLES.has(scored.element.role));
-    if (typeable) return typeable.element;
+    const typeable = scored.filter((scored) => TYPEABLE_ROLES.has(scored.element.role));
+    if (typeable.length === 1) return { element: typeable[0]!.element, kind: "match" };
+    if (typeable.length > 1) {
+      const top = typeable[0]!.score;
+      const tied = typeable.filter((scored) => scored.score === top);
+      if (tied.length > 1) return { candidates: tied.map((scored) => scored.element), kind: "ambiguous" };
+      return { element: typeable[0]!.element, kind: "match" };
+    }
   }
-  return scored[0]!.element;
+  const top = scored[0]!.score;
+  const tied = scored.filter((scored) => scored.score === top);
+  if (tied.length > 1) return { candidates: tied.map((scored) => scored.element), kind: "ambiguous" };
+  return { element: scored[0]!.element, kind: "match" };
+}
+
+export function matchElement(
+  elements: readonly SnapshotElement[],
+  target: string,
+  intent: MatchIntent
+): SnapshotElement | undefined {
+  const result = matchElementResult(elements, target, intent);
+  if (result.kind === "match") return result.element;
+  if (result.kind === "ambiguous") return result.candidates[0];
+  return undefined;
 }
 
 export interface SelectOption {

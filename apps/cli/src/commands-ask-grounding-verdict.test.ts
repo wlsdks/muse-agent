@@ -7,13 +7,14 @@ import { describe, expect, it } from "vitest";
 import { inboxGroundingSources, type KnowledgeMatch } from "@muse/agent-core";
 import { appendInbound, FileBackedInboxContextProvider } from "@muse/messaging";
 
-import { formatSourceReceipts, groundingVerdictNotice } from "./commands-ask.js";
+import { formatSourceReceipts, groundingVerdictNotice, untrustedOnlyGroundingNotice } from "./commands-ask.js";
 
-const match = (source: string, text: string, cosine: number): KnowledgeMatch => ({
+const match = (source: string, text: string, cosine: number, trusted?: boolean): KnowledgeMatch => ({
   cosine,
   score: cosine,
   source,
-  text
+  text,
+  ...(trusted === undefined ? {} : { trusted })
 });
 
 describe("groundingVerdictNotice — output-side rubric verdict on the ask wedge", () => {
@@ -85,6 +86,34 @@ describe("groundingVerdictNotice — output-side rubric verdict on the ask wedge
     expect(await groundingVerdictNotice(grounded, matches, "what is the printer IP")).toBeUndefined();
     const receipt = formatSourceReceipts(grounded, "/notes", [{ file: "clipboard", text: "The office printer IP is 10.0.0.42." }], "what is the printer IP");
     expect(receipt).toContain("📎 From your notes");
+  });
+});
+
+describe("untrustedOnlyGroundingNotice — grounded≠true source-trust segregation (the poisoned-source vector)", () => {
+  // A faithful answer can rest ENTIRELY on untrusted provenance (MCP/web tool
+  // output). The faithfulness gate stays silent (the claim DOES match its source),
+  // so without this marker a confident answer resting only on poisonable
+  // tool-fetched data is handed over as "grounded" with no scrutiny cue.
+  it("warns when a faithful answer resolves ONLY to untrusted tool-fetched sources", () => {
+    const matches = [match("tool: web_search", "The capital of France is Paris.", 1, false)];
+    const answer = "The capital of France is Paris [from tool: web_search].";
+    const notice = untrustedOnlyGroundingNotice(answer, matches);
+    expect(notice).toBeDefined();
+    expect(notice).toContain("tool-fetched");
+  });
+
+  it("clears once a single TRUSTED source also backs the answer (one trusted citation makes it the user's own)", () => {
+    const matches = [
+      match("tool: web_search", "The capital of France is Paris.", 1, false),
+      match("notes/geo.md", "Paris is the capital of France.", 0.8)
+    ];
+    const answer = "The capital of France is Paris [from tool: web_search] [from notes/geo.md].";
+    expect(untrustedOnlyGroundingNotice(answer, matches)).toBeUndefined();
+  });
+
+  it("stays silent for an answer grounded only in the user's own notes (no untrusted dependence)", () => {
+    const matches = [match("notes/vpn.md", "The office VPN needs MTU 1380 on wg0.", 0.72)];
+    expect(untrustedOnlyGroundingNotice("Set the VPN MTU to 1380 on wg0 [from notes/vpn.md].", matches)).toBeUndefined();
   });
 });
 

@@ -346,6 +346,20 @@ export {
 } from "./chrome-devtools-mcp.js";
 
 export {
+  GITHUB_MCP_SERVER_NAME,
+  NOTION_MCP_SERVER_NAME,
+  OFFICIAL_MCP_PRESETS,
+  createGitHubMcpServer,
+  createNotionMcpServer,
+  githubMcpToolRisk,
+  notionMcpToolRisk,
+  resolveOfficialMcpPreset,
+  withOfficialMcpRisk,
+  type OfficialMcpPreset,
+  type OfficialMcpPresetOptions
+} from "./official-mcp-presets.js";
+
+export {
   createChromeSnapshot,
   createFileSnapshot,
   createHttpSnapshot,
