@@ -3,3 +3,4 @@ export * from "./select.js";
 export * from "./text.js";
 export * from "./chunks.js";
 export * from "./weakness.js";
+export * from "./verdict.js";
