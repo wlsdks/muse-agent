@@ -1964,7 +1964,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
             ...(entry.probation ? { probation: true } : {}),
             ...(typeof entry.reinforcements === "number" ? { reinforcements: entry.reinforcements } : {}),
-            ...(typeof entry.decays === "number" ? { decays: entry.decays } : {})
+            ...(typeof entry.decays === "number" ? { decays: entry.decays } : {}),
+            ...(entry.lastReinforcedAt ? { lastReinforcedAt: entry.lastReinforcedAt } : {}),
+            ...(entry.createdAt ? { createdAt: entry.createdAt } : {})
           }));
           const ranked = await rankPlaybookStrategiesByRelevance(
             mapped, query, (text) => embed(text, embedModel), topK === undefined ? undefined : { topK }

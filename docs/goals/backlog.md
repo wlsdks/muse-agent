@@ -1224,6 +1224,12 @@ excluded when scoring).
   classes (bare `$N` and bare `{{N}}` dropped as currency/template-ambiguous → undetected); (f) wire backward-ref
   SUBSTITUTION (LLMCompiler Task Fetching Unit — resolve `{{step1.output}}` to the prior step's output, not just validate).
 - ✓ Plan-validation remainder (b) ordering/dependency validation — agent-core-cognition fire 8
+- ✓ Playbook temporal reward discounting (Discounted-UCB arXiv:0805.3415) — agent-core-cognition fire 9
+- ◦ **Playbook recency-discount remainder** — (a) carry recency anchors into the `@muse/recall` non-embed
+  `selectPlaybookSection` path too (this slice scoped to the agent-runtime applyPlaybook path); (b) tune
+  PLAYBOOK_RECENCY_HALF_LIFE_DAYS (30) via A/B vs the daemon's 30-day decay step; (c) the cli embed-rank
+  mapper now projects the timestamps but `MUSE_PLAYBOOK_EMBED_RANK` doesn't pass `nowMs` (5th positional) →
+  still inert there; wire it to activate the discount on that path. (fire 9 remainder, arXiv:0805.3415)
 - ✓→Done **Self-consistency consensus for the grounding reverify judge** — the live default-on
   `verifyGroundingWithReverify` decided weak→grounded upgrades on a SINGLE high-variance judge sample
   (arXiv:2510.27106 Rating Roulette: LLM judges "almost arbitrary in the worst case"). [DONE 2026-06-13,

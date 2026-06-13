@@ -554,7 +554,9 @@ export function buildPlaybookProvider(env: MuseEnvironment): PlaybookProvider | 
         ...(typeof entry.reinforcements === "number" ? { reinforcements: entry.reinforcements } : {}),
         ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
         ...(entry.tag ? { tag: entry.tag } : {}),
-        text: entry.text
+        text: entry.text,
+        ...(entry.lastReinforcedAt ? { lastReinforcedAt: entry.lastReinforcedAt } : {}),
+        ...(entry.createdAt ? { createdAt: entry.createdAt } : {})
       }))
   };
 }

@@ -8,10 +8,12 @@ import {
   effectiveStrategyReward,
   isAvoidedStrategy,
   PLAYBOOK_AVOID_BELOW,
+  PLAYBOOK_RECENCY_HALF_LIFE_DAYS,
   PLAYBOOK_REWARD_MAX,
   PLAYBOOK_REWARD_MIN,
   rankPlaybookStrategies,
   rankPlaybookStrategiesByRelevance,
+  recencyDiscount,
   renderPlaybookSection,
   strategyTextSimilarity,
   type PlaybookProvider,
@@ -789,5 +791,245 @@ describe("MemRL two-phase retrieval — Phase A gates eligibility; Phase B z-nor
     // → Phase A excludes it even though its utility equals evidenceBacked's.
     // (If two-phase is reverted to raw blend, off-topic high-utility would appear.)
     expect(system).not.toContain(offTopicHighReward.text);
+  });
+});
+
+// ─── D-UCB recency discount (arXiv:0805.3415, Garivier & Moulines 2008) ───────
+
+describe("recencyDiscount — Discounted-UCB temporal fading (arXiv:0805.3415)", () => {
+  const NOW_MS = 1_000_000_000_000; // fixed anchor: 2001-09-08T21:46:40.000Z
+
+  it("anchor == nowMs → multiplier exactly 1.0 (age 0)", () => {
+    const s: PlaybookStrategy = { text: "x", lastReinforcedAt: new Date(NOW_MS).toISOString() };
+    expect(recencyDiscount(s, NOW_MS)).toBe(1);
+  });
+
+  it("anchor 30 days ago, halfLife 30 → multiplier 0.5 ± 1e-9", () => {
+    const anchorMs = NOW_MS - 30 * 86_400_000;
+    const s: PlaybookStrategy = { text: "x", lastReinforcedAt: new Date(anchorMs).toISOString() };
+    expect(recencyDiscount(s, NOW_MS, 30)).toBeCloseTo(0.5, 9);
+  });
+
+  it("absent anchor → exactly 1 (legacy-identical, no discount)", () => {
+    const s: PlaybookStrategy = { text: "x" };
+    expect(recencyDiscount(s, NOW_MS)).toBe(1);
+  });
+
+  it("garbage anchor string → exactly 1", () => {
+    const s: PlaybookStrategy = { text: "x", lastReinforcedAt: "not-a-date" };
+    expect(recencyDiscount(s, NOW_MS)).toBe(1);
+  });
+
+  it("future anchor → 1 (age clamped to 0, never a boost > 1)", () => {
+    const futureMs = NOW_MS + 10 * 86_400_000;
+    const s: PlaybookStrategy = { text: "x", lastReinforcedAt: new Date(futureMs).toISOString() };
+    expect(recencyDiscount(s, NOW_MS)).toBe(1);
+  });
+
+  it("createdAt is used as fallback when lastReinforcedAt is absent", () => {
+    const anchorMs = NOW_MS - 30 * 86_400_000;
+    const s: PlaybookStrategy = { text: "x", createdAt: new Date(anchorMs).toISOString() };
+    expect(recencyDiscount(s, NOW_MS, 30)).toBeCloseTo(0.5, 9);
+  });
+
+  it("lastReinforcedAt takes precedence over createdAt", () => {
+    const recentMs = NOW_MS - 5 * 86_400_000;
+    const oldMs = NOW_MS - 60 * 86_400_000;
+    const s: PlaybookStrategy = {
+      text: "x",
+      lastReinforcedAt: new Date(recentMs).toISOString(),
+      createdAt: new Date(oldMs).toISOString()
+    };
+    // discount from recent anchor (5d) should be near 1, not near 0.25 (60d/30)
+    expect(recencyDiscount(s, NOW_MS, 30)).toBeGreaterThan(0.8);
+  });
+
+  it("PLAYBOOK_RECENCY_HALF_LIFE_DAYS is 30 (aligns with PLAYBOOK_DECAY_STALE_DAYS)", () => {
+    expect(PLAYBOOK_RECENCY_HALF_LIFE_DAYS).toBe(30);
+  });
+});
+
+// INV-1: nowMs-absent path is byte-identical (pin exact numbers)
+describe("effectiveStrategyReward — INV-1: nowMs absent is byte-identical to pre-change", () => {
+  it("tally strategy (r=10, d=0) → exact pre-change value when nowMs omitted", () => {
+    const s: PlaybookStrategy = { text: "x", reinforcements: 10, decays: 0 };
+    // pHat=1, n=10, shrinkage=10/13, raw=5*10/13
+    const expected = 5 * (10 / 13);
+    expect(effectiveStrategyReward(s)).toBeCloseTo(expected, 10);
+    // Must be identical whether we call it twice
+    expect(effectiveStrategyReward(s)).toBe(effectiveStrategyReward(s));
+  });
+
+  it("legacy-reward strategy (reward=3) → exact pre-change value when nowMs omitted", () => {
+    const s: PlaybookStrategy = { text: "x", reward: 3 };
+    expect(effectiveStrategyReward(s)).toBe(3);
+    expect(effectiveStrategyReward(s)).toBe(effectiveStrategyReward(s));
+  });
+
+  it("discount does NOT leak when nowMs omitted — calling with old anchor still equals the pinned value", () => {
+    // Strategy has a very old lastReinforcedAt; no discount should apply on the no-nowMs path.
+    const s: PlaybookStrategy = { text: "x", reward: 3, lastReinforcedAt: "2000-01-01T00:00:00.000Z" };
+    expect(effectiveStrategyReward(s)).toBe(3); // byte-identical, never discounted
+  });
+});
+
+// INV-2: negative reward is never discounted
+describe("effectiveStrategyReward — INV-2: negative/sunk reward unchanged by discount", () => {
+  const VERY_OLD = "2000-01-01T00:00:00.000Z"; // ~25 years ago → discount ≈ 0 if applied
+
+  it("legacy-reward negative strategy stays sunk regardless of age", () => {
+    const s: PlaybookStrategy = { text: "x", reward: -3, lastReinforcedAt: VERY_OLD };
+    const nowMs = Date.now();
+    // With nowMs, negative reward must NOT be discounted
+    expect(effectiveStrategyReward(s, nowMs)).toBe(-3);
+  });
+
+  it("tally-negative strategy stays sunk with ancient anchor", () => {
+    // r=0, d=5 → pHat=0, raw negative
+    const s: PlaybookStrategy = { text: "x", reinforcements: 0, decays: 5, lastReinforcedAt: VERY_OLD };
+    const nowMs = Date.now();
+    const withNow = effectiveStrategyReward(s, nowMs);
+    const withoutNow = effectiveStrategyReward(s);
+    // Negative — both calls should return the same negative value (no discount on negative)
+    expect(withNow).toBe(withoutNow);
+    expect(withNow).toBeLessThan(0);
+  });
+
+  it("isAvoidedStrategy unchanged with/without nowMs (avoidance is reward-floor based, not time-based)", () => {
+    const s: PlaybookStrategy = { text: "x", reward: PLAYBOOK_AVOID_BELOW, lastReinforcedAt: VERY_OLD };
+    expect(isAvoidedStrategy(s)).toBe(true);
+    // The avoidance check uses clampReward(strategy.reward) directly — unaffected by nowMs
+    expect(isAvoidedStrategy({ text: "x", reward: PLAYBOOK_AVOID_BELOW + 1 })).toBe(false);
+  });
+});
+
+// Counterfactual: discount drives reorder
+describe("recencyDiscount — counterfactual ranking: fresh vs stale strategy", () => {
+  const NOW_MS = Date.now();
+  const fresh: PlaybookStrategy = {
+    text: "email tip fresh",
+    tag: "email",
+    reward: 3,
+    lastReinforcedAt: new Date(NOW_MS).toISOString()
+  };
+  const stale: PlaybookStrategy = {
+    text: "email tip stale",
+    tag: "email",
+    reward: 3,
+    lastReinforcedAt: new Date(NOW_MS - 90 * 86_400_000).toISOString()
+  };
+
+  it("WITH nowMs → fresh ranks before stale (equal positive reward, discount separates them)", () => {
+    const result = rankPlaybookStrategies([stale, fresh], "email tip", { topK: 6 }, NOW_MS);
+    const freshIdx = result.findIndex((s) => s.text === fresh.text);
+    const staleIdx = result.findIndex((s) => s.text === stale.text);
+    expect(freshIdx).toBeGreaterThanOrEqual(0);
+    expect(staleIdx).toBeGreaterThanOrEqual(0);
+    expect(freshIdx).toBeLessThan(staleIdx);
+  });
+
+  it("WITHOUT nowMs → order is today's (insertion/index based, not discount-driven)", () => {
+    // Without nowMs, both have identical effective reward → tie-break is insertion order.
+    // stale is inserted first (index 0), fresh is second (index 1) → stale comes first.
+    const result = rankPlaybookStrategies([stale, fresh], "email tip", { topK: 6 });
+    const freshIdx = result.findIndex((s) => s.text === fresh.text);
+    const staleIdx = result.findIndex((s) => s.text === stale.text);
+    expect(freshIdx).toBeGreaterThanOrEqual(0);
+    expect(staleIdx).toBeGreaterThanOrEqual(0);
+    // Without discount, stale leads (insertion order tie-break)
+    expect(staleIdx).toBeLessThan(freshIdx);
+  });
+});
+
+// Assembled-path: applyPlaybook passes Date.now() → fresh-first + control
+describe("recencyDiscount — assembled-path: applyPlaybook ranks fresh-first", () => {
+  it("fresh strategy ranks above stale in [Learned Strategies] block; control (no timestamps) preserves insertion order", async () => {
+    const NOW_MS = Date.now();
+    const freshStrategy: PlaybookStrategy = {
+      text: "email strategy fresh timestamp",
+      tag: "email",
+      reward: 3,
+      lastReinforcedAt: new Date(NOW_MS).toISOString()
+    };
+    const staleStrategy: PlaybookStrategy = {
+      text: "email strategy stale timestamp",
+      tag: "email",
+      reward: 3,
+      lastReinforcedAt: new Date(NOW_MS - 90 * 86_400_000).toISOString()
+    };
+    // stale inserted first — without discount it would lead (insertion order)
+    const provider: PlaybookProvider = { listStrategies: async () => [staleStrategy, freshStrategy] };
+    const input = {
+      input: {
+        messages: [{ content: "help me write an email strategy", role: "user" as const }],
+        metadata: { userId: "stark" },
+        model: "test/model"
+      },
+      runId: "recency-assembled",
+      startedAt: new Date()
+    };
+    const out = await applyPlaybook(input, provider);
+    const system = out.messages.find((m) => m.role === "system")?.content ?? "";
+    expect(system).toContain("[Learned Strategies]");
+    const freshIdx = system.indexOf(freshStrategy.text);
+    const staleIdx = system.indexOf(staleStrategy.text);
+    expect(freshIdx).toBeGreaterThanOrEqual(0);
+    expect(staleIdx).toBeGreaterThanOrEqual(0);
+    // D-UCB fades the stale one → fresh appears first
+    expect(freshIdx).toBeLessThan(staleIdx);
+
+    // CONTROL: no timestamps → insertion order preserved (stale-first, i.e. stale idx < fresh idx)
+    const controlFresh: PlaybookStrategy = { text: "email strategy control fresh", tag: "email", reward: 3 };
+    const controlStale: PlaybookStrategy = { text: "email strategy control stale", tag: "email", reward: 3 };
+    const controlProvider: PlaybookProvider = { listStrategies: async () => [controlStale, controlFresh] };
+    const controlOut = await applyPlaybook(input, controlProvider);
+    const controlSystem = controlOut.messages.find((m) => m.role === "system")?.content ?? "";
+    const ctrlFreshIdx = controlSystem.indexOf(controlFresh.text);
+    const ctrlStaleIdx = controlSystem.indexOf(controlStale.text);
+    expect(ctrlFreshIdx).toBeGreaterThanOrEqual(0);
+    expect(ctrlStaleIdx).toBeGreaterThanOrEqual(0);
+    // No timestamps → insertion order (stale at index 0 leads)
+    expect(ctrlStaleIdx).toBeLessThan(ctrlFreshIdx);
+  });
+});
+
+// Provider projection: buildPlaybookProvider carries the timestamp fields
+describe("buildPlaybookProvider — timestamp projection (no undefined keys)", () => {
+  it("maps lastReinforcedAt and createdAt when present, omits when absent", () => {
+    // Mirror the mapper logic from context-engineering-builders.ts directly
+    const entry = {
+      text: "some strategy",
+      tag: "email",
+      reward: 2 as number | undefined,
+      decays: undefined as number | undefined,
+      reinforcements: undefined as number | undefined,
+      probation: undefined as boolean | undefined,
+      lastReinforcedAt: "2026-01-01T00:00:00.000Z",
+      createdAt: "2025-12-01T00:00:00.000Z"
+    };
+    const mapped = {
+      ...(typeof entry.decays === "number" ? { decays: entry.decays } : {}),
+      ...(entry.probation ? { probation: true } : {}),
+      ...(typeof entry.reinforcements === "number" ? { reinforcements: entry.reinforcements } : {}),
+      ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
+      ...(entry.tag ? { tag: entry.tag } : {}),
+      text: entry.text,
+      ...(entry.lastReinforcedAt ? { lastReinforcedAt: entry.lastReinforcedAt } : {}),
+      ...(entry.createdAt ? { createdAt: entry.createdAt } : {})
+    };
+    expect(mapped.lastReinforcedAt).toBe("2026-01-01T00:00:00.000Z");
+    expect(mapped.createdAt).toBe("2025-12-01T00:00:00.000Z");
+    expect("lastReinforcedAt" in mapped).toBe(true);
+    expect("createdAt" in mapped).toBe(true);
+
+    // When absent: no undefined keys
+    const entryNoTs = { text: "x", tag: undefined as string | undefined, lastReinforcedAt: undefined as string | undefined, createdAt: undefined as string | undefined };
+    const mappedNoTs: Record<string, unknown> = {
+      text: entryNoTs.text,
+      ...(entryNoTs.lastReinforcedAt ? { lastReinforcedAt: entryNoTs.lastReinforcedAt } : {}),
+      ...(entryNoTs.createdAt ? { createdAt: entryNoTs.createdAt } : {})
+    };
+    expect("lastReinforcedAt" in mappedNoTs).toBe(false);
+    expect("createdAt" in mappedNoTs).toBe(false);
   });
 });

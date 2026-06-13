@@ -50,6 +50,10 @@ export interface PlaybookStrategy {
    */
   readonly reinforcements?: number;
   readonly decays?: number;
+  /** ISO-8601 timestamp of the last user-confirmed reinforcement (D-UCB anchor). */
+  readonly lastReinforcedAt?: string;
+  /** ISO-8601 creation timestamp; used as fallback anchor when lastReinforcedAt is absent. */
+  readonly createdAt?: string;
 }
 
 export interface PlaybookProvider {
@@ -169,6 +173,12 @@ export function strategyTextSimilarity(a: string, b: string): number {
 export const PLAYBOOK_REWARD_MIN = -5;
 export const PLAYBOOK_REWARD_MAX = 5;
 /**
+ * Discounted-UCB half-life (arXiv:0805.3415, Garivier & Moulines 2008): user
+ * preferences drift, so a reinforcement from 30 days ago carries half the
+ * weight of one from today. Aligns with PLAYBOOK_DECAY_STALE_DAYS.
+ */
+export const PLAYBOOK_RECENCY_HALF_LIFE_DAYS = 30;
+/**
  * How much one unit of reward shifts the ranking score, as a fraction of a
  * single token-overlap point. Tuned so reward breaks ties and retires a
  * repeatedly-corrected strategy (reward → negative drops it below relevant
@@ -191,6 +201,28 @@ export function clampReward(value: number | undefined): number {
     return 0;
   }
   return Math.max(PLAYBOOK_REWARD_MIN, Math.min(PLAYBOOK_REWARD_MAX, value));
+}
+
+/**
+ * Discounted-UCB recency multiplier (arXiv:0805.3415, Garivier & Moulines 2008).
+ * User preferences are non-stationary: a reinforcement from the recent past
+ * deserves more weight than one from months ago. Returns a multiplier in (0,1].
+ *
+ * Anchor = lastReinforcedAt ?? createdAt. When absent or unparseable → 1
+ * (legacy-identical, no discount applied). Future anchors are treated as age 0
+ * (multiplier 1) — a positive boost is never applied.
+ */
+export function recencyDiscount(
+  strategy: PlaybookStrategy,
+  nowMs: number,
+  halfLifeDays = PLAYBOOK_RECENCY_HALF_LIFE_DAYS
+): number {
+  const anchorMs = Date.parse(strategy.lastReinforcedAt ?? strategy.createdAt ?? "");
+  if (isNaN(anchorMs)) {
+    return 1;
+  }
+  const ageDays = Math.max(0, (nowMs - anchorMs) / 86_400_000);
+  return Math.pow(0.5, ageDays / halfLifeDays);
 }
 
 /**
@@ -229,17 +261,32 @@ function hasValidTally(s: PlaybookStrategy): boolean {
  * derive the effective score from outcome tallies with a shrinkage factor so a
  * single trial stays near neutral. Falls back to the legacy clamped reward for
  * entries without a valid tally — byte-identical to the pre-change path.
+ *
+ * When `nowMs` is provided and a parseable timestamp anchor exists on the
+ * strategy, the POSITIVE reward component is multiplied by a recency discount
+ * (D-UCB, arXiv:0805.3415) so stale trust fades. The negative/sunk component
+ * is never discounted — recency fades trust, it never un-sinks a corrected
+ * strategy (INV-2). When `nowMs` is absent the result is byte-identical to the
+ * pre-change value (INV-1).
  */
-export function effectiveStrategyReward(s: PlaybookStrategy): number {
+export function effectiveStrategyReward(s: PlaybookStrategy, nowMs?: number): number {
   if (!hasValidTally(s)) {
-    return clampReward(s.reward);
+    const base = clampReward(s.reward);
+    if (nowMs !== undefined && base > 0) {
+      return base * recencyDiscount(s, nowMs);
+    }
+    return base;
   }
   const r = s.reinforcements as number;
   const d = s.decays as number;
   const n = r + d;
   const pHat = r / n;
   // Shrinkage: n/(n+3) pulls sparse evidence toward neutral (0.5)
-  return Math.max(PLAYBOOK_REWARD_MIN, Math.min(PLAYBOOK_REWARD_MAX, (2 * pHat - 1) * PLAYBOOK_REWARD_MAX * (n / (n + 3))));
+  const raw = Math.max(PLAYBOOK_REWARD_MIN, Math.min(PLAYBOOK_REWARD_MAX, (2 * pHat - 1) * PLAYBOOK_REWARD_MAX * (n / (n + 3))));
+  if (nowMs !== undefined && raw > 0) {
+    return raw * recencyDiscount(s, nowMs);
+  }
+  return raw;
 }
 
 /** Lifecycle action from Memp (arXiv 2508.06433): deprecate a confidently-bad entry, graduate a confidently-good probation entry, retain otherwise. */
@@ -518,10 +565,11 @@ function rankEligible(
 export function rankPlaybookStrategies(
   strategies: readonly PlaybookStrategy[],
   queryText: string,
-  options?: RankPlaybookOptions
+  options?: RankPlaybookOptions,
+  nowMs?: number
 ): readonly PlaybookStrategy[] {
   const query = rankTokens(queryText);
-  return rankEligible(strategies, options, (s) => relevanceScore(s, query), effectiveStrategyReward);
+  return rankEligible(strategies, options, (s) => relevanceScore(s, query), (s) => effectiveStrategyReward(s, nowMs));
 }
 
 /**
@@ -539,7 +587,8 @@ export async function rankPlaybookStrategiesByRelevance(
   strategies: readonly PlaybookStrategy[],
   queryText: string,
   embed: (text: string) => Promise<readonly number[]>,
-  options?: RankPlaybookOptions
+  options?: RankPlaybookOptions,
+  nowMs?: number
 ): Promise<readonly PlaybookStrategy[]> {
   const query = rankTokens(queryText);
   let queryVec: readonly number[] | undefined;
@@ -561,7 +610,7 @@ export async function rankPlaybookStrategiesByRelevance(
       }
     }
   }
-  return rankEligible(strategies, options, (s) => relevanceScore(s, query, cosineByText.get(s.text)), effectiveStrategyReward);
+  return rankEligible(strategies, options, (s) => relevanceScore(s, query, cosineByText.get(s.text)), (s) => effectiveStrategyReward(s, nowMs));
 }
 
 function latestUserText(messages: readonly { readonly role: string; readonly content: string }[]): string {
@@ -600,7 +649,8 @@ export async function applyPlaybook(
   }
   // ReasoningBank (arXiv 2509.25140): inject only the strategies relevant to
   // this turn, ranked by the latest user message — not the whole bank.
-  const ranked = rankPlaybookStrategies(strategies, latestUserText(context.input.messages));
+  // D-UCB (arXiv:0805.3415): pass nowMs so stale reinforcements fade.
+  const ranked = rankPlaybookStrategies(strategies, latestUserText(context.input.messages), undefined, Date.now());
   const rendered = renderPlaybookSection(ranked);
   if (!rendered) {
     return context.input;
