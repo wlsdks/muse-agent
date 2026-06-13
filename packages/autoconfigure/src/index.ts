@@ -47,7 +47,9 @@ import {
   createEmailReadTool,
   createHomeEntitiesTool,
   createHomeStateTool,
+  collectDatedNotes,
   createLoopbackMcpMuseTools,
+  createOnThisDayTool,
   createRememberFactTool,
   createWeatherTool,
   createWorldTimeTool,
@@ -707,6 +709,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => [createWeatherTool(env.MUSE_WEATHER_LOCATION?.trim() ? { defaultLocation: env.MUSE_WEATHER_LOCATION.trim() } : {})],
     () => [createWorldTimeTool()],
     () => [createRememberFactTool({ store: userMemoryStore })],
+    () => [createOnThisDayTool({ datedNotes: () => collectDatedNotes(notesDir) })],
     () => [
       createContactsFindTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
       createUpcomingBirthdaysTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),

@@ -622,6 +622,15 @@ export {
 } from "./world-time.js";
 export { createRememberFactTool, type RememberFactStore } from "./remember-fact-tool.js";
 export {
+  collectDatedNotes,
+  createOnThisDayTool,
+  extractNoteDate,
+  selectOnThisDay,
+  type DatedNote,
+  type OnThisDayHit,
+  type OnThisDayToolDeps
+} from "./on-this-day-tool.js";
+export {
   createContactsAddTool,
   createContactsFindTool,
   createContactsRemoveTool,

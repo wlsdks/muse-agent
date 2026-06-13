@@ -240,6 +240,32 @@ async function buildContactsScenario() {
   }
 }
 
+// Date-cued note recall (on_this_day_notes) vs a general note keyword search
+// (muse.notes.search). Both read notes, but one is an ANNIVERSARY look-back
+// ("what did I write on this day in past years?") and the other a content
+// search ("find my note about X"). The disambiguation is the value — an
+// on-this-day intent must NOT route to keyword search, and a keyword search
+// must NOT route to the date-cued tool.
+async function buildOnThisDayScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const notesServer = mcp.createNotesMcpServer({ notesDir: "/tmp/eval-otd-notes" });
+    const search = mcp.createLoopbackMcpMuseTools(notesServer).filter((t) => t.definition.name.split(".").pop() === "search");
+    const instances = [mcp.createOnThisDayTool({ datedNotes: () => [] }), ...search];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "What did I write on this day in past years?", expectTool: "on_this_day_notes", note: "EN anniversary look-back → on_this_day_notes" },
+      { prompt: "오늘 같은 날짜에 예전에 쓴 노트 보여줘", expectTool: "on_this_day_notes", note: "KO on-this-day recall → on_this_day_notes (NOT notes.search)" },
+      { prompt: "Search my notes for the reranker idea.", expectTool: "muse.notes.search", requireArgs: ["query"], note: "EN content search → notes.search (NOT on_this_day_notes)" },
+      { prompt: "내 노트에서 VPN 설정 찾아줘", expectTool: "muse.notes.search", requireArgs: ["query"], note: "KO note keyword search → notes.search, NOT the date-cued tool" }
+    ];
+    return { label: "on-this-day (date-cued recall vs note search)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "on-this-day", skip: `@muse/mcp not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Followup tools (muse.followup.*) vs their closest confusables: tasks and
 // reminders. A followup is an agent-auto-captured "circle back" thread — the
 // model must route viewing/managing those to followup.list/cancel/snooze and
@@ -625,6 +651,7 @@ async function main() {
     await buildBrowserScenario(),
     await buildPersonalCrudScenario(),
     await buildContactsScenario(),
+    await buildOnThisDayScenario(),
     await buildNotesScenario(),
     await buildFollowupScenario(),
     await buildRecallVsCrudScenario(),

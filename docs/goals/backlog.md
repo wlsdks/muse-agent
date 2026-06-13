@@ -23,6 +23,7 @@
 <!-- Going-forward: `- ✓ <item title> — <slug> fire N` so the scout dedups without the verbose block. -->
 
 - ✓ `upcoming_birthdays` agent tool — conversational "whose birthday is coming up?" (resolveUpcomingBirthdays was CLI/brief-only, no agent tool) — tool-hardening fire 47
+- ✓ `on_this_day_notes` agent tool — conversational date-cued note recall (muse on-this-day was CLI-only; pure recall logic moved to @muse/mcp, CLI re-exports) — tool-hardening fire 48
 
 ## Done — loop infrastructure (2026-06-12, 진안-directed)
 
