@@ -864,3 +864,12 @@ ratchet: testFiles 967 유지(+1 케이스 mcp.test clear no-collateral) · fabr
 - **왜:** EXPANSION 시도가 dry — Opus 스카웃(26 tool)이 표면 mature 확정(unwired 0·add_contact 이미 update-in-place·multi-store merge 기존). 스카웃 fallback lead = under-tested destructive verb OUTCOME. clear 핸들러는 코드상 정확(ambiguous/not-found가 mutateReminders 전 return)이나 기존 테스트는 happy-path(exact id) + **빈 store** 에러 메시지뿐 → populated store no-collateral 미검증 = agent-testing.md #1 속성("실패 액션은 아무것도 mutate 안 함") 갭.
 - **리뷰지점:** mcp.test.ts 새 it(reminders clear). **mutation-verified 독립 teeth**: clear의 ambiguous 분기를 "첫 candidate 추측 삭제"로 변조 → **새 테스트만 RED**(1/1861), 기존 happy-path(4811, exact id라 ambiguous 안 탐)·empty-store(4874, total 미확인)는 green → 기존이 못 잡는 regression 포착. 복원 GREEN(1861), pnpm check exit=0, lint clean. ④b judge PASS 5/5(mutation 독립 REPRODUCE).
 - **리스크:** 없음 — test-only(src 무변경, 변조 복원됨), 순수 additive. **부수 발견:** snooze 핸들러의 동일 ambiguous-no-mutation 불변도 미검증(변조 시 무 RED) → 향후 fire 후보로 backlog 기록.
+
+
+## fire 84 · 2026-06-14 · skill v1.14.0 · b2ad3fa3
+meta: value-class=hardening · pkg=@muse/mcp(test) · kind=no-collateral-damage(reminders.snooze 실패 시 dueAt 불변, mutation-verified) · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 970 유지(+1 케이스 mcp.test snooze no-collateral) · fabrication 0 유지 · eval 무변동(destructive-verb safety invariant parity)
+- **무엇:** reminders.snooze(dueAt를 MUTATE) 실패(ambiguous/unknown ref) 시 **모든 reminder dueAt 불변** OUTCOME 테스트. fixed now로 dentist×2+milk seed → snooze "dentist"→multiple+2 candidates+dueByText 불변 / snooze "passport"→not found+불변. fire 83 clear sibling = destructive-verb no-collateral parity 완성.
+- **왜:** fire 83에서 snooze의 동일 ambiguous 블록(284)을 변조했을 때 무 RED → snooze no-mutation 미검증 확정(backlog ◦로 기록했던 항목). snooze는 row-count가 아닌 dueAt를 mutate하므로 total로는 약함 → dueAt 값 deep-equal로 검증(fixed now면 guess-snooze가 08:10Z로 튀어 seed 12/13/14와 구별 → 결정적 포착).
+- **리뷰지점:** mcp.test.ts 새 it(snooze, 4906~). **mutation-verified 독립 teeth**: snooze ambiguous를 guess-snooze로 변조(snooze-고유 `const index=findIndex` 다음줄로 정밀 타깃) → **새 테스트만 RED**(1/1862), fire 83 clear 테스트 포함 1861 green → snooze 고유 경로 커버 입증. 복원 GREEN(1862), pnpm check exit=0, lint clean. ④b judge PASS 5/5(mutation 독립 REPRODUCE, fire 83과 구별 가치 확인).
+- **리스크:** 없음 — test-only(src 무변경, 변조 복원됨), 순수 additive. **남은 sibling:** `fire` verb(ambiguous@380, pending→fired flip)도 동일 무-mutation 불변 미검증 → backlog ◦로 parity 완성 후보.
