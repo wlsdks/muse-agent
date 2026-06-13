@@ -36,7 +36,12 @@ export interface BrowserApprovalDecision {
 export type BrowserApprovalGate = (draft: BrowserActionDraft) => Promise<BrowserApprovalDecision> | BrowserApprovalDecision;
 
 function elementsJson(elements: readonly PageSnapshot["elements"][number][]): JsonValue {
-  return elements.map((element) => ({ name: element.name, ref: element.ref, role: element.role })) as unknown as JsonValue;
+  return elements.map((element) => ({
+    name: element.name,
+    ref: element.ref,
+    role: element.role,
+    ...(element.url ? { url: element.url } : {})
+  })) as unknown as JsonValue;
 }
 
 /**
@@ -200,10 +205,12 @@ export function createBrowserReadTool(deps: BrowserReadToolDeps): MuseTool {
     definition: {
       description:
         "Re-read the page currently open in Muse's browser — returns the title, page text, and the " +
-        "interactive elements. Pass `find` to get only the elements matching a description (e.g. 'search', " +
-        "'sign in') instead of the whole list. A long page reports `total` + `hasMore`/`nextOffset`; pass " +
-        "`offset` to read the next batch. Use to see the TEXT and clickable elements after the page changed " +
-        "— e.g. 'what's on the page now?', 'read this page'. NOT for describing VISUAL content like a chart, " +
+        "interactive elements (each link also carries its destination `url`, so you can tell the user WHERE " +
+        "a link goes or hand them a shareable link without clicking it). Pass `find` to get only the " +
+        "elements matching a description (e.g. 'search', 'sign in') instead of the whole list. A long page " +
+        "reports `total` + `hasMore`/`nextOffset`; pass `offset` to read the next batch. Use to see the TEXT " +
+        "and clickable elements after the page changed, or to get a link's URL — e.g. 'what's on the page " +
+        "now?', 'read this page', 'what's the link to their pricing page?'. NOT for describing VISUAL content like a chart, " +
         "graph, image, or diagram (use browser_look — this returns DOM text, not a picture). Read-only.",
       domain: "browser",
       inputSchema: {

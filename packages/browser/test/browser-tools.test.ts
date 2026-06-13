@@ -110,6 +110,40 @@ describe("browser_open / read / back — free (no gate)", () => {
   });
 });
 
+describe("link destinations — a link's url flows through to the model", () => {
+  const LINKED: PageSnapshot = {
+    elements: [
+      { name: "Pricing", ref: 0, role: "link", url: "https://example.test/pricing" },
+      { name: "Sign in", ref: 1, role: "button" },
+      { name: "Docs", ref: 2, role: "link", url: "https://docs.example.test/" }
+    ],
+    text: "home",
+    title: "Home",
+    url: "https://example.test/"
+  };
+
+  it("browser_read returns each link's url so the model can report a destination without navigating", async () => {
+    const controller = { ...new FakeController(), snapshot: async () => LINKED } as unknown as BrowserController;
+    const out = await createBrowserReadTool({ controller }).execute({}, ctx) as { elements: Array<{ name: string; ref: number; role: string; url?: string }> };
+    const pricing = out.elements.find((element) => element.name === "Pricing");
+    expect(pricing?.url).toBe("https://example.test/pricing");
+    const signIn = out.elements.find((element) => element.name === "Sign in");
+    expect(signIn && "url" in signIn).toBe(false);
+  });
+
+  it("browser_open carries link urls in its snapshot too", async () => {
+    const controller = { ...new FakeController(), open: async () => LINKED } as unknown as BrowserController;
+    const out = await createBrowserOpenTool({ controller }).execute({ url: "https://example.test" }, ctx) as { elements: Array<{ name: string; url?: string }> };
+    expect(out.elements.find((element) => element.name === "Docs")?.url).toBe("https://docs.example.test/");
+  });
+
+  it("browser_read with find keeps the matched link's url", async () => {
+    const controller = { ...new FakeController(), snapshot: async () => LINKED } as unknown as BrowserController;
+    const out = await createBrowserReadTool({ controller }).execute({ find: "Pricing" }, ctx) as { elements: Array<{ name: string; url?: string }> };
+    expect(out.elements).toEqual([{ name: "Pricing", ref: 0, role: "link", url: "https://example.test/pricing" }]);
+  });
+});
+
 describe("dialog passthrough — an auto-handled JS dialog is surfaced to the model", () => {
   it("includes the dialog {type,message} in the tool output when present", async () => {
     const snap: PageSnapshot = { ...SNAP, dialog: { message: "Delete this?", type: "confirm" } };

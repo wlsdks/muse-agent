@@ -106,3 +106,22 @@ ratchet: testFiles +1 (official-mcp-write-draft-first.test.ts, 6 cases) · @muse
   정확히 1회 send임을 assert(블랭킷-차단 게이트 배제). 트리 test-only(git diff --stat 빈값).
 - **리스크:** GitHub 프리셋이 대표 — Notion create-page는 동일 seam을 타므로 구조적 커버. 남은
   axis-B ◦: 키체인 자격증명 · doctor provenance.
+
+## fire 6 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/browser · kind=C-browser · verdict=PASS · firesSinceDrill=6
+
+ratchet: testFiles +0 (browser-tools.test.ts +3 cases, 75 total) · @muse/browser 75 tests pass · fabrication 0 · eval:browser-agent 1/1 LIVE · eval:tools 194/199 (97%, threshold 85%) · smoke #19 LIVE · lint 0/0
+
+- **무엇:** 읽기-측 누락 역량 — 링크 요소가 목적지 URL 없이 노출돼(스냅샷이 href를 dedup용으로만
+  읽고 버림) 모델이 링크를 클릭할 순 있어도 "이동하지 않고" 어디로 가는지 답할 수 없었음. 이제
+  `SnapshotElement.url`이 각 앵커의 resolved ABSOLUTE href를 browser_read/browser_open 요소 JSON에
+  실어줌(있을 때만 emit, 버튼/필드 불변) + browser_read 설명이 링크-목적지 답변을 광고. 새 도구 없음
+  (read 경로 증강, 9-도구 셋 유지 — tool-calling.md 혼동쌍 회피).
+- **왜:** "그들 가격 페이지 링크가 뭐야?"·"공유하게 top 결과 URL 줘"·"링크들과 목적지 나열" 같은
+  웹-리서치 작업이 inexpressible이었음. fires 1·4(act-target fail-close)와 구별되는 *역량 추가*.
+- **리뷰지점:** judge가 src revert해 3 RED 재확인; url이 실제 HTMLAnchorElement.href(IDL=절대)에서
+  채워짐을 라이브 smoke #19로 확인(절대+상대해소+비링크-none); browser_read 설명 변경이 eval:tools
+  mis-selection 안 냄(97% 통과, browser 셀렉션 전부 green).
+- **리스크:** cross-origin iframe 링크는 여전히 범위 밖(CDP가 page context서 도달 불가, 불변).
+  url은 additive/optional이라 dedup·비링크 컨트롤·act 경로 불변, 보안 surface 무변경.

@@ -19,6 +19,12 @@ export interface SnapshotElement {
   readonly role: string;
   /** Accessible name / visible text / placeholder, capped. */
   readonly name: string;
+  /**
+   * For a link, its resolved absolute destination — so the model can REPORT
+   * where a link goes (or hand the user a shareable URL) without navigating to
+   * it. Absent for non-link controls (buttons, fields).
+   */
+  readonly url?: string;
 }
 
 export interface PageSnapshot {

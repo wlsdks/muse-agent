@@ -152,6 +152,15 @@ const MODAL_HTML = `<!doctype html><html><head><title>Modal</title></head><body>
 <script>addEventListener("keydown", (e) => { if (e.key === "Escape") document.getElementById("m").style.display = "none"; });</script>
 </body></html>`;
 
+// Links carry their resolved absolute destination in the snapshot so the model
+// can report WHERE a link goes (or hand the user a shareable URL) without
+// navigating. A relative href must resolve to absolute; a button has no url.
+const LINKS_HTML = `<!doctype html><html><head><title>Links</title></head><body>
+<a href="https://example.com/pricing">See pricing</a>
+<a href="docs/start">Docs</a>
+<button onclick="void 0">Just a button</button>
+</body></html>`;
+
 function assert(condition, label) {
   if (!condition) throw new Error(`ASSERT FAILED: ${label}`);
   console.log(`  ✓ ${label}`);
@@ -181,6 +190,7 @@ try {
   await writeFile(join(dir, "hover.html"), HOVER_HTML);
   await writeFile(join(dir, "form.html"), FORM_HTML);
   await writeFile(join(dir, "modal.html"), MODAL_HTML);
+  await writeFile(join(dir, "links.html"), LINKS_HTML);
 
   console.log("1) SPA settle — late-rendered content is observed");
   let snap;
@@ -307,6 +317,15 @@ try {
   assert(snap.text.includes("MODAL OPEN"), "the modal opens on click");
   snap = await controller.pressKey("Escape");
   assert(!snap.text.includes("MODAL OPEN"), "Escape closes the modal (no visible close button needed)");
+
+  console.log("19) link destinations — a link's resolved url is in the snapshot, a button has none");
+  snap = await controller.open(pathToFileURL(join(dir, "links.html")).href);
+  const pricingLink = snap.elements.find((element) => element.name === "See pricing");
+  assert(pricingLink?.url === "https://example.com/pricing", "absolute link href surfaces as the element url");
+  const docsLink = snap.elements.find((element) => element.name === "Docs");
+  assert(typeof docsLink?.url === "string" && docsLink.url.endsWith("/docs/start"), "a relative href resolves to an absolute url");
+  const justButton = snap.elements.find((element) => element.name === "Just a button");
+  assert(justButton !== undefined && justButton.url === undefined, "a non-link control carries no url");
 
   console.log("\nsmoke:browser PASS");
 } finally {

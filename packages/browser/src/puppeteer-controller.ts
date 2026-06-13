@@ -268,7 +268,7 @@ export class PuppeteerBrowserController implements BrowserController {
         }
       };
       walk(document);
-      const out: Array<{ ref: number; role: string; name: string }> = [];
+      const out: Array<{ ref: number; role: string; name: string; url?: string }> = [];
       // Dedup by role+name so a low-spec model sees a compact, distinct list
       // (nav bars repeat the same link many times — noise that wastes context).
       const seen = new Set<string>();
@@ -311,7 +311,12 @@ export class PuppeteerBrowserController implements BrowserController {
           seen.add(key);
         }
         el.setAttribute("data-muse-ref", String(ref));
-        out.push({ name, ref, role });
+        // A link's resolved absolute destination — `HTMLAnchorElement.href` is
+        // already absolute (unlike the raw `href` attribute). Carried so the
+        // model can report WHERE a link goes without having to click it.
+        const anchor = el as HTMLAnchorElement;
+        const url = tag === "a" && typeof anchor.href === "string" && anchor.href.length > 0 ? anchor.href : undefined;
+        out.push(url ? { name, ref, role, url } : { name, ref, role });
         ref += 1;
       }
       return out;
