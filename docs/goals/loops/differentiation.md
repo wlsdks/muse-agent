@@ -263,7 +263,7 @@ ratchet: testFiles 929 · new deterministic battery eval:policy-symmetry (no Oll
 - **리스크/residual (비차단)**: 경쟁사 비교 인용(hermes #5322 등)은 narrative지 실행 단언
   아님(Muse 측 속성은 완전 증명). 가드 wiring 라이브 검증은 owned-loop 영역이라 deferred.
 
-## fire 13 · 2026-06-13 · skill v1.14.0 · `<pending-commit>`
+## fire 13 · 2026-06-13 · skill v1.14.0 · `56399f81`
 meta: value-class=new-capability · pkg=scripts/self-eval · kind=differentiation-proof-ratchet · verdict=PASS · firesSinceDrill=4
 ratchet: testFiles 930 · self-eval +1 gate (differentiationBatteries=4) + eval:differentiation 번들 · fabrication 0 · 기존 게이트 회귀 0
 
