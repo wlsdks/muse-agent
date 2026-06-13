@@ -3,8 +3,63 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "composite": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["dist"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "dist"
+  ],
+  "references": [
+    {
+      "path": "../../packages/a2a"
+    },
+    {
+      "path": "../../packages/agent-core"
+    },
+    {
+      "path": "../../packages/autoconfigure"
+    },
+    {
+      "path": "../../packages/browser"
+    },
+    {
+      "path": "../../packages/calendar"
+    },
+    {
+      "path": "../../packages/macos"
+    },
+    {
+      "path": "../../packages/mcp"
+    },
+    {
+      "path": "../../packages/memory"
+    },
+    {
+      "path": "../../packages/messaging"
+    },
+    {
+      "path": "../../packages/model"
+    },
+    {
+      "path": "../../packages/multi-agent"
+    },
+    {
+      "path": "../../packages/prompts"
+    },
+    {
+      "path": "../../packages/shared"
+    },
+    {
+      "path": "../../packages/skills"
+    },
+    {
+      "path": "../../packages/tools"
+    },
+    {
+      "path": "../../packages/voice"
+    }
+  ]
 }

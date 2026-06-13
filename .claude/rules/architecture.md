@@ -109,6 +109,23 @@ machines, shared workstations).
 - Run, message, tool-call, approval, checkpoint, and trace tables stay queryable.
 - Don't hide critical agent state in opaque blobs unless it's an append-only event payload.
 
+## Build graph (TypeScript project references)
+
+Every TS workspace (all `packages/*` plus `apps/cli` / `apps/api`) is a
+`composite` project and declares `references` to its internal `@muse/*`
+dependencies; the root `tsconfig.json` is a solution file referencing them
+all. Each package's `build` script is `tsc -b`, so an isolated
+`pnpm --filter @muse/<x> build` rebuilds stale upstream `dist/` first — the
+build graph is dependency-correct, not reliant on pnpm's topological order
+alone. This is what closes the recurring "stale dist" failure class.
+
+- A new internal dependency MUST be added to BOTH `package.json` and the
+  project's `tsconfig.json` `references` (a Zod-style fail if you forget:
+  `tsc -b` won't see the dep's fresh `.d.ts`). The acyclic invariant holds —
+  do not introduce a reference cycle.
+- `apps/web` is intentionally OUT of the reference graph (Vite island, no
+  `@muse/*` deps); keep its `tsc -p tsconfig.json && vite build` script.
+
 ## Coding rules
 
 - Core packages stay framework-independent.

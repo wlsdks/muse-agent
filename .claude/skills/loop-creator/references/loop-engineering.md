@@ -53,19 +53,25 @@ Addy: 서브에이전트는 "다른 지시 **그리고 모델**"로 ideation과 
 
 규칙 (Muse, 비용 ↓ 품질 유지):
 
-1. **일상 작업 → 싼 티어(Sonnet).** 기계적 TDD·검색·문서·정형 슬라이스 빌드는
-   Sonnet 서브에이전트로 위임(`Agent` 도구 / `Workflow` `agent()`의 `model: "sonnet"`).
+1. **정형·기계적 작업 → 싼 티어(Sonnet).** 깨끗한 코드의 단일-파일 TDD·검색·문서·정형
+   슬라이스 빌드는 Sonnet 서브에이전트로 위임(`Agent`/`Workflow agent()`의 `model:"sonnet"`).
    루프 fire의 대부분이 정형이므로 여기서 토큰이 가장 많이 빠진다.
-2. **어려운 곳만 강한 티어 — 계획/설계는 Fable 5 우선.** 설계 판단·계획 수립·모호한
-   포크·회귀 진단은 **Fable 5(`model:"fable"`)를 *가능할 때* 쓰고, 불가하면 Opus 4.8
-   (`claude-opus-4-8[1m]`)로 폴백**. (개발/빌드는 Opus든 Sonnet이든 무관 — 위 1번.)
-3. **maker ≠ judge를 모델 티어로도 구현.** worker=Sonnet, **evaluator=강한 티어**(Fable 5
-   가능 시, 아니면 Opus 4.8 — 더 강한 판정자). 토큰을 아끼면서 동시에 검증 품질을 *높인다* — Addy의 "신뢰할 검증자라야
-   손을 뗄 수 있다"와 정확히 일치([`team-roles.md`](../../../../harness/core/team-roles.md)).
+2. **어렵거나 복잡한 작업 → Opus 4.8(`claude-opus-4-8[1m]`).** scout·설계·계획·모호한
+   포크·회귀 진단 **그리고 복잡한 비즈니스 코드 작성**(여러 파일을 건드림 / 아키텍처·레이어드
+   의존성 결정 / 낯설거나 얽힌 코드 / red 테스트 디버깅)은 Opus로 escalate. **자기-난이도-판정보다
+   기계적 신호가 낫다: N개+ 파일을 만지거나 / 현재 red 테스트면 Opus.** 경제성 — 복잡한 작업에서
+   싼 모델의 "almost right"는 재시도/재작업을 부르고 그 비용이 Opus 1콜을 넘기곤 한다. (**Fable-5는
+   쓰지 않는다.**)
+3. **maker ≠ judge를 모델 티어로도 구현 — 단 Opus가 천장이라 정직한 보상통제가 필수.**
+   ④b evaluator는 *항상 슬라이스 빌더와 별개의 독립 서브에이전트*(fresh context·적대
+   프레이밍)다. Opus가 최강 티어이므로 Opus-빌드 슬라이스를 Opus-judge가 볼 땐 *같은
+   모델*이 된다(더 센 게 없음) — 이때 maker≠judge는 "다른 모델"이 아니라 **context-독립 +
+   적대 프레이밍 + judge-실패-드릴(§4.5, ≤10 fire 하드-카운터로 강제)**로 지탱한다. 드릴이
+   판정자가 물러지지 않았다는 *유일한* 증거이니 거르면 maker≠judge가 무너진다([`team-roles.md`](../../../../harness/core/team-roles.md)).
 4. **오케스트레이터는 얇게.** 메인 컨텍스트(Opus)는 *고르고·나눠주고·검증을 읽는*
    역할만; 토큰-무거운 본작업은 싼 티어 서브에이전트로 밀어낸다.
 
-레버는 서브에이전트/Workflow의 `model` 오버라이드(`fable`/`opus`/`sonnet`/`haiku`)다. 단,
+레버는 서브에이전트/Workflow의 `model` 오버라이드(`opus`/`sonnet`/`haiku`)다. 단,
 Muse의 *런타임* 모델(로컬 gemma4:12b, fabrication floor를 도는 모델)은 **고정**이다 —
 티어링은 *개발 루프를 모는 Claude Code 에이전트*의 비용 얘기지, Muse 제품 모델을 바꾸는
 게 아니다([[project_local_first]] · [[project_gemma4_default]]).
@@ -151,7 +157,9 @@ post — outbound-safety.md) · banking/송금 · `--no-verify`/게이트 우회
 - [ ] **이해 표면(비동기·non-blocking)** — 매 fire 다이제스트 + N fire마다 알림(막지 않음, 루프 무한). §3-2.
 - [ ] **자율성 티어 선택** — Tier1(로컬 커밋, 기본) 또는 Tier2(브랜치+draft PR, opt-in). §3.5.
 - [ ] **토큰/스텝 캡** — fire당 1슬라이스, retry 2–3 상한, 예산 캡. [`loop-budget.md`](../../../../harness/reference/loop-budget.md).
-- [ ] **모델 티어링** — 정형 작업 Sonnet; **계획/설계는 Fable 5(가능 시) 아니면 Opus 4.8(1M)**; judge는 강한 티어. §1.5.
+- [ ] **모델 티어링** — 정형 작업 Sonnet; **scout/계획/설계/judge = Opus 4.8(`claude-opus-4-8[1m]`)** (Fable-5 미사용); judge는 빌더와 별개 독립 서브에이전트 + drill이 보상통제. §1.5.
+- [ ] **value-class ratchet** — 최근 8 fire ≥6 same-package micro-fix면 다른 value-class/패키지 강제(②); ④b judge가 위반 FAIL; RATCHET에 value-class·pkg 카운트. §4.5-9.
+- [ ] **judge-drill 하드-카운터** — `firesSinceDrill≥10 OR 연속 allPASS≥8`이면 미루기-불가 드릴; 완료 시 리셋. §4.5-5.
 - [ ] **State 파일** — 무엇이 Done·다음은 무엇. 디스크에([`backlog.md`](../../../../docs/goals/backlog.md)).
 - [ ] **불변식 불가침** — fabrication=0 floor + IMMUTABLE-CORE는 절대 약화 안 함.
 - [ ] **게이트가 최종 diff를 덮나** — write-back/digest 後 staged diff에 lint+byte-hygiene 재확인. §4.5-6.
@@ -159,49 +167,49 @@ post — outbound-safety.md) · banking/송금 · `--no-verify`/게이트 우회
 - [ ] **ratchet 지표** — digest에 스코어보드 델타 1줄, 알림은 추세. §4.5-8.
 - [ ] **중단 방법** — cron id 기록, 어떻게 멈추나(CronDelete/cmux), 무인 비용 경계.
 
-## 4.5 루프 품질 가드 (2026-06-12, 라이브 dogfood 평가에서)
+## 4.5 루프 품질 가드 (루프가 좋아질수록 *날카로워지는* 것)
 
-2 fire를 돌려보니 *기계*는 잘 도는데 *산출*이 저야망이었다 — 검증 쉬운 마이크로 슬라이스만
-고르고, 테스트는 선언-only, 토큰 대비 산출 비쌈, 실패 경로 미검증. 그 4개를 가드로 박는다.
+기계는 잘 돌아도 산출이 저야망일 수 있다 — 검증 쉬운 마이크로 슬라이스만 고르고, 테스트는
+선언-only, 토큰 대비 산출 비싸고, 실패 경로 미검증, value 단조. 그걸 가드로 박는다.
 
-1. **가치 우선 — "검증 쉬운 것" 아니라 "가치 높은 것".** ②에서 최상단 ◦를 고른다. 그게
-   어려워서(live 의존 등) DEFER하면 **digest에 *왜* deferred인지 명시**한다 — 조용히 쉬운 걸로
-   내려가지 않는다. 어려운 항목도 fixture/mock로 검증 가능하면 시도한다(회피 ≠ 불가능).
-2. **다양성 — 같은 패턴 반복 금지.** 최근 N fire(기본 3)가 *같은 종류* 슬라이스(예: 매번
-   `groundedArgs` 한 줄)였으면, 다음 fire는 **다른 KIND**를 고른다(새 도구 / 행동 수정 /
-   버그픽스). 한 backlog 항목을 토큰 들여 N번 두드리지 않는다.
+1. **가치 우선 — "검증 쉬운 것" 아니라 "가치 높은 것".** ②에서 최상단 ◦를 고른다. 어려워서
+   (live 의존 등) defer하면 digest에 *왜* deferred인지 명시 — 조용히 쉬운 걸로 안 내려간다.
+   어려운 항목도 fixture/mock로 검증 가능하면 시도한다(회피 ≠ 불가능). 강제 메커니즘은 가드 9.
+2. **KIND 다양성 — 같은 패턴 반복 금지.** 최근 N fire(기본 3)가 *같은 KIND* 슬라이스였으면
+   다음 fire는 다른 KIND. 한 backlog 항목을 토큰 들여 N번 두드리지 않는다.
 3. **행동 acceptance — 선언-only 테스트 금지.** 정지조건의 테스트는 **결과 상태(OUTCOME)**를
-   채점해야 한다([`team-roles.md`](../../../../harness/core/team-roles.md) · agent-testing.md "grade
-   outcomes not paths"). "툴이 X를 *선언*하나"만 보는 테스트는 **불충분** — fabricated 값이 실제
-   *드롭되는* end-to-end 케이스를 요구한다. 게이팅 검증자(§3-1)는 선언-only 테스트를 행동
-   요구에 대해 **FAIL** 처리한다.
-4. **토큰 효율 — 배칭 + 리스크-티어.** (a) **사소한 동종 변경은 한 fire로 묶는다** — 남은
-   actuator N개에 `groundedArgs`를 N fire(각 ~140k)로 하지 말고 한 슬라이스로 쓸어 한 번
-   빌드·한 번 검증(고정 검증비를 N개에 분산). 자연히 슬라이스가 커져 1·3을 같이 고친다.
-   (b) **검증 깊이는 리스크에 비례** — 정형 저위험 변경엔 가벼운 체크, 새 경로·불변식 접촉·큰
-   변경에만 Opus 풀 추적. 단 검증자는 *항상* 돈다(끄지 않는다 — floor).
-5. **실패 드릴 — 롤백 경로를 *증명*한다 (CADENCE).** 게이팅 검증자가 실제로 FAIL→`git restore`
-   롤백→블로커 기록하는지, **고의로 나쁜 슬라이스 1건**(불변식 약화 / inert / 깨진 테스트)을
-   주입해 드릴-검증한다. 1회로 끝이 아니라 **N fire(기본 10)마다 또는 스킬 버전 bump마다** 재드릴
-   — 그리고 digest에 judge PASS-rate를 기록한다. *장기 all-PASS 구간은 "worker가 좋아진 것"과
-   "judge가 물러진 것"을 구분 못 하므로*(maker=judge인 단일-모델 honest constraint, agent-testing.md),
-   all-PASS가 길어지면 드릴이 자동 트리거.
-
-다음 셋은 **2026-06-13 라이브 평가**(6 fire 실측 + Osmani/Cherny/Karpathy/Anthropic 2026-06 대조)에서 추가:
-
+   채점한다(agent-testing.md "grade outcomes not paths"). "툴이 X를 *선언*하나"만 보는 테스트는
+   불충분 — fabricated 값이 실제 *드롭되는* end-to-end를 요구. ④b 검증자는 선언-only를 FAIL 처리.
+4. **토큰 효율 — 배칭 + 리스크-티어.** (a) 사소한 동종 변경은 한 fire로 묶어 고정 검증비를 분산.
+   (b) 검증 깊이는 리스크에 비례 — 저위험은 가벼운 체크, 새 경로·불변식 접촉·큰 변경엔 풀 추적.
+   단 검증자는 *항상* 돈다(floor).
+5. **실패 드릴 — 롤백 경로를 *증명*한다 (하드 카운터).** 게이팅 검증자가 실제로 FAIL→`git restore`
+   롤백→블로커 기록하는지, **고의로 나쁜 슬라이스 1건**(불변식 약화 / inert / 깨진 테스트)을 주입해
+   드릴-검증한다. 산문 cadence는 미끄러지므로 **digest RATCHET 줄에 `firesSinceDrill=N` 하드 카운터**:
+   **`firesSinceDrill≥10 OR 연속 allPASS≥8`이면 그 fire 슬라이스가 *곧* 드릴 — 미루기 불가, 완료 시에만
+   0 리셋.** 장기 all-PASS는 "worker가 좋아짐"과 "judge가 물러짐"을 구분 못 하고(Opus가 천장이라 §1.5의
+   maker=judge), 드릴이 판정자가 여전히 차별함을 보이는 *유일한* 증거 — 거르면 maker≠judge가 무너진다.
 6. **게이트가 최종 diff를 덮는다 — "게이트 後 트리 무편집".** ④ 게이트 통과 *후* write-back/digest로
-   트리를 또 편집하면 그 바이트는 미검증으로 커밋된다(fire-1이 NUL 바이트를 이 구멍으로 흘렸고
-   fire-2가 잡음). 커밋 *직전 마지막 행동*으로 **staged diff에 lint + byte-hygiene 재확인**.
-   Osmani: "ship code you *confirmed* works" — 슬라이스만이 아니라 커밋의 모든 바이트.
-7. **DECOMPOSE-ON-DEFER — defer는 막다른 길이 아니라 파이프라인.** 큰 항목을 defer-with-reason만
-   하면 고가치 항목이 영원히 제자리(작은-버그 편향 = Karpathy가 관찰한 RLHF "cagy and scared"의
-   루프 버전). Anthropic harness의 planner는 *큰 의도를 게이트-검증 가능한 작은 리스트로 쪼개는*
-   것이 일. defer 시 강한-티어 1스텝으로 loop-sized ◦로 decompose해 backlog 기록(또는 "진안 필요"
-   명시); 같은 항목 2회 defer면 escalate. *쪼개지 않는 defer가 안티패턴, 셋으로 쪼개는 defer가 처방.*
-8. **RATCHET 지표 — 루프가 *나아짐을 증명*해야 한다.** boolean 게이트 통과만으론 Muse가 측정 가능하게
-   좋아졌는지 알 수 없다(Karpathy의 immutable number 부재). 매 fire digest에 스코어보드 델타 1줄,
-   3-fire 알림은 누적 개수가 아니라 *추세*를 보고. self-eval 스코어보드가 이미 있으니 digest에 델타로
-   노출만 하면 됨.
+   트리를 또 편집하면 그 바이트는 미검증으로 커밋된다. 커밋 *직전 마지막 행동*으로 **staged diff에
+   lint + byte-hygiene 재확인** — 슬라이스만이 아니라 커밋의 모든 바이트가 confirmed여야 한다.
+7. **DECOMPOSE-ON-DEFER — defer는 막다른 길이 아니라 파이프라인.** 큰 항목을 defer-with-reason만 하면
+   고가치 항목이 영원히 제자리(작은-버그 편향). 강한-티어 1스텝으로 loop-sized ◦로 decompose해 backlog
+   기록(또는 "진안 필요" 명시); 같은 항목 2회 defer면 escalate. *쪼개지 않는 defer가 안티패턴.*
+8. **RATCHET 지표 — 루프가 *나아짐을 증명*해야 한다.** boolean 게이트 통과만으론 측정 가능하게 좋아졌는지
+   알 수 없다. 매 fire digest에 스코어보드 델타 1줄, 3-fire 알림은 누적 개수가 아니라 *추세*를 보고.
+9. **VALUE-CLASS RATCHET — value 다양성을 *카운트되는 속성*으로 (가드 1·2의 강제 메커니즘).** KIND-다양성
+   (가드 2)은 *버그-KIND 회전*으로 만족돼 *false 안심*을 준다 — KIND를 돌리면서도 같은 패키지의 single-function
+   micro-fix 우물에 머물 수 있다(테마의 EXPANSION 절반이 0건이 되는 실패). 그래서 *KIND 위에 value-class 층*을
+   센다: 최근 8 fire를 **(a)만진 패키지 (b)value-class∈{micro-fix·new-capability(EXPANSION)·wiring·refactor}**로
+   세고, **≥6/8이 같은 패키지 AND micro-fix면 다음 fire는 반드시 다른 value-class 또는 다른 패키지** — 또 고르면
+   ④b judge가 inert처럼 **FAIL**. value-class·pkg는 매 fire RATCHET 줄에 카운트로 박는다(testFiles ratchet처럼).
+   "가치 우선"을 *세는 속성*으로 바꿔 micro-fix 고원에서 끌어내는 메커니즘 — 산문 exhortation은 KIND 회전으로
+   우회된다.
+10. **EXHAUSTION — 쉬운 버그 vein 고갈의 정직한 출구.** gap-scout가 2회 연속 "clean·objectively-correct·1-file
+   버그 없음"을 보고하면 *3번째 스카웃으로 토큰을 더 태우지 않는다.* "할 게 없다 금지"는 *스카웃을 더 하드하게*가
+   아니라 **value-class를 올리라**는 뜻 — RATCHET(가드 9)이 가리키는 다른 value-class(EXPANSION/논문-capability/
+   큰 ◦ decompose)로 전환하거나, 그것도 마르면 backlog에 "vein 고갈, <후보>" 블로커 + 이 fire 정직 종료(루프는
+   다음 fire 계속).
 
 ## 5. 출처 (2026-06, 1차 → 심화)
 

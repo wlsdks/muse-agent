@@ -3,8 +3,48 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
+    "composite": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["dist"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "dist"
+  ],
+  "references": [
+    {
+      "path": "../agent-specs"
+    },
+    {
+      "path": "../cache"
+    },
+    {
+      "path": "../memory"
+    },
+    {
+      "path": "../model"
+    },
+    {
+      "path": "../observability"
+    },
+    {
+      "path": "../policy"
+    },
+    {
+      "path": "../prompts"
+    },
+    {
+      "path": "../resilience"
+    },
+    {
+      "path": "../runtime-state"
+    },
+    {
+      "path": "../shared"
+    },
+    {
+      "path": "../tools"
+    }
+  ]
 }
