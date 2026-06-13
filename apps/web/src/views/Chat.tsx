@@ -99,7 +99,7 @@ export function ChatView({ client }: { client: ApiClient }) {
                   </div>
                 )}
                 {turn.role === "assistant" && turn.text && (
-                  <button className="speak-btn" title={t("chat.speak")} onClick={() => void voice.speak(turn.text)}>
+                  <button className="speak-btn" title={t("chat.speak")} aria-label={t("chat.speak")} onClick={() => void voice.speak(turn.text)}>
                     <Icon.volume className="nav-icon" />
                   </button>
                 )}
@@ -125,6 +125,7 @@ export function ChatView({ client }: { client: ApiClient }) {
           <button
             className={`mic-btn${voice.recording ? " recording" : ""}`}
             title={voice.recording ? t("chat.micStop") : t("chat.mic")}
+            aria-label={voice.recording ? t("chat.micStop") : t("chat.mic")}
             onClick={() => void voice.toggleRecording((text) => setDraft((d) => (d ? `${d} ${text}` : text)))}
           >
             {voice.transcribing ? <span className="spinner" /> : <Icon.mic className="nav-icon" />}
@@ -136,7 +137,7 @@ export function ChatView({ client }: { client: ApiClient }) {
             placeholder={voice.transcribing ? t("chat.transcribing") : t("chat.placeholder")}
             rows={1}
           />
-          <Button variant="primary" onClick={submit} disabled={pending || !draft.trim()} title={t("common.send")}>
+          <Button variant="primary" onClick={submit} disabled={pending || !draft.trim()} title={t("common.send")} ariaLabel={t("common.send")}>
             <Icon.send className="nav-icon" />
           </Button>
         </div>

@@ -39,7 +39,11 @@ test("console renders Today, navigates to Chat, and round-trips a message", asyn
 
   await page.getByRole("button", { name: "Chat" }).click();
   await page.getByPlaceholder(/Message Muse/).fill("what is due today");
-  await page.getByTitle("Send").click();
+  // Icon-only buttons must expose a robust accessible name (aria-label), not
+  // rely on the title tooltip alone (WCAG 4.1.2).
+  await expect(page.getByTitle("Send")).toHaveAttribute("aria-label", "Send");
+  await expect(page.getByTitle("Voice input")).toHaveAttribute("aria-label", "Voice input");
+  await page.getByRole("button", { name: "Send" }).click();
 
   await expect(page.locator(".msg.assistant strong", { hasText: "1 task" })).toBeVisible();
   await expect(page.getByText("due: Ship the rebuild.")).toBeVisible();
