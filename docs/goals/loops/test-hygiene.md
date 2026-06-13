@@ -109,3 +109,11 @@ ratchet: testFiles 945→944 (−1 중복 삭제, judge 승인) · netCoverage 0
 - **왜:** 같은 도구를 두 스위트가 중복. non-UTC zone은 "Seoul은 지금 무슨 요일?"의 조용한 오답을 막는 핵심 가드.
 - **어떻게-증명(MUTATION-FIRST PRUNE):** `.toLowerCase()` 제거→MONDAY RED; `timeZone: timezone`→`"UTC"`→Seoul 케이스 RED(`'Saturday'≠'Sunday'`). 복원 19/19 green. ★④b judge **1차 FAIL**로 내가 놓친 Seoul non-UTC zone 손실을 잡음(zone 무시해도 222 green이던 구멍) → 더 강한 케이스(Sat 16:00 UTC=Sun 01:00 KST, 요일 롤오버)로 이식 → 2차 judge 전수 sweep 후 **VERDICT: PASS**.
 - **리스크:** 소스 무변경. LESSON(반복): 독립 스위트 prune은 "fuller가 모든 걸 커버"가 거짓일 수 있음 — 함수별 전수 대조해도 사람(나)은 유니크를 놓침, judge가 보상통제. data/text 쌍 남음(backlog).
+
+## fire 13 · 2026-06-13 · skill v1.14.0 · e5231481
+meta: kind=prune · pkg=@muse/tools · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 946→945 (−1 중복 삭제, judge 승인) · netCoverage 0 (2 유니크 케이스 src/로 이식) · fabrication 0 · pnpm check GREEN(무관 부하-flake 제외, 아래)
+- **무엇:** tools 이중-실행 `muse-tools-text` 쌍 정리 — 4개 text 도구(TextStats/Slugify/KvSummarize/MarkdownTable)의 두 독립 스위트 중 더 완전한 `src/`(18→20) 유지(depth-cap·200-line-cap·200-row-cap 보유), lesser `test/`(14) 삭제. test 유니크 2개를 src/로 이식: ①ZWJ 가족-emoji 3-grapheme(`\u{200D}` escape) ②**MarkdownTable 컬럼 union(다른 키 행) + 누락 셀 빈-채움**.
+- **왜:** 같은 도구 중복 스위트. column-union/empty-fill은 `deriveMarkdownTableColumns`의 merge-across-rows + `undefined→""` 분기 — src/의 동일-키 derived 케이스가 안 치던 진짜 가드.
+- **어떻게-증명(MUTATION-FIRST PRUNE):** ZWJ — `countGraphemes→text.length` 시 RED(UTF-16 과카운트); union — `deriveMarkdownTableColumns` 첫 행만(`index<1`) 시 RED(c 컬럼 손실). 복원 20/20 green. ★④b judge **1차 FAIL**로 내가 놓친 column-union/empty-fill 손실을 잡음(src의 derived 케이스는 동일-키라 union 미커버) → 이식 → 2차 judge 전수 sweep 표로 14→20 확인 후 **VERDICT: PASS**.
+- **리스크:** 소스 무변경. full `pnpm check`는 **무관 부하-flake**로 red — `@muse/messaging pending-approval-store "caps to 200 most recent"`가 동시-루프 부하서 5028ms timeout(격리 3.04s pass). fire-2 playbook-store와 동일 부류(200 순차 write, slow-ish) → de-flake 후보로 backlog 기록(이번 슬라이스와 무관·pre-existing). LESSON: 독립 스위트 prune은 사람이 유니크를 놓침 — judge가 3 fire 연속(4·12·13) 실제 손실 잡음.
