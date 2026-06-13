@@ -10,7 +10,7 @@
 | `cognition` | agent-core 인지 강화 (worktree `agent-core-enhance`) | [cognition.md](cognition.md) | 39 | — | — | superseded → re-registered as `agent-core-cognition` (v1.14.0, cron 42e5d7ba) |
 | `agent-core-cognition` | agent-core 인지 코어 강화 (worktree `agent-core-enhance`) | [agent-core-cognition.md](agent-core-cognition.md) | 8 | `c3fb59d2` | v1.14.0 | active (cron 42e5d7ba, session-only) |
 | `differentiation` | 경쟁 차별점 발굴 → edge 확장 vs hermes/openclaw (worktree `/tmp/muse-differentiation`) | [differentiation.md](differentiation.md) | 15 | `ff109c97` | v1.14.0 | active (cron `291e935d`, session-only) |
-| `codebase-quality` | 코드베이스 내부 품질 (decompose/cohere/dead-code/주석 · @muse/recall 추출) (worktree `codebase-quality`) | [codebase-quality.md](codebase-quality.md) | 18 | `8635a0da` | v1.14.0 | active (cron `725247c7`, session-only) |
+| `codebase-quality` | 코드베이스 내부 품질 (decompose/cohere/dead-code/주석 · @muse/recall 추출) (worktree `codebase-quality`) | [codebase-quality.md](codebase-quality.md) | 19 | `88c810d0` | v1.14.0 | active (cron `725247c7`, session-only) |
 | `tool-mcp-browser` | TOOL 확장+하드닝 · 공식 공개 외부 MCP(Notion/GitHub) · muse-in-chrome (worktree `tool-mcp-browser`) | [tool-mcp-browser.md](tool-mcp-browser.md) | 9 | (fire 9) | v1.14.0 | active (cron `d410848c`, session-only) |
 | `grounding-integrity` | grounded≠true ceiling + self-improvement reliability + self-judge meta-eval (worktree `grounding-integrity`) | [grounding-integrity.md](grounding-integrity.md) | 8 | `7d6f0071` | v1.14.0 | active (cron `8ed88aa8`, session-only) |
 | `surfaces` | 제품 표면 강화 — CLI · macOS desktop · web (worktree `/tmp/muse-surfaces`, branch `loop/surfaces`) | [surfaces.md](surfaces.md) | 8 | `bbccd21d` | v1.14.0 | active (cron `a55a7444`, session-only) |

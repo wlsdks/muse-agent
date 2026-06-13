@@ -25,7 +25,6 @@
  * watchdog kills a wedged osascript so a tool call never hangs forever.
  */
 
-import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
 import { readFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -33,6 +32,8 @@ import { basename, dirname, join, resolve as resolvePath } from "node:path";
 
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
+import { escapeAppleScript, isPermissionError, runChild, type MacCommandResult } from "./macos-exec.js";
+export type { MacCommandResult } from "./macos-exec.js";
 
 /**
  * Outbound-safety primitives, defined LOCALLY so this package never depends on
@@ -83,75 +84,16 @@ const OSASCRIPT_TIMEOUT_MS = 30_000;
 /** A shortcut can do real work (network, HomeKit) — give it a longer leash. */
 const SHORTCUTS_TIMEOUT_MS = 120_000;
 
-export interface MacCommandResult {
-  readonly stdout: string;
-  readonly stderr: string;
-  readonly exitCode: number | null;
-  readonly timedOut: boolean;
-}
-
 /** Runs an AppleScript via `osascript -` (script on stdin). Injected in tests. */
 export type MacOsascriptRunner = (script: string) => Promise<MacCommandResult>;
 /** Runs the `shortcuts` CLI with argv + optional stdin input. Injected in tests. */
 export type ShortcutsRunner = (args: readonly string[], input?: string) => Promise<MacCommandResult>;
-
-function runChild(
-  bin: string,
-  argv: readonly string[],
-  stdin: string | undefined,
-  timeoutMs: number
-): Promise<MacCommandResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(bin, [...argv], { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    const finish = (action: () => void): void => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      action();
-    };
-    // Without this watchdog an unanswered Automation consent prompt (or a
-    // wedged app) leaves osascript/shortcuts blocked and the tool call hangs
-    // forever — the awaiting agent turn never resolves.
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      finish(() => resolve({ exitCode: null, stderr, stdout, timedOut: true }));
-    }, timeoutMs);
-    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString("utf8"); });
-    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString("utf8"); });
-    child.on("error", (error) => { finish(() => reject(error)); });
-    child.on("close", (code) => { finish(() => resolve({ exitCode: code, stderr, stdout, timedOut: false })); });
-    // A failed spawn destroys stdin; writing then emits EPIPE — swallow it,
-    // the real failure surfaces via the 'error'/'close' handlers.
-    child.stdin.on("error", () => { /* surfaced via child 'error'/'close' */ });
-    if (stdin !== undefined) child.stdin.write(stdin);
-    child.stdin.end();
-  });
-}
 
 const defaultOsascriptRunner: MacOsascriptRunner = (script) =>
   runChild(OSASCRIPT_PATH, ["-"], script, OSASCRIPT_TIMEOUT_MS);
 
 const defaultShortcutsRunner: ShortcutsRunner = (args, input) =>
   runChild(SHORTCUTS_PATH, args, input, SHORTCUTS_TIMEOUT_MS);
-
-/**
- * Escapes user text for an AppleScript double-quoted string literal.
- * `\` and `"` are backslash-escaped (identical to JS/JSON); newlines are
- * flattened to spaces — classic AppleScript string literals can't carry a
- * raw newline, and flattening keeps the generated script single-statement.
- */
-function escapeAppleScript(text: string): string {
-  return text.replace(/\\/gu, "\\\\").replace(/"/gu, '\\"').replace(/[\r\n]+/gu, " ");
-}
-
-function isPermissionError(stderr: string): boolean {
-  // osascript error -1743 is the canonical "not authorised to send Apple
-  // events"; the wording varies by locale so match the numeric code too.
-  return /not allowed|don't have permission|not authori[sz]|-1743/iu.test(stderr);
-}
 
 // ── Tier 1: mac_shortcut_run ──────────────────────────────────────────
 
