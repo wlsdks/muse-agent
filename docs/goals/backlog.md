@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ Phase 3 cont.: extracted inline reminderBlock -> buildReminderContextBlock in @muse/recall (+test); formatDueLocal orphan removed from commands-ask — codebase-quality fire 28
 - ✓ decompose @muse/multi-agent: worker-result cluster (parseWorkerResult/validateWorkerHandoff/createWorkerResult + types) index.ts -> worker-result.ts (825->767 LOC) — codebase-quality fire 27
 - ✓ eval:tools field-targeted time-arg correctness — new argFieldMatches scorer + 5 calendar/reminder add cases now assert dueAt/startsAt carries the PHRASE (re-arms the *Iso precompute regression that whole-args argMatches couldnt catch) — tool-hardening fire 69
 - ⏳ FINDING (fire 69) — followup scenario 60% (pre-existing, NOT mine): the model mis-selects followup.cancel/snooze as followup.list (4 cases FAIL 0/3). A real tool-SELECTION gap on the followup surface — followup.cancel/snooze descriptions need disambiguation from followup.list (the 8B cannot tell "cancel/delay a commitment" from "list commitments"). Candidate slice: sharpen followup.cancel/snooze "use when/not when" + an eval re-verify. (surfaced by the fire-69 argFieldIncludes live run; my 5 timed cases all PASS 3/3)
