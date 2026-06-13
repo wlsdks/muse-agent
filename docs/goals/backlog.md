@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ dead-code apps/api: removed 2 dead barrel re-exports (toCompatChatResponse/toExtendedChatResponse) from server-helpers.ts + de-exported internal-only ChannelPollingProvider interface — knip-clean, consumers use the canonical home — codebase-quality fire 61
 - ✓ day_recap agent tool (EXPANSION): the retrospective day digest (accomplished + slipping) existed for muse recap / the evening daemon but was never an agent tool — the RETROSPECTIVE twin of today_brief; the hard carve (day_recap vs recent_actions=Muse's-actions vs today_brief=forward, all touching "did/done") held 6/6 STABLE 3/3. person-dossier candidate REJECTED (confusable with find_contact). — tool-hardening fire 99
 
 - ✓ episodic conflict annotation (A-MAC factual-confidence, arXiv:2603.04549): a recalled episode that states the same topic but a different value than a higher-relevance recalled one is flagged conflictsWith + rendered "⚠ verify" — read-time annotation only (never drops), semantic topic gate [0.86,0.92) under consolidation, same-script guarded — agent-core-cognition fire 29
