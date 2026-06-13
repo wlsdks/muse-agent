@@ -76,7 +76,7 @@ const MEMORY_INJECTION_PATTERNS: readonly RegExp[] = [
 
 /** Neutralize a remembered value that reads like an injected instruction, so a
  * poisoned fact can't steer the model even if it slipped past the input guard. */
-export function defangMemoryValue(value: string): string {
+function defangMemoryValue(value: string): string {
   return MEMORY_INJECTION_PATTERNS.some((re) => re.test(value))
     ? "(stored note hidden — its text looked like an instruction)"
     : value;

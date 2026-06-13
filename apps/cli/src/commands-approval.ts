@@ -89,7 +89,7 @@ function defaultUserKey(persona: string | undefined): string {
 }
 
 /** Public helper for the agent runtime to log a pending request. */
-export async function logPendingApproval(input: {
+async function logPendingApproval(input: {
   readonly toolName: string;
   readonly userKey: string;
   readonly reason?: string;

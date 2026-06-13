@@ -22,7 +22,7 @@ import type { ProgramIO } from "./program.js";
 
 /** Magic-byte image sniff — guards `muse show` from rendering a non-image file
  *  (a broken-image glyph on iTerm/WezTerm, or handing text/PDF to the viewer). */
-export function looksLikeImage(buffer: Buffer): boolean {
+function looksLikeImage(buffer: Buffer): boolean {
   const startsWith = (...bytes: number[]): boolean =>
     buffer.length >= bytes.length && bytes.every((b, i) => buffer[i] === b);
   if (startsWith(0x89, 0x50, 0x4e, 0x47)) return true; // PNG

@@ -46,7 +46,7 @@ export function activityPath(): string {
   return raw && raw.length > 0 ? raw : join(homedir(), ".muse", "activity.jsonl");
 }
 
-export async function readActivity(file: string): Promise<readonly ActivityRow[]> {
+async function readActivity(file: string): Promise<readonly ActivityRow[]> {
   let raw: string;
   try {
     raw = await readFile(file, "utf8");
