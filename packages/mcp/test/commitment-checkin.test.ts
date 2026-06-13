@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  appendCheckins,
   buildCheckinQuestion,
   cancelCheckin,
   followupDayOffset,
@@ -213,5 +214,33 @@ describe("runDueCheckins", () => {
     expect(res.delivered).toBe(0);
     expect(sent).toEqual([]);
     expect((await readCheckins(file))[0]!.status).toBe("scheduled"); // not consumed
+  });
+});
+
+describe("commitment check-ins — concurrent mutations don't lose updates", () => {
+  const mk = (id: string, dueAtIso: string): PersistedCheckin =>
+    ({ commitment: id, createdAt: NOW.toISOString(), dueAtIso, id, question: `q-${id}`, sourceKey: id, status: "scheduled", userId: "stark" });
+
+  it("a check-in appended mid-send (chat hook) survives the fired-status write — no stale-snapshot clobber", async () => {
+    const file = tmpFile();
+    await writeCheckins(file, [mk("a", new Date("2026-05-02T10:00:00Z").toISOString())]);
+    const extra = mk("b", new Date("2026-05-09T10:00:00Z").toISOString()); // appended during the send window, not yet due
+    // The send hook appends a NEW check-in mid-send (the multi-second delivery window).
+    const registry: CheckinSendRegistry = { send: async () => { await appendCheckins(file, [extra]); } };
+    const res = await runDueCheckins({ destination: "me", file, now: () => new Date("2026-05-02T10:05:00Z"), providerId: "log", registry });
+    expect(res.delivered).toBe(1);
+    const persisted = await readCheckins(file);
+    expect(persisted.find((c) => c.id === "a")?.status).toBe("fired"); // the fired one IS marked
+    expect(persisted.find((c) => c.id === "b")).toBeDefined(); // the mid-send append was NOT clobbered by the stale write
+  });
+
+  it("two concurrent appendCheckins both persist (no lost-update)", async () => {
+    const file = tmpFile();
+    await writeCheckins(file, []);
+    await Promise.all([
+      appendCheckins(file, [mk("x", new Date("2026-05-09T10:00:00Z").toISOString())]),
+      appendCheckins(file, [mk("y", new Date("2026-05-09T10:00:00Z").toISOString())])
+    ]);
+    expect((await readCheckins(file)).map((c) => c.id).sort()).toEqual(["x", "y"]);
   });
 });

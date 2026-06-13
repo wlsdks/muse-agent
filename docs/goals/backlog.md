@@ -715,6 +715,22 @@ HARDEN (make existing tools more reliable):
   token-quoting send failure archives the raw token in that log. FIX: apply `redactSecretsInText` at the daemon's
   error-print seam (and/or scrub the `errors` array in the summary). Slice: 1 wrap + 1 test (a secret-bearing error →
   the printed/returned string is redacted). Fresh surface (daemon stdout).
+- ✓→Done **commitment check-ins lost-update / stale-snapshot write** (EXPANSION gap-scout, fire 42; data-integrity /
+  lost-update) — `appendCheckins` did an UNQUEUED read→append→write, and `runDueCheckins` read `all` (snapshot), awaited
+  multi-second network sends, then wrote `all.map(...)` (the STALE pre-send snapshot) — so a check-in appended (chat-turn
+  hook) or cancelled DURING the send window was clobbered: a fresh check-in vanished, a CANCELLED nudge RESURRECTED and
+  re-fired (trust failure — the user silenced it). Siblings (followups/objectives) use `withFileMutationQueue`; this
+  store predates the pattern. FIX: wrap `appendCheckins` in the per-file queue; make the fired-status write re-read the
+  FRESH store inside the queue and patch ONLY the fired ids, not the stale `all`. TDD (registry.send appends a check-in
+  mid-send → it survives + the fired one is marked; 2 concurrent appendCheckins both persist) RED(stale write clobbers +
+  ENOENT)→GREEN; mcp 1773, check 0 (all pkgs), lint 0. Fable-5 PASS (re-read inside queue, patch-by-id, cancel-not-
+  resurrected by construction, no deadlock — send loop OUTSIDE the queue; scope honest: fixes IN-PROCESS races,
+  cross-process CLI-cancel-vs-daemon is the existing file-lock ◦). KIND lost-update, fresh surface.
+- ◦ **commitment-checkin keeps a bespoke writeFileAtomic (pid+Date.now tmp) (fire-42 verifier nit)** — the store's local
+  `writeFileAtomic` (line ~226) still uses `${file}.tmp-${pid}-${Date.now()}` instead of the shared `atomicWriteFile`
+  (randomUUID + orphan cleanup). The queue masks the in-process collision on the fixed paths, but the CLI's direct
+  `writeCheckins` (cancel/snooze, unqueued + cross-process) can still hit the same-ms ENOENT + orphan. FIX: adopt
+  `atomicWriteFile`. Joins the appendReminderHistory tmp-write ◦ (same one-line swap, resource-leak KIND).
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`

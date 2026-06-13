@@ -18,6 +18,7 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { withFileMutationQueue } from "./atomic-file-store.js";
 import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";
 
 export type CheckinStatus = "scheduled" | "fired" | "cancelled";
@@ -257,8 +258,14 @@ export async function writeCheckins(file: string, checkins: readonly PersistedCh
 /** Append newly-scheduled check-ins to the store (in addition to existing). */
 export async function appendCheckins(file: string, fresh: readonly PersistedCheckin[]): Promise<void> {
   if (fresh.length === 0) return;
-  const existing = await readCheckins(file);
-  await writeCheckins(file, [...existing, ...fresh]);
+  // Serialise the read→append→write on the shared per-file queue: a concurrent
+  // in-process append (chat-turn hook) or the daemon's fired-status write otherwise
+  // reads the same snapshot and the last write clobbers the rest — a lost check-in is
+  // a proactive nudge the user never receives. (Cross-process races need a file lock.)
+  await withFileMutationQueue(file, async () => {
+    const existing = await readCheckins(file);
+    await writeCheckins(file, [...existing, ...fresh]);
+  });
 }
 
 export interface CheckinSendRegistry {
@@ -330,8 +337,15 @@ export async function runDueCheckins(options: RunDueCheckinsOptions): Promise<Ru
     }
   }
   if (firedIds.size > 0) {
-    const next = all.map((c) => (firedIds.has(c.id) ? { ...c, firedAt: at.toISOString(), status: "fired" as const } : c));
-    await writeCheckins(options.file, next);
+    // Re-read the FRESH store inside the queue and patch only the fired ids — NOT
+    // write the stale pre-send `all`. During the multi-second send window a check-in
+    // can be appended (chat hook) or cancelled; the stale write would drop the new one
+    // and RESURRECT a cancelled nudge. Patch-by-id preserves every concurrent change.
+    await withFileMutationQueue(options.file, async () => {
+      const fresh = await readCheckins(options.file);
+      const next = fresh.map((c) => (firedIds.has(c.id) ? { ...c, firedAt: at.toISOString(), status: "fired" as const } : c));
+      await writeCheckins(options.file, next);
+    });
   }
   return { delivered: fired.length, due: due.length, errors, fired };
 }
