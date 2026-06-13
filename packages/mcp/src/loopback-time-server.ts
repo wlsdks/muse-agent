@@ -72,5 +72,21 @@ function readDate(args: JsonObject, key: string): Date | undefined {
     return undefined;
   }
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  if (Number.isNaN(parsed.getTime())) {
+    return undefined;
+  }
+  // `new Date("2026-02-30")` silently rolls over to Mar 2 — accepting it would
+  // compute a diff ~2 days off, contradicting the tool's "valid ISO-8601"
+  // contract. A real date round-trips its Y-M-D through Date.UTC unchanged.
+  const dateHead = /^(\d{4})-(\d{2})-(\d{2})/u.exec(value);
+  if (dateHead) {
+    const y = Number(dateHead[1]);
+    const mo = Number(dateHead[2]);
+    const d = Number(dateHead[3]);
+    const probe = new Date(Date.UTC(y, mo - 1, d));
+    if (probe.getUTCFullYear() !== y || probe.getUTCMonth() !== mo - 1 || probe.getUTCDate() !== d) {
+      return undefined;
+    }
+  }
+  return parsed;
 }

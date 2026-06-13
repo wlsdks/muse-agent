@@ -931,6 +931,18 @@ describe("loopback MCP servers", () => {
     ).toEqual({ milliseconds: 90_000 });
   });
 
+  it("muse.time#diff_ms rejects an impossible date instead of rolling it over (matches its 'valid ISO-8601' contract)", async () => {
+    const connection = createLoopbackMcpConnection(createTimeMcpServer());
+    // "2026-02-30" is not a valid calendar date; new Date() silently rolls it to
+    // Mar 2, which would compute a diff ~2 days off. The tool PROMISES "valid
+    // ISO-8601 strings" — so it must error, not return a wrong duration.
+    expect(await connection.callTool!("diff_ms", { from: "2026-02-30", to: "2026-03-05" }))
+      .toMatchObject({ error: expect.stringContaining("valid ISO-8601") });
+    // A real date / full timestamp still computes.
+    expect(await connection.callTool!("diff_ms", { from: "2026-03-01", to: "2026-03-02" }))
+      .toEqual({ milliseconds: 86_400_000 });
+  });
+
   it("muse.text#stats counts words/characters/lines and treats whitespace as zero", async () => {
     const server = createTextUtilsMcpServer();
     const connection = createLoopbackMcpConnection(server);
