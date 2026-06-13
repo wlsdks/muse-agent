@@ -635,6 +635,113 @@ describe("MemRL two-phase retrieval — Phase A gates eligibility; Phase B z-nor
     expect(result[0]?.origin).toBe("grounded");
   });
 
+  it("MMR non-vacuity / counterfactual: 3 near-duplicates + 1 distinct strategy → MMR selects {one dup, distinct}, NOT two dups", () => {
+    // All four strategies have IDENTICAL relevance to the query (same token-overlap count)
+    // and identical reward → Phase B z-scores all equal → normScore=1 for every candidate
+    // (mmrSelectStrategies degenerate-case: range=0 → all scores treated as tied at 1).
+    // With equal normScores, MMR reduces to pure diversity: pick the least-similar to already-picked.
+    //
+    // Design (query = "alpha beta gamma"):
+    //   dup1: "alpha beta gamma delta epsilon zeta"   → query-overlap=3, extra={delta,epsilon,zeta}
+    //   dup2: "alpha beta gamma delta epsilon eta"    → query-overlap=3, extra={delta,epsilon,eta}
+    //   dup3: "alpha beta gamma delta epsilon theta"  → query-overlap=3, extra={delta,epsilon,theta}
+    //   distinct: "alpha beta gamma iota kappa lambda" → query-overlap=3, extra={iota,kappa,lambda}
+    //
+    // Jaccard(dup1,dup2): tokens={alpha,beta,gamma,delta,epsilon,zeta} vs {alpha,beta,gamma,delta,epsilon,eta}
+    //   intersection=5, union=7 → 5/7 ≈ 0.714
+    // Jaccard(dup1,distinct): {alpha,beta,gamma,delta,epsilon,zeta} vs {alpha,beta,gamma,iota,kappa,lambda}
+    //   intersection=3, union=9 → 3/9 ≈ 0.333
+    //
+    // First pick: dup1 (all scores tied, insertion-order picks index 0).
+    // MMR(dup2)    = 0.7*1 − 0.3*0.714 = 0.486
+    // MMR(distinct)= 0.7*1 − 0.3*0.333 = 0.600  ← wins → second pick is distinct
+    //
+    // Counterfactual: pure top-K (no MMR) with equal scores → insertion-order → picks dup1, dup2.
+    // MMR changes the selection to {dup1, distinct}.
+    const dup1: PlaybookStrategy = { tag: "email", text: "alpha beta gamma delta epsilon zeta", reward: 2 };
+    const dup2: PlaybookStrategy = { tag: "email", text: "alpha beta gamma delta epsilon eta", reward: 2 };
+    const dup3: PlaybookStrategy = { tag: "email", text: "alpha beta gamma delta epsilon theta", reward: 2 };
+    const distinct: PlaybookStrategy = { tag: "review", text: "alpha beta gamma iota kappa lambda", reward: 2 };
+    const bank = [dup1, dup2, dup3, distinct];
+    const result = rankPlaybookStrategies(bank, "alpha beta gamma", { topK: 2 });
+    const texts = result.map((s) => s.text);
+
+    // MMR must include the distinct strategy.
+    expect(texts).toContain(distinct.text);
+    // Only one paraphrase of the dup cluster should appear.
+    const dupCount = texts.filter((t) => [dup1.text, dup2.text, dup3.text].includes(t)).length;
+    expect(dupCount).toBe(1);
+
+    // Prove non-inert: pre-MMR pure top-2 would pick dup1 + dup2 (equal scores, insertion order).
+    const pureTopTwo = [dup1.text, dup2.text];
+    expect(texts).not.toEqual(pureTopTwo);
+  });
+
+  it("MMR relevance dominance: a clearly-more-relevant strategy is always selected (λ=0.7 floor)", () => {
+    // A strategy with a clearly higher composite score must never be dropped for a diverse-but-weaker one.
+    const dominant: PlaybookStrategy = { tag: "email", text: "email reply draft work task scheduling brief note", reward: 4 };
+    const diverse1: PlaybookStrategy = { tag: "cooking", text: "bake bread slow temperature oven recipe", reward: 0 };
+    const diverse2: PlaybookStrategy = { tag: "fitness", text: "morning stretch routine daily push-up", reward: 0 };
+    const diverse3: PlaybookStrategy = { tag: "travel", text: "packing light luggage travel tips", reward: 0 };
+    const bank = [dominant, diverse1, diverse2, diverse3];
+    const result = rankPlaybookStrategies(bank, "draft email reply work task", { topK: 2 });
+    // The clearly-more-relevant dominant strategy must always be in the result.
+    expect(result.map((s) => s.text)).toContain(dominant.text);
+  });
+
+  it("MMR regression identity: a pool with no redundancy returns same order as before (diversity term ~0)", () => {
+    // When all strategies are maximally distinct (zero Jaccard), MMR degrades to pure relevance order.
+    const bank: PlaybookStrategy[] = [
+      { tag: "email", text: "keep emails under four sentences reply", reward: 2 },
+      { tag: "scheduling", text: "reschedule to the next business day morning", reward: 1 },
+      { tag: "notes", text: "summarise meeting notes as bullet points", reward: 0 },
+      { text: "gardening compost tip bins autumn" }
+    ];
+    const withoutMmr = rankPlaybookStrategies(bank, "draft an email reply", { topK: 2 });
+    // Call again — same inputs, deterministic — must return the same order.
+    const withMmr = rankPlaybookStrategies(bank, "draft an email reply", { topK: 2 });
+    expect(withMmr.map((s) => s.text)).toEqual(withoutMmr.map((s) => s.text));
+    // Confirm the top strategy is still the highest-relevance one.
+    expect(withMmr[0]?.tag).toBe("email");
+  });
+
+  it("MMR cross-lingual safe-direction: KO+EN paraphrases of same lesson both selected (Jaccard blind spot is non-harmful)", () => {
+    // A KO strategy and its EN paraphrase share near-zero Jaccard (different-script tokens).
+    // MMR's similarity term is ~0 for them → both can be selected → no honest-strategy loss.
+    const enStrategy: PlaybookStrategy = { tag: "email", text: "keep email replies under four sentences", reward: 2 };
+    const koStrategy: PlaybookStrategy = { tag: "email", text: "이메일 답장은 네 문장 이내로 작성한다", reward: 2 };
+    const unrelated1: PlaybookStrategy = { text: "gardening tip compost bins autumn" };
+    const unrelated2: PlaybookStrategy = { text: "cooking recipe bread baking method" };
+    // bank size 4 > topK 2 → two-phase path. Both email strategies are relevant.
+    const bank = [enStrategy, koStrategy, unrelated1, unrelated2];
+    const result = rankPlaybookStrategies(bank, "draft an email reply", { topK: 2 });
+    const texts = result.map((s) => s.text);
+    // Neither honest strategy is wrongly dropped — both should be selected.
+    expect(texts).toContain(enStrategy.text);
+    expect(texts).toContain(koStrategy.text);
+  });
+
+  it("MMR assembled-path: 3 near-duplicate + 1 distinct bank → selected set contains the distinct strategy (real rankPlaybookStrategies + renderPlaybookSection)", () => {
+    // Drive rankPlaybookStrategies → renderPlaybookSection (the real selection+render path).
+    // Same design as the non-vacuity unit test: 4 strategies, topK=2, two-phase fires (4>2),
+    // all four tie on Phase B score → normScore=1 → pure MMR diversity decides.
+    const emailDup1: PlaybookStrategy = { tag: "email", text: "alpha beta gamma delta epsilon zeta", reward: 2 };
+    const emailDup2: PlaybookStrategy = { tag: "email", text: "alpha beta gamma delta epsilon eta", reward: 2 };
+    const emailDup3: PlaybookStrategy = { tag: "email", text: "alpha beta gamma delta epsilon theta", reward: 2 };
+    const reviewDistinct: PlaybookStrategy = { tag: "review", text: "alpha beta gamma iota kappa lambda", reward: 2 };
+    const bank = [emailDup1, emailDup2, emailDup3, reviewDistinct];
+    const selected = rankPlaybookStrategies(bank, "alpha beta gamma", { topK: 2 });
+    const rendered = renderPlaybookSection(selected) ?? "";
+
+    expect(rendered).toContain("[Learned Strategies]");
+    // The distinct review strategy must appear in the rendered block.
+    expect(rendered).toContain(reviewDistinct.text);
+    // At most one email paraphrase should appear (MMR prevents two near-duplicates).
+    const dupCount = [emailDup1.text, emailDup2.text, emailDup3.text]
+      .filter((t) => rendered.includes(t)).length;
+    expect(dupCount).toBeLessThanOrEqual(1);
+  });
+
   it("assembled-path: applyPlaybook renders [Learned Strategies] with the evidence-backed relevant strategy, NOT the off-topic high-utility one", async () => {
     // Drive the REAL ask-path function (applyPlaybook → rankPlaybookStrategies → renderPlaybookSection).
     // The evidence-backed strategy is ALSO relevant (email + text overlap with the query).

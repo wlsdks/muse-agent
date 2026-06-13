@@ -373,6 +373,58 @@ function finiteOr(value: number | undefined, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
+/**
+ * MMR (Maximal Marginal Relevance) diversity-aware final cut — arXiv:2502.09017
+ * (Wang et al. 2025, "Diversity Enhances an LLM's Performance in RAG and Long-context Task").
+ * Greedy selection: each iteration picks the candidate maximising
+ *   λ·normScore − (1−λ)·maxJaccard(candidate, alreadyPicked)
+ * where normScore is min-max normalised to [0,1] so λ blends against the [0,1]
+ * Jaccard similarity on the same scale.
+ * λ=0.7 keeps the cut relevance-dominant: MMR only breaks near-ties, never
+ * drops a clearly-more-relevant strategy in favour of a diverse-but-weaker one.
+ * Ties (equal MMR value) are broken by original index (lower = earlier insertion).
+ * Note: Jaccard is token-overlap so cross-lingual duplicates (KO+EN paraphrase
+ * of the same lesson) score ~0 similarity — they are treated as distinct and
+ * both can be selected. This is the safe direction (a missed dup = status quo).
+ */
+const MMR_DIVERSITY_LAMBDA = 0.7;
+
+type ScoredEntry = { readonly score: number; readonly index: number; readonly strategy: PlaybookStrategy };
+
+function mmrSelectStrategies(scored: readonly ScoredEntry[], k: number): ScoredEntry[] {
+  if (scored.length === 0 || k <= 0) {
+    return [];
+  }
+  const scores = scored.map((e) => e.score);
+  const minS = Math.min(...scores);
+  const maxS = Math.max(...scores);
+  const range = maxS - minS;
+  // When all scores are equal, normScore = 1 for all → relevance tied, diversity decides.
+  const normScore = (s: number): number => (range === 0 ? 1 : (s - minS) / range);
+
+  const remaining = [...scored];
+  const picked: ScoredEntry[] = [];
+
+  while (picked.length < k && remaining.length > 0) {
+    let bestIdx = 0;
+    let bestMmr = Number.NEGATIVE_INFINITY;
+    for (let i = 0; i < remaining.length; i++) {
+      const candidate = remaining[i]!;
+      const maxSim = picked.length === 0
+        ? 0
+        : Math.max(...picked.map((p) => strategyTextSimilarity(candidate.strategy.text, p.strategy.text)));
+      const mmr = MMR_DIVERSITY_LAMBDA * normScore(candidate.score) - (1 - MMR_DIVERSITY_LAMBDA) * maxSim;
+      if (mmr > bestMmr || (mmr === bestMmr && candidate.index < remaining[bestIdx]!.index)) {
+        bestMmr = mmr;
+        bestIdx = i;
+      }
+    }
+    picked.push(remaining[bestIdx]!);
+    remaining.splice(bestIdx, 1);
+  }
+  return picked;
+}
+
 function rankEligible(
   strategies: readonly PlaybookStrategy[],
   options: RankPlaybookOptions | undefined,
@@ -440,7 +492,7 @@ function rankEligible(
       - (e.strategy.origin === "reflected" ? REFLECTED_RANK_PENALTY : 0)
   }));
 
-  const selected = phaseB.sort(byScoreDescThenIndexAsc).slice(0, topK);
+  const selected = mmrSelectStrategies(phaseB.sort(byScoreDescThenIndexAsc), topK);
 
   if (selected.length < topK) {
     // Recency floor: top up with most-recent strategies not already selected.
