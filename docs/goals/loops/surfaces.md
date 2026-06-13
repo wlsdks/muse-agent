@@ -31,7 +31,7 @@ ratchet: cli tests 2567/2567 (find suite 6, +1) · fabrication 0 · self-eval ex
 - **리뷰지점**: 빈-상태 목록은 이제 `DOMAIN_LABELS`에서 유도되므로 5번째 도메인 추가 시 자동 동기화. `--json`(total:0)·non-empty grouped 출력은 무변.
 - **리스크**: 없음(empty-state 분기 1줄 교체 + 순수 헬퍼, 독립 Opus judge가 구-코드 RED·collateral·순서 검증 후 PASS, find 6/6 · cli 2567/2567).
 
-## fire 4 · 2026-06-13 · skill v1.14.0 · <commit>
+## fire 4 · 2026-06-13 · skill v1.14.0 · f27253c0
 meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=i18n-locale-correctness · verdict=PASS · firesSinceDrill=4
 ratchet: testFiles 926 (+1) · web tests 17/17 (+2) · fabrication 0 · self-eval exit 0 · consecutive allPASS=4
 
