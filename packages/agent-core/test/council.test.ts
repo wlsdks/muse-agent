@@ -6,6 +6,8 @@ import {
   buildCouncilPrompt,
   buildDebateQuestion,
   dedupeUtterancesByPeer,
+  hasCouncilConsensus,
+  hasCouncilConsensusSemantic,
   parseCouncilAnswer,
   produceCouncilReasoning,
   produceGroundedCouncilReasoning,
@@ -248,5 +250,52 @@ describe("screenCouncilOutliers — CJK-aware tokenizer (arXiv:2503.05856)", () 
     // This is the known-limitation behavior. A cross-lingual similarity bridge would
     // fix it; until then, homogeneous-language panels are the safe usage.
     expect(excluded.map((e) => e.peerId)).toContain("ko-peer");
+  });
+});
+
+// ── hasCouncilConsensusSemantic — semantic ReConcile consensus gate ──
+// (arXiv:2309.13007 + arXiv:2507.14649 — Cleanse)
+// Deterministic fake embedder — no Ollama.
+
+describe("hasCouncilConsensusSemantic — semantic consensus gate (arXiv:2309.13007 + arXiv:2507.14649)", () => {
+  // KO+EN agreeing paraphrases of the same answer — the cross-lingual fixture.
+  // A multilingual embedder (nomic-embed-text-v2-moe) returns near-identical vectors
+  // for these; we simulate that with a fake embedder returning the same vector.
+  const KO_REASONING = "PostgreSQL이 동시 쓰기와 관계형 무결성을 잘 처리하므로 선택해야 합니다.";
+  const EN_REASONING = "PostgreSQL is the right choice because it handles concurrent writes and relational integrity well.";
+
+  // Fake embedder: near-identical vectors for agreeing texts (cosine ≈ 0.99).
+  const AGREE_VEC = [1, 0, 0] as const;
+  const agreeEmbed = async (_text: string): Promise<readonly number[]> => [...AGREE_VEC];
+
+  // Fake embedder: orthogonal vectors for genuinely diverging texts (cosine = 0).
+  const divergeEmbed = async (text: string): Promise<readonly number[]> =>
+    text === KO_REASONING ? [1, 0, 0] : [0, 1, 0];
+
+  // NON-VACUITY / counterfactual: Jaccard scores ~0 (cross-script), semantic scores ~1.
+  // This is the headline regression — reverts → Jaccard false, semantic true.
+  it("KO+EN agreeing panel: hasCouncilConsensus (Jaccard) returns false, hasCouncilConsensusSemantic returns true (counterfactual)", async () => {
+    const panel = [utt("ko-peer", KO_REASONING), utt("en-peer", EN_REASONING)];
+    expect(hasCouncilConsensus(panel), "Jaccard cross-script false-negative — the documented bug").toBe(false);
+    expect(await hasCouncilConsensusSemantic(panel, agreeEmbed), "semantic gate must flip: agreeing KO+EN → true").toBe(true);
+  });
+
+  // Real divergence still fires — gate is not vacuously always-true.
+  it("genuinely diverging panel (orthogonal vectors): hasCouncilConsensusSemantic returns false", async () => {
+    const DIVERGING = [utt("peer-a", KO_REASONING), utt("peer-b", "Bananas are yellow tropical fruit grown in warm climates.")];
+    expect(await hasCouncilConsensusSemantic(DIVERGING, divergeEmbed)).toBe(false);
+  });
+
+  // n ≤ 1 edge cases.
+  it("n=0 → true; n=1 → true (solo panel trivially agrees)", async () => {
+    expect(await hasCouncilConsensusSemantic([], agreeEmbed)).toBe(true);
+    expect(await hasCouncilConsensusSemantic([utt("solo", "alone")], agreeEmbed)).toBe(true);
+  });
+
+  // Fail-open: embed throws → support 0 for that member → not consensus → no throw.
+  it("embed throws → returns false without throwing (fail-open)", async () => {
+    const throwEmbed = async (_text: string): Promise<readonly number[]> => { throw new Error("embed down"); };
+    const panel = [utt("a", "abc"), utt("b", "def")];
+    await expect(hasCouncilConsensusSemantic(panel, throwEmbed)).resolves.toBe(false);
   });
 });

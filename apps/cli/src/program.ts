@@ -213,6 +213,12 @@ export interface ProgramIO {
     readonly modelProvider: import("@muse/model").ModelProvider;
     readonly embed?: (text: string) => Promise<readonly number[]>;
   };
+  /**
+   * Test seam — inject a fake embedder used ONLY for the semantic consensus gate,
+   * without requiring a full synthesis model. Lets assembled-path tests verify the
+   * consensus-gate's cross-lingual behavior in isolation. Absent in production.
+   */
+  readonly councilEmbedOverride?: (text: string) => Promise<readonly number[]>;
 }
 
 const defaultIO: ProgramIO = {

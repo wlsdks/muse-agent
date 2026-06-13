@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildDebateQuestion, buildGroundingReverifyPrompt, hasCouncilConsensus, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
+import { buildDebateQuestion, buildGroundingReverifyPrompt, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import {
@@ -439,18 +439,29 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
           })
         );
 
+      // Hoist embedFn so it is available for BOTH the consensus gate and synthesis.
+      // councilEmbedOverride injects a fake embedder for consensus-gate tests without
+      // requiring a full synthesis model; synthesisEmbedFn comes from councilSynthesisOverride.
+      const embedFn = io.councilEmbedOverride ?? synthesisEmbedFn ?? ((t: string) => embed(t, defaultEmbedModel(env)));
+
       io.stdout(`🏛  Convening the council (${config.peers.length.toString()} peer(s)${rounds > 1 ? `, up to ${rounds.toString()} debate rounds` : ""})…\n`);
       let utterances = await gather(1, question, []);
-      // ReConcile consensus gate (arXiv:2309.13007): stop as soon as the panel agrees —
-      // avoids wasted inference when all members have already converged.
+      // Semantic ReConcile consensus gate (arXiv:2309.13007 + arXiv:2507.14649 — Cleanse):
+      // stop as soon as every member's mean pairwise cosine ≥ agreeAt. Embedding cosine
+      // handles cross-lingual (KO+EN) panels that lexical Jaccard would falsely score as
+      // diverged (zero token overlap across scripts → Jaccard = 0 → wasted debate round).
       let finalRound = 1;
-      for (let round = 2; round <= rounds && utterances.length > 1 && !hasCouncilConsensus(utterances); round += 1) {
+      let round = 2;
+      while (round <= rounds && utterances.length > 1) {
+        const agreed = await hasCouncilConsensusSemantic(utterances, embedFn);
+        if (agreed) break;
         io.stdout(`panel diverged — refining, round ${round.toString()}\n`);
         const prior = utterances;
         utterances = await gather(round, question, prior);
         finalRound = round;
+        round += 1;
       }
-      if (utterances.length > 1 && hasCouncilConsensus(utterances)) {
+      if (utterances.length > 1 && await hasCouncilConsensusSemantic(utterances, embedFn)) {
         io.stdout(`panel agreed — stopping at round ${finalRound.toString()}\n`);
       }
       if (utterances.length === 0) {
@@ -476,7 +487,6 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         });
         return parseGroundingReverifyJson(judged.output ?? "");
       };
-      const embedFn = synthesisEmbedFn ?? ((t: string) => embed(t, defaultEmbedModel(env)));
       const answer = await synthesizeCouncilAnswer(question, utterances, { embed: embedFn, model: model!, modelProvider: modelProvider!, reverify });
       io.stdout(`${renderCouncilResult(question, utterances, answer)}\n`);
     });

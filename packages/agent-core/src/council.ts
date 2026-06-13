@@ -168,6 +168,39 @@ export function hasCouncilConsensus(
 }
 
 /**
+ * Cosine-scale agreement threshold for the semantic ReConcile consensus gate
+ * (arXiv:2309.13007 + arXiv:2507.14649 — Cleanse): agreeing peers (including
+ * cross-lingual KO+EN via the multilingual embedder) score cosine ≥0.6; genuinely
+ * divergent peers score ≤0.25. 0.5 sits cleanly in the gap. Distinct from
+ * COSINE_ABS_FLOOR (0.4): that is the outlier-screen floor for quarantining a
+ * deceptive member; this is the consensus bar every member must clear to stop the
+ * debate — a stricter gate (higher bar for "we agree") makes the early-exit safe.
+ */
+export const DEFAULT_COUNCIL_AGREE_AT_COSINE = 0.5;
+
+/**
+ * Semantic ReConcile consensus gate (arXiv:2309.13007 + arXiv:2507.14649 — Cleanse):
+ * uses embedding cosine instead of lexical Jaccard so cross-lingual panels (KO+EN) that
+ * genuinely agree are not falsely scored as diverged.
+ *
+ * n ≤ 1 → true. Else: every member's mean pairwise cosine must be ≥ agreeAt.
+ * Fail-open: a thrown embed inside councilMemberSupportsSemantic yields support 0
+ * for that member (the primitive's own contract) → consensus fails → no throw here.
+ * Keep hasCouncilConsensus (Jaccard) as the no-embed fallback; this does NOT replace it.
+ */
+export async function hasCouncilConsensusSemantic(
+  utterances: readonly CouncilUtterance[],
+  embed: (text: string) => Promise<readonly number[]>,
+  opts?: { readonly agreeAt?: number }
+): Promise<boolean> {
+  const n = utterances.length;
+  if (n <= 1) return true;
+  const agreeAt = opts?.agreeAt ?? DEFAULT_COUNCIL_AGREE_AT_COSINE;
+  const supports = await councilMemberSupportsSemantic(utterances, embed);
+  return supports.every((s) => s >= agreeAt);
+}
+
+/**
  * Consensus-outlier screen (arXiv:2503.05856 — MoA deception robustness): a peer
  * whose reasoning diverges from the panel consensus is quarantined BEFORE
  * aggregation, so a deceptive/broken/off-topic member can't steer the synthesis

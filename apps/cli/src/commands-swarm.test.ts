@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildSwarmSkillDraft, gatherCouncil, registerSwarmCommands, renderCouncilResult, renderPending, renderShareDraft, type CouncilGatherOverride } from "./commands-swarm.js";
 import type { ProgramIO } from "./program.js";
-import type { CouncilUtterance } from "@muse/agent-core";
+import { hasCouncilConsensus, type CouncilUtterance } from "@muse/agent-core";
 
 describe("gatherCouncil + renderCouncilResult", () => {
   const peer = (id: string) => ({ id, secret: "s", url: `https://${id}/a2a` });
@@ -236,8 +236,15 @@ describe("muse swarm council — ReConcile consensus gate (assembled-path, no Ol
     await rm(dir, { force: true, recursive: true });
   });
 
+  // Fake embedder: texts mentioning PostgreSQL → [1,0,0]; anything else → [0,1,0].
+  // AGREEING panel: all mention PostgreSQL → cosine=1 → consensus.
+  // DIVERGING panel: PostgreSQL + Bananas → orthogonal → no consensus.
+  const fakeEmbed = async (text: string): Promise<readonly number[]> =>
+    text.toLowerCase().includes("postgresql") ? [1, 0, 0] : [0, 1, 0];
+
   const makeProgram = (gatherOverride: CouncilGatherOverride) => {
     const io: ProgramIO = {
+      councilEmbedOverride: fakeEmbed,
       councilGatherOverride: gatherOverride,
       fetch: (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch,
       readPipedStdin: async () => "",
@@ -319,6 +326,72 @@ describe("muse swarm council — ReConcile consensus gate (assembled-path, no Ol
     expect(callCount).toBe(2);
     const text = out.join("");
     expect(text).toContain("Council on:"); // result still rendered
+  });
+});
+
+// ── Semantic consensus gate: cross-lingual (KO+EN) assembled-path ──
+// arXiv:2309.13007 (ReConcile) + arXiv:2507.14649 (Cleanse)
+
+describe("muse swarm council — semantic consensus gate (KO+EN cross-lingual, assembled-path)", () => {
+  let dir: string;
+  let out: string[];
+  const prevEnv: Record<string, string | undefined> = {};
+  const setEnv = (k: string, v: string) => { prevEnv[k] = process.env[k]; process.env[k] = v; };
+
+  // KO+EN agreeing paraphrases of the same answer — the cross-lingual fixture.
+  // Jaccard scores ~0 (zero token overlap across scripts); cosine scores ~1 (same meaning).
+  const KO_REASONING = "PostgreSQL이 동시 쓰기와 관계형 무결성을 잘 처리하므로 선택해야 합니다.";
+  const EN_REASONING = "PostgreSQL is the right choice because it handles concurrent writes and relational integrity well.";
+  const KO_EN_AGREEING: readonly CouncilUtterance[] = [
+    { peerId: "ko-device", reasoning: KO_REASONING },
+    { peerId: "en-device", reasoning: EN_REASONING }
+  ];
+
+  // Fake embedder returns the same vector for all texts → cosine = 1 → always consensus.
+  const agreeEmbed = async (_text: string): Promise<readonly number[]> => [1, 0, 0];
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "muse-council-ko-en-"));
+    out = [];
+    setEnv("MUSE_A2A_ENABLED", "true");
+    setEnv("MUSE_A2A_PEERS_FILE", join(dir, "a2a-peers.json"));
+    await writeFile(join(dir, "a2a-peers.json"), JSON.stringify({
+      peers: [{ id: "en-device", secret: "s1", url: "https://en-device.test/a2a" }],
+      selfId: "ko-device"
+    }), "utf8");
+  });
+  afterEach(async () => {
+    for (const [k, v] of Object.entries(prevEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    await rm(dir, { force: true, recursive: true });
+  });
+
+  it("KO+EN agreeing panel: Jaccard scores ~0 (cross-script false-negative — documented bug)", () => {
+    // Counterfactual: Jaccard would report false → loop would run round 2 → gatherFn called TWICE.
+    expect(hasCouncilConsensus([...KO_EN_AGREEING])).toBe(false);
+  });
+
+  it("KO+EN agreeing panel with semantic embedder → gatherFn called ONCE (consensus at round 1)", async () => {
+    let callCount = 0;
+    const gatherOverride: CouncilGatherOverride = async () => {
+      callCount += 1;
+      return [...KO_EN_AGREEING];
+    };
+    const io: ProgramIO = {
+      councilEmbedOverride: agreeEmbed,
+      councilGatherOverride: gatherOverride,
+      fetch: (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch,
+      readPipedStdin: async () => "",
+      stderr: (m: string) => out.push(m),
+      stdout: (m: string) => out.push(m)
+    } as unknown as ProgramIO;
+    const cmd = new Command();
+    registerSwarmCommands(cmd, io);
+    await cmd.parseAsync(["node", "x", "swarm", "council", "which database?"], { from: "node" });
+    // Semantic gate recognizes agreement → loop never enters → gather called only once.
+    expect(callCount).toBe(1);
+    const text = out.join("");
+    expect(text).toContain("panel agreed — stopping at round 1");
+    expect(text).not.toContain("refining, round 2");
   });
 });
 
