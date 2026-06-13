@@ -482,6 +482,65 @@ export function classifyRetrievalConfidence(
   return borderlineTop && flatDistribution ? "ambiguous" : "confident";
 }
 
+/**
+ * SET-LEVEL semantic sufficiency: a multi-part query is only covered when EVERY
+ * sub-query has at least one passage above the coverage bar. A single strong
+ * passage on sub-query A does not cover sub-query B — the top-cosine signal
+ * misses this gap and the model fabricates the uncovered half.
+ *
+ * Sufficient Context (arXiv:2411.06037, Joren/Zhang/Ferng/Juan/Taly/Rashtchian,
+ * ICLR 2025): sufficiency is a SET-LEVEL property orthogonal to per-passage
+ * relevance; when context is insufficient, models fabricate instead of
+ * abstaining.
+ *
+ * ADVISORY-ONLY: the result is never used to block an answer or relax the
+ * citation gate. It powers one honest caveat naming the uncovered parts.
+ * MULTI-PART-GATED: returns sufficient:true for single-intent queries — those
+ * are the confidence gate's job.
+ * FAIL-OPEN: degenerate/empty vecs → cosineSimilarity returns 0 → insufficient
+ * → but empty subQueries or length<2 → sufficient:true.
+ */
+export interface SufficiencyVerdict {
+  readonly sufficient: boolean;
+  readonly coveredFraction: number;
+  readonly uncovered: readonly string[];
+}
+
+export function assessContextSufficiency(
+  subQueries: ReadonlyArray<{ readonly text: string; readonly vec: readonly number[] }>,
+  evidenceVecs: readonly (readonly number[])[],
+  options?: { readonly coverAt?: number; readonly sufficientAt?: number }
+): SufficiencyVerdict {
+  // Single-intent no-op: per-passage confidence gate already handles this.
+  if (subQueries.length < 2) {
+    return { sufficient: true, coveredFraction: 1, uncovered: [] };
+  }
+  // coverAt reuses DEFAULT_CONFIDENT_AT (0.55): calibrated on nomic-embed-text
+  // against real personal notes — same bar used by classifyRetrievalConfidence.
+  const coverAt = finiteOr(options?.coverAt, DEFAULT_CONFIDENT_AT);
+  const sufficientAt = finiteOr(options?.sufficientAt, 1.0);
+
+  const uncovered: string[] = [];
+  for (const sq of subQueries) {
+    let maxSim = 0;
+    for (const ev of evidenceVecs) {
+      const sim = cosineSimilarity(sq.vec as number[], ev as number[]);
+      if (sim > maxSim) maxSim = sim;
+    }
+    if (maxSim < coverAt) {
+      uncovered.push(sq.text);
+    }
+  }
+
+  const covered = subQueries.length - uncovered.length;
+  const coveredFraction = covered / subQueries.length;
+  return {
+    sufficient: coveredFraction >= sufficientAt,
+    coveredFraction,
+    uncovered
+  };
+}
+
 // Near-tie band (cosine units) for the clarify gate. Two DISTINCT sources whose
 // top cosines sit within this band are "equally relevant" — the open question is
 // WHICH the user meant, not whether the corpus covers it. Tight (vs

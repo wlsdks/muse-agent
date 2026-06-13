@@ -57,3 +57,62 @@ describe("muse followup list — ordering by parsed instant, not lexicographic s
     expect(payload.followups.map((entry) => entry.id)).toEqual(["b", "a"]);
   });
 });
+
+async function runFollowupCapturing(
+  args: string[]
+): Promise<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number | undefined }> {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const io = { stderr: (m: string) => stderr.push(m), stdout: (m: string) => stdout.push(m) };
+  const prevExit = process.exitCode;
+  process.exitCode = 0;
+  try {
+    const program = new Command();
+    program.exitOverride();
+    registerFollowupCommands(program, io);
+    await program.parseAsync(["node", "muse", "followup", ...args]);
+  } finally { /* leave exitCode for the caller to read */ }
+  const exitCode = process.exitCode === 0 ? undefined : process.exitCode;
+  process.exitCode = prevExit;
+  return { exitCode, stderr: stderr.join(""), stdout: stdout.join("") };
+}
+
+describe("muse followup list — strict --status validation (sibling parity with tasks/checkins)", () => {
+  const prevEnv = process.env.MUSE_FOLLOWUPS_FILE;
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.MUSE_FOLLOWUPS_FILE;
+    else process.env.MUSE_FOLLOWUPS_FILE = prevEnv;
+  });
+  const followup = (o: Partial<PersistedFollowup>): PersistedFollowup => ({
+    createdAt: "2026-05-22T00:00:00.000Z",
+    id: "f",
+    scheduledFor: "2026-05-22T12:00:00.000Z",
+    status: "scheduled",
+    summary: "x",
+    userId: "stark",
+    ...o
+  });
+
+  it("rejects a typo'd --status with exit 1 + did-you-mean, not a silent scheduled list", async () => {
+    const f = join(mkdtempSync(join(tmpdir(), "muse-followup-status-")), "followups.json");
+    await writeFollowups(f, [
+      followup({ id: "s1", status: "scheduled", summary: "sched" }),
+      followup({ id: "x1", status: "fired", firedAt: "2026-05-22T13:00:00.000Z", summary: "fired-one" })
+    ]);
+    process.env.MUSE_FOLLOWUPS_FILE = f;
+    const r = await runFollowupCapturing(["list", "--status", "fierd"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("--status must be one of: scheduled, fired, cancelled, all");
+    expect(r.stderr).toContain("did you mean 'fired'");
+    expect(r.stdout).toBe("");
+  });
+
+  it("accepts a valid --status without erroring", async () => {
+    const f = join(mkdtempSync(join(tmpdir(), "muse-followup-status-ok-")), "followups.json");
+    await writeFollowups(f, [followup({ id: "x1", status: "fired", firedAt: "2026-05-22T13:00:00.000Z" })]);
+    process.env.MUSE_FOLLOWUPS_FILE = f;
+    const r = await runFollowupCapturing(["list", "--status", "fired"]);
+    expect(r.exitCode).toBeUndefined();
+    expect(r.stderr).toBe("");
+  });
+});

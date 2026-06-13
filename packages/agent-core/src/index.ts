@@ -207,7 +207,9 @@ export {
   type RankKnowledgeOptions,
   type RecallClarification,
   type RetrievalConfidence,
-  type VerifyGroundingOptions
+  type VerifyGroundingOptions,
+  assessContextSufficiency,
+  type SufficiencyVerdict
 } from "./knowledge-recall.js";
 export {
   scoreGroundingEval,

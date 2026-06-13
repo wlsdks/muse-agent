@@ -31,8 +31,11 @@ import {
 } from "@muse/mcp";
 import type { Command } from "commander";
 
+import { closestCommandName } from "./closest-command.js";
 import { formatLocalDateTime as shortDateTime } from "./human-formatters.js";
 import type { ProgramIO } from "./program.js";
+
+const FOLLOWUP_STATUS_VALUES = ["scheduled", "fired", "cancelled", "all"] as const;
 
 interface SharedOptions {
   readonly json?: boolean;
@@ -57,7 +60,18 @@ export function registerFollowupCommands(program: Command, io: ProgramIO): void 
     )
     .option("--json", "Print the raw payload instead of the formatted list")
     .action(async (options: { readonly status: string } & SharedOptions) => {
-      const status = readFollowupStatusFilter(options.status);
+      // Validate like `tasks`/`checkins` list — readFollowupStatusFilter is
+      // lenient (any typo silently → "scheduled"), so a typo'd --status would
+      // otherwise show the WRONG set with no signal.
+      const raw = options.status.trim().toLowerCase();
+      if (!(FOLLOWUP_STATUS_VALUES as readonly string[]).includes(raw)) {
+        const suggestion = closestCommandName(raw, FOLLOWUP_STATUS_VALUES);
+        const hint = suggestion ? ` — did you mean '${suggestion}'?` : "";
+        io.stderr(`muse followup list: --status must be one of: ${FOLLOWUP_STATUS_VALUES.join(", ")} (got '${options.status}')${hint}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const status = readFollowupStatusFilter(raw);
       const file = localFollowupsFile();
       const all = await readFollowups(file);
       const filtered = filterByStatus(all, status);

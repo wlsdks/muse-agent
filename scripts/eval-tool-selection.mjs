@@ -447,6 +447,11 @@ async function buildFollowupScenario() {
       // POSITIVE: prompts that SHOULD land on a followup tool
       { prompt: "What follow-ups are you supposed to check back on?", expectTool: "muse.followup.list", note: "EN list agent-promised follow-ups → followup.list" },
       { prompt: "팔로업 목록 보여줘", expectTool: "muse.followup.list", note: "KO list follow-ups → followup.list (NOT tasks.list)" },
+      // IrrelAcc guard (destructive over-firing): a STATUS QUESTION mentioning a
+      // followup by a resolvable word must NOT trigger the destructive cancel —
+      // word-ref resolution made cancel one-shot-selectable, so guard the read intent.
+      { prompt: "Did you ever follow up about the report?", expectTool: "muse.followup.list", note: "EN status QUESTION about a followup → followup.list, NOT followup.cancel (a question is not a cancel)" },
+      { prompt: "그 보고서 팔로업 어떻게 됐어?", expectTool: "muse.followup.list", note: "KO status question about a followup → followup.list, NOT cancel (어떻게 됐어 = checking, not 취소)" },
       { prompt: "Cancel the follow-up you promised about the report.", expectTool: "muse.followup.cancel", requireArgs: ["id"], note: "EN cancel an agent-captured follow-up → followup.cancel (NOT tasks.delete)" },
       { prompt: "그 체크인 팔로업 취소해줘.", expectTool: "muse.followup.cancel", requireArgs: ["id"], note: "KO cancel a follow-up commitment → followup.cancel (NOT tasks.delete)" },
       { prompt: "Push the report follow-up to tomorrow morning.", expectTool: "muse.followup.snooze", requireArgs: ["id", "scheduledFor"], note: "EN delay a follow-up → followup.snooze (NOT reminders.snooze); a referent word (report) lets it snooze one-shot, no prior list" },

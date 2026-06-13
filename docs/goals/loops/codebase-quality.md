@@ -554,3 +554,38 @@ ratchet: testFiles 947 · fabrication 0 · groundedSurfaces 27 · commands-docto
   commands-doctor test cases green; DevFixableWeakness retained in commands-doctor; LocalDoctorReport interface
   (between them) untouched.
 - **Risk:** low — pure relocation of two tested pure classifiers; no IO, no floor path.
+
+## fire 30 · 2026-06-13 · loop-creator v1.14.0 · 2e9e61a8
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 950 · fabrication 0 · groundedSurfaces 27 · ask god-file: 3rd inline block extracted
+- **What:** Phase 3 continuation (3rd block after task/reminder) — extracted the inline `memoryBlock` builder
+  (`<<memory N>>` grounding block) from commands-ask.ts into a pure `buildMemoryContextBlock(facts)` in
+  @muse/recall/**select.ts** (its natural home — beside renderMemoryFact + the MemoryFact type + selectMemoryFacts,
+  all recall-owned). ZERO new imports (renderMemoryFact + MemoryFact are file-local). The inline expr became a
+  one-line call. Body byte-identical; 3-case OUTCOME test added. renderMemoryFact stays imported in commands-ask
+  (4 other uses at 2151/2258/2391/2589) → no orphan.
+- **Why:** continues moving the ask pipeline's inline `<<...>>` block-builders to recall (presentation layer).
+  Last fire diversified to cli; compose@recall back to ~4/8 (within ceiling). This block was the cleanest yet —
+  its only dep (renderMemoryFact) already lives in recall's select.ts, so it slotted in with no import churn.
+- **Review point:** 4b judge — memoryBlock body byte-identical (<<memory>>/[memory:] wrapper, key-as-citation,
+  renderMemoryFact call); placed in select.ts (renderMemoryFact's module) not present.ts; new test real OUTCOME;
+  renderMemoryFact import retained in commands-ask (4 other uses); recall 175 + cli 2599 green.
+- **Risk:** low — pure presentation relocation, same-module dep; grounding gate consumes the block identically.
+
+## fire 31 · 2026-06-13 · loop-creator v1.14.0 · 66891731
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 950 · fabrication 0 · groundedSurfaces 27 · commands-doctor.ts 899->847 LOC
+- **What:** continued the commands-doctor decompose (fires 25/29) — moved the cohesive ollama-perf cluster
+  (`OllamaPerfEnv` type + `ollamaPerfPostureCheck` pure classifier + `readOllamaPerfEnv` env reader) from
+  commands-doctor.ts to the sibling commands-doctor-checks.ts (verbatim, incl. the load-bearing JSDoc). LocalCheck
+  was already in the sibling; readOllamaPerfEnv's deps are all dynamic (node:child_process/util) — so ZERO new
+  static imports. commands-doctor imports both fns back (runLocalDoctor calls them at line 371) + re-exports them
+  (commands-doctor-perf.test imports ollamaPerfPostureCheck). OllamaPerfEnv had no external importer → moved
+  without re-export.
+- **Why:** diversity — compose@recall was 4/8 (a 5th would near the ceiling); this is decompose@cli (the proven
+  sibling pattern), shrinking the doctor god-file 899→847. The model-tag cluster (OllamaTagsEntry/findOllamaModelTag/
+  embedModelCheck) is a separate cohesive unit — deferred to a later fire (DECOMPOSE-ON-DEFER).
+- **Review point:** 4b judge — all 3 symbols byte-identical (esp. ollamaPerfPostureCheck's flash/KV branch logic +
+  the launchctl-fallback readOllamaPerfEnv); re-export keeps commands-doctor-perf test green (2599 cli); no new
+  static import in the sibling; OllamaPerfEnv move-without-re-export safe (no external importer).
+- **Risk:** low — pure relocation; ollama-perf is advisory (warn, never fail), no floor path.
