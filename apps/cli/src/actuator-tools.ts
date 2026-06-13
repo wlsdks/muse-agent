@@ -45,6 +45,7 @@ import {
   createBrowserBackTool,
   createBrowserLookTool,
   createBrowserClickTool,
+  createBrowserFillFormTool,
   createBrowserHoverTool,
   createBrowserKeyTool,
   createBrowserOpenTool,
@@ -232,9 +233,21 @@ export function buildBrowserApprovalGate(deps: {
     if (!interactive()) {
       return { approved: false, reason: "non-interactive — browser actions need a live confirm" };
     }
-    const what = draft.action === "type" ? `Type into ${draft.target}: ${draft.text ?? ""}` : `Click ${draft.target}`;
+    let what: string;
+    let question: string;
+    if (draft.action === "fill") {
+      const lines = (draft.fields ?? []).map((field) => `  • ${field.target}: ${field.value}`).join("\n");
+      what = `Fill these fields:\n${lines}`;
+      question = "Fill these fields in the browser?";
+    } else if (draft.action === "type") {
+      what = `Type into ${draft.target}: ${draft.text ?? ""}`;
+      question = "Type this in the browser?";
+    } else {
+      what = `Click ${draft.target}`;
+      question = "Click this in the browser?";
+    }
     deps.io.stdout(`\n${what}\n(on ${draft.url})\n\n`);
-    return (await deps.confirmAction(draft.action === "type" ? "Type this in the browser?" : "Click this in the browser?"))
+    return (await deps.confirmAction(question))
       ? { approved: true }
       : { approved: false, reason: "user did not confirm" };
   };
@@ -281,6 +294,7 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
     createBrowserKeyTool({ approvalGate: gate, controller }),
     createBrowserClickTool({ approvalGate: gate, controller }),
     createBrowserTypeTool({ approvalGate: gate, controller }),
+    createBrowserFillFormTool({ approvalGate: gate, controller }),
     // browser_look (vision over the page) only when a vision callback is wired.
     ...(deps.describeImage ? [createBrowserLookTool({ controller, describeImage: deps.describeImage })] : [])
   ];
