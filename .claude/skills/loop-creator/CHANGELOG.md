@@ -9,6 +9,21 @@
 
 ---
 
+## 1.14.0 — 2026-06-13
+**per-loop 로깅 규약 — 동시 4 루프 충돌·오염 제거**(진안 지시). 배경: 4개 루프가 하나의 공유
+`loop-digest.md`·`backlog.md`에 append → 매 fire 머지 충돌 + "버전↔산출 상관"이 다른 루프 항목에
+오염(TOOL fire의 RATCHET 집계가 cognition fire와 섞임). 2026 멀티에이전트 관측성 합의(agent-ID 박힌
+구조화 로그 + 격리 경로 = "실패 귀속 + 병렬 편집 무손상"의 fundamental control)를 적용.
+- **per-loop 저널** `docs/goals/loops/<slug>.md` — 루프 슬러그(테마)별 append-only. 날짜·fire·버전은
+  *엔트리 메타*(파일명 아님). 고정 스키마: `## fire N · 날짜 · skill vX.Y.Z · commit` + `meta:`
+  (value-class·pkg·kind·verdict·firesSinceDrill, **grep-가능 카운트**) + `ratchet:` + 무엇/왜/리뷰지점/리스크.
+- **backlog = 얇은 공유 큐**(open ◦ + `✓ Fixed` 한 줄 dedup 원장). per-fire Done 상세는 저널로 — backlog
+  비대·충돌의 원인이던 거대 Done 블록 제거(going-forward).
+- **INDEX.md** 얇은 aggregator(루프당 1줄, 자기 줄만 갱신) + **loops/README.md** 규약 문서.
+- 기존 공유 `loop-digest.md`(830줄, TOOL 68 + cognition 39 항목)를 per-loop 저널로 **이주**, 원본은
+  tombstone(미재등록 루프 안내). 출처: Augment "Git Worktrees / Debug Parallel Agents", MLflow
+  "Production AI Agents 2026", arXiv 2604.09409 "Do AI Coding Agents Log Like Humans?", 2603.29678.
+
 ## 1.13.0 — 2026-06-13
 **복잡-코딩 escalation 티어링 + MD 본문 정리**(진안 지시).
 - **복잡한 비즈니스 코드 → Opus 4.8**(§1.5-2, 표). 정형·기계적(깨끗한 단일-파일)만 Sonnet; 여러
