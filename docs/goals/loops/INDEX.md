@@ -6,7 +6,7 @@
 
 | slug | theme | journal | last fire | last commit | skill | status |
 |---|---|---|---|---|---|---|
-| `tool-hardening` | TOOL expansion & hardening (main worktree) | [tool-hardening.md](tool-hardening.md) | 58 | `a9b11117` | v1.14.0 | active (cron, session-only) |
+| `tool-hardening` | TOOL expansion & hardening (main worktree) | [tool-hardening.md](tool-hardening.md) | 64 | `8c19171f` | v1.14.0 | active (cron, session-only) |
 | `cognition` | agent-core 인지 강화 (worktree `agent-core-enhance`) | [cognition.md](cognition.md) | 39 | — | — | superseded → re-registered as `agent-core-cognition` (v1.14.0, cron 42e5d7ba) |
 | `agent-core-cognition` | agent-core 인지 코어 강화 (worktree `agent-core-enhance`) | [agent-core-cognition.md](agent-core-cognition.md) | 7 | `d1698b08` | v1.14.0 | active (cron 42e5d7ba, session-only) |
 | `differentiation` | 경쟁 차별점 발굴 → edge 확장 vs hermes/openclaw (worktree `/tmp/muse-differentiation`) | [differentiation.md](differentiation.md) | 14 | `5fbe73ea` | v1.14.0 | active (cron `291e935d`, session-only) |
