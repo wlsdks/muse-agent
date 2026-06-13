@@ -1075,6 +1075,7 @@ export {
 
 export { createOverdueContactsTool, interactionsFromEvents, type EventMentionLike, type OverdueContactsToolDeps } from "./relationship-tool.js";
 export { createWeekAgendaTool, groupWeekAgenda, type WeekAgendaInput, type WeekAgendaToolDeps, type WeekDay } from "./week-agenda-tool.js";
+export { createTodayBriefTool, composeTodayBrief, type TodayBrief, type TodayBriefInput, type TodayBriefToolDeps } from "./today-brief-tool.js";
 export { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
 export { resolveDefaultUserId } from "./user-id.js";
 

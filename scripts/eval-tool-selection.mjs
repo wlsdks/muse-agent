@@ -324,16 +324,21 @@ async function buildWeekAgendaScenario() {
       ...mcp.createLoopbackMcpMuseTools(mcp.createRemindersMcpServer({ file: "/tmp/eval-week-reminders.json" }))
     ].filter((t) => t.definition.name.endsWith(".list"));
     const week = ac.createWeekAgendaTool({ weekInput: () => ({ birthdays: [], events: [], tasks: [] }) });
-    const tools = [week, ...lists].map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const today = ac.createTodayBriefTool({ todayInput: () => ({ events: [], followups: [], reminders: [], tasks: [] }) });
+    const tools = [week, today, ...lists].map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
     const byName = new Set(tools.map((t) => t.name));
     const cases = [
-      { prompt: "What's my week look like?", expectTool: "week_agenda", note: "holistic merged week → week_agenda" },
+      { prompt: "What's my week look like?", expectTool: "week_agenda", note: "holistic merged WEEK (forward N days) → week_agenda, NOT today_brief" },
       { prompt: "이번 주 나 뭐 있어? 한눈에 보여줘", expectTool: "week_agenda", note: "KO holistic 'what's on my week at a glance' → week_agenda" },
+      // today_brief vs week_agenda — the load-bearing carve (both merge events+tasks+reminders)
+      { prompt: "What's on my plate today?", expectTool: "today_brief", note: "TODAY triage → today_brief, NOT week_agenda (week is the forward planning view)" },
+      { prompt: "오늘 뭐 해야 해?", expectTool: "today_brief", note: "KO 'what do I have to do today' → today_brief, NOT week_agenda" },
+      { prompt: "What did I miss — anything overdue?", expectTool: "today_brief", note: "overdue triage → today_brief (week_agenda is forward-only, has no overdue concept)" },
       { prompt: "Show just my calendar events for this week.", expectTool: "muse.calendar.list", note: "events-only → calendar.list (NOT week_agenda)" },
       { prompt: "What tasks are due this week?", expectTool: "muse.tasks.list", note: "due tasks only → tasks.list (NOT week_agenda)" },
       { prompt: "List just my reminders due this week.", expectTool: "muse.reminders.list", note: "reminders-only → reminders.list (NOT week_agenda, which now also merges reminders)" }
     ];
-    return { label: "week-agenda (merged week vs calendar/tasks list)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+    return { label: "week-agenda (merged week vs today_brief vs calendar/tasks list)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
     return { label: "week-agenda", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
   }
