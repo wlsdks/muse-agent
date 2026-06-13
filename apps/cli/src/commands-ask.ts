@@ -44,6 +44,7 @@ export { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource };
 import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy } from "@muse/recall";
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
 import { diversifyAskChunks, notesGroundingFraming } from "@muse/recall";
+import { optionalGroundingSections } from "@muse/recall";
 export { diversifyAskChunks, notesGroundingFraming };
 import { askOutcomeLabel, askWeaknessAxis, createStageTimer, recordAskWeakness, recordAskWeaknessResolved } from "@muse/recall";
 import type { AskWeaknessAxis } from "@muse/recall";
@@ -1977,19 +1978,19 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // Optional sources: each is included ONLY when it has content this turn —
         // an empty block bloats the small model's prompt and invites a spurious
         // "[reminder: none]"-style citation. (Notes above is always present.)
-        ...groundingSectionLines([
-          { body: taskBlock, footer: "=== END TASKS ===", header: "=== USER OPEN TASKS (sorted by due date, most imminent first) ===", present: openTasks.length > 0 },
-          { body: calendarBlock, footer: "=== END CALENDAR ===", header: "=== UPCOMING CALENDAR EVENTS (sorted chronologically) ===", present: upcomingEvents.length > 0 },
-          { body: reminderBlock, footer: "=== END REMINDERS ===", header: "=== PENDING REMINDERS (sorted by due date) ===", present: pendingReminders.length > 0 },
-          { body: contactBlock, footer: "=== END CONTACTS ===", header: "=== MATCHING CONTACTS (from your address book) ===", present: matchedContacts.length > 0 },
-          { body: memoryBlock, footer: "=== END REMEMBERED FACTS ===", header: "=== FACTS YOU TOLD MUSE TO REMEMBER (cite as [memory: <topic>]) ===", present: matchedMemories.length > 0 },
-          { body: shellBlock, footer: "=== END SHELL COMMANDS ===", header: "=== MATCHING SHELL COMMANDS (from your shell history) ===", present: matchedCommands.length > 0 },
-          { body: gitBlock, footer: "=== END GIT COMMITS ===", header: "=== YOUR RECENT GIT COMMITS (from this repo, newest first) ===", present: matchedCommits.length > 0 },
-          { body: actionBlock, footer: "=== END ACTIONS ===", header: "=== ACTIONS MUSE HAS TAKEN ON YOUR BEHALF (your audit log) ===", present: matchedActions.length > 0 },
-          { body: episodeBlock, footer: "=== END PAST SESSIONS ===", header: "=== PAST SESSION SUMMARIES (your prior conversations) ===", present: episodeHits.length > 0 },
-          { body: feedBlock, footer: "=== END FEED HEADLINES ===", header: "=== RECENT FEED HEADLINES (your watched RSS/Atom feeds, newest first) ===", present: feedHeadlines.length > 0 },
-          { body: reflectionBlock, footer: "=== END NOTICED ===", header: "=== WHAT MUSE HAS NOTICED ABOUT YOU (high-level, from past sessions) ===", present: reflectionLines.length > 0 }
-        ])
+        ...groundingSectionLines(optionalGroundingSections({
+          tasks: { body: taskBlock, present: openTasks.length > 0 },
+          calendar: { body: calendarBlock, present: upcomingEvents.length > 0 },
+          reminders: { body: reminderBlock, present: pendingReminders.length > 0 },
+          contacts: { body: contactBlock, present: matchedContacts.length > 0 },
+          memories: { body: memoryBlock, present: matchedMemories.length > 0 },
+          shell: { body: shellBlock, present: matchedCommands.length > 0 },
+          git: { body: gitBlock, present: matchedCommits.length > 0 },
+          actions: { body: actionBlock, present: matchedActions.length > 0 },
+          episodes: { body: episodeBlock, present: episodeHits.length > 0 },
+          feeds: { body: feedBlock, present: feedHeadlines.length > 0 },
+          reflection: { body: reflectionBlock, present: reflectionLines.length > 0 }
+        }))
       ].join("\n").trimEnd();
 
       // Show citation header before streaming the answer so the user
