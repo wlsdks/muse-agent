@@ -103,7 +103,7 @@ export function sanitizeConfig(config: JsonObject): JsonObject {
   ) as JsonObject;
 }
 
-export function sanitizeConfigValue(value: JsonObject[string]): JsonObject[string] {
+function sanitizeConfigValue(value: JsonObject[string]): JsonObject[string] {
   if (Array.isArray(value)) {
     return value.map((entry) => sanitizeConfigValue(entry)) as JsonObject[string];
   }

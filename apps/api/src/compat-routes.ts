@@ -219,16 +219,6 @@ export function createRecord(collection: CompatCollection, input: JsonObject, pr
   return record;
 }
 
-export function compatRecord(input: JsonObject, prefix: string, existing?: JsonObject): CompatRecord {
-  const id = typeof input.id === "string" && input.id.length > 0 ? input.id : createRunId(prefix);
-  return {
-    ...input,
-    createdAt: typeof existing?.createdAt === "string" ? existing.createdAt : nowIso(),
-    id,
-    updatedAt: nowIso()
-  };
-}
-
 // Session-tag store helpers live in apps/api/src/compat-session-tag-store.ts.
 export {
   createSessionTag,

@@ -438,3 +438,22 @@ ratchet: testFiles 943 · fabrication 0 · groundedSurfaces 27 · Phase3 3b done
   (1436/1452/1680) so their imports stay.
 - **Risk:** low-medium — grounding-prompt presentation, but a pure verbatim relocation with its full
   contradiction test moved alongside; floor unchanged.
+
+## fire 24 · 2026-06-13 · loop-creator v1.14.0 · 0272cb5b
+meta: value-class=refactor · pkg=@muse/api · kind=dead-code · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 944 · fabrication 0 · groundedSurfaces 27 · 1 dead fn removed + 1 over-export tightened
+- **What:** dead-code sweep in apps/api (verified via knip + repo-wide grep, NOT trusting knip alone):
+  (1) removed `compatRecord` (compat-routes.ts) — a real exported function with ZERO references anywhere
+  in the repo (incl. tests); the `CompatRecord` TYPE is separate and stays. (2) de-exported
+  `sanitizeConfigValue` (mcp-routes-shapers.ts) — knip flagged it but grep showed it IS used internally
+  (called by sanitizeConfig + recursively), so per code-style "internal use → drop export only": kept the
+  function, removed `export`. knip no longer flags either.
+- **Why:** diversity — last 2 fires were compose@recall; dead-code was ~8 fires stale (fresh KIND). Most
+  of knip's "unused exports" here are FALSE POSITIVES (dead barrel RE-EXPORTS in compat-routes whose real
+  defs+tests live in compat-parsers/compat-responses, or test-only exports) — I verified each candidate's
+  true reference count and only touched the 2 that are genuinely dead / genuinely internal-only. Left the
+  barrel re-exports + the dormant LINE-webhook registrar alone (removing the latter = a behavior change).
+- **Review point:** 4b judge — compatRecord truly dead (grep: only its def line repo-wide, no test);
+  createRunId/nowIso still used 6× in compat-routes so no orphaned imports; sanitizeConfigValue still called
+  internally (de-export is correct, not removal); api 850 tests + full check green; knip drops both.
+- **Risk:** none — one dead function removed, one over-broad export narrowed; no behavior/floor change.

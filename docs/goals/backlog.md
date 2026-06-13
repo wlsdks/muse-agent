@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ dead-code apps/api: removed dead compatRecord fn + de-exported internal-only sanitizeConfigValue (knip-verified, barrel re-export false-positives left alone) — codebase-quality fire 24
 - ✓ mac_message_send resolves a NAME → number from the contacts graph (Rule 3 parity with email; "text Jane" now completes, ambiguous/unknown fail closed, resolved-not-guessed) — tool-hardening fire 67
 - ✓ Phase 3 sub-slice 3b: moved buildNoteContextBlock (<<note N>> grounding block) commands-ask -> @muse/recall/present.ts (+test moved); 3a+3b relocate the whole note-block concern out of CLI — codebase-quality fire 23
 - ✓ Phase 3 sub-slice 3a: relocated escapeSystemPromptMarkers (injection defense) apps/cli -> @muse/recall (+test moved, commands-ask rewired); unblocks 3b — codebase-quality fire 22
