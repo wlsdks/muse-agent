@@ -305,7 +305,7 @@ ratchet: testFiles 931 · differentiationBatteries 4→5 (fire-13 ratchet 자동
 - **리스크/residual (비차단)**: 배터리는 *consented-action seam*을 증명; ambiguous-recipient
   (P13 contacts clarify)는 별 seam이라 미포함(outbound-safety의 다른 rule). 향후 L7 확장 여지.
 
-## fire 15 · 2026-06-13 · skill v1.14.0 · `<pending-commit>`
+## fire 15 · 2026-06-13 · skill v1.14.0 · `ff109c97`
 meta: value-class=new-capability · pkg=scripts(@muse/mcp proof) · kind=adversarial-proof-battery(L7-widen) · verdict=PASS · firesSinceDrill=6
 ratchet: testFiles 935 · differentiationBatteries 5→6 (fire-13 ratchet 자동) · fabrication 0 · 소유-루프 파일 미수정
 
