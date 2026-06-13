@@ -174,3 +174,22 @@ ratchet: testFiles 922 · new battery eval:receipt-drift (no Ollama) · recall 8
   현재 디스크 내용을 읽어 `diskContents`를 채워야 *사용자 receipt*에 실제 작동(경로해석+
   ad-hoc `--url`/`--clipboard` 스킵이 자체 테스트 필요) → backlog ◦. 그 전까진 로직은
   라이브·검증됨이나 사용자 노출은 deferred.
+
+## fire 9 · 2026-06-13 · skill v1.14.0 · `<pending-commit>`
+meta: value-class=test-coverage(JUDGE-DRILL) · pkg=@muse/recall · kind=judge-drill · verdict=PASS · firesSinceDrill=0
+ratchet: testFiles 922 · recall 89/89 · fabrication 0 · grounding 엔진 미수정
+
+- **무엇**: 연속 allPASS 8 도달 → mandated **JUDGE-DRILL**. fire-8 `snippetOnDisk`의
+  `…`-절단 처리가 end-to-end 미테스트인 실제 갭을 타깃. ① 고의 **inert** 테스트 주입
+  (`toBeDefined`+`toContain("📎")` — 절단/검증과 무관하게 trivially 참) → ② ④b 독립
+  Opus judge가 **FAIL** 판정(mutation으로 inert 입증: snippetOnDisk 무력화해도 통과) →
+  ③ 롤백 → ④ 진짜 discriminating 테스트(faithful 절단 snippet 표시+`…` 포함 / drift 숨김+
+  "changed since" 대조).
+- **왜**: maker≠judge 보상통제 검증 — 같은-모델 천장(Opus)에서 verifier가 rubber stamp가
+  아님을 주기적으로 증명. 부수 가치: fire-8 L4의 `…`-절단 디스크검증 경로를 락다운(실제
+  커버리지 +1).
+- **리뷰지점**: 드릴 양방향 입증 — inert 버전은 judge가 FAIL(snippetOnDisk `return true`
+  무력화해도 PASS = 비차별) · 진짜 버전은 같은 무력화에 **FAIL**(discriminating) → sed
+  복원(git checkout 금지, fire-8 함정 회피) → recall 89/89·present 28/28·lint:pass·
+  self-eval 회귀 0. firesSinceDrill 0 리셋.
+- **리스크/residual (비차단)**: 없음. L4 slice 2(CLI wiring)는 여전히 열린 ◦.

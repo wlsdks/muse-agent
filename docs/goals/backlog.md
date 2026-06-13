@@ -66,6 +66,8 @@
 - ✓ shared `resolveEmbedderBase()` helper — fire-4 runtime guard + fire-5 doctor posture now resolve the embedder base through ONE `@muse/autoconfigure` helper, so doctor↔runtime parity is structural (can't drift) not two hand-kept literals; behaviour-preserving (532/532) + 4 helper unit cases — differentiation fire 7
 - ✓ receipt verifies the quote against the file ON DISK (L4 shows-its-work) — `formatSourceReceipts` (@muse/recall) gained a disk-content map; a snippet edited/deleted after indexing is now hidden with a reason instead of quoted (fake-citation defense rivals can't pay for); proven by `eval:receipt-drift` (real temp files), backward-compat (recall 88/88) — differentiation fire 8
 
+- ✓ JUDGE-DRILL (verifier proven) + truncated-snippet disk-verify coverage — planted an inert test, the independent Opus judge correctly FAILED it (mutation-proven), then landed a real discriminating test locking down fire-8's `…`-truncation disk-verify path (mutation: break `snippetOnDisk` → real test fails) — differentiation fire 9
+
 ## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
 
 - ◦ **(slice 2) Wire `commands-ask.ts` to populate `diskContents`** — fire 8 shipped the verify+downgrade logic in `formatSourceReceipts`; the live `muse ask` receipt won't disk-verify until the CLI caller reads each cited note's current content into the map. Needs: cited-note path resolution (mirror the receipt's note→path) + skip ad-hoc sources (`--url`/`--clipboard`/`--file` in `verifyTargets`) + its own tests. Then a drifted/deleted note stops being quoted to the user. Source: differentiation fire 8 residual (Opus judge: required to convert L4 to user value).

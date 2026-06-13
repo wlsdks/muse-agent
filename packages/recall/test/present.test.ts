@@ -21,6 +21,22 @@ describe("formatSourceReceipts — disk-verified snippet (L4: receipt verifies t
   const answer = "WireGuard uses 1420 MTU [from vpn.md].";
   const chunks = [{ file: "vpn.md", text: "WireGuard uses 1420 MTU on most links." }];
 
+  // A snippet long enough that provenanceSnippet truncates it with a trailing `…`.
+  // snippetOnDisk must strip that `…` and verify the CORE against disk — exercise
+  // that path end-to-end (faithful shows the truncated quote, drift hides it).
+  it("a TRUNCATED (…) snippet is disk-verified: shown when faithful, hidden on drift", () => {
+    const longLine = "WireGuard uses a 1420 MTU on most links and this sentence is deliberately long enough to exceed ninety characters so it truncates here.";
+    const ans = "MTU [from vpn.md].";
+    const long = [{ file: "vpn.md", text: longLine }];
+    const faithful = formatSourceReceipts(ans, "/n", long, "mtu", undefined, new Map([["vpn.md", longLine]])) ?? "";
+    expect(faithful).toContain("…"); // the quote really IS truncated (so we're testing the … path)
+    expect(faithful).toContain("WireGuard uses a 1420 MTU"); // verified core shown
+    expect(faithful).not.toContain("changed since");
+    const drifted = formatSourceReceipts(ans, "/n", long, "mtu", undefined, new Map([["vpn.md", "WireGuard now uses 1500 MTU after the rewrite."]])) ?? "";
+    expect(drifted).not.toContain("WireGuard uses a 1420 MTU"); // stale truncated quote hidden
+    expect(drifted).toContain("changed since");
+  });
+
   it("no diskContents ⇒ snippet shown verbatim (backward-compatible, unchanged)", () => {
     const out = formatSourceReceipts(answer, "/notes", chunks, "wireguard mtu");
     expect(out).toContain('"WireGuard uses 1420 MTU on most links."');
