@@ -30,13 +30,17 @@ public enum OllamaHealth {
     }
 
     /// Pure: classify an `/api/tags` body. A model counts as present on an exact
-    /// name match or a quant-suffixed variant (e.g. `qwen3:8b-q4_K_M`), but NOT a
-    /// different size tag. Unparseable but 200 → assume ok.
+    /// name match, a quant-suffixed variant (e.g. `qwen3:8b-q4_K_M`), or the same
+    /// identity under Ollama's implicit `:latest` tag (a bare `gemma4` and
+    /// `gemma4:latest` are one model — the same rule the CLI's findOllamaModelTag
+    /// applies), but NOT a different size tag. Unparseable but 200 → assume ok.
     public static func parse(_ data: Data, model: String) -> OllamaStatus {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let models = object["models"] as? [[String: Any]] else { return .ok }
         let names = models.compactMap { $0["name"] as? String }
-        let present = names.contains { $0 == model || $0.hasPrefix(model + "-") }
+        let withLatest = { (s: String) in s.contains(":") ? s : s + ":latest" }
+        let target = withLatest(model)
+        let present = names.contains { withLatest($0) == target || $0.hasPrefix(model + "-") }
         return present ? .ok : .modelMissing(model)
     }
 }

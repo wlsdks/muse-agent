@@ -226,3 +226,27 @@ describe("resolveFollowupRef — one-shot cancel/snooze by id OR a word from the
     expect(resolveFollowupRef([fixture()], "   ").status).toBe("not-found");
   });
 });
+
+describe("resolveFollowupRef — matches a ref LITERALLY, not as a regex (a destructive ref can't match-all)", () => {
+  it("a regex-metacharacter ref ('.*') is a literal substring → matches NOTHING, not every followup", () => {
+    const fs = [fixture({ id: "fu_a", summary: "check budget" }), fixture({ id: "fu_b", summary: "email Sam" })];
+    // If matching were regex, '.*' would match BOTH summaries → ambiguous/wrong cancel
+    // on a careless ref. Literal `.includes`: no summary contains the literal ".*" → not-found.
+    expect(resolveFollowupRef(fs, ".*").status).toBe("not-found");
+  });
+
+  it("a single '.' ref does not match an arbitrary followup (regex-injection guard on a destructive resolver)", () => {
+    const fs = [fixture({ id: "fu_a", summary: "review report" })];
+    expect(resolveFollowupRef(fs, ".").status).toBe("not-found");
+  });
+
+  it("a literal parenthesized token resolves the followup that literally contains it", () => {
+    const fs = [fixture({ id: "fu_q3", summary: "review (Q3) report" }), fixture({ id: "fu_other", summary: "plan ahead" })];
+    const r = resolveFollowupRef(fs, "(Q3)");
+    expect(r.status === "resolved" ? r.followup.id : "").toBe("fu_q3");
+  });
+
+  it("an unmatched long ref → not-found (no accidental resolve)", () => {
+    expect(resolveFollowupRef([fixture()], "z".repeat(200)).status).toBe("not-found");
+  });
+});

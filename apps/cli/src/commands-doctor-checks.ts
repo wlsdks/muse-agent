@@ -1,4 +1,5 @@
 import { evaluateLocalOnlyPosture, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel } from "@muse/autoconfigure";
+import type { DevFixableWeakness } from "@muse/mcp";
 
 /**
  * Which outbound messengers are wired (Telegram/Discord/Slack/LINE), by their
@@ -95,4 +96,99 @@ export function modelEnvCheck(env: Record<string, string | undefined>): LocalChe
 export function localOnlyCheck(env: Record<string, string | undefined>): LocalCheck {
   const posture = evaluateLocalOnlyPosture(env);
   return { detail: posture.detail, name: "local-only", status: posture.status };
+}
+
+/**
+ * Report whether background self-learning (B1) is actually running — the
+ * verifiable-autonomy check (Slice 7). Pure of IO so it's directly testable;
+ * the caller resolves `enabled` / `paused` / `installed`.
+ */
+export function selfLearningCheck(state: {
+  readonly enabled: boolean;
+  readonly paused: boolean;
+  readonly installed: boolean;
+}): LocalCheck {
+  const name = "self-learning";
+  if (state.paused) {
+    return { detail: "PAUSED — run `muse playbook resume` to let Muse learn again", name, status: "warn" };
+  }
+  if (!state.enabled) {
+    return { detail: "OFF (default) — set MUSE_IDLE_LEARNING_ENABLED=true to let Muse learn from corrections while idle", name, status: "ok" };
+  }
+  if (!state.installed) {
+    return { detail: "ON this session, but the daemon isn't installed — run `muse daemon --install` so it keeps learning across reboots", name, status: "warn" };
+  }
+  return { detail: "ON, will run while idle (daemon installed)", name, status: "ok" };
+}
+
+/**
+ * Surface the dev-fixable weakness fuel as an INFORMATIONAL doctor line (status
+ * "ok" — a recurring agent bug is self-knowledge, not a doctor health failure,
+ * so it never flips `worst` to warn). Returns undefined when there's nothing to
+ * surface, so plain `muse doctor` stays quiet until real fuel accrues. Pure.
+ */
+export function weaknessFuelCheck(devFixable: readonly DevFixableWeakness[]): LocalCheck | undefined {
+  const top = devFixable[0];
+  if (!top) {
+    return undefined;
+  }
+  const more = devFixable.length > 1 ? ` (+${(devFixable.length - 1).toString()} more)` : "";
+  return {
+    detail: `${devFixable.length.toString()} recurring agent bug${devFixable.length === 1 ? "" : "s"} — top: ${top.topic} (${top.axis} ${top.count.toString()}×)${more}. See \`muse doctor --weaknesses\`.`,
+    name: "weakness ledger",
+    status: "ok"
+  };
+}
+
+export interface OllamaPerfEnv {
+  readonly flashAttention?: string | undefined;
+  readonly kvCacheType?: string | undefined;
+}
+
+/**
+ * Inference-performance posture of the OLLAMA SERVER (not this process):
+ * flash attention + a quantized KV cache roughly halve KV memory, which on a
+ * 12B with Muse's long grounded prompts means faster long-context turns and
+ * more usable num_ctx on the same RAM. Advisory — warn, never fail.
+ */
+export function ollamaPerfPostureCheck(values: OllamaPerfEnv): LocalCheck {
+  const flashOn = values.flashAttention === "1" || values.flashAttention?.toLowerCase() === "true";
+  const kv = values.kvCacheType?.toLowerCase();
+  const kvQuantized = kv === "q8_0" || kv === "q4_0";
+  if (flashOn && kvQuantized) {
+    return { detail: `flash attention on, KV cache ${kv ?? ""} — long-context turns run lighter`, name: "ollama-perf", status: "ok" };
+  }
+  const missing = [
+    ...(flashOn ? [] : ["OLLAMA_FLASH_ATTENTION=1"]),
+    ...(kvQuantized ? [] : ["OLLAMA_KV_CACHE_TYPE=q8_0"])
+  ];
+  return {
+    detail: `set ${missing.join(" + ")} on the Ollama server (macOS app: \`launchctl setenv NAME VALUE\` then restart Ollama) — ~halves KV memory for faster long-context turns`,
+    name: "ollama-perf",
+    status: "warn"
+  };
+}
+
+/**
+ * Resolve the Ollama SERVER's perf env: this process's env first (covers
+ * `ollama serve` from the same shell), then macOS launchd (covers Ollama.app,
+ * which inherits `launchctl setenv`). Fail-soft — unreadable means unset.
+ */
+export async function readOllamaPerfEnv(env: Record<string, string | undefined>): Promise<OllamaPerfEnv> {
+  const fromLaunchctl = async (name: string): Promise<string | undefined> => {
+    if (process.platform !== "darwin") return undefined;
+    try {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const { stdout } = await promisify(execFile)("launchctl", ["getenv", name]);
+      const value = stdout.trim();
+      return value.length > 0 ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  return {
+    flashAttention: env.OLLAMA_FLASH_ATTENTION ?? await fromLaunchctl("OLLAMA_FLASH_ATTENTION"),
+    kvCacheType: env.OLLAMA_KV_CACHE_TYPE ?? await fromLaunchctl("OLLAMA_KV_CACHE_TYPE")
+  };
 }

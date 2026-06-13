@@ -15,8 +15,11 @@ import { existsSync, promises as fs } from "node:fs";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
 export type { CalibrationReport } from "./commands-doctor-calibration.js";
-import { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, type LocalCheck } from "./commands-doctor-checks.js";
-export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth } from "./commands-doctor-checks.js";
+import { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, readOllamaPerfEnv, selfLearningCheck, weaknessFuelCheck, type LocalCheck } from "./commands-doctor-checks.js";
+import { findOllamaModelTag, isOllamaTagsEntry, type OllamaTagsEntry } from "./commands-doctor-ollama.js";
+export { findOllamaModelTag } from "./commands-doctor-ollama.js";
+export type { OllamaTagsEntry } from "./commands-doctor-ollama.js";
+export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, readOllamaPerfEnv, selfLearningCheck, weaknessFuelCheck } from "./commands-doctor-checks.js";
 export type { LocalCheck } from "./commands-doctor-checks.js";
 import { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
 export { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
@@ -287,81 +290,7 @@ export function officialMcpChecks(env: Record<string, string | undefined>): Loca
   }));
 }
 
-export interface OllamaPerfEnv {
-  readonly flashAttention?: string | undefined;
-  readonly kvCacheType?: string | undefined;
-}
 
-/**
- * Inference-performance posture of the OLLAMA SERVER (not this process):
- * flash attention + a quantized KV cache roughly halve KV memory, which on a
- * 12B with Muse's long grounded prompts means faster long-context turns and
- * more usable num_ctx on the same RAM. Advisory — warn, never fail.
- */
-export function ollamaPerfPostureCheck(values: OllamaPerfEnv): LocalCheck {
-  const flashOn = values.flashAttention === "1" || values.flashAttention?.toLowerCase() === "true";
-  const kv = values.kvCacheType?.toLowerCase();
-  const kvQuantized = kv === "q8_0" || kv === "q4_0";
-  if (flashOn && kvQuantized) {
-    return { detail: `flash attention on, KV cache ${kv ?? ""} — long-context turns run lighter`, name: "ollama-perf", status: "ok" };
-  }
-  const missing = [
-    ...(flashOn ? [] : ["OLLAMA_FLASH_ATTENTION=1"]),
-    ...(kvQuantized ? [] : ["OLLAMA_KV_CACHE_TYPE=q8_0"])
-  ];
-  return {
-    detail: `set ${missing.join(" + ")} on the Ollama server (macOS app: \`launchctl setenv NAME VALUE\` then restart Ollama) — ~halves KV memory for faster long-context turns`,
-    name: "ollama-perf",
-    status: "warn"
-  };
-}
-
-/**
- * Resolve the Ollama SERVER's perf env: this process's env first (covers
- * `ollama serve` from the same shell), then macOS launchd (covers Ollama.app,
- * which inherits `launchctl setenv`). Fail-soft — unreadable means unset.
- */
-export async function readOllamaPerfEnv(env: Record<string, string | undefined>): Promise<OllamaPerfEnv> {
-  const fromLaunchctl = async (name: string): Promise<string | undefined> => {
-    if (process.platform !== "darwin") return undefined;
-    try {
-      const { execFile } = await import("node:child_process");
-      const { promisify } = await import("node:util");
-      const { stdout } = await promisify(execFile)("launchctl", ["getenv", name]);
-      const value = stdout.trim();
-      return value.length > 0 ? value : undefined;
-    } catch {
-      return undefined;
-    }
-  };
-  return {
-    flashAttention: env.OLLAMA_FLASH_ATTENTION ?? await fromLaunchctl("OLLAMA_FLASH_ATTENTION"),
-    kvCacheType: env.OLLAMA_KV_CACHE_TYPE ?? await fromLaunchctl("OLLAMA_KV_CACHE_TYPE")
-  };
-}
-
-/**
- * Report whether background self-learning (B1) is actually running — the
- * verifiable-autonomy check (Slice 7). Pure of IO so it's directly testable;
- * the caller resolves `enabled` / `paused` / `installed`.
- */
-export function selfLearningCheck(state: {
-  readonly enabled: boolean;
-  readonly paused: boolean;
-  readonly installed: boolean;
-}): LocalCheck {
-  const name = "self-learning";
-  if (state.paused) {
-    return { detail: "PAUSED — run `muse playbook resume` to let Muse learn again", name, status: "warn" };
-  }
-  if (!state.enabled) {
-    return { detail: "OFF (default) — set MUSE_IDLE_LEARNING_ENABLED=true to let Muse learn from corrections while idle", name, status: "ok" };
-  }
-  if (!state.installed) {
-    return { detail: "ON this session, but the daemon isn't installed — run `muse daemon --install` so it keeps learning across reboots", name, status: "warn" };
-  }
-  return { detail: "ON, will run while idle (daemon installed)", name, status: "ok" };
-}
 
 interface LocalDoctorReport {
   readonly generatedAt: string;
@@ -369,24 +298,6 @@ interface LocalDoctorReport {
   readonly worst: "ok" | "warn" | "fail";
 }
 
-/**
- * Surface the dev-fixable weakness fuel as an INFORMATIONAL doctor line (status
- * "ok" — a recurring agent bug is self-knowledge, not a doctor health failure,
- * so it never flips `worst` to warn). Returns undefined when there's nothing to
- * surface, so plain `muse doctor` stays quiet until real fuel accrues. Pure.
- */
-export function weaknessFuelCheck(devFixable: readonly DevFixableWeakness[]): LocalCheck | undefined {
-  const top = devFixable[0];
-  if (!top) {
-    return undefined;
-  }
-  const more = devFixable.length > 1 ? ` (+${(devFixable.length - 1).toString()} more)` : "";
-  return {
-    detail: `${devFixable.length.toString()} recurring agent bug${devFixable.length === 1 ? "" : "s"} — top: ${top.topic} (${top.axis} ${top.count.toString()}×)${more}. See \`muse doctor --weaknesses\`.`,
-    name: "weakness ledger",
-    status: "ok"
-  };
-}
 
 async function runLocalDoctor(): Promise<LocalDoctorReport> {
   const checks: LocalCheck[] = [];
@@ -699,46 +610,6 @@ function formatLocalDoctor(report: LocalDoctorReport): string {
   return `${lines.join("\n")}\n`;
 }
 
-/**
- * Shape of the `/api/tags` model entry we rely on for
- * the model-pulled check. Real Ollama responses also carry
- * `digest`, `modified_at`, and a `details` block; we only need
- * `name` (the full tag, e.g. `qwen3.5:9b-q4_K_M`) and `size` (for
- * the friendly "(6.6 GB)" suffix).
- */
-export interface OllamaTagsEntry {
-  readonly name: string;
-  readonly size?: number;
-}
-
-function isOllamaTagsEntry(value: unknown): value is OllamaTagsEntry {
-  return Boolean(value)
-    && typeof value === "object"
-    && typeof (value as { name?: unknown }).name === "string"
-    && ((value as { size?: unknown }).size === undefined
-      || typeof (value as { size?: unknown }).size === "number");
-}
-
-/**
- * Match `configuredTag` against an Ollama `/api/tags`
- * response. Ollama serialises model identities two ways:
- *   - `name: "qwen3.5:9b-q4_K_M"` for an explicit tag
- *   - `name: "qwen3.5:latest"` when the user pulled `qwen3.5`
- *     without a tag suffix (the "latest" tag is implicit).
- * The doctor user may have configured either form; treat
- * `<base>` and `<base>:latest` as the same identity so a config of
- * `ollama/qwen3.5` still matches when Ollama recorded
- * `qwen3.5:latest`. Returns the matched entry (so callers can
- * surface `.size`) or `undefined`.
- */
-export function findOllamaModelTag(
-  models: readonly OllamaTagsEntry[],
-  configuredTag: string
-): OllamaTagsEntry | undefined {
-  const normalize = (s: string): string => (s.includes(":") ? s : `${s}:latest`);
-  const target = normalize(configuredTag.trim());
-  return models.find((m) => normalize(m.name) === target);
-}
 
 /**
  * Verdict for the "ollama embed model" doctor check. `hasIndex`

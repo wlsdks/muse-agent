@@ -28,6 +28,17 @@ final class OllamaHealthTests: XCTestCase {
         XCTAssertEqual(OllamaHealth.parse(Data("not json".utf8), model: "qwen3:8b"), .ok)
     }
 
+    func testBareNameAndLatestTagAreTheSameIdentity() {
+        // Ollama records a bare `ollama pull gemma4` as "gemma4:latest" — the same
+        // implicit-:latest identity rule the CLI's findOllamaModelTag uses. Bare
+        // and :latest must count as present, else the companion onboards a model
+        // the user already has.
+        XCTAssertEqual(OllamaHealth.parse(body(["gemma4:latest"]), model: "gemma4"), .ok)
+        XCTAssertEqual(OllamaHealth.parse(body(["gemma4"]), model: "gemma4:latest"), .ok)
+        // A genuinely different size tag is still missing (no false-positive).
+        XCTAssertEqual(OllamaHealth.parse(body(["gemma4:27b"]), model: "gemma4:12b"), .modelMissing("gemma4:12b"))
+    }
+
     func testRequiredModelIsCurrentDefault() {
         // Must match the CLI's LOCAL_FIRST_DEFAULT_MODEL (ollama/gemma4:12b),
         // bare tag — else the companion health-checks/onboards a stale model.

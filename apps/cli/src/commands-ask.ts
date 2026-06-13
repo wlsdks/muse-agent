@@ -27,15 +27,15 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, groundedOnUntrustedOnly, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { assessContextSufficiency, buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, groundedOnUntrustedOnly, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
-import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
+import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportCitationPrecision, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
 import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, listReflections, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
-import { allUserMemoryFacts, buildDiskContents, buildNoteContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, escapeSystemPromptMarkers, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
+import { allUserMemoryFacts, buildDiskContents, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, escapeSystemPromptMarkers, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, buildDiskContents, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource };
@@ -191,6 +191,24 @@ export function untrustedOnlyGroundingNotice(
 ): string | undefined {
   if (!groundedOnUntrustedOnly(answer, matches)) return undefined;
   return `\n⚠️  Source check: this answer is faithful to its sources, but rests ONLY on tool-fetched data (not your own notes) — verify before trusting.\n`;
+}
+
+/**
+ * ALCE citation-precision cue (arXiv:2305.14627): a sentence can carry a `[from
+ * <source>]` citation that RESOLVES to a real retrieved note yet that note not
+ * actually support the sentence's claim (right source, wrong claim) — which the
+ * whole-answer verdict can miss. Surface the specific mis-cited claim. Fires only
+ * on a per-citation support miss (precision < 1); undefined otherwise.
+ */
+export function citationPrecisionNotice(
+  answer: string,
+  matches: readonly KnowledgeMatch[]
+): string | undefined {
+  const report = reportCitationPrecision(answer, matches);
+  const sentence = report.unsupported[0];
+  if (sentence === undefined) return undefined;
+  const shown = sentence.length > 80 ? `${sentence.slice(0, 80)}…` : sentence;
+  return `\n⚠️  Citation check: a cited source doesn't actually support "${shown}" — verify the citation.\n`;
 }
 
 
@@ -603,6 +621,31 @@ export function renderAskStreamError(params: {
     };
   }
   return { stderr: `\n(error: ${params.error})\n` };
+}
+
+/**
+ * Decides the set-level sufficiency advisory for an answered query, applying
+ * every emission gate so the call site is a trivial `if (line) stderr(line)`.
+ * ADVISORY-ONLY — never blocks an answer or touches the citation gate. Returns
+ * undefined (no advisory) when: JSON output is requested, the answer is itself
+ * a refusal (no double caveat), the query is single-intent (multi-part gate),
+ * a clause is missing its embedding (fail-open), or every part is covered.
+ */
+export function sufficiencyAdvisory(params: {
+  readonly json: boolean;
+  readonly answer: string;
+  readonly subQueries: readonly string[];
+  readonly subQueryVecs: readonly (readonly number[])[];
+  readonly evidenceVecs: readonly (readonly number[])[];
+}): string | undefined {
+  const { json, answer, subQueries, subQueryVecs, evidenceVecs } = params;
+  if (json || answerIsRefusal(answer)) return undefined;
+  if (subQueries.length < 2 || subQueryVecs.length !== subQueries.length) return undefined;
+  const subQueriesWithVecs = subQueries.map((text, i) => ({ text, vec: subQueryVecs[i]! }));
+  const verdict = assessContextSufficiency(subQueriesWithVecs, evidenceVecs);
+  if (verdict.sufficient || verdict.uncovered.length === 0) return undefined;
+  const quoted = verdict.uncovered.map((u) => `"${u}"`).join(", ");
+  return `Your notes cover part of this, but I found nothing on: ${quoted} — that part may be unverified.`;
 }
 
 export function registerAskCommand(program: Command, io: ProgramIO): void {
@@ -1061,6 +1104,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // runnerUp=0 (the floor violation). The PROMPT WINDOW stays gap-cut-trimmed
       // (scored); only the verdict input reverts to the untrimmed distribution.
       let preGapScored: Array<{ chunk: IndexChunk; file: string; score: number }> = [];
+      // Hoisted for the set-level sufficiency advisory: clause texts paired with
+      // their embeddings so the advisory can check coverage per sub-query.
+      let subqueryEmbeddings: ReadonlyArray<readonly number[]> = [];
+      let splitClauses: readonly string[] = [];
       let notesUnavailable = false;
       let queryVec: number[] | undefined;
       // The "open to verify" target for an AD-HOC grounding source whose receipt
@@ -1102,14 +1149,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // both. Fail-open: any embed error leaves clause vectors empty and the
         // path is byte-identical to a non-compound query. Per-chunk `score`
         // stays the full-query cosine so classifyRetrievalConfidence is unchanged.
-        let subqueryEmbeddings: ReadonlyArray<readonly number[]> = [];
         try {
           const clauses = splitCompoundQuery(query);
           if (clauses.length >= 2) {
+            splitClauses = clauses;
             subqueryEmbeddings = await Promise.all(clauses.map((c) => embed(c, embedModel)));
           }
         } catch {
           subqueryEmbeddings = [];
+          splitClauses = [];
         }
         // Hybrid (cosine + lexical + per-clause RRF) MMR selection so a query's
         // distinctive keywords surface the answer-bearing note even when
@@ -1807,11 +1855,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // is cited to MUSE'S MEMORY, not a note that never mentioned it.
       const allMemoryFacts = userMemory ? allUserMemoryFacts(userMemory) : [];
       const matchedMemories = userMemory ? selectMemoryFacts(userMemory, lexicalTokens(query)) : [];
-      const memoryBlock = matchedMemories.length === 0
-        ? "(no matching remembered facts)"
-        : matchedMemories
-          .map((f, i) => `<<memory ${(i + 1).toString()} — ${f.key}>>\n${renderMemoryFact(f)}\n[memory: ${f.key}]\n<<end>>`)
-          .join("\n\n");
+      const memoryBlock = buildMemoryContextBlock(matchedMemories);
 
       // OPT-IN shell-history grounding (B3): "what was that command?" — read the
       // user's history ONLY when --shell is passed, match by token overlap, and
@@ -1830,11 +1874,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // no history file / unreadable — silently skip
         }
       }
-      const shellBlock = matchedCommands.length === 0
-        ? "(no matching shell commands)"
-        : matchedCommands
-          .map((cmd, i) => `<<command ${(i + 1).toString()}>>\n${cmd}\n<<end>>`)
-          .join("\n\n");
+      const shellBlock = buildShellContextBlock(matchedCommands);
 
       // OPT-IN git grounding (B3 perception): "what did I work on?" / "what was
       // that commit?" — read the current repo's HEAD reflog as a FILE (no spawn,
@@ -1852,11 +1892,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // not a git repo / unreadable — silently skip
         }
       }
-      const gitBlock = matchedCommits.length === 0
-        ? "(no matching git commits)"
-        : matchedCommits
-          .map((c, i) => `<<commit ${(i + 1).toString()} — ${c.hash}>>\n${c.subject}\n[commit: ${c.subject}]\n<<end>>`)
-          .join("\n\n");
+      const gitBlock = buildGitContextBlock(matchedCommits);
 
       // Action-log grounding (B3 transparency): "did you send that? / what have
       // you done on my behalf?" — answer from Muse's OWN record of acts taken,
@@ -2467,6 +2503,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         if (untrustedNotice && !options.json) {
           io.stderr(untrustedNotice);
         }
+        // ALCE per-citation support: a cited source that resolves but doesn't
+        // support its sentence (right source, wrong claim) the whole-answer
+        // verdict can miss. Only on a grounded answer (else the verdict warns).
+        const citationNotice = !verdictNotice && imageAttachments.length === 0
+          ? citationPrecisionNotice(verdictAnswer, scoredMatches)
+          : undefined;
+        if (citationNotice && !options.json) {
+          io.stderr(citationNotice);
+        }
         if (verdictNotice && !options.json) {
           io.stderr(verdictNotice);
           // Constructive grounding (RARR, arXiv:2210.08726): rather than only
@@ -2610,6 +2655,21 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           const offered = clarification.sources.map((s) => `[${s}]`).join(", ");
           io.stderr(`\n⚖️ Your notes gave a few equally-strong but different matches — did you mean ${offered}? Re-ask naming one for a single grounded answer.\n`);
         }
+      }
+
+      // Set-level sufficiency advisory (arXiv:2411.06037): when a multi-part
+      // query has sub-queries with no covering passage, name the uncovered parts
+      // so the user knows which half is unverified. ADVISORY-ONLY — never blocks
+      // the answer or changes the citation gate. Fail-open (empty vecs → no-op).
+      const sufficiencyLine = sufficiencyAdvisory({
+        answer: collectedAnswer,
+        evidenceVecs: scored.map((r) => r.chunk.embedding as readonly number[]),
+        json: Boolean(options.json),
+        subQueries: splitClauses,
+        subQueryVecs: subqueryEmbeddings
+      });
+      if (sufficiencyLine) {
+        io.stderr(`\n⚠️ ${sufficiencyLine}\n`);
       }
 
       // S2 warm honesty (B2): when Muse honestly refuses AND the user has

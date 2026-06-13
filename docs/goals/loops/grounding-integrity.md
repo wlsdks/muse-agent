@@ -106,3 +106,19 @@ ratchet: cli +5 tests (85; full cli 2598 pass) · lint 0/0 · fabrication 0 · i
 - 왜: 잘못된 일정/갱신/마감 날짜는 고위험 verbatim 값 클래스인데 유일하게 무방비였음(IP 가드와 동일 클래스). chat은 sync 설계라 결정론적 가드 필요.
 - 리뷰지점: **false-refusal≈0 보수 설계** — evidence에 ISO 날짜가 있을 때만(like-for-like) drift 플래그, prose 날짜("September 14")는 건드리지 않음. ISO-only로 slash M/D vs D/M 모호성 회피. always-false mutation 시 drift 테스트만 red, always-true 시 14개 red(양방향+게이트레벨 faithfulness 고정). 독립 Opus judge hard-case false-refusal 안전성 검증 PASS.
 - 리스크: 없음 수준(strictly tighten, prose-date false-negative는 의도적 허용). vein thinning — grounding fail-open 대부분 닫힘.
+
+## fire 14 · 2026-06-13 · skill v1.14.0 · 46cde4ee
+meta: value-class=new-capability(paper) · pkg=@muse/agent-core · kind=A · verdict=PASS · firesSinceDrill=5
+ratchet: agent-core +5 tests (citation-precision; full suite 2054 pass) · lint 0/0 · fabrication 0 · existence-only mutation verified · vein-thin → 논문-피벗
+- 무엇: **ALCE per-citation support precision**(arXiv:2305.14627) 신규 — Muse는 citation 존재(enforceAnswerCitations)와 union-evidence groundedness만 봤지 *그 문장이 인용한 그 출처가 그 문장을 지지하나*(right source/wrong claim)는 안 봤음. `reportCitationPrecision`(pure, [from src] 마스킹 후 문장별로 인용 출처에만 token-coverage). 진단 only.
+- 왜: bug-hunting vein이 얇아져 loop의 "논문-근거 우선" 절로 피벗 — 공개 arXiv 메커니즘 중 Muse에 없는 것(per-citation support)을 자체 재구현. union-coverage가 놓치는 cross-source 오인용까지 잡음.
+- 리뷰지점: U+E000 sentinel로 `vpn.md`의 "." 문장분리 버그 회피(이스케이프 \u{E000}로 byte-hygiene clean), sentinel 인덱스는 토큰화 전 strip(실수 1380 오인 안 됨). 진단 only로 게이트 불변. existence-only mutation 시 support 테스트 red로 기존 메커니즘과 구별 증명. 독립 Opus judge 5/5 PASS.
+- 리스크: 없음(additive, pure, no gate change). 후속: reportCitationPrecision를 ask/chat 진단 또는 게이트에 wiring(backlog ◦).
+
+## fire 15 · 2026-06-13 · skill v1.14.0 · bb2fafa9
+meta: value-class=wiring(paper-OUTCOME) · pkg=@muse/cli · kind=A · verdict=PASS · firesSinceDrill=6
+ratchet: cli +3 tests (commands-ask-grounding-verdict; full cli 2613 pass) · lint 0/0 · fabrication 0 · stub mutation verified
+- 무엇: fire 14의 ALCE `reportCitationPrecision`를 **라이브 ask 경로에 wiring** — `citationPrecisionNotice`가 인용 출처가 resolve되지만 그 문장을 안 지지하는 "맞는 출처/틀린 주장"을 stderr cue로 표면화. verdictAnswer+scoredMatches로 계산, grounded일 때만(!verdictNotice), 기존 untrusted/conflict cue 옆.
+- 왜: fire 14 진단을 실제 사용자 OUTCOME으로 완결(backlog ◦). per-citation support는 whole-answer verdict가 놓치는 클래스 — provenance-trust(untrusted)·evidence-vs-evidence(conflict)와 구별되는 distinct 축.
+- 리뷰지점: precision<1일 때만 발화(fire14 floor 체크), supported/uncited는 silent. gate 결정/floor/--json 불변, 순수 delegation. stub mutation 시 warn 테스트 red. 독립 Opus judge 5/5 PASS(cli 2613 green).
+- 리스크: 없음(additive stderr cue). 발화는 답이 [from X] 인용을 달아야 함(ask/chat 공통 caveat). chat 표면 wiring은 후속 가능.

@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { inboxGroundingSources, type KnowledgeMatch } from "@muse/agent-core";
 import { appendInbound, FileBackedInboxContextProvider } from "@muse/messaging";
 
-import { formatSourceReceipts, groundingVerdictNotice, untrustedOnlyGroundingNotice } from "./commands-ask.js";
+import { citationPrecisionNotice, formatSourceReceipts, groundingVerdictNotice, untrustedOnlyGroundingNotice } from "./commands-ask.js";
 
 const match = (source: string, text: string, cosine: number, trusted?: boolean): KnowledgeMatch => ({
   cosine,
@@ -197,5 +197,25 @@ describe("groundingVerdictNotice — reverifySamples=3 live-site contract", () =
   it("live site: single-sample (reverifySamples=1, default) all-YES → stays silent (back-compat)", async () => {
     const notice = await groundingVerdictNotice(weakAnswer, weakMatches, query, async () => true, 1);
     expect(notice).toBeUndefined();
+  });
+});
+
+describe("citationPrecisionNotice — ALCE per-citation support cue (right source, wrong claim)", () => {
+  it("warns when a cited source RESOLVES but does not support its sentence", () => {
+    const matches = [match("vpn.md", "the office vpn mtu is 1380 on wg0", 0.7)];
+    const answer = "The office MTU is 1380 [from vpn.md]. The flight departs from gate twelve [from vpn.md].";
+    const notice = citationPrecisionNotice(answer, matches);
+    expect(notice).toBeDefined();
+    expect(notice).toContain("Citation check");
+    expect(notice).toContain("flight");
+  });
+
+  it("stays silent when every cited source supports its sentence", () => {
+    const matches = [match("vpn.md", "the office vpn mtu is 1380 on wg0", 0.7)];
+    expect(citationPrecisionNotice("The office MTU is 1380 [from vpn.md].", matches)).toBeUndefined();
+  });
+
+  it("stays silent for an answer with no citations", () => {
+    expect(citationPrecisionNotice("A general remark with no source.", [match("vpn.md", "irrelevant", 0.7)])).toBeUndefined();
   });
 });

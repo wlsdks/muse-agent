@@ -1,10 +1,49 @@
 import { describe, expect, it } from "vitest";
 
-import { renderPlanExemplar, selectPlanExemplar, type CachedPlan } from "../src/index.js";
+import { renderPlanExemplar, selectPlanExemplar, selectSuccessfulPlanSteps, type CachedPlan } from "../src/index.js";
 
 const plan = (prompt: string, tool: string): CachedPlan => ({
   prompt,
   steps: [{ args: {}, description: "step", tool }]
+});
+
+describe("selectSuccessfulPlanSteps — outcome-conditioned step filter (AWM, arXiv:2409.07429)", () => {
+  const step = (tool: string) => ({ args: {}, description: tool, tool });
+
+  it("returns only the successful steps in order when mixed success/fail", () => {
+    const executed = [
+      { step: step("step_a"), stepResult: { success: true } },
+      { step: step("step_b"), stepResult: { success: false } },
+      { step: step("step_c"), stepResult: { success: true } }
+    ];
+    const result = selectSuccessfulPlanSteps(executed);
+    expect(result).toHaveLength(2);
+    expect(result[0]!.tool).toBe("step_a");
+    expect(result[1]!.tool).toBe("step_c");
+  });
+
+  it("returns all steps when every step succeeded (identity case)", () => {
+    const executed = [
+      { step: step("step_a"), stepResult: { success: true } },
+      { step: step("step_b"), stepResult: { success: true } }
+    ];
+    const result = selectSuccessfulPlanSteps(executed);
+    expect(result).toHaveLength(2);
+    expect(result[0]!.tool).toBe("step_a");
+    expect(result[1]!.tool).toBe("step_b");
+  });
+
+  it("returns empty array when every step failed", () => {
+    const executed = [
+      { step: step("step_a"), stepResult: { success: false } },
+      { step: step("step_b"), stepResult: { success: false } }
+    ];
+    expect(selectSuccessfulPlanSteps(executed)).toHaveLength(0);
+  });
+
+  it("returns empty array for empty input", () => {
+    expect(selectSuccessfulPlanSteps([])).toHaveLength(0);
+  });
 });
 
 describe("selectPlanExemplar — retrieve the most similar past plan (Agentic Plan Caching, arXiv 2506.14852)", () => {

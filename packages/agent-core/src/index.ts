@@ -207,8 +207,16 @@ export {
   type RankKnowledgeOptions,
   type RecallClarification,
   type RetrievalConfidence,
-  type VerifyGroundingOptions
+  type VerifyGroundingOptions,
+  assessContextSufficiency,
+  type SufficiencyVerdict
 } from "./knowledge-recall.js";
+export {
+  reportCitationPrecision,
+  DEFAULT_CITATION_PRECISION_FLOOR,
+  type CitationPrecisionPair,
+  type CitationPrecisionReport
+} from "./citation-precision.js";
 export {
   scoreGroundingEval,
   type GroundingCaseOutcome,
@@ -407,7 +415,7 @@ export {
   type PlanValidationResult,
   type StepExecutionResult
 } from "./plan-execute.js";
-export { renderPlanExemplar, selectPlanExemplar, selectPlanExemplarByRelevance } from "./plan-cache.js";
+export { renderPlanExemplar, selectPlanExemplar, selectPlanExemplarByRelevance, selectSuccessfulPlanSteps } from "./plan-cache.js";
 export type { CachedPlan, PlanCacheProvider, SelectPlanExemplarOptions } from "./plan-cache.js";
 
 export {

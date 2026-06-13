@@ -120,3 +120,21 @@ ratchet: testFiles 947 (+1) · web tests 24/24 (+1) · fabrication 0 · self-eva
 - **왜**: 앱 전 아이콘이 장식용(가시 텍스트 옆 또는 title 가진 아이콘-only 버튼 안) — AT에서 숨기는 게 WCAG 정답. 한 팩토리 수정으로 전 뷰의 아이콘이 한 번에 고쳐지는 최고 적용범위 슬라이스.
 - **리뷰지점**: 아이콘-only 컨트롤(Tasks check/trash·Chat volume/mic/send·Calendar/Notes/Autonomy/Reminders trash)은 전부 `title`로 접근명 보유 → aria-hidden이 유일 이름을 제거하지 않음. `Spinner`(자체 aria-label `<span>`)는 무변, 앱에 다른 `<svg>` 없음.
 - **리스크**: 없음(팩토리 2줄, 표현용 속성이라 레이아웃 무영향, 독립 Opus judge가 전 call-site 장식성·stash로 RED·collateral 검증 후 PASS, web 24/24).
+
+## fire 14 · 2026-06-13 · skill v1.14.0 · 310e34fc
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=input-validation-consistency · verdict=PASS · firesSinceDrill=6
+ratchet: cli tests 2601/2601 (followup +2) · fabrication 0 · self-eval exit 0 · --status 패밀리 마지막 sibling 하드닝 완료(tasks·checkins·followup)
+
+- **무엇**: `muse followup list --status`가 lenient `readFollowupStatusFilter`(오타→"scheduled" 무음)로 잘못된 입력을 삼켜 *틀린 set*을 신호 없이 표시. enum {scheduled,fired,cancelled,all} 검증 추가: 미일치면 stderr 에러+exit1+did-you-mean(`closestCommandName`), 아니면 lowercased `raw`로 진행.
+- **왜**: sibling tasks/checkins(fire 12) list --status는 엄격 검증하는데 followup만 누락 — --status 패밀리의 마지막 미일관. raw 소문자화로 case도 복구("ALL"이 이제 동작).
+- **리뷰지점**: 검증 enum이 `readFollowupStatusFilter` 실제 수용집합({scheduled,fired,cancelled,all})과 정확히 일치(false-reject 없음). 기본값(생략→scheduled) 정상. fire 12 checkins의 stderr+exitCode 패턴 동일.
+- **리스크**: 없음(list 액션 검증 16줄, snooze/cancel/show·출력 경로 무변, 독립 Opus judge가 enum 일치·RED-before·case 복구·collateral 검증 후 PASS, followup 3/3 · cli 2601/2601).
+
+## fire 15 · 2026-06-13 · skill v1.14.0 · 28c65ac3
+meta: surface=desktop · value-class=micro-fix · pkg=apps/desktop(MuseDesktopCore) · kind=cross-surface-identity-parity · verdict=PASS · firesSinceDrill=7
+ratchet: desktop swift tests 51/51 (+1) · fabrication 0 · self-eval exit 0 · ⚠️desktop 순수모듈 vein 얇아짐(scout) → 다음 desktop 차례는 web/cli로 로테이션 권장
+
+- **무엇**: `OllamaHealth.parse`가 Ollama 암묵 `:latest` 태그를 정규화 안 해, bare-pull 모델(`gemma4`→Ollama가 `gemma4:latest` 기록)이 `model="gemma4"`에 missing으로 분류 → 컴패니언이 이미 있는 모델을 onboarding. `withLatest`(콜론 없으면 `:latest` 부가) 정규화로 양방향 통일. quant-suffix(`-`) 규칙·size 구분 유지.
+- **왜**: CLI의 문서화된 `findOllamaModelTag`(`commands-doctor.ts:646` `<base>`=`<base>:latest`)와 desktop이 불일치하던 cross-surface parity 버그. 현재 상수(`gemma4:12b`, 태그됨)엔 미발현이나 bare 이름(`ollama/gemma4` config 형태)·`:latest` 기록 시 라이브 버그.
+- **리뷰지점**: `withLatest`는 콜론 없을 때만 `:latest` 부가 → 태그된 이름 불변. sized-only(`gemma4:12b`만 있을 때 bare `gemma4`)는 여전히 missing(false-positive 없음). hasPrefix는 raw model 사용.
+- **리스크**: 없음(parse 1함수, 독립 Opus judge가 전 케이스(bare↔latest·sized·quant·substring trap)·revert로 RED·CLI 규칙 일치 검증 후 PASS, 51/51).

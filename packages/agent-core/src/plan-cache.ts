@@ -14,6 +14,17 @@ import { strategyTextSimilarity } from "./playbook.js";
 import type { PlanStep } from "./plan-execute.js";
 import type { Awaitable } from "./types.js";
 
+/**
+ * AWM (arXiv:2409.07429): only steps from a SUCCESSFUL trajectory become the
+ * reusable routine — teaching the model steps that failed their post-condition
+ * would propagate bad tool sequences into future plans.
+ */
+export function selectSuccessfulPlanSteps(
+  executed: readonly { readonly step: PlanStep; readonly stepResult: { readonly success: boolean } }[]
+): readonly PlanStep[] {
+  return executed.filter((record) => record.stepResult.success).map((record) => record.step);
+}
+
 export interface CachedPlan {
   readonly prompt: string;
   readonly steps: readonly PlanStep[];

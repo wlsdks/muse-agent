@@ -536,3 +536,93 @@ ratchet: testFiles 947 · fabrication 0 · groundedSurfaces 27 · ask god-file: 
   both moved); PersistedReminder retained (pendingReminders local); new test real OUTCOME (fails if citation
   embeds id); recall 169 + cli 2593 green.
 - **Risk:** low — pure presentation relocation; grounding gate consumes the block string identically.
+
+## fire 29 · 2026-06-13 · loop-creator v1.14.0 · 305fa9e2
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 947 · fabrication 0 · groundedSurfaces 27 · commands-doctor.ts 939->899 LOC
+- **What:** continued the commands-doctor decompose (fire 25) — moved two more pure LocalCheck classifiers,
+  `selfLearningCheck` (verifiable-autonomy B1 check) + `weaknessFuelCheck` (informational dev-fixable fuel
+  line), from commands-doctor.ts to the sibling commands-doctor-checks.ts (verbatim, with their load-bearing
+  JSDocs). The sibling gained a `type DevFixableWeakness` import (@muse/mcp). commands-doctor imports both
+  back (runLocalDoctor uses them at 650/660) + re-exports (commands-doctor.test imports them). DevFixableWeakness
+  stays in commands-doctor (formatDevFixableWeaknesses at 854 uses it) → no orphan.
+- **Why:** diversity — compose@recall was 4/8; this is decompose@cli (the proven fire-25 sibling pattern),
+  continuing to shrink the doctor god-file (939→899). The two classifiers are pure (selfLearningCheck: state→
+  LocalCheck; weaknessFuelCheck: DevFixableWeakness[]→LocalCheck|undefined) — clean cohesive batch.
+- **Review point:** 4b judge — both bodies byte-identical (esp. the 4-branch selfLearning state logic + the
+  weaknessFuel undefined-when-empty + the informational status:"ok" rationale); re-export keeps the 226
+  commands-doctor test cases green; DevFixableWeakness retained in commands-doctor; LocalDoctorReport interface
+  (between them) untouched.
+- **Risk:** low — pure relocation of two tested pure classifiers; no IO, no floor path.
+
+## fire 30 · 2026-06-13 · loop-creator v1.14.0 · 2e9e61a8
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 950 · fabrication 0 · groundedSurfaces 27 · ask god-file: 3rd inline block extracted
+- **What:** Phase 3 continuation (3rd block after task/reminder) — extracted the inline `memoryBlock` builder
+  (`<<memory N>>` grounding block) from commands-ask.ts into a pure `buildMemoryContextBlock(facts)` in
+  @muse/recall/**select.ts** (its natural home — beside renderMemoryFact + the MemoryFact type + selectMemoryFacts,
+  all recall-owned). ZERO new imports (renderMemoryFact + MemoryFact are file-local). The inline expr became a
+  one-line call. Body byte-identical; 3-case OUTCOME test added. renderMemoryFact stays imported in commands-ask
+  (4 other uses at 2151/2258/2391/2589) → no orphan.
+- **Why:** continues moving the ask pipeline's inline `<<...>>` block-builders to recall (presentation layer).
+  Last fire diversified to cli; compose@recall back to ~4/8 (within ceiling). This block was the cleanest yet —
+  its only dep (renderMemoryFact) already lives in recall's select.ts, so it slotted in with no import churn.
+- **Review point:** 4b judge — memoryBlock body byte-identical (<<memory>>/[memory:] wrapper, key-as-citation,
+  renderMemoryFact call); placed in select.ts (renderMemoryFact's module) not present.ts; new test real OUTCOME;
+  renderMemoryFact import retained in commands-ask (4 other uses); recall 175 + cli 2599 green.
+- **Risk:** low — pure presentation relocation, same-module dep; grounding gate consumes the block identically.
+
+## fire 31 · 2026-06-13 · loop-creator v1.14.0 · 66891731
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 950 · fabrication 0 · groundedSurfaces 27 · commands-doctor.ts 899->847 LOC
+- **What:** continued the commands-doctor decompose (fires 25/29) — moved the cohesive ollama-perf cluster
+  (`OllamaPerfEnv` type + `ollamaPerfPostureCheck` pure classifier + `readOllamaPerfEnv` env reader) from
+  commands-doctor.ts to the sibling commands-doctor-checks.ts (verbatim, incl. the load-bearing JSDoc). LocalCheck
+  was already in the sibling; readOllamaPerfEnv's deps are all dynamic (node:child_process/util) — so ZERO new
+  static imports. commands-doctor imports both fns back (runLocalDoctor calls them at line 371) + re-exports them
+  (commands-doctor-perf.test imports ollamaPerfPostureCheck). OllamaPerfEnv had no external importer → moved
+  without re-export.
+- **Why:** diversity — compose@recall was 4/8 (a 5th would near the ceiling); this is decompose@cli (the proven
+  sibling pattern), shrinking the doctor god-file 899→847. The model-tag cluster (OllamaTagsEntry/findOllamaModelTag/
+  embedModelCheck) is a separate cohesive unit — deferred to a later fire (DECOMPOSE-ON-DEFER).
+- **Review point:** 4b judge — all 3 symbols byte-identical (esp. ollamaPerfPostureCheck's flash/KV branch logic +
+  the launchctl-fallback readOllamaPerfEnv); re-export keeps commands-doctor-perf test green (2599 cli); no new
+  static import in the sibling; OllamaPerfEnv move-without-re-export safe (no external importer).
+- **Risk:** low — pure relocation; ollama-perf is advisory (warn, never fail), no floor path.
+
+## fire 32 · 2026-06-13 · loop-creator v1.14.0 · cf1177d5
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 953 · fabrication 0 · groundedSurfaces 27 · ask god-file: 2 more inline blocks extracted
+- **What:** Phase 3 continuation — BATCHED two homogeneous inline block-builders out of commands-ask.ts into
+  pure fns in @muse/recall/present.ts: `buildShellContextBlock(commands: readonly string[])` (the `<<command N>>`
+  block) + `buildGitContextBlock(commits: readonly {hash,subject}[])` (the `<<commit N>>` block). Both raw
+  (no escaping), zero new deps. gitBlock used the CLI-local `GitCommit` type → I used a minimal STRUCTURAL input
+  type `{readonly hash; readonly subject}` so recall stays independent of apps/cli (GitCommit[] is assignable).
+  Both inline exprs became one-line calls; 5-case OUTCOME test added. selectShellCommands/selectGitCommits/GitCommit
+  stay used in commands-ask (the source-fetch) → no orphans.
+- **Why:** continues moving the ask pipeline's inline blocks to recall (presentation layer); batching two
+  trivial same-shape builders in one slice (allowed homogeneous batching). 5 of ~12 blocks now extracted
+  (task/reminder/memory/shell/git). compose@recall ~4/8 (within ceiling).
+- **Review point:** 4b judge — both bodies byte-identical (the <<command>>/<<commit — hash>>/[commit: subject]
+  templates, subject-not-hash citation); structural git input type accepts GitCommit[] (no cli→recall dep);
+  new test real OUTCOME (exact strings + subject-not-hash citation); recall 185 + cli 2610 green; no orphans.
+- **Risk:** low — pure presentation relocation; grounding gate consumes both block strings identically.
+
+## fire 33 · 2026-06-13 · loop-creator v1.14.0 · 0a562d70 · JUDGE-DRILL
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: testFiles 954 · fabrication 0 · groundedSurfaces 27 · commands-doctor.ts 847->810 LOC
+- **What:** (drill) consecutive-allPASS hit 8 → mandatory JUDGE-DRILL with a NEW failure mode (not the prior
+  comment-removal drills): a "behavior-preserving extraction" that was subtly NOT byte-identical — extracted
+  actionBlock to buildActionContextBlock but changed `a.when.slice(0,10)` → `slice(0,7)` (model would see
+  YYYY-MM not YYYY-MM-DD action dates). ALL deterministic gates PASSED (recall 185, cli 2613 — the action-date
+  format is untested). The independent Opus judge correctly **FAILED** it, pinpointing the exact slice-length
+  divergence + its grounding-prompt impact. Rolled back. (real) Decomposed the commands-doctor ollama-tag trio
+  (`OllamaTagsEntry` + `isOllamaTagsEntry` + `findOllamaModelTag`) → new sibling `commands-doctor-ollama.ts`;
+  re-exported (test imports findOllamaModelTag/OllamaTagsEntry). embedModelCheck left behind (shares the private
+  formatBytes helper used by runLocalDoctor — would entangle).
+- **Why:** drill validates maker≠judge (4th drill, all 4 caught — incl. this subtle non-comment behavior change).
+  The doctor decompose continues shrinking the god-file (847→810) + diversifies off the compose@recall streak.
+- **Review point:** drill judge FAIL confirmed (slice(0,7)≠slice(0,10)); real slice 4b judge — trio byte-identical
+  (the latest-tag-normalize matching), isOllamaTagsEntry exported for runLocalDoctor, re-export keeps doctor tests
+  green (2613 cli), formatBytes correctly NOT entangled (embedModelCheck stayed).
+- **Risk:** low — pure relocation of pure tag-matching utils; no IO, no floor path.

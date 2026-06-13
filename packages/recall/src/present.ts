@@ -440,3 +440,23 @@ export function buildReminderContextBlock(reminders: readonly PersistedReminder[
     .map((r, i) => `<<reminder ${(i + 1).toString()} — ${r.id} (due ${formatDueLocal(r.dueAt)})>>\n${r.text}\n[reminder: ${r.text}]\n<<end>>`)
     .join("\n\n");
 }
+
+/** Build the <<command N>> grounding block from matched shell-history commands. Pure. */
+export function buildShellContextBlock(commands: readonly string[]): string {
+  if (commands.length === 0) {
+    return "(no matching shell commands)";
+  }
+  return commands
+    .map((cmd, i) => `<<command ${(i + 1).toString()}>>\n${cmd}\n<<end>>`)
+    .join("\n\n");
+}
+
+/** Build the <<commit N>> grounding block from matched git commits. Pure. */
+export function buildGitContextBlock(commits: readonly { readonly hash: string; readonly subject: string }[]): string {
+  if (commits.length === 0) {
+    return "(no matching git commits)";
+  }
+  return commits
+    .map((c, i) => `<<commit ${(i + 1).toString()} — ${c.hash}>>\n${c.subject}\n[commit: ${c.subject}]\n<<end>>`)
+    .join("\n\n");
+}
