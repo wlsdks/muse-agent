@@ -247,8 +247,16 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
     .description("Upcoming birthdays, soonest first")
     .option("--within <days>", "Look-ahead window in days (default 30)")
     .action(async (options: { within?: string }) => {
-      const withinRaw = options.within !== undefined ? Number(options.within) : undefined;
-      const within = withinRaw !== undefined && Number.isFinite(withinRaw) ? withinRaw : 30;
+      let within = 30;
+      if (options.within !== undefined) {
+        const parsed = Number(options.within.trim());
+        if (!Number.isFinite(parsed) || parsed < 1) {
+          io.stderr(`muse contacts birthdays: --within must be a positive number of days (got '${options.within}')\n`);
+          process.exitCode = 1;
+          return;
+        }
+        within = Math.min(365, Math.trunc(parsed));
+      }
       const upcoming = resolveUpcomingBirthdays(await queryContacts(contactsFile()), { withinDays: within });
       if (upcoming.length === 0) {
         io.stdout(`No birthdays in the next ${within.toString()} days. Set one with \`muse contacts add <name> --email <e> --birthday MM-DD\`.\n`);

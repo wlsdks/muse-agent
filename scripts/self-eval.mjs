@@ -111,6 +111,19 @@ export function countEgressGuards(combinedSource) {
 }
 
 /**
+ * Count the differentiation PROOF batteries — the deterministic `scripts/eval-*.mjs`
+ * scripts that prove a structural edge vs hermes/openclaw (memory-poisoning,
+ * receipt-drift, action-log-tamper, policy-symmetry). Each carries the header
+ * marker "Differentiation proof battery"; counting them turns "the edge proofs
+ * never silently vanish" into a numeric ratchet — delete a battery and
+ * detectRegressions fails self-eval, exactly like countGroundedSurfaces guards the
+ * grounding batteries. `scriptSources` is the array of `scripts/eval-*.mjs` contents.
+ */
+export function countDifferentiationBatteries(scriptSources) {
+  return scriptSources.filter((s) => s.includes("Differentiation proof battery")).length;
+}
+
+/**
  * Regressions between the previous scoreboard entry and the current one: a
  * boolean gate that went pass→fail, or a numeric gate whose value dropped.
  * No previous entry ⇒ nothing to regress against.
@@ -227,6 +240,13 @@ function main() {
     .map((p) => readFileSync(p, "utf8"))
     .join("\n");
   gates.egressGuards = { status: "pass", value: countEgressGuards(egressSources) };
+  const scriptsDir = join(ROOT, "scripts");
+  const evalScriptSources = existsSync(scriptsDir)
+    ? readdirSync(scriptsDir)
+        .filter((n) => /^eval-.*\.mjs$/u.test(n))
+        .map((n) => readFileSync(join(scriptsDir, n), "utf8"))
+    : [];
+  gates.differentiationBatteries = { status: "pass", value: countDifferentiationBatteries(evalScriptSources) };
   for (const [gateName, batteryFile] of [
     ["toolCases", "scripts/eval-tool-selection.mjs"],
     ["adversarialCases", "scripts/eval-adversarial.mjs"],

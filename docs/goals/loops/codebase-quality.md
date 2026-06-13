@@ -253,3 +253,54 @@ ratchet: testFiles 930 · fabrication 0 · groundedSurfaces 27 · commands-docto
   tests / 5 config tests. chat-ink-render full-check failure was a CPU-contention flake (40/40 isolated).
 - **Risk:** none. commands-doctor still ~1121 LOC — the check-cluster (modelEnvCheck/localOnlyCheck/
   notesIndexHealth/… returning LocalCheck) is a follow-up decompose ◦.
+
+## fire 15 · 2026-06-13 · loop-creator v1.14.0 · 2d9754e9
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 931 · fabrication 0 · groundedSurfaces 27 · commands-doctor 1121→1073 LOC
+- **What:** continued the commands-doctor decompose — extracted the 3 PURE health checks
+  (messagingConfigCheck, notesIndexHealth, episodeIndexHealth) into sibling commands-doctor-checks.ts
+  (zero imports). import+re-export; fixed 2 misplaced JSDocs (notesIndexHealth's was stacked above
+  messagingConfigCheck; removal also restored embedModelCheck's doc placement). Added checks test (10).
+- **Why:** decompose KIND (finding #3, oversized CLI); pure subset = clean closed set (the heavier
+  check-orchestration cluster with runtime deps stays — deferred).
+- **Review point:** ④b judged the commit (`git show 2d9754e9`) → PASS: byte-identical bodies, docs
+  correctly paired + embedModelCheck doc preserved, zero imports/no cycle, 3 files, cli build 0 /
+  lint 0 / pnpm check 0 (clean) / 85 doctor+checks tests.
+- **Risk:** none. commands-doctor still ~1073 LOC — the LocalCheck-orchestration cluster
+  (modelEnvCheck/localOnlyCheck/ollamaPerf/selfLearning/embedModelCheck, mixed w/ runtime deps) is a
+  further decompose ◦ (needs runtime-dep handling).
+
+## fire 16 · 2026-06-13 · loop-creator v1.14.0 · c28bcd7e
+meta: value-class=refactor · pkg=@muse/tools+infra · kind=dead-code/cohere · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles 931 · fabrication 0 · groundedSurfaces 27 · isRecord dups 8→7 · byte-hygiene RED→green
+- **What:** (1) deduped the 2 isRecord defs in @muse/tools → import from @muse/shared (canonical).
+  (2) regression-fix: the shared repo-byte-hygiene gate was RED — two raw U+200B (zero-width) bytes
+  committed by the concurrent differentiation loop (scripts/eval-policy-symmetry.mjs:36 + the
+  differentiation.md journal:262); fixed the .mjs with the  escape (behavior-identical) and
+  stripped the invisible .md char. Repo now 0 forbidden bytes.
+- **Why:** isRecord dedup = real dup debt; the byte-hygiene fix unblocked the SHARED `pnpm check`
+  gate (every loop's check was failing on it) — regression-first per ①.
+- **Review point:** ④b judged commit c28bcd7e → PASS (value import not merged into a type-only line,
+  ===raw U+200B preserved, exactly 4 files, tools build 0/242 tests, byte-hygiene green).
+- **Risk / observation:** the **differentiation loop keeps committing raw zero-width/homoglyph bytes**
+  in its injection-test scripts + journal → recurring byte-hygiene failures. Their loop should emit
+  \uNNNN escapes. Recorded as a cross-loop blocker note. NEXT fire (17) = JUDGE-DRILL (consecutive
+  allPASS reached 8).
+
+## fire 17 · 2026-06-13 · loop-creator v1.14.0 · a3f5eb36 · JUDGE-DRILL
+meta: value-class=refactor · pkg=@muse/auth · kind=dead-code/cohere · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: testFiles 933 · fabrication 0 · groundedSurfaces 27 · isRecord dups 7→6
+- **What:** (drill) consecutive-allPASS hit 8 -> mandatory JUDGE-DRILL: injected a bad
+  comment-hygiene slice that gutted looksLikeBinaryContent's load-bearing JSDoc (the
+  fabrication-floor WHY: grounding on binary garbage -> model hallucinates a cited
+  [from file] -> a fabrication). Deterministic gates PASSED (recall build/text tests/lint),
+  the independent Opus judge correctly FAILED it (load-bearing WHY tied to fabrication=0).
+  Rolled back (git reset --hard). Verifier reliability re-confirmed (2nd drill, both caught).
+  (real) deduped isRecord in @muse/auth/jwt.ts -> import from @muse/shared (7->6 dups).
+- **Why:** drill validates the maker!=judge control; the auth dedup continues the isRecord
+  consolidation. Also stripped 2 stray U+200B zero-width bytes my own fire-16 journal prose
+  had introduced (byte-hygiene gate was red on them; repo now 0 forbidden bytes).
+- **Review point:** drill judge FAIL confirmed on the bad slice; auth slice 4b judge PASS
+  (value import, byte-identical, no cycle, 1 file). pnpm check green after the journal byte-strip.
+- **Risk:** none. LESSON: never put a literal zero-width/control char in journal prose — write
+  "U+200B" as text. Remaining isRecord dups: model/agent-core/api (exported) + autoconfigure/voice.

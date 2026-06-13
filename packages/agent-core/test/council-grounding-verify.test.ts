@@ -57,6 +57,20 @@ describe("verifyCouncilGrounding — RGV re-verification applied to the council 
     expect(judge).not.toHaveBeenCalled();
   });
 
+  it("with k samples (reverifySamples=2), one NO among the verdicts drops the synthesis (a flaky YES can't promote it)", async () => {
+    const judge = vi.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const out = await verifyCouncilGrounding(council("Phased rollout.", "phone"), "how should we launch?", utterances, judge, 2);
+    expect(out).toBeNull();
+    expect(judge).toHaveBeenCalledTimes(2); // short-circuits AT the first NO (2nd call)
+  });
+
+  it("with k samples, an all-YES run keeps the synthesis and consults the judge exactly k times", async () => {
+    const judge = vi.fn(async () => true);
+    const out = await verifyCouncilGrounding(council("Phased rollout.", "phone"), "how should we launch?", utterances, judge, 3);
+    expect(out?.answer).toBe("Phased rollout.");
+    expect(judge).toHaveBeenCalledTimes(3);
+  });
+
   it("assembles the evidence from the CONTRIBUTORS' reasoning text, not their ids", async () => {
     let seen = "";
     await verifyCouncilGrounding(council("Phased rollout.", "phone"), "how should we launch?", utterances, async ({ evidence }) => {

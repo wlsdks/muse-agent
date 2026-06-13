@@ -636,6 +636,7 @@ export {
 } from "./world-time.js";
 export { createRememberFactTool, type RememberFactStore } from "./remember-fact-tool.js";
 export { createObjectivesListTool, type ObjectivesListToolDeps } from "./objectives-tool.js";
+export { createRecentActionsTool, type RecentActionsToolDeps } from "./recent-actions-tool.js";
 export { createFeedsSearchTool, type FeedEntryLike, type FeedsSearchToolDeps } from "./feeds-search-tool.js";
 export {
   collectDatedNotes,

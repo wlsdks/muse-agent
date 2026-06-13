@@ -172,6 +172,7 @@ async function buildPersonalCrudScenario() {
       { prompt: "오늘 할 일 보여줘", expectTool: "muse.tasks.list", note: "KO list to-dos → tasks.list" },
       { prompt: "내 리마인더 다 보여줘", expectTool: "muse.reminders.list", note: "KO list reminders → reminders.list (NOT calendar.list)" },
       { prompt: "이번 주 일정 보여줘", expectTool: "muse.calendar.list", note: "KO list events → calendar.list (NOT tasks/reminders)" },
+      { prompt: "Find my meeting with Bob on the calendar this week.", expectTool: "muse.calendar.list", requireArgs: ["query"], argIncludes: /bob/i, note: "EN find a specific event → calendar.list with query (ArgumentCorrectness)" },
       { prompt: "Show my tasks tagged work", expectTool: "muse.tasks.list", requireArgs: ["tag"], argIncludes: /work/i, note: "EN tag filter → tasks.list with tag arg (ArgumentCorrectness)" },
       { prompt: "work 태그된 할 일 보여줘", expectTool: "muse.tasks.list", requireArgs: ["tag"], argIncludes: /work/i, note: "KO tag filter → tasks.list with tag arg" }
     ];
@@ -318,6 +319,30 @@ async function buildOverdueScenario() {
     return { label: "overdue-contacts (relationship nudge vs find-one)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
     return { label: "overdue-contacts", skip: `@muse/autoconfigure not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
+// recent_actions (what Muse HAS DONE — the action log) vs list_objectives (what
+// it's PURSUING — the goals). Past-tense actions taken/refused vs forward-looking
+// goals. Guards "what have you done for me?" → recent_actions, "what are you
+// tracking?" → list_objectives.
+async function buildActionsScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const instances = [
+      mcp.createRecentActionsTool({ actions: () => [] }),
+      mcp.createObjectivesListTool({ objectives: () => [] })
+    ];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "What have you done for me recently?", expectTool: "recent_actions", note: "EN past-tense actions taken → recent_actions (NOT list_objectives)" },
+      { prompt: "내 대신 뭘 했는지 보여줘", expectTool: "recent_actions", note: "KO 'show me what you did on my behalf' → recent_actions" },
+      { prompt: "What objectives are you tracking for me?", expectTool: "list_objectives", note: "forward-looking goals → list_objectives (NOT recent_actions)" }
+    ];
+    return { label: "actions (history-of-actions vs objectives)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "actions", skip: `@muse/mcp not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
   }
 }
 
@@ -786,6 +811,7 @@ async function main() {
     await buildPersonalCrudScenario(),
     await buildContactsScenario(),
     await buildObjectivesScenario(),
+    await buildActionsScenario(),
     await buildTasksTagScenario(),
     await buildWeekAgendaScenario(),
     await buildOverdueScenario(),

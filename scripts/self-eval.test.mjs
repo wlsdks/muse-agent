@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  countDifferentiationBatteries,
   countEgressGuards,
   countGroundedCases,
   countGroundedSurfaces,
@@ -142,6 +143,21 @@ test("countEgressGuards also counts the voice local-only cloud-key-ignore guard"
   const prev = { gates: { egressGuards: { status: "pass", value: countEgressGuards(combined) } } };
   const curr = { gates: { egressGuards: { status: "pass", value: countEgressGuards(withoutVoice) } } };
   assert.deepEqual(detectRegressions(prev, curr), ["egressGuards: 6→5"]);
+});
+
+test("countDifferentiationBatteries counts the marker-bearing proof batteries (a deleted one regresses)", () => {
+  const sources = [
+    "// Differentiation proof battery — local-by-construction\nimport x;",
+    "// Differentiation proof battery — receipt drift\nimport y;",
+    "// just an ordinary eval script, no marker",
+    "const s = 'Differentiation proof battery';" // marker only inside a string literal still counts (file-level grep) — acceptable
+  ];
+  assert.equal(countDifferentiationBatteries(sources), 3);
+  assert.equal(countDifferentiationBatteries([]), 0);
+  // a deleted battery is a numeric regression via detectRegressions
+  const prev = { gates: { differentiationBatteries: { status: "pass", value: 4 } } };
+  const curr = { gates: { differentiationBatteries: { status: "pass", value: 3 } } };
+  assert.deepEqual(detectRegressions(prev, curr), ["differentiationBatteries: 4→3"]);
 });
 
 test("countPromptCases counts prompt-bearing battery cases (ratchet for every golden set)", async () => {

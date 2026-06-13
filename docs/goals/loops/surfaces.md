@@ -48,3 +48,21 @@ ratchet: desktop swift tests 48/48 (+2) · fabrication 0 · self-eval exit 0 · 
 - **왜**: doc은 "JSON이 아닐 때만 cleanAnswer 폴백"을 약속하는데 빈-응답 케이스가 잘못 폴백 → 모델 hiccup·CLI 변경 시 사용자가 `{"response":""}`를 보고 *듣는* 실제 버그. cleanAnswer 폴백은 진짜 비-JSON에만 유지(graceful degradation 보존).
 - **리뷰지점**: JSONDecoder는 미지의 키 무시 → `{"runId":…}`도 response/answer nil→"". 비-JSON(bare string/number/array/ANSI)은 decode 실패 → cleanAnswer 경로 보존.
 - **리스크**: 없음(empty-text 가드 1개 제거 + 2 테스트, cleanAnswer/유일 caller ask() 무변, 독립 Opus judge가 leak 수정·폴백 보존·잘못된 빈값 없음 probe 검증 후 PASS, 48/48).
+
+## fire 6 · 2026-06-13 · skill v1.14.0 · 6c93d7c1
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=input-validation-consistency · verdict=PASS · firesSinceDrill=6
+ratchet: cli tests 2576/2576 (contacts 22, +2) · fabrication 0 · self-eval exit 0 · consecutive allPASS=6 · 표면 균형 web2·desktop2·cli2
+
+- **무엇**: `muse contacts birthdays --within`가 잘못된 값을 조용히 삼켰다 — `abc`→NaN→무음 30 폴백(exit0), `-5`→"next -5 days" 출력(exit0), float/무한대 통과. 이제 비-유한·`<1`이면 stderr 에러+exit1, 아니면 `Math.min(365, Math.trunc(parsed))`로 clamp(MCP 도구 twin과 동일 1..365 계약).
+- **왜**: 동일 개념의 MCP 도구(`contacts-tool.ts`)는 1..365 clamp하고 sibling CLI 플래그(`parsePositiveInt`/`clampScanLimit`)는 exit1로 거부하는데, `--within`만 에러를 삼켜 사용자가 의도와 다른 창을 신호 없이 받았다(cross-surface 불일치).
+- **리뷰지점**: clamp(reject 아님)이라 기존 `--within 400` 테스트는 365로 통과 유지. throw 아닌 `io.stderr+exitCode=1+return` 패턴(이 파일 sibling과 동일, `run` 하니스가 exitOverride+process.exitCode를 읽으므로 깨끗한 exit1).
+- **리스크**: 없음(birthdays 액션 --within 파싱 블록 한정, default-30/listing 경로 무변, 독립 Opus judge가 경계(0/1/365/400/10.5)·회귀·하니스 적합성 검증 후 PASS, 2576/2576).
+
+## fire 7 · 2026-06-13 · skill v1.14.0 · 0dcc6cc2
+meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=i18n-dangling-label · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 932 (+1) · web tests 19/19 (+2) · fabrication 0 · self-eval exit 0 · consecutive allPASS=7 (다음 fire=8 → JUDGE-DRILL)
+
+- **무엇**: `memory.subtitle`이 타임스탬프 도입용 라벨("Updated"/"업데이트")을 문자열에 박아둬, `updatedAt` 부재 시(404→`{}` 도달 경로) 두 로케일 모두 "...about you. Updated" 댕글링 라벨 노출. subtitle을 완결 문장으로 바꾸고 라벨을 신규 키 `memory.updated`({when} 슬롯)로 분리 + 순수 헬퍼 `memorySubtitle(t, locale, updatedAt)` 추출.
+- **왜**: `updatedAt`이 없을 때 값 없는 라벨이 잘려 보이는 실제 사용자-노출 카피 버그(en+ko 둘 다). 라벨을 값에 바인딩하는 키로 분리하면 부재 시 깔끔한 문장, 존재 시 "· Updated <날짜>".
+- **리뷰지점**: i18n 불변식 유지 — `memory.updated`를 en/ko 양쪽에 추가(키셋 패리티), 둘 다 `{when}` 토큰(토큰 패리티), 빈값 없음. 헬퍼는 fire 4 `formatTaskDate`와 동일한 추출 패턴.
+- **리스크**: 없음(subtitle 2줄 + 신규 키 + 헬퍼 + JSX 호출, tsc+vite clean, 독립 Opus judge가 양 로케일·불변식·구-코드 RED 검증 후 PASS, web 19/19 + strings parity).
