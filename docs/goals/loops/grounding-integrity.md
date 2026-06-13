@@ -154,3 +154,11 @@ ratchet: self-eval green (testFiles 959) · no code change (EXHAUSTION rule, not
 - 왜: 2회 연속 clean 신호(fire 16 vein-status + fire 19 axis-B-clean) → EXHAUSTION 규칙대로 억지 micro-fix 대신 정직 종료. axis A(provenance/empty-evidence/conflict/citation precision+recall/date) + axis B 신뢰성(reward·decay·probation·graduation·BKT·polarity·persistence idempotency) + axis C(3 judge gate empty-evidence, k-sample, judge-drill ×2) 모두 강화·검증 완료.
 - 리뷰지점: 없음(no change). scout 권고 = value-class 피벗(retrieval/recall 품질 또는 학습-상태 UX surfacing) 또는 wind-down. 진안 방향 결정 대기.
 - 리스크: 없음. **블로커: 이 테마의 결정론적 hardening vein 고갈** — 추가 fire는 새 공개 논문 메커니즘(가끔 등장) 또는 정직 종료. 진안이 테마 재지정/중단 결정 권장.
+
+## fire 20 · 2026-06-14 · skill v1.14.0 · dc69329a
+meta: value-class=new-capability(paper) · pkg=@muse/agent-core · kind=A · verdict=PASS · firesSinceDrill=2
+ratchet: agent-core +9 tests (full suite 2129 pass) · lint 0/0 · fabrication 0 · guard-removal mutation verified · vein REOPENED by paper-escape-hatch
+- 무엇: **polarity-mismatch(부정 맹점) 가드** — token-coverage가 "no"/"not"을 stopword로 제거해 "X is NOT effective"가 "X is effective"와 동일 coverage(1.0 supported)로 채점되던 fabrication-floor 구멍. `detectPolarityMismatch`(문장 단위, ≥0.6 overlap + 반대 부정 polarity) + reportSentenceGroundedness에 fail-close wiring(supported→unsupported).
+- 왜: fire 19에서 "vein 고갈" 신고했으나 EXHAUSTION 규칙의 "새 공개 논문 메커니즘" escape-hatch가 진짜 구멍을 찾음(arXiv:2305.16819, 2510.06265). 부정은 token gate가 구조적으로 못 보는 클래스 — detectEvidenceContradictions(evidence↔evidence)와도 distinct(answer↔evidence).
+- 리뷰지점: strictly tighten(downgrade만), pure, sentence-granularity로 stray 부정 오발 방지. guard 제거 mutation 시 downgrade 테스트 red. 독립 Opus judge 5/5 PASS(2129 green). **알려진 좁은 한계**: same-stem litotes("not uncommon" vs "common")는 over-fire — 유일 소비자가 진단 telemetry hint(게이트 불변)라 허용.
+- 리스크: 낮음(진단-only over-fire, 게이트/사용자 답변 영향 없음). vein 정정: 결정론 버그 vein은 dry지만 공개 논문 메커니즘은 가끔 실 구멍을 드러냄(이번이 그 사례).
