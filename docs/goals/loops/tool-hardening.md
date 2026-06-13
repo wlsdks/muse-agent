@@ -810,3 +810,12 @@ ratchet: testFiles 958 유지(eval +6 케이스) · fabrication 0 유지 · foll
 - **왜:** fire 76 KO "취소" followup.cancel 버그가 verb-특정이었음 → 형제 destructive 도구(특히 calendar.delete가 **같은 "취소" verb**)에도 같은 mis-route가 있나 PROBE. probe→found-bug→fix(fire 76) 패턴 계승. 가장 유력 잠복 = calendar.delete "취소".
 - **리뷰지점:** eval-tool-selection.mjs buildFollowupScenario(calendar 서버 + 필터 tweak[calendar.add 제외] + 6 positive 케이스). PROBE 결과: 6개 전부 PASS 3/3 2회(6/6) → **버그는 followup.cancel 특정 확정, systemic 아님**(tasks/reminders/calendar 전부 KO destructive 한방 정상). 시나리오 20/20 양쪽 — calendar 추가가 기존 14 케이스 무회귀(fire-76 KO cancel fix·IrrelAcc 가드 포함). fire 75 IrrelAcc 네거티브(질문→delete 금지)를 positive(intent→delete)로 보완. harness 15 pass, lint clean. Opus judge PASS 5/5(무회귀·calendar.add 제외·teeth: fire-76 선례가 실패 가능 증명).
 - **리스크:** 없음 — 순수 additive(기존 케이스 불변), scripts-only. teeth 있음(같은 verb가 followup에서 실제 0/3였음). 버그 클래스 배제 = 진짜 negative 결과(다른 destructive 표면 안전 확인).
+
+
+## fire 78 · 2026-06-14 · skill v1.14.0 · (no-slice)
+meta: value-class=exhaustion-report · pkg=none · kind=eval-scan-no-actionable-bug(테마 maturity 정의적 확인) · verdict=NO-SLICE · firesSinceDrill=6
+ratchet: testFiles 959 유지 · fabrication 0 유지 · eval:tools full REPEAT=3 스캔 — real-tool 선택 healthy, actionable 버그 0
+- **무엇:** 슬라이스 없음(honest-close). 전체 eval:tools REPEAT=3 스캔(fire 76이 eval로 진짜 버그 발굴한 패턴 → 남은 일관 실패 정의적 탐색). agent-core hot 확인(email/handle grounding blocked 유지), 신호 clean.
+- **왜:** 스캔 결과 **actionable real-tool 선택 버그 0건**: (a) synthetic weather 0/3 = 합성 도구명 "weather_in_city" 환각(Muse 실제 도구 아님, 이름 바꾸면 gaming = non-actionable), (b) time_diff "between 9am and 5:30pm today" 1/3 flaky = time_now 설명이 **이미 이 정확한 케이스를 명시 배제**(muse-tools-time.ts:26)하므로 설명 갭 아님, 6+ 동시루프 부하 하 8B stochastic noise. KO cancel(fire 76)이 진짜 버그였고 수정됨 → 테마 mature 정의적 확인.
+- **리뷰지점:** 코드 변경 0. backlog에 두 finding 기록(synthetic 환각 non-actionable, time_diff 1/3 load-noise monitor). budget상 후반 시나리오 전 스캔 중단(real-tool 통과 확인 후); macos 42/42·followup 20/20은 최근 fire 검증됨. 고가치 레버(email/handle grounding=agent-core-hot, MCP-risk posture=진안, undo/veto=설계 진안) 여전히 blocked.
+- **리스크:** 없음 — 코드 무변경. "할 게 없다" 아님: fire 76 패턴(eval→버그→fix)으로 정의적 스캔 → 진짜 negative 결과(actionable 버그 없음=maturity). 다음 fire는 진안 unblock 시 그 항목, 아니면 부하 조용할 때 time_diff 재확인 또는 재-close.
