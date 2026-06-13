@@ -174,3 +174,12 @@ ratchet: cli tests 2625/2625 (contacts +2) · fabrication 0 · self-eval exit 0 
 - **왜**: 사용자가 `jq`로 파이프할 1순위 명령(전체 연락처)이 기계가독 출력 불가였다(cross-command 불일치). vein 신호 따라 format 버그가 아닌 capability 갭으로 전환.
 - **리뷰지점**: json 분기를 human empty-state 앞에 둠 — human 경로는 `all.length===0`("No contacts yet")→`shown.length===0`("No contacts match") 순서 보존. json empty는 human 카피 아닌 `[]`. JSON 형태는 raw `shown`(overdue/dupes 패턴과 일치).
 - **리스크**: 없음(list 액션 한정, 다른 contacts 서브커맨드 무변, 독립 Opus judge가 commander unknownOption RED·human 무회귀·--search 합성 검증 후 PASS, contacts 24/24 · cli 2625/2625).
+
+## fire 20 · 2026-06-14 · skill v1.14.0 · <commit>
+meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=a11y-nav-landmark+aria-current · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 961 (+1) · web tests 29/29 (+3) · fabrication 0 · self-eval exit 0
+
+- **무엇**: 사이드바 primary nav(App.tsx)가 활성 뷰를 CSS `.active` 클래스로만 표시 — `aria-current="page"`도, nav landmark도 없어 스크린리더가 현재 페이지/nav 점프를 못 함. nav JSX를 i18n-free 순수 컴포넌트 `SidebarNav`(t prop 주입)로 추출 + `<nav aria-label>` landmark + 활성 버튼에 `aria-current="page"`.
+- **왜**: 모든 화면의 최고-트래픽 컨트롤의 a11y 상태 누락(WAI-ARIA `aria-current`/landmark). 추출로 renderToStaticMarkup 단위테스트 가능(App은 useI18n→window라 직접 불가).
+- **리뷰지점**: 추출은 render-equivalent(NAV/GROUPS·`.active`·아이콘·라벨·tasks 배지 보존, onClick=onSelect→setView 배선). `nav.primary` en/ko 양쪽 추가(파리티). `aria-current` 값은 올바른 `"page"` 토큰. cosmetic: `<nav>` 래퍼가 그룹을 한 단계 더 중첩하나 `.sidebar-foot margin-top:auto`로 무해.
+- **리스크**: 없음(App.tsx 추출+a11y + strings 2키 + 신규 테스트, brand/sidebar-foot 무변, 독립 Opus judge가 RED-before·추출 충실성·parity 검증 후 PASS, web 29/29).

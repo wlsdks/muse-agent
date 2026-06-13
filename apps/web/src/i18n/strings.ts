@@ -13,6 +13,7 @@ const en = {
   "group.knowledge": "Knowledge",
   "group.system": "System",
 
+  "nav.primary": "Primary",
   "nav.today": "Today",
   "nav.chat": "Chat",
   "nav.tasks": "Tasks",
@@ -191,6 +192,7 @@ const ko: Strings = {
   "group.knowledge": "지식",
   "group.system": "시스템",
 
+  "nav.primary": "주요 메뉴",
   "nav.today": "오늘",
   "nav.chat": "대화",
   "nav.tasks": "할 일",
