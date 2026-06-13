@@ -269,3 +269,20 @@ ratchet: testFiles 931 · fabrication 0 · groundedSurfaces 27 · commands-docto
 - **Risk:** none. commands-doctor still ~1073 LOC — the LocalCheck-orchestration cluster
   (modelEnvCheck/localOnlyCheck/ollamaPerf/selfLearning/embedModelCheck, mixed w/ runtime deps) is a
   further decompose ◦ (needs runtime-dep handling).
+
+## fire 16 · 2026-06-13 · loop-creator v1.14.0 · c28bcd7e
+meta: value-class=refactor · pkg=@muse/tools+infra · kind=dead-code/cohere · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles 931 · fabrication 0 · groundedSurfaces 27 · isRecord dups 8→7 · byte-hygiene RED→green
+- **What:** (1) deduped the 2 isRecord defs in @muse/tools → import from @muse/shared (canonical).
+  (2) regression-fix: the shared repo-byte-hygiene gate was RED — two raw U+200B (zero-width) bytes
+  committed by the concurrent differentiation loop (scripts/eval-policy-symmetry.mjs:36 + the
+  differentiation.md journal:262); fixed the .mjs with the ​ escape (behavior-identical) and
+  stripped the invisible .md char. Repo now 0 forbidden bytes.
+- **Why:** isRecord dedup = real dup debt; the byte-hygiene fix unblocked the SHARED `pnpm check`
+  gate (every loop's check was failing on it) — regression-first per ①.
+- **Review point:** ④b judged commit c28bcd7e → PASS (value import not merged into a type-only line,
+  ​===raw U+200B preserved, exactly 4 files, tools build 0/242 tests, byte-hygiene green).
+- **Risk / observation:** the **differentiation loop keeps committing raw zero-width/homoglyph bytes**
+  in its injection-test scripts + journal → recurring byte-hygiene failures. Their loop should emit
+  \uNNNN escapes. Recorded as a cross-loop blocker note. NEXT fire (17) = JUDGE-DRILL (consecutive
+  allPASS reached 8).

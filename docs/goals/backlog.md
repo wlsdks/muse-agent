@@ -1,5 +1,9 @@
 # Muse dev backlog — the living ledger
 
+- ⚠ **differentiation loop commits raw zero-width/homoglyph bytes** → recurring @muse/shared byte-hygiene gate failures (fire 16 fixed 2: eval-policy-symmetry.mjs + differentiation.md). Their injection-test fixtures/journal should use \uNNNN escapes. Cross-loop — their process to fix.
+- ✓ isRecord dedup @muse/tools (2 defs) + byte-hygiene regression fix (2 files) — codebase-quality fire 16
+
+
 - ✓ Decompose commands-doctor health-check trio (messagingConfigCheck/notesIndexHealth/episodeIndexHealth) → commands-doctor-checks.ts — codebase-quality fire 15
 
 - ◦ **Decompose commands-doctor check-cluster → sibling** — fire 14 extracted config-classifiers; the LocalCheck-returning health checks (modelEnvCheck/localOnlyCheck/ollamaPerfPostureCheck/selfLearningCheck/notesIndexHealth/episodeIndexHealth/embedModelCheck…) are a further cohesive cluster to extract (commands-doctor still ~1121 LOC).
