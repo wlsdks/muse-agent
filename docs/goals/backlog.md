@@ -164,6 +164,8 @@
 
 ## ✓ Fixed (dedup ledger — one line each; detail in the per-loop journal)
 
+- ✓ hedge-overclaim (certainty escalation) grounding guard — token coverage ignored modal certainty so a categorical claim grounded in hedged evidence (may→does); added detectHedgeOverclaim + fail-close (FActScore arXiv:2305.14251). Completes the sentence-vs-evidence semantic guard trio (negation/numeric/hedge) — grounding-integrity fire 22
+
 - ✓ numeric/unit mismatch grounding guard — token coverage missed unit swaps (5 g vs 5 mg) and ≥3-digit magnitude errors; added detectNumericMismatch + fail-close in reportSentenceGroundedness (FactCC arXiv:1910.12840; guard-removal verified) — grounding-integrity fire 21
 
 - ✓ polarity-mismatch (negation) grounding guard — token coverage stripped no/not so a negated contradiction scored supported; added detectPolarityMismatch + fail-close in reportSentenceGroundedness (arXiv:2305.16819; guard-removal verified) — grounding-integrity fire 20
