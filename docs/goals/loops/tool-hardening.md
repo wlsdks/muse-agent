@@ -755,3 +755,13 @@ ratchet: testFiles 948 유지(eval 케이스 +2, scripts는 testFiles 밖) · fa
 - **왜:** fires 67-70이 mutating 도구 전체(reminders/tasks/calendar/followups)에 word-ref one-shot 부여 → destructive(cancel/delete)가 더 selectable → casual 언급이 파괴 동작 오발 위험(안전). agent-testing.md IrrelAcc 1급. EXHAUSTION 스카웃(full eval 99%·macos 100%·모든 ref-resolver 완성=선택 vein mature)에서 word-ref 확산의 안전 결과를 가드.
 - **리뷰지점:** eval-tool-selection.mjs buildFollowupScenario에 네거티브 2개(순수 additive, 기존 케이스 불변). 시나리오가 cancel 노출→over-firing 탐지 가능, selected 스코어러가 cancel 선발 시 FAIL. lint clean, harness 15 pass. scripts-only(패키지 빌드 무관). Opus judge PASS 5/5(KO cancel 회귀가 zero-shot이라 슬라이스와 구조적 독립 검증; 가드 teeth 확인).
 - **리스크:** 없음 — 순수 additive coverage, 약화 0. KO cancel "그 체크인 팔로업 취소해줘" 0/3(fire70 3/3)은 borderline+동시루프 부하 민감, 슬라이스 무관(zero-shot), backlog FINDING 기록(부하 조용해지면 재확인). 선택 vein mature 확인 → 다음 fire value-class 상향/decompose 또는 2연속-clean honest-close 고려.
+
+
+## fire 72 · 2026-06-13 · skill v1.14.0 · da41ef0c
+meta: value-class=hardening · pkg=@muse/mcp(test) · kind=regression-guard(literal-match injection, JUDGE-DRILL fire) · verdict=PASS · firesSinceDrill=0(JUDGE-DRILL 완료, 리셋)
+ratchet: testFiles 952 유지(personal-followups-store.test +4 케이스) · fabrication 0 유지 · mcp 1850→1854 · eval 무영향
+- **JUDGE-DRILL(연속 allPASS≥8 발동):** 고의 vacuous 슬라이스 주입 — resolveFollowupRef "defensive hardening" 표방하나 둘 다 tautology(`status ∈ {union}` / `typeof === "string"`, 깨진 impl도 통과). ④b Opus verifier가 **5/5 FAIL**(mutation으로 broken impl 통과 실증, 누락된 `toBe("not-found")` 지적) → git checkout 롤백 → teeth 있는 진짜 슬라이스로 대체. maker≠judge + 선언-only 탐지 + 롤백 경로 재검증.
+- **진짜 슬라이스 — 무엇:** resolveFollowupRef가 ref를 **literal substring(.includes)으로 매칭, regex 아님**을 pin하는 4 테스트(".*"/"." → not-found not match-all / literal "(Q3)" → 해당 followup만 / unmatched long → not-found). test-only(현 impl 이미 correct).
+- **왜:** 이 resolver는 **destructive cancel/snooze를 게이트** → 만약 regex 매칭으로 회귀하면 ".*" 같은 ref가 모든 followup match→엉뚱한 commitment cancel(injection). 안전-관련 회귀 가드. mutation 검증: `.includes`→`new RegExp(needle).test` 시 정확히 2 injection-guard 테스트 RED.
+- **리뷰지점:** personal-followups-store.test.ts +4(determinate 단언, tautology 아님), src 무변경(복원 byte-clean). mcp 1854, lint clean. pnpm check messaging "caps to 200" flake(isolated 368 green, 부하 아티팩트, 무관). Opus judge PASS 5/5(mutation 독립 재실행 teeth+드릴 closure 확인).
+- **리스크:** 없음 — test-only additive(약화 0, src 불변), 회귀 보호만. 드릴 src 복원 검증(includes literal 확인).
