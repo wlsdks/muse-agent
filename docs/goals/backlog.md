@@ -34,6 +34,7 @@
 - ✓ `muse.tasks.list` tag filter — "show my tasks tagged work" (list filtered only by status/dueWithinDays; tags first-class but unfilterable) — tool-hardening fire 51
 - ✓ `overdue_contacts` agent tool — "who haven't I talked to in a while?" relationship-decay nudge (overdueContacts was CLI-only; tool placed in @muse/autoconfigure to avoid a new dep edge, interactionsFromEvents moved there, CLI re-exports) — tool-hardening fire 52
 - ✓ `muse.tasks.list` tag filter — "show my tasks tagged work" was inexpressible (list filtered only by status/dueWithinDays, search ignores tags) though tags are first-class + CLI `--tag` exists; added optional `tag` (case-insensitive exact, both branches) — tool-hardening fire 51
+- ✓ browser act-path ambiguous-target fail-close — element matcher silently clicked/typed the FIRST of several tied "best" matches (two "Delete" buttons → guessed); now `matchElementResult` → `ambiguous` refuses `browser_click`/`browser_type` BEFORE snapshot-mutation/approval-gate, returns candidates + ordinal hint (closes an outbound-safety fail-open hole) — tool-mcp-browser fire 1
 
 ## Done — loop infrastructure (2026-06-12, 진안-directed)
 

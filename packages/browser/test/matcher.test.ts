@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SnapshotElement } from "../src/controller.js";
-import { filterElements, looksUnsettled, matchElement, matchOption } from "../src/matcher.js";
+import { filterElements, looksUnsettled, matchElement, matchElementResult, matchOption } from "../src/matcher.js";
 
 const els: SnapshotElement[] = [
   { name: "Sign in", ref: 0, role: "button" },
@@ -74,6 +74,60 @@ describe("matchElement — ordinal targeting among repeated controls", () => {
     ];
     expect(matchElement(fields, "First name", "type")?.ref).toBe(0);
     expect(matchElement(fields, "Last name", "type")?.ref).toBe(1);
+  });
+});
+
+describe("matchElementResult — surfaces ambiguity instead of guessing (fail-close for acts)", () => {
+  it("a single best match resolves to a unique element", () => {
+    const result = matchElementResult(els, "Sign in", "click");
+    expect(result.kind).toBe("match");
+    expect(result.kind === "match" && result.element.ref).toBe(0);
+  });
+
+  it("two DISTINCT controls tied at the top score are AMBIGUOUS, not a silent first-pick", () => {
+    const twins: SnapshotElement[] = [
+      { name: "Delete", ref: 0, role: "button" },
+      { name: "Delete", ref: 1, role: "button" }
+    ];
+    const result = matchElementResult(twins, "Delete", "click");
+    expect(result.kind).toBe("ambiguous");
+    expect(result.kind === "ambiguous" && result.candidates.map((c) => c.ref)).toEqual([0, 1]);
+  });
+
+  it("an explicit ordinal disambiguates a tie → a unique match (not ambiguous)", () => {
+    const twins: SnapshotElement[] = [
+      { name: "Delete", ref: 0, role: "button" },
+      { name: "Delete", ref: 1, role: "button" }
+    ];
+    expect(matchElementResult(twins, "the second Delete", "click")).toMatchObject({ kind: "match", element: { ref: 1 } });
+  });
+
+  it("a clear winner above a weaker match is NOT ambiguous", () => {
+    // 'Sign in' scores 100 (exact); 'Sign up' only shares a word → far lower.
+    const result = matchElementResult(els, "Sign in", "click");
+    expect(result.kind).toBe("match");
+  });
+
+  it("the type-intent typeable-preference still yields a unique match, not ambiguity", () => {
+    // 'Search' button (100) ties 'Search' textbox would tie on base, but the type
+    // intent picks the lone typeable element — a unique resolution, not ambiguous.
+    const shop: SnapshotElement[] = [
+      { name: "Search", ref: 0, role: "button" },
+      { name: "Search", ref: 1, role: "textbox" }
+    ];
+    expect(matchElementResult(shop, "Search", "type")).toMatchObject({ kind: "match", element: { ref: 1 } });
+  });
+
+  it("no match → kind 'none'", () => {
+    expect(matchElementResult(els, "checkout", "click").kind).toBe("none");
+  });
+
+  it("matchElement (back-compat) still returns the first of an ambiguous set", () => {
+    const twins: SnapshotElement[] = [
+      { name: "Delete", ref: 0, role: "button" },
+      { name: "Delete", ref: 1, role: "button" }
+    ];
+    expect(matchElement(twins, "Delete", "click")?.ref).toBe(0);
   });
 });
 
