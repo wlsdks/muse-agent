@@ -712,6 +712,40 @@ export function answerAssertsUnsupportedIpAddress(
   return answerIps.some((ip) => !supported.has(ip));
 }
 
+const ISO_DATE_RE = /\b\d{4}-\d{2}-\d{2}\b/gu;
+
+/** ISO dates in `text`, leading zeros stripped so "2026-09-14" == "2026-9-14". */
+function isoDates(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const d of text.match(ISO_DATE_RE) ?? []) {
+    const [y, m, day] = d.split("-");
+    out.add(`${y!}-${Number(m).toString()}-${Number(day).toString()}`);
+  }
+  return out;
+}
+
+/**
+ * Does the answer assert an ISO date (YYYY-MM-DD) that none of the evidence dates
+ * support? The number guard drops 1-2 digit runs (date parts) and only sees the
+ * 4-digit YEAR, so a drifted day/month over the SAME year (note 2026-09-13,
+ * answer 2026-09-14) slips through and a wrong calendar/renewal/deadline date is
+ * surfaced as grounded — the date analog of the whole-IPv4 guard. Conservative to
+ * keep false-refusal ~0: fires ONLY when the evidence ALSO carries an ISO date (a
+ * like-for-like compare) and the answer's date matches none; a date the evidence
+ * states only in prose ("September 14") is left alone. Citations stripped first.
+ */
+export function answerAssertsUnsupportedDate(
+  answer: string,
+  matches: readonly KnowledgeMatch[],
+  question: string
+): boolean {
+  const answerDates = isoDates(answer.replace(/\[[^\]]*\]/gu, " "));
+  if (answerDates.size === 0) return false;
+  const supported = isoDates(`${question} ${matches.map((match) => match.text).join(" ")}`);
+  if (supported.size === 0) return false;
+  return [...answerDates].some((date) => !supported.has(date));
+}
+
 type ChatGateDecision = "pass" | "abstain" | "verify";
 
 function chatGatePrecheck(
@@ -733,6 +767,9 @@ function chatGatePrecheck(
   // A whole IPv4 first — judged as one unit before the number guard would split
   // it into individually-"supported" octets and miss a wrong router/admin IP.
   if (answerAssertsUnsupportedIpAddress(answer, matches, question)) return "abstain";
+  // A drifted ISO date (same year, wrong day/month) the number guard splits and
+  // misses — a wrong calendar/renewal/deadline date is high-harm.
+  if (answerAssertsUnsupportedDate(answer, matches, question)) return "abstain";
   if (answerAssertsUnsupportedNumber(answer, matches, question)) return "abstain";
   // Same deterministic guard for a verbatim EMAIL identifier — a wrong domain on
   // a right local-part is an outbound-safety hazard the token shortcut misses.

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { KnowledgeMatch } from "@muse/agent-core";
 
 import {
+  answerAssertsUnsupportedDate,
   answerAssertsUnsupportedEmail,
   answerAssertsUnsupportedIdentifier,
   answerAssertsUnsupportedIpAddress,
@@ -504,5 +505,29 @@ describe("untrustedOnlyChatNotice — grounded≠true source-trust parity on the
   it("stays silent on an abstention even if only untrusted evidence is present (no warning on a non-answer)", () => {
     const evidence = [tool("web_search", "irrelevant")];
     expect(untrustedOnlyChatNotice(chatAbstention("내 생일?"), evidence)).toBeUndefined();
+  });
+});
+
+describe("answerAssertsUnsupportedDate — drifted ISO date the number guard splits and misses", () => {
+  const note = (text: string): KnowledgeMatch => ({ cosine: 0.8, score: 0.8, source: "n.md", text });
+
+  it("flags an answer ISO date that drifts from the evidence date (same year → number guard passes)", () => {
+    expect(answerAssertsUnsupportedDate("It renews 2026-09-14.", [note("renewal date 2026-09-13")], "when does it renew?")).toBe(true);
+  });
+
+  it("passes the correct date (no false refusal), incl. leading-zero normalization", () => {
+    expect(answerAssertsUnsupportedDate("It renews 2026-09-13.", [note("renewal date 2026-09-13")], "when?")).toBe(false);
+  });
+
+  it("does NOT fire when the evidence carries no ISO date (a prose date is left alone — false-refusal=0)", () => {
+    expect(answerAssertsUnsupportedDate("It renews 2026-09-14.", [note("renews in mid September")], "when?")).toBe(false);
+  });
+
+  it("ignores ISO dates inside [citations] (a [from …2026-01-01…] source is not an asserted value)", () => {
+    expect(answerAssertsUnsupportedDate("see [from policy-2026-01-01.pdf]", [note("no date here")], "?")).toBe(false);
+  });
+
+  it("accepts a date the QUESTION supplies (question is part of the supported set)", () => {
+    expect(answerAssertsUnsupportedDate("Yes, 2026-09-14 works.", [note("an unrelated 2026-09-13 note")], "is 2026-09-14 free?")).toBe(false);
   });
 });
