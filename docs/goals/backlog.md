@@ -1,5 +1,8 @@
 # Muse dev backlog — the living ledger
 
+- ◦ DRY: extract a shared `parseStrictIsoDateHead` (the YYYY-MM-DD Date.UTC round-trip rollover guard) — it now lives inline in 3 places (personal-tasks-store.ts parseTaskDueAt, loopback-calendar.ts parseIsoDate, loopback-time-server.ts readDate). Behavior-preserving extraction; the 3 callers have different fall-through contracts (Error vs undefined vs relative-phrase) so the helper is just the date-head probe. (codebase-quality territory — touches the security-sensitive date parsers, keep their tests green.)
+- ✓ time diff_ms rollover: an impossible date ("2026-02-30") was silently rolled to Mar 2 and a wrong duration returned, contradicting the tool's "valid ISO-8601" error-message contract — now rejected (same Date.UTC guard as calendar/tasks); completes the rollover guard across all 3 user-facing date parsers — tool-hardening fire 90
+
 - ✓ calendar parseIsoDate rollover: an impossible date ("2026-02-30") was silently rolled to Mar 2 and scheduled ~2 days off with no error (the sibling parseTaskDueAt had the Date.UTC round-trip guard; calendar's parser never got it) — now rejected → the add/update handler errors, createEvent never called — tool-hardening fire 89
 - ✓ compose @muse/recall (Phase 3): extracted the 11 optional-grounding-section labels+order into recall `optionalGroundingSections` (commands-ask passes just {body,present}; byte-identical labels; +4 OUTCOME tests; groundedSurfaces 27 held) — codebase-quality fire 51
 - ✓ dead-code @muse/autoconfigure: removed 2 dead re-exports (resolveUserSkillsDir/resolveWorkspaceSkillsDir) from personal-providers.ts — consumers import from provider-paths.js directly; stays imported for internal use; knip-clean — codebase-quality fire 50

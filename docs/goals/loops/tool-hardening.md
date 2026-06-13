@@ -918,3 +918,12 @@ ratchet: testFiles 972 유지(+2 케이스 calendar-add-anchor) · fabrication 0
 - **왜:** fire 87 패턴(sibling hardened, this missed) — parseTaskDueAt(:282-294)엔 이 가드가 있으나 calendar의 별도 파서 parseIsoDate는 누락. fire 82는 tasks/reminders 가드를 *테스트*했고, calendar는 가드 *자체*가 없었음(real bug, coverage 아님). correctness-bug 스카웃이 비-examined 핸들러에서 발굴(2연속 real fix: 87 contacts·89 calendar).
 - **리뷰지점:** loopback-calendar.ts parseIsoDate에 Date.UTC round-trip probe(15줄). 테스트 RED("expected {event} to have property error" — Mar 2 이벤트 생성)→GREEN + 정상/full-ISO/leap(2028-02-29) 수용 케이스. 전 suite 1867, pnpm check exit=0, lint clean. ④b judge PASS 5/5(16 날짜 자체 probe, TZ-boundary month-end false-reject 없음 확인 — probe는 regex Y-M-D digits만 UTC 검증, parsed local과 비교 안 함).
 - **리스크:** 없음 — parseIsoDate만 변경(non-date-headed phrase는 resolveRelativeTimePhrase로 unchanged, 핸들러 불변). 스카웃 negative: browser/macos/cli-actuators/tasks/reminders/episodes/history/search/fetch/web-read/notes 모두 correct-hardened. 교훈: fix+test 빌드 통과 즉시 커밋(sweep 방지).
+
+
+## fire 90 · 2026-06-14 · skill v1.14.0 · 6cca8650
+meta: value-class=micro-fix(real correctness/contract bug) · pkg=@muse/mcp · kind=validation-gap-fix(time readDate 불가능 날짜 롤오버; date-parser audit 완성) · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles 973 유지(+1 케이스 mcp.test diff_ms) · fabrication 0 유지 · eval 무변동(handler correctness)
+- **무엇:** readDate(muse.time#diff_ms 뒤)가 user 날짜를 NaN만 거부 → `new Date("2026-02-30")`=Mar 2 롤오버 → diff_ms가 Mar 2 기준 3일(259200000ms)을 반환, 그런데 에러 메시지는 "valid ISO-8601 strings"라 약속 = **contract 위반**. parseIsoDate(fire 89)·parseTaskDueAt와 동일 Date.UTC round-trip 가드 → 불가능 날짜 undefined → diff_ms 에러.
+- **왜:** fire 89에서 발견한 date-parser 롤오버 패턴을 직접 cheap grep으로 3번째(마지막) user-facing 파서까지 추적 → readDate. **rollover-guard audit 완성**(tasks✓·calendar✓89·time✓90 = loopback 도구 뒤 3 user-date 파서 전부). "audit ALL sibling paths, rot은 silent". 정직: read-only utility(diff_ms)라 calendar write(89)보다 stakes 낮으나 contract 위반 + bounded audit 경계 완결.
+- **리뷰지점:** loopback-time-server.ts readDate에 Date.UTC probe(now 도구는 날짜 무인자라 무영향, diff_ms 로직 불변). 테스트 RED({milliseconds:259200000})→GREEN + 정상 날짜 86400000 수용. 전 suite 1868, pnpm check exit=0, lint clean. ④b judge PASS 5/5(TZ+14·leap probe, audit-completion ≠ churn 판정). DRY: 가드 3 inline 복사 → 공유 helper 추출 ◦(codebase-quality용).
+- **리스크:** 없음 — readDate만 변경. firesSinceDrill=8(드릴 fire 92). 교훈: 비싼 217k scout 대신 직접 grep으로 proven 패턴(sibling-inconsistency) 추적 = budget-efficient.
