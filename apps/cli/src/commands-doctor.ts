@@ -23,7 +23,7 @@ import { isRecord } from "@muse/shared";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { evaluateLocalOnlyPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveWeaknessesFile } from "@muse/autoconfigure";
+import { describeOfficialMcpPosture, evaluateLocalOnlyPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveWeaknessesFile, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
 import { analyzeRunOutcomes, isLearningPaused, readEpisodes, readWeaknesses, selectDevFixableWeaknesses, type DevFixableWeakness, type RunOutcomeEntry, type RunOutcomeSummary, type WeaknessEntry } from "@muse/mcp";
 import type { Command } from "commander";
 
@@ -311,6 +311,24 @@ export function localOnlyCheck(env: Record<string, string | undefined>): LocalCh
   return { detail: posture.detail, name: "local-only", status: posture.status };
 }
 
+/**
+ * Render the official-public MCP presets (GitHub / Notion) as audit doctor
+ * lines: for each, whether its env toggle is ON, whether a credential
+ * resolves (a BOOLEAN only — the token is NEVER read or printed here), whether
+ * the allowlist permits it, and its official provenance URL. This is the
+ * external half of the "tell it everything, it can't tell anyone" trust
+ * surface — a privacy-first user can SEE exactly which external servers their
+ * agent is eligible to reach and WHY. Pure (delegates to
+ * `describeOfficialMcpPosture`) so it tests without a doctor run.
+ */
+export function officialMcpChecks(env: Record<string, string | undefined>): LocalCheck[] {
+  return describeOfficialMcpPosture(env).map((posture: OfficialMcpPresetPosture): LocalCheck => ({
+    detail: `${posture.detail} — provenance ${posture.provenanceUrl}`,
+    name: `mcp:${posture.name}`,
+    status: posture.status
+  }));
+}
+
 export interface OllamaPerfEnv {
   readonly flashAttention?: string | undefined;
   readonly kvCacheType?: string | undefined;
@@ -463,6 +481,15 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
     }
   } catch {
     checks.push({ detail: "no mcp.json — only loopback servers available", name: "mcp.json", status: "warn" });
+  }
+
+  // Official-public MCP presets (GitHub / Notion) — the external trust surface:
+  // which curated remote servers are toggled on, whether a credential resolves
+  // (boolean only — never the token), whether the allowlist permits them, and
+  // each one's official provenance URL. So a privacy-first user can audit
+  // exactly which external servers the agent is eligible to reach and why.
+  for (const check of officialMcpChecks(env)) {
+    checks.push(check);
   }
 
   // Probe exactly what the runtime uses (canonical resolver:
