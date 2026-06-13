@@ -349,6 +349,36 @@ async function buildWeekAgendaScenario() {
   }
 }
 
+// day_recap (retrospective "how did my day go") vs its 3 dangerous neighbours:
+// today_brief (FORWARD — what's still left), recent_actions (what MUSE did
+// autonomously), tasks.list (single-store finished tasks). The carve is
+// subject+tense: a RETROSPECTIVE of MY day. This is the make-or-break (these
+// share the "did/done/뭐 했" retrospective surface).
+async function buildDayRecapScenario() {
+  try {
+    const ac = await import("../packages/autoconfigure/dist/index.js");
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const recap = ac.createDayRecapTool({ recapInput: () => ({ completedTasks: [], firedReminders: [], overdueReminders: [], overdueTasks: [] }) });
+    const today = ac.createTodayBriefTool({ todayInput: () => ({ events: [], followups: [], reminders: [], tasks: [] }) });
+    const actions = mcp.createRecentActionsTool({ actions: () => [] });
+    const tasksList = mcp.createLoopbackMcpMuseTools(mcp.createTasksMcpServer({ file: "/tmp/eval-recap-tasks.json" })).find((t) => t.definition.name === "muse.tasks.list");
+    const tools = [recap, today, actions, tasksList].map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "How did my day go?", expectTool: "day_recap", note: "retrospective of MY day → day_recap" },
+      { prompt: "오늘 하루 어땠어? 내가 한 거 정리해줘", expectTool: "day_recap", note: "KO 'how was my day, sum up what I did' → day_recap" },
+      { prompt: "What did I get done today?", expectTool: "day_recap", note: "my accomplishments retrospective → day_recap (NOT recent_actions = Muse's actions)" },
+      // the make-or-break neighbours — these must NOT cross into day_recap
+      { prompt: "What have you done for me lately?", expectTool: "recent_actions", note: "MUSE's autonomous actions → recent_actions, NOT day_recap (subject is Muse, not me)" },
+      { prompt: "내 대신 뭐 처리했어? 거절한 거 있어?", expectTool: "recent_actions", note: "KO 'what did you handle for me / refuse' → recent_actions, NOT day_recap" },
+      { prompt: "What's on my plate right now — anything overdue?", expectTool: "today_brief", note: "FORWARD/what's-left → today_brief, NOT day_recap (retrospective)" }
+    ];
+    return { label: "day-recap (retrospective vs today_brief/recent_actions/tasks)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "day-recap", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Relationship-maintenance nudge (overdue_contacts — "who've I lost touch
 // with?") vs looking up ONE specific person (find_contact). The value is the
 // discrimination: a "who haven't I talked to in a while?" intent is a LIST of
@@ -904,6 +934,7 @@ async function main() {
     await buildActionsScenario(),
     await buildTasksTagScenario(),
     await buildWeekAgendaScenario(),
+    await buildDayRecapScenario(),
     await buildOverdueScenario(),
     await buildOnThisDayScenario(),
     await buildFeedsScenario(),

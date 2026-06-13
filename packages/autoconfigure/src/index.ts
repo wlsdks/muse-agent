@@ -157,6 +157,7 @@ import { createAuthService } from "./auth-wiring.js";
 import { createOverdueContactsTool, interactionsFromEvents } from "./relationship-tool.js";
 import { createWeekAgendaTool } from "./week-agenda-tool.js";
 import { createTodayBriefTool } from "./today-brief-tool.js";
+import { createDayRecapTool } from "./day-recap-tool.js";
 import { createResponseFilters } from "./response-filters.js";
 import { createMessagingPollDispatchers } from "./messaging-poll-dispatchers.js";
 import { createSkillRuntime } from "./skills-runtime.js";
@@ -769,6 +770,29 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         return { events, followups, reminders, tasks };
       }
     })],
+    () => [createDayRecapTool({
+      recapInput: async () => {
+        const now = new Date();
+        const nowMs = now.getTime();
+        const startOfTodayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const isToday = (iso) => { const ms = Date.parse(iso); return Number.isFinite(ms) && ms >= startOfTodayMs && ms <= nowMs; };
+        const allTasks = await readTasks(tasksFile).catch(() => []);
+        const allReminders = await readReminders(resolveRemindersFile(env)).catch(() => []);
+        const completedTasks = allTasks
+          .filter((task) => task.status === "done" && typeof task.completedAt === "string" && isToday(task.completedAt))
+          .map((task) => ({ completedAt: task.completedAt, title: task.title }));
+        const firedReminders = allReminders
+          .filter((reminder) => reminder.status === "fired" && typeof reminder.firedAt === "string" && isToday(reminder.firedAt))
+          .map((reminder) => ({ firedAt: reminder.firedAt, text: reminder.text }));
+        const overdueTasks = allTasks
+          .filter((task) => task.status === "open" && typeof task.dueAt === "string" && Date.parse(task.dueAt) < nowMs)
+          .map((task) => ({ dueAt: task.dueAt, title: task.title }));
+        const overdueReminders = allReminders
+          .filter((reminder) => reminder.status === "pending" && typeof reminder.dueAt === "string" && Date.parse(reminder.dueAt) < nowMs)
+          .map((reminder) => ({ dueAt: reminder.dueAt, text: reminder.text }));
+        return { completedTasks, firedReminders, overdueReminders, overdueTasks };
+      }
+    })],
     () => [
       createContactsFindTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
       createUpcomingBirthdaysTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
@@ -1076,6 +1100,7 @@ export {
 export { createOverdueContactsTool, interactionsFromEvents, type EventMentionLike, type OverdueContactsToolDeps } from "./relationship-tool.js";
 export { createWeekAgendaTool, groupWeekAgenda, type WeekAgendaInput, type WeekAgendaToolDeps, type WeekDay } from "./week-agenda-tool.js";
 export { createTodayBriefTool, composeTodayBrief, type TodayBrief, type TodayBriefInput, type TodayBriefToolDeps } from "./today-brief-tool.js";
+export { createDayRecapTool, composeDayRecap, type DayRecap, type DayRecapInput, type DayRecapToolDeps } from "./day-recap-tool.js";
 export { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
 export { resolveDefaultUserId } from "./user-id.js";
 
