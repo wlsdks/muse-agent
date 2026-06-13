@@ -277,3 +277,42 @@ ratchet: testFiles +0 (preset/cred/posture/doctor tests +cases; mcp 17, autoconf
   (오도 아님, 프리셋에 문서화). judge가 "비기능적 거짓 아님"으로 PASS.
 - **리스크:** Bearer auth가 Sentry endpoint에 아직 수락 안 될 수 있음(#833 대기) — 단 fail-close라 무해,
   #833 출시시 Muse 변경 0으로 동작. read-tool set은 fire-time 카탈로그 기준(신규 도구는 write 기본).
+
+## fire 15 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/browser+@muse/cli · kind=C-browser · verdict=PASS · firesSinceDrill=7
+
+ratchet: testFiles +0 (browser-tools.test +5 + smoke #22 + eval:tools golden; browser 94, cli 2599) · fabrication 0 · eval:browser-agent 1/1 LIVE · eval:tools 13/14 93% (browser_wait EN STABLE 3/3) · lint 0/0
+
+- **무엇:** 새 역량 browser_wait — 비동기 콘텐츠(forText 부분문자열 OR CSS selector)를 timeoutMs 바운드로
+  대기 후 재관측. controller.waitFor + createBrowserWaitTool + CLI 등록(read-risk, 게이트 없음).
+- **왜:** settleDom(400ms-quiet, open/scroll 시) + snapshot 재시도(looksUnsettled=0 elements&<40chars일 때만)는
+  quiet-at-load 후 타이머/fetch로 콘텐츠 삽입하는 페이지를 못 잡음 — 모델이 "X 나타날 때까지 기다려 읽어"를
+  표현할 방법이 없었음. 스트리밍 검색결과·스피너·"Loading…"→데이터에서 모델이 너무 일찍 읽어 놓침.
+  fires 1·4·6·9·11·13(이미 있는 것 act/read)과 구별되는 *not-yet-rendered 대기* 역량.
+- **리뷰지점:** judge가 (1)실제 갭 확인(looksUnsettled 조건·SETTLE_RETRIES 캡 읽음) (2)live smoke #22가
+  REAL Chrome(2.5s 지연삽입)서 첫 assert "delayed content absent right after open"으로 갭 증명, fake-injection
+  없음 (3)타임아웃 정직(matched:false, throw/거짓성공 없음, live page 반환) (4)도구 선택 무회귀(eval:tools
+  93%, browser_wait EN 3/3, browser_read/scroll 3/3 — 혼동쌍 없음).
+- **리스크:** KO async-wait phrasing 선택 0/3(기존 gemma KO 약점, KO browser_look과 동일 클래스) — STABLE
+  아니라 골든에 게이트 안 함(agent-testing.md), EN만 게이트. KO 설명 예시는 무해하게 유지. 도구셋 10개(relevance
+  필터로 한번에 안 덤프되니 OK, 선택 무열화 확인).
+
+## fire 16 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=micro-fix · pkg=@muse/browser · kind=C-browser · verdict=PASS · firesSinceDrill=8
+
+ratchet: testFiles +0 (browser-tools.test +4 + smoke #23; 98 tests) · fabrication 0 · eval:browser-agent 1/1 LIVE · smoke #23 LIVE (real CDP act-nav 404) · lint 0/0
+
+- **무엇:** nav-status 충실도를 ACT 경로로 확장 — click/type-submit/key-Enter가 4xx/5xx로 네비게이션하면
+  새 withNavStatus 래퍼(현재 페이지+신규탭 타깃의 main-frame document response에 실제 page.on('response')
+  arm)가 httpStatus 캡처, 3 act 도구가 status≥400일 때 {httpStatus, statusError} 노출(200/부재 침묵).
+- **왜:** lastHttpStatus는 open()/back()에서만 설정됐고 act 메서드(goto/goBack 안 거침)는 미커버 —
+  링크 클릭이 404거나 검색 제출이 500이면 에러 페이지 body를 정상 콘텐츠로 읽던 grounding 거짓.
+  **fire-9 follow-up ◦ 닫음 + fire 8이 fake로 했던 것을 정직하게 완성**(fire-8 judge가 실제 click이
+  lastHttpStatus를 안 세운다고 지적했던 바로 그 경로를 진짜 구현).
+- **리뷰지점:** judge가 (1)REAL 캡처(withNavStatus가 실제 response 리스너, act 메서드에 배선, hand-inject
+  아님) (2)smoke #23이 실제 Chrome로 localhost 404 클릭→404 캡처, wiring revert시 undefined RED 재현
+  (3)success silent·advisory·승인게이트 무회귀(post-approval 결과에만 적용) (4)리스너 정리·consume-once 확인.
+- **리스크:** 신규탭 target.page()가 finally 후 resolve되는 이론적 narrow edge(withNewTabFollow가 await해
+  실무상 정리됨, 메인 리스너는 항상 제거) — 비차단 robustness nit. statusError는 advisory(refusal 아님).

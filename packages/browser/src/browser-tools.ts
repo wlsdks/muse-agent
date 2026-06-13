@@ -73,7 +73,9 @@ function snapshotToJson(snapshot: PageSnapshot, offset = 0): JsonObject {
  * otherwise read to the model as the requested content — a silent grounding
  * hole. `statusError` is advisory (the user may legitimately want a 404 page's
  * content), not a hard refusal. Success (< 400), absent, or non-finite status
- * stays SILENT — no false alarm. Used by browser_open / browser_back only.
+ * stays SILENT — no false alarm. Used by every navigating tool: browser_open /
+ * browser_back AND the act tools (browser_click / browser_type / browser_key)
+ * whose action can land on an error page.
  */
 export function statusFields(snapshot: PageSnapshot): JsonObject {
   const status = snapshot.httpStatus;
@@ -383,6 +385,58 @@ export function createBrowserScrollTool(deps: BrowserReadToolDeps): MuseTool {
   };
 }
 
+export function createBrowserWaitTool(deps: BrowserReadToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "Wait for the page in Muse's browser to FINISH loading content that arrives asynchronously, then " +
+        "return the page. Pass `forText` (a word/phrase you expect to appear, e.g. 'Order confirmed', " +
+        "'results') OR `selector` (a CSS selector, e.g. '.search-result'). Use when content loads AFTER an " +
+        "action or a delay and isn't there yet — search results that stream in, a spinner that resolves, a " +
+        "'Loading…' that becomes data — so a read doesn't grab the page too early. E.g. 'wait for the " +
+        "results to load', '검색 결과가 로딩될 때까지 기다려줘', '페이지 다 뜰 때까지 기다려'. Do NOT use for content " +
+        "that is ALREADY visible (use browser_read), and NOT to reveal below-the-fold content (use " +
+        "browser_scroll). Reports `matched`: false means the awaited content never appeared — do not claim " +
+        "it did. Read-only.",
+      domain: "browser",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          forText: { description: "A substring you expect to appear once loaded, e.g. 'Order confirmed'.", type: "string" },
+          selector: { description: "A CSS selector for an element you expect to appear, e.g. '.search-result' or '#results'.", type: "string" },
+          timeoutMs: { description: "Optional max wait in ms (default 10000, capped at 30000), e.g. 8000.", maximum: 30_000, minimum: 500, type: "number" }
+        },
+        required: [],
+        type: "object"
+      },
+      keywords: ["browser", "wait", "기다", "load", "로딩", "appear", "나타", "settle", "loaded", "ready", "브라우저"],
+      name: "browser_wait",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const forText = typeof args["forText"] === "string" ? args["forText"].trim() : "";
+      const selector = typeof args["selector"] === "string" ? args["selector"].trim() : "";
+      if (forText.length === 0 && selector.length === 0) {
+        return { error: "needs 'forText' (a phrase to wait for) or 'selector' (a CSS selector to wait for)" };
+      }
+      const timeoutMs = typeof args["timeoutMs"] === "number" && Number.isFinite(args["timeoutMs"]) ? args["timeoutMs"] : undefined;
+      try {
+        const outcome = await deps.controller.waitFor({
+          ...(selector.length > 0 ? { selector } : { text: forText }),
+          ...(timeoutMs !== undefined ? { timeoutMs } : {})
+        });
+        return {
+          matched: outcome.matched,
+          ...snapshotToJson(outcome.snapshot),
+          ...(outcome.matched ? {} : { timedOut: true, note: `the awaited ${selector.length > 0 ? "element" : "text"} did not appear within the time limit — report only what is actually on the page` })
+        };
+      } catch (cause) {
+        return errorResult(cause);
+      }
+    }
+  };
+}
+
 export interface BrowserKeyToolDeps {
   readonly controller: BrowserController;
   /**
@@ -439,7 +493,8 @@ export function createBrowserKeyTool(deps: BrowserKeyToolDeps): MuseTool {
         }
       }
       try {
-        return snapshotToJson(await deps.controller.pressKey(key as BrowserKey));
+        const snapshot = await deps.controller.pressKey(key as BrowserKey);
+        return { ...snapshotToJson(snapshot), ...statusFields(snapshot) };
       } catch (cause) {
         return errorResult(cause);
       }
@@ -539,7 +594,8 @@ export function createBrowserClickTool(deps: BrowserActToolDeps): MuseTool {
         return { clicked: false, reason: decision.reason ?? "not approved" };
       }
       try {
-        return { clicked: true, ...snapshotToJson(await deps.controller.click(resolved.ref)) };
+        const snapshot = await deps.controller.click(resolved.ref);
+        return { clicked: true, ...snapshotToJson(snapshot), ...statusFields(snapshot) };
       } catch (cause) {
         return { clicked: false, ...errorResult(cause) };
       }
@@ -606,7 +662,8 @@ export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {
         return { reason: decision.reason ?? "not approved", typed: false };
       }
       try {
-        return { typed: true, ...snapshotToJson(await deps.controller.type(resolved.ref, text, submit)) };
+        const snapshot = await deps.controller.type(resolved.ref, text, submit);
+        return { typed: true, ...snapshotToJson(snapshot), ...statusFields(snapshot) };
       } catch (cause) {
         return { typed: false, ...errorResult(cause) };
       }

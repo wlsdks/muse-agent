@@ -51,6 +51,7 @@ import {
   createBrowserReadTool,
   createBrowserScrollTool,
   createBrowserTypeTool,
+  createBrowserWaitTool,
   type BrowserApprovalGate,
   type BrowserController
 } from "@muse/browser";
@@ -275,6 +276,7 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
     createBrowserReadTool({ controller }),
     createBrowserBackTool({ controller }),
     createBrowserScrollTool({ controller }),
+    createBrowserWaitTool({ controller }),
     createBrowserHoverTool({ controller }),
     createBrowserKeyTool({ approvalGate: gate, controller }),
     createBrowserClickTool({ approvalGate: gate, controller }),
