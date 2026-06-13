@@ -205,3 +205,19 @@ ratchet: testFiles 925 · fabrication 0 · groundedSurfaces 27 · unused-exporte
 - **Risk:** none — type-level only, zero runtime. Also recorded notes-links split as a
   DECOMPOSE-ON-DEFER backlog ◦ (tightly-coupled graph-query+link-editing; lower priority than
   Phase 3). Remaining recall: Phase 3 (runGroundedRecall pipeline + API) is the high-value item.
+
+## fire 12 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=@muse/cli · kind=dead-code · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 926 · fabrication 0 · groundedSurfaces 27 · commands-ask knip-clean (13→0 flags)
+- **What:** cleaned commands-ask.ts's own transitional cruft — deleted 4 dead type re-export
+  lines (9 names: MemoryFact/BestOfRedrawArgs/AskOutcome/AskWeaknessAxis/…/IndexChunk/ScoredChunk;
+  no consumer, the genuine internal IndexChunk/FileEntry import stays) and de-exported 4
+  internally-used-only originals (REASONING_PRINCIPLE_LINES, RECALL_FORBIDDEN_TOOL_NAMES,
+  WARM_REFUSAL_CLOSE, userHasOtherPersonalData — `export` keyword removed, still used internally).
+- **Why:** the @muse/recall extraction left transitional re-exports that are now dead surface;
+  commands-ask.ts is now knip-clean (0 unused exports, was 13). dead-code KIND.
+- **Review point:** independent Opus adversarial judge PASS — zero consumers of the deleted
+  re-exports, de-exported originals used internally (≥2) with no external importer, byte-identical
+  RHS (no shape change), cli build 0, pnpm check 0 (no flakes this run), self-eval 0.
+- **Risk:** none — surface-only cleanup. Remaining high-value recall item = Phase 3
+  (runGroundedRecall pipeline + API); INDEX.md per-fire merge contention still a flagged infra ◦.
