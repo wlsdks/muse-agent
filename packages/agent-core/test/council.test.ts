@@ -6,6 +6,7 @@ import {
   buildCouncilPrompt,
   buildDebateQuestion,
   classifyCouncilConsensus,
+  collapseEchoUtterances,
   dedupeUtterancesByPeer,
   DEFAULT_COUNCIL_AGREE_AT,
   DEFAULT_COUNCIL_AGREE_AT_COSINE,
@@ -392,5 +393,96 @@ describe("synthesizeCouncilAnswer — consensus field wire-in (assembled-path, n
     expect(result!.excludedPeers).toBeUndefined();
     // answer text must be the synthesised answer unchanged
     expect(result!.answer).toBe("go with plan A");
+  });
+});
+
+// ── collapseEchoUtterances — cross-peer content-echo collapse ──
+// arXiv:2509.05396 (Wynn/Satija/Hadfield ICML MAS 2025): numerically larger blocs of
+// identical opinions amplify conformity bias and cause premature convergence.
+// DISTINCT from dedupeUtterancesByPeer (same peer, twice) — this collapses DISTINCT
+// peers with identical CONTENT. Structural (normalized-string), no embeddings.
+
+describe("collapseEchoUtterances — cross-peer content-echo collapse (arXiv:2509.05396)", () => {
+  it("(a) two distinct peers with identical reasoning → 1 utterance, first peer kept", () => {
+    const result = collapseEchoUtterances([utt("peerB", "Use Kysely"), utt("peerC", "Use Kysely")]);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.peerId).toBe("peerB");
+  });
+
+  it("(b) whitespace/case-only variant ('Use Kysely' vs 'use   kysely') → collapsed (normalization)", () => {
+    const result = collapseEchoUtterances([utt("peerB", "Use Kysely"), utt("peerC", "use   kysely")]);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.peerId).toBe("peerB");
+  });
+
+  it("(c) genuinely different reasoning → BOTH kept (no over-collapse of dissent)", () => {
+    const result = collapseEchoUtterances([utt("peerB", "Use Kysely"), utt("peerC", "Use Prisma")]);
+    expect(result).toHaveLength(2);
+    expect(result.map((u) => u.peerId)).toEqual(["peerB", "peerC"]);
+  });
+
+  it("(d) empty input → []", () => {
+    expect(collapseEchoUtterances([])).toHaveLength(0);
+  });
+
+  it("preserves first-seen order across a three-peer mixed input", () => {
+    const result = collapseEchoUtterances([
+      utt("peerB", "X"),
+      utt("peerC", "X"),
+      utt("peerD", "Y")
+    ]);
+    expect(result).toHaveLength(2);
+    expect(result[0]?.peerId).toBe("peerB");
+    expect(result[1]?.peerId).toBe("peerD");
+  });
+});
+
+// ── synthesizeCouncilAnswer — cross-peer echo collapse assembled integration ──
+// Proves that the wired collapseEchoUtterances prevents an echoed voice from appearing
+// twice in the synthesis prompt (one "X" in the prompt, not two).
+
+describe("synthesizeCouncilAnswer — cross-peer echo collapse (assembled, arXiv:2509.05396)", () => {
+  it("echoed peerB+peerC reasoning appears ONCE in synthesis prompt; peerD's different take present", async () => {
+    const sink: { request?: ModelRequest } = {};
+    const withEchoes = [utt("peerB", "X"), utt("peerC", "X"), utt("peerD", "Y")];
+    await synthesizeCouncilAnswer(
+      "Which approach?",
+      withEchoes,
+      { ...opts('{"answer":"use X","contributors":["peerB","peerD"]}', sink) }
+    );
+    const userContent = sink.request?.messages.find((m) => m.role === "user")?.content ?? "";
+    // Only one [peerB] or [peerC] line (whichever was kept), not both.
+    const echoLines = (userContent.match(/^\[(peerB|peerC)\]/gmu) ?? []);
+    expect(echoLines).toHaveLength(1);
+    // peerD's distinct reasoning must be present.
+    expect(userContent).toContain("[peerD]");
+  });
+
+  // Counterfactual / non-vacuity: with dedupeUtterancesByPeer alone (no collapse) the
+  // prompt would carry TWO "X" lines (one for peerB, one for peerC). The "different
+  // reasoning → both kept" case stays GREEN regardless — proves collapse fires only on echoes.
+  it("counterfactual: WITHOUT collapseEchoUtterances, dedupeUtterancesByPeer alone keeps BOTH echo lines", () => {
+    const withEchoes = [utt("peerB", "X"), utt("peerC", "X"), utt("peerD", "Y")];
+    // peerId-only dedup does NOT collapse distinct peers with identical content.
+    const afterPeerDedup = dedupeUtterancesByPeer(withEchoes);
+    expect(afterPeerDedup).toHaveLength(3); // peerB, peerC, peerD all remain
+    // Simulate the prompt that would be built (before the echo collapse was wired).
+    const prompt = buildCouncilPrompt("Which approach?", afterPeerDedup);
+    const echoLines = (prompt.match(/^\[(peerB|peerC)\]/gmu) ?? []);
+    expect(echoLines).toHaveLength(2); // the bug: two echo copies
+  });
+
+  it("different reasoning peers: both present in synthesis prompt (no over-collapse)", async () => {
+    const sink: { request?: ModelRequest } = {};
+    const distinct = [utt("peerB", "Use Kysely"), utt("peerC", "Use Prisma"), utt("peerD", "Use raw SQL")];
+    await synthesizeCouncilAnswer(
+      "Which ORM?",
+      distinct,
+      { ...opts('{"answer":"use Kysely","contributors":["peerB"]}', sink) }
+    );
+    const userContent = sink.request?.messages.find((m) => m.role === "user")?.content ?? "";
+    expect(userContent).toContain("[peerB]");
+    expect(userContent).toContain("[peerC]");
+    expect(userContent).toContain("[peerD]");
   });
 });

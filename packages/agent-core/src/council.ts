@@ -540,6 +540,33 @@ export function dedupeUtterancesByPeer(utterances: readonly CouncilUtterance[]):
 }
 
 /**
+ * Cross-peer content-echo collapse (arXiv:2509.05396 — Wynn/Satija/Hadfield ICML MAS
+ * Workshop 2025: numerically larger blocs of identical opinions amplify social-conformity
+ * pressure and cause premature convergence; co-grounded by MAST arXiv:2503.13657
+ * duplicated-agent-work coordination failure). DISTINCT from dedupeUtterancesByPeer
+ * (which collapses one peer appearing TWICE); this collapses DIFFERENT peers emitting
+ * IDENTICAL reasoning — a Sybil/echo/relay pattern that fools the cosine consensus gate
+ * into "strong"+premature-exit and double-promotes the echoed voice in salience ordering.
+ *
+ * MAJORITY-SAFE / SUBTRACTIVE: only byte/normalized-identical reasoning is collapsed
+ * (keeps first peer's voice, drops later same-content echoes). A genuinely dissenting
+ * (different) voice is NEVER suppressed. Preserves first-seen order.
+ * STRUCTURAL (no embeddings/NLI): normalize = trim → collapse internal whitespace →
+ * toLowerCase, then exact-equality. Deterministic, never throws.
+ */
+export function collapseEchoUtterances(utterances: readonly CouncilUtterance[]): readonly CouncilUtterance[] {
+  const seen = new Set<string>();
+  const result: CouncilUtterance[] = [];
+  for (const u of utterances) {
+    const key = u.reasoning.trim().replace(/\s+/gu, " ").toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(u);
+  }
+  return result;
+}
+
+/**
  * Rank utterances by descending consensus support — Roundtable salience ordering
  * (arXiv:2509.16839 — Yao/Dong/Yang/Li/Du 2025): on a fixed local model (no logit
  * weighting), the faithful analog is prompt-SALIENCE: present highest-consensus
@@ -631,7 +658,11 @@ export async function synthesizeCouncilAnswer(
   const { kept, excluded: outlierExcluded } = screenCouncilOutliers(forOutlier, screenOpts);
   // Never screen the entire panel away (the majority cap should prevent it, but
   // fall back to usable as a hard safety net).
-  const forSynthesis = kept.length > 0 ? kept : forOutlier;
+  // Collapse cross-peer echoes AFTER the outlier screen (which needs the full panel
+  // to compute pairwise support) but BEFORE synthesis/consensus — so a distinct-peer
+  // echo can't double-weight one voice in the prompt or inflate the consensus label,
+  // yet collapsing the agreeing majority never shrinks the outlier screen's input panel.
+  const forSynthesis = collapseEchoUtterances(kept.length > 0 ? kept : forOutlier);
 
   // Roundtable salience ordering (arXiv:2509.16839 — Yao/Dong/Yang/Li/Du 2025):
   // order kept utterances by descending consensus support before synthesis so the

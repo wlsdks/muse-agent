@@ -277,6 +277,7 @@ export {
   buildCouncilPrompt,
   buildDebateQuestion,
   classifyCouncilConsensus,
+  collapseEchoUtterances,
   COSINE_ABS_FLOOR,
   councilMemberSupports,
   councilMemberSupportsSemantic,

@@ -1042,7 +1042,10 @@ describe("synthesizeCouncilAnswer — Roundtable ordering assembled-path (arXiv:
   it("floor guard: outlier screen membership (kept/excluded) is unchanged by ordering", async () => {
     // Verify the ORDER-ONLY contract: excluding dave happens identically to the
     // existing assembled-path test (test 5 above) — ordering does not change who is kept.
-    const topicText = "The database should use PostgreSQL because it handles concurrent writes and relational integrity well.";
+    // Agreeing majority phrased DISTINCTLY (not byte-identical) so the cross-peer
+    // echo collapse is a no-op here — this test isolates the outlier-screen/ordering
+    // contract, not echo collapse. They still share PostgreSQL/concurrent-writes/
+    // relational-integrity tokens → high Jaccard support → kept; dave is the outlier.
     const offText   = "Bananas are yellow tropical fruit grown in warm climates near the equator.";
 
     const promptSink: { content?: string } = {};
@@ -1054,9 +1057,9 @@ describe("synthesizeCouncilAnswer — Roundtable ordering assembled-path (arXiv:
     } as never;
 
     const utterances: CouncilUtterance[] = [
-      mkU("alice", topicText),
-      mkU("bob",   topicText),
-      mkU("carol", topicText),
+      mkU("alice", "The database should use PostgreSQL because it handles concurrent writes and relational integrity well."),
+      mkU("bob",   "PostgreSQL is the right database — it manages concurrent writes and preserves relational integrity."),
+      mkU("carol", "We should pick PostgreSQL; it handles the concurrent write load and keeps relational integrity."),
       mkU("dave",  offText)
     ];
     const result = await synthesizeCouncilAnswer("Which database?", utterances, { model: "m", modelProvider: provider });
