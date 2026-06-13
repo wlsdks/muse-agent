@@ -139,7 +139,7 @@ ratchet: desktop swift tests 51/51 (+1) · fabrication 0 · self-eval exit 0 · 
 - **리뷰지점**: `withLatest`는 콜론 없을 때만 `:latest` 부가 → 태그된 이름 불변. sized-only(`gemma4:12b`만 있을 때 bare `gemma4`)는 여전히 missing(false-positive 없음). hasPrefix는 raw model 사용.
 - **리스크**: 없음(parse 1함수, 독립 Opus judge가 전 케이스(bare↔latest·sized·quant·substring trap)·revert로 RED·CLI 규칙 일치 검증 후 PASS, 51/51).
 
-## fire 16 · 2026-06-13 · skill v1.14.0 · <commit>
+## fire 16 · 2026-06-13 · skill v1.14.0 · c367a8e0
 meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=dst-relative-date · verdict=PASS · firesSinceDrill=8 (다음 fire=17 → JUDGE-DRILL: allPASS≥8)
 ratchet: testFiles 955 (+1) · web tests 27/27 (+3) · fabrication 0 · self-eval exit 0 · ⚠️web 결함 vein도 얇아짐(scout) → cli 위주 권장
 
