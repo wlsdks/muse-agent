@@ -66,3 +66,12 @@ ratchet: testFiles 932 (+1) · web tests 19/19 (+2) · fabrication 0 · self-eva
 - **왜**: `updatedAt`이 없을 때 값 없는 라벨이 잘려 보이는 실제 사용자-노출 카피 버그(en+ko 둘 다). 라벨을 값에 바인딩하는 키로 분리하면 부재 시 깔끔한 문장, 존재 시 "· Updated <날짜>".
 - **리뷰지점**: i18n 불변식 유지 — `memory.updated`를 en/ko 양쪽에 추가(키셋 패리티), 둘 다 `{when}` 토큰(토큰 패리티), 빈값 없음. 헬퍼는 fire 4 `formatTaskDate`와 동일한 추출 패턴.
 - **리스크**: 없음(subtitle 2줄 + 신규 키 + 헬퍼 + JSX 호출, tsc+vite clean, 독립 Opus judge가 양 로케일·불변식·구-코드 RED 검증 후 PASS, web 19/19 + strings parity).
+
+## fire 8 · 2026-06-13 · skill v1.14.0 · <commit> · ★JUDGE-DRILL
+meta: surface=desktop · value-class=micro-fix · pkg=apps/desktop(MuseDesktopCore) · kind=multiline-receipt-strip+judge-drill · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: desktop swift tests 49/49 (+1) · fabrication 0 · self-eval exit 0 · ★verifier 신뢰성 입증(inert→FAIL, real→PASS)
+
+- **무엇**: `stripCitationsForSpeech`의 영수증 strip 정규식 `\s*📎[^\n]*`(헤더 줄만)을 `\s*📎[\s\S]*`(첫 📎부터 끝까지)로 확장. 멀티라인 영수증(`📎 Sources:\n- a.md\n- b.md`, `present.ts` 포맷)에서 소스 파일경로가 음성으로 읽히던 누출을 막음. **이 fire는 JUDGE-DRILL**: 먼저 *inert 테스트*(멀티라인인데 "답변 남음"만 검증, 구-코드서도 통과)를 주입 → 독립 Opus judge가 **FAIL로 잡음**(실증: 구 정규식서도 green, 소스 누출 미검증) → 롤백 → 진짜 RED→GREEN 테스트(`== "The MTU is 1380."` + 소스 줄 부재)로 교체 → judge PASS.
+- **왜**: consecutive allPASS=7로 검증자가 PASS만 해와, 실제로 나쁜 슬라이스를 FAIL시키는지 점검 필요(maker=judge 보상통제 — agent-testing.md). 동시에 영수증 멀티라인 누출은 진짜 desktop 음성 버그(파일경로 낭독).
+- **리뷰지점**: 영수증은 항상 trailing(`present.ts` 38/163/328) → 📎-to-end strip 안전. 드릴이 검증자가 rubber-stamp가 아님을 증명; firesSinceDrill 0 리셋.
+- **리스크**: 없음(정규식 1줄 + 행동 테스트, 기존 single-line/inline 테스트 무변, bubbleText 무영향, 독립 Opus judge 2회(inert FAIL→real PASS) 검증, 49/49). ⚠️동시 codebase-quality 루프 주석편집이 worktree에 bleed-over → 비-desktop 8파일 `git checkout`으로 복원 후 내 슬라이스만 커밋.
