@@ -409,3 +409,43 @@ describe("assembled-path: record×2 → select → resolve×3 → select empty (
     expect(after.map((w) => w.topic).some((t) => t.includes("vpn") || t.includes("mtu") || t.includes("오피스"))).toBe(false);
   });
 });
+
+describe("recordWeakness / recordWeaknessResolved — concurrent writes never lose updates", () => {
+  const tmpFile = (): string => join(mkdtempSync(join(tmpdir(), "muse-weak-race-")), "weaknesses.json");
+
+  it("N concurrent recordWeakness on distinct topics all persist (no last-writer-wins clobber)", async () => {
+    const file = tmpFile();
+    const topics = ["office vpn mtu", "wifi password reset", "secret safe serial", "migration plan deadline", "garage door code"];
+    await Promise.all(
+      topics.map((message, i) =>
+        recordWeakness(file, { axis: "grounding-gap", message, nowIso: `2026-06-06T00:00:0${i}Z` })
+      )
+    );
+    const entries = await readWeaknesses(file);
+    // Every distinct signal must survive — a bare read-modify-write loses all but one.
+    expect(entries).toHaveLength(topics.length);
+    expect(new Set(entries.map((e) => e.topic)).size).toBe(topics.length);
+  });
+
+  it("recordWeaknessResolved racing recordWeakness keeps BOTH the new entry and the mastery bump (no collateral loss)", async () => {
+    const file = tmpFile();
+    await recordWeakness(file, { axis: "grounding-gap", message: "office vpn mtu", nowIso: "2026-06-01T00:00:00Z" });
+    const seeded = (await readWeaknesses(file)).find((e) => e.topic.includes("vpn"));
+    expect(seeded?.pKnown).toBeDefined();
+
+    await Promise.all([
+      recordWeakness(file, { axis: "grounding-gap", message: "garage door code", nowIso: "2026-06-02T00:00:00Z" }),
+      recordWeaknessResolved(file, "office vpn mtu", "2026-06-02T00:00:00Z")
+    ]);
+
+    const entries = await readWeaknesses(file);
+    // The new topic must NOT be clobbered by the resolve's snapshot, and vice-versa.
+    expect(entries).toHaveLength(2);
+    const vpn = entries.find((e) => e.topic.includes("vpn"));
+    const garage = entries.find((e) => e.topic.includes("garage") || e.topic.includes("door"));
+    expect(garage).toBeDefined();
+    // The resolve's BKT success bump survived the concurrent record's write.
+    expect(vpn?.pKnown ?? 0).toBeGreaterThan(seeded?.pKnown ?? 1);
+    expect(vpn?.lastResolved).toBe("2026-06-02T00:00:00Z");
+  });
+});

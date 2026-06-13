@@ -17,7 +17,8 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
+
+import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 export const MAX_WEAKNESS_ENTRIES = 2000;
 
@@ -204,8 +205,7 @@ export async function writeWeaknesses(file: string, entries: readonly WeaknessEn
            - (Number.isFinite(Date.parse(a.lastSeen)) ? Date.parse(a.lastSeen) : 0)
       ).slice(0, MAX_WEAKNESS_ENTRIES)
     : entries;
-  await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify({ weaknesses: bounded }, null, 2), "utf8");
+  await atomicWriteFile(file, JSON.stringify({ weaknesses: bounded }, null, 2));
 }
 
 /** A recurring weakness worth surfacing to the user as an actionable nudge. */
@@ -286,17 +286,21 @@ export async function recordWeakness(
   if (topic.length === 0) {
     return undefined;
   }
-  const entries = await readWeaknesses(file);
-  const prev = entries.find((e) => e.axis === signal.axis && e.topic === topic);
-  const next = upsertWeakness(entries, {
-    axis: signal.axis,
-    nowIso: signal.nowIso ?? new Date().toISOString(),
-    topic,
-    pKnown: bktUpdate(prev?.pKnown, false),
-    ...(signal.hint ? { hint: signal.hint } : {})
+  // Serialise the read-modify-write: concurrent ask/chat turns write the SAME
+  // weaknesses.json, and a bare read→mutate→write loses all but the last writer.
+  return withFileMutationQueue(file, async () => {
+    const entries = await readWeaknesses(file);
+    const prev = entries.find((e) => e.axis === signal.axis && e.topic === topic);
+    const next = upsertWeakness(entries, {
+      axis: signal.axis,
+      nowIso: signal.nowIso ?? new Date().toISOString(),
+      topic,
+      pKnown: bktUpdate(prev?.pKnown, false),
+      ...(signal.hint ? { hint: signal.hint } : {})
+    });
+    await writeWeaknesses(file, next);
+    return next.find((entry) => entry.axis === signal.axis && entry.topic === topic);
   });
-  await writeWeaknesses(file, next);
-  return next.find((entry) => entry.axis === signal.axis && entry.topic === topic);
 }
 
 /**
@@ -314,18 +318,20 @@ export async function recordWeaknessResolved(
   if (topic.length === 0) {
     return undefined;
   }
-  const entries = await readWeaknesses(file);
-  const existing = entries.find((e) => e.axis === "grounding-gap" && e.topic === topic);
-  if (!existing) {
-    return undefined;
-  }
-  const resolvedAt = nowIso ?? new Date().toISOString();
-  const updated: WeaknessEntry = {
-    ...existing,
-    pKnown: bktUpdate(existing.pKnown, true),
-    lastResolved: resolvedAt
-  };
-  const next = entries.map((e) => (e === existing ? updated : e));
-  await writeWeaknesses(file, next);
-  return updated;
+  return withFileMutationQueue(file, async () => {
+    const entries = await readWeaknesses(file);
+    const existing = entries.find((e) => e.axis === "grounding-gap" && e.topic === topic);
+    if (!existing) {
+      return undefined;
+    }
+    const resolvedAt = nowIso ?? new Date().toISOString();
+    const updated: WeaknessEntry = {
+      ...existing,
+      pKnown: bktUpdate(existing.pKnown, true),
+      lastResolved: resolvedAt
+    };
+    const next = entries.map((e) => (e === existing ? updated : e));
+    await writeWeaknesses(file, next);
+    return updated;
+  });
 }
