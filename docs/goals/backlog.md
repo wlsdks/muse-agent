@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ JUDGE-DRILL (3rd, verifier FAILed a gutted injection-guard JSDoc) + decompose commands-doctor env-posture trio (LocalCheck/modelEnvCheck/localOnlyCheck) -> commands-doctor-checks.ts (980->939 LOC) — codebase-quality fire 25
 - ✓ mac_message_send ambiguous clarify names the candidate contacts (email parity) — the model asks "Jane Park or Jane Doe?" instead of a vague "which one?" on an irreversible send — tool-hardening fire 68
 
 - ✓ dead-code apps/api: removed dead compatRecord fn + de-exported internal-only sanitizeConfigValue (knip-verified, barrel re-export false-positives left alone) — codebase-quality fire 24
