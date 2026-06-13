@@ -3,6 +3,7 @@ import { isAbsolute, join, relative } from "node:path";
 
 import { citedSourcesIn, lexicalOverlap, lexicalTokens, type ContradictionPair } from "@muse/agent-core";
 import { escapeSystemPromptMarkers } from "./prompt-escape.js";
+import { formatDueLocal, type PersistedTask } from "@muse/mcp";
 
 /**
  * SB-1/G2: the most-recent watched-feed headlines across ALL feeds, newest
@@ -407,4 +408,25 @@ export function buildNoteContextBlock(
       : "";
     return `<<note ${(i + 1).toString()} — ${src}>>\n${body}${marker}\n[from ${src}]\n<<end>>`;
   }).join("\n\n");
+}
+
+/** Build the <<task N>> grounding block from the user's open tasks. Pure. */
+export function buildTaskContextBlock(tasks: readonly PersistedTask[]): string {
+  if (tasks.length === 0) {
+    return "(no open tasks)";
+  }
+  return tasks
+    .map((t, i) => {
+      // Human-readable LOCAL due + a relative hint (e.g. "(tomorrow)") so the
+      // model can reason about "what's due tomorrow/today/this week?" — a raw UTC
+      // ISO is opaque and got time-relative tasks SILENTLY DROPPED from the answer.
+      const due = t.dueAt ? ` (due ${formatDueLocal(t.dueAt)})` : "";
+      const urgent = t.urgent ? " [URGENT]" : "";
+      // Embed the canonical citation form (`[task: <title>]`) in the
+      // wrapper, exactly like the note wrapper embeds `[from <src>]` — else
+      // the local model cites the marker's id (`[task: t1]`), which the
+      // title-matching gate then false-strips as "a source you don't have".
+      return `<<task ${(i + 1).toString()} — ${t.id}${urgent}>>\n${t.title}${due}\n[task: ${t.title}]\n<<end>>`;
+    })
+    .join("\n\n");
 }

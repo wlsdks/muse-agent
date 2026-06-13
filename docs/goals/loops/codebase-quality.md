@@ -478,3 +478,23 @@ ratchet: testFiles 944 · fabrication 0 · groundedSurfaces 27 · commands-docto
   (2590 cli tests), LocalCheck now sibling-owned (no external importer), evaluateLocalOnlyPosture orphan
   removed cleanly, parseBoolean/resolveDefaultModel/LOCAL_FIRST_DEFAULT_MODEL still used so kept.
 - **Risk:** low — pure relocation; modelEnvCheck's local-only privacy WHY JSDoc moved verbatim with it.
+
+## fire 26 · 2026-06-13 · loop-creator v1.14.0 · f3080fbb
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 945 · fabrication 0 · groundedSurfaces 27 · ask god-file: 1 more inline block extracted
+- **What:** Phase 3 continuation — extracted the inline `taskBlock` builder (the `<<task N>>` grounding
+  prompt block) from the 2838-LOC commands-ask.ts action handler into a pure `buildTaskContextBlock(tasks)`
+  in @muse/recall/present.ts (its presentation-layer home, beside buildNoteContextBlock). The inline
+  expression became a one-line call; present.ts gained a `@muse/mcp` import for formatDueLocal + PersistedTask.
+  Body byte-identical incl. the two load-bearing inline WHY comments (local-due-vs-UTC, [task: <title>]
+  citation form). Added a 5-case OUTCOME test in recall (empty/wrapper+citation/urgent/due-present-or-absent/
+  separator). formatDueLocal stays imported in commands-ask (reminderBlock still uses it).
+- **Why:** the ask pipeline has ~12 inline `<<...>>` block-builders; moving them one-by-one to recall
+  (the presentation layer per the extraction design) shrinks the god-file AND gives each a tested home —
+  the same pattern as 3b's buildNoteContextBlock. Diversity: compose@recall is 3/8 in the window (within
+  the ≥6/8 ceiling); this is the explicitly-#1 recall thread.
+- **Review point:** 4b judge — taskBlock body byte-identical (the <<task>>/[task:]/[URGENT]/due template +
+  the title-not-id citation), output unchanged; new test is real OUTCOME (fails if the citation embeds id
+  or drops due); formatDueLocal correctly retained in commands-ask; no escaping added (tasks were never
+  escaped — preserved).
+- **Risk:** low — pure presentation relocation; the grounding gate consumes the block string identically.

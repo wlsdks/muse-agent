@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ Phase 3 cont.: extracted inline taskBlock -> buildTaskContextBlock in @muse/recall (+5-case test); ask god-file shrinks, presentation lives in recall — codebase-quality fire 26
 - ✓ JUDGE-DRILL (3rd, verifier FAILed a gutted injection-guard JSDoc) + decompose commands-doctor env-posture trio (LocalCheck/modelEnvCheck/localOnlyCheck) -> commands-doctor-checks.ts (980->939 LOC) — codebase-quality fire 25
 - ✓ mac_message_send ambiguous clarify names the candidate contacts (email parity) — the model asks "Jane Park or Jane Doe?" instead of a vague "which one?" on an irreversible send — tool-hardening fire 68
 
