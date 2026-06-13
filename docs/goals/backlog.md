@@ -29,6 +29,29 @@
 
 - ◦ **machine-load timeouts under concurrent loops** — with ~6 loop worktrees running vitest at once, *trivial* tests (`@muse/agent-core sanitizeFollowupSummary` — a one-line `.replace`; `@muse/mcp` plan-cache `caps at MAX_PLAN_CACHE_ENTRIES`) hit the 5000ms vitest default and time out under CPU starvation, reddening full `pnpm check`. NOT a test-quality issue (functions are linear) — an environment/oversubscription artifact (plan-cache passes in 1.3s isolated). Candidate slice: raise the global vitest `testTimeout` (e.g. 5000→15000ms) in the shared vitest config so concurrent-loop load can't manufacture false failures — weigh against masking a *real* future slowdown. (observed test-hygiene fire 2)
 
+### Full-suite AUDIT findings (4-agent review, 2026-06-13 — ranked PRUNE + ADD fuel)
+
+**PRUNE — duplicate / double-running tests (highest value: real redundancy):**
+- ◦ ★ **`packages/a2a` double-runs every test** — no `vitest.config.ts`, so 6 `src/*.test.ts` (agent-card·council-wire·handler·peer-config·receive-quarantine·signing) run ALONGSIDE their fuller `test/*.test.ts` twins. Fix: delete the 6 subsumed `src/` copies (PRUNE each with mutation proof the `test/` twin still catches it) — `transport.test.ts`(src) vs `transport-receive.test.ts`(test) differ, verify before touching. (audit a2a)
+- ◦ **`packages/tools` src/test twins** — `src/muse-tools-{data,helpers,text,time}.test.ts` duplicate richer `test/` counterparts (vitest.config excludes `dist/**` but not `src/**`). KEEP `src/muse-tools-regex.test.ts` (no `test/` twin — migrate, don't delete). (audit tools)
+- ◦ **`packages/model` src dupes** — `src/index.test.ts` (type-only asserts, compile-time-guaranteed) + `src/provider-base.test.ts` (`isRetryableHttpStatus` re-covered by `test/is-retryable-http-status.test.ts`). MIGRATE `src/provider-wire.test.ts` to `test/` (high-value, no twin — don't delete). (audit model)
+- ◦ **`packages/autoconfigure`** — `src/response-filters.test.ts` (⊂ `test/response-filters.test.ts`), `src/provider-utils.test.ts` (mostly ⊂ test/ — but verify `stringField` has a `test/` home first). (audit autoconfigure)
+- ◦ **`@muse/agent-core` constant tautologies** — `followup-detector.test.ts:20`, `followup-llm-detector.test.ts:148`, `sentence-groundedness.test.ts:101` assert `CONST === <math literal>` (no behavior, no cross-module parity); behavior already pinned by sibling tests. PRUNE. (audit agent-core)
+- ◦ **`@muse/agent-core` duplicate describe blocks** — `agent-runtime.test.ts` `validatePlan` (299–382) ⊂ `plan-execute-validation.test.ts`; `StepBudgetTracker` (149–195) ⊂ `step-budget.test.ts`. PRUNE the agent-runtime copies. (audit agent-core)
+- ◦ **`@muse/mcp`** — `test/loopback-helpers.test.ts` ⊂ the fuller `src/loopback-helpers.test.ts` (delete the weaker `test/` one); `mcp.test.ts` has a few `toBeDefined()`-only lines redundant with the assertion right after. (audit mcp)
+
+**ADD — genuinely uncovered high-value (security / grounding first):**
+- ◦ ★ **`createCitationStreamFilter` (agent-core, knowledge-recall/response path) has ZERO tests** — the grounding floor's STREAMING citation gate (the fix behind [[project_injection_defense]]'s "fabricated [from X] no longer flashes"); no regression test exists. (audit agent-core)
+- ◦ ★ **`assertPublicHttpUrlSync` (mcp/web-url-guard.ts) — SSRF guard sync path untested** — `file://`, `http://127.0.0.1`, `http://[::1]`, `http://metadata.internal` must block without DNS; none asserted (async twin is tested). Security gate. (audit mcp)
+- ◦ **`groundToolArguments` nested-object multi-hop branch** (agent-core) — anti-fabrication gate untested on nested mixed grounded/fabricated leaves. (audit agent-core)
+- ◦ **`createLlmClassificationInputGuard` provider-throws fail-close** (agent-core/guards.ts) — classifier-outage path asserts no `GUARD_ERROR`/fail-close at unit level. (audit agent-core)
+- ◦ **`createToolResultQualityAuditFilter` early-return branches** (agent-core) — empty toolsUsed / empty verifiedSources / empty-remainder pass-throughs uncovered. (audit agent-core)
+- ◦ **`formatDueLocal`/`relativeDueHint` (mcp/local-due-format.ts)** — today/tomorrow/in-N-days/NaN branches untested (drives task `dueAtLocal` shown to the model). (audit mcp)
+- ◦ **`muse config show` (cli/commands-config.ts)** — user-facing read path, zero tests (only set/unset tested); `loadImageAttachment` + `muse auth rotate-jwt` command-wiring also uncovered. (audit cli)
+- ◦ **`SchedulerExecutionError` (scheduler) + `withFileLock` stale-lock-steal (mcp/encrypted-file.ts) + `KyselyMcpServerStore` CRUD** — exported, no direct test (Kysely needs Testcontainers or an honest "integration-only" note). (audit mcp/scheduler)
+
+> AUDIT VERDICT: suite is broadly HEALTHY (policy/recall/memory cleanest; security paths well-covered). Rot concentrates in (1) `src/`+`test/` double-running in a2a/tools/model, (2) a few constant tautologies + promoted-then-not-pruned duplicate blocks in agent-core. Biggest real gap: the streaming citation gate. ~15 PRUNE + ~10 ADD items → the loop now has genuine PRUNE fuel (fires 1-3 were add/fix/add because no prune candidate had been scouted yet).
+
 ## GROUNDING INTEGRITY theme — open
 
 - ◦ untrusted-only provenance e2e firing-rate — the `untrustedOnlyGroundingNotice` wiring (grounding-integrity fire 1) is unit-pinned, but production firing depends on the model citing tool sources as `[from tool: <src>]`. Measure/repair the real firing rate via `eval:grounding-delta` on a `--with-tools` poisoned-source case. (scouted grounding-integrity fire 1)
