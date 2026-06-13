@@ -69,6 +69,13 @@ describe("trimConversationMessages — hard limit", () => {
     expect(r.messages.map((x) => x.content)).toEqual(["only"]);
   });
 
+  it("with a non-positive budget and NO user message, keeps all messages (never anchors on a non-existent user turn)", () => {
+    const conv = [m("system", "s"), m("assistant", "aaaa"), m("assistant", "bbbb")];
+    const r = trimConversationMessages(conv, base({ maxContextWindowTokens: 0 }));
+    expect(r.triggeredBy).toBe("hard_limit");
+    expect(r.messages.map((x) => x.content)).toEqual(["s", "aaaa", "bbbb"]);
+  });
+
   it("trims oldest history to fit the hard budget, preserving system + the latest user turn", () => {
     const conv = [
       m("system", "s"),
