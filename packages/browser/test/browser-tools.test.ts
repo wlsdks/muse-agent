@@ -195,7 +195,7 @@ describe("link destinations — a link's url flows through to the model", () => 
   });
 });
 
-describe("navigation-status fidelity — an HTTP error page must not pass for the requested content (open/back only)", () => {
+describe("navigation-status fidelity — an HTTP error page must not pass for the requested content (open/back + act tools)", () => {
   const withStatus = (status: number | undefined): PageSnapshot => ({
     elements: [],
     text: "Not Found",
@@ -251,11 +251,46 @@ describe("navigation-status fidelity — an HTTP error page must not pass for th
     expect(out.statusError).toContain("500");
   });
 
-  it("a bare browser_read NEVER carries status (consume-once: the field is open/back-only)", async () => {
+  it("a bare browser_read NEVER carries status (consume-once: the field is navigation-only)", async () => {
     const controller = { ...new FakeController(), snapshot: async () => withStatus(404) } as unknown as BrowserController;
     const out = await createBrowserReadTool({ controller }).execute({}, ctx) as Record<string, unknown>;
     expect("httpStatus" in out).toBe(false);
     expect("statusError" in out).toBe(false);
+  });
+
+  it("browser_click that lands on a 404 surfaces statusError (act-path navigation, not just open/back)", async () => {
+    const controller = new FakeController();
+    controller.click = async () => withStatus(404);
+    const out = await createBrowserClickTool({ approvalGate: allow, controller }).execute({ target: "Sign in" }, ctx) as { clicked: boolean; httpStatus?: number; statusError?: string };
+    expect(out.clicked).toBe(true);
+    expect(out.httpStatus).toBe(404);
+    expect(out.statusError).toContain("404");
+  });
+
+  it("browser_click landing on a 200 carries NO status (no false alarm on a normal navigation)", async () => {
+    const controller = new FakeController();
+    controller.click = async () => withStatus(200);
+    const out = await createBrowserClickTool({ approvalGate: allow, controller }).execute({ target: "Sign in" }, ctx) as Record<string, unknown>;
+    expect(out["clicked"]).toBe(true);
+    expect("httpStatus" in out).toBe(false);
+    expect("statusError" in out).toBe(false);
+  });
+
+  it("browser_type submit that lands on a 500 surfaces statusError", async () => {
+    const controller = new FakeController();
+    controller.type = async () => withStatus(500);
+    const out = await createBrowserTypeTool({ approvalGate: allow, controller }).execute({ target: "Email", text: "q", submit: true }, ctx) as { typed: boolean; httpStatus?: number; statusError?: string };
+    expect(out.typed).toBe(true);
+    expect(out.httpStatus).toBe(500);
+    expect(out.statusError).toContain("500");
+  });
+
+  it("browser_key Enter that navigates to a 404 surfaces statusError", async () => {
+    const controller = new FakeController();
+    controller.pressKey = async () => withStatus(404);
+    const out = await createBrowserKeyTool({ approvalGate: allow, controller }).execute({ key: "Enter" }, ctx) as { httpStatus?: number; statusError?: string };
+    expect(out.httpStatus).toBe(404);
+    expect(out.statusError).toContain("404");
   });
 });
 

@@ -21,7 +21,7 @@ import {
   ChromeReleaseChannel,
   computeSystemExecutablePath
 } from "@puppeteer/browsers";
-import puppeteer, { type Browser, type Frame, type Page } from "puppeteer-core";
+import puppeteer, { type Browser, type Frame, type HTTPResponse, type Page } from "puppeteer-core";
 
 import {
   BROWSER_ELEMENT_CEILING,
@@ -222,6 +222,52 @@ export class PuppeteerBrowserController implements BrowserController {
     } finally {
       browser.off("targetcreated", onTarget);
     }
+  }
+
+  /**
+   * Run an action that MIGHT navigate the main frame and capture the resulting
+   * document's HTTP status, exactly like `open`/`back` already do — so a click /
+   * type-submit / Enter that lands on a 404/500 error page surfaces `httpStatus`
+   * and isn't read as the requested content (the same grounding hole `open`
+   * closed, but for the ACT path, which never went through goto/goBack). The
+   * `response` event is per-PAGE, so we arm it on the current page AND on any new
+   * tab the action opens (a click can follow a `target=_blank`, whose document
+   * status is the one the model will read). Only the LAST top-level document
+   * response is recorded — subresources (scripts/XHR/sub-frames) carry their own
+   * statuses that must NOT read as the page's. A click that changes nothing
+   * in-page emits no document response, leaving the status untouched (the
+   * `snapshot()` consume-once machinery clears any stale value either way).
+   */
+  private async withNavStatus(action: () => Promise<void>): Promise<void> {
+    const browser = this.browser;
+    let navStatus: number | undefined;
+    const armed: Page[] = [];
+    const onResponse = (response: HTTPResponse): void => {
+      try {
+        const request = response.request();
+        if (request.resourceType() !== "document") return;
+        if (request.frame() !== response.frame()?.page()?.mainFrame()) return;
+        navStatus = response.status();
+      } catch { /* response/frame torn down mid-flight */ }
+    };
+    const arm = (page: Page | undefined): void => {
+      if (page && !page.isClosed() && !armed.includes(page)) {
+        page.on("response", onResponse);
+        armed.push(page);
+      }
+    };
+    arm(this.page);
+    const onTarget = (target: { page: () => Promise<Page | null> }): void => {
+      target.page().then((page) => arm(page ?? undefined)).catch(() => { /* target gone */ });
+    };
+    browser?.on("targetcreated", onTarget);
+    try {
+      await action();
+    } finally {
+      browser?.off("targetcreated", onTarget);
+      for (const page of armed) page.off("response", onResponse);
+    }
+    if (navStatus !== undefined) this.lastHttpStatus = navStatus;
   }
 
   private get timeout(): number {
@@ -425,8 +471,9 @@ export class PuppeteerBrowserController implements BrowserController {
     // Locator (not a raw handle): auto-waits for visible/enabled/stable before
     // acting — the reliable-interaction pattern from the Puppeteer guide. Scoped
     // to the resolved frame so iframe-embedded controls work. Wrapped so a
-    // target=_blank / window.open new tab is followed.
-    await this.withNewTabFollow(() => frame.locator(selector).setTimeout(this.timeout).click());
+    // target=_blank / window.open new tab is followed, and so a navigation to an
+    // error page (404/500) surfaces its HTTP status like open/back.
+    await this.withNavStatus(() => this.withNewTabFollow(() => frame.locator(selector).setTimeout(this.timeout).click()));
     const page = await this.ensurePage();
     await page.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* page may not navigate */ });
     await this.settleDom(page);
@@ -446,8 +493,10 @@ export class PuppeteerBrowserController implements BrowserController {
 
   async pressKey(key: BrowserKey): Promise<PageSnapshot> {
     const page = await this.ensurePage();
-    // Enter on a focused link/form can navigate or open a tab — follow it.
-    await this.withNewTabFollow(() => page.keyboard.press(key));
+    // Enter on a focused link/form can navigate or open a tab — follow it, and
+    // capture an error-page status so an Enter-submit landing on a 404/500 is
+    // flagged like open/back.
+    await this.withNavStatus(() => this.withNewTabFollow(() => page.keyboard.press(key)));
     const active = await this.ensurePage();
     await this.settleDom(active);
     return this.snapshot();
@@ -486,7 +535,9 @@ export class PuppeteerBrowserController implements BrowserController {
       await handle.type(text);
     }
     if (submit) {
-      await this.withNewTabFollow(() => page.keyboard.press("Enter"));
+      // A submit can navigate to an error page (a search that 500s) — capture
+      // its status so the model isn't handed the error body as results.
+      await this.withNavStatus(() => this.withNewTabFollow(() => page.keyboard.press("Enter")));
       const active = await this.ensurePage();
       await active.waitForNetworkIdle({ idleTime: 500, timeout: this.timeout }).catch(() => { /* may not navigate */ });
     }

@@ -73,7 +73,9 @@ function snapshotToJson(snapshot: PageSnapshot, offset = 0): JsonObject {
  * otherwise read to the model as the requested content — a silent grounding
  * hole. `statusError` is advisory (the user may legitimately want a 404 page's
  * content), not a hard refusal. Success (< 400), absent, or non-finite status
- * stays SILENT — no false alarm. Used by browser_open / browser_back only.
+ * stays SILENT — no false alarm. Used by every navigating tool: browser_open /
+ * browser_back AND the act tools (browser_click / browser_type / browser_key)
+ * whose action can land on an error page.
  */
 export function statusFields(snapshot: PageSnapshot): JsonObject {
   const status = snapshot.httpStatus;
@@ -491,7 +493,8 @@ export function createBrowserKeyTool(deps: BrowserKeyToolDeps): MuseTool {
         }
       }
       try {
-        return snapshotToJson(await deps.controller.pressKey(key as BrowserKey));
+        const snapshot = await deps.controller.pressKey(key as BrowserKey);
+        return { ...snapshotToJson(snapshot), ...statusFields(snapshot) };
       } catch (cause) {
         return errorResult(cause);
       }
@@ -591,7 +594,8 @@ export function createBrowserClickTool(deps: BrowserActToolDeps): MuseTool {
         return { clicked: false, reason: decision.reason ?? "not approved" };
       }
       try {
-        return { clicked: true, ...snapshotToJson(await deps.controller.click(resolved.ref)) };
+        const snapshot = await deps.controller.click(resolved.ref);
+        return { clicked: true, ...snapshotToJson(snapshot), ...statusFields(snapshot) };
       } catch (cause) {
         return { clicked: false, ...errorResult(cause) };
       }
@@ -658,7 +662,8 @@ export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {
         return { reason: decision.reason ?? "not approved", typed: false };
       }
       try {
-        return { typed: true, ...snapshotToJson(await deps.controller.type(resolved.ref, text, submit)) };
+        const snapshot = await deps.controller.type(resolved.ref, text, submit);
+        return { typed: true, ...snapshotToJson(snapshot), ...statusFields(snapshot) };
       } catch (cause) {
         return { typed: false, ...errorResult(cause) };
       }

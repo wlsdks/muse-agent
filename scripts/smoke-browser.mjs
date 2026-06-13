@@ -34,6 +34,11 @@
  *                        then a delayed timer) is missed by a bare read but
  *                        waited-for by waitFor(text|selector); an unmet
  *                        condition reports matched=false (no fabricated success)
+ *  23. act-nav status   — a CLICK that NAVIGATES to a real localhost 404 (the
+ *                        act path never went through goto, so it had no status)
+ *                        now captures httpStatus on the click snapshot, while a
+ *                        click landing on a 200 carries none — so an error page
+ *                        reached by acting can't pass for the requested content
  *
  * Skips (exit 0) when Chrome is not installed — a skip is not a pass.
  */
@@ -223,6 +228,14 @@ const statusServer = createServer((req, res) => {
   if (req.url === "/ok") {
     res.writeHead(200, { "content-type": "text/html" });
     res.end("<!doctype html><title>OK page</title><h1>The real content</h1>");
+    return;
+  }
+  // A hub page whose links go to a real 404 and a real 200 — clicking them is a
+  // genuine main-frame navigation through the ACT path (no goto), so it proves
+  // withNavStatus captures the status the click landed on.
+  if (req.url === "/hub") {
+    res.writeHead(200, { "content-type": "text/html" });
+    res.end('<!doctype html><title>Hub</title><h1>Links</h1><a href="/missing">Broken link</a> <a href="/ok">Good link</a>');
     return;
   }
   res.writeHead(404, { "content-type": "text/html" });
@@ -424,6 +437,23 @@ try {
   const waitMiss = await controller.waitFor({ text: "this string never appears on the page", timeoutMs: 1500 });
   assert(waitMiss.matched === false, "an unmet condition times out to matched=false (honest, not a fabricated success)");
   assert(waitMiss.snapshot.text.includes("Checkout"), "the live page is still returned on a timeout so the model can report what IS there");
+
+  console.log("23) act-nav status — a click that navigates to a real 404 captures httpStatus (act path, no goto); a 200 click carries none");
+  snap = await controller.open(`http://127.0.0.1:${String(statusPort)}/hub`);
+  assert(snap.httpStatus === 200, "the hub page open captures its real 200 status (baseline)");
+  const broken = snap.elements.find((el) => el.name === "Broken link");
+  assert(broken !== undefined, "the broken link is listed on the hub");
+  snap = await controller.click(broken.ref);
+  assert(snap.text.includes("Not Found"), "the click navigated to the 404 page (its body flows, advisory not refusal)");
+  assert(snap.httpStatus === 404, "the click that landed on a 404 captures httpStatus via withNavStatus (was undefined before — real gap)");
+  assert(statusFields(snap).statusError?.includes("404") === true, "statusFields turns the click-navigation 404 into an advisory statusError");
+  snap = await controller.snapshot();
+  assert(snap.httpStatus === undefined, "consume-once: a bare re-read after the click carries no stale status");
+  snap = await controller.open(`http://127.0.0.1:${String(statusPort)}/hub`);
+  snap = await controller.click(snap.elements.find((el) => el.name === "Good link").ref);
+  assert(snap.text.includes("The real content"), "the click navigated to the 200 page");
+  assert(snap.httpStatus === 200, "a click landing on a 200 captures it (real path), but statusFields silences it — no false alarm");
+  assert(Object.keys(statusFields(snap)).length === 0, "statusFields stays SILENT on the 200-click navigation");
 
   console.log("21) protocol-timeout — a CDP call that never returns fails fast, not after 180s");
   await writeFile(join(dir, "hang.html"), HANG_HTML);
