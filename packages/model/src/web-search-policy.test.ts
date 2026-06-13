@@ -116,6 +116,17 @@ describe("decideWebSearchPolicy", () => {
     ).toBe(7);
   });
 
+  it("a disabled policy still carries the resolved maxUses (disabling does not zero the budget)", () => {
+    expect(
+      decideWebSearchPolicy({
+        model: baseModel,
+        settings: {},
+        override: false,
+        env: { MUSE_WEB_SEARCH_MAX_USES: "4" }
+      })
+    ).toEqual({ enabled: false, maxUses: 4 });
+  });
+
   it("env MUSE_WEB_SEARCH=on is no-op when nothing else disables", () => {
     const r = decideWebSearchPolicy({
       model: baseModel,
