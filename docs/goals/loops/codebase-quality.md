@@ -154,3 +154,19 @@ ratchet: testFiles 921 · fabrication 0 · groundedSurfaces 27 · verifier-relia
   — each is a cross-cutting type relocation / design-sensitive step, not a single clean slice.
 - **Risk:** none — no code touched; the recall helper-extraction is essentially complete
   (present/select/text/chunks/weakness/verdict), remaining items are typed-migration/Phase-3.
+
+## fire 9 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=@muse/recall · kind=cohere · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 922 · fabrication 0 · groundedSurfaces 27 · recall tests 87/9 files
+- **What:** relocated the `RecallHit` type (~10 CLI importers) + the pure `buildAskConnections`
+  into new `recall/hit.ts`. commands-recall.ts imports + re-exports RecallHit (10 importers
+  unchanged); commands-ask.ts imports + re-exports buildAskConnections; dropped the now-unused
+  RecallHit import from commands-ask. commands-ask.ts 2,792 → 2,768 LOC.
+- **Why:** unblocks the graph-connections move (RecallHit was the prerequisite, fire-8 backlog).
+  hit.ts has zero imports (pure); recall deps unchanged (no layering inversion).
+- **Review point:** independent Opus adversarial judge PASS — byte-identical RecallHit shape +
+  buildAskConnections body, re-export chain verified live (cli build 0 + consumer test 10/10),
+  recall 87 tests. (pnpm check's only red = known messaging CPU-contention flake, 23/23 on clean
+  re-run, messaging untouched by this slice.)
+- **Risk:** none. Remaining recall TODO: selectGraphConnections+NoteLinkGraph (next), then
+  Phase 3 (runGroundedRecall pipeline + API route).

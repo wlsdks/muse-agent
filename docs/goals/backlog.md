@@ -2,7 +2,7 @@
 
 ## ◦ Open — @muse/recall extraction (codebase-quality loop)
 
-- ◦ **Relocate `RecallHit` type into @muse/recall** (PREREQUISITE for the graph-connections move) — `RecallHit` lives in apps/cli/src/commands-recall.ts and is imported by ~10 CLI files; moving `buildAskConnections` needs it in the package. Slice: define RecallHit in @muse/recall, re-export from commands-recall.ts (IndexChunk pattern, fire 2e). Then a follow-up moves `buildAskConnections`.
+- ✓ Relocate RecallHit into @muse/recall + move buildAskConnections — codebase-quality fire 9
 - ◦ **Move `selectGraphConnections` + `NoteLinkGraph`** — needs NoteLinkGraph + resolveNoteId/noteLinkView/linkExpandRefs relocated from apps/cli/src/notes-links.ts (own multi-step). Defer until the notes-link graph types have a package home.
 - ◦ **Phase 3: `runGroundedRecall` pipeline + API route** — the contract closer (extract registerAskCommand pipeline behind a seam, wire apps/api ask route, CLI↔API parity test). Design-sensitive; small verified steps only.
 
@@ -86,6 +86,7 @@
 - ✓ ADD coverage: `formatCoarseAge` ≥2-year branch (`.toFixed(0)` whole years) in @muse/recall — only the <2y 1-decimal path was tested; mutation-proven (toFixed(1) mutant → '2.2y'≠'2y' RED) — test-hygiene fire 3
 - ✓ `muse.tasks.search` matches tags — a task tagged "work" (word not in title/notes) is now found by searching "work" (completes the fire-51 tag story: list FILTERS by tag, search now FINDS by tag) + JUDGE-DRILL (verifier caught a deliberately-inert version) — tool-hardening fire 53
 - ✓ `week_agenda` agent tool — "what's my week look like?" ONE merged view of events+tasks+birthdays by day (muse week was CLI-only; groupWeekAgenda moved to @muse/autoconfigure, CLI re-exports) — tool-hardening fire 54
+- ✓ `web_action` SSRF-after-redirect closed — the state-changing web actuator followed a 3xx (body included on 307/308) to a private/loopback host the URL guard never vetted; now `redirect:"manual"` + fail-closed on 3xx (the read path already re-checked; the write path didn't) — tool-hardening fire 55
 - ✓ `muse.tasks.list` tag filter — "show my tasks tagged work" was inexpressible (list filtered only by status/dueWithinDays, search ignores tags) though tags are first-class + CLI `--tag` exists; added optional `tag` (case-insensitive exact, both branches) — tool-hardening fire 51
 - ✓ `egressGuards` self-eval ratchet — local-by-construction moat (cloud egress refused in code) promoted to a deterministic scoreboard regression gate, mirroring the grounding ratchet (a structural edge hermes/openclaw can't copy) — differentiation fire 1
 - ✓ `egressGuards` ratchet widened to the voice egress guard — mic audio's cloud STT/TTS path now ratcheted too (drop the MUSE_LOCAL_ONLY voice cloud-key-ignore → self-eval exits 1); value 5→6 — differentiation fire 2
@@ -94,10 +95,11 @@
 - ✓ browser act-path ambiguous-target fail-close — element matcher silently clicked/typed the FIRST of several tied "best" matches (two "Delete" buttons → guessed); now `matchElementResult` → `ambiguous` refuses `browser_click`/`browser_type` BEFORE snapshot-mutation/approval-gate, returns candidates + ordinal hint (closes an outbound-safety fail-open hole) — tool-mcp-browser fire 1
 - ✓ official-public-MCP preset registry (axis B) — `packages/mcp/src/official-mcp-presets.ts`: curated `createGitHubMcpServer` (`https://api.githubcopilot.com/mcp/`) + `createNotionMcpServer` (`https://mcp.notion.com/mcp`) streamable factories, each carrying an official anyone-may-connect provenance URL + a FAIL-CLOSE `toolRisk` classifier (read tools listed, every write/unknown → `write`) + `withOfficialMcpRisk` projection (domain `external`); wired through the existing `allowedServerNames` allowlist; contract-faithful transport-fake test proves allowlisted connects/read-surfaces & non-allowlisted refuses & write stays gated — tool-mcp-browser fire 2
 - ✓ `muse doctor` surfaces embedder OLLAMA_BASE_URL locality — `evaluateLocalOnlyPosture` now flags status `fail` when local-only is on but OLLAMA_BASE_URL is off-box (a localhost lmstudio chat + remote embedder no longer reports a false "🔒 ok"); same base resolution as the fire-4 runtime guard so doctor and runtime never diverge — differentiation fire 5
+- ✓ shared `resolveEmbedderBase()` helper — fire-4 runtime guard + fire-5 doctor posture now resolve the embedder base through ONE `@muse/autoconfigure` helper, so doctor↔runtime parity is structural (can't drift) not two hand-kept literals; behaviour-preserving (532/532) + 4 helper unit cases — differentiation fire 7
 
 ## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
 
-- ◦ **Extract a shared `resolveEmbedderBase()` helper** — fire 5's doctor posture and fire 4's runtime guard each resolve the embedder base with their own string literal (`OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434"` + trailing-slash strip). They must move together or doctor↔runtime diverge; a shared helper makes the parity structural instead of convention-enforced. Source: differentiation fire 5 residual (Opus judge).
+- ◦ **(next) Fresh lever on a different moat axis** — fires 1/2/4/5/7 deepened local-by-construction (L1/L3); the vein is well-mined. Next fire should research a NEW differentiation lever on the grounding (fabrication=0) or "shows its work" axis vs hermes/openclaw, not another embedder/local-only slice. Source: differentiation fire 7 note.
 
 ### tool-mcp-browser theme — axis B (external official-public MCP) remaining sub-slices
 

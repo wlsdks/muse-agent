@@ -90,6 +90,30 @@ describe("performWebActionWithApproval — outbound-safety contract", () => {
     expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "failed" });
   });
 
+  it("does NOT follow a 3xx redirect on a state-changing action (SSRF: the URL guard only vetted the ORIGINAL host)", async () => {
+    // A real fetch with the default redirect:"follow" would transparently re-issue
+    // the POST to the redirect target — a 307/308 re-sends the body — so a vetted
+    // public URL that 302s to 127.0.0.1 / 169.254.169.254 would hit the private host.
+    // This fake mirrors real fetch: it only "follows" (returns the 200) when the
+    // caller did NOT pass redirect:"manual".
+    const calls: { url: string; redirect: unknown }[] = [];
+    const fetchImpl = (async (url: string | URL, init?: { redirect?: string }) => {
+      calls.push({ redirect: init?.redirect, url: String(url) });
+      if (init?.redirect === "manual") {
+        return new Response(null, { headers: { location: "http://127.0.0.1/admin" }, status: 302 });
+      }
+      return new Response("{}", { status: 200 }); // default-follow lands on the private host and "succeeds"
+    }) as unknown as typeof fetch;
+    const actionLogFile = logFile();
+    const outcome = await performWebActionWithApproval({
+      actionLogFile, approvalGate: approve, fetchImpl, request, summary: "Book a table, 7pm", userId: "stark"
+    });
+    expect(outcome).toMatchObject({ performed: false, reason: "failed" });
+    expect(calls[0]?.redirect).toBe("manual"); // the fix disables auto-follow so real fetch never reaches the private host
+    expect(String((outcome as { detail?: string }).detail ?? "")).toMatch(/127\.0\.0\.1|redirect/i);
+    expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "failed" });
+  });
+
   it("DENY: no HTTP fires, refusal logged", async () => {
     const { fetchImpl, calls } = recordingFetch();
     const actionLogFile = logFile();

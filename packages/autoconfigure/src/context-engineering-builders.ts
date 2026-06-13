@@ -27,6 +27,8 @@ import {
 } from "@muse/agent-core";
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
 import { LocalOnlyViolationError, isLoopbackUrl } from "@muse/model";
+
+import { resolveEmbedderBase } from "./embedder-base.js";
 import type { JsonObject } from "@muse/shared";
 import { appendCheckins, readCheckins, readFadedMemoryKeys, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore, UserModelSlot } from "@muse/memory";
@@ -217,14 +219,9 @@ export function buildInboxContextProvider(env: MuseEnvironment): InboxContextPro
 // degrades that resolve to Jaccard, so recall never breaks if Ollama
 // is down or the model isn't pulled.
 export function createOllamaEmbedder(model: string): (text: string) => Promise<readonly number[]> {
-  // `??` keeps "" (empty is not nullish); a shell that pre-clears
-  // OLLAMA_BASE_URL= would otherwise leave `base` empty and every
-  // /api/embeddings call would hit a malformed relative URL — and
-  // the StoreBacked provider silently degrades to Jaccard on a
-  // thrown embedder. Treat empty / whitespace as "unset" instead,
-  // mirroring `resolveOllamaUrl` and the goal-478 merge fix.
-  const trimmed = process.env.OLLAMA_BASE_URL?.trim();
-  const base = ((trimmed && trimmed.length > 0) ? trimmed : "http://127.0.0.1:11434").replace(/\/+$/u, "");
+  // Empty / whitespace OLLAMA_BASE_URL is treated as unset (loopback default);
+  // shared with the doctor posture so the two never diverge (see resolveEmbedderBase).
+  const base = resolveEmbedderBase(process.env);
   // Local-only / no-cloud-egress, fail-CLOSED at construction (the same
   // posture createModelProvider enforces for the chat provider). The chat
   // gate only fires when the CHAT provider id is `ollama` — it never sees
