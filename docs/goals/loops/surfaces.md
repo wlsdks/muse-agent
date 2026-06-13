@@ -84,3 +84,12 @@ ratchet: cli tests 2593/2593 (remind 25, +2) · fabrication 0 · self-eval exit 
 - **왜**: tasks-list엔 텍스트 검색이 있는데 병렬 reminders-list엔 없어, 리마인더가 많은 사용자가 내용으로 못 좁혔다(병렬 명령 capability 불일치). 리마인더는 `text` 단일 검색필드 보유.
 - **리뷰지점**: 필터는 payload 할당 後 적용 → 세 경로(local store/API/api-unreachable fallback) 모두 커버. 빈 쿼리는 진짜 no-op(`options.search?.trim()` undefined). MCP reminders 도구는 tool-hardening 소관이라 미변경(CLI 명령만).
 - **리스크**: 없음(commands-remind.ts 헬퍼+옵션+필터블록 + 2 테스트, 다른 remind 서브커맨드/명령 무변, 독립 Opus judge가 RED-before·total보정·전경로·sibling패리티 검증 후 PASS, cli 2593/2593).
+
+## fire 10 · 2026-06-13 · skill v1.14.0 · <commit>
+meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=relative-time-rounding · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 943 (+1) · web tests 23/23 (+4) · fabrication 0 · self-eval exit 0
+
+- **무엇**: Today 뷰 `timeUntil`이 30초 이내(0–29s) 미래 이벤트에 `Math.round(ms/60000)=0` → "in 0m"/"0분 후"라는 무의미 라벨을 표시. now-가드를 `ms<0`에서 `ms<0 || min===0`으로 바꿔 [0,30s) 창을 "now"/"지금"(`rel.now`)으로. 테스트 위해 `export`(fire 4 `formatTaskDate` 선례).
+- **왜**: Today 뷰의 다가오는 이벤트·대기 리마인더 행(가장 자주 보는 두 리스트)에 라이브로 노출되는 실제 카피 버그. "0분 후"는 "지금"이어야 함.
+- **리뷰지점**: `min===0`은 정확히 [0,30s)만 잡음(30s→"in 1m", 90s→"in 2m"). past(ms<0)·NaN·분/시/일 버킷 무변. 순수 함수라 export·min-선계산 부작용 없음.
+- **리스크**: 없음(timeUntil 1함수 + export + 4 테스트, 호출부 시그니처 무변, 독립 Opus judge가 경계워크·flakiness(10s+ 여유)·RED-before 검증 후 PASS, web 23/23).

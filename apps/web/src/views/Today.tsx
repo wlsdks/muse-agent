@@ -15,11 +15,13 @@ function greetingKey(): StringKey {
   return "today.greeting.evening";
 }
 
-function timeUntil(iso: string, t: Translate): string {
+export function timeUntil(iso: string, t: Translate): string {
   const ms = new Date(iso).getTime() - Date.now();
   if (Number.isNaN(ms)) return "";
-  if (ms < 0) return t("rel.now");
   const min = Math.round(ms / 60_000);
+  // Past OR rounds to <1 minute ⇒ "now": "in 0m" is a nonsense label for an
+  // event that is here or seconds away.
+  if (ms < 0 || min === 0) return t("rel.now");
   if (min < 60) return t("rel.inMinutes", { n: min });
   const hr = Math.round(min / 60);
   if (hr < 24) return t("rel.inHours", { n: hr });
