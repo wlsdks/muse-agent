@@ -24,7 +24,7 @@ export interface StoredReflection {
   readonly createdAtMs: number;
 }
 
-const MAX_REFLECTIONS = 500;
+export const MAX_REFLECTIONS = 500;
 
 function isReflection(value: unknown): value is StoredReflection {
   if (!value || typeof value !== "object") return false;
@@ -60,7 +60,13 @@ export async function readReflections(file: string): Promise<readonly StoredRefl
 }
 
 async function writeReflections(file: string, entries: readonly StoredReflection[]): Promise<void> {
-  const trimmed = entries.length > MAX_REFLECTIONS ? entries.slice(entries.length - MAX_REFLECTIONS) : entries;
+  // Trim to the cap by RECENCY (createdAtMs), not insertion order — the cap must
+  // agree with how reflections are surfaced (listReflections is newest-first by
+  // createdAtMs). Trimming by insertion order would let a backfill / out-of-order
+  // pass evict a NEWER insight while keeping a staler one.
+  const trimmed = entries.length > MAX_REFLECTIONS
+    ? [...entries].sort((a, b) => b.createdAtMs - a.createdAtMs).slice(0, MAX_REFLECTIONS)
+    : entries;
   await atomicWriteFile(file, `${JSON.stringify({ reflections: trimmed }, null, 2)}\n`);
 }
 
