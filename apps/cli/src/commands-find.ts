@@ -97,6 +97,17 @@ const DOMAIN_LABELS: Record<FindDomain, string> = {
   event: "Calendar"
 };
 
+// Derived from DOMAIN_LABELS so the empty-state can never drift out of sync
+// with what `find` actually searches (the old literal omitted calendar).
+export function formatNoMatches(query: string): string {
+  const domains = Object.values(DOMAIN_LABELS).map((label) => label.toLowerCase());
+  const list =
+    domains.length > 1
+      ? `${domains.slice(0, -1).join(", ")}, or ${domains[domains.length - 1]}`
+      : (domains[0] ?? "");
+  return `No ${list} match "${query}".\n`;
+}
+
 export function registerFindCommand(program: Command, io: ProgramIO): void {
   program
     .command("find")
@@ -127,7 +138,7 @@ export function registerFindCommand(program: Command, io: ProgramIO): void {
         return;
       }
       if (hits.length === 0) {
-        io.stdout(`No tasks, reminders, or contacts match "${query}".\n`);
+        io.stdout(formatNoMatches(query));
         return;
       }
       io.stdout(`Found ${hits.length.toString()} match(es) for "${query}":\n`);

@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { findAcrossDomains } from "./commands-find.js";
+import { findAcrossDomains, formatNoMatches } from "./commands-find.js";
+
+describe("formatNoMatches — empty state names every searched domain", () => {
+  it("names tasks, reminders, contacts, AND calendar (matches the command's scope)", () => {
+    const msg = formatNoMatches("conference");
+    expect(msg).toContain('"conference"');
+    expect(msg.toLowerCase()).toContain("tasks");
+    expect(msg.toLowerCase()).toContain("reminders");
+    expect(msg.toLowerCase()).toContain("contacts");
+    expect(msg.toLowerCase()).toContain("calendar");
+  });
+});
 
 describe("findAcrossDomains — substring across tasks/reminders/contacts", () => {
   const sources = {

@@ -21,3 +21,12 @@ ratchet: desktop swift tests 46/46 (added 2) · fabrication 0 · self-eval exit 
 - **왜**: CLI 정규 기본은 `LOCAL_FIRST_DEFAULT_MODEL = ollama/gemma4:12b`([[project_gemma4_default]])인데 desktop만 qwen3:8b를 확인·안내 → 사용자가 틀린 모델을 pull하거나 영영 modelMissing으로 보이는 실제 버그.
 - **리뷰지점**: desktop은 Ollama `/api/tags`에 맞춰 **bare 태그**(`ollama/` 접두 없이 `gemma4:12b`)를 쓴다. 남은 desktop의 `qwen` 참조는 비-버그(parse doc 예시 + `.qwen3TTS_0_6b` TTS 음성모델).
 - **리스크**: 없음(MuseDesktopCore 2-파일 미세 변경, `.modelMissing`/`parse` 무변, 독립 Opus judge가 정규 기본·bare태그·누락참조 검증 후 PASS, 46/46).
+
+## fire 3 · 2026-06-13 · skill v1.14.0 · <commit>
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=help-vs-output-inconsistency · verdict=PASS · firesSinceDrill=3
+ratchet: cli tests 2567/2567 (find suite 6, +1) · fabrication 0 · self-eval exit 0 · consecutive allPASS=3 · 세 표면 모두 1+ fire (web·desktop·cli)
+
+- **무엇**: `muse find`(`apps/cli/src/commands-find.ts`)는 4개 도메인(tasks·reminders·contacts·**calendar**)을 검색하는데 no-match 메시지만 "tasks, reminders, or contacts"라 calendar를 빠뜨렸다. 순수 헬퍼 `formatNoMatches(query)`를 `DOMAIN_LABELS`에서 유도(drift-proof)해 네 도메인 모두 명시 → "No tasks, reminders, contacts, or calendar match …".
+- **왜**: help 텍스트·`DOMAIN_LABELS`·matcher 모두 calendar를 1급 도메인으로 다루는데 빈-상태 문구만 거짓 범위를 알려, 사용자가 "calendar는 검색됐는데 없는 건지, 아예 안 됐는지" 알 수 없었다(help-vs-output 불일치).
+- **리뷰지점**: 빈-상태 목록은 이제 `DOMAIN_LABELS`에서 유도되므로 5번째 도메인 추가 시 자동 동기화. `--json`(total:0)·non-empty grouped 출력은 무변.
+- **리스크**: 없음(empty-state 분기 1줄 교체 + 순수 헬퍼, 독립 Opus judge가 구-코드 RED·collateral·순서 검증 후 PASS, find 6/6 · cli 2567/2567).

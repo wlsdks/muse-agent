@@ -74,6 +74,7 @@
 
 - ✓ web Markdown link-scheme allowlist widened to `mailto:`/`tel:` (model-reply contact links now clickable; `javascript:`/`data:`/`vbscript:` still blocked, adversarial test added) — surfaces fire 1
 - ✓ desktop companion stale default model: `OllamaHealth.requiredModel` qwen3:8b→gemma4:12b + `.notRunning` guidance interpolates requiredModel (was health-checking/onboarding the wrong model vs CLI's gemma4:12b default) — surfaces fire 2
+- ✓ `muse find` empty-state named only tasks/reminders/contacts though it also searches calendar; extracted drift-proof `formatNoMatches` (derives from DOMAIN_LABELS) so the no-match message matches the command's real scope — surfaces fire 3
 - ✓ `upcoming_birthdays` agent tool — conversational "whose birthday is coming up?" (resolveUpcomingBirthdays was CLI/brief-only, no agent tool) — tool-hardening fire 47
 - ✓ `on_this_day_notes` agent tool — conversational date-cued note recall (muse on-this-day was CLI-only; pure recall logic moved to @muse/mcp, CLI re-exports) — tool-hardening fire 48
 - ✓ `feeds_search` agent tool — conversational watched-feed archive search (CLI-only + only knowledge_search covered it, off by default → default-posture gap) — tool-hardening fire 49
