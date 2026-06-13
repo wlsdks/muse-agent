@@ -1317,12 +1317,14 @@ excluded when scoring).
   Judge PASS via real revert (no-partial-side-effects test fails 6 ways without the arg-check); registered
   in reflection-guard. Validation runs before any tool executes; back-compat preserved.]
 - ◦ **Plan-validation remainder** — (a) `plan-repaired` PlanExecuteStreamEvent so eval:plan-quality/traces
-  can count runtime repair rate (deferred — strict event union needs downstream changes); (c) write-step
-  precondition checks; (d) plan-cache hygiene — cache the REPAIRED plan, never the invalid original.
+  can count runtime repair rate (deferred — strict event union needs downstream changes); (d) plan-cache
+  hygiene — cache the REPAIRED plan, never the invalid original.
   (fire 37 remainder, arXiv:2308.13724) — NEW sub-items from fire 8: (e) tighten the still-open false-negative
   classes (bare `$N` and bare `{{N}}` dropped as currency/template-ambiguous → undetected); (f) wire backward-ref
-  SUBSTITUTION (LLMCompiler Task Fetching Unit — resolve `{{step1.output}}` to the prior step's output, not just validate).
+  SUBSTITUTION (LLMCompiler Task Fetching Unit — resolve `{{step1.output}}` to the prior step's output, not just validate);
+  (g) extend write-precondition to non-string args (empty array / `{}` on a write — fire 21 covered string args).
 - ✓ Plan-validation remainder (b) ordering/dependency validation — agent-core-cognition fire 8
+- ✓ Plan-validation remainder (c) write-step precondition checks (ISR-LLM arXiv:2308.13724) — a write/execute step with an unfilled-placeholder arg is rejected before any tool runs (no partial side-effect) — agent-core-cognition fire 21
 - ✓ Playbook temporal reward discounting (Discounted-UCB arXiv:0805.3415) — agent-core-cognition fire 9
 - ◦ **Playbook recency-discount remainder** — (a) carry recency anchors into the `@muse/recall` non-embed
   `selectPlaybookSection` path too (this slice scoped to the agent-runtime applyPlaybook path); (b) tune

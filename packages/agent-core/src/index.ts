@@ -420,6 +420,7 @@ export {
   extractJsonArray,
   parsePlan,
   validatePlan,
+  validateWritePreconditions,
   type PlanExecutionErrorCode,
   type PlanStep,
   type PlanValidationError,

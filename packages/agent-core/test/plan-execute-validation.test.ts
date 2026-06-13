@@ -1,7 +1,7 @@
 import type { JsonValue } from "@muse/shared";
 import { describe, expect, it } from "vitest";
 
-import { dedupeExactSteps, dedupeNearDuplicateSteps, validatePlan, type PlanStep } from "../src/plan-execute.js";
+import { dedupeExactSteps, dedupeNearDuplicateSteps, validatePlan, validateWritePreconditions, type PlanStep } from "../src/plan-execute.js";
 
 // Unit tests for ISR-LLM (arXiv:2308.13724) plan validation extensions:
 // arg-presence checks, exact-duplicate detection, and deduplication.
@@ -298,5 +298,147 @@ describe("dedupeNearDuplicateSteps (Mem0 arXiv:2504.19413 consolidate-before-add
     ];
     const result = dedupeNearDuplicateSteps(steps);
     expect(result).toHaveLength(2);
+  });
+});
+
+describe("validateWritePreconditions — ISR-LLM (arXiv:2308.13724) precondition check", () => {
+  const writeRisks: ReadonlyMap<string, "read" | "write" | "execute"> = new Map([
+    ["send_message", "write"],
+    ["delete_file", "execute"],
+    ["get_info", "read"]
+  ]);
+
+  it("flags a write step whose string arg is an angle-bracket placeholder", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "send_message", args: { to: "<recipient>", body: "hi" }, description: "send" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ stepIndex: 0, tool: "send_message" });
+    expect(errors[0]?.reason).toContain("'to'");
+  });
+
+  it("flags a write step whose string arg is an empty string", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "send_message", args: { to: "", body: "hi" }, description: "send" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.reason).toContain("'to'");
+  });
+
+  it("flags a write step whose string arg is whitespace-only", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "send_message", args: { to: "  ", body: "hi" }, description: "send" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(1);
+  });
+
+  it("flags a write step whose string arg is a mustache placeholder", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "send_message", args: { to: "{{recipient}}", body: "hello" }, description: "send" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.reason).toContain("{{recipient}}");
+  });
+
+  it("flags 'TODO' as a placeholder", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "send_message", args: { to: "alice@x.com", body: "TODO" }, description: "send" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.reason).toContain("'body'");
+  });
+
+  it("flags 'N/A' and 'null' and 'TBD' and 'XXX' and 'undefined' as placeholders", () => {
+    const placeholders = ["N/A", "null", "TBD", "XXX", "undefined"];
+    for (const ph of placeholders) {
+      const steps: readonly PlanStep[] = [
+        { tool: "send_message", args: { to: ph }, description: "send" }
+      ];
+      const errors = validateWritePreconditions(steps, writeRisks);
+      expect(errors).toHaveLength(1, `expected ${ph} to be flagged`);
+    }
+  });
+
+  it("does NOT flag a real arg value (alice@x.com)", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "send_message", args: { to: "alice@x.com", body: "hello" }, description: "send" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("does NOT flag 'NASA' — a real value that looks like an acronym", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "send_message", args: { to: "NASA" }, description: "send" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("WHOLE-VALUE-ANCHORED: 'send the TODO list' is NOT flagged (contains but not exactly a placeholder)", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "send_message", args: { to: "alice@x.com", body: "send the TODO list" }, description: "send" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("WHOLE-VALUE-ANCHORED: 'use {{var}} in the macro' is NOT flagged", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "send_message", args: { body: "use {{var}} in the macro" }, description: "send" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("READS EXEMPT: a read step with arg '<id>' produces ZERO errors", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "get_info", args: { id: "<id>" }, description: "read" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(0);
+  });
+
+  it("execute-risk step is also gated", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "delete_file", args: { path: "<path>" }, description: "delete" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ stepIndex: 0, tool: "delete_file" });
+  });
+
+  it("ADDITIVE-OPTIONAL: validatePlan WITHOUT toolRisks → no precondition errors (byte-identical to today)", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "send_message", args: { to: "<recipient>" }, description: "send" }
+    ];
+    const withRisks = validatePlan({
+      availableToolNames: new Set(["send_message"]),
+      steps,
+      toolRisks: writeRisks
+    });
+    const withoutRisks = validatePlan({
+      availableToolNames: new Set(["send_message"]),
+      steps
+    });
+    // With risks: the placeholder is flagged.
+    expect(withRisks.valid).toBe(false);
+    expect(withRisks.errors.some((e) => e.reason.includes("placeholder"))).toBe(true);
+    // Without risks: no precondition errors — byte-identical to prior behaviour.
+    expect(withoutRisks.valid).toBe(true);
+    expect(withoutRisks.errors).toHaveLength(0);
+  });
+
+  it("non-string arg values (numbers, booleans) are never flagged", () => {
+    const steps: readonly PlanStep[] = [
+      { tool: "send_message", args: { count: 0, flag: false }, description: "send" }
+    ];
+    const errors = validateWritePreconditions(steps, writeRisks);
+    expect(errors).toHaveLength(0);
   });
 });
