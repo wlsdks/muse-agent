@@ -348,8 +348,9 @@ describe("PlanExecute helpers", () => {
     });
 
     it("rejects an oversized plan before walking it (degenerate-planner bound)", () => {
+      // Use distinct args per step so duplicate detection doesn't interfere.
       const mkSteps = (n: number) =>
-        Array.from({ length: n }, (_unused, i) => ({ args: {}, description: `s${i.toString()}`, tool: "a" }));
+        Array.from({ length: n }, (_unused, i) => ({ args: { i }, description: `s${i.toString()}`, tool: "a" }));
 
       const atCap = validatePlan({ availableToolNames: new Set(["a"]), steps: mkSteps(MAX_PLAN_STEPS) });
       expect(atCap.valid).toBe(true); // boundary: exactly the cap is allowed

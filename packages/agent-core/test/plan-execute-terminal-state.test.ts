@@ -8,7 +8,6 @@ import { ToolExecutor, ToolRegistry, type MuseTool } from "@muse/tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { executePlanExecuteLoop, type PlanExecuteRunner } from "../src/plan-execute-loop.js";
-import { PlanValidationFailedError } from "../src/plan-execute.js";
 import type { AgentRunContext } from "../src/types.js";
 
 // τ-bench-style TERMINAL-STATE eval on the FULL plan-execute assembly (agent-eval
@@ -123,12 +122,13 @@ describe("plan-execute terminal state (gap B — real diagnostic plans, real Too
   it("rejects a directive naming an unavailable tool at validation — no tool runs, no mutation", async () => {
     const tool = saveNoteTool();
     const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
-    // the steerable diagnostic does NOT filter; the assembly's validatePlan must reject it
+    // The steerable diagnostic does NOT filter; the assembly's validatePlan must reject it.
+    // With ISR-LLM repair: the invalid plan triggers one repair round; the diagnostic
+    // provider returns "[]" (empty plan) which is valid → direct answer, no tools run.
     const prompt = steer([{ tool: "launch_missiles", args: {}, description: "no" }]);
-    const error = await executePlanExecuteLoop(realRunner(provider, executor), context(prompt), provider, request(prompt, tool)).catch(
-      (e: unknown) => e,
-    );
-    expect(error).toBeInstanceOf(PlanValidationFailedError);
+    const result = await executePlanExecuteLoop(realRunner(provider, executor), context(prompt), provider, request(prompt, tool));
+    // No save_note was called — the invalid tool never reached execution.
+    expect(result.toolResults).toHaveLength(0);
     expect(await readNotes()).toBe("absent");
   });
 

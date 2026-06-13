@@ -20,6 +20,7 @@ import type {
 
 import {
   classifyStepEffect,
+  dedupeExactSteps,
   PlanExecutionError,
   PlanValidationFailedError,
   parsePlan,
@@ -109,9 +110,14 @@ export async function* streamPlanExecute(
     throw new PlanExecutionError("PLAN_GENERATION_FAILED", "Plan generation parsing failed");
   }
 
-  yield { plan, runId: context.runId, type: "plan-generated" };
+  // ISR-LLM (arXiv:2308.13724): deterministic dedup first (no model call),
+  // then validate before any tool executes. A bad plan never reaches execution.
+  const PLAN_REPAIR_MAX_ROUNDS = 1;
+  let steps = dedupeExactSteps(plan);
 
-  if (plan.length === 0) {
+  yield { plan: steps, runId: context.runId, type: "plan-generated" };
+
+  if (steps.length === 0) {
     yield { runId: context.runId, type: "synthesis-started" };
     const directResponse = await directAnswerForPlanExecute(runner, context, provider, request);
     return {
@@ -122,18 +128,36 @@ export async function* streamPlanExecute(
     };
   }
 
-  const validation = validatePlan({
-    availableToolNames: new Set(tools.map((tool) => tool.name)),
-    steps: plan
-  });
+  const toolSchemas = new Map(tools.map((tool) => [tool.name, tool.inputSchema as import("@muse/shared").JsonValue]));
+  const availableToolNames = new Set(tools.map((tool) => tool.name));
+
+  let validation = validatePlan({ availableToolNames, steps, toolSchemas });
+  if (!validation.valid && PLAN_REPAIR_MAX_ROUNDS > 0) {
+    const errorBullets = validation.errors
+      .map((error) => `- step ${(error.stepIndex + 1).toString()} (${error.tool || "?"}): ${error.reason}`)
+      .join("\n");
+    const repairPrompt = [
+      `The original request was: ${userPrompt}`,
+      "",
+      "The plan you produced has the following errors:",
+      errorBullets,
+      "",
+      "Produce a corrected plan that fixes all errors listed above."
+    ].join("\n");
+    const repairedRaw = await generatePlan(runner, context, provider, request, repairPrompt, toolDescriptions, userId);
+    if (repairedRaw !== null) {
+      steps = dedupeExactSteps(repairedRaw);
+      validation = validatePlan({ availableToolNames, steps, toolSchemas });
+    }
+  }
   if (!validation.valid) {
-    throw new PlanValidationFailedError(validation.errors, plan);
+    throw new PlanValidationFailedError(validation.errors, steps);
   }
 
   const executed: PlanExecuteStepRecord[] = [];
   let toolCallCount = 0;
-  for (let index = 0; index < plan.length; index += 1) {
-    const step = plan[index];
+  for (let index = 0; index < steps.length; index += 1) {
+    const step = steps[index];
     if (!step) {
       continue;
     }
@@ -245,9 +269,9 @@ export async function* streamPlanExecute(
   // executed so a similar future request can reuse it as a planning exemplar.
   // Reached only after at least one step succeeded (all-failed throws above).
   // Fail-open — a cache write must never break the run.
-  if (runner.planCacheProvider && userId && plan.length > 0) {
+  if (runner.planCacheProvider && userId && steps.length > 0) {
     try {
-      await runner.planCacheProvider.recordPlan(userId, userPrompt, plan);
+      await runner.planCacheProvider.recordPlan(userId, userPrompt, steps);
     } catch {
       // ignore — caching is best-effort
     }
@@ -255,7 +279,7 @@ export async function* streamPlanExecute(
 
   return {
     finalResponse,
-    intermediateMessages: planExecuteIntermediateMessages(plan, executed),
+    intermediateMessages: planExecuteIntermediateMessages(steps, executed),
     toolResults: executed.map((entry) => entry.executed),
     toolsUsed: [...new Set(executed.map((entry) => entry.executed.toolCall.name))]
   };

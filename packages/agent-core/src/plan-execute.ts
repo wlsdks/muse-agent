@@ -1,5 +1,6 @@
 import type { ModelMessage, ModelTool } from "@muse/model";
-import type { JsonObject } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
+import { coerceToolArguments, validateRequiredToolArguments } from "@muse/tools";
 
 import { extractFirstJsonArray, iterateJsonArrayCandidates } from "./json-array-scan.js";
 
@@ -143,6 +144,15 @@ function toPlanSteps(entries: readonly unknown[]): readonly PlanStep[] | null {
 export interface PlanValidationInput {
   readonly steps: readonly PlanStep[];
   readonly availableToolNames: ReadonlySet<string>;
+  /**
+   * When supplied (built from `request.tools`), each registered step's args
+   * are coerced then validated for missing required fields — catching "later
+   * step missing a required arg" BEFORE execution starts and eliminating
+   * partial side-effects (τ-bench no-partial-side-effects property).
+   * ISR-LLM (arXiv:2308.13724): validate before execute, feed errors back for
+   * one bounded repair round. Absent → byte-identical to prior behaviour.
+   */
+  readonly toolSchemas?: ReadonlyMap<string, JsonValue>;
 }
 
 /**
@@ -151,6 +161,20 @@ export interface PlanValidationInput {
  * direct answer when the plan is empty).
  */
 export const MAX_PLAN_STEPS = 64;
+
+/** Stable key for a plan step used by duplicate detection and deduplication. */
+function stepKey(step: PlanStep): string {
+  return `${step.tool}::${stableStringify(step.args)}`;
+}
+
+/** JSON.stringify with sorted keys so {b:1,a:2} and {a:2,b:1} produce the same key. */
+function stableStringify(obj: JsonObject): string {
+  const sorted: Record<string, JsonValue> = {};
+  for (const key of Object.keys(obj).sort()) {
+    sorted[key] = obj[key] as JsonValue;
+  }
+  return JSON.stringify(sorted);
+}
 
 export function validatePlan(input: PlanValidationInput): PlanValidationResult {
   const errors: PlanValidationError[] = [];
@@ -169,6 +193,10 @@ export function validatePlan(input: PlanValidationInput): PlanValidationResult {
       valid: false
     };
   }
+
+  // Tracks exact-duplicate detection: key → first occurrence index.
+  const seenKeys = new Map<string, number>();
+
   for (let index = 0; index < input.steps.length; index += 1) {
     const step = input.steps[index];
     if (!step) {
@@ -184,6 +212,35 @@ export function validatePlan(input: PlanValidationInput): PlanValidationResult {
         stepIndex: index,
         tool: step.tool
       });
+      // Still check for duplicates below even when unregistered, but skip arg validation.
+    } else if (input.toolSchemas) {
+      // ISR-LLM (arXiv:2308.13724): validate args before execution so a missing
+      // required arg on step N doesn't block AFTER steps 0…N-1 wrote side effects.
+      const schema = input.toolSchemas.get(step.tool);
+      if (schema !== undefined) {
+        const coerced = coerceToolArguments(schema, step.args);
+        const argCheck = validateRequiredToolArguments(schema, coerced);
+        for (const name of argCheck.missing) {
+          errors.push({
+            reason: `missing required argument '${name}'`,
+            stepIndex: index,
+            tool: step.tool
+          });
+        }
+      }
+    }
+
+    // Exact-duplicate detection (same tool + same args, key-order-independent).
+    const key = stepKey(step);
+    const firstIndex = seenKeys.get(key);
+    if (firstIndex !== undefined) {
+      errors.push({
+        reason: `repeats step ${firstIndex.toString()} verbatim`,
+        stepIndex: index,
+        tool: step.tool
+      });
+    } else {
+      seenKeys.set(key, index);
     }
   }
   return {
@@ -191,6 +248,21 @@ export function validatePlan(input: PlanValidationInput): PlanValidationResult {
     steps: input.steps,
     valid: errors.length === 0
   };
+}
+
+/**
+ * Order-preserving removal of exact-duplicate steps (same tool + same args,
+ * key-order-independent). The first occurrence is kept; subsequent identical
+ * steps are dropped. A deterministic repair that needs no model call.
+ */
+export function dedupeExactSteps(steps: readonly PlanStep[]): readonly PlanStep[] {
+  const seen = new Set<string>();
+  return steps.filter((step) => {
+    const key = stepKey(step);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /**

@@ -45,6 +45,12 @@ const REFLECTION_SURFACES = [
     retryMarker: "const actNow",
     surface: "false-done action re-run",
     verifierMarker: "actionToolRan("
+  },
+  {
+    file: "packages/agent-core/src/plan-execute-loop.ts",
+    retryMarker: "PLAN_REPAIR_MAX_ROUNDS",
+    surface: "plan validation repair",
+    verifierMarker: "validatePlan("
   }
 ];
 

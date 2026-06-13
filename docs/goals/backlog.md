@@ -581,6 +581,19 @@ excluded when scoring).
   punctuation_obfuscation, tool_spoofing, few_shot_poisoning, history_poisoning, command_injection, plus role_override
   MINUS its debug-mode subpattern, system_delimiter for literal control tokens). Reuse the screenCouncilInfection
   mechanism design (it passed). (fire 36 deferred — mechanism done, calibration is the work.)
+- ✓→Done **ISR-LLM pre-execution plan validation + repair** — the runtime plan gate validated only
+  step-count + tool-registered, not arguments, so a plan with a later missing-arg step executed earlier
+  (possibly writing) steps first → partial side effects + dead run (arXiv:2308.13724 ISR-LLM). [DONE
+  2026-06-13, cognition loop fire 37: `validatePlan` gains `toolSchemas` and flags missing-required-args
+  (reusing validateRequiredToolArguments/coerceToolArguments at plan time) + exact-duplicate steps;
+  `dedupeExactSteps`; `streamPlanExecute` dedupes → validates → one verifier-backed repair round
+  (PLAN_REPAIR_MAX_ROUNDS=1, re-call generatePlan with the validator errors, re-validate) → else throws.
+  Judge PASS via real revert (no-partial-side-effects test fails 6 ways without the arg-check); registered
+  in reflection-guard. Validation runs before any tool executes; back-compat preserved.]
+- ◦ **Plan-validation remainder** — (a) `plan-repaired` PlanExecuteStreamEvent so eval:plan-quality/traces
+  can count runtime repair rate (deferred — strict event union needs downstream changes); (b) ordering/
+  dependency validation (a step consuming a prior step's output); (c) write-step precondition checks;
+  (d) plan-cache hygiene — cache the REPAIRED plan, never the invalid original. (fire 37 remainder, arXiv:2308.13724)
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
   each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
 - (queued behind fuel/prereqs: sleep-time compute · Mem0 UPDATE op · AWM workflow mining ·

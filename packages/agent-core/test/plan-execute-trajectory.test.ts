@@ -1,7 +1,7 @@
 import { DiagnosticModelProvider } from "@muse/model";
-import type { ModelProvider } from "@muse/model";
+import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
 import { ToolExecutor, ToolRegistry, type MuseTool } from "@muse/tools";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { streamPlanExecute, type PlanExecuteRunner, type PlanExecuteStreamEvent } from "../src/plan-execute-loop.js";
 import type { AgentRunContext } from "../src/types.js";
@@ -248,7 +248,7 @@ describe("plan-execute trajectory (gap C — real assembly span sequence + step-
     expect(calls.n).toBe(1); // executed EXACTLY once — a failed send is never plan-retried
   });
 
-  it("StepEfficiency: a plan that re-calls the same (tool,args) is flagged as redundant", async () => {
+  it("StepEfficiency: a plan with an exact-duplicate step is deduplicated before execution (only one step runs)", async () => {
     const tool = echoTool();
     const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
     const planned = [
@@ -258,15 +258,170 @@ describe("plan-execute trajectory (gap C — real assembly span sequence + step-
     const prompt = steer(planned);
     const { events } = await drain(streamPlanExecute(realRunner(provider, executor), context(prompt), provider, request(prompt, tool)));
 
-    // the assembly faithfully runs both steps (no silent dedup) — the trajectory
-    // exposes the redundancy for the metric to catch
+    // The duplicate step is removed by dedupeExactSteps before execution.
     const executed = (events.filter((e) => e.type === "plan-step-executing") as Extract<PlanExecuteStreamEvent, { type: "plan-step-executing" }>[]);
-    expect(executed).toHaveLength(2);
+    expect(executed).toHaveLength(1);
+    // The raw plan-level metric still detects redundancy for observability.
     expect(redundantCalls(planned)).toBe(1);
     // a non-redundant plan (distinct args) scores zero
     expect(redundantCalls([
       { tool: "echo_value", args: { value: "x" } },
       { tool: "echo_value", args: { value: "y" } },
     ])).toBe(0);
+  });
+});
+
+// ISR-LLM (arXiv:2308.13724) assembled-path tests: repair from validator errors,
+// zero-executeToolCall on unrecoverable invalid plan, and happy-path no-repair.
+// Uses a SCRIPTED provider (not DiagnosticModelProvider) to control exact plan
+// sequences so the tests are deterministic and do not require Ollama.
+
+/** Builds a JSON plan string for the scripted provider to emit. */
+const planJson = (steps: readonly { tool: string; args: Record<string, unknown>; description: string }[]): string =>
+  JSON.stringify(steps);
+
+/** A scripted ModelProvider that emits a preset sequence of responses per call. */
+function scriptedProvider(responses: string[]): ModelProvider {
+  let callIndex = 0;
+  return {
+    generate: async (_request: ModelRequest): Promise<ModelResponse> => {
+      const output = responses[callIndex] ?? "[]";
+      callIndex += 1;
+      return { output, toolCalls: [] };
+    },
+    id: "scripted",
+    listModels: async () => [],
+    stream: async function* () { /* not used */ }
+  };
+}
+
+/** Tool with a required arg — used to test arg-presence validation. */
+const requiredArgTool = (): MuseTool => ({
+  definition: {
+    description: "Save a note. Use when: storing text; do not use for: retrieval.",
+    inputSchema: { properties: { text: { type: "string" } }, required: ["text"], type: "object" },
+    name: "save_note",
+    risk: "write"
+  },
+  execute: async (args) => `saved: ${String((args as { text?: unknown }).text)}`
+});
+
+const scriptedRunner = (provider: ModelProvider, executor: ToolExecutor, executeSpy?: ReturnType<typeof vi.fn>): PlanExecuteRunner => ({
+  executeToolCall: executeSpy
+    ? async (ctx, toolCall) => {
+        executeSpy();
+        return { result: await executor.execute({ arguments: toolCall.arguments, context: { runId: ctx.runId }, id: toolCall.id, name: toolCall.name }), toolCall };
+      }
+    : async (ctx, toolCall) => ({
+        result: await executor.execute({ arguments: toolCall.arguments, context: { runId: ctx.runId }, id: toolCall.id, name: toolCall.name }),
+        toolCall
+      }),
+  generateWithTracing: async (_ctx, prov, req) => prov.generate(req),
+  maxToolCalls: 5
+});
+
+const repairContext = (prompt: string): AgentRunContext => ({
+  input: { messages: [{ content: prompt, role: "user" }], model: "scripted", metadata: {} },
+  runId: "run-repair",
+  startedAt: new Date("2026-01-01T00:00:00Z")
+});
+
+const repairRequest = (prompt: string, tool: MuseTool) => ({
+  messages: [
+    { content: "You are Muse.", role: "system" as const },
+    { content: prompt, role: "user" as const }
+  ],
+  model: "scripted",
+  tools: [{ description: tool.definition.description, inputSchema: tool.definition.inputSchema, name: tool.definition.name, risk: tool.definition.risk }]
+});
+
+describe("plan-execute ISR-LLM repair round (assembled-path, no Ollama)", () => {
+  it("(a) first plan missing required arg → second planning prompt contains validator error text → valid repaired plan executes to synthesis", async () => {
+    const tool = requiredArgTool();
+    const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
+
+    // First response: plan with missing required 'text' arg.
+    // Second response: valid repaired plan with 'text' supplied.
+    // Third response: synthesis output.
+    const provider = scriptedProvider([
+      planJson([{ tool: "save_note", args: {}, description: "save a note (missing arg)" }]),
+      planJson([{ tool: "save_note", args: { text: "hello" }, description: "save a note (repaired)" }]),
+      "The note has been saved."
+    ]);
+
+    const capturedRequests: ModelRequest[] = [];
+    const trackingProvider: ModelProvider = {
+      generate: async (req) => {
+        capturedRequests.push(req);
+        return provider.generate(req);
+      },
+      id: "tracking",
+      listModels: async () => [],
+      stream: async function* () { /* not used */ }
+    };
+
+    const prompt = "save a note for me";
+    const runner = scriptedRunner(trackingProvider, executor);
+    const { events } = await drain(streamPlanExecute(runner, repairContext(prompt), trackingProvider, repairRequest(prompt, tool)));
+
+    // Assert the second planning call's prompt contains the validator error text.
+    expect(capturedRequests.length).toBeGreaterThanOrEqual(2);
+    const repairCallContent = capturedRequests[1]?.messages.map((m) => m.content).join("\n") ?? "";
+    expect(repairCallContent).toContain("missing required argument 'text'");
+
+    // The run completed with a synthesis event.
+    expect(events.at(-1)?.type).toBe("synthesis-started");
+  });
+
+  it("(b) repair plan is STILL invalid → PlanValidationFailedError thrown AND zero executeToolCall invocations", async () => {
+    const tool = requiredArgTool();
+    const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
+
+    // Both plan responses omit the required arg.
+    const provider = scriptedProvider([
+      planJson([{ tool: "save_note", args: {}, description: "missing arg" }]),
+      planJson([{ tool: "save_note", args: {}, description: "still missing arg" }])
+    ]);
+
+    const prompt = "save a note";
+    const executeSpy = vi.fn();
+    const runner = scriptedRunner(provider, executor, executeSpy);
+
+    await expect(
+      drain(streamPlanExecute(runner, repairContext(prompt), provider, repairRequest(prompt, tool)))
+    ).rejects.toThrow(/missing required argument 'text'/);
+
+    // The headline no-partial-side-effects assert: zero tool executions.
+    expect(executeSpy).not.toHaveBeenCalled();
+  });
+
+  it("(c) valid first plan → EXACTLY ONE planning call (no repair, no extra latency on the happy path)", async () => {
+    const tool = requiredArgTool();
+    const executor = new ToolExecutor({ registry: new ToolRegistry([tool]) });
+
+    // First response: valid plan. Second: synthesis. A third would indicate spurious repair.
+    const provider = scriptedProvider([
+      planJson([{ tool: "save_note", args: { text: "hello" }, description: "save it" }]),
+      "Saved."
+    ]);
+
+    let planCallCount = 0;
+    const trackingProvider: ModelProvider = {
+      generate: async (req) => {
+        // Detect planning calls by the presence of responseFormat (plan requests set it).
+        if (req.responseFormat) planCallCount += 1;
+        return provider.generate(req);
+      },
+      id: "tracking",
+      listModels: async () => [],
+      stream: async function* () { /* not used */ }
+    };
+
+    const prompt = "save a note";
+    const runner = scriptedRunner(trackingProvider, executor);
+    const { events } = await drain(streamPlanExecute(runner, repairContext(prompt), trackingProvider, repairRequest(prompt, tool)));
+
+    expect(planCallCount).toBe(1);
+    expect(events.at(-1)?.type).toBe("synthesis-started");
   });
 });

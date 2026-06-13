@@ -80,8 +80,11 @@ describe("executePlanExecuteLoop", () => {
   });
 
   it("blocks steps past maxToolCalls but still synthesises when an earlier step succeeded", async () => {
+    // Use distinct args so the two steps are not treated as exact duplicates.
+    const s1: PlanStep = { tool: "get_weather", args: { q: "first" }, description: "first" };
+    const s2: PlanStep = { tool: "get_weather", args: { q: "second" }, description: "second" };
     const result = await executePlanExecuteLoop(
-      runner([resp(plan([step("first"), step("second")])), resp("synthesised")], { maxToolCalls: 1 }),
+      runner([resp(plan([s1, s2])), resp("synthesised")], { maxToolCalls: 1 }),
       context(),
       provider,
       request(),
