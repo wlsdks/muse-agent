@@ -359,9 +359,7 @@ import {
 } from "./server-chat-response-builders.js";
 
 export {
-  toAdminRunSummary,
-  toCompatChatResponse,
-  toExtendedChatResponse
+  toAdminRunSummary
 } from "./server-chat-response-builders.js";
 
 // ---------------------------------------------------------------------------

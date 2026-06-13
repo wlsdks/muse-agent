@@ -1017,3 +1017,12 @@ ratchet: testFiles 984 유지(scripts-only) · fabrication 0 유지 · eval:tool
 - **왜:** fire 99가 day_recap을 selection+confusability로 ship했으나 IrrelAcc 누락. day_recap 키워드에 **"오늘 하루"가 literal 포함**(day-recap-tool.ts:87) = 최고빈도 casual 충돌어("오늘 하루 길었어"). agent-testing.md triad 완성(fire 98 today_brief 패턴 미러). KIND=irrelevance-coverage(fire 99 capability-extension과 구별).
 - **리뷰지점:** eval buildDayRecapScenario +2 expectNoTool(순수 additive). strict noTool scorer. 8/8 STABLE 3/3(day_recap selection+recent_actions/today_brief carve+casual-day 무발화 동시 검증). lint clean, harness 17. ④b judge PASS 5/5(fair·literal-keyword-collision teeth·accepted fire-98 precedent). scripts-only라 pnpm check 무관.
 - **리스크:** 없음 — scripts-only, 순수 additive. GREEN-on-arrival이나 literal 키워드 충돌("오늘 하루")이라 description/keyword 저하 regression 가드. firesSinceDrill=8(드릴 fire 102 근접).
+
+
+## fire 101 · 2026-06-14 · skill v1.14.0 · (no-slice)
+meta: value-class=exhaustion-report · pkg=none · kind=EXPANSION-digest-vein-exhausted(2 wins 후 잔여 confusable/served) · verdict=NO-SLICE · firesSinceDrill=9
+ratchet: testFiles 984 유지 · fabrication 0 유지 · 코드 변경 0(EXHAUSTION honest-close)
+- **무엇:** 슬라이스 없음(honest-close). EXPANSION 비대칭 디지털-digest vein 직접 검증 → 고갈: week_agenda(79)·today_brief(97)·day_recap(99) 3 shipped로 temporal 패밀리(week/today-forward/today-retrospective) 완결. 잔여 후보 전부 reject: morning_brief(`muse brief`)=today_brief와 heavily 겹침(둘 다 today tasks+events 집계, confusable); status=muse.status.snapshot 이미 agent 도구; person-dossier=find_contact과 confusable(fire 99 scout가 이미 reject).
+- **왜:** fire 94/96에서 bug-hunt 양 vein(per-handler·delivery) 고갈 → fire 97/99에서 EXPANSION 상향(2 genuine wins, RATCHET under-served 절반 충족). 이제 EXPANSION digest vein도 dry — 잔여는 confusable(carve 실패 예정) 또는 이미-served. EXHAUSTION 규칙: 2 win 후 잔여가 마르면 정직 종료(가짜 confusable 도구 금지). budget 절약 위해 3rd scout 대신 직접 grep 검증.
+- **리뷰지점:** 코드 변경 0. 미수행: morning_brief(confusable)·in-progress-event를 today_brief에 추가(debatable, "could be richer" not-a-bug)·MCP-risk-annotation posture(진안-decision). 두 EXPANSION 도구는 완전 triad 보유(97/98 today_brief, 99/100 day_recap).
+- **리스크:** 없음 — 코드 무변경. 다음 후보: non-temporal EXPANSION scout(genuine non-confusable capability gap 있으면) / 진안-blocked 레버(MCP-risk posture·undo-veto·email-handle grounding=agent-core-hot) / .muse/runs 신호 대기. EXPANSION digest vein 고갈 backlog 기록. firesSinceDrill=9 → fire 102 JUDGE-DRILL.
