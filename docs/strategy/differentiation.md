@@ -223,3 +223,29 @@ grounding+citation floor at all.
 **Shipped:** `countEgressGuards` ratchet (value 5 = 4 gated cloud ids + 1
 fail-close throw site). **Open follow-up:** widen ratchet coverage to the voice
 registry cloud-key-ignore and the localhost-only embeddings guard.
+
+## Vein status — fresh non-contended axes exhausted (fire 16)
+
+After 7 levers (L1–L7) + 6 CI-defended proof batteries, a fire-16 research pass
+(WebSearch + repo audit) found **no genuinely new, non-contended differentiation
+axis** — the strong distinct moats are covered. The one fresh competitor weakness
+surfaced is **self-authored-skill admission**: hermes persists trajectory→SKILL.md
+with no write-time validation (no signed provenance, no reproducibility/tool-registry
+check — [issue #25833](https://github.com/NousResearch/hermes-agent/issues/25833),
+[Skills Guard bypass #7072](https://github.com/NousResearch/hermes-agent/issues/7072),
+[Repello threat model](https://repello.ai/blog/hermes-agent-security)), and openclaw's
+"Dreaming" auto-promotes to plaintext MEMORY.md with no forced vetting
+([atomicmail](https://atomicmail.io/blog/using-openclaw-ai-safely-full-privacy-security-guide)).
+**But Muse already closes this axis** — `scanSkillBodyForRisks`→`.quarantine/`
+(authored draft never activates), `skillDraftConstraintViolations` (deterministic
+reject, not truncate), execute-gating (a self-authored skill can't declare
+`requires.bins`, so `muse.skills.run` refuses until human promotion), and
+`validateUmbrellaCoverage` (merge gate). So it is an *already-built* extension of
+L2 (write-time provenance) + L6 (deterministic-safety), not a new L8.
+
+**The one residual gap** (Muse lacks it): a `validateSkillToolReferences` check that
+a self-authored skill body references only tools that exist in the live registry
+(the dangling-reference half of #25833). It touches `packages/skills` + the
+skill-review path = **agent-core / skill-authoring owned-loop territory**, handed off
+there rather than built here. The differentiation loop does not manufacture an 8th
+lever; this honest "axis already defended" record is fire 16's output.
