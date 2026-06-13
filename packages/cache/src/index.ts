@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { knownModelPrefixes, parseModelName, type ModelRequest, type ModelResponse } from "@muse/model";
 import type { JsonObject, JsonValue } from "@muse/shared";
-import { escapeRegex } from "@muse/shared";
+import { clamp, escapeRegex } from "@muse/shared";
 
 export type Awaitable<T> = T | Promise<T>;
 
@@ -492,9 +492,6 @@ function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
 
 function numberValue(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;

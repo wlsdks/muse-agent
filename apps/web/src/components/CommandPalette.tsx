@@ -80,7 +80,7 @@ export function CommandPalette({
   const activeOption = filtered[index];
   return (
     <div className="palette-backdrop" onClick={onClose} role="presentation">
-      <div className="palette" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Command palette">
+      <div className="palette" onClick={(e) => e.stopPropagation()} role="dialog" aria-label={t("cmd.dialogLabel")}>
         <input
           ref={inputRef}
           className="palette-input"

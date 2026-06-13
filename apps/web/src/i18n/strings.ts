@@ -133,6 +133,7 @@ const en = {
   "cmd.open": "Open command palette (⌘K)",
   "cmd.placeholder": "Jump to a view or run a command…",
   "cmd.empty": "No matching commands.",
+  "cmd.dialogLabel": "Command palette",
   "cmd.navigate": "Go to",
 
   "notice.title": "Muse",
@@ -312,6 +313,7 @@ const ko: Strings = {
   "cmd.open": "명령 팔레트 열기 (⌘K)",
   "cmd.placeholder": "화면으로 이동하거나 명령 실행…",
   "cmd.empty": "일치하는 명령이 없습니다.",
+  "cmd.dialogLabel": "명령 팔레트",
   "cmd.navigate": "이동",
 
   "notice.title": "Muse",

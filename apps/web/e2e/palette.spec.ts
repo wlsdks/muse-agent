@@ -33,6 +33,26 @@ test("command palette opens with the keyboard and navigates", async ({ page }) =
   await expect(page.getByRole("heading", { level: 2, name: "Today" })).toBeVisible();
 });
 
+test("command palette dialog is localized — Korean users get a Korean accessible name", async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("muse.lang", "ko");
+    window.localStorage.setItem("muse.apiUrl", "http://127.0.0.1:3030");
+  });
+  await page.route("**/api/health", (route) => route.fulfill(ok({ status: "ok" })));
+  await page.route("**/api/today", (route) =>
+    route.fulfill(ok({ events: [], generatedAt: new Date().toISOString(), lookaheadHours: 24, reminders: [], tasks: [] }))
+  );
+  await page.route("**/api/tasks**", (route) => route.fulfill(ok({ status: "open", tasks: [], total: 0 })));
+  await page.route("**/api/proactive/history**", (route) => route.fulfill(ok({ entries: [] })));
+  await page.route("**/api/calendar/events", (route) => route.fulfill(ok({ events: [], total: 0 })));
+
+  await page.goto("/");
+  await page.keyboard.press("Meta+k");
+  // The dialog's accessible name must come from the dictionary, not a hardcoded
+  // English literal — so a Korean screen-reader user hears a Korean name.
+  await expect(page.getByRole("dialog", { name: "명령 팔레트" })).toBeVisible();
+});
+
 test("command palette exposes the combobox a11y pattern and ArrowDown moves the active descendant", async ({ page }) => {
   await page.addInitScript(() => {
     if (!window.localStorage.getItem("muse.lang")) {

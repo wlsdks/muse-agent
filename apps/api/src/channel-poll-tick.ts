@@ -15,7 +15,7 @@
 
 import { appendInbound, type InboundFetchOptions, type InboundMessage } from "@muse/messaging";
 
-export interface ChannelPollingProvider {
+interface ChannelPollingProvider {
   pollUpdates(options?: InboundFetchOptions): Promise<readonly InboundMessage[]>;
 }
 

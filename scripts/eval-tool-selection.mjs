@@ -371,7 +371,11 @@ async function buildDayRecapScenario() {
       // the make-or-break neighbours — these must NOT cross into day_recap
       { prompt: "What have you done for me lately?", expectTool: "recent_actions", note: "MUSE's autonomous actions → recent_actions, NOT day_recap (subject is Muse, not me)" },
       { prompt: "내 대신 뭐 처리했어? 거절한 거 있어?", expectTool: "recent_actions", note: "KO 'what did you handle for me / refuse' → recent_actions, NOT day_recap" },
-      { prompt: "What's on my plate right now — anything overdue?", expectTool: "today_brief", note: "FORWARD/what's-left → today_brief, NOT day_recap (retrospective)" }
+      { prompt: "What's on my plate right now — anything overdue?", expectTool: "today_brief", note: "FORWARD/what's-left → today_brief, NOT day_recap (retrospective)" },
+      // IrrelAcc: day_recap's "오늘 하루"/"recap" keywords are an eager trap — a
+      // CASUAL remark about the day (not a "recap my day" request) fires NO tool.
+      { prompt: "오늘 하루 진짜 길었다…", expectNoTool: true, note: "KO casual 'what a long day' → NO tool (NOT day_recap — not a recap request)" },
+      { prompt: "Today was rough, honestly.", expectNoTool: true, note: "EN casual day remark → NO tool (NOT day_recap)" }
     ];
     return { label: "day-recap (retrospective vs today_brief/recent_actions/tasks)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
