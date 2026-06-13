@@ -5,6 +5,7 @@ import {
   createBackgroundReviewHook,
   createInMemoryReviewCounterStore,
   evaluateReviewTriggers,
+  isSkillReviewSalient,
   type BackgroundReviewInput
 } from "../src/background-review.js";
 import type { AgentRunContext, AgentRunInput } from "../src/types.js";
@@ -23,14 +24,31 @@ function context(userId: string | null = "stark"): AgentRunContext {
 
 const response: ModelResponse = { id: "r1", model: "test/model", output: "ok" };
 const toolCall = { id: "t1", input: {}, name: "noop" } as unknown as ModelToolCall;
-const toolResult = {} as unknown as ToolExecutionResult;
+const okToolResult = { id: "t1", name: "noop", output: "ok", status: "completed" } as unknown as ToolExecutionResult;
+const failedToolResult = { error: "boom", id: "t1", name: "noop", output: "", status: "failed" } as unknown as ToolExecutionResult;
 const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("evaluateReviewTriggers", () => {
-  it("fires a channel only once its accrued count reaches its interval; <=0 disables", () => {
-    expect(evaluateReviewTriggers({ iters: 9, turns: 2 }, { memoryEveryTurns: 3, skillEveryIters: 10 })).toEqual({ reviewMemory: false, reviewSkill: false });
-    expect(evaluateReviewTriggers({ iters: 10, turns: 3 }, { memoryEveryTurns: 3, skillEveryIters: 10 })).toEqual({ reviewMemory: true, reviewSkill: true });
-    expect(evaluateReviewTriggers({ iters: 99, turns: 99 }, { memoryEveryTurns: 0, skillEveryIters: 0 })).toEqual({ reviewMemory: false, reviewSkill: false });
+  it("fires a channel only once its accrued count reaches its interval; <=0 disables (cadence-only, no salience)", () => {
+    expect(evaluateReviewTriggers({ iters: 9, toolFailures: 0, turns: 2 }, { memoryEveryTurns: 3, skillEveryIters: 10 })).toEqual({ reviewMemory: false, reviewSkill: false });
+    expect(evaluateReviewTriggers({ iters: 10, toolFailures: 0, turns: 3 }, { memoryEveryTurns: 3, skillEveryIters: 10 })).toEqual({ reviewMemory: true, reviewSkill: true });
+    expect(evaluateReviewTriggers({ iters: 99, toolFailures: 0, turns: 99 }, { memoryEveryTurns: 0, skillEveryIters: 0 })).toEqual({ reviewMemory: false, reviewSkill: false });
+  });
+
+  it("salience gate: at cadence, the SKILL channel needs a tool failure in the window; MEMORY is unaffected", () => {
+    const counters = { iters: 10, toolFailures: 0, turns: 3 };
+    const config = { memoryEveryTurns: 3, skillEveryIters: 10 };
+    // clean window (0 failures) → skill suppressed, memory still fires
+    expect(evaluateReviewTriggers(counters, config, { toolCalls: 10, toolFailures: 0 })).toEqual({ reviewMemory: true, reviewSkill: false });
+    // a failure in the window → skill fires
+    expect(evaluateReviewTriggers({ ...counters, toolFailures: 1 }, config, { toolCalls: 10, toolFailures: 1 })).toEqual({ reviewMemory: true, reviewSkill: true });
+    // salience can't manufacture a skill review before cadence is met
+    expect(evaluateReviewTriggers({ iters: 9, toolFailures: 5, turns: 3 }, config, { toolCalls: 9, toolFailures: 5 })).toMatchObject({ reviewSkill: false });
+  });
+
+  it("isSkillReviewSalient: true iff a tool failed in the window", () => {
+    expect(isSkillReviewSalient({ toolCalls: 10, toolFailures: 0 })).toBe(false);
+    expect(isSkillReviewSalient({ toolCalls: 10, toolFailures: 1 })).toBe(true);
   });
 });
 
@@ -38,10 +56,18 @@ describe("createInMemoryReviewCounterStore", () => {
   it("accumulates per user and resets only named fields", () => {
     const store = createInMemoryReviewCounterStore();
     store.increment("a", { iters: 4 });
-    expect(store.increment("a", { turns: 1, iters: 2 })).toEqual({ iters: 6, turns: 1 });
-    expect(store.increment("b", { turns: 1 })).toEqual({ iters: 0, turns: 1 }); // isolated per user
+    expect(store.increment("a", { turns: 1, iters: 2 })).toEqual({ iters: 6, toolFailures: 0, turns: 1 });
+    expect(store.increment("b", { turns: 1 })).toEqual({ iters: 0, toolFailures: 0, turns: 1 }); // isolated per user
     store.reset("a", { turns: true });
-    expect(store.increment("a", { turns: 0, iters: 0 })).toEqual({ iters: 6, turns: 0 }); // iters survived
+    expect(store.increment("a", { turns: 0, iters: 0 })).toEqual({ iters: 6, toolFailures: 0, turns: 0 }); // iters survived
+  });
+
+  it("accrues toolFailures and resets them with the skill (iters) channel", () => {
+    const store = createInMemoryReviewCounterStore();
+    store.increment("a", { iters: 1, toolFailures: 1 });
+    expect(store.increment("a", { iters: 1, toolFailures: 0 })).toEqual({ iters: 2, toolFailures: 1, turns: 0 });
+    store.reset("a", { iters: true, toolFailures: true });
+    expect(store.increment("a", {})).toEqual({ iters: 0, toolFailures: 0, turns: 0 });
   });
 });
 
@@ -71,17 +97,35 @@ describe("createBackgroundReviewHook", () => {
     expect(reviews).toHaveLength(1);
   });
 
-  it("fires the SKILL channel once accrued tool-iterations cross the threshold (hard tasks teach)", async () => {
+  it("fires the SKILL channel when a hard turn crosses the iter threshold AND had a tool failure (salience gate)", async () => {
     const reviews: BackgroundReviewInput[] = [];
     const hook = createBackgroundReviewHook({ memoryEveryTurns: 999, runReview: (i) => { reviews.push(i); }, skillEveryIters: 3 });
-    // a hard turn: 3 tool iterations, then completes
-    hook.afterTool!(context(), toolCall, toolResult);
-    hook.afterTool!(context(), toolCall, toolResult);
-    hook.afterTool!(context(), toolCall, toolResult);
+    // a hard turn: 3 tool iterations, one of which FAILED → salient → skill review
+    hook.afterTool!(context(), toolCall, okToolResult);
+    hook.afterTool!(context(), toolCall, failedToolResult);
+    hook.afterTool!(context(), toolCall, okToolResult);
     await hook.afterComplete!(context(), response);
     await flush();
     expect(reviews).toHaveLength(1);
     expect(reviews[0]).toMatchObject({ reviewMemory: false, reviewSkill: true });
+  });
+
+  it("does NOT fire the SKILL channel on a clean turn at threshold (no tool failure → not salient)", async () => {
+    const reviews: BackgroundReviewInput[] = [];
+    const hook = createBackgroundReviewHook({ memoryEveryTurns: 999, runReview: (i) => { reviews.push(i); }, skillEveryIters: 3 });
+    // 3 tool iterations, ALL successful → cadence met but window not salient → suppressed
+    hook.afterTool!(context(), toolCall, okToolResult);
+    hook.afterTool!(context(), toolCall, okToolResult);
+    hook.afterTool!(context(), toolCall, okToolResult);
+    await hook.afterComplete!(context(), response);
+    await flush();
+    expect(reviews).toEqual([]);
+    // and the cadence is NOT lost — the very next failing tool trips it
+    hook.afterTool!(context(), toolCall, failedToolResult);
+    await hook.afterComplete!(context(), response);
+    await flush();
+    expect(reviews).toHaveLength(1);
+    expect(reviews[0]).toMatchObject({ reviewSkill: true });
   });
 
   it("swallows a throwing review (fail-soft, never blocks the turn)", async () => {

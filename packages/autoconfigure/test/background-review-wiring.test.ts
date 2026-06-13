@@ -37,16 +37,27 @@ describe("buildBackgroundReviewHooks", () => {
     expect(calls).toEqual([]); // engine never touches auto-extract
   });
 
-  it("fires the SKILL arm on the tool-iteration trigger (hard tasks teach)", async () => {
+  it("fires the SKILL arm on a hard task at the iter trigger WITH a tool failure (salience gate)", async () => {
     const skillCalls: string[] = [];
     const env = { MUSE_BACKGROUND_REVIEW_ENABLED: "1", MUSE_BACKGROUND_REVIEW_MEMORY_TURNS: "999", MUSE_BACKGROUND_REVIEW_SKILL_ITERS: "2" };
     const hooks = buildBackgroundReviewHooks(env, { reviewSkill: async () => { skillCalls.push("skill"); } });
-    // two tool iterations (a "hard" task) then complete → skill trigger fires
-    hooks[0]!.afterTool!(ctx, {} as never, {} as never);
-    hooks[0]!.afterTool!(ctx, {} as never, {} as never);
+    // two tool iterations crossing the trigger, one of which FAILED → salient → skill fires
+    hooks[0]!.afterTool!(ctx, {} as never, { status: "completed" } as never);
+    hooks[0]!.afterTool!(ctx, {} as never, { status: "failed" } as never);
     hooks[0]!.afterComplete!(ctx, res);
     await flush();
     expect(skillCalls).toEqual(["skill"]);
+  });
+
+  it("does NOT fire the SKILL arm on a clean hard task (no tool failure → not salient)", async () => {
+    const skillCalls: string[] = [];
+    const env = { MUSE_BACKGROUND_REVIEW_ENABLED: "1", MUSE_BACKGROUND_REVIEW_MEMORY_TURNS: "999", MUSE_BACKGROUND_REVIEW_SKILL_ITERS: "2" };
+    const hooks = buildBackgroundReviewHooks(env, { reviewSkill: async () => { skillCalls.push("skill"); } });
+    hooks[0]!.afterTool!(ctx, {} as never, { status: "completed" } as never);
+    hooks[0]!.afterTool!(ctx, {} as never, { status: "completed" } as never);
+    hooks[0]!.afterComplete!(ctx, res);
+    await flush();
+    expect(skillCalls).toEqual([]);
   });
 
   it("fires the COMMITMENT + PREFERENCE arms on the memory (turn-count) trigger", async () => {

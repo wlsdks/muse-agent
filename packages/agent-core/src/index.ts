@@ -66,11 +66,13 @@ export {
   createBackgroundReviewHook,
   createInMemoryReviewCounterStore,
   evaluateReviewTriggers,
+  isSkillReviewSalient,
   type BackgroundReviewHookOptions,
   type BackgroundReviewInput,
   type ReviewCounters,
   type ReviewCounterStore,
   type ReviewDecision,
+  type ReviewSalience,
   type ReviewTriggerConfig
 } from "./background-review.js";
 export {
