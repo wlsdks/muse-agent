@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   synthesizeCouncilAnswer,
@@ -43,6 +43,18 @@ describe("verifyCouncilGrounding — RGV re-verification applied to the council 
       async () => { throw new Error("model unreachable"); }
     );
     expect(out).toBeNull();
+  });
+
+  it("fail-closes to null WITHOUT consulting the judge when the contributors' evidence is empty (a YES on nothing is a fabrication leak)", async () => {
+    const judge = vi.fn(async () => true);
+    const out = await verifyCouncilGrounding(
+      council("A synthesis with no backing reasoning.", "phone"),
+      "how should we launch?",
+      [{ peerId: "phone", reasoning: "   " }],
+      judge
+    );
+    expect(out).toBeNull();
+    expect(judge).not.toHaveBeenCalled();
   });
 
   it("assembles the evidence from the CONTRIBUTORS' reasoning text, not their ids", async () => {

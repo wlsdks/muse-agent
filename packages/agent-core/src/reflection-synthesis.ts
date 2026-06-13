@@ -185,6 +185,12 @@ export async function verifyReflectionsGrounding(
       .map((id) => sources.get(id))
       .filter((text): text is string => typeof text === "string" && text.length > 0)
       .join("\n");
+    // No cited source resolved ⇒ empty evidence ⇒ unverifiable. The judge is the
+    // only gate here (no deterministic rubric pre-gate), so a YES on "" would leak
+    // a baseless "dream". Fail-close WITHOUT consulting the judge.
+    if (evidence.trim().length === 0) {
+      continue;
+    }
     let supported: boolean;
     try {
       supported = await reverify({ answer: reflection.insight, evidence, query: REFLECTION_GROUNDING_QUERY });

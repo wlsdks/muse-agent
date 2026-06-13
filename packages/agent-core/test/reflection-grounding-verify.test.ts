@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   synthesizeReflections,
@@ -34,6 +34,13 @@ describe("verifyReflectionsGrounding — RGV re-verification applied to the refl
       throw new Error("model unreachable");
     });
     expect(out).toEqual([]);
+  });
+
+  it("fail-closes WITHOUT consulting the judge when no cited source resolves (empty evidence is unverifiable)", async () => {
+    const judge = vi.fn(async () => true);
+    const out = await verifyReflectionsGrounding([reflection("An insight citing a vanished source", "missing-id")], sources, judge);
+    expect(out).toEqual([]);
+    expect(judge).not.toHaveBeenCalled();
   });
 
   it("assembles the evidence the judge sees from the cited source TEXTS, not the ids", async () => {
