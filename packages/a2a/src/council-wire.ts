@@ -94,12 +94,20 @@ export function parseCouncilResponse(body: unknown): CouncilResponse | null {
   return { kind: "council-reasoning", fromPeerId, reasoning };
 }
 
+/** Bounded per-peer wait — so the orchestrator always terminates even when a peer's TCP
+ *  connects but the server never responds (MAST arXiv:2503.13657 coordination/termination
+ *  failure class). */
+export const DEFAULT_COUNCIL_TIMEOUT_MS = 30_000;
+
 export interface RequestCouncilReasoningOptions {
   readonly env: A2AEnv;
   readonly peer: A2APeer;
   readonly question: string;
   readonly fromPeerId: string;
   readonly fetchImpl?: typeof fetch;
+  /** Per-peer fetch deadline. Omit to use DEFAULT_COUNCIL_TIMEOUT_MS.
+   *  Values ≤ 0 are treated as "no timeout" (unsafe in production; for test use only). */
+  readonly timeoutMs?: number;
 }
 
 /**
@@ -111,16 +119,23 @@ export async function requestCouncilReasoning(options: RequestCouncilReasoningOp
   if (!enabled || options.question.trim().length === 0) return null;
   const signature = signCouncilRequest(options.fromPeerId, options.question, options.peer.secret);
   const fetchImpl = options.fetchImpl ?? fetch;
+  const effectiveTimeoutMs = options.timeoutMs ?? DEFAULT_COUNCIL_TIMEOUT_MS;
+  const controller = effectiveTimeoutMs > 0 ? new AbortController() : null;
+  const timer = controller ? setTimeout(() => controller.abort(), effectiveTimeoutMs) : null;
   try {
     const response = await fetchImpl(options.peer.url, {
       body: JSON.stringify(buildCouncilRequest(options.fromPeerId, options.question, randomUUID())),
       headers: { "content-type": "application/json", "x-muse-a2a-signature": signature },
-      method: "POST"
+      method: "POST",
+      signal: controller?.signal
     });
     if (!response.ok) return null;
     const parsed = parseCouncilResponse(await response.json());
     return parsed ? parsed.reasoning : null;
   } catch {
     return null;
+  } finally {
+    // Prevent the timer from outliving the fetch — avoids a dangling handle on the happy path.
+    if (timer !== null) clearTimeout(timer);
   }
 }

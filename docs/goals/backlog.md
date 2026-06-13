@@ -1248,6 +1248,9 @@ excluded when scoring).
   PLAYBOOK_RECENCY_HALF_LIFE_DAYS (30) via A/B vs the daemon's 30-day decay step. (fire 9 remainder, arXiv:0805.3415)
 - ✓ Playbook recency-discount remainder (c) wire nowMs into the cli embed-rank path (+extract testable module) — agent-core-cognition fire 10
 - ✓ JUDGE-DRILL (firesSinceDrill≥10): injected inert reinforcementVelocity → independent Opus judge correctly FAILed it → rolled back — agent-core-cognition fire 10
+- ✓ a2a council per-peer straggler timeout (MAST arXiv:2503.13657 termination) — hung peer no longer blocks the whole council — agent-core-cognition fire 11
+- ◦ **a2a council timeout remainder** — (a) wire an env override `MUSE_A2A_COUNCIL_TIMEOUT_MS` (needs A2AEnv widened in transport.ts) + thread `timeoutMs` through the commands-swarm requestReasoning closure; (fire 11 remainder)
+- ◦ **Council consensus-weighted contributor ranking** — Roundtable Policy (arXiv:2509.16839): synthesizeCouncilAnswer already computes per-member support (Jaccard/semantic) then discards it for ordering; rank the kept utterances by descending support so the highest-consensus reasoning leads the synthesis prompt (prompt-salience on the local model). Pure additive permutation over an already-computed signal; assembled-path asserts ordering reaches the prompt (not that the model "used" it). (scout fire 11, deferred for the a2a termination fix)
 - ✓→Done **Self-consistency consensus for the grounding reverify judge** — the live default-on
   `verifyGroundingWithReverify` decided weak→grounded upgrades on a SINGLE high-variance judge sample
   (arXiv:2510.27106 Rating Roulette: LLM judges "almost arbitrary in the worst case"). [DONE 2026-06-13,

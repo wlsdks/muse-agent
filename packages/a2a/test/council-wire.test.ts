@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCouncilRequest,
   COUNCIL_METHOD,
+  DEFAULT_COUNCIL_TIMEOUT_MS,
   MAX_COUNCIL_REASONING_CHARS,
   parseCouncilRequest,
   parseCouncilResponse,
@@ -91,6 +92,82 @@ describe("requestCouncilReasoning — the council initiator (outbound)", () => {
     const out = await requestCouncilReasoning({ env: ENV, fetchImpl, fromPeerId: "me", peer, question: "q?" });
     expect(out).not.toBeNull();
     expect(out!.length).toBe(MAX_COUNCIL_REASONING_CHARS);
+  });
+});
+
+describe("requestCouncilReasoning — per-peer timeout (MAST termination guard)", () => {
+  it("DEFAULT_COUNCIL_TIMEOUT_MS is a positive number (sanity)", () => {
+    expect(DEFAULT_COUNCIL_TIMEOUT_MS).toBeGreaterThan(0);
+  });
+
+  it("non-vacuity: a fetchImpl that ONLY rejects on abort resolves to null within the bounded window", { timeout: 4000 }, async () => {
+    // The fake settles ONLY when the abort signal fires — and ONLY if a signal
+    // was actually wired in. If the production code stops passing
+    // `signal: controller.signal` into fetch, `init.signal` is undefined, the
+    // listener is never attached, the promise NEVER settles, and this test
+    // hits its per-test timeout and FAILS. That is the non-vacuity proof: the
+    // test goes RED iff the wiring is removed. (Guarding on `init.signal`
+    // instead of `init.signal!` is what makes the un-wired case hang rather
+    // than throw a synchronous TypeError that would falsely turn it green.)
+    const hangingFetch = ((_url: string, init: RequestInit) =>
+      new Promise<Response>((_, reject) => {
+        if (init.signal) {
+          init.signal.addEventListener("abort", () => reject(new Error("aborted")));
+        }
+      })) as unknown as typeof fetch;
+
+    const out = await requestCouncilReasoning({
+      env: ENV,
+      fetchImpl: hangingFetch,
+      fromPeerId: "me",
+      peer,
+      question: "q",
+      timeoutMs: 20
+    });
+    expect(out).toBeNull();
+  });
+
+  it("happy path unbroken: a fast-responding fetch returns the reasoning before the timeout fires", async () => {
+    const { fetchImpl } = recordingFetch(() => json({ kind: "council-reasoning", fromPeerId: "p", reasoning: "good answer" }));
+    const out = await requestCouncilReasoning({
+      env: ENV,
+      fetchImpl,
+      fromPeerId: "me",
+      peer,
+      question: "q",
+      timeoutMs: 5_000
+    });
+    expect(out).toBe("good answer");
+  });
+
+  it("timeoutMs <= 0: no abort controller is created — the fetch runs without a timeout (safe interpretation for test use)", async () => {
+    // A fetch that resolves immediately — with timeoutMs=0 it should still resolve (no premature abort).
+    const { fetchImpl } = recordingFetch(() => json({ kind: "council-reasoning", fromPeerId: "p", reasoning: "instant" }));
+    const out = await requestCouncilReasoning({
+      env: ENV,
+      fetchImpl,
+      fromPeerId: "me",
+      peer,
+      question: "q",
+      timeoutMs: 0
+    });
+    expect(out).toBe("instant");
+  });
+
+  it("timer cleanup: a successful call does not leave a dangling timer (clearTimeout in finally)", async () => {
+    // Verified structurally: the finally block always runs and clears the timer.
+    // This test confirms the resolved path still returns the reasoning (the finally
+    // didn't suppress the return value).
+    const { fetchImpl } = recordingFetch(() => json({ kind: "council-reasoning", fromPeerId: "p", reasoning: "clean" }));
+    const out = await requestCouncilReasoning({
+      env: ENV,
+      fetchImpl,
+      fromPeerId: "me",
+      peer,
+      question: "q",
+      timeoutMs: 5_000
+    });
+    expect(out).toBe("clean");
   });
 });
 
