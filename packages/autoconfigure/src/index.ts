@@ -51,6 +51,7 @@ import {
   createFeedsSearchTool,
   createLoopbackMcpMuseTools,
   createOnThisDayTool,
+  createObjectivesListTool,
   createRememberFactTool,
   createWeatherTool,
   createWorldTimeTool,
@@ -715,6 +716,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => [createWeatherTool(env.MUSE_WEATHER_LOCATION?.trim() ? { defaultLocation: env.MUSE_WEATHER_LOCATION.trim() } : {})],
     () => [createWorldTimeTool()],
     () => [createRememberFactTool({ store: userMemoryStore })],
+    () => [createObjectivesListTool({ objectives: () => readObjectives(resolveObjectivesFile(env)) })],
     () => [createOnThisDayTool({ datedNotes: () => collectDatedNotes(notesDir) })],
     () => [createFeedsSearchTool({ feedEntries: () => readFeedKnowledgeEntries(resolveFeedsFile(env), 200) })],
     () => [createOverdueContactsTool({
