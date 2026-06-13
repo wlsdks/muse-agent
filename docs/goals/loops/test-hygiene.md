@@ -65,7 +65,15 @@ ratchet: testFiles 929→930 (새 파일 1) · netCoverage +2 guard clause (veri
 ## fire 7 · 2026-06-13 · skill v1.14.0 · dedc0c4d
 meta: kind=prune · pkg=@muse/model (+baseline byte-hygiene fix) · verdict=PASS · firesSinceDrill=7
 ratchet: testFiles 932→931 (−1 type-only 삭제, judge 승인) · netCoverage 0 (tsc+test/model이 커버) · fabrication 0 · pnpm check FULL GREEN
-- **무엇:** (1) PRUNE `model/src/index.test.ts` 삭제 — `ModelResponse.citations`/`ModelEvent` union/`WebSearchCitation`를 구성하고 **방금 쓴 값을 다시 읽어 assert하는 type-conformance 동어반복** 3케이스. (2) ①-baseline 회귀 수정: 전체 레포 `pnpm check`를 막던 byte-hygiene 위반 2건(**differentiation 루프 파일** `scripts/eval-policy-symmetry.mjs:36` raw U+200B + `docs/goals/loops/differentiation.md:262` backtick 안 raw U+200B)을 `​` escape로(값 보존).
+- **무엇:** (1) PRUNE `model/src/index.test.ts` 삭제 — `ModelResponse.citations`/`ModelEvent` union/`WebSearchCitation`를 구성하고 **방금 쓴 값을 다시 읽어 assert하는 type-conformance 동어반복** 3케이스. (2) ①-baseline 회귀 수정: 전체 레포 `pnpm check`를 막던 byte-hygiene 위반 2건(**differentiation 루프 파일** `scripts/eval-policy-symmetry.mjs:36` raw U+200B + `docs/goals/loops/differentiation.md:262` backtick 안 raw U+200B)을 `\u200b` escape로(값 보존).
 - **왜:** type-tautology는 컴파일러가 이미 보장(`tsc`) + runtime citation 동작은 `test/model.test.ts`(count·items·empty-no-fabrication)·`provider-wire.test.ts`가 이중 커버 → 삭제해도 손실 0. byte 위반은 모든 루프 게이트를 red로 막는 baseline 회귀(① "그게 이번 이터레이션").
-- **어떻게-증명:** PRUNE — `provider-shared.ts:204` citations emit를 `items: []`로 변형 시 `test/model.test.ts`가 RED(살아남는 행동 커버 입증), 복원 green. ④b judge가 tsc-적합성이 provider 소스들에·runtime이 test/model+provider-wire에 있음 재확인 후 **VERDICT: PASS**. byte-fix — `​`는 런타임 U+200B 그대로(len 1, eval 입력값 불변), byte-hygiene 테스트 0 offender.
+- **어떻게-증명:** PRUNE — `provider-shared.ts:204` citations emit를 `items: []`로 변형 시 `test/model.test.ts`가 RED(살아남는 행동 커버 입증), 복원 green. ④b judge가 tsc-적합성이 provider 소스들에·runtime이 test/model+provider-wire에 있음 재확인 후 **VERDICT: PASS**. byte-fix — `\u200b`는 런타임 U+200B 그대로(len 1, eval 입력값 불변), byte-hygiene 테스트 0 offender.
 - **리스크:** 소스(런타임) 무변경. byte-fix가 다른 루프(differentiation) 파일을 건드림 — 1-char escape라 내용 충돌 위험 낮음(그쪽 다음 머지가 흡수). LESSON: 동시 루프가 raw forbidden 바이트를 main에 흘리면 전체 게이트가 red → 어느 루프든 먼저 만난 fire가 escape로 unblock하는 게 맞음(byte-hygiene는 공유 floor).
+
+## fire 8 · 2026-06-13 · skill v1.14.0 · 1efef75e
+meta: kind=add · pkg=@muse/agent-core (+self byte-hygiene fix) · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles 938→938 (케이스 +1, 파일수 불변) · netCoverage +1 branch (rest.length===0) · fabrication 0 · pnpm check FULL GREEN
+- **무엇:** (1) ADD `createToolResultQualityAuditFilter`의 마지막 미커버 분기 `rest.length===0`(fire 6가 backlog에 남긴 known-gap) — 사과가 출력 전체(뒤에 본문 없음)일 때 필터가 빈 '조회한 결과를…' 헤더로 둔갑시키지 않고 **원문 보존**. (2) self-fix: fire-7 저널/backlog에서 byte-fix를 *설명*하며 backtick 안에 raw U+200B를 또 붙여넣은 내 위반 3곳(test-hygiene.md:68/70, backlog.md:123)을 escape 텍스트로 교정.
+- **왜:** 이 필터는 grounding 인접 정직성 게이트 — 사과-only 응답을 내용 없는 가짜 '결과 정리' 헤더로 바꾸면 사용자를 오도. fire 6의 2개 게이트 + 이번 1개 분기로 필터 분기 커버 완결.
+- **어떻게-증명(MUTATION-FIRST):** `if (rest.length === 0) return response`를 `if (false)`로 변형 시 새 케이스만 RED(출력이 '조회한 결과를 정리해드릴게요.\\n\\n' 빈 헤더로 둔갑), 복원 4/4 GREEN. ④b judge가 케이스가 `!leadingApology`가 아닌 정확히 `rest===0` 분기를 침(extractApologyLead가 전체 문단 반환→rest="") + 형제/통합 테스트 미커버 재확인 후 **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경. ★LESSON(반복): byte-hygiene 위반을 *문서화*할 때 raw 바이트를 또 붙여넣지 말 것 — 저널/backlog에도 escape 텍스트(`\\u200b`)만. fire 7이 differentiation 실수를 고치며 같은 실수를 저질러 fire 8이 self-fix.
