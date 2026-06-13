@@ -308,10 +308,17 @@ describe("retainPlaybookEntries — reward-/recency-weighted eviction (B1 §3)",
 
   it("recordPlaybookStrategy applies weighted eviction: a reinforced old entry survives an overflow of neutral ones", async () => {
     const file = freshFile();
-    await recordPlaybookStrategy(file, e("champion", 5)); // oldest, high reward
-    for (let i = 0; i < MAX_PLAYBOOK_ENTRIES + 20; i += 1) {
-      await recordPlaybookStrategy(file, e(`filler${i.toString()}`, 0));
-    }
+    // Seed AT capacity in one write: champion (high reward) is the OLDEST entry,
+    // the rest neutral. recordPlaybookStrategy then pushes one over the cap, so the
+    // persisted eviction must drop a neutral filler — never the reinforced champion —
+    // purely by weight, not age. (One seed-write + one record-write replaces 121
+    // sequential disk round-trips that flaked at the 5000ms boundary; same assertion.)
+    const seeded: PlaybookEntry[] = [
+      e("champion", 5),
+      ...Array.from({ length: MAX_PLAYBOOK_ENTRIES - 1 }, (_, i) => e(`filler${i.toString()}`, 0)),
+    ];
+    await writePlaybook(file, seeded);
+    await recordPlaybookStrategy(file, e("overflow", 0)); // 101 entries → eviction back to MAX
     const after = await readPlaybook(file);
     expect(after).toHaveLength(MAX_PLAYBOOK_ENTRIES);
     expect(after.some((x) => x.id === "champion")).toBe(true); // not evicted by sheer age

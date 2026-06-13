@@ -51,6 +51,11 @@ describe("formatCoarseAge", () => {
     expect(formatCoarseAge(90 * DAY)).toBe("3mo ago");
     expect(formatCoarseAge(400 * DAY)).toBe("1.1y ago");
   });
+
+  it("drops the decimal once it is 2+ years (whole years read cleaner than '2.2y')", () => {
+    expect(formatCoarseAge(800 * DAY)).toBe("2y ago"); // 2.19y → toFixed(0)
+    expect(formatCoarseAge(1100 * DAY)).toBe("3y ago"); // 3.01y → toFixed(0)
+  });
 });
 
 describe("formatStalenessWarning", () => {
