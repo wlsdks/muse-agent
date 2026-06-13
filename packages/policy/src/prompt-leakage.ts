@@ -1,3 +1,4 @@
+import { escapeRegex } from "@muse/shared";
 import { normalizeForInjectionDetection } from "./injection-patterns.js";
 
 export interface PromptLeakageOptions {
@@ -120,6 +121,3 @@ function createSectionMarkerPattern(markers: readonly string[]): RegExp {
   return new RegExp(`\\[(${markers.map(escapeRegex).join("|")})\\]`, "i");
 }
 
-function escapeRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}

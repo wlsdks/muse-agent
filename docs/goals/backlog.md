@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ cohere @muse/shared: DRY'd escapeRegex (4 hand-rolled copies) → canonical @muse/shared escapeRegex + deduped cache/model/policy (agent-core left, hot); +OUTCOME test; dups 4→2 — codebase-quality fire 59
 - ✓ dead-code @muse/cli: de-exported 5 internal-only helpers (defangMemoryValue/looksLikeImage/shortMessageId/logPendingApproval/readActivity) — knip-clean, grep-verified no external/test importer; skipped friendlyFetchError(test)/isNodeError(ext) false-positives — codebase-quality fire 58
 - ⚠ tool-hardening delivery-layer vein EXHAUSTED (fire 96 honest-close): fire 95 fixed the one bug (mutation-intent substring false-positive); fire 96 verified the rest of the tool-delivery/security layer clean — @muse/tools exposure (select/relevance filter/comparator/maxTools), MCP projection (createLoopbackMcpMuseTools risk mapping), MCP allowlist (McpManager register+connect). Both veins now examined (per-handler fire 94, delivery fire 95/96). Next candidates: 진안-blocked levers (MCP-risk-annotation default posture, undo/veto tool, email/handle arg-grounding=agent-core HOT); external-MCP tool projection schema (deeper); or a new .muse/runs failure cluster.
 

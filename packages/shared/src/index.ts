@@ -268,3 +268,8 @@ export function levenshteinDistance(a: string, b: string): number {
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
+
+/** Escape a string's regex metacharacters so it matches literally inside a `RegExp`. */
+export function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
