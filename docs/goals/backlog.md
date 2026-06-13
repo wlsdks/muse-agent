@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ Decompose commands-doctor calibration sub-command -> commands-doctor-calibration.ts (1073->955 LOC) — codebase-quality fire 18
 - ✓ isRecord dedup @muse/auth + JUDGE-DRILL (verifier caught gutted fabrication-WHY) — codebase-quality fire 17
 
 - ⚠ **differentiation loop commits raw zero-width/homoglyph bytes** → recurring @muse/shared byte-hygiene gate failures (fire 16 fixed 2: eval-policy-symmetry.mjs + differentiation.md). Their injection-test fixtures/journal should use \uNNNN escapes. Cross-loop — their process to fix.
@@ -121,7 +122,7 @@
 - ✓ ADD SSRF coverage: `assertPublicHttpUrlSync` sync gate (mcp/web-url-guard.ts) had zero direct tests — 5 cases (protocol/blocked-host/private-addr/ok), each guard clause mutation-pinned — test-hygiene fire 5
 - ✓ ADD `createToolResultQualityAuditFilter` gating: direct unit test pins the verified-source + tool-ran gates (an honest apology survives when no source backs a rewrite); each clause isolated + mutation-pinned — test-hygiene fire 6
 - ✓ PRUNE `model/src/index.test.ts` (3 type-conformance tautologies — assert what was just written; tsc + test/model.test.ts + provider-wire cover the real shape/behavior) — test-hygiene fire 7
-- ✓ FIX byte-hygiene baseline regression (raw U+200B in `scripts/eval-policy-symmetry.mjs:36` + `docs/goals/loops/differentiation.md:262`, both differentiation-loop files) → `​` escape, value-preserving; unblocked repo-wide `pnpm check` — test-hygiene fire 7
+- ✓ FIX byte-hygiene baseline regression (raw U+200B in `scripts/eval-policy-symmetry.mjs:36` + `docs/goals/loops/differentiation.md:262`, both differentiation-loop files) → `\\u200B` escape, value-preserving; unblocked repo-wide `pnpm check` — test-hygiene fire 7
 - ✓ `muse.tasks.search` matches tags — a task tagged "work" (word not in title/notes) is now found by searching "work" (completes the fire-51 tag story: list FILTERS by tag, search now FINDS by tag) + JUDGE-DRILL (verifier caught a deliberately-inert version) — tool-hardening fire 53
 - ✓ `week_agenda` agent tool — "what's my week look like?" ONE merged view of events+tasks+birthdays by day (muse week was CLI-only; groupWeekAgenda moved to @muse/autoconfigure, CLI re-exports) — tool-hardening fire 54
 - ✓ `recent_actions` agent tool — "what have you done for me?" lists Muse's autonomous action log (performed/refused/failed, what+why+when) most-recent-first; was CLI-only (muse actions); internal userId/id/prevHash not leaked — tool-hardening fire 63
@@ -149,6 +150,7 @@
 - ✓ L5 action-log tamper-evidence proof battery — `eval:action-log-tamper` proves every autonomous action (performed+refused) is sealed in a genesis-anchored SHA-256 chain: edit/deletion/reorder caught at a precise index, refused actions chained, undo extends (never breaks) the chain — an integrity guarantee rivals' snapshot-rollback (hermes) / un-undoable promoted memory (openclaw #62184) lack; imports @muse/mcp read-only, deterministic, no Ollama — differentiation fire 11
 - ✓ L6 deterministic-safety-as-code proof battery — `eval:policy-symmetry` proves @muse/policy guards are model-independent + language-symmetric: injection caught identically in EN/KO/CN, zero-width/homoglyph/HTML-entity obfuscation normalized then caught, PII masked non-destructively (vs hermes #5322 which writes *** into source files), benign prose not over-blocked; imports @muse/policy read-only, deterministic, no Ollama — differentiation fire 12
 - ✓ differentiation proofs mechanically defended — `differentiationBatteries` ratchet in `pnpm self-eval` counts the 4 proof batteries (L2/L4/L5/L6 marker), so deleting one fails the build; `pnpm eval:differentiation` bundles all 4 into one command — the edge evidence can't silently rot (egressGuards/groundedSurfaces pattern) — differentiation fire 13
+- ✓ L7 outbound fail-close proof battery — `eval:consent-fail-close` proves `performConsentedAction` (@muse/mcp) fail-closes every outbound vector (no-consent/scope-mismatch/host-mismatch/veto/timeout → ZERO external effect, fetch never called) while only a recorded scoped consent sends the credential; contract-faithful HTTP fake, deterministic; auto-folded into differentiationBatteries (4→5) — differentiation fire 14
 
 ## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
 
