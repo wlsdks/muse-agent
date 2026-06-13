@@ -10,6 +10,37 @@
 
 ## Levers (newest first)
 
+### L6 — Safety guards are deterministic, model-independent, multilingual code over the live turn — not output-only, English-only, or a bolt-on (fire 12)
+
+Muse's `@muse/policy` runs the SAME normalize-then-match code on every input
+regardless of which model is behind it: `normalizeForInjectionDetection` folds
+zero-width (incl. the U+E0000 TAG range), homoglyphs, and named/numeric HTML
+entities to a canonical form, then `findInjectionPatterns` matches 50+ EN/**KO**/CN/JP/ES
+patterns (credential-exfil, cross-user, skeleton-key, prompt-extraction), and
+`findPii`/`maskPii` detect + **non-destructively** mask KR national-id/phone + intl
+SSN/IBAN/card. So a credential-exfil an 8B model obeys in Korean but refuses in
+English (a recorded language-asymmetry finding) is caught identically by code, and an
+obfuscated SSN can't slip the regex — no model in the loop. Rivals are structurally
+narrower: hermes's deterministic scanner is **English-focused + scoped to context
+files** (its SECURITY.md says "prompt injection per se is not a vulnerability"), and
+its PII redaction is output-only, off-by-default ([#17691](https://github.com/NousResearch/hermes-agent/issues/17691)),
+config-ignored ([#11009](https://github.com/NousResearch/hermes-agent/issues/11009)),
+and **destructive — it writes `***` into source files on disk** ([#5322](https://github.com/NousResearch/hermes-agent/issues/5322));
+openclaw **outsources defense to a bolt-on** (NVIDIA NeMo Guardrails, [NemoClaw](https://ibl.ai/service/nemoclaw))
+whose defenses "largely assume stateless, single-turn interactions" ([arXiv 2603.11619](https://arxiv.org/pdf/2603.11619),
+[CrowdStrike](https://www.crowdstrike.com/en-us/blog/what-security-teams-need-to-know-about-openclaw-ai-super-agent/)).
+A throughput/breadth cloud agent has no product reason to pay for in-core multilingual
+normalize-then-match over every live turn; for a single-user "it can't tell anyone"
+assistant, that the guard is deterministic code (CLAUDE.md: "security is deterministic
+code, never prompt instruction") and language-symmetric IS the trust contract.
+
+**Shipped (fire 12):** `scripts/eval-policy-symmetry.mjs` (`pnpm eval:policy-symmetry`)
+— a deterministic battery (no Ollama) proving cross-language injection symmetry
+(EN/KO/CN), obfuscation-defeat (zero-width / homoglyph / HTML-entity normalized then
+caught), obfuscated-PII detection, non-destructive masking, and no over-block, importing
+`@muse/policy`'s already-exported guards read-only. (Honest scope: proves the guard's
+properties, not its wiring into every live surface — a code-property proof like L2/L4/L5.)
+
 ### L5 — Every autonomous action is sealed into a tamper-evident hash chain; silent rewrite of the agent's own history is detectable in code (fire 11)
 
 Muse hash-chains every logged autonomous action — performed AND refused — into a
