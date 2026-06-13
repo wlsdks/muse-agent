@@ -528,6 +528,61 @@ export const EPISODIC_INHIBITION_STRENGTH = 0.5;
 // almost certainly a true relevance boundary. (CAR arXiv:2511.14769)
 export const EPISODIC_CLUSTER_DROP_RATIO = 0.5;
 
+// WHY 0.92: Mem0 near-equivalence threshold (arXiv:2504.19413, Chhikara et al. 2025).
+// Conservative so only TRUE near-duplicates (two summaries of the same decision,
+// near-identical wording) collapse; a related-but-distinct pair (cosine ~0.6) keeps
+// both. Distinct from lateral-inhibition (which DEMOTES the 2nd dup's SCORE but
+// never frees the slot — iterates the pre-sorted list and a demoted item still
+// occupies a position) and CAR (which detects a SCORE-SEQUENCE cliff, not CONTENT
+// duplication between two adjacent high scores). Placed BEFORE CAR so adaptiveK
+// is computed on the deduplicated list, freeing a slot for a distinct episode.
+export const EPISODIC_CONSOLIDATION_THRESHOLD = 0.92;
+
+/**
+ * Retrieval-time near-duplicate consolidation (Mem0, arXiv:2504.19413).
+ *
+ * Walks `scored` high→low (already sorted); for each candidate computes the max
+ * cosine similarity to every already-kept episode. If that max is ≥ threshold the
+ * candidate is the lower-ranked near-duplicate and is dropped (consolidated into
+ * the stronger-ranked kept one). Otherwise it is kept.
+ *
+ * SELECTION-ONLY: only drops a near-identical lower-ranked duplicate; never adds a
+ * below-minScore episode, never fabricates, never reorders by anything but the
+ * existing sort. Fail-soft: empty map OR a candidate/selected missing a vec →
+ * 0 similarity → never falsely collapses; pure and deterministic, never throws.
+ */
+export function consolidateNearDuplicates(
+  scored: readonly EpisodicMatch[],
+  narrativeVecs: ReadonlyMap<string, readonly number[]>,
+  threshold = EPISODIC_CONSOLIDATION_THRESHOLD
+): EpisodicMatch[] {
+  if (narrativeVecs.size === 0) {
+    return [...scored];
+  }
+  const kept: EpisodicMatch[] = [];
+  for (const candidate of scored) {
+    const candVec = narrativeVecs.get(candidate.sessionId);
+    if (!candVec) {
+      kept.push(candidate);
+      continue;
+    }
+    let maxCos = 0;
+    for (const sel of kept) {
+      const selVec = narrativeVecs.get(sel.sessionId);
+      if (selVec) {
+        const sim = cosineSimilarity(candVec, selVec);
+        if (sim > maxCos) {
+          maxCos = sim;
+        }
+      }
+    }
+    if (maxCos < threshold) {
+      kept.push(candidate);
+    }
+  }
+  return kept;
+}
+
 /**
  * Adaptive top-k cutoff via cluster-transition detection (CAR, arXiv:2511.14769).
  *
@@ -797,9 +852,10 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
       });
     }
     scored.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
-    const adaptiveK = selectByClusterTransition(scored.map((m) => m.similarity ?? 0), { topK: this.topK });
+    const consolidated = consolidateNearDuplicates(scored, narrativeVecs);
+    const adaptiveK = selectByClusterTransition(consolidated.map((m) => m.similarity ?? 0), { topK: this.topK });
     const strength = narrativeVecs.size > 0 ? EPISODIC_INHIBITION_STRENGTH : 0;
-    const top = applyLateralInhibition(scored, narrativeVecs, {
+    const top = applyLateralInhibition(consolidated, narrativeVecs, {
       topK: adaptiveK,
       minScore: this.minScore,
       inhibitionStrength: strength

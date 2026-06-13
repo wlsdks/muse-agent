@@ -132,8 +132,10 @@ export {
 } from "./associative-recall.js";
 export {
   applyLateralInhibition,
+  consolidateNearDuplicates,
   cosineSimilarity,
   EPISODIC_CLUSTER_DROP_RATIO,
+  EPISODIC_CONSOLIDATION_THRESHOLD,
   EPISODIC_INHIBITION_STRENGTH,
   EmbeddingEpisodicRecallProvider,
   selectByClusterTransition,
