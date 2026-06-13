@@ -12,6 +12,7 @@
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { isRecord } from "@muse/shared";
 import { join } from "node:path";
 
 import { resolveNotesDir } from "@muse/autoconfigure";
@@ -33,7 +34,6 @@ interface Turn {
   readonly text: string;
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const asArray = (v: unknown): readonly unknown[] => (Array.isArray(v) ? v : []);
 
 // ChatGPT/Claude exports come either as a bare top-level array OR wrapped as

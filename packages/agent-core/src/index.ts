@@ -352,6 +352,11 @@ export {
   type TelemetrySummary,
   type TelemetrySummaryOptions
 } from "./telemetry-aggregator.js";
+export {
+  DEFAULT_CLAIM_SUPPORT_FLOOR,
+  screenClaimsBySemanticSupport,
+  type ClaimSupportScreen
+} from "./claim-support-screen.js";
 
 export {
   StepBudgetTracker,

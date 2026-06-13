@@ -52,11 +52,13 @@ public enum MuseBridge {
 
     /// Extract the reply from `muse chat --json` (`response`) — or `ask --json`
     /// (`answer`) — stdout. Falls back to `cleanAnswer` (ANSI/whitespace strip)
-    /// if the output isn't the expected JSON, so a CLI change degrades gracefully.
+    /// ONLY when the output isn't the expected JSON, so a CLI change degrades
+    /// gracefully. When it IS the expected JSON but carries no answer (a model
+    /// hiccup), return "" so the empty-answer UX fires — never leak the raw JSON
+    /// object into the bubble (or have the Speaker read it aloud).
     public static func parseAnswer(_ raw: String) -> String {
         if let data = raw.data(using: .utf8), let decoded = try? JSONDecoder().decode(ChatJSON.self, from: data) {
-            let text = (decoded.response ?? decoded.answer ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !text.isEmpty { return text }
+            return (decoded.response ?? decoded.answer ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         }
         return cleanAnswer(raw)
     }

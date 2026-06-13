@@ -330,6 +330,56 @@ describe("verifyGroundingPerClaim — surgically drop only the unsupported claim
   });
 });
 
+describe("verifyGroundingPerClaim — suspectClaims pre-filter (MiniCheck, arXiv:2404.10774)", () => {
+  const ev = [match("notes", "Mina owns pricing. The budget is unspecified.", 0.9)];
+
+  it("calls judge ONLY on the suspect claim — cap/escalation parity: 1 of 3 claims judged", async () => {
+    const claims = "Mina owns pricing. The team is five. The budget was 2,000,000 KRW.";
+    let judgeCallCount = 0;
+    const judge = async ({ answer }: { answer: string }): Promise<boolean> => {
+      judgeCallCount += 1;
+      return !answer.toLowerCase().includes("budget");
+    };
+    // Only the "budget" sentence is suspect; the other two are in the supported set.
+    const suspectClaims = new Set(["The budget was 2,000,000 KRW."]);
+    const out = await verifyGroundingPerClaim(claims, ev, "who owns what?", judge, { suspectClaims });
+    expect(judgeCallCount).toBe(1);
+    expect(out.dropped).toBe(1);
+    expect(out.answer).toContain("Mina owns pricing");
+    expect(out.answer).toContain("I'm not sure about");
+  });
+
+  it("back-compat: absent suspectClaims → ALL claims judged (original behavior)", async () => {
+    let judgeCallCount = 0;
+    const judge = async (): Promise<boolean> => {
+      judgeCallCount += 1;
+      return true;
+    };
+    await verifyGroundingPerClaim("Claim one. Claim two. Claim three.", ev, "q", judge);
+    expect(judgeCallCount).toBe(3);
+  });
+
+  it("all-supported answer with no suspects → ZERO judge calls (the cheap common case)", async () => {
+    let judgeCallCount = 0;
+    const judge = async (): Promise<boolean> => {
+      judgeCallCount += 1;
+      return true;
+    };
+    const suspectClaims = new Set<string>(); // empty — no suspects
+    await verifyGroundingPerClaim("Mina owns pricing. The team is three.", ev, "q", judge, { suspectClaims });
+    expect(judgeCallCount).toBe(0);
+  });
+
+  it("floor monotonicity: the refiner can only drop, never upgrade — output is byte-identical when nothing is dropped", async () => {
+    const answer = "Mina owns pricing. The team is three.";
+    const judge = async (): Promise<boolean> => true;
+    const suspectClaims = new Set<string>();
+    const out = await verifyGroundingPerClaim(answer, ev, "q", judge, { suspectClaims });
+    expect(out.dropped).toBe(0);
+    expect(out.answer).toBe(answer);
+  });
+});
+
 // --- judgeConsensus pure helper (arXiv:2203.11171 self-consistency; arXiv:2510.27106 intra-rater variance) ---
 
 describe("judgeConsensus — unanimous fail-close aggregator", () => {

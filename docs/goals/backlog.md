@@ -1,5 +1,13 @@
 # Muse dev backlog — the living ledger
 
+- ◦ **Decompose commands-doctor check-cluster → sibling** — fire 14 extracted config-classifiers; the LocalCheck-returning health checks (modelEnvCheck/localOnlyCheck/ollamaPerfPostureCheck/selfLearningCheck/notesIndexHealth/episodeIndexHealth/embedModelCheck…) are a further cohesive cluster to extract (commands-doctor still ~1121 LOC).
+- ✓ Decompose commands-doctor config-classifiers → commands-doctor-config.ts — codebase-quality fire 14
+
+
+- ◦ **Consolidate remaining 8 isRecord dups → @muse/shared** — tools(×2)/auth/voice/model/agent-core/autoconfigure/api each hand-roll isRecord; migrate per-package (re-export the exported ones). fire 13 did @muse/shared canonical + apps/cli (3). 
+- ✓ isRecord canonical → @muse/shared + apps/cli 3 dups consolidated — codebase-quality fire 13
+
+
 ## ◦ Open — @muse/recall extraction (codebase-quality loop)
 
 - ✓ Relocate RecallHit into @muse/recall + move buildAskConnections — codebase-quality fire 9
@@ -53,7 +61,7 @@
 
 **ADD — genuinely uncovered high-value (security / grounding first):**
 - ◦ ★ **`createCitationStreamFilter` (agent-core, knowledge-recall/response path) has ZERO tests** — the grounding floor's STREAMING citation gate (the fix behind [[project_injection_defense]]'s "fabricated [from X] no longer flashes"); no regression test exists. (audit agent-core)
-- ◦ ★ **`assertPublicHttpUrlSync` (mcp/web-url-guard.ts) — SSRF guard sync path untested** — `file://`, `http://127.0.0.1`, `http://[::1]`, `http://metadata.internal` must block without DNS; none asserted (async twin is tested). Security gate. (audit mcp)
+- ✓ DONE (fire 5) **`assertPublicHttpUrlSync` SSRF sync gate** — covered: file://·malformed·localhost·metadata.internal·127.0.0.1·[::1]·169.254 all blocked, public https passes; each guard clause mutation-pinned.
 - ◦ **`groundToolArguments` nested-object multi-hop branch** (agent-core) — anti-fabrication gate untested on nested mixed grounded/fabricated leaves. (audit agent-core)
 - ◦ **`createLlmClassificationInputGuard` provider-throws fail-close** (agent-core/guards.ts) — classifier-outage path asserts no `GUARD_ERROR`/fail-close at unit level. (audit agent-core)
 - ◦ **`createToolResultQualityAuditFilter` early-return branches** (agent-core) — empty toolsUsed / empty verifiedSources / empty-remainder pass-throughs uncovered. (audit agent-core)
@@ -74,6 +82,7 @@
 - ✓ distill-queue drain-idempotency + grounding-fence invariants pinned — the unattended distill-consumer's "dud/fail-soft event is drained not jammed, writes zero fabricated strategies" safety guarantees were untested; added 2 mutation-verified OUTCOME tests over the real file-backed stores — grounding-integrity fire 2
 - ✓ untrusted-only provenance parity on the chat surface — extended fire 1's defense to `finalizeGatedChatAnswer` (every conversational surface's shared pipeline): toolEvidence now tagged `trusted:false` + `untrustedOnlyChatNotice` cue when a faithful chat answer rests only on untrusted tool sources; purely additive, fabrication floor untouched — grounding-integrity fire 3
 - ✓ fail-close empty-evidence on council + reflection judge gates — verifyCouncilGrounding/verifyReflectionsGrounding called the judge with empty evidence and KEPT the claim on YES (fail-OPEN floor leak, no deterministic pre-gate); now fail-close without consulting the judge when evidence is empty (red-without-fix verified) — grounding-integrity fire 4
+- ✓ learn-queue lost-update fix — markLearnEventsDone (read-modify-write) and enqueueLearnEvent (appendFile) ran without a mutex, so a correction enqueued during a drain was clobbered (silently never learned, unattended path); wrapped BOTH in the shared per-file withFileMutationQueue (red-without-fix verified; wrapping only the drain is insufficient) — grounding-integrity fire 5
 
 <!-- Going-forward: `- ✓ <item title> — <slug> fire N` so the scout dedups without the verbose block. -->
 - ✓ Adaptive-k score-gap recall cutoff (trim grounding-window decoys, floor-neutral; arXiv:2506.08479) — agent-core-cognition fire 1
@@ -82,6 +91,7 @@
 - ✓ desktop companion stale default model: `OllamaHealth.requiredModel` qwen3:8b→gemma4:12b + `.notRunning` guidance interpolates requiredModel (was health-checking/onboarding the wrong model vs CLI's gemma4:12b default) — surfaces fire 2
 - ✓ `muse find` empty-state named only tasks/reminders/contacts though it also searches calendar; extracted drift-proof `formatNoMatches` (derives from DOMAIN_LABELS) so the no-match message matches the command's real scope — surfaces fire 3
 - ✓ web Tasks view rendered task dates in the runtime-default locale (lone view not threading `useI18n().locale`); extracted `formatTaskDate(iso, locale)` + wired locale so KO users see KO-formatted dates like every other view — surfaces fire 4
+- ✓ desktop `MuseBridge.parseAnswer` leaked raw JSON to the bubble (and spoke it aloud) when `chat --json` returned valid JSON with an empty `response`; now returns "" on decode-success so the silent "nothing in your notes" UX fires, cleanAnswer fallback reserved for genuinely non-JSON output — surfaces fire 5
 - ✓ `upcoming_birthdays` agent tool — conversational "whose birthday is coming up?" (resolveUpcomingBirthdays was CLI/brief-only, no agent tool) — tool-hardening fire 47
 - ✓ `on_this_day_notes` agent tool — conversational date-cued note recall (muse on-this-day was CLI-only; pure recall logic moved to @muse/mcp, CLI re-exports) — tool-hardening fire 48
 - ✓ `feeds_search` agent tool — conversational watched-feed archive search (CLI-only + only knowledge_search covered it, off by default → default-posture gap) — tool-hardening fire 49
@@ -92,8 +102,11 @@
 - ✓ FIX flaky timeout: `@muse/mcp playbook-store "weighted eviction"` was intrinsically ~5.1s (121 sequential recordPlaybookStrategy disk writes) → rewrote setup to 1 writePlaybook pre-seed + 1 record overflow (285ms), same assertions, mutation-proven (FIFO mutant → RED) — test-hygiene fire 2
 - ✓ ADD coverage: `formatCoarseAge` ≥2-year branch (`.toFixed(0)` whole years) in @muse/recall — only the <2y 1-decimal path was tested; mutation-proven (toFixed(1) mutant → '2.2y'≠'2y' RED) — test-hygiene fire 3
 - ✓ PRUNE a2a double-run: deleted 5 subsumed `src/*.test.ts` (peer-config·receive-quarantine·signing·council-wire·handler), migrated 2 unique security cases to the `test/` twins; testFiles 924→919; mutation-proven, 3 judge rounds (2 caught real loss) — test-hygiene fire 4
+- ✓ ADD SSRF coverage: `assertPublicHttpUrlSync` sync gate (mcp/web-url-guard.ts) had zero direct tests — 5 cases (protocol/blocked-host/private-addr/ok), each guard clause mutation-pinned — test-hygiene fire 5
 - ✓ `muse.tasks.search` matches tags — a task tagged "work" (word not in title/notes) is now found by searching "work" (completes the fire-51 tag story: list FILTERS by tag, search now FINDS by tag) + JUDGE-DRILL (verifier caught a deliberately-inert version) — tool-hardening fire 53
 - ✓ `week_agenda` agent tool — "what's my week look like?" ONE merged view of events+tasks+birthdays by day (muse week was CLI-only; groupWeekAgenda moved to @muse/autoconfigure, CLI re-exports) — tool-hardening fire 54
+- ✓ `list_objectives` agent tool — "what objectives are you tracking for me?" lists Muse's live standing objectives (active/escalated); were CLI/passive-only, no agent tool — tool-hardening fire 59
+- ✓ `web_action` method validation — a model-emitted GET (read verb) for a book/post intent silently reported performed:true (false success); a garbage verb hit fetch opaquely. Now an allow-set {POST,PUT,PATCH,DELETE} shared by schema enum + handler, fail-closed before approval/HTTP — tool-hardening fire 58
 - ✓ `web_action` SSRF-after-redirect closed — the state-changing web actuator followed a 3xx (body included on 307/308) to a private/loopback host the URL guard never vetted; now `redirect:"manual"` + fail-closed on 3xx (the read path already re-checked; the write path didn't) — tool-hardening fire 55
 - ✓ `muse.tasks.list` tag filter — "show my tasks tagged work" was inexpressible (list filtered only by status/dueWithinDays, search ignores tags) though tags are first-class + CLI `--tag` exists; added optional `tag` (case-insensitive exact, both branches) — tool-hardening fire 51
 - ✓ `egressGuards` self-eval ratchet — local-by-construction moat (cloud egress refused in code) promoted to a deterministic scoreboard regression gate, mirroring the grounding ratchet (a structural edge hermes/openclaw can't copy) — differentiation fire 1
@@ -111,11 +124,12 @@
 - ✓ receipt verifies the quote against the file ON DISK (L4 shows-its-work) — `formatSourceReceipts` (@muse/recall) gained a disk-content map; a snippet edited/deleted after indexing is now hidden with a reason instead of quoted (fake-citation defense rivals can't pay for); proven by `eval:receipt-drift` (real temp files), backward-compat (recall 88/88) — differentiation fire 8
 
 - ✓ JUDGE-DRILL (verifier proven) + truncated-snippet disk-verify coverage — planted an inert test, the independent Opus judge correctly FAILED it (mutation-proven), then landed a real discriminating test locking down fire-8's `…`-truncation disk-verify path (mutation: break `snippetOnDisk` → real test fails) — differentiation fire 9
+- ✓ L4 LIVE — `muse ask` disk-verifies cited snippets — `buildDiskContents` (@muse/recall) reads each cited note's current content (ad-hoc skipped) and `commands-ask.ts` feeds it to the receipt, so a drifted/deleted note's snippet is now hidden from the user ("changed since" / "no longer on disk") instead of quoted as a fake citation; recall 95/95, grounding engine untouched — differentiation fire 10
+- ✓ L5 action-log tamper-evidence proof battery — `eval:action-log-tamper` proves every autonomous action (performed+refused) is sealed in a genesis-anchored SHA-256 chain: edit/deletion/reorder caught at a precise index, refused actions chained, undo extends (never breaks) the chain — an integrity guarantee rivals' snapshot-rollback (hermes) / un-undoable promoted memory (openclaw #62184) lack; imports @muse/mcp read-only, deterministic, no Ollama — differentiation fire 11
 
 ## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
 
-- ◦ **(slice 2) Wire `commands-ask.ts` to populate `diskContents`** — fire 8 shipped the verify+downgrade logic in `formatSourceReceipts`; the live `muse ask` receipt won't disk-verify until the CLI caller reads each cited note's current content into the map. Needs: cited-note path resolution (mirror the receipt's note→path) + skip ad-hoc sources (`--url`/`--clipboard`/`--file` in `verifyTargets`) + its own tests. Then a drifted/deleted note stops being quoted to the user. Source: differentiation fire 8 residual (Opus judge: required to convert L4 to user value).
-- ◦ **(then) Fresh lever on a different moat axis** — fires 1/2/4/5/7 deepened local-by-construction (L1/L3), fire 8 opened "shows its work" (L4). Keep diversifying: a NEW lever on grounding (fabrication=0) or another shows-its-work facet vs hermes/openclaw. Source: differentiation fire 7 note.
+- ◦ **(next) Fresh lever on a different moat axis** — fires 1/2/4/5/7 deepened local-by-construction (L1/L3), fire 8 opened "shows its work" (L4). Keep diversifying: a NEW lever on grounding (fabrication=0) or another shows-its-work facet vs hermes/openclaw. Source: differentiation fire 7 note.
 
 ### tool-mcp-browser theme — axis B (external official-public MCP) remaining sub-slices
 

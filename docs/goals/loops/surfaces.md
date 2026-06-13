@@ -39,3 +39,12 @@ ratchet: testFiles 926 (+1) · web tests 17/17 (+2) · fabrication 0 · self-eva
 - **왜**: 다른 9개 뷰(Today/Calendar/Reminders/…)는 전부 `useI18n().locale`을 포매터에 넘기는데 Tasks만 누락 → 한국어 모드에서 task 날짜가 `6/13/2026`처럼 엉뚱한 로케일로 나오는 실제 i18n 정확성 버그.
 - **리뷰지점**: `locale`은 `LOCALES`(en→en-US, ko→ko-KR) BCP-47 문자열. 헬퍼 추출은 Calendar.tsx의 기존 선례와 일치하며 React 하네스 없이 단위테스트 가능.
 - **리스크**: 없음(3줄 변경: 헬퍼+locale 추출+렌더 교체, tsc+vite build clean, 독립 Opus judge가 sibling 패턴·ICU-robust 검증 후 PASS, web 17/17).
+
+## fire 5 · 2026-06-13 · skill v1.14.0 · 1502e897
+meta: surface=desktop · value-class=micro-fix · pkg=apps/desktop(MuseDesktopCore) · kind=raw-json-leak · verdict=PASS · firesSinceDrill=5
+ratchet: desktop swift tests 48/48 (+2) · fabrication 0 · self-eval exit 0 · consecutive allPASS=5
+
+- **무엇**: `MuseBridge.parseAnswer`가 **유효 ChatJSON인데 `response`가 빈** 경우(`{"response":""}` 등) `cleanAnswer(raw)`로 폴백해 **raw JSON을 버블에 표시하고 Speaker가 소리내어 읽었다**. decode 성공 시 (빈 문자열이라도) text를 바로 반환하도록 고쳐 빈-응답이 `MusePresenter`의 무음 "노트에 없음" 분기로 흐르게.
+- **왜**: doc은 "JSON이 아닐 때만 cleanAnswer 폴백"을 약속하는데 빈-응답 케이스가 잘못 폴백 → 모델 hiccup·CLI 변경 시 사용자가 `{"response":""}`를 보고 *듣는* 실제 버그. cleanAnswer 폴백은 진짜 비-JSON에만 유지(graceful degradation 보존).
+- **리뷰지점**: JSONDecoder는 미지의 키 무시 → `{"runId":…}`도 response/answer nil→"". 비-JSON(bare string/number/array/ANSI)은 decode 실패 → cleanAnswer 경로 보존.
+- **리스크**: 없음(empty-text 가드 1개 제거 + 2 테스트, cleanAnswer/유일 caller ask() 무변, 독립 Opus judge가 leak 수정·폴백 보존·잘못된 빈값 없음 probe 검증 후 PASS, 48/48).

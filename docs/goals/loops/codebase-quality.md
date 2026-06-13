@@ -221,3 +221,35 @@ ratchet: testFiles 926 · fabrication 0 · groundedSurfaces 27 · commands-ask k
   RHS (no shape change), cli build 0, pnpm check 0 (no flakes this run), self-eval 0.
 - **Risk:** none — surface-only cleanup. Remaining high-value recall item = Phase 3
   (runGroundedRecall pipeline + API); INDEX.md per-fire merge contention still a flagged infra ◦.
+
+## fire 13 · 2026-06-13 · loop-creator v1.14.0 · ad54874b
+meta: value-class=refactor · pkg=@muse/shared · kind=cohere · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 928 · fabrication 0 · groundedSurfaces 27 · isRecord dups 11→8 · shared tests 34
+- **What:** consolidated the duplicate `isRecord` type-guard (11 copies repo-wide) — added the
+  canonical one to leaf @muse/shared and migrated the 3 apps/cli copies (commands-doctor +
+  chat-export-ingest import it; credential-store re-exports it for its importers). Semantically
+  identical guard. Unblocks the deferred commands-doctor decompose.
+- **Why:** "흩어진 책임 cohere" — a generic guard belongs in shared, not 11 hand-rolled copies.
+- **Review point + VERIFIER FIX:** the ④b judge first FALSE-FAILed: it ran `git diff main`, but
+  this branch lags a fast-moving main (8 loops), so main's NEWER commits (buildDiskContents etc.)
+  showed as if this slice DELETED them. Re-judged against the COMMIT ONLY (`git show ad54874b`) →
+  PASS (exactly 5 files, equivalent, leaf intact, importers OK). **Lesson: the judge must diff the
+  fire's own commit (`git show <commit>` / merge-base), never `git diff main`.** Cron ④b line fixed.
+- **Risk:** none. Remaining isRecord dedup (8 defs in tools/auth/voice/model/agent-core/
+  autoconfigure/api) recorded as a follow-up backlog ◦.
+
+## fire 14 · 2026-06-13 · loop-creator v1.14.0 · e13d7304
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 930 · fabrication 0 · groundedSurfaces 27 · commands-doctor 1234→1121 LOC
+- **What:** first decompose of the god-file commands-doctor.ts (orig review finding #3) — extracted
+  the 5 config/env classifiers (resolveMuseEnvPath, classifyMcpServersField, classifyWebWatchConfig,
+  classifyHomeAlertsConfig, resolveDoctorWatchIntervalMs) into a cohesive sibling
+  commands-doctor-config.ts (deps: isRecord@shared + webWatchesFromConfig/parseHomeAlertChecks@mcp).
+  import+re-export; dropped the now-orphaned mcp imports; added a config-module test (5).
+- **Why:** decompose KIND (first time) + finding #3 (oversized CLI). Unblocked by fire 13
+  (isRecord→shared removed the entangling dep).
+- **Review point:** ④b judged the COMMIT (`git show e13d7304`, the fixed diff-base) → PASS:
+  byte-identical bodies, closed deps, no cycle/orphan, 3 files, cli build 0 / lint 0 / 77 doctor
+  tests / 5 config tests. chat-ink-render full-check failure was a CPU-contention flake (40/40 isolated).
+- **Risk:** none. commands-doctor still ~1121 LOC — the check-cluster (modelEnvCheck/localOnlyCheck/
+  notesIndexHealth/… returning LocalCheck) is a follow-up decompose ◦.

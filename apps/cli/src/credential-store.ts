@@ -15,6 +15,7 @@
  */
 
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
+import { isRecord } from "@muse/shared";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir, hostname, userInfo } from "node:os";
 import path from "node:path";
@@ -216,9 +217,7 @@ function isCredentialStore(value: unknown): value is CredentialStore {
       && typeof credential.updatedAt === "string");
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+export { isRecord } from "@muse/shared";
 
 function isNodeError(value: unknown): value is NodeJS.ErrnoException {
   return value instanceof Error && "code" in value;

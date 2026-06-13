@@ -62,3 +62,21 @@ describe("learn-queue — append-only signal substrate", () => {
     expect((await readPendingLearnEvents(file)).map((e) => e.id)).toEqual(["a", "b"]);
   });
 });
+
+describe("learn-queue — concurrent enqueue-vs-drain (lost-update safety)", () => {
+  // The drain (markLearnEventsDone) is a read-modify-write that rewrites the
+  // whole file; an enqueue (append) landing between its read and write would be
+  // clobbered — a real user correction silently lost on the unattended path.
+  // Both must serialize on the same per-file mutation queue.
+  it("does not drop an event enqueued while a drain is in flight", async () => {
+    await enqueueLearnEvent(file, ev("a", "x"));
+    await enqueueLearnEvent(file, ev("b", "y"));
+    const drain = markLearnEventsDone(file, ["a"]); // start the drain (reads {a,b})
+    await enqueueLearnEvent(file, ev("c", "z"));     // append races the drain
+    await drain;
+    const ids = (await readPendingLearnEvents(file)).map((e) => e.id);
+    expect(ids).toContain("c"); // the racing append survives (serialized RMW)
+    expect(ids).not.toContain("a"); // the drained id is still gone
+    expect(ids).toContain("b");
+  });
+});

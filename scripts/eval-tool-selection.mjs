@@ -321,6 +321,29 @@ async function buildOverdueScenario() {
   }
 }
 
+// Standing objectives (list_objectives — autonomous "watch X / until Z" goals)
+// vs the to-do list (tasks.list). Both are "things I'm on", but an OBJECTIVE is
+// a goal Muse pursues autonomously; a TASK is a user-entered to-do. The
+// disambiguation guards that "what are you working on for me?" routes to
+// objectives, while "show my to-dos" stays on tasks.list.
+async function buildObjectivesScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const obj = mcp.createObjectivesListTool({ objectives: () => [] });
+    const tasksList = mcp.createLoopbackMcpMuseTools(mcp.createTasksMcpServer({ file: "/tmp/eval-obj-tasks.json" })).filter((t) => t.definition.name === "muse.tasks.list");
+    const tools = [obj, ...tasksList].map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "What objectives are you tracking for me?", expectTool: "list_objectives", note: "EN standing-objective query → list_objectives (NOT tasks.list)" },
+      { prompt: "내가 지금 뭘 향해 가고 있지? 추적 중인 목표 보여줘", expectTool: "list_objectives", note: "KO 'what objectives am I tracking' → list_objectives" },
+      { prompt: "Show me my to-do list.", expectTool: "muse.tasks.list", note: "EN to-dos → tasks.list (NOT list_objectives — a to-do is not an autonomous objective)" }
+    ];
+    return { label: "objectives (autonomous goals vs to-do list)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "objectives", skip: `@muse/mcp not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Date-cued note recall (on_this_day_notes) vs a general note keyword search
 // (muse.notes.search). Both read notes, but one is an ANNIVERSARY look-back
 // ("what did I write on this day in past years?") and the other a content
@@ -762,6 +785,7 @@ async function main() {
     await buildBrowserScenario(),
     await buildPersonalCrudScenario(),
     await buildContactsScenario(),
+    await buildObjectivesScenario(),
     await buildTasksTagScenario(),
     await buildWeekAgendaScenario(),
     await buildOverdueScenario(),

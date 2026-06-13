@@ -26,6 +26,19 @@ final class MuseBridgeTests: XCTestCase {
         XCTAssertEqual(MuseBridge.parseAnswer("\u{1B}[32mplain text\u{1B}[0m\n"), "plain text")
     }
 
+    func testParseAnswerReturnsEmptyForValidJSONWithNoUsableText() {
+        // The output IS the expected JSON but carries no answer (model hiccup) —
+        // must yield "" so the empty-answer UX fires, NOT leak the raw object.
+        XCTAssertEqual(MuseBridge.parseAnswer(##"{"response":""}"##), "")
+        XCTAssertEqual(MuseBridge.parseAnswer(##"{"runId":"abc","toolsUsed":[]}"##), "")
+    }
+
+    func testEmptyJSONResponsePresentsAsSilentNoNotesAnswer() {
+        let presentation = MusePresenter.present(.success(MuseBridge.parseAnswer(##"{"response":""}"##)))
+        XCTAssertNil(presentation.speechText)                 // never speaks raw JSON
+        XCTAssertFalse(presentation.bubbleText.contains("{"))  // bubble shows no JSON
+    }
+
     func testDefaultBinHonoursEnvOverride() {
         XCTAssertEqual(MuseBridge.defaultBin(environment: ["MUSE_BIN": "/opt/muse/bin/muse"]), "/opt/muse/bin/muse")
         XCTAssertEqual(MuseBridge.defaultBin(environment: ["MUSE_BIN": ""]), "muse")

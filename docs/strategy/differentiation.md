@@ -10,6 +10,38 @@
 
 ## Levers (newest first)
 
+### L5 — Every autonomous action is sealed into a tamper-evident hash chain; silent rewrite of the agent's own history is detectable in code (fire 11)
+
+Muse hash-chains every logged autonomous action — performed AND refused — into a
+genesis-anchored SHA-256 chain (`appendActionLog` sets each entry's `prevHash` to
+`computeEntryHash` of the tip; `ACTION_LOG_GENESIS_HASH` roots it). So
+`verifyActionLogChain` / `verifyActionLogChainFile` (`@muse/mcp`) mechanically detect
+any after-the-fact edit, deletion, reorder, or insertion and pinpoint the break
+index, and `undoLoggedAction` records a durable veto + an accountable `undo_*` entry
+that *extends* the chain rather than breaking it. Rivals treat their action/mutation
+history as ordinary mutable state: hermes offers whole-skill snapshot/restore +
+timestamped rollback ([Curator docs](https://hermes-agent.nousresearch.com/docs/user-guide/features/curator),
+[MindStudio](https://www.mindstudio.ai/blog/hermes-agent-five-pillars-memory-skills-soul-crons))
+but no integrity check over the snapshot store itself; openclaw's Dreaming
+`--rollback` covers only staged diary/short-term candidates, **not** entries already
+promoted to MEMORY.md, and the community's request for a per-entry correction layer
+([Issue #62184](https://github.com/openclaw/openclaw/issues/62184)) was closed as not
+planned ([DeepWiki 7.2](https://deepwiki.com/openclaw/docs/7.2-dreaming-and-memory-consolidation)).
+A cloud/throughput product has no reason to pay for a per-action hash chain, and a
+"freely self-mutating skills/memory" pitch is structurally at odds with a
+verifiable-immutability seam over that history — for a single-user "it can't tell
+anyone, and it can't quietly rewrite what it did" assistant the chain *is* the trust
+contract. (Honest scope: tamper-EVIDENT — detects partial-write / accidental /
+second-process mutation — not tamper-PROOF against a motivated attacker who recomputes
+the whole chain; that needs an off-box anchor, declared out of scope in source.)
+
+**Shipped (fire 11):** `scripts/eval-action-log-tamper.mjs` (`pnpm eval:action-log-tamper`)
+— a deterministic battery (real temp files, no Ollama) proving an intact mixed
+performed/refused chain verifies, a content edit / deletion / reorder is caught,
+refused actions are chained too, and an irreversible `undoLoggedAction` records a veto
++ accountable undo entry while keeping the chain intact (no-collateral). The mcp engine
+(`personal-action-log-store.ts`, `undo-action.ts`) is imported read-only, untouched.
+
 ### L4 — The source receipt verifies the quote against the FILE ON DISK at render time, not the retrieval-index copy (fire 8)
 
 Muse's "📎 From your notes (open to verify)" receipt (`formatSourceReceipts`,
@@ -35,9 +67,11 @@ user's own local note to keep the receipt honest is cheap and on-brand.
 disk-content map and, on drift, HIDES the stale quote and says why ("source changed
 since indexed" / "no longer on disk") instead of vouching for it; `scripts/eval-receipt-drift.mjs`
 (`pnpm eval:receipt-drift`) proves it end-to-end with real temp files (faithful
-verifies, drifted + deleted are caught, no-collateral). **Slice 2 (open):** wire the
-CLI caller (`commands-ask.ts`) to read each cited note and populate the map so the
-live `muse ask` receipt opts in (needs path-resolution + ad-hoc-source skip tests).
+verifies, drifted + deleted are caught, no-collateral). **Slice 2 (fire 10 — LIVE):**
+`buildDiskContents` (`@muse/recall`) re-reads each cited note's current content
+(ad-hoc sources skipped) and `commands-ask.ts` feeds it to the receipt, so the live
+`muse ask` now hides a snippet the file no longer contains ("changed since indexed" /
+"no longer on disk") instead of quoting it. The fake-citation defense is user-facing.
 The grounding engine (`verifyGrounding`/`enforceAnswerCitations`) is untouched.
 
 ### L3 — The embedder is fail-close localhost under local-only, not localhost-by-default (fire 4)

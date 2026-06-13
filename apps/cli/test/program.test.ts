@@ -3954,6 +3954,141 @@ describe("cli program", () => {
     }
   }, 20_000);
 
+  it("muse ask default-on per-claim refiner drops a fabricated sentence without --verify-claims (MiniCheck, arXiv:2404.10774)", async () => {
+    // Assembled-path proof: the semantic cosine pre-filter + verifyGroundingPerClaim runs
+    // DEFAULT-ON on the grounded-PASS branch. A 2-sentence answer where one sentence
+    // is orthogonal to the evidence (suspect) is dropped; the grounded one is kept.
+    // Counterfactual: when the wiring is reverted (guard back to verifyClaims-only),
+    // the fabricated sentence would ride through — tested by asserting the wiring
+    // fires only when the answer has ≥2 claims.
+    const fsp = await import("node:fs/promises");
+    const { NOTES_INDEX_SCHEMA_VERSION } = await import("../src/commands-notes-rag.js");
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-ask-perclaim-"));
+    const notesDir = path.join(root, "notes");
+    const museDir = path.join(root, ".muse");
+    await fsp.mkdir(notesDir, { recursive: true });
+    await fsp.mkdir(museDir, { recursive: true });
+
+    // Note with broad token coverage so both sentences pass the WHOLE-ANSWER
+    // lexical gate, but the fabricated sentence is semantically orthogonal to
+    // the note (low cosine → suspect → judge called → dropped).
+    // "failed" is the fabricated word: evidence says "launched successfully".
+    const noteText = "Mina owns the pricing roadmap for the q3 project launched successfully.";
+    await fsp.writeFile(path.join(notesDir, "ownership.md"), noteText, "utf8");
+
+    // Unit vectors: note and grounded claim align (cosine=1, not suspect).
+    // Fabricated claim is orthogonal (cosine=0, suspect → judge called).
+    const groundedVec = [1, 0, 0];
+    const fabricatedVec = [0, 1, 0];
+    const noteEmbedding = [1, 0, 0];
+    const queryEmbedding = [1, 0, 0];
+
+    // Grounded: tokens overlap with note (mina, owns, pricing, roadmap).
+    // Fabricated: "q3 project failed" — tokens q3/project in note but "failed"
+    // is absent; no numbers/emails/proper-nouns so whole-answer value-escalation
+    // does NOT fire (only per-claim semantic screen catches it).
+    const grounded = "Mina owns the pricing roadmap.";
+    const fabricated = "The q3 project failed.";
+    const answer = `${grounded} ${fabricated}`;
+
+    const saved = {
+      HOME: process.env.HOME,
+      MUSE_NOTES_DIR: process.env.MUSE_NOTES_DIR,
+      MUSE_MODEL: process.env.MUSE_MODEL,
+      OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
+      MUSE_LOCAL_ONLY: process.env.MUSE_LOCAL_ONLY
+    };
+    process.env.HOME = root;
+    process.env.MUSE_NOTES_DIR = notesDir;
+    process.env.MUSE_MODEL = "ollama/test-model";
+    process.env.OLLAMA_BASE_URL = "http://localhost:55599";
+    process.env.MUSE_LOCAL_ONLY = "false";
+
+    // Pre-built notes index with known embeddings — skips Ollama embed for the note.
+    const notesIndexPath = path.join(museDir, "notes-index.json");
+    await fsp.writeFile(notesIndexPath, JSON.stringify({
+      builtAtIso: new Date().toISOString(),
+      files: [{
+        path: path.join(notesDir, "ownership.md"),
+        mtimeMs: Date.now() - 10000,
+        chunks: [{
+          file: path.join(notesDir, "ownership.md"),
+          chunkIndex: 0,
+          text: noteText,
+          embedding: noteEmbedding
+        }]
+      }],
+      model: "nomic-embed-text-v2-moe",
+      version: NOTES_INDEX_SCHEMA_VERSION
+    }), "utf8");
+
+    const prevFetch = globalThis.fetch;
+    let chatCallCount = 0;
+    // Map claim text → whether it embeds to the grounded or fabricated vec.
+    const embedMap: Record<string, number[]> = {
+      [grounded]: groundedVec,
+      [fabricated]: fabricatedVec
+    };
+
+    const fakeFetch: typeof globalThis.fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+      if (url.includes("/api/embeddings")) {
+        const bodyText = typeof init?.body === "string" ? init.body : "";
+        const body = JSON.parse(bodyText) as { prompt?: string };
+        const prompt = body.prompt ?? "";
+        const vec = embedMap[prompt] ?? queryEmbedding;
+        return new Response(JSON.stringify({ embedding: vec }), { status: 200 });
+      }
+      if (url.includes("/api/chat")) {
+        chatCallCount += 1;
+        if (chatCallCount === 1) {
+          return new Response(JSON.stringify({
+            model: "test-model",
+            message: { role: "assistant", content: answer }
+          }), { status: 200 });
+        }
+        return new Response(JSON.stringify({
+          model: "test-model",
+          message: { role: "assistant", content: "NO" }
+        }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    };
+    globalThis.fetch = fakeFetch;
+
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no api"); } });
+      await program.parseAsync(
+        ["node", "muse", "ask", "who owns pricing", "--no-tasks", "--no-calendar", "--no-reminders",
+          "--embed-model", "nomic-embed-text-v2-moe"],
+        { from: "node" }
+      );
+
+      const combined = output.join("");
+      // The per-claim check fired (default-on — no --verify-claims flag).
+      expect(combined).toContain("Per-claim check");
+      // The refined answer keeps the grounded sentence.
+      expect(combined).toContain("Mina owns");
+      // The refined answer (before the "I'm not sure about" disclaimer) must NOT
+      // assert the fabricated claim as a fact — it only appears in the disclaimer.
+      const afterPerClaim = combined.split("Per-claim check")[1] ?? "";
+      expect(afterPerClaim).toContain("I'm not sure about");
+      // The grounded body before the disclaimer must not contain the fabricated word.
+      const refinedBody = afterPerClaim.split("I'm not sure about")[0] ?? "";
+      expect(refinedBody).not.toContain("failed.");
+    } finally {
+      process.exitCode = prevExit;
+      globalThis.fetch = prevFetch;
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }, 30_000);
+
   it("appendLastChatTurn redacts credential shapes before persisting to disk (goal 108)", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-chat-redact-"));
     const fsp = await import("node:fs/promises");

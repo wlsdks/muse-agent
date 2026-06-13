@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, groundedOnUntrustedOnly, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, enforceAnswerCitations, explainGroundingVerdict, groundedOnUntrustedOnly, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, rankPlaybookStrategiesByRelevance, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -35,8 +35,8 @@ import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
 import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, formatDueLocal, listReflections, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
-import { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
-export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
+import { allUserMemoryFacts, buildDiskContents, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
+export { allUserMemoryFacts, buildDiskContents, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource };
 import { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource } from "@muse/recall";
@@ -2519,16 +2519,31 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           } else if (shouldSuggestRepair({ evidenceCount: scoredMatches.length, json: Boolean(options.json), repairRequested: Boolean(options.repair), verdictFired: true })) {
             io.stderr("(Re-run with --repair and I'll rewrite this using only your notes — shown only if it then checks out.)\n");
           }
-        } else if (options.verifyClaims && reverify && !options.json && !answerIsRefusal(collectedAnswer)) {
-          // --verify-claims: per-claim ISSUP refinement of an answer the whole-
-          // answer gate just PASSED (no verdictNotice). One fabricated clause can
-          // ride through because it barely dents whole-answer coverage — re-judge
-          // each atomic claim and surface only the trustworthy subset. Gated on a
-          // PASSING answer so it can only tighten, never manufacture a refusal;
-          // fail-open per claim inside verifyGroundingPerClaim.
-          const refinement = await verifyGroundingPerClaim(verdictAnswer, scoredMatches, query, reverify);
-          if (refinement.dropped > 0 && !options.json) {
-            io.stderr(`\n🔬 Per-claim check — I can only ground part of that:\n${refinement.answer}\n`);
+        } else if (reverify && !options.json && !answerIsRefusal(collectedAnswer)) {
+          // Per-claim ISSUP refinement (MiniCheck, arXiv:2404.10774): DEFAULT-ON on
+          // the grounded-PASS branch. A single fabricated sentence can ride through
+          // whole-answer scoring; the semantic cosine pre-filter (screenClaimsBySemanticSupport)
+          // cheaply marks only SUSPECT claims for the LLM judge — non-suspect claims
+          // skip the model call entirely. Runs only after the whole-answer gate PASSED
+          // (no verdictNotice) so it can only TIGHTEN, never manufacture a refusal.
+          // FAIL-OPEN at both layers: screen error → suspect:false; judge error → keep.
+          // --verify-claims forces all-claims judging (bypasses the cheap screen).
+          const claimsToCheck = segmentClaims(verdictAnswer);
+          if (claimsToCheck.length > 1) {
+            const evidenceTexts = scoredMatches.map((m) => m.text);
+            let suspectClaims: ReadonlySet<string> | undefined;
+            if (!options.verifyClaims) {
+              const screens = await screenClaimsBySemanticSupport(
+                claimsToCheck,
+                evidenceTexts,
+                (t) => embed(t, embedModel)
+              );
+              suspectClaims = new Set(screens.filter((s) => s.suspect).map((s) => s.claim));
+            }
+            const refinement = await verifyGroundingPerClaim(verdictAnswer, scoredMatches, query, reverify, { suspectClaims });
+            if (refinement.dropped > 0) {
+              io.stderr(`\n🔬 Per-claim check — I can only ground part of that:\n${refinement.answer}\n`);
+            }
           }
         }
 
@@ -2558,12 +2573,22 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // work that failed its own check); the warning above stands alone there.
         // A refusal asserts no claim so it never reaches here with citations.
         if (!verdictNotice && !options.json) {
+          // L4 disk-verify: re-read each cited note NOW so a snippet the file no
+          // longer contains (note edited/deleted after indexing) is hidden instead
+          // of quoted as a fake citation. Ad-hoc sources skipped (own provenance).
+          const diskContents = await buildDiskContents(
+            collectedAnswer,
+            scored.map((r) => ({ file: r.file, text: r.chunk.text })),
+            notesDir,
+            adHocVerifyTargets
+          );
           const receipts = formatSourceReceipts(
             collectedAnswer,
             notesDir,
             scored.map((r) => ({ file: r.file, text: r.chunk.text })),
             query,
-            adHocVerifyTargets
+            adHocVerifyTargets,
+            diskContents
           );
           if (receipts) io.stderr(receipts);
           // Staleness heads-up: a fact drawn from a long-untouched note may be
