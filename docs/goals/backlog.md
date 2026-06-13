@@ -1,8 +1,9 @@
 # Muse dev backlog — the living ledger
 
+- ✓ followup.cancel/snooze one-shot selection 60%→100% — root cause was a bare `id` (forced a prior list); added resolveFollowupRef (word/id ref, ambiguous→candidates) + example-bearing id descriptions, so cancel/snooze act one-shot (parity with reminders) — tool-hardening fire 70 (resolves the fire-69 followup FINDING)
+- ✓ Phase 3 cont.: extracted inline reminderBlock -> buildReminderContextBlock in @muse/recall (+test); formatDueLocal orphan removed from commands-ask — codebase-quality fire 28
 - ✓ decompose @muse/multi-agent: worker-result cluster (parseWorkerResult/validateWorkerHandoff/createWorkerResult + types) index.ts -> worker-result.ts (825->767 LOC) — codebase-quality fire 27
 - ✓ eval:tools field-targeted time-arg correctness — new argFieldMatches scorer + 5 calendar/reminder add cases now assert dueAt/startsAt carries the PHRASE (re-arms the *Iso precompute regression that whole-args argMatches couldnt catch) — tool-hardening fire 69
-- ⏳ FINDING (fire 69) — followup scenario 60% (pre-existing, NOT mine): the model mis-selects followup.cancel/snooze as followup.list (4 cases FAIL 0/3). A real tool-SELECTION gap on the followup surface — followup.cancel/snooze descriptions need disambiguation from followup.list (the 8B cannot tell "cancel/delay a commitment" from "list commitments"). Candidate slice: sharpen followup.cancel/snooze "use when/not when" + an eval re-verify. (surfaced by the fire-69 argFieldIncludes live run; my 5 timed cases all PASS 3/3)
 - ✓ Phase 3 cont.: extracted inline taskBlock -> buildTaskContextBlock in @muse/recall (+5-case test); ask god-file shrinks, presentation lives in recall — codebase-quality fire 26
 - ✓ JUDGE-DRILL (3rd, verifier FAILed a gutted injection-guard JSDoc) + decompose commands-doctor env-posture trio (LocalCheck/modelEnvCheck/localOnlyCheck) -> commands-doctor-checks.ts (980->939 LOC) — codebase-quality fire 25
 - ✓ mac_message_send ambiguous clarify names the candidate contacts (email parity) — the model asks "Jane Park or Jane Doe?" instead of a vague "which one?" on an irreversible send — tool-hardening fire 68

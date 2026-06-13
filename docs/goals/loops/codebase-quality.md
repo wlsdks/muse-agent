@@ -517,3 +517,22 @@ ratchet: testFiles 946 · fabrication 0 · groundedSurfaces 27 · multi-agent/in
   imports parseWorkerResult/validateWorkerHandoff/createWorkerResult from index); no orphaned imports in index.
 - **Risk:** low — pure relocation; the multi-agent hand-off fail-close invariant (empty output → failure)
   moved verbatim with its test coverage intact.
+
+## fire 28 · 2026-06-13 · loop-creator v1.14.0 · ba8cdc04
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 947 · fabrication 0 · groundedSurfaces 27 · ask god-file: 1 more inline block extracted
+- **What:** Phase 3 continuation (sibling of fire-26's taskBlock) — extracted the inline `reminderBlock`
+  builder (the `<<reminder N>>` grounding block) from commands-ask.ts into a pure
+  `buildReminderContextBlock(reminders)` in @muse/recall/present.ts (beside buildTaskContextBlock). The inline
+  expr became a one-line call; present.ts's @muse/mcp import gained `type PersistedReminder`. Body byte-identical.
+  Added a 3-case OUTCOME test. With reminderBlock gone, `formatDueLocal` was now unused in commands-ask
+  (taskBlock already moved fire 26) → removed it from the @muse/mcp import; PersistedReminder stays (the
+  pendingReminders local still uses it).
+- **Why:** continues moving the ask pipeline's ~12 inline `<<...>>` block-builders to recall (the presentation
+  layer per the extraction design). Diversified to multi-agent last fire, so compose@recall is 4/8 in the
+  window (within the 6/8 ceiling); this is the #1 recall thread.
+- **Review point:** 4b judge — reminderBlock body byte-identical (the <<reminder>>/[reminder:]/(due) template,
+  text-not-id citation, always-present due); formatDueLocal correctly removed (no other use after task+reminder
+  both moved); PersistedReminder retained (pendingReminders local); new test real OUTCOME (fails if citation
+  embeds id); recall 169 + cli 2593 green.
+- **Risk:** low — pure presentation relocation; grounding gate consumes the block string identically.

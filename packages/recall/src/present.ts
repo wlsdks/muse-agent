@@ -3,7 +3,7 @@ import { isAbsolute, join, relative } from "node:path";
 
 import { citedSourcesIn, lexicalOverlap, lexicalTokens, type ContradictionPair } from "@muse/agent-core";
 import { escapeSystemPromptMarkers } from "./prompt-escape.js";
-import { formatDueLocal, type PersistedTask } from "@muse/mcp";
+import { formatDueLocal, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 
 /**
  * SB-1/G2: the most-recent watched-feed headlines across ALL feeds, newest
@@ -428,5 +428,15 @@ export function buildTaskContextBlock(tasks: readonly PersistedTask[]): string {
       // title-matching gate then false-strips as "a source you don't have".
       return `<<task ${(i + 1).toString()} — ${t.id}${urgent}>>\n${t.title}${due}\n[task: ${t.title}]\n<<end>>`;
     })
+    .join("\n\n");
+}
+
+/** Build the <<reminder N>> grounding block from pending reminders. Pure. */
+export function buildReminderContextBlock(reminders: readonly PersistedReminder[]): string {
+  if (reminders.length === 0) {
+    return "(no pending reminders)";
+  }
+  return reminders
+    .map((r, i) => `<<reminder ${(i + 1).toString()} — ${r.id} (due ${formatDueLocal(r.dueAt)})>>\n${r.text}\n[reminder: ${r.text}]\n<<end>>`)
     .join("\n\n");
 }

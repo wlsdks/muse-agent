@@ -7,6 +7,7 @@ import {
   compareFollowupsByScheduledFor,
   readFollowups,
   readFollowupStatusFilter,
+  resolveFollowupRef,
   serializeFollowup,
   snoozeFollowup
 } from "./personal-followups-store.js";
@@ -84,13 +85,23 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           "Cancel a scheduled followup. Only works on entries with status='scheduled' — already-fired or " +
           "already-cancelled entries return an error rather than silently no-op. `reason` is recorded on " +
           "the entry (default 'agent-cancelled'). " +
-          "Use when the user wants to DROP one of the agent's auto-captured follow-up commitments ('cancel that check-in you promised', '팔로업 취소해줘'). " +
+          "Use when the user wants to DROP one of the agent's auto-captured follow-up commitments ('cancel that check-in you promised', '팔로업 취소해줘', 'never mind the budget follow-up'). You do NOT need to list first — pass a distinct word from the followup in `id` and Muse resolves it. " +
           "NOT when the user wants to delete a task they added themselves (use muse.tasks.delete) or clear a timed reminder (use muse.reminders.clear) — followups are agent-originated threads, not user-entered items.",
         execute: async (args): Promise<JsonObject> => {
-          const id = readString(args, "id");
-          if (!id) {
+          const ref = readString(args, "id");
+          if (!ref) {
             return { error: "id is required" };
           }
+          // Resolve a word/id REFERENCE → the followup, so cancelling is one-shot
+          // (no prior list). Ambiguous returns candidates; never cancel on a guess.
+          const resolution = resolveFollowupRef(await readFollowups(file), ref);
+          if (resolution.status === "ambiguous") {
+            return { error: `"${ref}" matches multiple followups — say which one`, candidates: resolution.candidates.map((entry) => ({ id: entry.id, summary: entry.summary })) as JsonValue };
+          }
+          if (resolution.status === "not-found") {
+            return { error: `no followup matches "${ref}"` };
+          }
+          const id = resolution.followup.id;
           const reason = readString(args, "reason")?.trim() || "agent-cancelled";
           try {
             const patched = await cancelFollowup(file, id, reason);
@@ -113,7 +124,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
         inputSchema: {
           additionalProperties: false,
           properties: {
-            id: { type: "string" },
+            id: { description: "The followup's id (from `list`) OR a distinct word from its summary — copy it EXACTLY as worded, in its own language (e.g. 'budget', '약'). An ambiguous word returns the matching candidates instead of guessing.", type: "string" },
             reason: { description: "Short reason recorded on the entry. Default 'agent-cancelled'.", type: "string" }
           },
           required: ["id"],
@@ -130,13 +141,21 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           "grammar as `muse.reminders.snooze` — either ISO-8601 or relative ('in 2 hours', 'tomorrow at 9am', " +
           "'2시간 뒤'). Lifecycle-guarded: only scheduled entries can be snoozed; resurrecting fired or " +
           "cancelled entries would be a surprise. " +
-          "Use when the user wants to DELAY one of the agent's follow-up commitments to a later time ('push that follow-up to tomorrow', '팔로업 내일로 미뤄줘'). " +
+          "Use when the user wants to DELAY one of the agent's follow-up commitments to a later time ('push that follow-up to tomorrow', '팔로업 내일로 미뤄줘', 'delay the budget check-in'). You do NOT need to list first — pass a distinct word from the followup in `id` and Muse resolves it. " +
           "NOT when the user wants to snooze a reminder they set themselves (use muse.reminders.snooze) or reschedule a task (use muse.tasks.update) — this only moves agent-captured followups.",
         execute: async (args): Promise<JsonObject> => {
-          const id = readString(args, "id");
-          if (!id) {
+          const ref = readString(args, "id");
+          if (!ref) {
             return { error: "id is required" };
           }
+          const resolution = resolveFollowupRef(await readFollowups(file), ref);
+          if (resolution.status === "ambiguous") {
+            return { error: `"${ref}" matches multiple followups — say which one`, candidates: resolution.candidates.map((entry) => ({ id: entry.id, summary: entry.summary })) as JsonValue };
+          }
+          if (resolution.status === "not-found") {
+            return { error: `no followup matches "${ref}"` };
+          }
+          const id = resolution.followup.id;
           const whenRaw = readString(args, "scheduledFor")?.trim();
           if (!whenRaw) {
             return { error: "scheduledFor is required" };
@@ -163,7 +182,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
         inputSchema: {
           additionalProperties: false,
           properties: {
-            id: { type: "string" },
+            id: { description: "The followup's id (from `list`) OR a distinct word from its summary — copy it EXACTLY as worded, in its own language (e.g. 'budget', '약'). An ambiguous word returns the matching candidates instead of guessing.", type: "string" },
             scheduledFor: {
               description: "New target time. ISO-8601 or relative phrase ('in 2 hours', 'tomorrow at 9am').",
               type: "string"
