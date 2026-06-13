@@ -55,7 +55,8 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           "Use 'scheduled' to see what's still pending; 'all' to look back at history when the user says " +
           "'did you follow up on that?'. " +
           "Use when the user asks to SEE the agent's own pending follow-up commitments ('what are you supposed to check back on?', '팔로업 목록 보여줘'). " +
-          "NOT when the user wants their personal to-do list (use muse.tasks.list) or their reminders/alerts (use muse.reminders.list) — a followup is a thread the agent auto-captured; a task and a reminder are things the USER explicitly added.",
+          "NOT when the user wants to ACT on a specific followup: to CANCEL/DROP it ('취소해줘', 'cancel that follow-up') use muse.followup.cancel, or to DELAY/POSTPONE it ('미뤄줘', 'push it to tomorrow') use muse.followup.snooze — listing only SHOWS commitments, it does not cancel or move them. " +
+          "Also NOT when the user wants their personal to-do list (use muse.tasks.list) or their reminders/alerts (use muse.reminders.list) — a followup is a thread the agent auto-captured; a task and a reminder are things the USER explicitly added.",
         execute: async (args): Promise<JsonObject> => {
           const status = readFollowupStatusFilter(readString(args, "status"));
           const all = await readFollowups(file);
@@ -85,7 +86,7 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           "Cancel a scheduled followup. Only works on entries with status='scheduled' — already-fired or " +
           "already-cancelled entries return an error rather than silently no-op. `reason` is recorded on " +
           "the entry (default 'agent-cancelled'). " +
-          "Use when the user wants to DROP one of the agent's auto-captured follow-up commitments ('cancel that check-in you promised', '팔로업 취소해줘', 'never mind the budget follow-up'). You do NOT need to list first — pass a distinct word from the followup in `id` and Muse resolves it. " +
+          "A request to CANCEL / DROP a follow-up the agent promised means THIS tool, NOT followup.list — '취소해줘' / '그 체크인 팔로업 취소해줘' / 'cancel that check-in you promised' / 'never mind the budget follow-up' all cancel directly. You do NOT need to list first — pass a distinct word from the followup in `id` and Muse resolves it (an ambiguous word returns candidates). " +
           "NOT when the user wants to delete a task they added themselves (use muse.tasks.delete) or clear a timed reminder (use muse.reminders.clear) — followups are agent-originated threads, not user-entered items.",
         execute: async (args): Promise<JsonObject> => {
           const ref = readString(args, "id");

@@ -1,5 +1,5 @@
 import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { executePlanExecuteLoop, type PlanExecuteRunner } from "../src/plan-execute-loop.js";
 import { PlanExecutionError, PlanValidationFailedError, type PlanStep } from "../src/plan-execute.js";
@@ -114,5 +114,55 @@ describe("executePlanExecuteLoop", () => {
     await expect(
       executePlanExecuteLoop(runner([resp("[]"), resp("   ")]), context(), provider, request()),
     ).rejects.toMatchObject({ code: "RESPONSE_SYNTHESIS_FAILED" });
+  });
+});
+
+describe("executePlanExecuteLoop — near-duplicate dedup (no-double-act, Mem0 arXiv:2504.19413)", () => {
+  const writeTools = [
+    { name: "send_message", description: "send a message", risk: "write" as const, inputSchema: { type: "object" as const } },
+  ];
+  const writeRequest = (): ModelRequest => ({
+    model: "m",
+    messages: [{ role: "system", content: "sys" }, { role: "user", content: "send it" }],
+    tools: writeTools,
+  });
+
+  const runnerWithSpy = (planJson: string, synth: string) => {
+    const executeSpy = vi.fn(async (_ctx: AgentRunContext, toolCall: { id: string; name: string; arguments: Record<string, unknown> }): Promise<ExecutedToolResult> => ({
+      result: { id: toolCall.id, name: toolCall.name, output: "sent", status: "completed" },
+      toolCall,
+    }));
+    let turn = 0;
+    const r: PlanExecuteRunner = {
+      maxToolCalls: 10,
+      generateWithTracing: async () => [resp(planJson), resp(synth)][Math.min(turn++, 1)]!,
+      executeToolCall: executeSpy,
+    };
+    return { runner: r, executeSpy };
+  };
+
+  it("normalized-variant duplicate WRITE step executes exactly ONCE (no double-act)", async () => {
+    // Two steps: same tool, args differing only by case/whitespace → collapsed to 1.
+    const planJson = JSON.stringify([
+      { tool: "send_message", args: { to: "Alice" }, description: "send to alice" },
+      { tool: "send_message", args: { to: "alice" }, description: "send to alice again" }
+    ]);
+    const { runner: r, executeSpy } = runnerWithSpy(planJson, "Done.");
+    const result = await executePlanExecuteLoop(r, context(), provider, writeRequest());
+    expect(result.finalResponse.output).toBe("Done.");
+    // The duplicate was collapsed: executeToolCall invoked exactly once.
+    expect(executeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("counterfactual — two genuinely different WRITE steps execute TWICE (not over-merged)", async () => {
+    const planJson = JSON.stringify([
+      { tool: "send_message", args: { to: "Alice" }, description: "send to Alice" },
+      { tool: "send_message", args: { to: "Bob" }, description: "send to Bob" }
+    ]);
+    const { runner: r, executeSpy } = runnerWithSpy(planJson, "Done.");
+    const result = await executePlanExecuteLoop(r, context(), provider, writeRequest());
+    expect(result.finalResponse.output).toBe("Done.");
+    // Genuinely different args → both steps execute.
+    expect(executeSpy).toHaveBeenCalledTimes(2);
   });
 });

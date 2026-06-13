@@ -54,6 +54,29 @@ export interface PageSnapshot {
 
 export type ScrollDirection = "down" | "up" | "top" | "bottom";
 
+/**
+ * What to wait for. Exactly one is set: a CSS `selector` that must match a
+ * VISIBLE element, or a `text` substring that must appear in the page's visible
+ * text. `timeoutMs` bounds the wait (the controller clamps it to a safe range).
+ */
+export interface WaitCondition {
+  readonly selector?: string;
+  readonly text?: string;
+  readonly timeoutMs?: number;
+}
+
+/**
+ * Result of a `waitFor`. `matched` is the honest signal: true only when the
+ * condition was actually met within the bound; false means the awaited content
+ * never appeared (a timeout) — the resulting `snapshot` is still the live page,
+ * so the model can report what IS there, but it must not claim the awaited
+ * thing rendered.
+ */
+export interface WaitOutcome {
+  readonly matched: boolean;
+  readonly snapshot: PageSnapshot;
+}
+
 export const BROWSER_KEYS = ["Escape", "Enter", "Tab", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"] as const;
 export type BrowserKey = (typeof BROWSER_KEYS)[number];
 
@@ -84,6 +107,16 @@ export interface BrowserController {
    * content the snapshot can't see until it renders.
    */
   scroll(direction: ScrollDirection): Promise<PageSnapshot>;
+  /**
+   * Block until a CSS `selector` matches a visible element OR a `text` substring
+   * appears in the page, bounded by `timeoutMs`, then re-observe. For async
+   * content that arrives AFTER the initial settle (fetch-then-render results, a
+   * spinner that resolves later) which `looksUnsettled` can't catch once any
+   * stub text/element is already on the page. `matched` reports whether the
+   * condition was actually met within the bound — false means it never appeared
+   * (the model must NOT pretend it did).
+   */
+  waitFor(condition: WaitCondition): Promise<WaitOutcome>;
   /** Capture the page to a .png file. */
   screenshot(path: string): Promise<{ readonly path: string }>;
   /** Capture the current page as a base64 PNG (for the local vision model). */

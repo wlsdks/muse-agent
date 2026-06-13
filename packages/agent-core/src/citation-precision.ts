@@ -57,9 +57,15 @@ export function reportCitationPrecision(
   const effectiveFloor =
     typeof floor === "number" && Number.isFinite(floor) && floor > 0 ? floor : DEFAULT_CITATION_PRECISION_FLOOR;
 
+  // Aggregate ALL chunks of a source, not last-wins — one note (file) is often
+  // retrieved as several chunks sharing the same `source` but different `text`;
+  // a sentence cited to that file must be checked against EVERY retrieved chunk,
+  // else a faithful sentence supported by a different chunk is wrongly flagged.
   const sourceText = new Map<string, string>();
   for (const match of matches) {
-    sourceText.set(match.source.trim().toLowerCase(), match.text);
+    const key = match.source.trim().toLowerCase();
+    const prior = sourceText.get(key);
+    sourceText.set(key, prior === undefined ? match.text : `${prior}\n${match.text}`);
   }
 
   const citedSources: string[] = [];

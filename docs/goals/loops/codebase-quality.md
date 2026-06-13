@@ -661,3 +661,20 @@ ratchet: testFiles 957 · fabrication 0 · groundedSurfaces 27 · 4 over-broad e
   zero external/test importers (grep-confirmed, so no breakage); knip drops all 4; cli build + 2616 tests green;
   no behavior change (export visibility only).
 - **Risk:** none — export-visibility narrowing of internal-only helpers; no runtime/behavior/floor change.
+
+## fire 36 · 2026-06-13 · loop-creator v1.14.0 · fa574a40
+meta: value-class=refactor · pkg=@muse/recall · kind=compose · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 958 · fabrication 0 · groundedSurfaces 27 · ask god-file: 7th inline block extracted
+- **What:** Phase 3 continuation — extracted the inline `episodeBlock` builder (`<<session N>>` grounding block)
+  from commands-ask.ts into a pure `buildEpisodeContextBlock(episodes)` in @muse/recall/present.ts (structural
+  input type `{id, summary, score}` matching rankEpisodeHits' return). Unlike task/git, this one ESCAPES the
+  untrusted episode summary via escapeSystemPromptMarkers (already in present.ts) — preserved verbatim. Body
+  byte-identical; 3-case OUTCOME test incl. an injection-defense assert (forged <<end>>/[from] in the summary
+  neutralized). escapeSystemPromptMarkers stays imported in commands-ask (feedBlock still uses it) → no orphan.
+- **Why:** continues moving the ask pipeline's inline blocks to recall; 7 of ~12 now extracted (task/reminder/
+  memory/shell/git/action/episode). compose@recall 4/8 in the window (within ceiling).
+- **Review point:** 4b judge — episodeBlock body byte-identical (the <<session N — id (score 3dp)>> header +
+  escapeSystemPromptMarkers(summary)); structural type matches rankEpisodeHits return; the escape (untrusted
+  summary defense) preserved; new test pins the escape; escapeSystemPromptMarkers retained in commands-ask
+  (feedBlock); recall 201 + cli 2616 green.
+- **Risk:** low — pure presentation relocation; the untrusted-summary escape (grounding-floor defense) moved verbatim + now has its own recall test.

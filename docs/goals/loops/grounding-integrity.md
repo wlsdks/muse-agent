@@ -130,3 +130,11 @@ ratchet: agent-core +5, cli +3 tests (agent-core 2078, cli 2616 pass) · lint 0/
 - 왜: precision="인용 출처 맞나", recall="groundable 주장이 다 인용 다나" — sentence-groundedness는 citation-agnostic이라 못 잡던 누락 attribution. precision/recall/groundedness triad 완성.
 - 리뷰지점: U+E000 sentinel 마스킹(멀티닷 source·2자리 카운터 검증), citable 문장만 분모(일반 주장은 recall miss 아님). 높은-overlap recommendation 오발 위험 있으나 비-게이팅 stderr cue라 허용(judge 확인). citable=false mutation으로 recall 테스트 red 증명. 독립 Opus judge 5/5 PASS.
 - 리스크: 없음(additive, 진단 only). **vein 상태: grounding triad 완성 → 결정론적 fail-open vein 사실상 고갈. 다음 fire는 value-class 피벗 권고**(예: precision/recall를 muse doctor 추적 메트릭으로, 또는 retrieval-quality/다른 축). backlog ◦에 기록.
+
+## fire 17 · 2026-06-13 · skill v1.14.0 · a78079bf
+meta: value-class=redteam-defense(bug) · pkg=@muse/agent-core · kind=A · verdict=PASS · firesSinceDrill=8
+ratchet: agent-core +1 test (citation-precision 6; full suite 2089 pass) · lint 0/0 · fabrication 0 · last-wins mutation verified · 다음 fire=JUDGE-DRILL(연속 allPASS 8)
+- 무엇: fire 14 `reportCitationPrecision`의 **false-positive 버그 수정** — source→text 맵이 last-wins라, 한 파일이 여러 청크로 retrieve되면(같은 source, 다른 text) 마지막 청크만 남아 다른 청크가 지지하는 충실한 문장을 unsupported로 오판 → 라이브 ask cue(fire 15)가 충실한 답에 false "Citation check" 경고. fix: source별 모든 청크 텍스트 합산.
+- 왜: value-class 피벗(doctor-metric)을 시도하다 corpus(EN/KO 같은 source명) 채점 중 0.00 precision으로 이 버그 발견. 메트릭 자체는 (a) self-eval 경계([[project_self_eval]]: 자가-측정 인프라는 human-direction) (b) corpus dup-source + 토큰-coverage 조잡함으로 murky해 **정직히 폐기**, 대신 드러난 real 버그를 수정.
+- 리뷰지점: 방향-안전(토큰 추가는 supported로만 이동, 절대 false-negative 안 만듦), 진단-only(게이트 불변), recall은 이미 union이라 무영향. last-wins로 되돌리면 aggregation 테스트 red(지지 청크를 first에 배치). 독립 Opus judge PASS(주석 중복 결함 지적 → dedup 완료).
+- 리스크: 없음(방향-안전 hardening). vein: grounding 결정론 vein 고갈 유지 — 다음엔 value-class 피벗 또는 wind-down(self-eval 경계 밖 메트릭은 human-direction 필요).

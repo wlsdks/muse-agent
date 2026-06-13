@@ -792,3 +792,12 @@ ratchet: testFiles 957 유지(eval +2 케이스) · fabrication 0 유지 · foll
 - **왜:** fires 67-72가 word-ref로 destructive(delete/clear)를 selectable하게 만듦 → casual 언급이 비가역 삭제 오발 위험(안전). fire 71은 followup.cancel만 가드. mature 테마에서 진안-blocked 고가치 대신 productive safety-parity coverage. KIND=irrelevance(최근 regression-guard와 다름).
 - **리뷰지점:** eval-tool-selection.mjs buildFollowupScenario +네거티브 2개(순수 additive). 시나리오가 tasks.delete+reminders.clear 노출→탐지 가능. harness 15 pass(scripts는 eslint ignore). Opus judge PASS 5/5(zero-shot 독립 기계 확인, teeth, parity 정당).
 - **리스크:** 없음 — 순수 additive coverage. ★KO followup.cancel "그 체크인 팔로업 취소해줘" 3회 연속 0/3(fire70 3/3은 가벼운 부하) = **지속적 8B KO-cancel 약점 확정**(borderline 아님), 슬라이스 무관(zero-shot 독립), backlog finding 강화 — verb-final KO 취소+referent를 모델이 list로 오선택. 전용 fix 시도 또는 진안 escalate 후보.
+
+
+## fire 76 · 2026-06-13 · skill v1.14.0 · 0e59f047
+meta: value-class=hardening · pkg=@muse/mcp · kind=tool-selection-fix(KO followup.cancel 0/3→3/3) · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 957 유지 · fabrication 0 유지 · eval:tools followup KO cancel 0/3→**3/3 STABLE(6/6)**, 시나리오 13/14→**14/14(100%)**
+- **무엇:** 3 fire 추적된 지속적 KO followup.cancel 선택 약점 수정 — "그 체크인 팔로업 취소해줘"가 followup.list로 오선택되던 것을 followup.cancel로. 설명 disambiguation(list "NOT when"에 cancel/delay intent 명시 배제 + cancel이 "취소해줘 means THIS tool not list"로 시작). 행동 변경 0.
+- **왜:** 진단 — 같은 "그 체크인 팔로업" referent로 snooze("미뤄줘")는 3/3, cancel("취소해줘")만 0/3→list. "취소" verb→cancel 매핑 약함 + list가 fallback. 테마 #1(올바른 tool 한 방), destructive KO intent. fire 75가 다음 타겟으로 명시한 진짜 선택 버그.
+- **리뷰지점:** loopback-followups.ts list+cancel description만(execute/schema/risk/groundedArgs 불변). eval:tools 케이스 0/3→3/3 STABLE 2회 REPEAT=3(6/6), 시나리오 14/14 양쪽 — over-steering 회귀 없음(목록/status-질문/snooze/IrrelAcc 전부 유지). mcp 1857, lint clean. pnpm check @muse/cli flake(isolated 2616 green, 동시-루프 actuator 변경+부하). Opus judge PASS 5/5(독립 14/14 재현, no over-steer).
+- **리스크:** 없음 — description-only(fail-closed 게이트 불변), 회귀 0(전 케이스 14/14). 기존 골든 케이스가 향후 회귀 가드. KO-cancel finding 해소.

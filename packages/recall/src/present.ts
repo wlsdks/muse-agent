@@ -470,3 +470,13 @@ export function buildActionContextBlock(actions: readonly { readonly when: strin
     .map((a, i) => `<<action ${(i + 1).toString()} — ${a.when.slice(0, 10)}>>\n${a.what} — ${a.result}${a.detail ? ` (${a.detail})` : ""}\n<<end>>`)
     .join("\n\n");
 }
+
+/** Build the <<session N>> grounding block from ranked episode hits (untrusted summary escaped). Pure. */
+export function buildEpisodeContextBlock(episodes: readonly { readonly id: string; readonly summary: string; readonly score: number }[]): string {
+  if (episodes.length === 0) {
+    return "(no relevant past sessions)";
+  }
+  return episodes
+    .map((e, i) => `<<session ${(i + 1).toString()} — ${e.id} (score ${e.score.toFixed(3)})>>\n${escapeSystemPromptMarkers(e.summary)}\n<<end>>`)
+    .join("\n\n");
+}
