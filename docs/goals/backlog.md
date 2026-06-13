@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ JUDGE-DRILL (4th, verifier caught a subtle slice(0,7) non-byte-identical extraction) + decompose commands-doctor ollama-tag trio -> commands-doctor-ollama.ts (847->810 LOC) — codebase-quality fire 33
 - ✓ resolveFollowupRef literal-match regression guard (4 mutation-verified tests: ".*"/"." refs → not-found, not match-all) — guards a regex-injection vector on a resolver that gates destructive cancel/snooze + JUDGE-DRILL (vacuous tautology version → verifier FAILed it 5/5, rolled back, teeth-bearing replacement shipped) — tool-hardening fire 72
 
 - ✓ Phase 3 cont.: batched shellBlock+gitBlock -> buildShellContextBlock/buildGitContextBlock in @muse/recall (structural git input type, +test) — codebase-quality fire 32

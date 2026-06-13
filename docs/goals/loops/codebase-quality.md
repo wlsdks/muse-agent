@@ -607,3 +607,22 @@ ratchet: testFiles 953 · fabrication 0 · groundedSurfaces 27 · ask god-file: 
   templates, subject-not-hash citation); structural git input type accepts GitCommit[] (no cli→recall dep);
   new test real OUTCOME (exact strings + subject-not-hash citation); recall 185 + cli 2610 green; no orphans.
 - **Risk:** low — pure presentation relocation; grounding gate consumes both block strings identically.
+
+## fire 33 · 2026-06-13 · loop-creator v1.14.0 · 0a562d70 · JUDGE-DRILL
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: testFiles 954 · fabrication 0 · groundedSurfaces 27 · commands-doctor.ts 847->810 LOC
+- **What:** (drill) consecutive-allPASS hit 8 → mandatory JUDGE-DRILL with a NEW failure mode (not the prior
+  comment-removal drills): a "behavior-preserving extraction" that was subtly NOT byte-identical — extracted
+  actionBlock to buildActionContextBlock but changed `a.when.slice(0,10)` → `slice(0,7)` (model would see
+  YYYY-MM not YYYY-MM-DD action dates). ALL deterministic gates PASSED (recall 185, cli 2613 — the action-date
+  format is untested). The independent Opus judge correctly **FAILED** it, pinpointing the exact slice-length
+  divergence + its grounding-prompt impact. Rolled back. (real) Decomposed the commands-doctor ollama-tag trio
+  (`OllamaTagsEntry` + `isOllamaTagsEntry` + `findOllamaModelTag`) → new sibling `commands-doctor-ollama.ts`;
+  re-exported (test imports findOllamaModelTag/OllamaTagsEntry). embedModelCheck left behind (shares the private
+  formatBytes helper used by runLocalDoctor — would entangle).
+- **Why:** drill validates maker≠judge (4th drill, all 4 caught — incl. this subtle non-comment behavior change).
+  The doctor decompose continues shrinking the god-file (847→810) + diversifies off the compose@recall streak.
+- **Review point:** drill judge FAIL confirmed (slice(0,7)≠slice(0,10)); real slice 4b judge — trio byte-identical
+  (the latest-tag-normalize matching), isOllamaTagsEntry exported for runLocalDoctor, re-export keeps doctor tests
+  green (2613 cli), formatBytes correctly NOT entangled (embedModelCheck stayed).
+- **Risk:** low — pure relocation of pure tag-matching utils; no IO, no floor path.
