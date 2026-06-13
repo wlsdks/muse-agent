@@ -25,6 +25,7 @@ import {
   shortCitationRef,
   stripFabricatedCitations,
   stripTruncatedCitation,
+  untrustedOnlyChatNotice,
   withGroundingReceipt
 } from "./chat-grounding.js";
 import { DEFAULT_EMBED_MODEL, LEGACY_EMBED_MODEL } from "./embed-model-default.js";
@@ -473,5 +474,35 @@ describe("groundChatTurn", () => {
       searchRecall: throwingRecall
     })).toBe("");
     expect(called).toBe(true); // the throw came from retrieval, not a short-circuit
+  });
+});
+
+describe("untrustedOnlyChatNotice — grounded≠true source-trust parity on the chat surface", () => {
+  // The chat path (finalizeGatedChatAnswer) folds tool output in as evidence; a
+  // faithful chat answer resting ONLY on untrusted MCP/web tool sources must get
+  // the same scrutiny cue the ask path surfaces — the "every surface gated" wedge.
+  const tool = (source: string, text: string): KnowledgeMatch => ({ cosine: 1, score: 1, source, text, trusted: false });
+  const note = (source: string, text: string): KnowledgeMatch => ({ cosine: 0.7, score: 0.7, source, text });
+
+  it("warns when a faithful chat answer resolves ONLY to untrusted tool sources", () => {
+    const evidence = [tool("web_search", "The capital of France is Paris.")];
+    const notice = untrustedOnlyChatNotice("The capital of France is Paris [from web_search].", evidence);
+    expect(notice).toBeDefined();
+    expect(notice).toContain("tool-fetched");
+  });
+
+  it("clears once a trusted note also backs the answer (one trusted source makes it the user's own)", () => {
+    const evidence = [tool("web_search", "Paris is the capital of France."), note("notes/geo.md", "Paris is the capital of France.")];
+    expect(untrustedOnlyChatNotice("Paris is the capital of France [from web_search] [from notes/geo.md].", evidence)).toBeUndefined();
+  });
+
+  it("stays silent for an answer grounded only in the user's own notes", () => {
+    const evidence = [note("notes/wifi.md", "The office wifi password is muse2026.")];
+    expect(untrustedOnlyChatNotice("The office wifi password is muse2026 [from notes/wifi.md].", evidence)).toBeUndefined();
+  });
+
+  it("stays silent on an abstention even if only untrusted evidence is present (no warning on a non-answer)", () => {
+    const evidence = [tool("web_search", "irrelevant")];
+    expect(untrustedOnlyChatNotice(chatAbstention("내 생일?"), evidence)).toBeUndefined();
   });
 });

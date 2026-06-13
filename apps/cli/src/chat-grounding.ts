@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { independentWitnessCount, quorumVerdict, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
@@ -313,8 +313,10 @@ export interface FinalizeGatedChatAnswerArgs {
 export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs): Promise<string> {
   // A tool's own output is evidence too — fold it in so the value checks treat a
   // value the tool actually returned as supported (cosine 1, like conversation).
+  // trusted:false — tool output is NOT the user's own data; the provenance bit
+  // feeds untrustedOnlyChatNotice (grounded≠true parity with the ask path).
   const toolEvidence: KnowledgeMatch[] = (args.toolGroundingSources ?? []).map(
-    (source) => ({ cosine: 1, score: 1, source: source.source, text: source.text })
+    (source) => ({ cosine: 1, score: 1, source: source.source, text: source.text, trusted: false })
   );
   // Grounded by a tool ONLY when it produced real evidence — not merely because a
   // tool was called (a tool that ran but returned nothing must not bypass).
@@ -327,7 +329,23 @@ export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs)
       : gateChatAnswer(args.question, args.answer, evidence, args.knownFactKeys ?? []);
   const repaired = stripTruncatedCitation(gated);
   const deFabbed = stripFabricatedCitations(repaired, args.matches.map((match) => match.source));
-  return withGroundingReceipt(deFabbed, groundedNoteSources(args.matches, deFabbed), /[가-힣]/u.test(args.question));
+  const receipted = withGroundingReceipt(deFabbed, groundedNoteSources(args.matches, deFabbed), /[가-힣]/u.test(args.question));
+  // grounded≠true: a faithful chat answer resting only on untrusted tool sources
+  // gets the same scrutiny cue the ask path surfaces (every-surface parity).
+  const untrustedCue = untrustedOnlyChatNotice(deFabbed, evidence);
+  return untrustedCue ? `${receipted}${untrustedCue}` : receipted;
+}
+
+/**
+ * grounded≠true SOURCE-TRUST cue for the chat surface — the parity of the ask
+ * path's `untrustedOnlyGroundingNotice`. Fires on a faithful (non-abstention)
+ * answer whose every resolving citation points only at untrusted provenance
+ * (MCP/web tool output, `trusted:false`). A single trusted note clears it.
+ */
+export function untrustedOnlyChatNotice(answer: string, evidence: readonly KnowledgeMatch[]): string | undefined {
+  if (isChatAbstention(answer) || expressesNoInformation(answer)) return undefined;
+  if (!groundedOnUntrustedOnly(answer, evidence)) return undefined;
+  return "\n\n⚠️ 출처 확인: 이 답변은 출처에 충실하지만 도구로 가져온 데이터(tool-fetched)에만 근거합니다 — 직접 확인 후 신뢰하세요.";
 }
 
 const HANGUL = /[가-힣]/u;
