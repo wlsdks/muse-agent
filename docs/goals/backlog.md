@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ resolveFollowupRef literal-match regression guard (4 mutation-verified tests: ".*"/"." refs → not-found, not match-all) — guards a regex-injection vector on a resolver that gates destructive cancel/snooze + JUDGE-DRILL (vacuous tautology version → verifier FAILed it 5/5, rolled back, teeth-bearing replacement shipped) — tool-hardening fire 72
+
 - ✓ Phase 3 cont.: batched shellBlock+gitBlock -> buildShellContextBlock/buildGitContextBlock in @muse/recall (structural git input type, +test) — codebase-quality fire 32
 - ✓ IrrelAcc guard: a followup STATUS QUESTION with a resolvable word → followup.list NOT the destructive cancel (protects against over-firing now that word-ref made cancel one-shot-selectable, fires 67-70) — tool-hardening fire 71
 - ⏳ FINDING (fire 71) — KO followup.cancel "그 체크인 팔로업 취소해줘" flaky 0/3 (was 3/3 fire 70): the 8B leans followup.list (the referent "그 체크인 팔로업" reads as a lookup) under concurrent-loop load; INDEPENDENT of the fire-71 slice (eval cases are zero-shot). Borderline KO-cancel selection — candidate: sharpen followup.cancel KO disambiguation, but verify it is not just machine-load (re-run when loops quiet).
