@@ -40,6 +40,15 @@ describe("resolveReminderRef — edit a reminder by id OR by a word from its tex
     expect(resolveReminderRef(reminders, "").status).toBe("not-found");
     expect(resolveReminderRef(reminders, "groceries").status).toBe("not-found");
   });
+
+  // resolveReminderRef gates the DESTRUCTIVE reminders.snooze/clear. The match is a
+  // LITERAL substring (`.includes`), not a regex — so a regex-metachar ref can't
+  // match-all and snooze/clear a random reminder. Mutating `.includes` → a regex
+  // `.test` turns these RED (the metachars would then match every text).
+  it("matches a ref LITERALLY, not as a regex — '.*' / '.' are not substrings → not-found, never match-all", () => {
+    expect(resolveReminderRef(reminders, ".*").status).toBe("not-found");
+    expect(resolveReminderRef(reminders, ".").status).toBe("not-found");
+  });
 });
 
 describe("normalizeReminderRecurrence — coerce, never drop (a one-time reminder must still be created)", () => {

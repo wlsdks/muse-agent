@@ -774,3 +774,12 @@ ratchet: testFiles 954 유지 · fabrication 0 유지 · eval:tools 99%(macos 42
 - **왜:** fires 55-72로 TOOL 선택/correctness/outbound-safety vein 성숙(eval 99%, 모든 mutating 도구 word-ref+ambiguous-clarify, recipient 해소 email 패리티, browser_key gate, time-arg/literal-match guard). 이번이 2번째 연속 clean 스카웃(fire 71 표면 covered) → EXHAUSTION 규칙: 3번째 스카웃 금지, value-class 상향/honest-close. 상향 후보(새-도구·논문-capability·undo) 전부 차단/dry: 새-도구 vein은 fire 69 스카웃 "no gap"+clipboard 커버, 논문은 Ollama format+tools 비조합, undo는 veto가 objective-scoped라 conversational-undo와 mechanism mismatch.
 - **리뷰지점:** 코드 변경 0. backlog에 ★진안 vein-status 블로커 기록 — 남은 고가치 레버 3개(email/handle grounding=agent-core-hot, riskFromMcpAnnotations=security-posture 진안-decision, undo/veto=design 진안-decision)가 전부 진안 unblock 필요. 다음 fire는 진안 unblock 시 그 항목, 아니면 lower-value 파리티/coverage 또는 재-honest-close.
 - **리스크:** 없음 — 코드 무변경, 회귀 0. "할 게 없다" 아님: 철저 스카웃 후 고가치 vein이 진안-blocked임을 정직 보고(EXHAUSTION 규칙 준수). 루프는 다음 fire 계속.
+
+
+## fire 74 · 2026-06-13 · skill v1.14.0 · 796b1381
+meta: value-class=hardening · pkg=@muse/mcp(test) · kind=regression-guard(literal-match injection, safety parity 완성) · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 954 유지(3 resolver test +각 1 케이스) · fabrication 0 유지 · mcp 1854→1857 · eval 무영향
+- **무엇:** fire 72가 resolveFollowupRef에 한 literal-match injection 가드를 나머지 3개 destructive-게이트 resolver(resolveReminderRef/TaskRef/EventByRef)에 추가 — ".*"/"." ref → not-found(match-all 아님). 4개 word-ref resolver 안전 parity 완성.
+- **왜:** 4개 resolver 전부 destructive 게이트(followup.cancel/snooze·reminders.snooze/clear·tasks.delete·calendar.delete). 전부 `.includes`(literal)이나 fire 72는 followup만 가드 → 나머지 3개는 미래 regex-refactor 시 ".*" ref가 match-all→엉뚱한 항목 cancel/delete(injection) 미보호. fire 73 honest-close(테마 mature) 후 진안 미응답 → genuine safety-parity coverage(lower-value지만 실재).
+- **리뷰지점:** reminders-recurrence/personal-tasks-serialize/calendar-availability.test.ts 각 +1 가드(determinate not-found 단언, tautology 아님). src 무변경. mutation 검증: 3 resolver `.includes`→regex 시 3 가드 모두 RED, 복원 green. mcp 1857, lint clean, pnpm check green. Opus judge PASS 5/5(mutation 독립 재실행, 각 resolver의 destructive 게이트 확인).
+- **리스크:** 없음 — test-only additive(src 불변, 약화 0), 회귀 보호만. 4 resolver 안전 property(literal match) 완비.

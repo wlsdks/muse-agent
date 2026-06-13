@@ -39,6 +39,14 @@ describe("resolveTaskRef — complete/update a task by id OR a word from its tit
     expect(resolveTaskRef(tasks, "").status).toBe("not-found");
     expect(resolveTaskRef(tasks, "groceries").status).toBe("not-found");
   });
+
+  // resolveTaskRef gates the DESTRUCTIVE tasks.delete. The match is a LITERAL
+  // substring (`.includes`), not a regex — so a regex-metachar ref can't match-all
+  // and delete a random task. Mutating `.includes` → a regex `.test` turns these RED.
+  it("matches a ref LITERALLY, not as a regex — '.*' / '.' are not substrings → not-found, never match-all", () => {
+    expect(resolveTaskRef(tasks, ".*").status).toBe("not-found");
+    expect(resolveTaskRef(tasks, ".").status).toBe("not-found");
+  });
 });
 
 describe("serializeTask", () => {

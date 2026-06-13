@@ -188,6 +188,15 @@ describe("resolveEventByRef — update/delete an event by id OR a title word (on
     expect(resolveEventByRef(events, "lunch")).toEqual({ status: "not-found" });
     expect(resolveEventByRef(events, "  ")).toEqual({ status: "not-found" });
   });
+
+  // resolveEventByRef gates the DESTRUCTIVE calendar.delete. The title match is a
+  // LITERAL substring (`.includes`), not a regex — so a regex-metachar ref can't
+  // match-all and delete a random event. Mutating `.includes` → a regex `.test`
+  // turns these RED (the metachars would then match every title).
+  it("matches a ref LITERALLY, not as a regex — '.*' / '.' are not substrings → not-found, never match-all", () => {
+    expect(resolveEventByRef(events, ".*")).toEqual({ status: "not-found" });
+    expect(resolveEventByRef(events, ".")).toEqual({ status: "not-found" });
+  });
 });
 
 describe("muse.calendar update/delete BY NAME — resolve from the title, not a copy-pasted id", () => {
