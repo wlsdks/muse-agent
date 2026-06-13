@@ -25,10 +25,11 @@
 - ✓ `upcoming_birthdays` agent tool — conversational "whose birthday is coming up?" (resolveUpcomingBirthdays was CLI/brief-only, no agent tool) — tool-hardening fire 47
 - ✓ `on_this_day_notes` agent tool — conversational date-cued note recall (muse on-this-day was CLI-only; pure recall logic moved to @muse/mcp, CLI re-exports) — tool-hardening fire 48
 - ✓ `egressGuards` self-eval ratchet — local-by-construction moat (cloud egress refused in code) promoted to a deterministic scoreboard regression gate, mirroring the grounding ratchet (a structural edge hermes/openclaw can't copy) — differentiation fire 1
+- ✓ `egressGuards` ratchet widened to the voice egress guard — mic audio's cloud STT/TTS path now ratcheted too (drop the MUSE_LOCAL_ONLY voice cloud-key-ignore → self-eval exits 1); value 5→6 — differentiation fire 2
 
 ## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
 
-- ◦ **Widen the `egressGuards` ratchet to all egress surfaces** — fire 1 counts only model-router cloud ids + the autoconfigure `LocalOnlyViolationError` throw. The voice registry's cloud-key-ignore (local-only STT/TTS) and the localhost-only embeddings guard are egress surfaces too but uncounted. Slice: extend `countEgressGuards` (or add stable markers) to include them so dropping a voice/embeddings guard also fails `self-eval`. Source: differentiation fire 1 residual (Opus judge).
+- ◦ **Add the localhost-only embeddings guard to the `egressGuards` ratchet** — fire 2 covered model-router + voice; the embeddings localhost-only guard (architecture.md: "embeddings are already localhost-only") is still uncounted. Slice: locate the guard (no `*embed*.ts` file matched — likely in memory/recall/knowledge index), add a stable marker so dropping it also fails `self-eval`. Source: differentiation fire 2 residual.
 
 ## Done — loop infrastructure (2026-06-12, 진안-directed)
 

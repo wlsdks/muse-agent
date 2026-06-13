@@ -96,12 +96,18 @@ export function countPromptCases(batterySource) {
  * moment the guard count falls. Deterministic (no Ollama); pairs with
  * countGroundedSurfaces. Rivals whose default is cloud cannot ship such a gate —
  * it would block their own product.
+ *
+ * Three stable markers, one per egress surface: gated cloud provider ids
+ * (the model router), `throw new LocalOnlyViolationError` (router enforcement),
+ * and the voice registry forcing the OpenAI key to undefined under
+ * MUSE_LOCAL_ONLY (so mic audio can never reach a cloud STT/TTS API).
  */
 export function countEgressGuards(combinedSource) {
   const gatedIds = combinedSource.match(/CLOUD_PROVIDER_IDS[^=]*=\s*new Set\(\[([^\]]*)\]/u);
   const ids = gatedIds ? (gatedIds[1].match(/"[^"]+"/gu) ?? []).length : 0;
   const throwSites = (combinedSource.match(/throw new LocalOnlyViolationError\(/gu) ?? []).length;
-  return ids + throwSites;
+  const voiceGuards = (combinedSource.match(/parseBoolean\(env\.MUSE_LOCAL_ONLY,\s*true\)\s*\?\s*undefined/gu) ?? []).length;
+  return ids + throwSites + voiceGuards;
 }
 
 /**
@@ -212,7 +218,8 @@ function main() {
   gates.groundedCases = { status: "pass", value: countGroundedCases(corpusSrc) };
   const egressSources = [
     "packages/model/src/local-only-policy.ts",
-    "packages/autoconfigure/src/autoconfigure-model-provider.ts"
+    "packages/autoconfigure/src/autoconfigure-model-provider.ts",
+    "packages/autoconfigure/src/registry-builders/voice.ts"
   ]
     .map((rel) => join(ROOT, rel))
     .filter((p) => existsSync(p))

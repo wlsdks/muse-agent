@@ -125,6 +125,25 @@ test("countEgressGuards: dropping a gated cloud id OR an enforcement throw is a 
   assert.deepEqual(detectRegressions(prev, curr), ["egressGuards: 5→4"]);
 });
 
+test("countEgressGuards also counts the voice local-only cloud-key-ignore guard", () => {
+  // the autoconfigure voice registry forces the OpenAI key to undefined under
+  // MUSE_LOCAL_ONLY, killing every cloud STT/TTS branch — an egress guard.
+  const voiceGuard = "  const openAiKey = parseBoolean(env.MUSE_LOCAL_ONLY, true)\n    ? undefined\n    : env.OPENAI_API_KEY;";
+  assert.equal(countEgressGuards(voiceGuard), 1);
+  // combined with policy + router: 4 cloud ids + 1 throw + 1 voice guard = 6
+  const combined = [
+    'const CLOUD_PROVIDER_IDS = new Set(["openai", "anthropic", "gemini", "openrouter"]);',
+    "throw new LocalOnlyViolationError(providerId, baseUrl);",
+    voiceGuard
+  ].join("\n");
+  assert.equal(countEgressGuards(combined), 6);
+  // deleting the voice guard is a numeric regression
+  const withoutVoice = 'const CLOUD_PROVIDER_IDS = new Set(["openai", "anthropic", "gemini", "openrouter"]);\nthrow new LocalOnlyViolationError(a, b);';
+  const prev = { gates: { egressGuards: { status: "pass", value: countEgressGuards(combined) } } };
+  const curr = { gates: { egressGuards: { status: "pass", value: countEgressGuards(withoutVoice) } } };
+  assert.deepEqual(detectRegressions(prev, curr), ["egressGuards: 6→5"]);
+});
+
 test("countPromptCases counts prompt-bearing battery cases (ratchet for every golden set)", async () => {
   const { countPromptCases } = await import("./self-eval.mjs");
   const src = `
