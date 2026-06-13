@@ -44,6 +44,7 @@
     "eval:memory-poisoning": "pnpm --filter @muse/memory build && node scripts/eval-memory-poisoning.mjs",
     "eval:receipt-drift": "pnpm --filter @muse/recall build && node scripts/eval-receipt-drift.mjs",
     "eval:action-log-tamper": "pnpm --filter @muse/mcp build && node scripts/eval-action-log-tamper.mjs",
+    "eval:policy-symmetry": "pnpm --filter @muse/policy build && node scripts/eval-policy-symmetry.mjs",
     "eval:shadow-trial": "pnpm --filter @muse/model build && node scripts/eval-shadow-trial.mjs",
     "eval:agent": "pnpm --filter @muse/model build && pnpm --filter @muse/tools build && pnpm --filter @muse/prompts build && pnpm --filter @muse/agent-core build && pnpm --filter @muse/cli build && node scripts/eval-agent.mjs",
     "eval:self-improving": "pnpm --filter \"@muse/autoconfigure...\" build && pnpm --filter @muse/cli build && node scripts/eval-self-improving.mjs",

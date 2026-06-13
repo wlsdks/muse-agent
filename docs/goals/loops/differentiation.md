@@ -238,3 +238,27 @@ ratchet: testFiles 928 · new deterministic battery eval:action-log-tamper (no O
 - **리스크/residual (비차단)**: 경쟁사 비교 주장(hermes 무결성 없음·openclaw #62184)은
   배터리 주석의 narrative지 실행 단언 아님(Muse 측 속성은 완전 증명). 체인 tip은 다음
   append로 봉인(append-local, 소스 명시). 선택: self-eval에 tamper-guard ratchet 편입.
+
+## fire 12 · 2026-06-13 · skill v1.14.0 · `ad7c21cb`
+meta: value-class=new-capability · pkg=scripts(@muse/policy proof) · kind=adversarial-proof-battery · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 929 · new deterministic battery eval:policy-symmetry (no Ollama) · fabrication 0 · 소유-루프 파일 미수정
+
+- **무엇**: L6(새 축 = deterministic-safety-as-code). 새 결정적 배터리
+  `scripts/eval-policy-symmetry.mjs`(`pnpm eval:policy-symmetry`). @muse/policy 가드가
+  **모델-독립·언어-대칭** 코드임을 증명: injection을 EN/KO/CN 동일 탐지, zero-width/
+  homoglyph/HTML-entity 난독화도 정규화(`normalizeForInjectionDetection`) 後 탐지,
+  난독화 PII도 `findPii`로 탐지, `maskPii` 비파괴(원본 미변경, 새 string 반환), benign
+  prose 과차단 0. @muse/policy의 이미 export된 가드 read-only import(policy 무소유).
+- **왜 (어떤 경쟁 레버 대비)**: 경쟁사는 prompt-기반/모델 self-policing이거나 narrow —
+  hermes 가드는 EN-focused+context-file 스코프, PII redaction은 output-only·off-by-default·
+  **disk 파괴**(#5322 소스파일에 `***` 기록); openclaw는 bolt-on NeMo(stateless-single-turn
+  가정). Muse는 "security는 결정적 코드, prompt 아님"(CLAUDE.md)이 정체성 → 모델 교체/언어
+  비대칭에 안 깨짐. (정직 scope: 가드 *속성* 증명, 모든 라이브 표면 wiring 주장 아님 —
+  L2/L4/L5처럼 code-property proof.)
+- **리뷰지점**: 배터리 PASS 13/13. ④b 독립 Opus judge **4/4 PASS** + falsification 재현
+  (`normalizeForInjectionDetection` no-op → 배터리 exit 1, 난독화 4건 ✗ → Edit 복원, git
+  checkout 금지). EN/KO/CN 탐지·비파괴마스킹·과차단0 judge가 직접 `node -e` 재현. policy
+  src/agent-core/recall/mcp/grounding 0줄(git status 2파일만). lint:pass·self-eval 회귀 0.
+  zero-width은 `​` 이스케이프(raw byte 없음).
+- **리스크/residual (비차단)**: 경쟁사 비교 인용(hermes #5322 등)은 narrative지 실행 단언
+  아님(Muse 측 속성은 완전 증명). 가드 wiring 라이브 검증은 owned-loop 영역이라 deferred.
