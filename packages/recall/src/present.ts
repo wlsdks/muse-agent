@@ -92,12 +92,28 @@ export function provenanceDate(noteRef: string): string | undefined {
  * post-gate answer (only real surviving citations) + the grounded chunks;
  * undefined when nothing was cited (a refusal renders no receipt). Testable.
  */
+/**
+ * Verify a rendered snippet against the CURRENT on-disk file content (not the
+ * retrieval-index copy it was drawn from). `provenanceSnippet` whitespace-flattens
+ * and may append a `…` truncation marker, so compare the snippet core (sans `…`)
+ * against the same whitespace-flattening of the disk content. A faithful note
+ * round-trips; an edited/truncated-away line does not.
+ */
+function snippetOnDisk(snippet: string, diskContent: string): boolean {
+  const core = snippet.replace(/…$/u, "").trim();
+  if (core.length === 0) {
+    return true;
+  }
+  return diskContent.replace(/\s+/gu, " ").includes(core);
+}
+
 export function formatSourceReceipts(
   answer: string,
   notesDir: string,
   chunks: ReadonlyArray<{ readonly file: string; readonly text: string }>,
   query?: string,
-  verifyTargets?: ReadonlyMap<string, string | null>
+  verifyTargets?: ReadonlyMap<string, string | null>,
+  diskContents?: ReadonlyMap<string, string | null>
 ): string | undefined {
   const cited = [...new Set(citedSourcesIn(answer))];
   if (cited.length === 0) {
@@ -114,7 +130,24 @@ export function formatSourceReceipts(
     // `b/notes.md` can't tell which "from notes.md" receipt is which.
     const lead = date ? `from your note of ${date}` : `from ${note}`;
     const hit = hitFor(note);
-    const snippet = hit ? relevantSnippet(hit.text, query) : undefined;
+    let snippet = hit ? relevantSnippet(hit.text, query) : undefined;
+    // L4 (shows-its-work): the snippet above is drawn from the retrieval-INDEX
+    // copy (`hit.text`). When the caller supplies the file's CURRENT disk content,
+    // confirm the quote is still really there — a note edited or deleted after
+    // indexing would otherwise get a confident verbatim quote the file no longer
+    // contains (a fake citation). On drift, hide the stale quote and say why
+    // instead of vouching for text that isn't on disk.
+    let driftNote = "";
+    if (snippet !== undefined && diskContents?.has(note)) {
+      const content = diskContents.get(note);
+      if (content === null || content === undefined) {
+        snippet = undefined;
+        driftNote = " (source no longer on disk — can't verify the quote)";
+      } else if (!snippetOnDisk(snippet, content)) {
+        snippet = undefined;
+        driftNote = " (source changed since indexed — quote not shown)";
+      }
+    }
     // The "open to verify" target. An AD-HOC source supplies its own: the real
     // URL for a `--url` answer (openable in a browser), or `null` for an
     // ephemeral `--clipboard` answer (nothing to open — show no path rather than
@@ -125,7 +158,7 @@ export function formatSourceReceipts(
     const target = override !== undefined
       ? override ?? undefined
       : hit && isAbsolute(hit.file) ? hit.file : isAbsolute(note) ? note : join(notesDir, note);
-    return `   • ${lead}${snippet ? ` — "${snippet}"` : ""}${target ? `\n     ${target}` : ""}`;
+    return `   • ${lead}${snippet ? ` — "${snippet}"` : driftNote}${target ? `\n     ${target}` : ""}`;
   });
   return `\n📎 From your notes (open to verify):\n${blocks.join("\n")}\n`;
 }

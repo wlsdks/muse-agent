@@ -10,6 +10,36 @@
 
 ## Levers (newest first)
 
+### L4 — The source receipt verifies the quote against the FILE ON DISK at render time, not the retrieval-index copy (fire 8)
+
+Muse's "📎 From your notes (open to verify)" receipt (`formatSourceReceipts`,
+`@muse/recall`) prints a verbatim snippet drawn from `r.chunk.text` — the
+**retrieval-index copy** embedded at index time. Nothing re-confirmed that snippet
+was still a real substring of the cited file *now*, so a note edited or deleted
+after indexing would still get a confident verbatim quote and an "open to verify"
+path pointing at text the file no longer contains — exactly the *fake citation* the
+grounded-attribution literature warns about (the AIS principle: a citation is only
+honest when the snippet actually supports the claim —
+[Nexumo "11 Tests That Expose Fake Citations"](https://medium.com/@Nexumo_/rag-grounding-11-tests-that-expose-fake-citations-30d84140831a) ·
+[arXiv 2409.11242](https://arxiv.org/pdf/2409.11242)). Rivals cite from their
+embedded copy by construction: hermes's defense is an internal self-judgment
+"Hallucination Gate" over its own reasoning, not a user-openable on-disk receipt
+([dev.to](https://dev.to/ahmad_rrrtx/the-agent-that-writes-its-own-manual-a-deep-dive-into-hermes-agents-self-improving-architecture-58h2));
+openclaw's is an operational circuit-breaker ([Wikipedia/OpenClaw](https://en.wikipedia.org/wiki/OpenClaw)) —
+neither re-reads the source at render time. A throughput/breadth-pitched cloud-RAG
+product has no product reason to pay that re-read; Muse is single-user,
+local-by-construction, and "shows its work" *is* the product, so re-reading the
+user's own local note to keep the receipt honest is cheap and on-brand.
+
+**Shipped (fire 8):** `formatSourceReceipts` now takes an optional caller-supplied
+disk-content map and, on drift, HIDES the stale quote and says why ("source changed
+since indexed" / "no longer on disk") instead of vouching for it; `scripts/eval-receipt-drift.mjs`
+(`pnpm eval:receipt-drift`) proves it end-to-end with real temp files (faithful
+verifies, drifted + deleted are caught, no-collateral). **Slice 2 (open):** wire the
+CLI caller (`commands-ask.ts`) to read each cited note and populate the map so the
+live `muse ask` receipt opts in (needs path-resolution + ad-hoc-source skip tests).
+The grounding engine (`verifyGrounding`/`enforceAnswerCitations`) is untouched.
+
 ### L3 — The embedder is fail-close localhost under local-only, not localhost-by-default (fire 4)
 
 A latent hole in the L1 moat: `createOllamaEmbedder` (`@muse/autoconfigure`) read

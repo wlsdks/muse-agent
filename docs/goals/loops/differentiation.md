@@ -148,3 +148,29 @@ ratchet: testFiles 922 · egressGuards 7 (불변) · fabrication 0 · grounding 
 - **리스크/residual (비차단)**: 없음(material). 다음 fire는 local-by-construction vein을
   충분히 팠으니(L1/L3 4 fire) 다른 moat 축(grounding/"shows its work")의 새 레버로
   다양화 권장.
+
+## fire 8 · 2026-06-13 · skill v1.14.0 · `33c3390d`
+meta: value-class=new-capability · pkg=@muse/recall · kind=citation-honesty(shows-its-work) · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 922 · new battery eval:receipt-drift (no Ollama) · recall 88/88 (backward-compat) · fabrication 0 · grounding 엔진 미수정
+
+- **무엇**: L4(다른 moat 축 = "shows its work" 인용 정직성). source receipt가 인용
+  snippet을 retrieval-INDEX 복사본이 아니라 **디스크 파일 현재 내용**에 대해 검증.
+  `formatSourceReceipts`(`@muse/recall`)에 backward-compat optional `diskContents`
+  맵 추가 — snippet이 현재 디스크에 없으면(편집) 또는 null이면(삭제) **stale quote
+  숨기고 사유 표시**(fake citation 방지). 순수 헬퍼 `snippetOnDisk`(… 절단+normalize).
+  새 결정적 배터리 `scripts/eval-receipt-drift.mjs`가 REAL temp 파일로 end-to-end 증명.
+- **왜 (어떤 경쟁 레버 대비)**: 경쟁사는 RAG 구조상 embedded/index 복사본에서 인용 —
+  render-time 디스크 재독을 할 product 이유가 없다(throughput/breadth 피치). 노트가
+  인덱싱 後 편집/삭제되면 그들 "인용"은 fake citation이 된다. Muse는 local·single-user·
+  "shows its work"가 곧 제품이라 자기 노트 재독이 cheap → 구조적 edge. (AIS 원칙·
+  arXiv 2409.11242 인용.)
+- **리뷰지점**: TDD RED(diskContents 없을 때 drift 미감지 3 fail)→GREEN(present 27/27,
+  5 신규 케이스가 실제 downgrade 동작 단언). 배터리 PASS 7/7. ④b 독립 Opus judge **4/4
+  PASS** + falsification 재현(`snippetOnDisk`→`return true` → 배터리 exit 1, drift 2건
+  ✗; sed 역복원→PASS). recall 88/88·cli 빌드 OK(backward-compat)·grounding 엔진 미수정.
+  **함정 기록**: falsification에서 `git checkout present.ts`가 미커밋 구현을 날려 재적용함 —
+  미커밋 파일엔 git checkout 금지, falsify는 sed 역적용으로.
+- **리스크/residual (비차단, slice 2)**: CLI 호출자(`commands-ask.ts`)가 cited 노트의
+  현재 디스크 내용을 읽어 `diskContents`를 채워야 *사용자 receipt*에 실제 작동(경로해석+
+  ad-hoc `--url`/`--clipboard` 스킵이 자체 테스트 필요) → backlog ◦. 그 전까진 로직은
+  라이브·검증됨이나 사용자 노출은 deferred.
