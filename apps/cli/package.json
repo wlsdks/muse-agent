@@ -28,6 +28,7 @@
     "@muse/model": "workspace:*",
     "@muse/multi-agent": "workspace:*",
     "@muse/prompts": "workspace:*",
+    "@muse/recall": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/skills": "workspace:*",
     "@muse/tools": "workspace:*",
