@@ -130,9 +130,11 @@ public enum SpriteLibrary {
     public static let all: [Sprite] = [aria, celestial]
     public static let `default` = aria
 
-    /// Resolve a character by name (case-insensitive); falls back to the default.
+    /// Resolve a character by name (case-insensitive, whitespace-trimmed); falls
+    /// back to the default. The name is fed from the user-set
+    /// `MUSE_DESKTOP_CHARACTER` env var, which can carry stray whitespace.
     public static func named(_ name: String?) -> Sprite {
-        guard let name = name?.lowercased(), !name.isEmpty else { return `default` }
+        guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !name.isEmpty else { return `default` }
         return all.first { ($0.name ?? "").lowercased() == name } ?? `default`
     }
 }

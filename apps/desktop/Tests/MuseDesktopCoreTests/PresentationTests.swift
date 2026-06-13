@@ -119,6 +119,16 @@ final class SpriteLibraryTests: XCTestCase {
         XCTAssertEqual(SpriteLibrary.named("").name, "aria")
     }
 
+    func testWhitespaceWrappedNameStillResolves() {
+        // Fed straight from MUSE_DESKTOP_CHARACTER (main.swift), which commonly
+        // carries stray whitespace / a trailing newline — a real name must still
+        // resolve, not silently fall back to the default character.
+        XCTAssertEqual(SpriteLibrary.named(" celestial ").name, "celestial")
+        XCTAssertEqual(SpriteLibrary.named("celestial\n").name, "celestial")
+        XCTAssertEqual(SpriteLibrary.named("  Aria  ").name, "aria")
+        XCTAssertEqual(SpriteLibrary.named("   ").name, "aria") // whitespace-only ⇒ default
+    }
+
     func testEveryBuiltInCharacterRoundTripsThroughJSON() throws {
         for sprite in SpriteLibrary.all {
             let data = try JSONEncoder().encode(sprite)

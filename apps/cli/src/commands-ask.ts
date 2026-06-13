@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, relative } from "node:path";
 
-import { assessContextSufficiency, buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, groundedOnUntrustedOnly, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { assessContextSufficiency, buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, groundedOnUntrustedOnly, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, untrustedOnlySentences, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportCitationPrecision, reportCitationRecall, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -44,7 +44,7 @@ export { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource };
 import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy } from "@muse/recall";
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
 import { diversifyAskChunks, notesGroundingFraming } from "@muse/recall";
-import { optionalGroundingSections } from "@muse/recall";
+import { groundedSourceSummary, optionalGroundingSections } from "@muse/recall";
 export { diversifyAskChunks, notesGroundingFraming };
 import { askOutcomeLabel, askWeaknessAxis, createStageTimer, recordAskWeakness, recordAskWeaknessResolved } from "@muse/recall";
 import type { AskWeaknessAxis } from "@muse/recall";
@@ -190,8 +190,17 @@ export function untrustedOnlyGroundingNotice(
   answer: string,
   matches: readonly KnowledgeMatch[]
 ): string | undefined {
-  if (!groundedOnUntrustedOnly(answer, matches)) return undefined;
-  return `\n⚠️  Source check: this answer is faithful to its sources, but rests ONLY on tool-fetched data (not your own notes) — verify before trusting.\n`;
+  if (groundedOnUntrustedOnly(answer, matches)) {
+    return `\n⚠️  Source check: this answer is faithful to its sources, but rests ONLY on tool-fetched data (not your own notes) — verify before trusting.\n`;
+  }
+  // Per-claim provenance: the whole-answer gate clears when ANY citation is
+  // trusted, but a MIXED answer can still rest a specific claim solely on a
+  // poisonable tool-fetched source. Surface that claim (grounded≠true).
+  const untrusted = untrustedOnlySentences(answer, matches);
+  if (untrusted.length > 0) {
+    return `\n⚠️  Source check: one claim rests only on tool-fetched data (not your own notes) — verify: "${untrusted[0]}"\n`;
+  }
+  return undefined;
 }
 
 /**
@@ -1995,41 +2004,20 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
 
       // Show citation header before streaming the answer so the user
       // sees what's being grounded against, then the model output.
-      const groundedParts: string[] = [];
-      if (scored.length > 0) {
-        const conf = notesFraming.verdict === "ambiguous" ? " ⚠ LOW confidence — verify, may not be in your notes" : "";
-        groundedParts.push(`${scored.length.toString()} note chunk(s) — ${scored.map((r) => r.file.split("/").pop()).join(", ")}${conf}`);
-      }
-      if (openTasks.length > 0) {
-        groundedParts.push(`${openTasks.length.toString()} open task(s)`);
-      }
-      if (upcomingEvents.length > 0) {
-        groundedParts.push(`${upcomingEvents.length.toString()} upcoming event(s)`);
-      }
-      if (pendingReminders.length > 0) {
-        groundedParts.push(`${pendingReminders.length.toString()} pending reminder(s)`);
-      }
-      if (matchedContacts.length > 0) {
-        groundedParts.push(`${matchedContacts.length.toString()} contact(s)`);
-      }
-      if (matchedMemories.length > 0) {
-        groundedParts.push(`${matchedMemories.length.toString()} remembered fact(s)`);
-      }
-      if (matchedCommands.length > 0) {
-        groundedParts.push(`${matchedCommands.length.toString()} shell command(s)`);
-      }
-      if (matchedCommits.length > 0) {
-        groundedParts.push(`${matchedCommits.length.toString()} git commit(s)`);
-      }
-      if (matchedActions.length > 0) {
-        groundedParts.push(`${matchedActions.length.toString()} logged action(s)`);
-      }
-      if (episodeHits.length > 0) {
-        groundedParts.push(`${episodeHits.length.toString()} past session(s)`);
-      }
-      if (feedHeadlines.length > 0) {
-        groundedParts.push(`${feedHeadlines.length.toString()} feed headline(s)`);
-      }
+      const notesConf = notesFraming.verdict === "ambiguous" ? " ⚠ LOW confidence — verify, may not be in your notes" : "";
+      const groundedParts = groundedSourceSummary({
+        notesPart: scored.length > 0 ? `${scored.length.toString()} note chunk(s) — ${scored.map((r) => r.file.split("/").pop()).join(", ")}${notesConf}` : null,
+        openTasks: openTasks.length,
+        upcomingEvents: upcomingEvents.length,
+        pendingReminders: pendingReminders.length,
+        contacts: matchedContacts.length,
+        memories: matchedMemories.length,
+        shellCommands: matchedCommands.length,
+        gitCommits: matchedCommits.length,
+        loggedActions: matchedActions.length,
+        pastSessions: episodeHits.length,
+        feedHeadlines: feedHeadlines.length
+      });
       // Grounding diagnostic goes to stderr so `muse ask "?" > answer.txt`
       // and `| jq` style pipelines get a clean stdout. Same convention
       // as the auto-reindex banner above. The blank line separating

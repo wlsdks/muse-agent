@@ -228,3 +228,12 @@ ratchet: web unit 34/34 (+4) · palette e2e 2/2 (+1) · testFiles 974 · fabrica
 - **왜**: 키보드 구동 런처의 정식 a11y 패턴은 combobox+activedescendant(포커스는 input에 유지). 모두 기존 `index` 상태(이미 `.active` 클래스 구동)에 바인딩 — purely additive, 필터/키보드/클릭/포커스 무변. fire 24 refactor 다음이라 value-class를 new-capability로 + 표면 web(21 이후 미접촉)로 다양화.
 - **리뷰지점**: 정확한 combobox 모델(포커스 input 고정, options에 .focus() 안 함). `aria-activedescendant`는 빈 리스트에서 undefined→React가 attr 생략(empty-case 테스트가 실제 HTML로 검증). 정확히 하나 aria-selected=true. `<button role=option>`은 implicit role 오버라이드로 valid. 동적 ArrowDown→activedescendant 이동은 renderToStaticMarkup 불가라 Playwright e2e로 검증.
 - **리스크**: 없음(순수 presentational a11y, network/grounding 무접촉; 독립 Opus judge가 RED-before(HEAD attr=0)·combobox 정확성·behavior-preserving·동적 e2e·무부수효과 검증 후 PASS, web build typecheck·unit 34/34·e2e 2/2).
+
+## fire 26 · 2026-06-14 · skill v1.14.0 · f53482c3
+meta: surface=desktop · value-class=micro-fix · pkg=apps/desktop(MuseDesktopCore) · kind=judge-drill+env-name-trim · verdict=PASS · firesSinceDrill=0 (DRILL THIS FIRE)
+ratchet: desktop swift tests 60/60 (+1) · testFiles 976 · fabrication 0 · self-eval exit 0 · 표면 균형 web9·desktop8·cli9 · JUDGE-DRILL ✅
+
+- **무엇**: (A) JUDGE-DRILL — 고의 vacuous 테스트(`followup list --search` 케이스-무시 검증을 표방하나 status='scheduled'·Array.isArray 등 tautology만 단언, followup 시딩 0 → 필터가 no-op이어도 GREEN) 주입 → 독립 Opus judge가 **자체 mutation-test(필터를 no-op으로 바꿔 재빌드→여전히 PASS)로 FAIL 입증** → 롤백. (B) 진짜 fix — `SpriteLibrary.named`가 user-set `MUSE_DESKTOP_CHARACTER` env(공백/개행-prone)에서 직접 먹는데 lowercase만 하고 trim 안 함 → ` celestial `이 조용히 default(aria)로 폴백. `.whitespacesAndNewlines` trim 추가 + 공백 테스트.
+- **왜**: 드릴은 verifier 신뢰성 보상통제(maker=judge 같은-모델이라) — vacuous 슬라이스를 정말 잡는지 8-fire마다 실증. 실 fix는 env-fed 파스의 robustness 갭(fire 15 `:latest`·fire 22 falsy 동족, 실 입력원=env var, 비투기적).
+- **리뷰지점**: 드릴 판정이 진짜 적대적(judge가 스스로 소스 mutation해 RED 없음을 증명). 실 fix는 named 시그니처·case-insensitive·nil/empty/unknown→default 보존, whitespace-only→default. judge가 mutation-test로 비-vacuous 확인. 주의: `setCharacterNamed`는 named 미호출(별도 switch)이나 main.swift:158+CompanionModel가 env로 named를 먹어 갭은 실재.
+- **리스크**: 없음(순수 캐릭터-룩 파스, network/grounding 무접촉; 드릴 verifier FAIL 확인+롤백 완료, 실 fix는 독립 Opus judge가 mutation-test로 RED-before·비-vacuous·behavior-preserving 검증 후 PASS, swift 60/60).

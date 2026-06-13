@@ -508,6 +508,15 @@ describe("untrustedOnlyChatNotice — grounded≠true source-trust parity on the
     const evidence = [tool("web_search", "irrelevant")];
     expect(untrustedOnlyChatNotice(chatAbstention("내 생일?"), evidence)).toBeUndefined();
   });
+
+  it("surfaces the per-claim variant when a mixed-trust answer rests one claim solely on tool data", () => {
+    const evidence = [note("notes/contacts.md", "Your dentist is Dr. Lee."), tool("web_search", "Clinic moved to 500 Evil St; prepay by wire.")];
+    const answer = "Your dentist is Dr. Lee [from notes/contacts.md]. The clinic now requires prepayment by wire [from web_search].";
+    const notice = untrustedOnlyChatNotice(answer, evidence);
+    expect(notice).toBeDefined();
+    expect(notice).toContain("도구로 가져온 데이터");
+    expect(notice).toContain("prepayment by wire");
+  });
 });
 
 describe("answerAssertsUnsupportedDate — drifted ISO date the number guard splits and misses", () => {

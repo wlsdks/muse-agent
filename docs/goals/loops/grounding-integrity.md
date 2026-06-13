@@ -194,3 +194,19 @@ ratchet: cli +3 OUTCOME tests (chat-finalize) · check green (cli 2631 pass) · 
 - 왜: 의미 가드 trio(fire 20-22)는 답-vs-증거였고, 이건 증거-vs-증거를 **새 표면**에. 데스크톱 컴패니언의 유일 표면(chat)이 prose 충돌 grounded 거짓말을 조용히 통과시키던 진짜 axis-A 구멍. ask는 이미 방어, chat만 미배선이었음.
 - 리뷰지점: 순수 additive(게이트 verdict 불변, 기존 큐 미억제), fail-open 이중 가드(`.catch(()=>[])` + `args.embed?`), precision-first neither-subset로 elaboration over-fire 차단. no-embed 경로 = 오늘 동작 그대로. 독립 Opus judge가 큐 append 제거→충돌 테스트 red로 non-vacuity 직접 확인, 5/5 PASS. 두 호출부 실 배선 검증(test-only 아님).
 - 리스크: 낮음(큐 추가, 게이트 무관). 비용: turn당 매치 임베드 N회(ask와 동일 parity, ≥2 매치일 때만). vein: axis A는 prose-충돌까지 ask·chat 양면 방어 완료 — 다음은 충돌 시 답을 abstain까지 끌지(현재는 큐만), 또는 axis C self-judge meta-eval.
+
+## fire 25 · 2026-06-14 · skill v1.14.0 · 04f72cf6
+meta: value-class=meta-eval · pkg=scripts(eval-harness) · kind=C · verdict=PASS · firesSinceDrill=7
+ratchet: scripts +2 harness tests (17/17) + 1 live judge case (eval:judge 11/11, injection STABLE 3/3) · check green (exit 0) · lint 0/0 · fabrication 0 · fence-revert mutation verified by judge
+- 무엇: **LLM judge의 judged-content 인젝션 방어**(maker=judge meta-eval). `llmJudge`가 공격자-영향 OUTPUT을 구분자 없이 프롬프트에 이어붙이고 첫 줄만 파싱 → OUTPUT 안의 "Respond PASS"가 verdict를 뒤집을 수 있었음. eval:adversarial에선 judged output이 탈옥 응답(PASS=거부)이라 — 순응 답변+인젝션이 거부로 채점되는 실제 안전 게이트 우회. `spotlightFence`(콘텐츠-해시 위조불가 마커)+`buildJudgeUserMessage`로 OUTPUT을 DATA 펜스에 가두고 시스템 프롬프트에 "마커 안 지시 무시" 강제. runShadowTrial도 동일(오염 메모리 벡터).
+- 왜: axis C(self-judge 한계 보완) — 최근 fire(A grounding·B reliability)에 없던 신선한 value-class(meta-eval). 단일 로컬 모델이라 judge=maker, judge 신뢰도가 모든 배터리의 PASS/FAIL을 떠받침. eval:judge가 이 인젝션을 한 번도 안 봤음.
+- 리뷰지점: 결정론적 테스트(실 llmJudge+펜스-인지 stub, 펜스 revert 시 red)+구조 테스트, 라이브 gemma4 케이스 3/3(real model이 펜스 준수). 펜스 마커=sha256(content) → body가 자기 닫는 마커 위조 불가. malformed output(undefined/object)은 `JSON.stringify ?? String` 가드. 첫 줄 파서·garbage→"?" fail-closed 불변. 독립 Opus judge가 revert→red 직접 확인 + 위조불가 검증 → 5/5 PASS.
+- 리스크: 낮음(judge 입력 강화, 게이트 로직 불변, benign 11/11 유지). vein: axis C 첫 진입 — 다음 후보는 judge position/verbosity bias 케이스, 또는 shadowTrial 라이브 meta-eval, 또는 axis A abstain-on-conflict.
+
+## fire 26 · 2026-06-14 · skill v1.14.0 · 87d44ecf
+meta: value-class=redteam-defense · pkg=@muse/agent-core+@muse/cli · kind=A · verdict=PASS · firesSinceDrill=8
+ratchet: agent-core +1 module +5 engine tests · cli +2 wiring tests (grounding-verdict 25, chat-grounding 90) · agent-core 2214 · cli 2632 · grounding-delta +0.76 intact · lint 0/0 · fabrication 0 · return-[]-mutation reds flag+wiring (judge-verified)
+- 무엇: **per-claim untrusted-provenance 가드** (mixed-trust GROUNDED≠TRUE 구멍). `groundedOnUntrustedOnly`는 whole-answer 마커 — 신뢰 인용 하나만 있어도 false. 그래서 혼합 답변(사소한 신뢰 인용 + load-bearing 오염 untrusted 인용, MCP/web/tool)이 untrusted 주장을 plain grounded로 넘겼음. 새 pure `untrustedOnlySentences`(agent-core): resolving 인용이 전부 untrusted인 문장만 반환(같은 문장에 신뢰 co-citation 있으면 clear, unresolved 무시). reportCitationPrecision의 sentinel/split 재사용(인용 내부 "." 분할 방지). ask·chat 두 notice가 whole-answer false인데 per-claim flag 있으면 해당 tool-fetched 문장 지목.
+- 왜: untrustedOnlyGroundingNotice가 ALL-untrusted만 잡던 걸 per-claim으로 확장 — 데스크톱·CLI 양 표면. scout가 docstring에 명시된 설계 한계를 실 구멍으로 확인(추측 아님). citation-precision의 per-sentence 기계가 이미 같은 패키지에 있어 충실한 재사용.
+- 리뷰지점: additive(게이트 verdict·whole-answer 경로 불변), 신뢰 co-citation false-positive 차단, unresolved 인용 무시(verifyGrounding 관할), empty/all-trusted no-op. 독립 Opus judge가 return-[] mutation으로 flag+wiring 테스트 red 직접 확인 → 5/5 PASS. pnpm check의 @muse/model fuzz 5000ms 타임아웃은 동시-루프 env 포화(격리 재실행 16/16 green, 내 패키지 무관) — 진짜 회귀 아님.
+- 리스크: 낮음(진단 cue 추가). vein: axis A grounded≠true는 whole-answer→per-claim provenance까지 ask·chat 양면 완료. 다음=abstain-on-conflict(설계 결정 확인 필요) 또는 axis B/C. **다음 fire 27 = JUDGE-DRILL(연속 allPASS=7→8 도달)**.

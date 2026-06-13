@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { detectEvidenceContradictions, groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { detectEvidenceContradictions, groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, untrustedOnlySentences, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { conflictCueFromMatches } from "@muse/recall";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
@@ -430,8 +430,16 @@ export function chatCitationRecallNotice(answer: string, matches: readonly Knowl
  */
 export function untrustedOnlyChatNotice(answer: string, evidence: readonly KnowledgeMatch[]): string | undefined {
   if (isChatAbstention(answer) || expressesNoInformation(answer)) return undefined;
-  if (!groundedOnUntrustedOnly(answer, evidence)) return undefined;
-  return "\n\n⚠️ 출처 확인: 이 답변은 출처에 충실하지만 도구로 가져온 데이터(tool-fetched)에만 근거합니다 — 직접 확인 후 신뢰하세요.";
+  if (groundedOnUntrustedOnly(answer, evidence)) {
+    return "\n\n⚠️ 출처 확인: 이 답변은 출처에 충실하지만 도구로 가져온 데이터(tool-fetched)에만 근거합니다 — 직접 확인 후 신뢰하세요.";
+  }
+  // Per-claim provenance: a mixed answer can rest one claim solely on a
+  // poisonable tool-fetched source even when another citation is trusted.
+  const untrusted = untrustedOnlySentences(answer, evidence);
+  if (untrusted.length > 0) {
+    return `\n\n⚠️ 출처 확인: 한 가지 내용이 도구로 가져온 데이터에만 근거합니다 — 직접 확인하세요: "${untrusted[0]}"`;
+  }
+  return undefined;
 }
 
 const HANGUL = /[가-힣]/u;

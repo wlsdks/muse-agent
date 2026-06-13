@@ -92,8 +92,19 @@ export function selectOnThisDay(notes: readonly DatedNote[], now: Date, options:
   const out: OnThisDayHit[] = [];
   for (const note of notes) {
     if (note.date.getFullYear() >= now.getFullYear()) continue; // only prior years
-    const projected = new Date(now.getFullYear(), note.date.getMonth(), note.date.getDate()).getTime();
-    if (Math.abs(projected - todayMidnight) > windowDays * DAY_MS) continue;
+    // Project the note's month-day into the year BEFORE, OF, and AFTER `now` and
+    // take the smallest gap to today. A single same-year projection breaks across
+    // the Jan-1 boundary: with a window, a note dated Dec 31 is ~364 days from a
+    // Jan-1 `now` when projected into the same year, so the true 1-day anniversary
+    // gap is missed (and the symmetric Jan→Dec case spuriously matched).
+    const m = note.date.getMonth();
+    const d = note.date.getDate();
+    const minGap = Math.min(
+      Math.abs(new Date(now.getFullYear() - 1, m, d).getTime() - todayMidnight),
+      Math.abs(new Date(now.getFullYear(), m, d).getTime() - todayMidnight),
+      Math.abs(new Date(now.getFullYear() + 1, m, d).getTime() - todayMidnight)
+    );
+    if (minGap > windowDays * DAY_MS) continue;
     out.push({ date: note.date, id: note.id, yearsAgo: now.getFullYear() - note.date.getFullYear() });
   }
   return out.sort((a, b) => b.date.getTime() - a.date.getTime());
