@@ -59,7 +59,8 @@ export function registerFollowupCommands(program: Command, io: ProgramIO): void 
       "scheduled"
     )
     .option("--json", "Print the raw payload instead of the formatted list")
-    .action(async (options: { readonly status: string } & SharedOptions) => {
+    .option("--search <text>", "Only followups whose summary contains this text (case-insensitive)")
+    .action(async (options: { readonly status: string; readonly search?: string } & SharedOptions) => {
       // Validate like `tasks`/`checkins` list — readFollowupStatusFilter is
       // lenient (any typo silently → "scheduled"), so a typo'd --status would
       // otherwise show the WRONG set with no signal.
@@ -76,16 +77,18 @@ export function registerFollowupCommands(program: Command, io: ProgramIO): void 
       const all = await readFollowups(file);
       const filtered = filterByStatus(all, status);
       const sorted = [...filtered].sort(compareFollowupsByScheduledFor);
+      const query = options.search?.trim().toLowerCase();
+      const matched = query ? sorted.filter((f) => f.summary.toLowerCase().includes(query)) : sorted;
       const payload = {
-        followups: sorted.map(serializeFollowup),
+        followups: matched.map(serializeFollowup),
         status,
-        total: sorted.length
+        total: matched.length
       };
       if (options.json) {
         io.stdout(`${JSON.stringify(payload, null, 2)}\n`);
         return;
       }
-      io.stdout(formatFollowupList(payload, sorted));
+      io.stdout(formatFollowupList(payload, matched));
     });
 
   followup

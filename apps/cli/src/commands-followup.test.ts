@@ -116,3 +116,34 @@ describe("muse followup list — strict --status validation (sibling parity with
     expect(r.stderr).toBe("");
   });
 });
+
+describe("muse followup list --search — filter by summary (sibling parity with tasks/remind/contacts)", () => {
+  const prevEnv = process.env.MUSE_FOLLOWUPS_FILE;
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.MUSE_FOLLOWUPS_FILE;
+    else process.env.MUSE_FOLLOWUPS_FILE = prevEnv;
+  });
+  const followup = (o: Partial<PersistedFollowup>): PersistedFollowup => ({
+    createdAt: "2026-05-22T00:00:00.000Z",
+    id: "f",
+    scheduledFor: "2026-05-22T12:00:00.000Z",
+    status: "scheduled",
+    summary: "x",
+    userId: "stark",
+    ...o
+  });
+
+  it("narrows to followups whose summary matches, case-insensitive", async () => {
+    const f = join(mkdtempSync(join(tmpdir(), "muse-followup-search-")), "followups.json");
+    process.env.MUSE_FOLLOWUPS_FILE = f;
+    await writeFollowups(f, [
+      followup({ id: "a", summary: "check Q3 budget memo" }),
+      followup({ id: "b", summary: "ping Dana about lunch" })
+    ]);
+    const r = await runFollowup(["list", "--search", "BUDGET", "--json"]);
+    expect(r.error).toBeUndefined();
+    const payload = JSON.parse(r.stdout) as { followups: { id: string }[]; total: number };
+    expect(payload.followups.map((e) => e.id)).toEqual(["a"]);
+    expect(payload.total).toBe(1);
+  });
+});
