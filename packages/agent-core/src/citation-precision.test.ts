@@ -55,4 +55,14 @@ describe("reportCitationPrecision — ALCE per-citation support (right source, w
     expect(report.pairs).toEqual([]);
     expect(report.precision).toBe(1);
   });
+
+  it("aggregates ALL chunks of a cited source (a sentence supported by a DIFFERENT chunk of the same file is not false-flagged)", () => {
+    // The same file is retrieved as two chunks; the SUPPORTING chunk comes first,
+    // so a last-wins source map would score the sentence against the non-supporting
+    // second chunk and wrongly report unsupported. Aggregation fixes it.
+    const matches = [match("vpn.md", "the office mtu is 1380"), match("vpn.md", "an unrelated chunk about the coffee machine")];
+    const report = reportCitationPrecision("The office MTU is 1380 [from vpn.md].", matches);
+    expect(report.precision).toBe(1);
+    expect(report.pairs[0]!.supported).toBe(true);
+  });
 });
