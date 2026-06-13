@@ -146,3 +146,11 @@ ratchet: cli +4 tests (chat-grounding 89; full cli 2622 pass) · lint 0/0 · fab
 - 진짜 fix: ALCE citation precision/recall cue를 **chat 표면에 parity**(ask는 fire15/16, chat엔 없었음). `chatCitationPrecisionNotice`/`chatCitationRecallNotice`(검증된 reporter delegation) finalizeGatedChatAnswer에 append. ask+chat 둘 다 이제 mis-citation/missing-attribution 표면화.
 - 리뷰지점: 순수 additive(게이트/floor 불변), untrusted/conflict와 distinct reporter라 double-warn 없음, abstention/충실-인용은 silent. 독립 Opus judge 5/5 PASS(cli 2622 green).
 - 리스크: 없음(additive). 발화는 답이 [from] 인용 보유 시(ask/chat 공통 caveat). vein 고갈 유지.
+
+## fire 19 · 2026-06-14 · skill v1.14.0 · (no slice — EXHAUSTION close)
+meta: value-class=honest-close · pkg=— · kind=B-probe · verdict=VEIN-EXHAUSTED · firesSinceDrill=1
+ratchet: self-eval green (testFiles 959) · no code change (EXHAUSTION rule, not a forced slice)
+- 무엇: axis-B 신선 모듈 정직 probe(weakness-ledger BKT / correction-distiller polarity / personal-playbook decay·Memp) — **전부 정확하고 exact-value 테스트로 조밀하게 커버됨, 실 버그 없음**. 코드 슬라이스 미생성.
+- 왜: 2회 연속 clean 신호(fire 16 vein-status + fire 19 axis-B-clean) → EXHAUSTION 규칙대로 억지 micro-fix 대신 정직 종료. axis A(provenance/empty-evidence/conflict/citation precision+recall/date) + axis B 신뢰성(reward·decay·probation·graduation·BKT·polarity·persistence idempotency) + axis C(3 judge gate empty-evidence, k-sample, judge-drill ×2) 모두 강화·검증 완료.
+- 리뷰지점: 없음(no change). scout 권고 = value-class 피벗(retrieval/recall 품질 또는 학습-상태 UX surfacing) 또는 wind-down. 진안 방향 결정 대기.
+- 리스크: 없음. **블로커: 이 테마의 결정론적 hardening vein 고갈** — 추가 fire는 새 공개 논문 메커니즘(가끔 등장) 또는 정직 종료. 진안이 테마 재지정/중단 결정 권장.

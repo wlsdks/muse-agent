@@ -135,6 +135,8 @@
 
 ## GROUNDING INTEGRITY theme — open
 
+- ⏳ VEIN EXHAUSTED (fire 19, 2nd consecutive clean scout): the deterministic grounding/self-improvement hardening vein is mined out — axis A (provenance, empty-evidence fail-close ×3 gates, conflict, citation precision+recall, date-drift), axis B reliability (reward/decay/probation/graduation/BKT/polarity/persistence), axis C (judge gates + 2 judge-drills) all shipped + densely tested. NEXT high-value requires a value-class PIVOT (retrieval/recall quality; learned-state UX surfacing) or a fresh open-arXiv mechanism — recommend 진안 repoint the theme or wind down (CronDelete 8ed88aa8). The loop will otherwise honestly produce small/no-op fires.
+
 - ◦ VEIN STATUS (fire 16): the deterministic grounded≠true fail-open vein is effectively exhausted (precision/recall/groundedness triad complete; all 3 judge gates empty-evidence-closed; provenance+conflict+date guards shipped). Next high-value moves are NOT more fail-open hunting but: (a) track citation precision/recall + faithfulness as a `muse doctor --grounding` / self-eval metric over a fixture corpus; (b) pivot value-class to retrieval QUALITY (recall@k / rerank) or chat-surface parity of the ask cues; (c) honest wind-down. Pick one next fire.
 
 
