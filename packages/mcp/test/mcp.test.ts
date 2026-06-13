@@ -1694,6 +1694,18 @@ describe("muse.notes loopback server (filesystem-backed)", () => {
     expect(read).toMatchObject({ content: "line one\nline two\n" });
   });
 
+  it("append that would exceed maxFileBytes is REJECTED before writing — a failed append mutates NOTHING (no partial side-effect)", async () => {
+    const conn = createLoopbackMcpConnection(createNotesMcpServer({ maxFileBytes: 1024, notesDir: tmpRoot }));
+    const seed = `${"a".repeat(600)}\n`; // 601 bytes, under the 1024 cap
+    await conn.callTool!("append", { content: seed, path: "log.md" });
+    const before = await conn.callTool!("read", { path: "log.md" }) as { content: string };
+    // this append (600 bytes) would push the file to 1201 > 1024 → must be refused WITHOUT writing
+    const over = await conn.callTool!("append", { content: "b".repeat(600), path: "log.md" });
+    expect(over).toMatchObject({ error: expect.stringContaining("exceed") });
+    const after = await conn.callTool!("read", { path: "log.md" }) as { content: string };
+    expect(after.content).toBe(before.content); // UNCHANGED — the oversized bytes never hit disk
+  });
+
   it("list returns directory entries with sizeBytes for files; skips hidden + non-.md is ignored by search", async () => {
     const conn = createLoopbackMcpConnection(createNotesMcpServer({ notesDir: tmpRoot }));
     await conn.callTool!("save", { content: "abc", path: "a.md" });
