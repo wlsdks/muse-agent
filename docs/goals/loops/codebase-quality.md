@@ -805,3 +805,21 @@ ratchet: testFiles 964 · fabrication 0 · groundedSurfaces 27 · macos-tools.ts
   imports runChild + MacCommandResult from macos-exec; no AppleScript/osascript tool touched.
 - **Risk:** low-medium — touches the macos package the message-send loop also edits, but the extracted region is the
   cold tail far from mac_message_send; pure relocation, no behavior change.
+
+## fire 44 · 2026-06-14 · loop-creator v1.14.0 · 5fd47137
+meta: value-class=refactor · pkg=@muse/messaging · kind=dead-code · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 966 · fabrication 0 · groundedSurfaces 27 · 1 dead re-export + 1 unused import removed
+- **What:** dead-code in @muse/messaging — knip flagged `telegram-provider.ts:270 export { MessagingValidationError }`
+  as an unused export. Verified: MessagingValidationError is the canonical error (defined in errors.ts, used widely),
+  but NOTHING imports it FROM telegram-provider (all consumers — api routes, providers, tests — get it from
+  errors.js or the package index, which re-exports it from errors.js). So telegram's re-export was a dead duplicate
+  (its comment "re-export so callers don't depend on the validate module" is obsolete — index already exposes it).
+  Removed the dead re-export + the now-unused MessagingValidationError import (kept MessagingProviderError, used 4x).
+- **Why:** diversity — picked a FRESH package (@muse/messaging, never touched by this loop) + dead-code KIND, off
+  the recall/cli concentration. Scouted the macos capture cluster first but it's entangled (shares path-validator
+  helpers tryRealpath/expandTilde + node imports with other tools) — deferred as a blocker (needs the path-helpers
+  untangled first).
+- **Review point:** 4b judge — the package PUBLIC API is unchanged (index.ts still `export { MessagingValidationError }
+  from "./errors.js"`; api route imports it from @muse/messaging unaffected); telegram-provider no longer references
+  it (0 refs); MessagingProviderError import retained; knip drops it; messaging 368 + full check green.
+- **Risk:** none — removed a redundant re-export whose symbol is still exposed via the package index; no behavior change.
