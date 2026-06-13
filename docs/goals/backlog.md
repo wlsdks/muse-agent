@@ -606,6 +606,24 @@ excluded when scoring).
   to cut samples once the outcome is decided; (b) extend k-sample consensus to the `--verify-claims` per-claim
   judge (`verifyGroundingPerClaim`, same single-sample shape); (c) adaptive k by band width (wider weak margin
   ⇒ more samples). (fire 38 remainder, arXiv:2510.27106 / 2203.11171)
+- ⏳ **Council question-relevance gate — DEFERRED on lexical-signal unfitness (fire 39)** — the MECHANISM
+  is sound (screenOffTopicUtterances inside synthesizeCouncilAnswer, deny-only, majority-cap, fail-open,
+  cross-script guard, non-inert + judge-confirmed live on the synthesis prompt path; MAST FM-2.3/FM-3.2,
+  arXiv:2503.13657). The BLOCKER is the SIGNAL: a lexical question↔reasoning token-overlap false-drops honest
+  SAME-SCRIPT paraphrase/synonym peers (judge: 5/5 realistic on-topic KO+EN peers dropped; the damning case —
+  a correct paraphrase "임대료 125만원" dropped while a literal-echo peer with the WRONG number "월세 130만원"
+  kept, because it mimicked surface tokens). Korean agglutinative tokenization makes synonyms share 0 tokens by
+  construction. Dropping an honest/dissenting voice is a real harm even though downstream gates protect
+  fabrication=0. The cross-SCRIPT case is already guarded (dominantScriptFamily) but same-script paraphrase is not.
+- ⏳⏳ **ROOT-CAUSE (2 council-screening defers: fire 36 injection + fire 39 relevance) — build the SEMANTIC
+  SIMILARITY primitive for the council path FIRST** — both deferred council screens failed for the SAME reason:
+  a lexical/pattern signal over-screens Muse's multilingual + paraphrase content (lexical token overlap conflates
+  "different words" with "off-topic"/"malicious"; chat-guard injection patterns over-fire on model prose). The
+  unblocking PREREQUISITE is an embedding-cosine semantic-similarity helper on the council path (question↔reasoning
+  and peer↔peer), which BOTH the relevance gate AND a re-scoped injection/outlier screen can then use prose-safely.
+  This needs the embedder wired into the council path (it isn't today). Until that exists, do NOT attempt more
+  lexical council-screening slices. (escalated: 2 defers, same root — steer cycle 10 to the semantic primitive or
+  off the council surface entirely.)
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
   each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
 - (queued behind fuel/prereqs: sleep-time compute · Mem0 UPDATE op · AWM workflow mining ·
