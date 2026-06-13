@@ -29,6 +29,9 @@ describe("verifyCouncilRequest — HMAC of the council request", () => {
     expect(verifyCouncilRequest("alice", "what should we do?", sig, "other")).toBe(false);
     expect(verifyCouncilRequest("alice", "what should we do?", undefined, SECRET)).toBe(false);
     expect(verifyCouncilRequest("alice", "what should we do?", "deadbeef", SECRET)).toBe(false); // wrong length
+    // Same length as a real signature but non-hex: exercises the decode/compare
+    // catch (timingSafeEqual throws on unequal buffer lengths) — must fail-closed.
+    expect(verifyCouncilRequest("alice", "what should we do?", "z".repeat(sig.length), SECRET)).toBe(false);
   });
   it("rejects when the question or peer id differs from what was signed (tamper)", () => {
     expect(verifyCouncilRequest("alice", "DIFFERENT", sig, SECRET)).toBe(false);

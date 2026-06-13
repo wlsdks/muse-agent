@@ -616,6 +616,12 @@ export async function verifyCouncilGrounding(
   const cited = new Set(council.contributors);
   const drawnFrom = utterances.filter((u) => cited.size === 0 || cited.has(u.peerId));
   const evidence = drawnFrom.map((u) => u.reasoning.replace(/\s+/gu, " ").trim()).join("\n");
+  // Empty evidence is unverifiable BY DEFINITION — there is no deterministic
+  // rubric pre-gate here (the judge is the only gate), so a YES on "" would be a
+  // pure fabrication-floor leak. Fail-close WITHOUT consulting the judge.
+  if (evidence.trim().length === 0) {
+    return null;
+  }
   try {
     return (await reverify({ answer: council.answer, evidence, query: question })) ? council : null;
   } catch {

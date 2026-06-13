@@ -7,8 +7,12 @@ import { useI18n } from "../i18n/index.js";
 import type { ApiClient } from "../api/client.js";
 import type { TaskRow, TasksResponse } from "../api/types.js";
 
+export function formatTaskDate(iso: string, locale: string): string {
+  return new Date(iso).toLocaleDateString(locale);
+}
+
 export function TasksView({ client }: { client: ApiClient }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<"open" | "done" | "all">("open");
   const [title, setTitle] = useState("");
@@ -94,7 +98,7 @@ export function TasksView({ client }: { client: ApiClient }) {
                 >
                   {task.title}
                 </div>
-                <div className="row-meta">{new Date(task.createdAt).toLocaleDateString()}</div>
+                <div className="row-meta">{formatTaskDate(task.createdAt, locale)}</div>
               </div>
               <div className="row-actions">
                 <Button variant="ghost" size="sm" onClick={() => remove.mutate(task.id)} title={t("common.delete")}>

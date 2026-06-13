@@ -187,3 +187,37 @@ ratchet: testFiles 924 · fabrication 0 · groundedSurfaces 27 · shared tests 3
   lint 0. (pnpm check's only red = known messaging CPU-contention flake, 23/23 isolated.)
 - **Risk:** none. Next: notes-links graph module → @muse/recall (step B), then selectGraphConnections
   (step C), then Phase 3 (runGroundedRecall pipeline + API).
+
+## fire 11 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=@muse/web · kind=dead-code · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 925 · fabrication 0 · groundedSurfaces 27 · unused-exported-types 70→58
+- **What:** de-exported 12 interfaces in apps/web/src/api/types.ts (CalendarEventRow,
+  NotesEntryRow, NotesSearchHit, HistoryEntry, ModelInfo, ToolByName, ObjectiveRow, ActionRow,
+  ContactRow, VetoRow, MessagingProvider, InboundMessage) — knip-flagged as unused EXPORTS but
+  each used INTERNALLY (composed into an exported *Response wrapper), so removed only the
+  `export` keyword (not deleted). export-keyword-only diff.
+- **Why:** dead public surface (unnecessary exports) — code-style hygiene. Diversity: apps/web
+  (untouched by prior fires), dead-code KIND.
+- **Review point:** independent Opus adversarial judge PASS — export-keyword-only (no shape
+  change), zero external importers (same-named hits are homonyms in messaging/model/mcp),
+  internal composition still typechecks (web build 0), knip unused-types 70→58 (−12 exact),
+  no interface deleted, self-eval 0.
+- **Risk:** none — type-level only, zero runtime. Also recorded notes-links split as a
+  DECOMPOSE-ON-DEFER backlog ◦ (tightly-coupled graph-query+link-editing; lower priority than
+  Phase 3). Remaining recall: Phase 3 (runGroundedRecall pipeline + API) is the high-value item.
+
+## fire 12 · 2026-06-13 · loop-creator v1.14.0 · (this commit)
+meta: value-class=refactor · pkg=@muse/cli · kind=dead-code · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 926 · fabrication 0 · groundedSurfaces 27 · commands-ask knip-clean (13→0 flags)
+- **What:** cleaned commands-ask.ts's own transitional cruft — deleted 4 dead type re-export
+  lines (9 names: MemoryFact/BestOfRedrawArgs/AskOutcome/AskWeaknessAxis/…/IndexChunk/ScoredChunk;
+  no consumer, the genuine internal IndexChunk/FileEntry import stays) and de-exported 4
+  internally-used-only originals (REASONING_PRINCIPLE_LINES, RECALL_FORBIDDEN_TOOL_NAMES,
+  WARM_REFUSAL_CLOSE, userHasOtherPersonalData — `export` keyword removed, still used internally).
+- **Why:** the @muse/recall extraction left transitional re-exports that are now dead surface;
+  commands-ask.ts is now knip-clean (0 unused exports, was 13). dead-code KIND.
+- **Review point:** independent Opus adversarial judge PASS — zero consumers of the deleted
+  re-exports, de-exported originals used internally (≥2) with no external importer, byte-identical
+  RHS (no shape change), cli build 0, pnpm check 0 (no flakes this run), self-eval 0.
+- **Risk:** none — surface-only cleanup. Remaining high-value recall item = Phase 3
+  (runGroundedRecall pipeline + API); INDEX.md per-fire merge contention still a flagged infra ◦.

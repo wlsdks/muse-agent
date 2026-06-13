@@ -1,7 +1,8 @@
 /**
  * LIVE battery for Muse's SCORED edge — faithfulness + false-refusal RATES over
- * a bundled held-out corpus, on the REAL local stack (nomic-embed-text +
- * the RGV rubric + weak-band MaTTS judge on qwen3:8b). Turns the `fabrication=0`
+ * a bundled held-out corpus, on the REAL local stack (the PRODUCTION default
+ * embedder nomic-embed-text-v2-moe + the RGV rubric + weak-band MaTTS judge).
+ * Turns the `fabrication=0`
  * release claim from a handful of anecdotes into two measured numbers the loop
  * can gate on (RAGAS-style faithfulness, arXiv:2309.15217; CRAG refusal
  * framing, arXiv:2401.15884).
@@ -28,7 +29,12 @@ import {
 
 const model = process.argv[2] ?? "ollama/gemma4:12b";
 if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
-const embedModel = process.argv[3] ?? "nomic-embed-text";
+// Use the PRODUCTION default embedder (nomic-embed-text-v2-moe), not the legacy
+// EN-centric v1: the v1 ranked the right Korean note first on only ~50% of
+// paraphrased KO queries, so a battery on v1 measured a Korean "coverage gap"
+// that does NOT exist under the real grounded surfaces (v2-moe scores 100% KO).
+// Testing the stack the product does NOT ship is a false regression.
+const embedModel = process.argv[3] ?? DEFAULT_EMBED_MODEL;
 const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
 
 async function reachable() {

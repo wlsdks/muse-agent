@@ -30,3 +30,12 @@ ratchet: cli tests 2567/2567 (find suite 6, +1) · fabrication 0 · self-eval ex
 - **왜**: help 텍스트·`DOMAIN_LABELS`·matcher 모두 calendar를 1급 도메인으로 다루는데 빈-상태 문구만 거짓 범위를 알려, 사용자가 "calendar는 검색됐는데 없는 건지, 아예 안 됐는지" 알 수 없었다(help-vs-output 불일치).
 - **리뷰지점**: 빈-상태 목록은 이제 `DOMAIN_LABELS`에서 유도되므로 5번째 도메인 추가 시 자동 동기화. `--json`(total:0)·non-empty grouped 출력은 무변.
 - **리스크**: 없음(empty-state 분기 1줄 교체 + 순수 헬퍼, 독립 Opus judge가 구-코드 RED·collateral·순서 검증 후 PASS, find 6/6 · cli 2567/2567).
+
+## fire 4 · 2026-06-13 · skill v1.14.0 · f27253c0
+meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=i18n-locale-correctness · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 926 (+1) · web tests 17/17 (+2) · fabrication 0 · self-eval exit 0 · consecutive allPASS=4
+
+- **무엇**: `Tasks.tsx`만 유일하게 task 생성일을 `toLocaleDateString()`(locale 인자 없음)으로 렌더 → 사용자 선택 언어 무시, 런타임 기본 로케일로 표시. 순수 헬퍼 `formatTaskDate(iso, locale)` 추출 + `useI18n()`에서 `locale` 추출해 배선.
+- **왜**: 다른 9개 뷰(Today/Calendar/Reminders/…)는 전부 `useI18n().locale`을 포매터에 넘기는데 Tasks만 누락 → 한국어 모드에서 task 날짜가 `6/13/2026`처럼 엉뚱한 로케일로 나오는 실제 i18n 정확성 버그.
+- **리뷰지점**: `locale`은 `LOCALES`(en→en-US, ko→ko-KR) BCP-47 문자열. 헬퍼 추출은 Calendar.tsx의 기존 선례와 일치하며 React 하네스 없이 단위테스트 가능.
+- **리스크**: 없음(3줄 변경: 헬퍼+locale 추출+렌더 교체, tsc+vite build clean, 독립 Opus judge가 sibling 패턴·ICU-robust 검증 후 PASS, web 17/17).

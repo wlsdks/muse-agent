@@ -53,13 +53,17 @@ describe("loadPeerConfig — tolerant load of the swarm allowlist", () => {
     await write({
       peers: [
         { id: "no-secret", url: "https://x/a2a" },
-        { id: "empty-env", secretEnv: "MISSING_VAR", url: "https://y/a2a" },
+        { id: "absent-env", secretEnv: "MISSING_VAR", url: "https://y/a2a" },
+        // secretEnv RESOLVES but to a blank string — a present-but-empty HMAC secret
+        // is trivially forgeable, so it must be dropped (exercises the length > 0 guard,
+        // distinct from an UNSET env which short-circuits earlier).
+        { id: "blank-env", secretEnv: "BLANK_VAR", url: "https://w/a2a" },
         { id: "good", secret: "ok", url: "https://z/a2a" }
       ],
       selfId: "me"
     });
-    const cfg = await loadPeerConfig(file, {});
-    expect(cfg.peers.map((p) => p.id)).toEqual(["good"]); // the two unresolved peers are excluded
+    const cfg = await loadPeerConfig(file, { BLANK_VAR: "" });
+    expect(cfg.peers.map((p) => p.id)).toEqual(["good"]); // every unresolved/blank-secret peer is excluded
   });
 
   it("DROPS a malformed peer entry (missing id or url) without failing the whole load", async () => {

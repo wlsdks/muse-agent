@@ -26,3 +26,11 @@ ratchet: cli +4 tests (80 pass; full suite 2570 pass) · lint 0/0 · fabrication
 - 왜: wedge가 "every surface gated"인데 ask만 방어돼 있었음 — chat이 오염된 MCP/web 출처에만 근거한 답을 plain "grounded"로 넘기던 정확히 그 벡터. `trusted:false` 태깅은 발화 여부와 무관한 상시 provenance 정확성 개선.
 - 리뷰지점: 순수 additive — gate 결정/receipt/fabrication=0 floor 불변(judge가 .trusted를 gate가 안 읽음 확인), abstention/no-info는 경고 안 함. mutation(헬퍼 무력화)→경고케이스 red→revert로 비-공허 증명, 독립 Opus judge PASS(full suite 2570 pass).
 - 리스크: cue 발화는 답이 tool 출처를 `[from <src>]`로 인용해야 함 — ask와 동일 caveat이라 prod 발화율은 제한적(judge가 honest하게 지적). 표면 parity + 상시 provenance 태깅은 실가치. e2e 발화율은 기존 backlog ◦(fire 1)에 chat도 포함해 추적.
+
+## fire 4 · 2026-06-13 · skill v1.14.0 · 0b77bfe8
+meta: value-class=redteam-defense · pkg=@muse/agent-core · kind=C · verdict=PASS · firesSinceDrill=4
+ratchet: agent-core +2 tests (14 pass; full suite 1954 pass) · lint 0/0 · fabrication 0 · red-without-fix verified (RATCHET: A·B·A·C — 4축 모두 커버, value diverse)
+- 무엇: judge-게이트 두 표면(`verifyCouncilGrounding`·`verifyReflectionsGrounding`)의 **fail-OPEN 버그 수정** — evidence가 빈 문자열인데도 judge를 호출하고 YES면 claim을 KEEP하던 것을, 빈 evidence면 judge 호출 없이 결정론적 fail-close(council→null, reflection→skip).
+- 왜: 이 두 표면은 `verifyGroundingWithReverify`와 달리 결정론적 rubric 사전-게이트가 없어 judge가 유일 게이트 — "" evidence에 YES는 직접 fabrication-floor 누수(근거 0인 synthesis/dream이 검증 통과). 둘 다 프로덕션 도달 가능(contributor reasoning 공백 / cited sourceId 미해결).
+- 리뷰지점: 순수 강화 — 이전에 keep 가능하던 claim만 drop, 더 keep 안 함; judge-NO/error fail-close 경로 불변. red-without-fix(main에서 2테스트 실패)로 실재 버그 증명, `expect(judge).not.toHaveBeenCalled()`로 no-call 계약까지 고정. 독립 Opus judge 5/5 PASS.
+- 리스크: 없음 수준(strictly 강화). 후속: council/reflection은 recall과 달리 k-sample self-consistency 없음(단일 judge 호출) — ENHANCEMENT로 별도 fire 후보(backlog).

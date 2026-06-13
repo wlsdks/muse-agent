@@ -48,7 +48,7 @@ export interface RemindersResponse {
   readonly total: number;
 }
 
-export interface CalendarEventRow {
+interface CalendarEventRow {
   readonly id: string;
   readonly providerId: string;
   readonly title: string;
@@ -65,7 +65,7 @@ export interface CalendarEventsResponse {
   readonly total: number;
 }
 
-export interface NotesEntryRow {
+interface NotesEntryRow {
   readonly name: string;
   readonly isDirectory: boolean;
   readonly sizeBytes?: number;
@@ -79,7 +79,7 @@ export interface NotesReadResponse {
   readonly name: string;
   readonly content: string;
 }
-export interface NotesSearchHit {
+interface NotesSearchHit {
   readonly file: string;
   readonly line: number;
   readonly text: string;
@@ -113,7 +113,7 @@ export interface ToolCatalogResponse {
   readonly total: number;
 }
 
-export interface HistoryEntry {
+interface HistoryEntry {
   readonly runId?: string;
   readonly inputPreview?: string;
   readonly outputPreview?: string;
@@ -138,7 +138,7 @@ export interface ProactiveHistoryResponse {
   readonly items?: readonly ProactiveNotice[];
 }
 
-export interface ModelInfo {
+interface ModelInfo {
   readonly id?: string;
   readonly name?: string;
   readonly provider?: string;
@@ -157,7 +157,7 @@ export interface TokenCostDailyRow {
   readonly totalCostUsd?: number;
 }
 
-export interface ToolByName {
+interface ToolByName {
   readonly tool: string;
   readonly server?: string;
   readonly outcome?: string;
@@ -177,7 +177,7 @@ export interface LatencySummary {
   readonly p99Ms?: number;
 }
 
-export interface ObjectiveRow {
+interface ObjectiveRow {
   readonly id: string;
   readonly spec: string;
   readonly kind: string;
@@ -191,7 +191,7 @@ export interface ObjectivesResponse {
   readonly total: number;
 }
 
-export interface ActionRow {
+interface ActionRow {
   readonly id: string;
   readonly when: string;
   readonly what: string;
@@ -205,7 +205,7 @@ export interface ActionsResponse {
   readonly total: number;
 }
 
-export interface ContactRow {
+interface ContactRow {
   readonly id: string;
   readonly name: string;
   readonly email?: string;
@@ -217,7 +217,7 @@ export interface ContactsResponse {
   readonly total: number;
 }
 
-export interface VetoRow {
+interface VetoRow {
   readonly id: string;
   readonly objectiveId: string;
   readonly scope: string;
@@ -236,7 +236,7 @@ export interface UserMemoryResponse {
   readonly updatedAt?: string;
 }
 
-export interface MessagingProvider {
+interface MessagingProvider {
   readonly id: string;
   readonly displayName: string;
   readonly description?: string;
@@ -245,7 +245,7 @@ export interface MessagingProvider {
 export interface MessagingProvidersResponse {
   readonly providers: readonly MessagingProvider[];
 }
-export interface InboundMessage {
+interface InboundMessage {
   readonly id?: string;
   readonly from?: string;
   readonly text?: string;
