@@ -54,6 +54,20 @@ test("toolScorers.argMatches — regex over the first call's stringified args; e
   assert.equal(toolScorers.argMatches(/\{\}/)([]).ok, true);
 });
 
+test("toolScorers.argFieldMatches — field-targeted: a token in a SIBLING field does NOT satisfy it (re-arms the time-field regression)", () => {
+  // the phrase copied into dueAt → matches
+  assert.equal(toolScorers.argFieldMatches("dueAt", /내일|오전/)([call("muse.reminders.add", { dueAt: "내일 오전 9시", text: "회의" })]).ok, true);
+  // the REGRESSION: a *Iso field name makes the 8B precompute a timestamp into
+  // dueAt while the phrase word still sits in `text` — whole-args argMatches would
+  // WRONGLY pass, field-targeted argFieldMatches catches it (dueAt has no phrase).
+  const isoArgs = { dueAt: "2026-06-14T09:00:00Z", text: "내일 오전 회의" };
+  assert.equal(toolScorers.argMatches(/내일/)([call("muse.reminders.add", isoArgs)]).ok, true); // loose: passes via `text`
+  assert.equal(toolScorers.argFieldMatches("dueAt", /내일|오전/)([call("muse.reminders.add", isoArgs)]).ok, false); // strict: dueAt is an ISO
+  // an absent / non-string field fails (not silently passes)
+  assert.equal(toolScorers.argFieldMatches("dueAt", /x/)([call("t", { text: "hi" })]).ok, false);
+  assert.equal(toolScorers.argFieldMatches("dueAt", /x/)([]).ok, false);
+});
+
 test("toolScorers.argsPresent — every key present + non-empty; whitespace-only string is missing", () => {
   assert.equal(toolScorers.argsPresent(["a", "b"])([call("t", { a: 1, b: "x" })]).ok, true);
   // a numeric 0 / false present value counts as present (only undefined/null/blank-string miss)

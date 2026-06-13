@@ -167,8 +167,8 @@ async function buildPersonalCrudScenario() {
     const byName = new Set(tools.map((t) => t.name));
     const cases = [
       { prompt: "우유 사기를 할 일에 추가해줘", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "KO add a TO-DO → tasks.add (NOT reminders/calendar)" },
-      { prompt: "내일 오전 9시 회의 리마인더 추가해줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], note: "KO add a REMINDER → reminders.add (NOT tasks)" },
-      { prompt: "내일 오후 3시 팀 미팅 일정 추가해줘", expectTool: "muse.calendar.add", requireArgs: ["title", "startsAt"], note: "KO add a calendar EVENT → calendar.add (NOT tasks)" },
+      { prompt: "내일 오전 9시 회의 리마인더 추가해줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], argFieldIncludes: { field: "dueAt", regex: /내일|오전/ }, note: "KO add a REMINDER → reminders.add (NOT tasks); dueAt carries the user's PHRASE, not a precomputed ISO" },
+      { prompt: "내일 오후 3시 팀 미팅 일정 추가해줘", expectTool: "muse.calendar.add", requireArgs: ["title", "startsAt"], argFieldIncludes: { field: "startsAt", regex: /내일|오후/ }, note: "KO add a calendar EVENT → calendar.add (NOT tasks); startsAt carries the PHRASE, not an ISO" },
       { prompt: "오늘 할 일 보여줘", expectTool: "muse.tasks.list", note: "KO list to-dos → tasks.list" },
       { prompt: "내 리마인더 다 보여줘", expectTool: "muse.reminders.list", note: "KO list reminders → reminders.list (NOT calendar.list)" },
       { prompt: "이번 주 일정 보여줘", expectTool: "muse.calendar.list", note: "KO list events → calendar.list (NOT tasks/reminders)" },
@@ -208,7 +208,7 @@ async function buildNotesScenario() {
       // DISAMBIGUATION: a to-do or a reminder must NOT route to a note tool
       { prompt: "우유 사기를 할 일에 추가해줘", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "KO add a TO-DO → tasks.add, NOT notes.append (추가 collides)" },
       { prompt: "Add 'renew passport' to my tasks.", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "EN add a task → tasks.add, NOT notes.save" },
-      { prompt: "내일 오전 9시에 약 먹으라고 알림 맞춰줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], note: "KO timed reminder → reminders.add, NOT notes.* (알림 ≠ 노트)" }
+      { prompt: "내일 오전 9시에 약 먹으라고 알림 맞춰줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], argFieldIncludes: { field: "dueAt", regex: /내일|오전/ }, note: "KO timed reminder → reminders.add, NOT notes.* (알림 ≠ 노트); dueAt is the PHRASE" }
     ];
     return { label: "notes-vs-tasks-reminders (notes-file disambiguation)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
@@ -454,8 +454,8 @@ async function buildFollowupScenario() {
       // DISAMBIGUATION: confusable task/reminder prompts that must NOT route to a followup tool
       { prompt: "Add 'buy milk' to my tasks.", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "EN user-added task → tasks.add, NOT followup.* (user-entered, not agent-captured)" },
       { prompt: "우유 사기를 할 일에 추가해줘", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "KO user-added task → tasks.add, NOT followup.list (tasks ≠ followups)" },
-      { prompt: "Remind me tomorrow at 9am to call Sam.", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], note: "EN timed reminder → reminders.add, NOT followup.snooze (reminder = user alarm; followup = agent thread)" },
-      { prompt: "내일 9시에 회의 준비하라고 알림 맞춰줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], note: "KO timed reminder → reminders.add, NOT followup.* (알림 ≠ 팔로업)" }
+      { prompt: "Remind me tomorrow at 9am to call Sam.", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], argFieldIncludes: { field: "dueAt", regex: /tomorrow/i }, note: "EN timed reminder → reminders.add, NOT followup.snooze; dueAt carries the PHRASE not a precomputed ISO" },
+      { prompt: "내일 9시에 회의 준비하라고 알림 맞춰줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], argFieldIncludes: { field: "dueAt", regex: /내일/ }, note: "KO timed reminder → reminders.add, NOT followup.* (알림 ≠ 팔로업); dueAt is the PHRASE" }
     ];
     return { label: "followup-vs-tasks-reminders (followup disambiguation)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
@@ -762,6 +762,7 @@ function caseScorer(testCase) {
   if (testCase.expectNoTool) return toolScorers.noTool();
   const checks = [toolScorers.selected(testCase.expectTool)];
   if (testCase.argIncludes) checks.push(toolScorers.argMatches(testCase.argIncludes));
+  if (testCase.argFieldIncludes) checks.push(toolScorers.argFieldMatches(testCase.argFieldIncludes.field, testCase.argFieldIncludes.regex));
   if (testCase.requireArgs) checks.push(toolScorers.argsPresent(testCase.requireArgs));
   return combineScorers(...checks);
 }

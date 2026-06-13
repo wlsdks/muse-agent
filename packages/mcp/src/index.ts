@@ -347,11 +347,14 @@ export {
 
 export {
   GITHUB_MCP_SERVER_NAME,
+  LINEAR_MCP_SERVER_NAME,
   NOTION_MCP_SERVER_NAME,
   OFFICIAL_MCP_PRESETS,
   createGitHubMcpServer,
+  createLinearMcpServer,
   createNotionMcpServer,
   githubMcpToolRisk,
+  linearMcpToolRisk,
   notionMcpToolRisk,
   resolveOfficialMcpPreset,
   withOfficialMcpRisk,

@@ -21,10 +21,24 @@ describe("describeOfficialMcpPosture — audit view per official preset", () => 
   it("reports BOTH curated presets (github + notion) with provenance URLs", () => {
     const postures = describeOfficialMcpPosture(baseEnv);
     const names = postures.map((p) => p.name).sort();
-    expect(names).toEqual(["github", "notion"]);
+    expect(names).toEqual(["github", "linear", "notion"]);
     for (const p of postures) {
       expect(p.provenanceUrl).toMatch(/^https:\/\//);
     }
+  });
+
+  it("Linear posture auto-derives: toggle ON + LINEAR_MCP_TOKEN ⇒ enabled, credentialPresent, allowed, ok", () => {
+    const env = {
+      ...baseEnv,
+      LINEAR_MCP_TOKEN: "lin_api_secret",
+      MUSE_LINEAR_MCP_ENABLED: "true"
+    } as MuseEnvironment;
+    const lin = describeOfficialMcpPosture(env).find((p) => p.name === "linear");
+    expect(lin?.enabled).toBe(true);
+    expect(lin?.credentialPresent).toBe(true);
+    expect(lin?.allowed).toBe(true);
+    expect(lin?.status).toBe("ok");
+    expect(lin?.provenanceUrl).toContain("linear.app/docs/mcp");
   });
 
   it("toggle OFF ⇒ preset reported disabled (status ok, not eligible)", () => {
@@ -95,8 +109,10 @@ describe("describeOfficialMcpPosture — audit view per official preset", () => 
       ...baseEnv,
       GITHUB_MCP_TOKEN: SECRET,
       NOTION_MCP_TOKEN: SECRET,
+      LINEAR_MCP_TOKEN: SECRET,
       MUSE_GITHUB_MCP_ENABLED: "true",
-      MUSE_NOTION_MCP_ENABLED: "true"
+      MUSE_NOTION_MCP_ENABLED: "true",
+      MUSE_LINEAR_MCP_ENABLED: "true"
     } as MuseEnvironment;
     const postures = describeOfficialMcpPosture(env);
     const serialized = JSON.stringify(postures);

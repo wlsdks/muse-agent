@@ -28,6 +28,11 @@ describe("resolveOfficialMcpToken — env var (wins) then file fallback", () => 
     expect(resolveOfficialMcpToken(env, "notion")).toBe("ntn_from_env");
   });
 
+  it("resolves the Linear token from the auto-derived LINEAR_MCP_TOKEN", () => {
+    const env = { ...missingFileEnv, LINEAR_MCP_TOKEN: "lin_api_from_env" } as MuseEnvironment;
+    expect(resolveOfficialMcpToken(env, "linear")).toBe("lin_api_from_env");
+  });
+
   it("returns undefined when no env var and no file credential is present", () => {
     expect(resolveOfficialMcpToken(missingFileEnv, "github")).toBeUndefined();
   });
@@ -60,6 +65,12 @@ describe("resolveOfficialMcpToken — credentials-file fallback (contract-faithf
     writeFileSync(file, JSON.stringify({ providers: { github: { token: "ghp_from_file" } } }), "utf8");
     const env = { MUSE_MCP_CREDENTIALS_FILE: file } as unknown as MuseEnvironment;
     expect(resolveOfficialMcpToken(env, "github")).toBe("ghp_from_file");
+  });
+
+  it("reads providers.linear.token from the file when env is absent (auto-derived key)", () => {
+    writeFileSync(file, JSON.stringify({ providers: { linear: { token: "lin_api_from_file" } } }), "utf8");
+    const env = { MUSE_MCP_CREDENTIALS_FILE: file } as unknown as MuseEnvironment;
+    expect(resolveOfficialMcpToken(env, "linear")).toBe("lin_api_from_file");
   });
 
   it("env var WINS over the file value on conflict", () => {

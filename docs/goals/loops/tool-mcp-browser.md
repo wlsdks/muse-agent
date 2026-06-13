@@ -219,3 +219,41 @@ ratchet: testFiles +0 (browser-tools.test.ts +1 + smoke 10b) · @muse/browser 85
   10b RED 재현 (3)defaultValue만 사용=텍스트 미발명(fabrication-into-world 구멍 없음) (4)alert/confirm 불변.
 - **리스크:** default 없는 prompt(msg)는 defaultValue="" → 여전히 빈값(불변)이나 response:""로 투명 기록.
   파괴적 confirm()은 여전히 blind-accept(트리거 클릭이 이미 draft-first 승인됨 — 다이얼로그 재게이팅은 별도 큰 건).
+
+## fire 12 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=new-capability · pkg=@muse/mcp+@muse/autoconfigure · kind=B-mcp · verdict=PASS · firesSinceDrill=4
+
+ratchet: testFiles +0 (existing preset/cred/posture tests +cases; mcp 14, autoconfigure 43, doctor 90) · fabrication 0 · pnpm check 0 · lint 0/0
+
+- **무엇:** 외부-MCP 레지스트리 EXPANSION — Linear을 3번째 공식 공개 프리셋으로 추가
+  (mcp.linear.app/mcp, provenance linear.app/docs/mcp, OAuth2.1 + Bearer 개인 API키). 전체 기계장치
+  재사용(레지스트리 팩토리 + fail-close linearMcpToolRisk[23 read 도구→read, create/update/unknown→write]
+  + 자동파생 MUSE_LINEAR_MCP_ENABLED + LINEAR_MCP_TOKEN + doctor posture). 자격증명 resolver 하드닝:
+  presetEnvTokenKey()가 Object.hasOwn(OFFICIAL_MCP_PRESETS,name) gated로 <NAME>_MCP_TOKEN 자동파생.
+- **왜:** GitHub/Notion 외 실용 통합 추가 — 사용자가 env var 하나로 Linear 워크스페이스 연결(읽기 자유,
+  쓰기 draft-first 게이트, doctor 감사). 레지스트리가 진짜 확장 가능함을 입증.
+- **리뷰지점:** judge가 (1)Linear provenance를 Linear 자체 문서로 확인(공식 호스티드·anyone-may-connect·
+  Bearer) (2)linearMcpToolRisk를 always-read로 깨 RED 재현, unknown→write 최강 fail-close (3)자격증명
+  auto-derive가 큐레이트 프리셋명에 gated(arbitrary name은 ambient 토큰 안 읽음 — env-exfil 차단,
+  gitlab→undefined 테스트) (4)secret 미동봉.
+- **리스크:** Linear read-도구 목록을 단일 공식 페이지서 못 얻어 제3자 분석(Fiberplane) 참조 — 단
+  fail-close라 stale read-list는 over-gate만(절대 under-gate 아님), 안전 회귀 불가.
+
+## fire 13 · 2026-06-13 · skill v1.14.0 · (this commit)
+
+meta: value-class=micro-fix · pkg=@muse/browser · kind=C-browser · verdict=PASS · firesSinceDrill=5
+
+ratchet: testFiles +0 (smoke #21 + controller; 89 tests) · @muse/browser 89 tests pass · fabrication 0 · eval:browser-agent 1/1 LIVE · smoke #21 LIVE (real CDP hang) · lint 0/0
+
+- **무엇:** CDP protocolTimeout 바운드. puppeteer 기본 180초가 unset이고 스냅샷 캡처 page.evaluate
+  (innerText/element-walk)는 상위 타임아웃조차 없어 멈춘 CDP 왕복이 에이전트를 ~3분 행(복구 불가).
+  이제 connect()에 protocolTimeout = max(requested, timeoutMs+15s)(기본 30초) 주입 — 항상 per-op
+  timeout 위라 정상 느린 nav/click/fill은 절대 먼저 안 죽음. protocolTimeoutMs 옵션도 floor로 클램프.
+- **왜:** 전송층 신뢰성 구멍 — prod 에이전트는 SIGKILL 불가. fires 1·4·6·9·11(관측/act 의미론)과
+  구별되는 transport/hang-recovery seam.
+- **리뷰지점:** judge가 (1)smoke #21이 REAL 경로(HANG_HTML innerText 무한 getter→실제 captureSnapshot
+  →page.evaluate, fake-injection 아님) 실행 통과(19.5초) (2)threading revert시 45초+ pending=RED 재현
+  (3)클램프 math가 항상 protocolTimeout>timeout(조기 kill 경로 없음) 확인.
+- **리스크:** 기본 천장 30초 — >30초 단일 CDP op(거대 DOM innerText 등)은 이제 에러(전엔 180초 대기).
+  허용가능(15s per-op가 이미 nav/click/fill 관장, >30초 단일 왕복은 병리), protocolTimeoutMs로 튜닝 가능.
