@@ -69,11 +69,6 @@ export async function writePatternsFired(file: string, records: readonly Pattern
   await fs.rename(tmp, file);
 }
 
-/**
- * Read → append → write in one call. The append-only shape means
- * concurrent writers can clobber each other; the daemon is the
- * only writer in practice so we accept that trade for simplicity.
- */
 export async function recordPatternFired(file: string, patternId: string, firedAtMs: number): Promise<void> {
   // Serialise the read→append→write: concurrent fires (overlapping daemon ticks)
   // otherwise read the same snapshot and the last write clobbers the rest (a lost
@@ -92,8 +87,17 @@ export async function recordPatternFired(file: string, patternId: string, firedA
  * pattern permanently (learned avoidance), surviving a cooldown `reset`.
  */
 export async function dismissPattern(file: string, patternId: string, atMs: number): Promise<void> {
-  const existing = await readPatternsFired(file);
-  await writePatternsFired(file, [...existing, { dismissed: true, firedAtMs: atMs, patternId }]);
+  // Serialise the read→append→write on the shared per-file queue like
+  // recordPatternFired: concurrent IN-PROCESS dismissals/fires otherwise read the same
+  // snapshot and the last write clobbers the rest (a lost dismissal would let Muse keep
+  // suggesting a pattern the user vetoed — learned avoidance dropped), and two same-ms
+  // writes collided on the tmp-${pid}-${Date.now()} rename. (A cross-process CLI-vs-
+  // daemon race still needs a file lock — out of scope; atomic rename prevents
+  // corruption but not a cross-process clobber.)
+  await withFileMutationQueue(file, async () => {
+    const existing = await readPatternsFired(file);
+    await writePatternsFired(file, [...existing, { dismissed: true, firedAtMs: atMs, patternId }]);
+  });
 }
 
 /** True when any record for this pattern is a dismissal. */

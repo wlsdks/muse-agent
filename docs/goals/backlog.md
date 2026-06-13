@@ -611,6 +611,23 @@ HARDEN (make existing tools more reliable):
   empty, negative clamps to 0, contiguous pages no dupes/skips, filterElements order-stable; only consumer is the CLI
   tool registration — opaque JSON to the model). KIND contract-drift, fresh surface (browser). Minor pre-existing nit
   (out of scope): the find branch names the count `matched` while no-find uses `total`.
+- ✓→Done **dismissPattern lost-update race (user veto could be silently dropped)** (EXPANSION gap-scout, fire 37;
+  lost-update / concurrent RMW missing serialisation) — `dismissPattern` did an UNSERIALISED read→append→write on
+  patterns-fired.json while its sibling `recordPatternFired` already wraps the identical RMW in `withFileMutationQueue`.
+  Concurrent in-process dismissals/fires read the same snapshot → last write clobbers the rest → a lost dismissal means
+  Muse keeps suggesting a pattern the user explicitly vetoed (learned-avoidance dropped — the trust failure proactivity
+  exists to avoid); same-ms writes also crashed on the `tmp-${pid}-${Date.now()}` rename (ENOENT). FIX: wrap the body in
+  the per-file queue (mirrors recordPatternFired); deleted a stale JSDoc that falsely claimed "the daemon is the only
+  writer… we accept that [clobber] trade". TDD (Promise.all of 12 dismiss + 13 fire on one file → all 25 present, all 12
+  dismissals survive) RED(revert queue → ENOENT/lost record)→GREEN; mcp 1748, check 0 (messaging pending-approval flake
+  unrelated, isolated 17/17), lint 0. Fable-5 PASS (read inside critical section; no nested-queue deadlock; non-flaky).
+- ◦ **patterns-fired (and sibling stores) lack CROSS-PROCESS write serialisation (fire-37 verifier finding)** —
+  `withFileMutationQueue` serialises only WITHIN one process, but the motivating race is the CLI `muse pattern dismiss`
+  vs the proactive daemon — TWO OS processes writing the SAME patterns-fired.json. Atomic rename prevents corruption but
+  NOT a cross-process clobber (a dismissal landing between the daemon's read and write is still lost). This is
+  pre-existing and shared by every store on the queue. FIX (if it ever bites): a file lock (lockfile / flock) around the
+  RMW. Slice = a cross-process lock primitive + wire the patterns-fired RMWs + a two-process race test (spawn). Larger;
+  gated on whether single-user concurrency is real enough to justify the complexity.
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`
