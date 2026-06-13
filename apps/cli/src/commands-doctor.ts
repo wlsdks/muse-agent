@@ -15,8 +15,8 @@ import { existsSync, promises as fs } from "node:fs";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
 export type { CalibrationReport } from "./commands-doctor-calibration.js";
-import { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, selfLearningCheck, weaknessFuelCheck, type LocalCheck } from "./commands-doctor-checks.js";
-export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, selfLearningCheck, weaknessFuelCheck } from "./commands-doctor-checks.js";
+import { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, readOllamaPerfEnv, selfLearningCheck, weaknessFuelCheck, type LocalCheck } from "./commands-doctor-checks.js";
+export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, readOllamaPerfEnv, selfLearningCheck, weaknessFuelCheck } from "./commands-doctor-checks.js";
 export type { LocalCheck } from "./commands-doctor-checks.js";
 import { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
 export { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
@@ -287,58 +287,6 @@ export function officialMcpChecks(env: Record<string, string | undefined>): Loca
   }));
 }
 
-export interface OllamaPerfEnv {
-  readonly flashAttention?: string | undefined;
-  readonly kvCacheType?: string | undefined;
-}
-
-/**
- * Inference-performance posture of the OLLAMA SERVER (not this process):
- * flash attention + a quantized KV cache roughly halve KV memory, which on a
- * 12B with Muse's long grounded prompts means faster long-context turns and
- * more usable num_ctx on the same RAM. Advisory — warn, never fail.
- */
-export function ollamaPerfPostureCheck(values: OllamaPerfEnv): LocalCheck {
-  const flashOn = values.flashAttention === "1" || values.flashAttention?.toLowerCase() === "true";
-  const kv = values.kvCacheType?.toLowerCase();
-  const kvQuantized = kv === "q8_0" || kv === "q4_0";
-  if (flashOn && kvQuantized) {
-    return { detail: `flash attention on, KV cache ${kv ?? ""} — long-context turns run lighter`, name: "ollama-perf", status: "ok" };
-  }
-  const missing = [
-    ...(flashOn ? [] : ["OLLAMA_FLASH_ATTENTION=1"]),
-    ...(kvQuantized ? [] : ["OLLAMA_KV_CACHE_TYPE=q8_0"])
-  ];
-  return {
-    detail: `set ${missing.join(" + ")} on the Ollama server (macOS app: \`launchctl setenv NAME VALUE\` then restart Ollama) — ~halves KV memory for faster long-context turns`,
-    name: "ollama-perf",
-    status: "warn"
-  };
-}
-
-/**
- * Resolve the Ollama SERVER's perf env: this process's env first (covers
- * `ollama serve` from the same shell), then macOS launchd (covers Ollama.app,
- * which inherits `launchctl setenv`). Fail-soft — unreadable means unset.
- */
-export async function readOllamaPerfEnv(env: Record<string, string | undefined>): Promise<OllamaPerfEnv> {
-  const fromLaunchctl = async (name: string): Promise<string | undefined> => {
-    if (process.platform !== "darwin") return undefined;
-    try {
-      const { execFile } = await import("node:child_process");
-      const { promisify } = await import("node:util");
-      const { stdout } = await promisify(execFile)("launchctl", ["getenv", name]);
-      const value = stdout.trim();
-      return value.length > 0 ? value : undefined;
-    } catch {
-      return undefined;
-    }
-  };
-  return {
-    flashAttention: env.OLLAMA_FLASH_ATTENTION ?? await fromLaunchctl("OLLAMA_FLASH_ATTENTION"),
-    kvCacheType: env.OLLAMA_KV_CACHE_TYPE ?? await fromLaunchctl("OLLAMA_KV_CACHE_TYPE")
-  };
-}
 
 
 interface LocalDoctorReport {

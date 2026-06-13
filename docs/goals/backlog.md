@@ -1,5 +1,9 @@
 # Muse dev backlog — the living ledger
 
+- ✓ IrrelAcc guard: a followup STATUS QUESTION with a resolvable word → followup.list NOT the destructive cancel (protects against over-firing now that word-ref made cancel one-shot-selectable, fires 67-70) — tool-hardening fire 71
+- ⏳ FINDING (fire 71) — KO followup.cancel "그 체크인 팔로업 취소해줘" flaky 0/3 (was 3/3 fire 70): the 8B leans followup.list (the referent "그 체크인 팔로업" reads as a lookup) under concurrent-loop load; INDEPENDENT of the fire-71 slice (eval cases are zero-shot). Borderline KO-cancel selection — candidate: sharpen followup.cancel KO disambiguation, but verify it is not just machine-load (re-run when loops quiet).
+
+- ✓ decompose @muse/cli: ollama-perf cluster (OllamaPerfEnv/ollamaPerfPostureCheck/readOllamaPerfEnv) commands-doctor -> commands-doctor-checks.ts (899->847 LOC, continues fires 25/29) — codebase-quality fire 31
 - ✓ Phase 3 cont.: extracted inline memoryBlock -> buildMemoryContextBlock in @muse/recall/select.ts (+test, zero new imports) — codebase-quality fire 30
 - ✓ decompose @muse/cli: moved selfLearningCheck + weaknessFuelCheck LocalCheck classifiers commands-doctor -> commands-doctor-checks.ts (939->899 LOC, continues fire 25) — codebase-quality fire 29
 - ✓ followup.cancel/snooze one-shot selection 60%→100% — root cause was a bare `id` (forced a prior list); added resolveFollowupRef (word/id ref, ambiguous→candidates) + example-bearing id descriptions, so cancel/snooze act one-shot (parity with reminders) — tool-hardening fire 70 (resolves the fire-69 followup FINDING)
