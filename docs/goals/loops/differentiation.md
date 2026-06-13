@@ -55,7 +55,7 @@ ratchet: testFiles 912 · egressGuards 5→6 (voice guard now counted) · fabric
   필요). ② localhost-only embeddings 가드는 여전히 미포함(그 이름의 파일을 못 찾음 —
   위치 확인 필요) → 별도 ◦로 남김.
 
-## fire 3 · 2026-06-13 · skill v1.14.0 · `<pending-commit>`
+## fire 3 · 2026-06-13 · skill v1.14.0 · `d30f9785`
 meta: value-class=new-capability · pkg=scripts(@muse/memory proof) · kind=adversarial-proof-battery · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles 912 · new deterministic battery eval:memory-poisoning (no Ollama) · fabrication 0 · egressGuards 6 untouched
 
