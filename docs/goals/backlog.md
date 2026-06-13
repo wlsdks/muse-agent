@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ salience-gate background skill-review (write-time gating, arXiv:2603.15994): skill-review channel now needs the accrued window to be SALIENT (a tool failed) not just iter-count — suppresses the costly LLM pass on all-successful windows, cadence re-trips on next failure; structural (tool status) not lexical; floor-safe (suppresses post-hoc learning only) + JUDGE-DRILL (10th, Opus FAILed an inert demoteAvoidedStrategiesLast — rolled back) — agent-core-cognition fire 30
+
 - ✓ episodic conflict annotation (A-MAC factual-confidence, arXiv:2603.04549): a recalled episode that states the same topic but a different value than a higher-relevance recalled one is flagged conflictsWith + rendered "⚠ verify" — read-time annotation only (never drops), semantic topic gate [0.86,0.92) under consolidation, same-script guarded — agent-core-cognition fire 29
 
 - ✓ today_brief IrrelAcc: 2 negatives (casual "오늘"/"today" mentions → NO tool) complete today_brief's agent-testing.md triad (selection+confusability shipped fire 97, irrelevance here) — guards the high-frequency casual collision word "today" from over-firing the tool — tool-hardening fire 98
