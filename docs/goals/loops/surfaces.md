@@ -193,7 +193,7 @@ ratchet: testFiles 965 (+1) · web tests 30/30 (+1) · fabrication 0 · self-eva
 - **리뷰지점**: `aria-pressed`는 양 버튼이 각자 상태 반영(정확히 하나 true), radiogroup/listbox 아님(즉시 동작). `.active`/onClick/onChange 무변. judge가 aria-pressed strip으로 RED 실증.
 - **리스크**: 없음(3줄: export + 2 속성, 다른 컴포넌트 무변, Console가 계속 렌더, 독립 Opus judge가 패턴 정확성·RED-before·pressedLabel 식별 검증 후 PASS, web 30/30).
 
-## fire 22 · 2026-06-14 · skill v1.14.0 · <commit>
+## fire 22 · 2026-06-14 · skill v1.14.0 · 607c0cc1
 meta: surface=desktop · value-class=micro-fix · pkg=apps/desktop(MuseDesktopCore) · kind=voice-toggle-falsy-robustness · verdict=PASS · firesSinceDrill=5
 ratchet: desktop swift tests 55/55 (+4) · fabrication 0 · self-eval exit 0 · 표면 균형 web8·desktop6·cli8
 
