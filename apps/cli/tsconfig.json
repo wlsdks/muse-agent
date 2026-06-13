@@ -50,6 +50,9 @@
       "path": "../../packages/prompts"
     },
     {
+      "path": "../../packages/recall"
+    },
+    {
       "path": "../../packages/shared"
     },
     {

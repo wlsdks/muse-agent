@@ -137,6 +137,9 @@ importers:
       '@muse/prompts':
         specifier: workspace:*
         version: link:../../packages/prompts
+      '@muse/recall':
+        specifier: workspace:*
+        version: link:../../packages/recall
       '@muse/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -501,6 +504,12 @@ importers:
         version: link:../shared
 
   packages/prompts: {}
+
+  packages/recall:
+    dependencies:
+      '@muse/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
 
   packages/resilience:
     dependencies:
