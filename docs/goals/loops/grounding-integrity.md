@@ -18,3 +18,11 @@ ratchet: autoconfigure distill-queue +2 tests (4 pass) · lint 0/0 · fabricatio
 - 왜: 매 idle tick 도는 무인 소비자라 잼이면 같은 dud를 영원히 재처리, fence가 뚫리면 비-correction에서 가짜 lesson 생성 — Muse edge가 의존하는 류의 불변식인데 테스트 0이었음.
 - 리뷰지점: 실제 파일-백드 큐/playbook 스토어(enqueueLearnEvent/readPendingLearnEvents/readPlaybook) 위 OUTCOME; test1의 distill은 throw 주입(빈 이벤트가 distill 전에 fence됨을 증명). mutation(drain을 가드 뒤로 이동)→test red→revert로 비-공허성 증명, 독립 Opus judge가 자체 mutation 2종으로 재확인 PASS.
 - 리스크: 테스트-only 슬라이스(소스 무변경) — 회귀 가드 가치이지 신규 동작 아님. pnpm check 전체는 단일 테스트파일 변경엔 불비례라 패키지 빌드+테스트+lint로 대체.
+
+## fire 3 · 2026-06-13 · skill v1.14.0 · 7401e84c
+meta: value-class=redteam-defense · pkg=@muse/cli · kind=A · verdict=PASS · firesSinceDrill=3
+ratchet: cli +4 tests (80 pass; full suite 2570 pass) · lint 0/0 · fabrication 0 · mutation-verified non-vacuous (RATCHET: fire1=redteam-defense/agent-core+cli, fire2=reliability-coverage/autoconfigure, fire3=redteam-defense/cli — value diverse, every-surface parity)
+- 무엇: fire 1의 untrusted-only provenance 경고를 CHAT 표면으로 확장. `finalizeGatedChatAnswer`(모든 대화 표면의 공유 post-stream 파이프라인)가 tool 출력을 trust 표시 없이 evidence로 접었던 blind spot을 닫음 — toolEvidence에 `trusted:false` 태깅 + `untrustedOnlyChatNotice`(ask의 untrustedOnlyGroundingNotice의 chat parity) 추가/wiring.
+- 왜: wedge가 "every surface gated"인데 ask만 방어돼 있었음 — chat이 오염된 MCP/web 출처에만 근거한 답을 plain "grounded"로 넘기던 정확히 그 벡터. `trusted:false` 태깅은 발화 여부와 무관한 상시 provenance 정확성 개선.
+- 리뷰지점: 순수 additive — gate 결정/receipt/fabrication=0 floor 불변(judge가 .trusted를 gate가 안 읽음 확인), abstention/no-info는 경고 안 함. mutation(헬퍼 무력화)→경고케이스 red→revert로 비-공허 증명, 독립 Opus judge PASS(full suite 2570 pass).
+- 리스크: cue 발화는 답이 tool 출처를 `[from <src>]`로 인용해야 함 — ask와 동일 caveat이라 prod 발화율은 제한적(judge가 honest하게 지적). 표면 parity + 상시 provenance 태깅은 실가치. e2e 발화율은 기존 backlog ◦(fire 1)에 chat도 포함해 추적.
