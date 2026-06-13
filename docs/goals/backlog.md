@@ -696,6 +696,25 @@ HARDEN (make existing tools more reliable):
   preserve the omitted-endsAt→default path. Slice: error only when `endsAtRaw !== undefined && parse === undefined` +
   test. Also (fire-40 verifier nit): a non-string startsAt (numeric epoch) is silently ignored via readString→undefined
   on BOTH add and update — string-but-unparseable is fixed, wrong-TYPE is not; fold into the same slice if worth it.
+- ✓→Done **appendReminderHistory persisted secrets to the plaintext audit log unscrubbed** (EXPANSION gap-scout,
+  fire 41; SECRET-LEAK / data-integrity) — `appendReminderHistory` appended the raw `entry` to reminder-history.json
+  while the SIBLING proactive-history store deliberately scrubs at the persist chokepoint
+  (`redactSecretsInText(title/text/error)`). So a reminder "rotate key sk-proj-…" is DELIVERED scrubbed (the delivery
+  path scrubs only the copy it SENDS) but ARCHIVED VERBATIM; `error` can also quote an upstream response body (e.g. a
+  Telegram bot token). FIX: scrub `text` + `error` at the chokepoint (`{ ...entry, text: redactSecretsInText(text),
+  ...(error ? { error: redactSecretsInText(error) } : {}) }`) — exact parity with the proactive sibling, so every caller
+  inherits it. TDD (text with sk-proj key + error with telegram token → read-back has `[redacted-openai-key]` /
+  `[redacted-telegram-bot-token]`, raw tokens absent) RED(raw entry → plaintext key persisted)→GREEN; mcp 1753, check 0
+  (all pkgs), lint 0. Fable-5 PASS (text+error = full secret-bearing set; destination non-secret by the messaging
+  contract; chokepoint inherited by both call sites). KIND secret-leak, fresh surface — directly on Muse's "it can't
+  tell anyone" identity.
+- ◦ **reminder daemon prints raw error strings to daemon.out.log (fire-41 verifier finding; secret-leak)** —
+  `runDueReminders` returns raw `errors` strings (reminder-firing-loop.ts:~140 — the same upstream error that can quote
+  a Telegram/Slack token), and the daemon prints them to stdout, which the macOS LaunchAgent persists to
+  `daemon.out.log` (commands-daemon.ts:~486). Reminder TEXT is not echoed there (only error strings), but a
+  token-quoting send failure archives the raw token in that log. FIX: apply `redactSecretsInText` at the daemon's
+  error-print seam (and/or scrub the `errors` array in the summary). Slice: 1 wrap + 1 test (a secret-bearing error →
+  the printed/returned string is redacted). Fresh surface (daemon stdout).
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`

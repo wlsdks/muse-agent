@@ -13,6 +13,8 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
+import { redactSecretsInText } from "@muse/shared";
+
 import { withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface ReminderHistoryEntry {
@@ -56,9 +58,18 @@ export async function appendReminderHistory(
   // same snapshot and the last write clobbers the rest (a lost fire record can let
   // a one-shot reminder re-fire), and two writes in the same millisecond collided
   // on the tmp-${pid}-${Date.now()} path and threw ENOENT on rename.
+  // Scrub at the persist chokepoint so every caller inherits it — `text` is the
+  // reminder body and `error` can quote an upstream response, neither scrubbed
+  // upstream (the delivery path scrubs only the copy it SENDS, not this archive).
+  // Exact parity with the sibling proactive-history store.
+  const scrubbed: ReminderHistoryEntry = {
+    ...entry,
+    text: redactSecretsInText(entry.text),
+    ...(entry.error ? { error: redactSecretsInText(entry.error) } : {})
+  };
   await withFileMutationQueue(file, async () => {
     const existing = await readRaw(file);
-    const next = [...existing, entry];
+    const next = [...existing, scrubbed];
     const trimmed = next.length > capacity ? next.slice(next.length - capacity) : next;
     const payload: PersistedShape = { entries: trimmed, version: 1 };
     const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
