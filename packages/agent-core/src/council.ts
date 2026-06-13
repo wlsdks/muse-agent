@@ -639,24 +639,31 @@ export async function synthesizeCouncilAnswer(
   // Support is recomputed on forSynthesis (not projected from forOutlier) so the
   // vector is always correctly aligned to the kept subset. Mirror the screen's choice:
   // semantic cosine when embed is present, Jaccard otherwise.
+  // Pick the floor from the support computation that ACTUALLY ran, not from
+  // options.embed — so a fallback to Jaccard always pairs with the Jaccard floor and
+  // the consensus label is never scored against a mismatched scale. (The catch is
+  // currently unreachable — councilMemberSupportsSemantic never throws, it catches
+  // embed errors per-member → support 0 — but tying the floor to the realised support
+  // source keeps floor⊥support correct-by-construction if that ever changes.)
   let keptSupports: number[];
+  let supportFloor: number;
   if (options.embed) {
     try {
       keptSupports = await councilMemberSupportsSemantic(forSynthesis, options.embed);
+      supportFloor = DEFAULT_COUNCIL_AGREE_AT_COSINE;
     } catch {
       keptSupports = councilMemberSupports(forSynthesis);
+      supportFloor = DEFAULT_COUNCIL_AGREE_AT;
     }
   } else {
     keptSupports = councilMemberSupports(forSynthesis);
+    supportFloor = DEFAULT_COUNCIL_AGREE_AT;
   }
   const ordered = rankUtterancesBySupport(forSynthesis, keptSupports);
 
   // ConfMAD advisory (arXiv:2509.14034): carry the panel's aggregate confidence signal
-  // forward. Floor source must match support source: cosine floor for embed, Jaccard
-  // floor otherwise. Advisory-only per arXiv:2511.07784 — never gates or alters the answer.
-  const consensus = classifyCouncilConsensus(keptSupports, {
-    floor: options.embed ? DEFAULT_COUNCIL_AGREE_AT_COSINE : DEFAULT_COUNCIL_AGREE_AT
-  });
+  // forward. Advisory-only per arXiv:2511.07784 — never gates or alters the answer.
+  const consensus = classifyCouncilConsensus(keptSupports, { floor: supportFloor });
 
   const messages: readonly ModelMessage[] = [
     { content: SYNTHESIS_SYSTEM_PROMPT, role: "system" },

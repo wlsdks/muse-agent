@@ -372,3 +372,22 @@ ratchet: testFiles +0 (mcp.test +3; 1860 tests) · fabrication 0 · pnpm check 0
   (3)503 여전히 bounded-retry(과교정 없음) (4)unknown shape fail-OPEN(전이성 blip에 잘못 terminal-disable 안 함).
 - **리스크:** stdio/bare-network는 status 없어 retryable(전이성 보존, 올바름). mid-session callTool 실패
   재분류는 범위 밖(별도 future ◦). SDK 에러 shape 변경시 retryable로 degrade(fail-open, 잘못 terminal 아님).
+
+## fire 20 · 2026-06-14 · skill v1.14.0 · (this commit)
+
+meta: value-class=micro-fix(hardening+secret-leak) · pkg=@muse/mcp · kind=B-mcp · verdict=PASS · firesSinceDrill=3
+
+ratchet: testFiles +1 (mcp-tool-call-error.test.ts 5 cases; 1859 tests) · fabrication 0 · pnpm check 0 · lint 0/0
+
+- **무엇:** 외부 MCP 호출-시점 에러 표면화 + 토큰 redaction. createMcpMuseTool execute가 connection.callTool()을
+  try/catch 없이 반환(SdkMcpConnection.callTool도 미감싸짐, fire-19가 감싼 listTools와 달리) → mid-session
+  callTool 실패(401/500/timeout/throw)가 raw 탈출. 이제 캐치→명확한 `Error: MCP tool '<name>' failed: <msg>`,
+  redactMcpSecrets가 Bearer <token>→Bearer [redacted]. 성공 콘텐츠 + isError:true passthrough 불변.
+- **왜:** 두 구멍 동시 수정 — (1)grounding: swallow/탈출 실패를 모델이 빈 결과로 읽던 것 (2)**secret-leak**:
+  주입된 Authorization: Bearer <token>이 SDK HTTP 에러에 echo돼 모델/로그에 누출 가능. fire-19(연결-시점
+  fail-fast)의 호출-시점 보완. fabrication-adjacent 구멍을 닫아 grounding 강화.
+- **리뷰지점:** judge가 (1)실 갭(callTool 미캐치 end-to-end + Bearer 주입 코드 인용) (2)redaction RED-able
+  (제거시 raw ghp_ 토큰 누출) (3)에러 표면화 RED-able(catch 제거시 탈출) (4)success/isError over-catch 없음
+  (catch 제거해도 통과=그 경로 안 건드림) (5)Bearer-only scope 정직(Muse 주입 유일 secret).
+- **리스크:** redaction은 Bearer 형태만 — query-string 등 다른 형태 토큰은 미커버(Muse 자체 주입은 Bearer
+  전용이라 완전, 문서화된 residual). mid-session 외 경로는 fire-19가 커버.

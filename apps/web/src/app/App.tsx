@@ -237,13 +237,13 @@ function Console() {
   );
 }
 
-function LangToggle({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) => void }) {
+export function LangToggle({ lang, onChange }: { lang: Lang; onChange: (lang: Lang) => void }) {
   return (
     <div className="lang-toggle" role="group" aria-label="Language">
-      <button className={lang === "en" ? "active" : ""} onClick={() => onChange("en")}>
+      <button aria-pressed={lang === "en"} className={lang === "en" ? "active" : ""} onClick={() => onChange("en")}>
         EN
       </button>
-      <button className={lang === "ko" ? "active" : ""} onClick={() => onChange("ko")}>
+      <button aria-pressed={lang === "ko"} className={lang === "ko" ? "active" : ""} onClick={() => onChange("ko")}>
         한
       </button>
     </div>

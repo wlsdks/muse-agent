@@ -205,6 +205,10 @@ async function buildNotesScenario() {
       { prompt: "Save a markdown note at ideas.md with: explore a local reranker on recall top-8.", expectTool: "muse.notes.save", requireArgs: ["content", "path"], note: "EN write a named note file → notes.save (NOT tasks/reminders)" },
       { prompt: "Append to my journal note journal.md: shipped the grounding gate today.", expectTool: "muse.notes.append", requireArgs: ["content", "path"], note: "EN append to an existing note file → notes.append" },
       { prompt: "ideas.md 노트를 새로 만들어서 적어줘: 로컬 리랭커 실험해보기", expectTool: "muse.notes.save", requireArgs: ["content", "path"], note: "KO create a new note file → notes.save, NOT append (새로 만들어 = create)" },
+      // PROBE (fire 81): a KO APPEND-to-an-existing-note intent — does it route to
+      // notes.append, or mis-route to tasks.add because the KO verb "추가" collides?
+      { prompt: "journal.md 일지에 한 줄 덧붙여줘: 오늘 grounding gate 배포함", expectTool: "muse.notes.append", requireArgs: ["content", "path"], note: "KO append to a NAMED note file (덧붙여 = append) → notes.append" },
+      { prompt: "내 노트 journal.md에 추가해줘: 회의 끝났고 다음 주 follow-up 잡음", expectTool: "muse.notes.append", requireArgs: ["content", "path"], note: "KO append to a named note with the collide-verb 추가 + a .md path → notes.append (NOT tasks.add — a NOTE path disambiguates)" },
       // DISAMBIGUATION: a to-do or a reminder must NOT route to a note tool
       { prompt: "우유 사기를 할 일에 추가해줘", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "KO add a TO-DO → tasks.add, NOT notes.append (추가 collides)" },
       { prompt: "Add 'renew passport' to my tasks.", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "EN add a task → tasks.add, NOT notes.save" },

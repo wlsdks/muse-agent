@@ -248,9 +248,30 @@ export function createMcpMuseTool(serverName: string, tool: McpRemoteTool, conne
         return `Error: MCP tool '${tool.name}' is not callable`;
       }
 
-      return connection.callTool(tool.name, args);
+      try {
+        return await connection.callTool(tool.name, args);
+      } catch (error) {
+        // A mid-session callTool rejection (auth expired → 401, server
+        // 500, request timeout, an SDK throw) MUST surface to the agent
+        // as a clear, actionable error — never escape unhandled (which
+        // would crash the tool loop on a non-ToolExecutor consumer) and
+        // never be silently read as an empty/successful result (a
+        // grounding hole: the model would report "no results" when the
+        // call actually FAILED). Redact secrets first: the SDK's HTTP
+        // error message can echo the request's `Authorization: Bearer
+        // <token>` header, which must never reach the model or a log.
+        return `Error: MCP tool '${tool.name}' failed: ${redactMcpSecrets(toMcpErrorMessage(error))}`;
+      }
     }
   };
+}
+
+function toMcpErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function redactMcpSecrets(message: string): string {
+  return message.replace(/Bearer\s+\S+/giu, "Bearer [redacted]");
 }
 
 // Row builders + mappers live in `./server-stores.ts`.

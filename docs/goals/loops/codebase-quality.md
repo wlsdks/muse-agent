@@ -787,3 +787,39 @@ ratchet: testFiles 964 · fabrication 0 · groundedSurfaces 27 · ask god-file: 
   placed in select.ts beside formatContactBirthday (no new import); structural type accepts Contact[]; new test
   pins fields-order + the connection fallback; recall 227 + cli 2625 green.
 - **Risk:** low — pure relocation; Contact/contactMatchScore/contactGroundingEvidence stay in commands-ask (source fetch).
+
+## fire 43 · 2026-06-14 · loop-creator v1.14.0 · b60822e9
+meta: value-class=refactor · pkg=@muse/macos · kind=decompose · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 964 · fabrication 0 · groundedSurfaces 27 · macos-tools.ts 1519->1352 LOC
+- **What:** resumed the macos-tools decompose (DECOMPOSE-ON-DEFER from fire 19's shared-exec base) — extracted the
+  3 simple single-CLI utility tools (mac_clipboard_set/mac_spotlight_search/mac_say) + their Deps interfaces +
+  their PATH/TIMEOUT consts (PBCOPY/MDFIND/SAY_PATH from the top block, each used only by its tail tool, + the local
+  SPOTLIGHT/SAY consts) into a new sibling `macos-utility-tools.ts`. Each drives one Apple CLI through the shared
+  `runChild` (fire 19's macos-exec) — no AppleScript escaping, so they share no state with the osascript tools.
+  macos-tools re-exports the 3 tools + 3 Deps (the test + cli actuator-tools import them via @muse/macos, unchanged).
+- **Why:** diversity — compose@recall was 4/8 (recall block extraction is ~10/12 done); decompose@macos is a fresh
+  pkg (last touched fire 19) and a 167-LOC god-file shrink. The tail utility tools are the cold cohesive cluster
+  (the active macos loop works mac_message_send, far from these); merge-collision risk low.
+- **Review point:** 4b judge — the 3 tool factories + Deps byte-identical (verbatim region cut); the 3 PATH consts
+  genuinely tail-only (head no longer references them); re-export keeps macos 105 + cli green; the new module
+  imports runChild + MacCommandResult from macos-exec; no AppleScript/osascript tool touched.
+- **Risk:** low-medium — touches the macos package the message-send loop also edits, but the extracted region is the
+  cold tail far from mac_message_send; pure relocation, no behavior change.
+
+## fire 44 · 2026-06-14 · loop-creator v1.14.0 · 5fd47137
+meta: value-class=refactor · pkg=@muse/messaging · kind=dead-code · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 966 · fabrication 0 · groundedSurfaces 27 · 1 dead re-export + 1 unused import removed
+- **What:** dead-code in @muse/messaging — knip flagged `telegram-provider.ts:270 export { MessagingValidationError }`
+  as an unused export. Verified: MessagingValidationError is the canonical error (defined in errors.ts, used widely),
+  but NOTHING imports it FROM telegram-provider (all consumers — api routes, providers, tests — get it from
+  errors.js or the package index, which re-exports it from errors.js). So telegram's re-export was a dead duplicate
+  (its comment "re-export so callers don't depend on the validate module" is obsolete — index already exposes it).
+  Removed the dead re-export + the now-unused MessagingValidationError import (kept MessagingProviderError, used 4x).
+- **Why:** diversity — picked a FRESH package (@muse/messaging, never touched by this loop) + dead-code KIND, off
+  the recall/cli concentration. Scouted the macos capture cluster first but it's entangled (shares path-validator
+  helpers tryRealpath/expandTilde + node imports with other tools) — deferred as a blocker (needs the path-helpers
+  untangled first).
+- **Review point:** 4b judge — the package PUBLIC API is unchanged (index.ts still `export { MessagingValidationError }
+  from "./errors.js"`; api route imports it from @muse/messaging unaffected); telegram-provider no longer references
+  it (0 refs); MessagingProviderError import retained; knip drops it; messaging 368 + full check green.
+- **Risk:** none — removed a redundant re-export whose symbol is still exposed via the package index; no behavior change.

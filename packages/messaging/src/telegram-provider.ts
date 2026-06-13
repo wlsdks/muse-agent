@@ -1,6 +1,6 @@
 import { truncateErrorBody } from "@muse/shared";
 
-import { MessagingProviderError, MessagingValidationError } from "./errors.js";
+import { MessagingProviderError } from "./errors.js";
 import { readInbox } from "./inbox-store.js";
 import { clampInboundLimit, clampOutboundText, fetchReadWithRetry, fetchWithTimeout, retryAfterMsFromResponse, tryParseJson } from "./provider-helpers.js";
 import { readTelegramOffset, writeTelegramOffset } from "./telegram-offset-store.js";
@@ -266,5 +266,3 @@ export function clampForTelegram(text: string, mode: "MarkdownV2" | "HTML" | und
   return clampOutboundText(text, Math.floor(TELEGRAM_MAX_TEXT / worstCaseFactor));
 }
 
-// Re-export so callers don't have to depend on the validate module.
-export { MessagingValidationError };
