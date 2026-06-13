@@ -12,6 +12,7 @@
 import { stripUntrustedTerminalChars } from "@muse/shared";
 
 import { approximateActivationBoost, computeActivationBoost } from "./actr-activation.js";
+import { comparableScript } from "./script-family.js";
 import { humanizeRelativeFromIso } from "./time-helpers.js";
 
 export interface EpisodicMatch {
@@ -19,6 +20,14 @@ export interface EpisodicMatch {
   readonly narrative: string;
   readonly similarity?: number;
   readonly createdAtIso?: string;
+  /**
+   * Set by the A-MAC factual-confidence pass (arXiv:2603.04549) when this
+   * recalled episode states the SAME topic but a DIFFERENT value than a
+   * higher-relevance recalled episode. Carries that episode's sessionId so the
+   * renderer can mark the conflict — moving reconciliation from a fragile
+   * prompt instruction into DATA. Read-time annotation only; never drops.
+   */
+  readonly conflictsWith?: string;
 }
 
 export interface EpisodicRecallSnapshot {
@@ -71,7 +80,13 @@ export function renderEpisodicSection(
     // — the previous impl counted only narrative length and could
     // overshoot `MAX_EPISODIC_CHARS` by ~50 chars per match.
     const prefix = `— ${header} `;
-    const remaining = MAX_EPISODIC_CHARS - charsUsed - prefix.length;
+    // A-MAC conflict marker: a same-topic-different-value episode is flagged so
+    // the model reconciles instead of asserting one value confidently. Counted
+    // into the budget so the marker can't silently overshoot MAX_EPISODIC_CHARS.
+    const conflictMark = match.conflictsWith
+      ? " ⚠ conflicts with a more relevant memory — verify"
+      : "";
+    const remaining = MAX_EPISODIC_CHARS - charsUsed - prefix.length - conflictMark.length;
     if (remaining <= 0) {
       break;
     }
@@ -86,8 +101,8 @@ export function renderEpisodicSection(
     const narrative = sanitized.length > remaining
       ? `${sanitized.slice(0, Math.max(0, remaining - 1))}…`
       : sanitized;
-    lines.push(`${prefix}${narrative}`);
-    charsUsed += prefix.length + narrative.length;
+    lines.push(`${prefix}${narrative}${conflictMark}`);
+    charsUsed += prefix.length + narrative.length + conflictMark.length;
   }
   return lines.join("\n");
 }
@@ -583,6 +598,108 @@ export function consolidateNearDuplicates(
   return kept;
 }
 
+// WHY 0.86 (topic gate) sits BELOW 0.92 (consolidation): a value-conflict pair
+// ("flight at 3pm" vs "flight at 6pm") is the SAME topic but NOT a near-duplicate
+// — it lands in the [0.86, 0.92) band, so consolidation keeps both and this pass
+// flags the lower-relevance one. A pair ≥0.92 was already collapsed (one survives,
+// nothing to reconcile). 0.5 statement-overlap = the two share the statement
+// skeleton (Mem0 arXiv:2504.19413 / A-MAC arXiv:2603.04549).
+const EPISODIC_CONFLICT_TOPIC_SIM_MIN = 0.86;
+const EPISODIC_CONFLICT_STATEMENT_OVERLAP_MIN = 0.5;
+
+/**
+ * A recalled episode that states the SAME topic but a DIFFERENT value than a
+ * higher-relevance recalled episode. `sessionId` is the lower-relevance episode
+ * (the one to annotate); `conflictsWith` is the higher-relevance one.
+ */
+export interface EpisodicConflictFlag {
+  readonly sessionId: string;
+  readonly conflictsWith: string;
+  readonly topicSim: number;
+}
+
+/**
+ * A-MAC factual-confidence pass (arXiv:2603.04549): flag recalled episodes that
+ * CONTRADICT a higher-relevance recalled episode, so reconciliation moves from a
+ * fragile prompt instruction into DATA. `matches` are assumed sorted by relevance
+ * desc (the providers sort before this runs), so for each conflicting pair the
+ * EARLIER index is higher-relevance and the LATER is flagged.
+ *
+ * The signal (precision-first — when unsure, flags nothing):
+ * 1. Same-script guard (cross-lingual value-comparison is unreliable — the
+ *    recurring lesson; a missed cross-lingual conflict = today's behaviour).
+ * 2. Topic gate: cosine on the ALREADY-COMPUTED narrative vecs ≥ topicSimMin.
+ *    Semantic, not lexical — the primary signal.
+ * 3. HIGH token overlap (shared statement skeleton) + neither-subset (each has
+ *    ≥1 content token the other lacks → a genuine value-conflict, not an
+ *    elaboration). Lexical only as the secondary value-conflict discriminator,
+ *    guarded by step 1 — mirrors the proven detectEvidenceContradictions.
+ *
+ * One flag per lower-relevance episode (its highest-relevance conflicting
+ * partner). ANNOTATION-only: never drops, never reorders, never widens grounding.
+ * Fail-soft: empty vecs OR a missing vec → no flag → today's behaviour. Pure,
+ * synchronous (reuses precomputed embeddings), never throws, never calls an LLM.
+ */
+export function flagEpisodicConflicts(
+  matches: readonly EpisodicMatch[],
+  narrativeVecs: ReadonlyMap<string, readonly number[]>,
+  opts?: { readonly topicSimMin?: number; readonly statementOverlapMin?: number }
+): readonly EpisodicConflictFlag[] {
+  const topicSimMin = opts?.topicSimMin ?? EPISODIC_CONFLICT_TOPIC_SIM_MIN;
+  const statementOverlapMin = opts?.statementOverlapMin ?? EPISODIC_CONFLICT_STATEMENT_OVERLAP_MIN;
+  if (matches.length < 2 || narrativeVecs.size === 0) {
+    return [];
+  }
+  const flags: EpisodicConflictFlag[] = [];
+  for (let j = 1; j < matches.length; j++) {
+    const lower = matches[j]!;
+    const lowerVec = narrativeVecs.get(lower.sessionId);
+    if (!lowerVec) continue;
+    const tokLower = tokenSet(lower.narrative);
+    for (let i = 0; i < j; i++) {
+      const higher = matches[i]!;
+      const higherVec = narrativeVecs.get(higher.sessionId);
+      if (!higherVec) continue;
+      if (!comparableScript(higher.narrative, lower.narrative)) continue;
+      const topicSim = cosineSimilarity(higherVec, lowerVec);
+      if (topicSim < topicSimMin) continue;
+      const tokHigher = tokenSet(higher.narrative);
+      const unionSize = new Set([...tokHigher, ...tokLower]).size;
+      if (unionSize === 0) continue;
+      let intersect = 0;
+      for (const t of tokHigher) {
+        if (tokLower.has(t)) intersect++;
+      }
+      if (intersect / unionSize < statementOverlapMin) continue;
+      // Neither-subset: an elaboration (one set ⊆ the other) is not a conflict.
+      if (tokHigher.size - intersect === 0 || tokLower.size - intersect === 0) continue;
+      flags.push({ sessionId: lower.sessionId, conflictsWith: higher.sessionId, topicSim });
+      break; // highest-relevance partner wins; one flag per lower episode
+    }
+  }
+  return flags;
+}
+
+/**
+ * Apply {@link flagEpisodicConflicts} as `conflictsWith` annotations on the
+ * matches. Returns the same array (new objects only for flagged matches) so the
+ * renderer can surface the conflict. Never drops or reorders.
+ */
+export function annotateEpisodicConflicts(
+  matches: readonly EpisodicMatch[],
+  narrativeVecs: ReadonlyMap<string, readonly number[]>
+): EpisodicMatch[] {
+  const flags = flagEpisodicConflicts(matches, narrativeVecs);
+  if (flags.length === 0) {
+    return [...matches];
+  }
+  const byId = new Map(flags.map((f) => [f.sessionId, f.conflictsWith]));
+  return matches.map((m) => {
+    const conflictsWith = byId.get(m.sessionId);
+    return conflictsWith ? { ...m, conflictsWith } : m;
+  });
+}
+
 /**
  * Adaptive top-k cutoff via cluster-transition detection (CAR, arXiv:2511.14769).
  *
@@ -860,6 +977,12 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
       minScore: this.minScore,
       inhibitionStrength: strength
     });
-    return top.length === 0 ? undefined : { matches: top };
+    if (top.length === 0) {
+      return undefined;
+    }
+    // A-MAC factual-confidence (arXiv:2603.04549): annotate a surviving episode
+    // that contradicts a higher-relevance one, reusing the embeddings already
+    // computed above (no extra embed calls). Annotation-only, fail-soft.
+    return { matches: annotateEpisodicConflicts(top, narrativeVecs) };
   }
 }

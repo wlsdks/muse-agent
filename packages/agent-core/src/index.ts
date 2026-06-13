@@ -131,6 +131,7 @@ export {
   type PageRankOptions
 } from "./associative-recall.js";
 export {
+  annotateEpisodicConflicts,
   applyLateralInhibition,
   consolidateNearDuplicates,
   cosineSimilarity,
@@ -138,11 +139,13 @@ export {
   EPISODIC_CONSOLIDATION_THRESHOLD,
   EPISODIC_INHIBITION_STRENGTH,
   EmbeddingEpisodicRecallProvider,
+  flagEpisodicConflicts,
   selectByClusterTransition,
   InMemoryEpisodicRecallProvider,
   renderEpisodicSection,
   StoreBackedEpisodicRecallProvider,
   type EmbeddingEpisodicRecallProviderOptions,
+  type EpisodicConflictFlag,
   type EpisodicMatch,
   type EpisodicRecallProvider,
   type EpisodicRecallSnapshot,
