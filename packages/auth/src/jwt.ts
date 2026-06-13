@@ -7,6 +7,7 @@
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { isRecord } from "@muse/shared";
 
 import { createRunId } from "@muse/shared";
 
@@ -205,6 +206,3 @@ function isJwtClaims(value: unknown): value is JwtClaims {
   );
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
