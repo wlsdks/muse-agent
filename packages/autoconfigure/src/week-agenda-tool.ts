@@ -27,6 +27,8 @@ export interface WeekAgendaInput {
   readonly events: readonly { readonly title: string; readonly startsAtIso: string }[];
   readonly tasks: readonly { readonly title: string; readonly dueAt: string }[];
   readonly birthdays: readonly { readonly name: string; readonly daysUntil: number }[];
+  /** Due reminders (time-anchored alerts) — bucketed by `dueAt` and sorted with events by time. */
+  readonly reminders?: readonly { readonly text: string; readonly dueAt: string }[];
   /** Per-day forecast summaries keyed by local YYYY-MM-DD; attached to each day's header. */
   readonly forecasts?: readonly { readonly dateIso: string; readonly summary: string }[];
 }
@@ -64,6 +66,13 @@ export function groupWeekAgenda(data: WeekAgendaInput, now: Date, days = 7): rea
       push(dayIndex(ms), `☑ ${clean(task.title)} (due)`, Number.POSITIVE_INFINITY);
     }
   }
+  for (const reminder of data.reminders ?? []) {
+    const ms = Date.parse(reminder.dueAt);
+    if (Number.isFinite(ms)) {
+      // Time-anchored like an event: rendered with its time and sorted by it.
+      push(dayIndex(ms), `${new Date(ms).toTimeString().slice(0, 5)} ⏰ ${clean(reminder.text)}`, ms);
+    }
+  }
   for (const birthday of data.birthdays) {
     push(birthday.daysUntil, `🎂 ${clean(birthday.name)}'s birthday`, Number.POSITIVE_INFINITY);
   }
@@ -93,7 +102,7 @@ export function createWeekAgendaTool(deps: WeekAgendaToolDeps): MuseTool {
   return {
     definition: {
       description:
-        "Answers 'what's my week look like?' / 'what's coming up this week?' / '이번 주 어때, 한눈에 보여줘'. ONE combined overview of the next N days — your calendar events, your due tasks, AND upcoming birthdays merged and grouped by day (read-only, local), so you don't chain separate lookups. Use this for a HOLISTIC week view that spans all three. For ONLY calendar events use the calendar list tool; for ONLY due tasks use the tasks list tool; for the weather forecast use the weather tool.",
+        "Answers 'what's my week look like?' / 'what's coming up this week?' / '이번 주 어때, 한눈에 보여줘'. ONE combined overview of the next N days — your calendar events, due reminders, due tasks, AND upcoming birthdays merged and grouped by day (read-only, local), so you don't chain separate lookups. Use this for a HOLISTIC week view that spans all four. For ONLY calendar events use the calendar list tool; for ONLY due reminders use the reminders list tool; for ONLY due tasks use the tasks list tool; for the weather forecast use the weather tool.",
       domain: "calendar",
       inputSchema: {
         additionalProperties: false,
