@@ -787,3 +787,21 @@ ratchet: testFiles 964 · fabrication 0 · groundedSurfaces 27 · ask god-file: 
   placed in select.ts beside formatContactBirthday (no new import); structural type accepts Contact[]; new test
   pins fields-order + the connection fallback; recall 227 + cli 2625 green.
 - **Risk:** low — pure relocation; Contact/contactMatchScore/contactGroundingEvidence stay in commands-ask (source fetch).
+
+## fire 43 · 2026-06-14 · loop-creator v1.14.0 · b60822e9
+meta: value-class=refactor · pkg=@muse/macos · kind=decompose · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 964 · fabrication 0 · groundedSurfaces 27 · macos-tools.ts 1519->1352 LOC
+- **What:** resumed the macos-tools decompose (DECOMPOSE-ON-DEFER from fire 19's shared-exec base) — extracted the
+  3 simple single-CLI utility tools (mac_clipboard_set/mac_spotlight_search/mac_say) + their Deps interfaces +
+  their PATH/TIMEOUT consts (PBCOPY/MDFIND/SAY_PATH from the top block, each used only by its tail tool, + the local
+  SPOTLIGHT/SAY consts) into a new sibling `macos-utility-tools.ts`. Each drives one Apple CLI through the shared
+  `runChild` (fire 19's macos-exec) — no AppleScript escaping, so they share no state with the osascript tools.
+  macos-tools re-exports the 3 tools + 3 Deps (the test + cli actuator-tools import them via @muse/macos, unchanged).
+- **Why:** diversity — compose@recall was 4/8 (recall block extraction is ~10/12 done); decompose@macos is a fresh
+  pkg (last touched fire 19) and a 167-LOC god-file shrink. The tail utility tools are the cold cohesive cluster
+  (the active macos loop works mac_message_send, far from these); merge-collision risk low.
+- **Review point:** 4b judge — the 3 tool factories + Deps byte-identical (verbatim region cut); the 3 PATH consts
+  genuinely tail-only (head no longer references them); re-export keeps macos 105 + cli green; the new module
+  imports runChild + MacCommandResult from macos-exec; no AppleScript/osascript tool touched.
+- **Risk:** low-medium — touches the macos package the message-send loop also edits, but the extracted region is the
+  cold tail far from mac_message_send; pure relocation, no behavior change.
