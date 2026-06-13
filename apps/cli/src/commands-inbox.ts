@@ -42,7 +42,7 @@ export function formatInboxLine(message: EmailSummary, known: boolean): string {
 }
 
 /** Short id shown in the listing and accepted (as a prefix) by `muse inbox <id>`. */
-export function shortMessageId(id: string): string {
+function shortMessageId(id: string): string {
   return id.slice(0, 8);
 }
 

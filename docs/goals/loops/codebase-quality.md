@@ -929,3 +929,11 @@ ratchet: testFiles 978 · fabrication 0 · groundedSurfaces 27 · tools/index 90
 - Why: god-file decompose on a FRESH package (@muse/tools, only touched by fire 16) — decompose 2/8, diversifies. tools/index doesn't use these internally so it's a pure re-export (no import-back). Diversity: tools 1/8, decompose 3/8.
 - Review point: 4b judge — the 3 fns moved BYTE-IDENTICAL (verified by diff); the load-bearing WHY JSDocs (the Structured-Reflection arXiv:2509.18847 safe-coercion-only rationale + the required-arg deterministic-check rationale) moved verbatim; agent-core builds (re-export resolves the cross-package consumers); tools 196 tests green; coerceScalar stays internal.
 - Risk: low — pure relocation behind a re-export; the tool-arg repair layer is byte-identical + the agent-core consumers + tools tests are unchanged.
+
+## fire 58 · 2026-06-14 · loop-creator v1.14.0 · 1b836a95
+meta: value-class=refactor · pkg=@muse/cli · kind=dead-code · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 978 · fabrication 0 · groundedSurfaces 27 · 5 internal-only exports de-exported
+- What: de-exported 5 internal-only helpers across 5 cli files — defangMemoryValue (muse-persona.ts), looksLikeImage (commands-show.ts), shortMessageId (commands-inbox.ts), logPendingApproval (commands-approval.ts), readActivity (commands-routine.ts). All knip-flagged unused exports; grep-confirmed used only within their own file (own>=2 each), no external/test importer. Dropped the `export` keyword; functions stay (used internally).
+- Why: dead-code KIND (1/8 in window — diversifies off the 3x decompose run) batched same-kind across files per the loop's batching rule. Skipped friendlyFetchError (a test imports it) + isNodeError (used by 2 external files) — knip false-positives. Diversity: cli 1/8 prior, dead-code 1/8.
+- Review point: 4b judge — each of the 5 is genuinely internal-only (no caller breaks: cli build clean, 2636 tests green); knip drops all 5 post-de-export; functions unchanged (only `export` removed); skipped the 2 knip false-positives. 5 separate files = small per-file conflict surface.
+- Risk: none — narrowing visibility of 5 already-internal helpers; no behavior change.
