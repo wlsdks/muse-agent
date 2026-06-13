@@ -530,6 +530,24 @@ excluded when scoring).
   (today reward writes are manual CLI + correction-decay only — the real cold-start fix); (c) λ sensitivity
   A/B (eval:playbook-rank) before tuning off the paper's 0.5; (d) tuned δ for the cosine channel.
   (fire 33 remainder, arXiv:2601.03192)
+- ✓→Done **Compaction-fidelity: salient detail retention** — conversation compaction dropped
+  numbers/dates/decisions, duplicated the summary each round, and wiped a designed-but-dead StructuredFact
+  field (arXiv:2511.17208 Zhou & Han, non-compressive detail retention). [DONE 2026-06-13, cognition loop
+  fire 34: `salient-facts.ts` extracts VERBATIM NUMERIC/DECISION/ENTITY facts from user/assistant turns only
+  (tool excluded), merges newest-wins into one `[Key details]` block in the compaction summary, and persists
+  them instead of wiping. PROVABLY non-truncating: numeric = maximal-token-or-drop via a complete
+  continuation-char set (digits∪separators∪scale-words∪Sino-Korean numerals, 4-way boundary guard); decision
+  = fit-or-drop (no mid-sentence cut that would invert a Korean sentence-final negation). 5 adversarial judge
+  FAIL rounds hardened the floor before PASS. Floor-strengthening (the chat number-value gate regains the
+  true value post-compaction), additive, answer path byte-identical.]
+- ◦ **Faithful KO numeric parser for salient facts** — fire 34's regex extractor DROPS (safely) what it
+  can't parse faithfully: Latin-unit numbers (`42 people`), and KO multi-segment compounds (`3억 5천만원` =
+  350,000,000, space-separated). A real Korean numeral parser (arabic + hangul numerals 영일이…, compound
+  scales 천/만/억/조, spacing) would extract these whole. Until then they're omitted, not truncated.
+  (fire 34 remainder, arXiv:2511.17208)
+- ◦ **Compaction legacy-line dedup** — fire 34 deduped only the `[Key details]` block; the legacy
+  "Tools kept / Recent user topics / [Pinned entities]" lines still accumulate one copy per compaction round
+  in `buildCompactionSummaryText`. Strip-and-re-emit them the same way. (fire 34 remainder)
 - ◦ **Reflection-schedule guard** — one test enumerating retry/reflection call-sites, asserting
   each is verifier-backed (85.36% same-mistake repetition without one, arXiv 2510.18254). (T1-10)
 - (queued behind fuel/prereqs: sleep-time compute · Mem0 UPDATE op · AWM workflow mining ·

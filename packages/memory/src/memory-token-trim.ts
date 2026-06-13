@@ -27,8 +27,15 @@ import {
   type TokenEstimator
 } from "./index.js";
 import { IMPORTANCE_DEFAULT_THRESHOLD, recencyBonus, scoreMessageContent } from "./message-importance.js";
-import { createApproximateTokenEstimator } from "./token-estimator.js";
 import { extractPinnedEntities } from "./pinned-entities.js";
+import {
+  extractSalientFacts,
+  mergeSalientFacts,
+  parseKeyDetailsBlock,
+  renderKeyDetailsBlock,
+  stripKeyDetailsBlock
+} from "./salient-facts.js";
+import { createApproximateTokenEstimator } from "./token-estimator.js";
 
 // Re-exported for backwards compatibility — the @muse/memory barrel
 // keeps these names available even though their definitions now
@@ -560,11 +567,21 @@ function buildCompactionSummaryText(
     .slice(-2)
     .map((message) => compactLine(message.content).slice(0, 80));
   const pinnedEntities = extractPinnedEntities(originalSnapshot);
-  // Strip a previous `User context: ...` block from the carried-over
-  // summary so successive compaction rounds don't accumulate stale
-  // copies. The fresh `personaSnapshot` (if any) is re-emitted below.
-  const lines = previousSummary
-    ? [stripPersonaSnapshot(previousSummary), `[Additional compaction round: ${droppedCount} messages removed]`]
+
+  // Strip both the `[Key details]` block and the `User context: ...` persona
+  // block from the previous summary so successive rounds don't accumulate them.
+  // After stripping, parse the previous facts and merge with freshly-extracted
+  // ones — emit exactly ONE [Key details] block (duplication-proof).
+  const strippedPrevious = previousSummary
+    ? stripPersonaSnapshot(stripKeyDetailsBlock(previousSummary))
+    : undefined;
+
+  const previousFacts = previousSummary ? parseKeyDetailsBlock(previousSummary) : [];
+  const freshFacts = extractSalientFacts(originalSnapshot);
+  const mergedFacts = mergeSalientFacts(previousFacts, freshFacts);
+
+  const lines = strippedPrevious
+    ? [strippedPrevious, `[Additional compaction round: ${droppedCount} messages removed]`]
     : [`${COMPACTION_SUMMARY_PREFIX}: ${droppedCount} messages compacted]`];
 
   if (toolNames.length > 0) {
@@ -580,10 +597,12 @@ function buildCompactionSummaryText(
   }
 
   if (personaSnapshot && personaSnapshot.trim().length > 0) {
-    // Single-line tag that downstream tooling (and the LLM) can spot.
-    // Body is included verbatim — caller is responsible for any
-    // structuring (e.g. `key=value` lines).
     lines.push(`${COMPACTION_PERSONA_SNAPSHOT_PREFIX}: ${personaSnapshot.trim()}`);
+  }
+
+  const keyDetailsBlock = renderKeyDetailsBlock(mergedFacts);
+  if (keyDetailsBlock) {
+    lines.push(keyDetailsBlock);
   }
 
   return lines.join("\n");

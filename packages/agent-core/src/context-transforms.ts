@@ -11,7 +11,13 @@
  */
 
 import type { AgentSpecResolution } from "@muse/agent-specs";
-import { COMPACTION_SUMMARY_PREFIX, type ConversationSummary, type ConversationSummaryStore } from "@muse/memory";
+import {
+  COMPACTION_SUMMARY_PREFIX,
+  type ConversationSummary,
+  type ConversationSummaryStore,
+  mergeSalientFacts,
+  parseKeyDetailsBlock
+} from "@muse/memory";
 import type { ModelMessage } from "@muse/model";
 import {
   buildLayeredSystemPrompt,
@@ -408,7 +414,19 @@ export async function persistConversationSummaryFromRequest(
   }
   const userId = metadataString(context.input.metadata, "userId");
   try {
+    // Parse the [Key details] block from the compaction summary and merge
+    // with any facts already stored — ends the wipe (facts ?? [] coercion)
+    // and populates the field that had zero writers before.
+    const parsedFacts = parseKeyDetailsBlock(head.content);
+    let stored: ConversationSummary | undefined;
+    try {
+      stored = await store.get(sessionId);
+    } catch {
+      // fail-open: treat as no prior facts
+    }
+    const mergedFacts = mergeSalientFacts(stored?.facts ?? [], parsedFacts);
     await store.save({
+      facts: mergedFacts,
       narrative: head.content,
       sessionId,
       summarizedUpToIndex,

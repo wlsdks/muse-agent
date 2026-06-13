@@ -250,6 +250,16 @@ export {
   mapConversationSummaryRow
 } from "./memory-conversation-summary-store.js";
 
+// Salient-fact extraction for compaction detail-retention
+// (arXiv:2511.17208 — verbatim-substring, no generation, trust-boundary).
+export {
+  extractSalientFacts,
+  mergeSalientFacts,
+  parseKeyDetailsBlock,
+  renderKeyDetailsBlock,
+  stripKeyDetailsBlock
+} from "./salient-facts.js";
+
 // Context Engineering Phase 5: message importance scoring.
 export {
   IMPORTANCE_DEFAULT_THRESHOLD,
