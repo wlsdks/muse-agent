@@ -92,32 +92,48 @@ describe("performHomeActionWithApproval — draft-first / fail-closed (outbound-
   });
 });
 
-describe("createHomeActionTool — fail-closed: a call with no CONCRETE target is refused (no whole-domain blast)", () => {
-  // fetch/approval must never be reached on the refuse path — the guard returns first.
-  const tool = () =>
-    createHomeActionTool({
+describe("createHomeActionTool — fail-closed: a call with no CONCRETE target makes NO service call (no whole-domain blast)", () => {
+  // The approval gate APPROVES and the fetch spy records every call. If the guard
+  // is bypassed, the approved action reaches fetch and a service call escapes —
+  // which for a no-target 'light.turn_off' is Home Assistant's whole-domain path.
+  const spyTool = () => {
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      calls.push(String(url));
+      return new Response("", { status: 200 });
+    }) as unknown as typeof fetch;
+    const tool = createHomeActionTool({
       actionLogFile: "/tmp/muse-ha-should-not-write.json",
-      approvalGate: (() => {
-        throw new Error("approvalGate reached — the guard should have refused first");
-      }) as never,
+      approvalGate: () => ({ approved: true }), // confirmed — so ONLY the guard can stop the call
       baseUrl: "http://ha.local",
-      fetchImpl: (() => {
-        throw new Error("fetch reached — the guard should have refused before any service call");
-      }) as unknown as typeof fetch,
+      fetchImpl,
       token: "T",
       userId: "u"
     });
+    return { calls, tool };
+  };
 
-  it("refuses 'light.turn_off' with no entity and no data target (would hit EVERY light)", async () => {
-    const r = (await tool().execute({ service: "light.turn_off" })) as Record<string, unknown>;
+  it("refuses 'light.turn_off' with no entity and no data target — never reaches fetch", async () => {
+    const { calls, tool } = spyTool();
+    const r = (await tool.execute({ service: "light.turn_off" })) as Record<string, unknown>;
     expect(r).toMatchObject({ performed: false });
     expect(String(r["reason"])).toContain("target");
+    expect(calls).toEqual([]); // no service call escaped
   });
 
-  it("an EMPTY/blank data target must NOT bypass the whole-domain fail-close", async () => {
+  it("an EMPTY/blank data target must NOT bypass the fail-close — still no service call", async () => {
     for (const data of [{ target: {} }, { entity_id: [] }, { entity_id: "" }, { target: { entity_id: [] } }] as const) {
-      const r = (await tool().execute({ data, service: "light.turn_off" })) as Record<string, unknown>;
-      expect(r, `data=${JSON.stringify(data)} must be refused (empty target is no target)`).toMatchObject({ performed: false });
+      const { calls, tool } = spyTool();
+      const r = (await tool.execute({ data, service: "light.turn_off" })) as Record<string, unknown>;
+      expect(r, `data=${JSON.stringify(data)} must be refused`).toMatchObject({ performed: false });
+      expect(calls, `data=${JSON.stringify(data)} must make NO service call (empty target is no target)`).toEqual([]);
     }
+  });
+
+  it("a CONCRETE entity gets past the guard (reaches the approved fetch)", async () => {
+    const { calls, tool } = spyTool();
+    const r = (await tool.execute({ entity: "light.living_room", service: "light.turn_off" })) as Record<string, unknown>;
+    expect(r).toMatchObject({ performed: true });
+    expect(calls).toEqual(["http://ha.local/api/services/light/turn_off"]);
   });
 });
