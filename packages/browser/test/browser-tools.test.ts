@@ -266,6 +266,76 @@ describe("browser_click — deterministic target grounding + draft-first", () =>
   });
 });
 
+describe("browser_click — ambiguous target is refused (fail-close), never a silent first-pick", () => {
+  const twinSnap: PageSnapshot = {
+    elements: [
+      { name: "Delete", ref: 0, role: "button" },
+      { name: "Delete", ref: 1, role: "button" }
+    ],
+    text: "two delete buttons", title: "Danger", url: "https://danger.test/"
+  };
+  class TwinController implements BrowserController {
+    calls: string[] = [];
+    async open(): Promise<PageSnapshot> { return twinSnap; }
+    async snapshot(): Promise<PageSnapshot> { this.calls.push("snapshot"); return twinSnap; }
+    async click(ref: number): Promise<PageSnapshot> { this.calls.push(`click:${ref.toString()}`); return twinSnap; }
+    async hover(): Promise<PageSnapshot> { return twinSnap; }
+    async pressKey(): Promise<PageSnapshot> { return twinSnap; }
+    async type(ref: number, text: string, submit: boolean): Promise<PageSnapshot> { this.calls.push(`type:${ref.toString()}:${text}:${submit.toString()}`); return twinSnap; }
+    async back(): Promise<PageSnapshot> { return twinSnap; }
+    async scroll(): Promise<PageSnapshot> { return twinSnap; }
+    async screenshot(path: string): Promise<{ readonly path: string }> { return { path }; }
+    async screenshotBase64(): Promise<string> { return "aW1n"; }
+    describeElement(ref: number): SnapshotElement | undefined { return twinSnap.elements[ref]; }
+    currentUrl(): string { return "https://danger.test/"; }
+    async disconnect(): Promise<void> {}
+    async close(): Promise<void> {}
+  }
+
+  it("two identical 'Delete' buttons → no click, returns the candidates + an ordinal hint", async () => {
+    const c = new TwinController();
+    let gateCalled = false;
+    const tool = createBrowserClickTool({ approvalGate: () => { gateCalled = true; return { approved: true }; }, controller: c });
+    const out = await tool.execute({ target: "Delete" }, ctx) as { clicked: boolean; ambiguous?: { ref: number; name: string }[]; reason?: string };
+    expect(out.clicked).toBe(false);
+    expect(out.ambiguous).toEqual([
+      { name: "Delete", ref: 0, role: "button" },
+      { name: "Delete", ref: 1, role: "button" }
+    ]);
+    expect(String(out.reason).toLowerCase()).toMatch(/which|ambiguous|first|second/);
+    // It must NOT have clicked and must NOT have asked the human to approve a guess.
+    expect(c.calls).toEqual(["snapshot"]);
+    expect(gateCalled).toBe(false);
+  });
+
+  it("an ordinal disambiguates → the act proceeds on the chosen one", async () => {
+    const c = new TwinController();
+    const tool = createBrowserClickTool({ approvalGate: allow, controller: c });
+    const out = await tool.execute({ target: "the second Delete" }, ctx) as { clicked: boolean };
+    expect(out.clicked).toBe(true);
+    expect(c.calls).toEqual(["snapshot", "click:1"]);
+  });
+
+  it("browser_type is equally fail-close on an ambiguous field (no type, candidates returned)", async () => {
+    const fieldSnap: PageSnapshot = {
+      elements: [
+        { name: "Amount", ref: 0, role: "textbox" },
+        { name: "Amount", ref: 1, role: "textbox" }
+      ],
+      text: "two amount fields", title: "Form", url: "https://form.test/"
+    };
+    const controller = {
+      ...new TwinController(),
+      snapshot: async () => fieldSnap,
+      describeElement: (ref: number) => fieldSnap.elements[ref]
+    } as unknown as BrowserController;
+    const tool = createBrowserTypeTool({ approvalGate: allow, controller });
+    const out = await tool.execute({ target: "Amount", text: "100" }, ctx) as { typed: boolean; ambiguous?: unknown[] };
+    expect(out.typed).toBe(false);
+    expect(out.ambiguous).toHaveLength(2);
+  });
+});
+
 describe("browser_type — target grounding + draft-first", () => {
   it("rejects empty text without typing", async () => {
     const c = new FakeController();

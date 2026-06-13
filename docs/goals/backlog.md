@@ -43,10 +43,20 @@
 - ✓ `egressGuards` ratchet widened to the voice egress guard — mic audio's cloud STT/TTS path now ratcheted too (drop the MUSE_LOCAL_ONLY voice cloud-key-ignore → self-eval exits 1); value 5→6 — differentiation fire 2
 - ✓ `eval:memory-poisoning` adversarial proof battery — proves Muse drops a model-asserted/poisoned claim at WRITE time (`dropModelAssertedValues`) that rivals' frequency-promotion (OpenClaw dreaming minRecallCount 3) would promote; deterministic, no Ollama — differentiation fire 3
 - ✓ embedder local-only egress gap CLOSED — `createOllamaEmbedder` followed `OLLAMA_BASE_URL` with no local-only check (chat router only gates it for providerId ollama; daemon bypassed the router), so a remote `OLLAMA_BASE_URL` egressed the user's raw note/memory/episode text under MUSE_LOCAL_ONLY; added construction-time fail-close + 6 behavioural tests + folded the throw into the egressGuards ratchet (6→7) — differentiation fire 4
+- ✓ browser act-path ambiguous-target fail-close — element matcher silently clicked/typed the FIRST of several tied "best" matches (two "Delete" buttons → guessed); now `matchElementResult` → `ambiguous` refuses `browser_click`/`browser_type` BEFORE snapshot-mutation/approval-gate, returns candidates + ordinal hint (closes an outbound-safety fail-open hole) — tool-mcp-browser fire 1
+- ✓ official-public-MCP preset registry (axis B) — `packages/mcp/src/official-mcp-presets.ts`: curated `createGitHubMcpServer` (`https://api.githubcopilot.com/mcp/`) + `createNotionMcpServer` (`https://mcp.notion.com/mcp`) streamable factories, each carrying an official anyone-may-connect provenance URL + a FAIL-CLOSE `toolRisk` classifier (read tools listed, every write/unknown → `write`) + `withOfficialMcpRisk` projection (domain `external`); wired through the existing `allowedServerNames` allowlist; contract-faithful transport-fake test proves allowlisted connects/read-surfaces & non-allowlisted refuses & write stays gated — tool-mcp-browser fire 2
 
 ## ◦ Open — differentiation (vs hermes/openclaw — `differentiation` loop)
 
 - ◦ **`muse doctor` reports embedder OLLAMA_BASE_URL locality** — fire 4 closed the runtime egress gap (the embedder now fail-closes on a remote base under local-only), but `evaluateLocalOnlyPosture` / `muse doctor` still only re-runs the chat router, so the doctor posture never surfaces the embedder's base URL — a reporting blind spot. Slice: extend the posture snapshot to classify the embedder's `OLLAMA_BASE_URL` too. Source: differentiation fire 4 residual.
+
+### tool-mcp-browser theme — axis B (external official-public MCP) remaining sub-slices
+
+- ◦ wire `OFFICIAL_MCP_PRESETS` into `assembleMcpStack` via an env toggle (e.g. `MUSE_GITHUB_MCP_ENABLED` / `MUSE_NOTION_MCP_ENABLED`, mirroring `MUSE_CHROME_DEVTOOLS_ENABLED`) so a user enables a preset without hand-writing `~/.muse/mcp.json`; honor the strict-allowlist intent like the chrome wiring does.
+- ◦ apply `withOfficialMcpRisk` in the CLI/api agent-tool projection path (where `withChromeDevToolsRisk` is applied) so the risk re-stamp actually reaches the live `toolApprovalGate` — currently the projection helper exists but isn't yet called in the assembled runtime.
+- ◦ credential resolution for the presets — read the user's GitHub PAT / Notion OAuth token from the keychain/auth store (NOT plaintext config) and inject as the streamable `headers`; never ship or log a secret.
+- ◦ draft-first write-tool e2e — once a write tool is reachable, a contract-faithful HTTP-fake test (NOT a fake registry) proving deny / timeout / ambiguous-recipient / absent-consent produces NO external mutation (create issue / page never sent), alongside the confirmed-path send (`outbound-safety.md`).
+- ◦ `muse doctor` reports each official preset's allow/deny + provenance so a user can audit which external servers are eligible.
 
 ## Done — loop infrastructure (2026-06-12, 진안-directed)
 
