@@ -214,7 +214,7 @@ ratchet: testFiles 926 · recall 95/95 · cli 빌드 OK · fabrication 0 · grou
   타므로 "진짜 읽는지"는 test 1이 단독 핀(judge 관찰; test 2 이중핀은 선택 강화). L4
   네 케이스(L1/L2/L3/L4) 중 L4가 이제 완전 라이브.
 
-## fire 11 · 2026-06-13 · skill v1.14.0 · `<pending-commit>`
+## fire 11 · 2026-06-13 · skill v1.14.0 · `f5bf7362`
 meta: value-class=new-capability · pkg=scripts(@muse/mcp proof) · kind=adversarial-proof-battery · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles 928 · new deterministic battery eval:action-log-tamper (no Ollama) · fabrication 0 · 소유-루프 파일 미수정
 
