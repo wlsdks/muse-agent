@@ -999,3 +999,12 @@ ratchet: testFiles 980 유지(scripts-only) · fabrication 0 유지 · eval:tool
 - **왜:** fire 97이 today_brief를 selection+confusability 케이스로 ship했으나 IrrelAcc 누락. today_brief 주키워드 "today"/"오늘"은 **최고빈도 casual 충돌어**(thanks for today, good mood today) = eager-invocation 트랩. agent-testing.md triad(selection+confusability+irrelevance) 완성 — 새 도구의 trap 키워드 가드. fire 97(capability-extension)과 다른 KIND(IrrelAcc), fire 91 패턴.
 - **리뷰지점:** eval buildWeekAgendaScenario +2 expectNoTool(순수 additive, week-agenda는 이전 IrrelAcc 0). strict noTool scorer. 10/10 STABLE 3/3(today_brief selection+week carve+casual-today 무발화 동시 검증). lint clean, harness 17. ④b judge PASS 5/5(fair·real-teeth: "오늘"은 today_brief 주키워드+casual 빈출, fire-86보다 강한 teeth). scripts-only라 pnpm check 무관(live eval+harness가 gate).
 - **리스크:** 없음 — scripts-only, 순수 additive. GREEN-on-arrival이나 high-freq 트랩어("오늘")라 description/keyword 저하 regression 가드. firesSinceDrill=6.
+
+
+## fire 99 · 2026-06-14 · skill v1.14.0 · e21cb3e1+06626072
+meta: value-class=new-capability(EXPANSION) · pkg=@muse/autoconfigure(+scripts eval) · kind=capability-extension(day_recap — 회고 도구, today_brief의 retrospective 쌍둥이) · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 980→981(+day-recap-tool.test) · fabrication 0 유지 · eval:tools +day-recap 시나리오 **6/6 STABLE 3/3**(risky carve hold)
+- **무엇:** 새 read 도구 day_recap — today_brief의 RETROSPECTIVE 쌍둥이. **accomplished**(오늘 완료 tasks + fired reminders) + **slipping**(still-overdue) 병합(1콜). composeDayRecap 순수 aggregator + 배선(recapInput thunk) + barrel export + carve eval 시나리오.
+- **왜:** EXPANSION scout가 today_brief-class 비대칭 발굴(recap 집계가 `muse recap` CLI+저녁 daemon엔 있으나 agent 도구 미배선). **person-dossier는 REJECT**(find_contact과 confusable). day_recap의 **carve가 make-or-break**(today_brief=forward / recent_actions=Muse 행동 / tasks.list=단일 — "did/done/뭐 했" 겹침). sharp description carve("for what MUSE did use recent_actions, NOT this") + 키워드 겹침 회피로 해소.
+- **리뷰지점:** day-recap-tool.ts+index.ts(배선+export)+day-recap-tool.test(602 green)+eval scenario(day_recap+today_brief+recent_actions+tasks.list 동시 노출). **carve 6/6 STABLE 3/3**(회고→day_recap, "내 대신 뭐 했어"→recent_actions 안 cross). pnpm check exit=0, lint clean. ④b judge PASS 5/5(carve eval 독립 RE-RAN, discriminator 무-bleed). **⚠️ vitest-no-typecheck 트랩:** e21cb3e1을 빌드 전 커밋해 타입 에러 3개(optional dueAt/completedAt/firedAt non-null) 포함 → 06626072로 fix. 교훈: ④ 규칙대로 커밋 전 build.
+- **리스크:** 거의 없음 — read-only(mutation 0), agent-core 무관, recent_actions/today_brief 선택 무회귀(carve 검증). EXPANSION 검증 통과(inert 아님).
