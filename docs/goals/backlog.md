@@ -56,11 +56,11 @@
 - ◦ **`@muse/mcp`** — `test/loopback-helpers.test.ts` ⊂ the fuller `src/loopback-helpers.test.ts` (delete the weaker `test/` one); `mcp.test.ts` has a few `toBeDefined()`-only lines redundant with the assertion right after. (audit mcp)
 
 **ADD — genuinely uncovered high-value (security / grounding first):**
-- ◦ ★ **`createCitationStreamFilter` (agent-core, knowledge-recall/response path) has ZERO tests** — the grounding floor's STREAMING citation gate (the fix behind [[project_injection_defense]]'s "fabricated [from X] no longer flashes"); no regression test exists. (audit agent-core)
+- ✗ FALSE POSITIVE (fire 6): `createCitationStreamFilter` is NOT in agent-core and is NOT untested — it lives in `apps/cli/src/citation-stream.ts` and HAS `apps/cli/src/citation-stream.test.ts`. The audit agent grepped only `packages/agent-core/test/`. (lesson: verify audit claims before trusting the package/path)
 - ✓ DONE (fire 5) **`assertPublicHttpUrlSync` SSRF sync gate** — covered: file://·malformed·localhost·metadata.internal·127.0.0.1·[::1]·169.254 all blocked, public https passes; each guard clause mutation-pinned.
 - ◦ **`groundToolArguments` nested-object multi-hop branch** (agent-core) — anti-fabrication gate untested on nested mixed grounded/fabricated leaves. (audit agent-core)
 - ◦ **`createLlmClassificationInputGuard` provider-throws fail-close** (agent-core/guards.ts) — classifier-outage path asserts no `GUARD_ERROR`/fail-close at unit level. (audit agent-core)
-- ◦ **`createToolResultQualityAuditFilter` early-return branches** (agent-core) — empty toolsUsed / empty verifiedSources / empty-remainder pass-throughs uncovered. (audit agent-core)
+- ◦ **`createToolResultQualityAuditFilter` empty-remainder branch** (agent-core) — fire 6 covered the toolsUsed-empty + verifiedSources-empty gates (direct unit); the `rest.length === 0` pass-through (apology IS the whole output) is still uncovered. (audit agent-core — partial, fire 6)
 - ◦ **`formatDueLocal`/`relativeDueHint` (mcp/local-due-format.ts)** — today/tomorrow/in-N-days/NaN branches untested (drives task `dueAtLocal` shown to the model). (audit mcp)
 - ◦ **`muse config show` (cli/commands-config.ts)** — user-facing read path, zero tests (only set/unset tested); `loadImageAttachment` + `muse auth rotate-jwt` command-wiring also uncovered. (audit cli)
 - ◦ **`SchedulerExecutionError` (scheduler) + `withFileLock` stale-lock-steal (mcp/encrypted-file.ts) + `KyselyMcpServerStore` CRUD** — exported, no direct test (Kysely needs Testcontainers or an honest "integration-only" note). (audit mcp/scheduler)
@@ -99,6 +99,7 @@
 - ✓ ADD coverage: `formatCoarseAge` ≥2-year branch (`.toFixed(0)` whole years) in @muse/recall — only the <2y 1-decimal path was tested; mutation-proven (toFixed(1) mutant → '2.2y'≠'2y' RED) — test-hygiene fire 3
 - ✓ PRUNE a2a double-run: deleted 5 subsumed `src/*.test.ts` (peer-config·receive-quarantine·signing·council-wire·handler), migrated 2 unique security cases to the `test/` twins; testFiles 924→919; mutation-proven, 3 judge rounds (2 caught real loss) — test-hygiene fire 4
 - ✓ ADD SSRF coverage: `assertPublicHttpUrlSync` sync gate (mcp/web-url-guard.ts) had zero direct tests — 5 cases (protocol/blocked-host/private-addr/ok), each guard clause mutation-pinned — test-hygiene fire 5
+- ✓ ADD `createToolResultQualityAuditFilter` gating: direct unit test pins the verified-source + tool-ran gates (an honest apology survives when no source backs a rewrite); each clause isolated + mutation-pinned — test-hygiene fire 6
 - ✓ `muse.tasks.search` matches tags — a task tagged "work" (word not in title/notes) is now found by searching "work" (completes the fire-51 tag story: list FILTERS by tag, search now FINDS by tag) + JUDGE-DRILL (verifier caught a deliberately-inert version) — tool-hardening fire 53
 - ✓ `week_agenda` agent tool — "what's my week look like?" ONE merged view of events+tasks+birthdays by day (muse week was CLI-only; groupWeekAgenda moved to @muse/autoconfigure, CLI re-exports) — tool-hardening fire 54
 - ✓ `list_objectives` agent tool — "what objectives are you tracking for me?" lists Muse's live standing objectives (active/escalated); were CLI/passive-only, no agent tool — tool-hardening fire 59

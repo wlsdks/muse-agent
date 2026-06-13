@@ -53,3 +53,11 @@ ratchet: testFiles 927→927 (케이스 +5, 파일수 불변) · netCoverage +4 
 - **왜:** SSRF는 보안 게이트 — 어느 한 절(protocol/blocked-host/private-addr)이 회귀해도 조용히 통과될 수 있었음. CLAUDE.md "every export gets a direct test" + agent-testing.md "보안은 코드로 테스트".
 - **어떻게-증명(MUTATION-FIRST):** `isBlockedHostname` 조건을 `false &&`로 무력화 시 blocked-hostname 케이스 RED(localhost 통과), 복원+클린리빌드 후 14/14 GREEN. ★④b judge가 **3개 가드 절을 각각 독립 mutate**해 모든 케이스가 mutation-caught(inert 없음)임을 재확인 + 값 정확성([::1] bracket-strip, 169.254 link-local) 검증 후 **VERDICT: PASS**.
 - **리스크:** 없음 수준 — 테스트-only, 소스 무변경, full `pnpm check` GREEN. (mcp dist 클린리빌드 1회 필요했음 — [[project_stale_dist_from_loop]] 반복 패턴.)
+
+## fire 6 · 2026-06-13 · skill v1.14.0 · 10541481
+meta: kind=add · pkg=@muse/agent-core · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 929→930 (새 파일 1) · netCoverage +2 guard clause (verifiedSources·toolsUsed gate) · fabrication 0 · pnpm check FULL GREEN
+- **무엇:** `createToolResultQualityAuditFilter`(agent-core/response-filters.ts)의 **게이팅 절** 직접 단위 테스트 추가(새 파일 `tool-result-quality-audit-filter.test.ts`, 3 케이스). 이 필터는 도구가 돌았고 **검증된 소스가 있을 때만** 사과("죄송합니다")를 요약으로 재작성 — 없으면 정직한 "못 찾음"을 보존해야 함. 두 early-return 절(`toolsUsed==0 || verifiedSources==0`)이 미커버였음(통합 테스트는 happy-path strip만, 두 절을 격리 못 함).
+- **왜:** grounding 인접 — 검증 소스 없이 사과를 mangle하면 가짜 요약으로 둔갑(정직성 훼손). audit ADD 후보(단 audit의 `createCitationStreamFilter`는 false-positive였음 — 실제로 apps/cli에 있고 이미 테스트됨; verify-the-audit로 걸러냄).
+- **어떻게-증명(MUTATION-FIRST):** verifiedSources 절 제거 → "NO source 보존" 케이스만 RED; toolsUsed 절 제거 → "no tool 보존" 케이스만 RED; 복원 3/3 GREEN. 각 절이 **격리되어** 핀됨. ④b judge가 두 mutation 독립 재현 + case(1)이 통합 테스트와 다른 분기(rewrite-prefix vs 💡-passthrough)임 확인 후 **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경. ★LESSON: 통합 테스트로 게이트를 격리하려다 실패(toolsUsed/verifiedSources 결합) → **직접 `.apply(response, context)` 단위 테스트**가 정답(english-locale-filters 패턴). 또 mutation 증명이 false-GREEN을 두 번 줌 → incremental `tsc -b`는 stale-dist; **mutation 런마다 `rm -rf dist+tsbuildinfo` 클린 리빌드 필수**, 그리고 mutation 후 **전체 트리 클린 리빌드** 안 하면 의존 패키지(autoconfigure)가 `pnpm check`서 agent-core/dist 모듈 못 찾아 30개 false-fail. [[project_stale_dist_from_loop]]
