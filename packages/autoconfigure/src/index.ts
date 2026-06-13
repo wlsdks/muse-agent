@@ -775,18 +775,18 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         const now = new Date();
         const nowMs = now.getTime();
         const startOfTodayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-        const isToday = (iso) => { const ms = Date.parse(iso); return Number.isFinite(ms) && ms >= startOfTodayMs && ms <= nowMs; };
+        const isToday = (iso: string): boolean => { const ms = Date.parse(iso); return Number.isFinite(ms) && ms >= startOfTodayMs && ms <= nowMs; };
         const allTasks = await readTasks(tasksFile).catch(() => []);
         const allReminders = await readReminders(resolveRemindersFile(env)).catch(() => []);
         const completedTasks = allTasks
           .filter((task) => task.status === "done" && typeof task.completedAt === "string" && isToday(task.completedAt))
-          .map((task) => ({ completedAt: task.completedAt, title: task.title }));
+          .map((task) => ({ completedAt: task.completedAt!, title: task.title }));
         const firedReminders = allReminders
-          .filter((reminder) => reminder.status === "fired" && typeof reminder.firedAt === "string" && isToday(reminder.firedAt))
-          .map((reminder) => ({ firedAt: reminder.firedAt, text: reminder.text }));
+          .filter((reminder) => reminder.status === "fired" && typeof reminder.firedAt === "string" && isToday(reminder.firedAt!))
+          .map((reminder) => ({ firedAt: reminder.firedAt!, text: reminder.text }));
         const overdueTasks = allTasks
           .filter((task) => task.status === "open" && typeof task.dueAt === "string" && Date.parse(task.dueAt) < nowMs)
-          .map((task) => ({ dueAt: task.dueAt, title: task.title }));
+          .map((task) => ({ dueAt: task.dueAt!, title: task.title }));
         const overdueReminders = allReminders
           .filter((reminder) => reminder.status === "pending" && typeof reminder.dueAt === "string" && Date.parse(reminder.dueAt) < nowMs)
           .map((reminder) => ({ dueAt: reminder.dueAt, text: reminder.text }));
