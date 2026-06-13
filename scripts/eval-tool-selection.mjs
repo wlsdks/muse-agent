@@ -213,6 +213,33 @@ async function buildNotesScenario() {
   }
 }
 
+// Contacts read tools exposed together: find_contact (ONE named person) vs
+// upcoming_birthdays (the LIST, no name). The disambiguation is the value — a
+// "whose birthday is coming up?" query must route to the list tool, while a
+// "when is Bob's birthday?" with a named person must stay on find_contact (the
+// list tool can't answer about a specific person). Built with an empty store
+// because only `.definition` (name/description/schema) is read for SELECTION.
+async function buildContactsScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const instances = [
+      mcp.createContactsFindTool({ contacts: () => [] }),
+      mcp.createUpcomingBirthdaysTool({ contacts: () => [] })
+    ];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "Whose birthday is coming up this week?", expectTool: "upcoming_birthdays", note: "EN list of upcoming birthdays (no name) → upcoming_birthdays" },
+      { prompt: "이번 주에 생일인 사람 있어?", expectTool: "upcoming_birthdays", note: "KO list of upcoming birthdays → upcoming_birthdays (NOT find_contact — no name given)" },
+      { prompt: "What's Jane Doe's email address?", expectTool: "find_contact", requireArgs: ["name"], note: "EN named-person lookup → find_contact (NOT upcoming_birthdays)" },
+      { prompt: "Bob 생일이 언제야?", expectTool: "find_contact", requireArgs: ["name"], note: "KO named-person birthday → find_contact, NOT upcoming_birthdays (a specific person, the list tool can't answer)" }
+    ];
+    return { label: "contacts (find-one vs upcoming-birthdays-list)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "contacts", skip: `@muse/mcp not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Followup tools (muse.followup.*) vs their closest confusables: tasks and
 // reminders. A followup is an agent-auto-captured "circle back" thread — the
 // model must route viewing/managing those to followup.list/cancel/snooze and
@@ -597,6 +624,7 @@ async function main() {
     await buildFileScenario(),
     await buildBrowserScenario(),
     await buildPersonalCrudScenario(),
+    await buildContactsScenario(),
     await buildNotesScenario(),
     await buildFollowupScenario(),
     await buildRecallVsCrudScenario(),

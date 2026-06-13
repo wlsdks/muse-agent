@@ -625,9 +625,11 @@ export {
   createContactsAddTool,
   createContactsFindTool,
   createContactsRemoveTool,
+  createUpcomingBirthdaysTool,
   type ContactsAddToolDeps,
   type ContactsFindToolDeps,
-  type ContactsRemoveToolDeps
+  type ContactsRemoveToolDeps,
+  type UpcomingBirthdaysToolDeps
 } from "./contacts-tool.js";
 export {
   addContact,

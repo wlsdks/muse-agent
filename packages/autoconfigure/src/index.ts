@@ -40,6 +40,7 @@ import {
   createContactsAddTool,
   createContactsFindTool,
   createContactsRemoveTool,
+  createUpcomingBirthdaysTool,
   createEmailReadMessageTool,
   createEmailSearchTool,
   removeContact,
@@ -708,6 +709,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     () => [createRememberFactTool({ store: userMemoryStore })],
     () => [
       createContactsFindTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
+      createUpcomingBirthdaysTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
       createContactsAddTool({ contacts: () => queryContacts(resolveContactsFile(env)), save: (contact) => addContact(resolveContactsFile(env), contact) }),
       createContactsRemoveTool({ contacts: () => queryContacts(resolveContactsFile(env)), remove: (id) => removeContact(resolveContactsFile(env), id) })
     ],

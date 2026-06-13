@@ -22,6 +22,8 @@
 
 <!-- Going-forward: `- ✓ <item title> — <slug> fire N` so the scout dedups without the verbose block. -->
 
+- ✓ `upcoming_birthdays` agent tool — conversational "whose birthday is coming up?" (resolveUpcomingBirthdays was CLI/brief-only, no agent tool) — tool-hardening fire 47
+
 ## Done — loop infrastructure (2026-06-12, 진안-directed)
 
 - ✓→Done **loop-engineering contract + loop-creator skill** — distilled Addy

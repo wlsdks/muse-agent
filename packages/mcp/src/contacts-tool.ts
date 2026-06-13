@@ -10,7 +10,7 @@
 import { createRunId, type JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import { resolveContact, type Contact } from "./personal-contacts-store.js";
+import { resolveContact, resolveUpcomingBirthdays, type Contact } from "./personal-contacts-store.js";
 
 const BIRTHDAY_RE = /^(?:\d{4}-)?(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u;
 
@@ -143,6 +143,45 @@ export function createContactsAddTool(deps: ContactsAddToolDeps): MuseTool {
       };
       await deps.save(contact);
       return { added: true, id: contact.id, name: contact.name, ...(existing ? { updated: true } : {}), ...(relationship.length > 0 ? { relationship } : {}) };
+    }
+  };
+}
+
+export interface UpcomingBirthdaysToolDeps {
+  readonly contacts: () => Promise<readonly Contact[]> | readonly Contact[];
+  /** Injected clock so the look-ahead window is deterministic in tests. */
+  readonly now?: () => Date;
+}
+
+export function createUpcomingBirthdaysTool(deps: UpcomingBirthdaysToolDeps): MuseTool {
+  return {
+    definition: {
+      description:
+        "List the user's contacts whose birthday falls within the next N days (default 30), soonest first — answers 'whose birthday is coming up?' / '이번 주 생일인 사람 있어?'. Use when the user asks which people have upcoming birthdays WITHOUT naming a specific person. Do NOT use to look up ONE named person's birthday ('when is Bob's birthday?') — use find_contact for that. Read-only.",
+      domain: "messaging",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          withinDays: { description: "Look-ahead window in days, e.g. 7 for 'this week'. Defaults to 30.", maximum: 365, minimum: 1, type: "integer" }
+        },
+        required: [],
+        type: "object"
+      },
+      keywords: ["birthday", "birthdays", "upcoming", "생일", "coming up", "this week", "anniversary"],
+      name: "upcoming_birthdays",
+      risk: "read"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const raw = args["withinDays"];
+      const withinDays = typeof raw === "number" && Number.isFinite(raw) && raw >= 1 ? Math.min(365, Math.trunc(raw)) : 30;
+      const contacts = await Promise.resolve(deps.contacts());
+      const now = deps.now ? deps.now() : new Date();
+      const upcoming = resolveUpcomingBirthdays(contacts, { now, withinDays });
+      return {
+        count: upcoming.length,
+        upcoming: upcoming.map((u) => ({ date: u.date, daysUntil: u.daysUntil, name: u.contact.name })),
+        withinDays
+      };
     }
   };
 }

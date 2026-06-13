@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createContactsAddTool, createContactsFindTool, createContactsRemoveTool, type Contact } from "../src/index.js";
+import { createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createUpcomingBirthdaysTool, type Contact } from "../src/index.js";
 
 const PEOPLE: Contact[] = [
   { birthday: "12-25", email: "bob@acme.com", id: "c1", name: "Bob Acme" },
@@ -179,5 +179,50 @@ describe("createContactsRemoveTool — delete a person (fail-close)", () => {
     expect(await tool.execute({ name: "Carol" })).toMatchObject({ removed: false });
     expect(await tool.execute({ name: " " })).toMatchObject({ removed: false });
     expect(removed).toHaveLength(0);
+  });
+});
+
+describe("createUpcomingBirthdaysTool — list whose birthday is coming up", () => {
+  // Pin "now" to 2026-12-20 so the window is deterministic: Zoe (12-22) is 2
+  // days out, Bob (12-25) 5 days, Max (06-15) ~177 days. A contact with no
+  // birthday is simply absent.
+  const NOW = new Date(2026, 11, 20);
+  const BDAY_PEOPLE: Contact[] = [
+    { birthday: "12-25", id: "b1", name: "Bob Acme" },
+    { birthday: "12-22", id: "b2", name: "Zoe Park" },
+    { birthday: "06-15", id: "b3", name: "Max Far" },
+    { id: "b4", name: "No Date" }
+  ];
+  function bdayTool(people: Contact[] = BDAY_PEOPLE) {
+    return createUpcomingBirthdaysTool({ contacts: () => people, now: () => NOW });
+  }
+
+  it("is risk:read and lists only contacts within the window, soonest first (value flows through resolveUpcomingBirthdays)", async () => {
+    const t = bdayTool();
+    expect(t.definition.risk).toBe("read");
+    const out = await t.execute({ withinDays: 7 }) as { count: number; withinDays: number; upcoming: { name: string; daysUntil: number; date: string }[] };
+    expect(out.withinDays).toBe(7);
+    expect(out.count).toBe(2);
+    expect(out.upcoming.map((u) => u.name)).toEqual(["Zoe Park", "Bob Acme"]);
+    expect(out.upcoming[0]).toMatchObject({ name: "Zoe Park", daysUntil: 2, date: "12-22" });
+    // The far birthday and the no-birthday contact never appear in a 7-day window.
+    expect(out.upcoming.map((u) => u.name)).not.toContain("Max Far");
+    expect(out.upcoming.map((u) => u.name)).not.toContain("No Date");
+  });
+
+  it("returns an empty list (count 0) when no contact has a birthday in range", async () => {
+    const out = await bdayTool([{ id: "x", name: "Nobody" }]).execute({ withinDays: 7 }) as { count: number; upcoming: unknown[] };
+    expect(out.count).toBe(0);
+    expect(out.upcoming).toEqual([]);
+  });
+
+  it("defaults to a 30-day window when withinDays is omitted or out of range (never throws)", async () => {
+    // omitted → 30: includes both December birthdays, still excludes June.
+    const def = await bdayTool().execute({}) as { withinDays: number; upcoming: { name: string }[] };
+    expect(def.withinDays).toBe(30);
+    expect(def.upcoming.map((u) => u.name)).toEqual(["Zoe Park", "Bob Acme"]);
+    // invalid (0) → clamps back to the 30-day default rather than an empty/NaN window.
+    const zero = await bdayTool().execute({ withinDays: 0 }) as { withinDays: number };
+    expect(zero.withinDays).toBe(30);
   });
 });
