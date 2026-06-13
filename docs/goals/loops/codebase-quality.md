@@ -304,3 +304,27 @@ ratchet: testFiles 933 · fabrication 0 · groundedSurfaces 27 · isRecord dups 
   (value import, byte-identical, no cycle, 1 file). pnpm check green after the journal byte-strip.
 - **Risk:** none. LESSON: never put a literal zero-width/control char in journal prose — write
   "U+200B" as text. Remaining isRecord dups: model/agent-core/api (exported) + autoconfigure/voice.
+
+## fire 18 · 2026-06-13 · loop-creator v1.14.0 · 655a5893
+meta: value-class=refactor · pkg=@muse/cli · kind=decompose · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 935 · fabrication 0 · groundedSurfaces 27 · commands-doctor.ts 1073->955 LOC
+- **What:** extracted the self-contained `muse doctor calibration` sub-command out of the
+  commands-doctor god-file into a new sibling `commands-doctor-calibration.ts` — parseAlpha,
+  CalibrationReport, buildCalibrationReport, formatCalibration, the private `pct`/`cosine`
+  helpers, and `runCalibrationDoctor` (now exported). commands-doctor.ts imports
+  runCalibrationDoctor+parseAlpha for registerDoctorCommand and re-exports the three tested
+  symbols + the CalibrationReport type, so the existing commands-doctor.test.ts imports are
+  unchanged. Dropped the now-orphaned `import { calibrateAbstention } from "@muse/agent-core"`
+  (its only use moved with the cluster).
+- **Why:** diversity ratchet (last fires skewed dead-code/cohere×isRecord); decompose was the
+  freshest high-value KIND and commands-doctor was still ~1073 LOC after fires 14/15. The
+  calibration block is a clean contiguous vertical slice (one subcommand, few external deps),
+  so the extraction is behavior-preserving via import+re-export.
+- **Review point:** 4b judge — re-exports keep commands-doctor.test.ts green (225 files/2584
+  cli tests pass), runCalibrationDoctor still wired at registerDoctorCommand:110, no behavior
+  change, dropped import was genuinely orphaned. Also a sync-hygiene fix: stripped 3 raw U+200B
+  zero-width bytes that arrived via the main merge (backlog.md:123 + test-hygiene.md:68,70, the
+  concurrent test-hygiene loop's journal pollution) -> repo 0 forbidden bytes, `pnpm check` green.
+- **Risk:** low — pure relocation; calibration is a local-Ollama doctor subcommand, no grounding/
+  floor path touched. LESSON: the cross-loop journal byte-pollution keeps reappearing (fires 16/17/18);
+  the real fix is the ★진안 root-fix (every loop byte-scans its journal commit) noted in backlog.

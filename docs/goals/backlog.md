@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ Decompose commands-doctor calibration sub-command -> commands-doctor-calibration.ts (1073->955 LOC) — codebase-quality fire 18
 - ✓ isRecord dedup @muse/auth + JUDGE-DRILL (verifier caught gutted fabrication-WHY) — codebase-quality fire 17
 
 - ⚠ **differentiation loop commits raw zero-width/homoglyph bytes** → recurring @muse/shared byte-hygiene gate failures (fire 16 fixed 2: eval-policy-symmetry.mjs + differentiation.md). Their injection-test fixtures/journal should use \uNNNN escapes. Cross-loop — their process to fix.
@@ -120,7 +121,7 @@
 - ✓ ADD SSRF coverage: `assertPublicHttpUrlSync` sync gate (mcp/web-url-guard.ts) had zero direct tests — 5 cases (protocol/blocked-host/private-addr/ok), each guard clause mutation-pinned — test-hygiene fire 5
 - ✓ ADD `createToolResultQualityAuditFilter` gating: direct unit test pins the verified-source + tool-ran gates (an honest apology survives when no source backs a rewrite); each clause isolated + mutation-pinned — test-hygiene fire 6
 - ✓ PRUNE `model/src/index.test.ts` (3 type-conformance tautologies — assert what was just written; tsc + test/model.test.ts + provider-wire cover the real shape/behavior) — test-hygiene fire 7
-- ✓ FIX byte-hygiene baseline regression (raw U+200B in `scripts/eval-policy-symmetry.mjs:36` + `docs/goals/loops/differentiation.md:262`, both differentiation-loop files) → `​` escape, value-preserving; unblocked repo-wide `pnpm check` — test-hygiene fire 7
+- ✓ FIX byte-hygiene baseline regression (raw U+200B in `scripts/eval-policy-symmetry.mjs:36` + `docs/goals/loops/differentiation.md:262`, both differentiation-loop files) → `\\u200B` escape, value-preserving; unblocked repo-wide `pnpm check` — test-hygiene fire 7
 - ✓ `muse.tasks.search` matches tags — a task tagged "work" (word not in title/notes) is now found by searching "work" (completes the fire-51 tag story: list FILTERS by tag, search now FINDS by tag) + JUDGE-DRILL (verifier caught a deliberately-inert version) — tool-hardening fire 53
 - ✓ `week_agenda` agent tool — "what's my week look like?" ONE merged view of events+tasks+birthdays by day (muse week was CLI-only; groupWeekAgenda moved to @muse/autoconfigure, CLI re-exports) — tool-hardening fire 54
 - ✓ `recent_actions` agent tool — "what have you done for me?" lists Muse's autonomous action log (performed/refused/failed, what+why+when) most-recent-first; was CLI-only (muse actions); internal userId/id/prevHash not leaked — tool-hardening fire 63
