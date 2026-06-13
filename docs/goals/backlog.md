@@ -2054,3 +2054,4 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   · live pre-push grounding tripwire (`precheck:grounding`) · grounding-delta benchmark
   (`eval:grounding-delta`, Δ+0.94 gate ON vs OFF on gemma4) · self-eval ENOENT fix.
 - ✓ cli `muse followup list` lacked the sibling `--search` text filter (tasks/remind/contacts all have it) → added `--search` (case-insensitive substring on summary, composes after --status, total recomputed) — surfaces fire 23
+- ✓ desktop persisted-language parse `AppLanguage(rawValue: prefs.language ?? "") ?? .system` was duplicated byte-identically in two AppKit files (menu checkmark + resolved language, desync risk) and headless-untestable → extracted pure `AppLanguage.fromPersisted(_:)` (MuseDesktopCore) + truth-table test, both sites delegate — surfaces fire 24
