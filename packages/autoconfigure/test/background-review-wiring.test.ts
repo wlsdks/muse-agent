@@ -105,4 +105,47 @@ describe("scanCommitmentsFromTurns — deterministic open-loop → check-in (ser
     const none = await scanCommitmentsFromTurns(["what time is it?"], { file, userId: "stark" });
     expect(none).toEqual([]);
   });
+
+  it("assembled-path: near-duplicate commitments collapse → FEWER check-ins than lexical-only baseline", async () => {
+    // Two near-duplicate phrasings of the same commitment (would survive lexical dedup).
+    // "I need to email Bob the report" and "I have to email Bob about the report"
+    // differ in both kind AND phrasing, so the lexical seen-set passes both.
+    // With the semantic embedder they should collapse to one.
+    const turns = [
+      "I need to email Bob the report.",
+      "I have to email Bob about the report."
+    ];
+
+    // Baseline: no embedder (pass a no-collapse stub that always throws → fail-soft = no collapse).
+    const baselineFile = join(mkdtempSync(join(tmpdir(), "muse-checkin-baseline-")), "checkins.json");
+    const throwEmbed = async (_text: string): Promise<readonly number[]> => { throw new Error("no embed"); };
+    const baselineFresh = await scanCommitmentsFromTurns(turns, {
+      file: baselineFile,
+      now: () => new Date("2026-05-01T09:00:00Z"),
+      userId: "stark",
+      embed: throwEmbed
+    });
+
+    // With semantic collapse: inject a stub that maps both phrases to nearly-identical vectors.
+    const nearA = [1, 0.05, 0];
+    const nearB = [0.99, 0.06, 0.01]; // cos(nearA, nearB) ≈ 0.999 — well above 0.86
+    const collapsingEmbed = async (text: string): Promise<readonly number[]> => {
+      if (text.includes("email Bob the report")) return nearA;
+      if (text.includes("email Bob about the report")) return nearB;
+      return [0, 0, 1];
+    };
+    const collapsedFile = join(mkdtempSync(join(tmpdir(), "muse-checkin-collapsed-")), "checkins.json");
+    const collapsedFresh = await scanCommitmentsFromTurns(turns, {
+      file: collapsedFile,
+      now: () => new Date("2026-05-01T09:00:00Z"),
+      userId: "stark",
+      embed: collapsingEmbed
+    });
+
+    // Baseline should schedule 2 check-ins (one per distinct lexical commitment).
+    expect(baselineFresh.length).toBeGreaterThanOrEqual(2);
+    // Semantic collapse should produce strictly fewer check-ins.
+    expect(collapsedFresh.length).toBeLessThan(baselineFresh.length);
+    expect(collapsedFresh.length).toBeGreaterThanOrEqual(1);
+  });
 });

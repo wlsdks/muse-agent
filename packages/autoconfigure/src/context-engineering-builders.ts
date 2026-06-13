@@ -5,6 +5,7 @@ import {
   DefaultToolFilter,
   InMemoryTelemetryAggregator,
   StoreBackedEpisodicRecallProvider,
+  collapseNearDuplicateCommitments,
   createBackgroundReviewHook,
   createCachingEmbedder,
   detectCorrections,
@@ -363,10 +364,19 @@ export function withRecallHitRecording(
  */
 export async function scanCommitmentsFromTurns(
   userTurns: readonly string[],
-  options: { readonly file: string; readonly userId: string; readonly now?: () => Date }
+  options: {
+    readonly file: string;
+    readonly userId: string;
+    readonly now?: () => Date;
+    /** Injected embedder for semantic near-duplicate collapse. Defaults to createGateEmbedder(process.env). */
+    readonly embed?: (text: string) => Promise<readonly number[]>;
+  }
 ): Promise<readonly PersistedCheckin[]> {
-  const commitments = detectUserCommitments(userTurns).map((c) => c.text);
-  if (commitments.length === 0) return [];
+  const raw = detectUserCommitments(userTurns);
+  if (raw.length === 0) return [];
+  const embedder = options.embed ?? createGateEmbedder(process.env);
+  const collapsed = await collapseNearDuplicateCommitments(raw, embedder).catch(() => raw);
+  const commitments = collapsed.map((c) => c.text);
   const existing = await readCheckins(options.file).catch(() => []);
   const fresh = scheduleCheckins(commitments, {
     existing,

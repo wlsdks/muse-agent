@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { detectUserCommitments } from "../src/commitment-detector.js";
+import { COMMITMENT_DEDUP_COSINE, collapseNearDuplicateCommitments, detectUserCommitments } from "../src/commitment-detector.js";
+import type { UserCommitment } from "../src/commitment-detector.js";
 
 describe("detectUserCommitments — rule-only, conservative (EN + KO)", () => {
   it("captures explicit English 'I need/have/got to' commitments as high confidence", () => {
@@ -99,5 +100,134 @@ describe("detectUserCommitments — rule-only, conservative (EN + KO)", () => {
 
     const many = Array.from({ length: 20 }, (_, i) => `I need to do task number ${i.toString()}`);
     expect(detectUserCommitments(many, { maxCommitments: 5 })).toHaveLength(5);
+  });
+});
+
+// --- collapseNearDuplicateCommitments (SemDeDup, arXiv:2303.09540) ---
+
+function makeCommitment(text: string, confidence: "high" | "low" = "low"): UserCommitment {
+  return { text, confidence, kind: "need-to" };
+}
+
+// Stub embedder: maps specific texts to fixed vectors.
+function makeStubEmbed(map: Record<string, readonly number[]>): (text: string) => Promise<readonly number[]> {
+  return async (text: string): Promise<readonly number[]> => {
+    const v = map[text];
+    if (!v) throw new Error(`stub: no vector for "${text}"`);
+    return v;
+  };
+}
+
+describe("collapseNearDuplicateCommitments — SemDeDup semantic dedup", () => {
+  // Near-dup pair: very similar vectors (cos≈1.0, well above 0.86).
+  const nearA = [1, 0.1, 0];
+  const nearB = [0.98, 0.12, 0.02]; // cos with nearA ≈ 0.999
+  // Orthogonal pair: completely different topics (cos=0).
+  const orthoA = [1, 0, 0];
+  const orthoB = [0, 1, 0];
+
+  it("collapses near-duplicate pair and keeps the HIGH-confidence representative", async () => {
+    const low = makeCommitment("email Bob the report", "low");
+    const high = makeCommitment("email Bob about the report", "high");
+    const embed = makeStubEmbed({
+      "email Bob the report": nearA,
+      "email Bob about the report": nearB
+    });
+    const result = await collapseNearDuplicateCommitments([low, high], embed);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(high);
+  });
+
+  it("keeps the EARLIER/shorter form when confidence is tied", async () => {
+    const first = makeCommitment("email Bob", "high");
+    const second = makeCommitment("email Bob soon", "high");
+    const embed = makeStubEmbed({
+      "email Bob": nearA,
+      "email Bob soon": nearB
+    });
+    const result = await collapseNearDuplicateCommitments([first, second], embed);
+    expect(result).toHaveLength(1);
+    // First item is the rep since it comes earlier and confidence is tied.
+    expect(result[0]).toBe(first);
+  });
+
+  it("NON-over-collapse: keeps BOTH distinct commitments (orthogonal vectors)", async () => {
+    const a = makeCommitment("email Bob", "high");
+    const b = makeCommitment("call the dentist", "high");
+    const embed = makeStubEmbed({
+      "email Bob": orthoA,
+      "call the dentist": orthoB
+    });
+    const result = await collapseNearDuplicateCommitments([a, b], embed);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBe(a);
+    expect(result[1]).toBe(b);
+  });
+
+  it("threshold counterfactual: raising threshold above the pair cosine → both survive", async () => {
+    const a = makeCommitment("email Bob the report", "low");
+    const b = makeCommitment("email Bob about the report", "low");
+    const embed = makeStubEmbed({
+      "email Bob the report": nearA,
+      "email Bob about the report": nearB
+    });
+    // With default threshold they would collapse; raise it to 0.9999 → no collapse.
+    const result = await collapseNearDuplicateCommitments([a, b], embed, { threshold: 0.9999 });
+    expect(result).toHaveLength(2);
+  });
+
+  it("fail-soft: throwing embedder → input returned unchanged", async () => {
+    const a = makeCommitment("email Bob", "high");
+    const b = makeCommitment("call the dentist", "high");
+    const throwingEmbed = async (_text: string): Promise<readonly number[]> => { throw new Error("network"); };
+    const result = await collapseNearDuplicateCommitments([a, b], throwingEmbed);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBe(a);
+    expect(result[1]).toBe(b);
+  });
+
+  it("fail-soft: zero-norm (empty) vector → cos=0 → no collapse", async () => {
+    const a = makeCommitment("email Bob", "high");
+    const b = makeCommitment("email Bob the report", "low");
+    // Both return [] which cosineSimilarity treats as 0.
+    const zeroEmbed = async (_text: string): Promise<readonly number[]> => [];
+    const result = await collapseNearDuplicateCommitments([a, b], zeroEmbed);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBe(a);
+    expect(result[1]).toBe(b);
+  });
+
+  it("SUBTRACTIVE: every output element is === an element from the input (no rewritten text)", async () => {
+    const a = makeCommitment("email Bob", "high");
+    const b = makeCommitment("email Bob about the report", "low");
+    const c = makeCommitment("call the dentist", "high");
+    const embed = makeStubEmbed({
+      "email Bob": nearA,
+      "email Bob about the report": nearB,
+      "call the dentist": orthoB
+    });
+    const inputs = [a, b, c];
+    const result = await collapseNearDuplicateCommitments(inputs, embed);
+    for (const item of result) {
+      expect(inputs).toContain(item);
+    }
+  });
+
+  it("empty input → empty output", async () => {
+    const embed = makeStubEmbed({});
+    const result = await collapseNearDuplicateCommitments([], embed);
+    expect(result).toHaveLength(0);
+  });
+
+  it("single item → returned unchanged", async () => {
+    const a = makeCommitment("email Bob", "high");
+    const embed = makeStubEmbed({ "email Bob": orthoA });
+    const result = await collapseNearDuplicateCommitments([a], embed);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toBe(a);
+  });
+
+  it("exports COMMITMENT_DEDUP_COSINE = 0.86", () => {
+    expect(COMMITMENT_DEDUP_COSINE).toBe(0.86);
   });
 });
