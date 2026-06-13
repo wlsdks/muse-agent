@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildNoteContextBlock } from "./commands-ask.js";
+import { buildNoteContextBlock } from "./present.js";
 import type { ContradictionPair } from "@muse/agent-core";
 
 // Stub note chunk as the <<note>> block builder expects.
