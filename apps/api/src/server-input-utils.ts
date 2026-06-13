@@ -1,5 +1,7 @@
 import type { RuntimeSettingType } from "@muse/runtime-settings";
 import type { JsonObject } from "@muse/shared";
+import { isRecord } from "@muse/shared";
+export { isRecord };
 
 /**
  * Generic shape-inspection / simple-value helpers extracted from
@@ -13,10 +15,6 @@ import type { JsonObject } from "@muse/shared";
  * compat-session-store, compat-auth, server-helpers itself, etc.)
  * keep working without import-site edits.
  */
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
 
 export function isJsonObject(value: unknown): value is JsonObject {
   if (!isRecord(value)) {

@@ -9,9 +9,8 @@ import type { JsonObject, JsonValue as _JsonValue } from "@muse/shared";
 
 import type { ModelCapabilities, ModelEvent, ModelResponse } from "./index.js";
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+import { isRecord } from "@muse/shared";
+export { isRecord };
 
 export function isJsonObject(value: unknown): value is JsonObject {
   if (!isRecord(value)) {
