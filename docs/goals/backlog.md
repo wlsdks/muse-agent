@@ -1,5 +1,12 @@
 # Muse dev backlog — the living ledger
 
+## ◦ Open — @muse/recall extraction (codebase-quality loop)
+
+- ◦ **Relocate `RecallHit` type into @muse/recall** (PREREQUISITE for the graph-connections move) — `RecallHit` lives in apps/cli/src/commands-recall.ts and is imported by ~10 CLI files; moving `buildAskConnections` needs it in the package. Slice: define RecallHit in @muse/recall, re-export from commands-recall.ts (IndexChunk pattern, fire 2e). Then a follow-up moves `buildAskConnections`.
+- ◦ **Move `selectGraphConnections` + `NoteLinkGraph`** — needs NoteLinkGraph + resolveNoteId/noteLinkView/linkExpandRefs relocated from apps/cli/src/notes-links.ts (own multi-step). Defer until the notes-link graph types have a package home.
+- ◦ **Phase 3: `runGroundedRecall` pipeline + API route** — the contract closer (extract registerAskCommand pipeline behind a seam, wire apps/api ask route, CLI↔API parity test). Design-sensitive; small verified steps only.
+
+
 > ⚠ BLOCKER (codebase-quality fire 5, 2026-06-13): `apps/cli/src/commands-daemon.test.ts` 28/71 FAILED on main (proactive: fired N/N, message length, dest dedup). PRE-EXISTING + EXTERNAL — present with my fire-5 changes stashed; my slice is comment-only in packages/*. Belongs to the concurrent **tool-hardening** loop (daemon/proactive domain, auto-pushes main). NOT fixed here (cross-loop collision risk). main has a real daemon regression to resolve.
 
 
