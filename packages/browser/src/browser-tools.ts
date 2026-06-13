@@ -204,13 +204,21 @@ export function createBrowserReadTool(deps: BrowserReadToolDeps): MuseTool {
           return snapshotToJson(snapshot, offset);
         }
         const matched = filterElements(snapshot.elements, find);
-        const shown = matched.slice(0, BROWSER_MAX_ELEMENTS);
+        // Page the FILTERED list the same way snapshotToJson pages the full one:
+        // honour `offset` and emit `nextOffset`. The description promises
+        // `hasMore`/`nextOffset` paging; without this the find branch reported
+        // hasMore but ignored offset, so a >50-match list looped on the first 50.
+        const offset = typeof args["offset"] === "number" && Number.isFinite(args["offset"]) ? Math.trunc(args["offset"]) : 0;
+        const start = Math.min(Math.max(0, offset), matched.length);
+        const shown = matched.slice(start, start + BROWSER_MAX_ELEMENTS);
+        const end = start + shown.length;
         return {
           elements: elementsJson(shown),
           matched: matched.length,
           title: snapshot.title,
           url: snapshot.url,
-          ...(matched.length > shown.length ? { hasMore: true } : {})
+          ...(start > 0 ? { offset: start } : {}),
+          ...(end < matched.length ? { hasMore: true, nextOffset: end } : {})
         };
       } catch (cause) {
         return errorResult(cause);

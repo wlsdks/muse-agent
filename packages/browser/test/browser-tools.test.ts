@@ -206,6 +206,23 @@ describe("browser_read — paging a long page (no silent truncation)", () => {
     expect(out.elements[0]!.ref).toBe(50);
     expect(out.hasMore).toBeUndefined();
   });
+
+  it("find pages past 50 matches too — first batch carries nextOffset, offset:50 returns the rest (no loop trap)", async () => {
+    const tool = createBrowserReadTool({ controller: bigController(60) }); // every name contains "link" → all 60 match
+    const first = await tool.execute({ find: "link" }, ctx) as { elements: { ref: number }[]; matched: number; hasMore?: boolean; nextOffset?: number; offset?: number };
+    expect(first.elements).toHaveLength(50);
+    expect(first.matched).toBe(60);
+    expect(first.hasMore).toBe(true);
+    expect(first.nextOffset).toBe(50); // the bug omitted this → the model couldn't page
+    expect(first.offset).toBeUndefined();
+
+    const second = await tool.execute({ find: "link", offset: 50 }, ctx) as { elements: { ref: number }[]; matched: number; hasMore?: boolean; offset?: number };
+    expect(second.elements).toHaveLength(10); // the bug ignored offset → returned the first 50 again
+    expect(second.matched).toBe(60);
+    expect(second.offset).toBe(50);
+    expect(second.elements[0]!.ref).toBe(50); // continues where the first batch ended
+    expect(second.hasMore).toBeUndefined();
+  });
 });
 
 describe("browser_click — deterministic target grounding + draft-first", () => {

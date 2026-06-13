@@ -599,6 +599,18 @@ HARDEN (make existing tools more reliable):
   string/NaN/Inf→20) + 1 e2e (recent({limit:0.5}).total === recent({}).total, not 0) RED(0.5→empty)→GREEN; mcp 1747,
   check 0 (all pkgs), lint 0. Fable-5 PASS (RED reproduced "expected 0 to be 5"; exact 1.0→1 boundary verified; valid
   integer limits unchanged; export not in barrel — no collision). KIND boundary, fresh surface.
+- ✓→Done **browser_read `find` pagination was a dead-end / loop trap** (EXPANSION gap-scout, fire 36;
+  contract-output-drift) — the tool description promises "A long page reports total + hasMore/nextOffset; pass offset to
+  read the next batch", and the no-find branch (snapshotToJson) honours it, but the FIND branch did
+  `matched.slice(0, BROWSER_MAX_ELEMENTS)` (always from 0, ignoring the documented `offset` arg) and returned only
+  `{ hasMore: true }` with NO `nextOffset`. So when >50 elements matched, the local 8B was told hasMore, followed the
+  protocol (`find` + `offset`), and got the SAME first 50 back forever — a loop trap. FIX: align the find branch with
+  snapshotToJson — clamp offset, slice `[start, start+MAX)`, emit `offset`/`hasMore`/`nextOffset`. TDD (60 matches:
+  find→50 + nextOffset:50; find+offset:50→10, offset:50, ref continuity) RED(force start=0 → offset:50 returned the
+  first 50 again)→GREEN; browser 58, check 0 (all pkgs), lint 0. Fable-5 PASS (RED re-confirmed; past-end clamps to
+  empty, negative clamps to 0, contiguous pages no dupes/skips, filterElements order-stable; only consumer is the CLI
+  tool registration — opaque JSON to the model). KIND contract-drift, fresh surface (browser). Minor pre-existing nit
+  (out of scope): the find branch names the count `matched` while no-find uses `total`.
 - ◦ **tool-arg grounding coverage** — extend `groundedArgs` (the deterministic anti-fabrication
   boundary) to every actuator persisting model-named free-text; one behavioral drop test each.
   DONE: `tasks.add` (notes/tags), `tasks.update` (notes), `add_contact` (relationship), `calendar`
