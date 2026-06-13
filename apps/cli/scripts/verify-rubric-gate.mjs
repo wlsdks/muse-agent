@@ -15,11 +15,10 @@
  * Exit 0 if every case passes; skip (exit 0) if Ollama / the embed model is
  * unreachable. LOCAL OLLAMA ONLY.
  */
-import { DEFAULT_EMBED_MODEL } from "../dist/embed-model-default.js";
 import { createOllamaEmbedder } from "@muse/autoconfigure";
 import { rankKnowledgeChunks, verifyGrounding } from "@muse/agent-core";
 
-const embedModel = process.argv[2] ?? DEFAULT_EMBED_MODEL;
+const embedModel = process.argv[2] ?? "nomic-embed-text";
 const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
 
 async function reachable() {

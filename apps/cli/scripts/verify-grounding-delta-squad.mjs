@@ -19,7 +19,6 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { DEFAULT_EMBED_MODEL } from "../dist/embed-model-default.js";
 import { createMuseRuntimeAssembly, createOllamaEmbedder } from "@muse/autoconfigure";
 import { buildSquadGroundingCorpus, createQwenReverify, renderGroundingDelta, runGroundingEval } from "../dist/grounding-eval-runner.js";
 
@@ -27,7 +26,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(here, "../../..");
 const model = process.argv[2] ?? "ollama/gemma4:12b";
 if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
-const embedModel = process.argv[3] ?? DEFAULT_EMBED_MODEL;
+const embedModel = process.argv[3] ?? "nomic-embed-text";
 const baseUrl = (process.env.OLLAMA_BASE_URL ?? "http://localhost:11434").replace(/\/$/, "");
 const nowIso = process.env.MUSE_DELTA_AT ?? new Date().toISOString();
 
