@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import { join as pathJoin } from "node:path";
 
+import { OFFICIAL_MCP_PRESETS } from "@muse/mcp";
+
 import { readCredentialsSync, stringField } from "./provider-utils.js";
 
 import type { MuseEnvironment } from "./index.js";
@@ -27,13 +29,24 @@ import type { MuseEnvironment } from "./index.js";
  *
  * Credentials file shape (mirrors models.json / messaging.json):
  *   { "providers": { "github": { "token": "ghp_..." },
- *                     "notion": { "token": "ntn_..." } } }
+ *                     "notion": { "token": "ntn_..." },
+ *                     "linear": { "token": "lin_api_..." } } }
  */
 
-const PRESET_ENV_TOKEN_KEY: Readonly<Record<string, string>> = {
-  github: "GITHUB_MCP_TOKEN",
-  notion: "NOTION_MCP_TOKEN"
-};
+/**
+ * The token env var for a preset auto-derives from its name —
+ * `<NAME>_MCP_TOKEN` (GITHUB_MCP_TOKEN / NOTION_MCP_TOKEN /
+ * LINEAR_MCP_TOKEN) — so a new curated preset gets its credential seam
+ * for free, like the toggle and doctor posture. Derivation is gated on
+ * the name being a CURATED preset so an arbitrary name never reads an
+ * ambient env var.
+ */
+function presetEnvTokenKey(presetName: string): string | undefined {
+  if (!Object.hasOwn(OFFICIAL_MCP_PRESETS, presetName)) {
+    return undefined;
+  }
+  return `${presetName.toUpperCase()}_MCP_TOKEN`;
+}
 
 export function resolveOfficialMcpCredentialsFile(env: MuseEnvironment): string {
   const override = env.MUSE_MCP_CREDENTIALS_FILE?.trim();
@@ -45,12 +58,13 @@ export function resolveOfficialMcpCredentialsFile(env: MuseEnvironment): string 
 
 /**
  * Resolve the Bearer token for an official preset by name. Env var
- * (`GITHUB_MCP_TOKEN` / `NOTION_MCP_TOKEN`) wins over the file; a
- * whitespace-only value is treated as absent. Returns `undefined` when
- * no credential is configured (the fail-closed signal).
+ * (`<NAME>_MCP_TOKEN`, e.g. `GITHUB_MCP_TOKEN` / `NOTION_MCP_TOKEN` /
+ * `LINEAR_MCP_TOKEN`) wins over the file; a whitespace-only value is
+ * treated as absent. Returns `undefined` when no credential is
+ * configured (the fail-closed signal).
  */
 export function resolveOfficialMcpToken(env: MuseEnvironment, presetName: string): string | undefined {
-  const envKey = PRESET_ENV_TOKEN_KEY[presetName];
+  const envKey = presetEnvTokenKey(presetName);
   if (envKey) {
     const fromEnv = env[envKey]?.trim();
     if (fromEnv && fromEnv.length > 0) {

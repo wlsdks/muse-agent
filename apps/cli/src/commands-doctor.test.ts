@@ -468,7 +468,7 @@ describe("officialMcpChecks — external official-MCP audit surface", () => {
   it("emits one check per curated preset with its provenance URL", () => {
     const checks = officialMcpChecks(noCredFile);
     const names = checks.map((c) => c.name).sort();
-    expect(names).toEqual(["mcp:github", "mcp:notion"]);
+    expect(names).toEqual(["mcp:github", "mcp:linear", "mcp:notion"]);
     for (const c of checks) {
       expect(c.detail).toContain("provenance https://");
     }

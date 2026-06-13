@@ -3,13 +3,16 @@ import { describe, expect, it } from "vitest";
 import {
   GITHUB_MCP_SERVER_NAME,
   InMemoryMcpServerStore,
+  LINEAR_MCP_SERVER_NAME,
   McpManager,
   McpSecurityPolicyProvider,
   NOTION_MCP_SERVER_NAME,
   OFFICIAL_MCP_PRESETS,
   createGitHubMcpServer,
+  createLinearMcpServer,
   createNotionMcpServer,
   githubMcpToolRisk,
+  linearMcpToolRisk,
   normalizeMcpSecurityPolicy,
   notionMcpToolRisk,
   resolveOfficialMcpPreset,
@@ -36,6 +39,15 @@ describe("official MCP presets — factory shape + officially-public provenance"
     expect((server.config as { url: string }).url).toBe("https://mcp.notion.com/mcp");
   });
 
+  it("builds the Linear streamable connector at the official hosted endpoint (ships no secret)", () => {
+    const server = createLinearMcpServer();
+    expect(server.name).toBe(LINEAR_MCP_SERVER_NAME);
+    expect(server.transportType).toBe("streamable");
+    expect(server.autoConnect).toBe(false);
+    expect((server.config as { url: string }).url).toBe("https://mcp.linear.app/mcp");
+    expect("headers" in (server.config ?? {})).toBe(false);
+  });
+
   it("forwards user-supplied auth headers only when provided (ships no secret)", () => {
     const withAuth = createGitHubMcpServer({ headers: { Authorization: "Bearer ghp_x" } });
     expect((withAuth.config as { headers?: Record<string, string> }).headers).toEqual({
@@ -51,6 +63,10 @@ describe("official MCP presets — factory shape + officially-public provenance"
     expect(OFFICIAL_MCP_PRESETS[NOTION_MCP_SERVER_NAME]?.provenanceUrl).toMatch(
       /developers\.notion\.com/u
     );
+    expect(OFFICIAL_MCP_PRESETS[LINEAR_MCP_SERVER_NAME]?.provenanceUrl).toMatch(
+      /linear\.app\/docs\/mcp/u
+    );
+    expect(OFFICIAL_MCP_PRESETS[LINEAR_MCP_SERVER_NAME]?.url).toBe("https://mcp.linear.app/mcp");
   });
 
   it("resolves a curated preset by name and refuses an arbitrary/unauthorized name", () => {
@@ -91,6 +107,15 @@ describe("official MCP presets — fail-close write classification (outbound-saf
     expect(notionMcpToolRisk("query-database")).toBe("read");
     for (const name of ["create-page", "update-page", "create-comment", "some_future_tool"]) {
       expect(notionMcpToolRisk(name), name).toBe("write");
+    }
+  });
+
+  it("classifies Linear read tools as read and EVERY write/unknown tool as write (gated)", () => {
+    for (const name of ["list_issues", "get_issue", "list_projects", "get_project", "search_documentation"]) {
+      expect(linearMcpToolRisk(name), name).toBe("read");
+    }
+    for (const name of ["create_issue", "update_issue", "create_project", "create_comment", "some_future_tool"]) {
+      expect(linearMcpToolRisk(name), name).toBe("write");
     }
   });
 });
@@ -161,6 +186,46 @@ describe("official MCP presets — end-to-end via the manager (contract-faithful
     // AgentRuntime approval gate, not this projection, performs the send.
     const writeTool = tools.find((t) => t.definition.name === "github.create_issue");
     expect(writeTool?.definition.risk).toBe("write");
+  });
+
+  it("registers the ALLOWLISTED Linear preset, connects, and read/write tools project with fail-close risk", async () => {
+    const linearConnection: McpConnection = {
+      callTool: async (toolName) => {
+        if (toolName === "list_issues") return JSON.stringify({ issues: [] });
+        if (toolName === "create_issue") return "issue created";
+        return `Error: unknown tool ${toolName}`;
+      },
+      listTools: () => [
+        { description: "List issues", inputSchema: { type: "object" }, name: "list_issues", risk: "read" },
+        { description: "Create an issue", inputSchema: { type: "object" }, name: "create_issue", risk: "read" }
+      ]
+    };
+    const manager = new McpManager(new InMemoryMcpServerStore(), {
+      connector: { connect: async () => linearConnection },
+      securityPolicyProvider: new McpSecurityPolicyProvider(undefined, {
+        allowedServerNames: [LINEAR_MCP_SERVER_NAME]
+      })
+    });
+
+    const registered = await manager.register(createLinearMcpServer());
+    expect(registered).toBeDefined();
+    await expect(manager.connect(LINEAR_MCP_SERVER_NAME)).resolves.toBe(true);
+    expect(manager.getStatus(LINEAR_MCP_SERVER_NAME)).toBe("connected");
+
+    const tools = withOfficialMcpRisk(manager.toMuseTools());
+    const readTool = tools.find((t) => t.definition.name === "linear.list_issues");
+    expect(readTool, "list_issues must be projected").toBeDefined();
+    expect(readTool?.definition.risk).toBe("read");
+    expect(readTool?.definition.domain).toBe("external");
+    await expect(readTool?.execute({}, { runId: "run-1" })).resolves.toBe(
+      JSON.stringify({ issues: [] })
+    );
+
+    // The external server annotated create_issue "read"; withOfficialMcpRisk
+    // re-stamps it write (fail-close) so the AgentRuntime approval gate fires.
+    const writeTool = tools.find((t) => t.definition.name === "linear.create_issue");
+    expect(writeTool?.definition.risk).toBe("write");
+    expect(writeTool?.definition.domain).toBe("external");
   });
 
   it("REFUSES a non-allowlisted official preset — no connection, no tool surface (fail-close)", async () => {

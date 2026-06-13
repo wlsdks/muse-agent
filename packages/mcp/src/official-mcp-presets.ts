@@ -18,6 +18,12 @@ import type { McpServerInput } from "./index.js";
  *   - Notion hosted MCP — `https://mcp.notion.com/mcp`
  *     (developers.notion.com/guides/mcp/get-started-with-mcp). Streamable
  *     HTTP, OAuth per user.
+ *   - Linear hosted MCP — `https://mcp.linear.app/mcp`
+ *     (linear.app/docs/mcp). Streamable HTTP, OAuth 2.1 with dynamic
+ *     client registration; the docs also document direct
+ *     `Authorization: Bearer <token>` header auth with a personal API
+ *     key, which is the seam these presets use. Any Linear account
+ *     holder may connect their own workspace.
  *
  * SAFETY: reading is free, but every preset's WRITE-capable tool
  * (create issue / PR / page, comment) is classified `write` here so it
@@ -58,12 +64,15 @@ export interface OfficialMcpPresetOptions {
 
 export const GITHUB_MCP_SERVER_NAME = "github";
 export const NOTION_MCP_SERVER_NAME = "notion";
+export const LINEAR_MCP_SERVER_NAME = "linear";
 
 const GITHUB_MCP_URL = "https://api.githubcopilot.com/mcp/";
 const GITHUB_MCP_PROVENANCE =
   "https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md";
 const NOTION_MCP_URL = "https://mcp.notion.com/mcp";
 const NOTION_MCP_PROVENANCE = "https://developers.notion.com/guides/mcp/get-started-with-mcp";
+const LINEAR_MCP_URL = "https://mcp.linear.app/mcp";
+const LINEAR_MCP_PROVENANCE = "https://linear.app/docs/mcp";
 
 function buildStreamableInput(
   name: string,
@@ -139,6 +148,43 @@ export function createNotionMcpServer(options: OfficialMcpPresetOptions = {}): M
   );
 }
 
+// Linear hosted MCP read surface (the official server's list_* / get_* /
+// search query tools — verified against linear.app/docs/mcp's documented
+// tool set). Any tool not listed here — the create_*/update_* mutations
+// and any future tool — is fail-close `write`.
+const LINEAR_READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  "list_issues",
+  "list_projects",
+  "list_teams",
+  "list_users",
+  "list_documents",
+  "list_cycles",
+  "list_comments",
+  "list_issue_labels",
+  "list_issue_statuses",
+  "list_project_labels",
+  "get_issue",
+  "get_project",
+  "get_team",
+  "get_user",
+  "get_document",
+  "get_issue_status",
+  "search_documentation"
+]);
+
+export function linearMcpToolRisk(toolName: string): ToolRisk {
+  return LINEAR_READ_ONLY_TOOLS.has(toolName) ? "read" : "write";
+}
+
+export function createLinearMcpServer(options: OfficialMcpPresetOptions = {}): McpServerInput {
+  return buildStreamableInput(
+    LINEAR_MCP_SERVER_NAME,
+    LINEAR_MCP_URL,
+    "Read Linear issues / projects / comments via Linear's official hosted MCP server (writes stay draft-first)",
+    options
+  );
+}
+
 /**
  * The curated set, keyed by server name. A new official-public server
  * is added here with its provenance URL; nothing else in the registry
@@ -158,6 +204,13 @@ export const OFFICIAL_MCP_PRESETS: Readonly<Record<string, OfficialMcpPreset>> =
     provenanceUrl: NOTION_MCP_PROVENANCE,
     toolRisk: notionMcpToolRisk,
     url: NOTION_MCP_URL
+  },
+  [LINEAR_MCP_SERVER_NAME]: {
+    create: createLinearMcpServer,
+    name: LINEAR_MCP_SERVER_NAME,
+    provenanceUrl: LINEAR_MCP_PROVENANCE,
+    toolRisk: linearMcpToolRisk,
+    url: LINEAR_MCP_URL
   }
 };
 
