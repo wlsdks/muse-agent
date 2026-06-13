@@ -103,7 +103,7 @@ ratchet: desktop swift tests 50/50 (+1) · fabrication 0 · self-eval exit 0
 - **리뷰지점**: 정상 인용 답변("… [from vpn.md]")은 strip 後 비어있지 않아 음성 유지(empty→nil 붕괴는 진짜 빈 경우만 발동). bubbleText는 영수증 유지(무변).
 - **리스크**: 없음(success 분기 speechText 계산 1줄, error/empty 분기·bubbleText 무변, 독립 Opus judge가 isolation으로 RED 입증·회귀 5케이스·consumer 의존성 검증 후 PASS, 50/50).
 
-## fire 12 · 2026-06-13 · skill v1.14.0 · <commit>
+## fire 12 · 2026-06-13 · skill v1.14.0 · fbae97e5
 meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=input-validation-consistency · verdict=PASS · firesSinceDrill=4
 ratchet: cli tests 2593/2593 (checkins +4) · fabrication 0 · self-eval exit 0 · 표면 균형 web4·desktop4·cli4
 
