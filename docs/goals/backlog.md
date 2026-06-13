@@ -1207,9 +1207,12 @@ excluded when scoring).
   Judge PASS via real revert (no-partial-side-effects test fails 6 ways without the arg-check); registered
   in reflection-guard. Validation runs before any tool executes; back-compat preserved.]
 - ◦ **Plan-validation remainder** — (a) `plan-repaired` PlanExecuteStreamEvent so eval:plan-quality/traces
-  can count runtime repair rate (deferred — strict event union needs downstream changes); (b) ordering/
-  dependency validation (a step consuming a prior step's output); (c) write-step precondition checks;
-  (d) plan-cache hygiene — cache the REPAIRED plan, never the invalid original. (fire 37 remainder, arXiv:2308.13724)
+  can count runtime repair rate (deferred — strict event union needs downstream changes); (c) write-step
+  precondition checks; (d) plan-cache hygiene — cache the REPAIRED plan, never the invalid original.
+  (fire 37 remainder, arXiv:2308.13724) — NEW sub-items from fire 8: (e) tighten the still-open false-negative
+  classes (bare `$N` and bare `{{N}}` dropped as currency/template-ambiguous → undetected); (f) wire backward-ref
+  SUBSTITUTION (LLMCompiler Task Fetching Unit — resolve `{{step1.output}}` to the prior step's output, not just validate).
+- ✓ Plan-validation remainder (b) ordering/dependency validation — agent-core-cognition fire 8
 - ✓→Done **Self-consistency consensus for the grounding reverify judge** — the live default-on
   `verifyGroundingWithReverify` decided weak→grounded upgrades on a SINGLE high-variance judge sample
   (arXiv:2510.27106 Rating Roulette: LLM judges "almost arbitrary in the worst case"). [DONE 2026-06-13,
