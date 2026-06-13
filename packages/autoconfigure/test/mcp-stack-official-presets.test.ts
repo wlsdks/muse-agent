@@ -4,6 +4,7 @@ import {
   LINEAR_MCP_SERVER_NAME,
   McpManager,
   NOTION_MCP_SERVER_NAME,
+  SENTRY_MCP_SERVER_NAME,
   createGitHubMcpServer,
   withOfficialMcpRisk,
   type McpConnection
@@ -77,6 +78,28 @@ describe("assembleMcpStack — official MCP preset opt-in toggles (default OFF)"
   it("Linear toggle ON + NO credential ⇒ preset does NOT enable (fail-closed)", () => {
     const env = { ...baseEnv, MUSE_LINEAR_MCP_ENABLED: "true" } as MuseEnvironment;
     expect(entry(env, LINEAR_MCP_SERVER_NAME)).toBeUndefined();
+  });
+
+  it("does NOT register the Sentry preset by default (absent from the assembled stack)", () => {
+    expect(entry(baseEnv, SENTRY_MCP_SERVER_NAME)).toBeUndefined();
+  });
+
+  it("registers the Sentry preset only when MUSE_SENTRY_MCP_ENABLED=true AND a credential resolves (auto-derived toggle)", () => {
+    const sentry = entry(
+      { ...baseEnv, MUSE_SENTRY_MCP_ENABLED: "true", SENTRY_MCP_TOKEN: "sntrys_test_token" } as MuseEnvironment,
+      SENTRY_MCP_SERVER_NAME
+    );
+    expect(sentry).toBeDefined();
+    expect(sentry!.transportType).toBe("streamable");
+    expect((sentry!.config as { url: string }).url).toBe("https://mcp.sentry.dev/mcp");
+    expect(sentry!.autoConnect).toBe(false);
+    const headers = (sentry!.config as { headers?: Record<string, string> }).headers;
+    expect(headers!.Authorization).toBe("Bearer sntrys_test_token");
+  });
+
+  it("Sentry toggle ON + NO credential ⇒ preset does NOT enable (fail-closed)", () => {
+    const env = { ...baseEnv, MUSE_SENTRY_MCP_ENABLED: "true" } as MuseEnvironment;
+    expect(entry(env, SENTRY_MCP_SERVER_NAME)).toBeUndefined();
   });
 });
 

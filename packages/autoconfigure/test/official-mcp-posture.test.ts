@@ -18,13 +18,27 @@ function github(postures: readonly { readonly name: string }[]): { readonly name
 }
 
 describe("describeOfficialMcpPosture — audit view per official preset", () => {
-  it("reports BOTH curated presets (github + notion) with provenance URLs", () => {
+  it("reports ALL curated presets (github + linear + notion + sentry) with provenance URLs", () => {
     const postures = describeOfficialMcpPosture(baseEnv);
     const names = postures.map((p) => p.name).sort();
-    expect(names).toEqual(["github", "linear", "notion"]);
+    expect(names).toEqual(["github", "linear", "notion", "sentry"]);
     for (const p of postures) {
       expect(p.provenanceUrl).toMatch(/^https:\/\//);
     }
+  });
+
+  it("Sentry posture auto-derives: toggle ON + SENTRY_MCP_TOKEN ⇒ enabled, credentialPresent, allowed, ok", () => {
+    const env = {
+      ...baseEnv,
+      SENTRY_MCP_TOKEN: "sntrys_secret",
+      MUSE_SENTRY_MCP_ENABLED: "true"
+    } as MuseEnvironment;
+    const sentry = describeOfficialMcpPosture(env).find((p) => p.name === "sentry");
+    expect(sentry?.enabled).toBe(true);
+    expect(sentry?.credentialPresent).toBe(true);
+    expect(sentry?.allowed).toBe(true);
+    expect(sentry?.status).toBe("ok");
+    expect(sentry?.provenanceUrl).toContain("sentry");
   });
 
   it("Linear posture auto-derives: toggle ON + LINEAR_MCP_TOKEN ⇒ enabled, credentialPresent, allowed, ok", () => {
@@ -110,9 +124,11 @@ describe("describeOfficialMcpPosture — audit view per official preset", () => 
       GITHUB_MCP_TOKEN: SECRET,
       NOTION_MCP_TOKEN: SECRET,
       LINEAR_MCP_TOKEN: SECRET,
+      SENTRY_MCP_TOKEN: SECRET,
       MUSE_GITHUB_MCP_ENABLED: "true",
       MUSE_NOTION_MCP_ENABLED: "true",
-      MUSE_LINEAR_MCP_ENABLED: "true"
+      MUSE_LINEAR_MCP_ENABLED: "true",
+      MUSE_SENTRY_MCP_ENABLED: "true"
     } as MuseEnvironment;
     const postures = describeOfficialMcpPosture(env);
     const serialized = JSON.stringify(postures);

@@ -136,6 +136,8 @@ const base = (p: IconProps, d: ReactNode) => (
     strokeWidth="1.8"
     strokeLinecap="round"
     strokeLinejoin="round"
+    aria-hidden="true"
+    focusable={false}
   >
     {d}
   </svg>

@@ -15,8 +15,8 @@ import { existsSync, promises as fs } from "node:fs";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
 export type { CalibrationReport } from "./commands-doctor-calibration.js";
-import { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, type LocalCheck } from "./commands-doctor-checks.js";
-export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth } from "./commands-doctor-checks.js";
+import { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, selfLearningCheck, weaknessFuelCheck, type LocalCheck } from "./commands-doctor-checks.js";
+export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, notesIndexHealth, selfLearningCheck, weaknessFuelCheck } from "./commands-doctor-checks.js";
 export type { LocalCheck } from "./commands-doctor-checks.js";
 import { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
 export { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
@@ -340,28 +340,6 @@ export async function readOllamaPerfEnv(env: Record<string, string | undefined>)
   };
 }
 
-/**
- * Report whether background self-learning (B1) is actually running — the
- * verifiable-autonomy check (Slice 7). Pure of IO so it's directly testable;
- * the caller resolves `enabled` / `paused` / `installed`.
- */
-export function selfLearningCheck(state: {
-  readonly enabled: boolean;
-  readonly paused: boolean;
-  readonly installed: boolean;
-}): LocalCheck {
-  const name = "self-learning";
-  if (state.paused) {
-    return { detail: "PAUSED — run `muse playbook resume` to let Muse learn again", name, status: "warn" };
-  }
-  if (!state.enabled) {
-    return { detail: "OFF (default) — set MUSE_IDLE_LEARNING_ENABLED=true to let Muse learn from corrections while idle", name, status: "ok" };
-  }
-  if (!state.installed) {
-    return { detail: "ON this session, but the daemon isn't installed — run `muse daemon --install` so it keeps learning across reboots", name, status: "warn" };
-  }
-  return { detail: "ON, will run while idle (daemon installed)", name, status: "ok" };
-}
 
 interface LocalDoctorReport {
   readonly generatedAt: string;
@@ -369,24 +347,6 @@ interface LocalDoctorReport {
   readonly worst: "ok" | "warn" | "fail";
 }
 
-/**
- * Surface the dev-fixable weakness fuel as an INFORMATIONAL doctor line (status
- * "ok" — a recurring agent bug is self-knowledge, not a doctor health failure,
- * so it never flips `worst` to warn). Returns undefined when there's nothing to
- * surface, so plain `muse doctor` stays quiet until real fuel accrues. Pure.
- */
-export function weaknessFuelCheck(devFixable: readonly DevFixableWeakness[]): LocalCheck | undefined {
-  const top = devFixable[0];
-  if (!top) {
-    return undefined;
-  }
-  const more = devFixable.length > 1 ? ` (+${(devFixable.length - 1).toString()} more)` : "";
-  return {
-    detail: `${devFixable.length.toString()} recurring agent bug${devFixable.length === 1 ? "" : "s"} — top: ${top.topic} (${top.axis} ${top.count.toString()}×)${more}. See \`muse doctor --weaknesses\`.`,
-    name: "weakness ledger",
-    status: "ok"
-  };
-}
 
 async function runLocalDoctor(): Promise<LocalDoctorReport> {
   const checks: LocalCheck[] = [];

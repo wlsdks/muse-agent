@@ -468,10 +468,22 @@ describe("officialMcpChecks — external official-MCP audit surface", () => {
   it("emits one check per curated preset with its provenance URL", () => {
     const checks = officialMcpChecks(noCredFile);
     const names = checks.map((c) => c.name).sort();
-    expect(names).toEqual(["mcp:github", "mcp:linear", "mcp:notion"]);
+    expect(names).toEqual(["mcp:github", "mcp:linear", "mcp:notion", "mcp:sentry"]);
     for (const c of checks) {
       expect(c.detail).toContain("provenance https://");
     }
+  });
+
+  it("Sentry posture auto-derives: toggle ON + SENTRY_MCP_TOKEN ⇒ ok + provenance", () => {
+    const checks = officialMcpChecks({
+      ...noCredFile,
+      SENTRY_MCP_TOKEN: "sntrys_secret",
+      MUSE_SENTRY_MCP_ENABLED: "true"
+    } as NodeJS.ProcessEnv);
+    const sentry = checks.find((c) => c.name === "mcp:sentry");
+    expect(sentry?.status).toBe("ok");
+    expect(sentry?.detail).toContain("sentry");
+    expect(JSON.stringify(checks)).not.toContain("sntrys_secret");
   });
 
   it("toggle OFF ⇒ disabled (ok)", () => {

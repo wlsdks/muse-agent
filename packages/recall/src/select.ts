@@ -96,6 +96,16 @@ export function renderMemoryFact(fact: MemoryFact): string {
   return value === "" || /^(?:yes|true)$/iu.test(value) ? topic : `${topic}: ${value}`;
 }
 
+/** Build the <<memory N>> grounding block from the on-topic remembered facts. Pure. */
+export function buildMemoryContextBlock(facts: readonly MemoryFact[]): string {
+  if (facts.length === 0) {
+    return "(no matching remembered facts)";
+  }
+  return facts
+    .map((f, i) => `<<memory ${(i + 1).toString()} — ${f.key}>>\n${renderMemoryFact(f)}\n[memory: ${f.key}]\n<<end>>`)
+    .join("\n\n");
+}
+
 /**
  * The remembered facts most relevant to the question — token overlap on
  * `key value`. Used to EMPHASISE the on-topic facts in their own grounding block
