@@ -76,7 +76,7 @@ ratchet: desktop swift tests 49/49 (+1) · fabrication 0 · self-eval exit 0 · 
 - **리뷰지점**: 영수증은 항상 trailing(`present.ts` 38/163/328) → 📎-to-end strip 안전. 드릴이 검증자가 rubber-stamp가 아님을 증명; firesSinceDrill 0 리셋.
 - **리스크**: 없음(정규식 1줄 + 행동 테스트, 기존 single-line/inline 테스트 무변, bubbleText 무영향, 독립 Opus judge 2회(inert FAIL→real PASS) 검증, 49/49). ⚠️동시 codebase-quality 루프 주석편집이 worktree에 bleed-over → 비-desktop 8파일 `git checkout`으로 복원 후 내 슬라이스만 커밋.
 
-## fire 9 · 2026-06-13 · skill v1.14.0 · <commit>
+## fire 9 · 2026-06-13 · skill v1.14.0 · 69ab0056
 meta: surface=cli · value-class=new-capability · pkg=@muse/cli · kind=sibling-parity-flag · verdict=PASS · firesSinceDrill=1
 ratchet: cli tests 2593/2593 (remind 25, +2) · fabrication 0 · self-eval exit 0 · 표면 균형 web3·desktop3·cli3 · value-class 다양화(micro-fix 연속 깨고 new-capability)
 
