@@ -15,6 +15,7 @@
  */
 
 import { existsSync } from "node:fs";
+import type { RecallHit } from "@muse/recall";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -41,12 +42,7 @@ interface RecallOptions {
   readonly adaptive?: boolean;
 }
 
-export interface RecallHit {
-  readonly source: "notes" | "episodes";
-  readonly ref: string;
-  readonly score: number;
-  readonly snippet: string;
-}
+export type { RecallHit };
 
 export function defaultNotesIndexFile(): string {
   const fromEnv = process.env.MUSE_NOTES_INDEX_FILE?.trim();

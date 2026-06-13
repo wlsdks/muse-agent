@@ -2,7 +2,7 @@
 
 ## ◦ Open — @muse/recall extraction (codebase-quality loop)
 
-- ◦ **Relocate `RecallHit` type into @muse/recall** (PREREQUISITE for the graph-connections move) — `RecallHit` lives in apps/cli/src/commands-recall.ts and is imported by ~10 CLI files; moving `buildAskConnections` needs it in the package. Slice: define RecallHit in @muse/recall, re-export from commands-recall.ts (IndexChunk pattern, fire 2e). Then a follow-up moves `buildAskConnections`.
+- ✓ Relocate RecallHit into @muse/recall + move buildAskConnections — codebase-quality fire 9
 - ◦ **Move `selectGraphConnections` + `NoteLinkGraph`** — needs NoteLinkGraph + resolveNoteId/noteLinkView/linkExpandRefs relocated from apps/cli/src/notes-links.ts (own multi-step). Defer until the notes-link graph types have a package home.
 - ◦ **Phase 3: `runGroundedRecall` pipeline + API route** — the contract closer (extract registerAskCommand pipeline behind a seam, wire apps/api ask route, CLI↔API parity test). Design-sensitive; small verified steps only.
 

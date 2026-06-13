@@ -51,6 +51,8 @@ import type { AskWeaknessAxis } from "@muse/recall";
 export { askOutcomeLabel, askWeaknessAxis, createStageTimer, recordAskWeakness, recordAskWeaknessResolved };
 import { drawBestGroundedRedraft, groundingVerdictNotice } from "@muse/recall";
 export { drawBestGroundedRedraft, groundingVerdictNotice };
+import { buildAskConnections } from "@muse/recall";
+export { buildAskConnections };
 export type { BestOfRedrawArgs } from "@muse/recall";
 export type { AskOutcome, AskWeaknessAxis, AskWeaknessRecorderDeps, AskWeaknessResolverDeps } from "@muse/recall";
 export type { FileEntry, IndexChunk, ScoredChunk } from "@muse/recall";
@@ -64,7 +66,7 @@ import { classifyTier, type ModelTier } from "@muse/multi-agent";
 import type { Command } from "commander";
 
 import { cosine, isNotesIndexStale, loadNoteLinkGraph, NOTE_FILE_RE, reindexNotes } from "./commands-notes-rag.js";
-import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles, type RecallHit } from "./commands-recall.js";
+import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles } from "./commands-recall.js";
 import { linkExpandRefs, noteLinkView, resolveNoteId, type NoteLinkGraph } from "./notes-links.js";
 import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
@@ -328,32 +330,6 @@ export function routeAskTierModel(
   return { model: tier === "fast" ? models.fast : models.heavy, tier };
 }
 
-/**
- * SB-3 proactive connection for `muse ask --connect`: turn the grounding
- * the answer already computed (top note chunks + past-session episodes)
- * into a readable "💡 Related in your brain" footer — provenance the user
- * can scan and trust, consistent with `muse today --connect`. Pure: reuses
- * the already-ranked hits (no extra search), keeps only those at/above the
- * relevance floor, ranks across both sources, and caps the list. Same
- * RecallHit shape + formatter as today, so the surfaces stay consistent.
- */
-export function buildAskConnections(params: {
-  readonly notes: ReadonlyArray<{ readonly file: string; readonly score: number; readonly text: string }>;
-  readonly episodes: ReadonlyArray<{ readonly id: string; readonly score: number; readonly summary: string }>;
-  readonly minScore?: number;
-  readonly limit?: number;
-}): RecallHit[] {
-  const floor = params.minScore ?? 0.5;
-  const limit = Math.max(1, params.limit ?? 4);
-  const hits: RecallHit[] = [
-    ...params.notes.map((n) => ({ ref: n.file, score: n.score, snippet: n.text, source: "notes" as const })),
-    ...params.episodes.map((e) => ({ ref: e.id, score: e.score, snippet: e.summary, source: "episodes" as const }))
-  ];
-  return hits
-    .filter((h) => Number.isFinite(h.score) && h.score >= floor)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
-}
 
 /**
  * The EXPLICIT `[[wiki-link]]` neighbours of the notes that just answered — the
