@@ -1,4 +1,4 @@
-import { annotateNoteChunks, chunkText, classifyRetrievalConfidence, edgeLoadByRelevance, rankKnowledgeChunksWithHop, renderKnowledgeMatches, type KnowledgeChunk } from "@muse/agent-core";
+import { annotateNoteChunks, chunkText, classifyRetrievalConfidence, edgeLoadByRelevance, rankKnowledgeChunksWithHop, renderKnowledgeMatches, type KnowledgeChunk, type KnowledgeMatch } from "@muse/agent-core";
 import type { NotesProvider, TasksProvider } from "@muse/mcp";
 import type { MuseTool } from "@muse/tools";
 
@@ -492,16 +492,25 @@ export function createKnowledgeEnricher(options: KnowledgeEnricherOptions): (que
       topK: 5,
       ...(options.minScore !== undefined ? { minScore: options.minScore } : { minScore: 0.2 })
     });
-    const excluded = options.excludeSourcePrefixes ?? [];
-    const top = matches.find((match) => !excluded.some((prefix) => match.source.startsWith(prefix)));
-    // CRAG (arXiv 2401.15884): only surface a "Related:" line on CONFIDENT
-    // grounding — a weak (ambiguous) match shouldn't ride into an ambient
-    // notice as if it were relevant.
-    if (!top || classifyRetrievalConfidence([top]) !== "confident") {
-      return undefined;
-    }
-    return `[${top.source}] ${top.text.replace(/\s+/gu, " ").trim()}`;
+    return selectEnricherLine(matches, options.excludeSourcePrefixes ?? []);
   };
+}
+
+/**
+ * CRAG (arXiv 2401.15884) gate for the ambient "Related:" line: surface the top
+ * non-excluded match ONLY when the retrieval is CONFIDENT. The confidence check
+ * MUST see the full candidate list (post-exclusion) — passing only `[top]` zeroes
+ * the runner-up, which permanently disables `classifyRetrievalConfidence`'s
+ * flat-distribution (margin) guard, so a near-tie ambiguous recall would ride
+ * into the brief as if confident. Pure.
+ */
+export function selectEnricherLine(matches: readonly KnowledgeMatch[], excludeSourcePrefixes: readonly string[]): string | undefined {
+  const candidates = matches.filter((match) => !excludeSourcePrefixes.some((prefix) => match.source.startsWith(prefix)));
+  const top = candidates[0];
+  if (!top || classifyRetrievalConfidence(candidates) !== "confident") {
+    return undefined;
+  }
+  return `[${top.source}] ${top.text.replace(/\s+/gu, " ").trim()}`;
 }
 
 export interface NotesKnowledgeSearchToolOptions {
