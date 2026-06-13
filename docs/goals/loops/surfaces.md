@@ -22,7 +22,7 @@ ratchet: desktop swift tests 46/46 (added 2) · fabrication 0 · self-eval exit 
 - **리뷰지점**: desktop은 Ollama `/api/tags`에 맞춰 **bare 태그**(`ollama/` 접두 없이 `gemma4:12b`)를 쓴다. 남은 desktop의 `qwen` 참조는 비-버그(parse doc 예시 + `.qwen3TTS_0_6b` TTS 음성모델).
 - **리스크**: 없음(MuseDesktopCore 2-파일 미세 변경, `.modelMissing`/`parse` 무변, 독립 Opus judge가 정규 기본·bare태그·누락참조 검증 후 PASS, 46/46).
 
-## fire 3 · 2026-06-13 · skill v1.14.0 · <commit>
+## fire 3 · 2026-06-13 · skill v1.14.0 · 1a1c9fc6
 meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=help-vs-output-inconsistency · verdict=PASS · firesSinceDrill=3
 ratchet: cli tests 2567/2567 (find suite 6, +1) · fabrication 0 · self-eval exit 0 · consecutive allPASS=3 · 세 표면 모두 1+ fire (web·desktop·cli)
 
