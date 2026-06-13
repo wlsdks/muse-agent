@@ -125,12 +125,16 @@ describe("recordPendingApproval — append with a most-recent cap", () => {
 
   it("caps the file to the 200 most recent entries", async () => {
     const file = freshFile();
-    for (let i = 0; i < 205; i += 1) {
-      await recordPendingApproval(file, entry(`e${i}`));
-    }
+    // Seed e0..e203 in ONE write (the store reads `{ pending: [...] }`), then a
+    // single record of e204 pushes the count to 205 and triggers the cap — same
+    // outcome as 205 sequential records but without the ~5s of disk round-trips
+    // that flaked at the 5000ms boundary under concurrent-loop load.
+    const seeded = Array.from({ length: 204 }, (_, i) => entry(`e${i}`));
+    await fs.writeFile(file, JSON.stringify({ pending: seeded }), "utf8");
+    await recordPendingApproval(file, entry("e204"));
     const stored = await readPendingApprovals(file);
     expect(stored).toHaveLength(200);
-    expect(stored[0]!.id).toBe("e5");
+    expect(stored[0]!.id).toBe("e5"); // oldest 5 (e0..e4) dropped by the cap
     expect(stored[stored.length - 1]!.id).toBe("e204");
   });
 });

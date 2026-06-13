@@ -98,6 +98,10 @@ describe("csv_parse", () => {
   it("pads short data rows against the header width", () => {
     expect(csv({ text: "a,b,c\n1,2" })).toEqual({ headers: ["a", "b", "c"], rows: [{ a: "1", b: "2", c: "" }] });
   });
+
+  it("rejects text over the 200k character bound (DoS guard)", () => {
+    expect(csv({ text: "a,".repeat(120_000) })).toEqual({ error: "text must be ≤ 200000 characters" });
+  });
 });
 
 describe("base64", () => {
@@ -120,5 +124,15 @@ describe("base64", () => {
 
   it("rejects standard-alphabet input when url-safe decode is requested", () => {
     expect(base64({ mode: "decode", text: "a+b/c", urlSafe: true }).error).toContain("url-safe");
+  });
+
+  it("round-trips a URL-safe value that needs padding restored on decode (length % 4 === 3 → add one '=')", () => {
+    // "hi" → standard "aGk=" → url-safe "aGk" (padding stripped); decode must re-pad.
+    expect(base64({ mode: "encode", text: "hi", urlSafe: true })).toEqual({ encoded: "aGk" });
+    expect(base64({ mode: "decode", text: "aGk", urlSafe: true })).toEqual({ decoded: "hi" });
+  });
+
+  it("rejects text over the 500k character bound (DoS guard)", () => {
+    expect(base64({ mode: "encode", text: "x".repeat(500_001) })).toEqual({ error: "text must be ≤ 500000 characters" });
   });
 });
