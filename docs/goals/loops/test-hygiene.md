@@ -368,3 +368,11 @@ ratchet: testFiles 1009 (케이스 +1, 파일수 불변) · netCoverage +1 branc
 - **왜:** grounding/recall 랭킹 경로(에피소드 회상이 cited recall의 근거). importance bump가 회귀하면 "중요한 과거 세션"이 동률 relevance에서 안 떠 사용자 이력 grounding이 약해짐. 3 가산 항 중 하나가 dead-to-coverage였음.
 - **어떻게-증명(MUTATION-FIRST ADD):** importanceBump=0 변형 시 새 케이스만 RED(`expected 'trivial' to be 'important'` — bump 없으면 stable sort가 입력순 유지해 2번째 'important'가 안 올라옴, 8 green). cosine 동일+recency 0(무 endedAt)이라 importance가 유일 차별자 — 입력순/cosine confound 없음(2번째 배치로 stable-sort 방어). ④b 독립 Opus judge가 mutation 재현(오직 그 케이스) + 격리 검증(confound 없음, V8 stable sort) + 사전 미커버 확인 → **VERDICT: PASS**.
 - **리스크:** 테스트-only, 소스 무변경. rankEpisodeHits는 순수 랭킹 헬퍼(런타임 LLM grounding 게이트 아님) → eval:agent 신호 무영향(test-only). KIND/pkg(add@recall)가 fire 43(prune@autoconfigure)·41(prune@mcp)에서 다양화. 남은 select.ts 후보: episodeRecencyScore 미래-타임스탬프 클램프(Math.max(0)), formatContactBirthday 하한 경계(month<1/day<1).
+
+## fire 45 · 2026-06-14 · skill v1.14.0 · 998603a5
+meta: kind=add · pkg=@muse/agent-core · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 1012 (케이스 +1, 파일수 불변) · netCoverage +1 branch (tie-break) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** `worstUnsupportedSentence`(agent-core/sentence-groundedness.ts, grounding 진단)의 **동률 tie-break 분기** 커버. 동률 coverage에서 strict `<`가 FIRST 문장을 유지("ties resolve to earliest" 계약) — 진단 포인터가 문장 순서와 무관하게 결정적. 기존 3 케이스(all-supported→undefined·empty→undefined·서로 다른 coverage 0 vs 0.5)는 동률을 안 먹여 이 분기 미커버. 완전 fabricated 두 문장(둘 다 coverage 0) → earliest("Dragons") 반환 검증.
+- **왜:** worstUnsupportedSentence는 un-groundable claim의 진단/연료 포인터(self-improvement fuel). tie-break가 회귀하면(< → <=) 같은 답변에서 가리키는 문장이 순서 따라 바뀌어 진단이 비결정적 — 재현 가능한 grounding 진단 계약.
+- **어떻게-증명(MUTATION-FIRST ADD):** `<` → `<=` 변형 시 새 케이스만 RED(`expected 'Unicorns…' to contain 'Dragons'` — 동률에서 later 문장으로 교체됨, 12 green). 두 문장이 evidence("lions hunt animals africa")와 토큰 0 공유 → 둘 다 coverage 0 진짜 동률(report.unsupported===2 동시 assert). ④b 독립 Opus judge가 mutation 재현(오직 그 케이스) + tie 진위(둘 다 0) + 사전 미커버 확인 → **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경. worstUnsupportedSentence는 순수 진단 헬퍼(런타임 LLM 게이트 아님) → eval 신호 무영향. KIND/pkg(add@agent-core)가 새 패키지로 다양화 — 단 최근 3 = add/prune/add라 ADD 3회째(judge가 약하게 지적); 다음 fire는 prune/fix 우선. 남은 후보: groundToolArguments는 19케이스로 매우 풍부, sentence-groundedness reportSentenceGroundedness floor 경계는 커버됨.

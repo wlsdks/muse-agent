@@ -2220,3 +2220,4 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ✓ coerceScalar isFinite guard covered (overflow numeric string not coerced to Infinity) — test-hygiene fire 42
 - ✓ provider-utils clampPositive double-run consolidated into src (base-10 pinning migrated, test/ deleted); JUDGE-DRILL passed (judge caught planted inert ADD) — test-hygiene fire 43
 - ✓ rankEpisodeHits importance bump covered (Generative Agents additive score term) — test-hygiene fire 44
+- ✓ worstUnsupportedSentence tie-break covered (earliest sentence on equal coverage — deterministic grounding diagnostics) — test-hygiene fire 45
