@@ -122,6 +122,7 @@ async function buildUnitConvertScenario() {
       { prompt: "Convert 2 cups to milliliters.", expectTool: "unit_convert", requireArgs: ["value", "from", "to"], note: "EN volume conversion → unit_convert" },
       { prompt: "100 km/h는 몇 mph야?", expectTool: "unit_convert", requireArgs: ["value", "from", "to"], note: "KO speed conversion → unit_convert (NOT math_eval)" },
       { prompt: "How many hours is 90 minutes?", expectTool: "unit_convert", requireArgs: ["value", "from", "to"], note: "EN time-duration conversion → unit_convert (NOT time_diff — a unit conversion, not two timestamps)" },
+      { prompt: "30평은 몇 제곱미터야?", expectTool: "unit_convert", requireArgs: ["value", "from", "to"], note: "KO area conversion incl. the Korean 평 → unit_convert (the 12B mis-recalls 1평=3.3058㎡)" },
       // confusable neighbours
       { prompt: "What is 18 times 7?", expectTool: "math_eval", requireArgs: ["expression"], note: "EN arithmetic → math_eval (NOT unit_convert — operators, not units)" },
       { prompt: "오늘 달러 환율 얼마야?", expectTool: "muse.search.search", requireArgs: ["query"], note: "KO live CURRENCY rate → web search (NOT unit_convert — needs live data)" },
