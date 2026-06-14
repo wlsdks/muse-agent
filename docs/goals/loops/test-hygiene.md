@@ -320,3 +320,11 @@ ratchet: testFiles 999→998 (−1 통합, 유니크 케이스 1 이식) · netC
 - **왜:** 같은 엔진 두 파일 중복. ★중요 fail-open: 조건은 met이나 act()(메신저)가 실패하면 objective를 done 마킹하면 안 됨(안 그러면 액션 영영 재시도 안 함). test/엔 이 act-throws 케이스 없었음.
 - **어떻게-증명(MUTATION-FIRST):** act() 호출을 status:"done"+fired.push *뒤로* 이동(act 던져도 이미 done) 시 이식 케이스 RED(`fired ['o1'] != []`). ★judge가 contested claim 2개(escalate-sink·throwing-evaluator) test/ line 52-61·132에서 실제 assert됨을 소스 읽어 검증. ④b 독립 Opus judge가 6 행동 전수 매핑(MISSING 없음) + mutation 재현 → **VERDICT: PASS**.
 - **리스크:** 소스 무변경. 변경 −180L(src/ 삭제) +12L(이식 1케이스). ★교훈: src 6케이스 중 5개가 test/에 既커버(특히 throwing-evaluator·escalate-sink) — "유니크처럼 보임"을 케이스 단위로 test/ 실제 assert와 대조해야(swarm/briefing처럼 과대-이식 회피). 남은 mcp 동명 쌍 7개.
+
+## fire 39 · 2026-06-14 · skill v1.14.0 · fc42e46b
+meta: kind=add · pkg=@muse/recall · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 1001 (케이스 +1, 파일수 불변) · netCoverage +1 branch (per-claim untrusted) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** `untrustedOnlyGroundingNotice`(grounding-notices.ts, 새 머지 grounding 표면)의 **per-claim untrusted-source 분기** 커버 추가. 두 분기 중 (1)whole-answer 게이트(전 인용 untrusted)는 기존 테스트 커버, (2)MIXED 답변 per-claim(전체 게이트는 trusted 1개로 통과하나 특정 claim이 poisonable tool 소스에만 의존 — grounded≠true 핵심 edge)은 미커버였음.
+- **왜:** Muse 핵심 edge(grounded≠true). 신뢰 note + 오염가능 tool 소스가 섞인 답변에서 whole-answer 게이트가 놓치는 per-claim 위험을 표면화 — 이게 회귀하면 poisoned tool claim이 조용히 "grounded"로 넘어감. grounding 경로 contract 최우선.
+- **어떻게-증명(MUTATION-FIRST ADD):** ★사전 probe(dist 직접 실행)로 mixed 시나리오가 per-claim 통지를 내는지 확인 후 작성. per-claim 블록 제거 시 mixed 답변이 undefined 반환 → 새 테스트만 RED(6 green). ④b 독립 Opus judge가 소스 trace로 2번째 분기 적중(whole-answer 아님) 확인 + 미커버 + mutation 재현 → **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경(grounding eval 신호 영향 0). probe-first로 dependency-coupled 분기(agent-core groundedOnUntrustedOnly/untrustedOnlySentences)를 검증 후 안정적 assert(template text + claim, exact-truncation 회피). 남은 후보: citationPrecision/Recall 80-char 절단(향후 ADD).

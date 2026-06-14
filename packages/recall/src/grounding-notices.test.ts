@@ -23,6 +23,18 @@ describe("untrustedOnlyGroundingNotice", () => {
     const matches = [match("notes/vpn.md", "The office VPN needs MTU 1380 on wg0.", 0.72)];
     expect(untrustedOnlyGroundingNotice("Set the VPN MTU to 1380 on wg0 [from notes/vpn.md].", matches)).toBeUndefined();
   });
+
+  it("surfaces a per-claim untrusted source in a MIXED answer — whole-answer gate clears on a trusted note, but one claim rests only on tool data", () => {
+    const matches = [
+      match("notes/vpn.md", "The office VPN needs MTU 1380 on wg0.", 0.72), // trusted note
+      match("tool: web_search", "Paris is the capital of France.", 1, false) // untrusted tool source
+    ];
+    const answer = "Set the VPN MTU to 1380 on wg0 [from notes/vpn.md]. Paris is the capital of France [from tool: web_search].";
+    const notice = untrustedOnlyGroundingNotice(answer, matches);
+    expect(notice).toBeDefined();
+    expect(notice).toContain("one claim rests only on tool-fetched data"); // the per-claim notice, not the whole-answer one
+    expect(notice).toContain("Paris is the capital of France"); // the specific untrusted claim is surfaced
+  });
 });
 
 describe("citationPrecisionNotice", () => {
