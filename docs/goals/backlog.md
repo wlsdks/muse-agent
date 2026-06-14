@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ playbook drop empty-text strategies (JUDGE-DRILL fire 40): a blank high-reward strategy ranked first and surfaced as the "applied strategy" beat (topAppliedStrategy reads ranked[0].text, bypassing renderPlaybookSection's empty filter); dropEmptyTextStrategies filters blanks before rankEligible — subtractive — agent-core-cognition fire 40
+
 - ✓ tool-loop no-progress stall early-exit (arXiv:2505.17616): when the last 3 consecutive READ observations are near-identical (token-Jaccard ≥0.92), executeModelLoop/executeStreamingModelLoop withhold tools for the next turn → clean synthesis instead of burning maxToolCalls on spin; write/execute resets the window; literal-repetition (lexical) detection distinct from exact-dedup — agent-core-cognition fire 39
 
 - ✓ in-conversation commitment-discharge filter (π-Bench arXiv:2605.14678): selectOpenCommitments drops a user open-loop the user already DISCHARGED later in the same session (completion marker + semantic cosine ≥0.55 to the commitment) before scheduling a check-in — stops nagging about a done thing; wired into both check-in seams (CLI session-end + daemon); subtractive, fail-soft, strict-ordering — agent-core-cognition fire 38
