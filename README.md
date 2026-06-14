@@ -1,4 +1,24 @@
-# Muse
+# Muse — a private, local-first personal AI assistant
+
+**A self-hosted, offline JARVIS / second brain that answers from *your own* notes
+and files** — with the exact source quoted, saying "I'm not sure" instead of
+hallucinating, and running **entirely on a local open-source model** (via
+[Ollama](https://ollama.com)). Your data never leaves your machine: cloud egress
+is refused in code, not just a setting. Provider-neutral (OpenAI · Anthropic ·
+Gemini · OpenRouter · Ollama · LM Studio), but **local-first is the default it
+ships and defends.**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Node ≥ 22.12](https://img.shields.io/badge/node-%E2%89%A5%2022.12-43853d.svg)](package.json)
+[![Built with TypeScript](https://img.shields.io/badge/built%20with-TypeScript-3178c6.svg)](https://www.typescriptlang.org/)
+[![Cloud egress: off by default](https://img.shields.io/badge/cloud%20egress-off%20by%20default-6f42c1.svg)](#what-muse-is)
+[![Runs on Ollama](https://img.shields.io/badge/runs%20on-Ollama-000000.svg)](https://ollama.com)
+
+> *Keywords: local AI assistant · private / offline / self-hosted LLM · personal
+> RAG over your notes · cited, hallucination-resistant answers · JARVIS · second
+> brain · Ollama · open source.*
+
+---
 
 > **Tell it everything — it can't tell anyone, and it gets stronger by fixing its own blind spots.**
 >
