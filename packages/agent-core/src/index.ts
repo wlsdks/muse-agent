@@ -111,7 +111,7 @@ export { applyPlaybook, clampReward, DEFAULT_PLAYBOOK_CREDIT_COSINE, dropEmptyTe
 export type { PlaybookStrategy, PlaybookProvider, RankPlaybookOptions, StrategyLifecycleAction } from "./playbook.js";
 export { classifyCorrectionContradiction, classifyEpisodeAdmissionQuality, DEFAULT_STRATEGY_VERBATIM_CEILING, detectApprovals, detectCorrections, distillStrategyFromCorrection, hasDistillableDirective } from "./correction-distiller.js";
 export { synthesizePatternSuggestion, type PatternSuggestionInput, type SynthesizePatternSuggestionOptions } from "./pattern-suggestion.js";
-export { calibratePreferenceConfidence, DEFAULT_PREFERENCE_DISTRACTOR_FLOOR, inferPreferenceFromCorrection, parseInferredPreference, type InferredPreference, type InferPreferenceOptions } from "./preference-inference.js";
+export { calibratePreferenceConfidence, DEFAULT_PREFERENCE_DISTRACTOR_FLOOR, DEFAULT_PREFERENCE_SUPERSEDE_MAX, findSupersededPreferenceId, inferPreferenceFromCorrection, parseInferredPreference, type ExistingPreferenceForSupersede, type InferredPreference, type InferPreferenceOptions } from "./preference-inference.js";
 export type {
   ApprovalExchange,
   ClassifyContradictionOptions,

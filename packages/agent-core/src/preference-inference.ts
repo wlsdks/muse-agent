@@ -15,7 +15,7 @@
 import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
 import { redactSecretsInText } from "@muse/shared";
 
-import type { CorrectionExchange } from "./correction-distiller.js";
+import { classifyCorrectionContradiction, type ClassifyContradictionOptions, type CorrectionExchange } from "./correction-distiller.js";
 import { validateMergeCoverage } from "./skill-merge-gate.js";
 
 /**
@@ -279,4 +279,52 @@ export async function inferPreferenceFromCorrection(
     return { ...parsed, confidence: calibrated };
   }
   return parsed;
+}
+
+/** Default cap on contradiction classifications per newly-inferred preference. */
+export const DEFAULT_PREFERENCE_SUPERSEDE_MAX = 6;
+
+export interface ExistingPreferenceForSupersede {
+  /** The stored slot's id (the upsert key — never the one being written this turn). */
+  readonly id: string;
+  /** The stored preference text the new one is checked against. */
+  readonly value: string;
+}
+
+/**
+ * Belief-revision supersession for inferred preferences (arXiv:2606.09483 —
+ * "Memory Beyond Recall": record belief revisions as supersedes chains, don't let
+ * stale beliefs accumulate). The upsert already supersedes a SAME-category
+ * preference by id (`pref-<category>`), but a contradictory preference filed under
+ * a DIFFERENT category (stored `format`="answer in bullet points", later inferred
+ * `style`="write in flowing prose") escapes that key and BOTH inject into every
+ * system prompt — handing the small local model contradictory persona guidance.
+ *
+ * This identifies an existing preference (of a different id) that the NEW one
+ * CONTRADICTS, so the caller can drop the stale belief (newer wins). It reuses the
+ * proven model-polarity primitive `classifyCorrectionContradiction` — NOT cosine,
+ * because same-topic OPPOSITE-polarity preferences have HIGH cosine (the
+ * cumulative lesson: similarity ≠ contradiction; polarity needs an NLI/model call).
+ * FAIL-OPEN: only a confident "contradict" supersedes; "agree"/"unrelated"/
+ * "uncertain"/error leave both (today's accumulate behavior). Bounded model spend
+ * (≤ `maxClassifications`). Returns the superseded slot's id, or undefined.
+ */
+export async function findSupersededPreferenceId(
+  newPreferenceValue: string,
+  newPreferenceId: string,
+  existing: readonly ExistingPreferenceForSupersede[],
+  options: ClassifyContradictionOptions & { readonly maxClassifications?: number }
+): Promise<string | undefined> {
+  if (newPreferenceValue.trim().length === 0 || existing.length === 0) return undefined;
+  const cap = Math.max(1, Math.trunc(options.maxClassifications ?? DEFAULT_PREFERENCE_SUPERSEDE_MAX));
+  let checked = 0;
+  for (const slot of existing) {
+    // The same-category slot is already superseded by id; never supersede self.
+    if (slot.id === newPreferenceId || slot.value.trim().length === 0) continue;
+    if (checked >= cap) break;
+    checked += 1;
+    const polarity = await classifyCorrectionContradiction(newPreferenceValue, slot.value, options);
+    if (polarity === "contradict") return slot.id;
+  }
+  return undefined;
 }
