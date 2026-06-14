@@ -426,3 +426,12 @@ ratchet: web unit 46/46 (+1) · calendar e2e 1/1 · testFiles 1016 · fabricatio
 - **왜**: fire 46 robustness 패턴 완성(timeUntil·formatTaskDate·dayLabel 일관). "" 그룹키는 빈 헤더로 degrade — 가시적 "Invalid Date"보다 strictly better.
 - **리뷰지점**: judge가 stash-revert로 RED 실증, valid 날짜 byte-동일(DST/tomorrow/today 테스트 + calendar e2e 통과), "" 그룹키 fallback 건전. **judge가 web 과집중 명시 경고**: web 5/8, 연속 web micro(46→47) — RATCHET 위반 아니나 **fire 48은 cli/desktop 또는 non-micro로 반드시 다양화**.
 - **리스크**: 없음(3줄 가드 + 테스트; 순수 presentational; 독립 Opus judge PASS, web 46/46·calendar e2e 1/1). ⚠️ 다음 fire 표면 다양화 필수(judge 권고).
+
+## fire 48 · 2026-06-14 · skill v1.14.0 · 8fb9ed36
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=notes-link-graph-key-normalization · verdict=PASS · firesSinceDrill=5
+ratchet: cli tests 2678 (+1) · testFiles 1018 · fabrication 0 · self-eval exit 0 · 표면 균형 web21·desktop12·cli15
+
+- **무엇**: notes 위키링크 그래프가 backlink 키잉/타겟 해석을 raw `target.toLowerCase()`(4곳)로 했는데 `keyToId`와 backlink 룩업은 이미 `noteLinkKey`(.md/.markdown/.txt strip + basename) 사용 → Obsidian식 `[[b.md]]`(존재하는 b.md)가 `notes audit`에서 BROKEN 보고·타겟이 ORPHAN 오분류·링크뷰 unresolved. 4곳 모두 `noteLinkKey(target)`로 라우팅(키잉↔룩업 일치).
+- **왜**: 링크 그래프 신뢰가 직무인 `notes audit`/`links`가 정확한 링크를 거짓-broken/orphan으로 오도 — 실 입력(extension-qualified 링크는 흔함, 코드의 noteLinkKey가 정규화 위해 존재). web 과집중 교정(cli, judge 권고 이행).
+- **리뷰지점**: noteLinkKey idempotent → extensionless `[[b]]`/`[[ghost]]` 무변(기존 22 테스트 통과). basename 충돌은 keyToId의 기존 스킴(새 모호성 아님). line-115 rename raw-matcher(raw-vs-raw 일관)는 무변. judge가 stash-revert로 RED 실증.
+- **리스크**: 없음(4 one-line + 신규 테스트; 순수 그래프 로직; 독립 Opus judge가 RED-before·비-vacuous·정규화 일관성·무모호성·무회귀 검증 후 PASS, cli 2678/2678). NOTE: 동일 버그가 note-bridges.ts:50(resolvedAdjacency, GraphRAG bridges)에도 — 별도 tested 슬라이스로 후속.

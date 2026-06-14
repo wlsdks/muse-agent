@@ -90,6 +90,21 @@ describe("buildNoteLinkGraph + noteLinkView — backlinks", () => {
     expect(noteLinkView(graph, "a.md").outbound).toEqual([{ target: "ghost" }]);
   });
 
+  it("resolves an extension-qualified link [[b.md]] (normalized via noteLinkKey, not raw)", () => {
+    // Obsidian-style links often include the .md; the graph must key/look-up by
+    // noteLinkKey, or [[b.md]] is wrongly reported broken + b.md as an orphan.
+    const graph = buildNoteLinkGraph([
+      { id: "a.md", body: "links to [[b.md]]" },
+      { id: "b.md", body: "no links" }
+    ]);
+    expect(noteLinkView(graph, "a.md").outbound).toEqual([{ resolvedId: "b.md", target: "b.md" }]);
+    expect(noteLinkView(graph, "b.md").backlinks).toEqual(["a.md"]);
+    const audit = auditNoteGraph(graph);
+    expect(audit.brokenLinks).toEqual([]);
+    expect(audit.orphans).toEqual([]);
+    expect(audit.terminals).toEqual(["b.md"]);
+  });
+
   it("resolveNoteId accepts an exact id or a name/stem", () => {
     const graph = buildNoteLinkGraph(notes);
     expect(resolveNoteId(graph, "a.md")).toBe("a.md");

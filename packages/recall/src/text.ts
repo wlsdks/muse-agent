@@ -45,10 +45,18 @@ export function answerIsRefusal(answer: string): boolean {
   return REFUSAL_MARKERS.some((m) => lower.includes(m));
 }
 
-// Sentence terminators + adversative conjunctions (EN + KO) — the seams a
-// hedge-then-assert ("I don't have X, but Z" / "I don't have X. Z.") joins a
-// refusal to a tacked-on claim across.
-const CLAUSE_SPLIT_RE = /[.!?\n;]+|\b(?:but|however|though|although|yet|still)\b|그러나|하지만|그런데|근데|다만/giu;
+// Sentence terminators, colon/dash joiners, and adversative conjunctions (EN +
+// KO) — the seams a hedge-then-assert ("I don't have X, but Z" / "I don't have
+// X — Z" / "I don't have X: Z" / "I don't have X. Z.") joins a refusal to a
+// tacked-on claim across. (Bare comma is excluded — too many pure refusals carry
+// a benign comma clause.)
+const CLAUSE_SPLIT_RE = /[.!?\n;:—–―]+|\b(?:but|however|though|although|yet|still)\b|그러나|하지만|그런데|근데|다만/giu;
+
+// A clause that NEGATES grounds no positive claim — it is a refusal RESTATEMENT
+// ("…that isn't in your notes" / "…못 찾았어요"), not a tacked-on assertion. Used
+// so widening the seam set above does not misread a refusal's own (negative)
+// continuation as a hedge-then-assert (the fire-139 regression).
+const NEGATION_RE = /\b(?:no|not|never|none|nothing|nope)\b|n['']t|없|모르|안\s|못\s/iu;
 
 /**
  * True only for a PURE refusal — a refusal marker with NO substantive claim
@@ -56,17 +64,19 @@ const CLAUSE_SPLIT_RE = /[.!?\n;]+|\b(?:but|however|though|although|yet|still)\b
  * HEDGE-THEN-ASSERT ("I don't have access to flights, but your flight is at 9am")
  * — and using it to short-circuit the hard grounding VERDICT lets that fabricated
  * "but…" claim ride through labeled `grounded`. This stricter predicate splits the
- * answer on sentence/adversative seams and returns false if any non-refusal clause
- * carries real content (≥2 word tokens), so the verdict runs and adjudicates the
- * claim. Conservative on purpose (errs toward letting the verdict warn — the safe
- * direction for a fabrication=0 floor). Use ONLY at the hard verdict gate; the
- * advisory sites keep the lenient `answerIsRefusal`.
+ * answer on sentence/seam/adversative boundaries and returns false if any clause
+ * carries a real POSITIVE assertion (≥2 word tokens, not itself a refusal and not
+ * a negation), so the verdict runs and adjudicates the claim. A negated clause is
+ * a refusal restatement, not a claim — skipping it keeps a pure refusal pure even
+ * across the colon/dash seams. Conservative on purpose (errs toward letting the
+ * verdict warn — the safe direction for a fabrication=0 floor). Use ONLY at the
+ * hard verdict gate; the advisory sites keep the lenient `answerIsRefusal`.
  */
 export function answerIsPureRefusal(answer: string): boolean {
   if (!answerIsRefusal(answer)) return false;
   for (const clause of answer.split(CLAUSE_SPLIT_RE)) {
     const trimmed = clause.trim();
-    if (trimmed.length === 0 || answerIsRefusal(trimmed)) continue;
+    if (trimmed.length === 0 || answerIsRefusal(trimmed) || NEGATION_RE.test(trimmed)) continue;
     const tokens = trimmed.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? [];
     if (tokens.length >= 2) return false;
   }

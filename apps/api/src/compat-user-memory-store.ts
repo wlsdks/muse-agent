@@ -104,7 +104,7 @@ export async function canAccessUserMemory(
   return Boolean(identity?.userId && identity.userId === userId && identity.userId.toLowerCase() !== "anonymous");
 }
 
-export async function currentAuthIdentity(
+async function currentAuthIdentity(
   request: FastifyRequest,
   options: CompatibilityRouteOptions
 ): Promise<AuthIdentity | undefined> {

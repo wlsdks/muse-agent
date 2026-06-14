@@ -142,7 +142,7 @@ export function buildNoteLinkGraph(notes: readonly { readonly id: string; readon
     const links = extractWikiLinks(note.body);
     outbound.set(note.id, links);
     for (const target of links) {
-      const key = target.toLowerCase();
+      const key = noteLinkKey(target);
       const arr = backlinks.get(key) ?? [];
       if (!arr.includes(note.id)) {
         arr.push(note.id);
@@ -161,7 +161,7 @@ export interface NoteLinkView {
 /** One note's outbound links (each flagged resolved/unresolved) + its backlinks (sorted). */
 export function noteLinkView(graph: NoteLinkGraph, noteId: string): NoteLinkView {
   const outbound = (graph.outbound.get(noteId) ?? []).map((target) => {
-    const resolvedId = graph.keyToId.get(target.toLowerCase());
+    const resolvedId = graph.keyToId.get(noteLinkKey(target));
     return resolvedId ? { resolvedId, target } : { target };
   });
   const backlinks = [...(graph.backlinks.get(noteLinkKey(noteId)) ?? [])].sort((a, b) => a.localeCompare(b));
@@ -190,7 +190,7 @@ export function linkedFromResults(resultRefs: readonly string[], graph: NoteLink
       continue;
     }
     for (const target of graph.outbound.get(nodeId) ?? []) {
-      const resolvedId = graph.keyToId.get(target.toLowerCase());
+      const resolvedId = graph.keyToId.get(noteLinkKey(target));
       if (!resolvedId) {
         continue;
       }
@@ -254,7 +254,7 @@ export function auditNoteGraph(graph: NoteLinkGraph): NoteGraphAudit {
       (inboundCount === 0 ? orphans : terminals).push(id);
     }
     for (const target of targets) {
-      if (!graph.keyToId.has(target.toLowerCase())) {
+      if (!graph.keyToId.has(noteLinkKey(target))) {
         brokenLinks.push({ source: id, target });
       }
     }
