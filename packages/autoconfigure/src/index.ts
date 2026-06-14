@@ -756,7 +756,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
         const events = calendarRegistry
-          ? (await calendarRegistry.listEvents({ from: startOfToday, to: endOfToday }).catch(() => [])).map((e) => ({ startsAtIso: e.startsAt.toISOString(), title: e.title }))
+          ? (await calendarRegistry.listEvents({ from: startOfToday, to: endOfToday }).catch(() => [])).map((e) => ({ startsAtIso: e.startsAt.toISOString(), title: e.title, ...(e.endsAt ? { endsAtIso: e.endsAt.toISOString() } : {}), ...(e.allDay ? { allDay: true } : {}) }))
           : [];
         const tasks = (await readTasks(tasksFile).catch(() => []))
           .filter((task) => task.status === "open" && typeof task.dueAt === "string")

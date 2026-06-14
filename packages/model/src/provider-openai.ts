@@ -10,7 +10,6 @@
  * (delta accumulator, content reader, tool-call merger).
  */
 
-import type { JsonObject } from "@muse/shared";
 
 import {
   ModelProviderError,
@@ -25,12 +24,11 @@ import {
 } from "./index.js";
 import {
   createLeadingThinkStripper,
-  isJsonObject,
   isRecord,
   parseJson,
-  readFiniteNumber,
   stripLeadingThinkBlock
 } from "./provider-shared.js";
+import { parseOpenAIToolCalls, parseOpenAIUsage, parseToolArguments, readOpenAIContent } from "./provider-openai-parse.js";
 
 export function toOpenAIChatRequest(request: ModelRequest, defaultModel: string | undefined) {
   const modelId = parseModelName(request.model || defaultModel || "").modelId;
@@ -542,67 +540,4 @@ function materializeOpenAIStreamToolCalls(
         name: value.name
       }];
     });
-}
-
-function readOpenAIContent(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (Array.isArray(value)) {
-    return value
-      .map((entry) => isRecord(entry) && typeof entry.text === "string" ? entry.text : "")
-      .filter((entry) => entry.length > 0)
-      .join("");
-  }
-
-  return "";
-}
-
-function parseOpenAIToolCalls(value: unknown): readonly ModelToolCall[] | undefined {
-  if (!Array.isArray(value) || value.length === 0) {
-    return undefined;
-  }
-
-  return value.flatMap((entry, index) => {
-    if (!isRecord(entry) || !isRecord(entry.function) || typeof entry.function.name !== "string") {
-      return [];
-    }
-
-    return [{
-      arguments: parseToolArguments(entry.function.arguments),
-      id: typeof entry.id === "string" ? entry.id : `tool_call_${index}`,
-      name: entry.function.name
-    }];
-  });
-}
-
-function parseToolArguments(value: unknown): JsonObject {
-  if (isJsonObject(value)) {
-    return value;
-  }
-
-  if (typeof value !== "string" || value.trim().length === 0) {
-    return {};
-  }
-
-  try {
-    const parsed = JSON.parse(value) as unknown;
-    return isJsonObject(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function parseOpenAIUsage(value: unknown): ModelUsage | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  return {
-    cachedInputTokens: readFiniteNumber(value.prompt_tokens_details, "cached_tokens"),
-    inputTokens: readFiniteNumber(value, "prompt_tokens"),
-    outputTokens: readFiniteNumber(value, "completion_tokens"),
-    reasoningTokens: readFiniteNumber(value.completion_tokens_details, "reasoning_tokens")
-  };
 }

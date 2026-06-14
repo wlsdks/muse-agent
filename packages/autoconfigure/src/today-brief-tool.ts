@@ -23,8 +23,11 @@ export interface TodayBriefInput {
   readonly reminders: readonly { readonly text: string; readonly dueAt: string }[];
   /** Scheduled (not yet fired/cancelled) follow-up commitments. */
   readonly followups: readonly { readonly summary: string; readonly scheduledFor: string }[];
-  /** Calendar events whose start falls within today's window. */
-  readonly events: readonly { readonly title: string; readonly startsAtIso: string }[];
+  /** Calendar events whose start falls within today's window. `endsAtIso` (when
+   * known) lets an IN-PROGRESS event (started before now, still running) surface;
+   * `allDay` marks a date-only event (a birthday/holiday) so it isn't rendered as
+   * a misleading "00:00 (now)" timed item. */
+  readonly events: readonly { readonly title: string; readonly startsAtIso: string; readonly endsAtIso?: string; readonly allDay?: boolean }[];
 }
 
 export interface TodayBrief {
@@ -71,8 +74,20 @@ export function composeTodayBrief(data: TodayBriefInput, now: Date, lookaheadHou
   }
   for (const event of data.events) {
     const ms = Date.parse(event.startsAtIso);
-    // A past event isn't actionable; only show today's remaining ones.
-    if (Number.isFinite(ms) && ms >= nowMs && ms <= cutoff) today.push({ ms, text: `${hhmm(ms)} ${clean(event.title)}` });
+    if (!Number.isFinite(ms)) continue;
+    // An all-day event (a birthday/holiday) has no clock time — render it as a
+    // plain all-day item, NOT a misleading "00:00 (now)" timed one. Sorted by its
+    // midnight start, so it sits at the top of today's items.
+    if (event.allDay) {
+      today.push({ ms, text: `📅 ${clean(event.title)} (all day)` });
+      continue;
+    }
+    // An UPCOMING event (starts in [now, cutoff]) shows as a remaining item; an
+    // IN-PROGRESS one (started before now but still running) is on the plate
+    // RIGHT NOW, so surface it too (marked "(now)"). A finished event is dropped.
+    const endsMs = event.endsAtIso ? Date.parse(event.endsAtIso) : Number.NaN;
+    if (ms >= nowMs && ms <= cutoff) today.push({ ms, text: `${hhmm(ms)} ${clean(event.title)}` });
+    else if (ms < nowMs && Number.isFinite(endsMs) && endsMs > nowMs) today.push({ ms, text: `${hhmm(ms)} ${clean(event.title)} (now)` });
   }
 
   overdue.sort((a, b) => a.ms - b.ms);

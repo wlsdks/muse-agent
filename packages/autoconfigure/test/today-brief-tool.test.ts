@@ -54,6 +54,34 @@ describe("composeTodayBrief", () => {
     expect(brief.today).toEqual(["13:00 ⏰ soon"]);
   });
 
+  it("surfaces an IN-PROGRESS event (started before now, still running) — it's on the plate right now", () => {
+    const data: TodayBriefInput = {
+      tasks: [],
+      reminders: [],
+      followups: [],
+      events: [
+        { startsAtIso: at(11, 30), endsAtIso: at(12, 30), title: "design sync" }, // started 11:30, ends 12:30 — ongoing at noon
+        { startsAtIso: at(9), endsAtIso: at(10), title: "standup" } // ended before now — dropped
+      ]
+    };
+    const brief = composeTodayBrief(data, NOW);
+    expect(brief.today).toContain("11:30 design sync (now)");
+    expect(brief.today.join(" ")).not.toContain("standup");
+  });
+
+  it("renders an ALL-DAY event as an all-day item, not a misleading '00:00 (now)' timed one", () => {
+    const data: TodayBriefInput = {
+      tasks: [],
+      reminders: [],
+      followups: [],
+      events: [{ startsAtIso: at(0), endsAtIso: at(23, 59), allDay: true, title: "Alice's birthday" }]
+    };
+    const brief = composeTodayBrief(data, NOW);
+    expect(brief.today).toContain("📅 Alice's birthday (all day)");
+    expect(brief.today.join(" ")).not.toContain("00:00");
+    expect(brief.today.join(" ")).not.toContain("(now)");
+  });
+
   it("drops unparseable times instead of throwing", () => {
     const data: TodayBriefInput = {
       tasks: [{ dueAt: "not-a-date", title: "garbage" }],
