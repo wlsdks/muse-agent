@@ -94,6 +94,62 @@ describe("inferSessionPreferences — detect → infer → upsert (glue; model b
     expect(saved).toHaveLength(0);
   });
 
+  // Branching stub: the polarity classifier asks for ONE word (CONTRADICT/AGREE/
+  // UNRELATED); inference + calibration calls get the preference block (calibration
+  // parses it as unparseable → fail-soft keeps confidence, so the pref survives).
+  const supersedeProvider = (polarity: (userMsg: string) => string): ModelProvider => ({
+    generate: async (req: { messages: readonly { role: string; content: string }[] }) => {
+      const sys = req.messages.find((m) => m.role === "system")?.content ?? "";
+      if (sys.includes("EXACTLY one word")) {
+        return { output: polarity(req.messages.find((m) => m.role === "user")?.content ?? "") };
+      }
+      return { output: "preference: write in flowing prose\ncategory: style\nconfidence: 0.8" };
+    }
+  }) as unknown as ModelProvider;
+
+  function supersedingStore(seed: readonly UserModelSlot[]) {
+    const prefs = new Map<string, UserModelSlot>(seed.map((s) => [s.id, s]));
+    return {
+      prefs,
+      store: {
+        upsertUserModelSlot: async (_u: string, slot: UserModelSlot) => { prefs.set(slot.id, slot); },
+        removeUserModelSlot: async (_u: string, id: string) => { prefs.delete(id); },
+        findByUserId: async () => ({ userModel: { preferences: [...prefs.values()].map((s) => ({ id: s.id, value: s.value })) } })
+      }
+    };
+  }
+
+  const seedFormat: UserModelSlot = { id: "pref-format", kind: "preference", value: "always answer in bullet points", category: "format", updatedAt: NOW };
+
+  it("CLI belief revision: a new pref contradicting a stored DIFFERENT-category one supersedes it (arXiv:2606.09483)", async () => {
+    const { prefs, store } = supersedingStore([seedFormat]);
+    await inferSessionPreferences({
+      readHistory: async () => CORRECTION_HISTORY,
+      modelProvider: supersedeProvider((m) => (m.includes("bullet points") ? "CONTRADICT" : "UNRELATED")),
+      model: "qwen3:8b",
+      store,
+      userId: "stark",
+      embed: supportive,
+      now: () => NOW
+    });
+    expect([...prefs.keys()].sort()).toEqual(["pref-style"]); // contradicted format pref dropped
+    expect(prefs.get("pref-style")?.value).toBe("write in flowing prose");
+  });
+
+  it("CLI: no supersession when the new pref does not contradict the stored one (both coexist)", async () => {
+    const { prefs, store } = supersedingStore([seedFormat]);
+    await inferSessionPreferences({
+      readHistory: async () => CORRECTION_HISTORY,
+      modelProvider: supersedeProvider(() => "UNRELATED"),
+      model: "qwen3:8b",
+      store,
+      userId: "stark",
+      embed: supportive,
+      now: () => NOW
+    });
+    expect([...prefs.keys()].sort()).toEqual(["pref-format", "pref-style"]);
+  });
+
   it("reports no-corrections without touching the model when the chat has none", async () => {
     let called = false;
     const result = await inferSessionPreferences({
