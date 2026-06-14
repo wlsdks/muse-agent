@@ -383,6 +383,40 @@ async function buildDayRecapScenario() {
   }
 }
 
+// Cross-store keyword sweep (find_items — "where did I mention X?" over the
+// user's OWN tasks/reminders/contacts/events) vs the three confusable neighbours:
+// find_contact (a named PERSON), muse.search (the public WEB), knowledge_search
+// (NOTE bodies + memory). The carve is question-stem + subject: a topic across MY
+// tracked items, not a person, not the web, not note prose.
+async function buildFindItemsScenario() {
+  try {
+    const ac = await import("../packages/autoconfigure/dist/index.js");
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const instances = [
+      ac.createFindItemsTool({ find: () => ({}) }),
+      mcp.createContactsFindTool({ contacts: () => [] }),
+      mcp.createLoopbackMcpMuseTools(mcp.createSearchMcpServer())[0],
+      ac.createNotesKnowledgeSearchTool({})
+    ];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "Where did I mention the dentist?", expectTool: "find_items", requireArgs: ["query"], note: "EN topic across my tracked items → find_items" },
+      { prompt: "Find anything in my stuff about the Berlin trip.", expectTool: "find_items", requireArgs: ["query"], note: "EN cross-store keyword sweep → find_items" },
+      { prompt: "내 할 일이랑 일정에서 '치과' 들어간 거 다 찾아줘.", expectTool: "find_items", requireArgs: ["query"], note: "KO 'find everything mentioning 치과 in my tasks/calendar' → find_items" },
+      // the make-or-break neighbours — these must NOT cross into find_items
+      { prompt: "What's Bob's email address?", expectTool: "find_contact", note: "named-person identity lookup → find_contact, NOT find_items" },
+      { prompt: "Search the web for the Berlin weather forecast.", expectTool: "muse.search.search", requireArgs: ["query"], note: "public web → muse.search, NOT find_items (own stores)" },
+      { prompt: "내 노트에서 Q3 로드맵 관련 내가 적은 내용 찾아줘.", expectTool: "knowledge_search", requireArgs: ["query"], note: "KO note-body recall → knowledge_search, NOT find_items (structured items)" },
+      // IrrelAcc: the bare verb "found" with no search intent fires NO tool.
+      { prompt: "I finally found my keys, what a relief!", expectNoTool: true, note: "EN 'found' keyword trap, no search intent → NO tool" }
+    ];
+    return { label: "find-items (cross-store sweep vs find_contact/web/notes)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "find-items", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Relationship-maintenance nudge (overdue_contacts — "who've I lost touch
 // with?") vs looking up ONE specific person (find_contact). The value is the
 // discrimination: a "who haven't I talked to in a while?" intent is a LIST of
@@ -939,6 +973,7 @@ async function main() {
     await buildTasksTagScenario(),
     await buildWeekAgendaScenario(),
     await buildDayRecapScenario(),
+    await buildFindItemsScenario(),
     await buildOverdueScenario(),
     await buildOnThisDayScenario(),
     await buildFeedsScenario(),

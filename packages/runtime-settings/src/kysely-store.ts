@@ -1,4 +1,5 @@
 import type { MuseDatabase, RuntimeSettingTable } from "@muse/db";
+import { toDate } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
 import type {
@@ -117,8 +118,4 @@ export function mapRuntimeSettingRow(row: RuntimeSettingRow): RuntimeSetting {
     updatedBy: row.updated_by ?? undefined,
     value: row.value
   };
-}
-
-function toDate(value: Date | string): Date {
-  return value instanceof Date ? value : new Date(value);
 }

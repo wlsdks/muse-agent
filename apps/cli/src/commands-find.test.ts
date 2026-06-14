@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { findAcrossDomains, formatNoMatches } from "./commands-find.js";
+import { findAcrossDomains } from "@muse/autoconfigure";
+
+import { formatNoMatches } from "./commands-find.js";
 
 describe("formatNoMatches — empty state names every searched domain", () => {
   it("names tasks, reminders, contacts, AND calendar (matches the command's scope)", () => {

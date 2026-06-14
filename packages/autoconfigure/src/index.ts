@@ -158,6 +158,7 @@ import { createOverdueContactsTool, interactionsFromEvents } from "./relationshi
 import { createWeekAgendaTool } from "./week-agenda-tool.js";
 import { createTodayBriefTool } from "./today-brief-tool.js";
 import { createDayRecapTool } from "./day-recap-tool.js";
+import { createFindItemsTool } from "./find-items-tool.js";
 import { createResponseFilters } from "./response-filters.js";
 import { createMessagingPollDispatchers } from "./messaging-poll-dispatchers.js";
 import { createSkillRuntime } from "./skills-runtime.js";
@@ -793,6 +794,20 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         return { completedTasks, firedReminders, overdueReminders, overdueTasks };
       }
     })],
+    () => [createFindItemsTool({
+      find: async () => {
+        const now = Date.now();
+        const events = calendarRegistry
+          ? await calendarRegistry.listEvents({ from: new Date(now - 365 * 86_400_000), to: new Date(now + 365 * 86_400_000) }).catch(() => [])
+          : [];
+        const [tasks, reminders, contacts] = await Promise.all([
+          readTasks(tasksFile).catch(() => []),
+          readReminders(resolveRemindersFile(env)).catch(() => []),
+          queryContacts(resolveContactsFile(env)).catch(() => [])
+        ]);
+        return { contacts, events, reminders, tasks };
+      }
+    })],
     () => [
       createContactsFindTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
       createUpcomingBirthdaysTool({ contacts: () => queryContacts(resolveContactsFile(env)) }),
@@ -1101,6 +1116,7 @@ export { createOverdueContactsTool, interactionsFromEvents, type EventMentionLik
 export { createWeekAgendaTool, groupWeekAgenda, type WeekAgendaInput, type WeekAgendaToolDeps, type WeekDay } from "./week-agenda-tool.js";
 export { createTodayBriefTool, composeTodayBrief, type TodayBrief, type TodayBriefInput, type TodayBriefToolDeps } from "./today-brief-tool.js";
 export { createDayRecapTool, composeDayRecap, type DayRecap, type DayRecapInput, type DayRecapToolDeps } from "./day-recap-tool.js";
+export { createFindItemsTool, findAcrossDomains, type FindDomain, type FindHit, type FindItemsToolDeps, type FindSources } from "./find-items-tool.js";
 export { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
 export { resolveDefaultUserId } from "./user-id.js";
 

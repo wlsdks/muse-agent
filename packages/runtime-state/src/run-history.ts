@@ -1,5 +1,5 @@
 import type { AgentRunTable, ConversationMessageTable, MuseDatabase, ToolCallTable } from "@muse/db";
-import { createRunId, type JsonObject, type RunStatus } from "@muse/shared";
+import { createRunId, toDate, type JsonObject, type RunStatus } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
 import type { Awaitable } from "./index.js";
@@ -637,8 +637,4 @@ function toJsonObject(value: unknown): JsonObject {
   }
 
   return {};
-}
-
-function toDate(value: Date | string): Date {
-  return value instanceof Date ? value : new Date(value);
 }

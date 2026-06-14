@@ -12,6 +12,7 @@
  */
 
 import type { ScheduledJobExecutionTable, ScheduledJobTable } from "@muse/db";
+import { toDate } from "@muse/shared";
 import type { JsonObject, JsonValue } from "@muse/shared";
 import { CronExpressionParser } from "cron-parser";
 import type { Insertable, Selectable } from "kysely";
@@ -437,10 +438,6 @@ function dateParts(date: Date, rawTimeZone: string): {
 function blankToUndefined(value: string | null | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized && normalized.length > 0 ? normalized : undefined;
-}
-
-function toDate(value: Date | string): Date {
-  return value instanceof Date ? value : new Date(value);
 }
 
 function toJsonObject(value: JsonValue): JsonObject {

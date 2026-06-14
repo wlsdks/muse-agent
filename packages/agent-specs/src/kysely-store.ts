@@ -1,5 +1,5 @@
 import type { AgentSpecTable, MuseDatabase } from "@muse/db";
-import { createRunId, type JsonValue } from "@muse/shared";
+import { createRunId, toDate, type JsonValue } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
 import type { AgentSpec, AgentSpecInput, AgentSpecMode, AgentSpecRegistry } from "./index.js";
@@ -161,8 +161,4 @@ function toStringArray(value: JsonValue): readonly string[] {
   }
 
   return value.filter((item): item is string => typeof item === "string");
-}
-
-function toDate(value: Date | string): Date {
-  return value instanceof Date ? value : new Date(value);
 }
