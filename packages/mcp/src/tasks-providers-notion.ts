@@ -36,6 +36,16 @@ import {
   type TasksProvider,
   type TasksProviderInfo
 } from "./tasks-providers.js";
+import {
+  NOTION_DEFAULT_ENDPOINT,
+  NOTION_DEFAULT_TITLE_PROPERTY,
+  NOTION_DEFAULT_VERSION,
+  NOTION_LIST_MAX_PAGES,
+  extractTitleString,
+  isRecordArray,
+  isTransientNotionStatus,
+  mapNotionStatus
+} from "./notion-shared.js";
 
 type NotionFetch = (input: string, init: RequestInit) => Promise<Response>;
 
@@ -60,13 +70,9 @@ export interface NotionTasksProviderOptions {
   readonly retry?: { readonly retries?: number; readonly baseDelayMs?: number; readonly sleep?: (ms: number) => Promise<void> };
 }
 
-const NOTION_DEFAULT_ENDPOINT = "https://api.notion.com/v1";
-const NOTION_DEFAULT_VERSION = "2022-06-28";
-const NOTION_DEFAULT_TITLE_PROPERTY = "Name";
 const NOTION_DEFAULT_STATUS_PROPERTY = "Status";
 const NOTION_DEFAULT_STATUS_OPEN = "Open";
 const NOTION_DEFAULT_STATUS_DONE = "Done";
-const NOTION_LIST_MAX_PAGES = 10;
 
 export class NotionTasksProvider implements TasksProvider {
   readonly id = "notion";
@@ -314,55 +320,6 @@ export class NotionTasksProvider implements TasksProvider {
       }
     }
   }
-}
-
-function isTransientNotionStatus(status: number): boolean {
-  return status === 429 || (status >= 500 && status <= 599);
-}
-
-function mapNotionStatus(status: number): string {
-  if (status === 401 || status === 403) {
-    return "NOTION_AUTH";
-  }
-  if (status === 404) {
-    return "NOTION_NOT_FOUND";
-  }
-  if (status === 429) {
-    return "NOTION_RATE_LIMIT";
-  }
-  return `HTTP_${status}`;
-}
-
-function isRecordArray(body: unknown, key: string): readonly unknown[] {
-  if (!body || typeof body !== "object") {
-    return [];
-  }
-  const value = (body as Record<string, unknown>)[key];
-  return Array.isArray(value) ? value : [];
-}
-
-function extractTitleString(value: unknown): string | undefined {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-  const titleArr = (value as { title?: unknown }).title;
-  if (!Array.isArray(titleArr)) {
-    return undefined;
-  }
-  const text = titleArr
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") {
-        return "";
-      }
-      const plain = (entry as { plain_text?: string }).plain_text;
-      if (typeof plain === "string") {
-        return plain;
-      }
-      const inner = (entry as { text?: { content?: string } }).text?.content;
-      return typeof inner === "string" ? inner : "";
-    })
-    .join("");
-  return text.length > 0 ? text : undefined;
 }
 
 function extractSelectName(value: unknown): string | undefined {
