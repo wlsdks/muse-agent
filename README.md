@@ -142,18 +142,18 @@ opt out, but local is the default it ships and defends. Under the hood:
   never a vendor SDK directly.
 - **Tool & MCP first.** Tools are first-class — read, write, or
   execute — with explicit risk levels, approval gates, and
-  deterministic loop limits. ~23 in-process `muse.*` servers ship
+  deterministic loop limits. ~24 in-process `muse.*` servers ship
   built-in: eight pure-utility ones (`muse.time`, `muse.text`,
   `muse.math`, `muse.json`, `muse.url`, `muse.crypto`, `muse.diff`,
   `muse.regex`) plus the personal-domain set (`muse.notes`,
   `muse.tasks`, `muse.calendar`, `muse.reminders`, `muse.episode`,
   `muse.history`, `muse.status`, `muse.search`, `muse.fetch`,
   `muse.fs`, `muse.pattern`, `muse.proactive`, `muse.followup`,
-  `muse.messaging`, `muse.context`); external servers connect over
-  stdio / SSE / streamable-HTTP.
+  `muse.messaging`, `muse.context`, `muse.web`); external servers
+  connect over stdio / SSE / streamable-HTTP.
 - **Personal-domain primitives.** Markdown notes, calendar events
-  across 4 providers (Local file, Google Calendar, CalDAV, macOS
-  Calendar.app), and a todo list — all stored locally by default,
+  across 5 providers (Local file, Local-ICS `.ics`, Google Calendar,
+  CalDAV, macOS Calendar.app), and a todo list — all stored locally by default,
   queryable by the agent, and editable from CLI / Web UI.
 - **Multi-agent orchestration.** Sequential or parallel worker
   fan-out, an in-memory cross-agent message bus, per-run history
@@ -195,7 +195,10 @@ apps/
   api/        Fastify API server (chat, agent specs, multi-agent, MCP,
               scheduler, calendar, tasks)
   cli/        terminal agent (commander + Ink TUI + setup wizards)
-  web/        React UI (chat + tasks + calendar + settings)
+  web/        React UI — 13 panels (Chat, Today, Dashboard, Tasks,
+              Reminders, Calendar, Notes, Memory, Messaging, Tools,
+              Activity, Autonomy, Settings)
+  desktop/    native macOS floating companion (SwiftPM)
 
 packages/
   agent-core/         ReAct + Plan-Execute loops, guard pipeline,
@@ -210,7 +213,7 @@ packages/
   mcp/                MCP transports + loopback servers (incl.
                       notes / tasks / calendar) + NotesProvider abstraction
   calendar/           CalendarProvider abstraction +
-                      Local / Google / CalDAV / macOS adapters +
+                      Local / Local-ICS / Google / CalDAV / macOS adapters +
                       chmod-600 credential store
   policy/             input / output guards, approval policies,
                       adversarial red-team harness
@@ -221,7 +224,17 @@ packages/
   runtime-state/      run history, hook traces, approval store
   db/                 Kysely schema + SQL migrations
   scheduler/          cron jobs + distributed locks
-  ...
+  recall/             grounded-recall presentation / orchestration
+  skills/             self-authored skills (author / curate / merge)
+  agent-specs/        named sub-agent role / tool / prompt specs
+  a2a/                Muse-to-Muse swarm + council federation
+  messaging/          Telegram / Discord / Slack / LINE adapters
+  voice/              STT / TTS registry (local + cloud)
+  browser/            real-Chrome control (opt-in, gated)
+  autoconfigure/      zero-config provider / model / index resolution
+  auth/ cache/ resilience/ runtime-settings/ macos/ prompts/ shared/
+                      (auth store · caching · retries · settings · macOS
+                      glance · prompt assembly · shared utils)
 
 crates/
   runner/             Rust sandbox: shell / process / file execution
@@ -230,12 +243,12 @@ crates/
 ## Quick start
 
 ```bash
-# Requirements: Node.js 24 LTS + pnpm 10
+# Requirements: Node.js >= 22.12 (24 LTS recommended) + pnpm 10
 pnpm install
 pnpm build
 pnpm test
 
-# 30-second JARVIS demo (auto-picks any local Ollama Qwen 2.5 you have):
+# 30-second JARVIS demo (runs on your local default model, gemma4:12b via Ollama):
 pnpm demo
 ```
 
@@ -333,7 +346,7 @@ JSON/markdown file-backed by default:
 Set up calendar providers interactively:
 
 ```bash
-muse setup calendar   # multi-select Local / Google / CalDAV / macOS
+muse setup calendar   # multi-select Local / Local-ICS / Google / CalDAV / macOS
                       # OAuth + app-password flows; chmod-600 credentials
 ```
 
@@ -408,7 +421,7 @@ Personal-domain toggles:
 | `MUSE_TASKS_FILE` | `~/.muse/tasks.json` | Todo list file |
 | `MUSE_TASKS_ENABLED` | `true` | Disable `muse.tasks.*` tools |
 | `MUSE_CALENDAR_FILE` | `~/.muse/calendar.json` | Local calendar provider file |
-| `MUSE_CALENDAR_PROVIDERS` | `local` | Comma list: `local,gcal,caldav,macos` |
+| `MUSE_CALENDAR_PROVIDERS` | `local` | Comma list: `local,ics,gcal,caldav,macos` (`ics` auto-added when `~/.muse/calendar.ics` exists) |
 | `MUSE_CREDENTIALS_FILE` | `~/.muse/credentials.json` | chmod-600 OAuth / app-password store |
 | `MUSE_USER_MEMORY_AUTO_EXTRACT` | `true` | LLM auto-extracts facts/preferences after each turn — set `false` to skip the extra per-turn call |
 

@@ -34,7 +34,7 @@ self-contained — copy it into any project and point that project's
 | Area | Choice |
 | --- | --- |
 | Language | TypeScript |
-| Runtime | Node.js 24 LTS |
+| Runtime | Node.js >= 22.12 (24 LTS recommended) |
 | Package manager | pnpm workspace |
 | Server | Fastify |
 | Database | PostgreSQL via Kysely (optional — runs in-memory by default) |
@@ -69,7 +69,7 @@ packages/
   mcp/                MCP transport + loopback servers
                       (notes / tasks / calendar) + NotesProvider abstraction
   calendar/           CalendarProvider abstraction +
-                      Local / Google / CalDAV / macOS adapters +
+                      Local / Local-ICS / Google / CalDAV / macOS adapters +
                       chmod-600 credential store
   observability/      spans, metrics, run events
   runtime-state/      run history, hook traces, approval store
