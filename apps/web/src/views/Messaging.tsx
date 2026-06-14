@@ -139,8 +139,9 @@ export function MessagingView({ client }: { client: ApiClient }) {
           ) : (
             <div style={{ display: "grid", gap: 10 }}>
               <div>
-                <label className="field-label">{t("msg.to")}</label>
+                <label className="field-label" htmlFor="msg-to">{t("msg.to")}</label>
                 <input
+                  id="msg-to"
                   className="input"
                   value={destination}
                   onChange={(e) => {
@@ -151,8 +152,9 @@ export function MessagingView({ client }: { client: ApiClient }) {
                 />
               </div>
               <div>
-                <label className="field-label">{t("msg.message")}</label>
+                <label className="field-label" htmlFor="msg-message">{t("msg.message")}</label>
                 <textarea
+                  id="msg-message"
                   className="textarea"
                   style={{ minHeight: 120 }}
                   value={text}

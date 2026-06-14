@@ -30,8 +30,10 @@ test("messaging send is draft-first: nothing leaves until explicit confirm", asy
   await page.goto("/");
   await page.getByRole("button", { name: "Messaging" }).click();
 
-  await page.getByPlaceholder(/@user/).fill("#general");
-  await page.locator(".textarea").fill("Deploying v2 now.");
+  // The compose form's labels must be tied to their inputs (WCAG 1.3.1) — drive
+  // the form via the label so a screen reader names the recipient + message.
+  await page.getByLabel("To").fill("#general");
+  await page.getByLabel("Message").fill("Deploying v2 now.");
 
   // Review shows the confirm panel but MUST NOT send.
   await page.getByRole("button", { name: "Review" }).click();
