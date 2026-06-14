@@ -53,4 +53,21 @@ describe("createWeekAgendaTool — the week at a glance", () => {
     // time-anchored: the 9am reminder sorts BEFORE the 3pm Standup (interleaved with events by time)
     expect(today!.items.findIndex((x) => x.includes("take meds"))).toBeLessThan(today!.items.findIndex((x) => x.includes("Standup")));
   });
+
+  it("renders an ALL-DAY event as '(all day)', not a misleading '00:00' clock time (parity with today_brief)", async () => {
+    const out = await tool({
+      birthdays: [],
+      events: [
+        { startsAtIso: "2026-06-05T00:00:00", title: "Christmas", allDay: true }, // date-only — no clock time
+        { startsAtIso: "2026-06-05T15:00:00", title: "Standup" } // timed, same day
+      ],
+      tasks: []
+    }).execute({}) as { week: { label: string; items: string[] }[] };
+    const today = out.week.find((d) => d.label.startsWith("Today"));
+    expect(today?.items.some((x) => x.includes("📅") && x.includes("Christmas") && x.includes("(all day)"))).toBe(true);
+    // the date-only event must NOT carry a fabricated 00:00 clock time
+    expect(today!.items.some((x) => x.includes("00:00"))).toBe(false);
+    // the genuinely timed event keeps its clock time
+    expect(today!.items.some((x) => x.includes("15:00 Standup"))).toBe(true);
+  });
 });

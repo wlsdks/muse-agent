@@ -45,6 +45,16 @@ export function isPrivateIPv6(ip: string): boolean {
   if (lower === "::1" || lower === "::") return true;
   const mapped = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/u.exec(lower);
   if (mapped) return isPrivateIPv4(mapped[1] as string);
+  // WHATWG `new URL()` compresses an IPv4-mapped IPv6 host to hex (`::ffff:127.0.0.1`
+  // → `::ffff:7f00:1`), so the dotted match above never fires for a real URL.
+  // Decode the two hex groups back to octets and classify — else loopback /
+  // cloud-metadata / RFC-1918 slip through this guard as "public" (SSRF).
+  const hexMapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/u.exec(lower);
+  if (hexMapped) {
+    const hi = Number.parseInt(hexMapped[1] as string, 16);
+    const lo = Number.parseInt(hexMapped[2] as string, 16);
+    return isPrivateIPv4(`${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`);
+  }
   if (/^fe[89ab][0-9a-f]:/u.test(lower)) return true;
   if (/^f[cd][0-9a-f]{2}:/u.test(lower)) return true;
   return false;

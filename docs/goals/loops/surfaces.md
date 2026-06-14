@@ -273,3 +273,12 @@ ratchet: web unit 36/36 · palette e2e 3/3 (+1) · testFiles 984 · fabrication 
 - **왜**: 키보드 런처(고빈도)의 접근명이 로캘 무시 영어 고정 = i18n+a11y 결함. fire 28 scout가 지목한 runner-up. en/ko 파리티 가드가 이미 양 로캘 키 일치 강제.
 - **리뷰지점**: ko e2e(localStorage muse.lang=ko)가 다이얼로그 접근명=한국어 문자열을 end-to-end 단언 — 비-vacuous(영어/en-fallback이면 FAIL). en 값=구 리터럴과 동일 → en 동작 무변(기존 en e2e 계속 통과). 단일 로캘만 키 추가하면 파리티 테스트가 RED.
 - **리스크**: 없음(CommandPalette 1줄 + strings 2키 + e2e 1테스트; 순수 presentational i18n/a11y, network/grounding 무접촉; 독립 Opus judge가 stash-revert로 RED-before·비-vacuous(ko 문자열 특정)·en 무회귀·파리티 검증 후 PASS, web build typecheck·unit 36/36·palette e2e 3/3).
+
+## fire 31 · 2026-06-14 · skill v1.14.0 · 1f1e32f4
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=cross-command-consistency-past-due-warning · verdict=PASS · firesSinceDrill=5
+ratchet: cli tests 2639 (+3) · testFiles 985 · fabrication 0 · self-eval exit 0 · 표면 균형 web11·desktop9·cli11
+
+- **무엇**: `remind add`는 due 시각이 과거면 stderr로 경고("heads up — … is in the PAST … overdue")하는데, sibling `tasks add --due <past>`는 과거 due를 조용히 저장했다. 동일한 non-blocking heads-up 추가(`!--json` 게이트, dispatch 前이라 local·API 양 모드 발화, stderr 전용).
+- **왜**: 과거 due는 거의 typo(잘못된 연도/"어제") → 태스크가 태어나자마자 overdue. remind는 경고, tasks는 침묵이던 cross-command 비일관(fire 12/14 클래스). 신호-우선(.muse/runs 비어) → cli/desktop scout(rate-limit) → inline-scout로 id-resolution은 전부 안전 확인 後 이 비일관 발굴.
+- **리뷰지점**: 게이트가 remind와 동형(`!options.json && past`, tasks는 optional `--due`라 `resolvedDueAt` truthiness 추가). 미지정 due→무경고, 미래 due→무경고(false-positive 가드 테스트 2), --json→억제(테스트 3). stderr 전용이라 json/human stdout 페이로드 무오염. 태스크는 여전히 저장(non-blocking).
+- **리스크**: 없음(add action +7 + 신규 테스트 블록만; 독립 Opus judge가 mutation-test(블록 제거→테스트1 RED, load-bearing 확인)·remind 의미 동형·false-positive 없음·무회귀 검증 후 PASS, cli 2639/2639·self-eval exit 0).

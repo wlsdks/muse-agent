@@ -299,6 +299,13 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
         resolvedDueAt = parsed;
       }
 
+      // A past --due is almost always a typo (wrong year, "yesterday"): the task
+      // is born already overdue. Warn but don't block — same heads-up `remind
+      // add` gives — so the user can fix it or knowingly keep it.
+      if (!options.json && resolvedDueAt && new Date(resolvedDueAt).getTime() < Date.now()) {
+        io.stderr(`muse: heads up — ${formatLocalDateTime(resolvedDueAt)} is in the PAST; this task is already overdue.\n`);
+      }
+
       const addLocal = async (): Promise<Record<string, unknown>> => {
         const file = localTasksFile();
         const persisted: PersistedTask = {

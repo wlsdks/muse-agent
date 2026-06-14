@@ -43,6 +43,20 @@ describe("parseOpenAIToolCalls", () => {
     expect(parseOpenAIToolCalls(undefined)).toBeUndefined();
     expect(parseOpenAIToolCalls([])).toBeUndefined();
   });
+
+  it("skips malformed entries in a mixed array and uses the ORIGINAL index for a defaulted id", () => {
+    expect(
+      parseOpenAIToolCalls([
+        "not-a-record", // index 0: not a record → dropped
+        { function: { name: 42 } }, // index 1: name not a string → dropped
+        { function: { name: "search", arguments: '{"q":"x"}' } }, // index 2: valid, id defaults to tool_call_2
+        { function: { name: "lookup", arguments: { k: 1 } }, id: "call_z" } // index 3: explicit id kept
+      ])
+    ).toEqual([
+      { arguments: { q: "x" }, id: "tool_call_2", name: "search" },
+      { arguments: { k: 1 }, id: "call_z", name: "lookup" }
+    ]);
+  });
 });
 
 describe("parseOpenAIUsage", () => {

@@ -1,3 +1,5 @@
+import { cleanBlock, compactLines, compactSections } from "./prompt-text.js";
+
 export type ResponseFormat = "text" | "json" | "yaml";
 
 export interface PromptBuildInput {
@@ -583,19 +585,5 @@ function renderMemoryContext(title: string, context?: string): string | undefine
   const value = cleanBlock(context);
   return value ? `[${title}]\n${value}` : undefined;
 }
-
-function cleanBlock(value: string | undefined): string | undefined {
-  const text = value?.trim();
-  return text ? text : undefined;
-}
-
-function compactSections(sections: readonly (string | undefined)[]): readonly string[] {
-  return sections.map(cleanBlock).filter((section): section is string => section !== undefined);
-}
-
-function compactLines(lines: readonly (string | undefined)[]): readonly string[] {
-  return lines.filter((line): line is string => line !== undefined);
-}
-
 const EXEMPLAR_HEADER_PATTERN = /\[(?:Example|예시)\s*(\d+)\s*[-\u2010-\u2015]\s*([^\]]+?)\]/gu;
 const SCENARIO_PATTERN = /<scenario>(.*?)<\/scenario>/su;
