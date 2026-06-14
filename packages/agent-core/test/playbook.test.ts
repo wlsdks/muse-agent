@@ -462,6 +462,31 @@ describe("MemRL two-phase retrieval — Phase A gates eligibility; Phase B z-nor
     expect(result).toHaveLength(topK);
   });
 
+  it("recency-floor top-up RANKS BELOW the value-aware Phase-B picks (no raw-vs-z-norm scale mix)", () => {
+    // Reproduces the rank-fusion scale-mix bug: Phase B scores its picks on a
+    // z-normalised composite (~[-1,+1]) but the recency-floor top-up used to score
+    // fillers on the RAW unbounded composite (relevance + 0.5*reward). A filler with
+    // zero relevance but high utility (rankingUtility{r:10,d:0}≈2.22 → raw 0.5*2.22≈1.11)
+    // therefore outranked the strongest Phase-B pick (z-score 0.5) once both scales
+    // were sorted together — a low-relevance recency filler injected ABOVE the genuine
+    // value-aware winner. The fix scores fillers strictly below every Phase-B pick.
+    const pickStrong: PlaybookStrategy = { text: "alpha beta gamma delta", reward: 0 }; // rel 3
+    const pickWeak: PlaybookStrategy = { text: "alpha beta epsilon", reward: 0 };       // rel 2
+    const offTopicFiller: PlaybookStrategy = { text: "compost rose bushes water" };      // rel 0, older
+    const highUtilFiller: PlaybookStrategy = { text: "zeta eta theta iota", ...HIGH_UTIL }; // rel 0, NEWEST, high utility
+
+    // index = position; highUtilFiller is most-recent so it's the one pulled into the single top-up slot.
+    const bank = [pickStrong, pickWeak, offTopicFiller, highUtilFiller];
+    const result = rankPlaybookStrategies(bank, "alpha beta gamma", { topK: 3 });
+    const texts = result.map((s) => s.text);
+
+    // Set is preserved (ordering-only fix): the 2 Phase-B picks + the recency filler fill the 3 slots.
+    expect(texts).toContain(highUtilFiller.text);
+    // The value-aware Phase-B winner ranks FIRST; the recency filler ranks LAST — not above the picks.
+    expect(result[0]?.text).toBe(pickStrong.text);
+    expect(result[result.length - 1]?.text).toBe(highUtilFiller.text);
+  });
+
   it("counterfactual (b): sparse query with minScore — barely-relevant high-utility strategy is OUT (Phase A gate)", () => {
     // Phase A gates on relevanceOnly > minScore. A strategy with relevance=1 (one token overlap)
     // and minScore=1.5 is EXCLUDED by the new system even though the old blend (relevance + reward)

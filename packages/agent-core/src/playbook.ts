@@ -747,19 +747,27 @@ function rankEligible(
 
   if (selected.length < topK) {
     // Recency floor: top up with most-recent strategies not already selected.
+    // Score fillers STRICTLY BELOW every value-aware Phase-B pick (they are floor
+    // fillers — they may not even have cleared the Phase-A relevance gate), keeping
+    // recency order among themselves. Scoring them on the RAW composite (the
+    // unbounded relevance+reward scale) while Phase B scores on the z-normalised
+    // scale let a high-utility low-relevance filler outrank a genuine pick once the
+    // two scales were sorted together — the rank-fusion scale-mix anti-pattern
+    // (MemRL arXiv:2601.03192: the value blend must stay on one scale).
+    const minSelectedScore = selected.length > 0
+      ? Math.min(...selected.map((s) => s.score))
+      : 0;
     const chosen = new Set(selected.map((s) => s.index));
     const recentFirst = withRel
       .filter((e) => !chosen.has(e.index))
       .sort((a, b) => b.index - a.index);
+    let fillerRank = 1;
     for (const candidate of recentFirst) {
       if (selected.length >= topK) {
         break;
       }
-      selected.push({
-        ...candidate,
-        score: candidate.relevance + REWARD_RANK_WEIGHT * utilityOf(candidate.strategy)
-          - (candidate.strategy.origin === "reflected" ? REFLECTED_RANK_PENALTY : 0)
-      });
+      selected.push({ ...candidate, score: minSelectedScore - fillerRank });
+      fillerRank += 1;
     }
   }
 
