@@ -462,3 +462,12 @@ ratchet: cli tests 2683 (+1) · testFiles 1022 · fabrication 0 · self-eval exi
 - **왜**: 드릴은 verifier가 "통과하는 GREEN이지만 claimed 동작 미구현 + 테스트가 stub을 못 거름"을 잡는지 검증(앞 3 드릴과 다른 결). 실 fix는 fire 48/49 extension-normalization 버그의 3번째 consumer(rename-rewrite) 완결.
 - **리뷰지점**: 드릴 판정 deep(mutation·거짓-guard). 실 fix는 기존 의미 보존(case-insensitive·suffix·no-partial-match·blank guard) + extensionless 무변(judge가 24/24 + revert RED 확인). over-match 없음(ideabank≠ideas). fix-links 호출부도 일관.
 - **리스크**: 없음(드릴 verifier FAIL+롤백 완료; 실 fix 2줄 + 신규 테스트, 순수 string rewrite; 독립 Opus judge가 RED-before·무회귀·무over-match 검증 후 PASS, cli 2683/2683). fire 48+49+51 = 동일 버그 3 consumer 전부 완결.
+
+## fire 52 · 2026-06-14 · skill v1.14.0 · eb3b7aa4
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=calendar-allday-conflict-false-positive · verdict=PASS · firesSinceDrill=1
+ratchet: cli tests 2684 (+1) · testFiles 1024 · fabrication 0 · self-eval exit 0 · 표면 균형 web22·desktop12·cli18
+
+- **무엇**: `conflictWarningForNewEvent`가 `detectCalendarConflicts`에 위임 → all-day 이벤트(00:00→24h)가 그날 모든 timed 이벤트와 "겹침" → timed 미팅을 all-day Holiday/Birthday와 double-book으로 거짓 경고. all-day는 시간슬롯 아닌 backdrop(briefing-imminent는 이미 skip). cli 함수 param을 `& {allDay?}`로 넓혀 양방향 all-day skip; mcp/엔진 무변.
+- **왜**: `muse calendar add`가 휴일에 잡힌 모든 미팅마다 거짓 double-book 경고 — 실 false-positive. fire 48 scout runner-up. cli지만 note-link와 다른 KIND(calendar conflict)로 다양성.
+- **리뷰지점**: judge가 HEAD~1로 RED 실증("⚠ overlaps Holiday (12:00 AM–12:00 AM)"). 비-vacuous(timed Standup은 여전히 경고 — 전체 비활성 아님). CalendarEvent.allDay 필수 필드라 call-site 실값 전달 → 런타임 live(inert 아님). identity filter 생존. detectCalendarConflicts 무변·mcp 타입 무변(cross-package ripple 0). 기존 timed-conflict 테스트 무회귀.
+- **리스크**: 없음(param 확장 + 2 가드 + 신규 테스트; 순수 함수; 독립 Opus judge가 RED·non-vacuous·live-at-runtime·tsc-clean·무회귀 검증 후 PASS, cli 2684/2684).
