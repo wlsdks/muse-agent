@@ -1,7 +1,7 @@
 import type { ModelProvider } from "@muse/model";
 import { describe, expect, it } from "vitest";
 
-import { createWorkerSynthesizer } from "./multi-agent-routes.js";
+import { createWorkerSynthesizer } from "./multi-agent-workers.js";
 
 // Direct coverage for createWorkerSynthesizer (untested) — the swarm fan-in that
 // folds each worker's output into one synthesized answer. No model → no
