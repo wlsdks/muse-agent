@@ -43,7 +43,7 @@ export function resolveDemoCorpusDir(moduleDir: string = MODULE_DIR): string {
  * guarantees every note is in context (well under `ask`'s top-K cap of
  * 20), so the demo's answerable question is never lost to ranking.
  */
-export const DEMO_CORPUS_SIZE = 12;
+const DEMO_CORPUS_SIZE = 12;
 
 export interface DemoQuestion {
   readonly kind: "answerable" | "refuse";

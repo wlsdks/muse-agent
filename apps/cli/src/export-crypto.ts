@@ -20,8 +20,8 @@
 
 import { createCipheriv, createDecipheriv, pbkdf2Sync, randomBytes } from "node:crypto";
 
-export const MUSE_EXPORT_MAGIC = Buffer.from([0x4d, 0x55, 0x53, 0x45]); // "MUSE"
-export const MUSE_EXPORT_VERSION = 0x01;
+const MUSE_EXPORT_MAGIC = Buffer.from([0x4d, 0x55, 0x53, 0x45]); // "MUSE"
+const MUSE_EXPORT_VERSION = 0x01;
 const SALT_BYTES = 16;
 const IV_BYTES = 12;
 const KEY_BYTES = 32;

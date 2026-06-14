@@ -21,7 +21,7 @@
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { appendFile, readFile, unlink } from "node:fs/promises";
+import { readFile, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname as pathDirname, join as pathJoin } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -455,11 +455,5 @@ export function registerJobCommands(program: Command, io: ProgramIO): void {
         : `Deleted job ${resolved} (${summary.status}).\n`);
     });
 
-  // job append helper exposed for the worker child process.
-  // Re-exported via a tiny wrapper so the worker (in job-worker.ts)
-  // can append events without re-importing the helper.
-}
+  }
 
-export async function appendJobEvent(file: string, event: JobEvent): Promise<void> {
-  await appendFile(file, `${JSON.stringify({ ...event, tsIso: event.tsIso ?? new Date().toISOString() })}\n`, { mode: 0o600 });
-}

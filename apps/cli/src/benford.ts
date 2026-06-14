@@ -37,7 +37,7 @@ export function benfordExpected(d: number): number {
 export type BenfordConformity = "consistent" | "deviates" | "strong-deviation" | "insufficient";
 
 // Below this many usable values the first-digit test is unreliable.
-export const MIN_BENFORD_SAMPLE = 30;
+const MIN_BENFORD_SAMPLE = 30;
 // Chi-square critical values at df = 8 (nine digits minus one).
 const CHI2_CRIT_P05 = 15.507;
 const CHI2_CRIT_P01 = 20.090;

@@ -629,7 +629,7 @@ export async function promoteRecalledMemories(options: {
  * 'fact' or 'preference'" — no clue which of the four valid forms
  * they were closest to.
  */
-export const MEMORY_KIND_FORMS = ["fact", "facts", "preference", "preferences"] as const;
+const MEMORY_KIND_FORMS = ["fact", "facts", "preference", "preferences"] as const;
 
 export function parseKindSegment(kind: string): "facts" | "preferences" {
   const trimmed = kind.trim().toLowerCase();
