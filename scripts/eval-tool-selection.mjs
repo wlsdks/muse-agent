@@ -256,6 +256,28 @@ async function buildNumberBaseScenario() {
   }
 }
 
+async function buildLeapYearScenario() {
+  try {
+    const tools = await import("../packages/tools/dist/muse-tools.js");
+    const picked = tools.createMuseTools().filter((t) => ["leap_year", "math_eval", "number_base"].includes(t.definition.name));
+    const toolDefs = picked.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(toolDefs.map((t) => t.name));
+    const cases = [
+      { prompt: "Is 2024 a leap year?", expectTool: "leap_year", requireArgs: ["year"], note: "leap-year check → leap_year" },
+      { prompt: "2100년은 윤년이야?", expectTool: "leap_year", requireArgs: ["year"], note: "KO leap-year check → leap_year" },
+      { prompt: "Does February 2000 have 29 days?", expectTool: "leap_year", note: "Feb-29 question → leap_year" },
+      // confusable neighbours
+      { prompt: "What is 2024 divided by 4?", expectTool: "math_eval", note: "arithmetic → math_eval (NOT leap_year)" },
+      { prompt: "Convert 2024 to hexadecimal.", expectTool: "number_base", note: "base conversion → number_base (NOT leap_year)" },
+      // IrrelAcc
+      { prompt: "2024년은 정말 다사다난한 해였어.", expectNoTool: true, note: "KO musing mentioning a year → NO tool (not a leap-year query)" }
+    ];
+    return { label: "leap-year (vs math_eval/number_base)", tools: toolDefs, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "leap-year", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Stress the confusable real time tools: all 6 exposed together. time_relative
 // vs time_diff overlap (relative-to-now vs two-timestamp), so each carries a
 // "use when / not when" line — this scenario guards that disambiguation.
@@ -1288,6 +1310,7 @@ async function main() {
     await buildKoreanNumberScenario(),
     await buildEpochConvertScenario(),
     await buildNumberBaseScenario(),
+    await buildLeapYearScenario(),
     await buildTimeToolsScenario(),
     await buildTimeToolsExemplarScenario(),
     await buildActuatorScenario(),
