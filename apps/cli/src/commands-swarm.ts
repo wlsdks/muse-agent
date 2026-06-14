@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildDebateQuestion, buildGroundingReverifyPrompt, councilConsensusScore, debateProgressed, detectConformityFlips, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
+import { buildDebateQuestion, buildGroundingReverifyPrompt, councilConsensusScore, debateProgressed, detectConformityFlips, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, selectDissentingExclusions, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import {
@@ -172,7 +172,8 @@ export function renderCouncilResult(
   question: string,
   utterances: readonly CouncilUtterance[],
   answer: CouncilAnswer | null,
-  conformistPeers: readonly string[] = []
+  conformistPeers: readonly string[] = [],
+  dissentingPeers: readonly string[] = []
 ): string {
   const members = utterances.map((u) => u.peerId).join(", ");
   const lines = [`🏛  Council on: ${question}`, `   ${utterances.length.toString()} member(s) weighed in: ${members}\n`];
@@ -191,6 +192,11 @@ export function renderCouncilResult(
     // arXiv:2606.00820: agreement reached because a peer abandoned its own stance
     // (conformity) is 57-77% correct→wrong — surface it so the agreement isn't over-trusted.
     lines.push(`   ⚠ conformity-driven agreement — ${conformistPeers.join(", ")} dropped their own stance to match the panel; verify independently.`);
+  }
+  if (dissentingPeers.length > 0) {
+    // arXiv:2603.20640 (Hear Both Sides): a peer the majority set aside argued
+    // materially differently — surface it so a buried minority view isn't lost.
+    lines.push(`   ⚠ dissent set aside — ${dissentingPeers.join(", ")} argued differently and ${dissentingPeers.length === 1 ? "was" : "were"} not reflected above; weigh independently.`);
   }
   return lines.join("\n");
 }
@@ -522,7 +528,9 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         return parseGroundingReverifyJson(judged.output ?? "");
       };
       const answer = await synthesizeCouncilAnswer(question, utterances, { embed: embedFn, model: model!, modelProvider: modelProvider!, reverify });
-      io.stdout(`${renderCouncilResult(question, utterances, answer, conformistCaution)}\n`);
+      // Surface a materially-dissenting peer the outlier screen set aside (Hear Both Sides).
+      const dissenting = answer ? await selectDissentingExclusions(answer, utterances, embedFn) : [];
+      io.stdout(`${renderCouncilResult(question, utterances, answer, conformistCaution, dissenting)}\n`);
     });
 
   swarm

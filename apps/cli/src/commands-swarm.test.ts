@@ -52,6 +52,16 @@ describe("gatherCouncil + renderCouncilResult", () => {
     const noFieldOut = renderCouncilResult("q?", us, { answer: "x", contributors: [] });
     expect(noFieldOut).not.toContain("weak consensus");
   });
+
+  it("dissenting peers → renders the 'dissent set aside' advisory naming them; empty → no line (Hear Both Sides 2603.20640)", () => {
+    const us = [{ peerId: "a", reasoning: "x" }, { peerId: "carol", reasoning: "y" }];
+    const ans = { answer: "x", contributors: ["a"] };
+    const withDissent = renderCouncilResult("q?", us, ans, [], ["carol"]);
+    expect(withDissent).toContain("dissent set aside");
+    expect(withDissent).toContain("carol");
+    const noDissent = renderCouncilResult("q?", us, ans, [], []);
+    expect(noDissent).not.toContain("dissent set aside");
+  });
 });
 
 const SHARED = "swarm-secret";

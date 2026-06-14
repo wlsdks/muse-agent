@@ -788,6 +788,62 @@ export async function screenUnfaithfulContributors(
   return [best.id];
 }
 
+/**
+ * Cosine floor below which a quarantined peer's reasoning is a GENUINE dissent
+ * from the synthesized answer (not a near-paraphrase the screen caught for some
+ * other reason). Conservative (0.35): surface only a peer that materially argued
+ * differently, not one quarantined on a borderline support score.
+ */
+export const COUNCIL_DISSENT_COSINE_FLOOR = 0.35;
+
+/**
+ * Dissent-surfacing advisory ("Hear Both Sides", arXiv:2603.20640 — retain
+ * minority/diverse perspectives instead of letting the majority silently bury
+ * them). The outlier screen quarantines a low-support peer as a
+ * "consensus-outlier" and threads it through `CouncilAnswer.excludedPeers`, but
+ * the renderer drops that field — so a lone peer the majority OUTVOTED vanishes
+ * invisibly (a confidently-presented majority answer that buried a correct
+ * minority is overconfidence-adjacent). This returns the peerIds of
+ * consensus-outlier exclusions whose reasoning SEMANTICALLY diverges from the
+ * answer (embedding cosine < `threshold`), so the caller can surface ONE caution
+ * line. ADVISORY-ONLY (arXiv:2511.07784): it never re-admits the peer, alters the
+ * answer/contributors, or touches the grounding gate. Semantic (the cumulative
+ * lesson — divergence isn't a lexical signal). Fail-soft: no embed / throw / empty
+ * vector / no exclusions ⇒ [] (today's silent behaviour). Pure over the injected
+ * embedder + exported for direct coverage.
+ */
+export async function selectDissentingExclusions(
+  answer: CouncilAnswer,
+  utterances: readonly CouncilUtterance[],
+  embed: (text: string) => Promise<readonly number[]>,
+  threshold: number = COUNCIL_DISSENT_COSINE_FLOOR
+): Promise<string[]> {
+  const excluded = (answer.excludedPeers ?? []).filter((e) => e.reason === "consensus-outlier");
+  if (excluded.length === 0 || answer.answer.trim().length === 0) return [];
+  const reasoningById = new Map(utterances.map((u) => [u.peerId, u.reasoning]));
+  let answerVec: readonly number[];
+  try {
+    answerVec = await embed(answer.answer);
+  } catch {
+    return [];
+  }
+  if (answerVec.length === 0) return [];
+  const dissenting: string[] = [];
+  for (const exclusion of excluded) {
+    const reasoning = reasoningById.get(exclusion.peerId);
+    if (reasoning === undefined || reasoning.trim().length === 0) continue;
+    let vec: readonly number[];
+    try {
+      vec = await embed(reasoning);
+    } catch {
+      return [];
+    }
+    if (vec.length === 0) continue;
+    if (cosineSimilarity(answerVec, vec) < threshold) dissenting.push(exclusion.peerId);
+  }
+  return dissenting;
+}
+
 /** Synthesise the council's reasoning into one grounded answer. Needs ≥1 utterance. */
 export async function synthesizeCouncilAnswer(
   question: string,
