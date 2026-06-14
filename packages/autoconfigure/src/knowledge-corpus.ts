@@ -37,7 +37,7 @@ export interface CalendarEventSource {
   listEvents(range: { readonly from: Date; readonly to: Date }): Promise<readonly CalendarEventLike[]> | readonly CalendarEventLike[];
 }
 
-export interface ContactLike {
+interface ContactLike {
   readonly id: string;
   readonly name: string;
   readonly email?: string;
@@ -121,7 +121,7 @@ export interface EpisodesKnowledgeSource {
   recentEpisodes(limit: number): Promise<readonly EpisodeSummaryLike[]> | readonly EpisodeSummaryLike[];
 }
 
-export interface UserMemoryFactLike {
+interface UserMemoryFactLike {
   /** Stable key for the fact/preference, e.g. "dentist" — used in the citation. */
   readonly key: string;
   /** The remembered value. */

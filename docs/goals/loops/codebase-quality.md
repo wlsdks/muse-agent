@@ -977,3 +977,11 @@ ratchet: testFiles 986 · fabrication 0 · groundedSurfaces 27 · finiteOr dups 
 - Why: cohere KIND (continues the @muse/shared utility-consolidation: escapeRegex fire 59, clamp fire 60) — a clean mechanical dedup of 7 IDENTICAL impls. compose(Phase 3) still has no clean step; comment-hygiene dry (1 hot marker). Diversity: shared 3/8, cohere 3/8 (<6/8).
 - Review point: 4b judge — all 7 impls were BYTE-IDENTICAL; the 4 deduped files import finiteOr from @muse/shared (the 2 import-less pure modules — api rate-limiter, mcp availability — get a fresh import; both dep @muse/shared); each call site unchanged; agent-core×3 correctly excluded (hot); shared 42 (+2) / resilience 26 / autoconfigure 604 / api 850 / mcp 1862 green.
 - Risk: low — pure numeric-utility dedup of 4 identical copies; agent-core's behaviorally-identical copies untouched (deferred to a quiet-window dedup). dups 7->4.
+
+## fire 64 · 2026-06-14 · loop-creator v1.14.0 · 3c9235c8
+meta: value-class=refactor · pkg=@muse/autoconfigure · kind=dead-code · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 986 · fabrication 0 · groundedSurfaces 27 · 2 internal-only interfaces de-exported
+- What: de-exported 2 internal-only structural-input interfaces (ContactLike, UserMemoryFactLike) in autoconfigure/knowledge-corpus.ts — knip-flagged unused exports; grep-confirmed zero external/test references (own=3 each: def + 2 internal uses). Dropped the `export` keyword; the interfaces stay (used internally as the corpus's structural input shapes).
+- Why: dead-code KIND (avoids shared 4/8 + cohere 4/8 — the @muse/shared utility-dedup campaign had run 3x) on a non-hot interface region. The dead-code vein is THINNING (most knip findings now sit in hot packages — agent-core/mcp-hot/web-surfaces — or are already cleaned); these 2 were the cleanest available. Diversity: autoconfigure 1/8, dead-code 2/8.
+- Review point: 4b judge — both interfaces are genuinely internal-only (0 external refs, not imported anywhere); de-export (not delete) since each is still used 2x internally; autoconfigure 605 tests green; knip drops both; the finiteOr fire-63 edit at the file top is a different region (no self-overlap).
+- Risk: none — narrowing the visibility of 2 already-internal structural types; no behavior change.
