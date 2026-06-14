@@ -58,6 +58,12 @@ describe("answerIsPureRefusal", () => {
     expect(answerIsPureRefusal("I'm not sure — nothing comes to mind.")).toBe(true);
     expect(answerIsPureRefusal("없어요. 회의 자료는 못 찾았어요.")).toBe(true);
   });
+  it("catches a NEGATED fabrication — a negation clause that carries concrete data is still a claim", () => {
+    // The negation-skip must not let "…is NOT at 3pm, it's at 4pm" ride through:
+    // a negated clause with a digit asserts a (corrected) fact → reach the verdict.
+    expect(answerIsPureRefusal("I don't have it, but your meeting is not at 3pm, it is at 4pm in room 5.")).toBe(false);
+    expect(answerIsPureRefusal("I'm not sure — your flight isn't at 9am, it's at 11am.")).toBe(false);
+  });
   it("is false for a non-refusal answer (defers to the verdict)", () => {
     expect(answerIsPureRefusal("Your MTU is 1380 [from vpn.md]")).toBe(false);
   });

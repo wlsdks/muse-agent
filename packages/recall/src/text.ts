@@ -58,6 +58,12 @@ const CLAUSE_SPLIT_RE = /[.!?\n;:—–―]+|\b(?:but|however|though|although|ye
 // continuation as a hedge-then-assert (the fire-139 regression).
 const NEGATION_RE = /\b(?:no|not|never|none|nothing|nope)\b|n['']t|없|모르|안\s|못\s/iu;
 
+// …UNLESS the negated clause also carries concrete data (a digit — a time, a
+// number, a quantity). "…it's NOT at 3pm, it's at 4pm" is a corrected ASSERTION,
+// not a bare restatement, so it must reach the verdict. A digit is the cheap,
+// precise signal that a clause states a fact rather than merely denying one.
+const CONCRETE_DATA_RE = /\d/u;
+
 /**
  * True only for a PURE refusal — a refusal marker with NO substantive claim
  * tacked on. `answerIsRefusal` is a lenient substring test, so it also fires on a
@@ -76,7 +82,8 @@ export function answerIsPureRefusal(answer: string): boolean {
   if (!answerIsRefusal(answer)) return false;
   for (const clause of answer.split(CLAUSE_SPLIT_RE)) {
     const trimmed = clause.trim();
-    if (trimmed.length === 0 || answerIsRefusal(trimmed) || NEGATION_RE.test(trimmed)) continue;
+    const isNegationOnly = NEGATION_RE.test(trimmed) && !CONCRETE_DATA_RE.test(trimmed);
+    if (trimmed.length === 0 || answerIsRefusal(trimmed) || isNegationOnly) continue;
     const tokens = trimmed.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? [];
     if (tokens.length >= 2) return false;
   }
