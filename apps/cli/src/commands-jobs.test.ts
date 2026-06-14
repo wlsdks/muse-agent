@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { JOB_STATUS_FILTER_VALUES, jobsDir, parseJobListLimit, registerJobCommands, resolveJobStatusFilter } from "./commands-jobs.js";
 
-describe("parseJobListLimit (goal 184)", () => {
+describe("parseJobListLimit", () => {
   it("defaults to 20 when blank", () => {
     expect(parseJobListLimit(undefined)).toBe(20);
     expect(parseJobListLimit("")).toBe(20);
@@ -29,7 +29,7 @@ describe("parseJobListLimit (goal 184)", () => {
   });
 });
 
-describe("resolveJobStatusFilter (goal 151)", () => {
+describe("resolveJobStatusFilter", () => {
   it("returns 'all' when input is undefined or empty/whitespace", () => {
     expect(resolveJobStatusFilter(undefined)).toBe("all");
     expect(resolveJobStatusFilter("")).toBe("all");
@@ -59,7 +59,7 @@ describe("resolveJobStatusFilter (goal 151)", () => {
   });
 });
 
-describe("muse job list --json (goal 152)", () => {
+describe("muse job list --json", () => {
   function seedJob(dir: string, id: string, events: ReadonlyArray<Record<string, unknown>>): void {
     writeFileSync(join(dir, `${id}.jsonl`), events.map((ev) => JSON.stringify(ev)).join("\n"), "utf8");
   }

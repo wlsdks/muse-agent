@@ -31,7 +31,7 @@ describe("formatNonNoteReceipts — felt 'shows its work' for non-note sources (
     expect(out).toContain("💬 from a past session: We set up the VPN with MTU 1380");
   });
 
-  // Guard against the drift that left feeds (P38-26) and sessions without a receipt:
+  // Guard against the drift that left feeds and sessions without a receipt:
   // EVERY non-note citation class the gate validates must also render a receipt.
   const STRUCTURED_CLASSES: ReadonlyArray<readonly [string, string]> = [
     ["task", "tasks"], ["event", "events"], ["reminder", "reminders"], ["session", "sessions"],

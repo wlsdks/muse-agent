@@ -375,7 +375,7 @@ export function effectiveStrategyReward(s: PlaybookStrategy, nowMs?: number): nu
  *
  * For a valid tally (r, d): n = r + d; lower = wilsonInterval(r, n).lower;
  * raw = (2·lower − 1) · PLAYBOOK_REWARD_MAX, clamped to [MIN, MAX].
- * The D-UCB recency discount on the positive component (fire 9, arXiv:0805.3415)
+ * The D-UCB recency discount on the positive component (arXiv:0805.3415)
  * is preserved — composition is unchanged.
  * No-tally legacy branch and nowMs-undefined invariant are byte-identical to
  * effectiveStrategyReward.
@@ -464,7 +464,7 @@ export function isInjectableStrategy(strategy: PlaybookStrategy): boolean {
  * discard/withhold entries whose evidence has gone cold since last successful
  * reinforcement to mitigate temporal obsolescence and semantic drift.
  *
- * 120 days ≈ 4 D-UCB half-lives (fire 9, arXiv:0805.3415): at that age the
+ * 120 days ≈ 4 D-UCB half-lives (arXiv:0805.3415): at that age the
  * recency discount has already shrunk the rank score to ~1/16 of its original,
  * but the RANK penalty applies only to the SCORE — on the small-bank
  * inject-all path the strategy is still INCLUDED in the eligible set and still
@@ -487,7 +487,7 @@ export const PLAYBOOK_STALE_AFTER_DAYS = 120;
  * - Age ≤ threshold → not cold yet.
  * - Deep tally (reinforcements + decays ≥ 3) → accumulated evidence, not sparse.
  *
- * Distinct from D-UCB recencyDiscount (fire 9): recencyDiscount multiplies
+ * Distinct from D-UCB recencyDiscount: recencyDiscount multiplies
  * the positive reward magnitude for RANKING — a stale strategy still ranks
  * (lower) and is still INJECTED on the inject-all path. isStaleStrategy is an
  * ELIGIBILITY filter: membership drop, not rank penalty; a different pipeline

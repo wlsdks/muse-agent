@@ -140,7 +140,7 @@ describe("filterLiveNoteIndexFiles — a deleted/moved note never resurfaces in 
   });
 });
 
-describe("clampLimit (goal 179)", () => {
+describe("clampLimit", () => {
   it("returns the default 5 when absent or blank", () => {
     expect(clampLimit(undefined)).toBe(5);
     expect(clampLimit("")).toBe(5);
@@ -162,7 +162,7 @@ describe("clampLimit (goal 179)", () => {
   });
 });
 
-describe("resolveSource (goal 157)", () => {
+describe("resolveSource", () => {
   it("returns the default 'all' when --source is omitted", () => {
     expect(resolveSource(undefined)).toEqual({ kind: "ok", source: "all" });
   });

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { formatFiredList, formatShift, parseConfidence, parseLimit } from "./commands-pattern.js";
 
-describe("parseLimit (goal 177)", () => {
+describe("parseLimit", () => {
   it("returns the fallback when the flag is absent or blank", () => {
     expect(parseLimit(undefined, 20, 200)).toBe(20);
     expect(parseLimit("", 20, 200)).toBe(20);
@@ -24,7 +24,7 @@ describe("parseLimit (goal 177)", () => {
   });
 });
 
-describe("parseConfidence (goal 177)", () => {
+describe("parseConfidence", () => {
   it("returns the fallback when absent or blank", () => {
     expect(parseConfidence(undefined, 0)).toBe(0);
     expect(parseConfidence("  ", 0.5)).toBe(0.5);

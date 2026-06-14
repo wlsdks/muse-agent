@@ -223,7 +223,7 @@ describe("formatBytes — promotes through B/KB/MB/GB so a multi-GB note doesn't
     expect(formatBytes(5 * 1024 * 1024 * 1024)).toBe("5.0GB");
   });
 
-  it("keeps the B / KB / MB tiers exactly as before for sub-GB inputs (regression pin on the goal 627-era cap)", () => {
+  it("keeps the B / KB / MB tiers exactly as before for sub-GB inputs (regression pin on the pre-existing cap)", () => {
     expect(formatBytes(0)).toBe("0B");
     expect(formatBytes(512)).toBe("512B");
     expect(formatBytes(1024)).toBe("1.0KB");

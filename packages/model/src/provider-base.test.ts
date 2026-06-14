@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 // header comment in provider-base.ts.
 import { ModelProviderError, isRetryableHttpStatus } from "./index.js";
 
-describe("isRetryableHttpStatus (goal 106)", () => {
+describe("isRetryableHttpStatus", () => {
   it("classifies 429 (rate limit) as retryable across every provider", () => {
     expect(isRetryableHttpStatus(429)).toBe(true);
   });

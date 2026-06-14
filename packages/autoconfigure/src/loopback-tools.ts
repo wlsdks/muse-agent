@@ -73,7 +73,7 @@ export interface LoopbackToolsDeps {
    * Draft-first approval gate for the agent's `muse.messaging.send`. When the
    * CLI runs interactively it passes a clack-confirm gate (show the exact draft,
    * fire only on confirm). Absent (server/daemon, non-interactive) → the send
-   * tool fail-closes (it never auto-sends — outbound-safety, P41-11).
+   * tool fail-closes (it never auto-sends — outbound-safety).
    */
   readonly messagingApprovalGate?: MessageApprovalGate;
 }

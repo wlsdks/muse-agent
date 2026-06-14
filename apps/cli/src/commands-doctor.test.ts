@@ -162,7 +162,7 @@ describe("notesIndexHealth — does doctor see whether the second brain is searc
   });
 });
 
-describe("findOllamaModelTag (goal 101)", () => {
+describe("findOllamaModelTag", () => {
   const models: readonly OllamaTagsEntry[] = [
     { name: "qwen3.5:9b-q4_K_M", size: 6_600_000_000 },
     { name: "qwen2.5:latest", size: 4_700_000_000 },
@@ -196,7 +196,7 @@ describe("findOllamaModelTag (goal 101)", () => {
   });
 });
 
-describe("parseNotesIndexEmbedModel (goal 102)", () => {
+describe("parseNotesIndexEmbedModel", () => {
   it("returns the recorded model when the index carries one", () => {
     expect(parseNotesIndexEmbedModel(JSON.stringify({ model: "mxbai-embed-large", version: 1 })))
       .toBe("mxbai-embed-large");
@@ -221,7 +221,7 @@ describe("parseNotesIndexEmbedModel (goal 102)", () => {
   });
 });
 
-describe("embedModelCheck (goal 168)", () => {
+describe("embedModelCheck", () => {
   it("ok + index-aware message when the indexed model is pulled", () => {
     const v = embedModelCheck("nomic-embed-text", true, 274_000_000);
     expect(v.status).toBe("ok");

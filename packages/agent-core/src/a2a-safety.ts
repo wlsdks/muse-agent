@@ -105,7 +105,7 @@ export function prepareOutbound(
     );
   }
   if (payload.label !== undefined && payload.label.length > A2A_MAX_LABEL_CHARS) {
-    // Symmetric with the content bound (and the inbound label bound, fire 60):
+    // Symmetric with the content bound (and the inbound label bound):
     // refuse an oversized label before it leaves, so a local bug can't ship a flood.
     throw new A2ASafetyError(
       `A2A outbound label exceeds the ${A2A_MAX_LABEL_CHARS.toString()}-char limit (${payload.label.length.toString()}).`

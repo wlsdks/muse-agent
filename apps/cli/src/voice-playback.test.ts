@@ -33,7 +33,7 @@ function makeFakeSpawn(): { spawnFn: typeof spawn; child: FakeChild } {
   return { child, spawnFn };
 }
 
-describe("parseAudioFormat (goal 169)", () => {
+describe("parseAudioFormat", () => {
   it("defaults to mp3 when omitted or blank (the legitimate default)", () => {
     expect(parseAudioFormat(undefined)).toBe("mp3");
     expect(parseAudioFormat("")).toBe("mp3");

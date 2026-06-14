@@ -50,7 +50,7 @@ describe("pickPreset", () => {
   });
 });
 
-describe("checkPresetRam (goal 105)", () => {
+describe("checkPresetRam", () => {
   const power = LOCAL_MODEL_PRESETS.find((p) => p.tier === "power")!;  // 32 GB
   const high = LOCAL_MODEL_PRESETS.find((p) => p.tier === "high")!;    // 12 GB
   const low = LOCAL_MODEL_PRESETS.find((p) => p.tier === "low")!;      // 6 GB
@@ -97,7 +97,7 @@ describe("LOCAL_MODEL_PRESETS", () => {
   });
 });
 
-describe("isEmbedModelPulled (goal 167)", () => {
+describe("isEmbedModelPulled", () => {
   it("is false when no embedding model is pulled (chat-only setup)", () => {
     expect(isEmbedModelPulled(new Set(["qwen3:8b", "qwen3.6:35b-a3b"]))).toBe(false);
     expect(isEmbedModelPulled(new Set())).toBe(false);

@@ -18,7 +18,7 @@ function hasTerminalControl(s: string): boolean {
   return false;
 }
 
-describe("formatFeedEntryLines (goal 346 sibling — feeds)", () => {
+describe("formatFeedEntryLines (sibling — feeds)", () => {
   it("strips terminal control sequences from third-party feed fields", () => {
     const lines = formatFeedEntryLines({
       feedId: "news",
@@ -57,7 +57,7 @@ describe("formatFeedEntryLines (goal 346 sibling — feeds)", () => {
   });
 });
 
-describe("slugifyUrl (goal 185)", () => {
+describe("slugifyUrl", () => {
   it("strips the http(s) / file scheme prefix", () => {
     expect(slugifyUrl("https://example.com/feed.xml")).toBe("example.com-feed.xml");
     expect(slugifyUrl("http://example.com/rss")).toBe("example.com-rss");
@@ -170,7 +170,7 @@ function seedFileFeeds(specs: readonly { readonly id: string; readonly good: boo
   return file;
 }
 
-describe("muse feeds remove typo hint (goal 153)", () => {
+describe("muse feeds remove typo hint", () => {
   it("fuzzy-suggests the closest known id when the input mistypes", async () => {
     const file = seedFeeds(["tech_news", "weather", "hn-front"]);
     const { stdout, stderr, exitCode } = await runFeedsCommand(["remove", "tech-news"], file);
@@ -198,7 +198,7 @@ describe("muse feeds remove typo hint (goal 153)", () => {
   });
 });
 
-describe("muse feeds refresh --id typo hint (goal 153)", () => {
+describe("muse feeds refresh --id typo hint", () => {
   it("fuzzy-suggests the closest known id when --id mistypes", async () => {
     const file = seedFeeds(["tech_news", "weather"]);
     const { stderr, exitCode } = await runFeedsCommand(["refresh", "--id", "weater"], file);

@@ -234,7 +234,7 @@ function hasTerminalControl(s: string): boolean {
   return false;
 }
 
-describe("formatEvents terminal-injection hardening (goal 346/347 sibling — calendar)", () => {
+describe("formatEvents terminal-injection hardening (sibling — calendar)", () => {
   it("strips control sequences from a third-party event title", () => {
     const out = formatEvents([
       {

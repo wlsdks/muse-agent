@@ -360,7 +360,7 @@ const POLARITY_SYSTEM_PROMPT =
 Consider negation carefully. Output ONLY the one word, nothing else.`;
 
 /**
- * Polarity gate for the autonomous SUBTRACTIVE correction-decay (P43-1): does a
+ * Polarity gate for the autonomous SUBTRACTIVE correction-decay: does a
  * user's recent correction CONTRADICT a strategy Muse currently applies? Drives
  * the decay of ONLY a genuinely-contradicted injected strategy — NEVER graduates
  * anything (graduation stays bound to a positive user act). FAIL-CLOSED: a model

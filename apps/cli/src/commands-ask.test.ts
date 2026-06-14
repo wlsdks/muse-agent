@@ -76,7 +76,7 @@ describe("resolveAskTierModels / routeAskTierModel", () => {
   });
 });
 
-describe("parseBoundedInt (goal 178)", () => {
+describe("parseBoundedInt", () => {
   it("returns the fallback when the flag is absent or blank", () => {
     expect(parseBoundedInt(undefined, "--top", 1, 20, 3)).toBe(3);
     expect(parseBoundedInt("", "--top", 1, 20, 3)).toBe(3);

@@ -419,7 +419,7 @@ export interface ApiServerAssemblyOptions {
    * Draft-first approval gate for the agent's `muse.messaging.send`. The CLI
    * passes a clack-confirm gate under `--actuators` so the agent's outbound
    * message is shown and confirmed before it leaves; absent (headless server /
-   * daemon) the send fail-closes (never auto-sends — outbound-safety, P41-11).
+   * daemon) the send fail-closes (never auto-sends — outbound-safety).
    */
   readonly messagingApprovalGate?: MessageApprovalGate;
 }

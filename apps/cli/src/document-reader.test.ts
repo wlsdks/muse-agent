@@ -195,7 +195,7 @@ describe("walkDocuments + extractDirectoryDocuments — `--file <dir>` grounding
     await writeFile(join(dir, "budget.txt"), "The Q3 budget is $42,000.\n");
     await writeFile(join(dir, "launch.md"), "Launch on August 14.\n");
     await writeFile(join(dir, "sub", "notes.log"), "nested log line\n");
-    // Non-markdown PROSE notes the index already perceives (P37-25) — must NOT be
+    // Non-markdown PROSE notes the index already perceives — must NOT be
     // silently skipped by folder grounding/ingest anymore.
     await writeFile(join(dir, "design.org"), "* Design\nThe API rate limit is 90 req/s.\n");
     await writeFile(join(dir, "manual.rst"), "Manual\n======\nThe serial port runs at 115200 baud.\n");

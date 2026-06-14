@@ -968,7 +968,7 @@ async function seedDreamEpisodes(file: string): Promise<void> {
   ]);
 }
 
-describe("muse daemon — grounded dreaming tick (P32-3)", () => {
+describe("muse daemon — grounded dreaming tick", () => {
   it("auto-synthesises + persists a GROUNDED reflection while idle when enabled", async () => {
     const env = tmpEnv();
     const dir = mkdtempSync(join(tmpdir(), "muse-dream-"));
@@ -1006,7 +1006,7 @@ describe("muse daemon — grounded dreaming tick (P32-3)", () => {
   });
 });
 
-describe("muse daemon — unattended self-learning tick (P43-1 slice 1)", () => {
+describe("muse daemon — unattended self-learning tick", () => {
   // A correction the user made in a past session, queued at correction time.
   async function seedCorrection(env: NodeJS.ProcessEnv): Promise<void> {
     await enqueueLearnEvent(env.MUSE_LEARN_QUEUE_FILE!, {
@@ -1034,7 +1034,7 @@ describe("muse daemon — unattended self-learning tick (P43-1 slice 1)", () => 
 
     expect(res.stdout).toMatch(/learned: \+1 strategy from your corrections/);
     expect(await readPendingLearnEvents(env.MUSE_LEARN_QUEUE_FILE!)).toHaveLength(0); // consumed
-    // FELT (P43-1): the autonomous learning is DELIVERED to the user's channel,
+    // FELT: the autonomous learning is DELIVERED to the user's channel,
     // not just the daemon console — and it's honest that nothing auto-applies.
     const learnNotice = sent.find((m) => m.text.includes("Learned from your corrections"));
     expect(learnNotice, "the daemon must surface its autonomous learning to the user").toBeDefined();
@@ -1042,7 +1042,7 @@ describe("muse daemon — unattended self-learning tick (P43-1 slice 1)", () => 
     expect(learnNotice!.text).toContain("until you reinforce it");
   });
 
-  // P43-1 SUBTRACTIVE correction-decay: a NEW correction that CONTRADICTS an
+  // SUBTRACTIVE correction-decay: a NEW correction that CONTRADICTS an
   // injected strategy autonomously drops it below the inject line, unattended.
   const seedInjected = async (env: NodeJS.ProcessEnv): Promise<void> => {
     await writePlaybook(env.MUSE_PLAYBOOK_FILE!, [
@@ -1131,7 +1131,7 @@ describe("muse daemon — unattended self-learning tick (P43-1 slice 1)", () => 
   });
 });
 
-describe("muse daemon — autonomous playbook consolidate tick (P43-1, sign-safe)", () => {
+describe("muse daemon — autonomous playbook consolidate tick (sign-safe)", () => {
   const probationDup = (id: string, text: string): Parameters<typeof writePlaybook>[1][number] =>
     ({ createdAt: "2026-01-01T00:00:00Z", id, probation: true, text, userId: "u1" });
   // Deterministic merge + accept gate so the round-trip needs no live LLM/embedder.
@@ -1209,7 +1209,7 @@ describe("muse daemon — autonomous playbook consolidate tick (P43-1, sign-safe
   });
 });
 
-describe("muse daemon — unattended disuse-decay tick (P43-1 slice 2)", () => {
+describe("muse daemon — unattended disuse-decay tick", () => {
   // A positive-reward strategy not reinforced in 60 days — stale, eligible to fade.
   async function seedStaleStrategy(env: NodeJS.ProcessEnv, reward = 2): Promise<void> {
     const sixtyDaysAgo = new Date(Date.now() - 60 * 86_400_000).toISOString();
@@ -1230,7 +1230,7 @@ describe("muse daemon — unattended disuse-decay tick (P43-1 slice 2)", () => {
 
     expect(res.stdout).toMatch(/decay: 1 stale strategy faded toward neutral/);
     expect((await readPlaybook(env.MUSE_PLAYBOOK_FILE!))[0]!.reward).toBe(1); // 2 → 1, one step toward neutral
-    // FELT forgetting (P43-1): the taught preference crossing into near-forgotten
+    // FELT forgetting: the taught preference crossing into near-forgotten
     // is surfaced so the user can rescue it before it's gone.
     const fadeNotice = sent.find((m) => m.text.includes("is fading from disuse"));
     expect(fadeNotice, "a taught preference crossing into near-forgotten must be surfaced for rescue").toBeDefined();
@@ -1276,7 +1276,7 @@ describe("muse daemon — unattended disuse-decay tick (P43-1 slice 2)", () => {
   });
 });
 
-describe("muse daemon — continuous messaging poll tick (P43-3 ingestion)", () => {
+describe("muse daemon — continuous messaging poll tick (ingestion)", () => {
   it("with MUSE_MESSAGING_POLL_ENABLED the --once tick pulls new inbound (which the inbox cursor makes recallable) — no manual poll", async () => {
     const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_MESSAGING_POLL_ENABLED: "true" };
     const registry = new MessagingProviderRegistry([capturingProvider([])]);
@@ -1305,7 +1305,7 @@ describe("muse daemon — continuous messaging poll tick (P43-3 ingestion)", () 
   });
 });
 
-describe("muse daemon — continuous email-sync tick (P37-23, always-on email→recall)", () => {
+describe("muse daemon — continuous email-sync tick (always-on email→recall)", () => {
   const emailProvider = { listRecent: async () => [{ from: "Dana Wu <dana@example.com>", id: "m1", snippet: "can we move the Q3 review to Thursday?", subject: "Q3 budget review", unread: true }] };
 
   it("--once syncs recent emails into recallable notes when enabled (opt-in, no manual command)", async () => {

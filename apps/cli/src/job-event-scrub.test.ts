@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { scrubJobEvent } from "./job-event-scrub.js";
 
-describe("scrubJobEvent (goal 116)", () => {
+describe("scrubJobEvent", () => {
   it("redacts credential shapes from the `prompt` field on a started event", () => {
     const scrubbed = scrubJobEvent({
       type: "started",

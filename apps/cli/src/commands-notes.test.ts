@@ -172,7 +172,7 @@ describe("muse notes delete --local — prune a note from the local store", () =
   });
 });
 
-describe("parseNotesSearchLimit (goal 188)", () => {
+describe("parseNotesSearchLimit", () => {
   it("returns undefined when absent or blank (server/tool default)", () => {
     expect(parseNotesSearchLimit(undefined)).toBeUndefined();
     expect(parseNotesSearchLimit("")).toBeUndefined();

@@ -1,5 +1,5 @@
 /**
- * Autonomous SUBTRACTIVE correction-decay (P43-1 — the self-development daemon's
+ * Autonomous SUBTRACTIVE correction-decay (the self-development daemon's
  * last safe rung). When the user corrects Muse and that correction CONTRADICTS a
  * strategy Muse currently APPLIES (an injected playbook strategy), the daemon —
  * unattended — drops that strategy's reward to the avoid floor so a LATER session

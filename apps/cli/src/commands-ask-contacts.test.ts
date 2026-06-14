@@ -72,7 +72,7 @@ describe("formatContactBirthday — readable birthday for contacts grounding", (
 });
 
 describe("contactGroundingEvidence — the grounding evidence mirrors the prompt block (no false 'unverified')", () => {
-  it("INCLUDES the relationship/role (P37-20) so 'your manager is Dana' is covered, not false-flagged", () => {
+  it("INCLUDES the relationship/role so 'your manager is Dana' is covered, not false-flagged", () => {
     const dana: Contact = { id: "c_d", name: "Dana Wu", email: "dana@example.com", relationship: "manager" };
     const evidence = contactGroundingEvidence(dana);
     expect(evidence).toContain("Dana Wu");
@@ -80,7 +80,7 @@ describe("contactGroundingEvidence — the grounding evidence mirrors the prompt
     expect(evidence).toContain("dana@example.com");
   });
 
-  it("INCLUDES connections/edges (P37-21) so 'Bob works with Alice' is covered", () => {
+  it("INCLUDES connections/edges so 'Bob works with Alice' is covered", () => {
     const bob: Contact = { id: "c_b", name: "Bob", email: "bob@x.com", connections: [{ to: "Alice", as: "works with" }] };
     const evidence = contactGroundingEvidence(bob);
     expect(evidence).toContain("works with Alice"); // the edge claim is in the evidence
