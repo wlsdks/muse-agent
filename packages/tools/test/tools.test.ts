@@ -373,6 +373,20 @@ describe("tool utilities", () => {
     expect(coerceToolArguments(schema, { count: "" })).toEqual({ count: "" });
   });
 
+  it("coerceToolArguments leaves a pattern-valid but overflowing numeric string UNTOUCHED (the isFinite guard — never a lossy Infinity)", () => {
+    const schema = {
+      type: "object",
+      properties: { count: { type: "integer" }, ratio: { type: "number" } }
+    };
+    // A 400-digit string matches /^-?\d+$/ yet Number() overflows to ±Infinity
+    // (> Number.MAX_VALUE). The isFinite guard must keep it a string, never coerce
+    // it to a non-finite number that would reach execute() and break math/indexing.
+    const huge = "9".repeat(400);
+    expect(coerceToolArguments(schema, { count: huge })).toEqual({ count: huge });
+    expect(coerceToolArguments(schema, { count: `-${huge}` })).toEqual({ count: `-${huge}` });
+    expect(coerceToolArguments(schema, { ratio: huge })).toEqual({ ratio: huge });
+  });
+
   it("validateRequiredToolArguments flags missing required args, passes complete/extra/no-schema", () => {
     const schema = { type: "object", properties: { entity: { type: "string" }, service: { type: "string" } }, required: ["entity", "service"] };
     expect(validateRequiredToolArguments(schema, { entity: "light.x", service: "turn_off" })).toEqual({ ok: true, missing: [] });
