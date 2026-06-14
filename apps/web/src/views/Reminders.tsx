@@ -47,12 +47,13 @@ export function RemindersView({ client }: { client: ApiClient }) {
       <Card title={t("reminders.new")} className="lifted">
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 220px auto", alignItems: "end" }}>
           <div>
-            <label className="field-label">{t("reminders.what")}</label>
-            <input className="input" placeholder={t("reminders.whatPlaceholder")} value={text} onChange={(e) => setText(e.target.value)} />
+            <label className="field-label" htmlFor="rem-what">{t("reminders.what")}</label>
+            <input id="rem-what" className="input" placeholder={t("reminders.whatPlaceholder")} value={text} onChange={(e) => setText(e.target.value)} />
           </div>
           <div>
-            <label className="field-label">{t("reminders.when")}</label>
+            <label className="field-label" htmlFor="rem-when">{t("reminders.when")}</label>
             <input
+              id="rem-when"
               className="input"
               type="datetime-local"
               value={dueAt}

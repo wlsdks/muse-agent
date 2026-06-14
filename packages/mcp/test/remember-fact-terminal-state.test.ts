@@ -38,11 +38,19 @@ describe("remember_fact — terminal state through the real ToolExecutor", () =>
     expect(h.facts).toEqual([]);
   });
 
-  it("normalizes the key to a snake_case slug", async () => {
+  it("normalizes the key to a snake_case slug via the store's canonical normalizer", async () => {
     const h = harness();
     await h.run({ key: "home city", value: "Seoul" });
     await h.run({ key: "Favorite-Drink!", value: "tea" });
-    expect(h.facts.map(([, k]) => k)).toEqual(["home_city", "favoritedrink"]);
+    expect(h.facts.map(([, k]) => k)).toEqual(["home_city", "favorite_drink"]);
+  });
+
+  it("preserves a Korean key end-to-end through the real ToolExecutor (KO-default model)", async () => {
+    const h = harness();
+    const result = await h.run({ key: "취미", value: "등산" });
+    expect(result.status).toBe("completed");
+    expect(h.facts).toEqual([["jinan", "취미", "등산"]]);
+    expect(h.preferences).toEqual([]);
   });
 
   it("uses the context user id (isolating different users' stores)", async () => {

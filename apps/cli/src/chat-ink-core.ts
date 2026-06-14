@@ -5,6 +5,7 @@
  * all unit-testable without an Ink render.
  */
 
+import { normalizeMemoryKey } from "@muse/memory";
 import { clamp, stripUntrustedTerminalChars } from "@muse/shared";
 
 export interface InkKeyEvent {
@@ -288,10 +289,14 @@ export function chatHelp(topic: string, commands: readonly { readonly cmd: strin
 export function parseRememberArg(arg: string): { key: string; value: string } | undefined {
   const match = /^\s*([^=:]+?)\s*[=:]\s*(.+)$/u.exec(arg);
   if (!match) return undefined;
-  const key = (match[1] ?? "").trim().toLowerCase().replace(/\s+/gu, "_").replace(/[^a-z0-9_]/gu, "");
+  const rawKey = (match[1] ?? "").trim();
   const value = (match[2] ?? "").trim();
-  if (key.length === 0 || value.length === 0) return undefined;
-  return { key, value };
+  // Canonicalize via the store's own normalizer (keeps Unicode — a Korean key
+  // like "취미" survives; the old ASCII-only slug dropped it to "" and silently
+  // refused the write). Guard a real letter/digit first, since normalizeMemoryKey
+  // falls back to the raw key for an all-punctuation input. Matches remember_fact.
+  if (!/[\p{L}\p{N}]/u.test(rawKey) || value.length === 0) return undefined;
+  return { key: normalizeMemoryKey(rawKey), value };
 }
 
 export interface MarkdownBlock {

@@ -9,6 +9,7 @@
  * tasks (to-dos) or notes (free-form) tools (tool-calling.md).
  */
 
+import { normalizeMemoryKey } from "@muse/memory";
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool, MuseToolContext } from "@muse/tools";
 
@@ -59,10 +60,14 @@ export function createRememberFactTool(options: { readonly store: RememberFactSt
       }
       const kind = readString(args, "kind") === "preference" ? "preference" : "fact";
       const userId = resolveUserId(context);
-      const slug = key.toLowerCase().replace(/\s+/gu, "_").replace(/[^a-z0-9_]/gu, "");
-      if (slug.length === 0) {
+      // Canonicalize via the store's own normalizer (keeps Unicode — Korean keys
+      // like "취미" survive; the old ASCII-only slug dropped them to "" and refused
+      // the write). Guard first that the key carries a real letter/digit, since
+      // normalizeMemoryKey falls back to the raw key for an all-punctuation input.
+      if (!/[\p{L}\p{N}]/u.test(key)) {
         return { error: "remember_fact `key` must contain letters or digits" };
       }
+      const slug = normalizeMemoryKey(key);
       if (kind === "preference") {
         await Promise.resolve(options.store.upsertPreference(userId, slug, value));
       } else {

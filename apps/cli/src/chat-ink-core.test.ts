@@ -169,10 +169,15 @@ describe("parseRememberArg", () => {
     expect(parseRememberArg("reply style: concise")).toEqual({ key: "reply_style", value: "concise" });
     expect(parseRememberArg("  Home Town = Busan ")).toEqual({ key: "home_town", value: "Busan" });
   });
+  it("preserves a Korean key (진안 types /remember 취미=등산, not an ASCII slug)", () => {
+    expect(parseRememberArg("취미=등산")).toEqual({ key: "취미", value: "등산" });
+    expect(parseRememberArg("내 취미: 등산")).toEqual({ key: "내_취미", value: "등산" });
+  });
   it("rejects input without a usable key+value", () => {
     expect(parseRememberArg("just text")).toBeUndefined();
     expect(parseRememberArg("=novalue")).toBeUndefined();
     expect(parseRememberArg("key=")).toBeUndefined();
+    expect(parseRememberArg("!!!=value")).toBeUndefined();
   });
 });
 

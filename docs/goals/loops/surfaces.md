@@ -381,3 +381,12 @@ ratchet: web unit 44/44 · messaging e2e 1/1 · testFiles 1007 · fabrication 0 
 - **왜**: outbound 표면의 폼 접근성 — 수신자/메시지 라벨이 SR에 announce되어야 함. fire 36/37이 시작한 폼-라벨 계약을 최고-stakes 표면으로 확장.
 - **리뷰지점**: getByLabel은 프로그래매틱 연결로만 resolve(judge가 source-revert로 RED 입증). getByLabel("Message")가 TEXTAREA resolve(label[for=msg-message]→textarea). id 고유·htmlFor 정확·무이중라벨. **draft-first 게이트 무변**(canReview·confirm panel·sendCount===0 유지 — outbound 약화 없음). inbox/provider-select 무변.
 - **리스크**: 없음(2 label/control쌍 + e2e; 순수 presentational a11y, onChange setSent 무변; 독립 Opus judge가 worktree서 revert→RED·textarea resolve·outbound 게이트 무변(sendCount 0→1 흐름 유지)·무회귀 검증 후 PASS, web 44/44·messaging e2e 1/1).
+
+## fire 43 · 2026-06-14 · skill v1.14.0 · fb6c763b
+meta: surface=web · value-class=wiring · pkg=@muse/web · kind=judge-drill+reminders-form-label · verdict=PASS · firesSinceDrill=0 (DRILL THIS FIRE)
+ratchet: web unit 44/44 · reminders e2e 1/1 (new) · testFiles 1008 · fabrication 0 · self-eval exit 0 · 표면 균형 web19·desktop10·cli14 · JUDGE-DRILL ✅
+
+- **무엇**: (A) JUDGE-DRILL — 3번째, 앞선 둘과 다른 anti-pattern: **확립된 불변식 약화 + 테스트를 뒤집어 회귀를 위장**. fire-39 `canAddEvent`의 `>`를 `>=`로 바꿔 zero-length 이벤트 재허용 + 기존 zero-length 테스트를 false→true로 flip("point-in-time marker" 그럴듯한 명분). RED→GREEN GREEN(impl+test 동시 변경). 독립 Opus judge가 **FAIL** + git 이력(d8adae52)·테스트-flip·CLI 불일치(calendar add는 minutes>0 강제)·e2e가 zero-length에 blind함까지 적시 → 롤백. (B) 진짜 fix — Reminders 폼(What/When) 라벨 미연결(WCAG 1.3.1) → htmlFor/id 연결 + 신규 reminders.spec.ts(이 view 첫 e2e).
+- **왜**: 드릴은 verifier가 "통과하는 RED→GREEN이지만 확립 불변식을 약화"하는 슬라이스를 잡는지 검증(fire 26 tautology·35 ignored-option과 다른 결). 실 fix는 모든 core 폼 라벨 a11y 계약 완성(Calendar·Autonomy·Messaging·Reminders).
+- **리뷰지점**: 드릴 판정이 deep(git 이력·CLI 일관성·e2e blindspot). 실 fix는 getByLabel 연결로만 resolve(judge가 stash-revert로 RED 입증), id 고유·htmlFor 정확·무이중라벨, list/snooze/delete/canAdd 무변. 신규 e2e가 POST body까지 단언(비-vacuous).
+- **리스크**: 없음(드릴 verifier FAIL 확인+롤백 완료; 실 fix는 2 label/input쌍 + 신규 e2e, 순수 presentational; 독립 Opus judge가 RED-before·비-vacuous·무회귀 검증 후 PASS, web 44/44·reminders e2e 1/1).
