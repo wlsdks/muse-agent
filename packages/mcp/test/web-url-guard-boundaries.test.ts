@@ -51,6 +51,16 @@ describe("isPrivateIPv6 range boundaries", () => {
     expect(isPrivateIPv6("::ffff:8.8.8.8")).toBe(false);
   });
 
+  it("flags the HEX-normalized IPv4-mapped form WHATWG URL produces (the dotted form above never reaches here from a real URL)", () => {
+    // `new URL("http://[::ffff:127.0.0.1]/")` normalizes the host to the hex
+    // compression `::ffff:7f00:1` — so the dotted-decimal-only match would let
+    // loopback / metadata / RFC-1918 through as "public". These MUST be private.
+    expect(isPrivateIPv6("::ffff:7f00:1")).toBe(true); // 127.0.0.1
+    expect(isPrivateIPv6("::ffff:a9fe:a9fe")).toBe(true); // 169.254.169.254 cloud metadata
+    expect(isPrivateIPv6("::ffff:a00:1")).toBe(true); // 10.0.0.1
+    expect(isPrivateIPv6("::ffff:808:808")).toBe(false); // 8.8.8.8 — genuinely public stays public
+  });
+
   it("flags the unspecified and loopback addresses, public GUA stays public", () => {
     expect(isPrivateIPv6("::")).toBe(true);
     expect(isPrivateIPv6("::1")).toBe(true);
@@ -90,6 +100,14 @@ describe("assertPublicHttpUrlSync — composed SSRF gate (no DNS)", () => {
     expect(assertPublicHttpUrlSync("http://127.0.0.1:8080/").ok).toBe(false);
     expect(assertPublicHttpUrlSync("http://[::1]/").ok).toBe(false);
     expect(assertPublicHttpUrlSync("http://169.254.169.254/latest/meta-data").ok).toBe(false); // cloud metadata
+  });
+  it("rejects an IPv4-mapped IPv6 loopback/metadata/private host (the SSRF bypass: URL host normalizes to hex)", () => {
+    // These are the live exploit forms — a model (or injected page) names an
+    // IPv4-mapped IPv6 URL; new URL() compresses it to hex, which the guard
+    // must still classify as private. Pre-fix these were ALLOWED.
+    expect(assertPublicHttpUrlSync("http://[::ffff:127.0.0.1]/admin").ok).toBe(false);
+    expect(assertPublicHttpUrlSync("http://[::ffff:169.254.169.254]/latest/meta-data/").ok).toBe(false);
+    expect(assertPublicHttpUrlSync("http://[::ffff:10.0.0.1]/internal").ok).toBe(false);
   });
   it("passes a public https URL and returns the parsed URL", () => {
     const r = assertPublicHttpUrlSync("https://example.com/path");
