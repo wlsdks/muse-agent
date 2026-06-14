@@ -357,7 +357,10 @@ export {
 } from "./a2a-safety.js";
 export {
   DEFAULT_EPISODE_GROUNDING_FLOOR,
+  DEFAULT_EPISODE_MIN_CONTENT_TOKENS,
+  DEFAULT_EPISODE_TRIVIAL_IMPORTANCE,
   extractCurrentSessionTurns,
+  isEpisodeWorthRetaining,
   redactSecrets,
   summariseSession,
   summaryGroundedInTranscript,

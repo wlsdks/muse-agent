@@ -29,6 +29,7 @@ import { randomUUID } from "node:crypto";
 import {
   classifyEpisodeAdmissionQuality,
   extractCurrentSessionTurns,
+  isEpisodeWorthRetaining,
   peakEndDigest,
   summariseSession,
   summaryGroundedInTranscript,
@@ -162,6 +163,16 @@ export async function captureEndOfSessionEpisode(options: CaptureEndOfSessionOpt
   if (!groundedByConstruction && !summaryGroundedInTranscript(summary.summary, range.turns)) {
     return {
       reason: "summary not grounded in the session transcript — dropped to avoid persisting a fabricated memory",
+      status: "skipped"
+    };
+  }
+
+  // Salience admission gate (SSGM arXiv:2603.11768): don't persist a content-thin
+  // session the model itself rated trivial — it would only dilute recall as a
+  // near-contentless citable [session: …] source. Subtractive + fail-open.
+  if (!isEpisodeWorthRetaining(summary)) {
+    return {
+      reason: "session too low-salience to retain (content-thin and self-rated trivial)",
       status: "skipped"
     };
   }
