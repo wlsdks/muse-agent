@@ -584,7 +584,7 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
     .command("reindex")
     .description("Walk MUSE_NOTES_DIR, chunk + embed every Markdown file, write a flat JSON index")
     .option("--dir <path>", "Notes directory (default MUSE_NOTES_DIR or ~/.muse/notes)")
-    .option("--model <tag>", "Embedding model on Ollama (default nomic-embed-text)", DEFAULT_EMBED_MODEL)
+    .option("--model <tag>", `Embedding model on Ollama (default ${DEFAULT_EMBED_MODEL})`, DEFAULT_EMBED_MODEL)
     .option("--chunk-chars <n>", `Approximate chunk size in characters (default ${DEFAULT_CHUNK_CHARS.toString()})`, DEFAULT_CHUNK_CHARS.toString())
     .option("--force", "Re-embed every file even if mtime hasn't changed since last index")
     .action(async (options: {

@@ -354,7 +354,7 @@ export function registerRecallCommand(program: Command, io: ProgramIO): void {
     .argument("<query>", "Free-text query to embed + match")
     .option("--limit <n>", "Top-K hits to return (default 5, cap 50)")
     .option("--source <id>", "Restrict to one store: notes | episodes | all (default all)")
-    .option("--embed-model <tag>", "Embedding model (default 'nomic-embed-text')")
+    .option("--embed-model <tag>", `Embedding model (default ${DEFAULT_EMBED_MODEL})`)
     .option("--json", "Emit a structured payload")
     .option("--expand", "Also surface notes the top results link to (1-hop [[wiki-links]]) — graph-augmented recall (GraphRAG)")
     .option("--adaptive", "Let the evidence pick how many sources to return (optimal-foraging / marginal-value stopping rule) — fewer when one source dominates, more when the field is rich — instead of a fixed --limit")

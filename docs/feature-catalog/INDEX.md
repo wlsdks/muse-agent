@@ -58,9 +58,9 @@ related: [../FEATURES.md, ../SYSTEM-MAP.md, ../../README.md]
 | B4 | 관측계 admin 명령 서버 전용 | 중간 | `cost/latency/traces/telemetry/analytics/tools/metrics/settings/mcp list/scheduler list`는 API 서버 필요·`--local` 없음 → 서버 없이 read-only 검증 불가. | 문서에 "API 서버 필요" 명시 또는 로컬 폴백 |
 | B5 | 팬텀 명령 표기 | 낮음(문서) | `jobs`→실제 `job`, `setup-local`→`setup local`, `setup-voice`→`setup voice`. | 문서 정정 |
 | B6 | `status` 로컬모델 라벨 오기 | 낮음(표시) | 로컬-온리인데 "inferred from GEMINI_API_KEY"로 표기(동작은 정상, gemma4 사용). | 표시 문구 정정 |
-| B7 | `recall --help`의 embed-model 기본 문구 stale | 낮음(문구) | **재검증 결과 행동 버그 아님.** `recall`은 `--embed-model` 생략 시 런타임에서 `DEFAULT_EMBED_MODEL`(=`nomic-embed-text-v2-moe`)로 해석한다(`commands-recall.ts:381-383`) — `ask`/`note`와 동일. 다만 `.option` **설명 문자열**만 옛 `'nomic-embed-text'`로 남아 있음(`:357`), 그리고 인덱스-모델 불일치 시 경고를 띄움(`:313-326`). 품질 저하 아님. | `:357` 설명 문자열을 v2-moe로 정정(선택) |
+| B7 | ~~`recall --help` embed-model 문구 stale~~ ✅ 수정됨 | — | recall/notes-rag/episode의 `--embed-model` help 문구를 `DEFAULT_EMBED_MODEL` 보간으로 바꿔 자가갱신; `autoconfigure` knowledge_search 임베더 기본도 `nomic-embed-text`→`nomic-embed-text-v2-moe`로 정렬(같은 파일 episodic recall과 일치). 런타임 동작은 원래도 v2-moe였음(문구/일관성 정리). | 완료 |
 
-> 위 어느 것도 **빌드/테스트/제품 동작을 깨지 않음**. B1은 본 작업서 수정(smoke green), B7은 재검증 결과 문구 문제로 강등. **실제 동작 확인이 필요한 후속은 B3·B4(specs/admin 명령의 `--local` 부재)뿐.**
+> 위 어느 것도 **빌드/테스트/제품 동작을 깨지 않음**. B1·B7은 수정 완료(smoke green / 임베더 문구·기본 정렬). **남은 후속은 B3·B4(specs/admin 명령의 `--local` 부재)뿐 — 문서 오류가 아니라 기능 개선 항목.**
 
 ## 4. 문서 드리프트 (README / FEATURES / SYSTEM-MAP)
 

@@ -626,7 +626,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     if (!parseBoolean(env.MUSE_KNOWLEDGE_SEARCH_ENABLED, false) || !notesProvider) {
       return [];
     }
-    const embedModel = env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text";
+    const embedModel = env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe";
     const tasksProvider = tasksRegistry?.primary();
     const gmailToken = env.MUSE_GMAIL_TOKEN?.trim();
     const emailSource = gmailToken ? new GmailEmailProvider(gmailToken) : undefined;

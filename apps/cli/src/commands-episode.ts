@@ -312,7 +312,7 @@ export function registerEpisodeCommands(program: Command, io: ProgramIO): void {
   episode
     .command("reindex")
     .description("Embed every episode summary into ~/.muse/episodes-index.json")
-    .option("--embed-model <tag>", "Embedding model id (default 'nomic-embed-text')", DEFAULT_EMBED_MODEL)
+    .option("--embed-model <tag>", `Embedding model id (default ${DEFAULT_EMBED_MODEL})`, DEFAULT_EMBED_MODEL)
     .option("--force", "Re-embed every entry even when an existing index could be reused")
     .option("--json", "Emit a structured summary")
     .action(async (options: { readonly embedModel?: string; readonly force?: boolean; readonly json?: boolean }) => {
