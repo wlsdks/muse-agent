@@ -4,14 +4,15 @@ import type { MuseTool } from "./index.js";
 
 /**
  * `unit_convert` — deterministic physical-unit conversion (length / mass /
- * volume / temperature). The local model knows approximate factors but rounds
- * and occasionally inverts them; a tool with EXACT factors is the grounded
- * answer ("5 mi = 8.04672 km", not "≈8 km"). Distinct from `math_eval`
- * (arithmetic over operators) and the web search tool (live data like currency).
+ * volume / temperature / speed / time duration). The local model knows
+ * approximate factors but rounds and occasionally inverts them; a tool with
+ * EXACT factors is the grounded answer ("5 mi = 8.04672 km", not "≈8 km").
+ * Distinct from `math_eval` (arithmetic over operators) and the web search
+ * tool (live data like currency).
  */
 
-// Factor to the category's base unit (metre / gram / litre). Temperature is NOT
-// here — it needs an offset, handled separately.
+// Factor to the category's base unit (metre / gram / litre / m·s⁻¹ / second).
+// Temperature is NOT here — it needs an offset, handled separately.
 const LENGTH: Record<string, number> = { m: 1, km: 1000, cm: 0.01, mm: 0.001, um: 1e-6, nm: 1e-9, mi: 1609.344, yd: 0.9144, ft: 0.3048, in: 0.0254, nmi: 1852 };
 const MASS: Record<string, number> = { g: 1, kg: 1000, mg: 0.001, t: 1_000_000, lb: 453.59237, oz: 28.349523125, st: 6350.29318 };
 const VOLUME: Record<string, number> = { l: 1, ml: 0.001, kl: 1000, gal: 3.785411784, qt: 0.946352946, pt: 0.473176473, cup: 0.2365882365, floz: 0.0295735295625, tbsp: 0.01478676478, tsp: 0.00492892159 };
