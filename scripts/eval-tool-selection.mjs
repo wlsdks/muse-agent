@@ -418,6 +418,47 @@ async function buildFindItemsScenario() {
   }
 }
 
+// remember_fact (a WRITE tool — persists a durable fact/preference about the
+// user) had NO eval coverage. The make-or-break is IrrelAcc: a fleeting/transient
+// statement ("I just had coffee", "I feel great today") must NOT fire it — a
+// spurious write pollutes long-term memory. Plus the carve vs its own "do not
+// use" neighbours (tasks = a to-do, notes = free-form note).
+async function buildRememberFactScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const stubStore = { upsertFact: () => undefined, upsertPreference: () => undefined };
+    const namespaced = [
+      mcp.createNotesMcpServer({ notesDir: "/tmp/eval-remember-notes" }),
+      mcp.createTasksMcpServer({ file: "/tmp/eval-remember-tasks.json" })
+    ].flatMap((s) => mcp.createLoopbackMcpMuseTools(s)).filter((t) => {
+      const leaf = t.definition.name.split(".").pop();
+      return leaf === "save" || leaf === "add";
+    });
+    // Mix flat + namespaced tools as production does — so the scenario can't bias
+    // the model toward inventing a namespaced `muse.facts.add` just because every
+    // neighbour is namespaced.
+    const flat = [mcp.createContactsFindTool({ contacts: () => [] }), mcp.createWeatherTool({})];
+    const instances = [mcp.createRememberFactTool({ store: stubStore }), ...flat, ...namespaced];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "내가 서울 산다고 기억해줘.", expectTool: "remember_fact", requireArgs: ["key", "value"], argIncludes: /서울|seoul/i, note: "KO 'remember I live in Seoul' → remember_fact (a durable fact about ME)" },
+      { prompt: "Remember that I prefer concise replies.", expectTool: "remember_fact", requireArgs: ["key", "value"], note: "EN durable preference → remember_fact" },
+      { prompt: "내 치과는 김 선생님이라고 기억해둬.", expectTool: "remember_fact", requireArgs: ["key", "value"], note: "KO 'remember my dentist is Dr. Kim' → remember_fact" },
+      // confusable neighbours — its own 'do NOT use for' list
+      { prompt: "우유 사기 할 일에 추가해줘.", expectTool: "muse.tasks.add", note: "KO add a to-do → tasks.add, NOT remember_fact" },
+      { prompt: "회의 메모를 노트 meeting.md에 저장해줘: 다음 분기 로드맵 논의함.", expectTool: "muse.notes.save", note: "KO save a free-form NOTE to a file → notes.save, NOT remember_fact" },
+      // IrrelAcc (the make-or-break): a fleeting/transient statement is NOT a durable fact
+      { prompt: "방금 커피 한 잔 마셨어.", expectNoTool: true, note: "KO fleeting past-tense report ('I just had coffee') → NO tool (not a durable fact)" },
+      { prompt: "오늘 기분 진짜 좋아!", expectNoTool: true, note: "KO transient mood ('I feel great today') → NO tool (not durable)" },
+      { prompt: "I'm so tired right now.", expectNoTool: true, note: "EN transient state → NO tool (NOT remember_fact)" }
+    ];
+    return { label: "remember-fact (durable fact/pref vs tasks/notes + fleeting-statement IrrelAcc)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "remember-fact", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Relationship-maintenance nudge (overdue_contacts — "who've I lost touch
 // with?") vs looking up ONE specific person (find_contact). The value is the
 // discrimination: a "who haven't I talked to in a while?" intent is a LIST of
@@ -975,6 +1016,7 @@ async function main() {
     await buildWeekAgendaScenario(),
     await buildDayRecapScenario(),
     await buildFindItemsScenario(),
+    await buildRememberFactScenario(),
     await buildOverdueScenario(),
     await buildOnThisDayScenario(),
     await buildFeedsScenario(),
