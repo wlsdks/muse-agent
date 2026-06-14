@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ CBR case-density playbook gate (arXiv:2504.06943): the embed-rank playbook drops an isolated (no semantic neighbors) + unproven + SYNTHETIC (reflected) strategy as a sparse-region low-confidence guess; grounded/manual corrections NEVER dropped (wedge), semantic cosine density, never-empty guard; fixed the origin projection seam (PlaybookEntryLike/toPlaybookStrategy) that made it + the reflected penalty inert — agent-core-cognition fire 32
+
 - ✓ dead-code @muse/autoconfigure: de-exported 2 internal-only interfaces (ContactLike/UserMemoryFactLike) in knowledge-corpus.ts — knip-clean, zero external/test refs — codebase-quality fire 64
 - ✓ cohere @muse/shared: DRY'd finiteOr (7 hand-rolled copies) → canonical @muse/shared finiteOr + deduped 4 non-hot copies (resilience/autoconfigure/api/mcp); agent-core×3 left (hot); +OUTCOME test; dups 7→4 — codebase-quality fire 63
 - ✓ non-progress debate early-stop (MAST step-repetition, arXiv:2503.13657): the muse swarm council debate loop now stops refining when a round gains no consensus (min member-support score flat/declining) instead of burning the round cap; semantic score (reuses councilMemberSupportsSemantic), additive (consensus gate unchanged), floor-safe (synthesis+RGV still run) — agent-core-cognition fire 31
