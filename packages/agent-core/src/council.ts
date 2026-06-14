@@ -231,6 +231,50 @@ export async function hasCouncilConsensusSemantic(
 }
 
 /**
+ * The panel's consensus LEVEL as a scalar: the MINIMUM member support (mean
+ * pairwise embedding cosine). This is the exact signal hasCouncilConsensusSemantic
+ * thresholds — consensus ⟺ min support ≥ agreeAt — exposed so a debate loop can
+ * track whether a refinement round actually MOVED the panel toward agreement.
+ * n ≤ 1 → 1 (a solo/empty panel trivially agrees). Fail-soft: a failed embed
+ * gives that member support 0 (councilMemberSupportsSemantic's contract), lowering
+ * the min — never throws.
+ */
+export async function councilConsensusScore(
+  utterances: readonly CouncilUtterance[],
+  embed: (text: string) => Promise<readonly number[]>
+): Promise<number> {
+  if (utterances.length <= 1) return 1;
+  const supports = await councilMemberSupportsSemantic(utterances, embed);
+  return supports.length === 0 ? 0 : Math.min(...supports);
+}
+
+/**
+ * Minimum consensus-score gain a refinement round must produce to be worth
+ * continuing. 0.01 cosine: a round that moves every member's agreement by less
+ * than this is treated as non-progress.
+ */
+export const DEFAULT_DEBATE_MIN_DELTA = 0.01;
+
+/**
+ * MAST step-repetition / no-termination-awareness guard (arXiv:2503.13657): a
+ * debate refinement round is worth continuing ONLY if it moved the panel toward
+ * consensus by at least `minDelta`. A round that left the consensus score flat or
+ * LOWER (members talking past each other / oscillating) is non-progress — the loop
+ * should stop and synthesise from what's there rather than burn the remaining round
+ * budget on a panel that isn't converging. Fail-open: a non-finite score (a
+ * measurement glitch) returns true (continue) so the guard never stops a debate on
+ * bad data — the existing round cap still bounds the loop.
+ */
+export function debateProgressed(
+  prevScore: number,
+  currScore: number,
+  minDelta: number = DEFAULT_DEBATE_MIN_DELTA
+): boolean {
+  if (!Number.isFinite(prevScore) || !Number.isFinite(currScore)) return true;
+  return currScore - prevScore >= minDelta;
+}
+
+/**
  * Consensus-outlier screen (arXiv:2503.05856 — MoA deception robustness): a peer
  * whose reasoning diverges from the panel consensus is quarantined BEFORE
  * aggregation, so a deceptive/broken/off-topic member can't steer the synthesis

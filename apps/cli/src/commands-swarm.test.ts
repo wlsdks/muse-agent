@@ -308,15 +308,18 @@ describe("muse swarm council — ReConcile consensus gate (assembled-path, no Ol
     expect(text).not.toContain("refining, round 3");
   });
 
-  it("never-converging fixtures → hard stop at cap 3", async () => {
+  it("flat never-converging fixtures → non-progress early-stop before the round cap (MAST step-repetition)", async () => {
     let callCount = 0;
     const gatherOverride: CouncilGatherOverride = async (_round) => {
       callCount += 1;
-      return [...DIVERGING]; // always diverging
+      return [...DIVERGING]; // identical every round → consensus score is FLAT
     };
     await makeProgram(gatherOverride).parseAsync(["node", "x", "swarm", "council", "--rounds", "3", "which database?"], { from: "node" });
-    expect(callCount).toBe(3); // ran all 3 rounds
+    // A round that gains no consensus is non-progress: the loop stops at round 2
+    // instead of burning round 3 on a panel that isn't converging.
+    expect(callCount).toBe(2);
     const text = out.join("");
+    expect(text).toContain("not converging");
     expect(text).not.toContain("panel agreed"); // no consensus reached
   });
 

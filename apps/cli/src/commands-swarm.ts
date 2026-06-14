@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildDebateQuestion, buildGroundingReverifyPrompt, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
+import { buildDebateQuestion, buildGroundingReverifyPrompt, councilConsensusScore, debateProgressed, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import {
@@ -455,6 +455,11 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
       // diverged (zero token overlap across scripts → Jaccard = 0 → wasted debate round).
       let finalRound = 1;
       let round = 2;
+      // Track the panel's consensus LEVEL across rounds so a refinement that gains
+      // no agreement (members oscillating / talking past each other) stops the loop
+      // instead of burning the round budget — MAST step-repetition / no-termination
+      // -awareness guard (arXiv:2503.13657).
+      let prevScore = await councilConsensusScore(utterances, embedFn);
       while (round <= rounds && utterances.length > 1) {
         const agreed = await hasCouncilConsensusSemantic(utterances, embedFn);
         if (agreed) break;
@@ -462,6 +467,12 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         const prior = utterances;
         utterances = await gather(round, question, prior);
         finalRound = round;
+        const currScore = await councilConsensusScore(utterances, embedFn);
+        if (!debateProgressed(prevScore, currScore)) {
+          io.stdout(`panel not converging (round ${round.toString()} gained no consensus) — stopping\n`);
+          break;
+        }
+        prevScore = currScore;
         round += 1;
       }
       if (utterances.length > 1 && await hasCouncilConsensusSemantic(utterances, embedFn)) {
