@@ -210,7 +210,7 @@ export function createContactsRemoveTool(deps: ContactsRemoveToolDeps): MuseTool
   return {
     definition: {
       description:
-        "Remove a person from the user's contacts by name or alias. Use when the user asks to delete / forget a contact. An ambiguous name returns the candidate names (never removes a guess); an unknown name returns removed:false. A local store write.",
+        "Remove a person from the user's contacts by name or alias. Use ONLY when the user gives an EXPLICIT command to delete a contact entry ('delete Bob from my contacts', 'Bob 연락처 삭제해줘', 'remove Jane'). Do NOT use for a statement about a RELATIONSHIP or feelings ('I'm not friends with Bob anymore' / '이제 Bob이랑 안 친해', 'we had a fight' / '싸웠어', 'we broke up') — that is NOT a request to delete their contact entry, and deleting is irreversible. An ambiguous name returns the candidate names (never removes a guess); an unknown name returns removed:false. A local store write.",
       domain: "messaging",
       inputSchema: {
         additionalProperties: false,
