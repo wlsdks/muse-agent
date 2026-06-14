@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { performWebActionWithApproval, type WebActionApprovalGate } from "./web-action.js";
+import { performWebActionWithApproval, type WebActionApprovalGate, type WebActionRequest } from "./web-action.js";
 import { readActionLog } from "./personal-action-log-store.js";
 
 // Records every HTTP call so a test can assert the action fired (or
@@ -38,6 +38,18 @@ describe("performWebActionWithApproval — outbound-safety contract", () => {
     expect(outcome).toEqual({ performed: true, status: 201 });
     expect(calls).toEqual([{ body: JSON.stringify({ time: "19:00" }), method: "POST", url: "https://book.test/reserve" }]);
     expect((await readActionLog(actionLogFile))[0]).toMatchObject({ result: "performed" });
+  });
+
+  it("draft-first: the approval gate is shown the EXACT action (summary + request) BEFORE anything is sent (outbound-safety rule 1)", async () => {
+    const { fetchImpl } = recordingFetch(200);
+    let sawAction: { summary: string; request: WebActionRequest } | undefined;
+    const capturingGate: WebActionApprovalGate = (action) => { sawAction = action; return { approved: true }; };
+    await performWebActionWithApproval({
+      actionLogFile: logFile(), approvalGate: capturingGate, fetchImpl, request, summary: "Book a table, 7pm", userId: "stark"
+    });
+    // The user confirms the precise content the agent will transmit — never a generic prompt.
+    expect(sawAction?.summary).toBe("Book a table, 7pm");
+    expect(sawAction?.request).toEqual(request);
   });
 
   it("server rejection (non-2xx): reports failed, NOT a false `performed` success, logged failed", async () => {
