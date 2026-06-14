@@ -300,3 +300,12 @@ ratchet: desktop swift tests 62/62 (+1) · testFiles 993 · fabrication 0 · sel
 - **왜**: 음성 strip이 시스템 나머지의 citation 인식과 동일 형태를 인식해야 함(일관성). 비-투기적 — agent-core 자체 regex가 `giu`. desktop(최저 9→10) 균형.
 - **리뷰지점**: over-strip 없음(`\[from…\]` 대괄호 필수 → 대문자도 bracketed citation 토큰만 새로 매칭, 평문 "from"은 무영향). 📎 영수증 strip 무변. 소문자 기존 테스트 통과. SPEECH 전용(speechText만 변경, grounding GATE는 agent-core TS라 무접촉 — fabrication=0 무관).
 - **리스크**: 없음(regex option 1개 + 신규 테스트; 독립 Opus judge가 revert로 RED-before 실증·agent-core 4곳 `i`플래그 확인(갭 실재)·over-strip 없음·speech-only(게이트 무접촉) 검증 후 PASS, swift 62/62·self-eval exit 0).
+
+## fire 34 · 2026-06-14 · skill v1.14.0 · 6fab617e
+meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=tasks-client-side-search · verdict=PASS · firesSinceDrill=8
+ratchet: web unit 40/40 (+4) · tasks e2e 1/1 (new) · testFiles 995 · fabrication 0 · self-eval exit 0 · 표면 균형 web13·desktop10·cli11
+
+- **무엇**: 웹 Tasks 뷰가 status 필터(open/done/all)만 있고 텍스트 검색이 없었다 — CLI `tasks list --search`·Notes 웹 뷰는 검색 있음. 순수 `filterTasksByQuery`(title+notes 대소문자 무시 부분일치, 빈 쿼리→전체) + Card action에 검색 박스 추가, 로드된 리스트를 클라이언트 필터(추가 라운드트립 없음), status 필터와 합성.
+- **왜**: CLI↔web 기능 파리티 + 실 가치(많은 태스크 중 찾기). tasks.search 키 en/ko 추가(파리티 가드가 양 로캘 강제).
+- **리뷰지점**: 단위테스트가 filter OUTCOME(매치 id) 채점; e2e가 검색박스→필터 배선 end-to-end 검증(judge가 list=filterTasksByQuery 줄 revert→e2e RED으로 비-vacuous 입증). count는 서버 total 유지(리스트만 필터 — Notes 선례, 무해). aria-label + role=searchbox. add/complete/delete/status 무변.
+- **리스크**: 없음(순수 클라 표시 필터, network/grounding 무접촉; 독립 Opus judge가 RED-before(HEAD grep=0)·비-vacuous e2e·correctness(빈→전체·notes·undefined 가드)·합성·무회귀 검증 후 PASS, web 40/40·tasks e2e 1/1·tsc clean).

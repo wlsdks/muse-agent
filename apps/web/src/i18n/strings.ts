@@ -66,6 +66,7 @@ const en = {
 
   "tasks.title": "Tasks",
   "tasks.placeholder": "Add a task and press Enter…",
+  "tasks.search": "Filter tasks…",
   "tasks.yourTasks": "Your tasks",
   "tasks.complete": "Complete",
 
@@ -246,6 +247,7 @@ const ko: Strings = {
 
   "tasks.title": "할 일",
   "tasks.placeholder": "할 일을 입력하고 Enter…",
+  "tasks.search": "할 일 검색…",
   "tasks.yourTasks": "내 할 일",
   "tasks.complete": "완료",
 

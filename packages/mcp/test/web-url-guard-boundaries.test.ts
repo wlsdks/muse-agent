@@ -80,6 +80,17 @@ describe("isPrivateIPv6 range boundaries", () => {
     expect(isPrivateIPv6("::808:808")).toBe(false); // ::8.8.8.8 (public IPv4-compatible)
     expect(isPrivateIPv6("2001:db8::7f00:1")).toBe(false); // public GUA whose low bits look like 127.0.0.1
   });
+
+  it("flags the NAT64 well-known prefix (64:ff9b::/96) embedding a private IPv4 — reachable through a NAT64 gateway", () => {
+    // `new URL("http://[64:ff9b::169.254.169.254]/")` → host `64:ff9b::a9fe:a9fe`.
+    // NAT64 (RFC 6052) translates the embedded IPv4, so `64:ff9b::<private>` reaches
+    // that private host through a NAT64 gateway — the embedded IPv4 must be classified.
+    expect(isPrivateIPv6("64:ff9b::7f00:1")).toBe(true); // NAT64 of 127.0.0.1 loopback
+    expect(isPrivateIPv6("64:ff9b::a9fe:a9fe")).toBe(true); // NAT64 of 169.254.169.254 metadata
+    expect(isPrivateIPv6("64:ff9b::a00:1")).toBe(true); // NAT64 of 10.0.0.1 RFC-1918
+    // NAT64 of a genuinely public IPv4 stays public (legitimate NAT64 destination)
+    expect(isPrivateIPv6("64:ff9b::808:808")).toBe(false); // NAT64 of 8.8.8.8
+  });
 });
 
 describe("isPrivateAddress dispatch", () => {

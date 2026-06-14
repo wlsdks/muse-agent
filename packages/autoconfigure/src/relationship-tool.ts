@@ -42,9 +42,21 @@ export function interactionsFromEvents(
     const needles = [contact.name, ...(contact.aliases ?? [])]
       .map((alias) => alias.trim().toLowerCase())
       .filter((alias) => alias.length >= 2);
+    // An ASCII name matches only as a WHOLE word ("ann" must not hit "planning" /
+    // "Samsung" — a substring false-positive injects a spurious interaction and can
+    // DROP a genuinely-overdue contact). A name with non-ASCII chars (Korean etc.)
+    // keeps a substring test, because a particle attaches directly to the name
+    // ("민지랑") with no separator and a word-boundary regex would miss it. Mirrors
+    // promptHasHint. Precompiled per contact. `event.text` is already lowercased.
+    const matchers = needles.map((needle) => {
+      if (!/^[\p{ASCII}]+$/u.test(needle)) return (text: string): boolean => text.includes(needle);
+      const escaped = needle.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+      const re = new RegExp(`(?<![a-z0-9])${escaped}(?![a-z0-9])`, "u");
+      return (text: string): boolean => re.test(text);
+    });
     return {
       name: contact.name,
-      timestampsMs: haystacks.filter((event) => needles.some((needle) => event.text.includes(needle))).map((event) => event.ms)
+      timestampsMs: haystacks.filter((event) => matchers.some((match) => match(event.text))).map((event) => event.ms)
     };
   });
 }
