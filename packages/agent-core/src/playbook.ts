@@ -698,6 +698,16 @@ function rankEligible(
   return [...selected].sort(byScoreDescThenIndexAsc).map((s) => s.strategy);
 }
 
+/**
+ * Drop strategies whose text is empty/whitespace before ranking — a blank
+ * strategy is noise that shouldn't occupy an injected slot.
+ */
+export function dropEmptyTextStrategies(
+  strategies: readonly PlaybookStrategy[]
+): readonly PlaybookStrategy[] {
+  return strategies.filter((s) => s.text.trim().length > 0);
+}
+
 export function rankPlaybookStrategies(
   strategies: readonly PlaybookStrategy[],
   queryText: string,
@@ -705,7 +715,8 @@ export function rankPlaybookStrategies(
   nowMs?: number
 ): readonly PlaybookStrategy[] {
   const query = rankTokens(queryText);
-  return rankEligible(strategies, options, (s) => relevanceScore(s, query), (s) => rankingUtility(s, nowMs), nowMs);
+  const cleaned = dropEmptyTextStrategies(strategies);
+  return rankEligible(cleaned, options, (s) => relevanceScore(s, query), (s) => rankingUtility(s, nowMs), nowMs);
 }
 
 /**
