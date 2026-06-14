@@ -40,20 +40,43 @@ export function isPrivateIPv4(ip: string): boolean {
   return false;
 }
 
+/** Expand an IPv6 textual form (with `::` compression) into its 8 hextets, or
+ *  `undefined` if it isn't a well-formed all-hex address. A trailing dotted-IPv4
+ *  (`::ffff:1.2.3.4`) returns `undefined` — that form has its own dotted match. */
+function expandIPv6Hextets(lower: string): number[] | undefined {
+  if (!/^[0-9a-f:]+$/u.test(lower) || (lower.match(/::/gu) ?? []).length > 1) return undefined;
+  const parse = (s: string): number[] => (s === "" ? [] : s.split(":").map((g) => Number.parseInt(g, 16)));
+  let groups: number[];
+  if (lower.includes("::")) {
+    const [left, right] = lower.split("::");
+    const head = parse(left as string);
+    const tail = parse(right as string);
+    const fill = 8 - head.length - tail.length;
+    if (fill < 1) return undefined;
+    groups = [...head, ...new Array<number>(fill).fill(0), ...tail];
+  } else {
+    groups = parse(lower);
+  }
+  if (groups.length !== 8 || groups.some((g) => !Number.isInteger(g) || g < 0 || g > 0xffff)) return undefined;
+  return groups;
+}
+
 export function isPrivateIPv6(ip: string): boolean {
   const lower = ip.toLowerCase().replace(/^\[|\]$/gu, "");
   if (lower === "::1" || lower === "::") return true;
   const mapped = /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/u.exec(lower);
   if (mapped) return isPrivateIPv4(mapped[1] as string);
-  // WHATWG `new URL()` compresses an IPv4-mapped IPv6 host to hex (`::ffff:127.0.0.1`
-  // → `::ffff:7f00:1`), so the dotted match above never fires for a real URL.
-  // Decode the two hex groups back to octets and classify — else loopback /
-  // cloud-metadata / RFC-1918 slip through this guard as "public" (SSRF).
-  const hexMapped = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/u.exec(lower);
-  if (hexMapped) {
-    const hi = Number.parseInt(hexMapped[1] as string, 16);
-    const lo = Number.parseInt(hexMapped[2] as string, 16);
-    return isPrivateIPv4(`${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`);
+  // Any IPv4-EMBEDDING form — IPv4-mapped (`::ffff:7f00:1`), IPv4-compatible
+  // (`::7f00:1`, the deprecated `::127.0.0.1` Node compresses to hex), and SIIT
+  // (`::ffff:0:7f00:1`) — carries the IPv4 in its low 32 bits with the upper 96
+  // bits all 0x0000/0xffff. WHATWG `new URL()` emits exactly these for a bracketed
+  // host, so loopback / cloud-metadata (`::a9fe:a9fe`) / RFC-1918 would otherwise
+  // slip through as "public". Decode the embedded IPv4 and classify it.
+  const hextets = expandIPv6Hextets(lower);
+  if (hextets && hextets.slice(0, 6).every((h) => h === 0 || h === 0xffff)) {
+    const hi = hextets[6] as number;
+    const lo = hextets[7] as number;
+    if (isPrivateIPv4(`${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`)) return true;
   }
   if (/^fe[89ab][0-9a-f]:/u.test(lower)) return true;
   if (/^f[cd][0-9a-f]{2}:/u.test(lower)) return true;

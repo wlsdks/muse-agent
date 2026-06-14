@@ -66,6 +66,20 @@ describe("isPrivateIPv6 range boundaries", () => {
     expect(isPrivateIPv6("::1")).toBe(true);
     expect(isPrivateIPv6("2001:4860:4860::8888")).toBe(false);
   });
+
+  it("flags the DEPRECATED IPv4-compatible (::a.b.c.d → ::HHHH:HHHH) and SIIT (::ffff:0:…) embeddings", () => {
+    // `new URL("http://[::127.0.0.1]/")` → host `::7f00:1`, `[::169.254.169.254]`
+    // → `::a9fe:a9fe`, `[::ffff:0:127.0.0.1]` → `::ffff:0:7f00:1`. The upper bits
+    // are all 0x0000 / 0xffff and the low 32 bits embed a private IPv4 — they
+    // MUST be private (cloud-metadata reachable via the deprecated forms).
+    expect(isPrivateIPv6("::7f00:1")).toBe(true); // ::127.0.0.1 loopback (IPv4-compatible)
+    expect(isPrivateIPv6("::a9fe:a9fe")).toBe(true); // ::169.254.169.254 cloud metadata
+    expect(isPrivateIPv6("::ffff:0:7f00:1")).toBe(true); // SIIT-form 127.0.0.1
+    expect(isPrivateIPv6("::a00:1")).toBe(true); // ::10.0.0.1 RFC-1918
+    // a genuinely public embedded/GUA address must NOT be over-blocked
+    expect(isPrivateIPv6("::808:808")).toBe(false); // ::8.8.8.8 (public IPv4-compatible)
+    expect(isPrivateIPv6("2001:db8::7f00:1")).toBe(false); // public GUA whose low bits look like 127.0.0.1
+  });
 });
 
 describe("isPrivateAddress dispatch", () => {
@@ -108,6 +122,15 @@ describe("assertPublicHttpUrlSync — composed SSRF gate (no DNS)", () => {
     expect(assertPublicHttpUrlSync("http://[::ffff:127.0.0.1]/admin").ok).toBe(false);
     expect(assertPublicHttpUrlSync("http://[::ffff:169.254.169.254]/latest/meta-data/").ok).toBe(false);
     expect(assertPublicHttpUrlSync("http://[::ffff:10.0.0.1]/internal").ok).toBe(false);
+  });
+  it("rejects the DEPRECATED IPv4-compatible IPv6 forms (::a.b.c.d and SIIT) — metadata reachable via them", () => {
+    // new URL() normalizes [::127.0.0.1] → [::7f00:1], [::169.254.169.254] →
+    // [::a9fe:a9fe], [::ffff:0:127.0.0.1] → [::ffff:0:7f00:1]. Pre-fix ALLOWED.
+    expect(assertPublicHttpUrlSync("http://[::127.0.0.1]/admin").ok).toBe(false);
+    expect(assertPublicHttpUrlSync("http://[::169.254.169.254]/latest/meta-data/").ok).toBe(false);
+    expect(assertPublicHttpUrlSync("http://[::ffff:0:127.0.0.1]/internal").ok).toBe(false);
+    // a public IPv6 with low bits resembling a private IPv4 is still allowed
+    expect(assertPublicHttpUrlSync("https://[2001:db8::7f00:1]/").ok).toBe(true);
   });
   it("passes a public https URL and returns the parsed URL", () => {
     const r = assertPublicHttpUrlSync("https://example.com/path");
