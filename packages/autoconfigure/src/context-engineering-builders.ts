@@ -9,7 +9,6 @@ import {
   createCachingEmbedder,
   selectPlanExemplarByRelevance,
   type ActiveContextProvider,
-  type Awaitable,
   type BackgroundReviewInput,
   type EpisodicRecallProvider,
   type HookStage,
