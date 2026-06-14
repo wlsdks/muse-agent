@@ -24,6 +24,17 @@ describe("rankEpisodeHits", () => {
     ];
     expect(rankEpisodeHits([1, 0, 0], eps, 1, NOW)[0]!.id).toBe("new");
   });
+  it("gives an importance bump to a higher-importance episode at equal relevance", () => {
+    // Identical cosine (both [1,0,0]) and no timestamps, so only the additive
+    // importance component can reorder them. The high-importance episode is placed
+    // SECOND in input, so a stable sort would keep it second WITHOUT the bump —
+    // its rise to the top proves the importance term is live.
+    const eps = [
+      { id: "trivial", summary: "x", embedding: [1, 0, 0], importance: 1 },
+      { id: "important", summary: "x", embedding: [1, 0, 0], importance: 10 }
+    ];
+    expect(rankEpisodeHits([1, 0, 0], eps, 1, NOW)[0]!.id).toBe("important");
+  });
 });
 
 describe("allUserMemoryFacts", () => {
