@@ -368,10 +368,7 @@ export {
 // ---------------------------------------------------------------------------
 import { sendAgentError } from "./server-agent-error.js";
 
-export {
-  sendAgentError,
-  unwrapErrorMessage
-} from "./server-agent-error.js";
+export { unwrapErrorMessage } from "./server-agent-error.js";
 
 // ---------------------------------------------------------------------------
 // Other parsers
@@ -454,7 +451,7 @@ export function parseAuthCredentials(
   };
 }
 
-export function invalid(code: string, message: string): ParseResult<never> {
+function invalid(code: string, message: string): ParseResult<never> {
   return {
     error: { code, message },
     ok: false
@@ -469,7 +466,6 @@ export function invalid(code: string, message: string): ParseResult<never> {
 // ---------------------------------------------------------------------------
 import {
   isJsonObject,
-  isJsonValue,
   isRecord,
   optionalBoolean,
   optionalNullableString,
@@ -480,15 +476,8 @@ import {
 } from "./server-input-utils.js";
 
 export {
-  isJsonObject,
-  isJsonValue,
   isRecord,
-  optionalBoolean,
-  optionalNullableString,
-  optionalString,
-  optionalStringArray,
-  parseResponseLocales,
-  parseRuntimeSettingType
+  parseResponseLocales
 };
 
 // ---------------------------------------------------------------------------
@@ -507,7 +496,6 @@ export {
   applyCompatWebContractHeaders,
   applyCorsHeaders,
   createOpenApiDocument,
-  currentCompatApiVersion,
   headerValue,
   isPublicRequest,
   routeMethods,
