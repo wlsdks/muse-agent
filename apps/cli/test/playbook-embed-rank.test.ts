@@ -32,6 +32,42 @@ describe("toPlaybookStrategy", () => {
     expect("createdAt" in s).toBe(false);
     expect("reward" in s).toBe(false);
   });
+
+  it("carries origin through the projection (without it the CBR density gate is inert)", () => {
+    expect(toPlaybookStrategy({ text: "x", origin: "reflected" }).origin).toBe("reflected");
+    expect("origin" in toPlaybookStrategy({ text: "x" })).toBe(false);
+  });
+});
+
+// CBR case-density gate (arXiv:2504.06943) reaches production through THIS
+// projection: a raw store entry carrying origin:"reflected" that is isolated +
+// unproven must be dropped. This drives the REAL seam (toPlaybookStrategy), not a
+// hand-built PlaybookStrategy — the test that proves origin survives end-to-end.
+describe("rankPlaybookEntriesByRelevance — CBR density gate through the real projection", () => {
+  const VEC = new Map<string, readonly number[]>([
+    ["q", [1, 0, 0, 0]],
+    ["email before noon", [1, 0, 0, 0]],
+    ["email under 4 lines", [0.97, 0.24, 0, 0]],
+    ["email cc manager", [0.95, 0.31, 0, 0]],
+    ["book cheapest flight", [0, 0, 1, 0]], // isolated reflected unproven
+    ["prefers tea not coffee", [0, 0, 0, 1]] // isolated grounded — must survive
+  ]);
+  const embed = (t: string): Promise<readonly number[]> => Promise.resolve(VEC.get(t) ?? [0, 0, 0, 0]);
+
+  it("drops an isolated reflected unproven store entry; keeps grounded + clustered", async () => {
+    const entries: PlaybookEntryLike[] = [
+      { text: "email before noon", origin: "reflected", reward: 0 },
+      { text: "email under 4 lines", origin: "reflected", reward: 0 },
+      { text: "email cc manager", origin: "reflected", reward: 0 },
+      { text: "book cheapest flight", origin: "reflected", reward: 0 },
+      { text: "prefers tea not coffee", origin: "grounded", reward: 0 }
+    ];
+    const ranked = await rankPlaybookEntriesByRelevance(entries, "q", embed, 10, NOW);
+    const texts = ranked.map((s) => s.text);
+    expect(texts).not.toContain("book cheapest flight"); // gated
+    expect(texts).toContain("prefers tea not coffee");   // grounded kept
+    expect(texts).toContain("email before noon");        // clustered kept
+  });
 });
 
 describe("rankPlaybookEntriesByRelevance — D-UCB recency on the embed-rank path (arXiv:0805.3415)", () => {

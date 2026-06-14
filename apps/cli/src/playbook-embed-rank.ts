@@ -10,6 +10,7 @@ export interface PlaybookEntryLike {
   readonly tag?: string;
   readonly reward?: number;
   readonly probation?: boolean;
+  readonly origin?: string;
   readonly reinforcements?: number;
   readonly decays?: number;
   readonly lastReinforcedAt?: string;
@@ -22,6 +23,10 @@ export function toPlaybookStrategy(entry: PlaybookEntryLike): PlaybookStrategy {
     ...(entry.tag ? { tag: entry.tag } : {}),
     ...(typeof entry.reward === "number" ? { reward: entry.reward } : {}),
     ...(entry.probation ? { probation: true } : {}),
+    // origin must survive the projection — the CBR density gate (and the reflected
+    // ranking penalty) key on it; dropping it here makes both inert (same class as
+    // the lastReinforcedAt anchor below).
+    ...(entry.origin ? { origin: entry.origin } : {}),
     ...(typeof entry.reinforcements === "number" ? { reinforcements: entry.reinforcements } : {}),
     ...(typeof entry.decays === "number" ? { decays: entry.decays } : {}),
     ...(entry.lastReinforcedAt ? { lastReinforcedAt: entry.lastReinforcedAt } : {}),

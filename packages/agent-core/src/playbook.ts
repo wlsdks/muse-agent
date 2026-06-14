@@ -709,6 +709,49 @@ export function rankPlaybookStrategies(
 }
 
 /**
+ * CBR case-density confidence threshold (arXiv:2504.06943): two strategies whose
+ * embeddings are at least this similar sit in the same "case region" and
+ * corroborate each other. 0.6 = the conservative agreeing-cosine floor (a real
+ * neighbor, not an incidental overlap).
+ */
+export const PLAYBOOK_SUPPORT_DENSITY_COSINE = 0.6;
+
+/**
+ * Count how many OTHER strategy vectors sit in the same semantic region as the
+ * target (cosine ≥ threshold) — the CBR support density (arXiv:2504.06943): a
+ * dense neighborhood signals a corroborated, high-confidence region; zero
+ * neighbors a sparse, low-confidence one. Semantic (cosine), not lexical — a
+ * paraphrased sibling still corroborates. Fail-soft: empty target → 0.
+ */
+export function strategySupportDensity(
+  targetVec: readonly number[],
+  otherVecs: readonly (readonly number[])[],
+  threshold = PLAYBOOK_SUPPORT_DENSITY_COSINE
+): number {
+  if (targetVec.length === 0) return 0;
+  let neighbors = 0;
+  for (const v of otherVecs) {
+    if (v.length > 0 && cosineSimilarity(targetVec, v) >= threshold) neighbors += 1;
+  }
+  return neighbors;
+}
+
+/**
+ * CBR sparse-region gate (arXiv:2504.06943): an ISOLATED, UNPROVEN, SYNTHETIC
+ * (reflected) strategy is a low-confidence guess — drop it from injection. The
+ * gate fires ONLY on `origin:"reflected"` (an inferred case): a grounded/manual
+ * correction is the user's RECORDED lesson and is never dropped for being novel
+ * (the cited-recall wedge stays intact). "Unproven" = effectiveStrategyReward ≤ 0
+ * (never reinforced or net-negative); a reflected strategy that earned positive
+ * outcome evidence, or that has any same-region neighbor, is kept.
+ */
+export function isLowSupportStrategy(strategy: PlaybookStrategy, neighborCount: number): boolean {
+  if (strategy.origin !== "reflected") return false;
+  if (neighborCount > 0) return false;
+  return effectiveStrategyReward(strategy) <= 0;
+}
+
+/**
  * Embedding-ranked variant of `rankPlaybookStrategies`: blends cosine(query,
  * strategy) into the score so a strategy the user phrased DIFFERENTLY from the
  * current query still surfaces — lexical token-overlap misses a paraphrase, but
@@ -734,19 +777,43 @@ export async function rankPlaybookStrategiesByRelevance(
     queryVec = undefined;
   }
   const cosineByText = new Map<string, number>();
+  const vecByText = new Map<string, readonly number[]>();
   if (queryVec && queryVec.length > 0) {
     for (const strategy of strategies.filter((s) => isInjectableStrategy(s) && !isStaleStrategy(s, nowMs))) {
       if (cosineByText.has(strategy.text)) {
         continue;
       }
       try {
-        cosineByText.set(strategy.text, cosineSimilarity(queryVec, await embed(strategy.text)));
+        const strategyVec = await embed(strategy.text);
+        vecByText.set(strategy.text, strategyVec);
+        cosineByText.set(strategy.text, cosineSimilarity(queryVec, strategyVec));
       } catch {
         // leave unset → this strategy is scored on lexical overlap + reward only
       }
     }
   }
-  return rankEligible(strategies, options, (s) => relevanceScore(s, query, cosineByText.get(s.text)), (s) => rankingUtility(s, nowMs), nowMs);
+  // CBR case-density gate (arXiv:2504.06943): drop an isolated, unproven, reflected
+  // (synthetic) strategy — a sparse-region low-confidence guess. Never a grounded
+  // correction (isLowSupportStrategy guards origin), and never when no embedding was
+  // available for it (lexical fallback), and never if it would empty the survivor set.
+  let gated = strategies;
+  if (vecByText.size > 0) {
+    const kept = strategies.filter((s) => {
+      const targetVec = vecByText.get(s.text);
+      if (!targetVec) return true;
+      const others: (readonly number[])[] = [];
+      for (const o of strategies) {
+        if (o === s) continue;
+        const ov = vecByText.get(o.text);
+        if (ov) others.push(ov);
+      }
+      return !isLowSupportStrategy(s, strategySupportDensity(targetVec, others));
+    });
+    if (kept.length > 0 && kept.length < strategies.length) {
+      gated = kept;
+    }
+  }
+  return rankEligible(gated, options, (s) => relevanceScore(s, query, cosineByText.get(s.text)), (s) => rankingUtility(s, nowMs), nowMs);
 }
 
 function latestUserText(messages: readonly { readonly role: string; readonly content: string }[]): string {
