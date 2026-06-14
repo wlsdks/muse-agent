@@ -22,6 +22,15 @@ describe("formatContactBirthday", () => {
     expect(formatContactBirthday(undefined)).toBeUndefined();
     expect(formatContactBirthday("99-99")).toBeUndefined();
   });
+  it("rejects an out-of-range month/day at the LOWER bound (no garbage ' 15' / 'March 0' birthday)", () => {
+    // "99-99" exercises the UPPER bound (month>12, day>31); these hit the LOWER
+    // guard (month<1, day<1). Without it, month 00 would index BIRTHDAY_MONTHS[-1]
+    // → a blank month (" 15"), and day 00 → "March 0" — a garbage date rendered
+    // into the grounding block. The guard drops them to undefined (no fabricated date).
+    expect(formatContactBirthday("00-15")).toBeUndefined();
+    expect(formatContactBirthday("2026-00-15")).toBeUndefined();
+    expect(formatContactBirthday("03-00")).toBeUndefined();
+  });
 });
 
 describe("contactGroundingEvidence", () => {
