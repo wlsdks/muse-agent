@@ -390,3 +390,12 @@ ratchet: web unit 44/44 · reminders e2e 1/1 (new) · testFiles 1008 · fabricat
 - **왜**: 드릴은 verifier가 "통과하는 RED→GREEN이지만 확립 불변식을 약화"하는 슬라이스를 잡는지 검증(fire 26 tautology·35 ignored-option과 다른 결). 실 fix는 모든 core 폼 라벨 a11y 계약 완성(Calendar·Autonomy·Messaging·Reminders).
 - **리뷰지점**: 드릴 판정이 deep(git 이력·CLI 일관성·e2e blindspot). 실 fix는 getByLabel 연결로만 resolve(judge가 stash-revert로 RED 입증), id 고유·htmlFor 정확·무이중라벨, list/snooze/delete/canAdd 무변. 신규 e2e가 POST body까지 단언(비-vacuous).
 - **리스크**: 없음(드릴 verifier FAIL 확인+롤백 완료; 실 fix는 2 label/input쌍 + 신규 e2e, 순수 presentational; 독립 Opus judge가 RED-before·비-vacuous·무회귀 검증 후 PASS, web 44/44·reminders e2e 1/1).
+
+## fire 44 · 2026-06-14 · skill v1.14.0 · 1b4044a2
+meta: surface=desktop · value-class=refactor · pkg=apps/desktop(MuseDesktopCore) · kind=hex-parser-extraction · verdict=PASS · firesSinceDrill=1
+ratchet: desktop swift tests 69/69 (+7) · testFiles 1009 · fabrication 0 · self-eval exit 0 · 표면 균형 web19·desktop11·cli14
+
+- **무엇**: 스프라이트 렌더러의 hex→color 파스가 AppKit `HexColor.parse`(NSColor)에만 있고 100% 미테스트였다(3/6/8-digit·invalid·wrong-length·alpha-zero 엣지 보유). 순수 `parseHexColor→RGBA?`를 MuseDesktopCore로 추출, AppKit은 위임(a==0 skip 적용, 모든 입력 observably 동일) + 신규 HexColorTests 7개.
+- **왜**: 렌더러 hex 로직이 헤드리스 테스트 불가였음. desktop(최저 표면 10→11) 균형 + 웹 과집중 교정. 순수 파서는 `#00000000`을 VALID(a=0)로 — validity와 렌더러 skip 분리(미래 palette-hex 검증 가드의 토대, fire 29 보완).
+- **리뷰지점**: AppKit `HexColor.parse` behavior-preserving(judge가 모든 입력 클래스 walk + a==0 old `if a==0 return nil`≡new `c.a != 0` 가드 확인). 순수 파서 math 동일(shift/mask/divisor). SpriteRenderer/CharacterView 호출부 시그니처 무변. judge가 /255→/256 mutation으로 비-vacuous 입증.
+- **리스크**: 없음(Core 신규 파일 + AppKit 위임 + 신규 테스트; 순수 Swift 추출, TS/agent-core/local-only 무접촉; 독립 Opus judge가 RED-before·mutation-test·behavior-preserving(a==0 포함)·무회귀 검증 후 PASS, swift 69/69).
