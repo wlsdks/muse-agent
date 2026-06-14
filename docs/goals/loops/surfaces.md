@@ -372,3 +372,12 @@ ratchet: cli tests 2663 (+4) · testFiles 1005 · fabrication 0 · self-eval exi
 - **왜**: cross-command 검증 일관성 + 데이터-무결성(Invalid-Date 방지). cli 표면(웹 과집중 의식적 교정). reject-before-scan으로 나쁜 입력에 부수효과 0.
 - **리뷰지점**: bounds 정확(24/25/-1/1.5/abc 거부, 0/23/9 수용; NaN·분수 Number.isInteger로 거부). undefined→검증 스킵→기본(10/3) 무변. 검증된 숫자 전달(재-Number 안 함)=valid 입력 동등. 파일 기존 --status 패턴과 동형. list/cancel/snooze 무변.
 - **리스크**: 없음(scan action 검증 2블록 + 신규 4 테스트; 순수 입력 검증, 부수효과 없음; 독립 Opus judge가 source-revert로 3 reject-test load-bearing RED 입증·bounds·무회귀 검증 후 PASS, cli 2663/2663·self-eval exit 0).
+
+## fire 42 · 2026-06-14 · skill v1.14.0 · 8b291c24
+meta: surface=web · value-class=wiring · pkg=@muse/web · kind=a11y-form-label-association · verdict=PASS · firesSinceDrill=7
+ratchet: web unit 44/44 · messaging e2e 1/1 · testFiles 1007 · fabrication 0 · self-eval exit 0 · 표면 균형 web18·desktop10·cli14
+
+- **무엇**: 웹 Messaging compose 폼(outbound/draft-first 표면)이 가시 To/Message 라벨을 input/textarea와 연결 안 함(htmlFor/id 부재, WCAG 1.3.1) → SR가 수신자/메시지 필드 이름 못 읽음. fire 36(Calendar)·37(Autonomy) 동일 패턴, label↔control 연결(msg-to/msg-message).
+- **왜**: outbound 표면의 폼 접근성 — 수신자/메시지 라벨이 SR에 announce되어야 함. fire 36/37이 시작한 폼-라벨 계약을 최고-stakes 표면으로 확장.
+- **리뷰지점**: getByLabel은 프로그래매틱 연결로만 resolve(judge가 source-revert로 RED 입증). getByLabel("Message")가 TEXTAREA resolve(label[for=msg-message]→textarea). id 고유·htmlFor 정확·무이중라벨. **draft-first 게이트 무변**(canReview·confirm panel·sendCount===0 유지 — outbound 약화 없음). inbox/provider-select 무변.
+- **리스크**: 없음(2 label/control쌍 + e2e; 순수 presentational a11y, onChange setSent 무변; 독립 Opus judge가 worktree서 revert→RED·textarea resolve·outbound 게이트 무변(sendCount 0→1 흐름 유지)·무회귀 검증 후 PASS, web 44/44·messaging e2e 1/1).
