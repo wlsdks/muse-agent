@@ -43,6 +43,14 @@ describe("rewriteWikiLinkReferences", () => {
     expect(rewriteWikiLinkReferences("[[a]] [[b]]", "z", "y")).toEqual({ body: "[[a]] [[b]]", count: 0 });
     expect(rewriteWikiLinkReferences("[[a]]", "  ", "y").count).toBe(0);
   });
+
+  it("rewrites an extension-qualified [[target.md]] reference (normalized via noteLinkKey)", () => {
+    // renameNoteWithLinkRewrite passes oldTarget basename-stripped (no .md), so a
+    // [[a.md]] backlink must still be rewritten on rename — else it silently orphans.
+    const { body: out, count } = rewriteWikiLinkReferences("see [[a.md]] and [[a]]", "a", "a-renamed");
+    expect(count).toBe(2);
+    expect(out).toBe("see [[a-renamed]] and [[a-renamed]]");
+  });
 });
 
 describe("extractWikiLinks", () => {

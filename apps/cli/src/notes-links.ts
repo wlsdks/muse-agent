@@ -104,7 +104,11 @@ export function extractWikiLinks(body: string): string[] {
  * `muse notes rename`, so a renamed note never silently orphans its backlinks.
  */
 export function rewriteWikiLinkReferences(body: string, oldTarget: string, newTarget: string): { readonly body: string; readonly count: number } {
-  const oldKey = oldTarget.trim().toLowerCase();
+  // Match by noteLinkKey so an extension-qualified [[a.md]] link is rewritten
+  // when renaming "a" (renameNoteWithLinkRewrite passes the basename-stripped
+  // target) — else the rename silently orphans that backlink. Consistent with
+  // the rest of the link graph (keyToId / audit / bridges all key by noteLinkKey).
+  const oldKey = noteLinkKey(oldTarget);
   if (oldKey.length === 0) {
     return { body, count: 0 };
   }
@@ -112,7 +116,7 @@ export function rewriteWikiLinkReferences(body: string, oldTarget: string, newTa
   const rewritten = body.replace(/\[\[([^\]]+)\]\]/gu, (full: string, inner: string) => {
     const suffixIdx = inner.search(/[|#]/u);
     const target = (suffixIdx === -1 ? inner : inner.slice(0, suffixIdx)).trim();
-    if (target.toLowerCase() !== oldKey) {
+    if (noteLinkKey(target) !== oldKey) {
       return full;
     }
     count += 1;
