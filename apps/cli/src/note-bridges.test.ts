@@ -22,6 +22,17 @@ describe("resolvedAdjacency", () => {
     const adj = resolvedAdjacency(graphOf([{ id: "lonely", links: [] }]));
     expect(adj.get("lonely")).toEqual(new Set());
   });
+
+  it("resolves an extension-qualified [[b.md]] edge (normalized via noteLinkKey, not raw)", () => {
+    // Obsidian-style links carry the .md; without noteLinkKey the edge is dropped
+    // and the broker between two clusters vanishes from betweenness.
+    const adj = resolvedAdjacency(graphOf([
+      { id: "a.md", links: ["b.md"] },
+      { id: "b.md", links: [] }
+    ]));
+    expect(adj.get("a.md")).toEqual(new Set(["b.md"]));
+    expect(adj.get("b.md")).toEqual(new Set(["a.md"]));
+  });
 });
 
 describe("betweennessCentrality", () => {

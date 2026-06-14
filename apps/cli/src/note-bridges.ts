@@ -1,3 +1,5 @@
+import { noteLinkKey } from "./notes-links.js";
+
 import type { NoteLinkGraph } from "./notes-links.js";
 
 // Bridge notes — the brokers of your [[wiki-link]] knowledge graph.
@@ -47,7 +49,7 @@ export function resolvedAdjacency(graph: NoteLinkGraph): Map<string, Set<string>
   for (const [id, targets] of graph.outbound) {
     ensure(id);
     for (const target of targets) {
-      const resolved = graph.keyToId.get(target.toLowerCase());
+      const resolved = graph.keyToId.get(noteLinkKey(target));
       if (resolved && resolved !== id) {
         ensure(id).add(resolved);
         ensure(resolved).add(id);
