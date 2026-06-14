@@ -154,16 +154,16 @@ function ContactsTab({ client }: { client: ApiClient }) {
       <Card title={t("auto.addContact")} className="lifted">
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr 1fr auto", alignItems: "end" }}>
           <div>
-            <label className="field-label">{t("auto.name")}</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Dr. Kim" />
+            <label className="field-label" htmlFor="contact-name">{t("auto.name")}</label>
+            <input id="contact-name" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Dr. Kim" />
           </div>
           <div>
-            <label className="field-label">{t("auto.phone")}</label>
-            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 415 555 0101" />
+            <label className="field-label" htmlFor="contact-phone">{t("auto.phone")}</label>
+            <input id="contact-phone" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 415 555 0101" />
           </div>
           <div>
-            <label className="field-label">{t("auto.email")}</label>
-            <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="kim@example.com" />
+            <label className="field-label" htmlFor="contact-email">{t("auto.email")}</label>
+            <input id="contact-email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="kim@example.com" />
           </div>
           <Button
             variant="primary"
