@@ -41,7 +41,7 @@ function stallRunner(opts: {
       const out = opts.toolOutput(execCount);
       execCount += 1;
       opts.ran.push(execCount);
-      return { result: { id: toolCall.id, name: toolCall.name, output: out, status: "ok" }, toolCall };
+      return { result: { id: toolCall.id, name: toolCall.name, output: out, status: "completed" }, toolCall };
     }
   } as unknown as ModelLoopRunner;
 }
