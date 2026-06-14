@@ -474,13 +474,6 @@ export interface AskStreamResult {
 }
 
 /**
- * Prepend the ACE `[Learned Strategies]` block (when present) to the
- * chat-only fast-path system prompt, so the default `muse ask` applies
- * learned feedback that otherwise only reaches the --with-tools agent
- * runtime. Empty / absent block ⇒ the prompt is unchanged.
- */
-
-/**
  * The --with-tools exposure cap. tool-calling.md: every extra tool raises the
  * wrong-selection probability on a small local model — the relevance-sorted
  * plan keeps the best N, so a browse prompt still sees browser_open and an
