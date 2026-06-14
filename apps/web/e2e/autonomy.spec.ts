@@ -50,8 +50,10 @@ test("autonomy view shows actions/objectives/vetoes and adds a contact", async (
   await expect(page.getByText("email:boss")).toBeVisible();
 
   await page.getByRole("button", { name: "Contacts" }).click();
-  await page.getByPlaceholder("Dr. Kim").fill("Dr. Kim");
-  await page.getByPlaceholder("+1 415 555 0101").fill("+1 415 555 0101");
+  // The contact form's labels must be tied to their inputs (WCAG 1.3.1) so a
+  // screen reader names each field — drive the form via the label, not placeholder.
+  await page.getByLabel("Name").fill("Dr. Kim");
+  await page.getByLabel("Phone").fill("+1 415 555 0101");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect.poll(() => postedContact).toMatchObject({ name: "Dr. Kim", phone: "+1 415 555 0101" });
 });
