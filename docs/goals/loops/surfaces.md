@@ -363,3 +363,12 @@ ratchet: web unit 44/44 · tasks e2e 1/1 · testFiles 1003 · fabrication 0 · s
 - **왜**: fire 34가 들여온 데이터-표시 버그(배지가 거짓말). AsyncBlock가 `list`를 렌더하므로 list.length가 곧 보이는 행 수 — 다이버지 불가.
 - **리뷰지점**: e2e가 검색 후 `.card-head .count` 2→1 단언(judge가 count 줄 revert→post-search "1" 단언 RED으로 load-bearing 입증; 검색 자체 아님). no-search시 list.length===total(API 무페이지네이션)이라 무변. undefined→0(기존 `?? 0`과 동일). status/add/complete/delete/search 무변.
 - **리스크**: 없음(count 1줄 + e2e 2단언; 순수 presentational; 독립 Opus judge가 RED-before·load-bearing·correctness·무회귀·RATCHET(최근8 web-AND-micro-fix 1/8) 검증 후 PASS, web 44/44·tasks e2e 1/1).
+
+## fire 41 · 2026-06-14 · skill v1.14.0 · 4f6bb33e
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=numeric-option-validation-parity · verdict=PASS · firesSinceDrill=6
+ratchet: cli tests 2663 (+4) · testFiles 1005 · fabrication 0 · self-eval exit 0 · 표면 균형 web17·desktop10·cli14
+
+- **무엇**: `muse checkins scan`이 `--slot-hour`/`--max-per-day`를 bare `Number()`로 파싱(검증 0) → `--slot-hour abc`=NaN이 조용히 Invalid-Date check-in 스케줄, `--max-per-day 0`/음수 통과. sibling 숫자 옵션(calendar --duration·feeds --hours·today --lookahead-hours)은 모두 검증. 상단 검증 추가(slot-hour 정수 [0,23], max-per-day 양의 정수), 나쁜 입력→stderr+exit 1+no-scan.
+- **왜**: cross-command 검증 일관성 + 데이터-무결성(Invalid-Date 방지). cli 표면(웹 과집중 의식적 교정). reject-before-scan으로 나쁜 입력에 부수효과 0.
+- **리뷰지점**: bounds 정확(24/25/-1/1.5/abc 거부, 0/23/9 수용; NaN·분수 Number.isInteger로 거부). undefined→검증 스킵→기본(10/3) 무변. 검증된 숫자 전달(재-Number 안 함)=valid 입력 동등. 파일 기존 --status 패턴과 동형. list/cancel/snooze 무변.
+- **리스크**: 없음(scan action 검증 2블록 + 신규 4 테스트; 순수 입력 검증, 부수효과 없음; 독립 Opus judge가 source-revert로 3 reject-test load-bearing RED 입증·bounds·무회귀 검증 후 PASS, cli 2663/2663·self-eval exit 0).
