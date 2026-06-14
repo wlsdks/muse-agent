@@ -73,10 +73,18 @@ export function isPrivateIPv6(ip: string): boolean {
   // host, so loopback / cloud-metadata (`::a9fe:a9fe`) / RFC-1918 would otherwise
   // slip through as "public". Decode the embedded IPv4 and classify it.
   const hextets = expandIPv6Hextets(lower);
-  if (hextets && hextets.slice(0, 6).every((h) => h === 0 || h === 0xffff)) {
-    const hi = hextets[6] as number;
-    const lo = hextets[7] as number;
-    if (isPrivateIPv4(`${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`)) return true;
+  if (hextets) {
+    // IPv4-embedding upper-96-bit prefixes whose low 32 bits carry the IPv4:
+    // mapped/compatible/SIIT (all 0x0000/0xffff) AND the NAT64 well-known prefix
+    // 64:ff9b::/96 (RFC 6052), which a NAT64 gateway translates to the embedded
+    // IPv4 — so `64:ff9b::<private>` reaches that private host too.
+    const upperEmbeds = hextets.slice(0, 6).every((h) => h === 0 || h === 0xffff);
+    const isNat64 = hextets[0] === 0x64 && hextets[1] === 0xff9b && hextets.slice(2, 6).every((h) => h === 0);
+    if (upperEmbeds || isNat64) {
+      const hi = hextets[6] as number;
+      const lo = hextets[7] as number;
+      if (isPrivateIPv4(`${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`)) return true;
+    }
   }
   if (/^fe[89ab][0-9a-f]:/u.test(lower)) return true;
   if (/^f[cd][0-9a-f]{2}:/u.test(lower)) return true;
