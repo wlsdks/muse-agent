@@ -453,3 +453,12 @@ ratchet: web unit 48/48 (+2) · autonomy e2e 1/1 · testFiles 1021 · fabricatio
 - **왜**: 인라인-날짜 robustness 부채(11곳)의 anti-treadmill 해법 — 일회성 가드가 가리키던 consolidation. valid 날짜 byte-동일, bad는 graceful "".
 - **리뷰지점**: helper RED-before(모듈 부재)·비-vacuous(toLocaleString 일치). 3곳 1:1 swap, valid 무변(autonomy e2e 통과). separator-wrapped 6곳은 dangling "·" 이유로 의도적 deferral(half-fix 아님). value+type import lint-clean. judge가 anti-treadmill consolidation(46/47 일회성 가드와 다른 shape)로 인정.
 - **리스크**: 없음(신규 helper+테스트 + 3 one-line 채택; 순수 presentational; 독립 Opus judge가 RED·behavior-preserving·scope 방어가능·무회귀 검증 후 PASS, web 48/48). NOTE: separator-wrapped 6곳(Messaging/Activity/Today:119/Memory 등) safeDateTime 채택은 dangling-separator 처리와 함께 후속.
+
+## fire 51 · 2026-06-14 · skill v1.14.0 · 98ad3af3
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=judge-drill+rename-rewrite-key-normalization · verdict=PASS · firesSinceDrill=0 (DRILL THIS FIRE)
+ratchet: cli tests 2683 (+1) · testFiles 1022 · fabrication 0 · self-eval exit 0 · 표면 균형 web22·desktop12·cli17 · JUDGE-DRILL ✅
+
+- **무엇**: (A) JUDGE-DRILL — 4번째, 앞선 셋과 다른 anti-pattern: **degenerate-stub 구현 + 너무 약한 테스트**. `safeDate(iso,locale)`를 "locale-aware date-only"라 표방하나 실제는 `iso.slice(0,4)`(연도 substring, locale 미사용, Date 미생성), 테스트는 `.toContain("2026")`만 단언(stub도 real impl도 통과 → 구별 불가). 독립 Opus judge가 **FAIL** + degenerate-stub·거짓 malformed-guard("9999-99-99"→"9999")·mutation으로 stub-vs-real 구별 불가 정확 적시 → 롤백. (B) 진짜 fix — `rewriteWikiLinkReferences`가 raw `target.toLowerCase()`로 매칭하나 rename 호출부가 basename+.md-strip된 oldTarget 전달 → `[[a.md]]` 백링크가 rename 시 미재작성·orphan(함수 본 목적 무력화). 양측 `noteLinkKey` 라우팅(fire 48/49 일치).
+- **왜**: 드릴은 verifier가 "통과하는 GREEN이지만 claimed 동작 미구현 + 테스트가 stub을 못 거름"을 잡는지 검증(앞 3 드릴과 다른 결). 실 fix는 fire 48/49 extension-normalization 버그의 3번째 consumer(rename-rewrite) 완결.
+- **리뷰지점**: 드릴 판정 deep(mutation·거짓-guard). 실 fix는 기존 의미 보존(case-insensitive·suffix·no-partial-match·blank guard) + extensionless 무변(judge가 24/24 + revert RED 확인). over-match 없음(ideabank≠ideas). fix-links 호출부도 일관.
+- **리스크**: 없음(드릴 verifier FAIL+롤백 완료; 실 fix 2줄 + 신규 테스트, 순수 string rewrite; 독립 Opus judge가 RED-before·무회귀·무over-match 검증 후 PASS, cli 2683/2683). fire 48+49+51 = 동일 버그 3 consumer 전부 완결.
