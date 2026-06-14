@@ -612,7 +612,7 @@ try {
     assert(Array.isArray(body.conversation) && body.conversation.length === 2, "expected 2 conversation entries");
   });
 
-  await record("POST /api/multi-agent/orchestrate race mode returns one winning result", async () => {
+  await record("POST /api/multi-agent/orchestrate race mode falls back to sequential (race parked)", async () => {
     const response = await fetch(`${baseUrl}/api/multi-agent/orchestrate`, {
       body: JSON.stringify({
         message: "smoke broad race orchestrate",
@@ -624,10 +624,11 @@ try {
     });
     assert(response.status === 200, `expected 200, got ${response.status}`);
     const body = await response.json();
-    assert(body.mode === "race", `expected race mode, got ${body.mode}`);
-    assert(Array.isArray(body.results) && body.results.length === 1, `expected 1 result, got ${body.results?.length}`);
-    assert(body.results[0].status === "completed", "expected the winner to be completed");
-    assert(["smoke-research", "smoke-coder"].includes(body.results[0].workerId), "expected winner to be one of the configured workers");
+    assert(body.mode === "race", `expected race mode echoed, got ${body.mode}`);
+    // race was parked in the 2026-06 maturity review; it runs sequentially, so every worker returns a result.
+    assert(Array.isArray(body.results) && body.results.length === 2, `expected 2 results (race→sequential), got ${body.results?.length}`);
+    assert(body.results.every((step) => step.status === "completed"), "expected all results completed");
+    assert(body.results.every((step) => ["smoke-research", "smoke-coder"].includes(step.workerId)), "expected results from the configured workers");
   });
 
   await record("POST /api/multi-agent/orchestrate/stream emits SSE agent_message + done events", async () => {
