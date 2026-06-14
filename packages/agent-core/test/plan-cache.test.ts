@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { exemplarFitsToolset, renderPlanExemplar, selectPlanExemplar, selectSuccessfulPlanSteps, type CachedPlan } from "../src/index.js";
+import { exemplarFitsToolset, exemplarIsSelfConsistent, renderPlanExemplar, selectPlanExemplar, selectSuccessfulPlanSteps, type CachedPlan } from "../src/index.js";
 
 const plan = (prompt: string, tool: string): CachedPlan => ({
   prompt,
@@ -111,5 +111,35 @@ describe("exemplarFitsToolset — RAP retrieval-side toolset-fit gate (arXiv:240
     };
     expect(exemplarFitsToolset(singleStepPlan, new Set(["web_search", "notes_add"]))).toBe(true);
     expect(exemplarFitsToolset(singleStepPlan, new Set(["notes_add"]))).toBe(false);
+  });
+});
+
+describe("exemplarIsSelfConsistent — RAP structural-validity gate (arXiv:2402.03610 + LLMCompiler arXiv:2312.04511)", () => {
+  it("valid plan (a later step references an EARLIER step) → true", () => {
+    const valid: CachedPlan = {
+      prompt: "search then save",
+      steps: [
+        { args: { query: "weather" }, description: "search", tool: "web_search" },
+        { args: { content: "{{step1}}" }, description: "save the result", tool: "notes_add" }
+      ]
+    };
+    expect(exemplarIsSelfConsistent(valid)).toBe(true);
+  });
+
+  it("dangling/forward ref (the artifact selectSuccessfulPlanSteps can leave) → false", () => {
+    // A surviving step references {{step2}} but that producer was filtered out.
+    const dangling: CachedPlan = {
+      prompt: "save notes",
+      steps: [{ args: { content: "{{step2}}" }, description: "save", tool: "notes_add" }]
+    };
+    expect(exemplarIsSelfConsistent(dangling)).toBe(false);
+  });
+
+  it("plain plan with no dependency tokens → true", () => {
+    const plain: CachedPlan = {
+      prompt: "search",
+      steps: [{ args: { query: "weather" }, description: "search", tool: "web_search" }]
+    };
+    expect(exemplarIsSelfConsistent(plain)).toBe(true);
   });
 });

@@ -41,7 +41,7 @@ import {
  * are pinned to a single attempt (no double-act).
  */
 const PLAN_STEP_MAX_ATTEMPTS = 2;
-import { exemplarFitsToolset, renderPlanExemplar, selectSuccessfulPlanSteps, type PlanCacheProvider } from "./plan-cache.js";
+import { exemplarFitsToolset, exemplarIsSelfConsistent, renderPlanExemplar, selectSuccessfulPlanSteps, type PlanCacheProvider } from "./plan-cache.js";
 import { latestUserPrompt, metadataString } from "./runtime-helpers.js";
 import {
   blockedToolResult,
@@ -389,7 +389,7 @@ async function generatePlan(
     const currentToolNames = new Set((request.tools ?? []).map((t) => t.name));
     try {
       const similar = await runner.planCacheProvider.findSimilarPlan(userId, userPrompt);
-      if (similar && exemplarFitsToolset(similar, currentToolNames)) {
+      if (similar && exemplarFitsToolset(similar, currentToolNames) && exemplarIsSelfConsistent(similar)) {
         priorPlanExemplar = renderPlanExemplar(similar);
       }
     } catch {
