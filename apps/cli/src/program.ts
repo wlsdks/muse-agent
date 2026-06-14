@@ -40,14 +40,6 @@ import {
   runLocalChat
 } from "./chat-repl.js";
 
-// Re-exported for the test in `apps/cli/test/program.test.ts:5,26`
-// which imports `defaultCredentialPath` from `program.js`.
-export { defaultCredentialPath } from "./credential-store.js";
-// `writeRunLog` + `readPipedStdin` were historically exported from
-// program.ts. The implementations now live in ./program-helpers.ts
-// and ./chat-repl.ts; the re-exports keep historical import paths
-// working.
-export { writeRunLog };
 export { readPipedStdin };
 import { renderMuseStatusTui, type MuseStatusTuiModel } from "./tui.js";
 import { registerAuthCommands } from "./commands-auth.js";
@@ -694,11 +686,6 @@ export function uniqueCommandPrefix(input: string, names: readonly string[]): st
 // muse-persona.test.ts and other consumers.
 export { buildMusePersona, formatCurrentContextLine };
 
-// Chat-history + activity-log lifecycle helpers live in
-// ./chat-history.ts. Re-exported below so the historical
-// `./program.js` path keeps working for tests and downstream
-// consumers (`appendActivity`, `maybeCompactLastChatHistory`).
-export { appendActivity, maybeCompactLastChatHistory } from "./chat-history.js";
 
 // Auth / HTTP / SSE / config helpers live in ./program-helpers.ts.
 // Imported at the top of this file; re-exported below so the
