@@ -218,4 +218,11 @@ describe("scoreMessageContent — exact per-role + hint increments (mutation-pin
     expect(scoreMessageContent(m("user", "work on rag today"), { activeTaskTitle: "rag" })).toBeCloseTo(0.8); // 0.1 + 0.2 + 0.5
     expect(scoreMessageContent(m("user", "say hi now"), { activeTaskTitle: "hi" })).toBeCloseTo(0.3); // 2-char hint ignored
   });
+
+  it("caps the decision-hint bonus at ONE +0.2 even when the message holds multiple decision words (the loop breaks)", () => {
+    // "decided" AND "agreed" are both DECISION_HINTS; the for-loop breaks after
+    // the first match, so the bonus is +0.2 once, not +0.4.
+    // base 0.1 + user role 0.2 + decision 0.2 (once) = 0.5
+    expect(scoreMessageContent(m("user", "we decided and agreed on the plan"), {})).toBeCloseTo(0.5);
+  });
 });
