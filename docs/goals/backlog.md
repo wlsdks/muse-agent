@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ conformity-flip council caution (arXiv:2606.00820): detectConformityFlips flags a peer that reached agreement by ABANDONING its own prior stance (self-cosine reversal + moved toward panel); muse swarm council warns “conformity-driven agreement” when the panel agreed via a flip (57-77% correct→wrong); semantic, advisory-only (never alters answer), agreed-only gated — agent-core-cognition fire 33
+
 - ✓ CBR case-density playbook gate (arXiv:2504.06943): the embed-rank playbook drops an isolated (no semantic neighbors) + unproven + SYNTHETIC (reflected) strategy as a sparse-region low-confidence guess; grounded/manual corrections NEVER dropped (wedge), semantic cosine density, never-empty guard; fixed the origin projection seam (PlaybookEntryLike/toPlaybookStrategy) that made it + the reflected penalty inert — agent-core-cognition fire 32
 
 - ✓ decompose @muse/observability: split MonthlyBudgetTracker (class + types + formatYearMonth) out of the 3-detector god-file observability-detectors.ts -> budget-tracker.ts (480->372 LOC; re-export keeps 3 importers green) — codebase-quality fire 66
