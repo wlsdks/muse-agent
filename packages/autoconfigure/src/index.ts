@@ -878,15 +878,26 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
           (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
         .map((m) => ({ content: m.content, role: m.role }));
       if (turns.length === 0) return;
+      // Feature-detect the typed-slot remover (the file store has it; the abstract
+      // UserMemoryStore interface doesn't declare it — same pattern as the optional
+      // upsertUserModelSlot).
+      const removeSlot = (userMemoryStore as { removeUserModelSlot?: (userId: string, id: string) => unknown }).removeUserModelSlot;
       await inferPreferencesFromTurns(turns, {
         model: defaultModel,
         modelProvider,
-        store: userMemoryStore,
+        store: {
+          upsertUserModelSlot: userMemoryStore.upsertUserModelSlot?.bind(userMemoryStore),
+          ...(removeSlot ? { removeUserModelSlot: removeSlot.bind(userMemoryStore) } : {})
+        },
         userId: input.userId,
         // Held-out support gate: drop an inferred trait the correction doesn't
         // semantically support (local nomic embedder), so the server never
         // learns a fabricated preference.
-        embed: createGateEmbedder(env)
+        embed: createGateEmbedder(env),
+        // Belief-revision supersession (arXiv:2606.09483): read existing prefs so a
+        // new one contradicting a stored DIFFERENT-category belief drops the stale one.
+        listExistingPreferences: async (userId) =>
+          (await userMemoryStore.findByUserId(userId))?.userModel?.preferences?.map((slot) => ({ id: slot.id, value: slot.value })) ?? []
       });
     }
     : undefined;

@@ -201,6 +201,37 @@ export function detectApprovals(
   return found;
 }
 
+export interface EpisodeAdmissionQuality {
+  /** false → an error-prone session whose episode should NOT be stored. */
+  readonly admit: boolean;
+  readonly label: "quality" | "error-prone";
+  readonly corrections: number;
+  readonly approvals: number;
+}
+
+/**
+ * Outcome-quality write-admission for an episode — SELECTIVE ADDITION (arXiv:2505.16067,
+ * Xiong et al.: agents "experience-follow", so a stored low-quality experience replays its
+ * error on similar inputs; gate what is ADDED to the memory store). A session where the
+ * user CORRECTED the assistant more than they approved is error-prone: persisting its
+ * episode narrative would later replay the botched outcome as cited [session: …] context.
+ *
+ * Gate it out of the EPISODE store only — the correction's LESSON is separately distilled
+ * to the playbook (distillStrategyFromCorrection), so nothing learned is lost; only the
+ * botched narrative is kept from replaying. Reuses the deterministic correction/approval
+ * speech-act detectors (genuinely lexical/syntactic). error-prone ⟺ corrections > approvals.
+ * Default-KEEP (admit:true) on a tie or no signal — conservative: a missed correction
+ * degrades to today's behaviour, never a false drop of a good episode.
+ */
+export function classifyEpisodeAdmissionQuality(
+  turns: readonly SessionTurnLine[]
+): EpisodeAdmissionQuality {
+  const corrections = detectCorrections(turns, { maxExchanges: 100 }).length;
+  const approvals = detectApprovals(turns, { maxExchanges: 100 }).length;
+  const errorProne = corrections > approvals;
+  return { admit: !errorProne, approvals, corrections, label: errorProne ? "error-prone" : "quality" };
+}
+
 export interface DistilledStrategy {
   readonly text: string;
   readonly tag?: string;

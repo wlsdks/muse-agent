@@ -177,6 +177,74 @@ export function strategyTextSimilarity(a: string, b: string): number {
   return intersection / (ta.size + tb.size - intersection);
 }
 
+/**
+ * Cosine floor for crediting a feedback cue to the strategy it implicates. A
+ * strategy TEXT is a terse distilled imperative ("Ask before deleting files");
+ * the request CUE is conversational user prose ("hey can you double-check with me
+ * first next time?") — DIFFERENT distributions, so lexical Jaccard mis-credits or
+ * no-credits a paraphrase / cross-lingual pair. 0.55 mirrors the commitment
+ * -discharge cue↔text floor; a genuine implication clears it, an incidental
+ * overlap does not.
+ */
+export const DEFAULT_PLAYBOOK_CREDIT_COSINE = 0.55;
+
+/**
+ * HIGHER credit floor for a DECAY (a correction docking a strategy's reward) than
+ * for a reinforce. Asymmetric precision (Memory-R2 arXiv:2605.21768 fair credit
+ * assignment, applied to the loop's WEDGE): a WRONG decay of a grounded/manual
+ * strategy is costlier than a MISSED reinforce — a spuriously-decayed grounded
+ * strategy sinks below the avoidance floor and stops being injected, eroding the
+ * cited-recall edge, whereas a missed reinforce just leaves reward flat. So a
+ * correction must clear a STRONGER cue↔strategy match (0.62) to decay than an
+ * approval needs to reinforce (0.55); a borderline correction credits nothing
+ * rather than risk decaying the wrong (possibly grounded) strategy.
+ */
+export const DEFAULT_PLAYBOOK_DECAY_CREDIT_COSINE = 0.62;
+
+/**
+ * SEMANTIC credit assignment for the playbook RL loop (fair credit assignment —
+ * Memory-R2 arXiv:2605.21768; mis-credited reward replays its error via
+ * experience-following — arXiv:2505.16067). Given the existing strategies and a
+ * feedback cue, return the id of the strategy the cue most plausibly implicates
+ * by embedding cosine (≥ `threshold`), or undefined when nothing clears the floor.
+ * Replaces the cross-distribution lexical Jaccard the credit step used (the
+ * cumulative lesson: semantic beats lexical on model-prose / paraphrase /
+ * multilingual). Fail-soft: an embedder that throws, an empty cue/candidate set,
+ * or a zero embedding ⇒ undefined, so the caller falls back to its lexical path
+ * (never worse than today). Pure over the injected embedder + exported for
+ * direct coverage.
+ */
+export async function selectCreditTargetSemantic(
+  candidates: readonly { readonly id: string; readonly text: string }[],
+  cue: string,
+  embed: (text: string) => Promise<readonly number[]>,
+  threshold: number = DEFAULT_PLAYBOOK_CREDIT_COSINE
+): Promise<string | undefined> {
+  if (candidates.length === 0 || cue.trim().length === 0) return undefined;
+  let cueVec: readonly number[];
+  try {
+    cueVec = await embed(cue);
+  } catch {
+    return undefined;
+  }
+  if (cueVec.length === 0) return undefined;
+  let best: { readonly id: string; readonly sim: number } | undefined;
+  for (const candidate of candidates) {
+    let vec: readonly number[];
+    try {
+      vec = await embed(candidate.text);
+    } catch {
+      return undefined;
+    }
+    if (vec.length === 0) continue;
+    const sim = cosineSimilarity(cueVec, vec);
+    if (sim >= threshold && (!best || sim > best.sim)) {
+      best = { id: candidate.id, sim };
+    }
+  }
+  return best?.id;
+}
+
 /** Reward bounds — net outcome signal per strategy, clamped so one streak can't dominate ranking. */
 export const PLAYBOOK_REWARD_MIN = -5;
 export const PLAYBOOK_REWARD_MAX = 5;
@@ -679,23 +747,41 @@ function rankEligible(
 
   if (selected.length < topK) {
     // Recency floor: top up with most-recent strategies not already selected.
+    // Score fillers STRICTLY BELOW every value-aware Phase-B pick (they are floor
+    // fillers — they may not even have cleared the Phase-A relevance gate), keeping
+    // recency order among themselves. Scoring them on the RAW composite (the
+    // unbounded relevance+reward scale) while Phase B scores on the z-normalised
+    // scale let a high-utility low-relevance filler outrank a genuine pick once the
+    // two scales were sorted together — the rank-fusion scale-mix anti-pattern
+    // (MemRL arXiv:2601.03192: the value blend must stay on one scale).
+    const minSelectedScore = selected.length > 0
+      ? Math.min(...selected.map((s) => s.score))
+      : 0;
     const chosen = new Set(selected.map((s) => s.index));
     const recentFirst = withRel
       .filter((e) => !chosen.has(e.index))
       .sort((a, b) => b.index - a.index);
+    let fillerRank = 1;
     for (const candidate of recentFirst) {
       if (selected.length >= topK) {
         break;
       }
-      selected.push({
-        ...candidate,
-        score: candidate.relevance + REWARD_RANK_WEIGHT * utilityOf(candidate.strategy)
-          - (candidate.strategy.origin === "reflected" ? REFLECTED_RANK_PENALTY : 0)
-      });
+      selected.push({ ...candidate, score: minSelectedScore - fillerRank });
+      fillerRank += 1;
     }
   }
 
   return [...selected].sort(byScoreDescThenIndexAsc).map((s) => s.strategy);
+}
+
+/**
+ * Drop strategies whose text is empty/whitespace before ranking — a blank
+ * strategy is noise that shouldn't occupy an injected slot.
+ */
+export function dropEmptyTextStrategies(
+  strategies: readonly PlaybookStrategy[]
+): readonly PlaybookStrategy[] {
+  return strategies.filter((s) => s.text.trim().length > 0);
 }
 
 export function rankPlaybookStrategies(
@@ -705,7 +791,8 @@ export function rankPlaybookStrategies(
   nowMs?: number
 ): readonly PlaybookStrategy[] {
   const query = rankTokens(queryText);
-  return rankEligible(strategies, options, (s) => relevanceScore(s, query), (s) => rankingUtility(s, nowMs), nowMs);
+  const cleaned = dropEmptyTextStrategies(strategies);
+  return rankEligible(cleaned, options, (s) => relevanceScore(s, query), (s) => rankingUtility(s, nowMs), nowMs);
 }
 
 /**

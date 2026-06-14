@@ -11,6 +11,7 @@
  */
 
 import { strategyTextSimilarity } from "./playbook.js";
+import { validateStepDependencies } from "./plan-execute.js";
 import type { PlanStep } from "./plan-execute.js";
 import type { Awaitable } from "./types.js";
 
@@ -151,6 +152,21 @@ export function exemplarFitsToolset(
     return false;
   }
   return plan.steps.every((step) => availableToolNames.has(step.tool));
+}
+
+/**
+ * RAP situational-fit (arXiv:2402.03610) extended from toolset-fit to STRUCTURAL
+ * validity (LLMCompiler dependency grammar, arXiv:2312.04511): a retrieved exemplar
+ * STEERS the planner, so it must itself be a dispatchable plan. `recordPlan` caches
+ * `selectSuccessfulPlanSteps` — the success-filtered subset — which can leave a
+ * surviving step's `{{stepN}}` dependency token pointing at a step that was dropped
+ * (a dangling/forward ref). Injecting that teaches the small model to emit a plan
+ * `validatePlan` then rejects, burning the single PLAN_REPAIR_MAX_ROUNDS round.
+ * Withhold such an exemplar (treated as a cache miss). Reuses the in-repo
+ * validateStepDependencies; an empty plan is already rejected by exemplarFitsToolset.
+ */
+export function exemplarIsSelfConsistent(plan: CachedPlan): boolean {
+  return validateStepDependencies(plan.steps).length === 0;
 }
 
 const MAX_EXEMPLAR_CHARS = 800;

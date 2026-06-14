@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   extractCurrentSessionTurns,
+  isEpisodeWorthRetaining,
   redactSecrets,
   summariseSession,
   summaryGroundedInTranscript,
   type SessionBoundaryRef,
+  type SessionSummary,
   type SessionTurnLine
 } from "../src/episodic-summariser.js";
 import type { ModelProvider } from "@muse/model";
@@ -290,5 +292,36 @@ describe("summariseSession", () => {
     });
     expect(seenUserMessage).not.toContain("sk-leak");
     expect(seenUserMessage).toContain("[redacted-openai-key]");
+  });
+});
+
+describe("isEpisodeWorthRetaining — episode-write salience gate (SSGM arXiv:2603.11768)", () => {
+  const sum = (summary: string, importance?: number): SessionSummary => ({ summary, topics: [], ...(importance !== undefined ? { importance } : {}) });
+
+  it("DROPS a content-thin summary the model self-rated trivial", () => {
+    expect(isEpisodeWorthRetaining(sum("hey bye", 1))).toBe(false);
+  });
+
+  it("RETAINS a content-rich summary even at importance 1 (thinness AND triviality both required)", () => {
+    expect(isEpisodeWorthRetaining(sum("shipped the Q3 budget review Friday using bullet points and assigned tasks", 1))).toBe(true);
+  });
+
+  it("RETAINS a thin summary with NO importance (fail-open — importance never required)", () => {
+    expect(isEpisodeWorthRetaining(sum("hey bye"))).toBe(true);
+  });
+
+  it("RETAINS a thin summary the model rated non-trivial (importance above the floor)", () => {
+    expect(isEpisodeWorthRetaining(sum("got engaged", 9))).toBe(true);
+  });
+
+  it("never drops on importance alone — a rich, importance-1 summary is retained", () => {
+    expect(isEpisodeWorthRetaining(sum("planned the launch, chose the rollout window, assigned owners and a deadline", 1))).toBe(true);
+  });
+
+  it("honours custom floors", () => {
+    // raise the content floor so a mid-length summary counts as thin
+    expect(isEpisodeWorthRetaining(sum("ship budget review", 1), { minContentTokens: 10 })).toBe(false);
+    // raise the trivial-importance floor so importance 3 counts as trivial
+    expect(isEpisodeWorthRetaining(sum("hey bye", 3), { trivialImportanceAtOrBelow: 3 })).toBe(false);
   });
 });

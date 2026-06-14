@@ -6,7 +6,7 @@
  * orchestration over the @muse/agent-core detectors + the persistence stores.
  */
 
-import { collapseNearDuplicateCommitments, detectCorrections, detectUserCommitments, inferPreferenceFromCorrection, type SessionTurnLine } from "@muse/agent-core";
+import { collapseNearDuplicateCommitments, detectCorrections, detectUserCommitments, findSupersededPreferenceId, inferPreferenceFromCorrection, selectOpenCommitments, type Awaitable, type SessionTurnLine } from "@muse/agent-core";
 import { appendCheckins, readCheckins, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
 import type { UserModelSlot } from "@muse/memory";
 
@@ -30,9 +30,11 @@ export async function scanCommitmentsFromTurns(
     readonly embed?: (text: string) => Promise<readonly number[]>;
   }
 ): Promise<readonly PersistedCheckin[]> {
-  const raw = detectUserCommitments(userTurns);
-  if (raw.length === 0) return [];
   const embedder = options.embed ?? createGateEmbedder(process.env);
+  // π-Bench (arXiv:2605.14678): drop commitments the user already discharged
+  // later in the conversation BEFORE near-duplicate collapse + scheduling.
+  const raw = await selectOpenCommitments(userTurns, embedder).catch(() => detectUserCommitments(userTurns));
+  if (raw.length === 0) return [];
   const collapsed = await collapseNearDuplicateCommitments(raw, embedder).catch(() => raw);
   const commitments = collapsed.map((c) => c.text);
   const existing = await readCheckins(options.file).catch(() => []);
@@ -58,15 +60,27 @@ export async function inferPreferencesFromTurns(
   options: {
     readonly model: string;
     readonly modelProvider: Parameters<typeof inferPreferenceFromCorrection>[1]["modelProvider"];
-    readonly store: { upsertUserModelSlot?: (userId: string, slot: UserModelSlot) => unknown };
+    readonly store: {
+      upsertUserModelSlot?: (userId: string, slot: UserModelSlot) => unknown;
+      /** Optional: drop a stale belief the new preference supersedes (cross-category contradiction). */
+      removeUserModelSlot?: (userId: string, id: string) => unknown;
+    };
     readonly userId: string;
     readonly now?: () => Date;
     /** Embedder for the held-out support gate; omitted ⇒ no gate (back-compat). */
     readonly embed?: (text: string) => Promise<readonly number[]>;
+    /**
+     * Optional reader of the user's existing typed preference slots. When provided
+     * (with `store.removeUserModelSlot`), a newly-inferred preference that CONTRADICTS
+     * an existing DIFFERENT-category one supersedes it (belief revision, arXiv:2606.09483)
+     * — the by-category upsert alone can't catch a cross-category contradiction.
+     */
+    readonly listExistingPreferences?: (userId: string) => Awaitable<readonly { readonly id: string; readonly value: string }[]>;
   }
 ): Promise<readonly string[]> {
   const upsert = options.store.upsertUserModelSlot;
   if (!upsert) return [];
+  const remove = options.store.removeUserModelSlot;
   const exchanges = detectCorrections(turns);
   const added: string[] = [];
   for (const exchange of exchanges) {
@@ -76,14 +90,29 @@ export async function inferPreferencesFromTurns(
       ...(options.embed ? { embed: options.embed } : {})
     });
     if (!pref || !pref.category) continue; // parseInferredPreference guarantees a category when it returns one
+    const prefId = `pref-${pref.category}`;
+    // Belief-revision supersession: a NEW preference contradicting a stored
+    // DIFFERENT-category one would otherwise inject conflicting persona guidance
+    // every turn — drop the stale belief (newer wins). Read BEFORE the upsert so
+    // the just-written slot isn't a candidate; reuses the model-polarity primitive.
+    const existing = options.listExistingPreferences && remove
+      ? await options.listExistingPreferences(options.userId)
+      : undefined;
     await upsert(options.userId, {
       category: pref.category,
       confidence: pref.confidence,
-      id: `pref-${pref.category}`, // supersede by category — a changed mind updates, not piles up
+      id: prefId, // supersede by category — a changed mind updates, not piles up
       kind: "preference",
       updatedAt: (options.now ?? ((): Date => new Date()))(),
       value: pref.value
     });
+    if (existing && remove) {
+      const supersededId = await findSupersededPreferenceId(pref.value, prefId, existing, {
+        model: options.model,
+        modelProvider: options.modelProvider
+      });
+      if (supersededId) await remove(options.userId, supersededId);
+    }
     added.push(`${pref.value} (${pref.category})`);
   }
   return added;

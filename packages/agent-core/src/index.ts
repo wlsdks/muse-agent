@@ -44,13 +44,16 @@ export {
 } from "./agent-initiated-notice.js";
 export {
   extractFollowupPromises,
+  hasCommissiveForce,
   type ExtractFollowupPromisesOptions,
   type FollowupPromise
 } from "./followup-detector.js";
 export {
   COMMITMENT_DEDUP_COSINE,
+  COMMITMENT_DISCHARGE_COSINE,
   collapseNearDuplicateCommitments,
   detectUserCommitments,
+  selectOpenCommitments,
   type CommitmentKind,
   type DetectUserCommitmentsOptions,
   type UserCommitment
@@ -104,11 +107,11 @@ export {
 export type { AmbientSnapshot, AmbientSnapshotProvider } from "./ambient-context.js";
 export { applyVetoAvoidance, renderVetoAvoidanceSection, selectRelevantVetoes } from "./veto-avoidance.js";
 export type { LearnedVeto, VetoAvoidanceProvider } from "./veto-avoidance.js";
-export { applyPlaybook, clampReward, effectiveStrategyReward, isAvoidedStrategy, isInjectableStrategy, isLowSupportStrategy, isStaleStrategy, planStrategyLifecycle, PLAYBOOK_AVOID_BELOW, PLAYBOOK_INJECT_DEDUP_THRESHOLD, PLAYBOOK_PEVI_LAMBDA, PLAYBOOK_RECENCY_HALF_LIFE_DAYS, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, PLAYBOOK_STALE_AFTER_DAYS, PLAYBOOK_SUPPORT_DENSITY_COSINE, rankingUtility, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, recencyDiscount, renderPlaybookSection, strategySupportDensity, strategyTextSimilarity, suppressNearDuplicateStrategies, wilsonInterval } from "./playbook.js";
+export { applyPlaybook, clampReward, DEFAULT_PLAYBOOK_CREDIT_COSINE, DEFAULT_PLAYBOOK_DECAY_CREDIT_COSINE, dropEmptyTextStrategies, effectiveStrategyReward, isAvoidedStrategy, isInjectableStrategy, isLowSupportStrategy, isStaleStrategy, planStrategyLifecycle, PLAYBOOK_AVOID_BELOW, PLAYBOOK_INJECT_DEDUP_THRESHOLD, PLAYBOOK_PEVI_LAMBDA, PLAYBOOK_RECENCY_HALF_LIFE_DAYS, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, PLAYBOOK_STALE_AFTER_DAYS, PLAYBOOK_SUPPORT_DENSITY_COSINE, rankingUtility, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, recencyDiscount, renderPlaybookSection, selectCreditTargetSemantic, strategySupportDensity, strategyTextSimilarity, suppressNearDuplicateStrategies, wilsonInterval } from "./playbook.js";
 export type { PlaybookStrategy, PlaybookProvider, RankPlaybookOptions, StrategyLifecycleAction } from "./playbook.js";
-export { classifyCorrectionContradiction, DEFAULT_STRATEGY_VERBATIM_CEILING, detectApprovals, detectCorrections, distillStrategyFromCorrection, hasDistillableDirective } from "./correction-distiller.js";
+export { classifyCorrectionContradiction, classifyEpisodeAdmissionQuality, DEFAULT_STRATEGY_VERBATIM_CEILING, detectApprovals, detectCorrections, distillStrategyFromCorrection, hasDistillableDirective } from "./correction-distiller.js";
 export { synthesizePatternSuggestion, type PatternSuggestionInput, type SynthesizePatternSuggestionOptions } from "./pattern-suggestion.js";
-export { inferPreferenceFromCorrection, parseInferredPreference, type InferredPreference, type InferPreferenceOptions } from "./preference-inference.js";
+export { calibratePreferenceConfidence, DEFAULT_PREFERENCE_DISTRACTOR_FLOOR, DEFAULT_PREFERENCE_SUPERSEDE_MAX, findSupersededPreferenceId, inferPreferenceFromCorrection, parseInferredPreference, type ExistingPreferenceForSupersede, type InferredPreference, type InferPreferenceOptions } from "./preference-inference.js";
 export type {
   ApprovalExchange,
   ClassifyContradictionOptions,
@@ -116,7 +119,8 @@ export type {
   CorrectionPolarity,
   DetectCorrectionsOptions,
   DistilledStrategy,
-  DistillStrategyOptions
+  DistillStrategyOptions,
+  EpisodeAdmissionQuality
 } from "./correction-distiller.js";
 
 export { detectSkillCandidates, draftSkillFromSignal, parseConstrainedSkillDraft, reviewSkillsFromTurns, skillDraftConstraintViolations } from "./skill-review.js";
@@ -265,12 +269,18 @@ export { peakEndDigest, type DigestTurn } from "./peak-end.js";
 export {
   createConfidenceGatedInvestigator,
   decideProactiveRecall,
+  DEFAULT_FINDING_COOLDOWN_MS,
+  DEFAULT_FINDING_SUPPRESSOR_MAX_ENTRIES,
+  FindingResurfaceSuppressor,
   type ConfidenceGatedInvestigatorDeps,
   type ProactiveRecallDecision
 } from "./proactive-recall-gate.js";
 export {
   buildReflectionUserMessage,
+  collapseNearDuplicateReflections,
+  filterReflectionsAgainstStore,
   parseReflections,
+  REFLECTION_DEDUP_COSINE,
   REFLECTION_GROUNDING_QUERY,
   synthesizeReflections,
   verifyReflectionsGrounding,
@@ -300,10 +310,14 @@ export {
   parseCouncilAnswer,
   produceCouncilReasoning,
   produceGroundedCouncilReasoning,
+  COUNCIL_ATTRIBUTION_COSINE_FLOOR,
+  COUNCIL_DISSENT_COSINE_FLOOR,
   QUESTION_RELEVANCE_FLOOR,
   rankUtterancesBySupport,
   screenCouncilOutliers,
   screenOffTopicUtterancesSemantic,
+  screenUnfaithfulContributors,
+  selectDissentingExclusions,
   synthesizeCouncilAnswer,
   verifyCouncilGrounding,
   type ConformityFlip,
@@ -346,7 +360,10 @@ export {
 } from "./a2a-safety.js";
 export {
   DEFAULT_EPISODE_GROUNDING_FLOOR,
+  DEFAULT_EPISODE_MIN_CONTENT_TOKENS,
+  DEFAULT_EPISODE_TRIVIAL_IMPORTANCE,
   extractCurrentSessionTurns,
+  isEpisodeWorthRetaining,
   redactSecrets,
   summariseSession,
   summaryGroundedInTranscript,
@@ -414,6 +431,14 @@ export {
   type ToolCallDuplicate,
   type ToolCallNotDuplicate
 } from "./tool-call-deduplicator.js";
+export {
+  detectToolLoopStall,
+  ToolLoopProgressTracker,
+  TOOL_LOOP_STALL_JACCARD,
+  TOOL_LOOP_STALL_WINDOW
+} from "./tool-loop-progress.js";
+export { ToolFailureStreakTracker, TOOL_FAILURE_STREAK_LIMIT } from "./tool-failure-streak.js";
+export { CONFLICT_IDENTITY_KEYS, detectConflictingWritesInBatch } from "./tool-batch-conflict.js";
 
 export { groundToolArguments, type ToolArgumentGrounding } from "./tool-argument-grounding.js";
 
@@ -436,6 +461,7 @@ export {
   dedupeNearDuplicateSteps,
   extractJsonArray,
   parsePlan,
+  validateEnumArguments,
   validatePlan,
   validateWritePreconditions,
   type PlanExecutionErrorCode,
@@ -445,7 +471,7 @@ export {
   type PlanValidationResult,
   type StepExecutionResult
 } from "./plan-execute.js";
-export { exemplarFitsToolset, renderPlanExemplar, selectPlanExemplar, selectPlanExemplarByRelevance, selectSuccessfulPlanSteps } from "./plan-cache.js";
+export { exemplarFitsToolset, exemplarIsSelfConsistent, renderPlanExemplar, selectPlanExemplar, selectPlanExemplarByRelevance, selectSuccessfulPlanSteps } from "./plan-cache.js";
 export type { CachedPlan, PlanCacheProvider, SelectPlanExemplarOptions } from "./plan-cache.js";
 
 export {

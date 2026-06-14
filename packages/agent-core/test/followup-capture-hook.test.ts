@@ -69,10 +69,27 @@ describe("createFollowupCaptureHook", () => {
     });
     await hook.afterComplete?.(
       { ...context(), input: { messages: [], model: "test/model" } as AgentRunInput },
-      response("in 10 min")
+      response("I'll ping you in 10 min")
     );
     expect(captured).toHaveLength(1);
     expect(captured[0]?.userId).toBe("fallback-user");
+  });
+
+  it("does NOT capture a descriptive time mention — only a real self-commitment (commissive gate)", async () => {
+    // Production wiring: the hook sets requireCommissive, so a descriptive sentence
+    // ("your meeting is tomorrow") no longer queues a reminder the assistant never
+    // promised (arXiv:2502.14321). Neutralizing hasCommissiveForce reinstates the
+    // spurious capture → this test goes RED (the production-path revert-proof).
+    const captured: CapturedFollowup[] = [];
+    const hook = createFollowupCaptureHook({
+      now: () => fixedNow,
+      persist: (followup) => { captured.push(followup); }
+    });
+    await hook.afterComplete?.(context(), response("Your meeting is tomorrow at 3pm and the report is due in 2 days."));
+    expect(captured).toEqual([]);
+    // A genuine commitment in the same shape still captures.
+    await hook.afterComplete?.(context(), response("I'll follow up tomorrow at 3pm."));
+    expect(captured.length).toBeGreaterThan(0);
   });
 
   it("skips capture entirely when no userId is available", async () => {
@@ -118,7 +135,7 @@ describe("createFollowupCaptureHook", () => {
     });
     await hook.afterComplete?.(
       context(),
-      response("in 5 min, in 10 min, in 20 min, in 40 min, tomorrow morning")
+      response("I'll ping you in 5 min, in 10 min, in 20 min, in 40 min, tomorrow morning")
     );
     expect(captured).toHaveLength(2);
   });
@@ -129,7 +146,7 @@ describe("createFollowupCaptureHook", () => {
       now: () => fixedNow,
       persist: (followup) => { captured.push(followup); }
     });
-    const text = "in 30 minutes";
+    const text = "I'll ping you in 30 minutes";
     await hook.afterComplete?.(context(), response(text));
     await hook.afterComplete?.(context(), response(text));
     expect(captured).toHaveLength(2);
@@ -148,7 +165,7 @@ describe("createFollowupCaptureHook", () => {
     // Two distinct promises so we know the failure of the first
     // didn't short-circuit the loop.
     await expect(
-      hook.afterComplete?.(context(), response("in 30 minutes and tomorrow morning"))
+      hook.afterComplete?.(context(), response("I'll ping you in 30 minutes and tomorrow morning"))
     ).resolves.toBeUndefined();
     expect(calls).toBe(2);
   });
@@ -161,7 +178,7 @@ describe("createFollowupCaptureHook", () => {
     });
     // Detector already collapses these (same minute) — assert the
     // hook doesn't re-emit two captures.
-    await hook.afterComplete?.(context(), response("in 30 minutes — actually, in 30 min works too."));
+    await hook.afterComplete?.(context(), response("I'll ping you in 30 minutes — actually, in 30 min works too."));
     expect(captured).toHaveLength(1);
   });
 

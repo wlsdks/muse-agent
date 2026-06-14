@@ -205,6 +205,85 @@ describe("RAP exemplar toolset-fit gate — retrieval-side withheld when tool un
   });
 });
 
+// RAP structural-validity gate (arXiv:2402.03610 + LLMCompiler arXiv:2312.04511):
+// a cached exemplar carrying a dangling {{stepN}} ref (the artifact a mid-step
+// success-filter can leave) is withheld — it would teach the planner an
+// un-dispatchable plan that validatePlan rejects, burning the one repair round.
+describe("RAP exemplar self-consistency gate — dangling-ref exemplar withheld (arXiv:2402.03610)", () => {
+  function runtimeNotesOnly(provider: ModelProvider, planCacheProvider: PlanCacheProvider) {
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: { description: "Search notes", inputSchema: { type: "object" }, name: "notes_search", risk: "read" as const },
+        execute: async () => ({ hits: ["note"] })
+      }
+    ]);
+    return createAgentRuntime({ modelProvider: provider, planCacheProvider, toolRegistry });
+  }
+
+  // Tool IS registered (notes_search) so exemplarFitsToolset passes — ONLY the
+  // new self-consistency gate can withhold this. Its single step references
+  // {{step2}}, a forward/dangling ref (no step 2 exists).
+  const danglingCached: CachedPlan = {
+    prompt: "summarize my Q3 budget notes",
+    steps: [{ args: { query: "{{step2}}" }, description: "find notes", tool: "notes_search" }]
+  };
+
+  it("dangling-ref exemplar (toolset fits) → planning prompt omits the exemplar", async () => {
+    const requests: ModelRequest[] = [];
+    const provider: PlanCacheProvider = {
+      findSimilarPlan: async () => danglingCached,
+      recordPlan: async () => undefined
+    };
+    const runtime = runtimeNotesOnly(
+      sequenceProvider([
+        planResponse([{ args: { query: "Q3" }, description: "find notes", tool: "notes_search" }]),
+        answerResponse("Here is the summary.")
+      ], (request) => requests.push(request)),
+      provider
+    );
+
+    await runtime.run({
+      messages: [{ content: "summarize my Q3 budget notes", role: "user" }],
+      metadata: { agentMode: "plan_execute", userId: "stark" },
+      model: "provider/model",
+      runId: "rap-dangling-withheld"
+    });
+
+    const planningSystem = requests[0]?.messages.find((m) => m.role === "system")?.content ?? "";
+    // Neutralizing exemplarIsSelfConsistent would inject this exemplar (the revert-proof).
+    expect(planningSystem).not.toContain("[Similar Past Plan]");
+  });
+
+  it("non-vacuity: a self-consistent exemplar (same tool) IS injected", async () => {
+    const requests: ModelRequest[] = [];
+    const validCached: CachedPlan = {
+      prompt: "summarize my Q3 budget notes",
+      steps: [{ args: { query: "Q3" }, description: "find notes", tool: "notes_search" }]
+    };
+    const provider: PlanCacheProvider = {
+      findSimilarPlan: async () => validCached,
+      recordPlan: async () => undefined
+    };
+    const runtime = runtimeNotesOnly(
+      sequenceProvider([
+        planResponse([{ args: { query: "Q4" }, description: "find notes", tool: "notes_search" }]),
+        answerResponse("Here is the Q4 summary.")
+      ], (request) => requests.push(request)),
+      provider
+    );
+
+    await runtime.run({
+      messages: [{ content: "summarize my Q4 budget notes", role: "user" }],
+      metadata: { agentMode: "plan_execute", userId: "stark" },
+      model: "provider/model",
+      runId: "rap-valid-injected"
+    });
+
+    const planningSystem = requests[0]?.messages.find((m) => m.role === "system")?.content ?? "";
+    expect(planningSystem).toContain("[Similar Past Plan]");
+  });
+});
+
 // AWM outcome-conditioning: only steps from a SUCCESSFUL trajectory are cached.
 describe("AWM outcome-conditioned plan caching (arXiv:2409.07429)", () => {
   // Two tools: step_ok always succeeds; step_fail returns an effect-failed output.

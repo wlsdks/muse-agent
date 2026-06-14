@@ -45,7 +45,10 @@ import {
   type StreamExecutionOptions,
   type StreamedModelTurn
 } from "./runtime-internals.js";
+import { detectConflictingWritesInBatch } from "./tool-batch-conflict.js";
 import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
+import { ToolFailureStreakTracker } from "./tool-failure-streak.js";
+import { ToolLoopProgressTracker } from "./tool-loop-progress.js";
 import type { AgentRunContext } from "./types.js";
 
 export interface ModelLoopRunner {
@@ -133,6 +136,8 @@ export async function executeModelLoop(
   let messages: readonly ModelMessage[] = [...request.messages];
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
+  const progress = new ToolLoopProgressTracker();
+  const failureStreak = new ToolFailureStreakTracker();
   const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
     ? now() + runner.maxRunWallclockMs
@@ -149,8 +154,16 @@ export async function executeModelLoop(
     // model returns a clean response instead of asking for another
     // tool we'd refuse. Honours the iter's "explicit limits and
     // timeouts" non-negotiable from CLAUDE.md.
+    // No-progress early-exit (arXiv:2505.17616): a stalled read loop (the last
+    // window observations near-identical) also disables tools → forces a clean
+    // synthesis instead of burning the rest of the budget on spin.
     const wallclockExceeded = deadlineMs !== undefined && now() > deadlineMs;
-    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls) ? request.tools : [];
+    // Tool-failure-streak circuit breaker (arXiv:2509.25370): a tool that has
+    // failed N times in a row is withheld for the next turn (the model keeps its
+    // OTHER tools) so a cascading tool failure can't burn the whole budget.
+    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled())
+      ? request.tools?.filter((t) => !failureStreak.tripped(t.name))
+      : [];
     const response = await runner.generateWithTracing(context, provider, {
       ...request,
       messages,
@@ -185,24 +198,40 @@ export async function executeModelLoop(
     // the remaining calls are skipped so the wall-clock cap is a
     // real execution bound, not just a between-turn boundary.
     const batchStartedPastDeadline = deadlineMs !== undefined && now() > deadlineMs;
+    // Conflicting-write guard (AgentSpec arXiv:2503.18666): a 2nd write to the same
+    // target with conflicting args in this batch is withheld (zero side-effect) so
+    // a double-act can't reach a write actuator.
+    const conflictingIds = detectConflictingWritesInBatch(calls, (call) => {
+      const risk = (activeTools ?? []).find((t) => t.name === call.name)?.risk;
+      return risk === "write" || risk === "execute";
+    });
     for (const toolCall of calls) {
       const remaining = runner.maxToolCalls - toolCallCount;
       const crossedDeadlineMidBatch = !batchStartedPastDeadline
         && deadlineMs !== undefined && now() > deadlineMs;
-      const canRun = remaining > 0 && !crossedDeadlineMidBatch;
+      const conflicting = conflictingIds.has(toolCall.id);
+      const canRun = remaining > 0 && !crossedDeadlineMidBatch && !conflicting;
       const duplicate = canRun ? deduplicator.check(toolCall) : undefined;
       const executed = duplicate?.duplicate
         ? { result: duplicate.result, toolCall }
-        : canRun
-          ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
-          : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
-              ? "Error: run wall-clock deadline reached"
-              : "Error: max tool call limit reached");
+        : conflicting
+          ? blockedToolResult(toolCall, "Error: conflicting write withheld — ambiguous duplicate action in this batch")
+          : canRun
+            ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
+            : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
+                ? "Error: run wall-clock deadline reached"
+                : "Error: max tool call limit reached");
 
       toolCallCount += canRun ? 1 : 0;
       const toolRisk = (activeTools ?? []).find((t) => t.name === toolCall.name)?.risk;
       const mutating = toolRisk === "write" || toolRisk === "execute";
       deduplicator.record(toolCall, executed.result, mutating);
+      // Feed only GENUINE executions (not blocked / exact-dups) to the stall
+      // tracker; a mutating call resets the window (it advanced state).
+      if (canRun && !duplicate?.duplicate) {
+        progress.record(executed.result.output, mutating);
+        failureStreak.record(toolCall.name, executed.result.status);
+      }
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
       // cap individual tool results so a single big
@@ -244,6 +273,8 @@ export async function* executeStreamingModelLoop(
   let messages: readonly ModelMessage[] = [...request.messages];
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
+  const progress = new ToolLoopProgressTracker();
+  const failureStreak = new ToolFailureStreakTracker();
   const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
     ? now() + runner.maxRunWallclockMs
@@ -253,8 +284,15 @@ export async function* executeStreamingModelLoop(
     if (context.input.signal?.aborted) {
       return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed);
     }
+    // No-progress early-exit (arXiv:2505.17616): a stalled read loop disables
+    // tools for this turn → clean synthesis instead of spinning the budget.
     const wallclockExceeded = deadlineMs !== undefined && now() > deadlineMs;
-    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls) ? request.tools : [];
+    // Tool-failure-streak circuit breaker (arXiv:2509.25370): a tool that has
+    // failed N times in a row is withheld for the next turn (the model keeps its
+    // OTHER tools) so a cascading tool failure can't burn the whole budget.
+    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled())
+      ? request.tools?.filter((t) => !failureStreak.tripped(t.name))
+      : [];
     const turnStream = streamModelTurn(runner, context, provider, {
       ...request,
       messages,
@@ -290,19 +328,27 @@ export async function* executeStreamingModelLoop(
     messages = [...messages, assistantMessage];
 
     const batchStartedPastDeadline = deadlineMs !== undefined && now() > deadlineMs;
+    // Conflicting-write guard (AgentSpec arXiv:2503.18666): see executeModelLoop.
+    const conflictingIds = detectConflictingWritesInBatch(calls, (call) => {
+      const risk = (activeTools ?? []).find((t) => t.name === call.name)?.risk;
+      return risk === "write" || risk === "execute";
+    });
     for (const toolCall of calls) {
       const remaining = runner.maxToolCalls - toolCallCount;
       const crossedDeadlineMidBatch = !batchStartedPastDeadline
         && deadlineMs !== undefined && now() > deadlineMs;
-      const canRun = remaining > 0 && !crossedDeadlineMidBatch;
+      const conflicting = conflictingIds.has(toolCall.id);
+      const canRun = remaining > 0 && !crossedDeadlineMidBatch && !conflicting;
       const duplicate = canRun ? deduplicator.check(toolCall) : undefined;
       const executed = duplicate?.duplicate
         ? { result: duplicate.result, toolCall }
-        : canRun
-          ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
-          : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
-              ? "Error: run wall-clock deadline reached"
-              : "Error: max tool call limit reached");
+        : conflicting
+          ? blockedToolResult(toolCall, "Error: conflicting write withheld — ambiguous duplicate action in this batch")
+          : canRun
+            ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
+            : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
+                ? "Error: run wall-clock deadline reached"
+                : "Error: max tool call limit reached");
 
       const grounding = groundingSourceFromExecuted(executed);
       yield { runId: context.runId, toolCall, type: "tool-result", ...(grounding ? { grounding } : {}) };
@@ -310,6 +356,12 @@ export async function* executeStreamingModelLoop(
       const toolRisk = (activeTools ?? []).find((t) => t.name === toolCall.name)?.risk;
       const mutating = toolRisk === "write" || toolRisk === "execute";
       deduplicator.record(toolCall, executed.result, mutating);
+      // Feed only GENUINE executions (not blocked / exact-dups) to the stall
+      // tracker; a mutating call resets the window (it advanced state).
+      if (canRun && !duplicate?.duplicate) {
+        progress.record(executed.result.output, mutating);
+        failureStreak.record(toolCall.name, executed.result.status);
+      }
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
       // cap individual tool results so a single big

@@ -33,6 +33,7 @@ import {
   resolveRemindersFile,
   resolveSuppressedLessonsFile,
   resolveRecallHitsFile,
+  resolveFadedMemoriesFile,
   resolveTasksFile,
   type DecayContradictedDeps,
   type DistillQueuedDeps
@@ -84,7 +85,8 @@ import {
   type ProactiveNoticeSink,
   type WebWatchRunner,
   readProactiveHistory,
-  readRecallHits
+  readRecallHits,
+  writeFadedMemoryKeys
 } from "@muse/mcp";
 import type { MuseTool } from "@muse/tools";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -836,7 +838,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           const added = await runReflectionPass(inputs, {
             model: followupModel.model,
             modelProvider: followupModel.modelProvider as Parameters<typeof runReflectionPass>[1]["modelProvider"],
-            reflectionsFile: resolveReflectionsFile(e)
+            reflectionsFile: resolveReflectionsFile(e),
+            embed: createGateEmbedder(e)
           });
           if (added > 0) io.stdout(`[${new Date(nowMs).toISOString()}] reflections: +${added.toString()} (see \`muse reflections\`)\n`);
         } catch { /* fail-soft — dreaming is a background nicety */ }
@@ -1079,6 +1082,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           lastRunMs: lastMemoryConsolidateMs,
           readHits: () => readRecallHits(resolveRecallHitsFile(e)),
           log: (line) => io.stdout(line + "\n"),
+          useActrRanking: true, // rank fade/promote by ACT-R activation like the manual path
+          persistFade: (fadeKeys) => writeFadedMemoryKeys(resolveFadedMemoriesFile(e), fadeKeys, Date.now()),
           ...(persist !== undefined ? { persist } : {})
         });
         lastMemoryConsolidateMs = nextState.lastRunMs;

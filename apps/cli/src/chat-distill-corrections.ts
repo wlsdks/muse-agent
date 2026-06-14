@@ -17,10 +17,13 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  DEFAULT_PLAYBOOK_CREDIT_COSINE,
+  DEFAULT_PLAYBOOK_DECAY_CREDIT_COSINE,
   detectApprovals,
   detectCorrections,
   distillStrategyFromCorrection,
   extractCurrentSessionTurns,
+  selectCreditTargetSemantic,
   strategyTextSimilarity,
   type DistillStrategyOptions,
   type SessionBoundaryRef,
@@ -117,32 +120,45 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
   const existingTexts = existing.map((entry) => entry.text);
   const feedbackThreshold = options.feedbackThreshold ?? DEFAULT_FEEDBACK_THRESHOLD;
   const adjustedIds = new Set<string>();
+  const embed = options.embed ?? createGateEmbedder(process.env);
 
-  // Credit-assign explicit feedback to the existing strategy most similar to
-  // its request cue, then move that strategy's reward — once per strategy per
-  // session (a strategy is never both decayed and reinforced). Runs before
-  // distillation so a freshly-distilled strategy is never its own culprit.
+  // Credit-assign explicit feedback to the existing strategy the cue implicates,
+  // then move that strategy's reward — once per strategy per session (a strategy
+  // is never both decayed and reinforced). Runs before distillation so a freshly
+  // -distilled strategy is never its own culprit. SEMANTIC selection first
+  // (Memory-R2 arXiv:2605.21768): the strategy text (terse imperative) and the
+  // request cue (user prose) are different distributions, so lexical Jaccard
+  // mis-/no-credits a paraphrase or cross-lingual pair — mis-credited reward then
+  // replays via experience-following (arXiv:2505.16067). Lexical is the fail-soft
+  // fallback when the embedder is unavailable.
   const moveReward = async (cue: string, delta: number): Promise<RewardedStrategy | undefined> => {
     if (cue.trim().length === 0) {
       return undefined;
     }
-    let best: { readonly entry: PlaybookEntry; readonly sim: number } | undefined;
-    for (const entry of existing) {
-      if (adjustedIds.has(entry.id)) {
-        continue;
+    const candidates = existing.filter((entry) => !adjustedIds.has(entry.id));
+    // Asymmetric precision: a DECAY (delta<0) must clear a HIGHER cue↔strategy
+    // match than a reinforce — a wrong decay of a (possibly grounded) strategy is
+    // costlier than a missed reinforce (Memory-R2 arXiv:2605.21768; WEDGE).
+    const creditFloor = delta < 0 ? DEFAULT_PLAYBOOK_DECAY_CREDIT_COSINE : DEFAULT_PLAYBOOK_CREDIT_COSINE;
+    let targetId = await selectCreditTargetSemantic(candidates, cue, embed, creditFloor);
+    if (targetId === undefined) {
+      let best: { readonly entry: PlaybookEntry; readonly sim: number } | undefined;
+      for (const entry of candidates) {
+        const sim = strategyTextSimilarity(entry.text, cue);
+        if (sim >= feedbackThreshold && (!best || sim > best.sim)) {
+          best = { entry, sim };
+        }
       }
-      const sim = strategyTextSimilarity(entry.text, cue);
-      if (sim >= feedbackThreshold && (!best || sim > best.sim)) {
-        best = { entry, sim };
-      }
+      targetId = best?.entry.id;
     }
-    if (!best) {
+    const target = targetId === undefined ? undefined : existing.find((entry) => entry.id === targetId);
+    if (!target) {
       return undefined;
     }
-    adjustedIds.add(best.entry.id);
+    adjustedIds.add(target.id);
     try {
-      const reward = await adjustPlaybookReward(playbookFile, best.entry.id, delta);
-      return reward === undefined ? undefined : { reward, text: best.entry.text };
+      const reward = await adjustPlaybookReward(playbookFile, target.id, delta);
+      return reward === undefined ? undefined : { reward, text: target.text };
     } catch {
       return undefined; // fail-soft — a failed reward write must not lose the rest
     }
@@ -169,7 +185,6 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
   }
 
   const recorded: { readonly text: string; readonly tag?: string }[] = [];
-  const embed = options.embed ?? createGateEmbedder(process.env);
   for (const exchange of corrections) {
     const distilled = await distillStrategyFromCorrection(exchange, {
       model: options.model,

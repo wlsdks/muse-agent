@@ -145,6 +145,9 @@ export function createFollowupCaptureHook(options: FollowupCaptureHookOptions): 
       const anchor = now();
       const rulePromises = extractFollowupPromises(output, {
         now: anchor,
+        // A queued+fired self-followup must be an actual commitment, not a
+        // descriptive time mention (arXiv:2502.14321 commissive force).
+        requireCommissive: true,
         ...(options.slotHours ? { slotHours: options.slotHours } : {})
       });
       let llmPromises: readonly FollowupPromise[] = [];

@@ -82,4 +82,52 @@ describe("runReflectionPass", () => {
       await rm(dir, { force: true, recursive: true });
     }
   });
+
+  it("with embed: NOOP-drops a fresh insight that paraphrases an ALREADY-stored one (Mem0 cross-tick dedup)", async () => {
+    const { runReflectionPass } = await import("./commands-reflections.js");
+    const { addReflections, readReflections } = await import("@muse/mcp");
+    const { mkdtemp, rm } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "muse-rpass-noop-"));
+    const file = join(dir, "reflections.json");
+    try {
+      // Pre-seed the store with a prior tick's insight.
+      const STORED = "You debug networking a lot";
+      const PARAPHRASE = "Networking issues take up much of your time"; // same theme, different words
+      const DISTINCT = "You prefer terse replies";
+      await addReflections(file, [{ createdAtMs: 1, id: "old", insight: STORED, sourceIds: ["e0"], supportCount: 2 }]);
+
+      // This tick: the model re-dreams a PARAPHRASE of the stored insight + a DISTINCT one.
+      const mp = {
+        generate: async (req: { messages: readonly { content: string }[] }) => {
+          const isJudge = req.messages.some((m) => m.content.includes("grounding judge"));
+          return {
+            output: isJudge
+              ? "YES"
+              : JSON.stringify([
+                  { insight: PARAPHRASE, sources: ["e1", "e2"] },
+                  { insight: DISTINCT, sources: ["e2", "e3"] }
+                ])
+          };
+        }
+      } as never;
+      // Fake embedder: the paraphrase is near-identical to the stored insight;
+      // the distinct insight is orthogonal. (Lexical dedup would MISS the paraphrase.)
+      const embed = async (text: string): Promise<readonly number[]> => {
+        if (text === STORED || text === PARAPHRASE) return [1, 0, 0];
+        return [0, 1, 0];
+      };
+      const added = await runReflectionPass(
+        [{ id: "e1", text: "vpn" }, { id: "e2", text: "mtu" }, { id: "e3", text: "terse" }],
+        { genId: () => "rid", model: "m", modelProvider: mp, now: () => 2, reflectionsFile: file, embed }
+      );
+      expect(added).toBe(1); // only the DISTINCT insight is added; the paraphrase is NOOP-dropped
+      const stored = await readReflections(file);
+      expect(stored.map((r) => r.insight).sort()).toEqual([DISTINCT, STORED].sort());
+      expect(stored.filter((r) => r.insight === PARAPHRASE)).toHaveLength(0);
+    } finally {
+      await rm(dir, { force: true, recursive: true });
+    }
+  });
 });

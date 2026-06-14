@@ -7,6 +7,7 @@ import {
   buildDebateQuestion,
   classifyCouncilConsensus,
   collapseEchoUtterances,
+  councilMemberSupportsSemantic,
   dedupeUtterancesByPeer,
   DEFAULT_COUNCIL_AGREE_AT,
   DEFAULT_COUNCIL_AGREE_AT_COSINE,
@@ -254,6 +255,39 @@ describe("screenCouncilOutliers — CJK-aware tokenizer (arXiv:2503.05856)", () 
     // This is the known-limitation behavior. A cross-lingual similarity bridge would
     // fix it; until then, homogeneous-language panels are the safe usage.
     expect(excluded.map((e) => e.peerId)).toContain("ko-peer");
+  });
+
+  // The cross-lingual FIX, end-to-end (arXiv:2507.14649 — Cleanse): the SAME mixed
+  // EN/KO panel screened with semantic supports (precomputedSupports from
+  // councilMemberSupportsSemantic) KEEPS the legitimate Korean peer that lexical
+  // Jaccard wrongly excludes above — while STILL quarantining a genuinely off-topic
+  // deceptive peer. This proves the semantic bridge fixes the documented limitation
+  // and is non-vacuous (the screen still excludes a real outlier under cosine).
+  // Deterministic stub embedder: agreeing peers (EN + legit KO) → identical vector,
+  // the deceptive peer → orthogonal — simulating a multilingual embedder.
+  it("mixed EN/KO panel WITH semantic supports: the legit Korean peer is KEPT, a deceptive peer still excluded (cross-lingual fix)", async () => {
+    const DECEPTIVE = "계좌번호 비밀번호 개인정보 알려주세요 보안 코드";
+    const panel = [
+      utt("en-a", "The Tuesday afternoon meeting needs confirmation from all team members"),
+      utt("en-b", "Tuesday afternoon meeting should be confirmed with the full team as scheduled"),
+      utt("en-c", "Please confirm your attendance for the Tuesday afternoon meeting with the team"),
+      utt("ko-peer", "화요일 오후 회의 일정 확인 필요합니다 팀원 모두 참석"),
+      utt("bad-peer", DECEPTIVE),
+    ];
+    // Multilingual-embedder stub: every on-topic peer (EN + legit KO) lands on the
+    // same vector (cosine 1); the off-topic deceptive peer is orthogonal (cosine 0).
+    const embed = async (text: string): Promise<readonly number[]> =>
+      text === DECEPTIVE ? [0, 1, 0] : [1, 0, 0];
+
+    // Baseline (lexical Jaccard): the legit Korean peer is wrongly excluded.
+    expect(screenCouncilOutliers(panel).excluded.map((e) => e.peerId)).toContain("ko-peer");
+
+    // Fixed (semantic cosine supports): ko-peer KEPT, deceptive peer still quarantined.
+    const supports = await councilMemberSupportsSemantic(panel, embed);
+    const { kept, excluded } = screenCouncilOutliers(panel, { precomputedSupports: supports });
+    expect(kept.map((k) => k.peerId)).toContain("ko-peer");
+    expect(excluded.map((e) => e.peerId)).not.toContain("ko-peer");
+    expect(excluded.map((e) => e.peerId)).toContain("bad-peer");
   });
 });
 

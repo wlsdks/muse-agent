@@ -721,6 +721,129 @@ export function parseCouncilAnswer(raw: string, validPeerIds: ReadonlySet<string
   return null;
 }
 
+/**
+ * Cosine floor for crediting a peer as a genuine CONTRIBUTOR to the synthesis.
+ * Conservative (0.35, below the peer-peer outlier floor 0.4): a contributor's
+ * reasoning is one input among several in the merged answer, so it scores lower
+ * than peer↔peer agreement — drop only a peer whose reasoning is clearly
+ * unrelated to the answer, never a borderline genuine one.
+ */
+export const COUNCIL_ATTRIBUTION_COSINE_FLOOR = 0.35;
+
+/**
+ * Contributor-attribution faithfulness screen (arXiv:2412.18004 — "Correctness is
+ * not Faithfulness in RAG Attributions": up to 57% of citations are
+ * post-rationalized, listed without genuine reliance). `parseCouncilAnswer` keeps
+ * a contributor id on an EXISTENCE check only (the peer was on the panel), never
+ * on whether that peer actually informed the answer — so the local 12B's habit of
+ * listing every panel member flows verbatim to the user as provenance
+ * ("— drawn from: alice, bob") even when a peer contributed nothing: a false
+ * -provenance / GROUNDED≠TRUE leak that `verifyCouncilGrounding` (which checks the
+ * answer against the UNION of reasoning) cannot catch per-contributor.
+ *
+ * This drops a contributor whose reasoning does NOT semantically support the
+ * answer (embedding cosine < `threshold`). SEMANTIC (the cumulative lesson:
+ * answer-synthesis vs peer-reasoning are different surfaces — lexical overlap
+ * misfits) + SUBTRACTIVE (only removes a false source line, never alters the
+ * answer or adds a claim) → it STRENGTHENS the fabrication=0 floor. Never-empty
+ * + fail-soft: ≤1 contributor, an embed throw, or a would-empty result leaves the
+ * list intact (keeping at least the best-supported one). Pure over the injected
+ * embedder + exported for direct coverage.
+ */
+export async function screenUnfaithfulContributors(
+  answer: string,
+  contributors: readonly string[],
+  utterances: readonly CouncilUtterance[],
+  embed: (text: string) => Promise<readonly number[]>,
+  threshold: number = COUNCIL_ATTRIBUTION_COSINE_FLOOR
+): Promise<string[]> {
+  if (contributors.length <= 1 || answer.trim().length === 0) return [...contributors];
+  const reasoningById = new Map(utterances.map((u) => [u.peerId, u.reasoning]));
+  let answerVec: readonly number[];
+  try {
+    answerVec = await embed(answer);
+  } catch {
+    return [...contributors];
+  }
+  if (answerVec.length === 0) return [...contributors];
+  const scored: { readonly id: string; readonly sim: number }[] = [];
+  for (const id of contributors) {
+    const reasoning = reasoningById.get(id);
+    if (reasoning === undefined || reasoning.trim().length === 0) {
+      scored.push({ id, sim: 1 }); // no reasoning to check against → keep (fail-open per-id)
+      continue;
+    }
+    let vec: readonly number[];
+    try {
+      vec = await embed(reasoning);
+    } catch {
+      return [...contributors];
+    }
+    scored.push({ id, sim: vec.length === 0 ? 1 : cosineSimilarity(answerVec, vec) });
+  }
+  const kept = scored.filter((s) => s.sim >= threshold).map((s) => s.id);
+  if (kept.length > 0) return kept;
+  // Never empty the provenance entirely — keep the single best-supported peer.
+  const best = scored.reduce((a, b) => (b.sim > a.sim ? b : a));
+  return [best.id];
+}
+
+/**
+ * Cosine floor below which a quarantined peer's reasoning is a GENUINE dissent
+ * from the synthesized answer (not a near-paraphrase the screen caught for some
+ * other reason). Conservative (0.35): surface only a peer that materially argued
+ * differently, not one quarantined on a borderline support score.
+ */
+export const COUNCIL_DISSENT_COSINE_FLOOR = 0.35;
+
+/**
+ * Dissent-surfacing advisory ("Hear Both Sides", arXiv:2603.20640 — retain
+ * minority/diverse perspectives instead of letting the majority silently bury
+ * them). The outlier screen quarantines a low-support peer as a
+ * "consensus-outlier" and threads it through `CouncilAnswer.excludedPeers`, but
+ * the renderer drops that field — so a lone peer the majority OUTVOTED vanishes
+ * invisibly (a confidently-presented majority answer that buried a correct
+ * minority is overconfidence-adjacent). This returns the peerIds of
+ * consensus-outlier exclusions whose reasoning SEMANTICALLY diverges from the
+ * answer (embedding cosine < `threshold`), so the caller can surface ONE caution
+ * line. ADVISORY-ONLY (arXiv:2511.07784): it never re-admits the peer, alters the
+ * answer/contributors, or touches the grounding gate. Semantic (the cumulative
+ * lesson — divergence isn't a lexical signal). Fail-soft: no embed / throw / empty
+ * vector / no exclusions ⇒ [] (today's silent behaviour). Pure over the injected
+ * embedder + exported for direct coverage.
+ */
+export async function selectDissentingExclusions(
+  answer: CouncilAnswer,
+  utterances: readonly CouncilUtterance[],
+  embed: (text: string) => Promise<readonly number[]>,
+  threshold: number = COUNCIL_DISSENT_COSINE_FLOOR
+): Promise<string[]> {
+  const excluded = (answer.excludedPeers ?? []).filter((e) => e.reason === "consensus-outlier");
+  if (excluded.length === 0 || answer.answer.trim().length === 0) return [];
+  const reasoningById = new Map(utterances.map((u) => [u.peerId, u.reasoning]));
+  let answerVec: readonly number[];
+  try {
+    answerVec = await embed(answer.answer);
+  } catch {
+    return [];
+  }
+  if (answerVec.length === 0) return [];
+  const dissenting: string[] = [];
+  for (const exclusion of excluded) {
+    const reasoning = reasoningById.get(exclusion.peerId);
+    if (reasoning === undefined || reasoning.trim().length === 0) continue;
+    let vec: readonly number[];
+    try {
+      vec = await embed(reasoning);
+    } catch {
+      return [];
+    }
+    if (vec.length === 0) continue;
+    if (cosineSimilarity(answerVec, vec) < threshold) dissenting.push(exclusion.peerId);
+  }
+  return dissenting;
+}
+
 /** Synthesise the council's reasoning into one grounded answer. Needs ≥1 utterance. */
 export async function synthesizeCouncilAnswer(
   question: string,
@@ -814,7 +937,14 @@ export async function synthesizeCouncilAnswer(
   } catch {
     return null;
   }
-  const council = parseCouncilAnswer(output, new Set(forSynthesis.map((u) => u.peerId)));
+  const parsed = parseCouncilAnswer(output, new Set(forSynthesis.map((u) => u.peerId)));
+  // Drop a falsely-attributed contributor — a peer listed as a source whose
+  // reasoning doesn't semantically support the answer (post-rationalization,
+  // arXiv:2412.18004). Semantic + subtractive; only runs when an embedder is
+  // present and there's more than one contributor to discriminate.
+  const council = parsed && options.embed && parsed.contributors.length > 1
+    ? { ...parsed, contributors: await screenUnfaithfulContributors(parsed.answer, parsed.contributors, forSynthesis, options.embed) }
+    : parsed;
   const allExcluded = [...offTopicExcluded, ...outlierExcluded];
   const excludedPeers = allExcluded.length > 0 ? allExcluded : undefined;
   const withExcluded = council

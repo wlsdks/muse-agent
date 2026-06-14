@@ -161,6 +161,42 @@ export interface SessionSummary {
   readonly importance?: number;
 }
 
+/** Minimum distinct content tokens for a summary to be worth retaining. */
+export const DEFAULT_EPISODE_MIN_CONTENT_TOKENS = 5;
+/** Self-rated importance at/below which the model deems the session trivial. */
+export const DEFAULT_EPISODE_TRIVIAL_IMPORTANCE = 1;
+
+/**
+ * Episode-write SALIENCE admission gate (SSGM, arXiv:2603.11768 — govern what is
+ * consolidated into long-term memory BEFORE the write, so low-value contexts
+ * aren't "solidified into long-term storage" and don't dilute recall). The model
+ * already self-rates `importance` (1–10), but today that number ONLY modulates
+ * fade half-life downstream — it is NEVER an admission threshold, so an idle
+ * greeting session is still persisted as a citable `[session: …]` source.
+ *
+ * Drop an episode ONLY when BOTH signals agree it's trivial: the summary is
+ * content-THIN (< `minContentTokens` distinct content tokens, via the same
+ * CJK-aware `lexicalTokens` the grounding gate uses — same-distribution lexical,
+ * the cumulative lesson's allowed case) AND the model self-rated it at/below the
+ * trivial floor. Requiring BOTH means a terse-but-IMPORTANT episode (high
+ * importance, or no importance emitted) is always retained, and importance alone
+ * never drops anything (an 8B is an unreliable self-verifier — the deterministic
+ * thinness must corroborate). Fail-OPEN: a rich summary, or one with no
+ * importance, is retained (today's behaviour). SUBTRACTIVE — it only declines to
+ * store, never fabricates a memory. Pure + exported for direct coverage.
+ */
+export function isEpisodeWorthRetaining(
+  summary: SessionSummary,
+  options: { readonly minContentTokens?: number; readonly trivialImportanceAtOrBelow?: number } = {}
+): boolean {
+  const minTokens = Math.max(1, Math.trunc(options.minContentTokens ?? DEFAULT_EPISODE_MIN_CONTENT_TOKENS));
+  const trivialAt = options.trivialImportanceAtOrBelow ?? DEFAULT_EPISODE_TRIVIAL_IMPORTANCE;
+  const contentTokens = lexicalTokens(summary.summary).size;
+  const thin = contentTokens < minTokens;
+  const selfRatedTrivial = summary.importance !== undefined && summary.importance <= trivialAt;
+  return !(thin && selfRatedTrivial);
+}
+
 export interface SummariseSessionOptions {
   readonly turns: readonly SessionTurnLine[];
   readonly modelProvider: ModelProvider;

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   createConfidenceGatedInvestigator,
-  decideProactiveRecall
+  decideProactiveRecall,
+  FindingResurfaceSuppressor
 } from "./proactive-recall-gate.js";
 import type { KnowledgeChunk, KnowledgeMatch } from "./knowledge-recall.js";
 
@@ -126,5 +127,39 @@ describe("createConfidenceGatedInvestigator — investigate seam", () => {
   it("fail-open when the lazy chunks provider THROWS (corpus unreadable → silent, base notice still fires)", async () => {
     const investigate = createConfidenceGatedInvestigator({ chunks: async () => { throw new Error("index locked"); }, embed });
     expect(await investigate({ factSheet: "", kind: "task", title: "Q3 budget review" })).toBeUndefined();
+  });
+});
+
+describe("FindingResurfaceSuppressor — cooldown + bounded working set", () => {
+  const COOLDOWN = 10_000;
+
+  it("suppresses an identical finding within the cooldown window, re-allows it after", () => {
+    const s = new FindingResurfaceSuppressor(COOLDOWN);
+    expect(s.shouldSurface("📎 same finding", 0)).toBe(true);
+    expect(s.shouldSurface("📎 same finding", COOLDOWN - 1)).toBe(false); // within window
+    expect(s.shouldSurface("📎 same finding", COOLDOWN + 1)).toBe(true); // window elapsed
+  });
+
+  it("bounds the working set: the OLDEST finding is evicted past the cap (long-lived daemon can't leak)", () => {
+    // cap=3, a large cooldown so nothing expires by time — only eviction can drop a key.
+    const s = new FindingResurfaceSuppressor(1_000_000, 3);
+    expect(s.shouldSurface("f1", 0)).toBe(true);
+    expect(s.shouldSurface("f2", 1)).toBe(true);
+    expect(s.shouldSurface("f3", 2)).toBe(true);
+    expect(s.shouldSurface("f4", 3)).toBe(true); // size 4 > cap 3 → evicts oldest (f1)
+
+    // f2/f3/f4 are still retained → suppressed within cooldown (these false calls don't mutate the map).
+    expect(s.shouldSurface("f2", 4)).toBe(false);
+    expect(s.shouldSurface("f3", 5)).toBe(false);
+    expect(s.shouldSurface("f4", 6)).toBe(false);
+    // f1 was evicted → treated as never-seen → re-surfaces (the bound's observable effect).
+    expect(s.shouldSurface("f1", 7)).toBe(true);
+  });
+
+  it("a non-finite / non-positive cap falls back to the default (stays bounded, never unbounded)", () => {
+    // NaN cap would make `size > cap` always false → unbounded; the guard prevents that.
+    const s = new FindingResurfaceSuppressor(COOLDOWN, Number.NaN);
+    expect(s.shouldSurface("x", 0)).toBe(true);
+    expect(s.shouldSurface("x", 1)).toBe(false); // still functions as a normal suppressor
   });
 });

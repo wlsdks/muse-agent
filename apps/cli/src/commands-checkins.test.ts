@@ -167,10 +167,18 @@ describe("checkinsFile", () => {
   });
 });
 
+// Deterministic embedder for the discharge filter (no Ollama): "email/bob/report"
+// share an axis so an "emailed Bob" discharge matches the "email Bob" commitment.
+function fakeEmbed(text: string): Promise<readonly number[]> {
+  const t = text.toLowerCase();
+  return Promise.resolve([/email|bob|report/.test(t) ? 1 : 0, /call|dentist/.test(t) ? 1 : 0, 0]);
+}
+
 describe("scanSessionCheckins — session-end auto-scan (detect → schedule → persist)", () => {
   it("schedules a check-in for a voiced commitment; a no-commitment session schedules none", async () => {
     const file = join(mkdtempSync(join(tmpdir(), "muse-autoscan-")), "checkins.json");
     const withCommitment = await scanSessionCheckins({
+      embed: fakeEmbed,
       file,
       userId: "stark",
       now: () => new Date("2026-05-01T09:00:00Z"),
@@ -184,11 +192,31 @@ describe("scanSessionCheckins — session-end auto-scan (detect → schedule →
     expect((await readCheckins(file)).map((c) => c.status)).toEqual(["scheduled"]);
 
     const noCommitment = await scanSessionCheckins({
+      embed: fakeEmbed,
       file,
       userId: "stark",
       now: () => new Date("2026-05-01T09:05:00Z"),
       readHistory: async () => [{ role: "user", content: "what time is it?" }]
     });
     expect(noCommitment).toEqual([]);
+  });
+
+  it("does NOT schedule a check-in for a commitment the user discharged later in the session (π-Bench arXiv:2605.14678)", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-discharge-")), "checkins.json");
+    const fresh = await scanSessionCheckins({
+      embed: fakeEmbed,
+      file,
+      userId: "stark",
+      now: () => new Date("2026-05-01T09:00:00Z"),
+      readHistory: async () => [
+        { role: "user", content: "I need to email Bob about the Q3 report" },
+        { role: "assistant", content: "Got it." },
+        { role: "user", content: "done — I emailed Bob the Q3 report just now" }
+      ]
+    });
+    // Discharged in-conversation → no nagging check-in. Neutralizing
+    // selectOpenCommitments would schedule 1 (the revert-proof).
+    expect(fresh).toEqual([]);
+    expect(await readCheckins(file)).toEqual([]);
   });
 });

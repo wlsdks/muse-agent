@@ -101,6 +101,59 @@ describe("inferPreferencesFromTurns — correction → typed user-model preferen
     expect(await inferPreferencesFromTurns([{ content: "hi", role: "user" }, { content: "hello", role: "assistant" }], { model: "q", modelProvider: fakeProvider("preference: x\ncategory: style\nconfidence: 0.9"), store, userId: "s" })).toEqual([]);
     expect(saved).toEqual([]);
   });
+
+  // Branching stub: the polarity classifier system prompt asks for one word
+  // (CONTRADICT/AGREE/UNRELATED); the inference prompt yields the preference block.
+  const supersedeProvider = (polarity: (userMsg: string) => string) => ({
+    generate: async (req: { messages: readonly { role: string; content: string }[] }) => {
+      const sys = req.messages.find((m) => m.role === "system")?.content ?? "";
+      if (sys.includes("EXACTLY one word")) {
+        const userMsg = req.messages.find((m) => m.role === "user")?.content ?? "";
+        return { output: polarity(userMsg) };
+      }
+      return { output: "preference: write in flowing prose, no lists\ncategory: style\nconfidence: 0.8" };
+    }
+  }) as unknown as Parameters<typeof inferPreferencesFromTurns>[1]["modelProvider"];
+
+  function supersedingStore() {
+    const slots = new Map<string, UserModelSlot>([
+      ["pref-format", { id: "pref-format", kind: "preference", value: "always answer in bullet points", category: "format", updatedAt: new Date("2026-05-01T00:00:00Z") }]
+    ]);
+    return {
+      slots,
+      store: {
+        upsertUserModelSlot: async (_u: string, slot: UserModelSlot) => { slots.set(slot.id, slot); },
+        removeUserModelSlot: async (_u: string, id: string) => { slots.delete(id); }
+      },
+      listExistingPreferences: async () => [...slots.values()].map((s) => ({ id: s.id, value: s.value }))
+    };
+  }
+
+  it("belief revision: a new pref that contradicts a stored DIFFERENT-category one supersedes it (arXiv:2606.09483)", async () => {
+    const { slots, store, listExistingPreferences } = supersedingStore();
+    await inferPreferencesFromTurns(correction, {
+      model: "q",
+      modelProvider: supersedeProvider((userMsg) => (userMsg.includes("bullet points") ? "CONTRADICT" : "UNRELATED")),
+      store,
+      userId: "stark",
+      listExistingPreferences
+    });
+    // The new style pref is written and the contradicted format pref is dropped → one slot.
+    expect([...slots.keys()].sort()).toEqual(["pref-style"]);
+    expect(slots.get("pref-style")?.value).toBe("write in flowing prose, no lists");
+  });
+
+  it("no supersession when the new pref does NOT contradict the stored one (both coexist)", async () => {
+    const { slots, store, listExistingPreferences } = supersedingStore();
+    await inferPreferencesFromTurns(correction, {
+      model: "q",
+      modelProvider: supersedeProvider(() => "UNRELATED"),
+      store,
+      userId: "stark",
+      listExistingPreferences
+    });
+    expect([...slots.keys()].sort()).toEqual(["pref-format", "pref-style"]);
+  });
 });
 
 describe("scanCommitmentsFromTurns — deterministic open-loop → check-in (server gets it too)", () => {

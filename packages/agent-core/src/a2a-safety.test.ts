@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   A2A_MAX_CONTENT_CHARS,
+  A2A_MAX_LABEL_CHARS,
   A2ASafetyError,
   classifyInbound,
   isA2AEnabled,
@@ -51,6 +52,16 @@ describe("prepareOutbound — only know-how crosses, PII redacted", () => {
     // exactly at the limit is allowed
     const atLimit = "y".repeat(A2A_MAX_CONTENT_CHARS);
     expect(prepareOutbound({ content: atLimit, kind: "skill" }, "p").content).toHaveLength(A2A_MAX_CONTENT_CHARS);
+  });
+
+  it("refuses an oversized LABEL (fail-closed on size, symmetric with the inbound bound)", () => {
+    const hugeLabel = "L".repeat(A2A_MAX_LABEL_CHARS + 1);
+    expect(() => prepareOutbound({ content: "ok", kind: "skill", label: hugeLabel }, "p")).toThrow(A2ASafetyError);
+    // a label exactly at the limit is allowed (and survives onto the envelope)
+    const atLimit = "m".repeat(A2A_MAX_LABEL_CHARS);
+    expect(prepareOutbound({ content: "ok", kind: "skill", label: atLimit }, "p").label).toHaveLength(A2A_MAX_LABEL_CHARS);
+    // no label is fine (label is optional)
+    expect(prepareOutbound({ content: "ok", kind: "skill" }, "p").label).toBeUndefined();
   });
 
   it("records redacted=true when only the LABEL carried a secret (audit-trail honesty)", () => {
@@ -105,5 +116,23 @@ describe("classifyInbound — inert: quarantine or reject, NEVER execute", () =>
     expect(d.reason).toContain("limit");
     // a payload exactly at the limit from the same peer still quarantines
     expect(classifyInbound(env({ content: "z".repeat(A2A_MAX_CONTENT_CHARS) }), peers).disposition).toBe("quarantine");
+  });
+
+  it("rejects an oversized inbound LABEL from an allowlisted peer (the unguarded twin of the content bound)", () => {
+    // The label flows into the same quarantine store as content but was unbounded —
+    // an allowlisted-but-compromised peer (HMAC verifies) could flood via the label.
+    const d = classifyInbound(env({ label: "L".repeat(A2A_MAX_LABEL_CHARS + 1) }), peers);
+    expect(d.disposition).toBe("reject");
+    expect(d.reason).toContain("label");
+    // a label exactly at the limit from the same peer still quarantines
+    expect(classifyInbound(env({ label: "m".repeat(A2A_MAX_LABEL_CHARS) }), peers).disposition).toBe("quarantine");
+    // no label at all is fine (label is optional)
+    expect(classifyInbound(env(), peers).disposition).toBe("quarantine");
+  });
+
+  it("rejects a non-string label as a malformed envelope (type-guard tightened)", () => {
+    // A non-string label (array/object) would slip the type-guard into the store.
+    expect(classifyInbound(env({ label: ["x", "y"] as unknown as string }), peers)).toMatchObject({ disposition: "reject", reason: "malformed A2A envelope" });
+    expect(classifyInbound(env({ label: { a: 1 } as unknown as string }), peers)).toMatchObject({ disposition: "reject" });
   });
 });

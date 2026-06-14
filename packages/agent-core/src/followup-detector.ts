@@ -65,6 +65,17 @@ export interface ExtractFollowupPromisesOptions {
   /** Anchor time for relative resolution. */
   readonly now: Date;
   /**
+   * Commissive-force gate (arXiv:2502.14321 speech-act paradigm): when true, an
+   * English time phrase is emitted ONLY if a first-person commitment governs its
+   * sentence ("I'll … tomorrow"), not a bare description ("your meeting is
+   * tomorrow"). The production capture hook sets this so a descriptive time mention
+   * never queues a reminder the assistant didn't promise. Default false keeps the
+   * pure time-parser contract for non-self-followup callers. Korean kinds are never
+   * gated (commitment morphology …할게 is the residual gap — same EN-only bias as
+   * the negation guard).
+   */
+  readonly requireCommissive?: boolean;
+  /**
    * Slot hours used when the model says "tomorrow morning" without a
    * concrete clock time. Defaults reflect typical assistant cadence:
    * morning=9, afternoon=14, evening=19, night=21.
@@ -113,6 +124,14 @@ export function extractFollowupPromises(
     // false negatives over spurious queueings. (English negation only — Korean
     // 안/않 morphology is too ambiguous to window-match safely here.)
     if (negatedBefore(text, matchIndex)) return;
+    // Commissive-force gate (arXiv:2502.14321, speech-act paradigm): a self-followup
+    // is a COMMISSIVE act — the assistant must actually commit ("I'll … tomorrow"),
+    // not merely describe a time ("your meeting is tomorrow"). A bare time phrase with
+    // no first-person commitment is an illocutionary misfire; queueing it fires a
+    // reminder the assistant never promised. Opt-in (the capture hook sets it); English
+    // only — Korean commitment morphology (…할게) is the residual gap (same reason
+    // negatedBefore is EN-only). Subtractive: only drops spurious.
+    if (options.requireCommissive && !promise.kind.startsWith("korean-") && !hasCommissiveForce(text, matchIndex)) return;
     // `setHours(NaN, ...)` (e.g. from a corrupt slotHours config —
     // NaN-poisoning via env / settings parse upstream) yields an
     // Invalid Date. Downstream the followup-capture-hook calls
@@ -244,6 +263,30 @@ export function extractFollowupPromises(
 const NEGATION_BEFORE_RE = /\b(?:not|never|cannot)\b|won['’]?t|can['’]?t|wouldn['’]?t|won['’]?t\s+be\s+able/iu;
 function negatedBefore(text: string, index: number): boolean {
   return NEGATION_BEFORE_RE.test(text.slice(Math.max(0, index - 28), index));
+}
+
+// First-person commissive markers (the assistant committing to a future act).
+// Apostrophe REQUIRED on "I'll" so it can't match the adjective "ill".
+const COMMISSIVE_EN_RE = /\bi['’]ll\b|\bi\s+will\b|\bi['’]m\s+going\s+to\b|\bi\s+am\s+going\s+to\b|\blet\s+me\b|\bremind\s+you\b|\bping\s+you\b|\bfollow(?:\s+|-)?up\b|\bget\s+back\s+to\s+you\b|\bcheck\s+back\b|\bcircle\s+back\b/iu;
+
+/**
+ * Does a first-person commissive marker govern the SENTENCE containing the time
+ * phrase at `index`? Scans the whole clause (bounded by . ! ? or newline on each
+ * side) so a commitment before OR after the time phrase ("In 30 min I'll ping
+ * you") counts, while a commitment in a DIFFERENT sentence does not leak in.
+ */
+export function hasCommissiveForce(text: string, index: number): boolean {
+  let start = 0;
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const ch = text[i];
+    if (ch === "." || ch === "!" || ch === "?" || ch === "\n") { start = i + 1; break; }
+  }
+  let end = text.length;
+  for (let i = index; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === "." || ch === "!" || ch === "?" || ch === "\n") { end = i; break; }
+  }
+  return COMMISSIVE_EN_RE.test(text.slice(start, end));
 }
 
 function unitToMs(unit: string, value: number): number | undefined {

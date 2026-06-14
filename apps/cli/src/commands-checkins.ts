@@ -6,7 +6,8 @@
  * over last-chat; the schedule is deterministic (no model).
  */
 
-import { detectUserCommitments } from "@muse/agent-core";
+import { selectOpenCommitments } from "@muse/agent-core";
+import { createGateEmbedder } from "@muse/autoconfigure";
 import { appendCheckins, cancelCheckin, parseReminderDueAt, readCheckins, scheduleCheckins, snoozeCheckin, writeCheckins, type PersistedCheckin } from "@muse/mcp";
 import type { Command } from "commander";
 import { homedir } from "node:os";
@@ -38,12 +39,18 @@ export async function scanSessionCheckins(
     readonly file?: string;
     readonly userId?: string;
     readonly now?: () => Date;
+    /** Injected embedder for the in-conversation discharge filter. Defaults to createGateEmbedder. */
+    readonly embed?: (text: string) => Promise<readonly number[]>;
   } = {}
 ): Promise<readonly PersistedCheckin[]> {
   const readHistory = options.readHistory ?? readLastChatHistory;
   const history = await readHistory().catch(() => []);
   const userTurns = history.filter((line) => line.role === "user").map((line) => line.content);
-  const commitments = detectUserCommitments(userTurns).map((c) => c.text);
+  // π-Bench (arXiv:2605.14678): drop a commitment the user already discharged
+  // later in the conversation, so we don't schedule a check-in nagging about a
+  // done thing.
+  const embed = options.embed ?? createGateEmbedder(process.env);
+  const commitments = (await selectOpenCommitments(userTurns, embed)).map((c) => c.text);
   const file = options.file ?? checkinsFile();
   const existing = await readCheckins(file).catch(() => []);
   const fresh = scheduleCheckins(commitments, {

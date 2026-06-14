@@ -27,7 +27,9 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  classifyEpisodeAdmissionQuality,
   extractCurrentSessionTurns,
+  isEpisodeWorthRetaining,
   peakEndDigest,
   summariseSession,
   summaryGroundedInTranscript,
@@ -121,6 +123,19 @@ export async function captureEndOfSessionEpisode(options: CaptureEndOfSessionOpt
     };
   }
 
+  // Outcome-quality write-admission (selective addition, arXiv:2505.16067): an
+  // error-prone session (user corrected the assistant more than they approved)
+  // must not become a stored episode — agents experience-follow, so its botched
+  // outcome would later replay as cited [session: …] context. The correction's
+  // LESSON is separately distilled to the playbook, so nothing learned is lost.
+  const admission = classifyEpisodeAdmissionQuality(range.turns);
+  if (!admission.admit) {
+    return {
+      reason: `error-prone session (${admission.corrections.toString()} correction(s) > ${admission.approvals.toString()} approval(s)) — episode not admitted to avoid experience-following error propagation`,
+      status: "skipped"
+    };
+  }
+
   let summary = await summariseSession({
     model: options.model,
     modelProvider: options.modelProvider,
@@ -148,6 +163,16 @@ export async function captureEndOfSessionEpisode(options: CaptureEndOfSessionOpt
   if (!groundedByConstruction && !summaryGroundedInTranscript(summary.summary, range.turns)) {
     return {
       reason: "summary not grounded in the session transcript — dropped to avoid persisting a fabricated memory",
+      status: "skipped"
+    };
+  }
+
+  // Salience admission gate (SSGM arXiv:2603.11768): don't persist a content-thin
+  // session the model itself rated trivial — it would only dilute recall as a
+  // near-contentless citable [session: …] source. Subtractive + fail-open.
+  if (!isEpisodeWorthRetaining(summary)) {
+    return {
+      reason: "session too low-salience to retain (content-thin and self-rated trivial)",
       status: "skipped"
     };
   }

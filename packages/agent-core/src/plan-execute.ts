@@ -1,5 +1,5 @@
 import type { ModelMessage, ModelTool } from "@muse/model";
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import { coerceToolArguments, validateRequiredToolArguments } from "@muse/tools";
 
 import { extractFirstJsonArray, iterateJsonArrayCandidates } from "./json-array-scan.js";
@@ -334,6 +334,35 @@ export function validateWritePreconditions(
   return errors;
 }
 
+/**
+ * Closed-vocabulary argument validation: for each step arg whose tool schema
+ * declares an `enum` (a closed choice set) or `const` (a single allowed value),
+ * reject a SCALAR value outside that set. A property without enum/const, or a
+ * non-scalar arg (object/array/null — those aren't closed-vocabulary), imposes no
+ * constraint (fail-soft). Exact equality only — NOT lexical or semantic
+ * similarity (a closed enum is a structural constraint, the one place set
+ * membership is the correct signal, not the cumulative-lesson anti-pattern).
+ * Pure + exported for direct coverage. Returns one message per violation.
+ */
+export function validateEnumArguments(inputSchema: JsonValue | undefined, args: JsonObject): string[] {
+  if (!isRecord(inputSchema) || !isRecord(inputSchema.properties)) return [];
+  const properties = inputSchema.properties;
+  const out: string[] = [];
+  for (const [key, value] of Object.entries(args)) {
+    if (value === null || typeof value === "object") continue; // only scalars carry a closed vocabulary
+    const prop = properties[key];
+    if (!isRecord(prop)) continue;
+    const allowed = Array.isArray(prop.enum)
+      ? prop.enum
+      : (prop.const !== undefined ? [prop.const] : undefined);
+    if (allowed === undefined) continue;
+    if (!allowed.some((candidate) => candidate === value)) {
+      out.push(`argument '${key}' value '${String(value)}' is not one of [${allowed.map((c) => String(c)).join(", ")}]`);
+    }
+  }
+  return out;
+}
+
 export function validatePlan(input: PlanValidationInput): PlanValidationResult {
   const errors: PlanValidationError[] = [];
   // A small local planner can loop / repeat itself; an oversized
@@ -384,6 +413,14 @@ export function validatePlan(input: PlanValidationInput): PlanValidationResult {
             stepIndex: index,
             tool: step.tool
           });
+        }
+        // Closed-vocabulary (enum/const) pre-validation: a step arg outside a
+        // schema's allowed set passes the present+typed checks but fails at
+        // runtime AFTER earlier steps wrote — a τ-bench partial-side-effect.
+        // Enforce the constraint at the interface, before the effect
+        // (arXiv:2602.03439). Exact set membership — no lexical/semantic signal.
+        for (const enumError of validateEnumArguments(schema, coerced)) {
+          errors.push({ reason: enumError, stepIndex: index, tool: step.tool });
         }
       }
     }

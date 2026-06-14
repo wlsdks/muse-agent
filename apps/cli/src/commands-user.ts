@@ -7,7 +7,7 @@
  * slots from behavior. Backed by FileUserMemoryStore (same ~/.muse store).
  */
 
-import { detectCorrections, inferPreferenceFromCorrection } from "@muse/agent-core";
+import { detectCorrections, findSupersededPreferenceId, inferPreferenceFromCorrection } from "@muse/agent-core";
 import { createGateEmbedder, createMuseRuntimeAssembly } from "@muse/autoconfigure";
 import { FileUserMemoryStore, selectReconfirmableSlots, type UserModel, type UserModelSlot } from "@muse/memory";
 import type { Command } from "commander";
@@ -19,6 +19,10 @@ type InferModelProvider = Parameters<typeof inferPreferenceFromCorrection>[1]["m
 
 interface UserModelSlotWriter {
   upsertUserModelSlot(userId: string, slot: UserModelSlot): Promise<unknown>;
+  /** Optional: read the user's existing preference slots (for cross-category supersession). */
+  findByUserId?(userId: string): Promise<{ readonly userModel?: { readonly preferences?: readonly { readonly id: string; readonly value: string }[] } } | undefined>;
+  /** Optional: drop a stale belief the new preference supersedes. */
+  removeUserModelSlot?(userId: string, id: string): Promise<unknown>;
 }
 
 export interface InferSessionPreferencesResult {
@@ -66,14 +70,26 @@ export async function inferSessionPreferences(
   // semantically support, matching the server background-review arm. Injectable
   // so tests can supply a fake; the gate itself skips cross-script pairs.
   const embed = options.embed ?? createGateEmbedder(process.env);
+  // Belief-revision supersession (arXiv:2606.09483) — parity with the daemon arm
+  // (inferPreferencesFromTurns): a new preference that CONTRADICTS a stored
+  // DIFFERENT-category one drops the stale belief (the by-category id only
+  // supersedes within a category). Feature-detected; absent reader/remover ⇒
+  // today's accumulate behavior.
+  const remove = store.removeUserModelSlot?.bind(store);
+  const findUser = store.findByUserId?.bind(store);
   const added: string[] = [];
   for (const exchange of exchanges) {
-    const pref = await inferPreferenceFromCorrection(exchange, { model, modelProvider, embed });
+    // calibrateConfidence: distractor-normalize the verbalized confidence so an
+    // over-confident one-shot trait is dropped / decays sooner (DINCO arXiv:2509.25532).
+    const pref = await inferPreferenceFromCorrection(exchange, { calibrateConfidence: true, embed, model, modelProvider });
     if (!pref) continue;
     // Supersede by category: a new style/format preference replaces the prior
     // one of the same category (id `pref-<category>`), so a changed mind
     // updates instead of piling up contradictions.
     const id = pref.category ? `pref-${pref.category}` : slugifySlotId(pref.value);
+    const existingPrefs = remove && findUser
+      ? ((await findUser(userId))?.userModel?.preferences ?? []).map((slot) => ({ id: slot.id, value: slot.value }))
+      : undefined;
     await store.upsertUserModelSlot(userId, {
       id,
       kind: "preference",
@@ -82,6 +98,10 @@ export async function inferSessionPreferences(
       updatedAt: options.now ? options.now() : new Date(),
       ...(pref.category ? { category: pref.category } : {})
     });
+    if (existingPrefs && remove) {
+      const supersededId = await findSupersededPreferenceId(pref.value, id, existingPrefs, { model, modelProvider });
+      if (supersededId) await remove(userId, supersededId);
+    }
     added.push(`${pref.value}${pref.category ? ` (${pref.category})` : ""}`);
   }
   return { added, status: "ok" };

@@ -1,0 +1,90 @@
+/**
+ * Intra-batch conflicting-write guard — runtime enforcement before the effect
+ * (AgentSpec, arXiv:2503.18666: trigger → predicate → enforce). When the local
+ * model is uncertain it can emit a PARALLEL batch of tool calls in one turn that
+ * includes two mutating (write/execute) calls to the SAME target that conflict —
+ * e.g. `calendar_add {title:"Standup", startsAt:"3pm"}` AND
+ * `calendar_add {title:"Standup", startsAt:"4pm"}`. The tool loop runs the batch
+ * sequentially and would execute BOTH → a contradictory double-act on a write
+ * actuator (an outbound-safety / τ-bench "a failed/ambiguous action mutates
+ * nothing" violation). The existing guards miss it by construction: the
+ * deduplicator only collapses BYTE-IDENTICAL args (conflicting args differ), the
+ * stall detector is reads-only and between-turns, the failure-streak breaker is
+ * per-tool cross-turn — none inspect WITHIN one batch.
+ *
+ * PRECISION (no over-block): two writes conflict ONLY when they go to the same
+ * tool AND share the same value on a conventional IDENTITY arg (id / name / title
+ * / …) BUT differ on the full args. Two writes with DIFFERENT identity values are
+ * different targets (a legitimate "add Mon AND Tue standup" batch) and both run;
+ * BYTE-IDENTICAL writes are the deduplicator's job, not flagged here. A write with
+ * no recognised identity arg can't be judged → not flagged (fail-open). Exact
+ * value equality is the correct signal (a closed identity match, not a
+ * cross-distribution similarity — respects the cumulative lesson). Pure +
+ * exported for direct coverage.
+ */
+
+import type { JsonObject, JsonValue } from "@muse/shared";
+import type { ModelToolCall } from "@muse/model";
+
+import { stableJson } from "./tool-call-deduplicator.js";
+
+/**
+ * Conventional identity-bearing argument names. Two writes to the same tool that
+ * share the same value on one of these name the SAME target (a changed-mind
+ * double-act); differing values are different targets. Conservative on purpose —
+ * a tool whose identity arg isn't here simply isn't guarded (fail-open), never
+ * over-blocked.
+ */
+export const CONFLICT_IDENTITY_KEYS: readonly string[] = [
+  "id", "name", "title", "key", "label", "slug", "entityId", "entity_id"
+];
+
+function isScalar(v: JsonValue | undefined): v is string | number | boolean {
+  return typeof v === "string" || typeof v === "number" || typeof v === "boolean";
+}
+
+/**
+ * A stable signature of the call's IDENTITY args (the present identity keys + their
+ * scalar values), or undefined when the call carries no recognised identity arg.
+ */
+function identitySignature(args: JsonObject | undefined): string | undefined {
+  if (!args) return undefined;
+  const parts: string[] = [];
+  for (const key of CONFLICT_IDENTITY_KEYS) {
+    const value = args[key];
+    if (isScalar(value)) parts.push(`${key}=${String(value)}`);
+  }
+  return parts.length > 0 ? parts.join("|") : undefined;
+}
+
+/**
+ * Given a batch of tool calls (in emission order) and a mutating-test, return the
+ * ids of the calls to BLOCK: the SECOND+ write/execute to the same (tool, identity)
+ * whose full args differ from the first such call (a conflicting double-act). The
+ * first write for each (tool, identity) is always kept; reads, byte-identical
+ * repeats, and writes with no identity arg are never flagged.
+ */
+export function detectConflictingWritesInBatch(
+  calls: readonly ModelToolCall[],
+  isMutating: (call: ModelToolCall) => boolean
+): Set<string> {
+  const conflicting = new Set<string>();
+  // `${tool} ${identitySig}` → the first kept write's full-arg signature.
+  const firstFullByTarget = new Map<string, string>();
+  for (const call of calls) {
+    if (!isMutating(call)) continue;
+    const idSig = identitySignature(call.arguments);
+    if (idSig === undefined) continue; // unguardable → fail-open
+    const target = `${call.name} ${idSig}`;
+    const fullSig = stableJson(call.arguments ?? {});
+    const firstFull = firstFullByTarget.get(target);
+    if (firstFull === undefined) {
+      firstFullByTarget.set(target, fullSig);
+    } else if (firstFull !== fullSig) {
+      // same target, DIFFERENT full args → ambiguous conflicting double-act.
+      conflicting.add(call.id);
+    }
+    // identical full args → leave to the deduplicator (not a conflict).
+  }
+  return conflicting;
+}

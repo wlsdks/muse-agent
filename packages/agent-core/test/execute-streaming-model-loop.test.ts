@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { executeStreamingModelLoop, type ModelLoopRunner, type ModelLoopStreamEvent } from "../src/model-loop.js";
 import type { ExecutedToolResult } from "../src/runtime-internals.js";
+import { TOOL_FAILURE_STREAK_LIMIT } from "../src/tool-failure-streak.js";
 import type { AgentRunContext } from "../src/types.js";
 
 const noopSpan = { setAttribute() {}, setError() {}, end() {} };
@@ -222,5 +223,48 @@ describe("executeStreamingModelLoop", () => {
       await driveUntilThrow(prov, capturingRunner(captured));
       expect(captured).toContain(boom);
     });
+  });
+});
+
+describe("executeStreamingModelLoop — tool-failure-streak circuit breaker (streaming-path coverage, fire 42 caveat)", () => {
+  const flakyTool = { name: "flaky_read", description: "read", inputSchema: { type: "object" as const }, risk: "read" as const };
+  const flakyRequest = (): ModelRequest => ({ model: "m", messages: [{ role: "user", content: "fetch" }], tools: [flakyTool] });
+
+  // Runner whose tool ALWAYS fails, with DISTINCT error text per call so the
+  // no-progress stall detector (output-similarity) can't fire — only the failure
+  // -STREAK breaker can stop the loop. (Mirrors the non-streaming fire-42 test;
+  // closes the previously-untested streaming seam.)
+  function flakyRunner(ran: string[], maxToolCalls = 10): ModelLoopRunner {
+    return {
+      maxToolCalls,
+      tracer: { startSpan: () => noopSpan },
+      metrics: { recordTokenUsage() {} },
+      executeToolCall: async (_ctx: AgentRunContext, toolCall: ModelToolCall): Promise<ExecutedToolResult> => {
+        const n = ran.length;
+        ran.push(toolCall.name);
+        return { result: { id: toolCall.id, name: toolCall.name, output: `econnreset${n.toString()} attemptfail${n.toString()}`, status: "failed" }, toolCall };
+      }
+    } as unknown as ModelLoopRunner;
+  }
+
+  async function driveFlaky(prov: ModelProvider, run: ModelLoopRunner) {
+    const gen = executeStreamingModelLoop(run, context(), prov, flakyRequest(), { forwardTextDeltas: false });
+    let step = await gen.next();
+    while (!step.done) step = await gen.next();
+    return step.value;
+  }
+
+  it("withholds a tool that fails LIMIT times in a row (varying errors) → executes only LIMIT times, not the full budget", async () => {
+    const ran: string[] = [];
+    // The model requests flaky_read with UNIQUE args EVERY turn (so the exact-arg
+    // deduplicator never collapses them — each genuinely executes and fails). With
+    // the breaker the tool is withheld after the streak (3 executions); WITHOUT it
+    // (revert-proof) the loop would run to maxToolCalls (10). Scripting more turns
+    // than the limit is what makes this NON-vacuous — the count is decided by the
+    // breaker, not by the script length.
+    const flaky = (n: number): ModelEvent => done("trying", [{ id: `t${n.toString()}`, name: "flaky_read", arguments: { n } }]);
+    const prov = provider(Array.from({ length: 12 }, (_, i) => [flaky(i + 1)]));
+    await driveFlaky(prov, flakyRunner(ran));
+    expect(ran).toHaveLength(TOOL_FAILURE_STREAK_LIMIT); // exactly 3 — withheld after the streak, not the 10-call budget
   });
 });

@@ -1,7 +1,7 @@
 import type { JsonValue } from "@muse/shared";
 import { describe, expect, it } from "vitest";
 
-import { dedupeExactSteps, dedupeNearDuplicateSteps, validatePlan, validateWritePreconditions, type PlanStep } from "../src/plan-execute.js";
+import { dedupeExactSteps, dedupeNearDuplicateSteps, validateEnumArguments, validatePlan, validateWritePreconditions, type PlanStep } from "../src/plan-execute.js";
 
 // Unit tests for ISR-LLM (arXiv:2308.13724) plan validation extensions:
 // arg-presence checks, exact-duplicate detection, and deduplication.
@@ -440,5 +440,67 @@ describe("validateWritePreconditions — ISR-LLM (arXiv:2308.13724) precondition
     ];
     const errors = validateWritePreconditions(steps, writeRisks);
     expect(errors).toHaveLength(0);
+  });
+});
+
+// Closed-vocabulary (enum/const) argument pre-validation (arXiv:2602.03439):
+// enforce a tool's allowed-value set BEFORE execution, so an out-of-enum arg can't
+// crash at runtime after earlier steps wrote (τ-bench partial-side-effect).
+const webActionSchema: JsonValue = {
+  type: "object",
+  properties: {
+    action: { type: "string", enum: ["click", "type", "navigate"] },
+    target: { type: "string" }
+  },
+  required: ["action"]
+};
+const modeConstSchema: JsonValue = {
+  type: "object",
+  properties: { mode: { type: "string", const: "safe" } }
+};
+const enumToolSchemas = new Map<string, JsonValue>([["web_action", webActionSchema], ["mode_tool", modeConstSchema]]);
+const enumToolNames = new Set(["web_action", "mode_tool"]);
+
+describe("validateEnumArguments (closed-vocabulary, arXiv:2602.03439)", () => {
+  it("rejects a scalar arg outside the enum", () => {
+    const errs = validateEnumArguments(webActionSchema, { action: "scroll", target: "#x" });
+    expect(errs).toHaveLength(1);
+    expect(errs[0]).toContain("argument 'action' value 'scroll' is not one of [click, type, navigate]");
+  });
+
+  it("accepts an in-enum value (and ignores non-enum properties like target)", () => {
+    expect(validateEnumArguments(webActionSchema, { action: "click", target: "anything" })).toEqual([]);
+  });
+
+  it("enforces const as a single-value vocabulary", () => {
+    expect(validateEnumArguments(modeConstSchema, { mode: "danger" })).toHaveLength(1);
+    expect(validateEnumArguments(modeConstSchema, { mode: "safe" })).toEqual([]);
+  });
+
+  it("a property without enum/const, or a non-scalar arg, imposes no constraint (fail-soft)", () => {
+    expect(validateEnumArguments({ type: "object", properties: { x: { type: "string" } } }, { x: "whatever" })).toEqual([]);
+    // object/array/null args aren't a closed vocabulary → skipped, never flagged
+    expect(validateEnumArguments(webActionSchema, { action: { nested: true } as unknown as string })).toEqual([]);
+    expect(validateEnumArguments(undefined, { action: "scroll" })).toEqual([]);
+  });
+});
+
+describe("validatePlan — enum/const arg checks (arXiv:2602.03439)", () => {
+  it("rejects a plan step whose arg is outside the tool's enum, with stepIndex + tool", () => {
+    const steps = [makeStep("web_action", { action: "scroll", target: "#x" })];
+    const result = validatePlan({ availableToolNames: enumToolNames, steps, toolSchemas: enumToolSchemas });
+    expect(result.valid).toBe(false);
+    expect(result.errors[0]).toMatchObject({ stepIndex: 0, tool: "web_action" });
+    expect(result.errors[0]!.reason).toContain("not one of [click, type, navigate]");
+  });
+
+  it("accepts an in-enum plan step", () => {
+    const steps = [makeStep("web_action", { action: "navigate", target: "/home" })];
+    expect(validatePlan({ availableToolNames: enumToolNames, steps, toolSchemas: enumToolSchemas }).valid).toBe(true);
+  });
+
+  it("toolSchemas absent → no enum error (byte-identical to prior behaviour)", () => {
+    const steps = [makeStep("web_action", { action: "scroll" })];
+    expect(validatePlan({ availableToolNames: enumToolNames, steps }).valid).toBe(true);
   });
 });

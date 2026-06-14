@@ -110,6 +110,90 @@ export function detectUserCommitments(
 }
 
 /**
+ * Cosine floor for matching a discharge statement to the commitment it satisfies.
+ * Moderate (0.55): "I emailed Bob the report" vs "email Bob the report" scores
+ * high (~0.7+), while an unrelated discharge ("I called the dentist") scores low
+ * (~0.2) — 0.55 sits in the gap, leaning toward UNDER-discharge (keep nagging)
+ * over OVER-discharge (silently dropping a real open loop).
+ */
+export const COMMITMENT_DISCHARGE_COSINE = 0.55;
+
+// Completion markers — a genuinely lexical/syntactic signal (a turn ANNOUNCING a
+// finished action), allowed per the cumulative lesson. The SAME-commitment match
+// is semantic (embedding cosine), never lexical. EN + KO.
+const DISCHARGE_MARKER_EN = /\b(?:done|already|finished|completed|emailed|sent|called|submitted|booked|paid|handled|took\s+care\s+of|wrapped\s+up|sorted)\b/iu;
+const DISCHARGE_MARKER_KO = /(?:끝냈|끝났|완료|했어|했다|했음|보냈|처리(?:했|함|완료)|마쳤|해결했)/u;
+
+function hasDischargeMarker(text: string): boolean {
+  return DISCHARGE_MARKER_EN.test(text) || DISCHARGE_MARKER_KO.test(text);
+}
+
+/**
+ * In-conversation commitment-discharge filter (π-Bench, arXiv:2605.14678): a
+ * proactive agent in a long-horizon workflow must not act on an intent the user
+ * already SATISFIED later in the same trajectory — surfacing a discharged
+ * commitment is a proactivity failure (nagging about a done thing). Detects the
+ * user's commitments per turn, then DROPS any whose action a STRICTLY LATER user
+ * turn discharges: that later turn carries a completion marker (lexical) AND its
+ * embedding cosine to the commitment ≥ dischargeCosine (semantic same-action
+ * match, per the cumulative lesson — not lexical overlap).
+ *
+ * SUBTRACTIVE: every returned element came from detectUserCommitments. FAIL-SOFT:
+ * an embedder error returns the full detected set (today's behaviour — a missed
+ * discharge nags once, never a false drop). Conservative: ordering is strict
+ * (only a turn AFTER the commitment can discharge it), so a commitment voiced in
+ * the same turn as a marker is never self-discharged.
+ */
+export async function selectOpenCommitments(
+  userTurns: readonly string[],
+  embed: (text: string) => Promise<readonly number[]>,
+  options?: { readonly dischargeCosine?: number; readonly maxCommitments?: number }
+): Promise<readonly UserCommitment[]> {
+  const cosineFloor = options?.dischargeCosine ?? COMMITMENT_DISCHARGE_COSINE;
+  const maxCommitments = Math.max(1, Math.trunc(options?.maxCommitments ?? 10));
+  // Per-turn detection so each commitment carries its source turn index.
+  const detected: { readonly commitment: UserCommitment; readonly turnIndex: number }[] = [];
+  for (let i = 0; i < userTurns.length; i += 1) {
+    const turn = userTurns[i];
+    if (typeof turn !== "string" || turn.trim().length === 0) continue;
+    for (const commitment of detectUserCommitments([turn], { maxCommitments: 100 })) {
+      detected.push({ commitment, turnIndex: i });
+    }
+  }
+  if (detected.length === 0) return [];
+  const dischargeTurns: { readonly index: number; readonly text: string }[] = [];
+  for (let i = 0; i < userTurns.length; i += 1) {
+    const turn = userTurns[i];
+    if (typeof turn === "string" && hasDischargeMarker(turn)) dischargeTurns.push({ index: i, text: turn });
+  }
+  let commitmentVecs: ReadonlyArray<readonly number[]>;
+  let dischargeVecs: ReadonlyArray<readonly number[]>;
+  try {
+    commitmentVecs = await Promise.all(detected.map((d) => embed(d.commitment.text)));
+    dischargeVecs = await Promise.all(dischargeTurns.map((d) => embed(d.text)));
+  } catch {
+    // Fail-soft: degrade to today's behaviour (the whole-array detected set).
+    return detectUserCommitments(userTurns, options);
+  }
+  const open: UserCommitment[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < detected.length; i += 1) {
+    const { commitment, turnIndex } = detected[i]!;
+    const cvec = commitmentVecs[i]!;
+    const discharged = dischargeTurns.some(
+      (d, j) => d.index > turnIndex && cosineSimilarity(cvec, dischargeVecs[j]!) >= cosineFloor
+    );
+    if (discharged) continue;
+    const key = `${commitment.kind}:${commitment.text.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    open.push(commitment);
+    if (open.length >= maxCommitments) break;
+  }
+  return open;
+}
+
+/**
  * Conservative SemDeDup threshold (arXiv:2303.09540, Abbas et al. 2023).
  * 0.86 is high enough that only truly near-duplicate phrasings collapse
  * (e.g. "email Bob the report" / "email Bob about the report") while
