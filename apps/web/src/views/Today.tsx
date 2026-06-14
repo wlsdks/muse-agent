@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { AsyncBlock, Card, Stat } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { safeDateTime } from "../lib/datetime.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { StringKey, Translate } from "../i18n/index.js";
@@ -84,7 +85,7 @@ export function TodayView({ client }: { client: ApiClient }) {
               <div className="row" key={e.id}>
                 <div className="row-main">
                   <div className="row-title">{e.title}</div>
-                  <div className="row-meta">{new Date(e.startsAtIso).toLocaleString(locale)}</div>
+                  <div className="row-meta">{safeDateTime(e.startsAtIso, locale)}</div>
                 </div>
                 <span className="subtle mono">{timeUntil(e.startsAtIso, t)}</span>
               </div>

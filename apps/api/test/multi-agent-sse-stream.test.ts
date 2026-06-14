@@ -9,7 +9,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ModelProvider, ModelRequest, ModelResponse } from "@muse/model";
 
-import { createAnswerVerifier, createWorkerSummarizer, toMultiAgentSseStream } from "../src/multi-agent-routes.js";
+import { toMultiAgentSseStream } from "../src/multi-agent-routes.js";
+import { createAnswerVerifier, createWorkerSummarizer } from "../src/multi-agent-workers.js";
 
 function busWithClearSpy() {
   const bus = new InMemoryAgentMessageBus();

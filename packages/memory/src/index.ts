@@ -337,8 +337,11 @@ export interface UserMemoryStore {
    * leaving it undefined, and callers feature-detect — same pattern as
    * `upsertUserModelSlot`. This backs the in-chat `/forget` control so a
    * personal assistant can be told to drop one thing without wiping all.
+   * `kind` scopes the delete to one namespace (facts OR preferences) — the
+   * auto-extractor passes it so a FACT retraction can't wipe a same-key
+   * PREFERENCE; omitting it keeps the dual-delete for the explicit `/forget`.
    */
-  forget?(userId: string, key: string): Awaitable<boolean>;
+  forget?(userId: string, key: string, kind?: "fact" | "preference"): Awaitable<boolean>;
   /**
    * Optional typed-slot upsert. When the store implements it, callers
    * can write structured `UserModel` slots; replace-by-id semantics

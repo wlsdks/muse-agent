@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { AsyncBlock, Badge, Button, Card, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { safeDateTime } from "../lib/datetime.js";
 
 import type { ApiClient } from "../api/client.js";
 import type {
@@ -214,7 +215,7 @@ function VetoesTab({ client, locale }: { client: ApiClient; locale: string }) {
               <div className="row-title">{v.scope}</div>
               <div className="row-meta">
                 {v.reason ? `${v.reason} · ` : ""}
-                {new Date(v.vetoedAt).toLocaleString(locale)}
+                {safeDateTime(v.vetoedAt, locale)}
               </div>
             </div>
             <Badge tone="warn">veto</Badge>

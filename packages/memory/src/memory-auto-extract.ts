@@ -522,7 +522,9 @@ async function persist(
       return;
     }
     if (op === "delete") {
-      if (forget) writes.push(safeWrite(Promise.resolve(forget(userId, key))));
+      // Scope the retraction to THIS namespace — a fact retraction must not also
+      // wipe a same-key preference (and vice versa).
+      if (forget) writes.push(safeWrite(Promise.resolve(forget(userId, key, kind))));
       return;
     }
     writes.push(safeWrite(kind === "fact" ? store.upsertFact(userId, key, value) : store.upsertPreference(userId, key, value)));

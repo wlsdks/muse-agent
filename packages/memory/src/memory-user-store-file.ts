@@ -184,19 +184,24 @@ export class FileUserMemoryStore implements UserMemoryStore {
     }));
   }
 
-  async forget(userId: string, rawKey: string): Promise<boolean> {
+  async forget(userId: string, rawKey: string, kind?: "fact" | "preference"): Promise<boolean> {
     const existing = await this.findByUserId(userId);
     if (!existing) return false;
     // Exact stored key first; else the normalized form, so "Home City" can
     // forget the canonicalized "home_city" entry written by upsertFact.
     const key = (rawKey in existing.facts || rawKey in existing.preferences) ? rawKey : normalizeMemoryKey(rawKey);
-    if (!(key in existing.facts) && !(key in existing.preferences)) {
+    // Namespace-scoped: `kind` limits the delete to facts OR preferences (so an
+    // auto-extracted FACT retraction can't wipe a same-key PREFERENCE). Omitting
+    // `kind` keeps the dual-delete for the explicit `/forget` control.
+    const dropFact = kind !== "preference";
+    const dropPref = kind !== "fact";
+    if (!(dropFact && key in existing.facts) && !(dropPref && key in existing.preferences)) {
       return false;
     }
     await this.patch(userId, (current) => {
-      const { [key]: _f, ...facts } = current.facts;
-      const { [key]: _p, ...preferences } = current.preferences;
-      return { ...current, facts, preferences };
+      const { [key]: _f, ...factsWithout } = current.facts;
+      const { [key]: _p, ...prefsWithout } = current.preferences;
+      return { ...current, facts: dropFact ? factsWithout : current.facts, preferences: dropPref ? prefsWithout : current.preferences };
     });
     return true;
   }

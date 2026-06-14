@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { AsyncBlock, Button, Card, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { safeDateTime } from "../lib/datetime.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { ReminderRow, RemindersResponse } from "../api/types.js";
@@ -78,7 +79,7 @@ export function RemindersView({ client }: { client: ApiClient }) {
                 <Icon.bell className="nav-icon" />
                 <div className="row-main">
                   <div className="row-title">{r.text}</div>
-                  <div className="row-meta">{new Date(r.dueAt).toLocaleString(locale)}</div>
+                  <div className="row-meta">{safeDateTime(r.dueAt, locale)}</div>
                 </div>
                 <div className="row-actions">
                   <Button variant="ghost" size="sm" onClick={() => snooze.mutate(r.id)}>

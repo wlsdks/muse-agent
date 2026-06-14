@@ -444,3 +444,12 @@ ratchet: cli tests 2679 (+1) · testFiles 1019 · fabrication 0 · self-eval exi
 - **왜**: fire 48 backlog의 명시 후속 — 동일 버그가 GraphRAG 브리지/betweenness에 남아 있어 half-fix였음. 코드베이스 전체에서 extension-qualified 링크 정규화 일관성 완성.
 - **리뷰지점**: noteLinkKey가 keyToId 스킴(notes-links:139)과 fire-48 sibling(164/188/193)과 일치. extensionless idempotent(기존 ghost/isolate/undirected 테스트 통과). self-loop 가드·undirected double-add 무변. value+type import 동일 모듈 → lint-clean. judge가 revert로 RED 실증.
 - **리스크**: 없음(1 import + 1 one-line + 신규 테스트; 순수 그래프; 독립 Opus judge가 RED-before·일관성·무모호성·무회귀·lint 검증 후 PASS, cli 2679/2679). fire 48+49 = 동일 버그 2 consumer 완결(half-fix 해소).
+
+## fire 50 · 2026-06-14 · skill v1.14.0 · 5bf12469
+meta: surface=web · value-class=refactor · pkg=@muse/web · kind=shared-safe-datetime-consolidation · verdict=PASS · firesSinceDrill=7
+ratchet: web unit 48/48 (+2) · autonomy e2e 1/1 · testFiles 1021 · fabrication 0 · self-eval exit 0 · 표면 균형 web22·desktop12·cli16
+
+- **무엇**: 뷰들이 인라인 `new Date(iso).toLocaleString(locale)`(9곳/6뷰)로 렌더 → 파스 불가 iso가 "Invalid Date" 표시. 일회성 가드(fire 46/47) 대신 **공유 tested `safeDateTime(iso, locale)`**(src/lib/datetime.ts, NaN→""·else toLocaleString) 도입 + standalone 미가드 3곳(Today/Reminders/Autonomy) 채택.
+- **왜**: 인라인-날짜 robustness 부채(11곳)의 anti-treadmill 해법 — 일회성 가드가 가리키던 consolidation. valid 날짜 byte-동일, bad는 graceful "".
+- **리뷰지점**: helper RED-before(모듈 부재)·비-vacuous(toLocaleString 일치). 3곳 1:1 swap, valid 무변(autonomy e2e 통과). separator-wrapped 6곳은 dangling "·" 이유로 의도적 deferral(half-fix 아님). value+type import lint-clean. judge가 anti-treadmill consolidation(46/47 일회성 가드와 다른 shape)로 인정.
+- **리스크**: 없음(신규 helper+테스트 + 3 one-line 채택; 순수 presentational; 독립 Opus judge가 RED·behavior-preserving·scope 방어가능·무회귀 검증 후 PASS, web 48/48). NOTE: separator-wrapped 6곳(Messaging/Activity/Today:119/Memory 등) safeDateTime 채택은 dangling-separator 처리와 함께 후속.
