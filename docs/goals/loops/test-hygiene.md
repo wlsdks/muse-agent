@@ -336,3 +336,11 @@ ratchet: testFiles 1003→1002 (−1 통합, 유니크 케이스 2 이식) · ne
 - **왜:** 같은 도구 두 파일 중복. src/가 보안(SSRF) 훨씬 강하나, test/의 tool-calling 신뢰성(스키마 clean·키워드·use-when/not — tool-calling.md #1 관심사)은 src에 없었음.
 - **어떻게-증명(MUTATION-FIRST):** "예약" 키워드 제거 시 migrated case1 RED; description "do not use to read" 약화 시 migrated case2 RED — 각 자기 케이스만. ④b 독립 Opus judge가 삭제본 5 행동 전수 매핑(전부 equal-or-stronger, MISSING 없음 — needs-url/method-uppercase/denied 既커버 확인) + 2 mutation 재현 → **VERDICT: PASS**.
 - **리스크:** 소스 무변경. 변경 −77L(test/ 삭제) +18L(이식 2케이스+`@muse/tools` import). @muse/tools는 mcp package.json에 이미 있음(test 파일은 vitest 컴파일이라 tsconfig refs 무관, pnpm check FULL GREEN). 남은 mcp 동명 쌍 6개.
+
+## fire 41 · 2026-06-14 · skill v1.14.0 · ef3ca554
+meta: kind=prune(consolidate) · pkg=@muse/mcp · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 1005→1004 (−1 통합) · netCoverage +1 (draft-first 더 강해짐) − 6 중복(double-run) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** mcp 동명 쌍 `web-action`(performWebActionWithApproval, outbound-safety 코어) **통합**(9번째 mcp 쌍) — 콜로케이트 src/(14케이스: SSRF redirect·429 retry·timeout·redaction 풍부)·test/(7케이스)가 둘 다 같은 모듈 실행. src/가 test/ 7행동을 전수 동등-이상 커버, 단 하나 — test/ case1의 **draft-first**(승인 게이트가 정확한 action=summary를 본다, outbound-safety rule 1)만 src에 없었음. 그 한 assert만 src에 이식(이제 summary만이 아니라 request 전체를 toEqual로 검증 — 더 강함) 후 test/ 삭제.
+- **왜:** 같은 모듈 두 파일 double-run. src/가 보안(SSRF·redirect·redaction·429) 훨씬 풍부하나, draft-first(게이트가 *전송 전 정확한 내용*을 사용자에게 보임 — outbound-safety의 1번 규칙)는 test/만 검증했음. 조용히 떨어뜨리면 마지막 보호선 손실.
+- **어떻게-증명(MUTATION-FIRST):** (A) gate에 넘기는 summary를 "MUTANT"로 변형 → 이식한 draft-first 케이스만 RED(`expected 'MUTANT' to be 'Book a table, 7pm'`), 나머지 1853 green. (B) `redactSecretsInText` 우회 변형 → 생존 src "scrubs secrets" 케이스 RED(삭제본 case7이 덮던 redaction이 여전히 가드됨). ④b 독립 Opus judge가 삭제본 7 행동 전수 매핑(전부 equal-or-stronger, DROPPED 없음) + 두 mutation 재현(의도한 케이스만 적중) → **VERDICT: PASS**.
+- **리스크:** 소스 무변경(grounding/eval 신호 영향 0). 변경 −97L(test/ 삭제) +13L(draft-first 이식+`WebActionRequest` import). draft-first는 outbound-safety 불변식이라 단순 동등이식이 아니라 더 강한 형태로 보존. anthropic-key redaction은 mcp.test.ts:9282에도 독립 커버 존재(judge 확인). 남은 mcp 동명 쌍 5개.
