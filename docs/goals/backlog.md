@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ outcome-quality episode write-admission (selective addition, arXiv:2505.16067): captureEndOfSessionEpisode now refuses to store an ERROR-PRONE session (corrections > approvals) so its botched outcome can't replay via experience-following; the lesson survives (corrections distilled to playbook separately); subtractive, default-admit on tie/no-signal — agent-core-cognition fire 35
+
 - ✓ commissive-force self-followup gate (arXiv:2502.14321): the capture hook now queues a followup only when a first-person commitment ("I'll … tomorrow") governs the time phrase's sentence, not a bare description ("your meeting is tomorrow") — stops spurious reminders the assistant never promised; opt-in (hook sets requireCommissive), EN-only, subtractive — agent-core-cognition fire 34
 
 - ✓ conformity-flip council caution (arXiv:2606.00820): detectConformityFlips flags a peer that reached agreement by ABANDONING its own prior stance (self-cosine reversal + moved toward panel); muse swarm council warns “conformity-driven agreement” when the panel agreed via a flip (57-77% correct→wrong); semantic, advisory-only (never alters answer), agreed-only gated — agent-core-cognition fire 33
