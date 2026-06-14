@@ -435,3 +435,12 @@ ratchet: cli tests 2678 (+1) · testFiles 1018 · fabrication 0 · self-eval exi
 - **왜**: 링크 그래프 신뢰가 직무인 `notes audit`/`links`가 정확한 링크를 거짓-broken/orphan으로 오도 — 실 입력(extension-qualified 링크는 흔함, 코드의 noteLinkKey가 정규화 위해 존재). web 과집중 교정(cli, judge 권고 이행).
 - **리뷰지점**: noteLinkKey idempotent → extensionless `[[b]]`/`[[ghost]]` 무변(기존 22 테스트 통과). basename 충돌은 keyToId의 기존 스킴(새 모호성 아님). line-115 rename raw-matcher(raw-vs-raw 일관)는 무변. judge가 stash-revert로 RED 실증.
 - **리스크**: 없음(4 one-line + 신규 테스트; 순수 그래프 로직; 독립 Opus judge가 RED-before·비-vacuous·정규화 일관성·무모호성·무회귀 검증 후 PASS, cli 2678/2678). NOTE: 동일 버그가 note-bridges.ts:50(resolvedAdjacency, GraphRAG bridges)에도 — 별도 tested 슬라이스로 후속.
+
+## fire 49 · 2026-06-14 · skill v1.14.0 · 82c1e23e
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=bridge-graph-key-normalization · verdict=PASS · firesSinceDrill=6
+ratchet: cli tests 2679 (+1) · testFiles 1019 · fabrication 0 · self-eval exit 0 · 표면 균형 web21·desktop12·cli16
+
+- **무엇**: `resolvedAdjacency`(note-bridges, betweenness 브리지 검출)가 타겟 해석을 raw `target.toLowerCase()`로 했는데 keyToId는 noteLinkKey 키 → `[[b.md]]` 엣지가 드롭, 클러스터 간 broker가 betweenness에서 사라짐. `noteLinkKey(target)`로 라우팅(fire 48 notes-links 수정과 일치) — fire 48 deferral 완결(두 번째 consumer).
+- **왜**: fire 48 backlog의 명시 후속 — 동일 버그가 GraphRAG 브리지/betweenness에 남아 있어 half-fix였음. 코드베이스 전체에서 extension-qualified 링크 정규화 일관성 완성.
+- **리뷰지점**: noteLinkKey가 keyToId 스킴(notes-links:139)과 fire-48 sibling(164/188/193)과 일치. extensionless idempotent(기존 ghost/isolate/undirected 테스트 통과). self-loop 가드·undirected double-add 무변. value+type import 동일 모듈 → lint-clean. judge가 revert로 RED 실증.
+- **리스크**: 없음(1 import + 1 one-line + 신규 테스트; 순수 그래프; 독립 Opus judge가 RED-before·일관성·무모호성·무회귀·lint 검증 후 PASS, cli 2679/2679). fire 48+49 = 동일 버그 2 consumer 완결(half-fix 해소).
