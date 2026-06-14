@@ -9,7 +9,8 @@ import { describe, expect, it } from "vitest";
 
 import type { UserModelSlot } from "@muse/memory";
 
-import { buildBackgroundReviewHooks, inferPreferencesFromTurns, scanCommitmentsFromTurns } from "../src/context-engineering-builders.js";
+import { buildBackgroundReviewHooks } from "../src/context-engineering-builders.js";
+import { inferPreferencesFromTurns, scanCommitmentsFromTurns } from "../src/context-engineering-turn-analysis.js";
 
 const ctx = { input: { messages: [], metadata: { userId: "stark" }, model: "m" }, runId: "r", startedAt: new Date("2026-05-01T00:00:00Z") } as unknown as AgentRunContext;
 const res = { id: "x", model: "m", output: "ok" } as ModelResponse;

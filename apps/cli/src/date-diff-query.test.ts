@@ -26,6 +26,14 @@ describe("detectDateDiffQuery — exact day count between two literal dates", ()
     expect(r.to.getFullYear()).toBe(2027);
   });
 
+  it("returns null when the cross-year roll would land on an impossible date (Feb 29 → non-leap year)", () => {
+    // A year-less "February 29" that sorts before the start rolls forward one
+    // year; if that next year isn't a leap year the old code silently rolled
+    // Feb 29 → Mar 1 and gave a confident wrong count over a date never typed.
+    const leapNow = new Date("2028-01-01T12:00:00"); // Feb 29 2028 parses as valid
+    expect(detectDateDiffQuery("how many days from March 1 to February 29", leapNow)).toBeNull();
+  });
+
   it("returns null for an IMPOSSIBLE calendar date — never silently rolls it into the next month", () => {
     // Feb 30 / Apr 31 / non-leap Feb 29 don't exist; the old guard only checked
     // day 1–31, so `new Date(2026,1,30)` rolled to Mar 2 and the fast-path gave a

@@ -15,6 +15,18 @@
 
 const DAY_MS = 86_400_000;
 
+/**
+ * Build a calendar date ONLY if y/m/d is a real date — `new Date(y,m,d)` silently
+ * rolls an impossible date (Feb 30, a non-leap Feb 29) into the next month, so we
+ * round-trip the components and return null instead. Used by the literal parser
+ * AND the cross-year roll, so neither emits a confident count over a date the
+ * user never typed (the fast-path bypasses the grounding gate — precision-first).
+ */
+function realDate(y: number, m: number, d: number): Date | null {
+  const dt = new Date(y, m, d);
+  return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d ? dt : null;
+}
+
 const MONTHS: Record<string, number> = {
   january: 0, jan: 0, february: 1, feb: 1, march: 2, mar: 2, april: 3, apr: 3,
   may: 4, june: 5, jun: 5, july: 6, jul: 6, august: 7, aug: 7,
@@ -31,15 +43,6 @@ interface LiteralDate {
 function parseLiteralDate(raw: string, now: Date): LiteralDate | null {
   const s = raw.trim().toLowerCase().replace(/(\d+)(?:st|nd|rd|th)\b/gu, "$1");
   const atMidnight = (y: number, m: number, d: number): Date => new Date(y, m, d);
-  // A user-supplied y/m/d that ISN'T a real calendar date (Feb 30, Apr 31, a
-  // non-leap Feb 29) — `new Date` silently rolls it into the next month, so an
-  // impossible date would yield a confident wrong count over a date the user never
-  // typed. Round-trip the components and return null instead → falls through to
-  // recall (the documented precision-first behavior), never a fabricated answer.
-  const realDate = (y: number, m: number, d: number): Date | null => {
-    const dt = new Date(y, m, d);
-    return dt.getFullYear() === y && dt.getMonth() === m && dt.getDate() === d ? dt : null;
-  };
   if (s === "today") return { date: atMidnight(now.getFullYear(), now.getMonth(), now.getDate()), hadYear: true };
   if (s === "tomorrow") return { date: new Date(atMidnight(now.getFullYear(), now.getMonth(), now.getDate()).getTime() + DAY_MS), hadYear: true };
   if (s === "yesterday") return { date: new Date(atMidnight(now.getFullYear(), now.getMonth(), now.getDate()).getTime() - DAY_MS), hadYear: true };
@@ -94,7 +97,14 @@ export function detectDateDiffQuery(query: string, now: Date): DateDiffResult | 
   }
   let to = b.date;
   if (to.getTime() < a.date.getTime() && !a.hadYear && !b.hadYear) {
-    to = new Date(b.date.getFullYear() + 1, b.date.getMonth(), b.date.getDate()); // Dec → Jan span
+    // Dec → Jan span: roll the end forward a year — but a year-less Feb 29 rolled
+    // into a non-leap year is impossible, so decline (null) rather than let
+    // `new Date` silently roll it to Mar 1 and report a count for a date never typed.
+    const rolled = realDate(b.date.getFullYear() + 1, b.date.getMonth(), b.date.getDate());
+    if (!rolled) {
+      return null;
+    }
+    to = rolled;
   }
   const days = Math.round(Math.abs(to.getTime() - a.date.getTime()) / DAY_MS);
   return { unit, days, from: a.date, to };

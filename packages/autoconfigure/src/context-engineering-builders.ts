@@ -5,21 +5,14 @@ import {
   DefaultToolFilter,
   InMemoryTelemetryAggregator,
   StoreBackedEpisodicRecallProvider,
-  collapseNearDuplicateCommitments,
   createBackgroundReviewHook,
   createCachingEmbedder,
-  detectCorrections,
-  detectUserCommitments,
-  findSupersededPreferenceId,
-  inferPreferenceFromCorrection,
-  selectOpenCommitments,
   selectPlanExemplarByRelevance,
   type ActiveContextProvider,
   type Awaitable,
   type BackgroundReviewInput,
   type EpisodicRecallProvider,
   type HookStage,
-  type SessionTurnLine,
   type InboxContextProvider,
   type PlanCacheProvider,
   type ReminderHint,
@@ -34,8 +27,8 @@ import { LocalOnlyViolationError, isLoopbackUrl } from "@muse/model";
 
 import { resolveEmbedderBase } from "./embedder-base.js";
 import type { JsonObject } from "@muse/shared";
-import { appendCheckins, readCheckins, readFadedMemoryKeys, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
-import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore, UserModelSlot } from "@muse/memory";
+import { readFadedMemoryKeys, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits } from "@muse/mcp";
+import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 
 import {
@@ -357,112 +350,6 @@ export function withRecallHitRecording(
  * The auto-extract hook is reused AS the memory distiller (we call its
  * `afterComplete`), so no auto-extract logic is duplicated.
  */
-/**
- * Deterministic commitment → check-in scan over the turn's user messages — the
- * package-level core of the CLI's `scanSessionCheckins`, so the SERVER / daemon
- * (which has no session-end) also captures open-loops the user voices and
- * schedules the proactive check-in. No model: `detectUserCommitments` is a rule
- * pass and `scheduleCheckins` is deterministic (deduped, per-day capped,
- * quiet-hours applied at delivery). Returns the newly-scheduled check-ins.
- */
-export async function scanCommitmentsFromTurns(
-  userTurns: readonly string[],
-  options: {
-    readonly file: string;
-    readonly userId: string;
-    readonly now?: () => Date;
-    /** Injected embedder for semantic near-duplicate collapse. Defaults to createGateEmbedder(process.env). */
-    readonly embed?: (text: string) => Promise<readonly number[]>;
-  }
-): Promise<readonly PersistedCheckin[]> {
-  const embedder = options.embed ?? createGateEmbedder(process.env);
-  // π-Bench (arXiv:2605.14678): drop commitments the user already discharged
-  // later in the conversation BEFORE near-duplicate collapse + scheduling.
-  const raw = await selectOpenCommitments(userTurns, embedder).catch(() => detectUserCommitments(userTurns));
-  if (raw.length === 0) return [];
-  const collapsed = await collapseNearDuplicateCommitments(raw, embedder).catch(() => raw);
-  const commitments = collapsed.map((c) => c.text);
-  const existing = await readCheckins(options.file).catch(() => []);
-  const fresh = scheduleCheckins(commitments, {
-    existing,
-    now: (options.now ?? ((): Date => new Date()))(),
-    userId: options.userId
-  });
-  await appendCheckins(options.file, fresh);
-  return fresh;
-}
-
-/**
- * Infer stable preferences from corrections in the turn → upsert into the typed
- * user model (superseding by category). The package-level core of the CLI's
- * `inferSessionPreferences`, so the server/daemon learns the user's style too.
- * One local-model call per detected correction; NONE-aware (parseInferredPreference
- * rejects vacuous traits + requires a category), so it never fabricates a
- * preference. Returns `"value (category)"` for each preference learned.
- */
-export async function inferPreferencesFromTurns(
-  turns: readonly SessionTurnLine[],
-  options: {
-    readonly model: string;
-    readonly modelProvider: Parameters<typeof inferPreferenceFromCorrection>[1]["modelProvider"];
-    readonly store: {
-      upsertUserModelSlot?: (userId: string, slot: UserModelSlot) => unknown;
-      /** Optional: drop a stale belief the new preference supersedes (cross-category contradiction). */
-      removeUserModelSlot?: (userId: string, id: string) => unknown;
-    };
-    readonly userId: string;
-    readonly now?: () => Date;
-    /** Embedder for the held-out support gate; omitted ⇒ no gate (back-compat). */
-    readonly embed?: (text: string) => Promise<readonly number[]>;
-    /**
-     * Optional reader of the user's existing typed preference slots. When provided
-     * (with `store.removeUserModelSlot`), a newly-inferred preference that CONTRADICTS
-     * an existing DIFFERENT-category one supersedes it (belief revision, arXiv:2606.09483)
-     * — the by-category upsert alone can't catch a cross-category contradiction.
-     */
-    readonly listExistingPreferences?: (userId: string) => Awaitable<readonly { readonly id: string; readonly value: string }[]>;
-  }
-): Promise<readonly string[]> {
-  const upsert = options.store.upsertUserModelSlot;
-  if (!upsert) return [];
-  const remove = options.store.removeUserModelSlot;
-  const exchanges = detectCorrections(turns);
-  const added: string[] = [];
-  for (const exchange of exchanges) {
-    const pref = await inferPreferenceFromCorrection(exchange, {
-      model: options.model,
-      modelProvider: options.modelProvider,
-      ...(options.embed ? { embed: options.embed } : {})
-    });
-    if (!pref || !pref.category) continue; // parseInferredPreference guarantees a category when it returns one
-    const prefId = `pref-${pref.category}`;
-    // Belief-revision supersession: a NEW preference contradicting a stored
-    // DIFFERENT-category one would otherwise inject conflicting persona guidance
-    // every turn — drop the stale belief (newer wins). Read BEFORE the upsert so
-    // the just-written slot isn't a candidate; reuses the model-polarity primitive.
-    const existing = options.listExistingPreferences && remove
-      ? await options.listExistingPreferences(options.userId)
-      : undefined;
-    await upsert(options.userId, {
-      category: pref.category,
-      confidence: pref.confidence,
-      id: prefId, // supersede by category — a changed mind updates, not piles up
-      kind: "preference",
-      updatedAt: (options.now ?? ((): Date => new Date()))(),
-      value: pref.value
-    });
-    if (existing && remove) {
-      const supersededId = await findSupersededPreferenceId(pref.value, prefId, existing, {
-        model: options.model,
-        modelProvider: options.modelProvider
-      });
-      if (supersededId) await remove(options.userId, supersededId);
-    }
-    added.push(`${pref.value} (${pref.category})`);
-  }
-  return added;
-}
-
 export interface BackgroundReviewArms {
   /**
    * Skill arm — author a reusable skill from the turn's conversation when the
