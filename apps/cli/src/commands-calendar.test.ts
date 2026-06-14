@@ -64,6 +64,13 @@ describe("conflictWarningForNewEvent — heads-up when a new event double-books"
     expect(out).toContain("\"Call\"");
     expect(out).toContain("\"Review\"");
   });
+
+  it("does NOT flag an all-day event as a double-booking (it's a backdrop, not a booking)", () => {
+    const holiday = { allDay: true, title: "Holiday", startsAt: new Date("2026-06-10T00:00:00"), endsAt: new Date("2026-06-11T00:00:00") };
+    expect(conflictWarningForNewEvent(lunch, [holiday])).toBe("");
+    // a timed event still clashes with another timed event the same day
+    expect(conflictWarningForNewEvent(lunch, [holiday, ev("Standup", "2026-06-10T12:30:00", "2026-06-10T13:30:00")])).toContain("\"Standup\"");
+  });
 });
 
 describe("buildEventReminder — the 'remind me N min before' reminder for muse calendar add", () => {

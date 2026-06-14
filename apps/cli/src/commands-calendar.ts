@@ -82,10 +82,19 @@ const clockOf = (d: Date): string => d.toLocaleTimeString("en-US", { hour: "nume
  * excludes back-to-back / touching events). Pure. Exported for testing.
  */
 export function conflictWarningForNewEvent(
-  newEvent: ConflictEventLike,
-  existing: readonly ConflictEventLike[]
+  newEvent: ConflictEventLike & { readonly allDay?: boolean },
+  existing: readonly (ConflictEventLike & { readonly allDay?: boolean })[]
 ): string {
-  const clashes = detectCalendarConflicts([newEvent, ...existing])
+  // An all-day event is a date backdrop (holiday, birthday, vacation), not a
+  // time slot — it spans the whole day and would "overlap" every timed event,
+  // so it's never a double-booking. Skip them both ways (same as the briefing
+  // imminent-conflict path), or `calendar add` cries double-book on every
+  // meeting scheduled on a holiday.
+  if (newEvent.allDay) {
+    return "";
+  }
+  const timedExisting = existing.filter((e) => !e.allDay);
+  const clashes = detectCalendarConflicts([newEvent, ...timedExisting])
     .filter((conflict) => conflict.a === newEvent || conflict.b === newEvent)
     .map((conflict) => (conflict.a === newEvent ? conflict.b : conflict.a));
   const unique: ConflictEventLike[] = [];

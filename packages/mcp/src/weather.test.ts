@@ -50,6 +50,21 @@ describe("formatWeather", () => {
     expect(formatWeather({ latitude: 0, longitude: 0, name: "Null Island" }, { code: 0, condition: "clear sky", temperatureC: 30 }))
       .toBe("Null Island: clear sky, 30°C");
   });
+
+  it("inserts the region to disambiguate same-name cities", () => {
+    const clear: CurrentWeather = { code: 0, condition: "clear sky", temperatureC: 20 };
+    const illinois: GeocodedLocation = { name: "Springfield", admin1: "Illinois", country: "United States", latitude: 39.8, longitude: -89.6 };
+    const missouri: GeocodedLocation = { name: "Springfield", admin1: "Missouri", country: "United States", latitude: 37.2, longitude: -93.3 };
+    expect(formatWeather(illinois, clear)).toBe("Springfield, Illinois, United States: clear sky, 20°C");
+    // The same city name in a different state renders a DIFFERENT line — real disambiguation.
+    expect(formatWeather(missouri, clear)).toBe("Springfield, Missouri, United States: clear sky, 20°C");
+    expect(formatWeather(illinois, clear)).not.toBe(formatWeather(missouri, clear));
+  });
+
+  it("drops a region that merely repeats the city name (no 'Seoul, Seoul')", () => {
+    expect(formatWeather({ name: "Seoul", admin1: "Seoul", country: "South Korea", latitude: 37.566, longitude: 126.978 }, { code: 0, condition: "clear sky", temperatureC: 20 }))
+      .toBe("Seoul, South Korea: clear sky, 20°C");
+  });
 });
 
 describe("OpenMeteoWeatherProvider", () => {
@@ -61,6 +76,16 @@ describe("OpenMeteoWeatherProvider", () => {
   it("returns undefined for an unknown place (empty results)", async () => {
     const provider = new OpenMeteoWeatherProvider(fakeFetch({ geocode: { results: [] } }));
     expect(await provider.geocode("Xyzzyville")).toBeUndefined();
+  });
+
+  it("captures admin1 (the real region), never the country_code, and omits it when absent", async () => {
+    const withRegion = new OpenMeteoWeatherProvider(fakeFetch({
+      geocode: { results: [{ name: "Springfield", admin1: "Illinois", country: "United States", country_code: "US", latitude: 39.8, longitude: -89.6 }] }
+    }));
+    // admin1 is the region field; the ISO country_code ("US") must NOT be substituted for it.
+    expect(await withRegion.geocode("Springfield")).toMatchObject({ admin1: "Illinois", country: "United States" });
+    const noRegion = new OpenMeteoWeatherProvider(fakeFetch({ geocode: SEOUL_GEOCODE }));
+    expect(await noRegion.geocode("Seoul")).not.toHaveProperty("admin1");
   });
 
   it("parses current weather and maps the weather code", async () => {

@@ -99,6 +99,24 @@ describe("csv_parse", () => {
     expect(csv({ text: "a,b,c\n1,2" })).toEqual({ headers: ["a", "b", "c"], rows: [{ a: "1", b: "2", c: "" }] });
   });
 
+  it("preserves data-row cells beyond the header width under _extra (never silently dropped)", () => {
+    const out = csv({ text: "name,age\nAlice,30,extra1,extra2\nBob,25" });
+    expect(out).toEqual({
+      headers: ["name", "age"],
+      rows: [
+        { age: "30", name: "Alice", _extra: ["extra1", "extra2"] },
+        { age: "25", name: "Bob" }
+      ]
+    });
+  });
+
+  it("picks a non-colliding overflow key when a column is literally named _extra", () => {
+    const out = csv({ text: "_extra,b\nkept,y,overflow" }) as { rows: Record<string, unknown>[] };
+    // The real "_extra" column value must survive; the overflow lands elsewhere.
+    expect(out.rows[0]?.["_extra"]).toBe("kept");
+    expect(out.rows[0]?.["_extra_"]).toEqual(["overflow"]);
+  });
+
   it("rejects text over the 200k character bound (DoS guard)", () => {
     expect(csv({ text: "a,".repeat(120_000) })).toEqual({ error: "text must be ≤ 200000 characters" });
   });
