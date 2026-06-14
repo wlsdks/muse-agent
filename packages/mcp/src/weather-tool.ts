@@ -26,10 +26,25 @@ function localDateIso(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * True only for a real calendar date in YYYY-MM-DD form. The round-trip through
+ * Date.UTC rejects impossible days the regex alone accepts — month 13, day 45,
+ * Feb 30 — so the tool never echoes a fabricated date back to the model as a
+ * real-but-out-of-range day.
+ */
+function isValidCalendarDate(iso: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(iso);
+  if (!m) return false;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
+}
+
 /** Resolve a `when` phrase ("tomorrow", "Saturday", "2026-05-30") to a local YYYY-MM-DD, or undefined. */
 function resolveTargetDateIso(when: string, now: () => Date): string | undefined {
   if (/^\d{4}-\d{2}-\d{2}/u.test(when)) {
-    return when.slice(0, 10);
+    const candidate = when.slice(0, 10);
+    return isValidCalendarDate(candidate) ? candidate : undefined;
   }
   const resolved = resolveRelativeTimePhrase(when, now);
   return resolved ? localDateIso(resolved) : undefined;

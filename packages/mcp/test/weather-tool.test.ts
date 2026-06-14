@@ -104,4 +104,25 @@ describe("createWeatherTool — on-demand weather perception", () => {
     expect(out.found).toBe(false);
     expect(out.date).toBe("2026-05-31");
   });
+
+  it("rejects an IMPOSSIBLE calendar date instead of echoing it as a real out-of-range day", async () => {
+    // The 12B can emit a date-arithmetic slip ('2026-02-30', month 13). The old
+    // code matched the \d{4}-\d{2}-\d{2} shape and echoed `date: '2026-02-30'`
+    // with reason "no forecast for that day" — asserting an impossible day is a
+    // real day out of range (a grounded-lie). Now it routes to "couldn't
+    // understand the day", and never reaches the provider.
+    const tool = createWeatherTool({ now: () => new Date("2026-05-30T00:00:00Z"), provider: provider() });
+    for (const bad of ["2026-13-45", "2026-02-30", "2026-00-10"]) {
+      const out = await tool.execute({ location: "Seoul", when: bad }) as { found: boolean; date?: string; reason?: string };
+      expect(out.found).toBe(false);
+      expect(out.date).toBeUndefined();
+      expect(out.reason).toContain("couldn't understand");
+    }
+  });
+
+  it("a full ISO timestamp still resolves to its (valid) date part", async () => {
+    const tool = createWeatherTool({ now: () => new Date("2026-05-30T00:00:00Z"), provider: failingProvider("status", 502) });
+    const out = await tool.execute({ location: "Seoul", when: "2026-05-31T15:00:00Z" }) as { date?: string };
+    expect(out.date).toBe("2026-05-31");
+  });
 });
