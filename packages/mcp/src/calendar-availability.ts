@@ -6,6 +6,8 @@
  * open gaps. Deterministic so it can be exhaustively unit-tested.
  */
 
+import { finiteOr } from "@muse/shared";
+
 export interface AvailabilityEventLike {
   readonly title: string;
   readonly startsAt: Date;
@@ -104,6 +106,3 @@ export function computeAvailability(
   return { busy, free, fullyFree: busy.length === 0 };
 }
 
-function finiteOr(value: number | undefined, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}

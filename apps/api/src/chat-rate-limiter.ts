@@ -19,6 +19,8 @@
  * one that triggers a paid upstream call.
  */
 
+import { finiteOr } from "@muse/shared";
+
 export interface ChatRateLimiterOptions {
   /** Requests allowed per `windowMs`. Default 60. */
   readonly capacity?: number;
@@ -41,9 +43,6 @@ export interface RateLimitVerdict {
   readonly retryAfterSeconds?: number;
 }
 
-function finiteOr(value: number | undefined, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
 
 export class ChatRateLimiter {
   private readonly capacity: number;
