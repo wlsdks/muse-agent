@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ decompose @muse/observability: split MonthlyBudgetTracker (class + types + formatYearMonth) out of the 3-detector god-file observability-detectors.ts -> budget-tracker.ts (480->372 LOC; re-export keeps 3 importers green) — codebase-quality fire 66
 - ✓ decompose @muse/prompts: extracted 3 pure text helpers (cleanBlock/compactSections/compactLines) index -> prompt-text.ts (601->590 LOC; no cycle; +4 tests) + JUDGE-DRILL (8th, judge FAILed removing the [from …] citation-forgery escape on the security-invariant axis) — codebase-quality fire 65
 - ✓ dead-code @muse/autoconfigure: de-exported 2 internal-only interfaces (ContactLike/UserMemoryFactLike) in knowledge-corpus.ts — knip-clean, zero external/test refs — codebase-quality fire 64
 - ✓ cohere @muse/shared: DRY'd finiteOr (7 hand-rolled copies) → canonical @muse/shared finiteOr + deduped 4 non-hot copies (resilience/autoconfigure/api/mcp); agent-core×3 left (hot); +OUTCOME test; dups 7→4 — codebase-quality fire 63
