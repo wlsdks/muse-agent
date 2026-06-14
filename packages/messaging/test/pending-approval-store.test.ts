@@ -142,11 +142,14 @@ describe("recordPendingApproval — append with a most-recent cap", () => {
 describe("listPendingApprovals — read + filter in one call", () => {
   const now = () => new Date("2026-06-01T00:00:00Z");
 
-  it("returns the unexpired worklist", async () => {
+  it("returns the unexpired worklist, round-tripping the re-run payload (tool + arguments)", async () => {
     const file = freshFile();
-    await recordPendingApproval(file, entry("live"));
+    await recordPendingApproval(file, entry("live", { arguments: { subject: "Q3", to: "bob" }, tool: "email_send" }));
     await recordPendingApproval(file, entry("dead", { expiresAt: "2020-01-01T00:00:00Z" }));
-    expect((await listPendingApprovals(file, now)).map((e) => e.id)).toEqual(["live"]);
+    const list = await listPendingApprovals(file, now);
+    expect(list.map((e) => e.id)).toEqual(["live"]);
+    // The re-run payload must survive read+filter so the action can be replayed on approval.
+    expect(list[0]).toMatchObject({ arguments: { subject: "Q3", to: "bob" }, tool: "email_send" });
   });
 
   it("scopes to one channel when asked", async () => {

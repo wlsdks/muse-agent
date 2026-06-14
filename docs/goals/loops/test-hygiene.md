@@ -279,3 +279,11 @@ ratchet: testFiles 993→992 (−1 통합, 유니크 task 케이스 3 이식) ·
 - **왜:** proactive 임박 브리핑(task+calendar) 두 파일 중복. test/가 calendar superset이나 task의 하한/NaN/custom-lead는 미커버였음 — fail-soft 가드 손실 금지.
 - **어떻게-증명(MUTATION-FIRST):** 하한 `dueMs<nowMs` 제거 시 past 누출 RED; NaN 가드 제거 시 unparseable 누출 RED; cutoff가 custom lead 무시(`DEFAULT_LEAD_MINUTES`) 시 leadMinutes:30 케이스 RED. ★judge가 leadMinutes를 "equivalent"로 통과시켰으나 maker가 gap 발견(test/의 유일 lead 테스트=NaN→120이 "lead 하드코딩 120" mutation과 일치해 못 잡음) → 보수적으로 추가 이식+mutation 증명. ④b 독립 Opus judge가 삭제본 전 행동 매핑(MISSING 없음) + 2 mutation 재현 → **VERDICT: PASS**.
 - **리스크:** 소스 무변경. 변경 −89L(src/ 삭제) +12L(이식 3케이스). mcp dist 클린리빌드 1회. 교훈: judge가 "equivalent"라 해도 mutation으로 직접 검증(coincidental-default가 mutation을 가릴 수 있음). 남은 mcp 동명 쌍 8개.
+
+## fire 34 · 2026-06-14 · skill v1.14.0 · 39f030ce
+meta: kind=prune · pkg=@muse/messaging · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 994→993 (−1 subset 삭제, 1 assert 강화-이식) · netCoverage 0 (진짜 중복) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** messaging 동명 쌍 `pending-approval-store` **PRUNE**(messaging 2번째 쌍) — 승인대기 액션 store(record/read/list/clear)를 콜로케이트 src/(6케이스)·test/(17케이스)가 둘 다 실행. test/가 src/ superset(record+list·expired-filter+strict-> boundary·channel-scope+newest-sort·clearById 3케이스·tolerant read+quarantine·filterUnexpired pure+immutability+200-cap). src/ case1 re-run-args round-trip은 verbatim filter라 mutation-비검출이나, 손실 0 위해 test/ worklist 케이스에 `toMatchObject({tool,arguments})` 강화-이식 후 src/ 삭제.
+- **왜:** 같은 store 두 파일 중복. test/가 모든 행동 더 강하게 커버. re-run payload round-trip(승인 시 액션 재실행)은 store의 핵심이라 명시 assert 보존.
+- **어떻게-증명(MUTATION-FIRST PRUNE):** 생존 test/ cite — isPendingApproval arguments 검증 제거 시 "drops malformed" RED; expired-filter 제거/sort 역전 시 worklist+boundary+sort 4케이스 RED. ④b 독립 Opus judge가 삭제본 6 케이스 전수 매핑(전부 equal-or-stronger, MISSING 없음) + 3 mutation 재현 → **VERDICT: PASS**.
+- **리스크:** 소스 무변경, 삭제 1파일(−91L) + test/ 강화(+9L). messaging dist 클린리빌드 1회. 남은 messaging 동명 쌍 2개(channel-approval-gate·provider-helpers).
