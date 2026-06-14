@@ -46,6 +46,7 @@ import {
   type StreamedModelTurn
 } from "./runtime-internals.js";
 import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
+import { ToolLoopProgressTracker } from "./tool-loop-progress.js";
 import type { AgentRunContext } from "./types.js";
 
 export interface ModelLoopRunner {
@@ -133,6 +134,7 @@ export async function executeModelLoop(
   let messages: readonly ModelMessage[] = [...request.messages];
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
+  const progress = new ToolLoopProgressTracker();
   const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
     ? now() + runner.maxRunWallclockMs
@@ -149,8 +151,11 @@ export async function executeModelLoop(
     // model returns a clean response instead of asking for another
     // tool we'd refuse. Honours the iter's "explicit limits and
     // timeouts" non-negotiable from CLAUDE.md.
+    // No-progress early-exit (arXiv:2505.17616): a stalled read loop (the last
+    // window observations near-identical) also disables tools → forces a clean
+    // synthesis instead of burning the rest of the budget on spin.
     const wallclockExceeded = deadlineMs !== undefined && now() > deadlineMs;
-    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls) ? request.tools : [];
+    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled()) ? request.tools : [];
     const response = await runner.generateWithTracing(context, provider, {
       ...request,
       messages,
@@ -203,6 +208,9 @@ export async function executeModelLoop(
       const toolRisk = (activeTools ?? []).find((t) => t.name === toolCall.name)?.risk;
       const mutating = toolRisk === "write" || toolRisk === "execute";
       deduplicator.record(toolCall, executed.result, mutating);
+      // Feed only GENUINE executions (not blocked / exact-dups) to the stall
+      // tracker; a mutating call resets the window (it advanced state).
+      if (canRun && !duplicate?.duplicate) progress.record(executed.result.output, mutating);
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
       // cap individual tool results so a single big
@@ -244,6 +252,7 @@ export async function* executeStreamingModelLoop(
   let messages: readonly ModelMessage[] = [...request.messages];
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
+  const progress = new ToolLoopProgressTracker();
   const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
     ? now() + runner.maxRunWallclockMs
@@ -253,8 +262,10 @@ export async function* executeStreamingModelLoop(
     if (context.input.signal?.aborted) {
       return interruptedExecution(request, intermediateMessages, toolResults, toolsUsed);
     }
+    // No-progress early-exit (arXiv:2505.17616): a stalled read loop disables
+    // tools for this turn → clean synthesis instead of spinning the budget.
     const wallclockExceeded = deadlineMs !== undefined && now() > deadlineMs;
-    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls) ? request.tools : [];
+    const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled()) ? request.tools : [];
     const turnStream = streamModelTurn(runner, context, provider, {
       ...request,
       messages,
@@ -310,6 +321,9 @@ export async function* executeStreamingModelLoop(
       const toolRisk = (activeTools ?? []).find((t) => t.name === toolCall.name)?.risk;
       const mutating = toolRisk === "write" || toolRisk === "execute";
       deduplicator.record(toolCall, executed.result, mutating);
+      // Feed only GENUINE executions (not blocked / exact-dups) to the stall
+      // tracker; a mutating call resets the window (it advanced state).
+      if (canRun && !duplicate?.duplicate) progress.record(executed.result.output, mutating);
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
       // cap individual tool results so a single big

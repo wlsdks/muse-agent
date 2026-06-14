@@ -418,6 +418,12 @@ export {
   type ToolCallDuplicate,
   type ToolCallNotDuplicate
 } from "./tool-call-deduplicator.js";
+export {
+  detectToolLoopStall,
+  ToolLoopProgressTracker,
+  TOOL_LOOP_STALL_JACCARD,
+  TOOL_LOOP_STALL_WINDOW
+} from "./tool-loop-progress.js";
 
 export { groundToolArguments, type ToolArgumentGrounding } from "./tool-argument-grounding.js";
 

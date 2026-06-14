@@ -1415,7 +1415,11 @@ describe("AgentRuntime", () => {
   });
 
   it("a non-finite maxToolCalls falls back to the default bound instead of disabling the tool-loop limit", async () => {
-    const executeTool = vi.fn(async () => "ok");
+    // DISTINCT output each call (unique `resultN` token) so the no-progress
+    // stall gate (arXiv:2505.17616) does NOT fire — this test isolates the
+    // tool-COUNT cap, which must be the gate.
+    let outN = 0;
+    const executeTool = vi.fn(async () => `result${(outN++).toString()} distinct content here`);
     const toolRegistry = new ToolRegistry([
       {
         definition: { description: "Loops.", inputSchema: { type: "object" }, name: "loop_tool", risk: "read" },
