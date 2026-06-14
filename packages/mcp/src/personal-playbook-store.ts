@@ -339,7 +339,7 @@ const EMPTY_PLAYBOOK_BODY = `${JSON.stringify({ entries: [] }, null, 2)}\n`;
 /**
  * One-shot migrate the learned-strategy bank (the self-learning DOSSIER) to
  * encryption-at-rest (AES-256-GCM under the shared MUSE_MEMORY_KEY / per-host
- * fallback). The capstone of the P43-1 self-learning safety: "Muse learns you in
+ * fallback). The capstone of the self-learning safety: "Muse learns you in
  * the background AND the learned model of you can't leak". Snapshots a plaintext
  * backup BEFORE encrypting, runs under the cross-process lock, idempotent.
  */
