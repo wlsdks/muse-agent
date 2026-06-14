@@ -283,3 +283,7 @@ export function clamp(value: number, min: number, max: number): number {
 export function finiteOr(value: number | undefined, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
+
+export function toDate(value: Date | string): Date {
+  return value instanceof Date ? value : new Date(value);
+}

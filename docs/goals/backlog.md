@@ -2,6 +2,7 @@
 
 - ✓ CBR case-density playbook gate (arXiv:2504.06943): the embed-rank playbook drops an isolated (no semantic neighbors) + unproven + SYNTHETIC (reflected) strategy as a sparse-region low-confidence guess; grounded/manual corrections NEVER dropped (wedge), semantic cosine density, never-empty guard; fixed the origin projection seam (PlaybookEntryLike/toPlaybookStrategy) that made it + the reflected penalty inert — agent-core-cognition fire 32
 
+- ✓ cohere @muse/shared: DRY'd toDate (7 hand-rolled copies, DB-row Date coercion) → canonical @muse/shared toDate + deduped 6 non-hot copies (agent-specs/auth/runtime-settings/runtime-state×2/scheduler); mcp×1 left (hot); +OUTCOME test; dups 7→1 — codebase-quality fire 67
 - ✓ decompose @muse/observability: split MonthlyBudgetTracker (class + types + formatYearMonth) out of the 3-detector god-file observability-detectors.ts -> budget-tracker.ts (480->372 LOC; re-export keeps 3 importers green) — codebase-quality fire 66
 - ✓ decompose @muse/prompts: extracted 3 pure text helpers (cleanBlock/compactSections/compactLines) index -> prompt-text.ts (601->590 LOC; no cycle; +4 tests) + JUDGE-DRILL (8th, judge FAILed removing the [from …] citation-forgery escape on the security-invariant axis) — codebase-quality fire 65
 - ✓ dead-code @muse/autoconfigure: de-exported 2 internal-only interfaces (ContactLike/UserMemoryFactLike) in knowledge-corpus.ts — knip-clean, zero external/test refs — codebase-quality fire 64

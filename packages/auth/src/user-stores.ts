@@ -14,7 +14,7 @@
  */
 
 import type { MuseDatabase, UserTable } from "@muse/db";
-import { createRunId } from "@muse/shared";
+import { createRunId, toDate } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
 import { AuthError } from "./auth-error.js";
@@ -265,8 +265,4 @@ export function mapUserRow(row: UserRow): User {
     name: row.name,
     passwordHash: row.password_hash
   };
-}
-
-function toDate(value: Date | string): Date {
-  return value instanceof Date ? value : new Date(value);
 }
