@@ -82,6 +82,14 @@ describe("auto-extract applies Mem0 operations", () => {
     expect((await store.findByUserId("u1"))?.facts.home_city).toBeUndefined();
   });
 
+  it("NOOP across key casings: re-confirming 'Home City' as 'home city' is a NOOP on InMemory (the lookup is normalized + the store now is too)", async () => {
+    const store = new InMemoryUserMemoryStore();
+    await store.upsertFact("u1", "Home City", "Seoul"); // a capitalized key from one path
+    const prov = await run(store, { facts: { "home city": "Seoul" }, preferences: {}, vetoes: [], goals: [] });
+    expect(await prov.query("u1")).toEqual([]); // re-confirmation → no new learn event (was a spurious ADD before the store normalized)
+    expect(store.findByUserId("u1")?.facts.home_city).toBe("Seoul");
+  });
+
   it("DELETE: a FACT retraction does NOT wipe a same-key PREFERENCE (namespace-scoped)", async () => {
     // facts + preferences routinely collapse to the same normalized key (pet,
     // city, name…). A "I don't have a pet" FACT retraction must not silently
@@ -93,6 +101,23 @@ describe("auto-extract applies Mem0 operations", () => {
     const mem = await store.findByUserId("u1");
     expect(mem?.facts.pet).toBeUndefined(); // the fact WAS retracted
     expect(mem?.preferences.pet).toBe("dog"); // the preference the user never retracted SURVIVES
+  });
+});
+
+describe("InMemory store canonicalizes the key (parity with the File store)", () => {
+  it("upsertFact stores under the NORMALIZED key so a fact doesn't fragment by store backend", () => {
+    const store = new InMemoryUserMemoryStore();
+    store.upsertFact("u1", "Home City", "Seoul");
+    const mem = store.findByUserId("u1");
+    expect(mem?.facts.home_city).toBe("Seoul"); // stored under the normalized key
+    expect(mem?.facts["Home City"]).toBeUndefined(); // NOT the raw key
+  });
+
+  it("forget still finds the entry by a raw OR normalized key after normalization", () => {
+    const store = new InMemoryUserMemoryStore();
+    store.upsertFact("u1", "Home City", "Seoul");
+    expect(store.forget("u1", "Home City")).toBe(true); // raw key resolves to the normalized entry
+    expect(store.findByUserId("u1")?.facts.home_city).toBeUndefined();
   });
 });
 

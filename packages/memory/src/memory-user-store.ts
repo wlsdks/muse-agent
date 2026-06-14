@@ -177,22 +177,26 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
   }
 
   upsertFact(userId: string, key: string, value: string): UserMemory {
-    return this.upsert(userId, { facts: { [key]: sanitizeUserMemoryValue(value) } });
+    return this.upsert(userId, { facts: { [normalizeMemoryKey(key)]: sanitizeUserMemoryValue(value) } });
   }
 
   upsertPreference(userId: string, key: string, value: string): UserMemory {
-    return this.upsert(userId, { preferences: { [key]: sanitizeUserMemoryValue(value) } });
+    return this.upsert(userId, { preferences: { [normalizeMemoryKey(key)]: sanitizeUserMemoryValue(value) } });
   }
 
   deleteByUserId(userId: string): boolean {
     return this.memories.delete(userId);
   }
 
-  forget(userId: string, key: string, kind?: "fact" | "preference"): boolean {
+  forget(userId: string, rawKey: string, kind?: "fact" | "preference"): boolean {
     const existing = this.memories.get(userId);
     if (!existing) {
       return false;
     }
+    // Keys are stored canonicalized (upsert normalizes), so resolve the raw key
+    // to its stored form — exact first, else the normalized one — exactly as the
+    // File store does, so "Home City" forgets the "home_city" entry.
+    const key = (rawKey in existing.facts || rawKey in existing.preferences) ? rawKey : normalizeMemoryKey(rawKey);
     // Namespace-scoped: `kind` limits the delete to facts OR preferences (so an
     // auto-extracted FACT retraction can't wipe a same-key PREFERENCE). Omitting
     // `kind` keeps the dual-delete for the explicit `/forget` control.
@@ -267,7 +271,7 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
   async upsertFact(userId: string, key: string, value: string): Promise<UserMemory> {
     const existing = await this.findByUserId(userId);
     return this.save({
-      facts: mergeRecordTouchLast(existing?.facts ?? {}, { [key]: sanitizeUserMemoryValue(value) }),
+      facts: mergeRecordTouchLast(existing?.facts ?? {}, { [normalizeMemoryKey(key)]: sanitizeUserMemoryValue(value) }),
       preferences: existing?.preferences ?? {},
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
@@ -280,7 +284,7 @@ export class KyselyUserMemoryStore implements UserMemoryStore {
     const existing = await this.findByUserId(userId);
     return this.save({
       facts: existing?.facts ?? {},
-      preferences: mergeRecordTouchLast(existing?.preferences ?? {}, { [key]: sanitizeUserMemoryValue(value) }),
+      preferences: mergeRecordTouchLast(existing?.preferences ?? {}, { [normalizeMemoryKey(key)]: sanitizeUserMemoryValue(value) }),
       recentTopics: existing?.recentTopics ?? [],
       updatedAt: new Date(),
       userId,
