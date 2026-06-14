@@ -2226,3 +2226,4 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ✓ provider-utils clampPositive double-run consolidated into src (base-10 pinning migrated, test/ deleted); JUDGE-DRILL passed (judge caught planted inert ADD) — test-hygiene fire 43
 - ✓ rankEpisodeHits importance bump covered (Generative Agents additive score term) — test-hygiene fire 44
 - ✓ worstUnsupportedSentence tie-break covered (earliest sentence on equal coverage — deterministic grounding diagnostics) — test-hygiene fire 45
+- ✓ formatContactBirthday lower-bound guard covered (month<1/day<1 → no garbage birthday in grounding block) — test-hygiene fire 46

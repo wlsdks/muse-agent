@@ -376,3 +376,11 @@ ratchet: testFiles 1012 (케이스 +1, 파일수 불변) · netCoverage +1 branc
 - **왜:** worstUnsupportedSentence는 un-groundable claim의 진단/연료 포인터(self-improvement fuel). tie-break가 회귀하면(< → <=) 같은 답변에서 가리키는 문장이 순서 따라 바뀌어 진단이 비결정적 — 재현 가능한 grounding 진단 계약.
 - **어떻게-증명(MUTATION-FIRST ADD):** `<` → `<=` 변형 시 새 케이스만 RED(`expected 'Unicorns…' to contain 'Dragons'` — 동률에서 later 문장으로 교체됨, 12 green). 두 문장이 evidence("lions hunt animals africa")와 토큰 0 공유 → 둘 다 coverage 0 진짜 동률(report.unsupported===2 동시 assert). ④b 독립 Opus judge가 mutation 재현(오직 그 케이스) + tie 진위(둘 다 0) + 사전 미커버 확인 → **VERDICT: PASS**.
 - **리스크:** 테스트-only, 소스 무변경. worstUnsupportedSentence는 순수 진단 헬퍼(런타임 LLM 게이트 아님) → eval 신호 무영향. KIND/pkg(add@agent-core)가 새 패키지로 다양화 — 단 최근 3 = add/prune/add라 ADD 3회째(judge가 약하게 지적); 다음 fire는 prune/fix 우선. 남은 후보: groundToolArguments는 19케이스로 매우 풍부, sentence-groundedness reportSentenceGroundedness floor 경계는 커버됨.
+
+## fire 46 · 2026-06-14 · skill v1.14.0 · c8ebc826
+meta: kind=add · pkg=@muse/recall · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 1015 (케이스 +1, 파일수 불변) · netCoverage +1 (formatContactBirthday 하한 가드 month<1/day<1) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** `formatContactBirthday`(recall/select.ts, 연락처 생일 grounding)의 **하한 경계 가드** 커버. 기존 malformed 테스트는 "99-99"(상한: month>12 AND day>31)만 먹여 하한(month<1/day<1) 미커버. "00-15"→month 0→BIRTHDAY_MONTHS[-1]→빈 월(" 15"), "03-00"→"March 0" — grounding 블록에 쓰레기 날짜 렌더됨. 새 케이스가 00-15/2026-00-15/03-00 모두 undefined 검증.
+- **왜:** grounding-integrity 플로어(소스에 fabricated/garbage 날짜 금지). 하한 가드 회귀 시 malformed 생일이 정상 날짜처럼 grounding 블록에 들어가 "X의 생일은 ?월 15일" 류 쓰레기 근거 생성. no-garbage-source 계약.
+- **어떻게-증명(MUTATION-FIRST ADD):** 하한 둘 제거(`month<1 || ... || day<1 ||` → 상한만) 시 새 케이스만 RED(`expected ' 15' to be undefined`, 기존 "99-99"는 green 유지=하한 진짜 미커버), 262 green. ④b 독립 Opus judge가 두 서브분기(month<1·day<1) 각각 독립 격리 mutation + regex가 numeric 체크 도달 + 사전 미커버 확인 → **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경. ★다양성 주의: recall 2회 연속(44,46)·ADD 3회 연속(44,45,46) — ratchet(pkg,KIND≥6/8)은 recall-add 3/8로 미발동이나 judge가 집중 지적. **다음 fire는 반드시 다른 패키지+다른 KIND**(mcp/cli/messaging/shared 등 + prune 후보 재탐색 or fix). prune/fix vein은 fire45에서 고갈 확인 → ADD 위주 불가피하나 패키지 분산 필요.
