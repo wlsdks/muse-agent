@@ -432,6 +432,7 @@ export {
   TOOL_LOOP_STALL_WINDOW
 } from "./tool-loop-progress.js";
 export { ToolFailureStreakTracker, TOOL_FAILURE_STREAK_LIMIT } from "./tool-failure-streak.js";
+export { CONFLICT_IDENTITY_KEYS, detectConflictingWritesInBatch } from "./tool-batch-conflict.js";
 
 export { groundToolArguments, type ToolArgumentGrounding } from "./tool-argument-grounding.js";
 

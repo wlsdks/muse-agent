@@ -45,6 +45,7 @@ import {
   type StreamExecutionOptions,
   type StreamedModelTurn
 } from "./runtime-internals.js";
+import { detectConflictingWritesInBatch } from "./tool-batch-conflict.js";
 import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
 import { ToolFailureStreakTracker } from "./tool-failure-streak.js";
 import { ToolLoopProgressTracker } from "./tool-loop-progress.js";
@@ -197,19 +198,29 @@ export async function executeModelLoop(
     // the remaining calls are skipped so the wall-clock cap is a
     // real execution bound, not just a between-turn boundary.
     const batchStartedPastDeadline = deadlineMs !== undefined && now() > deadlineMs;
+    // Conflicting-write guard (AgentSpec arXiv:2503.18666): a 2nd write to the same
+    // target with conflicting args in this batch is withheld (zero side-effect) so
+    // a double-act can't reach a write actuator.
+    const conflictingIds = detectConflictingWritesInBatch(calls, (call) => {
+      const risk = (activeTools ?? []).find((t) => t.name === call.name)?.risk;
+      return risk === "write" || risk === "execute";
+    });
     for (const toolCall of calls) {
       const remaining = runner.maxToolCalls - toolCallCount;
       const crossedDeadlineMidBatch = !batchStartedPastDeadline
         && deadlineMs !== undefined && now() > deadlineMs;
-      const canRun = remaining > 0 && !crossedDeadlineMidBatch;
+      const conflicting = conflictingIds.has(toolCall.id);
+      const canRun = remaining > 0 && !crossedDeadlineMidBatch && !conflicting;
       const duplicate = canRun ? deduplicator.check(toolCall) : undefined;
       const executed = duplicate?.duplicate
         ? { result: duplicate.result, toolCall }
-        : canRun
-          ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
-          : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
-              ? "Error: run wall-clock deadline reached"
-              : "Error: max tool call limit reached");
+        : conflicting
+          ? blockedToolResult(toolCall, "Error: conflicting write withheld — ambiguous duplicate action in this batch")
+          : canRun
+            ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
+            : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
+                ? "Error: run wall-clock deadline reached"
+                : "Error: max tool call limit reached");
 
       toolCallCount += canRun ? 1 : 0;
       const toolRisk = (activeTools ?? []).find((t) => t.name === toolCall.name)?.risk;
@@ -317,19 +328,27 @@ export async function* executeStreamingModelLoop(
     messages = [...messages, assistantMessage];
 
     const batchStartedPastDeadline = deadlineMs !== undefined && now() > deadlineMs;
+    // Conflicting-write guard (AgentSpec arXiv:2503.18666): see executeModelLoop.
+    const conflictingIds = detectConflictingWritesInBatch(calls, (call) => {
+      const risk = (activeTools ?? []).find((t) => t.name === call.name)?.risk;
+      return risk === "write" || risk === "execute";
+    });
     for (const toolCall of calls) {
       const remaining = runner.maxToolCalls - toolCallCount;
       const crossedDeadlineMidBatch = !batchStartedPastDeadline
         && deadlineMs !== undefined && now() > deadlineMs;
-      const canRun = remaining > 0 && !crossedDeadlineMidBatch;
+      const conflicting = conflictingIds.has(toolCall.id);
+      const canRun = remaining > 0 && !crossedDeadlineMidBatch && !conflicting;
       const duplicate = canRun ? deduplicator.check(toolCall) : undefined;
       const executed = duplicate?.duplicate
         ? { result: duplicate.result, toolCall }
-        : canRun
-          ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
-          : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
-              ? "Error: run wall-clock deadline reached"
-              : "Error: max tool call limit reached");
+        : conflicting
+          ? blockedToolResult(toolCall, "Error: conflicting write withheld — ambiguous duplicate action in this batch")
+          : canRun
+            ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
+            : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
+                ? "Error: run wall-clock deadline reached"
+                : "Error: max tool call limit reached");
 
       const grounding = groundingSourceFromExecuted(executed);
       yield { runId: context.runId, toolCall, type: "tool-result", ...(grounding ? { grounding } : {}) };
