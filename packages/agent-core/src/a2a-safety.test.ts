@@ -54,6 +54,16 @@ describe("prepareOutbound — only know-how crosses, PII redacted", () => {
     expect(prepareOutbound({ content: atLimit, kind: "skill" }, "p").content).toHaveLength(A2A_MAX_CONTENT_CHARS);
   });
 
+  it("refuses an oversized LABEL (fail-closed on size, symmetric with the inbound bound)", () => {
+    const hugeLabel = "L".repeat(A2A_MAX_LABEL_CHARS + 1);
+    expect(() => prepareOutbound({ content: "ok", kind: "skill", label: hugeLabel }, "p")).toThrow(A2ASafetyError);
+    // a label exactly at the limit is allowed (and survives onto the envelope)
+    const atLimit = "m".repeat(A2A_MAX_LABEL_CHARS);
+    expect(prepareOutbound({ content: "ok", kind: "skill", label: atLimit }, "p").label).toHaveLength(A2A_MAX_LABEL_CHARS);
+    // no label is fine (label is optional)
+    expect(prepareOutbound({ content: "ok", kind: "skill" }, "p").label).toBeUndefined();
+  });
+
   it("records redacted=true when only the LABEL carried a secret (audit-trail honesty)", () => {
     const env = prepareOutbound(
       { content: "clean how-to, no secrets", kind: "skill", label: "token=sk-secret-99" },
