@@ -62,4 +62,43 @@ describe("interactionsFromEvents — derive contact interaction timestamps from 
     const [mina] = interactionsFromEvents([{ name: "Mina" }], events);
     expect(mina?.timestampsMs).toEqual([Date.parse("2026-05-01T10:00:00Z")]);
   });
+
+  it("does NOT count an event whose text merely CONTAINS an ASCII name as a substring (no false interaction)", () => {
+    // "ann" ⊂ "pl·ann·ing", "sam" ⊂ "·Sam·sung" — these are NOT interactions with
+    // Ann / Sam. A substring match would inject a spurious recent timestamp and
+    // (downstream) drop a genuinely-overdue contact from the nudge.
+    const events = [
+      { startsAt: "2026-06-01T10:00:00Z", title: "Planning review" },
+      { startsAt: "2026-06-02T10:00:00Z", title: "Samsung product launch" }
+    ];
+    expect(interactionsFromEvents([{ name: "Ann" }], events)[0]?.timestampsMs).toEqual([]);
+    expect(interactionsFromEvents([{ name: "Sam" }], events)[0]?.timestampsMs).toEqual([]);
+  });
+
+  it("still matches a genuine whole-word ASCII mention and a Korean name with an attached particle", () => {
+    const events = [
+      { startsAt: "2026-06-03T10:00:00Z", title: "Lunch with Ann" }, // EN whole word
+      { startsAt: "2026-06-04T10:00:00Z", title: "민지랑 저녁" } // KO name + 조사 (particle attaches directly)
+    ];
+    expect(interactionsFromEvents([{ name: "Ann" }], events)[0]?.timestampsMs).toEqual([Date.parse("2026-06-03T10:00:00Z")]);
+    expect(interactionsFromEvents([{ name: "민지" }], events)[0]?.timestampsMs).toEqual([Date.parse("2026-06-04T10:00:00Z")]);
+  });
+
+  it("a substring-colliding event does NOT drop a genuinely-overdue contact (terminal state through the tool)", async () => {
+    // Ann: genuine ~weekly cadence, last REAL mention 60d ago → overdue. A recent
+    // unrelated "Planning review" must not collapse her gap to ~0 and hide her.
+    const events = [
+      { startsAt: new Date(nowMs - 81 * DAY).toISOString(), title: "Lunch with Ann" },
+      { startsAt: new Date(nowMs - 74 * DAY).toISOString(), title: "Coffee with Ann" },
+      { startsAt: new Date(nowMs - 67 * DAY).toISOString(), title: "Call with Ann" },
+      { startsAt: new Date(nowMs - 60 * DAY).toISOString(), title: "Dinner with Ann" },
+      { startsAt: new Date(nowMs - 2 * DAY).toISOString(), title: "Planning review" } // unrelated — "ann" ⊂ "planning"
+    ];
+    const interactions = interactionsFromEvents([{ name: "Ann" }], events);
+    const out = (await createOverdueContactsTool({ interactions: () => interactions, now: () => NOW }).execute({})) as {
+      overdue: { name: string; gapDays: number }[];
+    };
+    expect(out.overdue.map((o) => o.name)).toContain("Ann");
+    expect(out.overdue.find((o) => o.name === "Ann")?.gapDays).toBe(60);
+  });
 });
