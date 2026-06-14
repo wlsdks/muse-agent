@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ plan-exemplar structural-validity gate (RAP arXiv:2402.03610 + LLMCompiler arXiv:2312.04511): exemplarIsSelfConsistent withholds a cached plan whose own steps fail validateStepDependencies (a dangling {{stepN}} ref that selectSuccessfulPlanSteps can leave after filtering a mid-step) before injecting it as a planning exemplar; withhold-only, reuses the conservative ref extractor — agent-core-cognition fire 37
+
 - ✓ DINCO preference-confidence calibration (arXiv:2509.25532): inferred persona traits now distractor-normalize their verbalized confidence (cal=c_orig/(c_orig+Σc_distractors)) — a trait that doesn't dominate self-generated incompatible alternatives is dropped, survivors get the less-saturated value; opt-in (prod sets it), fail-soft, applied after the accept gates — agent-core-cognition fire 36
 
 - ✓ outcome-quality episode write-admission (selective addition, arXiv:2505.16067): captureEndOfSessionEpisode now refuses to store an ERROR-PRONE session (corrections > approvals) so its botched outcome can't replay via experience-following; the lesson survives (corrections distilled to playbook separately); subtractive, default-admit on tie/no-signal — agent-core-cognition fire 35
