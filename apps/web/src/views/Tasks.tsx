@@ -11,11 +11,20 @@ export function formatTaskDate(iso: string, locale: string): string {
   return new Date(iso).toLocaleDateString(locale);
 }
 
+export function filterTasksByQuery(tasks: readonly TaskRow[], query: string): readonly TaskRow[] {
+  const q = query.trim().toLowerCase();
+  if (!q) {
+    return tasks;
+  }
+  return tasks.filter((t) => t.title.toLowerCase().includes(q) || (t.notes ?? "").toLowerCase().includes(q));
+}
+
 export function TasksView({ client }: { client: ApiClient }) {
   const { locale, t } = useI18n();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<"open" | "done" | "all">("open");
   const [title, setTitle] = useState("");
+  const [search, setSearch] = useState("");
 
   const key = ["tasks", client.baseUrl, filter];
   const tasks = useQuery({
@@ -44,7 +53,7 @@ export function TasksView({ client }: { client: ApiClient }) {
     onSuccess: invalidate
   });
 
-  const list = tasks.data?.tasks ?? [];
+  const list = filterTasksByQuery(tasks.data?.tasks ?? [], search);
 
   return (
     <div className="content-narrow">
@@ -72,7 +81,16 @@ export function TasksView({ client }: { client: ApiClient }) {
         title={t("tasks.yourTasks")}
         count={tasks.data?.total ?? 0}
         action={
-          <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <input
+              className="input"
+              type="search"
+              aria-label={t("tasks.search")}
+              placeholder={t("tasks.search")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{ width: 140 }}
+            />
             {(["open", "done", "all"] as const).map((f) => (
               <Button key={f} variant={filter === f ? "secondary" : "ghost"} size="sm" onClick={() => setFilter(f)}>
                 {t(`filter.${f}`)}
@@ -101,7 +119,7 @@ export function TasksView({ client }: { client: ApiClient }) {
                 <div className="row-meta">{formatTaskDate(task.createdAt, locale)}</div>
               </div>
               <div className="row-actions">
-                <Button variant="ghost" size="sm" onClick={() => remove.mutate(task.id)} title={t("common.delete")}>
+                <Button variant="ghost" size="sm" onClick={() => remove.mutate(task.id)} title={t("common.delete")} ariaLabel={t("common.delete")}>
                   <Icon.trash className="nav-icon" />
                 </Button>
               </div>

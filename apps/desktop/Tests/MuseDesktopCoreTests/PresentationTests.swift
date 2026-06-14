@@ -12,6 +12,15 @@ final class AnswerPresentationTests: XCTestCase {
         XCTAssertEqual(MusePresenter.stripCitationsForSpeech("A [from a.md] and B [from b.md]"), "A and B")
     }
 
+    func testStripsCitationMarkerRegardlessOfCase() {
+        // agent-core recognizes the citation marker case-insensitively (/\[from…\]/giu),
+        // so an 8B model can emit "[From x.md]" / "[FROM x.md]" (e.g. sentence-start
+        // capitalization) and the system still counts it a citation — the spoken
+        // strip must match the SAME forms, or the companion reads "From x dot md" aloud.
+        XCTAssertEqual(MusePresenter.stripCitationsForSpeech("Your flight is 9am [From notes/vpn.md]"), "Your flight is 9am")
+        XCTAssertEqual(MusePresenter.stripCitationsForSpeech("Done [FROM a.md]"), "Done")
+    }
+
     func testStripsTheReceiptLineFromSpeech() {
         // withGroundingReceipt appends "\n\n📎 노트: seoul_office.md" — the bubble
         // keeps it, but the voice must not read the file path aloud.

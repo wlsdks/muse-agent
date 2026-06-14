@@ -183,7 +183,7 @@ function ContactsTab({ client }: { client: ApiClient }) {
                   <div className="row-title">{c.name}</div>
                   <div className="row-meta">{[c.phone, c.email, c.handle].filter(Boolean).join(" · ")}</div>
                 </div>
-                <Button variant="ghost" size="sm" title={t("common.delete")} onClick={() => remove.mutate(c.id)}>
+                <Button variant="ghost" size="sm" title={t("common.delete")} ariaLabel={t("common.delete")} onClick={() => remove.mutate(c.id)}>
                   <Icon.trash className="nav-icon" />
                 </Button>
               </div>

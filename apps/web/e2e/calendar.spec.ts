@@ -47,6 +47,10 @@ test("calendar creates and deletes an event", async ({ page }) => {
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect.poll(() => posted).toMatchObject({ title: "Review" });
 
-  await page.getByRole("button", { name: "Delete" }).first().click();
+  // Icon-only delete buttons must carry an explicit accessible name, not lean
+  // on the title tooltip alone (WCAG 4.1.2) — title isn't reliably announced.
+  const del = page.getByRole("button", { name: "Delete" }).first();
+  await expect(del).toHaveAttribute("aria-label", "Delete");
+  await del.click();
   await expect.poll(() => deletedUrl).toContain("providerId=local");
 });

@@ -120,7 +120,7 @@ export function NotesView({ client }: { client: ApiClient }) {
                     <div className="row-title">{f.name}</div>
                     {f.sizeBytes !== undefined && <div className="row-meta">{f.sizeBytes} bytes</div>}
                   </button>
-                  <Button variant="ghost" size="sm" title={t("common.delete")} onClick={() => remove.mutate(f.name)}>
+                  <Button variant="ghost" size="sm" title={t("common.delete")} ariaLabel={t("common.delete")} onClick={() => remove.mutate(f.name)}>
                     <Icon.trash className="nav-icon" />
                   </Button>
                 </div>

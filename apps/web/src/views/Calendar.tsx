@@ -105,7 +105,7 @@ export function CalendarView({ client }: { client: ApiClient }) {
                       </div>
                     </div>
                     {e.tags.length > 0 && <Badge dot={false}>{e.tags[0]}</Badge>}
-                    <Button variant="ghost" size="sm" title={t("common.delete")} onClick={() => remove.mutate({ id: e.id, providerId: e.providerId })}>
+                    <Button variant="ghost" size="sm" title={t("common.delete")} ariaLabel={t("common.delete")} onClick={() => remove.mutate({ id: e.id, providerId: e.providerId })}>
                       <Icon.trash className="nav-icon" />
                     </Button>
                   </div>

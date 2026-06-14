@@ -83,7 +83,7 @@ export function RemindersView({ client }: { client: ApiClient }) {
                   <Button variant="ghost" size="sm" onClick={() => snooze.mutate(r.id)}>
                     {t("common.snooze30")}
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => remove.mutate(r.id)} title={t("common.delete")}>
+                  <Button variant="ghost" size="sm" onClick={() => remove.mutate(r.id)} title={t("common.delete")} ariaLabel={t("common.delete")}>
                     <Icon.trash className="nav-icon" />
                   </Button>
                 </div>
