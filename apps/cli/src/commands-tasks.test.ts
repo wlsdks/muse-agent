@@ -377,3 +377,40 @@ describe("muse tasks list — help text describes the actual order", () => {
     expect(payload.tasks.map((t) => t.id)).toEqual(["A", "B"]);
   });
 });
+
+describe("muse tasks add --due — past-due heads-up (sibling parity with `remind add`)", () => {
+  const prev = process.env.MUSE_TASKS_FILE;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.MUSE_TASKS_FILE;
+    else process.env.MUSE_TASKS_FILE = prev;
+  });
+
+  async function runAdd(args: string[]): Promise<{ stderr: string }> {
+    const stderr: string[] = [];
+    const io = { stderr: (m: string) => stderr.push(m), stdout: () => {} };
+    const helpers: TasksCommandHelpers = { apiRequest: async () => ({}), writeOutput: () => {} };
+    const program = new Command();
+    program.exitOverride();
+    registerTasksCommands(program, io, helpers);
+    await program.parseAsync(["node", "muse", "tasks", ...args]);
+    return { stderr: stderr.join("") };
+  }
+
+  it("warns when --due is in the PAST (a typo'd / overdue date), like remind add", async () => {
+    process.env.MUSE_TASKS_FILE = join(mkdtempSync(join(tmpdir(), "muse-tasks-past-")), "tasks.json");
+    const { stderr } = await runAdd(["add", "Pay rent", "--local", "--due", "2020-01-01T00:00:00.000Z"]);
+    expect(stderr).toContain("PAST");
+  });
+
+  it("does NOT warn for a future --due (no false positive)", async () => {
+    process.env.MUSE_TASKS_FILE = join(mkdtempSync(join(tmpdir(), "muse-tasks-future-")), "tasks.json");
+    const { stderr } = await runAdd(["add", "Renew passport", "--local", "--due", "2999-01-01T00:00:00.000Z"]);
+    expect(stderr).not.toContain("PAST");
+  });
+
+  it("suppresses the heads-up under --json (parity with remind)", async () => {
+    process.env.MUSE_TASKS_FILE = join(mkdtempSync(join(tmpdir(), "muse-tasks-json-")), "tasks.json");
+    const { stderr } = await runAdd(["add", "Pay rent", "--local", "--json", "--due", "2020-01-01T00:00:00.000Z"]);
+    expect(stderr).not.toContain("PAST");
+  });
+});
