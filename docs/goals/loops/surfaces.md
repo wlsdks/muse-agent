@@ -408,3 +408,12 @@ ratchet: desktop swift tests 70/70 (+1) · testFiles 1012 · fabrication 0 · se
 - **왜**: fire 29 보완 — glyph 커버리지 + hex 유효성 둘 다 silent-hole 차단. fire 44 추출이 이 가드의 토대(validator가 렌더러와 동일 파서 사용 → divergence 없음). desktop(11→12) 균형.
 - **리뷰지점**: validity≠draw-ability — judge가 mutation으로 입증: 렌더러의 `a!=0` 의미를 validator에 쓰면 모든 built-in(모두 `#00000000` 투명키 보유)이 잘못 거부됨. 실제 impl은 `parseHexColor != nil`(validity)이라 built-in 통과·"#GGGGGG"/"12345" 거부. 가드는 paletteCoversGrid 後·renderPNG 前. parseHexColor/paletteCoversGrid 무변.
 - **리스크**: 없음(신규 메서드 + 가드 1블록 + 신규 테스트; 순수 sprite-data 검증; 독립 Opus judge가 RED-before·mutation 비-vacuous·validity-vs-drawability 정확성·built-in 무오거부·무회귀 검증 후 PASS, swift 70/70).
+
+## fire 46 · 2026-06-14 · skill v1.14.0 · 83b0da32
+meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=date-formatter-invalid-guard · verdict=PASS · firesSinceDrill=3
+ratchet: web unit 45/45 (+1) · testFiles 1015 · fabrication 0 · self-eval exit 0 · 표면 균형 web20·desktop12·cli14
+
+- **무엇**: `formatTaskDate(iso,locale)`가 가드 없이 `new Date(iso).toLocaleDateString` → 파스 불가/빈 createdAt이 task row에 리터럴 "Invalid Date" 렌더. `Number.isNaN(getTime())` 가드로 "" 반환(valid 입력 무영향).
+- **왜**: 표시 robustness — sibling `timeUntil`(Today.tsx, fire 10)이 이미 동일 NaN-가드 패턴. `TaskRow.createdAt`은 포맷 계약 없는 bare string → formatTaskDate 미가드가 그 선례와 inconsistency. zero-downside 일관성 수정.
+- **리뷰지점**: judge가 speculation 질문 진지 검토 → timeUntil 선례+bare-string 타입+무손실로 defensible 판정(투기 아님). valid ISO byte-동일(가드는 NaN에만 발화). filterTasksByQuery/view/타 포매터 무변.
+- **리스크**: 없음(3줄 가드 + 테스트; 순수 presentational; 독립 Opus judge가 RED-before·valid 무회귀·비-투기성(timeUntil 선례)·무부수효과 검증 후 PASS, web 45/45). NOTE: 동종 inline 날짜 포맷(Activity/Messaging 등)·dayLabel은 후속 후보(scout runner-up).
