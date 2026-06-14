@@ -497,6 +497,51 @@ async function buildContactsCrudScenario() {
   }
 }
 
+// The OUTBOUND email tools (email_send / email_reply — risk:execute, a message
+// to a third party) had NO eval coverage. The make-or-break is IrrelAcc: a
+// statement ABOUT email ("I got an email from Bob", "too many emails lately",
+// "I should reply but it's a hassle") must fire NO tool — an over-fire drafts an
+// unwanted message toward another person, the highest-blast-radius false-positive.
+async function buildEmailSendScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const contacts = () => [{ email: "bob@acme.com", id: "c1", name: "Bob" }];
+    const stub = { reader: { recent: () => [], get: () => undefined }, sender: { send: () => ({ ok: true }) }, approvalGate: () => ({ approved: false }), actionLogFile: "/tmp/eval-email-actionlog.json", userId: "u" };
+    const provider = { listRecent: () => [], search: () => [], get: () => undefined };
+    const searcher = { search: () => [] };
+    // Expose the FULL email suite (send/reply + recent/search/read) + find_contact
+    // as production does — a minimal set makes the model resolve-the-contact-first
+    // or invent a read tool, manufacturing false selection failures (fire-114 lesson).
+    const instances = [
+      mcp.createEmailSendTool({ contacts, ...stub }),
+      mcp.createEmailReplyTool({ ...stub }),
+      mcp.createEmailReadTool({ provider }),
+      mcp.createEmailSearchTool({ searcher }),
+      mcp.createEmailReadMessageTool({ reader: stub.reader }),
+      mcp.createContactsFindTool({ contacts })
+    ];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      // Recipient (Bob) is in the contacts stub so the model goes straight to the
+      // outbound tool rather than resolving the contact first (a valid multi-step
+      // we don't assert on — the eval pins the SEND intent, not the resolve step).
+      { prompt: "Bob한테 'Friday 3시 미팅 괜찮아?'라고 이메일 보내줘.", expectTool: "email_send", requireArgs: ["to"], note: "KO send a NEW email to a known contact → email_send" },
+      { prompt: "Send Bob an email saying the quarterly report is ready.", expectTool: "email_send", requireArgs: ["to"], note: "EN send a new email to a known contact → email_send" },
+      { prompt: "Bob 이메일 주소가 뭐야?", expectTool: "find_contact", requireArgs: ["name"], note: "KO look up an address → find_contact (NOT email_send — a read, not a send)" },
+      // IrrelAcc (the make-or-break for OUTBOUND): a statement about email is NOT a
+      // send command. An over-fire here drafts a message toward a third party — the
+      // highest-blast-radius false-positive. These confirm the outbound tools abstain.
+      { prompt: "요즘 이메일이 너무 많이 와서 피곤해.", expectNoTool: true, note: "KO 'too many emails lately, I'm tired' → NO tool (a complaint, NOT a send)" },
+      { prompt: "이메일 답장 좀 해야 하는데 너무 귀찮다.", expectNoTool: true, note: "KO 'I should reply to emails but it's such a hassle' → NO tool (a musing, no specific message)" },
+      { prompt: "Bob한테 이메일 보낼까 말까 고민 중이야.", expectNoTool: true, note: "KO 'I'm debating whether to email Bob' → NO tool (deliberation, NOT a send command)" }
+    ];
+    return { label: "email-send (outbound send vs find + statement-about-email IrrelAcc)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "email-send", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Relationship-maintenance nudge (overdue_contacts — "who've I lost touch
 // with?") vs looking up ONE specific person (find_contact). The value is the
 // discrimination: a "who haven't I talked to in a while?" intent is a LIST of
@@ -1056,6 +1101,7 @@ async function main() {
     await buildFindItemsScenario(),
     await buildRememberFactScenario(),
     await buildContactsCrudScenario(),
+    await buildEmailSendScenario(),
     await buildOverdueScenario(),
     await buildOnThisDayScenario(),
     await buildFeedsScenario(),
