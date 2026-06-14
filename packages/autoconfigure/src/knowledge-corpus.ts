@@ -1,3 +1,4 @@
+import { finiteOr } from "@muse/shared";
 import { annotateNoteChunks, chunkText, classifyRetrievalConfidence, edgeLoadByRelevance, rankKnowledgeChunksWithHop, renderKnowledgeMatches, type KnowledgeChunk, type KnowledgeMatch } from "@muse/agent-core";
 import type { NotesProvider, TasksProvider } from "@muse/mcp";
 import type { MuseTool } from "@muse/tools";
@@ -176,9 +177,6 @@ export interface AssembleKnowledgeCorpusOptions {
 
 const DAY_MS = 86_400_000;
 
-function finiteOr(value: number | undefined, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
 
 /**
  * Build a citation `source` label: the stable type prefix (kept so the

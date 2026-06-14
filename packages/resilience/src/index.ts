@@ -6,6 +6,7 @@ import {
   type ModelResponse
 } from "@muse/model";
 import type { JsonObject } from "@muse/shared";
+import { finiteOr } from "@muse/shared";
 
 export type Awaitable<T> = T | Promise<T>;
 export type CircuitBreakerState = "closed" | "open" | "half_open";
@@ -488,9 +489,6 @@ export function computeRetryDelay(attempt: number, options: RetryPolicy = {}): n
   return Number.isFinite(jittered) ? jittered : base;
 }
 
-function finiteOr(value: number | undefined, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
 
 export function isCancellationLikeError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
