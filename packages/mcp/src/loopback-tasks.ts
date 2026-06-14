@@ -120,7 +120,7 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
         inputSchema: {
           additionalProperties: false,
           properties: {
-            dueAt: { description: "Optional ISO-8601 due timestamp (e.g. 2026-05-15T18:00:00Z).", type: "string" },
+            dueAt: { description: "Optional due time — ISO-8601 (e.g. 2026-05-15T18:00:00Z) or the user's own relative phrase (e.g. 'Friday 9am', '내일 오후 3시'); the server resolves the phrase, so pass it verbatim rather than pre-computing a timezone.", type: "string" },
             notes: { description: "Optional free-text details for the task.", type: "string" },
             tags: { description: "Optional labels for the task.", items: { type: "string" }, type: "array" },
             title: { description: "What the task is, e.g. 'Buy milk' or 'Email the Q3 deck'.", type: "string" },

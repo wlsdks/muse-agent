@@ -167,6 +167,7 @@ async function buildPersonalCrudScenario() {
     const byName = new Set(tools.map((t) => t.name));
     const cases = [
       { prompt: "우유 사기를 할 일에 추가해줘", expectTool: "muse.tasks.add", requireArgs: ["title"], note: "KO add a TO-DO → tasks.add (NOT reminders/calendar)" },
+      { prompt: "내일 오후 3시까지 우유 사기 할 일 추가해줘", expectTool: "muse.tasks.add", requireArgs: ["title", "dueAt"], argFieldIncludes: { field: "dueAt", regex: /내일|오후/ }, note: "KO add a to-do WITH a due time → tasks.add; dueAt carries the user's PHRASE, not a precomputed ISO (P45-20 — tasks.add's dueAt schema was the lone sibling steering ISO)" },
       { prompt: "내일 오전 9시 회의 리마인더 추가해줘", expectTool: "muse.reminders.add", requireArgs: ["text", "dueAt"], argFieldIncludes: { field: "dueAt", regex: /내일|오전/ }, note: "KO add a REMINDER → reminders.add (NOT tasks); dueAt carries the user's PHRASE, not a precomputed ISO" },
       { prompt: "내일 오후 3시 팀 미팅 일정 추가해줘", expectTool: "muse.calendar.add", requireArgs: ["title", "startsAt"], argFieldIncludes: { field: "startsAt", regex: /내일|오후/ }, note: "KO add a calendar EVENT → calendar.add (NOT tasks); startsAt carries the PHRASE, not an ISO" },
       { prompt: "오늘 할 일 보여줘", expectTool: "muse.tasks.list", note: "KO list to-dos → tasks.list" },
