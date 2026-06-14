@@ -318,3 +318,12 @@ ratchet: cli tests 2656 (+2) · testFiles 997 · fabrication 0 · self-eval exit
 - **왜**: 드릴은 verifier가 "옵션은 파싱되나 무시 + 순서-맹목 테스트"를 잡는지 검증(fire 26 tautology와 다른 결). 실 fix는 cross-command 일관성 — insertion order는 다가올 일정 스캔에 무의미.
 - **리뷰지점**: 드릴 판정이 merits-based(judge가 order-blind 단언을 정확히 지목). 실 fix 테스트는 **order-asserting**(`map(id)===['early','mid','late']`, 드릴이 결여한 바로 그것) — source revert 시 insertion order로 RED. ISO 문자열 lexicographic=chronological. status 後·search 前 정렬이라 둘 다 합성. 비-mutating. NOTE: 드릴 judge가 repo root에서 돌아 path 혼동 → 실 fix judge엔 worktree 경로 명시.
 - **리스크**: 없음(list action 정렬 +6/-1 + 신규 테스트; 드릴 verifier FAIL 확인+롤백 완료; 실 fix는 독립 Opus judge가 worktree에서 revert→RED·order-assert·chronological·non-mutating·합성·무회귀 검증 후 PASS, cli 2656/2656).
+
+## fire 36 · 2026-06-14 · skill v1.14.0 · f3515b1c
+meta: surface=web · value-class=wiring · pkg=@muse/web · kind=a11y-form-label-association · verdict=PASS · firesSinceDrill=1
+ratchet: web unit 40/40 · calendar e2e 1/1 · testFiles 997 · fabrication 0 · self-eval exit 0 · 표면 균형 web14·desktop10·cli12
+
+- **무엇**: 웹 Calendar 새 이벤트 폼이 Title/Start/End 가시 라벨을 보였으나 input과 프로그래매틱 연결이 없었다(htmlFor/id 부재). 두 `datetime-local` input은 placeholder도 없어 접근명이 **전무** → 스크린리더가 라벨 없는 날짜 필드 2개로 읽음(WCAG 1.3.1/4.1.2). label↔input을 htmlFor/id로 연결(cal-title/cal-start/cal-end).
+- **왜**: 폼은 SR 사용자에게 버튼보다 더 어려운 표면 — 시작/종료를 구분 못 하면 폼 작성 불가. 가시 라벨을 접근명으로 승격(aria-label 중복 없이 정식 H44 기법).
+- **리뷰지점**: getByLabel은 프로그래매틱 연결로만 resolve → htmlFor/id 없으면 e2e RED(judge가 source-revert로 load-bearing 실증). id 3개 고유·htmlFor 정확 매칭. 가시 라벨 텍스트가 접근명(이중 라벨 없음). en 로캘서 Title/Start/End 매칭. round-trip(생성+삭제) 유지.
+- **리스크**: 없음(Calendar 3 label/input쌍 + e2e만; 순수 presentational a11y, value/onChange 무변, id 충돌 없음; 독립 Opus judge가 worktree서 revert→RED·연결 정확성·무이중라벨·무회귀 검증 후 PASS, web 40/40·calendar e2e 1/1).

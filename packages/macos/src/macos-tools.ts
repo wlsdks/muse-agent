@@ -28,7 +28,7 @@
 
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
-import { defaultOsascriptRunner, escapeAppleScript, isPermissionError, OSASCRIPT_TIMEOUT_MS, runChild, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
+import { defaultOsascriptRunner, escapeAppleScript, isPermissionError, NETWORKSETUP_PATH, OSASCRIPT_TIMEOUT_MS, parseWifiDevice, runChild, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
 export type { MacCommandResult, MacOsascriptRunner } from "./macos-exec.js";
 
 /**
@@ -69,7 +69,6 @@ export type MacMessageApprovalGate = (draft: MacMessageDraft) => Promise<MacAppr
 const SHORTCUTS_PATH = "/usr/bin/shortcuts";
 const PMSET_PATH = "/usr/bin/pmset";
 const DF_PATH = "/bin/df";
-const NETWORKSETUP_PATH = "/usr/sbin/networksetup";
 const IPCONFIG_PATH = "/usr/sbin/ipconfig";
 /** A shortcut can do real work (network, HomeKit) — give it a longer leash. */
 const SHORTCUTS_TIMEOUT_MS = 120_000;
@@ -705,18 +704,6 @@ export {
 
 const SYSTEM_SETTINGS = ["volume", "mute", "unmute", "display_sleep", "sleep", "wifi_on", "wifi_off"] as const;
 type SystemSetting = (typeof SYSTEM_SETTINGS)[number];
-
-/** Parses `networksetup -listallhardwareports` for the Wi-Fi interface (e.g. 'en0'). */
-function parseWifiDevice(stdout: string): string | undefined {
-  const lines = stdout.split(/\r?\n/u);
-  for (let i = 0; i < lines.length; i += 1) {
-    if (/Hardware Port:\s*Wi-Fi/iu.test(lines[i] ?? "")) {
-      const device = /Device:\s*(\S+)/u.exec(lines[i + 1] ?? "");
-      if (device) return device[1];
-    }
-  }
-  return undefined;
-}
 
 export interface MacSystemSetToolDeps {
   readonly osascript?: MacOsascriptRunner;
