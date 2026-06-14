@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ in-conversation commitment-discharge filter (π-Bench arXiv:2605.14678): selectOpenCommitments drops a user open-loop the user already DISCHARGED later in the same session (completion marker + semantic cosine ≥0.55 to the commitment) before scheduling a check-in — stops nagging about a done thing; wired into both check-in seams (CLI session-end + daemon); subtractive, fail-soft, strict-ordering — agent-core-cognition fire 38
+
 - ✓ plan-exemplar structural-validity gate (RAP arXiv:2402.03610 + LLMCompiler arXiv:2312.04511): exemplarIsSelfConsistent withholds a cached plan whose own steps fail validateStepDependencies (a dangling {{stepN}} ref that selectSuccessfulPlanSteps can leave after filtering a mid-step) before injecting it as a planning exemplar; withhold-only, reuses the conservative ref extractor — agent-core-cognition fire 37
 
 - ✓ DINCO preference-confidence calibration (arXiv:2509.25532): inferred persona traits now distractor-normalize their verbalized confidence (cal=c_orig/(c_orig+Σc_distractors)) — a trait that doesn't dominate self-generated incompatible alternatives is dropped, survivors get the less-saturated value; opt-in (prod sets it), fail-soft, applied after the accept gates — agent-core-cognition fire 36
