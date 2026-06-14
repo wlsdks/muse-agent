@@ -21,6 +21,7 @@ import {
   createTextStatsTool
 } from "./muse-tools-text.js";
 import { createLunarDateTool, createLunarToSolarTool } from "./muse-tools-lunar.js";
+import { createKoreanNumberTool } from "./muse-tools-korean-number.js";
 import { createUnitConvertTool } from "./muse-tools-units.js";
 
 /**
@@ -54,6 +55,7 @@ export function createMuseTools(options: MuseToolFactoryOptions = {}): readonly 
     createUnitConvertTool(),
     createLunarDateTool(now),
     createLunarToSolarTool(now),
+    createKoreanNumberTool(),
     createJsonQueryTool(),
     createSlugifyTool(),
     createUrlPartsTool(),

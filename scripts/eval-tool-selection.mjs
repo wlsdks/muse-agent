@@ -186,6 +186,28 @@ async function buildLunarToSolarScenario() {
   }
 }
 
+async function buildKoreanNumberScenario() {
+  try {
+    const tools = await import("../packages/tools/dist/muse-tools.js");
+    const kn = tools.createMuseTools().filter((t) => ["korean_number", "unit_convert", "math_eval"].includes(t.definition.name));
+    const toolDefs = kn.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(toolDefs.map((t) => t.name));
+    const cases = [
+      { prompt: "12345678을 한국식 만/억 단위로 읽어줘", expectTool: "korean_number", requireArgs: ["value"], note: "KO format a number in Korean myriad units → korean_number" },
+      { prompt: "50000000원은 몇 만원이야?", expectTool: "korean_number", requireArgs: ["value"], note: "KO amount → Korean 만 units → korean_number" },
+      { prompt: "Write 120000000 in Korean number units (만/억).", expectTool: "korean_number", requireArgs: ["value"], note: "EN Korean-unit formatting → korean_number" },
+      // confusable neighbours: physical-unit conversion and arithmetic are NOT this tool
+      { prompt: "5 miles is how many kilometers?", expectTool: "unit_convert", note: "physical-unit conversion → unit_convert (NOT korean_number)" },
+      { prompt: "What is 1234 multiplied by 5678?", expectTool: "math_eval", note: "arithmetic → math_eval (NOT korean_number)" },
+      // IrrelAcc: a number mentioned in passing is not a formatting request
+      { prompt: "올해가 벌써 2026년이라니 시간 참 빠르다.", expectNoTool: true, note: "KO musing containing a number → NO tool (not a formatting request)" }
+    ];
+    return { label: "korean-number (만/억 grouping vs unit_convert/math_eval)", tools: toolDefs, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "korean-number", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Stress the confusable real time tools: all 6 exposed together. time_relative
 // vs time_diff overlap (relative-to-now vs two-timestamp), so each carries a
 // "use when / not when" line — this scenario guards that disambiguation.
@@ -1215,6 +1237,7 @@ async function main() {
     await buildUnitConvertScenario(),
     await buildLunarScenario(),
     await buildLunarToSolarScenario(),
+    await buildKoreanNumberScenario(),
     await buildTimeToolsScenario(),
     await buildTimeToolsExemplarScenario(),
     await buildActuatorScenario(),

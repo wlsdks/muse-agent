@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, relative } from "node:path";
 
-import { assessContextSufficiency, buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
@@ -37,8 +37,8 @@ import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, lis
 import { redactSecretsInText } from "@muse/shared";
 import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildCalendarContextBlock, buildContactContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, buildDiskContents, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
-import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource } from "@muse/recall";
-export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, urlGroundingSource };
+import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, sufficiencyAdvisory, urlGroundingSource } from "@muse/recall";
+export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, sufficiencyAdvisory, urlGroundingSource };
 import { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource } from "@muse/recall";
 export { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource };
 import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy } from "@muse/recall";
@@ -565,31 +565,6 @@ export function renderAskStreamError(params: {
     };
   }
   return { stderr: `\n(error: ${params.error})\n` };
-}
-
-/**
- * Decides the set-level sufficiency advisory for an answered query, applying
- * every emission gate so the call site is a trivial `if (line) stderr(line)`.
- * ADVISORY-ONLY — never blocks an answer or touches the citation gate. Returns
- * undefined (no advisory) when: JSON output is requested, the answer is itself
- * a refusal (no double caveat), the query is single-intent (multi-part gate),
- * a clause is missing its embedding (fail-open), or every part is covered.
- */
-export function sufficiencyAdvisory(params: {
-  readonly json: boolean;
-  readonly answer: string;
-  readonly subQueries: readonly string[];
-  readonly subQueryVecs: readonly (readonly number[])[];
-  readonly evidenceVecs: readonly (readonly number[])[];
-}): string | undefined {
-  const { json, answer, subQueries, subQueryVecs, evidenceVecs } = params;
-  if (json || answerIsRefusal(answer)) return undefined;
-  if (subQueries.length < 2 || subQueryVecs.length !== subQueries.length) return undefined;
-  const subQueriesWithVecs = subQueries.map((text, i) => ({ text, vec: subQueryVecs[i]! }));
-  const verdict = assessContextSufficiency(subQueriesWithVecs, evidenceVecs);
-  if (verdict.sufficient || verdict.uncovered.length === 0) return undefined;
-  const quoted = verdict.uncovered.map((u) => `"${u}"`).join(", ");
-  return `Your notes cover part of this, but I found nothing on: ${quoted} — that part may be unverified.`;
 }
 
 export function registerAskCommand(program: Command, io: ProgramIO): void {

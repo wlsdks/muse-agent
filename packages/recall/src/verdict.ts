@@ -1,4 +1,4 @@
-import { verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { assessContextSufficiency, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 
 import { answerIsRefusal } from "./text.js";
 
@@ -67,4 +67,29 @@ export async function groundingVerdictNotice(
     : verifyGrounding(answer, matches, query);
   if (verification.verdict !== "ungrounded") return undefined;
   return `\n⚠️  Grounding check: this answer's claims aren't fully backed by your notes (${verification.reason}) — treat as unverified.\n`;
+}
+
+/**
+ * Decides the set-level sufficiency advisory for an answered query, applying
+ * every emission gate so the call site is a trivial `if (line) stderr(line)`.
+ * ADVISORY-ONLY — never blocks an answer or touches the citation gate. Returns
+ * undefined (no advisory) when: JSON output is requested, the answer is itself
+ * a refusal (no double caveat), the query is single-intent (multi-part gate),
+ * a clause is missing its embedding (fail-open), or every part is covered.
+ */
+export function sufficiencyAdvisory(params: {
+  readonly json: boolean;
+  readonly answer: string;
+  readonly subQueries: readonly string[];
+  readonly subQueryVecs: readonly (readonly number[])[];
+  readonly evidenceVecs: readonly (readonly number[])[];
+}): string | undefined {
+  const { json, answer, subQueries, subQueryVecs, evidenceVecs } = params;
+  if (json || answerIsRefusal(answer)) return undefined;
+  if (subQueries.length < 2 || subQueryVecs.length !== subQueries.length) return undefined;
+  const subQueriesWithVecs = subQueries.map((text, i) => ({ text, vec: subQueryVecs[i]! }));
+  const verdict = assessContextSufficiency(subQueriesWithVecs, evidenceVecs);
+  if (verdict.sufficient || verdict.uncovered.length === 0) return undefined;
+  const quoted = verdict.uncovered.map((u) => `"${u}"`).join(", ");
+  return `Your notes cover part of this, but I found nothing on: ${quoted} — that part may be unverified.`;
 }
