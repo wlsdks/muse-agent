@@ -486,6 +486,77 @@ describe("muse swarm council — semantic outlier screen assembled-path (fire-28
   });
 });
 
+// Assembled-path: a peer that reaches agreement by abandoning its own stance
+// (conformity) surfaces a caution (arXiv:2606.00820). Drives the REAL swarm command
+// loop → detectConformityFlips → renderCouncilResult.
+describe("muse swarm council — conformity-driven agreement caution (assembled, no Ollama)", () => {
+  let dir: string;
+  let out: string[];
+  const prevEnv: Record<string, string | undefined> = {};
+  const setEnv = (k: string, v: string) => { prevEnv[k] = process.env[k]; process.env[k] = v; };
+
+  // Stance space: "for" → [1,0], "against" → [0,1]. B reverses against→for in round 2.
+  const stanceEmbed = async (text: string): Promise<readonly number[]> =>
+    text.includes("against") ? [0, 1] : [1, 0];
+  const ROUND1: CouncilUtterance[] = [
+    { peerId: "laptop", reasoning: "for: ship today" },
+    { peerId: "phone", reasoning: "for: ship today" },
+    { peerId: "server", reasoning: "against: wait a day" }
+  ];
+  const ROUND2: CouncilUtterance[] = [
+    { peerId: "laptop", reasoning: "for: ship today" },
+    { peerId: "phone", reasoning: "for: ship today" },
+    { peerId: "server", reasoning: "for: ship today" } // server abandoned its stance
+  ];
+
+  const fakeModelProvider = (() => {
+    let n = 0;
+    return {
+      generate: async () => {
+        n++;
+        return n === 1
+          ? { id: "r", model: "m", output: '{"answer":"Ship today.","contributors":["laptop","phone","server"]}' }
+          : { id: "r", model: "m", output: '{"supported":true}' };
+      },
+      id: "fake", listModels: async () => [], stream: async function* () { yield { type: "text" as const, text: "" }; }
+    } as never;
+  })();
+
+  beforeEach(async () => {
+    const { mkdtemp, writeFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+    dir = await mkdtemp(join(tmpdir(), "muse-conformity-"));
+    out = [];
+    setEnv("MUSE_A2A_ENABLED", "true");
+    setEnv("MUSE_A2A_PEERS_FILE", join(dir, "a2a-peers.json"));
+    await writeFile(join(dir, "a2a-peers.json"), JSON.stringify({ peers: [{ id: "phone", secret: "s1", url: "https://phone.test/a2a" }, { id: "server", secret: "s2", url: "https://server.test/a2a" }], selfId: "laptop" }), "utf8");
+  });
+  afterEach(async () => {
+    for (const [k, v] of Object.entries(prevEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    await (await import("node:fs/promises")).rm(dir, { force: true, recursive: true });
+  });
+
+  it("warns when the panel agrees only because a peer dropped its own stance", async () => {
+    const gatherOverride: CouncilGatherOverride = async (round) => (round === 1 ? ROUND1 : ROUND2);
+    const io = {
+      councilGatherOverride: gatherOverride,
+      councilSynthesisOverride: { embed: stanceEmbed, model: "m", modelProvider: fakeModelProvider },
+      fetch: (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch,
+      readPipedStdin: async () => "",
+      stderr: (m: string) => out.push(m),
+      stdout: (m: string) => out.push(m)
+    } as unknown as ProgramIO;
+    const cmd = new Command();
+    registerSwarmCommands(cmd, io);
+    await cmd.parseAsync(["node", "x", "swarm", "council", "--rounds", "2", "should we ship?"], { from: "node" });
+    const text = out.join("");
+    expect(text).toContain("Ship today."); // synthesis happened
+    expect(text).toContain("conformity-driven agreement"); // the caution fired
+    expect(text).toContain("server"); // names the conforming peer
+  });
+});
+
 describe("renderSwarmStatus", () => {
   it("shows on/off hints, peers, and the pending count", async () => {
     const { renderSwarmStatus } = await import("./commands-swarm.js");

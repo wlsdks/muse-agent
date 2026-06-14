@@ -70,4 +70,18 @@ describe("parseOpenAIUsage", () => {
   it("returns undefined for a non-object usage", () => {
     expect(parseOpenAIUsage(null)).toBeUndefined();
   });
+
+  it("extracts nested cached/reasoning token counts from the *_details sub-objects", () => {
+    expect(parseOpenAIUsage({
+      completion_tokens: 40,
+      completion_tokens_details: { reasoning_tokens: 12 },
+      prompt_tokens: 100,
+      prompt_tokens_details: { cached_tokens: 80 }
+    })).toEqual({
+      cachedInputTokens: 80,
+      inputTokens: 100,
+      outputTokens: 40,
+      reasoningTokens: 12
+    });
+  });
 });

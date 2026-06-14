@@ -1,5 +1,5 @@
 import type { MuseDatabase, CheckpointTable, HookTraceTable } from "@muse/db";
-import { createRunId, type JsonValue } from "@muse/shared";
+import { createRunId, toDate, type JsonValue } from "@muse/shared";
 import type { Insertable, Kysely, Selectable } from "kysely";
 
 import type {
@@ -214,8 +214,4 @@ function toJsonObject(value: JsonValue): import("@muse/shared").JsonObject {
   }
 
   return {};
-}
-
-function toDate(value: Date | string): Date {
-  return value instanceof Date ? value : new Date(value);
 }

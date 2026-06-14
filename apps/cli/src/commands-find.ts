@@ -8,87 +8,11 @@
  */
 
 import { queryContacts, readReminders, readTasks } from "@muse/mcp";
-import { resolveContactsFile, resolveLocalCalendarFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import { findAcrossDomains, resolveContactsFile, resolveLocalCalendarFile, resolveRemindersFile, resolveTasksFile, type FindDomain } from "@muse/autoconfigure";
 import { LocalCalendarProvider, type CalendarEvent } from "@muse/calendar";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
-
-export type FindDomain = "task" | "reminder" | "contact" | "event";
-
-export interface FindHit {
-  readonly domain: FindDomain;
-  readonly id: string;
-  readonly label: string;
-  /** The matched secondary field, shown when it isn't the label itself. */
-  readonly context?: string;
-}
-
-export interface FindSources {
-  readonly tasks?: readonly { readonly id: string; readonly title?: string; readonly notes?: string }[];
-  readonly reminders?: readonly { readonly id: string; readonly text?: string }[];
-  readonly contacts?: readonly {
-    readonly id: string;
-    readonly name?: string;
-    readonly email?: string;
-    readonly handle?: string;
-    readonly phone?: string;
-    readonly aliases?: readonly string[];
-    readonly relationship?: string;
-    readonly about?: string;
-  }[];
-  readonly events?: readonly { readonly id: string; readonly title?: string; readonly notes?: string }[];
-}
-
-/**
- * Pure substring match (case-insensitive) over the structured stores. A blank
- * query matches nothing (a `find` with no term is a usage error, not "match
- * everything"). Contacts match on name/email/handle/phone/alias.
- */
-export function findAcrossDomains(sources: FindSources, query: string): readonly FindHit[] {
-  const q = query.trim().toLowerCase();
-  if (q.length === 0) return [];
-  const has = (value: unknown): boolean => typeof value === "string" && value.toLowerCase().includes(q);
-  const hits: FindHit[] = [];
-  for (const task of sources.tasks ?? []) {
-    if (has(task.title) || has(task.notes)) {
-      hits.push({
-        domain: "task",
-        id: task.id,
-        label: task.title ?? "(untitled)",
-        ...(has(task.notes) && !has(task.title) ? { context: task.notes } : {})
-      });
-    }
-  }
-  for (const reminder of sources.reminders ?? []) {
-    if (has(reminder.text)) hits.push({ domain: "reminder", id: reminder.id, label: reminder.text ?? "" });
-  }
-  for (const contact of sources.contacts ?? []) {
-    const aliasHit = (contact.aliases ?? []).some((alias) => has(alias));
-    const idHit = has(contact.name) || has(contact.email) || has(contact.handle) || has(contact.phone) || aliasHit;
-    // Also match the relationship ("manager") and the free-text about ("loves
-    // hiking") — searchable in `muse contacts list --search` + recall, so the
-    // unified find should find a person by their role or what you know about them.
-    const relHit = has(contact.relationship);
-    const aboutHit = has(contact.about);
-    if (idHit || relHit || aboutHit) {
-      // When the NAME didn't match, show WHY it surfaced (the about / role).
-      const context = idHit ? undefined : aboutHit ? contact.about : relHit ? `your ${contact.relationship!}` : undefined;
-      hits.push({ domain: "contact", id: contact.id, label: contact.name ?? "", ...(context ? { context } : {}) });
-    }
-  }
-  for (const event of sources.events ?? []) {
-    if (has(event.title) || has(event.notes)) {
-      hits.push({
-        domain: "event",
-        id: event.id,
-        label: event.title ?? "(untitled)",
-        ...(has(event.notes) && !has(event.title) ? { context: event.notes } : {})
-      });
-    }
-  }
-  return hits;
-}
 
 const DOMAIN_LABELS: Record<FindDomain, string> = {
   task: "Tasks",

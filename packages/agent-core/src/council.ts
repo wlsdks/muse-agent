@@ -275,6 +275,64 @@ export function debateProgressed(
 }
 
 /**
+ * Below this self-cosine a peer has ABANDONED its own prior-round stance (its new
+ * reasoning points a different way than what it argued last round). Cosine-scale,
+ * same nomic band as the council floors.
+ */
+export const COUNCIL_SELF_STANCE_FLOOR = 0.5;
+
+export interface ConformityFlip {
+  readonly peerId: string;
+}
+
+/**
+ * Conformity-flip detection across a debate round (arXiv:2606.00820, "Not All
+ * Flips Are Conformity"): a peer that reaches agreement by ABANDONING its own
+ * prior stance and moving toward the panel is conforming, not reasoning — and
+ * conformity flips are 57–77% correct→wrong, so a consensus reached *via*
+ * conformity is untrustworthy. For each peer present in BOTH rounds, flag it when
+ * BOTH hold: (a) self-reversal — cosine(own prior reasoning, own current
+ * reasoning) < selfStanceFloor (it changed its OWN mind); (b) it moved TOWARD the
+ * panel — its mean pairwise support rose from the prior round to the current.
+ *
+ * Semantic (embedding cosine), not lexical — a peer that rephrases the SAME stance
+ * (high self-cosine) is not flagged. Fail-safe: a peer new this round, or one whose
+ * embed throws, is NOT a flip (we never invent conformity on missing data). Never
+ * throws.
+ */
+export async function detectConformityFlips(
+  prior: readonly CouncilUtterance[],
+  current: readonly CouncilUtterance[],
+  embed: (text: string) => Promise<readonly number[]>,
+  opts?: { readonly selfStanceFloor?: number }
+): Promise<readonly ConformityFlip[]> {
+  const floor = opts?.selfStanceFloor ?? COUNCIL_SELF_STANCE_FLOOR;
+  if (prior.length === 0 || current.length < 2) return [];
+  const priorById = new Map(prior.map((u) => [u.peerId, u]));
+  const priorSupports = await councilMemberSupportsSemantic(prior, embed);
+  const currentSupports = await councilMemberSupportsSemantic(current, embed);
+  const priorSupportById = new Map(prior.map((u, i) => [u.peerId, priorSupports[i] ?? 0]));
+  const flips: ConformityFlip[] = [];
+  for (let i = 0; i < current.length; i++) {
+    const cur = current[i]!;
+    const prev = priorById.get(cur.peerId);
+    if (!prev) continue;
+    let selfCos: number;
+    try {
+      const [pv, cv] = await Promise.all([embed(prev.reasoning), embed(cur.reasoning)]);
+      if (pv.length === 0 || cv.length === 0) continue;
+      selfCos = cosineSimilarity(pv, cv);
+    } catch {
+      continue;
+    }
+    if (selfCos >= floor) continue; // kept its own stance → reasoned, not conformity
+    const movedTowardPanel = (currentSupports[i] ?? 0) > (priorSupportById.get(cur.peerId) ?? 0);
+    if (movedTowardPanel) flips.push({ peerId: cur.peerId });
+  }
+  return flips;
+}
+
+/**
  * Consensus-outlier screen (arXiv:2503.05856 — MoA deception robustness): a peer
  * whose reasoning diverges from the panel consensus is quarantined BEFORE
  * aggregation, so a deceptive/broken/off-topic member can't steer the synthesis

@@ -263,3 +263,11 @@ ratchet: testFiles 985 (케이스 +1, 파일수 불변) · netCoverage +2 (mixed
 - **왜:** tool-call 파싱은 grounding/tool 경로(contract 우선순위). OpenAI가 보낸 malformed tool-call 1개가 전체 턴 파싱을 깨면 안 됨(skip). 누락 id의 원본-index 보존도 미묘한 정확성(필터 후 재인덱스 아님).
 - **어떻게-증명(MUTATION-FIRST ADD):** name-string 필터 제거 시 `{name:42}`가 출력에 누출 → 새 테스트 RED; `tool_call_${index}`→`tool_call_0` 시 valid 엔트리가 오-id → RED. 각 mutation이 새 테스트만 RED(나머지 10 green = 미커버). ④b 독립 Opus judge가 양 mutation 재현 + 미커버(단일-엔트리/empty만 기존) + 기대값(원본-index 2·explicit call_z·JSON-string+object args 양쪽) 정확성 확인 → **VERDICT: PASS**.
 - **리스크:** 테스트-only, 소스 무변경, full check GREEN. fire-30 교훈 적용(mutation으로 "기존 테스트가 잡는지" 사전 확인 — 이번엔 진짜 미커버 확정). 새 머지 모듈의 robustness 분기를 pin.
+
+## fire 32 · 2026-06-14 · skill v1.14.0 · 2c0dfc78
+meta: kind=add · pkg=@muse/model · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 989 (케이스 +1, 파일수 불변) · netCoverage +2 (nested cached+reasoning 추출) · fabrication 0 · pnpm check FULL GREEN(재실행) + lint 0
+- **무엇:** `parseOpenAIUsage`(provider-openai-parse.ts)의 **중첩 cached/reasoning 토큰 추출** 커버 추가(fire-31에 기록한 후보). cachedInputTokens는 `prompt_tokens_details.cached_tokens`, reasoningTokens는 `completion_tokens_details.reasoning_tokens`(중첩 sub-object)에서, input/output는 flat. 기존 테스트는 flat 필드만 넘겨 input/output만 `toMatchObject` → 중첩 cached/reasoning 미커버.
+- **왜:** 토큰 회계(cost/usage 추적). 중첩 추출이 flat-read로 회귀하면 캐시/추론 토큰이 조용히 0/undefined — 비용 부정확. `toEqual` 전체-객체로 4필드 모두 pin.
+- **어떻게-증명(MUTATION-FIRST ADD):** `value.prompt_tokens_details`→`value`(cached flat read) 시 cachedInputTokens undefined → 새 테스트 RED; `value.completion_tokens_details`→`value` 시 reasoningTokens undefined → RED. 각 mutation이 새 테스트만 RED(나머지 11 green = 미커버). ④b 독립 Opus judge가 양 mutation 재현 + 미커버(flat-only 기존) + 기대값 정확성 확인 → **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경. ★`pnpm check` 1차 SIGABRT 134(동시-루프 OOM/abort) — 재실행 시 FULL GREEN(2641 cli pass). 부하 아티팩트, 본 슬라이스 무관([[project_stale_dist_from_loop]] 부류). provider-openai-parse 모듈 커버 완료(4 함수 전 분기).

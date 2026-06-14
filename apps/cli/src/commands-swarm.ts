@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildDebateQuestion, buildGroundingReverifyPrompt, councilConsensusScore, debateProgressed, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
+import { buildDebateQuestion, buildGroundingReverifyPrompt, councilConsensusScore, debateProgressed, detectConformityFlips, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
 import {
@@ -168,7 +168,12 @@ export async function gatherCouncil(question: string, deps: GatherCouncilDeps): 
   return utterances;
 }
 
-export function renderCouncilResult(question: string, utterances: readonly CouncilUtterance[], answer: CouncilAnswer | null): string {
+export function renderCouncilResult(
+  question: string,
+  utterances: readonly CouncilUtterance[],
+  answer: CouncilAnswer | null,
+  conformistPeers: readonly string[] = []
+): string {
   const members = utterances.map((u) => u.peerId).join(", ");
   const lines = [`🏛  Council on: ${question}`, `   ${utterances.length.toString()} member(s) weighed in: ${members}\n`];
   if (!answer) {
@@ -181,6 +186,11 @@ export function renderCouncilResult(question: string, utterances: readonly Counc
   }
   if (answer.consensus === "weak") {
     lines.push("   ⚠ weak consensus — the council did not strongly agree; treat with extra caution.");
+  }
+  if (conformistPeers.length > 0) {
+    // arXiv:2606.00820: agreement reached because a peer abandoned its own stance
+    // (conformity) is 57-77% correct→wrong — surface it so the agreement isn't over-trusted.
+    lines.push(`   ⚠ conformity-driven agreement — ${conformistPeers.join(", ")} dropped their own stance to match the panel; verify independently.`);
   }
   return lines.join("\n");
 }
@@ -460,6 +470,11 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
       // instead of burning the round budget — MAST step-repetition / no-termination
       // -awareness guard (arXiv:2503.13657).
       let prevScore = await councilConsensusScore(utterances, embedFn);
+      // Conformity flips on the most-recent refine (arXiv:2606.00820): peers that
+      // abandoned their own prior stance to match the panel. If the panel then
+      // AGREES, that agreement is conformity-driven (57-77% correct→wrong) and the
+      // user is warned not to over-trust it.
+      let conformistPeers: readonly string[] = [];
       while (round <= rounds && utterances.length > 1) {
         const agreed = await hasCouncilConsensusSemantic(utterances, embedFn);
         if (agreed) break;
@@ -467,6 +482,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         const prior = utterances;
         utterances = await gather(round, question, prior);
         finalRound = round;
+        conformistPeers = (await detectConformityFlips(prior, utterances, embedFn)).map((f) => f.peerId);
         const currScore = await councilConsensusScore(utterances, embedFn);
         if (!debateProgressed(prevScore, currScore)) {
           io.stdout(`panel not converging (round ${round.toString()} gained no consensus) — stopping\n`);
@@ -475,15 +491,19 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         prevScore = currScore;
         round += 1;
       }
-      if (utterances.length > 1 && await hasCouncilConsensusSemantic(utterances, embedFn)) {
+      const panelAgreed = utterances.length > 1 && await hasCouncilConsensusSemantic(utterances, embedFn);
+      if (panelAgreed) {
         io.stdout(`panel agreed — stopping at round ${finalRound.toString()}\n`);
       }
+      // Conformity caution applies ONLY when the panel actually agreed — a diverged
+      // or non-progress panel has no false agreement to warn about.
+      const conformistCaution = panelAgreed ? conformistPeers : [];
       if (utterances.length === 0) {
         io.stdout("No council members responded (peers offline or council disabled on them).\n");
         return;
       }
       if (io.councilGatherOverride && !io.councilSynthesisOverride) {
-        io.stdout(`${renderCouncilResult(question, utterances, null)}\n`);
+        io.stdout(`${renderCouncilResult(question, utterances, null, conformistCaution)}\n`);
         return;
       }
       // RGV re-verification: a one-shot local judge re-checks the synthesis
@@ -502,7 +522,7 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         return parseGroundingReverifyJson(judged.output ?? "");
       };
       const answer = await synthesizeCouncilAnswer(question, utterances, { embed: embedFn, model: model!, modelProvider: modelProvider!, reverify });
-      io.stdout(`${renderCouncilResult(question, utterances, answer)}\n`);
+      io.stdout(`${renderCouncilResult(question, utterances, answer, conformistCaution)}\n`);
     });
 
   swarm
