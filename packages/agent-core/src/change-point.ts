@@ -11,6 +11,8 @@
  * steady. Pure + deterministic.
  */
 
+import { median } from "./median.js";
+
 const DEFAULT_MIN_SEGMENT = 3;
 const DEFAULT_THRESHOLD = 1.0; // the two regimes' means must differ by ≥ ~1 robust sd
 
@@ -33,15 +35,6 @@ export interface ChangePointOptions {
 
 function mean(values: readonly number[]): number {
   return values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function median(sortedAscending: readonly number[]): number {
-  const n = sortedAscending.length;
-  if (n === 0) {
-    return 0;
-  }
-  const mid = Math.floor(n / 2);
-  return n % 2 === 0 ? (sortedAscending[mid - 1]! + sortedAscending[mid]!) / 2 : sortedAscending[mid]!;
 }
 
 /** Robust scale of the series: MAD → sd estimate, falling back to mean-abs-dev. */
