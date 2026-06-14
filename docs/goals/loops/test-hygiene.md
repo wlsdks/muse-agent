@@ -312,3 +312,11 @@ ratchet: testFiles 998 (케이스 +1, 파일수 불변) · netCoverage +1 branch
 - **왜:** 트리밍 중요도 정확도(여러 결정어 메시지가 과대-점수 받으면 안 됨). 이미 exhaustively 커버된 모듈(plain-assistant bonus·matchableHint≥3·per-role exact·unknown-role·recency 등 prior loop가 pin)에서 남은 분기.
 - **어떻게-증명(MUTATION-FIRST ADD):** "we decided and agreed on the plan"(decided+agreed 둘 다 hint)이 base 0.1+user 0.2+decision 0.2=**0.5**. `break` 제거 시 누적되어 0.7 → 새 테스트만 RED(17 green = 미커버). ④b 독립 Opus judge가 mutation 재현 + 미커버(기존 split-combine 테스트는 동등성만 assert, cap값 아님) + 0.5 산술 확인 → **VERDICT: PASS**.
 - **리스크:** 테스트-only, 소스 무변경, full check GREEN. ★신호: message-importance는 prior loop가 거의 완전 커버 — 성숙 모듈 ADD vein 희박, break 같은 잔여 분기만 남음.
+
+## fire 38 · 2026-06-14 · skill v1.14.0 · 0141d676
+meta: kind=prune(consolidate) · pkg=@muse/mcp · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 999→998 (−1 통합, 유니크 케이스 1 이식) · netCoverage 0 (overlap 제거) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** mcp 동명 쌍 `objective-evaluation-loop` **통합**(7번째 mcp 쌍) — standing-objective 재평가 엔진 `runDueObjectives`를 콜로케이트 src/(6케이스)·test/(10케이스)가 둘 다 실행. test/가 src/ 행동 전부 동등-이상(met→act+done·unmet→backoff·unmeetable→escalate+sink·maxAttempts·fail-open throwing-evaluator+sibling) 1개 빼고 커버. src/ 유니크 1개("act() throws on MET → fired 아님·done 아님·active 유지")만 이식, src/ 삭제.
+- **왜:** 같은 엔진 두 파일 중복. ★중요 fail-open: 조건은 met이나 act()(메신저)가 실패하면 objective를 done 마킹하면 안 됨(안 그러면 액션 영영 재시도 안 함). test/엔 이 act-throws 케이스 없었음.
+- **어떻게-증명(MUTATION-FIRST):** act() 호출을 status:"done"+fired.push *뒤로* 이동(act 던져도 이미 done) 시 이식 케이스 RED(`fired ['o1'] != []`). ★judge가 contested claim 2개(escalate-sink·throwing-evaluator) test/ line 52-61·132에서 실제 assert됨을 소스 읽어 검증. ④b 독립 Opus judge가 6 행동 전수 매핑(MISSING 없음) + mutation 재현 → **VERDICT: PASS**.
+- **리스크:** 소스 무변경. 변경 −180L(src/ 삭제) +12L(이식 1케이스). ★교훈: src 6케이스 중 5개가 test/에 既커버(특히 throwing-evaluator·escalate-sink) — "유니크처럼 보임"을 케이스 단위로 test/ 실제 assert와 대조해야(swarm/briefing처럼 과대-이식 회피). 남은 mcp 동명 쌍 7개.

@@ -139,4 +139,16 @@ describe("runDueObjectives — standing-objective re-evaluation engine", () => {
     expect(summary.fired).toContain("ok"); // sibling still processed
     expect(await byId("boom")).toMatchObject({ status: "active" }); // left for the next tick
   });
+
+  it("does NOT fire/flip-to-done when act() throws on a MET condition — the objective stays active for a later tick", async () => {
+    await addObjective(file, obj());
+    const summary = await run({
+      act: async () => { throw new Error("messenger down"); },
+      evaluate: async () => ({ outcome: "met" })
+    });
+    expect(summary.fired).toEqual([]); // the action failed → not counted as fired
+    expect(summary.errors.some((e) => e.includes("messenger down"))).toBe(true);
+    // A met condition whose action FAILED must NOT be marked done, or the action never retries.
+    expect(await byId("o1")).toMatchObject({ status: "active" });
+  });
 });
