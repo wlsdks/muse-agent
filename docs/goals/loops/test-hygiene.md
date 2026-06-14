@@ -287,3 +287,12 @@ ratchet: testFiles 994→993 (−1 subset 삭제, 1 assert 강화-이식) · net
 - **왜:** 같은 store 두 파일 중복. test/가 모든 행동 더 강하게 커버. re-run payload round-trip(승인 시 액션 재실행)은 store의 핵심이라 명시 assert 보존.
 - **어떻게-증명(MUTATION-FIRST PRUNE):** 생존 test/ cite — isPendingApproval arguments 검증 제거 시 "drops malformed" RED; expired-filter 제거/sort 역전 시 worklist+boundary+sort 4케이스 RED. ④b 독립 Opus judge가 삭제본 6 케이스 전수 매핑(전부 equal-or-stronger, MISSING 없음) + 3 mutation 재현 → **VERDICT: PASS**.
 - **리스크:** 소스 무변경, 삭제 1파일(−91L) + test/ 강화(+9L). messaging dist 클린리빌드 1회. 남은 messaging 동명 쌍 2개(channel-approval-gate·provider-helpers).
+
+## fire 35 · 2026-06-14 · skill v1.14.0 · 4f983165
+meta: kind=add · pkg=@muse/observability · verdict=PASS · firesSinceDrill=0 (★JUDGE-DRILL 완료 리셋)
+ratchet: testFiles 997 (케이스 +1, 파일수 불변) · netCoverage +1 branch (reset-before-validity ordering) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **★JUDGE-DRILL(연속 allPASS=8 도달, 미루기 불가):** budget-tracker에 type/enum-only inert ADD 주입(status∈{ok,warning,exceeded}·currentCost typeof number만 assert — 타입시스템이 보장, 어떤 mutation도 RED 안 됨). 독립 ④b Opus judge가 **VERDICT: FAIL**(2 mutation 모두 green 유지 + sibling 테스트가 실제 행동 이미 커버 지적) → 제거. maker≠judge 게이트 신뢰성 재확인 → 카운터 0 리셋.
+- **무엇(진짜 슬라이스):** `MonthlyBudgetTracker.recordCost`(budget-tracker.ts, 비용/예산 정책)의 **reset-before-validity ordering** 커버 추가. recordCost는 resetIfNewMonth를 비-유효 cost 검증보다 *먼저* 실행 — 새 달 첫 op이 NaN/음수 cost면 이전 달의 "exceeded"가 아니라 fresh $0 달의 "ok"를 반환해야 함. 기존 테스트는 같은-달 내 비-유효 cost·currentCost/snapshot 경유 roll만 — 이 ordering edge 미커버.
+- **왜:** 예산 게이트가 읽는 status(돈-인접). ordering 버그면 새 달이 이전 달 exceeded로 잘못 보고 → 정상 예산을 차단. 문서화된 미묘 edge.
+- **어떻게-증명(MUTATION-FIRST ADD):** 검증을 resetIfNewMonth보다 *앞으로* swap 시 새 테스트만 RED(`'exceeded' to be 'ok'`, 나머지 6 green). ④b 독립 Opus judge가 mutation 재현 + ordering 미커버 + 기대값(120→exceeded·June NaN→ok·currentCost 0) 정확성 확인 → **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경, full check GREEN. 새 머지 모듈(budget-tracker)의 문서화 ordering edge를 pin.

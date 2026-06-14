@@ -26,6 +26,17 @@ describe("MonthlyBudgetTracker", () => {
     expect(t.currentCost()).toBe(40); // unchanged by the bad inputs
   });
 
+  it("rolls the month over BEFORE the validity check: a NaN cost first in a fresh month reports ok, not last month's exceeded", () => {
+    let ym = "2026-05";
+    const t = new MonthlyBudgetTracker({ monthlyLimitUsd: 100, now: () => new Date(`${ym}-15T00:00:00Z`) });
+    expect(t.recordCost(120)).toBe("exceeded"); // May went over the limit
+    ym = "2026-06";
+    // First June op is a NaN cost: the month must reset (total → 0) BEFORE the
+    // validity returns, so it reports ok for the fresh $0 month — not May's exceeded.
+    expect(t.recordCost(Number.NaN)).toBe("ok");
+    expect(t.currentCost()).toBe(0);
+  });
+
   it("resets the total when the month rolls over (injected clock)", () => {
     let ym = "2026-05";
     const t = new MonthlyBudgetTracker({ monthlyLimitUsd: 100, now: () => new Date(`${ym}-15T00:00:00Z`) });
