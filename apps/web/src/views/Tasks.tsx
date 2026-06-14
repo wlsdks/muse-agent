@@ -101,7 +101,7 @@ export function TasksView({ client }: { client: ApiClient }) {
                 <div className="row-meta">{formatTaskDate(task.createdAt, locale)}</div>
               </div>
               <div className="row-actions">
-                <Button variant="ghost" size="sm" onClick={() => remove.mutate(task.id)} title={t("common.delete")}>
+                <Button variant="ghost" size="sm" onClick={() => remove.mutate(task.id)} title={t("common.delete")} ariaLabel={t("common.delete")}>
                   <Icon.trash className="nav-icon" />
                 </Button>
               </div>
