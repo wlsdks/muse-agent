@@ -327,3 +327,12 @@ ratchet: web unit 40/40 · calendar e2e 1/1 · testFiles 997 · fabrication 0 ·
 - **왜**: 폼은 SR 사용자에게 버튼보다 더 어려운 표면 — 시작/종료를 구분 못 하면 폼 작성 불가. 가시 라벨을 접근명으로 승격(aria-label 중복 없이 정식 H44 기법).
 - **리뷰지점**: getByLabel은 프로그래매틱 연결로만 resolve → htmlFor/id 없으면 e2e RED(judge가 source-revert로 load-bearing 실증). id 3개 고유·htmlFor 정확 매칭. 가시 라벨 텍스트가 접근명(이중 라벨 없음). en 로캘서 Title/Start/End 매칭. round-trip(생성+삭제) 유지.
 - **리스크**: 없음(Calendar 3 label/input쌍 + e2e만; 순수 presentational a11y, value/onChange 무변, id 충돌 없음; 독립 Opus judge가 worktree서 revert→RED·연결 정확성·무이중라벨·무회귀 검증 후 PASS, web 40/40·calendar e2e 1/1).
+
+## fire 37 · 2026-06-14 · skill v1.14.0 · ccd31054
+meta: surface=web · value-class=wiring · pkg=@muse/web · kind=a11y-form-label-association · verdict=PASS · firesSinceDrill=2
+ratchet: web unit 40/40 · autonomy e2e 1/1 · testFiles 998 · fabrication 0 · self-eval exit 0 · 표면 균형 web15·desktop10·cli12
+
+- **무엇**: 웹 Autonomy add-contact 폼(name/phone/email)이 가시 라벨을 input과 연결 안 함(htmlFor/id 부재, WCAG 1.3.1) — 스크린리더가 필드 이름 못 읽음. fire 36(Calendar)과 동일 패턴, label↔input 연결(contact-name/phone/email).
+- **왜**: fire 36이 시작한 폼-라벨 접근명 계약을 다음 폼(연락처 추가)으로 확장. contacts는 outbound-safety 백본이라 폼 접근성 가치 높음(단 이 슬라이스는 ADD 폼 라벨만, recipient resolution/send 경로 무접촉).
+- **리뷰지점**: getByLabel은 프로그래매틱 연결로만 resolve → htmlFor 없으면 e2e RED(judge가 source-revert로 load-bearing 실증). id 3개 고유·htmlFor 정확. 가시 라벨이 접근명(이중 라벨 없음). round-trip(연락처 추가 postedContact) 유지. objectives/vetoes/actions 무변.
+- **리스크**: 없음(Autonomy 3 label/input쌍 + e2e만; 순수 presentational a11y, value/onChange/send 경로 무변; 독립 Opus judge가 worktree서 revert→RED·연결 정확성·무이중라벨·무회귀·send경로 무접촉 검증 후 PASS, web 40/40·autonomy e2e 1/1).
