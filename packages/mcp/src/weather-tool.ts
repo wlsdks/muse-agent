@@ -19,13 +19,6 @@ export interface WeatherToolDeps {
   readonly now?: () => Date;
 }
 
-function localDateIso(date: Date): string {
-  const y = date.getFullYear().toString().padStart(4, "0");
-  const m = (date.getMonth() + 1).toString().padStart(2, "0");
-  const d = date.getDate().toString().padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
 /**
  * True only for a real calendar date in YYYY-MM-DD form. The round-trip through
  * Date.UTC rejects impossible days the regex alone accepts — month 13, day 45,
@@ -38,16 +31,6 @@ function isValidCalendarDate(iso: string): boolean {
   const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
   const dt = new Date(Date.UTC(year, month - 1, day));
   return dt.getUTCFullYear() === year && dt.getUTCMonth() === month - 1 && dt.getUTCDate() === day;
-}
-
-/** Resolve a `when` phrase ("tomorrow", "Saturday", "2026-05-30") to a local YYYY-MM-DD, or undefined. */
-function resolveTargetDateIso(when: string, now: () => Date): string | undefined {
-  if (/^\d{4}-\d{2}-\d{2}/u.test(when)) {
-    const candidate = when.slice(0, 10);
-    return isValidCalendarDate(candidate) ? candidate : undefined;
-  }
-  const resolved = resolveRelativeTimePhrase(when, now);
-  return resolved ? localDateIso(resolved) : undefined;
 }
 
 export function createWeatherTool(deps: WeatherToolDeps = {}): MuseTool {
@@ -86,14 +69,27 @@ export function createWeatherTool(deps: WeatherToolDeps = {}): MuseTool {
       }
       const when = typeof args["when"] === "string" ? args["when"].trim() : "";
       if (when.length > 0) {
-        const targetDateIso = resolveTargetDateIso(when, now);
-        if (!targetDateIso) {
+        const noForecast = "no forecast for that day (past, or beyond the ~16-day horizon), or the lookup failed";
+        // An explicit ISO date is the same calendar day everywhere; a relative
+        // phrase ("tomorrow") is resolved later in the LOCATION's timezone (so a
+        // far-west city's day isn't shifted by the server's clock).
+        if (/^\d{4}-\d{2}-\d{2}/u.test(when)) {
+          const iso = when.slice(0, 10);
+          if (!isValidCalendarDate(iso)) {
+            return { found: false, location, reason: `couldn't understand the day '${when}' — try 'tomorrow', 'Saturday', or a date like 2026-05-30` };
+          }
+          const forecast = await resolveForecastLine(provider, location, { iso });
+          return forecast
+            ? { date: forecast.date, forecast: forecast.line, found: true, location }
+            : { date: iso, found: false, location, reason: noForecast };
+        }
+        if (!resolveRelativeTimePhrase(when, now)) {
           return { found: false, location, reason: `couldn't understand the day '${when}' — try 'tomorrow', 'Saturday', or a date like 2026-05-30` };
         }
-        const forecast = await resolveForecastLine(provider, location, targetDateIso);
+        const forecast = await resolveForecastLine(provider, location, { now, relative: when });
         return forecast
-          ? { date: targetDateIso, forecast, found: true, location }
-          : { date: targetDateIso, found: false, location, reason: "no forecast for that day (past, or beyond the ~16-day horizon), or the lookup failed" };
+          ? { date: forecast.date, forecast: forecast.line, found: true, location }
+          : { found: false, location, reason: noForecast };
       }
       const line = await resolveWeatherLine(provider, location);
       return line

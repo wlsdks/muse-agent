@@ -8,7 +8,13 @@ import type { ApiClient } from "../api/client.js";
 import type { TaskRow, TasksResponse } from "../api/types.js";
 
 export function formatTaskDate(iso: string, locale: string): string {
-  return new Date(iso).toLocaleDateString(locale);
+  const d = new Date(iso);
+  // A malformed/missing date renders as the literal "Invalid Date" otherwise —
+  // fall back to empty, consistent with timeUntil's NaN guard (Today.tsx).
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
+  return d.toLocaleDateString(locale);
 }
 
 export function filterTasksByQuery(tasks: readonly TaskRow[], query: string): readonly TaskRow[] {

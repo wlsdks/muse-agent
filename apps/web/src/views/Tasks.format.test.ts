@@ -13,4 +13,11 @@ describe("formatTaskDate — honors the active UI locale", () => {
   it("threads the locale through (ko and en differ)", () => {
     expect(formatTaskDate(iso, "ko-KR")).not.toBe(formatTaskDate(iso, "en-US"));
   });
+
+  it("returns an empty string for an unparseable date — never the literal 'Invalid Date'", () => {
+    // Consistency with timeUntil (Today.tsx), which already NaN-guards: a
+    // malformed/missing createdAt must not render "Invalid Date" in a task row.
+    expect(formatTaskDate("not-a-date", "en-US")).toBe("");
+    expect(formatTaskDate("", "en-US")).toBe("");
+  });
 });

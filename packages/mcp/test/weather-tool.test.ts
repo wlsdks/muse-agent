@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import { OpenMeteoWeatherProvider, createWeatherTool } from "../src/index.js";
+import { OpenMeteoWeatherProvider, createWeatherTool, isoInZone, type WeatherProvider } from "../src/index.js";
+
+// A stub forecast provider for a fixed far-west location (LA), returning
+// LA-LOCAL daily dates — to prove a relative `when` resolves in the LOCATION's
+// timezone, not the server's.
+function laProvider(): WeatherProvider {
+  const location = { country: "United States", latitude: 34.05, longitude: -118.24, name: "Los Angeles", timezone: "America/Los_Angeles" };
+  const days = ["2026-06-12", "2026-06-13", "2026-06-14", "2026-06-15", "2026-06-16"].map((dateIso, i) => ({
+    code: 0, condition: "clear sky", dateIso, tempMaxC: 24 + i, tempMinC: 14 + i
+  }));
+  return {
+    currentWeather: async () => ({ code: 0, condition: "clear sky", tempC: 20 }),
+    dailyForecast: async () => days,
+    geocode: async () => location
+  } as unknown as WeatherProvider;
+}
 
 const SEOUL_GEOCODE = { results: [{ country: "South Korea", latitude: 37.566, longitude: 126.978, name: "Seoul", timezone: "Asia/Seoul" }] };
 
@@ -124,5 +139,23 @@ describe("createWeatherTool — on-demand weather perception", () => {
     const tool = createWeatherTool({ now: () => new Date("2026-05-30T00:00:00Z"), provider: failingProvider("status", 502) });
     const out = await tool.execute({ location: "Seoul", when: "2026-05-31T15:00:00Z" }) as { date?: string };
     expect(out.date).toBe("2026-05-31");
+  });
+
+  it("isoInZone renders an instant's calendar date in a GIVEN timezone (deterministic, machine-independent)", () => {
+    const instant = new Date("2026-06-14T06:00:00Z");
+    expect(isoInZone(instant, "America/Los_Angeles")).toBe("2026-06-13"); // 2026-06-13 23:00 PDT
+    expect(isoInZone(instant, "Asia/Seoul")).toBe("2026-06-14"); // 2026-06-14 15:00 KST
+    expect(isoInZone(instant, "UTC")).toBe("2026-06-14");
+  });
+
+  it("resolves a relative `when` in the LOCATION's timezone, not the server's", async () => {
+    // 2026-06-14T06:00Z is still 2026-06-13 23:00 in Los Angeles — so "today's"
+    // LA forecast is the LA-local 2026-06-13, NOT the server/UTC 2026-06-14.
+    const tool = createWeatherTool({ now: () => new Date("2026-06-14T06:00:00Z"), provider: laProvider() });
+    const today = await tool.execute({ location: "Los Angeles", when: "today" }) as { found: boolean; date?: string };
+    expect(today.found).toBe(true);
+    expect(today.date).toBe("2026-06-13");
+    const tomorrow = await tool.execute({ location: "Los Angeles", when: "tomorrow" }) as { date?: string };
+    expect(tomorrow.date).toBe("2026-06-14");
   });
 });

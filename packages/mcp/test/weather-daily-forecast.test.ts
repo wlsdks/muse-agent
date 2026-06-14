@@ -74,14 +74,14 @@ function forecastProvider(): WeatherProvider {
 }
 
 describe("resolveForecastLine", () => {
-  it("returns the matching day's line, or undefined past the horizon", async () => {
-    expect(await resolveForecastLine(forecastProvider(), "Seoul", "2026-05-26")).toBe("Seoul — 2026-05-26: slight rain, 13–19°C, rain 80%");
-    expect(await resolveForecastLine(forecastProvider(), "Seoul", "2030-01-01")).toBeUndefined();
+  it("returns the matching day's line + date, or undefined past the horizon", async () => {
+    expect(await resolveForecastLine(forecastProvider(), "Seoul", { iso: "2026-05-26" })).toEqual({ date: "2026-05-26", line: "Seoul — 2026-05-26: slight rain, 13–19°C, rain 80%" });
+    expect(await resolveForecastLine(forecastProvider(), "Seoul", { iso: "2030-01-01" })).toBeUndefined();
   });
 
   it("returns undefined for a provider that can't forecast", async () => {
     const noForecast: WeatherProvider = { currentWeather: async () => ({ code: 0, condition: "clear", temperatureC: 20 }), geocode: async () => SEOUL };
-    expect(await resolveForecastLine(noForecast, "Seoul", "2026-05-26")).toBeUndefined();
+    expect(await resolveForecastLine(noForecast, "Seoul", { iso: "2026-05-26" })).toBeUndefined();
   });
 });
 

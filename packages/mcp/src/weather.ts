@@ -8,8 +8,25 @@
  */
 
 import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
+import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
 
 export { fetchWithRetry, isRetriableStatus, parseRetryAfterMs, type RetryOptions } from "./http-retry.js";
+
+/**
+ * The calendar date (YYYY-MM-DD) of an instant AS SEEN in a given IANA timezone.
+ * A daily forecast's days are the LOCATION's local calendar days, so "tomorrow"
+ * for a far-west city must be resolved in that city's zone — not the server's —
+ * or a KST user asking for LA weather gets the wrong day. Deterministic (ICU),
+ * machine-timezone-independent.
+ */
+export function isoInZone(instant: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", { day: "2-digit", month: "2-digit", timeZone, year: "numeric" }).formatToParts(instant);
+  const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** A forecast target: an explicit calendar date, or a relative phrase to resolve in the location's zone. */
+export type ForecastTarget = { readonly iso: string } | { readonly relative: string; readonly now: () => Date };
 
 const GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
@@ -289,8 +306,8 @@ export function formatRainHeadsUp(outlook: RainOutlook): string {
 export async function resolveForecastLine(
   provider: WeatherProvider,
   query: string,
-  targetDateIso: string
-): Promise<string | undefined> {
+  target: ForecastTarget
+): Promise<{ readonly date: string; readonly line: string } | undefined> {
   if (!provider.dailyForecast) {
     return undefined;
   }
@@ -299,13 +316,25 @@ export async function resolveForecastLine(
     if (!location) {
       return undefined;
     }
+    // A relative phrase ("tomorrow") is the LOCATION's local day, resolved in its
+    // zone; an explicit ISO date is the same calendar day everywhere.
+    let targetDateIso: string;
+    if ("iso" in target) {
+      targetDateIso = target.iso;
+    } else {
+      const instant = resolveRelativeTimePhrase(target.relative, target.now);
+      if (!instant) {
+        return undefined;
+      }
+      targetDateIso = location.timezone ? isoInZone(instant, location.timezone) : isoInZone(instant, "UTC");
+    }
     const days = await provider.dailyForecast(location, { days: 16 });
     const match = days.find((day) => day.dateIso === targetDateIso);
     if (!match) {
       return undefined;
     }
     const place = location.country ? `${location.name}, ${location.country}` : location.name;
-    return `${place} — ${formatDailyForecast(match)}`;
+    return { date: targetDateIso, line: `${place} — ${formatDailyForecast(match)}` };
   } catch {
     return undefined;
   }
