@@ -105,7 +105,7 @@ export function createCsvParseTool(): MuseTool {
     definition: {
       description:
         "Parses CSV `text` into structured rows. With `header: true` (default), the first non-empty record becomes the column names and each remaining record returns as an object keyed by those names; `headers` is included on the response. With `header: false`, every record returns as an array of strings under `rows`. " +
-        "Handles quoted fields, escaped quotes (`\"\"` → `\"`), CRLF/LF line endings, and trailing empty fields. Bounded inputs: text ≤ 200k characters, ≤ 1000 records.",
+        "Handles quoted fields, escaped quotes (`\"\"` → `\"`), CRLF/LF line endings, and trailing empty fields. A row with more cells than headers keeps the surplus under an `_extra` array (never dropped); a short row pads missing columns with empty strings. Bounded inputs: text ≤ 200k characters, ≤ 1000 records.",
       inputSchema: {
         additionalProperties: false,
         properties: {
@@ -138,11 +138,20 @@ export function createCsvParseTool(): MuseTool {
           return { headers: [], rows: [] } satisfies JsonObject;
         }
         const headers = records[0] ?? [];
+        // A reserved key for cells beyond the named columns. Without it a
+        // ragged-long row's extra cells vanish silently — losing user data
+        // the answer then presents as the complete row. Suffix until it
+        // can't collide with a real column literally named "_extra".
+        let overflowKey = "_extra";
+        while (headers.includes(overflowKey)) overflowKey += "_";
         const dataRecords = records.slice(1, 1 + CSV_PARSE_MAX_ROWS);
         const rows = dataRecords.map((record) => {
-          const row: Record<string, string> = {};
+          const row: Record<string, string | string[]> = {};
           for (let index = 0; index < headers.length; index += 1) {
             row[headers[index] ?? ""] = record[index] ?? "";
+          }
+          if (record.length > headers.length) {
+            row[overflowKey] = record.slice(headers.length);
           }
           return row;
         });

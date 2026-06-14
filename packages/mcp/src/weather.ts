@@ -33,6 +33,8 @@ const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 
 export interface GeocodedLocation {
   readonly name: string;
+  /** First-level administrative region (US state, KR 도, …) — disambiguates same-name cities. */
+  readonly admin1?: string;
   readonly country?: string;
   readonly latitude: number;
   readonly longitude: number;
@@ -122,8 +124,19 @@ export function describeWeatherCode(code: number): string {
   return WMO_WEATHER_CODES[code] ?? `weather code ${code.toString()}`;
 }
 
+/**
+ * Render a location as "City, Region, Country", omitting absent parts.
+ * The region (admin1) disambiguates same-name cities (Springfield, Illinois
+ * vs Springfield, Missouri); it's dropped when it merely repeats the city
+ * name (Seoul's admin1 is "Seoul") so the line never reads "Seoul, Seoul".
+ */
+export function formatPlace(location: GeocodedLocation): string {
+  const region = location.admin1 && location.admin1 !== location.name ? location.admin1 : undefined;
+  return [location.name, region, location.country].filter(Boolean).join(", ");
+}
+
 export function formatWeather(location: GeocodedLocation, current: CurrentWeather): string {
-  const place = location.country ? `${location.name}, ${location.country}` : location.name;
+  const place = formatPlace(location);
   const parts = [`${current.condition}, ${Math.round(current.temperatureC).toString()}°C`];
   if (typeof current.apparentC === "number") {
     parts.push(`feels ${Math.round(current.apparentC).toString()}°C`);
@@ -164,6 +177,7 @@ export class OpenMeteoWeatherProvider implements WeatherProvider {
       latitude,
       longitude,
       name: typeof first.name === "string" ? first.name : query,
+      ...(typeof first.admin1 === "string" ? { admin1: first.admin1 } : {}),
       ...(typeof first.country === "string" ? { country: first.country } : {}),
       ...(typeof first.timezone === "string" ? { timezone: first.timezone } : {})
     };
@@ -333,7 +347,7 @@ export async function resolveForecastLine(
     if (!match) {
       return undefined;
     }
-    const place = location.country ? `${location.name}, ${location.country}` : location.name;
+    const place = formatPlace(location);
     return { date: targetDateIso, line: `${place} — ${formatDailyForecast(match)}` };
   } catch {
     return undefined;
