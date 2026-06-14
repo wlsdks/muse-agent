@@ -452,6 +452,7 @@ export {
   dedupeNearDuplicateSteps,
   extractJsonArray,
   parsePlan,
+  validateEnumArguments,
   validatePlan,
   validateWritePreconditions,
   type PlanExecutionErrorCode,
