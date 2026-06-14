@@ -31,9 +31,13 @@ test("tasks view filters the loaded list by the search box", async ({ page }) =>
   await page.getByRole("button", { name: "Tasks" }).click();
   await expect(page.getByText("Pay the dentist bill")).toBeVisible();
   await expect(page.getByText("Buy milk")).toBeVisible();
+  // The "Your tasks" count badge reflects the rendered list.
+  await expect(page.locator(".card-head .count")).toHaveText("2");
 
   // Typing in the search box filters the rendered list client-side.
   await page.getByRole("searchbox", { name: "Filter tasks…" }).fill("dentist");
   await expect(page.getByText("Pay the dentist bill")).toBeVisible();
   await expect(page.getByText("Buy milk")).toHaveCount(0);
+  // …and the count follows the filter (not the stale server total).
+  await expect(page.locator(".card-head .count")).toHaveText("1");
 });

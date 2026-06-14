@@ -79,7 +79,7 @@ export function TasksView({ client }: { client: ApiClient }) {
 
       <Card
         title={t("tasks.yourTasks")}
-        count={tasks.data?.total ?? 0}
+        count={list.length}
         action={
           <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
             <input

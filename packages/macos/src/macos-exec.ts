@@ -78,6 +78,8 @@ export const defaultOsascriptRunner: MacOsascriptRunner = (script) =>
 
 export const NETWORKSETUP_PATH = "/usr/sbin/networksetup";
 
+export const PMSET_PATH = "/usr/bin/pmset";
+
 /** Parses `networksetup -listallhardwareports` for the Wi-Fi interface (e.g. 'en0'). */
 export function parseWifiDevice(stdout: string): string | undefined {
   const lines = stdout.split(/\r?\n/u);

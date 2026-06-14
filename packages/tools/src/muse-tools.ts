@@ -20,6 +20,7 @@ import {
   createSlugifyTool,
   createTextStatsTool
 } from "./muse-tools-text.js";
+import { createUnitConvertTool } from "./muse-tools-units.js";
 
 /**
  * Curated zero-IO Muse ambient utility tools that ship with every Muse runtime.
@@ -49,6 +50,7 @@ export function createMuseTools(options: MuseToolFactoryOptions = {}): readonly 
     createNextWeekdayTool(now),
     createTextStatsTool(),
     createMathEvalTool(),
+    createUnitConvertTool(),
     createJsonQueryTool(),
     createSlugifyTool(),
     createUrlPartsTool(),
