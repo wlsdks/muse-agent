@@ -86,6 +86,8 @@ function parseBirthdayMonthDay(raw: string | undefined): { month: number; day: n
  * already past this year rolls to next year); a contact with no /
  * malformed `birthday` is skipped.
  */
+const isLeapYear = (year: number): boolean => (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+
 export function resolveUpcomingBirthdays(
   contacts: readonly Contact[],
   options: { readonly now?: Date; readonly withinDays?: number } = {}
@@ -100,13 +102,21 @@ export function resolveUpcomingBirthdays(
     if (!md) {
       continue;
     }
-    let next = new Date(today.getFullYear(), md.month - 1, md.day);
-    if (next.getTime() < today.getTime()) {
-      next = new Date(today.getFullYear() + 1, md.month - 1, md.day);
+    // A 02-29 birthday has no real date in a common year: new Date(y, 1, 29)
+    // silently rolls to Mar 1, which would phantom-surface the contact with the
+    // impossible date "02-29". Clamp it to 02-28 (the common-year convention) so
+    // the reported date is real and consistent with daysUntil.
+    const occurrence = (year: number): { time: number; day: number } => {
+      const day = md.month === 2 && md.day === 29 && !isLeapYear(year) ? 28 : md.day;
+      return { time: new Date(year, md.month - 1, day).getTime(), day };
+    };
+    let occ = occurrence(today.getFullYear());
+    if (occ.time < today.getTime()) {
+      occ = occurrence(today.getFullYear() + 1);
     }
-    const daysUntil = Math.round((next.getTime() - today.getTime()) / 86_400_000);
+    const daysUntil = Math.round((occ.time - today.getTime()) / 86_400_000);
     if (daysUntil <= withinDays) {
-      out.push({ contact, date: `${pad(md.month)}-${pad(md.day)}`, daysUntil });
+      out.push({ contact, date: `${pad(md.month)}-${pad(occ.day)}`, daysUntil });
     }
   }
   return out.sort((a, b) => a.daysUntil - b.daysUntil || a.contact.name.localeCompare(b.contact.name));
