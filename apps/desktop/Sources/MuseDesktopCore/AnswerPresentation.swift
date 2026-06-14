@@ -43,10 +43,12 @@ public enum MusePresenter {
     /// inline "[from <source>]" and the trailing "📎 노트: …" / "📎 from: …" receipt
     /// line that `withGroundingReceipt` appends (a spoken file path is just noise).
     public static func stripCitationsForSpeech(_ text: String) -> String {
+        // Case-insensitive to match agent-core's canonical citation recognition
+        // (/\[from…\]/giu) — an 8B model may emit "[From …]" / "[FROM …]".
         var spoken = text.replacingOccurrences(
             of: "\\s*\\[from[^\\]]*\\]",
             with: "",
-            options: .regularExpression
+            options: [.regularExpression, .caseInsensitive]
         )
         spoken = spoken.replacingOccurrences(
             of: "\\s*📎[\\s\\S]*",
