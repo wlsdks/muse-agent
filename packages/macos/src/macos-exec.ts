@@ -75,3 +75,17 @@ export type MacOsascriptRunner = (script: string) => Promise<MacCommandResult>;
 
 export const defaultOsascriptRunner: MacOsascriptRunner = (script) =>
   runChild(OSASCRIPT_PATH, ["-"], script, OSASCRIPT_TIMEOUT_MS);
+
+export const NETWORKSETUP_PATH = "/usr/sbin/networksetup";
+
+/** Parses `networksetup -listallhardwareports` for the Wi-Fi interface (e.g. 'en0'). */
+export function parseWifiDevice(stdout: string): string | undefined {
+  const lines = stdout.split(/\r?\n/u);
+  for (let i = 0; i < lines.length; i += 1) {
+    if (/Hardware Port:\s*Wi-Fi/iu.test(lines[i] ?? "")) {
+      const device = /Device:\s*(\S+)/u.exec(lines[i + 1] ?? "");
+      if (device) return device[1];
+    }
+  }
+  return undefined;
+}

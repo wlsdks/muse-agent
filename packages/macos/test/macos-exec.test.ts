@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { escapeAppleScript, isPermissionError } from "../src/macos-exec.js";
+import { escapeAppleScript, isPermissionError, parseWifiDevice } from "../src/macos-exec.js";
 
 describe("escapeAppleScript", () => {
   it("backslash-escapes backslashes and double-quotes for an AppleScript string literal", () => {
@@ -35,5 +35,28 @@ describe("isPermissionError", () => {
     expect(isPermissionError("command not found")).toBe(false);
     expect(isPermissionError("timed out")).toBe(false);
     expect(isPermissionError("")).toBe(false);
+  });
+});
+
+describe("parseWifiDevice", () => {
+  const ports = [
+    "Hardware Port: Ethernet",
+    "Device: en1",
+    "",
+    "Hardware Port: Wi-Fi",
+    "Device: en0",
+    ""
+  ].join("\n");
+
+  it("returns the Device on the line after the Wi-Fi hardware port", () => {
+    expect(parseWifiDevice(ports)).toBe("en0");
+  });
+
+  it("returns undefined when there is no Wi-Fi hardware port", () => {
+    expect(parseWifiDevice("Hardware Port: Ethernet\nDevice: en1\n")).toBeUndefined();
+  });
+
+  it("returns undefined for empty input", () => {
+    expect(parseWifiDevice("")).toBeUndefined();
   });
 });

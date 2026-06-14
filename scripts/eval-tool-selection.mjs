@@ -418,6 +418,85 @@ async function buildFindItemsScenario() {
   }
 }
 
+// remember_fact (a WRITE tool — persists a durable fact/preference about the
+// user) had NO eval coverage. The make-or-break is IrrelAcc: a fleeting/transient
+// statement ("I just had coffee", "I feel great today") must NOT fire it — a
+// spurious write pollutes long-term memory. Plus the carve vs its own "do not
+// use" neighbours (tasks = a to-do, notes = free-form note).
+async function buildRememberFactScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const stubStore = { upsertFact: () => undefined, upsertPreference: () => undefined };
+    const namespaced = [
+      mcp.createNotesMcpServer({ notesDir: "/tmp/eval-remember-notes" }),
+      mcp.createTasksMcpServer({ file: "/tmp/eval-remember-tasks.json" })
+    ].flatMap((s) => mcp.createLoopbackMcpMuseTools(s)).filter((t) => {
+      const leaf = t.definition.name.split(".").pop();
+      return leaf === "save" || leaf === "add";
+    });
+    // Mix flat + namespaced tools as production does — so the scenario can't bias
+    // the model toward inventing a namespaced `muse.facts.add` just because every
+    // neighbour is namespaced.
+    const flat = [mcp.createContactsFindTool({ contacts: () => [] }), mcp.createWeatherTool({})];
+    const instances = [mcp.createRememberFactTool({ store: stubStore }), ...flat, ...namespaced];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "내가 서울 산다고 기억해줘.", expectTool: "remember_fact", requireArgs: ["key", "value"], argIncludes: /서울|seoul/i, note: "KO 'remember I live in Seoul' → remember_fact (a durable fact about ME)" },
+      { prompt: "Remember that I prefer concise replies.", expectTool: "remember_fact", requireArgs: ["key", "value"], note: "EN durable preference → remember_fact" },
+      { prompt: "내 치과는 김 선생님이라고 기억해둬.", expectTool: "remember_fact", requireArgs: ["key", "value"], note: "KO 'remember my dentist is Dr. Kim' → remember_fact" },
+      // confusable neighbours — its own 'do NOT use for' list
+      { prompt: "우유 사기 할 일에 추가해줘.", expectTool: "muse.tasks.add", note: "KO add a to-do → tasks.add, NOT remember_fact" },
+      { prompt: "회의 메모를 노트 meeting.md에 저장해줘: 다음 분기 로드맵 논의함.", expectTool: "muse.notes.save", note: "KO save a free-form NOTE to a file → notes.save, NOT remember_fact" },
+      // IrrelAcc (the make-or-break): a fleeting/transient statement is NOT a durable fact
+      { prompt: "방금 커피 한 잔 마셨어.", expectNoTool: true, note: "KO fleeting past-tense report ('I just had coffee') → NO tool (not a durable fact)" },
+      { prompt: "오늘 기분 진짜 좋아!", expectNoTool: true, note: "KO transient mood ('I feel great today') → NO tool (not durable)" },
+      { prompt: "I'm so tired right now.", expectNoTool: true, note: "EN transient state → NO tool (NOT remember_fact)" }
+    ];
+    return { label: "remember-fact (durable fact/pref vs tasks/notes + fleeting-statement IrrelAcc)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "remember-fact", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
+// The contacts WRITE CRUD (add_contact / remove_contact) had NO eval coverage —
+// only find_contact (read) was tested. The make-or-break is remove_contact's
+// IrrelAcc: it is DESTRUCTIVE (deletes a contact), so an emotional statement
+// ABOUT a person ("Bob이랑 크게 싸웠어", "I'm not friends with Bob anymore") must
+// fire NO tool — an over-fire is irreversible data loss. The contacts stub holds
+// a real "Bob" so the trap has a concrete delete target.
+async function buildContactsCrudScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const contacts = () => [{ id: "c1", name: "Bob" }];
+    const namespaced = mcp.createLoopbackMcpMuseTools(mcp.createTasksMcpServer({ file: "/tmp/eval-contacts-crud-tasks.json" })).filter((t) => t.definition.name === "muse.tasks.add");
+    const instances = [
+      mcp.createContactsAddTool({ contacts, save: () => undefined }),
+      mcp.createContactsRemoveTool({ contacts, remove: () => true }),
+      mcp.createContactsFindTool({ contacts }),
+      mcp.createWeatherTool({}),
+      ...namespaced
+    ];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "Jane을 연락처에 추가해줘. 이메일은 jane@acme.com.", expectTool: "add_contact", note: "KO add a NEW contact → add_contact (NOT find/remove)" },
+      { prompt: "Add Tom to my contacts, phone 010-1234-5678.", expectTool: "add_contact", note: "EN add a new contact → add_contact" },
+      { prompt: "Bob 연락처 삭제해줘.", expectTool: "remove_contact", note: "KO delete a contact → remove_contact (an explicit delete command)" },
+      { prompt: "Delete Bob from my contacts.", expectTool: "remove_contact", note: "EN delete a contact → remove_contact" },
+      { prompt: "Bob 전화번호 뭐야?", expectTool: "find_contact", requireArgs: ["name"], note: "KO look up a contact → find_contact (NOT add/remove — a read)" },
+      // IrrelAcc (the make-or-break for a DESTRUCTIVE tool): a statement ABOUT a
+      // person is not a command to delete/add them.
+      { prompt: "Bob이랑 크게 싸웠어.", expectNoTool: true, note: "KO 'I had a big fight with Bob' → NO tool (NOT remove_contact — an emotional statement, deleting is irreversible)" },
+      { prompt: "이제 Bob이랑 안 친해.", expectNoTool: true, note: "KO 'I'm not friends with Bob anymore' → NO tool (NOT remove_contact)" },
+      { prompt: "오늘 카페에서 멋진 사람 만났어.", expectNoTool: true, note: "KO 'met a cool person at a cafe today' → NO tool (NOT add_contact — a social report, no contact details to add)" }
+    ];
+    return { label: "contacts-crud (add/remove write vs find read + destructive-remove IrrelAcc)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "contacts-crud", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Relationship-maintenance nudge (overdue_contacts — "who've I lost touch
 // with?") vs looking up ONE specific person (find_contact). The value is the
 // discrimination: a "who haven't I talked to in a while?" intent is a LIST of
@@ -975,6 +1054,8 @@ async function main() {
     await buildWeekAgendaScenario(),
     await buildDayRecapScenario(),
     await buildFindItemsScenario(),
+    await buildRememberFactScenario(),
+    await buildContactsCrudScenario(),
     await buildOverdueScenario(),
     await buildOnThisDayScenario(),
     await buildFeedsScenario(),

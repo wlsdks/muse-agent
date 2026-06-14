@@ -41,9 +41,11 @@ test("calendar creates and deletes an event", async ({ page }) => {
   await page.getByRole("button", { name: "Calendar" }).click();
   await expect(page.getByText("Standup")).toBeVisible();
 
-  await page.getByPlaceholder("Standup").fill("Review");
-  await page.locator('input[type="datetime-local"]').nth(0).fill("2026-06-01T10:00");
-  await page.locator('input[type="datetime-local"]').nth(1).fill("2026-06-01T11:00");
+  // The form's labels must be programmatically associated with their inputs, so
+  // a screen reader announces "Start"/"End" — not two unlabeled date fields.
+  await page.getByLabel("Title").fill("Review");
+  await page.getByLabel("Start").fill("2026-06-01T10:00");
+  await page.getByLabel("End").fill("2026-06-01T11:00");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect.poll(() => posted).toMatchObject({ title: "Review" });
 

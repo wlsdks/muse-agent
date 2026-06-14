@@ -71,16 +71,16 @@ export function CalendarView({ client }: { client: ApiClient }) {
       <Card title={t("calendar.new")} className="lifted">
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 200px 200px auto", alignItems: "end" }}>
           <div>
-            <label className="field-label">{t("calendar.eventTitle")}</label>
-            <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Standup" />
+            <label className="field-label" htmlFor="cal-title">{t("calendar.eventTitle")}</label>
+            <input id="cal-title" className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Standup" />
           </div>
           <div>
-            <label className="field-label">{t("calendar.start")}</label>
-            <input className="input" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
+            <label className="field-label" htmlFor="cal-start">{t("calendar.start")}</label>
+            <input id="cal-start" className="input" type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} />
           </div>
           <div>
-            <label className="field-label">{t("calendar.end")}</label>
-            <input className="input" type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
+            <label className="field-label" htmlFor="cal-end">{t("calendar.end")}</label>
+            <input id="cal-end" className="input" type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} />
           </div>
           <Button variant="primary" disabled={!canAdd || add.isPending} onClick={() => add.mutate({ end, start, title: title.trim() })}>
             <Icon.plus className="nav-icon" /> {t("common.add")}
