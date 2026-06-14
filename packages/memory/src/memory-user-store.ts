@@ -188,14 +188,29 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
     return this.memories.delete(userId);
   }
 
-  forget(userId: string, key: string): boolean {
+  forget(userId: string, key: string, kind?: "fact" | "preference"): boolean {
     const existing = this.memories.get(userId);
-    if (!existing || (!(key in existing.facts) && !(key in existing.preferences))) {
+    if (!existing) {
       return false;
     }
-    const { [key]: _f, ...facts } = existing.facts;
-    const { [key]: _p, ...preferences } = existing.preferences;
-    this.memories.set(userId, { ...existing, facts, preferences, updatedAt: new Date() });
+    // Namespace-scoped: `kind` limits the delete to facts OR preferences (so an
+    // auto-extracted FACT retraction can't wipe a same-key PREFERENCE). Omitting
+    // `kind` keeps the dual-delete for the explicit `/forget` control.
+    const dropFact = kind !== "preference";
+    const dropPref = kind !== "fact";
+    const hadFact = dropFact && key in existing.facts;
+    const hadPref = dropPref && key in existing.preferences;
+    if (!hadFact && !hadPref) {
+      return false;
+    }
+    const { [key]: _f, ...factsWithout } = existing.facts;
+    const { [key]: _p, ...prefsWithout } = existing.preferences;
+    this.memories.set(userId, {
+      ...existing,
+      facts: dropFact ? factsWithout : existing.facts,
+      preferences: dropPref ? prefsWithout : existing.preferences,
+      updatedAt: new Date()
+    });
     return true;
   }
 
