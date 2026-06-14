@@ -22,21 +22,50 @@ import {
 
 const req = (query: Record<string, unknown>): FastifyRequest => ({ query }) as unknown as FastifyRequest;
 
-describe("readQueryInteger", () => {
-  it("strict-parses, sending a typo'd / unit-slipped value to the fallback (not a silent partial parse)", () => {
-    expect(readQueryInteger(req({ limit: "20" }), "limit", 5)).toBe(20);
-    expect(readQueryInteger(req({ limit: "20x" }), "limit", 5)).toBe(5); // NOT 20
-    expect(readQueryInteger(req({ days: "7d" }), "days", 1)).toBe(1); // NOT 7
-    expect(readQueryInteger(req({}), "missing", 9)).toBe(9);
-    expect(readQueryInteger(req({ n: "-3" }), "n", 0)).toBe(-3);
+describe("readQueryInteger — strict-parses the integer query param", () => {
+  it("returns the fallback when the param is absent", () => {
+    expect(readQueryInteger(req({}), "limit", 30)).toBe(30);
+  });
+
+  it("accepts a plain integer (whitespace-trimmed, signed)", () => {
+    expect(readQueryInteger(req({ limit: "20" }), "limit", 30)).toBe(20);
+    expect(readQueryInteger(req({ limit: " 12 " }), "limit", 30)).toBe(12);
+    expect(readQueryInteger(req({ offset: "-5" }), "offset", 0)).toBe(-5);
+  });
+
+  it("rejects a lenient-prefix typo / unit-slip / decimal / scientific / underscore / Infinity / NaN instead of silently accepting", () => {
+    for (const bad of ["20x", "7d", "abc", "5.9", "1e3", "1_000", " ", "Infinity", "NaN"]) {
+      expect(readQueryInteger(req({ limit: bad }), "limit", 30), `"${bad}" must fall through`).toBe(30);
+    }
+  });
+
+  it("falls back when the value is not a string at all (number / null / array)", () => {
+    expect(readQueryInteger(req({ limit: 20 }), "limit", 30)).toBe(30);
+    expect(readQueryInteger(req({ limit: null }), "limit", 30)).toBe(30);
+    expect(readQueryInteger(req({ limit: ["20"] }), "limit", 30)).toBe(30);
   });
 });
 
-describe("coerceStringSet", () => {
-  it("splits a CSV string and dedups + trims; dedups an array; ignores other types", () => {
-    expect(coerceStringSet(" a, b ,a,, c")).toEqual(["a", "b", "c"]);
-    expect(coerceStringSet(["x", " x ", "y"])).toEqual(["x", "y"]);
-    expect(coerceStringSet(5)).toEqual([]);
+describe("coerceStringSet — array path matches the csv path on trim semantics", () => {
+  it("trims + dedups a csv string input (empty fields dropped)", () => {
+    expect(coerceStringSet("alpha, beta ,  alpha ,  ,gamma")).toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  it("returns [] for non-string, non-array input", () => {
+    expect(coerceStringSet(undefined)).toEqual([]);
+    expect(coerceStringSet(null)).toEqual([]);
+    expect(coerceStringSet(42)).toEqual([]);
+    expect(coerceStringSet({})).toEqual([]);
+  });
+
+  it("trims + dedups an array input — symmetric with the csv path", () => {
+    expect(coerceStringSet(["alpha", " beta ", "  alpha  ", " ", "gamma"]))
+      .toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  it("array path drops non-string entries silently", () => {
+    expect(coerceStringSet(["alpha", 42, null, "beta", undefined, "  beta  "]))
+      .toEqual(["alpha", "beta"]);
   });
 });
 
