@@ -62,7 +62,9 @@ import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.j
 import { parseShellHistory, selectShellCommands } from "./shell-history.js";
 
 import { resolveReflectionsFile } from "./commands-reflections.js";
-import { classifyTier, type ModelTier } from "@muse/multi-agent";
+import { routeAskTierModel } from "./ask-tier-models.js";
+
+export { resolveAskTierModels, routeAskTierModel, type AskTierModels } from "./ask-tier-models.js";
 import type { Command } from "commander";
 
 import { cosine, isNotesIndexStale, loadNoteLinkGraph, NOTE_FILE_RE, reindexNotes } from "./commands-notes-rag.js";
@@ -284,34 +286,6 @@ export const NOTES_ONLY_TOOL_ALLOWLIST = ["muse.notes", "muse.notes-multi", "mus
  * deterministically keeps recall read-only for memory.
  */
 const RECALL_FORBIDDEN_TOOL_NAMES = ["remember_fact"] as const;
-
-export interface AskTierModels {
-  readonly fast: string;
-  readonly heavy: string;
-}
-
-// Tier models come from env (parallel to MUSE_MODEL);
-// either unset falls back to the configured default model, so --tiered
-// with no tier env still answers (on the default for both tiers).
-export function resolveAskTierModels(defaultModel: string, env: NodeJS.ProcessEnv): AskTierModels {
-  const fast = env.MUSE_FAST_MODEL?.trim();
-  const heavy = env.MUSE_HEAVY_MODEL?.trim();
-  return {
-    fast: fast && fast.length > 0 ? fast : defaultModel,
-    heavy: heavy && heavy.length > 0 ? heavy : defaultModel
-  };
-}
-
-export function routeAskTierModel(
-  query: string,
-  defaultModel: string,
-  env: NodeJS.ProcessEnv
-): { readonly model: string; readonly tier: ModelTier } {
-  const tier = classifyTier(query);
-  const models = resolveAskTierModels(defaultModel, env);
-  return { model: tier === "fast" ? models.fast : models.heavy, tier };
-}
-
 
 /**
  * The EXPLICIT `[[wiki-link]]` neighbours of the notes that just answered — the
