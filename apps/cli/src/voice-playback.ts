@@ -143,7 +143,7 @@ export async function playAudioWithWatchdog(
   });
 }
 
-export function defaultSpeakerShells(): SpeakerShells {
+function defaultSpeakerShells(): SpeakerShells {
   return {
     playAudio: (filePath) => playAudioWithWatchdog(platform === "darwin" ? "afplay" : "aplay", filePath)
   };

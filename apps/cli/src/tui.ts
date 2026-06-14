@@ -21,7 +21,7 @@ export interface MuseStatusTuiModel {
   readonly workspaceRunsPath: string;
 }
 
-export function MuseStatusTui({ model }: { readonly model: MuseStatusTuiModel }): React.ReactElement {
+function MuseStatusTui({ model }: { readonly model: MuseStatusTuiModel }): React.ReactElement {
   const [panel, setPanel] = useState<"auth" | "chat" | "config">("chat");
   const [chatInput, setChatInput] = useState("");
   const [chatStatus, setChatStatus] = useState<"idle" | "running">("idle");
