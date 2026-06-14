@@ -105,6 +105,28 @@ describe("checkins list --search — filter by question text (sibling parity wit
   });
 });
 
+describe("checkins list — ordered by due date, soonest first (sibling parity with followup)", () => {
+  const prevEnv = process.env.MUSE_CHECKINS_FILE;
+  beforeEach(() => {
+    process.env.MUSE_CHECKINS_FILE = join(mkdtempSync(join(tmpdir(), "muse-checkins-")), "checkins.json");
+  });
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.MUSE_CHECKINS_FILE;
+    else process.env.MUSE_CHECKINS_FILE = prevEnv;
+  });
+
+  it("returns check-ins sorted by dueAtIso ascending, regardless of stored order", async () => {
+    await writeCheckins(checkinsFile(), [
+      checkin({ id: "late", dueAtIso: "2026-09-01T00:00:00.000Z", sourceKey: "late" }),
+      checkin({ id: "early", dueAtIso: "2026-07-01T00:00:00.000Z", sourceKey: "early" }),
+      checkin({ id: "mid", dueAtIso: "2026-08-01T00:00:00.000Z", sourceKey: "mid" })
+    ]);
+    const r = await runCheckins(["list", "--status", "all", "--json"]);
+    const payload = JSON.parse(r.stdout);
+    expect(payload.checkins.map((c: PersistedCheckin) => c.id)).toEqual(["early", "mid", "late"]);
+  });
+});
+
 describe("checkinsFile", () => {
   it("honours MUSE_CHECKINS_FILE, else defaults under ~/.muse/checkins.json", () => {
     expect(checkinsFile({ MUSE_CHECKINS_FILE: "/tmp/c.json" } as NodeJS.ProcessEnv)).toBe("/tmp/c.json");

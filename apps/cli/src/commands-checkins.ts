@@ -107,7 +107,12 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
         return;
       }
       const all = await readCheckins(checkinsFile()).catch(() => []);
-      const byStatus = status === "all" ? all : all.filter((c) => c.status === status);
+      // Soonest-due first (sibling parity with `followup list`) — insertion
+      // order is meaningless to a user scanning what's coming up. ISO strings
+      // sort chronologically.
+      const byStatus = (status === "all" ? all : all.filter((c) => c.status === status))
+        .slice()
+        .sort((a, b) => a.dueAtIso.localeCompare(b.dueAtIso));
       const query = options.search?.trim().toLowerCase();
       const scoped = query ? byStatus.filter((c) => c.question.toLowerCase().includes(query)) : byStatus;
       if (options.json) {

@@ -93,7 +93,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
       },
       {
         description:
-          "List the user's calendar EVENTS between `fromIso` and `toIso` (ISO 8601 timestamps). " +
+          "List the user's calendar EVENTS between `from` and `to` (the user's own date phrase like 'this week' / '이번 주', or ISO-8601 — pass the phrase verbatim, do not pre-compute). " +
           "If `providerId` is omitted, fans out across all providers. " +
           "Pass `query` to find a specific event — keeps only events whose title / location / notes match that text (case-insensitive), e.g. 'find my meeting with Bob this week'. " +
           "Defaults: from = now, to = +30 days. " +
@@ -101,8 +101,8 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           "NOT for to-dos (tasks `list`) or reminders (reminders `list`).",
         keywords: ["일정", "캘린더", "calendar", "event", "events", "schedule", "약속", "미팅", "meeting", "보여줘", "목록", "list", "알려줘"],
         execute: async (args): Promise<JsonObject> => {
-          const fromIso = readString(args, "fromIso");
-          const toIso = readString(args, "toIso");
+          const fromIso = readString(args, "from") ?? readString(args, "fromIso");
+          const toIso = readString(args, "to") ?? readString(args, "toIso");
           const providerId = readString(args, "providerId");
           const queryTrimmed = (readString(args, "query") ?? "").trim();
           const needle = queryTrimmed.toLowerCase();
@@ -125,10 +125,10 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
         inputSchema: {
           additionalProperties: false,
           properties: {
-            fromIso: { description: "ISO 8601 start (default: now)", type: "string" },
+            from: { description: "Window start — a date phrase like 'this week' / '이번 주' (or ISO-8601); default: now. Pass the phrase verbatim.", type: "string" },
             providerId: { description: "Specific provider id (default: all)", type: "string" },
             query: { description: "Optional text to match in an event's title / location / notes (case-insensitive substring), e.g. 'dentist' or 'Bob'. Filters the listed events.", type: "string" },
-            toIso: { description: "ISO 8601 end (default: now + 30 days)", type: "string" }
+            to: { description: "Window end — a phrase or ISO-8601 (default: now + 30 days).", type: "string" }
           },
           type: "object"
         },
@@ -140,20 +140,21 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
         description:
           "Check whether the user is FREE or BUSY in a time window and list the open gaps. " +
           "Use for 'am I free at 3pm?', 'do I have time this afternoon?', 'find a 30-minute gap tomorrow'. " +
-          "`fromIso` is required; `toIso` defaults to fromIso + 60 minutes. Both accept an ISO-8601 timestamp OR a relative phrase " +
-          "('tomorrow 3pm', '내일 오후 3시', 'in 2 hours'). `minMinutes` keeps only free gaps at least that long. " +
+          "`from` is required; `to` defaults to from + 60 minutes. Both accept the user's own phrase " +
+          "('tomorrow 3pm', '내일 오후 3시', 'in 2 hours', 'this week') OR an ISO-8601 timestamp — pass the phrase verbatim, do NOT pre-compute a date. `minMinutes` keeps only free gaps at least that long. " +
           "Returns `fullyFree`, the `busy` events overlapping the window, and the `free` gaps. " +
           "Do NOT use to LIST everything scheduled (use `list`) or to CREATE an event (use `add`).",
         execute: async (args): Promise<JsonObject> => {
-          const from = parseIsoDate(readString(args, "fromIso"));
+          const fromRaw = readString(args, "from") ?? readString(args, "fromIso");
+          const from = parseIsoDate(fromRaw);
           if (!from) {
             return {
               error:
-                `fromIso must be an ISO-8601 timestamp or a supported relative phrase (got ${JSON.stringify(readString(args, "fromIso") ?? "")}). ` +
+                `from must be a date phrase or an ISO-8601 timestamp (got ${JSON.stringify(fromRaw ?? "")}). ` +
                 `Examples: "tomorrow 3pm", "in 2 hours", "내일 오후 3시".`
             };
           }
-          const to = parseIsoDate(readString(args, "toIso")) ?? new Date(from.getTime() + 60 * 60_000);
+          const to = parseIsoDate(readString(args, "to") ?? readString(args, "toIso")) ?? new Date(from.getTime() + 60 * 60_000);
           const minRaw = (args as Record<string, unknown>)["minMinutes"];
           const minMinutes = typeof minRaw === "number" && Number.isFinite(minRaw) ? minRaw : undefined;
           const providerId = readString(args, "providerId");
@@ -181,12 +182,12 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
         inputSchema: {
           additionalProperties: false,
           properties: {
-            fromIso: { description: "Window start — ISO-8601 OR a natural phrase like 'tomorrow 3pm' / '내일 오후 3시'.", type: "string" },
+            from: { description: "Window start — the user's own phrase like 'tomorrow 3pm' / '내일 오후 3시' / 'this week' (or an ISO-8601 timestamp). Pass the phrase verbatim; do not pre-compute a date.", type: "string" },
             minMinutes: { description: "Only return free gaps at least this many minutes long, e.g. 30.", type: "number" },
             providerId: { description: "Specific calendar provider id (default: all).", type: "string" },
-            toIso: { description: "Window end — ISO-8601 or a relative phrase; defaults to fromIso + 60 minutes.", type: "string" }
+            to: { description: "Window end — a phrase or ISO-8601; defaults to from + 60 minutes.", type: "string" }
           },
-          required: ["fromIso"],
+          required: ["from"],
           type: "object"
         },
         domain: "calendar",
@@ -198,13 +199,13 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
         description:
           "List DOUBLE-BOOKINGS — pairs of events whose times OVERLAP — in a window. " +
           "Use for 'do I have any conflicts?', 'am I double-booked next week?', 'any overlapping meetings?', '겹치는 일정 있어?'. " +
-          "`fromIso` / `toIso` accept an ISO-8601 timestamp OR a relative phrase ('next week', 'tomorrow'); " +
+          "`from` / `to` accept the user's own phrase ('next week', 'tomorrow', '이번 주') OR an ISO-8601 timestamp — pass the phrase verbatim, do not pre-compute a date; " +
           "defaults: from = now, to = +7 days. If `providerId` is omitted, fans out across all providers. " +
           "Returns each overlapping PAIR (`a`, `b`, with local times) plus the `overlap` span, and `total`. " +
           "Do NOT use to check whether you're free at ONE specific time (use `availability`) or to LIST everything scheduled (use `list`).",
         execute: async (args): Promise<JsonObject> => {
-          const from = parseIsoDate(readString(args, "fromIso")) ?? new Date();
-          const to = parseIsoDate(readString(args, "toIso")) ?? new Date(from.getTime() + 7 * 86_400_000);
+          const from = parseIsoDate(readString(args, "from") ?? readString(args, "fromIso")) ?? new Date();
+          const to = parseIsoDate(readString(args, "to") ?? readString(args, "toIso")) ?? new Date(from.getTime() + 7 * 86_400_000);
           const providerId = readString(args, "providerId");
           try {
             const events = await registry.listEvents({ from, to }, providerId);
@@ -230,9 +231,9 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
         inputSchema: {
           additionalProperties: false,
           properties: {
-            fromIso: { description: "Window start — ISO-8601 OR a relative phrase like 'next week' / 'tomorrow' (default: now).", type: "string" },
+            from: { description: "Window start — a date phrase like 'next week' / '이번 주' (or ISO-8601; default: now). Pass the phrase verbatim.", type: "string" },
             providerId: { description: "Specific calendar provider id (default: all).", type: "string" },
-            toIso: { description: "Window end — ISO-8601 or a relative phrase (default: from + 7 days).", type: "string" }
+            to: { description: "Window end — a phrase or ISO-8601 (default: from + 7 days).", type: "string" }
           },
           type: "object"
         },

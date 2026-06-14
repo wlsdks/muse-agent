@@ -344,7 +344,7 @@ export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs)
   // gets the same scrutiny cue the ask path surfaces (every-surface parity).
   const untrustedCue = untrustedOnlyChatNotice(deFabbed, evidence);
   // grounded≠true: if two of the user's OWN grounded sources disagree on a field,
-  // surface it on chat too (parity with `muse ask`, fire 8).
+  // surface it on chat too (parity with `muse ask`).
   const conflictCue = conflictCueFromMatches(args.matches);
   // grounded≠true: the labelled cue only sees `label: value` pairs. Two notes
   // disagreeing in FREE PROSE ("flight at 3pm" vs "at 6pm") slipped through and

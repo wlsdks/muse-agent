@@ -102,17 +102,23 @@ describe("muse.calendar.availability tool — over the registry", () => {
     expect(def.domain).toBe("calendar");
   });
 
-  it("answers 'am I free' from the registry's events", async () => {
+  it("answers 'am I free' from the registry's events (neutral `from`/`to` fields)", async () => {
     const out = await tool([ev("Mtg", "2026-05-25T10:00:00Z", "2026-05-25T11:00:00Z")])
-      .execute({ fromIso: "2026-05-25T09:00:00Z", toIso: "2026-05-25T17:00:00Z" }) as { fullyFree: boolean; busy: unknown[]; free: unknown[] };
+      .execute({ from: "2026-05-25T09:00:00Z", to: "2026-05-25T17:00:00Z" }) as { fullyFree: boolean; busy: unknown[]; free: unknown[] };
     expect(out.fullyFree).toBe(false);
     expect(out.busy).toHaveLength(1);
     expect(out.free).toHaveLength(2);
   });
 
-  it("rejects a missing/invalid fromIso with a clear error", async () => {
+  it("still accepts the legacy `fromIso`/`toIso` field names (HTTP/back-compat)", async () => {
+    const out = await tool([ev("Mtg", "2026-05-25T10:00:00Z", "2026-05-25T11:00:00Z")])
+      .execute({ fromIso: "2026-05-25T09:00:00Z", toIso: "2026-05-25T17:00:00Z" }) as { busy: unknown[] };
+    expect(out.busy).toHaveLength(1);
+  });
+
+  it("rejects a missing/invalid `from` with a clear error", async () => {
     const out = await tool([]).execute({}) as { error?: string };
-    expect(out.error).toContain("fromIso");
+    expect(out.error).toContain("from");
   });
 });
 

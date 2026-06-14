@@ -205,12 +205,12 @@ async function buildCalendarReadScenario() {
     const tools = muse.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
     const byName = new Set(tools.map((t) => t.name));
     const cases = [
-      { prompt: "이번 주 언제 시간 비어 있어?", expectTool: "muse.calendar.availability", note: "KO find free time → availability (NOT list)" },
-      { prompt: "내일 오후에 30분짜리 빈 슬롯 있나 봐줘", expectTool: "muse.calendar.availability", note: "KO free-gap lookup → availability" },
-      { prompt: "When am I free tomorrow afternoon?", expectTool: "muse.calendar.availability", note: "EN free time → availability (NOT list)" },
-      { prompt: "이번 주에 겹치는 일정 있어?", expectTool: "muse.calendar.conflicts", note: "KO overlapping events → conflicts (NOT list/availability)" },
+      { prompt: "이번 주 언제 시간 비어 있어?", expectTool: "muse.calendar.availability", requireArgs: ["from"], argFieldIncludes: { field: "from", regex: /이번|주|week|this/i }, note: "KO find free time → availability; fromIso carries the PHRASE ('이번 주'), not a precomputed (often WRONG-year) ISO" },
+      { prompt: "내일 오후에 30분짜리 빈 슬롯 있나 봐줘", expectTool: "muse.calendar.availability", requireArgs: ["from"], argFieldIncludes: { field: "from", regex: /내일|오후/ }, note: "KO free-gap lookup → availability; fromIso carries the PHRASE, not a precomputed ISO" },
+      { prompt: "When am I free tomorrow afternoon?", expectTool: "muse.calendar.availability", requireArgs: ["from"], argFieldIncludes: { field: "from", regex: /tomorrow|afternoon/i }, note: "EN free time → availability; fromIso carries the PHRASE, not a precomputed ISO" },
+      { prompt: "이번 주에 겹치는 일정 있어?", expectTool: "muse.calendar.conflicts", argFieldIncludes: { field: "from", regex: /이번|주|week|this/i }, note: "KO overlapping events → conflicts; from carries the PHRASE, not a precomputed ISO" },
       { prompt: "Do I have any double-booked meetings this week?", expectTool: "muse.calendar.conflicts", note: "EN double-booking → conflicts" },
-      { prompt: "이번 주 일정 보여줘", expectTool: "muse.calendar.list", note: "KO show the schedule → list (NOT availability/conflicts)" },
+      { prompt: "이번 주 일정 보여줘", expectTool: "muse.calendar.list", argFieldIncludes: { field: "from", regex: /이번|주|week|this/i }, note: "KO show the schedule → list; from carries the PHRASE, not a precomputed ISO" },
       { prompt: "Show my calendar for next week.", expectTool: "muse.calendar.list", note: "EN list events → list" }
     ];
     return { label: "calendar-read (list vs availability vs conflicts)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
