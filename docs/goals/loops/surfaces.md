@@ -417,3 +417,12 @@ ratchet: web unit 45/45 (+1) · testFiles 1015 · fabrication 0 · self-eval exi
 - **왜**: 표시 robustness — sibling `timeUntil`(Today.tsx, fire 10)이 이미 동일 NaN-가드 패턴. `TaskRow.createdAt`은 포맷 계약 없는 bare string → formatTaskDate 미가드가 그 선례와 inconsistency. zero-downside 일관성 수정.
 - **리뷰지점**: judge가 speculation 질문 진지 검토 → timeUntil 선례+bare-string 타입+무손실로 defensible 판정(투기 아님). valid ISO byte-동일(가드는 NaN에만 발화). filterTasksByQuery/view/타 포매터 무변.
 - **리스크**: 없음(3줄 가드 + 테스트; 순수 presentational; 독립 Opus judge가 RED-before·valid 무회귀·비-투기성(timeUntil 선례)·무부수효과 검증 후 PASS, web 45/45). NOTE: 동종 inline 날짜 포맷(Activity/Messaging 등)·dayLabel은 후속 후보(scout runner-up).
+
+## fire 47 · 2026-06-14 · skill v1.14.0 · c53eabf7
+meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=date-formatter-invalid-guard · verdict=PASS · firesSinceDrill=4
+ratchet: web unit 46/46 (+1) · calendar e2e 1/1 · testFiles 1016 · fabrication 0 · self-eval exit 0 · 표면 균형 web21·desktop12·cli14
+
+- **무엇**: `dayLabel`이 가드 없이 `new Date(iso)`로 일자-그룹 헤더 생성 → 파스 불가 startsAtIso가 "Invalid Date" 그룹 헤더 렌더. `Number.isNaN(getTime())` 가드로 ""(today/tomorrow 로직 前 배치, valid 무영향). fire 46(formatTaskDate)·timeUntil에 이은 3번째 포매터.
+- **왜**: fire 46 robustness 패턴 완성(timeUntil·formatTaskDate·dayLabel 일관). "" 그룹키는 빈 헤더로 degrade — 가시적 "Invalid Date"보다 strictly better.
+- **리뷰지점**: judge가 stash-revert로 RED 실증, valid 날짜 byte-동일(DST/tomorrow/today 테스트 + calendar e2e 통과), "" 그룹키 fallback 건전. **judge가 web 과집중 명시 경고**: web 5/8, 연속 web micro(46→47) — RATCHET 위반 아니나 **fire 48은 cli/desktop 또는 non-micro로 반드시 다양화**.
+- **리스크**: 없음(3줄 가드 + 테스트; 순수 presentational; 독립 Opus judge PASS, web 46/46·calendar e2e 1/1). ⚠️ 다음 fire 표면 다양화 필수(judge 권고).

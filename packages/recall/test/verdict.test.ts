@@ -50,4 +50,20 @@ describe("groundingVerdictNotice", () => {
     );
     expect(out === undefined || /unverified/.test(out)).toBe(true);
   });
+
+  it("does NOT let a hedge-then-assert ride through the refusal short-circuit (fabrication-floor)", async () => {
+    // "I don't have access" is a refusal SUBSTRING, but the answer then asserts a
+    // fabricated flight. The verdict must run and flag it — not short-circuit.
+    const out = await groundingVerdictNotice(
+      "I don't have access to live flight data, but your flight leaves at 9:00 AM from Gate 22, seat 14C.",
+      [],
+      "when is my flight?"
+    );
+    expect(out).toMatch(/unverified/);
+  });
+
+  it("still short-circuits a PURE refusal (no claim to verify, even with no evidence)", async () => {
+    const out = await groundingVerdictNotice("I don't have that information in your notes.", [], "when is my flight?");
+    expect(out).toBeUndefined();
+  });
 });

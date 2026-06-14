@@ -45,6 +45,34 @@ export function answerIsRefusal(answer: string): boolean {
   return REFUSAL_MARKERS.some((m) => lower.includes(m));
 }
 
+// Sentence terminators + adversative conjunctions (EN + KO) — the seams a
+// hedge-then-assert ("I don't have X, but Z" / "I don't have X. Z.") joins a
+// refusal to a tacked-on claim across.
+const CLAUSE_SPLIT_RE = /[.!?\n;]+|\b(?:but|however|though|although|yet|still)\b|그러나|하지만|그런데|근데|다만/giu;
+
+/**
+ * True only for a PURE refusal — a refusal marker with NO substantive claim
+ * tacked on. `answerIsRefusal` is a lenient substring test, so it also fires on a
+ * HEDGE-THEN-ASSERT ("I don't have access to flights, but your flight is at 9am")
+ * — and using it to short-circuit the hard grounding VERDICT lets that fabricated
+ * "but…" claim ride through labeled `grounded`. This stricter predicate splits the
+ * answer on sentence/adversative seams and returns false if any non-refusal clause
+ * carries real content (≥2 word tokens), so the verdict runs and adjudicates the
+ * claim. Conservative on purpose (errs toward letting the verdict warn — the safe
+ * direction for a fabrication=0 floor). Use ONLY at the hard verdict gate; the
+ * advisory sites keep the lenient `answerIsRefusal`.
+ */
+export function answerIsPureRefusal(answer: string): boolean {
+  if (!answerIsRefusal(answer)) return false;
+  for (const clause of answer.split(CLAUSE_SPLIT_RE)) {
+    const trimmed = clause.trim();
+    if (trimmed.length === 0 || answerIsRefusal(trimmed)) continue;
+    const tokens = trimmed.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? [];
+    if (tokens.length >= 2) return false;
+  }
+  return true;
+}
+
 /**
  * Whether a `--file` payload is BINARY (a PDF, image, archive, office doc…)
  * rather than readable text. Reading such a file as UTF-8 yields garbled bytes,

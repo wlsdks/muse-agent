@@ -1,6 +1,6 @@
 import { assessContextSufficiency, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 
-import { answerIsRefusal } from "./text.js";
+import { answerIsPureRefusal, answerIsRefusal } from "./text.js";
 
 export interface BestOfRedrawArgs {
   /** How many fresh drafts to draw (the n-1 of --best-of n). */
@@ -61,7 +61,9 @@ export async function groundingVerdictNotice(
   reverify?: GroundingReverify,
   reverifySamples?: number
 ): Promise<string | undefined> {
-  if (answerIsRefusal(answer)) return undefined;
+  // PURE refusal only — a hedge-then-assert ("I don't have X, but Z") must reach
+  // the verdict so the fabricated claim is adjudicated, not short-circuited.
+  if (answerIsPureRefusal(answer)) return undefined;
   const verification = reverify
     ? await verifyGroundingWithReverify(answer, matches, query, reverify, { reverifySamples })
     : verifyGrounding(answer, matches, query);

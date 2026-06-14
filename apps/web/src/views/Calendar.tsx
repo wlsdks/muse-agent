@@ -10,6 +10,11 @@ import type { CalendarEventsResponse } from "../api/types.js";
 
 export function dayLabel(iso: string, t: Translate, locale: string): string {
   const d = new Date(iso);
+  // A malformed startsAtIso renders as an "Invalid Date" group header otherwise
+  // — fall back to empty, consistent with timeUntil + formatTaskDate.
+  if (Number.isNaN(d.getTime())) {
+    return "";
+  }
   const today = new Date();
   // Derive "tomorrow" from the calendar date, not now + 24h: a DST-transition
   // day is 23h/25h, so a fixed-ms offset overshoots/undershoots the real next day.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  answerIsPureRefusal,
   answerIsRefusal,
   composeChatSystemContent,
   corpusOnboardingHint,
@@ -32,6 +33,22 @@ describe("answerIsRefusal", () => {
   });
   it("is false for a grounded answer", () => {
     expect(answerIsRefusal("Your MTU is 1380 [from vpn.md]")).toBe(false);
+  });
+});
+
+describe("answerIsPureRefusal", () => {
+  it("is true for a pure refusal (EN + KO) — nothing to verify", () => {
+    expect(answerIsPureRefusal("I'm not sure — that isn't in your notes.")).toBe(true);
+    expect(answerIsPureRefusal("I don't have that information.")).toBe(true);
+    expect(answerIsPureRefusal("그 정보는 없습니다.")).toBe(true);
+  });
+  it("is FALSE for a hedge-then-assert (refusal substring + a tacked-on claim)", () => {
+    expect(answerIsPureRefusal("I don't have access to live flight data, but your flight leaves at 9:00 AM from Gate 22.")).toBe(false);
+    expect(answerIsPureRefusal("I don't have your flight info. Your flight is at 9am from gate 22.")).toBe(false);
+    expect(answerIsPureRefusal("없어요. 하지만 회의는 3시예요.")).toBe(false);
+  });
+  it("is false for a non-refusal answer (defers to the verdict)", () => {
+    expect(answerIsPureRefusal("Your MTU is 1380 [from vpn.md]")).toBe(false);
   });
 });
 

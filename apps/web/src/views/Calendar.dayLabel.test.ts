@@ -37,4 +37,11 @@ describe("dayLabel — 'tomorrow' is the real next calendar day, not now + 24h",
     expect(dayLabel("2026-06-14T09:00:00-07:00", t, "en-US")).toBe("calendar.tomorrow");
     expect(dayLabel("2026-06-13T18:00:00-07:00", t, "en-US")).toBe("calendar.today");
   });
+
+  it("returns an empty string for an unparseable date — never an 'Invalid Date' group header", () => {
+    // Consistency with timeUntil + formatTaskDate (which NaN-guard): a malformed
+    // startsAtIso must not become an "Invalid Date" day-group header.
+    expect(dayLabel("not-a-date", t, "en-US")).toBe("");
+    expect(dayLabel("", t, "en-US")).toBe("");
+  });
 });

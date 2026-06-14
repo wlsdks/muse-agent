@@ -234,6 +234,50 @@ async function buildEpochConvertScenario() {
   }
 }
 
+async function buildNumberBaseScenario() {
+  try {
+    const tools = await import("../packages/tools/dist/muse-tools.js");
+    const picked = tools.createMuseTools().filter((t) => ["number_base", "math_eval", "unit_convert"].includes(t.definition.name));
+    const toolDefs = picked.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(toolDefs.map((t) => t.name));
+    const cases = [
+      { prompt: "What is 255 in hexadecimal?", expectTool: "number_base", requireArgs: ["value"], note: "decimal → hex → number_base" },
+      { prompt: "Convert 0xFF to decimal.", expectTool: "number_base", requireArgs: ["value"], note: "hex → decimal → number_base" },
+      { prompt: "1010을 2진수에서 10진수로 바꿔줘", expectTool: "number_base", requireArgs: ["value"], note: "KO binary → decimal → number_base" },
+      // confusable neighbours: arithmetic and physical-unit conversion are NOT base conversion
+      { prompt: "What is 1234 times 5678?", expectTool: "math_eval", note: "arithmetic → math_eval (NOT number_base)" },
+      { prompt: "How many kilometers is 5 miles?", expectTool: "unit_convert", note: "physical-unit conversion → unit_convert (NOT number_base)" },
+      // IrrelAcc: a number mentioned in passing is not a base-conversion request
+      { prompt: "이번 빌드 에러가 255개나 떴어, 미치겠다.", expectNoTool: true, note: "KO musing with a number → NO tool (not a base conversion)" }
+    ];
+    return { label: "number-base (radix vs math_eval/unit_convert)", tools: toolDefs, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "number-base", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
+async function buildLeapYearScenario() {
+  try {
+    const tools = await import("../packages/tools/dist/muse-tools.js");
+    const picked = tools.createMuseTools().filter((t) => ["leap_year", "math_eval", "number_base"].includes(t.definition.name));
+    const toolDefs = picked.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(toolDefs.map((t) => t.name));
+    const cases = [
+      { prompt: "Is 2024 a leap year?", expectTool: "leap_year", requireArgs: ["year"], note: "leap-year check → leap_year" },
+      { prompt: "2100년은 윤년이야?", expectTool: "leap_year", requireArgs: ["year"], note: "KO leap-year check → leap_year" },
+      { prompt: "Does February 2000 have 29 days?", expectTool: "leap_year", note: "Feb-29 question → leap_year" },
+      // confusable neighbours
+      { prompt: "What is 2024 divided by 4?", expectTool: "math_eval", note: "arithmetic → math_eval (NOT leap_year)" },
+      { prompt: "Convert 2024 to hexadecimal.", expectTool: "number_base", note: "base conversion → number_base (NOT leap_year)" },
+      // IrrelAcc
+      { prompt: "2024년은 정말 다사다난한 해였어.", expectNoTool: true, note: "KO musing mentioning a year → NO tool (not a leap-year query)" }
+    ];
+    return { label: "leap-year (vs math_eval/number_base)", tools: toolDefs, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "leap-year", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Stress the confusable real time tools: all 6 exposed together. time_relative
 // vs time_diff overlap (relative-to-now vs two-timestamp), so each carries a
 // "use when / not when" line — this scenario guards that disambiguation.
@@ -1265,6 +1309,8 @@ async function main() {
     await buildLunarToSolarScenario(),
     await buildKoreanNumberScenario(),
     await buildEpochConvertScenario(),
+    await buildNumberBaseScenario(),
+    await buildLeapYearScenario(),
     await buildTimeToolsScenario(),
     await buildTimeToolsExemplarScenario(),
     await buildActuatorScenario(),

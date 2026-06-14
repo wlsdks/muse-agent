@@ -194,8 +194,8 @@ export function buildContactContextBlock(
 
 /**
  * The grounding-EVIDENCE text for a matched contact — the contact's name plus
- * EVERY field the prompt block renders: relationship/role (P37-20), connections/
- * edges (P37-21), email/phone/handle/birthday/aliases. The grounding rubric scores
+ * EVERY field the prompt block renders: relationship/role, connections/
+ * edges, email/phone/handle/birthday/aliases. The grounding rubric scores
  * an answer's coverage against this; if a field the model can answer from (a role,
  * an edge) is rendered in the block but MISSING here, a correct "your manager is
  * Dana" / "Bob works with Alice" answer scores ~zero coverage and false-flags
