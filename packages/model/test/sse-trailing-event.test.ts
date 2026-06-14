@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseOpenAIStream, parseOpenAIResponsesStream } from "../src/provider-openai.js";
-import type { ModelEvent } from "../src/types.js";
+import type { ModelEvent } from "../src/index.js";
 
 const enc = new TextEncoder();
 function streamOf(chunks: readonly string[]): ReadableStream<Uint8Array> {
