@@ -28,7 +28,7 @@
 
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
-import { defaultOsascriptRunner, escapeAppleScript, isPermissionError, NETWORKSETUP_PATH, OSASCRIPT_TIMEOUT_MS, parseWifiDevice, runChild, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
+import { defaultOsascriptRunner, escapeAppleScript, isPermissionError, NETWORKSETUP_PATH, OSASCRIPT_TIMEOUT_MS, parseWifiDevice, PMSET_PATH, runChild, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
 export type { MacCommandResult, MacOsascriptRunner } from "./macos-exec.js";
 
 /**
@@ -66,7 +66,6 @@ export interface MacMessageDraft {
 /** Presents the EXACT iMessage draft to the user; returns approve/deny. */
 export type MacMessageApprovalGate = (draft: MacMessageDraft) => Promise<MacApprovalDecision> | MacApprovalDecision;
 
-const PMSET_PATH = "/usr/bin/pmset";
 const DF_PATH = "/bin/df";
 const IPCONFIG_PATH = "/usr/sbin/ipconfig";
 
