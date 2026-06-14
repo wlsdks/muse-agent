@@ -75,6 +75,14 @@ public struct Sprite: Codable, Sendable, Equatable {
         return lines.allSatisfy { $0.allSatisfy { keys.contains($0) } }
     }
 
+    /// Every palette colour must be a parseable hex (the same `parseHexColor` the
+    /// renderer dereferences). The renderer skips a colour it can't parse, so a
+    /// typo'd hex renders a transparent HOLE — reject it on `--render-json`
+    /// instead. The transparent "#00000000" convention parses (a=0) and is valid.
+    public func paletteHexesValid() -> Bool {
+        palette.allSatisfy { parseHexColor($0.hex) != nil }
+    }
+
     public static func decode(_ data: Data) throws -> Sprite {
         try JSONDecoder().decode(Sprite.self, from: data)
     }
