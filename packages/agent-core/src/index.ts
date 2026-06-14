@@ -269,6 +269,8 @@ export { peakEndDigest, type DigestTurn } from "./peak-end.js";
 export {
   createConfidenceGatedInvestigator,
   decideProactiveRecall,
+  DEFAULT_FINDING_COOLDOWN_MS,
+  FindingResurfaceSuppressor,
   type ConfidenceGatedInvestigatorDeps,
   type ProactiveRecallDecision
 } from "./proactive-recall-gate.js";

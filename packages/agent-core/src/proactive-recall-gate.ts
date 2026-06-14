@@ -98,6 +98,52 @@ export function decideProactiveRecall(
   };
 }
 
+/**
+ * Cooldown before the SAME proactive finding may surface again. 6h matches the
+ * daemon's reflection cadence — long enough that a recurring/rescheduled item
+ * (a daily standup, a standing task) doesn't re-spam the identical "📎 Related
+ * in your notes" nudge on every tick, short enough that a genuinely fresh day's
+ * surfacing still lands.
+ */
+export const DEFAULT_FINDING_COOLDOWN_MS = 6 * 60 * 60 * 1_000;
+
+/**
+ * Anti-nag re-surface gate for proactive findings (Proactive Agent,
+ * arXiv:2410.12361 — a re-shown identical proactive surfacing is the canonical
+ * "rejected" interruption). `decideProactiveRecall` decides WHETHER a finding is
+ * confident; this decides whether to RE-show it. A recurring item re-fires its
+ * base notice every occurrence (a new `startIso` each time) and would re-append
+ * the IDENTICAL finding — so suppress a finding already surfaced within the
+ * cooldown window. Identity is exact string-equality on the generated finding —
+ * a genuinely LEXICAL phenomenon (literal re-emission of the same string, like
+ * the stall detector's repeated-read and the echo-collapse), so lexical is the
+ * correct signal here, not the cross-distribution anti-pattern. In-memory +
+ * stateful (mirrors ToolFailureStreakTracker); cross-restart loss only re-shows
+ * once. `nowMs` is injected for determinism.
+ */
+export class FindingResurfaceSuppressor {
+  private readonly lastSurfacedMs = new Map<string, number>();
+  private readonly cooldownMs: number;
+
+  constructor(cooldownMs: number = DEFAULT_FINDING_COOLDOWN_MS) {
+    this.cooldownMs = cooldownMs > 0 ? cooldownMs : DEFAULT_FINDING_COOLDOWN_MS;
+  }
+
+  /**
+   * True if `finding` may surface now — i.e. it has NOT been surfaced within the
+   * cooldown window. Records `nowMs` as the last-surfaced time when it returns
+   * true (so the caller surfaces exactly the findings this approves).
+   */
+  shouldSurface(finding: string, nowMs: number): boolean {
+    const key = finding.trim();
+    if (key.length === 0) return true;
+    const last = this.lastSurfacedMs.get(key);
+    if (last !== undefined && nowMs - last < this.cooldownMs) return false;
+    this.lastSurfacedMs.set(key, nowMs);
+    return true;
+  }
+}
+
 export interface ConfidenceGatedInvestigatorDeps {
   /** The corpus chunks, or a lazy provider (so the index is re-read per tick). */
   readonly chunks: readonly KnowledgeChunk[] | (() => Promise<readonly KnowledgeChunk[]>);

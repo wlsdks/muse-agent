@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { FindingResurfaceSuppressor } from "@muse/agent-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -65,6 +66,25 @@ describe("createIndexedProactiveInvestigator", () => {
       indexFile
     });
     expect(await investigate({ factSheet: "", kind: "task", title: "Anything" })).toBeUndefined();
+  });
+
+  it("anti-nag: the SAME finding for a recurring item is suppressed within the cooldown, re-shown after (arXiv:2410.12361)", async () => {
+    await writeIndex();
+    let clock = 1_000_000;
+    const cooldownMs = 6 * 60 * 60 * 1_000;
+    const investigate = createIndexedProactiveInvestigator({
+      embedText: async () => [1, 0, 0], // confident match → same q3.md finding each call
+      indexFile,
+      suppressor: new FindingResurfaceSuppressor(cooldownMs),
+      now: () => clock
+    });
+    const item = { factSheet: "", kind: "task" as const, title: "Q3 budget review" };
+    const first = await investigate(item);
+    expect(first).toContain("[q3.md]"); // call 1 surfaces
+    clock += 60_000; // 1 min later, same recurring item re-fires
+    expect(await investigate(item)).toBeUndefined(); // suppressed (identical finding within cooldown)
+    clock += cooldownMs; // cooldown elapsed
+    expect(await investigate(item)).toContain("[q3.md]"); // re-shown — reversible, not a permanent mute
   });
 
   it("fail-open: missing index file / empty title / throwing embed → undefined", async () => {

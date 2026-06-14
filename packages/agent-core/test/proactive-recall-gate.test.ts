@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { KnowledgeMatch } from "../src/knowledge-recall.js";
-import { createConfidenceGatedInvestigator, decideProactiveRecall } from "../src/proactive-recall-gate.js";
+import { createConfidenceGatedInvestigator, decideProactiveRecall, DEFAULT_FINDING_COOLDOWN_MS, FindingResurfaceSuppressor } from "../src/proactive-recall-gate.js";
 
 const match = (source: string, text: string, cosine: number, score = cosine): KnowledgeMatch => ({
   cosine,
@@ -205,5 +205,41 @@ describe("createConfidenceGatedInvestigator — wires the gate into the proactiv
     expect(await createConfidenceGatedInvestigator({ chunks, embed, confidentAt: 0.5 })(item)).toContain("[n.md]");
     // cosine 1.0 can't be beaten, so push the bar above 1 to prove the option is wired.
     expect(await createConfidenceGatedInvestigator({ chunks, embed, confidentAt: 1.01 })(item)).toBeUndefined();
+  });
+});
+
+describe("FindingResurfaceSuppressor — anti-nag re-surface gate (arXiv:2410.12361)", () => {
+  const F = "📎 Related in your notes — [q3.md] Q3 budget review prep";
+
+  it("surfaces first, suppresses an identical finding within the cooldown, re-surfaces after", () => {
+    const s = new FindingResurfaceSuppressor(1000);
+    expect(s.shouldSurface(F, 0)).toBe(true); // first time
+    expect(s.shouldSurface(F, 500)).toBe(false); // within cooldown → suppress
+    expect(s.shouldSurface(F, 999)).toBe(false); // still within
+    expect(s.shouldSurface(F, 1000)).toBe(true); // cooldown elapsed → re-surface (reversible)
+  });
+
+  it("tracks each distinct finding independently", () => {
+    const s = new FindingResurfaceSuppressor(1000);
+    expect(s.shouldSurface("finding A", 0)).toBe(true);
+    expect(s.shouldSurface("finding B", 0)).toBe(true); // different finding, not suppressed by A
+    expect(s.shouldSurface("finding A", 100)).toBe(false); // A still cooling
+  });
+
+  it("a blank finding is never suppressed (defensive)", () => {
+    const s = new FindingResurfaceSuppressor(1000);
+    expect(s.shouldSurface("   ", 0)).toBe(true);
+    expect(s.shouldSurface("   ", 1)).toBe(true);
+  });
+
+  it("recording is gated on shouldSurface returning true (a suppressed call does not slide the window)", () => {
+    const s = new FindingResurfaceSuppressor(1000);
+    expect(s.shouldSurface(F, 0)).toBe(true); // recorded at 0
+    expect(s.shouldSurface(F, 800)).toBe(false); // suppressed, must NOT re-record at 800
+    expect(s.shouldSurface(F, 1000)).toBe(true); // 1000-0 >= 1000 → re-surface (proves 800 wasn't recorded)
+  });
+
+  it("exports a sane positive default cooldown", () => {
+    expect(DEFAULT_FINDING_COOLDOWN_MS).toBeGreaterThan(0);
   });
 });

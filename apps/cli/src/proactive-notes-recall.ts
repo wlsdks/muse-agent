@@ -15,7 +15,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { decideProactiveRecall, type KnowledgeMatch } from "@muse/agent-core";
+import { decideProactiveRecall, FindingResurfaceSuppressor, type KnowledgeMatch } from "@muse/agent-core";
 
 import { cosineSimilarity, embed } from "./embed.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
@@ -57,6 +57,10 @@ export interface IndexedProactiveInvestigatorOptions {
   readonly confidentAt?: number;
   /** Test seam — defaults to the real Ollama embedder. */
   readonly embedText?: (text: string, model: string) => Promise<readonly number[]>;
+  /** Anti-nag re-surface gate (one per investigator instance); injectable for tests. */
+  readonly suppressor?: FindingResurfaceSuppressor;
+  /** Clock seam for the re-surface cooldown; defaults to Date.now. */
+  readonly now?: () => number;
 }
 
 export function createIndexedProactiveInvestigator(
@@ -64,6 +68,10 @@ export function createIndexedProactiveInvestigator(
 ): (item: { readonly title: string; readonly kind: string; readonly factSheet: string }) => Promise<string | undefined> {
   const indexFile = options.indexFile ?? join(homedir(), ".muse", "notes-index.json");
   const embedText = options.embedText ?? ((text, model) => embed(text, model));
+  // One suppressor per investigator instance (the daemon makes one, reused across
+  // ticks) so a recurring item's identical finding isn't re-shown every tick.
+  const suppressor = options.suppressor ?? new FindingResurfaceSuppressor();
+  const now = options.now ?? Date.now;
   return async (item) => {
     const query = item.title.trim();
     if (query.length === 0) return undefined;
@@ -86,6 +94,8 @@ export function createIndexedProactiveInvestigator(
       query,
       ...(options.confidentAt !== undefined ? { confidentAt: options.confidentAt } : {})
     });
-    return decision.surface ? decision.finding : undefined;
+    if (!decision.surface || decision.finding === undefined) return undefined;
+    // Anti-nag: withhold an identical finding already surfaced within the cooldown.
+    return suppressor.shouldSurface(decision.finding, now()) ? decision.finding : undefined;
   };
 }
