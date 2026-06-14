@@ -278,6 +278,29 @@ async function buildLeapYearScenario() {
   }
 }
 
+async function buildKoreanAgeScenario() {
+  try {
+    const tools = await import("../packages/tools/dist/muse-tools.js");
+    const now = () => new Date(2026, 5, 14);
+    const picked = tools.createMuseTools({ now }).filter((t) => ["korean_age", "korean_number", "math_eval"].includes(t.definition.name));
+    const toolDefs = picked.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(toolDefs.map((t) => t.name));
+    const cases = [
+      { prompt: "1990년 3월 15일생인데 내 만 나이는?", expectTool: "korean_age", requireArgs: ["birthdate"], note: "KO Korean age from a birthdate → korean_age" },
+      { prompt: "How old in Korean age if born on 2000-06-15?", expectTool: "korean_age", requireArgs: ["birthdate"], note: "EN Korean age → korean_age" },
+      { prompt: "2003-11-20에 태어났으면 세는 나이로 몇 살?", expectTool: "korean_age", requireArgs: ["birthdate"], note: "KO 세는나이 → korean_age" },
+      // confusable neighbours
+      { prompt: "12345678을 한국식 만/억 단위로 읽어줘", expectTool: "korean_number", note: "Korean number formatting → korean_number (NOT korean_age)" },
+      { prompt: "What is 2026 minus 1990?", expectTool: "math_eval", note: "plain subtraction → math_eval (NOT korean_age)" },
+      // IrrelAcc
+      { prompt: "나이가 들수록 시간이 빨리 가는 것 같아.", expectNoTool: true, note: "KO musing about aging → NO tool (not an age computation)" }
+    ];
+    return { label: "korean-age (만/세는 나이 vs korean_number/math_eval)", tools: toolDefs, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "korean-age", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Stress the confusable real time tools: all 6 exposed together. time_relative
 // vs time_diff overlap (relative-to-now vs two-timestamp), so each carries a
 // "use when / not when" line — this scenario guards that disambiguation.
@@ -1311,6 +1334,7 @@ async function main() {
     await buildEpochConvertScenario(),
     await buildNumberBaseScenario(),
     await buildLeapYearScenario(),
+    await buildKoreanAgeScenario(),
     await buildTimeToolsScenario(),
     await buildTimeToolsExemplarScenario(),
     await buildActuatorScenario(),

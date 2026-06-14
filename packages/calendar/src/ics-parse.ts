@@ -7,7 +7,7 @@
  * proven CalDAV `parseVEvent` for each (UID/SUMMARY/DTSTART/DTEND, all-day,
  * TZID). Tolerant: a malformed VEVENT is skipped, never throwing.
  */
-import { parseVEvent } from "./caldav-provider.js";
+import { parseVEvent } from "./caldav-ics.js";
 import type { CalendarEvent } from "./types.js";
 
 /** Every VEVENT in `icsText` as a CalendarEvent, sorted by start; bad ones skipped. */
