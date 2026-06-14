@@ -291,3 +291,12 @@ ratchet: web unit 36/36 · calendar e2e 1/1 · testFiles 989 · fabrication 0 ·
 - **왜**: 삭제는 파괴적 액션 — 시각장애 사용자가 어느 버튼이 삭제인지 알아야 함. fire 28이 시작한 cross-view 아이콘-only 접근명 계약 완성. 비-투기적(갭이 소스에 그대로 노출).
 - **리뷰지점**: calendar e2e가 대표 검증 — `toHaveAttribute("aria-label","Delete")`로 비-vacuous(judge가 Calendar revert로 RED 확인, getByRole는 title fallback으로 여전히 resolve하나 attr 단언은 null로 FAIL). 5곳 byte-identical wiring, Button.ariaLabel 포워딩은 fire 28 ui.button.test로 lock. title 보존. NOTE: 동시 루프發 @muse/shared stale-dist(finiteOr export) 만나 rebuild로 해소([[project_stale_dist_from_loop]]).
 - **리스크**: 없음(5 view 1줄씩 + e2e 1단언; 순수 presentational a11y, Button 컴포넌트 무변; 독립 Opus judge가 revert로 RED-before·비-vacuous·5곳 전부 icon-only·무회귀·RATCHET 검증 후 PASS, web 36/36·calendar e2e 1/1·tsc clean).
+
+## fire 33 · 2026-06-14 · skill v1.14.0 · b3f4f86b
+meta: surface=desktop · value-class=micro-fix · pkg=apps/desktop(MuseDesktopCore) · kind=citation-strip-case-insensitive-consistency · verdict=PASS · firesSinceDrill=7
+ratchet: desktop swift tests 62/62 (+1) · testFiles 993 · fabrication 0 · self-eval exit 0 · 표면 균형 web12·desktop10·cli11
+
+- **무엇**: 컴패니언 `stripCitationsForSpeech`가 인라인 `[from <source>]` 마커를 음성에서 제거하는데 **대소문자 구분**이었다. agent-core 정규 인식은 `/\[from…\]/giu`(대소문자 무시, citation-recall/citation-precision/knowledge-recall/untrusted-sentences 4곳). 그래서 `[From x.md]`/`[FROM x.md]`(시스템이 citation으로 인정, 8B가 문장 시작 대문자로 emit 가능)가 음성으로 "From x 점 m d"처럼 읽혔다. `.caseInsensitive` 추가.
+- **왜**: 음성 strip이 시스템 나머지의 citation 인식과 동일 형태를 인식해야 함(일관성). 비-투기적 — agent-core 자체 regex가 `giu`. desktop(최저 9→10) 균형.
+- **리뷰지점**: over-strip 없음(`\[from…\]` 대괄호 필수 → 대문자도 bracketed citation 토큰만 새로 매칭, 평문 "from"은 무영향). 📎 영수증 strip 무변. 소문자 기존 테스트 통과. SPEECH 전용(speechText만 변경, grounding GATE는 agent-core TS라 무접촉 — fabrication=0 무관).
+- **리스크**: 없음(regex option 1개 + 신규 테스트; 독립 Opus judge가 revert로 RED-before 실증·agent-core 4곳 `i`플래그 확인(갭 실재)·over-strip 없음·speech-only(게이트 무접촉) 검증 후 PASS, swift 62/62·self-eval exit 0).
