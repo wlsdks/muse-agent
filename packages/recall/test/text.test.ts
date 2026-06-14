@@ -47,6 +47,17 @@ describe("answerIsPureRefusal", () => {
     expect(answerIsPureRefusal("I don't have your flight info. Your flight is at 9am from gate 22.")).toBe(false);
     expect(answerIsPureRefusal("없어요. 하지만 회의는 3시예요.")).toBe(false);
   });
+  it("catches a hedge joined by an em-dash or a colon (not just sentence/adversative seams)", () => {
+    expect(answerIsPureRefusal("I don't have your flight — your flight is at 9am from gate 22.")).toBe(false);
+    expect(answerIsPureRefusal("I don't have that info: your meeting is at 3pm in room 5.")).toBe(false);
+  });
+  it("stays TRUE for a pure refusal whose continuation is itself negative (the seam-split regression guard)", () => {
+    // The continuation crosses the new em-dash/colon seam but is a refusal
+    // RESTATEMENT (negative), not a tacked-on claim — must stay pure.
+    expect(answerIsPureRefusal("I'm not sure — that isn't in your notes.")).toBe(true);
+    expect(answerIsPureRefusal("I'm not sure — nothing comes to mind.")).toBe(true);
+    expect(answerIsPureRefusal("없어요. 회의 자료는 못 찾았어요.")).toBe(true);
+  });
   it("is false for a non-refusal answer (defers to the verdict)", () => {
     expect(answerIsPureRefusal("Your MTU is 1380 [from vpn.md]")).toBe(false);
   });
