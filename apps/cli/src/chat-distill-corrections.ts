@@ -17,6 +17,8 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  DEFAULT_PLAYBOOK_CREDIT_COSINE,
+  DEFAULT_PLAYBOOK_DECAY_CREDIT_COSINE,
   detectApprovals,
   detectCorrections,
   distillStrategyFromCorrection,
@@ -134,7 +136,11 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
       return undefined;
     }
     const candidates = existing.filter((entry) => !adjustedIds.has(entry.id));
-    let targetId = await selectCreditTargetSemantic(candidates, cue, embed);
+    // Asymmetric precision: a DECAY (delta<0) must clear a HIGHER cue↔strategy
+    // match than a reinforce — a wrong decay of a (possibly grounded) strategy is
+    // costlier than a missed reinforce (Memory-R2 arXiv:2605.21768; WEDGE).
+    const creditFloor = delta < 0 ? DEFAULT_PLAYBOOK_DECAY_CREDIT_COSINE : DEFAULT_PLAYBOOK_CREDIT_COSINE;
+    let targetId = await selectCreditTargetSemantic(candidates, cue, embed, creditFloor);
     if (targetId === undefined) {
       let best: { readonly entry: PlaybookEntry; readonly sim: number } | undefined;
       for (const entry of candidates) {

@@ -189,6 +189,19 @@ export function strategyTextSimilarity(a: string, b: string): number {
 export const DEFAULT_PLAYBOOK_CREDIT_COSINE = 0.55;
 
 /**
+ * HIGHER credit floor for a DECAY (a correction docking a strategy's reward) than
+ * for a reinforce. Asymmetric precision (Memory-R2 arXiv:2605.21768 fair credit
+ * assignment, applied to the loop's WEDGE): a WRONG decay of a grounded/manual
+ * strategy is costlier than a MISSED reinforce — a spuriously-decayed grounded
+ * strategy sinks below the avoidance floor and stops being injected, eroding the
+ * cited-recall edge, whereas a missed reinforce just leaves reward flat. So a
+ * correction must clear a STRONGER cue↔strategy match (0.62) to decay than an
+ * approval needs to reinforce (0.55); a borderline correction credits nothing
+ * rather than risk decaying the wrong (possibly grounded) strategy.
+ */
+export const DEFAULT_PLAYBOOK_DECAY_CREDIT_COSINE = 0.62;
+
+/**
  * SEMANTIC credit assignment for the playbook RL loop (fair credit assignment —
  * Memory-R2 arXiv:2605.21768; mis-credited reward replays its error via
  * experience-following — arXiv:2505.16067). Given the existing strategies and a
