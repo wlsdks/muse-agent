@@ -1215,3 +1215,21 @@ ratchet: testFiles 1004 유지 · fabrication 0 유지 · 코드 변경 0(EXHAUS
 - **왜:** 직접 correctness/security bug vein이 personal-store(113·117·121) 넘어 **유틸-tool family(time/date/math)까지 genuine 고갈** 확인 — date-arithmetic은 실 버그 발견 family였으나(Feb-29·calendar fromIso) 유틸 도구는 정확. eval-coverage tapped·wiring dry·EXPANSION 갭 없음. 가짜/cosmetic/저가치-thin은 ④b judge FAIL(fire 120 드릴 입증). 4번째 honest-close = 테마 saturation의 누적 증거.
 - **리뷰지점:** 코드 변경 0. 감사: muse-tools-time.ts(next_weekday delta·time_add·cron UTC)·muse-tools-data.ts(math_eval 화이트리스트)·scheduler-helpers.ts(defaultTimezone UTC). 미수행: 저가치 read-tool IrrelAcc·진안-blocked 레버·cron_for_datetime DST-aware TZ 옵션(enhancement, 버그 아님·UTC 설계 documented). 
 - **리스크:** 없음 — 코드 무변경, floor·불변식 무접촉. ★DECISION-REQUIRED 지속(진안): tool-hardening이 personal-store + 유틸-tool 도메인 모두 22 fire에 걸쳐 saturate. 누적 honest-close(117·119·121·122). 진안 redirect(테마 확장/pivot/레버 unblock/저가치 수용) 대기. firesSinceDrill=2. pnpm check red는 동시 루프 미커밋 noise.
+
+
+## fire 123 · 2026-06-14 · skill v1.14.0 · ac540459
+meta: value-class=new-capability(EXPANSION) · pkg=@muse/tools(+scripts eval) · kind=unit_convert 결정적 물리단위 변환 도구 · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 1004→1005(+muse-tools-units.test) · fabrication 0 유지 · eval:tools +1 시나리오(unit-convert 6 케이스 STABLE 3/3)
+- **무엇:** 4회 honest-close(117·119·121·122)로 personal-store + 유틸 도메인 saturation 확인 후, 룰의 "value-class 올려라" + ratchet "EXPANSION 0 지속 방지"에 따라 genuine EXPANSION 빌드: `unit_convert`(zero-IO 유틸 family, math_eval/slugify 동질). convertUnit(length/mass/volume 정적 factor + temperature offset C/F/K), cross-category/unknown→error(wrong-guess 없음). createMuseTools 배선(autoconfigure index.ts:542 default-on).
+- **왜:** find_items(107) 이후 16 fire간 EXPANSION 0 — ratchet이 막으려는 실패. personal-store 갭은 saturated이나 **유틸 도메인엔 genuine 비-confusable 갭 존재**(unit conversion). Muse grounding edge 부합: 12B의 근사 factor("≈8 km")가 아닌 EXACT("5 mi = 8.04672 km"). 핵심 위험(모델 자답)은 eval로 반증 — 모델이 도구 SELECT 3/3(산술은 math_eval 쓰는 행동과 일관).
+- **리뷰지점:** muse-tools-units.ts(convertUnit + 도구) + units.test(변환/throw 정확) + muse-tools.ts(배선) + tools.test(inventory 17→18) + eval(buildUnitConvertScenario). 207 green·내 파일 lint clean·**eval unit-convert STABLE 3/3 ×6**(3 positive selection + math_eval/web-search 비교차 + "5km 뛰었어" IrrelAcc). ④b Opus judge PASS 8/8 — crux #2(변환 수학: 모든 factor 독립 재유도 — 1kg→2.20462lb·12in→30.48cm·212°F→373.15K, lying factor 없음)·#4(wired)·#5(model selects 3/3 자답 안 함) 무자비 검증.
+- **리스크:** 없음 — 순수 read 도구(no mutation), 잘못된 factor=grounded lie 위험을 judge가 전수 검증, cross-category/unknown→error. EXPANSION drought 종료. 다음: 유틸 도메인 추가 EXPANSION 갭(있으면) 또는 진안 방향. pnpm check red는 동시 루프 미커밋 noise.
+
+
+## fire 124 · 2026-06-14 · skill v1.14.0 · 3b641b27
+meta: value-class=hardening(completeness extension of fire-123 EXPANSION) · pkg=@muse/tools(+scripts eval) · kind=unit_convert에 SPEED+TIME-duration 카테고리 추가 · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 1005 유지(units.test +2 케이스) · fabrication 0 유지 · eval:tools unit-convert +2 케이스(STABLE 3/3 ×8)
+- **무엇:** 다음 유틸 EXPANSION 후보 점검 → 타임존은 **이미 covered**(time_now가 timezone 인자 지원 + world_time 도구) = redundant, 안 지음. 대신 fire-123 unit_convert가 length/mass/volume/temperature만 — 흔한 SPEED("100 km/h는 몇 mph", 해외 운전)·TIME duration("90분은 몇 시간")에 error. SPEED(m/s base) + TIME(second base) 카테고리 추가(정확 factor + alias). JSDoc 주석도 6 카테고리로 정정(judge nit, comment-only 별도 커밋 9dd87e47).
+- **왜:** unit_convert 완성도 — 그 두 변환은 실 유저 쿼리이고 사전엔 {error}였음(judge가 pre-commit CATEGORIES=[LENGTH,MASS,VOLUME]로 확인). 12B는 0.621 km/h↔mph factor 반올림 → 결정적 도구가 grounding. TIME-duration이 time_diff(2 timestamp)와 혼동 위험 있었으나 eval로 unit_convert 선택 확인(time_diff/time_add는 timestamp 연산, pure duration-unit 변환 아님).
+- **리뷰지점:** muse-tools-units.ts(SPEED/TIME map + alias + description) + units.test(+2) + eval(+2 케이스). 209 green·내 파일 lint clean·**eval unit-convert STABLE 3/3 ×8**(speed/time 포함 전 카테고리 selection + math_eval/web 비교차 + IrrelAcc). ④b Opus judge PASS 8/8 — crux #2(factor 전수 독립 검증: 100km/h→62.1371mph·90min→1.5h·1week→7day, lying 없음)·#3(cross-category leak 없음: km/h→km/kg·min→m throws, m=metre/min=minute 별 키)·#5(model selects 3/3 time-tool 혼동 없음) 무자비 검증.
+- **리스크:** 없음 — 순수 read 도구 확장(기존 카테고리 무회귀), factor judge 전수 검증, cross-category→error. DATA(byte) 카테고리는 1000/1024 ambiguity로 의도적 제외. 다음: 추가 유틸 갭(area? 단 저빈도) 또는 진안 방향. pnpm check red는 동시 루프 미커밋 noise.

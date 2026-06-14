@@ -103,6 +103,37 @@ async function buildRealScenario() {
   }
 }
 
+// unit_convert (deterministic physical-unit conversion) vs its two nearest
+// confusables: math_eval (arithmetic over operators) and the web search tool
+// (live data like currency). The carve is the question shape — "convert X <unit>
+// to <unit>" is unit_convert; "X * Y" is math_eval; a CURRENCY rate is the web.
+async function buildUnitConvertScenario() {
+  try {
+    const units = await import("../packages/tools/dist/muse-tools-units.js");
+    const data = await import("../packages/tools/dist/muse-tools-data.js");
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const search = mcp.createLoopbackMcpMuseTools(mcp.createSearchMcpServer())[0];
+    const instances = [units.createUnitConvertTool(), data.createMathEvalTool(), search];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "How many kilometers is 5 miles?", expectTool: "unit_convert", requireArgs: ["value", "from", "to"], note: "EN length conversion → unit_convert (NOT math_eval — no operators)" },
+      { prompt: "섭씨 20도는 화씨로 몇 도야?", expectTool: "unit_convert", requireArgs: ["value", "from", "to"], note: "KO temperature conversion → unit_convert" },
+      { prompt: "Convert 2 cups to milliliters.", expectTool: "unit_convert", requireArgs: ["value", "from", "to"], note: "EN volume conversion → unit_convert" },
+      { prompt: "100 km/h는 몇 mph야?", expectTool: "unit_convert", requireArgs: ["value", "from", "to"], note: "KO speed conversion → unit_convert (NOT math_eval)" },
+      { prompt: "How many hours is 90 minutes?", expectTool: "unit_convert", requireArgs: ["value", "from", "to"], note: "EN time-duration conversion → unit_convert (NOT time_diff — a unit conversion, not two timestamps)" },
+      // confusable neighbours
+      { prompt: "What is 18 times 7?", expectTool: "math_eval", requireArgs: ["expression"], note: "EN arithmetic → math_eval (NOT unit_convert — operators, not units)" },
+      { prompt: "오늘 달러 환율 얼마야?", expectTool: "muse.search.search", requireArgs: ["query"], note: "KO live CURRENCY rate → web search (NOT unit_convert — needs live data)" },
+      // IrrelAcc: a statement that mentions a unit is not a conversion request
+      { prompt: "오늘 5km 뛰었어.", expectNoTool: true, note: "KO 'I ran 5km today' → NO tool (a report, NOT a unit conversion)" }
+    ];
+    return { label: "unit-convert (physical units vs math_eval/web + statement IrrelAcc)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "unit-convert", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Stress the confusable real time tools: all 6 exposed together. time_relative
 // vs time_diff overlap (relative-to-now vs two-timestamp), so each carries a
 // "use when / not when" line — this scenario guards that disambiguation.
@@ -1129,6 +1160,7 @@ async function main() {
   let scenarios = [
     { label: "synthetic", tools: SYNTHETIC_TOOLS, cases: SYNTHETIC_CASES },
     await buildRealScenario(),
+    await buildUnitConvertScenario(),
     await buildTimeToolsScenario(),
     await buildTimeToolsExemplarScenario(),
     await buildActuatorScenario(),

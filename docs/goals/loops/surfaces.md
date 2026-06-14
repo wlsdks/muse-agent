@@ -354,3 +354,12 @@ ratchet: web unit 44/44 (+4) · calendar e2e 1/1 · testFiles 1002 · fabricatio
 - **왜**: 상태변경 mutation의 데이터-무결성 버그(a11y/cosmetic 아님) — CLI `block`은 이미 end>start 검증. Opus scout가 최고가치로 식별(desktop core 포화, 이건 진짜 버그).
 - **리뷰지점**: strict `new Date(end)>new Date(start)`(equal=zero-length도 false), 비-빈 short-circuit으로 NaN 비교 회피. dayLabel 패턴 동형 export. e2e가 backwards range→Add disabled, valid→re-enable+POST(judge가 old non-empty 가드로 revert→toBeDisabled RED으로 비-vacuous 입증). mutation onClick·event list·fire36 라벨 무변.
 - **리스크**: 없음(Calendar 신규 fn + 1줄 배선 + 2 테스트; 순수 클라 UX 가드(서버 권위 주장 아님), egress/IMMUTABLE-CORE 무접촉; 독립 Opus judge가 RED-before·e2e 비-vacuous·correctness·무회귀 검증 후 PASS, web 44/44·calendar e2e 1/1).
+
+## fire 40 · 2026-06-14 · skill v1.14.0 · 12817ee7
+meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=tasks-count-badge-follows-filter · verdict=PASS · firesSinceDrill=5
+ratchet: web unit 44/44 · tasks e2e 1/1 · testFiles 1003 · fabrication 0 · self-eval exit 0 · 표면 균형 web17·desktop10·cli13
+
+- **무엇**: Tasks "Your tasks" Card가 `count={tasks.data.total}`(서버 total)인데 렌더 리스트는 fire-34 검색-필터 subset → 검색 시 배지가 "12"인데 2행만 보이는 거짓 카운트. `count={list.length}`로 렌더 리스트에 바인딩.
+- **왜**: fire 34가 들여온 데이터-표시 버그(배지가 거짓말). AsyncBlock가 `list`를 렌더하므로 list.length가 곧 보이는 행 수 — 다이버지 불가.
+- **리뷰지점**: e2e가 검색 후 `.card-head .count` 2→1 단언(judge가 count 줄 revert→post-search "1" 단언 RED으로 load-bearing 입증; 검색 자체 아님). no-search시 list.length===total(API 무페이지네이션)이라 무변. undefined→0(기존 `?? 0`과 동일). status/add/complete/delete/search 무변.
+- **리스크**: 없음(count 1줄 + e2e 2단언; 순수 presentational; 독립 Opus judge가 RED-before·load-bearing·correctness·무회귀·RATCHET(최근8 web-AND-micro-fix 1/8) 검증 후 PASS, web 44/44·tasks e2e 1/1).
