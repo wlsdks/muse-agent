@@ -25,6 +25,20 @@ describe("createRememberFactTool", () => {
     expect(out).toEqual({ kind: "fact", remembered: { home_city: "Seoul" } });
   });
 
+  it("preserves a Korean key (the KO-default model emits 취미, not an ASCII slug)", async () => {
+    const { store, facts } = fakeStore();
+    const tool = createRememberFactTool({ store });
+    const out = await tool.execute({ key: "취미", value: "등산" }, { runId: "r", userId: "jinan" });
+    expect(facts).toEqual([["jinan", "취미", "등산"]]);
+    expect(out).toEqual({ kind: "fact", remembered: { ["취미"]: "등산" } });
+  });
+
+  it("normalizes a multi-word Korean key to a snake_case slug", async () => {
+    const { store, facts } = fakeStore();
+    await createRememberFactTool({ store }).execute({ key: "내 취미", value: "등산" }, { runId: "r", userId: "jinan" });
+    expect(facts).toEqual([["jinan", "내_취미", "등산"]]);
+  });
+
   it("kind:'preference' routes to upsertPreference", async () => {
     const { store, prefs } = fakeStore();
     await createRememberFactTool({ store }).execute(

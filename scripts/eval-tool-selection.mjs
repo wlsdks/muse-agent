@@ -162,6 +162,30 @@ async function buildLunarScenario() {
   }
 }
 
+async function buildLunarToSolarScenario() {
+  try {
+    const lunar = await import("../packages/tools/dist/muse-tools-lunar.js");
+    const time = await import("../packages/tools/dist/muse-tools-time.js");
+    const now = () => new Date("2026-03-01T00:00:00Z");
+    const instances = [lunar.createLunarToSolarTool(now), lunar.createLunarDateTool(now), time.createTimeNowTool(now)];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "음력 생일 5월 5일이 올해 양력으로 며칠이야?", expectTool: "lunar_to_solar", requireArgs: ["month", "day"], note: "KO lunar birthday → solar date THIS year → lunar_to_solar" },
+      { prompt: "음력 8월 15일은 양력으로 며칠이야?", expectTool: "lunar_to_solar", requireArgs: ["month", "day"], note: "KO 추석 lunar → solar → lunar_to_solar" },
+      { prompt: "Convert lunar month 1 day 1 to the solar date.", expectTool: "lunar_to_solar", requireArgs: ["month", "day"], note: "EN lunar→solar conversion → lunar_to_solar" },
+      // confusable neighbour: the OTHER direction (solar → lunar) is lunar_date
+      { prompt: "2026년 9월 25일은 음력으로 며칠이야?", expectTool: "lunar_date", note: "KO solar date → its LUNAR date → lunar_date (the reverse direction, NOT lunar_to_solar)" },
+      { prompt: "오늘 음력으로 며칠이야?", expectTool: "lunar_date", note: "KO today's lunar date → lunar_date (NOT lunar_to_solar — no lunar input given)" },
+      // IrrelAcc: a sentiment about a lunar birthday is not a conversion request
+      { prompt: "올해 음력 생일엔 미역국 끓여 먹어야지.", expectNoTool: true, note: "KO musing about a lunar birthday meal → NO tool (not a date-conversion request)" }
+    ];
+    return { label: "lunar-to-solar (음력→양력 vs reverse lunar_date)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "lunar-to-solar", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Stress the confusable real time tools: all 6 exposed together. time_relative
 // vs time_diff overlap (relative-to-now vs two-timestamp), so each carries a
 // "use when / not when" line — this scenario guards that disambiguation.
@@ -1190,6 +1214,7 @@ async function main() {
     await buildRealScenario(),
     await buildUnitConvertScenario(),
     await buildLunarScenario(),
+    await buildLunarToSolarScenario(),
     await buildTimeToolsScenario(),
     await buildTimeToolsExemplarScenario(),
     await buildActuatorScenario(),
