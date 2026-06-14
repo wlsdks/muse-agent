@@ -309,3 +309,12 @@ ratchet: web unit 40/40 (+4) · tasks e2e 1/1 (new) · testFiles 995 · fabricat
 - **왜**: CLI↔web 기능 파리티 + 실 가치(많은 태스크 중 찾기). tasks.search 키 en/ko 추가(파리티 가드가 양 로캘 강제).
 - **리뷰지점**: 단위테스트가 filter OUTCOME(매치 id) 채점; e2e가 검색박스→필터 배선 end-to-end 검증(judge가 list=filterTasksByQuery 줄 revert→e2e RED으로 비-vacuous 입증). count는 서버 total 유지(리스트만 필터 — Notes 선례, 무해). aria-label + role=searchbox. add/complete/delete/status 무변.
 - **리스크**: 없음(순수 클라 표시 필터, network/grounding 무접촉; 독립 Opus judge가 RED-before(HEAD grep=0)·비-vacuous e2e·correctness(빈→전체·notes·undefined 가드)·합성·무회귀 검증 후 PASS, web 40/40·tasks e2e 1/1·tsc clean).
+
+## fire 35 · 2026-06-14 · skill v1.14.0 · a2e040e5
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=judge-drill+checkins-due-sort · verdict=PASS · firesSinceDrill=0 (DRILL THIS FIRE)
+ratchet: cli tests 2656 (+2) · testFiles 997 · fabrication 0 · self-eval exit 0 · 표면 균형 web13·desktop10·cli12 · JUDGE-DRILL ✅
+
+- **무엇**: (A) JUDGE-DRILL — fire 26과 다른 anti-pattern 주입: **accepted-but-ignored 옵션** `checkins list --sort`(commander 선언만, action에서 미사용) + **order-blind 테스트**(`--sort due` 실행 후 `checkins.length===2`만 단언, 순서 검증 0). 독립 Opus judge가 **FAIL** + 정확히 "length===2는 order-blind, no-op이어도 통과, `.map(id)===['early','late']`를 단언 안 함" 적시 → 롤백. (B) 진짜 fix — `checkins list`가 insertion order로 출력(sibling `followup list`는 scheduledFor 정렬)했던 비일관 → `dueAtIso` 오름차순 정렬(soonest first), `.slice().sort(localeCompare)`.
+- **왜**: 드릴은 verifier가 "옵션은 파싱되나 무시 + 순서-맹목 테스트"를 잡는지 검증(fire 26 tautology와 다른 결). 실 fix는 cross-command 일관성 — insertion order는 다가올 일정 스캔에 무의미.
+- **리뷰지점**: 드릴 판정이 merits-based(judge가 order-blind 단언을 정확히 지목). 실 fix 테스트는 **order-asserting**(`map(id)===['early','mid','late']`, 드릴이 결여한 바로 그것) — source revert 시 insertion order로 RED. ISO 문자열 lexicographic=chronological. status 後·search 前 정렬이라 둘 다 합성. 비-mutating. NOTE: 드릴 judge가 repo root에서 돌아 path 혼동 → 실 fix judge엔 worktree 경로 명시.
+- **리스크**: 없음(list action 정렬 +6/-1 + 신규 테스트; 드릴 verifier FAIL 확인+롤백 완료; 실 fix는 독립 Opus judge가 worktree에서 revert→RED·order-assert·chronological·non-mutating·합성·무회귀 검증 후 PASS, cli 2656/2656).

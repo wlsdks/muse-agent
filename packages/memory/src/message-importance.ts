@@ -86,8 +86,8 @@ export function scoreMessageContent(
   // Minimum-length guard: a 1-char `activeTaskTitle` ("X") or a
   // 2-char `currentFocus` ("hi") would substring-match nearly
   // every message and saturate the importance score regardless of
-  // relevance, the same false-positive class iter 16 closed in
-  // tool-filter. Three characters preserves real signal (Korean
+  // relevance, the same false-positive class the tool-filter
+  // min-length guard closed. Three characters preserves real signal (Korean
   // morphemes are usually 2-syllable / 6 bytes, English domain
   // words like "rag", "pii", "ttl" stay matchable) while killing
   // off pathological one/two-char triggers.

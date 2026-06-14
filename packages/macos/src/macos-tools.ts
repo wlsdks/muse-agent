@@ -28,8 +28,8 @@
 
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
-import { escapeAppleScript, isPermissionError, runChild, type MacCommandResult } from "./macos-exec.js";
-export type { MacCommandResult } from "./macos-exec.js";
+import { defaultOsascriptRunner, escapeAppleScript, isPermissionError, OSASCRIPT_TIMEOUT_MS, runChild, type MacCommandResult, type MacOsascriptRunner } from "./macos-exec.js";
+export type { MacCommandResult, MacOsascriptRunner } from "./macos-exec.js";
 
 /**
  * Outbound-safety primitives, defined LOCALLY so this package never depends on
@@ -66,23 +66,16 @@ export interface MacMessageDraft {
 /** Presents the EXACT iMessage draft to the user; returns approve/deny. */
 export type MacMessageApprovalGate = (draft: MacMessageDraft) => Promise<MacApprovalDecision> | MacApprovalDecision;
 
-const OSASCRIPT_PATH = "/usr/bin/osascript";
 const SHORTCUTS_PATH = "/usr/bin/shortcuts";
 const PMSET_PATH = "/usr/bin/pmset";
 const DF_PATH = "/bin/df";
 const NETWORKSETUP_PATH = "/usr/sbin/networksetup";
 const IPCONFIG_PATH = "/usr/sbin/ipconfig";
-const OSASCRIPT_TIMEOUT_MS = 30_000;
 /** A shortcut can do real work (network, HomeKit) — give it a longer leash. */
 const SHORTCUTS_TIMEOUT_MS = 120_000;
 
-/** Runs an AppleScript via `osascript -` (script on stdin). Injected in tests. */
-export type MacOsascriptRunner = (script: string) => Promise<MacCommandResult>;
 /** Runs the `shortcuts` CLI with argv + optional stdin input. Injected in tests. */
 export type ShortcutsRunner = (args: readonly string[], input?: string) => Promise<MacCommandResult>;
-
-const defaultOsascriptRunner: MacOsascriptRunner = (script) =>
-  runChild(OSASCRIPT_PATH, ["-"], script, OSASCRIPT_TIMEOUT_MS);
 
 const defaultShortcutsRunner: ShortcutsRunner = (args, input) =>
   runChild(SHORTCUTS_PATH, args, input, SHORTCUTS_TIMEOUT_MS);

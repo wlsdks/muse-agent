@@ -66,3 +66,12 @@ export function isPermissionError(stderr: string): boolean {
   // events"; the wording varies by locale so match the numeric code too.
   return /not allowed|don't have permission|not authori[sz]|-1743/iu.test(stderr);
 }
+
+const OSASCRIPT_PATH = "/usr/bin/osascript";
+export const OSASCRIPT_TIMEOUT_MS = 30_000;
+
+/** Runs an AppleScript via `osascript -` (script on stdin). Injected in tests. */
+export type MacOsascriptRunner = (script: string) => Promise<MacCommandResult>;
+
+export const defaultOsascriptRunner: MacOsascriptRunner = (script) =>
+  runChild(OSASCRIPT_PATH, ["-"], script, OSASCRIPT_TIMEOUT_MS);
