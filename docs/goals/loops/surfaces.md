@@ -282,3 +282,12 @@ ratchet: cli tests 2639 (+3) · testFiles 985 · fabrication 0 · self-eval exit
 - **왜**: 과거 due는 거의 typo(잘못된 연도/"어제") → 태스크가 태어나자마자 overdue. remind는 경고, tasks는 침묵이던 cross-command 비일관(fire 12/14 클래스). 신호-우선(.muse/runs 비어) → cli/desktop scout(rate-limit) → inline-scout로 id-resolution은 전부 안전 확인 後 이 비일관 발굴.
 - **리뷰지점**: 게이트가 remind와 동형(`!options.json && past`, tasks는 optional `--due`라 `resolvedDueAt` truthiness 추가). 미지정 due→무경고, 미래 due→무경고(false-positive 가드 테스트 2), --json→억제(테스트 3). stderr 전용이라 json/human stdout 페이로드 무오염. 태스크는 여전히 저장(non-blocking).
 - **리스크**: 없음(add action +7 + 신규 테스트 블록만; 독립 Opus judge가 mutation-test(블록 제거→테스트1 RED, load-bearing 확인)·remind 의미 동형·false-positive 없음·무회귀 검증 후 PASS, cli 2639/2639·self-eval exit 0).
+
+## fire 32 · 2026-06-14 · skill v1.14.0 · 73dae149
+meta: surface=web · value-class=wiring · pkg=@muse/web · kind=a11y-delete-button-accessible-name-batch · verdict=PASS · firesSinceDrill=6
+ratchet: web unit 36/36 · calendar e2e 1/1 · testFiles 989 · fabrication 0 · self-eval exit 0 · 표면 균형 web12·desktop9·cli11
+
+- **무엇**: fire 28이 Chat 아이콘-only 버튼만 고쳤고, 동일 WCAG 4.1.2 갭이 5개 view의 아이콘-only 삭제 버튼(Tasks/Calendar/Reminders/Autonomy/Notes)에 남아 있었다 — 각 `<Button title={delete}><Icon.trash/></Button>`(SVG aria-hidden)라 스크린리더가 "button"으로만 읽음. 5곳 모두 `ariaLabel={t("common.delete")}` 추가(title 보존). 동질 배치.
+- **왜**: 삭제는 파괴적 액션 — 시각장애 사용자가 어느 버튼이 삭제인지 알아야 함. fire 28이 시작한 cross-view 아이콘-only 접근명 계약 완성. 비-투기적(갭이 소스에 그대로 노출).
+- **리뷰지점**: calendar e2e가 대표 검증 — `toHaveAttribute("aria-label","Delete")`로 비-vacuous(judge가 Calendar revert로 RED 확인, getByRole는 title fallback으로 여전히 resolve하나 attr 단언은 null로 FAIL). 5곳 byte-identical wiring, Button.ariaLabel 포워딩은 fire 28 ui.button.test로 lock. title 보존. NOTE: 동시 루프發 @muse/shared stale-dist(finiteOr export) 만나 rebuild로 해소([[project_stale_dist_from_loop]]).
+- **리스크**: 없음(5 view 1줄씩 + e2e 1단언; 순수 presentational a11y, Button 컴포넌트 무변; 독립 Opus judge가 revert로 RED-before·비-vacuous·5곳 전부 icon-only·무회귀·RATCHET 검증 후 PASS, web 36/36·calendar e2e 1/1·tsc clean).
