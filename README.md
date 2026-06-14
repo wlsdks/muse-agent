@@ -67,9 +67,9 @@ across all fields is [further down](#cross-field-mechanism-distillation-the-moat
 | Ecology / network science | Keystone species + brokerage (Paine 1966; Freeman 1977) | `muse notes bridges` — the notes connecting your otherwise-separate topics |
 | Network science | k-shell influential spreaders (Kitsak et al. 2010) | `muse notes hubs` — the load-bearing core of your notes (depth, not degree) |
 
-Deep dives: [the edge](docs/strategy/the-edge.md) ·
-[Whetstone](docs/strategy/whetstone.md) ·
-[cross-field catalog](docs/strategy/cross-field-research.md).
+Deep dives: [differentiation](docs/strategy/differentiation.md) ·
+[verified feature catalog](docs/feature-catalog/INDEX.md) ·
+[frontier research](docs/strategy/frontier-research-2026-06.md).
 
 **Quickstart:** `muse onboard` walks you — one command at a time — from a
 fresh install to your first private, cited answer (point it at a notes
@@ -94,7 +94,7 @@ retrieves your relevant notes per turn and answers from them with the source
 cited (ask "what's my office VPN MTU?" and it quotes your note's 1380, not the
 textbook 1500), instead of confabulating; nothing relevant in your notes ⇒ it
 stays on the refusal floor. Every surface Muse gains plugs into the gate.
-Full rationale: [`docs/strategy/the-edge.md`](docs/strategy/the-edge.md).
+Full rationale: [`docs/strategy/differentiation.md`](docs/strategy/differentiation.md).
 
 ### How it improves on a *fixed* local model: Playbook + Whetstone
 
@@ -105,7 +105,7 @@ gets *wrong* and systematically grinds it down. Grounded in real learning-scienc
 and 2024-2026 agent research; Whetstone strengthens the grounding edge (it
 remediates the gate's own misses, with a calibration brake against
 over-confidence) and never bypasses it. Design + citations:
-[`docs/strategy/whetstone.md`](docs/strategy/whetstone.md).
+[`docs/strategy/differentiation.md`](docs/strategy/differentiation.md).
 
 A native **macOS desktop companion** (a floating, voice-capable orb;
 on-device speech via WhisperKit + Qwen3-TTS) is the newest surface — same
@@ -182,11 +182,12 @@ These are deliberate product boundaries, enforced in code — not TODOs:
   paths and now also self-record every send to the action log.
 - **Single user, single environment.** No multi-tenant accounts, no
   shared workspace, no RBAC. Identity is your local `$USER`.
-- **Vision input is provider-limited.** Image attachments are
-  serialized only on the OpenAI Chat-Completions path,
-  OpenAI-compatible / OpenRouter, and Gemini. They are **not** sent on
-  Anthropic (capability declared but unwired) or local Ollama, and not
-  on the OpenAI Responses path.
+- **Vision input — one path excepted.** Image attachments are
+  serialized on local **Ollama** (gemma4, the `muse ask --image` path),
+  **Anthropic**, the OpenAI **Chat-Completions** path, OpenAI-compatible /
+  OpenRouter, and **Gemini**. The one exception is the OpenAI **Responses**
+  API path, which is still text-only (it emits `input_text` only). Under
+  local-only (the default) image bytes never leave the machine regardless.
 
 ## Architecture at a glance
 
@@ -373,7 +374,7 @@ Or via env vars (`MUSE_CALENDAR_PROVIDERS=local,gcal`,
 Tests are the only form of verification. The repo ships these gates:
 
 ```bash
-pnpm check                                      # build + test for every workspace (~4,460 tests)
+pnpm check                                      # build + test for every workspace (thousands of tests across all 27 packages)
 pnpm smoke:broad                                # 51 HTTP endpoints, diagnostic provider
 pnpm smoke:live                                 # real LLM round-trip — LOCAL OLLAMA ONLY, gemma4:12b default (auto-skips if Ollama is unreachable)
 ```
@@ -476,8 +477,7 @@ decision & information theory, linguistics, psychology, forensic & environmental
 statistics — distilling a real mechanism into a deterministic, live-verified
 capability. A rival can copy a feature; copying a *research-distillation
 discipline yoked to a fabrication-zero floor* is far harder. The complete
-catalog (with negative results — mechanisms tried and rejected — in
-[`docs/strategy/cross-field-research.md`](docs/strategy/cross-field-research.md)):
+catalog (see also [`docs/strategy/differentiation.md`](docs/strategy/differentiation.md)):
 
 | Field | Mechanism (paper) | Muse capability |
 | --- | --- | --- |
@@ -502,8 +502,8 @@ catalog (with negative results — mechanisms tried and rejected — in
 | Psychology | Implementation intentions / time-blocking (Gollwitzer 1999) | `muse calendar block` — book the next free slot to protect focus |
 | Cognition / strategy | First-principles (Musk) + contrarian question (Thiel) | reasoning principles in `muse ask` — the engine; the grounding floor is the brake |
 
-Each mechanism cites its paper in the module header comment; every slice is
-recorded in [`CAPABILITIES.md`](docs/goals/CAPABILITIES.md).
+Each mechanism cites its paper in the module header comment; the verified
+feature inventory lives in [`docs/feature-catalog/INDEX.md`](docs/feature-catalog/INDEX.md).
 
 ## License
 

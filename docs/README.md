@@ -2,7 +2,7 @@
 title: Muse 문서 안내 (인덱스)
 audience: [기획자, 개발자, AI 에이전트]
 purpose: Muse 문서 집합의 단일 진입점 — 어떤 문서가 무엇을 담는지
-updated: 2026-05-29
+updated: 2026-06-14
 related: [SYSTEM-MAP.md, FEATURES.md]
 ---
 
@@ -16,6 +16,7 @@ Muse 문서는 "필요한 것만, 짧게, 잘 분리해서" 유지합니다. 처
 |---|---|---|
 | **[SYSTEM-MAP.md](SYSTEM-MAP.md)** | Muse 기능을 한눈에 보는 구조 지도 (말로만, 빠른 파악용) | 기획·개발 모두 / 처음 보는 사람 |
 | **[FEATURES.md](FEATURES.md)** | 기능별 상세 정의 (사용자 입장에서 무엇을 어떻게) | 기획·설계 의사결정 |
+| **[feature-catalog/INDEX.md](feature-catalog/INDEX.md)** | 전수 검증된 전체 기능 인벤토리 (기능마다 실행/테스트/소스 증거; 2026-06-14) | 정확한 사실이 필요한 사람 / AI 에이전트 |
 | **[privacy-and-data.md](privacy-and-data.md)** | 내 데이터는 어디 있고 무엇이 절대 안 나가나 (프라이버시 요약) | 도입 전 확인하는 사람 |
 
 ## 직접 돌려보려면

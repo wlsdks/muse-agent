@@ -91,15 +91,20 @@ docs/
 
 ## Personal-domain primitives
 
-The agent ships three personal loopback MCP servers, all
-file-backed by default:
+The agent ships a set of file-backed personal loopback MCP servers
+(notes, tasks, calendar, reminders, episode, followup, status,
+history, …), all local by default. Contacts are a first-class personal
+store + CLI (`muse contacts`) but are surfaced via a tool, not a
+`muse.contacts` server namespace.
 
 - `muse.notes.*` → `~/.muse/notes/` markdown directory
   (drop-in compatible with an Obsidian vault).
 - `muse.tasks.*` → `~/.muse/tasks.json` todo list.
-- `muse.calendar.*` → provider-neutral, four backends behind one
-  registry. `muse setup calendar` walks the user through OAuth /
-  app-password setup interactively.
+- `muse.reminders.*` → `~/.muse/reminders.json` store.
+- `muse.calendar.*` → provider-neutral, **five backends** (Local,
+  Local-ICS, Google, CalDAV, macOS) behind one registry.
+  `muse setup calendar` walks the user through OAuth / app-password
+  setup interactively.
 
 User-memory auto-extraction (`MUSE_USER_MEMORY_AUTO_EXTRACT=true`,
 default `true`) runs an extra structured-output LLM call after each

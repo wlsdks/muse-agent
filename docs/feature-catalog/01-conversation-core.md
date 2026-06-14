@@ -150,7 +150,7 @@ Test-suite health (run this session):
 
 2. **Not a README drift (correction):** the `qwen2.5:7b` "15× faster" line lives ONLY in the `--no-tools` flag DESCRIPTION (`program.ts:313`, shown in `--help`) — it is NOT in README. It's a benchmark anecdote in a flag description, not a default-model claim. Optional: refresh the example model.
 
-3. **README ~188 "Anthropic (capability declared but unwired)" is correct in context** — it refers specifically to Anthropic **vision/image input** being unwired, NOT the adapter. `adapter-anthropic.ts`/`provider-anthropic.ts` exist and ANTHROPIC_API_KEY maps to `claude-haiku-4-5-20251001`; the adapter IS wired. Only image attachments aren't serialized on the Anthropic path (see README's vision-provider-limited note).
+3. ✅ FIXED 2026-06-14 — the old README "Anthropic (capability declared but unwired)" / "not on local Ollama" vision claim was STALE. Verified in source: **Anthropic now serializes image blocks** (`provider-anthropic.ts:59-71`, vision cap honoured `:206-208`) and **local Ollama sends `images:[base64]`** (`adapter-ollama.ts:333-346`, the `muse ask --image` path). The ONLY text-only path is OpenAI **Responses** (`toOpenAIResponsesRequest` emits `input_text`, `provider-openai.ts:157`). README/FEATURES vision wording corrected accordingly.
 
 4. **FEATURES.md / SYSTEM-MAP.md coverage gap (feature missing from docs).**
    These Korean docs are end-user feature lists and contain **almost nothing**

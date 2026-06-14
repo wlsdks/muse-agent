@@ -2,7 +2,7 @@
 title: 로컬 LLM 설치 가이드 (Local LLM setup)
 audience: [사용자, 개발자]
 purpose: 클라우드 비용 없이 로컬 오픈소스 모델(Ollama)로 Muse를 띄우는 방법
-updated: 2026-05-30
+updated: 2026-06-14
 related: [README.md, SYSTEM-MAP.md]
 ---
 
@@ -49,6 +49,9 @@ ollama pull qwen2.5:7b-instruct        # mid,  4.7 GB, proven baseline
 ollama pull qwen3.5:9b-q4_K_M          # high, 6.6 GB, best reply quality
 ollama pull qwen3.6:27b                # power, 17 GB, agentic coding
 
+# 3b. pull the embedding model — REQUIRED for notes/RAG search & recall
+ollama pull nomic-embed-text-v2-moe    # Muse's default embedder (KO+EN); without it, RAG search fails
+
 # 4. tell Muse to use it
 muse setup local
 
@@ -93,7 +96,7 @@ with `--model ollama/<tag>` — but Qwen 3.5 (Feb–Apr 2026) is the
 default. It has tighter tool calling and noticeably better multilingual
 performance than the 2.5 line at the same parameter count.
 
-**Measured on M3 Pro / 36 GB RAM, Ollama 0.21.1** (run
+**Measured on M3 Pro / 36 GB RAM (historical Qwen-2.5 baseline, Ollama 0.21.1; gemma4 needs Ollama ≥ 0.30)** (run
 `node scripts/dogfood-local-llm.mjs <tag>` to reproduce). Numbers
 below are from Qwen 2.5 (still recorded as historical baseline);
 re-run for Qwen 3.5 on your hardware:
