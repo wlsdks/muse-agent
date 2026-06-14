@@ -24,7 +24,7 @@ export interface WeekDay {
 }
 
 export interface WeekAgendaInput {
-  readonly events: readonly { readonly title: string; readonly startsAtIso: string }[];
+  readonly events: readonly { readonly title: string; readonly startsAtIso: string; readonly allDay?: boolean }[];
   readonly tasks: readonly { readonly title: string; readonly dueAt: string }[];
   readonly birthdays: readonly { readonly name: string; readonly daysUntil: number }[];
   /** Due reminders (time-anchored alerts) — bucketed by `dueAt` and sorted with events by time. */
@@ -56,7 +56,13 @@ export function groupWeekAgenda(data: WeekAgendaInput, now: Date, days = 7): rea
   };
   for (const event of data.events) {
     const ms = Date.parse(event.startsAtIso);
-    if (Number.isFinite(ms)) {
+    if (!Number.isFinite(ms)) continue;
+    // An all-day event (a holiday/birthday/trip) is date-only — render it as a
+    // plain all-day item, NOT a fabricated "00:00" clock time, and sort it to the
+    // top of its day (its midnight start). Parity with today_brief.
+    if (event.allDay) {
+      push(dayIndex(ms), `📅 ${clean(event.title)} (all day)`, ms);
+    } else {
       push(dayIndex(ms), `${new Date(ms).toTimeString().slice(0, 5)} ${clean(event.title)}`, ms);
     }
   }

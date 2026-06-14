@@ -737,7 +737,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       weekInput: async () => {
         const horizon = new Date();
         const events = calendarRegistry
-          ? (await calendarRegistry.listEvents({ from: horizon, to: new Date(horizon.getTime() + 14 * 86_400_000) })).map((e) => ({ startsAtIso: e.startsAt.toISOString(), title: e.title }))
+          ? (await calendarRegistry.listEvents({ from: horizon, to: new Date(horizon.getTime() + 14 * 86_400_000) })).map((e) => ({ startsAtIso: e.startsAt.toISOString(), title: e.title, ...(e.allDay ? { allDay: true } : {}) }))
           : [];
         const tasks = (await readTasks(tasksFile).catch(() => []))
           .filter((task) => task.status === "open" && typeof task.dueAt === "string")
