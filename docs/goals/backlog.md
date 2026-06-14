@@ -2242,3 +2242,4 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ✓ worstUnsupportedSentence tie-break covered (earliest sentence on equal coverage — deterministic grounding diagnostics) — test-hygiene fire 45
 - ✓ formatContactBirthday lower-bound guard covered (month<1/day<1 → no garbage birthday in grounding block) — test-hygiene fire 46
 - ✓ computeApproximateTokens CJK bucketing covered for Chinese/Hiragana/Katakana (not just Hangul → multilingual trim-budget accuracy) — test-hygiene fire 47
+- ✓ mcp-routes-shapers sendMcpError double-run consolidated into src (non-Error-throwable leak-safety case migrated+hardened, test/ deleted) — test-hygiene fire 48
