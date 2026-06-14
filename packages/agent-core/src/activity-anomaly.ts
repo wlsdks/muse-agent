@@ -13,6 +13,8 @@
  * days (a day you wrote 5× less than usual is as informative as a spike).
  */
 
+import { median } from "./median.js";
+
 const DAY_MS = 24 * 60 * 60_000;
 const MODZ_CONST = 0.6745; // 0.75th quantile of the standard normal — makes MAD a consistent sd estimator
 const DEFAULT_THRESHOLD = 3.5; // Iglewicz-Hoaglin recommended cutoff
@@ -40,15 +42,6 @@ export interface AnomalyOptions {
   /** Need at least this many days of history. Default 7. */
   readonly minDays?: number;
   readonly maxResults?: number;
-}
-
-function median(sortedAscending: readonly number[]): number {
-  const n = sortedAscending.length;
-  if (n === 0) {
-    return 0;
-  }
-  const mid = Math.floor(n / 2);
-  return n % 2 === 0 ? (sortedAscending[mid - 1]! + sortedAscending[mid]!) / 2 : sortedAscending[mid]!;
 }
 
 /**

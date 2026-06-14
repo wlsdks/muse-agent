@@ -17,6 +17,8 @@
  * a while" for the user to act on.
  */
 
+import { median } from "./median.js";
+
 const DAY_MS = 24 * 60 * 60_000;
 const DEFAULT_OVERDUE_RATIO = 2.5;
 const DEFAULT_MIN_INTERACTIONS = 3;
@@ -71,15 +73,6 @@ function collapseToDailyOccasions(sortedAscending: readonly number[]): number[] 
     }
   }
   return occasions;
-}
-
-function median(sortedAscending: readonly number[]): number {
-  const n = sortedAscending.length;
-  if (n === 0) {
-    return 0;
-  }
-  const mid = Math.floor(n / 2);
-  return n % 2 === 0 ? (sortedAscending[mid - 1]! + sortedAscending[mid]!) / 2 : sortedAscending[mid]!;
 }
 
 /**
