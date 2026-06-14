@@ -140,4 +140,17 @@ describe("worstUnsupportedSentence", () => {
     const worst = worstUnsupportedSentence(report);
     expect(worst).toContain("Dragons");
   });
+
+  it("ties resolve to the EARLIEST unsupported sentence (deterministic diagnostics)", () => {
+    // Both sentences are fully fabricated (no token in the evidence) → coverage 0
+    // each, a TIE. The strict `<` comparison must keep the FIRST, so the worst-sentence
+    // pointer is stable regardless of which equally-ungrounded sentence comes later.
+    const answer = "Dragons breathe purple fire. Unicorns grant silver wishes.";
+    const evidence = ["lions hunt animals africa"];
+    const report = reportSentenceGroundedness(answer, evidence, 0.9);
+
+    expect(report.sentences.filter((s) => s.label === "unsupported").length).toBe(2);
+    const worst = worstUnsupportedSentence(report);
+    expect(worst).toContain("Dragons");   // the earliest of the two coverage-0 ties, not "Unicorns"
+  });
 });
