@@ -77,6 +77,17 @@ describe("FileUserMemoryStore", () => {
     expect(memory?.preferences).toEqual({});
   });
 
+  it("forget(key, kind) is namespace-scoped — a fact retraction keeps a same-key preference (production path)", async () => {
+    const { store } = await newStore();
+    await store.upsertFact("stark", "pet", "cat");
+    await store.upsertPreference("stark", "pet", "dog");
+
+    expect(await store.forget("stark", "pet", "fact")).toBe(true);
+    const after = await store.findByUserId("stark");
+    expect(after?.facts.pet).toBeUndefined(); // the fact was retracted
+    expect(after?.preferences.pet).toBe("dog"); // the preference the user never retracted SURVIVES
+  });
+
   it("re-confirming an existing fact moves it to the tail (so the persona's freshest-N cap keeps it)", async () => {
     const { file, store } = await newStore();
     await store.upsertFact("stark", "a", "1");
