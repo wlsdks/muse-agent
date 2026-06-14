@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { SchedulerValidationError } from "../src/scheduler-errors.js";
 import {
-  SchedulerValidationError,
   requireText,
   validateCronExpression,
   validateExecutionTimeout,
   validateJobName
-} from "../src/scheduler-helpers.js";
+} from "../src/scheduler-validation.js";
 
 describe("validateCronExpression", () => {
   it("accepts standard 5- and 6-field expressions and @-macros the parser supports", () => {

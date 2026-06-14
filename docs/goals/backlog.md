@@ -306,6 +306,7 @@
 - ◦ broaden source-conflict value extraction — the `label: value` regex truncates values at comma/period (`Address: 12 Baker St, London` → only "12 Baker St"), a partial false-negative. Broaden extraction (handle comma-bearing values like addresses) without re-introducing the prose/clock-time false positives. (noted fires 7-9)
 
 ## ✓ Fixed (dedup ledger — one line each; detail in the per-loop journal)
+- ✓ Decompose scheduler-helpers validation cluster (6 validate* + requireText + consts) → scheduler-validation.ts; SchedulerValidationError test repoint restores type assertion — codebase-quality fire 106
 
 - ✓ hedge-overclaim (certainty escalation) grounding guard — token coverage ignored modal certainty so a categorical claim grounded in hedged evidence (may→does); added detectHedgeOverclaim + fail-close (FActScore arXiv:2305.14251). Completes the sentence-vs-evidence semantic guard trio (negation/numeric/hedge) — grounding-integrity fire 22
 
