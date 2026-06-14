@@ -358,7 +358,8 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
     .command("resolve")
     .description("Resolve a name to a recipient — reports AMBIGUOUS / not-found rather than guessing")
     .argument("<name...>", "Name or alias to resolve")
-    .action(async (nameParts: readonly string[]) => {
+    .option("--json", "Emit the resolution as JSON: { status: 'resolved'|'ambiguous'|'none', contact?, matches? }")
+    .action(async (nameParts: readonly string[], options: { readonly json?: boolean }) => {
       const query = nameParts.join(" ").trim();
       if (query.length === 0) {
         io.stderr("usage: muse contacts resolve <name>\n");
@@ -367,18 +368,30 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
       }
       const resolution = resolveContact(await queryContacts(contactsFile()), query);
       if (resolution.status === "resolved") {
-        io.stdout(`${describeContact(resolution.contact)}\n`);
+        // JSON goes to stdout for every status (a caller always parses stdout);
+        // exit code still signals non-resolution so shell `if` checks work.
+        io.stdout(options.json
+          ? `${JSON.stringify({ status: "resolved", contact: resolution.contact }, null, 2)}\n`
+          : `${describeContact(resolution.contact)}\n`);
         return;
       }
       if (resolution.status === "ambiguous") {
-        io.stderr(`'${query}' is ambiguous — did you mean one of:\n`);
-        for (const match of resolution.matches) {
-          io.stderr(`  - ${describeContact(match)}\n`);
+        if (options.json) {
+          io.stdout(`${JSON.stringify({ status: "ambiguous", matches: resolution.matches }, null, 2)}\n`);
+        } else {
+          io.stderr(`'${query}' is ambiguous — did you mean one of:\n`);
+          for (const match of resolution.matches) {
+            io.stderr(`  - ${describeContact(match)}\n`);
+          }
         }
         process.exitCode = 1;
         return;
       }
-      io.stderr(`No contact matches '${query}'. Add one with \`muse contacts add\`.\n`);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ status: "none" }, null, 2)}\n`);
+      } else {
+        io.stderr(`No contact matches '${query}'. Add one with \`muse contacts add\`.\n`);
+      }
       process.exitCode = 1;
     });
 
