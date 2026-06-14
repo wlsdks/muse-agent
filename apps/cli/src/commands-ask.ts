@@ -65,6 +65,8 @@ import { resolveReflectionsFile } from "./commands-reflections.js";
 import { routeAskTierModel } from "./ask-tier-models.js";
 
 export { resolveAskTierModels, routeAskTierModel, type AskTierModels } from "./ask-tier-models.js";
+import { parseBoundedInt } from "./parse-bounded-int.js";
+export { parseBoundedInt } from "./parse-bounded-int.js";
 import type { Command } from "commander";
 
 import { cosine, isNotesIndexStale, loadNoteLinkGraph, NOTE_FILE_RE, reindexNotes } from "./commands-notes-rag.js";
@@ -457,23 +459,6 @@ function defaultUserKey(user: string | undefined, persona: string | undefined): 
  * (unit slip like `5x`, `abc`, `0`) rejects with a clear
  * message instead of silently using the default.
  */
-export function parseBoundedInt(
-  raw: string | undefined,
-  flag: string,
-  min: number,
-  max: number,
-  fallback: number
-): number {
-  if (raw === undefined || raw.trim().length === 0) {
-    return fallback;
-  }
-  const parsed = Number(raw.trim());
-  if (!Number.isFinite(parsed) || parsed < min) {
-    throw new Error(`${flag} must be an integer in [${min.toString()}, ${max.toString()}] (got '${raw}')`);
-  }
-  return Math.min(max, Math.trunc(parsed));
-}
-
 export interface AskStreamEvent {
   readonly type: string;
   readonly text?: string;
