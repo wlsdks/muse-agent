@@ -108,6 +108,16 @@ export function decideProactiveRecall(
 export const DEFAULT_FINDING_COOLDOWN_MS = 6 * 60 * 60 * 1_000;
 
 /**
+ * Working-set cap on the suppressor's last-surfaced Map. The cooldown bounds
+ * RETENTION TIME, but the daemon constructs ONE suppressor for its whole lifetime
+ * (commands-daemon proactive tick), so over days of distinct findings the Map
+ * would grow one entry per unique finding forever — an unbounded working set is
+ * a tail-latency / leak vector independent of TTL (AMV-L, arXiv:2603.04443).
+ * Mirror ToolCallDeduplicator's 256-entry oldest-first eviction.
+ */
+export const DEFAULT_FINDING_SUPPRESSOR_MAX_ENTRIES = 256;
+
+/**
  * Anti-nag re-surface gate for proactive findings (Proactive Agent,
  * arXiv:2410.12361 — a re-shown identical proactive surfacing is the canonical
  * "rejected" interruption). `decideProactiveRecall` decides WHETHER a finding is
@@ -124,9 +134,13 @@ export const DEFAULT_FINDING_COOLDOWN_MS = 6 * 60 * 60 * 1_000;
 export class FindingResurfaceSuppressor {
   private readonly lastSurfacedMs = new Map<string, number>();
   private readonly cooldownMs: number;
+  private readonly maxEntries: number;
 
-  constructor(cooldownMs: number = DEFAULT_FINDING_COOLDOWN_MS) {
+  constructor(cooldownMs: number = DEFAULT_FINDING_COOLDOWN_MS, maxEntries: number = DEFAULT_FINDING_SUPPRESSOR_MAX_ENTRIES) {
     this.cooldownMs = cooldownMs > 0 ? cooldownMs : DEFAULT_FINDING_COOLDOWN_MS;
+    // A non-finite / non-positive cap would make `size > maxEntries` never true
+    // (unbounded again) — guard to the default, mirroring ToolCallDeduplicator.
+    this.maxEntries = Number.isFinite(maxEntries) && maxEntries > 0 ? Math.trunc(maxEntries) : DEFAULT_FINDING_SUPPRESSOR_MAX_ENTRIES;
   }
 
   /**
@@ -140,6 +154,15 @@ export class FindingResurfaceSuppressor {
     const last = this.lastSurfacedMs.get(key);
     if (last !== undefined && nowMs - last < this.cooldownMs) return false;
     this.lastSurfacedMs.set(key, nowMs);
+    if (this.lastSurfacedMs.size > this.maxEntries) {
+      // Oldest-first (insertion-order) eviction so the long-lived daemon's
+      // suppressor can't pin unbounded memory; an evicted stale finding just
+      // re-shows once (the same harmless cross-restart behavior).
+      const oldest = this.lastSurfacedMs.keys().next().value;
+      if (oldest !== undefined) {
+        this.lastSurfacedMs.delete(oldest);
+      }
+    }
     return true;
   }
 }

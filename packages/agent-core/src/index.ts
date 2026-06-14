@@ -270,6 +270,7 @@ export {
   createConfidenceGatedInvestigator,
   decideProactiveRecall,
   DEFAULT_FINDING_COOLDOWN_MS,
+  DEFAULT_FINDING_SUPPRESSOR_MAX_ENTRIES,
   FindingResurfaceSuppressor,
   type ConfidenceGatedInvestigatorDeps,
   type ProactiveRecallDecision
