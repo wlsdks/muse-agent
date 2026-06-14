@@ -287,3 +287,34 @@ describe("muse contacts list --json — scripting parity with overdue/dupes/rela
     expect(JSON.parse(r.stdout)).toEqual([]);
   });
 });
+
+describe("muse contacts resolve --json — machine-readable resolution (recipient-resolution backbone)", () => {
+  it("resolved → { status: 'resolved', contact } on stdout, exit 0", async () => {
+    const file = contactsFile();
+    await run(file, ["add", "Mona", "--email", "mona@example.com"]);
+    const r = await run(file, ["resolve", "Mona", "--json"]);
+    expect(r.exitCode).toBeUndefined();
+    const payload = JSON.parse(r.stdout);
+    expect(payload.status).toBe("resolved");
+    expect(payload.contact.email).toBe("mona@example.com");
+  });
+
+  it("ambiguous → { status: 'ambiguous', matches } on stdout, exit 1 (parseable, not human lines)", async () => {
+    const file = contactsFile();
+    await run(file, ["add", "Bob", "--email", "bob1@example.com"]);
+    await run(file, ["add", "Bob", "--email", "bob2@example.com"]);
+    const r = await run(file, ["resolve", "Bob", "--json"]);
+    expect(r.exitCode).toBe(1);
+    const payload = JSON.parse(r.stdout);
+    expect(payload.status).toBe("ambiguous");
+    expect(payload.matches.length).toBe(2);
+  });
+
+  it("not-found → { status: 'none' } on stdout, exit 1", async () => {
+    const file = contactsFile();
+    await run(file, ["add", "Alice", "--handle", "@alice"]);
+    const r = await run(file, ["resolve", "Carol", "--json"]);
+    expect(r.exitCode).toBe(1);
+    expect(JSON.parse(r.stdout).status).toBe("none");
+  });
+});

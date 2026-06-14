@@ -336,3 +336,12 @@ ratchet: web unit 40/40 · autonomy e2e 1/1 · testFiles 998 · fabrication 0 ·
 - **왜**: fire 36이 시작한 폼-라벨 접근명 계약을 다음 폼(연락처 추가)으로 확장. contacts는 outbound-safety 백본이라 폼 접근성 가치 높음(단 이 슬라이스는 ADD 폼 라벨만, recipient resolution/send 경로 무접촉).
 - **리뷰지점**: getByLabel은 프로그래매틱 연결로만 resolve → htmlFor 없으면 e2e RED(judge가 source-revert로 load-bearing 실증). id 3개 고유·htmlFor 정확. 가시 라벨이 접근명(이중 라벨 없음). round-trip(연락처 추가 postedContact) 유지. objectives/vetoes/actions 무변.
 - **리스크**: 없음(Autonomy 3 label/input쌍 + e2e만; 순수 presentational a11y, value/onChange/send 경로 무변; 독립 Opus judge가 worktree서 revert→RED·연결 정확성·무이중라벨·무회귀·send경로 무접촉 검증 후 PASS, web 40/40·autonomy e2e 1/1).
+
+## fire 38 · 2026-06-14 · skill v1.14.0 · 19a92ec8
+meta: surface=cli · value-class=new-capability · pkg=@muse/cli · kind=contacts-resolve-json · verdict=PASS · firesSinceDrill=3
+ratchet: cli tests 2659 (+3) · testFiles 999 · fabrication 0 · self-eval exit 0 · 표면 균형 web15·desktop10·cli13
+
+- **무엇**: `muse contacts resolve`(outbound-safety recipient-resolution 백본)가 human 출력만 있고 `--json` 없었다(sibling `contacts list`엔 있음). `--json` 추가 — resolved→`{status,contact}`/ambiguous→`{status,matches}`/none→`{status:"none"}`, 항상 stdout(caller가 항상 파싱), ambiguous/none은 exit 1 유지.
+- **왜**: recipient 해석을 프로그램이 점검(자동화/스크립팅)할 기계가독 출력 — 안전-인접 가치. cli 표면(웹 과집중 해소) + new-capability(consistency-patch 아님). desktop core 포화·cli list 일관성 마감 後 발굴.
+- **리뷰지점**: exit code가 양 모드 동일(`process.exitCode=1`이 json 분기 밖, ambiguous/none early-return 전에 실행). human 경로 byte-동일 → 기존 human resolve 테스트 통과. resolveContact 로직 무변 → never-guess 불변식 유지(ambiguous가 단일 recipient로 붕괴 안 함). 빈 쿼리 usage는 json화 안 함.
+- **리스크**: 없음(resolve action 한정 +19/-6 + 신규 3 테스트; resolveContact·send 경로 무접촉; 독립 Opus judge가 RED-before·비-vacuous·양모드 exit 보존·human/safety 로직 무회귀 검증 후 PASS, cli 2659/2659·self-eval exit 0).
