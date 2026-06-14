@@ -140,6 +140,26 @@ final class SpriteLibraryTests: XCTestCase {
         XCTAssertFalse(undefinedInAnimationRow.paletteCoversGrid())
     }
 
+    func testPaletteHexesValid() {
+        // The renderer skips any palette colour whose hex won't parse (HexColor
+        // returns nil → SpriteRenderer continues), so a typo'd hex renders a
+        // transparent HOLE just like an unmapped glyph. Built-ins must all parse
+        // (incl. the deliberate "#00000000" transparent key); a bad hex is rejected.
+        for sprite in SpriteLibrary.all + [MuseSprite.default] {
+            XCTAssertTrue(sprite.paletteHexesValid(), "\(sprite.name ?? "?") has an unparseable palette hex")
+        }
+        let badHex = Sprite(
+            width: 1, height: 1, rows: ["A"],
+            palette: [PaletteEntry(key: "A", hex: "#GGGGGG")]
+        )
+        XCTAssertFalse(badHex.paletteHexesValid())
+        let wrongLength = Sprite(
+            width: 1, height: 1, rows: ["A"],
+            palette: [PaletteEntry(key: "A", hex: "12345")]
+        )
+        XCTAssertFalse(wrongLength.paletteHexesValid())
+    }
+
     func testDefaultIsAriaAndNamedResolves() {
         XCTAssertEqual(SpriteLibrary.default.name, "aria")
         XCTAssertEqual(SpriteLibrary.named("celestial").name, "celestial")

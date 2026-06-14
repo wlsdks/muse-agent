@@ -399,3 +399,12 @@ ratchet: desktop swift tests 69/69 (+7) · testFiles 1009 · fabrication 0 · se
 - **왜**: 렌더러 hex 로직이 헤드리스 테스트 불가였음. desktop(최저 표면 10→11) 균형 + 웹 과집중 교정. 순수 파서는 `#00000000`을 VALID(a=0)로 — validity와 렌더러 skip 분리(미래 palette-hex 검증 가드의 토대, fire 29 보완).
 - **리뷰지점**: AppKit `HexColor.parse` behavior-preserving(judge가 모든 입력 클래스 walk + a==0 old `if a==0 return nil`≡new `c.a != 0` 가드 확인). 순수 파서 math 동일(shift/mask/divisor). SpriteRenderer/CharacterView 호출부 시그니처 무변. judge가 /255→/256 mutation으로 비-vacuous 입증.
 - **리스크**: 없음(Core 신규 파일 + AppKit 위임 + 신규 테스트; 순수 Swift 추출, TS/agent-core/local-only 무접촉; 독립 Opus judge가 RED-before·mutation-test·behavior-preserving(a==0 포함)·무회귀 검증 후 PASS, swift 69/69).
+
+## fire 45 · 2026-06-14 · skill v1.14.0 · 4af9ac90
+meta: surface=desktop · value-class=new-capability · pkg=apps/desktop(MuseDesktopCore) · kind=sprite-palette-hex-validity-guard · verdict=PASS · firesSinceDrill=2
+ratchet: desktop swift tests 70/70 (+1) · testFiles 1012 · fabrication 0 · self-eval exit 0 · 표면 균형 web19·desktop12·cli14
+
+- **무엇**: fire 29(glyph 커버리지)는 막았으나 palette hex VALIDITY는 안 봤다 — 렌더러가 파스 불가 hex를 skip → 오타 hex("#GGGGGG")가 투명 HOLE 렌더. `Sprite.paletteHexesValid()` 추가(fire 44가 추출한 동일 `parseHexColor` 사용; `#00000000` 투명키는 valid) + `--render-json` 가드(exit 2) 배선.
+- **왜**: fire 29 보완 — glyph 커버리지 + hex 유효성 둘 다 silent-hole 차단. fire 44 추출이 이 가드의 토대(validator가 렌더러와 동일 파서 사용 → divergence 없음). desktop(11→12) 균형.
+- **리뷰지점**: validity≠draw-ability — judge가 mutation으로 입증: 렌더러의 `a!=0` 의미를 validator에 쓰면 모든 built-in(모두 `#00000000` 투명키 보유)이 잘못 거부됨. 실제 impl은 `parseHexColor != nil`(validity)이라 built-in 통과·"#GGGGGG"/"12345" 거부. 가드는 paletteCoversGrid 後·renderPNG 前. parseHexColor/paletteCoversGrid 무변.
+- **리스크**: 없음(신규 메서드 + 가드 1블록 + 신규 테스트; 순수 sprite-data 검증; 독립 Opus judge가 RED-before·mutation 비-vacuous·validity-vs-drawability 정확성·built-in 무오거부·무회귀 검증 후 PASS, swift 70/70).

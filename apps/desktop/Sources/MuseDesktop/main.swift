@@ -244,6 +244,10 @@ if let flag = arguments.firstIndex(of: "--render-json"), flag + 2 < arguments.co
             FileHandle.standardError.write(Data("sprite references a glyph with no palette entry (would render a transparent hole)\n".utf8))
             exit(2)
         }
+        guard sprite.paletteHexesValid() else {
+            FileHandle.standardError.write(Data("sprite has a palette entry with an unparseable hex colour (would render a transparent hole)\n".utf8))
+            exit(2)
+        }
         try SpriteRenderer.renderPNG(sprite, to: URL(fileURLWithPath: pngPath), scale: scale)
         exit(0)
     } catch {

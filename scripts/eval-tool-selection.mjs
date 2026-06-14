@@ -193,9 +193,12 @@ async function buildKoreanNumberScenario() {
     const toolDefs = kn.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
     const byName = new Set(toolDefs.map((t) => t.name));
     const cases = [
-      { prompt: "12345678을 한국식 만/억 단위로 읽어줘", expectTool: "korean_number", requireArgs: ["value"], note: "KO format a number in Korean myriad units → korean_number" },
-      { prompt: "50000000원은 몇 만원이야?", expectTool: "korean_number", requireArgs: ["value"], note: "KO amount → Korean 만 units → korean_number" },
-      { prompt: "Write 120000000 in Korean number units (만/억).", expectTool: "korean_number", requireArgs: ["value"], note: "EN Korean-unit formatting → korean_number" },
+      { prompt: "12345678을 한국식 만/억 단위로 읽어줘", expectTool: "korean_number", requireArgs: ["value"], note: "KO format a number in Korean myriad units → korean_number (forward)" },
+      { prompt: "50000000원은 몇 만원이야?", expectTool: "korean_number", requireArgs: ["value"], note: "KO amount → Korean 만 units → korean_number (forward)" },
+      { prompt: "Write 120000000 in Korean number units (만/억).", expectTool: "korean_number", requireArgs: ["value"], note: "EN Korean-unit formatting → korean_number (forward)" },
+      // reverse direction: a Korean amount expression → the integer
+      { prompt: "1억 2천만이 숫자로 얼마야?", expectTool: "korean_number", requireArgs: ["value"], note: "KO Korean amount → digits → korean_number (reverse)" },
+      { prompt: "5400만원은 정확히 숫자로 몇이야?", expectTool: "korean_number", requireArgs: ["value"], note: "KO Korean amount with 원 → digits → korean_number (reverse)" },
       // confusable neighbours: physical-unit conversion and arithmetic are NOT this tool
       { prompt: "5 miles is how many kilometers?", expectTool: "unit_convert", note: "physical-unit conversion → unit_convert (NOT korean_number)" },
       { prompt: "What is 1234 multiplied by 5678?", expectTool: "math_eval", note: "arithmetic → math_eval (NOT korean_number)" },
