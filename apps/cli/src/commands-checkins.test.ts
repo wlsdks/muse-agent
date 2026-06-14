@@ -127,6 +127,39 @@ describe("checkins list — ordered by due date, soonest first (sibling parity w
   });
 });
 
+describe("checkins scan — numeric option validation (parity with calendar/feeds/today)", () => {
+  const prevEnv = process.env.MUSE_CHECKINS_FILE;
+  beforeEach(() => {
+    process.env.MUSE_CHECKINS_FILE = join(mkdtempSync(join(tmpdir(), "muse-checkins-")), "checkins.json");
+  });
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.MUSE_CHECKINS_FILE;
+    else process.env.MUSE_CHECKINS_FILE = prevEnv;
+  });
+
+  it("rejects a non-numeric --slot-hour with exit 1, not a silent NaN hour", async () => {
+    const r = await runCheckins(["scan", "--slot-hour", "abc"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("--slot-hour must be an integer hour in [0, 23]");
+  });
+
+  it("rejects an out-of-range --slot-hour (25)", async () => {
+    const r = await runCheckins(["scan", "--slot-hour", "25"]);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("rejects --max-per-day below 1", async () => {
+    const r = await runCheckins(["scan", "--max-per-day", "0"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("--max-per-day must be a positive integer");
+  });
+
+  it("accepts a valid --slot-hour without a validation error", async () => {
+    const r = await runCheckins(["scan", "--slot-hour", "9"]);
+    expect(r.stderr).not.toContain("--slot-hour must be");
+  });
+});
+
 describe("checkinsFile", () => {
   it("honours MUSE_CHECKINS_FILE, else defaults under ~/.muse/checkins.json", () => {
     expect(checkinsFile({ MUSE_CHECKINS_FILE: "/tmp/c.json" } as NodeJS.ProcessEnv)).toBe("/tmp/c.json");

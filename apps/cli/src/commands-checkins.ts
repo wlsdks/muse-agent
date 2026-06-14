@@ -73,9 +73,24 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
     .option("--max-per-day <n>", "Max new check-ins per day (default 3)")
     .option("--json", "Print the raw payload")
     .action(async (options: { readonly slotHour?: string; readonly maxPerDay?: string; readonly json?: boolean }) => {
+      // Validate the numeric options up front (parity with calendar --duration /
+      // feeds --hours / today --lookahead-hours) — a bare Number("abc") = NaN
+      // would silently schedule a check-in at an Invalid Date.
+      const slotHour = options.slotHour === undefined ? undefined : Number(options.slotHour.trim());
+      if (slotHour !== undefined && (!Number.isInteger(slotHour) || slotHour < 0 || slotHour > 23)) {
+        io.stderr(`muse checkins scan: --slot-hour must be an integer hour in [0, 23] (got '${options.slotHour}')\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const maxPerDay = options.maxPerDay === undefined ? undefined : Number(options.maxPerDay.trim());
+      if (maxPerDay !== undefined && (!Number.isInteger(maxPerDay) || maxPerDay < 1)) {
+        io.stderr(`muse checkins scan: --max-per-day must be a positive integer (got '${options.maxPerDay}')\n`);
+        process.exitCode = 1;
+        return;
+      }
       const fresh = await scanSessionCheckins({
-        ...(options.slotHour !== undefined ? { slotHour: Number(options.slotHour) } : {}),
-        ...(options.maxPerDay !== undefined ? { maxPerDay: Number(options.maxPerDay) } : {})
+        ...(slotHour !== undefined ? { slotHour } : {}),
+        ...(maxPerDay !== undefined ? { maxPerDay } : {})
       });
       if (options.json) {
         io.stdout(`${JSON.stringify({ scheduled: fresh, total: fresh.length }, null, 2)}\n`);
