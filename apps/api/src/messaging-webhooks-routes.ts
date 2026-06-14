@@ -16,7 +16,7 @@ import {
   appendInbound,
   type InboundMessage
 } from "@muse/messaging";
-import type { FastifyInstance, FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync } from "fastify";
 
 const LINE_BODY_KEY = "__museRawBody";
 
@@ -126,8 +126,4 @@ function safeEquals(a: string, b: string): boolean {
     return false;
   }
   return timingSafeEqual(aBuf, bBuf);
-}
-
-export function registerLineWebhookRoute(server: FastifyInstance, options: LineWebhookOptions): void {
-  void server.register(lineWebhookPlugin, options);
 }

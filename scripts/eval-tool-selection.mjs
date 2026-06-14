@@ -542,6 +542,45 @@ async function buildEmailSendScenario() {
   }
 }
 
+// muse.messaging.send (risk:write, an outbound chat DM via Telegram/Discord/Slack/
+// LINE to a third party) is the THIRD outbound channel — like email_send (116) and
+// mac_message_send (118) it had NO over-fire guard. The make-or-break IrrelAcc: a
+// DELIBERATION about messaging must NOT fire it. Exposed with the sibling outbound
+// channels so the model also keeps the channels apart (chat DM vs iMessage).
+async function buildMessagingSendScenario() {
+  try {
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const mac = await import("../packages/macos/dist/index.js");
+    const messagingServer = mcp.createMessagingMcpServer({
+      registry: { list: () => [], get: () => undefined, describe: () => ({ id: "telegram" }) },
+      pollNow: async () => ({}), pollAll: async () => ({ errors: [], ingestedByProvider: {} }),
+      actionLogFile: "/tmp/eval-messaging.json", userId: "u", approvalGate: () => ({ approved: false })
+    });
+    const send = mcp.createLoopbackMcpMuseTools(messagingServer).find((t) => t.definition.name === "muse.messaging.send");
+    const contacts = () => [{ email: "bob@acme.com", id: "c1", name: "Bob" }];
+    const instances = [
+      send,
+      mac.createMacMessageSendTool({ approvalGate: {}, actionLog: async () => {}, userId: "u" }),
+      mcp.createContactsFindTool({ contacts })
+    ].filter(Boolean);
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      // Channel/handle destinations (not a contact NAME) so the model goes straight
+      // to the send rather than resolving the contact first (the fire-116 multi-step).
+      { prompt: "디스코드 #공지 채널에 '배포 완료됐어요'라고 메시지 보내줘.", expectTool: "muse.messaging.send", requireArgs: ["destination", "text"], note: "KO post to a named Discord channel → muse.messaging.send (NOT mac_message_send=iMessage)" },
+      { prompt: "Send a Slack message to the #team channel that the build is green.", expectTool: "muse.messaging.send", requireArgs: ["destination", "text"], note: "EN send a Slack channel msg → muse.messaging.send" },
+      { prompt: "Bob 연락처 정보 좀 보여줘.", expectTool: "find_contact", requireArgs: ["name"], note: "KO look up a contact → find_contact (NOT a send)" },
+      // IrrelAcc (make-or-break for OUTBOUND): a deliberation/complaint about messaging is not a send command.
+      { prompt: "Bob한테 메시지 보낼까 말까 고민 중이야.", expectNoTool: true, note: "KO 'I'm debating whether to message Bob' → NO tool (deliberation, NOT muse.messaging.send)" },
+      { prompt: "요즘 단톡방 알림이 너무 많아.", expectNoTool: true, note: "KO 'too many group-chat notifications lately' → NO tool (a complaint, NOT a send)" }
+    ];
+    return { label: "messaging-send (outbound chat DM vs iMessage/find + deliberation IrrelAcc)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "messaging-send", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // Relationship-maintenance nudge (overdue_contacts — "who've I lost touch
 // with?") vs looking up ONE specific person (find_contact). The value is the
 // discrimination: a "who haven't I talked to in a while?" intent is a LIST of
@@ -1108,6 +1147,7 @@ async function main() {
     await buildRememberFactScenario(),
     await buildContactsCrudScenario(),
     await buildEmailSendScenario(),
+    await buildMessagingSendScenario(),
     await buildOverdueScenario(),
     await buildOnThisDayScenario(),
     await buildFeedsScenario(),

@@ -634,19 +634,6 @@ function toConversationEntry(message: AgentMessage): ConversationEntry {
   };
 }
 
-export type MultiAgentOrchestrateResponseBody = {
-  readonly conversation: readonly ConversationEntry[];
-  readonly mode: OrchestrationMode;
-  readonly response: { readonly id: string; readonly model: string; readonly output: string };
-  readonly results: ReadonlyArray<{
-    readonly status: "completed" | "failed";
-    readonly workerId: string;
-    readonly output?: string;
-    readonly error?: string;
-  }>;
-  readonly runId: string;
-};
-
 const SUMMARIZER_SYSTEM_PROMPT =
   "You are summarizing the output of a sub-agent for a parent orchestrator. Return a single concise summary (3 sentences max) capturing the key facts, decisions, and any error / blocker. Drop reasoning steps and verbose framing. Output the summary text only — no preamble, no markdown.";
 const SUMMARIZER_MAX_OUTPUT_TOKENS = 256;

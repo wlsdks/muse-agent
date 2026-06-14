@@ -126,7 +126,7 @@ export function parseTransportType(value: unknown): McpTransportType | undefined
     : undefined;
 }
 
-export function invalid(code: string, message: string): ParseResult<never> {
+function invalid(code: string, message: string): ParseResult<never> {
   return {
     error: { code, message },
     ok: false
