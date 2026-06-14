@@ -384,3 +384,11 @@ ratchet: testFiles 1015 (케이스 +1, 파일수 불변) · netCoverage +1 (form
 - **왜:** grounding-integrity 플로어(소스에 fabricated/garbage 날짜 금지). 하한 가드 회귀 시 malformed 생일이 정상 날짜처럼 grounding 블록에 들어가 "X의 생일은 ?월 15일" 류 쓰레기 근거 생성. no-garbage-source 계약.
 - **어떻게-증명(MUTATION-FIRST ADD):** 하한 둘 제거(`month<1 || ... || day<1 ||` → 상한만) 시 새 케이스만 RED(`expected ' 15' to be undefined`, 기존 "99-99"는 green 유지=하한 진짜 미커버), 262 green. ④b 독립 Opus judge가 두 서브분기(month<1·day<1) 각각 독립 격리 mutation + regex가 numeric 체크 도달 + 사전 미커버 확인 → **VERDICT: PASS**.
 - **리스크:** 테스트-only, 소스 무변경. ★다양성 주의: recall 2회 연속(44,46)·ADD 3회 연속(44,45,46) — ratchet(pkg,KIND≥6/8)은 recall-add 3/8로 미발동이나 judge가 집중 지적. **다음 fire는 반드시 다른 패키지+다른 KIND**(mcp/cli/messaging/shared 등 + prune 후보 재탐색 or fix). prune/fix vein은 fire45에서 고갈 확인 → ADD 위주 불가피하나 패키지 분산 필요.
+
+## fire 47 · 2026-06-14 · skill v1.14.0 · d4848df9
+meta: kind=add · pkg=@muse/memory · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 1016 (케이스 +1, 파일수 불변) · netCoverage +1 (CJK 3개 서브레인지 버킷팅) · fabrication 0 · pnpm check FULL GREEN + lint 0
+- **무엇:** `computeApproximateTokens`(memory/token-estimator.ts, 트림 예산용 토큰 추정)의 **isCjkCodePoint 4개 레인지 중 비-Hangul 3개**(중국어 표의문자 U+4E00–9FFF·히라가나 U+3040–309F·가타카나 U+30A0–30FF) 버킷팅 커버. 기존 CJK 테스트는 Hangul(한/안녕/일이삼사오)만 써 나머지 3 레인지 미커버. CJK는 ~3자/2토큰 비율 floor((n*2+1)/3); 레인지 회귀 시 /3 "other" 버킷으로 떨어져 다국어 텍스트가 과소계수→트림 예산 초과. 中文字=2/ひらがな=3/カタカナ=3 검증.
+- **왜:** 트림 예산 게이트(contract priority 트리밍)의 정확도. 누군가 isCjkCodePoint 리팩터로 한 레인지를 빠뜨리면 중국어/일본어 대화가 실제보다 작게 계수돼 트림이 컨텍스트를 넘기거나 잘못 예산. 다국어 토큰-예산 정확성 계약.
+- **어떻게-증명(MUTATION-FIRST ADD):** 3개 레인지 각각 독립 제거 mutation → 해당 스크립트 assertion만 RED(중국어→`expected 1 to be 2`, 히라가나/가타카나→`expected 1 to be 3`; other 버킷으로 collapse), 기존 Hangul 케이스는 매번 green(426 pass). ④b 독립 Opus judge가 3 레인지 각각 격리 재현 + 산술 검증(other 버킷 값 다름) + 사전 미커버(Hangul만) 확인 → **VERDICT: PASS**.
+- **리스크:** 테스트-only, 소스 무변경. 테스트 문자열은 CJK 문자(raw control/zero-width 아님)→byte-hygiene 무관. ★다양성: ADD 4연속(44-47)이나 패키지는 memory(신규, 최근 미접촉)로 분산 — judge 수용하되 5연속 ADD면 prune/fix vein 재확인 권고. 이번 fire 광범위 스카웃(mcp weather·model local-only·shared crypto·memory message-importance/recall-promotion·messaging retry)으로 코드베이스 exhaustive 커버 재확인 — clean-subset prune·slow-test fix vein 고갈; 남은 가치는 미묘한 분기 ADD.
