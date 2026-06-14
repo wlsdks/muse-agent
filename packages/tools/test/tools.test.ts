@@ -742,7 +742,7 @@ describe("createMuseTools", () => {
     return tool;
   }
 
-  it("registers seventeen zero-IO ambient utility tools", () => {
+  it("registers eighteen zero-IO ambient utility tools", () => {
     const tools = createMuseTools();
     expect(tools.map((tool) => tool.definition.name).sort()).toEqual([
       "base64",
@@ -761,6 +761,7 @@ describe("createMuseTools", () => {
       "time_diff",
       "time_now",
       "time_relative",
+      "unit_convert",
       "url_parts"
     ]);
     for (const tool of tools) {
