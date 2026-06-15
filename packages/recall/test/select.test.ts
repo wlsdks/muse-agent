@@ -1,8 +1,56 @@
 import { describe, expect, it } from "vitest";
 
-import { allUserMemoryFacts, rankEpisodeHits, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
+import { allUserMemoryFacts, rankEpisodeHits, renderMemoryFact, selectGroundingActions, selectMemoryFacts } from "@muse/recall";
+import type { ActionLogEntry } from "@muse/mcp";
 
 const NOW = Date.parse("2026-06-13T00:00:00Z");
+
+describe("cross-lingual recall fallback (KO query ↔ EN entry)", () => {
+  const memory = { facts: { manager: "Dana Kim", project: "Apollo launch" }, preferences: {} };
+  const koQuery = new Set(["매니저"]); // no lexical overlap with the EN facts
+
+  it("WITHOUT vectors: a KO query against EN facts grounds nothing (the bug)", () => {
+    expect(selectMemoryFacts(memory, koQuery, 5).length).toBe(0);
+  });
+
+  it("WITH vectors: an above-floor cosine rescues the right EN fact", () => {
+    // allUserMemoryFacts order = [manager, project]; query≈manager vector.
+    const out = selectMemoryFacts(memory, koQuery, 5, {
+      queryVec: [1, 0],
+      entryVecs: [[1, 0], [0, 1]]
+    });
+    expect(out.map((f) => f.key)).toEqual(["manager"]);
+  });
+
+  it("a below-floor cosine is NOT rescued (no false-grounding)", () => {
+    const out = selectMemoryFacts(memory, koQuery, 5, {
+      queryVec: [1, 0],
+      entryVecs: [[0.1, Math.sqrt(0.99)], [0, 1]] // cos = 0.1 < 0.18 floor
+    });
+    expect(out.length).toBe(0);
+  });
+
+  it("a lexical match is preserved when vectors are supplied (arm only fires on lexical-0)", () => {
+    const out = selectMemoryFacts(memory, new Set(["dana"]), 5, {
+      queryVec: [1, 0],
+      entryVecs: [[1, 0], [0, 1]] // project (lexical-0) gets cos 0 → excluded; manager wins on lexical
+    });
+    expect(out.map((f) => f.key)).toEqual(["manager"]);
+  });
+
+  it("selectGroundingActions rescues a cross-lingual action via cosine", () => {
+    const entries = [
+      { what: "booked the dentist appointment", when: "2026-06-01T00:00:00Z" },
+      { what: "renewed the gym membership", when: "2026-06-02T00:00:00Z" }
+    ] as unknown as ActionLogEntry[];
+    const out = selectGroundingActions(entries, "치과 예약", 5, {
+      queryVec: [1, 0],
+      entryVecs: [[1, 0], [0, 1]]
+    });
+    expect(out.length).toBe(1);
+    expect(out[0]!.what).toContain("dentist");
+  });
+});
 
 describe("rankEpisodeHits", () => {
   const episodes = [

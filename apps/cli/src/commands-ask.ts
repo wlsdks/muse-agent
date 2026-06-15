@@ -65,6 +65,7 @@ import { resolveReflectionsFile } from "./commands-reflections.js";
 import { routeAskTierModel } from "./ask-tier-models.js";
 import { shouldDecompose } from "@muse/multi-agent";
 import { runDecomposedAgentAsk } from "./ask-decompose.js";
+import { rescueActionsCrossLingual, rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
 
 export { resolveAskTierModels, routeAskTierModel, type AskTierModels } from "./ask-tier-models.js";
 import { parseBoundedInt } from "./parse-bounded-int.js";
@@ -1708,7 +1709,16 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // with the `[memory: <topic>]` hint, so a fact the user explicitly told Muse
       // is cited to MUSE'S MEMORY, not a note that never mentioned it.
       const allMemoryFacts = userMemory ? allUserMemoryFacts(userMemory) : [];
-      const matchedMemories = userMemory ? selectMemoryFacts(userMemory, lexicalTokens(query)) : [];
+      let matchedMemories = userMemory ? selectMemoryFacts(userMemory, lexicalTokens(query)) : [];
+      // Cross-lingual rescue: a KO query against EN facts (or vice-versa) scores
+      // lexical-0, so the true fact never grounds → a false "I'm not sure". When
+      // lexical found nothing, fall back to semantic cosine (fail-soft: an embed
+      // failure leaves the lexical-empty result untouched).
+      if (matchedMemories.length === 0 && userMemory && allMemoryFacts.length > 0) {
+        try {
+          matchedMemories = await rescueMemoryCrossLingual(userMemory, query, lexicalTokens(query), (t) => embed(t, embedModel));
+        } catch { /* embed unavailable — keep lexical-empty result */ }
+      }
       const memoryBlock = buildMemoryContextBlock(matchedMemories);
 
       // OPT-IN shell-history grounding (B3): "what was that command?" — read the
@@ -1756,6 +1766,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         try {
           const all = await readActionLog(resolveActionLogFile(process.env as Record<string, string | undefined>));
           matchedActions = selectGroundingActions(all, query);
+          if (matchedActions.length === 0 && all.length > 0) {
+            try {
+              matchedActions = await rescueActionsCrossLingual(all, query, (t) => embed(t, embedModel));
+            } catch { /* embed unavailable — keep lexical-empty result */ }
+          }
         } catch {
           // action log missing or unreadable — silently skip
         }

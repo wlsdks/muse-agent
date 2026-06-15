@@ -19,6 +19,53 @@ const MS_PER_DAY = 86_400_000;
  * episode with no `endedAt` adds no recency bump). A future timestamp is
  * clamped to age 0 so a skewed clock can't inflate the score past 1.
  */
+/**
+ * Cosine floor for the cross-lingual recall fallback. A KO query against an EN
+ * entry scores lexical-0 (no shared tokens), so the true entry never grounds →
+ * a false "I'm not sure" for Muse's Korean user. When the caller supplies
+ * embeddings, an entry with NO lexical overlap is rescued by semantic cosine —
+ * but ONLY above this conservative floor, so an unrelated entry is never
+ * grounded (false-grounding would corrupt the wedge). Lexical matches are
+ * untouched (the arm only fires on lexical-0), so EN↔EN / KO↔KO ranking is
+ * byte-identical to before.
+ *
+ * Floor 0.18 from a live measurement on nomic-embed-text-v2-moe WITH the
+ * `search_query:`/`search_document:` task prefixes the caller applies: KO↔EN
+ * semantic matches scored 0.21–0.37, unrelated pairs 0.14–0.16, so 0.18
+ * separates them. WITHOUT the prefix they overlap (~0.29 vs ~0.31) and no
+ * floor is safe — hence the caller MUST prefix. Override via env for re-tuning.
+ */
+const CROSS_LINGUAL_COSINE_FLOOR = (() => {
+  const raw = Number(process.env.MUSE_CROSS_LINGUAL_COSINE_FLOOR);
+  return Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : 0.18;
+})();
+
+export interface CrossLingualVectors {
+  readonly queryVec: readonly number[];
+  /** Per-entry embeddings, aligned by index to the entries/facts being ranked. */
+  readonly entryVecs: readonly (readonly number[])[];
+}
+
+/**
+ * Lexical overlap (shared token count) with a semantic cosine FALLBACK that
+ * fires only when lexical is 0 — so a cross-language match is rescued without
+ * disturbing any same-language lexical ranking. Returns 0 (filtered out) when
+ * there is neither lexical overlap nor an above-floor cosine.
+ */
+function hybridRelevanceScore(
+  queryTokens: ReadonlySet<string>,
+  text: string,
+  queryVec: readonly number[] | undefined,
+  entryVec: readonly number[] | undefined
+): number {
+  const lexical = lexicalOverlap(queryTokens as Set<string>, text);
+  if (lexical > 0 || !queryVec || !entryVec || entryVec.length === 0) {
+    return lexical;
+  }
+  const cosine = cosineSimilarity(queryVec, entryVec);
+  return cosine >= CROSS_LINGUAL_COSINE_FLOOR ? cosine : 0;
+}
+
 function episodeRecencyScore(endedAt: string | undefined, nowMs: number): number {
   if (!endedAt) {
     return 0;
@@ -114,13 +161,17 @@ export function buildMemoryContextBlock(facts: readonly MemoryFact[]): string {
 export function selectMemoryFacts(
   memory: { readonly facts: Readonly<Record<string, string>>; readonly preferences: Readonly<Record<string, string>> },
   queryTokens: ReadonlySet<string>,
-  max = 5
+  max = 5,
+  crossLingual?: CrossLingualVectors
 ): readonly MemoryFact[] {
   if (queryTokens.size === 0) {
     return [];
   }
   return allUserMemoryFacts(memory)
-    .map((fact) => ({ fact, score: lexicalOverlap(queryTokens as Set<string>, `${fact.key} ${fact.value}`) }))
+    .map((fact, index) => ({
+      fact,
+      score: hybridRelevanceScore(queryTokens, `${fact.key} ${fact.value}`, crossLingual?.queryVec, crossLingual?.entryVecs[index])
+    }))
     .filter((scored) => scored.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, max)
@@ -323,14 +374,19 @@ export function selectFilePassages(
 export function selectGroundingActions(
   entries: readonly ActionLogEntry[],
   query: string,
-  max = 5
+  max = 5,
+  crossLingual?: CrossLingualVectors
 ): readonly ActionLogEntry[] {
   const queryTokens = lexicalTokens(query);
   if (queryTokens.size === 0) {
     return [];
   }
   return entries
-    .map((entry, index) => ({ entry, index, score: lexicalOverlap(queryTokens, entry.what) }))
+    .map((entry, index) => ({
+      entry,
+      index,
+      score: hybridRelevanceScore(queryTokens, entry.what, crossLingual?.queryVec, crossLingual?.entryVecs[index])
+    }))
     .filter((scored) => scored.score > 0)
     .sort((a, b) => b.score - a.score || b.index - a.index)
     .slice(0, max)
