@@ -75,3 +75,11 @@ ratchet: testFiles 1045 · fabrication 0 · (no change — git restore)
 - 왜(FAIL): ① number match `every`가 worded-month date(2026-06-07 vs "June 7")·country-code phone을 false-drop(라이브 재현, legitimate 액션 파괴); ② empty-evidence fail-open이 text 선례(fail-close)와 inverted → describeImage 실패 시 hallucination 통과(floor 약화).
 - 리뷰지점: maker≠judge 게이트가 결함 슬라이스를 커밋 전 차단(정상 fail-close 작동 — 이 루프의 핵심 안전장치 실증). 방향은 옳음(vision fabrication 갭 real), 보수성·fail-open framing이 문제.
 - 리스크: 연속 allPASS 리셋(2→0). 다음 fire = vision gate 재시도(수정 3개) 또는 다른 capability. value-class 다양성은 유지(첫 non-recall 시도).
+
+## fire 6 · 2026-06-16 · skill loop-creator · (rollback — judge infra failure + LOOP STOPPED)
+meta: value-class=wiring(observability, ROLLED BACK) · pkg=apps/cli · kind=observability · verdict=JUDGE-DIED(API error)→rollback · firesSinceDrill=6
+ratchet: testFiles 1045 · fabrication 0 · (no change — git restore)
+- 무엇: ask `success:false` failure-trace observability(`writeAskFailureLog`, 3 failure paths) worker 빌드(게이트 통과: check exit 0, lint 0, +2 OUTCOME 테스트). ④b judge가 API 에러(socket closed)로 죽어 PASS/FAIL 미검증 → maker≠judge 원칙상 커밋 불가 → git restore 롤백. backlog ◦에 재현 spec.
+- 왜(LOOP STOPPED, CronDelete 7d79e9c9): 세션 cron fire가 바쁜 REPL을 못 따라잡아 10+ tick 폭주 큐잉 + judge 인프라 일시 실패. 세션-cron 구조적 한계(fire 2·5에서 우려)가 강제됨 → 루프 정지.
+- 리뷰지점: 신선 세션에서 loop-creator로 재등록하면 backlog/저널/메모리 연속. fire 6 observability는 spec 기록돼 재현 쉬움(저위험 wiring).
+- 리스크: 세션-cron은 긴 세션/바쁜 REPL에 부적합 — 신선 세션 또는 cmux 백그라운드가 진짜 자율 격리. 6 fire 요약: multi-hop 완성(3·4 커밋, eval:multihop 40→80% 프로덕션), 안전장치 4회 작동(measure-first 2 + judge FAIL 1 + judge-died-rollback 1).
