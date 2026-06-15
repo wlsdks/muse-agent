@@ -67,3 +67,11 @@ ratchet: testFiles 1045 · fabrication 0 · eval:multihop 3-arm inline-no-hop 60
 - 왜: 1b′ default-off는 dead feature(judge flag); default-on이 가치지만 ungated는 single-hop 오염→confidence-gate. latency negligible(0.05ms).
 - 리뷰지점: worker+별개 Opus judge PASS. 정답 top-1 15/15 유지; hop 경로 verdict weak-cap(grounded 불가)→fabrication 0; 13/15 ambiguous append는 4 containment로 무해. structural 안전(confidence cap), gate 자체는 약함(2/15 protect).
 - 리스크: 미래에 hop이 grounded verdict 도달하면 unsafe(현재 구조적 차단). org.md 1/5 여전 miss. 연속 allPASS=2(fire 3·4), firesSinceDrill=4 — JUDGE-DRILL 카운터 <임계.
+
+## fire 5 · 2026-06-16 · skill loop-creator · (rollback — no code commit)
+meta: value-class=new-capability(ROLLED BACK) · pkg=apps/cli vision · kind=capability · verdict=FAIL(judge)→rollback · firesSinceDrill=5
+ratchet: testFiles 1045 · fabrication 0 · (no change — git restore)
+- 무엇: vision 추출→action에 deterministic grounding gate(`groundVisionFields` + 독립 describeImage evidence) 시도. measure-first가 갭 REAL 확인(system-prompt instruction뿐). worker 빌드(eval:vision 5 pass)했으나 별개 Opus judge FAIL → git restore 롤백. backlog ◦에 재시도 스펙.
+- 왜(FAIL): ① number match `every`가 worded-month date(2026-06-07 vs "June 7")·country-code phone을 false-drop(라이브 재현, legitimate 액션 파괴); ② empty-evidence fail-open이 text 선례(fail-close)와 inverted → describeImage 실패 시 hallucination 통과(floor 약화).
+- 리뷰지점: maker≠judge 게이트가 결함 슬라이스를 커밋 전 차단(정상 fail-close 작동 — 이 루프의 핵심 안전장치 실증). 방향은 옳음(vision fabrication 갭 real), 보수성·fail-open framing이 문제.
+- 리스크: 연속 allPASS 리셋(2→0). 다음 fire = vision gate 재시도(수정 3개) 또는 다른 capability. value-class 다양성은 유지(첫 non-recall 시도).
