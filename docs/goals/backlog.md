@@ -1,5 +1,11 @@
 # Muse dev backlog — the living ledger
 
+- ★ multi-hop recall wiring — DECOMPOSED (capability-boost fire 1): ask의 notes recall이 `rankKnowledgeChunks(WithHop)`을 안 쓰고 자체 인라인 cosine+hybrid(`apps/cli/src/commands-ask.ts:1001-1078`, seedMatches@1078)임을 확인. `rankKnowledgeChunksWithHop`(`packages/agent-core/src/knowledge-recall.ts:1144`, secondHop+associative, AUGMENT-never-displace)은 완전 빌드+테스트됐고 `knowledge-corpus.ts:485/582`가 `MUSE_RECALL_SECOND_HOP` env-gated로 호출하나 ask 경로 미적용. 측정 ROI 양성(`eval:multihop` single-hop two-hop hit@4 2/5=40%). >1 fire wedge-critical이라 loop-sized 슬라이스로 분해:
+  - (1a) ask 인라인 recall(1001-1078)을 `rankKnowledgeChunks` 라이브러리 호출로 전환 — single-hop 동등(hit 유지=회귀 0) baseline; 전환 전후 hit@1 동등을 measure-first로 먼저 확인. hybrid/diversify/MMR/per-clause RRF 동작 보존 필수.
+  - (1b) 전환 경로를 `rankKnowledgeChunksWithHop`으로 + secondHop을 "single-hop confidence weak일 때만" 켜기(속도 보존, weak-grounding 트리거); `eval:multihop` hit@4 40%→≥80% 가드.
+  - (1c) `eval:multihop`을 ranker-단위가 아닌 ask 전체 경로(end-to-end) 검증으로 확장 + CI 가드 등록.
+  순서 1a→1b→1c, 각 fire 한 슬라이스(1a가 회귀-0 baseline이라 먼저).
+
 - ⚠ pattern-offer entity-coverage gate BLOCKED (fire 41, rolled back): ECC (arXiv:2207.02263) entity-coverage as a HARD post-hoc drop on the proactive offer is mismatched — (1) an offer LEGITIMATELY adds action verbs ("draft now?"/"초안 잡을까요") absent from the facts, so coverage-of-all-tokens over-drops valid offers (broke 3 existing pattern-suggestion tests); (2) lexicalTokens does WHOLE-token matching → KO particle attachment ("월요일마다"≠"월요일") breaks coverage (the cumulative lexical-on-KO lesson). Needs entity-vs-verb separation (NER) or CJK-bigram + closed-cluster-entity-set matching, only flagging a NET-NEW entity in neither facts nor fallback — a >1-fire redesign. The number-guard already covers the numeric drift class. Decompose before retry.
 
 - ✓ playbook drop empty-text strategies (JUDGE-DRILL fire 40): a blank high-reward strategy ranked first and surfaced as the "applied strategy" beat (topAppliedStrategy reads ranked[0].text, bypassing renderPlaybookSection's empty filter); dropEmptyTextStrategies filters blanks before rankEligible — subtractive — agent-core-cognition fire 40
