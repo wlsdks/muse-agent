@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeStartsAt, shapeVisionAction } from "./vision-actions.js";
+import { fieldIsGrounded, gateVisionAction, normalizeStartsAt, shapeVisionAction } from "./vision-actions.js";
 
 describe("shapeVisionAction", () => {
   it("routes an event with title+startsAt to the calendar", () => {
@@ -43,6 +43,59 @@ describe("shapeVisionAction", () => {
 
   it("ignores blank-string fields (whitespace is not 'visible')", () => {
     expect(shapeVisionAction({ kind: "event", title: "   ", startsAt: "8pm" }).route).toBe("none");
+  });
+});
+
+describe("fieldIsGrounded — tolerant matching (no false-drop), catches hallucination", () => {
+  it("grounds an ISO date against a WORDED-month transcription via the year (fire-5 defect a)", () => {
+    expect(fieldIsGrounded("2026-06-07", "Invoice date: June 7, 2026 — paid")).toBe(true);
+  });
+
+  it("grounds a country-code phone against the local-format transcription (fire-5 defect a)", () => {
+    expect(fieldIsGrounded("+1-415-555-0123", "Call us at 415-555-0123 today")).toBe(true);
+  });
+
+  it("grounds an amount despite a thousands separator", () => {
+    expect(fieldIsGrounded("123,450 KRW", "Total due ₩123,450")).toBe(true);
+    expect(fieldIsGrounded("11,300", "11,300 KRW")).toBe(true);
+  });
+
+  it("grounds a text field by word/entity tokens (incl. CJK)", () => {
+    expect(fieldIsGrounded("Cafe Muse", "CAFE MUSE — receipt")).toBe(true);
+    expect(fieldIsGrounded("강남 치과", "강남 치과 의원 영수증")).toBe(true);
+  });
+
+  it("does NOT ground a hallucinated value absent from the image", () => {
+    expect(fieldIsGrounded("Starbucks", "Cafe Muse total 12,400")).toBe(false);
+    expect(fieldIsGrounded("2026-06-07", "no date visible here at all")).toBe(false);
+    expect(fieldIsGrounded("99,999", "Total ₩12,400")).toBe(false);
+  });
+});
+
+describe("gateVisionAction — grounding gate over a shaped action", () => {
+  it("leaves a fully-grounded action with no unverified fields (no over-drop on real data)", () => {
+    const action = shapeVisionAction({ date: "2026-06-07", kind: "receipt", merchant: "Cafe Muse", total: "12,400" });
+    const gated = gateVisionAction(action, "Cafe Muse\nTotal: 12,400 KRW\nDate: June 7, 2026");
+    expect(gated.unverified).toEqual([]);
+    expect(gated.draftText).not.toContain("unverified");
+  });
+
+  it("flags a hallucinated field as unverified and annotates the draft", () => {
+    const action = shapeVisionAction({ kind: "receipt", merchant: "Starbucks", total: "12,400" });
+    const gated = gateVisionAction(action, "Cafe Muse\nTotal: 12,400 KRW");
+    expect(gated.unverified).toContain("merchant");
+    expect(gated.unverified).not.toContain("total");
+    expect(gated.draftText).toContain("unverified");
+  });
+
+  it("fails CLOSED on empty/failed evidence — every extracted field is unverified (fire-5 defect b)", () => {
+    const action = shapeVisionAction({ kind: "receipt", merchant: "Cafe Muse", total: "12,400" });
+    expect(gateVisionAction(action, "").unverified).toEqual(expect.arrayContaining(["merchant", "total"]));
+    expect(gateVisionAction(action, undefined).unverified).toEqual(expect.arrayContaining(["merchant", "total"]));
+  });
+
+  it("does not gate a non-routed action", () => {
+    expect(gateVisionAction(shapeVisionAction({ kind: "other" }), undefined).unverified).toEqual([]);
   });
 });
 

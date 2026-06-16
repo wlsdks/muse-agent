@@ -1543,6 +1543,14 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             io.stdout("\n(draft only — re-run with --apply to perform it)\n");
             return;
           }
+          // Grounding gate (fail-close): a field that couldn't be confirmed against
+          // an independent transcription of the image is a fabrication risk, so we
+          // refuse the autonomous write — the user verifies and corrects first.
+          if (act.unverified.length > 0) {
+            io.stderr(`\n⚠ not applied — these field(s) couldn't be verified against the image: ${act.unverified.join(", ")}. Check them and correct the source, then re-run.\n`);
+            process.exitCode = 1;
+            return;
+          }
           const env = process.env as MuseEnvironment;
           let result: unknown;
           if (act.route === "calendar") {

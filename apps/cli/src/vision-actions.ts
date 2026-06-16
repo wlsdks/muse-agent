@@ -1,4 +1,4 @@
-import { extractStructuredFromImage } from "@muse/agent-core";
+import { describeImage, extractStructuredFromImage } from "@muse/agent-core";
 import type { JsonObject } from "@muse/shared";
 import type { ModelProvider } from "@muse/model";
 
@@ -21,6 +21,13 @@ export interface VisionAction {
   readonly draftText: string;
   /** The actuator route, or "none" for `other`. */
   readonly route: "calendar" | "note" | "contact" | "none";
+  /**
+   * Extracted field names that could NOT be confirmed against an independent
+   * transcription of the image (the grounding gate). A hallucinated value
+   * surfaces here; the caller refuses to auto-apply while this is non-empty
+   * (deterministic fabrication guard, not a prompt please-don't-invent).
+   */
+  readonly unverified: readonly string[];
 }
 
 const CLASSIFY_SCHEMA: JsonObject = {
@@ -57,6 +64,88 @@ const KIND_EXTRACT: Record<"event" | "receipt" | "contact" | "document", { schem
 };
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined);
+
+const EVIDENCE_INSTRUCTION =
+  "Transcribe EVERY piece of text, every number, name, date, time, and amount visible in this image, " +
+  "exactly as written. Do not summarize or interpret — just list what is literally printed.";
+
+// Fields that are DERIVED from extracted ones (composed strings / a slug),
+// not separately read from the image — grounding the source fields covers them.
+const DERIVED_FIELDS: ReadonlySet<string> = new Set(["note", "path"]);
+
+/** Maximal digit-runs (length ≥ 2) in `text`, with thousands separators inside a
+ *  number removed so "123,450" → one run "123450". */
+function digitRuns(text: string): Set<string> {
+  const joined = text.replace(/(\d)[,_ ](?=\d{3}\b)/gu, "$1");
+  return new Set(joined.match(/\d{2,}/gu) ?? []);
+}
+
+/** Word/entity tokens: latin alphanumerics (len ≥ 2) + individual CJK chars. */
+function wordTokens(text: string): string[] {
+  const lower = text.toLowerCase();
+  return [...(lower.match(/[a-z0-9]{2,}/gu) ?? []), ...(lower.match(/[㐀-鿿가-힯]/gu) ?? [])];
+}
+
+/**
+ * Is `value` grounded in the image `evidence` transcription? Tolerant by design
+ * so a faithfully-extracted field is NOT false-dropped:
+ *  - digit fields: every digit-run of length ≥ 4 (year / amount / phone block)
+ *    must appear — SHORT runs (a worded-month's day/month: "June 7" ⇒ "2026-06-07"
+ *    grounds on the year 2026 alone) and a country-code prefix are NOT required;
+ *  - if only short digit-runs exist, the longest must appear, else fall to words;
+ *  - text fields: a majority of the value's word/entity tokens must be visible.
+ * A hallucinated value (absent from the evidence) matches none of these → false.
+ */
+export function fieldIsGrounded(value: string, evidence: string): boolean {
+  const ev = evidence.toLowerCase();
+  const evDigits = digitRuns(evidence);
+  const valDigits = [...digitRuns(value)];
+  const significant = valDigits.filter((d) => d.length >= 4);
+  if (significant.length > 0) {
+    return significant.every((d) => evDigits.has(d));
+  }
+  if (valDigits.length > 0) {
+    const longest = valDigits.reduce((a, b) => (b.length > a.length ? b : a));
+    if (evDigits.has(longest)) {
+      return true;
+    }
+  }
+  const tokens = wordTokens(value);
+  if (tokens.length === 0) {
+    return false;
+  }
+  const hits = tokens.filter((token) => ev.includes(token)).length;
+  return hits / tokens.length >= 0.5;
+}
+
+function annotateUnverified(draftText: string, unverified: readonly string[]): string {
+  if (unverified.length === 0) {
+    return draftText;
+  }
+  return `${draftText}\n  ⚠ unverified (not confirmed visible in the image — check before applying): ${unverified.join(", ")}`;
+}
+
+/**
+ * The grounding gate over a shaped action. Each extracted field value must be
+ * confirmable against an INDEPENDENT transcription of the image; one that isn't
+ * is recorded in `unverified` and flagged in the draft. Empty/failed evidence
+ * fails CLOSED — every field is unverified (mirrors the text path, where empty
+ * evidence is a fail-close, never a fail-open pass).
+ */
+export function gateVisionAction(action: VisionAction, evidence: string | undefined): VisionAction {
+  if (action.route === "none") {
+    return { ...action, unverified: [] };
+  }
+  const fieldNames = Object.keys(action.fields).filter((name) => !DERIVED_FIELDS.has(name));
+  const evidenceText = evidence?.trim() ?? "";
+  const unverified = evidenceText.length === 0
+    ? fieldNames
+    : fieldNames.filter((name) => {
+        const value = action.fields[name];
+        return typeof value === "string" && value.trim().length > 0 && !fieldIsGrounded(value, evidenceText);
+      });
+  return { ...action, draftText: annotateUnverified(action.draftText, unverified), unverified };
+}
 
 /**
  * Normalize an extracted `startsAt` for the calendar actuator. The model returns
@@ -108,7 +197,16 @@ export async function classifyVisionAction(
   if (!ex.ok || !ex.data) {
     return { error: ex.error ?? `could not extract ${kind} fields`, ok: false };
   }
-  return shapeVisionAction({ kind, ...ex.data });
+  // Independent evidence pass: a raw transcription the extracted fields must be
+  // grounded in. A separate call (not the extraction's own output) so a
+  // hallucinated field has nothing to hide behind; empty evidence fails closed.
+  const evidence = await describeImage(provider, {
+    imageBase64: input.imageBase64,
+    mimeType: input.mimeType,
+    model: input.model,
+    question: EVIDENCE_INSTRUCTION
+  });
+  return gateVisionAction(shapeVisionAction({ kind, ...ex.data }), evidence.ok ? evidence.text : undefined);
 }
 
 /** Pure shaping of an extracted object into a routed, draft-first action — split
@@ -117,22 +215,22 @@ export function shapeVisionAction(data: JsonObject): VisionAction {
   const kind = data.kind === "event" || data.kind === "receipt" || data.kind === "contact" || data.kind === "document" ? data.kind : "other";
   if (kind === "event" && str(data.title) && str(data.startsAt)) {
     const f = { title: str(data.title)!, startsAt: str(data.startsAt)!, ...(str(data.location) ? { location: str(data.location)! } : {}), ...(str(data.notes) ? { notes: str(data.notes)! } : {}) };
-    return { draftText: `📅 Calendar event:\n  title: ${f.title}\n  startsAt: ${f.startsAt}${f.location ? `\n  location: ${f.location}` : ""}${f.notes ? `\n  notes: ${f.notes}` : ""}`, fields: f, kind, route: "calendar" };
+    return { draftText: `📅 Calendar event:\n  title: ${f.title}\n  startsAt: ${f.startsAt}${f.location ? `\n  location: ${f.location}` : ""}${f.notes ? `\n  notes: ${f.notes}` : ""}`, fields: f, kind, route: "calendar", unverified: [] };
   }
   if (kind === "receipt" && (str(data.merchant) || str(data.total))) {
     const f = { ...(str(data.merchant) ? { merchant: str(data.merchant)! } : {}), ...(str(data.total) ? { total: str(data.total)! } : {}), ...(str(data.date) ? { date: str(data.date)! } : {}) };
     const note = `Expense — ${f.merchant ?? "purchase"}: ${f.total ?? "?"}${f.date ? ` on ${f.date}` : ""}`;
-    return { draftText: `🧾 Expense note:\n  ${note}`, fields: { ...f, note }, kind, route: "note" };
+    return { draftText: `🧾 Expense note:\n  ${note}`, fields: { ...f, note }, kind, route: "note", unverified: [] };
   }
   if (kind === "contact" && str(data.name) && (str(data.email) || str(data.phone))) {
     const f = { name: str(data.name)!, ...(str(data.email) ? { email: str(data.email)! } : {}), ...(str(data.phone) ? { phone: str(data.phone)! } : {}), ...(str(data.relationship) ? { relationship: str(data.relationship)! } : {}) };
-    return { draftText: `👤 Contact:\n  name: ${f.name}${f.email ? `\n  email: ${f.email}` : ""}${f.phone ? `\n  phone: ${f.phone}` : ""}${f.relationship ? `\n  relationship: ${f.relationship}` : ""}`, fields: f, kind, route: "contact" };
+    return { draftText: `👤 Contact:\n  name: ${f.name}${f.email ? `\n  email: ${f.email}` : ""}${f.phone ? `\n  phone: ${f.phone}` : ""}${f.relationship ? `\n  relationship: ${f.relationship}` : ""}`, fields: f, kind, route: "contact", unverified: [] };
   }
   if (kind === "document" && str(data.title) && str(data.body)) {
     const title = str(data.title)!;
     const body = str(data.body)!;
     const slug = title.toLowerCase().replace(/[^a-z0-9가-힣]+/gu, "-").replace(/^-+|-+$/gu, "").slice(0, 60) || "note";
-    return { draftText: `📝 Note "${title}":\n  ${body.length > 200 ? `${body.slice(0, 200)}…` : body}`, fields: { body, note: `# ${title}\n\n${body}\n`, path: `${slug}.md`, title }, kind, route: "note" };
+    return { draftText: `📝 Note "${title}":\n  ${body.length > 200 ? `${body.slice(0, 200)}…` : body}`, fields: { body, note: `# ${title}\n\n${body}\n`, path: `${slug}.md`, title }, kind, route: "note", unverified: [] };
   }
-  return { draftText: "(couldn't route this image to an action — try --extract or a plain --image question)", fields: {}, kind: "other", route: "none" };
+  return { draftText: "(couldn't route this image to an action — try --extract or a plain --image question)", fields: {}, kind: "other", route: "none", unverified: [] };
 }
