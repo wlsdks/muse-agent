@@ -181,7 +181,7 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
         }
         safe = target.path;
       } catch (error) {
-        return refusalResult(error, input);
+        return { ...refusalResult(error, input), read: false };
       }
 
       try {
@@ -240,7 +240,7 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
         }
         return { kind: "text", numbered, path: safe, read: true, source: safe, text, totalLines, truncated };
       } catch (error) {
-        return refusalResult(error, input);
+        return { ...refusalResult(error, input), read: false };
       }
     }
   };

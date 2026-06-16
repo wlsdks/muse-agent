@@ -17,7 +17,7 @@ import { join } from "node:path";
 
 import puppeteer from "../packages/browser/node_modules/puppeteer-core/lib/puppeteer/puppeteer-core.js";
 
-import { createFileReadTool, extractDocxTextWithMammoth, extractPdfTextWithPdfjs } from "../packages/mcp/dist/index.js";
+import { createFileReadTool, extractDocxTextWithMammoth, extractPdfTextWithPdfjs } from "../packages/fs/dist/index.js";
 
 function assert(condition, label) {
   if (!condition) throw new Error(`ASSERT FAILED: ${label}`);
@@ -116,20 +116,20 @@ try {
   assert(text.includes("123,450"), "extracted text keeps the literal amount");
 
   console.log("2) file_read tool — name-fragment resolution + read");
-  const tool = createFileReadTool({ roots: [downloads] });
+  const tool = createFileReadTool({ roots: [downloads], baseDir: dir, docRoots: [downloads] });
   const ctx = { runId: "r", userId: "verify" };
-  const out = await tool.execute({ file: "invoice pdf" }, ctx);
+  const out = await tool.execute({ path: "invoice pdf" }, ctx);
   assert(out.read === true, "fragment 'invoice pdf' resolved to the PDF");
   assert(String(out.text).includes("Quantum Flux"), "tool returned the PDF text");
 
   console.log("2b) content-sniff — a no-extension file with text bytes reads (extension-only would refuse)");
   await writeFile(join(downloads, "meeting-notes"), "Q3 roadmap: ship the Quantum Flux integration by August.");
-  const noExt = await tool.execute({ file: "meeting-notes" }, ctx);
+  const noExt = await tool.execute({ path: "meeting-notes" }, ctx);
   assert(noExt.read === true && String(noExt.text).includes("Quantum Flux"), "extensionless text file read via content-sniff");
 
   console.log("2c) content-sniff — a .txt that is REALLY a PDF routes through the extractor");
   await writeFile(join(downloads, "scan.txt"), pdf); // real PDF bytes under a .txt name
-  const mislabeled = await tool.execute({ file: "scan.txt" }, ctx);
+  const mislabeled = await tool.execute({ path: "scan.txt" }, ctx);
   assert(mislabeled.read === true && String(mislabeled.text).includes("Quantum Flux"), "mislabeled .txt-is-PDF extracted as PDF");
 
   console.log("2d) REAL .docx — mammoth extraction + tool round-trip");
@@ -137,7 +137,7 @@ try {
   const docxText = await extractDocxTextWithMammoth(docxBytes);
   assert(docxText.includes("revenue up 18 percent"), "mammoth extracted text from a real generated .docx");
   await writeFile(join(downloads, "quarterly-review.docx"), docxBytes);
-  const docxOut = await tool.execute({ file: "quarterly-review" }, ctx);
+  const docxOut = await tool.execute({ path: "quarterly-review" }, ctx);
   assert(docxOut.read === true && String(docxOut.text).includes("hiring frozen"), "file_read read the .docx end-to-end");
 
   console.log("2e) REAL symlink escape — a link under Downloads pointing outside the roots is refused");
@@ -148,7 +148,7 @@ try {
   let linkMade = true;
   await symlink(secret, linkPath).catch(() => { linkMade = false; });
   if (linkMade) {
-    const escapeOut = await tool.execute({ file: "innocent" }, ctx);
+    const escapeOut = await tool.execute({ path: "innocent" }, ctx);
     assert(escapeOut.read === false, "a symlink escaping the roots is refused (realpath guard)");
     assert(!String(escapeOut.text ?? "").includes("TOP SECRET"), "the link target's content was NOT returned");
   } else {
@@ -160,19 +160,19 @@ try {
   await wfi(join(downloads, "snap.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]));
   let sawMime = "";
   const imgTool = createFileReadTool({
-    roots: [downloads],
+    roots: [downloads], baseDir: dir, docRoots: [downloads],
     describeImage: async (input) => { sawMime = input.mimeType; return { ok: true, text: "A scanned receipt for two coffees." }; }
   });
-  const imgOut = await imgTool.execute({ file: "snap" }, ctx);
+  const imgOut = await imgTool.execute({ path: "snap" }, ctx);
   assert(imgOut.read === true && String(imgOut.text).includes("receipt"), "image routed to vision and described");
   assert(sawMime === "image/png", "image mime type derived from the .png extension");
-  const noVision = await createFileReadTool({ roots: [downloads] }).execute({ file: "snap" }, ctx);
+  const noVision = await createFileReadTool({ roots: [downloads], baseDir: dir, docRoots: [downloads] }).execute({ path: "snap" }, ctx);
   assert(noVision.read === false, "an image is refused when no vision model is wired");
 
   console.log("3) fail-closed bounds");
-  const outside = await tool.execute({ file: join(dir, "outside-secret.txt") }, ctx);
+  const outside = await tool.execute({ path: join(dir, "outside-secret.txt") }, ctx);
   assert(outside.read === false, "absolute path outside the roots is refused");
-  const missing = await tool.execute({ file: "tax-return-9999" }, ctx);
+  const missing = await tool.execute({ path: "tax-return-9999" }, ctx);
   assert(missing.read === false && Array.isArray(missing.recent), "unmatched name lists recent files, reads nothing");
 
   console.log("\neval:file-read PASS");
