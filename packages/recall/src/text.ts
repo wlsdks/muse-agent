@@ -64,6 +64,17 @@ const NEGATION_RE = /\b(?:no|not|never|none|nothing|nope)\b|n['']t|없|모르|�
 // precise signal that a clause states a fact rather than merely denying one.
 const CONCRETE_DATA_RE = /\d/u;
 
+// …OR the negated clause PIVOTS to a positive correction with no digit
+// ("your manager isn't Alice, it's Bob") — the named-entity analogue of the
+// digit signal, and a real fabrication that previously rode through as "pure"
+// (the digit heuristic only caught numbers). Only the COMMA-joined pivot needs
+// this: a period/seam-joined correction ("…isn't Alice. It's Bob.") already
+// splits into its own clause and is caught by the token test. The copula must be
+// followed by a REAL value, NOT another negation ("that's not…") or a locational
+// restatement ("it's in your notes"), so a pure refusal isn't misread as a claim.
+const NEGATION_CORRECTION_RE =
+  /(?:n['']t|\b(?:not|never)\b)[^,]*,\s*(?:it['']?s|that['']?s|it is|that is|they['']?re|they are)\s+(?!(?:not|no|never|n['']t|in|on|at|from|sure|clear|listed|available|here|there)\b)[\p{L}\p{N}]/iu;
+
 /**
  * True only for a PURE refusal — a refusal marker with NO substantive claim
  * tacked on. `answerIsRefusal` is a lenient substring test, so it also fires on a
@@ -82,8 +93,14 @@ export function answerIsPureRefusal(answer: string): boolean {
   if (!answerIsRefusal(answer)) return false;
   for (const clause of answer.split(CLAUSE_SPLIT_RE)) {
     const trimmed = clause.trim();
+    if (trimmed.length === 0) continue;
+    // A negation→positive-correction pivot ("…isn't Alice, it's Bob") smuggles a
+    // corrected ASSERTION even when the clause also carries a refusal marker
+    // and no digit, so it's checked BEFORE the refusal / negation-only skips
+    // (which would otherwise let the named-entity fabrication ride through pure).
+    if (NEGATION_CORRECTION_RE.test(trimmed)) return false;
     const isNegationOnly = NEGATION_RE.test(trimmed) && !CONCRETE_DATA_RE.test(trimmed);
-    if (trimmed.length === 0 || answerIsRefusal(trimmed) || isNegationOnly) continue;
+    if (answerIsRefusal(trimmed) || isNegationOnly) continue;
     const tokens = trimmed.toLowerCase().match(/[\p{L}\p{N}]{2,}/gu) ?? [];
     if (tokens.length >= 2) return false;
   }

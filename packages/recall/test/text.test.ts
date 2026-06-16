@@ -64,6 +64,21 @@ describe("answerIsPureRefusal", () => {
     expect(answerIsPureRefusal("I don't have it, but your meeting is not at 3pm, it is at 4pm in room 5.")).toBe(false);
     expect(answerIsPureRefusal("I'm not sure — your flight isn't at 9am, it's at 11am.")).toBe(false);
   });
+  it("catches a NAMED-ENTITY negation→correction with NO digit (fire-42: the digit heuristic's blind spot)", () => {
+    // "isn't A, it's B" smuggles a corrected named value past the negation — a
+    // real fabrication that previously rode through as pure (no digit to flag it).
+    expect(answerIsPureRefusal("I don't have that, but your manager isn't Alice, it's Bob.")).toBe(false);
+    expect(answerIsPureRefusal("I'm not sure — your dentist isn't Dr. Park, it's Dr. Kim.")).toBe(false);
+    // Comma-only join (no sentence/adversative seam): the refusal marker and the
+    // correction share one clause, yet the pivot is still caught.
+    expect(answerIsPureRefusal("I'm not certain, your manager isn't Alice, it's Bob.")).toBe(false);
+  });
+  it("does NOT misfire on a pure refusal whose copula continuation is itself negative/locational", () => {
+    // "that's not…" / "it's in your notes" after a negation is a restatement, not
+    // a corrective value — must stay pure (no false-drop on the honesty floor).
+    expect(answerIsPureRefusal("I'm not sure, that's not something in your notes.")).toBe(true);
+    expect(answerIsPureRefusal("I don't have that — it's not in your notes.")).toBe(true);
+  });
   it("is false for a non-refusal answer (defers to the verdict)", () => {
     expect(answerIsPureRefusal("Your MTU is 1380 [from vpn.md]")).toBe(false);
   });
