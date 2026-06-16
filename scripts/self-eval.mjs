@@ -233,7 +233,11 @@ function main() {
     "packages/model/src/local-only-policy.ts",
     "packages/autoconfigure/src/autoconfigure-model-provider.ts",
     "packages/autoconfigure/src/registry-builders/voice.ts",
-    "packages/autoconfigure/src/context-engineering-builders.ts"
+    "packages/autoconfigure/src/context-engineering-builders.ts",
+    // createOllamaEmbedder's LocalOnlyViolationError guard moved here from
+    // context-engineering-builders.ts (codebase-quality cohere) — keep its
+    // throw-site counted so the egressGuards ratchet follows the guard.
+    "packages/autoconfigure/src/embedder-base.ts"
   ]
     .map((rel) => join(ROOT, rel))
     .filter((p) => existsSync(p))
