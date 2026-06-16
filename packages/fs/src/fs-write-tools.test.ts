@@ -1,11 +1,11 @@
-import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { applyEdit, applyEdits, createFileEditTool, createFileMultiEditTool, createFileWriteTool, type FsWriteApprovalGate } from "./fs-write-tools.js";
+import { applyEdit, applyEdits, createFileDeleteTool, createFileEditTool, createFileMoveTool, createFileMultiEditTool, createFileWriteTool, type FsWriteApprovalGate } from "./fs-write-tools.js";
 
 const ctx = { runId: "test-run" };
 const allow: FsWriteApprovalGate = () => ({ approved: true });
@@ -224,6 +224,80 @@ describe("file_write / file_edit / file_multi_edit — gated writes", () => {
       }, ctx)) as JsonObject;
       expect(out["written"]).toBe(false);
       expect(await readFile(join(root, "f.ts"), "utf8")).toBe("alpha beta");
+    });
+  });
+
+  describe("file_delete", () => {
+    it("deletes a file on approval", async () => {
+      await writeFile(join(root, "old.md"), "x");
+      const tool = createFileDeleteTool(opts(allow));
+      const out = (await tool.execute({ path: join(root, "old.md") }, ctx)) as JsonObject;
+      expect(out["deleted"]).toBe(true);
+      await expect(readFile(join(root, "old.md"), "utf8")).rejects.toThrow();
+    });
+
+    it("keeps the file when the gate denies", async () => {
+      await writeFile(join(root, "keep.md"), "x");
+      const tool = createFileDeleteTool(opts(deny));
+      const out = (await tool.execute({ path: join(root, "keep.md") }, ctx)) as JsonObject;
+      expect(out["deleted"]).toBe(false);
+      expect(await readFile(join(root, "keep.md"), "utf8")).toBe("x");
+    });
+
+    it("refuses a directory", async () => {
+      await mkdir(join(root, "dir"), { recursive: true });
+      const tool = createFileDeleteTool(opts(allow));
+      const out = (await tool.execute({ path: join(root, "dir") }, ctx)) as JsonObject;
+      expect(out["deleted"]).toBe(false);
+      expect(String(out["reason"])).toContain("directory");
+    });
+
+    it("refuses a protected path", async () => {
+      const tool = createFileDeleteTool(opts(allow));
+      const out = (await tool.execute({ path: join(root, ".ssh", "id_rsa") }, ctx)) as JsonObject;
+      expect(out["deleted"]).toBe(false);
+      expect(out["refused"]).toBe(true);
+    });
+  });
+
+  describe("file_move", () => {
+    it("renames a file on approval", async () => {
+      await writeFile(join(root, "a.md"), "body");
+      const tool = createFileMoveTool(opts(allow));
+      const out = (await tool.execute({ from: join(root, "a.md"), to: join(root, "b.md") }, ctx)) as JsonObject;
+      expect(out["moved"]).toBe(true);
+      expect(await readFile(join(root, "b.md"), "utf8")).toBe("body");
+      await expect(readFile(join(root, "a.md"), "utf8")).rejects.toThrow();
+    });
+
+    it("does not move when the gate denies", async () => {
+      await writeFile(join(root, "a.md"), "body");
+      const tool = createFileMoveTool(opts(deny));
+      const out = (await tool.execute({ from: join(root, "a.md"), to: join(root, "b.md") }, ctx)) as JsonObject;
+      expect(out["moved"]).toBe(false);
+      expect(await readFile(join(root, "a.md"), "utf8")).toBe("body");
+    });
+
+    it("refuses to overwrite an existing destination", async () => {
+      await writeFile(join(root, "a.md"), "A");
+      await writeFile(join(root, "b.md"), "B");
+      const tool = createFileMoveTool(opts(allow));
+      const out = (await tool.execute({ from: join(root, "a.md"), to: join(root, "b.md") }, ctx)) as JsonObject;
+      expect(out["moved"]).toBe(false);
+      expect(await readFile(join(root, "b.md"), "utf8")).toBe("B");
+    });
+
+    it("refuses a destination outside the sandbox", async () => {
+      await writeFile(join(root, "a.md"), "A");
+      const outside = await mkdtemp(join(tmpdir(), "muse-fs-out-"));
+      try {
+        const tool = createFileMoveTool(opts(allow));
+        const out = (await tool.execute({ from: join(root, "a.md"), to: join(outside, "a.md") }, ctx)) as JsonObject;
+        expect(out["moved"]).toBe(false);
+        expect(await readFile(join(root, "a.md"), "utf8")).toBe("A");
+      } finally {
+        await rm(outside, { force: true, recursive: true });
+      }
     });
   });
 });

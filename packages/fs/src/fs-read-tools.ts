@@ -16,6 +16,7 @@ import { basename, join } from "node:path";
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
+import { createIgnoreFilter, type IgnoreFilter } from "./fs-gitignore.js";
 import {
   defaultFileReadRoots,
   extractDocxTextWithMammoth,
@@ -152,6 +153,7 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
         additionalProperties: false,
         properties: {
           limit: { description: "Optional max lines to read (text only), e.g. 100.", minimum: 1, type: "integer" },
+          numbered: { description: "Prefix each line with its line number (text only, default false).", type: "boolean" },
           offset: { description: "Optional 1-based start line (text only), e.g. 200.", minimum: 1, type: "integer" },
           path: {
             description: "Path ('~/notes/todo.md', '/Users/me/x.ts') or a filename fragment to find ('invoice pdf', '영수증 사진').",
@@ -224,13 +226,19 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
         const limit = asPositiveInt(args["limit"]);
         const start = offset ? offset - 1 : 0;
         const sliced = limit === undefined ? lines.slice(start) : lines.slice(start, start + limit);
-        let text = sliced.join("\n");
+        // Default text is RAW (no line-number prefixes) so the model can copy a
+        // snippet verbatim as file_edit's old_string. `numbered: true` opts into a
+        // cat -n style view for when the user wants to reference line numbers.
+        const numbered = args["numbered"] === true;
+        let text = numbered
+          ? sliced.map((line, i) => `${String(start + i + 1).padStart(6)}\t${line}`).join("\n")
+          : sliced.join("\n");
         let truncated = start + sliced.length < totalLines;
         if (text.length > maxTextChars) {
           text = text.slice(0, maxTextChars);
           truncated = true;
         }
-        return { kind: "text", path: safe, read: true, source: safe, text, totalLines, truncated };
+        return { kind: "text", numbered, path: safe, read: true, source: safe, text, totalLines, truncated };
       } catch (error) {
         return refusalResult(error, input);
       }
@@ -254,6 +262,7 @@ export function createFileListTool(options: FsReadToolsOptions = {}, policyPromi
         additionalProperties: false,
         properties: {
           cwd: { description: "Optional base directory to search under, e.g. '~/notes'.", type: "string" },
+          includeIgnored: { description: "Include git-ignored files (default false — .gitignore is honored).", type: "boolean" },
           limit: { description: "Max paths to return, e.g. 100.", maximum: MAX_LIST_RESULTS, minimum: 1, type: "integer" },
           pattern: { description: "Glob pattern, e.g. '**/*.md' or 'src/**/*.ts'.", type: "string" }
         },
@@ -278,10 +287,14 @@ export function createFileListTool(options: FsReadToolsOptions = {}, policyPromi
         return refusalResult(error, cwdArg);
       }
       const resolved = await policy;
+      const ignoreFilter = args["includeIgnored"] === true ? undefined : await createIgnoreFilter(cwd);
       const matches: string[] = [];
       try {
         for await (const entry of glob(pattern, { cwd, exclude: isExcludedPath })) {
           const absolute = join(cwd, entry);
+          if (ignoreFilter?.ignores(absolute)) {
+            continue;
+          }
           try {
             const safe = await resolveSafePath(absolute, { ...options, baseDir }, resolved);
             matches.push(safe);
@@ -315,6 +328,7 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
         additionalProperties: false,
         properties: {
           glob: { description: "Optional filename filter, e.g. '*.md' or '**/*.ts'. Default: all files.", type: "string" },
+          includeIgnored: { description: "Include git-ignored files (default false — .gitignore is honored).", type: "boolean" },
           mode: {
             description: "'files' = matching paths only; 'content' = matching lines with line numbers.",
             enum: ["files", "content"],
@@ -366,6 +380,7 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
         return refusalResult(error, scopeArg);
       }
 
+      const ignoreFilter: IgnoreFilter | undefined = args["includeIgnored"] === true ? undefined : await createIgnoreFilter(searchRoot);
       const matchedFiles: string[] = [];
       const contentMatches: Array<{ readonly file: string; readonly line: number; readonly text: string }> = [];
       let scanned = 0;
@@ -378,6 +393,9 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
             break;
           }
           const absolute = join(searchRoot, entry);
+          if (ignoreFilter?.ignores(absolute)) {
+            continue;
+          }
           let safe: string;
           try {
             safe = await resolveSafePath(absolute, { ...options, baseDir }, resolved);

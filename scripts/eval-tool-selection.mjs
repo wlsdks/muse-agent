@@ -1153,9 +1153,13 @@ async function buildFileWriteScenario() {
       { prompt: "In ~/config.ts change the line 'const PORT = 3000' to 'const PORT = 8080'.", expectTool: "file_edit", requireArgs: ["path", "old_string", "new_string"], note: "EN one targeted replacement → file_edit" },
       { prompt: "~/notes/todo.md 파일에서 '우유 사기'를 '계란 사기'로 한 군데 바꿔줘.", expectTool: "file_edit", requireArgs: ["path", "old_string", "new_string"], note: "KO single replacement → file_edit" },
       { prompt: "In ~/app.ts make these three changes: rename foo→bar, baz→qux, and a→b.", expectTool: "file_multi_edit", requireArgs: ["path", "edits"], note: "EN several edits to one file → file_multi_edit (NOT file_edit)" },
+      { prompt: "Delete the file ~/notes/old-draft.md.", expectTool: "file_delete", requireArgs: ["path"], note: "EN delete a file → file_delete" },
+      { prompt: "~/notes/임시.md 파일 삭제해줘.", expectTool: "file_delete", requireArgs: ["path"], note: "KO delete a file → file_delete" },
+      { prompt: "Rename ~/notes/a.md to ~/notes/b.md.", expectTool: "file_move", requireArgs: ["from", "to"], note: "EN rename → file_move (NOT file_write)" },
+      { prompt: "report.md 파일을 ~/archive 폴더로 옮겨줘.", expectTool: "file_move", requireArgs: ["from", "to"], note: "KO move a file → file_move" },
       { prompt: "~/notes/todo.md 내용 좀 읽어줘.", expectTool: "file_read", requireArgs: ["path"], note: "KO read among write tools → file_read" }
     ];
-    return { label: "fs-write (file_write vs file_edit vs file_multi_edit)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+    return { label: "fs-write (write vs edit vs multi_edit vs delete vs move)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
     return { label: "fs-write", skip: `deps not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
   }

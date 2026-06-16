@@ -13,6 +13,7 @@
  */
 
 export * from "./fs-document.js";
+export * from "./fs-gitignore.js";
 export * from "./fs-path-safety.js";
 export * from "./fs-read-tools.js";
 export * from "./fs-write-tools.js";

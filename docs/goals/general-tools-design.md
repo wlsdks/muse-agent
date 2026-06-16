@@ -174,9 +174,17 @@ falls back through the same progressive line-block ladder — trailing-whitespac
 → trim-both-sides → Unicode-fold (typographic dashes/quotes/odd spaces) — so a
 recalled snippet still lands despite indentation/whitespace/smart-quote drift.
 Muse keeps a stricter posture than Codex's first-match seek: a fuzzy match must
-be UNIQUE or it's refused (never guess a location). Still TODO vs Codex:
-multi-file / delete / rename in one operation, and `.gitignore`-aware
-list/grep (§11).
+be UNIQUE or it's refused (never guess a location).
+
+**Closed the rest of the Codex gap (2026-06-16):** added `file_delete` +
+`file_move` (write-tier, fail-close approval-gated, symlink-safe), made
+`file_list`/`file_grep` honor `.gitignore` by default (via the `ignore`
+package; `includeIgnored` bypass), and an opt-in `numbered` line view on
+`file_read`. **Deliberately NOT added: a single multi-file atomic patch
+tool** — it would be a confusable 9th tool against `file_edit`/`file_write`/
+`file_multi_edit` and `tool-calling.md` caps the local-model set; `file_multi_edit`
+already covers multi-edit within one file. The fs suite is now 8 tools, all
+proven selectable: `eval:tools` fs scenarios **20/20 STABLE 3/3** on gemma4:12b.
 
 ## 4. NEW guard: path sandbox (deterministic, fail-close)
 

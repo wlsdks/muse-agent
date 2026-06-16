@@ -392,6 +392,9 @@ importers:
       '@muse/tools':
         specifier: workspace:*
         version: link:../tools
+      ignore:
+        specifier: ^7.0.5
+        version: 7.0.5
       mammoth:
         specifier: ^1.12.0
         version: 1.12.0
