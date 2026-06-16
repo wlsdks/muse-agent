@@ -137,13 +137,29 @@ export function createCsvParseTool(): MuseTool {
         if (records.length === 0) {
           return { headers: [], rows: [] } satisfies JsonObject;
         }
-        const headers = records[0] ?? [];
+        // De-duplicate header names BEFORE keying rows: two columns sharing a
+        // name (or two empty "" headers) would both write the same property and
+        // the later cell would silently overwrite — dropping a cell the answer
+        // then presents as a complete row (same data-loss class as the ragged
+        // overflow fix, different facet: key collision). Suffix each collision
+        // (`a`, `a_2`, …) so every column keeps its own cell + key.
+        const rawHeaders = records[0] ?? [];
+        const usedKeys = new Set<string>();
+        const headers = rawHeaders.map((name) => {
+          let key = name;
+          let suffix = 1;
+          while (usedKeys.has(key)) {
+            suffix += 1;
+            key = `${name}_${suffix.toString()}`;
+          }
+          usedKeys.add(key);
+          return key;
+        });
         // A reserved key for cells beyond the named columns. Without it a
-        // ragged-long row's extra cells vanish silently — losing user data
-        // the answer then presents as the complete row. Suffix until it
-        // can't collide with a real column literally named "_extra".
+        // ragged-long row's extra cells vanish silently. Suffix until it
+        // can't collide with a real (de-duplicated) column key.
         let overflowKey = "_extra";
-        while (headers.includes(overflowKey)) overflowKey += "_";
+        while (usedKeys.has(overflowKey)) overflowKey += "_";
         const dataRecords = records.slice(1, 1 + CSV_PARSE_MAX_ROWS);
         const rows = dataRecords.map((record) => {
           const row: Record<string, string | string[]> = {};
