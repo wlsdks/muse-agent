@@ -98,7 +98,7 @@ import {
   executeStreamingModelLoop as executeStreamingModelLoopFn,
   type ModelLoopRunner
 } from "./model-loop.js";
-import { isPlanExecuteMode } from "./plan-execute.js";
+import { isPlanExecuteMode, validateEnumArguments } from "./plan-execute.js";
 import {
   executePlanExecuteLoop as executePlanExecuteLoopFn,
   streamPlanExecute as streamPlanExecuteFn
@@ -839,6 +839,23 @@ export class AgentRuntime {
       const executed = blockedToolResult(
         toolCall,
         `Error: missing required argument(s) for ${toolCall.name}: ${argCheck.missing.join(", ")}. Call it again with those argument(s).`
+      );
+      await this.invokeHooks("afterTool", context, executed);
+      return executed;
+    }
+
+    // Then enforce closed-vocabulary (enum/const) constraints — the plan-execute
+    // path validates these (validateEnumArguments), but the default ReAct path did
+    // not, so an 8B that fabricated an out-of-schema enum value ("from":"base64"
+    // for an enum of binary/octal/decimal/hex) reached the handler (crash, or a
+    // write/actuator running a meaningless mode). tool-calling.md #3: invalid args
+    // are the 2nd-biggest failure mode — fail-close here and feed the constraint
+    // back so the model's bounded retry self-corrects, never execute on a bad value.
+    const enumErrors = validateEnumArguments(exposed?.inputSchema, coercedArguments);
+    if (enumErrors.length > 0) {
+      const executed = blockedToolResult(
+        toolCall,
+        `Error: invalid argument(s) for ${toolCall.name}: ${enumErrors.join("; ")}. Call it again with a valid value.`
       );
       await this.invokeHooks("afterTool", context, executed);
       return executed;

@@ -1035,6 +1035,72 @@ describe("AgentRuntime", () => {
     expect(String(blocked?.result.output)).toContain("service");
   });
 
+  it("blocks an out-of-enum argument on the ReAct path before the executor runs (parity with plan-execute)", async () => {
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Convert a number between bases.",
+          inputSchema: { type: "object", properties: { value: { type: "string" }, to: { type: "string", enum: ["binary", "octal", "decimal", "hex"] } }, required: ["value", "to"] },
+          name: "number_base",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const captured: { result: { status?: string; output?: unknown }; toolCall: { id: string } }[] = [];
+    const runtime = createAgentRuntime({
+      hooks: [{ afterTool: (_ctx, toolCall, result) => { captured.push({ result: result as { status?: string; output?: unknown }, toolCall }); }, id: "cap" }],
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        // Model fabricates an out-of-vocabulary enum value.
+        { id: "tool", model: "test-model", output: "Converting.", toolCalls: [{ arguments: { to: "base64", value: "255" }, id: "tc-1", name: "number_base" }] },
+        { id: "final", model: "test-model", output: "Done." }
+      ]),
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "convert 255 to base64", role: "user" }],
+      model: "provider/model",
+      runId: "run-bad-enum"
+    });
+
+    // The invalid-enum call NEVER reached execute (no partial side-effect), and the model was told the value is out of range.
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(result.response.output).toBe("Done.");
+    const blocked = captured.find((e) => e.toolCall.id === "tc-1");
+    expect(blocked?.result.status).toBe("blocked");
+    expect(String(blocked?.result.output)).toContain("invalid argument");
+    expect(String(blocked?.result.output)).toContain("base64");
+  });
+
+  it("executes when the enum argument is valid (the gate only blocks out-of-vocabulary values)", async () => {
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Convert a number between bases.",
+          inputSchema: { type: "object", properties: { value: { type: "string" }, to: { type: "string", enum: ["binary", "octal", "decimal", "hex"] } }, required: ["value", "to"] },
+          name: "number_base",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        { id: "tool", model: "test-model", output: "Converting.", toolCalls: [{ arguments: { to: "hex", value: "255" }, id: "tc-1", name: "number_base" }] },
+        { id: "final", model: "test-model", output: "Done." }
+      ]),
+      toolRegistry
+    });
+
+    await runtime.run({ messages: [{ content: "convert 255 to hex", role: "user" }], model: "provider/model", runId: "run-good-enum" });
+    expect(executeTool).toHaveBeenCalledTimes(1);
+  });
+
   it("losslessly coerces a right-value/wrong-type arg before execute (string \"5\" → number 5)", async () => {
     const seen: { args?: Record<string, unknown> } = {};
     const executeTool = vi.fn((args: Record<string, unknown>) => { seen.args = args; return { ok: true }; });
