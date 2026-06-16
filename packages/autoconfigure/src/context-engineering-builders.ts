@@ -6,7 +6,6 @@ import {
   InMemoryTelemetryAggregator,
   StoreBackedEpisodicRecallProvider,
   createBackgroundReviewHook,
-  createCachingEmbedder,
   selectPlanExemplarByRelevance,
   type ActiveContextProvider,
   type BackgroundReviewInput,
@@ -22,9 +21,8 @@ import {
   type PlaybookProvider
 } from "@muse/agent-core";
 import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
-import { LocalOnlyViolationError, isLoopbackUrl } from "@muse/model";
 
-import { resolveEmbedderBase } from "./embedder-base.js";
+import { createGateEmbedder, createOllamaEmbedder } from "./embedder-base.js";
 import type { JsonObject } from "@muse/shared";
 import { readFadedMemoryKeys, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits } from "@muse/mcp";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
@@ -209,61 +207,11 @@ export function buildInboxContextProvider(env: MuseEnvironment): InboxContextPro
  * pgvector. Default on so newly-shipped users get cross-session
  * memory the moment their first session compacts.
  */
-// Zero-cost local embedder: Ollama `/api/embeddings` (nomic-embed-text
-// by default). Zero-dep (global fetch). Throwing here is fine — the
-// StoreBacked provider treats a thrown embedder as fail-open and
-// degrades that resolve to Jaccard, so recall never breaks if Ollama
-// is down or the model isn't pulled.
-export function createOllamaEmbedder(model: string): (text: string) => Promise<readonly number[]> {
-  // Empty / whitespace OLLAMA_BASE_URL is treated as unset (loopback default);
-  // shared with the doctor posture so the two never diverge (see resolveEmbedderBase).
-  const base = resolveEmbedderBase(process.env);
-  // Local-only / no-cloud-egress, fail-CLOSED at construction (the same
-  // posture createModelProvider enforces for the chat provider). The chat
-  // gate only fires when the CHAT provider id is `ollama` — it never sees
-  // this embedder's independent OLLAMA_BASE_URL, so a localhost chat model
-  // plus a REMOTE OLLAMA_BASE_URL would silently POST the user's note /
-  // memory / episode text off-box. Refusing here closes that egress hole
-  // before any caller can hand the embedder private text. MUSE_LOCAL_ONLY
-  // is ON by default; remote requires the explicit MUSE_LOCAL_ONLY=false
-  // opt-out that forfeits the zero-egress guarantee.
-  if (parseBoolean(process.env.MUSE_LOCAL_ONLY, true) && !isLoopbackUrl(base)) {
-    throw new LocalOnlyViolationError("ollama", base);
-  }
-  // Keep the embed model warm with the SAME knob as the chat model (01717219):
-  // grounding embeds the query every turn, so an embed model that cold-reloads
-  // after a 5-minute idle gap would stall the FIRST grounded answer after a
-  // break — the always-on companion sets this to 2h via MuseBridge.
-  const keepAlive = process.env.MUSE_OLLAMA_KEEP_ALIVE?.trim() || "30m";
-  return async (text: string) => {
-    const resp = await fetch(`${base}/api/embeddings`, {
-      body: JSON.stringify({ model, prompt: text, keep_alive: keepAlive }),
-      headers: { "content-type": "application/json" },
-      method: "POST"
-    });
-    if (!resp.ok) {
-      throw new Error(`embeddings ${resp.status.toString()}`);
-    }
-    const body = (await resp.json()) as { embedding?: unknown };
-    if (!Array.isArray(body.embedding)) {
-      throw new Error("embedding response missing 'embedding'");
-    }
-    return body.embedding as number[];
-  };
-}
-
-/**
- * The single embedder every held-out gate (skill-merge, playbook, preference)
- * must use: honors MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL (default nomic-embed-text-v2-moe)
- * and caches, so all gates share one model — the gate floors are calibrated for
- * one embedder, so a surface that silently used a different model would apply a
- * miscalibrated threshold. Use this instead of hand-rolling createOllamaEmbedder.
- */
-export function createGateEmbedder(env: NodeJS.ProcessEnv): (text: string) => Promise<readonly number[]> {
-  return createCachingEmbedder(createOllamaEmbedder(
-    env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() || env.MUSE_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe"
-  ));
-}
+// The embedder constructors live in their natural home next to
+// `resolveEmbedderBase` (embedder-base.ts); imported above for local use AND
+// re-exported here so existing import sites (`./context-engineering-builders.js`
+// + the @muse/autoconfigure barrel) stay byte-identical.
+export { createGateEmbedder, createOllamaEmbedder };
 
 export function buildEpisodicRecallProvider(
   env: MuseEnvironment,
