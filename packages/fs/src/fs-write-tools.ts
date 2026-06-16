@@ -13,7 +13,7 @@
  */
 
 import { constants as fsConstants } from "node:fs";
-import { mkdir, open, stat } from "node:fs/promises";
+import { lstat, mkdir, open, rename, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
@@ -24,7 +24,7 @@ import { isPathSafetyError, resolvePolicy, resolveSafePath, type PathSafetyOptio
 const PREVIEW_CHARS = 400;
 
 export interface FsWriteDraft {
-  readonly action: "write" | "edit" | "multi_edit";
+  readonly action: "write" | "edit" | "multi_edit" | "delete" | "move";
   readonly path: string;
   /** Human-readable one-liner, e.g. "Overwrite todo.md" / "Apply 3 edits to config.ts". */
   readonly summary: string;
@@ -466,11 +466,144 @@ export function createFileMultiEditTool(options: FsWriteToolsOptions, policyProm
   };
 }
 
+export function createFileDeleteTool(options: FsWriteToolsOptions, policyPromise?: Promise<ResolvedPolicy>): MuseTool {
+  const policy = policyPromise ?? resolvePolicy(options);
+  return {
+    definition: {
+      description:
+        "Delete ONE file. Use when the user clearly asks to delete / remove a specific file (e.g. 'delete " +
+        "~/notes/old.md'). Refuses directories (only single files) and protected locations. The exact target " +
+        "is shown and the delete fires ONLY on confirmation; this is not easily reversible.",
+      domain: "files",
+      groundedArgs: ["path"],
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          path: { description: "File to delete, e.g. '~/notes/old.md'.", type: "string" }
+        },
+        required: ["path"],
+        type: "object"
+      },
+      keywords: ["file", "delete", "remove", "파일", "삭제", "지워"],
+      name: "file_delete",
+      risk: "write"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const path = asString(args["path"]).trim();
+      if (path.length === 0) {
+        return { deleted: false, reason: "file_delete needs `path`" };
+      }
+      let safe: string;
+      try {
+        safe = await resolveSafePath(path, options, await policy);
+      } catch (error) {
+        return { ...refusal(error, path), deleted: false };
+      }
+      try {
+        // lstat (not stat) so a symlink is classified as a link, not its target:
+        // deleting a real directory is refused; unlink removes a file or a symlink
+        // (the link itself, never its target) — both safe.
+        const info = await lstat(safe);
+        if (info.isDirectory()) {
+          return { deleted: false, path: safe, reason: `'${path}' is a directory — file_delete only removes single files` };
+        }
+        const draft: FsWriteDraft = { action: "delete", path: safe, preview: "", summary: `Delete ${safe}` };
+        let decision: FsWriteApprovalDecision;
+        try {
+          decision = await options.approvalGate(draft);
+        } catch (cause) {
+          return { deleted: false, path: safe, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
+        }
+        if (!decision.approved) {
+          return { deleted: false, path: safe, reason: decision.reason ?? "not confirmed" };
+        }
+        await unlink(safe);
+        return { deleted: true, path: safe };
+      } catch (error) {
+        return { deleted: false, path: safe, reason: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  };
+}
+
+export function createFileMoveTool(options: FsWriteToolsOptions, policyPromise?: Promise<ResolvedPolicy>): MuseTool {
+  const policy = policyPromise ?? resolvePolicy(options);
+  return {
+    definition: {
+      description:
+        "Move or rename ONE file. Both the source and destination must be inside the sandbox and not " +
+        "protected. Use when the user asks to rename or move a file (e.g. 'rename ~/notes/a.md to b.md', " +
+        "'move report.md into ~/archive'). Refuses if the destination already exists. Shown and fires ONLY " +
+        "on confirmation.",
+      domain: "files",
+      groundedArgs: ["from", "to"],
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          from: { description: "Existing source file path, e.g. '~/notes/a.md'.", type: "string" },
+          to: { description: "Destination path, e.g. '~/notes/b.md' or '~/archive/a.md'.", type: "string" }
+        },
+        required: ["from", "to"],
+        type: "object"
+      },
+      keywords: ["file", "move", "rename", "파일", "이동", "이름", "옮겨"],
+      name: "file_move",
+      risk: "write"
+    },
+    execute: async (args): Promise<JsonObject> => {
+      const fromArg = asString(args["from"]).trim();
+      const toArg = asString(args["to"]).trim();
+      if (fromArg.length === 0 || toArg.length === 0) {
+        return { moved: false, reason: "file_move needs `from` and `to`" };
+      }
+      const resolved = await policy;
+      let from: string;
+      let to: string;
+      try {
+        from = await resolveSafePath(fromArg, options, resolved);
+        to = await resolveSafePath(toArg, options, resolved);
+      } catch (error) {
+        return { ...refusal(error, fromArg), moved: false };
+      }
+      try {
+        const src = await lstat(from).catch(() => undefined);
+        if (!src) {
+          return { from, moved: false, reason: `source '${fromArg}' does not exist` };
+        }
+        if (src.isDirectory()) {
+          return { from, moved: false, reason: `'${fromArg}' is a directory — file_move only moves single files` };
+        }
+        const destExists = await lstat(to).then(() => true).catch(() => false);
+        if (destExists) {
+          return { moved: false, reason: `destination '${toArg}' already exists — refusing to overwrite`, to };
+        }
+        const draft: FsWriteDraft = { action: "move", path: to, preview: "", summary: `Move ${from} → ${to}` };
+        let decision: FsWriteApprovalDecision;
+        try {
+          decision = await options.approvalGate(draft);
+        } catch (cause) {
+          return { moved: false, reason: `approval gate error: ${cause instanceof Error ? cause.message : String(cause)}` };
+        }
+        if (!decision.approved) {
+          return { moved: false, reason: decision.reason ?? "not confirmed" };
+        }
+        await mkdir(dirname(to), { recursive: true });
+        await rename(from, to);
+        return { from, moved: true, to };
+      } catch (error) {
+        return { from, moved: false, reason: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  };
+}
+
 export function createFsWriteTools(options: FsWriteToolsOptions): readonly MuseTool[] {
   const policy = resolvePolicy(options);
   return [
     createFileWriteTool(options, policy),
     createFileEditTool(options, policy),
-    createFileMultiEditTool(options, policy)
+    createFileMultiEditTool(options, policy),
+    createFileDeleteTool(options, policy),
+    createFileMoveTool(options, policy)
   ];
 }

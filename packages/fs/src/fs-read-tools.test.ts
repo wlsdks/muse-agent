@@ -104,6 +104,22 @@ describe("file_read / file_list / file_grep", () => {
       expect(out["read"]).toBe(false);
       expect(String(out["reason"])).toContain("path");
     });
+
+    it("default text is raw (no line-number prefixes for clean editing)", async () => {
+      await writeFile(join(root, "c.ts"), "a\nb");
+      const tool = createFileReadTool(opts());
+      const out = (await tool.execute({ path: join(root, "c.ts") }, ctx)) as JsonObject;
+      expect(out["text"]).toBe("a\nb");
+    });
+
+    it("numbered:true prefixes line numbers honoring offset", async () => {
+      await writeFile(join(root, "c.ts"), "a\nb\nc\nd");
+      const tool = createFileReadTool(opts());
+      const out = (await tool.execute({ numbered: true, offset: 2, path: join(root, "c.ts") }, ctx)) as JsonObject;
+      const text = String(out["text"]);
+      expect(text.split("\n")[0]).toMatch(/^\s+2\t/u);
+      expect(text).toContain("b");
+    });
   });
 
   describe("file_list", () => {
@@ -125,6 +141,25 @@ describe("file_read / file_list / file_grep", () => {
       const tool = createFileListTool(opts());
       const out = (await tool.execute({}, ctx)) as JsonObject;
       expect(out["error"]).toBe("pattern is required");
+    });
+
+    it("honors .gitignore by default and can be overridden", async () => {
+      await writeFile(join(root, ".gitignore"), "ignored/\n*.log\n");
+      await mkdir(join(root, "ignored"), { recursive: true });
+      await writeFile(join(root, "ignored", "secret.md"), "x");
+      await writeFile(join(root, "app.log"), "x");
+      await writeFile(join(root, "keep.md"), "x");
+      const tool = createFileListTool(opts());
+
+      const honored = (await tool.execute({ cwd: root, pattern: "**/*" }, ctx)) as JsonObject;
+      const honoredPaths = honored["paths"] as string[];
+      expect(honoredPaths.some((p) => p.endsWith("keep.md"))).toBe(true);
+      expect(honoredPaths.some((p) => p.includes(`ignored${"/"}secret.md`))).toBe(false);
+      expect(honoredPaths.some((p) => p.endsWith("app.log"))).toBe(false);
+
+      const all = (await tool.execute({ cwd: root, includeIgnored: true, pattern: "**/*" }, ctx)) as JsonObject;
+      const allPaths = all["paths"] as string[];
+      expect(allPaths.some((p) => p.endsWith("app.log"))).toBe(true);
     });
   });
 
