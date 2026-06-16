@@ -110,6 +110,16 @@ describe("csv_parse", () => {
     });
   });
 
+  it("de-duplicates colliding header names so no column's cell is silently overwritten", () => {
+    // Two "id" columns + two empty headers: without de-dup the later cell would
+    // overwrite the earlier under the same key (data loss).
+    const out = csv({ text: "id,id,,\n1,2,3,4" });
+    expect(out).toEqual({
+      headers: ["id", "id_2", "", "_2"],
+      rows: [{ id: "1", id_2: "2", "": "3", _2: "4" }]
+    });
+  });
+
   it("picks a non-colliding overflow key when a column is literally named _extra", () => {
     const out = csv({ text: "_extra,b\nkept,y,overflow" }) as { rows: Record<string, unknown>[] };
     // The real "_extra" column value must survive; the overflow lands elsewhere.
