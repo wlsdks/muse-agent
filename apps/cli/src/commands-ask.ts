@@ -1914,6 +1914,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           ? [
               "Answer the user's question from the context provided below, plus your TOOLS when the context is not enough.",
               "When the user asks to open / read / act on a web page or live resource the context below does not contain, CALL the matching tool (e.g. browser_open for a URL) instead of refusing or answering from memory.",
+              // Agentic persistence — without this the local model stops after the
+              // first tool call (ran a test, saw it fail, then quit) or answers
+              // short instead of acting. Lifts the edit→run→verify loop 1/3 → 3/3
+              // (eval:edit-run-verify). Conditional ("when a task needs several
+              // steps") so a single-tool ask is unaffected.
+              "When a task needs several steps (e.g. read a file, change it, run a command), keep taking the next action after each tool result until it is actually done — do not stop after a single tool call.",
+              "If a command or test you run reports a failure, find the cause, fix it with your tools, and run it again to confirm it passes before you answer.",
               "If neither the provided context nor a tool result contains enough information, say so directly — do not invent facts."
             ]
           : [

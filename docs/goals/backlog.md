@@ -625,14 +625,23 @@ LOCAL 12B completing a MULTI-STEP computer task end-to-end, not more primitives.
   Honest reading: the three SINGLE capabilities (find/fix, edit-repair, execute) are each solid (5/5,
   3/3); the COMPOSED autonomous loop is at the model's ceiling. GOOD news surfaced: the model used
   `cwd` correctly and the run_command arg-split held (the earlier fixes carried). Eval kept report-only.
-- ◦ NEXT ① **decomposition is the real lever for the loop (NOT more deterministic patches)** — the
-  ~33% loop ceiling is a coordination limit; the fix is to DECOMPOSE the edit→run→verify loop into
-  single-purpose steps (each inference faces ONE simple decision) via the sub-agent orchestration axis
-  (`packages/multi-agent` decompose-trigger / lead-worker, `ask-decompose.ts`). See
-  [[project_subagent_orchestration_axis]]. A bigger architectural slice — measure whether a decomposed
-  loop lifts eval:edit-run-verify above the single-shot ~33%. Secondary: a `run_command` args-packing
-  repair (split a single `args` element like `-e "x"` that carries a flag+value) — observed once,
-  model recovered, low priority until it actually fails a run.
+- ✓→Done ① **edit→run→verify loop 1/3 → 3/3 via an agentic-persistence prompt (the ceiling was a
+  PROMPT gap, not the model)** (2026-06-16) — investigation flipped the read: (a) the existing
+  decomposition machinery (`runLeadWorkerTask`) is the WRONG shape — it fans out INDEPENDENT subtasks
+  and synthesizes, but the loop is a SEQUENTIAL DEPENDENT pipeline (edit needs read's finding), so a
+  worker in its own clean context can't carry it; (b) the production `--with-tools` system prompt was
+  recall-tuned ("Keep it concise — 2–4 sentences") with NO multi-step guidance, so the model quit after
+  the first tool call. FIX: added two GENERAL agentic-persistence lines to the withTools branch of the
+  ask system prompt (`commands-ask.ts`) — "when a task needs several steps, keep taking the next action
+  until done; if a command/test fails, fix it and re-run to confirm before answering". Conditional, so
+  a single-tool ask is unaffected. MEASURED FIRST in the eval (isolated lever) then aligned the eval's
+  system lines to the SHIPPED wording: `MUSE_EVAL_REPEAT=3 eval:edit-run-verify` = **3/3** both times
+  (was 1/3). CLI tsc 0, lint 0. NOT a brittle hack — general agent guidance, the same persistence every
+  harness uses. Report-only eval per 진안.
+- ◦ NEXT ◦ secondary: `run_command` args-packing repair (split a single `args` element like `-e "x"`
+  that carries a flag+value) — observed once, model recovered, low priority until it actually fails a
+  run. And: exercise multi-FILE navigation + a non-trivial bug in the loop eval (current fixture is one
+  file, one line) to find the next real ceiling now that persistence is wired.
 
 ## ★ Open — TOOL expansion & hardening (loop theme, 진안-directed 2026-06-12)
 

@@ -103,9 +103,17 @@ try {
     const TASK =
       `The test at ${testPath} is failing. Run it to see the failure, fix the bug in the source file ` +
       "it tests so the test passes, then run the test again to confirm it passes. Change nothing else.";
+    // The agentic-persistence lines shipped in the production --with-tools system
+    // prompt (commands-ask.ts) — this eval is their agent-level check: they lift
+    // the loop 1/3 → 3/3 by stopping the model quitting after the first tool call.
+    const SYSTEM = [
+      "You are Muse. Use the file and command tools to do what the user asks.",
+      "When a task needs several steps (e.g. read a file, change it, run a command), keep taking the next action after each tool result until it is actually done — do not stop after a single tool call.",
+      "If a command or test you run reports a failure, find the cause, fix it with your tools, and run it again to confirm it passes before you answer."
+    ].join(" ");
     const result = await assembly.agentRuntime.run({
       messages: [
-        { content: "You are Muse. Use the file and command tools to do what the user asks, then confirm the result.", role: "system" },
+        { content: SYSTEM, role: "system" },
         { content: TASK, role: "user" }
       ],
       metadata: { localMode: true, userId: "eval-edit-run-verify" },
