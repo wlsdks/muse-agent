@@ -117,6 +117,12 @@ export async function performConsentedAction(
         ...callerHeaders
       },
       method: options.request.method ?? "POST",
+      // Do NOT auto-follow redirects: the host-binding above vets only the
+      // ORIGINAL url, so a 3xx from the allowed host pointing elsewhere would
+      // otherwise re-issue the request — Authorization: Bearer included — to an
+      // un-consented host, exfiltrating the scoped credential (the same hole
+      // web-action.ts closes). Handle the 3xx below, fail-closed.
+      redirect: "manual",
       signal: controller.signal
     });
   } catch (cause) {
@@ -126,6 +132,16 @@ export async function performConsentedAction(
       : { performed: false, reason: `consented action fetch failed: ${cause instanceof Error ? cause.message : String(cause)}` };
   } finally {
     clearTimeout(timer);
+  }
+  // A redirect from the consented host would re-target the credential at an
+  // unvetted host — refuse it (the credential is bound to the consented host,
+  // never re-sent on a 3xx). Mirrors web-action.ts's redirect posture.
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.get("location") ?? "(no location)";
+    return {
+      performed: false,
+      reason: `refused to follow redirect to ${location} — the consented credential is bound to ${consent.allowedHost ?? options.request.url} and must not be re-sent to an unvetted host`
+    };
   }
   return { performed: true, status: response.status };
 }
