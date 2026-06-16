@@ -1505,6 +1505,23 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       if (tierRoute) {
         io.stderr(`(tier: ${tierRoute.tier} → ${model})\n`);
       }
+      // A FAILED ask must still leave a success:false run-log trace (fire 6) —
+      // without it scout-signals / doctor failRate see zero ask-failure signal,
+      // though chat-repl already writes one. Best-effort: a logging failure never
+      // masks the real error, and every failure path returns before the success
+      // trace at the end of the run, so there's no double-write.
+      const writeAskFailureLog = async (failure: string): Promise<void> => {
+        await writeRunLog(io.workspaceDir ?? process.cwd(), buildAskRunLog({
+          query,
+          model,
+          timings: askStages.timings(),
+          grounded: null,
+          response: "",
+          success: false,
+          toolsUsed: [],
+          errorMessage: failure
+        })).catch(() => undefined);
+      };
       if (assembly.modelProvider) {
         const visionProvider = assembly.modelProvider;
         screenVision.current = (input) =>
@@ -2021,6 +2038,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // effecting actions from a single `muse ask` shot.
         if (!assembly.agentRuntime) {
           io.stderr("(--with-tools requires a configured agent runtime — set MUSE_MODEL or provider key and re-run)\n");
+          await writeAskFailureLog("--with-tools requires a configured agent runtime");
           process.exitCode = 1;
           return;
         }
@@ -2087,6 +2105,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           });
           if (rendered.stdout !== undefined) io.stdout(rendered.stdout);
           if (rendered.stderr !== undefined) io.stderr(rendered.stderr);
+          await writeAskFailureLog(cause instanceof Error ? cause.message : String(cause));
           process.exitCode = 1;
           return;
         }
@@ -2157,6 +2176,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           });
           if (rendered.stdout !== undefined) io.stdout(rendered.stdout);
           if (rendered.stderr !== undefined) io.stderr(rendered.stderr);
+          await writeAskFailureLog(streamError);
           process.exitCode = 1;
           return;
         }

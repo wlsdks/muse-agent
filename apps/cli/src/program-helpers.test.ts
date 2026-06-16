@@ -36,6 +36,20 @@ describe("buildAskRunLog (cli.local ask run-log payload — shared success/failu
     expect((entry.response as { error?: string }).error).toBe("model timeout");
   });
 
+  it("the ask failure-path payload (grounded:null, empty response/tools) traces as a failure carrying the error — fire 6 wiring contract", () => {
+    // Exactly the shape writeAskFailureLog in commands-ask emits from each of the
+    // 3 ask failure paths (runtime-missing / agent-run catch / stream error).
+    const entry = buildAskRunLog({
+      query: "broken run", model: "ollama/gemma4:12b", timings: { totalMs: 5 },
+      grounded: null, response: "", success: false, toolsUsed: [], errorMessage: "stream error: ECONNREFUSED"
+    });
+    expect(readResponseSuccess(entry.response)).toBe(false);
+    expect(readResponseGrounded(entry.response)).toBeNull();
+    expect((entry.response as { error?: string }).error).toBe("stream error: ECONNREFUSED");
+    expect((entry.response as { response: string }).response).toBe("");
+    expect((entry.response as { toolsUsed: readonly string[] }).toolsUsed).toEqual([]);
+  });
+
   it("omits confidence and error when not provided (parity with the current success-path payload)", () => {
     const entry = buildAskRunLog({
       query: "q", model: "m", timings: {}, grounded: "grounded", response: "a", success: true, toolsUsed: []
