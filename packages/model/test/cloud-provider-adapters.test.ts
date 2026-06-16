@@ -67,6 +67,13 @@ describe("GeminiProvider — HTTP plumbing", () => {
     expect(err.retryable).toBe(true);
   });
 
+  it("normalizes a transport-level fetch rejection into a retryable ModelProviderError (not a raw TypeError)", async () => {
+    const rejectingFetch = () => Promise.reject(new TypeError("fetch failed"));
+    const err = await new GeminiProvider({ fetch: rejectingFetch }).generate(req()).catch((e) => e);
+    expect(err).toBeInstanceOf(ModelProviderError);
+    expect(err.retryable).toBe(true);
+  });
+
   it("lists models from the configured set with gemini capabilities (empty / defaultModel variants)", async () => {
     const models = await new GeminiProvider({ models: ["gemini-2.0-flash", "gemini-1.5-pro"] }).listModels();
     expect(models.map((m) => m.modelId)).toEqual(["gemini-2.0-flash", "gemini-1.5-pro"]);
@@ -106,6 +113,13 @@ describe("AnthropicProvider — HTTP plumbing", () => {
     await expect(new AnthropicProvider({ fetch: statusFetch(429) }).generate(req())).rejects.toMatchObject({ retryable: true });
     await expect(new AnthropicProvider({ fetch: statusFetch(400) }).generate(req())).rejects.toMatchObject({ retryable: false });
     const err = await new AnthropicProvider({ fetch: htmlFetch() }).generate(req()).catch((e) => e);
+    expect(err).toBeInstanceOf(ModelProviderError);
+    expect(err.retryable).toBe(true);
+  });
+
+  it("normalizes a transport-level fetch rejection into a retryable ModelProviderError (not a raw TypeError)", async () => {
+    const rejectingFetch = () => Promise.reject(new TypeError("fetch failed"));
+    const err = await new AnthropicProvider({ fetch: rejectingFetch }).generate(req()).catch((e) => e);
     expect(err).toBeInstanceOf(ModelProviderError);
     expect(err.retryable).toBe(true);
   });

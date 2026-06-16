@@ -8,7 +8,7 @@
 
 import { truncateErrorBody } from "@muse/shared";
 
-import { ModelProviderError, isRetryableHttpStatus } from "./provider-base.js";
+import { fetchOrThrowAsProviderError, ModelProviderError, isRetryableHttpStatus } from "./provider-base.js";
 import { parseJson } from "./provider-shared.js";
 import {
   fromGeminiResponse,
@@ -67,7 +67,7 @@ export class GeminiProvider implements ModelProvider {
     const policy = (request.metadata?.webSearchPolicy as { enabled: boolean; maxUses: number } | undefined)
       ?? { enabled: false, maxUses: 5 };
 
-    const response = await this.fetchImpl(url.toString(), {
+    const response = await fetchOrThrowAsProviderError(this.fetchImpl, this.id, this.baseUrl, "Gemini", url.toString(), {
       body: JSON.stringify(toGeminiRequest(request, policy)),
       headers: {
         "content-type": "application/json",

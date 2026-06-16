@@ -68,6 +68,37 @@ export function isRetryableHttpStatus(status: number): boolean {
   return status >= 500 && status <= 599;
 }
 
+/**
+ * Run a provider fetch and normalize a TRANSPORT-level rejection (no HTTP
+ * status — ECONNREFUSED/ECONNRESET/ETIMEDOUT/DNS, surfaced by `fetch` as a raw
+ * TypeError) into a typed retryable `ModelProviderError`. Without this the raw
+ * TypeError escapes the adapter and downstream policy can't read `.retryable`
+ * (architecture.md: "ModelProviderError.retryable is the source of truth") — so
+ * the same blip gets classified inconsistently per layer. Shared by every
+ * adapter (OpenAI-compatible / Ollama / Gemini / Anthropic) so transport-error
+ * shaping has ONE source of truth. A connection failure is transient like a
+ * 5xx, hence retryable; a loopback base gets the "is the server running?" hint.
+ */
+export async function fetchOrThrowAsProviderError(
+  fetchImpl: typeof fetch,
+  providerId: string,
+  baseUrl: string,
+  label: string,
+  url: string,
+  init: RequestInit
+): Promise<Response> {
+  try {
+    return await fetchImpl(url, init);
+  } catch (cause) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    const isLoopback = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?(?:\/|$)/iu.test(baseUrl);
+    const hint = isLoopback
+      ? " — is the local model server running at this address?"
+      : " — endpoint unreachable; check the URL and network";
+    throw new ModelProviderError(providerId, `${label} request to ${baseUrl} failed: ${detail}${hint}`, true);
+  }
+}
+
 export class OpenAICompatibleProvider implements ModelProvider {
   readonly id: string;
 
@@ -185,27 +216,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
   }
 
   private async fetchOrThrow(url: string, init: RequestInit): Promise<Response> {
-    try {
-      return await this.fetchImpl(url, init);
-    } catch (cause) {
-      // fetch() rejects with no HTTP status on a connection-level
-      // failure (ECONNREFUSED/ECONNRESET/ETIMEDOUT) — transient
-      // like a 5xx, so retryable rather than a hard agent failure.
-      const detail = cause instanceof Error ? cause.message : String(cause);
-      // Actionable hint, parallel to the native-Ollama path: a
-      // loopback baseUrl that refuses connection almost always
-      // means the local model server isn't started.
-      const isLoopback = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(?::\d+)?(?:\/|$)/iu
-        .test(this.baseUrl);
-      const hint = isLoopback
-        ? " — is the local model server running at this address?"
-        : " — endpoint unreachable; check the URL and network";
-      throw new ModelProviderError(
-        this.id,
-        `OpenAI-compatible request to ${this.baseUrl} failed: ${detail}${hint}`,
-        true
-      );
-    }
+    return fetchOrThrowAsProviderError(this.fetchImpl, this.id, this.baseUrl, "OpenAI-compatible", url, init);
   }
 
   private requestHeaders(): Record<string, string> {
