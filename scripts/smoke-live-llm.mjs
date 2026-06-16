@@ -141,9 +141,13 @@ async function chatJson(message, runId) {
 }
 
 function assertSelected(body, toolName) {
+  // Outcome over exact path (agent-testing.md): accept ANY of several valid
+  // tools when more than one correctly reaches the goal — pass a string for a
+  // single expected tool, or an array of acceptable ones.
+  const accepted = Array.isArray(toolName) ? toolName : [toolName];
   assert(body.success === true, `expected success, got ${JSON.stringify(body)}`);
-  assert(Array.isArray(body.toolsUsed) && body.toolsUsed.includes(toolName),
-    `NATURAL selection failed — expected the model to pick '${toolName}' unprompted, got toolsUsed=${JSON.stringify(body.toolsUsed)} content="${body.content}"`);
+  assert(Array.isArray(body.toolsUsed) && accepted.some((name) => body.toolsUsed.includes(name)),
+    `NATURAL selection failed — expected the model to pick one of ${JSON.stringify(accepted)} unprompted, got toolsUsed=${JSON.stringify(body.toolsUsed)} content="${body.content}"`);
 }
 
 try {
@@ -433,9 +437,12 @@ try {
     assertSelected(body, "muse.calendar.availability");
   });
 
-  await record("muse.tasks.list (live) — NATURAL selection from 'what's due today?'", async () => {
+  await record("tasks due today (live) — NATURAL selection (tasks.list OR today_brief both answer it)", async () => {
     const body = await chatJson("What tasks do I have due today?", "live-natural-taskslist");
-    assertSelected(body, "muse.tasks.list");
+    // "what's due today" is correctly answered by either the tasks list or the
+    // today brief (the day-recap routing sends "what's still left/overdue" to
+    // today_brief) — accept both; the goal is surfacing what's due, not one path.
+    assertSelected(body, ["muse.tasks.list", "today_brief"]);
   });
 
   await record("muse.tasks.update (live) — NATURAL reschedule selects update, not add", async () => {
