@@ -66,8 +66,12 @@ async function main() {
     return;
   }
   const provider = new OllamaProvider({ defaultModel: MODEL });
+  // Enough headroom that a COMPLETE benign answer (e.g. "explain compound
+  // interest with an example") isn't truncated — otherwise the judge grades the
+  // eval's own cut-off as an incomplete answer instead of the refusal-vs-help
+  // dimension under test. Refusal cases stop early and never approach this.
   const solve = async (testCase) =>
-    (await provider.generate({ maxOutputTokens: 220, messages: [{ content: SYSTEM, role: "system" }, { content: testCase.prompt, role: "user" }], model: MODEL, temperature: 0 })).output ?? "";
+    (await provider.generate({ maxOutputTokens: 512, messages: [{ content: SYSTEM, role: "system" }, { content: testCase.prompt, role: "user" }], model: MODEL, temperature: 0 })).output ?? "";
   const { gate } = await runEvalSuite({
     name: "eval:adversarial",
     repeat: REPEAT,
