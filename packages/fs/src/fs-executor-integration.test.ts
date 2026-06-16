@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { JsonObject } from "@muse/shared";
 import { ToolExecutor, ToolRegistry } from "@muse/tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -32,7 +33,7 @@ describe("fs tools through ToolExecutor (terminal-state)", () => {
     return new ToolExecutor({ registry });
   }
 
-  const call = (exec: ToolExecutor, name: string, args: Record<string, unknown>) =>
+  const call = (exec: ToolExecutor, name: string, args: JsonObject) =>
     exec.execute({ arguments: args, context: { runId: "it", userId: "u" }, id: `${name}-1`, name });
 
   it("drives write → read → edit → grep → delete to the right terminal disk state", async () => {
