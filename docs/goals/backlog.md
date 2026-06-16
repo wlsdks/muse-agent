@@ -556,6 +556,84 @@
   2484 cli) + lint 0. Residual (in spec): tool-grounded PROSE fabrication still passes
   (separate slice, needs judge-vs-tool-evidence). (audit CLI #4)
 
+## ★ Open — computer-control multi-step reliability (진안-directed 2026-06-16, axis ①+②)
+
+Direction picked by 진안: make Muse "control the computer" well. The PRIMITIVES already
+exist (`@muse/fs`: file_read/list/grep/write/edit/multi_edit/delete/move, all gated +
+path-safe; `run_command` via crates/runner; browser track). The real bottleneck is the
+LOCAL 12B completing a MULTI-STEP computer task end-to-end, not more primitives.
+
+- ✓→Done **file_grep no-path default scoped to home → dead-ends a narrowed sandbox** (2026-06-16,
+  measure-first finding from the new eval:computer-task) — `fs-read-tools.ts:361` defaulted the
+  search scope to `homedir()` when `path` was omitted. Fine for personal recall (roots=home), but
+  when roots are narrowed to a workspace/project the home default falls OUTSIDE roots → REFUSED, and
+  gemma4 (which routinely omits the optional `path`) retried 3× then gave up — never reaching the
+  file. FIX: default scope = first configured root when `roots` is set, else homedir() (recall
+  default preserved). TDD RED→GREEN (`fs-read-tools.test.ts` "defaults the scope to a configured
+  root"), fs 93/93, lint 0. This alone flipped eval:computer-task from 0/1 → PASS.
+- ✓→Done **file_edit literal-`\n` repair → eval:computer-task 1-2/3 → pass^5 5/5** (2026-06-16) —
+  DIAGNOSED deterministically (`applyEdit` repro): gemma4 DOUBLE-ESCAPES newlines, emitting the two
+  chars `\` `n` in its tool-call JSON instead of a real newline, so a multi-line `old_string` matched
+  neither exact NOR the existing Codex-style fuzzy fallback (`findFuzzyBlock` splits on real `\n`, so a
+  literal-`\n` string is one un-splittable line) → `not found`, and 12B recovery was inconsistent. FIX
+  (`fs-write-tools.ts`): extracted the exact+line-block match into `matchAndReplace`; when it misses,
+  `unescapeWhitespace` un-escapes literal `\n`/`\r`/`\t` in old AND new together and retries ONCE —
+  adopted only when the repaired form actually matches (a verbatim backslash-n in source is caught by
+  the exact pass first, so it's never rewritten; no location guessing). tool-calling.md rule 7
+  "validate + repair deterministically". TDD RED→GREEN (repair + verbatim-no-rewrite), fs 95/95,
+  repro 4/4, lint 0. Live: `MUSE_EVAL_REPEAT=5 eval:computer-task` = **5/5** (was ~1-2/3). Per 진안:
+  eval STAYS report-only (NOT in eval:agent CI bundle) — it's a measurement, not a gate.
+- ✓→Done ② **read-before-edit grounding gate** (2026-06-16) — the actuator analog of "every claim
+  cites a source": `file_edit`/`file_multi_edit` FAIL-CLOSE on a target this run never `file_read`
+  (Muse mutates only a file it has actually seen — codex edits freely). Deterministic + fail-close +
+  back-compat: `FsReadToolsOptions.onPathRead(canonicalPath)` fills a per-run set on every successful
+  read; `FsWriteToolsOptions.wasPathRead(canonicalPath)` is checked in `editExecutor` right after the
+  safe-path resolve; BOTH optional ⇒ unset = no gate (every existing caller/test unchanged). Keyed on
+  the resolved canonical path so read and edit agree. Wired in production (`commands-ask.ts`: shared
+  `fsReadPaths` Set across the fs read+write tools) and live in `eval:computer-task`. file_write
+  (create) is intentionally NOT gated; only mutate-existing is. TDD: fs **100/100** (fail-close when
+  unread, applies when read, canonical-key, onPathRead fires on success / not on failed read), CLI
+  tsc 0, lint 0. Live `MUSE_EVAL_REPEAT=3 eval:computer-task` = **3/3** — the gate does NOT break the
+  completion path (model reads before editing). NOTE: still report-only per 진안 (not in eval:agent).
+- ◦ NEXT ② **edit RATIONALE citation (softer follow-up)** — the path + the read-before-edit gate are
+  now grounded; a remaining nicety is citing WHY (the file/error line) in the agent's change summary.
+  Lower value than the gate (the gate is the hard guarantee); pick up only if the surface needs it.
+- ✓→Done ① **run_command (EXECUTE path) first ever end-to-end verification + hardening** (2026-06-16) —
+  the execute half of computer-control was UNVERIFIED: the `muse-runner` Rust binary wasn't even built
+  and no eval existed. Built it (`cargo build --release` → `target/release/muse-runner`, workspace
+  target). New `scripts/eval-run-command.mjs` (+ `eval:run-command`): live gemma4 must RUN a fixture
+  Node script via run_command and report the unique token it prints (terminal-state / grounded — a
+  fabricated "I ran it" can't pass; skips if Ollama OR the binary is absent). FIRST run found the real
+  failure: the 12B packed the whole line into `command` (`"node /abs/report.mjs"`) → runner rejects
+  ("command must be an executable name, not a path"), 0/1. FIX (both tool-calling.md levers): (1)
+  schema — `command`/`args`/`cwd`/`timeoutMs` got example-bearing descriptions + a use-when/not-when
+  line (rule 3/4); (2) deterministic repair in `parseRunnerCommandRequest` — when `command` carries
+  whitespace and no explicit args (and no quotes), tokenize into executable + args (rule 7). TDD:
+  tools 272/273 (split when no args / multi-flag / NOT when args given / NOT when quoted), build 0,
+  lint 0. Live `MUSE_EVAL_REPEAT=3 eval:run-command` = **3/3** (the schema fix alone made the model
+  emit `command:"node", args:[path]` correctly; repair is the backstop). Report-only per 진안.
+  PRE-EXISTING wiring confirmed: `createRunnerTools` gates run_command behind `MUSE_RUNNER_ENABLED` +
+  `MUSE_RUNNER_PATH` (default "muse-runner" on PATH) — so production needs that env + the built binary.
+- ✓→Measured ① **edit→run→verify LOOP baseline = ~33% (gemma4 coherence CEILING, not a deterministic
+  bug)** (2026-06-16) — new `scripts/eval-edit-run-verify.mjs` (+ `eval:edit-run-verify`): a failing
+  test, model must FIND (grep/read) → FIX (file_edit, read-before-edit gate wired) → RUN (run_command)
+  to confirm, graded TERMINAL-STATE (harness re-runs the test → exit 0) + no-collateral + model-ran-
+  test. pass^3 = **1/3**. Failure modes (debug-confirmed, NOT arg-quality — 0 bad-option): run 1 ran
+  the test once, saw FAIL, then STOPPED without editing (premature termination); run 3 used NO tools
+  at all (no-op). This is the MAST small-model failure class (step-stop / unaware-of-termination), the
+  binding multi-step-coherence limit on a 4-tool autonomous loop — NOT a deterministic patch target.
+  Honest reading: the three SINGLE capabilities (find/fix, edit-repair, execute) are each solid (5/5,
+  3/3); the COMPOSED autonomous loop is at the model's ceiling. GOOD news surfaced: the model used
+  `cwd` correctly and the run_command arg-split held (the earlier fixes carried). Eval kept report-only.
+- ◦ NEXT ① **decomposition is the real lever for the loop (NOT more deterministic patches)** — the
+  ~33% loop ceiling is a coordination limit; the fix is to DECOMPOSE the edit→run→verify loop into
+  single-purpose steps (each inference faces ONE simple decision) via the sub-agent orchestration axis
+  (`packages/multi-agent` decompose-trigger / lead-worker, `ask-decompose.ts`). See
+  [[project_subagent_orchestration_axis]]. A bigger architectural slice — measure whether a decomposed
+  loop lifts eval:edit-run-verify above the single-shot ~33%. Secondary: a `run_command` args-packing
+  repair (split a single `args` element like `-e "x"` that carries a flag+value) — observed once,
+  model recovered, low priority until it actually fails a run.
+
 ## ★ Open — TOOL expansion & hardening (loop theme, 진안-directed 2026-06-12)
 
 The loop's standing focus: EXPAND Muse's own tool surface + HARDEN the existing tools.

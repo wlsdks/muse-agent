@@ -77,7 +77,10 @@
     "eval:multihop": "pnpm --filter @muse/cli build && pnpm --filter @muse/agent-core build && pnpm --filter @muse/autoconfigure build && node scripts/verify-multihop.mjs",
     "smoke:browser": "pnpm --filter @muse/browser build && node scripts/smoke-browser.mjs",
     "eval:file-read": "pnpm --filter @muse/fs build && node scripts/verify-file-read.mjs",
-    "eval:browser-agent": "pnpm --filter @muse/browser build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-browser-agent.mjs"
+    "eval:browser-agent": "pnpm --filter @muse/browser build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-browser-agent.mjs",
+    "eval:computer-task": "pnpm --filter @muse/fs build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-computer-task.mjs",
+    "eval:run-command": "pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-run-command.mjs",
+    "eval:edit-run-verify": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-edit-run-verify.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
