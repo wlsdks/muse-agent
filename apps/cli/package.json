@@ -21,6 +21,7 @@
     "@muse/autoconfigure": "workspace:*",
     "@muse/browser": "workspace:*",
     "@muse/calendar": "workspace:*",
+    "@muse/fs": "workspace:*",
     "@muse/macos": "workspace:*",
     "@muse/mcp": "workspace:*",
     "@muse/memory": "workspace:*",

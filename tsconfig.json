@@ -35,6 +35,9 @@
       "path": "./packages/db"
     },
     {
+      "path": "./packages/fs"
+    },
+    {
       "path": "./packages/macos"
     },
     {

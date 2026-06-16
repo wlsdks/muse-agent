@@ -21,7 +21,6 @@ import {
   createHomeActionTool,
   createWebActionTool,
   createAllowlistPathValidator,
-  defaultFileReadRoots,
   queryContacts,
   resolveContact,
   type EmailApprovalGate,
@@ -29,6 +28,7 @@ import {
   type MessageApprovalGate,
   type WebActionApprovalGate
 } from "@muse/mcp";
+import { defaultFileReadRoots, type FsWriteApprovalGate } from "@muse/fs";
 import {
   createMacAppOpenTool,
   createMacAppReadTool,
@@ -254,6 +254,32 @@ export function buildBrowserApprovalGate(deps: {
     }
     deps.io.stdout(`\n${what}\n(on ${draft.url})\n\n`);
     return (await deps.confirmAction(question))
+      ? { approved: true }
+      : { approved: false, reason: "user did not confirm" };
+  };
+}
+
+/**
+ * Fail-closed approval gate for the @muse/fs write tools (file_write /
+ * file_edit / file_multi_edit). Shows the exact target path + a content
+ * preview and writes ONLY on confirm; in a non-interactive context the
+ * confirm can't be delivered, so the write is DENIED (a wrong autonomous
+ * overwrite of a local file is not trivially reversible). The path is
+ * already home-sandboxed + deny-listed inside the tool; this is the
+ * human-in-the-loop layer on top.
+ */
+export function buildFsWriteApprovalGate(deps: {
+  readonly io: ProgramIO;
+  readonly confirmAction: (message: string) => Promise<boolean>;
+  readonly isInteractive?: () => boolean;
+}): FsWriteApprovalGate {
+  const interactive = deps.isInteractive ?? DEFAULT_INTERACTIVE;
+  return async (draft) => {
+    if (!interactive()) {
+      return { approved: false, reason: "non-interactive — file writes need a live confirm" };
+    }
+    deps.io.stdout(`\n${draft.summary}\n--- preview ---\n${draft.preview}\n\n`);
+    return (await deps.confirmAction("Write this to disk?"))
       ? { approved: true }
       : { approved: false, reason: "user did not confirm" };
   };

@@ -1,10 +1,10 @@
+import { extractPdfTextWithPdfjs } from "@muse/fs";
 import type { JsonObject } from "@muse/shared";
 
 import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
 import type { LoopbackMcpServer } from "./loopback.js";
 import { readString } from "./loopback-helpers.js";
 import { extractReadableText } from "./web-readable.js";
-import { extractPdfTextWithPdfjs } from "./file-read-tool.js";
 import { assertPublicHttpUrl, type HostLookup } from "./web-url-guard.js";
 
 export interface WebReadMcpServerOptions {

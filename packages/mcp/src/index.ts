@@ -1192,6 +1192,5 @@ export {
   resolveLearnQueueFile,
   type LearnCorrectionEvent
 } from "./learn-queue.js";
-export * from "./file-read-tool.js";
 export * from "./upload-path-validator.js";
 export * from "./web-download-tool.js";

@@ -29,6 +29,9 @@
       "path": "../../packages/calendar"
     },
     {
+      "path": "../../packages/fs"
+    },
+    {
       "path": "../../packages/macos"
     },
     {

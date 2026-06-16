@@ -14,21 +14,6 @@
   ],
   "references": [
     {
-      "path": "../calendar"
-    },
-    {
-      "path": "../db"
-    },
-    {
-      "path": "../fs"
-    },
-    {
-      "path": "../memory"
-    },
-    {
-      "path": "../messaging"
-    },
-    {
       "path": "../shared"
     },
     {

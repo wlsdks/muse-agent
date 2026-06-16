@@ -1098,29 +1098,66 @@ async function buildActuatorScenario() {
 // file_read vs its three confusables: Spotlight (locate a path, don't read),
 // notes recall (Muse's own notes, not disk files), and the no-tool trap
 // (talking ABOUT files/PDFs without asking to read one).
+// The @muse/fs READ trio (file_read / file_list / file_grep) exposed with its
+// nearest confusables: mac_spotlight_search (locate by name, OS-wide) and
+// knowledge_search (recall over Muse notes). The carve is the verb: READ one
+// file's contents → file_read; FIND files by name/pattern → file_list; SEARCH
+// inside files by content → file_grep; locate a file's path → spotlight; recall
+// a remembered fact → knowledge_search.
 async function buildFileScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const fs = await import("../packages/fs/dist/index.js");
     const mac = await import("../packages/macos/dist/index.js");
     const ac = await import("../packages/autoconfigure/dist/index.js");
     const instances = [
-      mcp.createFileReadTool({ extractPdfText: async () => "", fsImpl: { listCandidates: async () => [], readFile: async () => Buffer.from("") } }),
+      ...fs.createFsReadTools({ describeImage: async () => ({ ok: true, text: "" }) }),
       mac.createMacSpotlightSearchTool(),
       ac.createNotesKnowledgeSearchTool({})
     ];
     const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
     const byName = new Set(tools.map((t) => t.name));
     const cases = [
-      { prompt: "다운로드 폴더에 있는 invoice.pdf 읽고 요약해줘.", expectTool: "file_read", requireArgs: ["file"], argIncludes: /invoice/i, note: "KO read+summarize a download → file_read" },
-      { prompt: "Read the report.md on my Desktop and tell me the key points.", expectTool: "file_read", requireArgs: ["file"], argIncludes: /report/i, note: "EN read a Desktop file → file_read" },
-      { prompt: "다운로드에 있는 계약서 워드 파일 열어서 핵심 조건 요약해줘.", expectTool: "file_read", requireArgs: ["file"], note: "KO read a .docx Word file → file_read" },
-      { prompt: "발표자료 키노트 파일이 어디 있는지 위치만 찾아줘.", expectTool: "mac_spotlight_search", note: "KO locate-only → spotlight (NOT file_read)" },
-      { prompt: "지난 회의에서 결정한 내용 내 노트에서 찾아줘.", expectTool: "knowledge_search", note: "KO Muse-notes recall → knowledge_search (NOT file_read)" },
+      { prompt: "다운로드 폴더에 있는 invoice.pdf 읽고 요약해줘.", expectTool: "file_read", requireArgs: ["path"], argIncludes: /invoice/i, note: "KO read+summarize a download → file_read" },
+      { prompt: "Read ~/notes/todo.md and tell me the key points.", expectTool: "file_read", requireArgs: ["path"], argIncludes: /todo/i, note: "EN read a file by path → file_read" },
+      { prompt: "다운로드에 있는 계약서 워드 파일 열어서 핵심 조건 요약해줘.", expectTool: "file_read", requireArgs: ["path"], note: "KO read a .docx Word file → file_read" },
+      { prompt: "Find all my markdown notes under ~/notes.", expectTool: "file_list", requireArgs: ["pattern"], note: "EN find files by name pattern → file_list (NOT file_grep)" },
+      { prompt: "노트 폴더에서 .ts 파일들 목록 좀 보여줘.", expectTool: "file_list", requireArgs: ["pattern"], note: "KO list files by glob → file_list" },
+      { prompt: "Which of my notes mention the word 'dentist'? Search inside them.", expectTool: "file_grep", requireArgs: ["pattern"], argIncludes: /dentist/i, note: "EN search file CONTENTS → file_grep (NOT file_list)" },
+      { prompt: "내 파일들 안에서 '치과'라는 단어가 들어간 곳 찾아줘.", expectTool: "file_grep", requireArgs: ["pattern"], note: "KO content search → file_grep" },
+      { prompt: "발표자료 키노트 파일이 어디 있는지 위치만 찾아줘.", expectTool: "mac_spotlight_search", note: "KO locate-only OS-wide → spotlight (NOT file_list)" },
+      { prompt: "지난 회의에서 결정한 내용 내 노트에서 찾아줘.", expectTool: "knowledge_search", note: "KO Muse-notes recall → knowledge_search (NOT file_grep)" },
       { prompt: "맥에서 쓸만한 PDF 뷰어 하나 추천해줘.", expectNoTool: true, note: "KO talking ABOUT PDFs, nothing to read → NO tool" }
     ];
-    return { label: "file-read (file_read vs spotlight vs notes recall)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+    return { label: "fs-read (file_read vs file_list vs file_grep vs spotlight vs notes)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
-    return { label: "file-read", skip: `deps not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+    return { label: "fs-read", skip: `deps not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
+// The @muse/fs WRITE trio (file_write / file_edit / file_multi_edit). The carve
+// is scope of change: create/overwrite a WHOLE file → file_write; ONE targeted
+// replacement in an existing file → file_edit; SEVERAL replacements to one file
+// → file_multi_edit. A read request among them must still pick file_read.
+async function buildFileWriteScenario() {
+  try {
+    const fs = await import("../packages/fs/dist/index.js");
+    const instances = [
+      ...fs.createFsWriteTools({ approvalGate: () => ({ approved: true }) }),
+      fs.createFileReadTool({})
+    ];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "Save this text as ~/notes/draft.md: hello world", expectTool: "file_write", requireArgs: ["path", "content"], note: "EN create/save a whole file → file_write" },
+      { prompt: "이 내용을 ~/notes/메모.md 파일로 저장해줘: 오늘 할 일", expectTool: "file_write", requireArgs: ["path", "content"], note: "KO save a whole file → file_write" },
+      { prompt: "In ~/config.ts change the line 'const PORT = 3000' to 'const PORT = 8080'.", expectTool: "file_edit", requireArgs: ["path", "old_string", "new_string"], note: "EN one targeted replacement → file_edit" },
+      { prompt: "~/notes/todo.md 파일에서 '우유 사기'를 '계란 사기'로 한 군데 바꿔줘.", expectTool: "file_edit", requireArgs: ["path", "old_string", "new_string"], note: "KO single replacement → file_edit" },
+      { prompt: "In ~/app.ts make these three changes: rename foo→bar, baz→qux, and a→b.", expectTool: "file_multi_edit", requireArgs: ["path", "edits"], note: "EN several edits to one file → file_multi_edit (NOT file_edit)" },
+      { prompt: "~/notes/todo.md 내용 좀 읽어줘.", expectTool: "file_read", requireArgs: ["path"], note: "KO read among write tools → file_read" }
+    ];
+    return { label: "fs-write (file_write vs file_edit vs file_multi_edit)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "fs-write", skip: `deps not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
   }
 }
 
@@ -1340,6 +1377,7 @@ async function main() {
     await buildActuatorScenario(),
     await buildMacActuatorScenario(),
     await buildFileScenario(),
+    await buildFileWriteScenario(),
     await buildBrowserScenario(),
     await buildPersonalCrudScenario(),
     await buildCalendarReadScenario(),

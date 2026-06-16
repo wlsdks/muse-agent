@@ -1435,18 +1435,32 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           describeImage: async (input) => screenVision.current ? screenVision.current(input) : { error: "the local vision model is not available in this run", ok: false }
         });
         extraTools = extraTools ? [...extraTools, ...browserTools] : browserTools;
-        // file_read rides along by default too: reading the user's own
-        // Downloads/Desktop/Documents is the local-first product's bread and
-        // butter (read-risk, allowlist-rooted, fail-closed outside the roots).
-        const { createFileReadTool, createWebDownloadTool } = await import("@muse/mcp");
+        // The @muse/fs read suite rides along by default: file_read (path or
+        // name fragment, incl. PDF/Word/image), file_list (glob), file_grep
+        // (content search) — read-risk, home-sandboxed, fail-closed on a denied
+        // path. The home-wide sandbox supersedes the old 3-folder file_read.
+        const { createFsReadTools, createFsWriteTools } = await import("@muse/fs");
+        const { createWebDownloadTool } = await import("@muse/mcp");
         // web_download saves a file from a public URL into ~/Downloads — the
         // write-side companion to file_read (SSRF-guarded, size-capped,
         // basename-only). file_read can then read/summarize what was saved.
-        extraTools = [...extraTools, createFileReadTool({
+        const fsReadTools = createFsReadTools({
           // file_read reads an IMAGE file via the same local vision the screen-
           // read path uses (lazy holder — the assembly/model is bound below).
           describeImage: async (input) => screenVision.current ? screenVision.current(input) : { error: "the local vision model is not available in this run", ok: false }
-        }), createWebDownloadTool({ fetchImpl: globalThis.fetch })];
+        });
+        // file_write / file_edit / file_multi_edit: home-sandboxed + deny-listed
+        // and gated by a fail-close confirm (the exposure policy only surfaces
+        // them when the prompt shows mutation intent). A wrong overwrite isn't
+        // trivially reversible, so the gate denies in any non-interactive run.
+        const { confirm: fsConfirm, isCancel: fsIsCancel } = await import("@clack/prompts");
+        const fsWriteTools = createFsWriteTools({
+          approvalGate: actuatorMod.buildFsWriteApprovalGate({
+            confirmAction: (message: string) => fsConfirm({ message }).then((answer) => !fsIsCancel(answer) && answer === true),
+            io
+          })
+        });
+        extraTools = [...extraTools, ...fsReadTools, ...fsWriteTools, createWebDownloadTool({ fetchImpl: globalThis.fetch })];
       }
       // The agent's `muse.messaging.send` (a default loopback tool whenever a
       // messenger is configured) gets a draft-first confirm gate under --with-tools:

@@ -116,6 +116,9 @@ importers:
       '@muse/calendar':
         specifier: workspace:*
         version: link:../../packages/calendar
+      '@muse/fs':
+        specifier: workspace:*
+        version: link:../../packages/fs
       '@muse/macos':
         specifier: workspace:*
         version: link:../../packages/macos
@@ -381,6 +384,21 @@ importers:
         specifier: ^11.14.0
         version: 11.14.0
 
+  packages/fs:
+    dependencies:
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@muse/tools':
+        specifier: workspace:*
+        version: link:../tools
+      mammoth:
+        specifier: ^1.12.0
+        version: 1.12.0
+      pdfjs-dist:
+        specifier: ^6.0.227
+        version: 6.0.227
+
   packages/macos:
     dependencies:
       '@muse/shared':
@@ -401,6 +419,9 @@ importers:
       '@muse/db':
         specifier: workspace:*
         version: link:../db
+      '@muse/fs':
+        specifier: workspace:*
+        version: link:../fs
       '@muse/memory':
         specifier: workspace:*
         version: link:../memory
@@ -416,12 +437,6 @@ importers:
       kysely:
         specifier: ^0.29.2
         version: 0.29.2
-      mammoth:
-        specifier: ^1.12.0
-        version: 1.12.0
-      pdfjs-dist:
-        specifier: ^6.0.227
-        version: 6.0.227
 
   packages/memory:
     dependencies:

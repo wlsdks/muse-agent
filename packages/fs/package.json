@@ -1,5 +1,5 @@
 {
-  "name": "@muse/mcp",
+  "name": "@muse/fs",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -17,14 +17,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "@muse/calendar": "workspace:*",
-    "@muse/db": "workspace:*",
-    "@muse/fs": "workspace:*",
-    "@muse/memory": "workspace:*",
-    "@muse/messaging": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/tools": "workspace:*",
-    "kysely": "^0.29.2"
+    "pdfjs-dist": "^6.0.227",
+    "mammoth": "^1.12.0"
   }
 }
