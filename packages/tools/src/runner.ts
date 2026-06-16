@@ -46,16 +46,27 @@ export function createRustRunnerTool(options: RustRunnerToolOptions = {}): MuseT
 
   return {
     definition: {
-      description: "Execute an approved local command through the Muse Rust runner child process.",
+      description:
+        "Run a local program (a test, build, script, or shell utility) and get its stdout/stderr + exit " +
+        "status back. Use when the task needs EXECUTING something — 'run the tests', 'build the project', " +
+        "'what does this script print'. Do NOT use to read a file (file_read), search files (file_grep), or " +
+        "list files (file_list) — those have dedicated tools.",
       inputSchema: {
         additionalProperties: false,
         properties: {
-          args: { items: { type: "string" }, type: "array" },
-          command: { type: "string" },
-          cwd: { type: "string" },
+          args: {
+            description: "Arguments as a SEPARATE list — e.g. ['report.mjs'] for `node report.mjs`, or ['-la', '/tmp'] for `ls -la /tmp`.",
+            items: { type: "string" },
+            type: "array"
+          },
+          command: {
+            description: "The executable name ONLY — e.g. 'node', 'ls', 'pnpm'. NOT a full command line and NOT a path; put every argument in `args`.",
+            type: "string"
+          },
+          cwd: { description: "Working directory to run in, e.g. '/Users/me/project'. Default: the current directory.", type: "string" },
           env: { additionalProperties: { type: "string" }, type: "object" },
           maxOutputBytes: { minimum: 1, type: "integer" },
-          timeoutMs: { minimum: 1, type: "integer" }
+          timeoutMs: { description: "Kill the command after this many milliseconds, e.g. 5000.", minimum: 1, type: "integer" }
         },
         required: ["command"],
         type: "object"
@@ -194,14 +205,27 @@ export function attachReadStreamErrorAbsorber(stream: NodeJS.ReadableStream | nu
 }
 
 export function parseRunnerCommandRequest(value: JsonObject): RunnerCommandRequest {
-  const command = typeof value.command === "string" ? value.command.trim() : "";
+  let command = typeof value.command === "string" ? value.command.trim() : "";
 
   if (!command) {
     throw new ToolRegistryError("run_command requires a non-empty command");
   }
 
+  let args = Array.isArray(value.args) ? value.args.filter((entry): entry is string => typeof entry === "string") : undefined;
+
+  // The local model often packs the WHOLE command line into `command`
+  // ("node report.mjs") — but the runner spawns the executable directly and
+  // needs a bare name + a separate args list. When `command` carries whitespace
+  // and no explicit args were given, split it. Quotes are left untouched (a naive
+  // whitespace split would break a quoted argument like `echo "a b"`).
+  if ((!args || args.length === 0) && /\s/u.test(command) && !/["']/u.test(command)) {
+    const parts = command.split(/\s+/u);
+    command = parts[0]!;
+    args = parts.slice(1);
+  }
+
   return {
-    args: Array.isArray(value.args) ? value.args.filter((entry): entry is string => typeof entry === "string") : undefined,
+    args,
     command,
     cwd: typeof value.cwd === "string" && value.cwd.trim().length > 0 ? value.cwd : undefined,
     env: readStringRecord(value.env),

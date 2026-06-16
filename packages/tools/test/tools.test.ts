@@ -724,6 +724,32 @@ describe("Rust runner tool", () => {
     expect(() => parseRunnerCommandRequest({ command: " " })).toThrow("run_command requires");
   });
 
+  describe("command-line split repair (local model packs the whole line into `command`)", () => {
+    it("splits a whitespace command into executable + args when no args were given", () => {
+      const req = parseRunnerCommandRequest({ command: "node /tmp/report.mjs" });
+      expect(req.command).toBe("node");
+      expect(req.args).toEqual(["/tmp/report.mjs"]);
+    });
+
+    it("splits multiple flags too", () => {
+      const req = parseRunnerCommandRequest({ command: "ls -la /tmp" });
+      expect(req.command).toBe("ls");
+      expect(req.args).toEqual(["-la", "/tmp"]);
+    });
+
+    it("does NOT split when explicit args are already provided", () => {
+      const req = parseRunnerCommandRequest({ args: ["test.mjs"], command: "node extra" });
+      expect(req.command).toBe("node extra");
+      expect(req.args).toEqual(["test.mjs"]);
+    });
+
+    it("does NOT split a quoted command line (naive split would mangle the argument)", () => {
+      const req = parseRunnerCommandRequest({ command: 'echo "hello world"' });
+      expect(req.command).toBe('echo "hello world"');
+      expect(req.args).toBeUndefined();
+    });
+  });
+
   it.skipIf(!existsSync(process.env.MUSE_RUNNER_PATH ?? defaultRunnerPath))(
     "executes through the real Rust runner binary when it is built",
     async () => {
