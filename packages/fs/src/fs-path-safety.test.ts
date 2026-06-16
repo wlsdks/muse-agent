@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { isPathSafetyError, PathSafetyError, resolvePolicy, resolveSafePath } from "./fs-path-safety.js";
+import { isPathSafetyError, PathSafetyError, pathSafetyOptionsFromEnv, resolvePolicy, resolveSafePath } from "./fs-path-safety.js";
 
 describe("path sandbox", () => {
   let root: string;
@@ -59,6 +59,23 @@ describe("path sandbox", () => {
     });
   });
 
+  it.each(["secrets", "credentials", "app-credentials", "my_secret"])(
+    "refuses a sensitive DIRECTORY component '%s' (audit #3), not just the basename",
+    async (dir) => {
+      await mkdir(join(root, dir), { recursive: true });
+      await writeFile(join(root, dir, "data.json"), "sk-REAL");
+      await expect(resolveSafePath(join(root, dir, "data.json"), opts())).rejects.toMatchObject({
+        reason: expect.stringMatching(/denied/u)
+      });
+    }
+  );
+
+  it("still ALLOWS an ordinary dir that merely contains a safe word (token-ring)", async () => {
+    await mkdir(join(root, "token-ring"), { recursive: true });
+    await writeFile(join(root, "token-ring", "readme.md"), "x");
+    await expect(resolveSafePath(join(root, "token-ring", "readme.md"), opts())).resolves.toContain("token-ring");
+  });
+
   it("refuses a project-local .muse state dir", async () => {
     await mkdir(join(root, ".muse"), { recursive: true });
     await expect(resolveSafePath(join(root, ".muse", "runs.jsonl"), opts())).rejects.toMatchObject({
@@ -93,5 +110,45 @@ describe("path sandbox", () => {
     await writeFile(join(root, "a.txt"), "1");
     const resolved = await resolveSafePath("a.txt", opts(), policy);
     expect(resolved.endsWith("a.txt")).toBe(true);
+  });
+
+  it("denies a NOT-yet-existing path under a differently-cased protected dir", async () => {
+    // No `.ssh` on disk, so realpath can't normalize the case — the deny must
+    // still fire case-insensitively (macOS is case-insensitive).
+    await expect(resolveSafePath(join(root, ".SSH", "newkey"), opts())).rejects.toMatchObject({
+      reason: "denied_path"
+    });
+  });
+
+  it("honours an extraDeny prefix", async () => {
+    const secrets = join(root, "vault");
+    await mkdir(secrets, { recursive: true });
+    await writeFile(join(secrets, "note.md"), "x");
+    await expect(
+      resolveSafePath(join(secrets, "note.md"), { ...opts(), extraDeny: [secrets] })
+    ).rejects.toMatchObject({ reason: "denied_path" });
+  });
+
+  it("a tighter root NARROWS the sandbox (a sibling under home is refused)", async () => {
+    const notes = join(root, "notes");
+    const other = join(root, "other");
+    await mkdir(notes, { recursive: true });
+    await mkdir(other, { recursive: true });
+    await writeFile(join(other, "x.md"), "x");
+    await expect(
+      resolveSafePath(join(other, "x.md"), { baseDir: root, roots: [notes] })
+    ).rejects.toMatchObject({ reason: "outside_roots" });
+  });
+});
+
+describe("pathSafetyOptionsFromEnv", () => {
+  it("parses MUSE_FS_ROOTS and MUSE_FS_DENY (':' or ',' separated)", () => {
+    const out = pathSafetyOptionsFromEnv({ MUSE_FS_DENY: "/x/secrets", MUSE_FS_ROOTS: "/a:/b,/c" });
+    expect(out.roots).toEqual(["/a", "/b", "/c"]);
+    expect(out.extraDeny).toEqual(["/x/secrets"]);
+  });
+
+  it("returns no overrides when neither is set", () => {
+    expect(pathSafetyOptionsFromEnv({})).toEqual({});
   });
 });

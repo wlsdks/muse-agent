@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -76,6 +76,50 @@ describe("file_write / file_edit / file_multi_edit — gated writes", () => {
       const out = (await tool.execute({ content: "KEY", path: join(root, ".ssh", "id_rsa") }, ctx)) as JsonObject;
       expect(out["refused"]).toBe(true);
       expect(out["written"]).toBe(false);
+    });
+
+    it("refuses to write through a symlink that escapes the root (no write to the target)", async () => {
+      const outside = await mkdtemp(join(tmpdir(), "muse-fs-out-"));
+      try {
+        await symlink(outside, join(root, "link"));
+        const tool = createFileWriteTool(opts(allow));
+        const out = (await tool.execute({ content: "PWNED", path: join(root, "link", "loot.txt") }, ctx)) as JsonObject;
+        expect(out["written"]).toBe(false);
+        await expect(readFile(join(outside, "loot.txt"), "utf8")).rejects.toThrow();
+      } finally {
+        await rm(outside, { force: true, recursive: true });
+      }
+    });
+
+    it("refuses to write through a DANGLING symlink leaf (audit #1 — no write to the escaped target)", async () => {
+      const outside = await mkdtemp(join(tmpdir(), "muse-fs-out-"));
+      try {
+        // Leaf is a symlink whose target does NOT exist yet — realpath can't
+        // resolve it, so only O_NOFOLLOW at write time catches the escape.
+        await symlink(join(outside, "created.txt"), join(root, "dangling.txt"));
+        const tool = createFileWriteTool(opts(allow));
+        const out = (await tool.execute({ content: "PWNED", path: join(root, "dangling.txt") }, ctx)) as JsonObject;
+        expect(out["written"]).toBe(false);
+        await expect(readFile(join(outside, "created.txt"), "utf8")).rejects.toThrow();
+      } finally {
+        await rm(outside, { force: true, recursive: true });
+      }
+    });
+
+    it("refuses a symlink swapped in during the approval gate (audit #2 — TOCTOU)", async () => {
+      const outside = await mkdtemp(join(tmpdir(), "muse-fs-out-"));
+      try {
+        const racingGate: FsWriteApprovalGate = async () => {
+          await symlink(join(outside, "pwned.txt"), join(root, "target.txt"));
+          return { approved: true };
+        };
+        const tool = createFileWriteTool(opts(racingGate));
+        const out = (await tool.execute({ content: "PWNED-TOCTOU", path: join(root, "target.txt") }, ctx)) as JsonObject;
+        expect(out["written"]).toBe(false);
+        await expect(readFile(join(outside, "pwned.txt"), "utf8")).rejects.toThrow();
+      } finally {
+        await rm(outside, { force: true, recursive: true });
+      }
     });
   });
 

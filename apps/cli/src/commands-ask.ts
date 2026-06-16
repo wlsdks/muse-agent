@@ -1439,12 +1439,16 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // name fragment, incl. PDF/Word/image), file_list (glob), file_grep
         // (content search) — read-risk, home-sandboxed, fail-closed on a denied
         // path. The home-wide sandbox supersedes the old 3-folder file_read.
-        const { createFsReadTools, createFsWriteTools } = await import("@muse/fs");
+        const { createFsReadTools, createFsWriteTools, pathSafetyOptionsFromEnv } = await import("@muse/fs");
         const { createWebDownloadTool } = await import("@muse/mcp");
+        // Sandbox overrides: MUSE_FS_ROOTS narrows the allow-root (default home),
+        // MUSE_FS_DENY adds deny prefixes on top of the credential defaults.
+        const fsSandbox = pathSafetyOptionsFromEnv(process.env);
         // web_download saves a file from a public URL into ~/Downloads — the
         // write-side companion to file_read (SSRF-guarded, size-capped,
         // basename-only). file_read can then read/summarize what was saved.
         const fsReadTools = createFsReadTools({
+          ...fsSandbox,
           // file_read reads an IMAGE file via the same local vision the screen-
           // read path uses (lazy holder — the assembly/model is bound below).
           describeImage: async (input) => screenVision.current ? screenVision.current(input) : { error: "the local vision model is not available in this run", ok: false }
@@ -1455,6 +1459,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // trivially reversible, so the gate denies in any non-interactive run.
         const { confirm: fsConfirm, isCancel: fsIsCancel } = await import("@clack/prompts");
         const fsWriteTools = createFsWriteTools({
+          ...fsSandbox,
           approvalGate: actuatorMod.buildFsWriteApprovalGate({
             confirmAction: (message: string) => fsConfirm({ message }).then((answer) => !fsIsCancel(answer) && answer === true),
             io

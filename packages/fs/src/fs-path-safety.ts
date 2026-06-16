@@ -53,16 +53,27 @@ const DEFAULT_DENY_DIRS: readonly string[] = [
 ];
 
 /** Path SEGMENTS that are denied wherever they appear (e.g. a project-local `.muse/`). */
-const DEFAULT_DENY_SEGMENTS: ReadonlySet<string> = new Set([".ssh", ".aws", ".gnupg", ".muse"]);
+const DEFAULT_DENY_SEGMENTS: ReadonlySet<string> = new Set([".ssh", ".aws", ".gnupg", ".muse", "secrets", "credentials"]);
 
-/** Basename patterns refused wherever they appear — credential/secret material. */
-const DEFAULT_DENY_PATTERNS: readonly RegExp[] = [
+/**
+ * Patterns refused on ANY path segment — a sensitive DIRECTORY (`~/x/secrets/…`,
+ * `~/app-credentials/…`) is as dangerous as a sensitive file under the broad home
+ * root. Precise enough not to false-positive on ordinary dir names. The broad
+ * `token` rule is NOT here (it would block a legit `token-ring/` dir); it stays
+ * basename-only below.
+ */
+const DEFAULT_DENY_SEGMENT_PATTERNS: readonly RegExp[] = [
   /^\.env(\..+)?$/iu,
   /(^|[._-])secrets?([._-]|$)/iu,
   /(^|[._-])credentials?([._-]|$)/iu,
-  /(^|[._-])token([._-]|$)/iu,
   /\.pem$/iu,
   /^id_(rsa|ed25519|ecdsa|dsa)$/iu
+];
+
+/** Patterns refused on the leaf (filename) only — broader than the segment set. */
+const DEFAULT_DENY_BASENAME_PATTERNS: readonly RegExp[] = [
+  ...DEFAULT_DENY_SEGMENT_PATTERNS,
+  /(^|[._-])token([._-]|$)/iu
 ];
 
 function expandHome(input: string): string {
@@ -110,6 +121,17 @@ function isUnder(child: string, parent: string): boolean {
   return child === parent || child.startsWith(parent.endsWith(sep) ? parent : `${parent}${sep}`);
 }
 
+/**
+ * Deny matching is case-INSENSITIVE on purpose: macOS (APFS/HFS+) is
+ * case-insensitive by default, so `~/.SSH/key` and `~/.ssh/key` are the same
+ * file. A case-sensitive deny would let `~/.SSH/newkey` (a not-yet-existing
+ * path, so `realpath` can't normalize its case) slip past the `.ssh` rule.
+ * Matching case-insensitively is never less safe.
+ */
+function isUnderCI(child: string, parent: string): boolean {
+  return isUnder(child.toLowerCase(), parent.toLowerCase());
+}
+
 export interface ResolvedPolicy {
   readonly roots: readonly string[];
   readonly denyDirs: readonly string[];
@@ -152,20 +174,23 @@ export async function resolveSafePath(
   }
 
   for (const deny of policy.denyDirs) {
-    if (isUnder(canonical, deny)) {
+    if (isUnderCI(canonical, deny)) {
       throw new PathSafetyError("denied_path", input, `Path '${input}' is in a protected location and was refused.`);
     }
   }
 
   const segments = canonical.split(sep).filter((segment) => segment.length > 0);
   for (const segment of segments) {
-    if (DEFAULT_DENY_SEGMENTS.has(segment)) {
+    if (DEFAULT_DENY_SEGMENTS.has(segment.toLowerCase())) {
       throw new PathSafetyError("denied_path", input, `Path '${input}' touches a protected directory ('${segment}') and was refused.`);
+    }
+    if (DEFAULT_DENY_SEGMENT_PATTERNS.some((pattern) => pattern.test(segment))) {
+      throw new PathSafetyError("denied_pattern", input, `Path '${input}' touches a protected secret path ('${segment}') and was refused.`);
     }
   }
 
   const leaf = basename(canonical);
-  if (DEFAULT_DENY_PATTERNS.some((pattern) => pattern.test(leaf))) {
+  if (DEFAULT_DENY_BASENAME_PATTERNS.some((pattern) => pattern.test(leaf))) {
     throw new PathSafetyError("denied_pattern", input, `Path '${input}' matches a protected secret pattern and was refused.`);
   }
 
@@ -175,4 +200,29 @@ export async function resolveSafePath(
 /** True when `error` is a fail-close path refusal (vs an IO error). */
 export function isPathSafetyError(error: unknown): error is PathSafetyError {
   return error instanceof PathSafetyError;
+}
+
+function splitPathList(value: string | undefined): readonly string[] {
+  if (!value) {
+    return [];
+  }
+  return value
+    .split(/[:,]/u)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+/**
+ * Sandbox overrides from the environment — `MUSE_FS_ROOTS` NARROWS the allow-root
+ * (a strict user can confine the fs tools to e.g. `~/notes`), `MUSE_FS_DENY` ADDS
+ * deny prefixes on top of the built-in credential defaults. Both accept a `:` or
+ * `,` separated list. Returns `{}` when neither is set (default = home root).
+ */
+export function pathSafetyOptionsFromEnv(env: Readonly<Record<string, string | undefined>>): PathSafetyOptions {
+  const roots = splitPathList(env["MUSE_FS_ROOTS"]);
+  const extraDeny = splitPathList(env["MUSE_FS_DENY"]);
+  return {
+    ...(roots.length > 0 ? { roots } : {}),
+    ...(extraDeny.length > 0 ? { extraDeny } : {})
+  };
 }

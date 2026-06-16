@@ -189,6 +189,30 @@ security boundary** — its unit battery is the critical test (every
 sensitive path above must be refused; traversal/symlink escape out of `~`
 must be refused; an ordinary `~/notes/x.md` must pass).
 
+**Adversarial audit (2026-06-16) — found & fixed.** An independent
+auditor reproduced three real holes; all are now closed with regression
+tests asserting the exact attacks:
+- **Dangling-symlink write escape (HIGH):** the leaf was a symlink whose
+  target didn't exist yet, so `realpath` couldn't resolve it and the path
+  check passed, then `writeFile` followed it out of the sandbox. Fixed: all
+  writes (and the edit read-back) go through `O_NOFOLLOW` — the kernel
+  rejects a symlink leaf atomically at open time.
+- **TOCTOU write escape (HIGH):** a symlink swapped in during the
+  approval-gate `await` window. Same `O_NOFOLLOW` fix closes it (the check
+  is now at the actual write syscall, not a prior path-string check).
+- **Sensitive-DIRECTORY exposure (MEDIUM):** deny patterns were checked
+  only on the basename, so `~/x/secrets/keys.json` was readable. Fixed: the
+  secret/credential patterns now run on EVERY path segment, plus `secrets`/
+  `credentials` added to the exact-segment deny set (the broad `token` rule
+  stays basename-only so a legit `token-ring/` dir isn't blocked).
+- Case-insensitive deny matching (macOS) and `MUSE_FS_ROOTS`/`MUSE_FS_DENY`
+  overrides were added in the same hardening pass.
+
+Residual (documented, not holes): editing/overwriting an in-sandbox
+*symlink* is refused (fail-safe); a parent-directory swap mid-write and a
+pure read-path TOCTOU remain theoretical on a single-user box (the proven
+write escapes are closed).
+
 This is code, not prompt — same posture as `local-only-policy.ts`.
 Ships with a unit test battery (traversal `../`, symlink escape, denied
 sensitive path, allowed in-root path).

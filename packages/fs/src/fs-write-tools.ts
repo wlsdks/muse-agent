@@ -12,7 +12,8 @@
  * denied gate leaves the file byte-for-byte unchanged.
  */
 
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
+import { mkdir, open, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
@@ -107,7 +108,41 @@ function refusal(error: unknown, path: string): JsonObject {
   if (isPathSafetyError(error)) {
     return { path, reason: error.message, refused: true, written: false };
   }
+  // A symlink at the target (caught atomically by O_NOFOLLOW at write time) is a
+  // refusal, not a generic IO error — it's the fail-close on a dangling-symlink /
+  // TOCTOU escape that the path check alone can't see.
+  if ((error as NodeJS.ErrnoException).code === "ELOOP") {
+    return { path, reason: `'${path}' is a symlink — refused (a symlink target could escape the sandbox)`, refused: true, written: false };
+  }
   return { path, reason: error instanceof Error ? error.message : String(error), written: false };
+}
+
+/**
+ * Write `content` to an already-sandbox-approved path WITHOUT following a
+ * symlink at the leaf. `O_NOFOLLOW` makes the kernel reject (ELOOP) a final
+ * component that is a symlink — atomically, at open time — which closes the
+ * dangling-symlink and TOCTOU escapes that a path-string check before a plain
+ * `writeFile` cannot (the leaf can be a symlink the realpath ancestor-walk never
+ * resolved, or one swapped in during the approval-gate await window).
+ */
+async function writeFileNoFollow(safePath: string, content: string): Promise<void> {
+  const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_TRUNC | fsConstants.O_NOFOLLOW;
+  const handle = await open(safePath, flags, 0o644);
+  try {
+    await handle.writeFile(content, "utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
+/** Read an existing file without following a symlink leaf (ELOOP on a symlink). */
+async function readFileNoFollow(safePath: string): Promise<string> {
+  const handle = await open(safePath, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  try {
+    return await handle.readFile("utf8");
+  } finally {
+    await handle.close();
+  }
 }
 
 export function createFileWriteTool(options: FsWriteToolsOptions, policyPromise?: Promise<ResolvedPolicy>): MuseTool {
@@ -171,7 +206,7 @@ export function createFileWriteTool(options: FsWriteToolsOptions, policyPromise?
           return { path: safe, reason: decision.reason ?? "not confirmed", written: false };
         }
         await mkdir(dirname(safe), { recursive: true });
-        await writeFile(safe, content, "utf8");
+        await writeFileNoFollow(safe, content);
         return { bytes: Buffer.byteLength(content, "utf8"), created: !exists, path: safe, written: true };
       } catch (error) {
         return refusal(error, path);
@@ -201,7 +236,7 @@ function editExecutor(
       if (info.isDirectory()) {
         return { path: safe, reason: `'${path}' is a directory`, written: false };
       }
-      original = await readFile(safe, "utf8");
+      original = await readFileNoFollow(safe);
     } catch (error) {
       return refusal(error, path);
     }
@@ -228,7 +263,7 @@ function editExecutor(
       return { path: safe, reason: decision.reason ?? "not confirmed", written: false };
     }
     try {
-      await writeFile(safe, outcome.content, "utf8");
+      await writeFileNoFollow(safe, outcome.content);
     } catch (error) {
       return refusal(error, path);
     }

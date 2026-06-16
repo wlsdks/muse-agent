@@ -42,6 +42,7 @@ const GREP_MAX_FILES = 2000;
 const GREP_MAX_MATCHES = 200;
 const GREP_MAX_FILE_BYTES = 1024 * 1024;
 const GREP_MAX_PATTERN_LENGTH = 1000;
+const GREP_MAX_LINE_LENGTH = 50_000;
 
 const EXCLUDED_DIR_SEGMENTS: ReadonlySet<string> = new Set([
   "node_modules",
@@ -414,7 +415,10 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
           }
           const lines = content.split("\n");
           for (let index = 0; index < lines.length; index += 1) {
-            const lineText = lines[index] ?? "";
+            const rawLine = lines[index] ?? "";
+            // Cap the substring handed to the (user-supplied) regex so one
+            // pathological long line can't drive catastrophic backtracking.
+            const lineText = rawLine.length > GREP_MAX_LINE_LENGTH ? rawLine.slice(0, GREP_MAX_LINE_LENGTH) : rawLine;
             if (regex.test(lineText)) {
               contentMatches.push({ file: safe, line: index + 1, text: lineText.slice(0, 500) });
               if (contentMatches.length >= GREP_MAX_MATCHES) {
