@@ -654,6 +654,25 @@ LOCAL 12B completing a MULTI-STEP computer task end-to-end, not more primitives.
   workspace + deny file-content shell utils (cat/ls/find) so file_read/file_grep are the only inspect
   path; (c) DECOMPOSE — a "locate+fix" sub-step (file tools only) then a "run the test" sub-step. Pick
   one with 진안 — each is a real slice, and the probe is the gate that proves it.
+  - ◑ lever (a) phase-scoped tools SHIPPED + lever-adjacent grep-read fix → **0/3 → 2/3** (2026-06-17,
+    진안-picked lever (a)). `GeneralShellPhaseGate` (packages/agent-core/src/general-shell-phase.ts,
+    wired into BOTH model-loop activeTools filters): when the tool set has BOTH a general shell
+    (run_command) AND a structured file-write tool (file_edit/…), the shell is available initially
+    (run the failing test), WITHHELD during the locate+fix phase (after a shell use, until a write
+    LANDS), and RE-ARMED after a landed write (confirm). Engages only when both classes are present
+    → run_command-alone (execute eval) + one-file loop (3/3) do NOT regress. Unit 10/10 + loop wiring
+    2/2 + agent-core 2446 green. The live trace PROVED the shell-cannibalization (cat/ls/find) is GONE
+    — the model now stays on file_grep/file_read/file_edit and writes CORRECT scoped fixes. But the
+    probe then exposed a second blocker: the model inspects via content-mode `file_grep` (not
+    file_read), so the read-before-edit gate refused every (correct) edit. Fixed in @muse/fs: a
+    content-mode grep marks the files it returned content from as READ (consistent with file_read,
+    which already marks a path read after an offset/limit PARTIAL view) — files-mode (no content
+    shown) does NOT. Wired in production via createFsReadTools (not probe-only); fs 102 green (+2).
+  - ◦ RESIDUAL (the next frontier, distinct lever): pass^3 is **2/3, NOT stable** — one run the 12B
+    botched the EDIT itself (emptied `multiply` → `""`), a stochastic edit-CORRECTNESS/scoping failure,
+    not the tool-selection bias lever (a) fixed. Candidate next lever: a deterministic edit-integrity
+    gate (reject an edit that empties/syntactically-breaks a function, or that deletes more than it
+    adds without intent). The probe stays RED report-only documenting this residual.
 - ◦ secondary: `run_command` args-packing repair (split a single `args` element like `-e "x"` that
   carries a flag+value) — observed once, model recovered, low priority until it actually fails a run.
 

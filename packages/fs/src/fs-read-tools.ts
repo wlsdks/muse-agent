@@ -466,9 +466,21 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
         return refusalResult(error, scopeArg);
       }
 
-      return mode === "files"
-        ? { count: matchedFiles.length, files: matchedFiles, mode, pattern: patternText, scanned, truncated }
-        : { count: contentMatches.length, matches: contentMatches, mode, pattern: patternText, scanned, truncated };
+      if (mode === "files") {
+        return { count: matchedFiles.length, files: matchedFiles, mode, pattern: patternText, scanned, truncated };
+      }
+      // A content-mode match surfaces the file's real lines to the model (it
+      // copies file_edit's old_string straight from them), so it grounds a
+      // later edit exactly as file_read does — and file_read marks a path read
+      // even after an offset/limit PARTIAL view. Mark every file we returned
+      // content from as read so the read-before-edit gate accepts a
+      // grep→edit loop (the small model reaches for file_grep, not file_read,
+      // to inspect; without this its correct, scoped edits are all refused).
+      // "files" mode shows NO content, so it never marks read.
+      for (const file of new Set(contentMatches.map((match) => match.file))) {
+        options.onPathRead?.(file);
+      }
+      return { count: contentMatches.length, matches: contentMatches, mode, pattern: patternText, scanned, truncated };
     }
   };
 }

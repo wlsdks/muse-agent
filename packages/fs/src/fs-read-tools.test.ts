@@ -190,6 +190,22 @@ describe("file_read / file_list / file_grep", () => {
       expect(String(out["error"])).toContain("invalid regular expression");
     });
 
+    it("content mode marks the matched file READ (grounds a grep→edit loop, like file_read's partial view)", async () => {
+      await writeFile(join(root, "z.md"), "alpha\nbeta dentist\ngamma");
+      const seen: string[] = [];
+      const tool = createFileGrepTool({ ...opts(), onPathRead: (p) => seen.push(p) });
+      await tool.execute({ mode: "content", path: root, pattern: "dentist" }, ctx);
+      expect(seen.some((p) => p.endsWith("z.md"))).toBe(true);
+    });
+
+    it("files mode does NOT mark read (no content shown to ground an edit)", async () => {
+      await writeFile(join(root, "z.md"), "alpha\nbeta dentist\ngamma");
+      const seen: string[] = [];
+      const tool = createFileGrepTool({ ...opts(), onPathRead: (p) => seen.push(p) });
+      await tool.execute({ mode: "files", path: root, pattern: "dentist" }, ctx);
+      expect(seen).toHaveLength(0);
+    });
+
     it("defaults the scope to a configured root when path is omitted (not the home dir)", async () => {
       await writeFile(join(root, "x.md"), "the dentist appointment");
       const tool = createFileGrepTool(opts());

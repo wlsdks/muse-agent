@@ -45,6 +45,7 @@ import {
   type StreamExecutionOptions,
   type StreamedModelTurn
 } from "./runtime-internals.js";
+import { GeneralShellPhaseGate } from "./general-shell-phase.js";
 import { detectConflictingWritesInBatch } from "./tool-batch-conflict.js";
 import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
 import { ToolFailureStreakTracker } from "./tool-failure-streak.js";
@@ -138,6 +139,7 @@ export async function executeModelLoop(
   const deduplicator = new ToolCallDeduplicator();
   const progress = new ToolLoopProgressTracker();
   const failureStreak = new ToolFailureStreakTracker();
+  const shellPhase = new GeneralShellPhaseGate((request.tools ?? []).map((tool) => tool.name));
   const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
     ? now() + runner.maxRunWallclockMs
@@ -162,7 +164,7 @@ export async function executeModelLoop(
     // failed N times in a row is withheld for the next turn (the model keeps its
     // OTHER tools) so a cascading tool failure can't burn the whole budget.
     const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled())
-      ? request.tools?.filter((t) => !failureStreak.tripped(t.name))
+      ? request.tools?.filter((t) => !failureStreak.tripped(t.name) && !shellPhase.withholds(t.name))
       : [];
     const response = await runner.generateWithTracing(context, provider, {
       ...request,
@@ -231,6 +233,7 @@ export async function executeModelLoop(
       if (canRun && !duplicate?.duplicate) {
         progress.record(executed.result.output, mutating);
         failureStreak.record(toolCall.name, executed.result.status);
+        shellPhase.record(toolCall.name, executed.result.output);
       }
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
@@ -275,6 +278,7 @@ export async function* executeStreamingModelLoop(
   const deduplicator = new ToolCallDeduplicator();
   const progress = new ToolLoopProgressTracker();
   const failureStreak = new ToolFailureStreakTracker();
+  const shellPhase = new GeneralShellPhaseGate((request.tools ?? []).map((tool) => tool.name));
   const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
     ? now() + runner.maxRunWallclockMs
@@ -291,7 +295,7 @@ export async function* executeStreamingModelLoop(
     // failed N times in a row is withheld for the next turn (the model keeps its
     // OTHER tools) so a cascading tool failure can't burn the whole budget.
     const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled())
-      ? request.tools?.filter((t) => !failureStreak.tripped(t.name))
+      ? request.tools?.filter((t) => !failureStreak.tripped(t.name) && !shellPhase.withholds(t.name))
       : [];
     const turnStream = streamModelTurn(runner, context, provider, {
       ...request,
@@ -361,6 +365,7 @@ export async function* executeStreamingModelLoop(
       if (canRun && !duplicate?.duplicate) {
         progress.record(executed.result.output, mutating);
         failureStreak.record(toolCall.name, executed.result.status);
+        shellPhase.record(toolCall.name, executed.result.output);
       }
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
