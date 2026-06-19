@@ -33,3 +33,22 @@ export function isMemoryInjection(value: string): boolean {
 export function defangMemoryInjection(value: string): string {
   return isMemoryInjection(value) ? "(stored note hidden — its text looked like an instruction)" : value;
 }
+
+const INJECTION_SPAN_PLACEHOLDER = "[removed: injected instruction]";
+
+/**
+ * SPAN-level neutralization for PROSE (episode summaries, feed text, note chunks):
+ * replace ONLY each matched injection span with a placeholder, keeping the rest of
+ * the text intact. Atomic short facts use the whole-value `defangMemoryInjection`;
+ * prose must NOT lose an entire paragraph to a single matched phrase — a benign
+ * sentence that merely trips a token ("forget about the previous vendor") keeps its
+ * surrounding recall content. Deterministic; clean text is returned byte-identical.
+ */
+export function neutralizeInjectionSpans(text: string): string {
+  let out = text;
+  for (const pattern of MEMORY_INJECTION_PATTERNS) {
+    const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+    out = out.replace(new RegExp(pattern.source, flags), INJECTION_SPAN_PLACEHOLDER);
+  }
+  return out;
+}

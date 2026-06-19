@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
 import { citedSourcesIn, lexicalOverlap, lexicalTokens, type ContradictionPair } from "@muse/agent-core";
-import { defangMemoryInjection } from "./injection.js";
+import { neutralizeInjectionSpans } from "./injection.js";
 import { escapeSystemPromptMarkers } from "./prompt-escape.js";
 import { formatDueLocal, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 
@@ -508,7 +508,7 @@ export function buildNoteContextBlock(
 
   return chunks.map((r, i) => {
     const src = relativizeNoteSource(r.file, notesDir);
-    const body = escapeSystemPromptMarkers(r.chunk.text);
+    const body = escapeSystemPromptMarkers(neutralizeInjectionSpans(r.chunk.text));
     const otherNoteNum = conflictMarker.get(i);
     const marker = otherNoteNum !== undefined
       ? `\n[⚠ this note and note ${otherNoteNum.toString()} give DIFFERENT values for what looks like the same point — treat as possibly-conflicting; do not assume either is current]`
@@ -584,7 +584,7 @@ export function buildEpisodeContextBlock(episodes: readonly { readonly id: strin
     return "(no relevant past sessions)";
   }
   return episodes
-    .map((e, i) => `<<session ${(i + 1).toString()} — ${e.id} (score ${e.score.toFixed(3)})>>\n${escapeSystemPromptMarkers(defangMemoryInjection(e.summary))}\n<<end>>`)
+    .map((e, i) => `<<session ${(i + 1).toString()} — ${e.id} (score ${e.score.toFixed(3)})>>\n${escapeSystemPromptMarkers(neutralizeInjectionSpans(e.summary))}\n<<end>>`)
     .join("\n\n");
 }
 
@@ -594,7 +594,7 @@ export function buildFeedContextBlock(headlines: readonly { readonly feedName: s
     return "(no recent feed headlines)";
   }
   return headlines
-    .map((h, i) => `<<feed ${(i + 1).toString()} — ${h.feedName} (${h.publishedAt})>>\n${escapeSystemPromptMarkers(defangMemoryInjection(h.title))}${h.summary ? `\n${escapeSystemPromptMarkers(defangMemoryInjection(h.summary))}` : ""}\n[feed: ${h.feedName}]\n<<end>>`)
+    .map((h, i) => `<<feed ${(i + 1).toString()} — ${h.feedName} (${h.publishedAt})>>\n${escapeSystemPromptMarkers(neutralizeInjectionSpans(h.title))}${h.summary ? `\n${escapeSystemPromptMarkers(neutralizeInjectionSpans(h.summary))}` : ""}\n[feed: ${h.feedName}]\n<<end>>`)
     .join("\n\n");
 }
 
