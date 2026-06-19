@@ -111,6 +111,36 @@ describe("groundingConflictCue — compose answer grounding (notes + episodes) i
     expect(groundingConflictCue([{ file: "a.md", text: "Capital: Paris" }], [])).toBeUndefined();
     expect(groundingConflictCue([], [])).toBeUndefined();
   });
+
+  it("detects a conflict ACROSS a remembered memory FACT and a note (the stale-memory grounded≠true hole)", () => {
+    const cue = groundingConflictCue(
+      [{ file: "team.md", text: "team lead: Sarah Chen" }],
+      [],
+      [{ key: "team lead", value: "Kim" }]
+    );
+    expect(cue).toBeDefined();
+    expect(cue).toContain("team lead");
+    expect(cue).toContain("Sarah Chen");
+    expect(cue).toContain("Kim");
+  });
+
+  it("does NOT warn when a remembered fact AGREES with the grounded note (no false conflict)", () => {
+    expect(groundingConflictCue(
+      [{ file: "team.md", text: "team lead: Sarah Chen" }],
+      [],
+      [{ key: "team lead", value: "Sarah Chen" }]
+    )).toBeUndefined();
+  });
+
+  it("a memory fact with a boolean-ish value (renders as topic only) is not a spurious conflict", () => {
+    // renderMemoryFact drops a bare yes/true value → "allergy penicillin" (no colon),
+    // so it carries no labelled field and cannot manufacture a conflict.
+    expect(groundingConflictCue(
+      [{ file: "n.md", text: "team lead: Sarah Chen" }],
+      [],
+      [{ key: "allergy_penicillin", value: "yes" }]
+    )).toBeUndefined();
+  });
 });
 
 describe("conflictCueFromMatches — chat-side cue from a flat grounding-match list", () => {

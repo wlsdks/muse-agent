@@ -1,4 +1,5 @@
 import type { RecallHit } from "./hit.js";
+import { renderMemoryFact, type MemoryFact } from "./select.js";
 
 /**
  * A grounded≠true hole the rest of the stack does NOT cover: every gate screens
@@ -78,11 +79,17 @@ function fieldsOf(snippet: string): Map<string, string> {
  */
 export function groundingConflictCue(
   notes: ReadonlyArray<{ readonly file: string; readonly text: string }>,
-  episodes: ReadonlyArray<{ readonly id: string; readonly summary: string }>
+  episodes: ReadonlyArray<{ readonly id: string; readonly summary: string }>,
+  memories: readonly MemoryFact[] = []
 ): string | undefined {
   const hits: RecallHit[] = [
     ...notes.map((n) => ({ ref: n.file, score: 1, snippet: n.text, source: "notes" as const })),
-    ...episodes.map((e) => ({ ref: e.id, score: 1, snippet: e.summary, source: "episodes" as const }))
+    ...episodes.map((e) => ({ ref: e.id, score: 1, snippet: e.summary, source: "episodes" as const })),
+    // Remembered facts are already `key: value`, so renderMemoryFact yields exactly
+    // the labelled form the detector compares — a stale memory fact disagreeing with
+    // a note (the cross-store grounded≠true hole) now surfaces. A boolean-ish fact
+    // renders as the bare topic (no colon) and so carries no comparable field.
+    ...memories.map((m) => ({ ref: `memory:${m.key}`, score: 1, snippet: renderMemoryFact(m), source: "memory" as const }))
   ];
   return formatSourceConflictWarning(hits);
 }

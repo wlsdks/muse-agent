@@ -2796,7 +2796,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // got cited. Independent of --connect (a safety cue, not the opt-in footer).
         const conflictCue = groundingConflictCue(
           scored.map((r) => ({ file: r.file, text: r.chunk.text })),
-          episodeHits.map((e) => ({ id: e.id, summary: e.summary }))
+          episodeHits.map((e) => ({ id: e.id, summary: e.summary })),
+          matchedMemories
         );
         if (conflictCue) io.stderr(`${conflictCue}\n`);
         // SB-3: a readable second-brain provenance footer the user can

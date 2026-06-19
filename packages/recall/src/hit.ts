@@ -1,5 +1,5 @@
 export interface RecallHit {
-  readonly source: "notes" | "episodes";
+  readonly source: "notes" | "episodes" | "memory";
   readonly ref: string;
   readonly score: number;
   readonly snippet: string;
