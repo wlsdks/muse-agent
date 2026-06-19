@@ -65,7 +65,7 @@ import { resolveReflectionsFile } from "./commands-reflections.js";
 import { routeAskTierModel } from "./ask-tier-models.js";
 import { shouldDecompose } from "@muse/multi-agent";
 import { runDecomposedAgentAsk } from "./ask-decompose.js";
-import { rescueActionsCrossLingual, rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
+import { crossLingualUnsupportedFraction, rescueActionsCrossLingual, rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
 
 export { resolveAskTierModels, routeAskTierModel, type AskTierModels } from "./ask-tier-models.js";
 import { parseBoundedInt } from "./parse-bounded-int.js";
@@ -2717,8 +2717,24 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         baseOutcome === "grounded" && askEvidenceTexts.length > 0
           ? reportSentenceGroundedness(askAnswerForProbe, askEvidenceTexts)
           : undefined;
+      // Cross-lingual faithfulness: a KO answer scores lexical-0 against an EN note,
+      // so the lexical fraction can't tell a true cross-lingual grounding from a
+      // fabrication. Re-judge each lexically-unsupported sentence by semantic cosine;
+      // fail-soft to the lexical fraction if the embedder is unavailable.
+      let askUnsupportedFraction = 0;
+      if (askGroundedReport) {
+        try {
+          askUnsupportedFraction = await crossLingualUnsupportedFraction({
+            report: askGroundedReport,
+            evidence: askEvidenceTexts,
+            embed: (t) => embed(t, embedModel)
+          });
+        } catch {
+          askUnsupportedFraction = assertiveUnsupportedFraction(askGroundedReport);
+        }
+      }
       const askOutcome = askGroundedReport
-        ? misgroundedOutcome({ outcome: baseOutcome, unsupportedFraction: assertiveUnsupportedFraction(askGroundedReport) })
+        ? misgroundedOutcome({ outcome: baseOutcome, unsupportedFraction: askUnsupportedFraction })
         : baseOutcome;
       await writeRunLog(io.workspaceDir ?? process.cwd(), buildAskRunLog({
         query,

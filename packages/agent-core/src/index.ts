@@ -481,6 +481,7 @@ export { exemplarFitsToolset, exemplarIsSelfConsistent, renderPlanExemplar, sele
 export type { CachedPlan, PlanCacheProvider, SelectPlanExemplarOptions } from "./plan-cache.js";
 
 export {
+  assertiveLabels,
   assertiveUnsupportedFraction,
   DEFAULT_SENTENCE_GROUNDING_FLOOR,
   reportSentenceGroundedness,

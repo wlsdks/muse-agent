@@ -1,10 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertiveLabels,
   assertiveUnsupportedFraction,
   DEFAULT_SENTENCE_GROUNDING_FLOOR,
   reportSentenceGroundedness,
   worstUnsupportedSentence
 } from "../src/sentence-groundedness.js";
+
+describe("assertiveLabels (the non-interrogative sentences — the misgrounding denominator)", () => {
+  it("drops interrogative sentences and keeps assertions, preserving their labels", () => {
+    const report = reportSentenceGroundedness("The cat sat on the mat. Anything else you need?", ["The cat sat on the mat."]);
+    const assertive = assertiveLabels(report);
+    expect(assertive).toHaveLength(1);
+    expect(assertive[0].sentence).toContain("cat sat");
+    expect(assertive[0].label).toBe("supported");
+  });
+});
 
 describe("assertiveUnsupportedFraction (misgrounding denominator — claims only, not questions)", () => {
   it("excludes interrogative sentences: a grounded claim plus a follow-up question is NOT misgrounded", () => {

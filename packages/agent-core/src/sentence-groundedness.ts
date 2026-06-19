@@ -105,11 +105,21 @@ export function worstUnsupportedSentence(report: GroundednessReport): string | u
  * false positive on the conversational local model). 0 when nothing assertive
  * remains. Pure.
  */
-export function assertiveUnsupportedFraction(report: GroundednessReport): number {
-  const assertive = report.sentences.filter((s) => {
+/**
+ * The non-interrogative ("assertive") sentences — the ones a misgrounding probe
+ * scores. A follow-up question / pleasantry ("anything else?") is not a claim
+ * that can be misgrounded, so it is excluded from the denominator. Single source
+ * of the interrogative filter, shared with the cross-lingual semantic probe.
+ */
+export function assertiveLabels(report: GroundednessReport): readonly SentenceGroundednessLabel[] {
+  return report.sentences.filter((s) => {
     const trimmed = s.sentence.trim();
     return !trimmed.endsWith("?") && !trimmed.endsWith("？");
   });
+}
+
+export function assertiveUnsupportedFraction(report: GroundednessReport): number {
+  const assertive = assertiveLabels(report);
   if (assertive.length === 0) return 0;
   const unsupported = assertive.filter((s) => s.label === "unsupported").length;
   return unsupported / assertive.length;

@@ -1,7 +1,31 @@
+import { reportSentenceGroundedness } from "@muse/agent-core";
 import type { ActionLogEntry } from "@muse/mcp";
 import { describe, expect, it, vi } from "vitest";
 
-import { rescueActionsCrossLingual, rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
+import { crossLingualUnsupportedFraction, rescueActionsCrossLingual, rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
+
+describe("crossLingualUnsupportedFraction — semantic faithfulness for the misgrounding probe (KO answer vs EN evidence)", () => {
+  // deterministic embedder: a deadline-topic sentence → [1,0]; anything else → [0,1].
+  const faithEmbed = vi.fn(async (t: string): Promise<readonly number[]> => (/마감|deadline/u.test(t) ? [1, 0] : [0, 1]));
+
+  it("rescues a cross-lingually SUPPORTED sentence (high cosine) and counts a fabricated one (low cosine)", async () => {
+    const report = reportSentenceGroundedness("마감일은 삼월. 예산은 백만원.", ["The deadline is in March."]);
+    const frac = await crossLingualUnsupportedFraction({ report, evidence: ["The deadline is in March."], embed: faithEmbed, floor: 0.5 });
+    expect(frac).toBe(0.5); // s1 (마감↔deadline) rescued, s2 (예산, fabricated) counted → 1/2
+  });
+
+  it("returns 0 when every assertive sentence is cross-lingually supported", async () => {
+    const report = reportSentenceGroundedness("마감일은 삼월.", ["The deadline is in March."]);
+    expect(await crossLingualUnsupportedFraction({ report, evidence: ["The deadline is in March."], embed: faithEmbed, floor: 0.5 })).toBe(0);
+  });
+
+  it("pays ZERO embedding cost when no assertive sentence is lexically unsupported", async () => {
+    const report = reportSentenceGroundedness("The cat sat on the mat.", ["The cat sat on the mat."]);
+    const before = faithEmbed.mock.calls.length;
+    expect(await crossLingualUnsupportedFraction({ report, evidence: ["The cat sat on the mat."], embed: faithEmbed, floor: 0.5 })).toBe(0);
+    expect(faithEmbed.mock.calls.length).toBe(before);
+  });
+});
 
 // Deterministic "embedder": manager/매니저 → [1,0], dentist/치과 → [1,0], else [0,1].
 const embedFn = vi.fn(async (t: string): Promise<readonly number[]> =>

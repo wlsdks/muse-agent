@@ -1,3 +1,4 @@
+import { assertiveLabels, cosineSimilarity, type GroundednessReport } from "@muse/agent-core";
 import type { ActionLogEntry } from "@muse/mcp";
 import { allUserMemoryFacts, selectGroundingActions, selectMemoryFacts, type MemoryFact } from "@muse/recall";
 
@@ -23,6 +24,53 @@ const asDoc = (text: string): string => `search_document: ${text}`;
 interface MemoryStore {
   readonly facts: Readonly<Record<string, string>>;
   readonly preferences: Readonly<Record<string, string>>;
+}
+
+/**
+ * The cosine floor above which a lexically-unsupported answer sentence counts as
+ * cross-lingually SUPPORTED by the evidence. Calibrated for the prefixed
+ * nomic-v2-moe space, where KO↔EN matches land ~0.21–0.37 and non-matches
+ * ~0.14–0.16 (the rescue's measured separation); below the floor a sentence is a
+ * genuine miss, not a language artifact.
+ */
+export const DEFAULT_CROSS_LINGUAL_FAITHFULNESS_FLOOR = 0.2;
+
+/**
+ * The misgrounding probe's unsupported fraction, made CROSS-LINGUAL. The lexical
+ * probe scores a KO answer against an EN note as fully unsupported (zero token
+ * overlap) — the blind spot that made the `<1` artifact guard skip cross-lingual
+ * answers wholesale, so a KO answer fabricating beyond its EN source was never
+ * caught. Here every lexically-unsupported ASSERTIVE sentence is re-judged by
+ * semantic cosine (prefixed, the rescue space): a sentence the evidence supports
+ * cross-lingually is rescued (not a misgrounding), one the evidence does NOT
+ * support stays counted (a real cross-lingual misgrounding). Pays ZERO embed cost
+ * when nothing is lexically unsupported (the common grounded answer); past the
+ * speed guard the lexical fraction stands.
+ */
+export async function crossLingualUnsupportedFraction(args: {
+  readonly report: GroundednessReport;
+  readonly evidence: readonly string[];
+  readonly embed: EmbedFn;
+  readonly floor?: number;
+}): Promise<number> {
+  const assertive = assertiveLabels(args.report);
+  if (assertive.length === 0) return 0;
+  const lexUnsupported = assertive.filter((s) => s.label === "unsupported");
+  if (lexUnsupported.length === 0) return 0;
+  if (args.evidence.length === 0 || args.evidence.length + lexUnsupported.length > MAX_CROSS_LINGUAL_ENTRIES) {
+    return lexUnsupported.length / assertive.length;
+  }
+  const floor = typeof args.floor === "number" && Number.isFinite(args.floor) && args.floor > 0
+    ? args.floor
+    : DEFAULT_CROSS_LINGUAL_FAITHFULNESS_FLOOR;
+  const evidenceVecs = await Promise.all(args.evidence.map((e) => args.embed(asDoc(e))));
+  let unsupported = 0;
+  for (const label of lexUnsupported) {
+    const vec = await args.embed(asQuery(label.sentence));
+    const maxCos = evidenceVecs.reduce((m, v) => Math.max(m, cosineSimilarity(vec, v)), -1);
+    if (maxCos < floor) unsupported += 1;
+  }
+  return unsupported / assertive.length;
 }
 
 /**
