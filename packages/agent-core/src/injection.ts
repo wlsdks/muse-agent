@@ -19,9 +19,25 @@ export const MEMORY_INJECTION_PATTERNS: readonly RegExp[] = [
   /^\s*system\s*[:>]/iu
 ];
 
-/** True when a value reads like an injected instruction. */
+const INJECTION_EVASION_CHARS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;
+
+/**
+ * Remove zero-width / control / format / separator chars that an attacker inserts
+ * MID-WORD to bypass the patterns — `ig<U+200B>nore` defeats `\bignore\b`, so every
+ * defense above (facts / notes / episodes / feeds / tool output) would be evadable
+ * without this. Stripped BEFORE matching. Structural whitespace a reader/model
+ * needs (tab / newline / carriage-return) is kept; everything else in Cc/Cf/Zl/Zp
+ * (zero-width space, ZWNJ/ZWJ, BOM, soft-hyphen, bidi marks, line/para separators,
+ * NUL) goes. Clean text with no such chars is returned byte-identical.
+ */
+export function stripInjectionEvasionChars(text: string): string {
+  return text.replace(INJECTION_EVASION_CHARS, (ch) => (ch === "\t" || ch === "\n" || ch === "\r" ? ch : ""));
+}
+
+/** True when a value reads like an injected instruction (evasion chars stripped first). */
 export function isMemoryInjection(value: string): boolean {
-  return MEMORY_INJECTION_PATTERNS.some((re) => re.test(value));
+  const normalized = stripInjectionEvasionChars(value);
+  return MEMORY_INJECTION_PATTERNS.some((re) => re.test(normalized));
 }
 
 /**
@@ -46,7 +62,7 @@ const INJECTION_SPAN_PLACEHOLDER = "[removed: injected instruction]";
  * Deterministic; clean text is returned byte-identical.
  */
 export function neutralizeInjectionSpans(text: string): string {
-  let out = text;
+  let out = stripInjectionEvasionChars(text);
   for (const pattern of MEMORY_INJECTION_PATTERNS) {
     const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
     out = out.replace(new RegExp(pattern.source, flags), INJECTION_SPAN_PLACEHOLDER);
