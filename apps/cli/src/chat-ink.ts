@@ -1356,6 +1356,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
       return finalizeGatedChatAnswer({
         ...args,
         knownFactKeys: Object.keys(snap?.facts ?? {}),
+        memories: Object.entries(snap?.facts ?? {}).map(([key, value]) => ({ key, value })),
         embed: defaultChatConflictEmbedder(),
         ...(judge ? { reverify: judge } : {})
       });

@@ -102,11 +102,13 @@ export function groundingConflictCue(
  * sibling for the already-flat match list.)
  */
 export function conflictCueFromMatches(
-  matches: ReadonlyArray<{ readonly source: string; readonly text: string }>
+  matches: ReadonlyArray<{ readonly source: string; readonly text: string }>,
+  memories: readonly MemoryFact[] = []
 ): string | undefined {
-  return formatSourceConflictWarning(
-    matches.map((m) => ({ ref: m.source, score: 1, snippet: m.text, source: "notes" as const }))
-  );
+  return formatSourceConflictWarning([
+    ...matches.map((m) => ({ ref: m.source, score: 1, snippet: m.text, source: "notes" as const })),
+    ...memories.map((m) => ({ ref: `memory:${m.key}`, score: 1, snippet: renderMemoryFact(m), source: "memory" as const }))
+  ]);
 }
 
 export function formatSourceConflictWarning(hits: readonly RecallHit[]): string | undefined {

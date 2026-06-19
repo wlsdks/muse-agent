@@ -161,4 +161,21 @@ describe("conflictCueFromMatches — chat-side cue from a flat grounding-match l
     ])).toBeUndefined();
     expect(conflictCueFromMatches([{ source: "a.md", text: "key: value" }])).toBeUndefined();
   });
+
+  it("flags a remembered memory fact conflicting a grounded match (chat-path parity with ask)", () => {
+    const cue = conflictCueFromMatches(
+      [{ source: "team.md", text: "team lead: Sarah Chen" }],
+      [{ key: "team lead", value: "Kim" }]
+    );
+    expect(cue).toBeDefined();
+    expect(cue).toContain("Sarah Chen");
+    expect(cue).toContain("Kim");
+  });
+
+  it("does NOT warn when the remembered fact AGREES with the grounded match", () => {
+    expect(conflictCueFromMatches(
+      [{ source: "team.md", text: "team lead: Sarah Chen" }],
+      [{ key: "team lead", value: "Sarah Chen" }]
+    )).toBeUndefined();
+  });
 });

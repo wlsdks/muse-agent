@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { detectEvidenceContradictions, groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, untrustedOnlySentences, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
-import { conflictCueFromMatches } from "@muse/recall";
+import { conflictCueFromMatches, type MemoryFact } from "@muse/recall";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
 import { embed } from "./embed.js";
@@ -300,6 +300,13 @@ export interface FinalizeGatedChatAnswerArgs {
    */
   readonly toolGroundingSources?: readonly { readonly source: string; readonly text: string }[];
   readonly knownFactKeys?: readonly string[];
+  /**
+   * The query-relevant remembered facts the persona injected this turn. Folded
+   * into the cross-source conflict cue so a stale memory fact contradicting a
+   * grounded note is surfaced on chat too (parity with `muse ask`). Keys alone
+   * (`knownFactKeys`) can't conflict — the detector needs the value.
+   */
+  readonly memories?: readonly MemoryFact[];
   readonly reverify?: GroundingReverify;
   /**
    * Injectable embedder for semantic intra-evidence conflict detection. When
@@ -345,7 +352,7 @@ export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs)
   const untrustedCue = untrustedOnlyChatNotice(deFabbed, evidence);
   // grounded≠true: if two of the user's OWN grounded sources disagree on a field,
   // surface it on chat too (parity with `muse ask`).
-  const conflictCue = conflictCueFromMatches(args.matches);
+  const conflictCue = conflictCueFromMatches(args.matches, args.memories);
   // grounded≠true: the labelled cue only sees `label: value` pairs. Two notes
   // disagreeing in FREE PROSE ("flight at 3pm" vs "at 6pm") slipped through and
   // the answer cited the matching half — a confident grounded lie. The semantic

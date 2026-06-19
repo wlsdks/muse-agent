@@ -638,6 +638,7 @@ export async function runLocalChat(
     answer: result.response.output,
     history: options.priorHistory ?? [],
     knownFactKeys,
+    memories: userMemory ? Object.entries(userMemory.facts ?? {}).map(([key, value]) => ({ key, value })) : [],
     matches,
     question: message,
     embed: defaultChatConflictEmbedder(),
