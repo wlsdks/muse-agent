@@ -15,6 +15,8 @@
  *     don't get a stub prompt.
  */
 
+import { defangMemoryInjection as defangMemoryValue } from "@muse/recall";
+
 interface JarvisPersonaMemory {
   readonly facts: Readonly<Record<string, string>>;
   readonly preferences: Readonly<Record<string, string>>;
@@ -63,25 +65,8 @@ export interface EpisodicPersonaHint {
   readonly topics?: readonly string[];
 }
 
-// Injection-specific patterns (narrow enough not to hit legitimate facts/prefs
-// like "always reply in Korean"). A stored value matching one is neutralized
-// before it reaches the persona — defense-in-depth behind the input guard, for
-// memory that was poisoned at write time (a malicious tool result or paste).
-const MEMORY_INJECTION_PATTERNS: readonly RegExp[] = [
-  /\b(ignore|disregard|forget)\b.{0,24}\b(instruction|instructions|prompt|rule|rules|previous|prior|the user|above|system)\b/iu,
-  /\breply only with\b|\brespond only with\b|\boutput only\b/iu,
-  /\byou are now\b|\bact as\b.{0,20}\binstead\b/iu,
-  /^\s*system\s*[:>]/iu
-];
-
-/** Neutralize a remembered value that reads like an injected instruction, so a
- * poisoned fact can't steer the model even if it slipped past the input guard. */
-function defangMemoryValue(value: string): string {
-  return MEMORY_INJECTION_PATTERNS.some((re) => re.test(value))
-    ? "(stored note hidden — its text looked like an instruction)"
-    : value;
-}
-
+// Poisoned-memory defense lives in @muse/recall (the single pattern source shared
+// with the ask-path memory block); `defangMemoryValue` is its alias here.
 export function formatCurrentContextLine(now: Date = new Date()): string {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
   const dayOfWeek = now.toLocaleDateString("en-US", { weekday: "long", timeZone: tz });

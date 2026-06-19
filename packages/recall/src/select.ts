@@ -1,6 +1,8 @@
 import { chunkText, cosineSimilarity, lexicalOverlap, lexicalTokens, rankPlaybookStrategies, renderPlaybookSection, type KnowledgeMatch } from "@muse/agent-core";
 import type { ActionLogEntry, Contact } from "@muse/mcp";
 
+import { defangMemoryInjection } from "./injection.js";
+
 /**
  * SB-1: rank past-session episode summaries against the query so `muse ask`
  * grounds on the user's own history, not just notes. Pure + cosine-based;
@@ -139,7 +141,10 @@ export function allUserMemoryFacts(
  */
 export function renderMemoryFact(fact: MemoryFact): string {
   const topic = fact.key.replace(/[_-]+/gu, " ").trim();
-  const value = fact.value.trim();
+  // Defang at render time so a value poisoned at write time can't steer the model
+  // when this fact enters the grounding block / conflict cue; the raw value stays
+  // in the store for the user to inspect + remove.
+  const value = defangMemoryInjection(fact.value.trim());
   return value === "" || /^(?:yes|true)$/iu.test(value) ? topic : `${topic}: ${value}`;
 }
 
