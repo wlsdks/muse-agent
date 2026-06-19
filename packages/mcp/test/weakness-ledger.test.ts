@@ -217,6 +217,13 @@ describe("selectDevFixableWeaknesses — the dev loop's fix targets (Muse's OWN 
     ]);
     expect(out.map((w) => w.topic)).toEqual(["real agent bug"]);
   });
+
+  it("INCLUDES misgrounding (a confident wrong-citation — GROUNDED != TRUE, Muse's own bug not the user's note gap)", () => {
+    const out = selectDevFixableWeaknesses([
+      e({ topic: "deadline answer cited the wrong note", axis: "misgrounding", count: 3 })
+    ]);
+    expect(out.map((w) => `${w.axis}:${w.topic}`)).toEqual(["misgrounding:deadline answer cited the wrong note"]);
+  });
 });
 
 // BKT constants: BKT_PRIOR=0.1, BKT_LEARN=0.2, BKT_GUESS=0.2, BKT_SLIP=0.1, MASTERED_AT=0.95

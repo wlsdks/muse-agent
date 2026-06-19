@@ -31,6 +31,16 @@ const CITATION_FROM_RE = /\[from\s+([^\]]+?)\s*\]/giu;
 const SENTINEL = "\u{E000}";
 const SENTINEL_RE = /\u{E000}\d+\u{E000}/gu;
 
+/**
+ * Remove `[from <source>]` citation markers from an answer — they are Muse's own
+ * attribution metadata, not claims, and their internal "." (e.g. `.md]`) would
+ * otherwise split into a junk sentence that a per-sentence groundedness probe
+ * scores unsupported (an observed misgrounding false positive). Pure.
+ */
+export function stripCitationMarkers(text: string): string {
+  return text.replace(CITATION_FROM_RE, " ");
+}
+
 export function reportCitationRecall(
   answer: string,
   matches: readonly KnowledgeMatch[],

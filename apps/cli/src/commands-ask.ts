@@ -29,7 +29,7 @@ import { basename, join, relative } from "node:path";
 
 import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
-import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportSentenceGroundedness, requestsToolAction, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
+import { actionToolRan, answerClaimsAction, answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -49,7 +49,7 @@ import { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNo
 
 export { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
 export { diversifyAskChunks, notesGroundingFraming };
-import { askOutcomeLabel, askWeaknessAxis, createStageTimer, recordAskWeakness, recordAskWeaknessResolved } from "@muse/recall";
+import { askOutcomeLabel, askWeaknessAxis, createStageTimer, misgroundedOutcome, recordAskWeakness, recordAskWeaknessResolved } from "@muse/recall";
 import type { AskWeaknessAxis } from "@muse/recall";
 export { askOutcomeLabel, askWeaknessAxis, createStageTimer, recordAskWeakness, recordAskWeaknessResolved };
 import { drawBestGroundedRedraft, groundingVerdictNotice } from "@muse/recall";
@@ -2692,7 +2692,34 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         const t = askStages.timings();
         io.stderr(`(timings: ${Object.entries(t).map(([k, v]) => `${k}=${(v / 1000).toFixed(1)}s`).join(" · ")})\n`);
       }
-      const askOutcome = askOutcomeLabel({ refusal: refusalAnswer, verdict: groundedVerdictLabel });
+      const baseOutcome = askOutcomeLabel({ refusal: refusalAnswer, verdict: groundedVerdictLabel });
+      // Evidence the answer should be backed by — the same recall / task / calendar
+      // / reminder surfaces the grounding gate drew from. Reused for the
+      // misgrounding probe and the weakness-ledger hint.
+      const askEvidenceTexts = [
+        ...scored.map((r) => r.chunk.text),
+        ...openTasks.map((t) => t.title),
+        ...upcomingEvents.map((e) => e.title),
+        ...pendingReminders.map((r) => r.text)
+      ];
+      // Misgrounding probe: a "grounded" verdict can still hide a confident
+      // misgrounding — the gate matched the claim to a real source, but the
+      // per-sentence diagnostic shows most of the answer isn't actually backed
+      // (GROUNDED != TRUE). Downgrade the TRACE label to "misgrounded" so the
+      // failure becomes error-analysis fuel instead of a hidden success; the
+      // user-facing answer and the gate verdict are unchanged. Skipped with no
+      // evidence to check against (can't claim misgrounding without a source).
+      // Strip Muse's own `[from <source>]` citation markers before the per-sentence
+      // probe — they are attribution metadata, not claims, and the marker's internal
+      // "." would split into a junk sentence the probe scores unsupported.
+      const askAnswerForProbe = stripCitationMarkers(collectedAnswer);
+      const askGroundedReport =
+        baseOutcome === "grounded" && askEvidenceTexts.length > 0
+          ? reportSentenceGroundedness(askAnswerForProbe, askEvidenceTexts)
+          : undefined;
+      const askOutcome = askGroundedReport
+        ? misgroundedOutcome({ outcome: baseOutcome, unsupportedFraction: assertiveUnsupportedFraction(askGroundedReport) })
+        : baseOutcome;
       await writeRunLog(io.workspaceDir ?? process.cwd(), buildAskRunLog({
         query,
         model,
@@ -2713,13 +2740,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       const askAxis = askWeaknessAxis(askOutcome, { claimedUnbackedAction: askUnbackedAction, isActionRequest: askIsActionRequest });
       let askHint: string | undefined;
       if (askAxis === "grounding-gap") {
-        const evidenceTexts = [
-          ...scored.map((r) => r.chunk.text),
-          ...openTasks.map((t) => t.title),
-          ...upcomingEvents.map((e) => e.title),
-          ...pendingReminders.map((r) => r.text)
-        ];
-        askHint = worstUnsupportedSentence(reportSentenceGroundedness(collectedAnswer, evidenceTexts));
+        askHint = worstUnsupportedSentence(reportSentenceGroundedness(askAnswerForProbe, askEvidenceTexts));
+      } else if (askAxis === "misgrounding") {
+        askHint = askGroundedReport ? worstUnsupportedSentence(askGroundedReport) : undefined;
       }
       await recordAskWeaknessLive(query, askAxis, askHint);
       if (askOutcome === "grounded" && !askIsActionRequest) {

@@ -95,3 +95,22 @@ export function worstUnsupportedSentence(report: GroundednessReport): string | u
   }
   return worst?.sentence;
 }
+
+/**
+ * The unsupported fraction over ASSERTIVE sentences only — interrogative
+ * sentences (a follow-up question / pleasantry the agent appends, e.g. "anything
+ * else?") are not claims, so they cannot be misgrounded and must not inflate the
+ * denominator. This is the misgrounding signal's input: a grounded answer whose
+ * only unbacked sentence is a trailing question is NOT a misgrounding (an observed
+ * false positive on the conversational local model). 0 when nothing assertive
+ * remains. Pure.
+ */
+export function assertiveUnsupportedFraction(report: GroundednessReport): number {
+  const assertive = report.sentences.filter((s) => {
+    const trimmed = s.sentence.trim();
+    return !trimmed.endsWith("?") && !trimmed.endsWith("？");
+  });
+  if (assertive.length === 0) return 0;
+  const unsupported = assertive.filter((s) => s.label === "unsupported").length;
+  return unsupported / assertive.length;
+}

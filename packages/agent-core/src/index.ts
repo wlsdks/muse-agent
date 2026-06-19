@@ -233,6 +233,7 @@ export {
 export { untrustedOnlySentences } from "./untrusted-sentences.js";
 export {
   reportCitationRecall,
+  stripCitationMarkers,
   DEFAULT_CITATION_RECALL_FLOOR,
   type CitationRecallReport
 } from "./citation-recall.js";
@@ -480,6 +481,7 @@ export { exemplarFitsToolset, exemplarIsSelfConsistent, renderPlanExemplar, sele
 export type { CachedPlan, PlanCacheProvider, SelectPlanExemplarOptions } from "./plan-cache.js";
 
 export {
+  assertiveUnsupportedFraction,
   DEFAULT_SENTENCE_GROUNDING_FLOOR,
   reportSentenceGroundedness,
   worstUnsupportedSentence,

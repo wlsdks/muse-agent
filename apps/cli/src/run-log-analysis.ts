@@ -17,7 +17,7 @@ export interface RunLogEvent {
   readonly success?: boolean | null;
 }
 
-export type FailureKind = "ungrounded" | "failed";
+export type FailureKind = "ungrounded" | "failed" | "misgrounded";
 
 export interface FailureCluster {
   /** Normalized representative of the failing message — the candidate work's subject. */
@@ -29,7 +29,7 @@ export interface FailureCluster {
   readonly examples: readonly string[];
 }
 
-const NOT_GROUNDED = new Set(["ungrounded", "weak"]);
+const NOT_GROUNDED = new Set(["ungrounded", "weak", "misgrounded"]);
 
 /** The grounding verdict carried by an event, lowercased, or undefined if unlabeled. */
 function groundingVerdict(grounded: unknown): string | undefined {
@@ -44,7 +44,9 @@ function groundingVerdict(grounded: unknown): string | undefined {
 
 /**
  * Did this trace fail in a way worth turning into work? A failed run
- * (`success === false`) or a grounding miss (`ungrounded`/`weak`). An unlabeled
+ * (`success === false`), a grounding miss (`ungrounded`/`weak`), or a
+ * `misgrounded` answer (the gate matched a real source that doesn't support the
+ * claim — GROUNDED != TRUE, the failure class that otherwise hides as a success). An unlabeled
  * trace (null/undefined) carries no signal and is NOT a failure — never invent
  * work from the absence of a label.
  */
@@ -60,7 +62,8 @@ export function isFailureEvent(event: RunLogEvent): boolean {
 }
 
 function failureKind(event: RunLogEvent): FailureKind {
-  return event.success === false ? "failed" : "ungrounded";
+  if (event.success === false) return "failed";
+  return groundingVerdict(event.grounded) === "misgrounded" ? "misgrounded" : "ungrounded";
 }
 
 /** Collapse a message to a clustering key so the SAME question (modulo case /

@@ -1,9 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertiveUnsupportedFraction,
   DEFAULT_SENTENCE_GROUNDING_FLOOR,
   reportSentenceGroundedness,
   worstUnsupportedSentence
 } from "../src/sentence-groundedness.js";
+
+describe("assertiveUnsupportedFraction (misgrounding denominator — claims only, not questions)", () => {
+  it("excludes interrogative sentences: a grounded claim plus a follow-up question is NOT misgrounded", () => {
+    // The observed false positive: one supported claim + one unsupported follow-up
+    // question. The raw fraction is 0.5 (the question has unbacked content tokens),
+    // but a question is not a claim that can be misgrounded — assertive fraction is 0.
+    const answer = "The cat sat on the mat. Is there anything else you need?";
+    const evidence = ["The cat sat on the mat in the room."];
+    const report = reportSentenceGroundedness(answer, evidence);
+    expect(report.unsupportedFraction).toBe(0.5);
+    expect(assertiveUnsupportedFraction(report)).toBe(0);
+  });
+  it("still counts unsupported ASSERTIONS, so a real misgrounding surfaces", () => {
+    const report = reportSentenceGroundedness("The deadline is April 9th. The budget tripled.", ["The cat sat on the mat."]);
+    expect(assertiveUnsupportedFraction(report)).toBe(1);
+  });
+  it("is 0 when the answer is only questions (no assertion to be wrong about)", () => {
+    const report = reportSentenceGroundedness("Did you mean the report? Or the email?", ["unrelated text here"]);
+    expect(assertiveUnsupportedFraction(report)).toBe(0);
+  });
+});
 
 describe("reportSentenceGroundedness", () => {
   // Confirmed via node probe:

@@ -1,9 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { reportCitationRecall } from "./citation-recall.js";
+import { reportCitationRecall, stripCitationMarkers } from "./citation-recall.js";
+import { reportSentenceGroundedness } from "./sentence-groundedness.js";
 import type { KnowledgeMatch } from "./knowledge-recall.js";
 
 const match = (source: string, text: string): KnowledgeMatch => ({ cosine: 0.7, score: 0.7, source, text });
+
+describe("stripCitationMarkers — remove [from <source>] metadata before a groundedness probe", () => {
+  it("removes the marker (its internal '.md]' otherwise splits into a junk sentence) and keeps the claim text", () => {
+    const stripped = stripCitationMarkers("The team lead is Sarah Chen [from deadline.md].");
+    expect(stripped.includes("[from")).toBe(false);
+    expect(stripped).toContain("Sarah Chen");
+  });
+  it("a stripped cited answer scores fully supported — no junk 'md].' unsupported sentence inflates the fraction", () => {
+    const stripped = stripCitationMarkers("The team lead is Sarah Chen [from deadline.md].");
+    const report = reportSentenceGroundedness(stripped, ["The team lead is Sarah Chen."]);
+    expect(report.unsupportedFraction).toBe(0);
+  });
+});
 
 describe("reportCitationRecall — ALCE citation recall (groundable-but-uncited claims)", () => {
   it("recall 0 when a citable claim carries NO citation (the silent missed attribution)", () => {

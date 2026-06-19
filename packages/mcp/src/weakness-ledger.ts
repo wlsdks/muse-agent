@@ -30,7 +30,7 @@ export const BKT_GUESS = 0.2;
 export const BKT_SLIP = 0.1;
 export const WEAKNESS_MASTERED_AT = 0.95;
 
-export type WeaknessAxis = "grounding-gap" | "unbacked-action" | "wrong-tool" | "time-parse" | "other";
+export type WeaknessAxis = "grounding-gap" | "misgrounding" | "unbacked-action" | "wrong-tool" | "time-parse" | "other";
 
 export interface WeaknessEntry {
   readonly axis: WeaknessAxis;
@@ -249,11 +249,12 @@ export interface DevFixableWeakness {
 }
 
 /** The axes that are MUSE'S OWN bug to fix (not the user's to remediate with a note). */
-const DEV_FIXABLE_AXES: ReadonlySet<WeaknessAxis> = new Set<WeaknessAxis>(["unbacked-action", "wrong-tool", "time-parse"]);
+const DEV_FIXABLE_AXES: ReadonlySet<WeaknessAxis> = new Set<WeaknessAxis>(["misgrounding", "unbacked-action", "wrong-tool", "time-parse"]);
 
 /**
  * The DEV-side mirror of {@link selectRemediableWeaknesses}: the recurring
- * weaknesses that are MUSE'S OWN bug, not the user's — unbacked-action (claimed
+ * weaknesses that are MUSE'S OWN bug, not the user's — misgrounding (cited a real
+ * source that doesn't back the claim; GROUNDED != TRUE), unbacked-action (claimed
  * an action it didn't do), wrong-tool, time-parse. `grounding-gap` is excluded
  * (that one the USER fixes by adding a note; the recap nudges it). These are the
  * dev loop's fix targets — what the agent keeps getting wrong on its own.
