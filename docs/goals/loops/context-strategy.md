@@ -39,13 +39,7 @@ Verified existing context-strategy seams (from codegraph, 2026-06-20):
   no dedicated test asserts `neutralizeInjectionSpans` runs before `carveAnchorWindow`;
   structurally guaranteed + probe-proven, but a refactor could reorder silently.
   One-line ordering regression test. (@muse/agent-core)
-- ◦ **Share the tool-keyword matcher** (fire-5 DRY follow-up): export
-  `tokenMatchesKeywordWord`/`keywordMatchesPromptTokens` from `@muse/tools` and delete
-  the hand-mirrored agent-core copy in `tool-filter.ts` — removes the layer-drift class
-  structurally (fire 5 fixed one drift by hand). Add the @muse/tools reference to
-  agent-core tsconfig. Also: the CJK `>=2` guard is script-agnostic by name — a
-  whitespace-delimited non-ASCII script (Cyrillic/Greek) 2-char keyword could over-match;
-  not exercised today (KO-only shipped keywords) but worth a word-boundary path. (@muse/tools+agent-core)
+
 - ◦ **`muse.context.fetch` re-fetch live e2e** under masking: confirm a masked
   observation is actually re-fetchable by the model in a real run (fire-2 proved
   the ref is recoverable from the store; the end-to-end fetch-tool round-trip is
@@ -233,3 +227,28 @@ ratchet: testFiles +0 (extended existing) · recall 340 pass · cli 2763 pass ·
   SAME normalization — a partial-normalization scale-mix silently makes the feature inert.
   And the test must replicate the PRODUCTION mix (only the real producer's fields scored),
   not an idealized all-scored set, or it masks the mix bug.
+
+## fire 7 · 2026-06-20 · skill v2.0.0 · 76967b5c
+meta: value-class=refactor · pkg=@muse/tools+@muse/agent-core · kind=dedup-refactor · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles +0 (extended existing) · tools 272 pass · agent-core 2512 pass · pnpm check exit0 · pnpm lint exit0 · fabrication 0 · self-eval green
+- **What:** Shared the lexical matcher. `tokenMatchesKeywordWord` was hand-mirrored in
+  `@muse/tools` (SoT) and `@muse/agent-core/tool-filter.ts`. Now `export`ed from @muse/tools
+  and IMPORTED by agent-core; the local copy + its now-unused `NON_ASCII_RE` deleted. Behavior
+  byte-identical (only the function's home changed). No tsconfig/dep edit (edge already existed).
+- **Why:** fire 5 FAILed precisely because the two copies had drifted (agent-core dropped the
+  CJK `length>=2` guard). One definition can't diverge → the drift bug class is closed
+  STRUCTURALLY, not by hand. arXiv:2502.04073 (code-duplication refactoring — consolidate to
+  one authoritative location); tool selection rests on lexical match (2511.01854 / 2507.21428)
+  so the matcher must have ONE definition shared by the selection + exposure-ceiling layers.
+  hermes/openclaw have no such two-layer matcher to share → Muse-specific edge cleanup.
+- **Review point:** `keywordMatchesPrompt` + `tokenizePromptCache` stay LOCAL to agent-core
+  (cache wrapper, different signature from @muse/tools' `keywordMatchesPromptTokens`) — only
+  the leaf primitive is shared this fire. `tokenMatchesKeywordWord` is now public @muse/tools
+  surface.
+- **Risk:** none to floor — behavior-preserving refactor, no touch to gates/recall/approval/
+  schemas. Independent Opus adaptive judge PASS (6/6): @muse/tools diff is the single `export`
+  keyword; the DRIFT-CLOSURE proof — mutating the @muse/tools SoT CJK line now turns the
+  PRE-EXISTING fire-5 agent-core test RED (impossible with the copy), restored md5-identical.
+- lesson(carry-forward): the durable fix for a hand-mirrored-logic FAIL (fire 5) is to DELETE
+  the mirror (share one SoT), not re-align the copies — then the drift class is impossible,
+  and a mutation to the SoT propagating to the consumer's test is the structural proof.
