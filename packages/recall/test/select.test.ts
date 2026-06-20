@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { allUserMemoryFacts, defangMemoryInjection, rankEpisodeHits, renderMemoryFact, selectGroundingActions, selectMemoryFacts } from "@muse/recall";
+import { allUserMemoryFacts, buildMemoryContextBlock, defangMemoryInjection, rankEpisodeHits, renderMemoryFact, selectGroundingActions, selectMemoryFacts } from "@muse/recall";
 import type { ActionLogEntry } from "@muse/mcp";
+
+describe("buildMemoryContextBlock — provisional (once-seen, unconfirmed) facts are marked (G4-followup)", () => {
+  it("annotates a provisional fact 'unconfirmed' but leaves a durable one clean", () => {
+    const block = buildMemoryContextBlock(
+      [{ key: "home_city", value: "Seoul" }, { key: "office_mtu", value: "1380" }],
+      { provisionalKeys: new Set(["office_mtu"]) }
+    );
+    expect(block).toContain("Seoul");
+    expect(block).not.toMatch(/Seoul[^\n]*unconfirmed/u);
+    expect(block).toMatch(/1380[^\n]*unconfirmed/u);
+  });
+  it("marks nothing when no provisionalKeys are given (back-compat)", () => {
+    expect(buildMemoryContextBlock([{ key: "a", value: "b" }])).not.toContain("unconfirmed");
+  });
+});
 
 const NOW = Date.parse("2026-06-13T00:00:00Z");
 

@@ -147,12 +147,22 @@ export function renderMemoryFact(fact: MemoryFact): string {
 }
 
 /** Build the <<memory N>> grounding block from the on-topic remembered facts. Pure. */
-export function buildMemoryContextBlock(facts: readonly MemoryFact[]): string {
+export function buildMemoryContextBlock(
+  facts: readonly MemoryFact[],
+  opts?: { readonly provisionalKeys?: ReadonlySet<string> }
+): string {
   if (facts.length === 0) {
     return "(no matching remembered facts)";
   }
+  // A PROVISIONAL fact (auto-extracted once, not yet re-confirmed — failed the
+  // durable-promotion gate) is flagged so a once-seen mis-extraction is grounded
+  // cautiously, not asserted as confirmed truth (GROUNDED != TRUE on the source side).
+  const provisional = opts?.provisionalKeys;
   return facts
-    .map((f, i) => `<<memory ${(i + 1).toString()} — ${f.key}>>\n${renderMemoryFact(f)}\n[memory: ${f.key}]\n<<end>>`)
+    .map((f, i) => {
+      const mark = provisional?.has(f.key) ? " (unconfirmed — learned once, not yet re-confirmed)" : "";
+      return `<<memory ${(i + 1).toString()} — ${f.key}>>\n${renderMemoryFact(f)}${mark}\n[memory: ${f.key}]\n<<end>>`;
+    })
     .join("\n\n");
 }
 

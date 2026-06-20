@@ -373,6 +373,7 @@ export {
   deriveFactProvenance,
   FileBeliefProvenanceStore,
   MAX_BELIEF_PROVENANCE_ENTRIES,
+  provisionalFactKeys,
   readBeliefProvenance,
   selectPromotableFacts,
   writeBeliefProvenance,

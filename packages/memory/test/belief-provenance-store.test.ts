@@ -9,6 +9,7 @@ import {
   MAX_BELIEF_PROVENANCE_ENTRIES,
   classifyFactFreshness,
   deriveFactProvenance,
+  provisionalFactKeys,
   readBeliefProvenance,
   selectPromotableFacts,
   writeBeliefProvenance,
@@ -82,6 +83,26 @@ describe("selectPromotableFacts — the durable-promotion gate (G4, fail-close)"
       { now, isInjection: (v) => /ignore all previous/u.test(v) }
     );
     expect(out).toEqual([]);
+  });
+});
+
+describe("provisionalFactKeys — matched facts that are KNOWN but not durable (G4-followup)", () => {
+  const now = Date.parse("2026-06-20T00:00:00.000Z");
+  const fp = (over: Partial<FactProvenance>): FactProvenance => ({
+    key: "k", kind: "fact", value: "v", firstSeen: "2026-06-01T00:00:00.000Z",
+    lastConfirmed: "2026-06-18T00:00:00.000Z", confirmCount: 3, source: "auto", ...over
+  });
+  it("marks a known once-seen fact provisional, but NOT a durable one and NOT an unknown one", () => {
+    const prov = [fp({ key: "home_city", confirmCount: 5, source: "user" }), fp({ key: "office_mtu", confirmCount: 1 })];
+    const out = provisionalFactKeys(["home_city", "office_mtu", "mystery"], prov, { now });
+    expect(out.has("office_mtu")).toBe(true);
+    expect(out.has("home_city")).toBe(false);
+    expect(out.has("mystery")).toBe(false);
+  });
+  it("returns the ORIGINAL matched key while matching through the injected normalizer", () => {
+    const prov = [fp({ key: "office_mtu", confirmCount: 1 })];
+    const out = provisionalFactKeys(["Office MTU"], prov, { now, normalizeKey: (k) => k.toLowerCase().replace(/\s+/gu, "_") });
+    expect([...out]).toEqual(["Office MTU"]);
   });
 });
 

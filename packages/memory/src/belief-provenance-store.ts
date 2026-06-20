@@ -163,6 +163,33 @@ export function selectPromotableFacts(
     .map((p) => ({ confirmCount: p.confirmCount, key: p.key, lastConfirmed: p.lastConfirmed, source: p.source, value: p.value }));
 }
 
+/**
+ * Of `matchedKeys`, the ones that are PROVISIONAL — KNOWN in the provenance log but
+ * NOT durable (failed {@link selectPromotableFacts}): a once-seen auto-extract not yet
+ * re-confirmed, which should be grounded cautiously, not asserted as confirmed truth.
+ * A key with NO provenance entry is treated as UNKNOWN (not provisional) so legacy
+ * facts learned before provenance tracking aren't over-marked. Keys are compared
+ * through the injected `normalizeKey` (the matched-fact and provenance key spaces may
+ * normalize differently); the ORIGINAL matched key is returned for the caller's lookup.
+ * Pure.
+ */
+export function provisionalFactKeys(
+  matchedKeys: readonly string[],
+  provenance: readonly FactProvenance[],
+  opts: { readonly now: number; readonly isInjection?: (value: string) => boolean; readonly normalizeKey?: (key: string) => string }
+): ReadonlySet<string> {
+  const norm = opts.normalizeKey ?? ((key: string): string => key);
+  const known = new Set(provenance.map((p) => norm(p.key)));
+  const durableArgs = opts.isInjection ? { isInjection: opts.isInjection, now: opts.now } : { now: opts.now };
+  const durable = new Set(selectPromotableFacts(provenance, durableArgs).map((p) => norm(p.key)));
+  const out = new Set<string>();
+  for (const key of matchedKeys) {
+    const k = norm(key);
+    if (known.has(k) && !durable.has(k)) out.add(key);
+  }
+  return out;
+}
+
 export function defaultBeliefProvenanceFile(): string {
   const fromEnv = process.env.MUSE_BELIEF_PROVENANCE_FILE?.trim();
   if (fromEnv && fromEnv.length > 0) return fromEnv;
