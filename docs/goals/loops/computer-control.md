@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 12 · 2026-06-21 · skill v2.0 · <commit-pending> (measure-first: model-behavior ceiling confirmed; 3-fire merge)
+## fire 12 · 2026-06-21 · skill v2.0 · c526e24d (measure-first: model-behavior ceiling confirmed; 3-fire merge)
 meta: value-class=measure-first(work-list) · pkg=eval(diagnosis) · kind=ceiling-confirm · verdict=N/A · firesSinceDrill=2
 ratchet: testFiles 1068→1068 · fabrication 0 · eval:multifile-fix FAIL(early-stop 모드: file_read 1회 후 자발 종료) · eval:computer-task PASS(불변) · self-eval green
 - 무엇: fires 4-11(노출·recovery·adapter)이 multifile을 움직였는지 debug 재측정 → 이번 run은 **early-stop**(모델이 file_read 1회만 하고 grep/edit/run 없이 종료). 단일 eval은 grep→read→edit 3콜 통과하므로 *iteration cap 아님* — 모델이 **자발적으로** 조기 종료(SYSTEM의 persistence 라인에도 불구).
