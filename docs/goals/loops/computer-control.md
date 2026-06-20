@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 14 · 2026-06-21 · skill v2.0 · <commit-pending> (full-read gate for overwrite — grep/offset can't ground it)
+## fire 14 · 2026-06-21 · skill v2.0 · f676d3cc (full-read gate for overwrite — grep/offset can't ground it)
 meta: value-class=new-capability · pkg=@muse/fs+apps/cli · kind=grounding-gate · verdict=PASS(judge2) · firesSinceDrill=4
 ratchet: testFiles 1069→1069 (+3 cases fs read/write, mutation-valid) · fabrication 0 · @muse/fs 격리 131 통과 · eval:computer-task PASS(무회귀) · pnpm check exit 0 · lint clean
 - 무엇: fire-13 refine — overwrite 게이트가 `wasPathRead`(file_grep도 set)로 만족돼, grep 몇 줄 보고 file_write로 전체 overwrite=안 본 줄 손실. FIX: 더 엄격한 `wasPathFullyRead`(overwrite는 `wasPathFullyRead ?? wasPathRead`); file_read만 `onFullRead`를 **COMPLETE read에만**(`start===0 && !truncated`) 발화, file_grep 미발화. file_edit/multi_edit 불변(grep→edit 유지). CLI 2nd set 배선.
