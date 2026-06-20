@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
-import { detectEvidenceContradictions, groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, untrustedOnlySentences, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
-import { conflictCueFromMatches, type MemoryFact } from "@muse/recall";
+import { assertiveUnsupportedFraction, detectEvidenceContradictions, groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, reportSentenceGroundedness, stripCitationMarkers, untrustedOnlySentences, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { conflictCueFromMatches, misgroundedOutcome, type MemoryFact } from "@muse/recall";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
 import { embed } from "./embed.js";
@@ -427,6 +427,52 @@ export function chatCitationRecallNotice(answer: string, matches: readonly Knowl
   const sentence = reportCitationRecall(answer, matches).uncited[0];
   if (sentence === undefined) return undefined;
   return `⚠️ Attribution check: "${truncateClaim(sentence)}" matches your notes but carries no citation.`;
+}
+
+/**
+ * The chat-surface misgrounding fraction — the per-ASSERTIVE-sentence unsupported
+ * share of a chat answer against its retrieved evidence. The deterministic lexical
+ * core of the ASK probe (commands-ask.ts: strip Muse's own citation markers, then
+ * `assertiveUnsupportedFraction(reportSentenceGroundedness(...))`), so chat and ask
+ * agree on what "unsupported" means — NOT a divergent metric. The chat gate is
+ * sync-by-design (no model call), so this omits ask's cross-lingual semantic re-judge;
+ * the `< 1` upper bound in {@link misgroundedOutcome} keeps the cross-lingual lexical-0
+ * artifact (KO answer over EN notes) out of the misgrounding band regardless. Pure.
+ */
+export function chatMisgroundingFraction(answer: string, matches: readonly KnowledgeMatch[]): number {
+  const evidence = matches.map((match) => match.text);
+  if (evidence.length === 0) return 0;
+  const report = reportSentenceGroundedness(stripCitationMarkers(answer), evidence);
+  return assertiveUnsupportedFraction(report);
+}
+
+export type ChatWeaknessAxis = "grounding-gap" | "misgrounding" | "unbacked-action";
+
+/**
+ * The weakness axis (if any) a chat turn signals — the parity of `askWeaknessAxis`
+ * for the conversational surface. Precedence mirrors ask EXACTLY:
+ * `unbacked-action` (a claimed-but-unperformed action — a false promise) > `misgrounding`
+ * (a non-refusal answer that cites real sources which don't actually support it,
+ * GROUNDED != TRUE) > `grounding-gap` (a refusal/empty-fallback — couldn't answer).
+ *
+ * Strictly additive: a fully-supported grounded answer (fraction below the floor)
+ * yields null (writes nothing); a cross-lingual artifact (fraction == 1.0) stays
+ * grounded via {@link misgroundedOutcome} and also yields null; a refusal is a
+ * `grounding-gap`, NOT a misgrounding (a refusal asserts no claim to misground).
+ */
+export function chatWeaknessAxis(args: {
+  readonly refusal: boolean;
+  readonly unbackedAction: boolean;
+  readonly answer: string;
+  readonly matches: readonly KnowledgeMatch[];
+}): ChatWeaknessAxis | null {
+  if (args.unbackedAction) return "unbacked-action";
+  if (args.refusal) return "grounding-gap";
+  const unsupportedFraction = chatMisgroundingFraction(args.answer, args.matches);
+  if (misgroundedOutcome({ outcome: "grounded", unsupportedFraction }) === "misgrounded") {
+    return "misgrounding";
+  }
+  return null;
 }
 
 /**
