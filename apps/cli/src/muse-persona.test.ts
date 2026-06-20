@@ -411,4 +411,66 @@ describe("buildMusePersona — persona size cap (performance)", () => {
     expect(out).toContain("v0: no0");
     expect(out).toContain("v59: no59");
   });
+
+  // Fact-caution parity with the ask surface (buildMemoryContextBlock):
+  // chat's persona must render the SAME contested/provisional point-of-use
+  // marks, with contested precedence — the exact strings are copied from
+  // packages/recall/src/select.ts buildMemoryContextBlock.
+  const CONTESTED_MARK = " (value has changed before — confirm it's current)";
+  const PROVISIONAL_MARK = " (unconfirmed — learned once, not yet re-confirmed)";
+
+  it("marks a contested fact with the exact contested caution string", () => {
+    const out = buildMusePersona(
+      { facts: { home_city: "Busan" }, preferences: {} },
+      "u",
+      { contestedKeys: new Set(["home_city"]) }
+    ) ?? "";
+    expect(out).toContain(`home_city: Busan${CONTESTED_MARK}`);
+  });
+
+  it("marks a provisional fact with the exact provisional caution string", () => {
+    const out = buildMusePersona(
+      { facts: { home_city: "Busan" }, preferences: {} },
+      "u",
+      { provisionalKeys: new Set(["home_city"]) }
+    ) ?? "";
+    expect(out).toContain(`home_city: Busan${PROVISIONAL_MARK}`);
+  });
+
+  it("gives contested precedence over provisional when a key is in both sets", () => {
+    const out = buildMusePersona(
+      { facts: { home_city: "Busan" }, preferences: {} },
+      "u",
+      { contestedKeys: new Set(["home_city"]), provisionalKeys: new Set(["home_city"]) }
+    ) ?? "";
+    expect(out).toContain(`home_city: Busan${CONTESTED_MARK}`);
+    expect(out).not.toContain(PROVISIONAL_MARK);
+  });
+
+  it("is byte-identical to today when no caution sets are passed (fabrication=0, no value altered)", () => {
+    const out = buildMusePersona({ facts: { home_city: "Busan" }, preferences: {} }, "u") ?? "";
+    expect(out).toContain("  - home_city: Busan");
+    expect(out).not.toContain(CONTESTED_MARK);
+    expect(out).not.toContain(PROVISIONAL_MARK);
+  });
+
+  it("leaves an unflagged fact unmarked even when a sibling fact is flagged", () => {
+    const out = buildMusePersona(
+      { facts: { home_city: "Busan", name: "Jinan" }, preferences: {} },
+      "u",
+      { contestedKeys: new Set(["home_city"]) }
+    ) ?? "";
+    expect(out).toContain(`home_city: Busan${CONTESTED_MARK}`);
+    expect(out).toContain("  - name: Jinan");
+    expect(out).not.toContain(`name: Jinan${CONTESTED_MARK}`);
+  });
+
+  it("appends the caution AFTER the previously-X supersession suffix", () => {
+    const out = buildMusePersona(
+      { facts: { home_city: "Seoul" }, preferences: {}, factHistory: [{ key: "home_city", previousValue: "Busan" }] },
+      "u",
+      { contestedKeys: new Set(["home_city"]) }
+    ) ?? "";
+    expect(out).toContain(`home_city: Seoul (previously Busan)${CONTESTED_MARK}`);
+  });
 });

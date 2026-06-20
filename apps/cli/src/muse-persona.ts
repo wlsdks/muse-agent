@@ -88,10 +88,21 @@ export function personaEntryCap(): number {
   return Number.isFinite(raw) && raw >= 1 ? Math.trunc(raw) : 40;
 }
 
+// Point-of-use fact-caution marks — the EXACT strings from
+// `buildMemoryContextBlock` (packages/recall/src/select.ts). Kept
+// identical so chat's persona surfaces the same volatile/once-seen
+// caution `muse ask` does (contested takes precedence over provisional).
+const CONTESTED_FACT_MARK = " (value has changed before — confirm it's current)";
+const PROVISIONAL_FACT_MARK = " (unconfirmed — learned once, not yet re-confirmed)";
+
 export function buildMusePersona(
   memory: JarvisPersonaMemory,
   userId: string,
-  options: { readonly now?: Date } = {}
+  options: {
+    readonly now?: Date;
+    readonly contestedKeys?: ReadonlySet<string>;
+    readonly provisionalKeys?: ReadonlySet<string>;
+  } = {}
 ): string | undefined {
   const facts = Object.entries(memory.facts);
   // Preferences encode three slot types: plain `pref.X`, `veto:X`
@@ -162,9 +173,14 @@ export function buildMusePersona(
     for (const [key, value] of factsShown) {
       const safe = defangMemoryValue(value);
       const prior = priorByKey.get(key);
+      const mark = options.contestedKeys?.has(key)
+        ? CONTESTED_FACT_MARK
+        : options.provisionalKeys?.has(key)
+          ? PROVISIONAL_FACT_MARK
+          : "";
       lines.push(prior !== undefined && prior !== value
-        ? `  - ${key}: ${safe} (previously ${defangMemoryValue(prior)})`
-        : `  - ${key}: ${safe}`);
+        ? `  - ${key}: ${safe} (previously ${defangMemoryValue(prior)})${mark}`
+        : `  - ${key}: ${safe}${mark}`);
     }
     if (factsDropped > 0) lines.push(`  - …(+${factsDropped} older facts not shown)`);
   }

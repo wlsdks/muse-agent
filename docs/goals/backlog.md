@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ durable/provisional/contested fact-caution PARITY on chat persona (buildMusePersona marks volatile/once-seen facts like ask does; doctrine P3 consolidation-spine sub-slice 1) — context-strategy fire 11 (detail in docs/goals/loops/context-strategy.md)
+
 - ✓ content-free grounding-header guard: optionalGroundingSections drops present:true blocks with empty body (no citable-looking header backing nothing; doctrine P2/P4) + JUDGE-DRILL passed (verifier caught an inert unwired-helper slice) — context-strategy fire 10 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ memory-fact value now wrapper-marker-escaped (escapeSystemPromptMarkers in renderMemoryFact) — closes the <<memory>> block breakout/forged-citation vector (OWASP ASI06, doctrine principle 5) — context-strategy fire 9 (detail in docs/goals/loops/context-strategy.md)

@@ -23,7 +23,8 @@ import type { Readable } from "node:stream";
 import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
-import { actionToolRan, answerClaimsAction, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction, type KnowledgeMatch } from "@muse/agent-core";
+import { actionToolRan, answerClaimsAction, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, isMemoryInjection, requestsToolAction, type KnowledgeMatch } from "@muse/agent-core";
+import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys } from "@muse/memory";
 import type { AskTimeNudge, WeaknessEntry } from "@muse/mcp";
 
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
@@ -529,7 +530,37 @@ export async function runLocalChat(
   const personaMemory = userMemory
     ? { ...userMemory, facts: filterFactsToKeys(userMemory.facts, factKeysToInject(message, Object.keys(userMemory.facts))) }
     : userMemory;
-  const userMemoryBlock = personaMemory ? (buildMusePersona(personaMemory, userId) ?? "").trim() : "";
+  // Fact-caution parity with `muse ask`: flag a persona fact that is volatile
+  // (contested) or once-seen-unconfirmed (provisional) so chat cautions it at
+  // point-of-use instead of asserting it as confirmed truth. Mirrors the
+  // commands-ask provenance wiring exactly (same store, derive, normalizeKey,
+  // isInjection). Fail-soft: any error ⇒ no sets ⇒ unmarked persona, the same
+  // posture ask falls back to.
+  let personaContestedKeys: ReadonlySet<string> = new Set();
+  let personaProvisionalKeys: ReadonlySet<string> = new Set();
+  if (personaMemory) {
+    try {
+      const personaFactKeys = Object.keys(personaMemory.facts);
+      if (personaFactKeys.length > 0) {
+        const provEntries = await new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()).query(userId);
+        const provenance = deriveFactProvenance(provEntries);
+        const nowMs = Date.now();
+        personaProvisionalKeys = provisionalFactKeys(
+          personaFactKeys,
+          provenance,
+          { isInjection: isMemoryInjection, normalizeKey: normalizeMemoryKey, now: nowMs }
+        );
+        personaContestedKeys = contestedFactKeys(
+          personaFactKeys,
+          provenance,
+          { normalizeKey: normalizeMemoryKey, now: nowMs }
+        );
+      }
+    } catch { /* provenance unavailable — render the persona without the marks */ }
+  }
+  const userMemoryBlock = personaMemory
+    ? (buildMusePersona(personaMemory, userId, { contestedKeys: personaContestedKeys, provisionalKeys: personaProvisionalKeys }) ?? "").trim()
+    : "";
   const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
   // Multi-turn recall: resolve an anaphoric turn into a self-contained
   // retrieval query (one constrained inference, fail-open to the raw turn).
