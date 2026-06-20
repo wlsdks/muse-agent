@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 19 · 2026-06-21 · skill v2.0 · <commit-pending> (file_grep ReDoS guard — model regex can't hang the agent)
+## fire 19 · 2026-06-21 · skill v2.0 · 99aed2ea (file_grep ReDoS guard — model regex can't hang the agent)
 meta: value-class=new-capability · pkg=@muse/fs · kind=regex-safety/ReDoS · verdict=PASS · firesSinceDrill=9
 ratchet: testFiles 1071→1071 (+3 cases fs-read-tools: integration + 2 it.each, mutation-valid) · fabrication 0 · @muse/fs 격리 156 · pnpm check=박스포화(apps/cli 5-64s, 격리 green) · lint clean
 - 무엇: §3.6 DoS — file_grep이 모델-supplied regex를 `new RegExp(pattern,"u")`(JS 백트래킹, 타임아웃 없음)로 Muse 프로세스 IN에서 라인별 실행 → `(a+)+$`가 40자 실패 라인에서 HANG(probe 확인). FIX(`isCatastrophicGrepPattern`): nested-quantifier 형태(`(a+)+`/`(.*)*`/`(\d+){2,}`)를 compile 전 거부+"simplify" 에러. 
