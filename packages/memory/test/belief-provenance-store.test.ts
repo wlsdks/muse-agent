@@ -44,6 +44,19 @@ describe("deriveFactProvenance — aggregate the belief-provenance log into per-
     expect(city?.value).toBe("Seoul"); // value carried at the most-recent learnedAt
     expect(prov.find((p) => p.key === "allergy")?.confirmCount).toBe(1);
   });
+  it("computes distinctValueCount — how many distinct values the key held (volatility signal, H2)", () => {
+    const stable = deriveFactProvenance([
+      entry({ key: "home_city", value: "Seoul", learnedAt: "2026-06-01T00:00:00.000Z" }),
+      entry({ key: "home_city", value: "Seoul", learnedAt: "2026-06-10T00:00:00.000Z" })
+    ]);
+    expect(stable.find((p) => p.key === "home_city")?.distinctValueCount).toBe(1);
+    const flipped = deriveFactProvenance([
+      entry({ key: "addr", value: "X", learnedAt: "2026-06-01T00:00:00.000Z" }),
+      entry({ key: "addr", value: "Y", learnedAt: "2026-06-05T00:00:00.000Z" }),
+      entry({ key: "addr", value: "Z", learnedAt: "2026-06-10T00:00:00.000Z" })
+    ]);
+    expect(flipped.find((p) => p.key === "addr")?.distinctValueCount).toBe(3);
+  });
   it("returns [] for an empty log", () => {
     expect(deriveFactProvenance([])).toEqual([]);
   });
@@ -63,10 +76,20 @@ describe("selectPromotableFacts — the durable-promotion gate (G4, fail-close)"
   const now = Date.parse("2026-06-20T00:00:00.000Z");
   const fp = (over: Partial<FactProvenance>): FactProvenance => ({
     key: "k", kind: "fact", value: "v", firstSeen: "2026-06-01T00:00:00.000Z",
-    lastConfirmed: "2026-06-18T00:00:00.000Z", confirmCount: 3, source: "auto", ...over
+    lastConfirmed: "2026-06-18T00:00:00.000Z", confirmCount: 3, distinctValueCount: 1, source: "auto", ...over
   });
   it("promotes an AUTO fact confirmed >= 3x and recent", () => {
     expect(selectPromotableFacts([fp({ key: "a", confirmCount: 3 })], { now }).map((p) => p.key)).toEqual(["a"]);
+  });
+  it("does NOT promote a VOLATILE auto fact (value flipped, distinctValueCount > 1) even at confirmCount >= 3 — confirmCount conflated re-confirm with a flip (H2)", () => {
+    const out = selectPromotableFacts([
+      fp({ key: "stable", confirmCount: 3, distinctValueCount: 1 }),
+      fp({ key: "volatile", confirmCount: 3, distinctValueCount: 3 })
+    ], { now });
+    expect(out.map((p) => p.key)).toEqual(["stable"]);
+  });
+  it("promotes a USER-stated fact even if its value FLIPPED (the latest is the user's current truth, H2)", () => {
+    expect(selectPromotableFacts([fp({ key: "u", confirmCount: 1, source: "user", distinctValueCount: 4 })], { now }).map((p) => p.key)).toEqual(["u"]);
   });
   it("does NOT promote an AUTO fact confirmed only once (stays provisional)", () => {
     expect(selectPromotableFacts([fp({ confirmCount: 1 })], { now })).toEqual([]);
@@ -90,7 +113,7 @@ describe("provisionalFactKeys — matched facts that are KNOWN but not durable (
   const now = Date.parse("2026-06-20T00:00:00.000Z");
   const fp = (over: Partial<FactProvenance>): FactProvenance => ({
     key: "k", kind: "fact", value: "v", firstSeen: "2026-06-01T00:00:00.000Z",
-    lastConfirmed: "2026-06-18T00:00:00.000Z", confirmCount: 3, source: "auto", ...over
+    lastConfirmed: "2026-06-18T00:00:00.000Z", confirmCount: 3, distinctValueCount: 1, source: "auto", ...over
   });
   it("marks a known once-seen fact provisional, but NOT a durable one and NOT an unknown one", () => {
     const prov = [fp({ key: "home_city", confirmCount: 5, source: "user" }), fp({ key: "office_mtu", confirmCount: 1 })];

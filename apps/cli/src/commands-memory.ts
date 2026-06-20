@@ -191,9 +191,12 @@ export function formatBeliefWhy(
   // Has it cleared the durable-promotion gate? (user-stated, or auto + re-confirmed
   // recently, and never an injection-flagged value.)
   const durable = selectPromotableFacts([prov], { isInjection: isMemoryInjection, now: nowMs }).length > 0;
+  // A belief whose value FLIPPED across confirmations is volatile (it's why an
+  // often-confirmed fact can still be provisional — H2).
+  const volatileNote = prov.distinctValueCount > 1 ? ` · value changed ${prov.distinctValueCount.toString()}× (volatile)` : "";
   const lines = [
     `${prov.kind} ${prov.key} = ${prov.value} — ${verb} ${prov.lastConfirmed}`,
-    `  ↳ confirmed ${prov.confirmCount.toString()}× since ${prov.firstSeen} · ${freshness} · ${durable ? "durable" : "provisional"}`
+    `  ↳ confirmed ${prov.confirmCount.toString()}× since ${prov.firstSeen} · ${freshness} · ${durable ? "durable" : "provisional"}${volatileNote}`
   ];
   // The newest record carries the evidence excerpt / session; the excerpt only
   // exists for inferred (auto) beliefs.

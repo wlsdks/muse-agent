@@ -64,6 +64,13 @@ export interface FactProvenance {
   readonly lastConfirmed: string;
   /** How many times the key was (re)learned across the log. */
   readonly confirmCount: number;
+  /**
+   * How many DISTINCT values the key has held across the log. 1 = stable (every
+   * confirmation agreed); > 1 = VOLATILE (the belief flipped — "address X → Y → Z").
+   * A high confirmCount with distinctValueCount > 1 is re-confirmation of a CHANGING
+   * belief, not a stable truth — the opposite signal, so it must NOT auto-promote.
+   */
+  readonly distinctValueCount: number;
   /** `user` if ANY confirmation was user-stated (a user truth outranks auto). */
   readonly source: "auto" | "user";
 }
@@ -95,6 +102,7 @@ export function deriveFactProvenance(entries: readonly BeliefProvenance[]): read
     const last = sorted[sorted.length - 1] as BeliefProvenance;
     out.push({
       confirmCount: group.length,
+      distinctValueCount: new Set(group.map((e) => e.value.trim())).size,
       firstSeen: first.learnedAt,
       key,
       kind: last.kind,
@@ -139,12 +147,16 @@ const DEFAULT_PROMOTE_RECENT_DAYS = 90;
 /**
  * The durable-promotion gate (G4): which facts have EARNED durable trust. A
  * user-STATED fact is trusted immediately (the user typed it — Hindsight: a user
- * truth outranks an inference); an AUTO-inferred fact must be re-confirmed
- * `minConfirmCount` times AND recently (a once-seen auto-extract may be a mis-
- * extraction). FAIL-CLOSE: a value the injection detector flags is NEVER promoted,
- * however often it was confirmed — a poisoned value must not earn durable status.
- * The injection check is INJECTED (`isInjection`) so this layer stays free of the
- * agent-core dependency; the caller passes `isMemoryInjection`. Pure.
+ * truth outranks an inference, and the latest is their current truth even if it
+ * flipped); an AUTO-inferred fact must be re-confirmed `minConfirmCount` times AND
+ * recently AND with a STABLE value (`distinctValueCount === 1`). H2: a high
+ * confirmCount with the value FLIPPING (`distinctValueCount > 1`) is the auto-
+ * extractor giving conflicting values for the key — re-confirmation of a CHANGING
+ * belief, the opposite of stable truth — so it stays provisional until the user
+ * confirms it. FAIL-CLOSE: a value the injection detector flags is NEVER promoted,
+ * however often confirmed. The injection check is INJECTED (`isInjection`) so this
+ * layer stays free of the agent-core dependency; the caller passes `isMemoryInjection`.
+ * Pure.
  */
 export function selectPromotableFacts(
   provenance: readonly FactProvenance[],
@@ -159,7 +171,7 @@ export function selectPromotableFacts(
   };
   return provenance
     .filter((p) => !isInjection(p.value))
-    .filter((p) => p.source === "user" || (p.confirmCount >= minConfirm && recent(p.lastConfirmed)))
+    .filter((p) => p.source === "user" || (p.confirmCount >= minConfirm && recent(p.lastConfirmed) && p.distinctValueCount === 1))
     .map((p) => ({ confirmCount: p.confirmCount, key: p.key, lastConfirmed: p.lastConfirmed, source: p.source, value: p.value }));
 }
 

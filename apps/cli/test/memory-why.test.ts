@@ -76,4 +76,16 @@ describe("formatBeliefWhy", () => {
     expect(out).toContain("· provisional");
     expect(out).not.toContain("· durable");
   });
+
+  it("marks a value that FLIPPED across confirmations VOLATILE + provisional — confirmCount alone would have promoted it (H2)", () => {
+    const now = Date.parse("2026-06-20T00:00:00.000Z");
+    const out = formatBeliefWhy([
+      { kind: "fact", key: "address", value: "Z", learnedAt: "2026-06-18T00:00:00.000Z", source: "auto" },
+      { kind: "fact", key: "address", value: "Y", learnedAt: "2026-06-12T00:00:00.000Z", source: "auto" },
+      { kind: "fact", key: "address", value: "X", learnedAt: "2026-06-06T00:00:00.000Z", source: "auto" }
+    ], "address", now);
+    expect(out).toContain("value changed 3× (volatile)");
+    expect(out).toContain("· provisional");
+    expect(out).not.toContain("· durable");
+  });
 });
