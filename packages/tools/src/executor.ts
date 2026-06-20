@@ -1,6 +1,7 @@
 import { ToolOutputSanitizer } from "@muse/policy";
 
 import type {
+  MuseTool,
   ToolCallRequest,
   ToolExecutionResult,
   ToolExecutionValue,
@@ -38,7 +39,11 @@ export class ToolExecutor {
     const tool = this.registry.get(request.name);
 
     if (!tool) {
-      return this.failed(request, `Error: tool not found: ${request.name}`);
+      const suggestion = nearestToolName(request.name, this.registry.list());
+      return this.failed(
+        request,
+        `Error: tool not found: ${request.name}${suggestion ? `. Did you mean '${suggestion}'? Call that exact registered name.` : ""}`
+      );
     }
 
     const idempotencyKey = readIdempotencyKey(request);
@@ -83,6 +88,36 @@ export class ToolExecutor {
       status: "failed"
     };
   }
+}
+
+/**
+ * When the model calls a name that isn't registered (a small model commonly
+ * HALLUCINATES an intuitive name — `node_run` for the real `run_command`), name
+ * the closest registered tool so the next turn can call it instead of guessing
+ * blindly. Deterministic: ranks by shared snake/dot-case token overlap, requires
+ * ≥1 shared token (so an unrelated miss gets NO misleading suggestion).
+ */
+function nearestToolName(requested: string, tools: readonly MuseTool[]): string | undefined {
+  const tokenize = (name: string): Set<string> =>
+    new Set(name.toLowerCase().split(/[^a-z0-9]+/u).filter((part) => part.length > 0));
+  const wanted = tokenize(requested);
+  if (wanted.size === 0) {
+    return undefined;
+  }
+  let best: { name: string; score: number } | undefined;
+  for (const tool of tools) {
+    const name = tool.definition.name;
+    let shared = 0;
+    for (const token of tokenize(name)) {
+      if (wanted.has(token)) {
+        shared += 1;
+      }
+    }
+    if (shared > 0 && (!best || shared > best.score)) {
+      best = { name, score: shared };
+    }
+  }
+  return best?.name;
 }
 
 /**

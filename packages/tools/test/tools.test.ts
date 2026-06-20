@@ -107,6 +107,31 @@ describe("ToolExecutor", () => {
     expect(result.sanitized?.findings.some((finding) => finding.name === "role_override")).toBe(true);
   });
 
+  it("a not-found tool name suggests the nearest REGISTERED tool so a hallucinated name self-corrects", async () => {
+    // The local 12B reaches for an intuitive name like `node_run` instead of the
+    // registered `run_command`; a bare "tool not found" leaves it stuck. The
+    // error names the closest real tool so the next turn can call it.
+    const runner: MuseTool = {
+      definition: { description: "Run a command.", domain: "system", inputSchema: { type: "object" }, name: "run_command", risk: "execute" },
+      execute: () => "ran"
+    };
+    const executor = new ToolExecutor({ registry: new ToolRegistry([runner]) });
+    const result = await executor.execute({ arguments: {}, context: { runId: "run-1" }, id: "c1", name: "node_run" });
+    expect(result.status).toBe("failed");
+    expect(result.output).toContain("run_command");
+  });
+
+  it("a not-found tool with NO similar registered tool gives no misleading suggestion", async () => {
+    const runner: MuseTool = {
+      definition: { description: "Run a command.", domain: "system", inputSchema: { type: "object" }, name: "run_command", risk: "execute" },
+      execute: () => "ran"
+    };
+    const executor = new ToolExecutor({ registry: new ToolRegistry([runner]) });
+    const result = await executor.execute({ arguments: {}, context: { runId: "run-1" }, id: "c1", name: "xyzzy_frobnicate" });
+    expect(result.status).toBe("failed");
+    expect(result.output).not.toContain("run_command");
+  });
+
   it("returns the prior result for duplicate idempotency keys", async () => {
     let executions = 0;
     const tool: MuseTool = {

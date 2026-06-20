@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 9 · 2026-06-21 · skill v2.0 · <commit-pending> (hallucinated-tool nearest-name suggestion; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/tools · kind=tool-error-recovery · verdict=PASS · firesSinceDrill=9
+ratchet: testFiles 1067→1067 (+2 cases tools.test, mutation-valid) · fabrication 0 · eval:computer-task PASS(무회귀) · eval:multifile-fix 여전히 FAIL(다중 stochastic 모드, 노출/이 fix로 미flip) · pnpm check exit 0 · lint clean
+- 무엇: MUSE_TASK_DEBUG로 multifile 트레이스 → 모델이 read→read→edit로 **버그 실제 수정(test-passes=true)** 하나 테스트 실행에서 `run_command` 대신 `node_run`을 **환각** → bare "tool not found"로 stuck. FIX(`executor.ts` `nearestToolName`): not-found 시 토큰-공유 최다 등록도구 제안("Did you mean 'run_command'?"). 결정론, not-found 분기만, 실패-에러 텍스트만.
+- 왜: fire 8(잘못된 old_string→nearest 줄)의 형제 — 잘못된 *도구명*→nearest 도구. 12B의 tool-name 환각 회복 보조(arXiv:2510.17874 reflection-repair 철학, 기존 toolErrorHint와 일관).
+- 리뷰지점: mutation-valid(stub시 RED)+negative 가드(무관명→제안 없음). ④b judge PASS(misleading 무해=텍스트만 게이트 재강제, happy-path 불변, 결정론 tie-break). **DEEPER**: multifile은 다중 stochastic 모드(조기중단·node_run환각·garbage명+gemma `<|channel>thought` 템플릿토큰 누수) → 이 fix는 node_run만; 템플릿누수는 별도 @muse/model adapter 버그. eval의 `modelRanTest=includes("run_command")`도 brittle path-grading(outcome 채점 위반).
+- 리스크: 낮음 — not-found 분기만, 실행 0(텍스트 제안), happy-path/fabrication/approval 불변. ④b PASS.
+lesson: 깊은 measure-first(debug 트레이스)가 "노출 다 됐는데 왜 FAIL"을 분해 — 모델은 *수정은 성공*하나 도구명 환각(node_run)+템플릿토큰 누수로 verify 실패. 결정론 핸들(nearest-name)은 한 모드만; 나머지는 model/adapter 영역. fire 8·9 = "잘못된 입력→nearest 실제값 제안"의 형제 패턴(edit old_string·tool name).
+
 ## fire 8 · 2026-06-21 · skill v2.0 · e83287c5 (edit no-match nearest-line hint; pivot to fs/edit-repair)
 meta: value-class=new-capability · pkg=@muse/fs · kind=edit-repair · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles 1065→1065 (+2 cases fs-write-tools, mutation-valid) · fabrication 0 · eval:computer-task PASS(무회귀) · pnpm check exit 0(LINE 웹훅 20s 타임아웃 flake=박스포화, stash-격리 854/854 통과 확인) · lint clean
