@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 15 · 2026-06-21 · skill v2.0 · <commit-pending> (run_command dynamic-loader env injection blocked; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/tools+crates/runner · kind=security/path-safe · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 1069→1069 (+1 case tools.test, mutation-valid) · fabrication 0 · @muse/tools 격리 284 통과 · crates/runner cargo test 7 통과 · eval:computer-task PASS(무회귀) · pnpm check=박스포화(web-search fuzz 15s, 변경패키지 격리 green) · lint clean
+- 무엇: §3.6 감사 — run_command은 execFile(no shell)+path-reject지만 모델-supplied `env`가 키 *형식*만 검증돼 **LD_PRELOAD/DYLD_INSERT_LIBRARIES**(유효 대문자식별자)가 통과 → spawn 프로세스에 임의 코드 로드=execFile/path-reject 우회. FIX 양 레이어(defense-in-depth): TS readStringRecord `/^(?:LD|DYLD)_/` 드롭 + Rust is_safe_env_key `LD_`/`DYLD_` 거부(command.env의 authoritative 게이트).
+- 왜: 노출/recovery/adapter/근거게이트(4-14) 다 했고, §3.6 "신뢰불가입력→command"의 마지막 미감사 표면=env 주입. 동적-로더 env는 모델-run 명령에 정당하게 불필요 → 결정론적 거부.
+- 리뷰지점: mutation-valid 양 레이어(pre-fix TS는 LD_PRELOAD 유지·Rust는 true 반환=RED). ④b judge PASS(프리픽스 정밀: 트레일링 `_`라 LDFLAGS/LOAD_PATH/MY_LD_PRELOAD 보존; 양 레이어 동일 family 차단; 기존 env 가드(env_clear/PATH/형식) 불변; 정직한 scope=LD_/DYLD_ 코어). 형제-감사(TS early + Rust boundary).
+- 리스크: 낮음 — env 키 denylist만 추가(args/cwd/command/값-타입필터/uppercase체크 불변). ④b PASS. Rust 변경은 cargo test로만 검증(eval 바이너리는 main copy라 미반영이나 eval은 env 미사용=무관).
+lesson: "no shell이라 안전"은 부분만 — execFile은 *어느 바이너리*만 제약하지 *그 안에 주입되는 코드*(LD_PRELOAD)는 못 막음. env는 별도 공격면이고 형식검증≠의미검증. 다언어(TS+Rust) 보안 fix는 양 레이어 다 테스트(vitest+cargo).
+
 ## fire 14 · 2026-06-21 · skill v2.0 · f676d3cc (full-read gate for overwrite — grep/offset can't ground it)
 meta: value-class=new-capability · pkg=@muse/fs+apps/cli · kind=grounding-gate · verdict=PASS(judge2) · firesSinceDrill=4
 ratchet: testFiles 1069→1069 (+3 cases fs read/write, mutation-valid) · fabrication 0 · @muse/fs 격리 131 통과 · eval:computer-task PASS(무회귀) · pnpm check exit 0 · lint clean

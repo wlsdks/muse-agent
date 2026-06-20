@@ -1730,6 +1730,19 @@ describe("parseRunnerCommandRequest — adversarial arg fuzz", () => {
     expect(r.args).toEqual(["--flag", "value"]);
     expect(r.env).toEqual({ OK: "1" });
   });
+
+  it("drops dynamic-loader env vars (LD_*/DYLD_*) — a code-injection vector that bypasses the no-shell exec", () => {
+    // `Command::new(cmd).args(args)` runs WITHOUT a shell, so there's no shell
+    // injection — but a model-supplied LD_PRELOAD / DYLD_INSERT_LIBRARIES env
+    // would load arbitrary code INTO the spawned process, escaping that guard
+    // and the path-reject. These are never legitimate for a model-run command.
+    const r = parseRunnerCommandRequest({
+      command: "node",
+      args: ["x.mjs"],
+      env: { LD_PRELOAD: "/tmp/evil.so", DYLD_INSERT_LIBRARIES: "/tmp/evil.dylib", LD_LIBRARY_PATH: "/tmp", DYLD_LIBRARY_PATH: "/tmp", MY_FLAG: "ok" }
+    } as never);
+    expect(r.env).toEqual({ MY_FLAG: "ok" });
+  });
 });
 
 describe("code-task tool relevance — run_command + file tools surface on a 'run the test / fix the bug' prompt", () => {

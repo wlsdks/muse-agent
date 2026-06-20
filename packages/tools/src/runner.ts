@@ -257,13 +257,27 @@ function parseRunnerResponse(value: string): RunnerCommandResponse | undefined {
   }
 }
 
+/**
+ * Dynamic-loader env vars hijack a process at launch — `LD_PRELOAD` /
+ * `LD_LIBRARY_PATH` / `LD_AUDIT` (glibc) and `DYLD_INSERT_LIBRARIES` /
+ * `DYLD_*_PATH` (macOS dyld) load arbitrary code INTO the spawned command,
+ * escaping the runner's no-shell `Command::new` + path-reject guards. A model-run
+ * command never legitimately needs them, so they are dropped before they reach
+ * the runner (defence-in-depth; the Rust runner rejects them too).
+ */
+function isDynamicLoaderEnvKey(key: string): boolean {
+  return /^(?:LD|DYLD)_/u.test(key);
+}
+
 function readStringRecord(value: unknown): Readonly<Record<string, string>> | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
 
   return Object.fromEntries(
-    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string")
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string" && !isDynamicLoaderEnvKey(entry[0])
+    )
   );
 }
 

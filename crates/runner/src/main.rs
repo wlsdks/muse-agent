@@ -191,7 +191,13 @@ fn append_capped(kept: &mut Vec<u8>, chunk: &[u8], max_output_bytes: usize) -> b
 }
 
 fn is_safe_env_key(key: &str) -> bool {
+    // Dynamic-loader vars (LD_PRELOAD / LD_LIBRARY_PATH / LD_AUDIT, and macOS
+    // DYLD_INSERT_LIBRARIES / DYLD_*_PATH) load arbitrary code INTO the spawned
+    // process — they would escape the no-shell `Command::new` + path-reject guard.
+    // A model-run command never legitimately needs them, so reject the prefixes.
     !key.is_empty()
+        && !key.starts_with("LD_")
+        && !key.starts_with("DYLD_")
         && key
             .bytes()
             .all(|byte| byte == b'_' || byte.is_ascii_uppercase() || byte.is_ascii_digit())
@@ -304,6 +310,19 @@ mod tests {
         assert!(is_safe_env_key("KEY_1"));
         assert!(!is_safe_env_key("Path"));
         assert!(!is_safe_env_key("BAD-NAME"));
+    }
+
+    #[test]
+    fn rejects_dynamic_loader_env_keys_to_block_code_injection() {
+        // Valid uppercase-identifier keys, but they hijack process launch.
+        assert!(!is_safe_env_key("LD_PRELOAD"));
+        assert!(!is_safe_env_key("LD_LIBRARY_PATH"));
+        assert!(!is_safe_env_key("LD_AUDIT"));
+        assert!(!is_safe_env_key("DYLD_INSERT_LIBRARIES"));
+        assert!(!is_safe_env_key("DYLD_LIBRARY_PATH"));
+        // A normal var that merely starts with the letters is still fine.
+        assert!(is_safe_env_key("LDFLAGS"));
+        assert!(is_safe_env_key("LOAD_PATH"));
     }
 }
 
