@@ -20,6 +20,7 @@
 - ✓ shared the lexical matcher (tokenMatchesKeywordWord exported from @muse/tools, agent-core copy deleted) — closes the fire-5 drift bug class structurally; arXiv:2502.04073 — context-strategy fire 7 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ query-relevance threaded into the cross-block edge-place — fire-1's dormant relevance? path activated (episode recall score blended with tier on a shared 0-1 scale; arXiv:2410.05983) — context-strategy fire 6 (detail in docs/goals/loops/context-strategy.md)
+- ✓ NL tool-SELECTION parser skips a negation-led tool mention — "don't use X, use Y" / KO "X은 쓰지 말고 Y" no longer resolves to the REJECTED tool X (MAST reasoning-action mismatch, arXiv:2503.13657); earliest NON-negated mention wins, all-negated → no tool; affirmative path + eval:tools:nl 7/7 unmoved — agent-hardening fire 13 (`7880ab64`, detail in docs/goals/loops/agent-hardening.md)
 
 - ✓ JUDGE-DRILL (fire 10) — confirmed the ④b independent Opus judge CATCHES a deliberately vacuous (declaration-only) test for a tool-arg-repair slice; then shipped the real slice: numeric tool-arg coercion accepts an explicitly-signed-positive value ("+5" → 5) so a one-shot call from the local model executes — agent-hardening fire 10 (`8cec8359`, detail in docs/goals/loops/agent-hardening.md)
 
