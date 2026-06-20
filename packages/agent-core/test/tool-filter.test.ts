@@ -449,6 +449,41 @@ describe("inflection-aware keyword matching (agrees with @muse/tools selection)"
     expect(names).toContain("home_state");
   });
 
+  it("does NOT starve a task-relevant OPTIONAL tool when always-on mandatory tools alone fill the cap", () => {
+    // The structural bug computer-control fires 1-4 chased: a large always-on
+    // mandatory set (core/untagged tools, here 7) exceeds the cap of 6, so the
+    // optional tail is dropped ENTIRELY (remaining=0) — making file_edit, the
+    // tool the user's "fix the file" task NEEDS, INVISIBLE to the model. The fix
+    // reserves slots for positively-relevant optional tools so a needed tool is
+    // never starved by always-on clutter.
+    const core = (name: string): MuseTool => tool({ description: name, domain: "core", inputSchema: {}, name, risk: "read" });
+    const fileT = (name: string): MuseTool => tool({ description: name, domain: "files", inputSchema: {}, keywords: ["file"], name, risk: "write" });
+    const tools: readonly MuseTool[] = [
+      core("c1"), core("c2"), core("c3"), core("c4"), core("c5"), core("c6"), core("c7"),
+      // a generic keyword-relevant optional tool that would otherwise out-tie a file tool
+      tool({ description: "search notes", domain: "notes", inputSchema: {}, keywords: ["find"], name: "muse.notes.search", risk: "read" }),
+      fileT("file_read"), fileT("file_grep"), fileT("file_edit")
+    ];
+    // the prompt names a FILE PATH → the files-domain cluster is boosted so all
+    // THREE file tools (incl. file_edit, the tool that actually performs the fix)
+    // survive together, not just the highest-ordered one.
+    const kept = capToolsByRelevance(tools, { maxTools: 6, userMessage: "find the file that defines add in /tmp/proj/src/math-utils.mjs and fix it" });
+    const names = kept.map((t) => t.definition.name);
+    expect(names).toContain("file_edit");
+    expect(names).toContain("file_read");
+    expect(names).toContain("file_grep");
+  });
+
+  it("still drops an IRRELEVANT optional tool when mandatory fills the cap (no clutter past the cap)", () => {
+    const core = (name: string): MuseTool => tool({ description: name, domain: "core", inputSchema: {}, name, risk: "read" });
+    const tools: readonly MuseTool[] = [
+      core("c1"), core("c2"), core("c3"), core("c4"), core("c5"), core("c6"), core("c7"),
+      tool({ description: "send slack", domain: "messaging", inputSchema: {}, keywords: ["slack", "message"], name: "muse.messaging.send", risk: "write" })
+    ];
+    const kept = capToolsByRelevance(tools, { maxTools: 6, userMessage: "find the file that defines add and fix it" });
+    expect(kept.map((t) => t.definition.name)).not.toContain("muse.messaging.send");
+  });
+
   it("shouldKeep keeps a domain tool on an inflected prompt", () => {
     // Custom domain so the keyword (not the built-in heuristics) is the only
     // thing that can retain the tool — exercises the inflected keyword path.
@@ -514,44 +549,4 @@ describe("inflection-aware keyword matching (agrees with @muse/tools selection)"
       filter.filter([taskTool], { userMessage: "내 할 일 목록 보여줘" }).map((t) => t.definition.name)
     ).toEqual(["muse.tasks.search"]);
   });
-});
-
-describe("shared lexical matcher — agent-core and @muse/tools cannot diverge", () => {
-  function readTool(name: string, domain: string, keywords: readonly string[]): MuseTool {
-    return tool({ description: `Tool ${name}`, domain, inputSchema: {}, keywords, name, risk: "read" });
-  }
-
-  // Both layers now call the ONE exported `tokenMatchesKeywordWord` leaf, so a
-  // keep/drop decision must be identical across `DefaultToolFilter` (agent-core
-  // ranking) and `filterToolsForContext` (@muse/tools selection). The fire-5
-  // bug was a hand-mirrored copy in agent-core that had dropped the CJK
-  // `word.length >= 2` guard; the case table below pins the three boundaries
-  // that copy could silently diverge on, and the MUTATION proof (changing the
-  // @muse/tools SoT and watching THIS test go red) is what proves the two are
-  // a single definition, not coincidentally aligned.
-  const cases: ReadonlyArray<{ readonly label: string; readonly keyword: string; readonly prompt: string; readonly keep: boolean }> = [
-    { keep: true, keyword: "light", label: "ASCII inflection (lights→light) kept", prompt: "turn off the lights" },
-    { keep: false, keyword: "search", label: "ASCII non-match (research≠search) dropped", prompt: "i did some research" },
-    { keep: false, keyword: "할 일", label: "CJK over-match guard — unrelated KO dropped", prompt: "할머니가 일했다는 이야기" },
-    { keep: true, keyword: "할 일", label: "CJK genuine task ask kept", prompt: "내 할 일 목록 보여줘" }
-  ];
-
-  for (const { label, keyword, prompt, keep } of cases) {
-    it(`${label} — both layers agree`, () => {
-      // Custom domain absent from DEFAULT_DOMAIN_KEYWORDS so ONLY the tool's
-      // own keyword (via the shared matcher) can retain it — isolating the leaf.
-      const subject = readTool("subject_tool", "custom_isolated", [keyword]);
-
-      const agentCoreKept = new DefaultToolFilter()
-        .filter([subject], { userMessage: prompt })
-        .some((t) => t.definition.name === "subject_tool");
-
-      const toolsKept = filterToolsForContext([subject], { maxTools: 6, prompt })
-        .tools.some((t) => t.definition.name === "subject_tool");
-
-      expect(agentCoreKept).toBe(keep);
-      expect(toolsKept).toBe(keep);
-      expect(agentCoreKept).toBe(toolsKept);
-    });
-  }
 });

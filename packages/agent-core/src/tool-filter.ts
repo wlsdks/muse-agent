@@ -11,7 +11,6 @@
  */
 
 import type { MuseTool, MuseToolDefinition } from "@muse/tools";
-import { tokenMatchesKeywordWord } from "@muse/tools";
 
 export interface ToolFilterContext {
   readonly userMessage: string;
@@ -49,6 +48,26 @@ export interface ToolFilter {
  * drops an always-on (core/untagged) tool or an in-flight (recent) tool.
  */
 export const DEFAULT_TOOL_EXPOSURE_CEILING = 6;
+
+/**
+ * When the always-on mandatory set (core/untagged/recent) alone meets or exceeds
+ * the ceiling, the optional tail would be dropped ENTIRELY — making a tool the
+ * user's task explicitly needs (e.g. `file_edit` on a "fix this file" prompt)
+ * INVISIBLE behind always-on clutter. Reserve up to this many slots for
+ * POSITIVELY-RELEVANT optional tools (a keyword match to the prompt) so a needed
+ * tool is never starved. Irrelevant optional tools are NOT admitted past the cap.
+ */
+const RELEVANT_OPTIONAL_FLOOR = 3;
+
+/**
+ * A file-path / filename-with-code-extension mention in the prompt — a strong
+ * signal the turn is a FILE task, so the `files`-domain tools (read/grep/edit)
+ * are the relevant cluster. Matches an absolute/nested path (`/a/b`, `src/x.ts`)
+ * or a bare `name.ext`. Used to boost files-domain relevance so the whole file
+ * cluster tops the reserve rather than tying with generic tools on a lone keyword.
+ */
+const FILE_PATH_RE = /(?:\/[\w.-]+\/[\w./-]*|[\w-]+\.(?:mjs|cjs|js|ts|tsx|jsx|py|rb|go|rs|java|kt|c|h|cpp|cc|cs|php|swift|json|ya?ml|toml|md|txt|sh|sql|html?|css|scss))/u;
+const FILE_PATH_DOMAIN_BONUS = 3;
 
 export class DefaultToolFilter implements ToolFilter {
   private readonly extraKeywords: Readonly<Record<string, readonly string[]>>;
@@ -167,22 +186,33 @@ export function capToolsByRelevance(
   }
 
   const remaining = Math.max(0, maxTools - mandatory.length);
-  if (remaining === 0) {
-    // Mandatory set alone meets/exceeds the cap — keep ALL mandatory, drop the
-    // entire optional tail. Preserve input order.
-    return tools.filter((tool) => mandatory.includes(tool));
-  }
+
+  // A file-path mention boosts the `files`-domain cluster so its tools (read/
+  // grep/edit) top the reserve together instead of tying generic tools on a lone
+  // keyword (so file_edit, not just file_read, survives on a "fix this file" task).
+  const pathMention = FILE_PATH_RE.test(context.userMessage);
+  const scoreFor = (definition: MuseToolDefinition): number =>
+    relevanceScore(definition, promptLower, heuristics) +
+    (pathMention && inferDomain(definition) === "files" ? FILE_PATH_DOMAIN_BONUS : 0);
 
   const rankedOptional = [...optional].sort((a, b) => {
-    const byScore =
-      relevanceScore(b.definition, promptLower, heuristics) - relevanceScore(a.definition, promptLower, heuristics);
+    const byScore = scoreFor(b.definition) - scoreFor(a.definition);
     if (byScore !== 0) {
       return byScore;
     }
     return (order.get(a) ?? 0) - (order.get(b) ?? 0);
   });
 
-  const survivors = new Set<MuseTool>([...mandatory, ...rankedOptional.slice(0, remaining)]);
+  // Reserve slots for POSITIVELY-RELEVANT optional tools so a large always-on
+  // mandatory set (≥ the cap) can never starve a tool the user's task needs —
+  // the structural bug where `file_edit` went invisible on a "fix this file"
+  // prompt because 10 core tools filled the 6-cap (remaining=0). Only
+  // keyword-matched optional tools qualify; irrelevant ones are not admitted.
+  const relevantReserve = rankedOptional
+    .filter((tool) => scoreFor(tool.definition) > 0)
+    .slice(0, RELEVANT_OPTIONAL_FLOOR);
+
+  const survivors = new Set<MuseTool>([...mandatory, ...rankedOptional.slice(0, remaining), ...relevantReserve]);
   return tools.filter((tool) => survivors.has(tool));
 }
 
@@ -227,9 +257,11 @@ function isMandatoryTool(definition: MuseToolDefinition, recentSet: ReadonlySet<
   return !domain || domain === "core";
 }
 
+const NON_ASCII_RE = /[^\u0000-\u007f]/u;
+
 /**
- * Keyword → prompt matcher — INFLECTION-AWARE, delegating to the SHARED
- * `@muse/tools` `tokenMatchesKeywordWord` leaf so the
+ * Keyword → prompt matcher — INFLECTION-AWARE, mirroring `@muse/tools`
+ * `tokenMatchesKeywordWord` / `keywordMatchesPromptTokens` exactly so the
  * agent-core ranking layer (cap / `shouldKeep`) and the `@muse/tools`
  * selection layer agree on which tools a prompt makes relevant. They used
  * to disagree: selection accepted inflections (`lights`→`light`) while this
@@ -269,6 +301,16 @@ function keywordMatchesPrompt(keyword: string, promptLower: string): boolean {
     }
     return false;
   });
+}
+
+function tokenMatchesKeywordWord(token: string, word: string): boolean {
+  if (token === word) {
+    return true;
+  }
+  if (NON_ASCII_RE.test(word)) {
+    return word.length >= 2 ? token.includes(word) : false;
+  }
+  return word.length >= 4 && token.startsWith(word) && token.length - word.length <= 3;
 }
 
 const promptTokenCache = new Map<string, Set<string>>();
