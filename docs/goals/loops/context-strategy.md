@@ -482,3 +482,24 @@ ratchet: testFiles +0 (extended existing) · memory 484 pass · recall 373 pass 
   lines preserved; no-opts byte-identical; fabrication=0). Independent Opus adaptive judge PASS 8/8 +
   mutation RED→GREEN (delete stale arm → stale caution missing RED). Sibling audit: callers byte-identical;
   buildMusePersona deferred (own render path, ask-first staging — follow-up filed).
+
+## fire 17 · 2026-06-21 · skill v2.0.0 · 9ce71a9b
+meta: value-class=micro-fix · pkg=@muse/prompts · kind=exemplar-selection-precision · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles +0 (extended existing) · prompts 41 pass · pnpm check exit0 (unrelated @muse/shared saturation timeout cleared on isolated rerun) · pnpm lint exit0 · fabrication 0 · self-eval green
+- **DOCTRINE:** advances ① person/relevance-as-selection-unit (first selection-precision fire since #7) + ④ lean.
+- **What:** `@muse/prompts` exemplar scorer (`tokenSet`→`scoreExemplar`→`retrieveTopK`) counted RAW
+  token overlap with no stop-word removal, so a query sharing only a function word ("what"/"the"/"는")
+  with a few-shot exemplar scored ≥1 and got injected into the 12B system prompt. Added a conservative
+  module-private `EXEMPLAR_STOP_WORDS` (EN function words + unambiguous KO particles 은/는/이/가/…),
+  filtered ADDITIVELY on top of the existing length/Hangul rule. Only content-word overlap now selects.
+- **Why:** irrelevant retrieved demonstrations DEGRADE LLM performance (arXiv:2506.03100 RAG-as-noisy-ICL;
+  arXiv:2604.05396 — lexical overlap alone insufficient to pick demos); BM25/TF-IDF win by down-weighting
+  common terms, which the raw-count scorer didn't. Matches the repo's existing ANCHOR_STOP_WORDS precedent.
+  hermes/openclaw have no deterministic relevance-gated few-shot selection → widens the edge.
+- **Review point:** stop-word set is conservative (all genuine function words, NO content nouns —
+  judge verified); KO content-noun guard test (책/일정) proves no over-filter on the non-ASCII path.
+- **Risk:** none to floor — precision-only (tightens what matches; content match preserved, no exemplar
+  dropped on a content query; zero-match fallback unchanged); exemplars are few-shot prompt content NOT
+  grounding sources → fabrication=0 untouched, no citation-gate touch; byte-identical on content-only
+  queries. Independent Opus adaptive judge PASS 8/8 + mutation RED→GREEN (delete filter → EN+KO precision
+  tests RED). Sibling audit: tokenSet's only caller is scoreExemplar; FullExemplarRetriever/rendering untouched.
