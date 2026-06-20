@@ -32,7 +32,7 @@ lesson: the gate-side "is this a dependent multi-step request?" question is NOT 
 
 ## fire 12 · 2026-06-21 · loop-creator v2.0.0 · 2f62ee0f
 
-meta: value-class=multi-agent orchestration/decomposition (single-marker DEPENDENT decomposition — RESOLVES the fire-11 blocker the structurally-sound way) · pkg=@muse/multi-agent · kind=decomposition-reliability · verdict=PASS · firesSinceDrill=2 · mainMerge=<backfill>
+meta: value-class=multi-agent orchestration/decomposition (single-marker DEPENDENT decomposition — RESOLVES the fire-11 blocker the structurally-sound way) · pkg=@muse/multi-agent · kind=decomposition-reliability · verdict=PASS · firesSinceDrill=2 · mainMerge=yes@5e761ea4 (brings f9 enum-arg + f10 signed-numeric + f12 single-marker decompose)
 ratchet: testFiles 1062 (14 cases added to existing decompose-trigger.test.ts) · fabrication 0 (untouched — orchestration path, no grounding/citation code) · eval:decomposition PASS (live gemma4:12b) · eval:orchestration PASS (failure-propagation + bounded termination live) · @muse/multi-agent 161/161 · pnpm check EXIT 0 (apps/api 854, apps/cli 2787, all workspaces)
 ratchet (diversity): DIFFERENT (pkg×kind) from f9/f10 (both @muse/tools arg-coercion) — back to @muse/multi-agent · decomposition, off the two-tools-fire streak per the fire-8/diversify directive; this is the multi-agent slice the fire-11 blocker left open, done the CORRECT (split-first) way.
 
