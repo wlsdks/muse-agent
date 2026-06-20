@@ -5,6 +5,33 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 6 · 2026-06-21 · skill v2.0 · 0832ff97 (code-task tool keywords; multi-file exposure ↑, 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/tools+@muse/fs · kind=tool-relevance/keywords · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 1062→1062 (+2 cases tools.test, mutation-valid) · fabrication 0 · eval:multifile-fix exposure ↑(file_grep,context→file_read+run_command) · eval:computer-task PASS(무회귀) · pnpm check exit 0 · lint clean
+- 무엇: measure-first on `eval:multifile-fix`("run the test, fix the bug") FAIL 발견 → root: `run_command`이 **키워드 0개**라 run/test 프롬프트에 relevance 0 → starved(노출조차 안 됨); file 도구도 code-fix 동사 미보유. FIX(sibling-audit): run_command + file_read/grep/edit/multi_edit에 code/run 키워드. multi-file 노출 개선(file_read+run_command 이제 노출), single-file 무회귀.
+- 왜: 멀티파일 측정이 새 결정론 갭(run_command 키워드 0개=unreachable)을 드러냄 — fire 4(starvation)·fire 6(keyword)이 tool-exposure의 두 층. eval:multifile-fix 바이너리(muse-runner) main에서 복사해 언블록.
+- 리뷰지점: mutation-valid 테스트(0-keyword run_command은 cap에서 탈락=RED, keyworded=생존; ④b finding-1 지적 후 cap-exercise로 수정). IrrelAcc(흔한 단어 over-fire)는 approval-gated라 harm 아님(④b)+build/script 제거로 경감. REMAINING: file_edit가 isWorkspaceMutationPrompt(워크스페이스 객체용, code-edit 미인식)에 막힘 + 12B 멀티스텝(read만 쓰고 미진행) → decompose.
+- 리스크: 낮음 — 키워드 additive, write 도구 over-expose 안 됨(mutation-gate 유지), single-file 무회귀. ④b PASS.
+lesson: measure-first를 *다른 eval*(multifile)로 넓히면 새 결정론 갭이 나온다 — run_command 키워드 0개는 "도구가 도달조차 못함"의 명백한 버그. ④b가 weak-test(cap 미exercise)를 잡아 mutation-valid로 교정(judge가 maker 테스트 품질도 GATE).
+
+## fire 5 · 2026-06-20 · skill v2.0 · <pending5> (top item DONE; bloat = deliberate decompose)
+meta: value-class=refactor(work-list) · pkg=tools(scoping) · kind=decompose-design-sensitive · verdict=N/A · firesSinceDrill=5
+ratchet: testFiles 1062→1062 · fabrication 0 · eval:computer-task PASS (fire-4 fix holds, no regression)
+- 무엇: fire-4가 top ★(wrong-tool)을 결정론적으로 FIX(eval pass^3 3/3)했으니 다음 후보=잔여 bloat(time/math/regex가 domain="core"=always-on). 코드로 스코핑: 6개 time 도구가 `muse-tools-time.ts`에서 core, math/regex도 여러 파일 산재 → 6+ 파일 re-tag + keyword 커버(DEFAULT_DOMAIN_KEYWORDS에 math/time/text 부재) + 크로스-서피스 검증 필요한 **broad·design-sensitive 리팩터**.
+- 왜 코드 슬라이스 없음: **현재 측정된 실패 없음**(fire-4 reserve가 eval을 PASS시킴) — measure-first 원칙상 측정 실패 없는 speculative broad 리팩터를 auto-fire에 강행 안 함. design-sensitive(어떤 유틸이 진짜 "always reachable"인가는 판단 필요) + 강등이 time/math를 필요할 때 숨길 risk → DELIBERATE decompose 기록(backlog).
+- 리뷰지점: fire 3의 "premature exhaustion" 실수를 반복하지 않되(fire 4가 깊이 파면 clean fix가 나옴을 증명), 이번 bloat는 *진짜로* broad+design-sensitive+측정실패-없음임을 코드로 확인(6+파일, keyword 부재 trap). 다음 measure-first 후보=eval:multifile-fix(멀티파일 실패 탐색).
+- 리스크: 0 — 코드 미변경, 정밀 decompose 기록 + fire-4 fix 회귀 0 확인.
+lesson: fire 3(성급한 exhaustion)과 fire 5(정당한 decompose)의 차이 = *코드로 스코프를 확인*했는가. fire 3은 "fuzzy"라 단정(틀림), fire 5는 6+파일·keyword-trap·측정실패-없음을 실제 확인. 측정+스코프 확인이 "더 파라" vs "deliberate로 미뤄라"를 가른다.
+
+## fire 4 · 2026-06-20 · skill v2.0 · a925a13e (DETERMINISTIC fix SHIPPED — eval flips FAIL→PASS)
+meta: value-class=new-capability · pkg=@muse/agent-core · kind=tool-exposure/starvation-fix · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 1060→1060 (+3 cases tool-filter.test) · fabrication 0 · **eval:computer-task 2/2 STABLE FAIL → PASS** (model now file_grep→read→edit) · pnpm check exit 0 · lint clean
+- 무엇: 진안의 "계속해줘 찾아서"로 더 깊이 파서 fires 1-3의 "fuzzy" 결론을 뒤집음 — **결정론 구조 버그 발견+수정**: always-on MANDATORY 10개(math_eval/regex_extract/time_add/context×3/skills×3)가 cap=6을 초과 → `capToolsByRelevance`의 `remaining=0` 분기가 optional 전체를 드롭 → file 도구가 *invisible*(모델이 볼 수 없음→절대 못 고침). FIX(`tool-filter.ts`): (1) positively-relevant optional에 reserve(FLOOR=3, irrelevant은 여전히 드롭) (2) FILE_PATH_RE 부스트(프롬프트에 경로 있으면 files-domain +3 → file 클러스터가 reserve 상위).
+- 왜: 측정을 더 깊이(mandatory 개수+cap 생존 확인) 하니 "fuzzy 랭킹"이 아니라 "always-on clutter가 task 도구를 starve"하는 결정론 버그였음. 테마가 전제한 clean 결정론 fix가 맞았다 — 단지 fire 1-3이 진단을 충분히 깊게 안 했을 뿐.
+- 리뷰지점: 결정론 단위테스트 3개(starvation rescue·irrelevant-still-dropped·path-boost all-3-files) RED-on-old. eval flip 2/2→PASS(file_grep,read,edit 사용). ④b 적응형 judge PASS(over-exposure 없음, URL false-trigger 무해, 불변식 불변). judge note 대응: **pass^3 = 3/3 STABLE PASS 확인**(durable, flaky 아님; 각 run file_grep→read→edit).
+- 리스크: 낮음 — optional 재랭킹/reserve만(mandatory/recent/risk 불변), relevant만 admit. ④b PASS.
+lesson: "fuzzy/exhausted" 결론은 *진단 깊이 부족*일 수 있다 — 한 겹 더 측정(mandatory 카운트+cap 생존)하니 fuzzy로 보이던 게 clean 결정론 버그였다. 진안이 "계속 찾아서"로 민 게 옳았다. measure-first는 *충분히 깊게* 해야 전제(결정론 fix 가능)를 확증한다.
+
 ## fire 3 · 2026-06-20 · skill v2.0 · 54e86fee (PRECISE root-cause + honest theme-wall, 3-fire merge)
 meta: value-class=refactor(work-list) · pkg=agent-core(diagnosis) · kind=root-cause-final · verdict=N/A · firesSinceDrill=3
 ratchet: testFiles 1060→1060 · fabrication 0 · eval:computer-task 2/2 STABLE FAIL (root-caused, not yet fixed)
