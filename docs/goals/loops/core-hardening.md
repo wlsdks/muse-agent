@@ -4,6 +4,14 @@
 > Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main, NEVER merges to main).
 > Cron `cfe778e2` (every 15m, session-only). Stop: `CronDelete cfe778e2`. Convention: [README](README.md).
 
+## fire 3 · 2026-06-20 · skill v1.14.0 · <commit-pending>
+meta: value-class=new-capability · pkg=@muse/agent-core · kind=grounding-floor/multilingual-injection · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 1054→1054 (+1 describe / 3 cases in injection.test.ts) · fabrication 0 · agent-core 2477 tests green · precheck:grounding 2/3 PASS pass^2 · pnpm check exit 0 · lint clean
+- 무엇: `MEMORY_INJECTION_PATTERNS`(stored/tool-output 중성화기)가 영어 전용 4패턴이라 한국어 주입("이전 지시를 무시하고…")이 든 poisoned 노트/tool-output이 `neutralizeInjectionSpans`를 통과하던 grounding-floor 구멍. 좁은 한국어 패턴 1개(canonical ignore-instructions의 한국어 아날로그, 명사→무시/잊 어순) 추가.
+- 왜: 진안은 한국어 사용자라 한국어 노트를 저장 — identity-critical 표면. policy의 broad 한국어 세트가 아니라 패턴 1의 좁은 아날로그만 추가해 자기-노트 false-positive 최소화(broad 세트는 양성 한국어 prose 훼손).
+- 리뷰지점: 양성 한국어("그 규칙은 무시해도 된다" 등)는 영어 baseline과 동일한 class의 span-scoped collateral만 — 주변 노트는 보존(④b가 6개 실증). u-flag는 g-flag 재구성에서 보존, ReDoS 없음(259ms@50k). 정직한 residual: act-as/output-only 한국어 아날로그 미커버(T1-a-ko-resid).
+- 리스크: 낮음 — 순수 additive(패턴 1개 append, 기존 영어/homoglyph/zero-width 탐지 불변). ④b Opus 적대 judge PASS (5문항, false-positive 실증 분석 포함).
+
 ## fire 2 · 2026-06-20 · skill v1.14.0 · 5efdf345
 meta: value-class=wiring · pkg=@muse/mcp · kind=outbound-safety/audit-completeness · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles 1054→1054 (+1 describe / 4 cases in test/consented-action.test.ts) · fabrication 0 · @muse/mcp 1860 tests green · pnpm check exit 0 · lint clean
