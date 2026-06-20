@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ vision extraction primitive schema-required fail-close — extractStructuredFromImage rejects a hollow/missing-required extraction at the source (no partial result downstream; AppWorld arXiv:2407.18901) — grounded-vision fire 5 (`2f3e933a`)
+
 - ✓ vision input gate magic-byte content check — loadImageAttachment fail-closes on non-image bytes + ships sniffed mimeType (MLLM input-integrity arXiv:2404.18930) — grounded-vision fire 1 (`a670dec5`)
 - ✓ chat-ink readImage shared the vision input-integrity gap — `muse chat --image` now content-sniffs via the shared leaf (readImageAttachment), fail-close on non-image bytes (arXiv:2404.18930) — grounded-vision fire 2 (`ae37c354`)
 - ✓ vision field-level partial-apply — drop un-grounded OPTIONAL fields + apply grounded core, fail-close only on a REQUIRED field (no un-grounded value persisted; arXiv:2404.18930) — grounded-vision fire 3 (`0f301103`)

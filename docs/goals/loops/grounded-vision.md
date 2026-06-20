@@ -44,3 +44,11 @@ ratchet: testFiles 1067 · fabrication 0 · groundedSurfaces=28 (no drop) · gro
 - 왜: 오판된 값이 unverified에서 빠져 grounded 취급→partial-apply(fire 3) 경로로 영속되던 fabrication-floor 누수. grounding 게이트 자체를 조이는 hardening(추출-vs-증거 일관성, arXiv:2404.18930). 입력(fire1·2)→라우팅(fire3)→추출-grounding 정밀도로 다양성 이동.
 - 리뷰지점: 독립 적응형 judge가 200k 퍼즈로 strictly-stricter 증명(NEW가 OLD보다 더 ground 0건), over-drop 없음(12,400→digitRuns 분리자정규화로 12400≥4 → 가드 미도달; 2026·phone·text 모두 ground), 가드 우회불가(weakNumericOnly return이 wordTokens보다 앞), mutation revert→2 RED. gate-level OUTCOME(짧은 hallucinated total이 unverified에 안착) 검증.
 - 리스크: 낮음(fail-close) — 진짜 작은 숫자 필드(실제 ₩500 total, 수량 "2")도 항상 unverified로 드롭됨(안전하나 usability론 fail-close). 진짜 해결은 field-role 의미 필요(아래 ◦).
+
+## fire 5 · 2026-06-21 · skill v2.0.0 · 2f3e933a
+meta: value-class=hardening · pkg=@muse/agent-core · kind=primitive-validation · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 1069 · fabrication 0 · groundedSurfaces=28 (no drop) · groundedCases=45 · differentiationBatteries=6 · agent-core 2533 PASS(+신규 vision-extract 23) · check apps/api flake(격리 864 PASS) · mutation-first 확인(검증 call 삭제→4 RED, 조건 mutate→8 RED) · pkg를 cli→agent-core로 이동(다양성)
+- 무엇: vision 추출 primitive extractStructuredFromImage가 출력이 JSON 객체인지만 보고 schema.required 검증을 안 하던 것을 — 순수 validateExtraction(required 전부 존재+non-empty string; declared-string prop이 non-string이면 위반; schema/required 없으면 ok:true back-compat) 추가해 fail-close. agent-core index export.
+- 왜: hollow `{}`나 merchant 없는 영수증이 ok:true로 라우팅/grounding 레이어에 흘러가던 것을 source에서 차단(no-partial-result, AppWorld arXiv:2407.18901). enforce하는 required는 shapeVisionAction이 이미 라우팅에 요구하던 필드라 working flow 안 깨짐 — 실패를 앞당길 뿐. fires 1-4 전부 cli였는데 pkg를 agent-core로 이동(다양성 RATCHET). primitive 첫 테스트 커버리지.
+- 리뷰지점: 독립 적응형 judge가 7개 실콜러 전수(KIND_EXTRACT 5 + commands-ask 2) 정당 추출 실패 없음 확인, back-compat(absent schema/required→ok:true), 성공경로에서 검증 실행, 테스트 non-inert(call 삭제→4 RED·조건 mutate→8 RED), groundedSurfaces=28. (judge가 실험 중 restore→diff로 byte-faithful 복원, 오케스트레이터가 빌드+23테스트 재확인.)
+- 리스크: 낮음 — 미래에 non-string 타입 추출 prop을 의도적으로 원하는 caller면 fail-close(현재 모든 스키마 string-only라 무해, 향후 주의).
