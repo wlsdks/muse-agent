@@ -4,6 +4,15 @@
 > Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main). **Every 3 fires: ff-merge the branch into origin/main, then keep working on the branch (진안 directive 2026-06-20).**
 > Cron `d8c31fa3` (every 15m, session-only; was `cfe778e2` under skill v1.14.0, re-registered with loop-creator v2.0 at fire 6). Stop: `CronDelete d8c31fa3`. Convention: [README](README.md).
 
+## fire 11 · 2026-06-20 · skill v2.0 · <commit-pending> (honest EXHAUSTION, no code slice)
+meta: value-class=refactor(work-list) · pkg=docs · kind=exhaustion-honest-exit · verdict=N/A · firesSinceDrill=1
+ratchet: testFiles 1060→1060 · fabrication 0 · vein-status recorded
+- 무엇: 전 표면(grounding-floor·local-tool·orchestration·anti-fab·memory-integrity·outbound·self-dev) 타깃 스카웃 — 이 세션의 **clean 1-fire core-edge 베인이 진정으로 마름**. 남은 항목은 전부 marginal-additive(home/street 라벨)·speculative-no-caller(deep-nesting)·>1-fire-redesign(KO injection·comma list-vs-value)·cross-loop-territory(BKT/whetstone=agent-core-cognition)·design-choice-not-bug(doctor selector) 중 하나.
+- 왜 코드 슬라이스 없음: v2 EXHAUSTION/marginal-value floor — 억지 marginal 슬라이스(검증비 > 한계가치)보다 *정직한 출구 + vein-status 기록*이 규칙 부합. "검증 쉬운 것 아님" 원칙상 home/street 추가 같은 low-value busywork 회피.
+- 리뷰지점: fire 1-10이 6 (pkg,kind) 표면에 검증된 하드닝 + 2 verifier-catch(fire 6,10)를 쌓음 — 테마의 1-fire 표면이 포화. 다음 고가치는 deliberate >1-fire decompose 또는 retheme(진안 결정). 새 코드 0줄이라 ④b N/A.
+- 리스크: 0 — 코드 미변경.
+lesson: 한 테마의 모든 표면에서 1-fire-clean이 마르면(전수 스카웃 후), 자동-fire를 thin하게 계속하기보다 *vein-status를 명시 기록하고 진안에게 deliberate-decompose vs retheme vs pause 결정을 올린다* — auto-loop의 marginal-value 바닥을 인식하는 게 정직.
+
 ## fire 10 · 2026-06-20 · skill v2.0 · 6d6af23e (JUDGE-DRILL + real ship)
 meta: value-class=new-capability · pkg=@muse/recall · kind=memory-integrity/source-conflict · verdict=PASS · firesSinceDrill=0(reset)
 ratchet: testFiles 1058→1058 (+4 cases conflict.test) · fabrication 0 · @muse/recall 338 tests green · precheck:grounding 2/3 PASS · pnpm check exit 0 · lint clean
