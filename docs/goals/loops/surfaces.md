@@ -509,3 +509,13 @@ ratchet: cli tests 2773/2773 (+5) · testFiles +1 · fabrication 0 · self-eval 
 - **리뷰지점**: mutation-first — 헬퍼 단위테스트 + `formatNoteFolders` 렌더("1 note") + `feeds list` command-harness("1 entry\t" 有/"1 entries" 無) 아웃컴 테스트. `pluralize`의 `count===1`을 `===2`로 mutate시 5개 RED(judge 재실행 확인). history:167은 feeds와 byte-동일 swap(같은 단위테스트 헬퍼)이라 outcome 1회 커버로 비례. 무접촉: 이미 맞던 per-folder `note `(컬럼 패딩, 미라우팅)·`--json` entries:number 무변. cli 2773/2773.
 - **리스크**: 없음(헬퍼 1 + 콜사이트 3 + 테스트 3, tsc -b clean, lint 0, self-eval exit 0, 독립 Opus ④b judge가 형제완전성·mutation 이빨·무회귀·sibling-audit 재grep 검증 후 PASS).
 - **운영 메모**: 이 fire에서 fresh 워크트리의 @muse/mcp·a2a·agent-core dist 미빌드로 181 테스트파일 import 실패 → `pnpm --filter "@muse/cli..." build`로 복구(stale-dist 가드 11 작동). cli 같은 다-의존 패키지는 첫 테스트 전 의존성 빌드 필요.
+
+## fire 57 · 2026-06-21 · skill v2.0.0 · (pending)
+meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=mcp-server-console · verdict=PASS · firesSinceDrill=6
+ratchet: web tests 63/63 (+7) · testFiles +1 · fabrication 0 · self-eval exit 0 · 표면 균형 web25·desktop13·cli19
+
+- **무엇**: 웹 MCP 서버 관리 콘솔 신설(진안 요청 "웹에서 MCP 컨트롤"). 백엔드 API(`/api/mcp/servers`·`/connect`·`/disconnect`)는 완비돼 있었으나 웹이 `GET /api/tools` 읽기만 호출했음 — 이제 `McpServersView`가 서버 목록(이름·상태 Badge·도구 수·설명)을 보여주고 connect/disconnect 버튼(canConnect/canDisconnect로 게이팅)으로 브라우저에서 끄고 켤 수 있다. 순수 헬퍼(`mcp-status.ts`: 상태 톤·연결가능성·요약) + 뷰 + `McpServerSummary` 타입 + NAV 등록(Icon.plug·키 p) + i18n(en/ko).
+- **왜**: 진안 "openclaw/hermes처럼 웹에서 다 관리하고 싶다"의 첫 슬라이스. 웹에서 바꿀 수 있는 건 기존엔 연락처뿐이었음 — MCP는 API가 이미 준비돼 ROI 최고라 먼저. value-class=new-capability(미세수정 연속 후 EXPANSION 다양성).
+- **리뷰지점**: mutation-first — 순수 헬퍼 단위테스트(상태 톤·연결 게이팅·요약), `mcpStatusTone` CONNECTED 분기 깨면 2 RED(judge 재실행 확인). API 정합: `GET /servers`가 배열 직반환·status 대문자(toCompatEnum)·POST 경로·encodeURIComponent — judge가 mcp-routes 대조 PASS. 보안: connect/disconnect 둘 다 `requireAuthenticated` 게이트(연락처와 동일 seam), 서버 등록/삭제·allowlist는 스코프 밖(읽기+연결만). 정직한 갭: add/remove·per-tool 토글·자동 새로고침 없음(후속).
+- **리스크**: 없음(신규 뷰+헬퍼, 기존 mutation 패턴 미러, web build tsc+vite·web 63/63·self-eval exit 0, 독립 Opus ④b judge가 API정합·게이팅·이빨·보안·i18n패리티 검증 후 PASS).
+- **triage 메모(무관 회귀)**: judge가 root vitest로 `apps/cli/ask-decompose.test.ts`(2)+`chat-distill-corrections.test.ts`(5) 7개 실패 발견 — 내 슬라이스와 무관(apps/cli는 apps/web 의존 0, 격리 재현). 다른 루프發 cli 회귀, 별도 triage 필요(이 fire 비차단).
