@@ -530,3 +530,26 @@ ratchet: testFiles +0 (extended existing) · cli 2816 pass · pnpm lint exit0 ·
 - lesson(process): a test helper defined INSIDE a describe is not visible to an appended top-level describe
   (add a local copy); and restore mutations with inverse Edit, never fragile perl + `git checkout` (cost
   extra cycles this fire when a bogus `git checkout` left the carve-out logic stripped).
+
+## fire 19 · 2026-06-21 · skill v2.0.0 · f4dd3100
+meta: value-class=micro-fix · pkg=@muse/memory · kind=conversation-trim-summary-overshoot · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles +0 (extended existing) · memory 485 pass · pnpm check exit0 (chat-ink saturation timeouts cleared on isolated rerun) · pnpm lint exit0 · fabrication 0 · self-eval green
+- **DOCTRINE:** advances ④ lean-by-construction (first ④ fire since #8) — a hard-budget overshoot is exactly the failure ④ exists to prevent on a small local window.
+- **What:** `trimConversationMessages` (@muse/memory) inserted the compaction summary AFTER the trim
+  passes already hit the budget, with no reservation/re-trim → the returned conversation overshot the
+  HARD budget (reproduced estimatedTokens 381 > budgetTokens 350). Now a post-insertion reconciliation
+  re-runs the removable-history passes (trimOldHistory/trimToolHistory + boundary integrity) against the
+  HARD budget when over; recomputes removedCount/estimatedTokens.
+- **Why:** Microsoft TokenBudgetComposedStrategy ("refresh token counts after each execution; if over,
+  deterministically remove until satisfied"); Google ADK summary ceiling + tail budget; fire-8 lineage
+  (AdaGReS 2512.25052, ContextBudget 2604.01664). hermes/openclaw compact but document no post-summary
+  budget reconciliation → widens the deterministic-lean moat.
+- **Review point:** reconciles against HARD (not working/soft) budget; the summary (leading system msg
+  index 0) and last user turn (protectedIndex) are NEVER dropped — the fix deliberately EXCLUDES
+  trimLeadingMemoryMessages (which would strip the summary); top-1 floor keeps [summary, last-turn].
+- **Risk:** none to floor — reduce-only re-trim of already-removable history; summary + last user turn
+  provably survive (judge traced every pass: trimOldHistory anchors past firstNonSystemIndex, trimToolHistory
+  past protectedIndex, neither selects index 0). No-op when no summary (byte-identical). fabrication=0.
+  Independent Opus adaptive judge PASS 8/8 + mutation RED→GREEN (if(false) guard → 381>350 RED).
+  Residual (correct trade-off): a pathological tiny-budget can still overshoot rather than drop a needed
+  source — matches the existing hardBudget<=0 "keep only last user" philosophy.
