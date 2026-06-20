@@ -1649,7 +1649,7 @@ export async function verifyGroundingPerClaim(
   matches: readonly KnowledgeMatch[],
   query: string,
   reverify: GroundingReverify,
-  options?: { readonly maxClaims?: number; readonly suspectClaims?: ReadonlySet<string> }
+  options?: { readonly maxClaims?: number; readonly suspectClaims?: ReadonlySet<string>; readonly reverifySamples?: number }
 ): Promise<PerClaimRefinement> {
   const claims = segmentClaims(answer);
   if (claims.length <= 1) {
@@ -1657,6 +1657,7 @@ export async function verifyGroundingPerClaim(
   }
   const evidence = matches.map((m) => m.text).join("\n");
   const cap = Math.max(1, options?.maxClaims ?? 6);
+  const samples = Math.min(5, Math.max(1, options?.reverifySamples ?? 1));
   const checked = claims.slice(0, cap);
   const overflow = claims.slice(cap);
   const verdicts: PerClaimVerdict[] = [];
@@ -1669,7 +1670,25 @@ export async function verifyGroundingPerClaim(
     }
     let supported: boolean;
     try {
-      supported = await reverify({ answer: claim, evidence, query });
+      // k-sample judge consensus (arXiv:2203.11171 self-consistency;
+      // arXiv:2510.27106 "Rating Roulette" — a single judge sample has
+      // near-arbitrary intra-rater variance). FAIL-OPEN polarity: a claim is
+      // DROPPED only when EVERY sample says NO (unanimous-NO); ANY yes keeps it.
+      // Reuses `judgeConsensus` on the INVERTED verdicts — unanimous-keep over
+      // {is-this-claim-unsupported?} is true iff all samples agree NO, i.e. the
+      // unanimous-drop condition. Short-circuits on the first YES (one keep
+      // settles it). So raising samples can only convert a single-sample DROP→KEEP
+      // on disagreement — strictly fewer false-drops, never a new drop.
+      const noVerdicts: boolean[] = [];
+      for (let i = 0; i < samples; i += 1) {
+        const yes = await reverify({ answer: claim, evidence, query });
+        if (yes) {
+          noVerdicts.length = 0; // any yes keeps — clear so it is not a unanimous-NO drop
+          break;
+        }
+        noVerdicts.push(true);
+      }
+      supported = !judgeConsensus(noVerdicts, "unanimous-keep");
     } catch {
       supported = true; // judge error → keep the claim (fail-open)
     }

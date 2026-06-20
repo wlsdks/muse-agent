@@ -349,6 +349,80 @@ describe("verifyGroundingPerClaim — surgically drop only the unsupported claim
   });
 });
 
+describe("verifyGroundingPerClaim — per-claim k-sample consensus (self-consistency arXiv:2203.11171; Rating Roulette arXiv:2510.27106)", () => {
+  const ev = [match("notes", "Mina owns pricing. The budget is unspecified.", 0.9)];
+  // A 2-claim answer; claim B ("the budget …") is the one the round-robin judge dissents on.
+  const answer = "Mina owns pricing and the budget was 2,000,000 KRW";
+
+  // Round-robin stub: claim A ("…pricing") is always YES; claim B ("…budget")
+  // returns NO,YES,YES across successive judge calls. Models a single arbitrary
+  // false-negative sample on a TRUE cited claim.
+  function makeDissentJudge(): (input: { answer: string }) => Promise<boolean> {
+    let budgetCall = 0;
+    return async ({ answer: claim }) => {
+      if (!claim.toLowerCase().includes("budget")) {
+        return true; // claim A always supported
+      }
+      budgetCall += 1;
+      return budgetCall !== 1; // NO, YES, YES
+    };
+  }
+
+  it("dissent → claim KEPT under k=3 unanimous-keep (no false drop on a single NO sample)", async () => {
+    const out = await verifyGroundingPerClaim(answer, ev, "who owns what?", makeDissentJudge(), { reverifySamples: 3 });
+    expect(out.dropped).toBe(0);
+    expect(out.answer).toBe(answer);
+    expect(out.answer).not.toContain("I'm not sure about");
+  });
+
+  it("counterfactual: the SAME dissent stub at default k=1 DROPS claim B + appends the note", async () => {
+    const out = await verifyGroundingPerClaim(answer, ev, "who owns what?", makeDissentJudge(), { reverifySamples: 1 });
+    expect(out.dropped).toBe(1);
+    expect(out.answer).toContain("Mina owns pricing");
+    expect(out.answer).toContain("I'm not sure about: the budget was 2,000,000 KRW");
+  });
+
+  it("unanimous-NO still drops the claim (fabrication=0 preserved)", async () => {
+    let budgetCalls = 0;
+    const allNoOnBudget = async ({ answer: claim }: { answer: string }) => {
+      if (!claim.toLowerCase().includes("budget")) {
+        return true;
+      }
+      budgetCalls += 1;
+      return false; // NO, NO, NO
+    };
+    const out = await verifyGroundingPerClaim(answer, ev, "who owns what?", allNoOnBudget, { reverifySamples: 3 });
+    expect(out.dropped).toBe(1);
+    expect(out.answer).toContain("I'm not sure about: the budget was 2,000,000 KRW");
+    expect(budgetCalls).toBeGreaterThanOrEqual(1); // short-circuits on first NO
+  });
+
+  it("a judge error keeps the claim (fail-open preserved under k>1)", async () => {
+    const out = await verifyGroundingPerClaim(answer, ev, "q", async () => { throw new Error("judge down"); }, { reverifySamples: 3 });
+    expect(out.dropped).toBe(0);
+    expect(out.answer).toContain("2,000,000");
+  });
+
+  it("reverifySamples defaults to 1 — byte-identical back-compat (single-sample DROP)", async () => {
+    const out = await verifyGroundingPerClaim(answer, ev, "who owns what?", makeDissentJudge());
+    expect(out.dropped).toBe(1);
+    expect(out.answer).toContain("I'm not sure about: the budget was 2,000,000 KRW");
+  });
+
+  it("reverifySamples clamped to 5 max (all-NO runs the full budget, never >5)", async () => {
+    let budgetCalls = 0;
+    const allNoOnBudget = async ({ answer: claim }: { answer: string }) => {
+      if (!claim.toLowerCase().includes("budget")) {
+        return true;
+      }
+      budgetCalls += 1;
+      return false; // all NO → no short-circuit, runs the full clamped budget
+    };
+    await verifyGroundingPerClaim(answer, ev, "q", allNoOnBudget, { reverifySamples: 10 });
+    expect(budgetCalls).toBe(5);
+  });
+});
+
 describe("verifyGroundingPerClaim — suspectClaims pre-filter (MiniCheck, arXiv:2404.10774)", () => {
   const ev = [match("notes", "Mina owns pricing. The budget is unspecified.", 0.9)];
 

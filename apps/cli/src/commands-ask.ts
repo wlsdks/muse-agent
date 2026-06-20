@@ -2568,7 +2568,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               );
               suspectClaims = new Set(screens.filter((s) => s.suspect).map((s) => s.claim));
             }
-            const refinement = await verifyGroundingPerClaim(verdictAnswer, scoredMatches, query, reverify, { suspectClaims });
+            const refinement = await verifyGroundingPerClaim(verdictAnswer, scoredMatches, query, reverify, { suspectClaims, reverifySamples: 3 });
             if (refinement.dropped > 0) {
               io.stderr(`\n🔬 Per-claim check — I can only ground part of that:\n${refinement.answer}\n`);
             }
