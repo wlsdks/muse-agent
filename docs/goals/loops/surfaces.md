@@ -520,7 +520,7 @@ ratchet: web tests 63/63 (+7) · testFiles +1 · fabrication 0 · self-eval exit
 - **리스크**: 없음(신규 뷰+헬퍼, 기존 mutation 패턴 미러, web build tsc+vite·web 63/63·self-eval exit 0, 독립 Opus ④b judge가 API정합·게이팅·이빨·보안·i18n패리티 검증 후 PASS).
 - **triage 메모(무관 회귀)**: judge가 root vitest로 `apps/cli/ask-decompose.test.ts`(2)+`chat-distill-corrections.test.ts`(5) 7개 실패 발견 — 내 슬라이스와 무관(apps/cli는 apps/web 의존 0, 격리 재현). 다른 루프發 cli 회귀, 별도 triage 필요(이 fire 비차단).
 
-## fire 58 · 2026-06-21 · skill v2.0.0 · (pending)
+## fire 58 · 2026-06-21 · skill v2.0.0 · f9f1ddca
 meta: surface=api · value-class=new-capability · pkg=@muse/api · kind=self-improve-weaknesses-api · verdict=PASS · firesSinceDrill=7
 ratchet: api tests 863/863 (+5) · testFiles +1 · fabrication 0 · self-eval exit 0 · 표면 균형 web25·desktop13·cli19·api1
 
