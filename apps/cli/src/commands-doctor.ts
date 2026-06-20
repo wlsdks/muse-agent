@@ -625,6 +625,8 @@ const WEAKNESS_AXIS_LABEL: Record<string, string> = {
   "unbacked-action": "said it acted but didn't",
   "wrong-tool": "picked the wrong tool",
   "time-parse": "misread a date/time",
+  "source-conflict": "your saved notes disagree",
+  misgrounding: "answered from sources that didn't support it",
   other: "other"
 };
 
