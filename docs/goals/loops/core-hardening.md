@@ -4,7 +4,7 @@
 > Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main, NEVER merges to main).
 > Cron `cfe778e2` (every 15m, session-only). Stop: `CronDelete cfe778e2`. Convention: [README](README.md).
 
-## fire 3 · 2026-06-20 · skill v1.14.0 · <commit-pending>
+## fire 3 · 2026-06-20 · skill v1.14.0 · 8c91315c
 meta: value-class=new-capability · pkg=@muse/agent-core · kind=grounding-floor/multilingual-injection · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles 1054→1054 (+1 describe / 3 cases in injection.test.ts) · fabrication 0 · agent-core 2477 tests green · precheck:grounding 2/3 PASS pass^2 · pnpm check exit 0 · lint clean
 - 무엇: `MEMORY_INJECTION_PATTERNS`(stored/tool-output 중성화기)가 영어 전용 4패턴이라 한국어 주입("이전 지시를 무시하고…")이 든 poisoned 노트/tool-output이 `neutralizeInjectionSpans`를 통과하던 grounding-floor 구멍. 좁은 한국어 패턴 1개(canonical ignore-instructions의 한국어 아날로그, 명사→무시/잊 어순) 추가.
