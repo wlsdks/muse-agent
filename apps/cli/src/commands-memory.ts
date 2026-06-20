@@ -21,7 +21,7 @@
 
 import { readFile } from "node:fs/promises";
 
-import { consolidationPlan, defaultBeliefProvenanceFile, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, selectPromotableMemories, type ConsolidationPlan } from "@muse/memory";
+import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, selectPromotableMemories, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/mcp";
 import type { Command } from "commander";
@@ -178,19 +178,28 @@ export function formatConsolidationPlan(plan: ConsolidationPlan): string {
 
 export function formatBeliefWhy(
   records: ReadonlyArray<{ readonly kind: string; readonly key: string; readonly value: string; readonly learnedAt: string; readonly evidenceExcerpt?: string; readonly sessionId?: string; readonly source?: "auto" | "user" }>,
-  key: string
+  key: string,
+  nowMs: number = Date.now()
 ): string {
-  const latest = records[0];
-  if (!latest) {
+  const prov = deriveFactProvenance(records as unknown as readonly BeliefProvenance[]).find((p) => p.key === key);
+  if (!prov) {
     return `(no recorded provenance for "${key}" — learned before provenance tracking, or not remembered)\n`;
   }
-  const verb = latest.source === "user" ? "you set this directly" : "learned";
-  const lines = [`${latest.kind} ${latest.key} = ${latest.value} — ${verb} ${latest.learnedAt}`];
-  // The evidence excerpt only exists for inferred (auto) beliefs.
-  if (latest.source !== "user" && latest.evidenceExcerpt) {
+  const verb = prov.source === "user" ? "you set this directly" : "learned";
+  const freshness = classifyFactFreshness({ lastConfirmed: prov.lastConfirmed, now: nowMs });
+  const lines = [
+    `${prov.kind} ${prov.key} = ${prov.value} — ${verb} ${prov.lastConfirmed}`,
+    `  ↳ confirmed ${prov.confirmCount.toString()}× since ${prov.firstSeen} · ${freshness}`
+  ];
+  // The newest record carries the evidence excerpt / session; the excerpt only
+  // exists for inferred (auto) beliefs.
+  const latest = [...records]
+    .filter((r) => r.key === key)
+    .sort((a, b) => Date.parse(b.learnedAt) - Date.parse(a.learnedAt))[0];
+  if (prov.source !== "user" && latest?.evidenceExcerpt) {
     lines.push(`  ↳ from your message: "${latest.evidenceExcerpt}"`);
   }
-  if (latest.sessionId) {
+  if (latest?.sessionId) {
     lines.push(`  ↳ session ${latest.sessionId}`);
   }
   return `${lines.join("\n")}\n`;

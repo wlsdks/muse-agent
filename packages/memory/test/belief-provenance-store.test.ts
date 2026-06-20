@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   FileBeliefProvenanceStore,
   MAX_BELIEF_PROVENANCE_ENTRIES,
+  classifyFactFreshness,
+  deriveFactProvenance,
   readBeliefProvenance,
   writeBeliefProvenance,
   type BeliefProvenance
@@ -22,6 +24,37 @@ function entry(over: Partial<BeliefProvenance> = {}): BeliefProvenance {
     ...over
   };
 }
+
+describe("deriveFactProvenance — aggregate the belief-provenance log into per-key provenance (G3)", () => {
+  it("computes firstSeen (min) / lastConfirmed (max) / confirmCount / source (user outranks auto) / latest value", () => {
+    const prov = deriveFactProvenance([
+      entry({ key: "home_city", value: "Busan", learnedAt: "2026-03-01T00:00:00.000Z", source: "auto" }),
+      entry({ key: "home_city", value: "Seoul", learnedAt: "2026-06-01T00:00:00.000Z", source: "user" }),
+      entry({ key: "home_city", value: "Seoul", learnedAt: "2026-04-01T00:00:00.000Z", source: "auto" }),
+      entry({ key: "allergy", value: "peanuts", learnedAt: "2026-05-01T00:00:00.000Z" })
+    ]);
+    const city = prov.find((p) => p.key === "home_city");
+    expect(city?.firstSeen).toBe("2026-03-01T00:00:00.000Z");
+    expect(city?.lastConfirmed).toBe("2026-06-01T00:00:00.000Z");
+    expect(city?.confirmCount).toBe(3);
+    expect(city?.source).toBe("user"); // a user-stated confirmation outranks auto-inference
+    expect(city?.value).toBe("Seoul"); // value carried at the most-recent learnedAt
+    expect(prov.find((p) => p.key === "allergy")?.confirmCount).toBe(1);
+  });
+  it("returns [] for an empty log", () => {
+    expect(deriveFactProvenance([])).toEqual([]);
+  });
+});
+
+describe("classifyFactFreshness — age of lastConfirmed → fresh/aging/stale (G3)", () => {
+  const now = Date.parse("2026-06-20T00:00:00.000Z");
+  const daysAgo = (n: number): string => new Date(now - n * 86_400_000).toISOString();
+  it("fresh below agingDays, aging between, stale at/over staleDays", () => {
+    expect(classifyFactFreshness({ lastConfirmed: daysAgo(5), now, agingDays: 30, staleDays: 90 })).toBe("fresh");
+    expect(classifyFactFreshness({ lastConfirmed: daysAgo(45), now, agingDays: 30, staleDays: 90 })).toBe("aging");
+    expect(classifyFactFreshness({ lastConfirmed: daysAgo(120), now, agingDays: 30, staleDays: 90 })).toBe("stale");
+  });
+});
 
 describe("FileBeliefProvenanceStore", () => {
   let dir: string;

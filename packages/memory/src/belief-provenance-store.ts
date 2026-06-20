@@ -52,6 +52,78 @@ export interface BeliefProvenanceStore {
   query(userId: string, key?: string): Promise<readonly BeliefProvenance[]>;
 }
 
+/** Per-key provenance derived from the append-only log: the signal a freshness /
+ *  promotion layer needs, without migrating the flat `facts` store. */
+export interface FactProvenance {
+  readonly key: string;
+  readonly kind: "fact" | "preference";
+  readonly value: string;
+  /** Earliest learnedAt for this key — when Muse first learned it. */
+  readonly firstSeen: string;
+  /** Latest learnedAt — when it was most recently (re)stated/confirmed. */
+  readonly lastConfirmed: string;
+  /** How many times the key was (re)learned across the log. */
+  readonly confirmCount: number;
+  /** `user` if ANY confirmation was user-stated (a user truth outranks auto). */
+  readonly source: "auto" | "user";
+}
+
+export type FactFreshness = "fresh" | "aging" | "stale";
+
+const DEFAULT_FACT_AGING_DAYS = 30;
+const DEFAULT_FACT_STALE_DAYS = 90;
+
+/**
+ * Aggregate the append-only belief-provenance LOG into one record per key —
+ * firstSeen (earliest learnedAt), lastConfirmed (latest), confirmCount, source
+ * (`user` if any confirmation was user-stated — Hindsight: a user truth outranks an
+ * auto-inference), and the value carried at the most-recent learnedAt. The data
+ * already exists in the log; this DERIVES the per-fact signal a freshness/promotion
+ * layer needs, with NO migration of the flat `facts` store. Pure.
+ */
+export function deriveFactProvenance(entries: readonly BeliefProvenance[]): readonly FactProvenance[] {
+  const byKey = new Map<string, BeliefProvenance[]>();
+  for (const e of entries) {
+    const group = byKey.get(e.key);
+    if (group) group.push(e);
+    else byKey.set(e.key, [e]);
+  }
+  const out: FactProvenance[] = [];
+  for (const [key, group] of byKey) {
+    const sorted = [...group].sort((a, b) => Date.parse(a.learnedAt) - Date.parse(b.learnedAt));
+    const first = sorted[0] as BeliefProvenance;
+    const last = sorted[sorted.length - 1] as BeliefProvenance;
+    out.push({
+      confirmCount: group.length,
+      firstSeen: first.learnedAt,
+      key,
+      kind: last.kind,
+      lastConfirmed: last.learnedAt,
+      source: group.some((e) => e.source === "user") ? "user" : "auto",
+      value: last.value
+    });
+  }
+  return out;
+}
+
+/**
+ * Classify a fact's freshness by the age of its lastConfirmed timestamp: `fresh`
+ * below agingDays, `aging` up to staleDays, `stale` at/over staleDays. An
+ * unparseable timestamp is treated as `fresh` (fail-soft — never nag on bad data).
+ */
+export function classifyFactFreshness(args: {
+  readonly lastConfirmed: string;
+  readonly now: number;
+  readonly agingDays?: number;
+  readonly staleDays?: number;
+}): FactFreshness {
+  const agingMs = (args.agingDays ?? DEFAULT_FACT_AGING_DAYS) * 86_400_000;
+  const staleMs = (args.staleDays ?? DEFAULT_FACT_STALE_DAYS) * 86_400_000;
+  const age = args.now - Date.parse(args.lastConfirmed);
+  if (!Number.isFinite(age) || age < agingMs) return "fresh";
+  return age >= staleMs ? "stale" : "aging";
+}
+
 export function defaultBeliefProvenanceFile(): string {
   const fromEnv = process.env.MUSE_BELIEF_PROVENANCE_FILE?.trim();
   if (fromEnv && fromEnv.length > 0) return fromEnv;

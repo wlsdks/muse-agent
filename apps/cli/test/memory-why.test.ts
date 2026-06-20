@@ -34,4 +34,23 @@ describe("formatBeliefWhy", () => {
     const out = formatBeliefWhy([], "mystery");
     expect(out).toContain("no recorded provenance for \"mystery\"");
   });
+
+  it("derives confirm-count + first-learned from the FULL log and labels a recently-confirmed fact fresh (G3)", () => {
+    const now = Date.parse("2026-06-20T00:00:00.000Z");
+    const out = formatBeliefWhy([
+      { kind: "fact", key: "home_city", value: "Seoul", learnedAt: "2026-06-10T00:00:00.000Z", source: "user" },
+      { kind: "fact", key: "home_city", value: "Busan", learnedAt: "2026-01-01T00:00:00.000Z", source: "auto" }
+    ], "home_city", now);
+    expect(out).toContain("confirmed 2× since 2026-01-01T00:00:00.000Z");
+    expect(out).toContain("· fresh"); // last confirmed 2026-06-10 (~10d ago) < 30d aging
+    expect(out).toContain("home_city = Seoul"); // value at the most-recent learnedAt
+  });
+
+  it("labels a long-unconfirmed fact stale (G3 freshness)", () => {
+    const now = Date.parse("2026-06-20T00:00:00.000Z");
+    const out = formatBeliefWhy([
+      { kind: "fact", key: "office_mtu", value: "1380", learnedAt: "2026-01-01T00:00:00.000Z" }
+    ], "office_mtu", now);
+    expect(out).toContain("· stale"); // ~170d since last confirmed >= 90d
+  });
 });
