@@ -45,6 +45,22 @@ describe("distillConsistentStrategy — self-consistency write-admission gate (a
     expect((await distillConsistentStrategy(drawer([{ text: "x lesson here" }]), { samples: 1 }))?.strategy.text).toBe("x lesson here");
     expect(await distillConsistentStrategy(drawer([undefined]), { samples: 1 })).toBeUndefined();
   });
+
+  it("onReject FIRES with the measured agreement on a disagreement-reject, and NOT on an admit", async () => {
+    const disagree = [{ text: "alpha one" }, { text: "beta two" }, { text: "gamma three" }];
+    const seen: number[] = [];
+    const rejected = await distillConsistentStrategy(drawer(disagree), { samples: 3, onReject: (a) => seen.push(a) });
+    expect(rejected).toBeUndefined();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeLessThan(0.5);          // the sub-floor agreement that caused the reject
+    expect(seen[0]).toBeGreaterThanOrEqual(0);
+
+    const agree = [{ text: "use bullet points when summarising" }, { text: "use bullet points when summarising please" }, { text: "use bullet points when summarising" }];
+    const admittedSeen: number[] = [];
+    const admitted = await distillConsistentStrategy(drawer(agree), { samples: 3, onReject: (a) => admittedSeen.push(a) });
+    expect(admitted).toBeDefined();
+    expect(admittedSeen).toEqual([]);            // never fired on the admit path
+  });
 });
 
 // --- Stub helpers ---

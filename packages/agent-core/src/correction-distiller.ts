@@ -355,6 +355,14 @@ export interface ConsistentStrategyOptions {
   readonly agreementFloor?: number;
   /** Pairwise text similarity in [0,1]; default `strategyTextSimilarity`. Injected for tests. */
   readonly similarity?: (a: string, b: string) => number;
+  /**
+   * Telemetry: invoked with the measured mean pairwise agreement when a draft
+   * set is rejected for DISAGREEMENT (agreement < floor). Lets a caller log the
+   * rejected-agreement distribution so the floor's false-reject rate can be
+   * measured on real corrections before tuning it. Not fired on the
+   * too-few-survived early reject (no agreement is computed there).
+   */
+  readonly onReject?: (agreement: number) => void;
 }
 
 export interface ConsistentStrategyResult {
@@ -418,7 +426,10 @@ export async function distillConsistentStrategy(
     if (meanTo > best.meanTo) best = { index: i, meanTo };
   }
   const agreement = pairs > 0 ? total / pairs : 1;
-  if (agreement < floor) return undefined;
+  if (agreement < floor) {
+    options.onReject?.(agreement);
+    return undefined;
+  }
   return { agreement, strategy: drafts[best.index]!, survived: drafts.length };
 }
 
