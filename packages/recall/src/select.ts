@@ -386,6 +386,9 @@ export function selectFilePassages(
     if (budget <= 0) {
       break;
     }
+    if (passage.text.length > budget && picked.length > 0) {
+      continue;
+    }
     picked.push({ chunkIndex: passage.chunkIndex, text: passage.text });
     budget -= passage.text.length;
   }

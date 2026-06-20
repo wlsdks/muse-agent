@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ selectFilePassages per-source char-budget overshoot fixed (fit-before-admit + top-1 floor; AdaGReS arXiv:2512.25052) — context-strategy fire 8 (detail in docs/goals/loops/context-strategy.md)
+
 - ✓ shared the lexical matcher (tokenMatchesKeywordWord exported from @muse/tools, agent-core copy deleted) — closes the fire-5 drift bug class structurally; arXiv:2502.04073 — context-strategy fire 7 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ query-relevance threaded into the cross-block edge-place — fire-1's dormant relevance? path activated (episode recall score blended with tier on a shared 0-1 scale; arXiv:2410.05983) — context-strategy fire 6 (detail in docs/goals/loops/context-strategy.md)

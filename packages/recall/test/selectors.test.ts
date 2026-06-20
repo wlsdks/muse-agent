@@ -15,6 +15,21 @@ describe("selectFilePassages", () => {
     const out = selectFilePassages(raw, "vpn mtu", 200);
     expect(out.map((p) => p.text).join(" ")).toContain("1380");
   });
+
+  it("never overshoots the char budget by admitting a chunk that does not fit", () => {
+    const bigPara = (label: string) => `vpn mtu ${label} ` + "filler ".repeat(400);
+    const raw = [bigPara("alpha"), bigPara("beta"), bigPara("gamma")].join("\n\n");
+    const out = selectFilePassages(raw, "vpn mtu", 1500);
+    const totalChars = out.reduce((sum, p) => sum + p.text.length, 0);
+    expect(totalChars).toBeLessThanOrEqual(1500);
+  });
+
+  it("returns the single relevant passage even when it alone exceeds the budget (top-1 floor)", () => {
+    const oneBigRelevant = "vpn mtu config " + "detail ".repeat(60);
+    const out = selectFilePassages(oneBigRelevant, "vpn mtu", 50);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.text).toContain("vpn mtu");
+  });
 });
 
 describe("selectGroundingActions", () => {
