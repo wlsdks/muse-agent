@@ -1,5 +1,9 @@
 # Muse — a private, local-first personal AI assistant
 
+<p align="center">
+  <img src="docs/assets/muse-goddess.png" alt="Muse — the goddess mascot" width="300" />
+</p>
+
 **A self-hosted, offline JARVIS / second brain that answers from *your own* notes
 and files** — with the exact source quoted, saying "I'm not sure" instead of
 hallucinating, and running **entirely on a local open-source model** (via
