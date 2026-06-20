@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ⏳ BLOCKED (agent-hardening fire 11 NO-SHIP, structural): single-marker dependent decomposition — a request with ONE sequencing marker + a real cross-step dependency ("노트를 검색한 뒤 그 결과를 요약해줘") is dropped to single-agent by the `sequencing >= 2` gate, so the sequenced-threading never engages. ATTEMPTED as a flat-text `requestHasBackReference` scan bolted onto the `shouldDecompose` GATE — FAILED ④b judge ×2 (over-fires: a flat scan can't tell "act on the prior step's OUTPUT" from "mention/ask ABOUT a step"; no token-tuning fixes it). CORRECT APPROACH (deferred): SPLIT FIRST — extend `extractSequencedSteps` to fire on a single marker, THEN run the existing `listHasBackReference` on the split clauses 1..n (the structural split is what makes back-reference detection precise, exactly as the list path already does). Do NOT re-attempt a flat-text gate scan.
+
 - ✓ content-free grounding-header guard: optionalGroundingSections drops present:true blocks with empty body (no citable-looking header backing nothing; doctrine P2/P4) + JUDGE-DRILL passed (verifier caught an inert unwired-helper slice) — context-strategy fire 10 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ memory-fact value now wrapper-marker-escaped (escapeSystemPromptMarkers in renderMemoryFact) — closes the <<memory>> block breakout/forged-citation vector (OWASP ASI06, doctrine principle 5) — context-strategy fire 9 (detail in docs/goals/loops/context-strategy.md)
