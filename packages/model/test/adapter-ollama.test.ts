@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ModelProviderError, OllamaProvider, sanitizeOllamaToolSchema } from "../src/index.js";
+import { ModelProviderError, OllamaProvider, recoverToolArgsJson, sanitizeOllamaToolSchema } from "../src/index.js";
 import type { ModelEvent, ModelRequest } from "../src/index.js";
 
 type FakeResponseInit = { ok?: boolean; status?: number; statusText?: string };
@@ -509,5 +509,101 @@ describe("OllamaProvider — tool-call name sanitisation (leaked chat-template t
     const ev = await collect(p.stream(userReq()));
     const toolCalls = ev.filter((e) => e.type === "tool-call").map((e) => (e as { toolCall: { name: string } }).toolCall);
     expect(toolCalls[0]?.name).toBe("run_command");
+  });
+});
+
+describe("recoverToolArgsJson — deterministic recovery helper", () => {
+  it("recovers a markdown-fenced ```json block", () => {
+    expect(recoverToolArgsJson("```json\n{\"city\":\"Seoul\"}\n```")).toEqual({ city: "Seoul" });
+  });
+
+  it("recovers a bare triple-fence block (no language tag)", () => {
+    expect(recoverToolArgsJson("```\n{\"x\":1}\n```")).toEqual({ x: 1 });
+  });
+
+  it("recovers an object preceded by leading prose", () => {
+    expect(recoverToolArgsJson('Here are the args: {"x":1}')).toEqual({ x: 1 });
+  });
+
+  it("recovers an object followed by trailing prose", () => {
+    expect(recoverToolArgsJson('{"x":1} done')).toEqual({ x: 1 });
+  });
+
+  it("handles a brace inside a string value without early termination", () => {
+    expect(recoverToolArgsJson('prefix {"note":"a } b","n":2} suffix')).toEqual({ note: "a } b", n: 2 });
+  });
+
+  // STABLE-0 FP corpus — every input below MUST return undefined (caller keeps {})
+  it("returns undefined for a plain string with no JSON object", () => {
+    expect(recoverToolArgsJson("not json")).toBeUndefined();
+  });
+
+  it("returns undefined for an empty string", () => {
+    expect(recoverToolArgsJson("")).toBeUndefined();
+  });
+
+  it("returns undefined for whitespace-only input", () => {
+    expect(recoverToolArgsJson("   ")).toBeUndefined();
+  });
+
+  it("returns undefined for the boolean literal true", () => {
+    expect(recoverToolArgsJson("true")).toBeUndefined();
+  });
+
+  it("returns undefined for a bare number", () => {
+    expect(recoverToolArgsJson("42")).toBeUndefined();
+  });
+
+  it("returns undefined for a JSON array", () => {
+    expect(recoverToolArgsJson("[1,2]")).toBeUndefined();
+  });
+
+  it("returns undefined for null literal", () => {
+    expect(recoverToolArgsJson("null")).toBeUndefined();
+  });
+
+  it("returns undefined for a lone opening brace", () => {
+    expect(recoverToolArgsJson("{")).toBeUndefined();
+  });
+
+  it("returns undefined for a lone closing brace", () => {
+    expect(recoverToolArgsJson("}")).toBeUndefined();
+  });
+
+  it("returns undefined for a malformed object (trailing comma / invalid value)", () => {
+    expect(recoverToolArgsJson('{"a": }')).toBeUndefined();
+  });
+
+  it("returns undefined for plain text with no braces", () => {
+    expect(recoverToolArgsJson("plain text with no braces")).toBeUndefined();
+  });
+
+  it("returns undefined for an unterminated object", () => {
+    expect(recoverToolArgsJson('{"a":1')).toBeUndefined();
+  });
+
+  it("returns undefined for the string 'undefined'", () => {
+    expect(recoverToolArgsJson("undefined")).toBeUndefined();
+  });
+
+  it("returns undefined for an XML-like tool_call tag", () => {
+    expect(recoverToolArgsJson("<tool_call>")).toBeUndefined();
+  });
+});
+
+describe("recoverToolArgsJson — adapter-level behavioral test (flows through generate)", () => {
+  it("decodes markdown-fenced tool args emitted by a model into the correct arguments object", async () => {
+    const p = new OllamaProvider({
+      fetch: jsonFetch({
+        message: {
+          content: "",
+          tool_calls: [
+            { function: { arguments: "```json\n{\"city\":\"Seoul\"}\n```", name: "get_weather" }, id: "w1" }
+          ]
+        }
+      })
+    });
+    const r = await p.generate(userReq());
+    expect(r.toolCalls?.[0]).toEqual({ arguments: { city: "Seoul" }, id: "w1", name: "get_weather" });
   });
 });
