@@ -25,6 +25,25 @@ const DAY_MS = 24 * 60 * 60_000;
 const DEFAULT_HALF_LIFE_DAYS = 21;
 const DEFAULT_MIN_HITS = 3;
 const DEFAULT_MAX_PROMOTED = 3;
+/**
+ * Distinct calendar days a memory must have been recalled on before it can be
+ * PROMOTED into the always-on persona — ACT-R distributed-practice (Anderson &
+ * Schooler 1991): a memory recalled many times in ONE session (massed) has not
+ * proven DURABLE usefulness the way one recalled across several days (spaced)
+ * has. Guards the persona against transient single-session bursts. Only applies
+ * when per-access history (`recentAccessMs`) exists; a legacy record without it
+ * is promoted as before. Default 2.
+ */
+const DEFAULT_MIN_DISTINCT_ACCESS_DAYS = 2;
+
+/** Count the distinct UTC calendar days present in a list of epoch-ms accesses. */
+export function distinctAccessDays(accessMs: readonly number[]): number {
+  const days = new Set<string>();
+  for (const ms of accessMs) {
+    if (Number.isFinite(ms)) days.add(new Date(ms).toISOString().slice(0, 10));
+  }
+  return days.size;
+}
 
 /**
  * Recall-usefulness score: hit count damped by how long ago the LAST hit was,
@@ -59,6 +78,13 @@ export interface SelectPromotableOptions {
   readonly maxPromoted?: number;
   readonly halfLifeDays?: number;
   /**
+   * A memory with per-access history must have been recalled on at least this
+   * many DISTINCT calendar days to be promoted — ACT-R distributed practice, so
+   * a single-session burst doesn't graduate into the always-on persona. Records
+   * without `recentAccessMs` skip the guard (legacy-promoted as before). Default 2.
+   */
+  readonly minDistinctAccessDays?: number;
+  /**
    * When true, rank by ACT-R base-level activation (frequency×spacing) instead
    * of the plain recency-weighted score. The eligibility FILTER is unchanged —
    * only sort order.
@@ -88,18 +114,25 @@ export function selectPromotableMemories(
   const minHits = Number.isFinite(options.minHits) ? Math.max(1, Math.trunc(options.minHits!)) : DEFAULT_MIN_HITS;
   const maxPromoted = Number.isFinite(options.maxPromoted) ? Math.max(1, Math.trunc(options.maxPromoted!)) : DEFAULT_MAX_PROMOTED;
   const minScore = Number.isFinite(options.minScore) ? Math.max(0, options.minScore!) : DEFAULT_MIN_SCORE;
+  const minDistinctAccessDays = Number.isFinite(options.minDistinctAccessDays)
+    ? Math.max(1, Math.trunc(options.minDistinctAccessDays!))
+    : DEFAULT_MIN_DISTINCT_ACCESS_DAYS;
   const nowMs = options.nowMs;
   const useActr = options.useActrRanking === true;
-  type WithActr = PromotedMemory & { readonly activation: number };
+  type WithActr = PromotedMemory & { readonly activation: number; readonly spacedOk: boolean };
   const mapped = records
     .filter((record) => Number.isFinite(record.hits) && record.hits >= minHits)
     .map((record): WithActr => ({
       hits: record.hits,
       key: record.key,
       score: scoreRecallHit(record, nowMs, options.halfLifeDays),
-      activation: useActr ? recallActivation(record, nowMs) : 0
+      activation: useActr ? recallActivation(record, nowMs) : 0,
+      // Spacing guard: a record WITH per-access history must span ≥ N distinct
+      // days; one without history (legacy) is never blocked on this signal.
+      spacedOk: !record.recentAccessMs || record.recentAccessMs.length === 0
+        || distinctAccessDays(record.recentAccessMs) >= minDistinctAccessDays
     }))
-    .filter((promoted) => promoted.score >= minScore);
+    .filter((promoted) => promoted.score >= minScore && promoted.spacedOk);
   if (useActr) {
     mapped.sort((left, right) => right.activation - left.activation || right.score - left.score);
   } else {

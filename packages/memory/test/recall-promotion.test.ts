@@ -72,6 +72,25 @@ describe("selectPromotableMemories", () => {
     expect(trunc.map((p) => p.key)).toEqual(["two"]);
   });
 
+  it("a single-session BURST (all accesses one calendar day) is NOT promoted; a SPACED memory is (ACT-R distributed practice)", () => {
+    const d1am = Date.UTC(2026, 4, 1, 9, 0, 0);
+    const d1pm = Date.UTC(2026, 4, 1, 18, 0, 0);
+    const d2 = Date.UTC(2026, 4, 2, 10, 0, 0);
+    const testNow = Date.UTC(2026, 4, 2, 12, 0, 0);
+    const burst: RecallHitLike = { key: "burst", hits: 5, lastHitMs: d1pm, recentAccessMs: [d1am, Date.UTC(2026, 4, 1, 12, 0, 0), d1pm] };
+    const spaced: RecallHitLike = { key: "spaced", hits: 5, lastHitMs: d2, recentAccessMs: [d1pm, d2] };
+    const keys = selectPromotableMemories([burst, spaced], { nowMs: testNow }).map((p) => p.key);
+    expect(keys).toContain("spaced");
+    expect(keys).not.toContain("burst");
+    // tunable: lowering the floor to 1 re-includes the burst (it cleared hits + score)
+    expect(selectPromotableMemories([burst], { nowMs: testNow, minDistinctAccessDays: 1 }).map((p) => p.key)).toEqual(["burst"]);
+  });
+
+  it("a legacy record (no recentAccessMs) skips the spacing guard — promoted on hits + score as before", () => {
+    const legacy: RecallHitLike = { key: "legacy", hits: 5, lastHitMs: daysAgo(1) };
+    expect(selectPromotableMemories([legacy], { nowMs: NOW }).map((p) => p.key)).toEqual(["legacy"]);
+  });
+
   it("filters out records with non-finite hits and returns [] for an empty set", () => {
     expect(selectPromotableMemories([{ hits: Number.POSITIVE_INFINITY, key: "bad", lastHitMs: NOW }], { minHits: 1, nowMs: NOW })).toEqual([]);
     expect(selectPromotableMemories([], { nowMs: NOW })).toEqual([]);
