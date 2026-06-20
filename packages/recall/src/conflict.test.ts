@@ -17,6 +17,21 @@ describe("detectSourceConflict — evidence-vs-evidence contradiction (grounded�
     expect([c.a.ref, c.b.ref].sort()).toEqual(["wifi-new.md", "wifi-old.md"]);
   });
 
+  it("flags a Korean (Hangul-labelled) field conflict between two sources (H3 cross-lingual)", () => {
+    const conflicts = detectSourceConflict([hit("addr-old.md", "주소: 서울"), hit("addr-new.md", "주소: 부산")]);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.field).toBe("주소");
+    expect([conflicts[0]!.valueA, conflicts[0]!.valueB].sort()).toEqual(["부산", "서울"]);
+  });
+
+  it("does NOT flag two Korean sources that AGREE on the same Hangul field (no false conflict)", () => {
+    expect(detectSourceConflict([hit("a.md", "전화번호: 010-1234-5678"), hit("b.md", "전화번호:  010-1234-5678 ")])).toEqual([]);
+  });
+
+  it("does NOT flag a Korean prose prefix (참고:/메모: are not attributes)", () => {
+    expect(detectSourceConflict([hit("a.md", "참고: 우산 챙기기"), hit("b.md", "참고: 물 마시기")])).toEqual([]);
+  });
+
   it("does NOT flag two sources that AGREE on the same field (no false conflict)", () => {
     const a = hit("a.md", "Office address: 12 Baker Street");
     const b = hit("b.md", "office ADDRESS: 12 Baker Street");

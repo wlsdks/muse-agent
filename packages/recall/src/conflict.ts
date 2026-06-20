@@ -25,7 +25,7 @@ export interface SourceConflict {
  * digit (so a time `9:30` or `http://` never parses as a field) — it starts at a
  * line/space boundary. Value runs to a clause end.
  */
-const LABELLED_VALUE = /(?<![\w:])([A-Za-z][A-Za-z0-9 ]{1,40}?):[ \t]*([^\n.,;]+)/gu;
+const LABELLED_VALUE = /(?<![\w:])([\p{L}][\p{L}\p{N} ]{1,40}?):[ \t]*([^\n.,;]+)/gu;
 
 /**
  * Common PROSE prefixes that are not real attributes — two notes both opening
@@ -35,7 +35,11 @@ const LABELLED_VALUE = /(?<![\w:])([A-Za-z][A-Za-z0-9 ]{1,40}?):[ \t]*([^\n.,;]+
  */
 const PROSE_LABELS = new Set([
   "note", "notes", "todo", "fyi", "ps", "nb", "summary", "tip", "tips",
-  "warning", "caution", "aside", "eg", "ie", "example", "context", "background"
+  "warning", "caution", "aside", "eg", "ie", "example", "context", "background",
+  // Korean prose prefixes — the field regex now parses Hangul labels, so the same
+  // over-firing class (two notes both opening "참고: …" with different text) needs
+  // the same exclusion the English prefixes get.
+  "참고", "참조", "메모", "예시", "요약", "주의", "비고"
 ]);
 
 /** Normalize a field label for matching: lowercase, collapse whitespace, trim. */
