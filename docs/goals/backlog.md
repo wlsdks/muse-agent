@@ -2048,6 +2048,20 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   safe). Fable judge reverted-to-HEAD to PROVE the regression bites (0.9997→"confident" pre-fix,
   0.48→"ambiguous" post). agent-core 1753 green.
 
+- ✓ **Engine-path near-duplicate bridge dedup** — agent-hardening fire 6 (`96cf6933`, agent-core,
+  recall-quality): closed the deferred `◦ 1d-sibling-audit` from fire 5. `rankKnowledgeChunksWithHop`
+  (secondHop) and `appendAssociativeBridges` (associative) appended up to 2 hop/PPR bridges to the
+  primary ranking with NO near-duplicate check, so a chunk near-identical to a primary (same fact
+  across two notes, or a bridge adjacent to a seed) padded the small model's grounding window. Fire 5
+  fixed only the CLI/recall ask path (`dedupNearDuplicateChunks`, @muse/recall); the ENGINE had the
+  same class gap. New `dropNearDuplicateAdditions` drops a bridge whose cosine to an already-kept
+  chunk ≥ 0.985, wired into BOTH callsites (sibling-audit 2/2). AUGMENT-never-displace (primary
+  untouched) + FAIL-OPEN (degenerate vec / embed failure → kept; dropped only on a CONFIRMED match).
+  Mutation-first RED confirmed (no-op → drop test fails); one inflation-suite fixture loosened
+  0.99974→0.970 to keep A′ a real bridge (query-relative-cosine invariant preserved), the ≥0.985 drop
+  covered by a dedicated new test. eval:multihop hit@4 60%→80% (no regression). Independent Opus ④b
+  judge PASS (7/7, re-ran the mutation itself). agent-core 2494 green.
+
 - ✓→Done **MoA orchestrator: honest contributor attribution** — [2026-06-12, cognition loop fire 7,
   multi-agent #3] the MoA aggregate path set `contributors = all proposers`, but the field is
   documented as "ids the synthesized answer ACTUALLY drew on" and the aggregator discards off-topic
