@@ -369,9 +369,11 @@ export {
 
 export {
   classifyFactFreshness,
+  classifyValueChange,
   contestedFactKeys,
   defaultBeliefProvenanceFile,
   deriveFactProvenance,
+  refinementAwareDistinctValueCount,
   FileBeliefProvenanceStore,
   MAX_BELIEF_PROVENANCE_ENTRIES,
   provisionalFactKeys,

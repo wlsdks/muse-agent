@@ -23,14 +23,14 @@ import type { Readable } from "node:stream";
 import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
-import { actionToolRan, answerClaimsAction, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction } from "@muse/agent-core";
+import { actionToolRan, answerClaimsAction, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction, type KnowledgeMatch } from "@muse/agent-core";
 
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
 import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
 import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
 import { detectDateDiffQuery, formatDateDiff } from "./date-diff-query.js";
 import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
-import { buildQueryRewritePrompt, defaultChatConflictEmbedder, factKeysToInject, finalizeGatedChatAnswer, isChatAbstention, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding } from "./chat-grounding.js";
+import { buildQueryRewritePrompt, chatWeaknessAxis, defaultChatConflictEmbedder, factKeysToInject, finalizeGatedChatAnswer, isChatAbstention, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding, type ChatWeaknessAxis } from "./chat-grounding.js";
 import { createQwenReverify } from "./grounding-eval-runner.js";
 import { isRecord } from "./credential-store.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
@@ -687,15 +687,23 @@ export async function runLocalChat(
   // Awaited (not fire-and-forget): a one-shot `chat --json` exits the moment
   // runLocalChat returns, so a dangling promise never flushes the ledger write.
   // recordChatWeakness swallows its own errors, so awaiting can't break the turn.
+  // Whetstone classify→persist with ASK parity: `unbacked-action` > `misgrounding`
+  // (a non-refusal answer whose cited sources don't actually support it —
+  // GROUNDED != TRUE, the most-used surface was previously BLIND to it) >
+  // `grounding-gap` (a refusal/empty-fallback). A fully-supported grounded answer
+  // writes nothing. Casual turns never reach here as a failure.
+  const chatRefusal = usedEmptyFallback || isChatAbstention(finalResponse) || looksLikeRefusal(finalResponse);
   if (unbackedAction) {
-    await recordChatWeakness(message, "unbacked-action");
-  } else if (!isCasual && (usedEmptyFallback || isChatAbstention(finalResponse) || looksLikeRefusal(finalResponse))) {
-    const recorded = await recordChatWeakness(message, "grounding-gap");
+    await recordChatWeaknessForTurn({ message, answer: finalResponse, matches, refusal: chatRefusal, unbackedAction });
+  } else if (!isCasual) {
+    const recorded = await recordChatWeaknessForTurn({ message, answer: finalResponse, matches, refusal: chatRefusal, unbackedAction });
     // Whetstone remediation (knowledge-gap nudge): a topic Muse has now failed to
     // answer 2+ times is a gap the USER can close — gently suggest a note. Only on
     // a repeat, so a one-off refusal stays clean. Reinforces the floor (it does
-    // NOT push a guess), and points at the fix the user actually controls.
-    if (recorded !== undefined && recorded >= 2) {
+    // NOT push a guess), and points at the fix the user actually controls. Scoped
+    // to a grounding-gap (a refusal) — a misgrounding is a dev-fixable axis, not a
+    // "add a note" gap, so it must NOT trigger the note nudge.
+    if (chatRefusal && recorded !== undefined && recorded >= 2) {
       finalResponse += /[가-힣]/u.test(message)
         ? "\n\n(이 주제는 전에도 여쭤보셨는데 제 노트엔 없어요. 관련 메모를 추가해두시면 다음엔 답해드릴 수 있어요.)"
         : "\n\n(You've asked about this before and it isn't in your notes yet — add a note and I'll be able to answer next time.)";
@@ -724,17 +732,59 @@ function looksLikeRefusal(text: string): boolean {
  * modules breaks the bun-compiled desktop binary (top-level await in a sync
  * context). Best-effort; swallows every error.
  */
-async function recordChatWeakness(message: string, axis: "grounding-gap" | "unbacked-action"): Promise<number | undefined> {
+async function recordChatWeakness(
+  message: string,
+  axis: ChatWeaknessAxis,
+  deps: RecordChatWeaknessDeps = {}
+): Promise<number | undefined> {
   try {
-    const { recordWeakness } = await import("@muse/mcp");
+    const recordWeakness = deps.recordWeakness ?? (await import("@muse/mcp")).recordWeakness;
     const { resolveWeaknessesFile } = await import("@muse/autoconfigure");
-    const file = resolveWeaknessesFile(process.env as Record<string, string | undefined>);
+    const file = deps.weaknessesFile ?? resolveWeaknessesFile(process.env as Record<string, string | undefined>);
     const entry = await recordWeakness(file, { axis, message });
     return entry?.count;
   } catch {
     // a ledger write must never surface as a chat error
     return undefined;
   }
+}
+
+export interface RecordChatWeaknessDeps {
+  /** Injectable ledger writer + file (tests assert the ledger STATE without a live store). */
+  readonly recordWeakness?: (
+    file: string,
+    signal: { readonly axis: ChatWeaknessAxis; readonly message: string }
+  ) => Promise<{ readonly count: number } | undefined>;
+  readonly weaknessesFile?: string;
+}
+
+/**
+ * Classify a finished chat turn's failure signal and write it to the weakness
+ * ledger — the testable seam for the turn's detect→classify→persist step. Mirrors
+ * the ASK path (`recordAskWeakness` + `askWeaknessAxis`): `unbacked-action` >
+ * `misgrounding` (a non-refusal answer whose cited sources don't support it,
+ * GROUNDED != TRUE) > `grounding-gap` (a refusal/empty-fallback). A fully-supported
+ * grounded answer writes NOTHING. Best-effort: a null axis writes nothing, a
+ * throwing write is swallowed. Returns the resulting topic count (for the repeat nudge).
+ */
+export async function recordChatWeaknessForTurn(
+  args: {
+    readonly message: string;
+    readonly answer: string;
+    readonly matches: readonly KnowledgeMatch[];
+    readonly refusal: boolean;
+    readonly unbackedAction: boolean;
+  },
+  deps: RecordChatWeaknessDeps = {}
+): Promise<number | undefined> {
+  const axis = chatWeaknessAxis({
+    answer: args.answer,
+    matches: args.matches,
+    refusal: args.refusal,
+    unbackedAction: args.unbackedAction
+  });
+  if (axis === null) return undefined;
+  return recordChatWeakness(args.message, axis, deps);
 }
 
 /**

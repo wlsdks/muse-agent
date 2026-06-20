@@ -27,7 +27,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, relative } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, resolveRecallConfidentAt, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { actionToolRan, answerClaimsAction, answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, isMemoryInjection, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys } from "@muse/memory";
@@ -1076,7 +1076,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // (never fails the ask). The link graph is built from the SAME index
         // bodies, so note ids match the relativized sources exactly.
         const singleHopVerdict = classifyRetrievalConfidence(
-          scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text }))
+          scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text })),
+          { confidentAt: resolveRecallConfidentAt() }
         );
         try {
           const seedMatches = scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text }));
@@ -2540,7 +2541,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
                 });
                 return rewritten.output ?? "";
               },
-              verify: (candidate, candidateMatches, q) => verifyGroundingWithReverify(candidate, candidateMatches, q, reverify)
+              verify: (candidate, candidateMatches, q) => verifyGroundingWithReverify(candidate, candidateMatches, q, reverify, { confidentAt: resolveRecallConfidentAt() })
             });
             if (repair.repaired) io.stderr(`\n🔧 Corrected from your notes:\n${repair.repaired}\n`);
           } else if (shouldSuggestRepair({ evidenceCount: scoredMatches.length, json: Boolean(options.json), repairRequested: Boolean(options.repair), verdictFired: true })) {
@@ -2585,7 +2586,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           const topCosine = scoredMatches.length > 0
             ? Math.max(...scoredMatches.map((m) => m.cosine ?? m.score))
             : undefined;
-          const whyLines = explainGroundingVerdict(verifyGrounding(verdictAnswer, scoredMatches, query), { topCosine });
+          const whyLines = explainGroundingVerdict(verifyGrounding(verdictAnswer, scoredMatches, query, { confidentAt: resolveRecallConfidentAt() }), { topCosine });
           if (whyLines.length > 0) {
             const head = answerIsRefusal(collectedAnswer) ? "Why I can't answer from your notes" : "Why this answer is flagged";
             io.stderr(`\n🔎 ${head}:\n${whyLines.map((l) => `  • ${l}`).join("\n")}\n`);

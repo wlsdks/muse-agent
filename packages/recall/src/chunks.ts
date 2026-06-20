@@ -1,4 +1,4 @@
-import { classifyRetrievalConfidence, cosineSimilarity, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, selectByMmr, selectByScoreGap, type RetrievalConfidence } from "@muse/agent-core";
+import { classifyRetrievalConfidence, cosineSimilarity, fuseByReciprocalRank, lexicalOverlap, lexicalTokens, resolveRecallConfidentAt, selectByMmr, selectByScoreGap, type RetrievalConfidence } from "@muse/agent-core";
 
 export interface IndexChunk {
   readonly file: string;
@@ -186,7 +186,7 @@ export function notesGroundingFraming(
   const verdictSet = verdictInput ?? scored;
   const cosineVerdict = verdictSet.length === 0
     ? "none"
-    : classifyRetrievalConfidence(verdictSet.map((s) => ({ cosine: s.score, source: s.file, score: s.score, text: s.chunk.text })));
+    : classifyRetrievalConfidence(verdictSet.map((s) => ({ cosine: s.score, source: s.file, score: s.score, text: s.chunk.text })), { confidentAt: resolveRecallConfidentAt() });
   // nomic's cosine space is compressed, so a genuinely-relevant note can sit
   // just below the confident cosine threshold and get falsely flagged LOW —
   // a soft false-refusal ("verify, may not be in your notes") on a correctly

@@ -1,4 +1,4 @@
-import { assessContextSufficiency, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { assessContextSufficiency, resolveRecallConfidentAt, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 
 import { answerIsPureRefusal, answerIsRefusal } from "./text.js";
 
@@ -64,9 +64,10 @@ export async function groundingVerdictNotice(
   // PURE refusal only — a hedge-then-assert ("I don't have X, but Z") must reach
   // the verdict so the fabricated claim is adjudicated, not short-circuited.
   if (answerIsPureRefusal(answer)) return undefined;
+  const confidentAt = resolveRecallConfidentAt();
   const verification = reverify
-    ? await verifyGroundingWithReverify(answer, matches, query, reverify, { reverifySamples })
-    : verifyGrounding(answer, matches, query);
+    ? await verifyGroundingWithReverify(answer, matches, query, reverify, { reverifySamples, confidentAt })
+    : verifyGrounding(answer, matches, query, { confidentAt });
   if (verification.verdict !== "ungrounded") return undefined;
   return `\n⚠️  Grounding check: this answer's claims aren't fully backed by your notes (${verification.reason}) — treat as unverified.\n`;
 }

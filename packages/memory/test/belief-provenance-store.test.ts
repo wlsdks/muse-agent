@@ -8,9 +8,11 @@ import {
   FileBeliefProvenanceStore,
   MAX_BELIEF_PROVENANCE_ENTRIES,
   classifyFactFreshness,
+  classifyValueChange,
   contestedFactKeys,
   deriveFactProvenance,
   provisionalFactKeys,
+  refinementAwareDistinctValueCount,
   readBeliefProvenance,
   selectPromotableFacts,
   selectVolatileBeliefs,
@@ -18,6 +20,41 @@ import {
   type BeliefProvenance,
   type FactProvenance
 } from "../src/belief-provenance-store.js";
+
+describe("classifyValueChange — refinement (elaboration) vs contradiction (a real flip), deterministic token-subset", () => {
+  it("same → same; an elaboration (token-superset, either direction) → refine; an unrelated value → contradict", () => {
+    expect(classifyValueChange("Seoul", "seoul ")).toBe("same");
+    expect(classifyValueChange("Seoul", "Seoul, Gangnam-gu")).toBe("refine"); // added detail
+    expect(classifyValueChange("Seoul, Gangnam-gu", "Seoul")).toBe("refine"); // dropped detail (related)
+    expect(classifyValueChange("Seoul", "Busan")).toBe("contradict");
+    expect(classifyValueChange("010-1234-5678", "010-1234-9999")).toBe("contradict"); // a digit changed
+    expect(classifyValueChange("서울", "서울 강남구")).toBe("refine"); // works cross-script
+  });
+});
+
+describe("refinementAwareDistinctValueCount — count CONTRADICTION clusters, collapse refinement chains", () => {
+  it("collapses a refinement chain to 1 but counts a genuine contradiction", () => {
+    expect(refinementAwareDistinctValueCount(["Seoul", "Seoul, Gangnam-gu", "Seoul, Gangnam-gu, Apt 5"])).toBe(1);
+    expect(refinementAwareDistinctValueCount(["Seoul", "Seoul, Gangnam-gu", "Busan"])).toBe(2);
+    expect(refinementAwareDistinctValueCount(["X", "Y", "Z"])).toBe(3);
+    expect(refinementAwareDistinctValueCount(["Seoul", "seoul "])).toBe(1);
+  });
+});
+
+describe("deriveFactProvenance — distinctValueCount is refinement-aware (a more-specific re-statement is NOT a flip)", () => {
+  it("a refinement (Seoul → Seoul, Gangnam-gu) keeps distinctValueCount 1 (not falsely volatile); a contradiction increments it", () => {
+    const refine = deriveFactProvenance([
+      entry({ key: "home", value: "Seoul", learnedAt: "2026-06-01T00:00:00.000Z" }),
+      entry({ key: "home", value: "Seoul, Gangnam-gu", learnedAt: "2026-06-10T00:00:00.000Z" })
+    ]);
+    expect(refine.find((p) => p.key === "home")?.distinctValueCount).toBe(1);
+    const flip = deriveFactProvenance([
+      entry({ key: "home", value: "Seoul", learnedAt: "2026-06-01T00:00:00.000Z" }),
+      entry({ key: "home", value: "Busan", learnedAt: "2026-06-10T00:00:00.000Z" })
+    ]);
+    expect(flip.find((p) => p.key === "home")?.distinctValueCount).toBe(2);
+  });
+});
 
 describe("selectVolatileBeliefs — auto beliefs the extractor keeps flipping (H4, closes the H2 loop)", () => {
   const now = Date.parse("2026-06-20T00:00:00.000Z");

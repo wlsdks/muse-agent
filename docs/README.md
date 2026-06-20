@@ -10,11 +10,25 @@ related: [SYSTEM-MAP.md, FEATURES.md]
 
 Muse 문서는 "필요한 것만, 짧게, 잘 분리해서" 유지합니다. 처음이라면 **[SYSTEM-MAP](SYSTEM-MAP.md)** 한 장만 봐도 전체 윤곽이 잡힙니다.
 
+## AI 에이전트(Claude Code · Codex)라면 — 이 순서로
+
+레포를 처음 여는 에이전트가 **docs만 읽고 Muse를 이해**하도록 한 권장 읽기 순서:
+
+1. [`../README.md`](../README.md) — Muse가 무엇인가 (5원칙·정체성)
+2. [`../CLAUDE.md`](../CLAUDE.md) — 모든 에이전트가 먼저 읽는 계약 (비협상 규칙)
+3. [`glossary.md`](glossary.md) — Muse 전용 용어 (playbook·whetstone·grounding floor… grep 없이)
+4. [`SYSTEM-MAP.md`](SYSTEM-MAP.md) — 기능 구조 한 장
+5. [`grounding-gate.md`](grounding-gate.md) — 핵심 엣지(그라운딩 게이트)를 한 흐름으로
+6. [`FEATURES.md`](FEATURES.md) → [`feature-catalog/INDEX.md`](feature-catalog/INDEX.md) — 기능 상세 + 전수 검증 증거
+7. 그다음 깊이: [`design/`](design/) · [`strategy/`](strategy/) · [`../.claude/rules/`](../.claude/rules/) · [`../harness/`](../harness/README.md)
+
 ## 제품을 이해하려면
 
 | 문서 | 무엇 | 누구에게 |
 |---|---|---|
 | **[SYSTEM-MAP.md](SYSTEM-MAP.md)** | Muse 기능을 한눈에 보는 구조 지도 (말로만, 빠른 파악용) | 기획·개발 모두 / 처음 보는 사람 |
+| **[glossary.md](glossary.md)** | Muse 전용 용어의 단일 정의 (용어마다 한 줄 + 어디 사는지) | 처음 보는 사람 / AI 에이전트 |
+| **[grounding-gate.md](grounding-gate.md)** | 핵심 엣지(그라운딩 게이트)가 질문 하나를 어떻게 처리하나 — 흐름 + 워크드 예시 | 핵심 동작을 이해하려는 사람 / AI 에이전트 |
 | **[FEATURES.md](FEATURES.md)** | 기능별 상세 정의 (사용자 입장에서 무엇을 어떻게) | 기획·설계 의사결정 |
 | **[feature-catalog/INDEX.md](feature-catalog/INDEX.md)** | 전수 검증된 전체 기능 인벤토리 (기능마다 실행/테스트/소스 증거; 2026-06-14) | 정확한 사실이 필요한 사람 / AI 에이전트 |
 | **[privacy-and-data.md](privacy-and-data.md)** | 내 데이터는 어디 있고 무엇이 절대 안 나가나 (프라이버시 요약) | 도입 전 확인하는 사람 |

@@ -439,7 +439,22 @@ export type RetrievalConfidence = "confident" | "ambiguous" | "none";
 // scored ~0.44–0.51, so 0.55 splits them. BEST-EFFORT only — nomic's cosine
 // space is compressed (even unrelated encyclopedic text can score ~0.54), so
 // this flags weak personal grounding, it is NOT a hard relevant/irrelevant cut.
-const DEFAULT_CONFIDENT_AT = 0.55;
+export const DEFAULT_CONFIDENT_AT = 0.55;
+
+/**
+ * Resolve the recall confidence bar from `MUSE_GROUNDING_MIN_COSINE` — the
+ * conformal-calibrated threshold `muse doctor --calibration` emits (KnowNo /
+ * conformal prediction, arXiv:2307.01928). Mirrors the chat gate's parse
+ * (`resolveGroundingMinScore`) EXACTLY so chat and the RGV recall path agree on
+ * one number: finite, `> 0 && <= 1`, else the hardcoded `DEFAULT_CONFIDENT_AT`.
+ * STRICTLY opt-in and fail-safe: a missing or out-of-range env changes nothing,
+ * so the fabrication=0 floor is preserved; a valid override may only RAISE the
+ * abstention bar.
+ */
+export function resolveRecallConfidentAt(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = Number(env.MUSE_GROUNDING_MIN_COSINE);
+  return Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : DEFAULT_CONFIDENT_AT;
+}
 
 // Margin calibration (adaptive confidence). Near the compressed-cosine floor a
 // single absolute threshold is fragile: an out-of-corpus query can clip a

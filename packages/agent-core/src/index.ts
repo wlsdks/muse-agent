@@ -222,6 +222,8 @@ export {
   type RankKnowledgeOptions,
   type RecallClarification,
   type RetrievalConfidence,
+  DEFAULT_CONFIDENT_AT,
+  resolveRecallConfidentAt,
   type VerifyGroundingOptions,
   assessContextSufficiency,
   type SufficiencyVerdict

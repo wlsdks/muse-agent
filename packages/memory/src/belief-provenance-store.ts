@@ -80,6 +80,54 @@ export type FactFreshness = "fresh" | "aging" | "stale";
 const DEFAULT_FACT_AGING_DAYS = 30;
 const DEFAULT_FACT_STALE_DAYS = 90;
 
+/** Lowercased content tokens (Unicode) for the refinement subset check. */
+function valueTokens(value: string): Set<string> {
+  return new Set(value.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((t) => t.length > 0));
+}
+
+function isTokenSubset(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  for (const t of a) if (!b.has(t)) return false;
+  return true;
+}
+
+/**
+ * Classify how a NEW value relates to an OLD one — deterministic, token-based (no
+ * model): `same` (equal), `refine` (one value's tokens are a SUPERSET of the other's —
+ * an elaboration "Seoul" → "Seoul, Gangnam-gu", or its narrowing), or `contradict` (an
+ * unrelated value = a genuine flip). Stops a more-SPECIFIC re-statement from being
+ * mistaken for a contested value-change in the volatility/contested signal. Pure.
+ */
+export function classifyValueChange(oldValue: string, newValue: string): "same" | "refine" | "contradict" {
+  if (oldValue.trim().toLowerCase() === newValue.trim().toLowerCase()) return "same";
+  const a = valueTokens(oldValue);
+  const b = valueTokens(newValue);
+  if (a.size === 0 || b.size === 0) return "contradict";
+  return isTokenSubset(a, b) || isTokenSubset(b, a) ? "refine" : "contradict";
+}
+
+/**
+ * Count the CONTRADICTION-distinct value clusters across a key's values — a refinement
+ * chain ("Seoul" ⊂ "Seoul, Gangnam-gu" ⊂ …) collapses to one, a genuine flip ("Seoul"
+ * vs "Busan") counts separately. The refinement-aware replacement for a raw
+ * `new Set(values).size`, so a more-specific re-statement does not inflate
+ * {@link FactProvenance.distinctValueCount} into a FALSE volatility signal (the fire-16
+ * over-count). Conservative: only a STRICT token-subset collapses, so a narrowing or a
+ * flip stays distinct. Pure.
+ */
+export function refinementAwareDistinctValueCount(values: readonly string[]): number {
+  const unique = [...new Set(values.map((v) => v.trim().toLowerCase()))].filter((v) => v.length > 0);
+  if (unique.length <= 1) return unique.length;
+  const tokenSets = unique.map((v) => valueTokens(v));
+  let count = 0;
+  for (let i = 0; i < unique.length; i++) {
+    const ti = tokenSets[i] as Set<string>;
+    // A value is a refinement (absorbed) iff its tokens are a STRICT subset of another's.
+    const absorbed = ti.size > 0 && tokenSets.some((tj, j) => j !== i && ti.size < tj.size && isTokenSubset(ti, tj));
+    if (!absorbed) count++;
+  }
+  return Math.max(1, count);
+}
+
 /**
  * Aggregate the append-only belief-provenance LOG into one record per key —
  * firstSeen (earliest learnedAt), lastConfirmed (latest), confirmCount, source
@@ -102,7 +150,7 @@ export function deriveFactProvenance(entries: readonly BeliefProvenance[]): read
     const last = sorted[sorted.length - 1] as BeliefProvenance;
     out.push({
       confirmCount: group.length,
-      distinctValueCount: new Set(group.map((e) => e.value.trim())).size,
+      distinctValueCount: refinementAwareDistinctValueCount(group.map((e) => e.value)),
       firstSeen: first.learnedAt,
       key,
       kind: last.kind,

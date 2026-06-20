@@ -5,7 +5,11 @@ import { join } from "node:path";
 import type { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { createTuiChatSubmitter, emptyAnswerFallback, filterFactsToKeys, formatNotesOverview, formatTaskList, parseAgentMode } from "./chat-repl.js";
+import { readWeaknesses, recordWeakness } from "@muse/mcp";
+import type { KnowledgeMatch } from "@muse/agent-core";
+
+import { createTuiChatSubmitter, emptyAnswerFallback, filterFactsToKeys, formatNotesOverview, formatTaskList, parseAgentMode, recordChatWeaknessForTurn } from "./chat-repl.js";
+import { chatMisgroundingFraction, chatWeaknessAxis } from "./chat-grounding.js";
 import type { ProgramIO } from "./program.js";
 
 describe("createTuiChatSubmitter — a FAILED chat run still leaves a success:false trace (#6 slice 6d)", () => {
@@ -101,6 +105,76 @@ describe("factKeysToInject (per-fact topic relevance — no tangent, recall pres
 describe("filterFactsToKeys", () => {
   it("keeps only the allowed keys, preserving values", () => {
     expect(filterFactsToKeys({ user_name: "진안", dog_name: "보리" }, ["user_name"])).toEqual({ user_name: "진안" });
+  });
+});
+
+describe("chat misgrounding weakness fuel (GROUNDED != TRUE parity with ASK)", () => {
+  // The retrieved source supports ONE sentence but NOT the firmware/renewal claims
+  // the answer goes on to assert — a PARTIAL grounding (band [0.5,1)): the real
+  // misgrounding shape, distinct from a fully-unsupported cross-lingual artifact.
+  const matches: readonly KnowledgeMatch[] = [
+    { cosine: 0.9, score: 0.9, source: "office_vpn.md", text: "the office vpn mtu is 1500 bytes for the seoul gateway" }
+  ];
+  const misgroundedAnswer =
+    "The office vpn mtu is 1500 bytes. The gateway firmware version is alpha nine. " +
+    "The renewal occurs every fiscal quarter automatically without notice.";
+
+  it("chatMisgroundingFraction lands in the misgrounding band for an unsupported answer", () => {
+    const fraction = chatMisgroundingFraction(misgroundedAnswer, matches);
+    expect(fraction).toBeGreaterThanOrEqual(0.5);
+    expect(fraction).toBeLessThan(1);
+  });
+
+  it("classifies a non-refusal answer whose cited sources don't support it as `misgrounding`", () => {
+    expect(chatWeaknessAxis({ refusal: false, unbackedAction: false, answer: misgroundedAnswer, matches })).toBe("misgrounding");
+  });
+
+  it("writes a `misgrounding` ROW to the weakness ledger for a misgrounded non-refusal turn", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-chat-misground-"));
+    const file = join(dir, "weaknesses.json");
+    const count = await recordChatWeaknessForTurn(
+      { message: "what is the office vpn mtu?", answer: misgroundedAnswer, matches, refusal: false, unbackedAction: false },
+      { recordWeakness, weaknessesFile: file }
+    );
+    expect(count).toBeGreaterThanOrEqual(1);
+    const ledger = await readWeaknesses(file);
+    // assert the ledger STATE — a misgrounding row exists, not that a fn was called
+    expect(ledger.some((entry) => entry.axis === "misgrounding")).toBe(true);
+    expect(ledger.some((entry) => entry.axis === "grounding-gap")).toBe(false);
+  });
+
+  it("PARITY NEGATIVE — a fully-supported grounded answer writes NOTHING", async () => {
+    const supportingMatches: readonly KnowledgeMatch[] = [
+      { cosine: 0.9, score: 0.9, source: "office_vpn.md", text: "office vpn mtu 1500 bytes gateway firmware alpha renewal quarterly automatic" }
+    ];
+    expect(chatWeaknessAxis({ refusal: false, unbackedAction: false, answer: misgroundedAnswer, matches: supportingMatches })).toBeNull();
+    const dir = mkdtempSync(join(tmpdir(), "muse-chat-supported-"));
+    const file = join(dir, "weaknesses.json");
+    const count = await recordChatWeaknessForTurn(
+      { message: "what is the office vpn mtu?", answer: misgroundedAnswer, matches: supportingMatches, refusal: false, unbackedAction: false },
+      { recordWeakness, weaknessesFile: file }
+    );
+    expect(count).toBeUndefined();
+    const ledger = await readWeaknesses(file).catch(() => []);
+    expect(ledger).toHaveLength(0);
+  });
+
+  it("PARITY NEGATIVE — a cross-lingual artifact (fraction == 1.0) stays grounded, writes NOTHING", () => {
+    // A KO answer over an EN note: every assertive sentence is lexically-0 ⇒ fraction 1.0.
+    const koAnswer = "사무실 VPN MTU는 1380입니다. 게이트웨이는 매일 재시작됩니다.";
+    const enMatches: readonly KnowledgeMatch[] = [
+      { cosine: 0.9, score: 0.9, source: "vpn.md", text: "completely unrelated english evidence words only" }
+    ];
+    expect(chatMisgroundingFraction(koAnswer, enMatches)).toBe(1);
+    expect(chatWeaknessAxis({ refusal: false, unbackedAction: false, answer: koAnswer, matches: enMatches })).toBeNull();
+  });
+
+  it("PARITY NEGATIVE — a refusal is a `grounding-gap`, never `misgrounding`", () => {
+    expect(chatWeaknessAxis({ refusal: true, unbackedAction: false, answer: "I don't have that recorded yet.", matches })).toBe("grounding-gap");
+  });
+
+  it("PRECEDENCE — an unbacked action outranks a misgrounding", () => {
+    expect(chatWeaknessAxis({ refusal: false, unbackedAction: true, answer: misgroundedAnswer, matches })).toBe("unbacked-action");
   });
 });
 
