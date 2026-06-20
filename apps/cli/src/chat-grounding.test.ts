@@ -614,3 +614,25 @@ describe("chat citation precision/recall cues — ALCE parity on the chat surfac
     expect(chatCitationRecallNotice("The office MTU is 1380 [from vpn.md].", [note("vpn.md", "the office vpn mtu is 1380 on wg0")])).toBeUndefined();
   });
 });
+
+describe("answerAssertsUnsupportedUrl — filename tokens are not domains (false-refusal carve-out)", () => {
+  const note = (text: string): KnowledgeMatch => ({ cosine: 0.8, score: 0.8, source: "n.md", text });
+  it("a bare filename (non-TLD extension) is NOT treated as an unsupported host", () => {
+    // "report.txt" must not abstain — .txt is not a registrable TLD, it's a file.
+    expect(answerAssertsUnsupportedUrl("I saved it to report.txt", [note("no url here")], "where?")).toBe(false);
+    expect(answerAssertsUnsupportedUrl("see notes.pdf and photo.png", [note("no url")], "what?")).toBe(false);
+  });
+  it("a real ccTLD that doubles as a file extension (.md = Moldova) STAYS guarded", () => {
+    // do NOT over-carve: acme-login.md is a registrable domain → still abstains.
+    expect(answerAssertsUnsupportedUrl("log in at acme-login.md", [note("portal: vpn.foundry.io")], "portal?")).toBe(true);
+  });
+  it("a genuinely fabricated .com domain still abstains (guard intact)", () => {
+    expect(answerAssertsUnsupportedUrl("go to acme-login.com", [note("no url")], "portal?")).toBe(true);
+  });
+  it("the .zip and .mov gTLDs are NOT carved out (they are real registrable TLDs — stay guarded)", () => {
+    // zip + mov are Google gTLDs (2023); a bare acme-backup.zip / team-video.mov can be a
+    // phishing domain, so they must NOT be treated as filenames — the guard still abstains.
+    expect(answerAssertsUnsupportedUrl("download it from acme-backup.zip", [note("no url")], "where?")).toBe(true);
+    expect(answerAssertsUnsupportedUrl("watch team-video.mov", [note("no url")], "where?")).toBe(true);
+  });
+});

@@ -800,12 +800,34 @@ export function canonicalHost(urlOrHost: string): string {
   return host;
 }
 
+// Unambiguous file extensions that are NOT registrable TLDs — a BARE token like
+// "report.txt" / "photo.png" is a filename, not a domain, so treating it as an
+// asserted host would false-refuse a legitimate answer. This set DELIBERATELY
+// excludes extensions that double as real ccTLDs/gTLDs (md=Moldova, io, sh, ai, ts,
+// me, co, app, dev, …) so a poisoned "acme-login.md" domain stays guarded. Only
+// the BARE-domain branch is filtered; an explicit http(s):// URL is always a host.
+// NB: deliberately OMITS zip + mov — both are real Google gTLDs (delegated 2023),
+// so a "acme-backup.zip" / "team-video.mov" can be a registrable phishing domain
+// and MUST stay guarded. Every entry below is verified NOT in the IANA root zone.
+const NON_TLD_FILE_EXTENSIONS = new Set([
+  "txt", "json", "jsonl", "csv", "tsv", "log", "pdf", "png", "jpg", "jpeg", "gif",
+  "svg", "webp", "docx", "xlsx", "pptx", "gz", "tar", "yaml", "yml", "toml",
+  "lock", "html", "css", "mp3", "mp4", "wav"
+]);
+
 // The set of canonical hosts a text asserts (URLs + bare domains), citations stripped.
 function answerHosts(text: string): Set<string> {
   const out = new Set<string>();
   for (const raw of text.match(URL_RE) ?? []) {
     const host = canonicalHost(raw);
-    if (host.length > 0) out.add(host);
+    if (host.length === 0) continue;
+    // A bare (non-scheme) token whose final label is an unambiguous file extension
+    // is a filename, not a domain — don't treat it as an asserted host.
+    if (!/^https?:\/\//iu.test(raw.trim())) {
+      const lastLabel = host.split(".").pop() ?? "";
+      if (NON_TLD_FILE_EXTENSIONS.has(lastLabel)) continue;
+    }
+    out.add(host);
   }
   return out;
 }

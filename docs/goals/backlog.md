@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ URL-guard filename carve-out (bare filename like report.txt no longer false-refused; zip/mov gTLDs stay guarded) + JUDGE-DRILL passed (verifier caught a wired-but-inert + tautological-test slice) — context-strategy fire 18 (detail in docs/goals/loops/context-strategy.md)
+
 - ✓ exemplar selection precision: stop-word down-weighting in @muse/prompts scorer (function-word-only query no longer injects an off-topic few-shot demo into the 12B window; doctrine P1/P4; arXiv:2506.03100) — context-strategy fire 17 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ stale-fact point-of-use caution in <<memory>> grounding block (staleFactKeys via classifyFactFreshness; contested→provisional→stale precedence) — months-stale fact no longer asserted as confident (doctrine P3 #3; SSGM arXiv:2603.11768) — context-strategy fire 16 (detail in docs/goals/loops/context-strategy.md)
