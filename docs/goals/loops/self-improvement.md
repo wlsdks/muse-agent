@@ -173,3 +173,30 @@ ratchet: testFiles=1065 · fabrication 0 · gates: agent-core 2516 + cli 2781 + 
 - **리뷰지점:** ④b 독립 Opus judge PASS — 실제 소비(counter 노출·OUTCOME 테스트: disagreeing 3 same-script 드래프트→count 1·status skipped·playbook 0) · disagreement-reject만 카운트(정직 semantic) · 무회귀(identical-stub admit 경로 무변경·양 consumer read-only) · 6 return 전부 필드 설정 · mutation(+=1 제거→RED). 다양성: fire11 mcp 후 fire12 cli/wiring.
 - **리스크:** 낮음 — read-only telemetry, DistillResult union 양 branch+이른 return 4개 0으로 일관. embed 없으면 cross-script support-gate fail-closed로 early-reject(onReject 미발화)되는 게 정상 — 테스트는 same-script+embed로 disagreement 경로 정조준.
 - **lesson:** telemetry seam은 production consumer까지 배선해야 "inert seam" 면함; distill 테스트는 cross-script support-gate 때문에 same-script 드래프트+embed로 disagreement 경로를 정확히 타게 해야 함.
+## fire 13 · 2026-06-21 · skill v2.0.0 · `e7656eb8`
+meta: value-class=micro-fix · pkg=@muse/cli · kind=whetstone doctor-consistency · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles=1065 · fabrication 0 · gates: cli 2789 + check(api messaging-webhooks 단일 timeout=backlog#545 알려진 동시-부하 env flake, 격리해도 포화>20s, 무관) + self-eval ok + lint pass
+
+- **무엇:** `muse doctor --weaknesses`의 `formatWeaknesses`가 MASTERED(BKT pKnown≥0.95) 약점도 "weak at"으로 나열하던 걸 `!isMasteredWeakness` 필터로 제외(+ "· N mastered" 노트 + all-mastered "resolved" 라인). 런타임 nudge의 mastery 억제와 일관.
+- **왜:** 사용자가 반복해 해결한(mastered) 토픽을 doctor가 계속 "약점"으로 나열 → stale·nag. 런타임 nudge(selectRemediableWeaknesses)는 이미 !isMasteredWeakness로 억제하는데 doctor 인벤토리만 안 해서 불일치(judge fire-32 flag).
+- **리뷰지점:** ④b 독립 Opus judge PASS — OUTCOME(렌더 리스트서 제외·mutation 진짜) · no-pKnown/low-pKnown는 active 유지(미입증) · 무입력변형([...].filter 새 배열) · 재실패는 bktUpdate가 pKnown 낮춰 self-correct · sibling formatDevFixableWeaknesses는 다른 axis class라 범위 외. 다양성: fire-5 형제(whetstone-doctor)지만 kind=consistency.
+- **리스크:** 매우 낮음 — display-only, mastered 노트로 honest(숨김 없음), legacy 빈-ledger 경로 보존.
+
+## fire 14 · 2026-06-21 · skill v2.0.0 · `fd2a3516`
+meta: value-class=new-capability · pkg=@muse/agent-core (+@muse/cli wiring) · kind=research-grounded/episodic-write-novelty · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles=1066 (novelty tests in existing episodic-summariser.test.ts) · fabrication 0 · gates: agent-core 2521 + cli 2789(program 236/236) + check(api messaging-webhooks 단일 timeout=backlog#545 env flake, 무관) + self-eval ok + lint pass
+
+- **무엇:** `captureEndOfSessionEpisode`에 write-time NOVELTY gate(`isEpisodeNovelVsRecent`, token Jaccard ≥0.8 vs 최근 10 저장 summary→reject) 추가. salience/ownerId 후·upsert 전 배선. embedder-free·fail-open(빈 summary/read err→admit)·subtractive.
+- **왜:** 기존 write gate(outcome-quality·grounding·salience)는 전부 세션을 ISOLATION으로 판정 → 매주 반복 토픽이 near-identically 재-summary돼 또 다른 near-dup `[session:…]` 소스로 저장돼 recall 희석(read-time consolidateNearDuplicates는 write 後 정리뿐). Mem0 write-side NOOP(arXiv:2504.19413)+SAGE(arXiv:2605.30711).
+- **리뷰지점:** ④b 독립 Opus judge PASS — outcome-genuine(upsert 전 차단·mutation 증명) · **false-drop 실측**(near-dup 1.0/0.75 drop, same-topic-different-decision 0.46/short 0.5 admit → 0.8 보수적) · fail-open 완전 · 기존 truthy-spelling 테스트가 동일세션 재-capture라 내 gate가 정상 skip→격리 episodesFile(index-keyed, case-insensitive FS 회피)로 적응(env-intent 보존, 약화 아님) · 형제-감사 clean(prod 1 call site). 다양성: agent-core/episodic(fires 8/10 correction과 다른 kind).
+- **리스크:** 낮음 — subtractive(저장 거부만, fabrication 무관), fail-open으로 세션 손실 없음. 0.8/10 reasoning-set이나 false-drop 마진 측정상 안전.
+- **lesson:** "값싼 후보 다 stale/blocked"는 vein-고갈이 아니라 **연구-스카웃 신호** — 진안 교정대로 멈추지 말고 더 알아보면 됨(fire 7/14 초기 오판 정정). cheap-scan 후보 연속 기각 시 곧장 research scout로.
+
+## fire 15 · 2026-06-21 · skill v2.0.0 · `1f86f39c`
+meta: value-class=new-capability · pkg=@muse/skills · kind=research-grounded/skill-eviction · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles=1067 (eviction tests in existing authored-skill-store.test.ts) · fabrication 0 · gates: skills 66 + agent-core 2521 + cli 통과 + check(api 2 timeout=박스 포화 env flake, 무관) + self-eval ok + lint pass · merge-to-main: fires 13-15 (this fire, ×3)
+
+- **무엇:** `AuthoredSkillStore.enforceCap`의 cap-overflow eviction을 FIFO-by-authoredAt → **utility-aware**로 교체. 새 순수 `rankSkillsForEviction`(never-used 먼저, ties LRU) + `hasUsage`; enforceCap이 이걸로 evict-set 선정.
+- **왜:** 스토어가 이미 usage(recordUsage→lastUsedAt)를 기록하는데 enforceCap만 무시 → 자주 쓴 old 스킬이 never-used 신규보다 먼저 archive되는 결함(SkillOps arXiv:2605.13716 utility-retire; TinyLFU arXiv:1512.00727 value-aware eviction). usage 없으면 lastActiveAt=authoredAt라 FIFO로 정확히 degrade(strict superset).
+- **리뷰지점:** ④b 독립 Opus judge PASS — OUTCOME+mutation 진짜(end-to-end가 FIFO와 discriminating: USED old alpha 생존) · **no-regression EXACT**(all-unused→authoredAt asc=옛 FIFO, 기존 cap 테스트 통과) · eviction count/name-Set 정확(writeOrPatch가 authored-name 유일성 강제) · used는 never-used보다 먼저 evict 불가 · non-destructive(archive). 다양성: @muse/skills(이 루프 첫 접촉, fresh 표면).
+- **리스크:** 낮음 — archive(삭제 아님), bundled 스킬 무관(listAuthored만), usage 없으면 옛 동작과 동일. nit(judge): hasUsage가 metadata.muse를 lastActiveAt와 따로 재파싱(무해).
