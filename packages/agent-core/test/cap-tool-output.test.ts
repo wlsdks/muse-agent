@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { InMemoryContextReferenceStore } from "@muse/memory";
 
-import { capToolOutput } from "../src/model-loop.js";
+import { capToolOutput, deriveAnchorTerms } from "../src/model-loop.js";
 
 describe("capToolOutput", () => {
   it("returns the output unchanged when no cap is configured", () => {
@@ -74,5 +74,60 @@ describe("capToolOutput", () => {
   it("leaves a clean tool result byte-identical (no false neutralization)", () => {
     const clean = "The deploy finished at 14:32 UTC with 0 errors.";
     expect(capToolOutput(clean, "ci.status", undefined)).toBe(clean);
+  });
+
+  it("forwards anchor terms so a buried middle span survives the cap (query-anchored retention)", () => {
+    const head = "H".repeat(400);
+    const tail = "T".repeat(400);
+    const filler = "M".repeat(1_200);
+    const span = "budget review scheduled for 3pm sharp";
+    const output = `${head}\n${filler}\n${span}\n${filler}\n${tail}`;
+    const cap = 600;
+    // Without anchor terms the span is elided by head+tail.
+    const without = capToolOutput(output, "web.search", cap);
+    expect(without).not.toContain("3pm");
+    // With the anchor term forwarded, the span is carved verbatim.
+    const withAnchor = capToolOutput(output, "web.search", cap, undefined, ["3pm"]);
+    expect(withAnchor).toContain(span);
+    expect(withAnchor.length).toBeLessThanOrEqual(cap);
+    expect(withAnchor).toContain("[truncated:");
+  });
+
+  it("no-op safety: empty anchor terms leave the cap output byte-identical", () => {
+    const output = "P".repeat(2_000);
+    expect(capToolOutput(output, "web.search", 200, undefined, [])).toBe(
+      capToolOutput(output, "web.search", 200)
+    );
+  });
+});
+
+describe("deriveAnchorTerms", () => {
+  it("derives terms from the latest user message, lowercased, stop-words and short tokens dropped", () => {
+    const terms = deriveAnchorTerms([
+      { content: "You are a helpful assistant.", role: "system" },
+      { content: "What time is the budget review meeting?", role: "user" }
+    ]);
+    expect(terms).toContain("budget");
+    expect(terms).toContain("review");
+    expect(terms).toContain("meeting");
+    expect(terms).toContain("time");
+    expect(terms).not.toContain("what"); // stop-word
+    expect(terms).not.toContain("the"); // stop-word
+    expect(terms).not.toContain("is"); // < 3 chars
+  });
+
+  it("uses the LATEST user message when several are present, and dedupes", () => {
+    const terms = deriveAnchorTerms([
+      { content: "tell me about apples apples", role: "user" },
+      { content: "now about oranges oranges", role: "user" }
+    ]);
+    expect(terms).toContain("oranges");
+    expect(terms).not.toContain("apples");
+    expect(terms.filter((t) => t === "oranges")).toHaveLength(1); // deduped
+  });
+
+  it("returns [] when there is no user message", () => {
+    expect(deriveAnchorTerms([{ content: "system only", role: "system" }])).toEqual([]);
+    expect(deriveAnchorTerms([])).toEqual([]);
   });
 });

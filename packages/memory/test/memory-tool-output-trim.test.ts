@@ -63,3 +63,54 @@ describe("trimToolOutput — head+tail elision", () => {
     expect(twice.output).toBe(once.output);
   });
 });
+
+describe("trimToolOutput — query-anchored span retention (ACON / Lost-in-the-Middle)", () => {
+  // Filler head, a unique marker line buried in the exact elided MIDDLE, filler tail.
+  const headFiller = "H".repeat(40);
+  const tailFiller = "T".repeat(40);
+  const middleFiller = "M".repeat(120);
+  const marker = "MEETING 3pm: budget review";
+  // The marker sits past the kept-head and before the kept-tail so head+tail elides it.
+  const anchored = `${headFiller}\n${middleFiller}\n${marker}\n${middleFiller}\n${tailFiller}`;
+  const cap = 120;
+
+  it("WITHOUT anchorTerms a buried middle span is elided (current head+tail behavior)", () => {
+    const r = trimToolOutput(anchored, { maxChars: cap });
+    expect(r.truncated).toBe(true);
+    expect(r.output).not.toContain("3pm");
+  });
+
+  it("query anchor lifts a middle span head+tail would elide", () => {
+    const r = trimToolOutput(anchored, { anchorTerms: ["3pm"], maxChars: cap });
+    expect(r.output).toContain(marker); // verbatim span carved from the input
+    expect(r.output.length).toBeLessThanOrEqual(cap); // budget still respected
+    expect(r.output).toContain("[truncated:"); // elision marker still present
+    expect(r.output.startsWith("H")).toBe(true); // some head retained
+    expect(r.truncated).toBe(true);
+  });
+
+  it("anchor window is sliced VERBATIM and never synthesized", () => {
+    const r = trimToolOutput(anchored, { anchorTerms: ["budget"], maxChars: cap });
+    // every retained char (minus the marker block) is a substring of the input.
+    expect(anchored).toContain(marker);
+    expect(r.output).toContain(marker);
+  });
+
+  it("matches case-insensitively but keeps original casing in the carved span", () => {
+    const r = trimToolOutput(anchored, { anchorTerms: ["MEETING"], maxChars: cap });
+    expect(r.output).toContain(marker);
+  });
+
+  it("no-op safety: absent anchorTerms is byte-identical to the pre-anchor output", () => {
+    const expected = trimToolOutput(anchored, { maxChars: cap }).output;
+    const withEmpty = trimToolOutput(anchored, { anchorTerms: [], maxChars: cap }).output;
+    const withNoMatch = trimToolOutput(anchored, { anchorTerms: ["zzznomatch"], maxChars: cap }).output;
+    expect(withEmpty).toBe(expected);
+    expect(withNoMatch).toBe(expected);
+  });
+
+  it("no-op safety: anchorTerms on a short already-fitting input changes nothing", () => {
+    const r = trimToolOutput("short text", { anchorTerms: ["text"], maxChars: 100 });
+    expect(r).toEqual({ output: "short text", truncated: false, originalLength: 10 });
+  });
+});

@@ -1,5 +1,6 @@
 # Muse dev backlog — the living ledger
 
+- ✓ query-anchored span retention in the per-result cap (ACON arXiv:2510.00615 / Lost-in-the-Middle arXiv:2307.03172; keeps the load-bearing middle span the query needs, verbatim, neutralize-first) — context-strategy fire 4 (detail in docs/goals/loops/context-strategy.md)
 - ✓ default relevance-ranked tool-exposure ceiling on the live runtime path (Less-Context-Better-Agents arXiv:2606.10209 / MemTool arXiv:2507.21428; enforces tool-calling.md ≤5-7, lossless tail-drop) — context-strategy fire 3 (detail in docs/goals/loops/context-strategy.md)
 - ✓ stale-observation masking in the model loop (The-Complexity-Trap arXiv:2508.21433 / ACON arXiv:2510.00615; ref-recoverable, fixes unbounded multi-turn context growth) — context-strategy fire 2 (detail in docs/goals/loops/context-strategy.md)
 - ✓ cross-block grounding-block edge-placement (Lost-in-the-Middle arXiv:2307.03172 / Attention-Basin arXiv:2508.05128) — context-strategy fire 1 (detail in docs/goals/loops/context-strategy.md)

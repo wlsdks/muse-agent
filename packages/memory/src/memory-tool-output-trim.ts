@@ -52,6 +52,22 @@ export interface ToolOutputTrimOptions {
    * because it competes for the same budget.
    */
   readonly hint?: string;
+  /**
+   * Optional query terms (typically derived from the latest user
+   * message). When present AND a real line in the would-be-elided
+   * MIDDLE contains one of these terms (case-insensitive), a bounded
+   * window around that line is carved VERBATIM from the input into the
+   * retained text — head/tail shrink so the total stays ≤ `maxChars`.
+   *
+   * This closes the ACON failure mode (arXiv:2510.00615): plain
+   * head+tail elision loses the specific middle span that holds the
+   * answer (Lost-in-the-Middle, arXiv:2307.03172). The window is never
+   * synthesized — it is sliced from the real input.
+   *
+   * Absent OR no match → output is BYTE-IDENTICAL to the head+tail
+   * behavior (the critical no-op safety property).
+   */
+  readonly anchorTerms?: readonly string[];
 }
 
 export interface ToolOutputTrimResult {
@@ -61,6 +77,7 @@ export interface ToolOutputTrimResult {
 }
 
 const DEFAULT_HEAD_RATIO = 0.7;
+const INNER_ELISION = "\n\n[…]\n\n";
 
 export function trimToolOutput(input: string, options: ToolOutputTrimOptions): ToolOutputTrimResult {
   const originalLength = input.length;
@@ -103,12 +120,112 @@ export function trimToolOutput(input: string, options: ToolOutputTrimOptions): T
   const tailChars = Math.max(0, remaining - headChars);
   const head = input.slice(0, headChars);
   const tail = tailChars > 0 ? input.slice(originalLength - tailChars) : "";
+
+  // Query-anchored retention: when an anchor term matches a line in the
+  // would-be-elided middle, carve a bounded verbatim window around it.
+  // The layout becomes `head|marker|window|inner|tail`: ONE full marker
+  // (carrying the elided-count + hint) plus a short inner separator that
+  // signals the window→tail gap, so the anchor case only pays the full
+  // marker once. head/window/tail compete within the leftover budget.
+  // Falls back to plain head+tail when there's no match or no room.
+  const anchored = carveAnchorWindow(input, {
+    anchorTerms: options.anchorTerms,
+    contentBudget: maxChars - reservedMarker.length - INNER_ELISION.length,
+    defaultHeadEnd: head.length,
+    defaultTailStart: originalLength - tail.length,
+    headRatio
+  });
+  if (anchored) {
+    const elided = originalLength - anchored.head.length - anchored.window.length - anchored.tail.length;
+    const marker = markerFor(elided);
+    return {
+      output: `${anchored.head}${marker}${anchored.window}${INNER_ELISION}${anchored.tail}`,
+      truncated: true,
+      originalLength
+    };
+  }
+
   const marker = markerFor(originalLength - head.length - tail.length);
   return {
     output: `${head}${marker}${tail}`,
     truncated: true,
     originalLength
   };
+}
+
+interface AnchorWindow {
+  readonly head: string;
+  readonly window: string;
+  readonly tail: string;
+}
+
+/**
+ * When an anchor term matches a line in the would-be-elided middle
+ * (between `defaultHeadEnd` and `defaultTailStart`), carve a bounded
+ * verbatim window around that line so the total stays within
+ * `contentBudget` (the cap minus the two elision markers the anchored
+ * layout prints). Returns `undefined` when there are no anchor terms,
+ * no middle, no match, or no room — the caller then keeps the
+ * byte-identical head+tail behavior.
+ */
+function carveAnchorWindow(
+  input: string,
+  args: {
+    readonly anchorTerms: readonly string[] | undefined;
+    readonly contentBudget: number;
+    readonly defaultHeadEnd: number;
+    readonly defaultTailStart: number;
+    readonly headRatio: number;
+  }
+): AnchorWindow | undefined {
+  const terms = (args.anchorTerms ?? [])
+    .map((term) => term.toLowerCase())
+    .filter((term) => term.length > 0);
+  if (terms.length === 0) {
+    return undefined;
+  }
+  const { contentBudget, defaultHeadEnd, defaultTailStart, headRatio } = args;
+  if (contentBudget <= 0 || defaultTailStart <= defaultHeadEnd) {
+    return undefined;
+  }
+
+  const middle = input.slice(defaultHeadEnd, defaultTailStart);
+  const middleLower = middle.toLowerCase();
+  // Find the FIRST line in the middle whose content matches any anchor
+  // term — deterministic, stable, lowercased compare.
+  let lineStart = 0;
+  let matchStart = -1;
+  let matchEnd = -1;
+  while (lineStart <= middle.length) {
+    const nlRel = middleLower.indexOf("\n", lineStart);
+    const lineEnd = nlRel === -1 ? middle.length : nlRel;
+    const lineLower = middleLower.slice(lineStart, lineEnd);
+    if (terms.some((term) => lineLower.includes(term))) {
+      matchStart = defaultHeadEnd + lineStart;
+      matchEnd = defaultHeadEnd + lineEnd;
+      break;
+    }
+    if (nlRel === -1) {
+      break;
+    }
+    lineStart = nlRel + 1;
+  }
+  if (matchStart === -1) {
+    return undefined;
+  }
+
+  // The matched line is the priority claim on the budget; if it alone
+  // exceeds the budget, take a bounded verbatim prefix of it. Whatever
+  // is left splits into head/tail at the same head bias.
+  const matchedLineLen = matchEnd - matchStart;
+  const windowLen = Math.min(matchedLineLen, contentBudget);
+  const window = input.slice(matchStart, matchStart + windowLen);
+  const leftover = contentBudget - windowLen;
+  const headBudget = Math.max(0, Math.min(matchStart, Math.floor(leftover * headRatio)));
+  const tailBudget = Math.max(0, Math.min(input.length - matchEnd, leftover - headBudget));
+  const head = input.slice(0, headBudget);
+  const tail = tailBudget > 0 ? input.slice(input.length - tailBudget) : "";
+  return { head, window, tail };
 }
 
 function clampRatio(value: number): number {

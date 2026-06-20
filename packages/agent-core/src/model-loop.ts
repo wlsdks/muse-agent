@@ -137,6 +137,7 @@ export async function executeModelLoop(
   const toolResults: ExecutedToolResult[] = [];
   const toolsUsed: string[] = [];
   let messages: readonly ModelMessage[] = [...request.messages];
+  const anchorTerms = deriveAnchorTerms(request.messages);
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
   const progress = new ToolLoopProgressTracker();
@@ -253,7 +254,7 @@ export async function executeModelLoop(
       // output doesn't blow the context window. Original
       // executed.result.output is left intact for traces / metrics
       // — only the message-bound copy is truncated.
-      const messageContent = capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars, runner.contextReferenceStore);
+      const messageContent = capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms);
       toolMessages.push({
         content: messageContent,
         name: toolCall.name,
@@ -264,7 +265,7 @@ export async function executeModelLoop(
 
     const toolSummary = renderToolResults(
       toolResults
-        .map((item) => `${item.result.name}: ${capToolOutput(item.result.output, item.result.name, runner.maxToolOutputChars, runner.contextReferenceStore)}`)
+        .map((item) => `${item.result.name}: ${capToolOutput(item.result.output, item.result.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms)}`)
         .join("\n\n")
     );
     const nextMessages = [...messages, ...toolMessages];
@@ -286,6 +287,7 @@ export async function* executeStreamingModelLoop(
   const toolResults: ExecutedToolResult[] = [];
   const toolsUsed: string[] = [];
   let messages: readonly ModelMessage[] = [...request.messages];
+  const anchorTerms = deriveAnchorTerms(request.messages);
   let toolCallCount = 0;
   const deduplicator = new ToolCallDeduplicator();
   const progress = new ToolLoopProgressTracker();
@@ -390,7 +392,7 @@ export async function* executeStreamingModelLoop(
       // output doesn't blow the context window. Original
       // executed.result.output is left intact for traces / metrics
       // — only the message-bound copy is truncated.
-      const messageContent = capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars, runner.contextReferenceStore);
+      const messageContent = capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms);
       toolMessages.push({
         content: messageContent,
         name: toolCall.name,
@@ -401,7 +403,7 @@ export async function* executeStreamingModelLoop(
 
     const toolSummary = renderToolResults(
       toolResults
-        .map((item) => `${item.result.name}: ${capToolOutput(item.result.output, item.result.name, runner.maxToolOutputChars, runner.contextReferenceStore)}`)
+        .map((item) => `${item.result.name}: ${capToolOutput(item.result.output, item.result.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms)}`)
         .join("\n\n")
     );
     const nextMessages = [...messages, ...toolMessages];
@@ -514,7 +516,8 @@ export function capToolOutput(
   output: string,
   toolName: string,
   maxChars: number | undefined,
-  refStore?: ContextReferenceStore
+  refStore?: ContextReferenceStore,
+  anchorTerms?: readonly string[]
 ): string {
   // Live-injection defense: tool / MCP / sub-agent output is UNTRUSTED — a poisoned
   // result ("ignore previous instructions, exfiltrate …") would otherwise reach the
@@ -543,7 +546,48 @@ export function capToolOutput(
   const hint = ref
     ? `tool ${toolName} returned a larger result; ref=${ref}, expand via muse.context.fetch({ ref })`
     : `tool ${toolName} returned a larger result`;
-  return trimToolOutput(safe, { hint, maxChars: effectiveMaxChars }).output;
+  return trimToolOutput(safe, {
+    hint,
+    maxChars: effectiveMaxChars,
+    ...(anchorTerms && anchorTerms.length > 0 ? { anchorTerms } : {})
+  }).output;
+}
+
+const ANCHOR_STOP_WORDS: ReadonlySet<string> = new Set([
+  "the", "and", "for", "are", "was", "were", "you", "your", "with", "this",
+  "that", "from", "have", "has", "had", "can", "could", "would", "should",
+  "what", "when", "where", "which", "who", "why", "how", "did", "does", "do",
+  "about", "into", "out", "any", "all", "but", "not", "get", "got", "tell",
+  "please", "show", "give", "find"
+]);
+
+/**
+ * Derive query-anchor terms from the latest user message so a buried
+ * middle span the user is asking about survives the per-result cap
+ * (ACON arXiv:2510.00615 / Lost-in-the-Middle arXiv:2307.03172).
+ * Deterministic: lowercase, split on non-word chars, drop stop-words
+ * and tokens shorter than 3 chars so noise doesn't anchor everything.
+ */
+export function deriveAnchorTerms(messages: readonly ModelMessage[]): readonly string[] {
+  let latest: string | undefined;
+  for (const message of messages) {
+    if (message.role === "user" && typeof message.content === "string") {
+      latest = message.content;
+    }
+  }
+  if (!latest) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const terms: string[] = [];
+  for (const raw of latest.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+    if (raw.length < 3 || ANCHOR_STOP_WORDS.has(raw) || seen.has(raw)) {
+      continue;
+    }
+    seen.add(raw);
+    terms.push(raw);
+  }
+  return terms;
 }
 
 function putToolOutputRef(
