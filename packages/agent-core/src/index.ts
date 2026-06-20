@@ -169,6 +169,7 @@ export {
   createCachingEmbedder,
   citedSourcesIn,
   groundedOnUntrustedOnly,
+  evidenceIsUntrustedOnly,
   decideRecallClarification,
   bm25Scores,
   createKnowledgeSearchTool,

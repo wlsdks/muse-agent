@@ -536,6 +536,26 @@ describe("untrustedOnlyChatNotice — grounded≠true source-trust parity on the
     expect(notice).toContain("도구로 가져온 데이터");
     expect(notice).toContain("prepayment by wire");
   });
+
+  it("STILL warns when the answer omits the [from <src>] citation but ALL evidence is tool-fetched (citation-independent — the 8B may not cite)", () => {
+    const evidence = [tool("web_search", "The capital of France is Paris.")];
+    const notice = untrustedOnlyChatNotice("The capital of France is Paris.", evidence);
+    expect(notice).toBeDefined();
+    expect(notice).toContain("tool-fetched");
+  });
+
+  it("does NOT warn on a non-citing answer when a trusted note is also in the evidence pool (not structurally tool-only)", () => {
+    const evidence = [note("notes/geo.md", "Paris is the capital of France."), tool("web_search", "Paris is the capital of France.")];
+    expect(untrustedOnlyChatNotice("Paris is the capital of France.", evidence)).toBeUndefined();
+  });
+
+  it("does NOT warn on a non-citing answer with NO evidence (nothing to rest on)", () => {
+    expect(untrustedOnlyChatNotice("Paris is the capital of France.", [])).toBeUndefined();
+  });
+
+  it("does NOT warn on an EMPTY answer even when evidence is all tool-fetched (parity with the ask empty-answer guard)", () => {
+    expect(untrustedOnlyChatNotice("   ", [tool("web_search", "x")])).toBeUndefined();
+  });
 });
 
 describe("answerAssertsUnsupportedDate — drifted ISO date the number guard splits and misses", () => {

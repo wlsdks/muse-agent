@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groundedOnUntrustedOnly, verifyGrounding } from "./knowledge-recall.js";
+import { evidenceIsUntrustedOnly, groundedOnUntrustedOnly, verifyGrounding } from "./knowledge-recall.js";
 import type { KnowledgeMatch } from "./knowledge-recall.js";
 
 /**
@@ -66,5 +66,27 @@ describe("groundedOnUntrustedOnly (source-trust segregation — the grounded≠t
   it("returns false when nothing is cited or no citation resolves (verifyGrounding owns those)", () => {
     expect(groundedOnUntrustedOnly("Rent is 1,250,000.", [trusted("lease.md")])).toBe(false);
     expect(groundedOnUntrustedOnly("Rent is 1,250,000 [from ghost.md].", [untrusted("mcp-shop.json")])).toBe(false);
+  });
+});
+
+describe("evidenceIsUntrustedOnly (structural dual — fires the notice even when the model didn't cite)", () => {
+  const untrusted = (source: string): KnowledgeMatch => ({ score: 1, source, text: "x", trusted: false });
+  const trusted = (source: string): KnowledgeMatch => ({ score: 1, source, text: "x" }); // absent = user's own data
+
+  it("true when the evidence pool is non-empty and EVERY match is untrusted (tool-only ground)", () => {
+    expect(evidenceIsUntrustedOnly([untrusted("mcp-shop.json")])).toBe(true);
+    expect(evidenceIsUntrustedOnly([untrusted("web_search"), untrusted("mcp-shop.json")])).toBe(true);
+  });
+
+  it("false when ANY trusted note is in the pool (mixed — the per-claim guard owns that)", () => {
+    expect(evidenceIsUntrustedOnly([untrusted("mcp-shop.json"), trusted("notes/rent.md")])).toBe(false);
+  });
+
+  it("false for an all-trusted pool, and treats absent `trusted` as the user's own", () => {
+    expect(evidenceIsUntrustedOnly([trusted("notes/rent.md")])).toBe(false);
+  });
+
+  it("false for an EMPTY pool (nothing to rest on — not a tool-only ground)", () => {
+    expect(evidenceIsUntrustedOnly([])).toBe(false);
   });
 });

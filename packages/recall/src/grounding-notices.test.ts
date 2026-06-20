@@ -35,6 +35,34 @@ describe("untrustedOnlyGroundingNotice", () => {
     expect(notice).toContain("one claim rests only on tool-fetched data"); // the per-claim notice, not the whole-answer one
     expect(notice).toContain("Paris is the capital of France"); // the specific untrusted claim is surfaced
   });
+
+  it("STILL warns when the answer OMITS the [from <src>] citation but ALL evidence is tool-fetched (citation-independent — the 8B may not cite)", () => {
+    const matches = [match("tool: web_search", "The capital of France is Paris.", 1, false)];
+    // No [from ...] marker — grounded via content overlap without emitting a citation.
+    const notice = untrustedOnlyGroundingNotice("The capital of France is Paris.", matches);
+    expect(notice).toBeDefined();
+    expect(notice).toContain("tool-fetched");
+  });
+
+  it("does NOT warn on a non-citing answer when a trusted note is in the evidence pool (not structurally tool-only)", () => {
+    const matches = [
+      match("notes/geo.md", "Paris is the capital of France.", 0.7),
+      match("tool: web_search", "Paris is the capital of France.", 1, false)
+    ];
+    expect(untrustedOnlyGroundingNotice("Paris is the capital of France.", matches)).toBeUndefined();
+  });
+
+  it("does NOT warn on a non-citing answer with NO evidence (nothing to rest on)", () => {
+    expect(untrustedOnlyGroundingNotice("Paris is the capital of France.", [])).toBeUndefined();
+  });
+
+  it("does NOT warn on an EMPTY answer even when evidence is all tool-fetched (no claim to scrutinize)", () => {
+    expect(untrustedOnlyGroundingNotice("   ", [match("tool: web_search", "x", 1, false)])).toBeUndefined();
+  });
+
+  it("does NOT warn on a REFUSAL answer even when evidence is all tool-fetched (a non-answer rests on nothing — parity with the chat abstention guard)", () => {
+    expect(untrustedOnlyGroundingNotice("I'm not sure about that.", [match("tool: web_search", "x", 1, false)])).toBeUndefined();
+  });
 });
 
 describe("citationPrecisionNotice", () => {

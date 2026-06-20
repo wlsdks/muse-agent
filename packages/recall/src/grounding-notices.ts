@@ -1,10 +1,13 @@
 import {
+  evidenceIsUntrustedOnly,
   groundedOnUntrustedOnly,
   reportCitationPrecision,
   reportCitationRecall,
   untrustedOnlySentences,
   type KnowledgeMatch
 } from "@muse/agent-core";
+
+import { answerIsRefusal } from "./text.js";
 
 /**
  * grounded≠true SOURCE-TRUST marker. Distinct from `groundingVerdictNotice`,
@@ -14,12 +17,20 @@ import {
  * model, so we surface the untrusted-only provenance as a scrutiny cue rather
  * than letting a poisonable tool-fetched claim be handed over as plain "grounded".
  * A single trusted backing source clears it (see `groundedOnUntrustedOnly`).
+ *
+ * Fires on EITHER the citation-based check (`groundedOnUntrustedOnly`, precise per
+ * resolving citation) OR the deterministic structural check
+ * (`evidenceIsUntrustedOnly` — the whole evidence pool is tool-fetched), so a
+ * non-citing but grounded answer still gets the cue (the 8B may skip the `[from
+ * <src>]` marker). The caller only invokes this on a GROUNDED answer (post-gate);
+ * the empty-answer guard keeps a degenerate direct call from firing on no claim.
  */
 export function untrustedOnlyGroundingNotice(
   answer: string,
   matches: readonly KnowledgeMatch[]
 ): string | undefined {
-  if (groundedOnUntrustedOnly(answer, matches)) {
+  if (answer.trim().length === 0 || answerIsRefusal(answer)) return undefined;
+  if (groundedOnUntrustedOnly(answer, matches) || evidenceIsUntrustedOnly(matches)) {
     return `\n⚠️  Source check: this answer is faithful to its sources, but rests ONLY on tool-fetched data (not your own notes) — verify before trusting.\n`;
   }
   // Per-claim provenance: the whole-answer gate clears when ANY citation is

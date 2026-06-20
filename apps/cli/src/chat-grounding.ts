@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import { assertiveUnsupportedFraction, detectEvidenceContradictions, groundedOnUntrustedOnly, independentWitnessCount, monthDayKeys, quorumVerdict, reportCitationPrecision, reportCitationRecall, reportSentenceGroundedness, stripCitationMarkers, untrustedOnlySentences, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { assertiveUnsupportedFraction, detectEvidenceContradictions, evidenceIsUntrustedOnly, groundedOnUntrustedOnly, independentWitnessCount, monthDayKeys, quorumVerdict, reportCitationPrecision, reportCitationRecall, reportSentenceGroundedness, stripCitationMarkers, untrustedOnlySentences, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { conflictCueFromMatches, misgroundedOutcome, type MemoryFact } from "@muse/recall";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
@@ -499,8 +499,12 @@ export function isChatGroundedSuccess(args: {
  * (MCP/web tool output, `trusted:false`). A single trusted note clears it.
  */
 export function untrustedOnlyChatNotice(answer: string, evidence: readonly KnowledgeMatch[]): string | undefined {
-  if (isChatAbstention(answer) || expressesNoInformation(answer)) return undefined;
-  if (groundedOnUntrustedOnly(answer, evidence)) {
+  if (answer.trim().length === 0 || isChatAbstention(answer) || expressesNoInformation(answer)) return undefined;
+  // EITHER the citation-based check OR the deterministic structural one (the whole
+  // evidence pool is tool-fetched) — so a non-citing but grounded answer still gets
+  // the cue (the local 8B may omit the [from <src>] marker). The abstention guard
+  // above keeps this off a non-answer even when only untrusted evidence is present.
+  if (groundedOnUntrustedOnly(answer, evidence) || evidenceIsUntrustedOnly(evidence)) {
     return "\n\n⚠️ 출처 확인: 이 답변은 출처에 충실하지만 도구로 가져온 데이터(tool-fetched)에만 근거합니다 — 직접 확인 후 신뢰하세요.";
   }
   // Per-claim provenance: a mixed answer can rest one claim solely on a

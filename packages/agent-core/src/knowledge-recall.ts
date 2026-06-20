@@ -679,6 +679,22 @@ export function groundedOnUntrustedOnly(answer: string, matches: readonly Knowle
   return anyResolved;
 }
 
+/**
+ * Deterministic STRUCTURAL dual of {@link groundedOnUntrustedOnly}: `true` when the
+ * EVIDENCE POOL itself is non-empty and entirely untrusted (every match
+ * `trusted === false` — MCP/web tool output). A grounded answer drawn from such a
+ * pool rests on tool-fetched data no matter whether the model emitted a `[from
+ * <source>]` citation, so the untrusted-source notice fires even when the local 8B
+ * SKIPS citing (the citation-based check returns `false` on `cited.length === 0`,
+ * which a non-citing-but-grounded answer trips — `verifyGrounding` accepts
+ * `citationValidity === 1` for zero citations). A single trusted note in the pool
+ * makes it `false` (the mixed case is the per-claim guard's concern, not this one).
+ * Pure.
+ */
+export function evidenceIsUntrustedOnly(matches: readonly KnowledgeMatch[]): boolean {
+  return matches.length > 0 && matches.every((m) => m.trusted === false);
+}
+
 export interface CitationEnforcement {
   /** The answer with every invented `[from <source>]` citation removed. */
   readonly text: string;
