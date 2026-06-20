@@ -870,13 +870,40 @@ export function answerAssertsUnsupportedIpAddress(
 }
 
 const ISO_DATE_RE = /\b\d{4}-\d{2}-\d{2}\b/gu;
+const MONTH_NUMBER: Readonly<Record<string, number>> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+};
+// English month-name date ("September 14", "Sep 14, 2026") — month-first, the form the
+// calendar grounding block renders via toLocaleString en-US. NOTE: month tokens are
+// matched CASE-SENSITIVELY (initial-capital, the rendered form) so the modal verb "may"
+// in "you may 3 extensions" is NOT mistaken for a May date — a false-refusal the ask-path
+// value guard stoplists "may" for the same reason. Other months are unambiguous but kept
+// capitalized for one consistent rule (an answer mirrors the capitalized rendered date).
+const EN_PROSE_DATE_RE = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})\b/gu;
+// Korean month-day ("9월 14일") — the sibling form a KO answer uses.
+const KO_DATE_RE = /(\d{1,2})\s*월\s*(\d{1,2})\s*일/gu;
 
-/** ISO dates in `text`, leading zeros stripped so "2026-09-14" == "2026-9-14". */
-function isoDates(text: string): Set<string> {
+/**
+ * `month-day` keys from every date form in `text` — ISO ("2026-09-14"), English prose
+ * ("September 14"), and Korean ("9월 14일") — leading zeros stripped so all three forms
+ * of the SAME calendar day collapse to one key ("9-14"). YEAR is intentionally dropped:
+ * the day/month drift is this guard's job, the 4-digit year is the number guard's. This
+ * lets a drifted PROSE calendar date (the grounding block renders month-names) be caught,
+ * not just ISO.
+ */
+function monthDayKeys(text: string): Set<string> {
   const out = new Set<string>();
   for (const d of text.match(ISO_DATE_RE) ?? []) {
-    const [y, m, day] = d.split("-");
-    out.add(`${y!}-${Number(m).toString()}-${Number(day).toString()}`);
+    const [, m, day] = d.split("-");
+    out.add(`${Number(m).toString()}-${Number(day).toString()}`);
+  }
+  for (const m of text.matchAll(EN_PROSE_DATE_RE)) {
+    const month = MONTH_NUMBER[m[1]!.toLowerCase()];
+    if (month) out.add(`${month.toString()}-${Number(m[2]).toString()}`);
+  }
+  for (const m of text.matchAll(KO_DATE_RE)) {
+    out.add(`${Number(m[1]).toString()}-${Number(m[2]).toString()}`);
   }
   return out;
 }
@@ -886,19 +913,22 @@ function isoDates(text: string): Set<string> {
  * support? The number guard drops 1-2 digit runs (date parts) and only sees the
  * 4-digit YEAR, so a drifted day/month over the SAME year (note 2026-09-13,
  * answer 2026-09-14) slips through and a wrong calendar/renewal/deadline date is
- * surfaced as grounded — the date analog of the whole-IPv4 guard. Conservative to
- * keep false-refusal ~0: fires ONLY when the evidence ALSO carries an ISO date (a
- * like-for-like compare) and the answer's date matches none; a date the evidence
- * states only in prose ("September 14") is left alone. Citations stripped first.
+ * surfaced as grounded — the date analog of the whole-IPv4 guard. Matches on a
+ * script-neutral month-day key across ISO ("2026-09-14"), English prose ("September
+ * 14" — the form the calendar grounding block renders) and Korean ("9월 14일"), so a
+ * drifted prose calendar date is caught too, not only ISO. Conservative to keep
+ * false-refusal ~0: fires ONLY when the evidence ALSO carries a concrete date and the
+ * answer's month-day matches none; a month-only mention ("in September") is left
+ * alone. Year is dropped (the number guard owns it). Citations stripped first.
  */
 export function answerAssertsUnsupportedDate(
   answer: string,
   matches: readonly KnowledgeMatch[],
   question: string
 ): boolean {
-  const answerDates = isoDates(answer.replace(/\[[^\]]*\]/gu, " "));
+  const answerDates = monthDayKeys(answer.replace(/\[[^\]]*\]/gu, " "));
   if (answerDates.size === 0) return false;
-  const supported = isoDates(`${question} ${matches.map((match) => match.text).join(" ")}`);
+  const supported = monthDayKeys(`${question} ${matches.map((match) => match.text).join(" ")}`);
   if (supported.size === 0) return false;
   return [...answerDates].some((date) => !supported.has(date));
 }

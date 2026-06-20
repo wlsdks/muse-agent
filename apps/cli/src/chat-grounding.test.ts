@@ -541,6 +541,33 @@ describe("answerAssertsUnsupportedDate — drifted ISO date the number guard spl
   it("accepts a date the QUESTION supplies (question is part of the supported set)", () => {
     expect(answerAssertsUnsupportedDate("Yes, 2026-09-14 works.", [note("an unrelated 2026-09-13 note")], "is 2026-09-14 free?")).toBe(false);
   });
+
+  // PROSE dates: the calendar grounding block renders month-name dates ("September 14, 2026")
+  // via toLocaleString — a drifted prose date would otherwise pass the ISO-only matcher.
+  it("flags a PROSE month-name answer date that drifts from the evidence (calendar invite drift)", () => {
+    expect(answerAssertsUnsupportedDate("It renews on September 14.", [note("renewal date 2026-09-13")], "when?")).toBe(true);
+    expect(answerAssertsUnsupportedDate("Standup is Sep 14.", [note("standup September 13, 2026")], "when?")).toBe(true);
+  });
+  it("passes a CORRECT prose date — incl. ISO↔prose equivalence (no false refusal)", () => {
+    expect(answerAssertsUnsupportedDate("It renews on September 13.", [note("renewal date 2026-09-13")], "when?")).toBe(false);
+    expect(answerAssertsUnsupportedDate("It renews 2026-09-13.", [note("renews September 13, 2026")], "when?")).toBe(false);
+  });
+  it("KO sibling: flags/passes a Korean month-day answer date (9월 14일) against the evidence", () => {
+    expect(answerAssertsUnsupportedDate("9월 14일에 갱신돼요.", [note("renewal date 2026-09-13")], "언제?")).toBe(true);
+    expect(answerAssertsUnsupportedDate("9월 13일에 갱신돼요.", [note("renewal date 2026-09-13")], "언제?")).toBe(false);
+  });
+  it("does NOT fire on a month-only prose mention (no concrete day → false-refusal=0)", () => {
+    expect(answerAssertsUnsupportedDate("It renews sometime in September.", [note("renewal date 2026-09-13")], "when?")).toBe(false);
+  });
+  it("does NOT mistake the modal verb 'may' + a count for a May date (false-refusal guard — the ask path stoplists 'may' for the same reason)", () => {
+    // a correct, grounded answer that happens to say "you may 3 …" must NOT abstain
+    expect(answerAssertsUnsupportedDate("The deadline is 2026-09-13. You may 3 extensions.", [note("deadline 2026-09-13")], "when is my deadline?")).toBe(false);
+    expect(answerAssertsUnsupportedDate("It may 5 work, but the renewal is September 13.", [note("renewal 2026-09-13")], "when?")).toBe(false);
+  });
+  it("STILL catches a capitalized 'May N' real date (May is a month too)", () => {
+    expect(answerAssertsUnsupportedDate("The event is May 5.", [note("event 2026-05-04")], "when?")).toBe(true);
+    expect(answerAssertsUnsupportedDate("The event is May 4.", [note("event 2026-05-04")], "when?")).toBe(false);
+  });
 });
 
 describe("chat citation precision/recall cues — ALCE parity on the chat surface", () => {
