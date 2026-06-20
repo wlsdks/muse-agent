@@ -37,6 +37,14 @@ Verified existing context-strategy seams (from codegraph, 2026-06-20):
 - ◦ **Grounding-quality eval under the new block order**: assert the edge-placed
   prompt order does not regress answer grounding (the judge flagged no eval
   measured this). Likely `eval:chat-grounding` / `precheck:grounding` case.
+- ◦ **Importance-aware intra-cap** (fire-2 rejected #3): `capToolOutput` head+tail
+  truncates regardless of which span matters; use the importance signal to keep the
+  load-bearing span. Higher fabrication-floor risk — needs a relevance signal the
+  tool layer lacks; design carefully. (@muse/memory)
+- ◦ **`muse.context.fetch` re-fetch live e2e** under masking: confirm a masked
+  observation is actually re-fetchable by the model in a real run (fire-2 proved
+  the ref is recoverable from the store; the end-to-end fetch-tool round-trip is
+  untested live). Mind the ref-store TTL (30 min).
 
 ---
 
@@ -63,5 +71,33 @@ ratchet: testFiles +0 (extended existing) · recall 326 pass · cli 2745 pass ·
   gate / notesFraming / verifyGrounding / the "(grounded on …)" banner. Verified
   by independent Opus judge (6/6) + mutation RED→GREEN (identity-order → edge case
   RED; drop-block → set-equality RED).
+
+---
+
+## fire 2 · 2026-06-20 · skill v1.14.0 · c6789315
+meta: value-class=new-capability · pkg=@muse/agent-core+@muse/memory · kind=context-history-compaction · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles +2 (observation-mask.test.ts, observation-masking.test.ts) · memory 455 pass · agent-core 2472 pass · pnpm check exit0 · pnpm lint exit0 · fabrication 0 · self-eval green
+- **What:** Stale-observation masking in the model loop. New pure
+  `maskStaleToolObservations(messages, {refStore, keepLatestTurns=1})` (@muse/memory)
+  rewrites PRIOR-turn `role:"tool"` message content into a
+  `[observation masked: tool <name>, N chars — re-fetch via muse.context.fetch({ ref=<id> })]`
+  placeholder, stashing full bytes in the existing `ContextReferenceStore`
+  (sha256[:12], same scheme as `capToolOutput`). Wired before the model call in BOTH
+  `executeModelLoop` and the streaming path. Latest turn kept full.
+- **Why:** "The Complexity Trap" (arXiv:2508.21433, NeurIPS'25) — masking old tool
+  observations matches summarization at ~half the cost; "ACON" (arXiv:2510.00615) —
+  history/observation compression cuts peak tokens 26–54%. Muse's loop appended every
+  prior (capped) observation into every later turn forever → unbounded mid-context
+  growth (the "Lost in the Middle" dead-zone). hermes has this as OPEN issue #2046
+  (unbuilt); openclaw uses free-form summary with no ref-recoverable mask → widens edge.
+- **Review point:** content-preserving (full bytes re-fetchable via ref) so the
+  fabrication/grounding floor is intact — masking runs on the transient `messages`
+  array only; `toolResults`/`intermediateMessages` keep full bytes so citations are
+  unaffected (judge check 6 confirmed). No-op when no refStore.
+- **Risk:** none to floor — pure content-only map (no drop/reorder/orphan; pairing
+  preserved), deterministic, no touch to capToolOutput/citation gate/verifyGrounding/
+  neutralizeInjectionSpans/tool-loop limits. Independent Opus judge PASS 8/8 + 3
+  mutation RED→GREEN (no-op→leaner RED; stub-ref→recoverable RED; mask-latest→latest-full RED).
+  Residual: turn-boundary = contiguous tool run (current wiring correct); ref TTL 30min.
 
 ---
