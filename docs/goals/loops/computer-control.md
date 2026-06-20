@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 3 · 2026-06-20 · skill v2.0 · <commit-pending> (PRECISE root-cause + honest theme-wall, 3-fire merge)
+## fire 3 · 2026-06-20 · skill v2.0 · 54e86fee (PRECISE root-cause + honest theme-wall, 3-fire merge)
 meta: value-class=refactor(work-list) · pkg=agent-core(diagnosis) · kind=root-cause-final · verdict=N/A · firesSinceDrill=3
 ratchet: testFiles 1060→1060 · fabrication 0 · eval:computer-task 2/2 STABLE FAIL (root-caused, not yet fixed)
 - 무엇: decompose (c) 착수 중 **정밀 root-cause 확정**: `muse.context.*`·`muse.skills.*` 6개가 전부 **domain="core" → isMandatoryTool=true**(always-on, cap 보호). 그래서 *모든* 턴(file-fix 포함)에 20개 도구가 노출되고 그 6개가 영구 distractor. 12B가 20개(tool-calling.md ≤5-7의 3배) 중 prominent한 skills/context를 file 도구 대신 선택.
