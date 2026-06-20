@@ -2,7 +2,16 @@
 
 > Theme: Muse의 코어 엣지(결정론적 grounding+citation 게이트 + 4 표면 memory-integrity·self-development·orchestration·grounding-floor) 강화·하드닝.
 > Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main). **Every 3 fires: ff-merge the branch into origin/main, then keep working on the branch (진안 directive 2026-06-20).**
-> Cron `cfe778e2` (every 15m, session-only). Stop: `CronDelete cfe778e2`. Convention: [README](README.md).
+> Cron `d8c31fa3` (every 15m, session-only; was `cfe778e2` under skill v1.14.0, re-registered with loop-creator v2.0 at fire 6). Stop: `CronDelete d8c31fa3`. Convention: [README](README.md).
+
+## fire 6 · 2026-06-20 · skill v2.0 · NO-SHIP (rolled back)
+meta: value-class=new-capability · pkg=@muse/agent-core · kind=grounding-floor/multilingual-injection · verdict=FAIL(④b)→ROLLBACK · firesSinceDrill=6
+ratchet: testFiles 1055→1055 (slice reverted) · fabrication 0 · no code shipped · branch==main
+- 무엇: fire 3의 형제-감사 — 영어 패턴 2(output-clamp)·3(role-hijack)의 한국어 아날로그 2패턴을 MEMORY_INJECTION_PATTERNS에 추가 시도. MUTATION-FIRST RED→GREEN 통과, pnpm check/lint/precheck:grounding 전부 green이었으나 ④b 적응형 Opus judge가 FAIL.
+- 왜 FAIL: benign 한국어 노트 **13/19(68%) false-positive**. `만`/`처럼`이 한국어 최빈 조사라 "친구처럼 말해줬다"·"결과만 출력"·"이제 너는 …했다" 같은 일상 서술을 노트 한복판에서 중성화(파괴). 내 benign 테스트가 "친구처럼 편한"(형용사)만 골라 놓침 — 적응형 judge가 일상 simile/서술형 동사를 공략해 잡아냄.
+- 리뷰지점: v2 적응형 적대 judge + MUTATION-FIRST 게이트가 **정확히 의도대로 작동** — 결정론 게이트 전부 통과한 슬라이스를 행동-수준 false-positive로 막음(고정 체크리스트였으면 통과했을 것). 롤백으로 한국어 사용자의 자기-노트 보호.
+- 리스크: 0 — 코드 미반영(git restore), 저널/backlog 학습만 커밋.
+lesson: 정규형 injection 패턴은 *희소 토큰*(command-noun+override-verb)에 앵커해야 한다 — `만`/`처럼`처럼 흔한 조사+일상 동사에 앵커하면 사용자 자기-노트를 대량 오탐. 새 locale 패턴은 작은 benign 테스트가 아니라 **대규모 benign 코퍼스로 STABLE 0 오탐** 검증 후에만 land.
 
 ## fire 5 · 2026-06-20 · skill v1.14.0 · e0916bd7
 meta: value-class=new-capability · pkg=@muse/multi-agent · kind=orchestration/verifier-gated-resynthesis · verdict=PASS · firesSinceDrill=5
