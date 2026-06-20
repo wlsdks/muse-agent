@@ -38,6 +38,13 @@ export interface BeliefProvenance {
    * (Hindsight): a user-stated truth outranks an inference.
    */
   readonly source?: "auto" | "user";
+  /**
+   * `true` for a RETRACTION marker — an explicit user `forget`. It carries no value
+   * (the key was dropped), is excluded from value/count aggregation, and makes the
+   * key's NEWEST-event the retraction so the auto-extractor won't resurface a fact
+   * the user deleted. A later non-retraction event (a deliberate re-`set`) clears it.
+   */
+  readonly retraction?: boolean;
 }
 
 export interface BeliefProvenanceStore {
@@ -136,9 +143,53 @@ export function refinementAwareDistinctValueCount(values: readonly string[]): nu
  * already exists in the log; this DERIVES the per-fact signal a freshness/promotion
  * layer needs, with NO migration of the flat `facts` store. Pure.
  */
+/**
+ * Keys whose NEWEST belief-provenance event is a RETRACTION (an explicit user
+ * `forget`) — so the auto-extractor must NOT resurface them. A later non-retraction
+ * event (a deliberate re-`set` / re-learn the user authored) is newer, so the key
+ * drops out (the user reopened it). Pure over the append-only log.
+ */
+/**
+ * Append a RETRACTION marker for an explicit user `forget`, so the auto-extractor
+ * won't resurface the dropped fact ({@link keysWithActiveRetraction}). The CLI
+ * `memory forget` and the in-chat `/forget` both call this (DRY) — `key` must be the
+ * normalized form the store uses. Fail-open caller-side; this resolves once recorded.
+ */
+export async function recordRetraction(
+  store: Pick<BeliefProvenanceStore, "record">,
+  userId: string,
+  key: string,
+  opts?: { readonly nowIso?: string; readonly kind?: "fact" | "preference" }
+): Promise<void> {
+  await store.record({
+    userId,
+    key,
+    kind: opts?.kind ?? "fact",
+    value: "",
+    learnedAt: opts?.nowIso ?? new Date().toISOString(),
+    retraction: true
+  });
+}
+
+export function keysWithActiveRetraction(entries: readonly BeliefProvenance[]): ReadonlySet<string> {
+  const newestByKey = new Map<string, BeliefProvenance>();
+  for (const e of entries) {
+    const prev = newestByKey.get(e.key);
+    if (!prev || Date.parse(e.learnedAt) >= Date.parse(prev.learnedAt)) newestByKey.set(e.key, e);
+  }
+  const out = new Set<string>();
+  for (const [key, newest] of newestByKey) {
+    if (newest.retraction === true) out.add(key);
+  }
+  return out;
+}
+
 export function deriveFactProvenance(entries: readonly BeliefProvenance[]): readonly FactProvenance[] {
   const byKey = new Map<string, BeliefProvenance[]>();
   for (const e of entries) {
+    // Retraction markers carry no value — exclude them from value/count aggregation
+    // so a forget doesn't pollute confirmCount / distinctValueCount / latest value.
+    if (e.retraction === true) continue;
     const group = byKey.get(e.key);
     if (group) group.push(e);
     else byKey.set(e.key, [e]);

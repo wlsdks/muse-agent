@@ -22,7 +22,7 @@
 import { readFile } from "node:fs/promises";
 
 import { isMemoryInjection } from "@muse/agent-core";
-import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, selectPromotableFacts, selectPromotableMemories, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
+import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, recordRetraction, selectPromotableFacts, selectPromotableMemories, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/mcp";
 import type { Command } from "commander";
@@ -371,6 +371,14 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
       const userId = resolveMemoryUserId(options.user, options.persona);
       const store = new FileUserMemoryStore();
       const removed = await store.forget(userId, key);
+      // Record a RETRACTION marker so the auto-extractor won't silently resurface
+      // the fact the user just forgot (source: user > auto). Fail-open. Only when
+      // something was actually removed — a no-op forget records nothing.
+      if (removed) {
+        try {
+          await recordRetraction(new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()), userId, normalizeMemoryKey(key));
+        } catch { /* provenance is best-effort; the forget already succeeded */ }
+      }
       io.stdout(removed
         ? `Forgot "${normalizeMemoryKey(key)}" (user=${userId})\n`
         : `(nothing remembered under "${key}" — already forgotten or never stored)\n`);

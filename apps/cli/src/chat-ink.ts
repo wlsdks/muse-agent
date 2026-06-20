@@ -12,7 +12,7 @@
 import { createMuseRuntimeAssembly, parseBoolean, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
 import { isSkillAvoided, readCheckins, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks } from "@muse/mcp";
-import { aggregateActivitySignals, selectFireablePatterns } from "@muse/memory";
+import { aggregateActivitySignals, defaultBeliefProvenanceFile, FileBeliefProvenanceStore, normalizeMemoryKey, recordRetraction, selectFireablePatterns } from "@muse/memory";
 import { AuthoredSkillStore, loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import { buildSkillsPrompt } from "./chat-skills.js";
 import { resolveSkillRewardsFile } from "./commands-skills.js";
@@ -1048,7 +1048,14 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     if (!memoryStore?.forget) return false;
     try {
       const removed = await Promise.resolve(memoryStore.forget(userId, key));
-      if (removed) await refreshMemory();
+      if (removed) {
+        await refreshMemory();
+        // Retraction marker (sibling of the CLI `memory forget`): the auto-extractor
+        // must not silently resurface a fact the user forgot mid-chat (user > auto).
+        try {
+          await recordRetraction(new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()), userId, normalizeMemoryKey(key));
+        } catch { /* provenance is best-effort */ }
+      }
       return removed;
     } catch {
       return false;

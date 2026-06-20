@@ -373,6 +373,8 @@ export {
   contestedFactKeys,
   defaultBeliefProvenanceFile,
   deriveFactProvenance,
+  keysWithActiveRetraction,
+  recordRetraction,
   refinementAwareDistinctValueCount,
   FileBeliefProvenanceStore,
   MAX_BELIEF_PROVENANCE_ENTRIES,

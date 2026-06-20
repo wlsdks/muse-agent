@@ -11,6 +11,8 @@ import {
   classifyValueChange,
   contestedFactKeys,
   deriveFactProvenance,
+  keysWithActiveRetraction,
+  recordRetraction,
   provisionalFactKeys,
   refinementAwareDistinctValueCount,
   readBeliefProvenance,
@@ -53,6 +55,46 @@ describe("deriveFactProvenance — distinctValueCount is refinement-aware (a mor
       entry({ key: "home", value: "Busan", learnedAt: "2026-06-10T00:00:00.000Z" })
     ]);
     expect(flip.find((p) => p.key === "home")?.distinctValueCount).toBe(2);
+  });
+});
+
+describe("keysWithActiveRetraction — a forgotten key stays forgotten (auto re-extract must not resurface it)", () => {
+  it("returns a key whose NEWEST event is a retraction (the user forgot it)", () => {
+    const out = keysWithActiveRetraction([
+      entry({ key: "home_city", value: "Seoul", learnedAt: "2026-06-01T00:00:00.000Z", source: "auto" }),
+      entry({ key: "home_city", value: "", learnedAt: "2026-06-10T00:00:00.000Z", retraction: true })
+    ]);
+    expect([...out]).toEqual(["home_city"]);
+  });
+  it("does NOT return a key the user RE-STATED after retracting (a later non-retraction event clears it)", () => {
+    const out = keysWithActiveRetraction([
+      entry({ key: "home_city", value: "Seoul", learnedAt: "2026-06-01T00:00:00.000Z", source: "auto" }),
+      entry({ key: "home_city", value: "", learnedAt: "2026-06-10T00:00:00.000Z", retraction: true }),
+      entry({ key: "home_city", value: "Busan", learnedAt: "2026-06-15T00:00:00.000Z", source: "user" })
+    ]);
+    expect([...out]).toEqual([]);
+  });
+  it("does NOT return a key that was only ever learned (never retracted)", () => {
+    expect([...keysWithActiveRetraction([entry({ key: "k", value: "v", learnedAt: "2026-06-01T00:00:00.000Z" })])]).toEqual([]);
+  });
+  it("recordRetraction writes a marker that keysWithActiveRetraction recognises (the CLI/chat forget seam)", async () => {
+    const recorded: BeliefProvenance[] = [];
+    await recordRetraction({ record: async (e) => { recorded.push(e); } }, "u1", "home_city", { nowIso: "2026-06-20T00:00:00.000Z" });
+    expect(recorded[0]?.retraction).toBe(true);
+    expect(recorded[0]?.key).toBe("home_city");
+    expect(recorded[0]?.value).toBe("");
+    expect([...keysWithActiveRetraction(recorded)]).toEqual(["home_city"]);
+  });
+  it("deriveFactProvenance IGNORES retraction markers (no value/count pollution — fire 16/22 invariant preserved)", () => {
+    const prov = deriveFactProvenance([
+      entry({ key: "k", value: "Seoul", learnedAt: "2026-06-01T00:00:00.000Z", source: "auto" }),
+      entry({ key: "k", value: "Seoul", learnedAt: "2026-06-05T00:00:00.000Z", source: "auto" }),
+      entry({ key: "k", value: "", learnedAt: "2026-06-10T00:00:00.000Z", retraction: true })
+    ]);
+    const k = prov.find((p) => p.key === "k");
+    expect(k?.confirmCount).toBe(2); // the retraction is NOT counted as a confirmation
+    expect(k?.value).toBe("Seoul"); // value is the latest NON-retraction value, not ""
+    expect(k?.distinctValueCount).toBe(1);
   });
 });
 

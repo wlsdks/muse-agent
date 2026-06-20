@@ -18,6 +18,7 @@
 import type { ModelMessage, ModelProvider, ModelResponse } from "@muse/model";
 import { redactSecretsInText, stripUntrustedTerminalChars, type JsonObject } from "@muse/shared";
 
+import { keysWithActiveRetraction } from "./belief-provenance-store.js";
 import type { BeliefProvenance, BeliefProvenanceStore } from "./belief-provenance-store.js";
 import { classifyMemoryOperation, normalizeMemoryKey } from "./memory-user-store.js";
 import { extractJsonObject } from "./memory-extract-json.js";
@@ -516,6 +517,13 @@ async function persist(
   // extractor reported as a no-value/retraction token rather than storing junk.
   const existing = await Promise.resolve(store.findByUserId(userId)).catch(() => undefined);
   const forget = store.forget?.bind(store);
+  // Forgotten-fact suppression: a key the user explicitly retracted (`forget`) must NOT
+  // be resurfaced by the auto-extractor — an inference overriding an explicit user
+  // retraction is the auto-vs-user authority inversion (source: user > auto). A later
+  // deliberate re-`set` clears the marker (keysWithActiveRetraction). Fail-open.
+  const retractedKeys: ReadonlySet<string> = provenance
+    ? keysWithActiveRetraction(await Promise.resolve(provenance.store.query(userId)).catch(() => []))
+    : new Set<string>();
   const applyOp = (kind: "fact" | "preference", key: string, value: string, current: string | undefined): void => {
     const op = classifyMemoryOperation(current, value);
     if (op === "noop") {
@@ -525,6 +533,10 @@ async function persist(
       // Scope the retraction to THIS namespace — a fact retraction must not also
       // wipe a same-key preference (and vice versa).
       if (forget) writes.push(safeWrite(Promise.resolve(forget(userId, key, kind))));
+      return;
+    }
+    if (retractedKeys.has(normalizeMemoryKey(key))) {
+      // The user forgot this key — don't let an inference silently re-persist it.
       return;
     }
     writes.push(safeWrite(kind === "fact" ? store.upsertFact(userId, key, value) : store.upsertPreference(userId, key, value)));

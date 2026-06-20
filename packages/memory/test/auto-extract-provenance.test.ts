@@ -79,4 +79,30 @@ describe("auto-extract belief provenance", () => {
     expect(await provenanceStore.query("u1")).toEqual([]);
     expect((await store.findByUserId("u1"))?.facts.home_city).toBe("Seoul");
   });
+
+  it("does NOT resurface a FORGOTTEN fact — an auto re-extract of a retracted key is suppressed, but a different key still writes", async () => {
+    const store = new InMemoryUserMemoryStore();
+    const provenanceStore = new FileBeliefProvenanceStore(file);
+    // user forgot home_city (a retraction marker is the newest event for the key)
+    await provenanceStore.recordMany([{ userId: "u1", key: "home_city", kind: "fact", value: "", learnedAt: "2026-06-10T00:00:00.000Z", retraction: true }]);
+    const hook = createUserMemoryAutoExtractHook({ model: "stub", modelProvider: extractorStub(PAYLOAD), store, provenanceStore });
+    await hook.afterComplete!(context("u1", "I live in Seoul, keep replies concise"), { id: "r", model: "stub", output: "ok" });
+
+    const mem = await store.findByUserId("u1");
+    expect(mem?.facts.home_city).toBeUndefined(); // the forgotten fact did NOT come back
+    expect(mem?.preferences.tone).toBe("concise"); // a DIFFERENT key still writes (key-scoped, no collateral damage)
+  });
+
+  it("a user RE-STATEMENT after a forget reopens the key — a later auto re-extract is then allowed", async () => {
+    const store = new InMemoryUserMemoryStore();
+    const provenanceStore = new FileBeliefProvenanceStore(file);
+    await provenanceStore.recordMany([
+      { userId: "u1", key: "home_city", kind: "fact", value: "", learnedAt: "2026-06-10T00:00:00.000Z", retraction: true },
+      { userId: "u1", key: "home_city", kind: "fact", value: "Seoul", learnedAt: "2026-06-15T00:00:00.000Z", source: "user" } // deliberate re-set
+    ]);
+    const hook = createUserMemoryAutoExtractHook({ model: "stub", modelProvider: extractorStub(PAYLOAD), store, provenanceStore });
+    await hook.afterComplete!(context("u1", "I live in Seoul"), { id: "r", model: "stub", output: "ok" });
+
+    expect((await store.findByUserId("u1"))?.facts.home_city).toBe("Seoul"); // reopened → auto write allowed
+  });
 });
