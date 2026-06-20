@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 24 · 2026-06-21 · skill v2.0 · <commit-pending> (file_read nextOffset paging hint; 3-fire merge)
+## fire 24 · 2026-06-21 · skill v2.0 · 7474abed (file_read nextOffset paging hint; 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/fs · kind=reliability-nudge(output-paging) · verdict=PASS · firesSinceDrill=5
 ratchet: testFiles 1071→1071 (+2 cases fs-read-tools paging+char-cap, mutation-valid) · fabrication 0 · @muse/fs 격리 166 · pnpm check exit 0 · lint clean · Ollama DOWN(measure-first 불가, gap-scout fallback)
 - 무엇: line-truncated read가 `{truncated:true, totalLines}`만 줘서 12B가 다음 페이지 offset을 추측해야 함(큰 파일 멀티스텝 막힘). FIX: text-read 결과에 `nextOffset`(재개할 1-based 라인 `start+sliced.length+1`) 추가, line-truncated일 때만; char-cap cut은 라인 경계 부정확이라 omit(char-cap 분기가 clear=우선). 설명에 페이징 프로토콜 1줄.
