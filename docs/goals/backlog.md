@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ orchestrate-path worker output neutralized (buildOrchestrationResponse both fan-ins) — completes fire-13's ASI07 hole; tracked results keep raw for trace fidelity (doctrine P5) — context-strategy fire 14 (detail in docs/goals/loops/context-strategy.md)
+
 - ✓ sub-agent worker output neutralized at the lead-worker fan-in (runOne neutralizeInjectionSpans) — blocks inter-agent injection/forged-citation propagation (doctrine P5, OWASP ASI07) — context-strategy fire 13 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ episodic-fade reinstatement-on-reaccess: a faded session re-engaged recently (live recallStats) is exempted from FADE_PENALTY — never silently down-rank a still-recalled source (doctrine P3/P4; mem0 decay-unless-reaccessed) — context-strategy fire 12 (detail in docs/goals/loops/context-strategy.md)
