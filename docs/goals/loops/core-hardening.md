@@ -1,7 +1,7 @@
 # core-hardening — Muse 코어 엣지 강화 루프 journal
 
 > Theme: Muse의 코어 엣지(결정론적 grounding+citation 게이트 + 4 표면 memory-integrity·self-development·orchestration·grounding-floor) 강화·하드닝.
-> Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main, NEVER merges to main).
+> Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main). **Every 3 fires: ff-merge the branch into origin/main, then keep working on the branch (진안 directive 2026-06-20).**
 > Cron `cfe778e2` (every 15m, session-only). Stop: `CronDelete cfe778e2`. Convention: [README](README.md).
 
 ## fire 5 · 2026-06-20 · skill v1.14.0 · e0916bd7
