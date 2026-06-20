@@ -33,6 +33,12 @@ Verified existing context-strategy seams (from codegraph, 2026-06-20):
 - **Budgets** — `StepBudgetTracker` / `systemPromptTokenBudget` / step caps.
 
 ### Open follow-ups (next-fire candidates)
+- ◦ **Shared-export the fact-caution mark strings** (fire-20 backlog, fire-7 lesson): CONTESTED/
+  PROVISIONAL/STALE_FACT_MARK are now triplicated across packages/recall/src/select.ts and
+  apps/cli/src/muse-persona.ts (+ tests). Export them from one home (e.g. @muse/recall) and import,
+  to close the drift class structurally (like fire 7's tokenMatchesKeywordWord). (recall+apps/cli)
+- ◦ **chat-ink persona marks (③ sub-slice #2)**: chat-ink.ts persona still lacks provisional+stale
+  (only contested); needs the async-closure + per-turn provenance refresh. (apps/cli)
 - ◦ **Periodic IANA drift-check for NON_TLD_FILE_EXTENSIONS** (fire-18 judge residual): the URL-guard
   filename carve-out is a hand-maintained denylist-inverse; a future gTLD delegation matching a current
   entry would silently re-open the carve-out. Add a test diffing the set against the IANA root zone (or a
@@ -553,3 +559,22 @@ ratchet: testFiles +0 (extended existing) · memory 485 pass · pnpm check exit0
   Independent Opus adaptive judge PASS 8/8 + mutation RED→GREEN (if(false) guard → 381>350 RED).
   Residual (correct trade-off): a pathological tiny-budget can still overshoot rather than drop a needed
   source — matches the existing hardBudget<=0 "keep only last user" philosophy.
+
+## fire 20 · 2026-06-21 · skill v2.0.0 · 467d041b
+meta: value-class=wiring · pkg=apps/cli+@muse/memory · kind=consolidation-stale-mark-chat-parity · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles +0 (extended existing) · cli 2823 pass · pnpm check exit0 · pnpm lint exit0 · fabrication 0 · self-eval green
+- **DOCTRINE:** advances ③ consolidation spine — completes the fire-16 deferred chat-side of sub-slice #3
+  (stale at point-of-use). Chat persona now has FULL mark-parity with ask (contested/provisional/stale).
+- **What:** `buildMusePersona` gained `staleKeys` (rendered with precedence contested→provisional→stale,
+  STALE_FACT_MARK byte-identical to recall's select.ts); `chat-repl.ts` derives `staleFactKeys` from the
+  belief-provenance store it already queries (same lazy import, fail-soft catch).
+- **Why:** chat (the continuous-companion thread) asserted a months-stale auto-fact flat while ask cautioned
+  the identical fact — the doctrine's worst failure (confident wrong memory) on the primary surface. STALE
+  (arXiv:2605.06527 — know when a memory is no longer valid), SSGM (arXiv:2603.11768), mem0 (staleness a
+  hardest 2026 problem). hermes/openclaw flag no point-of-use staleness on any surface.
+- **Review point:** no double-mark (contested short-circuits; ternary is provisional?:stale?:""); empty/
+  absent staleKeys → byte-identical (no-op); other buildMusePersona callers pass no staleKeys → no-op.
+- **Risk:** none to floor — additive caution after defangMemoryValue (value verbatim, never dropped),
+  fabrication=0, fail-soft provenance (error→unmarked). Independent Opus adaptive judge PASS 8/8 + mutation
+  RED→GREEN (drop STALE mark → stale test RED). Sibling audit: ask↔chat now full parity; chat-ink still
+  contested-only (sub-slice #2 deferred — async refactor). Mark-string triplication → shared-export follow-up.
