@@ -328,6 +328,30 @@ export const OPTIONAL_GROUNDING_TIER: Readonly<Record<keyof OptionalGroundingSou
   reflection: 20
 };
 
+/**
+ * Blend a block's per-kind priority TIER with its actual per-turn recall score
+ * onto ONE 0-1 scale, for `edgePlaceByPriority`'s `relevance` input. The tier is
+ * normalized against the highest tier so both operands share a 0-1 range (never
+ * the 20–100 tier vs 0–1 score mix that would make the tier dominate).
+ *
+ * - `perTurnScore` absent → the normalized tier alone, so a score-less turn
+ *   orders BYTE-IDENTICALLY to the fixed tier-only ordering (production no-op).
+ * - present → an equal (W=0.5) blend of normalized tier and the clamped score,
+ *   so a high per-turn match lifts a normally-mid-tier block toward an edge.
+ *
+ * Deterministic + pure (no Date/random); same inputs → same number.
+ */
+export function optionalGroundingRelevance(tierKey: keyof OptionalGroundingSources, perTurnScore?: number): number {
+  const maxTier = Math.max(...Object.values(OPTIONAL_GROUNDING_TIER));
+  const normalizedTier = OPTIONAL_GROUNDING_TIER[tierKey] / maxTier;
+  if (perTurnScore == null) {
+    return normalizedTier;
+  }
+  const W = 0.5;
+  const clampedScore = Math.min(1, Math.max(0, perTurnScore));
+  return normalizedTier * W + clampedScore * (1 - W);
+}
+
 interface OptionalGroundingSpec {
   readonly header: string;
   readonly body: string;
@@ -384,10 +408,15 @@ export function optionalGroundingSections(
     { kind: "feeds", source: sources.feeds, spec: { body: sources.feeds.body, footer: "=== END FEED HEADLINES ===", header: "=== RECENT FEED HEADLINES (your watched RSS/Atom feeds, newest first) ===", present: sources.feeds.present } },
     { kind: "reflection", source: sources.reflection, spec: { body: sources.reflection.body, footer: "=== END NOTICED ===", header: "=== WHAT MUSE HAS NOTICED ABOUT YOU (high-level, from past sessions) ===", present: sources.reflection.present } }
   ];
-  const present = all.filter((entry) => entry.spec.present);
+  // `present` is set by the caller from a match-COUNT (e.g. matchedContacts.length > 0)
+  // while `body` is a separately-rendered string — decoupled, so a present:true block
+  // can still carry an empty/whitespace body, which would emit a grounding HEADER with no
+  // citable content: wasted context (doctrine 4) AND a citable-looking header backing
+  // nothing (doctrine 2). Drop it — no source is lost (there is no content to lose).
+  const present = all.filter((entry) => entry.spec.present && entry.spec.body.trim().length > 0);
   return edgePlaceByPriority(
     present.map((entry) => ({
-      priority: entry.source.relevance ?? OPTIONAL_GROUNDING_TIER[entry.kind],
+      priority: entry.source.relevance ?? optionalGroundingRelevance(entry.kind),
       spec: entry.spec
     }))
   );

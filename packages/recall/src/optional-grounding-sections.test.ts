@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groundingSectionLines, optionalGroundingSections, type OptionalGroundingSources } from "./present.js";
+import { groundingSectionLines, optionalGroundingRelevance, optionalGroundingSections, type OptionalGroundingSources } from "./present.js";
 
 const allAbsent: OptionalGroundingSources = {
   tasks: { body: "", present: false },
@@ -94,6 +94,75 @@ describe("optionalGroundingSections", () => {
     expect(specs[remIdx]?.body).toBe("REM");
   });
 
+  it("a HIGH per-turn recall score (via optionalGroundingRelevance) lifts a normally-mid-tier episodes block to an EDGE", () => {
+    // PRODUCTION MIX: only episodes carries a per-turn relevance (commands-ask
+    // scores episodes from episodeHits); the siblings pass NO relevance and so
+    // exercise the real fallback path in optionalGroundingSections. episodes is a
+    // LOW tier (40) — below actions(60)/git(55)/shell(50). With a strong recall
+    // score blended in, episodes (0.675) must climb ABOVE the unscored siblings
+    // and reach a head/tail slot. This only holds because the fallback for the
+    // unscored siblings ALSO normalizes through optionalGroundingRelevance (same
+    // 0-1 scale) — if the fallback used the raw tier (20-100), episodes' 0.675
+    // would sink below every sibling: the exact scale-mix the fire-6 judge caught.
+    const headerEpisodes = "=== PAST SESSION SUMMARIES (your prior conversations) ===";
+    const present: OptionalGroundingSources = {
+      ...allAbsent,
+      actions: { body: "A", present: true },
+      git: { body: "G", present: true },
+      shell: { body: "S", present: true },
+      // The 1-line mutation that flips this RED: replace 0.95 with `undefined` —
+      // episodes then orders by its bare tier (40), sinking to a MIDDLE slot.
+      // ALSO RED if present.ts's fallback reverts to the raw-tier `?? OPTIONAL_GROUNDING_TIER`
+      // (the scale-mix bug): episodes 0.675 < raw siblings 50-60 → middle.
+      episodes: { body: "E", present: true, relevance: optionalGroundingRelevance("episodes", 0.95) }
+    };
+    const specs = optionalGroundingSections(present);
+    const headers = specs.map((s) => s.header);
+
+    // (a) the high-scoring episodes block sits at an EDGE of the optional region.
+    const epIdx = headers.indexOf(headerEpisodes);
+    expect(epIdx === 0 || epIdx === headers.length - 1).toBe(true);
+
+    // (b) set-equality: exactly the four present blocks, each once, none dropped/added.
+    const presentHeaders = [
+      "=== ACTIONS MUSE HAS TAKEN ON YOUR BEHALF (your audit log) ===",
+      "=== YOUR RECENT GIT COMMITS (from this repo, newest first) ===",
+      "=== MATCHING SHELL COMMANDS (from your shell history) ===",
+      headerEpisodes
+    ];
+    expect(specs).toHaveLength(presentHeaders.length);
+    expect([...headers].sort()).toEqual([...presentHeaders].sort());
+
+    // (c) fabrication=0: each block's body travels byte-identical to its input.
+    const bodyByHeader = new Map(specs.map((s) => [s.header, s.body]));
+    expect(bodyByHeader.get(headerEpisodes)).toBe("E");
+    expect(bodyByHeader.get("=== ACTIONS MUSE HAS TAKEN ON YOUR BEHALF (your audit log) ===")).toBe("A");
+    expect(bodyByHeader.get("=== YOUR RECENT GIT COMMITS (from this repo, newest first) ===")).toBe("G");
+    expect(bodyByHeader.get("=== MATCHING SHELL COMMANDS (from your shell history) ===")).toBe("S");
+  });
+
+  it("no-op safety: a score-less turn (helper undefined OR no relevance) renders BYTE-IDENTICAL to the bare tier-only order", () => {
+    // Production must be a no-op for turns with no per-turn scores. The tier-only
+    // order (no relevance anywhere) and the helper-with-undefined order must match
+    // each other byte-for-byte — the helper's no-op path preserves tier ordering.
+    const base = {
+      ...allAbsent,
+      tasks: { body: "T", present: true },
+      git: { body: "G", present: true },
+      episodes: { body: "E", present: true },
+      reflection: { body: "R", present: true }
+    };
+    const tierOnly = optionalGroundingSections(base).map((s) => s.header);
+    const helperUndefined = optionalGroundingSections({
+      ...allAbsent,
+      tasks: { body: "T", present: true, relevance: optionalGroundingRelevance("tasks", undefined) },
+      git: { body: "G", present: true, relevance: optionalGroundingRelevance("git", undefined) },
+      episodes: { body: "E", present: true, relevance: optionalGroundingRelevance("episodes", undefined) },
+      reflection: { body: "R", present: true, relevance: optionalGroundingRelevance("reflection", undefined) }
+    }).map((s) => s.header);
+    expect(helperUndefined).toEqual(tierOnly);
+  });
+
   it("falls back to a deterministic priority tier when relevance is absent (stable, no stochastic order)", () => {
     // No relevance scores anywhere — output must be deterministic and identical run-to-run.
     const present: OptionalGroundingSources = {
@@ -111,5 +180,23 @@ describe("optionalGroundingSections", () => {
       "=== UPCOMING CALENDAR EVENTS (sorted chronologically) ===",
       "=== USER OPEN TASKS (sorted by due date, most imminent first) ==="
     ].sort());
+  });
+});
+
+describe("optionalGroundingSections — content-free grounding header guard (doctrine P2/P4)", () => {
+  it("drops a present:true block whose body is empty/whitespace (no content-free grounding header)", () => {
+    // `present` is keyed off a match-COUNT at the callsite while `body` is rendered
+    // separately — decoupled. A present:true block with an empty body would emit a
+    // grounding header backing nothing. It must not be emitted; a present block WITH
+    // real content still is. (No source lost — the dropped block has no content.)
+    const specs = optionalGroundingSections({
+      ...allAbsent,
+      contacts: { body: "   \n  ", present: true },   // present but content-free
+      tasks: { body: "<task 1>", present: true }       // present with real content
+    });
+    const headers = specs.map((s) => s.header);
+    expect(headers).not.toContain("=== MATCHING CONTACTS (from your address book) ===");
+    expect(headers).toContain("=== USER OPEN TASKS (sorted by due date, most imminent first) ===");
+    expect(specs).toHaveLength(1);
   });
 });

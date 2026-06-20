@@ -45,7 +45,7 @@ export { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource };
 import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy } from "@muse/recall";
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
 import { dedupNearDuplicateChunks, diversifyAskChunks, notesGroundingFraming, secondHopAugmentChunks, shouldSecondHop } from "@muse/recall";
-import { groundedSourceSummary, optionalGroundingSections } from "@muse/recall";
+import { groundedSourceSummary, optionalGroundingRelevance, optionalGroundingSections } from "@muse/recall";
 import { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
 
 export { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
@@ -2015,7 +2015,13 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           shell: { body: shellBlock, present: matchedCommands.length > 0 },
           git: { body: gitBlock, present: matchedCommits.length > 0 },
           actions: { body: actionBlock, present: matchedActions.length > 0 },
-          episodes: { body: episodeBlock, present: episodeHits.length > 0 },
+          episodes: {
+            body: episodeBlock,
+            present: episodeHits.length > 0,
+            relevance: episodeHits.length > 0
+              ? optionalGroundingRelevance("episodes", Math.max(...episodeHits.map((e) => e.score)))
+              : undefined
+          },
           feeds: { body: feedBlock, present: feedHeadlines.length > 0 },
           reflection: { body: reflectionBlock, present: reflectionLines.length > 0 }
         }))

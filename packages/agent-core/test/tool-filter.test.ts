@@ -515,3 +515,43 @@ describe("inflection-aware keyword matching (agrees with @muse/tools selection)"
     ).toEqual(["muse.tasks.search"]);
   });
 });
+
+describe("shared lexical matcher — agent-core and @muse/tools cannot diverge", () => {
+  function readTool(name: string, domain: string, keywords: readonly string[]): MuseTool {
+    return tool({ description: `Tool ${name}`, domain, inputSchema: {}, keywords, name, risk: "read" });
+  }
+
+  // Both layers now call the ONE exported `tokenMatchesKeywordWord` leaf, so a
+  // keep/drop decision must be identical across `DefaultToolFilter` (agent-core
+  // ranking) and `filterToolsForContext` (@muse/tools selection). The fire-5
+  // bug was a hand-mirrored copy in agent-core that had dropped the CJK
+  // `word.length >= 2` guard; the case table below pins the three boundaries
+  // that copy could silently diverge on, and the MUTATION proof (changing the
+  // @muse/tools SoT and watching THIS test go red) is what proves the two are
+  // a single definition, not coincidentally aligned.
+  const cases: ReadonlyArray<{ readonly label: string; readonly keyword: string; readonly prompt: string; readonly keep: boolean }> = [
+    { keep: true, keyword: "light", label: "ASCII inflection (lights→light) kept", prompt: "turn off the lights" },
+    { keep: false, keyword: "search", label: "ASCII non-match (research≠search) dropped", prompt: "i did some research" },
+    { keep: false, keyword: "할 일", label: "CJK over-match guard — unrelated KO dropped", prompt: "할머니가 일했다는 이야기" },
+    { keep: true, keyword: "할 일", label: "CJK genuine task ask kept", prompt: "내 할 일 목록 보여줘" }
+  ];
+
+  for (const { label, keyword, prompt, keep } of cases) {
+    it(`${label} — both layers agree`, () => {
+      // Custom domain absent from DEFAULT_DOMAIN_KEYWORDS so ONLY the tool's
+      // own keyword (via the shared matcher) can retain it — isolating the leaf.
+      const subject = readTool("subject_tool", "custom_isolated", [keyword]);
+
+      const agentCoreKept = new DefaultToolFilter()
+        .filter([subject], { userMessage: prompt })
+        .some((t) => t.definition.name === "subject_tool");
+
+      const toolsKept = filterToolsForContext([subject], { maxTools: 6, prompt })
+        .tools.some((t) => t.definition.name === "subject_tool");
+
+      expect(agentCoreKept).toBe(keep);
+      expect(toolsKept).toBe(keep);
+      expect(agentCoreKept).toBe(toolsKept);
+    });
+  }
+});

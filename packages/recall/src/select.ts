@@ -144,7 +144,7 @@ export function renderMemoryFact(fact: MemoryFact): string {
   // Defang at render time so a value poisoned at write time can't steer the model
   // when this fact enters the grounding block / conflict cue; the raw value stays
   // in the store for the user to inspect + remove.
-  const value = defangMemoryInjection(fact.value.trim());
+  const value = escapeSystemPromptMarkers(defangMemoryInjection(fact.value.trim()));
   return value === "" || /^(?:yes|true)$/iu.test(value) ? topic : `${topic}: ${value}`;
 }
 
@@ -385,6 +385,9 @@ export function selectFilePassages(
   for (const passage of ranked) {
     if (budget <= 0) {
       break;
+    }
+    if (passage.text.length > budget && picked.length > 0) {
+      continue;
     }
     picked.push({ chunkIndex: passage.chunkIndex, text: passage.text });
     budget -= passage.text.length;
