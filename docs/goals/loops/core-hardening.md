@@ -4,7 +4,7 @@
 > Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main). **Every 3 fires: ff-merge the branch into origin/main, then keep working on the branch (진안 directive 2026-06-20).**
 > Cron `d8c31fa3` (every 15m, session-only; was `cfe778e2` under skill v1.14.0, re-registered with loop-creator v2.0 at fire 6). Stop: `CronDelete d8c31fa3`. Convention: [README](README.md).
 
-## fire 11 · 2026-06-20 · skill v2.0 · <commit-pending> (honest EXHAUSTION, no code slice)
+## fire 11 · 2026-06-20 · skill v2.0 · 14810a1f (honest EXHAUSTION, no code slice)
 meta: value-class=refactor(work-list) · pkg=docs · kind=exhaustion-honest-exit · verdict=N/A · firesSinceDrill=1
 ratchet: testFiles 1060→1060 · fabrication 0 · vein-status recorded
 - 무엇: 전 표면(grounding-floor·local-tool·orchestration·anti-fab·memory-integrity·outbound·self-dev) 타깃 스카웃 — 이 세션의 **clean 1-fire core-edge 베인이 진정으로 마름**. 남은 항목은 전부 marginal-additive(home/street 라벨)·speculative-no-caller(deep-nesting)·>1-fire-redesign(KO injection·comma list-vs-value)·cross-loop-territory(BKT/whetstone=agent-core-cognition)·design-choice-not-bug(doctor selector) 중 하나.

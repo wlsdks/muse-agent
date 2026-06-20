@@ -16,7 +16,7 @@
 | `surfaces` | 제품 표면 강화 — CLI · macOS desktop · web (worktree `/tmp/muse-surfaces`, branch `loop/surfaces`) | [surfaces.md](surfaces.md) | 53 | `4a337c3b` | v2.0.0 | active (cron `c5b90c94`, session-only) |
 | `test-hygiene` | 테스트 스위트 위생 — 저가치/중복 제거 + 누락 고가치 추가 + flaky 수정 (mutation-first) (worktree `test-hygiene`) | [test-hygiene.md](test-hygiene.md) | 52 | `c249c6d2` | v1.14.0 | active (cron `b7a92bf5`, session-only) |
 | `context-strategy` | Context engineering — leanest sufficient context per turn (worktree `/tmp/muse-context-strategy`, branch `loop/context-strategy`) | [context-strategy.md](context-strategy.md) | 5 | `f873af9c` | v2.0.0 | active (cron `c66c8b81`, session-only, Tier2 push+PR, merge-to-main every 5 fires) |
-| `core-hardening` | Muse 코어 엣지 강화 — grounding+citation 게이트 + 4 표면 (worktree `/tmp/muse-core-hardening`, branch `loop/core-hardening`, Tier2 push) | [core-hardening.md](core-hardening.md) | 11 | `<pending>` | v2.0 | active (cron `d8c31fa3`, session-only) |
+| `core-hardening` | Muse 코어 엣지 강화 — grounding+citation 게이트 + 4 표면 (worktree `/tmp/muse-core-hardening`, branch `loop/core-hardening`, Tier2 push) | [core-hardening.md](core-hardening.md) | 11 | `14810a1f` | v2.0 | active (cron `d8c31fa3`, session-only) |
 | `paper-grounded` | 논문-근거 차별화 기능 강화 — grounding/citation 게이트 · RGV verifier · Playbook · whetstone (worktree `/tmp/muse-paper-grounded`, branch `loop/paper-grounded-features`, Tier2 push) | [paper-grounded.md](paper-grounded.md) | 3 | `1ee899bf` | v2.0.0 | STOPPED fire 3 (Jinan: superseded by `core-hardening`, same theme; cron `ab8e4a5f` deleted. fires 1-2 verified work landed on main) |
 
 <!-- New loops: add a row here on first registration; update your own row's last-fire/commit each fire. -->
