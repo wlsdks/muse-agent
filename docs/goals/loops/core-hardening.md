@@ -4,7 +4,7 @@
 > Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main, NEVER merges to main).
 > Cron `cfe778e2` (every 15m, session-only). Stop: `CronDelete cfe778e2`. Convention: [README](README.md).
 
-## fire 5 · 2026-06-20 · skill v1.14.0 · <commit-pending>
+## fire 5 · 2026-06-20 · skill v1.14.0 · e0916bd7
 meta: value-class=new-capability · pkg=@muse/multi-agent · kind=orchestration/verifier-gated-resynthesis · verdict=PASS · firesSinceDrill=5
 ratchet: testFiles 1054→1054 (+5 cases lead-worker.test + 1 ask-decompose retry case + reflection-guard registry) · fabrication 0 · @muse/multi-agent 123 tests green · eval:orchestration PASS · pnpm check exit 0 · lint clean
 - 무엇: `runLeadWorkerTask`가 synthesis 불완전 시 flag만 하던 것(H1) → verifier-gated 1회 re-synthesis. `runSynthesis` 헬퍼로 리팩터, retry 프롬프트가 drop된 하위결과를 명시(`reinforceSynthesisRequest`), retry가 **검증됐고 drop 수 strictly 감소** 시에만 채택. reflection-guard registry 등록(verifier=verifySynthesisCoverage).
