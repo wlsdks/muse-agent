@@ -70,6 +70,20 @@ describe("fieldIsGrounded — tolerant matching (no false-drop), catches halluci
     expect(fieldIsGrounded("2026-06-07", "no date visible here at all")).toBe(false);
     expect(fieldIsGrounded("99,999", "Total ₩12,400")).toBe(false);
   });
+
+  it("does NOT ground a bare SHORT-numeric value on a coincidental digit match (weak-numeric guard)", () => {
+    // "50" only appears as a discount %, not as a grounded field — must not pass.
+    expect(fieldIsGrounded("50", "Cafe Muse — 50% loyalty discount, total 12,400")).toBe(false);
+    // "12" only appears inside a time "12:30" — coincidental, must not pass.
+    expect(fieldIsGrounded("12", "Meeting at 12:30 with the team")).toBe(false);
+  });
+
+  it("STILL grounds ≥4-digit and text/CJK values (no over-drop from the weak-numeric guard)", () => {
+    expect(fieldIsGrounded("12,400", "Cafe Muse total 12,400")).toBe(true);
+    expect(fieldIsGrounded("2026", "Concert in 2026 at Seoul Hall")).toBe(true);
+    expect(fieldIsGrounded("Cafe Muse", "CAFE MUSE — receipt")).toBe(true);
+    expect(fieldIsGrounded("강남 치과", "강남 치과 의원 영수증")).toBe(true);
+  });
 });
 
 describe("gateVisionAction — grounding gate over a shaped action", () => {
@@ -96,6 +110,16 @@ describe("gateVisionAction — grounding gate over a shaped action", () => {
 
   it("does not gate a non-routed action", () => {
     expect(gateVisionAction(shapeVisionAction({ kind: "other" }), undefined).unverified).toEqual([]);
+  });
+
+  it("OUTCOME: a hallucinated SHORT total lands in unverified, a genuine ≥4-digit total stays grounded", () => {
+    const hallucinated = shapeVisionAction({ kind: "receipt", merchant: "Cafe Muse", total: "50" });
+    const gatedHall = gateVisionAction(hallucinated, "Cafe Muse — 50% loyalty discount, total 12,400");
+    expect(gatedHall.unverified).toContain("total");
+
+    const genuine = shapeVisionAction({ kind: "receipt", merchant: "Cafe Muse", total: "12,400" });
+    const gatedGenuine = gateVisionAction(genuine, "Cafe Muse — 50% loyalty discount, total 12,400");
+    expect(gatedGenuine.unverified).toEqual([]);
   });
 });
 

@@ -137,6 +137,13 @@ function wordTokens(text: string): string[] {
   return [...(lower.match(/[a-z0-9]{2,}/gu) ?? []), ...(lower.match(/[㐀-鿿가-힯]/gu) ?? [])];
 }
 
+/** A non-digit identifying token: a latin run with at least one letter, or a CJK
+ *  char. A pure digit-run ("50", "12") is NOT one — it carries no field identity,
+ *  so it can't anchor grounding on its own. */
+function hasTextToken(value: string): boolean {
+  return /[a-z]/iu.test(value) || /[㐀-鿿가-힯]/u.test(value);
+}
+
 /**
  * Is `value` grounded in the image `evidence` transcription? Tolerant by design
  * so a faithfully-extracted field is NOT false-dropped:
@@ -146,6 +153,14 @@ function wordTokens(text: string): string[] {
  *  - if only short digit-runs exist, the longest must appear, else fall to words;
  *  - text fields: a majority of the value's word/entity tokens must be visible.
  * A hallucinated value (absent from the evidence) matches none of these → false.
+ *
+ * Weak-numeric guard (fabrication-floor): a value whose ONLY signal is a SHORT
+ * digit-run (longest contiguous run ≤ 3) and that carries NO non-digit text/CJK
+ * token of its own ("50", "12") is NOT groundable on a bare coincidental digit
+ * match (a discount %, a clock time, an address fragment) — it has no field
+ * identity to anchor. Such a value fails CLOSED here (→ recorded unverified). The
+ * guard can only make the gate STRICTER; ≥4-digit runs and any text/CJK value are
+ * unaffected.
  */
 export function fieldIsGrounded(value: string, evidence: string): boolean {
   const ev = evidence.toLowerCase();
@@ -155,11 +170,15 @@ export function fieldIsGrounded(value: string, evidence: string): boolean {
   if (significant.length > 0) {
     return significant.every((d) => evDigits.has(d));
   }
-  if (valDigits.length > 0) {
+  const weakNumericOnly = !hasTextToken(value);
+  if (valDigits.length > 0 && !weakNumericOnly) {
     const longest = valDigits.reduce((a, b) => (b.length > a.length ? b : a));
     if (evDigits.has(longest)) {
       return true;
     }
+  }
+  if (weakNumericOnly) {
+    return false;
   }
   const tokens = wordTokens(value);
   if (tokens.length === 0) {
