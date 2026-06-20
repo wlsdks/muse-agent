@@ -472,7 +472,7 @@ ratchet: cli tests 2684 (+1) · testFiles 1024 · fabrication 0 · self-eval exi
 - **리뷰지점**: judge가 HEAD~1로 RED 실증("⚠ overlaps Holiday (12:00 AM–12:00 AM)"). 비-vacuous(timed Standup은 여전히 경고 — 전체 비활성 아님). CalendarEvent.allDay 필수 필드라 call-site 실값 전달 → 런타임 live(inert 아님). identity filter 생존. detectCalendarConflicts 무변·mcp 타입 무변(cross-package ripple 0). 기존 timed-conflict 테스트 무회귀.
 - **리스크**: 없음(param 확장 + 2 가드 + 신규 테스트; 순수 함수; 독립 Opus judge가 RED·non-vacuous·live-at-runtime·tsc-clean·무회귀 검증 후 PASS, cli 2684/2684).
 
-## fire 53 · 2026-06-20 · skill v2.0.0 · (pending)
+## fire 53 · 2026-06-20 · skill v2.0.0 · 4a337c3b
 meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=a11y-accessible-name · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles 1058 (+1) · web tests 50/50 (+2) · fabrication 0 · self-eval exit 0 · 표면 균형 web23·desktop12·cli18
 
