@@ -34,3 +34,11 @@ ratchet: testFiles 1055 · fabrication 0 · groundedSurfaces=28 (no drop) · 게
 - 리뷰지점: ④b 적응형 적대 judge가 결정적 게이트가 못 잡는 의미 결함을 잡음 — maker≠judge + adaptive judge의 정확한 작동 사례. 기존 테스트(thin 5/1 vs proven 4/40)는 두 parity 함수 모두에서 통과해 구별 불가였던 게 근본 원인.
 - 리스크: 롤백으로 main/브랜치에 결함 미반입(녹색이지만 틀린 코드 차단). 
 - lesson: Playbook eviction parity는 `effectiveStrategyReward`(shrinkage)가 아니라 `rankingUtility`(Wilson LCB, playbook.ts:383)를 복제해야 한다 — injection이 *실제로* 랭킹하는 함수와 맞춰라. parity 슬라이스엔 두 후보 함수를 구별하는 판별 테스트(thin 1/0 vs proven 11/9: shrinkage면 thin 생존, Wilson이면 proven 생존)를 반드시 포함. "green 게이트 ≠ 옳음" — 의미 parity는 적응형 judge로만 잡힘.
+
+## fire 4 · 2026-06-20 · skill v2.0.0 · 65a12bc9
+meta: value-class=bug-fix-with-capability · pkg=@muse/mcp · kind=playbook-eviction-PEVI-parity · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 1057 · fabrication 0 · groundedSurfaces=28 (no drop) · groundedCases=45 · differentiationBatteries=6 · mcp 1869 PASS(+Wilson 판별 테스트) · check apps/cli 2762 PASS · mutation-first RED 확인 · eval:self-improving SKIPPED(박스 stall, 미완료 — pass 아님; 단 deterministic eviction의 진짜 게이트는 mcp 유닛 스위트라 충분)
+- 무엇: Playbook bank-overflow eviction(retainPlaybookEntries)이 raw point-estimate reward로 생존 결정하던 것을 — injection 경로(rankPlaybookStrategies)가 쓰는 것과 동일한 Wilson-LCB(PEVI)로 정렬. inline wilsonLower+(2·lower−1)·MAX가 agent-core wilsonInterval+rankingUtility와 byte-faithful(mcp는 agent-core 의존 불가). no-tally는 clampReward(reward)로 fallback(레거시 불변).
+- 왜: thin-but-lucky 전략(1승/0패, wide CI)이 검증된 전략(11/9, tight CI)을 파괴적으로 evict하던 eviction↔injection 불일치를 닫음. fire 3이 틀린 함수(effectiveStrategyReward shrinkage) 복제로 롤백된 것을 올바른 함수로 교정. PEVI 비관주의 arXiv:2012.15085.
+- 리뷰지점: 독립 적응형 judge가 9개 (r,d) 삼중쌍으로 evictionUtility vs rankingUtility 6자리까지 동일·순서 동일 실증, fire-3 shrinkage 공식 주입→판별 테스트 RED 확인(이번 테스트는 fire 3이 빠뜨린 판별력 보유). raw-reward mutation도 RED. fire 3과 같은 (mcp, playbook-eviction-PEVI-parity)지만 fire 3은 롤백(미출하)이라 모노컬처 아님.
+- 리스크: 낮음 — parity가 패키지 경계 hand-mirror라 agent-core rankingUtility 변경 시 silent drift 가능. 후속 backlog ◦: cross-package parity 테스트(같은 r,d → 양쪽 동일 utility)로 drift 차단.
