@@ -18,6 +18,7 @@ import { RemindersView } from "../views/Reminders.js";
 import { SettingsView } from "../views/Settings.js";
 import { TasksView } from "../views/Tasks.js";
 import { TodayView } from "../views/Today.js";
+import { McpServersView } from "../views/McpServers.js";
 import { ToolsView } from "../views/Tools.js";
 import { useShortcuts } from "./useShortcuts.js";
 
@@ -44,6 +45,7 @@ type ViewId =
   | "autonomy"
   | "dashboard"
   | "tools"
+  | "mcp"
   | "settings";
 type GroupKey = "group.workspace" | "group.knowledge" | "group.system";
 
@@ -69,6 +71,7 @@ const NAV: readonly NavEntry[] = [
   { Component: AutonomyView, group: "group.system", icon: Icon.shield, id: "autonomy", key: "y", labelKey: "nav.autonomy" },
   { Component: DashboardView, group: "group.system", icon: Icon.chart, id: "dashboard", key: "d", labelKey: "nav.dashboard" },
   { Component: ToolsView, group: "group.system", icon: Icon.tool, id: "tools", key: "o", labelKey: "nav.tools" },
+  { Component: McpServersView, group: "group.system", icon: Icon.plug, id: "mcp", key: "p", labelKey: "nav.mcp" },
   { Component: SettingsView, group: "group.system", icon: Icon.settings, id: "settings", key: "s", labelKey: "nav.settings" }
 ];
 

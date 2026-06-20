@@ -66,7 +66,7 @@ import { parseShellHistory, selectShellCommands } from "./shell-history.js";
 import { resolveReflectionsFile } from "./commands-reflections.js";
 import { routeAskTierModel } from "./ask-tier-models.js";
 import { shouldDecompose } from "@muse/multi-agent";
-import { runDecomposedAgentAsk } from "./ask-decompose.js";
+import { runDecomposedAgentAsk, type DecomposedAskResult } from "./ask-decompose.js";
 import { crossLingualUnsupportedFraction, rescueActionsCrossLingual, rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
 
 export { resolveAskTierModels, routeAskTierModel, type AskTierModels } from "./ask-tier-models.js";
@@ -535,6 +535,36 @@ export async function consumeAskStream(
  * can detect it, rather than empty stdout + a human-only stderr
  * line. Pure so the unit test can pin the contract directly.
  */
+/** A fan-out's trust signals for the `--json` payload + the run-log. */
+export interface DecompositionTrustSignals {
+  readonly subtaskCount: number;
+  readonly truncated: boolean;
+  readonly subtaskConflicts?: readonly string[];
+  readonly synthesisIncomplete?: readonly string[];
+}
+
+/**
+ * The `decomposition` block for the `muse ask --json` payload: a MACHINE consumer
+ * (the whole point of `--json`) can't read the human stderr banner, so a fan-out that
+ * CONTRADICTED itself, DROPPED a sub-result, or was TRUNCATED would otherwise reach a
+ * script wearing a clean `groundedVerdict:"grounded"` — a GROUNDED≠TRUE leak. Emits the
+ * block ONLY for a decomposed run (no noise on the single-run common path); empty signal
+ * arrays are omitted. Pure (additive — never touches the answer or the verdict).
+ */
+export function decompositionJsonFields(
+  decomposed: DecomposedAskResult
+): { readonly decomposition?: DecompositionTrustSignals } {
+  if (!decomposed.decomposed) return {};
+  return {
+    decomposition: {
+      subtaskCount: decomposed.subtaskCount,
+      truncated: decomposed.truncated,
+      ...(decomposed.subtaskConflicts && decomposed.subtaskConflicts.length > 0 ? { subtaskConflicts: decomposed.subtaskConflicts } : {}),
+      ...(decomposed.synthesisIncomplete && decomposed.synthesisIncomplete.length > 0 ? { synthesisIncomplete: decomposed.synthesisIncomplete } : {})
+    }
+  };
+}
+
 export function renderAskStreamError(params: {
   readonly json: boolean;
   readonly query: string;
@@ -2081,6 +2111,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // grounding verdict below so a web-grounded answer isn't false-flagged
       // against the notes-only evidence set.
       let agentGroundingSources: readonly { readonly source: string; readonly text: string }[] = [];
+      let decompositionSignals: DecompositionTrustSignals | undefined;
       // S3 narrate-the-wait (B2): the real generation stage — the silent gap
       // before the first token on a 10–40s local model. A static, honest
       // line so the wait reads as working, not frozen (latency-honest: it
@@ -2142,6 +2173,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             collectedAnswer = decomposed.answer;
             toolsUsed = [...decomposed.toolsUsed];
             agentGroundingSources = [...decomposed.groundingSources];
+            // Hoist the fan-out trust signals so the --json payload + run-log can read
+            // them (the human stderr path below can't reach the machine surface).
+            decompositionSignals = decompositionJsonFields(decomposed).decomposition;
             if (!options.json && decomposed.decomposed) {
               const capNote = decomposed.reason.includes("capped") ? " — extra items were dropped" : "";
               const incompleteNote = decomposed.synthesisIncomplete && decomposed.synthesisIncomplete.length > 0 ? " — ⚠ some sub-results may be missing; ask me to expand" : "";
@@ -2814,7 +2848,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         grounded: askOutcome,
         response: collectedAnswer,
         success: true,
-        toolsUsed
+        toolsUsed,
+        ...(decompositionSignals ? { decomposition: decompositionSignals } : {})
       }));
       // Whetstone fuel: an ASK failure becomes a weakness-ledger entry so doctor
       // / error-analysis can mine real-usage gaps — previously only chat-repl fed
@@ -2862,6 +2897,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // The gate's verdict, so a JSON consumer can render trust honestly:
           // "grounded" | "ungrounded" | "abstain" | null (verdict didn't run).
           groundedVerdict: askOutcome,
+          // Fan-out trust signals (decomposed runs only) so a machine consumer learns the
+          // sub-answers contradicted / a sub-result was dropped / the list was capped —
+          // the stderr banner the human gets isn't on the --json surface.
+          ...(decompositionSignals ? { decomposition: decompositionSignals } : {}),
           ...(citationGate.stripped.length > 0 ? { strippedCitations: citationGate.stripped } : {}),
           ...(options.withTools ? { toolsUsed } : {}),
           grounded: {

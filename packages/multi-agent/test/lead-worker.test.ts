@@ -30,6 +30,16 @@ describe("runOne via runLeadWorkerTask — SubtaskExecution carries the worker's
   });
 });
 
+describe("runLeadWorkerTask — exposes a structured `truncated` flag when the sub-task list is capped (not just a reason string)", () => {
+  it("sets truncated=true when > MAX_SUBTASKS items are split, false otherwise", async () => {
+    const many = Array.from({ length: 12 }, (_v, i) => `${i + 1}. 항목${i + 1}`).join(" ");
+    const capped = await runLeadWorkerTask(`다음 처리해줘: ${many}`, deps());
+    expect(capped.truncated).toBe(true);
+    const few = await runLeadWorkerTask("다음 3개 해줘: 1. a 2. b 3. c", deps());
+    expect(few.truncated).toBe(false);
+  });
+});
+
 describe("detectSubtaskConflicts — cross-subtask CONTRADICTION on the fan-in (an internally-inconsistent answer is GROUNDED != TRUE)", () => {
   // stub embed: same-topic vector for deadline statements, orthogonal otherwise
   const embed = async (t: string): Promise<readonly number[]> => (t.toLowerCase().includes("deadline") ? [1, 0] : [0, 1]);

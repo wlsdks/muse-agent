@@ -68,6 +68,9 @@ export function shouldDecompose(request: string): DecomposeDecision {
   if (signals.sequencing >= 2) {
     return { decompose: true, reason: `${signals.sequencing} ordered multi-step markers`, signals };
   }
+  if (signals.sequencing >= 1 && singleMarkerDependentSplit(request)) {
+    return { decompose: true, reason: "single ordered marker with a cross-step back-reference (dependent two-step)", signals };
+  }
   if (signals.broadScope && signals.synthesis) {
     return { decompose: true, reason: "broad-scope aggregation (scope quantifier + synthesis ask)", signals };
   }
@@ -141,6 +144,28 @@ export function listHasBackReference(items: readonly string[]): boolean {
       BACK_REFERENCE_TOKENS_KO.some((token) => item.includes(token))
     );
   });
+}
+
+/**
+ * True iff a request with a SINGLE ordered marker ("… 한 뒤 …" / "First …,
+ * then …") splits into ≥2 prose clauses AND a tail clause carries an explicit
+ * back-reference to an earlier step's OUTPUT ("그 결과", "the result", …).
+ *
+ * This is the structurally-sound discriminator the GATE needs to admit a
+ * single-marker DEPENDENT two-step (which the `sequencing >= 2` threshold
+ * drops to single-agent, starving the sequenced-threading machinery). It
+ * SPLITS FIRST, then runs {@link listHasBackReference} on the split clauses —
+ * exactly as the list path already does — because back-reference detection is
+ * only precise on already-split clauses (a flat substring scan over the whole
+ * request cannot tell "act ON the prior step's output" from "mention/ask
+ * ABOUT a step", arXiv 2503.13657). It does NOT reuse
+ * `decomposeRequestWithKind`'s prose-path `sequenced:true` (which is
+ * unconditional and would over-fire on "그 결과 먼저 보여줘").
+ */
+export function singleMarkerDependentSplit(request: string): boolean {
+  const steps = extractSequencedSteps(request);
+  if (steps.length < 2) return false;
+  return listHasBackReference(steps);
 }
 
 export interface DecomposedRequest {

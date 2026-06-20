@@ -1,6 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-import { consumeAskStream, parseBoundedInt, renderAskStreamError, resolveAskTierModels, routeAskTierModel, type AskStreamEvent } from "./commands-ask.js";
+import { consumeAskStream, decompositionJsonFields, parseBoundedInt, renderAskStreamError, resolveAskTierModels, routeAskTierModel, type AskStreamEvent } from "./commands-ask.js";
+
+describe("decompositionJsonFields — surface fan-out trust signals on `muse ask --json` (a machine consumer can't read a stderr banner)", () => {
+  it("emits a `decomposition` object with conflicts / incompleteness / truncation when the answer was decomposed", () => {
+    const out = decompositionJsonFields({
+      answer: "x", groundingSources: [], toolsUsed: [], decomposed: true, subtaskCount: 3, reason: "structural decomposition (capped at 8)",
+      truncated: true, subtaskConflicts: ['"A" vs "B"'], synthesisIncomplete: ["task X"]
+    });
+    expect(out.decomposition).toBeDefined();
+    expect(out.decomposition?.subtaskCount).toBe(3);
+    expect(out.decomposition?.truncated).toBe(true);
+    expect(out.decomposition?.subtaskConflicts).toEqual(['"A" vs "B"']);
+    expect(out.decomposition?.synthesisIncomplete).toEqual(["task X"]);
+  });
+  it("emits NO decomposition key on a single-run (decomposed=false) — no noise on the common path", () => {
+    const out = decompositionJsonFields({
+      answer: "x", groundingSources: [], toolsUsed: [], decomposed: false, subtaskCount: 1, reason: "single-agent", truncated: false
+    });
+    expect(out.decomposition).toBeUndefined();
+  });
+  it("a clean decomposed run (no conflicts/incomplete/truncation) still reports decomposed + count, with empty signal arrays absent", () => {
+    const out = decompositionJsonFields({
+      answer: "x", groundingSources: [], toolsUsed: [], decomposed: true, subtaskCount: 2, reason: "structural decomposition", truncated: false
+    });
+    expect(out.decomposition?.subtaskCount).toBe(2);
+    expect(out.decomposition?.truncated).toBe(false);
+    expect(out.decomposition?.subtaskConflicts).toBeUndefined();
+    expect(out.decomposition?.synthesisIncomplete).toBeUndefined();
+  });
+});
 
 describe("renderAskStreamError", () => {
   const base = { answer: "partial ", error: "Ollama request failed — is Ollama running? (`ollama serve`)", model: "ollama/qwen3:8b", query: "hi" };

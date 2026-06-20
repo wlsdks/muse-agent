@@ -113,6 +113,18 @@ export interface ToolCatalogResponse {
   readonly total: number;
 }
 
+export interface McpServerSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly status: string;
+  readonly toolCount: number;
+  readonly transportType: string;
+  readonly autoConnect: boolean;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
 interface HistoryEntry {
   readonly runId?: string;
   readonly inputPreview?: string;

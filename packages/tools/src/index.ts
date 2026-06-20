@@ -267,7 +267,7 @@ export function createDefaultToolExposurePolicy(options: DefaultToolExposurePoli
   return new DefaultToolExposurePolicy(options);
 }
 
-export { coerceToolArguments, validateRequiredToolArguments, type ToolArgumentValidation } from "./tools-argument-validation.js";
+export { coerceToolArguments, coerceEnumArguments, validateRequiredToolArguments, type ToolArgumentValidation } from "./tools-argument-validation.js";
 
 export function filterToolsForContext(
   tools: readonly MuseTool[],
