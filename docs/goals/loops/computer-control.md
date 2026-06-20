@@ -5,12 +5,12 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 11 · 2026-06-21 · skill v2.0 · <commit-pending> (Ollama adapter tool-call name sanitisation)
+## fire 11 · 2026-06-21 · skill v2.0 · bbc503e5 (Ollama adapter tool-call name sanitisation)
 meta: value-class=new-capability · pkg=@muse/model · kind=adapter-sanitisation · verdict=PASS · firesSinceDrill=1
 ratchet: testFiles 1068→1068 (+3 cases adapter-ollama.test, mutation-valid) · fabrication 0 · @muse/model 격리 328 통과 · pnpm check=박스포화 false-timeout(매 run 다른 heavy/fuzz 테스트 5-8s, 변경패키지 격리 green) · lint clean
 - 무엇: fire-9 DEEPER finding #3 처리 — gemma가 harmony 채널마커(`<|channel|>`,`<|"|>`)를 tool-call NAME에 누수 → 트레일링 누수 토큰이 valid 이름을 깨뜨려(`run_command<|channel|>` → tool-not-found) registry 매칭 실패. FIX(`adapter-ollama.ts` `sanitizeToolCallName`): 첫 `<|`에서 cut + 제어/zero-width 제거, generate+stream 두 파싱 사이트 모두 적용(형제-감사).
 - 왜: 노출/recovery(fires 4-9) 다 했어도 adapter가 누수 토큰을 verbatim 통과하면 valid 이름이 깨짐 — 결정론적 위생화로 corrupted-valid 이름 복구. fully-garbage(shell명령-as-name)는 cut 후에도 잔존=model-behavior(정직히 미주장).
-- 리뷰지점: mutation-valid(두 사이트 revert시 둘 다 RED)+clean 이름 불변. ④b judge PASS(over-stripping 0: dots/dash/Cyrillic/단일문자 보존, bare `<` 무트리거, 순수-leak→"unknown"; byte-hygiene escaped char class). LESSON 적용: 저널에 raw ESC 바이트 넣었다가 byte-hygiene이 잡음 → charCode 필터로 `` 텍스트화.
+- 리뷰지점: mutation-valid(두 사이트 revert시 둘 다 RED)+clean 이름 불변. ④b judge PASS(over-stripping 0: dots/dash/Cyrillic/단일문자 보존, bare `<` 무트리거, 순수-leak→"unknown"; byte-hygiene escaped char class). LESSON 적용: 저널에 raw ESC 바이트 넣었다가 byte-hygiene이 잡음 → charCode 필터로 `\u001b` 텍스트화.
 - 리스크: 낮음 — name만 위생화, args/id/"unknown"-fallback/happy-path 불변. ④b PASS.
 lesson: 다른 pkg(@muse/model)로 RATCHET 전환해 fire-9가 남긴 adapter 버그를 결정론적으로 처리 — tool-calling 신뢰성은 (노출·recovery·adapter-파싱) 다층. 박스 포화(동시 루프 多)는 full check를 매번 다른 5-8s 타임아웃으로 막으나 *변경 패키지 격리 실행*이 회귀 vs 환경을 가름. 바이트를 *서술*할 때도 escape 텍스트(raw 금지) — fire10 교훈의 재귀.
 
