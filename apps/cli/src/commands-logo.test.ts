@@ -20,7 +20,7 @@ describe("muse logo — the mascot banner", () => {
     expect(out).toContain(MUSE_MASCOT_ANSI);
     expect(out.endsWith("\n")).toBe(true);
     expect(out).toContain("▀"); // upper half-block ▀ — confirms it's the art
-    expect(out).toContain("[38;5;"); // 256-color foreground escape
+    expect(out).toContain("\u001b[38;5;"); // 256-color foreground escape
   });
 
   it("the art is a well-formed half-block grid (one ▀ per cell, reset per row)", () => {
@@ -29,7 +29,7 @@ describe("muse logo — the mascot banner", () => {
     for (const line of lines) {
       // one ▀ per column → exactly WIDTH blocks per row
       expect(line.split("▀").length - 1).toBe(MUSE_MASCOT_WIDTH);
-      expect(line.endsWith("[0m")).toBe(true); // SGR reset closes every row
+      expect(line.endsWith("\u001b[0m")).toBe(true); // SGR reset closes every row
     }
   });
 
