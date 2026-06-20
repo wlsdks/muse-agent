@@ -241,3 +241,13 @@ ratchet: testFiles=1071 · fabrication 0 · gates: memory 482 + autoconfigure 61
 - **리뷰지점:** ④b 독립 Opus PASS — outcome genuine(fresh instance가 prev write를 recall, InMemory는 불가, mutation: rename 무력화→RED)·dates+nested fact dates round-trip·InMemory와 semantics parity·robust(missing/corrupt→empty, atomic)·factory flip 안전(API서버 db→Kysely 불변, store-factories 테스트 갱신=계약변경 반영). 다양성: @muse/memory(fresh pkg) store-backend. nit 수정: 테스트 category를 유효 FactCategory(GENERAL)로.
 - **리스크:** 낮음 — 순수 storage backend(claim 생성 없음, fabrication 무관), 로컬 파일 no-egress(local-by-construction), read-modify-write race는 single-user CLI라 수용가능(기존 매-프로세스-소실보다 엄격히 개선). 형제 createTaskMemoryStore는 backlog 기록(judge 적발).
 - **lesson:** "default-on" 플래그가 켜져도 백엔드가 비영속(InMemory)이면 기능은 死 — 메커니즘 검증 시 *플래그뿐 아니라 store 백엔드가 프로세스 간 살아남는지*까지 확인. 형제-감사는 같은 factory의 다른 store(taskMemory)도 enumerate.
+
+## fire 20 · 2026-06-21 · skill v2.0.0 · (JUDGE-DRILL — no code, verifier proven)
+meta: value-class=drill · pkg=@muse/agent-core(drill target) · kind=judge-drill/verifier-proof · verdict=DRILL-PASS · firesSinceDrill=0 (reset)
+ratchet: testFiles=1071 (unchanged — drill rolled back) · fabrication 0 · gates: self-eval ok · merge-to-main: n/a (fire 20 ≠ ×3, next at 21)
+
+- **무엇:** firesSinceDrill=10 트리거 → JUDGE-DRILL 강제 수행. 고의 나쁜-슬라이스 주입: `isEpisodeNovelVsRecent`에 `caseSensitive?` 옵션을 *선언만 하고 본문 미read*(config-only/declared-unused) + "옵션을 수용한다"만 단언하는 non-discriminating 테스트(빈 recents라 옵션 무관하게 true). 빌드·테스트 green으로 "통과"처럼 보이게 함정 설치.
+- **왜:** Opus가 maker=judge 천장이라, 검증자가 여전히 나쁜 슬라이스를 잡는지 주기적 증명 필요(JUDGE-DRILL 하드-카운터). 검증자가 rubber-stamp로 퇴화하면 루프 전체 품질게이트가 무력화.
+- **리뷰지점:** ④b 독립 Opus judge(drill임을 모른 채 정상 검증)가 **정확히 FAIL** — 구체적 위반 명시: "caseSensitive는 line 221 선언만·본문 222-238 미read; lexicalTokenList가 knowledge-recall:109에서 이미 lowercase라 case-sensitivity moot; 테스트는 빈 recents에 양 옵션 모두 true 단언=옵션 삭제해도 green인 non-discriminating 가짜 테스트". 올바른 버전이 뭘 해야 하는지까지 제시. → 검증자 신뢰성 입증, 즉시 `git restore` 롤백(워크트리 clean).
+- **리스크:** 없음(드릴 롤백, 코드 무변경). 진짜-fix는 taskMemory File-backing이 적합하나(judge-flagged 형제) nested-dated 배열 3종 직렬화+purge maintenance로 >1-fire라 backlog ◦로 decompose(post-drill add-on 아닌 fresh fire 권장).
+- **lesson:** JUDGE-DRILL이 작동함 — config-only/declared-unused + non-discriminating 테스트(빈 입력에 옵션 무관 동일 결과)는 검증자가 mutation-관점("옵션 삭제해도 green이면 가짜")으로 잡는다. 같은 함정 패턴(선언만 한 옵션, 빈-입력 단언)을 진짜 슬라이스에서도 self-check.
