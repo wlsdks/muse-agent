@@ -353,6 +353,32 @@ export async function recordWeakness(
 }
 
 /**
+ * Record a `time-parse` weakness when a time/date phrase the user gave FAILED to
+ * resolve — the DETERMINISTIC parser (not the model) said it can't, so this is a
+ * code-detected signal, not a self-report. Wires the previously-DEAD `time-parse`
+ * axis (declared + remediable + doctor-displayed, but with zero producers) to its
+ * real source so a recurring time-misread surfaces in the dev-fixable list. Records
+ * only on a genuine failure (`failed` true) and a non-blank phrase — the actuator's
+ * success path is untouched. Pure over the injected `recordWeakness`.
+ */
+export async function recordTimeParseWeakness(
+  phrase: string,
+  failed: boolean,
+  deps: {
+    readonly recordWeakness: (file: string, signal: { readonly axis: WeaknessAxis; readonly message: string; readonly nowIso?: string }) => Promise<WeaknessEntry | undefined>;
+    readonly weaknessesFile: string;
+    readonly nowIso?: string;
+  }
+): Promise<WeaknessEntry | undefined> {
+  if (!failed || phrase.trim().length === 0) return undefined;
+  return deps.recordWeakness(deps.weaknessesFile, {
+    axis: "time-parse",
+    message: phrase,
+    ...(deps.nowIso ? { nowIso: deps.nowIso } : {})
+  });
+}
+
+/**
  * Record a SUCCESSFUL grounded answer for the given message's topic, updating the BKT
  * mastery estimate. Exact topic-key match only — a missed resolve is status quo, never
  * a false resolve. Returns undefined when no matching grounding-gap entry exists

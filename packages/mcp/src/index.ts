@@ -978,6 +978,7 @@ export {
   askTimeWeaknessNudge,
   isMasteredWeakness,
   readWeaknesses,
+  recordTimeParseWeakness,
   recordWeakness,
   recordWeaknessResolved,
   remediationHint,

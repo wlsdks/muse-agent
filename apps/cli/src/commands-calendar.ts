@@ -14,9 +14,9 @@
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
-import { resolveLocalCalendarFile, resolveRemindersFile } from "@muse/autoconfigure";
+import { resolveLocalCalendarFile, resolveRemindersFile, resolveWeaknessesFile } from "@muse/autoconfigure";
 import { eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent } from "@muse/calendar";
-import { computeAvailability, detectCalendarConflicts, readReminders, resolveRelativeTimePhrase, writeReminders, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict, type ConflictEventLike, type PersistedReminder, removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/mcp";
+import { computeAvailability, detectCalendarConflicts, readReminders, recordTimeParseWeakness, recordWeakness, resolveRelativeTimePhrase, writeReminders, type AvailabilityEventLike, type AvailabilityResult, type CalendarConflict, type ConflictEventLike, type PersistedReminder, removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/mcp";
 export { removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/mcp";
 import type { Command } from "commander";
 
@@ -610,6 +610,15 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       }
       const startsAt = parseEventStart(options.at);
       if (!startsAt) {
+        // Whetstone: the DETERMINISTIC parser (not the model) couldn't resolve this
+        // time phrase — record the previously-dead `time-parse` weakness so a recurring
+        // misread surfaces for remediation. Fail-soft: never mask the user-facing error.
+        try {
+          await recordTimeParseWeakness(options.at, true, {
+            recordWeakness,
+            weaknessesFile: resolveWeaknessesFile(process.env as Record<string, string | undefined>)
+          });
+        } catch { /* ledger write must never surface as a command error */ }
         throw new Error(`--at must be an ISO-8601 timestamp or a relative phrase ('tomorrow 3pm', 'in 2 hours'), got '${options.at}'`);
       }
       const minutes = options.for !== undefined ? Number(options.for) : 60;
@@ -753,6 +762,13 @@ export function registerCalendarCommands(program: Command, io: ProgramIO, helper
       if (options.at !== undefined) {
         const startsAt = parseEventStart(options.at);
         if (!startsAt) {
+          // Whetstone (sibling of `calendar add`): same deterministic time-parse signal.
+          try {
+            await recordTimeParseWeakness(options.at, true, {
+              recordWeakness,
+              weaknessesFile: resolveWeaknessesFile(process.env as Record<string, string | undefined>)
+            });
+          } catch { /* ledger write must never surface as a command error */ }
           throw new Error(`--at must be an ISO-8601 timestamp or a relative phrase ('tomorrow 3pm'), got '${options.at}'`);
         }
         update.startsAt = startsAt;

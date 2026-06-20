@@ -4,7 +4,36 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { BKT_PRIOR, MAX_WEAKNESS_ENTRIES, askTimeWeaknessNudge, bktUpdate, isMasteredWeakness, readWeaknesses, recordWeakness, recordWeaknessResolved, remediationHint, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
+import { BKT_PRIOR, MAX_WEAKNESS_ENTRIES, askTimeWeaknessNudge, bktUpdate, isMasteredWeakness, readWeaknesses, recordTimeParseWeakness, recordWeakness, recordWeaknessResolved, remediationHint, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
+
+describe("recordTimeParseWeakness — wire the DEAD time-parse axis to the deterministic parse-failure signal (fire 9 source-conflict pattern, for time-parse)", () => {
+  it("records axis time-parse when the phrase FAILED to parse (the deterministic parser, not the model, said no)", async () => {
+    const calls: { axis: string; message: string }[] = [];
+    const recordWeaknessStub = async (_file: string, signal: { axis: string; message: string }): Promise<WeaknessEntry | undefined> => {
+      calls.push(signal);
+      return { axis: "time-parse", count: 1, firstSeen: "x", lastSeen: "x", topic: "t" };
+    };
+    await recordTimeParseWeakness("blarghday next quux", true, { recordWeakness: recordWeaknessStub, weaknessesFile: "w.json" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.axis).toBe("time-parse");
+    expect(calls[0]?.message).toBe("blarghday next quux");
+  });
+  it("does NOT record when the phrase parsed OK (no false-positive) or is blank (the actuator's success path is untouched)", async () => {
+    const calls: unknown[] = [];
+    const recordWeaknessStub = async (_f: string, s: unknown): Promise<WeaknessEntry | undefined> => { calls.push(s); return undefined; };
+    await recordTimeParseWeakness("tomorrow 3pm", false, { recordWeakness: recordWeaknessStub, weaknessesFile: "w" });
+    await recordTimeParseWeakness("   ", true, { recordWeakness: recordWeaknessStub, weaknessesFile: "w" });
+    expect(calls).toHaveLength(0);
+  });
+  it("ROUND-TRIP: a recorded time-parse weakness now reaches the dev-fixable surface (the axis was display-only/dead before)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-timeparse-"));
+    const file = join(dir, "w.json");
+    const now = "2026-06-20T00:00:00.000Z";
+    for (let i = 0; i < 3; i++) await recordTimeParseWeakness("schedule for blarghday", true, { nowIso: now, recordWeakness, weaknessesFile: file });
+    const dev = selectDevFixableWeaknesses(await readWeaknesses(file), { nowMs: Date.parse(now) });
+    expect(dev.some((w) => w.axis === "time-parse")).toBe(true);
+  });
+});
 
 describe("askTimeWeaknessNudge — surface a recurring user-remediable weakness AT the moment of repeated failure (runtime learn→apply)", () => {
   const e = (over: Partial<WeaknessEntry>): WeaknessEntry => ({

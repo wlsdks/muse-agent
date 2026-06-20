@@ -413,6 +413,23 @@ describe("muse calendar add — create a local event from the terminal", () => {
     expect(standup.endsAt.getTime() - standup.startsAt.getTime()).toBe(15 * 60_000);
   });
 
+  it("records a time-parse weakness when --at FAILS to parse (the dead axis now has a live producer); a good --at records nothing", async () => {
+    const prevWeak = process.env.MUSE_WEAKNESSES_FILE;
+    process.env.MUSE_WEAKNESSES_FILE = join(dir, "weaknesses.json");
+    try {
+      const { readWeaknesses } = await import("@muse/mcp");
+      const bad = await runAdd(["Team meeting", "--at", "blarghday next quux"]);
+      expect(bad.error).toMatch(/--at must be/);
+      expect((await readWeaknesses(process.env.MUSE_WEAKNESSES_FILE)).some((e) => e.axis === "time-parse")).toBe(true);
+      // a VALID --at takes the success path → no time-parse weakness for it
+      await runAdd(["Lunch", "--at", "2026-05-30T12:00:00"]);
+      expect((await readWeaknesses(process.env.MUSE_WEAKNESSES_FILE)).filter((e) => e.axis === "time-parse")).toHaveLength(1);
+    } finally {
+      if (prevWeak === undefined) delete process.env.MUSE_WEAKNESSES_FILE;
+      else process.env.MUSE_WEAKNESSES_FILE = prevWeak;
+    }
+  });
+
   async function runEvents(args: string[], apiRequest: CalendarCommandHelpers["apiRequest"]): Promise<{ error?: string; stdout: string }> {
     const stdout: string[] = [];
     const io = { stderr: () => {}, stdout: (line: string) => stdout.push(line) };
