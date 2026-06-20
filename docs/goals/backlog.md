@@ -1,5 +1,8 @@
 # Muse dev backlog — the living ledger
 
+- ✓ vision input gate magic-byte content check — loadImageAttachment fail-closes on non-image bytes + ships sniffed mimeType (MLLM input-integrity arXiv:2404.18930) — grounded-vision fire 1 (`a670dec5`)
+- ◦ chat-ink readImage shares the vision input-integrity gap (grounded-vision fire-1 sibling): `apps/cli/src/chat-ink.ts` readImage (~943) base64-encodes via chat-ink-core.ts's own IMAGE_MIME_BY_EXT (~396) with NO content sniff — `muse chat --image` trusts the extension just like loadImageAttachment did. Route it through `sniffImageMime` (apps/cli/src/image-bytes.ts) + collapse the duplicate IMAGE_MIME_BY_EXT. Gate: `pnpm --filter @muse/cli test`.
+
 - ✓ inflection-aware tool-relevance matching — capToolsByRelevance ranking now agrees with the @muse/tools selection layer (lights→light kept past the cap; CJK 할 일 over-match fixed) — context-strategy fire 5 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ query-anchored span retention in the per-result cap (ACON arXiv:2510.00615 / Lost-in-the-Middle arXiv:2307.03172; keeps the load-bearing middle span the query needs, verbatim, neutralize-first) — context-strategy fire 4 (detail in docs/goals/loops/context-strategy.md)
