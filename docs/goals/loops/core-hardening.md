@@ -4,7 +4,7 @@
 > Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main). **Every 3 fires: ff-merge the branch into origin/main, then keep working on the branch (진안 directive 2026-06-20).**
 > Cron `d8c31fa3` (every 15m, session-only; was `cfe778e2` under skill v1.14.0, re-registered with loop-creator v2.0 at fire 6). Stop: `CronDelete d8c31fa3`. Convention: [README](README.md).
 
-## fire 8 · 2026-06-20 · skill v2.0 · <commit-pending>
+## fire 8 · 2026-06-20 · skill v2.0 · 8e3616f4
 meta: value-class=micro-fix · pkg=@muse/memory · kind=memory-integrity/spurious-write · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles 1057→1057 (+2 cases memory-operation.test) · fabrication 0 · @muse/memory 456 tests green · pnpm check exit 0 · lint clean
 - 무엇: `classifyMemoryOperation`이 `existing===undefined`(저장된 적 없는 키)여도 retraction 토큰이면 "delete" 반환 → auto-extract가 없는 키에 `store.forget()`를 호출(File/Kysely 백엔드는 persistence 경로를 실제로 건드림). `existing===undefined ? "noop" : "delete"`로 수정 — NOOP은 부수효과 0(Mem0 규율).
