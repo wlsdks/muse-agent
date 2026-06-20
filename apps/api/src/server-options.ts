@@ -144,6 +144,7 @@ export interface ServerOptions {
    * delegated-objective status.
    */
   readonly objectivesFile?: string;
+  readonly weaknessesFile?: string;
   readonly briefingSidecarFile?: string;
   /**
    * Path to the reviewable autonomous-action log (default

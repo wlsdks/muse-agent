@@ -1101,6 +1101,36 @@ describe("AgentRuntime", () => {
     expect(executeTool).toHaveBeenCalledTimes(1);
   });
 
+  it("repairs a wrong-CASE enum value to the canonical schema spelling so the call executes (not blocked)", async () => {
+    const seen: { args?: Record<string, unknown> } = {};
+    const executeTool = vi.fn((args: Record<string, unknown>) => { seen.args = args; return { ok: true }; });
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Convert a number between bases.",
+          inputSchema: { type: "object", properties: { value: { type: "string" }, to: { type: "string", enum: ["binary", "octal", "decimal", "hex"] } }, required: ["value", "to"] },
+          name: "number_base",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const runtime = createAgentRuntime({
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        // Model emits the right CHOICE in the wrong case ("HEX") — strict equality would reject it.
+        { id: "tool", model: "test-model", output: "Converting.", toolCalls: [{ arguments: { to: "HEX", value: "255" }, id: "tc-1", name: "number_base" }] },
+        { id: "final", model: "test-model", output: "Done." }
+      ]),
+      toolRegistry
+    });
+
+    await runtime.run({ messages: [{ content: "convert 255 to hex", role: "user" }], model: "provider/model", runId: "run-case-enum" });
+    // The wrong-case value was repaired to the canonical "hex" and the call executed once (no wasted retry round).
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    expect(seen.args?.to).toBe("hex");
+  });
+
   it("losslessly coerces a right-value/wrong-type arg before execute (string \"5\" → number 5)", async () => {
     const seen: { args?: Record<string, unknown> } = {};
     const executeTool = vi.fn((args: Record<string, unknown>) => { seen.args = args; return { ok: true }; });

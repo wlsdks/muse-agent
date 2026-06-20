@@ -7,6 +7,7 @@ import {
   createRustRunnerTool,
   createDefaultToolExposurePolicy,
   coerceToolArguments,
+  coerceEnumArguments,
   toolErrorHint,
   createWorkspaceToolRoutingPlan,
   validateRequiredToolArguments,
@@ -361,16 +362,29 @@ describe("tool utilities", () => {
       type: "object",
       properties: { count: { type: "integer" }, ratio: { type: "number" }, on: { type: "boolean" }, label: { type: "string" } }
     };
-    // The `-?` in the numeric patterns accepts a negative the model emits.
+    // The `[+-]?` in the numeric patterns accepts a signed value the model emits.
     expect(coerceToolArguments(schema, { count: "-7", ratio: "-3.14" })).toEqual({ count: -7, ratio: -3.14 });
     // `.trim()` strips surrounding whitespace before the pattern test.
     expect(coerceToolArguments(schema, { count: "  42  " })).toEqual({ count: 42 });
     // boolean → its string form (the typeof === "boolean" arm of the string coercion).
     expect(coerceToolArguments(schema, { label: false })).toEqual({ label: "false" });
-    // Deliberate boundaries left untouched: a `+` sign isn't accepted (only `-`),
-    // and an empty string has no digit to match — both stay as-is rather than a guess.
-    expect(coerceToolArguments(schema, { count: "+5" })).toEqual({ count: "+5" });
+    // An empty string has no digit to match — stays as-is rather than a guess.
     expect(coerceToolArguments(schema, { count: "" })).toEqual({ count: "" });
+  });
+
+  it("coerceToolArguments repairs an explicitly-signed-positive numeric string the model emits ('+5' → 5) and rejects degenerate '+' forms", () => {
+    const schema = { type: "object", properties: { count: { type: "integer" }, ratio: { type: "number" } } };
+    // A small local model sometimes writes a positive arg with an explicit '+';
+    // strict pattern then rejected it and the call failed. The repair now yields
+    // the real NUMBER (Number("+5") === 5), not the surface string.
+    const repaired = coerceToolArguments(schema, { count: "+5", ratio: "+3.14" });
+    expect(repaired.count).toBe(5);
+    expect(repaired.ratio).toBe(3.14);
+    expect(coerceToolArguments(schema, { count: "  +5  " })).toEqual({ count: 5 }); // trims around the sign
+    // Degenerate / out-of-vocabulary signed forms still surface untouched (no lossy guess):
+    expect(coerceToolArguments(schema, { count: "+" })).toEqual({ count: "+" }); // no digit
+    expect(coerceToolArguments(schema, { count: "++5" })).toEqual({ count: "++5" }); // double sign
+    expect(coerceToolArguments(schema, { count: "+5.0" })).toEqual({ count: "+5.0" }); // not an integer
   });
 
   it("coerceToolArguments leaves a pattern-valid but overflowing numeric string UNTOUCHED (the isFinite guard — never a lossy Infinity)", () => {
@@ -385,6 +399,73 @@ describe("tool utilities", () => {
     expect(coerceToolArguments(schema, { count: huge })).toEqual({ count: huge });
     expect(coerceToolArguments(schema, { count: `-${huge}` })).toEqual({ count: `-${huge}` });
     expect(coerceToolArguments(schema, { ratio: huge })).toEqual({ ratio: huge });
+  });
+
+  it("coerceEnumArguments repairs case/whitespace on enum+const args, leaves OOV/ambiguous/non-string untouched", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        service: { type: "string", enum: ["turn_on", "turn_off"] },
+        base: { type: "string", enum: ["binary", "octal", "decimal", "hex"] },
+        mode: { type: "string", const: "strict" },
+        count: { type: "integer", enum: [1, 2, 3] },
+        free: { type: "string" }
+      }
+    };
+    // wrong case → canonical schema spelling (the local-model failure mode)
+    expect(coerceEnumArguments(schema, { service: "Turn_Off" })).toEqual({ service: "turn_off" });
+    expect(coerceEnumArguments(schema, { base: "OCTAL" })).toEqual({ base: "octal" });
+    // surrounding whitespace stripped before matching, value rewritten to the trimmed canonical
+    expect(coerceEnumArguments(schema, { base: "  hex  " })).toEqual({ base: "hex" });
+    // const repaired the same way
+    expect(coerceEnumArguments(schema, { mode: "STRICT" })).toEqual({ mode: "strict" });
+    // already canonical → untouched (no-op)
+    expect(coerceEnumArguments(schema, { service: "turn_on" })).toEqual({ service: "turn_on" });
+    // genuinely out-of-vocabulary → left as-is so validateEnumArguments still rejects it
+    expect(coerceEnumArguments(schema, { base: "base64" })).toEqual({ base: "base64" });
+    // numeric-enum value is not a string → not a casing problem, untouched
+    expect(coerceEnumArguments(schema, { count: 2 })).toEqual({ count: 2 });
+    // a property with no enum/const constraint → never rewritten
+    expect(coerceEnumArguments(schema, { free: "Anything" })).toEqual({ free: "Anything" });
+    // no object schema → passthrough
+    expect(coerceEnumArguments(undefined, { service: "Turn_Off" })).toEqual({ service: "Turn_Off" });
+  });
+
+  it("coerceEnumArguments NEVER rewrites a benign already-correct or unconstrained value (STABLE-0 false-positive corpus)", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        service: { type: "string", enum: ["turn_on", "turn_off", "toggle"] },
+        base: { type: "string", enum: ["binary", "octal", "decimal", "hex"] },
+        free: { type: "string" },
+        title: { type: "string" },
+        location: { type: "string" }
+      }
+    };
+    // A LARGE corpus of values that must pass through BYTE-IDENTICAL: every
+    // canonical enum value, and free-text on unconstrained string props that
+    // happens to resemble (but isn't) an enum value. None may be rewritten.
+    const benign: Record<string, string>[] = [
+      { service: "turn_on" }, { service: "turn_off" }, { service: "toggle" },
+      { base: "binary" }, { base: "octal" }, { base: "decimal" }, { base: "hex" },
+      { free: "Turn_Off" }, { free: "OCTAL" }, { free: "HEX" }, { free: "binary" },
+      { title: "Turn off the lights at 9pm" }, { title: "octal notes" },
+      { location: "Hex Building, Decimal St" }, { location: "Binary Cafe" },
+      { free: "turn the heat off" }, { title: "TOGGLE meeting" },
+      { free: "" }, { base: "octally" }, { base: "hexagon" }, { service: "turn" }
+    ];
+    for (const args of benign) {
+      expect(coerceEnumArguments(schema, args)).toEqual(args);
+    }
+  });
+
+  it("coerceEnumArguments leaves an AMBIGUOUS case-fold match untouched (no lossy guess between two choices)", () => {
+    // two allowed choices collapse to the same case-folded form — repairing would
+    // be an arbitrary guess, so the value is preserved for explicit rejection.
+    const schema = { type: "object", properties: { tag: { type: "string", enum: ["AB", "ab"] } } };
+    expect(coerceEnumArguments(schema, { tag: "Ab" })).toEqual({ tag: "Ab" });
+    // an exact match against one of the two is canonical → kept as the exact one
+    expect(coerceEnumArguments(schema, { tag: "ab" })).toEqual({ tag: "ab" });
   });
 
   it("validateRequiredToolArguments flags missing required args, passes complete/extra/no-schema", () => {

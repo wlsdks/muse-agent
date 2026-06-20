@@ -43,6 +43,7 @@ import {
   ToolExecutor,
   ToolRegistry,
   coerceToolArguments,
+  coerceEnumArguments,
   toModelTool,
   validateRequiredToolArguments,
   type ToolExecutionResult,
@@ -846,7 +847,10 @@ export class AgentRuntime {
     // model re-calls correctly (bounded by maxToolCalls) — never execute with
     // bad args.
     const exposed = activeTools.find((tool) => tool.name === toolCall.name);
-    const coercedArguments = coerceToolArguments(exposed?.inputSchema, toolCall.arguments);
+    const coercedArguments = coerceEnumArguments(
+      exposed?.inputSchema,
+      coerceToolArguments(exposed?.inputSchema, toolCall.arguments)
+    );
     const argCheck = validateRequiredToolArguments(exposed?.inputSchema, coercedArguments);
     if (!argCheck.ok) {
       const executed = blockedToolResult(

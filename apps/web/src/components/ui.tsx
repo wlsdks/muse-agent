@@ -166,6 +166,7 @@ export const Icon = {
       </>
     ),
   bell: (p: IconProps) => base(p, <path d="M6 9a6 6 0 0 1 12 0c0 7 3 7 3 7H3s3 0 3-7M9 20a3 3 0 0 0 6 0" />),
+  plug: (p: IconProps) => base(p, <path d="M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5" />),
   task: (p: IconProps) =>
     base(
       p,

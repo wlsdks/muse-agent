@@ -70,6 +70,17 @@ export interface AskRunLogParams {
   readonly toolsUsed: readonly string[];
   /** Present on a FAILED run — the seam #6 needs so a thrown ask leaves a success:false trace. */
   readonly errorMessage?: string;
+  /**
+   * Fan-out trust signals (decomposed runs only) — so a self-contradicting / incomplete /
+   * truncated fan-out is NOT logged as a clean `success:true, grounded` row. Without this
+   * the error-analysis flywheel sees a fan-out failure as a success and gets no fuel.
+   */
+  readonly decomposition?: {
+    readonly subtaskCount: number;
+    readonly truncated: boolean;
+    readonly subtaskConflicts?: readonly string[];
+    readonly synthesisIncomplete?: readonly string[];
+  };
 }
 
 /**
@@ -90,6 +101,7 @@ export function buildAskRunLog(params: AskRunLogParams): RunLogInput {
       response: params.response,
       success: params.success,
       toolsUsed: params.toolsUsed,
+      ...(params.decomposition !== undefined ? { decomposition: params.decomposition } : {}),
       ...(params.errorMessage !== undefined ? { error: params.errorMessage } : {})
     },
     source: "cli.local"

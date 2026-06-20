@@ -9,7 +9,8 @@ import {
   resolveContactsFile,
   resolveObjectivesFile,
   resolvePendingApprovalsFile,
-  resolveVetoesFile
+  resolveVetoesFile,
+  resolveWeaknessesFile
 } from "@muse/autoconfigure";
 import { queryContacts, runActuatorByName } from "@muse/mcp";
 import type { JsonObject } from "@muse/shared";
@@ -50,6 +51,7 @@ import { handleInboundApprovalReply } from "./inbound-approval-handler.js";
 import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
 import { registerAccountabilityRoutes } from "./accountability-routes.js";
+import { registerSelfImprovementRoutes } from "./self-improvement-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
 import { registerAgentNoticesRoutes } from "./agent-notices-routes.js";
 import { registerSetupRoutes } from "./setup-routes.js";
@@ -313,6 +315,11 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     contactsFile: options.contactsFile ?? resolveContactsFile(process.env),
     objectivesFile: options.objectivesFile ?? resolveObjectivesFile(process.env),
     vetoesFile: options.vetoesFile ?? resolveVetoesFile(process.env)
+  });
+
+  registerSelfImprovementRoutes(server, {
+    authService,
+    weaknessesFile: options.weaknessesFile ?? resolveWeaknessesFile(process.env)
   });
 
   // Optional Phase B daemon: every MUSE_REMINDER_TICK_MS (default

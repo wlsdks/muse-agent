@@ -51,7 +51,7 @@ export function coerceToolArguments(inputSchema: JsonValue | undefined, args: Js
 function coerceScalar(value: JsonValue, declared: string): JsonValue | undefined {
   if ((declared === "number" || declared === "integer") && typeof value === "string") {
     const trimmed = value.trim();
-    const pattern = declared === "integer" ? /^-?\d+$/u : /^-?\d+(\.\d+)?$/u;
+    const pattern = declared === "integer" ? /^[+-]?\d+$/u : /^[+-]?\d+(\.\d+)?$/u;
     if (pattern.test(trimmed)) {
       const n = Number(trimmed);
       if (Number.isFinite(n)) return n;
@@ -68,6 +68,51 @@ function coerceScalar(value: JsonValue, declared: string): JsonValue | undefined
     return String(value);
   }
   return undefined;
+}
+
+/**
+ * Lossless, unambiguous case/whitespace repair of a model's CLOSED-VOCABULARY
+ * (`enum`/`const`) scalar arguments — the enum counterpart of
+ * {@link coerceToolArguments} (Structured Reflection, arXiv:2509.18847: a value
+ * with the right MEANING but the wrong surface form invalidates an otherwise
+ * correct call). A small local model routinely emits an enum value in the wrong
+ * case or with stray whitespace (`"Turn_Off"` / `" octal "` for a schema that
+ * declares `turn_off` / `octal`); strict-equality validation then rejects it,
+ * burning a retry round or failing the call outright. This repairs ONLY the
+ * provably-safe case: a STRING value that, after `trim()`, equals an allowed
+ * STRING choice case-insensitively AND matches EXACTLY ONE such choice — it is
+ * then rewritten to the schema's canonical spelling. Everything else is left
+ * untouched so a genuine out-of-vocabulary value still surfaces to
+ * {@link validateEnumArguments} rather than being masked by a lossy guess:
+ *   - a value matching no allowed choice (even loosely) → unchanged
+ *   - an AMBIGUOUS match (two choices differ only by case) → unchanged
+ *   - a non-string value, or a non-string allowed choice → unchanged
+ *   - an already-canonical value → unchanged (no-op, never reordered)
+ */
+export function coerceEnumArguments(inputSchema: JsonValue | undefined, args: JsonObject): JsonObject {
+  if (!isRecord(inputSchema) || inputSchema.type !== "object" || !isRecord(inputSchema.properties)) {
+    return args;
+  }
+  const properties = inputSchema.properties;
+  const out: Record<string, JsonValue> = { ...args };
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value !== "string") continue;
+    const prop = properties[key];
+    if (!isRecord(prop)) continue;
+    const allowed = Array.isArray(prop.enum)
+      ? prop.enum
+      : (prop.const !== undefined ? [prop.const] : undefined);
+    if (allowed === undefined) continue;
+    const stringChoices = allowed.filter((c): c is string => typeof c === "string");
+    if (stringChoices.includes(value)) continue; // already canonical — never rewrite
+    const folded = value.trim().toLowerCase();
+    const matches = stringChoices.filter((c) => c.trim().toLowerCase() === folded);
+    const [sole] = matches;
+    if (matches.length === 1 && sole !== undefined) {
+      out[key] = sole;
+    }
+  }
+  return out;
 }
 
 export function validateRequiredToolArguments(inputSchema: JsonValue | undefined, args: JsonObject): ToolArgumentValidation {

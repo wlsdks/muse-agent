@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { decomposeRequest, decomposeRequestWithKind, listHasBackReference, shouldDecompose } from "../src/index.js";
+import {
+  decomposeRequest,
+  decomposeRequestWithKind,
+  listHasBackReference,
+  shouldDecompose,
+  singleMarkerDependentSplit
+} from "../src/index.js";
 
 describe("decomposeRequestWithKind — flags a SEQUENCED (dependent) split vs an INDEPENDENT list", () => {
   it("marks an ordered sequence sequenced=true (later steps may depend on earlier output)", () => {
@@ -164,5 +170,66 @@ describe("listHasBackReference — pure helper (direct unit tests)", () => {
 
   it("returns true for a Korean back-reference in items[1]", () => {
     expect(listHasBackReference(["회의록 요약", "그 요약에서 액션아이템 추출"])).toBe(true);
+  });
+});
+
+describe("shouldDecompose — single-marker DEPENDENT two-step now fans out (sequenced-threading no longer starved)", () => {
+  it("decomposes a single-marker dependent two-step that the 2-marker threshold dropped (Korean)", () => {
+    const d = shouldDecompose("노트를 검색한 뒤 그 결과를 요약해줘");
+    expect(d.decompose).toBe(true);
+    expect(d.signals.sequencing).toBe(1);
+    expect(d.reason).toContain("back-reference");
+  });
+
+  it("decomposes a single-marker dependent two-step (English)", () => {
+    const d = shouldDecompose("First search my notes, then summarize the result");
+    expect(d.decompose).toBe(true);
+    expect(d.signals.sequencing).toBe(1);
+  });
+
+  it("the admitted single-marker request also splits into a SEQUENCED 2-step downstream (gate↔split consistency)", () => {
+    const request = "노트를 검색한 뒤 그 결과를 요약해줘";
+    expect(shouldDecompose(request).decompose).toBe(true);
+    const split = decomposeRequestWithKind(request);
+    expect(split.subtasks.length).toBe(2);
+    expect(split.sequenced).toBe(true);
+  });
+
+  // The fire-11 flat-scan over-fire class: a single ordered marker next to a
+  // benign MENTION-of / ASK-ABOUT a step or result must STAY single-agent.
+  it.each([
+    "그 결과 먼저 보여줘",
+    "그 요약 먼저 읽어줘",
+    "먼저 위의 메뉴에서 골라줘",
+    "First, what is the result of the game?",
+    "First, what is the previous step in the recipe?",
+    "Finally, what are those results used for?",
+    "방금 뭐라고 했어?",
+    "회의 끝난 후에 알려줘",
+    "이 문서 요약해줘",
+    "그 결과는 어땠어?"
+  ])("does NOT decompose a benign single-marker / mention-of-a-step request: %s", (q) => {
+    expect(shouldDecompose(q).decompose).toBe(false);
+  });
+});
+
+describe("singleMarkerDependentSplit — pure helper (split-first, then back-reference in the TAIL)", () => {
+  it("true: a single ordered marker splits and a tail clause acts on the prior output", () => {
+    expect(singleMarkerDependentSplit("노트를 검색한 뒤 그 결과를 요약해줘")).toBe(true);
+    expect(singleMarkerDependentSplit("First search my notes, then summarize the result")).toBe(true);
+  });
+
+  it("false: a single marker whose back-ref token sits in the LEADING clause (no tail dependency)", () => {
+    // splits on 먼저 → ["그 결과", "보여줘"]; the back-ref is in item[0], tail is clean
+    expect(singleMarkerDependentSplit("그 결과 먼저 보여줘")).toBe(false);
+  });
+
+  it("false: no ordered marker → no split → never fires", () => {
+    expect(singleMarkerDependentSplit("이 문서 요약해줘")).toBe(false);
+    expect(singleMarkerDependentSplit("회의 끝난 후에 알려줘")).toBe(false);
+  });
+
+  it("false: a single marker that splits but the tail merely MENTIONS a step (no act-on)", () => {
+    expect(singleMarkerDependentSplit("First, what is the result of the game?")).toBe(false);
   });
 });

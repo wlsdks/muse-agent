@@ -21,6 +21,25 @@ describe("buildAskRunLog (cli.local ask run-log payload — shared success/failu
     expect((entry.response as { grounded: string }).grounded).toBe("grounded");
   });
 
+  it("carries the decomposition trust signals when a fan-out contradicted / dropped / truncated (error-analysis flywheel fuel — a fan-out failure logged as a clean success is invisible)", () => {
+    const entry = buildAskRunLog({
+      query: "다음 3개 해줘: …",
+      timings: { totalMs: 1 },
+      grounded: "grounded",
+      response: "synth",
+      success: true,
+      toolsUsed: [],
+      decomposition: { subtaskCount: 3, truncated: true, subtaskConflicts: ["A vs B"], synthesisIncomplete: ["task X"] }
+    });
+    expect((entry.response as { decomposition?: { subtaskConflicts?: string[] } }).decomposition?.subtaskConflicts).toEqual(["A vs B"]);
+    expect((entry.response as { decomposition?: { truncated?: boolean } }).decomposition?.truncated).toBe(true);
+  });
+
+  it("omits the decomposition key entirely on a single-run (no noise)", () => {
+    const entry = buildAskRunLog({ query: "q", timings: {}, grounded: "grounded", response: "a", success: true, toolsUsed: [] });
+    expect((entry.response as { decomposition?: unknown }).decomposition).toBeUndefined();
+  });
+
   it("builds a FAILURE entry (success:false + error) — the seam #6 needs to trace a thrown run", () => {
     const entry = buildAskRunLog({
       query: "broken run",

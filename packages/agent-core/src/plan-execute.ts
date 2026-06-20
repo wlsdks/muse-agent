@@ -1,6 +1,6 @@
 import type { ModelMessage, ModelTool } from "@muse/model";
 import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
-import { coerceToolArguments, validateRequiredToolArguments } from "@muse/tools";
+import { coerceToolArguments, coerceEnumArguments, validateRequiredToolArguments } from "@muse/tools";
 
 import { neutralizeInjectionSpans } from "./injection.js";
 import { extractFirstJsonArray, iterateJsonArrayCandidates } from "./json-array-scan.js";
@@ -406,7 +406,7 @@ export function validatePlan(input: PlanValidationInput): PlanValidationResult {
       // required arg on step N doesn't block AFTER steps 0…N-1 wrote side effects.
       const schema = input.toolSchemas.get(step.tool);
       if (schema !== undefined) {
-        const coerced = coerceToolArguments(schema, step.args);
+        const coerced = coerceEnumArguments(schema, coerceToolArguments(schema, step.args));
         const argCheck = validateRequiredToolArguments(schema, coerced);
         for (const name of argCheck.missing) {
           errors.push({
