@@ -14,7 +14,7 @@ ratchet: testFiles 1062→1062 (+2 cases tools.test, mutation-valid) · fabricat
 - 리스크: 낮음 — 키워드 additive, write 도구 over-expose 안 됨(mutation-gate 유지), single-file 무회귀. ④b PASS.
 lesson: measure-first를 *다른 eval*(multifile)로 넓히면 새 결정론 갭이 나온다 — run_command 키워드 0개는 "도구가 도달조차 못함"의 명백한 버그. ④b가 weak-test(cap 미exercise)를 잡아 mutation-valid로 교정(judge가 maker 테스트 품질도 GATE).
 
-## fire 5 · 2026-06-20 · skill v2.0 · <pending5> (top item DONE; bloat = deliberate decompose)
+## fire 5 · 2026-06-20 · skill v2.0 · 0d3ef486 (top item DONE; bloat = deliberate decompose)
 meta: value-class=refactor(work-list) · pkg=tools(scoping) · kind=decompose-design-sensitive · verdict=N/A · firesSinceDrill=5
 ratchet: testFiles 1062→1062 · fabrication 0 · eval:computer-task PASS (fire-4 fix holds, no regression)
 - 무엇: fire-4가 top ★(wrong-tool)을 결정론적으로 FIX(eval pass^3 3/3)했으니 다음 후보=잔여 bloat(time/math/regex가 domain="core"=always-on). 코드로 스코핑: 6개 time 도구가 `muse-tools-time.ts`에서 core, math/regex도 여러 파일 산재 → 6+ 파일 re-tag + keyword 커버(DEFAULT_DOMAIN_KEYWORDS에 math/time/text 부재) + 크로스-서피스 검증 필요한 **broad·design-sensitive 리팩터**.
