@@ -109,12 +109,14 @@ export { applyVetoAvoidance, renderVetoAvoidanceSection, selectRelevantVetoes } 
 export type { LearnedVeto, VetoAvoidanceProvider } from "./veto-avoidance.js";
 export { applyPlaybook, clampReward, DEFAULT_PLAYBOOK_CREDIT_COSINE, DEFAULT_PLAYBOOK_DECAY_CREDIT_COSINE, dropEmptyTextStrategies, effectiveStrategyReward, isAvoidedStrategy, isInjectableStrategy, isLowSupportStrategy, isStaleStrategy, planStrategyLifecycle, PLAYBOOK_AVOID_BELOW, PLAYBOOK_INJECT_DEDUP_THRESHOLD, PLAYBOOK_PEVI_LAMBDA, PLAYBOOK_RECENCY_HALF_LIFE_DAYS, PLAYBOOK_REWARD_MAX, PLAYBOOK_REWARD_MIN, PLAYBOOK_STALE_AFTER_DAYS, PLAYBOOK_SUPPORT_DENSITY_COSINE, rankingUtility, rankPlaybookStrategies, rankPlaybookStrategiesByRelevance, recencyDiscount, renderPlaybookSection, selectCreditTargetSemantic, strategySupportDensity, strategyTextSimilarity, suppressNearDuplicateStrategies, wilsonInterval } from "./playbook.js";
 export type { PlaybookStrategy, PlaybookProvider, RankPlaybookOptions, StrategyLifecycleAction } from "./playbook.js";
-export { classifyCorrectionContradiction, classifyEpisodeAdmissionQuality, DEFAULT_STRATEGY_VERBATIM_CEILING, detectApprovals, detectCorrections, distillStrategyFromCorrection, hasDistillableDirective } from "./correction-distiller.js";
+export { classifyCorrectionContradiction, classifyEpisodeAdmissionQuality, DEFAULT_STRATEGY_CONSISTENCY_FLOOR, DEFAULT_STRATEGY_VERBATIM_CEILING, detectApprovals, detectCorrections, distillConsistentStrategy, distillStrategyFromCorrection, hasDistillableDirective } from "./correction-distiller.js";
 export { synthesizePatternSuggestion, type PatternSuggestionInput, type SynthesizePatternSuggestionOptions } from "./pattern-suggestion.js";
 export { calibratePreferenceConfidence, DEFAULT_PREFERENCE_DISTRACTOR_FLOOR, DEFAULT_PREFERENCE_SUPERSEDE_MAX, findSupersededPreferenceId, inferPreferenceFromCorrection, parseInferredPreference, type ExistingPreferenceForSupersede, type InferredPreference, type InferPreferenceOptions } from "./preference-inference.js";
 export type {
   ApprovalExchange,
   ClassifyContradictionOptions,
+  ConsistentStrategyOptions,
+  ConsistentStrategyResult,
   CorrectionExchange,
   CorrectionPolarity,
   DetectCorrectionsOptions,

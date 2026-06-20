@@ -16,6 +16,7 @@ import { redactSecretsInText } from "@muse/shared";
 import type { SessionTurnLine } from "./episodic-summariser.js";
 import { cosineSimilarity } from "./episodic-recall.js";
 import { lexicalTokens } from "./knowledge-recall.js";
+import { strategyTextSimilarity } from "./playbook.js";
 import { comparableScript } from "./script-family.js";
 import { validateMergeCoverage } from "./skill-merge-gate.js";
 
@@ -342,6 +343,83 @@ export async function distillStrategyFromCorrection(
     }
   }
   return distilled;
+}
+
+/** Mean pairwise agreement the k drafts must reach to be admitted. */
+export const DEFAULT_STRATEGY_CONSISTENCY_FLOOR = 0.5;
+
+export interface ConsistentStrategyOptions {
+  /** k drafts to draw for the self-consistency check. Default 3. */
+  readonly samples?: number;
+  /** Mean pairwise agreement (text similarity) the surviving drafts must reach. Default 0.5. */
+  readonly agreementFloor?: number;
+  /** Pairwise text similarity in [0,1]; default `strategyTextSimilarity`. Injected for tests. */
+  readonly similarity?: (a: string, b: string) => number;
+}
+
+export interface ConsistentStrategyResult {
+  readonly strategy: DistilledStrategy;
+  /** Mean pairwise agreement over the surviving drafts. */
+  readonly agreement: number;
+  /** How many of the k draws survived their own gates. */
+  readonly survived: number;
+}
+
+/**
+ * Self-consistency WRITE-admission gate (conformal abstention via self-consistency,
+ * arXiv:2405.01563; ReasoningBank Parallel MaTTS, arXiv:2509.25140). A strategy
+ * distilled from a SINGLE generation can be a one-off guess that nonetheless
+ * passes the support/verbatim gates. Draw `samples` (k) independent drafts and
+ * admit one ONLY when the surviving drafts AGREE — mean pairwise similarity ≥
+ * `agreementFloor`. Refusing to BANK an unstable (disagreeing ⇒ likely
+ * confabulated) self-improvement extends the fabrication=0 floor from the read
+ * path to the learning WRITE path. Returns the MEDOID (most-central) draft + the
+ * measured agreement, or undefined when too few drafts survived OR they disagree.
+ * Pure over the injected `draw` (the per-sample distiller) + `similarity` — the
+ * model is mocked in unit tests. k≤1 disables the gate (admits the single draft).
+ */
+export async function distillConsistentStrategy(
+  draw: () => Promise<DistilledStrategy | undefined>,
+  options: ConsistentStrategyOptions = {}
+): Promise<ConsistentStrategyResult | undefined> {
+  const samples = Math.max(1, Math.trunc(options.samples ?? 3));
+  const floor = Number.isFinite(options.agreementFloor) ? options.agreementFloor! : DEFAULT_STRATEGY_CONSISTENCY_FLOOR;
+  const similarity = options.similarity ?? strategyTextSimilarity;
+  const drafts: DistilledStrategy[] = [];
+  for (let i = 0; i < samples; i += 1) {
+    const d = await draw();
+    if (d) drafts.push(d);
+  }
+  // k≤1 ⇒ gate disabled (back-compat): admit the single draft if it exists.
+  if (samples <= 1) {
+    return drafts[0] ? { agreement: 1, strategy: drafts[0], survived: drafts.length } : undefined;
+  }
+  // A generation that can't even produce a majority of non-empty drafts is
+  // unstable ⇒ reject (fail-closed; never bank on a coin-flip).
+  if (drafts.length < 2 || drafts.length < Math.ceil(samples / 2)) {
+    return undefined;
+  }
+  // Mean pairwise agreement + the medoid (draft most central to the set).
+  let total = 0;
+  let pairs = 0;
+  let best = { index: 0, meanTo: -1 };
+  for (let i = 0; i < drafts.length; i += 1) {
+    let sumToOthers = 0;
+    for (let j = 0; j < drafts.length; j += 1) {
+      if (i === j) continue;
+      const sim = similarity(drafts[i]!.text, drafts[j]!.text);
+      sumToOthers += sim;
+      if (i < j) {
+        total += sim;
+        pairs += 1;
+      }
+    }
+    const meanTo = sumToOthers / (drafts.length - 1);
+    if (meanTo > best.meanTo) best = { index: i, meanTo };
+  }
+  const agreement = pairs > 0 ? total / pairs : 1;
+  if (agreement < floor) return undefined;
+  return { agreement, strategy: drafts[best.index]!, survived: drafts.length };
 }
 
 export type CorrectionPolarity = "contradict" | "agree" | "unrelated" | "uncertain";

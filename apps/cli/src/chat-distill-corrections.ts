@@ -21,6 +21,7 @@ import {
   DEFAULT_PLAYBOOK_DECAY_CREDIT_COSINE,
   detectApprovals,
   detectCorrections,
+  distillConsistentStrategy,
   distillStrategyFromCorrection,
   extractCurrentSessionTurns,
   selectCreditTargetSemantic,
@@ -69,6 +70,12 @@ export interface DistillCorrectionsOptions {
   readonly readBoundaries?: () => Promise<readonly SessionBoundaryRef[]>;
   /** Embedder for the distiller's held-out support gate; defaults to the shared gate embedder. */
   readonly embed?: (text: string) => Promise<readonly number[]>;
+  /**
+   * k drafts for the self-consistency write-admission gate (default 3 in the
+   * primitive). Set 1 to disable the gate (admit a single draft). Tests inject
+   * a small deterministic k.
+   */
+  readonly strategyConsistencySamples?: number;
 }
 
 /** A strategy whose reward moved this session, with the new (clamped) reward. */
@@ -186,14 +193,21 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
 
   const recorded: { readonly text: string; readonly tag?: string }[] = [];
   for (const exchange of corrections) {
-    const distilled = await distillStrategyFromCorrection(exchange, {
-      model: options.model,
-      modelProvider: options.modelProvider,
-      embed
-    });
-    if (!distilled) {
+    // Self-consistency WRITE gate (arXiv:2405.01563 / ReasoningBank MaTTS
+    // 2509.25140): draw k drafts and bank one only if they AGREE — an unstable
+    // (disagreeing ⇒ likely confabulated) distillation is never written.
+    const consistent = await distillConsistentStrategy(
+      () => distillStrategyFromCorrection(exchange, {
+        model: options.model,
+        modelProvider: options.modelProvider,
+        embed
+      }),
+      options.strategyConsistencySamples !== undefined ? { samples: options.strategyConsistencySamples } : {}
+    );
+    if (!consistent) {
       continue;
     }
+    const distilled = consistent.strategy;
     const isDuplicate = [...existingTexts, ...recorded.map((r) => r.text)].some(
       (text) => strategyTextSimilarity(distilled.text, text) >= threshold
     );

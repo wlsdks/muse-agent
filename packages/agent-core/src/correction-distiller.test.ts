@@ -1,11 +1,51 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  distillConsistentStrategy,
   distillStrategyFromCorrection,
   hasDistillableDirective,
   type CorrectionExchange,
+  type DistilledStrategy,
   type DistillStrategyOptions,
 } from "./correction-distiller.js";
+
+describe("distillConsistentStrategy — self-consistency write-admission gate (arXiv:2405.01563 / ReasoningBank MaTTS)", () => {
+  const drawer = (drafts: readonly (DistilledStrategy | undefined)[]): () => Promise<DistilledStrategy | undefined> => {
+    let i = 0;
+    return async () => drafts[i++];
+  };
+
+  it("ADMITS when the k drafts agree, returning the medoid + measured agreement", async () => {
+    const draws = [
+      { text: "when summarising email, use bullet points not prose" },
+      { text: "when summarising email use bullet points not prose please" },
+      { text: "when summarising email, prefer bullet points over prose" }
+    ];
+    const out = await distillConsistentStrategy(drawer(draws), { samples: 3 });
+    expect(out).toBeDefined();
+    expect(out!.agreement).toBeGreaterThanOrEqual(0.5);
+    expect(out!.strategy.text).toContain("bullet points");
+  });
+
+  it("REJECTS (undefined) when the k drafts DISAGREE — an unstable distillation is never banked", async () => {
+    const draws = [
+      { text: "when scheduling, default to the next business day" },
+      { text: "always cite the source file in answers" },
+      { text: "prefer metric units for measurements" }
+    ];
+    expect(await distillConsistentStrategy(drawer(draws), { samples: 3 })).toBeUndefined();
+  });
+
+  it("REJECTS when fewer than a majority of draws survive their own gates (unstable generation)", async () => {
+    const draws = [{ text: "when rescheduling, pick the next business day" }, undefined, undefined];
+    expect(await distillConsistentStrategy(drawer(draws), { samples: 3 })).toBeUndefined();
+  });
+
+  it("k=1 disables the gate (admits the single draft; undefined when none)", async () => {
+    expect((await distillConsistentStrategy(drawer([{ text: "x lesson here" }]), { samples: 1 }))?.strategy.text).toBe("x lesson here");
+    expect(await distillConsistentStrategy(drawer([undefined]), { samples: 1 })).toBeUndefined();
+  });
+});
 
 // --- Stub helpers ---
 
