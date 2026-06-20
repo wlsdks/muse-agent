@@ -1651,9 +1651,7 @@ excluded when scoring).
   it and down-ranks faded sessions ×FADE_PENALTY=0.5 (post-minScore-gate, ranking-only, never deletes);
   re-recalled memories auto-reinstate via consolidate overwrite + lastHitMs reset. Judge PASS: session-key
   identity holds end-to-end, counterfactual robust, fail-open 3 layers, fabrication floor intact.]
-- ◦ **MemoryBank fade importance term** — FadeMem-style importance weight in `selectForgettable` so a
-  high-importance memory resists fading even when idle (currently fade is purely recency×tally). Daemon
-  auto-refresh of the sidecar now DONE (fire 57); this is the remaining fire-30 sub-item.
+- ✓ **MemoryBank fade importance term** — `selectForgettable` gains `importanceHitsFloor` (default 8): a memory with ≥ floor LIFETIME recall hits resists fading even when idle+decayed (frequency consolidation, MemoryBank arXiv:2305.10250). AND-conjoined (only more conservative), default reaches daemon+manual consolidate, non-destructive. — self-improvement fire 3
 - ✓→Done **ReConcile consensus-gated council rounds** — `muse swarm council` ran a fixed round count
   blind to convergence (MAST step-repetition + termination-unawareness, arXiv:2309.13007 Chen/Saha/Bansal
   ACL 2024). [DONE 2026-06-13, cognition loop fire 31: `hasCouncilConsensus` (every member's mean pairwise

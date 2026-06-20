@@ -55,3 +55,20 @@ ratchet: testFiles=1057→1058 (new chat-weakness-nudge.test.ts) · fabrication 
   no nudge). nit: chat이 grounded 성공 시 recordWeaknessResolved 안 함(ask는 함) → 닫힌 gap이 BKT
   mastery까지 계속 nudge (backlog ◦ NEXT로 등록, 범위 밖·기존 공유-ledger 속성).
 - **형제-감사:** ask/chat 두 point-of-use 표면 모두 이번에 공유 헬퍼로 수렴 — recap은 별도 selectVolatileBeliefs 경로(무관).
+
+## fire 3 · 2026-06-20 · skill v2.0.0 · `b801ab88`
+meta: value-class=new-capability · pkg=@muse/memory · kind=consolidation/decay · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles=1058 (tests added to existing recall-promotion.test.ts) · fabrication 0 · gates: memory 456 + check EXIT=0 ALL clean + self-eval ok + lint pass
+
+- **무엇:** `selectForgettable`에 `importanceHitsFloor`(default 8) 추가 — 평생 recall hit이 floor
+  이상인 기억은 idle+decayed여도 fade 후보에서 제외. AND-결합(후보 제거만, 더 공격적 망각 불가).
+- **왜:** fade가 recency-DECAYED score(hits×2^(-age/half))만 봐서, 평생 자주 recall됐지만 최근 idle한
+  기억이 거의 안 쓰인 기억처럼 fade됨 — lifetime frequency(importance) 무시. MemoryBank(arXiv:2305.10250)의
+  frequency-consolidation = 자주 쓰인 기억은 strength가 굳어 Ebbinghaus decay 저항.
+- **리뷰지점:** ④b 독립 Opus judge가 **배선 end-to-end 확인**(manual `memory consolidate` + daemon tick
+  → consolidationPlan → selectForgettable, persistFade 사이드카까지) · 산수 RED-before/GREEN-after(established
+  hits10 score0.19≤0.25라 구코드선 fade됐음) · 비순환(raw hits는 decayed score와 다른 새 정보) · 무회귀(기존
+  hits8 케이스는 score 필터에서 이미 제외). 다양성: fire1 mcp/RL · fire2 cli/wiring → fire3 memory/consolidation.
+- **리스크:** 낮음 — non-destructive(fade는 report), AND-결합 안전, default 8은 reasoning-set(튜닝 ◦는 다른
+  consolidation 상수들과 함께 미해결). 형제-감사: selectPromotableMemories는 minHits+minScore+score랭킹이라
+  "lifetime frequency 무시" 결함 없음 → fade-only가 옳음(half-fix 아님).
