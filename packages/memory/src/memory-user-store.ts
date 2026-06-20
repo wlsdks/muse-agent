@@ -18,6 +18,7 @@
 import type { MuseDatabase } from "@muse/db";
 import { redactSecretsInText, type JsonValue } from "@muse/shared";
 import type { Insertable, Kysely } from "kysely";
+import { classifyValueChange } from "./belief-provenance-store.js";
 import { EMPTY_USER_MODEL, type FactSupersession, type UserMemory, type UserMemoryStore, type UserModel, type UserModelSlot } from "./index.js";
 
 type UserMemoryRow = Record<string, unknown>;
@@ -96,7 +97,12 @@ export function collectFactSupersessions(
   for (const [key, nextValue] of Object.entries(patchFacts)) {
     const prior = existingFacts[key];
     if (prior !== undefined && prior !== nextValue) {
-      out.push({ key, previousValue: prior, replacedAt: now });
+      // classifyValueChange never returns "same" here (the prior !== next guard
+      // already excluded byte-equal; a case/space-only variant is still a
+      // supersession worth logging — label it by the conservative branch).
+      const change = classifyValueChange(prior, nextValue);
+      const kind: "refine" | "contradict" = change === "refine" ? "refine" : "contradict";
+      out.push({ key, previousValue: prior, replacedAt: now, kind });
     }
   }
   return out;

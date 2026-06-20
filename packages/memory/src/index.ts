@@ -291,6 +291,16 @@ export interface FactSupersession {
   readonly key: string;
   readonly previousValue: string;
   readonly replacedAt: Date;
+  /**
+   * How the new value relates to {@link previousValue}: a `refine`
+   * (elaboration/narrowing — "Seoul" → "Seoul, Gangnam-gu") vs a
+   * `contradict` (a genuine value flip — "Seoul" → "Busan"), set by
+   * `classifyValueChange` in `collectFactSupersessions`. Optional for
+   * back-compat: a legacy entry written before this field existed has it
+   * absent, and a consumer treats absent as the conservative "changed"
+   * framing.
+   */
+  readonly kind?: "refine" | "contradict";
 }
 
 export interface UserMemory {

@@ -36,13 +36,31 @@ describe("normalizeMemoryKey", () => {
 describe("collectFactSupersessions", () => {
   it("records only the keys whose existing value actually changed", () => {
     expect(collectFactSupersessions({ city: "NYC", name: "Bob" }, { city: "LA", name: "Bob", pet: "cat" }, at)).toEqual([
-      { key: "city", previousValue: "NYC", replacedAt: at },
+      { key: "city", previousValue: "NYC", replacedAt: at, kind: "contradict" },
     ]);
   });
 
   it("records nothing for a first-seen key or an unchanged value", () => {
     expect(collectFactSupersessions({}, { city: "NYC" }, at)).toEqual([]);
     expect(collectFactSupersessions({ city: "NYC" }, { city: "NYC" }, at)).toEqual([]);
+  });
+
+  it("labels an ELABORATION (superset of tokens) as kind=refine", () => {
+    expect(collectFactSupersessions({ home: "Seoul" }, { home: "Seoul, Gangnam-gu" }, at)).toEqual([
+      { key: "home", previousValue: "Seoul", replacedAt: at, kind: "refine" },
+    ]);
+  });
+
+  it("labels an unrelated value swap as kind=contradict", () => {
+    expect(collectFactSupersessions({ home: "Seoul" }, { home: "Busan" }, at)).toEqual([
+      { key: "home", previousValue: "Seoul", replacedAt: at, kind: "contradict" },
+    ]);
+  });
+
+  it("labels a NARROWING (subset of tokens) as kind=refine too", () => {
+    expect(collectFactSupersessions({ home: "Seoul, Gangnam-gu" }, { home: "Seoul" }, at)).toEqual([
+      { key: "home", previousValue: "Seoul, Gangnam-gu", replacedAt: at, kind: "refine" },
+    ]);
   });
 });
 

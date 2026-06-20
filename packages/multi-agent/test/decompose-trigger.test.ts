@@ -4,6 +4,7 @@ import {
   decomposeRequest,
   decomposeRequestWithKind,
   listHasBackReference,
+  sentenceSplitDependentTwoStep,
   shouldDecompose,
   singleMarkerDependentSplit
 } from "../src/index.js";
@@ -210,6 +211,78 @@ describe("shouldDecompose — single-marker DEPENDENT two-step now fans out (seq
     "그 결과는 어땠어?"
   ])("does NOT decompose a benign single-marker / mention-of-a-step request: %s", (q) => {
     expect(shouldDecompose(q).decompose).toBe(false);
+  });
+});
+
+describe("shouldDecompose — marker-LESS dependent two-step (sentence-split + back-reference) now fans out", () => {
+  it("decomposes a marker-less dependent two-step split by a sentence boundary (Korean)", () => {
+    const d = shouldDecompose("오늘 매출을 집계해. 그 결과를 정리해서 보고서로 만들어.");
+    expect(d.decompose).toBe(true);
+    expect(d.reason).toContain("back-reference");
+  });
+
+  it("decomposes a marker-less dependent two-step (English)", () => {
+    const d = shouldDecompose("Pull the customer list. Use those results to draft a thank-you note.");
+    expect(d.decompose).toBe(true);
+  });
+
+  it("the admitted marker-less request also splits into a SEQUENCED 2-step downstream (gate↔split consistency)", () => {
+    const request = "오늘 매출을 집계해. 그 결과를 정리해서 보고서로 만들어.";
+    expect(shouldDecompose(request).decompose).toBe(true);
+    const split = decomposeRequestWithKind(request);
+    expect(split.subtasks.length).toBe(2);
+    expect(split.sequenced).toBe(true);
+  });
+
+  // STABLE-0 false-positive corpus: a benign multi-sentence note with NO
+  // dependency (no act-on-prior-output back-reference) must STAY single-agent.
+  it.each([
+    "이 노트를 정리해. 중요해.",
+    "Buy milk. Buy eggs.",
+    "Read the report. It is urgent.",
+    "회의 끝났어. 점심 먹자.",
+    "오늘 날씨 좋다. 산책하고 싶다.",
+    "Call the dentist. Also call the bank.",
+    "그 결과는 어땠어? 알려줘.",
+    "What is the result? Tell me.",
+    "장 봤어. 우유랑 계란 샀어.",
+    "Meeting is at 3. Lunch is at noon.",
+    "프로젝트 마감이 내일이야. 긴장된다.",
+    "The summary is on page two. Page three has the appendix.",
+    "오늘 할 일 많아. 바쁘다.",
+    "Send the invite. Send the agenda.",
+    "이 문서 좋아. 저 문서도 좋아."
+  ])("does NOT decompose a benign multi-sentence note (STABLE-0 FP): %s", (q) => {
+    expect(shouldDecompose(q).decompose).toBe(false);
+  });
+});
+
+describe("sentenceSplitDependentTwoStep — pure helper (no ordered marker → sentence-split → back-reference in the TAIL)", () => {
+  it("true: two declarative sentences, the tail acts on the prior output", () => {
+    expect(sentenceSplitDependentTwoStep("오늘 매출을 집계해. 그 결과를 정리해.")).toBe(true);
+    expect(sentenceSplitDependentTwoStep("Pull the list. Use those results to draft a note.")).toBe(true);
+  });
+
+  it("false: a single sentence never splits", () => {
+    expect(sentenceSplitDependentTwoStep("이 문서를 요약해줘")).toBe(false);
+    expect(sentenceSplitDependentTwoStep("Summarize this document for me")).toBe(false);
+  });
+
+  it("false: two sentences with NO back-reference in the tail (independent)", () => {
+    expect(sentenceSplitDependentTwoStep("우유 사. 계란 사.")).toBe(false);
+    expect(sentenceSplitDependentTwoStep("Buy milk. Buy eggs.")).toBe(false);
+  });
+
+  it("false: the back-ref token sits only in the LEADING sentence (no tail dependency)", () => {
+    expect(sentenceSplitDependentTwoStep("그 결과 보여줘. 고마워.")).toBe(false);
+  });
+
+  it("false: a question tail merely ASKS ABOUT a result (interrogative, not act-on)", () => {
+    expect(sentenceSplitDependentTwoStep("게임 했어. 그 결과는 어땠어?")).toBe(false);
+  });
+
+  it("false: a request that ALSO carries an ordered marker is owned by the marker path (no double-handling)", () => {
+    expect(sentenceSplitDependentTwoStep("노트를 검색해. 그 다음 그 결과를 요약해.")).toBe(false);
   });
 });
 

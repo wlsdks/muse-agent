@@ -104,7 +104,7 @@ export interface FactTimelineEntry {
   readonly key: string;
   readonly current?: string;
   readonly since?: string;
-  readonly previous: ReadonlyArray<{ readonly value: string; readonly until: string }>;
+  readonly previous: ReadonlyArray<{ readonly value: string; readonly until: string; readonly kind?: "refine" | "contradict" }>;
 }
 
 /**
@@ -119,15 +119,15 @@ export interface FactTimelineEntry {
  */
 export function buildFactTimeline(
   facts: Readonly<Record<string, string>>,
-  factHistory: readonly { readonly key: string; readonly previousValue: string; readonly replacedAt: Date }[] | undefined,
+  factHistory: readonly { readonly key: string; readonly previousValue: string; readonly replacedAt: Date; readonly kind?: "refine" | "contradict" }[] | undefined,
   keyFilter?: string
 ): FactTimelineEntry[] {
   const wanted = keyFilter ? normalizeMemoryKey(keyFilter) : undefined;
-  const byKey = new Map<string, { readonly previousValue: string; readonly replacedAt: Date }[]>();
+  const byKey = new Map<string, { readonly previousValue: string; readonly replacedAt: Date; readonly kind?: "refine" | "contradict" }[]>();
   for (const entry of factHistory ?? []) {
     if (wanted && entry.key !== wanted) continue;
     const list = byKey.get(entry.key) ?? [];
-    list.push({ previousValue: entry.previousValue, replacedAt: entry.replacedAt });
+    list.push({ previousValue: entry.previousValue, replacedAt: entry.replacedAt, ...(entry.kind ? { kind: entry.kind } : {}) });
     byKey.set(entry.key, list);
   }
   const keys = new Set<string>(byKey.keys());
@@ -139,7 +139,7 @@ export function buildFactTimeline(
       .sort((a, b) => a.replacedAt.getTime() - b.replacedAt.getTime());
     const since = history.length > 0 ? history[history.length - 1]!.replacedAt.toISOString() : undefined;
     const previous = history
-      .map((h) => ({ value: h.previousValue, until: h.replacedAt.toISOString() }))
+      .map((h) => ({ value: h.previousValue, until: h.replacedAt.toISOString(), ...(h.kind ? { kind: h.kind } : {}) }))
       .reverse();
     out.push({
       key,
@@ -338,7 +338,8 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
         const since = entry.since ? ` (since ${entry.since})` : "";
         io.stdout(`${entry.key}: ${current}${since}\n`);
         for (const prev of entry.previous) {
-          io.stdout(`  ↳ was "${prev.value}" until ${prev.until}\n`);
+          const verb = prev.kind === "refine" ? "refined from" : prev.kind === "contradict" ? "changed from" : "was";
+          io.stdout(`  ↳ ${verb} "${prev.value}" until ${prev.until}\n`);
         }
       }
     });

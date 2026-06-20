@@ -47,4 +47,21 @@ describe("buildFactTimeline", () => {
   it("returns [] when there is no history and no key filter", () => {
     expect(buildFactTimeline(facts, undefined)).toEqual([]);
   });
+
+  it("carries each supersession's kind (refine vs contradict) into previous[]", () => {
+    const kinded = [
+      { key: "home_city", previousValue: "Seoul", replacedAt: new Date("2026-01-01T00:00:00.000Z"), kind: "refine" as const },
+      { key: "home_city", previousValue: "Seoul, Gangnam-gu", replacedAt: new Date("2026-03-01T00:00:00.000Z"), kind: "contradict" as const }
+    ];
+    const [entry] = buildFactTimeline({ home_city: "Busan" }, kinded, "home_city");
+    expect(entry?.previous).toEqual([
+      { value: "Seoul, Gangnam-gu", until: "2026-03-01T00:00:00.000Z", kind: "contradict" },
+      { value: "Seoul", until: "2026-01-01T00:00:00.000Z", kind: "refine" }
+    ]);
+  });
+
+  it("leaves kind absent for a legacy (unlabelled) supersession", () => {
+    const [entry] = buildFactTimeline(facts, history, "home_city");
+    expect(entry?.previous.every((p) => !("kind" in p) || p.kind === undefined)).toBe(true);
+  });
 });

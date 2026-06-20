@@ -110,7 +110,21 @@ describe("FileUserMemoryStore", () => {
     const memory = await reread.findByUserId("stark");
     expect(memory?.facts.home_city).toBe("Seoul");
     expect(memory?.factHistory).toEqual([
-      { key: "home_city", previousValue: "Busan", replacedAt: new Date("2026-05-12T10:00:00Z") }
+      { key: "home_city", previousValue: "Busan", replacedAt: new Date("2026-05-12T10:00:00Z"), kind: "contradict" }
+    ]);
+  });
+
+  it("round-trips the supersession kind (refine vs contradict) through the file store", async () => {
+    const { file, store } = await newStore();
+    await store.upsertFact("stark", "home_city", "Seoul");
+    await store.upsertFact("stark", "home_city", "Seoul, Gangnam-gu"); // refine (elaboration)
+    await store.upsertFact("stark", "home_city", "Busan"); // contradict (flip)
+
+    const reread = new FileUserMemoryStore({ file });
+    const memory = await reread.findByUserId("stark");
+    expect(memory?.factHistory?.map((e) => ({ previousValue: e.previousValue, kind: e.kind }))).toEqual([
+      { previousValue: "Seoul", kind: "refine" },
+      { previousValue: "Seoul, Gangnam-gu", kind: "contradict" }
     ]);
   });
 

@@ -71,6 +71,9 @@ export function shouldDecompose(request: string): DecomposeDecision {
   if (signals.sequencing >= 1 && singleMarkerDependentSplit(request)) {
     return { decompose: true, reason: "single ordered marker with a cross-step back-reference (dependent two-step)", signals };
   }
+  if (signals.sequencing === 0 && sentenceSplitDependentTwoStep(request)) {
+    return { decompose: true, reason: "marker-less sentence-split with a cross-step back-reference (dependent two-step)", signals };
+  }
   if (signals.broadScope && signals.synthesis) {
     return { decompose: true, reason: "broad-scope aggregation (scope quantifier + synthesis ask)", signals };
   }
@@ -168,6 +171,49 @@ export function singleMarkerDependentSplit(request: string): boolean {
   return listHasBackReference(steps);
 }
 
+const SENTENCE_BOUNDARY = /([.。!！?？]+)\s+/;
+
+/**
+ * Segment a request into sentence clauses on terminal punctuation, KEEPING each
+ * clause's own terminator so an interrogative tail can be told from an
+ * imperative one. Trailing punctuation on the final clause is dropped by trim.
+ */
+function splitSentences(request: string): string[] {
+  return request
+    .split(SENTENCE_BOUNDARY)
+    .reduce<string[]>((acc, part, i) => {
+      if (i % 2 === 0) acc.push(part.trim());
+      else if (acc.length > 0) acc[acc.length - 1] += part.trim();
+      return acc;
+    }, [])
+    .filter(Boolean);
+}
+
+/**
+ * True iff a request with NO ordered marker splits on sentence boundaries into
+ * ≥2 clauses AND a NON-interrogative TAIL clause carries an explicit
+ * back-reference to an earlier clause's OUTPUT ("그 결과", "those results", …).
+ *
+ * This closes the marker-less half of the MAST reasoning-action-mismatch gap
+ * (arXiv 2503.13657): "오늘 매출을 집계해. 그 결과를 정리해." / "Pull the list. Use
+ * those results to draft a note." carry a real cross-step dependency but, with
+ * no ordered marker ("먼저"/"then"), neither {@link singleMarkerDependentSplit}
+ * nor the prose path fires — so step 2 ran BLIND on a single agent.
+ *
+ * Precision discipline mirrors {@link singleMarkerDependentSplit}: SPLIT FIRST,
+ * then require the back-reference in the TAIL — and a tail clause that ENDS in a
+ * question mark is excluded (an ASK-ABOUT a result, "그 결과는 어땠어?", is not an
+ * act-ON it). Runs ONLY when there is no ordered marker (else the existing
+ * marker paths own the request), keeping it strictly additive on the gate.
+ */
+export function sentenceSplitDependentTwoStep(request: string): boolean {
+  if (extractSequencedSteps(request).length >= 2) return false;
+  const clauses = splitSentences(request);
+  if (clauses.length < 2) return false;
+  const tail = clauses.slice(1).filter((c) => !/[?？]$/.test(c));
+  return listHasBackReference(["", ...tail]);
+}
+
 export interface DecomposedRequest {
   readonly subtasks: readonly Subtask[];
   /**
@@ -200,6 +246,10 @@ export function decomposeRequestWithKind(request: string): DecomposedRequest {
 
   const steps = extractSequencedSteps(request);
   if (steps.length >= 2) return { sequenced: true, subtasks: toSubtasks(steps) };
+
+  if (sentenceSplitDependentTwoStep(request)) {
+    return { sequenced: true, subtasks: toSubtasks(splitSentences(request)) };
+  }
 
   return { sequenced: false, subtasks: [{ id: "subtask_1", text: request.trim() }] };
 }
