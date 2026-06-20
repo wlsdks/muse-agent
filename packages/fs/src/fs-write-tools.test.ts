@@ -81,6 +81,26 @@ describe("applyEdit / applyEdits (pure, no disk)", () => {
       expect(applyEdit("abc\n", { new_string: "z", old_string: "totally missing line" }).ok).toBe(false);
     });
 
+    it("a near-miss old_string (wrong content, not whitespace) gets a nearest-line hint to self-correct", () => {
+      // The 12B guessed "return a + b" but the file has "return a - b" — a real
+      // content difference fuzzy matching (whitespace-only) won't bridge. The
+      // failure names the closest actual line so the model can copy it exactly.
+      const file = "export function add(a, b) {\n  return a - b;\n}\n";
+      const out = applyEdit(file, { new_string: "return a + b;", old_string: "return a + b" });
+      expect(out.ok).toBe(false);
+      if (!out.ok) {
+        expect(out.reason).toContain("return a - b");
+      }
+    });
+
+    it("an unrelated old_string gets NO nearest-line hint (no noise)", () => {
+      const out = applyEdit("export function add(a, b) {\n  return a - b;\n}\n", { new_string: "z", old_string: "xyzzy frobnicate qux" });
+      expect(out.ok).toBe(false);
+      if (!out.ok) {
+        expect(out.reason).not.toContain("return");
+      }
+    });
+
     it("repairs a model that double-escaped newlines as literal \\n in old_string", () => {
       // A small local model often emits "a\\nb" (backslash-n text) instead of a
       // real newline in its tool-call JSON; exact + line-block both miss. The

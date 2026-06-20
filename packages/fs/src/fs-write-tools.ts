@@ -195,6 +195,44 @@ function unescapeWhitespace(text: string): string {
   return text.replace(/\\r\\n|\\n|\\r|\\t/gu, (seq) => (seq === "\\t" ? "\t" : seq === "\\r" ? "\r" : "\n"));
 }
 
+/**
+ * When an edit misses by genuine CONTENT (not whitespace — that's the fuzzy
+ * pass), name the file's closest line so the model can copy it verbatim on its
+ * next attempt instead of re-guessing. Deterministic: ranks lines by shared-word
+ * overlap with old_string's first non-empty line and requires a real overlap
+ * (≥ half the target words, ≥2) so an unrelated miss gets NO noisy hint.
+ */
+function nearestLineHint(content: string, oldString: string): string | undefined {
+  const target = oldString.split("\n").map((line) => line.trim()).find((line) => line.length > 0);
+  if (!target) {
+    return undefined;
+  }
+  const targetWords = new Set(target.split(/\s+/u).filter((word) => word.length > 0));
+  if (targetWords.size === 0) {
+    return undefined;
+  }
+  let best: { line: string; score: number } | undefined;
+  for (const raw of content.split("\n")) {
+    const line = raw.trim();
+    if (line.length === 0) {
+      continue;
+    }
+    let shared = 0;
+    for (const word of line.split(/\s+/u)) {
+      if (targetWords.has(word)) {
+        shared += 1;
+      }
+    }
+    if (shared > 0 && (!best || shared > best.score)) {
+      best = { line, score: shared };
+    }
+  }
+  if (best && best.score >= Math.max(2, Math.ceil(targetWords.size / 2))) {
+    return best.line.slice(0, 120);
+  }
+  return undefined;
+}
+
 /** Apply ONE edit to `content`, validating uniqueness. Pure — never touches disk. */
 export function applyEdit(content: string, spec: FsEditSpec): EditOutcome {
   if (spec.old_string.length === 0) {
@@ -220,7 +258,13 @@ export function applyEdit(content: string, spec: FsEditSpec): EditOutcome {
       return { ...repaired, fuzzy: true };
     }
   }
-  return { ok: false, reason: `old_string not found: ${JSON.stringify(spec.old_string.slice(0, 80))}` };
+  const hint = nearestLineHint(content, spec.old_string);
+  return {
+    ok: false,
+    reason: `old_string not found: ${JSON.stringify(spec.old_string.slice(0, 80))}${
+      hint ? `. Closest line in the file is ${JSON.stringify(hint)} — read the file and copy the exact text` : ""
+    }`
+  };
 }
 
 /** Apply edits in order on the evolving content; the first failure aborts (atomic). */

@@ -91,7 +91,7 @@ export function personaEntryCap(): number {
 export function buildMusePersona(
   memory: JarvisPersonaMemory,
   userId: string,
-  options: { readonly now?: Date } = {}
+  options: { readonly now?: Date; readonly contestedKeys?: ReadonlySet<string> } = {}
 ): string | undefined {
   const facts = Object.entries(memory.facts);
   // Preferences encode three slot types: plain `pref.X`, `veto:X`
@@ -161,6 +161,16 @@ export function buildMusePersona(
     lines.push("Facts the user has shared:");
     for (const [key, value] of factsShown) {
       const safe = defangMemoryValue(value);
+      // CONTESTED takes precedence (chat-path parity with ask's buildMemoryContextBlock):
+      // a fact whose value FLIPPED across confirmations is volatile — Muse itself knows
+      // it's unstable, so the model must "confirm it's current", not assert it. This
+      // replaces the value-blind `(previously X)` note (which can't tell a refinement
+      // Seoul→Seoul-Gangnam from a contradiction Seoul→Busan — contestedFactKeys is
+      // refinement-aware, so it only fires on a genuine flip).
+      if (options.contestedKeys?.has(key)) {
+        lines.push(`  - ${key}: ${safe} (value has changed before — confirm it's current)`);
+        continue;
+      }
       const prior = priorByKey.get(key);
       lines.push(prior !== undefined && prior !== value
         ? `  - ${key}: ${safe} (previously ${defangMemoryValue(prior)})`

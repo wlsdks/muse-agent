@@ -675,7 +675,17 @@ const workspaceHints = [
   "약속",
   "회의",
   "리마인더",
-  "리마인드"
+  "리마인드",
+  // Code/file edit targets — so a "fix the bug in the source file" task clears
+  // the write-intent gate and file_edit can reach the model (it still passes the
+  // relevance + approval gates before any write).
+  "file",
+  "source",
+  "code",
+  "codebase",
+  "파일",
+  "소스",
+  "코드"
 ] as const;
 
 const mutationPatterns = [
@@ -702,7 +712,10 @@ const mutationPatterns = [
   /\bsnooze\b/u,
   /\bcomplete\b/u,
   /\bmark\b/u,
-  /\bsave\b/u
+  /\bsave\b/u,
+  // Code-edit verbs (the "fix the bug" / "debug the file" task class).
+  /\bfix\b/u,
+  /\bdebug\b/u
 ] as const;
 
 const koreanMutationHints = [
@@ -727,7 +740,8 @@ const koreanMutationHints = [
   "저장",
   "기록해",
   "예약해",
-  "리마인드"
+  "리마인드",
+  "고쳐"
 ] as const;
 
 const readOnlyLookupExceptions = ["unassigned", "미할당"] as const;
@@ -797,7 +811,17 @@ const mutationTargetHints = [
   "약속",
   "회의",
   "리마인더",
-  "리마인드"
+  "리마인드",
+  // Code/file edit targets (paired with the workspaceHints + fix/debug verbs).
+  "file",
+  "source",
+  "code",
+  "bug",
+  "function",
+  "파일",
+  "소스",
+  "코드",
+  "버그"
 ] as const;
 
 const mutationTargetPatterns = [/\bpr\b/u] as const;

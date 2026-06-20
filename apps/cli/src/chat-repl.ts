@@ -529,7 +529,19 @@ export async function runLocalChat(
   const personaMemory = userMemory
     ? { ...userMemory, facts: filterFactsToKeys(userMemory.facts, factKeysToInject(message, Object.keys(userMemory.facts))) }
     : userMemory;
-  const userMemoryBlock = personaMemory ? (buildMusePersona(personaMemory, userId) ?? "").trim() : "";
+  // Contested-fact caution on the one-shot chat persona (sibling of the Ink chat path):
+  // a volatile fact gets "confirm it's current" instead of a bare assertion. Lazy import
+  // (the heavy @muse/memory store breaks the bun-compiled desktop binary on a static one).
+  // Best-effort, fail-soft to no caution.
+  let chatContestedKeys: ReadonlySet<string> = new Set();
+  if (personaMemory && Object.keys(personaMemory.facts).length > 0) {
+    try {
+      const { FileBeliefProvenanceStore, defaultBeliefProvenanceFile, deriveFactProvenance, contestedFactKeys, normalizeMemoryKey } = await import("@muse/memory");
+      const provenance = deriveFactProvenance(await new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()).query(userId));
+      chatContestedKeys = contestedFactKeys(Object.keys(personaMemory.facts), provenance, { normalizeKey: normalizeMemoryKey, now: Date.now() });
+    } catch { /* provenance unavailable — render the persona without the caution */ }
+  }
+  const userMemoryBlock = personaMemory ? (buildMusePersona(personaMemory, userId, { contestedKeys: chatContestedKeys }) ?? "").trim() : "";
   const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
   // Multi-turn recall: resolve an anaphoric turn into a self-contained
   // retrieval query (one constrained inference, fail-open to the raw turn).

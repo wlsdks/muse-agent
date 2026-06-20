@@ -107,6 +107,31 @@ describe("ToolExecutor", () => {
     expect(result.sanitized?.findings.some((finding) => finding.name === "role_override")).toBe(true);
   });
 
+  it("a not-found tool name suggests the nearest REGISTERED tool so a hallucinated name self-corrects", async () => {
+    // The local 12B reaches for an intuitive name like `node_run` instead of the
+    // registered `run_command`; a bare "tool not found" leaves it stuck. The
+    // error names the closest real tool so the next turn can call it.
+    const runner: MuseTool = {
+      definition: { description: "Run a command.", domain: "system", inputSchema: { type: "object" }, name: "run_command", risk: "execute" },
+      execute: () => "ran"
+    };
+    const executor = new ToolExecutor({ registry: new ToolRegistry([runner]) });
+    const result = await executor.execute({ arguments: {}, context: { runId: "run-1" }, id: "c1", name: "node_run" });
+    expect(result.status).toBe("failed");
+    expect(result.output).toContain("run_command");
+  });
+
+  it("a not-found tool with NO similar registered tool gives no misleading suggestion", async () => {
+    const runner: MuseTool = {
+      definition: { description: "Run a command.", domain: "system", inputSchema: { type: "object" }, name: "run_command", risk: "execute" },
+      execute: () => "ran"
+    };
+    const executor = new ToolExecutor({ registry: new ToolRegistry([runner]) });
+    const result = await executor.execute({ arguments: {}, context: { runId: "run-1" }, id: "c1", name: "xyzzy_frobnicate" });
+    expect(result.status).toBe("failed");
+    expect(result.output).not.toContain("run_command");
+  });
+
   it("returns the prior result for duplicate idempotency keys", async () => {
     let executions = 0;
     const tool: MuseTool = {
@@ -217,6 +242,22 @@ describe("tool utilities", () => {
     expect(isWorkspaceMutationPrompt("show my tasks")).toBe(false);     // read, not write
     expect(isWorkspaceMutationPrompt("change the topic please")).toBe(false); // mutation verb but no target
     expect(isWorkspaceMutationPrompt("what's the weather?")).toBe(false);
+  });
+
+  it("recognises CODE-EDIT intent so file_edit reaches a 'fix the bug in the source' task", () => {
+    // The write-tool gate (write_without_mutation_intent) blocks file_edit unless
+    // the prompt reads as a mutation. Its vocab was workspace-objects only
+    // (issue/task/note), so a code-fix task ("fix the bug in the source file")
+    // never registered → file_edit stayed hidden and the model could not edit.
+    // file/source/code are now workspace+target hints and fix/debug are mutation
+    // verbs, so a code-edit prompt clears the gate (file_edit still passes the
+    // relevance + approval gates before it can write).
+    expect(isWorkspaceMutationPrompt("find and fix the bug in the source file math-utils.mjs")).toBe(true);
+    expect(isWorkspaceMutationPrompt("edit the source code to fix the failing test")).toBe(true);
+    expect(isWorkspaceMutationPrompt("소스 파일의 버그를 고쳐줘")).toBe(true);
+    // Read-only / target-less prompts must NOT register (no over-exposure of writes):
+    expect(isWorkspaceMutationPrompt("read the source file and summarize it")).toBe(false); // no mutation verb
+    expect(isWorkspaceMutationPrompt("fix dinner")).toBe(false); // mutation verb but no code/file target
   });
 
   it("validates tool descriptions and dependencies before model exposure", () => {
