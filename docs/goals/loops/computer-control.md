@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 16 · 2026-06-21 · skill v2.0 · <commit-pending> (env injection — whole code-injection family; fire-15 sibling-audit)
+meta: value-class=new-capability · pkg=@muse/tools+crates/runner · kind=security/path-safe · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 1069→1069 (+1 case tools.test family + Rust family test, mutation-valid) · fabrication 0 · @muse/tools 격리 285 · crates/runner cargo 8 · eval:computer-task 무관(env 미사용) · pnpm check=박스포화(web-search fuzz 5s, 격리 green) · lint clean
+- 무엇: fire 15 sibling-audit 완성 — 동적로더(LD_/DYLD_)는 family 1/24였음. NODE_OPTIONS(=`--require`로 node에 코드주입, Muse가 node 실행), shell(BASH_ENV/ENV/SHELLOPTS), interpreter(PERL5OPT/PYTHONSTARTUP/PYTHONPATH/RUBYOPT…), git command-exec(GIT_SSH_COMMAND/GIT_EXTERNAL_DIFF/GIT_PAGER/…+GIT_CONFIG*) 전부 통과하던 걸 `UNSAFE_ENV_EXACT` denylist로 차단. TS+Rust 양 레이어 리스트 IDENTICAL.
+- 왜: fire 15가 "LD_PRELOAD 하나 찾고 dynamic-loader만 막음"=형제-감사 미완. 올바른 질문=「코드주입 env의 *전체 클래스*(per-runtime)는?」. exact-match라 NODE_ENV/GIT_DIR/PYTHONUNBUFFERED 등 legit 보존.
+- 리뷰지점: mutation-valid 양 레이어(fire-15 코드는 NODE_OPTIONS 통과=RED). ④b judge PASS + GIT_CONFIG*(블록된 git-exec hooks로 가는 2차 경로)를 강한 miss로 지적→같은 슬라이스서 추가. over-block 0(exact-match), TS/Rust 동일.
+- 리스크: 낮음 — env denylist 확장만(값-타입/uppercase/LD_/DYLD_/env_clear/PATH 불변). ④b PASS.
+lesson: **형제-감사는 *첫 발견 멤버*가 아니라 *전체 클래스*를 enumerate해야** — fire 15는 1/24 고치고 done이라 함. ④b judge가 또 한 멤버(GIT_CONFIG)를 지적=감사가 2단계로 수렴. "denylist는 미완성이기 쉽다"의 실례; 가능하면 클래스를 한 번에.
+
 ## fire 15 · 2026-06-21 · skill v2.0 · ad6fefb5 (run_command dynamic-loader env injection blocked; 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/tools+crates/runner · kind=security/path-safe · verdict=PASS · firesSinceDrill=5
 ratchet: testFiles 1069→1069 (+1 case tools.test, mutation-valid) · fabrication 0 · @muse/tools 격리 284 통과 · crates/runner cargo test 7 통과 · eval:computer-task PASS(무회귀) · pnpm check=박스포화(web-search fuzz 15s, 변경패키지 격리 green) · lint clean

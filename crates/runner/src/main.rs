@@ -190,14 +190,28 @@ fn append_capped(kept: &mut Vec<u8>, chunk: &[u8], max_output_bytes: usize) -> b
     }
 }
 
+// Env vars that load/run arbitrary CODE at launch — they escape the no-shell
+// `Command::new` + path-reject guard (which only constrain WHICH binary runs).
+// Beyond the dynamic loader (LD_*/DYLD_* prefixes), each runtime has its own:
+// NODE_OPTIONS (--require), shell startup (BASH_ENV/ENV), interpreter opt/path
+// injection (perl/python/ruby), and git's command-exec hooks.
+const UNSAFE_ENV_EXACT: &[&str] = &[
+    "NODE_OPTIONS",
+    "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS",
+    "PERL5OPT", "PERL5DB", "PERLLIB", "PERL5LIB",
+    "PYTHONSTARTUP", "PYTHONPATH", "PYTHONINSPECT",
+    "RUBYOPT", "RUBYLIB",
+    "GIT_SSH_COMMAND", "GIT_SSH", "GIT_EXTERNAL_DIFF", "GIT_PAGER", "GIT_EDITOR", "GIT_PROXY_COMMAND", "GIT_ASKPASS",
+    // GIT_CONFIG* point git at an attacker config (core.sshCommand / core.pager)
+    // — a second path to the command-exec hooks above.
+    "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM",
+];
+
 fn is_safe_env_key(key: &str) -> bool {
-    // Dynamic-loader vars (LD_PRELOAD / LD_LIBRARY_PATH / LD_AUDIT, and macOS
-    // DYLD_INSERT_LIBRARIES / DYLD_*_PATH) load arbitrary code INTO the spawned
-    // process — they would escape the no-shell `Command::new` + path-reject guard.
-    // A model-run command never legitimately needs them, so reject the prefixes.
     !key.is_empty()
         && !key.starts_with("LD_")
         && !key.starts_with("DYLD_")
+        && !UNSAFE_ENV_EXACT.contains(&key)
         && key
             .bytes()
             .all(|byte| byte == b'_' || byte.is_ascii_uppercase() || byte.is_ascii_digit())
@@ -323,6 +337,17 @@ mod tests {
         // A normal var that merely starts with the letters is still fine.
         assert!(is_safe_env_key("LDFLAGS"));
         assert!(is_safe_env_key("LOAD_PATH"));
+    }
+
+    #[test]
+    fn rejects_the_whole_code_injection_env_family() {
+        for key in ["NODE_OPTIONS", "BASH_ENV", "ENV", "SHELLOPTS", "PERL5OPT", "PYTHONSTARTUP", "PYTHONPATH", "RUBYOPT", "GIT_SSH_COMMAND", "GIT_EXTERNAL_DIFF", "GIT_PAGER", "GIT_PROXY_COMMAND", "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"] {
+            assert!(!is_safe_env_key(key), "{key} must be rejected");
+        }
+        // Legitimate, similarly-named vars survive.
+        for key in ["NODE_ENV", "GIT_DIR", "GIT_AUTHOR_NAME", "MY_FLAG"] {
+            assert!(is_safe_env_key(key), "{key} must be allowed");
+        }
     }
 }
 

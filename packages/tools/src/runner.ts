@@ -258,15 +258,31 @@ function parseRunnerResponse(value: string): RunnerCommandResponse | undefined {
 }
 
 /**
- * Dynamic-loader env vars hijack a process at launch — `LD_PRELOAD` /
- * `LD_LIBRARY_PATH` / `LD_AUDIT` (glibc) and `DYLD_INSERT_LIBRARIES` /
- * `DYLD_*_PATH` (macOS dyld) load arbitrary code INTO the spawned command,
- * escaping the runner's no-shell `Command::new` + path-reject guards. A model-run
- * command never legitimately needs them, so they are dropped before they reach
- * the runner (defence-in-depth; the Rust runner rejects them too).
+ * Env vars that load/run arbitrary CODE at process launch — they bypass the
+ * runner's no-shell `Command::new` + path-reject guards (which only constrain
+ * WHICH binary runs, not what's injected into it). A model-run command never
+ * legitimately needs them, so they are dropped before reaching the runner
+ * (defence-in-depth; the Rust runner rejects the same set). Covers: the dynamic
+ * loader (`LD_*` glibc / `DYLD_*` macOS), and a per-runtime set of code-injection
+ * vars — `NODE_OPTIONS` (--require/--import), shell startup (`BASH_ENV`/`ENV`),
+ * interpreter option/path injection (perl/python/ruby), and git's command-exec
+ * hooks (`GIT_SSH_COMMAND`/`GIT_EXTERNAL_DIFF`/…).
  */
-function isDynamicLoaderEnvKey(key: string): boolean {
-  return /^(?:LD|DYLD)_/u.test(key);
+const UNSAFE_ENV_EXACT: ReadonlySet<string> = new Set([
+  "NODE_OPTIONS",
+  "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS",
+  "PERL5OPT", "PERL5DB", "PERLLIB", "PERL5LIB",
+  "PYTHONSTARTUP", "PYTHONPATH", "PYTHONINSPECT",
+  "RUBYOPT", "RUBYLIB",
+  "GIT_SSH_COMMAND", "GIT_SSH", "GIT_EXTERNAL_DIFF", "GIT_PAGER", "GIT_EDITOR", "GIT_PROXY_COMMAND", "GIT_ASKPASS",
+  // GIT_CONFIG* point git at an attacker-controlled config that can set
+  // core.sshCommand / core.pager / core.fsmonitor — a second path to the same
+  // command-exec hooks blocked above.
+  "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"
+]);
+
+function isUnsafeEnvKey(key: string): boolean {
+  return /^(?:LD|DYLD)_/u.test(key) || UNSAFE_ENV_EXACT.has(key);
 }
 
 function readStringRecord(value: unknown): Readonly<Record<string, string>> | undefined {
@@ -276,7 +292,7 @@ function readStringRecord(value: unknown): Readonly<Record<string, string>> | un
 
   return Object.fromEntries(
     Object.entries(value).filter(
-      (entry): entry is [string, string] => typeof entry[1] === "string" && !isDynamicLoaderEnvKey(entry[0])
+      (entry): entry is [string, string] => typeof entry[1] === "string" && !isUnsafeEnvKey(entry[0])
     )
   );
 }
