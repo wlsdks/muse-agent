@@ -44,7 +44,7 @@ import { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource } 
 export { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource };
 import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy } from "@muse/recall";
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
-import { diversifyAskChunks, notesGroundingFraming, secondHopAugmentChunks, shouldSecondHop } from "@muse/recall";
+import { dedupNearDuplicateChunks, diversifyAskChunks, notesGroundingFraming, secondHopAugmentChunks, shouldSecondHop } from "@muse/recall";
 import { groundedSourceSummary, optionalGroundingSections } from "@muse/recall";
 import { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
 
@@ -1662,6 +1662,12 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // Compose RAG context block. Edge-place the chunks (most relevant at
       // the start + end, least in the middle) per "Lost in the Middle" so the
       // small local model actually attends to the strongest grounding.
+      // Graph-link + second-hop AUGMENT chunks are appended after MMR and
+      // bypass it, so a near-identical chunk (same fact across two notes, or a
+      // bridge near a seed) can pad the small model's context. Drop provable
+      // near-duplicates first-wins (highest-ranked survives); fail-open on any
+      // chunk without a comparable embedding (e.g. --file ad-hoc passages).
+      scored = dedupNearDuplicateChunks(scored, cosine);
       const contextChunks = reorderForLongContext(scored);
       // CRAG: grade the notes' retrieval confidence so a weak near-miss isn't
       // presented to the small model as something to cite as fact.

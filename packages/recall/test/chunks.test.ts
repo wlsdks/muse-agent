@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { diversifyAskChunks, notesGroundingFraming, secondHopAugmentChunks, shouldSecondHop, type ScoredChunk } from "@muse/recall";
+import { dedupNearDuplicateChunks, diversifyAskChunks, notesGroundingFraming, secondHopAugmentChunks, shouldSecondHop, type ScoredChunk } from "@muse/recall";
 
 const mk = (id: string, text: string, score: number, embedding: number[]): ScoredChunk => ({
   chunk: { file: `${id}.md`, chunkIndex: 0, text, embedding },
@@ -126,5 +126,74 @@ describe("notesGroundingFraming", () => {
     const weak = [mk("a", "wireguard mtu is 1380 for the tunnel", 0.55, [1, 0])];
     const out = notesGroundingFraming(weak, "wireguard mtu");
     expect(["confident", "ambiguous", "none"]).toContain(out.verdict);
+  });
+});
+
+describe("dedupNearDuplicateChunks", () => {
+  it("drops the lower-ranked chunk when two are near-identical (cosine >= threshold)", () => {
+    // A has embedding [1, 0] and B has a near-identical direction — cosine ≈ 1.
+    const a = mk("a", "VPN MTU is 1380", 0.9, [1, 0]);
+    const b = mk("b", "VPN MTU is 1380 for WireGuard", 0.5, [1, 0.001]); // cosine to a ≈ 1
+    const out = dedupNearDuplicateChunks([a, b], cosine, 0.985);
+    // Only the first (higher-ranked) survives.
+    expect(out.map((s) => s.file)).toEqual(["a.md"]);
+    expect(out).toHaveLength(1);
+  });
+
+  it("keeps both chunks when they are genuinely distinct (orthogonal embeddings)", () => {
+    const a = mk("a", "VPN setup", 0.9, [1, 0]);
+    const b = mk("b", "hiking trails", 0.5, [0, 1]); // cosine to a = 0
+    const out = dedupNearDuplicateChunks([a, b], cosine, 0.985);
+    expect(out.map((s) => s.file)).toEqual(["a.md", "b.md"]);
+    expect(out).toHaveLength(2);
+  });
+
+  it("keeps both chunks when either has an EMPTY embedding (fail-open)", () => {
+    const a = mk("a", "VPN setup", 0.9, []);
+    const b = mk("b", "VPN setup (dup)", 0.5, []);
+    // Neither has a comparable embedding → both kept, never treated as near-dup.
+    const out = dedupNearDuplicateChunks([a, b], cosine, 0.985);
+    expect(out).toHaveLength(2);
+    expect(out.map((s) => s.file)).toEqual(["a.md", "b.md"]);
+  });
+
+  it("keeps a chunk with a different-length embedding (not comparable → not a dup)", () => {
+    const a = mk("a", "fact A", 0.9, [1, 0]);
+    const b = mk("b", "fact A dup", 0.5, [1, 0, 0]); // different length → not comparable
+    const out = dedupNearDuplicateChunks([a, b], cosine, 0.985);
+    expect(out).toHaveLength(2);
+    expect(out.map((s) => s.file)).toEqual(["a.md", "b.md"]);
+  });
+
+  it("preserves order: [A, B(distinct), C(near-dup of A)] returns [A, B]", () => {
+    const a = mk("a", "VPN MTU", 0.9, [1, 0]);
+    const b = mk("b", "hiking trails", 0.5, [0, 1]); // orthogonal to a
+    const c = mk("c", "VPN MTU copy", 0.3, [1, 0.001]); // near-dup of a
+    const out = dedupNearDuplicateChunks([a, b, c], cosine, 0.985);
+    expect(out.map((s) => s.file)).toEqual(["a.md", "b.md"]);
+  });
+
+  it("returns a copy equal to input for a single-element array, without mutating the original", () => {
+    const a = mk("a", "solo", 0.9, [1, 0]);
+    const input = [a];
+    const out = dedupNearDuplicateChunks(input, cosine, 0.985);
+    expect(out).toEqual([a]);
+    expect(input).toHaveLength(1); // original unchanged
+    expect(out).not.toBe(input); // different array reference (copy)
+  });
+
+  it("returns an empty array for zero-element input without mutating", () => {
+    const input: ScoredChunk[] = [];
+    const out = dedupNearDuplicateChunks(input, cosine, 0.985);
+    expect(out).toEqual([]);
+    expect(input).toHaveLength(0);
+  });
+
+  it("treats a zero-vector embedding as non-comparable → kept even next to another zero-vector", () => {
+    const a = mk("a", "zero embedding A", 0.9, [0, 0]);
+    const b = mk("b", "zero embedding B", 0.5, [0, 0]);
+    const out = dedupNearDuplicateChunks([a, b], cosine, 0.985);
+    // Both have zero-vector embeddings → non-comparable → both kept.
+    expect(out).toHaveLength(2);
   });
 });

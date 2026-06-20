@@ -148,6 +148,44 @@ export function secondHopAugmentChunks(
 }
 
 /**
+ * Drop near-duplicate chunks from a ranked grounding window. The initial
+ * top-K is MMR-diversified, but graph-link + second-hop AUGMENT chunks are
+ * APPENDED afterwards and bypass MMR — so a chunk near-identical to one
+ * already kept (the same fact phrased almost the same across two notes, or a
+ * bridge chunk near a seed) can pad the small model's context with redundancy.
+ * Greedy first-wins in INPUT ORDER (the caller hands them score/MMR-ordered),
+ * so the highest-ranked of a near-dup pair survives. A chunk is kept unless
+ * its cosine to an ALREADY-KEPT chunk is >= `threshold`.
+ *
+ * Fail-open by construction: a missing / empty / zero-norm embedding (e.g. an
+ * `--file` ad-hoc chunk carries `embedding: []`) is NEVER treated as a
+ * near-dup — it is always kept, so the filter can only remove provable
+ * redundancy and never silently drops a chunk it cannot compare. Pure +
+ * exported for direct unit coverage.
+ */
+export function dedupNearDuplicateChunks(
+  chunks: readonly ScoredChunk[],
+  cosine: (a: readonly number[], b: readonly number[]) => number,
+  threshold = 0.985
+): ScoredChunk[] {
+  if (chunks.length <= 1) return [...chunks];
+  const isZeroOrEmpty = (v: readonly number[]): boolean =>
+    v.length === 0 || v.every((x) => x === 0);
+  const comparable = (a: readonly number[], b: readonly number[]): boolean =>
+    a.length > 0 && a.length === b.length && !isZeroOrEmpty(a) && !isZeroOrEmpty(b);
+  const kept: ScoredChunk[] = [];
+  for (const candidate of chunks) {
+    const emb = candidate.chunk.embedding;
+    const isNearDup = kept.some((k) => {
+      const ke = k.chunk.embedding;
+      return comparable(emb, ke) && cosine(emb, ke) >= threshold;
+    });
+    if (!isNearDup) kept.push(candidate);
+  }
+  return kept;
+}
+
+/**
  * Promotion gate for the second-hop AUGMENT (slice-1c). Live measurement
  * (`scripts/measure-second-hop-cost.mjs`) showed the hop's wall-clock cost is
  * ~0 (in-memory cosine, zero re-embed) but UNGATED it fires on every single-hop
