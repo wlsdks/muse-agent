@@ -92,6 +92,13 @@ export interface LeadWorkerResult {
   readonly finalAnswer: string;
   readonly reason: string;
   /**
+   * `true` when the sub-task list exceeded {@link MAX_SUBTASKS} and was capped — a
+   * STRUCTURED signal so a machine consumer (`muse ask --json`) learns the answer is
+   * PARTIAL (some requested items were dropped), instead of inferring it from the
+   * reason string. Silent truncation presented as complete is a GROUNDED≠TRUE leak.
+   */
+  readonly truncated: boolean;
+  /**
    * Set when the fan-in `verifySynthesis` judged the synthesis INCOMPLETE — the
    * texts of completed sub-tasks whose result the answer dropped. Absent ⇒ the
    * synthesis covered every completed sub-task (or no verifier was supplied). The
@@ -231,7 +238,8 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
       executions: [execution],
       finalAnswer: execution.status === "completed" ? (execution.output ?? "") : "",
       reason: `single-agent (${decision.reason})`,
-      subtasks: [single]
+      subtasks: [single],
+      truncated: false
     };
   }
 
@@ -339,6 +347,7 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
       (synthesisIncomplete ? ` · synthesis incomplete (${synthesisIncomplete.length.toString()} dropped)` : "") +
       (subtaskConflicts ? ` · ${subtaskConflicts.length.toString()} sub-answer conflict(s)` : ""),
     subtasks,
+    truncated,
     ...(synthesisIncomplete ? { synthesisIncomplete } : {}),
     ...(subtaskConflicts ? { subtaskConflicts } : {})
   };

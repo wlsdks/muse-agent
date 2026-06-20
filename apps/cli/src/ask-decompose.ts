@@ -35,6 +35,8 @@ export interface DecomposedAskResult {
   readonly decomposed: boolean;
   readonly subtaskCount: number;
   readonly reason: string;
+  /** `true` when the sub-task list was capped at MAX_SUBTASKS (the answer is PARTIAL). */
+  readonly truncated: boolean;
   /** Completed sub-tasks the fan-in verifier judged dropped from the synthesis (G1). */
   readonly synthesisIncomplete?: readonly string[];
   /** Captions for completed sub-answers that CONTRADICT each other (J2 fan-in conflict). */
@@ -176,6 +178,7 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
     groundingSources: mergedSources,
     reason: leadResult.reason,
     subtaskCount: leadResult.subtasks.length,
+    truncated: leadResult.truncated,
     ...(leadResult.synthesisIncomplete ? { synthesisIncomplete: leadResult.synthesisIncomplete } : {}),
     ...(leadResult.subtaskConflicts ? { subtaskConflicts: leadResult.subtaskConflicts } : {}),
     toolsUsed: [...mergedTools]
