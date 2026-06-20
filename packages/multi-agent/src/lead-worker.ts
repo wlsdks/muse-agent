@@ -1,6 +1,6 @@
 import { lexicalTokens } from "@muse/agent-core";
 
-import { decomposeRequest, shouldDecompose, type Subtask } from "./decompose-trigger.js";
+import { decomposeRequestWithKind, shouldDecompose, type Subtask } from "./decompose-trigger.js";
 
 export type SubtaskStatus = "completed" | "failed" | "ungrounded";
 
@@ -62,12 +62,15 @@ export interface LeadWorkerResult {
 
 export interface LeadWorkerDeps {
   /**
-   * Run ONE sub-task in its OWN clean context (a real sub-agent — it receives
-   * only its sub-task text, never the other sub-tasks' outputs). This context
-   * isolation is the whole point on a single GPU: the lead's context budget is
-   * preserved and each worker stays focused.
+   * Run ONE sub-task in its OWN clean context (a real sub-agent). For an
+   * INDEPENDENT split (a list) `priorContext` is undefined — the worker receives
+   * only its sub-task text, never the others' outputs (isolation preserves the
+   * lead's context budget and keeps each worker focused). For a SEQUENCED split
+   * ("먼저 … 그 다음 …") the completed prior steps' outputs ARE passed so a
+   * downstream step can act on the upstream RESULT (closing the MAST
+   * reasoning-action mismatch where step 2 would otherwise run blind).
    */
-  readonly execute: (subtask: Subtask) => Promise<SubtaskOutput>;
+  readonly execute: (subtask: Subtask, priorContext?: readonly string[]) => Promise<SubtaskOutput>;
   /** Fan-in: combine the completed sub-task outputs into the final answer. */
   readonly synthesize: (request: string, executions: readonly SubtaskExecution[]) => Promise<string>;
   /**
@@ -97,10 +100,10 @@ export interface LeadWorkerDeps {
 
 const MAX_SUBTASKS = 8;
 
-async function runOne(subtask: Subtask, deps: LeadWorkerDeps): Promise<SubtaskExecution> {
+async function runOne(subtask: Subtask, deps: LeadWorkerDeps, priorContext?: readonly string[]): Promise<SubtaskExecution> {
   let produced: SubtaskOutput;
   try {
-    produced = await deps.execute(subtask);
+    produced = await deps.execute(subtask, priorContext);
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error), status: "failed", subtask };
   }
@@ -176,7 +179,11 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
     };
   }
 
-  let subtasks = decomposeRequest(request);
+  const decomposed = decomposeRequestWithKind(request);
+  let subtasks = decomposed.subtasks;
+  // A SEQUENCED structural split threads prior step outputs forward; a model-PLANNED
+  // split is a broad aggregation of independent angles (no ordered dependency).
+  let sequenced = decomposed.sequenced;
   let planned = false;
   if (subtasks.length < 2 && deps.planner) {
     try {
@@ -184,6 +191,7 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
       if (texts.length >= 2) {
         subtasks = texts.map((text, index) => ({ id: `subtask_${index + 1}`, text }));
         planned = true;
+        sequenced = false;
       }
     } catch {
       // planner failure is non-fatal — fall through to the single sub-task
@@ -197,7 +205,15 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
 
   const executions: SubtaskExecution[] = [];
   for (const subtask of subtasks) {
-    executions.push(await runOne(subtask, deps));
+    // For a sequenced (dependent) split, thread the COMPLETED prior steps' outputs
+    // into this worker so a downstream step can act on the upstream result. Only
+    // completed outputs are threaded — a failed/ungrounded/blank step is NOT fed
+    // forward (fail-close: never seed the next step with garbage). An independent
+    // list passes nothing (isolation preserved).
+    const priorContext = sequenced
+      ? executions.flatMap((e) => (e.status === "completed" && e.output ? [e.output] : []))
+      : [];
+    executions.push(await runOne(subtask, deps, priorContext.length > 0 ? priorContext : undefined));
   }
 
   const finalAnswer = await deps.synthesize(request, executions);

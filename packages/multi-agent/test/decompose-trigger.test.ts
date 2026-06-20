@@ -1,6 +1,25 @@
 import { describe, expect, it } from "vitest";
 
-import { decomposeRequest, shouldDecompose } from "../src/index.js";
+import { decomposeRequest, decomposeRequestWithKind, shouldDecompose } from "../src/index.js";
+
+describe("decomposeRequestWithKind — flags a SEQUENCED (dependent) split vs an INDEPENDENT list", () => {
+  it("marks an ordered sequence sequenced=true (later steps may depend on earlier output)", () => {
+    expect(decomposeRequestWithKind("먼저 회의록을 요약하고 그 다음 그 요약에서 액션아이템을 추출해줘").sequenced).toBe(true);
+    expect(decomposeRequestWithKind("First, gather the notes. Then summarize them.").sequenced).toBe(true);
+  });
+  it("marks a numbered / bulleted list sequenced=false (independent items, stay isolated)", () => {
+    expect(decomposeRequestWithKind("다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록").sequenced).toBe(false);
+    expect(decomposeRequestWithKind("정리해줘:\n- 비용\n- 일정\n- 리스크").sequenced).toBe(false);
+  });
+  it("a no-structure request is sequenced=false with one subtask", () => {
+    const d = decomposeRequestWithKind("이 문서 요약해줘");
+    expect(d.sequenced).toBe(false);
+    expect(d.subtasks.length).toBe(1);
+  });
+  it("decomposeRequest stays a thin back-compat wrapper (same subtasks)", () => {
+    expect(decomposeRequest("먼저 A 그 다음 B").map((s) => s.text)).toEqual(decomposeRequestWithKind("먼저 A 그 다음 B").subtasks.map((s) => s.text));
+  });
+});
 
 describe("shouldDecompose — single-agent bias (no fan-out for simple asks)", () => {
   it("does NOT decompose a simple lookup", () => {

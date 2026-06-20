@@ -111,22 +111,41 @@ function extractSequencedSteps(request: string): string[] {
     .filter(Boolean);
 }
 
+export interface DecomposedRequest {
+  readonly subtasks: readonly Subtask[];
+  /**
+   * `true` iff the split came from an ORDERED sequence ("먼저 … 그 다음 …" /
+   * "first … then …") — later steps may operate on an earlier step's RESULT, so
+   * the engine threads prior outputs forward. A numbered/bulleted list is
+   * `false` (independent items run in isolation). Distinguishing them is what
+   * stops a sequenced step 2 from running blind (MAST reasoning-action mismatch).
+   */
+  readonly sequenced: boolean;
+}
+
 /**
- * Deterministic structural decomposition: pull independent sub-tasks out of a
- * numbered/bulleted list or an ordered multi-step sequence. Returns ONE
- * sub-task (the whole request) when no structure is present — a broad-scope
- * aggregation ("내 노트 전부 … 보고서") has no literal split, so it falls back
- * to single and the engine asks an injected model planner to split it.
+ * Deterministic structural decomposition: pull sub-tasks out of a
+ * numbered/bulleted list (INDEPENDENT) or an ordered multi-step sequence
+ * (SEQUENCED — later steps may depend on earlier output). Returns ONE sub-task
+ * (the whole request) when no structure is present — a broad-scope aggregation
+ * ("내 노트 전부 … 보고서") has no literal split, so it falls back to single and
+ * the engine asks an injected model planner to split it.
  */
-export function decomposeRequest(request: string): readonly Subtask[] {
+export function decomposeRequestWithKind(request: string): DecomposedRequest {
   const numbered = extractNumberedItems(request);
-  if (numbered.length >= 2) return toSubtasks(numbered);
+  if (numbered.length >= 2) return { sequenced: false, subtasks: toSubtasks(numbered) };
 
   const bullets = extractBulletItems(request);
-  if (bullets.length >= 2) return toSubtasks(bullets);
+  if (bullets.length >= 2) return { sequenced: false, subtasks: toSubtasks(bullets) };
 
   const steps = extractSequencedSteps(request);
-  if (steps.length >= 2) return toSubtasks(steps);
+  if (steps.length >= 2) return { sequenced: true, subtasks: toSubtasks(steps) };
 
-  return [{ id: "subtask_1", text: request.trim() }];
+  return { sequenced: false, subtasks: [{ id: "subtask_1", text: request.trim() }] };
+}
+
+/** Back-compat thin wrapper — the sub-tasks only (callers needing the sequenced
+ *  flag use {@link decomposeRequestWithKind}). */
+export function decomposeRequest(request: string): readonly Subtask[] {
+  return decomposeRequestWithKind(request).subtasks;
 }

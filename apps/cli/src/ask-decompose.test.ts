@@ -96,6 +96,20 @@ describe("runDecomposedAgentAsk — planner + grounding gate are wired (not dead
     expect(result.answer).toBe("SYNTH");
   });
 
+  it("threads a prior step's output into the next worker for a SEQUENCED ask (dependent steps see upstream result)", async () => {
+    const seen: string[] = [];
+    const runner = runnerReturning((content) => {
+      seen.push(content);
+      if (content.startsWith("사용자 요청:")) return { response: { output: "SYNTH" } };
+      return { response: { output: `done:${content.slice(0, 12)}` } };
+    });
+    await runDecomposedAgentAsk({ ...baseArgs, query: "먼저 회의록을 요약하고 그 다음 그 요약에서 액션아이템을 추출해줘", runner });
+    const worker2 = seen.find((c) => c.includes("이전 단계 결과"));
+    expect(worker2).toBeDefined();
+    expect(worker2).toContain("이어서 처리");
+    expect(worker2).toContain("done:"); // the actual upstream output is in the worker-2 message
+  });
+
   it("flags the synthesis INCOMPLETE when a completed sub-task is dropped from the fan-in (G1 maker != judge)", async () => {
     const query = "다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록";
     const runner = runnerReturning((content) => {

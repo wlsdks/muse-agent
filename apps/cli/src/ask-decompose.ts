@@ -96,8 +96,14 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
   };
 
   const deps: LeadWorkerDeps = {
-    execute: async (subtask) => {
-      const result = await runSubtaskMessage(subtask.text);
+    // For a SEQUENCED split the engine passes the prior steps' completed outputs;
+    // prepend them so this worker can act on the upstream RESULT (an independent
+    // list passes nothing → the worker stays isolated).
+    execute: async (subtask, priorContext) => {
+      const userContent = priorContext && priorContext.length > 0
+        ? `이전 단계 결과:\n${priorContext.join("\n\n")}\n\n이어서 처리: ${subtask.text}`
+        : subtask.text;
+      const result = await runSubtaskMessage(userContent);
       return {
         output: result.response.output ?? "",
         sources: (result.groundingSources ?? []).map((s) => s.source)

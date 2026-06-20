@@ -134,17 +134,45 @@ describe("runLeadWorkerTask — fan-out into independent sub-tasks", () => {
     expect(result.finalAnswer).toBe("report(3)");
   });
 
-  it("isolates context — a worker never sees the other sub-tasks' text", async () => {
+  it("isolates context — an INDEPENDENT (list) worker never sees the other sub-tasks' text", async () => {
     const inputs: string[] = [];
     const execute = vi.fn(async (s: Subtask) => {
       inputs.push(s.text);
       return { output: `done:${s.text}` };
     });
-    await runLeadWorkerTask("먼저 회의록을 요약하고 그 다음 액션아이템을 추출해줘", deps({ execute }));
+    await runLeadWorkerTask("다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록", deps({ execute }));
 
-    expect(inputs.length).toBe(2);
+    expect(inputs.length).toBe(3);
     expect(inputs[0]).not.toContain("액션아이템");
     expect(inputs[1]).not.toContain("회의록");
+  });
+});
+
+describe("runLeadWorkerTask — SEQUENCED decomposition threads prior step output forward (MAST reasoning-action mismatch)", () => {
+  const capturePriors = (): { priors: (readonly string[] | undefined)[]; execute: (s: Subtask, prior?: readonly string[]) => Promise<SubtaskOutput> } => {
+    const priors: (readonly string[] | undefined)[] = [];
+    return { execute: async (s, prior) => { priors.push(prior); return { output: `done:${s.text}` }; }, priors };
+  };
+  it("passes each completed prior step's output to the next worker for an ordered sequence", async () => {
+    const { priors, execute } = capturePriors();
+    await runLeadWorkerTask("먼저 회의록을 요약하고 그 다음 그 요약에서 액션아이템을 추출해줘", deps({ execute }));
+    expect(priors).toHaveLength(2);
+    expect(priors[0]).toBeUndefined(); // step 1 has no prior
+    expect(priors[1]?.some((p) => p.includes("회의록"))).toBe(true); // step 2 SEES step 1's output
+  });
+  it("does NOT thread for an INDEPENDENT (numbered) list — isolation preserved", async () => {
+    const { priors, execute } = capturePriors();
+    await runLeadWorkerTask("다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록", deps({ execute }));
+    expect(priors.every((p) => p === undefined)).toBe(true);
+  });
+  it("fail-closes: a failed (blank) prior step is NOT threaded forward (no blank/garbage context)", async () => {
+    const priors: (readonly string[] | undefined)[] = [];
+    const execute = async (s: Subtask, prior?: readonly string[]): Promise<SubtaskOutput> => {
+      priors.push(prior);
+      return { output: s.text.includes("회의록") ? "   " : `done:${s.text}` }; // step 1 returns blank → failed
+    };
+    await runLeadWorkerTask("먼저 회의록을 요약하고 그 다음 액션아이템을 추출해줘", deps({ execute }));
+    expect(priors[1] ?? []).toEqual([]); // step 2 gets NO prior (the blank failed, not threaded)
   });
 });
 
