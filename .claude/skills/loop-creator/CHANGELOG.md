@@ -9,6 +9,53 @@
 
 ---
 
+## 2.0.0 — 2026-06-20
+**489-fire 실증 데이터 + 2026-06 1차 연구로 설계-골격 업그레이드**(진안 지시 "쌓인 기록·데이터 +
+웹 최신으로 싹"). v1.14.0 등록 후 8개 루프가 16~148 fire씩 일주일간 돌며 쌓은 저널(~1.1MB)을
+마이닝하고, 6/13 출처 이후 발표/심화된 1차 연구를 대조해 계약을 강화. 메커니즘 골격(maker≠judge·
+드릴·자율성 티어)은 보존, *가장자리*를 데이터가 가리킨 곳에서 날카롭게.
+
+실증(저널 마이닝)發 가드:
+- **§4.5-11 동시-루프 운영 위생(기계적).** 489-fire #1 미가드 비용 = N 루프가 공유 main/한 박스에서
+  동시에 돌 때(타 루프 미커밋 쓸림·false-red check·conflict-marker 커밋·stranded). 운영자 기억→**기계적
+  가드**: 격리 worktree·`git add` 경로명시(`-A` 금지)·clean-main 전제(`git stash` 금지)·머신-포화 인식
+  (5000ms/OOM은 격리 단독 재실행)·커밋전 marker/byte 스캔. ⑤ 생성프롬프트에도 박음.
+- **§4.5-9 다양성 RATCHET을 value-class → (pkg, kind)로 교정.** 실측상 value-class는 테마상 상수
+  (codebase-quality 106 fire 전부 `refactor`)라 다양성 신호로 무용; 실제 ratchet이 걸린 축은 (pkg,kind)
+  (tool-hardening fire 47). 게이트를 (pkg,kind) 위에, value-class는 descriptive로 강등.
+- **§4.5-3 MUTATION-FIRST를 *모든* 슬라이스로.** judge 이빨이 드릴에서만 증명되고 "안전한" 슬라이스는
+  all-PASS로 무뎌 보임 → 매 슬라이스 새 테스트가 RED→GREEN(드릴과 같은 적대 압력).
+- **§4.5-12 형제-감사.** 한 콜사이트 고치고 형제 누락이 반복(date-rollover tasks→calendar→time; SSRF
+  IPv6→SIIT→NAT64) → 같은 클래스 형제를 *같은 fire*에 enumerate+패치 or backlog.
+- **§4.5-10 marginal-value floor.** 고갈-escalation을 "버그 0건"이 아니라 한계가치<검증비 신호에서 *먼저*
+  당김(tool-hardening 123–145 locale-utility ~8 fire 패딩 표류 교정).
+
+1차 연구發 강화:
+- **§3.6 무인 루프 보안(신설 1급 섹션).** *루프를 모는 개발 에이전트*의 무인 보안. Agents Rule of Two
+  (Meta 2025-11, §3.5 티어 경계 결정규칙) · 신뢰불가 텍스트는 데이터로 격리(Snyk "Clinejection" 2026-02:
+  issue 제목 인젝션→악성 install→Actions 캐시 오염→릴리스 토큰 탈취 실사건) · install/build 훅 샌드박스 · auto-pull skill/config
+  hidden-Unicode 스캔(TrapDoor; skill 36% 결함). 출처: arXiv 2510.09023.
+- **§3-1 적응형 검증.** 정적 체크리스트는 적응형 공격에 >90%, 사람 100% 우회(2510.09023) → judge는 슬라이스
+  고유의 깨질-방식을 매번 새로 추론.
+- **§1.5-3 judge 보정 양방향.** self-preference로 실패 rubric을 만족으로 최대 50% 더 자주 표시·점수 ~10점 왜곡
+  (2604.06996), 능력 통제해도 잔존(2508.06709) → Opus-천장이라 같은-계열 판정 불가피, 드릴은 선택 아닌 필수.
+  under-confidence(맞은 작업 false-FAIL 44.4%→7.7%, 2606.14211) → FAIL은 *구체적 위반* 명시, 막연한 "불확실"은 사유 아님.
+- **§4.5-13 실패-증류(ReasoningBank, 2509.25140 +34.2%/−16%).** 롤백/no-ship에 재사용 교훈 `lesson:` 한 줄.
+- **§1 Sub-agent fan-out 규칙.** 단일 ≥ 멀티(동일 예산, 2604.02460), 핸드오프는 선형 > 수렴 DAG(2605.08647).
+- **§1 예산 = rot 트리거.** 유효 윈도우 ~300K(Chroma context-rot); 긴 fire는 디스크 state로 외부화
+  (Anthropic "Effective harnesses for long-running agents": compaction만으론 부족).
+- **§6 메타-루프(신설) — 계약이 데이터로 진화하는 규약**(진안 질문 "기록 꾸준히 남기게 해야하지").
+  v2.0이 가능했던 이유(저널 버전-스탬프 + grep-가능 meta)를 *반복 가능한 규약*으로 못박음: 재평가
+  트리거를 산문이 아닌 *세는* 조건(누적 ~100 fire / 새 1차연구 / 진안 지시 / 반복 실패 ≥3)으로,
+  레시피는 저널 마이닝 + 웹 대조 + **독립 maker≠judge 리뷰**(서브에이전트 수치 1차 검증 — v2.0에서
+  조작 self-preference 수치를 이 리뷰가 적발). SKILL.md versioning 노트가 §6을 가리킴.
+유지(과잉교정 경계): 드릴 하드-카운터(489-fire에서 단 한 번도 안 미끄러진 가장 건강한 메커니즘), 격리
+저널 규약, 정직-defer/exhaustion(honest 작동 확인), Tier1/2 + 하드 floor.
+
+스킬 구조(진안 질문 "SKILL.md 길어지면 분리?"): 2026 Anthropic best-practice 확인 결과 **이미 모범 분리** —
+SKILL.md(207줄, <500 한도 여유)=public API, references/loop-engineering.md(345줄)=상세 계약(progressive
+disclosure). 지금 추가 분리 불요; SKILL.md가 ~300줄 넘으면 그때 골격을 references로.
+
 ## 1.14.0 — 2026-06-13
 **per-loop 로깅 규약 — 동시 4 루프 충돌·오염 제거**(진안 지시). 배경: 4개 루프가 하나의 공유
 `loop-digest.md`·`backlog.md`에 append → 매 fire 머지 충돌 + "버전↔산출 상관"이 다른 루프 항목에

@@ -24,10 +24,14 @@ fire and pollutes the "skill-version ↔ fire-outcome" correlation. This convent
    - 왜: …
    - 리뷰지점: …
    - 리스크: …
+   lesson: <reusable one-line takeaway>   # ONLY on rollback / no-ship / drill-catch fires
    ```
    The `meta:` line is **grep-able structured metadata** — the date / 작업(kind·value-class·pkg) /
-   version the loop needs to *count* (value-class ratchet, firesSinceDrill, PASS-rate) and to
-   correlate version↔outcome. This is the "날짜-작업-버전 규격," formalized.
+   version the loop needs to *count* and to correlate version↔outcome. The **diversity ratchet keys
+   on `(pkg, kind)`** (value-class is theme-constant, so descriptive only — see loop-creator
+   `loop-engineering.md` §4.5-9). The optional `lesson:` line distils a reusable takeaway from a
+   FAILURE fire (rollback / no-ship / drill-catch) so the next loop can grep it instead of repeating
+   the mistake (ReasoningBank, §4.5-13) — omit it on a clean PASS. This is the "날짜-작업-버전 규격," formalized.
 3. **`backlog.md` stays a LEAN shared queue** — the one genuinely-shared artifact (loops read it to
    pick `◦` candidates and to dedup "already-fixed/avoid"). It holds **open `◦`/`★`/`⏳` items + a
    one-line `✓ Fixed (dedup ledger)`** — NOT the multi-line Done detail. **Per-fire Done detail goes

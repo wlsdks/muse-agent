@@ -181,3 +181,26 @@ resample, reverify escalation, merge self-consistency, false-done re-run)
 MUST be backed by a deterministic or judge-backed verifier; the guard test's
 registry enumerates them, and a NEW retry surface ships with a registry
 entry + its verifier, never as an unverified loop.
+
+**The verifier itself is two-sided and must be calibrated (2026 evidence).**
+A judge fails in BOTH directions, so a one-sided guard is incomplete:
+
+- **Over-confidence / rubber-stamp** — passes bad work. A judge over-rates its
+  own family: self-preference makes it mark a *failing* rubric satisfied up to
+  **50%** more often and skews scores ~10 points (arXiv 2604.06996), and the
+  bias remains even after controlling for raw ability (2508.06709). With a
+  fixed top-tier ceiling you can't escape same-family judging, so the
+  compensating control is the judge-failure **drill** (a fault-injection that
+  proves the judge still rejects), not a stronger model.
+- **Under-confidence / false-FAIL** — flags *correct* work as wrong **44.4%**
+  of the time absent calibration, dropping to 7.7% with a calibration bonus
+  (arXiv 2606.14211, "Closing the Reflection Gap"). So a FAIL verdict must name
+  a *concrete* violation (which criterion / invariant / state, and how); a vague
+  "seems off" is not grounds to reject and re-run.
+- **Static batteries are nearly useless against an adaptive adversary** — fixed
+  must-pass checklists are bypassed >90% by adaptive attacks and 100% by human
+  red-teaming (arXiv 2510.09023). A safety/security verifier must reason about
+  THIS change's failure mode each time, not replay a frozen question set.
+
+These map to the loop-creator contract's gating verifier (`loop-engineering.md`
+§3-1, §1.5-3, §4.5-5) — the same calibration applies to any autonomous retry.
