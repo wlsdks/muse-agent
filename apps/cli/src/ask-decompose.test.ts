@@ -1,7 +1,19 @@
 import type { AgentRunInput } from "@muse/agent-core";
 import { describe, expect, it, vi } from "vitest";
 
-import { runDecomposedAgentAsk, type AskAgentRunResult } from "./ask-decompose.js";
+import { parsePlannerLines, runDecomposedAgentAsk, type AskAgentRunResult } from "./ask-decompose.js";
+
+describe("parsePlannerLines — strips real list markers but PRESERVES leading-digit content", () => {
+  it("preserves '1분기' (Q1) — the old greedy regex collapsed 3 distinct quarters into identical text", () => {
+    expect(parsePlannerLines("1분기 정리\n2분기 정리\n3분기 정리")).toEqual(["1분기 정리", "2분기 정리", "3분기 정리"]);
+  });
+  it("strips a real numbered / bullet / paren marker", () => {
+    expect(parsePlannerLines("1. 회의록 요약\n- 액션 추출\n2) 일정 등록")).toEqual(["회의록 요약", "액션 추출", "일정 등록"]);
+  });
+  it("drops blank lines", () => {
+    expect(parsePlannerLines("회의 요약\n\n  \n액션 추출")).toEqual(["회의 요약", "액션 추출"]);
+  });
+});
 
 function userContentOf(input: AgentRunInput): string {
   const user = input.messages.find((m) => m.role === "user");

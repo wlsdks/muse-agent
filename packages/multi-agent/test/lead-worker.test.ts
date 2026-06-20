@@ -1,12 +1,48 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  dedupeSubtasks,
   runLeadWorkerTask,
   type LeadWorkerDeps,
   type Subtask,
   type SubtaskExecution,
   type SubtaskOutput
 } from "../src/index.js";
+
+describe("dedupeSubtasks — MAST #3: no duplicated sub-agent work", () => {
+  it("drops case/whitespace-duplicate text (keep first, re-id sequentially, drop empty)", () => {
+    const out = dedupeSubtasks([
+      { id: "subtask_1", text: "회의록 요약" },
+      { id: "subtask_2", text: "  회의록   요약 " },
+      { id: "subtask_3", text: "회의록 요약" },
+      { id: "subtask_4", text: "액션 추출" },
+      { id: "subtask_5", text: "   " }
+    ]);
+    expect(out.map((s) => s.text)).toEqual(["회의록 요약", "액션 추출"]);
+    expect(out.map((s) => s.id)).toEqual(["subtask_1", "subtask_2"]);
+  });
+  it("leaves already-distinct subtasks unchanged", () => {
+    const input: readonly Subtask[] = [{ id: "subtask_1", text: "a" }, { id: "subtask_2", text: "b" }];
+    expect(dedupeSubtasks(input).map((s) => s.text)).toEqual(["a", "b"]);
+  });
+});
+
+describe("runLeadWorkerTask — dedupes duplicate planner subtasks before fan-out (MAST #3)", () => {
+  it("runs a duplicated subtask ONCE (no N× wall-clock waste on a single GPU)", async () => {
+    const execute = vi.fn(async (s: Subtask) => ({ output: `done:${s.text}` }));
+    const planner = async (): Promise<readonly string[]> => ["요약 작성", "요약 작성", "액션 추출"];
+    const result = await runLeadWorkerTask("내 노트 전부 훑어서 분기별 보고서 만들어줘", deps({ execute, planner }));
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(result.subtasks.map((s) => s.text)).toEqual(["요약 작성", "액션 추출"]);
+  });
+  it("leaves distinct planner subtasks untouched (regression guard)", async () => {
+    const execute = vi.fn(async (s: Subtask) => ({ output: `done:${s.text}` }));
+    const planner = async (): Promise<readonly string[]> => ["A 요약", "B 추출", "C 정리"];
+    const result = await runLeadWorkerTask("내 노트 전부 훑어서 분기별 보고서 만들어줘", deps({ execute, planner }));
+    expect(execute).toHaveBeenCalledTimes(3);
+    expect(result.subtasks).toHaveLength(3);
+  });
+});
 
 function deps(overrides: Partial<LeadWorkerDeps> = {}): LeadWorkerDeps {
   return {

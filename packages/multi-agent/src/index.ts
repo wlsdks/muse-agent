@@ -35,7 +35,7 @@ export type {
   SubtaskOutput,
   SubtaskStatus
 } from "./lead-worker.js";
-export { runLeadWorkerTask } from "./lead-worker.js";
+export { dedupeSubtasks, runLeadWorkerTask } from "./lead-worker.js";
 
 export interface AgentWorker {
   readonly id: string;

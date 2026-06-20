@@ -40,10 +40,17 @@ const PLANNER_SYSTEM_PROMPT =
   "각 하위 작업을 한 줄에 하나씩, 번호나 불릿 없이 출력하라. " +
   "더 나눌 수 없으면 원래 요청을 한 줄로만 출력하라.";
 
-function parsePlannerLines(output: string): readonly string[] {
+/**
+ * Strip a leading list marker (a bullet, or a number followed by `.`/`)`) — but ONLY
+ * a real marker, not a digit that BEGINS the content. The old greedy class
+ * `^[-*•\d.)\s]+` ate the `1` from `1분기 정리` (Q1) → `분기 정리`, collapsing three
+ * DISTINCT quarters into identical text (a manufactured duplicate the dedup gate then
+ * had to absorb). The precise marker `(?:[-*•]|\d+[.)])` preserves `1분기`.
+ */
+export function parsePlannerLines(output: string): readonly string[] {
   return output
     .split("\n")
-    .map((line) => line.replace(/^[-*•\d.)\s]+/, "").trim())
+    .map((line) => line.trim().replace(/^(?:[-*•]|\d+[.)])\s*/u, "").trim())
     .filter(Boolean);
 }
 

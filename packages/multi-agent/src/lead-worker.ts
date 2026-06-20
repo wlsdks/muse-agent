@@ -90,6 +90,30 @@ async function runOne(subtask: Subtask, deps: LeadWorkerDeps): Promise<SubtaskEx
  * and surfaced to `synthesize`, which decides how to fold partial results.
  * Termination is bounded — at most {@link MAX_SUBTASKS} sub-tasks run.
  */
+function normalizeSubtaskText(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/gu, " ");
+}
+
+/**
+ * MAST #3 (no duplicated sub-agent work): a decomposer OR model planner can emit two
+ * case/whitespace-identical subtasks; on a single GPU that runs the SAME work twice
+ * (Anthropic's "vague sub-agent instructions → identical searches" failure mode).
+ * Dedup by normalized text — keep the first occurrence's original text, drop empties,
+ * re-id sequentially — BEFORE fan-out. Pure; covers both the structural and planner
+ * subtask sources since both flow through here.
+ */
+export function dedupeSubtasks(subtasks: readonly Subtask[]): Subtask[] {
+  const seen = new Set<string>();
+  const out: Subtask[] = [];
+  for (const subtask of subtasks) {
+    const norm = normalizeSubtaskText(subtask.text);
+    if (norm.length === 0 || seen.has(norm)) continue;
+    seen.add(norm);
+    out.push({ id: `subtask_${(out.length + 1).toString()}`, text: subtask.text });
+  }
+  return out;
+}
+
 export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): Promise<LeadWorkerResult> {
   const decision = shouldDecompose(request);
 
@@ -118,6 +142,8 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
       // planner failure is non-fatal — fall through to the single sub-task
     }
   }
+
+  subtasks = dedupeSubtasks(subtasks);
 
   const truncated = subtasks.length > MAX_SUBTASKS;
   if (truncated) subtasks = subtasks.slice(0, MAX_SUBTASKS);
