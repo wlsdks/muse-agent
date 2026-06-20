@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseSkillFile } from "../src/skill-parser.js";
-import { AuthoredSkillStore, rankSkillsForEviction, scanSkillBodyForRisks, serializeAuthoredSkill, slugifySkillName } from "../src/authored-skill-store.js";
+import { AuthoredSkillStore, rankSkillsForEviction, scanSkillBodyForRisks, serializeAuthoredSkill, skillBodyIsSubsumed, slugifySkillName } from "../src/authored-skill-store.js";
 
 function tmpDir(): string {
   return mkdtempSync(join(tmpdir(), "muse-authored-"));
@@ -509,5 +509,40 @@ describe("AuthoredSkillStore enforceCap — a USED old skill survives a never-us
     expect(live).toContain("alpha");                   // USED oldest survives (FIFO would have evicted it)
     expect(live).not.toContain("beta");                // never-used, least-recently-active → evicted
     expect(live).toHaveLength(2);
+  });
+});
+
+describe("skillBodyIsSubsumed — write-time subsumption (Voyager arXiv:2305.16291)", () => {
+  const rich = "skim the document; identify the key points; emit 3-5 concise bullets; scan the headings";
+  it("a draft body that is a SUBSET of an existing body is subsumed", () => {
+    expect(skillBodyIsSubsumed("emit concise bullets; skim document", rich)).toBe(true);
+  });
+  it("a richer/novel draft is NOT subsumed (directional — never suppresses a superset)", () => {
+    expect(skillBodyIsSubsumed("run the CI pipeline; deploy to production; verify health checks", rich)).toBe(false);
+    expect(skillBodyIsSubsumed(rich, "emit bullets")).toBe(false); // existing is the smaller one
+  });
+  it("an empty body can't be judged → not subsumed (fail-open, allow the write)", () => {
+    expect(skillBodyIsSubsumed("", rich)).toBe(false);
+    expect(skillBodyIsSubsumed("emit bullets", "")).toBe(false);
+  });
+});
+
+describe("AuthoredSkillStore.writeOrPatch — skips a body-subsumed near-duplicate (fresh name, redundant procedure)", () => {
+  const draft = (name: string, description: string, body: string) => ({ name, description, body });
+
+  it("skips a draft whose body is covered by an existing skill (name/description don't match the patch threshold)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-authored-subsume-"));
+    const store = new AuthoredSkillStore({ dir, now: () => new Date("2026-06-21T00:00:00Z") });
+    await store.writeOrPatch(draft("summarise-documents", "summarise long documents into bullets", "skim the document; identify the key points; emit 3-5 concise bullets; scan the headings"));
+
+    // fresh name + dissimilar description ⇒ no name/desc patch match, but the body is a subset
+    const res = await store.writeOrPatch(draft("quick-recap", "give me a fast recap", "emit concise bullets; skim document"));
+    expect(res.action).toBe("skip");
+    expect((await store.listAuthored())).toHaveLength(1); // the near-dup was NOT authored
+
+    // a genuinely novel body IS authored
+    const novel = await store.writeOrPatch(draft("deploy-release", "ship a release to prod", "run the CI pipeline; deploy to production; verify health checks"));
+    expect(novel.action).toBe("create");
+    expect((await store.listAuthored())).toHaveLength(2);
   });
 });

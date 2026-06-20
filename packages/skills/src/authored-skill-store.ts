@@ -83,15 +83,51 @@ export function serializeAuthoredSkill(draft: SkillDraft, authoredAt: string, la
   return `---\nname: ${draft.name}\ndescription: ${draft.description}\nmetadata: ${metadata}\n---\n\n${draft.body.trim()}\n`;
 }
 
+/** Content tokens (lowercased, len≥3, split on non-alphanumeric) — shared by the
+ *  name/description Jaccard match and the body-subsumption check. */
+function skillContentTokens(text: string): Set<string> {
+  return new Set(text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((x) => x.length >= 3));
+}
+
 function defaultSimilarity(a: string, b: string): number {
-  const toks = (t: string): Set<string> =>
-    new Set(t.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((x) => x.length >= 3));
-  const sa = toks(a);
-  const sb = toks(b);
+  const sa = skillContentTokens(a);
+  const sb = skillContentTokens(b);
   if (sa.size === 0 || sb.size === 0) return 0;
   let inter = 0;
   for (const x of sa) if (sb.has(x)) inter += 1;
   return inter / (sa.size + sb.size - inter);
+}
+
+/** Containment ratio at/above which a draft skill body counts as already covered.
+ *  High (0.85) on purpose: only a near-TOTAL subset is skipped, so a draft that adds
+ *  even a couple of genuinely new procedure tokens still authors — the false-skip tail
+ *  (a short draft whose few tokens all happen to appear in a long skill) is bounded,
+ *  and a skip is non-destructive (returns the existing skill, writes nothing). */
+export const DEFAULT_SKILL_SUBSUMPTION_CONTAINMENT = 0.85;
+
+/**
+ * Is the `draftBody` (near-)entirely COVERED by `existingBody`? Voyager-style skill-
+ * library novelty gate (arXiv:2305.16291): a newly-distilled skill whose procedure is
+ * a subset of one already authored is a redundant near-duplicate. DIRECTIONAL
+ * (containment `|draft ∩ existing| / |draft|`), unlike the symmetric name/description
+ * Jaccard — so a redundant SUBSET draft is caught while a richer SUPERSET new skill is
+ * never suppressed. Fail-OPEN: an empty body can't be judged → not subsumed (allow the
+ * write). Pure + exported for direct coverage.
+ */
+export function skillBodyIsSubsumed(
+  draftBody: string,
+  existingBody: string,
+  options: { readonly minContainment?: number } = {}
+): boolean {
+  const minContainment = Number.isFinite(options.minContainment) ? options.minContainment! : DEFAULT_SKILL_SUBSUMPTION_CONTAINMENT;
+  const draft = skillContentTokens(draftBody);
+  const existing = skillContentTokens(existingBody);
+  if (draft.size === 0 || existing.size === 0) return false;
+  let intersection = 0;
+  for (const token of draft) {
+    if (existing.has(token)) intersection += 1;
+  }
+  return intersection / draft.size >= minContainment;
 }
 
 /** Neutralise volatile timestamps so an unchanged content re-write is idempotent. */
@@ -184,6 +220,16 @@ export class AuthoredSkillStore {
       }
       await writeFileAtomic(match.sourceInfo.filePath, text);
       return { action: "patch", skill: await this.reload(match.name) };
+    }
+    // Write-time SUBSUMPTION dedup (Voyager skill-library novelty gate,
+    // arXiv:2305.16291): the name/description match above is symmetric Jaccard and
+    // never inspects the BODY, so a draft with a fresh name whose PROCEDURE is a
+    // subset of an existing skill would author a near-duplicate (the curator only
+    // cleans that up later at idle cost). If an existing authored skill already
+    // covers this draft's body, skip the redundant write.
+    const subsumer = authored.find((s) => skillBodyIsSubsumed(draft.body, s.body));
+    if (subsumer) {
+      return { action: "skip", skill: subsumer };
     }
     const name = this.dedupeName(draft.name);
     const slug = slugifySkillName(name);
