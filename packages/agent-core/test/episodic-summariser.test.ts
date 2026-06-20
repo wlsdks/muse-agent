@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   extractCurrentSessionTurns,
+  isEpisodeNovelVsRecent,
   isEpisodeWorthRetaining,
   redactSecrets,
   summariseSession,
@@ -11,6 +12,27 @@ import {
   type SessionTurnLine
 } from "../src/episodic-summariser.js";
 import type { ModelProvider } from "@muse/model";
+
+describe("isEpisodeNovelVsRecent — write-time novelty gate (Mem0 NOOP arXiv:2504.19413 / SAGE)", () => {
+  const A = "user decided to migrate the billing service to the new auth provider next quarter";
+
+  it("REJECTS a near-duplicate of a recently-stored summary (recurring topic re-summarised)", () => {
+    const nearDup = "the user decided to migrate the billing service to the new auth provider next quarter";
+    expect(isEpisodeNovelVsRecent(nearDup, [A])).toBe(false);
+  });
+
+  it("ADMITS a genuinely distinct summary, no recents, or an empty summary (fail-open)", () => {
+    expect(isEpisodeNovelVsRecent("user planned a weekend hiking trip to the coast with two close friends", [A])).toBe(true);
+    expect(isEpisodeNovelVsRecent(A, [])).toBe(true);
+    expect(isEpisodeNovelVsRecent("", [A])).toBe(true);
+  });
+
+  it("only compares against the N most-recent (a near-dup beyond the window doesn't block)", () => {
+    const others = Array.from({ length: 10 }, (_, i) => `distinct unrelated stored episode number ${i.toString()} about widgets and gadgets`);
+    expect(isEpisodeNovelVsRecent(A, [...others, A], { recent: 10 })).toBe(true);
+    expect(isEpisodeNovelVsRecent(A, [...others, A], { recent: 11 })).toBe(false);
+  });
+});
 
 describe("summaryGroundedInTranscript — drop a fabricated session summary before it becomes a citable source", () => {
   const turns: readonly SessionTurnLine[] = [

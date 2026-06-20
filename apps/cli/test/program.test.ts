@@ -4247,13 +4247,20 @@ describe("cli program", () => {
         stream: async function* () { /* not used */ }
       } as unknown as Parameters<typeof captureEndOfSessionEpisode>[0]["modelProvider"];
 
-      for (const truthy of ["1", "yes", "on", "TRUE", "True"]) {
+      const truthySpellings = ["1", "yes", "on", "TRUE", "True"];
+      for (let ti = 0; ti < truthySpellings.length; ti += 1) {
+        const truthy = truthySpellings[ti]!;
         process.env.MUSE_EPISODIC_MEMORY_ENABLED = truthy;
         const captured = await captureEndOfSessionEpisode({
           model: "stub",
           modelProvider: stubProvider,
           now: () => new Date("2026-05-13T08:15:00.000Z"),
-          userId: "stark"
+          userId: "stark",
+          // Isolate each iteration's episode store so the write-time NOVELTY gate
+          // (which correctly skips re-capturing the identical session) doesn't mask
+          // the env-truthy-parsing assertion this test is actually about. Index-keyed
+          // (NOT the spelling) so "TRUE"/"True" don't collide on a case-insensitive FS.
+          episodesFile: path.join(root, `truthy-episodes-${ti.toString()}.json`)
         });
         expect(
           captured.status,

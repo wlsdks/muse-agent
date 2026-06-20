@@ -33,7 +33,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { describeOfficialMcpPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveWeaknessesFile, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
-import { isLearningPaused, readEpisodes, readWeaknesses, selectDevFixableWeaknesses, type DevFixableWeakness, type WeaknessEntry } from "@muse/mcp";
+import { isLearningPaused, isMasteredWeakness, readEpisodes, readWeaknesses, selectDevFixableWeaknesses, type DevFixableWeakness, type WeaknessEntry } from "@muse/mcp";
 import type { Command } from "commander";
 
 import { resolveLaunchAgentFile } from "./commands-daemon.js";
@@ -636,17 +636,27 @@ const WEAKNESS_AXIS_LABEL: Record<string, string> = {
  * unit-testable. Empty ledger → an honest "nothing noticed yet" line.
  */
 export function formatWeaknesses(entries: readonly WeaknessEntry[]): string {
-  if (entries.length === 0) {
-    return "🪨 Whetstone: no weak spots recorded yet — I haven't hit a gap I noticed.\n";
+  // A MASTERED topic (BKT pKnown ≥ WEAKNESS_MASTERED_AT) has been resolved enough
+  // times that it is no longer a CURRENT weakness — exclude it from the "what I'm
+  // weak at" report so the inventory matches what the runtime nudges suppress
+  // (consistency with isMasteredWeakness; otherwise doctor keeps nagging a topic
+  // the user already fixed).
+  const active = [...entries].filter((entry) => !isMasteredWeakness(entry));
+  const masteredCount = entries.length - active.length;
+  const masteredNote = masteredCount > 0 ? ` · ${masteredCount.toString()} mastered` : "";
+  if (active.length === 0) {
+    return masteredCount > 0
+      ? `🪨 Whetstone: no ACTIVE weak spots — ${masteredCount.toString()} topic${masteredCount === 1 ? "" : "s"} mastered (resolved).\n`
+      : "🪨 Whetstone: no weak spots recorded yet — I haven't hit a gap I noticed.\n";
   }
-  const sorted = [...entries].sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen));
+  const sorted = active.sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen));
   const lines = sorted.map((entry) => {
     const label = WEAKNESS_AXIS_LABEL[entry.axis] ?? entry.axis;
     const times = entry.count === 1 ? "1×" : `${entry.count.toString()}×`;
     const day = entry.lastSeen.slice(0, 10);
     return `  • ${entry.topic}  — ${label} (${times}, last ${day})${entry.hint ? `\n      ↳ ${entry.hint}` : ""}`;
   });
-  return `🪨 Whetstone — what I've noticed I'm weak at (${sorted.length.toString()} topic${sorted.length === 1 ? "" : "s"}):\n${lines.join("\n")}\n`;
+  return `🪨 Whetstone — what I've noticed I'm weak at (${sorted.length.toString()} topic${sorted.length === 1 ? "" : "s"}${masteredNote}):\n${lines.join("\n")}\n`;
 }
 
 /**

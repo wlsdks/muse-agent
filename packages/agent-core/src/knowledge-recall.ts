@@ -1506,10 +1506,57 @@ const SENTENCE_OPENER_STOPLIST = new Set([
  * value); month/day names are excluded. The call site is FAIL-OPEN, so a false
  * flag only costs one judge pass that upholds a correct answer, never a refusal.
  */
+const ISO_DATE_RE = /\b\d{4}-\d{2}-\d{2}\b/gu;
+const DATE_MONTH_NUMBER: Readonly<Record<string, number>> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12
+};
+// Case-sensitive (initial-cap) so the modal verb "may" in prose isn't a false May date.
+const EN_PROSE_DATE_RE = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2})\b/gu;
+const KO_DATE_RE = /(\d{1,2})\s*월\s*(\d{1,2})\s*일/gu;
+
+/**
+ * Script-neutral `month-day` keys ("9-14") from every date form in `text` — ISO
+ * ("2026-09-14"), English prose ("September 14"), Korean ("9월 14일"). Binds month+day
+ * as ONE key so a drifted calendar/deadline DAY can't be waved through by an unrelated
+ * same-digit elsewhere in the evidence (the bare-number guard's blind spot). Year is
+ * dropped (the number guard owns it). The chat date gate (fire 31) shares this one copy.
+ */
+export function monthDayKeys(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const d of text.match(ISO_DATE_RE) ?? []) {
+    const [, m, day] = d.split("-");
+    out.add(`${Number(m).toString()}-${Number(day).toString()}`);
+  }
+  for (const m of text.matchAll(EN_PROSE_DATE_RE)) {
+    const month = DATE_MONTH_NUMBER[m[1]!.toLowerCase()];
+    if (month) out.add(`${month.toString()}-${Number(m[2]).toString()}`);
+  }
+  for (const m of text.matchAll(KO_DATE_RE)) {
+    out.add(`${Number(m[1]).toString()}-${Number(m[2]).toString()}`);
+  }
+  return out;
+}
+
 function answerAssertsUnsupportedValue(answer: string, matches: readonly KnowledgeMatch[]): boolean {
   const stripped = answer.replace(/\[[^\]]*\]/gu, " ");
   const evidence = unionContentTokens(matches);
-  const numbers = [...lexicalTokens(stripped)].filter((token) => /^\d+$/u.test(token));
+  // DATE drift (ask-path counterpart of the chat date gate, fire 31): bind month+day so
+  // a calendar/renewal date that drifts by a day (Sep 14 vs the note's Sep 13) flags even
+  // when the day "14" appears elsewhere in evidence. Month names are stoplisted from the
+  // bare-number path, so this is the only place a drifted prose/KO date can be caught.
+  const answerDates = monthDayKeys(stripped);
+  if (answerDates.size > 0) {
+    const evidenceDates = monthDayKeys(matches.map((m) => m.text).join(" "));
+    if (evidenceDates.size > 0 && [...answerDates].some((d) => !evidenceDates.has(d))) {
+      return true;
+    }
+  }
+  // Strip date expressions before the bare-number check so a date's DAY digit isn't
+  // re-judged as a loose number (which would false-fire when the evidence carries the
+  // same day only inside an ISO date — "September 13" vs "2026-09-13").
+  const numStripped = stripped.replace(ISO_DATE_RE, " ").replace(EN_PROSE_DATE_RE, " ").replace(KO_DATE_RE, " ");
+  const numbers = [...lexicalTokens(numStripped)].filter((token) => /^\d+$/u.test(token));
   if (numbers.some((number) => !evidence.has(number))) {
     return true;
   }

@@ -172,6 +172,31 @@ describe("verifyGroundingWithReverify — claim-level value escalation (the wron
     expect(out.verdict).toBe("grounded");
   });
 
+  // DATE drift — the ASK-path counterpart of the chat date guard (fire 31). A calendar/
+  // renewal date that drifts by a DAY (the model says Sep 14, the note says Sep 13) is a
+  // high-harm value the bare-digit guard misses (the day "14" appears elsewhere in
+  // evidence; "September" is stoplisted). Bind month+day as one key across ISO/prose/KO.
+  const dateMatches = [match("cal/renewal.md", "Your renewal is on September 13, 2026. There are 14 days left.", 0.72)];
+  it("escalates a GROUNDED answer asserting a DRIFTED prose date (Sep 14 vs evidence Sep 13) — day '14' elsewhere in evidence doesn't save it", async () => {
+    const out = await verifyGroundingWithReverify("Your renewal is on September 14 [from cal/renewal.md].", dateMatches, "when is my renewal", async () => false);
+    expect(out.verdict).toBe("ungrounded");
+    expect(out.reason).toContain("value the evidence does not support");
+  });
+  it("FAIL-OPENS the date escalation: a judge error never demotes (ask-path semantics preserved)", async () => {
+    const out = await verifyGroundingWithReverify("Your renewal is on September 14 [from cal/renewal.md].", dateMatches, "when is my renewal", async () => { throw new Error("down"); });
+    expect(out.verdict).toBe("grounded");
+  });
+  it("does NOT escalate a CORRECT date, incl. ISO↔prose equivalence (no false escalation)", async () => {
+    const iso = [match("cal/r.md", "Your renewal date is 2026-09-13 on file.", 0.72)];
+    const out = await verifyGroundingWithReverify("Your renewal date is September 13 [from cal/r.md].", iso, "when is my renewal date", never);
+    expect(out.verdict).toBe("grounded");
+  });
+  it("escalates a DRIFTED Korean month-day (9월 14일 vs evidence 9월 13일)", async () => {
+    const ko = [match("cal/k.md", "갱신일은 9월 13일입니다.", 0.72)];
+    const out = await verifyGroundingWithReverify("갱신일은 9월 14일이에요 [from cal/k.md].", ko, "갱신일", async () => false);
+    expect(out.verdict).toBe("ungrounded");
+  });
+
   it("escalates a GROUNDED answer asserting a WRONG NAMED ENTITY and demotes it on an unsupported judge verdict", async () => {
     const matches = [match("notes/lease.md", "Apartment lease: landlord is Mr. Park, rent due on the 1st.", 0.72)];
     const out = await verifyGroundingWithReverify("Your landlord is Mr. Lee [from notes/lease.md].", matches, "who is my landlord", async () => false);

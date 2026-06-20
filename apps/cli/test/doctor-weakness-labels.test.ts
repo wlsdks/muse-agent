@@ -22,3 +22,24 @@ describe("formatWeaknesses — every written axis renders a friendly user-facing
     expect(formatWeaknesses([entry("time-parse")])).toContain("misread a date/time");
   });
 });
+
+describe("formatWeaknesses — MASTERED topics are excluded from the active 'weak at' report (runtime-nudge parity)", () => {
+  const at = (topic: string, pKnown?: number): WeaknessEntry => ({
+    axis: "grounding-gap", count: 3, firstSeen: "2026-06-01T00:00:00.000Z", lastSeen: "2026-06-07T00:00:00.000Z", topic, ...(pKnown !== undefined ? { pKnown } : {})
+  });
+
+  it("a MASTERED topic (pKnown ≥ 0.95) does not appear; an active one does, with a mastered note in the header", () => {
+    const out = formatWeaknesses([at("solved thing", 0.99), at("still stuck")]);
+    expect(out).toContain("still stuck");
+    expect(out).not.toContain("solved thing");
+    expect(out).toContain("1 mastered");
+    expect(out).toContain("1 topic");           // only the active one counted
+  });
+
+  it("ALL-mastered → an 'all resolved' line, not the empty-ledger line", () => {
+    const out = formatWeaknesses([at("a", 0.99), at("b", 0.97)]);
+    expect(out).toContain("no ACTIVE weak spots");
+    expect(out).toContain("2 topics mastered");
+    expect(out).not.toContain("a  —");           // neither topic listed
+  });
+});

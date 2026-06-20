@@ -197,6 +197,46 @@ export function isEpisodeWorthRetaining(
   return !(thin && selfRatedTrivial);
 }
 
+/** Token-Jaccard at/above which a new episode summary is a near-duplicate of a stored one. */
+export const DEFAULT_EPISODE_NOVELTY_MAX_OVERLAP = 0.8;
+/** How many of the most-recent stored summaries the novelty gate compares against. */
+export const DEFAULT_EPISODE_NOVELTY_RECENT = 10;
+
+/**
+ * Write-time NOVELTY gate (Mem0 write-side NOOP, arXiv:2504.19413; SAGE novelty
+ * gate, arXiv:2605.30711): admit an episode only when it adds NEW information vs
+ * the recently-stored ones. The other write gates (outcome-quality, grounding,
+ * salience) judge an episode in ISOLATION, so a recurring topic re-summarised
+ * near-identically passes them all and is persisted as yet another near-duplicate
+ * `[session: …]` source that dilutes recall (the read-time `consolidateNearDuplicates`
+ * only cleans up AFTER the write). Returns false (reject) when the summary's token
+ * Jaccard ≥ `maxOverlap` against ANY of the `recent` most-recent stored summaries.
+ * Deterministic + embedder-free (same CJK-aware `lexicalTokens` the other gates
+ * use). Fail-OPEN: no recents / an empty summary → novel (never lose a session).
+ * SUBTRACTIVE — only declines to store. Pure + exported for direct coverage.
+ */
+export function isEpisodeNovelVsRecent(
+  summary: string,
+  recentSummaries: readonly string[],
+  options: { readonly maxOverlap?: number; readonly recent?: number } = {}
+): boolean {
+  const maxOverlap = Number.isFinite(options.maxOverlap) ? options.maxOverlap! : DEFAULT_EPISODE_NOVELTY_MAX_OVERLAP;
+  const recentN = Math.max(1, Math.trunc(options.recent ?? DEFAULT_EPISODE_NOVELTY_RECENT));
+  const a = lexicalTokens(summary);
+  if (a.size === 0) return true;
+  for (const text of recentSummaries.slice(0, recentN)) {
+    const b = lexicalTokens(text);
+    if (b.size === 0) continue;
+    let intersection = 0;
+    for (const token of a) {
+      if (b.has(token)) intersection += 1;
+    }
+    const jaccard = intersection / (a.size + b.size - intersection);
+    if (jaccard >= maxOverlap) return false;
+  }
+  return true;
+}
+
 export interface SummariseSessionOptions {
   readonly turns: readonly SessionTurnLine[];
   readonly modelProvider: ModelProvider;

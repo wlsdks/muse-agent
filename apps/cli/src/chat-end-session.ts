@@ -29,6 +29,7 @@ import { randomUUID } from "node:crypto";
 import {
   classifyEpisodeAdmissionQuality,
   extractCurrentSessionTurns,
+  isEpisodeNovelVsRecent,
   isEpisodeWorthRetaining,
   peakEndDigest,
   summariseSession,
@@ -38,6 +39,7 @@ import {
   type SummariseSessionOptions
 } from "@muse/agent-core";
 import {
+  readEpisodes,
   upsertEpisode,
   vacuumEpisodes,
   type PersistedEpisode
@@ -182,6 +184,27 @@ export async function captureEndOfSessionEpisode(options: CaptureEndOfSessionOpt
   if (!ownerId) {
     return { reason: "no userId available (boundary missing it, no fallback supplied)", status: "skipped" };
   }
+  // Write-time NOVELTY gate (Mem0 write-side NOOP arXiv:2504.19413; SAGE novelty
+  // gate arXiv:2605.30711): the other gates judge this session in ISOLATION, so a
+  // recurring topic re-summarised near-identically passes them all and is stored
+  // as another near-duplicate [session: …] source that dilutes recall. Drop it
+  // when it isn't novel vs the recently-stored episodes. Fail-OPEN on a read
+  // error (never lose a session over a transient read failure).
+  try {
+    const recentSummaries = (await readEpisodes(episodesFile, env as NodeJS.ProcessEnv))
+      .filter((e) => e.userId === ownerId)
+      .sort((a, b) => b.endedAt.localeCompare(a.endedAt))
+      .map((e) => e.summary);
+    if (!isEpisodeNovelVsRecent(summary.summary, recentSummaries)) {
+      return {
+        reason: "near-duplicate of a recently-stored episode — not persisted (write-time novelty gate)",
+        status: "skipped"
+      };
+    }
+  } catch {
+    // fail-open: a transient read error must not lose the session
+  }
+
   // Re-scrub: the model can hallucinate a credential-shaped
   // string into the summary/topics even though input turns were
   // already redacted.

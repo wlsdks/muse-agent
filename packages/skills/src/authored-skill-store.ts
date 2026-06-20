@@ -116,6 +116,30 @@ async function writeFileAtomic(filePath: string, text: string): Promise<void> {
   await fs.chmod(filePath, 0o600).catch(() => undefined);
 }
 
+/** A skill projected to the signals that decide cap-overflow eviction order. */
+export interface SkillEvictionEntry {
+  readonly name: string;
+  /** Has the skill ever been used (a `lastUsedAt` recorded)? */
+  readonly used: boolean;
+  /** Epoch-ms of last use, or authoredAt when never used. */
+  readonly lastActiveMs: number;
+}
+
+/**
+ * Eviction order (lowest-utility FIRST) for the authored-skill cap — value-aware,
+ * not FIFO-by-age (SkillOps arXiv:2605.13716 utility-driven retire; TinyLFU
+ * arXiv:1512.00727 value-aware cache eviction): a NEVER-used skill is evicted
+ * before any ever-used one, ties broken least-recently-active first (LRU). So a
+ * heavily-used old skill survives a never-used newer one. With no usage data
+ * `lastActiveMs` is `authoredAt`, so it degrades to FIFO (strict superset, no
+ * regression). Pure + exported for direct coverage.
+ */
+export function rankSkillsForEviction(entries: readonly SkillEvictionEntry[]): readonly string[] {
+  return [...entries]
+    .sort((a, b) => (Number(a.used) - Number(b.used)) || (a.lastActiveMs - b.lastActiveMs))
+    .map((entry) => entry.name);
+}
+
 export class AuthoredSkillStore {
   private readonly dir: string;
   private readonly maxSkills: number;
@@ -398,6 +422,11 @@ export class AuthoredSkillStore {
     return Number.isFinite(used) ? used : this.authoredAt(skill);
   }
 
+  private hasUsage(skill: Skill): boolean {
+    const muse = (skill.frontmatter.metadata?.["muse"] ?? {}) as Record<string, unknown>;
+    return typeof muse["lastUsedAt"] === "string" && (muse["lastUsedAt"] as string).length > 0;
+  }
+
   private async archiveSkill(skill: Skill): Promise<boolean> {
     const folder = skill.sourceInfo.baseDir;
     const base = folder.split(/[\\/]/u).pop() ?? "skill";
@@ -409,8 +438,18 @@ export class AuthoredSkillStore {
   private async enforceCap(): Promise<void> {
     const skills = await this.listAuthored();
     if (skills.length <= this.maxSkills) return;
-    const ordered = [...skills].sort((a, b) => this.authoredAt(a) - this.authoredAt(b)); // oldest first
-    for (const s of ordered.slice(0, ordered.length - this.maxSkills)) await this.archiveSkill(s);
+    // Utility-aware eviction (SkillOps arXiv:2605.13716; value-aware cache
+    // eviction, TinyLFU arXiv:1512.00727): evict the LOWEST-utility skills, not
+    // merely the oldest-authored — a heavily-used skill must not be archived
+    // before a never-used newer one. Degrades to FIFO when no usage data exists
+    // (lastActiveAt falls back to authoredAt), so it is a strict superset.
+    const order = rankSkillsForEviction(
+      skills.map((s) => ({ name: s.name, used: this.hasUsage(s), lastActiveMs: this.lastActiveAt(s) }))
+    );
+    const evict = new Set(order.slice(0, skills.length - this.maxSkills));
+    for (const s of skills) {
+      if (evict.has(s.name)) await this.archiveSkill(s);
+    }
   }
 
   private dedupeName(name: string): string {
