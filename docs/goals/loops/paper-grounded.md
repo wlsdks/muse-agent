@@ -25,3 +25,12 @@ ratchet: testFiles 1056 · fabrication 0 · groundedSurfaces=28 (no drop) · gro
 - 왜: misgrounding 루프가 ASK에만 닫혀 있고 가장 많이 쓰는 chat 표면엔 blind였음 — 차별화 엣지 (d)whetstone metacognition을 새 표면으로 확장. 가법적(기존 WeaknessAxis·DEV_FIXABLE_AXES·muse doctor 파이프라인이 이미 소비, 새 sink 없음). ALCE 인용정밀도(arXiv:2305.14627) + Memp 증거-게이트 ledger(arXiv:2508.06433).
 - 리뷰지점: 독립 judge가 misgrounding 분기 비활성→positive 2 테스트 RED, `<1` 상한 widen→cross-lingual negative RED로 mutation faithfulness 실증. ledger STATE(weaknesses.json) 직접 검증, spy 아님. fraction==1.0(cross-lingual)은 grounded 유지.
 - 리스크: 낮음 — chat misgrounding 신호는 lexical-only(cross-lingual semantic re-judge 없음)라 heavily-paraphrased-but-faithful EN 답이 token coverage [0.5,1)면 false misgrounding 로깅 가능. 단 fuel-only(유저 비노출·verdict 불변)이고, 이를 스트레스할 faithfulness-rate 배터리는 box env-stall로 skip이라 박스에선 미검증.
+
+## fire 3 · 2026-06-20 · skill v2.0.0 · (rolled back — no code commit)
+meta: value-class=bug-fix-with-capability · pkg=@muse/mcp · kind=playbook-eviction-PEVI-parity · verdict=FAIL(rolled back) · firesSinceDrill=3
+ratchet: testFiles 1055 · fabrication 0 · groundedSurfaces=28 (no drop) · 게이트(build/check/self-eval/lint) 전부 green이었으나 ④b 적응형 judge가 의미 결함 적발
+- 무엇: Playbook eviction(bank 오버플로 생존 결정)이 raw point-estimate reward로 정렬 → 검증된 전략을 thin-lucky 전략이 파괴적으로 evict하는 버그를 고치려 inline `evictionUtility` 추가. 빌드/테스트/mutation-first(정렬키 revert→새 테스트 RED) 모두 통과했으나 — ④b 독립 Opus judge가 FAIL.
+- 왜(FAIL): inline `evictionUtility`가 `effectiveStrategyReward`(shrinkage 점추정 `(2·pHat−1)·MAX·n/(n+3)`)를 복제했는데, 실제 injection/ranking 경로(`rankPlaybookStrategies`/`rankPlaybookStrategiesByRelevance`)는 `rankingUtility`(Wilson LCB `(2·lower−1)·MAX`)를 씀. 두 함수가 다름 → eviction↔injection이 여전히 불일치(judge가 3085쌍 불일치 + thin 1/0이 proven 11/9를 evict하는 구체 사례 실증). 슬라이스가 *틀린 parity 함수*를 복제해 주장한 버그를 못 고침. 게이트는 green인데 의미가 틀린 "green-but-wrong".
+- 리뷰지점: ④b 적응형 적대 judge가 결정적 게이트가 못 잡는 의미 결함을 잡음 — maker≠judge + adaptive judge의 정확한 작동 사례. 기존 테스트(thin 5/1 vs proven 4/40)는 두 parity 함수 모두에서 통과해 구별 불가였던 게 근본 원인.
+- 리스크: 롤백으로 main/브랜치에 결함 미반입(녹색이지만 틀린 코드 차단). 
+- lesson: Playbook eviction parity는 `effectiveStrategyReward`(shrinkage)가 아니라 `rankingUtility`(Wilson LCB, playbook.ts:383)를 복제해야 한다 — injection이 *실제로* 랭킹하는 함수와 맞춰라. parity 슬라이스엔 두 후보 함수를 구별하는 판별 테스트(thin 1/0 vs proven 11/9: shrinkage면 thin 생존, Wilson이면 proven 생존)를 반드시 포함. "green 게이트 ≠ 옳음" — 의미 parity는 적응형 judge로만 잡힘.
