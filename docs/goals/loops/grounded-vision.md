@@ -19,3 +19,11 @@ ratchet: testFiles 1062→1063 · fabrication 0 · groundedSurfaces=28 (no drop)
 - 리뷰지점: 독립 적응형 judge가 시그니처 byte-for-byte 충실(over-reject 회귀 없음 — 실 receipt.png fixture 로드 확인), 가드 revert→DROP-1/2 RED 실증, 조정은 sniff 성공시만(null이면 fail-close 동일 shape). commands-show 거동 불변(전체 스위트 그린).
 - 리스크: 낮음 — sniff는 prefix-only라 truncated-but-valid-header non-decodable 파일은 통과 가능하나, pre-fix 확장자-신뢰보다 나쁘지 않음(out of scope).
 - 형제-감사: chat-ink.ts readImage(~943)가 chat-ink-core.ts의 자체 IMAGE_MIME_BY_EXT(~396)로 콘텐츠 sniff 없이 같은 입력 구멍 보유 → backlog ◦ follow-up(muse chat --image 경로). 다른 image-load 콜사이트는 없음.
+
+## fire 2 · 2026-06-21 · skill v2.0.0 · ae37c354
+meta: value-class=hardening · pkg=@muse/cli · kind=vision-input-validation · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 1066→1067 · fabrication 0 · groundedSurfaces=28 (no drop) · groundedCases=45 · differentiationBatteries=6 · cli 2790 PASS(+5 신규) · check 2790 · mutation-first RED 확인(가드 revert→DROP/RECONCILE 2케이스 RED) · merge origin/main 충돌0(merge 모델 작동)
+- 무엇: fire-1 형제 — `muse chat --image`의 readImage가 확장자만 믿던 입력 구멍을, fire 1이 만든 공유 leaf(sniffImageMime)를 재사용해 fail-close. readImage를 chat-ink-core.ts의 exported readImageAttachment로 추출(공유 leaf 경유), non-image면 undefined(원래 실패 shape), 이미지면 sniffed mimeType 보정. chat-ink.ts는 1줄 위임.
+- 왜: 입력단 visual-integrity 구멍이 ask·chat 두 표면에 동일하게 있었음(형제-감사가 fire 1에서 발견). 두 surface 모두 닫아 입력 fabrication floor 완성. 공유 leaf 재사용으로 중복 sniffer 없음. arXiv:2404.18930.
+- 리뷰지점: 독립 적응형 judge가 return/async 계약 정확 보존(undefined-on-failure·consumer `if(img)` 동일 처리·sync→async 변경 아님), over-reject 회귀 없음(실 receipt.png 로드), 가드 revert→DROP/RECONCILE RED 실증, accept-list 불변. 기계적 미러라 Sonnet 빌더 + Opus judge 티어링.
+- 리스크: 낮음 — chat→Ollama 이미지 배선의 라이브 round-trip은 미검증(입력 게이트는 결정론으로 증명, consumer 코드 불변으로 보장). prefix-only sniff 한계는 fire 1과 동일.
