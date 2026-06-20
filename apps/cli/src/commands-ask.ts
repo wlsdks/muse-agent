@@ -2808,6 +2808,28 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       if (askOutcome === "grounded" && !askIsActionRequest) {
         await recordAskWeaknessResolvedLive(query);
       }
+      // Runtime learn→apply: if THIS ask failed on a topic that is now a RECURRING
+      // user-remediable weakness, surface the remediation AT the moment of repeated
+      // failure (not just the daily recap) — a deterministic user-facing nudge.
+      if (!options.json && askAxis !== null) {
+        try {
+          const { askTimeWeaknessNudge, readWeaknesses, topicKeyFromMessage } = await import("@muse/mcp");
+          const { resolveWeaknessesFile } = await import("@muse/autoconfigure");
+          const weaknessEntries = await readWeaknesses(resolveWeaknessesFile(process.env as Record<string, string | undefined>));
+          const nudge = askTimeWeaknessNudge(weaknessEntries, topicKeyFromMessage(query));
+          if (nudge) {
+            const ko = /[가-힣]/u.test(query);
+            const msg = nudge.axis === "source-conflict"
+              ? (ko
+                  ? `"${nudge.topic}" 관련 노트가 서로 어긋나요 (${nudge.count.toString()}번째) — 정리해두시면 정확히 답해드릴게요.`
+                  : `your notes on "${nudge.topic}" disagree (${nudge.count.toString()}×) — reconcile them and I'll answer accurately`)
+              : (ko
+                  ? `"${nudge.topic}" 주제는 전에도 막혔는데 노트에 없어요 (${nudge.count.toString()}번째) — 메모를 추가하시면 다음엔 답해드릴게요.`
+                  : `you've hit "${nudge.topic}" ${nudge.count.toString()}× and it's not in your notes — add one and I'll answer next time`);
+            io.stderr(`💡 ${msg}\n`);
+          }
+        } catch { /* ledger unavailable — no nudge */ }
+      }
 
       if (options.json) {
         // Emit a single JSON object on stdout — consumers can pipe
