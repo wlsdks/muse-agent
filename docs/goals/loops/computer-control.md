@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 19 · 2026-06-21 · skill v2.0 · <commit-pending> (file_grep ReDoS guard — model regex can't hang the agent)
+meta: value-class=new-capability · pkg=@muse/fs · kind=regex-safety/ReDoS · verdict=PASS · firesSinceDrill=9
+ratchet: testFiles 1071→1071 (+3 cases fs-read-tools: integration + 2 it.each, mutation-valid) · fabrication 0 · @muse/fs 격리 156 · pnpm check=박스포화(apps/cli 5-64s, 격리 green) · lint clean
+- 무엇: §3.6 DoS — file_grep이 모델-supplied regex를 `new RegExp(pattern,"u")`(JS 백트래킹, 타임아웃 없음)로 Muse 프로세스 IN에서 라인별 실행 → `(a+)+$`가 40자 실패 라인에서 HANG(probe 확인). FIX(`isCatastrophicGrepPattern`): nested-quantifier 형태(`(a+)+`/`(.*)*`/`(\d+){2,}`)를 compile 전 거부+"simplify" 에러. 
+- 왜: 모델 regex hang은 agent를 wedge하는 실제 DoS. JS는 regex 타임아웃 없어 detect-and-reject가 dep-없는 1차 방어(compile 전 차단).
+- 리뷰지점: mutation-valid(detector→false면 unit RED + integration HANG=가드 load-bearing; flags 6 catastrophic/allows 7 safe). ④b judge PASS(realistic 11 패턴 over-block 0, compile 전 실행, literal degrade 유지, grep-only). **HONEST RESIDUAL(④b 확인)**: flat-group 휴리스틱이 `((a+))+`(nested-paren)·`(a|aa)+`(alternation-overlap)는 여전히 HANG — alternation은 안전한 `(a|b)+`까지 over-block돼 깔끔히 못 잡음; complete fix=worker-timeout(모든 형태, deferred 깊은 슬라이스).
+- 리스크: 낮음 — 거부 패턴 1개+에러(grep만, 안전 패턴 불변). ④b PASS.
+lesson: 휴리스틱 보안가드는 **common 형태를 닫고 residual을 정직히 문서화**(④b가 nested-paren/alternation residual 확인) — over-block 회피(alternation 검출이 `(a|b)+` 오탐)와 완전성(worker-timeout)이 트레이드오프; "1차 방어+정직한 한계"가 "완벽한 척"보다 낫다. JS regex는 타임아웃 불가라 detect-and-reject가 현실적.
+
 ## fire 18 · 2026-06-21 · skill v2.0 · c204778f (fs credential deny-list — common cred/key files; 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/fs · kind=security/credential-deny · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles 1071→1071 (+2 it.each fs-path-safety, mutation-valid) · fabrication 0 · @muse/fs 격리 143 · eval:computer-task 무관(cred 미사용) · pnpm check=박스포화(web-search fuzz 9.6s, 격리 green) · lint clean

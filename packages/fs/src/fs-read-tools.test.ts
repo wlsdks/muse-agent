@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { JsonObject } from "@muse/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { compileGrepPattern, createFileGrepTool, createFileListTool, createFileReadTool } from "./fs-read-tools.js";
+import { compileGrepPattern, createFileGrepTool, createFileListTool, createFileReadTool, isCatastrophicGrepPattern } from "./fs-read-tools.js";
 
 const ctx = { runId: "test-run" };
 
@@ -216,6 +216,27 @@ describe("file_read / file_list / file_grep", () => {
       const matches = out["matches"] as Array<{ text: string }>;
       expect(matches.some((m) => m.text.includes("fn(a, b)"))).toBe(true);
     });
+
+    it("rejects a catastrophic-backtracking (ReDoS) pattern instead of hanging the process", async () => {
+      // `(a+)+$` on a failing line never returns in JS's backtracking RegExp.
+      // The grep must REFUSE it (clear error) rather than wedge the agent. This
+      // test completes instantly BECAUSE of the guard — without it, the search
+      // over the file's line would hang the runner.
+      await writeFile(join(root, "data.txt"), `${"a".repeat(60)}!`);
+      const tool = createFileGrepTool(opts());
+      const out = (await tool.execute({ mode: "content", path: root, pattern: "(a+)+$" }, ctx)) as JsonObject;
+      expect(String(out["error"])).toMatch(/catastroph|slow|simplif/iu);
+    });
+
+    it.each(["(a+)+$", "(.*)*", "(\\d+)*x", "(\\w+){2,}", "(ab+)*c"])(
+      "isCatastrophicGrepPattern flags nested-quantifier ReDoS %s",
+      (p) => expect(isCatastrophicGrepPattern(p)).toBe(true)
+    );
+
+    it.each(["dentist", "src/math\\.mjs", "TODO|FIXME", "\\bfoo\\b", "a{2,5}", "(abc)+", "[a-z]+\\d+"])(
+      "isCatastrophicGrepPattern allows the safe pattern %s (no false-positive)",
+      (p) => expect(isCatastrophicGrepPattern(p)).toBe(false)
+    );
 
     it("content mode marks the matched file READ (grounds a grep→edit loop, like file_read's partial view)", async () => {
       await writeFile(join(root, "z.md"), "alpha\nbeta dentist\ngamma");

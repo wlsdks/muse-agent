@@ -362,6 +362,19 @@ export function compileGrepPattern(pattern: string): RegExp {
   return new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "");
 }
 
+/**
+ * A model-supplied grep pattern runs on Muse's OWN process — JS `RegExp` is a
+ * backtracking engine with no timeout, so a catastrophic pattern hangs the agent
+ * (ReDoS; an `(a+)+$` on a 40-char failing line never returns). Reject the
+ * classic form: an unbounded quantifier (`+`/`*`/`{n,}`) applied to a group whose
+ * body ALSO contains an unbounded quantifier — `(a+)+`, `(.*)*`, `(\d+){2,}`.
+ * Conservative flat-group heuristic (the form a small model could emit);
+ * documented limit: alternation-overlap forms like `(a|aa)+` are not detected.
+ */
+export function isCatastrophicGrepPattern(pattern: string): boolean {
+  return /\([^()]*[+*][^()]*\)(?:[*+]|\{\d+,\})/u.test(pattern);
+}
+
 export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromise?: Promise<ResolvedPolicy>): MuseTool {
   const policy = policyPromise ?? resolvePolicy(options);
   const baseDir = options.baseDir ?? process.cwd();
@@ -400,6 +413,9 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
       }
       if (patternText.length > GREP_MAX_PATTERN_LENGTH) {
         return { error: `pattern exceeds ${GREP_MAX_PATTERN_LENGTH.toString()} characters` };
+      }
+      if (isCatastrophicGrepPattern(patternText)) {
+        return { error: "pattern looks catastrophically slow (a repeated group inside a repeat, e.g. (a+)+) — simplify it to avoid hanging the search" };
       }
       const regex = compileGrepPattern(patternText);
       // No `path`: default to a configured allow-root so a narrowed sandbox
