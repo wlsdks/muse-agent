@@ -500,7 +500,7 @@ ratchet: testFiles +1 · web tests 56/56 (+6) · fabrication 0 · self-eval exit
 - **리뷰지점**: mutation-first RED 실증(extreme-guard 없을 때 0.999→"100%"·0.004→"0%" FAIL) → GREEN. 두 가드 상호배타(pct 100·0 동시 불가, judge 확인). [0.995,1)→"99%"는 신뢰 stat의 보수적 under-report(over-report였던 원 버그의 반대 = 올바른 편향). undefined→"—" 보존 + NaN도 처리(strict 개선). 순수 프레젠테이션, grounding/security 무접촉. 형제-감사: Dashboard:18이 web 유일 % readout(다른 *100은 CSS bar height — judge 확인). 러너업 `totalCost.toFixed(4)` 천단위 미그룹 = 별 클래스, backlog.
 - **리스크**: 없음(순수 헬퍼 1개 + 콜사이트 2곳, web build tsc+vite 통과, web 56/56, self-eval exit 0, 독립 Opus ④b judge가 mutation 양쪽 이빨·경계값 비모순·무접촉·sibling-audit 검증 후 PASS).
 
-## fire 56 · 2026-06-20 · skill v2.0.0 · (pending)
+## fire 56 · 2026-06-20 · skill v2.0.0 · 4f4894e7
 meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=pluralization · verdict=PASS · firesSinceDrill=5
 ratchet: cli tests 2773/2773 (+5) · testFiles +1 · fabrication 0 · self-eval exit 0 · 표면 균형 web24·desktop13·cli19
 
