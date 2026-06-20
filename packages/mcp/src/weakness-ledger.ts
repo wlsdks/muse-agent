@@ -290,6 +290,24 @@ export function askTimeWeaknessNudge(
   return { axis: top.axis, count: top.count, hint: remediationHint(top.axis, top.topic), topic: top.topic };
 }
 
+/**
+ * Localized, axis-aware sentence for an {@link askTimeWeaknessNudge} result — the
+ * SINGLE source of the user-facing wording shared by every point-of-use surface
+ * (the `ask` 💡 stderr cue AND the in-chat repeat nudge), so source-conflict vs
+ * grounding-gap phrasing can never drift between them. Returns the bare sentence
+ * (no leading glyph / parens) — each surface wraps it in its own format. Pure.
+ */
+export function renderAskTimeNudge(nudge: AskTimeNudge, ko: boolean): string {
+  if (nudge.axis === "source-conflict") {
+    return ko
+      ? `"${nudge.topic}" 관련 노트가 서로 어긋나요 (${nudge.count.toString()}번째) — 정리해두시면 정확히 답해드릴게요.`
+      : `your notes on "${nudge.topic}" disagree (${nudge.count.toString()}×) — reconcile them and I'll answer accurately`;
+  }
+  return ko
+    ? `"${nudge.topic}" 주제는 전에도 막혔는데 노트에 없어요 (${nudge.count.toString()}번째) — 메모를 추가하시면 다음엔 답해드릴게요.`
+    : `you've hit "${nudge.topic}" ${nudge.count.toString()}× and it's not in your notes — add one and I'll answer next time`;
+}
+
 export interface DevFixableWeakness {
   readonly topic: string;
   readonly axis: WeaknessAxis;

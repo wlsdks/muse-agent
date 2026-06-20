@@ -982,6 +982,7 @@ export {
   recordWeakness,
   recordWeaknessResolved,
   remediationHint,
+  renderAskTimeNudge,
   selectDevFixableWeaknesses,
   selectRemediableWeaknesses,
   topicKeyFromMessage,

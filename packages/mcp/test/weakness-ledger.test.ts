@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { BKT_PRIOR, MAX_WEAKNESS_ENTRIES, askTimeWeaknessNudge, bktUpdate, isMasteredWeakness, readWeaknesses, recordTimeParseWeakness, recordWeakness, recordWeaknessResolved, remediationHint, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
+import { BKT_PRIOR, MAX_WEAKNESS_ENTRIES, askTimeWeaknessNudge, bktUpdate, isMasteredWeakness, readWeaknesses, recordTimeParseWeakness, recordWeakness, recordWeaknessResolved, remediationHint, renderAskTimeNudge, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type AskTimeNudge, type WeaknessEntry } from "../src/weakness-ledger.js";
 
 describe("recordTimeParseWeakness — wire the DEAD time-parse axis to the deterministic parse-failure signal (fire 9 source-conflict pattern, for time-parse)", () => {
   it("records axis time-parse when the phrase FAILED to parse (the deterministic parser, not the model, said no)", async () => {
@@ -53,6 +53,32 @@ describe("askTimeWeaknessNudge — surface a recurring user-remediable weakness 
   it("picks the highest-count user-remediable entry when the topic has several axes", () => {
     const nudge = askTimeWeaknessNudge([e({ axis: "grounding-gap", count: 2, topic: "addr" }), e({ axis: "source-conflict", count: 4, topic: "addr" })], "addr");
     expect(nudge?.count).toBe(4);
+  });
+});
+
+describe("renderAskTimeNudge — single axis-aware wording shared by ask + chat", () => {
+  const n = (over: Partial<AskTimeNudge>): AskTimeNudge => ({ axis: "grounding-gap", count: 2, hint: "h", topic: "office vpn", ...over });
+
+  it("a source-conflict renders the RECONCILE message (not 'add a note'), KO + EN", () => {
+    const ko = renderAskTimeNudge(n({ axis: "source-conflict", count: 4 }), true);
+    expect(ko).toContain("어긋나요");
+    expect(ko).toContain("4번째");
+    expect(ko).not.toContain("추가");
+    const en = renderAskTimeNudge(n({ axis: "source-conflict", count: 4 }), false);
+    expect(en).toContain("disagree");
+    expect(en).toContain("4×");
+    expect(en).not.toContain("add");
+  });
+
+  it("a grounding-gap renders the ADD-A-NOTE message, KO + EN, carrying the topic + count", () => {
+    const ko = renderAskTimeNudge(n({ axis: "grounding-gap", count: 3, topic: "vpn mtu" }), true);
+    expect(ko).toContain("vpn mtu");
+    expect(ko).toContain("3번째");
+    expect(ko).toContain("메모를 추가");
+    const en = renderAskTimeNudge(n({ axis: "grounding-gap", count: 3, topic: "vpn mtu" }), false);
+    expect(en).toContain("vpn mtu");
+    expect(en).toContain("3×");
+    expect(en).toContain("add one");
   });
 });
 

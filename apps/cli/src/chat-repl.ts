@@ -24,6 +24,7 @@ import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@m
 import type { Command } from "commander";
 
 import { actionToolRan, answerClaimsAction, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction, type KnowledgeMatch } from "@muse/agent-core";
+import type { AskTimeNudge, WeaknessEntry } from "@muse/mcp";
 
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
 import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
@@ -696,18 +697,15 @@ export async function runLocalChat(
   if (unbackedAction) {
     await recordChatWeaknessForTurn({ message, answer: finalResponse, matches, refusal: chatRefusal, unbackedAction });
   } else if (!isCasual) {
-    const recorded = await recordChatWeaknessForTurn({ message, answer: finalResponse, matches, refusal: chatRefusal, unbackedAction });
-    // Whetstone remediation (knowledge-gap nudge): a topic Muse has now failed to
-    // answer 2+ times is a gap the USER can close — gently suggest a note. Only on
-    // a repeat, so a one-off refusal stays clean. Reinforces the floor (it does
-    // NOT push a guess), and points at the fix the user actually controls. Scoped
-    // to a grounding-gap (a refusal) — a misgrounding is a dev-fixable axis, not a
-    // "add a note" gap, so it must NOT trigger the note nudge.
-    if (chatRefusal && recorded !== undefined && recorded >= 2) {
-      finalResponse += /[가-힣]/u.test(message)
-        ? "\n\n(이 주제는 전에도 여쭤보셨는데 제 노트엔 없어요. 관련 메모를 추가해두시면 다음엔 답해드릴 수 있어요.)"
-        : "\n\n(You've asked about this before and it isn't in your notes yet — add a note and I'll be able to answer next time.)";
-    }
+    await recordChatWeaknessForTurn({ message, answer: finalResponse, matches, refusal: chatRefusal, unbackedAction });
+    // Whetstone learn→apply at point-of-use: if THIS topic is already a recurring
+    // user-remediable weakness in the shared ledger, surface the SAME axis-aware
+    // hint the `ask` 💡 cue uses (grounding-gap "add a note" OR source-conflict
+    // "reconcile your notes" — the latter the old chat nudge could never show),
+    // mastery-suppressed, never on a dev-fixable misgrounding. Unified onto the
+    // shared helper so chat/ask wording can't drift.
+    const nudge = await chatRepeatWeaknessNudge(message);
+    if (nudge) finalResponse += nudge;
   }
 
   return {
@@ -785,6 +783,40 @@ export async function recordChatWeaknessForTurn(
   });
   if (axis === null) return undefined;
   return recordChatWeakness(args.message, axis, deps);
+}
+
+export interface ChatRepeatNudgeDeps {
+  /** Injectable ledger reader + selection/render/topic seams (tests assert the nudge OUTCOME without a live store). */
+  readonly readWeaknesses?: (file: string) => Promise<readonly WeaknessEntry[]>;
+  readonly selectNudge?: (entries: readonly WeaknessEntry[], topic: string) => AskTimeNudge | undefined;
+  readonly render?: (nudge: AskTimeNudge, ko: boolean) => string;
+  readonly topicKey?: (message: string) => string;
+  readonly weaknessesFile?: string;
+}
+
+/**
+ * The in-chat repeat-weakness nudge — unified onto the shared @muse/mcp helpers so
+ * chat and `ask` surface the SAME recurring user-remediable weakness (grounding-gap
+ * OR source-conflict), mastery-suppressed, with one axis-aware wording. Returns the
+ * parenthetical suffix to append to the answer, or undefined when there is nothing
+ * to nudge. @muse/mcp + @muse/autoconfigure load LAZILY (a static import of these
+ * heavy modules breaks the bun-compiled desktop binary). Best-effort: any failure
+ * (ledger unavailable, etc.) → no nudge.
+ */
+export async function chatRepeatWeaknessNudge(message: string, deps: ChatRepeatNudgeDeps = {}): Promise<string | undefined> {
+  try {
+    const mcp = deps.readWeaknesses && deps.selectNudge && deps.render && deps.topicKey ? undefined : await import("@muse/mcp");
+    const readWeaknesses = deps.readWeaknesses ?? mcp!.readWeaknesses;
+    const selectNudge = deps.selectNudge ?? mcp!.askTimeWeaknessNudge;
+    const render = deps.render ?? mcp!.renderAskTimeNudge;
+    const topicKey = deps.topicKey ?? mcp!.topicKeyFromMessage;
+    const file = deps.weaknessesFile ?? (await import("@muse/autoconfigure")).resolveWeaknessesFile(process.env as Record<string, string | undefined>);
+    const nudge = selectNudge(await readWeaknesses(file), topicKey(message));
+    if (!nudge) return undefined;
+    return `\n\n(${render(nudge, /[가-힣]/u.test(message))})`;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
