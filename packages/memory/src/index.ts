@@ -447,6 +447,16 @@ export {
   type InMemoryContextReferenceStoreOptions
 } from "./context-reference-store.js";
 
+// Stale tool-observation masking (The Complexity Trap
+// arXiv:2508.21433 + ACON arXiv:2510.00615). Rewrites prior turns'
+// tool messages to a re-fetchable placeholder so multi-turn context
+// stops growing without dropping any source.
+export {
+  maskStaleToolObservations,
+  type MaskStaleToolObservationsOptions,
+  type MaskStaleToolObservationsResult
+} from "./observation-mask.js";
+
 // Typed user-model slots (Context Engineering step
 // 1.c foundation). Parallel structure to the legacy free-text
 // `Record<string,string>` facts/preferences. Persistence + runtime

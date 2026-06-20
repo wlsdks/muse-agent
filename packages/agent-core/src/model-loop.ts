@@ -27,6 +27,7 @@ import { createHash } from "node:crypto";
 
 import {
   applyToolOutputImportance,
+  maskStaleToolObservations,
   scoreToolOutputImportance,
   trimToolOutput,
   type ContextReferenceStore
@@ -167,6 +168,16 @@ export async function executeModelLoop(
     const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled())
       ? request.tools?.filter((t) => !failureStreak.tripped(t.name) && !shellPhase.withholds(t.name))
       : [];
+    // Stale-observation masking (The Complexity Trap arXiv:2508.21433 +
+    // ACON arXiv:2510.00615): rewrite PRIOR turns' tool outputs to a
+    // re-fetchable placeholder so multi-turn context stops growing —
+    // the latest turn stays full, nothing is dropped (every masked
+    // observation is stashed in the ref store, re-fetchable by id).
+    // No-op on the first turn (no prior tool messages) and when no ref
+    // store is configured.
+    messages = maskStaleToolObservations(messages, {
+      ...(runner.contextReferenceStore ? { refStore: runner.contextReferenceStore } : {})
+    }).messages;
     const response = await runner.generateWithTracing(context, provider, {
       ...request,
       messages,
@@ -298,6 +309,11 @@ export async function* executeStreamingModelLoop(
     const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled())
       ? request.tools?.filter((t) => !failureStreak.tripped(t.name) && !shellPhase.withholds(t.name))
       : [];
+    // Stale-observation masking — see executeModelLoop. Same growing-
+    // `messages` pattern in the streaming path, same fix.
+    messages = maskStaleToolObservations(messages, {
+      ...(runner.contextReferenceStore ? { refStore: runner.contextReferenceStore } : {})
+    }).messages;
     const turnStream = streamModelTurn(runner, context, provider, {
       ...request,
       messages,
