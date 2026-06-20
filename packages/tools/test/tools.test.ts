@@ -219,6 +219,22 @@ describe("tool utilities", () => {
     expect(isWorkspaceMutationPrompt("what's the weather?")).toBe(false);
   });
 
+  it("recognises CODE-EDIT intent so file_edit reaches a 'fix the bug in the source' task", () => {
+    // The write-tool gate (write_without_mutation_intent) blocks file_edit unless
+    // the prompt reads as a mutation. Its vocab was workspace-objects only
+    // (issue/task/note), so a code-fix task ("fix the bug in the source file")
+    // never registered → file_edit stayed hidden and the model could not edit.
+    // file/source/code are now workspace+target hints and fix/debug are mutation
+    // verbs, so a code-edit prompt clears the gate (file_edit still passes the
+    // relevance + approval gates before it can write).
+    expect(isWorkspaceMutationPrompt("find and fix the bug in the source file math-utils.mjs")).toBe(true);
+    expect(isWorkspaceMutationPrompt("edit the source code to fix the failing test")).toBe(true);
+    expect(isWorkspaceMutationPrompt("소스 파일의 버그를 고쳐줘")).toBe(true);
+    // Read-only / target-less prompts must NOT register (no over-exposure of writes):
+    expect(isWorkspaceMutationPrompt("read the source file and summarize it")).toBe(false); // no mutation verb
+    expect(isWorkspaceMutationPrompt("fix dinner")).toBe(false); // mutation verb but no code/file target
+  });
+
   it("validates tool descriptions and dependencies before model exposure", () => {
     const invalidTool: MuseTool = {
       definition: {

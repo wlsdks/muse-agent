@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 7 · 2026-06-21 · skill v2.0 · <commit-pending> (file_edit code-edit intent; EXPOSURE CHAIN COMPLETE)
+meta: value-class=new-capability · pkg=@muse/tools · kind=write-intent-gate · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 1065→1065 (+1 case tools.test, mutation-valid) · fabrication 0 · file_edit 노출 fixed(probe) · eval:computer-task PASS(무회귀) · eval:multifile-fix 여전히 FAIL(노출 아닌 12B 멀티스텝) · pnpm check clean(LINE 웹훅 flaky 격리 854/854) · lint clean
+- 무엇: fire 6 REMAINING(a) 처리 — file_edit(write-risk)가 `write_without_mutation_intent` 게이트의 `isWorkspaceMutationPrompt`(워크스페이스-객체 vocab만)에 막혀 code-fix 프롬프트에 미노출. FIX: 3 힌트 리스트에 code-edit vocab 추가(workspace/target += file/source/code/bug/function+KO, mutation += fix/debug, KO += 고쳐). file_edit 노출됨(probe), tasks.add는 relevance 게이트로 여전히 차단.
+- 왜: 노출 체인의 마지막 조각 — fires 4(starvation)·6(keyword)·7(write-intent)로 file_grep/read/edit/run_command 전부 code-fix task에 도달가능. multifile eval은 여전히 FAIL이나 이제 순수 12B 멀티스텝(file_read만 쓰고 멈춤) — tool-filter로 못 고치는 model-behavior.
+- 리뷰지점: mutation-valid 테스트(revert시 RED, 3 힌트 차원 모두 필요). ④b judge PASS + 정직한 residual: relevance 백스톱이 fix/debug엔 누수0이나 add/create 동음이의("add a function to the file")엔 tasks.add/calendar.create 누수(기존 키워드 중복, approval-gate로 bounded=노출≠쓰기) — 내 "완전 차단" 주장 과장이라 정직히 기록.
+- 리스크: 낮음 — write-intent 게이트 자체 불변(vocab만 확장), pure-read는 여전히 차단, approval/path-safety/fabrication=0 불변. add/create 누수는 기존+approval-bounded.
+lesson: 노출은 3층(starvation·relevance-keyword·write-intent)이고 셋 다 고쳐도 12B 멀티스텝이 별도 천장 — measure-first가 "노출 fixed인데도 FAIL"로 천장을 model-behavior로 격리. ④b가 maker의 안전주장 과장(relevance 백스톱)을 잡음 → 정직히 기록(judge가 scope-honesty도 GATE).
+
 ## fire 6 · 2026-06-21 · skill v2.0 · 0832ff97 (code-task tool keywords; multi-file exposure ↑, 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/tools+@muse/fs · kind=tool-relevance/keywords · verdict=PASS · firesSinceDrill=6
 ratchet: testFiles 1062→1062 (+2 cases tools.test, mutation-valid) · fabrication 0 · eval:multifile-fix exposure ↑(file_grep,context→file_read+run_command) · eval:computer-task PASS(무회귀) · pnpm check exit 0 · lint clean
