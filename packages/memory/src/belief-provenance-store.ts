@@ -124,6 +124,45 @@ export function classifyFactFreshness(args: {
   return age >= staleMs ? "stale" : "aging";
 }
 
+/** A fact that has cleared the durable-promotion gate. */
+export interface PromotableFact {
+  readonly key: string;
+  readonly value: string;
+  readonly confirmCount: number;
+  readonly lastConfirmed: string;
+  readonly source: "auto" | "user";
+}
+
+const DEFAULT_PROMOTE_MIN_CONFIRM = 3;
+const DEFAULT_PROMOTE_RECENT_DAYS = 90;
+
+/**
+ * The durable-promotion gate (G4): which facts have EARNED durable trust. A
+ * user-STATED fact is trusted immediately (the user typed it — Hindsight: a user
+ * truth outranks an inference); an AUTO-inferred fact must be re-confirmed
+ * `minConfirmCount` times AND recently (a once-seen auto-extract may be a mis-
+ * extraction). FAIL-CLOSE: a value the injection detector flags is NEVER promoted,
+ * however often it was confirmed — a poisoned value must not earn durable status.
+ * The injection check is INJECTED (`isInjection`) so this layer stays free of the
+ * agent-core dependency; the caller passes `isMemoryInjection`. Pure.
+ */
+export function selectPromotableFacts(
+  provenance: readonly FactProvenance[],
+  opts: { readonly now: number; readonly minConfirmCount?: number; readonly recentDays?: number; readonly isInjection?: (value: string) => boolean }
+): readonly PromotableFact[] {
+  const minConfirm = Math.max(1, Math.trunc(opts.minConfirmCount ?? DEFAULT_PROMOTE_MIN_CONFIRM));
+  const recentMs = Math.max(1, opts.recentDays ?? DEFAULT_PROMOTE_RECENT_DAYS) * 86_400_000;
+  const isInjection = opts.isInjection ?? ((): boolean => false);
+  const recent = (lastConfirmed: string): boolean => {
+    const age = opts.now - Date.parse(lastConfirmed);
+    return Number.isFinite(age) && age <= recentMs;
+  };
+  return provenance
+    .filter((p) => !isInjection(p.value))
+    .filter((p) => p.source === "user" || (p.confirmCount >= minConfirm && recent(p.lastConfirmed)))
+    .map((p) => ({ confirmCount: p.confirmCount, key: p.key, lastConfirmed: p.lastConfirmed, source: p.source, value: p.value }));
+}
+
 export function defaultBeliefProvenanceFile(): string {
   const fromEnv = process.env.MUSE_BELIEF_PROVENANCE_FILE?.trim();
   if (fromEnv && fromEnv.length > 0) return fromEnv;

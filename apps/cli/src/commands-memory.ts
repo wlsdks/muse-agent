@@ -21,7 +21,8 @@
 
 import { readFile } from "node:fs/promises";
 
-import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, selectPromotableMemories, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
+import { isMemoryInjection } from "@muse/agent-core";
+import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, selectPromotableFacts, selectPromotableMemories, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/mcp";
 import type { Command } from "commander";
@@ -187,9 +188,12 @@ export function formatBeliefWhy(
   }
   const verb = prov.source === "user" ? "you set this directly" : "learned";
   const freshness = classifyFactFreshness({ lastConfirmed: prov.lastConfirmed, now: nowMs });
+  // Has it cleared the durable-promotion gate? (user-stated, or auto + re-confirmed
+  // recently, and never an injection-flagged value.)
+  const durable = selectPromotableFacts([prov], { isInjection: isMemoryInjection, now: nowMs }).length > 0;
   const lines = [
     `${prov.kind} ${prov.key} = ${prov.value} — ${verb} ${prov.lastConfirmed}`,
-    `  ↳ confirmed ${prov.confirmCount.toString()}× since ${prov.firstSeen} · ${freshness}`
+    `  ↳ confirmed ${prov.confirmCount.toString()}× since ${prov.firstSeen} · ${freshness} · ${durable ? "durable" : "provisional"}`
   ];
   // The newest record carries the evidence excerpt / session; the excerpt only
   // exists for inferred (auto) beliefs.

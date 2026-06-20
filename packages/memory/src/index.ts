@@ -374,11 +374,13 @@ export {
   FileBeliefProvenanceStore,
   MAX_BELIEF_PROVENANCE_ENTRIES,
   readBeliefProvenance,
+  selectPromotableFacts,
   writeBeliefProvenance,
   type BeliefProvenance,
   type BeliefProvenanceStore,
   type FactFreshness,
-  type FactProvenance
+  type FactProvenance,
+  type PromotableFact
 } from "./belief-provenance-store.js";
 
 // File-backed UserMemoryStore — the JARVIS-class persistent layer for
