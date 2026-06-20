@@ -4,7 +4,7 @@
 > Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main, NEVER merges to main).
 > Cron `cfe778e2` (every 15m, session-only). Stop: `CronDelete cfe778e2`. Convention: [README](README.md).
 
-## fire 4 · 2026-06-20 · skill v1.14.0 · <commit-pending>
+## fire 4 · 2026-06-20 · skill v1.14.0 · 54c24b66
 meta: value-class=new-capability · pkg=@muse/model · kind=local-tool-calling/schema-sanitizer · verdict=PASS · firesSinceDrill=4
 ratchet: testFiles 1054→1054 (+7 cases in adapter-ollama.test.ts) · fabrication 0 · @muse/model 325 tests green · eval:tools PASS (live local) · pnpm check exit 0 · lint clean
 - 무엇: Ollama 네이티브 /api/chat tool 투영이 `inputSchema`를 무가공 전송 — Gemini는 `sanitizeGeminiSchema`가 있는데 Ollama는 없어 union `type`(`["string","null"]`)·nullable anyOf/oneOf가 llama.cpp GBNF tool 문법을 조용히 깨뜨림. `sanitizeOllamaToolSchema`(union→non-null, nullable anyOf→단일 branch, null branch drop, $schema/$id strip, depth64+cycle 재귀) 추가 후 투영에 배선.

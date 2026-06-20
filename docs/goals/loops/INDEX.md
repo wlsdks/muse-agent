@@ -15,6 +15,6 @@
 | `grounding-integrity` | grounded≠true ceiling + self-improvement reliability + self-judge meta-eval (worktree `grounding-integrity`) | [grounding-integrity.md](grounding-integrity.md) | 29 | `962d4778` | v1.14.0 | active (cron `8ed88aa8`, session-only) |
 | `surfaces` | 제품 표면 강화 — CLI · macOS desktop · web (worktree `/tmp/muse-surfaces`, branch `loop/surfaces`) | [surfaces.md](surfaces.md) | 52 | `eb3b7aa4` | v1.14.0 | active (cron `a55a7444`, session-only) |
 | `test-hygiene` | 테스트 스위트 위생 — 저가치/중복 제거 + 누락 고가치 추가 + flaky 수정 (mutation-first) (worktree `test-hygiene`) | [test-hygiene.md](test-hygiene.md) | 52 | `c249c6d2` | v1.14.0 | active (cron `b7a92bf5`, session-only) |
-| `core-hardening` | Muse 코어 엣지 강화 — grounding+citation 게이트 + 4 표면 (worktree `/tmp/muse-core-hardening`, branch `loop/core-hardening`, Tier2 push) | [core-hardening.md](core-hardening.md) | 4 | `8c91315c` | v1.14.0 | active (cron `cfe778e2`, session-only) |
+| `core-hardening` | Muse 코어 엣지 강화 — grounding+citation 게이트 + 4 표면 (worktree `/tmp/muse-core-hardening`, branch `loop/core-hardening`, Tier2 push) | [core-hardening.md](core-hardening.md) | 4 | `54c24b66` | v1.14.0 | active (cron `cfe778e2`, session-only) |
 
 <!-- New loops: add a row here on first registration; update your own row's last-fire/commit each fire. -->
