@@ -4,7 +4,7 @@
 > Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main). **Every 3 fires: ff-merge the branch into origin/main, then keep working on the branch (진안 directive 2026-06-20).**
 > Cron `d8c31fa3` (every 15m, session-only; was `cfe778e2` under skill v1.14.0, re-registered with loop-creator v2.0 at fire 6). Stop: `CronDelete d8c31fa3`. Convention: [README](README.md).
 
-## fire 7 · 2026-06-20 · skill v2.0 · <commit-pending>
+## fire 7 · 2026-06-20 · skill v2.0 · 42b5455d
 meta: value-class=new-capability · pkg=@muse/agent-core · kind=anti-fabrication/floor-total · verdict=PASS · firesSinceDrill=7
 ratchet: testFiles 1057→1057 (+5 cases tool-argument-grounding.test) · fabrication 0 · agent-core 2491 tests green · precheck:grounding 2/3 PASS · pnpm check exit 0 · lint clean
 - 무엇: `groundToolArguments`(fabrication=0 release-gate)가 string + string[]만 정제하고 **nested object는 무가공 통과** → 조작된 `meta.note` 같은 leaf가 게이트를 타고 PERSIST되던 갭. nested-object 분기 추가: 각 조작 string leaf 정제(grounded+non-string leaf 보존), array 분기와 동일 partial-vs-empty `dropped` 계약. 게이트를 값-형태 전체에 total화.
