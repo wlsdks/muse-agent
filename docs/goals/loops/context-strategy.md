@@ -33,11 +33,6 @@ Verified existing context-strategy seams (from codegraph, 2026-06-20):
 - **Budgets** — `StepBudgetTracker` / `systemPromptTokenBudget` / step caps.
 
 ### Open follow-ups (next-fire candidates)
-- ◦ **Neutralize worker output on the ORCHESTRATE path** (fire-13 follow-up): `capWorkerOutput`/
-  `buildOrchestrationResponse` (packages/multi-agent/src/index.ts) is a SECOND fan-in funnel that
-  lands worker output into the lead but does NOT neutralize — mirror fire-13's `runOne` fix there
-  (OWASP ASI07). Also audit whether any consumer reads `produced.sources` (forged citation in
-  sources would survive). (@muse/multi-agent)
 - ◦ **Consolidation-spine (P3) decomposition** (fire-11 scout; fire 11 took #1):
   (2) chat-ink.ts persona contested/provisional marks — needs async closure + per-turn provenance
   refresh (sync `personaPrompt` closure over mutating `memoryHolder.current`); (3) surface
@@ -413,3 +408,25 @@ ratchet: testFiles +0 (extended existing) · multi-agent 147 pass · pnpm check 
   adaptive judge PASS 7/7 + mutation RED→GREEN (revert to produced.output → injection propagates RED).
   Sibling audit: runOne patched; capWorkerOutput (orchestrate path) DEFERRED (follow-up above);
   validateWorkerHandoff untouched. Residual: detection-coverage = MEMORY_INJECTION_PATTERNS ceiling.
+
+## fire 14 · 2026-06-21 · skill v2.0.0 · 30af7766
+meta: value-class=micro-fix · pkg=@muse/multi-agent · kind=worker-output-neutralization · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles +0 (extended existing) · multi-agent 169 pass · pnpm check exit0 (after isolated rerun cleared a @muse/model saturation flake — untouched pkg, passes in isolation) · pnpm lint exit0 · fabrication 0 · self-eval green
+- **DOCTRINE:** ⑤ (untrusted derived context) — COMPLETES the multi-agent "Isolate" seam fire 13 started (both fan-in funnels now neutralized).
+- **What:** `buildOrchestrationResponse` (index.ts, the ORCHESTRATE path) now neutralizes each
+  completed worker's `response.output` ONCE (`safeOutputs`) and feeds BOTH fan-ins — the concat
+  `projected` AND the synthesizer `completedParts` — from it. Fire 13 did only the lead-worker
+  `runOne` funnel; this closes the second, explicitly-deferred funnel.
+- **Why:** the orchestrate path read raw worker output in two places, so a poisoned worker still
+  propagated an embedded instruction / forged `[from system]` citation into the synthesized final
+  answer. OWASP ASI07 (insecure inter-agent comms) + Prompt Infection (arXiv:2410.07283).
+- **Review point:** neutralize computed ONCE before summarize/cap (fire-4 ordering); tracked
+  `results[]` keep RAW output for trace fidelity (test asserts); `.sources` concern N/A on this
+  path (orchestrate reads only response.output) → fire-13 follow-up fully retired.
+- **Risk:** none to floor — span-level (benign clause survives), byte-identical on clean (no-op
+  control), fail-close branch untouched, grounding/verifyFinalAnswer untouched. Independent Opus
+  adaptive judge PASS 8/8 + mutation RED→GREEN (revert both fan-ins to raw → funnel-1+2 RED).
+  Sibling audit: both orchestrate funnels covered; runOne (fire 13) untouched (disjoint path).
+- lesson(process): a judge/agent verifying an UNCOMMITTED slice must restore mutations with an
+  inverse edit, NEVER `git checkout <file>` — that wipes the uncommitted work (hit during this fire,
+  recovered by re-applying from the diff).
