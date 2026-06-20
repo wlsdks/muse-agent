@@ -318,6 +318,17 @@ export interface DevFixableWeakness {
 const DEV_FIXABLE_AXES: ReadonlySet<WeaknessAxis> = new Set<WeaknessAxis>(["misgrounding", "unbacked-action", "wrong-tool", "time-parse"]);
 
 /**
+ * Axes a later GROUNDED SUCCESS on the same topic learns away (BKT mastery up): a
+ * `grounding-gap` (couldn't answer → now can) and a `misgrounding` (answered but
+ * unsupported → now grounded — the GROUNDED≠TRUE core failure). NOT a dev-fixable
+ * actuator axis (time-parse/wrong-tool/unbacked-action), which is a code bug a grounded
+ * Q&A can't fix. Making misgrounding resolvable closes the whetstone loop's core axis,
+ * which was a one-way ratchet before (recordWeakness lowers mastery for all 7 axes, but
+ * recordWeaknessResolved raised it for grounding-gap only).
+ */
+const GROUNDED_SUCCESS_RESOLVABLE_AXES: ReadonlySet<WeaknessAxis> = new Set<WeaknessAxis>(["grounding-gap", "misgrounding"]);
+
+/**
  * The DEV-side mirror of {@link selectRemediableWeaknesses}: the recurring
  * weaknesses that are MUSE'S OWN bug, not the user's — misgrounding (cited a real
  * source that doesn't back the claim; GROUNDED != TRUE), unbacked-action (claimed
@@ -333,7 +344,10 @@ export function selectDevFixableWeaknesses(
   const minCount = Math.max(2, Math.trunc(opts.minCount ?? 2));
   const max = Math.max(1, Math.trunc(opts.maxResults ?? 5));
   return entries
-    .filter((entry) => DEV_FIXABLE_AXES.has(entry.axis) && entry.count >= minCount)
+    // Mastery-aware (parity with selectRemediableWeaknesses): a topic Muse demonstrably
+    // re-learned (BKT pKnown high via recordWeaknessResolved) drops off the doctor list —
+    // else a fixed misgrounding topic nags `muse doctor` forever, eroding the self-eval signal.
+    .filter((entry) => DEV_FIXABLE_AXES.has(entry.axis) && entry.count >= minCount && !isMasteredWeakness(entry))
     .slice()
     .sort((a, b) => b.count - a.count || Date.parse(b.lastSeen) - Date.parse(a.lastSeen))
     .slice(0, max)
@@ -413,7 +427,13 @@ export async function recordWeaknessResolved(
   }
   return withFileMutationQueue(file, async () => {
     const entries = await readWeaknesses(file);
-    const existing = entries.find((e) => e.axis === "grounding-gap" && e.topic === topic);
+    // A later grounded success resolves a knowledge-failure axis — both a
+    // `grounding-gap` (Muse couldn't answer) AND a `misgrounding` (it answered but its
+    // cited source didn't support it — the GROUNDED≠TRUE core failure). Both are learned
+    // away by a subsequent grounded answer, so both raise BKT mastery. A dev-fixable
+    // actuator axis (time-parse/wrong-tool/unbacked-action) is a code bug, not a
+    // knowledge gap a grounded success can fix, so it is NOT resolved here.
+    const existing = entries.find((e) => GROUNDED_SUCCESS_RESOLVABLE_AXES.has(e.axis) && e.topic === topic);
     if (!existing) {
       return undefined;
     }

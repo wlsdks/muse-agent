@@ -478,6 +478,34 @@ describe("recordWeaknessResolved — BKT success update + no partial side-effect
     const result = await recordWeaknessResolved(join(tmpdir(), "does-not-exist-resolved.json"), QUERY);
     expect(result).toBeUndefined();
   });
+
+  it("ALSO resolves a `misgrounding` weakness (GROUNDED≠TRUE core axis) on a later grounded success — the loop was grounding-gap-only before", async () => {
+    const file = tmpFile();
+    await recordWeakness(file, { axis: "misgrounding", message: QUERY, nowIso: "2026-06-01T00:00:00Z" });
+    const before = (await readWeaknesses(file))[0]!;
+    const result = await recordWeaknessResolved(file, QUERY, "2026-06-13T12:00:00Z");
+    expect(result?.axis).toBe("misgrounding");
+    expect(result!.pKnown).toBeGreaterThan(before.pKnown ?? 0);
+  });
+
+  it("does NOT resolve a dev-fixable axis that a grounded success can't fix (e.g. time-parse — a wrong actuator, not a knowledge gap)", async () => {
+    const file = tmpFile();
+    await recordWeakness(file, { axis: "time-parse", message: QUERY, nowIso: "2026-06-01T00:00:00Z" });
+    expect(await recordWeaknessResolved(file, QUERY)).toBeUndefined();
+  });
+});
+
+describe("selectDevFixableWeaknesses — mastery-aware (a topic Muse demonstrably re-learned drops off the doctor list)", () => {
+  const e = (over: Partial<WeaknessEntry>): WeaknessEntry => ({
+    axis: "misgrounding", count: 3, firstSeen: "2026-06-01T00:00:00.000Z", lastSeen: "2026-06-18T00:00:00.000Z", topic: "x", ...over
+  });
+  it("excludes a MASTERED misgrounding entry (pKnown high) but keeps an unmastered one", () => {
+    const out = selectDevFixableWeaknesses([
+      e({ topic: "fixed", pKnown: 0.99 }),
+      e({ topic: "still-broken", count: 4 })
+    ]);
+    expect(out.map((w) => w.topic)).toEqual(["still-broken"]);
+  });
 });
 
 describe("assembled-path: record×2 → select → resolve×3 → select empty (NON-INERT end-to-end)", () => {
