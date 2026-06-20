@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 15 · 2026-06-21 · skill v2.0 · <commit-pending> (run_command dynamic-loader env injection blocked; 3-fire merge)
+## fire 15 · 2026-06-21 · skill v2.0 · ad6fefb5 (run_command dynamic-loader env injection blocked; 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/tools+crates/runner · kind=security/path-safe · verdict=PASS · firesSinceDrill=5
 ratchet: testFiles 1069→1069 (+1 case tools.test, mutation-valid) · fabrication 0 · @muse/tools 격리 284 통과 · crates/runner cargo test 7 통과 · eval:computer-task PASS(무회귀) · pnpm check=박스포화(web-search fuzz 15s, 변경패키지 격리 green) · lint clean
 - 무엇: §3.6 감사 — run_command은 execFile(no shell)+path-reject지만 모델-supplied `env`가 키 *형식*만 검증돼 **LD_PRELOAD/DYLD_INSERT_LIBRARIES**(유효 대문자식별자)가 통과 → spawn 프로세스에 임의 코드 로드=execFile/path-reject 우회. FIX 양 레이어(defense-in-depth): TS readStringRecord `/^(?:LD|DYLD)_/` 드롭 + Rust is_safe_env_key `LD_`/`DYLD_` 거부(command.env의 authoritative 게이트).
