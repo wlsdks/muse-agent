@@ -480,3 +480,13 @@ ratchet: testFiles 1058 (+1) · web tests 50/50 (+2) · fabrication 0 · self-ev
 - **왜**: `title`은 여러 스크린리더가 안 읽고 터치/모바일에선 안 뜨는 비신뢰 접근명. open 버튼은 자식이 아예 없어 접근명 0. 앱의 다른 모든 버튼은 title+aria-label 페어 컨벤션을 이미 따르는데 이 2개만 회귀 — 컨벤션 일치 수정.
 - **리뷰지점**: mutation-first RED 실증(aria-label 없을 때 2/2 FAIL, 렌더 마크업 `title="done"`에 aria-label 부재 확인). aria-label은 신뢰 i18n 상수(XSS/스킴 무접촉, React JSX 이스케이프). 추출은 className·title·disabled·Icon.check·onClick(`complete.mutate(task.id)`) 동작 byte-동일 보존. 형제-감사: 웹 전체에서 접근명 누락 버튼은 이 2개뿐(App.tsx cmd-trigger는 가시 텍스트 자식으로 접근명 있음 — judge 확인).
 - **리스크**: 없음(단일 pure-component 변경, web build tsc+vite 통과, web 50/50, self-eval exit 0, 독립 Opus ④b judge가 mutation 이빨(각 assertion 자기 버튼 바인딩)·XSS 불변식·동작보존·i18n 검증 후 PASS).
+
+## fire 54 · 2026-06-20 · skill v2.0.0 · 2a756c0a
+meta: surface=desktop · value-class=micro-fix · pkg=apps/desktop(MuseDesktopCore) · kind=percentage-display-correctness · verdict=PASS · firesSinceDrill=3
+ratchet: desktop swift tests 71/71 (+1) · fabrication 0 · self-eval exit 0 · 표면 균형 web23·desktop13·cli18
+
+- **무엇**: macOS 컴패니언의 음성모델 다운로드 진행률 버블이 `fraction > 0 ? downloadingVoice(Int(fraction*100)) : preparingVoice`로 3 결함 — (1) `Int()` truncation(완료 직전 0.999가 "99%"에 멈춤), (2) sub-1% fraction(0.004)이 "0%" 버블 노출(의도는 "준비 중"), (3) clamp 없어 >1.0이 "101%". WhisperKit/HuggingFace 외부 fraction을 받는 untested AppKit 로직을 순수 `ResolvedLanguage.downloadProgressBubble(fraction:)`(round+clamp+≥1% 게이트)로 추출 + 콜사이트 1줄 교체.
+- **왜**: 사용자가 실제로 기다리는 *유일한* 1회성 다운로드에서 진행률이 거짓말(99% 고착·시작 0% 노이즈·101%) — desktop 표면(web/cli 연속 회피 + 저표현 12→13)의 실 UX 정확성 버그. fraction→텍스트 결정을 테스트 가능한 코어로 이동.
+- **리뷰지점**: mutation-first RED 실증(버그 헬퍼로 6 assertion FAIL: 0%·84%·99%·101%) → GREEN. 순수 프레젠테이션 문자열(ko+en), guard/grounding/local-only 무접촉. 콜사이트 주석("준비 중 before bytes / 퍼센트 once moving") 의도를 ≥1% 게이트가 그대로 구현. **보너스**: 구 코드 `Int(NaN*100)`는 trap(크래시) — 새 헬퍼는 NaN→clamp→"100%"로 안전(judge 실증). 형제: main.swift:108은 dev-only stderr 진단(사용자 무관, backlog).
+- **리스크**: 없음(헬퍼 추가 + 콜사이트 1줄, 전체 desktop 71/71 무회귀, self-eval exit 0, 독립 Opus ④b judge가 mutation 이빨·경계값·NaN 안전·무접촉 검증 후 PASS).
+- **운영 메모**: 이 fire는 세션-cron `c5b90c94`가 같은 워크트리에서 동시 fire를 돌려 사고성 merge 커밋을 냄(코드는 무사). cron 삭제 + 수동 진행으로 전환 → 이후 fire는 수동.

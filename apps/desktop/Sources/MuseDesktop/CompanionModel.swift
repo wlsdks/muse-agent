@@ -56,7 +56,7 @@ final class CompanionModel: ObservableObject {
         // Before any bytes arrive (the metadata check) show "준비 중"; only show a
         // percentage once a real download is actually moving.
         case .downloading(let fraction):
-            bubble = fraction > 0 ? language.downloadingVoice(Int(fraction * 100)) : language.preparingVoice
+            bubble = language.downloadProgressBubble(fraction: fraction)
         case .loading: bubble = language.loadingVoice
         case .ready: if orbState == .listening { bubble = language.listeningHint }
         case .failed: break // startVoice's catch sets the failure message

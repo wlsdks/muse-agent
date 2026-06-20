@@ -278,6 +278,21 @@ final class LocalizationTests: XCTestCase {
         XCTAssertTrue(ResolvedLanguage.english.askPlaceholder.contains("Ask Muse"))
     }
 
+    func testDownloadProgressBubbleRoundsClampsAndHidesSubPercent() {
+        let en = ResolvedLanguage.english
+        // Sub-1% real progress shows "Preparing…", never a "0%" download bubble.
+        XCTAssertEqual(en.downloadProgressBubble(fraction: 0.004), en.preparingVoice)
+        XCTAssertFalse(en.downloadProgressBubble(fraction: 0.004).contains("0%"))
+        // Rounds rather than truncates: 0.846 → 85%, 0.999 → 100% (not stuck at 99%).
+        XCTAssertTrue(en.downloadProgressBubble(fraction: 0.846).contains("85%"))
+        XCTAssertTrue(en.downloadProgressBubble(fraction: 0.999).contains("100%"))
+        // Clamps an out-of-range fraction to 100 — never "101%".
+        XCTAssertTrue(en.downloadProgressBubble(fraction: 1.01).contains("100%"))
+        XCTAssertFalse(en.downloadProgressBubble(fraction: 1.01).contains("101%"))
+        // The 1% boundary shows a percentage, not "Preparing…" (localized).
+        XCTAssertTrue(ResolvedLanguage.korean.downloadProgressBubble(fraction: 0.01).contains("1%"))
+    }
+
     func testAppLanguageRoundTripsInPrefs() {
         let prefs = CompanionPrefs(look: "orb", language: AppLanguage.korean.rawValue)
         XCTAssertEqual(CompanionPrefs.decode(prefs.encoded())?.language, "korean")

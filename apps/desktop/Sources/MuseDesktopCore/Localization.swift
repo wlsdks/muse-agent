@@ -49,6 +49,15 @@ public enum ResolvedLanguage: String, Sendable {
             ? "⬇️ 음성 모델 다운로드 중… \(pct)% (최초 1회만)"
             : "⬇️ Downloading the speech model… \(pct)% (one-time)"
     }
+    /// Map a raw download fraction (0...1, externally sourced from WhisperKit/
+    /// HuggingFace and occasionally slightly out of range) to the progress
+    /// bubble: "Preparing…" until at least 1% of a real download has moved, then
+    /// a CLAMPED, ROUNDED percentage. Pure so the fraction→text decision is
+    /// tested, not buried in the untested AppKit layer.
+    public func downloadProgressBubble(fraction: Double) -> String {
+        let pct = Int((max(0, min(1, fraction)) * 100).rounded())
+        return pct >= 1 ? downloadingVoice(pct) : preparingVoice
+    }
     public var loadingVoice: String {
         self == .korean ? "🧠 음성 모델 불러오는 중…" : "🧠 Loading the speech model…"
     }

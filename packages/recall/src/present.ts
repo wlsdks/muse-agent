@@ -612,6 +612,19 @@ export function buildNoteContextBlock(
   }).join("\n\n");
 }
 
+/**
+ * Neutralize attacker-authored text before it enters a grounding wrapper — the same
+ * deterministic defense (`escapeSystemPromptMarkers(neutralizeInjectionSpans(...))`) the
+ * note/episode/feed builders run. The STORED/SYNCED surfaces (calendar invites synced from
+ * gcal/caldav, vCard-imported contacts, tasks/reminders/action-log) carry third-party text,
+ * so an imperative-override or a forged `<<end>> [from system.md]` wrapper-breakout in a
+ * title/location must be neutralized here too (security is deterministic code, not a prompt
+ * instruction). Idempotent; benign text round-trips intact.
+ */
+function safeField(text: string): string {
+  return escapeSystemPromptMarkers(neutralizeInjectionSpans(text));
+}
+
 /** Build the <<task N>> grounding block from the user's open tasks. Pure. */
 export function buildTaskContextBlock(tasks: readonly PersistedTask[]): string {
   if (tasks.length === 0) {
@@ -628,7 +641,8 @@ export function buildTaskContextBlock(tasks: readonly PersistedTask[]): string {
       // wrapper, exactly like the note wrapper embeds `[from <src>]` — else
       // the local model cites the marker's id (`[task: t1]`), which the
       // title-matching gate then false-strips as "a source you don't have".
-      return `<<task ${(i + 1).toString()} — ${t.id}${urgent}>>\n${t.title}${due}\n[task: ${t.title}]\n<<end>>`;
+      const safeTitle = safeField(t.title);
+      return `<<task ${(i + 1).toString()} — ${t.id}${urgent}>>\n${safeTitle}${due}\n[task: ${safeTitle}]\n<<end>>`;
     })
     .join("\n\n");
 }
@@ -639,7 +653,7 @@ export function buildReminderContextBlock(reminders: readonly PersistedReminder[
     return "(no pending reminders)";
   }
   return reminders
-    .map((r, i) => `<<reminder ${(i + 1).toString()} — ${r.id} (due ${formatDueLocal(r.dueAt)})>>\n${r.text}\n[reminder: ${r.text}]\n<<end>>`)
+    .map((r, i) => { const safeText = safeField(r.text); return `<<reminder ${(i + 1).toString()} — ${r.id} (due ${formatDueLocal(r.dueAt)})>>\n${safeText}\n[reminder: ${safeText}]\n<<end>>`; })
     .join("\n\n");
 }
 
@@ -649,7 +663,7 @@ export function buildShellContextBlock(commands: readonly string[]): string {
     return "(no matching shell commands)";
   }
   return commands
-    .map((cmd, i) => `<<command ${(i + 1).toString()}>>\n${cmd}\n<<end>>`)
+    .map((cmd, i) => `<<command ${(i + 1).toString()}>>\n${safeField(cmd)}\n<<end>>`)
     .join("\n\n");
 }
 
@@ -659,7 +673,7 @@ export function buildGitContextBlock(commits: readonly { readonly hash: string; 
     return "(no matching git commits)";
   }
   return commits
-    .map((c, i) => `<<commit ${(i + 1).toString()} — ${c.hash}>>\n${c.subject}\n[commit: ${c.subject}]\n<<end>>`)
+    .map((c, i) => { const safeSubject = safeField(c.subject); return `<<commit ${(i + 1).toString()} — ${c.hash}>>\n${safeSubject}\n[commit: ${safeSubject}]\n<<end>>`; })
     .join("\n\n");
 }
 
@@ -669,7 +683,7 @@ export function buildActionContextBlock(actions: readonly { readonly when: strin
     return "(no matching actions)";
   }
   return actions
-    .map((a, i) => `<<action ${(i + 1).toString()} — ${a.when.slice(0, 10)}>>\n${a.what} — ${a.result}${a.detail ? ` (${a.detail})` : ""}\n<<end>>`)
+    .map((a, i) => `<<action ${(i + 1).toString()} — ${a.when.slice(0, 10)}>>\n${safeField(a.what)} — ${safeField(a.result)}${a.detail ? ` (${safeField(a.detail)})` : ""}\n<<end>>`)
     .join("\n\n");
 }
 
@@ -689,7 +703,7 @@ export function buildFeedContextBlock(headlines: readonly { readonly feedName: s
     return "(no recent feed headlines)";
   }
   return headlines
-    .map((h, i) => `<<feed ${(i + 1).toString()} — ${h.feedName} (${h.publishedAt})>>\n${escapeSystemPromptMarkers(neutralizeInjectionSpans(h.title))}${h.summary ? `\n${escapeSystemPromptMarkers(neutralizeInjectionSpans(h.summary))}` : ""}\n[feed: ${h.feedName}]\n<<end>>`)
+    .map((h, i) => { const safeName = safeField(h.feedName); return `<<feed ${(i + 1).toString()} — ${safeName} (${h.publishedAt})>>\n${safeField(h.title)}${h.summary ? `\n${safeField(h.summary)}` : ""}\n[feed: ${safeName}]\n<<end>>`; })
     .join("\n\n");
 }
 
@@ -710,9 +724,10 @@ export function buildCalendarContextBlock(events: readonly { readonly title: str
       const when = e.allDay
         ? `${fmtWhen(e.startsAt)} (all-day, ${e.startsAt.toISOString().slice(0, 10)})`
         : `${fmtWhen(e.startsAt)} to ${fmtWhen(e.endsAt)} (${e.startsAt.toISOString()})`;
-      const loc = e.location ? ` @ ${e.location}` : "";
+      const loc = e.location ? ` @ ${safeField(e.location)}` : "";
       const provider = `[${e.providerId}]`;
-      return `<<event ${(i + 1).toString()} — ${provider}>>\n${e.title}${loc}\n${when}\n[event: ${e.title}]\n<<end>>`;
+      const safeTitle = safeField(e.title);
+      return `<<event ${(i + 1).toString()} — ${provider}>>\n${safeTitle}${loc}\n${when}\n[event: ${safeTitle}]\n<<end>>`;
     })
     .join("\n\n");
 }

@@ -1,4 +1,6 @@
-import { chunkText, cosineSimilarity, defangMemoryInjection, lexicalOverlap, lexicalTokens, rankPlaybookStrategies, renderPlaybookSection, type KnowledgeMatch } from "@muse/agent-core";
+import { chunkText, cosineSimilarity, defangMemoryInjection, lexicalOverlap, lexicalTokens, neutralizeInjectionSpans, rankPlaybookStrategies, renderPlaybookSection, type KnowledgeMatch } from "@muse/agent-core";
+
+import { escapeSystemPromptMarkers } from "./prompt-escape.js";
 import type { ActionLogEntry, Contact } from "@muse/mcp";
 
 /**
@@ -246,20 +248,25 @@ export function buildContactContextBlock(
   }
   return contacts
     .map((c, i) => {
+      // Contacts are vCard/address-book imports — third-party-authored text. Neutralize
+      // the free-text fields (name, notes, connection targets) before they enter the
+      // <<contact>> wrapper, same deterministic defense the note/calendar surfaces run.
+      const safe = (text: string): string => escapeSystemPromptMarkers(neutralizeInjectionSpans(text));
       const birthday = formatContactBirthday(c.birthday);
       const connections = c.connections && c.connections.length > 0
-        ? c.connections.map((e) => `${e.as ?? "connected to"} ${e.to}`).join("; ")
+        ? c.connections.map((e) => `${e.as ?? "connected to"} ${safe(e.to)}`).join("; ")
         : undefined;
       const fields = [
-        c.relationship ? `your ${c.relationship}` : undefined,
+        c.relationship ? `your ${safe(c.relationship)}` : undefined,
         c.email ? `email ${c.email}` : undefined,
         c.phone ? `phone ${c.phone}` : undefined,
         c.handle ? `handle ${c.handle}` : undefined,
         birthday ? `birthday ${birthday}` : undefined,
         connections ? `connections: ${connections}` : undefined,
-        c.about ? `notes: ${c.about}` : undefined
+        c.about ? `notes: ${safe(c.about)}` : undefined
       ].filter((f): f is string => f !== undefined).join(", ");
-      return `<<contact ${(i + 1).toString()} — ${c.id}>>\n${c.name}${fields ? ` — ${fields}` : ""}\n[contact: ${c.name}]\n<<end>>`;
+      const safeName = safe(c.name);
+      return `<<contact ${(i + 1).toString()} — ${c.id}>>\n${safeName}${fields ? ` — ${fields}` : ""}\n[contact: ${safeName}]\n<<end>>`;
     })
     .join("\n\n");
 }
