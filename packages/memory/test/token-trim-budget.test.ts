@@ -97,6 +97,23 @@ describe("trimConversationMessages — default (temporal) budget contract", () =
     expect(result.messages.some((m) => typeof m.content === "string" && m.content.startsWith(COMPACTION_SUMMARY_PREFIX))).toBe(true);
   });
 
+  it("keeps the conversation within the hard budget even after a compaction summary is inserted", () => {
+    // PRE-FIX this overshoots: the trim passes land the conversation AT the hard
+    // budget, then insertCompactionSummary adds the summary tokens with no
+    // reservation and no re-trim (measured estimatedTokens=414 > budgetTokens=350).
+    const messages = [...longConversation(40), msg("user", "FINAL needed question marker")];
+    const result = trimConversationMessages(messages, {
+      compactionThreshold: 3,
+      maxContextWindowTokens: 400,
+      outputReserveTokens: 50
+    });
+    expect(result.summaryInserted).toBe(true);
+    expect(result.messages.some((m) => typeof m.content === "string" && m.content.startsWith(COMPACTION_SUMMARY_PREFIX))).toBe(true);
+    expect(result.estimatedTokens).toBeLessThanOrEqual(result.budgetTokens);
+    // needed-source survives: the last user turn is never dropped to make room.
+    expect(result.messages.at(-1)?.content).toContain("FINAL needed question marker");
+  });
+
   it("removes an orphaned tool message that has no preceding tool call (pair integrity)", () => {
     const messages = [msg("user", "do it"), msg("tool", "orphan result", { toolCallId: "x" }), msg("assistant", "done")];
     const result = trimConversationMessages(messages, { maxContextWindowTokens: 100_000, outputReserveTokens: 100 });

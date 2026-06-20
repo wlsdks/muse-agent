@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ conversation-trim summary overshoot fixed: trimConversationMessages reconciles against the HARD budget after inserting the compaction summary (re-trims removable history; summary + last user turn never dropped) — context-strategy fire 19 (detail in docs/goals/loops/context-strategy.md)
+
 - ✓ URL-guard filename carve-out (bare filename like report.txt no longer false-refused; zip/mov gTLDs stay guarded) + JUDGE-DRILL passed (verifier caught a wired-but-inert + tautological-test slice) — context-strategy fire 18 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ exemplar selection precision: stop-word down-weighting in @muse/prompts scorer (function-word-only query no longer injects an off-topic few-shot demo into the 12B window; doctrine P1/P4; arXiv:2506.03100) — context-strategy fire 17 (detail in docs/goals/loops/context-strategy.md)

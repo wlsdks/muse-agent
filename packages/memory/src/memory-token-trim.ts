@@ -132,7 +132,8 @@ export function trimConversationMessages(
   totalTokens -= removeOrphanToolResponses(messages, tokens);
   totalTokens -= removeUnansweredToolCalls(messages, tokens, estimator, messageStructureOverhead);
 
-  const droppedCount = beforeCount - messages.length;
+  let removedCount = beforeCount - messages.length;
+  const droppedCount = removedCount;
   const summaryInserted =
     options.insertSummary !== false &&
     droppedCount >= (options.compactionThreshold ?? DEFAULT_COMPACTION_THRESHOLD);
@@ -147,6 +148,27 @@ export function trimConversationMessages(
       messageStructureOverhead,
       options.personaSnapshot
     );
+
+    // The summary was appended with no token reservation, so it can push
+    // the conversation back over the HARD budget (the provider-fatal
+    // ceiling) even though the trim passes had already hit their target.
+    // Reclaim room by re-running the removable-history passes against the
+    // HARD budget — never the soft working target, which would over-trim a
+    // proactive compaction. The summary itself sits at index 0 as a leading
+    // system message, so these passes (anchored on firstNonSystemIndex /
+    // the last user turn) never touch it; trimLeadingMemoryMessages is
+    // deliberately EXCLUDED here because it strips leading system messages
+    // and would drop the summary we just inserted. The last user turn stays
+    // protected by every pass, and ensureBoundaryIntegrity keeps the tool
+    // pairing valid after the re-trim.
+    if (totalTokens > hardBudgetTokens) {
+      totalTokens = trimOldHistory(messages, tokens, totalTokens, hardBudgetTokens);
+      totalTokens -= ensureBoundaryIntegrity(messages, tokens);
+      totalTokens = trimToolHistory(messages, tokens, totalTokens, hardBudgetTokens);
+      totalTokens -= removeOrphanToolResponses(messages, tokens);
+      totalTokens -= removeUnansweredToolCalls(messages, tokens, estimator, messageStructureOverhead);
+      removedCount = beforeCount - messages.length + 1;
+    }
   }
 
   const triggeredBy: "none" | "working_budget" | "hard_limit" = triggeredByHard
@@ -159,7 +181,7 @@ export function trimConversationMessages(
     budgetTokens: hardBudgetTokens,
     estimatedTokens: totalTokens,
     messages,
-    removedCount: droppedCount,
+    removedCount,
     summaryInserted,
     triggeredBy
   };
