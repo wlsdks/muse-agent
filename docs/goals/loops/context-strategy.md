@@ -6,8 +6,10 @@ selective-context machinery (relevance-gated tool exposure, trimming, tool-outpu
 capping + just-in-time retrieval, importance scoring, compaction/summary, budgets).
 
 **Autonomy:** Tier2 — dedicated branch `loop/context-strategy` in a /tmp worktree;
-each fire commits AND pushes the branch + maintains a draft PR; human merges.
-Hard floor unchanged: NO auto-merge to main, NO force-push, NO `--no-verify`.
+each fire commits AND pushes the branch + maintains a draft PR. **Every 5th fire
+(5/10/15…), merge the branch into main and push main (Jinan directive 2026-06-20),
+then keep working on the branch.** Floor: NO force-push, NO `--no-verify`; the
+5-fire merge is ff-only (re-fetch on conflict, never force).
 
 **Cadence:** session cron `caf5b755`, 20 min. **Stop:** `CronDelete caf5b755` or cmux.
 
@@ -99,5 +101,33 @@ ratchet: testFiles +2 (observation-mask.test.ts, observation-masking.test.ts) ·
   neutralizeInjectionSpans/tool-loop limits. Independent Opus judge PASS 8/8 + 3
   mutation RED→GREEN (no-op→leaner RED; stub-ref→recoverable RED; mask-latest→latest-full RED).
   Residual: turn-boundary = contiguous tool run (current wiring correct); ref TTL 30min.
+
+---
+
+## fire 3 · 2026-06-20 · skill v1.14.0 · 3e3dbf8e
+meta: value-class=wiring · pkg=@muse/agent-core · kind=tool-exposure-ceiling · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +0 (extended existing) · agent-core 2478 pass · pnpm check exit0 · pnpm lint exit0 · fabrication 0 · self-eval green
+- **What:** Default relevance-ranked tool-exposure ceiling (6) on the LIVE runtime path.
+  `agent-runtime.modelTools` left `maxTools` undefined for normal chat/ask, so
+  `planForContext`/`DefaultToolFilter` advertised an UNBOUNDED catalog. New
+  `capToolsByRelevance` + `DEFAULT_TOOL_EXPOSURE_CEILING=6` truncate only the
+  lowest-relevance OPTIONAL tail; core/untagged + `recentToolNames` (in-flight) tools
+  are always retained even above the cap. Applied in the runtime when the caller
+  passes no `maxTools` (explicit caller value still wins).
+- **Why:** tool-calling.md #1 (≤5–7 tools/turn) was enforceable only via opt-in
+  metadata; the default live path could blow past 7 on a multi-domain prompt,
+  degrading one-shot selection on the 12B. Grounding: arXiv:2606.10209 (Less Context,
+  Better Agents — evict low-value tool units), arXiv:2507.21428 (MemTool — dynamic
+  per-turn tool-set), BFCL IrrelAcc (over-firing is as broken as under-firing).
+  hermes/openclaw advertise the full tool set (openclaw's "tool budget" is per-tool
+  TIME, not count) → Muse's relevance-gated count ceiling is the differentiator.
+- **Review point:** cap fires on the bare live path (NOT behind the off-by-default
+  MUSE_TOOL_FILTER_ENABLED — judge confirmed); soft ceiling over the optional tail only.
+- **Risk:** none to floor — narrows only the advertised catalog, no touch to
+  grounding/citation/recall/approval/schemas; lossless (mandatory always kept,
+  highest-relevance optional always kept). Independent Opus judge PASS 9/9 + mutation
+  RED→GREEN (no-cap→length RED; array-order→highest-relevance RED). Residual: a
+  poorly-`keywords`-tagged optional tool ranks by input order only (acceptable for a
+  soft ceiling; note for tool authors).
 
 ---
