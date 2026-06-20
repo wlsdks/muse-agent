@@ -119,6 +119,18 @@ describe("file_read / file_list / file_grep", () => {
       expect(String(out["reason"])).toContain("directory");
     });
 
+    it("a missing DIRECT path yields an actionable recovery hint, not a raw ENOENT errno", async () => {
+      const tool = createFileReadTool(opts());
+      const out = (await tool.execute({ path: join(root, "nested", "missing.ts") }, ctx)) as JsonObject;
+      expect(out["read"]).toBe(false);
+      // The small model self-corrects off the message — it must name the recovery
+      // tool (file_list) and the file, not leak a raw "ENOENT ... stat '/...'".
+      const hint = String(out["reason"] ?? out["error"]);
+      expect(hint).toMatch(/file_list/u);
+      expect(hint).toContain("missing.ts");
+      expect(hint).not.toMatch(/ENOENT|errno|\bstat\b/u);
+    });
+
     it("requires a path", async () => {
       const tool = createFileReadTool(opts());
       const out = (await tool.execute({}, ctx)) as JsonObject;
@@ -203,6 +215,14 @@ describe("file_read / file_list / file_grep", () => {
       expect(matches).toHaveLength(1);
       expect(matches[0]?.line).toBe(2);
       expect(matches[0]?.text).toContain("dentist");
+    });
+
+    it("a missing search PATH yields an actionable hint, not a raw ENOENT errno (sibling of file_read)", async () => {
+      const tool = createFileGrepTool(opts());
+      const out = (await tool.execute({ mode: "content", path: join(root, "nope"), pattern: "x" }, ctx)) as JsonObject;
+      const hint = String(out["error"] ?? out["reason"]);
+      expect(hint).toMatch(/file_list/u);
+      expect(hint).not.toMatch(/ENOENT|errno|\bstat\b/u);
     });
 
     it("degrades a malformed regex to a LITERAL search instead of dead-ending", async () => {

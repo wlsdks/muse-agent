@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 21 · 2026-06-21 · skill v2.0 · <commit-pending> (file_read/grep missing-path → recovery hint; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/fs · kind=reliability-nudge · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 1071→1071 (+2 cases fs-read-tools read/grep, mutation-valid) · fabrication 0 · @muse/fs 격리 164 · pnpm check exit 0 · lint clean
+- 무엇: 존재 않는 직접 경로에 file_read/file_grep이 raw `ENOENT: ... stat '/abs'` 반환 → 12B 자가복구 불가 + 절대경로 leak. FIX(`isNotFoundError` code==="ENOENT"): 양 도구가 복구도구(file_list)+파일명 담은 actionable 메시지. 형제-감사: file_list는 missing cwd에 `{count:0}` 깔끔(유지). 
+- 왜: fires 8-9 패턴 — 좋은 에러가 12B 멀티스텝 복구를 살림(grep→read→edit 루프서 stall 대신 file_list로 self-correct). 다양성 RATCHET이 @muse/fs 보안 집중에서 reliability KIND로 전환 요구.
+- 리뷰지점: mutation-valid 양방향(raw-errno RED; grep 브랜치 revert→RED). ④b judge PASS — ENOENT-only(denied→refused·existing→read·directory→"directory"·EACCES→fall-through·malformed-regex→literal 다 불변), outcome-graded, **보너스 info-leak 감소**(input 에코, symlink-resolved `/private/var/` 안 노출). scout: file_read static 심링크 escape=resolveSafePath가 이미 차단(probe 확인)·file_list 결과 재검증=견고.
+- 리스크: 낮음 — ENOENT 분기만 추가(타 에러/정상 경로 불변). ④b PASS.
+lesson: 보안 surface가 thoroughly-hardened면 *같은 패키지의 다른 KIND*(reliability/error-recovery)로 가치 지속 — raw errno는 12B에 dead-end이자 info-leak; actionable 메시지(복구도구 명시)는 멀티스텝 신뢰성을 직접 올린다. 형제(read↔grep)는 같은 fire에 패치.
+
 ## fire 20 · 2026-06-21 · skill v2.0 · bb46f6f6 (JUDGE-DRILL #2 ✅ + harden ReDoS allow-corpus)
 meta: value-class=test-hardening · pkg=@muse/fs · kind=judge-drill · verdict=DRILL-PASS · firesSinceDrill=0(reset)
 ratchet: testFiles 1071→1071 (+6 safe-alternation cases in allows it.each) · fabrication 0 · @muse/fs 격리 162 · pnpm check exit 0 · lint clean

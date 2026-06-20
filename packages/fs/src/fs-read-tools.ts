@@ -99,6 +99,10 @@ function asPositiveInt(value: unknown): number | undefined {
   return truncated > 0 ? truncated : undefined;
 }
 
+function isNotFoundError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "ENOENT";
+}
+
 function refusalResult(error: unknown, path: string): JsonObject {
   if (isPathSafetyError(error)) {
     return { error: error.message, path, refused: true };
@@ -263,6 +267,11 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
         if (start === 0 && !truncated) options.onFullRead?.(safe);
         return { kind: "text", numbered, path: safe, read: true, source: safe, text, totalLines, truncated };
       } catch (error) {
+        // A raw "ENOENT … stat '/abs/path'" dead-ends the small model. Hand it a
+        // recovery route instead: name the file + the tool that finds it.
+        if (isNotFoundError(error)) {
+          return { path: input, read: false, reason: `no file at '${input}' — check the path, or use file_list (e.g. pattern "**/${basename(input)}") to locate it by name.` };
+        }
         return { ...refusalResult(error, input), read: false };
       }
     }
@@ -441,6 +450,9 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
           searchRoot = baseDir;
         }
       } catch (error) {
+        if (isNotFoundError(error)) {
+          return { error: `no path '${scopeArg}' to search — check it, or use file_list to find the right directory first.` };
+        }
         return refusalResult(error, scopeArg);
       }
 
