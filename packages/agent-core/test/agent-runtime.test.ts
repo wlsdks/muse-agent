@@ -3407,6 +3407,77 @@ describe("AgentRuntime PlanExecute mode", () => {
   });
 });
 
+describe("AgentRuntime default tool-exposure ceiling", () => {
+  function readTool(name: string, keywords: readonly string[]) {
+    return {
+      definition: {
+        description: `Read tool ${name} for testing the exposure ceiling.`,
+        inputSchema: { type: "object" as const },
+        keywords,
+        name,
+        risk: "read" as const
+      },
+      execute: () => ({ ok: true })
+    };
+  }
+
+  // 10 multi-domain tools whose keywords all match the prompt → the unbounded
+  // exposure plan would advertise all 10, past the ≤5–7 one-shot band.
+  const manyTools = new ToolRegistry([
+    readTool("muse.calendar.upcoming", ["calendar", "meeting", "event", "schedule"]),
+    readTool("muse.calendar.create", ["calendar", "meeting"]),
+    readTool("muse.tasks.list", ["task", "todo"]),
+    readTool("muse.tasks.add", ["task"]),
+    readTool("muse.notes.search", ["note", "memo"]),
+    readTool("muse.notes.list", ["note"]),
+    readTool("muse.messaging.inbox", ["email", "inbox"]),
+    readTool("muse.messaging.send", ["message", "email"]),
+    readTool("muse.home.lights", ["light", "lamp"]),
+    readTool("muse.home.lock", ["lock", "door"])
+  ]);
+
+  const multiDomainPrompt =
+    "for my calendar meeting and event schedule, also my task todo, a note memo, " +
+    "an email message in my inbox, and the light lamp lock door";
+
+  it("advertises ≤6 tools to the provider for a multi-domain prompt when no caller maxTools", async () => {
+    let advertised: number | undefined;
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({}, "test", (request) => {
+        advertised = request.tools?.length;
+      }),
+      toolRegistry: manyTools
+    });
+
+    await runtime.run({
+      messages: [{ content: multiDomainPrompt, role: "user" }],
+      model: "provider/model",
+      runId: "run-ceiling-default"
+    });
+
+    expect(advertised).toBeLessThanOrEqual(6);
+  });
+
+  it("respects an explicit larger caller maxTools (caller value wins)", async () => {
+    let advertised: number | undefined;
+    const runtime = createAgentRuntime({
+      modelProvider: createProvider({}, "test", (request) => {
+        advertised = request.tools?.length;
+      }),
+      toolRegistry: manyTools
+    });
+
+    await runtime.run({
+      messages: [{ content: multiDomainPrompt, role: "user" }],
+      metadata: { maxTools: 10 },
+      model: "provider/model",
+      runId: "run-ceiling-explicit"
+    });
+
+    expect(advertised).toBe(10);
+  });
+});
+
 function sequentialIds(prefix: string): () => string {
   let next = 0;
   return () => `${prefix}-${++next}`;

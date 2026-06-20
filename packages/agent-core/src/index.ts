@@ -376,9 +376,12 @@ export {
   type SummariseSessionOptions
 } from "./episodic-summariser.js";
 export {
+  capToolsByRelevance,
   DefaultToolFilter,
   DEFAULT_DOMAIN_KEYWORDS,
+  DEFAULT_TOOL_EXPOSURE_CEILING,
   inferDomain,
+  type ToolExposureCeilingContext,
   type ToolFilter,
   type ToolFilterContext
 } from "./tool-filter.js";

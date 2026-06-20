@@ -125,7 +125,7 @@ import {
 } from "./runtime-internals.js";
 import { applySkillsContext as applySkillsContextFn, type SkillCatalogProvider } from "./skills-context.js";
 import type { TelemetryAggregator } from "./telemetry-aggregator.js";
-import type { ToolFilter } from "./tool-filter.js";
+import { DEFAULT_TOOL_EXPOSURE_CEILING, capToolsByRelevance, type ToolFilter } from "./tool-filter.js";
 import type {
   AgentContextWindowReport,
   AgentRunContext,
@@ -701,26 +701,39 @@ export class AgentRuntime {
     }
 
     const userMessage = latestUserPrompt(context.input.messages);
+    const recentToolNames = stringListMetadata(context.input.metadata?.recentToolNames);
+    const callerMaxTools = numberMetadata(context.input.metadata?.maxTools);
     const tools = this.toolRegistry
       .planForContext({
         allowedToolNames: stringListMetadata(context.input.metadata?.allowedToolNames),
         forbiddenToolNames: stringListMetadata(context.input.metadata?.forbiddenToolNames),
         localMode: context.input.metadata?.localMode === true,
-        maxTools: numberMetadata(context.input.metadata?.maxTools),
+        maxTools: callerMaxTools,
         prompt: userMessage,
-        recentToolNames: stringListMetadata(context.input.metadata?.recentToolNames)
+        recentToolNames
       }, this.toolExposurePolicy)
       .tools;
 
     const filtered = this.toolFilter
       ? this.toolFilter.filter(tools, {
-          recentToolNames: stringListMetadata(context.input.metadata?.recentToolNames),
+          recentToolNames,
           scopeHints: stringListMetadata(context.input.metadata?.toolScopes),
           userMessage
         })
       : tools;
 
-    return filtered.map((tool) => toModelTool(tool));
+    // tool-calling.md #1: a normal chat/ask turn supplies no `maxTools`, so
+    // the exposure plan advertises the WHOLE relevant catalog (10+ on a
+    // multi-domain prompt), past the ≤5–7 one-shot band. Apply the default
+    // soft ceiling here — AFTER the optional domain filter so the two agree,
+    // and protecting always-on (core/untagged) + in-flight (recent) tools so
+    // the cap only trims the lowest-relevance OPTIONAL tail. An explicit
+    // caller `maxTools` (even a large one) wins.
+    const capped = callerMaxTools === undefined
+      ? capToolsByRelevance(filtered, { maxTools: DEFAULT_TOOL_EXPOSURE_CEILING, recentToolNames, userMessage })
+      : filtered;
+
+    return capped.map((tool) => toModelTool(tool));
   }
 
   private async readCache(key: string, model: string) {

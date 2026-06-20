@@ -137,6 +137,92 @@ describe("DefaultToolFilter", () => {
   });
 });
 
+describe("DefaultToolFilter default exposure ceiling", () => {
+  // tool-calling.md #1: expose ≤5–7 tools per turn — a multi-domain prompt
+  // must NOT advertise 10+ tools (degrades one-shot selection on the 12B).
+  // Grounding: arXiv:2606.10209 (evict low-value tool units), 2507.21428
+  // (per-turn tool-set management), BFCL IrrelAcc (over-firing == under-firing).
+  function domainTool(name: string, domain: string, keywords: readonly string[]): MuseTool {
+    return tool({ description: `Tool ${name}`, domain, inputSchema: {}, keywords, name, risk: "read" });
+  }
+
+  // ~10 tools whose keywords ALL match the multi-domain prompt, so the
+  // UNBOUNDED filter keeps every one of them. The dominant intent is
+  // calendar (the prompt repeats calendar terms), so a calendar tool is
+  // the highest-relevance match. muse.calendar.upcoming is placed LAST in
+  // input order so a (wrong) array-order truncation would drop it — the
+  // relevance ranking must rescue it past the cut.
+  const manyTools: readonly MuseTool[] = [
+    domainTool("muse.tasks.list", "tasks", ["task", "todo"]),
+    domainTool("muse.tasks.add", "tasks", ["task"]),
+    domainTool("muse.notes.search", "notes", ["note", "memo"]),
+    domainTool("muse.notes.list", "notes", ["note"]),
+    domainTool("muse.messaging.send", "messaging", ["message", "email"]),
+    domainTool("muse.messaging.inbox", "messaging", ["email", "inbox"]),
+    domainTool("muse.home.lights", "home", ["light", "lamp"]),
+    domainTool("muse.home.lock", "home", ["lock", "door"]),
+    domainTool("muse.calendar.create", "calendar", ["calendar", "meeting"]),
+    domainTool("muse.calendar.upcoming", "calendar", ["calendar", "meeting", "event", "schedule"])
+  ];
+
+  const multiDomainPrompt =
+    "for my calendar meeting and event schedule, also my task todo, a note memo, " +
+    "an email message in my inbox, and the light lamp lock door";
+
+  it("caps advertised catalog at default ceiling, keeping most prompt-relevant, never the long tail", () => {
+    const filter = new DefaultToolFilter();
+    const kept = filter.filter(manyTools, { userMessage: multiDomainPrompt });
+    const names = kept.map((t) => t.definition.name);
+
+    // 1. soft ceiling of 6 is enforced (the unbounded filter would keep all 10).
+    expect(kept.length).toBeLessThanOrEqual(6);
+
+    // 2. the highest-relevance tool for the dominant (calendar) intent is retained:
+    // muse.calendar.upcoming matches 4 prompt keywords, more than any other tool.
+    expect(names).toContain("muse.calendar.upcoming");
+  });
+
+  it("retains a recentToolNames tool even when it would fall below the relevance cut", () => {
+    const filter = new DefaultToolFilter();
+    // muse.home.lock is a low-relevance tail tool (1–2 keyword hits). Without
+    // the recent-set protection the cap would drop it; an in-flight follow-up
+    // must keep it.
+    const kept = filter.filter(manyTools, {
+      recentToolNames: ["muse.home.lock"],
+      userMessage: multiDomainPrompt
+    });
+    const names = kept.map((t) => t.definition.name);
+    expect(names).toContain("muse.home.lock");
+    expect(kept.length).toBeLessThanOrEqual(6);
+    // the dominant-intent tool is still retained alongside the in-flight one.
+    expect(names).toContain("muse.calendar.upcoming");
+  });
+
+  it("never drops core / untagged tools to satisfy the soft ceiling", () => {
+    const filter = new DefaultToolFilter();
+    const coreTools: readonly MuseTool[] = [
+      domainTool("a.core", "core", []),
+      domainTool("b.core", "core", []),
+      domainTool("c.core", "core", []),
+      domainTool("d.core", "core", []),
+      domainTool("e.core", "core", []),
+      domainTool("f.core", "core", []),
+      domainTool("g.core", "core", []),
+      domainTool("h.untagged" as string, undefined as unknown as string, [])
+    ];
+    const kept = filter.filter(coreTools, { userMessage: "anything at all" });
+    // 8 mandatory (core/untagged) tools must ALL survive — the cap is a soft
+    // ceiling over the OPTIONAL tail, never a guillotine on always-on tools.
+    expect(kept).toHaveLength(8);
+  });
+
+  it("respects an explicit larger maxTools when supplied", () => {
+    const filter = new DefaultToolFilter({ maxTools: 10 });
+    const kept = filter.filter(manyTools, { userMessage: multiDomainPrompt });
+    expect(kept).toHaveLength(10);
+  });
+});
+
 describe("inferDomain prefix table — registry-backed siblings", () => {
   // Iter 39 sibling for tool-filter. `muse.tasks-multi.*` /
   // `muse.calendar-multi.*` / `muse.notes-multi.*` are the
