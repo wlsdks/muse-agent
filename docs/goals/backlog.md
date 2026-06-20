@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ URL/domain grounding-value guard on the sync chat gate (answerAssertsUnsupportedUrl → abstain) — closes the fabricated-link class the number/email/identifier guards miss (doctrine P2; Netcraft phishing-URL harm) — context-strategy fire 15 (detail in docs/goals/loops/context-strategy.md)
+
 - ✓ orchestrate-path worker output neutralized (buildOrchestrationResponse both fan-ins) — completes fire-13's ASI07 hole; tracked results keep raw for trace fidelity (doctrine P5) — context-strategy fire 14 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ sub-agent worker output neutralized at the lead-worker fan-in (runOne neutralizeInjectionSpans) — blocks inter-agent injection/forged-citation propagation (doctrine P5, OWASP ASI07) — context-strategy fire 13 (detail in docs/goals/loops/context-strategy.md)

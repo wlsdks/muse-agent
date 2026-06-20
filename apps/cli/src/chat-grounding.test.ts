@@ -10,6 +10,7 @@ import {
   answerAssertsUnsupportedIdentifier,
   answerAssertsUnsupportedIpAddress,
   answerAssertsUnsupportedNumber,
+  answerAssertsUnsupportedUrl,
   CHAT_GROUNDING_MAX_HITS,
   CHAT_GROUNDING_MIN_SCORE,
   chatAbstention,
@@ -307,6 +308,24 @@ describe("answerAssertsUnsupportedIpAddress (whole-IPv4 drift the per-octet numb
   });
   it("ignores an IP inside a [from …] citation", () => {
     expect(answerAssertsUnsupportedIpAddress("see the note [from 10.0.0.1-config.md]", [note("no ip here")], "ip?")).toBe(false);
+  });
+});
+
+describe("answerAssertsUnsupportedUrl (fabricated URL/domain the number & identifier guards miss)", () => {
+  const note = (text: string): KnowledgeMatch => ({ cosine: 0.8, score: 0.8, source: "n.md", text });
+  it("drift: gateChatAnswer abstains rather than surface a fabricated login domain", () => {
+    const q = "what's my VPN portal?";
+    const out = gateChatAnswer(q, "Log in at https://acme-login.com.", [note("VPN portal: https://vpn.foundry.io")], []);
+    expect(out).toBe(chatAbstention(q));
+  });
+  it("does not flag a supported host re-rendered without scheme + trailing slash", () => {
+    expect(answerAssertsUnsupportedUrl("go to vpn.foundry.io/", [note("VPN portal: https://vpn.foundry.io")], "vpn?")).toBe(false);
+  });
+  it("does not flag a host the user supplied in the question", () => {
+    expect(answerAssertsUnsupportedUrl("yes, acme-login.com", [note("no url")], "is it acme-login.com?")).toBe(false);
+  });
+  it("does not flag an answer with no URL", () => {
+    expect(answerAssertsUnsupportedUrl("your landlord is Mr. Park", [note("landlord Mr. Park")], "who?")).toBe(false);
   });
 });
 

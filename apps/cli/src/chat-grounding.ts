@@ -783,6 +783,60 @@ export function answerAssertsUnsupportedEmail(
   return emails.some((address) => !haystack.includes(address.toLowerCase()));
 }
 
+// A bare host or http(s) URL the answer asserts. The first alternative matches an
+// http(s):// URL; the second a bare `host.tld` domain — at least two dot-joined
+// labels ending in a real (>= 2 letter, no-digit) TLD. The leading boundary keeps
+// it from biting an email's domain part ("@foundry.io") or a path-internal token.
+const URL_RE = /\bhttps?:\/\/[^\s)\]}>"']+|\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?:\/[^\s)\]}>"']*)?/giu;
+
+// Canonicalize a URL/domain to its bare host: lowercase, drop the scheme, drop a
+// leading `www.`, and drop everything from the first path/query/fragment separator
+// or a trailing dot — so the SAME host written with a different scheme / www. /
+// trailing-slash / path compares equal (a supported URL re-rendered must NOT refuse).
+export function canonicalHost(urlOrHost: string): string {
+  let host = urlOrHost.trim().toLowerCase().replace(/^https?:\/\//u, "");
+  host = host.split(/[/?#]/u)[0] ?? host;
+  host = host.replace(/^www\./u, "").replace(/\.+$/u, "");
+  return host;
+}
+
+// The set of canonical hosts a text asserts (URLs + bare domains), citations stripped.
+function answerHosts(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const raw of text.match(URL_RE) ?? []) {
+    const host = canonicalHost(raw);
+    if (host.length > 0) out.add(host);
+  }
+  return out;
+}
+
+/**
+ * Does the answer assert a URL / bare domain whose HOST appears in neither the
+ * evidence nor the question? Same rationale as {@link answerAssertsUnsupportedEmail}:
+ * a bare domain ("acme-login.com") has no >= 3-digit run and splits on `.` into
+ * pure-alpha parts, so the number AND identifier guards both wave it through, and a
+ * note-overlapping prose answer makes verifyGrounding's coverage rubric score it
+ * `grounded` — a FABRICATED login/portal link surfaced as the user's own data
+ * (phishing-adjacent: Netcraft found 34% of LLM brand-login URLs wrong, one a live
+ * phishing site). A host is a verbatim, copy-only identifier that never paraphrases,
+ * so requiring it in the evidence is false-refusal-safe. Compared by CANONICAL host
+ * (scheme/www./path/trailing-slash stripped) so a supported URL re-rendered another
+ * way — or a host the user supplied in the question — never refuses.
+ */
+export function answerAssertsUnsupportedUrl(
+  answer: string,
+  matches: readonly KnowledgeMatch[],
+  question: string
+): boolean {
+  const hosts = answerHosts(answer.replace(/\[[^\]]*\]/gu, " "));
+  if (hosts.size === 0) return false;
+  const supported = answerHosts(`${question} ${matches.map((match) => match.text).join(" ")}`);
+  for (const host of hosts) {
+    if (!supported.has(host)) return true;
+  }
+  return false;
+}
+
 // An IDENTIFIER token mixes letters AND digits (optionally hyphen-joined): an
 // SSID, model number, interface tag, room code — "Nest-5G", "wg0", "B205". Like
 // a number or email it is a VERBATIM identifier that never paraphrases, so the
@@ -964,6 +1018,10 @@ function chatGatePrecheck(
   // Same deterministic guard for a mixed letter+digit identifier — a wrong SSID
   // / code the lexical-coverage rubric waves through (non-numeric string drift).
   if (answerAssertsUnsupportedIdentifier(answer, matches, question)) return "abstain";
+  // Same deterministic guard for a URL / bare domain — a fabricated login/portal
+  // host (no >= 3-digit run, splits to pure-alpha parts) both the number and
+  // identifier guards miss; a wrong link is a phishing-adjacent hazard.
+  if (answerAssertsUnsupportedUrl(answer, matches, question)) return "abstain";
   // The answer actually QUOTES distinctive content from a retrieved note
   // (e.g. "muse2026" from seoul_office.md) → grounded for real, no matter how
   // verifyGrounding's borderline rubric falls on the model's varied phrasing.
