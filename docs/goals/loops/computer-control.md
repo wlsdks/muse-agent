@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 13 · 2026-06-21 · skill v2.0 · <commit-pending> (read-before-OVERWRITE gate on file_write — fabrication=0 hole)
+## fire 13 · 2026-06-21 · skill v2.0 · 982b4f06 (read-before-OVERWRITE gate on file_write — fabrication=0 hole)
 meta: value-class=new-capability · pkg=@muse/fs · kind=grounding-gate · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles 1068→1068 (+3 cases fs-write-tools, mutation-valid) · fabrication 0 · @muse/fs 격리 127 통과 · eval:computer-task PASS(무회귀, file_edit 경로라 무관) · pnpm check=박스포화(@muse/mcp crypto 5-55s 타임아웃, @muse/fs 격리 green) · lint clean
 - 무엇: 테마 핵심 mandate("모든 actuator가 근거 게이트 통과")에서 **미감사 표면 발견** — read-before-edit가 file_edit/multi_edit(editExecutor)엔 강제되나 **file_write엔 누락**. 모델이 안 읽은 기존 파일을 file_write로 overwrite하면 silent 데이터손실+ungrounded 변경(fabrication=0 위반). FIX: `exists && wasPathRead 미충족 → fail-close`(CREATE는 read 불필요). CLI 배선 확인 production-live.
