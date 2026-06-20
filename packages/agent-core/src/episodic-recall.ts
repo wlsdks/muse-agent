@@ -412,6 +412,28 @@ const DEFAULT_RECENCY_HALF_LIFE_DAYS = 14;
 // Applied post-minScore-gate so it can only LOWER a surviving session, never
 // add or remove one from the candidate set (arXiv:2305.10250, MemoryBank).
 const FADE_PENALTY = 0.5;
+// Reinstatement window: a faded session re-recalled within this span has its
+// fade penalty WAIVED — reconsolidation on re-access (mem0: decay UNLESS
+// reinforced). Sized to the ≥6h daemon consolidation interval that writes the
+// fade file, so a still-recalled key is never down-ranked while the live
+// recall ledger already shows re-engagement. Tune on real recall distribution.
+const FADE_REINSTATE_MAX_AGE_MS = 6 * 60 * 60 * 1_000;
+
+/**
+ * True when a recall-stats entry shows a re-access within `windowMs` of `nowMs`.
+ * Fail-open: a missing entry or absent `lastHitMs` returns false (no waiver →
+ * identical to pre-reinstatement behaviour).
+ */
+function isRecentlyReengaged(
+  statsEntry: { readonly lastHitMs?: number } | undefined,
+  nowMs: number,
+  windowMs: number
+): boolean {
+  if (!statsEntry || typeof statsEntry.lastHitMs !== "number") {
+    return false;
+  }
+  return nowMs - statsEntry.lastHitMs <= windowMs;
+}
 
 /**
  * recency boost. Returns an additive contribution to the
@@ -959,8 +981,17 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
         : computeRecencyBoost(createdAtIso, nowMs, this.recencyWeight, this.recencyHalfLifeDays);
       // Ebbinghaus down-rank: a session the consolidation pass marked fading
       // has its similarity halved (post-gate, so it can never suppress a match
-      // that would otherwise be excluded, only lower a surviving one).
-      const fadePenalty = fadedKeys.has(summary.sessionId) ? FADE_PENALTY : 1;
+      // that would otherwise be excluded, only lower a surviving one). Carve-out:
+      // the fade file lags the live recall ledger by up to a consolidation tick,
+      // so waive the penalty when recallStats shows the session was re-recalled
+      // within the reinstatement window (reconsolidation on re-access). The
+      // penalty is only ever waived, never made harsher; fail-open when stats
+      // are absent.
+      const fadePenalty =
+        fadedKeys.has(summary.sessionId) &&
+        !isRecentlyReengaged(recallStats?.get(summary.sessionId), nowMs, FADE_REINSTATE_MAX_AGE_MS)
+          ? FADE_PENALTY
+          : 1;
       scored.push({
         createdAtIso,
         narrative: summary.narrative,

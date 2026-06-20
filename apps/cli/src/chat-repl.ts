@@ -529,19 +529,27 @@ export async function runLocalChat(
   const personaMemory = userMemory
     ? { ...userMemory, facts: filterFactsToKeys(userMemory.facts, factKeysToInject(message, Object.keys(userMemory.facts))) }
     : userMemory;
-  // Contested-fact caution on the one-shot chat persona (sibling of the Ink chat path):
-  // a volatile fact gets "confirm it's current" instead of a bare assertion. Lazy import
-  // (the heavy @muse/memory store breaks the bun-compiled desktop binary on a static one).
-  // Best-effort, fail-soft to no caution.
-  let chatContestedKeys: ReadonlySet<string> = new Set();
+  // Fact-caution parity with `muse ask`: flag a persona fact that is volatile
+  // (contested) or once-seen-unconfirmed (provisional) so chat cautions it at
+  // point-of-use instead of asserting it. Lazy import — the heavy @muse/memory store
+  // breaks the bun-compiled desktop binary on a static import. Fail-soft: any error
+  // ⇒ no sets ⇒ unmarked persona, the same posture ask falls back to.
+  let personaContestedKeys: ReadonlySet<string> = new Set();
+  let personaProvisionalKeys: ReadonlySet<string> = new Set();
   if (personaMemory && Object.keys(personaMemory.facts).length > 0) {
     try {
-      const { FileBeliefProvenanceStore, defaultBeliefProvenanceFile, deriveFactProvenance, contestedFactKeys, normalizeMemoryKey } = await import("@muse/memory");
+      const { FileBeliefProvenanceStore, defaultBeliefProvenanceFile, deriveFactProvenance, contestedFactKeys, provisionalFactKeys, normalizeMemoryKey } = await import("@muse/memory");
+      const { isMemoryInjection } = await import("@muse/agent-core");
+      const personaFactKeys = Object.keys(personaMemory.facts);
       const provenance = deriveFactProvenance(await new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()).query(userId));
-      chatContestedKeys = contestedFactKeys(Object.keys(personaMemory.facts), provenance, { normalizeKey: normalizeMemoryKey, now: Date.now() });
-    } catch { /* provenance unavailable — render the persona without the caution */ }
+      const nowMs = Date.now();
+      personaProvisionalKeys = provisionalFactKeys(personaFactKeys, provenance, { isInjection: isMemoryInjection, normalizeKey: normalizeMemoryKey, now: nowMs });
+      personaContestedKeys = contestedFactKeys(personaFactKeys, provenance, { normalizeKey: normalizeMemoryKey, now: nowMs });
+    } catch { /* provenance unavailable — render the persona without the marks */ }
   }
-  const userMemoryBlock = personaMemory ? (buildMusePersona(personaMemory, userId, { contestedKeys: chatContestedKeys }) ?? "").trim() : "";
+  const userMemoryBlock = personaMemory
+    ? (buildMusePersona(personaMemory, userId, { contestedKeys: personaContestedKeys, provisionalKeys: personaProvisionalKeys }) ?? "").trim()
+    : "";
   const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
   // Multi-turn recall: resolve an anaphoric turn into a self-contained
   // retrieval query (one constrained inference, fail-open to the raw turn).

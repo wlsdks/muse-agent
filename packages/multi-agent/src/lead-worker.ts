@@ -1,4 +1,4 @@
-import { detectPairwiseContradictions, lexicalTokens } from "@muse/agent-core";
+import { detectPairwiseContradictions, lexicalTokens, neutralizeInjectionSpans } from "@muse/agent-core";
 
 import { decomposeRequestWithKind, shouldDecompose, type Subtask } from "./decompose-trigger.js";
 
@@ -179,6 +179,15 @@ async function runOne(subtask: Subtask, deps: LeadWorkerDeps, priorContext?: rea
     return { error: "empty sub-task output (fail-close)", output: produced.output, ...(sources ? { sources } : {}), status: "failed", subtask };
   }
 
+  // A worker that consumed a poisoned source can carry an embedded instruction
+  // ("ignore previous instructions") or a forged `[from system]` citation into the
+  // lead's synthesis prompt + final answer (Prompt Infection / OWASP ASI07). Neutralize
+  // the surviving (non-empty) output at this single fan-in funnel — it feeds synthesize,
+  // verifySynthesisCoverage, detectSubtaskConflicts, and sequenced priorContext. Pure +
+  // byte-identical on clean text, so benign outputs are unchanged; runs AFTER the raw
+  // empty-check so fail-close is preserved (the neutralizer never empties).
+  const output = neutralizeInjectionSpans(produced.output);
+
   if (deps.groundingGate) {
     let grounded: boolean;
     try {
@@ -187,11 +196,11 @@ async function runOne(subtask: Subtask, deps: LeadWorkerDeps, priorContext?: rea
       grounded = false;
     }
     if (!grounded) {
-      return { output: produced.output, ...(sources ? { sources } : {}), status: "ungrounded", subtask };
+      return { output, ...(sources ? { sources } : {}), status: "ungrounded", subtask };
     }
   }
 
-  return { output: produced.output, ...(sources ? { sources } : {}), status: "completed", subtask };
+  return { output, ...(sources ? { sources } : {}), status: "completed", subtask };
 }
 
 /**

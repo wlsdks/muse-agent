@@ -88,10 +88,21 @@ export function personaEntryCap(): number {
   return Number.isFinite(raw) && raw >= 1 ? Math.trunc(raw) : 40;
 }
 
+// Point-of-use fact-caution marks — the EXACT strings from
+// `buildMemoryContextBlock` (packages/recall/src/select.ts). Kept
+// identical so chat's persona surfaces the same volatile/once-seen
+// caution `muse ask` does (contested takes precedence over provisional).
+const CONTESTED_FACT_MARK = " (value has changed before — confirm it's current)";
+const PROVISIONAL_FACT_MARK = " (unconfirmed — learned once, not yet re-confirmed)";
+
 export function buildMusePersona(
   memory: JarvisPersonaMemory,
   userId: string,
-  options: { readonly now?: Date; readonly contestedKeys?: ReadonlySet<string> } = {}
+  options: {
+    readonly now?: Date;
+    readonly contestedKeys?: ReadonlySet<string>;
+    readonly provisionalKeys?: ReadonlySet<string>;
+  } = {}
 ): string | undefined {
   const facts = Object.entries(memory.facts);
   // Preferences encode three slot types: plain `pref.X`, `veto:X`
@@ -167,14 +178,19 @@ export function buildMusePersona(
       // replaces the value-blind `(previously X)` note (which can't tell a refinement
       // Seoul→Seoul-Gangnam from a contradiction Seoul→Busan — contestedFactKeys is
       // refinement-aware, so it only fires on a genuine flip).
+      // CONTESTED (a genuinely flipped value) takes precedence and REPLACES the
+      // value-blind `(previously X)` note — contestedFactKeys is refinement-aware
+      // (fires only on a real flip), so the note would be redundant with the caution.
+      // PROVISIONAL (once-seen, not re-confirmed) facts get their own caution appended.
       if (options.contestedKeys?.has(key)) {
-        lines.push(`  - ${key}: ${safe} (value has changed before — confirm it's current)`);
+        lines.push(`  - ${key}: ${safe}${CONTESTED_FACT_MARK}`);
         continue;
       }
       const prior = priorByKey.get(key);
+      const mark = options.provisionalKeys?.has(key) ? PROVISIONAL_FACT_MARK : "";
       lines.push(prior !== undefined && prior !== value
-        ? `  - ${key}: ${safe} (previously ${defangMemoryValue(prior)})`
-        : `  - ${key}: ${safe}`);
+        ? `  - ${key}: ${safe} (previously ${defangMemoryValue(prior)})${mark}`
+        : `  - ${key}: ${safe}${mark}`);
     }
     if (factsDropped > 0) lines.push(`  - …(+${factsDropped} older facts not shown)`);
   }

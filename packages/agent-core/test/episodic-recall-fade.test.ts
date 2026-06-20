@@ -123,6 +123,48 @@ describe("StoreBackedEpisodicRecallProvider — Ebbinghaus fade down-ranking", (
     expect(snap).toBeUndefined();
   });
 
+  it("a faded session re-engaged recently is NOT down-ranked (reinstatement carve-out)", async () => {
+    const DAY = 24 * 60 * 60 * 1_000;
+    const provider = new StoreBackedEpisodicRecallProvider({
+      fadedKeys: async () => new Set(["sess-A"]),
+      recallStats: async () =>
+        new Map([
+          ["sess-A", { hits: 1, lastHitMs: NOW_MS - 60_000 }],
+          ["sess-B", { hits: 1, lastHitMs: NOW_MS - 90 * DAY }]
+        ]),
+      minScore: 0.05,
+      recencyWeight: 0,
+      store: twoEqualStore,
+      topK: 2,
+      now: () => NOW_MS
+    });
+    const snap = await provider.resolve(query);
+    const ids = snap?.matches.map((m) => m.sessionId) ?? [];
+    // A was just re-recalled → its fade penalty is waived → it must not sit below B.
+    expect(ids.indexOf("sess-A")).toBeLessThanOrEqual(ids.indexOf("sess-B"));
+  });
+
+  it("control: a faded session whose last re-access is OLD stays down-ranked", async () => {
+    const DAY = 24 * 60 * 60 * 1_000;
+    const provider = new StoreBackedEpisodicRecallProvider({
+      fadedKeys: async () => new Set(["sess-A"]),
+      recallStats: async () =>
+        new Map([
+          ["sess-A", { hits: 1, lastHitMs: NOW_MS - 90 * DAY }],
+          ["sess-B", { hits: 1, lastHitMs: NOW_MS - 90 * DAY }]
+        ]),
+      minScore: 0.05,
+      recencyWeight: 0,
+      store: twoEqualStore,
+      topK: 2,
+      now: () => NOW_MS
+    });
+    const snap = await provider.resolve(query);
+    const ids = snap?.matches.map((m) => m.sessionId) ?? [];
+    expect(ids[0]).toBe("sess-B");
+    expect(ids[1]).toBe("sess-A");
+  });
+
   it("non-faded session is not penalised (similarity multiplier stays 1.0)", async () => {
     const providerNoFade = new StoreBackedEpisodicRecallProvider({
       minScore: 0.05,

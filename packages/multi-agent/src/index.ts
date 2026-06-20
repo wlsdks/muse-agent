@@ -1,4 +1,5 @@
 import type { AgentRunInput, AgentRunResult, AgentRuntime } from "@muse/agent-core";
+import { neutralizeInjectionSpans } from "@muse/agent-core";
 import { trimToolOutput } from "@muse/memory";
 import type { ModelMessage } from "@muse/model";
 import { clamp, createRunId, type JsonObject } from "@muse/shared";
@@ -666,14 +667,22 @@ async function buildOrchestrationResponse(
   verifyFinalAnswer?: (objective: string, output: string) => Promise<{ readonly satisfied: boolean; readonly missing?: string }>
 ): Promise<AgentRunResult["response"]> {
   const cap = maxOutputCharsPerWorker && maxOutputCharsPerWorker > 0 ? maxOutputCharsPerWorker : undefined;
-  const projected = await Promise.all(results.map(async (result) => {
+  // Neutralize each completed worker's output ONCE, BEFORE summarize/cap, and feed
+  // BOTH fan-ins (concat + synthesizer parts) from the SAME safe value — a poisoned
+  // worker's embedded instruction / forged `[from system]` citation must not reach
+  // the lead's final answer (OWASP ASI07). `safe` is fan-in-only; the tracked
+  // `results[].result.response.output` keeps the RAW output for trace fidelity.
+  const safeOutputs = results.map((r) =>
+    r.status === "completed" ? neutralizeInjectionSpans(r.result?.response.output ?? "") : undefined
+  );
+  const projected = await Promise.all(results.map(async (result, i) => {
     if (result.status !== "completed") {
       return `## ${result.workerId}\nError: ${result.error ?? "unknown error"}`;
     }
-    const raw = result.result?.response.output ?? "";
+    const safe = safeOutputs[i] ?? "";
     const summarized = summarizeWorkerOutput
-      ? await applyWorkerSummarizer(result.workerId, raw, summarizeWorkerOutput)
-      : raw;
+      ? await applyWorkerSummarizer(result.workerId, safe, summarizeWorkerOutput)
+      : safe;
     return `## ${result.workerId}\n${capWorkerOutput(result.workerId, summarized, cap)}`;
   }));
   const concatenated = projected.join("\n\n");
@@ -683,7 +692,7 @@ async function buildOrchestrationResponse(
   // concatenation, so the orchestration never loses its output.
   const completedParts = results
     .filter((r) => r.status === "completed")
-    .map((r) => ({ output: r.result?.response.output ?? "", workerId: r.workerId }));
+    .map((r) => ({ output: safeOutputs[results.indexOf(r)] ?? "", workerId: r.workerId }));
 
   // Fuse the workers into one answer, optionally steered by `guidance` (the gap
   // the verifier found). Fail-soft — empty/throw keeps the prior output.

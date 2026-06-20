@@ -33,6 +33,22 @@ Verified existing context-strategy seams (from codegraph, 2026-06-20):
 - **Budgets** — `StepBudgetTracker` / `systemPromptTokenBudget` / step caps.
 
 ### Open follow-ups (next-fire candidates)
+- ◦ **Evidence-aware filename carve-out for the URL guard** (fire-15 judge residual): a token like
+  `report.md`/`backup.zip` parses as `host.tld` and, if absent from evidence under a personal-recall
+  question, abstains. Fail-close-correct + no corpus regression, but a future carve-out (recognize
+  common file extensions, or require a real public TLD) would cut hypothetical over-refusals. (apps/cli)
+- ◦ **Consolidation-spine (P3) decomposition** (fire-11 scout; fire 11 took #1):
+  (2) chat-ink.ts persona contested/provisional marks — needs async closure + per-turn provenance
+  refresh (sync `personaPrompt` closure over mutating `memoryHolder.current`); (3) surface
+  `classifyFactFreshness` (aging/stale) at point-of-use behind a conservative false-positive guard
+  (today only in `/memory why`); (4) recap→promotion round-trip e2e (confirming a volatile belief
+  re-states it user-source + promotes durable); (5) forgetting surfacing — `selectForgettable`/
+  `consolidationPlan` fade list reported non-destructively, floor-guard never silently drops a
+  still-recalled key; (6) provenance marks for PREFERENCES (today facts only). (apps/cli + @muse/memory)
+- ◦ **ask-vs-chat persona mark asymmetry** (fire-11 judge residual): chat persona is now MORE
+  marked than ask's persona block (ask marks its separate recall block, not the persona); reconcile
+  so the two surfaces are consistent. Also persona-suffix divergence (chat bare userId vs ask
+  `@persona`) means non-default-persona provenance won't surface in chat. (apps/cli)
 
 - ◦ **Grounding-quality eval under the new block order**: assert the edge-placed
   prompt order does not regress answer grounding (the judge flagged no eval
@@ -330,3 +346,115 @@ ratchet: testFiles +0 (extended existing) · recall 365 pass · pnpm check exit0
 - lesson: a JUDGE-DRILL must inject a slice that PASSES deterministic gates but is judge-catchable
   (inert/declaration-only) — an inert UNWIRED helper + declaration-only test is the canonical
   target; the adaptive judge's grep-for-callers + mutation-stays-green check is what catches it.
+
+## fire 11 · 2026-06-21 · skill v2.0.0 · 1d8add6b
+meta: value-class=wiring · pkg=apps/cli+@muse/recall · kind=consolidation-mark-chat-parity · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles +0 (extended existing) · cli 2786 pass · pnpm check exit0 (db saturation cleared on isolated rerun) · pnpm lint exit0 · fabrication 0 · self-eval green
+- **DOCTRINE:** advances principle ③ (cross-session consolidation spine) — the FIRST loop fire on it; scout DECOMPOSED the spine into 6 sub-slices (recorded above), this fire took #1.
+- **What:** the durable-vs-provisional / contested-belief point-of-use cautions live on `muse ask`
+  (via `buildMemoryContextBlock`) are now rendered on the CHAT persona too. `buildMusePersona`
+  (apps/cli/muse-persona.ts) gained optional `contestedKeys`/`provisionalKeys` and appends the SAME
+  mark strings (contested precedence); `chat-repl.ts` resolves provenance mirroring commands-ask
+  (same store/derive/normalizeKey/isInjection) and passes them, fail-soft.
+- **Why:** chat IS the continuous-companion thread, yet it asserted a volatile/once-seen auto-fact
+  as confident truth while ask cautioned it — the doctrine's named worst failure (a confident wrong
+  memory). mem0 (State of AI Agent Memory 2026): a promoted memory carries Provisional→Active status
+  and must surface cautiously at EVERY retrieval surface; OWASP ASI06 (a flip-flopping auto-fact is
+  the contested-value class). hermes/openclaw mark no recalled memory provisional at point-of-use →
+  widens the consolidation-spine moat.
+- **Review point:** mark strings byte-identical to ask (judge verified char-for-char); key lookup
+  uses the raw key form the selectors return (matches production); chat-ink deferred (sub-slice 2 —
+  needs async closure, NOT half-wired).
+- **Risk:** none to floor — additive mark (value defanged first, never altered/dropped; no-opts
+  byte-identical; fabrication=0), fail-soft provenance (error→unmarked, never throws into chat), no
+  touch to citation gate/verifyGrounding/gate-chat answer. Independent Opus adaptive judge PASS 8/8
+  + mutation RED→GREEN (drop ${mark} → 5 caution tests RED, no-opts stayed green). Sibling audit:
+  chat-repl wired; chat-ink deferred; brief/proactive/ask-persona intentional no-op (no double-mark).
+  Residual: no live round-trip (consistent with how ask-side landed); ask-vs-chat persona asymmetry.
+
+## fire 12 · 2026-06-21 · skill v2.0.0 · c20b569f
+meta: value-class=micro-fix · pkg=@muse/agent-core · kind=episodic-fade-reinstatement · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles +0 (extended existing) · agent-core 2520 pass · pnpm check exit0 (api flake cleared on isolated rerun) · pnpm lint exit0 · fabrication 0 · self-eval green
+- **DOCTRINE:** advances ③ (consolidation spine — "forgetting & conflict-resolution first-class", sub-slice 5 rendered as a scoring-time floor) + ④ (load-bearing source survives).
+- **What:** `StoreBackedEpisodicRecallProvider.resolve` now WAIVES the episodic `FADE_PENALTY`
+  for a faded session whose live `recallStats` shows re-engagement within `FADE_REINSTATE_MAX_AGE_MS`
+  (~6h). New pure `isRecentlyReengaged(statsEntry, nowMs, windowMs)` (fail-open). recallStats is
+  already loaded at the callsite — zero new I/O.
+- **Why:** the fade file is written only on ≥6h daemon ticks while recallStats updates every recall,
+  so a session the user JUST re-recalled stayed down-ranked for up to a consolidation interval —
+  silently down-ranking a still-recalled source. Reconsolidation science (PMC6220336) + mem0 (State
+  of AI Agent Memory 2026: "decay UNLESS reinforced by re-access") + MemoryBank (arXiv:2305.10250).
+  hermes/openclaw have no fade-vs-live-reaccess reconciliation at retrieval → widens the moat.
+- **Review point:** penalty only ever WAIVED (0.5→1, never harsher); control test proves it's
+  re-engagement-specific (old recallStats stays faded), not a blanket fade-disable.
+- **Risk:** none to floor — waive-only, no match added/dropped/reordered below minScore; fail-open
+  (absent recallStats ⇒ identical to today); write side (writeFadedMemoryKeys/daemon) untouched.
+  Independent Opus adaptive judge PASS 8/8 + mutation RED→GREEN (revert to unconditional penalty →
+  re-engaged test RED, control stays green). Residual: re-engaged test asserts "not below" (tie via
+  stable sort), acceptable per the claim; window/clock prod-coupling fail-open safe.
+
+## fire 13 · 2026-06-21 · skill v2.0.0 · e601662c
+meta: value-class=micro-fix · pkg=@muse/multi-agent · kind=worker-output-neutralization · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +0 (extended existing) · multi-agent 147 pass · pnpm check exit0 · pnpm lint exit0 · fabrication 0 · self-eval green
+- **DOCTRINE:** advances ⑤ (memory/derived-context = untrusted) at the multi-agent "Isolate" seam — FIRST time the loop hardens inter-agent context (OWASP ASI07).
+- **What:** `runOne` (lead-worker.ts) now applies `neutralizeInjectionSpans` to the worker's output
+  before it becomes `SubtaskExecution.output` — the single fan-in funnel feeding synthesize /
+  verifySynthesisCoverage / detectSubtaskConflicts / sequenced priorContext.
+- **Why:** the tool path (fire 4) and recall (fire 9) neutralize untrusted content, but the
+  multi-agent fan-in returned `produced.output` VERBATIM — a worker that read a poisoned source
+  propagated an embedded instruction / forged `[from system]` citation into the lead's synthesis +
+  final answer. Prompt Infection (arXiv:2410.07283), OWASP ASI07 (insecure inter-agent comms) +
+  ASI06. hermes/openclaw have no inter-agent neutralization seam → widens the moat.
+- **Review point:** empty-check stays on RAW output FIRST (fail-close intact); grounding gate still
+  reads raw `produced` (decision logic unchanged); neutralize is byte-identical on clean text.
+- **Risk:** none to floor — span-level neutralization (benign clause survives, no whole-value drop),
+  byte-identical no-op on clean output (fabrication=0), fail-close preserved. Independent Opus
+  adaptive judge PASS 7/7 + mutation RED→GREEN (revert to produced.output → injection propagates RED).
+  Sibling audit: runOne patched; capWorkerOutput (orchestrate path) DEFERRED (follow-up above);
+  validateWorkerHandoff untouched. Residual: detection-coverage = MEMORY_INJECTION_PATTERNS ceiling.
+
+## fire 14 · 2026-06-21 · skill v2.0.0 · 30af7766
+meta: value-class=micro-fix · pkg=@muse/multi-agent · kind=worker-output-neutralization · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles +0 (extended existing) · multi-agent 169 pass · pnpm check exit0 (after isolated rerun cleared a @muse/model saturation flake — untouched pkg, passes in isolation) · pnpm lint exit0 · fabrication 0 · self-eval green
+- **DOCTRINE:** ⑤ (untrusted derived context) — COMPLETES the multi-agent "Isolate" seam fire 13 started (both fan-in funnels now neutralized).
+- **What:** `buildOrchestrationResponse` (index.ts, the ORCHESTRATE path) now neutralizes each
+  completed worker's `response.output` ONCE (`safeOutputs`) and feeds BOTH fan-ins — the concat
+  `projected` AND the synthesizer `completedParts` — from it. Fire 13 did only the lead-worker
+  `runOne` funnel; this closes the second, explicitly-deferred funnel.
+- **Why:** the orchestrate path read raw worker output in two places, so a poisoned worker still
+  propagated an embedded instruction / forged `[from system]` citation into the synthesized final
+  answer. OWASP ASI07 (insecure inter-agent comms) + Prompt Infection (arXiv:2410.07283).
+- **Review point:** neutralize computed ONCE before summarize/cap (fire-4 ordering); tracked
+  `results[]` keep RAW output for trace fidelity (test asserts); `.sources` concern N/A on this
+  path (orchestrate reads only response.output) → fire-13 follow-up fully retired.
+- **Risk:** none to floor — span-level (benign clause survives), byte-identical on clean (no-op
+  control), fail-close branch untouched, grounding/verifyFinalAnswer untouched. Independent Opus
+  adaptive judge PASS 8/8 + mutation RED→GREEN (revert both fan-ins to raw → funnel-1+2 RED).
+  Sibling audit: both orchestrate funnels covered; runOne (fire 13) untouched (disjoint path).
+- lesson(process): a judge/agent verifying an UNCOMMITTED slice must restore mutations with an
+  inverse edit, NEVER `git checkout <file>` — that wipes the uncommitted work (hit during this fire,
+  recovered by re-applying from the diff).
+
+## fire 15 · 2026-06-21 · skill v2.0.0 · 5e734341
+meta: value-class=micro-fix · pkg=apps/cli · kind=grounding-value-guard · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles +0 (extended existing) · cli 2808 pass · pnpm check exit0 · pnpm lint exit0 · fabrication 0 · self-eval green
+- **DOCTRINE:** advances ② grounding-first admission (the shallowest Muse-own invention — fire 10 did the content-free HEADER guard; this closes the admitted-VALUE side for the URL class).
+- **What:** new deterministic `answerAssertsUnsupportedUrl` wired into the sync chat gate
+  `chatGatePrecheck` (covers gateChatAnswer + gateChatAnswerDeterministic). The gate had value
+  guards for number/email/identifier/IPv4/date but NONE for URLs — a bare domain `acme-login.com`
+  yields zero digit tokens so it drifted past all of them and was surfaced as grounded. Now an
+  answer asserting a host absent from BOTH question and evidence → abstain (canonical host compare:
+  lowercase, strip scheme/www/path/trailing-slash).
+- **Why:** phishing-adjacent harm — Netcraft: 34% of LLM brand-login URLs are wrong, one led to a
+  live phishing site; outbound-safety-adjacent (a wrong link the user clicks). Grounding:
+  Netcraft/CSO 2025-26, FActScore (arXiv:2305.14251), Self-RAG (arXiv:2310.11511). hermes/openclaw
+  surface model output with no deterministic verbatim-value verifier → Muse's sync code-gate family
+  is the differentiator; this widens it by the highest-harm class.
+- **Review point:** false-refusal safety is the watched risk — canonical host compare + question-
+  supplied + scheme/www/path variants all NOT refused (judge ran 2808 cli tests twice + 10
+  adversarial cases, zero regression).
+- **Risk:** none to floor — additive (fires only on a host in NEITHER question nor evidence), never
+  drops a real source, fabrication=0; abstain replaces only a fabricated link. Independent Opus
+  adaptive judge PASS 7/7 + mutation RED→GREEN (comment the guard line → drifted domain surfaced RED).
+  Sibling audit: both gate entrypoints covered via chatGatePrecheck; ask path uses its reverify judge
+  (no change). Residual: filename-token over-refusal (report.md) — fail-close-correct, follow-up filed.
