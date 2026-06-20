@@ -12,7 +12,7 @@
 import { createMuseRuntimeAssembly, parseBoolean, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
 import { isSkillAvoided, readCheckins, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks } from "@muse/mcp";
-import { aggregateActivitySignals, defaultBeliefProvenanceFile, FileBeliefProvenanceStore, normalizeMemoryKey, recordRetraction, selectFireablePatterns } from "@muse/memory";
+import { aggregateActivitySignals, contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, recordRetraction, selectFireablePatterns } from "@muse/memory";
 import { AuthoredSkillStore, loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import { buildSkillsPrompt } from "./chat-skills.js";
 import { resolveSkillRewardsFile } from "./commands-skills.js";
@@ -859,16 +859,32 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   const memoryHolder: { current: Awaited<ReturnType<NonNullable<typeof memoryStore>["findByUserId"]>> | undefined } = {
     current: memoryStore ? await Promise.resolve(memoryStore.findByUserId(userId)) : undefined
   };
+  // Contested-fact caution on the CHAT persona (parity with ask's grounding block,
+  // fire 20/21 gate-asymmetry): a fact whose value FLIPPED across confirmations is
+  // volatile, so the persona must say "confirm it's current" instead of asserting a
+  // value Muse itself knows is unstable. Derived from the belief-provenance store,
+  // refreshed alongside memory. Best-effort (fail-soft to no caution, like ask).
+  const contestedHolder: { current: ReadonlySet<string> } = { current: new Set() };
+  const refreshContestedKeys = async (): Promise<void> => {
+    const keys = memoryHolder.current ? Object.keys(memoryHolder.current.facts) : [];
+    if (keys.length === 0) { contestedHolder.current = new Set(); return; }
+    try {
+      const provenance = deriveFactProvenance(await new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()).query(userId));
+      contestedHolder.current = contestedFactKeys(keys, provenance, { normalizeKey: normalizeMemoryKey, now: Date.now() });
+    } catch { contestedHolder.current = new Set(); }
+  };
   const refreshMemory = async (): Promise<void> => {
     if (memoryStore) memoryHolder.current = await Promise.resolve(memoryStore.findByUserId(userId));
+    await refreshContestedKeys();
   };
+  await refreshContestedKeys();
   // Episodic memory in the persona: the most recent episodes for this user
   // ride into the system prompt so Muse recalls past sessions, not just the
   // last-chat tail. Best-effort (missing/corrupt episodes file → none).
   const personaEpisodes = await loadPersonaEpisodes(userId).catch(() => []);
   const recurringThreads = recurringEpisodeThreads(personaEpisodes);
   const personaPrompt = (): string | undefined =>
-    memoryHolder.current ? buildMusePersona({ ...memoryHolder.current, episodes: personaEpisodes, recurringThreads }, userId) : undefined;
+    memoryHolder.current ? buildMusePersona({ ...memoryHolder.current, episodes: personaEpisodes, recurringThreads }, userId, { contestedKeys: contestedHolder.current }) : undefined;
 
   // Long-session compaction: if last-chat.jsonl has grown past the threshold,
   // summarise the old turns into one line before seeding — so a multi-day

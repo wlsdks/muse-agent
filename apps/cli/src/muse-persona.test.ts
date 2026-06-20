@@ -57,6 +57,35 @@ describe("buildMusePersona", () => {
     expect(prompt).toContain("home_city: Seoul (previously Busan)");
   });
 
+  it("CONTESTED: a volatile fact (value flipped) carries the 'confirm it's current' caution — chat-path parity with ask (fire 20/21 gate-asymmetry)", () => {
+    const prompt = buildMusePersona(
+      { facts: { home_city: "Busan", name: "Stark" }, preferences: {} },
+      "stark",
+      { contestedKeys: new Set(["home_city"]) }
+    );
+    expect(prompt).toContain("home_city: Busan (value has changed before — confirm it's current)");
+    expect(prompt).toContain("name: Stark"); // a stable fact gets NO caution
+    expect(prompt).not.toContain("name: Stark (value has changed");
+  });
+
+  it("NO contested caution when the set is empty / absent (no over-firing — IrrelAcc)", () => {
+    const prompt = buildMusePersona({ facts: { city: "Seoul" }, preferences: {} }, "stark", { contestedKeys: new Set() });
+    expect(prompt).toContain("city: Seoul");
+    expect(prompt).not.toContain("confirm it's current");
+    // absent option (back-compat) also renders plainly
+    expect(buildMusePersona({ facts: { city: "Seoul" }, preferences: {} }, "stark")).not.toContain("confirm it's current");
+  });
+
+  it("contested caution takes precedence over the value-blind (previously X) parenthetical", () => {
+    const prompt = buildMusePersona(
+      { facts: { home_city: "Busan" }, preferences: {}, factHistory: [{ key: "home_city", previousValue: "Seoul" }] },
+      "stark",
+      { contestedKeys: new Set(["home_city"]) }
+    );
+    expect(prompt).toContain("confirm it's current");
+    expect(prompt).not.toContain("(previously Seoul)"); // the volatile caution replaces the prior-value note
+  });
+
   it("renders only the latest prior per key and never a stale-equal suffix", () => {
     const prompt = buildMusePersona(
       {
