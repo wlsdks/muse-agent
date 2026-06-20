@@ -27,7 +27,7 @@ export type {
 } from "./tiering.js";
 export { classifyTier, planTieredRun } from "./tiering.js";
 export type { DecomposeDecision, DecomposedRequest, DecomposeSignals, Subtask } from "./decompose-trigger.js";
-export { decomposeRequest, decomposeRequestWithKind, shouldDecompose } from "./decompose-trigger.js";
+export { decomposeRequest, decomposeRequestWithKind, listHasBackReference, shouldDecompose } from "./decompose-trigger.js";
 export type {
   LeadWorkerDeps,
   LeadWorkerResult,

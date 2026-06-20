@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decomposeRequest, decomposeRequestWithKind, shouldDecompose } from "../src/index.js";
+import { decomposeRequest, decomposeRequestWithKind, listHasBackReference, shouldDecompose } from "../src/index.js";
 
 describe("decomposeRequestWithKind — flags a SEQUENCED (dependent) split vs an INDEPENDENT list", () => {
   it("marks an ordered sequence sequenced=true (later steps may depend on earlier output)", () => {
@@ -118,5 +118,51 @@ describe("decomposeRequest — structural split into independent sub-tasks", () 
   it("ignores a single numbered marker (needs 2+ to be a list)", () => {
     const subtasks = decomposeRequest("1. 회의록만 요약해줘");
     expect(subtasks.length).toBe(1);
+  });
+});
+
+describe("decomposeRequestWithKind — back-reference detection upgrades list to sequenced=true (MAST reasoning-action mismatch)", () => {
+  it("numbered list WITH English back-reference → sequenced=true and 3 subtasks", () => {
+    const d = decomposeRequestWithKind("1. Fetch the sales data. 2. Summarize the result from step 1. 3. Email me that summary.");
+    expect(d.sequenced).toBe(true);
+    expect(d.subtasks.length).toBe(3);
+  });
+
+  it("numbered list WITH Korean back-reference → sequenced=true", () => {
+    const d = decomposeRequestWithKind("1. 회의록 요약 2. 그 요약에서 액션아이템 추출 3. 일정 등록");
+    expect(d.sequenced).toBe(true);
+  });
+
+  it("bulleted list WITH back-reference → sequenced=true", () => {
+    const d = decomposeRequestWithKind("- pull the metrics\n- chart the result\n- email the above");
+    expect(d.sequenced).toBe(true);
+  });
+
+  it("REGRESSION: plain independent Korean numbered list → sequenced=false (isolation preserved)", () => {
+    const d = decomposeRequestWithKind("다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록");
+    expect(d.sequenced).toBe(false);
+  });
+
+  it("REGRESSION: plain independent English numbered list → sequenced=false", () => {
+    const d = decomposeRequestWithKind("1. List my notes. 2. List my tasks. 3. List my events.");
+    expect(d.sequenced).toBe(false);
+  });
+});
+
+describe("listHasBackReference — pure helper (direct unit tests)", () => {
+  it("returns false when the ONLY back-reference token is in item 0 (items[1..] only count)", () => {
+    expect(listHasBackReference(["use the result here", "do X", "do Y"])).toBe(false);
+  });
+
+  it("returns true when items[1] contains a back-reference token", () => {
+    expect(listHasBackReference(["fetch data", "summarize the result"])).toBe(true);
+  });
+
+  it("returns false for an independent list with no back-reference tokens", () => {
+    expect(listHasBackReference(["회의록 요약", "액션아이템 추출", "일정 등록"])).toBe(false);
+  });
+
+  it("returns true for a Korean back-reference in items[1]", () => {
+    expect(listHasBackReference(["회의록 요약", "그 요약에서 액션아이템 추출"])).toBe(true);
   });
 });

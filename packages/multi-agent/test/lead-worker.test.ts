@@ -276,6 +276,17 @@ describe("runLeadWorkerTask — SEQUENCED decomposition threads prior step outpu
     await runLeadWorkerTask("먼저 회의록을 요약하고 그 다음 액션아이템을 추출해줘", deps({ execute }));
     expect(priors[1] ?? []).toEqual([]); // step 2 gets NO prior (the blank failed, not threaded)
   });
+  it("numbered list WITH back-reference threads step 1's output into step 2's worker (MAST)", async () => {
+    const { priors, execute } = capturePriors();
+    // 3 items so shouldDecompose fires (enumeration >= 3); item 2 has a back-reference → sequenced=true
+    await runLeadWorkerTask(
+      "1. 회의록을 요약해줘 2. 그 요약에서 액션아이템을 추출해줘 3. 일정 등록해줘",
+      deps({ execute })
+    );
+    expect(priors).toHaveLength(3);
+    expect(priors[0]).toBeUndefined(); // step 1 has no prior
+    expect(priors[1]?.some((p) => p.includes("회의록"))).toBe(true); // step 2 SEES step 1's output
+  });
 });
 
 describe("runLeadWorkerTask — failure propagation (MAST: never swallow)", () => {

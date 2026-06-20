@@ -111,32 +111,67 @@ function extractSequencedSteps(request: string): string[] {
     .filter(Boolean);
 }
 
+// Explicit back-reference tokens that signal item N depends on item N-1's output
+// (arXiv 2503.13657 MAST: reasoning-action mismatch). Only checked in items[1..].
+const BACK_REFERENCE_TOKENS_EN = [
+  "step 1", "step 2", "step 3",
+  "the result", "that result", "the output",
+  "the above", "from above",
+  "previous step", "prior step",
+  "the summary", "that summary",
+  "those results", "the data from"
+] as const;
+
+const BACK_REFERENCE_TOKENS_KO = [
+  "그 결과", "그결과",
+  "위에서", "위의",
+  "이전 단계", "이전단계",
+  "그 요약", "그요약",
+  "그것을", "그걸",
+  "앞에서", "방금"
+] as const;
+
+/** Returns true iff any item at index >= 1 contains an explicit cross-item dependency token. */
+export function listHasBackReference(items: readonly string[]): boolean {
+  const tail = items.slice(1);
+  return tail.some((item) => {
+    const lower = item.toLowerCase();
+    return (
+      BACK_REFERENCE_TOKENS_EN.some((token) => lower.includes(token)) ||
+      BACK_REFERENCE_TOKENS_KO.some((token) => item.includes(token))
+    );
+  });
+}
+
 export interface DecomposedRequest {
   readonly subtasks: readonly Subtask[];
   /**
    * `true` iff the split came from an ORDERED sequence ("먼저 … 그 다음 …" /
-   * "first … then …") — later steps may operate on an earlier step's RESULT, so
-   * the engine threads prior outputs forward. A numbered/bulleted list is
-   * `false` (independent items run in isolation). Distinguishing them is what
-   * stops a sequenced step 2 from running blind (MAST reasoning-action mismatch).
+   * "first … then …") OR from a numbered/bulleted list that carries explicit
+   * back-references ("그 결과", "the result", …) — later steps may operate on
+   * an earlier step's RESULT, so the engine threads prior outputs forward. A
+   * numbered/bulleted list with NO back-references is `false` (independent
+   * items run in isolation). Distinguishing them is what stops a sequenced
+   * step 2 from running blind (MAST reasoning-action mismatch, arXiv 2503.13657).
    */
   readonly sequenced: boolean;
 }
 
 /**
  * Deterministic structural decomposition: pull sub-tasks out of a
- * numbered/bulleted list (INDEPENDENT) or an ordered multi-step sequence
- * (SEQUENCED — later steps may depend on earlier output). Returns ONE sub-task
- * (the whole request) when no structure is present — a broad-scope aggregation
- * ("내 노트 전부 … 보고서") has no literal split, so it falls back to single and
- * the engine asks an injected model planner to split it.
+ * numbered/bulleted list (INDEPENDENT unless back-references detected) or an
+ * ordered multi-step sequence (SEQUENCED — later steps may depend on earlier
+ * output). Returns ONE sub-task (the whole request) when no structure is
+ * present — a broad-scope aggregation ("내 노트 전부 … 보고서") has no literal
+ * split, so it falls back to single and the engine asks an injected model
+ * planner to split it.
  */
 export function decomposeRequestWithKind(request: string): DecomposedRequest {
   const numbered = extractNumberedItems(request);
-  if (numbered.length >= 2) return { sequenced: false, subtasks: toSubtasks(numbered) };
+  if (numbered.length >= 2) return { sequenced: listHasBackReference(numbered), subtasks: toSubtasks(numbered) };
 
   const bullets = extractBulletItems(request);
-  if (bullets.length >= 2) return { sequenced: false, subtasks: toSubtasks(bullets) };
+  if (bullets.length >= 2) return { sequenced: listHasBackReference(bullets), subtasks: toSubtasks(bullets) };
 
   const steps = extractSequencedSteps(request);
   if (steps.length >= 2) return { sequenced: true, subtasks: toSubtasks(steps) };
