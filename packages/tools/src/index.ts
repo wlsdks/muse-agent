@@ -536,7 +536,7 @@ function tokenizePrompt(text: string): Set<string> {
  * and "homework" never matches "home". Words under 4 chars require an exact
  * hit (so "on"/"off" don't prefix-match "online"/"office").
  */
-function tokenMatchesKeywordWord(token: string, word: string): boolean {
+export function tokenMatchesKeywordWord(token: string, word: string): boolean {
   if (token === word) return true;
   // Agglutinative scripts (Korean/CJK) attach particles to the stem, so the
   // keyword is a substring of one token: "마감" inside "마감인". Match by

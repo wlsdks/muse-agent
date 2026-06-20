@@ -11,6 +11,7 @@
  */
 
 import type { MuseTool, MuseToolDefinition } from "@muse/tools";
+import { tokenMatchesKeywordWord } from "@muse/tools";
 
 export interface ToolFilterContext {
   readonly userMessage: string;
@@ -226,11 +227,9 @@ function isMandatoryTool(definition: MuseToolDefinition, recentSet: ReadonlySet<
   return !domain || domain === "core";
 }
 
-const NON_ASCII_RE = /[^\u0000-\u007f]/u;
-
 /**
- * Keyword → prompt matcher — INFLECTION-AWARE, mirroring `@muse/tools`
- * `tokenMatchesKeywordWord` / `keywordMatchesPromptTokens` exactly so the
+ * Keyword → prompt matcher — INFLECTION-AWARE, delegating to the SHARED
+ * `@muse/tools` `tokenMatchesKeywordWord` leaf so the
  * agent-core ranking layer (cap / `shouldKeep`) and the `@muse/tools`
  * selection layer agree on which tools a prompt makes relevant. They used
  * to disagree: selection accepted inflections (`lights`→`light`) while this
@@ -270,16 +269,6 @@ function keywordMatchesPrompt(keyword: string, promptLower: string): boolean {
     }
     return false;
   });
-}
-
-function tokenMatchesKeywordWord(token: string, word: string): boolean {
-  if (token === word) {
-    return true;
-  }
-  if (NON_ASCII_RE.test(word)) {
-    return word.length >= 2 ? token.includes(word) : false;
-  }
-  return word.length >= 4 && token.startsWith(word) && token.length - word.length <= 3;
 }
 
 const promptTokenCache = new Map<string, Set<string>>();
