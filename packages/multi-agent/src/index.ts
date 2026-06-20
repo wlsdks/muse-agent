@@ -37,7 +37,7 @@ export type {
   SubtaskStatus,
   SynthesisVerdict
 } from "./lead-worker.js";
-export { dedupeSubtasks, detectSubtaskConflicts, runLeadWorkerTask, verifySynthesisCoverage } from "./lead-worker.js";
+export { dedupeSubtasks, detectFanInConflicts, detectSubtaskConflicts, runLeadWorkerTask, verifySynthesisCoverage } from "./lead-worker.js";
 
 export interface AgentWorker {
   readonly id: string;
@@ -140,6 +140,20 @@ export interface OrchestrationRunOptions {
    * Caller-provided so this package stays model-agnostic; fail-soft.
    */
   readonly verifyFinalAnswer?: (objective: string, output: string) => Promise<{ readonly satisfied: boolean; readonly missing?: string }>;
+  /**
+   * Cross-worker CONTRADICTION on the fan-in — the grounding edge applied to the
+   * orchestrate fan-OUT, mirroring lead-worker's `detectSubtaskConflicts`. Two
+   * COMPLETED workers can each pass their own gate yet assert disagreeing values on
+   * the SAME topic ("deadline Tuesday" vs "Wednesday"); the fused/concatenated answer
+   * would then present a self-contradicting claim as one confident truth (a
+   * GROUNDED≠TRUE leak coverage-checking can't catch). Given each completed worker's
+   * NEUTRALIZED `{ workerId, output }` (same safe value the synthesizer sees), return
+   * a caption per conflicting pair. A non-empty result records
+   * `response.raw.conflicts` and appends one honest "⚠ Workers disagree" line — never
+   * silently shipping an internally-inconsistent synthesis. Caller-provided so this
+   * package stays model-agnostic; fail-soft (throw/empty ⇒ no flag).
+   */
+  readonly detectConflicts?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<readonly string[]>;
 }
 
 export interface MultiAgentOrchestrationResult {
@@ -438,7 +452,8 @@ export class MultiAgentOrchestrator {
         options.summarizeWorkerOutput,
         options.synthesizeFinalAnswer,
         objectiveFromInput(input),
-        options.verifyFinalAnswer
+        options.verifyFinalAnswer,
+        options.detectConflicts
       ),
       results,
       runId
@@ -664,7 +679,8 @@ async function buildOrchestrationResponse(
   summarizeWorkerOutput: ((workerId: string, output: string) => Promise<string>) | undefined,
   synthesizeFinalAnswer?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>, guidance?: string) => Promise<string>,
   objective?: string,
-  verifyFinalAnswer?: (objective: string, output: string) => Promise<{ readonly satisfied: boolean; readonly missing?: string }>
+  verifyFinalAnswer?: (objective: string, output: string) => Promise<{ readonly satisfied: boolean; readonly missing?: string }>,
+  detectConflicts?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<readonly string[]>
 ): Promise<AgentRunResult["response"]> {
   const cap = maxOutputCharsPerWorker && maxOutputCharsPerWorker > 0 ? maxOutputCharsPerWorker : undefined;
   // Neutralize each completed worker's output ONCE, BEFORE summarize/cap, and feed
@@ -736,6 +752,24 @@ async function buildOrchestrationResponse(
     }
   }
 
+  // Cross-worker conflict (the grounding edge on the fan-OUT): are two COMPLETED
+  // workers internally contradictory? Runs on the SAME neutralized parts the
+  // synthesizer saw. Fail-soft — a throwing detector leaves the answer as-is. A
+  // non-empty result appends one honest line (alongside any incomplete note) so an
+  // internally-inconsistent answer is flagged, not passed off as one truth.
+  let conflicts: readonly string[] | undefined;
+  if (detectConflicts && completedParts.length >= 2) {
+    try {
+      const found = await detectConflicts(completedParts);
+      if (found.length > 0) {
+        conflicts = found;
+        output = `${output}\n\n⚠ Workers disagree on the same point — reconcile before trusting: ${found.join("; ")}`;
+      }
+    } catch {
+      // detector unavailable — surface nothing, keep the answer
+    }
+  }
+
   return {
     id: createRunId("multi_agent_response"),
     model,
@@ -746,7 +780,8 @@ async function buildOrchestrationResponse(
         status: result.status,
         workerId: result.workerId
       })),
-      ...(verification ? { verification } : {})
+      ...(verification ? { verification } : {}),
+      ...(conflicts ? { conflicts } : {})
     }
   };
 }

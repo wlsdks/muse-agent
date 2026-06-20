@@ -43,6 +43,25 @@ export async function detectSubtaskConflicts(
   return pairs.map((p) => `"${completed[p.aIndex]!.subtask.text}" vs "${completed[p.bIndex]!.subtask.text}"`);
 }
 
+/**
+ * The orchestrate-path twin of {@link detectSubtaskConflicts}: given the COMPLETED
+ * workers' `{ workerId, output }` parts (the same NEUTRALIZED shape the orchestrator's
+ * `synthesizeFinalAnswer`/`detectConflicts` deps receive), flag any pair of workers
+ * that contradict each other on the same topic. Reuses the SHARED pairwise
+ * contradiction detector so the orchestrate fan-in never drifts from the lead-worker
+ * one or the evidence layer. Returns a caption per conflicting pair (by workerId).
+ * Fail-soft over the injected embed (a comparison failure → no conflict, never a throw).
+ */
+export async function detectFanInConflicts(
+  parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>,
+  embed: (text: string) => Promise<readonly number[]>
+): Promise<readonly string[]> {
+  const nonEmpty = parts.filter((p) => typeof p.output === "string" && p.output.trim().length > 0);
+  if (nonEmpty.length < 2) return [];
+  const pairs = await detectPairwiseContradictions(nonEmpty.map((p) => p.output), embed);
+  return pairs.map((p) => `"${nonEmpty[p.aIndex]!.workerId}" vs "${nonEmpty[p.bIndex]!.workerId}"`);
+}
+
 export function verifySynthesisCoverage(finalAnswer: string, executions: readonly SubtaskExecution[]): SynthesisVerdict {
   const answerTokens = lexicalTokens(finalAnswer);
   const missing: string[] = [];

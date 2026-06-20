@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   dedupeSubtasks,
+  detectFanInConflicts,
   detectSubtaskConflicts,
   runLeadWorkerTask,
   verifySynthesisCoverage,
@@ -86,6 +87,30 @@ describe("detectSubtaskConflicts — cross-subtask CONTRADICTION on the fan-in (
   });
   it("fail-soft: an embed that throws yields no conflicts (never blocks the run)", async () => {
     expect(await detectSubtaskConflicts([ex("a", "the project deadline is tuesday"), ex("b", "the project deadline is wednesday")], async () => { throw new Error("down"); })).toEqual([]);
+  });
+});
+
+describe("detectFanInConflicts — orchestrate-path twin (workerId-keyed captions, parity with detectSubtaskConflicts)", () => {
+  const embed = async (t: string): Promise<readonly number[]> => (t.toLowerCase().includes("deadline") ? [1, 0] : [0, 1]);
+  const part = (workerId: string, output: string) => ({ output, workerId });
+  it("flags two completed workers that DISAGREE on the same topic, captioned by workerId", async () => {
+    const out = await detectFanInConflicts(
+      [part("Planner", "the project deadline is tuesday"), part("Checker", "the project deadline is wednesday")],
+      embed
+    );
+    expect(out).toEqual([`"Planner" vs "Checker"`]);
+  });
+  it("does NOT flag DIFFERENT topics (low cosine)", async () => {
+    expect(await detectFanInConflicts([part("A", "the project deadline is tuesday"), part("B", "lunch is kimbap today")], embed)).toEqual([]);
+  });
+  it("does NOT flag an ELABORATION (neither-subset gate)", async () => {
+    expect(await detectFanInConflicts([part("A", "the project deadline is tuesday"), part("B", "the project deadline is tuesday afternoon")], embed)).toEqual([]);
+  });
+  it("ignores a blank-output worker — needs ≥2 non-empty parts", async () => {
+    expect(await detectFanInConflicts([part("A", "the project deadline is tuesday"), part("B", "   ")], embed)).toEqual([]);
+  });
+  it("fail-soft: a throwing embed yields no conflicts (never blocks the answer)", async () => {
+    expect(await detectFanInConflicts([part("A", "the project deadline is tuesday"), part("B", "the project deadline is wednesday")], async () => { throw new Error("down"); })).toEqual([]);
   });
 });
 
