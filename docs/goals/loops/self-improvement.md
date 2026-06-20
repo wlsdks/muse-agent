@@ -271,3 +271,13 @@ ratchet: testFiles=1072 · fabrication 0 · gates: autoconfigure 620/620 isolate
 - **리뷰지점:** ④b 독립 Opus PASS — not-a-tautology(두 store가 in-memory state 공유 0·파일만 연결, mutation: 영속 무력화→양성 RED) · stub embed discriminating(cosine 0.577 vs 0, minScore 0.1 non-cheating) · framing honest(retrieval 증명이지 answer-quality 아님 명시) · no vacuous green(양성 `.some(Dana Kim)`이 load-bearing). 다양성: cross-cutting verification(fresh kind).
 - **리스크:** 낮음 — test-only(src 무변경, fabrication/grounding 무관), 로컬 파일. LIVE answer-quality delta는 backlog ◦로 남김(smoke:live가 이 박스서 stall). nit(judge): similarity 핀·userId-isolation 케이스=다음.
 - **lesson:** LIVE eval이 박스 stall로 막힐 때, 그 측정의 *결정론적 핵심*(여기선 persist→retrieve chain)을 주입식 의존성(embed)으로 model 없이 증명하면 landable + CI-gated로 더 강한 게이트가 됨. "skip은 pass 아님"을 deterministic로 우회.
+
+## fire 23 · 2026-06-21 · skill v2.0.0 · `602b675b`
+meta: value-class=wiring · pkg=@muse/mcp (+@muse/cli) · kind=reflection-store recall-ordering · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles=1071 · fabrication 0 · gates: mcp 1884 + cli build clean + check(유일 실패=1 api timeout saturation, AssertionError 0·model-fuzz 0·내 패키지 FAIL 0) + self-eval ok + lint · merge-to-main: n/a (fire 23 ≠ ×3, next at 24)
+
+- **무엇:** fire-11 retention(salience-aware)의 follow-up 갭 닫음 — ask-grounding RECALL이 `listReflections`(newest-first) `.slice(0,5)`라 retain된 high-support old insight가 묻혀 프롬프트에 못 닿던 걸, `selectReflectionsForRecall`(scoreReflectionRetention=recency+salience 재사용) 정렬로 교체. listReflections는 `muse reflections` 디스플레이용 newest-first 유지.
+- **왜:** retention≠display 갭 — 보존은 salience-aware인데 표면화는 recency-only라 보존의 의도(고-support insight 살림)가 grounding 표면에 반영 안 됨. 동일 score로 retention과 display 신호를 일치시켜 닫음. fire-19/21/22(영속+증명)에 이은 reflection 표면 정합.
+- **리뷰지점:** ④b 독립 Opus PASS — outcome real(현실값 21d/sup3=1.216 > 1d/sup1=1.177도 flip, mutation: recency-only→RED) · salience-vs-relevance 정직(old도 query-filter 없는 top-5였으니 새 off-topic 리스크 없음, new가 retention과 정합·salience는 +1로 saturate해 ancient가 무한 우세 못함) · sibling-complete(ask=유일 recall; commands-brief는 자체 supportCount selector·display/synthesis 경로 정확). 다양성: @muse/mcp reflection(fresh pkg).
+- **리스크:** 낮음 — 이미 RGV-grounded reflection 재정렬만(fabrication 무관), listReflections 불변(디스플레이 무영향), Date.now()는 정상 런타임. nit(judge): selectRetained와 sort 식 중복(무해, 독립가변 유지).
+- **lesson:** 메커니즘을 표면별로 형제-감사 — RETENTION을 salience-aware로 고치면 그 결과를 *소비하는* RECALL/DISPLAY 표면도 같은 신호를 쓰는지 확인(retain≠surface). 보존정책과 표면화정책의 신호 일치가 핵심.
