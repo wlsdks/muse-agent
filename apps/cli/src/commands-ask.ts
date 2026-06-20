@@ -30,7 +30,7 @@ import { basename, join, relative } from "node:path";
 import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, resolveRecallConfidentAt, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { actionToolRan, answerClaimsAction, answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, isMemoryInjection, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
-import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys } from "@muse/memory";
+import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys, staleFactKeys } from "@muse/memory";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -1849,6 +1849,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // provenance log ⇒ no annotation.
       let provisionalMemoryKeys: ReadonlySet<string> = new Set();
       let contestedMemoryKeys: ReadonlySet<string> = new Set();
+      let staleMemoryKeys: ReadonlySet<string> = new Set();
       if (matchedMemories.length > 0) {
         try {
           const provEntries = await new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()).query(userKey);
@@ -1868,9 +1869,17 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             provenance,
             { normalizeKey: normalizeMemoryKey, now: nowMs }
           );
+          // STALE: a matched fact last confirmed long ago — point-of-use caution that it
+          // may be out of date (the mildest mark; render never double-marks a contested/
+          // provisional key). Same provenance, same fail-soft scope.
+          staleMemoryKeys = staleFactKeys(
+            matchedMemories.map((m) => m.key),
+            provenance,
+            { normalizeKey: normalizeMemoryKey, now: nowMs }
+          );
         } catch { /* provenance unavailable — ground without the marks */ }
       }
-      const memoryBlock = buildMemoryContextBlock(matchedMemories, { contestedKeys: contestedMemoryKeys, provisionalKeys: provisionalMemoryKeys });
+      const memoryBlock = buildMemoryContextBlock(matchedMemories, { contestedKeys: contestedMemoryKeys, provisionalKeys: provisionalMemoryKeys, staleKeys: staleMemoryKeys });
 
       // OPT-IN shell-history grounding (B3): "what was that command?" — read the
       // user's history ONLY when --shell is passed, match by token overlap, and

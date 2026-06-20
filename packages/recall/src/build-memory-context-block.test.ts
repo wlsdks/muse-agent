@@ -40,4 +40,40 @@ describe("buildMemoryContextBlock — <<memory N>> grounding block", () => {
     expect(block).not.toMatch(/\[from /u); // forged citation neutralized
     expect(block).toContain("hunter2"); // real value survives — no source dropped, fabrication=0
   });
+
+  describe("staleKeys — point-of-use freshness caution (the third mark, mildest)", () => {
+    const facts = [
+      { key: "phone_model", value: "iPhone 12", kind: "fact" },
+      { key: "home_city", value: "Seoul", kind: "fact" }
+    ] as never;
+
+    it("marks ONLY the stale key with the freshness caution; the non-stale key has none", () => {
+      const block = buildMemoryContextBlock(facts, { staleKeys: new Set(["phone_model"]) });
+      expect(block).toMatch(/iPhone 12[^\n]*out of date/u); // phone_model cautioned
+      const homeLine = block.split("\n").find((l) => l.includes("home city"));
+      expect(homeLine).not.toMatch(/out of date/u); // home_city NOT cautioned
+    });
+
+    it("precedence: a key in BOTH contestedKeys AND staleKeys gets ONLY the contested mark", () => {
+      const block = buildMemoryContextBlock(
+        [{ key: "phone_model", value: "iPhone 12", kind: "fact" }] as never,
+        { contestedKeys: new Set(["phone_model"]), staleKeys: new Set(["phone_model"]) }
+      );
+      expect(block).toContain("changed before"); // contested mark wins
+      expect(block).not.toMatch(/out of date/u); // never double-marks (stale suppressed)
+    });
+
+    it("set-equality: BOTH facts and BOTH [memory: key] citation lines survive — no source dropped", () => {
+      const block = buildMemoryContextBlock(facts, { staleKeys: new Set(["phone_model"]) });
+      expect(block).toContain("[memory: phone_model]");
+      expect(block).toContain("[memory: home_city]");
+      expect(block).toContain("<<memory 1 — phone_model>>");
+      expect(block).toContain("<<memory 2 — home_city>>");
+    });
+
+    it("no opts (and no staleKeys) → byte-identical to the unmarked block", () => {
+      expect(buildMemoryContextBlock(facts)).toBe(buildMemoryContextBlock(facts, {}));
+      expect(buildMemoryContextBlock(facts, {})).not.toMatch(/out of date/u);
+    });
+  });
 });

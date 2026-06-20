@@ -148,29 +148,37 @@ export function renderMemoryFact(fact: MemoryFact): string {
   return value === "" || /^(?:yes|true)$/iu.test(value) ? topic : `${topic}: ${value}`;
 }
 
+const STALE_FACT_MARK = " (last confirmed a while ago — may be out of date)";
+
 /** Build the <<memory N>> grounding block from the on-topic remembered facts. Pure. */
 export function buildMemoryContextBlock(
   facts: readonly MemoryFact[],
-  opts?: { readonly provisionalKeys?: ReadonlySet<string>; readonly contestedKeys?: ReadonlySet<string> }
+  opts?: { readonly provisionalKeys?: ReadonlySet<string>; readonly contestedKeys?: ReadonlySet<string>; readonly staleKeys?: ReadonlySet<string> }
 ): string {
   if (facts.length === 0) {
     return "(no matching remembered facts)";
   }
-  // Two distinct point-of-use cautions (GROUNDED != TRUE on the source side):
+  // Three distinct point-of-use cautions (GROUNDED != TRUE on the source side),
+  // applied in precedence order (strongest signal wins; a key is marked once):
   // - CONTESTED: the value FLIPPED across confirmations (volatile) — Muse itself
   //   knows it's unstable, so an answer must say "confirm it's current", NOT assert it.
   //   Takes precedence: a contested fact was re-confirmed many times, so the once-seen
   //   "learned once" label would be factually wrong AND understate the real risk.
   // - PROVISIONAL: auto-extracted once, not yet re-confirmed (failed the durable gate).
+  // - STALE (mildest): last confirmed long ago — may simply be out of date. Never
+  //   double-marks a contested/provisional key.
   const provisional = opts?.provisionalKeys;
   const contested = opts?.contestedKeys;
+  const stale = opts?.staleKeys;
   return facts
     .map((f, i) => {
       const mark = contested?.has(f.key)
         ? " (value has changed before — confirm it's current)"
         : provisional?.has(f.key)
           ? " (unconfirmed — learned once, not yet re-confirmed)"
-          : "";
+          : stale?.has(f.key)
+            ? STALE_FACT_MARK
+            : "";
       return `<<memory ${(i + 1).toString()} — ${f.key}>>\n${renderMemoryFact(f)}${mark}\n[memory: ${f.key}]\n<<end>>`;
     })
     .join("\n\n");

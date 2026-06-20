@@ -382,6 +382,7 @@ export {
   readBeliefProvenance,
   selectPromotableFacts,
   selectVolatileBeliefs,
+  staleFactKeys,
   writeBeliefProvenance,
   type BeliefProvenance,
   type BeliefProvenanceStore,

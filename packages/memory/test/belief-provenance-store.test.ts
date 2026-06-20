@@ -18,6 +18,7 @@ import {
   readBeliefProvenance,
   selectPromotableFacts,
   selectVolatileBeliefs,
+  staleFactKeys,
   writeBeliefProvenance,
   type BeliefProvenance,
   type FactProvenance
@@ -144,7 +145,45 @@ describe("selectVolatileBeliefs — auto beliefs the extractor keeps flipping (H
       expect([...out]).toEqual(["Home City"]);
     });
   });
+
+  describe("staleFactKeys — matched facts last confirmed long ago (point-of-use freshness caution)", () => {
+    it("flags a key whose lastConfirmed is old (>= staleDays) but NOT a freshly confirmed one", () => {
+      const out = staleFactKeys(
+        ["old_fact", "fresh_fact"],
+        [
+          fp({ key: "old_fact", lastConfirmed: daysAgo(200) }),
+          fp({ key: "fresh_fact", lastConfirmed: daysAgo(1) })
+        ],
+        { now }
+      );
+      expect([...out]).toEqual(["old_fact"]);
+    });
+    it("fail-soft: a matched key with NO provenance entry, or an unparseable lastConfirmed, is NOT stale", () => {
+      const out = staleFactKeys(
+        ["mystery", "broken"],
+        [fp({ key: "broken", lastConfirmed: "not-a-date" })],
+        { now }
+      );
+      expect([...out]).toEqual([]);
+    });
+    it("reuses classifyFactFreshness's threshold (a key just under staleDays is not stale)", () => {
+      const out = staleFactKeys(["k"], [fp({ key: "k", lastConfirmed: daysAgo(89) })], { now });
+      expect([...out]).toEqual([]);
+    });
+    it("normalizes keys for matching but returns the ORIGINAL matched key", () => {
+      const out = staleFactKeys(
+        ["Phone Model"],
+        [fp({ key: "phone_model", lastConfirmed: daysAgo(200) })],
+        { normalizeKey: (k) => k.toLowerCase().replace(/ /gu, "_"), now }
+      );
+      expect([...out]).toEqual(["Phone Model"]);
+    });
+  });
 });
+
+function daysAgo(n: number): string {
+  return new Date(Date.parse("2026-06-20T00:00:00.000Z") - n * 86_400_000).toISOString();
+}
 
 function entry(over: Partial<BeliefProvenance> = {}): BeliefProvenance {
   return {

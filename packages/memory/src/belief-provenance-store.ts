@@ -330,6 +330,38 @@ export function contestedFactKeys(
   return out;
 }
 
+/**
+ * Matched facts whose `lastConfirmed` is old enough to be {@link classifyFactFreshness}
+ * `"stale"` — surfaced at POINT-OF-USE so a grounded answer cautions the value may be
+ * out of date instead of asserting a months-old auto-fact as confident truth. Reuses
+ * {@link classifyFactFreshness}'s threshold (no inlined cutoff). A key with NO provenance
+ * entry, or an unparseable `lastConfirmed`, is NOT stale (fail-soft — never nag on
+ * missing/bad data). Mirrors {@link contestedFactKeys}: keys compared through the
+ * injected `normalizeKey`, the ORIGINAL matched key returned for the caller's lookup.
+ * Pure.
+ */
+export function staleFactKeys(
+  matchedKeys: readonly string[],
+  provenance: readonly FactProvenance[],
+  opts: { readonly now: number; readonly staleDays?: number; readonly normalizeKey?: (key: string) => string }
+): ReadonlySet<string> {
+  const norm = opts.normalizeKey ?? ((key: string): string => key);
+  const stale = new Set<string>();
+  for (const p of provenance) {
+    const freshness = classifyFactFreshness(
+      opts.staleDays !== undefined
+        ? { lastConfirmed: p.lastConfirmed, now: opts.now, staleDays: opts.staleDays }
+        : { lastConfirmed: p.lastConfirmed, now: opts.now }
+    );
+    if (freshness === "stale") stale.add(norm(p.key));
+  }
+  const out = new Set<string>();
+  for (const key of matchedKeys) {
+    if (stale.has(norm(key))) out.add(key);
+  }
+  return out;
+}
+
 /** A belief the auto-extractor keeps giving different values for — the user should
  *  confirm which is right (which promotes it to durable user-source). */
 export interface VolatileBelief {
