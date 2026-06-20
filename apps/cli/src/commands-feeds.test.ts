@@ -546,3 +546,34 @@ describe("muse feeds search — end-to-end over a seeded archive", () => {
     await expect(runFeedsCommand(["search", "rust", "--limit", "5x"], file)).rejects.toThrow(/positive number/u);
   });
 });
+
+describe("feeds list — singular entry count", () => {
+  function seedOneFeedWithEntries(count: number): string {
+    const dir = mkdtempSync(join(tmpdir(), "muse-feeds-plural-"));
+    const file = join(dir, "feeds.json");
+    const entries = Array.from({ length: count }, (_, i) => ({
+      id: `e${i.toString()}`,
+      title: `Entry ${i.toString()}`,
+      link: `https://example.com/${i.toString()}`,
+      publishedAt: "2026-05-15T00:00:00Z",
+      summary: ""
+    }));
+    writeFileSync(
+      file,
+      JSON.stringify({ version: 1, feeds: [{ id: "solo", url: "https://example.com/solo.xml", name: "solo", entries }] }),
+      "utf8"
+    );
+    return file;
+  }
+
+  it("renders '1 entry' (not '1 entries') when a feed has exactly one entry", async () => {
+    const { stdout } = await runFeedsCommand(["list"], seedOneFeedWithEntries(1));
+    expect(stdout).toContain("1 entry\t");
+    expect(stdout).not.toContain("1 entries");
+  });
+
+  it("still pluralizes a feed with several entries", async () => {
+    const { stdout } = await runFeedsCommand(["list"], seedOneFeedWithEntries(3));
+    expect(stdout).toContain("3 entries\t");
+  });
+});

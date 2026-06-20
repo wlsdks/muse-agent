@@ -25,6 +25,7 @@ import { createMuseRuntimeAssembly, resolveNotesDir } from "@muse/autoconfigure"
 import type { Command } from "commander";
 
 import { chunkText } from "./notes-chunk.js";
+import { pluralize } from "./pluralize.js";
 
 export { chunkText } from "./notes-chunk.js";
 import { parsePdfBuffer } from "./commands-read.js";
@@ -265,7 +266,7 @@ export function formatNoteFolders(summaries: readonly FolderSummary[], now: Date
     return `  ${summary.folder.padEnd(width)}  ${summary.count.toString().padStart(3)} ${noun}   last edit ${formatRelativeAge(nowMs - summary.newestMs)}${cold}`;
   });
   const folderWord = summaries.length === 1 ? "collection" : "collections";
-  return `📁 Your note ${folderWord} (${summaries.length.toString()} folder${summaries.length === 1 ? "" : "s"}, ${totalNotes.toString()} notes):\n${lines.join("\n")}\n`;
+  return `📁 Your note ${folderWord} (${summaries.length.toString()} ${pluralize(summaries.length, "folder")}, ${totalNotes.toString()} ${pluralize(totalNotes, "note")}):\n${lines.join("\n")}\n`;
 }
 
 export function cosine(a: readonly number[], b: readonly number[]): number {

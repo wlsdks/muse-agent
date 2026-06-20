@@ -35,6 +35,7 @@ import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
 import { formatRelativeTime } from "./human-formatters.js";
+import { pluralize } from "./pluralize.js";
 import type { ProgramIO } from "./program.js";
 
 interface HistoryOptions {
@@ -163,7 +164,7 @@ export function registerHistoryCommand(program: Command, io: ProgramIO): void {
         }
         return;
       }
-      io.stdout(`Activity (${merged.length.toString()} entries, newest first):\n\n`);
+      io.stdout(`Activity (${merged.length.toString()} ${pluralize(merged.length, "entry", "entries")}, newest first):\n\n`);
       const now = new Date();
       for (const entry of merged) {
         const status = entry.status ? ` ${entry.status}` : "";

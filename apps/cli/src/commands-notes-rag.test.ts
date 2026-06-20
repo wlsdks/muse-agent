@@ -44,6 +44,12 @@ describe("formatNoteFolders — readable collection overview, flags cold folders
     expect(out).not.toMatch(/work.*gone cold/u); // work is fresh
   });
 
+  it("singularizes the total-notes count when there is exactly one note", () => {
+    const out = formatNoteFolders([{ folder: "inbox", count: 1, newestMs: ms(1), oldestMs: ms(1) }], now);
+    expect(out).toContain("📁 Your note collection (1 folder, 1 note):");
+    expect(out).not.toContain("1 notes");
+  });
+
   it("handles the empty case", () => {
     expect(formatNoteFolders([], now)).toContain("No notes yet");
   });

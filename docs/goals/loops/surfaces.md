@@ -499,3 +499,13 @@ ratchet: testFiles +1 · web tests 56/56 (+6) · fabrication 0 · self-eval exit
 - **왜**: 신뢰 대시보드가 "tool 정확도 100%"를 (실제 미스파이어 중에도) 또는 "0%"를(동작 중에도) 표시 = 사용자가 *그 숫자를 보고 판단하는* 신뢰 지표를 거짓 보고. **fire 54(desktop 다운로드 % 버블)의 크로스-표면 형제** — 가드 12 형제-감사("다른 표면의 같은 패턴")로 percentage-extreme-rounding 클래스를 desktop+web 양쪽에 완결. pkg 다름(@muse/web vs apps/desktop)이라 (pkg,kind) ratchet 무관.
 - **리뷰지점**: mutation-first RED 실증(extreme-guard 없을 때 0.999→"100%"·0.004→"0%" FAIL) → GREEN. 두 가드 상호배타(pct 100·0 동시 불가, judge 확인). [0.995,1)→"99%"는 신뢰 stat의 보수적 under-report(over-report였던 원 버그의 반대 = 올바른 편향). undefined→"—" 보존 + NaN도 처리(strict 개선). 순수 프레젠테이션, grounding/security 무접촉. 형제-감사: Dashboard:18이 web 유일 % readout(다른 *100은 CSS bar height — judge 확인). 러너업 `totalCost.toFixed(4)` 천단위 미그룹 = 별 클래스, backlog.
 - **리스크**: 없음(순수 헬퍼 1개 + 콜사이트 2곳, web build tsc+vite 통과, web 56/56, self-eval exit 0, 독립 Opus ④b judge가 mutation 양쪽 이빨·경계값 비모순·무접촉·sibling-audit 검증 후 PASS).
+
+## fire 56 · 2026-06-20 · skill v2.0.0 · (pending)
+meta: surface=cli · value-class=micro-fix · pkg=@muse/cli · kind=pluralization · verdict=PASS · firesSinceDrill=5
+ratchet: cli tests 2773/2773 (+5) · testFiles +1 · fabrication 0 · self-eval exit 0 · 표면 균형 web24·desktop13·cli19
+
+- **무엇**: 사용자-노출 "N 명사" 헤더 3곳이 count=1에서 "1 명사**s**"(단수 케이스 하드코딩 복수)를 출력 — `notes folders` "1 notes", `feeds list` "1 entries", `muse history` "Activity (1 entries…)". 공유 순수 헬퍼 `pluralize(count, singular, plural?)` 신설 후 3곳 라우팅(notes는 folder 카운트도 함께). 첫-실행/단일-항목 상태에서 비문법 노출 해소.
+- **왜**: 첫-실행/새 유저(노트 1·피드 엔트리 1·활동 1)가 즉시 보는 문법 결함 — wedge(notes/recall)+ambient(feeds/history) 표면. **fire 55(web Dashboard %)의 형제-감사가 ④b judge FAIL로 이어진 사례**: scout가 "유일한 miss"라 했으나 judge가 feeds:311·history:167 형제 2개를 적발→FAIL. 가드 12대로 롤백 대신 같은 fire에 형제 3개 전부 배칭 + 재발 불가하게 공유 헬퍼로 구조화→재판정 PASS.
+- **리뷰지점**: mutation-first — 헬퍼 단위테스트 + `formatNoteFolders` 렌더("1 note") + `feeds list` command-harness("1 entry\t" 有/"1 entries" 無) 아웃컴 테스트. `pluralize`의 `count===1`을 `===2`로 mutate시 5개 RED(judge 재실행 확인). history:167은 feeds와 byte-동일 swap(같은 단위테스트 헬퍼)이라 outcome 1회 커버로 비례. 무접촉: 이미 맞던 per-folder `note `(컬럼 패딩, 미라우팅)·`--json` entries:number 무변. cli 2773/2773.
+- **리스크**: 없음(헬퍼 1 + 콜사이트 3 + 테스트 3, tsc -b clean, lint 0, self-eval exit 0, 독립 Opus ④b judge가 형제완전성·mutation 이빨·무회귀·sibling-audit 재grep 검증 후 PASS).
+- **운영 메모**: 이 fire에서 fresh 워크트리의 @muse/mcp·a2a·agent-core dist 미빌드로 181 테스트파일 import 실패 → `pnpm --filter "@muse/cli..." build`로 복구(stale-dist 가드 11 작동). cli 같은 다-의존 패키지는 첫 테스트 전 의존성 빌드 필요.

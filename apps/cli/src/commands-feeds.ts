@@ -22,6 +22,7 @@ import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
 import { collapseNearDuplicates } from "./feed-dedupe.js";
+import { pluralize } from "./pluralize.js";
 import {
   compareFeedEntriesNewestFirst,
   defaultFeedsFile,
@@ -307,7 +308,7 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
         return;
       }
       for (const feed of store.feeds) {
-        io.stdout(`${feed.id}\t${feed.entries.length.toString()} entries\t${feed.url}\n`);
+        io.stdout(`${feed.id}\t${feed.entries.length.toString()} ${pluralize(feed.entries.length, "entry", "entries")}\t${feed.url}\n`);
       }
     });
 
