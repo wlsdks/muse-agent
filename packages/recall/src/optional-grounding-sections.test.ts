@@ -182,3 +182,21 @@ describe("optionalGroundingSections", () => {
     ].sort());
   });
 });
+
+describe("optionalGroundingSections — content-free grounding header guard (doctrine P2/P4)", () => {
+  it("drops a present:true block whose body is empty/whitespace (no content-free grounding header)", () => {
+    // `present` is keyed off a match-COUNT at the callsite while `body` is rendered
+    // separately — decoupled. A present:true block with an empty body would emit a
+    // grounding header backing nothing. It must not be emitted; a present block WITH
+    // real content still is. (No source lost — the dropped block has no content.)
+    const specs = optionalGroundingSections({
+      ...allAbsent,
+      contacts: { body: "   \n  ", present: true },   // present but content-free
+      tasks: { body: "<task 1>", present: true }       // present with real content
+    });
+    const headers = specs.map((s) => s.header);
+    expect(headers).not.toContain("=== MATCHING CONTACTS (from your address book) ===");
+    expect(headers).toContain("=== USER OPEN TASKS (sorted by due date, most imminent first) ===");
+    expect(specs).toHaveLength(1);
+  });
+});

@@ -408,7 +408,12 @@ export function optionalGroundingSections(
     { kind: "feeds", source: sources.feeds, spec: { body: sources.feeds.body, footer: "=== END FEED HEADLINES ===", header: "=== RECENT FEED HEADLINES (your watched RSS/Atom feeds, newest first) ===", present: sources.feeds.present } },
     { kind: "reflection", source: sources.reflection, spec: { body: sources.reflection.body, footer: "=== END NOTICED ===", header: "=== WHAT MUSE HAS NOTICED ABOUT YOU (high-level, from past sessions) ===", present: sources.reflection.present } }
   ];
-  const present = all.filter((entry) => entry.spec.present);
+  // `present` is set by the caller from a match-COUNT (e.g. matchedContacts.length > 0)
+  // while `body` is a separately-rendered string — decoupled, so a present:true block
+  // can still carry an empty/whitespace body, which would emit a grounding HEADER with no
+  // citable content: wasted context (doctrine 4) AND a citable-looking header backing
+  // nothing (doctrine 2). Drop it — no source is lost (there is no content to lose).
+  const present = all.filter((entry) => entry.spec.present && entry.spec.body.trim().length > 0);
   return edgePlaceByPriority(
     present.map((entry) => ({
       priority: entry.source.relevance ?? optionalGroundingRelevance(entry.kind),
