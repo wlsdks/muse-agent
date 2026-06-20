@@ -40,9 +40,9 @@ Verified existing context-strategy seams (from codegraph, 2026-06-20):
 
 ---
 
-## fire 1 · 2026-06-20 · skill v1.14.0 · <commit-pending>
+## fire 1 · 2026-06-20 · skill v1.14.0 · 05427eb7
 meta: value-class=micro-fix · pkg=@muse/recall · kind=context-assembly-hardening · verdict=PASS · firesSinceDrill=1
-ratchet: testFiles +0 (extended existing) · recall 326 pass · cli 2745 pass · pnpm check exit0 · pnpm lint exit0 · fabrication 0 · eval:tools=ATTEMPTED-STALLED (Ollama gen-model load hung before first result — known PC issue, see project_smoke_live_stall; slice is orthogonal to tool selection)
+ratchet: testFiles +0 (extended existing) · recall 326 pass · cli 2745 pass · pnpm check exit0 · pnpm lint exit0 · fabrication 0 · eval:tools=INCONCLUSIVE (ran many cases all-PASS then crashed mid-suite, ELIFECYCLE, no FAIL/no score — environmental Ollama drop per project_smoke_live_stall, NOT a threshold fail; slice is orthogonal to tool selection so check+lint+judge are the load-bearing gates)
 - **What:** Cross-block edge-placement reorder of the optional grounding blocks in
   `@muse/recall` (`optionalGroundingSections`/`present.ts`). Present blocks are now
   ordered highest-priority→HEAD+TAIL, lowest→middle via a pure stable
