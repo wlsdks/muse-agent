@@ -510,7 +510,7 @@ ratchet: cli tests 2773/2773 (+5) · testFiles +1 · fabrication 0 · self-eval 
 - **리스크**: 없음(헬퍼 1 + 콜사이트 3 + 테스트 3, tsc -b clean, lint 0, self-eval exit 0, 독립 Opus ④b judge가 형제완전성·mutation 이빨·무회귀·sibling-audit 재grep 검증 후 PASS).
 - **운영 메모**: 이 fire에서 fresh 워크트리의 @muse/mcp·a2a·agent-core dist 미빌드로 181 테스트파일 import 실패 → `pnpm --filter "@muse/cli..." build`로 복구(stale-dist 가드 11 작동). cli 같은 다-의존 패키지는 첫 테스트 전 의존성 빌드 필요.
 
-## fire 57 · 2026-06-21 · skill v2.0.0 · (pending)
+## fire 57 · 2026-06-21 · skill v2.0.0 · 05c219ba
 meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=mcp-server-console · verdict=PASS · firesSinceDrill=6
 ratchet: web tests 63/63 (+7) · testFiles +1 · fabrication 0 · self-eval exit 0 · 표면 균형 web25·desktop13·cli19
 

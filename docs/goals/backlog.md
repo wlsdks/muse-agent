@@ -22,7 +22,7 @@
 - ✓ desktop 음성모델 다운로드 % 버블 truncation("99%" 고착)·sub-1% "0%" 노이즈·no-clamp("101%") + NaN trap — downloadProgressBubble(round+clamp+≥1%, NaN-safe) — surfaces fire 54 (`2a756c0a`)
 - ✓ web Dashboard tool-accuracy `Math.round(x*100)`이 극값 붕괴(0.999→"100%" 거짓 완벽·0.004→"0%") — formatAccuracyPct(비극단 보장) — surfaces fire 55, fire 54의 크로스-표면 형제 (`7b2f708c`)
 - ✓ cli "1 notes"/"1 entries" 복수 하드코딩(notes folders·feeds list·history 헤더 3곳, count=1) — 공유 `pluralize` 헬퍼 추출 후 라우팅 — surfaces fire 56 (④b judge가 형제 2개 적발→배칭) (`4f4894e7`)
-- ✓ web MCP 서버 관리 콘솔 — McpServersView(목록·상태·connect/disconnect, API 기존 완비) — surfaces fire 57, 진안 "웹에서 다 관리" 요청 1번째 (`(pending)`)
+- ✓ web MCP 서버 관리 콘솔 — McpServersView(목록·상태·connect/disconnect, API 기존 완비) — surfaces fire 57, 진안 "웹에서 다 관리" 요청 1번째 (`05c219ba`)
 - ★ **웹 관리/자기강화 콘솔 로드맵** (진안 요청 "openclaw/hermes처럼 웹에서 MCP·설정·스킬·자기강화 다 관리"). MCP 콘솔(fire 57 done)에 이어 surfaces 루프가 fire별 배송:
   - ◦ web 자기강화 대시보드 — whetstone 약점원장·playbook 전략·learned·eval 스코어보드 *읽기* (신규 API GET 라우트 + 웹 뷰; 데이터는 ~/.muse 로컬파일이라 HTTP 노출부터)
   - ◦ web 스킬 컨트롤 — skills 목록 + reward/curate/author (신규 API + 웹)
