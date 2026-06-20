@@ -33,6 +33,10 @@ Verified existing context-strategy seams (from codegraph, 2026-06-20):
 - **Budgets** — `StepBudgetTracker` / `systemPromptTokenBudget` / step caps.
 
 ### Open follow-ups (next-fire candidates)
+- ◦ **Evidence-aware filename carve-out for the URL guard** (fire-15 judge residual): a token like
+  `report.md`/`backup.zip` parses as `host.tld` and, if absent from evidence under a personal-recall
+  question, abstains. Fail-close-correct + no corpus regression, but a future carve-out (recognize
+  common file extensions, or require a real public TLD) would cut hypothetical over-refusals. (apps/cli)
 - ◦ **Consolidation-spine (P3) decomposition** (fire-11 scout; fire 11 took #1):
   (2) chat-ink.ts persona contested/provisional marks — needs async closure + per-turn provenance
   refresh (sync `personaPrompt` closure over mutating `memoryHolder.current`); (3) surface
@@ -430,3 +434,27 @@ ratchet: testFiles +0 (extended existing) · multi-agent 169 pass · pnpm check 
 - lesson(process): a judge/agent verifying an UNCOMMITTED slice must restore mutations with an
   inverse edit, NEVER `git checkout <file>` — that wipes the uncommitted work (hit during this fire,
   recovered by re-applying from the diff).
+
+## fire 15 · 2026-06-21 · skill v2.0.0 · 5e734341
+meta: value-class=micro-fix · pkg=apps/cli · kind=grounding-value-guard · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles +0 (extended existing) · cli 2808 pass · pnpm check exit0 · pnpm lint exit0 · fabrication 0 · self-eval green
+- **DOCTRINE:** advances ② grounding-first admission (the shallowest Muse-own invention — fire 10 did the content-free HEADER guard; this closes the admitted-VALUE side for the URL class).
+- **What:** new deterministic `answerAssertsUnsupportedUrl` wired into the sync chat gate
+  `chatGatePrecheck` (covers gateChatAnswer + gateChatAnswerDeterministic). The gate had value
+  guards for number/email/identifier/IPv4/date but NONE for URLs — a bare domain `acme-login.com`
+  yields zero digit tokens so it drifted past all of them and was surfaced as grounded. Now an
+  answer asserting a host absent from BOTH question and evidence → abstain (canonical host compare:
+  lowercase, strip scheme/www/path/trailing-slash).
+- **Why:** phishing-adjacent harm — Netcraft: 34% of LLM brand-login URLs are wrong, one led to a
+  live phishing site; outbound-safety-adjacent (a wrong link the user clicks). Grounding:
+  Netcraft/CSO 2025-26, FActScore (arXiv:2305.14251), Self-RAG (arXiv:2310.11511). hermes/openclaw
+  surface model output with no deterministic verbatim-value verifier → Muse's sync code-gate family
+  is the differentiator; this widens it by the highest-harm class.
+- **Review point:** false-refusal safety is the watched risk — canonical host compare + question-
+  supplied + scheme/www/path variants all NOT refused (judge ran 2808 cli tests twice + 10
+  adversarial cases, zero regression).
+- **Risk:** none to floor — additive (fires only on a host in NEITHER question nor evidence), never
+  drops a real source, fabrication=0; abstain replaces only a fabricated link. Independent Opus
+  adaptive judge PASS 7/7 + mutation RED→GREEN (comment the guard line → drifted domain surfaced RED).
+  Sibling audit: both gate entrypoints covered via chatGatePrecheck; ask path uses its reverify judge
+  (no change). Residual: filename-token over-refusal (report.md) — fail-close-correct, follow-up filed.
