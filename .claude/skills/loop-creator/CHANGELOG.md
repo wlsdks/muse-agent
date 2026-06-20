@@ -9,6 +9,22 @@
 
 ---
 
+## 2.1.0 — 2026-06-20
+**무인 fire의 차단-질문 금지를 명시(⑥).** 진안 관측: 동시에 도는 6개 루프가 *전부* 방향 포크
+(vein thinning·테마 repoint·EXHAUSTION)에서 `AskUserQuestion`으로 진안을 막고 물어봄. 근본 원인 =
+생성 프롬프트(§3 골격)가 *정기 3-fire 리뷰*에 대해선 non-blocking을 반복했지만, *방향 포크*에서
+"묻지 말고 스스로 정해라"를 한 번도 금지조로 박지 않음 → SessionStart의 using-superpowers/clarify
+편향이 모델을 AskUserQuestion으로 밀어냄. `feedback_loop_self_decide` 메모리에 교정이 기록만 돼
+있고 스킬엔 반영 안 됨. 무인 cron엔 답할 사람이 없으니 차단 질문은 데드락.
+- **§3 골격에 ⑥ 무인 규칙 신설** — AskUserQuestion·EnterPlanMode 등 차단 도구 절대 금지, 방향
+  포크에서도 스스로 전환/종료+계속, 사람 검토는 §⑤b 비동기 표면으로만. 모호한-포크 1-질문은
+  *등록 단계*에만 허용으로 한정(§입력해석 line도 disambiguate).
+- **② EXHAUSTION 보강** — vein 고갈/테마 repoint 포크에서 AskUserQuestion 금지를 명시, repoint
+  후보는 저널+PushNotification으로 비동기 surface.
+- **loop-engineering.md §3-2 (c) 추가** — non-blocking이 방향 포크에도 적용됨을 계약 본체에 명문화.
+- **§3.5 자가검증에 ⑥ 체크 항목 추가** — 무인 규칙 누락 시 등록 FAIL.
+- 주의: *이미 등록된* cron 프롬프트엔 소급 적용 안 됨 — 활성 루프는 재등록해야 픽업.
+
 ## 2.0.0 — 2026-06-20
 **489-fire 실증 데이터 + 2026-06 1차 연구로 설계-골격 업그레이드**(진안 지시 "쌓인 기록·데이터 +
 웹 최신으로 싹"). v1.14.0 등록 후 8개 루프가 16~148 fire씩 일주일간 돌며 쌓은 저널(~1.1MB)을

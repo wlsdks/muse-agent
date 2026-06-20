@@ -1,6 +1,6 @@
 ---
 name: loop-creator
-version: 2.0.0
+version: 2.1.0
 description: Use when 진안 wants to start (register) an autonomous improvement loop on the Muse repo — "루프 돌려줘", "loop 등록", "X를 계속 강화하는 루프", or just a theme to iterate on. Generates a principle-compliant recurring loop prompt from its bundled loop-engineering.md contract AND registers the cron itself, then reports the prompt + cron id + how to stop. The autonomous successor to hand-written ad-hoc loop prompts.
 ---
 
@@ -49,7 +49,7 @@ description: Use when 진안 wants to start (register) an autonomous improvement
   파서"/"무인으로 머지 전까지" 같은 신호가 있으면 **Tier2**(브랜치+draft PR, 사람이 머지)로,
   단 그건 push 권한 부여라 등록 시 진안의 명시 opt-in을 1회 확인한다(§3.5).
 
-요지: 진안이 한 줄만 던져도 나머지는 스스로 채운다. 모호한 포크가 있을 때만 1개 질문.
+요지: 진안이 한 줄만 던져도 나머지는 스스로 채운다. 모호한 포크가 있을 때만 1개 질문 — **단 이 질문 허용은 *지금 이 등록 단계*(사람이 loop-creator를 부른 호출)에 한한다. 등록 후 무인으로 도는 루프 fire는 절대 AskUserQuestion을 쓰지 않는다**(§3 골격 ⑥).
 
 ## 파이프라인 (생성, 그다음 등록)
 
@@ -116,7 +116,7 @@ Muse 자율 개선 루프 — 테마: <목적>. 반드시 Node 24(nvm default).
    **논문-근거 우선(가능할 때, 테마-스코프)**: 강한-티어(Opus) scout가 **WebSearch로 검증된 2024-2026 AI-agent 논문**(내부 프로세스·자기개선·검증/grounding·메모리·오케스트레이션)을 확인하고 *적용가능 메커니즘 + arXiv ID*로 슬라이스를 스펙 → verify-then-apply. 단순 correctness 버그픽스보다 논문-기반 capability/방법 적용을 우선 — **단 이는 capability/method/research 테마에 한한다; hardening/correctness/security 테마에선 그 보안·correctness 작업 자체가 곧 가치이므로 "단순 버그픽스"로 깎아 deprioritize하지 않는다**(예: 프로토타입 오염·계약 위반 수정은 하드닝 루프의 최고 산출). floor를 깨는 회귀면 예외적으로 먼저. 적용 시 소스/다이제스트/커밋에 arXiv ID 인용.
    **공개/오픈 논문만**(진안 지시): arXiv preprint·오픈액세스 등 *누구나 자유롭게 참조·사용 가능한* 논문에 한정. published 방법/알고리즘을 **적용**하는 것이지 proprietary/비공개 자료나 코드를 복사하는 게 아님 — 출처(arXiv ID) 명시 + 자체 재구현.
    **DECOMPOSE-ON-DEFER**: 너무 커서(>1 fire) defer하면 *조용히 쉬운 걸로 안 내려가고* — 강한-티어(Opus) 1스텝으로 그 항목을 loop-sized ◦ 슬라이스들로 **쪼개 backlog에 기록**(Anthropic planner 패턴), 또는 "loop-decompose 불가, 진안 필요"를 명시. 같은 항목이 2회 defer되면 3-fire 알림에 escalate(defer가 일방 ratchet이 되지 않게).
-   **EXHAUSTION(쉬운 버그 vein 고갈 — 정직한 출구 + marginal-value floor)**: gap-scout가 2회 연속 "clean·objectively-correct·1-file 버그 없음"을 보고하면(또는 한계가치<고정 검증비 신호에서 *먼저*), 3번째 스카웃으로 토큰을 더 태우지 말고 — 다양성 RATCHET이 가리키는 *다른 (pkg, kind)*(EXPANSION 새 도구/논문-capability/큰 ◦ decompose)로 즉시 전환하거나, 그것도 없으면 backlog에 "vein 고갈, <후보>" 블로커 기록 후 이 fire 정직히 종료(루프는 다음 fire 계속). "할 게 없다 금지"는 *스카웃을 더 하드하게*가 아니라 *kind/패키지를 올리라*는 뜻이다.
+   **EXHAUSTION(쉬운 버그 vein 고갈 — 정직한 출구 + marginal-value floor)**: gap-scout가 2회 연속 "clean·objectively-correct·1-file 버그 없음"을 보고하면(또는 한계가치<고정 검증비 신호에서 *먼저*), 3번째 스카웃으로 토큰을 더 태우지 말고 — 다양성 RATCHET이 가리키는 *다른 (pkg, kind)*(EXPANSION 새 도구/논문-capability/큰 ◦ decompose)로 즉시 전환하거나, 그것도 없으면 backlog에 "vein 고갈, <후보>" 블로커 기록 후 이 fire 정직히 종료(루프는 다음 fire 계속). "할 게 없다 금지"는 *스카웃을 더 하드하게*가 아니라 *kind/패키지를 올리라*는 뜻이다. **이 포크에서 진안에게 AskUserQuestion으로 묻지 않는다(⑥) — 전환/종료는 루프가 스스로 정한다.** 테마 자체가 마른 것 같으면(repoint 후보) 그건 §⑤b 저널 + PushNotification으로 비동기 surface할 뿐, fire를 블로킹 질문으로 멈추지 않는다.
 ③ harness/host/dev-loop.md §3에 따라 검증가능 슬라이스를 TDD-first로. **행동 acceptance: 결과 상태(OUTCOME)를 채점 — 선언/config-only 테스트 금지(fabricated 값이 실제 드롭/동작하는 end-to-end 케이스).** **MUTATION-FIRST(모든 슬라이스, 드릴만 아님)**: 새 테스트는 코드 1줄 깨면 RED 되는지 먼저 확인 후 GREEN. 사소한 동종 변경(예: 남은 actuator들)은 **한 슬라이스로 배칭**(토큰 절약). **형제-감사**: 한 콜사이트/파서를 고치면 같은 클래스의 형제(다른 actuator·locale·파서 경로)를 *같은 fire*에 enumerate해 함께 패치하거나 backlog에 명시(조용히 한 곳만 고치지 않음). 새 도구는 tool-calling.md + eval:tools 골든.
 ④ 결정적 검증(정지조건): **먼저 만진 패키지를 빌드**(pnpm --filter @muse/<pkg> build) → 가장 좁은 테스트 → pnpm check → 관련 eval(<해당 eval>) → pnpm lint. **pnpm check가 실패하면 첫 진단은 clean-rebuild 재실행**(cross-package 실패는 대개 동시 루프發 stale-dist — [[project_stale_dist_from_loop]]; 한 번 재실행 後에도 빨가면 진짜 회귀).
 ④b 게이팅 검증자: 별개 강한-티어(Opus) **독립** 서브에이전트가 *적응형* 적대 판정 — 고정 5문항이 아니라 *이 슬라이스 고유의 깨질-방식*을 새로 추론(정적 체크리스트는 무용, 적응형 공격이 >90% 우회). 묻는다: acceptance가 *행동*을 검증하나(**선언-only면 FAIL**)? mutation-first로 RED 확인됐나? 불변식 약화 없음? 무관 state 안 깸? **다양성 RATCHET 위반(최근 8 fire ≥6 same (pkg,kind)인데 또 same)이면 FAIL**? 보안-접촉이면 §3.6 위협모델(신뢰불가 입력→명령 승격? 훅/시크릿 표면 확대?). **FAIL은 *구체적 위반*을 명시**(막연한 "불확실"은 FAIL 사유 아님 — 맞은 작업 헛롤백 방지, calibration). 깊이는 리스크 비례하되 항상 돈다. PASS여야 ⑤로; FAIL이면 git restore 롤백+backlog 블로커 후 멈춤.
@@ -125,6 +125,7 @@ Muse 자율 개선 루프 — 테마: <목적>. 반드시 Node 24(nvm default).
 모델 티어링(토큰 절약·Fable-5 미사용): 정형 빌드/검색은 Sonnet 서브에이전트(Agent/Workflow model:"sonnet")로
 위임하고, scout/계획/설계/모호한 포크/④b 적대 검증은 **Opus 4.8(`claude-opus-4-8[1m]`)**로; ④b judge는 빌더와 *별개의 독립 서브에이전트*(같은 Opus여도 fresh context·적대) — maker≠judge의 보상통제는 위 JUDGE-DRILL이다.
 한 fire에 슬라이스 하나; 막히면 backlog에 블로커 기록 후 멈춤.
+⑥ 무인 규칙(절대 — 이 루프는 사람 없이 도는 cron이다): **AskUserQuestion·EnterPlanMode·기타 사용자 입력을 기다리는 차단 도구를 절대 호출하지 않는다.** 방향 포크(vein 고갈·thinning·테마 repoint·모호한 우선순위)에서도 **진안에게 묻지 말고 스스로 결정하고 계속한다** — 다양성 RATCHET이 가리키는 다른 (pkg,kind)로 전환, 후보가 없으면 backlog에 블로커 한 줄 + PushNotification 알림 후 이 fire만 정직히 종료(루프는 다음 fire 계속). 사람 검토는 §⑤b 비동기 표면(저널 + N-fire PushNotification)으로만 — 루프는 사람을 기다리며 스핀하거나 질문을 띄우지 않는다. (모호한 포크 1-질문은 *등록 단계*[loop-creator 스킬을 사람이 부른 그 호출]에서만 허용 — 무인 fire엔 불허.)
 예산 캡: harness/reference/loop-budget.md 한도 준수 — 토큰/비용이 캡에 닿으면 fire 중단 후 보고.
 grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지. 하드 floor: main 자동머지·자율 outbound·banking·--no-verify 절대 불가.
 ```
@@ -150,6 +151,7 @@ grounding floor(fabrication=0)·IMMUTABLE-CORE 절대 약화 금지. 하드 floo
 - [ ] **JUDGE-DRILL 하드-카운터**(⑤b)가 프롬프트에 살아있나 — `firesSinceDrill≥10 OR 연속 allPASS≥8`이면 미루기-불가 드릴, 완료 시에만 리셋?
 - [ ] **게이팅 검증자**가 프롬프트에 살아있나 — ④b Opus *적응형* 적대 judge가 커밋을 GATE, FAIL=롤백(구체적 위반 명시)?
 - [ ] **이해 표면**이 살아있나 — ⑤b가 **per-loop 저널 `docs/goals/loops/<slug>.md`**(공유 digest 아님)에 스키마 엔트리 append + INDEX 자기 줄 갱신 + N fire마다 알림? backlog Done은 `✓` 한 줄(상세는 저널)?
+- [ ] **무인 규칙(⑥)**이 프롬프트에 살아있나 — fire가 **AskUserQuestion·EnterPlanMode 등 차단 도구를 절대 안 쓰고**, 방향 포크(vein 고갈·thinning·테마 repoint)에서도 스스로 결정+계속하며, 사람 검토는 비동기 표면으로만? 빠졌으면 FAIL(무인 루프가 진안을 막고 묻게 되는 #1 회귀).
 - [ ] **자율성 티어가 명시**됐나 — Tier1/Tier2 중 무엇인지 ⑤에 박혔고, Tier2면 진안 opt-in 받았나?
       하드 floor(main 자동머지·자율 outbound·banking·--no-verify) 금지 문구가 살아있나?
 - [ ] **같은 테마의 활성 cron이 이미 있나** — `CronList`로 확인. 있으면 등록 대신
