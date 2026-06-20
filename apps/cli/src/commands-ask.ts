@@ -2105,7 +2105,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             agentGroundingSources = [...decomposed.groundingSources];
             if (!options.json && decomposed.decomposed) {
               const capNote = decomposed.reason.includes("capped") ? " — extra items were dropped" : "";
-              io.stderr(`(decomposed into ${decomposed.subtaskCount} sub-tasks${capNote})\n`);
+              const incompleteNote = decomposed.synthesisIncomplete && decomposed.synthesisIncomplete.length > 0 ? " — ⚠ some sub-results may be missing; ask me to expand" : "";
+              io.stderr(`(decomposed into ${decomposed.subtaskCount} sub-tasks${capNote}${incompleteNote})\n`);
             }
           } else {
             const result = await assembly.agentRuntime.run({

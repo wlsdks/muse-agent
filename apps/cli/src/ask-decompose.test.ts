@@ -96,6 +96,17 @@ describe("runDecomposedAgentAsk — planner + grounding gate are wired (not dead
     expect(result.answer).toBe("SYNTH");
   });
 
+  it("flags the synthesis INCOMPLETE when a completed sub-task is dropped from the fan-in (G1 maker != judge)", async () => {
+    const query = "다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록";
+    const runner = runnerReturning((content) => {
+      if (content.startsWith("사용자 요청:")) return { response: { output: "회의록 요약 완료, 액션아이템 추출 완료." } }; // drops 일정 등록
+      return { response: { output: `done:${content}` } };
+    });
+    const result = await runDecomposedAgentAsk({ ...baseArgs, query, runner });
+    expect(result.reason).toContain("synthesis incomplete");
+    expect(result.synthesisIncomplete).toContain("일정 등록");
+  });
+
   it("fail-closes a refusing sub-task via the grounding gate (abstention is not folded in)", async () => {
     const runner = runnerReturning((content) => {
       if (content.startsWith("사용자 요청:")) return { response: { output: "SYNTH" } };

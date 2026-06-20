@@ -1,6 +1,37 @@
+import { lexicalTokens } from "@muse/agent-core";
+
 import { decomposeRequest, shouldDecompose, type Subtask } from "./decompose-trigger.js";
 
 export type SubtaskStatus = "completed" | "failed" | "ungrounded";
+
+/** Verdict of the fan-in objective-satisfaction check. */
+export interface SynthesisVerdict {
+  readonly satisfied: boolean;
+  /** Texts of completed sub-tasks whose result the synthesis dropped. */
+  readonly missing: readonly string[];
+}
+
+/**
+ * Objective-satisfaction verifier on the FAN-IN (maker != judge): does the
+ * synthesized answer actually INCORPORATE each completed sub-task's result, or did it
+ * silently drop one? A confident synthesis that omits a worker's output is the MAST
+ * "done-by-self-report / unaware of termination" failure (agent-testing.md: a "done"
+ * signal must be backed by a real verification step). Deterministic + conservative —
+ * a COMPLETED, non-empty sub-task whose salient tokens are ENTIRELY absent from the
+ * synthesis is flagged dropped; a paraphrase (any shared salient token) passes. Pure.
+ */
+export function verifySynthesisCoverage(finalAnswer: string, executions: readonly SubtaskExecution[]): SynthesisVerdict {
+  const answerTokens = lexicalTokens(finalAnswer);
+  const missing: string[] = [];
+  for (const ex of executions) {
+    if (ex.status !== "completed") continue;
+    const out = ex.output?.trim();
+    if (!out) continue;
+    const tokens = [...lexicalTokens(out)];
+    if (tokens.length > 0 && !tokens.some((t) => answerTokens.has(t))) missing.push(ex.subtask.text);
+  }
+  return { missing, satisfied: missing.length === 0 };
+}
 
 export interface SubtaskOutput {
   readonly output: string;
@@ -20,6 +51,13 @@ export interface LeadWorkerResult {
   readonly executions: readonly SubtaskExecution[];
   readonly finalAnswer: string;
   readonly reason: string;
+  /**
+   * Set when the fan-in `verifySynthesis` judged the synthesis INCOMPLETE — the
+   * texts of completed sub-tasks whose result the answer dropped. Absent ⇒ the
+   * synthesis covered every completed sub-task (or no verifier was supplied). The
+   * caller surfaces it rather than returning a confident-but-incomplete answer.
+   */
+  readonly synthesisIncomplete?: readonly string[];
 }
 
 export interface LeadWorkerDeps {
@@ -46,6 +84,15 @@ export interface LeadWorkerDeps {
    * effect, else the request runs single (fail to no-decompose).
    */
   readonly planner?: (request: string) => Promise<readonly string[]>;
+  /**
+   * Fan-in objective-satisfaction verifier (maker != judge): given the synthesized
+   * answer + the executions, return whether it incorporated every completed sub-task.
+   * A `!satisfied` verdict marks the result `synthesisIncomplete` so a dropped worker
+   * surfaces instead of being returned as confident-complete. Absent ⇒ no fan-in
+   * check (back-compat). Wire {@link verifySynthesisCoverage} for the deterministic
+   * default.
+   */
+  readonly verifySynthesis?: (request: string, finalAnswer: string, executions: readonly SubtaskExecution[]) => SynthesisVerdict | Promise<SynthesisVerdict>;
 }
 
 const MAX_SUBTASKS = 8;
@@ -154,6 +201,16 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
   }
 
   const finalAnswer = await deps.synthesize(request, executions);
+  // Fan-in objective-satisfaction (maker != judge): did the synthesis incorporate
+  // every completed sub-task, or silently drop one? Fail-soft — a verifier error
+  // leaves the answer as-is (never blocks the run).
+  let synthesisIncomplete: readonly string[] | undefined;
+  if (deps.verifySynthesis) {
+    try {
+      const verdict = await deps.verifySynthesis(request, finalAnswer, executions);
+      if (!verdict.satisfied && verdict.missing.length > 0) synthesisIncomplete = verdict.missing;
+    } catch { /* verifier unavailable — surface nothing, return the answer */ }
+  }
   const split = planned ? "model-planned" : "structural";
   const completed = executions.filter((e) => e.status === "completed").length;
 
@@ -163,7 +220,9 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
     finalAnswer,
     reason:
       `${split} decomposition → ${completed}/${executions.length} sub-tasks grounded` +
-      (truncated ? ` (capped at ${MAX_SUBTASKS})` : ""),
-    subtasks
+      (truncated ? ` (capped at ${MAX_SUBTASKS})` : "") +
+      (synthesisIncomplete ? ` · synthesis incomplete (${synthesisIncomplete.length.toString()} dropped)` : ""),
+    subtasks,
+    ...(synthesisIncomplete ? { synthesisIncomplete } : {})
   };
 }

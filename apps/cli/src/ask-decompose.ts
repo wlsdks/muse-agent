@@ -1,5 +1,5 @@
 import type { AgentRunInput } from "@muse/agent-core";
-import { runLeadWorkerTask, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
+import { runLeadWorkerTask, verifySynthesisCoverage, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
 import { answerIsRefusal } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
@@ -33,6 +33,8 @@ export interface DecomposedAskResult {
   readonly decomposed: boolean;
   readonly subtaskCount: number;
   readonly reason: string;
+  /** Completed sub-tasks the fan-in verifier judged dropped from the synthesis (G1). */
+  readonly synthesisIncomplete?: readonly string[];
 }
 
 const PLANNER_SYSTEM_PROMPT =
@@ -126,7 +128,11 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
       if (completed.length === 1) return completed[0]?.output ?? "";
       const result = await runSubtaskMessage(buildSynthesisPrompt(query, completed));
       return result.response.output ?? "";
-    }
+    },
+    // Fan-in objective-satisfaction (maker != judge): deterministically flag a
+    // completed sub-task the synthesis silently dropped, so an incomplete answer
+    // surfaces instead of being returned as confident-complete.
+    verifySynthesis: (_request, finalAnswer, executions) => verifySynthesisCoverage(finalAnswer, executions)
   };
 
   const leadResult = await runLeadWorkerTask(args.query, deps);
@@ -137,6 +143,7 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
     groundingSources: mergedSources,
     reason: leadResult.reason,
     subtaskCount: leadResult.subtasks.length,
+    ...(leadResult.synthesisIncomplete ? { synthesisIncomplete: leadResult.synthesisIncomplete } : {}),
     toolsUsed: [...mergedTools]
   };
 }

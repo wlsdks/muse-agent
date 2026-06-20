@@ -33,9 +33,10 @@ export type {
   LeadWorkerResult,
   SubtaskExecution,
   SubtaskOutput,
-  SubtaskStatus
+  SubtaskStatus,
+  SynthesisVerdict
 } from "./lead-worker.js";
-export { dedupeSubtasks, runLeadWorkerTask } from "./lead-worker.js";
+export { dedupeSubtasks, runLeadWorkerTask, verifySynthesisCoverage } from "./lead-worker.js";
 
 export interface AgentWorker {
   readonly id: string;

@@ -3,11 +3,36 @@ import { describe, expect, it, vi } from "vitest";
 import {
   dedupeSubtasks,
   runLeadWorkerTask,
+  verifySynthesisCoverage,
   type LeadWorkerDeps,
   type Subtask,
   type SubtaskExecution,
   type SubtaskOutput
 } from "../src/index.js";
+
+describe("verifySynthesisCoverage — objective-satisfaction on the fan-in (maker != judge)", () => {
+  const ex = (text: string, output: string, status: SubtaskExecution["status"] = "completed"): SubtaskExecution => ({ output, status, subtask: { id: "s", text } });
+  it("flags a completed sub-task the synthesis DROPPED (its salient tokens absent)", () => {
+    const v = verifySynthesisCoverage("The Q3 budget is approved at 5M.", [
+      ex("summarize Q3 budget", "Q3 budget approved at 5M"),
+      ex("list action items", "Action items: hire two engineers, ship the payments API")
+    ]);
+    expect(v.satisfied).toBe(false);
+    expect(v.missing).toContain("list action items");
+  });
+  it("passes when the synthesis incorporates every completed sub-task", () => {
+    const v = verifySynthesisCoverage("Q3 budget approved at 5M. Action items: hire engineers, ship the payments API.", [
+      ex("summarize Q3 budget", "Q3 budget approved at 5M"),
+      ex("list action items", "Action items: hire two engineers, ship the payments API")
+    ]);
+    expect(v.satisfied).toBe(true);
+    expect(v.missing).toEqual([]);
+  });
+  it("ignores failed / empty sub-tasks — only completed, non-empty ones must be covered", () => {
+    const v = verifySynthesisCoverage("done", [ex("x", "", "completed"), ex("y", "irrelevant unrelated stuff", "failed")]);
+    expect(v.satisfied).toBe(true);
+  });
+});
 
 describe("dedupeSubtasks — MAST #3: no duplicated sub-agent work", () => {
   it("drops case/whitespace-duplicate text (keep first, re-id sequentially, drop empty)", () => {
@@ -41,6 +66,25 @@ describe("runLeadWorkerTask — dedupes duplicate planner subtasks before fan-ou
     const result = await runLeadWorkerTask("내 노트 전부 훑어서 분기별 보고서 만들어줘", deps({ execute, planner }));
     expect(execute).toHaveBeenCalledTimes(3);
     expect(result.subtasks).toHaveLength(3);
+  });
+});
+
+describe("runLeadWorkerTask — fan-in verifier surfaces a dropped sub-task instead of returning confident-complete (G1)", () => {
+  const req = "다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록";
+  it("sets synthesisIncomplete + reason when verifySynthesis reports a dropped sub-task", async () => {
+    const result = await runLeadWorkerTask(req, deps({ verifySynthesis: () => ({ missing: ["일정 등록"], satisfied: false }) }));
+    expect(result.synthesisIncomplete).toEqual(["일정 등록"]);
+    expect(result.reason).toContain("synthesis incomplete");
+  });
+  it("leaves synthesisIncomplete unset when the verifier is satisfied", async () => {
+    const result = await runLeadWorkerTask(req, deps({ verifySynthesis: () => ({ missing: [], satisfied: true }) }));
+    expect(result.synthesisIncomplete).toBeUndefined();
+  });
+  it("is back-compat: no verifier ⇒ no synthesisIncomplete; a throwing verifier is fail-soft", async () => {
+    expect((await runLeadWorkerTask(req, deps())).synthesisIncomplete).toBeUndefined();
+    const throwing = await runLeadWorkerTask(req, deps({ verifySynthesis: () => { throw new Error("boom"); } }));
+    expect(throwing.synthesisIncomplete).toBeUndefined();
+    expect(throwing.finalAnswer).not.toBe("");
   });
 });
 
