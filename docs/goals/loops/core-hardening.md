@@ -4,6 +4,15 @@
 > Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main). **Every 3 fires: ff-merge the branch into origin/main, then keep working on the branch (진안 directive 2026-06-20).**
 > Cron `d8c31fa3` (every 15m, session-only; was `cfe778e2` under skill v1.14.0, re-registered with loop-creator v2.0 at fire 6). Stop: `CronDelete d8c31fa3`. Convention: [README](README.md).
 
+## fire 9 · 2026-06-20 · skill v2.0 · <commit-pending> (analysis + 3-fire main merge, no code slice)
+meta: value-class=refactor(work-list) · pkg=docs · kind=exhaustion-analysis+merge · verdict=N/A · firesSinceDrill=9
+ratchet: testFiles 1057→1057 · fabrication 0 · branch fires 7-8 → origin/main ff-merge (3-fire obligation)
+- 무엇: 이 세션의 core-edge **easy-clean(non-regex·non-agent-core) 베인이 얇아짐** — 타깃 스카웃이 already-built/non-issue 다수 적발(A2A label bound=이미 fire 63, feeds SSRF=내부피드 non-issue, formatDueLocal=clean+표면불일치위험, classifyMemory=fire 8 done, multi-hop recall=1b'/1c done 잔여 structural-blocked). 남은 고가치(source-conflict 콤마-값)는 1-fire clean이 아님(아래).
+- 왜 코드 슬라이스 없음: source-conflict 콤마-값 broadening은 false-negative(주소 London↔Paris 놓침)를 잡지만 **콤마-리스트 false-positive(첫요소 공유)를 새로 추가** → fire-6과 동일 실패-모드(regex 추출 오탐). list-vs-value 판별기 + 대규모 benign 코퍼스 필요한 >1-fire 재설계 → DECOMPOSE-ON-DEFER 기록(억지 1-fire 강행 안 함, EXHAUSTION marginal-value 규칙).
+- 리뷰지점: fire 9 = 진안의 3-fire main 머지 의무 이행(fires 7-8 anti-fabrication+memory-integrity를 origin/main에 통합) + work-list 정직 정제. 새 코드 0줄이라 ④b judge N/A(머지는 이미 fire별 PASS된 커밋).
+- 리스크: 0 — 코드 미변경, 머지는 ff-only(이미 검증된 커밋).
+lesson: 세션 내 한 (theme)의 easy-clean 베인이 마르면, 억지 1-fire 대신 *남은 고가치를 DECOMPOSE로 정직히 기록*하고 의무(머지)를 처리하라 — 방금 막힌 실패-모드(regex 추출)를 회피하는 게 다양성·marginal-value 규칙 둘 다에 부합.
+
 ## fire 8 · 2026-06-20 · skill v2.0 · 8e3616f4
 meta: value-class=micro-fix · pkg=@muse/memory · kind=memory-integrity/spurious-write · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles 1057→1057 (+2 cases memory-operation.test) · fabrication 0 · @muse/memory 456 tests green · pnpm check exit 0 · lint clean
