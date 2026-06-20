@@ -87,8 +87,8 @@ export interface RewardedStrategy {
 export type DecayedStrategy = RewardedStrategy;
 
 export type DistillResult =
-  | { readonly status: "recorded"; readonly strategies: readonly { readonly text: string; readonly tag?: string }[]; readonly decayed: readonly RewardedStrategy[]; readonly reinforced: readonly RewardedStrategy[] }
-  | { readonly status: "skipped"; readonly reason: string; readonly decayed: readonly RewardedStrategy[]; readonly reinforced: readonly RewardedStrategy[] };
+  | { readonly status: "recorded"; readonly strategies: readonly { readonly text: string; readonly tag?: string }[]; readonly decayed: readonly RewardedStrategy[]; readonly reinforced: readonly RewardedStrategy[]; readonly lowConsistencyRejected: number }
+  | { readonly status: "skipped"; readonly reason: string; readonly decayed: readonly RewardedStrategy[]; readonly reinforced: readonly RewardedStrategy[]; readonly lowConsistencyRejected: number };
 
 export async function distillSessionCorrections(options: DistillCorrectionsOptions): Promise<DistillResult> {
   const readLines = options.readLines ?? readLastChatHistory;
@@ -103,23 +103,23 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
   try {
     [lines, boundaries] = await Promise.all([readLines(), readBoundaries()]);
   } catch (cause) {
-    return { decayed: [], reason: `history read failed: ${errorMessage(cause)}`, reinforced: [], status: "skipped" };
+    return { decayed: [], reason: `history read failed: ${errorMessage(cause)}`, reinforced: [], status: "skipped", lowConsistencyRejected: 0 };
   }
 
   const range = extractCurrentSessionTurns(lines, boundaries);
   if (!range) {
-    return { decayed: [], reason: "no current-session range (no boundary or no turns yet)", reinforced: [], status: "skipped" };
+    return { decayed: [], reason: "no current-session range (no boundary or no turns yet)", reinforced: [], status: "skipped", lowConsistencyRejected: 0 };
   }
   const ownerId = range.userId ?? options.userId;
   if (!ownerId) {
-    return { decayed: [], reason: "no userId available (boundary missing it, no fallback supplied)", reinforced: [], status: "skipped" };
+    return { decayed: [], reason: "no userId available (boundary missing it, no fallback supplied)", reinforced: [], status: "skipped", lowConsistencyRejected: 0 };
   }
 
   const maxExchanges = options.maxExchanges ?? DEFAULT_MAX_EXCHANGES;
   const corrections = detectCorrections(range.turns, { maxExchanges });
   const approvals = detectApprovals(range.turns, { maxExchanges });
   if (corrections.length === 0 && approvals.length === 0) {
-    return { decayed: [], reason: "no user corrections or approvals in this session", reinforced: [], status: "skipped" };
+    return { decayed: [], reason: "no user corrections or approvals in this session", reinforced: [], status: "skipped", lowConsistencyRejected: 0 };
   }
 
   const playbookFile = options.playbookFile ?? resolvePlaybookFile(env as Record<string, string | undefined>);
@@ -192,6 +192,10 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
   }
 
   const recorded: { readonly text: string; readonly tag?: string }[] = [];
+  // Telemetry sink for the self-consistency gate (fire-10 onReject seam): count
+  // distillations dropped for low agreement so the floor's false-reject rate is
+  // observable from a real session, not just unit-tested.
+  let lowConsistencyRejected = 0;
   for (const exchange of corrections) {
     // Self-consistency WRITE gate (arXiv:2405.01563 / ReasoningBank MaTTS
     // 2509.25140): draw k drafts and bank one only if they AGREE — an unstable
@@ -202,7 +206,7 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
         modelProvider: options.modelProvider,
         embed
       }),
-      options.strategyConsistencySamples !== undefined ? { samples: options.strategyConsistencySamples } : {}
+      { onReject: () => { lowConsistencyRejected += 1; }, ...(options.strategyConsistencySamples !== undefined ? { samples: options.strategyConsistencySamples } : {}) }
     );
     if (!consistent) {
       continue;
@@ -236,6 +240,7 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
     const moved = decayed.length + reinforced.length;
     return {
       decayed,
+      lowConsistencyRejected,
       reason: moved > 0
         ? `adjusted ${moved.toString()} strateg${moved === 1 ? "y" : "ies"} by feedback; nothing new to distil`
         : "nothing new to record (all distilled strategies were empty or duplicates)",
@@ -243,7 +248,7 @@ export async function distillSessionCorrections(options: DistillCorrectionsOptio
       status: "skipped"
     };
   }
-  return { decayed, reinforced, status: "recorded", strategies: recorded };
+  return { decayed, lowConsistencyRejected, reinforced, status: "recorded", strategies: recorded };
 }
 
 function errorMessage(cause: unknown): string {

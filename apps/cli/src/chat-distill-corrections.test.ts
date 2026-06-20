@@ -15,6 +15,18 @@ const stub = (output: string): ModelProvider => ({
   async *stream() {}
 });
 
+// Returns a DIFFERENT output per generate() call (clamped to the last) — to
+// exercise the k-sample self-consistency gate with DISAGREEING drafts.
+const varyingStub = (outputs: readonly string[]): ModelProvider => {
+  let i = 0;
+  return {
+    id: "vary",
+    async generate() { return { id: "r", model: "m", output: outputs[Math.min(i++, outputs.length - 1)]! }; },
+    async listModels() { return []; },
+    async *stream() {}
+  };
+};
+
 async function tmpPlaybook(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "muse-distill-"));
   return join(dir, "playbook.json");
@@ -47,6 +59,30 @@ describe("distillSessionCorrections — end-of-session auto-distillation (Reason
     expect(saved).toHaveLength(1);
     expect(saved[0]!.text).toContain("불릿");
     expect(saved[0]!.tag).toBe("notes");
+  });
+
+  it("counts a low-consistency rejection in lowConsistencyRejected and banks nothing (telemetry sink, fire-10 onReject seam)", async () => {
+    const file = await tmpPlaybook();
+    // 3 DISAGREEING drafts for the one correction → self-consistency gate rejects
+    // (no embed → support/verbatim gates skip, so all 3 become drafts that disagree).
+    const res = await distillSessionCorrections({
+      model: "m",
+      // Same-script (Korean) drafts so each clears the held-out support gate
+      // (cosine 0.8 ∈ [0.50, 0.92)); their TEXT disagrees (near-zero Jaccard) so
+      // the self-consistency gate rejects via the DISAGREEMENT path (fires onReject).
+      modelProvider: varyingStub([
+        "strategy: 회의는 오전에 잡기\ntag: -",
+        "strategy: 이메일은 짧게 쓰기\ntag: -",
+        "strategy: 단위는 미터법으로 쓰기\ntag: -"
+      ]),
+      embed: async (text: string) => text.startsWith("그게") ? [1, 0, 0] : [0.8, 0.6, 0],
+      playbookFile: file,
+      readBoundaries: async () => boundaries,
+      readLines: async () => correctedSession
+    });
+    expect(res.lowConsistencyRejected).toBe(1);
+    expect(res.status).toBe("skipped");
+    expect(await queryPlaybook(file, "stark")).toHaveLength(0);
   });
 
   it("does NOT promote a near-verbatim restatement of the correction (gist gate, SIB arXiv:2603.01455)", async () => {
