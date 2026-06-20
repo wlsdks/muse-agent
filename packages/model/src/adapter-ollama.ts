@@ -18,6 +18,7 @@
 import { truncateErrorBody } from "@muse/shared";
 import type { JsonObject } from "@muse/shared";
 
+import { isWellFormedBase64 } from "./base64-image.js";
 import {
   localModelCapabilities
 } from "./provider-wire.js";
@@ -337,7 +338,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         const images = msg.role === "tool"
           ? []
           : (msg.attachments ?? [])
-              .filter((a) => a.mimeType.startsWith("image/") && typeof a.dataBase64 === "string" && a.dataBase64.length > 0)
+              .filter((a) => a.mimeType.startsWith("image/") && typeof a.dataBase64 === "string" && isWellFormedBase64(a.dataBase64))
               .map((a) => a.dataBase64 as string);
         return {
           ...(msg.role === "tool"
