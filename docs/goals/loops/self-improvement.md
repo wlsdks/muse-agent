@@ -231,3 +231,13 @@ ratchet: testFiles=1070 · fabrication 0 · gates: recall 366/366 + autoconfigur
 - **리뷰지점:** ④b 독립 Opus PASS(bug real·outcome-discriminating: origin이 tie 결정 요인, mutation RED·diversity OK) + judge가 형제 2곳 적발 → *같은 fire에 함께 패치*(형제-완전성). 두 fix 모두 mutation-verified.
 - **리스크:** 낮음 — 조건부 spread(origin 있을 때만), 8개 기존 필드 불변, 랭킹 페널티 복원만(fabrication 무관). input 타입 widening은 back-compat(optional).
 - **lesson(정직성 정정):** fire-17에서 Finding 2를 "hallucination"이라 기각한 건 **내 오류** — `context-engineering-builders.ts`를 @muse/agent-core에서만 찾고 @muse/autoconfigure를 안 봄. 교훈: 감사 cite가 "없는 파일"로 보여도 *전 패키지 grep*으로 확인 후 기각(잘못된 패키지에서 못 찾은 것일 수 있음). 그리고 형제-감사는 grep 범위를 @muse/recall까지 — selector를 먹이는 모든 패키지를 봐야 함(judge가 내 누락을 잡음).
+
+## fire 19 · 2026-06-21 · skill v2.0.0 · `932c3020`
+meta: value-class=new-capability · pkg=@muse/memory + @muse/autoconfigure · kind=audit-fix/store-persistence · verdict=PASS · firesSinceDrill=9
+ratchet: testFiles=1071 · fabrication 0 · gates: memory 482 + autoconfigure 615 + cli build clean + check(잔여 실패=flaky model property-fuzz[격리시 16/16 통과]+1 saturation api timeout, 무관; byte-hygiene 0=다른 루프가 commands-logo 수정) + self-eval ok + lint · merge-to-main: n/a (fire 19 ≠ ×3, next at 21)
+
+- **무엇:** 감사 #3(가장 명백한 inert) 수정 — CLI의 ConversationSummaryStore가 InMemory(DB 없음)라 매 프로세스 empty여서, 런타임 save 경로가 쓴 summary가 소실 + default-on cross-session recall이 항상 empty + fade/promotion 연료 고갈. `FileConversationSummaryStore`(JSON·atomic·0o600·ISO date round-trip·missing/corrupt→empty) 추가 + no-DB factory 기본을 File로(PERSIST=false면 InMemory). FileUserMemoryStore 패턴 미러.
+- **왜:** "default-on cross-session 기억"이 CLI에선 신기루였음(감사 Agent B #1). 이제 한 세션이 쓴 summary를 다음 세션이 실제로 recall → 진짜 cross-session 자기개선 + consolidation 연료 복구. 진안 "자기개선이 진짜 되는지"의 직접 답: inert를 실재로.
+- **리뷰지점:** ④b 독립 Opus PASS — outcome genuine(fresh instance가 prev write를 recall, InMemory는 불가, mutation: rename 무력화→RED)·dates+nested fact dates round-trip·InMemory와 semantics parity·robust(missing/corrupt→empty, atomic)·factory flip 안전(API서버 db→Kysely 불변, store-factories 테스트 갱신=계약변경 반영). 다양성: @muse/memory(fresh pkg) store-backend. nit 수정: 테스트 category를 유효 FactCategory(GENERAL)로.
+- **리스크:** 낮음 — 순수 storage backend(claim 생성 없음, fabrication 무관), 로컬 파일 no-egress(local-by-construction), read-modify-write race는 single-user CLI라 수용가능(기존 매-프로세스-소실보다 엄격히 개선). 형제 createTaskMemoryStore는 backlog 기록(judge 적발).
+- **lesson:** "default-on" 플래그가 켜져도 백엔드가 비영속(InMemory)이면 기능은 死 — 메커니즘 검증 시 *플래그뿐 아니라 store 백엔드가 프로세스 간 살아남는지*까지 확인. 형제-감사는 같은 factory의 다른 store(taskMemory)도 enumerate.
