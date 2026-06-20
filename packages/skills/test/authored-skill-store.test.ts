@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseSkillFile } from "../src/skill-parser.js";
-import { AuthoredSkillStore, scanSkillBodyForRisks, serializeAuthoredSkill, slugifySkillName } from "../src/authored-skill-store.js";
+import { AuthoredSkillStore, rankSkillsForEviction, scanSkillBodyForRisks, serializeAuthoredSkill, slugifySkillName } from "../src/authored-skill-store.js";
 
 function tmpDir(): string {
   return mkdtempSync(join(tmpdir(), "muse-authored-"));
@@ -462,5 +462,52 @@ describe("AuthoredSkillStore — restore (curate/consolidate rollback)", () => {
     expect(await store.listArchived()).not.toContain("one");
 
     expect(await store.restore("never-archived")).toBe(false);
+  });
+});
+
+describe("rankSkillsForEviction — utility-aware cap eviction (SkillOps arXiv:2605.13716 / TinyLFU)", () => {
+  it("evicts a NEVER-used skill before any ever-used one, regardless of authored age", () => {
+    const order = rankSkillsForEviction([
+      { name: "old-used", used: true, lastActiveMs: 1000 },
+      { name: "new-unused", used: false, lastActiveMs: 5000 }
+    ]);
+    expect(order[0]).toBe("new-unused"); // lowest utility evicted first
+  });
+
+  it("among the same usage-class, evicts least-recently-active first (LRU)", () => {
+    expect(rankSkillsForEviction([
+      { name: "fresh-used", used: true, lastActiveMs: 900 },
+      { name: "stale-used", used: true, lastActiveMs: 100 }
+    ])).toEqual(["stale-used", "fresh-used"]);
+  });
+
+  it("with no usage data, degrades to authored-age order (FIFO superset — no regression)", () => {
+    expect(rankSkillsForEviction([
+      { name: "newer", used: false, lastActiveMs: 200 },
+      { name: "older", used: false, lastActiveMs: 100 }
+    ])).toEqual(["older", "newer"]);
+  });
+});
+
+describe("AuthoredSkillStore enforceCap — a USED old skill survives a never-used newer one (not FIFO)", () => {
+  const draft = (name: string) => ({ name, description: `Use when ${name}; do the ${name} steps.`, body: `## Steps\n1. Do ${name} part one.\n2. Do ${name} part two.` });
+
+  it("evicts the never-used skill on overflow, keeping the older-but-USED one (FIFO would do the opposite)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-authored-cap-"));
+    let t = Date.parse("2026-06-01T00:00:00Z");
+    const store = new AuthoredSkillStore({ dir, maxSkills: 2, now: () => new Date(t) });
+
+    await store.writeOrPatch(draft("alpha"));          // oldest-authored
+    t += 86_400_000;
+    await store.recordUsage("alpha");                  // …but USED (utility)
+    t += 86_400_000;
+    await store.writeOrPatch(draft("beta"));           // never used, mid
+    t += 86_400_000;
+    await store.writeOrPatch(draft("gamma"));          // never used, newest → triggers cap (max 2)
+
+    const live = (await store.listAuthored()).map((s) => s.name);
+    expect(live).toContain("alpha");                   // USED oldest survives (FIFO would have evicted it)
+    expect(live).not.toContain("beta");                // never-used, least-recently-active → evicted
+    expect(live).toHaveLength(2);
   });
 });

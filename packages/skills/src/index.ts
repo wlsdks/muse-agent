@@ -42,11 +42,13 @@ export {
 
 export {
   AuthoredSkillStore,
+  rankSkillsForEviction,
   scanSkillBodyForRisks,
   serializeAuthoredSkill,
   slugifySkillName,
   DEFAULT_MAX_AUTHORED_SKILLS,
   type SkillDraft,
+  type SkillEvictionEntry,
   type SkillRiskScan,
   type AuthorAction,
   type AuthoredSkillStoreOptions
