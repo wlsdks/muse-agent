@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 21 · 2026-06-21 · skill v2.0 · <commit-pending> (file_read/grep missing-path → recovery hint; 3-fire merge)
+## fire 21 · 2026-06-21 · skill v2.0 · 790c76b5 (file_read/grep missing-path → recovery hint; 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/fs · kind=reliability-nudge · verdict=PASS · firesSinceDrill=1
 ratchet: testFiles 1071→1071 (+2 cases fs-read-tools read/grep, mutation-valid) · fabrication 0 · @muse/fs 격리 164 · pnpm check exit 0 · lint clean
 - 무엇: 존재 않는 직접 경로에 file_read/file_grep이 raw `ENOENT: ... stat '/abs'` 반환 → 12B 자가복구 불가 + 절대경로 leak. FIX(`isNotFoundError` code==="ENOENT"): 양 도구가 복구도구(file_list)+파일명 담은 actionable 메시지. 형제-감사: file_list는 missing cwd에 `{count:0}` 깔끔(유지). 
