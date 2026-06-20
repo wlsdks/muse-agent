@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ memory-fact value now wrapper-marker-escaped (escapeSystemPromptMarkers in renderMemoryFact) — closes the <<memory>> block breakout/forged-citation vector (OWASP ASI06, doctrine principle 5) — context-strategy fire 9 (detail in docs/goals/loops/context-strategy.md)
+
 - ✓ selectFilePassages per-source char-budget overshoot fixed (fit-before-admit + top-1 floor; AdaGReS arXiv:2512.25052) — context-strategy fire 8 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ shared the lexical matcher (tokenMatchesKeywordWord exported from @muse/tools, agent-core copy deleted) — closes the fire-5 drift bug class structurally; arXiv:2502.04073 — context-strategy fire 7 (detail in docs/goals/loops/context-strategy.md)
