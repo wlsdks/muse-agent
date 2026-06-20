@@ -261,3 +261,13 @@ ratchet: testFiles=1071 · fabrication 0 · gates: memory 484 + autoconfigure 61
 - **리뷰지점:** ④b 독립 Opus PASS — **retention-trap 반박**(normalizeTaskState가 `updatedAt ?? createdAt ?? now`로 보존 → rehydrate가 expiry 안 리셋; purge 테스트가 직접 증명) · outcome+mutation 진짜(fresh instance가 findById/findActiveBySession로 회수, 4개 nested Date exact getTime, rename 무력화→RED) · assembly 테스트 갱신 정당(PERSIST=false로 wiring만 검증·real ~/.muse 회피). 다양성: @muse/memory store-persistence(fire-19와 same kind·다른 store).
 - **리스크:** 낮음 — 순수 storage(fabrication 무관), 로컬 파일 no-egress, wrap이 InMemory 로직 100% 재사용(재구현 최소). nit(judge, 비차단): RMW race(single-user CLI 수용)·read시 expiry-clear 영속 위해 write-back.
 - **lesson:** wrap-delegate-persist = 복잡한 in-memory store(dual-index+retention+trim)를 File-back하는 안전 패턴 — 로직 재구현 대신 rehydrate→delegate→persist(단 normalize가 timestamp 보존하는지 먼저 확인, 안 그러면 retention 리셋 버그). 같은 factory의 형제 store(user/summary/task) 모두 File-default로 수렴.
+
+## fire 22 · 2026-06-21 · skill v2.0.0 · `6a99f621`
+meta: value-class=new-capability · pkg=@muse/autoconfigure (test) · kind=cross-turn-measurement/verification · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles=1072 · fabrication 0 · gates: autoconfigure 620/620 isolated (full check SIGTERM on apps/cli = 박스 포화, AssertionError 0·crash-marker 0; test-only라 cli 무영향) + self-eval ok + lint · merge-to-main: n/a (fire 22 ≠ ×3, next at 24)
+
+- **무엇:** 감사 #1(최대 갭: "자기개선이 실제로 돕는다는 end-to-end 증거 전무")의 **landable 절반** — `experience-recall-cross-session.test.ts`: session1이 FileConversationSummaryStore에 경험 저장 → session2(fresh instance, 파일만이 연결) `StoreBackedEpisodicRecallProvider`(주입 stub embed)가 **실제로 recall**; empty-store/unrelated-query는 recall 안 함. deterministic(Ollama 없음)·CI-gated.
+- **왜:** fires 19/21로 store가 영속하게 됐으니, 이제 "이전 세션 경험이 다음 세션에서 회수된다"는 cross-turn 메커니즘을 model 없이 증명 가능. 고정 모델에서 자기개선=experience-indexed retrieval이므로 retrieval-level 증명이 정당한 측정(answer-text 단언은 brittle anti-pattern). 진안 "자기개선이 진짜 되는지"의 결정론적 답.
+- **리뷰지점:** ④b 독립 Opus PASS — not-a-tautology(두 store가 in-memory state 공유 0·파일만 연결, mutation: 영속 무력화→양성 RED) · stub embed discriminating(cosine 0.577 vs 0, minScore 0.1 non-cheating) · framing honest(retrieval 증명이지 answer-quality 아님 명시) · no vacuous green(양성 `.some(Dana Kim)`이 load-bearing). 다양성: cross-cutting verification(fresh kind).
+- **리스크:** 낮음 — test-only(src 무변경, fabrication/grounding 무관), 로컬 파일. LIVE answer-quality delta는 backlog ◦로 남김(smoke:live가 이 박스서 stall). nit(judge): similarity 핀·userId-isolation 케이스=다음.
+- **lesson:** LIVE eval이 박스 stall로 막힐 때, 그 측정의 *결정론적 핵심*(여기선 persist→retrieve chain)을 주입식 의존성(embed)으로 model 없이 증명하면 landable + CI-gated로 더 강한 게이트가 됨. "skip은 pass 아님"을 deterministic로 우회.
