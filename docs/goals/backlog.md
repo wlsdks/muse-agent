@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ exemplar selection precision: stop-word down-weighting in @muse/prompts scorer (function-word-only query no longer injects an off-topic few-shot demo into the 12B window; doctrine P1/P4; arXiv:2506.03100) — context-strategy fire 17 (detail in docs/goals/loops/context-strategy.md)
+
 - ✓ stale-fact point-of-use caution in <<memory>> grounding block (staleFactKeys via classifyFactFreshness; contested→provisional→stale precedence) — months-stale fact no longer asserted as confident (doctrine P3 #3; SSGM arXiv:2603.11768) — context-strategy fire 16 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ URL/domain grounding-value guard on the sync chat gate (answerAssertsUnsupportedUrl → abstain) — closes the fabricated-link class the number/email/identifier guards miss (doctrine P2; Netcraft phishing-URL harm) — context-strategy fire 15 (detail in docs/goals/loops/context-strategy.md)

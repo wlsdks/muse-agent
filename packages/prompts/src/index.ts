@@ -547,6 +547,25 @@ function scoreExemplar(query: string, document: ExemplarDocument): number {
   return score;
 }
 
+// Unambiguous function words that carry no topical signal. A query
+// sharing only these with an exemplar (e.g. "what"/"the"/"do" or the
+// Korean topic/subject/object particles) is NOT topically related —
+// counting that overlap injects an off-topic few-shot into the small
+// local window. Conservative by design: every entry is a pure function
+// word, NEVER a content noun; when a Korean token is ambiguous it is
+// left OUT so the filter can only drop noise, never a real term.
+const EXEMPLAR_STOP_WORDS: ReadonlySet<string> = new Set([
+  "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+  "do", "does", "did", "can", "could", "would", "should", "will", "shall",
+  "what", "which", "who", "whom", "when", "where", "why", "how",
+  "about", "of", "to", "in", "on", "for", "and", "or", "but", "if",
+  "with", "from", "into", "out", "this", "that", "these", "those",
+  "i", "you", "he", "she", "it", "we", "they", "me", "my", "your",
+  "not", "any", "all", "as", "at", "by", "so",
+  // Korean particles / pro-form function words — unambiguous, never a noun.
+  "은", "는", "이", "가", "을", "를", "도", "의", "에", "와", "과", "그", "어떻게"
+]);
+
 function tokenSet(value: string): Set<string> {
   return new Set(
     value
@@ -558,6 +577,9 @@ function tokenSet(value: string): Set<string> {
       // — Korean is a primary user language; dropping it silently
       // discarded the most salient term from exemplar scoring.
       .filter((token) => token.length >= 2 || /[가-힣]/u.test(token))
+      // Additive on top of the length/Hangul rule: drop pure function
+      // words so only content-word overlap scores an exemplar.
+      .filter((token) => !EXEMPLAR_STOP_WORDS.has(token))
   );
 }
 

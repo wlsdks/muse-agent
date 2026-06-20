@@ -424,6 +424,84 @@ Report the successful issue lookup, state the pull request lookup failed, and of
     expect(rendered).not.toContain("[예시 2 - 날씨 안내]");
   });
 
+  it("does NOT select an exemplar whose only query overlap is stop words", async () => {
+    const md = `
+[Example 1 - Search options]
+
+<scenario>User asks: "What should I do about the search options"</scenario>
+
+<example type="good">Compare the search options before choosing a path.</example>
+
+[Example 2 - Dentist appointment]
+
+<scenario>User asks: "Schedule a dentist appointment for next week"</scenario>
+
+<example type="good">Schedule a dentist appointment for next week.</example>
+`;
+    const retriever = new InMemoryExemplarRetriever(md, { minScore: 1, topK: 1 });
+    const rendered = await retriever.retrieveTopK("What should I do about the appointment?", 1);
+    // "appointment" is a B content word; the only A-overlap ("do"/"the"/
+    // "what"/"about") are stop words → B selected, A must NOT surface.
+    expect(rendered).toContain("[Example 2 - Dentist appointment]");
+    expect(rendered).not.toContain("[Example 1 - Search options]");
+  });
+
+  it("still selects an exemplar on genuine content-word overlap (no over-filter)", async () => {
+    const md = `
+[Example 1 - Search options]
+
+<scenario>User asks: "What should I do about the search options"</scenario>
+
+<example type="good">Compare the search options before choosing a path.</example>
+
+[Example 2 - Dentist appointment]
+
+<scenario>User asks: "Schedule a dentist appointment for next week"</scenario>
+
+<example type="good">Schedule a dentist appointment for next week.</example>
+`;
+    const retriever = new InMemoryExemplarRetriever(md, { minScore: 1, topK: 1 });
+    const rendered = await retriever.retrieveTopK("Compare the search options", 1);
+    // compare/search/options are content words → A still selected.
+    expect(rendered).toContain("[Example 1 - Search options]");
+    expect(rendered).not.toContain("[Example 2 - Dentist appointment]");
+  });
+
+  it("Korean: a particle-only overlap does not select, a content-noun overlap does", async () => {
+    // The scenario writes the topic-marker particle "는" as a bare
+    // token (spaced), so it survives the tokenizer as a standalone
+    // token and can collide with a query that also carries a bare "는".
+    const md = `
+[예시 1 - 일정 안내]
+
+<scenario>사용자 질문: "내일 는 일정"</scenario>
+
+<example type="good">내일 일정 안내.</example>
+
+[예시 2 - 책 추천]
+
+<scenario>사용자 질문: "책 는 추천"</scenario>
+
+<example type="good">책 추천 본문.</example>
+`;
+    // Particle-only overlap ("는") must not select either exemplar →
+    // no scored match → full fallback returned, neither singled out.
+    const particleFallback = new FullExemplarRetriever("korean full fallback");
+    const particleRetriever = new InMemoryExemplarRetriever(md, {
+      fallback: particleFallback,
+      minScore: 1,
+      topK: 1
+    });
+    const particleRendered = await particleRetriever.retrieveTopK("그건 는 무엇", 1);
+    expect(particleRendered).toBe("korean full fallback");
+
+    // Content-noun overlap ("책") selects the matching exemplar.
+    const contentRetriever = new InMemoryExemplarRetriever(md, { minScore: 1, topK: 1 });
+    const contentRendered = await contentRetriever.retrieveTopK("책", 1);
+    expect(contentRendered).toContain("[예시 2 - 책 추천]");
+    expect(contentRendered).not.toContain("[예시 1 - 일정 안내]");
+  });
+
   it("falls back to full exemplar content when retrieval has no usable match", async () => {
     const fallback = new FullExemplarRetriever("full fallback examples");
     const retriever = new InMemoryExemplarRetriever(exemplarMarkdown, {
