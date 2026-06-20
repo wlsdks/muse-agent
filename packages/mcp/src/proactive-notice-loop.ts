@@ -248,6 +248,17 @@ export interface RunDueProactiveNoticesOptions {
    * personalisation, the daemon falls back to the generic prompt.
    */
   readonly personaPreamble?: string;
+  /**
+   * Faithfulness gate for the Phase D synthesized notice. A proactive notice is an
+   * UNASKED, push-delivered claim (often to a messaging channel) — higher-trust than
+   * a Q&A answer because the user didn't prompt it, so a confabulated detail ("standup
+   * moved to 3pm in Room B") is maximally damaging. When supplied, the synthesized
+   * prose is re-checked against the item's factSheet; a NO / throw / empty-evidence
+   * verdict FAILS CLOSE to the verbatim, store-grounded `item.text` (never silence,
+   * never the unverified synthesis). Absent → the prose is delivered unverified
+   * (back-compat; the daemon caller supplies it).
+   */
+  readonly reverify?: NoticeGroundingReverify;
   readonly activitySource?: ProactiveActivitySource;
   /** Default 5 minutes (300_000 ms). */
   readonly activeSessionWindowMs?: number;
@@ -664,9 +675,24 @@ single short heads-up (one or two sentences, ≤ 200 chars) that:
 Do NOT prefix with the time emoji — the surface adds it. No
 markdown, no lists, no JSON, plain text only.`;
 
-async function synthesizeNoticeText(
+/**
+ * Faithfulness judge for a synthesized proactive notice — re-checks the LLM prose
+ * against the item's factSheet (its only source) and returns YES/NO. Structural type
+ * (no agent-core dependency in this package); the daemon caller builds it from the
+ * same reverify primitives the reflection gate uses.
+ */
+export type NoticeGroundingReverify = (input: {
+  readonly answer: string;
+  readonly evidence: string;
+  readonly query: string;
+}) => Promise<boolean>;
+
+export const NOTICE_GROUNDING_QUERY =
+  "Does this heads-up state ONLY facts present in the item details (time, title, location)?";
+
+export async function synthesizeNoticeText(
   item: ImminentItem,
-  options: RunDueProactiveNoticesOptions
+  options: Pick<RunDueProactiveNoticesOptions, "agentModel" | "modelProvider" | "agentRuntime" | "personaPreamble" | "reverify">
 ): Promise<string> {
   if (!options.agentModel) {
     return item.text;
@@ -699,6 +725,22 @@ async function synthesizeNoticeText(
   // it), drop back to the flat text instead of delivering junk.
   if (reply.length === 0 || looksLikeToolCallJson(reply)) {
     return item.text;
+  }
+  // Faithfulness gate: the synthesized heads-up is free T=0.4 prose over the
+  // factSheet — re-check it's grounded there before PUSHING it (an unasked notice
+  // with a wrong time / invented location is a maximally-damaging fabrication). A
+  // NO / throw / empty-evidence verdict fails CLOSE to the verbatim, store-grounded
+  // item.text — never silence, never the unverified synthesis.
+  if (options.reverify) {
+    const evidence = item.factSheet.trim();
+    if (evidence.length === 0) return item.text;
+    let grounded: boolean;
+    try {
+      grounded = await options.reverify({ answer: reply, evidence: item.factSheet, query: NOTICE_GROUNDING_QUERY });
+    } catch {
+      return item.text;
+    }
+    if (!grounded) return item.text;
   }
   // Prepend the same emoji the flat path uses so the messaging
   // channel keeps a visual signal.

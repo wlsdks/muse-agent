@@ -384,13 +384,98 @@ export class OllamaProvider extends OpenAICompatibleProvider {
       ...(request.tools && request.tools.length > 0
         ? {
             tools: request.tools.map((t) => ({
-              function: { description: t.description, name: t.name, parameters: t.inputSchema ?? {} },
+              function: { description: t.description, name: t.name, parameters: t.inputSchema ? sanitizeOllamaToolSchema(t.inputSchema) : {} },
               type: "function"
             }))
           }
         : {})
     };
   }
+}
+
+const MAX_OLLAMA_SCHEMA_DEPTH = 64;
+const OLLAMA_SCHEMA_STRIP = new Set(["$schema", "$id"]);
+
+const isNullTypeSchema = (branch: unknown): boolean =>
+  !!branch && typeof branch === "object" && !Array.isArray(branch) && (branch as Record<string, unknown>).type === "null";
+
+/**
+ * Normalize a tool input-schema into the subset llama.cpp's GBNF grammar
+ * converter (the engine behind Ollama's native tool calling) accepts. Two
+ * shapes break that grammar and silently drop the whole tool: a UNION `type`
+ * array (`["string","null"]`) and the nullable `anyOf`/`oneOf` idiom
+ * (`[{type:X},{type:null}]`). Both collapse to the plain non-null type — the
+ * "optional" semantics are already carried by `required`. Pure JSON-Schema
+ * metadata keywords (`$schema`/`$id`) that the grammar ignores are dropped.
+ * Recursive with depth + cycle guards; a clean schema returns structurally
+ * equal. This is the Ollama analog of `sanitizeGeminiSchema`.
+ */
+export function sanitizeOllamaToolSchema(schema: unknown): unknown {
+  return sanitizeOllamaSchemaInner(schema, 0, new WeakSet<object>());
+}
+
+function sanitizeOllamaSchemaInner(schema: unknown, depth: number, seen: WeakSet<object>): unknown {
+  if (!schema || typeof schema !== "object") {
+    return schema;
+  }
+  if (depth > MAX_OLLAMA_SCHEMA_DEPTH || seen.has(schema)) {
+    return {};
+  }
+  seen.add(schema);
+
+  if (Array.isArray(schema)) {
+    return schema.map((entry) => sanitizeOllamaSchemaInner(entry, depth + 1, seen));
+  }
+
+  const obj = schema as Record<string, unknown>;
+
+  // Nullable anyOf/oneOf idiom: exactly one non-null branch ⇒ collapse to it,
+  // merging any sibling keywords (description, etc.); the branch wins on conflict.
+  for (const unionKey of ["anyOf", "oneOf"] as const) {
+    const branches = obj[unionKey];
+    if (Array.isArray(branches)) {
+      const nonNull = branches.filter((branch) => !isNullTypeSchema(branch));
+      if (nonNull.length === 1 && nonNull[0] && typeof nonNull[0] === "object") {
+        const { [unionKey]: _dropped, ...siblings } = obj;
+        return sanitizeOllamaSchemaInner({ ...siblings, ...(nonNull[0] as Record<string, unknown>) }, depth, seen);
+      }
+    }
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (OLLAMA_SCHEMA_STRIP.has(key)) {
+      continue;
+    }
+    if (key === "type" && Array.isArray(value)) {
+      const nonNull = value.filter((entry) => entry !== "null");
+      result[key] = nonNull[0] ?? value[0];
+      continue;
+    }
+    if (key === "properties" && value && typeof value === "object") {
+      const nested: Record<string, unknown> = {};
+      for (const [propertyKey, propertyValue] of Object.entries(value as Record<string, unknown>)) {
+        nested[propertyKey] = sanitizeOllamaSchemaInner(propertyValue, depth + 1, seen);
+      }
+      result[key] = nested;
+      continue;
+    }
+    if (key === "anyOf" || key === "oneOf") {
+      const kept = Array.isArray(value) ? value.filter((branch) => !isNullTypeSchema(branch)) : value;
+      result[key] = Array.isArray(kept)
+        ? kept.map((entry) => sanitizeOllamaSchemaInner(entry, depth + 1, seen))
+        : sanitizeOllamaSchemaInner(kept, depth + 1, seen);
+      continue;
+    }
+    if (key === "items" || key === "allOf") {
+      result[key] = Array.isArray(value)
+        ? value.map((entry) => sanitizeOllamaSchemaInner(entry, depth + 1, seen))
+        : sanitizeOllamaSchemaInner(value, depth + 1, seen);
+      continue;
+    }
+    result[key] = value;
+  }
+  return result;
 }
 
 function mapTokenLogprobs(

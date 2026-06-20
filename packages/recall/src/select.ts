@@ -149,18 +149,26 @@ export function renderMemoryFact(fact: MemoryFact): string {
 /** Build the <<memory N>> grounding block from the on-topic remembered facts. Pure. */
 export function buildMemoryContextBlock(
   facts: readonly MemoryFact[],
-  opts?: { readonly provisionalKeys?: ReadonlySet<string> }
+  opts?: { readonly provisionalKeys?: ReadonlySet<string>; readonly contestedKeys?: ReadonlySet<string> }
 ): string {
   if (facts.length === 0) {
     return "(no matching remembered facts)";
   }
-  // A PROVISIONAL fact (auto-extracted once, not yet re-confirmed — failed the
-  // durable-promotion gate) is flagged so a once-seen mis-extraction is grounded
-  // cautiously, not asserted as confirmed truth (GROUNDED != TRUE on the source side).
+  // Two distinct point-of-use cautions (GROUNDED != TRUE on the source side):
+  // - CONTESTED: the value FLIPPED across confirmations (volatile) — Muse itself
+  //   knows it's unstable, so an answer must say "confirm it's current", NOT assert it.
+  //   Takes precedence: a contested fact was re-confirmed many times, so the once-seen
+  //   "learned once" label would be factually wrong AND understate the real risk.
+  // - PROVISIONAL: auto-extracted once, not yet re-confirmed (failed the durable gate).
   const provisional = opts?.provisionalKeys;
+  const contested = opts?.contestedKeys;
   return facts
     .map((f, i) => {
-      const mark = provisional?.has(f.key) ? " (unconfirmed — learned once, not yet re-confirmed)" : "";
+      const mark = contested?.has(f.key)
+        ? " (value has changed before — confirm it's current)"
+        : provisional?.has(f.key)
+          ? " (unconfirmed — learned once, not yet re-confirmed)"
+          : "";
       return `<<memory ${(i + 1).toString()} — ${f.key}>>\n${renderMemoryFact(f)}${mark}\n[memory: ${f.key}]\n<<end>>`;
     })
     .join("\n\n");

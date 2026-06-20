@@ -1359,6 +1359,39 @@ export function parseGroundingReverifyJson(output: string): boolean {
   }
 }
 
+/**
+ * Build the canonical one-shot grounding judge ({@link GroundingReverify}) from a
+ * minimal text-generation provider — the SAME reverify the reflection + proactive-
+ * notice faithfulness gates inject, so every "free LLM prose over a known source"
+ * surface verifies identically. Relies on the free-text YES/NO fallback in
+ * {@link parseGroundingReverifyJson}, so it works even with a narrow provider that
+ * has no structured-output capability. Pure over the provider.
+ */
+export function buildGroundingReverify(
+  provider: {
+    generate(request: {
+      readonly model: string;
+      readonly messages: readonly { readonly role: "system" | "user" | "assistant"; readonly content: string }[];
+      readonly maxOutputTokens?: number;
+      readonly temperature?: number;
+    }): Promise<{ readonly output?: string }>;
+  },
+  model: string
+): GroundingReverify {
+  return async ({ answer, evidence, query }) => {
+    const judged = await provider.generate({
+      maxOutputTokens: 24,
+      messages: [
+        { content: REVERIFY_SYSTEM_PROMPT, role: "system" },
+        { content: buildGroundingReverifyPrompt({ answer, evidence, query }), role: "user" }
+      ],
+      model,
+      temperature: 0
+    });
+    return parseGroundingReverifyJson(judged.output ?? "");
+  };
+}
+
 // Month / day names: a correct date answer renders "September" for an evidence
 // "09" token, so they are excluded from the named-entity check below to avoid a
 // needless escalation on a faithful date.
@@ -1901,32 +1934,41 @@ const CONTRADICTION_STATEMENT_OVERLAP_MIN = 0.5;
  * Fail-open: any embed error → no pairs → today's behaviour.
  * Never throws, never mutates, never calls an LLM.
  */
-export async function detectEvidenceContradictions(
-  matches: readonly KnowledgeMatch[],
+/**
+ * The pairwise contradiction-detection CORE (shared policy): given a list of texts,
+ * return index pairs that are SAME-TOPIC (cosine ≥ topicSimMin) but VALUE-DISAGREEING
+ * (high token overlap = same statement skeleton, AND neither-subset = a mutual value
+ * difference, not an elaboration). Same-script guard + fail-open on embed error.
+ * One detector so the evidence layer ({@link detectEvidenceContradictions}) and the
+ * fan-in layer (`detectSubtaskConflicts`) can never drift on the contradiction policy.
+ * Pure over the injected embed; never throws.
+ */
+export async function detectPairwiseContradictions(
+  texts: readonly string[],
   embed: (text: string) => Promise<readonly number[]>,
   opts?: { readonly topicSimMin?: number; readonly statementOverlapMin?: number }
 ): Promise<readonly ContradictionPair[]> {
   const topicSimMin = opts?.topicSimMin ?? CONTRADICTION_TOPIC_SIM_MIN;
   const statementOverlapMin = opts?.statementOverlapMin ?? CONTRADICTION_STATEMENT_OVERLAP_MIN;
 
-  if (matches.length < 2) return [];
+  if (texts.length < 2) return [];
 
   let embeddings: Array<readonly number[] | null>;
   try {
-    embeddings = await Promise.all(matches.map((m) => embed(m.text).catch(() => null)));
+    embeddings = await Promise.all(texts.map((t) => embed(t).catch(() => null)));
   } catch {
     return [];
   }
 
   const pairs: ContradictionPair[] = [];
 
-  for (let i = 0; i < matches.length; i++) {
-    for (let j = i + 1; j < matches.length; j++) {
-      const mA = matches[i]!;
-      const mB = matches[j]!;
+  for (let i = 0; i < texts.length; i++) {
+    for (let j = i + 1; j < texts.length; j++) {
+      const a = texts[i]!;
+      const b = texts[j]!;
 
       // Same-script guard: cross-script pairs are always skipped (fail-open).
-      if (!comparableScript(mA.text, mB.text)) continue;
+      if (!comparableScript(a, b)) continue;
 
       const embA = embeddings[i];
       const embB = embeddings[j];
@@ -1935,8 +1977,8 @@ export async function detectEvidenceContradictions(
       const topicSim = cosineSimilarity(embA, embB);
       if (topicSim < topicSimMin) continue;
 
-      const tokA = lexicalTokens(mA.text);
-      const tokB = lexicalTokens(mB.text);
+      const tokA = lexicalTokens(a);
+      const tokB = lexicalTokens(b);
       const unionSize = new Set([...tokA, ...tokB]).size;
       if (unionSize === 0) continue;
       let intersect = 0;
@@ -1946,12 +1988,10 @@ export async function detectEvidenceContradictions(
       const overlapRatio = intersect / unionSize;
       if (overlapRatio < statementOverlapMin) continue;
 
-      // Neither-subset gate: both notes must each have ≥1 content token absent
-      // from the other. Kills elaboration false-positives — an elaboration
-      // (one note is a superset of the other) has |A\B|=0 or |B\A|=0.
-      const aMinusB = tokA.size - intersect; // tokens in A but not B
-      const bMinusA = tokB.size - intersect; // tokens in B but not A
-      if (aMinusB === 0 || bMinusA === 0) continue;
+      // Neither-subset gate: both must each have ≥1 content token absent from the
+      // other. Kills elaboration false-positives — an elaboration (one is a superset
+      // of the other) has |A\B|=0 or |B\A|=0.
+      if (tokA.size - intersect === 0 || tokB.size - intersect === 0) continue;
 
       // aIndex = i (the earlier index in the array); no score-based ordering
       // because score reflects query relevance, not recency.
@@ -1960,4 +2000,12 @@ export async function detectEvidenceContradictions(
   }
 
   return pairs;
+}
+
+export async function detectEvidenceContradictions(
+  matches: readonly KnowledgeMatch[],
+  embed: (text: string) => Promise<readonly number[]>,
+  opts?: { readonly topicSimMin?: number; readonly statementOverlapMin?: number }
+): Promise<readonly ContradictionPair[]> {
+  return detectPairwiseContradictions(matches.map((m) => m.text), embed, opts);
 }

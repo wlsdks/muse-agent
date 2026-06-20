@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ModelProviderError, OllamaProvider } from "../src/index.js";
+import { ModelProviderError, OllamaProvider, sanitizeOllamaToolSchema } from "../src/index.js";
 import type { ModelEvent, ModelRequest } from "../src/index.js";
 
 type FakeResponseInit = { ok?: boolean; status?: number; statusText?: string };
@@ -421,5 +421,58 @@ describe("logprobs plumbing (token-level confidence)", () => {
       { logprob: -0.3, token: "Hel" },
       { logprob: -0.4, token: "lo" }
     ]);
+  });
+});
+
+describe("sanitizeOllamaToolSchema — normalize JSON-Schema shapes llama.cpp's GBNF tool grammar rejects", () => {
+  it("collapses a union `type` array to its non-null member", () => {
+    expect(sanitizeOllamaToolSchema({ type: ["string", "null"] })).toEqual({ type: "string" });
+    expect(sanitizeOllamaToolSchema({ type: ["null", "number"] })).toEqual({ type: "number" });
+  });
+  it("collapses a nullable anyOf/oneOf idiom to the sole non-null branch (keeping sibling description)", () => {
+    expect(sanitizeOllamaToolSchema({ anyOf: [{ type: "number" }, { type: "null" }], description: "age" }))
+      .toEqual({ type: "number", description: "age" });
+    expect(sanitizeOllamaToolSchema({ oneOf: [{ type: "null" }, { type: "string" }] })).toEqual({ type: "string" });
+  });
+  it("keeps a genuine multi-branch anyOf (more than one non-null branch) but drops the null branch", () => {
+    expect(sanitizeOllamaToolSchema({ anyOf: [{ type: "string" }, { type: "number" }, { type: "null" }] }))
+      .toEqual({ anyOf: [{ type: "string" }, { type: "number" }] });
+  });
+  it("strips pure JSON-Schema metadata keywords ($schema / $id) the tool grammar ignores", () => {
+    expect(sanitizeOllamaToolSchema({ $schema: "http://json-schema.org/draft-07/schema#", $id: "x", type: "object" }))
+      .toEqual({ type: "object" });
+  });
+  it("recurses through properties + items, normalizing nested shapes", () => {
+    const out = sanitizeOllamaToolSchema({
+      type: "object",
+      properties: {
+        name: { type: ["string", "null"] },
+        tags: { type: "array", items: { anyOf: [{ type: "string" }, { type: "null" }] } }
+      },
+      required: ["name"]
+    });
+    expect(out).toEqual({
+      type: "object",
+      properties: { name: { type: "string" }, tags: { type: "array", items: { type: "string" } } },
+      required: ["name"]
+    });
+  });
+  it("leaves a clean schema byte-equal (no gratuitous mutation)", () => {
+    const clean = { type: "object", properties: { city: { type: "string" } }, required: ["city"] };
+    expect(sanitizeOllamaToolSchema(clean)).toEqual(clean);
+  });
+  it("is wired into the native /api/chat tool projection (end-to-end, not just the pure fn)", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    await p.generate(
+      userReq({
+        tools: [{
+          description: "set",
+          inputSchema: { type: "object", properties: { when: { type: ["string", "null"] } }, required: [] },
+          name: "set_reminder"
+        }]
+      })
+    );
+    const tools = lastBody().tools as Array<{ function: { parameters: unknown } }>;
+    expect(tools[0]!.function.parameters).toEqual({ type: "object", properties: { when: { type: "string" } }, required: [] });
   });
 });

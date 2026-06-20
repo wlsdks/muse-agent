@@ -17,6 +17,7 @@ import { readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { dirname } from "node:path";
 
 import type { AgentInitiatedNoticeBroker } from "@muse/agent-core";
+import { buildGroundingReverify } from "@muse/agent-core";
 import {
   runDueProactiveNotices,
   type ProactiveActivitySource,
@@ -139,6 +140,11 @@ export function startProactiveTick(options: ProactiveTickOptions): ProactiveTick
         ...(options.agentInitiatedNoticeUserId ? { agentInitiatedNoticeUserId: options.agentInitiatedNoticeUserId } : {}),
         ...(options.agentModel ? { agentModel: options.agentModel } : {}),
         ...(options.modelProvider ? { modelProvider: options.modelProvider } : {}),
+        // Faithfulness-gate the synthesized Phase D notice (same judge as reflection):
+        // a confabulated push detail fails CLOSE to the verbatim store line.
+        ...(options.modelProvider && options.agentModel
+          ? { reverify: buildGroundingReverify(options.modelProvider, options.agentModel) }
+          : {}),
         ...(options.agentRuntime ? { agentRuntime: options.agentRuntime } : {}),
         ...(options.calendarRegistry ? { calendarRegistry: options.calendarRegistry } : {}),
         ...(options.investigate ? { investigate: options.investigate } : {}),

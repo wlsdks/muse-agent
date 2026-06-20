@@ -10,7 +10,10 @@
  * faked — never a fake "did the thing" flag.
  */
 
+import { redactSecretsInText } from "@muse/shared";
+
 import { findConsent } from "./personal-consent-store.js";
+import { appendActionLog, type ActionResult } from "./personal-action-log-store.js";
 import { hasVeto } from "./personal-veto-store.js";
 
 export interface ConsentedActionRequest {
@@ -45,6 +48,20 @@ export interface PerformConsentedActionOptions {
    * out…" }` so the loop's next-tick cadence stays bounded.
    */
   readonly timeoutMs?: number;
+  /**
+   * Optional reviewable action-log file. When set, EVERY outcome — performed OR
+   * refused on any branch (veto / no-consent / host-mismatch / redirect /
+   * timeout / transport error) — appends one rationale-bearing entry
+   * (outbound-safety rule 4: "every outbound action, sent OR refused, records a
+   * reviewable entry"). Absent ⇒ no log written (opt-in, back-compat). The
+   * scoped credential is NEVER written to the log; the request body is
+   * secret-scrubbed and length-capped like every other send path.
+   */
+  readonly actionLogFile?: string;
+  /** Injected clock for the log entry timestamp (test determinism). */
+  readonly now?: () => Date;
+  /** Injected id factory for the log entry id (test determinism). */
+  readonly idFactory?: () => string;
 }
 
 const DEFAULT_CONSENTED_ACTION_TIMEOUT_MS = 30_000;
@@ -56,6 +73,28 @@ export type ConsentedActionOutcome =
 export async function performConsentedAction(
   options: PerformConsentedActionOptions
 ): Promise<ConsentedActionOutcome> {
+  const now = options.now ?? (() => new Date());
+  const idFactory = options.idFactory ?? (() => `act_${Date.now().toString()}_${Math.random().toString(36).slice(2, 8)}`);
+  // The request body IS the content of the state-changing action; record it
+  // secret-scrubbed + length-capped (the log is long-lived and may sync). The
+  // scoped Bearer credential is code-owned and never part of what/detail.
+  const bodyNote = typeof options.request.body === "string" && options.request.body.length > 0
+    ? ` body: ${redactSecretsInText(options.request.body).slice(0, 500)}`
+    : "";
+  const log = async (result: ActionResult, detail: string): Promise<void> => {
+    if (options.actionLogFile === undefined) return;
+    await appendActionLog(options.actionLogFile, {
+      detail,
+      id: idFactory(),
+      objectiveId: options.objectiveId,
+      result,
+      userId: options.userId,
+      what: `consented action: ${options.request.method ?? "POST"} ${options.request.url} (scope ${options.scope})${bodyNote}`,
+      when: now().toISOString(),
+      why: `standing-objective ${options.objectiveId}: consented action for scope ${options.scope}`
+    });
+  };
+
   if (options.vetoFile) {
     const vetoed = await hasVeto(options.vetoFile, {
       objectiveId: options.objectiveId,
@@ -64,7 +103,9 @@ export async function performConsentedAction(
     });
     if (vetoed) {
       // A veto overrides prior consent — checked first, fail-closed.
-      return { performed: false, reason: `vetoed: action class ${options.scope} for objective ${options.objectiveId}` };
+      const reason = `vetoed: action class ${options.scope} for objective ${options.objectiveId}`;
+      await log("refused", reason);
+      return { performed: false, reason };
     }
   }
 
@@ -76,7 +117,9 @@ export async function performConsentedAction(
   if (!consent) {
     // Fail-closed: no recorded consent ⇒ the credential is never
     // resolved, no request is ever made.
-    return { performed: false, reason: `no recorded consent for scope ${options.scope}` };
+    const reason = `no recorded consent for scope ${options.scope}`;
+    await log("refused", reason);
+    return { performed: false, reason };
   }
 
   // Bind the scoped credential to the destination the user consented to: when
@@ -88,13 +131,14 @@ export async function performConsentedAction(
     try {
       requestHost = new URL(options.request.url).host;
     } catch {
-      return { performed: false, reason: `invalid request url: ${options.request.url}` };
+      const reason = `invalid request url: ${options.request.url}`;
+      await log("refused", reason);
+      return { performed: false, reason };
     }
     if (requestHost !== consent.allowedHost) {
-      return {
-        performed: false,
-        reason: `consent for scope ${options.scope} is bound to host ${consent.allowedHost}, not ${requestHost}`
-      };
+      const reason = `consent for scope ${options.scope} is bound to host ${consent.allowedHost}, not ${requestHost}`;
+      await log("refused", reason);
+      return { performed: false, reason };
     }
   }
 
@@ -127,9 +171,11 @@ export async function performConsentedAction(
     });
   } catch (cause) {
     const aborted = controller.signal.aborted;
-    return aborted
-      ? { performed: false, reason: `consented action timed out after ${timeoutMs.toString()}ms` }
-      : { performed: false, reason: `consented action fetch failed: ${cause instanceof Error ? cause.message : String(cause)}` };
+    const reason = aborted
+      ? `consented action timed out after ${timeoutMs.toString()}ms`
+      : `consented action fetch failed: ${cause instanceof Error ? cause.message : String(cause)}`;
+    await log("failed", reason);
+    return { performed: false, reason };
   } finally {
     clearTimeout(timer);
   }
@@ -138,10 +184,10 @@ export async function performConsentedAction(
   // never re-sent on a 3xx). Mirrors web-action.ts's redirect posture.
   if (response.status >= 300 && response.status < 400) {
     const location = response.headers.get("location") ?? "(no location)";
-    return {
-      performed: false,
-      reason: `refused to follow redirect to ${location} — the consented credential is bound to ${consent.allowedHost ?? options.request.url} and must not be re-sent to an unvetted host`
-    };
+    const reason = `refused to follow redirect to ${location} — the consented credential is bound to ${consent.allowedHost ?? options.request.url} and must not be re-sent to an unvetted host`;
+    await log("refused", reason);
+    return { performed: false, reason };
   }
+  await log("performed", `HTTP ${response.status.toString()}`);
   return { performed: true, status: response.status };
 }

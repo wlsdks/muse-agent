@@ -4,7 +4,28 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { BKT_PRIOR, MAX_WEAKNESS_ENTRIES, bktUpdate, isMasteredWeakness, readWeaknesses, recordWeakness, recordWeaknessResolved, remediationHint, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
+import { BKT_PRIOR, MAX_WEAKNESS_ENTRIES, askTimeWeaknessNudge, bktUpdate, isMasteredWeakness, readWeaknesses, recordWeakness, recordWeaknessResolved, remediationHint, selectDevFixableWeaknesses, selectRemediableWeaknesses, topicKeyFromMessage, upsertWeakness, writeWeaknesses, type WeaknessEntry } from "../src/weakness-ledger.js";
+
+describe("askTimeWeaknessNudge — surface a recurring user-remediable weakness AT the moment of repeated failure (runtime learn→apply)", () => {
+  const e = (over: Partial<WeaknessEntry>): WeaknessEntry => ({
+    axis: "grounding-gap", count: 2, firstSeen: "2026-06-01T00:00:00.000Z", lastSeen: "2026-06-07T00:00:00.000Z", topic: "x", ...over
+  });
+  it("returns a nudge (hint + count) for a recurring user-remediable weakness on the asked topic", () => {
+    const nudge = askTimeWeaknessNudge([e({ count: 3, topic: "office vpn mtu" })], "office vpn mtu");
+    expect(nudge?.count).toBe(3);
+    expect(nudge?.hint).toContain("office vpn mtu");
+  });
+  it("undefined for a single-ask (count 1), a different topic, a DEV-fixable axis, or a MASTERED weakness", () => {
+    expect(askTimeWeaknessNudge([e({ count: 1 })], "x")).toBeUndefined();
+    expect(askTimeWeaknessNudge([e({ count: 3 })], "y")).toBeUndefined();
+    expect(askTimeWeaknessNudge([e({ axis: "misgrounding", count: 5 })], "x")).toBeUndefined();
+    expect(askTimeWeaknessNudge([e({ count: 5, pKnown: 0.99 })], "x")).toBeUndefined();
+  });
+  it("picks the highest-count user-remediable entry when the topic has several axes", () => {
+    const nudge = askTimeWeaknessNudge([e({ axis: "grounding-gap", count: 2, topic: "addr" }), e({ axis: "source-conflict", count: 4, topic: "addr" })], "addr");
+    expect(nudge?.count).toBe(4);
+  });
+});
 
 describe("topicKeyFromMessage — deterministic topic clustering", () => {
   it("keeps salient content words, drops filler, lowercases (EN)", () => {

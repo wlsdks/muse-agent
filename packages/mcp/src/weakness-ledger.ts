@@ -260,6 +260,36 @@ export function selectRemediableWeaknesses(
     .map((entry) => ({ axis: entry.axis, count: entry.count, topic: entry.topic }));
 }
 
+/** A point-of-use weakness nudge for the CURRENT ask's topic. */
+export interface AskTimeNudge {
+  readonly topic: string;
+  readonly axis: WeaknessAxis;
+  readonly count: number;
+  readonly hint: string;
+}
+
+/**
+ * Runtime learn→apply: when the CURRENT ask's topic is ALREADY a RECURRING
+ * user-remediable weakness (count ≥ minRecurrence, not yet mastered), return the
+ * remediation hint + count so the answer surfaces it AT THE MOMENT of the repeated
+ * failure — closing the loop at runtime instead of only the once-a-day recap. A
+ * DETERMINISTIC, USER-facing surfacing (never a model-steering prompt instruction).
+ * Picks the most-recurring user-remediable axis for the topic. Pure.
+ */
+export function askTimeWeaknessNudge(
+  entries: readonly WeaknessEntry[],
+  topic: string,
+  opts?: { readonly minRecurrence?: number }
+): AskTimeNudge | undefined {
+  const minRecurrence = Math.max(2, Math.trunc(opts?.minRecurrence ?? 2));
+  const candidates = entries.filter(
+    (entry) => entry.topic === topic && USER_REMEDIABLE_AXES.has(entry.axis) && entry.count >= minRecurrence && !isMasteredWeakness(entry)
+  );
+  if (candidates.length === 0) return undefined;
+  const top = candidates.reduce((a, b) => (b.count > a.count ? b : a));
+  return { axis: top.axis, count: top.count, hint: remediationHint(top.axis, top.topic), topic: top.topic };
+}
+
 export interface DevFixableWeakness {
   readonly topic: string;
   readonly axis: WeaknessAxis;

@@ -1,5 +1,5 @@
 import type { AgentRunInput } from "@muse/agent-core";
-import { runLeadWorkerTask, verifySynthesisCoverage, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
+import { detectSubtaskConflicts, runLeadWorkerTask, verifySynthesisCoverage, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
 import { answerIsRefusal } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
@@ -24,6 +24,8 @@ export interface DecomposedAskArgs {
   readonly systemPrompt: string;
   readonly model: string;
   readonly metadata: JsonObject;
+  /** Embed fn for the fan-in cross-subtask conflict check. Omitted ⇒ no conflict check. */
+  readonly embed?: (text: string) => Promise<readonly number[]>;
 }
 
 export interface DecomposedAskResult {
@@ -35,6 +37,8 @@ export interface DecomposedAskResult {
   readonly reason: string;
   /** Completed sub-tasks the fan-in verifier judged dropped from the synthesis (G1). */
   readonly synthesisIncomplete?: readonly string[];
+  /** Captions for completed sub-answers that CONTRADICT each other (J2 fan-in conflict). */
+  readonly subtaskConflicts?: readonly string[];
 }
 
 const PLANNER_SYSTEM_PROMPT =
@@ -138,7 +142,11 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
     // Fan-in objective-satisfaction (maker != judge): deterministically flag a
     // completed sub-task the synthesis silently dropped, so an incomplete answer
     // surfaces instead of being returned as confident-complete.
-    verifySynthesis: (_request, finalAnswer, executions) => verifySynthesisCoverage(finalAnswer, executions)
+    verifySynthesis: (_request, finalAnswer, executions) => verifySynthesisCoverage(finalAnswer, executions),
+    // Fan-in cross-subtask CONFLICT: flag two completed sub-answers that contradict
+    // each other (the grounding edge on the fan-out) so an internally-inconsistent
+    // answer surfaces. Only when an embed is supplied.
+    ...(args.embed ? { detectConflicts: (executions: readonly SubtaskExecution[]) => detectSubtaskConflicts(executions, args.embed!) } : {})
   };
 
   const leadResult = await runLeadWorkerTask(args.query, deps);
@@ -150,6 +158,7 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
     reason: leadResult.reason,
     subtaskCount: leadResult.subtasks.length,
     ...(leadResult.synthesisIncomplete ? { synthesisIncomplete: leadResult.synthesisIncomplete } : {}),
+    ...(leadResult.subtaskConflicts ? { subtaskConflicts: leadResult.subtaskConflicts } : {}),
     toolsUsed: [...mergedTools]
   };
 }

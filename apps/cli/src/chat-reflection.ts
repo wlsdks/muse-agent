@@ -12,6 +12,14 @@
  * first-class answer rather than a forced fabrication.
  */
 
+import {
+  REFLECTION_GROUNDING_QUERY,
+  REVERIFY_RESPONSE_FORMAT,
+  REVERIFY_SYSTEM_PROMPT,
+  buildGroundingReverifyPrompt,
+  parseGroundingReverifyJson,
+  type GroundingReverify
+} from "@muse/agent-core";
 import { extractJsonObject } from "@muse/memory";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 
@@ -83,6 +91,17 @@ export async function synthesizeReflection(opts: {
   readonly provider: ReflectionProvider;
   readonly model: string;
   readonly episodes: readonly ReflectionEpisode[];
+  /**
+   * Faithfulness gate (RGV) — re-checks the synthesized insight against the TEXT
+   * of the episodes it abstracts, exactly as the OFFLINE dreaming path does
+   * ({@link verifyReflectionsGrounding}). Fail-close: an insight the judge does
+   * not support — or an unverifiable one (empty evidence / judge error) — is
+   * DROPPED, so a confabulated "I've noticed you keep …" cross-session
+   * observation never reaches the live chat (GROUNDED≠TRUE on the user-facing
+   * reflection surface). Optional → mirrors the offline path's optional reverify;
+   * the in-chat caller always supplies it.
+   */
+  readonly reverify?: GroundingReverify;
 }): Promise<string> {
   const episodes = opts.episodes.filter((episode) => episode.summary.trim().length > 0);
   if (episodes.length < REFLECTION_MIN_EPISODES) return "";
@@ -103,11 +122,44 @@ export async function synthesizeReflection(opts: {
     });
     if (!response.output) return "";
     const payload = extractJsonObject(response.output) as unknown as Record<string, unknown> | undefined;
-    const insight = payload && typeof payload.insight === "string" ? payload.insight : "";
-    return stripUntrustedTerminalChars(insight).replace(/\s+/gu, " ").trim().slice(0, 240);
+    const raw = payload && typeof payload.insight === "string" ? payload.insight : "";
+    const insight = stripUntrustedTerminalChars(raw).replace(/\s+/gu, " ").trim().slice(0, 240);
+    if (insight.length === 0 || !opts.reverify) return insight;
+    // Re-check the insight against the episodes it abstracts. Empty evidence is
+    // unverifiable → fail-close; a judge NO or error drops the insight.
+    const evidence = episodes.map((episode) => episode.summary.trim()).filter(Boolean).join("\n");
+    if (evidence.length === 0) return "";
+    try {
+      const supported = await opts.reverify({ answer: insight, evidence, query: REFLECTION_GROUNDING_QUERY });
+      return supported ? insight : "";
+    } catch {
+      return "";
+    }
   } catch {
     return "";
   }
+}
+
+/**
+ * Build the one-shot local-model faithfulness judge the in-chat reflection passes
+ * to {@link synthesizeReflection} — the SAME reverify the offline dreaming path uses
+ * (`runReflectionPass`), so the live `/reflect` surface is gated identically. The
+ * judge re-checks the insight against its cited evidence and returns YES/NO.
+ */
+export function buildModelGroundingReverify(provider: ReflectionProvider, model: string): GroundingReverify {
+  return async ({ answer, evidence, query }) => {
+    const judged = await provider.generate({
+      maxOutputTokens: 24,
+      messages: [
+        { content: REVERIFY_SYSTEM_PROMPT, role: "system" },
+        { content: buildGroundingReverifyPrompt({ answer, evidence, query }), role: "user" }
+      ],
+      model,
+      responseFormat: REVERIFY_RESPONSE_FORMAT,
+      temperature: 0
+    });
+    return parseGroundingReverifyJson(judged.output ?? "");
+  };
 }
 
 /** Wrap the insight (or its absence) into the line `/reflect` prints. */

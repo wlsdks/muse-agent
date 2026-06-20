@@ -226,7 +226,7 @@ export { ModelProviderError, OpenAICompatibleProvider, isRetryableHttpStatus } f
 export { createLeadingThinkStripper, stripLeadingThinkBlock } from "./provider-shared.js";
 export { DiagnosticModelProvider } from "./adapter-diagnostic.js";
 export { OpenAIProvider, OpenRouterProvider } from "./adapter-openai.js";
-export { DEFAULT_OLLAMA_NUM_CTX, OllamaProvider } from "./adapter-ollama.js";
+export { DEFAULT_OLLAMA_NUM_CTX, OllamaProvider, sanitizeOllamaToolSchema } from "./adapter-ollama.js";
 export { AnthropicProvider } from "./adapter-anthropic.js";
 export { GeminiProvider } from "./adapter-gemini.js";
 

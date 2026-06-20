@@ -8,6 +8,7 @@ import {
   FileBeliefProvenanceStore,
   MAX_BELIEF_PROVENANCE_ENTRIES,
   classifyFactFreshness,
+  contestedFactKeys,
   deriveFactProvenance,
   provisionalFactKeys,
   readBeliefProvenance,
@@ -39,6 +40,30 @@ describe("selectVolatileBeliefs — auto beliefs the extractor keeps flipping (H
       fp({ key: "old", distinctValueCount: 4, lastConfirmed: "2026-01-01T00:00:00.000Z" })
     ], { now });
     expect(out).toEqual([]);
+  });
+
+  describe("contestedFactKeys — matched facts whose value is volatile (point-of-use, recall/ask hot path)", () => {
+    it("returns a matched key whose value FLIPPED (distinctValueCount >= 2, recent) even if confirmed many times; NOT a stable or unknown key", () => {
+      const out = contestedFactKeys(
+        ["addr", "city", "unknown"],
+        [fp({ key: "addr", distinctValueCount: 3, confirmCount: 5 }), fp({ key: "city", distinctValueCount: 1 })],
+        { now }
+      );
+      expect([...out]).toEqual(["addr"]);
+    });
+    it("flags ALL matched volatile keys at point-of-use, not the recap's top-3 (the 4th+ volatile match is still cautioned)", () => {
+      const prov = ["a", "b", "c", "d", "e"].map((k, i) => fp({ key: k, distinctValueCount: 5 - i + 2 }));
+      const out = contestedFactKeys(["e"], prov, { now }); // "e" is the LEAST volatile → ranked 5th
+      expect([...out]).toEqual(["e"]);
+    });
+    it("normalizes keys for matching but returns the ORIGINAL matched key", () => {
+      const out = contestedFactKeys(
+        ["Home City"],
+        [fp({ key: "home_city", distinctValueCount: 2 })],
+        { normalizeKey: (k) => k.toLowerCase().replace(/ /gu, "_"), now }
+      );
+      expect([...out]).toEqual(["Home City"]);
+    });
   });
 });
 

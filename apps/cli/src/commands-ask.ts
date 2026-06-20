@@ -30,7 +30,7 @@ import { basename, join, relative } from "node:path";
 import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { actionToolRan, answerClaimsAction, answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, isMemoryInjection, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
-import { defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys } from "@muse/memory";
+import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys } from "@muse/memory";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
@@ -1811,17 +1811,29 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // grounded cautiously, not asserted as confirmed truth. Fail-soft — no
       // provenance log ⇒ no annotation.
       let provisionalMemoryKeys: ReadonlySet<string> = new Set();
+      let contestedMemoryKeys: ReadonlySet<string> = new Set();
       if (matchedMemories.length > 0) {
         try {
           const provEntries = await new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()).query(userKey);
+          const provenance = deriveFactProvenance(provEntries);
+          const nowMs = Date.now();
           provisionalMemoryKeys = provisionalFactKeys(
             matchedMemories.map((m) => m.key),
-            deriveFactProvenance(provEntries),
-            { isInjection: isMemoryInjection, normalizeKey: normalizeMemoryKey, now: Date.now() }
+            provenance,
+            { isInjection: isMemoryInjection, normalizeKey: normalizeMemoryKey, now: nowMs }
           );
-        } catch { /* provenance unavailable — ground without the provisional mark */ }
+          // CONTESTED: a matched fact whose value FLIPPED across confirmations — surface
+          // the volatile-belief signal (today only the daily recap sees it) at point-of-
+          // use, so a grounded answer says "confirm it's current" instead of a factually
+          // wrong "learned once". Takes precedence over the provisional mark in render.
+          contestedMemoryKeys = contestedFactKeys(
+            matchedMemories.map((m) => m.key),
+            provenance,
+            { normalizeKey: normalizeMemoryKey, now: nowMs }
+          );
+        } catch { /* provenance unavailable — ground without the marks */ }
       }
-      const memoryBlock = buildMemoryContextBlock(matchedMemories, { provisionalKeys: provisionalMemoryKeys });
+      const memoryBlock = buildMemoryContextBlock(matchedMemories, { contestedKeys: contestedMemoryKeys, provisionalKeys: provisionalMemoryKeys });
 
       // OPT-IN shell-history grounding (B3): "what was that command?" — read the
       // user's history ONLY when --shell is passed, match by token overlap, and
@@ -2094,6 +2106,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         try {
           if (useDecomposition) {
             const decomposed = await runDecomposedAgentAsk({
+              embed: (t) => embed(t, embedModel),
               metadata: askMetadata,
               model,
               query,
@@ -2107,6 +2120,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               const capNote = decomposed.reason.includes("capped") ? " — extra items were dropped" : "";
               const incompleteNote = decomposed.synthesisIncomplete && decomposed.synthesisIncomplete.length > 0 ? " — ⚠ some sub-results may be missing; ask me to expand" : "";
               io.stderr(`(decomposed into ${decomposed.subtaskCount} sub-tasks${capNote}${incompleteNote})\n`);
+            }
+            if (!options.json && decomposed.subtaskConflicts && decomposed.subtaskConflicts.length > 0) {
+              io.stderr(`⚠️ sub-results disagree — verify before trusting:\n${decomposed.subtaskConflicts.map((c) => `  • ${c}`).join("\n")}\n`);
             }
           } else {
             const result = await assembly.agentRuntime.run({
@@ -2791,6 +2807,28 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       await recordAskWeaknessLive(query, askAxis, askHint);
       if (askOutcome === "grounded" && !askIsActionRequest) {
         await recordAskWeaknessResolvedLive(query);
+      }
+      // Runtime learn→apply: if THIS ask failed on a topic that is now a RECURRING
+      // user-remediable weakness, surface the remediation AT the moment of repeated
+      // failure (not just the daily recap) — a deterministic user-facing nudge.
+      if (!options.json && askAxis !== null) {
+        try {
+          const { askTimeWeaknessNudge, readWeaknesses, topicKeyFromMessage } = await import("@muse/mcp");
+          const { resolveWeaknessesFile } = await import("@muse/autoconfigure");
+          const weaknessEntries = await readWeaknesses(resolveWeaknessesFile(process.env as Record<string, string | undefined>));
+          const nudge = askTimeWeaknessNudge(weaknessEntries, topicKeyFromMessage(query));
+          if (nudge) {
+            const ko = /[가-힣]/u.test(query);
+            const msg = nudge.axis === "source-conflict"
+              ? (ko
+                  ? `"${nudge.topic}" 관련 노트가 서로 어긋나요 (${nudge.count.toString()}번째) — 정리해두시면 정확히 답해드릴게요.`
+                  : `your notes on "${nudge.topic}" disagree (${nudge.count.toString()}×) — reconcile them and I'll answer accurately`)
+              : (ko
+                  ? `"${nudge.topic}" 주제는 전에도 막혔는데 노트에 없어요 (${nudge.count.toString()}번째) — 메모를 추가하시면 다음엔 답해드릴게요.`
+                  : `you've hit "${nudge.topic}" ${nudge.count.toString()}× and it's not in your notes — add one and I'll answer next time`);
+            io.stderr(`💡 ${msg}\n`);
+          }
+        } catch { /* ledger unavailable — no nudge */ }
       }
 
       if (options.json) {

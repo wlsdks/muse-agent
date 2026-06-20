@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildGroundingReverify,
   buildGroundingReverifyPrompt,
   judgeConsensus,
   parseGroundingReverifyVerdict,
@@ -10,6 +11,24 @@ import {
   verifyGroundingWithReverify,
   type KnowledgeMatch
 } from "../src/index.js";
+
+describe("buildGroundingReverify — canonical one-shot grounding judge from a minimal provider", () => {
+  const provider = (output: string) => ({ generate: async () => ({ output }) });
+  it("returns true on a YES verdict (free text) and false on NO — works without structured output", async () => {
+    expect(await buildGroundingReverify(provider("YES"), "m")({ answer: "a", evidence: "e", query: "q" })).toBe(true);
+    expect(await buildGroundingReverify(provider("NO"), "m")({ answer: "a", evidence: "e", query: "q" })).toBe(false);
+  });
+  it('also parses a {"supported":true} JSON verdict', async () => {
+    expect(await buildGroundingReverify(provider('{"supported":true}'), "m")({ answer: "a", evidence: "e", query: "q" })).toBe(true);
+  });
+  it("feeds the answer + evidence into the judge prompt (the claim is checked against its source)", async () => {
+    let seen = "";
+    const capturing = { generate: async (req: { readonly messages: readonly { readonly content: string }[] }) => { seen = req.messages.map((m) => m.content).join("\n"); return { output: "YES" }; } };
+    await buildGroundingReverify(capturing, "m")({ answer: "Room B", evidence: "Standup in Room A", query: "q" });
+    expect(seen).toContain("Room B");
+    expect(seen).toContain("Room A");
+  });
+});
 
 describe("REVERIFY_SYSTEM_PROMPT — judges FACTS across a language gap, not wording", () => {
   it("instructs the judge that answer/evidence may be in different languages and to compare values", () => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   REFLECTION_MIN_EPISODES,
+  buildModelGroundingReverify,
   buildReflectionInput,
   formatReflection,
   synthesizeReflection,
@@ -66,6 +67,53 @@ describe("synthesizeReflection — fence + grounding", () => {
     const blanks = [{ endedAt: "2026-05-01", summary: "  " }, { endedAt: "2026-05-02", summary: "" }];
     expect(await synthesizeReflection({ episodes: blanks, model: "m", provider })).toBe("");
     expect(provider.calls).toBe(0);
+  });
+});
+
+describe("synthesizeReflection — faithfulness reverify (in-chat parity with the offline dreaming gate; GROUNDED≠TRUE)", () => {
+  const reflected = (insight: string): ReflectionProvider => fakeProvider(`{"insight":"${insight}"}`);
+  it("DROPS an insight the reverify judge does NOT support — a confabulated observation never reaches the live chat", async () => {
+    const reverify = vi.fn().mockResolvedValue(false);
+    const out = await synthesizeReflection({ episodes: eps(3), model: "m", provider: reflected("You never finished the Q3 report."), reverify });
+    expect(out).toBe("");
+    expect(reverify).toHaveBeenCalledTimes(1);
+  });
+  it("KEEPS an insight the reverify judge supports", async () => {
+    const reverify = vi.fn().mockResolvedValue(true);
+    expect(await synthesizeReflection({ episodes: eps(3), model: "m", provider: reflected("You keep returning to the budget."), reverify })).toBe("You keep returning to the budget.");
+  });
+  it("fail-closes: a reverify that THROWS drops the insight (a dream never survives an unverifiable check)", async () => {
+    const reverify = vi.fn().mockRejectedValue(new Error("judge down"));
+    expect(await synthesizeReflection({ episodes: eps(3), model: "m", provider: reflected("x"), reverify })).toBe("");
+  });
+  it("checks the insight against the cited episodes' TEXT (passes their summaries as evidence)", async () => {
+    let seenEvidence = "";
+    const reverify = vi.fn(async ({ evidence }: { readonly evidence: string }) => { seenEvidence = evidence; return true; });
+    await synthesizeReflection({ episodes: eps(3), model: "m", provider: reflected("budget recurs"), reverify });
+    expect(seenEvidence).toContain("session 1");
+    expect(seenEvidence).toContain("session 3");
+  });
+  it("does NOT call the judge for an empty insight (nothing to verify)", async () => {
+    const reverify = vi.fn().mockResolvedValue(true);
+    expect(await synthesizeReflection({ episodes: eps(3), model: "m", provider: reflected(""), reverify })).toBe("");
+    expect(reverify).not.toHaveBeenCalled();
+  });
+  it("back-compat: no reverify supplied → returns the insight unverified (mirrors the offline path's optional gate)", async () => {
+    expect(await synthesizeReflection({ episodes: eps(3), model: "m", provider: reflected("y") })).toBe("y");
+  });
+});
+
+describe("buildModelGroundingReverify — the in-chat judge mirrors the offline RGV reverify", () => {
+  it("returns true when the judge says the insight is supported, false when not", async () => {
+    const yes = buildModelGroundingReverify(fakeProvider('{"supported":true}'), "m");
+    const no = buildModelGroundingReverify(fakeProvider('{"supported":false}'), "m");
+    expect(await yes({ answer: "a", evidence: "e", query: "q" })).toBe(true);
+    expect(await no({ answer: "a", evidence: "e", query: "q" })).toBe(false);
+  });
+  it("end-to-end: synthesizeReflection + a model-built judge that rejects DROPS the dream", async () => {
+    const insightProvider = fakeProvider('{"insight":"You abandoned the launch plan."}');
+    const rejectingJudge = buildModelGroundingReverify(fakeProvider('{"supported":false}'), "m");
+    expect(await synthesizeReflection({ episodes: eps(3), model: "m", provider: insightProvider, reverify: rejectingJudge })).toBe("");
   });
 });
 

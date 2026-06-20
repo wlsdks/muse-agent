@@ -18,7 +18,12 @@ export const MEMORY_INJECTION_PATTERNS: readonly RegExp[] = [
   /\b(ignore|disregard|forget)\b.{0,24}\b(instruction|instructions|prompt|rule|rules|previous|prior|the user|above|system)\b/iu,
   /\breply only with\b|\brespond only with\b|\boutput only\b/iu,
   /\byou are now\b|\bact as\b.{0,20}\binstead\b/iu,
-  /^\s*system\s*[:>]/iu
+  /^\s*system\s*[:>]/imu,
+  // Korean analog of the canonical ignore-previous-instructions shape (the
+  // stored/tool surface is the Korean user's primary language). Verb-final order
+  // (noun → 무시/잊), kept NARROW like the English set; span-level neutralization
+  // bounds any collateral on a benign sentence that merely names a rule.
+  /(?:이전|위의|앞의|모든)?\s*(?:지시|지침|규칙|명령)(?:사항)?\s*(?:을|를|은|는|도)?\s*(?:모두|전부|싹)?\s*(?:무시|잊)/u
 ];
 
 const INJECTION_EVASION_CHARS = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu;

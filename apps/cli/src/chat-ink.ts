@@ -70,7 +70,7 @@ import { searchRecall } from "./commands-recall.js";
 import { readTrust } from "./commands-trust.js";
 import { appendInputHistory, loadInputHistory } from "./chat-input-history.js";
 import { extractMemoryFromTurn, formatLearnedSummary, shouldAutoExtract, type AutoMemoryProvider } from "./chat-auto-memory.js";
-import { formatReflection, synthesizeReflection, type ReflectionProvider } from "./chat-reflection.js";
+import { buildModelGroundingReverify, formatReflection, synthesizeReflection, type ReflectionProvider } from "./chat-reflection.js";
 import { listRecentJobIds, readJobSummary, startBackgroundJob } from "./commands-jobs.js";
 import { buildLocalTodayText, parseLookaheadHours, readDueFollowups, readDueReminders } from "./commands-today.js";
 import { calendarEventItems, checkinItems, dueTaskItems, groupProactiveNotice, imminentItems, jobCompletionItems, patternSuggestionItems, pickUnseen, type ProactiveItem } from "./chat-proactive.js";
@@ -1119,7 +1119,15 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     try {
       const all = await readEpisodes(resolveEpisodesFile(process.env)).catch(() => []);
       const mine = all.filter((episode) => episode.userId === userId);
-      return await synthesizeReflection({ episodes: mine, model, provider: provider as unknown as ReflectionProvider });
+      const reflectionProvider = provider as unknown as ReflectionProvider;
+      return await synthesizeReflection({
+        episodes: mine,
+        model,
+        provider: reflectionProvider,
+        // Gate the live insight with the same RGV judge the offline dreaming path
+        // uses — a confabulated cross-session observation is dropped, not spoken.
+        reverify: buildModelGroundingReverify(reflectionProvider, model)
+      });
     } catch {
       return "";
     }

@@ -51,6 +51,24 @@ const REFLECTION_SURFACES = [
     retryMarker: "PLAN_REPAIR_MAX_ROUNDS",
     surface: "plan validation repair",
     verifierMarker: "validatePlan("
+  },
+  {
+    file: "apps/cli/src/chat-reflection.ts",
+    retryMarker: "synthesizeReflection",
+    surface: "in-chat /reflect cross-session insight",
+    verifierMarker: "opts.reverify("
+  },
+  {
+    file: "packages/mcp/src/proactive-notice-loop.ts",
+    retryMarker: "synthesizeNoticeText",
+    surface: "proactive Phase D synthesized notice (unasked push)",
+    verifierMarker: "options.reverify("
+  },
+  {
+    file: "packages/multi-agent/src/lead-worker.ts",
+    retryMarker: "reinforceSynthesisRequest",
+    surface: "synthesis-incomplete single re-synthesis",
+    verifierMarker: "verifySynthesisCoverage"
   }
 ];
 

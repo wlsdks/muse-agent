@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { performConsentedAction, type PerformConsentedActionOptions } from "../src/consented-action.js";
+import { readActionLog } from "../src/personal-action-log-store.js";
 import { recordConsent } from "../src/personal-consent-store.js";
 import { recordVeto } from "../src/personal-veto-store.js";
 
@@ -130,5 +131,60 @@ describe("performConsentedAction — fail-closed scoped-consent gate (outbound-s
     const out = await performConsentedAction(base(throwing));
     expect(out).toMatchObject({ performed: false });
     expect((out as { reason: string }).reason).toContain("ECONNRESET");
+  });
+});
+
+describe("performConsentedAction — reviewable action-log (outbound-safety rule 4: record sent OR refused)", () => {
+  let actionLogFile: string;
+  beforeEach(() => {
+    actionLogFile = join(dir, "action-log.json");
+  });
+  const withLog = (over: Partial<PerformConsentedActionOptions> = {}): Partial<PerformConsentedActionOptions> => ({
+    actionLogFile,
+    idFactory: () => "fixed-id",
+    now: () => new Date("2026-06-20T12:00:00Z"),
+    ...over
+  });
+
+  it("records a `performed` entry (with the objective + result detail) when the action fires — credential NEVER logged", async () => {
+    await grant();
+    const { fetchImpl } = recordingFetch(() => new Response("", { status: 201 }));
+    const out = await performConsentedAction(base(fetchImpl, withLog()));
+    expect(out).toEqual({ performed: true, status: 201 });
+    const log = await readActionLog(actionLogFile);
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({ result: "performed", objectiveId: OBJ, userId: "u1" });
+    expect(log[0]!.what).toContain("api.test/issues");
+    expect(log[0]!.detail).toContain("201");
+    // the scoped Bearer credential must never appear anywhere in the audit entry
+    expect(JSON.stringify(log[0])).not.toContain("svc-token");
+  });
+
+  it("records a `refused` entry when consent is absent (fail-closed branch is still audited)", async () => {
+    const { fetchImpl } = recordingFetch();
+    await performConsentedAction(base(fetchImpl, withLog()));
+    const log = await readActionLog(actionLogFile);
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({ result: "refused" });
+    expect(log[0]!.detail).toContain("no recorded consent");
+  });
+
+  it("records a `refused` entry when a veto overrides consent", async () => {
+    await grant();
+    await recordVeto(vetoFile, { id: "v1", objectiveId: OBJ, reason: "stop", scope: SCOPE, userId: "u1", vetoedAt: "2026-05-31T01:00:00Z" });
+    const { fetchImpl } = recordingFetch();
+    await performConsentedAction(base(fetchImpl, withLog({ vetoFile })));
+    const log = await readActionLog(actionLogFile);
+    expect(log).toHaveLength(1);
+    expect(log[0]).toMatchObject({ result: "refused" });
+    expect(log[0]!.detail).toContain("vetoed");
+  });
+
+  it("writes NOTHING to the log when no actionLogFile is configured (back-compat, opt-in)", async () => {
+    await grant();
+    const { fetchImpl } = recordingFetch(() => new Response("", { status: 200 }));
+    const out = await performConsentedAction(base(fetchImpl)); // no actionLogFile
+    expect(out).toEqual({ performed: true, status: 200 });
+    await expect(readActionLog(actionLogFile)).resolves.toHaveLength(0);
   });
 });

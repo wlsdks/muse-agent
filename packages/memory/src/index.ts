@@ -369,6 +369,7 @@ export {
 
 export {
   classifyFactFreshness,
+  contestedFactKeys,
   defaultBeliefProvenanceFile,
   deriveFactProvenance,
   FileBeliefProvenanceStore,

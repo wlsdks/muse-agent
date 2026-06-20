@@ -202,6 +202,35 @@ export function provisionalFactKeys(
   return out;
 }
 
+/**
+ * Matched facts whose stored value is CONTESTED — it FLIPPED across confirmations
+ * (volatile, {@link selectVolatileBeliefs}). Surfaced at POINT-OF-USE (recall/ask) so a
+ * grounded answer cautions "confirm it's current" instead of asserting a value Muse
+ * itself knows is unstable — a once-a-day recap nudge is too late for a hot-path answer.
+ * Mirrors {@link provisionalFactKeys}: keys compared through the injected `normalizeKey`,
+ * the ORIGINAL matched key returned for the caller's lookup. Pure.
+ */
+export function contestedFactKeys(
+  matchedKeys: readonly string[],
+  provenance: readonly FactProvenance[],
+  opts: { readonly now: number; readonly recentDays?: number; readonly normalizeKey?: (key: string) => string }
+): ReadonlySet<string> {
+  const norm = opts.normalizeKey ?? ((key: string): string => key);
+  // Point-of-use wants EVERY matched volatile key flagged, not the recap's top-3 —
+  // lift selectVolatileBeliefs' default maxResults cap (we filter to matchedKeys below).
+  const volatileArgs = {
+    maxResults: Math.max(1, provenance.length),
+    now: opts.now,
+    ...(opts.recentDays !== undefined ? { recentDays: opts.recentDays } : {})
+  };
+  const volatile = new Set(selectVolatileBeliefs(provenance, volatileArgs).map((b) => norm(b.key)));
+  const out = new Set<string>();
+  for (const key of matchedKeys) {
+    if (volatile.has(norm(key))) out.add(key);
+  }
+  return out;
+}
+
 /** A belief the auto-extractor keeps giving different values for — the user should
  *  confirm which is right (which promotes it to durable user-source). */
 export interface VolatileBelief {

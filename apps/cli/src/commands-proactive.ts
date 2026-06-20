@@ -24,6 +24,7 @@ import {
   resolveProactiveHistoryFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
+import { buildGroundingReverify } from "@muse/agent-core";
 import type { CalendarEvent } from "@muse/calendar";
 import { appendProactiveHistory, readProactiveHistory, readTasks, runDueProactiveNotices, writeTasks, type PersistedTask } from "@muse/mcp";
 import { homedir } from "node:os";
@@ -393,6 +394,9 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
           const summary = await runDueProactiveNotices({
             ...(agentModel ? { agentModel } : {}),
             ...(modelProvider ? { modelProvider } : {}),
+            // Faithfulness-gate the synthesized Phase D notice — a confabulated push
+            // detail fails CLOSE to the verbatim store line (same judge as reflection).
+            ...(modelProvider && agentModel ? { reverify: buildGroundingReverify(modelProvider, agentModel) } : {}),
             ...(personaPreamble ? { personaPreamble } : {}),
             ...(terminalSink
               ? { activitySource: { lastActivityMs: () => Date.now() }, terminalSink }

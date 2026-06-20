@@ -18,6 +18,26 @@ describe("buildMemoryContextBlock — provisional (once-seen, unconfirmed) facts
   });
 });
 
+describe("buildMemoryContextBlock — CONTESTED (volatile-value) caution at point-of-use takes precedence over the once-seen mark", () => {
+  it("marks a contested fact 'value has changed before' — NOT the wrong 'learned once' (it was re-confirmed many times, just with different values)", () => {
+    const block = buildMemoryContextBlock(
+      [{ key: "home_city", value: "Busan" }],
+      { contestedKeys: new Set(["home_city"]), provisionalKeys: new Set(["home_city"]) }
+    );
+    expect(block).toMatch(/Busan[^\n]*changed before/u);
+    expect(block).not.toContain("learned once");
+  });
+  it("a contested-only fact gets the contested caution", () => {
+    expect(buildMemoryContextBlock([{ key: "k", value: "v" }], { contestedKeys: new Set(["k"]) })).toContain("changed before");
+  });
+  it("a provisional-only fact keeps the once-seen mark (no regression)", () => {
+    expect(buildMemoryContextBlock([{ key: "office_mtu", value: "1380" }], { provisionalKeys: new Set(["office_mtu"]) })).toMatch(/1380[^\n]*unconfirmed/u);
+  });
+  it("no caution when neither set has the key (back-compat)", () => {
+    expect(buildMemoryContextBlock([{ key: "a", value: "b" }], { contestedKeys: new Set(), provisionalKeys: new Set() })).not.toMatch(/changed before|unconfirmed/u);
+  });
+});
+
 const NOW = Date.parse("2026-06-13T00:00:00Z");
 
 describe("cross-lingual recall fallback (KO query ↔ EN entry)", () => {
