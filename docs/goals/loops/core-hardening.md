@@ -4,7 +4,7 @@
 > Worktree `/tmp/muse-core-hardening` · branch `loop/core-hardening` (Tier2 — pushes to its own branch each fire, periodic rebase from origin/main, NEVER merges to main).
 > Cron `cfe778e2` (every 15m, session-only). Stop: `CronDelete cfe778e2`. Convention: [README](README.md).
 
-## fire 2 · 2026-06-20 · skill v1.14.0 · <commit-pending>
+## fire 2 · 2026-06-20 · skill v1.14.0 · 5efdf345
 meta: value-class=wiring · pkg=@muse/mcp · kind=outbound-safety/audit-completeness · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles 1054→1054 (+1 describe / 4 cases in test/consented-action.test.ts) · fabrication 0 · @muse/mcp 1860 tests green · pnpm check exit 0 · lint clean
 - 무엇: `performConsentedAction`(@muse/mcp)가 어떤 분기에서도 action-log를 안 남기던 rule-4 갭 — opt-in `actionLogFile?`/`now?`/`idFactory?` + `log()` 헬퍼 추가, 7개 return 분기(veto/no-consent/invalid-url/host-mismatch/timeout-or-transport-failed/redirect/performed) 모두에 rationale 동반 `ActionLogEntry` append.
