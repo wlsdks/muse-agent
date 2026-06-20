@@ -162,7 +162,8 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
         "everyday folders, a filename fragment ('invoice pdf', '계약서 워드', '영수증 사진') and Muse reads the " +
         "newest match. This is the right tool whenever the user names ONE file to open/read/summarize, even " +
         "if a folder is mentioned ('다운로드에 있는 invoice.pdf 읽어줘' → file_read). Use offset/limit to page " +
-        "through a long text file. Do NOT use to list many files by pattern (use file_list) or to search " +
+        "through a long text file — a truncated result returns `nextOffset`; pass it back as `offset` to read " +
+        "the next page. Do NOT use to list many files by pattern (use file_list) or to search " +
         "inside files (use file_grep). Protected locations (keys, credentials) are refused.",
       domain: "files",
       groundedArgs: ["path"],
@@ -255,9 +256,15 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
           ? sliced.map((line, i) => `${String(start + i + 1).padStart(6)}\t${line}`).join("\n")
           : sliced.join("\n");
         let truncated = start + sliced.length < totalLines;
+        // The 1-based line to resume at, so the model pages a long file
+        // deterministically (`file_read offset:nextOffset`) instead of guessing.
+        // Only for a clean LINE boundary — a char-cap cut falls mid-line, so its
+        // line offset would be imprecise and is omitted.
+        let nextOffset = truncated ? start + sliced.length + 1 : undefined;
         if (text.length > maxTextChars) {
           text = text.slice(0, maxTextChars);
           truncated = true;
+          nextOffset = undefined;
         }
         options.onPathRead?.(safe);
         // FULL read = started at the top (`start === 0`, i.e. no offset / offset 1)
@@ -265,7 +272,7 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
         // (offset:96 → truncated false but lines 1-95 unseen) is NOT full, so it
         // must not ground a whole-file overwrite.
         if (start === 0 && !truncated) options.onFullRead?.(safe);
-        return { kind: "text", numbered, path: safe, read: true, source: safe, text, totalLines, truncated };
+        return { kind: "text", numbered, path: safe, read: true, source: safe, text, totalLines, truncated, ...(nextOffset !== undefined ? { nextOffset } : {}) };
       } catch (error) {
         // A raw "ENOENT … stat '/abs/path'" dead-ends the small model. Hand it a
         // recovery route instead: name the file + the tool that finds it.

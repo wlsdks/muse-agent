@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 24 · 2026-06-21 · skill v2.0 · <commit-pending> (file_read nextOffset paging hint; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/fs · kind=reliability-nudge(output-paging) · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 1071→1071 (+2 cases fs-read-tools paging+char-cap, mutation-valid) · fabrication 0 · @muse/fs 격리 166 · pnpm check exit 0 · lint clean · Ollama DOWN(measure-first 불가, gap-scout fallback)
+- 무엇: line-truncated read가 `{truncated:true, totalLines}`만 줘서 12B가 다음 페이지 offset을 추측해야 함(큰 파일 멀티스텝 막힘). FIX: text-read 결과에 `nextOffset`(재개할 1-based 라인 `start+sliced.length+1`) 추가, line-truncated일 때만; char-cap cut은 라인 경계 부정확이라 omit(char-cap 분기가 clear=우선). 설명에 페이징 프로토콜 1줄.
+- 왜: Ollama down으로 measure-first 불가 → gap-scout. reliability-nudge vein을 *에러 복구(21-23)*에서 *성공-경로 출력 가이드(페이징)*로 확장. 큰 파일은 grounding gate(full-read)도 막으니 페이징이 멀티스텝 신뢰성 직결.
+- 리뷰지점: mutation-valid(nextOffset 없으면 RED; char-cap clear도 line-trunc+char-cap 케이스로 독립 pin→RED). ④b judge PASS — round-trip 페이징 gap/overlap/off-by-one 없음+마지막 페이지 stop, **GROUNDING GATE 불변**(nextOffset 순수 additive; onFullRead 여전히 start===0&&!truncated만, paged read는 onPathRead만), PDF/DOCX/image stray nextOffset 없음. judge가 char-cap 테스트 커버리지 갭 지적→백필(커밋 전).
+- 리스크: 낮음 — 출력 필드 1개 additive(truncated/gate 불변), 설명 additive(eval:tools 선택 영향 미미). ④b PASS.
+lesson: reliability-nudge는 *에러 경로*뿐 아니라 *성공 경로 출력*(페이징 가이드)에도 적용 — 작은 모델엔 "정수 하나 복사"가 "offset 계산"보다 신뢰성↑. ④b가 커버리지 갭(char-cap 미테스트)을 잡아 백필=judge가 defect뿐 아니라 test-완전성도 강화.
+
 ## fire 23 · 2026-06-21 · skill v2.0 · 14ca9d49 (run_command spawn-failure → actionable message; pkg pivot off @muse/fs)
 meta: value-class=new-capability · pkg=crates/runner · kind=reliability-nudge · verdict=PASS · firesSinceDrill=4
 ratchet: testFiles 1071→1071 (+1 cargo test crates/runner; TS 무변경) · fabrication 0 · crates/runner cargo 10 · @muse/tools 격리 289(무회귀) · lint clean

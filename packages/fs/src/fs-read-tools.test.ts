@@ -41,6 +41,33 @@ describe("file_read / file_list / file_grep", () => {
       expect(out["truncated"]).toBe(true);
     });
 
+    it("a line-truncated read carries nextOffset so the model can PAGE deterministically", async () => {
+      await writeFile(join(root, "n.txt"), Array.from({ length: 20 }, (_, i) => `line ${(i + 1).toString()}`).join("\n"));
+      const tool = createFileReadTool(opts());
+      // read lines 1-5 of 20 → truncated, continue at line 6
+      const head = (await tool.execute({ limit: 5, path: join(root, "n.txt") }, ctx)) as JsonObject;
+      expect(head["truncated"]).toBe(true);
+      expect(head["nextOffset"]).toBe(6);
+      // read lines 6-10 → continue at line 11
+      const mid = (await tool.execute({ limit: 5, offset: 6, path: join(root, "n.txt") }, ctx)) as JsonObject;
+      expect(mid["nextOffset"]).toBe(11);
+      // a COMPLETE read (no more lines) carries NO nextOffset
+      const whole = (await tool.execute({ path: join(root, "n.txt") }, ctx)) as JsonObject;
+      expect(whole["truncated"]).toBe(false);
+      expect(whole["nextOffset"]).toBeUndefined();
+    });
+
+    it("a CHAR-capped read omits nextOffset EVEN when also line-truncated (the char cut wins — no imprecise offset)", async () => {
+      // 10 lines of ~50 chars; limit:8 is line-truncated (would be nextOffset 9)
+      // BUT 8 joined lines (~400 chars) exceed the 100-char cap → cut mid-line,
+      // so nextOffset must be cleared. This pins that the char-cap branch wins.
+      await writeFile(join(root, "wide.txt"), Array.from({ length: 10 }, (_, i) => `${(i + 1).toString()}-${"x".repeat(48)}`).join("\n"));
+      const tool = createFileReadTool({ ...opts(), maxTextChars: 100 });
+      const out = (await tool.execute({ limit: 8, path: join(root, "wide.txt") }, ctx)) as JsonObject;
+      expect(out["truncated"]).toBe(true);
+      expect(out["nextOffset"]).toBeUndefined();
+    });
+
     it("a COMPLETE read fires onFullRead; a truncated (offset/limit) read does NOT", async () => {
       await writeFile(join(root, "n.txt"), "a\nb\nc\nd\ne");
       const full: string[] = [];
