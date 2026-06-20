@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 12 · 2026-06-21 · skill v2.0 · <commit-pending> (measure-first: model-behavior ceiling confirmed; 3-fire merge)
+meta: value-class=measure-first(work-list) · pkg=eval(diagnosis) · kind=ceiling-confirm · verdict=N/A · firesSinceDrill=2
+ratchet: testFiles 1068→1068 · fabrication 0 · eval:multifile-fix FAIL(early-stop 모드: file_read 1회 후 자발 종료) · eval:computer-task PASS(불변) · self-eval green
+- 무엇: fires 4-11(노출·recovery·adapter)이 multifile을 움직였는지 debug 재측정 → 이번 run은 **early-stop**(모델이 file_read 1회만 하고 grep/edit/run 없이 종료). 단일 eval은 grep→read→edit 3콜 통과하므로 *iteration cap 아님* — 모델이 **자발적으로** 조기 종료(SYSTEM의 persistence 라인에도 불구).
+- 왜 코드 슬라이스 없음: 남은 multifile 블로커 3모드(early-stop·node_run환각·garbage명) 중 환각/garbage는 fires 9·11이 결정론 처리; **early-stop은 순수 12B model-behavior**(자발 종료, cap 아님) — tool-filter/fs/adapter로 못 고침. continuation-nudge는 reflection-guard 규칙상 verifier-backed+registry 필요한 NEW retry surface인데 "action-task vs answer-only" 판별이 fuzzy(generic 오발 위험) + agent-core 코어루프 변경 = 신중한 >1-fire 설계(15분 auto-fire 부적합).
+- 리뷰지점: fire 8·12 = *코드/측정으로 확인한* 정당한 vein-상태 파악(fire 3 성급-exhaustion과 구분). clean 결정론 computer-control vein 소진 확증: 노출(4·6·7)·fs(8)·recovery(9)·adapter(11)·verifier-drill(10) 다 됨. 3-fire 머지로 fires 10·11 코드 main 안착.
+- 리스크: 0 — 코드 미변경, 측정+정직 기록 + docs 머지.
+lesson: 다층(노출·recovery·adapter-파싱)을 결정론적으로 다 고쳐도 12B의 *자발적 조기종료*가 멀티스텝 천장 — 이건 코드가 아니라 모델 역량/agentic-persistence 영역. 정직한 다음 후보=verifier-backed action-completion nudge(agent-core, 신중 설계) 또는 다른 테마. measure-first가 "어디까지 코드로, 어디부터 모델"의 경계를 그음.
+
 ## fire 11 · 2026-06-21 · skill v2.0 · bbc503e5 (Ollama adapter tool-call name sanitisation)
 meta: value-class=new-capability · pkg=@muse/model · kind=adapter-sanitisation · verdict=PASS · firesSinceDrill=1
 ratchet: testFiles 1068→1068 (+3 cases adapter-ollama.test, mutation-valid) · fabrication 0 · @muse/model 격리 328 통과 · pnpm check=박스포화 false-timeout(매 run 다른 heavy/fuzz 테스트 5-8s, 변경패키지 격리 green) · lint clean
