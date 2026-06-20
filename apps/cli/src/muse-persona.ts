@@ -94,6 +94,7 @@ export function personaEntryCap(): number {
 // caution `muse ask` does (contested takes precedence over provisional).
 const CONTESTED_FACT_MARK = " (value has changed before — confirm it's current)";
 const PROVISIONAL_FACT_MARK = " (unconfirmed — learned once, not yet re-confirmed)";
+const STALE_FACT_MARK = " (last confirmed a while ago — may be out of date)";
 
 export function buildMusePersona(
   memory: JarvisPersonaMemory,
@@ -102,6 +103,7 @@ export function buildMusePersona(
     readonly now?: Date;
     readonly contestedKeys?: ReadonlySet<string>;
     readonly provisionalKeys?: ReadonlySet<string>;
+    readonly staleKeys?: ReadonlySet<string>;
   } = {}
 ): string | undefined {
   const facts = Object.entries(memory.facts);
@@ -187,7 +189,13 @@ export function buildMusePersona(
         continue;
       }
       const prior = priorByKey.get(key);
-      const mark = options.provisionalKeys?.has(key) ? PROVISIONAL_FACT_MARK : "";
+      // Precedence (mildest last): provisional > stale. A stale key NEVER
+      // double-marks a contested (handled above) or provisional key.
+      const mark = options.provisionalKeys?.has(key)
+        ? PROVISIONAL_FACT_MARK
+        : options.staleKeys?.has(key)
+          ? STALE_FACT_MARK
+          : "";
       lines.push(prior !== undefined && prior !== value
         ? `  - ${key}: ${safe} (previously ${defangMemoryValue(prior)})${mark}`
         : `  - ${key}: ${safe}${mark}`);

@@ -447,6 +447,7 @@ describe("buildMusePersona — persona size cap (performance)", () => {
   // packages/recall/src/select.ts buildMemoryContextBlock.
   const CONTESTED_MARK = " (value has changed before — confirm it's current)";
   const PROVISIONAL_MARK = " (unconfirmed — learned once, not yet re-confirmed)";
+  const STALE_MARK = " (last confirmed a while ago — may be out of date)";
 
   it("marks a contested fact with the exact contested caution string", () => {
     const out = buildMusePersona(
@@ -502,5 +503,42 @@ describe("buildMusePersona — persona size cap (performance)", () => {
     ) ?? "";
     expect(out).toContain(`home_city: Seoul${CONTESTED_MARK}`);
     expect(out).not.toContain("(previously Busan)");
+  });
+
+  it("marks a stale fact with the exact stale caution string", () => {
+    const out = buildMusePersona(
+      { facts: { home_city: "Seoul" }, preferences: {} },
+      "u",
+      { staleKeys: new Set(["home_city"]) }
+    ) ?? "";
+    expect(out).toContain(`home_city: Seoul${STALE_MARK}`);
+    expect(out).toContain("Seoul");
+  });
+
+  it("gives contested precedence over stale when a key is in both sets", () => {
+    const out = buildMusePersona(
+      { facts: { home_city: "Seoul" }, preferences: {} },
+      "u",
+      { contestedKeys: new Set(["home_city"]), staleKeys: new Set(["home_city"]) }
+    ) ?? "";
+    expect(out).toContain(`home_city: Seoul${CONTESTED_MARK}`);
+    expect(out).not.toContain("may be out of date");
+  });
+
+  it("gives provisional precedence over stale when a key is in both sets", () => {
+    const out = buildMusePersona(
+      { facts: { home_city: "Seoul" }, preferences: {} },
+      "u",
+      { provisionalKeys: new Set(["home_city"]), staleKeys: new Set(["home_city"]) }
+    ) ?? "";
+    expect(out).toContain(`home_city: Seoul${PROVISIONAL_MARK}`);
+    expect(out).not.toContain("may be out of date");
+  });
+
+  it("is byte-identical to today when an empty staleKeys set is passed (no mark)", () => {
+    const out = buildMusePersona({ facts: { home_city: "Seoul" }, preferences: {} }, "u", { staleKeys: new Set() }) ?? "";
+    const bare = buildMusePersona({ facts: { home_city: "Seoul" }, preferences: {} }, "u") ?? "";
+    expect(out).toBe(bare);
+    expect(out).not.toContain(STALE_MARK);
   });
 });

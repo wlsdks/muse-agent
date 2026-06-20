@@ -536,19 +536,21 @@ export async function runLocalChat(
   // ⇒ no sets ⇒ unmarked persona, the same posture ask falls back to.
   let personaContestedKeys: ReadonlySet<string> = new Set();
   let personaProvisionalKeys: ReadonlySet<string> = new Set();
+  let personaStaleKeys: ReadonlySet<string> = new Set();
   if (personaMemory && Object.keys(personaMemory.facts).length > 0) {
     try {
-      const { FileBeliefProvenanceStore, defaultBeliefProvenanceFile, deriveFactProvenance, contestedFactKeys, provisionalFactKeys, normalizeMemoryKey } = await import("@muse/memory");
+      const { FileBeliefProvenanceStore, defaultBeliefProvenanceFile, deriveFactProvenance, contestedFactKeys, provisionalFactKeys, staleFactKeys, normalizeMemoryKey } = await import("@muse/memory");
       const { isMemoryInjection } = await import("@muse/agent-core");
       const personaFactKeys = Object.keys(personaMemory.facts);
       const provenance = deriveFactProvenance(await new FileBeliefProvenanceStore(defaultBeliefProvenanceFile()).query(userId));
       const nowMs = Date.now();
       personaProvisionalKeys = provisionalFactKeys(personaFactKeys, provenance, { isInjection: isMemoryInjection, normalizeKey: normalizeMemoryKey, now: nowMs });
       personaContestedKeys = contestedFactKeys(personaFactKeys, provenance, { normalizeKey: normalizeMemoryKey, now: nowMs });
+      personaStaleKeys = staleFactKeys(personaFactKeys, provenance, { normalizeKey: normalizeMemoryKey, now: nowMs });
     } catch { /* provenance unavailable — render the persona without the marks */ }
   }
   const userMemoryBlock = personaMemory
-    ? (buildMusePersona(personaMemory, userId, { contestedKeys: personaContestedKeys, provisionalKeys: personaProvisionalKeys }) ?? "").trim()
+    ? (buildMusePersona(personaMemory, userId, { contestedKeys: personaContestedKeys, provisionalKeys: personaProvisionalKeys, staleKeys: personaStaleKeys }) ?? "").trim()
     : "";
   const personaPreamble = (await loadActivePersonaPreamble().catch(() => "")).trim();
   // Multi-turn recall: resolve an anaphoric turn into a self-contained

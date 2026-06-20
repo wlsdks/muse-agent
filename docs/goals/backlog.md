@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ stale-fact caution propagated to the chat persona (buildMusePersona staleKeys + chat-repl staleFactKeys) — full ask↔chat mark-parity (contested/provisional/stale); fire-16 deferred chat-side done (doctrine P3 #3) — context-strategy fire 20 (detail in docs/goals/loops/context-strategy.md)
+
 - ✓ conversation-trim summary overshoot fixed: trimConversationMessages reconciles against the HARD budget after inserting the compaction summary (re-trims removable history; summary + last user turn never dropped) — context-strategy fire 19 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ URL-guard filename carve-out (bare filename like report.txt no longer false-refused; zip/mov gTLDs stay guarded) + JUDGE-DRILL passed (verifier caught a wired-but-inert + tautological-test slice) — context-strategy fire 18 (detail in docs/goals/loops/context-strategy.md)
