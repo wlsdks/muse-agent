@@ -112,6 +112,22 @@ describe("selectForgettable — the FORGET half of sleep consolidation (non-dest
     expect(fading).toHaveLength(5);
     for (let i = 1; i < fading.length; i++) expect(fading[i]!.score).toBeGreaterThanOrEqual(fading[i - 1]!.score);
   });
+
+  it("an ESTABLISHED memory (lifetime hits ≥ importance floor) resists fading even when idle + decayed (MemoryBank importance term, arXiv:2305.10250)", () => {
+    const records: RecallHitLike[] = [
+      { key: "established", hits: 10, lastHitMs: daysAgo(120) }, // decayed score + idle, BUT high lifetime frequency → protected
+      { key: "minor-stale", hits: 2, lastHitMs: daysAgo(120) }   // decayed + idle + low frequency → still fades
+    ];
+    const fading = selectForgettable(records, { nowMs: NOW }).map((m) => m.key);
+    expect(fading).toContain("minor-stale");
+    expect(fading).not.toContain("established");
+  });
+
+  it("the importance floor is tunable — a frequent memory fades under a higher floor, resists under a lower one", () => {
+    const records: RecallHitLike[] = [{ key: "freq", hits: 5, lastHitMs: daysAgo(150) }];
+    expect(selectForgettable(records, { nowMs: NOW, importanceHitsFloor: 6 }).map((m) => m.key)).toEqual(["freq"]);
+    expect(selectForgettable(records, { nowMs: NOW, importanceHitsFloor: 4 })).toEqual([]);
+  });
 });
 
 describe("consolidationPlan — one sleep pass: promote the salient, name the fading", () => {

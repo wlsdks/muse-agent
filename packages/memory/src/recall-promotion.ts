@@ -112,6 +112,14 @@ const DAY_MS_FADE = 24 * 60 * 60_000;
 const DEFAULT_FADE_MAX_SCORE = 0.25;
 const DEFAULT_FADE_MIN_AGE_DAYS = 30;
 const DEFAULT_MAX_FADING = 10;
+/**
+ * Lifetime recall hits at/above which a memory RESISTS fading even when idle and
+ * decayed (MemoryBank, arXiv:2305.10250 — frequency consolidates a memory's
+ * strength so it survives the Ebbinghaus curve). Well above the promote floor
+ * (DEFAULT_MIN_HITS = 3): only a genuinely well-established memory is protected.
+ * Reasoning-set; tune on a real recall-hit distribution (see backlog ◦).
+ */
+const DEFAULT_FADE_IMPORTANCE_HITS = 8;
 
 export interface SelectForgettableOptions {
   readonly nowMs: number;
@@ -122,6 +130,14 @@ export interface SelectForgettableOptions {
   readonly minAgeDays?: number;
   /** Cap the fading list. Default 10. */
   readonly maxFading?: number;
+  /**
+   * A memory with at least this many LIFETIME recall hits resists fading even
+   * when idle and decayed — its frequency has consolidated it (MemoryBank
+   * importance term, arXiv:2305.10250). Distinct from the recency-weighted score
+   * (which decays hits by age): a long-idle but heavily-recalled memory has a low
+   * score yet high lifetime frequency, and should not be down-ranked. Default 8.
+   */
+  readonly importanceHitsFloor?: number;
   /**
    * When true, rank by ACT-R base-level activation (frequency×spacing) instead
    * of the plain recency-weighted score. The eligibility FILTER is unchanged —
@@ -154,6 +170,7 @@ export function selectForgettable(
   const maxScore = Number.isFinite(options.maxScore) ? Math.max(0, options.maxScore!) : DEFAULT_FADE_MAX_SCORE;
   const minAgeDays = Number.isFinite(options.minAgeDays) ? Math.max(0, options.minAgeDays!) : DEFAULT_FADE_MIN_AGE_DAYS;
   const maxFading = Number.isFinite(options.maxFading) ? Math.max(1, Math.trunc(options.maxFading!)) : DEFAULT_MAX_FADING;
+  const importanceHitsFloor = Number.isFinite(options.importanceHitsFloor) ? Math.max(1, Math.trunc(options.importanceHitsFloor!)) : DEFAULT_FADE_IMPORTANCE_HITS;
   const nowMs = options.nowMs;
   const useActr = options.useActrRanking === true;
   type WithActr = ForgettingMemory & { readonly activation: number };
@@ -165,7 +182,7 @@ export function selectForgettable(
       score: scoreRecallHit(record, nowMs, options.halfLifeDays),
       activation: useActr ? recallActivation(record, nowMs) : 0
     }))
-    .filter((memory) => memory.score <= maxScore && memory.ageDays >= minAgeDays);
+    .filter((memory) => memory.score <= maxScore && memory.ageDays >= minAgeDays && memory.hits < importanceHitsFloor);
   if (useActr) {
     mapped.sort((left, right) => left.activation - right.activation || left.score - right.score);
   } else {
