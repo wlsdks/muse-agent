@@ -490,3 +490,12 @@ ratchet: desktop swift tests 71/71 (+1) · fabrication 0 · self-eval exit 0 · 
 - **리뷰지점**: mutation-first RED 실증(버그 헬퍼로 6 assertion FAIL: 0%·84%·99%·101%) → GREEN. 순수 프레젠테이션 문자열(ko+en), guard/grounding/local-only 무접촉. 콜사이트 주석("준비 중 before bytes / 퍼센트 once moving") 의도를 ≥1% 게이트가 그대로 구현. **보너스**: 구 코드 `Int(NaN*100)`는 trap(크래시) — 새 헬퍼는 NaN→clamp→"100%"로 안전(judge 실증). 형제: main.swift:108은 dev-only stderr 진단(사용자 무관, backlog).
 - **리스크**: 없음(헬퍼 추가 + 콜사이트 1줄, 전체 desktop 71/71 무회귀, self-eval exit 0, 독립 Opus ④b judge가 mutation 이빨·경계값·NaN 안전·무접촉 검증 후 PASS).
 - **운영 메모**: 이 fire는 세션-cron `c5b90c94`가 같은 워크트리에서 동시 fire를 돌려 사고성 merge 커밋을 냄(코드는 무사). cron 삭제 + 수동 진행으로 전환 → 이후 fire는 수동.
+
+## fire 55 · 2026-06-20 · skill v2.0.0 · (pending)
+meta: surface=web · value-class=micro-fix · pkg=@muse/web · kind=dashboard-percentage-correctness · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles +1 · web tests 56/56 (+6) · fabrication 0 · self-eval exit 0 · 표면 균형 web24·desktop13·cli18
+
+- **무엇**: 관리 Dashboard의 tool-accuracy(0–1 fraction)가 `Math.round(accuracy*100)`으로 렌더 → 극값 붕괴: 0.999→"100%"(완벽 아닌데 완벽 주장), 0.004→"0%"(성공 있는데 0 주장). 순수 export `formatAccuracyPct(accuracy)` 추출(undefined/NaN→"—", clamp 0..1, round, 단 round가 100인데 값<1이면 99·round가 0인데 값>0이면 1) + 콜사이트 2곳 배선.
+- **왜**: 신뢰 대시보드가 "tool 정확도 100%"를 (실제 미스파이어 중에도) 또는 "0%"를(동작 중에도) 표시 = 사용자가 *그 숫자를 보고 판단하는* 신뢰 지표를 거짓 보고. **fire 54(desktop 다운로드 % 버블)의 크로스-표면 형제** — 가드 12 형제-감사("다른 표면의 같은 패턴")로 percentage-extreme-rounding 클래스를 desktop+web 양쪽에 완결. pkg 다름(@muse/web vs apps/desktop)이라 (pkg,kind) ratchet 무관.
+- **리뷰지점**: mutation-first RED 실증(extreme-guard 없을 때 0.999→"100%"·0.004→"0%" FAIL) → GREEN. 두 가드 상호배타(pct 100·0 동시 불가, judge 확인). [0.995,1)→"99%"는 신뢰 stat의 보수적 under-report(over-report였던 원 버그의 반대 = 올바른 편향). undefined→"—" 보존 + NaN도 처리(strict 개선). 순수 프레젠테이션, grounding/security 무접촉. 형제-감사: Dashboard:18이 web 유일 % readout(다른 *100은 CSS bar height — judge 확인). 러너업 `totalCost.toFixed(4)` 천단위 미그룹 = 별 클래스, backlog.
+- **리스크**: 없음(순수 헬퍼 1개 + 콜사이트 2곳, web build tsc+vite 통과, web 56/56, self-eval exit 0, 독립 Opus ④b judge가 mutation 양쪽 이빨·경계값 비모순·무접촉·sibling-audit 검증 후 PASS).

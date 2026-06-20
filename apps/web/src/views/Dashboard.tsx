@@ -10,6 +10,23 @@ function sum(rows: readonly TokenCostDailyRow[], pick: (r: TokenCostDailyRow) =>
   return rows.reduce((acc, r) => acc + pick(r), 0);
 }
 
+export function formatAccuracyPct(accuracy: number | undefined): string {
+  if (accuracy === undefined || Number.isNaN(accuracy)) {
+    return "—";
+  }
+  const clamped = Math.min(1, Math.max(0, accuracy));
+  let pct = Math.round(clamped * 100);
+  // Never let a non-perfect value read "100%" nor a non-zero value read "0%":
+  // those extremes must mean exactly 1 / exactly 0, or the stat misinforms.
+  if (pct === 100 && clamped < 1) {
+    pct = 99;
+  }
+  if (pct === 0 && clamped > 0) {
+    pct = 1;
+  }
+  return `${pct}%`;
+}
+
 export function DashboardView({ client }: { client: ApiClient }) {
   const { locale, t } = useI18n();
 
@@ -38,7 +55,7 @@ export function DashboardView({ client }: { client: ApiClient }) {
   const days = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
   const maxDay = Math.max(1, ...days.map(([, v]) => v));
 
-  const accuracyPct = tools.data?.accuracy !== undefined ? Math.round(tools.data.accuracy * 100) : null;
+  const accuracyPct = formatAccuracyPct(tools.data?.accuracy);
   const topTools = (tools.data?.byTool ?? []).slice(0, 8);
 
   const anyLoading = cost.isLoading || tools.isLoading || latency.isLoading;
@@ -60,7 +77,7 @@ export function DashboardView({ client }: { client: ApiClient }) {
           <Stat value={`$${totalCost.toFixed(4)}`} label={t("dash.totalCost")} />
         </Card>
         <Card>
-          <Stat value={accuracyPct === null ? "—" : `${accuracyPct}%`} label={t("dash.toolAccuracy")} />
+          <Stat value={accuracyPct} label={t("dash.toolAccuracy")} />
         </Card>
       </div>
 
