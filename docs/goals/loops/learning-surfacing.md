@@ -78,3 +78,12 @@ ratchet: testFiles +0 (recently-learned.test +1 case) · @muse/memory 531 green 
 - **왜**: 사용자가 *어떻게* 이해가 진화했는지 봄 — 마음을 바꿨는지 vs 구체화했는지. 7 fire 동안 죽어있던 데이터(`kind`) 활성화.
 - **리뷰지점**: 동사는 `entry.kind`에서만 파생(no model, citation 불변). real-formatSource assertion 3개(projection + status :65/:83, 전부 contradict)만 ripple — 나머지 "updated from" 리터럴은 render/summarize/formatMemoryShow 테스트의 명시 source(formatSource 안 거침)라 의도적 sample.
 - **리스크**: 없음 — verb는 기록된 kind에서만, legacy=conservative "updated". memory 531 green, 독립 Opus ④b judge가 ripple-completeness(false-green 없음) + mutation 재확인 PASS.
+
+## fire 9 · 2026-06-21 · skill v2.1.0 · pending
+meta: value-class=decompose-plan(no-code) · pkg=docs · kind=decompose-on-defer · verdict=N/A · firesSinceDrill=9 · firesSinceMainMerge=2
+ratchet: testFiles +0 · no code change (planner step) · fabrication 0
+
+- **무엇**: @muse/memory 표면 projection seam이 8 fire로 채굴됨(monoculture 신호: 6/8 fire가 memory). 다양성 RATCHET이 가리키는 다음 다른-(pkg,kind) = **교정-확인 surface**(theme 명시, 가장 정체성-공명). 단 `createUserMemoryAutoExtractHook.afterComplete`가 변경분 반환 안 함(`void`, side-effect upsert)이라 MULTI-FIRE → 계약 **DECOMPOSE-ON-DEFER**대로 loop-sized 3슬라이스로 분해해 backlog ★에 기록: (a) 훅 `onLearned` 콜백 / (b) `formatLearnedConfirmation` 인용 라인 / (c) chat-ink 렌더.
+- **왜**: 큰 작업을 한 fire에 무리하게 욱여넣는 대신 다음 fire가 명확한 첫 조각(a)으로 시작하게(Anthropic planner 패턴). 코드 0줄이지만 다음 진짜 작업의 설계 — "할 일 없음" 아님.
+- **리뷰지점**: 코드 변경 없음 → ④b judge N/A(검증할 행동 없음). chat-ink/web/today는 surfaces 루프 소유라 각 슬라이스에 dedup 필요 명시.
+- **lesson**: 단일-pkg cheap seam이 마르면(monoculture) 억지 micro-fix 대신 다음 다른-(pkg,kind) 큰 작업을 **DECOMPOSE해 backlog 적재** — 다음 fire ROI↑. 무인 루프는 이걸 스스로 판단(질문 없이).
