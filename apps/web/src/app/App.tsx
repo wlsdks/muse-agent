@@ -20,6 +20,7 @@ import { TasksView } from "../views/Tasks.js";
 import { TodayView } from "../views/Today.js";
 import { McpServersView } from "../views/McpServers.js";
 import { SelfImprovementView } from "../views/SelfImprovement.js";
+import { SkillsView } from "../views/Skills.js";
 import { ToolsView } from "../views/Tools.js";
 import { useShortcuts } from "./useShortcuts.js";
 
@@ -48,6 +49,7 @@ type ViewId =
   | "tools"
   | "mcp"
   | "self-improvement"
+  | "skills"
   | "settings";
 type GroupKey = "group.workspace" | "group.knowledge" | "group.system";
 
@@ -75,6 +77,7 @@ export const NAV: readonly NavEntry[] = [
   { Component: ToolsView, group: "group.system", icon: Icon.tool, id: "tools", key: "o", labelKey: "nav.tools" },
   { Component: McpServersView, group: "group.system", icon: Icon.plug, id: "mcp", key: "p", labelKey: "nav.mcp" },
   { Component: SelfImprovementView, group: "group.system", icon: Icon.brain, id: "self-improvement", key: "w", labelKey: "nav.selfImprovement" },
+  { Component: SkillsView, group: "group.system", icon: Icon.tool, id: "skills", key: "j", labelKey: "nav.skills" },
   { Component: SettingsView, group: "group.system", icon: Icon.settings, id: "settings", key: "s", labelKey: "nav.settings" }
 ];
 

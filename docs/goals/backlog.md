@@ -113,10 +113,25 @@
 - ★ **웹 관리/자기강화 콘솔 로드맵** (진안 요청 "openclaw/hermes처럼 웹에서 MCP·설정·스킬·자기강화 다 관리"). MCP 콘솔(fire 57 done)에 이어 surfaces 루프가 fire별 배송:
   - ✓ web 자기강화 대시보드 (whetstone 약점원장 *읽기*) — `SelfImprovementView`가 fire 58의 `GET /api/self-improvement/weaknesses` 소비, 축 라벨·숙달도%·hint read-only 렌더; 형제 `formatProbabilityPct` 공유(Dashboard 위임)·`NavKeys.test` leader-key 가드 — surfaces fire 59 (④b judge가 NAV key="g"↔leader 충돌 FAIL→fix) (`deda3d6c`)
   - ✓ playbook 전략 API — read-only `GET /api/self-improvement/playbook` (shapePlaybook: reward DESC·probation/reward 정규화, ~/.muse/playbook.json, fire 58 weaknesses 미러) — surfaces fire 60 (`e778da32`); NEXT=웹 뷰가 이 API 소비(weaknesses 옆 "전략" 섹션)
-  - ◦ web 자기강화 대시보드 (나머지) — playbook API(fire 60) 소비하는 웹 뷰 + learned·eval 스코어보드 *읽기* (eval 스코어보드는 dev-INFRA라 개인 콘솔 노출 여부 재검토)
-  - ◦ web 스킬 컨트롤 — skills 목록 + reward/curate/author (신규 API + 웹)
-  - ◦ web 설정/daemon 토글 — proactivity·episodic·skill학습·watch daemon on/off (PUT /settings/:key 기존, ~80 env 플래그는 env→runtime 브리지 필요)
-  - ◦ web MCP 콘솔 확장 — add/remove 서버 + allowlist(`/api/mcp/security`) 편집 (API 기존, 웹만)
+  - ✓ web 학습된 전략 섹션 — `SelfImprovementView`가 fire 60 playbook API 소비, active/probation 정직 구분(strategyStatusLabel·summarizeStrategies)·tag·origin·reward 렌더 — surfaces fire 61 (★JUDGE-DRILL: judge#1이 honesty-역전 나쁜슬라이스 FAIL→fix→judge#2 PASS) (`2624028e`)
+  - ✓ reflections API — read-only `GET /api/self-improvement/reflections`(shapeReflections: listReflections recency정렬·sourceCount=sourceIds.length grounding신호, autoconf resolveReflectionsFile) — surfaces fire 69 (★JUDGE-DRILL: judge#1이 sourceCount필드-conflate FAIL→fix→judge#2 PASS) (`c5bf5484`); NEXT=웹 reflections 섹션
+  - ◦ web reflections 섹션 — `SelfImprovementView`에 fire 69 reflections API 소비(insight·supportCount·sourceCount·날짜)
+  - ◦ CLI resolveReflectionsFile 통일(형제) — autoconf 공유본으로(skills resolver 통일과 묶음 가능)
+  - ◦ web 자기강화 대시보드 (나머지) — eval 스코어보드 *읽기* (dev-INFRA라 개인 콘솔 노출 여부 재검토; weaknesses+playbook+reflections done)
+  - ◦ web 스킬 컨트롤 — skills 목록 + reward/curate/author (신규 API + 웹):
+    - ✓ skills 목록 API — read-only `GET /api/self-improvement/skills` (shapeSkills: authored 스킬+reward 병합, reward DESC·name ASC, avoided=isSkillAvoided; autoconfigure `resolveSkillRewardsFile` 신설) — surfaces fire 62 (`cffe2d94`); NEXT=웹 뷰가 이 API 소비(새 Skills 뷰/nav)
+    - ✓ web Skills 뷰 — `SkillsView`(자체 nav key "j") fire 62 skills API 소비, 이름·설명·source·reward·avoided 배지(정직신호) read-only 렌더; summarizeSkills 헬퍼 — surfaces fire 63 (`a1f44f18`); reward/curate/author 액션은 후속
+    - ✓ skill reward API (상태변경) — `POST /api/self-improvement/skills/:name/reward` (parseRewardDelta·auth·adjustSkillReward, 무효→400 no-op, smoke 누적+부작용0 증명) — surfaces fire 64, 첫 웹콘솔 write 라우트 (`e55867d7`); NEXT=Skills 뷰에 thumbs up/down 버튼이 이 라우트 호출
+    - ✓ web Skills reward 버튼 — `SkillsView` ▲/▼ 버튼이 fire 64 POST reward 라우트 호출(useMutation+invalidate `["skills"]`); canAdjustReward로 [-5,5] 경계 no-op 차단 — surfaces fire 65 (`0e082ec8`); 스킬 컨트롤 read+write end-to-end 완성
+    - ◦ web Skills curate/author — 스킬 활성/비활성·세션에서 스킬 작성(authorSkillsFromSession 기존) 웹 노출 (상태변경, 후속)
+    - ◦ CLI 스킬 resolver 통일(형제) — `apps/cli/commands-skills.ts`의 private `resolveAuthoredSkillsDir`/`resolveSkillRewardsFile`를 autoconfigure 공유본으로 통일(commands-skills·commands-learned·chat-ink 3파일 import 변경), gate-asymmetry 제거
+  - ◦ web 설정/daemon 토글 — proactivity·episodic·skill학습·watch daemon on/off:
+    - ✓ daemon-flags read API — `GET /api/settings/daemon-flags`(shapeDaemonFlags: 6 플래그 effective on/off, parseBoolean 데몬과 동일 resolver, settings-routes.ts) — surfaces fire 67 (`668c4df5`); NEXT=웹 Settings 뷰가 소비
+    - ✓ web Settings 데몬 카드 — `SettingsView`에 "Background daemons" 카드(fire 67 daemon-flags API 소비, label+on/off 배지, summarizeFlags "N of M enabled") — surfaces fire 68 (`2433dbfb`); 설정 콘솔 읽기-side 완성
+    - ◦ 토글 write — 데몬 플래그 on/off PUT (env→runtime 브리지 필요; ~80 env 플래그 점진 배선, 상태변경)
+- ⚠ FLAKY(공유, 비-surfaces): `@muse/model/src/web-search-policy.test.ts > property fuzz > never throws…`가 ~1/3 비결정 실패(격리 2/3 통과) — 모든 루프 merge-to-main을 간헐 차단. @muse/model 오너/test-hygiene 루프가 fuzz 생성기 seed 고정 필요
+  - ✓ web MCP allowlist 보안 섹션 (읽기) — `McpServersView`가 `GET /api/mcp/security` 소비, 허용목록·도구출력 상한 표시; summarizeAllowlist의 빈목록=unrestricted 정직신호 — surfaces fire 66 (`eac90550`)
+  - ◦ web MCP 콘솔 확장 (나머지) — add/remove 서버 + allowlist(`PUT /api/mcp/security`) 편집 (상태변경, API 기존; 읽기는 fire 66 done)
 - ✓ Playbook eviction PEVI-parity (PEVI arXiv:2012.15085): `retainPlaybookEntries` now ranks bank-overflow survival on the Wilson-LCB `retentionUtility` (inline-replicated `rankingUtility`, NOT the rolled-back `effectiveStrategyReward` shrinkage), so a thin-but-lucky strategy no longer evicts a battle-tested one; no-tally falls back byte-identically to clampReward(reward) — self-improvement fire 1
 - ✓ chat resolves a topic's grounding-gap on a GROUNDED SUCCESS (`isChatGroundedSuccess` + `chatResolveWeakness`, BKT mastery, ask-parity) so a now-answered recurring gap stops nudging — self-improvement fire 4 `9f2f484b`
 - ✓ doctor `WEAKNESS_AXIS_LABEL` friendly labels for source-conflict + misgrounding (user-facing `formatWeaknesses`) — self-improvement fire 5 `1bde1536`

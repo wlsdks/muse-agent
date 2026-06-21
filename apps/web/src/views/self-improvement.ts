@@ -14,3 +14,26 @@ export function summarizeWeaknesses(entries: readonly { axis: string }[]): { tot
   const axes = new Set(entries.map((e) => e.axis)).size;
   return { total: entries.length, axes };
 }
+
+/**
+ * A probation strategy is recorded but NEVER injected into agent runs until a
+ * real reinforcement graduates it, so the console must not imply it is already
+ * shaping behaviour — "probation" means "not yet acting", "active" means it is.
+ */
+export function strategyStatusLabel(entry: { probation: boolean }): "active" | "probation" {
+  return entry.probation ? "probation" : "active";
+}
+
+export function summarizeStrategies(entries: readonly { probation: boolean }[]): {
+  total: number;
+  active: number;
+  probation: number;
+} {
+  let probation = 0;
+  for (const entry of entries) {
+    if (entry.probation) {
+      probation += 1;
+    }
+  }
+  return { total: entries.length, active: entries.length - probation, probation };
+}

@@ -12,7 +12,10 @@ import {
   resolvePendingApprovalsFile,
   resolveVetoesFile,
   resolvePlaybookFile,
-  resolveWeaknessesFile
+  resolveWeaknessesFile,
+  resolveAuthoredSkillsDir,
+  resolveReflectionsFile,
+  resolveSkillRewardsFile
 } from "@muse/autoconfigure";
 import { queryContacts, runActuatorByName } from "@muse/mcp";
 import type { JsonObject } from "@muse/shared";
@@ -54,6 +57,7 @@ import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messagin
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
 import { registerAccountabilityRoutes } from "./accountability-routes.js";
 import { registerSelfImprovementRoutes } from "./self-improvement-routes.js";
+import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
 import { registerAgentNoticesRoutes } from "./agent-notices-routes.js";
 import { registerSetupRoutes } from "./setup-routes.js";
@@ -323,8 +327,13 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   registerSelfImprovementRoutes(server, {
     authService,
     weaknessesFile: options.weaknessesFile ?? resolveWeaknessesFile(process.env),
-    playbookFile: options.playbookFile ?? resolvePlaybookFile(process.env)
+    playbookFile: options.playbookFile ?? resolvePlaybookFile(process.env),
+    authoredSkillsDir: options.authoredSkillsDir ?? resolveAuthoredSkillsDir(process.env),
+    skillRewardsFile: options.skillRewardsFile ?? resolveSkillRewardsFile(process.env),
+    reflectionsFile: options.reflectionsFile ?? resolveReflectionsFile(process.env)
   });
+
+  registerSettingsRoutes(server, { authService });
 
   // Optional Phase B daemon: every MUSE_REMINDER_TICK_MS (default
   // 60s) call runDueReminders. Activates only when the user has
