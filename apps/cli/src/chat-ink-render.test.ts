@@ -19,6 +19,7 @@ function makeProps(overrides: Record<string, unknown> = {}): Parameters<typeof M
     model: "ollama/qwen3:8b",
     models: ["ollama/qwen3:8b", "ollama/qwen3.6:35b-a3b"],
     proactiveOn: false,
+    localOnly: true,
     skills: [{ name: "summarize", description: "summarize text" }],
     skillsDir: "/tmp/skills",
     skillsPromptFor: () => "",
@@ -396,5 +397,25 @@ describe("MuseChatApp render — plain chat + editing", () => {
     const frame = await waitForFrame(lastFrame, ["Started a new conversation"]);
     unmount();
     expect(frame).toContain("Started a new conversation");
+  });
+});
+
+describe("MuseChatApp HUD — local-only privacy posture", () => {
+  it("shows a 🔒 local badge in the HUD when local-only is on (the default)", async () => {
+    const { lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({ localOnly: true })));
+    await tick();
+    const frame = lastFrame() ?? "";
+    unmount();
+    expect(frame).toContain("🔒 local");
+    expect(frame).not.toContain("⚠ cloud");
+  });
+
+  it("warns ⚠ cloud in the HUD when local-only is off (cloud egress possible)", async () => {
+    const { lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({ localOnly: false })));
+    await tick();
+    const frame = lastFrame() ?? "";
+    unmount();
+    expect(frame).toContain("⚠ cloud");
+    expect(frame).not.toContain("🔒 local");
   });
 });

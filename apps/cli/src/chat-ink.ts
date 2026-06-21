@@ -9,7 +9,7 @@
  * Render-free logic lives in `chat-ink-core.ts` and is unit-tested.
  */
 
-import { createMuseRuntimeAssembly, parseBoolean, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, evaluateLocalOnlyPosture, parseBoolean, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
 import { isSkillAvoided, readCheckins, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks } from "@muse/mcp";
 import { aggregateActivitySignals, contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, recordRetraction, selectFireablePatterns } from "@muse/memory";
@@ -176,6 +176,8 @@ export function MuseChatApp(props: {
   readonly model: string;
   readonly models: readonly string[];
   readonly proactiveOn: boolean;
+  /** Whether the local-only posture is ON (cloud egress refused) — shown in the HUD. */
+  readonly localOnly: boolean;
   readonly skills: readonly SkillInfo[];
   readonly skillsDir: string;
   readonly skillsPromptFor: (prompt: string) => string;
@@ -839,6 +841,8 @@ export function MuseChatApp(props: {
     h(Box, null,
       h(Text, { color: "magenta" }, "♪ "),
       h(Text, { color: "cyan" }, currentModel),
+      h(Text, { dimColor: true }, "  ·  "),
+      h(Text, { color: props.localOnly ? "green" : "yellow" }, props.localOnly ? "🔒 local" : "⚠ cloud"),
       h(Text, { dimColor: true }, "  ·  proactive "),
       h(Text, { color: props.proactiveOn ? "green" : "gray" }, props.proactiveOn ? "on" : "off"),
       h(Text, { dimColor: true }, `  ·  agent `),
@@ -1322,6 +1326,9 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // bare CR, indistinguishable from Enter. Supporting terminals (Ghostty/
   // cmux, iTerm2, kitty, WezTerm) opt in; others ignore the sequence.
   const proactiveOn = Boolean(process.env.MUSE_PROACTIVE_PROVIDER?.trim() && process.env.MUSE_PROACTIVE_DESTINATION?.trim());
+  // Local-only posture for the HUD — same canonical source `muse doctor`/`muse
+  // status` use, so the three surfaces never disagree about cloud-egress.
+  const localOnly = evaluateLocalOnlyPosture(process.env).enabled;
 
   // Speaks-first source: imminent reminders + follow-ups from the local
   // stores. (Messenger push already runs via the proactive daemon; this
@@ -1391,6 +1398,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     saveText,
     copyToClipboard,
     proactiveOn,
+    localOnly,
     skills: skillInfos,
     skillsDir,
     skillsPromptFor,

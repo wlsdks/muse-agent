@@ -1,5 +1,12 @@
 # Muse dev backlog — the living ledger
 
+- ✓ muse status privacy posture line — cli-excellence fire 1
+- ✓ muse --help / non-TTY first-screen local-first quickstart block — cli-excellence fire 2
+- ✓ first-screen taglines aligned to learns-you/local-first identity via single MUSE_TAGLINE const (--help + REPL banner) — cli-excellence fire 3
+- ✓ chat REPL HUD local-only posture badge (🔒 local / ⚠ cloud) — cli-excellence fire 4
+- ✓ `muse --version` pre-framework fast path (~500ms→~90ms) + version 0.0.0→0.1.0 single-source — cli-excellence fire 5
+- ✓ `muse notes reindex` honest empty-state when 0 markdown found (vs misleading "Done. 0 embedded") — cli-excellence fire 6
+- ✓ unknown-command discovery on-ramp (no close match → Popular commands, registry-intersected) — cli-excellence fire 7
 - ✓ eval:two-edit-fix completeness battery — computer-control fire 54: a harder multi-step eval (2 edits across 2 files; test passes only if BOTH bugs fixed) that catches a stop-after-one-edit model. Mirrors eval-multifile-fix harness; OUTCOME-graded; discrimination verified deterministically (one-edit→FAIL, both→PASS). 12B PASSes 1/1 live (cross-file 2-edit completeness confirmed — cumulative effect of fires 47/49/51). Opus ④b judge PASS. Kept standalone (pass^1); promote into eval:multistep once pass^k-confirmed. REMAINING flywheel directions: wrong-first-fix re-iterate eval (naive first edit insufficient → must re-read+re-edit), or theme repoint if the vein is exhausted. (detail in docs/goals/loops/computer-control.md fire 54)
 
 - ✓ eval:multistep regression-lock aggregator — computer-control fire 53: bundles the 3 multi-step evals (computer-task/multifile-fix/edit-run-verify) into one gate (pnpm eval:multistep) so their fires-40-51 FAIL→PASS gains can't silently rot; mirrors eval:self-improving (Ollama-skip→exit0, any-fail→exit1, MUSE_EVAL_REPEAT passthrough for pass^k). Live ALL PASS 3/3; Opus ④b judge PASS. Done backlog direction (1). REMAINING next directions: (2) harder multi-step fixture (2-edit cross-file / wrong-first-fix re-iterate) to keep raising the bar; (3) theme repoint if the deterministic vein is exhausted (agent-core well over-mined; consider a fresh sub-area or repoint). (detail in docs/goals/loops/computer-control.md fire 53)
@@ -84,7 +91,7 @@
 - ✓ vision field-level partial-apply — drop un-grounded OPTIONAL fields + apply grounded core, fail-close only on a REQUIRED field (no un-grounded value persisted; arXiv:2404.18930) — grounded-vision fire 3 (`0f301103`)
 - ✓ vision weak-numeric grounding guard — a bare short (≤3-digit) numeric value can't ground a field on a coincidental digit match (discount %/clock time); strictly stricter, no over-drop (arXiv:2404.18930) — grounded-vision fire 4 (`5b66ce16`)
 - ✓ vision amount-field-role grounding — a `total` grounds only on a currency-anchored run; closes the $2026-as-total leak AND repairs the fire-4 $40 over-drop (arXiv:2404.18930) — grounded-vision fire 6 (`f3ca1cb0`)
-- ◦ repo byte-hygiene: `apps/cli/src/commands-logo.test.ts:23,32` has RAW ESC bytes (committed by e10ac6c2 "muse goddess mascot", on origin/main) -> `pnpm check` is RED repo-wide via the @muse/shared byte-hygiene gate. Replace each raw escape byte with the literal sequence backslash-u-001b ([[feedback_no_raw_control_bytes_in_tests]] recurrence). NOT a grounded-vision slice -- flagged for the CLI/test-hygiene owner. Gate: `pnpm --filter @muse/shared test`.
+- ✓ repo byte-hygiene: commands-logo.test.ts raw ESC bytes — already resolved on origin/main (raw-ESC count 0, @muse/shared byte-hygiene gate green); stale note cleared — cli-excellence fire 5
 - ◦ vision contact partial-apply degenerate-action notice: when a contact's name is grounded but its only email/phone is dropped, dropUnverifiedOptional recomposes to route:none/fields:{} and the apply path prints a misleading `✅ Done:{added:false}` (the contacts store fail-closes so there's NO write — cosmetic only). Detect the degenerate (no required method left) and print a clear "couldn't apply — no grounded contact method" instead. Gate: `pnpm --filter @muse/cli test`. (grounded-vision fire-3 judge residual)
 - ✓ URL/domain grounding-value guard on the sync chat gate (answerAssertsUnsupportedUrl → abstain) — closes the fabricated-link class the number/email/identifier guards miss (doctrine P2; Netcraft phishing-URL harm) — context-strategy fire 15 (detail in docs/goals/loops/context-strategy.md)
 
@@ -551,7 +558,7 @@ DO NOT adopt (identity conflict): cloud channels/gateway, cloud realtime voice p
 > blocks below are pre-v1.14.0 history — kept for dedup, condensable when loops are paused. Convention:
 > [`loops/README.md`](loops/README.md).)
 
-- ◦ repo byte-hygiene: `apps/cli/src/commands-logo.test.ts:23,32` has RAW ESC bytes (committed by e10ac6c2 "muse goddess mascot", on origin/main) -> `pnpm check` is RED repo-wide via the @muse/shared byte-hygiene gate. Replace each raw escape byte with the literal sequence backslash-u-001b ([[feedback_no_raw_control_bytes_in_tests]] recurrence). NOT a grounded-vision slice -- flagged for the CLI/test-hygiene owner. Gate: `pnpm --filter @muse/shared test`.
+- ✓ repo byte-hygiene: commands-logo.test.ts raw ESC bytes — already resolved on origin/main (raw-ESC count 0, @muse/shared byte-hygiene gate green); stale note cleared — cli-excellence fire 5
 ## TOOL theme — open (CLI-only capabilities lacking an agent tool)
 
 - ⏳ **FINDING (fire 65) — `email`/`handle`/`birthday` are NOT cleanly groundable under the ANY-token mechanism (so add_contact grounds ONLY `phone`).** `email`/`handle` local-part (`bob@…`, `@bob`) = the contact NAME which is in the utterance → a fabricated domain false-grounds via the name token (false protection). `birthday` reformats (MM-DD) → brittle false-drop. A real fix needs per-field matching (e.g. domain-aware email grounding) in `groundToolArguments` — that lives in @muse/agent-core (concurrent agent-core-enhance loop's hot package); defer until it quiets or 진안 prioritizes. Phone is done (fire 65).
