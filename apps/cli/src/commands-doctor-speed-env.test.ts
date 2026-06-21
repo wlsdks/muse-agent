@@ -31,4 +31,15 @@ describe("museSpeedEnvCheck (Muse-process local-model speed env posture)", () =>
     expect(check.detail).not.toContain("num_batch=");
     expect(check.detail).toContain("MUSE_OLLAMA_NUM_BATCH"); // hint present
   });
+
+  it("surfaces a set num_predict cap (fire-7 lever) so it's discoverable too", () => {
+    const check = museSpeedEnvCheck({ numPredict: "512" });
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("num_predict=512");
+  });
+
+  it("omits num_predict when unset / whitespace", () => {
+    expect(museSpeedEnvCheck({}).detail).not.toContain("num_predict=");
+    expect(museSpeedEnvCheck({ numPredict: "  " }).detail).not.toContain("num_predict=");
+  });
 });

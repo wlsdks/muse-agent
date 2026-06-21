@@ -191,6 +191,11 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
         // rejects (>0), so it also falls back to the default.
         ...(env.MUSE_OLLAMA_NUM_BATCH !== undefined
           ? { numBatch: parseInteger(env.MUSE_OLLAMA_NUM_BATCH, 0) }
+          : {}),
+        // Opt-in default generation cap (same omit-on-junk contract): caps
+        // only requests with no explicit maxOutputTokens; absent → unbounded.
+        ...(env.MUSE_OLLAMA_NUM_PREDICT !== undefined
+          ? { numPredict: parseInteger(env.MUSE_OLLAMA_NUM_PREDICT, 0) }
           : {})
       });
     case "openai":
