@@ -1,7 +1,7 @@
 import type { AgentRunInput, AgentRunResult, AgentRuntime } from "@muse/agent-core";
 import type { AgentSpec } from "@muse/agent-specs";
 import { MultiAgentOrchestrator } from "@muse/multi-agent";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { buildTieredOrchestration, resolveOrchestrateTierModels, resolveTierCapacityProbe } from "../src/multi-agent-routes.js";
 
@@ -100,5 +100,70 @@ describe("buildTieredOrchestration", () => {
     const byId = await modelsOf(workers);
     expect(byId.researcher).toBe("ollama/qwen3.6:35b-a3b");
     expect(byId.analyst).toBe("ollama/qwen3.6:35b-a3b");
+  });
+});
+
+// Confidence-driven runtime: records the model each run used and returns
+// logprobs whose mean equals confByModel[model] — so a cascade fast worker's
+// escalation decision is deterministic without a live model.
+function confidenceRuntime(confByModel: Record<string, number>): { calls: string[]; runtime: AgentRuntime; lastInput?: AgentRunInput } {
+  const state: { calls: string[]; runtime: AgentRuntime; lastInput?: AgentRunInput } = {
+    calls: [],
+    runtime: {
+      run: async (input: AgentRunInput): Promise<AgentRunResult> => {
+        state.calls.push(input.model);
+        state.lastInput = input;
+        const mean = confByModel[input.model] ?? -5;
+        return {
+          response: { id: "r", logprobs: [{ logprob: mean, token: "x" }], model: input.model, output: `ran on ${input.model}`, raw: {} },
+          runId: input.runId ?? "run"
+        };
+      }
+    } as unknown as AgentRuntime
+  };
+  return state;
+}
+
+const RESEARCHER_INPUT: AgentRunInput = { messages: [{ content: "define entropy", role: "user" }], model: MODELS.fast, runId: "c" };
+
+describe("buildTieredOrchestration — opt-in cascade (MUSE_TIERED_CASCADE)", () => {
+  it("escalates a LOW-confidence fast worker to the heavy model (runs fast, then heavy)", async () => {
+    vi.stubEnv("MUSE_TIERED_CASCADE", "1");
+    const env = confidenceRuntime({ [MODELS.fast]: -2.0, [MODELS.heavy]: -0.1 }); // fast below the -1.0 threshold
+    const { workers } = await buildTieredOrchestration(SPECS, env.runtime, MODELS, () => true);
+    const researcher = workers.find((w) => w.id === "researcher")!;
+    const result = await researcher.run(RESEARCHER_INPUT);
+    expect(env.calls).toEqual([MODELS.fast, MODELS.heavy]); // cascade: fast first, then escalate
+    expect(result.response.model).toBe(MODELS.heavy);
+    vi.unstubAllEnvs();
+  });
+
+  it("keeps a HIGH-confidence fast worker on the fast model (one call, the latency win)", async () => {
+    vi.stubEnv("MUSE_TIERED_CASCADE", "1");
+    const env = confidenceRuntime({ [MODELS.fast]: -0.2 }); // above threshold
+    const { workers } = await buildTieredOrchestration(SPECS, env.runtime, MODELS, () => true);
+    const researcher = workers.find((w) => w.id === "researcher")!;
+    const result = await researcher.run(RESEARCHER_INPUT);
+    expect(env.calls).toEqual([MODELS.fast]); // heavy never ran
+    expect(result.response.model).toBe(MODELS.fast);
+    vi.unstubAllEnvs();
+  });
+
+  it("requests logprobs on the fast pass (consumes the agent-run logprobs plumbing)", async () => {
+    vi.stubEnv("MUSE_TIERED_CASCADE", "1");
+    const env = confidenceRuntime({ [MODELS.fast]: -0.2 });
+    const { workers } = await buildTieredOrchestration(SPECS, env.runtime, MODELS, () => true);
+    await workers.find((w) => w.id === "researcher")!.run(RESEARCHER_INPUT);
+    expect(env.lastInput?.logprobs).toBe(true);
+    vi.unstubAllEnvs();
+  });
+
+  it("is OFF by default — the fast worker runs once, no logprobs, no escalation (byte-identical to today)", async () => {
+    const env = confidenceRuntime({ [MODELS.fast]: -2.0, [MODELS.heavy]: -0.1 }); // low, but cascade off
+    const { workers } = await buildTieredOrchestration(SPECS, env.runtime, MODELS, () => true);
+    const result = await workers.find((w) => w.id === "researcher")!.run(RESEARCHER_INPUT);
+    expect(env.calls).toEqual([MODELS.fast]); // no escalation despite low confidence
+    expect(env.lastInput?.logprobs).toBeUndefined(); // logprobs not requested
+    expect(result.response.model).toBe(MODELS.fast);
   });
 });

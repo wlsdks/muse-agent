@@ -79,3 +79,51 @@ describe("orchestrate routes wire detectFanInConflicts when an embed is provided
     }
   });
 });
+
+describe("orchestrate routes ALSO wire detectFanInRedundancy when an embed is provided (fan-out step-repetition)", () => {
+  // Both default workers return the SAME output → near-identical → redundant (and NOT a
+  // conflict: identical token sets fail the neither-subset gate).
+  const identicalRuntime = {
+    run: async (input: AgentRunInput): Promise<AgentRunResult> => ({
+      response: { id: "r", model: input.model, output: "the project deadline is tuesday", raw: {} },
+      runId: "run"
+    })
+  } as unknown as AgentRuntime;
+
+  function appWith(embedFn?: typeof embed) {
+    const app = Fastify();
+    registerMultiAgentRoutes(app, {
+      agentRuntime: identicalRuntime,
+      agentSpecRegistry: new InMemoryAgentSpecRegistry(DEFAULT_AGENT_SPECS),
+      defaultModel: "diagnostic",
+      ...(embedFn ? { embed: embedFn } : {})
+    });
+    return app;
+  }
+
+  it("POST /orchestrate surfaces the redundancy advisory in response.output when workers duplicate work", async () => {
+    const app = appWith(embed);
+    await app.ready();
+    try {
+      const res = await app.inject({ method: "POST", url: "/api/multi-agent/orchestrate", payload });
+      expect(res.statusCode).toBe(200);
+      const output = (res.json() as { response: { output: string } }).response.output;
+      expect(output).toContain("ℹ Workers produced near-identical answers");
+      expect(output).not.toContain("⚠ Workers disagree"); // identical ≠ contradiction
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("control: with NO embed wired the route stays silent (no advisory)", async () => {
+    const app = appWith();
+    await app.ready();
+    try {
+      const res = await app.inject({ method: "POST", url: "/api/multi-agent/orchestrate", payload });
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { response: { output: string } }).response.output).not.toContain("near-identical");
+    } finally {
+      await app.close();
+    }
+  });
+});

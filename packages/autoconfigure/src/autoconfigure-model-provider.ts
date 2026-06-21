@@ -14,7 +14,7 @@ import {
   type ModelProvider
 } from "@muse/model";
 
-import { parseBoolean, parseCsv, parseInteger, parseNonNegativeFloat, parseOptionalString } from "./env-parsers.js";
+import { parseBoolean, parseCsv, parseInteger, parseNonNegativeFloat, parseNonNegativeInteger, parseOptionalString } from "./env-parsers.js";
 
 /**
  * Temperature for Muse's user-facing ANSWER generation (chat / ask). Set
@@ -196,6 +196,15 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
         // only requests with no explicit maxOutputTokens; absent → unbounded.
         ...(env.MUSE_OLLAMA_NUM_PREDICT !== undefined
           ? { numPredict: parseInteger(env.MUSE_OLLAMA_NUM_PREDICT, 0) }
+          : {}),
+        // num_thread: junk/0 → 0 → adapter rejects (>0). num_gpu uses the
+        // non-negative parser so a literal "0" (CPU-only) is HONOURED; junk /
+        // negative → -1 → adapter rejects (>=0).
+        ...(env.MUSE_OLLAMA_NUM_THREAD !== undefined
+          ? { numThread: parseInteger(env.MUSE_OLLAMA_NUM_THREAD, 0) }
+          : {}),
+        ...(env.MUSE_OLLAMA_NUM_GPU !== undefined
+          ? { numGpu: parseNonNegativeInteger(env.MUSE_OLLAMA_NUM_GPU, -1) }
           : {})
       });
     case "openai":

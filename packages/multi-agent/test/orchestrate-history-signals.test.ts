@@ -5,7 +5,8 @@ import {
   MultiAgentOrchestrator,
   RuleBasedAgentWorker,
   createWorkerResult,
-  detectFanInConflicts
+  detectFanInConflicts,
+  detectFanInRedundancy
 } from "../src/index.js";
 
 // Two workers disagree on the same point; the embed maps "deadline" statements to an
@@ -23,7 +24,30 @@ function disagreeingWorkers() {
   return [a, b];
 }
 
+function redundantWorkers() {
+  const a = new RuleBasedAgentWorker("Generalist", "Generalist", [], (input) =>
+    createWorkerResult("Generalist", "the project deadline is tuesday", input)
+  );
+  const b = new RuleBasedAgentWorker("Critic", "Critic", [], (input) =>
+    createWorkerResult("Critic", "the project deadline is tuesday", input)
+  );
+  return [a, b];
+}
+
 describe("MultiAgentOrchestrator — coordination outcomes persisted in the history entry", () => {
+  it("records cross-worker REDUNDANCY in the history entry (the conflict-twin, queryable after the run)", async () => {
+    const historyStore = new InMemoryOrchestrationHistoryStore();
+    const orchestrator = new MultiAgentOrchestrator({ idFactory: () => "hr", historyStore, workers: redundantWorkers() });
+    const result = await orchestrator.run(
+      { messages: [{ content: "when is the deadline?", role: "user" }], model: "m" },
+      { mode: "sequential", detectRedundancies: (parts) => detectFanInRedundancy(parts, embed) }
+    );
+    const entry = historyStore.getByRunId(result.runId);
+    expect(entry?.redundancies).toBeDefined();
+    expect(entry?.redundancies?.length ?? 0).toBeGreaterThanOrEqual(1);
+    expect(entry?.conflicts).toBeUndefined(); // identical outputs ≠ conflict
+  });
+
   it("records cross-worker conflicts in the history entry (not just the live response)", async () => {
     const historyStore = new InMemoryOrchestrationHistoryStore();
     const orchestrator = new MultiAgentOrchestrator({ idFactory: () => "h1", historyStore, workers: disagreeingWorkers() });

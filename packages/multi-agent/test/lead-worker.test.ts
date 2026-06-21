@@ -5,6 +5,7 @@ import {
   detectFanInConflicts,
   detectSubtaskConflicts,
   runLeadWorkerTask,
+  verifySequencedDependencyUse,
   verifySynthesisCoverage,
   type LeadWorkerDeps,
   type Subtask,
@@ -221,6 +222,22 @@ describe("runLeadWorkerTask — a decomposed run where ZERO sub-tasks ground is 
     expect(result.finalAnswer).toBe(""); // honest empty — mirrors the single-agent failed path
     expect(synthesizeCalls).toBe(0); // short-circuited before the fabrication-prone synthesis
     expect(result.reason).toContain("0/");
+  });
+});
+
+describe("runLeadWorkerTask — surfaces near-identical (redundant) sub-answers at the fan-in (MAST step-repetition)", () => {
+  const req = "다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록";
+  it("sets subtaskRedundancies + reason when detectRedundancies reports a near-identical pair", async () => {
+    const result = await runLeadWorkerTask(req, deps({ detectRedundancies: () => Promise.resolve(['"회의록 요약" ≈ "액션아이템 추출"']) }));
+    expect(result.subtaskRedundancies).toEqual(['"회의록 요약" ≈ "액션아이템 추출"']);
+    expect(result.reason).toContain("redundant");
+  });
+  it("back-compat: no detector / no redundancies ⇒ unset; a throwing detector is fail-soft", async () => {
+    expect((await runLeadWorkerTask(req, deps({ detectRedundancies: () => Promise.resolve([]) }))).subtaskRedundancies).toBeUndefined();
+    expect((await runLeadWorkerTask(req, deps())).subtaskRedundancies).toBeUndefined();
+    const throwing = await runLeadWorkerTask(req, deps({ detectRedundancies: () => { throw new Error("boom"); } }));
+    expect(throwing.subtaskRedundancies).toBeUndefined();
+    expect(throwing.finalAnswer).not.toBe("");
   });
 });
 
@@ -539,5 +556,89 @@ describe("runOne — neutralizes injected spans in worker output at the lead-wor
     const result = await runLeadWorkerTask("지금 몇시야?", deps({ execute }));
     expect(result.executions[0].status).toBe("failed");
     expect(result.executions[0].error).toContain("empty");
+  });
+});
+
+describe("verifySequencedDependencyUse — reasoning-action alignment on the sequenced handoff (MAST FM-2.6)", () => {
+  const ex = (text: string, output: string, status: SubtaskExecution["status"] = "completed"): SubtaskExecution => ({ output, status, subtask: { id: text, text } });
+
+  it("POSITIVE: a completed downstream step whose output shares NOTHING with its upstream is flagged (ran blind)", () => {
+    const gaps = verifySequencedDependencyUse([
+      ex("summarize the Q1 revenue report", "Q1 revenue was 4.2 million dollars"),
+      ex("draft a follow-up from that summary", "sounds good, let me know if you need anything else")
+    ]);
+    expect(gaps).toEqual(["draft a follow-up from that summary"]);
+  });
+
+  it("NEGATIVE: a downstream step that carries forward an upstream content token is NOT flagged", () => {
+    const gaps = verifySequencedDependencyUse([
+      ex("summarize the Q1 revenue report", "Q1 revenue was 4.2 million dollars"),
+      ex("project Q2 from that", "given the Q1 revenue of 4.2 million, projected Q2 is 5.0 million")
+    ]);
+    expect(gaps).toEqual([]);
+  });
+
+  it("NEGATIVE: the FIRST step is never checked (it has no upstream)", () => {
+    expect(verifySequencedDependencyUse([ex("step one", "totally standalone content here")])).toEqual([]);
+  });
+
+  it("NEGATIVE: a failed/blank downstream step is skipped (only completed steps are verified)", () => {
+    const gaps = verifySequencedDependencyUse([
+      ex("step one", "Q1 revenue was 4.2 million"),
+      ex("step two", "", "failed")
+    ]);
+    expect(gaps).toEqual([]);
+  });
+
+  it("NEGATIVE (cross-script gate, fail-open): a KO downstream after an EN upstream is not flagged on zero token-overlap", () => {
+    const gaps = verifySequencedDependencyUse([
+      ex("summarize", "Q1 revenue was 4.2 million dollars"),
+      ex("요약에서 액션 추출", "별도의 한국어 결과입니다 여기")
+    ]);
+    expect(gaps).toEqual([]); // different script → comparableScript skips it (fail-open), no false flag
+  });
+});
+
+describe("runLeadWorkerTask — surfaces a sequenced step that ignored its upstream (reasoningActionGaps, live)", () => {
+  const seqQuery = "먼저 회의록을 요약하고 그 다음 그 요약에서 액션아이템을 추출해줘";
+  it("a SEQUENCED downstream step that ignores the upstream result populates reasoningActionGaps", async () => {
+    // step 1 (요약) → a budget summary; step 2 (액션 추출) → blind, unrelated output.
+    const execute = async (s: Subtask): Promise<SubtaskOutput> =>
+      ({ output: s.text.includes("액션") ? "전혀 무관한 잡담 텍스트" : "회의 예산 삭감 요약 내용" });
+    const result = await runLeadWorkerTask(seqQuery, deps({ execute }));
+    expect(result.reasoningActionGaps).toBeDefined();
+    expect(result.reasoningActionGaps!.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("a SEQUENCED downstream step that USES the upstream (shares a token) leaves reasoningActionGaps unset", async () => {
+    const execute = async (s: Subtask): Promise<SubtaskOutput> =>
+      ({ output: s.text.includes("액션") ? "예산 삭감 관련 액션: 비용 검토" : "회의 예산 삭감 요약 내용" });
+    const result = await runLeadWorkerTask(seqQuery, deps({ execute }));
+    expect(result.reasoningActionGaps).toBeUndefined();
+  });
+
+  it("an INDEPENDENT split is NOT checked (no false flag even when outputs are unrelated)", async () => {
+    const execute = async (s: Subtask): Promise<SubtaskOutput> =>
+      ({ output: `unrelated-${Math.abs(s.text.length)}-output xyzzy` });
+    const result = await runLeadWorkerTask("다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록", deps({ execute }));
+    expect(result.reasoningActionGaps).toBeUndefined();
+  });
+});
+
+describe("runLeadWorkerTask — coordination-health summary flag (derived from the real fan-in signals)", () => {
+  const req = "다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록";
+  it("a clean decomposed run (no conflict/redundancy/gap/incomplete) reports coordinationHealthy=true", async () => {
+    const result = await runLeadWorkerTask(req, deps());
+    expect(result.subtaskConflicts).toBeUndefined();
+    expect(result.coordinationHealthy).toBe(true);
+  });
+  it("a run with a detected cross-subtask CONFLICT reports coordinationHealthy=false (not a hardcoded green)", async () => {
+    const result = await runLeadWorkerTask(req, deps({ detectConflicts: () => Promise.resolve(['"회의록 요약" vs "액션아이템 추출"']) }));
+    expect(result.subtaskConflicts?.length).toBeGreaterThanOrEqual(1);
+    expect(result.coordinationHealthy).toBe(false);
+  });
+  it("a run with a detected REDUNDANCY also reports coordinationHealthy=false", async () => {
+    const result = await runLeadWorkerTask(req, deps({ detectRedundancies: () => Promise.resolve(['"회의록 요약" ≈ "액션아이템 추출"']) }));
+    expect(result.coordinationHealthy).toBe(false);
   });
 });

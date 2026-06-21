@@ -31,7 +31,7 @@ final class SettingsWindowController {
         )
         let host = NSHostingController(rootView: view)
         let win = NSWindow(contentViewController: host)
-        win.title = "Muse Settings"
+        win.title = UIStrings.current().settingsTitle
         win.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
         win.titlebarAppearsTransparent = true
         win.isReleasedWhenClosed = false
@@ -55,6 +55,11 @@ private struct SettingsView: View {
     @State private var muted: Bool
     @State private var museURL: String
     @State private var showAdvanced = false
+    @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var creds = MessagingCredentials.load()
+    @State private var msgSaved = false
+
+    private let s = UIStrings.current()
 
     // Explicit colours so text is legible regardless of system light/dark.
     private let violet = Color(red: 0.62, green: 0.52, blue: 1.0)
@@ -87,6 +92,8 @@ private struct SettingsView: View {
                 chatSection
                 appearanceSection
                 voiceSection
+                startupSection
+                messagingSection
                 privacySection
                 advancedSection
                 footer
@@ -110,7 +117,7 @@ private struct SettingsView: View {
                     .shadow(color: violet.opacity(0.45), radius: 18)
             }
             Text("Muse").font(.system(size: 26, weight: .bold)).foregroundStyle(ink)
-            Text("Learns you, not the world.").font(.system(size: 12)).foregroundStyle(dim)
+            Text(s.tagline).font(.system(size: 12)).foregroundStyle(dim)
         }
     }
 
@@ -119,7 +126,7 @@ private struct SettingsView: View {
             Button(action: onOpenFull) {
                 HStack(spacing: 8) {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
-                    Text("Open Muse — chat & all features").fontWeight(.semibold)
+                    Text(s.openFull).fontWeight(.semibold)
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
@@ -127,22 +134,22 @@ private struct SettingsView: View {
             .buttonStyle(.borderedProminent)
             .tint(violet)
             .controlSize(.large)
-            Text("Chat, today, tasks, calendar, notes, memory & tools — no terminal needed.")
+            Text(s.openFullSub)
                 .font(.system(size: 11)).foregroundStyle(faint).multilineTextAlignment(.center)
         }
     }
 
     private var appearanceSection: some View {
-        card("Appearance") {
-            row("Character") {
+        card(s.sectionAppearance) {
+            row(s.rowCharacter) {
                 Picker("", selection: $character) {
-                    Text("Goddess").tag("goddess")
-                    Text("Orb").tag("orb")
+                    Text(s.characterGoddess).tag("goddess")
+                    Text(s.characterOrb).tag("orb")
                 }
                 .pickerStyle(.segmented).labelsHidden().frame(width: 190)
                 .onChange(of: character) { _, v in onCharacter(v) }
             }
-            row("Language") {
+            row(s.rowLanguage) {
                 Picker("", selection: $language) {
                     ForEach(AppLanguage.allCases, id: \.self) { Text($0.menuTitle).tag($0) }
                 }
@@ -153,31 +160,72 @@ private struct SettingsView: View {
     }
 
     private var voiceSection: some View {
-        card("Voice") {
+        card(s.sectionVoice) {
             Toggle(isOn: $muted) {
-                Text("Mute spoken replies").foregroundStyle(ink)
+                Text(s.muteSpoken).foregroundStyle(ink)
             }
             .toggleStyle(.switch).tint(violet)
             .onChange(of: muted) { _, v in onMute(v) }
         }
     }
 
+    private var messagingSection: some View {
+        card(s.sectionMessengers) {
+            Text(s.msgHint).font(.system(size: 11)).foregroundStyle(faint)
+            field(s.msgTelegram, $creds.telegramToken, secure: true)
+            field(s.msgDiscord, $creds.discordToken, secure: true)
+            field(s.msgDiscordChannels, $creds.discordChannels)
+            field(s.msgSlack, $creds.slackToken, secure: true)
+            field(s.msgSlackChannels, $creds.slackChannels)
+            field(s.msgLineToken, $creds.lineAccessToken, secure: true)
+            field(s.msgLineSecret, $creds.lineSecret, secure: true)
+            Button(s.msgSave) {
+                creds.save()
+                ServerManager.shared.restart()
+                msgSaved = true
+            }
+            .buttonStyle(.borderedProminent).tint(violet)
+            if msgSaved { Text(s.msgSaved).font(.system(size: 11)).foregroundStyle(faint) }
+        }
+    }
+
+    @ViewBuilder private func field(_ label: String, _ text: Binding<String>, secure: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.system(size: 11)).foregroundStyle(dim)
+            Group {
+                if secure { SecureField(label, text: text) } else { TextField(label, text: text) }
+            }
+            .textFieldStyle(.roundedBorder)
+        }
+    }
+
+    private var startupSection: some View {
+        card(s.sectionStartup) {
+            Toggle(isOn: $launchAtLogin) { Text(s.launchAtLogin).foregroundStyle(ink) }
+                .toggleStyle(.switch).tint(violet)
+                .onChange(of: launchAtLogin) { _, v in
+                    if !LaunchAtLogin.set(v) { launchAtLogin = LaunchAtLogin.isEnabled }  // revert on failure
+                }
+        }
+    }
+
     private var privacySection: some View {
-        card("Privacy") {
-            label("Runs on your local model — your data never leaves this Mac (local-only by default).", "lock.fill")
-            label("Show / hide Muse anywhere with ⌃⌥Space.", "keyboard")
+        card(s.sectionPrivacy) {
+            label(s.privacyLocal, "lock.fill")
+            label(s.privacyHotkey, "keyboard")
+            label(s.openHint, "cursorarrow.rays")
         }
     }
 
     private var advancedSection: some View {
-        card("Advanced") {
-            Toggle(isOn: $showAdvanced) { Text("Custom Muse web URL").foregroundStyle(ink) }
+        card(s.sectionAdvanced) {
+            Toggle(isOn: $showAdvanced) { Text(s.customURL).foregroundStyle(ink) }
                 .toggleStyle(.switch).tint(violet)
             if showAdvanced {
-                TextField("auto (bundled server)", text: $museURL)
+                TextField(s.customURLPlaceholder, text: $museURL)
                     .textFieldStyle(.roundedBorder)
                     .onChange(of: museURL) { _, v in PrefsStore.update { $0.museURL = v } }
-                Text("Leave empty to use the built-in server.").font(.system(size: 11)).foregroundStyle(faint)
+                Text(s.customURLHint).font(.system(size: 11)).foregroundStyle(faint)
             }
         }
     }
@@ -185,7 +233,7 @@ private struct SettingsView: View {
     private var footer: some View {
         VStack(spacing: 10) {
             Button(role: .destructive, action: onQuit) {
-                Text("Quit Muse").frame(maxWidth: .infinity)
+                Text(s.quit).frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered).controlSize(.large)
             Text("Muse 0.1.0").font(.system(size: 10)).foregroundStyle(faint)

@@ -2,19 +2,29 @@ import AppKit
 import Carbon.HIToolbox
 import MuseDesktopCore
 
+extension Notification.Name {
+    /// Posted by the floating companion's "open full app" button.
+    static let museOpenFullApp = Notification.Name("museOpenFullApp")
+}
+
 /// Owns the companion's app-level pieces: the floating panel, a menu-bar item,
 /// and a global hotkey. One small coordinator so `AppDelegate` stays trivial.
-final class MuseController: NSObject {
+final class MuseController: NSObject, NSMenuDelegate {
     private let panel = FloatingPanel()
     private var statusItem: NSStatusItem?
     private var hotKey: GlobalHotKey?
     private var muteItem: NSMenuItem?
+    private weak var statusInfoItem: NSMenuItem?
     private lazy var settingsWindow = SettingsWindowController()
     private lazy var webWindow = MuseWebWindowController()
 
     func start() {
         panel.orderFrontRegardless()
         installMenuBar()
+        // The floating companion's "open full app" button posts this.
+        NotificationCenter.default.addObserver(
+            forName: .museOpenFullApp, object: nil, queue: .main
+        ) { [weak self] _ in self?.openFullApp() }
         // Control-Option-Space toggles the panel from anywhere (two real
         // modifiers — avoids the macOS 15+ Option-only-hotkey bug; Carbon path
         // needs no Accessibility permission).
@@ -42,18 +52,29 @@ final class MuseController: NSObject {
         item.button?.image = note
         item.button?.toolTip = "Muse — click for options (⌃⌥Space to show/hide)"
 
+        let s = UIStrings.current()
         let menu = NSMenu()
-        add(menu, "Show / Hide Muse  (⌃⌥Space)", #selector(toggleFromMenu))
-        add(menu, "Open Muse  (full app)", #selector(openFullApp))
+        menu.delegate = self
+
+        // Live status: privacy posture · model · server (refreshed on open).
+        let info = NSMenuItem(title: statusTitle(), action: nil, keyEquivalent: "")
+        info.isEnabled = false
+        menu.addItem(info)
+        menu.addItem(.separator())
+        statusInfoItem = info
+
+        // The primary action first — one click into the full app (chat + everything).
+        let openItem = add(menu, s.menuOpenFull, #selector(openFullApp))
+        openItem.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right.fill", accessibilityDescription: nil)
+        add(menu, s.menuShowHide, #selector(toggleFromMenu))
         menu.addItem(.separator())
 
-        let characterItem = NSMenuItem(title: "Character", action: nil, keyEquivalent: "")
+        let characterItem = NSMenuItem(title: s.menuCharacter, action: nil, keyEquivalent: "")
         let characterMenu = NSMenu()
-        // The goddess (default) and the glowing orb.
-        let names = ["goddess", "orb"]
+        let names = [("goddess", s.characterGoddess), ("orb", s.characterOrb)]
         let currentLook = PrefsStore.load().look ?? "goddess"
-        for name in names {
-            let mi = NSMenuItem(title: name.capitalized, action: #selector(pickCharacter(_:)), keyEquivalent: "")
+        for (name, title) in names {
+            let mi = NSMenuItem(title: title, action: #selector(pickCharacter(_:)), keyEquivalent: "")
             mi.representedObject = name
             mi.target = self
             mi.state = (name == currentLook) ? .on : .off
@@ -62,7 +83,7 @@ final class MuseController: NSObject {
         characterItem.submenu = characterMenu
         menu.addItem(characterItem)
 
-        let languageItem = NSMenuItem(title: "Language", action: nil, keyEquivalent: "")
+        let languageItem = NSMenuItem(title: s.menuLanguage, action: nil, keyEquivalent: "")
         let languageMenu = NSMenu()
         let current = AppLanguage.fromPersisted(PrefsStore.load().language)
         for lang in AppLanguage.allCases {
@@ -75,10 +96,10 @@ final class MuseController: NSObject {
         languageItem.submenu = languageMenu
         menu.addItem(languageItem)
 
-        muteItem = add(menu, "Mute voice", #selector(toggleMute))
+        muteItem = add(menu, s.menuMute, #selector(toggleMute))
         menu.addItem(.separator())
-        add(menu, "Settings…", #selector(openSettings), key: ",")
-        add(menu, "Quit Muse", #selector(quit), key: "q")
+        add(menu, s.menuSettings, #selector(openSettings), key: ",")
+        add(menu, s.menuQuit, #selector(quit), key: "q")
 
         item.menu = menu
         statusItem = item
@@ -90,6 +111,19 @@ final class MuseController: NSObject {
         mi.target = self
         menu.addItem(mi)
         return mi
+    }
+
+    /// Refresh the status line each time the menu opens (model/server can change).
+    func menuWillOpen(_ menu: NSMenu) { statusInfoItem?.title = statusTitle() }
+
+    private func statusTitle() -> String {
+        let s = UIStrings.current()
+        let env = ProcessInfo.processInfo.environment
+        let localOnly = (env["MUSE_LOCAL_ONLY"] ?? "true") != "false"
+        let model = env["MUSE_MODEL"] ?? "ollama/gemma4:12b"
+        let modelShort = model.split(separator: "/").last.map(String.init) ?? model
+        let server = ServerManager.shared.isLikelyRunning ? s.statusServerOn : s.statusServerOff
+        return "\(localOnly ? s.statusLocalOn : s.statusLocalOff) · \(modelShort) · \(server)"
     }
 
     @objc private func toggleFromMenu() { toggleVisibility() }
@@ -126,7 +160,9 @@ final class MuseController: NSObject {
     @objc private func pickLanguage(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let lang = AppLanguage(rawValue: raw) else { return }
         panel.setLanguage(lang)
-        sender.menu?.items.forEach { $0.state = ($0 === sender) ? .on : .off }
+        // Rebuild the menu so its labels re-localize to the new language.
+        if let item = statusItem { NSStatusBar.system.removeStatusItem(item) }
+        installMenuBar()
     }
 
     @objc private func toggleMute() {

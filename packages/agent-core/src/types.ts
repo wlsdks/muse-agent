@@ -39,6 +39,16 @@ export interface AgentRunInput {
    * interrupt a long agent turn without a half-applied tool.
    */
   readonly signal?: AbortSignal;
+  /**
+   * Request per-token log-probabilities for the model's answer (forwarded to
+   * `ModelRequest.logprobs`; returned in `AgentRunResult.response.logprobs`).
+   * Observational only — never alters decoding. Lets a caller score answer
+   * confidence (`summarizeTokenConfidence`) on an AGENT run, e.g. to drive
+   * cascade escalation. Off by default; providers without the capability ignore it.
+   */
+  readonly logprobs?: boolean;
+  /** Alternatives per position when `logprobs` is set (forwarded to `ModelRequest.topLogprobs`). */
+  readonly topLogprobs?: number;
 }
 
 export interface AgentRunContext {

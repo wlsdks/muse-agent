@@ -323,7 +323,8 @@ export class AgentRuntime {
         ...preparedRequest.request,
         maxOutputTokens: this.defaults?.maxOutputTokens,
         temperature: this.defaults?.temperature,
-        tools
+        tools,
+        ...logprobsFromInput(layeredContext.input)
       };
       const execution = isPlanExecuteMode(layeredContext.input.metadata)
         ? await executePlanExecuteLoopFn(this.modelLoopRunner(), layeredContext, selected.provider, loopRequest)
@@ -384,7 +385,8 @@ export class AgentRuntime {
         ...preparedRequest.request,
         maxOutputTokens: this.defaults?.maxOutputTokens,
         temperature: this.defaults?.temperature,
-        tools
+        tools,
+        ...logprobsFromInput(layeredContext.input)
       };
       let execution: ModelLoopExecution;
       const isPlanExecuteRun = isPlanExecuteMode(layeredContext.input.metadata);
@@ -1075,6 +1077,23 @@ export class AgentRuntime {
       historyStore: this.historyStore
     });
   }
+}
+
+/**
+ * Forward an agent run's opt-in logprobs request onto the ModelRequest. Absent
+ * → `{}` so the wire is byte-identical to before (no `logprobs` field). Pulled
+ * out + structurally typed so both the generate and stream seams stay in sync.
+ */
+function logprobsFromInput(
+  input: { readonly logprobs?: boolean; readonly topLogprobs?: number }
+): { logprobs?: true; topLogprobs?: number } {
+  if (!input.logprobs) {
+    return {};
+  }
+  return {
+    logprobs: true,
+    ...(input.topLogprobs !== undefined ? { topLogprobs: input.topLogprobs } : {})
+  };
 }
 
 export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
