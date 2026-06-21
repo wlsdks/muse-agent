@@ -134,7 +134,7 @@ ratchet: testFiles +0 (commands-recap.test +2) · @muse/cli 2892 green · lint c
 - **리뷰지점**: 🔄 volatileBeliefs(≥2값 confirm-nudge)와 **distinct**(📝 recent supersession informative; judge 확인). fail-soft + safeRecapText. `recentlyLearned` optional(기존 무영향). standalone 명령(chat보다 덜 contended).
 - **리스크**: 없음 — optional 추가, cli 2892 green, 독립 Opus ④b judge가 redundancy(distinct)+fail-soft+security+무회귀 재확인 PASS.
 
-## fire 15 · 2026-06-21 · skill v2.1.0 · pending
+## fire 15 · 2026-06-21 · skill v2.1.0 · 62605bf1
 meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=first-learned-selection · verdict=PASS · firesSinceDrill=5 · firesSinceMainMerge=2
 ratchet: testFiles +1 (belief-provenance-store.test.ts NEW, 4 cases) · @muse/memory 47 green · @muse/cli recap 33 green · lint clean · fabrication 0
 
