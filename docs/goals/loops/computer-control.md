@@ -2,8 +2,16 @@
 
 > Theme: 로컬 12B(gemma4)가 멀티스텝 컴퓨터 작업(@muse/fs file_read/grep/edit/multi_edit + run_command)을 end-to-end 신뢰성 있게 완수 + 모든 actuator 단계가 근거 게이트(read-before-edit·fabrication=0) 통과. 측정 baseline `eval:computer-task`(report-only) 올리기.
 > Worktree `/tmp/muse-computer-control` · branch `loop/computer-control` (Tier2 — 매 fire push, 주기적 main rebase, **3 fire마다 main ff-merge**). retheme from core-hardening (진안-picked 2026-06-20).
-> Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
+> Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
+
+## fire 40 · 2026-06-21 · skill v2.0 · <commit> (OpenAI-compatible parseToolArguments recovery — fire-15 Ollama-adapter sibling)
+meta: value-class=new-capability · pkg=@muse/model · kind=provider-parse-robustness/sibling-audit · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +1 (provider-openai-parse recovery describe, 5 mutation-valid recovery + 1 fabrication-guard) · fabrication 0 · @muse/model 369 pass/5 skip · pnpm check: @muse/auth SIGABRT(134)=box saturation (auth 61/61 isolated, zero @muse/model dep) · byte-hygiene 44/44 · lint 0/0 · Ollama DOWN (eval:computer-task/multifile-fix/edit-run-verify skip)
+- 무엇: `parseToolArguments` (`provider-openai-parse.ts` — OpenAI-compatible `/v1/chat/completions` path backing LM Studio·OpenRouter·Ollama-compat) had the exact drop-on-defect bug agent-hardening fire-15 fixed in the Ollama native adapter: `catch { return {} }` silently dropped ALL of a local model's tool args when the `arguments` string carried a recoverable surface defect (markdown fence / preamble prose). FIX: lifted `recoverToolArgsJson`+`isPlainObject` from adapter-ollama into the shared leaf `provider-shared.ts` (both adapters already import it; no cycle), re-pointed the barrel export, and wired the catch branch to `recoverToolArgsJson(value)` re-guarded by `isJsonObject` (mirrors safeParseToolArgs). LOCATE-only → recovered values byte-faithful, fabrication=0 intact.
+- 왜: 다양성 RATCHET — fires 35/36/38/39 all @muse/fs; this fire is @muse/model / provider-parse-robustness (different pkg+kind), closing the precise sibling fire-15 flagged. 형제-감사 완성: ollama native + openai-compat tool-arg parsers now share ONE recovery leaf.
+- 리뷰지점: mutation-first confirmed (revert catch→`return {}` ⇒ exactly the 5 recovery tests RED, 13 guard/passthrough GREEN; restore ⇒ 18/18). Independent Opus ④b judge re-ran the mutation + audited fabrication/relocation/barrel/auth-attribution → VERDICT PASS.
+- 리스크: live OUTCOME unvalidated (Ollama down → evals skip), but the fix is a PURE parser fully covered by deterministic mutation-verified tests — no model round-trip needed to prove parse correctness. fire 40 not a multiple of 3 → no main ff-merge this fire.
 
 ## fire 39 · 2026-06-21 · skill v2.0 · 4d85c3ba (file_edit not-found recovery action for the no-hint case; 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/fs · kind=reliability-nudge/message · verdict=PASS · firesSinceDrill=2

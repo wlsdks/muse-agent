@@ -7,7 +7,7 @@
 import type { JsonObject } from "@muse/shared";
 
 import type { ModelToolCall, ModelUsage } from "./index.js";
-import { isJsonObject, isRecord, readFiniteNumber } from "./provider-shared.js";
+import { isJsonObject, isRecord, readFiniteNumber, recoverToolArgsJson } from "./provider-shared.js";
 
 export function readOpenAIContent(value: unknown): string {
   if (typeof value === "string") {
@@ -55,7 +55,8 @@ export function parseToolArguments(value: unknown): JsonObject {
     const parsed = JSON.parse(value) as unknown;
     return isJsonObject(parsed) ? parsed : {};
   } catch {
-    return {};
+    const recovered = recoverToolArgsJson(value);
+    return recovered && isJsonObject(recovered) ? recovered : {};
   }
 }
 

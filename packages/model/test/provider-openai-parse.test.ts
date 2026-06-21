@@ -32,6 +32,35 @@ describe("parseToolArguments", () => {
   });
 });
 
+describe("parseToolArguments — surface-defect recovery (fire-15 Ollama-adapter sibling)", () => {
+  it("recovers args wrapped in a ```json markdown fence", () => {
+    expect(parseToolArguments('```json\n{"city":"Seoul"}\n```')).toEqual({ city: "Seoul" });
+  });
+
+  it("recovers args wrapped in a bare ``` fence", () => {
+    expect(parseToolArguments('```\n{"x":1}\n```')).toEqual({ x: 1 });
+  });
+
+  it("recovers args with leading preamble prose", () => {
+    expect(parseToolArguments('Here are the args: {"path":"a.ts"}')).toEqual({ path: "a.ts" });
+  });
+
+  it("recovers args with trailing prose", () => {
+    expect(parseToolArguments('{"x":1} done')).toEqual({ x: 1 });
+  });
+
+  it("recovers via the string-aware balanced-brace scan (brace inside a string value)", () => {
+    expect(parseToolArguments('prefix {"note":"a } b","n":2} suffix')).toEqual({ note: "a } b", n: 2 });
+  });
+
+  it("does NOT fabricate from a non-recoverable string or a non-object embed", () => {
+    expect(parseToolArguments("just words, no braces")).toEqual({});
+    expect(parseToolArguments('prefix [1,2,3] suffix')).toEqual({});
+    expect(parseToolArguments('"a scalar"')).toEqual({});
+    expect(parseToolArguments("   ")).toEqual({});
+  });
+});
+
 describe("parseOpenAIToolCalls", () => {
   it("maps function tool calls, defaulting a missing id", () => {
     expect(

@@ -44,6 +44,62 @@ export function parseJson(value: string): unknown {
   }
 }
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Attempts to locate a valid JSON object embedded in noise (e.g. model preamble,
+ * markdown fences). Only LOCATES — never rewrites token contents. Returns the
+ * parsed object or undefined if no recoverable object is found. Shared by the
+ * Ollama native and OpenAI-compatible tool-call arg parsers so a local model
+ * whose `arguments` string carries a recoverable surface defect does not have
+ * ALL its tool args silently dropped.
+ */
+export function recoverToolArgsJson(raw: string): Record<string, unknown> | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+
+  const fenceMatch = /```(?:json)?\s*\n([\s\S]*?)\n\s*```/.exec(trimmed);
+  if (fenceMatch) {
+    try {
+      const parsed = JSON.parse(fenceMatch[1]!);
+      if (isPlainObject(parsed)) return parsed;
+    } catch { /* fall through */ }
+  }
+
+  const firstBrace = trimmed.indexOf("{");
+  if (firstBrace === -1) return undefined;
+
+  let depth = 0;
+  let inString = false;
+  let lastClose = -1;
+  for (let i = firstBrace; i < trimmed.length; i++) {
+    const ch = trimmed[i]!;
+    if (inString) {
+      if (ch === "\\" ) { i++; continue; }
+      if (ch === "\"") inString = false;
+    } else {
+      if (ch === "\"") { inString = true; continue; }
+      if (ch === "{") { depth++; continue; }
+      if (ch === "}") {
+        depth--;
+        if (depth === 0) { lastClose = i; break; }
+      }
+    }
+  }
+
+  if (lastClose === -1) return undefined;
+
+  const candidate = trimmed.slice(firstBrace, lastClose + 1);
+  try {
+    const parsed = JSON.parse(candidate);
+    if (isPlainObject(parsed)) return parsed;
+  } catch { /* fall through */ }
+
+  return undefined;
+}
+
 /**
  * Defense-in-depth for reasoning=false: a Qwen3-class model
  * whose upstream think-suppression switch was ignored (older
