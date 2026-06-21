@@ -4,6 +4,33 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
+## fire 16 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (evidence-backed completeness)
+meta: value-class=none(no-ship) · pkg=none · kind=multi-surface-audit · verdict=NO-SHIP · firesSinceDrill=4
+ratchet: testFiles +0 · fabrication 0 · self-eval green (regression sentinel held) · no source · scout-signals clean (no traces)
+
+**What (audited this fire)** — Applied the fire-14 lesson (audit EVERY layer before concluding) across all
+surfaces, producing an evidence-backed coverage map:
+- **CLI exposure** (runDecomposedAgentAsk → DecomposedAskResult → stderr + --json + run-log): COMPLETE (fires 14-15
+  closed the redundancy/reasoningActionGaps gaps; calibration-aware split human vs machine).
+- **API orchestrator exposure** (buildOrchestrationResponse → raw): COMPLETE — conflicts + redundancies +
+  verification all detected and exposed; FM-2.6 correctly N/A (fan-out parallel, not sequenced).
+- **Plan-time dedup** (dedupeSubtasks): correctly CONSERVATIVE (exact normalized match) — semantic near-dup merge
+  would risk a false-merge that DROPS a real sub-task (worse than a wasted run), so this is right by design.
+- **Council debate termination** (council.ts): BOUNDED + verified — round cap + debateProgressed Δ-gate +
+  ReConcile consensus gate (arXiv:2309.13007) + outlier-screen + conformity-flip guards. No gap.
+
+**Why no-ship** — Every coordination surface is now complete/correct. Remaining candidates are all sub-threshold:
+coordinationHealthy summary exposure (borderline-redundant — a JSON consumer already has all 4 signals; weighed 5×
+across fires 12-16, the oscillation itself confirms it's marginal; also subtly excludes `truncated`), semantic
+plan-time dedup (calibration-risky false-merge), marginal MAST modes (not deterministically detectable on a small
+model). Forcing any would be scraping.
+
+lesson: This no-ship DIFFERS from the fire-11/13 premature ones — it's backed by a CONCRETE multi-surface audit
+(CLI+API exposure, dedup design, council termination), not an assumption. The fire-14 correction taught: audit
+the actual layers before claiming exhausted. Having now done that exhaustively, the theme IS comprehensively
+complete. ★REPOINT remains the right call (4th surfacing — async only, no new notification: nothing new since
+fire 15's). ⑤c merge of fires 7-15 still needs 진안's manual `loop/multi-agent → main` merge.
+
 ## fire 15 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · d08bb006
 meta: value-class=wiring(exposure-completion) · pkg=@muse/cli · kind=human-stderr-surfacing · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles +0 (cases added to commands-ask.test.ts) · fabrication 0 · eval:orchestration PASS · DIVERSE-kind (human-stderr vs fire-14 json) · calibration-aware
