@@ -21,6 +21,8 @@ import { queryContacts, runActuatorByName } from "@muse/mcp";
 import type { JsonObject } from "@muse/shared";
 import { InMemoryRuntimeSettingsStore, RuntimeSettings } from "@muse/runtime-settings";
 import Fastify, { type FastifyInstance } from "fastify";
+
+import { registerStaticWeb } from "./static-web.js";
 import { registerAdminRoutes } from "./admin-routes.js";
 import { registerMcpRoutes } from "./mcp-routes.js";
 import { registerMultiAgentRoutes } from "./multi-agent-routes.js";
@@ -574,6 +576,10 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       });
     }
   }
+
+  // Serve the built web UI from this origin when MUSE_WEB_DIR is set (the
+  // self-contained desktop app); a no-op for a plain API dev server.
+  registerStaticWeb(server);
 
   return server;
 }

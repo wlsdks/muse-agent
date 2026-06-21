@@ -10,7 +10,7 @@
  * cooldown keeps it from firing every trivial turn.
  */
 
-import { dropModelAssertedValues, extractJsonObject } from "@muse/memory";
+import { dropModelAssertedValues, extractJsonObject, formatLearnedConfirmation, selectNewSupersessions, type UserMemoryStore } from "@muse/memory";
 
 // A sharper, example-bearing extraction prompt than the shared agent-runtime
 // one — verified to extract reliably on the LOCAL qwen3:8b tier (the shared
@@ -116,4 +116,40 @@ export function formatLearnedSummary(
   const parts = [...Object.entries(facts), ...Object.entries(preferences)]
     .map(([key, value]) => `${key} = ${value.replace(/\s+/gu, " ").trim().slice(0, 40)}`);
   return parts.length > 0 ? `📝 remembered: ${parts.join(" · ")} (/forget <key> to undo)` : undefined;
+}
+
+/**
+ * Write a chat turn's extracted facts/preferences to the store and report what
+ * the user can SEE: a cited confirmation for CHANGES (a correction — "Got it,
+ * home city is now Busan, changed from Seoul", from selectNewSupersessions +
+ * formatLearnedConfirmation over the factHistory before/after) and a plain
+ * "remembered" summary for the newly-learned keys. A changed key appears only in
+ * the confirmation (not double-listed). Deterministic + cited; the model never
+ * picks what to surface.
+ */
+export async function applyTurnLearnings(
+  store: UserMemoryStore,
+  userId: string,
+  facts: Readonly<Record<string, string>>,
+  preferences: Readonly<Record<string, string>>
+): Promise<{ readonly summary?: string; readonly confirmation?: string }> {
+  const before = (await Promise.resolve(store.findByUserId(userId)))?.factHistory ?? [];
+  const wroteFacts: Record<string, string> = {};
+  const wrotePrefs: Record<string, string> = {};
+  for (const [key, value] of Object.entries(facts).slice(0, 5)) {
+    await Promise.resolve(store.upsertFact(userId, key, value));
+    wroteFacts[key] = value;
+  }
+  for (const [key, value] of Object.entries(preferences).slice(0, 5)) {
+    await Promise.resolve(store.upsertPreference(userId, key, value));
+    wrotePrefs[key] = value;
+  }
+  const after = await Promise.resolve(store.findByUserId(userId));
+  const changes = selectNewSupersessions(before, after?.factHistory ?? []);
+  const changedKeys = new Set(changes.map((entry) => entry.key));
+  const confirmation = after ? formatLearnedConfirmation(changes, after) : undefined;
+  const newFacts = Object.fromEntries(Object.entries(wroteFacts).filter(([key]) => !changedKeys.has(key)));
+  const newPrefs = Object.fromEntries(Object.entries(wrotePrefs).filter(([key]) => !changedKeys.has(key)));
+  const summary = formatLearnedSummary(newFacts, newPrefs);
+  return { ...(summary ? { summary } : {}), ...(confirmation ? { confirmation } : {}) };
 }

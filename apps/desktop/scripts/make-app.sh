@@ -42,6 +42,20 @@ echo "building self-contained CLI binary…"
 bun "$PWD/scripts/build-cli-binary.mjs" "$(cd "$APP/Contents/Resources" && pwd)/muse-cli-bin"
 chmod +x "$APP/Contents/Resources/muse-cli-bin"
 
+# SELF-CONTAINED FULL APP: bundle the API server (compiled to a single binary)
+# plus the built web UI, so "Open Muse" runs every web panel + the API from one
+# in-app server — no external node/repo/dev-servers. The Swift ServerManager
+# spawns muse-api-bin with MUSE_WEB_DIR pointing at the bundled web/.
+RES="$(cd "$APP/Contents/Resources" && pwd)"
+[ -f "$REPO/apps/api/dist/index.js" ] || { echo "API dist missing — run 'pnpm --filter @muse/api build' first" >&2; exit 1; }
+echo "building web UI…"
+( cd "$REPO" && pnpm --filter @muse/web build >/dev/null )
+[ -f "$REPO/apps/web/dist/index.html" ] || { echo "web build missing (apps/web/dist)" >&2; exit 1; }
+rm -rf "$RES/web"; cp -R "$REPO/apps/web/dist" "$RES/web"
+echo "building self-contained API binary…"
+bun "$PWD/scripts/build-api-binary.mjs" "$RES/muse-api-bin"
+chmod +x "$RES/muse-api-bin"
+
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

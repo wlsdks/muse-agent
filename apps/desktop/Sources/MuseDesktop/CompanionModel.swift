@@ -47,6 +47,43 @@ final class CompanionModel: ObservableObject {
         }
     }
 
+    private var idleTimer: Timer?
+    private var idleLineIndex = 0
+    private var showingIdleLine = false
+
+    /// Muse greets you and, while idle, drifts a friendly line into a speech
+    /// bubble now and then — so she feels present and talks first, instead of a
+    /// silent avatar. Never stomps a real interaction (only fires when idle and
+    /// the bubble is empty), and clears itself after a few seconds.
+    func startIdleChatter() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in self?.showIdleLine() }
+        let timer = Timer(timeInterval: 80, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.showIdleLine() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        idleTimer = timer
+    }
+
+    private func idleLines() -> [String] {
+        language == .korean
+            ? ["안녕, 진안 ✨", "무엇이든 물어봐요", "오늘 뭐 도와줄까요?", "여기 있을게요 :)", "메모·일정·할 일, 다 도와줄게요"]
+            : ["Hi, I'm here ✨", "Ask me anything", "What can I help with?", "Tap to talk to me", "Notes, tasks & calendar — I've got you"]
+    }
+
+    private func showIdleLine() {
+        guard !busy, !listening, !inputVisible, bubble.isEmpty else { return }
+        let lines = idleLines()
+        let line = lines[idleLineIndex % lines.count]
+        idleLineIndex += 1
+        bubble = line
+        showingIdleLine = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self else { return }
+            if self.showingIdleLine, self.bubble == line { self.bubble = "" }
+            self.showingIdleLine = false
+        }
+    }
+
     /// Live model-download/load feedback — only while the user is waiting to talk
     /// (idle stays just-the-orb). Lets the user SEE the download progressing
     /// instead of guessing whether it hung.

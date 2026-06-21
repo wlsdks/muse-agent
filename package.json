@@ -82,7 +82,9 @@
     "eval:computer-task": "pnpm --filter @muse/fs build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-computer-task.mjs",
     "eval:run-command": "pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-run-command.mjs",
     "eval:edit-run-verify": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-edit-run-verify.mjs",
-    "eval:multifile-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-multifile-fix.mjs"
+    "eval:multifile-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-multifile-fix.mjs",
+    "eval:multistep": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-multistep.mjs",
+    "eval:two-edit-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-two-edit-fix.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
