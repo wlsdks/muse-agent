@@ -19,6 +19,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { mergeModelKeysFromFile, resolveDefaultModel } from "@muse/autoconfigure";
+import { FileUserMemoryStore, projectRecentlyLearned, summarizeRecentlyLearned } from "@muse/memory";
 import {
   readFollowups,
   readObjectives,
@@ -214,6 +215,18 @@ export async function readTokenCostToday(path: string): Promise<{ readonly avail
   return { available: true, ...parsed };
 }
 
+/**
+ * The compact "what Muse recently learned about you" one-liner for the status
+ * dashboard, or undefined when there's nothing to surface. Reads the typed
+ * user-memory (so factHistory dates parse), then runs the deterministic,
+ * citation-bearing projectRecentlyLearned → summarizeRecentlyLearned — code, not
+ * the model, picks what to show and the line carries its source citation.
+ */
+export async function readRecentlyLearnedLine(memoryFile: string, userId: string): Promise<string | undefined> {
+  const memory = await new FileUserMemoryStore({ file: memoryFile }).findByUserId(userId);
+  return memory ? summarizeRecentlyLearned(projectRecentlyLearned(memory)) : undefined;
+}
+
 interface PersistedTask {
   readonly id: string;
   readonly title: string;
@@ -250,6 +263,8 @@ async function collectStatus(userId: string) {
   const persona = (memoryDoc?.users?.[effectiveUserKey] ?? undefined) as
     | { facts?: Record<string, string>; preferences?: Record<string, string>; updatedAt?: string }
     | undefined;
+
+  const recentlyLearnedLine = await readRecentlyLearnedLine(userMemoryFile, effectiveUserKey).catch(() => undefined);
 
   const trust = await readTrust(effectiveUserKey).catch(() => ({ blockedTools: [] as string[], trustedTools: [] as string[] }));
   const routineHours = persona?.facts?.routine_active_hours;
@@ -307,6 +322,7 @@ async function collectStatus(userId: string) {
       preferenceCount: persona?.preferences ? Object.keys(persona.preferences).length : 0,
       updatedAt: persona?.updatedAt,
       userId,
+      ...(recentlyLearnedLine ? { recentlyLearned: recentlyLearnedLine } : {}),
       vetoCount: persona?.preferences
         ? Object.keys(persona.preferences).filter((k) => k.startsWith("veto:")).length
         : 0,
@@ -572,6 +588,9 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
       }
       if (snap.persona.workingHours) {
         io.stdout(`    working hours: ${snap.persona.workingHours}\n`);
+      }
+      if (snap.persona.recentlyLearned) {
+        io.stdout(`    recently learned: ${snap.persona.recentlyLearned}\n`);
       }
       if (snap.persona.factCount + snap.persona.preferenceCount > 0) {
         const parts: string[] = [];

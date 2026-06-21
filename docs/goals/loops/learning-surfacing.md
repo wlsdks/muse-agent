@@ -41,3 +41,12 @@ ratchet: testFiles +0 (recently-learned.test +4 cases) · @muse/memory 519 green
 - **리뷰지점**: 순수. head-or-undefined + post-filter count + single/many 분기 = render엔 없는 컴팩트 표현 정책(judge가 value 진짜로 확인). surfaces 0겹침(@muse/memory leaf).
 - **리스크**: 없음 — additive, 519 green, lint clean, 독립 Opus ④b judge PASS.
 - **lesson**: main FF-push가 동시 ~16 루프 + grounding 훅(~1분) 때문에 반복 non-FF로 밀림 — fire 3 main-merge가 race에서 짐(브랜치 `b350718d`는 안전). 무한 재시도 대신 다음 fire로 이월(merge로 누적, 한 번에 main 적재). 근본 해결 = 머신 포화 시 동시 루프 수 줄이기(진안 판단).
+
+## fire 5 · 2026-06-21 · skill v2.1.0 · pending
+meta: value-class=wiring · pkg=@muse/cli · kind=surface-wiring · verdict=PASS · firesSinceDrill=5 · firesSinceMainMerge=1
+ratchet: testFiles +0 (commands-status.test +2 cases) · @muse/cli 245 files/2869 tests green · lint clean · fabrication 0
+
+- **무엇**: `muse status`에 **"recently learned: <컴팩트 1줄>"** 추가 — 새 `readRecentlyLearnedLine(memoryFile, userId)`(typed store `findByUserId` → `projectRecentlyLearned` → `summarizeRecentlyLearned`)를 액션이 계산, `snapshot.persona.recentlyLearned` 필드 + human 렌더 1줄. 두 번째 사용자-facing 표면(자주 보는 daily-driver 대시보드).
+- **왜**: `memory show`(fire 3, 풀 리스트)에 이어 `status`(매일 보는 곳)에 컴팩트 1줄로. 정체성을 일상에서 체감.
+- **리뷰지점**: **typed store 경유 필수** — raw memoryDoc은 `replacedAt`이 string이라 `.getTime()` 정렬이 깨짐(judge가 명시 확인). 빈 시 snapshot 필드/human 라인 둘 다 생략(기존 `workingHours` idiom). `--json` shape는 additive(schemaVersion 무변). surfaces 미접촉(status); `today`는 surfaces 소유 → 별도.
+- **리스크**: 없음 — additive(import+helper+optional field+render line), 독립 Opus ④b judge가 전체 cli 2869 + mutation 재확인 PASS.
