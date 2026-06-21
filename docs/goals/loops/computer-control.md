@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 39 · 2026-06-21 · skill v2.0 · <commit-pending> (file_edit not-found recovery action for the no-hint case; 3-fire merge)
+## fire 39 · 2026-06-21 · skill v2.0 · 4d85c3ba (file_edit not-found recovery action for the no-hint case; 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/fs · kind=reliability-nudge/message · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles 1072→1072 (+2 cases fs-write-tools no-hint+hint message, mutation-valid) · fabrication 0 · @muse/fs 격리 175 · pnpm check exit 0 · lint clean · Ollama DOWN
 - 무엇: old_string mismatch는 12B의 #1 edit 실패. applyEdit(file_edit+multi_edit 둘 다 backing)이 exact→fuzzy→unescape 후 실패; 복구 액션은 nearestLineHint가 close line 찾을 때만 있었음. **no-hint(gross miss=모델이 가장 길 잃은 곳)**는 bare "old_string not found: X"만 → 맹목 retry. FIX: no-hint도 `re-read with file_read + copy byte-for-byte(whitespace 포함)` 조언.
