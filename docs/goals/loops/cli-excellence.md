@@ -83,3 +83,14 @@ ratchet: testFiles +0 (3 cases into program-help.test.ts) · @muse/cli formatUnk
 - **리스크**: 낮음. diff 2파일(program.ts + 테스트). 다양성: fire1-6(info-projection/onboarding/identity-copy/render/perf/empty-state) → fire7 error-guidance, 새 kind.
 - **레퍼런스**: git "did you mean" + CLI 발견성(unknown→top commands) 관행. https://www.npmjs.com/package/commander
 - note: smoke:cli 7 pass / 2 fail = fire 5 A/B 확정 chat 라운드트립 환경 타임아웃, 내 unknown-command 변경과 무관(`muse --help` 프로브 PASS).
+
+## fire 8 · 2026-06-22 · skill v2.1.0 · f2dba36f
+meta: value-class=info-projection · pkg=@muse/cli · kind=info-projection · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles +0 (1 case into commands-status.test.ts + 1 existing assertion updated) · @muse/cli 2953 green · check 0 · smoke:cli 9/9 · lint 0 · fabrication 0
+
+- **무엇**: `muse status` at-a-glance 대시보드의 7개 raw UTC ISO 타임스탬프(last update/followups next/episodes last/patterns last/reminders next/cost as of/last notice)를 공유 `formatRelativeTime`로 humanize — ≤7d "3h ago"/"in 2d", >7d 읽기쉬운 로컬datetime, invalid 그대로. `--json`/collectStatus는 raw ISO 유지(머신 소비자).
+- **왜**: at-a-glance인데 `2026-06-05T19:34:48.334Z`는 한눈에 안 읽힘(진안 실사용 관찰). 결정론 변환(fabrication 0), 기존 헬퍼 재사용.
+- **리뷰지점**: LIVE hands-on(`node dist/index.js status` → `last update: 2026-06-06 04:34` 확인), mutation-first RED(rel 제거→raw ISO), 새 테스트 seeds now-3h→"3h ago". ★maker≠judge가 값을 함: ④b judge가 **풀 스위트 회귀**(program.test.ts cost line이 raw ISO assert) 적발→FAIL→기존 assertion을 humanized 형태(formatLocalDateTime)로 수정→재판정 PASS(5/5). 형제-감사: 다른 status ISO assertion 전수 grep(없음). 여신 아트 불가침.
+- **리스크**: 낮음. diff: commands-status.ts + 그 테스트 + program.test.ts 기존 assertion 1개.
+- lesson: 표시 렌더를 바꾸면 좁은 파일 테스트(commands-status.test.ts)만 보지 말고 **풀 @muse/cli 스위트**로 cross-file assertion 회귀(program.test.ts가 옛 출력 pin)를 잡아야 한다 — 형제-감사는 src 형제뿐 아니라 그 출력을 assert하는 테스트 형제까지.
+- 레퍼런스: starship/lazygit 등 at-a-glance 상태표기는 상대시간 관행. https://starship.rs/
