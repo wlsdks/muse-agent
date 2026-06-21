@@ -1,6 +1,6 @@
 import { openLoops, overdueContacts } from "@muse/agent-core";
 import { resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, resolveWeaknessesFile } from "@muse/autoconfigure";
-import { defaultBeliefProvenanceFile, deriveFactProvenance, FileUserMemoryStore, projectRecentlyLearned, readBeliefProvenance, renderRecentlyLearnedLines, selectRecentlyLearnedFacts, selectVolatileBeliefs } from "@muse/memory";
+import { defaultBeliefProvenanceFile, deriveFactProvenance, FileUserMemoryStore, formatFirstLearned, projectRecentlyLearned, readBeliefProvenance, renderRecentlyLearnedLines, selectRecentlyLearnedFacts, selectVolatileBeliefs } from "@muse/memory";
 
 import { resolveMemoryUserId } from "./commands-memory.js";
 import { detectNoteFamilyAbsence, detectTopicAbsence, type NoteActivityEvent, readActionLog, readContacts, readEpisodes, readFollowups, readReminders, readTasks, readWeaknesses, remediationHint, resolveUpcomingBirthdays, selectRemediableWeaknesses } from "@muse/mcp";
@@ -373,7 +373,7 @@ export async function gatherEveningRecap(
       volatileBeliefs.push(`"${safeRecapText(b.key)}" (now "${safeRecapText(b.currentValue)}", ${b.distinctValueCount.toString()} different values) — \`muse memory set ${b.kind} ${safeRecapText(b.key)} <value>\` to confirm`);
     }
     for (const f of selectRecentlyLearnedFacts(provenance, { maxResults: 5, now: now.getTime(), withinDays: 30 })) {
-      firstLearned.push(safeRecapText(`${f.key.replace(/_/gu, " ")}: ${f.value} (learned ${f.firstSeen.slice(0, 10)})`));
+      firstLearned.push(safeRecapText(formatFirstLearned(f)));
     }
   } catch { /* fail-soft — no provenance log */ }
   // Learns you: the cited recent-learnings recap — CHANGES from factHistory (the

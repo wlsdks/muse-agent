@@ -404,6 +404,8 @@ export interface RecentlyLearnedFact {
   readonly value: string;
   /** ISO timestamp Muse first learned this key. */
   readonly firstSeen: string;
+  /** `user` = you stated it; `auto` = Muse inferred it (correctable). */
+  readonly source: "auto" | "user";
 }
 
 /**
@@ -432,7 +434,19 @@ export function selectRecentlyLearnedFacts(
     .slice()
     .sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen))
     .slice(0, max)
-    .map((p) => ({ firstSeen: p.firstSeen, key: p.key, kind: p.kind, value: p.value }));
+    .map((p) => ({ firstSeen: p.firstSeen, key: p.key, kind: p.kind, source: p.source, value: p.value }));
+}
+
+/**
+ * Render a first-learning as ONE cited, attribution-bearing line — "home city:
+ * Busan (you told me · 2026-06-20)" vs "(I noticed · …)". The attribution is the
+ * recorded provenance `source`: a USER-stated fact is your deliberate truth; an
+ * `auto` one is Muse's inference, which you can correct. Honest about HOW it was
+ * learned, not just WHAT. Pure; the date is the recorded firstSeen.
+ */
+export function formatFirstLearned(fact: RecentlyLearnedFact): string {
+  const attribution = fact.source === "user" ? "you told me" : "I noticed";
+  return `${fact.key.replace(/_/gu, " ")}: ${fact.value} (${attribution} · ${fact.firstSeen.slice(0, 10)})`;
 }
 
 export function defaultBeliefProvenanceFile(): string {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { selectRecentlyLearnedFacts, type FactProvenance } from "./belief-provenance-store.js";
+import { formatFirstLearned, selectRecentlyLearnedFacts, type FactProvenance } from "./belief-provenance-store.js";
 
 const NOW = Date.parse("2026-06-21T00:00:00Z");
 
@@ -40,5 +40,28 @@ describe("selectRecentlyLearnedFacts", () => {
   it("caps the result count", () => {
     const many = Array.from({ length: 8 }, (_, i) => fp({ key: `k${i.toString()}`, firstSeen: `2026-06-${(10 + i).toString()}T00:00:00Z` }));
     expect(selectRecentlyLearnedFacts(many, { now: NOW, withinDays: 30, maxResults: 3 })).toHaveLength(3);
+  });
+
+  it("carries the provenance source through (you-stated vs auto-inferred)", () => {
+    const out = selectRecentlyLearnedFacts([fp({ source: "user" })], { now: NOW, withinDays: 30 });
+    expect(out[0]?.source).toBe("user");
+  });
+});
+
+describe("formatFirstLearned (honest attribution: how Muse learned it)", () => {
+  const fact = (source: "auto" | "user") => ({
+    key: "home_city",
+    kind: "fact" as const,
+    value: "Busan",
+    firstSeen: "2026-06-20T12:00:00Z",
+    source
+  });
+
+  it("attributes a USER-stated fact to the user", () => {
+    expect(formatFirstLearned(fact("user"))).toBe("home city: Busan (you told me · 2026-06-20)");
+  });
+
+  it("attributes an AUTO-inferred fact to Muse's own inference", () => {
+    expect(formatFirstLearned(fact("auto"))).toBe("home city: Busan (I noticed · 2026-06-20)");
   });
 });

@@ -400,6 +400,7 @@ export {
   MAX_BELIEF_PROVENANCE_ENTRIES,
   provisionalFactKeys,
   readBeliefProvenance,
+  formatFirstLearned,
   selectPromotableFacts,
   selectRecentlyLearnedFacts,
   selectVolatileBeliefs,
