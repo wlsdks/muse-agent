@@ -291,3 +291,23 @@ ratchet: testFiles=1071 · fabrication 0 · gates: skills 70/70 + cli build clea
 - **리뷰지점:** verify-before-build이 seam 비어있음 확인(writeOrPatch가 정말 body 무시). ④b 독립 Opus PASS — outcome real(테스트의 name+desc Jaccard=0.0 확인→새 body 경로 진짜 행사, mutation: gate 제거→skip 테스트 RED) · false-skip bounded(짧은 draft 꼬리만, 0.85 보수적, recoverable·non-destructive) · sibling-complete(writeOrPatch 단일 write seam·consolidate는 post-hoc). 다양성: @muse/skills authoring-dedup(fire15는 eviction, 다른 kind).
 - **리스크:** 낮음 — subtractive(redundant write 보류만, fabrication 무관), risk-scan quarantine 먼저 실행 불변, enforceCap 우회 없음. nit(judge): consolidate umbrella write의 저확률 subsumption-skip 상호작용 → backlog ◦.
 - **lesson:** 연구-스카웃 pick은 빌드 전 seam 비어있음을 코드로 확인(fires 14/16 stale 교훈) — 이번엔 reflection-synthesis "≥2 source" 후보가 *이미 빌드됨*(DEFAULT_MIN_SUPPORT=2)이라 스카웃이 그 표면 기각하고 빈 seam(skill body dedup)으로 정확히 안내. 대칭 Jaccard match는 directional subset 관계를 표현 못 함 → containment가 별도 신호.
+
+## fire 25 · 2026-06-21 · skill v2.0.0 · `04661584`
+meta: value-class=new-capability · pkg=@muse/agent-core (+@muse/cli +@muse/autoconfigure) · kind=proactive cross-session discharge (research-grounded) · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles=1074 · fabrication 0 · gates: agent-core 26 + autoconfigure 621 + cli e2e 2 + check(유일 실패=packages/auth flaky[격리 15/15 통과]+1 api timeout; 내 패키지 무관) + self-eval ok + lint · merge-to-main: n/a (fire 25 ≠ ×3, next at 27)
+
+- **무엇:** 영속 check-in의 cross-session auto-discharge — `selectDischargedCommitments`(discharge-MARKER turn AND cosine ≥ 기존 COMMITMENT_DISCHARGE_COSINE)로, 유저가 다음 세션에 "done, 처리했어"라 하면 standing nudge를 cancel. in-session 필터(selectOpenCommitments)는 한 대화만 봐서 미래 세션 discharge를 못 봄. CLI `scanSessionCheckins` + daemon `scanCommitmentsFromTurns` **양 seam**에 배선.
+- **왜:** π-Bench(arXiv:2605.14678) proactivity 실패 — done인 걸 계속 nag. 새 threshold 없음(기존 0.55+marker 재사용), conservative(marker AND cosine: 놓친 discharge는 한 번 nag, false-cancel은 reversible), fail-soft(embedder 에러→아무것도 discharge 안 함).
+- **리뷰지점:** verify-before-build이 seam 비어있음 확인(cancelCheckin은 manual만). ④b 독립 Opus PASS(mechanism+CLI wiring) + **#5로 daemon twin 누락 적발**→같은 fire에 형제-완성. **end-to-end 테스트가 진짜 ordering 버그 잡음**(daemon twin의 `raw.length===0` early-return이 discharge 앞에 있어 discharge-only 세션 누락→discharge를 early-return 앞으로 이동). mutation: marker 필터 제거→no-marker 테스트 RED. 다양성: @muse/agent-core+cli+autoconfigure proactive(fresh kind).
+- **리스크:** 낮음 — nudge cancel만(fabrication/grounding 무관), reversible, fail-soft. cosine은 instance-specificity 무시(judge nit, reversible nudge라 수용).
+- **lesson:** 형제 wiring을 *같은 fire에* end-to-end 테스트하라 — daemon twin의 early-return-before-discharge 버그는 pure 테스트론 안 잡히고 end-to-end(discharge-only 세션→cancelled)가 잡았다. 같은 패턴을 두 seam에 배선할 때 각 seam의 *제어흐름 차이*(early-return 위치)를 개별 검증.
+
+## fire 26 · 2026-06-21 · skill v2.0.0 · (scout + verify-before-build + ESCALATE)
+meta: value-class=scout/escalate · pkg=n/a · kind=exhaustion-signal/escalation · verdict=SCOUT · firesSinceDrill=6
+ratchet: testFiles=1072 · fabrication 0 · gates: self-eval ok (no code) · merge-to-main: n/a (fire 26 ≠ ×3, next at 27)
+
+- **무엇:** 연구-스카웃 + verify-before-build로 후보 전부 기각/이미-됨 확인 → clean 결정론 vein 고갈 신호 + 고가치 잔여(playbook-credit) ESCALATE. (1) 스카웃 top pick BKT-Forget mastery-decay = **의미적 기각**(약점원장 mastery=Muse grounding 신뢰성, idle해도 안 쇠퇴 → time-decay는 근거없는 re-nag; regression은 새 실패로 이미 재표면화; fire 14 동일사유). (2) backlog의 factHistory labeling = **이미 출하됨**(agent-hardening fire 16 `0304823e`, 다른 루프) — stale. (3) playbook injected-id credit = 3× defer → **DECOMPOSE-ON-DEFER escalate**(고가치지만 genuine 3-seam multi-fire, seam-a 단독은 config-only라 incremental 불가).
+- **왜:** fires 17-25에 9 검증 슬라이스 출하 후 self-improvement의 *값싼 1-fire 결정론* vein 실제 고갈. 남은 가치=playbook-credit(multi-fire)·LIVE experience-delta(Ollama 박스 stall). 가짜/dubious 슬라이스 강행 대신 정직히 escalate가 계약(EXHAUSTION + DECOMPOSE-ON-DEFER).
+- **리뷰지점:** verify-before-build이 *세 번째로* 연속 stale/dubious 적발(fire 14 line100, fire 16 distinctValueCount, fire 24 reflection-≥2-source, 이번 factHistory+BKT-Forget) — 스카웃 arXiv-real ≠ Muse-empty ≠ domain-sound 3중 확인 필수. 코드 무변경(dubious 빌드 거부).
+- **리스크:** 없음(코드 무변경). escalation은 PushNotification으로 진안에 전달.
+- **lesson:** 스카웃 pick은 (1) seam-empty (2) domain-sound 둘 다 확인 — BKT-Forget은 seam은 비었으나 domain-unsound(약점원장≠쇠퇴스킬). "dead field(lastResolved)가 있다"≠"그 메커니즘이 옳다". 값싼 vein 고갈 시 marginal/dubious 강행보다 고가치 multi-fire를 정직히 escalate.

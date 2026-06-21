@@ -171,6 +171,21 @@ describe("scanCommitmentsFromTurns — deterministic open-loop → check-in (ser
     expect(none).toEqual([]);
   });
 
+  it("cross-session auto-discharge: a standing check-in is cancelled when the user reports it done (CLI parity)", async () => {
+    const VOCAB = ["email", "bob", "report", "dentist"] as const;
+    const stubEmbed = async (text: string): Promise<readonly number[]> => {
+      const lower = text.toLowerCase();
+      return VOCAB.map((w) => (lower.includes(w) ? 1 : 0));
+    };
+    const file = join(mkdtempSync(join(tmpdir(), "muse-bgr-discharge-")), "checkins.json");
+    await scanCommitmentsFromTurns(["I need to email Bob the report tomorrow"], { embed: stubEmbed, file, now: () => new Date("2026-06-01T09:00:00Z"), userId: "stark" });
+    expect((await readCheckins(file)).find((c) => c.commitment.toLowerCase().includes("email"))?.status).toBe("scheduled");
+
+    // a later session reports it done → the daemon-path scan auto-discharges it
+    await scanCommitmentsFromTurns(["done, I emailed Bob the report"], { embed: stubEmbed, file, now: () => new Date("2026-06-05T09:00:00Z"), userId: "stark" });
+    expect((await readCheckins(file)).find((c) => c.commitment.toLowerCase().includes("email"))?.status).toBe("cancelled");
+  });
+
   it("assembled-path: near-duplicate commitments collapse → FEWER check-ins than lexical-only baseline", async () => {
     // Two near-duplicate phrasings of the same commitment (would survive lexical dedup).
     // "I need to email Bob the report" and "I have to email Bob about the report"

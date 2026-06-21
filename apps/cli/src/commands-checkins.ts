@@ -6,7 +6,7 @@
  * over last-chat; the schedule is deterministic (no model).
  */
 
-import { selectOpenCommitments } from "@muse/agent-core";
+import { selectDischargedCommitments, selectOpenCommitments } from "@muse/agent-core";
 import { createGateEmbedder } from "@muse/autoconfigure";
 import { appendCheckins, cancelCheckin, parseReminderDueAt, readCheckins, scheduleCheckins, snoozeCheckin, writeCheckins, type PersistedCheckin } from "@muse/mcp";
 import type { Command } from "commander";
@@ -52,7 +52,21 @@ export async function scanSessionCheckins(
   const embed = options.embed ?? createGateEmbedder(process.env);
   const commitments = (await selectOpenCommitments(userTurns, embed)).map((c) => c.text);
   const file = options.file ?? checkinsFile();
-  const existing = await readCheckins(file).catch(() => []);
+  let existing = await readCheckins(file).catch(() => []);
+  // Cross-session auto-discharge (π-Bench arXiv:2605.14678): if the user reports
+  // doing a thing this session, cancel the STANDING scheduled check-in for it — the
+  // in-session filter above only sees discharges within one conversation, but a
+  // persisted check-in outlives the session. Best-effort: never block scheduling.
+  try {
+    const scheduledOpen = existing.filter((c) => c.status === "scheduled").map((c) => ({ commitment: c.commitment, id: c.id }));
+    const dischargedIds = await selectDischargedCommitments(scheduledOpen, userTurns, embed);
+    if (dischargedIds.length > 0) {
+      for (const id of dischargedIds) {
+        existing = cancelCheckin(existing, id).checkins;
+      }
+      await writeCheckins(file, existing);
+    }
+  } catch { /* discharge is best-effort — a failure must not block scheduling */ }
   const fresh = scheduleCheckins(commitments, {
     existing,
     now: options.now ? options.now() : new Date(),

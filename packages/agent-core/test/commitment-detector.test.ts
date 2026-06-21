@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { COMMITMENT_DEDUP_COSINE, collapseNearDuplicateCommitments, detectUserCommitments } from "../src/commitment-detector.js";
+import { COMMITMENT_DEDUP_COSINE, collapseNearDuplicateCommitments, detectUserCommitments, selectDischargedCommitments } from "../src/commitment-detector.js";
 import type { UserCommitment } from "../src/commitment-detector.js";
 
 describe("detectUserCommitments — rule-only, conservative (EN + KO)", () => {
@@ -229,5 +229,31 @@ describe("collapseNearDuplicateCommitments — SemDeDup semantic dedup", () => {
 
   it("exports COMMITMENT_DEDUP_COSINE = 0.86", () => {
     expect(COMMITMENT_DEDUP_COSINE).toBe(0.86);
+  });
+});
+
+describe("selectDischargedCommitments — cross-session auto-discharge (π-Bench arXiv:2605.14678)", () => {
+  const VOCAB = ["email", "bob", "report", "dentist", "appointment", "weekend"] as const;
+  const stubEmbed = async (text: string): Promise<readonly number[]> => {
+    const lower = text.toLowerCase();
+    return VOCAB.map((w) => (lower.includes(w) ? 1 : 0));
+  };
+  const scheduled = [{ commitment: "email Bob the report", id: "c1" }];
+
+  it("cancels a standing check-in the user reports done this session (marker AND cosine)", async () => {
+    expect(await selectDischargedCommitments(scheduled, ["done, I emailed Bob the report"], stubEmbed)).toEqual(["c1"]);
+  });
+
+  it("does NOT cancel on an UNRELATED discharge (marker present, but cosine too low)", async () => {
+    expect(await selectDischargedCommitments(scheduled, ["finished — called the dentist for my appointment"], stubEmbed)).toEqual([]);
+  });
+
+  it("does NOT cancel without a discharge MARKER (a future intent is not a discharge)", async () => {
+    expect(await selectDischargedCommitments(scheduled, ["I will email Bob the report tomorrow"], stubEmbed)).toEqual([]);
+  });
+
+  it("fail-soft: a throwing embedder discharges nothing (keep every check-in)", async () => {
+    const boom = async (): Promise<readonly number[]> => { throw new Error("embedder down"); };
+    expect(await selectDischargedCommitments(scheduled, ["done, I emailed Bob the report"], boom)).toEqual([]);
   });
 });

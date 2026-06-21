@@ -6,8 +6,8 @@
  * orchestration over the @muse/agent-core detectors + the persistence stores.
  */
 
-import { collapseNearDuplicateCommitments, detectCorrections, detectUserCommitments, findSupersededPreferenceId, inferPreferenceFromCorrection, selectOpenCommitments, type Awaitable, type SessionTurnLine } from "@muse/agent-core";
-import { appendCheckins, readCheckins, scheduleCheckins, type PersistedCheckin } from "@muse/mcp";
+import { collapseNearDuplicateCommitments, detectCorrections, detectUserCommitments, findSupersededPreferenceId, inferPreferenceFromCorrection, selectDischargedCommitments, selectOpenCommitments, type Awaitable, type SessionTurnLine } from "@muse/agent-core";
+import { appendCheckins, cancelCheckin, readCheckins, scheduleCheckins, writeCheckins, type PersistedCheckin } from "@muse/mcp";
 import type { UserModelSlot } from "@muse/memory";
 
 import { createGateEmbedder } from "./context-engineering-builders.js";
@@ -34,10 +34,26 @@ export async function scanCommitmentsFromTurns(
   // π-Bench (arXiv:2605.14678): drop commitments the user already discharged
   // later in the conversation BEFORE near-duplicate collapse + scheduling.
   const raw = await selectOpenCommitments(userTurns, embedder).catch(() => detectUserCommitments(userTurns));
+  let existing = await readCheckins(options.file).catch(() => []);
+  // Cross-session auto-discharge (π-Bench arXiv:2605.14678) — parity with the CLI
+  // `scanSessionCheckins`: cancel a STANDING scheduled check-in the user reports done
+  // this session (the in-session filter above only sees one conversation; a persisted
+  // check-in outlives it). MUST run before the no-new-commitments early-return below — a
+  // discharge-only session ("done, sent it") has zero new commitments but should still
+  // cancel the standing nudge. Best-effort: never block scheduling.
+  try {
+    const scheduledOpen = existing.filter((c) => c.status === "scheduled").map((c) => ({ commitment: c.commitment, id: c.id }));
+    const dischargedIds = await selectDischargedCommitments(scheduledOpen, userTurns, embedder);
+    if (dischargedIds.length > 0) {
+      for (const id of dischargedIds) {
+        existing = cancelCheckin(existing, id).checkins;
+      }
+      await writeCheckins(options.file, existing);
+    }
+  } catch { /* discharge is best-effort — a failure must not block scheduling */ }
   if (raw.length === 0) return [];
   const collapsed = await collapseNearDuplicateCommitments(raw, embedder).catch(() => raw);
   const commitments = collapsed.map((c) => c.text);
-  const existing = await readCheckins(options.file).catch(() => []);
   const fresh = scheduleCheckins(commitments, {
     existing,
     now: (options.now ?? ((): Date => new Date()))(),

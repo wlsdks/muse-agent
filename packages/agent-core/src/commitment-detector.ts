@@ -194,6 +194,46 @@ export async function selectOpenCommitments(
 }
 
 /**
+ * Cross-session auto-discharge (π-Bench arXiv:2605.14678): given PERSISTED scheduled
+ * commitments and this session's user turns, return the ids of those the user now
+ * reports done — so a standing check-in isn't fired for a thing already handled. The
+ * in-session `selectOpenCommitments` filter only drops a commitment discharged LATER in
+ * the SAME conversation; a persisted check-in outlives the session, and the "I did it"
+ * usually arrives in a FUTURE session it can't see. Same signal (a discharge-MARKER turn
+ * AND cosine ≥ floor) and the SAME `COMMITMENT_DISCHARGE_COSINE` — no new threshold.
+ * Conservative (marker AND cosine): a missed discharge nags once, a false-cancel silently
+ * drops a real loop. Fail-soft: an embedder error discharges nothing (keep the check-ins).
+ * `embed` injected (deterministic in tests). Pure over its inputs.
+ */
+export async function selectDischargedCommitments(
+  scheduled: readonly { readonly id: string; readonly commitment: string }[],
+  userTurns: readonly string[],
+  embed: (text: string) => Promise<readonly number[]>,
+  options?: { readonly dischargeCosine?: number }
+): Promise<readonly string[]> {
+  const cosineFloor = options?.dischargeCosine ?? COMMITMENT_DISCHARGE_COSINE;
+  const dischargeTurns = userTurns.filter((t) => typeof t === "string" && hasDischargeMarker(t));
+  const candidates = scheduled.filter((c) => c.commitment.trim().length > 0);
+  if (dischargeTurns.length === 0 || candidates.length === 0) return [];
+  let turnVecs: ReadonlyArray<readonly number[]>;
+  let commitmentVecs: ReadonlyArray<readonly number[]>;
+  try {
+    turnVecs = await Promise.all(dischargeTurns.map((t) => embed(t)));
+    commitmentVecs = await Promise.all(candidates.map((c) => embed(c.commitment)));
+  } catch {
+    return []; // fail-soft: discharge nothing, keep every scheduled check-in
+  }
+  const out: string[] = [];
+  for (let i = 0; i < candidates.length; i += 1) {
+    const cvec = commitmentVecs[i]!;
+    if (turnVecs.some((tv) => cosineSimilarity(cvec, tv) >= cosineFloor)) {
+      out.push(candidates[i]!.id);
+    }
+  }
+  return out;
+}
+
+/**
  * Conservative SemDeDup threshold (arXiv:2303.09540, Abbas et al. 2023).
  * 0.86 is high enough that only truly near-duplicate phrasings collapse
  * (e.g. "email Bob the report" / "email Bob about the report") while

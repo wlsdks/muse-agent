@@ -53,6 +53,7 @@ export {
   COMMITMENT_DISCHARGE_COSINE,
   collapseNearDuplicateCommitments,
   detectUserCommitments,
+  selectDischargedCommitments,
   selectOpenCommitments,
   type CommitmentKind,
   type DetectUserCommitmentsOptions,

@@ -32,6 +32,7 @@ const BATTERIES = [
   { axis: "① self-improve: correction-decay polarity (sign-safe)", file: "apps/cli/scripts/verify-correction-polarity.mjs", name: "correction-polarity" },
   { axis: "① self-improve", file: "apps/cli/scripts/verify-background-review.mjs", name: "background-review" },
   { axis: "①②③ engine e2e", file: "apps/cli/scripts/verify-background-review-e2e.mjs", name: "background-review-e2e" },
+  { axis: "① self-improve: cross-session experience-delta (A/B, empty vs primed store)", file: "apps/cli/scripts/verify-experience-delta.mjs", name: "experience-delta" },
   { axis: "★ WEDGE: cited recall", file: "apps/cli/scripts/verify-cited-recall.mjs", name: "cited-recall" },
   { axis: "★ WEDGE: conflict-surfacing (I-have-conflicting-notes)", file: "apps/cli/scripts/verify-conflict-surfacing.mjs", name: "conflict-surfacing" },
   { axis: "★ WEDGE: remember-honesty (won't lie about saving)", file: "apps/cli/scripts/verify-remember-honesty.mjs", name: "remember-honesty" },
