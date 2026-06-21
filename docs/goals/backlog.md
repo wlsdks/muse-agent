@@ -2448,9 +2448,18 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   scores confidence, and escalates ONCE to heavy on low/unmeasurable confidence. Wired OPT-IN into
   `buildTieredOrchestration` via `MUSE_TIERED_CASCADE` (default off → plan byte-identical). Cascade is now
   LIVE in the orchestration path. REMAINING: also wire `muse ask --tiered` single-query path (commands-ask.ts).
-  · **C3 (live eval)** — use `bench:local` (fire 1) for the latency win + accuracy parity: MUSE_TIERED_CASCADE
-  on vs always-heavy on a mixed easy/hard set; assert faster mean latency AND no grounding/answer regression.
-  Needs Ollama up.
+  · **C3 (live eval) — DONE fire 13** `eval:cascade` (scripts/eval-cascade.mjs + pure `lib/cascade-eval.mjs`
+  scoreCascadeEval, node:test'd 8 cases). The GATE LOGIC (escalate iff low-confidence — a weak fast answer
+  never silently kept; a confident one never needlessly escalated) is mutation-proven in the UNIT layer.
+  LIVE-MEASURED latency on this box (fast=qwen3:8b / heavy=qwen3.6:35b-a3b): cascade **23.9% faster** (12970ms
+  vs 17045ms). HONEST CAVEAT (④ judge): escalation was 0% (qwen3:8b confident on the whole set at threshold
+  −1.0), so only the latency-win-on-confident-queries arm was exercised LIVE; the escalate→heavy arm was not
+  triggered, and the runner's live `gateCorrect` is self-consistency (escalation derived from the same
+  predicate the scorer re-checks), NOT an independent measurement — the gate's adversarial proof is the unit
+  tests. LOCAL-OLLAMA-ONLY skip when down. REMAINING (◦): a hard prompt / lower threshold that actually
+  triggers live escalation to exercise the heavy arm end-to-end. The cascade vein (C1 decision · C2
+  execution+logprobs · C2b orchestration wiring · C3 latency proof) is otherwise complete; `ask --tiered`
+  single-query surface still remains.
 - ✓ **doctor: surface the Muse-side speed env — DONE local-speed fire 6** — `museSpeedEnvCheck` +
   `readMuseSpeedEnv` (apps/cli) report the Muse-PROCESS speed env (`MUSE_OLLAMA_NUM_BATCH` fire-2 lever,
   `MUSE_OLLAMA_NUM_CTX`, `MUSE_OLLAMA_KEEP_ALIVE`) on every `muse doctor`, with a concrete num_batch
