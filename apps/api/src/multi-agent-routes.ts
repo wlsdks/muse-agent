@@ -220,6 +220,7 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
           model: orchestration.response.model,
           output: orchestration.response.output
         },
+        ...readOrchestrationSignals(orchestration.response.raw),
         results: orchestration.results.map((step) => ({
           status: step.status,
           workerId: step.workerId,
@@ -411,6 +412,7 @@ export async function* toMultiAgentSseStream(args: SseStreamArgs): AsyncIterable
         JSON.stringify({
           mode: result.mode,
           response: { id: result.response.id, model: result.response.model, output: result.response.output },
+          ...readOrchestrationSignals(result.response.raw),
           results: result.results.map((step) => ({
             status: step.status,
             workerId: step.workerId,
@@ -424,6 +426,43 @@ export async function* toMultiAgentSseStream(args: SseStreamArgs): AsyncIterable
   } finally {
     args.messageBus.clear();
   }
+}
+
+interface OrchestrationSignals {
+  readonly conflicts?: readonly string[];
+  readonly verification?: { readonly satisfied: boolean; readonly missing?: string };
+}
+
+/**
+ * Surface the orchestrator's structured coordination signals (cross-worker conflicts,
+ * objective-coverage verdict) from the opaque `response.raw` so a consumer can ACT on
+ * them — not just read the human ⚠ line baked into the answer text. Defensive narrowing:
+ * `raw` is typed `unknown`, and an empty/malformed shape yields no field (no noise).
+ */
+function readOrchestrationSignals(raw: unknown): OrchestrationSignals {
+  if (typeof raw !== "object" || raw === null) return {};
+  const record = raw as { readonly conflicts?: unknown; readonly verification?: unknown };
+  const signals: { conflicts?: readonly string[]; verification?: { satisfied: boolean; missing?: string } } = {};
+
+  if (
+    Array.isArray(record.conflicts) &&
+    record.conflicts.length > 0 &&
+    record.conflicts.every((entry) => typeof entry === "string")
+  ) {
+    signals.conflicts = record.conflicts as readonly string[];
+  }
+
+  if (typeof record.verification === "object" && record.verification !== null) {
+    const verdict = record.verification as { readonly satisfied?: unknown; readonly missing?: unknown };
+    if (typeof verdict.satisfied === "boolean") {
+      signals.verification = {
+        satisfied: verdict.satisfied,
+        ...(typeof verdict.missing === "string" ? { missing: verdict.missing } : {})
+      };
+    }
+  }
+
+  return signals;
 }
 
 function sseData(value: string): string {

@@ -4,6 +4,34 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
+## fire 3 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · <pending-commit>
+meta: value-class=wiring · pkg=@muse/api · kind=response-dto-exposure · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles +1 (orchestrate-route-signal-exposure) · fabrication 0 · eval:orchestration/decomposition SKIP (Ollama down) · pkg/kind cell distinct (api/run-wiring f1 → multi-agent/guard f2 → api/dto-exposure f3) · consecutive allPASS=3 (drill at ≥8)
+
+**What** — Surfaced the orchestrator's structured coordination signals (`conflicts`, `verification`)
+from the opaque `response.raw` into BOTH API orchestrate route responses (POST `/orchestrate` return +
+`/orchestrate/stream` done frame) via a new defensive `readOrchestrationSignals(raw: unknown)` extractor.
+Previously the routes mapped only `response:{id,model,output}` and dropped `raw`, so a consumer received
+only the human ⚠ line baked into the answer text — never the structured signal to act on.
+
+**Why** — Completes fire 1's originally-stated HTTP acceptance (`raw.conflicts populated`). MAST:
+withholding a detected coordination failure from the caller defeats the point of detecting it. A web
+console / programmatic consumer can now render a conflicts badge or a coverage-incomplete state.
+
+**Review points** — (1) MUTATION-FIRST: pre-wiring the 3 positive tests RED (no `conflicts`/`verification`
+field), control GREEN; post-wiring all 4 GREEN. Independent Opus ④ judge re-ran the drill (removed both
+spread sites → 3 fail/1 pass). (2) SIBLING pair: POST + stream done frame both wired AND tested (the
+stream test parses the real `data:` SSE line). (3) Fail-safe narrowing: `raw` is `unknown` → null/non-object/
+malformed yields NO field (control proves no noise); empty-array guard; no throw path. (4) Spread keys are
+disjoint from the surrounding literal (no clobber).
+
+**Risk** — Pure response-shaping; no model call, no egress, fabrication floor untouched. Conflicts assertion
+is loose (length≥1 + names a worker) — acceptable; the verification test pins exact content, over-pinning a
+stochastic conflict string would be brittle. LLM evals SKIP (Ollama down); slice proven by HTTP inject tests.
+
+review: gates green — `pnpm --filter @muse/api build` clean · apps/api 871 pass · lint 0 · `pnpm check` exit 0 ·
+independent Opus ④ judge VERDICT PASS.
+
 ## fire 2 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · 0a9e81b4
 meta: value-class=new-guard · pkg=@muse/multi-agent · kind=correctness-guard · verdict=PASS · firesSinceDrill=1
 ratchet: testFiles +0 (case added to lead-worker.test.ts) · fabrication 0 · eval:orchestration/decomposition SKIP (Ollama down) · pkg/kind DIVERSE vs fire 1 (@muse/api/wiring → @muse/multi-agent/guard)
