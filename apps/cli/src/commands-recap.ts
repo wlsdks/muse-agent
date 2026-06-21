@@ -1,6 +1,8 @@
 import { openLoops, overdueContacts } from "@muse/agent-core";
 import { resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolveNotesDir, resolveRemindersFile, resolveTasksFile, resolveWeaknessesFile } from "@muse/autoconfigure";
-import { defaultBeliefProvenanceFile, deriveFactProvenance, readBeliefProvenance, selectVolatileBeliefs } from "@muse/memory";
+import { defaultBeliefProvenanceFile, deriveFactProvenance, FileUserMemoryStore, formatFirstLearned, projectRecentlyLearned, readBeliefProvenance, renderRecentlyLearnedLines, selectRecentlyForgotten, selectRecentlyLearnedFacts, selectVolatileBeliefs } from "@muse/memory";
+
+import { resolveMemoryUserId } from "./commands-memory.js";
 import { detectNoteFamilyAbsence, detectTopicAbsence, type NoteActivityEvent, readActionLog, readContacts, readEpisodes, readFollowups, readReminders, readTasks, readWeaknesses, remediationHint, resolveUpcomingBirthdays, selectRemediableWeaknesses } from "@muse/mcp";
 import { escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/recall";
 import type { Command } from "commander";
@@ -78,6 +80,19 @@ export interface EveningRecapInput {
   readonly weaknesses: readonly string[];
   /** Auto beliefs the extractor keeps flipping — nudge the user to confirm (H4). */
   readonly volatileBeliefs: readonly string[];
+  /**
+   * RECENTLY LEARNED — the cited "Learns you" recap: deterministic lines of what
+   * Muse recorded about you lately (a fact/preference change with its prior value
+   * and date), within a recency window. Code picks them from the recorded
+   * factHistory, never the model. Optional/back-compat: absent ⇒ no section.
+   */
+  readonly recentlyLearned?: readonly string[];
+  /**
+   * FORGOTTEN AT YOUR CORRECTION — keys you had Muse forget recently (the other
+   * half of "Learns you": it forgets the moment you correct it). Code picks them
+   * from the recorded retraction markers, citing the date. Optional/back-compat.
+   */
+  readonly recentlyForgotten?: readonly string[];
   readonly openFollowups: number;
 }
 
@@ -163,6 +178,25 @@ export function composeEveningRecap(input: EveningRecapInput): string {
     lines.push("", `🔄 These keep changing — confirm the current value and I'll trust it (${input.volatileBeliefs.length.toString()}):`);
     for (const item of input.volatileBeliefs.slice(0, 5)) {
       lines.push(`  🔄 ${item}`);
+    }
+  }
+
+  // Learns you: what I recently recorded about you, each line citing its prior
+  // value — the proactive "here's what I now know" recap (distinct from the
+  // 🔄 confirm-nudge above: this is informative, not an action request).
+  if (input.recentlyLearned && input.recentlyLearned.length > 0) {
+    lines.push("", `📝 Recently learned about you (${input.recentlyLearned.length.toString()}):`);
+    for (const item of input.recentlyLearned.slice(0, 5)) {
+      lines.push(`  📝 ${item}`);
+    }
+  }
+
+  // The other half of "Learns you": what you had me forget. The identity's
+  // promise is that it forgets the moment you correct it — this makes it visible.
+  if (input.recentlyForgotten && input.recentlyForgotten.length > 0) {
+    lines.push("", `🗑️  Forgotten at your correction (${input.recentlyForgotten.length.toString()}):`);
+    for (const item of input.recentlyForgotten.slice(0, 5)) {
+      lines.push(`  🗑️  ${item}`);
     }
   }
 
@@ -343,14 +377,40 @@ export async function gatherEveningRecap(
   // Whetstone (H4): auto beliefs the extractor keeps flipping → nudge the user to
   // confirm the current value (which re-states it as durable user-source).
   const volatileBeliefs: string[] = [];
+  // First-time learnings (no supersession exists for a brand-new fact, so the
+  // factHistory projection below can't catch them) — derived from the same
+  // provenance read, cited by the recorded firstSeen date.
+  const firstLearned: string[] = [];
+  // The other half of "Learns you": keys you had Muse forget at your correction.
+  const recentlyForgotten: string[] = [];
   try {
     const provFile = env.MUSE_BELIEF_PROVENANCE_FILE ?? defaultBeliefProvenanceFile();
-    const provenance = deriveFactProvenance(await readBeliefProvenance(provFile));
+    const rawEntries = await readBeliefProvenance(provFile);
+    const provenance = deriveFactProvenance(rawEntries);
     for (const b of selectVolatileBeliefs(provenance, { maxResults: 3, now: now.getTime() })) {
       volatileBeliefs.push(`"${safeRecapText(b.key)}" (now "${safeRecapText(b.currentValue)}", ${b.distinctValueCount.toString()} different values) — \`muse memory set ${b.kind} ${safeRecapText(b.key)} <value>\` to confirm`);
     }
+    for (const f of selectRecentlyLearnedFacts(provenance, { maxResults: 5, now: now.getTime(), withinDays: 30 })) {
+      firstLearned.push(safeRecapText(formatFirstLearned(f)));
+    }
+    for (const g of selectRecentlyForgotten(rawEntries, { maxResults: 5, now: now.getTime(), withinDays: 30 })) {
+      recentlyForgotten.push(safeRecapText(`${g.key.replace(/_/gu, " ")} (you had me forget this · ${g.forgottenAt.slice(0, 10)})`));
+    }
   } catch { /* fail-soft — no provenance log */ }
-  return { comingUp, goneQuiet, now, openFollowups, openLoops: openLoopLines, performedToday, reconnect, sessionsToday, slipping, volatileBeliefs, weaknesses };
+  // Learns you: the cited recent-learnings recap — CHANGES from factHistory (the
+  // project→render the memory/status surfaces use) followed by first-time learnings.
+  const recentlyLearned: string[] = [];
+  try {
+    const store = new FileUserMemoryStore(env.MUSE_USER_MEMORY_FILE ? { file: env.MUSE_USER_MEMORY_FILE } : {});
+    const memory = await store.findByUserId(resolveMemoryUserId(undefined));
+    if (memory) {
+      recentlyLearned.push(
+        ...renderRecentlyLearnedLines(projectRecentlyLearned(memory, { sinceMs: now.getTime() - 30 * DAY_MS })).map(safeRecapText)
+      );
+    }
+  } catch { /* fail-soft — no memory store */ }
+  recentlyLearned.push(...firstLearned);
+  return { comingUp, goneQuiet, now, openFollowups, openLoops: openLoopLines, performedToday, reconnect, recentlyForgotten, recentlyLearned, sessionsToday, slipping, volatileBeliefs, weaknesses };
 }
 
 /**
