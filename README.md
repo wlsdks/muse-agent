@@ -5,7 +5,7 @@
 <h1 align="center">Muse</h1>
 
 <p align="center">
-  <b>A private, local-first personal AI — a self-hosted JARVIS that answers from <i>your own</i> notes and files,<br/>quotes the source, says "I'm not sure" instead of guessing, and never leaves your machine.</b>
+  <b>The personal AI that learns <i>you</i> — not the world. It builds a private model of who you are<br/>from your own notes and files, keeps it on your machine, and forgets the moment you correct it.</b>
 </p>
 
 <p align="center">
@@ -17,21 +17,24 @@
   &nbsp;·&nbsp; <a href="README.ko.md">한국어</a>
 </p>
 
-> **Tell it everything — it can't tell anyone, and it gets stronger by fixing its own blind spots.**
+> **Learns you, not the world.**
 >
-> *네 약점까지 다 말해 — 아무한테도 안 새고, 그걸 같이 고쳐 더 똑똑해지니까.*
+> *세상이 아니라, 너를 학습한다.*
+>
+> It learns you a little deeper every day, lives only on your machine, and forgets the moment you tell it to.
 
-Point Muse at the notes, files, and mail you'd never paste into ChatGPT. It runs
-**entirely on your own machine** (a local open-source model via [Ollama](https://ollama.com)),
-answers from **your own** corpus with the exact passage quoted, and — the part that
-earns trust — a **deterministic confidence gate** flags weak matches and says
-*"no matching passages"* rather than confabulate. Cloud egress isn't a setting you
-remember to turn off; it's **refused in code**.
+Most AI learns the whole world — and you, for everyone else. Muse learns **you**, for
+**you**: it builds a model of who you are from the notes, files, and mail you'd never
+paste into ChatGPT, reinforces what actually works for you, and **forgets the moment you
+correct it**. That model of you never leaves your machine (cloud egress is **refused in
+code**, not a setting), and every claim it makes cites a real source — weak grounding
+becomes *"I'm not sure,"* an un-groundable claim is dropped by code. The deeper it knows
+you, the more it's yours.
 
-> Hermes self-improves but can confabulate; OpenClaw "dreams" but its dreams aren't
-> grounded. **Muse is the only one that is local, proactive, self-learning — _and_
-> incapable of making things up**, and it measures that continuously (fabrication rate = 0
-> is a release gate).
+> Hermes learns you too — but on its server, and it can confabulate. **Muse learns you on
+> _your_ machine, cites why it believes what it knows, and forgets when you correct it** —
+> a model of you that gets sharper without ever getting riskier (fabrication rate = 0 is a
+> release gate).
 
 ---
 
@@ -39,26 +42,28 @@ remember to turn off; it's **refused in code**.
 
 Read these five and you know exactly what kind of agent this is.
 
-1. **Local by construction — _so you can tell it everything._**
-   Runs entirely on a local open-source model (`gemma4:12b` via Ollama by default —
-   multimodal + grounding-strong — or any weights you run locally). Cloud egress is
-   **refused in code** (`MUSE_LOCAL_ONLY` on by default): the runtime won't even start
-   against a cloud provider unless you explicitly opt out. Not your agent on someone
-   else's cloud — actually yours.
+1. **Learns you — _not the world._**
+   Muse builds a model of who *you* are — your facts, preferences, goals, and the things
+   it must never suggest — from what you tell it and correct it on. It reinforces the
+   strategies that work for you (the **Playbook**), grinds down its own blind spots (the
+   **Whetstone**), and — unlike every "memory" that only piles up — **forgets the moment
+   you correct it**. A fixed local brain that gets sharper *about you* every day, with no
+   weight changes. (`muse memory`, `muse doctor --weaknesses`)
 
-2. **Shows its work — _never makes things up._**
+2. **It's yours — _the model of you never leaves._**
+   Everything runs on a local open-source model (`gemma4:12b` via Ollama by default —
+   multimodal + grounding-strong — or any weights you run locally), and that model of you
+   stays on your machine. Cloud egress is **refused in code** (`MUSE_LOCAL_ONLY` on by
+   default): the runtime won't even start against a cloud provider unless you explicitly
+   opt out. The deeper it knows you, the more that matters.
+
+3. **Honest — _it won't make you up._**
    Every answer, proactive nudge, and insight cites the real source it came from; weak
-   grounding becomes *"I'm not sure"*; an un-groundable claim is **dropped by code**.
-   The same gate governs recall, proactivity, reflection, **and plain `muse chat`** —
-   ask *"what's my office VPN MTU?"* and it quotes your note's `1380`, not the textbook
-   `1500`. **Fabrication rate = 0 is a release gate**, measured continuously.
-
-3. **Whetstone — _overcomes its own weaknesses to get stronger._**
-   Muse notices what it reliably gets wrong (a refusal it shouldn't make, an action it
-   claimed but didn't do), records it, and grinds it down — the way a disciplined learner
-   improves a *fixed* brain, with no weight changes. Paired with the **Playbook**, which
-   reinforces the strategies that work for you. _A modest model kept sharp out-cuts a finer
-   one left dull._ (`muse doctor --weaknesses`)
+   grounding becomes *"I'm not sure"*; an un-groundable claim is **dropped by code**. The
+   same gate governs recall, proactivity, reflection, **and plain `muse chat`** — ask
+   *"what's my office VPN MTU?"* and it quotes your note's `1380`, not the textbook `1500`.
+   **Fabrication rate = 0 is a release gate**, measured continuously — so a model of you
+   that deepens never gets riskier.
 
 4. **Distills nature's mechanisms — _the cross-field moat._**
    Muse mines OPEN papers from **biology, ecology, neuroscience** and beyond, turning a
@@ -73,8 +78,9 @@ Read these five and you know exactly what kind of agent this is.
    send or action toward another person is **draft-first and needs your explicit
    confirmation**. Banking and money movement are permanently out of scope.
 
-> Principle 1 is *why* you can tell it everything; principles 2–3 are *what it then does
-> for you*; principle 4 is *how* it keeps gaining capabilities a copycat can't.
+> Principle 1 is *what Muse is* — it learns you; principles 2–3 are *why you can trust it
+> with that* — the learning stays yours and stays honest; principle 4 is *how* it keeps
+> gaining capabilities a copycat can't.
 
 A native **macOS desktop companion** (a floating, voice-capable orb; on-device speech via
 WhisperKit + Qwen3-TTS) is the newest surface — same local-only, grounded runtime.
@@ -84,7 +90,7 @@ WhisperKit + Qwen3-TTS) is the newest surface — same local-only, grounded runt
 ## ⚡ See it
 
 ```bash
-# Requirements: Node.js >= 22.12 (24 LTS recommended) + pnpm 10
+# Requirements: Node.js >= 22.12 (24 LTS recommended) + pnpm 10 · macOS only (Windows support planned)
 pnpm install && pnpm build && pnpm test
 
 # 30-second JARVIS demo (runs on your local default model, gemma4:12b via Ollama):
@@ -145,16 +151,19 @@ for a single call; it remembers you and shapes every future turn *and* every pro
   runtime calls the abstraction, never a vendor SDK directly. The same core drives the CLI,
   the API server, and the web UI.
 - **Tool & MCP first.** Tools are first-class — read, write, or execute — with explicit risk
-  levels, approval gates, and deterministic loop limits. ~24 in-process `muse.*` servers ship
+  levels, approval gates, and deterministic loop limits. 25 in-process `muse.*` servers ship
   built-in (eight pure-utility: `time` / `text` / `math` / `json` / `url` / `crypto` / `diff` /
   `regex`, plus the personal-domain set); external servers connect over stdio / SSE /
   streamable-HTTP.
-- **Personal-domain primitives.** Markdown notes, a todo list, and calendar events across 5
-  providers (Local file, Local-ICS, Google Calendar, CalDAV, macOS Calendar.app) — all stored
-  locally by default, queryable by the agent, editable from CLI / Web UI.
+- **Personal-domain primitives.** Markdown notes, a todo list, reminders, and calendar events
+  across 5 providers (Local file, Local-ICS, Google Calendar, CalDAV, macOS Calendar.app) — all
+  stored locally by default, queryable by the agent, editable from CLI / Web UI.
 - **Multi-agent orchestration.** Sequential or parallel worker fan-out, an in-memory
   cross-agent message bus, per-run history with full conversation snapshots — exposed over
   HTTP and SSE.
+- **Messaging channels.** Inbound/outbound adapters for **Telegram, Discord, Slack, and LINE**
+  (plus local macOS desktop notifications), all routed through the same fail-closed
+  channel-approval gate — a reply toward a person is draft-first, never autonomous.
 - **Deterministic safety.** Guards are fail-close, hooks are fail-open, security lives in code
   (never in prompt instructions). Tool output is untrusted until sanitised. Risky local
   execution flows through a separate Rust runner (`crates/runner`).
@@ -237,6 +246,19 @@ muse setup local                       # wires defaultModel into ~/.config/muse/
 See [`docs/setup-local-llm.md`](docs/setup-local-llm.md) for the four tiers
 (0.8B / 2B / 9B / 27B), license notes, and a latency-measuring dogfood script.
 
+<details>
+<summary><b>First-run troubleshooting</b></summary>
+
+| Symptom | Fix |
+| --- | --- |
+| Local model calls fail / time out | Start Ollama: `ollama serve` (probes `${OLLAMA_BASE_URL:-http://localhost:11434}`) |
+| `model not found` | Pull the shipped default: `ollama pull gemma4:12b` |
+| Not sure what's wired (model, posture, providers) | `muse doctor` reports the local-only posture and resolved configuration |
+
+`smoke:live` auto-skips when Ollama is unreachable — a skip means the local runtime
+isn't up, not that anything is broken.
+</details>
+
 **Cloud + API server (BYOK)** — opt out of local-only to reach any provider:
 
 ```bash
@@ -271,7 +293,7 @@ Local / Local-ICS / Google / CalDAV / macOS; OAuth + app-password flows; chmod-6
 Tests are the only form of verification. The repo ships these gates:
 
 ```bash
-pnpm check        # build + test for every workspace (thousands of tests across all 27 packages)
+pnpm check        # build + test for every workspace (thousands of tests across all 28 packages)
 pnpm smoke:broad  # 51 HTTP endpoints, diagnostic provider (no key)
 pnpm smoke:live   # real LLM round-trip — LOCAL OLLAMA ONLY, gemma4:12b (auto-skips if unreachable)
 ```
@@ -340,6 +362,28 @@ Each mechanism cites its paper in the module header; the verified feature invent
 Deep dives: [differentiation](docs/strategy/differentiation.md) ·
 [verified feature catalog](docs/feature-catalog/INDEX.md) ·
 [frontier research](docs/strategy/frontier-research-2026-06.md).
+
+---
+
+## 📖 Documentation
+
+| Goal | Read |
+| --- | --- |
+| Run on a local open-source model (tiers, licenses, latency) | [`docs/setup-local-llm.md`](docs/setup-local-llm.md) |
+| The verified, proof-cited feature inventory | [`docs/feature-catalog/INDEX.md`](docs/feature-catalog/INDEX.md) |
+| Why Muse differs from Hermes / OpenClaw | [`docs/strategy/differentiation.md`](docs/strategy/differentiation.md) |
+| The 2026 frontier research it draws on | [`docs/strategy/frontier-research-2026-06.md`](docs/strategy/frontier-research-2026-06.md) |
+| Security posture & reporting | [`SECURITY.md`](SECURITY.md) |
+| Korean overview | [`README.ko.md`](README.ko.md) |
+
+---
+
+## 💬 Community & support
+
+Questions, bugs, and feature ideas go through GitHub:
+
+- **Issues** — [github.com/wlsdks/Muse/issues](https://github.com/wlsdks/Muse/issues)
+- **Security reports** — see [`SECURITY.md`](SECURITY.md) (do not open a public issue for vulnerabilities)
 
 ---
 
