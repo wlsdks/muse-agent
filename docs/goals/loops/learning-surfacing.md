@@ -192,7 +192,7 @@ ratchet: testFiles +0 (commands-status.test +3) · @muse/cli status 24 green · 
 - **리스크**: 없음 — drill 롤백 clean, status 24 green, 독립 Opus ④b judge 진짜 슬라이스 PASS. (cli 1 TUI timeout=포화 flake, 무관.)
 - **lesson**: JUDGE-DRILL은 테마의 하드 불변식을 정확히 겨냥한 나쁜 슬라이스가 효과적 — fire 17 judge가 경고했던 over-claim 실패모드(auto→"you told me")를 재현하니 judge가 5개 구체 위반으로 즉시 적발. green-tests-but-fabricating이 핵심 시나리오.
 
-## fire 21 · 2026-06-21 · skill v2.1.0 · pending
+## fire 21 · 2026-06-21 · skill v2.1.0 · e0ec786f
 meta: value-class=micro-fix · pkg=@muse/cli · kind=why-honesty · verdict=PASS · firesSinceDrill=1 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +0 (commands-memory.test +3) · @muse/cli commands-memory 12 green · lint clean · fabrication 0
 
