@@ -171,3 +171,32 @@ ratchet: testFiles +0 (belief-provenance-store.test +3, commands-recap.test +2) 
 - **왜**: 학습만 보였고 "잊음"(정체성 두 번째 절반)은 백그라운드였음. 교정→forget이 실제 반영됨을 사용자가 봄. `recordRetraction`(chat `/forget` + `muse memory forget` 둘 다)이 남긴 마커 사용.
 - **리뷰지점**: newest-event-wins(`keysWithActiveRetraction` 규칙) → re-learned 키는 forgotten 안 뜸(judge 확인). raw entries 읽기는 `deriveFactProvenance`와 같은 소스, fail-soft + safeRecapText. `recentlyForgotten` optional.
 - **리스크**: 없음 — additive, memory 578 + recap 35 green, 독립 Opus ④b judge가 retraction 정직성+re-set-clears+무회귀 재확인 PASS. (cli daemon 9 timeout = 동시루프 포화 환경, 내 파일 무관 — judge 확인.)
+
+## fire 19 · 2026-06-21 · skill v2.1.0 · 8a769430
+meta: value-class=wiring · pkg=@muse/cli · kind=forgotten-surface-wiring · verdict=PASS · firesSinceDrill=9 · firesSinceMainMerge=1
+ratchet: testFiles +0 (human-formatters.test +2) · @muse/cli human-formatters 31 green · lint clean · fabrication 0 · ★fires 15-18 main 적재됨(823c117f)
+
+- **무엇**: `muse memory show`(정식 "what I know about you" 표면)에 **"Forgotten at your correction:"** 섹션 — fire 18 recap-forgotten + fire 3 memory-show-learned의 **형제**. `readLocalMemory`가 `selectRecentlyForgotten(provenance, 365d)`로 계산, `formatMemoryShow`가 learned 섹션 뒤에 렌더(fail-soft, non-empty-only).
+- **왜**: **형제-감사** — recap만 forgotten 있었고 canonical memory 표면은 learned-only(비대칭). 이제 "내가 너에 대해 아는 것"이 **양면(배운 것 + 잊은 것) 정직**.
+- **리뷰지점**: fire 3 패턴 그대로(payload field + formatMemoryShow 섹션). non-empty일 때만 payload 포함(빈 노이즈 없음). provenance 없으면 try/catch로 learned half 유지. `selectRecentlyForgotten`(fire 18) 재사용.
+- **리스크**: 없음 — additive, human-formatters 31 green, 독립 Opus ④b judge가 consume+citation+무회귀 재확인 PASS. (cli daemon 9 timeout=동시루프 포화, 무관.)
+- **NEXT(fire 20)**: ★JUDGE-DRILL 하드카운터 — firesSinceDrill이 fire 20에 10 도달 → **미루기 불가** 드릴(나쁜 슬라이스 주입→④b FAIL 확인→롤백→진짜 fix), 완료 시만 카운터 0 리셋.
+
+## fire 20 · 2026-06-21 · skill v2.1.0 · 82f13c47
+meta: value-class=wiring+JUDGE-DRILL · pkg=@muse/cli · kind=forgotten-surface-wiring · verdict=PASS · firesSinceDrill=10→0(DRILL discharged) · firesSinceMainMerge=2
+ratchet: testFiles +0 (commands-status.test +3) · @muse/cli status 24 green · lint clean · fabrication 0
+
+- **무엇**: ★**JUDGE-DRILL**(firesSinceDrill 10 도달, 미루기 불가) — `formatFirstLearned`를 source 무관 항상 "you told me"로 위조하는 나쁜 슬라이스 주입(auto fact를 사용자 진술로, **테스트까지 rubber-stamp해 green**)→독립 Opus ④b judge가 **FAIL + 구체적 위반 5개**(비결정론 상수·fabrication·테스트 rubber-stamp·docstring 모순·정확한 fix) 명시→`git restore` 롤백 확인(59 green 복원). **검증자가 rubber-stamp 아님 증명.** 카운터 0 리셋. 이어 진짜 슬라이스: `muse status`에 **"recently forgotten: <컴팩트 1줄>"**(`readRecentlyForgottenLine`, fire 5 learned 형제). forgotten 이제 **3 일일 surface 전부**(recap·memory show·status).
+- **왜**: 드릴 = fail-close 게이트 신뢰성 증명(maker≠judge 보상통제 — Opus가 천장이라 같은-모델일 때 드릴이 보상). 진짜 슬라이스 = 일일 대시보드도 양면 정직(배운 것 + 잊은 것).
+- **리뷰지점**: `selectRecentlyForgotten`(fire 18) 재사용, 30일 윈도우(learned와 동일 상수), retraction 마커 code-select. fail-soft(`.catch`). non-empty-only snapshot. drill 롤백은 status 파일과 무관(belief-provenance-store 복원=net 0).
+- **리스크**: 없음 — drill 롤백 clean, status 24 green, 독립 Opus ④b judge 진짜 슬라이스 PASS. (cli 1 TUI timeout=포화 flake, 무관.)
+- **lesson**: JUDGE-DRILL은 테마의 하드 불변식을 정확히 겨냥한 나쁜 슬라이스가 효과적 — fire 17 judge가 경고했던 over-claim 실패모드(auto→"you told me")를 재현하니 judge가 5개 구체 위반으로 즉시 적발. green-tests-but-fabricating이 핵심 시나리오.
+
+## fire 21 · 2026-06-21 · skill v2.1.0 · e0ec786f
+meta: value-class=micro-fix · pkg=@muse/cli · kind=why-honesty · verdict=PASS · firesSinceDrill=1 · firesSinceMainMerge=3→0(main FF-merge this fire)
+ratchet: testFiles +0 (commands-memory.test +3) · @muse/cli commands-memory 12 green · lint clean · fabrication 0
+
+- **무엇**: `muse memory why <잊힌키>` **정직성 버그 수정** — `deriveFactProvenance`가 retraction 제외(`continue`) → 잊힌 키도 **stale 값을 "still known"처럼 표시**(거짓). `keysWithActiveRetraction`로 감지해 `(you had me forget "key" on DATE — I no longer hold it)` 표시. +call-site `normalizeMemoryKey`로 모든 키 견고화.
+- **왜**: `why`는 **가장 깊은 "show your work" citation 표면**인데 forgotten fact에 대해 거짓말 = fabrication=0 위반. 정직성 회복.
+- **리뷰지점**: `keysWithActiveRetraction`(fire 18 machinery, newest-event) → re-`set`은 reopens(잊힘 아님; 테스트). 정상 키 `why` 무변(무회귀). 다양성: kind=why-honesty(forgotten-surface-wiring과 구분되는 correctness fix).
+- **리스크**: 없음 — commands-memory 12 green, 독립 Opus ④b judge가 버그-real+fix+re-set+무회귀+mutation 재확인 PASS.

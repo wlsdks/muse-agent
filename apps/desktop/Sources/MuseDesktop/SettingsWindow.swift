@@ -58,6 +58,9 @@ private struct SettingsView: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var creds = MessagingCredentials.load()
     @State private var msgSaved = false
+    @State private var models: [OllamaModel] = []
+    @State private var pullName = ""
+    @State private var pulling = false
 
     private let s = UIStrings.current()
 
@@ -91,6 +94,7 @@ private struct SettingsView: View {
                 header
                 chatSection
                 appearanceSection
+                modelsSection
                 voiceSection
                 startupSection
                 messagingSection
@@ -168,6 +172,48 @@ private struct SettingsView: View {
             .onChange(of: muted) { _, v in onMute(v) }
         }
     }
+
+    private var defaultModel: String {
+        (ProcessInfo.processInfo.environment["MUSE_MODEL"] ?? "ollama/gemma4:12b")
+            .split(separator: "/").last.map(String.init) ?? "gemma4:12b"
+    }
+
+    private var modelsSection: some View {
+        card(s.sectionModels) {
+            Text(s.modelsHint).font(.system(size: 11)).foregroundStyle(faint)
+            if models.isEmpty {
+                Text(s.modelsEmpty).font(.system(size: 12)).foregroundStyle(dim)
+            }
+            ForEach(models) { m in
+                HStack(spacing: 8) {
+                    Text(m.name).font(.system(size: 12)).foregroundStyle(ink)
+                    if m.name == defaultModel {
+                        Text(s.modelDefault).font(.system(size: 10, weight: .semibold)).foregroundStyle(violet)
+                    }
+                    Spacer()
+                    Text(m.sizeText).font(.system(size: 11)).foregroundStyle(faint)
+                    Button { Task { await OllamaModels.delete(m.name); await reloadModels() } } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.red.opacity(0.85))
+                    .help("Delete \(m.name)")
+                }
+            }
+            HStack(spacing: 8) {
+                TextField(s.modelPullPlaceholder, text: $pullName).textFieldStyle(.roundedBorder)
+                Button(pulling ? s.modelPulling : s.modelPull) {
+                    let name = pullName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !name.isEmpty, !pulling else { return }
+                    pulling = true
+                    Task { _ = await OllamaModels.pull(name); pulling = false; pullName = ""; await reloadModels() }
+                }
+                .buttonStyle(.borderedProminent).tint(violet).disabled(pulling)
+            }
+        }
+        .task { await reloadModels() }
+    }
+
+    @MainActor private func reloadModels() async { models = await OllamaModels.list() }
 
     private var messagingSection: some View {
         card(s.sectionMessengers) {
