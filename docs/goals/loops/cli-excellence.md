@@ -153,3 +153,14 @@ ratchet: 변경연관 테스트만(발열정책) · program-help 정렬테스트
 - live: `node dist/index.js --help` Commands 섹션 알파벳순.
 - ◦ FOLLOW-UP(backlog): 80 명령 카테고리 그룹화(gh식 CORE/…)는 commander helpGroup(13+)로 가능하나 큰 큐레이션 → decompose 필요.
 - 레퍼런스: gh/docker 명령 그룹·정렬 관행. https://cli.github.com/manual/
+
+## fire 14 · 2026-06-22 · skill v2.1.0 · 5c4a4640
+meta: value-class=info-projection · pkg=@muse/cli · kind=info-projection · verdict=PASS · firesSinceDrill=4
+ratchet: 변경연관 테스트만(발열정책) · commands-doctor formatDoctorSummaryLine 3 green · lint 0 · fabrication 0
+
+- **무엇**: 기본 `muse doctor` 한 줄 요약의 raw UTC ISO stamp(`(2026-06-21T16:09:48.322Z)`)를 humanize. 순수 export `formatDoctorSummaryLine(snapshot, now)` 추출(공유 formatRelativeTime: just now/3h ago/>7d 로컬datetime/absent 생략) + 액션 배선. fire-8(status 타임스탬프) 형제-완성.
+- **왜**: 헬스 스냅샷이 얼마나 stale한지 raw ISO는 암산 강요. "(just now)/(Nh ago)"가 staleness 즉시 표시. 결정론(now 주입), --full/--json/--local 경로 불변.
+- **리뷰지점**: 테스트가 반환 라인 grade([ok] … (3h ago), raw ISO 없음, absent→stamp 생략), mutation-first RED(raw stamp 복원→2 fail). 라이브 `muse doctor` → `[OK] 6 섹션 — OK 6 (just now)`. 형제-감사: 옛 raw 요약 assert 테스트 없음(today의 generatedAt은 별 surface). 독립 Opus ④b PASS(6/6).
+- **리스크**: 낮음. diff 2파일. DoctorSummary export는 benign. 다양성: info-projection(최근8 중 1회).
+- live: `node dist/index.js doctor` → `[OK] 6 섹션 — OK 6 (just now)`.
+- 레퍼런스: at-a-glance 상태는 상대시간(fire-8과 동일 패턴, brew/flutter doctor staleness 표기). https://docs.flutter.dev/reference/flutter-doctor
