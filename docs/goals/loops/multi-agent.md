@@ -4,6 +4,38 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
+## fire 10 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · <pending-commit>
+meta: value-class=new-capability(paper-grounded) · pkg=@muse/multi-agent+@muse/cli · kind=reasoning-action-alignment · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles +0 (cases added to lead-worker + ask-decompose tests) · fabrication 0 · eval:orchestration/decomposition deterministic cases PASS · consecutive allPASS=6 (drill due ~fire 12) · NEW kind (FM-2.6 alignment) — distinct cell vs all prior multi-agent fires
+
+**What** — Covered the one uncovered MAST mode found by the scout: FM-2.6 reasoning-action mismatch (#2
+multi-agent failure @ 13.2%, arXiv:2503.13657). New pure `verifySequencedDependencyUse(executions)` flags a
+COMPLETED sequenced downstream step whose output shares ZERO content tokens with EVERY same-script upstream
+output (ran "blind" — ignored the priorContext it was handed). Wired into `runLeadWorkerTask` (sequenced-only)
+→ `LeadWorkerResult.reasoningActionGaps` → `runDecomposedAgentAsk`/`DecomposedAskResult` pass-through (live in
+`muse ask`). The inverse of `verifySynthesisCoverage`'s "shares ≥1 token" test, same trusted lexicalTokens
+primitive + comparableScript same-script gate.
+
+**Why** — Muse's `sequenced` split exists SPECIFICALLY so a downstream acts on its upstream RESULT, but the
+engine never verified the step engaged it. This is the FM-2.6 alignment check on that handoff. (Theme-pivot:
+after 9 fires of detection/persistence, this is a genuinely NEW capability addressing the uncovered #2 mode —
+value-first, not completionism.)
+
+**Review points** — (1) MUTATION-FIRST: breaking the `reasoningActionGaps` spread → exactly the live test RED,
+restored. (2) SCOPE: runs ONLY for `sequenced` (independent split NOT checked — tested). (3) Upstream semantics
+match the engine's priorContext (slice(0,i) of completed = exactly what the step was handed). (4) ADVISORY-ONLY
+(caption + reason fragment, no gate/block/re-synthesis). (5) Same-script gate kills the KO→EN over-fire.
+
+**Risk / ★CALIBRATION (judge-measured, important)** — The Opus ④ judge PASSED but MEASURED that the LEXICAL
+zero-overlap bar OVER-FIRES on legitimate paraphrase/classify/decide downstreams (6/6 generic transforms it
+tested would be flagged). So this is a conservative-RECALL signal whose only safe use is ADVISORY (a spurious
+caption is harmless). The in-code doc comment + backlog carry a HARD WARNING: do NOT wire `reasoningActionGaps`
+into any gate/warning/re-synthesis without first UPGRADING the bar to SEMANTIC similarity (embedder cosine,
+mirroring detectRedundantPairs) — that's the required follow-up. Pure sync, no model/egress, floor untouched.
+
+review: gates green — multi-agent build clean · lead-worker 61 pass · cli ask-decompose 19 pass · lint 0 ·
+`pnpm check` exit 0 · independent Opus ④ judge VERDICT PASS (with the calibration warning above heeded).
+
 ## fire 9 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · 69e1fdf2
 meta: value-class=observability(parity) · pkg=@muse/multi-agent+@muse/api · kind=persistence-exposure · verdict=PASS · firesSinceDrill=7
 ratchet: testFiles +0 · fabrication 0 · eval:orchestration/decomposition deterministic cases PASS · consecutive allPASS=5 (drill at ≥8) · cell (multi-agent+api, observability-persistence) = 2 of last 8 (f6,f9) — ratchet does NOT bind

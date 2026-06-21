@@ -245,3 +245,19 @@ describe("runDecomposedAgentAsk — failure handling (no partial-answer fabricat
     expect(synthPrompt).toContain("3"); // 11 - 8 dropped
   });
 });
+
+describe("runDecomposedAgentAsk — surfaces a sequenced step that ignored its upstream (MAST FM-2.6, live wiring)", () => {
+  const seqQuery = "먼저 회의록을 요약하고 그 다음 그 요약에서 액션아이템을 추출해줘";
+  it("a sequenced downstream step whose output ignores the upstream result populates reasoningActionGaps", async () => {
+    const runner = runnerReturning((content) =>
+      content.startsWith("사용자 요청:")
+        ? { response: { output: "SYNTH" } }
+        : content.includes("액션")
+          ? { response: { output: "전혀 무관한 잡담 텍스트 입니다" } } // blind downstream
+          : { response: { output: "회의 예산 삭감 요약 내용" } }       // upstream
+    );
+    const result = await runDecomposedAgentAsk({ ...baseArgs, query: seqQuery, runner });
+    expect(result.reasoningActionGaps).toBeDefined();
+    expect(result.reasoningActionGaps!.length).toBeGreaterThanOrEqual(1);
+  });
+});

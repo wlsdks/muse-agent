@@ -43,6 +43,8 @@ export interface DecomposedAskResult {
   readonly subtaskConflicts?: readonly string[];
   /** Captions for completed sub-answers that are near-identical — a worker did duplicate work (MAST step-repetition). */
   readonly subtaskRedundancies?: readonly string[];
+  /** Captions for sequenced steps that ignored the upstream result they were handed (MAST FM-2.6 reasoning-action mismatch). */
+  readonly reasoningActionGaps?: readonly string[];
 }
 
 const PLANNER_SYSTEM_PROMPT =
@@ -187,6 +189,7 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
     ...(leadResult.synthesisIncomplete ? { synthesisIncomplete: leadResult.synthesisIncomplete } : {}),
     ...(leadResult.subtaskConflicts ? { subtaskConflicts: leadResult.subtaskConflicts } : {}),
     ...(leadResult.subtaskRedundancies ? { subtaskRedundancies: leadResult.subtaskRedundancies } : {}),
+    ...(leadResult.reasoningActionGaps ? { reasoningActionGaps: leadResult.reasoningActionGaps } : {}),
     toolsUsed: [...mergedTools]
   };
 }

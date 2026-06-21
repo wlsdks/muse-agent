@@ -1,4 +1,4 @@
-import { detectPairwiseContradictions, detectRedundantPairs, lexicalTokens, neutralizeInjectionSpans } from "@muse/agent-core";
+import { comparableScript, detectPairwiseContradictions, detectRedundantPairs, lexicalTokens, neutralizeInjectionSpans } from "@muse/agent-core";
 
 import { decomposeRequestWithKind, shouldDecompose, type Subtask } from "./decompose-trigger.js";
 
@@ -114,6 +114,52 @@ export function verifySynthesisCoverage(finalAnswer: string, executions: readonl
 }
 
 /**
+ * Reasoning-action alignment on the SEQUENCED handoff (MAST FM-2.6 reasoning-action
+ * mismatch, arXiv:2503.13657 — the #2 multi-agent failure mode at 13.2%). A sequenced
+ * split exists SPECIFICALLY so a downstream step can act on its upstream RESULT (it is
+ * handed the completed prior steps' outputs as priorContext). This verifies the step
+ * actually ENGAGED that result: a COMPLETED step (index ≥ 1) whose output shares ZERO
+ * content tokens with EVERY same-script upstream output ran "blind" — it ignored the
+ * dependency it was given. Returns a caption per blind step. Advisory-only.
+ *
+ * Calibration (honest): the bar is "shares NOTHING" — the inverse of
+ * {@link verifySynthesisCoverage}'s "shares ≥1 token" test. A downstream that carries
+ * forward any upstream number/entity/noun is never flagged; but a downstream that
+ * legitimately PARAPHRASES/CLASSIFIES/DECIDES without repeating a surface token (e.g.
+ * upstream "Q1 revenue 4.2M" → downstream "approved, proceeding") shares zero LEXICAL
+ * tokens and WOULD be flagged — a real false-positive class. This is therefore a
+ * conservative-RECALL signal and is **ADVISORY-ONLY** (a caption + reason fragment, never a
+ * gate / re-synthesis / blocked answer): a spurious flag is harmless. Do NOT wire it into
+ * any non-advisory path without first upgrading the bar to SEMANTIC similarity (embedder
+ * cosine, mirroring the redundancy detector). Same-script gate (fail-open) drops cross-script
+ * upstream. Pure; caller runs it ONLY for a sequenced split (independent lists aren't checked).
+ */
+export function verifySequencedDependencyUse(executions: readonly SubtaskExecution[]): readonly string[] {
+  const gaps: string[] = [];
+  for (let i = 1; i < executions.length; i++) {
+    const step = executions[i]!;
+    const stepOut = step.status === "completed" ? step.output?.trim() : undefined;
+    if (!stepOut) continue;
+    const stepTokens = lexicalTokens(stepOut);
+    if (stepTokens.size === 0) continue;
+    const upstream = executions
+      .slice(0, i)
+      .filter((e): e is SubtaskExecution & { output: string } =>
+        e.status === "completed" && typeof e.output === "string" && e.output.trim().length > 0)
+      .filter((e) => comparableScript(stepOut, e.output));
+    if (upstream.length === 0) continue; // no same-script upstream to verify against (fail-open)
+    const engagedUpstream = upstream.some((e) => {
+      for (const t of lexicalTokens(e.output)) {
+        if (stepTokens.has(t)) return true;
+      }
+      return false;
+    });
+    if (!engagedUpstream) gaps.push(step.subtask.text);
+  }
+  return gaps;
+}
+
+/**
  * Build the prompt for a verifier-gated re-synthesis: the original request plus an
  * explicit reminder of the sub-results the previous synthesis dropped, so the retry
  * is targeted (not a blind "try again" that repeats the same omission).
@@ -188,6 +234,12 @@ export interface LeadWorkerResult {
    * knows a sub-task did duplicate work (the complement of {@link subtaskConflicts}).
    */
   readonly subtaskRedundancies?: readonly string[];
+  /**
+   * Set (for a SEQUENCED split only) when a completed downstream step ignored the
+   * upstream RESULT it was handed — its output shares no content token with any
+   * upstream output (MAST FM-2.6 reasoning-action mismatch). A caption per blind step.
+   */
+  readonly reasoningActionGaps?: readonly string[];
 }
 
 export interface LeadWorkerDeps {
@@ -459,6 +511,15 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
       if (redundancies.length > 0) subtaskRedundancies = redundancies;
     } catch { /* detector unavailable — surface nothing */ }
   }
+  // Reasoning-action alignment on the SEQUENCED handoff (MAST FM-2.6): did each completed
+  // downstream step actually engage the upstream RESULT it was handed? Only meaningful for a
+  // sequenced split (an independent list passes nothing forward, so isn't expected to relate).
+  // Pure + deterministic (no model) — always safe to run on a sequenced split.
+  let reasoningActionGaps: readonly string[] | undefined;
+  if (sequenced) {
+    const gaps = verifySequencedDependencyUse(executions);
+    if (gaps.length > 0) reasoningActionGaps = gaps;
+  }
   const split = planned ? "model-planned" : "structural";
 
   return {
@@ -470,11 +531,13 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
       (truncated ? ` (capped at ${MAX_SUBTASKS})` : "") +
       (synthesisIncomplete ? ` · synthesis incomplete (${synthesisIncomplete.length.toString()} dropped)` : "") +
       (subtaskConflicts ? ` · ${subtaskConflicts.length.toString()} sub-answer conflict(s)` : "") +
-      (subtaskRedundancies ? ` · ${subtaskRedundancies.length.toString()} redundant sub-answer(s)` : ""),
+      (subtaskRedundancies ? ` · ${subtaskRedundancies.length.toString()} redundant sub-answer(s)` : "") +
+      (reasoningActionGaps ? ` · ${reasoningActionGaps.length.toString()} step(s) ignored upstream` : ""),
     subtasks,
     truncated,
     ...(synthesisIncomplete ? { synthesisIncomplete } : {}),
     ...(subtaskConflicts ? { subtaskConflicts } : {}),
-    ...(subtaskRedundancies ? { subtaskRedundancies } : {})
+    ...(subtaskRedundancies ? { subtaskRedundancies } : {}),
+    ...(reasoningActionGaps ? { reasoningActionGaps } : {})
   };
 }
