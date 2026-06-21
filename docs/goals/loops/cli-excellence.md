@@ -186,3 +186,15 @@ ratchet: 변경연관 테스트만(발열정책) · chat-repl formatReminderList
 - **리스크**: 낮음. diff 2파일. optional 필드 후방호환. 다양성: info-projection(parity 완성).
 - live(테스트 대용): 포매터 단위테스트가 마커 렌더 확인(인-챗 경로는 intent-gated).
 - 레퍼런스: fire 15와 동일(overdue 강조 관행).
+
+## fire 17 · 2026-06-22 · skill v2.1.0 · c84cdcf0
+meta: value-class=info-projection · pkg=@muse/cli · kind=info-projection · verdict=PASS · firesSinceDrill=7
+ratchet: 변경연관 테스트만(발열정책) · human-formatters 33/33 · root-eslint 0 · fabrication 0
+
+- **무엇**: `muse tasks list`가 과거-기한 task를 upcoming과 동일 표시(박스 31개 전부 수주 overdue 무표시) → not-done & dueAt<now면 `(⚠ overdue)`(formatTaskRow). fire 15/16(reminder)의 tasks 확장. nowMs 주입, done/undated/unparseable 안전 제외.
+- **왜**: daily-driver(31개)에서 늦은 일이 한눈에. 결정론, fabrication 0. ⚠는 이 파일 urgent badge에 이미 사용중이라 일관.
+- **리뷰지점**: 테스트가 실 렌더 row grade(past→(⚠ overdue), future/done 미표시), mutation-first RED. 라이브 `tasks list` 31개 모두 표시. 형제-감사: 유일 caller=commands-tasks(today는 formatLocalDate만, chat-repl은 별도 formatTaskList), 기존 urgent 테스트 무사(33/33). 독립 Opus ④b PASS(5/5).
+- **리스크**: 낮음. diff 2파일. nowMs optional 후방호환.
+- lesson: scoped lint은 `npx eslint`(루트 flat config 못 읽을 수 있음) 대신 **`./node_modules/.bin/eslint`**로 — ④b judge가 첫 라운드에서 내가 놓친 no-regex-spaces(정규식 이중공백) 2건을 잡음. 정규식 리터럴의 연속공백은 `{2}` 양화사로.
+- live: `node dist/index.js tasks list` → 과거 task에 `(⚠ overdue)`.
+- 레퍼런스: fire 15/16(overdue 강조 관행).
