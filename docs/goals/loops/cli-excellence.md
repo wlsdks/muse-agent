@@ -164,3 +164,14 @@ ratchet: 변경연관 테스트만(발열정책) · commands-doctor formatDoctor
 - **리스크**: 낮음. diff 2파일. DoctorSummary export는 benign. 다양성: info-projection(최근8 중 1회).
 - live: `node dist/index.js doctor` → `[OK] 6 섹션 — OK 6 (just now)`.
 - 레퍼런스: at-a-glance 상태는 상대시간(fire-8과 동일 패턴, brew/flutter doctor staleness 표기). https://docs.flutter.dev/reference/flutter-doctor
+
+## fire 15 · 2026-06-22 · skill v2.1.0 · 10ca51f1
+meta: value-class=info-projection · pkg=@muse/cli · kind=info-projection · verdict=PASS · firesSinceDrill=5
+ratchet: 변경연관 테스트만(발열정책) · commands-remind formatReminderList 3 green(파일 28/28) · lint 0 · fabrication 0
+
+- **무엇**: `muse remind list`가 지난(overdue) pending 알림을 upcoming과 동일 표시 → 무엇이 늦었는지 스캔 불가(박스에 4개 수주째 overdue 무표시). pending & dueAt<now면 `(⚠ overdue)` 추가(기존 (repeats)/(fired) suffix 컨벤션). formatReminderList export + nowMs 주입. fired는 미표시(이미 발화), bad/absent dueAt 안전 무시.
+- **왜**: 늦은 항목이 한눈에 보여야 함(status는 "(N overdue)" 카운트만, list는 항목별 표시 없었음). 결정론(실 timestamp 비교), fabrication 0.
+- **리뷰지점**: 테스트가 실 포맷 출력 grade(past→(⚠ overdue), future 미표시, fired 미표시), mutation-first RED(overdue 분기 끄면 fail). 라이브 4 알림 모두 `(⚠ overdue)`(반복 포함 `운동 (⚠ overdue) (repeats daily)`). 독립 Opus ④b PASS(6/6).
+- **리스크**: 낮음. diff 2파일. export+optional param 후방호환. 다양성: info-projection(최근8 중 2회나 다른 surface=remind).
+- live: `node dist/index.js remind list` → 각 overdue 알림에 `(⚠ overdue)`.
+- 레퍼런스: 할일/리마인더 UI의 overdue 강조 관행(빨강/⚠). https://todoist.com/help
