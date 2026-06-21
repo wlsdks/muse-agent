@@ -262,6 +262,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller.start()
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Don't leave the bundled API/web server running after Muse quits.
+        ServerManager.shared.stop()
+    }
 }
 
 let app = NSApplication.shared

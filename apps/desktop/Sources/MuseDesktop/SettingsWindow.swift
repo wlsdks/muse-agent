@@ -2,8 +2,9 @@ import AppKit
 import SwiftUI
 import MuseDesktopCore
 
-/// A native, pretty Settings window for Muse — look, language, voice, the full-app
-/// URL, and the privacy posture. Hosts a SwiftUI view in a standard NSWindow.
+/// A native, pretty Settings window for Muse — chat entry, look, language, voice,
+/// the full-app URL, and the privacy posture. Hosts a SwiftUI view in a dark,
+/// resizable NSWindow.
 final class SettingsWindowController {
     var onCharacter: ((String) -> Void)?
     var onLanguage: ((AppLanguage) -> Void)?
@@ -31,9 +32,12 @@ final class SettingsWindowController {
         let host = NSHostingController(rootView: view)
         let win = NSWindow(contentViewController: host)
         win.title = "Muse Settings"
-        win.styleMask = [.titled, .closable, .miniaturizable]
+        win.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+        win.titlebarAppearsTransparent = true
         win.isReleasedWhenClosed = false
-        win.setContentSize(NSSize(width: 440, height: 600))
+        win.appearance = NSAppearance(named: .darkAqua)   // readable on the dark UI
+        win.setContentSize(NSSize(width: 560, height: 780))
+        win.minSize = NSSize(width: 480, height: 600)
         win.center()
         window = win
     }
@@ -50,8 +54,13 @@ private struct SettingsView: View {
     @State private var language: AppLanguage
     @State private var muted: Bool
     @State private var museURL: String
+    @State private var showAdvanced = false
 
-    private let violet = Color(red: 0.55, green: 0.45, blue: 0.95)
+    // Explicit colours so text is legible regardless of system light/dark.
+    private let violet = Color(red: 0.62, green: 0.52, blue: 1.0)
+    private let ink = Color.white
+    private let dim = Color.white.opacity(0.62)
+    private let faint = Color.white.opacity(0.40)
 
     init(initialMuted: Bool,
          onCharacter: @escaping (String) -> Void,
@@ -73,98 +82,139 @@ private struct SettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 22) {
+            VStack(spacing: 20) {
                 header
+                chatSection
                 appearanceSection
                 voiceSection
-                fullAppSection
                 privacySection
+                advancedSection
                 footer
             }
-            .padding(24)
+            .padding(26)
+            .frame(maxWidth: 620)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(LinearGradient(colors: [Color(red: 0.09, green: 0.08, blue: 0.14),
-                                            Color(red: 0.05, green: 0.04, blue: 0.09)],
-                                   startPoint: .top, endPoint: .bottom))
+        .background(
+            LinearGradient(colors: [Color(red: 0.10, green: 0.09, blue: 0.16),
+                                    Color(red: 0.05, green: 0.04, blue: 0.09)],
+                           startPoint: .top, endPoint: .bottom)
+            .ignoresSafeArea()
+        )
     }
 
     private var header: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             if let g = MuseAssets.goddess {
-                Image(nsImage: g).resizable().scaledToFit().frame(height: 132)
-                    .shadow(color: violet.opacity(0.4), radius: 16)
+                Image(nsImage: g).resizable().scaledToFit().frame(height: 120)
+                    .shadow(color: violet.opacity(0.45), radius: 18)
             }
-            Text("Muse").font(.system(size: 24, weight: .bold))
-            Text("Learns you, not the world.").font(.system(size: 12)).foregroundStyle(.secondary)
+            Text("Muse").font(.system(size: 26, weight: .bold)).foregroundStyle(ink)
+            Text("Learns you, not the world.").font(.system(size: 12)).foregroundStyle(dim)
+        }
+    }
+
+    private var chatSection: some View {
+        VStack(spacing: 10) {
+            Button(action: onOpenFull) {
+                HStack(spacing: 8) {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                    Text("Open Muse — chat & all features").fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(violet)
+            .controlSize(.large)
+            Text("Chat, today, tasks, calendar, notes, memory & tools — no terminal needed.")
+                .font(.system(size: 11)).foregroundStyle(faint).multilineTextAlignment(.center)
         }
     }
 
     private var appearanceSection: some View {
         card("Appearance") {
-            Picker("Character", selection: $character) {
-                Text("Goddess").tag("goddess")
-                Text("Orb").tag("orb")
-            }
-            .pickerStyle(.segmented)
-            .onChange(of: character) { _, v in onCharacter(v) }
-
-            Picker("Language", selection: $language) {
-                ForEach(AppLanguage.allCases, id: \.self) { lang in
-                    Text(lang.menuTitle).tag(lang)
+            row("Character") {
+                Picker("", selection: $character) {
+                    Text("Goddess").tag("goddess")
+                    Text("Orb").tag("orb")
                 }
+                .pickerStyle(.segmented).labelsHidden().frame(width: 190)
+                .onChange(of: character) { _, v in onCharacter(v) }
             }
-            .onChange(of: language) { _, v in onLanguage(v) }
+            row("Language") {
+                Picker("", selection: $language) {
+                    ForEach(AppLanguage.allCases, id: \.self) { Text($0.menuTitle).tag($0) }
+                }
+                .labelsHidden().frame(width: 190)
+                .onChange(of: language) { _, v in onLanguage(v) }
+            }
         }
     }
 
     private var voiceSection: some View {
         card("Voice") {
-            Toggle("Mute voice", isOn: $muted)
-                .onChange(of: muted) { _, v in onMute(v) }
-        }
-    }
-
-    private var fullAppSection: some View {
-        card("Full app") {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Muse web URL").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
-                TextField("http://127.0.0.1:5173", text: $museURL)
-                    .textFieldStyle(.roundedBorder)
-                    .onChange(of: museURL) { _, v in PrefsStore.update { $0.museURL = v } }
-                Button(action: onOpenFull) {
-                    Text("Open the full Muse app").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(violet)
+            Toggle(isOn: $muted) {
+                Text("Mute spoken replies").foregroundStyle(ink)
             }
+            .toggleStyle(.switch).tint(violet)
+            .onChange(of: muted) { _, v in onMute(v) }
         }
     }
 
     private var privacySection: some View {
         card("Privacy") {
-            Label("Runs on your local model — your data never leaves this Mac (local-only by default).",
-                  systemImage: "lock.fill")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+            label("Runs on your local model — your data never leaves this Mac (local-only by default).", "lock.fill")
+            label("Show / hide Muse anywhere with ⌃⌥Space.", "keyboard")
+        }
+    }
+
+    private var advancedSection: some View {
+        card("Advanced") {
+            Toggle(isOn: $showAdvanced) { Text("Custom Muse web URL").foregroundStyle(ink) }
+                .toggleStyle(.switch).tint(violet)
+            if showAdvanced {
+                TextField("auto (bundled server)", text: $museURL)
+                    .textFieldStyle(.roundedBorder)
+                    .onChange(of: museURL) { _, v in PrefsStore.update { $0.museURL = v } }
+                Text("Leave empty to use the built-in server.").font(.system(size: 11)).foregroundStyle(faint)
+            }
         }
     }
 
     private var footer: some View {
-        Button(role: .destructive, action: onQuit) {
-            Text("Quit Muse").frame(maxWidth: .infinity)
+        VStack(spacing: 10) {
+            Button(role: .destructive, action: onQuit) {
+                Text("Quit Muse").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered).controlSize(.large)
+            Text("Muse 0.1.0").font(.system(size: 10)).foregroundStyle(faint)
         }
-        .buttonStyle(.bordered)
     }
 
+    // MARK: - building blocks
+
     @ViewBuilder private func card<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title.uppercased()).font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary)
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title.uppercased()).font(.system(size: 11, weight: .bold)).foregroundStyle(faint).tracking(0.8)
             content()
         }
-        .padding(16)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.white.opacity(0.08)))
+        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.white.opacity(0.10)))
+    }
+
+    @ViewBuilder private func row<Content: View>(_ title: String, @ViewBuilder _ trailing: () -> Content) -> some View {
+        HStack {
+            Text(title).foregroundStyle(ink)
+            Spacer()
+            trailing()
+        }
+    }
+
+    @ViewBuilder private func label(_ text: String, _ icon: String) -> some View {
+        Label { Text(text).foregroundStyle(dim) } icon: { Image(systemName: icon).foregroundStyle(violet) }
+            .font(.system(size: 12))
     }
 }
