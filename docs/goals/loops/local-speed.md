@@ -103,7 +103,7 @@ ratchet: @muse/agent-core FRESH (fires 1-9 미접촉) · fabrication 0 · defaul
   검증: agent-core 2571 pass(신규 3 round-trip OUTCOME — captureProvider로 request.logprobs + response.logprobs + meanLogprob≈-0.3 채점) · MUTATION-FIRST(헬퍼 게이트 반전 → 3/3 RED 기본-off byte-identical 가드 포함; revert→green) · pnpm check rc=0(agent-core 2571 + api 888 + cli 2878) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(자체 mutation 재현·양seam 완전성 감사·byte-identical airtight 확인·dead-layer crux ACCEPTABLE 판정·결함 0).
   decompose: C2b-plumbing DONE(이 fire); C2b-wiring(runCascade를 ask --tiered/orchestration에 실연결) + C3(live eval) backlog 잔존.
 
-## fire 11 · 2026-06-21 · local-speed · <commit>
+## fire 11 · 2026-06-21 · local-speed · 5f4df275
 meta: value-class=new-capability · pkg=apps/api · kind=cascade-live-wiring · verdict=PASS · firesSinceDrill=2
 ratchet: apps/api FRESH (fires 1-10 미접촉) · fabrication 0 · default(env off) plan byte-identical
 - 무엇: FrugalGPT(arXiv:2305.05176) cascade를 멀티에이전트 오케스트레이션에 LIVE 배선. `createCascadeWorker`(apps/api multi-agent-routes.ts)가 fire 5(runCascade)+fire 10(agent-run logprobs)+summarizeTokenConfidence를 다리: FAST-분류 워커가 fast 모델을 `logprobs:true`로 실행→confidence 채점→낮으면 heavy로 ONCE escalate(바운드). `buildTieredOrchestration`에 `MUSE_TIERED_CASCADE` opt-in 배선(기본 off → plan byte-identical).
