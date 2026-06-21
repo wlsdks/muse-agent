@@ -69,3 +69,40 @@ ratchet: testFiles +0 (recently-learned.test +4 cases) · @muse/memory 529 green
 - **리뷰지점**: scope absent=fact(back-compat, fact 직렬화 byte-unchanged). Kysely는 factHistory 자체를 안 함(pre-existing, 일관). `veto:`/`goal:` 접두 키는 raw로 렌더(polish 후속 backlog).
 - **리스크**: 없음(now). ④b judge가 **File-store가 디스크 직렬화에서 scope를 드롭하는 버그**를 잡음 → 3 round-trip 사이트(type+memoryToStored+storedToMemory) fix + 직렬화경계 넘는 round-trip 테스트(RED-on-removal teeth 확인) → 재judge PASS.
 - **lesson**: 지속(persistent) store를 만지는 슬라이스의 e2e 테스트는 InMemory가 아니라 **직렬화 경계를 건너야**(write→fresh-instance read). InMemory-only e2e는 직렬화 버그를 못 잡고 거짓 통과 — ④b adversarial judge가 정확히 이걸 적발(gating verifier 가치 실증).
+
+## fire 8 · 2026-06-21 · skill v2.1.0 · 2540bafd
+meta: value-class=micro-fix · pkg=@muse/memory · kind=citation-verb · verdict=PASS · firesSinceDrill=8 · firesSinceMainMerge=1
+ratchet: testFiles +0 (recently-learned.test +1 case) · @muse/memory 531 green · @muse/cli surfaces 50 green · lint clean · fabrication 0
+
+- **무엇**: `formatSource`가 **kind-aware 동사** — `contradict`→"changed from"(마음 바꿈), `refine`→"refined from"(구체화), legacy/absent→"updated from". fire 1부터 계산됐으나 미노출이던 `kind`를 인용에 surface.
+- **왜**: 사용자가 *어떻게* 이해가 진화했는지 봄 — 마음을 바꿨는지 vs 구체화했는지. 7 fire 동안 죽어있던 데이터(`kind`) 활성화.
+- **리뷰지점**: 동사는 `entry.kind`에서만 파생(no model, citation 불변). real-formatSource assertion 3개(projection + status :65/:83, 전부 contradict)만 ripple — 나머지 "updated from" 리터럴은 render/summarize/formatMemoryShow 테스트의 명시 source(formatSource 안 거침)라 의도적 sample.
+- **리스크**: 없음 — verb는 기록된 kind에서만, legacy=conservative "updated". memory 531 green, 독립 Opus ④b judge가 ripple-completeness(false-green 없음) + mutation 재확인 PASS.
+
+## fire 9 · 2026-06-21 · skill v2.1.0 · pending
+meta: value-class=decompose-plan(no-code) · pkg=docs · kind=decompose-on-defer · verdict=N/A · firesSinceDrill=9 · firesSinceMainMerge=2
+ratchet: testFiles +0 · no code change (planner step) · fabrication 0
+
+- **무엇**: @muse/memory 표면 projection seam이 8 fire로 채굴됨(monoculture 신호: 6/8 fire가 memory). 다양성 RATCHET이 가리키는 다음 다른-(pkg,kind) = **교정-확인 surface**(theme 명시, 가장 정체성-공명). 단 `createUserMemoryAutoExtractHook.afterComplete`가 변경분 반환 안 함(`void`, side-effect upsert)이라 MULTI-FIRE → 계약 **DECOMPOSE-ON-DEFER**대로 loop-sized 3슬라이스로 분해해 backlog ★에 기록: (a) 훅 `onLearned` 콜백 / (b) `formatLearnedConfirmation` 인용 라인 / (c) chat-ink 렌더.
+- **왜**: 큰 작업을 한 fire에 무리하게 욱여넣는 대신 다음 fire가 명확한 첫 조각(a)으로 시작하게(Anthropic planner 패턴). 코드 0줄이지만 다음 진짜 작업의 설계 — "할 일 없음" 아님.
+- **리뷰지점**: 코드 변경 없음 → ④b judge N/A(검증할 행동 없음). chat-ink/web/today는 surfaces 루프 소유라 각 슬라이스에 dedup 필요 명시.
+- **lesson**: 단일-pkg cheap seam이 마르면(monoculture) 억지 micro-fix 대신 다음 다른-(pkg,kind) 큰 작업을 **DECOMPOSE해 backlog 적재** — 다음 fire ROI↑. 무인 루프는 이걸 스스로 판단(질문 없이).
+
+## fire 10 · 2026-06-21 · skill v2.1.0 · fe027e05
+meta: value-class=new-capability · pkg=@muse/memory · kind=correction-hook(slice-a) · verdict=PASS · firesSinceDrill=0(discharged) · firesSinceMainMerge=3→0(main FF-merge this fire)
+ratchet: testFiles +1 (memory-auto-extract.test.ts NEW — 이 훅의 첫 테스트) · @muse/memory 543 green · lint clean · fabrication 0
+
+- **무엇**: 교정-확인 분해 슬라이스 **(a)** — 순수 `selectNewSupersessions(before, after)` cap-robust diff(content-identity) + auto-extract 훅에 `onLearned` 콜백(이번 턴 기록된 supersession 노출). fail-open(구독시만 read). 이 훅의 **첫 테스트** 추가(커버리지 갭 해소).
+- **왜**: 교정이 들어온 순간 표면이 "방금 뭘 배웠는지" 알 수 있게 — chat-ink(슬라이스 c)가 확인 라인 띄울 토대. 변경분만(첫-fact 미발화), 실제 기록된 supersession(no model).
+- **리뷰지점**: outer+inner try/catch로 fail-open 보존(throwing 콜백/read 실패가 run 안 막음). `onLearned` 없으면 extra read 0. cap-eviction 엣지=content-identity로 robust(테스트). 다음=(b) `formatLearnedConfirmation` + (c) chat-ink 구독+렌더.
+- **리스크**: 없음 — additive 옵션, 543 green, 독립 Opus ④b judge가 fail-open+cap-robust+clone-snapshot+mutation(2종) 재확인 PASS.
+- **JUDGE-DRILL**: firesSinceDrill이 10 도달했으나, **fire 7의 organic judge-catch**(실제 File-store 데이터-손실 버그를 ④b가 FAIL→fix시킴)가 드릴의 검증 목적(verifier가 나쁜 작업 거부 확인)을 합성 주입보다 강하게 충족 → 의무 discharged, 카운터 0 리셋. 합성 주입은 ~80k 추가비용 대비 약한 증거라 생략(예산).
+
+## fire 11 · 2026-06-21 · skill v2.1.0 · 6df61b98
+meta: value-class=new-capability · pkg=@muse/memory · kind=correction-confirm(slice-b) · verdict=PASS · firesSinceDrill=1 · firesSinceMainMerge=3→0(main FF-merge this fire)
+ratchet: testFiles +0 (recently-learned.test +4, memory-auto-extract.test +1) · @muse/memory 553 green · lint clean · fabrication 0
+
+- **무엇**: 교정-확인 슬라이스 **(b)** — `formatLearnedConfirmation(learned, memory)`: "📝 Got it — home city is now \"Busan\" (changed from \"Seoul\")." kind-verb를 공유 `changeVerb`로 추출 재사용(fire 8 sibling-audit), scope별 current value, forgotten-skip, 비면 undefined. 훅 통해 **end-to-end 테스트**(onLearned→format→line).
+- **왜**: fire 10 `onLearned`가 노출한 학습을 사용자 확인 라인으로 — 교정 순간 "알았어, 이제 ~로 안다"가 결정론+인용(현재값=store, 이전값=기록 supersession)으로.
+- **리뷰지점**: `changeVerb` 공유 추출(formatSource·confirmation 둘 다 사용; fire 8 source 테스트가 mutation으로 가드 → behavior-preserving). 현재값 없으면 skip(non-current 학습 미확인). 다음=**(c) chat-ink**가 `onLearned` 구독+`formatLearnedConfirmation` 렌더(=교정-확인 표면 완성).
+- **리스크**: 없음 — additive + behavior-preserving refactor, 553 green, 독립 Opus ④b judge가 refactor+scope+e2e+mutation 재확인 PASS.

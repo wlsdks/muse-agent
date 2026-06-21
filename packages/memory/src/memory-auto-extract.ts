@@ -25,10 +25,12 @@ import { extractJsonObject } from "./memory-extract-json.js";
 export { extractJsonObject } from "./memory-extract-json.js";
 import { sanitizeEntries, sanitizeSlotArray, type ExtractedSlot } from "./memory-auto-extract-sanitize.js";
 import type {
+  FactSupersession,
   UserGoalSlot,
   UserMemoryStore,
   UserVetoSlot
 } from "./index.js";
+import { selectNewSupersessions } from "./recently-learned.js";
 
 /** Character cap on the user-message snippet stored as belief evidence. */
 const PROVENANCE_EXCERPT_MAX = 160;
@@ -112,6 +114,15 @@ export interface UserMemoryAutoExtractOptions {
    * to see the cooldown elapse.
    */
   readonly now?: () => number;
+  /**
+   * Optional notification of the supersessions recorded THIS turn — a changed
+   * fact / preference (NOT a first-time value, which records no supersession).
+   * Fired after the writes with only the new entries (selectNewSupersessions
+   * diff of factHistory before/after). Lets a surface confirm "what Muse just
+   * learned" the moment a correction lands. Fail-open: a throwing callback or a
+   * failed read never blocks the write chain; absent ⇒ the diff reads are skipped.
+   */
+  readonly onLearned?: (learned: readonly FactSupersession[]) => void;
 }
 
 export interface ExtractionPayload {
@@ -268,6 +279,12 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
                 .slice(0, PROVENANCE_EXCERPT_MAX)
             }
           : undefined;
+        // Snapshot factHistory BEFORE the writes so the surface can be told
+        // exactly what changed this turn. Only when a subscriber is wired —
+        // otherwise skip the extra reads entirely.
+        const historyBefore = options.onLearned
+          ? (await Promise.resolve(options.store.findByUserId(userId)))?.factHistory ?? []
+          : undefined;
         await persist(options.store, userId, groundedPayload, {
           maxFacts,
           maxGoals,
@@ -276,6 +293,17 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
           maxValue,
           maxVetoes
         }, provenance);
+        if (options.onLearned && historyBefore !== undefined) {
+          try {
+            const historyAfter = (await Promise.resolve(options.store.findByUserId(userId)))?.factHistory ?? [];
+            const learned = selectNewSupersessions(historyBefore, historyAfter);
+            if (learned.length > 0) {
+              options.onLearned(learned);
+            }
+          } catch {
+            // fail-open — a read/callback failure never blocks the run.
+          }
+        }
       } catch {
         // fail-open — including the timeout path. The next run
         // is not blocked.

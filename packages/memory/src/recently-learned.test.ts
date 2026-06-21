@@ -4,9 +4,84 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import type { FactSupersession } from "./index.js";
 import { FileUserMemoryStore } from "./memory-user-store-file.js";
 import { InMemoryUserMemoryStore } from "./memory-user-store.js";
-import { projectRecentlyLearned, renderRecentlyLearnedLines, summarizeRecentlyLearned, type RecentlyLearnedItem } from "./recently-learned.js";
+import { formatLearnedConfirmation, projectRecentlyLearned, renderRecentlyLearnedLines, selectNewSupersessions, summarizeRecentlyLearned, type RecentlyLearnedItem } from "./recently-learned.js";
+
+describe("formatLearnedConfirmation", () => {
+  const e = (key: string, prev: string, kind?: "refine" | "contradict", scope?: "fact" | "preference"): FactSupersession => ({
+    key,
+    previousValue: prev,
+    replacedAt: new Date("2026-06-21T00:00:00Z"),
+    ...(kind ? { kind } : {}),
+    ...(scope ? { scope } : {})
+  });
+
+  it("returns undefined when there is nothing confirmable", () => {
+    expect(formatLearnedConfirmation([], { facts: {} })).toBeUndefined();
+    // a learned key whose value was since removed → skipped (no current value to confirm)
+    expect(formatLearnedConfirmation([e("pet", "cat")], { facts: {} })).toBeUndefined();
+  });
+
+  it("acknowledges a changed fact, citing the prior value", () => {
+    expect(formatLearnedConfirmation([e("home_city", "Seoul", "contradict")], { facts: { home_city: "Busan" } })).toBe(
+      '📝 Got it — home city is now "Busan" (changed from "Seoul").'
+    );
+  });
+
+  it("resolves a preference-scoped learning's current value from preferences", () => {
+    expect(
+      formatLearnedConfirmation([e("reply_style", "brief", "refine", "preference")], {
+        facts: {},
+        preferences: { reply_style: "detailed" }
+      })
+    ).toBe('📝 Got it — reply style is now "detailed" (refined from "brief").');
+  });
+
+  it("joins multiple learnings", () => {
+    expect(
+      formatLearnedConfirmation([e("home_city", "Seoul", "contradict"), e("role", "student", "contradict")], {
+        facts: { home_city: "Busan", role: "founder" }
+      })
+    ).toBe('📝 Got it — home city is now "Busan" (changed from "Seoul"); role is now "founder" (changed from "student").');
+  });
+});
+
+describe("selectNewSupersessions", () => {
+  const e = (key: string, prev: string, ms: number, scope?: "fact" | "preference"): FactSupersession => ({
+    key,
+    previousValue: prev,
+    replacedAt: new Date(ms),
+    ...(scope ? { scope } : {})
+  });
+
+  it("returns the entries present in after but absent from before", () => {
+    const a = e("home_city", "Seoul", 1000);
+    const b = e("role", "student", 2000);
+    expect(selectNewSupersessions([a], [a, b])).toEqual([b]);
+  });
+
+  it("returns [] when nothing new was recorded", () => {
+    const a = e("home_city", "Seoul", 1000);
+    expect(selectNewSupersessions([a], [a])).toEqual([]);
+    expect(selectNewSupersessions([a], [])).toEqual([]);
+  });
+
+  it("stays correct when the capped history evicted an old entry (content identity, not position)", () => {
+    const a = e("a", "1", 1000);
+    const b = e("b", "2", 2000);
+    const c = e("c", "3", 3000);
+    // before=[a,b]; after=[b,c] — `a` was evicted at the cap, `c` is the new learning.
+    expect(selectNewSupersessions([a, b], [b, c])).toEqual([c]);
+  });
+
+  it("distinguishes same-key entries by previousValue + timestamp", () => {
+    const first = e("home_city", "Seoul", 1000);
+    const second = e("home_city", "Busan", 2000);
+    expect(selectNewSupersessions([first], [first, second])).toEqual([second]);
+  });
+});
 
 function mem(
   partial: Partial<Pick<UserMemory, "facts" | "factHistory">>
@@ -35,8 +110,19 @@ describe("projectRecentlyLearned", () => {
       currentValue: "Busan",
       previousValue: "Seoul",
       kind: "contradict",
-      source: 'updated from "Seoul" on 2026-06-21'
+      source: 'changed from "Seoul" on 2026-06-21'
     });
+  });
+
+  it("labels the citation verb by how the value changed (refined / changed / updated)", () => {
+    const source = (kind?: "refine" | "contradict"): string | undefined =>
+      projectRecentlyLearned({
+        facts: { k: "new" },
+        factHistory: [{ key: "k", previousValue: "old", replacedAt: new Date("2026-06-21T00:00:00Z"), ...(kind ? { kind } : {}) }]
+      })[0]?.source;
+    expect(source("refine")).toBe('refined from "old" on 2026-06-21');
+    expect(source("contradict")).toBe('changed from "old" on 2026-06-21');
+    expect(source(undefined)).toBe('updated from "old" on 2026-06-21'); // legacy/absent → conservative
   });
 
   it("orders newest first by replacedAt", () => {
