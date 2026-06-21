@@ -5,7 +5,7 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 54 · 2026-06-21 · skill v2.0 · <commit> (eval:two-edit-fix — multi-step COMPLETENESS battery (2 edits/2 files); 12B PASSes, bar raised)
+## fire 54 · 2026-06-21 · skill v2.0 · 5ea43240 (eval:two-edit-fix — multi-step COMPLETENESS battery (2 edits/2 files); 12B PASSes, bar raised)
 meta: value-class=new-capability(harder-eval/flywheel) · pkg=scripts/eval · kind=eval-fixture/completeness · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles unchanged · fabrication 0 · eval:two-edit-fix PASS 1/1 (live) · discrimination verified(one-edit→FAIL/both→PASS) · lint 0/0 · main ff-merge(fire 54=×3, delivers 53/54) · Ollama UP
 - 무엇: 세 기존 eval 모두 단일-edit이라 PASS. 더 어려운 차원(완수성) 추가 — 2파일 2버그를 BOTH 고쳐야 테스트 통과(한 곳만 고치면 FAIL). early-stop/step-repetition(fires 48-51 실패클래스)을 직접 잡는 completeness 배터리. eval-multifile-fix 하니스 미러(temp-dir·4 도구·SHIPPED persistence·runTest 재실행·OUTCOME 채점 ok=testPasses&&noiseIntact).
