@@ -292,10 +292,16 @@ describe("file_write / file_edit / file_multi_edit — gated writes", () => {
       expect(await readFile(join(root, "c.ts"), "utf8")).toBe("original");
     });
 
-    it("refuses to edit a non-existent file", async () => {
+    it("refuses to edit a non-existent file with an actionable hint, not a raw ENOENT errno", async () => {
       const tool = createFileEditTool(opts(allow));
       const out = (await tool.execute({ new_string: "b", old_string: "a", path: join(root, "missing.ts") }, ctx)) as JsonObject;
       expect(out["written"]).toBe(false);
+      // The 12B self-corrects off the message: it must point at the recovery
+      // route (create via file_write) and not leak a raw "ENOENT … stat '/abs'".
+      const hint = String(out["reason"]);
+      expect(hint).toMatch(/file_write/u);
+      expect(hint).toContain("missing.ts");
+      expect(hint).not.toMatch(/ENOENT|errno|\bstat\b/u);
     });
 
     describe("read-before-edit grounding gate (wasPathRead)", () => {

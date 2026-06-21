@@ -300,6 +300,12 @@ function refusal(error: unknown, path: string): JsonObject {
   if ((error as NodeJS.ErrnoException).code === "ELOOP") {
     return { path, reason: `'${path}' is a symlink — refused (a symlink target could escape the sandbox)`, refused: true, written: false };
   }
+  // A raw "ENOENT … stat '/abs/path'" dead-ends the small model and leaks the
+  // resolved host path. Hand it the recovery route: file_edit/multi_edit only
+  // modify an EXISTING file, so a missing target means create-it or wrong-path.
+  if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    return { path, reason: `no file at '${path}' — to create it use file_write; to edit an existing file, check the path or use file_list to find it.`, written: false };
+  }
   return { path, reason: error instanceof Error ? error.message : String(error), written: false };
 }
 

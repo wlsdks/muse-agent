@@ -37,6 +37,19 @@ export type DescribeImage = (input: {
 
 const DEFAULT_MAX_TEXT_CHARS = 200 * 1024;
 const DEFAULT_MAX_FILE_BYTES = 25 * 1024 * 1024;
+
+/**
+ * The chars a SINGLE file_read may return for a model with `contextTokens` of
+ * context window. The 200K `DEFAULT_MAX_TEXT_CHARS` (~50K tokens) exceeds even a
+ * 32K-token window WHOLE — so on a small-context local model one max read would
+ * overflow the window and the runtime silently drops the system prompt /
+ * conversation. Cap a read to HALF the window (so it can never dominate the
+ * context), at ~4 chars/token, and let the model page the rest via `nextOffset`.
+ * Floored so a tiny misconfigured window still returns something useful.
+ */
+export function fileReadCharBudget(contextTokens: number): number {
+  return Math.max(4 * 1024, Math.floor(contextTokens / 2) * 4);
+}
 const RECENT_LIST = 10;
 const MAX_LIST_RESULTS = 1000;
 const GREP_MAX_FILES = 2000;
@@ -99,6 +112,10 @@ function asPositiveInt(value: unknown): number | undefined {
   return truncated > 0 ? truncated : undefined;
 }
 
+function isNotFoundError(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "ENOENT";
+}
+
 function refusalResult(error: unknown, path: string): JsonObject {
   if (isPathSafetyError(error)) {
     return { error: error.message, path, refused: true };
@@ -158,7 +175,8 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
         "everyday folders, a filename fragment ('invoice pdf', '계약서 워드', '영수증 사진') and Muse reads the " +
         "newest match. This is the right tool whenever the user names ONE file to open/read/summarize, even " +
         "if a folder is mentioned ('다운로드에 있는 invoice.pdf 읽어줘' → file_read). Use offset/limit to page " +
-        "through a long text file. Do NOT use to list many files by pattern (use file_list) or to search " +
+        "through a long text file — a truncated result returns `nextOffset`; pass it back as `offset` to read " +
+        "the next page. Do NOT use to list many files by pattern (use file_list) or to search " +
         "inside files (use file_grep). Protected locations (keys, credentials) are refused.",
       domain: "files",
       groundedArgs: ["path"],
@@ -237,6 +255,12 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
         }
 
         const rawText = data.toString("utf8");
+        // A text-EXTENSION file can still be binary (a null byte ⇒ not text). The
+        // model gets corrupted, edit-poisoning output if we hand it back as text,
+        // so refuse with a clear signal — the same binary skip file_grep applies.
+        if (isProbablyBinary(rawText)) {
+          return { path: safe, read: false, reason: `'${basename(safe)}' looks like a binary file (contains a NUL byte), not text — file_read reads text, PDF, Word, and image files.` };
+        }
         const lines = rawText.split("\n");
         const totalLines = lines.length;
         const offset = asPositiveInt(args["offset"]);
@@ -251,9 +275,29 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
           ? sliced.map((line, i) => `${String(start + i + 1).padStart(6)}\t${line}`).join("\n")
           : sliced.join("\n");
         let truncated = start + sliced.length < totalLines;
+        // The 1-based line to resume at, so the model pages a long file
+        // deterministically (`file_read offset:nextOffset`) instead of guessing.
+        // Only for a clean LINE boundary — a char-cap cut falls mid-line, so its
+        // line offset would be imprecise and is omitted.
+        let nextOffset = truncated ? start + sliced.length + 1 : undefined;
         if (text.length > maxTextChars) {
-          text = text.slice(0, maxTextChars);
+          const capped = text.slice(0, maxTextChars);
           truncated = true;
+          // A char-cap cuts mid-line. Rather than drop paging entirely, TRIM the
+          // trailing partial line so the page ends on a clean boundary, and page
+          // from the first not-fully-shown line — deterministic, no partial line.
+          // `completeLines` is the count of NEWLINE-terminated lines in the cut
+          // (conservative: it treats the boundary line as not-yet-complete, so a
+          // re-read overlaps by at most one line — never skips one). A single line
+          // longer than the cap has no newline, so it can't be paged BY LINE.
+          const completeLines = (capped.match(/\n/gu) ?? []).length;
+          if (completeLines > 0) {
+            text = capped.slice(0, capped.lastIndexOf("\n"));
+            nextOffset = start + completeLines + 1;
+          } else {
+            text = capped;
+            nextOffset = undefined;
+          }
         }
         options.onPathRead?.(safe);
         // FULL read = started at the top (`start === 0`, i.e. no offset / offset 1)
@@ -261,8 +305,13 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
         // (offset:96 → truncated false but lines 1-95 unseen) is NOT full, so it
         // must not ground a whole-file overwrite.
         if (start === 0 && !truncated) options.onFullRead?.(safe);
-        return { kind: "text", numbered, path: safe, read: true, source: safe, text, totalLines, truncated };
+        return { kind: "text", numbered, path: safe, read: true, source: safe, text, totalLines, truncated, ...(nextOffset !== undefined ? { nextOffset } : {}) };
       } catch (error) {
+        // A raw "ENOENT … stat '/abs/path'" dead-ends the small model. Hand it a
+        // recovery route instead: name the file + the tool that finds it.
+        if (isNotFoundError(error)) {
+          return { path: input, read: false, reason: `no file at '${input}' — check the path, or use file_list (e.g. pattern "**/${basename(input)}") to locate it by name.` };
+        }
         return { ...refusalResult(error, input), read: false };
       }
     }
@@ -331,6 +380,13 @@ export function createFileListTool(options: FsReadToolsOptions = {}, policyPromi
       } catch (error) {
         return refusalResult(error, pattern);
       }
+      // `glob` iteration order is implementation/filesystem-defined (unspecified
+      // by Node), so the same cwd could list files in a different order across
+      // machines / pass^k repeats — input flake for the local model. Sort to a
+      // deterministic, scannable order. (For the rare >limit case the SET is
+      // still the glob-bounded first `limit`, a pre-existing truncation; only the
+      // returned ORDER is made deterministic here.)
+      matches.sort();
       return { count: matches.length, cwd, pattern, paths: matches, truncated: matches.length >= limit };
     }
   };
@@ -360,6 +416,19 @@ export function compileGrepPattern(pattern: string): RegExp {
     // Structurally invalid (unbalanced (), trailing \) — fall through to literal.
   }
   return new RegExp(pattern.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "");
+}
+
+/**
+ * A model-supplied grep pattern runs on Muse's OWN process — JS `RegExp` is a
+ * backtracking engine with no timeout, so a catastrophic pattern hangs the agent
+ * (ReDoS; an `(a+)+$` on a 40-char failing line never returns). Reject the
+ * classic form: an unbounded quantifier (`+`/`*`/`{n,}`) applied to a group whose
+ * body ALSO contains an unbounded quantifier — `(a+)+`, `(.*)*`, `(\d+){2,}`.
+ * Conservative flat-group heuristic (the form a small model could emit);
+ * documented limit: alternation-overlap forms like `(a|aa)+` are not detected.
+ */
+export function isCatastrophicGrepPattern(pattern: string): boolean {
+  return /\([^()]*[+*][^()]*\)(?:[*+]|\{\d+,\})/u.test(pattern);
 }
 
 export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromise?: Promise<ResolvedPolicy>): MuseTool {
@@ -401,6 +470,9 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
       if (patternText.length > GREP_MAX_PATTERN_LENGTH) {
         return { error: `pattern exceeds ${GREP_MAX_PATTERN_LENGTH.toString()} characters` };
       }
+      if (isCatastrophicGrepPattern(patternText)) {
+        return { error: "pattern looks catastrophically slow (a repeated group inside a repeat, e.g. (a+)+) — simplify it to avoid hanging the search" };
+      }
       const regex = compileGrepPattern(patternText);
       // No `path`: default to a configured allow-root so a narrowed sandbox
       // (a project workspace) is searched, not the home dir — which would fall
@@ -425,6 +497,9 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
           searchRoot = baseDir;
         }
       } catch (error) {
+        if (isNotFoundError(error)) {
+          return { error: `no path '${scopeArg}' to search — check it, or use file_list to find the right directory first.` };
+        }
         return refusalResult(error, scopeArg);
       }
 

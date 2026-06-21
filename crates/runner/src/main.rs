@@ -109,7 +109,7 @@ fn run_request(request: RunnerRequest) -> RunnerResponse {
 
     let mut child = match command.spawn() {
         Ok(child) => child,
-        Err(error) => return error_response(&format!("failed to spawn command: {error}")),
+        Err(error) => return error_response(&describe_spawn_error(&request.command, &error)),
     };
 
     // Drain stdout/stderr on dedicated threads so the child can never block
@@ -156,7 +156,7 @@ fn run_request(request: RunnerRequest) -> RunnerResponse {
         stderr,
         timed_out,
         truncated: stdout_truncated || stderr_truncated,
-        error: None,
+        error: if timed_out { Some(describe_timeout(timeout.as_millis())) } else { None },
     }
 }
 
@@ -241,6 +241,28 @@ fn error_response(message: &str) -> RunnerResponse {
         truncated: false,
         error: Some(message.to_string()),
     }
+}
+
+// A raw "No such file or directory (os error 2)" from a failed spawn dead-ends
+// the local model — it can't tell a typo'd command from an uninstalled tool.
+// Map the two common kinds to an actionable message naming the command.
+fn describe_spawn_error(command: &str, error: &std::io::Error) -> String {
+    match error.kind() {
+        std::io::ErrorKind::NotFound => {
+            format!("command '{command}' not found — it is not installed or not on PATH; check the name.")
+        }
+        std::io::ErrorKind::PermissionDenied => {
+            format!("command '{command}' is not executable (permission denied).")
+        }
+        _ => format!("failed to spawn command: {error}"),
+    }
+}
+
+// A bare `timedOut: true` flag is easy for the local model to miss; pair it with
+// an actionable error message (the same shape as the spawn-failure message) so
+// the model knows the command was KILLED for running too long and how to react.
+fn describe_timeout(timeout_ms: u128) -> String {
+    format!("command timed out after {timeout_ms}ms and was killed — it may be hanging; retry with a larger timeoutMs or a more targeted command.")
 }
 
 #[cfg(test)]
@@ -362,6 +384,53 @@ mod tests {
         for key in ["NODE_ENV", "GIT_DIR", "GIT_AUTHOR_NAME", "MY_FLAG"] {
             assert!(is_safe_env_key(key), "{key} must be allowed");
         }
+    }
+
+    #[test]
+    fn timeout_message_is_actionable() {
+        let msg = describe_timeout(5000);
+        assert!(msg.contains("5000ms"), "names the elapsed timeout: {msg}");
+        assert!(msg.contains("timed out") && msg.contains("killed"), "explains the kill: {msg}");
+        assert!(msg.contains("timeoutMs"), "tells the model how to react: {msg}");
+        assert!(!msg.contains("os error"), "no raw errno: {msg}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_request_surfaces_the_timeout_message_end_to_end() {
+        // a real command that outlives a tiny timeout → killed → the model must
+        // receive BOTH timed_out=true AND the actionable error message (not None).
+        let resp = run_request(RunnerRequest {
+            command: "sleep".to_string(),
+            args: vec!["5".to_string()],
+            cwd: None,
+            env: std::collections::BTreeMap::new(),
+            timeout_ms: Some(50),
+            max_output_bytes: None,
+        });
+        assert!(resp.timed_out, "the command was killed for timing out");
+        assert!(!resp.ok, "a timed-out command is not ok");
+        assert!(
+            resp.error.as_deref().unwrap_or("").contains("timed out"),
+            "error carries the actionable timeout message, not None: {:?}",
+            resp.error
+        );
+    }
+
+    #[test]
+    fn spawn_error_maps_to_actionable_message() {
+        use std::io::{Error, ErrorKind};
+        // command-not-found → names the command, no raw "os error", actionable.
+        let nf = describe_spawn_error("pytest", &Error::new(ErrorKind::NotFound, "No such file or directory (os error 2)"));
+        assert!(nf.contains("pytest"), "names the command: {nf}");
+        assert!(nf.contains("not found") && nf.contains("PATH"), "actionable: {nf}");
+        assert!(!nf.contains("os error"), "no raw errno: {nf}");
+        // sibling: not-executable
+        let pd = describe_spawn_error("script.sh", &Error::new(ErrorKind::PermissionDenied, "denied"));
+        assert!(pd.contains("script.sh") && pd.contains("not executable"), "perm: {pd}");
+        // anything else falls through to the generic message (unchanged).
+        let other = describe_spawn_error("x", &Error::new(ErrorKind::Other, "weird failure"));
+        assert!(other.contains("failed to spawn command") && other.contains("weird failure"), "generic: {other}");
     }
 
     #[test]

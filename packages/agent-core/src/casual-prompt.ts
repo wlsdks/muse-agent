@@ -92,13 +92,41 @@ const OVERVIEW_PATTERNS: readonly RegExp[] = [
 const ACTION_REQUEST_RE =
   /^(please\s+|pls\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i'?d?\s+(like|want)\s+(you\s+)?to\s+)?(remind\s+me|set\s+(up\s+)?(an?\s+)?reminder|add\s+(an?\s+)?(reminder|task|to-?do|event)|create\s+(an?\s+)?(reminder|task|event)|make\s+(an?\s+)?(reminder|task|note)|schedule\s+(an?\s+)?\w|book\s+\w|email\s+\w|send\s+\w+\s+(an?\s+)?(email|message|text|note)|text\s+\w|message\s+\w)/u;
 
+// A code/file TOKEN: a filename ending in a CODE EXTENSION, optionally preceded
+// by a path. The code-extension FILENAME is the unambiguous structural signal —
+// no ordinary English word is "name.ts", so requiring it engages the code-fix
+// backstop ONLY on a real file reference. A bare verb+noun heuristic cannot do
+// this (every code noun class/test/error/variable/import has a non-code sense →
+// "fix the variable rate mortgage"), and NEITHER can a bare path prefix
+// (app/build/tests/lib are common words → "update my app/website",
+// "change my tests/quizzes") — fire 26 + the first fire-27 attempt failed on
+// exactly those. So a path is only a signal when it leads to a `name.<code-ext>`.
+const FILE_PATH_TOKEN =
+  "(?:[\\w.~/-]*/)?[\\w-]+\\.(?:tsx?|jsx?|mjs|cjs|py|rs|go|java|cpp?|hpp?|cs|rb|php|swift|kt|scala|sh|bash|zsh|sql|md|json|ya?ml|toml|ini|cfg|conf|css|scss|html?|xml|svg)\\b";
+
+// A COMPUTER-CONTROL code-fix request: an imperative edit verb (START-anchored,
+// polite-lead optional, so a QUESTION — "how do I fix add.ts", "what's in
+// add.ts" — never matches) + an explicit file/path within the clause.
+const CODE_ACTION_REQUEST_RE = new RegExp(
+  `^(?:please\\s+|pls\\s+|can\\s+you\\s+|could\\s+you\\s+|would\\s+you\\s+|i'?d?\\s+(?:like|want)\\s+(?:you\\s+)?to\\s+)?(?:fix|edit|modify|update|change|refactor|rename|implement|patch|correct|debug|rewrite|replace)\\b[^.?!]{0,80}?${FILE_PATH_TOKEN}`,
+  "u"
+);
+
+// Korean code-fix request: an explicit file/path + a KO edit verb. Phrase-
+// anchored on the file token, so a bare "수정해줘" (no file) does NOT match —
+// same homonym-free discipline as the EN pattern.
+const KO_CODE_ACTION_REQUEST_RE = new RegExp(
+  `${FILE_PATH_TOKEN}[^?]{0,40}(?:고쳐|수정|편집|바꿔|변경|구현|리팩터|재작성|교체|작성)`,
+  "u"
+);
+
 /** True when the prompt is an imperative request to DO something (needs tools), not a question. */
 export function classifyActionRequest(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (q.length === 0 || q.length > 120) {
     return false;
   }
-  return ACTION_REQUEST_RE.test(q);
+  return ACTION_REQUEST_RE.test(q) || CODE_ACTION_REQUEST_RE.test(q) || KO_CODE_ACTION_REQUEST_RE.test(q);
 }
 
 // The ANSWER claims it performed (or will perform) a tool action — "I'll remind
@@ -155,6 +183,29 @@ const KO_ACTION_DONE_RE =
 // matched ACTION_PROMISE_RE (which anchors on "I'll/I will"), so it's already excluded.
 const ACTION_OFFER_RE = /(추가|등록|설정|예약|맞춰|잡아|넣어?|만들어?|생성|처리|완료)\s*(해|하|해\s*드릴|드릴)?\s*(까요|까|ㄹ까요|을까요|을까)\s*[?？]?/u;
 
+// A COMPUTER-CONTROL completion claim in the ANSWER — "I fixed the bug", "I've
+// edited the add function", "수정했습니다", "고쳤어요". The backstop's THIRD leg
+// (with classifyActionRequest on the query + actionToolRan on the tools): when a
+// code-fix request is answered with a done-claim but no actuator ran, it is a
+// false done. Anchored on a FIRST-PERSON PAST-TENSE mutation verb so a future
+// ("I will fix"), an offer ("shall I fix"), a capability ("I can fix"), advice
+// ("you should edit", "to fix this, change…"), and a plain description ("the
+// function returns…") do NOT match — their verbs are infinitive/future, never
+// "I <verb-past>". This only fires when the request was already an action
+// request (the callers AND-gate it), so it stays scoped to real code-fix turns.
+const CODE_DONE_RE =
+  /\bi(?:'ve|'d| have| had)?\s+(?:just\s+|already\s+|now\s+|successfully\s+)?(?:fixed|edited|updated|modified|changed|refactored|renamed|implemented|patched|corrected|rewrote|rewritten|written|replaced|created|added|removed|deleted|appended|inserted)\b|(?:수정|편집|변경|구현|리팩터|작성|교체|반영|완료)(?:했|됐|되었|함)|고쳤|고침/iu;
+
+// A TERSE completion claim — the whole answer is just "Done." / "All done!" /
+// "완료". WHOLE-ANSWER ANCHORED (`^…$`), NOT a bare `\bdone\b`: "done" is a
+// high-frequency word whose non-completion senses (negation "I'm not done yet",
+// partial "almost done", idiom "well done", question "are you done?", passive
+// "done automatically by the framework") would otherwise be misread as a false
+// claim and wrongly re-prompt an HONEST in-progress answer. The anchor admits
+// only the terse-claim case. (JUDGE-DRILL #3 caught the `\bdone\b` substring
+// form; this is the safe formulation it pointed to.)
+const TERSE_DONE_RE = /^\s*(?:all\s+)?(?:done|완료(?:했|됐|되었|함)?)\s*[.!…]*\s*$/iu;
+
 /** True when the answer CLAIMS it performed / will perform a tool action — EN or KO. NOT a mere offer ("…할까요?"). */
 export function answerClaimsAction(answer: string): boolean {
   if (ACTION_OFFER_RE.test(answer)) {
@@ -163,18 +214,45 @@ export function answerClaimsAction(answer: string): boolean {
   if (ACTION_PROMISE_RE.test(answer)) {
     return true;
   }
+  if (TERSE_DONE_RE.test(answer)) {
+    return true;
+  }
+  if (CODE_DONE_RE.test(answer)) {
+    return true;
+  }
   return new RegExp(`(${KO_ACTION_NOUN})`, "u").test(answer) && KO_ACTION_DONE_RE.test(answer);
 }
 
 // A state-CHANGING tool name: the `.add/.update/.delete/.complete/.save/.create/
-// .remove` actuator verbs, or a `_action` tool. A read/list tool (e.g.
-// `muse.tasks.list`, `knowledge_search`) is NOT one — so "did an actuator run?"
-// stays distinct from "did any tool run?".
-const ACTION_TOOL_RE = /\.(add|update|delete|complete|save|create|remove)\b|_action\b/u;
+// .remove` actuator verbs, a `_action` tool, or a @muse/fs computer-control
+// mutator (`file_edit/file_write/file_multi_edit/file_delete/file_move`,
+// `run_command`). A read/list tool (`muse.tasks.list`, `knowledge_search`,
+// `file_read/file_grep/file_list`) is NOT one — so "did an actuator run?" stays
+// distinct from "did any tool run?". Without the fs/run_command arm, a real
+// `file_edit` on a code-fix task was misread as NO action, so the false-claim
+// backstop wrongly flagged an honest "I fixed it" as unbacked.
+const ACTION_TOOL_RE = /\.(add|update|delete|complete|save|create|remove)\b|_action\b|\b(?:file_(?:edit|write|multi_edit|delete|move)|run_command)\b/u;
 
 /** True when at least one STATE-CHANGING (actuator) tool ran — used to tell a real action from a false promise. */
 export function actionToolRan(toolNames: readonly string[]): boolean {
   return toolNames.some((tool) => ACTION_TOOL_RE.test(tool));
+}
+
+/**
+ * The false-done backstop's composed condition: the user asked Muse to DO
+ * something ({@link requestsToolAction}), the answer CLAIMS it was done
+ * ({@link answerClaimsAction}), yet NO state-changing actuator ran
+ * ({@link actionToolRan}) — a claimed-but-unbacked action. Extracted from the
+ * three inlined call sites (commands-ask, chat-repl ×2) so every surface — and
+ * a future AgentRuntime re-prompt — shares ONE definition; adding a leg can
+ * never again diverge between sites.
+ */
+export function isUnbackedActionClaim(input: {
+  readonly query: string;
+  readonly answer: string;
+  readonly toolNames: readonly string[];
+}): boolean {
+  return requestsToolAction(input.query) && answerClaimsAction(input.answer) && !actionToolRan(input.toolNames);
 }
 
 /** True when the prompt asks for a whole-corpus overview/listing, not a specific recall. */

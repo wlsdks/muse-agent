@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, requestsToolAction } from "../src/index.js";
+import { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, isUnbackedActionClaim, requestsToolAction } from "../src/index.js";
 
 describe("actionToolRan — did a STATE-CHANGING (actuator) tool run?", () => {
   it("true for an actuator verb tool / _action tool, false for read-only tools or none", () => {
@@ -9,6 +9,31 @@ describe("actionToolRan — did a STATE-CHANGING (actuator) tool run?", () => {
     expect(actionToolRan(["web_action"])).toBe(true);
     expect(actionToolRan(["muse.tasks.list", "knowledge_search"])).toBe(false);
     expect(actionToolRan([])).toBe(false);
+  });
+
+  it("recognises the @muse/fs computer-control actuators (so a real file_edit isn't flagged as a false claim)", () => {
+    for (const tool of ["file_edit", "file_write", "file_multi_edit", "file_delete", "file_move", "run_command"]) {
+      expect(actionToolRan([tool])).toBe(true);
+    }
+    // reads are NOT state-changing — they must stay non-actuators.
+    for (const tool of ["file_read", "file_grep", "file_list"]) {
+      expect(actionToolRan([tool])).toBe(false);
+    }
+  });
+});
+
+describe("isUnbackedActionClaim — the composed false-done backstop condition (all three legs)", () => {
+  it("TRUE only when a code-fix request is answered with a done-claim and NO actuator ran", () => {
+    const q = "fix the bug in add.ts", a = "I fixed the bug.";
+    // all three legs satisfied → a false done.
+    expect(isUnbackedActionClaim({ query: q, answer: a, toolNames: [] })).toBe(true);
+    expect(isUnbackedActionClaim({ query: q, answer: a, toolNames: ["file_read", "file_grep"] })).toBe(true);
+    // a REAL edit ran → not unbacked (the actuator leg).
+    expect(isUnbackedActionClaim({ query: q, answer: a, toolNames: ["file_edit"] })).toBe(false);
+    // not an action request (no file) → the request leg is false.
+    expect(isUnbackedActionClaim({ query: "what does add.ts do?", answer: a, toolNames: [] })).toBe(false);
+    // the answer claims nothing → the claim leg is false.
+    expect(isUnbackedActionClaim({ query: q, answer: "I read add.ts; the bug is on line 5.", toolNames: [] })).toBe(false);
   });
 });
 
@@ -138,6 +163,50 @@ describe("classifyActionRequest — imperative DO-something requests (needs tool
       expect(classifyActionRequest(q)).toBe(false);
     }
   });
+
+  it("matches a code-fix request that names an explicit FILE/PATH (a structural, homonym-free signal)", () => {
+    for (const q of [
+      "fix the bug in add.ts",
+      "edit the function in src/math.ts",
+      "update README.md",
+      "change the return value in utils.js",
+      "refactor packages/fs/src/runner.ts",
+      "rename the variable in ./lib/helpers.py",
+      "add.ts의 버그 고쳐줘",
+      "src/math.ts 수정해줘"
+    ]) {
+      expect(classifyActionRequest(q)).toBe(true);
+    }
+  });
+
+  it("does NOT over-match a non-code imperative or a code QUESTION (no explicit file ⇒ no match — kills the homonym class)", () => {
+    for (const q of [
+      // homonym traps from the fire-26 over-match findings — NONE names a file.
+      "change my class schedule",
+      "update my class notes",
+      "correct the error on my invoice",
+      "rename the test on my calendar",
+      "fix the line at the pharmacy",
+      "change the function next Friday",
+      "fix the variable rate mortgage",
+      "update the science class",
+      "fix the parking module",
+      // path-PREFIX homonyms — app/build/tests/lib are common words; without a
+      // code-extension filename they must NOT match (the structural signal is a
+      // `name.<code-ext>`, not a bare prefix).
+      "update my app/website",
+      "change my app/notification settings",
+      "change my tests/quizzes for the kids",
+      "fix the build/construction project",
+      "correct the app/billing address",
+      // questions (even with a filename) are not imperatives.
+      "how do I fix add.ts",
+      "what's in add.ts",
+      "why is there a bug in add.ts"
+    ]) {
+      expect(classifyActionRequest(q)).toBe(false);
+    }
+  });
 });
 
 describe("answerPromisesAction — catches a false 'I'll remind you' in the ANSWER (incl. mixed requests)", () => {
@@ -238,6 +307,51 @@ describe("answerClaimsAction — the answer CLAIMS a tool action was done, KO + 
     }
     // a declarative PROMISE (…게요) is still a claim — the guard only excludes the question form
     expect(answerClaimsAction("내일 오후 3시에 회의 일정을 추가해 드릴게요.")).toBe(true);
+  });
+
+  it("matches a COMPUTER-CONTROL code-fix completion claim (EN + KO) — the backstop's third leg", () => {
+    for (const a of [
+      "I fixed the bug in add.ts.",
+      "I've edited the add function to return a + b.",
+      "I updated README.md as requested.",
+      "Done — I changed the return value.",
+      // TERSE whole-answer claims (anchored, not a bare \bdone\b substring).
+      "Done.",
+      "Done!",
+      "All done.",
+      "완료했습니다.",
+      "수정했습니다.",
+      "add.ts의 버그를 고쳤어요.",
+      "함수를 편집했어요."
+    ]) {
+      expect(answerClaimsAction(a), a).toBe(true);
+    }
+  });
+
+  it("does NOT treat a code-fix FUTURE / OFFER / ADVICE / DESCRIPTION as a completion claim", () => {
+    for (const a of [
+      "I will fix the bug in add.ts.",
+      "Shall I fix the bug?",
+      "I can fix the add function for you.",
+      "You should edit the add function to return a + b.",
+      "To fix this, change the return value in add.ts.",
+      "The add function returns the wrong value.",
+      "버그를 고치려면 add.ts를 수정하세요.",
+      "수정할까요?",
+      // "done" NON-completion senses — negation / partial / idiom / question /
+      // passive. A bare `\bdone\b` would wrongly flag these (JUDGE-DRILL #3); the
+      // whole-answer anchor must leave them FALSE so an honest in-progress answer
+      // on a code-fix turn is not re-prompted as a false done.
+      "I'm not done yet.",
+      "I'm almost done — still tracing the bug.",
+      "This isn't done.",
+      "I'm done looking, but I haven't fixed it yet.",
+      "well done!",
+      "are you done?",
+      "the migration is done automatically by the framework"
+    ]) {
+      expect(answerClaimsAction(a), a).toBe(false);
+    }
   });
 });
 

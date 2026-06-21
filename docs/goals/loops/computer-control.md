@@ -5,6 +5,168 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 36 · 2026-06-21 · skill v2.0 · 07c04e0d (char-cap reads page cleanly — resolves fire-35 finding; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/fs · kind=reliability/paging · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles 1072→1072 (+2 cases fs-read-tools: char-cap trim + round-trip; 1 rewritten, mutation-valid) · fabrication 0 · @muse/fs 격리 172 · pnpm check exit 0 · lint clean · Ollama DOWN
+- 무엇: char-cap(maxTextChars 초과 mid-line cut)이 nextOffset을 clear해 모델이 페이징 못함(fire-35 64K cap이 자주 트리거). FIX: char-cap이 trailing partial line을 line-boundary로 TRIM + `nextOffset = start + completeLines + 1`(completeLines=capped의 newline 수=보수적, 경계 라인은 full re-read). 단일 거대 라인(newline 없음)은 nextOffset undefined(라인 페이징 불가).
+- 왜: fire-35 ④b가 짚은 backlog ◦ 해소 — 64K cap이 char-cap을 흔하게 만들어 un-pageable hole이 자주 발생. 페이징 스토리 완성(line-trunc fire 24 + char-cap fire 36).
+- 리뷰지점: mutation-valid(옛 clear-nextOffset로 되돌리면 trim 테스트 + 10라인 round-trip 둘 다 RED). ④b judge PASS — **페이징 루프 구동: EVERY 라인 read, NONE skipped**(boundary overlap만, gap 0), nextOffset 항상 advance(무한루프 0), char-cap이 truncated=true 유지→onFullRead 억제(grounding 불변), numbered+empty/1-line/no-trailing-newline edge 정확.
+- 리스크: 낮음 — char-cap 블록만(line-trunc/grounding/grep/list 불변). ④b PASS.
+lesson: ④b finding을 backlog ◦로 기록→다음 fire가 해소하는 사이클이 작동. 페이징 paging은 *모든 truncation 경로*(line+char)가 일관 nextOffset 줘야; 보수적 경계(complete-lines-only, boundary 라인 re-read)가 skip(데이터손실)보다 안전.
+
+## fire 35 · 2026-06-21 · skill v2.0 · 26a8a105 (file_read caps to fit the model context — 200K overflow fix)
+meta: value-class=new-capability · pkg=@muse/fs+apps/cli · kind=context-fit/reliability · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles 1072→1072 (+2 cases fileReadCharBudget value+enforcement, mutation-valid) · fabrication 0 · @muse/fs 격리 170 · @muse/cli 격리 2827 · pnpm check exit 0 · lint clean · Ollama DOWN
+- 무엇: agent가 file_read를 maxTextChars 없이 생성→200K 기본(~50K토큰)인데 numCtx=32768(DEFAULT_OLLAMA_NUM_CTX). 단일 max read가 전체 윈도 초과→런타임이 프롬프트/히스토리 silently truncate(adapter-ollama LIVE 문서: 8K 윈도가 프롬프트 통째 먹고 1토큰). FIX: 순수 `fileReadCharBudget(tokens)=max(4K, floor(tokens/2)*4)`(윈도 절반); agent가 `fileReadCharBudget(DEFAULT_OLLAMA_NUM_CTX)`=64K 전달. 큰 파일은 nextOffset 페이징.
+- 왜: Ollama down으로 measure-first 불가→numCtx 확인이 갭 실증(200K>32K토큰). principled helper-derivation으로 OUTCOME-grade(judgment 회피). 다양성: crates/runner 후 fs+cli/context-fit.
+- 리뷰지점: mutation-valid(/2 제거→value RED; over-budget 파일이 정확히 budget서 truncate). ④b judge PASS — **갭 REAL 확인(live-observed Ollama overflow, upstream trimming 없음)**, grounding 안전방향 보존(partial read↑, onFullRead 잘못 발화 0), grep/list 무영향, 200K default 타 caller 유지, conservative bound(DEFAULT 사용=user가 올리면 tighter일뿐 overflow 0).
+- 리스크: 낮음 — agent read cap만 축소(grounding/페이징/타 caller 불변). ④b PASS. ④b가 pre-existing char-cap nextOffset-clobber edge 지적→backlog ◦.
+lesson: "design-sensitive 값"처럼 보여도 *principled derivation*(numCtx의 절반)으로 만들면 arbitrary 아니고 helper로 OUTCOME-grade 가능. 갭 실증은 Ollama 없이도 *기존 코드의 live-observed 코멘트*(adapter-ollama)로 가능. measure-first 불가시 config-overflow도 정량 분석(200K vs 32K토큰)으로 실제 갭.
+
+## fire 34 · 2026-06-21 · skill v2.0 · f349d50d (run_command timeout → actionable message; fire-23 spawn-error sibling)
+meta: value-class=new-capability · pkg=crates/runner · kind=reliability-nudge · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 1072→1072 (+2 cargo: helper + E2E timeout; TS 무변경) · fabrication 0 · crates/runner cargo 12 · @muse/tools 격리 289(무회귀) · pnpm check exit 0 · lint clean · Ollama DOWN(30c 보류)
+- 무엇: Rust runner가 타임아웃 시 `{timed_out:true, error:None}` — bare flag, 메시지 없음(12B가 놓침). FIX(`describe_timeout`): timeout 경로 `error`에 `"timed out after {ms}ms, killed — retry with larger timeoutMs"`(ms=effective clamped). 와이어링 `error: if timed_out {Some} else {None}`; TS는 error passthrough(무편집).
+- 왜: Ollama down으로 30c 보류 → gap-scout. probe로 timeout시 error=None 실측. fire-23 spawn-error 형제(run_command 실패-메시지 family 완성). 다양성: fs/agent-core 후 crates/runner.
+- 리뷰지점: mutation-valid 양쪽(helper hint 제거→RED; 와이어링 revert→**E2E RED**=실제 sleep 5+50ms 타임아웃으로 와이어링 outcome-grade). ④b judge PASS — no-weakening(timeout 경로 메시지만, timed_out/ok/kill/drainer 불변, non-timeout은 None), 정확 ms(effective clamped), E2E non-flaky(#[cfg(unix)], 50ms vs 5s 무race).
+- 리스크: 낮음 — 순수 에러-메시지 추가(실행/kill 로직 0 변경). ④b PASS.
+lesson: 실패 신호는 *구조적 flag*(timed_out)뿐 아니라 *액추에이터 family 일관 메시지*(error)로도 줘야 — 12B는 bare flag를 놓침. Rust 와이어링은 helper 단위테스트 + 실제 e2e(sleep+timeout) 둘 다로 OUTCOME-grade(e2e가 와이어링을 잡음).
+
+## fire 33 · 2026-06-21 · skill v2.0 · db078c66 (file_read refuses binary-content text files; read↔grep sibling; 3-fire merge)
+meta: value-class=micro-fix(real-bug) · pkg=@muse/fs · kind=correctness/reliability · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 1072→1072 (+1 case fs-read-tools, mutation-valid) · fabrication 0 · @muse/fs 격리 168 · pnpm check exit 0 · lint clean · Ollama DOWN(30c 보류)
+- 무엇: 텍스트-확장자(.txt/.ts)지만 NUL 바이트 포함=binary 파일을 file_read 텍스트 브랜치가 UTF-8 디코드해 corrupted "text"(NUL 포함) 반환 → 모델 edit-poisoning. file_grep은 이미 isProbablyBinary로 skip하는데 file_read는 안 함(형제 불일치). FIX: `rawText` 후 `if isProbablyBinary→read:false`(binary 명시 reason).
+- 왜: Ollama down으로 30c 보류 → gap-scout. probe로 fake.txt가 read:true+NUL 반환 실측. read↔grep 형제-완성. 다양성: agent-core/refactor 후 fs/correctness.
+- 리뷰지점: mutation-valid(guard 제거→read:false+text-undefined RED). ④b judge PASS — 텍스트 브랜치만(image/PDF/DOCX 무영향, resolveFileKind가 binary .txt를 text로 라우팅해 guard LIVE 확인), **거부가 onPathRead/onFullRead 전 return=fail-closed**(refused binary가 edit 못 ground), false-positive 0(UTF-8엔 NUL 없음).
+- 리스크: 낮음 — 텍스트 브랜치 guard 1개(타 kind/gate 불변). ④b PASS.
+lesson: 형제 도구(read↔grep)는 같은 입력-클래스(binary) 처리가 일관해야 — grep이 skip하면 read도. 거부는 grounding 콜백 *전* return해야 fail-closed(안 읽은 파일이 edit를 ground 못함). measure-first 불가 시 probe로 실제 corrupted 동작 실측이 gap-scout.
+
+## fire 32 · 2026-06-21 · skill v2.0 · 58d3fa0e (runResistingFalseDone — re-prompt extracted to a shared bounded-retry wrapper; decompose 30b)
+meta: value-class=refactor/seam · pkg=@muse/agent-core+apps/cli · kind=refactor/seam+bounded-retry · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles 1071→1072 (+1 file false-done-reprompt 4 cases, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2542 · @muse/cli 격리 2827 · pnpm check exit 0 · lint clean · Ollama DOWN
+- 무엇: 백스톱 ACTION 반쪽(unbacked면 clean-history 1회 재실행, 실제 행동시만 채택)이 chat-repl:634 inline → `runResistingFalseDone({query,firstResult,retry})` generic wrapper로 추출(agent-core). caller가 retry thunk 제공→AgentRuntime 의존 없음. chat-repl DRY.
+- 왜: fire-30 분해 30b — re-prompt가 1개 공유 tested 정의가 돼 chat-repl + eval harness(30c)가 같은 걸 조성. reflection-guard 준수(정확히 1 retry, 결정론 verifier=actionToolRan, fail-closed). Ollama down으로 eval delta(30c)는 보류지만 wrapper 로직은 synthetic으로 완전 테스트.
+- 리뷰지점: behavior-IDENTICAL(④b leg-for-leg diff; 클로저 narrowing은 const-capture; actionToolRan import 제거·isUnbackedActionClaim 유지; builds exit 0). mutation-valid(use-if-acted→always-retried면 "재실행도 실패→첫째 유지" RED).
+- 리스크: 낮음 — behavior-preserving 추출(조건/재실행 로직 불변). ④b PASS. honest: eval 미조성(30c, Ollama 필요).
+lesson: `&&` 가드(30a)와 그 *행동*(re-prompt, 30b)을 둘 다 generic helper로 추출하면 inline drift 제거 + 미래 caller(eval harness)의 seam. 클로저로 옮긴 optional 접근은 const-capture로 narrowing 유지. bounded-retry는 결정론 verifier+1회 cap로 reflection-guard 준수.
+
+## fire 31 · 2026-06-21 · skill v2.0 · aabe7905 (isUnbackedActionClaim helper — false-done condition extracted; decompose 30a)
+meta: value-class=refactor/seam · pkg=@muse/agent-core+apps/cli · kind=refactor/seam · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 1071→1071 (+1 case casual-prompt composition, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2538 · @muse/cli 격리 2827 · pnpm check exit 0 · lint clean
+- 무엇: false-done 백스톱 조건 `requestsToolAction(q) && answerClaimsAction(a) && !actionToolRan(t)`이 3곳(commands-ask:2862, chat-repl:634/698) inline 중복 → `isUnbackedActionClaim({query,answer,toolNames})` helper로 추출(3 detector가 사는 agent-core) + 3 CLI 사이트 배선 + unused import 정리.
+- 왜: fire-30 분해 30a(eval-mover의 seam) — 조건이 1개 tested 정의가 돼 미래 leg 추가가 사이트 간 발산 못함. 30b(AgentRuntime re-prompt)가 같은 helper 사용. 다양성: agent-core/honesty 6연 후 refactor/seam kind.
+- 리뷰지점: behavior-IDENTICAL(④b judge 10케이스 0 mismatch vs inline; askIsActionRequest@2863/2871 + chat-repl:640 actionToolRan 유지; unused만 제거; check exit 0). mutation-valid(`!` 제거→RED).
+- 리스크: 낮음 — behavior-preserving 추출(조건 불변, 명명만). ④b PASS.
+lesson: `&&` 합성 가드가 N곳 inline이면 drift 위험 — 1개 tested helper로 추출하면 형제 사이트 발산 방지 + 미래 배선(런타임)의 seam. import 정리는 still-used(askIsActionRequest용 requestsToolAction, post-re-prompt actionToolRan)와 unused 구분 필수.
+
+## fire 30 · 2026-06-21 · skill v2.0 · eea41daf (file_list deterministic sort; AgentRuntime re-prompt decomposed; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/fs · kind=determinism/reproducibility · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 1071→1071 (+1 case fs-read-tools file_list, mutation-valid) · fabrication 0 · @muse/fs 격리 167 · pnpm check exit 0 · lint clean · Ollama DOWN(measure-first 불가)
+- 무엇: file_list가 glob 순서(Node 미보장, filesystem-defined)로 반환 → 머신/pass^k 반복 간 순서 흔들림=12B 입력 flake. FIX: `matches.sort()`(canonical full-path lexicographic) 반환 전. 정직 scope: glob 루프는 limit서 break 유지 → >limit set은 glob-bound(pre-existing), ORDER만 결정론화.
+- 왜: Ollama down으로 measure-first 불가→gap-scout. eval:computer-task가 pass^k라 결정론 입력이 재현성 직결. 다양성 RATCHET: agent-core/honesty 5연 후 fs/determinism로 전환.
+- 리뷰지점: mutation-valid(sort 제거→RED; glob이 fixture서 sorted 아님). ④b judge PASS — count/truncated/exclude/ignore/sandbox 다 불변(정렬은 필터+cap된 배열만 reorder), 정직 scope(order≠set). AgentRuntime re-prompt(eval-mover)는 invasive+Ollama-gated+chat-repl 중복가능성으로 backlog 분해(30a 순수 helper/30b 런타임 배선/30c eval 검증).
+- 리스크: 낮음 — 반환 순서만(file_read/grep/write/path-safety 불변). ④b PASS.
+lesson: false-done 백스톱(25-29)은 *CLI chat* 경로를 고치지 eval(AgentRuntime 직접구동)은 별경로 — eval을 올리려면 re-prompt가 런타임층에 있어야(분해 기록). measure-first 불가시 결정론/재현성도 정당한 reliability vein. 정직 scope(order vs set)가 over-claim보다 낫다.
+
+## fire 29 · 2026-06-21 · skill v2.0 · 0dbc38d3 (JUDGE-DRILL #3 ✅ + terse "Done." claim added safely)
+meta: value-class=new-capability(+drill) · pkg=@muse/agent-core · kind=honesty/false-done · verdict=DRILL-PASS+judge#2-PASS · firesSinceDrill=0(reset)
+ratchet: testFiles 1071→1071 (+3 terse positives + 7 negation negatives, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2537 · pnpm check exit 0 · lint clean
+- JUDGE-DRILL(firesSinceDrill=10): fire-28 `CODE_DONE_RE`에 bare `\bdone\b` 추가(terse "Done." 잡는 "개선"처럼) + "Done." 긍정테스트. **결정론 게이트 통과(2537)** — answerClaimsAction negative 코퍼스에 "done"-negation 케이스 0이라 over-match invisible. ④b judge **FAIL**: `\bdone\b`가 negation/partial/idiom/question/passive 10케이스 오탐 + **assembled 게이트 직접 구동**(code-fix req + "I'm not done yet" + 도구0 → 백스톱 FIRES = honest 진행중 답변 re-prompt) 증명. → 롤백.
+- 진짜 fix(드릴 쌍둥이 교훈=test-blindness + legit 갭): (a) terse-"Done." 갭은 실재 → `TERSE_DONE_RE` whole-answer 앵커(`^…done…$`, embedded "done" 불일치) + KO 문장형 `완료`; (b) negative 코퍼스에 7 드릴 케이스 하드닝.
+- 리뷰지점: mutation-valid(TERSE를 bare `\bdone\b`로 되돌리면 7 negation 전부 RED=드릴 over-match를 게이트가 잡음). ④b judge#2 PASS(terse 주장 true, negation/idiom/passive false, `완료하려면`/`완료되지` false, 2537 green).
+- 리스크: 낮음 — answerClaimsAction 패턴만(classifyActionRequest/actionToolRan/wiring 불변). drill 롤백+안전 재구현. ④b#2 PASS.
+lesson: **드릴의 올바른 진짜-fix는 test-blindness AND legit 갭을 둘 다 닫는 것** — judge가 가리킨 SAFE 형식(whole-answer 앵커, substring 아님)으로 기능 구현 + over-match 케이스를 negative로 추가해 나쁜 형식이 다신 silently 통과 못하게. ④b가 COMPOSED 게이트를 구동해 harm 입증=maker≠judge 3번째 드릴 작동.
+
+## fire 28 · 2026-06-21 · skill v2.0 · 6d0f0101 (false-done backstop THIRD leg — answerClaimsAction code-fix claims; backstop now end-to-end)
+meta: value-class=new-capability · pkg=@muse/agent-core · kind=honesty/false-done · verdict=PASS · firesSinceDrill=9
+ratchet: testFiles 1071→1071 (+2 cases casual-prompt: code-claim positives + future/offer/advice negatives, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2537 · pnpm check exit 0 · lint clean
+- 무엇: 백스톱 3다리(query=classifyActionRequest[f27] && answer=answerClaimsAction && tools=!actionToolRan[f25]) 중 **answer 다리**가 code-fix 완료주장("I fixed the bug"/"수정했습니다") 미인식 → `&&` 단락으로 fires 25+27에도 백스톱이 안 걸렸음. FIX: `CODE_DONE_RE` 브랜치(1인칭 past-tense mutation 동사 EN `/iu` + KO 수정했/고쳤/편집했).
+- 왜: agentic-persistence(fire 17 "모델이 편집 없이 fix 주장") 폐루프의 마지막 다리. fires 25+27이 query+tools를 고쳤어도 answer 다리 없이는 백스톱 발화 0.
+- 리뷰지점: mutation-valid(브랜치 없으면 positives RED; **`/iu` 플래그 load-bearing** — "I fixed"가 `/u`선 소문자 `\bi`만 매칭돼 fail). ④b judge PASS — **full-loop 합성 검증**(code-fix req + "I fixed it" + 도구0 → 백스톱 FIRES; 실제 file_edit → not flagged). over-match 차단(future/offer/capability/advice/description 전부 false; broad past-tense는 3 호출처 AND-게이트로 scope; judge가 realistic false-pos 구성 실패, "I read/reviewed/analyzed"는 false).
+- 리스크: 낮음 — answerClaimsAction 브랜치만(classifyActionRequest/actionToolRan/wiring 불변, double-gated). ④b PASS.
+lesson: 다리 여럿이 `&&`로 합쳐진 가드는 *모든 다리*를 형제-감사해야 — fires 25(tools)+27(query) 고쳐도 28(answer) 없이는 전체 0 발화. full-loop를 합성-probe로 OUTCOME 검증(개별 다리 green≠전체 작동). fire 17 measure-first가 짚은 early-stop/false-done이 이제 CLI 경로서 결정론적으로 잡힌다.
+
+## fire 27 · 2026-06-21 · skill v2.0 · 7e56df59 (false-done request-gate via STRUCTURAL signal — resolves fire-26 blocker; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/agent-core · kind=honesty/false-done · verdict=PASS(judge#4) · firesSinceDrill=8
+ratchet: testFiles 1071→1071 (+2 cases casual-prompt: file-positives + path-prefix/homonym negatives, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2535 · pnpm check exit 0 · lint clean
+- 무엇: fire-26 블로커 해소(RIGHT DESIGN 구현) — false-done 백스톱 request-side(`classifyActionRequest`)가 code-fix 미인식이라 fire-25 actuator fix에도 백스톱이 컴퓨터-제어에 안 걸림. fix: fuzzy 텍스트 분류 대신 **구조적 신호** = 쿼리에 명시적 **code-extension 파일명**(`FILE_PATH_TOKEN`=optional path + `name.<code-ext>`) 있을 때만 매칭. edit동사 START-앵커(질문 배제), KO 미러(파일명+고쳐/수정).
+- 왜: code-extension 파일명은 homonym-free — 영어 단어는 `name.ts`가 아님 → code-noun homonym(fire 26)·path-prefix homonym(fire 27 1차) 둘 다 제거. precision-over-recall(파일없는 "fix the bug"/"수정해줘"는 미매칭=의도적; miss는 grounded path로 무해, false-pos는 백스톱 오발).
+- 리뷰지점: mutation-valid(패턴 없으면 positives RED; token 완화시 path-prefix negatives RED). **④b judge 4회차서 PASS**(v1/v2 code-noun FAIL→v3 path-prefix FAIL→각 FAIL이 다음 설계가 닫은 실제 over-match). 잔존=진짜 .md 파일(정확) 또는 contrived "dr.py" glued-token(현실 약어는 마침표 후 공백→false). fire 25+27로 백스톱 컴퓨터-제어 완전 작동.
+- 리스크: 낮음 — 분류기 패턴만(answerClaimsAction/actionToolRan/wiring 불변). ④b PASS.
+lesson: **구조적/결정론 신호(code-extension 파일명)가 homonym 많은 분류에서 lexical 의도-추측을 이긴다** — 3 judge FAIL이 right design으로 수렴 = maker≠judge가 작동(no-ship fire 26이 RIGHT DESIGN 기록→fire 27 구현). fuzzy 표면은 끈질긴 적대 검증 필수.
+
+## fire 26 · 2026-06-21 · skill v2.0 · NO-SHIP (docs-only) · ROLLBACK (code-fix request classifier — 2× judge FAIL on over-match)
+meta: value-class=no-ship · pkg=@muse/agent-core(reverted) · kind=honesty/false-done · verdict=FAIL×2→ROLLBACK · firesSinceDrill=7
+ratchet: testFiles 1071→1071 (코드 변경 0, 롤백) · fabrication 0 · agent-core fire-25 state 무손상(actionToolRan fs fix intact) · docs writeback만
+- 무엇: fire-25 형제 — 백스톱은 `classifyActionRequest`/`requestsToolAction`로도 게이트되는데 이게 code-fix("fix the bug in add.ts"·"수정해줘") 미인식 → fire-25 actuator fix에도 백스톱이 CLI 경로서 테마에 안 걸림. `CODE_ACTION_REQUEST_RE`(edit동사+코드/파일 noun, 질문배제 앵커) 시도.
+- 왜 NO-SHIP: **독립 ④b judge 2회 FAIL**(realistic over-match, regex로 회피 불가). v1=bare homonym(class/test/line/error/function이 "change my class schedule" 등 오탐). v2=homonym 제거+named-construct(`<id> class`)인데 `the <형용사> class`가 determiner 가드 우회("update the science class"·"fix the parking module" 오탐) + strong-noun도 non-code 의미("fix the variable rate mortgage"·"import tax"). ROOT: code-vs-non-code는 *의미적* disambiguation(homonym 천지)이라 lexical regex로 못 가른다.
+- 리뷰지점: maker≠trip — **2 독립 judge가 realistic counter-example로 over-match 적발 = maker≠judge 보상통제가 *유기적으로* 작동**(드릴 아님). commands-ask:903 early-return이라 innocent 쿼리 mis-route가 실제 회귀 → ship 안 함이 옳음. 롤백 clean(diff 0, fire-25 무손상).
+- 리스크: 0 — 롤백, 코드 변경 없음. fire-25 actuator fix 유지.
+lesson: **homonym 많은 intent에 fuzzy lexical 분류기는 틀린 도구** — 2 독립 judge가 같은 over-match 클래스를 다른 경로로 잡음. 올바른 설계=request 텍스트 분류(fuzzy) 대신 *구조적 신호*: file 도구 노출 여부 OR 쿼리의 명시적 파일경로/파일명(`\w+\.<ext>`/절대·상대 경로) — 결정론+homonym-free. 백로그 블로커에 RIGHT DESIGN 기록. NO-SHIP도 정직히 저널.
+
+## fire 25 · 2026-06-21 · skill v2.0 · ee1efde6 (false-done backstop recognises fs/run_command actuators)
+meta: value-class=micro-fix(real-bug) · pkg=@muse/agent-core · kind=honesty/false-done · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles 1071→1071 (+1 case casual-prompt, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2533 · pnpm check exit 0 · lint clean · Ollama DOWN
+- 무엇: SCOUT — false-done/persistence 백스톱이 *이미 존재+배선*됨(`answerClaimsAction`+`actionToolRan` → commands-ask:2590 flag + chat-repl:553 re-prompt). BUG: `actionToolRan`의 `ACTION_TOOL_RE`가 fs 도구 도입 전이라 `.add/.update/…`+`_action`만 인식 → `file_edit`/`file_write`/`file_multi_edit`/`file_delete`/`file_move`/`run_command` 미인식 → 실제 file_edit한 코드-fix를 "no action"으로 오독 → 정직한 "I fixed it"을 unbacked로 오탐(+chat 헛 re-prompt). FIX: 분류기에 fs/run_command arm 추가.
+- 왜: 멀티스텝 *완성* 검증의 핵심 — 백스톱이 테마의 바로 그 액추에이터(fs)를 몰라 컴퓨터-제어 작업을 매번 오탐. dup 모듈 지을 뻔 했으나 scout가 기존 export 발견(answerClaimsAction/actionToolRan) → 기존 머신 수정이 정답.
+- 리뷰지점: mutation-valid(RED 전; 6 mutator→true, read 3→false). ④b judge PASS — **false-positive 교정 + true-positive 보존**(actionToolRan([])===false인 진짜 false-done 여전히 발화), over-match 0(file_editor_config/run_commander/profile_edit false; `\b`+닫힌 alternation), tasks/calendar verb arm byte-identical, 2533 green. run_command(execute-risk) 포함 타당.
+- 리스크: 낮음 — 분류기 정규식 1 arm 추가(claim 검출/wiring 불변). ④b PASS.
+lesson: 새 capability(detector) 짓기 전 *기존 머신 scout 필수* — false-done 백스톱이 이미 완비+배선돼 있었고 진짜 갭은 "fs 액추에이터 미등록"(테마 도구가 backstop보다 늦게 생겨 분류기가 stale). 중복 회피 + 실제 버그 수정. agentic-persistence re-prompt는 *이미 존재*하며 이 fire로 컴퓨터-제어서 작동.
+
+## fire 24 · 2026-06-21 · skill v2.0 · 7474abed (file_read nextOffset paging hint; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/fs · kind=reliability-nudge(output-paging) · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles 1071→1071 (+2 cases fs-read-tools paging+char-cap, mutation-valid) · fabrication 0 · @muse/fs 격리 166 · pnpm check exit 0 · lint clean · Ollama DOWN(measure-first 불가, gap-scout fallback)
+- 무엇: line-truncated read가 `{truncated:true, totalLines}`만 줘서 12B가 다음 페이지 offset을 추측해야 함(큰 파일 멀티스텝 막힘). FIX: text-read 결과에 `nextOffset`(재개할 1-based 라인 `start+sliced.length+1`) 추가, line-truncated일 때만; char-cap cut은 라인 경계 부정확이라 omit(char-cap 분기가 clear=우선). 설명에 페이징 프로토콜 1줄.
+- 왜: Ollama down으로 measure-first 불가 → gap-scout. reliability-nudge vein을 *에러 복구(21-23)*에서 *성공-경로 출력 가이드(페이징)*로 확장. 큰 파일은 grounding gate(full-read)도 막으니 페이징이 멀티스텝 신뢰성 직결.
+- 리뷰지점: mutation-valid(nextOffset 없으면 RED; char-cap clear도 line-trunc+char-cap 케이스로 독립 pin→RED). ④b judge PASS — round-trip 페이징 gap/overlap/off-by-one 없음+마지막 페이지 stop, **GROUNDING GATE 불변**(nextOffset 순수 additive; onFullRead 여전히 start===0&&!truncated만, paged read는 onPathRead만), PDF/DOCX/image stray nextOffset 없음. judge가 char-cap 테스트 커버리지 갭 지적→백필(커밋 전).
+- 리스크: 낮음 — 출력 필드 1개 additive(truncated/gate 불변), 설명 additive(eval:tools 선택 영향 미미). ④b PASS.
+lesson: reliability-nudge는 *에러 경로*뿐 아니라 *성공 경로 출력*(페이징 가이드)에도 적용 — 작은 모델엔 "정수 하나 복사"가 "offset 계산"보다 신뢰성↑. ④b가 커버리지 갭(char-cap 미테스트)을 잡아 백필=judge가 defect뿐 아니라 test-완전성도 강화.
+
+## fire 23 · 2026-06-21 · skill v2.0 · 14ca9d49 (run_command spawn-failure → actionable message; pkg pivot off @muse/fs)
+meta: value-class=new-capability · pkg=crates/runner · kind=reliability-nudge · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles 1071→1071 (+1 cargo test crates/runner; TS 무변경) · fabrication 0 · crates/runner cargo 10 · @muse/tools 격리 289(무회귀) · lint clean
+- 무엇: Rust runner가 spawn 실패에 raw `"failed to spawn command: No such file or directory (os error 2)"` 반환 → 12B가 오타 vs 미설치 구분 불가. FIX(`describe_spawn_error`): `ErrorKind::NotFound`→`"command '<cmd>' not found — not installed or not on PATH; check the name."`, `PermissionDenied`→`"… not executable (permission denied)."`, 그외→원본 generic. `run_request` spawn Err arm에 배선; TS는 `error` 그대로 전달(무편집).
+- 왜: 다양성 RATCHET — 최근 5 fire(18-22) 전부 @muse/fs라 *다른 패키지*(crates/runner) 강제. reliability-nudge vein을 run_command 액추에이터로 확장(npm/pytest 오타·미설치는 실제 멀티스텝 실패모드).
+- 리뷰지점: mutation-valid(NotFound arm→generic이면 cargo RED; 복원 10 pass). ④b judge PASS — 이미 실패한 spawn의 *메시지 텍스트만*(spawn 동작/보안 불변; blank/path/env 가드 다 선행), request.command 에코(host-path leak 없음), generic fallthrough가 타 에러 verbatim 보존. TS passthrough 확인(error→모델 도달).
+- 리스크: 낮음 — 순수 에러-포맷 추가(실행 경로 0 변경). honest bound: eval 바이너리는 stale copy일 수 있으나 source 정확+cargo 검증. ④b PASS.
+lesson: reliability-nudge vein(actionable 에러)은 *액추에이터를 가로질러* 적용된다 — fs(read/grep/edit) 후 run_command(Rust)로 이어가며 다양성도 충족. raw OS errno(os error 2)는 fs ENOENT와 같은 dead-end 클래스; 패키지 경계 넘어 같은 교훈.
+
+## fire 22 · 2026-06-21 · skill v2.0 · 031a414c (file_edit/multi_edit missing-file → recovery hint; fire-21 sibling completion)
+meta: value-class=new-capability · pkg=@muse/fs · kind=reliability-nudge · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 1071→1071 (+1 strengthened fs-write-tools case, mutation-valid) · fabrication 0 · @muse/fs 격리 164 · pnpm check exit 0 · lint clean
+- 무엇: fire 21이 file_read/grep ENOENT은 고쳤으나 **write actuator(file_edit/multi_edit)는 놓친 형제** — 존재않는 파일 편집 시 동일 raw `ENOENT … stat '/abs'`(완성-단계서 12B dead-end + abs경로 leak). FIX(공유 `refusal`에 ENOENT 분기 1개): `"no file at '<input>' — to create it use file_write; … check the path or use file_list"`. file_edit+multi_edit 둘 다(공유 editExecutor→refusal); file_write는 mkdir -p라 정당 제외.
+- 왜: 멀티스텝 *완성* 단계(edit) 에러가 raw면 12B가 retry 못함. fire-21 형제-audit 미완(read/grep만, edit/multi_edit 누락)을 완성. 1 fix로 두 형제.
+- 리뷰지점: mutation-valid(분기 제거→raw-errno RED; 복원→164 green). ④b judge PASS — ENOENT은 3번째 분기(PathSafetyError→ELOOP→ENOENT)라 denied/symlink/old_string-not-found/directory/existing-edit 다 자기 outcome 유지(probed); input `path` 에코(abs-leak 없음). nit: dangling-symlink는 ENOENT가 ELOOP보다 먼저라 힌트 약간 어긋나나 무회귀.
+- 리스크: 낮음 — 공유 refusal에 ENOENT 분기만(분기 순서로 타 에러 불변). ④b PASS.
+lesson: 형제-audit는 *actuator 클래스 전체*(read+grep+edit+multi_edit)를 enumerate해야 — fire 21이 read/grep만 고쳐 edit/multi_edit raw-ENOENT가 남았다(fire 15→16 env-family와 동형 누락). 공유 헬퍼(`refusal`)에 고치면 형제 자동 커버.
+
+## fire 21 · 2026-06-21 · skill v2.0 · 790c76b5 (file_read/grep missing-path → recovery hint; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/fs · kind=reliability-nudge · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 1071→1071 (+2 cases fs-read-tools read/grep, mutation-valid) · fabrication 0 · @muse/fs 격리 164 · pnpm check exit 0 · lint clean
+- 무엇: 존재 않는 직접 경로에 file_read/file_grep이 raw `ENOENT: ... stat '/abs'` 반환 → 12B 자가복구 불가 + 절대경로 leak. FIX(`isNotFoundError` code==="ENOENT"): 양 도구가 복구도구(file_list)+파일명 담은 actionable 메시지. 형제-감사: file_list는 missing cwd에 `{count:0}` 깔끔(유지). 
+- 왜: fires 8-9 패턴 — 좋은 에러가 12B 멀티스텝 복구를 살림(grep→read→edit 루프서 stall 대신 file_list로 self-correct). 다양성 RATCHET이 @muse/fs 보안 집중에서 reliability KIND로 전환 요구.
+- 리뷰지점: mutation-valid 양방향(raw-errno RED; grep 브랜치 revert→RED). ④b judge PASS — ENOENT-only(denied→refused·existing→read·directory→"directory"·EACCES→fall-through·malformed-regex→literal 다 불변), outcome-graded, **보너스 info-leak 감소**(input 에코, symlink-resolved `/private/var/` 안 노출). scout: file_read static 심링크 escape=resolveSafePath가 이미 차단(probe 확인)·file_list 결과 재검증=견고.
+- 리스크: 낮음 — ENOENT 분기만 추가(타 에러/정상 경로 불변). ④b PASS.
+lesson: 보안 surface가 thoroughly-hardened면 *같은 패키지의 다른 KIND*(reliability/error-recovery)로 가치 지속 — raw errno는 12B에 dead-end이자 info-leak; actionable 메시지(복구도구 명시)는 멀티스텝 신뢰성을 직접 올린다. 형제(read↔grep)는 같은 fire에 패치.
+
+## fire 20 · 2026-06-21 · skill v2.0 · bb46f6f6 (JUDGE-DRILL #2 ✅ + harden ReDoS allow-corpus)
+meta: value-class=test-hardening · pkg=@muse/fs · kind=judge-drill · verdict=DRILL-PASS · firesSinceDrill=0(reset)
+ratchet: testFiles 1071→1071 (+6 safe-alternation cases in allows it.each) · fabrication 0 · @muse/fs 격리 162 · pnpm check exit 0 · lint clean
+- JUDGE-DRILL(firesSinceDrill=10 AND 연속allPASS=8 트리거): fire-19 alternation residual을 "닫는" 그럴듯한 슬라이스 주입 — detector inner class에 `|` 추가(`[+*|]`) + `(a|aa)+` 잡힌다는 테스트. **결정론 게이트 통과(157)** — "allows" 코퍼스에 quantified-alternation 패턴이 없어 over-block이 invisible. ④b 독립 judge가 **FAIL**: `(foo|bar)+`/`(TODO|FIXME)+`/`(a|b)*` 오탐 재현 + **타이밍 sub-ms로 catastrophic 아님 증명** + fire-19 대비 regression + 테스트 blind 적발. → 롤백(detector fire-19 그대로).
+- 진짜 fix(드릴 교훈=test-blindness): "allows" it.each에 안전 quantified-alternation 패턴(`(foo|bar)+`·`(TODO|FIXME)+`·`(a|b)*`·`(import|export)\s+\w+`·`(GET|POST|PUT)\s`·`(error|warn|info)+`) 추가. mutation-verified — 드릴의 `[+*|]` broadening 재적용 시 신규 테스트 RED(이전엔 invisible) = 미래 over-block을 게이트가 잡음.
+- 리뷰지점: 드릴 2번째 성공 — verifier가 게이트-통과 regression을 추론+probe+**타이밍**으로 잡음(rubber-stamp 아님). detector 코드 불변(테스트만 하드닝). check exit 0.
+- 리스크: 0 — 코드 동작 변경 0(드릴 롤백, 테스트 corpus 확장만). ④b가 드릴 FAIL.
+lesson: **드릴의 올바른 진짜-fix는 단순 revert가 아니라 드릴이 타고 들어온 *test-blindness를 닫는 것*** — judge가 "코퍼스가 over-block에 blind"라 지적했으니, 그 클래스(safe quantified-alternation)를 allow-코퍼스에 추가해 같은 regression이 다신 invisible하지 않게. ④b judge는 *타이밍*까지 써서 "이건 catastrophic 아니다"를 실증(추론만 아니라 측정).
+
+## fire 19 · 2026-06-21 · skill v2.0 · 99aed2ea (file_grep ReDoS guard — model regex can't hang the agent)
+meta: value-class=new-capability · pkg=@muse/fs · kind=regex-safety/ReDoS · verdict=PASS · firesSinceDrill=9
+ratchet: testFiles 1071→1071 (+3 cases fs-read-tools: integration + 2 it.each, mutation-valid) · fabrication 0 · @muse/fs 격리 156 · pnpm check=박스포화(apps/cli 5-64s, 격리 green) · lint clean
+- 무엇: §3.6 DoS — file_grep이 모델-supplied regex를 `new RegExp(pattern,"u")`(JS 백트래킹, 타임아웃 없음)로 Muse 프로세스 IN에서 라인별 실행 → `(a+)+$`가 40자 실패 라인에서 HANG(probe 확인). FIX(`isCatastrophicGrepPattern`): nested-quantifier 형태(`(a+)+`/`(.*)*`/`(\d+){2,}`)를 compile 전 거부+"simplify" 에러. 
+- 왜: 모델 regex hang은 agent를 wedge하는 실제 DoS. JS는 regex 타임아웃 없어 detect-and-reject가 dep-없는 1차 방어(compile 전 차단).
+- 리뷰지점: mutation-valid(detector→false면 unit RED + integration HANG=가드 load-bearing; flags 6 catastrophic/allows 7 safe). ④b judge PASS(realistic 11 패턴 over-block 0, compile 전 실행, literal degrade 유지, grep-only). **HONEST RESIDUAL(④b 확인)**: flat-group 휴리스틱이 `((a+))+`(nested-paren)·`(a|aa)+`(alternation-overlap)는 여전히 HANG — alternation은 안전한 `(a|b)+`까지 over-block돼 깔끔히 못 잡음; complete fix=worker-timeout(모든 형태, deferred 깊은 슬라이스).
+- 리스크: 낮음 — 거부 패턴 1개+에러(grep만, 안전 패턴 불변). ④b PASS.
+lesson: 휴리스틱 보안가드는 **common 형태를 닫고 residual을 정직히 문서화**(④b가 nested-paren/alternation residual 확인) — over-block 회피(alternation 검출이 `(a|b)+` 오탐)와 완전성(worker-timeout)이 트레이드오프; "1차 방어+정직한 한계"가 "완벽한 척"보다 낫다. JS regex는 타임아웃 불가라 detect-and-reject가 현실적.
+
 ## fire 18 · 2026-06-21 · skill v2.0 · c204778f (fs credential deny-list — common cred/key files; 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/fs · kind=security/credential-deny · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles 1071→1071 (+2 it.each fs-path-safety, mutation-valid) · fabrication 0 · @muse/fs 격리 143 · eval:computer-task 무관(cred 미사용) · pnpm check=박스포화(web-search fuzz 9.6s, 격리 green) · lint clean
