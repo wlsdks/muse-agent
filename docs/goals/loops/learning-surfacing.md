@@ -163,7 +163,7 @@ ratchet: testFiles +0 (belief-provenance-store.test +3) · @muse/memory 572 gree
 - **리스크**: 없음 — additive 필드+포맷터, memory 572 + recap 33 green, 독립 Opus ④b judge가 귀속 정직성+source 의미+무회귀 재확인 PASS.
 - **lesson**: 웹/API 학습 투영은 **MOOT** — 서버측 store가 factHistory 미populate(fire 3 노트 재확인; `toUserMemoryResponse`도 factHistory 없는 shape). 웹 "learned about you" 뷰는 서버 store가 supersession 기록(예: `collectFactSupersessions` 재사용)부터 선행돼야 = 별도 foundation. 남은 학습-표면은 전부 로컬-CLI 경로(memory show/status/chat/recap/brief)로 사실상 완성.
 
-## fire 18 · 2026-06-21 · skill v2.1.0 · pending
+## fire 18 · 2026-06-21 · skill v2.1.0 · b902e424
 meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=forgotten-projection · verdict=PASS · firesSinceDrill=8 · firesSinceMainMerge=carry(15-18 branch-safe, main race)
 ratchet: testFiles +0 (belief-provenance-store.test +3, commands-recap.test +2) · @muse/memory 578 green · recap 35 green · lint clean · fabrication 0
 
