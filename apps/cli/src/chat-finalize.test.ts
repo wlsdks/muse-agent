@@ -119,6 +119,34 @@ describe("finalizeGatedChatAnswer — semantic prose value-conflict surfacing (G
     expect(out.toLowerCase()).not.toContain("disagree");
     expect(out).toContain("3pm");
   });
+
+  it("when an UNTRUSTED source contradicts the user's OWN note, names the trust asymmetry — trust your own, not the poison (GROUNDED≠TRUE source-override)", async () => {
+    const trustedVsPoison: readonly KnowledgeMatch[] = [
+      { cosine: 0.9, score: 0.9, source: "flight.md", text: "Your flight to Tokyo departs at 3pm on Friday." },
+      { cosine: 0.9, score: 0.9, source: "tool: web_search", text: "Your flight to Tokyo departs at 9pm on Friday.", trusted: false }
+    ];
+    const { display: out } = await finalizeGatedChatAnswer({
+      answer: "Your flight to Tokyo departs at 3pm on Friday. [from flight.md]",
+      matches: trustedVsPoison,
+      question: "What time does my flight to Tokyo leave?",
+      embed: sameVector
+    });
+    expect(out).toContain("external"); // names it as an external/unverified source
+    expect(out).toContain("tool: web_search"); // the untrusted source
+    expect(out).toContain("flight.md"); // the user's own source
+    expect(out.toLowerCase()).toContain("trust your own");
+  });
+
+  it("two TRUSTED notes disagreeing keep the neutral symmetric cue (no false trust asymmetry)", async () => {
+    const { display: out } = await finalizeGatedChatAnswer({
+      answer: "Your flight to Tokyo departs at 3pm on Friday. [from flight.md]",
+      matches: conflicting,
+      question: "What time does my flight to Tokyo leave?",
+      embed: sameVector
+    });
+    expect(out.toLowerCase()).toContain("disagree");
+    expect(out).not.toContain("external/unverified");
+  });
 });
 
 describe("finalizeGatedChatAnswer — forHistory excludes display-only source-check cues (grounded≠true: a cue must not be replayed as trusted evidence)", () => {

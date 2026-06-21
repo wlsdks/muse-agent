@@ -511,3 +511,33 @@ daemon integration) — env, not this slice; agent-core (2588) + cli proactive (
 
 RISK: low — additive (text relabel only), mutation-proven (both seams), Opus ④
 PASS, fail-open wiring, fabrication floor untouched.
+
+## fire 17 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=new-capability · pkg=@muse/cli · kind=conflict-cue-trust · verdict=PASS · firesSinceDrill=7
+
+ratchet: testFiles +0 (extended chat-finalize, +2 cases) · fabrication 0 · NEW kind (conflict+trust, off the note-provenance well) · eval:memory-poisoning PASS · eval:action-log-tamper PASS
+
+WHAT: trust-aware source-conflict cue (chat). When two grounding sources disagree
+on a value and exactly ONE is untrusted (feed/tool/MCP/poisoned episode/ingested
+note), semanticConflictCueFromMatches now names the asymmetry — "an external/
+unverified source '<ext>' disagrees with your own '<own>' — trust your own" —
+instead of a neutral "sources disagree". Both-same-trust keeps the symmetric cue.
+
+WHY: off the note-provenance well (diversity) onto the conflict surface. The
+canonical poisoned-source override — a poison feed/tool contradicting your own
+note — was surfaced as if equally authoritative; now the user is pointed at their
+own data. Additive (cue WORDING only; still gated on a detected contradiction).
+
+REVIEW POINT: XOR on trusted:false (both-untrusted and both-trusted keep the
+symmetric cue); own/ext assignment judge-verified not flipped; can't invent a
+conflict (gated on detectEvidenceContradictions). Judge flagged the ASK-path
+sibling as a real gap (commands-ask.ts ~1771 drops the trusted bit into the
+contradiction inputs) — recorded as a distinct multi-component follow-up
+(buildNoteContextBlock trust-awareness). NOTE: full pnpm check flaked on
+box-saturation 5000ms timeouts (@muse/autoconfigure) — env, not this slice.
+
+NEXT FIRE (18): consecutive allPASS reaches 8 → JUDGE-DRILL required; fire 18 is
+also ÷3 → retry the fires 13-17 main-merge.
+
+RISK: low — additive cue text, mutation-proven, Opus ④ PASS, fabrication untouched.

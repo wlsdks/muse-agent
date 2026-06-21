@@ -434,6 +434,22 @@ export async function semanticConflictCueFromMatches(
   const b = matches[pair.bIndex];
   if (a === undefined || b === undefined) return undefined;
   const isKo = /[가-힣]/u.test(`${a.text} ${b.text}`);
+  // Trust-aware (grounded≠true): when exactly ONE side is an untrusted source
+  // (feed / MCP-or-web tool output / poisoned episode / URL-ingested note —
+  // `trusted:false`) and the other is the user's OWN data, a poisonable source is
+  // contradicting the user's own. A neutral "sources disagree" lets the external
+  // value look as authoritative as the user's note — so NAME the asymmetry and
+  // point the user at their own data, not the poison (the canonical poisoned-
+  // source override). Both-same-trust keeps the symmetric "verify which" cue.
+  const aUntrusted = a.trusted === false;
+  const bUntrusted = b.trusted === false;
+  if (aUntrusted !== bUntrusted) {
+    const own = aUntrusted ? b : a;
+    const ext = aUntrusted ? a : b;
+    return isKo
+      ? `⚠️ 출처 충돌: 외부·미검증 출처 '${ext.source}'가 당신의 '${own.source}'와 다른 값을 말합니다 — 당신의 출처를 신뢰하고 외부 값을 확인하세요.`
+      : `⚠️ Source conflict: an external/unverified source '${ext.source}' disagrees with your own '${own.source}' — trust your own and verify the external value.`;
+  }
   return isKo
     ? `⚠️ 노트 충돌: '${a.source}'와 '${b.source}'가 같은 사실을 다르게 적고 있어요 — 어느 쪽이 맞는지 확인해 주세요.`
     : `⚠️ Sources disagree: '${a.source}' and '${b.source}' state different values for the same fact — verify which is correct.`;
