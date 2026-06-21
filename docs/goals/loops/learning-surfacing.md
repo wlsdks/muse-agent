@@ -115,3 +115,12 @@ ratchet: testFiles +0 · no code change (planner step) · fabrication 0
 - **왜**: 틀린 전제 위에 rushed 반-테스트 chat-ink 편집(autoLearn 클로저라 OUTCOME 테스트 난해 + surfaces-contended)을 강행하면 judge FAIL/롤백 낭비. 정확한 재분해가 다음 fire ROI↑ — DECOMPOSE-ON-DEFER.
 - **리뷰지점**: 코드 0줄 → ④b judge N/A. (c1)이 fire 10/11을 드디어 production 소비 + monoculture 깸(@muse/cli). chat-ink는 `loop/surfaces` 소유라 dedup 명시.
 - **lesson**: 분해는 seam을 실제 탐색하기 전엔 전제가 틀릴 수 있다 — **첫 실제 탐색에서 전제가 깨지면 즉시 재분해**(억지로 안 맞는 경로에 끼워넣지 말 것). 무인 루프가 스스로 판단(질문 없이).
+
+## fire 13 · 2026-06-21 · skill v2.1.0 · pending
+meta: value-class=wiring · pkg=@muse/cli · kind=chat-correction-confirm(slice-c1) · verdict=PASS · firesSinceDrill=3 · firesSinceMainMerge=2
+ratchet: testFiles +0 (chat-auto-memory.test +3) · @muse/cli 2890 green · lint clean · fabrication 0
+
+- **무엇**: **교정-확인 표면 LIVE(chat)** — 사용자가 fact/pref를 교정하면 즉시 "📝 Got it — home city is now \"Busan\" (changed from \"Seoul\")." 인용 확인. `chat-auto-memory`에 `applyTurnLearnings`(before/after factHistory diff + `selectNewSupersessions`[fire10] + `formatLearnedConfirmation`[fire11]) 추출, `chat-ink.ts`의 `autoLearn`이 호출. 변경키는 "remembered" 요약서 제외(중복방지).
+- **왜**: 정체성 "Learns you"의 **가장 직접적 증거** — 교정하는 순간 Muse가 출처 인용과 함께 확인. fire 10/11 프리미티브 **production 첫 소비**, **monoculture 깸**(드디어 @muse/cli).
+- **리뷰지점**: `applyTurnLearnings`로 추출해 OUTCOME 테스트 가능(InMemory store), chat-ink 호출은 thin(fail-open 유지). 현재값=upsert後 store, 이전값=기록 supersession(no model). 기존 "remembered" 동작 보존(non-changed 키).
+- **리스크**: 없음 — refactor behavior-preserving, cli 2890 green, 독립 Opus ④b judge가 production-consumption+diff+dedup mutation+무회귀 재확인 PASS.
