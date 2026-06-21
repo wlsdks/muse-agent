@@ -5,7 +5,7 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 51 · 2026-06-21 · skill v2.0 · <commit> (run-intent execute-tool exposure reserve — run_command no longer starved by the file cluster; fire-4 sibling)
+## fire 51 · 2026-06-21 · skill v2.0 · 232f04e9 (run-intent execute-tool exposure reserve — run_command no longer starved by the file cluster; fire-4 sibling)
 meta: value-class=new-capability · pkg=@muse/agent-core · kind=tool-filter/exposure-reserve · verdict=PASS · firesSinceDrill=5
 ratchet: testFiles +0 / +2 cases (run-intent reserve positive+no-over-exposure) · fabrication 0 · @muse/agent-core 2573 · tool-filter 37 · pnpm check exit 0 · lint 0/0 · Ollama UP · ★main ff-merge(fire 51=×3, delivers 49/50/51)
 - 측정: edit-run-verify 재측정 — FAIL이나 **test-passes=true**(버그 수정됨: sum a-b→a+b, file_read→read→edit). model-ran-test=false: 모델이 node_run/muse.skills.run만 시도, run_command 미선택. 코드 정독 결론: capToolsByRelevance에서 mandatory≥cap이면 optional은 relevantReserve(top 3)만 생존, FILE_PATH 부스트로 file 클러스터 3개가 reserve 독점 → **run_command(system/execute, rank 4) DROP** → 모델이 verify용 runner를 선택 불가. fire 4가 file 클러스터 reserve를 만든 것의 execute-tool 형제 갭.
