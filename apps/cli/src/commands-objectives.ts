@@ -124,7 +124,7 @@ export function registerObjectivesCommands(program: Command, io: ProgramIO): voi
           return;
         }
         if (shown.length === 0) {
-          io.stdout("No objectives.\n");
+          io.stdout('No objectives yet. Register one with `muse objectives add "watch the deploy until it is green"`.\n');
           return;
         }
         for (const o of shown) {

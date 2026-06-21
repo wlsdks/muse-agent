@@ -47,7 +47,7 @@ describe("muse objectives — CLI entry point to the delegated-autonomy chain", 
     expect(cancelled.stdout).toBe(`Cancelled ${id}\n`);
 
     // default --status active hides the cancelled one; --status all shows it
-    expect((await run(file, ["list"])).stdout).toBe("No objectives.\n");
+    expect((await run(file, ["list"])).stdout).toBe("No objectives yet. Register one with `muse objectives add \"watch the deploy until it is green\"`.\n");
     expect((await run(file, ["list", "--status", "all"])).stdout).toContain("[cancelled/until]");
   });
 
@@ -134,14 +134,14 @@ describe("muse objectives — CLI entry point to the delegated-autonomy chain", 
     const file = objFile();
     await run(file, ["add", "stark only", "--user", "stark"]);
     expect((await run(file, ["list", "--user", "stark"])).stdout).toContain("stark only");
-    expect((await run(file, ["list", "--user", "other"])).stdout).toBe("No objectives.\n");
+    expect((await run(file, ["list", "--user", "other"])).stdout).toBe("No objectives yet. Register one with `muse objectives add \"watch the deploy until it is green\"`.\n");
   });
 
   it("list --json emits a machine-readable envelope { objectives, status, total, user } — empty store returns total=0 + empty objectives (not the friendly stdout message)", async () => {
     const empty = objFile();
     const r1 = await run(empty, ["list", "--json"]);
     expect(r1.exitCode).toBeUndefined();
-    expect(r1.stdout, "json mode must NOT emit the human-readable empty-state line").not.toContain("No objectives.");
+    expect(r1.stdout, "json mode must NOT emit the human-readable empty-state line").not.toContain("No objectives yet");
     const parsedEmpty = JSON.parse(r1.stdout) as { objectives: unknown[]; status: string; total: number; user: string };
     expect(parsedEmpty.objectives).toEqual([]);
     expect(parsedEmpty.total).toBe(0);
