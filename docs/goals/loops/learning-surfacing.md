@@ -125,7 +125,7 @@ ratchet: testFiles +0 (chat-auto-memory.test +3) · @muse/cli 2890 green · lint
 - **리뷰지점**: `applyTurnLearnings`로 추출해 OUTCOME 테스트 가능(InMemory store), chat-ink 호출은 thin(fail-open 유지). 현재값=upsert後 store, 이전값=기록 supersession(no model). 기존 "remembered" 동작 보존(non-changed 키).
 - **리스크**: 없음 — refactor behavior-preserving, cli 2890 green, 독립 Opus ④b judge가 production-consumption+diff+dedup mutation+무회귀 재확인 PASS.
 
-## fire 14 · 2026-06-21 · skill v2.1.0 · pending
+## fire 14 · 2026-06-21 · skill v2.1.0 · 7f89e9aa
 meta: value-class=new-capability · pkg=@muse/cli · kind=recap-surface · verdict=PASS · firesSinceDrill=4 · firesSinceMainMerge=1
 ratchet: testFiles +0 (commands-recap.test +2) · @muse/cli 2892 green · lint clean · fabrication 0
 
