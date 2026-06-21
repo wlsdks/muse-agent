@@ -5,7 +5,7 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 58 · 2026-06-21 · skill v2.0 · <commit> (crates/runner: in-band truncation marker on run_command output — model SEES output was cut, not just a bool flag)
+## fire 58 · 2026-06-21 · skill v2.0 · 88021934 (crates/runner: in-band truncation marker on run_command output — model SEES output was cut, not just a bool flag)
 meta: value-class=new-capability(reliability-signal) · pkg=crates/runner · kind=runner/truncation-marker · verdict=PASS · firesSinceDrill=2
 ratchet: cargo tests +1(marks_only) +updated caps_output(형제) · fabrication 0 · crates/runner 15 cargo tests · lint 0/0 · ★박스 load~40 → cargo-only 검증(LLM eval·pnpm check 전부 timeout)
 - 무엇: 러너가 stdout/stderr를 max_output_bytes로 cap할 때 기존엔 `truncated: bool`만 신호 → 로컬 12B가 놓치고 잘린 로그를 전체로 읽음("tests passed"를 부분 실행에서 결론). 잘린 스트림에 self-labelled in-band 마커(`[muse: output truncated…]`) 추가(per-stream, 이미 계산된 stdout_truncated/stderr_truncated 사용) → 모델이 텍스트에서 부분임을 봄. bool 필드는 프로그램 소비자용으로 유지.
