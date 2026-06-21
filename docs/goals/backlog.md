@@ -2942,4 +2942,5 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ✓ muse spec / spec --json pre-framework fast path (0.5s→0.02s, ~20x; single-source via muse-spec.ts) — cli-excellence fire 18
 - ✓ grounded unknown-subcommand guidance (muse <group> <typo> → did-you-mean + real subcommand list, ~38 groups; fire-7 pattern extended) — cli-excellence fire 19
 - ✓ muse --help category grouping (ordered headings for daily-driver commands; commander14 helpGroup + group-order control) — cli-excellence fire 20
-- ◦ muse --help: categorize the long tail (~78 commands still under default "Commands:") into Automation/Integrations/Advanced/Diagnostics headings — extends fire 20 COMMAND_GROUPS. (cli-excellence)
+- ✓ muse --help long-tail categorization — done cli-excellence fire 21
+- ✓ muse --help long-tail categorization (5 more headings: Automation/Connections/Documents/Reports/Diagnostics; tail 74→14) — cli-excellence fire 21

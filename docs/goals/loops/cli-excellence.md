@@ -233,3 +233,14 @@ ratchet: info-projection(14-17)+perf(18)+error-guidance(19) → first-screen 전
 - **리스크**: 낮음. diff 3파일(2 신규 + program.ts 배선). 캐스트 1곳(주석 정당화). 부분 분류라 롱테일은 후속.
 - live: `muse --help` → Chat & ask(11)→Memory(32)→Planning(55)→Setup(73)→Commands:(90); 각 그룹 알파벳 정렬, 데일리 명령 상단.
 - 레퍼런스: gh CLI/git 카테고리화 help 관행; commander14 helpGroup API(node_modules 타입 확인, 코드 복붙 없음).
+
+## fire 21 · 2026-06-22 · skill v2.1.0 · ac05edae2
+meta: value-class=first-screen · pkg=@muse/cli · kind=first-screen · verdict=PASS · firesSinceDrill=2
+ratchet: first-screen 2/8(20,21<6 OK) · command-groups 5/5 + program.test 237 불변 · root-eslint 0 · raw-ESC 0
+
+- **무엇**: fire 20 그룹화 확장 — `muse --help` 롱테일(74개 still "Commands:" 벽)을 5개 추가 카테고리로 분류(Automation & agents · Connections · Documents & analysis · Reports & history · Diagnostics) + onboard을 Setup & status로 이동. 메커니즘 무변경, COMMAND_GROUPS **데이터만** 확장(applyCommandGroups가 임의 개수 처리). 꼬리 74→14(잔여는 meta/system: completion/config-path/export/import/logo/maintenance/open/pattern/persona/reflections/skills/specs/tui/user).
+- **왜**: fire 20이 핵심 29개만 그룹화 → 나머지 74개가 여전히 벽이라 첫화면 일관성 미완. 9개 헤딩으로 103개 명령 전부 항해 가능(gh식). 근거: 멤버 전부 LIVE 레지스트리에서만(89개 교차확인 fabrication 0, 그룹간 중복 0 — uniqueness 테스트 가드).
+- **리뷰지점**: 테스트가 helpInformation() 실 렌더의 9개 헤딩 순서 grade, mutation-first RED(disjoint rename→indexOf -1, COMMAND_GROUPS reverse→positions 비오름차순; superstring rename은 indexOf substring 한계지만 현실적 2 breakage class는 잡음). dispatch 무결성(spec/proactive --help/memory show 정상), program.test 237 불변. 독립 Opus ④b PASS(8/8).
+- **리스크**: 낮음. diff 2파일(데이터+테스트). 분류는 주관적이나 근거+유니크. 14개 meta는 정직히 Commands:.
+- live: `muse --help` → 9 헤딩 순서대로(Chat&ask 11→…→Diagnostics 229→Commands: 258), 꼬리 14, onboard→Setup&status.
+- 레퍼런스: gh CLI 카테고리 help; fire 20 메커니즘 재사용(코드 복붙 없음).
