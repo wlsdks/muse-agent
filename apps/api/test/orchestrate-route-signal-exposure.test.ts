@@ -108,6 +108,29 @@ describe("orchestrate routes expose the structured coordination signals (not onl
     }
   });
 
+  it("GET /orchestrations/:runId surfaces the PERSISTED conflicts from a past disagreeing run (history twin of the live signal)", async () => {
+    const app = Fastify();
+    registerMultiAgentRoutes(app, {
+      agentRuntime: disagreeingRuntime,
+      agentSpecRegistry: new InMemoryAgentSpecRegistry(DEFAULT_AGENT_SPECS),
+      defaultModel: "diagnostic",
+      embed
+    });
+    await app.ready();
+    try {
+      const post = await app.inject({ method: "POST", url: "/api/multi-agent/orchestrate", payload });
+      expect(post.statusCode).toBe(200);
+      const runId = (post.json() as { runId: string }).runId;
+      const get = await app.inject({ method: "GET", url: `/api/multi-agent/orchestrations/${runId}` });
+      expect(get.statusCode).toBe(200);
+      const body = get.json() as { conflicts?: readonly string[] };
+      expect(Array.isArray(body.conflicts)).toBe(true);
+      expect(body.conflicts!.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      await app.close();
+    }
+  });
+
   it("control: a clean run (no embed, no verify) exposes neither field — no empty noise", async () => {
     const app = Fastify();
     registerMultiAgentRoutes(app, {
