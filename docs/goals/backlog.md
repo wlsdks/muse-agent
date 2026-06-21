@@ -2944,3 +2944,5 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ✓ muse --help category grouping (ordered headings for daily-driver commands; commander14 helpGroup + group-order control) — cli-excellence fire 20
 - ✓ muse --help long-tail categorization — done cli-excellence fire 21
 - ✓ muse --help long-tail categorization (5 more headings: Automation/Connections/Documents/Reports/Diagnostics; tail 74→14) — cli-excellence fire 21
+- ✓ muse objectives list barren empty-state → action-bearing grounded next-action — cli-excellence fire 22
+- ◦ barren empty-state siblings: episode list / checkins list / commitments scan → action-bearing next-action (same class as fire 22, lower-traffic) (cli-excellence)
