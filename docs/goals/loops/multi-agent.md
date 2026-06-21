@@ -4,6 +4,23 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
+## fire 13 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (theme exhausted — 2nd; repoint still pending)
+meta: value-class=none(no-ship) · pkg=none · kind=theme-exhaustion · verdict=NO-SHIP · firesSinceDrill=1
+ratchet: testFiles +0 · fabrication 0 · self-eval green (regression sentinel held) · no source
+
+**What** — ⓪ sync + self-eval (green, no regression). Re-checked the remaining candidates against value-first:
+all confirmed deferred-class/redundant — coordinationHealthy EXPOSURE is redundant (a `DecomposedAskResult`
+consumer already has all 4 input signals → can derive it; the fire-12 judge's "unconsumed convenience" note
+is real but low marginal value); council cross-lingual is calibration-heavy + the loop already uses semantic
+consensus; FM-2.6 semantic-harden doesn't fix the transform-type FP; god-file surfacings are untestable.
+No clean high-value single-fire slice. (Full assessment: fire 11.)
+
+lesson: 2nd honest no-ship on a confirmed-mature theme (fire 11 was the 1st; fire 12 was the mandatory drill).
+The loop is now in regression-sentinel mode (⓪ self-eval + ⑤c merge-retry) rather than producing new value.
+This is the DEGENERATE-LOOP signal: a mature theme with no repoint produces near-empty fires. ★STRONGLY
+RECOMMEND 진안 repoint cron `972211ed` to a fresh axis (3rd surfacing) OR stop it (`CronDelete 972211ed`) —
+continuing on this theme will keep no-shipping. Surfaced async; per ⑥ the loop does not block or self-repoint.
+
 ## fire 12 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · 75950bde — ★JUDGE-DRILL
 meta: value-class=judge-drill+small-capability · pkg=@muse/multi-agent · kind=verifier-calibration-drill · verdict=PASS · firesSinceDrill=0 (RESET by drill)
 ratchet: testFiles +0 · fabrication 0 · eval:orchestration/decomposition PASS · DRILL FIRED (firesSinceDrill hit 10) · drill outcome: verifier CALIBRATED
