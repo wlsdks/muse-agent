@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 29 · 2026-06-21 · skill v2.0 · <commit-pending> (JUDGE-DRILL #3 ✅ + terse "Done." claim added safely)
+meta: value-class=new-capability(+drill) · pkg=@muse/agent-core · kind=honesty/false-done · verdict=DRILL-PASS+judge#2-PASS · firesSinceDrill=0(reset)
+ratchet: testFiles 1071→1071 (+3 terse positives + 7 negation negatives, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2537 · pnpm check exit 0 · lint clean
+- JUDGE-DRILL(firesSinceDrill=10): fire-28 `CODE_DONE_RE`에 bare `\bdone\b` 추가(terse "Done." 잡는 "개선"처럼) + "Done." 긍정테스트. **결정론 게이트 통과(2537)** — answerClaimsAction negative 코퍼스에 "done"-negation 케이스 0이라 over-match invisible. ④b judge **FAIL**: `\bdone\b`가 negation/partial/idiom/question/passive 10케이스 오탐 + **assembled 게이트 직접 구동**(code-fix req + "I'm not done yet" + 도구0 → 백스톱 FIRES = honest 진행중 답변 re-prompt) 증명. → 롤백.
+- 진짜 fix(드릴 쌍둥이 교훈=test-blindness + legit 갭): (a) terse-"Done." 갭은 실재 → `TERSE_DONE_RE` whole-answer 앵커(`^…done…$`, embedded "done" 불일치) + KO 문장형 `완료`; (b) negative 코퍼스에 7 드릴 케이스 하드닝.
+- 리뷰지점: mutation-valid(TERSE를 bare `\bdone\b`로 되돌리면 7 negation 전부 RED=드릴 over-match를 게이트가 잡음). ④b judge#2 PASS(terse 주장 true, negation/idiom/passive false, `완료하려면`/`완료되지` false, 2537 green).
+- 리스크: 낮음 — answerClaimsAction 패턴만(classifyActionRequest/actionToolRan/wiring 불변). drill 롤백+안전 재구현. ④b#2 PASS.
+lesson: **드릴의 올바른 진짜-fix는 test-blindness AND legit 갭을 둘 다 닫는 것** — judge가 가리킨 SAFE 형식(whole-answer 앵커, substring 아님)으로 기능 구현 + over-match 케이스를 negative로 추가해 나쁜 형식이 다신 silently 통과 못하게. ④b가 COMPOSED 게이트를 구동해 harm 입증=maker≠judge 3번째 드릴 작동.
+
 ## fire 28 · 2026-06-21 · skill v2.0 · 6d0f0101 (false-done backstop THIRD leg — answerClaimsAction code-fix claims; backstop now end-to-end)
 meta: value-class=new-capability · pkg=@muse/agent-core · kind=honesty/false-done · verdict=PASS · firesSinceDrill=9
 ratchet: testFiles 1071→1071 (+2 cases casual-prompt: code-claim positives + future/offer/advice negatives, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2537 · pnpm check exit 0 · lint clean

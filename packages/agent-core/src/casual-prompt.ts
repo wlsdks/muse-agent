@@ -194,7 +194,17 @@ const ACTION_OFFER_RE = /(추가|등록|설정|예약|맞춰|잡아|넣어?|만�
 // "I <verb-past>". This only fires when the request was already an action
 // request (the callers AND-gate it), so it stays scoped to real code-fix turns.
 const CODE_DONE_RE =
-  /\bi(?:'ve|'d| have| had)?\s+(?:just\s+|already\s+|now\s+|successfully\s+)?(?:fixed|edited|updated|modified|changed|refactored|renamed|implemented|patched|corrected|rewrote|rewritten|written|replaced|created|added|removed|deleted|appended|inserted)\b|(?:수정|편집|변경|구현|리팩터|작성|교체|반영)(?:했|됐|되었|함)|고쳤|고침/iu;
+  /\bi(?:'ve|'d| have| had)?\s+(?:just\s+|already\s+|now\s+|successfully\s+)?(?:fixed|edited|updated|modified|changed|refactored|renamed|implemented|patched|corrected|rewrote|rewritten|written|replaced|created|added|removed|deleted|appended|inserted)\b|(?:수정|편집|변경|구현|리팩터|작성|교체|반영|완료)(?:했|됐|되었|함)|고쳤|고침/iu;
+
+// A TERSE completion claim — the whole answer is just "Done." / "All done!" /
+// "완료". WHOLE-ANSWER ANCHORED (`^…$`), NOT a bare `\bdone\b`: "done" is a
+// high-frequency word whose non-completion senses (negation "I'm not done yet",
+// partial "almost done", idiom "well done", question "are you done?", passive
+// "done automatically by the framework") would otherwise be misread as a false
+// claim and wrongly re-prompt an HONEST in-progress answer. The anchor admits
+// only the terse-claim case. (JUDGE-DRILL #3 caught the `\bdone\b` substring
+// form; this is the safe formulation it pointed to.)
+const TERSE_DONE_RE = /^\s*(?:all\s+)?(?:done|완료(?:했|됐|되었|함)?)\s*[.!…]*\s*$/iu;
 
 /** True when the answer CLAIMS it performed / will perform a tool action — EN or KO. NOT a mere offer ("…할까요?"). */
 export function answerClaimsAction(answer: string): boolean {
@@ -202,6 +212,9 @@ export function answerClaimsAction(answer: string): boolean {
     return false;
   }
   if (ACTION_PROMISE_RE.test(answer)) {
+    return true;
+  }
+  if (TERSE_DONE_RE.test(answer)) {
     return true;
   }
   if (CODE_DONE_RE.test(answer)) {

@@ -300,6 +300,11 @@ describe("answerClaimsAction — the answer CLAIMS a tool action was done, KO + 
       "I've edited the add function to return a + b.",
       "I updated README.md as requested.",
       "Done — I changed the return value.",
+      // TERSE whole-answer claims (anchored, not a bare \bdone\b substring).
+      "Done.",
+      "Done!",
+      "All done.",
+      "완료했습니다.",
       "수정했습니다.",
       "add.ts의 버그를 고쳤어요.",
       "함수를 편집했어요."
@@ -317,7 +322,18 @@ describe("answerClaimsAction — the answer CLAIMS a tool action was done, KO + 
       "To fix this, change the return value in add.ts.",
       "The add function returns the wrong value.",
       "버그를 고치려면 add.ts를 수정하세요.",
-      "수정할까요?"
+      "수정할까요?",
+      // "done" NON-completion senses — negation / partial / idiom / question /
+      // passive. A bare `\bdone\b` would wrongly flag these (JUDGE-DRILL #3); the
+      // whole-answer anchor must leave them FALSE so an honest in-progress answer
+      // on a code-fix turn is not re-prompted as a false done.
+      "I'm not done yet.",
+      "I'm almost done — still tracing the bug.",
+      "This isn't done.",
+      "I'm done looking, but I haven't fixed it yet.",
+      "well done!",
+      "are you done?",
+      "the migration is done automatically by the framework"
     ]) {
       expect(answerClaimsAction(a), a).toBe(false);
     }
