@@ -612,7 +612,7 @@ ratchet: web tests 104/104 (+3) · fabrication 0 · self-eval exit 0 · check ex
 - **리스크**: 없음(apps/web 5파일, web build tsc+vite·web 104/104·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 빈목록-정직불변식·effective사용·읽기전용·다양성·mutation 검증 후 PASS).
 - **merge-to-main 메모**: fire 66 ⑤c가 flaky `@muse/model web-search-policy` property-fuzz(격리 2/3 통과=비결정적) + saturation 타임아웃에 막혀 deferred. fires 61-66 브랜치 안전, fire 69 윈도우 재시도.
 
-## fire 67 · 2026-06-21 · skill v2.0.0 · <pending>
+## fire 67 · 2026-06-21 · skill v2.0.0 · 668c4df5
 meta: surface=api · value-class=new-capability · pkg=@muse/api · kind=settings-daemon-flags-api · verdict=PASS · firesSinceDrill=6
 ratchet: api 932/932 · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 52/0 · lint clean · ★다양성 RATCHET 강제 전환(web-view 5/8→api-read)
 
