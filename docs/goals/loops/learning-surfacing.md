@@ -13,7 +13,7 @@ ratchet: testFiles +1 (recently-learned.test.ts, 6 cases) · @muse/memory 41 fil
 - **리뷰지점**: 순수함수(store 미변경). 출처 문자열은 항목 자신의 `previousValue`+`replacedAt`에서만 파생(오귀속 불가). `currentValue` undefined = 학습 후 forget된 fact(표면이 스킵 처리). surfaces 루프와 파일 0겹침(@muse/memory leaf).
 - **리스크**: 없음 — additive leaf + 단일 export, 전체 빌드+memory 505 green, 독립 Opus ④b judge가 4 mutation 직접 재확인 PASS. 다음 fire 후보: CLI `muse memory`/`muse status`가 이 투영을 소비해 실제 표면화(같은 결정론+인용 불변식 유지).
 
-## fire 2 · 2026-06-21 · skill v2.1.0 · pending
+## fire 2 · 2026-06-21 · skill v2.1.0 · 26770607
 meta: value-class=new-capability · pkg=@muse/memory · kind=learned-render · verdict=PASS · firesSinceDrill=2 · firesSinceMainMerge=2
 ratchet: testFiles +0 (same file +4 cases) · @muse/memory 41 files/513 tests green · lint clean · fabrication 0
 
