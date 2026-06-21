@@ -5,7 +5,7 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 52 · 2026-06-21 · skill v2.0 · <commit> (★MILESTONE validated: BOTH hard multi-step evals now PASS — theme goal achieved; consolidation + next-direction)
+## fire 52 · 2026-06-21 · skill v2.0 · e9a8a3a0 (★MILESTONE validated: BOTH hard multi-step evals now PASS — theme goal achieved; consolidation + next-direction)
 meta: value-class=measure(milestone-validation) · pkg=docs(validation) · kind=outcome-validation · verdict=N/A · firesSinceDrill=6
 ratchet: testFiles unchanged · fabrication 0 · self-eval green · ★eval:multifile-fix PASS · ★eval:edit-run-verify PASS(fire 52, model-ran-test=true) · eval:computer-task PASS · Ollama UP
 - 검증: edit-run-verify 재측정 PASS(test-passes=true, model-ran-test=true, tools=[run_command,file_read,file_grep,file_edit]) — **fire 51 exposure reserve가 OUTCOME으로 확증**(run_command이 이제 노출+사용됨; trace: run_command→TEST FAIL→read→edit→verify). fire 51의 미확정 OUTCOME이 이번에 확정.
