@@ -172,6 +172,12 @@ interface HumanMemoryRecord {
    * populated factHistory (the local/file path), absent on the server path.
    */
   readonly recentlyLearned?: readonly string[];
+  /**
+   * The FORGETS half: keys you had Muse forget at your correction
+   * (from selectRecentlyForgotten over the recorded retraction markers), each
+   * cited by the date. Present only on the local path; absent on the server path.
+   */
+  readonly recentlyForgotten?: readonly string[];
 }
 
 export function formatMemoryShow(record: HumanMemoryRecord | undefined | null): string {
@@ -210,6 +216,12 @@ export function formatMemoryShow(record: HumanMemoryRecord | undefined | null): 
   if (record.recentlyLearned && record.recentlyLearned.length > 0) {
     lines.push("  Recently learned about you:");
     for (const line of record.recentlyLearned) {
+      lines.push(`    - ${line}`);
+    }
+  }
+  if (record.recentlyForgotten && record.recentlyForgotten.length > 0) {
+    lines.push("  Forgotten at your correction:");
+    for (const line of record.recentlyForgotten) {
       lines.push(`    - ${line}`);
     }
   }

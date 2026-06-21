@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { readRagStatus, readRecentlyLearnedLine, readTokenCostToday, resolveStatusWatchIntervalMs, suggestPatternHints } from "./commands-status.js";
+import { readRagStatus, readRecentlyForgottenLine, readRecentlyLearnedLine, readTokenCostToday, resolveStatusWatchIntervalMs, suggestPatternHints } from "./commands-status.js";
 
 function tmpFile(name: string, contents: string): string {
   const dir = mkdtempSync(join(tmpdir(), "muse-status-"));
@@ -81,6 +81,33 @@ describe("readRecentlyLearnedLine", () => {
     });
     const nowMs = new Date("2026-06-25T00:00:00.000Z").getTime(); // role (Jan) is >30 days old, home_city (Jun 20) is in-window
     expect(await readRecentlyLearnedLine(p, "stark", nowMs)).toBe('home city: Busan (changed from "Seoul" on 2026-06-20)');
+  });
+});
+
+describe("readRecentlyForgottenLine (the FORGETS half, compact)", () => {
+  function provFile(entries: readonly unknown[]): string {
+    return tmpFile("belief-provenance.json", JSON.stringify({ entries }));
+  }
+
+  it("returns undefined when the provenance store is missing or has no retractions", async () => {
+    expect(await readRecentlyForgottenLine(join(tmpdir(), "no-such-prov.json"))).toBeUndefined();
+    const p = provFile([{ userId: "stark", key: "home_city", kind: "fact", value: "Busan", learnedAt: "2026-06-20T00:00:00.000Z" }]);
+    expect(await readRecentlyForgottenLine(p, new Date("2026-06-21T00:00:00.000Z").getTime())).toBeUndefined();
+  });
+
+  it("surfaces the most recent forgotten key with a (+N more) count, cited by date", async () => {
+    const p = provFile([
+      { userId: "stark", key: "old_employer", kind: "fact", value: "", learnedAt: "2026-06-19T00:00:00.000Z", retraction: true },
+      { userId: "stark", key: "commute_mode", kind: "fact", value: "", learnedAt: "2026-06-18T00:00:00.000Z", retraction: true }
+    ]);
+    const nowMs = new Date("2026-06-21T00:00:00.000Z").getTime();
+    expect(await readRecentlyForgottenLine(p, nowMs)).toBe("old employer (forgotten 2026-06-19) (+1 more)");
+  });
+
+  it("drops a retraction older than the 30-day window so status stays truthfully 'recent'", async () => {
+    const p = provFile([{ userId: "stark", key: "old_employer", kind: "fact", value: "", learnedAt: "2026-01-01T00:00:00.000Z", retraction: true }]);
+    const nowMs = new Date("2026-06-21T00:00:00.000Z").getTime();
+    expect(await readRecentlyForgottenLine(p, nowMs)).toBeUndefined();
   });
 });
 

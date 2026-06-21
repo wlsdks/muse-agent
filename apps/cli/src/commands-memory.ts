@@ -22,7 +22,7 @@
 import { readFile } from "node:fs/promises";
 
 import { isMemoryInjection } from "@muse/agent-core";
-import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, projectRecentlyLearned, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
+import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, keysWithActiveRetraction, normalizeMemoryKey, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/mcp";
 import type { Command } from "commander";
@@ -178,10 +178,21 @@ export function formatConsolidationPlan(plan: ConsolidationPlan): string {
 }
 
 export function formatBeliefWhy(
-  records: ReadonlyArray<{ readonly kind: string; readonly key: string; readonly value: string; readonly learnedAt: string; readonly evidenceExcerpt?: string; readonly sessionId?: string; readonly source?: "auto" | "user" }>,
+  records: ReadonlyArray<{ readonly kind: string; readonly key: string; readonly value: string; readonly learnedAt: string; readonly evidenceExcerpt?: string; readonly sessionId?: string; readonly source?: "auto" | "user"; readonly retraction?: boolean }>,
   key: string,
   nowMs: number = Date.now()
 ): string {
+  // If you had me FORGET this key, say so — never resurface the stale pre-forget
+  // value as if Muse still holds it. deriveFactProvenance excludes retraction
+  // markers, so the prov below would otherwise rebuild the dropped fact and the
+  // "show your work" surface would lie about a fact you deleted.
+  if (keysWithActiveRetraction(records as unknown as readonly BeliefProvenance[]).has(key)) {
+    const forgottenAt = [...records]
+      .filter((r) => r.key === key && r.retraction === true)
+      .sort((a, b) => Date.parse(b.learnedAt) - Date.parse(a.learnedAt))[0]?.learnedAt;
+    const when = forgottenAt ? ` on ${forgottenAt.slice(0, 10)}` : "";
+    return `(you had me forget "${key}"${when} — I no longer hold it)\n`;
+  }
   const prov = deriveFactProvenance(records as unknown as readonly BeliefProvenance[]).find((p) => p.key === key);
   if (!prov) {
     return `(no recorded provenance for "${key}" — learned before provenance tracking, or not remembered)\n`;
@@ -227,15 +238,25 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
       const readLocalMemory = async (): Promise<Record<string, unknown>> => {
         const store = new FileUserMemoryStore();
         const memoryRecord = await store.findByUserId(userId);
-        return memoryRecord
-          ? {
-              facts: memoryRecord.facts,
-              preferences: memoryRecord.preferences,
-              recentTopics: memoryRecord.recentTopics,
-              recentlyLearned: renderRecentlyLearnedLines(projectRecentlyLearned(memoryRecord)),
-              updatedAt: memoryRecord.updatedAt.toISOString()
-            }
-          : { facts: {}, preferences: {}, recentTopics: [] };
+        if (!memoryRecord) {
+          return { facts: {}, preferences: {}, recentTopics: [] };
+        }
+        // The FORGETS half: keys you had Muse forget (recorded retraction markers),
+        // so the canonical "what I know about you" surface is honest both ways.
+        const recentlyForgotten: string[] = [];
+        try {
+          for (const g of selectRecentlyForgotten(await readBeliefProvenance(defaultBeliefProvenanceFile()), { now: Date.now(), withinDays: 365 })) {
+            recentlyForgotten.push(`${g.key.replace(/_/gu, " ")} (forgotten ${g.forgottenAt.slice(0, 10)})`);
+          }
+        } catch { /* no provenance log — the learned half stands on its own */ }
+        return {
+          facts: memoryRecord.facts,
+          preferences: memoryRecord.preferences,
+          recentTopics: memoryRecord.recentTopics,
+          recentlyLearned: renderRecentlyLearnedLines(projectRecentlyLearned(memoryRecord)),
+          ...(recentlyForgotten.length > 0 ? { recentlyForgotten } : {}),
+          updatedAt: memoryRecord.updatedAt.toISOString()
+        };
       };
       let payload: Record<string, unknown> | undefined;
       if (options.local) {
@@ -360,7 +381,7 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
         helpers.writeOutput(io, records);
         return;
       }
-      io.stdout(formatBeliefWhy(records, key));
+      io.stdout(formatBeliefWhy(records, normalizeMemoryKey(key)));
     });
 
   memory
