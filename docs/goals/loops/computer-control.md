@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 36 · 2026-06-21 · skill v2.0 · <commit-pending> (char-cap reads page cleanly — resolves fire-35 finding; 3-fire merge)
+## fire 36 · 2026-06-21 · skill v2.0 · 07c04e0d (char-cap reads page cleanly — resolves fire-35 finding; 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/fs · kind=reliability/paging · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles 1072→1072 (+2 cases fs-read-tools: char-cap trim + round-trip; 1 rewritten, mutation-valid) · fabrication 0 · @muse/fs 격리 172 · pnpm check exit 0 · lint clean · Ollama DOWN
 - 무엇: char-cap(maxTextChars 초과 mid-line cut)이 nextOffset을 clear해 모델이 페이징 못함(fire-35 64K cap이 자주 트리거). FIX: char-cap이 trailing partial line을 line-boundary로 TRIM + `nextOffset = start + completeLines + 1`(completeLines=capped의 newline 수=보수적, 경계 라인은 full re-read). 단일 거대 라인(newline 없음)은 nextOffset undefined(라인 페이징 불가).
