@@ -631,7 +631,7 @@ ratchet: web tests 107/107 (+3) · fabrication 0 · self-eval exit 0 · check ex
 - **리스크**: 없음(apps/web 5파일, web build tsc+vite·web 107/107·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 카운트정합·기존뷰무손상·읽기전용·i18n·다양성·mutation 검증 후 PASS).
 - **드릴 예고**: fire 69 = firesSinceDrill 8(연속 allPASS≥8 트리거) + 3배수 merge-to-main 윈도우 → fire 69는 JUDGE-DRILL(고의 나쁜-슬라이스→FAIL확인→롤백→진짜fix) + fires 61-69 main 배치. fire 66 deferred merge도 그때 재시도.
 
-## fire 69 · 2026-06-21 · skill v2.0.0 · <pending> · ★JUDGE-DRILL
+## fire 69 · 2026-06-21 · skill v2.0.0 · c5bf5484 · ★JUDGE-DRILL
 meta: surface=api · value-class=new-capability · pkg=@muse/api · kind=self-improve-reflections-api+judge-drill · verdict=PASS · firesSinceDrill=0 (reset)
 ratchet: api 942/942 · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 52/0 · lint clean · ★verifier 신뢰성 입증(inert→FAIL, real→PASS)
 
