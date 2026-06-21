@@ -141,3 +141,15 @@ ratchet: 변경연관 테스트만(발열정책) · commands-notes-rag 43/43(파
 - live: `node dist/index.js notes reindex --dir <3 notes>` → `[1/3] + …a.md` `[2/3] + …b.md` `[3/3] + …c.md` `Done. 3 embedded`.
 - lesson: 출력 형식을 바꾸면 **그 출력을 assert하는 모든 테스트를 grep**(startsWith/toContain)해 형제까지 같은 fire에 고쳐야 한다 — 좁은 `-t` 한 테스트만 돌리면 cross-file 형제 회귀를 놓친다(judge가 풀-파일 실행으로 잡음). 형제-감사 = src뿐 아니라 그 출력 assert 테스트까지.
 - 레퍼런스: 진행 표기 `[i/N]`(npm/pip/lazygit식 위치 카운터). https://github.com/jesseduffield/lazygit
+
+## fire 13 · 2026-06-22 · skill v2.1.0 · 40afdeec
+meta: value-class=first-screen · pkg=@muse/cli · kind=first-screen · verdict=PASS · firesSinceDrill=3
+ratchet: 변경연관 테스트만(발열정책) · program-help 정렬테스트 1 green · lint 0 · fabrication 0
+
+- **무엇**: `muse --help`의 ~80 명령이 insertion 순서라 스캔 불가 → `configureHelp({sortSubcommands,sortOptions})`로 알파벳 정렬. 첫 글자로 명령 찾기 가능. 하단 quickstart는 데일리-드라이버 강조 유지. display-only(명령 추가/삭제/리네임 없음, dispatch 불변).
+- **왜**: 발견성(②/① 첫화면). gh/docker는 정렬/그룹; insertion-order 80개는 벽. 정렬은 commander-native 단일 fire win(그룹화는 더 큰 작업 → 후속).
+- **리뷰지점**: 테스트가 실제 outputHelp 순서 grade(chat<spec는 chat이 spec 뒤 등록이라 정렬 시에만 성립 → 우연 아님), mutation-first RED(configureHelp 제거→insertion→fail). 라이브 `--help` Commands가 A-정렬(actions/agent-notices/agents/analytics…). 형제-감사: 명령 insertion-순서 assert 테스트 없음(chat-ink /help는 별 surface). Did-you-mean 경로 무관. 독립 Opus ④b PASS(6/6).
+- **리스크**: 낮음. diff 2파일. 다양성: first-screen kind.
+- live: `node dist/index.js --help` Commands 섹션 알파벳순.
+- ◦ FOLLOW-UP(backlog): 80 명령 카테고리 그룹화(gh식 CORE/…)는 commander helpGroup(13+)로 가능하나 큰 큐레이션 → decompose 필요.
+- 레퍼런스: gh/docker 명령 그룹·정렬 관행. https://cli.github.com/manual/
