@@ -5,6 +5,15 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 58 · 2026-06-21 · skill v2.0 · <commit> (crates/runner: in-band truncation marker on run_command output — model SEES output was cut, not just a bool flag)
+meta: value-class=new-capability(reliability-signal) · pkg=crates/runner · kind=runner/truncation-marker · verdict=PASS · firesSinceDrill=2
+ratchet: cargo tests +1(marks_only) +updated caps_output(형제) · fabrication 0 · crates/runner 15 cargo tests · lint 0/0 · ★박스 load~40 → cargo-only 검증(LLM eval·pnpm check 전부 timeout)
+- 무엇: 러너가 stdout/stderr를 max_output_bytes로 cap할 때 기존엔 `truncated: bool`만 신호 → 로컬 12B가 놓치고 잘린 로그를 전체로 읽음("tests passed"를 부분 실행에서 결론). 잘린 스트림에 self-labelled in-band 마커(`[muse: output truncated…]`) 추가(per-stream, 이미 계산된 stdout_truncated/stderr_truncated 사용) → 모델이 텍스트에서 부분임을 봄. bool 필드는 프로그램 소비자용으로 유지.
+- 왜: run_command 출력 신호 = 멀티스텝 verify 단계 신뢰성. ★박스 load~40(10+ 동시루프)로 LLM eval·pnpm check·full vitest 전부 timeout → cargo-검증 가능한 Rust 슬라이스만 이 fire에 가능. fire-57도 runner지만 distinct kind(truncation-SIGNAL vs utf8-ENCODING). reflection-guard 무관(retry 아님).
+- 리뷰지점: cargo 15 pass, OUTCOME 통합테스트(실제 bash 200KB→1024 cap→마커 등장), mutation(mark no-op→마커 테스트 2개 RED). no-regression 앵커=large_output(미truncated→마커 없음, 정확 200000). 독립 Opus ④b judge가 TS소비자 추적(capTruncated 안 깨짐, TS는 fake invoke)·per-stream 배선·contract-pollution(self-labelled 수용)·cap-overage(마커 ~110B 메타, 수용)·diversity 검증 → VERDICT PASS.
+- 리스크: 마커가 stdout "raw output" 계약을 약간 변경(self-labelled로 완화, bool 유지). model이 작은 cap 설정 시 마커가 잘릴 수 있으나 capTruncated가 true 유지(무해). fire 58은 ×3 아님 → main 머지 없음. ⑤c[55/56/57]는 여전히 load~40로 보류(fire 60 재시도).
+lesson: 박스 극포화(load 40)에서도 cargo-verifiable Rust 슬라이스는 진행 가능(vitest 5000ms 벽 없음) — 환경이 LLM/TS 검증을 막아도 fire를 헛돌리지 않는 길. 단 출력-계약 변경은 형제 테스트(exact-len pin) 동시 갱신 필수.
+
 ## fire 57 · 2026-06-21 · skill v2.0 · 589a2272 (crates/runner: trim split multibyte char on truncated run_command output — clean UTF-8, no U+FFFD)
 meta: value-class=correctness(output-integrity) · pkg=crates/runner · kind=runner/utf8-truncation · verdict=PASS · firesSinceDrill=1
 ratchet: cargo tests +2(split-char trim, complete-tail intact) · fabrication 0 · crates/runner 14 cargo tests · lint 0/0 · ★eval e2e 박스포화로 미측정(reverify-fix 또 timeout)

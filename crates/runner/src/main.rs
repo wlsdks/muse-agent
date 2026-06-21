@@ -152,12 +152,29 @@ fn run_request(request: RunnerRequest) -> RunnerResponse {
     RunnerResponse {
         ok: status.map(|status| status.success()).unwrap_or(false) && !timed_out,
         status: status.and_then(|status| status.code()),
-        stdout,
-        stderr,
+        // Append an in-band marker to a stream that was cut. The `truncated` bool
+        // alone is easily missed by the local model — which then reads a CUT log
+        // as the whole thing and concludes wrongly ("tests passed" off a partial
+        // run). The marker is self-labelled (`[muse: …]`) so it can't be confused
+        // with program output, and the bool stays for programmatic consumers.
+        stdout: mark_if_truncated(stdout, stdout_truncated),
+        stderr: mark_if_truncated(stderr, stderr_truncated),
         timed_out,
         truncated: stdout_truncated || stderr_truncated,
         error: if timed_out { Some(describe_timeout(timeout.as_millis())) } else { None },
     }
+}
+
+/// Self-labelled marker appended to a captured stream that was truncated at the
+/// capture limit, so the model SEES in the text that output is partial.
+const OUTPUT_TRUNCATION_MARKER: &str =
+    "\n[muse: output truncated at the capture limit — re-run a narrower command or raise max_output_bytes to see the rest]";
+
+fn mark_if_truncated(mut text: String, truncated: bool) -> String {
+    if truncated {
+        text.push_str(OUTPUT_TRUNCATION_MARKER);
+    }
+    text
 }
 
 /// Read a child pipe to EOF on its own thread, retaining at most
@@ -390,8 +407,20 @@ mod tests {
 
         assert!(!response.timed_out);
         assert!(response.ok);
-        assert_eq!(response.stdout.len(), 1024, "output is capped at max_output_bytes");
+        // stdout is the capped 1024 bytes of program output PLUS the self-labelled
+        // in-band truncation marker (the capped content itself is unchanged).
+        assert!(response.stdout.starts_with(&"a".repeat(1024)), "the capped program output is preserved");
+        assert!(response.stdout.contains("[muse: output truncated"), "a truncated stream carries the in-band marker");
+        assert_eq!(response.stdout.len(), 1024 + OUTPUT_TRUNCATION_MARKER.len());
         assert!(response.truncated);
+    }
+
+    #[test]
+    fn marks_only_a_truncated_stream() {
+        assert_eq!(mark_if_truncated("ok".to_string(), false), "ok");
+        let marked = mark_if_truncated("ok".to_string(), true);
+        assert!(marked.starts_with("ok"));
+        assert!(marked.contains("[muse: output truncated"));
     }
 
     #[test]
