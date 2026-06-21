@@ -102,3 +102,14 @@ ratchet: @muse/agent-core FRESH (fires 1-9 미접촉) · fabrication 0 · defaul
 - 리스크: 낮음 — opt-in 기본-off → 정확성 회귀 0 by construction. logprobs는 관측전용(생성 토큰 불변). dead-layer? round-trip 완결+오늘 summarizeTokenConfidence로 소비가능+분해된 prerequisite(fire 3/5 substrate 선례) → ④ judge가 ACCEPTABLE 명시(filler 아님, 실제 prerequisite 갭 닫음).
   검증: agent-core 2571 pass(신규 3 round-trip OUTCOME — captureProvider로 request.logprobs + response.logprobs + meanLogprob≈-0.3 채점) · MUTATION-FIRST(헬퍼 게이트 반전 → 3/3 RED 기본-off byte-identical 가드 포함; revert→green) · pnpm check rc=0(agent-core 2571 + api 888 + cli 2878) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(자체 mutation 재현·양seam 완전성 감사·byte-identical airtight 확인·dead-layer crux ACCEPTABLE 판정·결함 0).
   decompose: C2b-plumbing DONE(이 fire); C2b-wiring(runCascade를 ask --tiered/orchestration에 실연결) + C3(live eval) backlog 잔존.
+
+## fire 11 · 2026-06-21 · local-speed · <commit>
+meta: value-class=new-capability · pkg=apps/api · kind=cascade-live-wiring · verdict=PASS · firesSinceDrill=2
+ratchet: apps/api FRESH (fires 1-10 미접촉) · fabrication 0 · default(env off) plan byte-identical
+- 무엇: FrugalGPT(arXiv:2305.05176) cascade를 멀티에이전트 오케스트레이션에 LIVE 배선. `createCascadeWorker`(apps/api multi-agent-routes.ts)가 fire 5(runCascade)+fire 10(agent-run logprobs)+summarizeTokenConfidence를 다리: FAST-분류 워커가 fast 모델을 `logprobs:true`로 실행→confidence 채점→낮으면 heavy로 ONCE escalate(바운드). `buildTieredOrchestration`에 `MUSE_TIERED_CASCADE` opt-in 배선(기본 off → plan byte-identical).
+- 왜: fire 3(decision)·5(execution primitive)·10(logprobs plumbing)이 깐 prerequisite를 실제 소비 = cascade가 드디어 LIVE. runCascade의 dead-layer 상태 해소. confident lookup은 fast만 치름(지연 win), weak fast 답은 heavy로 업그레이드(정확성 POSITIVE — fire 9 드릴의 나쁜 슬라이스와 정반대).
+- 리뷰지점: 진짜 배선(buildTieredOrchestration→createCascadeWorker, env set+fast tier+!collapsed일 때만), opt-in 기본-off(plan byte-identical, "OFF by default" 테스트가 fast 1회·logprobs 없음·escalate 없음 pin), grounding 계약 보존(spec.systemPrompt를 prependSystem으로 유지 — drill 나쁜슬라이스처럼 드롭 안 함), 바운드(runCascade 최대 2 콜), collapsedToHeavy면 cascade skip.
+- 리스크: 낮음 — opt-in 기본-off → 정확성 회귀 0; on이면 weak 답 업그레이드(floor 강화). logprobs 관측전용.
+  검증: apps/api 892 pass(신규 4 OUTCOME — confidenceRuntime로 escalate[fast,heavy]·keep[fast]·logprobs:true·OFF-default 채점) · MUTATION-FIRST 2종(confidenceOf→()=>0 escalation RED; gate→true OFF-default RED; revert→green) · pnpm check rc=0 후 web-search-policy property-fuzz flake만(isolated 384/384, fires 6/8 동일 클래스, 내 변경 무관) + 내 패키지 다 green · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(양 mutation 재현·cascade LIVE 확인·floor 강화 확인·NUL fix 정당 판정·결함 0).
+  발견+수정(별도 커밋): packages/memory/src/recently-learned.ts가 raw NUL(\x00) 구분자 3개로 byte-hygiene 게이트 깨뜨림(learning-surfacing fire 11 6df61b98가 origin/main에 올림 → 머지로 유입, 전 루프의 pnpm check 블록). \x00 escape로 치환(런타임 NUL 동일, 소스만 escape) → 공유 게이트 언블록. [별도 fix(memory) 커밋]
+  decompose: C2b-wiring(orchestration) DONE; ask --tiered single-query path 배선 + C3(live eval) backlog 잔존.

@@ -2402,12 +2402,13 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   back via `AgentRunResult.response.logprobs`. So an AGENT run can now be confidence-scored
   (`summarizeTokenConfidence`) — the prerequisite the agent path lacked (the direct ask path at
   commands-ask.ts:2870 already had logprobs). REMAINING:
-  · **C2b-wiring** — the consumer: build the injected `run`/`confidenceOf` (run = a tiered agent/provider
-  call with `logprobs:true`; confidenceOf = `summarizeTokenConfidence(res.logprobs).meanLogprob`) and call
-  `runCascade` from `muse ask --tiered` and/or buildTieredOrchestration's per-worker run. >1 fire (touches
-  the live ask/orchestration loop). Verify with C3.
-  · **C3 (live eval)** — use `bench:local` (fire 1) for the latency win + accuracy parity: cascade vs
-  always-heavy on a mixed easy/hard set; assert faster mean latency AND no grounding/answer regression.
+  · **C2b-wiring — DONE fire 11** `createCascadeWorker` (apps/api) bridges runCascade(5) + agent-run
+  logprobs(10) + summarizeTokenConfidence: a FAST-classified worker runs the fast model with `logprobs:true`,
+  scores confidence, and escalates ONCE to heavy on low/unmeasurable confidence. Wired OPT-IN into
+  `buildTieredOrchestration` via `MUSE_TIERED_CASCADE` (default off → plan byte-identical). Cascade is now
+  LIVE in the orchestration path. REMAINING: also wire `muse ask --tiered` single-query path (commands-ask.ts).
+  · **C3 (live eval)** — use `bench:local` (fire 1) for the latency win + accuracy parity: MUSE_TIERED_CASCADE
+  on vs always-heavy on a mixed easy/hard set; assert faster mean latency AND no grounding/answer regression.
   Needs Ollama up.
 - ✓ **doctor: surface the Muse-side speed env — DONE local-speed fire 6** — `museSpeedEnvCheck` +
   `readMuseSpeedEnv` (apps/cli) report the Muse-PROCESS speed env (`MUSE_OLLAMA_NUM_BATCH` fire-2 lever,
