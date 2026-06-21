@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { AsyncBlock, Badge, Button, Card } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
-import { canConnect, canDisconnect, mcpStatusTone, summarizeAllowlist, summarizeMcpServers } from "./mcp-status.js";
+import { addToAllowlist, canConnect, canDisconnect, mcpStatusTone, removeFromAllowlist, summarizeAllowlist, summarizeMcpServers } from "./mcp-status.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { McpSecurityResponse, McpServerSummary } from "../api/types.js";
@@ -10,6 +11,8 @@ import type { McpSecurityResponse, McpServerSummary } from "../api/types.js";
 export function McpServersView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const qc = useQueryClient();
+  const [addInput, setAddInput] = useState("");
+
   const servers = useQuery({
     queryFn: () => client.get<readonly McpServerSummary[]>("/api/mcp/servers"),
     queryKey: ["mcp-servers", client.baseUrl]
@@ -19,6 +22,7 @@ export function McpServersView({ client }: { client: ApiClient }) {
     queryKey: ["mcp-security", client.baseUrl]
   });
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["mcp-servers"] });
+  const invalidateSecurity = () => void qc.invalidateQueries({ queryKey: ["mcp-security"] });
 
   const connect = useMutation({
     mutationFn: (name: string) => client.post(`/api/mcp/servers/${encodeURIComponent(name)}/connect`),
@@ -27,6 +31,17 @@ export function McpServersView({ client }: { client: ApiClient }) {
   const disconnect = useMutation({
     mutationFn: (name: string) => client.post(`/api/mcp/servers/${encodeURIComponent(name)}/disconnect`),
     onSuccess: invalidate
+  });
+  const updateAllowlist = useMutation({
+    mutationFn: (allowedServerNames: string[]) => {
+      const policy = security.data?.effective;
+      return client.put("/api/mcp/security", {
+        allowedServerNames,
+        allowedStdioCommands: policy?.allowedStdioCommands ?? [],
+        maxToolOutputLength: policy?.maxToolOutputLength ?? 0
+      });
+    },
+    onSuccess: invalidateSecurity
   });
   const busy = connect.isPending || disconnect.isPending;
 
@@ -94,6 +109,7 @@ export function McpServersView({ client }: { client: ApiClient }) {
             {(() => {
               const effective = security.data?.effective ?? { allowedServerNames: [], maxToolOutputLength: 0 };
               const allowlist = summarizeAllowlist(effective);
+              const allowlistBusy = updateAllowlist.isPending;
               return (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div>
@@ -104,15 +120,48 @@ export function McpServersView({ client }: { client: ApiClient }) {
                         <p style={{ margin: "0 0 6px", fontSize: 13 }}>
                           {t("mcp.allowlistRestricted", { n: allowlist.allowedCount })}
                         </p>
-                        <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
+                        <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, listStyle: "none" }}>
                           {effective.allowedServerNames.map((name) => (
-                            <li key={name}>
+                            <li key={name} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                               <Badge tone="ok">{name}</Badge>
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                disabled={allowlistBusy}
+                                onClick={() => updateAllowlist.mutate(removeFromAllowlist(effective.allowedServerNames, name))}
+                              >
+                                {t("mcp.allowlistRemove")}
+                              </Button>
                             </li>
                           ))}
                         </ul>
                       </>
                     )}
+                  </div>
+                  {allowlist.unrestricted ? (
+                    <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+                      {t("mcp.allowlistAddHint")}
+                    </p>
+                  ) : null}
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input
+                      className="input"
+                      value={addInput}
+                      onChange={(e) => setAddInput(e.target.value)}
+                      placeholder={t("mcp.allowlistAddPlaceholder")}
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      disabled={allowlistBusy}
+                      onClick={() => {
+                        updateAllowlist.mutate(addToAllowlist(effective.allowedServerNames, addInput));
+                        setAddInput("");
+                      }}
+                    >
+                      {t("mcp.allowlistAdd")}
+                    </Button>
                   </div>
                   <p className="muted" style={{ margin: 0, fontSize: 13 }}>
                     {t("mcp.toolOutputCap", { n: effective.maxToolOutputLength })}

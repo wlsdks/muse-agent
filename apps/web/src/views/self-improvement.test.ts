@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { strategyStatusLabel, summarizeStrategies, summarizeWeaknesses, weaknessAxisLabel } from "./self-improvement.js";
+import { strategyStatusLabel, summarizeReflections, summarizeStrategies, summarizeWeaknesses, weaknessAxisLabel } from "./self-improvement.js";
 
 describe("weaknessAxisLabel", () => {
   it("grounding-gap → Grounding gap", () => {
@@ -82,5 +82,22 @@ describe("summarizeStrategies", () => {
       active: 0,
       probation: 2
     });
+  });
+});
+
+describe("summarizeReflections", () => {
+  it("empty → total 0, grounded 0", () => {
+    expect(summarizeReflections([])).toEqual({ total: 0, grounded: 0 });
+  });
+
+  it("mixed sourceCount → counts only entries with sourceCount > 0 as grounded", () => {
+    expect(summarizeReflections([{ sourceCount: 2 }, { sourceCount: 0 }, { sourceCount: 1 }])).toEqual({
+      total: 3,
+      grounded: 2
+    });
+  });
+
+  it("all-ungrounded → grounded 0", () => {
+    expect(summarizeReflections([{ sourceCount: 0 }, { sourceCount: 0 }])).toEqual({ total: 2, grounded: 0 });
   });
 });

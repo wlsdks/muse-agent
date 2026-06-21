@@ -37,3 +37,10 @@ export function summarizeStrategies(entries: readonly { probation: boolean }[]):
   }
   return { total: entries.length, active: entries.length - probation, probation };
 }
+
+export function summarizeReflections(entries: readonly { sourceCount: number }[]): {
+  total: number;
+  grounded: number;
+} {
+  return { total: entries.length, grounded: entries.filter((e) => e.sourceCount > 0).length };
+}

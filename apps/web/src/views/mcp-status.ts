@@ -47,3 +47,23 @@ export function summarizeAllowlist(policy: { allowedServerNames: readonly string
     unrestricted: policy.allowedServerNames.length === 0
   };
 }
+
+/**
+ * Returns a new allowlist with `name` appended (trimmed).
+ * No-ops when name is blank or already present — preserves dedup invariant.
+ */
+export function addToAllowlist(current: readonly string[], name: string): string[] {
+  const trimmed = name.trim();
+  if (!trimmed || current.includes(trimmed)) {
+    return [...current];
+  }
+  return [...current, trimmed];
+}
+
+/**
+ * Returns a new allowlist with `name` removed.
+ * No-ops when name is absent.
+ */
+export function removeFromAllowlist(current: readonly string[], name: string): string[] {
+  return current.filter((n) => n !== name);
+}

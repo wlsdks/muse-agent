@@ -12,7 +12,7 @@ import { mkdir, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createGateEmbedder, createMuseRuntimeAssembly } from "@muse/autoconfigure";
+import { createGateEmbedder, createMuseRuntimeAssembly, resolveAuthoredSkillsDir as sharedResolveAuthoredSkillsDir, resolveSkillRewardsFile as sharedResolveSkillRewardsFile } from "@muse/autoconfigure";
 import { adjustSkillReward, isSkillAvoided, readSkillRewards } from "@muse/mcp";
 import { AuthoredSkillStore, loadSkillsFromDirectory } from "@muse/skills";
 import type { Command } from "commander";
@@ -25,12 +25,12 @@ export function resolveSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 export function resolveAuthoredSkillsDir(env: NodeJS.ProcessEnv = process.env): string {
-  return env.MUSE_AUTHORED_SKILLS_DIR?.trim() || join(homedir(), ".muse", "skills", "authored");
+  return sharedResolveAuthoredSkillsDir(env);
 }
 
 /** The skill-reward sidecar (RL over skills) — name→reward, separate from each SKILL.md. */
 export function resolveSkillRewardsFile(env: NodeJS.ProcessEnv = process.env): string {
-  return env.MUSE_SKILL_REWARDS_FILE?.trim() || join(homedir(), ".muse", "skill-rewards.json");
+  return sharedResolveSkillRewardsFile(env);
 }
 
 /** The starter SKILL.md a fresh `muse skills add <name>` writes. */
