@@ -60,7 +60,7 @@ ratchet: testFiles +0 (recently-learned.test +1, commands-status.test +1) · @mu
 - **리뷰지점**: 옵션 생략 시 무바운드(backward-compat — `memory show`는 전부 계속 표시). `nowMs` injectable(테스트 결정론, 실행은 `Date.now()` 기본). `continue`는 `limit`-break 뒤 → old skip이 limit 슬롯 안 먹음.
 - **리스크**: 없음 — additive 옵션, memory 523 + status 21 green, 독립 Opus ④b judge가 boundary + 양쪽 패키지 mutation 재확인 PASS.
 
-## fire 7 · 2026-06-21 · skill v2.1.0 · pending
+## fire 7 · 2026-06-21 · skill v2.1.0 · 6163c7e6
 meta: value-class=new-capability · pkg=@muse/memory · kind=preference-learning · verdict=PASS · firesSinceDrill=7 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +0 (recently-learned.test +4 cases) · @muse/memory 529 green · @muse/cli surfaces 59 green · lint clean · fabrication 0
 
