@@ -42,7 +42,7 @@ ratchet: testFiles +0 (recently-learned.test +4 cases) · @muse/memory 519 green
 - **리스크**: 없음 — additive, 519 green, lint clean, 독립 Opus ④b judge PASS.
 - **lesson**: main FF-push가 동시 ~16 루프 + grounding 훅(~1분) 때문에 반복 non-FF로 밀림 — fire 3 main-merge가 race에서 짐(브랜치 `b350718d`는 안전). 무한 재시도 대신 다음 fire로 이월(merge로 누적, 한 번에 main 적재). 근본 해결 = 머신 포화 시 동시 루프 수 줄이기(진안 판단).
 
-## fire 5 · 2026-06-21 · skill v2.1.0 · pending
+## fire 5 · 2026-06-21 · skill v2.1.0 · a1ef683b
 meta: value-class=wiring · pkg=@muse/cli · kind=surface-wiring · verdict=PASS · firesSinceDrill=5 · firesSinceMainMerge=1
 ratchet: testFiles +0 (commands-status.test +2 cases) · @muse/cli 245 files/2869 tests green · lint clean · fabrication 0
 
