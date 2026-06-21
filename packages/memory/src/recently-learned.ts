@@ -124,7 +124,7 @@ export function summarizeRecentlyLearned(items: readonly RecentlyLearnedItem[]):
 }
 
 function supersessionIdentity(entry: FactSupersession): string {
-  return `${entry.key}\u0000${entry.previousValue}\u0000${entry.replacedAt.getTime().toString()}\u0000${entry.scope ?? "fact"}`;
+  return `${entry.key}\x00${entry.previousValue}\x00${entry.replacedAt.getTime().toString()}\x00${entry.scope ?? "fact"}`;
 }
 
 /**

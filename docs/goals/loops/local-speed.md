@@ -92,3 +92,33 @@ ratchet: (model) 3,7,9 but kind=regression-guard distinct from 2,7 adapter-wirin
 - 리스크: 없음 — test-only, 런타임 무변경.
   검증: model 384 pass(신규 2 가드) · MUTATION-FIRST 2종(독립 judge가 재현 RED) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(가드 슬라이스, 자체 mutation 재현·불변식 실재 확인·env-crash 정직·결함 0). ⚠️full pnpm check는 박스 OOM(SIGABRT, packages/runtime-state 무관)으로 abort하나 packages/model은 그 run 내 384 pass(fire 8 동일 env 클래스).
 lesson: judge-드릴은 가짜-슬라이스를 *결정론 게이트는 통과*하되 *불변식만 위반*하게 설계해야 JUDGE를 시험한다(소스변경으로 기존 테스트를 깨면 ③이 잡아 judge 미검증). grounding 계약은 system 메시지에 탑재 → "프롬프트 다이어트/lean" 류 속도최적화는 거의 항상 floor 위반. 드릴의 부산물(불변식 회귀가드)을 진짜-fix로 출하하면 드릴이 영구 방어로 전환됨.
+
+## fire 10 · 2026-06-21 · local-speed · 792a408a
+meta: value-class=wiring · pkg=@muse/agent-core · kind=runtime-logprobs-plumbing · verdict=PASS · firesSinceDrill=1
+ratchet: @muse/agent-core FRESH (fires 1-9 미접촉) · fabrication 0 · default wire byte-identical
+- 무엇: 에이전트 런타임에 opt-in 토큰 logprobs 배선. `AgentRunInput.logprobs`/`topLogprobs` → 양 request-build seam(loopRequest generate + streamLoopRequest stream)에서 `ModelRequest.logprobs`로 전달, `AgentRunResult.response.logprobs`로 round-trip 복귀. `logprobsFromInput()` 헬퍼(미설정→{} = byte-identical, 두 seam 동기화). 이제 AGENT run을 `summarizeTokenConfidence`로 confidence 채점 가능.
+- 왜: cascade C2b의 분해된 FIRST 스텝(DECOMPOSE-ON-DEFER). 에이전트 경로가 logprobs를 forward 안 해서 confidence-gated cascade 불가였음(직접 ask 경로 commands-ask.ts:2870은 이미 logprobs 보유). 이게 그 prerequisite 갭을 닫음. 소비자(runCascade 배선)=C2b-wiring backlog.
+- 리뷰지점: 양 seam 다 배선(stream 경로 누락 시 silent drop — sibling-audit; cache/prepareModelRequest seam은 모델콜 아님 → 불필요), 기본(logprobs 미설정)=ModelRequest에 logprobs 필드 없음 byte-identical(preparedRequest.request는 messages|metadata|model만 → {} spread가 clobber 불가, judge 확인), logprobs는 observational-only(decoding 불변), 비-capable provider는 무시(throw 안 함).
+- 리스크: 낮음 — opt-in 기본-off → 정확성 회귀 0 by construction. logprobs는 관측전용(생성 토큰 불변). dead-layer? round-trip 완결+오늘 summarizeTokenConfidence로 소비가능+분해된 prerequisite(fire 3/5 substrate 선례) → ④ judge가 ACCEPTABLE 명시(filler 아님, 실제 prerequisite 갭 닫음).
+  검증: agent-core 2571 pass(신규 3 round-trip OUTCOME — captureProvider로 request.logprobs + response.logprobs + meanLogprob≈-0.3 채점) · MUTATION-FIRST(헬퍼 게이트 반전 → 3/3 RED 기본-off byte-identical 가드 포함; revert→green) · pnpm check rc=0(agent-core 2571 + api 888 + cli 2878) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(자체 mutation 재현·양seam 완전성 감사·byte-identical airtight 확인·dead-layer crux ACCEPTABLE 판정·결함 0).
+  decompose: C2b-plumbing DONE(이 fire); C2b-wiring(runCascade를 ask --tiered/orchestration에 실연결) + C3(live eval) backlog 잔존.
+
+## fire 11 · 2026-06-21 · local-speed · 5f4df275
+meta: value-class=new-capability · pkg=apps/api · kind=cascade-live-wiring · verdict=PASS · firesSinceDrill=2
+ratchet: apps/api FRESH (fires 1-10 미접촉) · fabrication 0 · default(env off) plan byte-identical
+- 무엇: FrugalGPT(arXiv:2305.05176) cascade를 멀티에이전트 오케스트레이션에 LIVE 배선. `createCascadeWorker`(apps/api multi-agent-routes.ts)가 fire 5(runCascade)+fire 10(agent-run logprobs)+summarizeTokenConfidence를 다리: FAST-분류 워커가 fast 모델을 `logprobs:true`로 실행→confidence 채점→낮으면 heavy로 ONCE escalate(바운드). `buildTieredOrchestration`에 `MUSE_TIERED_CASCADE` opt-in 배선(기본 off → plan byte-identical).
+- 왜: fire 3(decision)·5(execution primitive)·10(logprobs plumbing)이 깐 prerequisite를 실제 소비 = cascade가 드디어 LIVE. runCascade의 dead-layer 상태 해소. confident lookup은 fast만 치름(지연 win), weak fast 답은 heavy로 업그레이드(정확성 POSITIVE — fire 9 드릴의 나쁜 슬라이스와 정반대).
+- 리뷰지점: 진짜 배선(buildTieredOrchestration→createCascadeWorker, env set+fast tier+!collapsed일 때만), opt-in 기본-off(plan byte-identical, "OFF by default" 테스트가 fast 1회·logprobs 없음·escalate 없음 pin), grounding 계약 보존(spec.systemPrompt를 prependSystem으로 유지 — drill 나쁜슬라이스처럼 드롭 안 함), 바운드(runCascade 최대 2 콜), collapsedToHeavy면 cascade skip.
+- 리스크: 낮음 — opt-in 기본-off → 정확성 회귀 0; on이면 weak 답 업그레이드(floor 강화). logprobs 관측전용.
+  검증: apps/api 892 pass(신규 4 OUTCOME — confidenceRuntime로 escalate[fast,heavy]·keep[fast]·logprobs:true·OFF-default 채점) · MUTATION-FIRST 2종(confidenceOf→()=>0 escalation RED; gate→true OFF-default RED; revert→green) · pnpm check rc=0 후 web-search-policy property-fuzz flake만(isolated 384/384, fires 6/8 동일 클래스, 내 변경 무관) + 내 패키지 다 green · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(양 mutation 재현·cascade LIVE 확인·floor 강화 확인·NUL fix 정당 판정·결함 0).
+  발견+수정(별도 커밋): packages/memory/src/recently-learned.ts가 raw NUL(\x00) 구분자 3개로 byte-hygiene 게이트 깨뜨림(learning-surfacing fire 11 6df61b98가 origin/main에 올림 → 머지로 유입, 전 루프의 pnpm check 블록). \x00 escape로 치환(런타임 NUL 동일, 소스만 escape) → 공유 게이트 언블록. [별도 fix(memory) 커밋]
+  decompose: C2b-wiring(orchestration) DONE; ask --tiered single-query path 배선 + C3(live eval) backlog 잔존.
+
+## fire 12 · 2026-06-21 · local-speed · 1e32082a
+meta: value-class=new-capability · pkg=@muse/model+@muse/autoconfigure · kind=adapter-wiring · verdict=PASS · firesSinceDrill=3
+ratchet: (model, adapter-wiring) 2/8 윈도우(fire 7,12) — 임계 미만; fire-2 sibling 가족 완결 · fabrication 0 · default wire byte-identical
+- 무엇: 마지막 미배선 Ollama 어댑터 속도노브 2종 opt-in 배선 — `MUSE_OLLAMA_NUM_THREAD`(CPU 스레드)+`MUSE_OLLAMA_NUM_GPU`(GPU 레이어 오프로드). num_batch/num_predict 검증된 패턴 미러. ★KEY: `num_gpu=0`(CPU-only)은 VALID opt-in(num_batch와 달리) → 어댑터 `>= 0` 검증 + autoconfigure `parseNonNegativeInteger`(num_gpu=0 테스트가 `parseInteger`는 0 거부하는 실제 버그를 잡음). num_thread는 `> 0`.
+- 왜: fire 2 sibling-audit가 enumerate한 마지막 2 노브 → Ollama 어댑터 속도노브 가족 완결(num_ctx/num_batch/num_predict/keep_alive/num_thread/num_gpu). merge fire라 완결·저위험 슬라이스 선택; 더 높은가치 ask --tiered cascade는 monolithic/multi-fire라 정당 defer(backlog).
+- 리뷰지점: num_gpu=0 와이어 도달(CPU-only, drop 금지 — 테스트가 parseInteger 0-거부 버그 적발→parseNonNegativeInteger 수정), num_thread `>0`/num_gpu `>=0` 검증 차이, opt-in 기본-off(미설정 시 둘 다 omit=byte-identical), generate+stream 양 경로(단일 buildNativeChatBody), 비-ollama 누수 없음(ollama case만), junk/edge(thread 0/neg/junk→omit; gpu 0→keep, neg/junk→omit, 33→keep).
+- 리스크: 낮음 — opt-in 기본-off → 정확성 회귀 0. 하드웨어/배치 노브지 생성 토큰 불변. num_gpu=0=CPU-only는 정직한 메모리/속도 tradeoff(OOM 회피용), 무료 속도 win 아님으로 표기.
+  검증: model 387 + autoconfigure 624 pass(신규 4 OUTCOME — num_gpu=0 와이어 포함) · MUTATION-FIRST(num_gpu `>=0`→`>0` num_gpu=0 RED; ④ judge가 num_thread spread 제거 + autoconfigure parseInteger 미스파서까지 3 mutation 재현 RED) · pnpm check rc=0(model 387 + api 946 + cli 2887) · smoke:broad 52/0 · lint rc=0 · 독립 Opus ④ judge PASS(num_gpu=0 의미 웹검증·3 mutation 재현·ratchet/value-first 판정·결함 0; merge-sound).

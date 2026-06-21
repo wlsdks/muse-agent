@@ -94,9 +94,9 @@ describe("response shapers", () => {
     expect(stringifyToolOutput({ a: 1 })).toBe('{"a":1}');
   });
 
-  it("toMcpSecurityPolicyResponse exposes the allowlist + cap as epoch-stamped JSON", () => {
-    const policy = { allowedServerNames: ["a", "b"], createdAt: new Date(1_000), maxToolOutputLength: 5_000, updatedAt: new Date(2_000) } as unknown as McpSecurityPolicy;
-    expect(toMcpSecurityPolicyResponse(policy)).toEqual({ allowedServerNames: ["a", "b"], createdAt: 1_000, maxToolOutputLength: 5_000, updatedAt: 2_000 });
+  it("toMcpSecurityPolicyResponse exposes the allowlist + stdio commands + cap as epoch-stamped JSON", () => {
+    const policy = { allowedServerNames: ["a", "b"], allowedStdioCommands: ["npx", "node"], createdAt: new Date(1_000), maxToolOutputLength: 5_000, updatedAt: new Date(2_000) } as unknown as McpSecurityPolicy;
+    expect(toMcpSecurityPolicyResponse(policy)).toEqual({ allowedServerNames: ["a", "b"], allowedStdioCommands: ["npx", "node"], createdAt: 1_000, maxToolOutputLength: 5_000, updatedAt: 2_000 });
   });
 
   it("sendMcpServerNotFound returns a 404 with the server name in the message", () => {

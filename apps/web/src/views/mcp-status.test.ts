@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canConnect, canDisconnect, mcpStatusTone, summarizeAllowlist, summarizeMcpServers } from "./mcp-status.js";
+import { addToAllowlist, canConnect, canDisconnect, mcpStatusTone, removeFromAllowlist, summarizeAllowlist, summarizeMcpServers } from "./mcp-status.js";
 import type { McpServerSummary } from "../api/types.js";
 
 function server(name: string, status: string): McpServerSummary {
@@ -69,5 +69,41 @@ describe("summarizeAllowlist", () => {
 
   it("single-entry allowlist → allowedCount:1, unrestricted:false", () => {
     expect(summarizeAllowlist({ allowedServerNames: ["only-server"] })).toEqual({ allowedCount: 1, unrestricted: false });
+  });
+});
+
+describe("addToAllowlist", () => {
+  it("appends a new name to an existing list", () => {
+    expect(addToAllowlist(["a"], "b")).toEqual(["a", "b"]);
+  });
+
+  it("does not duplicate an already-present name", () => {
+    expect(addToAllowlist(["a"], "a")).toEqual(["a"]);
+  });
+
+  it("ignores blank / whitespace-only names", () => {
+    expect(addToAllowlist(["a"], "  ")).toEqual(["a"]);
+  });
+
+  it("adds to an empty list", () => {
+    expect(addToAllowlist([], "x")).toEqual(["x"]);
+  });
+
+  it("trims whitespace before inserting", () => {
+    expect(addToAllowlist(["a"], " b ")).toEqual(["a", "b"]);
+  });
+});
+
+describe("removeFromAllowlist", () => {
+  it("removes a present name", () => {
+    expect(removeFromAllowlist(["a", "b"], "a")).toEqual(["b"]);
+  });
+
+  it("returns empty list when the only name is removed", () => {
+    expect(removeFromAllowlist(["a"], "a")).toEqual([]);
+  });
+
+  it("no-ops when name is absent", () => {
+    expect(removeFromAllowlist(["a"], "z")).toEqual(["a"]);
   });
 });

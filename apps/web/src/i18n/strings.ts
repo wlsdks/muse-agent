@@ -115,6 +115,10 @@ const en = {
   "mcp.allowlistUnrestricted": "All servers allowed — no allowlist restriction.",
   "mcp.allowlistRestricted": "Only these {n} servers allowed:",
   "mcp.toolOutputCap": "Tool-output cap: {n} chars",
+  "mcp.allowlistAdd": "Add",
+  "mcp.allowlistAddPlaceholder": "server name…",
+  "mcp.allowlistRemove": "Remove from allowlist",
+  "mcp.allowlistAddHint": "Adding a server restricts Muse to ONLY allowlisted servers.",
 
   "settings.title": "Settings",
   "settings.connection": "Connection",
@@ -215,7 +219,11 @@ const en = {
   "si.strategiesSubtitle": "Strategies Muse distilled from your feedback. {active} active, {probation} on probation.",
   "si.active": "active",
   "si.probation": "probation",
-  "si.reward": "reward {n}"
+  "si.reward": "reward {n}",
+  "si.reflectionsTitle": "Reflections",
+  "si.reflectionsSubtitle": "Insights Muse distilled from your activity. {n} total, {g} grounded in sources.",
+  "si.support": "reinforced {n}×",
+  "si.sources": "{n} sources"
 } as const;
 
 export type StringKey = keyof typeof en;
@@ -330,6 +338,10 @@ const ko: Strings = {
   "mcp.allowlistUnrestricted": "모든 서버 허용 — 허용목록 제한 없음.",
   "mcp.allowlistRestricted": "이 {n}개 서버만 허용:",
   "mcp.toolOutputCap": "도구 출력 상한: {n}자",
+  "mcp.allowlistAdd": "추가",
+  "mcp.allowlistAddPlaceholder": "서버 이름…",
+  "mcp.allowlistRemove": "허용목록에서 제거",
+  "mcp.allowlistAddHint": "서버를 추가하면 Muse는 허용목록의 서버만 연결합니다.",
 
   "settings.title": "설정",
   "settings.connection": "연결",
@@ -430,7 +442,11 @@ const ko: Strings = {
   "si.strategiesSubtitle": "Muse가 당신의 피드백에서 정제한 전략. 활성 {active}개, 수습 {probation}개.",
   "si.active": "활성",
   "si.probation": "수습",
-  "si.reward": "보상 {n}"
+  "si.reward": "보상 {n}",
+  "si.reflectionsTitle": "성찰",
+  "si.reflectionsSubtitle": "Muse가 당신의 활동에서 정제한 통찰. 총 {n}개, {g}개는 출처에 근거.",
+  "si.support": "{n}회 강화",
+  "si.sources": "출처 {n}개"
 };
 
 export const DICTIONARIES: Record<Lang, Strings> = { en, ko };

@@ -127,6 +127,7 @@ export interface McpServerSummary {
 
 export interface McpSecurityPolicyView {
   allowedServerNames: string[];
+  allowedStdioCommands: string[];
   maxToolOutputLength: number;
   createdAt: number;
   updatedAt: number;
@@ -334,4 +335,16 @@ export interface DaemonFlagView {
 }
 export interface DaemonFlagsResponse {
   flags: DaemonFlagView[];
+}
+
+export interface ReflectionView {
+  id: string;
+  insight: string;
+  supportCount: number;
+  sourceCount: number;
+  createdAt: number;
+}
+export interface ReflectionsResponse {
+  total: number;
+  entries: ReflectionView[];
 }

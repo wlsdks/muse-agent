@@ -210,6 +210,19 @@ export interface OllamaProviderOptions extends Omit<OpenAICompatibleProviderOpti
    * autoconfigure layer maps `MUSE_OLLAMA_NUM_PREDICT`.
    */
   readonly numPredict?: number;
+  /**
+   * Ollama's `num_thread` — CPU threads for the parts of inference that run on
+   * CPU. Unset ⇒ Ollama auto-detects (today's behaviour); a positive override
+   * lets a user tune for their core count. Maps `MUSE_OLLAMA_NUM_THREAD`.
+   */
+  readonly numThread?: number;
+  /**
+   * Ollama's `num_gpu` — the number of model layers offloaded to the GPU. Unset
+   * ⇒ Ollama auto-detects; `0` is a VALID opt-in (CPU-only, e.g. to fit a model
+   * that would otherwise OOM the GPU), so this validates `>= 0`, not `> 0`.
+   * Maps `MUSE_OLLAMA_NUM_GPU`.
+   */
+  readonly numGpu?: number;
 }
 
 export interface AnthropicProviderOptions {

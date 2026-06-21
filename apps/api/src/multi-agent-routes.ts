@@ -1,5 +1,5 @@
 import { Readable } from "node:stream";
-import type { AgentRunInput, AgentRuntime } from "@muse/agent-core";
+import { summarizeTokenConfidence, type AgentRunInput, type AgentRunResult, type AgentRuntime } from "@muse/agent-core";
 import type { AgentSpec, AgentSpecRegistry } from "@muse/agent-specs";
 import {
   InMemoryAgentMessageBus,
@@ -8,6 +8,7 @@ import {
   detectFanInConflicts,
   detectFanInRedundancy,
   planTieredRun,
+  runCascade,
   type AgentMessage,
   type AgentWorker,
   type MultiAgentOrchestrationResult,
@@ -528,9 +529,52 @@ export async function buildTieredOrchestration(
     tasks: specs.map((spec) => ({ id: spec.name, text: spec.description }))
   });
   const modelByName = new Map(plan.assignments.map((assignment) => [assignment.id, assignment.model]));
+  const tierByName = new Map(plan.assignments.map((assignment) => [assignment.id, assignment.tier]));
+  // Opt-in cascade (FrugalGPT, arXiv:2305.05176): a FAST-classified worker runs
+  // the fast model first and escalates to heavy only when its answer is
+  // low-confidence — accuracy-positive (a weak fast answer is never kept) and
+  // off by default, so the plan is unchanged unless MUSE_TIERED_CASCADE is set.
+  const cascade = process.env.MUSE_TIERED_CASCADE === "1" || process.env.MUSE_TIERED_CASCADE?.toLowerCase() === "true";
   return {
     collapsedToHeavy: plan.collapsedToHeavy,
-    workers: specs.map((spec) => createSpecWorker(spec, runtime, modelByName.get(spec.name)))
+    workers: specs.map((spec) =>
+      cascade && !plan.collapsedToHeavy && tierByName.get(spec.name) === "fast"
+        ? createCascadeWorker(spec, runtime, tierModels)
+        : createSpecWorker(spec, runtime, modelByName.get(spec.name))
+    )
+  };
+}
+
+/**
+ * A worker that runs `runCascade` (fire 5) over the agent runtime: the fast
+ * model answers first with logprobs (fire 10), `summarizeTokenConfidence`
+ * scores it, and a low / unmeasurable mean-logprob escalates ONCE to the heavy
+ * model. Bounded — never a loop. Confidence drives the escalation, so a strong
+ * fast answer pays only the fast model (the latency win) while a weak one still
+ * gets the heavy model's quality.
+ */
+function createCascadeWorker(spec: AgentSpec, runtime: AgentRuntime, tierModels: TierModels): AgentWorker {
+  return {
+    canHandle: () => 1,
+    description: spec.description,
+    id: spec.name,
+    model: tierModels.fast,
+    async run(input) {
+      const messages = spec.systemPrompt ? prependSystem(input.messages, spec.systemPrompt) : input.messages;
+      const baseInput: AgentRunInput = {
+        ...input,
+        logprobs: true,
+        messages,
+        metadata: { ...(input.metadata ?? {}), agentSpecId: spec.id, selectedAgentId: spec.name }
+      };
+      const outcome = await runCascade<AgentRunResult>({
+        confidenceOf: (result) => summarizeTokenConfidence(result.response.logprobs ?? [])?.meanLogprob,
+        fast: tierModels.fast,
+        heavy: tierModels.heavy,
+        run: (model) => runtime.run({ ...baseInput, model })
+      });
+      return outcome.result;
+    }
   };
 }
 

@@ -369,6 +369,41 @@ describe("OllamaProvider — native /api/chat request wire shape", () => {
     }
   });
 
+  it("passes num_thread through when set (opt-in CPU thread tuning), rejects 0/neg/NaN", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numThread: 8 });
+    await p.generate(userReq());
+    expect((lastBody().options as { num_thread: number }).num_thread).toBe(8);
+
+    for (const bad of [0, -2, Number.NaN]) {
+      const b = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numThread: bad });
+      await b.generate(userReq());
+      expect(lastBody().options).not.toHaveProperty("num_thread");
+    }
+  });
+
+  it("passes num_gpu through INCLUDING 0 (CPU-only is a valid opt-in), rejects negative/NaN", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numGpu: 33 });
+    await p.generate(userReq());
+    expect((lastBody().options as { num_gpu: number }).num_gpu).toBe(33);
+
+    const cpuOnly = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numGpu: 0 });
+    await cpuOnly.generate(userReq());
+    expect((lastBody().options as { num_gpu: number }).num_gpu).toBe(0); // 0 = CPU-only, NOT omitted
+
+    for (const bad of [-1, Number.NaN]) {
+      const b = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numGpu: bad });
+      await b.generate(userReq());
+      expect(lastBody().options).not.toHaveProperty("num_gpu");
+    }
+  });
+
+  it("omits num_thread and num_gpu by default (byte-identical wire)", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    await p.generate(userReq());
+    expect(lastBody().options).not.toHaveProperty("num_thread");
+    expect(lastBody().options).not.toHaveProperty("num_gpu");
+  });
+
   it("maps assistant tool_calls and tool-role messages into the native shape", async () => {
     const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
     await p.generate(

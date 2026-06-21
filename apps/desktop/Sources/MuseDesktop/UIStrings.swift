@@ -22,9 +22,25 @@ struct UIStrings {
     var menuLanguage: String { t("언어", "Language") }
     var menuMute: String { t("음성 끄기", "Mute voice") }
     var menuSettings: String { t("설정…", "Settings…") }
+    var menuGuide: String { t("시작 가이드", "Getting started") }
     var menuQuit: String { t("Muse 종료", "Quit Muse") }
+
+    // Onboarding
+    var onboardWelcome: String { t("Muse에 오신 걸 환영해요", "Welcome to Muse") }
+    var onboardSubtitle: String { t("세상이 아니라 너를 학습하는 개인 AI.\n모두 네 Mac에서, 로컬로 동작해요.",
+                                    "The personal AI that learns you, not the world.\nIt all runs locally, on your Mac.") }
+    var onboardChecking: String { t("로컬 AI 준비 상태 확인 중…", "Checking your local AI…") }
+    var onboardReady: String { t("로컬 AI 준비 완료 — 시작해요!", "Your local AI is ready — let's go!") }
+    var onboardOpenFull: String { t("Muse 시작하기", "Start using Muse") }
+    var onboardStart: String { t("나중에", "Later") }
     var characterGoddess: String { t("여신", "Goddess") }
     var characterOrb: String { t("오브", "Orb") }
+
+    // Menu-bar status line
+    var statusLocalOn: String { t("🔒 로컬 전용", "🔒 Local-only") }
+    var statusLocalOff: String { t("⚠️ 클라우드 허용", "⚠️ Cloud allowed") }
+    var statusServerOn: String { t("서버 켜짐", "server running") }
+    var statusServerOff: String { t("서버 꺼짐", "server stopped") }
 
     // Settings window
     var settingsTitle: String { t("Muse 설정", "Muse Settings") }
@@ -36,6 +52,18 @@ struct UIStrings {
     var sectionVoice: String { t("음성", "Voice") }
     var sectionStartup: String { t("시작", "Startup") }
     var launchAtLogin: String { t("로그인 시 Muse 자동 실행", "Launch Muse at login") }
+    var sectionMessengers: String { t("메신저 연결", "Messengers") }
+    var msgHint: String { t("토큰을 넣으면 Muse가 그 메신저에서 대화에 답해요. Keychain에 안전하게 저장됩니다.",
+                            "Add a bot token and Muse replies in that messenger. Stored securely in the Keychain.") }
+    var msgTelegram: String { t("Telegram 봇 토큰", "Telegram bot token") }
+    var msgDiscord: String { t("Discord 봇 토큰", "Discord bot token") }
+    var msgDiscordChannels: String { t("Discord 채널 ID (쉼표로 구분)", "Discord channel IDs (comma-separated)") }
+    var msgSlack: String { t("Slack 봇 토큰", "Slack bot token") }
+    var msgSlackChannels: String { t("Slack 채널 ID (쉼표로 구분)", "Slack channel IDs (comma-separated)") }
+    var msgLineToken: String { t("LINE 채널 액세스 토큰", "LINE channel access token") }
+    var msgLineSecret: String { t("LINE 채널 시크릿", "LINE channel secret") }
+    var msgSave: String { t("저장 & 연결", "Save & connect") }
+    var msgSaved: String { t("저장됨 — 서버 재시작 중…", "Saved — restarting the server…") }
     var sectionPrivacy: String { t("프라이버시", "Privacy") }
     var sectionAdvanced: String { t("고급", "Advanced") }
     var rowCharacter: String { t("캐릭터", "Character") }
