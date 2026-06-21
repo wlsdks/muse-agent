@@ -111,6 +111,10 @@ const en = {
   "mcp.toolCount": "{n} tools",
   "mcp.connect": "Connect",
   "mcp.disconnect": "Disconnect",
+  "mcp.securityTitle": "Security",
+  "mcp.allowlistUnrestricted": "All servers allowed — no allowlist restriction.",
+  "mcp.allowlistRestricted": "Only these {n} servers allowed:",
+  "mcp.toolOutputCap": "Tool-output cap: {n} chars",
 
   "settings.title": "Settings",
   "settings.connection": "Connection",
@@ -318,6 +322,10 @@ const ko: Strings = {
   "mcp.toolCount": "도구 {n}개",
   "mcp.connect": "연결",
   "mcp.disconnect": "끊기",
+  "mcp.securityTitle": "보안",
+  "mcp.allowlistUnrestricted": "모든 서버 허용 — 허용목록 제한 없음.",
+  "mcp.allowlistRestricted": "이 {n}개 서버만 허용:",
+  "mcp.toolOutputCap": "도구 출력 상한: {n}자",
 
   "settings.title": "설정",
   "settings.connection": "연결",

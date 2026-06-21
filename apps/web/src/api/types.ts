@@ -125,6 +125,19 @@ export interface McpServerSummary {
   readonly updatedAt: number;
 }
 
+export interface McpSecurityPolicyView {
+  allowedServerNames: string[];
+  maxToolOutputLength: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface McpSecurityResponse {
+  configDefault: McpSecurityPolicyView;
+  effective: McpSecurityPolicyView;
+  stored: McpSecurityPolicyView | null;
+}
+
 interface HistoryEntry {
   readonly runId?: string;
   readonly inputPreview?: string;

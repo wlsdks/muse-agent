@@ -97,7 +97,8 @@
     - ◦ web Skills curate/author — 스킬 활성/비활성·세션에서 스킬 작성(authorSkillsFromSession 기존) 웹 노출 (상태변경, 후속)
     - ◦ CLI 스킬 resolver 통일(형제) — `apps/cli/commands-skills.ts`의 private `resolveAuthoredSkillsDir`/`resolveSkillRewardsFile`를 autoconfigure 공유본으로 통일(commands-skills·commands-learned·chat-ink 3파일 import 변경), gate-asymmetry 제거
   - ◦ web 설정/daemon 토글 — proactivity·episodic·skill학습·watch daemon on/off (PUT /settings/:key 기존, ~80 env 플래그는 env→runtime 브리지 필요)
-  - ◦ web MCP 콘솔 확장 — add/remove 서버 + allowlist(`/api/mcp/security`) 편집 (API 기존, 웹만)
+  - ✓ web MCP allowlist 보안 섹션 (읽기) — `McpServersView`가 `GET /api/mcp/security` 소비, 허용목록·도구출력 상한 표시; summarizeAllowlist의 빈목록=unrestricted 정직신호 — surfaces fire 66 (`<pending>`)
+  - ◦ web MCP 콘솔 확장 (나머지) — add/remove 서버 + allowlist(`PUT /api/mcp/security`) 편집 (상태변경, API 기존; 읽기는 fire 66 done)
 - ✓ Playbook eviction PEVI-parity (PEVI arXiv:2012.15085): `retainPlaybookEntries` now ranks bank-overflow survival on the Wilson-LCB `retentionUtility` (inline-replicated `rankingUtility`, NOT the rolled-back `effectiveStrategyReward` shrinkage), so a thin-but-lucky strategy no longer evicts a battle-tested one; no-tally falls back byte-identically to clampReward(reward) — self-improvement fire 1
 - ✓ chat resolves a topic's grounding-gap on a GROUNDED SUCCESS (`isChatGroundedSuccess` + `chatResolveWeakness`, BKT mastery, ask-parity) so a now-answered recurring gap stops nudging — self-improvement fire 4 `9f2f484b`
 - ✓ doctor `WEAKNESS_AXIS_LABEL` friendly labels for source-conflict + misgrounding (user-facing `formatWeaknesses`) — self-improvement fire 5 `1bde1536`

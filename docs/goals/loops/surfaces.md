@@ -601,3 +601,12 @@ ratchet: web tests 101/101 (+9) · fabrication 0 · self-eval exit 0 · check ex
 - **왜**: 진안 "스킬 컨트롤"을 read(62/63)+route(64) 다음 — 이제 **웹에서 직접 강화/약화**(end-to-end 완성). canAdjustReward로 guaranteed no-op 클릭 차단(+5에서 더 ▲ 못 누름)=정직한 UI(클램프 경계 노출). (web,view) 5/8로 RATCHET 한도 내.
 - **리뷰지점**: mutation-first — canAdjustReward(>=5→>5 변이→"5+up→false" RED)·rewardDelta(상수화→"down→-1" RED), 독립 judge 재확인. 웹 테스트 인프라(renderToStaticMarkup, RTL/DOM 없음)라 클릭→mutation 단위테스트 불가 → McpServers와 동일 accepted 패턴(순수 결정로직 단위테스트 + 버튼 배선 inspection). 배선 정합(judge inspection): encodeURIComponent(name)↔라우트 decodeURIComponent 쌍·queryKey `["skills"]` prefix-match로 갱신·양 버튼 `disabled={pending || !canAdjustReward}`. 상태안전: 기존 auth-게이트 라우트만 호출(신규 노출 0)·escaped children. i18n en/ko 패리티. 정직한 갭: curate/author 액션 후속.
 - **리스크**: 없음(apps/web 4파일, web build tsc+vite·web 101/101·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 경계로직·배선·상태안전·다양성·mutation 검증 후 PASS).
+
+## fire 66 · 2026-06-21 · skill v2.0.0 · <pending>
+meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=mcp-allowlist-section · verdict=PASS · firesSinceDrill=5
+ratchet: web tests 104/104 (+3) · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 52/0 · lint clean
+
+- **무엇**: `McpServersView`에 read-only "Security/allowlist" 섹션 추가 — 기존 `GET /api/mcp/security`(effective 정책) 소비, 허용목록(서버명)·도구출력 상한 표시. 순수 `summarizeAllowlist`(mcp-status.ts: allowedCount + **unrestricted=빈목록**) + `McpSecurityPolicyView`/`McpSecurityResponse` 타입 + i18n(en/ko). MCP 콘솔(fire 57 connect/disconnect)에 보안 가시성 추가.
+- **왜**: 진안 "웹에서 MCP 관리"의 보안 표면 — 어떤 외부 MCP 서버가 허용됐는지 웹에서 본다. **핵심 정직-불변식**: 코드(in-memory-stores.ts:209 `length===0 || includes`)상 **빈 허용목록=모든 서버 허용**(opt-in)이라, UI가 빈목록을 "0개 허용"(=전부 차단 암시)으로 표기하면 위험한 거짓 — "모든 서버 허용/제한없음"으로 표기해야. summarizeAllowlist의 unrestricted가 이 정직신호.
+- **리뷰지점**: mutation-first — summarizeAllowlist(`===0`→`>0` 변이 시 빈목록 honesty 케이스 3 RED·`unrestricted:false` 하드코딩→1 RED), 독립 judge 재확인. effective 정책 사용(configDefault/stored 아님)·데이터 부재 시 honestly "unrestricted" degrade. 보안: read-only GET(서버측 auth 게이트)·허용목록 escaped children·기존 서버목록+connect/disconnect 무손상. i18n en/ko 키셋+토큰({n}) 패리티. 정직한 갭: allowlist 편집(PUT)·서버 add/remove는 후속(상태변경).
+- **리스크**: 없음(apps/web 5파일, web build tsc+vite·web 104/104·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 빈목록-정직불변식·effective사용·읽기전용·다양성·mutation 검증 후 PASS).
