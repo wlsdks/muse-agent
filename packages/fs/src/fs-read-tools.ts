@@ -589,8 +589,15 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
         return refusalResult(error, scopeArg);
       }
 
+      // A capped result must tell the 12B HOW to see the rest, or it pages
+      // blindly / concludes off a partial match set. Only on truncation, and
+      // only when the search wasn't already narrowed by a glob.
+      const narrowingHint = truncated
+        ? `result capped — narrow the search to see the rest: pass a more specific \`pattern\`${fileGlob === "**/*" ? ' or a `glob` (e.g. "src/**/*.ts")' : ""}.`
+        : undefined;
+
       if (mode === "files") {
-        return { count: matchedFiles.length, files: matchedFiles, mode, pattern: patternText, scanned, truncated };
+        return { count: matchedFiles.length, files: matchedFiles, mode, pattern: patternText, scanned, truncated, ...(narrowingHint ? { hint: narrowingHint } : {}) };
       }
       // A content-mode match surfaces the file's real lines to the model (it
       // copies file_edit's old_string straight from them), so it grounds a
@@ -603,7 +610,7 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
       for (const file of new Set(contentMatches.map((match) => match.file))) {
         options.onPathRead?.(file);
       }
-      return { count: contentMatches.length, matches: contentMatches, mode, pattern: patternText, scanned, truncated };
+      return { count: contentMatches.length, matches: contentMatches, mode, pattern: patternText, scanned, truncated, ...(narrowingHint ? { hint: narrowingHint } : {}) };
     }
   };
 }

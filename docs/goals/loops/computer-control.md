@@ -5,6 +5,35 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 48 · 2026-06-21 · skill v2.0 · 07110284 (measure+DECOMPOSE: dual-eval converges on EARLY-STOP as #1 blocker; 30c decomposed, not rammed; ⑤c delivers 46/47 to main)
+meta: value-class=refactor(work-list)+measure · pkg=docs/backlog+agent-core(diagnosis) · kind=decompose-design-sensitive · verdict=N/A · firesSinceDrill=2
+ratchet: testFiles unchanged · fabrication 0 · self-eval green · eval:computer-task PASS · eval:multifile-fix FAIL(early-stop) · eval:edit-run-verify FAIL(early-stop) · Ollama UP · ⑤c main-merge(fire 48=×3, delivers 46/47)
+- 측정: Ollama UP에서 두 어려운 eval 전수 측정 — multifile-fix FAIL `tools=[file_read]`, edit-run-verify FAIL `tools=[file_read]`. **둘 다 동일 EARLY-STOP**(읽고 편집/실행 없이 정지, 버그 미수정). single-file computer-task는 PASS. 결정론 tool-call 베인(40-47)은 소진; 남은 #1 블로커는 model-behavior early-stop으로 수렴 확정.
+- 결정(왜 안 ship): early-stop fix(fire-12 action-completion re-prompt, 30c)는 (a)detector 확장(기존 isUnbackedActionClaim은 answerClaimsAction 요구라 "주장없이 멈춤" 미포착) (b)chat-repl 중복제거 통합(이중 re-prompt 방지) (c)pass^k 검증 — 진성 >1 fire이고 코어 런루프(최고 blast)+오발 위험. fire-12가 "not auto-fodder" 명시, reflection-guard는 retry 표면에 보정된 verifier 요구. ×3 main-merge fire에 예산 일부 소진 상태에서 ram은 imprudent → DECOMPOSE-ON-DEFER로 정밀 분해(backlog ★ 48a/48b/48c), 강행 안 함.
+- 무엇 ship: backlog ★를 dual-eval 증거 + 3 sub-slice(48a 정밀 detector+적대 FP / 48b 통합-아키텍처결정 / 48c 배선+pass^k)로 정밀화. ⑤c로 fires 46/47 origin/main 전달(이전엔 loop 브랜치만). 코드 슬라이스 없음(fires 1/2/3/5 N/A measure/decompose 선례).
+- 리뷰지점: 결정론 안전 슬라이스 부재(두 eval 다 model-behavior로 실패)에서 N/A measure+decompose가 정직한 출구. 다음 careful fire(non-main-merge, pass^k 예산)가 48a부터.
+lesson: Ollama-up 측정이 결정적 — "추정된 deterministic 갭"이 아니라 라이브가 진짜 블로커(early-stop, 두 eval 수렴)를 확정. 위험한 코어-루프 retry는 ×3 main-merge fire에 강행 말고 분해; reflection-guard 오발-보정이 우선. EXHAUSTION 정직출구 = 분해+main전달, 억지 저가치 슬라이스 금지.
+
+## fire 47 · 2026-06-21 · skill v2.0 · 46d24074 (measure-first: AgentRuntime not-EXPOSED gate suggests nearest active tool — node_run→run_command dead-end closed)
+meta: value-class=new-capability · pkg=@muse/agent-core+@muse/tools · kind=tool-recovery/not-exposed-suggestion · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles +0 / +6 cases (4 nearestToolName unit + 2 AgentRuntime integration) · fabrication 0 · @muse/tools 96 · @muse/agent-core agent-runtime 133 · pnpm check apps/api flake(격리 888/888, env UNSET) · lint 0/0 · ★Ollama UP
+- 측정-우선(Ollama 드디어 UP): eval:computer-task PASS 1/1(file_grep→read→edit), 그러나 eval:multifile-fix FAIL — `tools=[file_read, node_run]`, 모델이 `node_run` 환각(실제=run_command). fire-9 nearestToolName은 @muse/tools EXECUTOR의 not-registered 경로에만 있는데, 환각 이름은 AgentRuntime.executeToolCall의 "not exposed" 게이트(activeTools 체크가 먼저)에 걸려 **제안 없는 맨-에러 → dead-end**.
+- FIX(DRY 형제): nearestToolName을 NAMES(string[]) 받게 일반화+export(executor 호출부도 .map(name)), AgentRuntime not-exposed 게이트(agent-runtime.ts ~808)에 배선 — `Did you mean '<nearest active>'? Call that exact name.`. fire-9(executor not-registered)의 not-EXPOSED 짝.
+- 왜: 측정이 가리킨 실제 dead-end. 다양성: @muse/agent-core(+tools) fresh (pkg,kind). 형제-감사: 두 경로(registered-but-failed / not-exposed)가 이제 한 suggester 공유.
+- 리뷰지점: mutation-first 통합점에서(게이트 제안 제거 시 정확히 positive 통합테스트 RED; node_run→run_command 유닛 + file_open→file_read 통합 둘 다). 독립 Opus ④b judge가 wiring 비-inert·기존 not-exposed 메시지 무회귀(0-shared-token이면 byte-identical)·fabrication=0 재현 검증 → VERDICT PASS.
+- 리스크/정직: ★OUTCOME 미flip — fix 후 재측정 eval:multifile-fix 여전히 FAIL이나 **다른 stochastic 모드**(`tools=[file_read]` early-stop: 읽고 편집 없이 멈춤). node_run dead-end는 닫혔고(통합테스트 증명) eval은 다중 실패모드. 회귀 아님(이전에도 FAIL). pnpm check apps/api 실패는 무관 병렬-포화 flake(격리 통과). fire 47은 3의 배수 아님 → main 머지 없음.
+lesson: Ollama-up 측정이 진짜 블로커를 드러냄 — multifile은 (a)node_run 환각[이번 fix] (b)early-stop[다음] 두 모드. 에러-복구 게이트는 executor(not-registered)와 runtime(not-exposed) 두 곳에 있어야 한다(형제). 다음 ◦=early-stop action-completion nudge(fire-12 후보, Ollama-up이라 이제 검증가능).
+
+## fire 46 · 2026-06-21 · skill v2.0 · 63cf3d63 (JUDGE-DRILL: verifier caught inert slice → real wired grep-narrowing hint shipped)
+meta: value-class=new-capability+judge-drill · pkg=@muse/fs · kind=grep-result-actionability · verdict=DRILL-PASS+PASS · firesSinceDrill=0(reset)
+ratchet: testFiles +0 files / +3 grep-hint OUTCOME cases · fabrication 0 · @muse/fs 62 (mutation-verified) · pnpm check exit 0 · lint 0/0 · Ollama DOWN (evals skip)
+- JUDGE-DRILL (의무, 연속 allPASS=8): 고의 INERT 슬라이스 주입 — `suggestNarrowerGlob` helper를 export+isolated 단위테스트만 하고 createFileGrepTool에 **배선 안 함**(게이트는 GREEN). 독립 Opus ④b judge가 정확히 적발: "exported+unit-tested but NEVER called in executed path; truncated returns 불변; wired-but-inert; behavioral delta=ZERO; mutation: helper body 비우면 isolated 테스트만 깨짐." → verifier가 rubber-stamp 아님 입증. git restore 롤백.
+- 진짜 fix: judge가 처방한 대로 배선 — createFileGrepTool의 truncated return(files+content 양 모드)에 `hint` 추가("result capped — narrow the search … 더 구체적 pattern" + glob 미지정 시 glob 제안). truncated일 때만(완전 결과 무오염), glob 이미 지정 시 glob 제안 생략. 정적 가이드 문자열(fabrication 0).
+- 왜: truncated grep이 가이드 0이면 12B가 맹목 페이징/부분 매치셋으로 오결론 — grep→edit 체인 핵심. fire 43(경로거부 힌트)·44(run_command truncation flag) 형제, 다른 surface(grep 결과 actionability).
+- 리뷰지점: drill bad→judge FAIL(구체적), real→mutation-first(narrowingHint=undefined면 정확히 2 hint 테스트 RED, no-hint GREEN)→독립 Opus judge가 mutation 재현+양모드 배선 확인 → VERDICT PASS. 180/180 @muse/fs.
+- 리스크: live OUTCOME 미검증(Ollama down)이나 결정론 OUTCOME 테스트(execute() 반환객체의 hint)로 완전 커버. fire 46은 3의 배수 아님 → main 머지 없음.
+lesson: JUDGE-DRILL 레시피 검증됨 — INERT(배선 누락) 슬라이스가 가장 현실적인 적대 케이스(녹색 게이트+제로 행동변화); judge는 "executed path에서 호출되나? mutation이 TOOL 행동 테스트를 깨나?"로 잡는다. drill 후 firesSinceDrill=0 리셋.
+
 ## fire 45 · 2026-06-21 · skill v2.0 · 8c9746cb (eval:multifile-fix grades OUTCOME not path + reflection-guard registry regression fix)
 meta: value-class=eval-correctness+regression-fix · pkg=scripts/eval · kind=outcome-grading · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles +0 (scripts) / +6 grader cases + reflection-guard repoint · fabrication 0 · self-eval:test 48/48 · grader 6/6 (mutation-verified) · lint 0/0 · pnpm check @muse/resilience SIGABRT(134)=saturation (isolated 26/26, scripts-only change) · Ollama DOWN · ★main ff-merge (fire 45=×3)

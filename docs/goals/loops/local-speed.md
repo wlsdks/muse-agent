@@ -32,3 +32,32 @@ ratchet: pkg/kind DIFFERS (scripts/infra → model/adapter → multi-agent/casca
 - 리뷰지점: 기본(priorConfidence 없음)=plan byte-identical(`.has(id)===true` 가드), heavy task는 절대 de-escalate 안 함(`tier==="fast"` 가드), classifyTier 불변(const→let만), 패키지 결합 없음(plain number, agent-core 타입 import 안 함), strict `<`(정확히 -1.0은 escalate 안 함).
 - 리스크: 낮음 — 행동 inert by default. C1은 실제 planner(planTieredRun, apps/api multi-agent-routes.ts:460 호출)에 배선된 행동변화지 dead primitive 아님(④ judge가 declaration-only 아님으로 명시 판정). C2가 priorConfidence를 실제 logprob으로 채우는 런타임 루프.
   검증: multi-agent 215 pass · MUTATION-FIRST 2종(A: `<`→`>` 5 RED; B: `.has` 가드→`!==undefined` ABSENT-untouched 1 RED; revert→green) · pnpm check rc=0(api 880 + cli 2857; 첫 run의 messaging-webhooks 1-FAIL은 병렬 env-leak flake = isolated 880/880 + 내 변경은 api/messaging 무관, rerun rc=0) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(자체 mutation 재현, declaration-only crux HONEST 판정, 결함 0).
+
+## fire 4 · 2026-06-21 · local-speed · b60fbebb
+meta: value-class=micro-fix · pkg=apps/cli · kind=correctness-hardening(doctor) · verdict=PASS · firesSinceDrill=4
+ratchet: pkg/kind DIFFERS (scripts/infra → model/adapter → multi-agent/cascade → cli/correctness) · fabrication 0 · 런타임 무변경(doctor advisory string only)
+- 무엇: `muse doctor`의 `ollamaPerfPostureCheck` 하드닝 — 양자화 KV 캐시(`OLLAMA_KV_CACHE_TYPE=q8_0/q4_0`)가 `OLLAMA_FLASH_ATTENTION=1` 없이는 **INERT**(Ollama가 조용히 f16 KV로 폴백, 이득 0)임을 전용 WARN으로 명시. 기존엔 (kv설정·flash꺼짐) 케이스가 일반 "set flash" 메시지로 떨어져 사용자의 KV 설정이 *아무것도 안 하고 있다*는 걸 숨겼음.
+- 왜: 실제 silent 오설정 갭(ollama/ollama#13337이 "server silently falls back to f16 → 예상외 OOM"으로 제기). KV-quant는 named 레버. 출처검증(verify-then-apply): Opus scout가 Ollama FAQ + PR #6279(smcleod.net) + #13337로 확인 — KV-quant는 flash attention AND FA-capable 모델 arch 필요. 경고는 "needs a flash-attention-capable model"로 arch nuance 정직히 커버, 버전-취약 allowlist는 하드코딩 안 함(backlog defer).
+- 리뷰지점: 4 케이스 분기 정확(flash+kv=ok / 둘다없음=set both / flash만=set KV(FLASH 미포함) / kv만=신규 INERT), `.toLowerCase()`로 "Q4_0" 처리, FA-capable-model 미달 케이스(flash+kv+non-FA-model→"ok"이나 실제 inert)는 backlog ◦ defer(런타임 arch-query 필요, 하드코딩 금지).
+- 리스크: 없음 — doctor advisory string 한 케이스만 변경, 모델/런타임/grounding/tool 경로 무관 → 정확성 회귀 0 trivially.
+  검증: cli 2861 pass(신규 2 OUTCOME 케이스) · MUTATION-FIRST(INERT 분기 제거 → 2 RED "expected … to contain INERT"; revert→green) · pnpm check rc=0(api 887 + cli 2861) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(사실주장 정확성 웹검증 재확인, 자체 mutation 재현; 중복주석 결함 1건 지적 → 수정 완료).
+  형제-감사: Muse-process 속도 env(MUSE_OLLAMA_NUM_BATCH 등) doctor 노출 + FA-capable-model-arch 경고 → backlog ◦ 2건.
+
+## fire 5 · 2026-06-21 · local-speed · fe634ab8
+meta: value-class=new-capability · pkg=@muse/multi-agent · kind=cascade-execution · verdict=PASS · firesSinceDrill=5
+ratchet: (multi-agent, cascade) 2/5 fires, distinct kind from fire 3 (decision→execution) · fabrication 0 · additive(in-repo caller 0)
+- 무엇: FrugalGPT 캐스케이드 EXECUTION 프리미티브 `runCascade<T>({fast,heavy,run,confidenceOf,threshold})` → `{result,tier,escalated,fastConfidence}` (@muse/multi-agent cascade-run.ts). fast 모델 먼저 실행 → confident면 그 답 수용(모델 1회 실행 = 지연 win), low/측정불가 confidence면 heavy로 ONCE escalate. 단일 escalation 바운드(루프 없음, MAST step-repetition/termination 가드). fire 3의 `shouldEscalateToHeavy` 재사용.
+- 왜: fire 3은 cascade DECISION(승급 여부)+planner 배선이었고, 이건 그 결정을 실제 compute 절약으로 바꾸는 EXECUTION(confident lookup는 heavy 값 안 치름). model-agnostic = caller가 run/confidenceOf 주입(이 패키지 idiom: summarizeWorkerOutput/verifyFinalAnswer/detectConflicts 전부 주입식). 실제 model-run+summarizeTokenConfidence 주입은 C2b(autoconfigure, backlog).
+- 리뷰지점: confident→run 1회만(`calls).toEqual([fast])`로 효율 주장 직접 검증), low→[fast,heavy] 순서·heavy 결과, 둘다-low여도 정확히 2회(재승급 없음), strict `<`(정확히 -1.0 keep), additive(tiering.ts 무변경, index.ts export 2줄만).
+- 리스크: 없음 — 신규·in-repo 호출자 0 → 기존 행동 무변경 → 정확성 회귀 0 by construction. 정직한 한계: capability 출하지 *측정된* 지연 win 아직 아님(C2b/C3에서; backlog 명기).
+  검증: multi-agent 221 pass(신규 5 OUTCOME 케이스, run-count/order/result 채점) · MUTATION-FIRST(게이트 `!` 반전 → 5/5 RED; revert→green) · pnpm check rc=0(api 887 + cli 2861) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(declaration-only crux=NOT declaration-only 명시 판정, 자체 mutation 재현, 무루프 grep 확인, ratchet 2/5 OK, 결함 0).
+  decompose: C2-core DONE; C2b(autoconfigure가 real run+confidenceOf를 ask --tiered/orchestration에 주입) + C3(live eval) backlog 잔존.
+
+## fire 6 · 2026-06-21 · local-speed · 4ef37893
+meta: value-class=new-capability · pkg=apps/cli · kind=doctor-discoverability · verdict=PASS · firesSinceDrill=6
+ratchet: cli 2/6 (fire 4 correctness-hardening vs fire 6 capability, distinct kind) · fabrication 0 · advisory-only 무런타임변경
+- 무엇: `muse doctor`에 `museSpeedEnvCheck`+`readMuseSpeedEnv`(apps/cli) 신설 배선 — Muse-PROCESS 속도 env(`MUSE_OLLAMA_NUM_BATCH` fire-2 레버·`MUSE_OLLAMA_NUM_CTX`·`MUSE_OLLAMA_KEEP_ALIVE`) 포스처를 매 doctor 실행마다 보고 + num_batch 미설정 시 구체 튜닝 힌트. `ollamaPerfPostureCheck`(서버 launchctl env)와 구분되는 별도 표면.
+- 왜: fire 2가 num_batch 레버를 출하했지만 아무 데서도 사용자에게 안 알려줌 = 절반만 배달. doctor가 Muse 속도 포스처를 알리는 곳 → 레버 discoverable화. merge fire라 cascade C2b(live ask-path 배선, multi-fire·Ollama-gated)를 또 dead layer로 쌓는 대신 완결·무-dead-layer 슬라이스 선택(fire 5 judge가 runCascade 무-호출자 지적한 것 회피).
+- 리뷰지점: doctor checks 배열에 실제 push(commands-doctor.ts 조립부, 매 실행 렌더), env 이름 3개 다 런타임이 실제 읽는 실명(autoconfigure num_ctx/num_batch·adapter keep_alive — judge 재확인), always "ok"(옵션 노브 미설정=안전기본이지 오설정 아님, warn은 노이즈), whitespace=.trim()로 unset 취급(broken `num_batch=` 안 나감), 힌트 비-과장(num_batch=프롬프트 배치크기, 큰값=throughput↑ VRAM 비용).
+- 리스크: 없음 — advisory diagnostic만, 모델/런타임/grounding/tool 무관 → 정확성 회귀 0. always-ok라 worst 등급 못 올림(기존 verdict 불변).
+  검증: cli 2865 pass(신규 4 OUTCOME 케이스) · MUTATION-FIRST(힌트 always-empty → 3 RED; revert→green) · pnpm check rc=0(api 888 + cli 2865) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(env명 실재 grep재확인, wired-and-live 확인, value-first 판정, 결함 0, merge 안전).

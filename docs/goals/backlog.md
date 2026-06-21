@@ -1,5 +1,14 @@
 # Muse dev backlog — the living ledger
 
+- ★ NEXT (the #1 blocker — multi-step EARLY-STOP; decomposed computer-control fire 48 with dual-eval evidence): with Ollama up, BOTH harder multi-step evals now FAIL via the SAME mode — `eval:multifile-fix` AND `eval:edit-run-verify` each ran `tools=[file_read]` then the 12B STOPPED without editing/running (the buggy fn left unchanged). The deterministic tool-call veins (fires 40-47: arg recovery, name sanitize, coercion, path/grep/run_command hints, not-exposed suggestion) are largely exhausted; early-stop is model-behavior and the dominant remaining blocker. The fix is the fire-12 action-completion re-prompt, but it is genuinely >1 fire and must NOT be rammed (fire-12: "not auto-fodder"; reflection-guard: a retry surface needs a calibrated verifier + no mis-fire). DECOMPOSED loop-sized sub-slices:
+  - (48a) DETECTOR — the existing `isUnbackedActionClaim` = `requestsToolAction(query) && answerClaimsAction(answer) && !actionToolRan(toolNames)` does NOT cover early-stop (the model STOPS without CLAIMING done → `answerClaimsAction` false). Need a precise `actionRequiredButNoneTaken(query, toolNames)` = `requestsToolAction(query) && !actionToolRan(toolNames)` (drops the claim requirement), built with a HEAVY adversarial FP corpus: answer-only/advice/read-only queries ("what does X do?", "summarize X", "read X") must NOT fire. Pure predicate, Ollama-free, mutation-first. The precision of `requestsToolAction` is the whole ballgame — measure its FP rate on real traces before any wiring.
+  - (48b) CONSOLIDATE — `runResistingFalseDone` is currently wrapped around the run ONLY on the chat-repl path (fire 32); the eval/server path (AgentRuntime.run) has no re-prompt. Decide the architecture: move the bounded re-prompt INTO AgentRuntime.run and have chat-repl delegate (NO double re-prompt). reflection-guard registry already points at false-done-reprompt.ts (fire 45) — the wrapper stays, its call site moves. Touches the shared core loop (server+CLI) → highest blast radius; do on a NON-main-merge fire with chat-repl regression tests.
+  - (48c) WIRE + VALIDATE — wire (48a)'s detector into (48b)'s re-prompt (bounded 1, verifier = a write/execute tool ran after), then validate the eval delta with pass^k (k≥3, both evals) now that Ollama is up. Ship only if eval improves AND the FP corpus stays clean AND Opus ④b judge PASS.
+
+- ✓ AgentRuntime not-exposed gate suggests the nearest active tool — computer-control fire 47: a hallucinated tool name (`node_run` for `run_command`) hit AgentRuntime.executeToolCall's "not exposed" gate (checked before the executor), which returned a bare error — fire-9's nearestToolName only covered the executor's not-registered path. Generalized+exported nearestToolName (takes names) and wired it into the not-exposed gate so the model self-corrects. 4 unit + 2 integration (mutation-verified) tests; @muse/tools 96 / agent-core 133 green; Opus ④b judge PASS. (detail in docs/goals/loops/computer-control.md fire 47)
+
+- ✓ file_grep truncated-result narrowing hint — computer-control fire 46 (post JUDGE-DRILL): a capped grep returned `truncated:true` with no guidance, so the 12B paged blindly / concluded off a partial match set. The grep tool now adds a `hint` to its truncated return (both files+content modes) telling the model to pass a more specific pattern (and a glob if none was given). Only on truncation (no pollution of a complete result); static guidance string (fabrication 0). 3 mutation-verified OUTCOME tests; @muse/fs 62 green; Opus ④b judge PASS. (The fire's JUDGE-DRILL first injected an INERT unwired version which the verifier correctly FAILED — detail in docs/goals/loops/computer-control.md fire 46.)
+
 - ✓ learning-surfacing fire 1: `projectRecentlyLearned` (`@muse/memory/recently-learned.ts`) — deterministic, source-cited projection of "what Muse recently learned about you" from the append-only `factHistory` (each item cites `updated from "X" on DATE`; CODE selects, not the 8B; fabrication 0). Foundation for CLI/web surfaces to consume. 6 mutation-verified tests; @muse/memory 505 green; full build green; independent Opus ④b judge PASS. (detail in docs/goals/loops/learning-surfacing.md fire 1)
 - ✓ learning-surfacing fire 2: `renderRecentlyLearnedLines` (`@muse/memory/recently-learned.ts`) — deterministic presentation of fire-1's projection: humanises the key, ALWAYS embeds the source citation, and OMITS forgotten facts (`currentValue` undefined) so only currently-held, sourced learnings reach a surface. 4 mutation-verified tests; @muse/memory 513 green; independent Opus ④b judge PASS. (detail in docs/goals/loops/learning-surfacing.md fire 2)
 - ✓ learning-surfacing fire 3: `muse memory show` now prints a "Recently learned about you:" section — `readLocalMemory` computes it via `projectRecentlyLearned`→`renderRecentlyLearnedLines`, `formatMemoryShow` renders each cited line (`@muse/cli`, commands-memory.ts + human-formatters.ts). First user-facing surface where the user SEES cited learnings; local/file path only (API lacks factHistory → absent, honest). 2 mutation-verified tests; @muse/cli 2861 green; independent Opus ④b judge PASS. (detail in docs/goals/loops/learning-surfacing.md fire 3)
@@ -2373,14 +2382,27 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   shipped C1: the escalation-decision primitive `shouldEscalateToHeavy(confidence, threshold)` +
   `planTieredRun` optional `priorConfidence`/`escalateThreshold` (a fast-classified task with a KNOWN
   low fast-pass mean-logprob escalates to heavy; absent = unchanged, byte-identical). REMAINING:
-  · **C2 (runtime two-pass wiring)** — in `muse ask --tiered` / multi-agent runtime, after the FAST
-  pass run `summarizeTokenConfidence` (@muse/agent-core, already computed at commands-ask.ts:2870) on
-  the answer logprobs, feed the mean-logprob into a re-plan (`planTieredRun` with priorConfidence) and
-  re-run escalated tasks on heavy. Needs logprobs requested on the fast pass + the two-pass loop;
-  bound to 1 retry (no unbounded cascade). >1 fire.
+  · **C2-core (execution primitive) — DONE fire 5** `runCascade({fast,heavy,run,confidenceOf,threshold})`
+  (@muse/multi-agent cascade-run.ts): runs fast → escalates ONCE to heavy on low/unmeasurable confidence,
+  bounded (MAST no-loop). Model-agnostic via injected run/confidenceOf (package idiom). REMAINING:
+  · **C2b (autoconfigure wiring)** — wire the REAL injected functions: `run(model)` = a tiered model
+  call requesting logprobs; `confidenceOf` = `summarizeTokenConfidence(result.logprobs).meanLogprob`
+  (@muse/agent-core, already computed at commands-ask.ts:2870). Call `runCascade` from the `muse ask
+  --tiered` fast path (single-query cascade) and/or buildTieredOrchestration's per-worker run. Needs
+  logprobs requested on the fast pass. >1 fire (touches the live ask/orchestration loop). Verify with C3.
   · **C3 (live eval)** — use `bench:local` (fire 1) for the latency win + accuracy parity: cascade vs
   always-heavy on a mixed easy/hard set; assert faster mean latency AND no grounding/answer regression.
   Needs Ollama up.
+- ✓ **doctor: surface the Muse-side speed env — DONE local-speed fire 6** — `museSpeedEnvCheck` +
+  `readMuseSpeedEnv` (apps/cli) report the Muse-PROCESS speed env (`MUSE_OLLAMA_NUM_BATCH` fire-2 lever,
+  `MUSE_OLLAMA_NUM_CTX`, `MUSE_OLLAMA_KEEP_ALIVE`) on every `muse doctor`, with a concrete num_batch
+  tuning hint when unset — so the shipped lever is discoverable, not invisible. Advisory (always ok);
+  distinct surface from `ollamaPerfPostureCheck` (server launchctl env).
+- ◦ **doctor: warn when flash is ON but the model arch is NOT flash-attention-capable** — even with
+  OLLAMA_FLASH_ATTENTION=1, KV quant falls back to f16 unless the model is on Ollama's FA allowlist
+  (gemma3/qwen3/… per ollama/ollama#13337; gemma4 status unverified). Hard to encode (version-fragile
+  allowlist) — deferred; would need to query Ollama's supported-arch list at runtime, not hardcode.
+  (scouted local-speed fire 4)
 - ◦ **local-speed sibling adapter knobs (enumerated fire 2, deferred)** — beyond `num_batch`, Ollama
   exposes `num_thread` (CPU threads) and `num_gpu` (layers offloaded to GPU) as per-request speed
   levers. Deferred: both are hardware-specific and Ollama's auto-detection is usually right, so the

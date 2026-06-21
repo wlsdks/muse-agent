@@ -8,6 +8,7 @@ import {
   createDefaultToolExposurePolicy,
   coerceToolArguments,
   coerceEnumArguments,
+  nearestToolName,
   toolErrorHint,
   createWorkspaceToolRoutingPlan,
   validateRequiredToolArguments,
@@ -88,6 +89,29 @@ describe("toolErrorHint", () => {
     expect(result.status).toBe("failed");
     expect(String(result.output)).toContain("(hint:");
     expect(String(result.output)).toMatch(/transient/);
+  });
+});
+
+describe("nearestToolName", () => {
+  const names = ["run_command", "file_read", "file_grep", "file_edit"];
+
+  it("maps a hallucinated name to the closest real tool by shared token (node_run → run_command)", () => {
+    expect(nearestToolName("node_run", names)).toBe("run_command");
+    expect(nearestToolName("read_file", names)).toBe("file_read");
+  });
+
+  it("returns undefined when no candidate shares a token (no misleading suggestion)", () => {
+    expect(nearestToolName("zzz_unrelated", names)).toBeUndefined();
+    expect(nearestToolName("calendar", names)).toBeUndefined();
+  });
+
+  it("returns undefined for an empty/symbol-only requested name", () => {
+    expect(nearestToolName("", names)).toBeUndefined();
+    expect(nearestToolName("___", names)).toBeUndefined();
+  });
+
+  it("returns undefined when there are no candidate names", () => {
+    expect(nearestToolName("file_read", [])).toBeUndefined();
   });
 });
 
