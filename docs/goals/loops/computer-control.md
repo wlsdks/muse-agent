@@ -5,6 +5,16 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 50 · 2026-06-21 · skill v2.0 · <commit> (★eval:multifile-fix FAIL→PASS validated; + command-as-name → execute-tool recovery for edit-run-verify)
+meta: value-class=new-capability+measure · pkg=@muse/agent-core · kind=not-exposed-recovery(command-name) · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles +0 / +2 cases (command-name positive+negative integration) · fabrication 0 · @muse/agent-core 2571 · agent-runtime 135 · pnpm check @muse/runtime-settings SIGABRT(격리 통과, 무관) · lint 0/0 · Ollama UP · ★eval:multifile-fix PASS (2/2 관측 this fire, 직전까지 STABLE FAIL)
+- ★측정 마일스톤: Ollama up 재측정 — **eval:multifile-fix가 PASS**(2/2 관측: file_read→file_read→file_edit(a+b→a*b), test-passes=true). 다수 fire STABLE FAIL이었음 → fires 47(not-exposed 제안)+49(repetition nudge)가 멀티스텝 신뢰성을 실제로 끌어올림(라이브 검증).
+- 무엇: 그러나 eval:edit-run-verify는 FAIL — 새 구체 트레이스: 12B가 **명령행 전체를 tool 이름으로** 방출(`node --exec "/var/.../sum.test.mjs"`). fire-47 token-overlap은 {node,exec,...} vs {run,command} 무교집합이라 미스 → 맨-에러 dead-end. FIX(fire-47 형제-완성): not-exposed 게이트에서 이름이 command-shaped(공백 포함=식별자 아님)이고 active execute 도구가 있으면 "이름은 식별자여야 한다 — 명령은 '<run_command>'의 인자로" 안내.
+- 왜: 측정된 dead-end(edit-run-verify FAIL 원인)·on-theme·결정론·STABLE-FAIL eval flip 가능. fire 47이 node_run(공유토큰 run)은 잡고 command-as-name은 놓친 형제 갭.
+- 리뷰지점: mutation-first(commandShaped=false면 정확히 command-name 테스트 RED). 독립 Opus ④b judge가 wiring 비-inert·trigger 정밀(공백=비식별자, !suggestion 게이트)·fabrication0·무회귀 검증 → VERDICT PASS. judge 노트: agent-core 우물 잘 팠다, 다음 fire는 다른 (pkg,kind).
+- 리스크: edit-run-verify OUTCOME flip 미확정(stochastic; fix는 dead-end 닫음, 이후 성공은 모델-행동). 정직. agent-core 4연속(47-50) — 다음 fire 다른 표면. fire 50은 ×3 아님 → main 머지 없음.
+lesson: 측정이 단계적 진전을 검증+다음 갭 발굴 — multifile-fix는 47/49로 FAIL→PASS, edit-run-verify는 command-as-name이라는 새 형제 갭 노출. 같은 메커니즘(not-exposed 게이트)의 형제-완성은 정당하나 4연속 후엔 (pkg,kind) 전환.
+
 ## fire 49 · 2026-06-21 · skill v2.0 · 12b399cf (measure→STEP-REPETITION discovery→deterministic dup-call nudge; MAST arXiv:2503.13657)
 meta: value-class=new-capability · pkg=@muse/agent-core · kind=step-repetition-guard · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles +0 / +1 case (execute-model-loop dup-nudge, mutation-verified) · fabrication 0 · @muse/agent-core 2569 · execute-model-loop 15 · pnpm check @muse/voice SIGABRT(격리 124/124, agent-core 무관) · lint 0/0 · Ollama UP
