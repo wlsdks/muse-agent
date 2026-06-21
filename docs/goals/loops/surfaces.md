@@ -562,7 +562,7 @@ ratchet: web tests 88/88 (+5) · fabrication 0 · self-eval exit 0 · check exit
 - **리스크**: 없음(apps/web 5파일, web build tsc+vite·web 88/88·pnpm check exit 0·smoke:broad 51/0·lint clean, judge#1 FAIL→fix→judge#2 PASS 드릴 완결).
 - **lesson(드릴 교훈 증류)**: 결정적 게이트(build/test/lint)는 **선언-only 테스트를 통과시킨다** — honesty/도메인 불변식(probation≠active)을 검증하는 건 *행동 단언 + mutation-RED*뿐이다. 새 헬퍼의 테스트는 "함수가 string 반환"이 아니라 "이 입력→이 OUTCOME"을 단언해야 하며, mutation으로 RED 확인이 그 보증. ④b 적응형 judge는 이 클래스(도메인 불변식 위반 + vacuous test)를 안정적으로 잡는다.
 
-## fire 62 · 2026-06-21 · skill v2.0.0 · <pending>
+## fire 62 · 2026-06-21 · skill v2.0.0 · cffe2d94
 meta: surface=api · value-class=new-capability · pkg=@muse/api+autoconfigure · kind=self-improve-skills-api · verdict=PASS · firesSinceDrill=1
 ratchet: api tests 897/897 (+5) · autoconfigure 88/88 · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 51/0 · lint clean
 
