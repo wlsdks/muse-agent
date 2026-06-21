@@ -12,6 +12,7 @@ import {
 import { formatCitations } from "./human-formatters.js";
 import { closestCommandName } from "./closest-command.js";
 import { MUSE_TAGLINE } from "./muse-identity.js";
+import { formatSpec } from "./muse-spec.js";
 import { MUSE_CLI_VERSION } from "./muse-version.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import {
@@ -289,20 +290,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     .description("Print the fixed runtime stack")
     .option("--json", "Print machine-readable JSON")
     .action((options: { readonly json?: boolean }) => {
-      const spec = {
-        agentCore: "model-agnostic",
-        cli: "typescript + ink",
-        database: "postgresql + kysely",
-        runner: "rust",
-        server: "fastify"
-      };
-
-      if (options.json) {
-        io.stdout(`${JSON.stringify(spec, null, 2)}\n`);
-        return;
-      }
-
-      io.stdout("Muse stack: TypeScript, Node.js, Fastify, PostgreSQL, Kysely, Ink, Rust runner\n");
+      io.stdout(formatSpec(options.json));
     });
 
   program
