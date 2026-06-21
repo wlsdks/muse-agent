@@ -46,11 +46,11 @@ import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingAction
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
 import { dedupNearDuplicateChunks, diversifyAskChunks, notesGroundingFraming, secondHopAugmentChunks, shouldSecondHop } from "@muse/recall";
 import { groundedSourceSummary, optionalGroundingRelevance, optionalGroundingSections } from "@muse/recall";
-import { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
+import { citationPrecisionNotice, citationRecallNotice, sourceCheckSignals, untrustedOnlyGroundingNotice, type SourceCheckSignals } from "@muse/recall";
 
 export { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
 export { diversifyAskChunks, notesGroundingFraming };
-import { askOutcomeLabel, askWeaknessAxis, contestedOutcome, createStageTimer, misgroundedOutcome, recordAskWeakness, recordAskWeaknessResolved } from "@muse/recall";
+import { askOutcomeLabel, askWeaknessAxis, contestedOutcome, createStageTimer, misgroundedOutcome, recordAskWeakness, recordAskWeaknessResolved, untrustedFeedMatch } from "@muse/recall";
 import type { AskWeaknessAxis } from "@muse/recall";
 export { askOutcomeLabel, askWeaknessAxis, createStageTimer, recordAskWeakness, recordAskWeaknessResolved };
 import { drawBestGroundedRedraft, groundingVerdictNotice } from "@muse/recall";
@@ -2430,6 +2430,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // spends ONE extra local-Qwen inference (MaTTS) to re-check the answer
       // against the evidence — fail-close, so a judge error still warns.
       let groundedVerdictLabel: "grounded" | "ungrounded" | null = null;
+      // Lifted to the run-log / --json scope (assigned inside the verdict block
+      // below), mirroring groundedVerdictLabel: the machine surface reads it.
+      let sourceCheck: SourceCheckSignals | undefined;
       // The verdict now runs in --json mode too (previously skipped): a JSON
       // consumer (desktop bridge, scripts) could not tell a gated answer from
       // an unchecked one, and json traces carried grounded:null. Emissions
@@ -2505,7 +2508,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           ...matchedCommands.map((cmd) => exactMatch(`command: ${cmd}`, cmd)),
           ...matchedCommits.map((c) => exactMatch(`commit: ${c.subject}`, c.subject)),
           ...allMemoryFacts.map((f) => exactMatch(`memory: ${f.key}`, renderMemoryFact(f))),
-          ...feedHeadlines.map((h) => exactMatch(`feed: ${h.feedName}`, `${h.title}${h.summary ? ` ${h.summary}` : ""}`)),
+          // Feeds are third-party publisher content (RSS/Atom) — NOT the user's
+          // own data — so tag them trusted:false: an answer resting SOLELY on a
+          // poisonable feed headline must trip the untrusted-only source-check
+          // cue (grounded≠true), exactly like a web/MCP tool result below.
+          ...feedHeadlines.map((h) => untrustedFeedMatch(h.feedName, h.title, h.summary)),
           // The --with-tools agent's OWN read-tool outputs (web fetches,
           // knowledge_search, …): the evidence it was shown. Without these a
           // correctly web-grounded answer scores ~zero coverage against the
@@ -2600,6 +2607,15 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         if (recallNotice && !options.json) {
           io.stderr(recallNotice);
         }
+        // Machine twin of the three cues above: a `--json`/run-log consumer can't
+        // read the human stderr cue, so without this a grounded-but-untrusted (or
+        // mis-/un-cited) answer reaches a downstream agent as a clean
+        // `groundedVerdict:"grounded"` — a GROUNDED≠TRUE machine-surface leak (the
+        // same one V1 closed for fan-out signals). Same gate + predicates as the
+        // stderr cues, so the surfaces can't drift.
+        sourceCheck = !verdictNotice && imageAttachments.length === 0
+          ? sourceCheckSignals(verdictAnswer, scoredMatches)
+          : undefined;
         if (verdictNotice && !options.json) {
           io.stderr(verdictNotice);
           // Constructive grounding (RARR, arXiv:2210.08726): rather than only
@@ -2872,7 +2888,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         response: collectedAnswer,
         success: true,
         toolsUsed,
-        ...(decompositionSignals ? { decomposition: decompositionSignals } : {})
+        ...(decompositionSignals ? { decomposition: decompositionSignals } : {}),
+        ...(sourceCheck ? { sourceCheck } : {})
       }));
       // Whetstone fuel: an ASK failure becomes a weakness-ledger entry so doctor
       // / error-analysis can mine real-usage gaps — previously only chat-repl fed
@@ -2924,6 +2941,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // sub-answers contradicted / a sub-result was dropped / the list was capped —
           // the stderr banner the human gets isn't on the --json surface.
           ...(decompositionSignals ? { decomposition: decompositionSignals } : {}),
+          // Source-check signals on a grounded answer (grounded≠true): rests only on
+          // untrusted sources / a citation is unsupported / a claim is uncited. The
+          // human got the stderr cue; the machine surface gets it structured here.
+          ...(sourceCheck ? { sourceCheck } : {}),
           ...(citationGate.stripped.length > 0 ? { strippedCitations: citationGate.stripped } : {}),
           ...(options.withTools ? { toolsUsed } : {}),
           grounded: {
