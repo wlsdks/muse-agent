@@ -1,24 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { AsyncBlock, Badge, Button, Card, Icon } from "../components/ui.js";
+import { AsyncBlock, Badge, Card } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { safeDateTime } from "../lib/datetime.js";
 
 import type { ApiClient } from "../api/client.js";
-import type {
-  ActionsResponse,
-  ContactsResponse,
-  ObjectivesResponse,
-  VetoesResponse
-} from "../api/types.js";
+import type { ActionsResponse, ObjectivesResponse, VetoesResponse } from "../api/types.js";
 import type { StringKey } from "../i18n/index.js";
 
-type Tab = "actions" | "objectives" | "contacts" | "vetoes";
+type Tab = "actions" | "objectives" | "vetoes";
 const TABS: readonly { id: Tab; labelKey: StringKey }[] = [
   { id: "actions", labelKey: "auto.tab.actions" },
   { id: "objectives", labelKey: "auto.tab.objectives" },
-  { id: "contacts", labelKey: "auto.tab.contacts" },
   { id: "vetoes", labelKey: "auto.tab.vetoes" }
 ];
 
@@ -60,7 +54,6 @@ export function AutonomyView({ client }: { client: ApiClient }) {
 
       {tab === "actions" && <ActionsTab client={client} locale={locale} />}
       {tab === "objectives" && <ObjectivesTab client={client} locale={locale} />}
-      {tab === "contacts" && <ContactsTab client={client} />}
       {tab === "vetoes" && <VetoesTab client={client} locale={locale} />}
     </div>
   );
@@ -120,79 +113,6 @@ function ObjectivesTab({ client, locale }: { client: ApiClient; locale: string }
         ))}
       </AsyncBlock>
     </Card>
-  );
-}
-
-function ContactsTab({ client }: { client: ApiClient }) {
-  const { t } = useI18n();
-  const qc = useQueryClient();
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-
-  const q = useQuery({
-    queryFn: () => client.get<ContactsResponse>("/api/contacts"),
-    queryKey: ["contacts", client.baseUrl]
-  });
-  const invalidate = () => void qc.invalidateQueries({ queryKey: ["contacts"] });
-  const add = useMutation({
-    mutationFn: (body: Record<string, string>) => client.post("/api/contacts", body),
-    onSuccess: () => {
-      setName("");
-      setPhone("");
-      setEmail("");
-      invalidate();
-    }
-  });
-  const remove = useMutation({
-    mutationFn: (id: string) => client.del(`/api/contacts/${id}`),
-    onSuccess: invalidate
-  });
-
-  const list = q.data?.contacts ?? [];
-  return (
-    <>
-      <Card title={t("auto.addContact")} className="lifted">
-        <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr 1fr auto", alignItems: "end" }}>
-          <div>
-            <label className="field-label" htmlFor="contact-name">{t("auto.name")}</label>
-            <input id="contact-name" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Dr. Kim" />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="contact-phone">{t("auto.phone")}</label>
-            <input id="contact-phone" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 415 555 0101" />
-          </div>
-          <div>
-            <label className="field-label" htmlFor="contact-email">{t("auto.email")}</label>
-            <input id="contact-email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="kim@example.com" />
-          </div>
-          <Button
-            variant="primary"
-            disabled={!name.trim() || add.isPending}
-            onClick={() => add.mutate({ email: email.trim(), name: name.trim(), phone: phone.trim() })}
-          >
-            <Icon.plus className="nav-icon" /> {t("common.add")}
-          </Button>
-        </div>
-      </Card>
-      <div style={{ marginTop: 16 }}>
-        <Card title={t("auto.tab.contacts")} count={q.data?.total ?? 0}>
-          <AsyncBlock loading={q.isLoading} error={q.error} empty={list.length === 0}>
-            {list.map((c) => (
-              <div className="row" key={c.id}>
-                <div className="row-main">
-                  <div className="row-title">{c.name}</div>
-                  <div className="row-meta">{[c.phone, c.email, c.handle].filter(Boolean).join(" · ")}</div>
-                </div>
-                <Button variant="ghost" size="sm" title={t("common.delete")} ariaLabel={t("common.delete")} onClick={() => remove.mutate(c.id)}>
-                  <Icon.trash className="nav-icon" />
-                </Button>
-              </div>
-            ))}
-          </AsyncBlock>
-        </Card>
-      </div>
-    </>
   );
 }
 
