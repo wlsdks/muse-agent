@@ -19,7 +19,7 @@ describe("muse logo — the mascot banner", () => {
     const out = await run();
     expect(out).toContain(MUSE_MASCOT_ANSI);
     expect(out.endsWith("\n")).toBe(true);
-    expect(out).toContain("▀"); // upper half-block ▀ — confirms it's the art
+    expect(/[\u{1FB00}-\u{1FB3B}█▌▐▀▄]/u.test(out)).toBe(true); // a sextant/block cell glyph — confirms it's the art
     expect(out).toContain("\u001b[38;2;"); // 24-bit truecolor foreground escape
   });
 
@@ -27,8 +27,9 @@ describe("muse logo — the mascot banner", () => {
     const lines = MUSE_MASCOT_ANSI.split("\n");
     expect(lines.length).toBe(MUSE_MASCOT_ROWS);
     for (const line of lines) {
-      // each column emits exactly one cell glyph: ▀ (upper), ▄ (lower), or a space (transparent)
-      const cells = line.match(/[▀▄ ]/gu) ?? [];
+      // each column emits exactly one cell glyph: a sextant (U+1FB00 block),
+      // a block (█ ▌ ▐ ▀ ▄), or a space (transparent)
+      const cells = line.match(/[ ▀▄█▌▐]|[\u{1FB00}-\u{1FB3B}]/gu) ?? [];
       expect(cells.length).toBe(MUSE_MASCOT_WIDTH);
       expect(line.endsWith("\u001b[0m")).toBe(true); // SGR reset closes every row
     }
