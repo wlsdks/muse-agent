@@ -130,16 +130,59 @@ final class CharacterView: NSView {
 
     }
 
-    /// Draw the goddess image scaled to fit `rect` (aspect-preserving), with a
-    /// gentle breathing bob — the transparent PNG composites over the desktop.
+    /// Draw the goddess alive: a smooth floating bob, a gentle side-to-side
+    /// sway, a subtle breathing scale, and twinkling sparkles around her — more
+    /// animated while she's listening / speaking. The transparent PNG composites
+    /// over the desktop.
     private func drawGoddess(_ img: NSImage, in rect: NSRect) {
-        let bob: CGFloat = (tick % 60 < 30) ? 0 : 2
+        let t = Double(tick) * 0.04
+        let lively = (state == .listening || state == .speaking) ? 1.7 : 1.0
+        let bob = CGFloat(sin(t * 1.1)) * 5 * CGFloat(lively)
+        let sway = CGFloat(sin(t * 0.7)) * 3
+        let breathe = 1 + CGFloat(sin(t * 1.6)) * 0.012
+
         let aspect = img.size.height > 0 ? img.size.width / img.size.height : 1
-        var w = rect.width, h = rect.width / aspect
-        if h > rect.height { h = rect.height; w = rect.height * aspect }
-        let x = (rect.width - w) / 2
+        var w = rect.width * breathe
+        var h = w / aspect
+        if h > rect.height * breathe { h = rect.height * breathe; w = h * aspect }
+        let x = (rect.width - w) / 2 + sway
         let y = (rect.height - h) / 2 - bob
         img.draw(in: NSRect(x: x, y: y, width: w, height: h), from: .zero, operation: .sourceOver, fraction: 1)
+
+        drawSparkles(in: rect, t: t, lively: lively)
+    }
+
+    /// A handful of 4-point sparkles that twinkle around the goddess — pure code,
+    /// so she feels magical and alive without extra art frames.
+    private func drawSparkles(in rect: NSRect, t: Double, lively: Double) {
+        let spots: [(CGFloat, CGFloat, Double)] = [
+            (0.16, 0.74, 0.0), (0.84, 0.78, 1.3), (0.50, 0.93, 2.2),
+            (0.09, 0.52, 0.7), (0.91, 0.55, 1.9), (0.30, 0.88, 3.0)
+        ]
+        for (fx, fy, phase) in spots {
+            let tw = (sin(t * 2.2 * lively + phase) + 1) / 2     // 0…1
+            guard tw > 0.2 else { continue }
+            let cx = rect.minX + rect.width * fx
+            let cy = rect.minY + rect.height * fy
+            let r = rect.width * 0.016 * CGFloat(0.5 + tw)
+            NSColor(calibratedWhite: 1, alpha: CGFloat(tw) * 0.85).setFill()
+            sparklePath(cx: cx, cy: cy, r: r).fill()
+        }
+    }
+
+    private func sparklePath(cx: CGFloat, cy: CGFloat, r: CGFloat) -> NSBezierPath {
+        let waist = r * 0.30
+        let p = NSBezierPath()
+        p.move(to: NSPoint(x: cx, y: cy + r))
+        p.line(to: NSPoint(x: cx + waist, y: cy + waist))
+        p.line(to: NSPoint(x: cx + r, y: cy))
+        p.line(to: NSPoint(x: cx + waist, y: cy - waist))
+        p.line(to: NSPoint(x: cx, y: cy - r))
+        p.line(to: NSPoint(x: cx - waist, y: cy - waist))
+        p.line(to: NSPoint(x: cx - r, y: cy))
+        p.line(to: NSPoint(x: cx - waist, y: cy + waist))
+        p.close()
+        return p
     }
 
     // Tap → onClick (open input); drag → move the window. (SwiftUI's hosting view

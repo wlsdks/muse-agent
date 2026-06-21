@@ -1,7 +1,7 @@
 import { type KnowledgeMatch } from "@muse/agent-core";
 import { describe, expect, it } from "vitest";
 
-import { citationPrecisionNotice, citationRecallNotice, sourceCheckSignals, untrustedFeedMatch, untrustedOnlyGroundingNotice } from "./grounding-notices.js";
+import { citationPrecisionNotice, citationRecallNotice, sourceCheckSignals, untrustedEpisodeMatch, untrustedFeedMatch, untrustedOnlyGroundingNotice } from "./grounding-notices.js";
 
 const match = (source: string, text: string, cosine: number, trusted?: boolean): KnowledgeMatch => ({
   cosine,
@@ -88,6 +88,33 @@ describe("untrustedFeedMatch — external feed evidence is tagged trusted:false 
     const matches = [
       { cosine: 0.7, score: 0.7, source: "notes/deals.md", text: "Acme acquired Beta for $1B." }, // trusted (no flag)
       untrustedFeedMatch("TechBlog", "Acme acquired Beta for $1B")
+    ];
+    expect(untrustedOnlyGroundingNotice("Acme acquired Beta for $1B [from notes/deals.md].", matches)).toBeUndefined();
+  });
+});
+
+describe("untrustedEpisodeMatch — past-session episode tagged untrusted (episode-laundering defense, MemoryGraft arXiv:2512.16962)", () => {
+  it("tags the episode match trusted:false with the canonical session source + summary", () => {
+    expect(untrustedEpisodeMatch("ep_123", "Acme acquired Beta for $1B", 0.8)).toEqual({
+      cosine: 0.8,
+      score: 0.8,
+      source: "session: ep_123",
+      text: "Acme acquired Beta for $1B",
+      trusted: false
+    });
+  });
+
+  it("makes a faithful answer resting ONLY on a poisoned episode trip the untrusted-only source-check cue", () => {
+    const matches = [untrustedEpisodeMatch("ep_x", "Acme acquired Beta for $1B", 1)];
+    const notice = untrustedOnlyGroundingNotice("Acme acquired Beta for $1B [from session: ep_x].", matches);
+    expect(notice).toBeDefined();
+    expect(notice).toContain("tool-fetched"); // the untrusted-only cue
+  });
+
+  it("is cleared by a single trusted note in the pool (a poisoned episode alongside the user's own data is not untrusted-ONLY)", () => {
+    const matches = [
+      { cosine: 0.7, score: 0.7, source: "notes/deals.md", text: "Acme acquired Beta for $1B." }, // trusted (no flag)
+      untrustedEpisodeMatch("ep_x", "Acme acquired Beta for $1B", 1)
     ];
     expect(untrustedOnlyGroundingNotice("Acme acquired Beta for $1B [from notes/deals.md].", matches)).toBeUndefined();
   });

@@ -3753,6 +3753,23 @@ describe("cli program", () => {
     }
   });
 
+  it("appendLastChatTurn persists + readLastChatHistory round-trips the per-turn untrustedOnly flag (EP-1b episode-laundering defense)", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "muse-cli-untrusted-turn-"));
+    const prev = process.env.HOME;
+    process.env.HOME = root;
+    try {
+      const { appendLastChatTurn, readLastChatHistory } = await import("../src/chat-history.js");
+      await appendLastChatTurn({ message: "any news about Acme?", response: "Acme acquired Beta [from feed: X]", responseUntrusted: true });
+      await appendLastChatTurn({ message: "what's my rent?", response: "Your rent is $2000 [from notes/rent.md]" });
+      const lines = await readLastChatHistory();
+      const assistant = lines.filter((l) => l.role === "assistant");
+      expect(assistant[0]?.untrustedOnly).toBe(true); // the feed-grounded turn
+      expect(assistant[1]?.untrustedOnly).toBeUndefined(); // the note-grounded turn — absent
+    } finally {
+      if (prev === undefined) delete process.env.HOME; else process.env.HOME = prev;
+    }
+  });
+
   it("appendSessionBoundary writes a [SESSION_BOUNDARY] line that readLastChatHistory ignores", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-boundary-"));
     const fsp = await import("node:fs/promises");

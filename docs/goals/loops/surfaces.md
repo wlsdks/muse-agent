@@ -550,3 +550,94 @@ ratchet: api tests 880/880 (+8) · testFiles +0(기존 파일 확장) · fabrica
 - **리뷰지점**: mutation-first — shapePlaybook 단위테스트(reward DESC + recency 동률, absent reward=0, null정규화, probation/timesObserved/reward 디폴트). reward 정렬 뒤집으면 2 RED·probation 디폴트 false→true 바꾸면 RED(둘 다 빌더+독립 judge 확인). 보안: read-only GET·weaknesses와 **동일 auth 게이트**(requireAuthenticated)·write 0·`readPlaybook`는 키 불일치 시 fail-closed throw(정직한 500, empty로 안 삼킴·경로/스택 미노출). 정직한 갭: 웹 뷰 미배선(다음 fire)·learned/eval 스코어보드는 후속.
 - **리스크**: 없음(apps/api만 4파일, api build clean·api 880/880·pnpm check exit 0·smoke:broad 51/0·lint clean, 독립 Opus ④b judge가 shaper정확성·auth·다양성·mutation 검증 후 PASS).
 - **drill-노트**: fire 61은 firesSinceDrill=10 도달 → 다음 슬라이스는 강제 JUDGE-DRILL(고의 나쁜-슬라이스 주입→judge FAIL 확인→롤백→진짜 fix), 미루기 불가.
+
+## fire 61 · 2026-06-21 · skill v2.0.0 · 2624028e · ★JUDGE-DRILL
+meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=self-improve-strategies-view+judge-drill · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: web tests 88/88 (+5) · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 51/0 · ★verifier 신뢰성 입증(inert→FAIL, real→PASS)
+
+- **무엇**: fire 60의 `GET /api/self-improvement/playbook`를 소비하는 웹 "학습된 전략(Learned strategies)" 섹션을 `SelfImprovementView`에 추가(weaknesses 아래). 순수 헬퍼 `strategyStatusLabel`(probation→"probation"/else "active")·`summarizeStrategies`(active vs probation distinct count) + `PlaybookStrategyView`/`PlaybookStrategiesResponse` 타입 + i18n(en/ko, si.strategies*). 각 전략을 상태 Badge(active=ok톤/probation=neutral톤)·tag·origin·reward로 렌더.
+- **왜**: 진안 "자기강화 웹 콘솔"의 weaknesses(fire 59) + playbook API(fire 60) 다음 — 전략을 웹에서 본다. **핵심 정직-불변식**: probation 전략은 기록되되 graduate 전까지 agent run에 주입 안 됨 → 콘솔이 probation을 "active(작동중)"으로 표기하면 grounding-floor 위반(미graduate 전략이 행동을 형성한다고 거짓 주장). 그래서 active/probation을 정직히 구분하는 게 이 슬라이스의 본질.
+- **★JUDGE-DRILL**: 이 fire가 강제 드릴(firesSinceDrill=10). 고의 나쁜-슬라이스 주입 — `strategyStatusLabel`을 항상 "active" 반환(probation 무시)·`summarizeStrategies` probation 하드코딩 0 + **선언-only 테스트**(typeof string·total만 체크, 결정적 게이트는 web 85/85 그린 통과). 독립 Opus judge#1이 FAIL 판정(구체적 위반: honesty 불변식 역전 self-improvement.ts:23·probation 0 하드코딩·테스트가 broken/correct 양쪽에 그린=mutation 무보호). → 롤백 → 진짜 fix(정상 헬퍼 + active/probation distinct 테스트, mutation으로 3 RED 확인) → fresh Opus judge#2 PASS. **verifier가 inert 슬라이스를 FAIL·real 슬라이스를 PASS함을 입증**(maker≠judge 보상통제 작동).
+- **리뷰지점**: mutation-first — strategyStatusLabel always-active 변이→probation 테스트 RED, summarizeStrategies probation-0 변이→2 RED(둘 다 judge#2 독립 재확인). 보안: 전략 텍스트/tag/origin escaped React children(dangerouslySetInnerHTML 없음)·read-only GET. i18n en/ko 키셋+토큰({active}/{probation}/{n}) 패리티.
+- **리스크**: 없음(apps/web 5파일, web build tsc+vite·web 88/88·pnpm check exit 0·smoke:broad 51/0·lint clean, judge#1 FAIL→fix→judge#2 PASS 드릴 완결).
+- **lesson(드릴 교훈 증류)**: 결정적 게이트(build/test/lint)는 **선언-only 테스트를 통과시킨다** — honesty/도메인 불변식(probation≠active)을 검증하는 건 *행동 단언 + mutation-RED*뿐이다. 새 헬퍼의 테스트는 "함수가 string 반환"이 아니라 "이 입력→이 OUTCOME"을 단언해야 하며, mutation으로 RED 확인이 그 보증. ④b 적응형 judge는 이 클래스(도메인 불변식 위반 + vacuous test)를 안정적으로 잡는다.
+
+## fire 62 · 2026-06-21 · skill v2.0.0 · cffe2d94
+meta: surface=api · value-class=new-capability · pkg=@muse/api+autoconfigure · kind=self-improve-skills-api · verdict=PASS · firesSinceDrill=1
+ratchet: api tests 897/897 (+5) · autoconfigure 88/88 · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 51/0 · lint clean
+
+- **무엇**: 새 콘솔 영역 "스킬 컨트롤"의 데이터 레이어 — authored 스킬(`~/.muse/skills/authored/`)을 reward 사이드카(`~/.muse/skill-rewards.json`)와 병합해 읽는 read-only `GET /api/self-improvement/skills`(fire 58/60 패턴 미러). 순수 `shapeSkills`(reward DESC·동률 name ASC, reward 무시 시 0, `avoided`=`isSkillAvoided`(reward≤-4) 정직신호, total 무드롭) + `SkillView`/`SkillsResponse` + `authoredSkillsDir`/`skillRewardsFile` 게이트. autoconfigure에 `resolveSkillRewardsFile` 신설(`~/.muse/skill-rewards.json`, CLI resolver와 동일 경로/env) + server.ts 배선.
+- **왜**: 진안 "openclaw/hermes처럼 웹에서 MCP·설정·스킬·자기강화 다 관리"의 **3번째 영역(스킬)** 개시. 자기강화(weaknesses+playbook) 다음 새 영역으로 다양성 확보. authored 스킬은 사용자/agent가 만든 ~/.muse 데이터 → 가장 관리할 만한 표면. value-class=new-capability.
+- **리뷰지점**: mutation-first — shapeSkills 단위테스트(reward DESC + name ASC 동률·absent reward=0·avoided -4경계·total). reward 정렬 뒤집으면 2 RED·avoided 비교 flip하면 -4 경계 테스트 RED(둘 다 빌더+독립 judge 확인). **경로 정합(핵심)**: API가 CLI authored 경로(`~/.muse/skills/authored`)·rewards 경로(`~/.muse/skill-rewards.json`)·env(MUSE_AUTHORED_SKILLS_DIR/MUSE_SKILL_REWARDS_FILE)와 정확히 일치(judge가 CLI commands-skills.ts 대조 확인) — 안 그러면 콘솔이 빈/딴 dir 읽음. 보안: read-only GET·weaknesses/playbook과 동일 auth 게이트·skill `body`/`frontmatter` 미노출(name/description/source/reward/avoided만, 마크다운 과노출 없음)·loadSkillsFromDirectory/readSkillRewards 둘 다 fail-soft([]/{}). 정직한 갭: 웹 뷰 미배선(다음 fire)·authored만(user/workspace dir·curate/author 액션 후속).
+- **형제(enumerate, 미루기 명시)**: CLI(`apps/cli/src/commands-skills.ts`)에 `resolveAuthoredSkillsDir`/`resolveSkillRewardsFile` private 복제본 존재 — 이번에 autoconfigure 공유본을 만들었으니 CLI를 그것으로 통일하면 gate-asymmetry 제거(별도 슬라이스, CLI 3파일 import 변경이라 backlog 기록).
+- **리스크**: 없음(autoconfigure 3 + apps/api 4 파일, autoconfigure build clean·api 897/897·pnpm check exit 0·smoke:broad 51/0·lint clean[빌더가 남긴 re-export-only import 1건 dead-import 룰대로 제거], 독립 Opus ④b judge가 shaper·경로정합·auth·과노출·다양성·mutation 검증 후 PASS).
+- **lesson**: 빌더가 re-export-from 블록에 더해 import 블록에도 심볼을 넣어 unused-import lint 위반 발생(personal-providers.ts) — `export {X} from "./y"`가 있으면 body 미사용 import는 불필요(code-style.md 재수출 규칙). pnpm check는 lint를 안 도니 ③ 시퀀스의 pnpm lint가 이 클래스를 잡는다.
+
+## fire 63 · 2026-06-21 · skill v2.0.0 · a1f44f18
+meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=skills-console-view · verdict=PASS · firesSinceDrill=2
+ratchet: web tests 92/92 (+4) · testFiles +2 · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 51/0 · lint clean
+
+- **무엇**: fire 62의 `GET /api/self-improvement/skills`를 소비하는 새 "Skills" 콘솔 뷰(자체 nav, key "j", Icon.tool). authored 스킬을 이름·설명·source 배지·reward·**avoided 배지**(warn 톤, avoided=true일 때만)로 read-only 렌더. 순수 `summarizeSkills`(skill-list.ts: total/active/avoided distinct count) + `SkillView`/`SkillsResponse` 웹 타입 + i18n(en/ko). McpServers/SelfImprovement 뷰 패턴 미러.
+- **왜**: 진안 "스킬도 웹에서 관리"의 fire 62 데이터 레이어 다음 뷰 — 스킬 콘솔 영역 end-to-end 완성(weaknesses 58→59, playbook 60→61, skills 62→63 동일 cadence). **avoided=정직신호**: soft-suppress된(적용 안 되는) 스킬을 배지로 표시해 "이 스킬이 작동 중"이라 오인 안 하게. 자체 nav 영역(스킬은 자기강화와 별개).
+- **리뷰지점**: mutation-first — summarizeSkills(avoided 하드코딩 0→2 RED·active/avoided swap→RED, 둘 다 빌더+독립 judge 확인). 보안: read-only GET·스킬 name/description escaped React children(dangerouslySetInnerHTML 없음)·queryKey `["skills",baseUrl]`(self-improvement과 분리). nav: key "j" free(leader "g" 아님)·NavKeys.test 통과(leader충돌·중복키 가드)·settings 특례 무손상. i18n en/ko 키셋+토큰({n}/{a}) 패리티. 정직한 갭: reward/curate/author 액션은 후속(이번 read-only).
+- **빌더 deviation(타당)**: 순수 헬퍼를 `skills.ts` 대신 `skill-list.ts`로 명명 — macOS 대소문자 무시 FS에서 `Skills.tsx`와 충돌(TS2305/1261). mcp-status.ts↔McpServers.tsx 동일 패턴.
+- **리스크**: 없음(apps/web 6파일, web build tsc+vite·web 92/92·pnpm check exit 0·smoke:broad 51/0·lint clean, 독립 Opus ④b judge가 행동검증·avoided 정직신호·렌더안전·nav·i18n·다양성·mutation 검증 후 PASS).
+
+## fire 64 · 2026-06-21 · skill v2.0.0 · e55867d7
+meta: surface=api · value-class=new-capability · pkg=@muse/api · kind=skill-reward-actuator(STATE-CHANGE) · verdict=PASS · firesSinceDrill=3
+ratchet: api 924/924 isolated · smoke:broad 52/0 (+1) · fabrication 0 · self-eval exit 0 · lint clean · ★첫 웹콘솔 상태변경 라우트
+
+- **무엇**: 웹 콘솔 **첫 상태변경(write) 라우트** — `POST /api/self-improvement/skills/:name/reward`가 스킬 reward를 delta만큼 조정(`adjustSkillReward`→`~/.muse/skill-rewards.json` 영속, 누적 [-5,5] clamp는 store가). 순수 `parseRewardDelta`(유한·비0 number만 통과, 그외 undefined→400) + auth 게이트(read 라우트와 동일 `authed`) + `:name` decodeURIComponent. fire 62 read-only skills API의 write 카운터파트.
+- **왜**: 진안 "스킬 컨트롤"을 read 너머 실제 control로 — 첫 웹 thumbs up/down 토대. **다양성 RATCHET 돌파**: 최근 web-view×4·api-wiring(read GET)×3 모노컬처에서 처음으로 (api, actuator/state-change) 새 kind. 로컬 self-tuning(제3자 outbound 아님)이라 outbound-safety draft-first 불요, 적용 게이트=auth(tasks complete·mcp connect와 동일).
+- **리뷰지점(상태변경=게이트 증명이 핵심)**: **contract-faithful 실HTTP smoke**(가짜 레지스트리 아님)가 τ-bench no-partial-side-effect 증명 — reward 누적 persist(+2→2→+1→3), 무효 delta 3종(문자열·누락·0) 각 400, **무효 후 유효 +1이 정확히 4 착지**(무효가 mutate했다면 4 아님)로 부작용-0 입증. auth: write前 동일 authed 게이트 우회 없음. mutation-first: parseRewardDelta(Number.isFinite 제거→NaN/Inf 3 RED·비0 제거→0 RED). 입력안전: name은 고정 파일의 JSON 키일 뿐 경로탈출 불가. 독립 Opus ④b judge가 5축(게이트증명·auth·행동검증·입력안전·다양성) 검증 후 PASS.
+- **리스크**: 없음(apps/api 3파일, api 924/924 isolated·smoke 52/0·lint clean·build clean).
+- **환경 플레이크 메모(무관, 비차단)**: 풀 `pnpm check`에서 `apps/api/test/messaging-webhooks.test.ts`(LINE webhook gating)가 ~20s 타임아웃 1건 — 동시 6+ 루프 포화로 buildServer가 vitest 20s 한도 초과. **격리 단독 4/4 GREEN**(이 fire 첫 check 64a에선 통과)이라 내 슬라이스(self-improvement, messaging과 무관)와 무관한 환경 false-timeout. fire 64는 3배수 아니라 main-merge 없음, 브랜치 push만. 후속: 이 클래스는 박스 포화 신호, 테스트 회귀 아님([[project_test_hygiene_loop]]).
+
+## fire 65 · 2026-06-21 · skill v2.0.0 · 0e082ec8
+meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=skills-reward-buttons(view+mutation) · verdict=PASS · firesSinceDrill=4
+ratchet: web tests 101/101 (+9) · fabrication 0 · self-eval exit 0 · check exit 0(messaging-webhooks 이번엔 통과=환경 확정) · smoke:broad 52/0 · lint clean
+
+- **무엇**: `SkillsView`에 ▲/▼ reward 버튼 배선 — fire 64의 `POST /api/self-improvement/skills/:name/reward`를 useMutation으로 호출(body {delta: rewardDelta(dir)}, onSuccess invalidate `["skills"]`로 목록 갱신). 순수 헬퍼 `rewardDelta`(up→+1/down→-1)·`canAdjustReward`(서버 [-5,5] clamp 인지: +5에서 ▲ disable·-5에서 ▼ disable) + i18n(skills.rewardUp/Down en/ko). McpServers connect/disconnect mutation 패턴 미러.
+- **왜**: 진안 "스킬 컨트롤"을 read(62/63)+route(64) 다음 — 이제 **웹에서 직접 강화/약화**(end-to-end 완성). canAdjustReward로 guaranteed no-op 클릭 차단(+5에서 더 ▲ 못 누름)=정직한 UI(클램프 경계 노출). (web,view) 5/8로 RATCHET 한도 내.
+- **리뷰지점**: mutation-first — canAdjustReward(>=5→>5 변이→"5+up→false" RED)·rewardDelta(상수화→"down→-1" RED), 독립 judge 재확인. 웹 테스트 인프라(renderToStaticMarkup, RTL/DOM 없음)라 클릭→mutation 단위테스트 불가 → McpServers와 동일 accepted 패턴(순수 결정로직 단위테스트 + 버튼 배선 inspection). 배선 정합(judge inspection): encodeURIComponent(name)↔라우트 decodeURIComponent 쌍·queryKey `["skills"]` prefix-match로 갱신·양 버튼 `disabled={pending || !canAdjustReward}`. 상태안전: 기존 auth-게이트 라우트만 호출(신규 노출 0)·escaped children. i18n en/ko 패리티. 정직한 갭: curate/author 액션 후속.
+- **리스크**: 없음(apps/web 4파일, web build tsc+vite·web 101/101·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 경계로직·배선·상태안전·다양성·mutation 검증 후 PASS).
+
+## fire 66 · 2026-06-21 · skill v2.0.0 · eac90550
+meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=mcp-allowlist-section · verdict=PASS · firesSinceDrill=5
+ratchet: web tests 104/104 (+3) · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 52/0 · lint clean
+
+- **무엇**: `McpServersView`에 read-only "Security/allowlist" 섹션 추가 — 기존 `GET /api/mcp/security`(effective 정책) 소비, 허용목록(서버명)·도구출력 상한 표시. 순수 `summarizeAllowlist`(mcp-status.ts: allowedCount + **unrestricted=빈목록**) + `McpSecurityPolicyView`/`McpSecurityResponse` 타입 + i18n(en/ko). MCP 콘솔(fire 57 connect/disconnect)에 보안 가시성 추가.
+- **왜**: 진안 "웹에서 MCP 관리"의 보안 표면 — 어떤 외부 MCP 서버가 허용됐는지 웹에서 본다. **핵심 정직-불변식**: 코드(in-memory-stores.ts:209 `length===0 || includes`)상 **빈 허용목록=모든 서버 허용**(opt-in)이라, UI가 빈목록을 "0개 허용"(=전부 차단 암시)으로 표기하면 위험한 거짓 — "모든 서버 허용/제한없음"으로 표기해야. summarizeAllowlist의 unrestricted가 이 정직신호.
+- **리뷰지점**: mutation-first — summarizeAllowlist(`===0`→`>0` 변이 시 빈목록 honesty 케이스 3 RED·`unrestricted:false` 하드코딩→1 RED), 독립 judge 재확인. effective 정책 사용(configDefault/stored 아님)·데이터 부재 시 honestly "unrestricted" degrade. 보안: read-only GET(서버측 auth 게이트)·허용목록 escaped children·기존 서버목록+connect/disconnect 무손상. i18n en/ko 키셋+토큰({n}) 패리티. 정직한 갭: allowlist 편집(PUT)·서버 add/remove는 후속(상태변경).
+- **리스크**: 없음(apps/web 5파일, web build tsc+vite·web 104/104·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 빈목록-정직불변식·effective사용·읽기전용·다양성·mutation 검증 후 PASS).
+- **merge-to-main 메모**: fire 66 ⑤c가 flaky `@muse/model web-search-policy` property-fuzz(격리 2/3 통과=비결정적) + saturation 타임아웃에 막혀 deferred. fires 61-66 브랜치 안전, fire 69 윈도우 재시도.
+
+## fire 67 · 2026-06-21 · skill v2.0.0 · 668c4df5
+meta: surface=api · value-class=new-capability · pkg=@muse/api · kind=settings-daemon-flags-api · verdict=PASS · firesSinceDrill=6
+ratchet: api 932/932 · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 52/0 · lint clean · ★다양성 RATCHET 강제 전환(web-view 5/8→api-read)
+
+- **무엇**: 설정 콘솔 영역 개시 — read-only `GET /api/settings/daemon-flags`가 핵심 백그라운드 데몬/기능 플래그 6종(episodic memory·home-watch·conflict-watch·proactive-agent-turn·background-review[skill학습]·knowledge-search)의 **effective on/off**를 보고. 순수 `shapeDaemonFlags(env)`가 각 플래그를 `parseBoolean(env[key], 기본값)`으로 — 데몬 실제 read-site와 **동일 resolver+기본값**(전부 false 확인)이라 거짓보고 0. 신규 `settings-routes.ts`(auth 게이트, self-improvement 패턴 미러) + server.ts 배선.
+- **왜**: 진안 "proactivity·episodic·skill학습·watch daemon 웹에서 토글"의 데이터 레이어(read-first). **다양성 RATCHET 강제**: 최근 8 fire 중 (web,view)가 5/8 — 또 web-view면 6/8 위반이라 이번은 반드시 다른 kind → (api,read)로 전환(설정 영역). 토글(PUT)+웹 뷰는 후속.
+- **리뷰지점(정직=effective state)**: 6 플래그 기본값이 실제 read-site와 일치해야 거짓 안 함 — 독립 judge가 6개 전부 read-site 대조(episodic chat-end-session:97·home-watch tick-daemons:678·conflict commands-daemon:580·proactive server:351·bg-review autoconf:840·knowledge autoconf:629, 전부 false) 확인. parseBoolean 재사용(truthy={true,1,yes,on}, 손수 `==="true"` 아님→런타임과 안 갈림). mutation-first: 기본값 flip→empty-env 테스트 RED·env 무시→override 테스트 RED. 보안: read-only GET·동일 auth 게이트·고정 6키 화이트리스트(process.env 통째 덤프 아님, 시크릿 노출 0)·불리언만. 정직한 갭: 토글 write·웹 뷰 후속.
+- **리스크**: 없음(apps/api 3파일, api build clean·api 932/932·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 6-기본값-정직·parseBoolean재사용·auth·시크릿0·다양성 검증 후 PASS).
+
+## fire 68 · 2026-06-21 · skill v2.0.0 · 2433dbfb
+meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=settings-daemons-view · verdict=PASS · firesSinceDrill=7
+ratchet: web tests 107/107 (+3) · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 52/0 · lint clean
+
+- **무엇**: 기존 `SettingsView`에 read-only "Background daemons" 카드 추가 — fire 67의 `GET /api/settings/daemon-flags` 소비, 6 데몬/기능 플래그를 label + on/off 배지로 표시. 순수 `summarizeFlags`(settings-flags.ts: total + enabled 카운트) "N of M enabled" 요약 + `DaemonFlagView`/`DaemonFlagsResponse` 타입 + i18n(en/ko). 설정 콘솔 읽기-side 완성(fire 67 API의 뷰).
+- **왜**: 진안 "데몬 웹에서 토글"의 fire 67 데이터 레이어 다음 뷰 — 어떤 백그라운드 데몬이 켜졌는지 웹 Settings에서 본다. (web,view) 4→5/8(fire 67 api-read가 옛 web-view 윈도우 밖으로 밀어내 한도 내). 토글 write는 후속.
+- **리뷰지점**: mutation-first — summarizeFlags(.filter 제거→2 RED·enabled 하드코딩0→1 RED), 독립 judge 재확인. 기존 SettingsView 무손상(시그니처/props·연결폼·언어·모델·setupStatus 카드 그대로, 카드 additive 삽입)·신규 query queryKey `["daemon-flags"]`(기존 setup/models와 분리). 보안: read-only GET(서버 auth 게이트)·label escaped children. i18n en/ko 키셋+토큰({enabled}/{total}) 패리티. 정직한 갭: 토글 write(env→runtime 브리지)·curate/author 후속.
+- **리스크**: 없음(apps/web 5파일, web build tsc+vite·web 107/107·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 카운트정합·기존뷰무손상·읽기전용·i18n·다양성·mutation 검증 후 PASS).
+- **드릴 예고**: fire 69 = firesSinceDrill 8(연속 allPASS≥8 트리거) + 3배수 merge-to-main 윈도우 → fire 69는 JUDGE-DRILL(고의 나쁜-슬라이스→FAIL확인→롤백→진짜fix) + fires 61-69 main 배치. fire 66 deferred merge도 그때 재시도.
+
+## fire 69 · 2026-06-21 · skill v2.0.0 · c5bf5484 · ★JUDGE-DRILL
+meta: surface=api · value-class=new-capability · pkg=@muse/api · kind=self-improve-reflections-api+judge-drill · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: api 942/942 · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 52/0 · lint clean · ★verifier 신뢰성 입증(inert→FAIL, real→PASS)
+
+- **무엇**: 자기강화 콘솔에 read-only `GET /api/self-improvement/reflections` 추가 — reflection 데몬이 distill한 인사이트(`~/.muse/reflections.json`, 각 real source ids에 grounded)를 노출. 순수 `shapeReflections`(listReflections로 recency newest-first 정렬, `sourceCount=sourceIds.length` grounding신호·`supportCount` 별도) + `ReflectionView`/`ReflectionsResponse` + autoconfigure `resolveReflectionsFile`(CLI와 동일 경로/env) + 게이트/server 배선. fire 58/60/62 미러.
+- **왜**: 자기강화 read 표면 확장(weaknesses·playbook·skills 다음 reflections). **다양성 RATCHET**: (web,view) 5/8라 web-view 금지 → (api,read) 유지. CLI resolveReflectionsFile private 복제 형제(skills와 동일 패턴, backlog).
+- **★JUDGE-DRILL**(firesSinceDrill 8=연속allPASS≥8 트리거, 미루기불가): 고의 나쁜-슬라이스 주입 — `sourceCount`를 `sourceIds.length`(grounding신호) 대신 `r.supportCount`(강화횟수)로 **두 신호 conflate** + **선언-only 테스트**(typeof number만, 결정적 게이트 api 942/942·lint clean 통과). 독립 Opus judge#1이 FAIL(구체적: self-improvement-routes.ts:154 잘못된 필드=grounding-honesty 결함·테스트가 broken/correct 양쪽 그린=mutation 무보호, "942 passed while wrong" 독립 입증). → 롤백 → 진짜 fix(`sourceIds.length` + 2소스→2/0소스→0 단언, mutation으로 RED 확인) → fresh Opus judge#2 PASS. **verifier가 미묘한 필드-conflate(게이트 전부 통과)를 잡음=신뢰성 입증**.
+- **리뷰지점**: mutation-first — sourceCount→supportCount 변이 시 "sourceCount equals sourceIds.length" RED(judge#2 독립 재확인)·ordering(listReflections 재사용). 경로정합: resolveReflectionsFile=CLI와 동일 `~/.muse/reflections.json`+MUSE_REFLECTIONS_FILE. 보안: read-only GET·동일 auth 게이트·재수출 export-from 블록(lint clean). 정직한 갭: 웹 뷰 후속·CLI resolver 통일(형제).
+- **리스크**: 없음(autoconf 3+apps/api 4 파일, api 942/942·pnpm check exit 0·smoke 52/0·lint clean, judge#1 FAIL→fix→judge#2 PASS 드릴 완결).
+- **lesson(드릴 교훈)**: 두 개의 의미상-다른 숫자필드(supportCount=강화 vs sourceCount=grounding소스)는 conflate해도 타입체크·테스트(typeof)·lint 전부 통과 — **필드 정확성은 "이 입력→이 값" 단언 + mutation-RED만이 보증**. grounding신호는 특히: 잘못된 필드=콘솔이 인사이트 근거강도를 거짓보고. ④b judge는 게이트-그린 미묘 필드결함을 안정적으로 잡는다.

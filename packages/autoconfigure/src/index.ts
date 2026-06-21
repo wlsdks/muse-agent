@@ -251,7 +251,9 @@ export {
   resolveSuppressedLessonsFile,
   resolveLearningPauseFile,
   resolvePlanCacheFile,
-  resolveAuthoredSkillsDir
+  resolveAuthoredSkillsDir,
+  resolveReflectionsFile,
+  resolveSkillRewardsFile
 } from "./personal-providers.js";
 import {
   createConversationSummaryStore,

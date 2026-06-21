@@ -46,7 +46,7 @@ import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingAction
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
 import { dedupNearDuplicateChunks, diversifyAskChunks, notesGroundingFraming, secondHopAugmentChunks, shouldSecondHop } from "@muse/recall";
 import { groundedSourceSummary, optionalGroundingRelevance, optionalGroundingSections } from "@muse/recall";
-import { citationPrecisionNotice, citationRecallNotice, sourceCheckSignals, untrustedOnlyGroundingNotice, type SourceCheckSignals } from "@muse/recall";
+import { citationPrecisionNotice, citationRecallNotice, sourceCheckSignals, untrustedEpisodeMatch, untrustedOnlyGroundingNotice, type SourceCheckSignals } from "@muse/recall";
 
 export { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
 export { diversifyAskChunks, notesGroundingFraming };
@@ -1397,12 +1397,19 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // conversations, not just notes. Same embed model only (a cross-model
       // cosine is meaningless); optional + fail-soft.
       let episodeHits: Array<{ id: string; summary: string; score: number }> = [];
+      // Episodes whose session rested on untrusted sources (trusted:false) — their
+      // grounding evidence is tagged untrusted below so an answer resting solely on
+      // a poisoned episode trips the untrusted-only source-check cue instead of being
+      // laundered as trusted "your own history" (MemoryGraft arXiv:2512.16962).
+      let untrustedEpisodeIds = new Set<string>();
       if (queryVec) {
         try {
           const epIndex = await loadEpisodeIndex(defaultEpisodeIndexFile());
           if (epIndex && epIndex.model === embedModel && epIndex.entries.length > 0) {
             // Drop episodes vacuumed/deleted from the source since indexing.
-            const liveIds = new Set((await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>))).map((e) => e.id));
+            const sourceEpisodes = await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>));
+            const liveIds = new Set(sourceEpisodes.map((e) => e.id));
+            untrustedEpisodeIds = new Set(sourceEpisodes.filter((e) => e.trusted === false).map((e) => e.id));
             episodeHits = rankEpisodeHits(queryVec, filterLiveEpisodeEntries(epIndex.entries, liveIds), topK);
           }
         } catch {
@@ -2503,7 +2510,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           ...openTasks.map((t) => exactMatch(`task: ${t.title}`, `${t.title}${t.notes ? ` ${t.notes}` : ""}${t.dueAt ? ` due ${t.dueAt} ${humanDate(t.dueAt)}` : ""}`)),
           ...upcomingEvents.map((e) => exactMatch(`event: ${e.title}`, `${e.title}${e.location ? ` ${e.location}` : ""} ${humanDate(e.startsAt)} ${humanDate(e.endsAt)}`.trim())),
           ...pendingReminders.map((r) => exactMatch(`reminder: ${r.text}`, `${r.text} ${humanDate(r.dueAt)}`.trim())),
-          ...episodeHits.map((e) => ({ cosine: e.score, score: e.score, source: `session: ${e.id}`, text: e.summary })),
+          ...episodeHits.map((e) => untrustedEpisodeIds.has(e.id)
+            ? untrustedEpisodeMatch(e.id, e.summary, e.score)
+            : ({ cosine: e.score, score: e.score, source: `session: ${e.id}`, text: e.summary })),
           ...matchedActions.map((a) => exactMatch(`action: ${a.what}`, `${a.what} ${a.result}${a.detail ? ` ${a.detail}` : ""}`)),
           ...matchedCommands.map((cmd) => exactMatch(`command: ${cmd}`, cmd)),
           ...matchedCommits.map((c) => exactMatch(`commit: ${c.subject}`, c.subject)),
