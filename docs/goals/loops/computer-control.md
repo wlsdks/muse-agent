@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 37 · 2026-06-21 · skill v2.0 · d1f982e1 (JUDGE-DRILL #4 ✅ + pin timeout-message direction)
+meta: value-class=test-hardening · pkg=crates/runner · kind=judge-drill · verdict=DRILL-PASS · firesSinceDrill=0(reset)
+ratchet: testFiles 1072→1072 (+2 assertions cargo; 메시지 코드 불변) · fabrication 0 · crates/runner cargo 12 · pnpm check exit 0 · lint clean
+- JUDGE-DRILL(연속allPASS=8): fire-34 timeout 메시지 "larger timeoutMs"→"smaller timeoutMs"(방향 역전) 주입. **cargo 12 통과** — `timeout_message_is_actionable`이 `contains("timeoutMs")`만 검사(방향 미검증, smaller·larger 둘 다 통과). ④b judge **FAIL**: 인과 추론 — 타임아웃은 *더 많은 시간 필요*인데 smaller는 retry를 *더 빨리* kill=backwards harmful(구체 trace 50ms→20ms→더 빨리 실패; MAX_TIMEOUT_MS=600K 헤드룸 있는데 반대로 유도). → 롤백(메시지 fire-34 그대로).
+- 진짜 fix(드릴 교훈=test-blindness): `timeout_message_is_actionable`에 방향 pin — `contains("larger")` + `!contains("smaller")`. mutation-valid: 드릴("smaller") 재주입 시 RED(방향-flip이 contains-only 통과 불가).
+- 리뷰지점: 드릴 4번째 성공 — verifier가 contains-검사 통과한 의미 오류(방향)를 *인과 추론*으로 잡음(패턴매칭 아님). 메시지 코드 불변(테스트만 하드닝).
+- 리스크: 0 — 코드 동작 변경 0(드릴 롤백, 테스트 assertion 2개 추가). ④b가 드릴 FAIL.
+lesson: **contains-토큰 assertion은 토큰의 *의미*(방향/polarity)에 blind** — presence 아니라 meaning을 pin. 드릴이 노출한 blindness를 닫음(방향 검증). verifier가 의미 오류를 인과 추론으로 적발=maker≠judge 4번째 드릴.
+
 ## fire 36 · 2026-06-21 · skill v2.0 · 07c04e0d (char-cap reads page cleanly — resolves fire-35 finding; 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/fs · kind=reliability/paging · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles 1072→1072 (+2 cases fs-read-tools: char-cap trim + round-trip; 1 rewritten, mutation-valid) · fabrication 0 · @muse/fs 격리 172 · pnpm check exit 0 · lint clean · Ollama DOWN

@@ -392,6 +392,12 @@ mod tests {
         assert!(msg.contains("5000ms"), "names the elapsed timeout: {msg}");
         assert!(msg.contains("timed out") && msg.contains("killed"), "explains the kill: {msg}");
         assert!(msg.contains("timeoutMs"), "tells the model how to react: {msg}");
+        // A timeout means the command needed MORE time than the budget — so the
+        // remediation must advise a LARGER timeout, never a smaller one (a smaller
+        // budget kills the retry sooner). Pin the DIRECTION, not just the token
+        // (JUDGE-DRILL #4: "smaller timeoutMs" passed a contains-only check).
+        assert!(msg.contains("larger"), "advises MORE time on a timeout: {msg}");
+        assert!(!msg.contains("smaller"), "never advises a smaller timeout — it would kill the retry sooner: {msg}");
         assert!(!msg.contains("os error"), "no raw errno: {msg}");
     }
 
