@@ -53,3 +53,26 @@ browser-check: Settings — invalid(ftp)→Save disabled+error; schemeless(127.0
 
 mutation-first: removing the scheme-prepend turned 1 test RED; restored → 7/7
 GREEN. ④b independent Opus judge: PASS (nit: doc-comment style → fixed).
+
+## fire 3 · 2026-06-22 · skill v2.1.0 · (pending commit)
+meta: value-class=server-resilience · area=server · kind=refactor · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +1 (RestartPolicyTests, 4 cases) · companion×refactor 1 · settings×feature 1 · server×refactor 1 · fabrication 0
+browser-check: n/a (Swift-only; server supervision has no DOM)
+
+- **What**: extracted the bundled-server restart/backoff decision out of the
+  untestable `ServerManager` singleton into a pure `MuseDesktopCore.RestartPolicy`
+  + 4 tests, and switched LINEAR backoff (restarts×1.5) to EXPONENTIAL with a cap
+  (baseDelay×2^n, capped at maxDelay) keeping the 3-restart circuit breaker.
+- **Why**: a crash-looping server binary should back off fast and then stop
+  hot-spinning; exponential-with-cap is the standard, and the policy is now
+  unit-testable instead of buried in Process plumbing.
+- **Review point**: semantic equivalence of the rewrite — still exactly 3
+  restarts then give up, `restarts += 1` only on the .restart branch, breaker
+  resets via ensureRunning. Independent Opus ④b judge ran 3 mutations (linearize,
+  no-cap, off-by-one breaker) — all caught — and confirmed env injection / stop()
+  / restart() untouched.
+- **Risk**: low — pure policy + one switch in handleExit; env/Keychain plumbing
+  byte-identical. No security surface.
+
+mutation-first: linearizing the exponent turned 2 tests RED; restored → 4/4
+GREEN. ④b independent Opus judge: PASS.
