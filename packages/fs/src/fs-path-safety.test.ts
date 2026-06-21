@@ -39,6 +39,26 @@ describe("path sandbox", () => {
     });
   });
 
+  it("names the allowed roots in an outside_roots refusal so the model can self-correct", async () => {
+    await expect(resolveSafePath(join(outside, "x.txt"), opts())).rejects.toMatchObject({
+      message: expect.stringContaining(root),
+      reason: "outside_roots"
+    });
+    // The actionable retry guidance must be present, not just the bare refusal.
+    await expect(resolveSafePath(join(outside, "x.txt"), opts())).rejects.toMatchObject({
+      message: expect.stringContaining("Retry with a path under one of these")
+    });
+  });
+
+  it("does NOT enumerate allowed roots in a deny-list (secret) refusal — those stay opaque", async () => {
+    await mkdir(join(root, ".ssh"), { recursive: true });
+    await writeFile(join(root, ".ssh", "id_ed25519"), "KEY");
+    await expect(resolveSafePath(join(root, ".ssh", "id_ed25519"), opts())).rejects.toMatchObject({
+      message: expect.not.stringContaining("Allowed roots:"),
+      reason: "denied_path"
+    });
+  });
+
   it("collapses traversal that escapes the root", async () => {
     await expect(resolveSafePath("../escape.txt", opts())).rejects.toBeInstanceOf(PathSafetyError);
   });

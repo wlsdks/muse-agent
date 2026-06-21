@@ -5,6 +5,32 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 45 · 2026-06-21 · skill v2.0 · 8c9746cb (eval:multifile-fix grades OUTCOME not path + reflection-guard registry regression fix)
+meta: value-class=eval-correctness+regression-fix · pkg=scripts/eval · kind=outcome-grading · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles +0 (scripts) / +6 grader cases + reflection-guard repoint · fabrication 0 · self-eval:test 48/48 · grader 6/6 (mutation-verified) · lint 0/0 · pnpm check @muse/resilience SIGABRT(134)=saturation (isolated 26/26, scripts-only change) · Ollama DOWN · ★main ff-merge (fire 45=×3)
+- 무엇(slice B): eval:multifile-fix가 `ok = testPasses && modelRanTest && …`로 채점했는데 `testPasses`는 하니스가 독립적으로 `runTest()`(node로 직접 실행, 모델 무관)로 검증하므로 modelRanTest(run_command 호출 여부)는 **불필요한 PATH-채점** → 모델이 올바로 고쳤지만 자가-실행 안 하면 FAIL로 실제 성공 과소집계(fire-9 잔여, agent-testing.md "OUTCOME 채점"). FIX: 순수 grader `scripts/lib/grade-multifile-fix.mjs`(ok=testPasses&&addIntact&&stringsIntact; ranTest는 관찰용만) 추출+배선+6 node:test. eval:edit-run-verify는 run→verify 체인이 곧 측정 역량이라 modelRanTest 게이트 의도적 유지(형제-감사 per-sibling 판정).
+- 무엇(regression A): 자기 루프 fire 32가 chat-repl false-done re-run을 agent-core `runResistingFalseDone`로 추출하며 `const actNow` 마커 제거 → reflection-guard 레지스트리가 stale → self-eval:test RED. 레지스트리를 false-done-reprompt.ts(runResistingFalseDone+actionToolRan)로 repoint(검증쌍 유지, 약화 0).
+- 왜: 다양성 — scripts/eval(eval-correctness), 최근 @muse/tools/fs/model과 다른 fresh (pkg,kind). Ollama down으로 모델-행동 작업 막힌 동안 측정 무결성 개선이 올바른 시퀀싱(브리틀 채점은 Ollama 복귀 시 진짜 개선을 오도).
+- 리뷰지점: mutation-first 둘 다(grader에 `&& ranTest` 넣으면 정확히 2 OUTCOME 테스트 RED; reflection-guard stale 마커 RED→repoint GREEN). 독립 Opus ④b judge가 (A) 가드 약화 0(surface가 진짜 이동+검증쌍 유지, chat-repl에 잔존 unguarded retry 없음) (B) runTest 모델-독립·edit-run-verify 구분 정직 검증 → VERDICT PASS.
+- 리스크: pnpm check 134는 박스 포화(scripts-only 변경이라 패키지 무관, @muse/resilience 격리 26/26). live eval 미검증(Ollama down)이나 grader는 순수 함수라 결정론 테스트로 완전 커버.
+lesson: 코드 추출/리팩터(심볼 이동)는 reflection-guard 레지스트리 마커도 같이 갱신해야 한다 — fire 32가 추출하며 마커를 안 옮겨 fire 45에서 가드 RED. 추출 슬라이스의 형제-감사 체크리스트에 "reflection-guard 레지스트리 마커 갱신" 추가.
+
+## fire 44 · 2026-06-21 · skill v2.0 · 9aa8ef28 (run_command silent-truncation flag — model never reads a cut log as complete)
+meta: value-class=new-capability · pkg=@muse/tools · kind=runner-output-truncation-integrity · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles +0 files / +3 cases (cap shortens→truncated true; cap larger→false; runner truncated=true preserved) · fabrication 0 · @muse/tools 92 pass/1 skip · pnpm check exit 0 · lint 0/0 · Ollama DOWN (evals skip) · ★JUDGE-DRILL due fire 46 (consecutive allPASS will hit 8)
+- 무엇: run_command 도구(`runner.ts` createRustRunnerTool.execute)가 모델-지정 `maxOutputBytes`로 stdout/stderr를 다시 slice하면서 `...response`로 `truncated`를 그대로 펴서, cap이 출력을 잘랐는데 러너 자신은 안 잘랐을 때 `truncated`가 false로 남음 → 모델이 잘린 로그를 완전한 것으로 읽고 오결론(예: 잘린 로그로 "테스트 통과"). FIX: `capTruncated = sliced.length < original.length` 계산해 `truncated: response.truncated || capTruncated`. 진짜 true를 false로 뒤집지 않음(monotone).
+- 왜: on-theme(run_command은 멀티스텝 체인의 실행 단계; 잘린 출력 오결론은 fabrication-adjacent). 다양성: @muse/tools지만 KIND 새로움(runner-output-truncation-integrity; fire 42는 arg-coercion). 진짜 패키지 다양성(crates/runner Rust) 스카웃했으나 버그는 TS wrapper에 있었음.
+- 리뷰지점: mutation-first 확정(`|| capTruncated` 제거하면 정확히 flip 테스트 RED, 두 negative GREEN 유지=비-tautological). 독립 Opus ④b judge가 edge-case(undefined cap/cap==len/cap>len false-positive 0)·monotone·behavioral-equivalence·downstream `truncated` 소비자 grep(분기 없음)·fabrication=0 검증 → VERDICT PASS.
+- 리스크: niche(maxOutputBytes는 옵션, 드물게 set) but correct; 러너 자신 truncation 경로는 이미 ...response로 정상. 잔여: maxOutputBytes가 BYTES 명칭인데 .slice는 UTF-16 code-unit(pre-existing 명칭 불일치, 미변경 — backlog 후보). live OUTCOME 미검증(Ollama down), 결정론 테스트로 완전 커버. fire 44는 3의 배수 아님 → main 머지 없음(다음 main 배치 fire 45).
+
+## fire 43 · 2026-06-21 · skill v2.0 · c8252f57 (path-refusal names the allowed roots so the 12B can self-correct)
+meta: value-class=new-capability · pkg=@muse/fs · kind=refusal-self-correction-hint · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles +0 files / +2 cases (outside_roots names roots+retry guidance; deny-list stays opaque) · fabrication 0 · @muse/fs fs-path-safety 39 pass · pnpm check exit 0 · lint 0/0 · Ollama DOWN (evals skip)
+- 무엇: fs 경로 샌드박스(`resolveSafePath`)의 `outside_roots` 거부 메시지가 "outside the allowed roots and was refused"로 **어떤 root가 허용인지 안 알려줌** → 12B가 나쁜 경로 고르면 self-correct할 단서 0 (맹목 retry). FIX: `outside_roots` 분기에만 `Allowed roots: <policy.roots>. Retry with a path under one of these.` 추가(roots>0 가드). deny-list(비밀경로) 메시지는 불변=opaque 유지. fs 도구는 refusalResult→{error,refused:true}로 이 메시지를 모델에 그대로 전달.
+- 왜: on-theme(@muse/fs 멀티스텝 파일 체인 self-correction). 다양성: @muse/fs지만 KIND가 새로움(refusal-self-correction-hint; 최근 fs는 nudge/context-fit/paging). 보안: 노출은 outside_roots 분기 한정(deny 체크 前 return) → deny-dir 위치 누설 0; roots는 유저 자기 home/workspace라 로컬모델엔 신규노출 0. arXiv:2510.17874(Repairing Tool Calls via Reflection).
+- 리뷰지점: mutation-first 확정(${allowed} 제거하면 정확히 새 positive 테스트 RED, opacity 테스트 GREEN 유지). 독립 Opus ④b judge가 scope 한정·deny 불변·info-disclosure 무·fabrication=0·downstream 파서 회귀 0·2-sided 테스트 검증 → VERDICT PASS.
+- 리스크: live OUTCOME 미검증(Ollama down) — "12B가 실제로 self-correct"는 미증명, 결정론 메시지-내용 경로만 증명. 메시지-only·mutation-verified 변경이라 허용. fire 43은 3의 배수 아님 → main 머지 없음.
+
 ## fire 42 · 2026-06-21 · skill v2.0 · 8f9066aa (stringified-JSON object/array tool-arg coercion — multi_edit edits-as-string)
 meta: value-class=new-capability · pkg=@muse/tools · kind=arg-coercion/structured-repair · verdict=PASS · firesSinceDrill=5
 ratchet: testFiles +0 files / +1 case (coerceToolArguments structured: positive·whitespace·already-structured·both type-mismatches·non-JSON·empty·bare-scalar) · fabrication 0 · @muse/tools 89 pass/1 skip · pnpm check exit 0 · lint 0/0 · Ollama DOWN (evals skip) · main ff-merge (fire 42 = ×3)

@@ -173,10 +173,17 @@ export async function resolveSafePath(
   const canonical = await canonicalize(input, baseDir);
 
   if (!policy.roots.some((root) => isUnder(canonical, root))) {
+    // Name the allowed roots so a small model can self-correct its NEXT call
+    // (a bare "refused" leaves it retrying blindly — Repairing Tool Calls via
+    // Reflection, arXiv:2510.17874). Safe to disclose: these are the user's own
+    // everyday folders, not the deny-list (secret paths stay opaque below).
+    const allowed = policy.roots.length > 0
+      ? ` Allowed roots: ${policy.roots.join(", ")}. Retry with a path under one of these.`
+      : "";
     throw new PathSafetyError(
       "outside_roots",
       input,
-      `Path '${input}' resolves outside the allowed roots and was refused.`
+      `Path '${input}' resolves outside the allowed roots and was refused.${allowed}`
     );
   }
 

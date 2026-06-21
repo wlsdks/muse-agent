@@ -24,6 +24,10 @@ export interface OrchestrationHistoryEntry {
   readonly status: "completed" | "failed";
   readonly error?: string;
   readonly conversation?: readonly AgentMessage[];
+  /** Cross-worker contradiction captions the fan-in detected (coordination outcome, persisted for trend/audit). */
+  readonly conflicts?: readonly string[];
+  /** The objective-coverage verifier verdict, when a verifier ran (false = the answer was flagged incomplete). */
+  readonly verificationSatisfied?: boolean;
 }
 
 export interface OrchestrationHistorySummary {
