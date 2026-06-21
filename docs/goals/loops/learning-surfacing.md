@@ -144,7 +144,7 @@ ratchet: testFiles +1 (belief-provenance-store.test.ts NEW, 4 cases) · @muse/me
 - **리스크**: 없음 — additive, memory 47 + recap 33 green, 독립 Opus ④b judge가 distinctness+window+무회귀 재확인 PASS.
 - **lesson**: 한 갭(첫-학습)을 닫을 땐 *데이터 소스가 다를 수 있다* — 변경은 factHistory, 첫-학습은 belief-provenance(firstSeen). 두 소스를 한 표면에 합칠 땐 distinctValueCount 같은 결정론 키로 상호배타를 보장해 double-count를 코드로 막아라(judge의 #1 점검).
 
-## fire 16 · 2026-06-21 · skill v2.1.0 · pending
+## fire 16 · 2026-06-21 · skill v2.1.0 · 99b42357
 meta: value-class=new-capability · pkg=@muse/cli · kind=brief-surface · verdict=PASS · firesSinceDrill=6 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +1 (brief-learned.test.ts NEW, 3 cases) · @muse/cli 2895 green · lint clean · fabrication 0
 
