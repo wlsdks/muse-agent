@@ -43,3 +43,32 @@ connective-suffix, and app-description shapes, and a ReDoS scaling measurement.
 A 3rd attempt needs `(?!고)` exclusion + terminal-imperative-only verbs (no bare
 stems) + ReDoS-safe filler, all together — or this stays deferred as a real
 design problem (not a loop-sized quick win).
+
+## fire 2 · 2026-06-21 · poisoned-source · 9c34… (see commit)
+
+meta: value-class=wiring · pkg=@muse/recall (+apps/cli) · kind=trust-tagging · verdict=PASS · firesSinceDrill=2
+
+ratchet: testFiles +0 (extended grounding-notices.test) · fabrication 0 · pkg/kind ≠ fire 1 (was agent-core/injection-pattern) · eval:memory-poisoning PASS · eval:action-log-tamper PASS
+
+WHAT: in the `muse ask` grounding-evidence pool, FEED headlines (third-party
+RSS/Atom — poisonable, NOT the user's own data) were added with no `trusted`
+flag → defaulted to trusted, so an answer resting SOLELY on a poisoned feed got
+plain "grounded" with no untrusted-source scrutiny cue. The tool/web/MCP path
+(`agentGroundingSources`) already tagged `trusted:false`; feeds were the gap.
+Added pure `untrustedFeedMatch` (@muse/recall) returning the feed match
+`trusted:false`; commands-ask.ts uses it instead of the inline `exactMatch`.
+
+WHY: closes a GROUNDED≠TRUE leak on the PRIMARY wedge surface — a poisonable
+external source could launder as trusted-grounded. The fix is additive (cue
+only; never changes the grounded/ungrounded verdict — fabrication floor
+untouched). Evidence text is byte-identical to before (judge-verified), so no
+grounding-gate drift.
+
+REVIEW POINT: feeds are the only external-untrusted-but-untagged corpus source
+today (sibling-audit: chat has no feed grounding; episodes/notes/memory/tasks/
+contacts are the user's own data and stay trusted). Two coupled FUTURE
+requirements recorded as backlog ◦ (judge-surfaced): external-calendar-sync and
+vCard-import contact trust — wire `trusted:false` when those external paths land.
+
+RISK: low — additive scrutiny cue, deterministic, mutation-proven (drop
+`trusted:false` → feed-only cue test RED), independent Opus ④ judge PASS.

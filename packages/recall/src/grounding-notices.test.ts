@@ -1,7 +1,7 @@
 import { type KnowledgeMatch } from "@muse/agent-core";
 import { describe, expect, it } from "vitest";
 
-import { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "./grounding-notices.js";
+import { citationPrecisionNotice, citationRecallNotice, untrustedFeedMatch, untrustedOnlyGroundingNotice } from "./grounding-notices.js";
 
 const match = (source: string, text: string, cosine: number, trusted?: boolean): KnowledgeMatch => ({
   cosine,
@@ -62,6 +62,34 @@ describe("untrustedOnlyGroundingNotice", () => {
 
   it("does NOT warn on a REFUSAL answer even when evidence is all tool-fetched (a non-answer rests on nothing — parity with the chat abstention guard)", () => {
     expect(untrustedOnlyGroundingNotice("I'm not sure about that.", [match("tool: web_search", "x", 1, false)])).toBeUndefined();
+  });
+});
+
+describe("untrustedFeedMatch — external feed evidence is tagged trusted:false (grounded≠true: a poisonable RSS/Atom headline isn't the user's own data)", () => {
+  it("tags the feed match trusted:false with the canonical source + title(+summary) text", () => {
+    expect(untrustedFeedMatch("TechBlog", "Acme acquires Beta")).toEqual({
+      cosine: 1,
+      score: 1,
+      source: "feed: TechBlog",
+      text: "Acme acquires Beta",
+      trusted: false
+    });
+    expect(untrustedFeedMatch("TechBlog", "Acme acquires Beta", "for $1B").text).toBe("Acme acquires Beta for $1B");
+  });
+
+  it("makes a faithful answer resting ONLY on a feed headline trip the untrusted-only source-check cue", () => {
+    const matches = [untrustedFeedMatch("TechBlog", "Acme acquired Beta for $1B")];
+    const notice = untrustedOnlyGroundingNotice("Acme acquired Beta for $1B [from feed: TechBlog].", matches);
+    expect(notice).toBeDefined();
+    expect(notice).toContain("tool-fetched"); // the untrusted-only cue
+  });
+
+  it("is cleared by a single trusted note in the pool (a feed-backed claim alongside the user's own data is not untrusted-ONLY)", () => {
+    const matches = [
+      { cosine: 0.7, score: 0.7, source: "notes/deals.md", text: "Acme acquired Beta for $1B." }, // trusted (no flag)
+      untrustedFeedMatch("TechBlog", "Acme acquired Beta for $1B")
+    ];
+    expect(untrustedOnlyGroundingNotice("Acme acquired Beta for $1B [from notes/deals.md].", matches)).toBeUndefined();
   });
 });
 

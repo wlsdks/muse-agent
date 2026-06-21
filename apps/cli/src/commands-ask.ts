@@ -50,7 +50,7 @@ import { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNo
 
 export { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
 export { diversifyAskChunks, notesGroundingFraming };
-import { askOutcomeLabel, askWeaknessAxis, contestedOutcome, createStageTimer, misgroundedOutcome, recordAskWeakness, recordAskWeaknessResolved } from "@muse/recall";
+import { askOutcomeLabel, askWeaknessAxis, contestedOutcome, createStageTimer, misgroundedOutcome, recordAskWeakness, recordAskWeaknessResolved, untrustedFeedMatch } from "@muse/recall";
 import type { AskWeaknessAxis } from "@muse/recall";
 export { askOutcomeLabel, askWeaknessAxis, createStageTimer, recordAskWeakness, recordAskWeaknessResolved };
 import { drawBestGroundedRedraft, groundingVerdictNotice } from "@muse/recall";
@@ -2505,7 +2505,11 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           ...matchedCommands.map((cmd) => exactMatch(`command: ${cmd}`, cmd)),
           ...matchedCommits.map((c) => exactMatch(`commit: ${c.subject}`, c.subject)),
           ...allMemoryFacts.map((f) => exactMatch(`memory: ${f.key}`, renderMemoryFact(f))),
-          ...feedHeadlines.map((h) => exactMatch(`feed: ${h.feedName}`, `${h.title}${h.summary ? ` ${h.summary}` : ""}`)),
+          // Feeds are third-party publisher content (RSS/Atom) — NOT the user's
+          // own data — so tag them trusted:false: an answer resting SOLELY on a
+          // poisonable feed headline must trip the untrusted-only source-check
+          // cue (grounded≠true), exactly like a web/MCP tool result below.
+          ...feedHeadlines.map((h) => untrustedFeedMatch(h.feedName, h.title, h.summary)),
           // The --with-tools agent's OWN read-tool outputs (web fetches,
           // knowledge_search, …): the evidence it was shown. Without these a
           // correctly web-grounded answer scores ~zero coverage against the

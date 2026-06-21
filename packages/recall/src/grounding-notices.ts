@@ -44,6 +44,22 @@ export function untrustedOnlyGroundingNotice(
 }
 
 /**
+ * Build a grounding-evidence match for an external FEED headline, tagged
+ * `trusted:false`. Feed entries are third-party publisher content (RSS/Atom) —
+ * NOT the user's own data — so an answer resting SOLELY on a (poisonable) feed
+ * headline must trip the untrusted-only source-check cue, exactly like a web/MCP
+ * tool result (the agent-grounding path already tags those `trusted:false`). The
+ * user's OWN corpus (notes / memory / tasks / reminders / contacts / past
+ * sessions) stays trusted (absent flag) — that data IS theirs, and marking it
+ * untrusted would fire the scrutiny cue on the user's own notes. `text` mirrors
+ * the ask wedge's inline feed evidence shape exactly (title + optional summary)
+ * so only the trust bit changes, not what the grounding gate scores. Pure.
+ */
+export function untrustedFeedMatch(feedName: string, title: string, summary?: string): KnowledgeMatch {
+  return { cosine: 1, score: 1, source: `feed: ${feedName}`, text: summary ? `${title} ${summary}` : title, trusted: false };
+}
+
+/**
  * ALCE citation-precision cue (arXiv:2305.14627): a sentence can carry a `[from
  * <source>]` citation that RESOLVES to a real retrieved note yet that note not
  * actually support the sentence's claim (right source, wrong claim) — which the
