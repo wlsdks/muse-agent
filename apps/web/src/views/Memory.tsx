@@ -58,6 +58,7 @@ export function MemoryView({ client }: { client: ApiClient }) {
         <input
           className="input"
           style={{ maxWidth: 240 }}
+          aria-label={t("memory.userId")}
           value={userId}
           onChange={(e) => setUserId(e.target.value)}
         />
