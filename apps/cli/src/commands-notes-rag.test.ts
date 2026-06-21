@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { chunkText, cosine, defaultIndexPath, extractDocumentText, formatNoteFolders, formatRecentNotes, formatRelatedNotes, formatRelativeAge, isNotesIndexStale, NOTE_FILE_RE, parseRagBoundedInt, rankRelatedNotes, reindexNotes, resolveIndexNotePath, selectRecentNotes, summarizeNoteFolders } from "./commands-notes-rag.js";
+import { chunkText, cosine, defaultIndexPath, extractDocumentText, formatNoteFolders, formatRecentNotes, formatRelatedNotes, formatRelativeAge, formatReindexOutcome, isNotesIndexStale, NOTE_FILE_RE, parseRagBoundedInt, rankRelatedNotes, reindexNotes, resolveIndexNotePath, selectRecentNotes, summarizeNoteFolders } from "./commands-notes-rag.js";
 
 describe("summarizeNoteFolders — group notes by top-level collection + last activity", () => {
   const DAY = 86_400_000;
@@ -442,5 +442,46 @@ describe("muse notes related — semantic note discovery (embedding similarity)"
     expect(out).toContain("97%");
     expect(out).toContain("b.md");
     expect(formatRelatedNotes("/notes/a.md", [], "/notes")).toContain("stands alone");
+  });
+});
+
+describe("formatReindexOutcome — honest empty-state vs summary", () => {
+  const base = { embedded: 0, skipped: 0, failed: 0, totalChunks: 0, indexPath: "/x/index.json" };
+
+  it("emits an action-bearing empty-state (not a misleading '0 embedded') when no markdown was found", () => {
+    const out = formatReindexOutcome({ ...base, totalFiles: 0 }, { dir: "/home/me/notes" });
+    expect(out).toContain("No notes to index");
+    expect(out).toContain("/home/me/notes");          // names where it looked
+    expect(out).toContain("muse note ");               // a real next-step command
+    expect(out).toContain("MUSE_NOTES_DIR");           // the real env var to point at a vault
+    expect(out).not.toContain("0 embedded");           // the misleading line is gone
+  });
+
+  it("keeps the normal Done summary when files were found", () => {
+    const out = formatReindexOutcome(
+      { ...base, totalFiles: 3, embedded: 2, skipped: 1, totalChunks: 7 },
+      { dir: "/home/me/notes" }
+    );
+    expect(out).toContain("2 embedded");
+    expect(out).toContain("7 chunks total");
+    expect(out).not.toContain("No notes to index");
+  });
+});
+
+describe("reindexNotes — totalFiles plumbing (drives the empty-state)", () => {
+  it("reports totalFiles=0 over an empty notes dir (no embedder needed)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muse-empty-rag-"));
+    const summary = await reindexNotes({ dir, indexPath: join(dir, "index.json"), model: "nomic-embed-text" });
+    expect(summary.totalFiles).toBe(0);
+    expect(summary.embedded).toBe(0);
+    // and the renderer turns that into the empty-state, end-to-end
+    expect(formatReindexOutcome(summary, { dir })).toContain("No notes to index");
+  });
+
+  it("counts the markdown files it found", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muse-onefile-rag-"));
+    await writeFile(join(dir, "a.md"), "hello world", "utf8");
+    const summary = await reindexNotes({ dir, fetchImpl: fakeEmbedFetch(), force: true, indexPath: join(dir, "index.json"), model: "nomic-embed-text" });
+    expect(summary.totalFiles).toBe(1);
   });
 });
