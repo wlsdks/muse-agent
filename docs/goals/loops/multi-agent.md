@@ -4,6 +4,30 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
+## fire 17 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (sentinel held — new orchestration path verified guarded)
+meta: value-class=none(no-ship) · pkg=none · kind=regression-sentinel-verify · verdict=NO-SHIP · firesSinceDrill=5
+ratchet: testFiles +0 · fabrication 0 · self-eval green · ★fires 7-15 NOW MERGED to main (⑤c blocker resolved)
+
+**What** — ⓪ sync surfaced two facts: (1) ★the ⑤c merge blocker RESOLVED — fires 7-15 (`d08bb006`) are now an
+ancestor of origin/main, so the branch landed on main (the fire-15 retry or a later push won the race). (2) a
+DIFFERENT loop (local-speed) merged `feat(api): FrugalGPT cascade in tiered orchestration` (arXiv:2305.05176) —
+a NEW orchestration entry-point in my theme-adjacent space. Did the regression-sentinel check it: does the
+tiered/cascade path bypass my coordination guards? VERIFIED NO — `buildTieredOrchestration` only builds the
+worker list; both consuming POST routes (multi-agent-routes.ts:177, 288) wire `detectConflicts` +
+`detectRedundancies` (fire 8) into the orchestrator, and the fan-in still runs `buildOrchestrationResponse`. The
+cascade only changes per-WORKER model selection (fast→heavy escalation), transparent to the cross-worker fan-in
+guards. No gap.
+
+**Why no-ship** — The theme is comprehensively complete (fire-16 multi-surface audit) AND the one new
+orchestration path that landed since is confirmed guard-covered. No clean high-value slice. self-eval green
+(sentinel held — no regression from the concurrent merges).
+
+lesson: A degenerate-but-honest loop on a complete theme STILL earns its keep as a regression sentinel — this
+fire caught a new orchestration entry-point from a sibling loop and verified it didn't slip past the coordination
+guards. That IS the residual value when no new capability remains. ★REPOINT still the right call (vein complete);
+no new notification (nothing requiring 진안 action changed — the merge ask is now resolved, only the repoint
+recommendation stands, already surfaced 4×).
+
 ## fire 16 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (evidence-backed completeness)
 meta: value-class=none(no-ship) · pkg=none · kind=multi-surface-audit · verdict=NO-SHIP · firesSinceDrill=4
 ratchet: testFiles +0 · fabrication 0 · self-eval green (regression sentinel held) · no source · scout-signals clean (no traces)
