@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-import { RECALL_SOURCE_VALUES, clampLimit, filterLiveEpisodeEntries, filterLiveNoteIndexFiles, rankRecallCandidates, relevantExcerpt, resolveSource } from "./commands-recall.js";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { RECALL_SOURCE_VALUES, clampLimit, filterLiveEpisodeEntries, filterLiveNoteIndexFiles, rankRecallCandidates, relevantExcerpt, resolveSource, searchRecall } from "./commands-recall.js";
 
 const tokens = (...t: string[]): ReadonlySet<string> => new Set(t);
 
@@ -69,6 +73,18 @@ describe("rankRecallCandidates — hybrid keyword+vector", () => {
       limit: 5, noteChunks: [], queryVec: [1, 0], source: "episodes" as const
     });
     expect(hits[0]?.trusted).toBeUndefined();
+  });
+  it("carries a note chunk's trusted:false flag onto its hit (NP-chat — ingested-note laundering) and leaves untagged chunks trusted", () => {
+    const hits = rankRecallCandidates({
+      episodeEntries: [],
+      noteChunks: [
+        { path: "web/evil.md", text: "Acme acquired Beta", embedding: [1, 0], trusted: false },
+        { path: "mine.md", text: "Acme acquired Beta", embedding: [1, 0] }
+      ],
+      limit: 5, queryVec: [1, 0], source: "notes" as const
+    });
+    expect(hits.find((h) => h.ref === "web/evil.md")?.trusted).toBe(false);
+    expect(hits.find((h) => h.ref === "mine.md")?.trusted).toBeUndefined();
   });
   it("the lexical boost surfaces an exact keyword match the embedding under-ranks", () => {
     expect(rankRecallCandidates({ ...base, queryText: "quarterly budget" })[0]?.ref).toBe("b.md");
@@ -206,5 +222,41 @@ describe("resolveSource", () => {
 
   it("preserves the original raw input on invalid so the caller renders the user's exact typo", () => {
     expect(resolveSource("  Note  ")).toEqual({ kind: "invalid", input: "  Note  " });
+  });
+});
+
+describe("searchRecall — a URL-ingested note is tagged trusted:false end-to-end (NP-chat path-match crux)", () => {
+  const saved: Record<string, string | undefined> = {};
+  const setEnv = (k: string, v: string): void => { saved[k] = process.env[k]; process.env[k] = v; };
+  afterEach(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+
+  it("tags only the ingested note (relativized path matches provenance), authored note stays trusted", async () => {
+    const base = mkdtempSync(join(tmpdir(), "muse-np-chat-"));
+    const notesDir = join(base, "notes");
+    mkdirSync(join(notesDir, "web"), { recursive: true });
+    const evilAbs = join(notesDir, "web", "evil.md");
+    const mineAbs = join(notesDir, "mine.md");
+    writeFileSync(evilAbs, "Acme acquired Beta for $1B", "utf8");
+    writeFileSync(mineAbs, "Acme acquired Beta for $1B", "utf8");
+    const indexFile = join(base, "notes-index.json");
+    writeFileSync(indexFile, JSON.stringify({
+      version: 1, model: "test-model",
+      files: [
+        { path: evilAbs, chunks: [{ chunkIndex: 0, text: "Acme acquired Beta for $1B", embedding: [1, 0] }] },
+        { path: mineAbs, chunks: [{ chunkIndex: 0, text: "Acme acquired Beta for $1B", embedding: [1, 0] }] }
+      ]
+    }), "utf8");
+    const provFile = join(base, "note-provenance.json");
+    // provenance keys by the RELATIVIZED path — the crux: relativizeNoteSource(evilAbs, notesDir) === "web/evil.md"
+    writeFileSync(provFile, JSON.stringify({ notes: [{ path: "web/evil.md", sourceUrl: "https://evil.example", ingestedAt: "t" }] }), "utf8");
+
+    setEnv("MUSE_NOTES_INDEX_FILE", indexFile);
+    setEnv("MUSE_NOTE_PROVENANCE_FILE", provFile);
+    setEnv("MUSE_NOTES_DIR", notesDir);
+    setEnv("MUSE_RECALL_TEST_QUERY_EMBEDDING", "1,0");
+
+    const hits = await searchRecall({ query: "acme", source: "notes", limit: 5, embedModel: "test-model", env: process.env as Record<string, string | undefined> });
+    expect(hits.find((h) => h.ref === evilAbs)?.trusted).toBe(false);
+    expect(hits.find((h) => h.ref === mineAbs)?.trusted).toBeUndefined();
   });
 });

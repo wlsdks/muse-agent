@@ -447,3 +447,38 @@ pass isolated) — not this slice; agent-core (2576) + recall (412) + consumers 
 
 RISK: low — additive, mutation-proven across all 3 seams, re-judged PASS,
 distinct-source semantics identical to before, fabrication floor untouched.
+
+## fire 15 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=new-capability · pkg=@muse/cli · kind=note-provenance-wiring · verdict=PASS · firesSinceDrill=5
+
+ratchet: testFiles +0 (extended commands-recall, +2 cases incl. end-to-end) · fabrication 0 · eval:memory-poisoning PASS · eval:action-log-tamper PASS · ÷3 MERGE deferred (box-saturation)
+
+WHAT: NP-chat — chat-path note-provenance parity. searchRecall tags note hits
+trusted:false for URL-ingested notes (per-file: relativizeNoteSource(file.path,
+notesDir) ∈ untrustedNotePaths); rankRecallCandidates carries it; hitsToMatches
+(fire 12) propagates → the chat untrusted-only cue fires on a poisoned-ingested-
+note-only answer. Mirrors EP-3 (episodes) for notes.
+
+WHY: completes note-provenance across BOTH grounded surfaces (ask fire 13 + chat
+this) — the four trust seams (note/episode × ask/chat) are now symmetric. The ask
+path tags its own scored matches (distinct from searchRecall) so no double-tag.
+
+REVIEW POINT: the path-match crux (provenance relative key === relativizeNoteSource
+of the absolute index path) is OUTCOME-tested end-to-end (real index + provenance
++ .md files) and judge-confirmed for nested + top-level paths. Judge flagged a NEW
+out-of-scope seam recorded as NP-proactive (proactive-notes-recall.ts has no
+provenance check). ALSO committed: a @muse/model fuzz-test timeout bump (5s→30s,
+assertion-neutral) to cut the recurring box-saturation pnpm-check flake.
+
+RISK: low — additive, mutation-proven (end-to-end), Opus ④ PASS, no double-tag,
+over-tag safe, fabrication floor untouched.
+
+NOTE (÷3 merge deferred): fire 15 is ÷3 but pnpm check could not go green — EVERY
+failure is a uniform 5000ms timeout on heavy integration/fuzz tests (@muse/model,
+@muse/autoconfigure daemon) under 6 concurrent loops (box saturation, NOT a real
+regression; the @muse/cli slice passes isolated 2904 + mutation RED). Per ⑤c
+(no force-merge past red check), the merge of fires 13/14/15 defers to the next ÷3
+(fire 18) or a quieter box. lesson: the recurring ÷3-merge blocker is box
+saturation, not code — a quiet-window retry or raised integration-test timeouts
+(not loop work) is the real fix.

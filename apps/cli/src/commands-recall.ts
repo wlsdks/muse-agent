@@ -15,7 +15,7 @@
  */
 
 import { existsSync } from "node:fs";
-import type { RecallHit } from "@muse/recall";
+import { relativizeNoteSource, type RecallHit } from "@muse/recall";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -23,8 +23,9 @@ import { join } from "node:path";
 import { selectByMarginalValue, selectByMmr } from "@muse/agent-core";
 
 import { depositCoRecall, readTrails, resolveTrailsFile, writeTrails } from "./recall-trail.js";
-import { resolveEpisodesFile } from "@muse/autoconfigure";
+import { resolveEpisodesFile, resolveNoteProvenanceFile, resolveNotesDir } from "@muse/autoconfigure";
 import { readEpisodes } from "@muse/mcp";
+import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
@@ -149,7 +150,7 @@ export function relevantExcerpt(text: string, queryTokens: ReadonlySet<string>, 
 export function rankRecallCandidates(args: {
   readonly queryVec: readonly number[];
   readonly queryText?: string;
-  readonly noteChunks: ReadonlyArray<{ path: string; text: string; embedding: readonly number[] }>;
+  readonly noteChunks: ReadonlyArray<{ path: string; text: string; embedding: readonly number[]; trusted?: false }>;
   readonly episodeEntries: ReadonlyArray<{ id: string; summary: string; embedding: readonly number[] }>;
   readonly limit: number;
   readonly source: "notes" | "episodes" | "all";
@@ -164,7 +165,7 @@ export function rankRecallCandidates(args: {
   const scored: { readonly hit: RecallHit; readonly embedding: readonly number[] }[] = [];
   if (args.source !== "episodes") {
     for (const chunk of args.noteChunks) {
-      scored.push({ embedding: chunk.embedding, hit: { score: combined(chunk.embedding, chunk.text), ref: chunk.path, snippet: relevantExcerpt(chunk.text, queryTokens), source: "notes" } });
+      scored.push({ embedding: chunk.embedding, hit: { score: combined(chunk.embedding, chunk.text), ref: chunk.path, snippet: relevantExcerpt(chunk.text, queryTokens), source: "notes", ...(chunk.trusted === false ? { trusted: false } : {}) } });
     }
   }
   if (args.source !== "notes") {
@@ -333,10 +334,17 @@ export async function searchRecall(opts: {
   const testVec = maybeReadTestEmbedding();
   const queryVec = testVec ?? await embed(query, embedModel);
 
+  // Notes ingested from an external URL (muse notes ingest --url) are third-party
+  // content — tag their chunks trusted:false so the chat untrusted-only cue fires on
+  // a poisoned ingested note (NP-chat parity with the ask path). Keyed by the note's
+  // relativized path, the same form provenance records (see note-provenance.ts).
+  const untrustedNotes = untrustedNotePaths(await readNoteProvenance(resolveNoteProvenanceFile(env)));
+  const notesDir = resolveNotesDir(env);
   const liveFiles = filterLiveNoteIndexFiles(notesIndex?.files ?? [], existsSync);
-  const noteChunks = liveFiles.flatMap((file) =>
-    (file.chunks ?? []).map((chunk) => ({ path: file.path, text: chunk.text, embedding: chunk.embedding }))
-  );
+  const noteChunks = liveFiles.flatMap((file) => {
+    const untrusted = untrustedNotes.has(relativizeNoteSource(file.path, notesDir));
+    return (file.chunks ?? []).map((chunk) => ({ path: file.path, text: chunk.text, embedding: chunk.embedding, ...(untrusted ? { trusted: false as const } : {}) }));
+  });
   let episodeEntries = (episodeIndex?.entries ?? []).map((entry) => ({
     id: entry.id,
     summary: entry.summary,
