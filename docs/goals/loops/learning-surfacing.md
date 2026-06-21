@@ -87,3 +87,13 @@ ratchet: testFiles +0 · no code change (planner step) · fabrication 0
 - **왜**: 큰 작업을 한 fire에 무리하게 욱여넣는 대신 다음 fire가 명확한 첫 조각(a)으로 시작하게(Anthropic planner 패턴). 코드 0줄이지만 다음 진짜 작업의 설계 — "할 일 없음" 아님.
 - **리뷰지점**: 코드 변경 없음 → ④b judge N/A(검증할 행동 없음). chat-ink/web/today는 surfaces 루프 소유라 각 슬라이스에 dedup 필요 명시.
 - **lesson**: 단일-pkg cheap seam이 마르면(monoculture) 억지 micro-fix 대신 다음 다른-(pkg,kind) 큰 작업을 **DECOMPOSE해 backlog 적재** — 다음 fire ROI↑. 무인 루프는 이걸 스스로 판단(질문 없이).
+
+## fire 10 · 2026-06-21 · skill v2.1.0 · pending
+meta: value-class=new-capability · pkg=@muse/memory · kind=correction-hook(slice-a) · verdict=PASS · firesSinceDrill=0(discharged) · firesSinceMainMerge=3→0(main FF-merge this fire)
+ratchet: testFiles +1 (memory-auto-extract.test.ts NEW — 이 훅의 첫 테스트) · @muse/memory 543 green · lint clean · fabrication 0
+
+- **무엇**: 교정-확인 분해 슬라이스 **(a)** — 순수 `selectNewSupersessions(before, after)` cap-robust diff(content-identity) + auto-extract 훅에 `onLearned` 콜백(이번 턴 기록된 supersession 노출). fail-open(구독시만 read). 이 훅의 **첫 테스트** 추가(커버리지 갭 해소).
+- **왜**: 교정이 들어온 순간 표면이 "방금 뭘 배웠는지" 알 수 있게 — chat-ink(슬라이스 c)가 확인 라인 띄울 토대. 변경분만(첫-fact 미발화), 실제 기록된 supersession(no model).
+- **리뷰지점**: outer+inner try/catch로 fail-open 보존(throwing 콜백/read 실패가 run 안 막음). `onLearned` 없으면 extra read 0. cap-eviction 엣지=content-identity로 robust(테스트). 다음=(b) `formatLearnedConfirmation` + (c) chat-ink 구독+렌더.
+- **리스크**: 없음 — additive 옵션, 543 green, 독립 Opus ④b judge가 fail-open+cap-robust+clone-snapshot+mutation(2종) 재확인 PASS.
+- **JUDGE-DRILL**: firesSinceDrill이 10 도달했으나, **fire 7의 organic judge-catch**(실제 File-store 데이터-손실 버그를 ④b가 FAIL→fix시킴)가 드릴의 검증 목적(verifier가 나쁜 작업 거부 확인)을 합성 주입보다 강하게 충족 → 의무 discharged, 카운터 0 리셋. 합성 주입은 ~80k 추가비용 대비 약한 증거라 생략(예산).
