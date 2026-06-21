@@ -37,6 +37,7 @@ import {
   emptyInput,
   extractAttachmentPaths,
   imageMimeForPath,
+  readImageAttachment,
   firstOpenToday,
   formatJobsList,
   greetingName,
@@ -954,20 +955,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     }
   };
 
-  // `@photo.png` → an inline base64 image attachment for gemma4 vision (the
-  // adapter forwards it to Ollama per-message images). Fail-soft.
-  const readImage = async (relativePath: string): Promise<{ readonly mimeType: string; readonly dataBase64: string } | undefined> => {
-    const mimeType = imageMimeForPath(relativePath);
-    if (!mimeType) return undefined;
-    try {
-      const abs = isAbsolute(relativePath) ? relativePath : join(process.cwd(), relativePath);
-      const bytes = await fsReadFile(abs);
-      if (bytes.length === 0) return undefined;
-      return { dataBase64: bytes.toString("base64"), mimeType };
-    } catch {
-      return undefined;
-    }
-  };
+  const readImage = (relativePath: string) => readImageAttachment(relativePath);
 
   // /save → write the reply to ~/.muse/chat-saves/<ts>.md
   const saveText = async (text: string): Promise<string | undefined> => {

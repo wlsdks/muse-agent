@@ -465,7 +465,7 @@ export { CONFLICT_IDENTITY_KEYS, detectConflictingWritesInBatch } from "./tool-b
 
 export { groundToolArguments, type ToolArgumentGrounding } from "./tool-argument-grounding.js";
 
-export { describeImage, extractStructuredFromImage, type VisionDescribeInput, type VisionDescribeResult, type VisionExtractInput, type VisionExtractResult } from "./vision-extract.js";
+export { describeImage, extractStructuredFromImage, validateExtraction, type VisionDescribeInput, type VisionDescribeResult, type VisionExtractInput, type VisionExtractResult } from "./vision-extract.js";
 
 export {
   createAgentCheckpointState,

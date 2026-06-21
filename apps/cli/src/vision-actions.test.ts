@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fieldIsGrounded, gateVisionAction, normalizeStartsAt, shapeVisionAction } from "./vision-actions.js";
+import { dropUnverifiedOptional, fieldIsGrounded, gateVisionAction, normalizeStartsAt, shapeVisionAction, splitUnverified } from "./vision-actions.js";
 
 describe("shapeVisionAction", () => {
   it("routes an event with title+startsAt to the calendar", () => {
@@ -70,6 +70,62 @@ describe("fieldIsGrounded — tolerant matching (no false-drop), catches halluci
     expect(fieldIsGrounded("2026-06-07", "no date visible here at all")).toBe(false);
     expect(fieldIsGrounded("99,999", "Total ₩12,400")).toBe(false);
   });
+
+  it("does NOT ground a bare SHORT-numeric value on a coincidental digit match (weak-numeric guard)", () => {
+    // "50" only appears as a discount %, not as a grounded field — must not pass.
+    expect(fieldIsGrounded("50", "Cafe Muse — 50% loyalty discount, total 12,400")).toBe(false);
+    // "12" only appears inside a time "12:30" — coincidental, must not pass.
+    expect(fieldIsGrounded("12", "Meeting at 12:30 with the team")).toBe(false);
+  });
+
+  it("STILL grounds ≥4-digit and text/CJK values (no over-drop from the weak-numeric guard)", () => {
+    expect(fieldIsGrounded("12,400", "Cafe Muse total 12,400")).toBe(true);
+    expect(fieldIsGrounded("2026", "Concert in 2026 at Seoul Hall")).toBe(true);
+    expect(fieldIsGrounded("Cafe Muse", "CAFE MUSE — receipt")).toBe(true);
+    expect(fieldIsGrounded("강남 치과", "강남 치과 의원 영수증")).toBe(true);
+  });
+});
+
+describe("fieldIsGrounded — amount-role anchoring (fire-6: leak + over-drop on amounts)", () => {
+  it("LEAK closed: a hallucinated amount whose run coincides with a YEAR (no currency anchor) is NOT grounded", () => {
+    // "$2026" — its 2026 run sits next to "Concert"/"Hall", no currency marker ⇒ false.
+    expect(fieldIsGrounded("$2026", "Concert 2026 — Main Hall — ticket $40", "total")).toBe(false);
+  });
+
+  it("OVER-DROP repaired: a REAL small amount next to a currency marker IS grounded", () => {
+    // "$40" — run 40 sits next to "$" ⇒ true (the fire-4 weak-numeric guard wrongly dropped it).
+    expect(fieldIsGrounded("$40", "Concert 2026 — Main Hall — ticket $40", "total")).toBe(true);
+  });
+
+  it("grounds a real ≥4-digit amount with a currency anchor; rejects a hallucinated one", () => {
+    expect(fieldIsGrounded("12,400", "Cafe Muse total 12,400", "total")).toBe(true);
+    expect(fieldIsGrounded("99,999", "Total ₩12,400", "total")).toBe(false);
+  });
+
+  it("grounds a small amount next to a word amount-marker (total/due/paid)", () => {
+    expect(fieldIsGrounded("40", "ticket total 40", "total")).toBe(true);
+    expect(fieldIsGrounded("25", "Amount due 25", "total")).toBe(true);
+  });
+
+  it("rejects a small amount run with NO adjacent currency/amount marker", () => {
+    // 40 appears only inside "2040" address fragment / no marker ⇒ false.
+    expect(fieldIsGrounded("$40", "Hall row 40A, gate 12", "total")).toBe(false);
+  });
+
+  it("amount-role only changes amount NAMES — passing an amount name leaves non-amount text/date untouched", () => {
+    // Non-amount field names are unaffected by the amount path even when a name is passed.
+    expect(fieldIsGrounded("Cafe Muse", "CAFE MUSE — receipt", "merchant")).toBe(true);
+    expect(fieldIsGrounded("2026-06-07", "Invoice date: June 7, 2026 — paid", "date")).toBe(true);
+    expect(fieldIsGrounded("강남 치과", "강남 치과 의원 영수증", "merchant")).toBe(true);
+    expect(fieldIsGrounded("010-1234-5678", "Call 010-1234-5678", "phone")).toBe(true);
+  });
+
+  it("back-compat: omitting the name reproduces today's exact behavior (incl. the fire-4 weak-numeric guard)", () => {
+    // The over-drop is the OLD behavior when name is absent — unchanged.
+    expect(fieldIsGrounded("$40", "Concert 2026 — Main Hall — ticket $40")).toBe(false);
+    expect(fieldIsGrounded("$2026", "Concert 2026 — Main Hall — ticket $40")).toBe(true);
+    expect(fieldIsGrounded("12,400", "Cafe Muse total 12,400")).toBe(true);
+  });
 });
 
 describe("gateVisionAction — grounding gate over a shaped action", () => {
@@ -96,6 +152,79 @@ describe("gateVisionAction — grounding gate over a shaped action", () => {
 
   it("does not gate a non-routed action", () => {
     expect(gateVisionAction(shapeVisionAction({ kind: "other" }), undefined).unverified).toEqual([]);
+  });
+
+  it("OUTCOME (fire-6): a year-coincidence total lands in unverified; a real $-anchored small total does not", () => {
+    // total "$2026" — 2026 is only a year in evidence, no $2026 amount ⇒ unverified.
+    const hall = shapeVisionAction({ kind: "receipt", merchant: "Concert", total: "$2026" });
+    const gatedHall = gateVisionAction(hall, "Concert 2026 — Main Hall — ticket $40");
+    expect(gatedHall.unverified).toContain("total");
+
+    // total "$40" — matches the "$40" run ⇒ NOT unverified.
+    const real = shapeVisionAction({ kind: "receipt", merchant: "Concert", total: "$40" });
+    const gatedReal = gateVisionAction(real, "Concert 2026 — Main Hall — ticket $40");
+    expect(gatedReal.unverified).not.toContain("total");
+  });
+
+  it("OUTCOME: a hallucinated SHORT total lands in unverified, a genuine ≥4-digit total stays grounded", () => {
+    const hallucinated = shapeVisionAction({ kind: "receipt", merchant: "Cafe Muse", total: "50" });
+    const gatedHall = gateVisionAction(hallucinated, "Cafe Muse — 50% loyalty discount, total 12,400");
+    expect(gatedHall.unverified).toContain("total");
+
+    const genuine = shapeVisionAction({ kind: "receipt", merchant: "Cafe Muse", total: "12,400" });
+    const gatedGenuine = gateVisionAction(genuine, "Cafe Muse — 50% loyalty discount, total 12,400");
+    expect(gatedGenuine.unverified).toEqual([]);
+  });
+});
+
+describe("splitUnverified — field-level fail-close (REQUIRED blocks, OPTIONAL drops)", () => {
+  it("DROPPABLE: a receipt with grounded merchant+total but an un-grounded date drops the date only", () => {
+    // merchant+total visible, date hallucinated (absent from evidence).
+    const action = shapeVisionAction({ date: "2026-06-99", kind: "receipt", merchant: "Cafe Muse", total: "12,400" });
+    const gated = gateVisionAction(action, "Cafe Muse\nTotal: 12,400 KRW");
+    expect(gated.unverified).toEqual(["date"]);
+    const split = splitUnverified(gated);
+    expect(split).toEqual({ blocking: [], droppable: ["date"] });
+
+    // Recompose drops the date — and it must NOT leak into the persisted note/body.
+    const applied = dropUnverifiedOptional(gated, split.droppable);
+    expect(applied.fields.date).toBeUndefined();
+    expect(String(applied.fields.note)).toBe("Expense — Cafe Muse: 12,400");
+    expect(String(applied.fields.note)).not.toContain("2026-06-99");
+    expect(applied.draftText).not.toContain("2026-06-99");
+    expect(applied.unverified).toEqual([]);
+  });
+
+  it("BLOCKING: a receipt whose REQUIRED merchant is un-grounded blocks the whole action", () => {
+    const action = shapeVisionAction({ kind: "receipt", merchant: "Starbucks", total: "12,400" });
+    const gated = gateVisionAction(action, "Cafe Muse\nTotal: 12,400 KRW");
+    expect(gated.unverified).toContain("merchant");
+    const split = splitUnverified(gated);
+    expect(split.blocking).toContain("merchant");
+    expect(split.blocking.length).toBeGreaterThan(0);
+  });
+
+  it("EMPTY: a fully-grounded action splits to empty/empty and recomposes unchanged", () => {
+    const action = shapeVisionAction({ date: "2026-06-07", kind: "receipt", merchant: "Cafe Muse", total: "12,400" });
+    const gated = gateVisionAction(action, "Cafe Muse\nTotal: 12,400 KRW\nDate: June 7, 2026");
+    expect(splitUnverified(gated)).toEqual({ blocking: [], droppable: [] });
+    expect(dropUnverifiedOptional(gated, [])).toBe(gated);
+  });
+
+  it("EVENT kind: REQUIRED title/startsAt block; OPTIONAL location/notes drop (required-map is not receipt-only)", () => {
+    // title+startsAt grounded, location hallucinated.
+    const action = shapeVisionAction({ kind: "event", location: "Busan", startsAt: "2026-07-18", title: "Jazz Night" });
+    const gated = gateVisionAction(action, "Jazz Night — 2026-07-18 at Seoul Hall");
+    expect(gated.unverified).toEqual(["location"]);
+    expect(splitUnverified(gated)).toEqual({ blocking: [], droppable: ["location"] });
+    const applied = dropUnverifiedOptional(gated, ["location"]);
+    expect(applied.fields.location).toBeUndefined();
+    expect(applied.draftText).not.toContain("Busan");
+    expect(applied.route).toBe("calendar");
+
+    // An un-grounded REQUIRED startsAt blocks.
+    const hall = gateVisionAction(shapeVisionAction({ kind: "event", startsAt: "2099-01-01", title: "Jazz Night" }), "Jazz Night — 2026-07-18");
+    expect(splitUnverified(hall).blocking).toContain("startsAt");
   });
 });
 

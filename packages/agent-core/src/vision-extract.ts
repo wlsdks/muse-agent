@@ -1,4 +1,4 @@
-import type { JsonObject } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 import type { ModelProvider } from "@muse/model";
 
 /**
@@ -44,6 +44,48 @@ const EXTRACT_SYSTEM_PROMPT =
   "If a field is not clearly visible in the image, OMIT it entirely — never guess, infer, or invent a value. The image is your only source. Output JSON only, no prose.";
 
 /**
+ * Schema-required gate over an extracted object. Every name in `schema.required`
+ * must be PRESENT and a non-empty string (mirrors the `str()` discipline the
+ * routing layer uses), and any property declared `type: "string"` whose value is
+ * a non-string is a violation too. Conservative: enforces ONLY what the schema
+ * declares — an absent schema or absent `required` returns ok (back-compat, so a
+ * legit extraction whose schema declares no requireds is never newly failed).
+ *
+ * This is the no-partial-result floor (AppWorld): a hollow `{}` or a
+ * required:["merchant"] receipt with no merchant fails CLOSED at the source
+ * rather than masquerading as a successful extraction downstream.
+ */
+export function validateExtraction(
+  data: JsonObject,
+  schema: JsonObject | undefined
+): { ok: true } | { ok: false; missing: string[] } {
+  if (!schema) {
+    return { ok: true };
+  }
+  const isNonEmptyString = (v: unknown): boolean => typeof v === "string" && v.trim().length > 0;
+  const missing: string[] = [];
+  const required = Array.isArray(schema.required) ? (schema.required as JsonValue[]) : [];
+  for (const name of required) {
+    if (typeof name === "string" && !isNonEmptyString(data[name])) {
+      missing.push(name);
+    }
+  }
+  const properties = schema.properties;
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    for (const [name, spec] of Object.entries(properties)) {
+      if (missing.includes(name) || !(name in data)) {
+        continue;
+      }
+      const declaresString = spec && typeof spec === "object" && !Array.isArray(spec) && (spec as JsonObject).type === "string";
+      if (declaresString && typeof data[name] !== "string") {
+        missing.push(name);
+      }
+    }
+  }
+  return missing.length === 0 ? { ok: true } : { ok: false, missing };
+}
+
+/**
  * Run a structured extraction over an image. Fail-soft: a non-JSON / non-object
  * model output (or any generate error) returns `{ ok: false }` with the raw text
  * and a reason — it never throws, so a caller can degrade to "couldn't read it"
@@ -81,6 +123,10 @@ export async function extractStructuredFromImage(
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     return { error: "extraction output was not a JSON object", ok: false, raw };
+  }
+  const validation = validateExtraction(parsed as JsonObject, input.schema);
+  if (!validation.ok) {
+    return { error: `extraction omitted required field(s): ${validation.missing.join(", ")}`, ok: false, raw };
   }
   return { data: parsed as JsonObject, ok: true, raw };
 }

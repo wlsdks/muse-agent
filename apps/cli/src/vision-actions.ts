@@ -1,5 +1,5 @@
 import { describeImage, extractStructuredFromImage } from "@muse/agent-core";
-import type { JsonObject } from "@muse/shared";
+import type { JsonObject, JsonValue } from "@muse/shared";
 import type { ModelProvider } from "@muse/model";
 
 /**
@@ -63,6 +63,57 @@ const KIND_EXTRACT: Record<"event" | "receipt" | "contact" | "document", { schem
   }
 };
 
+// Per-kind REQUIRED field names, DERIVED from the same KIND_EXTRACT schemas the
+// extraction uses — a single source, so the blocking/droppable split can never
+// diverge from what the schema (and route gate) actually demands.
+const REQUIRED_FIELDS: Record<VisionActionKind, ReadonlySet<string>> = {
+  contact: new Set((KIND_EXTRACT.contact.schema.required as string[] | undefined) ?? []),
+  document: new Set((KIND_EXTRACT.document.schema.required as string[] | undefined) ?? []),
+  event: new Set((KIND_EXTRACT.event.schema.required as string[] | undefined) ?? []),
+  other: new Set<string>(),
+  receipt: new Set((KIND_EXTRACT.receipt.schema.required as string[] | undefined) ?? [])
+};
+
+/**
+ * Partition a gated action's `unverified` fields into REQUIRED (blocking) vs
+ * OPTIONAL (droppable). A required field that couldn't be grounded blocks the
+ * WHOLE action (the grounded core is meaningless without it). An un-grounded
+ * OPTIONAL field is droppable — the caller strips it and applies the grounded
+ * core, so a hallucinated `date` never blocks a grounded `merchant`+`total`.
+ * Fabrication floor: a droppable field is DROPPED (never persisted), not kept.
+ */
+export function splitUnverified(action: VisionAction): { droppable: string[]; blocking: string[] } {
+  const required = REQUIRED_FIELDS[action.kind];
+  const blocking: string[] = [];
+  const droppable: string[] = [];
+  for (const name of action.unverified) {
+    (required.has(name) ? blocking : droppable).push(name);
+  }
+  return { blocking, droppable };
+}
+
+/**
+ * Strip un-grounded OPTIONAL field(s) and RECOMPOSE the action deterministically
+ * by re-shaping the surviving fields through `shapeVisionAction` — so any DERIVED
+ * string (the receipt `note`, the document `note`/`path`, the draft text) is
+ * rebuilt WITHOUT the dropped value, guaranteeing it can never leak into the
+ * persisted output. Re-gates so `unverified` reflects only the survivors.
+ */
+export function dropUnverifiedOptional(action: VisionAction, droppable: readonly string[]): VisionAction {
+  if (droppable.length === 0) {
+    return action;
+  }
+  const drop = new Set(droppable);
+  const surviving: Record<string, JsonValue> = { kind: action.kind };
+  for (const [name, value] of Object.entries(action.fields)) {
+    if (!drop.has(name) && !DERIVED_FIELDS.has(name)) {
+      surviving[name] = value;
+    }
+  }
+  const reshaped = shapeVisionAction(surviving);
+  return { ...reshaped, unverified: action.unverified.filter((name) => !drop.has(name)) };
+}
+
 const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim().length > 0 ? v.trim() : undefined);
 
 const EVIDENCE_INSTRUCTION =
@@ -86,6 +137,57 @@ function wordTokens(text: string): string[] {
   return [...(lower.match(/[a-z0-9]{2,}/gu) ?? []), ...(lower.match(/[㐀-鿿가-힯]/gu) ?? [])];
 }
 
+/** A non-digit identifying token: a latin run with at least one letter, or a CJK
+ *  char. A pure digit-run ("50", "12") is NOT one — it carries no field identity,
+ *  so it can't anchor grounding on its own. */
+function hasTextToken(value: string): boolean {
+  return /[a-z]/iu.test(value) || /[㐀-鿿가-힯]/u.test(value);
+}
+
+// Field NAMES whose value is a monetary amount (the only numeric-amount field in
+// any KIND_EXTRACT schema is the receipt `total`). An amount-role field grounds
+// only on a digit-run that sits in the evidence ADJACENT to a currency/amount
+// marker — closing the year-coincidence leak ("$2026" matching a "2026" year)
+// without false-dropping a real small total ("$40" next to "$").
+const AMOUNT_FIELD_NAMES: ReadonlySet<string> = new Set(["total"]);
+
+/** Currency / amount markers that anchor an amount run: a symbol, an ISO code,
+ *  or an amount word. Matched case-insensitively. */
+const AMOUNT_MARKER = /[$₩€£¥]|\b(?:krw|usd|eur|gbp|jpy|total|subtotal|amount|due|paid|balance)\b/giu;
+
+/** Is a digit-run from `value` present in `evidence` ADJACENT (within ~2 chars)
+ *  to a currency/amount marker? Anchors an amount field so a bare coincidental
+ *  run (a year, a row number) cannot ground a hallucinated total, while a real
+ *  small total next to a `$`/`total` marker still does. Thousands separators in
+ *  the evidence are normalized so "12,400" matches the run "12400". */
+function amountRunIsAnchored(value: string, evidence: string): boolean {
+  const joinedEv = evidence.replace(/(\d)[,_ ](?=\d{3}\b)/gu, "$1");
+  const runs = [...digitRuns(value)];
+  if (runs.length === 0) {
+    return false;
+  }
+  for (const run of runs) {
+    const runRe = new RegExp(`(?<!\\d)${run}(?!\\d)`, "gu");
+    let m: RegExpExecArray | null;
+    while ((m = runRe.exec(joinedEv)) !== null) {
+      const winStart = Math.max(0, m.index - 8);
+      const winEnd = Math.min(joinedEv.length, m.index + run.length + 8);
+      const window = joinedEv.slice(winStart, winEnd);
+      const runStartInWindow = m.index - winStart;
+      AMOUNT_MARKER.lastIndex = 0;
+      let mk: RegExpExecArray | null;
+      while ((mk = AMOUNT_MARKER.exec(window)) !== null) {
+        const gapBefore = runStartInWindow - (mk.index + mk[0].length);
+        const gapAfter = mk.index - (runStartInWindow + run.length);
+        if ((gapBefore >= 0 && gapBefore <= 2) || (gapAfter >= 0 && gapAfter <= 2)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 /**
  * Is `value` grounded in the image `evidence` transcription? Tolerant by design
  * so a faithfully-extracted field is NOT false-dropped:
@@ -95,8 +197,26 @@ function wordTokens(text: string): string[] {
  *  - if only short digit-runs exist, the longest must appear, else fall to words;
  *  - text fields: a majority of the value's word/entity tokens must be visible.
  * A hallucinated value (absent from the evidence) matches none of these → false.
+ *
+ * Weak-numeric guard (fabrication-floor): a value whose ONLY signal is a SHORT
+ * digit-run (longest contiguous run ≤ 3) and that carries NO non-digit text/CJK
+ * token of its own ("50", "12") is NOT groundable on a bare coincidental digit
+ * match (a discount %, a clock time, an address fragment) — it has no field
+ * identity to anchor. Such a value fails CLOSED here (→ recorded unverified). The
+ * guard can only make the gate STRICTER; ≥4-digit runs and any text/CJK value are
+ * unaffected.
+ *
+ * Amount-role anchoring: when `name` is an amount field (receipt `total`), the
+ * value's digit-run must appear in the evidence ADJACENT to a currency/amount
+ * marker — "$40" grounds (next to "$"), a hallucinated "$2026" does NOT (its
+ * 2026 run sits next to "Concert"/"Hall", a year not an amount). This is STRICTLY
+ * a re-classification of amount fields: `name` is OPTIONAL and absent reproduces
+ * today's behavior exactly; non-amount names take the unchanged text/date path.
  */
-export function fieldIsGrounded(value: string, evidence: string): boolean {
+export function fieldIsGrounded(value: string, evidence: string, name?: string): boolean {
+  if (name !== undefined && AMOUNT_FIELD_NAMES.has(name)) {
+    return amountRunIsAnchored(value, evidence);
+  }
   const ev = evidence.toLowerCase();
   const evDigits = digitRuns(evidence);
   const valDigits = [...digitRuns(value)];
@@ -104,11 +224,15 @@ export function fieldIsGrounded(value: string, evidence: string): boolean {
   if (significant.length > 0) {
     return significant.every((d) => evDigits.has(d));
   }
-  if (valDigits.length > 0) {
+  const weakNumericOnly = !hasTextToken(value);
+  if (valDigits.length > 0 && !weakNumericOnly) {
     const longest = valDigits.reduce((a, b) => (b.length > a.length ? b : a));
     if (evDigits.has(longest)) {
       return true;
     }
+  }
+  if (weakNumericOnly) {
+    return false;
   }
   const tokens = wordTokens(value);
   if (tokens.length === 0) {
@@ -142,7 +266,7 @@ export function gateVisionAction(action: VisionAction, evidence: string | undefi
     ? fieldNames
     : fieldNames.filter((name) => {
         const value = action.fields[name];
-        return typeof value === "string" && value.trim().length > 0 && !fieldIsGrounded(value, evidenceText);
+        return typeof value === "string" && value.trim().length > 0 && !fieldIsGrounded(value, evidenceText, name);
       });
   return { ...action, draftText: annotateUnverified(action.draftText, unverified), unverified };
 }

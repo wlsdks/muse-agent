@@ -227,6 +227,7 @@ export { createLeadingThinkStripper, stripLeadingThinkBlock } from "./provider-s
 export { DiagnosticModelProvider } from "./adapter-diagnostic.js";
 export { OpenAIProvider, OpenRouterProvider } from "./adapter-openai.js";
 export { DEFAULT_OLLAMA_NUM_CTX, OllamaProvider, recoverToolArgsJson, sanitizeOllamaToolSchema } from "./adapter-ollama.js";
+export { isWellFormedBase64 } from "./base64-image.js";
 export { AnthropicProvider } from "./adapter-anthropic.js";
 export { GeminiProvider } from "./adapter-gemini.js";
 

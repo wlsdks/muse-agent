@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ModelProviderError, OllamaProvider, recoverToolArgsJson, sanitizeOllamaToolSchema } from "../src/index.js";
+import { ModelProviderError, OllamaProvider, isWellFormedBase64, recoverToolArgsJson, sanitizeOllamaToolSchema } from "../src/index.js";
 import type { ModelEvent, ModelRequest } from "../src/index.js";
 
 type FakeResponseInit = { ok?: boolean; status?: number; statusText?: string };
@@ -154,6 +154,80 @@ describe("OllamaProvider — native /api/chat request wire shape", () => {
     await p.generate(userReq({ messages: [{ content: "hi", role: "user" }] }));
     const msg = (lastBody().messages as Array<Record<string, unknown>>)[0]!;
     expect("images" in msg).toBe(false);
+  });
+
+  it.each([
+    ["non-base64 chars", "not valid!!base64"],
+    ["bad padding (length not %4)", "QkFT="],
+    ["embedded whitespace", "QkFT QkFT"]
+  ])("drops a malformed image attachment (%s) so the message ships with NO images (fail closed, not a silent Ollama drop)", async (_label, dataBase64) => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    await p.generate(
+      userReq({
+        messages: [{
+          content: "what's in this image?",
+          role: "user",
+          attachments: [{ mimeType: "image/png", dataBase64 }]
+        }]
+      }),
+    );
+    const msg = (lastBody().messages as Array<Record<string, unknown>>)[0]!;
+    expect("images" in msg).toBe(false);
+  });
+
+  it("drops a `data:<mime>;base64,` prefixed attachment (VisionExtractInput forbids the prefix — enforce it loudly)", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    await p.generate(
+      userReq({
+        messages: [{
+          content: "what's in this image?",
+          role: "user",
+          attachments: [{ mimeType: "image/png", dataBase64: "data:image/png;base64,QkFTRTY0UE5H" }]
+        }]
+      }),
+    );
+    const msg = (lastBody().messages as Array<Record<string, unknown>>)[0]!;
+    expect("images" in msg).toBe(false);
+  });
+
+  it("forwards only the well-formed attachment when one valid + one malformed are mixed", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    await p.generate(
+      userReq({
+        messages: [{
+          content: "what's in these?",
+          role: "user",
+          attachments: [
+            { mimeType: "image/png", dataBase64: "QkFTRTY0UE5H" },
+            { mimeType: "image/png", dataBase64: "not valid!!base64" }
+          ]
+        }]
+      }),
+    );
+    const msg = (lastBody().messages as Array<Record<string, unknown>>)[0]!;
+    expect(msg.images).toEqual(["QkFTRTY0UE5H"]);
+  });
+
+  describe("isWellFormedBase64 — canonical RFC-4648 gate", () => {
+    it.each([
+      ["canonical no-pad", "QkFTRTY0UE5H"],
+      ["one pad", "QkFTR0g="],
+      ["two pad", "QkFT"]
+    ])("accepts well-formed base64 (%s)", (_label, s) => {
+      expect(isWellFormedBase64(s)).toBe(true);
+    });
+
+    it.each([
+      ["empty", ""],
+      ["non-base64 char", "not valid!!base64"],
+      ["embedded whitespace", "QkFT QkFT"],
+      ["length not multiple of 4", "QkFT="],
+      ["interior padding", "Qk=T"],
+      ["three trailing pads (length %4 but >2 pad)", "Q==="],
+      ["data: prefix (contract violation)", "data:image/png;base64,QkFT"]
+    ])("rejects malformed base64 (%s)", (_label, s) => {
+      expect(isWellFormedBase64(s)).toBe(false);
+    });
   });
 
   it("targets /api/chat, strips the ollama/ model prefix, and sends think:false by default", async () => {

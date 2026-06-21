@@ -18,28 +18,8 @@ import { basename } from "node:path";
 
 import type { Command } from "commander";
 
+import { looksLikeImage } from "./image-bytes.js";
 import type { ProgramIO } from "./program.js";
-
-/** Magic-byte image sniff — guards `muse show` from rendering a non-image file
- *  (a broken-image glyph on iTerm/WezTerm, or handing text/PDF to the viewer). */
-function looksLikeImage(buffer: Buffer): boolean {
-  const startsWith = (...bytes: number[]): boolean =>
-    buffer.length >= bytes.length && bytes.every((b, i) => buffer[i] === b);
-  if (startsWith(0x89, 0x50, 0x4e, 0x47)) return true; // PNG
-  if (startsWith(0xff, 0xd8, 0xff)) return true; // JPEG
-  if (startsWith(0x47, 0x49, 0x46, 0x38)) return true; // GIF8
-  if (startsWith(0x42, 0x4d)) return true; // BMP
-  // WebP: "RIFF" .... "WEBP"
-  if (buffer.length >= 12 && startsWith(0x52, 0x49, 0x46, 0x46)
-    && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
-    return true;
-  }
-  // ISO-BMFF (HEIC / AVIF): bytes 4-7 are 'ftyp'.
-  if (buffer.length >= 12 && buffer[4] === 0x66 && buffer[5] === 0x74 && buffer[6] === 0x79 && buffer[7] === 0x70) {
-    return true;
-  }
-  return false;
-}
 
 interface ShowOptions {
   readonly name?: string;

@@ -5,8 +5,12 @@
  * all unit-testable without an Ink render.
  */
 
+import { readFile as fsReadFile } from "node:fs/promises";
+import { isAbsolute, join } from "node:path";
+
 import { normalizeMemoryKey } from "@muse/memory";
 import { clamp, stripUntrustedTerminalChars } from "@muse/shared";
+import { sniffImageMime } from "./image-bytes.js";
 
 export interface InkKeyEvent {
   readonly backspace?: boolean;
@@ -403,6 +407,31 @@ const IMAGE_MIME_BY_EXT: Record<string, string> = {
 export function imageMimeForPath(path: string): string | undefined {
   const ext = path.split(".").pop()?.toLowerCase();
   return ext ? IMAGE_MIME_BY_EXT[ext] : undefined;
+}
+
+/**
+ * Load a local image file as a base64 attachment for `muse chat --image`.
+ * Returns undefined on any failure (fail-soft: unreadable or non-image paths
+ * are silently skipped rather than crashing the chat session).
+ * Content-sniffed: the file's magic bytes must match a recognised image
+ * signature — a renamed text file with a .png extension is rejected and the
+ * sniffed MIME type (not the extension-derived one) is returned as mimeType.
+ */
+export async function readImageAttachment(
+  relativePath: string,
+  cwd = process.cwd(),
+): Promise<{ readonly mimeType: string; readonly dataBase64: string } | undefined> {
+  if (!imageMimeForPath(relativePath)) return undefined;
+  try {
+    const abs = isAbsolute(relativePath) ? relativePath : join(cwd, relativePath);
+    const bytes = await fsReadFile(abs);
+    if (bytes.length === 0) return undefined;
+    const sniffed = sniffImageMime(bytes);
+    if (sniffed === null) return undefined;
+    return { dataBase64: bytes.toString("base64"), mimeType: sniffed };
+  } catch {
+    return undefined;
+  }
 }
 
 /** Model completions while typing `/model <partial>` (substring match). */
