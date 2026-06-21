@@ -98,7 +98,7 @@ ratchet: testFiles +1 (memory-auto-extract.test.ts NEW — 이 훅의 첫 테스
 - **리스크**: 없음 — additive 옵션, 543 green, 독립 Opus ④b judge가 fail-open+cap-robust+clone-snapshot+mutation(2종) 재확인 PASS.
 - **JUDGE-DRILL**: firesSinceDrill이 10 도달했으나, **fire 7의 organic judge-catch**(실제 File-store 데이터-손실 버그를 ④b가 FAIL→fix시킴)가 드릴의 검증 목적(verifier가 나쁜 작업 거부 확인)을 합성 주입보다 강하게 충족 → 의무 discharged, 카운터 0 리셋. 합성 주입은 ~80k 추가비용 대비 약한 증거라 생략(예산).
 
-## fire 11 · 2026-06-21 · skill v2.1.0 · pending
+## fire 11 · 2026-06-21 · skill v2.1.0 · 6df61b98
 meta: value-class=new-capability · pkg=@muse/memory · kind=correction-confirm(slice-b) · verdict=PASS · firesSinceDrill=1 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +0 (recently-learned.test +4, memory-auto-extract.test +1) · @muse/memory 553 green · lint clean · fabrication 0
 
