@@ -201,7 +201,7 @@ ratchet: testFiles +0 (commands-memory.test +3) · @muse/cli commands-memory 12 
 - **리뷰지점**: `keysWithActiveRetraction`(fire 18 machinery, newest-event) → re-`set`은 reopens(잊힘 아님; 테스트). 정상 키 `why` 무변(무회귀). 다양성: kind=why-honesty(forgotten-surface-wiring과 구분되는 correctness fix).
 - **리스크**: 없음 — commands-memory 12 green, 독립 Opus ④b judge가 버그-real+fix+re-set+무회귀+mutation 재확인 PASS.
 
-## fire 22 · 2026-06-21 · skill v2.1.0 · pending
+## fire 22 · 2026-06-21 · skill v2.1.0 · 6cd0603a
 meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=belief-value-timeline · verdict=PASS · firesSinceDrill=2 · firesSinceMainMerge=1
 ratchet: testFiles +0 (belief-provenance-store.test +3, commands-memory.test +1) · @muse/memory 584 green · commands-memory 13 green · lint clean · fabrication 0
 
