@@ -11,7 +11,10 @@
  *      must NOT "fix" the correct `add` (collateral).
  *
  * Graded on TERMINAL STATE (the harness re-runs the test): multiply fixed, add
- * still correct, the noise file untouched, and the model ran the test itself.
+ * still correct, the noise file untouched. Whether the model self-ran the test
+ * is reported (ran-test) but NOT gated — the harness verifies the outcome, so
+ * requiring run_command too would be redundant path-grading (agent-testing.md;
+ * eval:edit-run-verify is where the run→verify chain is the graded capability).
  * Uses the SHIPPED agentic-persistence system lines (commands-ask.ts).
  *
  * LOCAL OLLAMA ONLY; skips (exit 0) when Ollama or the muse-runner binary is
@@ -25,6 +28,8 @@ import { join } from "node:path";
 import { createFileEditTool, createFileGrepTool, createFileReadTool } from "../packages/fs/dist/index.js";
 import { createRustRunnerTool } from "../packages/tools/dist/index.js";
 import { createMuseRuntimeAssembly } from "../packages/autoconfigure/dist/index.js";
+
+import { gradeMultifileFix } from "./lib/grade-multifile-fix.mjs";
 
 const OLLAMA_BASE = (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/+$/, "");
 const REPEAT = Math.max(1, Math.trunc(Number(process.env.MUSE_EVAL_REPEAT ?? "1")));
@@ -148,13 +153,14 @@ try {
       model: assembly.defaultModel
     });
     const toolsUsed = result.toolsUsed ?? [];
-    const modelRanTest = toolsUsed.includes("run_command");
     const testPasses = await runTest(testPath);
     const math = await readFile(mathPath, "utf8").catch(() => "");
     // Collateral: `add` and the noise file must be untouched; only multiply changed.
     const addIntact = /export function add\(a, b\) \{\s*return a \+ b;/u.test(math);
     const stringsIntact = (await readFile(join(dir, "src", "strings.mjs"), "utf8").catch(() => "")) === STRINGS;
-    const ok = testPasses && modelRanTest && addIntact && stringsIntact;
+    // Grade the OUTCOME (bug fixed + no collateral), not whether the model
+    // self-ran the test — the harness verifies `testPasses` itself (agent-testing.md).
+    const { ok, ranTest: modelRanTest } = gradeMultifileFix({ addIntact, ranTest: toolsUsed.includes("run_command"), stringsIntact, testPasses });
     if (!ok) failures += 1;
     console.log(
       `run ${run.toString()}/${REPEAT.toString()}: ${ok ? "PASS" : "FAIL"}  ` +

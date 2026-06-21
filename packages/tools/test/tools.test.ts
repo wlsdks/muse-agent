@@ -887,6 +887,50 @@ describe("Rust runner tool", () => {
     expect(result).toMatchObject({ ok: true, stdout: "done" });
   });
 
+  it("flips `truncated` when a model-supplied maxOutputBytes actually shortens the output", async () => {
+    const tool = createRustRunnerTool({
+      invokeRunner: async () => ({
+        error: null,
+        ok: true,
+        status: 0,
+        stderr: "",
+        stdout: "0123456789",
+        timedOut: false,
+        truncated: false // the runner did NOT truncate; the model's cap does
+      })
+    });
+
+    const result = await tool.execute({ command: "node", maxOutputBytes: 4 }, { runId: "run-2" }) as {
+      stdout: string; truncated: boolean;
+    };
+    // The cap shortened stdout, so the model must be told its output is partial.
+    expect(result.stdout).toBe("0123");
+    expect(result.truncated).toBe(true);
+  });
+
+  it("leaves `truncated` false when the cap is larger than the output (no spurious flag)", async () => {
+    const tool = createRustRunnerTool({
+      invokeRunner: async () => ({
+        error: null, ok: true, status: 0, stderr: "", stdout: "short", timedOut: false, truncated: false
+      })
+    });
+    const result = await tool.execute({ command: "node", maxOutputBytes: 100 }, { runId: "run-3" }) as {
+      stdout: string; truncated: boolean;
+    };
+    expect(result.stdout).toBe("short");
+    expect(result.truncated).toBe(false);
+  });
+
+  it("preserves the runner's own truncated=true even when the cap does not shorten further", async () => {
+    const tool = createRustRunnerTool({
+      invokeRunner: async () => ({
+        error: null, ok: true, status: 0, stderr: "", stdout: "abc", timedOut: false, truncated: true
+      })
+    });
+    const result = await tool.execute({ command: "node" }, { runId: "run-4" }) as { truncated: boolean };
+    expect(result.truncated).toBe(true);
+  });
+
   it("rejects blank runner commands before spawning the child process", () => {
     expect(() => parseRunnerCommandRequest({ command: " " })).toThrow("run_command requires");
   });
