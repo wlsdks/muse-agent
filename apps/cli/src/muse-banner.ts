@@ -1,11 +1,11 @@
 /**
- * The REPL splash banner. "Muse" is the Greek goddesses of the arts —
- * music among them — so the banner leans on a musical motif (notes +
- * a staff rule). Colour-aware: plain text when piped / NO_COLOR set,
- * so a captured / redirected REPL log stays free of escape codes.
+ * The REPL splash banner. When colour is active it shows the Muse mascot —
+ * the goddess — as terminal art; piped / NO_COLOR output falls back to a
+ * plain-text wordmark so a captured REPL log stays free of escape codes.
  */
 
-import { colorize, type AnsiOptions } from "./tty-color.js";
+import { MUSE_MASCOT_ANSI } from "./muse-mascot-ansi.js";
+import { colorize, colorAllowed, type AnsiOptions } from "./tty-color.js";
 
 const WORDMARK = [
   "███╗   ███╗██╗   ██╗███████╗███████╗",
@@ -33,14 +33,16 @@ export interface MuseBannerOptions extends AnsiOptions {
 export function renderMuseBanner(options: MuseBannerOptions = {}): string {
   const tint = (value: string, color: Parameters<typeof colorize>[1]): string => colorize(value, color, options);
 
-  const notes = tint("♪ ♫ ♬", "cyan");
   const tagline = tint("your personal AI agent & assistant", "dim");
   const rule = tint("─".repeat(38), "cyan");
 
+  const art = colorAllowed(options)
+    ? MUSE_MASCOT_ANSI.split("\n").map((line) => `  ${line}`)
+    : [`   ${tint("♪ ♫ ♬", "cyan")}`, ...WORDMARK.map((line) => `   ${tint(line, "cyan")}`)];
+
   const lines: string[] = [
     "",
-    `   ${notes}`,
-    ...WORDMARK.map((line) => `   ${tint(line, "cyan")}`),
+    ...art,
     `   ${tagline}`,
     `   ${rule}`
   ];
