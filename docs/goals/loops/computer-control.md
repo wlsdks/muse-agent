@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 26 · 2026-06-21 · skill v2.0 · NO-SHIP (docs-only) · ROLLBACK (code-fix request classifier — 2× judge FAIL on over-match)
+meta: value-class=no-ship · pkg=@muse/agent-core(reverted) · kind=honesty/false-done · verdict=FAIL×2→ROLLBACK · firesSinceDrill=7
+ratchet: testFiles 1071→1071 (코드 변경 0, 롤백) · fabrication 0 · agent-core fire-25 state 무손상(actionToolRan fs fix intact) · docs writeback만
+- 무엇: fire-25 형제 — 백스톱은 `classifyActionRequest`/`requestsToolAction`로도 게이트되는데 이게 code-fix("fix the bug in add.ts"·"수정해줘") 미인식 → fire-25 actuator fix에도 백스톱이 CLI 경로서 테마에 안 걸림. `CODE_ACTION_REQUEST_RE`(edit동사+코드/파일 noun, 질문배제 앵커) 시도.
+- 왜 NO-SHIP: **독립 ④b judge 2회 FAIL**(realistic over-match, regex로 회피 불가). v1=bare homonym(class/test/line/error/function이 "change my class schedule" 등 오탐). v2=homonym 제거+named-construct(`<id> class`)인데 `the <형용사> class`가 determiner 가드 우회("update the science class"·"fix the parking module" 오탐) + strong-noun도 non-code 의미("fix the variable rate mortgage"·"import tax"). ROOT: code-vs-non-code는 *의미적* disambiguation(homonym 천지)이라 lexical regex로 못 가른다.
+- 리뷰지점: maker≠trip — **2 독립 judge가 realistic counter-example로 over-match 적발 = maker≠judge 보상통제가 *유기적으로* 작동**(드릴 아님). commands-ask:903 early-return이라 innocent 쿼리 mis-route가 실제 회귀 → ship 안 함이 옳음. 롤백 clean(diff 0, fire-25 무손상).
+- 리스크: 0 — 롤백, 코드 변경 없음. fire-25 actuator fix 유지.
+lesson: **homonym 많은 intent에 fuzzy lexical 분류기는 틀린 도구** — 2 독립 judge가 같은 over-match 클래스를 다른 경로로 잡음. 올바른 설계=request 텍스트 분류(fuzzy) 대신 *구조적 신호*: file 도구 노출 여부 OR 쿼리의 명시적 파일경로/파일명(`\w+\.<ext>`/절대·상대 경로) — 결정론+homonym-free. 백로그 블로커에 RIGHT DESIGN 기록. NO-SHIP도 정직히 저널.
+
 ## fire 25 · 2026-06-21 · skill v2.0 · ee1efde6 (false-done backstop recognises fs/run_command actuators)
 meta: value-class=micro-fix(real-bug) · pkg=@muse/agent-core · kind=honesty/false-done · verdict=PASS · firesSinceDrill=6
 ratchet: testFiles 1071→1071 (+1 case casual-prompt, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2533 · pnpm check exit 0 · lint clean · Ollama DOWN
