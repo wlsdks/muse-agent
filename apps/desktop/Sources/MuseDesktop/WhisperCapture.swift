@@ -1,6 +1,6 @@
 import AVFoundation
 import Foundation
-import WhisperKit
+@preconcurrency import WhisperKit
 
 /// On-device speech-to-text via WhisperKit (Argmax, MIT) — Whisper running on
 /// CoreML + the Apple Neural Engine with NATIVE real-time streaming. Replaces the

@@ -1,8 +1,8 @@
 import AppKit
 import Foundation
 import MuseDesktopCore
-import TTSKit
-import WhisperKit
+@preconcurrency import TTSKit
+@preconcurrency import WhisperKit
 
 let arguments = CommandLine.arguments
 

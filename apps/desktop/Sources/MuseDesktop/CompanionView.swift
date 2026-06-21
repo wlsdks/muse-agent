@@ -20,7 +20,7 @@ struct CompanionView: View {
             Spacer(minLength: 0)
         }
         .padding(18)
-        .frame(width: 360, height: 360)
+        .frame(width: 360, height: 440)
         .background(WindowDragArea())
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: model.inputVisible)
         .animation(.easeInOut(duration: 0.22), value: model.bubble)

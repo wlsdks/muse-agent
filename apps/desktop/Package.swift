@@ -1,4 +1,4 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.0
 import PackageDescription
 
 // Muse Desktop — a native macOS floating companion (an always-on-top,
@@ -35,5 +35,10 @@ let package = Package(
             name: "MuseDesktopCoreTests",
             dependencies: ["MuseDesktopCore"]
         )
-    ]
+    ],
+    // Latest Swift 6 toolchain + 6.0 manifest. Language mode stays v5 until the
+    // bundled on-device voice SDK (WhisperKit / TTSKit) is Sendable-clean — full
+    // Swift 6 strict-concurrency would otherwise require wrapping the whole audio
+    // stack in actors. Migrate to .v6 as the SDK catches up.
+    swiftLanguageModes: [.v5]
 )
