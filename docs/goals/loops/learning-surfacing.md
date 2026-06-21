@@ -182,7 +182,7 @@ ratchet: testFiles +0 (human-formatters.test +2) · @muse/cli human-formatters 3
 - **리스크**: 없음 — additive, human-formatters 31 green, 독립 Opus ④b judge가 consume+citation+무회귀 재확인 PASS. (cli daemon 9 timeout=동시루프 포화, 무관.)
 - **NEXT(fire 20)**: ★JUDGE-DRILL 하드카운터 — firesSinceDrill이 fire 20에 10 도달 → **미루기 불가** 드릴(나쁜 슬라이스 주입→④b FAIL 확인→롤백→진짜 fix), 완료 시만 카운터 0 리셋.
 
-## fire 20 · 2026-06-21 · skill v2.1.0 · pending
+## fire 20 · 2026-06-21 · skill v2.1.0 · 82f13c47
 meta: value-class=wiring+JUDGE-DRILL · pkg=@muse/cli · kind=forgotten-surface-wiring · verdict=PASS · firesSinceDrill=10→0(DRILL discharged) · firesSinceMainMerge=2
 ratchet: testFiles +0 (commands-status.test +3) · @muse/cli status 24 green · lint clean · fabrication 0
 
