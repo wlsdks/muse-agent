@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyHomeAlertsConfig,
   classifyMcpServersField,
+  doctorStatusMarker,
   classifyWebWatchConfig,
   embedModelCheck,
   episodeIndexHealth,
@@ -559,3 +560,13 @@ describe("selfLearningCheck — verifiable autonomy (B1 §7)", () => {
     expect(c.detail).toContain("MUSE_IDLE_LEARNING_ENABLED");
   });
 })
+
+describe("doctorStatusMarker — warnings are visually distinct from OK", () => {
+  it("maps ok→✓, warn→⚠ (not a neutral dot), fail→✗", () => {
+    expect(doctorStatusMarker("ok")).toBe("✓");
+    expect(doctorStatusMarker("warn")).toBe("⚠");   // scannable, not "·"
+    expect(doctorStatusMarker("fail")).toBe("✗");
+    // a warning must NOT render the same as the old neutral middle-dot
+    expect(doctorStatusMarker("warn")).not.toBe("·");
+  });
+});

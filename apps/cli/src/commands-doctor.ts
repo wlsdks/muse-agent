@@ -591,6 +591,16 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   return { checks, generatedAt: new Date().toISOString(), worst };
 }
 
+/**
+ * Per-check marker for the local doctor screen. A warning must be visually
+ * DISTINCT from an OK line so "needs attention" is scannable among 20+
+ * checks — a neutral `·` reads the same as OK at a glance, so warn gets the
+ * ⚠ sign (matching the warning glyph used elsewhere in the CLI).
+ */
+export function doctorStatusMarker(status: LocalCheck["status"]): string {
+  return status === "ok" ? "✓" : status === "warn" ? "⚠" : "✗";
+}
+
 function formatLocalDoctor(report: LocalDoctorReport): string {
   const lines: string[] = [];
   const banner = report.worst === "ok"
@@ -600,8 +610,7 @@ function formatLocalDoctor(report: LocalDoctorReport): string {
       : "[fail] local doctor — at least one fatal check";
   lines.push(banner);
   for (const c of report.checks) {
-    const marker = c.status === "ok" ? "✓" : c.status === "warn" ? "·" : "✗";
-    lines.push(`  ${marker} ${c.name}: ${c.detail}`);
+    lines.push(`  ${doctorStatusMarker(c.status)} ${c.name}: ${c.detail}`);
   }
   // Summary footer — one greppable verdict line for script wrappers.
   const warnCount = report.checks.filter((c) => c.status === "warn").length;
