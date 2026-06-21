@@ -213,6 +213,45 @@ export async function readOllamaPerfEnv(env: Record<string, string | undefined>)
   };
 }
 
+export interface MuseSpeedEnv {
+  readonly numBatch?: string | undefined;
+  readonly numCtx?: string | undefined;
+  readonly keepAlive?: string | undefined;
+}
+
+/**
+ * Muse-PROCESS speed env posture — distinct from the Ollama SERVER env in
+ * `ollamaPerfPostureCheck` (launchctl). These are the per-request knobs Muse
+ * maps onto Ollama: `MUSE_OLLAMA_NUM_BATCH` (prompt-eval throughput),
+ * `MUSE_OLLAMA_NUM_CTX` (context window), `MUSE_OLLAMA_KEEP_ALIVE` (model
+ * warmth). All optional with safe defaults, so this is advisory (always ok) —
+ * its job is to make the shipped `num_batch` lever DISCOVERABLE instead of
+ * invisible, with a concrete tuning hint when it is unset.
+ */
+export function museSpeedEnvCheck(values: MuseSpeedEnv): LocalCheck {
+  const set: string[] = [];
+  if (values.numBatch?.trim()) set.push(`num_batch=${values.numBatch.trim()}`);
+  if (values.numCtx?.trim()) set.push(`num_ctx=${values.numCtx.trim()}`);
+  if (values.keepAlive?.trim()) set.push(`keep_alive=${values.keepAlive.trim()}`);
+  const tuned = set.length > 0 ? `tuned ${set.join(", ")}` : "all default";
+  const batchHint = values.numBatch?.trim()
+    ? ""
+    : " — set MUSE_OLLAMA_NUM_BATCH (e.g. 1024) to raise prompt-eval throughput on long prompts";
+  return {
+    detail: `Muse local-model speed env: ${tuned}${batchHint}`,
+    name: "muse-speed-env",
+    status: "ok"
+  };
+}
+
+export function readMuseSpeedEnv(env: Record<string, string | undefined>): MuseSpeedEnv {
+  return {
+    keepAlive: env.MUSE_OLLAMA_KEEP_ALIVE,
+    numBatch: env.MUSE_OLLAMA_NUM_BATCH,
+    numCtx: env.MUSE_OLLAMA_NUM_CTX
+  };
+}
+
 /**
  * Pure parser pulled out for direct testing. Returns
  * the recorded embed model name (or the documented default,
