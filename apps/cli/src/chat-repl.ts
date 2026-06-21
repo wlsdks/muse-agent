@@ -247,15 +247,18 @@ export function formatTaskList(
 
 /** A deterministic reminder list for the chat surface (parity with formatTaskList). */
 export function formatReminderList(
-  reminders: readonly { readonly text: string; readonly dueLocal?: string }[],
+  reminders: readonly { readonly text: string; readonly dueLocal?: string; readonly overdue?: boolean }[],
   korean: boolean
 ): string {
   if (reminders.length === 0) {
     return korean ? "지금은 예정된 리마인더가 없어요." : "You have no upcoming reminders right now.";
   }
   const lines = reminders.map((reminder) => {
-    const due = reminder.dueLocal ? (korean ? ` — ${reminder.dueLocal}` : ` — ${reminder.dueLocal}`) : "";
-    return `  • ${reminder.text}${due}`;
+    const due = reminder.dueLocal ? ` — ${reminder.dueLocal}` : "";
+    // Flag a past-due pending reminder so a late item is scannable in-chat too
+    // (parity with `muse remind list`'s (⚠ overdue) marker).
+    const overdue = reminder.overdue ? (korean ? " (⚠ 지남)" : " (⚠ overdue)") : "";
+    return `  • ${reminder.text}${due}${overdue}`;
   });
   const head = korean
     ? `예정된 리마인더가 ${reminders.length.toString()}개 있어요:`
@@ -395,7 +398,7 @@ export async function runLocalChat(
       .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
     return {
       response: formatReminderList(
-        pending.map((reminder) => ({ dueLocal: formatDueLocal(reminder.dueAt), text: reminder.text })),
+        pending.map((reminder) => ({ dueLocal: formatDueLocal(reminder.dueAt), overdue: new Date(reminder.dueAt).getTime() < Date.now(), text: reminder.text })),
         /[가-힣]/u.test(message)
       ),
       runId: "local-reminders",

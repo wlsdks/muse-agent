@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { readWeaknesses, recordWeakness } from "@muse/mcp";
 import type { KnowledgeMatch } from "@muse/agent-core";
 
-import { createTuiChatSubmitter, emptyAnswerFallback, filterFactsToKeys, formatNotesOverview, formatTaskList, parseAgentMode, recordChatWeaknessForTurn } from "./chat-repl.js";
+import { createTuiChatSubmitter, emptyAnswerFallback, filterFactsToKeys, formatNotesOverview, formatReminderList, formatTaskList, parseAgentMode, recordChatWeaknessForTurn } from "./chat-repl.js";
 import { chatMisgroundingFraction, chatWeaknessAxis } from "./chat-grounding.js";
 import type { ProgramIO } from "./program.js";
 
@@ -200,5 +200,22 @@ describe("parseAgentMode", () => {
   it("rejects without a guess when nothing is close (no random suggestion)", () => {
     expect(() => parseAgentMode("totallydifferent"))
       .toThrow(/--mode must be 'react' or 'plan_execute' \(got 'totallydifferent'\)$/u);
+  });
+});
+
+describe("formatReminderList (in-chat) — overdue parity with `muse remind list`", () => {
+  it("appends a localized overdue marker (EN) and leaves upcoming ones unmarked", () => {
+    const out = formatReminderList([
+      { text: "알람", dueLocal: "2026-06-06 12:31", overdue: true },
+      { text: "약 먹기", dueLocal: "2026-07-01 09:00", overdue: false }
+    ], false);
+    expect(out).toContain("• 알람 — 2026-06-06 12:31 (⚠ overdue)");
+    expect(out).toContain("• 약 먹기 — 2026-07-01 09:00");
+    expect(out).not.toContain("약 먹기 — 2026-07-01 09:00 (⚠");
+  });
+
+  it("uses the Korean overdue marker when korean=true", () => {
+    const out = formatReminderList([{ text: "운동", dueLocal: "2026-06-07 19:00", overdue: true }], true);
+    expect(out).toContain("• 운동 — 2026-06-07 19:00 (⚠ 지남)");
   });
 });
