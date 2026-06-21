@@ -21,6 +21,11 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$EXE"
 
+# Copy SwiftPM resource bundles (e.g. MuseDesktop_MuseDesktop.bundle carrying the
+# goddess mascot image) into the app so Bundle.module resolves them at runtime.
+BIN_DIR="$(swift build -c release --show-bin-path)"
+for b in "$BIN_DIR"/*.bundle; do [ -e "$b" ] && cp -R "$b" "$APP/Contents/Resources/"; done
+
 # SELF-CONTAINED: compile the Muse CLI into a single binary (bun runtime baked
 # in) and bundle it inside the .app, so the companion needs NO external node,
 # repo, or node_modules — it works wherever the .app is moved/distributed. The

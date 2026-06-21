@@ -10,7 +10,6 @@ struct CompanionView: View {
 
     private let accent = Color(red: 0.62, green: 0.91, blue: 1.0)
     private let violet = Color(red: 0.55, green: 0.45, blue: 0.95)
-    private let noteGold = Color(red: 0.96, green: 0.82, blue: 0.46)
 
     var body: some View {
         VStack(spacing: 12) {
@@ -30,17 +29,10 @@ struct CompanionView: View {
     }
 
     private var orb: some View {
-        ZStack {
-            // Mini notes always drifting freely around the avatar — Muse is music.
-            AmbientNotes(tint: noteGold).frame(width: 240, height: 210).allowsHitTesting(false)
-            OrbRepresentable(lookName: model.lookName, state: model.orbState, onClick: { model.clickOrb() })
-                .frame(width: 116, height: 116)
-            if model.orbState == .listening {
-                ListeningNotes(accent: accent).frame(width: 116, height: 116).allowsHitTesting(false)
-            }
-        }
-        .offset(y: drift ? -5 : 5)
-        .animation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true), value: drift)
+        OrbRepresentable(lookName: model.lookName, state: model.orbState, onClick: { model.clickOrb() })
+            .frame(width: 188, height: 224)
+            .offset(y: drift ? -5 : 5)
+            .animation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true), value: drift)
     }
 
     @ViewBuilder private var answerCard: some View {
