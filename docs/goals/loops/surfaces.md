@@ -593,7 +593,7 @@ ratchet: api 924/924 isolated · smoke:broad 52/0 (+1) · fabrication 0 · self-
 - **리스크**: 없음(apps/api 3파일, api 924/924 isolated·smoke 52/0·lint clean·build clean).
 - **환경 플레이크 메모(무관, 비차단)**: 풀 `pnpm check`에서 `apps/api/test/messaging-webhooks.test.ts`(LINE webhook gating)가 ~20s 타임아웃 1건 — 동시 6+ 루프 포화로 buildServer가 vitest 20s 한도 초과. **격리 단독 4/4 GREEN**(이 fire 첫 check 64a에선 통과)이라 내 슬라이스(self-improvement, messaging과 무관)와 무관한 환경 false-timeout. fire 64는 3배수 아니라 main-merge 없음, 브랜치 push만. 후속: 이 클래스는 박스 포화 신호, 테스트 회귀 아님([[project_test_hygiene_loop]]).
 
-## fire 65 · 2026-06-21 · skill v2.0.0 · <pending>
+## fire 65 · 2026-06-21 · skill v2.0.0 · 0e082ec8
 meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=skills-reward-buttons(view+mutation) · verdict=PASS · firesSinceDrill=4
 ratchet: web tests 101/101 (+9) · fabrication 0 · self-eval exit 0 · check exit 0(messaging-webhooks 이번엔 통과=환경 확정) · smoke:broad 52/0 · lint clean
 
