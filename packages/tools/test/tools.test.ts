@@ -461,6 +461,32 @@ describe("tool utilities", () => {
     expect(coerceToolArguments(schema, { ratio: huge })).toEqual({ ratio: huge });
   });
 
+  it("coerceToolArguments parses a stringified-JSON object/array arg back to its declared shape (file_multi_edit edits-as-string), leaving mismatches untouched", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        edits: { type: "array", items: { type: "object" } },
+        meta: { type: "object" }
+      }
+    };
+    // The on-theme case: a 12B emits the structured `edits` array as a JSON STRING.
+    expect(coerceToolArguments(schema, { edits: '[{"old_string":"a","new_string":"b"}]' }))
+      .toEqual({ edits: [{ old_string: "a", new_string: "b" }] });
+    expect(coerceToolArguments(schema, { meta: '{"k":1}' })).toEqual({ meta: { k: 1 } });
+    // Whitespace-padded JSON string still parses.
+    expect(coerceToolArguments(schema, { edits: '  [1,2]  ' })).toEqual({ edits: [1, 2] });
+    // Already-structured values pass through untouched.
+    expect(coerceToolArguments(schema, { edits: [{ x: 1 }] })).toEqual({ edits: [{ x: 1 }] });
+    // Type MISMATCH is left untouched (no lossy guess): array param given a stringified object, and vice-versa.
+    expect(coerceToolArguments(schema, { edits: '{"k":1}' })).toEqual({ edits: '{"k":1}' });
+    expect(coerceToolArguments(schema, { meta: '[1,2]' })).toEqual({ meta: '[1,2]' });
+    // Non-JSON / empty string left untouched so a genuine error still surfaces.
+    expect(coerceToolArguments(schema, { edits: "not json" })).toEqual({ edits: "not json" });
+    expect(coerceToolArguments(schema, { meta: "" })).toEqual({ meta: "" });
+    // A bare JSON scalar string is neither object nor array → untouched.
+    expect(coerceToolArguments(schema, { meta: "5" })).toEqual({ meta: "5" });
+  });
+
   it("coerceEnumArguments repairs case/whitespace on enum+const args, leaves OOV/ambiguous/non-string untouched", () => {
     const schema = {
       type: "object",

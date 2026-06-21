@@ -42,10 +42,41 @@ export function coerceToolArguments(inputSchema: JsonValue | undefined, args: Js
     const propSchema = properties[key];
     const declared = isRecord(propSchema) && typeof propSchema.type === "string" ? propSchema.type : undefined;
     if (declared === undefined) continue;
-    const coerced = coerceScalar(value, declared);
+    const coerced = declared === "object" || declared === "array"
+      ? coerceStructured(value, declared)
+      : coerceScalar(value, declared);
     if (coerced !== undefined) out[key] = coerced;
   }
   return out;
+}
+
+/**
+ * Lossless structured-arg repair: a small local model sometimes emits an
+ * object/array argument as a JSON STRING (`"[{...}]"` for an `array` param such
+ * as file_multi_edit's `edits`) instead of the structured value, so the call
+ * fails even though the data is correct. Parse it back to the declared shape
+ * ONLY when the parse succeeds AND the result's type matches the schema
+ * (array→array, object→object) — the structured counterpart of
+ * {@link coerceScalar} (Structured Reflection, arXiv:2509.18847). The parsed
+ * value is exactly what the model wrote (no data invented → fabrication=0).
+ * Everything else (non-string value, parse failure, a type mismatch like a
+ * stringified array for an `object` param) is left untouched so a genuine
+ * mismatch still surfaces rather than being masked.
+ */
+function coerceStructured(value: JsonValue, declared: string): JsonValue | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (declared === "array") {
+    return Array.isArray(parsed) ? (parsed as JsonValue) : undefined;
+  }
+  return isRecord(parsed) ? (parsed as JsonValue) : undefined;
 }
 
 function coerceScalar(value: JsonValue, declared: string): JsonValue | undefined {
