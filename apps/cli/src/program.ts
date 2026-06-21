@@ -14,6 +14,7 @@ import { closestCommandName } from "./closest-command.js";
 import { MUSE_TAGLINE } from "./muse-identity.js";
 import { formatSpec } from "./muse-spec.js";
 import { MUSE_CLI_VERSION } from "./muse-version.js";
+import { attachUnknownSubcommandGuidance } from "./unknown-subcommand.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import {
   appendLastChatTurn,
@@ -636,6 +637,11 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     ...(io.todayShells ? { shells: io.todayShells } : {})
   });
   registerVoiceCommands(program, io, { apiRequest, readApiOptions, writeOutput });
+
+  // A typo'd subcommand of a group (`muse memory bogus`) otherwise hit
+  // commander's dead-end "unknown command 'bogus'"; ground it like the
+  // top-level catch-all does, with a suggestion + the real subcommand list.
+  attachUnknownSubcommandGuidance(program, io.stderr);
 
   // Catch-all positional: no arg → print help; unknown arg →
   // closest-command suggestion instead of commander's confusing
