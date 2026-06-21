@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 37 · 2026-06-21 · skill v2.0 · <commit-pending> (JUDGE-DRILL #4 ✅ + pin timeout-message direction)
+## fire 37 · 2026-06-21 · skill v2.0 · d1f982e1 (JUDGE-DRILL #4 ✅ + pin timeout-message direction)
 meta: value-class=test-hardening · pkg=crates/runner · kind=judge-drill · verdict=DRILL-PASS · firesSinceDrill=0(reset)
 ratchet: testFiles 1072→1072 (+2 assertions cargo; 메시지 코드 불변) · fabrication 0 · crates/runner cargo 12 · pnpm check exit 0 · lint clean
 - JUDGE-DRILL(연속allPASS=8): fire-34 timeout 메시지 "larger timeoutMs"→"smaller timeoutMs"(방향 역전) 주입. **cargo 12 통과** — `timeout_message_is_actionable`이 `contains("timeoutMs")`만 검사(방향 미검증, smaller·larger 둘 다 통과). ④b judge **FAIL**: 인과 추론 — 타임아웃은 *더 많은 시간 필요*인데 smaller는 retry를 *더 빨리* kill=backwards harmful(구체 trace 50ms→20ms→더 빨리 실패; MAX_TIMEOUT_MS=600K 헤드룸 있는데 반대로 유도). → 롤백(메시지 fire-34 그대로).
