@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 38 · 2026-06-21 · skill v2.0 · <commit-pending> (file_grep output context-fit cap — fire-35 sibling)
+## fire 38 · 2026-06-21 · skill v2.0 · 9fa2a6dc (file_grep output context-fit cap — fire-35 sibling)
 meta: value-class=new-capability · pkg=@muse/fs+apps/cli · kind=context-fit/reliability · verdict=PASS · firesSinceDrill=1
 ratchet: testFiles 1072→1072 (+1 case fs-read-tools grep cap, mutation-valid) · fabrication 0 · @muse/fs 격리 173 · @muse/cli 빌드 clean · pnpm check exit 0 · lint clean · Ollama DOWN
 - 무엇: fire-35(file_read context-fit) 형제-감사 — file_grep은 미cap(200매치×500자=~100K자 ≈ 30K토큰=32K 컨텍스트 근접, read와 같은 overflow). FIX: `maxGrepOutputChars?` 옵션(기본 200K=non-agent 무영향), content 루프가 `contentChars += text.length` 누적, GREP_MAX_MATCHES OR char budget서 stop. agent가 `fileReadCharBudget`(64K) 전달.
