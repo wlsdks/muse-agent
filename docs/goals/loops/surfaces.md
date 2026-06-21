@@ -683,3 +683,13 @@ ratchet: self-eval exit 0 · pnpm check exit 0 · fabrication 0 · ★fires 70-7
 - **리뷰지점**: 코드 변경 0(merge-resolve는 동시루프 work를 origin/main에 올림, decompose는 backlog 계획). merge-to-main 교훈 확립=고동시성에선 push-시도마다 풀-check 재실행=영원히 race 패배; **1회 통과 check + tight fetch-merge-push가 정답**(fire 70·73 둘 다 attempt 1 성공). 백그라운드 merge 태스크는 다음 fire 시작시 killed되니 **동기(foreground) 실행**해야 완료.
 - **리스크**: 없음(no-ship; main 안착은 게이트-그린 후, 브랜치 안전).
 - **lesson**: 마라톤 세션(14 슬라이스)에서 easy 우물 고갈 시 — 마지널/위험 슬라이스 강행보다 (a) 누적 머지부채 청산 (b) 큰 항목 DECOMPOSE가 정직하고 미래-fire 셋업. 다음 fire는 backlog S1(브리지 seam)부터.
+
+## fire 74 · 2026-06-21 · skill v2.0.0 · NO-SHIP(honest blocker — vein exhausted)
+meta: surface=infra · value-class=blocker · pkg=n/a · kind=exhaustion-blocker · verdict=N/A(no-slice) · firesSinceDrill=5
+ratchet: self-eval exit 0 · main up-to-date · gap-scout CLEAN · fabrication 0
+
+- **무엇**: 무출하 fire(정직한 블로커). ⓠ self-eval 그린·main 최신(fires 70-73 안착). ① PICK에서 easy 우물 고갈 재확인 + gap-scout(scout-signals.mjs) 돌렸으나 CLEAN(합성 트레이스 3건 ×1, 실패클러스터 없음=실일감 0). 남은 backlog 최상위는 전부 아키텍처/멀티-fire.
+- **왜(정직 종료)**: fire 73-74 심층분석 결론 — settings/daemon 토글의 **첫 honest+functional 슬라이스조차 중앙 `createMuseRuntimeAssembly`의 env-resolution 변경(applyRuntimeFlagOverrides 배선)** 필요. blast-radius=시스템 전체 조립 핵심 → 16-fire 마라톤 꼬리에서 무인으로 강행은 무책임. 대안(S1 seam만)=consumer 없는 speculative helper(judge FAIL감), 또는 override 노출=데몬 미반영 거짓표기(정직성 위반). 즉 **clean+safe+honest 슬라이스 부재**. ⑥대로 마지널/위험 강행 대신 블로커 기록+정직 종료.
+- **블로커(다음 deliberate fire)**: 토글 = `applyRuntimeFlagOverrides(env, runtimeSettings)` 순수 헬퍼 + createMuseRuntimeAssembly env-resolution 초입 배선(additive·override無면 noop) + daemon-flags GET이 동일 merge 적용(restart-applied로 정직 라벨) + 기존 admin settings PUT로 override write. 중앙조립 변경이라 신중한 fire 필요(무관 state 손상 검증 강하게).
+- **리스크**: 없음(no-ship, 코드변경 0).
+- **lesson**: 우물 고갈+gap-scout clean+남은게 중앙-조립 아키텍처 변경이면, 무인 마라톤 꼬리에서 강행 금지 — speculative/위험 슬라이스보다 정직한 블로커가 옳다(⑥). 테마는 살아있되(토글 가치 큼) deliberate fire 대상.
