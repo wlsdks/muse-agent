@@ -8,6 +8,48 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-22
+
+A CLI-and-companion polish release on top of `0.1.1` — **early /
+experimental, macOS only**, still a `0.x` pre-release. The focus was making
+the `muse` CLI's first screen and everyday output top-grade: a navigable
+`--help`, faster trivial commands, action-bearing empty/error states, and one
+grounding-accuracy fix on the status dashboard. The native companion and web
+console got matching polish.
+
+### Added
+
+- **`muse --help` is now navigable, not a 280-line wall.** The 100+ top-level
+  commands are grouped under ordered headings — Chat & ask, Memory & knowledge,
+  Planning & time, Setup & status, Automation & agents, Connections, Documents &
+  analysis, Reports & history, Diagnostics — with the long tail under the
+  default group. The list is also alphabetically sorted within each group.
+- **Grounded "did you mean" for unknown subcommands.** `muse <group> <typo>`
+  (e.g. `muse memory serch`) now suggests the closest real subcommand and lists
+  the group's actual subcommands instead of a dead-end error.
+- **Faster trivial commands.** `muse spec` / `muse spec --json` join
+  `muse --version` on a pre-framework fast path, skipping the ~100-module
+  command graph (~0.5s → ~0.02s).
+- **Action-bearing empty states.** `muse objectives list` now tells you the next
+  step (`muse objectives add …`) instead of printing a bare "No objectives."
+- **Clearer status & progress.** Humanized timestamps on the `muse status`
+  dashboard and `muse doctor` summary; scannable `⚠` doctor warnings; overdue
+  markers on `muse tasks list`, `muse remind list`, and the in-chat reminder
+  list; `[i/N]` progress on `muse notes reindex`; identity-led onboarding on the
+  no-model first run; a tightened REPL splash.
+- **Companion & web.** Time-of-day companion greeting and adaptive idle-bubble
+  timing in the macOS app; keyboard-navigable Automation tabs, ranked
+  command-palette results, and Settings API-URL validation in the web console.
+
+### Fixed
+
+- **`muse status` no longer claims your local model was "inferred from
+  GEMINI_API_KEY".** Under local-only (the default) the runtime ignores ambient
+  cloud keys, so the status line now reads "(local-only default — … ignored)",
+  matching `muse doctor` and the privacy posture shown beside it.
+- Web console: restored scroll on every view, capped oversized list icons, and
+  localized the Automation status badges.
+
 ## [0.1.1] - 2026-06-21
 
 A broad polish-and-harden release on top of the first cut — **early /
