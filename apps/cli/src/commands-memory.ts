@@ -22,7 +22,7 @@
 import { readFile } from "node:fs/promises";
 
 import { isMemoryInjection } from "@muse/agent-core";
-import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
+import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, keysWithActiveRetraction, normalizeMemoryKey, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/mcp";
 import type { Command } from "commander";
@@ -178,10 +178,21 @@ export function formatConsolidationPlan(plan: ConsolidationPlan): string {
 }
 
 export function formatBeliefWhy(
-  records: ReadonlyArray<{ readonly kind: string; readonly key: string; readonly value: string; readonly learnedAt: string; readonly evidenceExcerpt?: string; readonly sessionId?: string; readonly source?: "auto" | "user" }>,
+  records: ReadonlyArray<{ readonly kind: string; readonly key: string; readonly value: string; readonly learnedAt: string; readonly evidenceExcerpt?: string; readonly sessionId?: string; readonly source?: "auto" | "user"; readonly retraction?: boolean }>,
   key: string,
   nowMs: number = Date.now()
 ): string {
+  // If you had me FORGET this key, say so — never resurface the stale pre-forget
+  // value as if Muse still holds it. deriveFactProvenance excludes retraction
+  // markers, so the prov below would otherwise rebuild the dropped fact and the
+  // "show your work" surface would lie about a fact you deleted.
+  if (keysWithActiveRetraction(records as unknown as readonly BeliefProvenance[]).has(key)) {
+    const forgottenAt = [...records]
+      .filter((r) => r.key === key && r.retraction === true)
+      .sort((a, b) => Date.parse(b.learnedAt) - Date.parse(a.learnedAt))[0]?.learnedAt;
+    const when = forgottenAt ? ` on ${forgottenAt.slice(0, 10)}` : "";
+    return `(you had me forget "${key}"${when} — I no longer hold it)\n`;
+  }
   const prov = deriveFactProvenance(records as unknown as readonly BeliefProvenance[]).find((p) => p.key === key);
   if (!prov) {
     return `(no recorded provenance for "${key}" — learned before provenance tracking, or not remembered)\n`;
@@ -370,7 +381,7 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
         helpers.writeOutput(io, records);
         return;
       }
-      io.stdout(formatBeliefWhy(records, key));
+      io.stdout(formatBeliefWhy(records, normalizeMemoryKey(key)));
     });
 
   memory

@@ -191,3 +191,12 @@ ratchet: testFiles +0 (commands-status.test +3) · @muse/cli status 24 green · 
 - **리뷰지점**: `selectRecentlyForgotten`(fire 18) 재사용, 30일 윈도우(learned와 동일 상수), retraction 마커 code-select. fail-soft(`.catch`). non-empty-only snapshot. drill 롤백은 status 파일과 무관(belief-provenance-store 복원=net 0).
 - **리스크**: 없음 — drill 롤백 clean, status 24 green, 독립 Opus ④b judge 진짜 슬라이스 PASS. (cli 1 TUI timeout=포화 flake, 무관.)
 - **lesson**: JUDGE-DRILL은 테마의 하드 불변식을 정확히 겨냥한 나쁜 슬라이스가 효과적 — fire 17 judge가 경고했던 over-claim 실패모드(auto→"you told me")를 재현하니 judge가 5개 구체 위반으로 즉시 적발. green-tests-but-fabricating이 핵심 시나리오.
+
+## fire 21 · 2026-06-21 · skill v2.1.0 · pending
+meta: value-class=micro-fix · pkg=@muse/cli · kind=why-honesty · verdict=PASS · firesSinceDrill=1 · firesSinceMainMerge=3→0(main FF-merge this fire)
+ratchet: testFiles +0 (commands-memory.test +3) · @muse/cli commands-memory 12 green · lint clean · fabrication 0
+
+- **무엇**: `muse memory why <잊힌키>` **정직성 버그 수정** — `deriveFactProvenance`가 retraction 제외(`continue`) → 잊힌 키도 **stale 값을 "still known"처럼 표시**(거짓). `keysWithActiveRetraction`로 감지해 `(you had me forget "key" on DATE — I no longer hold it)` 표시. +call-site `normalizeMemoryKey`로 모든 키 견고화.
+- **왜**: `why`는 **가장 깊은 "show your work" citation 표면**인데 forgotten fact에 대해 거짓말 = fabrication=0 위반. 정직성 회복.
+- **리뷰지점**: `keysWithActiveRetraction`(fire 18 machinery, newest-event) → re-`set`은 reopens(잊힘 아님; 테스트). 정상 키 `why` 무변(무회귀). 다양성: kind=why-honesty(forgotten-surface-wiring과 구분되는 correctness fix).
+- **리스크**: 없음 — commands-memory 12 green, 독립 Opus ④b judge가 버그-real+fix+re-set+무회귀+mutation 재확인 PASS.
