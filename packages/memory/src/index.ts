@@ -303,6 +303,14 @@ export interface FactSupersession {
    * framing.
    */
   readonly kind?: "refine" | "contradict";
+  /**
+   * Which namespace the superseded value lived in. Absent = `fact`
+   * (back-compat: every entry written before this field was a fact change).
+   * A `preference` entry records a change to a preference / veto / goal, so a
+   * "what Muse learned about you" surface can cover those too and resolve the
+   * current value from the right store.
+   */
+  readonly scope?: "fact" | "preference";
 }
 
 export interface UserMemory {

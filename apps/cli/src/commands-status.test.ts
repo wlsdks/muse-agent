@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { readRagStatus, readTokenCostToday, resolveStatusWatchIntervalMs, suggestPatternHints } from "./commands-status.js";
+import { readRagStatus, readRecentlyLearnedLine, readTokenCostToday, resolveStatusWatchIntervalMs, suggestPatternHints } from "./commands-status.js";
 
 function tmpFile(name: string, contents: string): string {
   const dir = mkdtempSync(join(tmpdir(), "muse-status-"));
@@ -31,6 +31,56 @@ describe("readRagStatus", () => {
   it("omits the embed model when it's blank/missing but still counts files", async () => {
     const p = tmpFile("no-model.json", JSON.stringify({ model: "   ", files: [{ path: "a.md" }] }));
     expect(await readRagStatus(p)).toEqual({ files: 1, indexed: true });
+  });
+});
+
+describe("readRecentlyLearnedLine", () => {
+  function memFile(users: Record<string, unknown>): string {
+    return tmpFile("user-memory.json", JSON.stringify({ version: 1, users }));
+  }
+
+  it("returns undefined when the store is missing or has no fact history", async () => {
+    expect(await readRecentlyLearnedLine(join(tmpdir(), "no-such-muse-mem.json"), "stark")).toBeUndefined();
+    const p = memFile({
+      stark: { userId: "stark", facts: { name: "Stark" }, preferences: {}, recentTopics: [], updatedAt: "2026-06-21T00:00:00.000Z" }
+    });
+    expect(await readRecentlyLearnedLine(p, "stark")).toBeUndefined();
+  });
+
+  it("returns the compact cited one-liner derived from the user's factHistory", async () => {
+    const p = memFile({
+      stark: {
+        userId: "stark",
+        facts: { home_city: "Busan", role: "founder" },
+        preferences: {},
+        recentTopics: [],
+        updatedAt: "2026-06-21T00:00:00.000Z",
+        factHistory: [
+          { key: "role", previousValue: "student", replacedAt: "2026-06-20T00:00:00.000Z", kind: "contradict" },
+          { key: "home_city", previousValue: "Seoul", replacedAt: "2026-06-21T00:00:00.000Z", kind: "contradict" }
+        ]
+      }
+    });
+    const nowMs = new Date("2026-06-25T00:00:00.000Z").getTime(); // both within the 30-day window
+    expect(await readRecentlyLearnedLine(p, "stark", nowMs)).toBe('home city: Busan (updated from "Seoul" on 2026-06-21) (+1 more)');
+  });
+
+  it("drops a learning older than the 30-day window so status stays truthfully 'recent'", async () => {
+    const p = memFile({
+      stark: {
+        userId: "stark",
+        facts: { home_city: "Busan", role: "founder" },
+        preferences: {},
+        recentTopics: [],
+        updatedAt: "2026-06-21T00:00:00.000Z",
+        factHistory: [
+          { key: "role", previousValue: "student", replacedAt: "2026-01-01T00:00:00.000Z", kind: "contradict" },
+          { key: "home_city", previousValue: "Seoul", replacedAt: "2026-06-20T00:00:00.000Z", kind: "contradict" }
+        ]
+      }
+    });
+    const nowMs = new Date("2026-06-25T00:00:00.000Z").getTime(); // role (Jan) is >30 days old, home_city (Jun 20) is in-window
+    expect(await readRecentlyLearnedLine(p, "stark", nowMs)).toBe('home city: Busan (updated from "Seoul" on 2026-06-20)');
   });
 });
 

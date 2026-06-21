@@ -19,26 +19,30 @@ describe("muse logo — the mascot banner", () => {
     const out = await run();
     expect(out).toContain(MUSE_MASCOT_ANSI);
     expect(out.endsWith("\n")).toBe(true);
-    expect(out).toContain("▀"); // upper half-block ▀ — confirms it's the art
-    expect(out).toContain("\u001b[38;5;"); // 256-color foreground escape
+    expect(/[\u{1FB00}-\u{1FB3B}█▌▐▀▄]/u.test(out)).toBe(true); // a sextant/block cell glyph — confirms it's the art
+    expect(out).toContain("\u001b[38;2;"); // 24-bit truecolor foreground escape
   });
 
-  it("the art is a well-formed half-block grid (one ▀ per cell, reset per row)", () => {
+  it("the art is a well-formed half-block grid (one cell glyph per column, reset per row)", () => {
     const lines = MUSE_MASCOT_ANSI.split("\n");
     expect(lines.length).toBe(MUSE_MASCOT_ROWS);
     for (const line of lines) {
-      // one ▀ per column → exactly WIDTH blocks per row
-      expect(line.split("▀").length - 1).toBe(MUSE_MASCOT_WIDTH);
+      // each column emits exactly one cell glyph: a sextant (U+1FB00 block),
+      // a block (█ ▌ ▐ ▀ ▄), or a space (transparent)
+      const cells = line.match(/[ ▀▄█▌▐]|[\u{1FB00}-\u{1FB3B}]/gu) ?? [];
+      expect(cells.length).toBe(MUSE_MASCOT_WIDTH);
       expect(line.endsWith("\u001b[0m")).toBe(true); // SGR reset closes every row
     }
   });
 
-  it("uses only valid xterm-256 grayscale codes (16 / 231 / 232-255)", () => {
-    const codes = [...MUSE_MASCOT_ANSI.matchAll(/5;(\d+)m/g)].map((m) => Number(m[1]));
-    expect(codes.length).toBeGreaterThan(0);
-    for (const c of codes) {
-      const ok = c === 16 || c === 231 || (c >= 232 && c <= 255);
-      expect(ok).toBe(true);
+  it("uses 24-bit truecolor codes with valid 0-255 channels", () => {
+    const triples = [...MUSE_MASCOT_ANSI.matchAll(/;2;(\d+);(\d+);(\d+)m/g)];
+    expect(triples.length).toBeGreaterThan(0);
+    for (const m of triples) {
+      for (const ch of [m[1], m[2], m[3]]) {
+        const v = Number(ch);
+        expect(v >= 0 && v <= 255).toBe(true);
+      }
     }
   });
 });

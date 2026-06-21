@@ -60,7 +60,7 @@ type StoredMemory = {
   readonly recentTopics: readonly string[];
   readonly updatedAt: string;
   readonly userModel?: UserModel;
-  readonly factHistory?: readonly { readonly key: string; readonly previousValue: string; readonly replacedAt: string; readonly kind?: "refine" | "contradict" }[];
+  readonly factHistory?: readonly { readonly key: string; readonly previousValue: string; readonly replacedAt: string; readonly kind?: "refine" | "contradict"; readonly scope?: "fact" | "preference" }[];
 };
 
 type StoredFile = { readonly version: 1; readonly users: Record<string, StoredMemory> };
@@ -93,7 +93,7 @@ function memoryToStored(memory: UserMemory): StoredMemory {
     userId: memory.userId,
     ...(memory.userModel ? { userModel: memory.userModel } : {}),
     ...(memory.factHistory
-      ? { factHistory: memory.factHistory.map((entry) => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: entry.replacedAt.toISOString(), ...(entry.kind ? { kind: entry.kind } : {}) })) }
+      ? { factHistory: memory.factHistory.map((entry) => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: entry.replacedAt.toISOString(), ...(entry.kind ? { kind: entry.kind } : {}), ...(entry.scope === "preference" ? { scope: entry.scope } : {}) })) }
       : {})
   };
 }
@@ -118,7 +118,7 @@ function storedToMemory(stored: StoredMemory): UserMemory {
     userId: stored.userId,
     ...(stored.userModel ? { userModel: stored.userModel } : {}),
     ...(stored.factHistory
-      ? { factHistory: stored.factHistory.map((entry): FactSupersession => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: parseStoredDate(entry.replacedAt), ...(entry.kind === "refine" || entry.kind === "contradict" ? { kind: entry.kind } : {}) })) }
+      ? { factHistory: stored.factHistory.map((entry): FactSupersession => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: parseStoredDate(entry.replacedAt), ...(entry.kind === "refine" || entry.kind === "contradict" ? { kind: entry.kind } : {}), ...(entry.scope === "preference" ? { scope: entry.scope } : {}) })) }
       : {})
   };
 }
@@ -160,10 +160,17 @@ export class FileUserMemoryStore implements UserMemoryStore {
   async upsertPreference(userId: string, rawKey: string, value: string): Promise<UserMemory> {
     const key = normalizeMemoryKey(rawKey);
     const safe = sanitizeUserMemoryValue(value);
-    return this.patch(userId, (existing) => ({
-      ...existing,
-      preferences: mergeRecordTouchLast(existing.preferences, { [key]: safe })
-    }));
+    return this.patch(userId, (existing) => {
+      const factHistory = appendFactHistory(
+        existing.factHistory,
+        collectFactSupersessions(existing.preferences, { [key]: safe }, this.now(), "preference")
+      );
+      return {
+        ...existing,
+        preferences: mergeRecordTouchLast(existing.preferences, { [key]: safe }),
+        ...(factHistory ? { factHistory } : {})
+      };
+    });
   }
 
   // Typed user-model slots — the local-first write path. The slots
