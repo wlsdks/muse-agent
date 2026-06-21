@@ -5,7 +5,7 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 49 · 2026-06-21 · skill v2.0 · <commit> (measure→STEP-REPETITION discovery→deterministic dup-call nudge; MAST arXiv:2503.13657)
+## fire 49 · 2026-06-21 · skill v2.0 · 12b399cf (measure→STEP-REPETITION discovery→deterministic dup-call nudge; MAST arXiv:2503.13657)
 meta: value-class=new-capability · pkg=@muse/agent-core · kind=step-repetition-guard · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles +0 / +1 case (execute-model-loop dup-nudge, mutation-verified) · fabrication 0 · @muse/agent-core 2569 · execute-model-loop 15 · pnpm check @muse/voice SIGABRT(격리 124/124, agent-core 무관) · lint 0/0 · Ollama UP
 - 측정 재정의: MUSE_TASK_DEBUG 트레이스가 진짜 모드를 드러냄 — "early-stop"(fire 48 추정)이 아니라 **STEP-REPETITION**: 12B가 file_read(test)→file_read(math)→file_read(test)→file_read(math)→… 동일 파일 반복 read 후 정지, 편집 0(eval의 `tools=[file_read]`가 dedup된 이름이라 반복을 가렸음). MAST(arXiv:2503.13657) 최상위 멀티-스텝 실패모드.
