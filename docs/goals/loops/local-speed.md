@@ -72,3 +72,12 @@ ratchet: (model+autoconfigure, adapter-wiring) 2/7 (fire 2 num_batch throughput 
   검증: model 382 pass + autoconfigure 623 pass(신규 4+1 OUTCOME, 와이어 body 채점) · MUTATION-FIRST(우선순위 반전 → "maxOutputTokens WINS" 1 RED; revert→green) · pnpm check rc=0(model 382 + api 888 + cli 2873) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(코드 정확·갭 실재·게이트 그린; 단 모티베이션 misgrounding 적발 → 코드주석+저널 정정 완료).
   형제-감사: num_predict를 fire-6 doctor museSpeedEnvCheck에 노출 → backlog ◦(focused 유지차 defer). 어댑터 옵션 형제(num_ctx/num_batch/keep_alive)는 이미 디폴트 보유 — num_predict가 유일한 무-디폴트 폭주 노브였음.
 lesson: generate() 콜사이트를 "maxOutputTokens 안 건다"고 grep만 보고 단정하지 말 것 — 각 콜의 인자를 실제로 읽어 확인하라(이번엔 background 루프 전부 cap돼 있었음). 진짜 무제한은 런타임 defaults가 비어있는 메인 경로였다. 모티베이션도 grounding 대상이다.
+
+## fire 8 · 2026-06-21 · local-speed · <commit>
+meta: value-class=micro-fix · pkg=apps/cli · kind=doctor-discoverability · verdict=PASS · firesSinceDrill=8
+ratchet: (cli, doctor-discoverability) 2/8 (fire 6 num_batch, fire 8 num_predict) · fabrication 0 · advisory-only 무런타임변경
+- 무엇: fire-6 `museSpeedEnvCheck`/`readMuseSpeedEnv`에 `MUSE_OLLAMA_NUM_PREDICT`(fire-7 생성캡) 추가 — 이제 doctor가 Muse 속도 env 4종(num_batch/num_ctx/keep_alive/num_predict) 모두 보고. 일관성 수정.
+- 왜: fire 7이 num_predict env를 출하했는데 fire-6 doctor 체크가 3종만 보고하고 num_predict를 조용히 누락 → "speed env" 줄이 불완전/오도. 출하된 레버를 discoverable화(fire 6 num_batch와 동일 근거).
+- 리뷰지점: env명 실재(autoconfigure:197 read + adapter:385 num_predict 매핑, ④ judge grep 재확인), whitespace `.trim()` 가드(numPredict="  "→미보고), always "ok"(옵션 노브), num_predict 단독 set 시 num_batch 힌트 여전히 표시(num_batch는 unset이므로 coherent).
+- 리스크: 없음 — doctor advisory만, 모델/런타임/grounding 무관 → 정확성 회귀 0.
+  검증: cli 2875 pass isolated(신규 2 OUTCOME) · MUTATION-FIRST(num_predict push 제거 → 1 RED; revert→green) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(env명 실재·env-flake 정직·value-first·ratchet OK·결함 0). ⚠️full pnpm check는 박스 메모리압박(동시루프)으로 OOM(SIGABRT)+무관 flake(@muse/model web-search-policy property-fuzz·@muse/cli document-reader PDF 5s 타임아웃) — 둘 다 isolated-green, 내 변경은 apps/cli string-only로 무관 → env flake로 판정(fire 3·6 동일 클래스).
