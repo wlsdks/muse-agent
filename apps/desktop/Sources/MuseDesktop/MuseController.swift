@@ -34,8 +34,12 @@ final class MuseController: NSObject {
 
     private func installMenuBar() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        // The goddess herself, so Muse is recognizable in the menu bar.
-        item.button?.image = MuseAssets.menuBarIcon(height: 18)
+        // A clean music note — Muse, the goddess of song — reads crisply at
+        // menu-bar size (a detailed portrait turns to mud that small). Template
+        // image so it adapts to light/dark menu bars.
+        let note = NSImage(systemSymbolName: "music.note", accessibilityDescription: "Muse")
+        note?.isTemplate = true
+        item.button?.image = note
         item.button?.toolTip = "Muse — click for options (⌃⌥Space to show/hide)"
 
         let menu = NSMenu()
