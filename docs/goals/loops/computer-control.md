@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 38 · 2026-06-21 · skill v2.0 · <commit-pending> (file_grep output context-fit cap — fire-35 sibling)
+meta: value-class=new-capability · pkg=@muse/fs+apps/cli · kind=context-fit/reliability · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 1072→1072 (+1 case fs-read-tools grep cap, mutation-valid) · fabrication 0 · @muse/fs 격리 173 · @muse/cli 빌드 clean · pnpm check exit 0 · lint clean · Ollama DOWN
+- 무엇: fire-35(file_read context-fit) 형제-감사 — file_grep은 미cap(200매치×500자=~100K자 ≈ 30K토큰=32K 컨텍스트 근접, read와 같은 overflow). FIX: `maxGrepOutputChars?` 옵션(기본 200K=non-agent 무영향), content 루프가 `contentChars += text.length` 누적, GREP_MAX_MATCHES OR char budget서 stop. agent가 `fileReadCharBudget`(64K) 전달.
+- 왜: 형제-감사 규칙 — read 고치면 grep/list 형제도. grep worst-case(100K)가 list(60K)보다 높아 우선. Ollama down으로 measure 불가지만 200×500 정량분석으로 갭.
+- 리뷰지점: mutation-valid(char clause 제거→cap 테스트 RED; default는 50개 다 반환). ④b judge PASS — non-agent 무회귀(default 200K, GREP_MAX_MATCHES 독립 cap), files-mode 무영향, **grounding 불변**(onPathRead는 scanned 파일만; truncated grep은 *더 적은* 경로→게이트 *더 엄격*), binary/ReDoS/sandbox byte-identical, soft-budget overshoot ≤ 1 match.
+- 리스크: 낮음 — grep content 루프+옵션+agent 배선만(read/list/files-mode/path-safety 불변). ④b PASS. file_list(3번째 형제)는 정직히 backlog ◦(1000≈budget, 500×200 multiplier 없음).
+lesson: 형제-감사는 *같은 클래스 전부*(read+grep+list) 감사 — 하나 고치면 형제의 worst-case 정량분석으로 우선순위. grounding seam은 *더 적은* 출력=*더 엄격한* 게이트(안전방향). context-fit budget(fileReadCharBudget)을 형제 도구가 공유.
+
 ## fire 37 · 2026-06-21 · skill v2.0 · d1f982e1 (JUDGE-DRILL #4 ✅ + pin timeout-message direction)
 meta: value-class=test-hardening · pkg=crates/runner · kind=judge-drill · verdict=DRILL-PASS · firesSinceDrill=0(reset)
 ratchet: testFiles 1072→1072 (+2 assertions cargo; 메시지 코드 불변) · fabrication 0 · crates/runner cargo 12 · pnpm check exit 0 · lint clean

@@ -383,6 +383,21 @@ describe("file_read / file_list / file_grep", () => {
       expect(seen.some((p) => p.endsWith("z.md"))).toBe(true);
     });
 
+    it("caps TOTAL content-match output to maxGrepOutputChars (a broad grep can't dominate a small context)", async () => {
+      // 50 matching lines of 20 chars each = 1000 chars of match text.
+      await writeFile(join(root, "many.txt"), Array.from({ length: 50 }, () => `match${"x".repeat(14)}`).join("\n"));
+      const capped = createFileGrepTool({ ...opts(), maxGrepOutputChars: 100 });
+      const out = (await capped.execute({ mode: "content", path: root, pattern: "match" }, ctx)) as JsonObject;
+      const matches = out["matches"] as unknown[];
+      expect(matches.length).toBeLessThan(50); // stopped early on the char budget
+      expect(matches.length).toBeLessThanOrEqual(6); // ~100 chars / 20 per match
+      expect(out["truncated"]).toBe(true);
+      // without the cap, all 50 are returned (the default is large).
+      const uncapped = createFileGrepTool(opts());
+      const all = (await uncapped.execute({ mode: "content", path: root, pattern: "match" }, ctx)) as JsonObject;
+      expect((all["matches"] as unknown[]).length).toBe(50);
+    });
+
     it("content mode marks READ but NOT FULLY-READ — a partial grep cannot ground a whole-file overwrite", async () => {
       await writeFile(join(root, "z.md"), "alpha\nbeta dentist\ngamma");
       const read: string[] = [];
