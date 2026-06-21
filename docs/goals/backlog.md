@@ -1,5 +1,12 @@
 # Muse dev backlog — the living ledger
 
+- ✓ muse status privacy posture line — cli-excellence fire 1
+- ✓ muse --help / non-TTY first-screen local-first quickstart block — cli-excellence fire 2
+- ✓ first-screen taglines aligned to learns-you/local-first identity via single MUSE_TAGLINE const (--help + REPL banner) — cli-excellence fire 3
+- ✓ chat REPL HUD local-only posture badge (🔒 local / ⚠ cloud) — cli-excellence fire 4
+- ✓ `muse --version` pre-framework fast path (~500ms→~90ms) + version 0.0.0→0.1.0 single-source — cli-excellence fire 5
+- ✓ `muse notes reindex` honest empty-state when 0 markdown found (vs misleading "Done. 0 embedded") — cli-excellence fire 6
+- ✓ unknown-command discovery on-ramp (no close match → Popular commands, registry-intersected) — cli-excellence fire 7
 - ✓ eval:two-edit-fix completeness battery — computer-control fire 54: a harder multi-step eval (2 edits across 2 files; test passes only if BOTH bugs fixed) that catches a stop-after-one-edit model. Mirrors eval-multifile-fix harness; OUTCOME-graded; discrimination verified deterministically (one-edit→FAIL, both→PASS). 12B PASSes 1/1 live (cross-file 2-edit completeness confirmed — cumulative effect of fires 47/49/51). Opus ④b judge PASS. Kept standalone (pass^1); promote into eval:multistep once pass^k-confirmed. REMAINING flywheel directions: wrong-first-fix re-iterate eval (naive first edit insufficient → must re-read+re-edit), or theme repoint if the vein is exhausted. (detail in docs/goals/loops/computer-control.md fire 54)
 
 - ✓ eval:multistep regression-lock aggregator — computer-control fire 53: bundles the 3 multi-step evals (computer-task/multifile-fix/edit-run-verify) into one gate (pnpm eval:multistep) so their fires-40-51 FAIL→PASS gains can't silently rot; mirrors eval:self-improving (Ollama-skip→exit0, any-fail→exit1, MUSE_EVAL_REPEAT passthrough for pass^k). Live ALL PASS 3/3; Opus ④b judge PASS. Done backlog direction (1). REMAINING next directions: (2) harder multi-step fixture (2-edit cross-file / wrong-first-fix re-iterate) to keep raising the bar; (3) theme repoint if the deterministic vein is exhausted (agent-core well over-mined; consider a fresh sub-area or repoint). (detail in docs/goals/loops/computer-control.md fire 53)
@@ -85,7 +92,7 @@
 - ✓ vision field-level partial-apply — drop un-grounded OPTIONAL fields + apply grounded core, fail-close only on a REQUIRED field (no un-grounded value persisted; arXiv:2404.18930) — grounded-vision fire 3 (`0f301103`)
 - ✓ vision weak-numeric grounding guard — a bare short (≤3-digit) numeric value can't ground a field on a coincidental digit match (discount %/clock time); strictly stricter, no over-drop (arXiv:2404.18930) — grounded-vision fire 4 (`5b66ce16`)
 - ✓ vision amount-field-role grounding — a `total` grounds only on a currency-anchored run; closes the $2026-as-total leak AND repairs the fire-4 $40 over-drop (arXiv:2404.18930) — grounded-vision fire 6 (`f3ca1cb0`)
-- ◦ repo byte-hygiene: `apps/cli/src/commands-logo.test.ts:23,32` has RAW ESC bytes (committed by e10ac6c2 "muse goddess mascot", on origin/main) -> `pnpm check` is RED repo-wide via the @muse/shared byte-hygiene gate. Replace each raw escape byte with the literal sequence backslash-u-001b ([[feedback_no_raw_control_bytes_in_tests]] recurrence). NOT a grounded-vision slice -- flagged for the CLI/test-hygiene owner. Gate: `pnpm --filter @muse/shared test`.
+- ✓ repo byte-hygiene: commands-logo.test.ts raw ESC bytes — already resolved on origin/main (raw-ESC count 0, @muse/shared byte-hygiene gate green); stale note cleared — cli-excellence fire 5
 - ◦ vision contact partial-apply degenerate-action notice: when a contact's name is grounded but its only email/phone is dropped, dropUnverifiedOptional recomposes to route:none/fields:{} and the apply path prints a misleading `✅ Done:{added:false}` (the contacts store fail-closes so there's NO write — cosmetic only). Detect the degenerate (no required method left) and print a clear "couldn't apply — no grounded contact method" instead. Gate: `pnpm --filter @muse/cli test`. (grounded-vision fire-3 judge residual)
 - ✓ URL/domain grounding-value guard on the sync chat gate (answerAssertsUnsupportedUrl → abstain) — closes the fabricated-link class the number/email/identifier guards miss (doctrine P2; Netcraft phishing-URL harm) — context-strategy fire 15 (detail in docs/goals/loops/context-strategy.md)
 
@@ -552,7 +559,7 @@ DO NOT adopt (identity conflict): cloud channels/gateway, cloud realtime voice p
 > blocks below are pre-v1.14.0 history — kept for dedup, condensable when loops are paused. Convention:
 > [`loops/README.md`](loops/README.md).)
 
-- ◦ repo byte-hygiene: `apps/cli/src/commands-logo.test.ts:23,32` has RAW ESC bytes (committed by e10ac6c2 "muse goddess mascot", on origin/main) -> `pnpm check` is RED repo-wide via the @muse/shared byte-hygiene gate. Replace each raw escape byte with the literal sequence backslash-u-001b ([[feedback_no_raw_control_bytes_in_tests]] recurrence). NOT a grounded-vision slice -- flagged for the CLI/test-hygiene owner. Gate: `pnpm --filter @muse/shared test`.
+- ✓ repo byte-hygiene: commands-logo.test.ts raw ESC bytes — already resolved on origin/main (raw-ESC count 0, @muse/shared byte-hygiene gate green); stale note cleared — cli-excellence fire 5
 ## TOOL theme — open (CLI-only capabilities lacking an agent tool)
 
 - ⏳ **FINDING (fire 65) — `email`/`handle`/`birthday` are NOT cleanly groundable under the ANY-token mechanism (so add_contact grounds ONLY `phone`).** `email`/`handle` local-part (`bob@…`, `@bob`) = the contact NAME which is in the utterance → a fabricated domain false-grounds via the name token (false protection). `birthday` reformats (MM-DD) → brittle false-drop. A real fix needs per-field matching (e.g. domain-aware email grounding) in `groundToolArguments` — that lives in @muse/agent-core (concurrent agent-core-enhance loop's hot package); defer until it quiets or 진안 prioritizes. Phone is done (fire 65).
@@ -2460,9 +2467,18 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   scores confidence, and escalates ONCE to heavy on low/unmeasurable confidence. Wired OPT-IN into
   `buildTieredOrchestration` via `MUSE_TIERED_CASCADE` (default off → plan byte-identical). Cascade is now
   LIVE in the orchestration path. REMAINING: also wire `muse ask --tiered` single-query path (commands-ask.ts).
-  · **C3 (live eval)** — use `bench:local` (fire 1) for the latency win + accuracy parity: MUSE_TIERED_CASCADE
-  on vs always-heavy on a mixed easy/hard set; assert faster mean latency AND no grounding/answer regression.
-  Needs Ollama up.
+  · **C3 (live eval) — DONE fire 13** `eval:cascade` (scripts/eval-cascade.mjs + pure `lib/cascade-eval.mjs`
+  scoreCascadeEval, node:test'd 8 cases). The GATE LOGIC (escalate iff low-confidence — a weak fast answer
+  never silently kept; a confident one never needlessly escalated) is mutation-proven in the UNIT layer.
+  LIVE-MEASURED latency on this box (fast=qwen3:8b / heavy=qwen3.6:35b-a3b): cascade **23.9% faster** (12970ms
+  vs 17045ms). HONEST CAVEAT (④ judge): escalation was 0% (qwen3:8b confident on the whole set at threshold
+  −1.0), so only the latency-win-on-confident-queries arm was exercised LIVE; the escalate→heavy arm was not
+  triggered, and the runner's live `gateCorrect` is self-consistency (escalation derived from the same
+  predicate the scorer re-checks), NOT an independent measurement — the gate's adversarial proof is the unit
+  tests. LOCAL-OLLAMA-ONLY skip when down. REMAINING (◦): a hard prompt / lower threshold that actually
+  triggers live escalation to exercise the heavy arm end-to-end. The cascade vein (C1 decision · C2
+  execution+logprobs · C2b orchestration wiring · C3 latency proof) is otherwise complete; `ask --tiered`
+  single-query surface still remains.
 - ✓ **doctor: surface the Muse-side speed env — DONE local-speed fire 6** — `museSpeedEnvCheck` +
   `readMuseSpeedEnv` (apps/cli) report the Muse-PROCESS speed env (`MUSE_OLLAMA_NUM_BATCH` fire-2 lever,
   `MUSE_OLLAMA_NUM_CTX`, `MUSE_OLLAMA_KEEP_ALIVE`) on every `muse doctor`, with a concrete num_batch
@@ -2484,6 +2500,12 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   test caught that `parseInteger` rejects 0). num_thread keeps `> 0`. Completes the Ollama adapter
   speed-knob family (num_ctx/num_batch/num_predict/keep_alive/num_thread/num_gpu). Per-box win still
   needs `bench:local` (C3-style) measurement.
+- ✓ **model warmup on server start — DONE fire 14** `MUSE_WARMUP_MODEL` (apps/api `warmUpModelIfConfigured`)
+  fires a tiny fire-and-forget generate at server startup so the FIRST user request is warm — keep_alive only
+  keeps the model resident BETWEEN requests, so the first request after a start otherwise pays the full cold
+  load (tens of seconds for a 12B). Opt-in (default off → startup byte-identical), fail-soft (a warmup error
+  never blocks server start). SIBLING ◦: surface MUSE_WARMUP_MODEL in `museSpeedEnvCheck` (doctor) like
+  num_batch/num_predict, and a per-box cold-start delta measurement.
 - ✓→Done **injection-pattern cross-span tightening** — the EN role_override family + 2 KO
   role_override + 1 KO extraction regexes used unbounded `.*`/`/s`, so three unrelated words from
   DIFFERENT sentences combined into a false hit (live repro: "disregard the noise … finally …

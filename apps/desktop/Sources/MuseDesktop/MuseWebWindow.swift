@@ -56,9 +56,11 @@ final class MuseWebWindowController: NSObject, WKNavigationDelegate, NSWindowDel
         webView = web
     }
 
-    /// Back to a Dock-less companion when the full window closes.
+    /// Back to a Dock-less companion when the full window closes, and bring the
+    /// floating companion back.
     func windowWillClose(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        NotificationCenter.default.post(name: .museFullAppClosed, object: nil)
     }
 
     /// Security: keep the web view on the local Muse origin. Same-origin and

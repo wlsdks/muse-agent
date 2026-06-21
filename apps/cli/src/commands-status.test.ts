@@ -4,7 +4,10 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { readRagStatus, readRecentlyForgottenLine, readRecentlyLearnedLine, readTokenCostToday, resolveStatusWatchIntervalMs, suggestPatternHints } from "./commands-status.js";
+import { Command } from "commander";
+
+import { formatPrivacyPosture, readRagStatus, readRecentlyForgottenLine, readRecentlyLearnedLine, readTokenCostToday, registerStatusCommand, resolveStatusWatchIntervalMs, suggestPatternHints } from "./commands-status.js";
+import type { ProgramIO } from "./program.js";
 
 function tmpFile(name: string, contents: string): string {
   const dir = mkdtempSync(join(tmpdir(), "muse-status-"));
@@ -201,5 +204,54 @@ describe("suggestPatternHints", () => {
     expect(suggestPatternHints(fired, now, { maxHints: 1 })).toEqual([
       { patternId: "b", medianHourUtc: 0, firings: 5 }
     ]);
+  });
+});
+
+describe("formatPrivacyPosture", () => {
+  it("shows a concise locked badge when local-only is on and healthy", () => {
+    expect(formatPrivacyPosture({ detail: "🔒 on (default) — cloud LLM + voice egress blocked (fail-closed to local)", enabled: true, status: "ok" }))
+      .toBe("🔒 local-only on (default) — cloud egress blocked");
+  });
+
+  it("flags a degraded local-only posture and points at `muse doctor` for the precise reason", () => {
+    const line = formatPrivacyPosture({ detail: "🔒 on, but OLLAMA_BASE_URL points off-box", enabled: true, status: "fail" });
+    expect(line).toContain("local-only on but degraded");
+    expect(line).toContain("muse doctor");
+  });
+
+  it("warns that cloud egress is POSSIBLE when local-only is opted OUT with a cloud key set", () => {
+    const line = formatPrivacyPosture({ detail: "⚠️ OFF by explicit opt-out — cloud egress possible (ANTHROPIC_API_KEY set)", enabled: false, status: "warn" });
+    expect(line).toContain("local-only OFF");
+    expect(line).toContain("cloud egress possible");
+  });
+
+  it("states a benign opted-out posture when no cloud credentials are configured", () => {
+    expect(formatPrivacyPosture({ detail: "off by explicit opt-out (no cloud credentials configured)", enabled: false, status: "ok" }))
+      .toBe("local-only off — no cloud credentials configured");
+  });
+});
+
+describe("muse status — privacy posture line (wiring)", () => {
+  it("renders the `privacy:` line into the dashboard from the canonical posture", async () => {
+    const out: string[] = [];
+    const io: ProgramIO = { stderr: () => undefined, stdout: (s) => { out.push(s); } };
+    const program = new Command();
+    program.exitOverride();
+    registerStatusCommand(program, io);
+    const cloudKeys = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"] as const;
+    const prev: Record<string, string | undefined> = { MUSE_LOCAL_ONLY: process.env.MUSE_LOCAL_ONLY };
+    for (const k of cloudKeys) prev[k] = process.env[k];
+    process.env.MUSE_LOCAL_ONLY = "false";
+    for (const k of cloudKeys) delete process.env[k];
+    try {
+      await program.parseAsync(["node", "muse", "status"]);
+    } finally {
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === undefined) delete process.env[k]; else process.env[k] = v;
+      }
+    }
+    const text = out.join("");
+    expect(text).toContain("privacy:");
+    expect(text).toContain("local-only off — no cloud credentials configured");
   });
 });
