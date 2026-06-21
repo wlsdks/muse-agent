@@ -295,3 +295,14 @@ follow-up recorded).
 
 RISK: low — additive, mutation-proven at 3 seams (capture/finalize/store), Opus ④
 PASS (over/under-mark verified, conservative cue, byte-identical clean episodes).
+
+MERGE→MAIN DEFERRED (⑤c blocked, NOT by this slice): after merging origin/main,
+`pnpm check` fails ONLY on `@muse/model` `web-search-policy` property-fuzz — a
+5000ms TEST TIMEOUT (not an assertion), reproducible in isolation at 7.2s under
+sustained box saturation from concurrent cron loops (the recorded env issue:
+"concurrent loops saturate machine → slow tests false-timeout at 5000ms"). Not my
+package, not the merge content, not a code regression. Per ⑤c I did NOT force the
+push past a red check; fire 9 is verified + on the branch; the main-merge retries
+next ÷3 fire (box may be quieter / test-hygiene loop can raise the fuzz test's
+testTimeout). BLOCKER also a real test-quality signal: web-search-policy's nested
+property-fuzz needs a larger testTimeout or a smaller corpus (env-independent).
