@@ -12,3 +12,13 @@ ratchet: testFiles +1 (recently-learned.test.ts, 6 cases) · @muse/memory 41 fil
 - **왜**: 새 정체성의 학습 기계가 전부 백그라운드라 사용자가 체감 못 함. 이 투영은 그 체감의 **결정론적·근거 있는 첫 벽돌** — 무엇을 보여줄지 8B가 아니라 코드가 고르고, 모든 항목이 기록된 supersession을 인용해 fabrication=0 유지.
 - **리뷰지점**: 순수함수(store 미변경). 출처 문자열은 항목 자신의 `previousValue`+`replacedAt`에서만 파생(오귀속 불가). `currentValue` undefined = 학습 후 forget된 fact(표면이 스킵 처리). surfaces 루프와 파일 0겹침(@muse/memory leaf).
 - **리스크**: 없음 — additive leaf + 단일 export, 전체 빌드+memory 505 green, 독립 Opus ④b judge가 4 mutation 직접 재확인 PASS. 다음 fire 후보: CLI `muse memory`/`muse status`가 이 투영을 소비해 실제 표면화(같은 결정론+인용 불변식 유지).
+
+## fire 2 · 2026-06-21 · skill v2.1.0 · pending
+meta: value-class=new-capability · pkg=@muse/memory · kind=learned-render · verdict=PASS · firesSinceDrill=2 · firesSinceMainMerge=2
+ratchet: testFiles +0 (same file +4 cases) · @muse/memory 41 files/513 tests green · lint clean · fabrication 0
+
+- **무엇**: `renderRecentlyLearnedLines(items)` 신규(`recently-learned.ts` + `index.ts` 재export) — fire 1의 `projectRecentlyLearned` 출력을 사용자-facing 줄로 결정론 렌더. `home city: Busan (updated from "Seoul" on 2026-06-21)` 형식: snake_case→공백, **출처 인용 항상 임베드**, **forget된 fact(`currentValue` undefined)는 제외**("현재 아는 것"만). 4 mutation-verified 케이스.
+- **왜**: fire 1 투영의 표현 절반. surface가 "내가 너에 대해 아는 것"을 출력할 때 (a) 잊은 건 안 보이고 (b) 모든 줄에 출처가 붙도록 결정론적으로 강제 — 표면이 무근거 학습 주장을 못 내보냄. CLI/web 표면 fire는 project→render만 호출하면 됨.
+- **리뷰지점**: 순수함수. citation은 항상 `(${source})`로 임베드(누락 경로 없음). forget-filter가 핵심 결정. surfaces 0겹침(@muse/memory leaf).
+- **리스크**: 없음 — additive, 513 green, lint clean, 독립 Opus ④b judge가 forget-filter mutation 직접 재확인 PASS.
+- **lesson**: Tier2 published 브랜치는 fire 시작 시 `rebase origin/main` 쓰지 마라 — 이미 push된 fire 커밋을 재작성해 force-push가 필요(계약 위반). **`git merge origin/main`을 써라**(published 커밋 보존, push가 fast-forward). 루프 프롬프트의 "rebase" 문구는 merge로 실행할 것([[project_paper_grounded_loop]] 재확인).

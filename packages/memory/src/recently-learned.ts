@@ -63,3 +63,22 @@ export function projectRecentlyLearned(
   }
   return items;
 }
+
+/**
+ * Render recently-learned items as user-facing lines for a surface to print,
+ * deterministically. Only items still held (`currentValue` defined) appear — a
+ * fact the user has since forgotten is not "what Muse currently knows about you".
+ * Each line embeds its provenance citation, so a surface can never show an
+ * unsourced learning claim. The key's `snake_case` is humanised to spaced words.
+ */
+export function renderRecentlyLearnedLines(items: readonly RecentlyLearnedItem[]): readonly string[] {
+  const lines: string[] = [];
+  for (const item of items) {
+    if (item.currentValue === undefined) {
+      continue;
+    }
+    const label = item.key.replace(/_/g, " ");
+    lines.push(`${label}: ${item.currentValue} (${item.source})`);
+  }
+  return lines;
+}

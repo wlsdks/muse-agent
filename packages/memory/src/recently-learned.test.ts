@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UserMemory } from "./index.js";
-import { projectRecentlyLearned } from "./recently-learned.js";
+import { projectRecentlyLearned, renderRecentlyLearnedLines, type RecentlyLearnedItem } from "./recently-learned.js";
 
 function mem(
   partial: Partial<Pick<UserMemory, "facts" | "factHistory">>
@@ -76,5 +76,45 @@ describe("projectRecentlyLearned", () => {
     );
     expect(items[0]?.currentValue).toBeUndefined();
     expect(items[0]?.previousValue).toBe("cat");
+  });
+});
+
+describe("renderRecentlyLearnedLines", () => {
+  function item(over: Partial<RecentlyLearnedItem>): RecentlyLearnedItem {
+    return {
+      key: "home_city",
+      currentValue: "Busan",
+      previousValue: "Seoul",
+      replacedAt: new Date("2026-06-21T00:00:00Z"),
+      kind: "contradict",
+      source: 'updated from "Seoul" on 2026-06-21',
+      ...over
+    };
+  }
+
+  it("renders a held item as a humanised, citation-bearing line", () => {
+    expect(renderRecentlyLearnedLines([item({})])).toEqual([
+      'home city: Busan (updated from "Seoul" on 2026-06-21)'
+    ]);
+  });
+
+  it("omits an item whose fact was since forgotten (currentValue undefined)", () => {
+    const lines = renderRecentlyLearnedLines([
+      item({ key: "pet", currentValue: undefined }),
+      item({ key: "role", currentValue: "founder", source: 'updated from "student" on 2026-06-20' })
+    ]);
+    expect(lines).toEqual(['role: founder (updated from "student" on 2026-06-20)']);
+  });
+
+  it("preserves input order and humanises every key", () => {
+    const lines = renderRecentlyLearnedLines([
+      item({ key: "favorite_food", currentValue: "kimchi", source: "s1" }),
+      item({ key: "home_city", currentValue: "Busan", source: "s2" })
+    ]);
+    expect(lines).toEqual(["favorite food: kimchi (s1)", "home city: Busan (s2)"]);
+  });
+
+  it("returns [] for no items", () => {
+    expect(renderRecentlyLearnedLines([])).toEqual([]);
   });
 });
