@@ -5,7 +5,7 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 41 · 2026-06-21 · skill v2.0 · <commit> (OpenAI-family tool-call NAME sanitization — fire-11 Ollama-adapter sibling)
+## fire 41 · 2026-06-21 · skill v2.0 · 83697e69 (OpenAI-family tool-call NAME sanitization — fire-11 Ollama-adapter sibling)
 meta: value-class=new-capability · pkg=@muse/model · kind=provider-parse-robustness/tool-name-sanitization · verdict=PASS · firesSinceDrill=4
 ratchet: testFiles +0 files / +35 lines (provider-openai-parse: 3 name-sanitization OUTCOME + 3 sanitizeToolCallName unit) · fabrication 0 · @muse/model 375 pass/5 skip · byte-hygiene 44/44 · pnpm check exit 0 · lint 0/0 · Ollama DOWN (evals skip)
 - 무엇: agent-hardening fire-11이 Ollama 네이티브 어댑터에서 고친 tool-call NAME 오염(thinking 로컬모델이 `<|channel|>` 등 chat-template 마커/제어·zero-width 문자를 이름에 흘려 tool-not-found)의 OpenAI-호환 형제. compat 경로(`/v1/chat/completions` — LM Studio·OpenRouter·Ollama-compat, 같은 로컬모델 구동)는 tool-call 이름을 RAW로 파싱. FIX: `sanitizeToolCallName`(fire-11 함수)을 공유 리프 `provider-shared.ts`로 끌어올려(양 어댑터 공유) OpenAI-family 4개 NAME 파싱 사이트 전부 배선 — parseOpenAIToolCalls(compat chat=로컬 주 타깃) + Responses non-stream/stream + chat-stream materialize(델타 청크 아닌 최종 조립 지점; merge는 first-wins라 안전). cut/strip/`"unknown"`만 — 모델 미방출 이름 발명 0(fabrication=0).
