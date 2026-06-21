@@ -416,3 +416,34 @@ parity; a direct inline-tag test. User-authored notes stay trusted (no over-mark
 
 RISK: low — additive, store mutation-proven, path-match verified, Opus ④ PASS,
 fail-soft ingest, fabrication floor untouched.
+
+## fire 14 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=gate-correctness(hardening) · pkg=@muse/agent-core · kind=trust-dedup-fix · verdict=PASS · firesSinceDrill=4
+
+ratchet: testFiles +0 (extended grounded-not-true + untrusted-sentences tests) · fabrication 0 · NEW pkg/kind (agent-core gate-correctness) · eval:memory-poisoning PASS · eval:action-log-tamper PASS
+
+WHAT: closed the fire-13 with-tools augmented-citation bypass at the root. The
+untrusted-only source-trust Map was LAST-VALUE-WINS, so an untagged DUPLICATE of
+an untrusted source (an augmented cited chunk) overwrote its trusted:false and
+silently cleared the cue. Fixed via a shared `trustBySourceMap` (trusted only if
+EVERY match for a source is trusted; once-poisoned ⇒ poisoned, order-independent)
+used by all THREE untrusted-only seams — groundedOnUntrustedOnly, evidenceIsUntrustedOnly,
+AND untrustedOnlySentences (the per-claim sibling, caught by the ④ judge's
+sibling-audit and fixed the SAME fire).
+
+WHY: a latent correctness bug in the GROUNDED≠TRUE cue machinery that affected
+ALL source types (notes/feeds/episodes/tools), not just notes — a duplicate
+untrusted source could be laundered to trusted. Additive (scrutiny-cue deciders
+only; verdict untouched).
+
+REVIEW POINT: the ④ judge's first pass PASSED the 2-function fix but flagged the
+3rd (untrustedOnlySentences) as the same-bug sibling; I fixed it same-fire
+(shared helper + mixed-dup regression test) and re-judged PASS (all 3 seams
+mutation-RED via the shared helper; grep-confirmed no 4th naive-Map seam).
+Distinct-source pools unchanged (no regression). NOTE: full `pnpm check` flaked
+on an UNRELATED @muse/model fuzz + chat-ink render test under box saturation (both
+pass isolated) — not this slice; agent-core (2576) + recall (412) + consumers green.
+
+RISK: low — additive, mutation-proven across all 3 seams, re-judged PASS,
+distinct-source semantics identical to before, fabrication floor untouched.

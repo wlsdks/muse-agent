@@ -67,6 +67,14 @@ describe("groundedOnUntrustedOnly (source-trust segregation — the grounded≠t
     expect(groundedOnUntrustedOnly("Rent is 1,250,000.", [trusted("lease.md")])).toBe(false);
     expect(groundedOnUntrustedOnly("Rent is 1,250,000 [from ghost.md].", [untrusted("mcp-shop.json")])).toBe(false);
   });
+
+  it("still flags when an UNTAGGED DUPLICATE of an untrusted source is present (once-poisoned ⇒ poisoned; the augmented-citation bypass)", () => {
+    // base entry tagged untrusted + a later untagged duplicate of the SAME source
+    // (e.g. a cited chunk the top-K missed, appended by augmentNoteEvidenceWithCited).
+    // A naive last-value-wins Map would let the untagged dup clear the cue.
+    const matches = [untrusted("web/evil.md"), trusted("web/evil.md")];
+    expect(groundedOnUntrustedOnly("Acme acquired Beta [from web/evil.md].", matches)).toBe(true);
+  });
 });
 
 describe("evidenceIsUntrustedOnly (structural dual — fires the notice even when the model didn't cite)", () => {
@@ -84,6 +92,12 @@ describe("evidenceIsUntrustedOnly (structural dual — fires the notice even whe
 
   it("false for an all-trusted pool, and treats absent `trusted` as the user's own", () => {
     expect(evidenceIsUntrustedOnly([trusted("notes/rent.md")])).toBe(false);
+  });
+
+  it("true when an untrusted source has an UNTAGGED DUPLICATE (deduped by source — the augmented-citation bypass)", () => {
+    // Same source appears tagged-untrusted + untagged (augmented cited chunk). A
+    // plain `every(trusted===false)` would be broken by the untagged dup.
+    expect(evidenceIsUntrustedOnly([untrusted("web/evil.md"), trusted("web/evil.md")])).toBe(true);
   });
 
   it("false for an EMPTY pool (nothing to rest on — not a tool-only ground)", () => {

@@ -659,12 +659,31 @@ export function citedSourcesIn(text: string): string[] {
  * Unresolved citations are NOT this function's concern — verifyGrounding already
  * rejects a fabricated citation as ungrounded.
  */
+/**
+ * Per-source trust verdict: a source is TRUSTED only when EVERY match for it is
+ * trusted (no entry `trusted:false`). Once-poisoned ⇒ poisoned — so a DUPLICATE
+ * match for the same source that lacks the bit (e.g. a cited chunk the pre-retrieval
+ * top-K missed, appended by `augmentNoteEvidenceWithCited`) can NOT overwrite a base
+ * `trusted:false` and silently clear the untrusted-source cue (a naive
+ * `new Map(matches.map(...))` keeps the LAST value, which lost that bit). For
+ * distinct (non-duplicated) sources this is identical to the per-match check, so
+ * existing single-source behaviour is unchanged. Keyed by trimmed-lowercased source.
+ */
+export function trustBySourceMap(matches: readonly KnowledgeMatch[]): Map<string, boolean> {
+  const trust = new Map<string, boolean>();
+  for (const m of matches) {
+    const key = m.source.trim().toLowerCase();
+    trust.set(key, (trust.get(key) ?? true) && m.trusted !== false);
+  }
+  return trust;
+}
+
 export function groundedOnUntrustedOnly(answer: string, matches: readonly KnowledgeMatch[]): boolean {
   const cited = citedSourcesIn(answer);
   if (cited.length === 0) {
     return false;
   }
-  const trustBySource = new Map(matches.map((m) => [m.source.trim().toLowerCase(), m.trusted !== false]));
+  const trustBySource = trustBySourceMap(matches);
   let anyResolved = false;
   for (const src of cited) {
     const trusted = trustBySource.get(src.trim().toLowerCase());
@@ -692,7 +711,13 @@ export function groundedOnUntrustedOnly(answer: string, matches: readonly Knowle
  * Pure.
  */
 export function evidenceIsUntrustedOnly(matches: readonly KnowledgeMatch[]): boolean {
-  return matches.length > 0 && matches.every((m) => m.trusted === false);
+  // Dedup by source (untrusted if ANY entry for the source is trusted:false) so an
+  // untagged DUPLICATE of an untrusted source — e.g. an augmented cited chunk —
+  // can't break the all-untrusted check; a single genuinely-trusted source still
+  // makes it false (mixed is the per-claim guard's concern). Distinct-source pools
+  // behave exactly as the prior `every(trusted===false)`.
+  const trust = trustBySourceMap(matches);
+  return trust.size > 0 && [...trust.values()].every((trusted) => trusted === false);
 }
 
 export interface CitationEnforcement {

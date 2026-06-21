@@ -1,4 +1,4 @@
-import { type KnowledgeMatch } from "./knowledge-recall.js";
+import { trustBySourceMap, type KnowledgeMatch } from "./knowledge-recall.js";
 import { splitPreservingSentencePunctuation } from "./internals.js";
 
 /**
@@ -23,7 +23,10 @@ export function untrustedOnlySentences(
   answer: string,
   matches: readonly KnowledgeMatch[]
 ): readonly string[] {
-  const trustBySource = new Map(matches.map((m) => [m.source.trim().toLowerCase(), m.trusted !== false]));
+  // Shared once-poisoned-⇒-poisoned source trust (a source is trusted only if EVERY
+  // match for it is trusted) — so an untagged DUPLICATE of an untrusted source (an
+  // augmented cited chunk) can't clear the per-claim cue via last-value-wins.
+  const trustBySource = trustBySourceMap(matches);
 
   const citedSources: string[] = [];
   const masked = answer.replace(CITATION_FROM_RE, (_m, src: string) => {
