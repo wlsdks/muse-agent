@@ -2,6 +2,7 @@
 
 - ✓ muse status privacy posture line — cli-excellence fire 1
 - ✓ muse --help / non-TTY first-screen local-first quickstart block — cli-excellence fire 2
+- ✓ first-screen taglines aligned to learns-you/local-first identity via single MUSE_TAGLINE const (--help + REPL banner) — cli-excellence fire 3
 - ◦ chat REPL bottom HUD (chat-ink.ts) shows model·proactive·agent·tools·skills·tokens but NOT the local-only privacy posture — sibling of the `muse status` privacy line (cli-excellence fire 1). Surface a compact 🔒 indicator when local-only is on. Gate: `pnpm --filter @muse/cli test`. (cli-excellence theme — different (pkg,kind) than fire 1)
 - ✓ eval:two-edit-fix completeness battery — computer-control fire 54: a harder multi-step eval (2 edits across 2 files; test passes only if BOTH bugs fixed) that catches a stop-after-one-edit model. Mirrors eval-multifile-fix harness; OUTCOME-graded; discrimination verified deterministically (one-edit→FAIL, both→PASS). 12B PASSes 1/1 live (cross-file 2-edit completeness confirmed — cumulative effect of fires 47/49/51). Opus ④b judge PASS. Kept standalone (pass^1); promote into eval:multistep once pass^k-confirmed. REMAINING flywheel directions: wrong-first-fix re-iterate eval (naive first edit insufficient → must re-read+re-edit), or theme repoint if the vein is exhausted. (detail in docs/goals/loops/computer-control.md fire 54)
 

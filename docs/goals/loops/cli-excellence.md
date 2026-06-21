@@ -27,3 +27,14 @@ ratchet: testFiles +1 (program-help.test.ts) · @muse/cli 2895 green · check ex
 - **리스크**: 낮음. 다양성: fire1=info-projection(status) → fire2=first-screen(--help), 다른 kind.
 - **레퍼런스**: gemini-cli vs claude-code 첫화면 비교 + 60초-to-value 온보딩. https://shipyard.build/blog/claude-code-vs-gemini-cli/ · https://www.appcues.com/blog/best-user-onboarding-examples
 - lesson: 동시-루프 환경에서 fire 시작 fetch는 금세 stale → 머지가 끌어온 raw-NUL byte-hygiene 회귀를 자체 수정하려다, origin/main이 이미 canonical 픽스(commit 4871aca9, backslash-u-0000 escape)를 가진 걸 발견 → 자체수정 폐기하고 최신 origin/main 재머지로 canonical 픽스 채택. 교훈: 머지가 끌어온 회귀는 자체 패치 전에 origin이 이미 고쳤는지 먼저 확인(divergent fix 회피). 또 self-eval은 풀 테스트 미실행이라 byte-hygiene 회귀를 못 잡음 — `pnpm check`가 진짜 게이트.
+
+## fire 3 · 2026-06-21 · skill v2.1.0 · 7cf0571e
+meta: value-class=new-capability · pkg=@muse/cli · kind=first-screen/identity-copy · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +1 (muse-identity.ts new; tests in program-help+muse-banner) · @muse/cli 2900 green · smoke:cli 9/9 · lint 0 · fabrication 0
+
+- **무엇**: 두 첫화면 태그라인을 단일 진실원 const `MUSE_TAGLINE`("The personal AI that learns you — local-first, private by default")로 정렬. `muse --help` 설명("Model-agnostic inspirational AI agent")과 REPL 배너 태그라인("your personal AI agent & assistant") 둘 다 generic·불일치였음 → 새 `muse-identity.ts` const를 program.ts(.description)와 muse-banner.ts(tagline)에서 공유. 여신 아트 불가침(태그라인 라인만 교체).
+- **왜**: 사용자가 첫화면에서 가장 먼저 읽는 헤드라인이 제품 정체성("Learns you, not the world"·local-first)을 숨기고 generic LLM 래퍼처럼 보였다. 단일 const로 두 표면이 drift 불가(fire 1의 단일-진실원 패턴 재적용).
+- **리뷰지점**: 와이어링 테스트가 실제 렌더(배너 문자열 + outputHelp) grade, mutation-first RED 확인(const 변형→identity+banner RED; .description/tagline 와이어링 변형→해당 테스트 RED). 라이브 `--help`+배너 둘 다 새 태그라인 표시 확인. 독립 Opus ④b judge PASS(7/7). grounding: CLAUDE.md 정체성 + local-only 기본 posture에 근거.
+- **리스크**: 낮음. diff 5파일(muse-identity.ts 신규 + program.ts + muse-banner.ts + 2 테스트). 다양성: fire1=info-projection(status)→fire2=onboarding(--help quickstart)→fire3=identity-copy(태그라인, --help+배너), 다른 kind.
+- **레퍼런스**: claude-code/gemini-cli 첫화면 헤드라인·정체성 표기 관행. https://shipyard.build/blog/claude-code-vs-gemini-cli/
+- note: 풀 `pnpm check`는 @muse/model/web-search-policy property-fuzz가 "Test timed out 5000ms"(8.6s)로 1개 RED였으나 — 박스 포화(~17 동시 루프)發 false-timeout(격리 재실행 384 green, 내 @muse/cli 슬라이스 무관). [[project_test_hygiene_loop]] 패턴. 슬라이스 자체는 build/narrow-test/mutation/smoke/lint 전부 green이라 출하.
