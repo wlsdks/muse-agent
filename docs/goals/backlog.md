@@ -21,7 +21,7 @@
 - ✓ muse doctor --local warnings scannable (⚠ marker, not neutral ·) — cli-excellence fire 11
 - ✓ muse notes reindex [i/N] progress position (responsiveness) — cli-excellence fire 12
 - ✓ muse --help command list sorted alphabetically (scannable, configureHelp) — cli-excellence fire 13
-- ◦ muse --help command GROUPING into categories (gh-style CORE/MEMORY/…) via commander helpGroup — bigger curation, decompose. (cli-excellence)
+- ✓ muse --help command GROUPING into categories — DONE cli-excellence fires 20-21 (core + long-tail, 9 ordered headings)
 - ✓ muse doctor default summary timestamp humanized (fire-8 sibling) — cli-excellence fire 14
 - ✓ muse remind list flags overdue pending reminders (⚠ overdue) — cli-excellence fire 15
 - ✓ chat-repl in-chat reminder list overdue marker (parity with remind list) — cli-excellence fire 16
@@ -2946,3 +2946,4 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ✓ muse --help long-tail categorization (5 more headings: Automation/Connections/Documents/Reports/Diagnostics; tail 74→14) — cli-excellence fire 21
 - ✓ muse objectives list barren empty-state → action-bearing grounded next-action — cli-excellence fire 22
 - ◦ barren empty-state siblings: episode list / checkins list / commitments scan → action-bearing next-action (same class as fire 22, lower-traffic) (cli-excellence)
+- ✓ muse status model-source: local-only ignores ambient cloud key (was falsely "inferred from GEMINI_API_KEY"; mirrors doctor) — cli-excellence fire 23
