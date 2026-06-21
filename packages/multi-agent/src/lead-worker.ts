@@ -334,6 +334,24 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
     executions.push(await runOne(subtask, deps, priorContext.length > 0 ? priorContext : undefined));
   }
 
+  const completed = executions.filter((e) => e.status === "completed").length;
+  // Fail-close: a decomposition where ZERO sub-tasks grounded has nothing to fuse —
+  // handing only failed/ungrounded executions to the synthesizer fabricates a confident
+  // answer from absent evidence (fabrication-floor breach; MAST proceed-despite-failure).
+  // Skip synthesis entirely and mirror the single-agent path's honest-empty answer.
+  if (completed === 0) {
+    return {
+      decomposed: subtasks.length > 1,
+      executions,
+      finalAnswer: "",
+      reason:
+        `${planned ? "model-planned" : "structural"} decomposition → 0/${executions.length} sub-tasks grounded (no grounded answer)` +
+        (truncated ? ` (capped at ${MAX_SUBTASKS})` : ""),
+      subtasks,
+      truncated
+    };
+  }
+
   // Fan-in objective-satisfaction (maker != judge): did the synthesis incorporate
   // every completed sub-task, or silently drop one? Fail-soft — a verifier error
   // leaves the answer as-is (never blocks the run).
@@ -380,7 +398,6 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
     } catch { /* detector unavailable — surface nothing */ }
   }
   const split = planned ? "model-planned" : "structural";
-  const completed = executions.filter((e) => e.status === "completed").length;
 
   return {
     decomposed: subtasks.length > 1,

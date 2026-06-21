@@ -81,6 +81,17 @@ export interface AskRunLogParams {
     readonly subtaskConflicts?: readonly string[];
     readonly synthesisIncomplete?: readonly string[];
   };
+  /**
+   * Source-check signals on a GROUNDED answer (grounded≠true): the answer rested
+   * only on untrusted sources, or a citation was unsupported / a claim uncited.
+   * Logged so the error-analysis flywheel doesn't see a grounded-but-untrusted
+   * answer as a clean success — the same reason `decomposition` is logged.
+   */
+  readonly sourceCheck?: {
+    readonly untrustedOnly: boolean;
+    readonly citationUnsupported: boolean;
+    readonly citationUncited: boolean;
+  };
 }
 
 /**
@@ -102,6 +113,7 @@ export function buildAskRunLog(params: AskRunLogParams): RunLogInput {
       success: params.success,
       toolsUsed: params.toolsUsed,
       ...(params.decomposition !== undefined ? { decomposition: params.decomposition } : {}),
+      ...(params.sourceCheck !== undefined ? { sourceCheck: params.sourceCheck } : {}),
       ...(params.errorMessage !== undefined ? { error: params.errorMessage } : {})
     },
     source: "cli.local"

@@ -208,6 +208,22 @@ describe("runLeadWorkerTask — surfaces cross-subtask conflicts at the fan-in (
   });
 });
 
+describe("runLeadWorkerTask — a decomposed run where ZERO sub-tasks ground is honest-empty, never a synthesized answer from absent evidence (fabrication floor)", () => {
+  it("every sub-task fails ⇒ finalAnswer is \"\" and the synthesizer is NOT invoked (no confident answer fabricated from nothing)", async () => {
+    let synthesizeCalls = 0;
+    const result = await runLeadWorkerTask("다음 3개 해줘: 1. a 2. b 3. c", deps({
+      execute: async () => { throw new Error("worker down"); },
+      synthesize: async () => { synthesizeCalls += 1; return "CONFIDENT but ungrounded answer"; }
+    }));
+    expect(result.decomposed).toBe(true);
+    expect(result.executions.length).toBeGreaterThanOrEqual(2);
+    expect(result.executions.every((e) => e.status !== "completed")).toBe(true);
+    expect(result.finalAnswer).toBe(""); // honest empty — mirrors the single-agent failed path
+    expect(synthesizeCalls).toBe(0); // short-circuited before the fabrication-prone synthesis
+    expect(result.reason).toContain("0/");
+  });
+});
+
 describe("runLeadWorkerTask — verifier-gated single re-synthesis recovers a dropped sub-task (H1 follow-up)", () => {
   const req = "다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록";
 

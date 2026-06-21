@@ -4,6 +4,7 @@ import {
 } from "@muse/agent-specs";
 import { extractBearerToken } from "@muse/auth";
 import {
+  createGateEmbedder,
   parseBoolean,
   resolveActionLogFile,
   resolveContactsFile,
@@ -190,7 +191,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     agentRuntime: options.agentRuntime,
     agentSpecRegistry,
     defaultModel: options.defaultModel,
-    modelProvider: options.modelProvider
+    modelProvider: options.modelProvider,
+    embed: createGateEmbedder(process.env)
   });
   registerCompatibilityRoutes(server, {
     admin: options.admin,
