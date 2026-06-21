@@ -128,3 +128,24 @@ the test CLASS, not the file name, when assessing coverage.
 
 mutation-first: truncating a shipped grid row turned 2 tests RED; restored → 6/6
 GREEN. ④b independent Opus judge: PASS.
+
+## fire 6 · 2026-06-22 · skill v2.1.0 · (pending commit)
+meta: value-class=companion-presence · area=companion · kind=feature · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles +0 (added 3 cases to IdleChatterTests) · companion×refactor 1 · companion×feature 1 · settings×feature 1 · server×refactor 1 · web×ux 1 · tests×test 1 · fabrication 0
+browser-check: n/a (Swift-only; companion bubble has no DOM)
+
+- **What**: `IdleChatter.timeGreeting(hour:language:)` — a time-of-day opening line
+  (morning 5–11 / afternoon 12–17 / evening 18–22 / late-night 23–4), localized
+  KO/EN, hour normalized defensively. Wired so the companion's FIRST line of a
+  session is the time greeting, then the existing cycle.
+- **Why**: Jinan wants the companion to feel present and say genuine things — a
+  generic "Hi" every launch feels canned; a greeting that matches the actual hour
+  reads as alive.
+- **Review point**: 24-hour bucket exhaustiveness (disjoint, no gap) + the
+  showIdleLine first-line branch keeps idleLineIndex/recentIdle/auto-clear
+  invariants. Independent Opus ④b judge walked all 24 hours + confirmed wiring.
+- **Risk**: low — pure fn + one branch in showIdleLine; bubble lifecycle intact.
+  No security surface.
+
+mutation-first: shifting the morning bucket 5...11→6...11 turned the boundary
+test RED; restored → 12/12 GREEN. ④b independent Opus judge: PASS.

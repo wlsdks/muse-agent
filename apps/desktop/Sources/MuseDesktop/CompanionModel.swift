@@ -76,7 +76,13 @@ final class CompanionModel: ObservableObject {
         guard !busy, !listening, !inputVisible, bubble.isEmpty else { return }
         // Show a quick line instantly (never feels dead), then replace it with a
         // genuinely generated thought from the local model when it arrives.
-        let canned = IdleChatter.nextCannedLine(idleLines(), last: lastIdleText, index: idleLineIndex)
+        let canned: String
+        if idleLineIndex == 0 {
+            let hour = Calendar.current.component(.hour, from: Date())
+            canned = IdleChatter.timeGreeting(hour: hour, language: language)
+        } else {
+            canned = IdleChatter.nextCannedLine(idleLines(), last: lastIdleText, index: idleLineIndex)
+        }
         idleLineIndex += 1
         setIdle(canned)
         Task { [weak self] in await self?.generateIdleThought() }

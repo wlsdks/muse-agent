@@ -21,6 +21,20 @@ public enum IdleChatter {
         return primary
     }
 
+    /// A time-of-day-appropriate opening line, so the companion's first greeting
+    /// of a session feels present (morning/afternoon/evening/late-night) rather
+    /// than a generic hello. `hour` is a 0–23 clock hour (normalized defensively).
+    public static func timeGreeting(hour: Int, language: ResolvedLanguage) -> String {
+        let h = ((hour % 24) + 24) % 24
+        let ko = language == .korean
+        switch h {
+        case 5...11: return ko ? "좋은 아침이에요, 진안 ☀️" : "Good morning ☀️"
+        case 12...17: return ko ? "오후도 잘 보내고 있어요?" : "Hope your afternoon's going well"
+        case 18...22: return ko ? "좋은 저녁이에요 🌆" : "Good evening 🌆"
+        default: return ko ? "늦었네요 — 무리하지 말아요 🌙" : "It's late — don't overdo it 🌙"
+        }
+    }
+
     /// Clean + accept a model-generated thought, or `nil` if it should be dropped:
     /// empty, too long, an "I'm not sure"-style refusal, or a near-duplicate of a
     /// recently shown line (so repeated 8B greetings don't feel like a stuck loop).

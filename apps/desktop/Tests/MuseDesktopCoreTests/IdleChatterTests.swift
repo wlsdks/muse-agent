@@ -43,6 +43,30 @@ final class IdleChatterTests: XCTestCase {
         XCTAssertNil(IdleChatter.acceptThought("그건 잘 모르겠어요."))
     }
 
+    func testTimeGreetingBucketsByHour() {
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 8, language: .english), "Good morning ☀️")
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 14, language: .english), "Hope your afternoon's going well")
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 20, language: .english), "Good evening 🌆")
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 2, language: .english), "It's late — don't overdo it 🌙")
+    }
+
+    func testTimeGreetingBoundaries() {
+        // morning 5–11, afternoon 12–17, evening 18–22, night 23–4
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 5, language: .english), "Good morning ☀️")
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 11, language: .english), "Good morning ☀️")
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 12, language: .english), "Hope your afternoon's going well")
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 18, language: .english), "Good evening 🌆")
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 22, language: .english), "Good evening 🌆")
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 23, language: .english), "It's late — don't overdo it 🌙")
+    }
+
+    func testTimeGreetingIsLocalizedAndHourNormalized() {
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 8, language: .korean), "좋은 아침이에요, 진안 ☀️")
+        // 26 → 2 (night), -1 → 23 (night): defensive normalization, never crashes
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: 26, language: .english), "It's late — don't overdo it 🌙")
+        XCTAssertEqual(IdleChatter.timeGreeting(hour: -1, language: .english), "It's late — don't overdo it 🌙")
+    }
+
     func testRejectsNearDuplicateOfRecent() {
         // Same words, different case/whitespace/punctuation ⇒ treated as a repeat.
         XCTAssertNil(IdleChatter.acceptThought("Hi there!", recent: ["hi  there"]))
