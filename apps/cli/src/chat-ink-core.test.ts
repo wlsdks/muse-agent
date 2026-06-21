@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { MUSE_TAGLINE } from "./muse-identity.js";
 
 import {
   buildTurnMessages,
@@ -13,6 +14,7 @@ import {
   friendlyError,
   buildRecap,
   chatToolApprovalGate,
+  formatNoModelMessage,
   firstOpenToday,
   formatJobsList,
   composeMorningGreeting,
@@ -555,5 +557,17 @@ describe("buildTurnMessages with image attachments", () => {
   it("omits the attachments field when there are none", () => {
     const user = buildTurnMessages("sys", [], "hi", undefined, []).find((m) => m.role === "user");
     expect(user && "attachments" in user).toBe(false);
+  });
+});
+
+describe("formatNoModelMessage — first-run onboarding for a brand-new user", () => {
+  it("leads with the local-first identity and names only real setup commands", () => {
+    const out = formatNoModelMessage();
+    expect(out).toContain(MUSE_TAGLINE);                 // identity lead, not a bare error
+    expect(out.startsWith("muse: ")).toBe(false);        // not the old generic-error opener
+    expect(out).toContain("muse setup local");           // real command
+    expect(out).toContain("muse setup model");           // real command
+    expect(out).toContain("muse setup wizard");          // real command
+    expect(out).toMatch(/local.*free|free.*local/i);     // local framed as the free/private default
   });
 });
