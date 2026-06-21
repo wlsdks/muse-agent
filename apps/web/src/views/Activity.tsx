@@ -1,15 +1,29 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { AsyncBlock, Badge, Card } from "../components/ui.js";
-import { useI18n } from "../i18n/index.js";
+import { useI18n, type Translate } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { HistoryResponse, ProactiveHistoryResponse } from "../api/types.js";
 
 function statusTone(status?: string): "ok" | "err" | "neutral" {
-  if (status === "completed" || status === "success") return "ok";
-  if (status === "failed" || status === "error") return "err";
+  if (status === "completed" || status === "success" || status === "performed") return "ok";
+  if (status === "failed" || status === "error" || status === "refused") return "err";
   return "neutral";
+}
+
+/// Localized status label (literal keys keep it type-safe), raw status otherwise.
+function statusLabel(status: string, t: Translate): string {
+  switch (status) {
+    case "completed": return t("actstatus.completed");
+    case "success": return t("actstatus.success");
+    case "failed": return t("actstatus.failed");
+    case "error": return t("actstatus.error");
+    case "refused": return t("actstatus.refused");
+    case "performed": return t("actstatus.performed");
+    case "pending": return t("actstatus.pending");
+    default: return status;
+  }
 }
 
 export function ActivityView({ client }: { client: ApiClient }) {
@@ -43,7 +57,7 @@ export function ActivityView({ client }: { client: ApiClient }) {
                     {r.startedAt ? ` · ${new Date(r.startedAt).toLocaleString(locale)}` : ""}
                   </div>
                 </div>
-                {r.status && <Badge tone={statusTone(r.status)}>{r.status}</Badge>}
+                {r.status && <Badge tone={statusTone(r.status)}>{statusLabel(r.status, t)}</Badge>}
               </div>
             ))}
           </AsyncBlock>

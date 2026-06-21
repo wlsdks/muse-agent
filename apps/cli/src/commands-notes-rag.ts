@@ -403,11 +403,37 @@ async function saveIndex(path: string, index: NotesIndex): Promise<void> {
  */
 export interface ReindexSummary {
   readonly indexPath: string;
+  /** Markdown files found under the notes dir (0 ⇒ nothing to index). */
+  readonly totalFiles: number;
   readonly embedded: number;
   readonly skipped: number;
   readonly failed: number;
   readonly totalChunks: number;
   readonly index: NotesIndex;
+}
+
+/**
+ * The line(s) `muse notes reindex` prints after a run. When ZERO markdown
+ * files were found (fresh install, mistyped `--dir`, or an unset
+ * `MUSE_NOTES_DIR`), a bare `Done. 0 embedded, 0 cached, 0 failed` reads as a
+ * silent failure — so emit a distinct, action-bearing empty-state that says
+ * what was searched and how to fix it. Every suggested command/env var is
+ * real; all counts come from the filesystem walk (fabrication 0). Pure +
+ * exported for direct test coverage.
+ */
+export function formatReindexOutcome(
+  summary: Pick<ReindexSummary, "totalFiles" | "embedded" | "skipped" | "failed" | "totalChunks" | "indexPath">,
+  context: { readonly dir: string }
+): string {
+  if (summary.totalFiles === 0) {
+    return [
+      `No notes to index — found 0 Markdown files under ${context.dir}.`,
+      `  • Capture one now:        muse note "remember this"`,
+      `  • Or point at your vault: export MUSE_NOTES_DIR=/path/to/notes   (or muse notes reindex --dir <path>)`,
+      `Once you have notes, \`muse ask\` / \`muse recall\` will ground answers on them.`
+    ].join("\n");
+  }
+  return `Done. ${summary.embedded.toString()} embedded, ${summary.skipped.toString()} cached, ${summary.failed.toString()} failed. ${summary.totalChunks.toString()} chunks total in ${summary.indexPath}`;
 }
 
 export async function reindexNotes(
@@ -493,6 +519,7 @@ export async function reindexNotes(
     index,
     indexPath,
     skipped,
+    totalFiles: found.length,
     totalChunks: next.reduce((sum, f) => sum + f.chunks.length, 0)
   };
 }
@@ -608,7 +635,7 @@ export function registerNotesRagCommands(program: Command, io: ProgramIO): void 
         model,
         onProgress: (line) => io.stdout(`  ${line}\n`)
       });
-      io.stdout(`\nDone. ${summary.embedded.toString()} embedded, ${summary.skipped.toString()} cached, ${summary.failed.toString()} failed. ${summary.totalChunks.toString()} chunks total in ${summary.indexPath}\n`);
+      io.stdout(`\n${formatReindexOutcome(summary, { dir })}\n`);
       if (summary.failed > 0) {
         io.stderr(
           `(${summary.failed.toString()} file(s) failed to embed — is Ollama running with '${model}' pulled? ` +

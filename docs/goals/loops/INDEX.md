@@ -26,4 +26,6 @@
 | `multi-agent` | lead-worker 오케스트레이션 · 서브에이전트 핸드오프 신뢰성 (MAST coordination 가드 · 핸드오프 스키마 검증 · termination) (worktree `/tmp/muse-multi-agent`, branch `loop/multi-agent`, Tier2 push, merge-to-main ea 3 fires) | [multi-agent.md](multi-agent.md) | 15 | `d08bb006` (f15 PASS: completed human stderr signals) | v2.0.0 | active (cron `972211ed`, session-only) |
 | `learning-surfacing` | 정체성 "Learns you, not the world." 체감화 — 학습 기계(user-model/Playbook/correction-decay)를 결정론+근거인용으로 surface (worktree `/tmp/muse-learning-surfacing`, branch `loop/learning-surfacing`, Tier2 push + 3-fire main FF-merge) | [learning-surfacing.md](learning-surfacing.md) | 21 | `e0ec786f` | v2.1.0 | active (cron `e8138ee2`, session-only 20m) |
 
+| `cli-excellence` | 최고급 CLI — 첫 화면 완성도 · 표시 정보(상태/근거/학습/안내) 품질 · CLI 성능 (여신 아트 불가침) (worktree `/tmp/muse-cli-excellence`, branch `loop/cli-excellence`, Tier2 push + PR) | [cli-excellence.md](cli-excellence.md) | 7 | `305b844b` | v2.1.0 | active (cron `a4520c8e`, session-only 20m) |
+
 <!-- New loops: add a row here on first registration; update your own row's last-fire/commit each fire. -->
