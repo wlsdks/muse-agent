@@ -12,6 +12,31 @@ function twoWorkers() {
   return [a, b];
 }
 
+describe("MultiAgentOrchestrator — fan-in synthesis/verify deadline (explicit termination of a hung fan-in call)", () => {
+  it("a HUNG synthesizer is terminated at the deadline → falls back to the concatenation, the run completes", async () => {
+    const orchestrator = new MultiAgentOrchestrator({ idFactory: () => "syn-hang", workerTimeoutMs: 40, workers: twoWorkers() });
+    const result = await orchestrator.run(
+      { messages: [{ content: "x", role: "user" }], model: "m" },
+      { synthesizeFinalAnswer: () => new Promise<string>(() => undefined) }
+    );
+    // synthesis timed out → fail-soft to the ## Name concatenation; the run did NOT hang.
+    expect(result.response.output).toContain("## Generalist");
+    expect(result.response.output).toContain("## Critic");
+  }, 3000);
+
+  it("a HUNG verifier is terminated at the deadline → keeps the synthesized answer, the run completes", async () => {
+    const orchestrator = new MultiAgentOrchestrator({ idFactory: () => "ver-hang", workerTimeoutMs: 40, workers: twoWorkers() });
+    const result = await orchestrator.run(
+      { messages: [{ content: "should we cache?", role: "user" }], model: "m" },
+      {
+        synthesizeFinalAnswer: async () => "FINAL answer",
+        verifyFinalAnswer: () => new Promise(() => undefined)
+      }
+    );
+    expect(result.response.output).toBe("FINAL answer");
+  }, 3000);
+});
+
 describe("MultiAgentOrchestrator — final-answer synthesis (SB next: one coherent answer)", () => {
   it("when synthesizeFinalAnswer is provided, response.output is the synthesized answer (not the ## Name concat)", async () => {
     const orchestrator = new MultiAgentOrchestrator({ idFactory: () => "o1", workers: twoWorkers() });

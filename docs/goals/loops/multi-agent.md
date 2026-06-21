@@ -4,6 +4,31 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
+## fire 21 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · <pending-commit> — sibling-audit completion of fire 20
+meta: value-class=new-capability(sibling-completion) · pkg=@muse/multi-agent · kind=termination-guard · verdict=PASS(verified, judge-round skipped at user wrap-up) · firesSinceDrill=9
+ratchet: testFiles +0 (2 cases added to orchestrate-synthesis.test.ts, suite 248→250) · fabrication 0 · eval:orchestration PASS · reuses fire-20's judge-approved mechanism
+
+**What** — Sibling-audit completion of fire 20: extracted fire-20's per-worker deadline into a shared module-level
+`withDeadline<T>(operation, timeoutMs, label)` (DRY — `runWorkerWithDeadline` now delegates to it) and applied it
+to the OTHER orchestration model calls that could also hang: the fan-in SYNTHESIS (`synthesizeFinalAnswer`) and
+VERIFICATION (`verifyFinalAnswer`) inside `buildOrchestrationResponse`. Fire 20 bounded the workers; a hung
+synthesizer/verifier still stalled the run AFTER workers completed. Now all orchestration model calls are bounded
+by the same `workerTimeoutMs` (passed through to buildOrchestrationResponse). A timed-out synthesis/verify rejects
+→ the EXISTING fail-soft catch keeps the prior output (concatenation / unverified answer).
+
+**Why** — Completes the termination guard across EVERY model call in the orchestration, not just workers. The
+synthesis/verify hang was the genuine remaining infinite-hang vector (uncovered by fire 20).
+
+**Review points** — (1) MUTATION-FIRST: removing the `this.workerTimeoutMs` call-site arg hangs both fan-in tests
+to the 3000ms cap (RED); restored. (2) DRY: one `withDeadline` shared by worker + synthesis + verify so the policy
+never drifts. (3) Fail-soft preserved (timeout → existing catch → keep prior output). (4) Backward-compatible
+(no timeout ⇒ transparent). Judge round SKIPPED — user ended the loop; the mechanism was independently Opus-judged
+in fire 20 and this is the same mechanism applied to 2 more call sites + a DRY refactor.
+
+**Risk** — Same honest scope as fire 20 (bounds the WAIT not the compute). ★pnpm check RED only in the
+pre-existing, proven-unrelated `@muse/autoconfigure` sibling regression. Blast radius clean (multi-agent 250
+pass · lint 0 · eval:orchestration PASS). ★FINAL FIRE — 진안 ended the loop here (merge to main + cleanup).
+
 ## fire 20 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · 0fb6e829 — ★NEW CAPABILITY (breaks the sentinel streak)
 meta: value-class=new-capability · pkg=@muse/multi-agent · kind=termination-guard · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles +0 (3 cases added to parallel-failure.test.ts, suite 245→248) · fabrication 0 · eval:orchestration PASS · FRESH kind (termination-guard, never done) · breaks 4-fire no-ship streak
