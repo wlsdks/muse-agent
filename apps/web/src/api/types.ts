@@ -326,3 +326,12 @@ export interface InboxResponse {
   readonly providerId: string;
   readonly total: number;
 }
+
+export interface DaemonFlagView {
+  key: string;
+  label: string;
+  enabled: boolean;
+}
+export interface DaemonFlagsResponse {
+  flags: DaemonFlagView[];
+}

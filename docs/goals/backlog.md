@@ -110,7 +110,7 @@
     - ◦ CLI 스킬 resolver 통일(형제) — `apps/cli/commands-skills.ts`의 private `resolveAuthoredSkillsDir`/`resolveSkillRewardsFile`를 autoconfigure 공유본으로 통일(commands-skills·commands-learned·chat-ink 3파일 import 변경), gate-asymmetry 제거
   - ◦ web 설정/daemon 토글 — proactivity·episodic·skill학습·watch daemon on/off:
     - ✓ daemon-flags read API — `GET /api/settings/daemon-flags`(shapeDaemonFlags: 6 플래그 effective on/off, parseBoolean 데몬과 동일 resolver, settings-routes.ts) — surfaces fire 67 (`668c4df5`); NEXT=웹 Settings 뷰가 소비
-    - ◦ web Settings 뷰 — fire 67 daemon-flags API 소비(플래그 목록·on/off 배지)
+    - ✓ web Settings 데몬 카드 — `SettingsView`에 "Background daemons" 카드(fire 67 daemon-flags API 소비, label+on/off 배지, summarizeFlags "N of M enabled") — surfaces fire 68 (`<pending>`); 설정 콘솔 읽기-side 완성
     - ◦ 토글 write — 데몬 플래그 on/off PUT (env→runtime 브리지 필요; ~80 env 플래그 점진 배선, 상태변경)
 - ⚠ FLAKY(공유, 비-surfaces): `@muse/model/src/web-search-policy.test.ts > property fuzz > never throws…`가 ~1/3 비결정 실패(격리 2/3 통과) — 모든 루프 merge-to-main을 간헐 차단. @muse/model 오너/test-hygiene 루프가 fuzz 생성기 seed 고정 필요
   - ✓ web MCP allowlist 보안 섹션 (읽기) — `McpServersView`가 `GET /api/mcp/security` 소비, 허용목록·도구출력 상한 표시; summarizeAllowlist의 빈목록=unrestricted 정직신호 — surfaces fire 66 (`eac90550`)

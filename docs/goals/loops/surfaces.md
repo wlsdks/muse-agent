@@ -620,3 +620,13 @@ ratchet: api 932/932 · fabrication 0 · self-eval exit 0 · check exit 0 · smo
 - **왜**: 진안 "proactivity·episodic·skill학습·watch daemon 웹에서 토글"의 데이터 레이어(read-first). **다양성 RATCHET 강제**: 최근 8 fire 중 (web,view)가 5/8 — 또 web-view면 6/8 위반이라 이번은 반드시 다른 kind → (api,read)로 전환(설정 영역). 토글(PUT)+웹 뷰는 후속.
 - **리뷰지점(정직=effective state)**: 6 플래그 기본값이 실제 read-site와 일치해야 거짓 안 함 — 독립 judge가 6개 전부 read-site 대조(episodic chat-end-session:97·home-watch tick-daemons:678·conflict commands-daemon:580·proactive server:351·bg-review autoconf:840·knowledge autoconf:629, 전부 false) 확인. parseBoolean 재사용(truthy={true,1,yes,on}, 손수 `==="true"` 아님→런타임과 안 갈림). mutation-first: 기본값 flip→empty-env 테스트 RED·env 무시→override 테스트 RED. 보안: read-only GET·동일 auth 게이트·고정 6키 화이트리스트(process.env 통째 덤프 아님, 시크릿 노출 0)·불리언만. 정직한 갭: 토글 write·웹 뷰 후속.
 - **리스크**: 없음(apps/api 3파일, api build clean·api 932/932·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 6-기본값-정직·parseBoolean재사용·auth·시크릿0·다양성 검증 후 PASS).
+
+## fire 68 · 2026-06-21 · skill v2.0.0 · <pending>
+meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=settings-daemons-view · verdict=PASS · firesSinceDrill=7
+ratchet: web tests 107/107 (+3) · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 52/0 · lint clean
+
+- **무엇**: 기존 `SettingsView`에 read-only "Background daemons" 카드 추가 — fire 67의 `GET /api/settings/daemon-flags` 소비, 6 데몬/기능 플래그를 label + on/off 배지로 표시. 순수 `summarizeFlags`(settings-flags.ts: total + enabled 카운트) "N of M enabled" 요약 + `DaemonFlagView`/`DaemonFlagsResponse` 타입 + i18n(en/ko). 설정 콘솔 읽기-side 완성(fire 67 API의 뷰).
+- **왜**: 진안 "데몬 웹에서 토글"의 fire 67 데이터 레이어 다음 뷰 — 어떤 백그라운드 데몬이 켜졌는지 웹 Settings에서 본다. (web,view) 4→5/8(fire 67 api-read가 옛 web-view 윈도우 밖으로 밀어내 한도 내). 토글 write는 후속.
+- **리뷰지점**: mutation-first — summarizeFlags(.filter 제거→2 RED·enabled 하드코딩0→1 RED), 독립 judge 재확인. 기존 SettingsView 무손상(시그니처/props·연결폼·언어·모델·setupStatus 카드 그대로, 카드 additive 삽입)·신규 query queryKey `["daemon-flags"]`(기존 setup/models와 분리). 보안: read-only GET(서버 auth 게이트)·label escaped children. i18n en/ko 키셋+토큰({enabled}/{total}) 패리티. 정직한 갭: 토글 write(env→runtime 브리지)·curate/author 후속.
+- **리스크**: 없음(apps/web 5파일, web build tsc+vite·web 107/107·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 카운트정합·기존뷰무손상·읽기전용·i18n·다양성·mutation 검증 후 PASS).
+- **드릴 예고**: fire 69 = firesSinceDrill 8(연속 allPASS≥8 트리거) + 3배수 merge-to-main 윈도우 → fire 69는 JUDGE-DRILL(고의 나쁜-슬라이스→FAIL확인→롤백→진짜fix) + fires 61-69 main 배치. fire 66 deferred merge도 그때 재시도.

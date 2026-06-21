@@ -127,6 +127,10 @@ const en = {
   "settings.ready": "ready",
   "settings.notSet": "not set",
   "settings.language": "Language",
+  "settings.daemons": "Background daemons",
+  "settings.daemonsSummary": "{enabled} of {total} enabled",
+  "settings.on": "on",
+  "settings.off": "off",
   "settings.credit": "Design system derived from Linear via VoltAgent/awesome-design-md (MIT). See apps/web/design/DESIGN.md.",
 
   "chat.askAnything": "Ask Muse anything",
@@ -338,6 +342,10 @@ const ko: Strings = {
   "settings.ready": "준비됨",
   "settings.notSet": "미설정",
   "settings.language": "언어",
+  "settings.daemons": "백그라운드 데몬",
+  "settings.daemonsSummary": "{total}개 중 {enabled}개 켜짐",
+  "settings.on": "켜짐",
+  "settings.off": "꺼짐",
   "settings.credit": "디자인 시스템은 VoltAgent/awesome-design-md(MIT)의 Linear에서 가져왔습니다. apps/web/design/DESIGN.md 참고.",
 
   "chat.askAnything": "무엇이든 Muse에게 물어보세요",
