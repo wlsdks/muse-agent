@@ -21,7 +21,6 @@ struct CompanionView: View {
         }
         .padding(18)
         .frame(width: 360, height: 440)
-        .overlay(alignment: .topTrailing) { expandButton }
         .background(WindowDragArea())
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: model.inputVisible)
         .animation(.easeInOut(duration: 0.22), value: model.bubble)
@@ -34,22 +33,6 @@ struct CompanionView: View {
             .frame(width: 188, height: 224)
             .offset(y: drift ? -5 : 5)
             .animation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true), value: drift)
-    }
-
-    /// One tap into the full Muse app (chat + every panel).
-    private var expandButton: some View {
-        Button {
-            NotificationCenter.default.post(name: .museOpenFullApp, object: nil)
-        } label: {
-            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(.white.opacity(0.75))
-                .padding(7)
-                .background(.ultraThinMaterial, in: Circle())
-        }
-        .buttonStyle(.plain)
-        .help("Open the full Muse app")
-        .padding(10)
     }
 
     @ViewBuilder private var answerCard: some View {
@@ -94,7 +77,7 @@ struct CompanionView: View {
     }
 
     private var inputBar: some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .bottom, spacing: 12) {
             Button(action: { model.startVoice() }) {
                 Image(systemName: model.orbState == .listening ? "stop.circle.fill" : "mic.fill")
                     .font(.system(size: model.orbState == .listening ? 17 : 14, weight: .medium))
@@ -103,9 +86,11 @@ struct CompanionView: View {
             .foregroundStyle(model.orbState == .listening ? Color(red: 0.95, green: 0.45, blue: 0.5) : Color.secondary)
             .help(model.orbState == .listening ? "Tap to finish" : "Talk to Muse by voice")
 
-            TextField(model.language.askPlaceholder, text: $model.inputText)
+            // Grows vertically as you type so a long question stays fully visible.
+            TextField(model.language.askPlaceholder, text: $model.inputText, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.system(size: 13.5))
+                .lineLimit(1...6)
                 .onSubmit { model.submit() }
 
             Button(action: { model.submit() }) {
@@ -114,11 +99,19 @@ struct CompanionView: View {
             .buttonStyle(.plain)
             .foregroundStyle(LinearGradient(colors: [violet, Color(red: 0.40, green: 0.62, blue: 0.98)], startPoint: .top, endPoint: .bottom))
             .opacity(model.inputText.trimmingCharacters(in: .whitespaces).isEmpty ? 0.35 : 1)
+
+            // Open the full Muse app — lives here, on the right of the bubble.
+            Button(action: { NotificationCenter.default.post(name: .museOpenFullApp, object: nil) }) {
+                Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 13, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Color.secondary)
+            .help("Open the full Muse app")
         }
         .padding(.horizontal, 17)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 0.8))
+        .padding(.vertical, 11)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 21, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).strokeBorder(.white.opacity(0.22), lineWidth: 0.8))
         .shadow(color: .black.opacity(0.2), radius: 12, x: 0, y: 4)
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }

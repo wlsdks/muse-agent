@@ -1,7 +1,45 @@
 import type { RecallHitRecord } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
-import { formatConsolidationPlan, promoteRecalledMemories, searchMemoryEntries } from "./commands-memory.js";
+import { formatBeliefWhy, formatConsolidationPlan, promoteRecalledMemories, searchMemoryEntries } from "./commands-memory.js";
+
+describe("formatBeliefWhy — honest about a key you had Muse FORGET", () => {
+  const NOW = Date.parse("2026-06-21T00:00:00Z");
+  const rec = (over: Record<string, unknown> = {}) => ({
+    kind: "fact",
+    key: "home_city",
+    value: "Seoul",
+    learnedAt: "2026-06-10T00:00:00Z",
+    source: "user" as const,
+    ...over
+  });
+
+  it("says you forgot it (cited by date) instead of resurfacing the stale pre-forget value", () => {
+    const out = formatBeliefWhy(
+      [rec({ value: "Seoul", learnedAt: "2026-06-10T00:00:00Z" }), rec({ value: "", learnedAt: "2026-06-19T00:00:00Z", retraction: true })],
+      "home_city",
+      NOW
+    );
+    expect(out).toContain('you had me forget "home_city" on 2026-06-19');
+    expect(out).not.toContain("Seoul");
+  });
+
+  it("shows the normal provenance for a key RE-SET after a retraction (you reopened it)", () => {
+    const out = formatBeliefWhy(
+      [rec({ learnedAt: "2026-06-18T00:00:00Z", retraction: true }), rec({ value: "Busan", learnedAt: "2026-06-19T00:00:00Z" })],
+      "home_city",
+      NOW
+    );
+    expect(out).not.toContain("you had me forget");
+    expect(out).toContain("home_city = Busan");
+  });
+
+  it("shows the normal provenance for a never-forgotten key", () => {
+    const out = formatBeliefWhy([rec({ value: "Busan" })], "home_city", NOW);
+    expect(out).toContain("home_city = Busan");
+    expect(out).not.toContain("you had me forget");
+  });
+});
 
 const facts = { name: "Jin", city: "Seoul", role: "engineer" };
 const prefs = { reply_style: "concise", language: "Korean" };

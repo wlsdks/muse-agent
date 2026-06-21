@@ -50,6 +50,13 @@ struct UIStrings {
                                 "Chat, today, tasks, calendar, notes, memory & tools — no terminal needed.") }
     var sectionAppearance: String { t("외형", "Appearance") }
     var sectionVoice: String { t("음성", "Voice") }
+    var sectionModels: String { t("모델", "Models") }
+    var modelsHint: String { t("터미널 없이 로컬 모델을 설치/삭제하세요.", "Install or remove local models — no terminal.") }
+    var modelsEmpty: String { t("설치된 모델이 없어요", "No models installed") }
+    var modelDefault: String { t("기본", "default") }
+    var modelPullPlaceholder: String { t("모델 이름 (예: gemma4:12b)", "model name (e.g. gemma4:12b)") }
+    var modelPull: String { t("받기", "Pull") }
+    var modelPulling: String { t("받는 중…", "Pulling…") }
     var sectionStartup: String { t("시작", "Startup") }
     var launchAtLogin: String { t("로그인 시 Muse 자동 실행", "Launch Muse at login") }
     var sectionMessengers: String { t("메신저 연결", "Messengers") }
