@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 29 · 2026-06-21 · skill v2.0 · <commit-pending> (JUDGE-DRILL #3 ✅ + terse "Done." claim added safely)
+## fire 29 · 2026-06-21 · skill v2.0 · 0dbc38d3 (JUDGE-DRILL #3 ✅ + terse "Done." claim added safely)
 meta: value-class=new-capability(+drill) · pkg=@muse/agent-core · kind=honesty/false-done · verdict=DRILL-PASS+judge#2-PASS · firesSinceDrill=0(reset)
 ratchet: testFiles 1071→1071 (+3 terse positives + 7 negation negatives, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2537 · pnpm check exit 0 · lint clean
 - JUDGE-DRILL(firesSinceDrill=10): fire-28 `CODE_DONE_RE`에 bare `\bdone\b` 추가(terse "Done." 잡는 "개선"처럼) + "Done." 긍정테스트. **결정론 게이트 통과(2537)** — answerClaimsAction negative 코퍼스에 "done"-negation 케이스 0이라 over-match invisible. ④b judge **FAIL**: `\bdone\b`가 negation/partial/idiom/question/passive 10케이스 오탐 + **assembled 게이트 직접 구동**(code-fix req + "I'm not done yet" + 도구0 → 백스톱 FIRES = honest 진행중 답변 re-prompt) 증명. → 롤백.
