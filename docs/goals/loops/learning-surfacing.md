@@ -181,3 +181,13 @@ ratchet: testFiles +0 (human-formatters.test +2) · @muse/cli human-formatters 3
 - **리뷰지점**: fire 3 패턴 그대로(payload field + formatMemoryShow 섹션). non-empty일 때만 payload 포함(빈 노이즈 없음). provenance 없으면 try/catch로 learned half 유지. `selectRecentlyForgotten`(fire 18) 재사용.
 - **리스크**: 없음 — additive, human-formatters 31 green, 독립 Opus ④b judge가 consume+citation+무회귀 재확인 PASS. (cli daemon 9 timeout=동시루프 포화, 무관.)
 - **NEXT(fire 20)**: ★JUDGE-DRILL 하드카운터 — firesSinceDrill이 fire 20에 10 도달 → **미루기 불가** 드릴(나쁜 슬라이스 주입→④b FAIL 확인→롤백→진짜 fix), 완료 시만 카운터 0 리셋.
+
+## fire 20 · 2026-06-21 · skill v2.1.0 · pending
+meta: value-class=wiring+JUDGE-DRILL · pkg=@muse/cli · kind=forgotten-surface-wiring · verdict=PASS · firesSinceDrill=10→0(DRILL discharged) · firesSinceMainMerge=2
+ratchet: testFiles +0 (commands-status.test +3) · @muse/cli status 24 green · lint clean · fabrication 0
+
+- **무엇**: ★**JUDGE-DRILL**(firesSinceDrill 10 도달, 미루기 불가) — `formatFirstLearned`를 source 무관 항상 "you told me"로 위조하는 나쁜 슬라이스 주입(auto fact를 사용자 진술로, **테스트까지 rubber-stamp해 green**)→독립 Opus ④b judge가 **FAIL + 구체적 위반 5개**(비결정론 상수·fabrication·테스트 rubber-stamp·docstring 모순·정확한 fix) 명시→`git restore` 롤백 확인(59 green 복원). **검증자가 rubber-stamp 아님 증명.** 카운터 0 리셋. 이어 진짜 슬라이스: `muse status`에 **"recently forgotten: <컴팩트 1줄>"**(`readRecentlyForgottenLine`, fire 5 learned 형제). forgotten 이제 **3 일일 surface 전부**(recap·memory show·status).
+- **왜**: 드릴 = fail-close 게이트 신뢰성 증명(maker≠judge 보상통제 — Opus가 천장이라 같은-모델일 때 드릴이 보상). 진짜 슬라이스 = 일일 대시보드도 양면 정직(배운 것 + 잊은 것).
+- **리뷰지점**: `selectRecentlyForgotten`(fire 18) 재사용, 30일 윈도우(learned와 동일 상수), retraction 마커 code-select. fail-soft(`.catch`). non-empty-only snapshot. drill 롤백은 status 파일과 무관(belief-provenance-store 복원=net 0).
+- **리스크**: 없음 — drill 롤백 clean, status 24 green, 독립 Opus ④b judge 진짜 슬라이스 PASS. (cli 1 TUI timeout=포화 flake, 무관.)
+- **lesson**: JUDGE-DRILL은 테마의 하드 불변식을 정확히 겨냥한 나쁜 슬라이스가 효과적 — fire 17 judge가 경고했던 over-claim 실패모드(auto→"you told me")를 재현하니 judge가 5개 구체 위반으로 즉시 적발. green-tests-but-fabricating이 핵심 시나리오.

@@ -19,7 +19,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { mergeModelKeysFromFile, resolveDefaultModel } from "@muse/autoconfigure";
-import { FileUserMemoryStore, projectRecentlyLearned, summarizeRecentlyLearned } from "@muse/memory";
+import { defaultBeliefProvenanceFile, FileUserMemoryStore, projectRecentlyLearned, readBeliefProvenance, selectRecentlyForgotten, summarizeRecentlyLearned } from "@muse/memory";
 import {
   readFollowups,
   readObjectives,
@@ -236,6 +236,29 @@ export async function readRecentlyLearnedLine(
     : undefined;
 }
 
+/**
+ * Compact one-line "what you had me forget" for `muse status` — the FORGETS half,
+ * the sibling of `readRecentlyLearnedLine`. The most recent retraction within the
+ * window plus a `(+N more)` count, cited by date; code selects from the recorded
+ * retraction markers (`selectRecentlyForgotten`), never the model. Undefined when
+ * nothing was forgotten, so the caller renders the line only when there's news.
+ */
+export async function readRecentlyForgottenLine(
+  provenanceFile: string,
+  nowMs: number = Date.now()
+): Promise<string | undefined> {
+  const forgotten = selectRecentlyForgotten(await readBeliefProvenance(provenanceFile), {
+    now: nowMs,
+    withinDays: RECENTLY_LEARNED_WINDOW_MS / (24 * 60 * 60 * 1_000)
+  });
+  const head = forgotten[0];
+  if (head === undefined) {
+    return undefined;
+  }
+  const line = `${head.key.replace(/_/gu, " ")} (forgotten ${head.forgottenAt.slice(0, 10)})`;
+  return forgotten.length > 1 ? `${line} (+${(forgotten.length - 1).toString()} more)` : line;
+}
+
 interface PersistedTask {
   readonly id: string;
   readonly title: string;
@@ -274,6 +297,7 @@ async function collectStatus(userId: string) {
     | undefined;
 
   const recentlyLearnedLine = await readRecentlyLearnedLine(userMemoryFile, effectiveUserKey).catch(() => undefined);
+  const recentlyForgottenLine = await readRecentlyForgottenLine(defaultBeliefProvenanceFile()).catch(() => undefined);
 
   const trust = await readTrust(effectiveUserKey).catch(() => ({ blockedTools: [] as string[], trustedTools: [] as string[] }));
   const routineHours = persona?.facts?.routine_active_hours;
@@ -332,6 +356,7 @@ async function collectStatus(userId: string) {
       updatedAt: persona?.updatedAt,
       userId,
       ...(recentlyLearnedLine ? { recentlyLearned: recentlyLearnedLine } : {}),
+      ...(recentlyForgottenLine ? { recentlyForgotten: recentlyForgottenLine } : {}),
       vetoCount: persona?.preferences
         ? Object.keys(persona.preferences).filter((k) => k.startsWith("veto:")).length
         : 0,
@@ -600,6 +625,9 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
       }
       if (snap.persona.recentlyLearned) {
         io.stdout(`    recently learned: ${snap.persona.recentlyLearned}\n`);
+      }
+      if (snap.persona.recentlyForgotten) {
+        io.stdout(`    recently forgotten: ${snap.persona.recentlyForgotten}\n`);
       }
       if (snap.persona.factCount + snap.persona.preferenceCount > 0) {
         const parts: string[] = [];
