@@ -529,7 +529,7 @@ ratchet: api tests 863/863 (+5) · testFiles +1 · fabrication 0 · self-eval ex
 - **리뷰지점**: mutation-first — 순수 shaper 단위테스트(정렬 순서·total 무드롭·hint/pKnown null정규화·**pKnown=0 보존**). sort 뒤집으면 RED, `?? null`→ternary로 0이 null 되게 하면 RED(judge가 0-edge 커버리지 갭 지적→테스트 추가). 보안: GET-only(write 0)·auth 게이트(accountability와 byte-동일)·weaknessesFile 서버-resolve(경로주입 없음). 서버 파일접근 검증됨(accountability가 objectives/actions 파일 읽는 동일 패턴). 정직한 갭: 웹 뷰 아직 없음(다음 fire)·weaknesses만(playbook/eval 후속)·read-only.
 - **리스크**: 없음(신규 라우트+shaper, api build tsc clean·api 863/863·self-eval exit 0, 독립 Opus ④b judge가 store정합·배선·보안·이빨·0-edge 검증 후 PASS).
 
-## fire 59 · 2026-06-21 · skill v2.0.0 · <pending>
+## fire 59 · 2026-06-21 · skill v2.0.0 · deda3d6c
 meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=self-improve-weaknesses-view · verdict=PASS · firesSinceDrill=8
 ratchet: web tests 83/83 (+20) · testFiles +3 · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 51/0 · 표면 균형 web26·desktop13·cli19·api1
 
