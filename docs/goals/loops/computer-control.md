@@ -5,7 +5,7 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 57 · 2026-06-21 · skill v2.0 · <commit> (crates/runner: trim split multibyte char on truncated run_command output — clean UTF-8, no U+FFFD)
+## fire 57 · 2026-06-21 · skill v2.0 · 589a2272 (crates/runner: trim split multibyte char on truncated run_command output — clean UTF-8, no U+FFFD)
 meta: value-class=correctness(output-integrity) · pkg=crates/runner · kind=runner/utf8-truncation · verdict=PASS · firesSinceDrill=1
 ratchet: cargo tests +2(split-char trim, complete-tail intact) · fabrication 0 · crates/runner 14 cargo tests · lint 0/0 · ★eval e2e 박스포화로 미측정(reverify-fix 또 timeout)
 - 무엇: run_command 러너의 drainer가 출력을 BYTE 단위로 cap → 멀티바이트 UTF-8 문자 중간에서 잘리면 from_utf8_lossy가 U+FFFD(�)로 치환 → 모델이 verify 로그를 손상으로 읽음. `trim_partial_utf8_tail`로 잘린 마지막 부분 문자를 제거(truncated일 때만) → 잘린 출력도 깨끗한 valid UTF-8.
