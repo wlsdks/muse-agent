@@ -2467,9 +2467,18 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   scores confidence, and escalates ONCE to heavy on low/unmeasurable confidence. Wired OPT-IN into
   `buildTieredOrchestration` via `MUSE_TIERED_CASCADE` (default off → plan byte-identical). Cascade is now
   LIVE in the orchestration path. REMAINING: also wire `muse ask --tiered` single-query path (commands-ask.ts).
-  · **C3 (live eval)** — use `bench:local` (fire 1) for the latency win + accuracy parity: MUSE_TIERED_CASCADE
-  on vs always-heavy on a mixed easy/hard set; assert faster mean latency AND no grounding/answer regression.
-  Needs Ollama up.
+  · **C3 (live eval) — DONE fire 13** `eval:cascade` (scripts/eval-cascade.mjs + pure `lib/cascade-eval.mjs`
+  scoreCascadeEval, node:test'd 8 cases). The GATE LOGIC (escalate iff low-confidence — a weak fast answer
+  never silently kept; a confident one never needlessly escalated) is mutation-proven in the UNIT layer.
+  LIVE-MEASURED latency on this box (fast=qwen3:8b / heavy=qwen3.6:35b-a3b): cascade **23.9% faster** (12970ms
+  vs 17045ms). HONEST CAVEAT (④ judge): escalation was 0% (qwen3:8b confident on the whole set at threshold
+  −1.0), so only the latency-win-on-confident-queries arm was exercised LIVE; the escalate→heavy arm was not
+  triggered, and the runner's live `gateCorrect` is self-consistency (escalation derived from the same
+  predicate the scorer re-checks), NOT an independent measurement — the gate's adversarial proof is the unit
+  tests. LOCAL-OLLAMA-ONLY skip when down. REMAINING (◦): a hard prompt / lower threshold that actually
+  triggers live escalation to exercise the heavy arm end-to-end. The cascade vein (C1 decision · C2
+  execution+logprobs · C2b orchestration wiring · C3 latency proof) is otherwise complete; `ask --tiered`
+  single-query surface still remains.
 - ✓ **doctor: surface the Muse-side speed env — DONE local-speed fire 6** — `museSpeedEnvCheck` +
   `readMuseSpeedEnv` (apps/cli) report the Muse-PROCESS speed env (`MUSE_OLLAMA_NUM_BATCH` fire-2 lever,
   `MUSE_OLLAMA_NUM_CTX`, `MUSE_OLLAMA_KEEP_ALIVE`) on every `muse doctor`, with a concrete num_batch
@@ -2491,6 +2500,12 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   test caught that `parseInteger` rejects 0). num_thread keeps `> 0`. Completes the Ollama adapter
   speed-knob family (num_ctx/num_batch/num_predict/keep_alive/num_thread/num_gpu). Per-box win still
   needs `bench:local` (C3-style) measurement.
+- ✓ **model warmup on server start — DONE fire 14** `MUSE_WARMUP_MODEL` (apps/api `warmUpModelIfConfigured`)
+  fires a tiny fire-and-forget generate at server startup so the FIRST user request is warm — keep_alive only
+  keeps the model resident BETWEEN requests, so the first request after a start otherwise pays the full cold
+  load (tens of seconds for a 12B). Opt-in (default off → startup byte-identical), fail-soft (a warmup error
+  never blocks server start). SIBLING ◦: surface MUSE_WARMUP_MODEL in `museSpeedEnvCheck` (doctor) like
+  num_batch/num_predict, and a per-box cold-start delta measurement.
 - ✓→Done **injection-pattern cross-span tightening** — the EN role_override family + 2 KO
   role_override + 1 KO extraction regexes used unbounded `.*`/`/s`, so three unrelated words from
   DIFFERENT sentences combined into a false hit (live repro: "disregard the noise … finally …
