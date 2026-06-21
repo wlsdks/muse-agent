@@ -162,3 +162,12 @@ ratchet: testFiles +0 (belief-provenance-store.test +3) · @muse/memory 572 gree
 - **리뷰지점**: `source`는 `FactProvenance.source`(user=실제 사용자-진술 확인 있을 때만 — judge가 `muse memory set` 경로만 user-write 확인) → "you told me" 위조 불가. auto/legacy=conservative "I noticed". safeRecapText 유지.
 - **리스크**: 없음 — additive 필드+포맷터, memory 572 + recap 33 green, 독립 Opus ④b judge가 귀속 정직성+source 의미+무회귀 재확인 PASS.
 - **lesson**: 웹/API 학습 투영은 **MOOT** — 서버측 store가 factHistory 미populate(fire 3 노트 재확인; `toUserMemoryResponse`도 factHistory 없는 shape). 웹 "learned about you" 뷰는 서버 store가 supersession 기록(예: `collectFactSupersessions` 재사용)부터 선행돼야 = 별도 foundation. 남은 학습-표면은 전부 로컬-CLI 경로(memory show/status/chat/recap/brief)로 사실상 완성.
+
+## fire 18 · 2026-06-21 · skill v2.1.0 · pending
+meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=forgotten-projection · verdict=PASS · firesSinceDrill=8 · firesSinceMainMerge=carry(15-18 branch-safe, main race)
+ratchet: testFiles +0 (belief-provenance-store.test +3, commands-recap.test +2) · @muse/memory 578 green · recap 35 green · lint clean · fabrication 0
+
+- **무엇**: `muse recap`에 **"🗑️ Forgotten at your correction"** 섹션 — 정체성 **"FORGETS the moment you correct it"의 가시화**(learned의 대칭). `selectRecentlyForgotten`(@muse/memory): newest-event-per-key가 `retraction`(명시적 forget)인 키를 윈도우 내 선택(re-`set`이 clear), retraction date 인용.
+- **왜**: 학습만 보였고 "잊음"(정체성 두 번째 절반)은 백그라운드였음. 교정→forget이 실제 반영됨을 사용자가 봄. `recordRetraction`(chat `/forget` + `muse memory forget` 둘 다)이 남긴 마커 사용.
+- **리뷰지점**: newest-event-wins(`keysWithActiveRetraction` 규칙) → re-learned 키는 forgotten 안 뜸(judge 확인). raw entries 읽기는 `deriveFactProvenance`와 같은 소스, fail-soft + safeRecapText. `recentlyForgotten` optional.
+- **리스크**: 없음 — additive, memory 578 + recap 35 green, 독립 Opus ④b judge가 retraction 정직성+re-set-clears+무회귀 재확인 PASS. (cli daemon 9 timeout = 동시루프 포화 환경, 내 파일 무관 — judge 확인.)

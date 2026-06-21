@@ -1,6 +1,47 @@
 import { describe, expect, it } from "vitest";
 
-import { formatFirstLearned, selectRecentlyLearnedFacts, type FactProvenance } from "./belief-provenance-store.js";
+import { formatFirstLearned, selectRecentlyForgotten, selectRecentlyLearnedFacts, type BeliefProvenance, type FactProvenance } from "./belief-provenance-store.js";
+
+const bp = (over: Partial<BeliefProvenance>): BeliefProvenance => ({
+  userId: "u",
+  key: "home_city",
+  kind: "fact",
+  value: "Busan",
+  learnedAt: "2026-06-20T00:00:00Z",
+  ...over
+});
+
+describe("selectRecentlyForgotten (the FORGETS half of Learns-you)", () => {
+  const NOW2 = Date.parse("2026-06-21T00:00:00Z");
+
+  it("returns a key whose NEWEST event is a retraction within the window, cited by date", () => {
+    const out = selectRecentlyForgotten(
+      [
+        bp({ key: "pet", value: "cat", learnedAt: "2026-06-10T00:00:00Z" }),
+        bp({ key: "pet", value: "", learnedAt: "2026-06-19T00:00:00Z", retraction: true })
+      ],
+      { now: NOW2, withinDays: 30 }
+    );
+    expect(out).toEqual([{ forgottenAt: "2026-06-19T00:00:00Z", key: "pet" }]);
+  });
+
+  it("does NOT return a key re-set AFTER a retraction (the newest event wins)", () => {
+    const out = selectRecentlyForgotten(
+      [
+        bp({ key: "pet", learnedAt: "2026-06-18T00:00:00Z", retraction: true }),
+        bp({ key: "pet", value: "dog", learnedAt: "2026-06-19T00:00:00Z" })
+      ],
+      { now: NOW2, withinDays: 30 }
+    );
+    expect(out).toEqual([]);
+  });
+
+  it("excludes a retraction older than the recency window", () => {
+    expect(
+      selectRecentlyForgotten([bp({ key: "pet", learnedAt: "2026-01-01T00:00:00Z", retraction: true })], { now: NOW2, withinDays: 30 })
+    ).toEqual([]);
+  });
+});
 
 const NOW = Date.parse("2026-06-21T00:00:00Z");
 
