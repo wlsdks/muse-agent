@@ -28,6 +28,6 @@
 
 | `cli-excellence` | 최고급 CLI — 첫 화면 완성도 · 표시 정보(상태/근거/학습/안내) 품질 · CLI 성능 (여신 아트 불가침) (worktree `/tmp/muse-cli-excellence`, branch `loop/cli-excellence`, Tier2 push + PR) | [cli-excellence.md](cli-excellence.md) | 7 | `305b844b` | v2.1.0 | active (cron `a4520c8e`, session-only 20m) |
 
-| `desktop-enhance` | macOS desktop app 강화 + 뮤즈 캐릭터 상호작용 (번들 web 포함; ④c 브라우저 실측 검증) (worktree `/tmp/muse-desktop-enhance`, branch `loop/desktop-enhance`, Tier2 push + draft PR) | [desktop-enhance.md](desktop-enhance.md) | 3 | (pending) | v2.1.0 | active (cron `d7012104`, session-only 20m) |
+| `desktop-enhance` | macOS desktop app 강화 + 뮤즈 캐릭터 상호작용 (번들 web 포함; ④c 브라우저 실측 검증) (worktree `/tmp/muse-desktop-enhance`, branch `loop/desktop-enhance`, Tier2 push + draft PR) | [desktop-enhance.md](desktop-enhance.md) | 4 | (pending) | v2.1.0 | active (cron `d7012104`, session-only 20m) |
 
 <!-- New loops: add a row here on first registration; update your own row's last-fire/commit each fire. -->

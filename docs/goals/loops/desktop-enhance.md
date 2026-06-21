@@ -76,3 +76,26 @@ browser-check: n/a (Swift-only; server supervision has no DOM)
 
 mutation-first: linearizing the exponent turned 2 tests RED; restored → 4/4
 GREEN. ④b independent Opus judge: PASS.
+
+## fire 4 · 2026-06-22 · skill v2.1.0 · (pending commit)
+meta: value-class=palette-search-quality · area=web · kind=ux · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles +1 (commandFilter.test.ts, 7 cases) · companion×refactor 1 · settings×feature 1 · server×refactor 1 · web×ux 1 · fabrication 0
+browser-check: palette opened, 16 cmds on empty query; real-title substring "오늘"→1 (contains probe); bogus→0; live filter; no new JS console errors
+
+- **What**: extracted the command-palette filter into a pure `rankCommands`
+  (apps/web/src/components/commandFilter.ts) + 7 tests, upgrading a flat
+  substring filter to ranked matching (title-prefix > title-substring > group >
+  fuzzy subsequence), multi-term AND, stable tie order. Wired CommandPalette to it.
+- **Why**: the old filter was substring-only and order-insensitive — "stng"
+  wouldn't find "Settings", and a prefix hit didn't rank above a mid-string one.
+  Better palette search = faster keyboard navigation.
+- **Review point**: ranking changes result ORDER while the component's index nav
+  relies on `filtered` — index resets on open and clamps on length change, length
+  is stable across reorder, Enter is guarded. Independent Opus ④b judge ran the
+  ranking mutation itself + tested isSubsequence directly; confirmed no false
+  subsequence match and stable tie-break.
+- **Risk**: low — pure helper + one useMemo swap; a11y attributes untouched. No
+  security surface.
+
+mutation-first: changing the prefix score 100→60 turned the ranking test RED;
+restored → 7/7 GREEN. ④b independent Opus judge: PASS.
