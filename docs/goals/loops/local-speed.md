@@ -43,7 +43,7 @@ ratchet: pkg/kind DIFFERS (scripts/infra → model/adapter → multi-agent/casca
   검증: cli 2861 pass(신규 2 OUTCOME 케이스) · MUTATION-FIRST(INERT 분기 제거 → 2 RED "expected … to contain INERT"; revert→green) · pnpm check rc=0(api 887 + cli 2861) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(사실주장 정확성 웹검증 재확인, 자체 mutation 재현; 중복주석 결함 1건 지적 → 수정 완료).
   형제-감사: Muse-process 속도 env(MUSE_OLLAMA_NUM_BATCH 등) doctor 노출 + FA-capable-model-arch 경고 → backlog ◦ 2건.
 
-## fire 5 · 2026-06-21 · local-speed · <commit>
+## fire 5 · 2026-06-21 · local-speed · fe634ab8
 meta: value-class=new-capability · pkg=@muse/multi-agent · kind=cascade-execution · verdict=PASS · firesSinceDrill=5
 ratchet: (multi-agent, cascade) 2/5 fires, distinct kind from fire 3 (decision→execution) · fabrication 0 · additive(in-repo caller 0)
 - 무엇: FrugalGPT 캐스케이드 EXECUTION 프리미티브 `runCascade<T>({fast,heavy,run,confidenceOf,threshold})` → `{result,tier,escalated,fastConfidence}` (@muse/multi-agent cascade-run.ts). fast 모델 먼저 실행 → confident면 그 답 수용(모델 1회 실행 = 지연 win), low/측정불가 confidence면 heavy로 ONCE escalate. 단일 escalation 바운드(루프 없음, MAST step-repetition/termination 가드). fire 3의 `shouldEscalateToHeavy` 재사용.
