@@ -23,7 +23,7 @@ ratchet: testFiles +0 (same file +4 cases) · @muse/memory 41 files/513 tests gr
 - **리스크**: 없음 — additive, 513 green, lint clean, 독립 Opus ④b judge가 forget-filter mutation 직접 재확인 PASS.
 - **lesson**: Tier2 published 브랜치는 fire 시작 시 `rebase origin/main` 쓰지 마라 — 이미 push된 fire 커밋을 재작성해 force-push가 필요(계약 위반). **`git merge origin/main`을 써라**(published 커밋 보존, push가 fast-forward). 루프 프롬프트의 "rebase" 문구는 merge로 실행할 것([[project_paper_grounded_loop]] 재확인).
 
-## fire 3 · 2026-06-21 · skill v2.1.0 · pending
+## fire 3 · 2026-06-21 · skill v2.1.0 · 754af572
 meta: value-class=wiring · pkg=@muse/cli · kind=surface-wiring · verdict=PASS · firesSinceDrill=3 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +0 (human-formatters.test +2 cases) · @muse/cli 245 files/2861 tests green · lint clean · fabrication 0
 
