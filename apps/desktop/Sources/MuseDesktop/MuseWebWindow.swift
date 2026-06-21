@@ -6,12 +6,16 @@ import WebKit
 /// WKWebView, so the desktop app alone reaches all of Muse. Points at the local
 /// Muse web server (configurable in Settings); if it can't reach it, shows a
 /// friendly card with the one command to start the local servers.
-final class MuseWebWindowController: NSObject, WKNavigationDelegate {
+final class MuseWebWindowController: NSObject, WKNavigationDelegate, NSWindowDelegate {
     private var window: NSWindow?
     private var webView: WKWebView?
 
     func show() {
         if window == nil { build() }
+        // The full app is a real, focusable window — become a regular app while
+        // it's open so keyboard input + ⌘-Tab work (the companion is .accessory).
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
 
         // Manual override (advanced): a URL set in Settings loads directly.
@@ -41,6 +45,7 @@ final class MuseWebWindowController: NSObject, WKNavigationDelegate {
         win.isReleasedWhenClosed = false
         win.minSize = NSSize(width: 720, height: 520)
         win.center()
+        win.delegate = self
 
         let web = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
         web.navigationDelegate = self
@@ -49,6 +54,31 @@ final class MuseWebWindowController: NSObject, WKNavigationDelegate {
 
         window = win
         webView = web
+    }
+
+    /// Back to a Dock-less companion when the full window closes.
+    func windowWillClose(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    /// Security: keep the web view on the local Muse origin. Same-origin and
+    /// internal schemes load in-app; any external http(s) link opens in the
+    /// user's browser instead of navigating the app away.
+    func webView(_ webView: WKWebView,
+                 decidePolicyFor navigationAction: WKNavigationAction,
+                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        guard let url = navigationAction.request.url else { decisionHandler(.allow); return }
+        let scheme = url.scheme?.lowercased() ?? ""
+        let host = url.host ?? ""
+        let isLocal = host == "127.0.0.1" || host == "localhost"
+        if isLocal || ["about", "data", "blob"].contains(scheme) {
+            decisionHandler(.allow)
+        } else if scheme == "http" || scheme == "https" {
+            NSWorkspace.shared.open(url)   // external link → default browser
+            decisionHandler(.cancel)
+        } else {
+            decisionHandler(.cancel)
+        }
     }
 
     private func load(_ urlString: String) {

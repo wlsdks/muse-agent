@@ -1,6 +1,10 @@
 import { createApiServerOptions, seedExternalMcpServers } from "@muse/autoconfigure";
 import { resolveListenHost, resolveListenPort } from "./listen-config.js";
 import { buildServer } from "./server.js";
+import { watchParentProcess } from "./parent-watch.js";
+
+// When spawned by the desktop app, self-exit if that parent dies (no orphans).
+watchParentProcess();
 
 const port = resolveListenPort(process.env.PORT);
 const host = resolveListenHost(process.env.HOST);
