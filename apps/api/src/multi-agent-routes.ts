@@ -129,6 +129,8 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
       startedAt: entry.startedAt.toISOString(),
       status: entry.status,
       workerCount: entry.workerCount,
+      ...(entry.conflicts && entry.conflicts.length > 0 ? { conflicts: entry.conflicts } : {}),
+      ...(entry.verificationSatisfied !== undefined ? { verificationSatisfied: entry.verificationSatisfied } : {}),
       ...(entry.error ? { error: entry.error } : {})
     };
   });
