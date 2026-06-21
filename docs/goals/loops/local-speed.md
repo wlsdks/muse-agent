@@ -114,7 +114,7 @@ ratchet: apps/api FRESH (fires 1-10 미접촉) · fabrication 0 · default(env o
   발견+수정(별도 커밋): packages/memory/src/recently-learned.ts가 raw NUL(\x00) 구분자 3개로 byte-hygiene 게이트 깨뜨림(learning-surfacing fire 11 6df61b98가 origin/main에 올림 → 머지로 유입, 전 루프의 pnpm check 블록). \x00 escape로 치환(런타임 NUL 동일, 소스만 escape) → 공유 게이트 언블록. [별도 fix(memory) 커밋]
   decompose: C2b-wiring(orchestration) DONE; ask --tiered single-query path 배선 + C3(live eval) backlog 잔존.
 
-## fire 12 · 2026-06-21 · local-speed · <commit>
+## fire 12 · 2026-06-21 · local-speed · 1e32082a
 meta: value-class=new-capability · pkg=@muse/model+@muse/autoconfigure · kind=adapter-wiring · verdict=PASS · firesSinceDrill=3
 ratchet: (model, adapter-wiring) 2/8 윈도우(fire 7,12) — 임계 미만; fire-2 sibling 가족 완결 · fabrication 0 · default wire byte-identical
 - 무엇: 마지막 미배선 Ollama 어댑터 속도노브 2종 opt-in 배선 — `MUSE_OLLAMA_NUM_THREAD`(CPU 스레드)+`MUSE_OLLAMA_NUM_GPU`(GPU 레이어 오프로드). num_batch/num_predict 검증된 패턴 미러. ★KEY: `num_gpu=0`(CPU-only)은 VALID opt-in(num_batch와 달리) → 어댑터 `>= 0` 검증 + autoconfigure `parseNonNegativeInteger`(num_gpu=0 테스트가 `parseInteger`는 0 거부하는 실제 버그를 잡음). num_thread는 `> 0`.
