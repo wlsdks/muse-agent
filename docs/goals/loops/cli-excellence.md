@@ -72,3 +72,14 @@ ratchet: testFiles +0 (4 cases into commands-notes-rag.test.ts) · @muse/cli not
 - **리스크**: 낮음. diff 2파일(commands-notes-rag.ts + 테스트). totalFiles는 additive(타 호출부 3곳 필드만 읽음, shape assert 없음). 다양성: fire1-5(info-projection/onboarding/identity-copy/render/perf) → fire6 empty-state, 새 kind.
 - **레퍼런스**: NN/G empty-state 디자인 가이드(빈 상태는 다음 행동을 제시해야). https://www.nngroup.com/articles/empty-state-interface-design/
 - note: smoke:cli 7 pass / 2 fail(`muse chat`·`--stream` "got null"=30s 타임아웃) — fire 5에서 A/B로 환경성 확정한 그 프로브, 내 슬라이스는 notes 경로라 chat/api 무관(신규 실패 0).
+
+## fire 7 · 2026-06-21 · skill v2.1.0 · 305b844b
+meta: value-class=error-guidance · pkg=@muse/cli · kind=error-guidance · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles +0 (3 cases into program-help.test.ts) · @muse/cli formatUnknownCommand 격리 green · lint 0 · fabrication 0
+
+- **무엇**: unknown `muse <x>`가 가까운 매치 없을 때 "unknown command" + "run --help"(100+ 덤프)로 막다른 길이었음 → 순수 `formatUnknownCommand` 추출: near-miss "Did you mean" 경로 불변, no-match엔 POPULAR(chat·ask·status·today·remember·setup) 발견 on-ramp 추가. POPULAR을 **라이브 레지스트리(listAllCommandNames)와 교집합** → 실재 명령만 표시(fabrication 0).
+- **왜**: 오타/새 유저 추측 시 막다른 길 대신 데일리-드라이버 명령으로 안내. claude-code/git의 "did you mean" + 발견 힌트 관행. 모든 이름이 등록된 실명령(교집합 보증).
+- **리뷰지점**: 테스트가 반환 문자열(near-miss vs no-match vs 레지스트리-교집합) + 라이브 출력 grade, mutation-first RED(POPULAR 비우면 2 테스트 RED, near-miss는 green 유지). near-miss 경로 바이트동일 보존 + exitCode=1 유지. 기존 테스트가 옛 문구 assert 안 함(회귀 0). 독립 Opus ④b judge PASS(7/7). 여신 아트 불가침.
+- **리스크**: 낮음. diff 2파일(program.ts + 테스트). 다양성: fire1-6(info-projection/onboarding/identity-copy/render/perf/empty-state) → fire7 error-guidance, 새 kind.
+- **레퍼런스**: git "did you mean" + CLI 발견성(unknown→top commands) 관행. https://www.npmjs.com/package/commander
+- note: smoke:cli 7 pass / 2 fail = fire 5 A/B 확정 chat 라운드트립 환경 타임아웃, 내 unknown-command 변경과 무관(`muse --help` 프로브 PASS).
