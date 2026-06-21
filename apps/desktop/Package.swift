@@ -28,7 +28,8 @@ let package = Package(
                 "MuseDesktopCore",
                 .product(name: "WhisperKit", package: "argmax-oss-swift"),
                 .product(name: "TTSKit", package: "argmax-oss-swift")
-            ]
+            ],
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "MuseDesktopCoreTests",

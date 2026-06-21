@@ -8,23 +8,37 @@ import MuseDesktopCore
 /// shows activity when listening.
 final class CharacterView: NSView {
     enum State { case idle, listening, thinking, speaking }
-    enum Look { case orb, vector, pixel, harp }
+    enum Look { case goddess, orb, vector, pixel, harp }
+
+    /// The goddess mascot image (the README hero, transparent background),
+    /// bundled as a resource. Loaded once; nil → fall back to the orb.
+    private static let goddessImage: NSImage? = {
+        for bundle in [Bundle.module, Bundle.main] {
+            if let url = bundle.url(forResource: "muse-goddess", withExtension: "png"),
+               let img = NSImage(contentsOf: url) { return img }
+        }
+        return nil
+    }()
 
     var state: State = .idle { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
     var sprite: Sprite = SpriteLibrary.default {
         didSet { rebuildColorCache(); tick = 0; blinking = false; mouthOpen = false; needsDisplay = true }
     }
-    private var look: Look = .orb
+    private var look: Look = .goddess
 
-    /// `harp`/`lyre` → the glowing lyre; anything else → the glowing orb (default).
-    /// Only these two looks ship.
+    /// The goddess mascot is the default look; explicit alternates stay
+    /// selectable for dev. (The harp/lyre look was retired.)
     func setCharacterNamed(_ name: String?) {
         switch (name ?? "").lowercased() {
-        case "harp", "lyre":
-            look = .harp
-        default:
+        case "orb":
             look = .orb
+        case "vector":
+            look = .vector
+        case "pixel":
+            look = .pixel
+        default:
+            look = .goddess
         }
         tick = 0; needsDisplay = true
     }
@@ -34,7 +48,6 @@ final class CharacterView: NSView {
     private var mouthOpen = false
     private var timer: Timer?
     private var colorCache: [Character: NSColor] = [:]
-    private let noteColor = NSColor(calibratedRed: 0.90, green: 0.74, blue: 0.36, alpha: 1)
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -75,6 +88,13 @@ final class CharacterView: NSView {
         let phase = CGFloat(tick) * 0.08
 
         switch look {
+        case .goddess:
+            if let img = Self.goddessImage {
+                drawGoddess(img, in: bounds)
+            } else {
+                VoiceOrb.draw(in: bounds, state: state, phase: phase) // fallback if resource missing
+            }
+            return
         case .orb:
             VoiceOrb.draw(in: bounds, state: state, phase: phase)
             return
@@ -114,12 +134,18 @@ final class CharacterView: NSView {
             }
         }
 
-        if state == .listening || state == .speaking {
-            let note = "\u{266A}"
-            let size = max(12, cell * 2)
-            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: size, weight: .bold), .foregroundColor: noteColor]
-            note.draw(at: NSPoint(x: originX + artW - cell, y: originY + artH - cell * 2), withAttributes: attrs)
-        }
+    }
+
+    /// Draw the goddess image scaled to fit `rect` (aspect-preserving), with a
+    /// gentle breathing bob — the transparent PNG composites over the desktop.
+    private func drawGoddess(_ img: NSImage, in rect: NSRect) {
+        let bob: CGFloat = (tick % 60 < 30) ? 0 : 2
+        let aspect = img.size.height > 0 ? img.size.width / img.size.height : 1
+        var w = rect.width, h = rect.width / aspect
+        if h > rect.height { h = rect.height; w = rect.height * aspect }
+        let x = (rect.width - w) / 2
+        let y = (rect.height - h) / 2 - bob
+        img.draw(in: NSRect(x: x, y: y, width: w, height: h), from: .zero, operation: .sourceOver, fraction: 1)
     }
 
     // Tap → onClick (open input); drag → move the window. (SwiftUI's hosting view
