@@ -2931,3 +2931,5 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 
 - ✓ companion time-of-day greeting (IdleChatter.timeGreeting) — desktop-enhance fire 6
 - ✓ localize Automation status badges (autonomy-labels) — desktop-enhance fire 7
+- ✓ accessible Automation tablist (tabKeyNav + ARIA roles) — desktop-enhance fire 8 (JUDGE-DRILL)
+- ◦ Automation tabs: move DOM focus to the newly-selected tab on Arrow (roving-tabindex focus-follow, APG conformance) — desktop-enhance follow-up

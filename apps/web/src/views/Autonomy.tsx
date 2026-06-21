@@ -5,6 +5,7 @@ import { AsyncBlock, Badge, Card } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { safeDateTime } from "../lib/datetime.js";
 import { actionResultLabel, objectiveStatusLabel } from "./autonomy-labels.js";
+import { nextTabIndex } from "./tabKeyNav.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { ActionsResponse, ObjectivesResponse, VetoesResponse } from "../api/types.js";
@@ -41,12 +42,23 @@ export function AutonomyView({ client }: { client: ApiClient }) {
         {t("auto.subtitle")}
       </p>
 
-      <div className="tabs" style={{ margin: "16px 0" }}>
-        {TABS.map((entry) => (
+      <div className="tabs" style={{ margin: "16px 0" }} role="tablist" aria-label={t("nav.autonomy")}>
+        {TABS.map((entry, i) => (
           <button
             key={entry.id}
+            role="tab"
+            aria-selected={tab === entry.id}
+            tabIndex={tab === entry.id ? 0 : -1}
             className={`tab${tab === entry.id ? " active" : ""}`}
             onClick={() => setTab(entry.id)}
+            onKeyDown={(e) => {
+              const next = nextTabIndex(i, e.key, TABS.length);
+              const target = TABS[next];
+              if (target && next !== i) {
+                e.preventDefault();
+                setTab(target.id);
+              }
+            }}
           >
             {t(entry.labelKey)}
           </button>

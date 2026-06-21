@@ -171,3 +171,31 @@ mutation-first: flipping performed→refused key turned a mapping test RED;
 restored → 4/4 GREEN. ④b independent Opus judge: PASS.
 
 NOTE: fire 8 will hit consecutive-allPASS≥8 → JUDGE-DRILL required next fire.
+
+## fire 8 · 2026-06-22 · skill v2.1.0 · (pending commit) · ★JUDGE-DRILL
+meta: value-class=a11y-keyboard-nav · area=web · kind=a11y · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: testFiles +1 (tabKeyNav.test.ts, 6 cases) · companion×refactor 1 · companion×feature 1 · settings×feature 1 · server×refactor 1 · web×ux 1 · web×i18n 1 · web×a11y 1 · tests×test 1 · fabrication 0
+browser-check: Automation — role="tablist" + 3 role="tab", exactly 1 aria-selected, ArrowRight moved selection 0→1, .content bounded+scroll, nav-icon 16px, no new console errors
+
+★JUDGE-DRILL (consecutive allPASS≥8 trigger): first submitted a DELIBERATELY VACUOUS
+test for nextTabIndex (asserted only "returns a number" / "in range" — passes
+regardless of the mapping). The independent Opus ④b verifier correctly **FAILED**
+it, naming each vacuous assertion + exactly what a real test must assert and which
+one-line mutations it must catch. Proves the verifier is fail-close / not a
+rubber-stamp. Then rolled the test back and shipped the REAL value-pinned version.
+
+- **What**: accessible WAI-ARIA tablist for the Automation tabs — pure
+  `nextTabIndex(current,key,count)` (arrow wrap / Home / End) + role="tablist" /
+  role="tab" / aria-selected / roving tabIndex / onKeyDown wiring.
+- **Why**: the tabs were plain `<button>`s — no role, no keyboard arrow nav, no
+  selected-state for assistive tech. Now keyboard + screen-reader navigable.
+- **Review point**: `TABS[next]` access guarded (noUncheckedIndexedAccess on);
+  onClick + .active preserved; localized labels (fire 7) intact. ④b ran its own
+  second mutation (Home→count-1) → caught.
+- **Risk**: low — pure helper + ARIA attrs. No security surface.
+- **follow-up ◦**: focus does not yet move to the newly-selected tab on Arrow
+  (roving-tabindex focus-follow) — non-blocking per ④b; APG-conformance nit →
+  backlog.
+
+mutation-first: flipping ArrowRight direction → 2 RED; restored → 6/6 GREEN.
+④b independent Opus judge: DRILL=FAIL-as-expected, REAL=PASS.
