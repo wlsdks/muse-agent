@@ -4,6 +4,8 @@ import { useState } from "react";
 import { AsyncBlock, Badge, Button, Card, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 
+import { normalizeApiBaseUrl } from "../lib/apiUrl.js";
+
 import type { ApiClient } from "../api/client.js";
 import type { ContactsResponse, DaemonFlagsResponse, ModelsResponse } from "../api/types.js";
 import { summarizeFlags } from "./settings-flags.js";
@@ -59,21 +61,38 @@ export function SettingsView({
       <h1 className="page-title">{t("settings.title")}</h1>
 
       <Card title={t("settings.connection")} className="lifted">
-        <div style={{ display: "grid", gap: 12 }}>
-          <div>
-            <label className="field-label">{t("settings.apiUrl")}</label>
-            <input className="input" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://127.0.0.1:3030" />
-          </div>
-          <div>
-            <label className="field-label">{t("settings.token")}</label>
-            <input className="input" value={tok} onChange={(e) => setTok(e.target.value)} placeholder={t("settings.tokenPlaceholder")} />
-          </div>
-          <div>
-            <Button variant="primary" onClick={() => onSave?.(url.trim(), tok.trim())}>
-              {t("common.save")}
-            </Button>
-          </div>
-        </div>
+        {(() => {
+          const norm = normalizeApiBaseUrl(url);
+          const showError = url.trim().length > 0 && !norm.valid;
+          return (
+            <div style={{ display: "grid", gap: 12 }}>
+              <div>
+                <label className="field-label">{t("settings.apiUrl")}</label>
+                <input
+                  className="input"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  placeholder="http://127.0.0.1:3030"
+                  aria-invalid={showError}
+                />
+                {showError && (
+                  <p className="subtle" style={{ color: "var(--danger)", fontSize: 12, marginTop: 6 }}>
+                    {t("settings.apiUrlInvalid")}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="field-label">{t("settings.token")}</label>
+                <input className="input" value={tok} onChange={(e) => setTok(e.target.value)} placeholder={t("settings.tokenPlaceholder")} />
+              </div>
+              <div>
+                <Button variant="primary" disabled={!norm.valid} onClick={() => onSave?.(norm.url, tok.trim())}>
+                  {t("common.save")}
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
       </Card>
 
       <div style={{ marginTop: 16 }}>

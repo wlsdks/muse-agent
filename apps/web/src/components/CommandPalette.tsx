@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useI18n } from "../i18n/index.js";
+import { rankCommands } from "./commandFilter.js";
 
 export interface Command {
   readonly id: string;
@@ -30,13 +31,7 @@ export function CommandPalette({
   const [index, setIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) {
-      return commands;
-    }
-    return commands.filter((c) => c.title.toLowerCase().includes(q) || c.group.toLowerCase().includes(q));
-  }, [commands, query]);
+  const filtered = useMemo(() => rankCommands(commands, query), [commands, query]);
 
   useEffect(() => {
     if (open) {

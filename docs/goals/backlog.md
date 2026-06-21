@@ -2928,3 +2928,16 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ✓ Fan-in synthesis/verify DEADLINE — multi-agent fire 21 (sibling-audit completion of fire 20): extracted a shared `withDeadline` helper (DRY) and bounded the orchestration's synthesize + verify model calls (a hung synthesizer/verifier stalled the run after workers completed). Now ALL orchestration model calls are bounded by workerTimeoutMs; timeout → existing fail-soft keeps prior output. Mutation-first. (One ◦ remains: SupervisorAgent.run deadline — but SupervisorAgent has NO real (non-test) usage, so deprioritized.)
 - ◦ Per-worker deadline follow-ups (multi-agent fire-20 siblings): (a) wrap `SupervisorAgent.run`'s bare `await worker.run` (different class, single-worker handoff path) with the same deadline; (b) AbortSignal/provider cancellation so a timed-out worker's underlying call is actually CANCELLED (frees the GPU), not just abandoned — the deadline currently bounds the WAIT, not the compute.
 - ⏳ BLOCKER (shared pnpm check RED, NOT multi-agent): `@muse/autoconfigure` diagnostic-provider runtime-assembly e2e tests (runtime-assembly-e2e / -cache-e2e / -streaming-e2e + autoconfigure.test.ts) time out at 5000ms. PROVEN pre-existing + unrelated to the multi-agent loop (autoconfigure doesn't depend on @muse/multi-agent). Cause is in the recently-merged sibling LOCAL-SPEED loop's Ollama-adapter changes (num_predict cap / num_thread / num_gpu / num_batch). The responsible loop (or 진안) should triage — it blocks the shared `pnpm check` gate for every loop on the box.
+
+- ✓ companion time-of-day greeting (IdleChatter.timeGreeting) — desktop-enhance fire 6
+- ✓ localize Automation status badges (autonomy-labels) — desktop-enhance fire 7
+- ✓ accessible Automation tablist (tabKeyNav + ARIA roles) — desktop-enhance fire 8 (JUDGE-DRILL)
+- ◦ Automation tabs: move DOM focus to the newly-selected tab on Arrow (roving-tabindex focus-follow, APG conformance) — desktop-enhance follow-up
+- ✓ extract+test menu status line composition (MenuStatus) — desktop-enhance fire 9
+- ✓ extract+test onboarding fix-it guidance (OnboardingGuidance) — desktop-enhance fire 10
+- ✓ extract+test WebView navigation security gate (WebNavPolicy) — desktop-enhance fire 11
+- ◦ WebNavPolicy hardening nits: host.lowercased() for case-symmetry + treat IPv6 [::1] as loopback (fail-safe today) — desktop-enhance follow-up
+- ✓ adaptive idle-bubble display duration (IdleChatter.displaySeconds + cancellable clear) — desktop-enhance fire 12
+- ✓ extract+test messenger serverEnv mapping (MessagingEnv.build) — desktop-enhance fire 13
+- ◦ extract+test CalendarCredentials.serverEnv() mapping into Core (analogous sibling to MessagingEnv) — desktop-enhance follow-up
+- ✓ extract+test CalendarCredentials.serverEnv() (CalendarEnv.build) — desktop-enhance fire 14 (completes fire-13 sibling)

@@ -1,4 +1,5 @@
 import AppKit
+import MuseDesktopCore
 import WebKit
 
 /// The full Muse app window: the complete web UI (every panel — Chat, Today,
@@ -70,15 +71,13 @@ final class MuseWebWindowController: NSObject, WKNavigationDelegate, NSWindowDel
                  decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = navigationAction.request.url else { decisionHandler(.allow); return }
-        let scheme = url.scheme?.lowercased() ?? ""
-        let host = url.host ?? ""
-        let isLocal = host == "127.0.0.1" || host == "localhost"
-        if isLocal || ["about", "data", "blob"].contains(scheme) {
+        switch WebNavPolicy.decide(scheme: url.scheme ?? "", host: url.host ?? "") {
+        case .allow:
             decisionHandler(.allow)
-        } else if scheme == "http" || scheme == "https" {
+        case .openExternally:
             NSWorkspace.shared.open(url)   // external link → default browser
             decisionHandler(.cancel)
-        } else {
+        case .cancel:
             decisionHandler(.cancel)
         }
     }

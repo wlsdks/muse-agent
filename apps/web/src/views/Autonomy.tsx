@@ -4,6 +4,8 @@ import { useState } from "react";
 import { AsyncBlock, Badge, Card } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { safeDateTime } from "../lib/datetime.js";
+import { actionResultLabel, objectiveStatusLabel } from "./autonomy-labels.js";
+import { nextTabIndex } from "./tabKeyNav.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { ActionsResponse, ObjectivesResponse, VetoesResponse } from "../api/types.js";
@@ -40,12 +42,23 @@ export function AutonomyView({ client }: { client: ApiClient }) {
         {t("auto.subtitle")}
       </p>
 
-      <div className="tabs" style={{ margin: "16px 0" }}>
-        {TABS.map((entry) => (
+      <div className="tabs" style={{ margin: "16px 0" }} role="tablist" aria-label={t("nav.autonomy")}>
+        {TABS.map((entry, i) => (
           <button
             key={entry.id}
+            role="tab"
+            aria-selected={tab === entry.id}
+            tabIndex={tab === entry.id ? 0 : -1}
             className={`tab${tab === entry.id ? " active" : ""}`}
             onClick={() => setTab(entry.id)}
+            onKeyDown={(e) => {
+              const next = nextTabIndex(i, e.key, TABS.length);
+              const target = TABS[next];
+              if (target && next !== i) {
+                e.preventDefault();
+                setTab(target.id);
+              }
+            }}
           >
             {t(entry.labelKey)}
           </button>
@@ -78,7 +91,7 @@ function ActionsTab({ client, locale }: { client: ApiClient; locale: string }) {
                 {a.detail ? ` · ${a.detail}` : ""} · {new Date(a.when).toLocaleString(locale)}
               </div>
             </div>
-            <Badge tone={resultTone(a.result)}>{a.result}</Badge>
+            <Badge tone={resultTone(a.result)}>{actionResultLabel(a.result, t)}</Badge>
           </div>
         ))}
       </AsyncBlock>
@@ -108,7 +121,7 @@ function ObjectivesTab({ client, locale }: { client: ApiClient; locale: string }
                 {o.resolution ? ` · ${o.resolution}` : ""}
               </div>
             </div>
-            <Badge tone={statusTone(o.status)}>{o.status}</Badge>
+            <Badge tone={statusTone(o.status)}>{objectiveStatusLabel(o.status, t)}</Badge>
           </div>
         ))}
       </AsyncBlock>
@@ -138,7 +151,7 @@ function VetoesTab({ client, locale }: { client: ApiClient; locale: string }) {
                 {safeDateTime(v.vetoedAt, locale)}
               </div>
             </div>
-            <Badge tone="warn">veto</Badge>
+            <Badge tone="warn">{t("auto.vetoBadge")}</Badge>
           </div>
         ))}
       </AsyncBlock>
