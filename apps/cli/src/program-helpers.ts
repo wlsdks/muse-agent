@@ -120,6 +120,23 @@ export function buildAskRunLog(params: AskRunLogParams): RunLogInput {
   };
 }
 
+/**
+ * The text of a just-completed local chat turn to PERSIST (appendLastChatTurn) for
+ * session resume. Prefers `responseForHistory` — the CUE-FREE twin runLocalChat
+ * supplies — over the displayed `response`, so the display-only source-check
+ * warnings (untrusted-source / citation cues) are NOT replayed as trusted grounding
+ * evidence on the next session's priorHistory (poisoned-source fire 5; parity with
+ * the Ink chat's fire-4 fix). Falls back to `response` for any path without the twin,
+ * and `undefined` when there's no usable string (caller skips the write). Pure.
+ */
+export function chatTurnPersistText(body: unknown): string | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const rec = body as Record<string, unknown>;
+  if (typeof rec["responseForHistory"] === "string") return rec["responseForHistory"];
+  if (typeof rec["response"] === "string") return rec["response"];
+  return undefined;
+}
+
 export function defaultConfigPath(home?: string): string {
   const explicit = typeof home === "string" ? home.trim() : "";
   if (explicit.length > 0) return path.join(explicit, ".config", "muse", "config.json");

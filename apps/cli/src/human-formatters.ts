@@ -165,6 +165,13 @@ interface HumanMemoryRecord {
   readonly facts?: Record<string, string> | ReadonlyArray<{ readonly key: string; readonly value: string }>;
   readonly preferences?: Record<string, string> | ReadonlyArray<{ readonly key: string; readonly value: string }>;
   readonly recentTopics?: readonly string[];
+  /**
+   * Deterministic, source-cited lines of "what Muse recently learned about you"
+   * (from @muse/memory's projectRecentlyLearned → renderRecentlyLearnedLines).
+   * Each line carries its provenance citation; present only when the store has a
+   * populated factHistory (the local/file path), absent on the server path.
+   */
+  readonly recentlyLearned?: readonly string[];
 }
 
 export function formatMemoryShow(record: HumanMemoryRecord | undefined | null): string {
@@ -198,6 +205,12 @@ export function formatMemoryShow(record: HumanMemoryRecord | undefined | null): 
     lines.push("  Recent topics:");
     for (const topic of record.recentTopics) {
       lines.push(`    - ${topic}`);
+    }
+  }
+  if (record.recentlyLearned && record.recentlyLearned.length > 0) {
+    lines.push("  Recently learned about you:");
+    for (const line of record.recentlyLearned) {
+      lines.push(`    - ${line}`);
     }
   }
   if (lines.length === 1) {

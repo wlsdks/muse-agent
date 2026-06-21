@@ -328,7 +328,7 @@ describe("MuseChatApp render — plain chat + editing", () => {
       yield { type: "done" };
     }
     const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
-      finalizeAnswer: async () => "I don't have that recorded yet.",
+      finalizeAnswer: async () => ({ display: "I don't have that recorded yet.", forHistory: "I don't have that recorded yet." }),
       onCommit: (_q: string, answer: string) => { committed = answer; },
       stream: () => fabricated()
     })));
@@ -337,6 +337,30 @@ describe("MuseChatApp render — plain chat + editing", () => {
     await waitForFrame(lastFrame, ["recorded yet"]);
     expect(committed).toContain("recorded yet");
     expect(committed).not.toContain("Nabi");
+    unmount();
+  });
+
+  it("commits forHistory (cue-free) to history, NOT the display string with the source-check cue (grounded≠true self-pollution guard)", async () => {
+    let committed = "";
+    async function* streamRaw(): AsyncGenerator<{ type: string; text?: string }> {
+      yield { text: "your tasks: write report", type: "text-delta" };
+      yield { type: "done" };
+    }
+    // DISTINCT display vs forHistory: display carries the ⚠️ source-check cue, forHistory does not.
+    // A mis-route of the persist site (persisted→accumulated) would commit the cue → this goes RED.
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+      finalizeAnswer: async () => ({
+        display: "your tasks: write report\n\n⚠️ 출처 확인: 도구로 가져온 데이터(tool-fetched)에만 근거합니다.",
+        forHistory: "your tasks: write report"
+      }),
+      onCommit: (_q: string, answer: string) => { committed = answer; },
+      stream: () => streamRaw()
+    })));
+    await tick();
+    stdin.write("what are my tasks?"); await tick(); stdin.write("\r");
+    await waitForFrame(lastFrame, ["출처 확인"]); // the cue IS shown to the user (display)
+    expect(committed).toBe("your tasks: write report"); // ...but history gets the cue-free forHistory
+    expect(committed).not.toContain("출처 확인");
     unmount();
   });
 

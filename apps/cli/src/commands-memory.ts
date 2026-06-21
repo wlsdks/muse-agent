@@ -22,7 +22,7 @@
 import { readFile } from "node:fs/promises";
 
 import { isMemoryInjection } from "@muse/agent-core";
-import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, recordRetraction, selectPromotableFacts, selectPromotableMemories, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
+import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, projectRecentlyLearned, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/mcp";
 import type { Command } from "commander";
@@ -232,6 +232,7 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
               facts: memoryRecord.facts,
               preferences: memoryRecord.preferences,
               recentTopics: memoryRecord.recentTopics,
+              recentlyLearned: renderRecentlyLearnedLines(projectRecentlyLearned(memoryRecord)),
               updatedAt: memoryRecord.updatedAt.toISOString()
             }
           : { facts: {}, preferences: {}, recentTopics: [] };
