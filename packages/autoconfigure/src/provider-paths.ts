@@ -196,6 +196,10 @@ export function resolveAuthoredSkillsDir(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_AUTHORED_SKILLS_DIR", "skills/authored");
 }
 
+export function resolveSkillRewardsFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_SKILL_REWARDS_FILE", "skill-rewards.json");
+}
+
 export function resolveWorkspaceSkillsDir(env: MuseEnvironment): string | undefined {
   const override = env.MUSE_WORKSPACE_SKILLS_DIR?.trim();
   return override && override.length > 0 ? expandLeadingTilde(override) : undefined;

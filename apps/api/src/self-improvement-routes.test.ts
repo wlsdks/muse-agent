@@ -1,7 +1,8 @@
 import type { PlaybookEntry, WeaknessEntry } from "@muse/mcp";
+import type { Skill } from "@muse/skills";
 import { describe, expect, it } from "vitest";
 
-import { shapePlaybook, shapeWeaknesses } from "./self-improvement-routes.js";
+import { shapePlaybook, shapeSkills, shapeWeaknesses } from "./self-improvement-routes.js";
 
 function entry(partial: Partial<WeaknessEntry> & { topic: string; count: number; lastSeen: string }): WeaknessEntry {
   return {
@@ -131,5 +132,71 @@ describe("shapePlaybook", () => {
 
   it("an empty playbook is total 0, not a crash", () => {
     expect(shapePlaybook([])).toEqual({ total: 0, entries: [] });
+  });
+});
+
+function skillEntry(partial: { name: string; description?: string; source?: string }): Skill {
+  return {
+    name: partial.name,
+    description: partial.description ?? "",
+    frontmatter: { name: partial.name, description: partial.description ?? "" },
+    body: "",
+    sourceInfo: { source: (partial.source ?? "authored") as Skill["sourceInfo"]["source"], filePath: "", baseDir: "" }
+  };
+}
+
+describe("shapeSkills", () => {
+  it("orders by reward DESC, tie-break name ASC", () => {
+    const skills = [
+      skillEntry({ name: "bravo" }),
+      skillEntry({ name: "alpha" }),
+      skillEntry({ name: "gamma" })
+    ];
+    const rewards: Record<string, number> = { bravo: 2, alpha: 2, gamma: 5 };
+    const out = shapeSkills(skills, rewards);
+    expect(out.entries.map((e) => e.name)).toEqual(["gamma", "alpha", "bravo"]);
+  });
+
+  it("treats absent reward as 0 for ordering", () => {
+    const skills = [
+      skillEntry({ name: "z-zero" }),
+      skillEntry({ name: "a-zero" }),
+      skillEntry({ name: "positive" })
+    ];
+    const rewards: Record<string, number> = { positive: 3 };
+    const out = shapeSkills(skills, rewards);
+    expect(out.entries[0]!.name).toBe("positive");
+    expect(out.entries[0]!.reward).toBe(3);
+    expect(out.entries[1]!.name).toBe("a-zero");
+    expect(out.entries[1]!.reward).toBe(0);
+    expect(out.entries[2]!.name).toBe("z-zero");
+    expect(out.entries[2]!.reward).toBe(0);
+  });
+
+  it("marks avoided=true when reward <= -4, false otherwise, false when absent", () => {
+    const skills = [
+      skillEntry({ name: "deep-avoided" }),
+      skillEntry({ name: "threshold-avoided" }),
+      skillEntry({ name: "borderline" }),
+      skillEntry({ name: "absent" })
+    ];
+    const rewards: Record<string, number> = { "deep-avoided": -5, "threshold-avoided": -4, borderline: -3 };
+    const out = shapeSkills(skills, rewards);
+    const byName = Object.fromEntries(out.entries.map((e) => [e.name, e]));
+    expect(byName["deep-avoided"]!.avoided).toBe(true);
+    expect(byName["threshold-avoided"]!.avoided).toBe(true);
+    expect(byName["borderline"]!.avoided).toBe(false);
+    expect(byName["absent"]!.avoided).toBe(false);
+  });
+
+  it("reports total = skills.length and never drops an entry", () => {
+    const skills = [skillEntry({ name: "a" }), skillEntry({ name: "b" }), skillEntry({ name: "c" })];
+    const out = shapeSkills(skills, {});
+    expect(out.total).toBe(3);
+    expect(out.entries).toHaveLength(3);
+  });
+
+  it("an empty skill list is total 0, not a crash", () => {
+    expect(shapeSkills([], {})).toEqual({ total: 0, entries: [] });
   });
 });

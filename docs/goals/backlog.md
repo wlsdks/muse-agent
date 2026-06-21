@@ -73,7 +73,10 @@
   - ✓ playbook 전략 API — read-only `GET /api/self-improvement/playbook` (shapePlaybook: reward DESC·probation/reward 정규화, ~/.muse/playbook.json, fire 58 weaknesses 미러) — surfaces fire 60 (`e778da32`); NEXT=웹 뷰가 이 API 소비(weaknesses 옆 "전략" 섹션)
   - ✓ web 학습된 전략 섹션 — `SelfImprovementView`가 fire 60 playbook API 소비, active/probation 정직 구분(strategyStatusLabel·summarizeStrategies)·tag·origin·reward 렌더 — surfaces fire 61 (★JUDGE-DRILL: judge#1이 honesty-역전 나쁜슬라이스 FAIL→fix→judge#2 PASS) (`2624028e`)
   - ◦ web 자기강화 대시보드 (나머지) — learned·eval 스코어보드 *읽기* (eval 스코어보드는 dev-INFRA라 개인 콘솔 노출 여부 재검토; weaknesses+playbook은 done)
-  - ◦ web 스킬 컨트롤 — skills 목록 + reward/curate/author (신규 API + 웹)
+  - ◦ web 스킬 컨트롤 — skills 목록 + reward/curate/author (신규 API + 웹):
+    - ✓ skills 목록 API — read-only `GET /api/self-improvement/skills` (shapeSkills: authored 스킬+reward 병합, reward DESC·name ASC, avoided=isSkillAvoided; autoconfigure `resolveSkillRewardsFile` 신설) — surfaces fire 62 (`<pending>`); NEXT=웹 뷰가 이 API 소비(새 Skills 뷰/nav)
+    - ◦ web Skills 뷰 — fire 62 skills API 소비(이름·설명·source·reward·avoided 배지), reward/curate/author 액션은 후속
+    - ◦ CLI 스킬 resolver 통일(형제) — `apps/cli/commands-skills.ts`의 private `resolveAuthoredSkillsDir`/`resolveSkillRewardsFile`를 autoconfigure 공유본으로 통일(commands-skills·commands-learned·chat-ink 3파일 import 변경), gate-asymmetry 제거
   - ◦ web 설정/daemon 토글 — proactivity·episodic·skill학습·watch daemon on/off (PUT /settings/:key 기존, ~80 env 플래그는 env→runtime 브리지 필요)
   - ◦ web MCP 콘솔 확장 — add/remove 서버 + allowlist(`/api/mcp/security`) 편집 (API 기존, 웹만)
 - ✓ Playbook eviction PEVI-parity (PEVI arXiv:2012.15085): `retainPlaybookEntries` now ranks bank-overflow survival on the Wilson-LCB `retentionUtility` (inline-replicated `rankingUtility`, NOT the rolled-back `effectiveStrategyReward` shrinkage), so a thin-but-lucky strategy no longer evicts a battle-tested one; no-tally falls back byte-identically to clampReward(reward) — self-improvement fire 1

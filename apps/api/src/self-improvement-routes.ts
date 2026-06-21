@@ -1,4 +1,5 @@
-import { readPlaybook, readWeaknesses, type PlaybookEntry, type WeaknessEntry } from "@muse/mcp";
+import { readPlaybook, readWeaknesses, readSkillRewards, isSkillAvoided, type PlaybookEntry, type WeaknessEntry } from "@muse/mcp";
+import { loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -88,10 +89,37 @@ export function shapePlaybook(entries: readonly PlaybookEntry[]): PlaybookStrate
   };
 }
 
+export interface SkillView {
+  readonly name: string;
+  readonly description: string;
+  readonly source: string;
+  readonly reward: number;
+  readonly avoided: boolean;
+}
+
+export interface SkillsResponse {
+  readonly total: number;
+  readonly entries: readonly SkillView[];
+}
+
+export function shapeSkills(skills: readonly Skill[], rewards: Record<string, number>): SkillsResponse {
+  const mapped: SkillView[] = skills.map((s) => ({
+    name: s.name,
+    description: s.description,
+    source: s.sourceInfo.source,
+    reward: rewards[s.name] ?? 0,
+    avoided: isSkillAvoided(rewards[s.name])
+  }));
+  const sorted = [...mapped].sort((a, b) => b.reward - a.reward || a.name.localeCompare(b.name));
+  return { total: skills.length, entries: sorted };
+}
+
 export interface SelfImprovementRoutesGate {
   readonly authService: ServerOptions["authService"];
   readonly weaknessesFile: string;
   readonly playbookFile: string;
+  readonly authoredSkillsDir: string;
+  readonly skillRewardsFile: string;
 }
 
 export function registerSelfImprovementRoutes(server: FastifyInstance, gate: SelfImprovementRoutesGate): void {
@@ -115,5 +143,18 @@ export function registerSelfImprovementRoutes(server: FastifyInstance, gate: Sel
     }
     const entries = await readPlaybook(gate.playbookFile);
     return shapePlaybook(entries);
+  });
+
+  // The authored skill library merged with reward signals. Read-only;
+  // the background-review engine + skill runtime are the writers.
+  server.get("/api/self-improvement/skills", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return reply;
+    }
+    const [skills, rewards] = await Promise.all([
+      loadSkillsFromDirectory(gate.authoredSkillsDir, "authored"),
+      readSkillRewards(gate.skillRewardsFile)
+    ]);
+    return shapeSkills(skills, rewards);
   });
 }

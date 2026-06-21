@@ -50,6 +50,7 @@ import {
 export {
   resolveActionLogFile,
   resolveAuthoredSkillsDir,
+  resolveSkillRewardsFile,
   resolvePendingApprovalsFile,
   resolveBriefingSidecarFile,
   resolveContactsFile,
