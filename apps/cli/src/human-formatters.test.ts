@@ -41,6 +41,29 @@ describe("formatMemoryShow — splits veto:/goal: preferences into their own hea
   });
 });
 
+describe("formatMemoryShow — surfaces 'what Muse recently learned about you' with provenance", () => {
+  it("renders the recently-learned section with each cited line", () => {
+    const out = formatMemoryShow({
+      userId: "stark",
+      facts: { home_city: "Busan" },
+      recentlyLearned: [
+        'home city: Busan (updated from "Seoul" on 2026-06-21)',
+        'role: founder (updated from "student" on 2026-06-20)'
+      ]
+    });
+    expect(out).toContain("Recently learned about you:");
+    expect(out).toContain('- home city: Busan (updated from "Seoul" on 2026-06-21)');
+    expect(out).toContain('- role: founder (updated from "student" on 2026-06-20)');
+  });
+
+  it("omits the section entirely when nothing was recently learned (no false header)", () => {
+    const withEmpty = formatMemoryShow({ userId: "stark", facts: { name: "Stark" }, recentlyLearned: [] });
+    expect(withEmpty).not.toContain("Recently learned about you:");
+    const withAbsent = formatMemoryShow({ userId: "stark", facts: { name: "Stark" } });
+    expect(withAbsent).not.toContain("Recently learned about you:");
+  });
+});
+
 describe("formatTaskList — surfaces the urgent flag", () => {
   it("marks an urgent task with ⚠ and leaves a normal task unmarked", () => {
     const out = formatTaskList({ status: "open", tasks: [

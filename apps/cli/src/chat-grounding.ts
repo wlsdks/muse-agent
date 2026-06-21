@@ -327,7 +327,20 @@ export interface FinalizeGatedChatAnswerArgs {
  * gate (reverify-backed when a judge is supplied) → truncated-citation strip →
  * fabricated-citation strip → source receipt.
  */
-export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs): Promise<string> {
+export interface FinalizedChatAnswer {
+  /** The full answer to DISPLAY — gated answer + grounding receipt + source-check cues. */
+  readonly display: string;
+  /**
+   * The answer to PERSIST to chat history / episodes / auto-memory — the gated answer
+   * + receipt, WITHOUT the appended source-check cues. The cues are display-only
+   * WARNINGS; persisting them lets `conversationMatches` replay them as cosine-1
+   * TRUSTED grounding evidence next turn (an untrusted-source warning laundered into
+   * trusted evidence — a grounded≠true self-pollution). Persist the answer, show the cues.
+   */
+  readonly forHistory: string;
+}
+
+export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs): Promise<FinalizedChatAnswer> {
   // A tool's own output is evidence too — fold it in so the value checks treat a
   // value the tool actually returned as supported (cosine 1, like conversation).
   // trusted:false — tool output is NOT the user's own data; the provenance bit
@@ -372,7 +385,10 @@ export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs)
   if (semanticConflictCue) out += `\n\n${semanticConflictCue}`;
   if (precisionCue) out += `\n\n${precisionCue}`;
   if (recallCue) out += `\n\n${recallCue}`;
-  return out;
+  // `forHistory` deliberately EXCLUDES the cues appended above (see FinalizedChatAnswer):
+  // they are display-only warnings, not answer content, and must never be persisted
+  // where conversationMatches would replay them as trusted grounding evidence.
+  return { display: out, forHistory: receipted };
 }
 
 /**

@@ -659,7 +659,11 @@ export async function runLocalChat(
   const reverifyJudge = chatProvider && "generate" in chatProvider
     ? createQwenReverify(chatProvider, model ?? assembly.defaultModel ?? "default")
     : undefined;
-  const withReceipt = await finalizeGatedChatAnswer({
+  // `.display` (answer + receipt + source-check cues) is what this one-shot surface
+  // PRINTS; `.forHistory` (cue-free) is what the caller PERSISTS via appendLastChatTurn,
+  // so the display-only source-check warnings aren't replayed as trusted grounding
+  // evidence on the next session's priorHistory (parity with the Ink chat, fire 4).
+  const finalized = await finalizeGatedChatAnswer({
     answer: result.response.output,
     history: options.priorHistory ?? [],
     knownFactKeys,
@@ -671,6 +675,8 @@ export async function runLocalChat(
     toolsUsed: result.toolsUsed ?? [],
     toolGroundingSources: result.groundingSources ?? []
   });
+  const withReceipt = finalized.display;
+  const withReceiptForHistory = finalized.forHistory;
 
   // Never hand the desktop a BLANK answer. qwen3:8b occasionally returns an empty
   // completion for a specific phrasing (observed deterministically on "오늘 할 일
@@ -678,6 +684,13 @@ export async function runLocalChat(
   // ask — better than silence, and not a deferral ("잠시만요…"), it admits the miss.
   const usedEmptyFallback = withReceipt.trim().length === 0;
   const response = usedEmptyFallback ? emptyAnswerFallback(message) : withReceipt;
+  // The persisted twin tracks `response` through the REAL-content transforms below
+  // (fallback, task-completion, unbacked-action self-correction), but excludes the
+  // display-only affordances appended to `finalResponse` for the user: the source-check
+  // cues `finalized.forHistory` already dropped (fire 4 + 5) AND the repeat-weakness
+  // nudge added later — neither is conversational content, so neither may be replayed
+  // as trusted grounding evidence on the next session's priorHistory.
+  const responseForHistory = usedEmptyFallback ? emptyAnswerFallback(message) : withReceiptForHistory;
 
   // "빨래 다 했어" — a past-tense REPORT of finishing a task. The model only acts
   // on the imperative ("완료로 표시해줘") and just acknowledges this, leaving the
@@ -685,11 +698,15 @@ export async function runLocalChat(
   // the ONE matching open task done (reversible) and confirm it.
   let toolsUsed = result.toolsUsed ?? [];
   let finalResponse = response;
+  let finalResponseForHistory = responseForHistory;
   if (isTaskCompletionReport(message) && !toolsUsed.some((tool) => tool.includes("tasks.complete"))) {
     const done = await autoCompleteReportedTask(message).catch(() => null);
     if (done) {
       toolsUsed = [...toolsUsed, "muse.tasks.complete"];
-      finalResponse = `${response}\n\n${/[가-힣]/u.test(message) ? `✅ 할 일 '${done}'을(를) 완료로 표시했어요.` : `✅ Marked the task "${done}" as done.`}`;
+      // Real conversational content (a completion confirmation) — append to BOTH tracks.
+      const confirmation = `\n\n${/[가-힣]/u.test(message) ? `✅ 할 일 '${done}'을(를) 완료로 표시했어요.` : `✅ Marked the task "${done}" as done.`}`;
+      finalResponse = `${response}${confirmation}`;
+      finalResponseForHistory = `${responseForHistory}${confirmation}`;
     }
   }
 
@@ -699,9 +716,13 @@ export async function runLocalChat(
   // over a confident fabrication).
   const unbackedAction = isUnbackedActionClaim({ query: message, answer: finalResponse, toolNames: toolsUsed });
   if (unbackedAction) {
-    finalResponse = `${finalResponse}\n\n${/[가-힣]/u.test(message)
+    // A self-correction the user must see AND that belongs in the resumed conversation
+    // (it changes what Muse claimed) — append to BOTH tracks.
+    const heads = `\n\n${/[가-힣]/u.test(message)
       ? "⚠️ 그런데 방금은 실제로 처리하지 못했어요. 한 번 더 말씀해 주시겠어요?"
       : "⚠️ Heads up — I didn't actually do that just now. Could you say it once more?"}`;
+    finalResponse = `${finalResponse}${heads}`;
+    finalResponseForHistory = `${finalResponseForHistory}${heads}`;
   }
 
   // Whetstone slice 1 — record the turn's failure signal to the weakness ledger
@@ -741,6 +762,9 @@ export async function runLocalChat(
 
   return {
     response: finalResponse,
+    // The cue-free twin for persistence (appendLastChatTurn) — keeps display-only
+    // source-check warnings out of the next session's grounding evidence (fire 5).
+    responseForHistory: finalResponseForHistory,
     runId: result.runId,
     toolsUsed
   };

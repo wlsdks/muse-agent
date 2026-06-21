@@ -192,7 +192,7 @@ export function MuseChatApp(props: {
     readonly history: readonly { readonly role: string; readonly content: string }[];
     readonly toolsUsed: readonly string[];
     readonly toolGroundingSources?: readonly { readonly source: string; readonly text: string }[];
-  }) => Promise<string>;
+  }) => Promise<{ readonly display: string; readonly forHistory: string }>;
   readonly historyWindow?: number;
   readonly personaPrompt: () => string | undefined;
   readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
@@ -576,6 +576,11 @@ export function MuseChatApp(props: {
     // The same deterministic gate every other chat surface runs — post-hoc on
     // the streamed bubble (ask warns post-hoc too); fail-open keeps the raw
     // answer only if the finalizer itself crashes, never on a gate verdict.
+    // `accumulated` is what the user SEES (display, incl. source-check cues);
+    // `persisted` is what gets stored to history / episodes / auto-memory — the
+    // answer WITHOUT those cues, so conversationMatches can't replay a display-only
+    // warning as trusted grounding evidence next turn (grounded≠true self-pollution).
+    let persisted = accumulated;
     if (props.finalizeAnswer && !interruptRef.current && !accumulated.startsWith("⚠")) {
       const finalized = await props.finalizeAnswer({
         answer: accumulated,
@@ -584,21 +589,24 @@ export function MuseChatApp(props: {
         question: message,
         toolsUsed: toolsRan,
         toolGroundingSources: toolGrounding
-      }).catch(() => accumulated);
-      if (finalized !== accumulated) {
-        accumulated = finalized;
-        setStreaming(accumulated);
+      }).catch(() => undefined);
+      if (finalized) {
+        if (finalized.display !== accumulated) {
+          accumulated = finalized.display;
+          setStreaming(accumulated);
+        }
+        persisted = finalized.forHistory;
       }
     }
     historyRef.current.push({ content: message, role: "user" });
-    historyRef.current.push({ content: accumulated, role: "assistant" });
+    historyRef.current.push({ content: persisted, role: "assistant" });
     setTurns((prev) => [...prev, { role: "assistant", text: accumulated }]);
     setStreaming("");
     setBusy(false);
     if (!accumulated.startsWith("⚠") && accumulated !== "(interrupted)") lastAnswerRef.current = accumulated;
-    props.onCommit(message, accumulated);
+    props.onCommit(message, persisted);
     // Background auto-memory: surface anything Muse learned so the user sees it.
-    void props.autoLearn?.(message, accumulated)
+    void props.autoLearn?.(message, persisted)
       .then((summary) => { if (summary) setTurns((prev) => [...prev, { role: "system", text: summary }]); })
       .catch(() => undefined);
   }, [app, props, activeAgent, currentModel, sessionTokens, toolsOn, requestApproval]);
