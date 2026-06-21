@@ -21,6 +21,7 @@ struct CompanionView: View {
         }
         .padding(18)
         .frame(width: 360, height: 440)
+        .overlay(alignment: .topTrailing) { expandButton }
         .background(WindowDragArea())
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: model.inputVisible)
         .animation(.easeInOut(duration: 0.22), value: model.bubble)
@@ -33,6 +34,22 @@ struct CompanionView: View {
             .frame(width: 188, height: 224)
             .offset(y: drift ? -5 : 5)
             .animation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true), value: drift)
+    }
+
+    /// One tap into the full Muse app (chat + every panel).
+    private var expandButton: some View {
+        Button {
+            NotificationCenter.default.post(name: .museOpenFullApp, object: nil)
+        } label: {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.75))
+                .padding(7)
+                .background(.ultraThinMaterial, in: Circle())
+        }
+        .buttonStyle(.plain)
+        .help("Open the full Muse app")
+        .padding(10)
     }
 
     @ViewBuilder private var answerCard: some View {
