@@ -172,7 +172,7 @@ ratchet: testFiles +0 (belief-provenance-store.test +3, commands-recap.test +2) 
 - **리뷰지점**: newest-event-wins(`keysWithActiveRetraction` 규칙) → re-learned 키는 forgotten 안 뜸(judge 확인). raw entries 읽기는 `deriveFactProvenance`와 같은 소스, fail-soft + safeRecapText. `recentlyForgotten` optional.
 - **리스크**: 없음 — additive, memory 578 + recap 35 green, 독립 Opus ④b judge가 retraction 정직성+re-set-clears+무회귀 재확인 PASS. (cli daemon 9 timeout = 동시루프 포화 환경, 내 파일 무관 — judge 확인.)
 
-## fire 19 · 2026-06-21 · skill v2.1.0 · pending
+## fire 19 · 2026-06-21 · skill v2.1.0 · 8a769430
 meta: value-class=wiring · pkg=@muse/cli · kind=forgotten-surface-wiring · verdict=PASS · firesSinceDrill=9 · firesSinceMainMerge=1
 ratchet: testFiles +0 (human-formatters.test +2) · @muse/cli human-formatters 31 green · lint clean · fabrication 0 · ★fires 15-18 main 적재됨(823c117f)
 
