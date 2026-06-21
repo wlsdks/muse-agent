@@ -18,7 +18,7 @@ import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { mergeModelKeysFromFile, resolveDefaultModel } from "@muse/autoconfigure";
+import { evaluateLocalOnlyPosture, mergeModelKeysFromFile, resolveDefaultModel, type LocalOnlyStatusSnapshot } from "@muse/autoconfigure";
 import { defaultBeliefProvenanceFile, FileUserMemoryStore, projectRecentlyLearned, readBeliefProvenance, selectRecentlyForgotten, summarizeRecentlyLearned } from "@muse/memory";
 import {
   readFollowups,
@@ -350,6 +350,7 @@ async function collectStatus(userId: string) {
     schemaVersion: MUSE_STATUS_SCHEMA_VERSION,
     ...resolveModelInfo(),
     providers: summariseProviders(),
+    localOnly: evaluateLocalOnlyPosture(process.env),
     persona: {
       factCount: persona?.facts ? Object.keys(persona.facts).length : 0,
       preferenceCount: persona?.preferences ? Object.keys(persona.preferences).length : 0,
@@ -591,6 +592,27 @@ function summariseProviders() {
 }
 
 /**
+ * One-line privacy posture for the at-a-glance dashboard — Muse's
+ * core identity ("local by default"). The facts (on/off, healthy vs
+ * degraded, egress possible) derive from the canonical
+ * `evaluateLocalOnlyPosture` snapshot, so `muse status` and `muse
+ * doctor` can never disagree about whether cloud egress is possible.
+ * Wording is glance-sized and always names "local-only"; the precise
+ * diagnosis (which cloud key, off-box embedder URL) stays in `muse
+ * doctor`, which this line points at for any non-healthy posture.
+ */
+export function formatPrivacyPosture(posture: LocalOnlyStatusSnapshot): string {
+  if (posture.enabled) {
+    return posture.status === "ok"
+      ? "🔒 local-only on (default) — cloud egress blocked"
+      : "⚠ local-only on but degraded — run `muse doctor`";
+  }
+  return posture.status === "warn"
+    ? "⚠ local-only OFF — cloud egress possible (run `muse doctor`)"
+    : "local-only off — no cloud credentials configured";
+}
+
+/**
  * Parse `--interval <n>` (seconds) for `muse status --watch`.
  * Default 5s, clamped to [1, 3600] so a bad input can't lock the
  * loop into a single tick or starve the terminal with sub-second
@@ -658,6 +680,7 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
       } else {
         io.stdout(`    providers: 0 configured — set GEMINI_API_KEY / ANTHROPIC_API_KEY / etc. or run muse setup model\n`);
       }
+      io.stdout(`    privacy: ${formatPrivacyPosture(snap.localOnly)}\n`);
       io.stdout("\n");
       if (snap.session.dnd) {
         io.stdout(`  (DND) proactive notices paused${snap.session.until ? ` until ${snap.session.until}` : ""} — \`muse session unlock\` to resume\n\n`);

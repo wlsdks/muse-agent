@@ -5,6 +5,8 @@ import MuseDesktopCore
 extension Notification.Name {
     /// Posted by the floating companion's "open full app" button.
     static let museOpenFullApp = Notification.Name("museOpenFullApp")
+    /// Posted when the full-app window closes (restore the companion).
+    static let museFullAppClosed = Notification.Name("museFullAppClosed")
 }
 
 /// Owns the companion's app-level pieces: the floating panel, a menu-bar item,
@@ -26,6 +28,10 @@ final class MuseController: NSObject, NSMenuDelegate {
         NotificationCenter.default.addObserver(
             forName: .museOpenFullApp, object: nil, queue: .main
         ) { [weak self] _ in self?.openFullApp() }
+        // Restore the floating companion when the full app window closes.
+        NotificationCenter.default.addObserver(
+            forName: .museFullAppClosed, object: nil, queue: .main
+        ) { [weak self] _ in self?.panel.orderFrontRegardless() }
         // Control-Option-Space toggles the panel from anywhere (two real
         // modifiers — avoids the macOS 15+ Option-only-hotkey bug; Carbon path
         // needs no Accessibility permission).
@@ -133,6 +139,7 @@ final class MuseController: NSObject, NSMenuDelegate {
     @objc private func toggleFromMenu() { toggleVisibility() }
 
     @objc private func openFullApp() {
+        panel.orderOut(nil)   // don't float the companion over the full app
         NSApp.activate(ignoringOtherApps: true)
         webWindow.show()
     }

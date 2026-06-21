@@ -5,6 +5,7 @@
  */
 
 import { MUSE_MASCOT_ANSI } from "./muse-mascot-ansi.js";
+import { MUSE_TAGLINE } from "./muse-identity.js";
 import { colorize, colorAllowed, type AnsiOptions } from "./tty-color.js";
 
 const WORDMARK = [
@@ -33,7 +34,7 @@ export interface MuseBannerOptions extends AnsiOptions {
 export function renderMuseBanner(options: MuseBannerOptions = {}): string {
   const tint = (value: string, color: Parameters<typeof colorize>[1]): string => colorize(value, color, options);
 
-  const tagline = tint("your personal AI agent & assistant", "dim");
+  const tagline = tint(MUSE_TAGLINE, "dim");
   const rule = tint("─".repeat(38), "cyan");
 
   const art = colorAllowed(options)
