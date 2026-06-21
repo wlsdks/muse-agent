@@ -72,6 +72,8 @@ final class ServerManager {
         env["MUSE_PARENT_PID"] = String(ProcessInfo.processInfo.processIdentifier)
         if let web = webDir { env["MUSE_WEB_DIR"] = web }
         if (env["MUSE_LOCAL_ONLY"] ?? "").isEmpty { env["MUSE_LOCAL_ONLY"] = "true" }
+        // Messenger tokens (Keychain) → the server connects Telegram/Discord/Slack/LINE.
+        for (key, value) in MessagingCredentials.load().serverEnv() { env[key] = value }
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: bin)
@@ -97,6 +99,15 @@ final class ServerManager {
         intentionalStop = true
         process?.terminate()
         process = nil
+    }
+
+    /// Restart the bundled server so new env (e.g. just-saved messenger tokens)
+    /// takes effect. No-op-safe if nothing was running.
+    func restart() {
+        stop()
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            self?.ensureRunning { _ in }
+        }
     }
 
     private func isHealthy(port: Int) -> Bool {
