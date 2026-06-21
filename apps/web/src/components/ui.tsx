@@ -132,6 +132,8 @@ type IconProps = { className?: string };
 const base = (p: IconProps, d: ReactNode) => (
   <svg
     className={p.className ?? "nav-icon"}
+    width="16"
+    height="16"
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"

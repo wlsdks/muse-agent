@@ -57,6 +57,11 @@
 
 html,
 body,
+html,
+body {
+  height: 100%;
+}
+
 #root {
   height: 100%;
 }
@@ -119,6 +124,10 @@ button {
 .shell {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
+  /* minmax(0, 1fr) caps the row at the container height; a default `auto` row
+     grows to content and breaks the inner scroll (the grid analogue of
+     min-height: 0). Without it .main/.content overgrow and .shell clips them. */
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   overflow: hidden;
 }
@@ -196,10 +205,16 @@ button {
   background: var(--surface-2);
   color: var(--ink);
 }
-.nav-item .nav-icon {
+/* Icons carry only a viewBox (no width/height attr), so they MUST be sized in
+   CSS everywhere they appear — not just in the sidebar. Without this, an icon in
+   a list row (e.g. the reminder bell) falls back to the SVG default ~300x150 and
+   blows up the whole layout. */
+.nav-icon {
   width: 16px;
   height: 16px;
   flex: none;
+}
+.nav-item .nav-icon {
   opacity: 0.9;
 }
 .nav-badge {
