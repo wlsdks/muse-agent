@@ -5,7 +5,7 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 56 · 2026-06-21 · skill v2.0 · <commit> (★JUDGE-DRILL PASS + real fix: re-verification nudge wired into the model loop; firesSinceDrill reset)
+## fire 56 · 2026-06-21 · skill v2.0 · fc77a088 (★JUDGE-DRILL PASS + real fix: re-verification nudge wired into the model loop; firesSinceDrill reset)
 meta: value-class=new-capability(reliability-mechanism)+judge-drill · pkg=@muse/agent-core · kind=model-loop/reverify-nudge · verdict=PASS · firesSinceDrill=0
 ratchet: testFiles +2(reverify-nudge unit + model-loop-reverify behavioral) · fabrication 0 · @muse/agent-core 2589 · apps/cli 2890(isolation) · lint 0/0 · mutation RED-confirmed · ④b judge PASS · Ollama UP(but eval saturated)
 - ★JUDGE-DRILL(firesSinceDrill≥10 의무): 먼저 INERT 슬라이스 주입(reverify-nudge.ts 헬퍼+12 단위테스트 GREEN이나 model-loop에 미배선=선언-only) → 독립 Opus judge가 정확히 FAIL("not wired, eval 여전히 FAIL, declaration-only", grep 증거+누락 배선 명시) → judge 비-rubber-stamp 입증 → 진짜 fix로 진행. drill 성공.
