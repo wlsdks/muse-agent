@@ -4,6 +4,21 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
+## fire 18 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (sentinel held — 3rd straight; ÷3 merge)
+meta: value-class=none(no-ship) · pkg=none · kind=regression-sentinel · verdict=NO-SHIP · firesSinceDrill=6
+ratchet: testFiles +0 (1090, +1 from sibling loop) · fabrication 0 · self-eval green · ÷3 merge fires 16-18 to main
+
+**What** — ⓪ sync + self-eval (green). Scanned for new orchestration-source changes since fire 17: none (the
+only one, the FrugalGPT cascade `5f4df275`, was already verified guard-covered in fire 17). No new gap. Theme
+remains comprehensively complete (fire-16 multi-surface audit). 3rd straight no-ship (16, 17, 18) — the loop is
+now confirmed in pure regression-sentinel mode on a complete theme.
+
+lesson: When a theme is genuinely complete and the user hasn't repointed, the honest steady state is a cheap
+sentinel fire: sync → self-eval (regression check) → scan for new sibling-loop changes in the theme's surface →
+no-ship if clean. Don't re-run the full multi-surface audit each fire (fire 16 did it); just diff what changed.
+★REPOINT cron `972211ed` remains the right call — 3 straight sentinel fires is the unambiguous signal. ÷3 trend
+PushNotification sent (scheduled cadence, not spam — escalates the 3-straight-no-ship state).
+
 ## fire 17 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (sentinel held — new orchestration path verified guarded)
 meta: value-class=none(no-ship) · pkg=none · kind=regression-sentinel-verify · verdict=NO-SHIP · firesSinceDrill=5
 ratchet: testFiles +0 · fabrication 0 · self-eval green · ★fires 7-15 NOW MERGED to main (⑤c blocker resolved)
