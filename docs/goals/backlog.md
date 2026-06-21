@@ -2384,6 +2384,11 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   `MUSE_OLLAMA_NUM_CTX`, `MUSE_OLLAMA_KEEP_ALIVE`) on every `muse doctor`, with a concrete num_batch
   tuning hint when unset — so the shipped lever is discoverable, not invisible. Advisory (always ok);
   distinct surface from `ollamaPerfPostureCheck` (server launchctl env).
+- ◦ **doctor: add MUSE_OLLAMA_NUM_PREDICT to museSpeedEnvCheck (sibling of local-speed fire 7)** — fire 7
+  added the opt-in `MUSE_OLLAMA_NUM_PREDICT` default-generation-cap (adapter); the fire-6 doctor speed-env
+  check reports num_batch/num_ctx/keep_alive but not yet num_predict. Add it to `readMuseSpeedEnv` +
+  `museSpeedEnvCheck` (one-line each + test) so the new cap is discoverable too. Tiny; deferred only to
+  keep fire 7 focused on the @muse/model+autoconfigure lever.
 - ◦ **doctor: warn when flash is ON but the model arch is NOT flash-attention-capable** — even with
   OLLAMA_FLASH_ATTENTION=1, KV quant falls back to f16 unless the model is on Ollama's FA allowlist
   (gemma3/qwen3/… per ollama/ollama#13337; gemma4 status unverified). Hard to encode (version-fragile

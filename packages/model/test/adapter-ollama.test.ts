@@ -311,6 +311,36 @@ describe("OllamaProvider — native /api/chat request wire shape", () => {
     }
   });
 
+  it("applies numPredict as the DEFAULT num_predict only when a request sets no maxOutputTokens", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numPredict: 256 });
+    await p.generate(userReq()); // no maxOutputTokens → default cap applies
+    expect((lastBody().options as { num_predict: number }).num_predict).toBe(256);
+  });
+
+  it("lets an explicit per-request maxOutputTokens WIN over the numPredict default", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numPredict: 256 });
+    await p.generate(userReq({ maxOutputTokens: 50 }));
+    expect((lastBody().options as { num_predict: number }).num_predict).toBe(50);
+  });
+
+  it("omits num_predict (unbounded, today's behaviour) when neither numPredict nor maxOutputTokens is set", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    await p.generate(userReq());
+    expect(lastBody().options).not.toHaveProperty("num_predict");
+  });
+
+  it("truncates a fractional numPredict and rejects a non-positive one (omits → unbounded)", async () => {
+    const frac = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numPredict: 512.9 });
+    await frac.generate(userReq());
+    expect((lastBody().options as { num_predict: number }).num_predict).toBe(512);
+
+    for (const bad of [0, -1, Number.NaN]) {
+      const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numPredict: bad });
+      await p.generate(userReq());
+      expect(lastBody().options).not.toHaveProperty("num_predict");
+    }
+  });
+
   it("maps assistant tool_calls and tool-role messages into the native shape", async () => {
     const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
     await p.generate(

@@ -212,4 +212,13 @@ describe("createModelProvider — Ollama base URL is honoured", () => {
     expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2", MUSE_OLLAMA_NUM_BATCH: "16x" }))
       .not.toHaveProperty("num_batch");
   });
+
+  it("maps MUSE_OLLAMA_NUM_PREDICT onto the wire `num_predict` default (this generate sets no maxOutputTokens), and omits it when unset/junk", async () => {
+    expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2", MUSE_OLLAMA_NUM_PREDICT: "2048" }))
+      .toMatchObject({ num_predict: 2048 });
+    expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2" }))
+      .not.toHaveProperty("num_predict");
+    expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2", MUSE_OLLAMA_NUM_PREDICT: "3.5" }))
+      .not.toHaveProperty("num_predict");
+  });
 });
