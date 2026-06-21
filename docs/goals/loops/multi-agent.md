@@ -4,7 +4,7 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
-## fire 20 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · <pending-commit> — ★NEW CAPABILITY (breaks the sentinel streak)
+## fire 20 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · 0fb6e829 — ★NEW CAPABILITY (breaks the sentinel streak)
 meta: value-class=new-capability · pkg=@muse/multi-agent · kind=termination-guard · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles +0 (3 cases added to parallel-failure.test.ts, suite 245→248) · fabrication 0 · eval:orchestration PASS · FRESH kind (termination-guard, never done) · breaks 4-fire no-ship streak
 
