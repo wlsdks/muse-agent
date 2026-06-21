@@ -109,8 +109,10 @@ export interface ChatGrounding {
 
 function hitsToMatches(hits: readonly RecallHit[]): KnowledgeMatch[] {
   // searchRecall's `score` IS the absolute cosine, which verifyGrounding's
-  // retrieval-confidence grading expects in `cosine`.
-  return hits.map((hit) => ({ cosine: hit.score, score: hit.score, source: hit.ref, text: hit.snippet }));
+  // retrieval-confidence grading expects in `cosine`. Propagate the episode
+  // trust bit (EP-3): a poisoned-episode hit (trusted:false) makes the chat
+  // untrusted-only cue fire instead of laundering it as "your own history".
+  return hits.map((hit) => ({ cosine: hit.score, score: hit.score, source: hit.ref, text: hit.snippet, ...(hit.trusted === false ? { trusted: false } : {}) }));
 }
 
 /**

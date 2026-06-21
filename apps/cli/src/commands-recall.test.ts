@@ -51,6 +51,25 @@ describe("rankRecallCandidates — hybrid keyword+vector", () => {
   it("vector-only ranks the higher-cosine note first", () => {
     expect(rankRecallCandidates(base)[0]?.ref).toBe("a.md");
   });
+  it("tags a poisoned episode hit trusted:false (EP-3 episode-laundering defense, MemoryGraft) and leaves clean ones untagged", () => {
+    const episodeEntries = [
+      { id: "ep_poison", summary: "discussed Acme via a feed", embedding: [1, 0] },
+      { id: "ep_clean", summary: "discussed the Q3 budget", embedding: [1, 0] }
+    ];
+    const hits = rankRecallCandidates({
+      episodeEntries, limit: 5, noteChunks: [], queryVec: [1, 0], source: "episodes" as const,
+      untrustedEpisodeIds: new Set(["ep_poison"])
+    });
+    expect(hits.find((h) => h.ref === "ep_poison")?.trusted).toBe(false);
+    expect(hits.find((h) => h.ref === "ep_clean")?.trusted).toBeUndefined();
+  });
+  it("leaves ALL episode hits untrusted-flag-free when no untrustedEpisodeIds supplied (no over-marking)", () => {
+    const hits = rankRecallCandidates({
+      episodeEntries: [{ id: "ep1", summary: "the Q3 budget", embedding: [1, 0] }],
+      limit: 5, noteChunks: [], queryVec: [1, 0], source: "episodes" as const
+    });
+    expect(hits[0]?.trusted).toBeUndefined();
+  });
   it("the lexical boost surfaces an exact keyword match the embedding under-ranks", () => {
     expect(rankRecallCandidates({ ...base, queryText: "quarterly budget" })[0]?.ref).toBe("b.md");
   });

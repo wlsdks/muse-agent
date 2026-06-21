@@ -362,3 +362,29 @@ timeout) — retries fire 12 (next ÷3; the timeout hasn't recurred since).
 
 RISK: low — additive, mutation-proven (capture-aggregation + round-trip), Opus ④
 PASS, back-compat green across all SessionTurnLine consumers.
+
+## fire 12 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=hardening · pkg=@muse/recall+@muse/cli · kind=recall-cue-wiring · verdict=PASS · firesSinceDrill=2
+
+ratchet: testFiles +0 (extended commands-recall + chat-finalize tests) · fabrication 0 · eval:memory-poisoning PASS · eval:action-log-tamper PASS · MERGE→MAIN fire (÷3) — also retries the deferred fire-9 merge
+
+WHAT: EP-3 — chat-surface cue parity. RecallHit gains `trusted?`; searchRecall
+tags poisoned-episode hits trusted:false (from its existing readEpisodes — single
+read); rankRecallCandidates carries the tag; hitsToMatches propagates it → the
+chat untrusted-only cue fires when a chat answer rests solely on a poisoned
+episode (parity with the ask path's EP-2).
+
+WHY: completes the episode-provenance defense across BOTH grounded surfaces — the
+MemoryGraft (arXiv:2512.16962) episode-laundering vector is now closed end-to-end
+(write-time tag fires 9/11 → ask cue fire 2 + chat cue fire 12). Additive
+(scrutiny-cue only; verdict untouched).
+
+REVIEW POINT: judge traced the full chain (MMR preserves the hit object, bit not
+stripped); no over-firing (trusted note clears it; clean episodes silent). Two
+judge-surfaced RESIDUALS recorded as backlog ◦ (out of scope, larger design):
+(1) poisoned NOTES have no provenance bit (the fundamental GROUNDED≠TRUE
+note-veracity gap); (2) the cue is advisory, not refusing/down-ranking.
+
+RISK: low — additive, mutation-proven (ranker tag + chat cue), Opus ④ PASS,
+back-compat green across all RecallHit consumers.

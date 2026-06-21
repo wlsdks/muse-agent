@@ -167,4 +167,18 @@ describe("finalizeGatedChatAnswer — forHistory excludes display-only source-ch
     });
     expect(result.untrustedOnly).toBe(false);
   });
+
+  it("a chat answer resting ONLY on a poisoned EPISODE (trusted:false, as hitsToMatches now produces) surfaces the untrusted cue (EP-3)", async () => {
+    const poisonedEpisode: readonly KnowledgeMatch[] = [
+      { cosine: 0.9, score: 0.9, source: "session: ep_x", text: "Acme acquired Beta for $1B", trusted: false }
+    ];
+    const result = await finalizeGatedChatAnswer({
+      answer: "Acme acquired Beta for $1B [from session: ep_x]",
+      matches: poisonedEpisode,
+      question: "did Acme acquire Beta?"
+    });
+    expect(result.untrustedOnly).toBe(true);
+    expect(result.display).toContain("출처 확인"); // the untrusted-only chat cue
+    expect(result.forHistory).not.toContain("출처 확인"); // cue stays out of persisted history
+  });
 });
