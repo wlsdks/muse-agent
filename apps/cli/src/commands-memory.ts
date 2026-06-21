@@ -22,7 +22,7 @@
 import { readFile } from "node:fs/promises";
 
 import { isMemoryInjection } from "@muse/agent-core";
-import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, projectRecentlyLearned, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
+import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, normalizeMemoryKey, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/mcp";
 import type { Command } from "commander";
@@ -227,15 +227,25 @@ export function registerMemoryCommands(program: Command, io: ProgramIO, helpers:
       const readLocalMemory = async (): Promise<Record<string, unknown>> => {
         const store = new FileUserMemoryStore();
         const memoryRecord = await store.findByUserId(userId);
-        return memoryRecord
-          ? {
-              facts: memoryRecord.facts,
-              preferences: memoryRecord.preferences,
-              recentTopics: memoryRecord.recentTopics,
-              recentlyLearned: renderRecentlyLearnedLines(projectRecentlyLearned(memoryRecord)),
-              updatedAt: memoryRecord.updatedAt.toISOString()
-            }
-          : { facts: {}, preferences: {}, recentTopics: [] };
+        if (!memoryRecord) {
+          return { facts: {}, preferences: {}, recentTopics: [] };
+        }
+        // The FORGETS half: keys you had Muse forget (recorded retraction markers),
+        // so the canonical "what I know about you" surface is honest both ways.
+        const recentlyForgotten: string[] = [];
+        try {
+          for (const g of selectRecentlyForgotten(await readBeliefProvenance(defaultBeliefProvenanceFile()), { now: Date.now(), withinDays: 365 })) {
+            recentlyForgotten.push(`${g.key.replace(/_/gu, " ")} (forgotten ${g.forgottenAt.slice(0, 10)})`);
+          }
+        } catch { /* no provenance log — the learned half stands on its own */ }
+        return {
+          facts: memoryRecord.facts,
+          preferences: memoryRecord.preferences,
+          recentTopics: memoryRecord.recentTopics,
+          recentlyLearned: renderRecentlyLearnedLines(projectRecentlyLearned(memoryRecord)),
+          ...(recentlyForgotten.length > 0 ? { recentlyForgotten } : {}),
+          updatedAt: memoryRecord.updatedAt.toISOString()
+        };
       };
       let payload: Record<string, unknown> | undefined;
       if (options.local) {

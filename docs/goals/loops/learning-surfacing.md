@@ -171,3 +171,13 @@ ratchet: testFiles +0 (belief-provenance-store.test +3, commands-recap.test +2) 
 - **왜**: 학습만 보였고 "잊음"(정체성 두 번째 절반)은 백그라운드였음. 교정→forget이 실제 반영됨을 사용자가 봄. `recordRetraction`(chat `/forget` + `muse memory forget` 둘 다)이 남긴 마커 사용.
 - **리뷰지점**: newest-event-wins(`keysWithActiveRetraction` 규칙) → re-learned 키는 forgotten 안 뜸(judge 확인). raw entries 읽기는 `deriveFactProvenance`와 같은 소스, fail-soft + safeRecapText. `recentlyForgotten` optional.
 - **리스크**: 없음 — additive, memory 578 + recap 35 green, 독립 Opus ④b judge가 retraction 정직성+re-set-clears+무회귀 재확인 PASS. (cli daemon 9 timeout = 동시루프 포화 환경, 내 파일 무관 — judge 확인.)
+
+## fire 19 · 2026-06-21 · skill v2.1.0 · pending
+meta: value-class=wiring · pkg=@muse/cli · kind=forgotten-surface-wiring · verdict=PASS · firesSinceDrill=9 · firesSinceMainMerge=1
+ratchet: testFiles +0 (human-formatters.test +2) · @muse/cli human-formatters 31 green · lint clean · fabrication 0 · ★fires 15-18 main 적재됨(823c117f)
+
+- **무엇**: `muse memory show`(정식 "what I know about you" 표면)에 **"Forgotten at your correction:"** 섹션 — fire 18 recap-forgotten + fire 3 memory-show-learned의 **형제**. `readLocalMemory`가 `selectRecentlyForgotten(provenance, 365d)`로 계산, `formatMemoryShow`가 learned 섹션 뒤에 렌더(fail-soft, non-empty-only).
+- **왜**: **형제-감사** — recap만 forgotten 있었고 canonical memory 표면은 learned-only(비대칭). 이제 "내가 너에 대해 아는 것"이 **양면(배운 것 + 잊은 것) 정직**.
+- **리뷰지점**: fire 3 패턴 그대로(payload field + formatMemoryShow 섹션). non-empty일 때만 payload 포함(빈 노이즈 없음). provenance 없으면 try/catch로 learned half 유지. `selectRecentlyForgotten`(fire 18) 재사용.
+- **리스크**: 없음 — additive, human-formatters 31 green, 독립 Opus ④b judge가 consume+citation+무회귀 재확인 PASS. (cli daemon 9 timeout=동시루프 포화, 무관.)
+- **NEXT(fire 20)**: ★JUDGE-DRILL 하드카운터 — firesSinceDrill이 fire 20에 10 도달 → **미루기 불가** 드릴(나쁜 슬라이스 주입→④b FAIL 확인→롤백→진짜 fix), 완료 시만 카운터 0 리셋.
