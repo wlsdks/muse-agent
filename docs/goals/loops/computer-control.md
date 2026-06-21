@@ -5,6 +5,14 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 44 · 2026-06-21 · skill v2.0 · <commit> (run_command silent-truncation flag — model never reads a cut log as complete)
+meta: value-class=new-capability · pkg=@muse/tools · kind=runner-output-truncation-integrity · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles +0 files / +3 cases (cap shortens→truncated true; cap larger→false; runner truncated=true preserved) · fabrication 0 · @muse/tools 92 pass/1 skip · pnpm check exit 0 · lint 0/0 · Ollama DOWN (evals skip) · ★JUDGE-DRILL due fire 46 (consecutive allPASS will hit 8)
+- 무엇: run_command 도구(`runner.ts` createRustRunnerTool.execute)가 모델-지정 `maxOutputBytes`로 stdout/stderr를 다시 slice하면서 `...response`로 `truncated`를 그대로 펴서, cap이 출력을 잘랐는데 러너 자신은 안 잘랐을 때 `truncated`가 false로 남음 → 모델이 잘린 로그를 완전한 것으로 읽고 오결론(예: 잘린 로그로 "테스트 통과"). FIX: `capTruncated = sliced.length < original.length` 계산해 `truncated: response.truncated || capTruncated`. 진짜 true를 false로 뒤집지 않음(monotone).
+- 왜: on-theme(run_command은 멀티스텝 체인의 실행 단계; 잘린 출력 오결론은 fabrication-adjacent). 다양성: @muse/tools지만 KIND 새로움(runner-output-truncation-integrity; fire 42는 arg-coercion). 진짜 패키지 다양성(crates/runner Rust) 스카웃했으나 버그는 TS wrapper에 있었음.
+- 리뷰지점: mutation-first 확정(`|| capTruncated` 제거하면 정확히 flip 테스트 RED, 두 negative GREEN 유지=비-tautological). 독립 Opus ④b judge가 edge-case(undefined cap/cap==len/cap>len false-positive 0)·monotone·behavioral-equivalence·downstream `truncated` 소비자 grep(분기 없음)·fabrication=0 검증 → VERDICT PASS.
+- 리스크: niche(maxOutputBytes는 옵션, 드물게 set) but correct; 러너 자신 truncation 경로는 이미 ...response로 정상. 잔여: maxOutputBytes가 BYTES 명칭인데 .slice는 UTF-16 code-unit(pre-existing 명칭 불일치, 미변경 — backlog 후보). live OUTCOME 미검증(Ollama down), 결정론 테스트로 완전 커버. fire 44는 3의 배수 아님 → main 머지 없음(다음 main 배치 fire 45).
+
 ## fire 43 · 2026-06-21 · skill v2.0 · c8252f57 (path-refusal names the allowed roots so the 12B can self-correct)
 meta: value-class=new-capability · pkg=@muse/fs · kind=refusal-self-correction-hint · verdict=PASS · firesSinceDrill=6
 ratchet: testFiles +0 files / +2 cases (outside_roots names roots+retry guidance; deny-list stays opaque) · fabrication 0 · @muse/fs fs-path-safety 39 pass · pnpm check exit 0 · lint 0/0 · Ollama DOWN (evals skip)

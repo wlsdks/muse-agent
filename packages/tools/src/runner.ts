@@ -80,10 +80,20 @@ export function createRustRunnerTool(options: RustRunnerToolOptions = {}): MuseT
       const request = parseRunnerCommandRequest(args);
       const response = await invoke(request);
 
+      const cap = request.maxOutputBytes;
+      const stdout = cap !== undefined ? response.stdout.slice(0, cap) : response.stdout;
+      const stderr = cap !== undefined ? response.stderr.slice(0, cap) : response.stderr;
+      // A model-supplied cap that actually shortened either stream MUST flip
+      // `truncated` — otherwise the model reads partial output as if it were the
+      // whole thing and concludes wrongly (e.g. "tests passed" off a cut log).
+      // OR with the runner's own flag; never flip a genuine `true` back to false.
+      const capTruncated = stdout.length < response.stdout.length || stderr.length < response.stderr.length;
+
       return {
         ...response,
-        stderr: response.stderr.slice(0, request.maxOutputBytes ?? response.stderr.length),
-        stdout: response.stdout.slice(0, request.maxOutputBytes ?? response.stdout.length)
+        stderr,
+        stdout,
+        truncated: response.truncated || capTruncated
       };
     }
   };
