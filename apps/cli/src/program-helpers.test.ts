@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildAskRunLog, defaultConfigPath, firstNonEmpty, readResponseGrounded, readResponseSuccess, setConfigValue, unsetConfigValue } from "./program-helpers.js";
+import { buildAskRunLog, chatTurnPersistText, defaultConfigPath, firstNonEmpty, readResponseGrounded, readResponseSuccess, setConfigValue, unsetConfigValue } from "./program-helpers.js";
 
 describe("buildAskRunLog (cli.local ask run-log payload — shared success/failure builder, #6 slice 6a)", () => {
   it("builds a success entry whose response carries success:true and the lifted fields", () => {
@@ -56,6 +56,27 @@ describe("buildAskRunLog (cli.local ask run-log payload — shared success/failu
   it("omits the sourceCheck key entirely on a clean grounded answer (no noise)", () => {
     const entry = buildAskRunLog({ query: "q", timings: {}, grounded: "grounded", response: "a", success: true, toolsUsed: [] });
     expect((entry.response as { sourceCheck?: unknown }).sourceCheck).toBeUndefined();
+  });
+});
+
+describe("chatTurnPersistText — persist the cue-free chat turn, not the display string with source-check cues (grounded≠true: a cue must not become trusted evidence next session)", () => {
+  it("prefers responseForHistory (cue-free) over the displayed response (with cue)", () => {
+    const body = {
+      response: "할 일은 보고서 작성 1건이에요\n\n⚠️ 출처 확인: tool-fetched 데이터에만 근거합니다.",
+      responseForHistory: "할 일은 보고서 작성 1건이에요"
+    };
+    expect(chatTurnPersistText(body)).toBe("할 일은 보고서 작성 1건이에요");
+    expect(chatTurnPersistText(body)).not.toContain("출처 확인");
+  });
+
+  it("falls back to response when no cue-free twin is supplied (remote/legacy paths)", () => {
+    expect(chatTurnPersistText({ response: "plain answer" })).toBe("plain answer");
+  });
+
+  it("returns undefined when there's no usable string (caller skips the persist)", () => {
+    expect(chatTurnPersistText({ response: 42 })).toBeUndefined();
+    expect(chatTurnPersistText(null)).toBeUndefined();
+    expect(chatTurnPersistText("not an object")).toBeUndefined();
   });
 
   it("builds a FAILURE entry (success:false + error) — the seam #6 needs to trace a thrown run", () => {
