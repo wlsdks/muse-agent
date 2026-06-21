@@ -115,6 +115,10 @@ const en = {
   "mcp.allowlistUnrestricted": "All servers allowed — no allowlist restriction.",
   "mcp.allowlistRestricted": "Only these {n} servers allowed:",
   "mcp.toolOutputCap": "Tool-output cap: {n} chars",
+  "mcp.allowlistAdd": "Add",
+  "mcp.allowlistAddPlaceholder": "server name…",
+  "mcp.allowlistRemove": "Remove from allowlist",
+  "mcp.allowlistAddHint": "Adding a server restricts Muse to ONLY allowlisted servers.",
 
   "settings.title": "Settings",
   "settings.connection": "Connection",
@@ -334,6 +338,10 @@ const ko: Strings = {
   "mcp.allowlistUnrestricted": "모든 서버 허용 — 허용목록 제한 없음.",
   "mcp.allowlistRestricted": "이 {n}개 서버만 허용:",
   "mcp.toolOutputCap": "도구 출력 상한: {n}자",
+  "mcp.allowlistAdd": "추가",
+  "mcp.allowlistAddPlaceholder": "서버 이름…",
+  "mcp.allowlistRemove": "허용목록에서 제거",
+  "mcp.allowlistAddHint": "서버를 추가하면 Muse는 허용목록의 서버만 연결합니다.",
 
   "settings.title": "설정",
   "settings.connection": "연결",

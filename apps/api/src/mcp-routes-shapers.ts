@@ -88,6 +88,7 @@ export function toCompatEnum(value: string): string {
 export function toMcpSecurityPolicyResponse(policy: McpSecurityPolicy) {
   return {
     allowedServerNames: [...policy.allowedServerNames],
+    allowedStdioCommands: [...policy.allowedStdioCommands],
     createdAt: policy.createdAt.getTime(),
     maxToolOutputLength: policy.maxToolOutputLength,
     updatedAt: policy.updatedAt.getTime()

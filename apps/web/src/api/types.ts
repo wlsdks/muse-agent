@@ -127,6 +127,7 @@ export interface McpServerSummary {
 
 export interface McpSecurityPolicyView {
   allowedServerNames: string[];
+  allowedStdioCommands: string[];
   maxToolOutputLength: number;
   createdAt: number;
   updatedAt: number;

@@ -140,7 +140,8 @@
     - ◦ 토글 write — 데몬 플래그 on/off PUT (env→runtime 브리지 필요; ~80 env 플래그 점진 배선, 상태변경)
 - ⚠ FLAKY(공유, 비-surfaces): `@muse/model/src/web-search-policy.test.ts > property fuzz > never throws…`가 ~1/3 비결정 실패(격리 2/3 통과) — 모든 루프 merge-to-main을 간헐 차단. @muse/model 오너/test-hygiene 루프가 fuzz 생성기 seed 고정 필요
   - ✓ web MCP allowlist 보안 섹션 (읽기) — `McpServersView`가 `GET /api/mcp/security` 소비, 허용목록·도구출력 상한 표시; summarizeAllowlist의 빈목록=unrestricted 정직신호 — surfaces fire 66 (`eac90550`)
-  - ◦ web MCP 콘솔 확장 (나머지) — add/remove 서버 + allowlist(`PUT /api/mcp/security`) 편집 (상태변경, API 기존; 읽기는 fire 66 done)
+  - ✓ web MCP allowlist 편집 — `McpServersView` Security 섹션 add/remove 컨트롤이 `PUT /api/mcp/security` 호출(addToAllowlist/removeFromAllowlist, effective 정책 read-modify-write로 allowedStdioCommands+maxToolOutputLength 보존) — surfaces fire 72 (judge가 stdio-clobber 적발→shaper/타입에 allowedStdioCommands 노출+보존으로 fix) (`<pending>`)
+  - ◦ web MCP 서버 add/remove (config) — 서버 자체 등록/삭제(allowlist 아닌 서버 config CRUD) 후속
 - ✓ Playbook eviction PEVI-parity (PEVI arXiv:2012.15085): `retainPlaybookEntries` now ranks bank-overflow survival on the Wilson-LCB `retentionUtility` (inline-replicated `rankingUtility`, NOT the rolled-back `effectiveStrategyReward` shrinkage), so a thin-but-lucky strategy no longer evicts a battle-tested one; no-tally falls back byte-identically to clampReward(reward) — self-improvement fire 1
 - ✓ chat resolves a topic's grounding-gap on a GROUNDED SUCCESS (`isChatGroundedSuccess` + `chatResolveWeakness`, BKT mastery, ask-parity) so a now-answered recurring gap stops nudging — self-improvement fire 4 `9f2f484b`
 - ✓ doctor `WEAKNESS_AXIS_LABEL` friendly labels for source-conflict + misgrounding (user-facing `formatWeaknesses`) — self-improvement fire 5 `1bde1536`
