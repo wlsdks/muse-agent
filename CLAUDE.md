@@ -1,11 +1,11 @@
 # Muse
 
-**Identity (the one line): "Tell it everything. It can't tell anyone."**
-Muse is the AI assistant that's *actually yours* — answers from your own
-notes/files with the source quoted, says "I'm not sure" instead of making
-things up, and runs ENTIRELY on a local model with `MUSE_LOCAL_ONLY` ON BY
-DEFAULT (cloud egress refused in code; explicit opt-out forfeits the
-guarantee). Local-by-construction is the floor, not the pitch.
+**Identity (the one line): "Learns you, not the world."**
+Muse is the personal AI that learns *you* — it builds a model of who you are
+(facts/preferences/goals/vetoes), reinforces what works for you, and FORGETS the
+moment you correct it. That model of you stays on a local model with `MUSE_LOCAL_ONLY`
+ON BY DEFAULT (cloud egress refused in code; explicit opt-out forfeits the guarantee) —
+the learning is yours, never the world's. Local-by-construction is the floor, not the pitch.
 **The FUNCTIONAL edge — "Muse shows its work": one deterministic grounding +
 citation gate under EVERY surface (recall, proactivity, reflection, vision) so every
 claim cites a real source, weak grounding becomes "I'm not sure", and an
