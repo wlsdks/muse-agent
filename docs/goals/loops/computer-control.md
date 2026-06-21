@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 31 · 2026-06-21 · skill v2.0 · <commit-pending> (isUnbackedActionClaim helper — false-done condition extracted; decompose 30a)
+## fire 31 · 2026-06-21 · skill v2.0 · aabe7905 (isUnbackedActionClaim helper — false-done condition extracted; decompose 30a)
 meta: value-class=refactor/seam · pkg=@muse/agent-core+apps/cli · kind=refactor/seam · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles 1071→1071 (+1 case casual-prompt composition, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2538 · @muse/cli 격리 2827 · pnpm check exit 0 · lint clean
 - 무엇: false-done 백스톱 조건 `requestsToolAction(q) && answerClaimsAction(a) && !actionToolRan(t)`이 3곳(commands-ask:2862, chat-repl:634/698) inline 중복 → `isUnbackedActionClaim({query,answer,toolNames})` helper로 추출(3 detector가 사는 agent-core) + 3 CLI 사이트 배선 + unused import 정리.
