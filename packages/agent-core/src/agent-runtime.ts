@@ -44,6 +44,7 @@ import {
   ToolRegistry,
   coerceToolArguments,
   coerceEnumArguments,
+  nearestToolName,
   toModelTool,
   validateRequiredToolArguments,
   type ToolExecutionResult,
@@ -806,7 +807,15 @@ export class AgentRuntime {
     activeTools: readonly ModelTool[]
   ): Promise<ExecutedToolResult> {
     if (!activeTools.some((tool) => tool.name === toolCall.name)) {
-      const executed = blockedToolResult(toolCall, `Error: tool was not exposed to the model: ${toolCall.name}`);
+      // A small model HALLUCINATES tool names (`node_run` for `run_command`); a
+      // bare "not exposed" is a dead-end. Suggest the nearest ACTIVE tool by
+      // token overlap so the next turn self-corrects (the executor's
+      // not-registered path already does this — this is its not-EXPOSED sibling).
+      const suggestion = nearestToolName(toolCall.name, activeTools.map((tool) => tool.name));
+      const executed = blockedToolResult(
+        toolCall,
+        `Error: tool was not exposed to the model: ${toolCall.name}${suggestion ? `. Did you mean '${suggestion}'? Call that exact name.` : ""}`
+      );
       await this.invokeHooks("afterTool", context, executed);
       return executed;
     }

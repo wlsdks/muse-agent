@@ -1075,6 +1075,80 @@ describe("AgentRuntime", () => {
     expect(String(blocked?.result.output)).toContain("base64");
   });
 
+  it("suggests the nearest ACTIVE tool when the model calls a hallucinated/unexposed name (file_open → file_read)", async () => {
+    // Uses a READ tool so it stays exposed (an execute tool would be filtered by
+    // the write-without-mutation-intent policy). The motivating node_run →
+    // run_command case is unit-tested on the pure nearestToolName helper.
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Read a file.",
+          inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+          name: "file_read",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const captured: { result: { status?: string; output?: unknown }; toolCall: { id: string } }[] = [];
+    const runtime = createAgentRuntime({
+      hooks: [{ afterTool: (_ctx, toolCall, result) => { captured.push({ result: result as { status?: string; output?: unknown }, toolCall }); }, id: "cap" }],
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        // The local model HALLUCINATES `file_open`; the real tool is `file_read`.
+        { id: "tool", model: "test-model", output: "Reading.", toolCalls: [{ arguments: { path: "a.ts" }, id: "tc-1", name: "file_open" }] },
+        { id: "final", model: "test-model", output: "Done." }
+      ]),
+      toolRegistry
+    });
+
+    const result = await runtime.run({
+      messages: [{ content: "read the file a.ts", role: "user" }],
+      model: "provider/model",
+      runId: "run-unexposed"
+    });
+
+    // The hallucinated name never reached a real tool, and the model was told the nearest real one.
+    expect(executeTool).not.toHaveBeenCalled();
+    expect(result.response.output).toBe("Done.");
+    const blocked = captured.find((e) => e.toolCall.id === "tc-1");
+    expect(blocked?.result.status).toBe("blocked");
+    expect(String(blocked?.result.output)).toContain("not exposed");
+    expect(String(blocked?.result.output)).toContain("Did you mean 'file_read'");
+  });
+
+  it("does NOT misattribute a suggestion when an unexposed name shares no token with any active tool", async () => {
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Read a file.",
+          inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+          name: "file_read",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const captured: { result: { status?: string; output?: unknown }; toolCall: { id: string } }[] = [];
+    const runtime = createAgentRuntime({
+      hooks: [{ afterTool: (_ctx, toolCall, result) => { captured.push({ result: result as { status?: string; output?: unknown }, toolCall }); }, id: "cap" }],
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        { id: "tool", model: "test-model", output: "Reading.", toolCalls: [{ arguments: { path: "a.ts" }, id: "tc-1", name: "zzz_unrelated" }] },
+        { id: "final", model: "test-model", output: "Done." }
+      ]),
+      toolRegistry
+    });
+
+    await runtime.run({ messages: [{ content: "read the file a.ts", role: "user" }], model: "provider/model", runId: "run-unexposed-2" });
+    const blocked = captured.find((e) => e.toolCall.id === "tc-1");
+    expect(blocked?.result.status).toBe("blocked");
+    expect(String(blocked?.result.output)).toContain("not exposed");
+    expect(String(blocked?.result.output)).not.toContain("Did you mean");
+  });
+
   it("executes when the enum argument is valid (the gate only blocks out-of-vocabulary values)", async () => {
     const executeTool = vi.fn(() => ({ ok: true }));
     const toolRegistry = new ToolRegistry([

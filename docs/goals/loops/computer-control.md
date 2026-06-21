@@ -5,6 +5,16 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 47 · 2026-06-21 · skill v2.0 · <commit> (measure-first: AgentRuntime not-EXPOSED gate suggests nearest active tool — node_run→run_command dead-end closed)
+meta: value-class=new-capability · pkg=@muse/agent-core+@muse/tools · kind=tool-recovery/not-exposed-suggestion · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles +0 / +6 cases (4 nearestToolName unit + 2 AgentRuntime integration) · fabrication 0 · @muse/tools 96 · @muse/agent-core agent-runtime 133 · pnpm check apps/api flake(격리 888/888, env UNSET) · lint 0/0 · ★Ollama UP
+- 측정-우선(Ollama 드디어 UP): eval:computer-task PASS 1/1(file_grep→read→edit), 그러나 eval:multifile-fix FAIL — `tools=[file_read, node_run]`, 모델이 `node_run` 환각(실제=run_command). fire-9 nearestToolName은 @muse/tools EXECUTOR의 not-registered 경로에만 있는데, 환각 이름은 AgentRuntime.executeToolCall의 "not exposed" 게이트(activeTools 체크가 먼저)에 걸려 **제안 없는 맨-에러 → dead-end**.
+- FIX(DRY 형제): nearestToolName을 NAMES(string[]) 받게 일반화+export(executor 호출부도 .map(name)), AgentRuntime not-exposed 게이트(agent-runtime.ts ~808)에 배선 — `Did you mean '<nearest active>'? Call that exact name.`. fire-9(executor not-registered)의 not-EXPOSED 짝.
+- 왜: 측정이 가리킨 실제 dead-end. 다양성: @muse/agent-core(+tools) fresh (pkg,kind). 형제-감사: 두 경로(registered-but-failed / not-exposed)가 이제 한 suggester 공유.
+- 리뷰지점: mutation-first 통합점에서(게이트 제안 제거 시 정확히 positive 통합테스트 RED; node_run→run_command 유닛 + file_open→file_read 통합 둘 다). 독립 Opus ④b judge가 wiring 비-inert·기존 not-exposed 메시지 무회귀(0-shared-token이면 byte-identical)·fabrication=0 재현 검증 → VERDICT PASS.
+- 리스크/정직: ★OUTCOME 미flip — fix 후 재측정 eval:multifile-fix 여전히 FAIL이나 **다른 stochastic 모드**(`tools=[file_read]` early-stop: 읽고 편집 없이 멈춤). node_run dead-end는 닫혔고(통합테스트 증명) eval은 다중 실패모드. 회귀 아님(이전에도 FAIL). pnpm check apps/api 실패는 무관 병렬-포화 flake(격리 통과). fire 47은 3의 배수 아님 → main 머지 없음.
+lesson: Ollama-up 측정이 진짜 블로커를 드러냄 — multifile은 (a)node_run 환각[이번 fix] (b)early-stop[다음] 두 모드. 에러-복구 게이트는 executor(not-registered)와 runtime(not-exposed) 두 곳에 있어야 한다(형제). 다음 ◦=early-stop action-completion nudge(fire-12 후보, Ollama-up이라 이제 검증가능).
+
 ## fire 46 · 2026-06-21 · skill v2.0 · 63cf3d63 (JUDGE-DRILL: verifier caught inert slice → real wired grep-narrowing hint shipped)
 meta: value-class=new-capability+judge-drill · pkg=@muse/fs · kind=grep-result-actionability · verdict=DRILL-PASS+PASS · firesSinceDrill=0(reset)
 ratchet: testFiles +0 files / +3 grep-hint OUTCOME cases · fabrication 0 · @muse/fs 62 (mutation-verified) · pnpm check exit 0 · lint 0/0 · Ollama DOWN (evals skip)
