@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 25 · 2026-06-21 · skill v2.0 · <commit-pending> (false-done backstop recognises fs/run_command actuators)
+## fire 25 · 2026-06-21 · skill v2.0 · ee1efde6 (false-done backstop recognises fs/run_command actuators)
 meta: value-class=micro-fix(real-bug) · pkg=@muse/agent-core · kind=honesty/false-done · verdict=PASS · firesSinceDrill=6
 ratchet: testFiles 1071→1071 (+1 case casual-prompt, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2533 · pnpm check exit 0 · lint clean · Ollama DOWN
 - 무엇: SCOUT — false-done/persistence 백스톱이 *이미 존재+배선*됨(`answerClaimsAction`+`actionToolRan` → commands-ask:2590 flag + chat-repl:553 re-prompt). BUG: `actionToolRan`의 `ACTION_TOOL_RE`가 fs 도구 도입 전이라 `.add/.update/…`+`_action`만 인식 → `file_edit`/`file_write`/`file_multi_edit`/`file_delete`/`file_move`/`run_command` 미인식 → 실제 file_edit한 코드-fix를 "no action"으로 오독 → 정직한 "I fixed it"을 unbacked로 오탐(+chat 헛 re-prompt). FIX: 분류기에 fs/run_command arm 추가.
