@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 27 · 2026-06-21 · skill v2.0 · <commit-pending> (false-done request-gate via STRUCTURAL signal — resolves fire-26 blocker; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/agent-core · kind=honesty/false-done · verdict=PASS(judge#4) · firesSinceDrill=8
+ratchet: testFiles 1071→1071 (+2 cases casual-prompt: file-positives + path-prefix/homonym negatives, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2535 · pnpm check exit 0 · lint clean
+- 무엇: fire-26 블로커 해소(RIGHT DESIGN 구현) — false-done 백스톱 request-side(`classifyActionRequest`)가 code-fix 미인식이라 fire-25 actuator fix에도 백스톱이 컴퓨터-제어에 안 걸림. fix: fuzzy 텍스트 분류 대신 **구조적 신호** = 쿼리에 명시적 **code-extension 파일명**(`FILE_PATH_TOKEN`=optional path + `name.<code-ext>`) 있을 때만 매칭. edit동사 START-앵커(질문 배제), KO 미러(파일명+고쳐/수정).
+- 왜: code-extension 파일명은 homonym-free — 영어 단어는 `name.ts`가 아님 → code-noun homonym(fire 26)·path-prefix homonym(fire 27 1차) 둘 다 제거. precision-over-recall(파일없는 "fix the bug"/"수정해줘"는 미매칭=의도적; miss는 grounded path로 무해, false-pos는 백스톱 오발).
+- 리뷰지점: mutation-valid(패턴 없으면 positives RED; token 완화시 path-prefix negatives RED). **④b judge 4회차서 PASS**(v1/v2 code-noun FAIL→v3 path-prefix FAIL→각 FAIL이 다음 설계가 닫은 실제 over-match). 잔존=진짜 .md 파일(정확) 또는 contrived "dr.py" glued-token(현실 약어는 마침표 후 공백→false). fire 25+27로 백스톱 컴퓨터-제어 완전 작동.
+- 리스크: 낮음 — 분류기 패턴만(answerClaimsAction/actionToolRan/wiring 불변). ④b PASS.
+lesson: **구조적/결정론 신호(code-extension 파일명)가 homonym 많은 분류에서 lexical 의도-추측을 이긴다** — 3 judge FAIL이 right design으로 수렴 = maker≠judge가 작동(no-ship fire 26이 RIGHT DESIGN 기록→fire 27 구현). fuzzy 표면은 끈질긴 적대 검증 필수.
+
 ## fire 26 · 2026-06-21 · skill v2.0 · NO-SHIP (docs-only) · ROLLBACK (code-fix request classifier — 2× judge FAIL on over-match)
 meta: value-class=no-ship · pkg=@muse/agent-core(reverted) · kind=honesty/false-done · verdict=FAIL×2→ROLLBACK · firesSinceDrill=7
 ratchet: testFiles 1071→1071 (코드 변경 0, 롤백) · fabrication 0 · agent-core fire-25 state 무손상(actionToolRan fs fix intact) · docs writeback만

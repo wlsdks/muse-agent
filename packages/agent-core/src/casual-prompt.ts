@@ -92,13 +92,41 @@ const OVERVIEW_PATTERNS: readonly RegExp[] = [
 const ACTION_REQUEST_RE =
   /^(please\s+|pls\s+|can\s+you\s+|could\s+you\s+|would\s+you\s+|i'?d?\s+(like|want)\s+(you\s+)?to\s+)?(remind\s+me|set\s+(up\s+)?(an?\s+)?reminder|add\s+(an?\s+)?(reminder|task|to-?do|event)|create\s+(an?\s+)?(reminder|task|event)|make\s+(an?\s+)?(reminder|task|note)|schedule\s+(an?\s+)?\w|book\s+\w|email\s+\w|send\s+\w+\s+(an?\s+)?(email|message|text|note)|text\s+\w|message\s+\w)/u;
 
+// A code/file TOKEN: a filename ending in a CODE EXTENSION, optionally preceded
+// by a path. The code-extension FILENAME is the unambiguous structural signal —
+// no ordinary English word is "name.ts", so requiring it engages the code-fix
+// backstop ONLY on a real file reference. A bare verb+noun heuristic cannot do
+// this (every code noun class/test/error/variable/import has a non-code sense →
+// "fix the variable rate mortgage"), and NEITHER can a bare path prefix
+// (app/build/tests/lib are common words → "update my app/website",
+// "change my tests/quizzes") — fire 26 + the first fire-27 attempt failed on
+// exactly those. So a path is only a signal when it leads to a `name.<code-ext>`.
+const FILE_PATH_TOKEN =
+  "(?:[\\w.~/-]*/)?[\\w-]+\\.(?:tsx?|jsx?|mjs|cjs|py|rs|go|java|cpp?|hpp?|cs|rb|php|swift|kt|scala|sh|bash|zsh|sql|md|json|ya?ml|toml|ini|cfg|conf|css|scss|html?|xml|svg)\\b";
+
+// A COMPUTER-CONTROL code-fix request: an imperative edit verb (START-anchored,
+// polite-lead optional, so a QUESTION — "how do I fix add.ts", "what's in
+// add.ts" — never matches) + an explicit file/path within the clause.
+const CODE_ACTION_REQUEST_RE = new RegExp(
+  `^(?:please\\s+|pls\\s+|can\\s+you\\s+|could\\s+you\\s+|would\\s+you\\s+|i'?d?\\s+(?:like|want)\\s+(?:you\\s+)?to\\s+)?(?:fix|edit|modify|update|change|refactor|rename|implement|patch|correct|debug|rewrite|replace)\\b[^.?!]{0,80}?${FILE_PATH_TOKEN}`,
+  "u"
+);
+
+// Korean code-fix request: an explicit file/path + a KO edit verb. Phrase-
+// anchored on the file token, so a bare "수정해줘" (no file) does NOT match —
+// same homonym-free discipline as the EN pattern.
+const KO_CODE_ACTION_REQUEST_RE = new RegExp(
+  `${FILE_PATH_TOKEN}[^?]{0,40}(?:고쳐|수정|편집|바꿔|변경|구현|리팩터|재작성|교체|작성)`,
+  "u"
+);
+
 /** True when the prompt is an imperative request to DO something (needs tools), not a question. */
 export function classifyActionRequest(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (q.length === 0 || q.length > 120) {
     return false;
   }
-  return ACTION_REQUEST_RE.test(q);
+  return ACTION_REQUEST_RE.test(q) || CODE_ACTION_REQUEST_RE.test(q) || KO_CODE_ACTION_REQUEST_RE.test(q);
 }
 
 // The ANSWER claims it performed (or will perform) a tool action — "I'll remind

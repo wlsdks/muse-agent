@@ -148,6 +148,50 @@ describe("classifyActionRequest — imperative DO-something requests (needs tool
       expect(classifyActionRequest(q)).toBe(false);
     }
   });
+
+  it("matches a code-fix request that names an explicit FILE/PATH (a structural, homonym-free signal)", () => {
+    for (const q of [
+      "fix the bug in add.ts",
+      "edit the function in src/math.ts",
+      "update README.md",
+      "change the return value in utils.js",
+      "refactor packages/fs/src/runner.ts",
+      "rename the variable in ./lib/helpers.py",
+      "add.ts의 버그 고쳐줘",
+      "src/math.ts 수정해줘"
+    ]) {
+      expect(classifyActionRequest(q)).toBe(true);
+    }
+  });
+
+  it("does NOT over-match a non-code imperative or a code QUESTION (no explicit file ⇒ no match — kills the homonym class)", () => {
+    for (const q of [
+      // homonym traps from the fire-26 over-match findings — NONE names a file.
+      "change my class schedule",
+      "update my class notes",
+      "correct the error on my invoice",
+      "rename the test on my calendar",
+      "fix the line at the pharmacy",
+      "change the function next Friday",
+      "fix the variable rate mortgage",
+      "update the science class",
+      "fix the parking module",
+      // path-PREFIX homonyms — app/build/tests/lib are common words; without a
+      // code-extension filename they must NOT match (the structural signal is a
+      // `name.<code-ext>`, not a bare prefix).
+      "update my app/website",
+      "change my app/notification settings",
+      "change my tests/quizzes for the kids",
+      "fix the build/construction project",
+      "correct the app/billing address",
+      // questions (even with a filename) are not imperatives.
+      "how do I fix add.ts",
+      "what's in add.ts",
+      "why is there a bug in add.ts"
+    ]) {
+      expect(classifyActionRequest(q)).toBe(false);
+    }
+  });
 });
 
 describe("answerPromisesAction — catches a false 'I'll remind you' in the ANSWER (incl. mixed requests)", () => {
