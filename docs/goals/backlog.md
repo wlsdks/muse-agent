@@ -2942,8 +2942,20 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ✓ muse spec / spec --json pre-framework fast path (0.5s→0.02s, ~20x; single-source via muse-spec.ts) — cli-excellence fire 18
 - ✓ grounded unknown-subcommand guidance (muse <group> <typo> → did-you-mean + real subcommand list, ~38 groups; fire-7 pattern extended) — cli-excellence fire 19
 - ✓ muse --help category grouping (ordered headings for daily-driver commands; commander14 helpGroup + group-order control) — cli-excellence fire 20
-- ✓ muse --help long-tail categorization — done cli-excellence fire 21
 - ✓ muse --help long-tail categorization (5 more headings: Automation/Connections/Documents/Reports/Diagnostics; tail 74→14) — cli-excellence fire 21
 - ✓ muse objectives list barren empty-state → action-bearing grounded next-action — cli-excellence fire 22
 - ◦ barren empty-state siblings: episode list / checkins list / commitments scan → action-bearing next-action (same class as fire 22, lower-traffic) (cli-excellence)
 - ✓ muse status model-source: local-only ignores ambient cloud key (was falsely "inferred from GEMINI_API_KEY"; mirrors doctor) — cli-excellence fire 23
+
+- ✓ companion time-of-day greeting (IdleChatter.timeGreeting) — desktop-enhance fire 6
+- ✓ localize Automation status badges (autonomy-labels) — desktop-enhance fire 7
+- ✓ accessible Automation tablist (tabKeyNav + ARIA roles) — desktop-enhance fire 8 (JUDGE-DRILL)
+- ◦ Automation tabs: move DOM focus to the newly-selected tab on Arrow (roving-tabindex focus-follow, APG conformance) — desktop-enhance follow-up
+- ✓ extract+test menu status line composition (MenuStatus) — desktop-enhance fire 9
+- ✓ extract+test onboarding fix-it guidance (OnboardingGuidance) — desktop-enhance fire 10
+- ✓ extract+test WebView navigation security gate (WebNavPolicy) — desktop-enhance fire 11
+- ◦ WebNavPolicy hardening nits: host.lowercased() for case-symmetry + treat IPv6 [::1] as loopback (fail-safe today) — desktop-enhance follow-up
+- ✓ adaptive idle-bubble display duration (IdleChatter.displaySeconds + cancellable clear) — desktop-enhance fire 12
+- ✓ extract+test messenger serverEnv mapping (MessagingEnv.build) — desktop-enhance fire 13
+- ◦ extract+test CalendarCredentials.serverEnv() mapping into Core (analogous sibling to MessagingEnv) — desktop-enhance follow-up
+- ✓ extract+test CalendarCredentials.serverEnv() (CalendarEnv.build) — desktop-enhance fire 14 (completes fire-13 sibling)

@@ -1,4 +1,5 @@
 import Foundation
+import MuseDesktopCore
 
 /// Calendar provider connections the user sets in Settings, stored in the
 /// Keychain. The desktop injects them as env when it spawns the bundled server,
@@ -53,30 +54,16 @@ struct CalendarCredentials: Equatable {
     /// Env for the bundled server: the active provider list + each provider's
     /// credentials. `local` is always on; extras add as configured.
     func serverEnv() -> [String: String] {
-        var providers = ["local"]
-        var e: [String: String] = [:]
-
-        if enableMacOS { providers.append("macos") }
-
-        let caldavReady = !caldavURL.trimmed.isEmpty && !caldavUsername.trimmed.isEmpty && !caldavPassword.trimmed.isEmpty
-        if caldavReady {
-            providers.append("caldav")
-            e["MUSE_CALDAV_URL"] = caldavURL.trimmed
-            e["MUSE_CALDAV_USERNAME"] = caldavUsername.trimmed
-            e["MUSE_CALDAV_APP_PASSWORD"] = caldavPassword.trimmed
-        }
-
-        let gcalReady = !gcalClientId.trimmed.isEmpty && !gcalClientSecret.trimmed.isEmpty && !gcalRefreshToken.trimmed.isEmpty
-        if gcalReady {
-            providers.append("gcal")
-            e["MUSE_GCAL_CLIENT_ID"] = gcalClientId.trimmed
-            e["MUSE_GCAL_CLIENT_SECRET"] = gcalClientSecret.trimmed
-            e["MUSE_GCAL_REFRESH_TOKEN"] = gcalRefreshToken.trimmed
-            if !gcalCalendarId.trimmed.isEmpty { e["MUSE_GCAL_CALENDAR_ID"] = gcalCalendarId.trimmed }
-        }
-
-        if providers.count > 1 { e["MUSE_CALENDAR_PROVIDERS"] = providers.joined(separator: ",") }
-        return e
+        CalendarEnv.build(CalendarEnvInput(
+            enableMacOS: enableMacOS,
+            caldavURL: caldavURL,
+            caldavUsername: caldavUsername,
+            caldavPassword: caldavPassword,
+            gcalClientId: gcalClientId,
+            gcalClientSecret: gcalClientSecret,
+            gcalRefreshToken: gcalRefreshToken,
+            gcalCalendarId: gcalCalendarId
+        ))
     }
 }
 

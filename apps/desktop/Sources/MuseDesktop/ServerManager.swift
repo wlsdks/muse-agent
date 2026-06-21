@@ -21,7 +21,7 @@ final class ServerManager {
     private var process: Process?
     private var restarts = 0
     private var intentionalStop = false
-    private let maxRestarts = 3
+    private let restartPolicy = RestartPolicy()
 
     /// Cheap, non-blocking hint for the menu-bar status line (we spawned a server
     /// that hasn't intentionally stopped). Not a health check.
@@ -90,10 +90,14 @@ final class ServerManager {
     /// a crash-looping binary doesn't hot-spin.
     private func handleExit() {
         process = nil
-        guard !intentionalStop, restarts < maxRestarts else { return }
-        restarts += 1
-        let backoff = Double(restarts) * 1.5
-        DispatchQueue.global().asyncAfter(deadline: .now() + backoff) { [weak self] in self?.start() }
+        guard !intentionalStop else { return }
+        switch restartPolicy.decide(restartsSoFar: restarts) {
+        case .giveUp:
+            return
+        case .restart(let afterSeconds):
+            restarts += 1
+            DispatchQueue.global().asyncAfter(deadline: .now() + afterSeconds) { [weak self] in self?.start() }
+        }
     }
 
     /// Stop the spawned server (on app quit) — intentional, so no restart fires.

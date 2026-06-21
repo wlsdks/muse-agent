@@ -1,4 +1,5 @@
 import Foundation
+import MuseDesktopCore
 
 /// Messenger tokens the user enters in Settings, stored in the Keychain. The
 /// desktop injects them as env when it spawns the bundled server, so the
@@ -48,29 +49,15 @@ struct MessagingCredentials: Equatable {
     /// Env vars to hand the bundled server so it connects these providers and
     /// polls for inbound messages (then auto-replies via Muse).
     func serverEnv() -> [String: String] {
-        var e: [String: String] = [:]
-        if !telegramToken.trimmed.isEmpty {
-            e["MUSE_TELEGRAM_BOT_TOKEN"] = telegramToken.trimmed
-            e["MUSE_TELEGRAM_POLL_ENABLED"] = "1"
-        }
-        if !discordToken.trimmed.isEmpty {
-            e["MUSE_DISCORD_BOT_TOKEN"] = discordToken.trimmed
-            if !discordChannels.trimmed.isEmpty {
-                e["MUSE_DISCORD_POLL_CHANNELS"] = discordChannels.trimmed
-                e["MUSE_DISCORD_POLL_ENABLED"] = "1"
-            }
-        }
-        if !slackToken.trimmed.isEmpty {
-            e["MUSE_SLACK_BOT_TOKEN"] = slackToken.trimmed
-            if !slackChannels.trimmed.isEmpty {
-                e["MUSE_SLACK_POLL_CHANNELS"] = slackChannels.trimmed
-                e["MUSE_SLACK_POLL_ENABLED"] = "1"
-            }
-        }
-        if !lineAccessToken.trimmed.isEmpty { e["MUSE_LINE_CHANNEL_ACCESS_TOKEN"] = lineAccessToken.trimmed }
-        if !lineSecret.trimmed.isEmpty { e["MUSE_LINE_CHANNEL_SECRET"] = lineSecret.trimmed }
-        if !e.isEmpty { e["MUSE_INBOUND_REPLY_ENABLED"] = "1" }   // let Muse reply to inbound DMs
-        return e
+        MessagingEnv.build(MessagingEnvInput(
+            telegramToken: telegramToken,
+            discordToken: discordToken,
+            discordChannels: discordChannels,
+            slackToken: slackToken,
+            slackChannels: slackChannels,
+            lineAccessToken: lineAccessToken,
+            lineSecret: lineSecret
+        ))
     }
 
     var hasAny: Bool { !serverEnv().isEmpty }

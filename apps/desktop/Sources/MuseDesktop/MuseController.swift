@@ -135,11 +135,9 @@ final class MuseController: NSObject, NSMenuDelegate {
     private func statusTitle() -> String {
         let s = UIStrings.current()
         let env = ProcessInfo.processInfo.environment
-        let localOnly = (env["MUSE_LOCAL_ONLY"] ?? "true") != "false"
-        let model = env["MUSE_MODEL"] ?? "ollama/gemma4:12b"
-        let modelShort = model.split(separator: "/").last.map(String.init) ?? model
+        let localLabel = MenuStatus.isLocalOnly(env["MUSE_LOCAL_ONLY"]) ? s.statusLocalOn : s.statusLocalOff
         let server = ServerManager.shared.isLikelyRunning ? s.statusServerOn : s.statusServerOff
-        return "\(localOnly ? s.statusLocalOn : s.statusLocalOff) · \(modelShort) · \(server)"
+        return MenuStatus.line(localLabel: localLabel, model: env["MUSE_MODEL"] ?? "ollama/gemma4:12b", serverLabel: server)
     }
 
     @objc private func toggleFromMenu() { toggleVisibility() }
