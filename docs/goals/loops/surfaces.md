@@ -602,7 +602,7 @@ ratchet: web tests 101/101 (+9) · fabrication 0 · self-eval exit 0 · check ex
 - **리뷰지점**: mutation-first — canAdjustReward(>=5→>5 변이→"5+up→false" RED)·rewardDelta(상수화→"down→-1" RED), 독립 judge 재확인. 웹 테스트 인프라(renderToStaticMarkup, RTL/DOM 없음)라 클릭→mutation 단위테스트 불가 → McpServers와 동일 accepted 패턴(순수 결정로직 단위테스트 + 버튼 배선 inspection). 배선 정합(judge inspection): encodeURIComponent(name)↔라우트 decodeURIComponent 쌍·queryKey `["skills"]` prefix-match로 갱신·양 버튼 `disabled={pending || !canAdjustReward}`. 상태안전: 기존 auth-게이트 라우트만 호출(신규 노출 0)·escaped children. i18n en/ko 패리티. 정직한 갭: curate/author 액션 후속.
 - **리스크**: 없음(apps/web 4파일, web build tsc+vite·web 101/101·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 경계로직·배선·상태안전·다양성·mutation 검증 후 PASS).
 
-## fire 66 · 2026-06-21 · skill v2.0.0 · <pending>
+## fire 66 · 2026-06-21 · skill v2.0.0 · eac90550
 meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=mcp-allowlist-section · verdict=PASS · firesSinceDrill=5
 ratchet: web tests 104/104 (+3) · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 52/0 · lint clean
 
