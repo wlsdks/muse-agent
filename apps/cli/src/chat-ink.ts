@@ -70,7 +70,7 @@ import { createQwenReverify } from "./grounding-eval-runner.js";
 import { searchRecall } from "./commands-recall.js";
 import { readTrust } from "./commands-trust.js";
 import { appendInputHistory, loadInputHistory } from "./chat-input-history.js";
-import { extractMemoryFromTurn, formatLearnedSummary, shouldAutoExtract, type AutoMemoryProvider } from "./chat-auto-memory.js";
+import { applyTurnLearnings, extractMemoryFromTurn, shouldAutoExtract, type AutoMemoryProvider } from "./chat-auto-memory.js";
 import { buildModelGroundingReverify, formatReflection, synthesizeReflection, type ReflectionProvider } from "./chat-reflection.js";
 import { listRecentJobIds, readJobSummary, startBackgroundJob } from "./commands-jobs.js";
 import { buildLocalTodayText, parseLookaheadHours, readDueFollowups, readDueReminders } from "./commands-today.js";
@@ -1031,17 +1031,12 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
       const { facts, preferences } = await extractMemoryFromTurn({
         assistant, model, provider: provider as unknown as AutoMemoryProvider, user
       });
-      const wroteFacts: Record<string, string> = {};
-      const wrotePrefs: Record<string, string> = {};
-      for (const [key, value] of Object.entries(facts).slice(0, 5)) {
-        await Promise.resolve(memoryStore!.upsertFact(userId, key, value)); wroteFacts[key] = value;
-      }
-      for (const [key, value] of Object.entries(preferences).slice(0, 5)) {
-        await Promise.resolve(memoryStore!.upsertPreference(userId, key, value)); wrotePrefs[key] = value;
-      }
-      const summary = formatLearnedSummary(wroteFacts, wrotePrefs);
-      if (summary) await refreshMemory();
-      return summary;
+      const { summary, confirmation } = await applyTurnLearnings(memoryStore!, userId, facts, preferences);
+      // The cited "Got it — X is now Y (changed from Z)" confirmation for a
+      // correction, plus the plain "remembered" summary for newly-learned keys.
+      const line = [confirmation, summary].filter((part): part is string => Boolean(part)).join("\n");
+      if (line.length > 0) await refreshMemory();
+      return line.length > 0 ? line : undefined;
     } catch {
       return undefined;
     }

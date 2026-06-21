@@ -1,6 +1,32 @@
+import { InMemoryUserMemoryStore } from "@muse/memory";
 import { describe, expect, it } from "vitest";
 
-import { extractMemoryFromTurn, formatLearnedSummary, shouldAutoExtract, type AutoMemoryProvider } from "./chat-auto-memory.js";
+import { applyTurnLearnings, extractMemoryFromTurn, formatLearnedSummary, shouldAutoExtract, type AutoMemoryProvider } from "./chat-auto-memory.js";
+
+describe("applyTurnLearnings", () => {
+  it("cites the prior value when a fact CHANGES (correction), not double-listing it in the summary", async () => {
+    const store = new InMemoryUserMemoryStore();
+    store.upsertFact("u", "home_city", "Seoul");
+    const { confirmation, summary } = await applyTurnLearnings(store, "u", { home_city: "Busan" }, {});
+    expect(confirmation).toBe('📝 Got it — home city is now "Busan" (changed from "Seoul").');
+    expect(summary).toBeUndefined();
+  });
+
+  it("summarizes a first-time fact with NO confirmation (no prior value to cite)", async () => {
+    const store = new InMemoryUserMemoryStore();
+    const { confirmation, summary } = await applyTurnLearnings(store, "u", { pet: "dog" }, {});
+    expect(confirmation).toBeUndefined();
+    expect(summary).toBe("📝 remembered: pet = dog (/forget <key> to undo)");
+  });
+
+  it("confirms a changed key AND summarizes a separate new key in the same turn", async () => {
+    const store = new InMemoryUserMemoryStore();
+    store.upsertFact("u", "home_city", "Seoul");
+    const { confirmation, summary } = await applyTurnLearnings(store, "u", { home_city: "Busan", pet: "dog" }, {});
+    expect(confirmation).toBe('📝 Got it — home city is now "Busan" (changed from "Seoul").');
+    expect(summary).toBe("📝 remembered: pet = dog (/forget <key> to undo)");
+  });
+});
 
 describe("shouldAutoExtract (cooldown)", () => {
   it("fires when never run, holds within the gap, fires again after it", () => {
