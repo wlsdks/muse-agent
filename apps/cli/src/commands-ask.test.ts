@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { consumeAskStream, decompositionJsonFields, parseBoundedInt, renderAskStreamError, resolveAskTierModels, routeAskTierModel, type AskStreamEvent } from "./commands-ask.js";
+import { consumeAskStream, decompositionJsonFields, decompositionStderrNotes, parseBoundedInt, renderAskStreamError, resolveAskTierModels, routeAskTierModel, type AskStreamEvent } from "./commands-ask.js";
 
 describe("decompositionJsonFields — surface fan-out trust signals on `muse ask --json` (a machine consumer can't read a stderr banner)", () => {
   it("emits a `decomposition` object with conflicts / incompleteness / truncation when the answer was decomposed", () => {
@@ -28,6 +28,39 @@ describe("decompositionJsonFields — surface fan-out trust signals on `muse ask
     expect(out.decomposition?.truncated).toBe(false);
     expect(out.decomposition?.subtaskConflicts).toBeUndefined();
     expect(out.decomposition?.synthesisIncomplete).toBeUndefined();
+    expect(out.decomposition?.subtaskRedundancies).toBeUndefined();
+    expect(out.decomposition?.reasoningActionGaps).toBeUndefined();
+  });
+  it("ALSO emits subtaskRedundancies + reasoningActionGaps (the fire-7/fire-10 signals a `--json` consumer was blind to)", () => {
+    const out = decompositionJsonFields({
+      answer: "x", groundingSources: [], toolsUsed: [], decomposed: true, subtaskCount: 3, reason: "structural decomposition",
+      truncated: false, subtaskRedundancies: ['"회의록 요약" ≈ "액션아이템 추출"'], reasoningActionGaps: ['"일정 등록"']
+    });
+    expect(out.decomposition?.subtaskRedundancies).toEqual(['"회의록 요약" ≈ "액션아이템 추출"']);
+    expect(out.decomposition?.reasoningActionGaps).toEqual(['"일정 등록"']);
+  });
+});
+
+describe("decompositionStderrNotes — human-facing fan-out warnings (conflict + redundancy; gaps stay --json-only)", () => {
+  const base = { answer: "x", groundingSources: [], toolsUsed: [], decomposed: true, subtaskCount: 3, reason: "structural decomposition", truncated: false };
+  it("emits a CONFLICT warning line when sub-results disagree", () => {
+    const notes = decompositionStderrNotes({ ...base, subtaskConflicts: ['"A" vs "B"'] });
+    expect(notes.some((n) => n.includes("disagree") && n.includes('"A" vs "B"'))).toBe(true);
+  });
+  it("ALSO emits a REDUNDANCY warning line (the precise signal a human should see)", () => {
+    const notes = decompositionStderrNotes({ ...base, subtaskRedundancies: ['"회의록 요약" ≈ "액션아이템 추출"'] });
+    expect(notes.some((n) => n.includes("near-identical") && n.includes("≈"))).toBe(true);
+  });
+  it("does NOT surface reasoningActionGaps to the human (too noisy — stays --json-only)", () => {
+    const notes = decompositionStderrNotes({ ...base, reasoningActionGaps: ['"step 2"'] });
+    expect(notes).toEqual([]);
+  });
+  it("a clean run produces no notes", () => {
+    expect(decompositionStderrNotes(base)).toEqual([]);
+  });
+  it("conflict + redundancy together → two distinct lines", () => {
+    const notes = decompositionStderrNotes({ ...base, subtaskConflicts: ['"A" vs "B"'], subtaskRedundancies: ['"C" ≈ "D"'] });
+    expect(notes).toHaveLength(2);
   });
 });
 

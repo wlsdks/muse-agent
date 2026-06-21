@@ -1,5 +1,5 @@
 import type { AgentRunInput } from "@muse/agent-core";
-import { detectSubtaskConflicts, runLeadWorkerTask, verifySynthesisCoverage, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
+import { detectSubtaskConflicts, detectSubtaskRedundancies, runLeadWorkerTask, verifySynthesisCoverage, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
 import { answerIsRefusal } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
@@ -41,6 +41,10 @@ export interface DecomposedAskResult {
   readonly synthesisIncomplete?: readonly string[];
   /** Captions for completed sub-answers that CONTRADICT each other (J2 fan-in conflict). */
   readonly subtaskConflicts?: readonly string[];
+  /** Captions for completed sub-answers that are near-identical — a worker did duplicate work (MAST step-repetition). */
+  readonly subtaskRedundancies?: readonly string[];
+  /** Captions for sequenced steps that ignored the upstream result they were handed (MAST FM-2.6 reasoning-action mismatch). */
+  readonly reasoningActionGaps?: readonly string[];
 }
 
 const PLANNER_SYSTEM_PROMPT =
@@ -155,7 +159,10 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
     // Fan-in cross-subtask CONFLICT: flag two completed sub-answers that contradict
     // each other (the grounding edge on the fan-out) so an internally-inconsistent
     // answer surfaces. Only when an embed is supplied.
-    ...(args.embed ? { detectConflicts: (executions: readonly SubtaskExecution[]) => detectSubtaskConflicts(executions, args.embed!) } : {})
+    ...(args.embed ? { detectConflicts: (executions: readonly SubtaskExecution[]) => detectSubtaskConflicts(executions, args.embed!) } : {}),
+    // Fan-in step-repetition: flag two completed sub-answers that are near-identical (a
+    // worker duplicated another's work). Only when an embed is supplied (mirrors conflicts).
+    ...(args.embed ? { detectRedundancies: (executions: readonly SubtaskExecution[]) => detectSubtaskRedundancies(executions, args.embed!) } : {})
   };
 
   const leadResult = await runLeadWorkerTask(args.query, deps);
@@ -181,6 +188,8 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
     truncated: leadResult.truncated,
     ...(leadResult.synthesisIncomplete ? { synthesisIncomplete: leadResult.synthesisIncomplete } : {}),
     ...(leadResult.subtaskConflicts ? { subtaskConflicts: leadResult.subtaskConflicts } : {}),
+    ...(leadResult.subtaskRedundancies ? { subtaskRedundancies: leadResult.subtaskRedundancies } : {}),
+    ...(leadResult.reasoningActionGaps ? { reasoningActionGaps: leadResult.reasoningActionGaps } : {}),
     toolsUsed: [...mergedTools]
   };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MultiAgentOrchestrator, RuleBasedAgentWorker, createWorkerResult, type AgentRunInput } from "../src/index.js";
+import { MultiAgentOrchestrator, RuleBasedAgentWorker, createWorkerResult, detectFanInRedundancy, type AgentRunInput } from "../src/index.js";
 
 function twoWorkers() {
   const a = new RuleBasedAgentWorker("Generalist", "Generalist", [], (input) =>
@@ -336,5 +336,63 @@ describe("MultiAgentOrchestrator — cross-worker conflict on the fan-in (parity
       }
     );
     expect(sawInstruction).toBe(false);
+  });
+});
+
+describe("MultiAgentOrchestrator — fan-out REDUNDANCY (step-repetition) advisory on the orchestrate path", () => {
+  function twoWorkers() {
+    const a = new RuleBasedAgentWorker("Generalist", "Generalist", [], (input) =>
+      createWorkerResult("Generalist", "Redis caching is fast.", input)
+    );
+    const b = new RuleBasedAgentWorker("Critic", "Critic", [], (input) =>
+      createWorkerResult("Critic", "Risks: stale data.", input)
+    );
+    return [a, b];
+  }
+
+  it("appends the redundancy advisory line + records raw.redundancies when detectRedundancies flags a pair", async () => {
+    const orchestrator = new MultiAgentOrchestrator({ idFactory: () => "r1", workers: twoWorkers() });
+    const result = await orchestrator.run(
+      { messages: [{ content: "x", role: "user" }], model: "m" },
+      { detectRedundancies: async () => ['"Generalist" ≈ "Critic"'] }
+    );
+    expect(result.response.output).toContain("ℹ Workers produced near-identical answers");
+    expect((result.response.raw as { redundancies?: readonly string[] }).redundancies).toEqual(['"Generalist" ≈ "Critic"']);
+  });
+
+  it("back-compat: no detector / no redundancies / throwing detector ⇒ no advisory, no raw.redundancies", async () => {
+    const orchestrator = new MultiAgentOrchestrator({ idFactory: () => "r2", workers: twoWorkers() });
+    const none = await orchestrator.run({ messages: [{ content: "x", role: "user" }], model: "m" });
+    expect(none.response.output).not.toContain("near-identical");
+    expect((none.response.raw as { redundancies?: readonly string[] }).redundancies).toBeUndefined();
+    const empty = await orchestrator.run({ messages: [{ content: "x", role: "user" }], model: "m" }, { detectRedundancies: async () => [] });
+    expect((empty.response.raw as { redundancies?: readonly string[] }).redundancies).toBeUndefined();
+    const thrown = await orchestrator.run({ messages: [{ content: "x", role: "user" }], model: "m" }, { detectRedundancies: async () => { throw new Error("down"); } });
+    expect(thrown.response.output).not.toContain("near-identical");
+  });
+});
+
+describe("detectFanInRedundancy — workerId-keyed near-identical detection (orchestrate twin)", () => {
+  const embed = async (t: string): Promise<readonly number[]> => (t.toLowerCase().includes("budget") ? [1, 0] : [0, 1]);
+  const part = (workerId: string, output: string) => ({ output, workerId });
+
+  it("flags two workers whose outputs are near-identical, captioned by workerId", async () => {
+    const out = await detectFanInRedundancy(
+      [part("A", "the quarterly budget is 1250 dollars"), part("B", "quarterly budget is 1250 dollars")],
+      embed
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toContain("A");
+    expect(out[0]).toContain("B");
+  });
+  it("does NOT flag distinct-value workers (the binding negative)", async () => {
+    expect(await detectFanInRedundancy(
+      [part("A", "the budget reached 500 in the first half"), part("B", "the budget reached 700 in the second half")],
+      embed
+    )).toEqual([]);
+  });
+  it("fail-soft: a throwing embed yields no pairs; <2 non-empty ⇒ []", async () => {
+    expect(await detectFanInRedundancy([part("A", "the budget is 1250"), part("B", "the budget is 1250")], async () => { throw new Error("down"); })).toEqual([]);
+    expect(await detectFanInRedundancy([part("A", "the budget is 1250"), part("B", "   ")], embed)).toEqual([]);
   });
 });

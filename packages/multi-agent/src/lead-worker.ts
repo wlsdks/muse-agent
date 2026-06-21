@@ -1,4 +1,4 @@
-import { detectPairwiseContradictions, lexicalTokens, neutralizeInjectionSpans } from "@muse/agent-core";
+import { comparableScript, detectPairwiseContradictions, detectRedundantPairs, lexicalTokens, neutralizeInjectionSpans } from "@muse/agent-core";
 
 import { decomposeRequestWithKind, shouldDecompose, type Subtask } from "./decompose-trigger.js";
 
@@ -62,6 +62,44 @@ export async function detectFanInConflicts(
   return pairs.map((p) => `"${nonEmpty[p.aIndex]!.workerId}" vs "${nonEmpty[p.bIndex]!.workerId}"`);
 }
 
+/**
+ * The redundancy (step-repetition) twin of {@link detectSubtaskConflicts}: flag any pair
+ * of COMPLETED sub-answers that are near-identical — one worker restated another's result
+ * adding nothing (MAST FM-1.3, arXiv:2503.13657). Reuses the shared {@link detectRedundantPairs}
+ * so the policy never drifts from the evidence layer. Returns a caption per redundant pair
+ * (by sub-task text). Fail-soft over the injected embed.
+ */
+export async function detectSubtaskRedundancies(
+  executions: readonly SubtaskExecution[],
+  embed: (text: string) => Promise<readonly number[]>
+): Promise<readonly string[]> {
+  const completed = executions.filter(
+    (e): e is SubtaskExecution & { output: string } =>
+      e.status === "completed" && typeof e.output === "string" && e.output.trim().length > 0
+  );
+  if (completed.length < 2) return [];
+  const pairs = await detectRedundantPairs(completed.map((e) => e.output), embed);
+  return pairs.map((p) => `"${completed[p.aIndex]!.subtask.text}" ≈ "${completed[p.bIndex]!.subtask.text}"`);
+}
+
+/**
+ * The orchestrate-path twin of {@link detectSubtaskRedundancies} (and the redundancy
+ * complement of {@link detectFanInConflicts}): given the COMPLETED workers' parts, flag
+ * any pair of workers whose outputs are near-identical — one restated another's answer
+ * adding nothing (MAST FM-1.3 step repetition). In a fan-OUT where several workers answer
+ * the SAME question, this catches a worker that contributed no distinct value. Reuses the
+ * shared {@link detectRedundantPairs}. Returns a caption per pair (by workerId). Fail-soft.
+ */
+export async function detectFanInRedundancy(
+  parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>,
+  embed: (text: string) => Promise<readonly number[]>
+): Promise<readonly string[]> {
+  const nonEmpty = parts.filter((p) => typeof p.output === "string" && p.output.trim().length > 0);
+  if (nonEmpty.length < 2) return [];
+  const pairs = await detectRedundantPairs(nonEmpty.map((p) => p.output), embed);
+  return pairs.map((p) => `"${nonEmpty[p.aIndex]!.workerId}" ≈ "${nonEmpty[p.bIndex]!.workerId}"`);
+}
+
 export function verifySynthesisCoverage(finalAnswer: string, executions: readonly SubtaskExecution[]): SynthesisVerdict {
   const answerTokens = lexicalTokens(finalAnswer);
   const missing: string[] = [];
@@ -73,6 +111,52 @@ export function verifySynthesisCoverage(finalAnswer: string, executions: readonl
     if (tokens.length > 0 && !tokens.some((t) => answerTokens.has(t))) missing.push(ex.subtask.text);
   }
   return { missing, satisfied: missing.length === 0 };
+}
+
+/**
+ * Reasoning-action alignment on the SEQUENCED handoff (MAST FM-2.6 reasoning-action
+ * mismatch, arXiv:2503.13657 — the #2 multi-agent failure mode at 13.2%). A sequenced
+ * split exists SPECIFICALLY so a downstream step can act on its upstream RESULT (it is
+ * handed the completed prior steps' outputs as priorContext). This verifies the step
+ * actually ENGAGED that result: a COMPLETED step (index ≥ 1) whose output shares ZERO
+ * content tokens with EVERY same-script upstream output ran "blind" — it ignored the
+ * dependency it was given. Returns a caption per blind step. Advisory-only.
+ *
+ * Calibration (honest): the bar is "shares NOTHING" — the inverse of
+ * {@link verifySynthesisCoverage}'s "shares ≥1 token" test. A downstream that carries
+ * forward any upstream number/entity/noun is never flagged; but a downstream that
+ * legitimately PARAPHRASES/CLASSIFIES/DECIDES without repeating a surface token (e.g.
+ * upstream "Q1 revenue 4.2M" → downstream "approved, proceeding") shares zero LEXICAL
+ * tokens and WOULD be flagged — a real false-positive class. This is therefore a
+ * conservative-RECALL signal and is **ADVISORY-ONLY** (a caption + reason fragment, never a
+ * gate / re-synthesis / blocked answer): a spurious flag is harmless. Do NOT wire it into
+ * any non-advisory path without first upgrading the bar to SEMANTIC similarity (embedder
+ * cosine, mirroring the redundancy detector). Same-script gate (fail-open) drops cross-script
+ * upstream. Pure; caller runs it ONLY for a sequenced split (independent lists aren't checked).
+ */
+export function verifySequencedDependencyUse(executions: readonly SubtaskExecution[]): readonly string[] {
+  const gaps: string[] = [];
+  for (let i = 1; i < executions.length; i++) {
+    const step = executions[i]!;
+    const stepOut = step.status === "completed" ? step.output?.trim() : undefined;
+    if (!stepOut) continue;
+    const stepTokens = lexicalTokens(stepOut);
+    if (stepTokens.size === 0) continue;
+    const upstream = executions
+      .slice(0, i)
+      .filter((e): e is SubtaskExecution & { output: string } =>
+        e.status === "completed" && typeof e.output === "string" && e.output.trim().length > 0)
+      .filter((e) => comparableScript(stepOut, e.output));
+    if (upstream.length === 0) continue; // no same-script upstream to verify against (fail-open)
+    const engagedUpstream = upstream.some((e) => {
+      for (const t of lexicalTokens(e.output)) {
+        if (stepTokens.has(t)) return true;
+      }
+      return false;
+    });
+    if (!engagedUpstream) gaps.push(step.subtask.text);
+  }
+  return gaps;
 }
 
 /**
@@ -143,6 +227,26 @@ export interface LeadWorkerResult {
    * off as a single confident truth.
    */
   readonly subtaskConflicts?: readonly string[];
+  /**
+   * Set when the fan-in `detectRedundancies` found COMPLETED sub-answers that are
+   * near-IDENTICAL — one worker restated another's result adding nothing (MAST
+   * FM-1.3 step repetition). A caption per redundant pair, surfaced so the caller
+   * knows a sub-task did duplicate work (the complement of {@link subtaskConflicts}).
+   */
+  readonly subtaskRedundancies?: readonly string[];
+  /**
+   * Set (for a SEQUENCED split only) when a completed downstream step ignored the
+   * upstream RESULT it was handed — its output shares no content token with any
+   * upstream output (MAST FM-2.6 reasoning-action mismatch). A caption per blind step.
+   */
+  readonly reasoningActionGaps?: readonly string[];
+  /**
+   * Machine-readable coordination-health summary for a DECOMPOSED run: true ONLY when the
+   * fan-in is clean — no `subtaskConflicts`, no `subtaskRedundancies`, no `reasoningActionGaps`,
+   * and no `synthesisIncomplete`. DERIVED from those signals (never asserted), so it can never
+   * claim health it didn't check. Undefined for a single-agent / all-failed run (no fan-in to summarize).
+   */
+  readonly coordinationHealthy?: boolean;
 }
 
 export interface LeadWorkerDeps {
@@ -189,6 +293,14 @@ export interface LeadWorkerDeps {
    * (bound to a local embed) for the default.
    */
   readonly detectConflicts?: (executions: readonly SubtaskExecution[]) => Promise<readonly string[]>;
+  /**
+   * Fan-in REDUNDANCY detector (step-repetition guard): given the executions, return a
+   * caption per pair of COMPLETED sub-answers that are near-identical (one adds nothing).
+   * A non-empty result marks {@link LeadWorkerResult.subtaskRedundancies}. Absent ⇒ no
+   * redundancy check (back-compat). Wire {@link detectSubtaskRedundancies} (bound to a
+   * local embed) for the default.
+   */
+  readonly detectRedundancies?: (executions: readonly SubtaskExecution[]) => Promise<readonly string[]>;
 }
 
 const MAX_SUBTASKS = 8;
@@ -397,9 +509,32 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
       if (conflicts.length > 0) subtaskConflicts = conflicts;
     } catch { /* detector unavailable — surface nothing */ }
   }
+  // Fan-in REDUNDANCY (step-repetition): are two completed sub-answers near-identical
+  // (a worker duplicated another's work)? Fail-soft — a detector error leaves the answer.
+  let subtaskRedundancies: readonly string[] | undefined;
+  if (deps.detectRedundancies) {
+    try {
+      const redundancies = await deps.detectRedundancies(executions);
+      if (redundancies.length > 0) subtaskRedundancies = redundancies;
+    } catch { /* detector unavailable — surface nothing */ }
+  }
+  // Reasoning-action alignment on the SEQUENCED handoff (MAST FM-2.6): did each completed
+  // downstream step actually engage the upstream RESULT it was handed? Only meaningful for a
+  // sequenced split (an independent list passes nothing forward, so isn't expected to relate).
+  // Pure + deterministic (no model) — always safe to run on a sequenced split.
+  let reasoningActionGaps: readonly string[] | undefined;
+  if (sequenced) {
+    const gaps = verifySequencedDependencyUse(executions);
+    if (gaps.length > 0) reasoningActionGaps = gaps;
+  }
   const split = planned ? "model-planned" : "structural";
 
   return {
+    // Derived from the REAL fan-in signals (each local is undefined when clean, a
+    // non-empty caption list when not): a single machine-readable boolean a consumer
+    // can trust — true ONLY when no contradiction, no redundancy, no blind sequenced
+    // step, and no dropped sub-result. Never a hardcoded green.
+    coordinationHealthy: !subtaskConflicts && !subtaskRedundancies && !reasoningActionGaps && !synthesisIncomplete,
     decomposed: subtasks.length > 1,
     executions,
     finalAnswer,
@@ -407,10 +542,14 @@ export async function runLeadWorkerTask(request: string, deps: LeadWorkerDeps): 
       `${split} decomposition → ${completed}/${executions.length} sub-tasks grounded` +
       (truncated ? ` (capped at ${MAX_SUBTASKS})` : "") +
       (synthesisIncomplete ? ` · synthesis incomplete (${synthesisIncomplete.length.toString()} dropped)` : "") +
-      (subtaskConflicts ? ` · ${subtaskConflicts.length.toString()} sub-answer conflict(s)` : ""),
+      (subtaskConflicts ? ` · ${subtaskConflicts.length.toString()} sub-answer conflict(s)` : "") +
+      (subtaskRedundancies ? ` · ${subtaskRedundancies.length.toString()} redundant sub-answer(s)` : "") +
+      (reasoningActionGaps ? ` · ${reasoningActionGaps.length.toString()} step(s) ignored upstream` : ""),
     subtasks,
     truncated,
     ...(synthesisIncomplete ? { synthesisIncomplete } : {}),
-    ...(subtaskConflicts ? { subtaskConflicts } : {})
+    ...(subtaskConflicts ? { subtaskConflicts } : {}),
+    ...(subtaskRedundancies ? { subtaskRedundancies } : {}),
+    ...(reasoningActionGaps ? { reasoningActionGaps } : {})
   };
 }

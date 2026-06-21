@@ -26,6 +26,8 @@ export interface OrchestrationHistoryEntry {
   readonly conversation?: readonly AgentMessage[];
   /** Cross-worker contradiction captions the fan-in detected (coordination outcome, persisted for trend/audit). */
   readonly conflicts?: readonly string[];
+  /** Cross-worker REDUNDANCY captions (near-identical worker answers — duplicated work; the conflict twin). */
+  readonly redundancies?: readonly string[];
   /** The objective-coverage verifier verdict, when a verifier ran (false = the answer was flagged incomplete). */
   readonly verificationSatisfied?: boolean;
 }

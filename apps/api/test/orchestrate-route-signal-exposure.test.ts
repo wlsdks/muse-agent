@@ -131,6 +131,37 @@ describe("orchestrate routes expose the structured coordination signals (not onl
     }
   });
 
+  it("GET /orchestrations/:runId surfaces the PERSISTED redundancies from a past duplicated-work run (the conflict twin)", async () => {
+    // Both default workers return the SAME output → near-identical → redundant (NOT a conflict).
+    const identicalRuntime = {
+      run: async (input: AgentRunInput): Promise<AgentRunResult> => ({
+        response: { id: "r", model: input.model, output: "the project deadline is tuesday", raw: {} },
+        runId: "run"
+      })
+    } as unknown as AgentRuntime;
+    const app = Fastify();
+    registerMultiAgentRoutes(app, {
+      agentRuntime: identicalRuntime,
+      agentSpecRegistry: new InMemoryAgentSpecRegistry(DEFAULT_AGENT_SPECS),
+      defaultModel: "diagnostic",
+      embed
+    });
+    await app.ready();
+    try {
+      const post = await app.inject({ method: "POST", url: "/api/multi-agent/orchestrate", payload });
+      expect(post.statusCode).toBe(200);
+      const runId = (post.json() as { runId: string }).runId;
+      const get = await app.inject({ method: "GET", url: `/api/multi-agent/orchestrations/${runId}` });
+      expect(get.statusCode).toBe(200);
+      const body = get.json() as { redundancies?: readonly string[]; conflicts?: unknown };
+      expect(Array.isArray(body.redundancies)).toBe(true);
+      expect(body.redundancies!.length).toBeGreaterThanOrEqual(1);
+      expect(body.conflicts).toBeUndefined(); // identical ≠ conflict
+    } finally {
+      await app.close();
+    }
+  });
+
   it("control: a clean run (no embed, no verify) exposes neither field — no empty noise", async () => {
     const app = Fastify();
     registerMultiAgentRoutes(app, {
