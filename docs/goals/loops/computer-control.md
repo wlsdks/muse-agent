@@ -5,6 +5,32 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 54 · 2026-06-21 · skill v2.0 · 5ea43240 (eval:two-edit-fix — multi-step COMPLETENESS battery (2 edits/2 files); 12B PASSes, bar raised)
+meta: value-class=new-capability(harder-eval/flywheel) · pkg=scripts/eval · kind=eval-fixture/completeness · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles unchanged · fabrication 0 · eval:two-edit-fix PASS 1/1 (live) · discrimination verified(one-edit→FAIL/both→PASS) · lint 0/0 · main ff-merge(fire 54=×3, delivers 53/54) · Ollama UP
+- 무엇: 세 기존 eval 모두 단일-edit이라 PASS. 더 어려운 차원(완수성) 추가 — 2파일 2버그를 BOTH 고쳐야 테스트 통과(한 곳만 고치면 FAIL). early-stop/step-repetition(fires 48-51 실패클래스)을 직접 잡는 completeness 배터리. eval-multifile-fix 하니스 미러(temp-dir·4 도구·SHIPPED persistence·runTest 재실행·OUTCOME 채점 ok=testPasses&&noiseIntact).
+- 왜: backlog 방향(2) flywheel — eval 바 올리기. 다양성: scripts/eval(fire 53과 같은 pkg지만 다른 kind=fixture vs aggregator; agent-core 우물 과채굴 회피 지속).
+- 리뷰지점: 라이브 PASS 1/1(trace: run_command 양실패→read alpha/beta→edit BOTH(1→2,10→20)→re-read; alpha-edited·beta-edited·noise-intact 모두 true). **비-tautological 결정론 검증**: alpha만/beta만 고치면 test exit1(FAIL), 둘다면 exit0(PASS) — stop-after-one-edit 모델을 진짜 잡음. 독립 Opus ④b judge가 discrimination·OUTCOME-grade·false-pass 무·temp-cleanup·flywheel 가치 검증 → VERDICT PASS.
+- 리스크: 12B가 PASS(좋은 결과 — 2-edit 완수성 견고 확인, 수정 불요). pass^1이라 eval:multistep 애그리게이터엔 미편입(just-shipped 게이트 flake 방지; pass^k 확인 후 승급 후보). 순수 측정 인프라(제품/state 무변경). fire 54는 ×3 → 53/54 main 전달.
+lesson: 테마 성숙(3 eval PASS) 후 flywheel = 더 어려운 차원의 eval로 바 올리기. 12B가 cross-file 2-edit 완수성을 이미 갖춤(early-stop 수정 fires 47/49/51의 누적 효과). 다음 더 어려운 차원: wrong-first-fix 재이터레이션(naive 첫 수정이 불충분 → 재읽기+재수정) 또는 테마 repoint. ★fire 56=firesSinceDrill≥10 judge-drill 예정.
+
+## fire 53 · 2026-06-21 · skill v2.0 · e483c624 (eval:multistep aggregator — lock the 3-eval FAIL→PASS gains as one regression gate; scripts/eval pivot)
+meta: value-class=new-capability(regression-lock) · pkg=scripts/eval · kind=eval-aggregator-gate · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles unchanged · fabrication 0 · eval:multistep ALL PASS 3/3 (live) · skip→exit0 · fail→exit1 verified · lint 0/0 · Ollama UP
+- 무엇: fires 40-51이 세 멀티스텝 eval(computer-task/multifile-fix/edit-run-verify)을 FAIL→PASS로 뒤집음(fire 52 검증). 이 이득을 silent-regression으로부터 잠그려 `eval:multistep` 애그리게이터 추가 — eval:self-improving 패턴 그대로(Ollama-reachable skip→exit0, 3 배터리 spawnSync, status!==0면 FAIL, any-fail→exit1, MUSE_EVAL_REPEAT 패스스루로 pass^k). package.json 엔트리(빌드 union=fs+tools+autoconfigure).
+- 왜: agent-testing.md "배터리를 한 게이트로 묶어라; CI-gate 안 하면 썩는다" + pass^k. 다양성 RATCHET: agent-core 우물 과채굴(judge 2회 노트) → scripts/eval로 의도적 pivot(fresh pkg,kind). 양 hard eval PASS 직후 "이득 잠그기"가 자연스러운 다음 단계.
+- 리뷰지점: 라이브 실행 ALL PASS 3/3(exit 0), skip-path(bad URL)→exit0, fail-path(non-zero sub→exit1) 로직 검증. 독립 Opus ④b judge가 aggregation/exit 계약·build-prefix union·skip-vs-fail(3 sub-eval 전수)·REPEAT 패스스루·doctrine 가치·비-inert 검증 → VERDICT PASS.
+- 리스크: Ollama/runner 없으면 sub-eval SKIP(exit0)이라 게이트가 비어도 green일 수 있음(skip≠pass; 메커니즘별 단위테스트가 진짜 CI lock, 이건 라이브 regression layer). 순수 test-runner 인프라(제품/state 무변경). fire 53은 ×3 아님 → main 머지 없음.
+
+## fire 52 · 2026-06-21 · skill v2.0 · e9a8a3a0 (★MILESTONE validated: BOTH hard multi-step evals now PASS — theme goal achieved; consolidation + next-direction)
+meta: value-class=measure(milestone-validation) · pkg=docs(validation) · kind=outcome-validation · verdict=N/A · firesSinceDrill=6
+ratchet: testFiles unchanged · fabrication 0 · self-eval green · ★eval:multifile-fix PASS · ★eval:edit-run-verify PASS(fire 52, model-ran-test=true) · eval:computer-task PASS · Ollama UP
+- 검증: edit-run-verify 재측정 PASS(test-passes=true, model-ran-test=true, tools=[run_command,file_read,file_grep,file_edit]) — **fire 51 exposure reserve가 OUTCOME으로 확증**(run_command이 이제 노출+사용됨; trace: run_command→TEST FAIL→read→edit→verify). fire 51의 미확정 OUTCOME이 이번에 확정.
+- ★MILESTONE: 세 eval 전부 PASS — computer-task(단일), multifile-fix(다중파일, fires 47 not-exposed + 49 repetition), edit-run-verify(edit→run→verify, fire 51 exposure). 테마 헤드라인 목표(로컬12B 멀티스텝 신뢰성↑)가 측정으로 달성. 결정론 메커니즘은 단위테스트로 CI-gated(fires 40-51), eval PASS는 통합 확증.
+- 왜 코드 슬라이스 없음: 결정론 veins(fs/tools/agent-core tool-call 경계+exposure) 12 fire(40-51)에 걸쳐 대거 소진, 양 hard eval PASS. agent-core 5연속(47-51)이라 다양성 RATCHET이 또-agent-core 마이크로픽스를 금지(judge 2회 노트). EXHAUSTION+⑥: 강행 대신 정직히 검증+다음방향 기록.
+- 리뷰지점: 측정이 fires 47/49/50/51 누적효과를 OUTCOME으로 검증(추정 아님). pass^1 관측이나 인과 trace 명확(run_command 노출→사용). 리스크: stochastic 단일관측이라 pass^k는 미수립(다음 fire에서 가능).
+lesson: 측정-주도 루프의 정점 — 측정이 (a)진단(early-stop→step-repetition→exposure-starvation 정정) (b)수정 검증(FAIL→PASS) (c)다음방향을 모두 구동. 테마 성숙 시 정직한 출구는 강제 슬라이스가 아니라 검증+repoint-후보. 다음방향(backlog ★): (1)양 eval pass^k CI-gate화 (2)더 어려운 멀티스텝 fixture(2-edit/cascading/wrong-first-fix 재이터레이션) (3)테마 repoint(deterministic vein 소진).
+
 ## fire 51 · 2026-06-21 · skill v2.0 · 232f04e9 (run-intent execute-tool exposure reserve — run_command no longer starved by the file cluster; fire-4 sibling)
 meta: value-class=new-capability · pkg=@muse/agent-core · kind=tool-filter/exposure-reserve · verdict=PASS · firesSinceDrill=5
 ratchet: testFiles +0 / +2 cases (run-intent reserve positive+no-over-exposure) · fabrication 0 · @muse/agent-core 2573 · tool-filter 37 · pnpm check exit 0 · lint 0/0 · Ollama UP · ★main ff-merge(fire 51=×3, delivers 49/50/51)

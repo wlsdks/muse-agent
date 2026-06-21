@@ -25,7 +25,7 @@ struct CompanionView: View {
         .animation(.spring(response: 0.34, dampingFraction: 0.82), value: model.inputVisible)
         .animation(.easeInOut(duration: 0.22), value: model.bubble)
         .animation(.easeInOut(duration: 0.22), value: model.orbState)
-        .onAppear { drift = true }
+        .onAppear { drift = true; model.startIdleChatter() }
     }
 
     private var orb: some View {
@@ -37,16 +37,23 @@ struct CompanionView: View {
 
     @ViewBuilder private var answerCard: some View {
         if !model.bubble.isEmpty {
-            card {
-                ScrollView {
-                    Text(model.bubble)
-                        .font(.system(size: 13.5))
-                        .foregroundStyle(.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .lineSpacing(2.5)
+            VStack(spacing: 0) {
+                card {
+                    ScrollView {
+                        Text(model.bubble)
+                            .font(.system(size: 13.5))
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .lineSpacing(2.5)
+                    }
+                    .frame(maxHeight: 150)
                 }
-                .frame(maxHeight: 150)
+                // speech-bubble tail pointing down toward the goddess
+                DownTriangle()
+                    .fill(.ultraThinMaterial)
+                    .frame(width: 22, height: 11)
+                    .offset(y: -1)
             }
         } else if model.orbState == .thinking {
             card { HStack { TypingIndicator(color: violet); Spacer() } }
@@ -172,5 +179,17 @@ private struct AmbientNotes: View {
             }
         }
         .onAppear { float = true }
+    }
+}
+
+/// A downward triangle — the tail of Muse's speech bubble.
+private struct DownTriangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        p.closeSubpath()
+        return p
     }
 }
