@@ -166,6 +166,18 @@ export function ollamaPerfPostureCheck(values: OllamaPerfEnv): LocalCheck {
   if (flashOn && kvQuantized) {
     return { detail: `flash attention on, KV cache ${kv ?? ""} — long-context turns run lighter`, name: "ollama-perf", status: "ok" };
   }
+  // A quantized KV cache is INERT without flash attention: Ollama silently
+  // falls back to f16 KV (no memory/speed gain) unless OLLAMA_FLASH_ATTENTION=1
+  // AND the model's arch supports flash attention. Flag the wasted setting
+  // specifically — the generic "set flash" line below hides that q8_0/q4_0 is
+  // currently doing nothing. (Ollama FAQ + ollama/ollama#13337 + PR #6279.)
+  if (kvQuantized && !flashOn) {
+    return {
+      detail: `OLLAMA_KV_CACHE_TYPE=${kv ?? ""} is set but INERT without OLLAMA_FLASH_ATTENTION=1 — Ollama silently falls back to f16 KV (no memory gain). Set OLLAMA_FLASH_ATTENTION=1 on the server (needs a flash-attention-capable model) to actually halve KV memory`,
+      name: "ollama-perf",
+      status: "warn"
+    };
+  }
   const missing = [
     ...(flashOn ? [] : ["OLLAMA_FLASH_ATTENTION=1"]),
     ...(kvQuantized ? [] : ["OLLAMA_KV_CACHE_TYPE=q8_0"])
@@ -198,6 +210,45 @@ export async function readOllamaPerfEnv(env: Record<string, string | undefined>)
   return {
     flashAttention: env.OLLAMA_FLASH_ATTENTION ?? await fromLaunchctl("OLLAMA_FLASH_ATTENTION"),
     kvCacheType: env.OLLAMA_KV_CACHE_TYPE ?? await fromLaunchctl("OLLAMA_KV_CACHE_TYPE")
+  };
+}
+
+export interface MuseSpeedEnv {
+  readonly numBatch?: string | undefined;
+  readonly numCtx?: string | undefined;
+  readonly keepAlive?: string | undefined;
+}
+
+/**
+ * Muse-PROCESS speed env posture — distinct from the Ollama SERVER env in
+ * `ollamaPerfPostureCheck` (launchctl). These are the per-request knobs Muse
+ * maps onto Ollama: `MUSE_OLLAMA_NUM_BATCH` (prompt-eval throughput),
+ * `MUSE_OLLAMA_NUM_CTX` (context window), `MUSE_OLLAMA_KEEP_ALIVE` (model
+ * warmth). All optional with safe defaults, so this is advisory (always ok) —
+ * its job is to make the shipped `num_batch` lever DISCOVERABLE instead of
+ * invisible, with a concrete tuning hint when it is unset.
+ */
+export function museSpeedEnvCheck(values: MuseSpeedEnv): LocalCheck {
+  const set: string[] = [];
+  if (values.numBatch?.trim()) set.push(`num_batch=${values.numBatch.trim()}`);
+  if (values.numCtx?.trim()) set.push(`num_ctx=${values.numCtx.trim()}`);
+  if (values.keepAlive?.trim()) set.push(`keep_alive=${values.keepAlive.trim()}`);
+  const tuned = set.length > 0 ? `tuned ${set.join(", ")}` : "all default";
+  const batchHint = values.numBatch?.trim()
+    ? ""
+    : " — set MUSE_OLLAMA_NUM_BATCH (e.g. 1024) to raise prompt-eval throughput on long prompts";
+  return {
+    detail: `Muse local-model speed env: ${tuned}${batchHint}`,
+    name: "muse-speed-env",
+    status: "ok"
+  };
+}
+
+export function readMuseSpeedEnv(env: Record<string, string | undefined>): MuseSpeedEnv {
+  return {
+    keepAlive: env.MUSE_OLLAMA_KEEP_ALIVE,
+    numBatch: env.MUSE_OLLAMA_NUM_BATCH,
+    numCtx: env.MUSE_OLLAMA_NUM_CTX
   };
 }
 

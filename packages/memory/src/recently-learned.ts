@@ -82,3 +82,21 @@ export function renderRecentlyLearnedLines(items: readonly RecentlyLearnedItem[]
   }
   return lines;
 }
+
+/**
+ * A single compact line of recent learning for a space-constrained surface
+ * (a status dashboard, a daily briefing): the most recent cited learning plus a
+ * `(+N more)` count of the rest. Returns undefined when nothing is currently
+ * surfaced, so a caller renders the line only when there is something to say.
+ * Built on renderRecentlyLearnedLines, so it inherits the forgotten-fact filter
+ * and the citation — the compact form still points at a real source.
+ */
+export function summarizeRecentlyLearned(items: readonly RecentlyLearnedItem[]): string | undefined {
+  const lines = renderRecentlyLearnedLines(items);
+  const head = lines[0];
+  if (head === undefined) {
+    return undefined;
+  }
+  const more = lines.length - 1;
+  return more > 0 ? `${head} (+${more} more)` : head;
+}

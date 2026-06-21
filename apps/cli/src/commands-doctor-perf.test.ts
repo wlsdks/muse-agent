@@ -27,4 +27,19 @@ describe("ollamaPerfPostureCheck (KV quant + flash attention posture)", () => {
     const check = ollamaPerfPostureCheck({ flashAttention: "1", kvCacheType: "Q4_0" });
     expect(check.status).toBe("ok");
   });
+
+  it("flags a quantized KV cache as INERT when flash attention is off (Ollama silently falls back to f16)", () => {
+    const check = ollamaPerfPostureCheck({ kvCacheType: "q8_0" });
+    expect(check.status).toBe("warn");
+    expect(check.detail).toContain("INERT");
+    expect(check.detail).toContain("OLLAMA_FLASH_ATTENTION=1");
+    expect(check.detail).toContain("q8_0");
+  });
+
+  it("flags q4_0 as inert without flash attention too", () => {
+    const check = ollamaPerfPostureCheck({ kvCacheType: "Q4_0" });
+    expect(check.status).toBe("warn");
+    expect(check.detail).toContain("INERT");
+    expect(check.detail).toContain("q4_0");
+  });
 });

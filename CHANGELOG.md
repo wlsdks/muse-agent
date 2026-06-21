@@ -3,9 +3,45 @@
 All notable changes to Muse are recorded here. The format is loosely based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project is in
 continuous iteration on `main`; once a tagged release exists, sections will
-move from `Unreleased` to dated/versioned headings.
+move from `Unreleased` to dated/versioned headings. Version policy:
+[`docs/VERSIONING.md`](docs/VERSIONING.md).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-06-21
+
+First tagged release — **early / experimental, macOS only**. While the major
+version is `0`, every release is a pre-release and the public surface may still
+change (see [`docs/VERSIONING.md`](docs/VERSIONING.md)).
+
+### Added
+
+- **The personal AI that learns _you_, not the world.** A local-first agent
+  that builds a private model of who you are from your own notes and files,
+  reinforces what works for you, and forgets the moment you correct it — the
+  model of you never leaves your machine (cloud egress is refused in code under
+  `MUSE_LOCAL_ONLY`, on by default).
+- **"Shows its work" grounding gate** under every surface (recall, proactivity,
+  reflection, chat, vision): every claim cites a real source, weak grounding
+  becomes "I'm not sure," and an un-groundable claim is dropped by code.
+  `fabrication = 0` is a CI-enforced release gate.
+- **Runs entirely on a local open-source model** (`gemma4:12b` via Ollama by
+  default) behind a model-neutral `ModelProvider` core; the same runtime drives
+  the CLI, the API server, and the web UI.
+- **Personal-domain surfaces** — notes, tasks, reminders, calendar (5
+  providers), a proactive daemon, multi-agent orchestration, messaging
+  channels, and a native macOS desktop companion — all draft-first for any
+  third-party action, with banking permanently out of scope.
+
+### Fixed
+
+- Fresh `pnpm install` now wires dependency build scripts automatically — no
+  manual `pnpm approve-builds` step on a first clone.
+
+### Prior `[Unreleased]` development log
+
+The detailed entries below accumulated during pre-tag iteration on `main` and
+are retained here for history.
 
 ### Added
 

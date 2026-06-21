@@ -12,7 +12,8 @@
 - ✓ learning-surfacing fire 1: `projectRecentlyLearned` (`@muse/memory/recently-learned.ts`) — deterministic, source-cited projection of "what Muse recently learned about you" from the append-only `factHistory` (each item cites `updated from "X" on DATE`; CODE selects, not the 8B; fabrication 0). Foundation for CLI/web surfaces to consume. 6 mutation-verified tests; @muse/memory 505 green; full build green; independent Opus ④b judge PASS. (detail in docs/goals/loops/learning-surfacing.md fire 1)
 - ✓ learning-surfacing fire 2: `renderRecentlyLearnedLines` (`@muse/memory/recently-learned.ts`) — deterministic presentation of fire-1's projection: humanises the key, ALWAYS embeds the source citation, and OMITS forgotten facts (`currentValue` undefined) so only currently-held, sourced learnings reach a surface. 4 mutation-verified tests; @muse/memory 513 green; independent Opus ④b judge PASS. (detail in docs/goals/loops/learning-surfacing.md fire 2)
 - ✓ learning-surfacing fire 3: `muse memory show` now prints a "Recently learned about you:" section — `readLocalMemory` computes it via `projectRecentlyLearned`→`renderRecentlyLearnedLines`, `formatMemoryShow` renders each cited line (`@muse/cli`, commands-memory.ts + human-formatters.ts). First user-facing surface where the user SEES cited learnings; local/file path only (API lacks factHistory → absent, honest). 2 mutation-verified tests; @muse/cli 2861 green; independent Opus ④b judge PASS. (detail in docs/goals/loops/learning-surfacing.md fire 3)
-- ◦ learning-surfacing: extend the surfacing to a `muse status`/`muse today` one-liner and/or the web self-improvement view ("learned about you" section) — same `project→render` invariant. NOTE: `loop/surfaces` actively edits `commands-today.ts` (fire-ref formatEpisodeRevisitLine) — dedup/coordinate before touching `today`; `muse status` (commands-status.ts) appears untouched by surfaces. Gate: `pnpm --filter @muse/cli test`.
+- ✓ learning-surfacing fire 4: `summarizeRecentlyLearned` (`@muse/memory/recently-learned.ts`) — compact one-line form (most-recent cited learning + "(+N more)") for space-constrained surfaces (status/today); reuses `renderRecentlyLearnedLines` so it inherits the forgotten-filter + citation (forgotten facts don't inflate the count), undefined when empty. 4 mutation-verified tests; @muse/memory 519 green; independent Opus ④b judge PASS (value confirmed genuine, not inert). (detail in docs/goals/loops/learning-surfacing.md fire 4)
+- ◦ learning-surfacing: wire `summarizeRecentlyLearned` into a `muse status` one-liner (commands-status.ts persona snapshot — surfaces-clean; use `FileUserMemoryStore.findByUserId` for Date-typed factHistory, not the raw memoryDoc whose `replacedAt` is a string). `muse today` is owned by `loop/surfaces` (commands-today.ts) — coordinate/dedup. Same `project→summarize` invariant (deterministic, cited, fabrication 0). Gate: `pnpm --filter @muse/cli test`.
 
 - ✓ eval:multifile-fix grades OUTCOME not path — computer-control fire 45 (fire-9 residual): the eval gated on `modelRanTest` (toolsUsed.includes("run_command")) alongside `testPasses`, but the harness verifies `testPasses` independently via runTest(), so requiring the model to self-run was redundant path-grading that under-counted correct fixes (agent-testing.md). Extracted pure `gradeMultifileFix` (scripts/lib/), ranTest now observational-only; 6 mutation-verified node:test cases. eval:edit-run-verify keeps its run-gate intentionally (run→verify is its measured capability). (detail in docs/goals/loops/computer-control.md fire 45)
 
@@ -2376,14 +2377,27 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   shipped C1: the escalation-decision primitive `shouldEscalateToHeavy(confidence, threshold)` +
   `planTieredRun` optional `priorConfidence`/`escalateThreshold` (a fast-classified task with a KNOWN
   low fast-pass mean-logprob escalates to heavy; absent = unchanged, byte-identical). REMAINING:
-  · **C2 (runtime two-pass wiring)** — in `muse ask --tiered` / multi-agent runtime, after the FAST
-  pass run `summarizeTokenConfidence` (@muse/agent-core, already computed at commands-ask.ts:2870) on
-  the answer logprobs, feed the mean-logprob into a re-plan (`planTieredRun` with priorConfidence) and
-  re-run escalated tasks on heavy. Needs logprobs requested on the fast pass + the two-pass loop;
-  bound to 1 retry (no unbounded cascade). >1 fire.
+  · **C2-core (execution primitive) — DONE fire 5** `runCascade({fast,heavy,run,confidenceOf,threshold})`
+  (@muse/multi-agent cascade-run.ts): runs fast → escalates ONCE to heavy on low/unmeasurable confidence,
+  bounded (MAST no-loop). Model-agnostic via injected run/confidenceOf (package idiom). REMAINING:
+  · **C2b (autoconfigure wiring)** — wire the REAL injected functions: `run(model)` = a tiered model
+  call requesting logprobs; `confidenceOf` = `summarizeTokenConfidence(result.logprobs).meanLogprob`
+  (@muse/agent-core, already computed at commands-ask.ts:2870). Call `runCascade` from the `muse ask
+  --tiered` fast path (single-query cascade) and/or buildTieredOrchestration's per-worker run. Needs
+  logprobs requested on the fast pass. >1 fire (touches the live ask/orchestration loop). Verify with C3.
   · **C3 (live eval)** — use `bench:local` (fire 1) for the latency win + accuracy parity: cascade vs
   always-heavy on a mixed easy/hard set; assert faster mean latency AND no grounding/answer regression.
   Needs Ollama up.
+- ✓ **doctor: surface the Muse-side speed env — DONE local-speed fire 6** — `museSpeedEnvCheck` +
+  `readMuseSpeedEnv` (apps/cli) report the Muse-PROCESS speed env (`MUSE_OLLAMA_NUM_BATCH` fire-2 lever,
+  `MUSE_OLLAMA_NUM_CTX`, `MUSE_OLLAMA_KEEP_ALIVE`) on every `muse doctor`, with a concrete num_batch
+  tuning hint when unset — so the shipped lever is discoverable, not invisible. Advisory (always ok);
+  distinct surface from `ollamaPerfPostureCheck` (server launchctl env).
+- ◦ **doctor: warn when flash is ON but the model arch is NOT flash-attention-capable** — even with
+  OLLAMA_FLASH_ATTENTION=1, KV quant falls back to f16 unless the model is on Ollama's FA allowlist
+  (gemma3/qwen3/… per ollama/ollama#13337; gemma4 status unverified). Hard to encode (version-fragile
+  allowlist) — deferred; would need to query Ollama's supported-arch list at runtime, not hardcode.
+  (scouted local-speed fire 4)
 - ◦ **local-speed sibling adapter knobs (enumerated fire 2, deferred)** — beyond `num_batch`, Ollama
   exposes `num_thread` (CPU threads) and `num_gpu` (layers offloaded to GPU) as per-request speed
   levers. Deferred: both are hardware-specific and Ollama's auto-detection is usually right, so the

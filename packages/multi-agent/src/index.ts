@@ -27,6 +27,8 @@ export type {
   TieredTask
 } from "./tiering.js";
 export { classifyTier, DEFAULT_CASCADE_ESCALATE_LOGPROB, planTieredRun, shouldEscalateToHeavy } from "./tiering.js";
+export type { CascadeOutcome, CascadeRunArgs } from "./cascade-run.js";
+export { runCascade } from "./cascade-run.js";
 export type { DecomposeDecision, DecomposedRequest, DecomposeSignals, Subtask } from "./decompose-trigger.js";
 export { decomposeRequest, decomposeRequestWithKind, listHasBackReference, sentenceSplitDependentTwoStep, shouldDecompose, singleMarkerDependentSplit } from "./decompose-trigger.js";
 export type {
