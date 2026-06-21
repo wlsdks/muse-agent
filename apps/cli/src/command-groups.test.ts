@@ -12,11 +12,34 @@ const buildProgram = (names: readonly string[]) => {
 
 describe("applyCommandGroups", () => {
   it("renders curated headings in COMMAND_GROUPS order, ahead of the default group", () => {
-    const program = buildProgram(["zzz-tail", "chat", "memory", "today", "setup", "another-tail"]);
+    const program = buildProgram([
+      "zzz-tail",
+      "chat",
+      "memory",
+      "today",
+      "setup",
+      "proactive",
+      "mcp",
+      "read",
+      "brief",
+      "metrics",
+      "another-tail"
+    ]);
     applyCommandGroups(program);
     const help = program.helpInformation();
 
-    const order = ["Chat & ask", "Memory & knowledge", "Planning & time", "Setup & status", "Commands:"];
+    const order = [
+      "Chat & ask",
+      "Memory & knowledge",
+      "Planning & time",
+      "Setup & status",
+      "Automation & agents",
+      "Connections",
+      "Documents & analysis",
+      "Reports & history",
+      "Diagnostics",
+      "Commands:"
+    ];
     const positions = order.map((heading) => help.indexOf(heading));
     expect(positions.every((pos) => pos >= 0)).toBe(true);
     expect([...positions]).toEqual([...positions].sort((a, b) => a - b));

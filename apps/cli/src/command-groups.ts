@@ -23,7 +23,58 @@ export const COMMAND_GROUPS: ReadonlyArray<{
     heading: "Planning & time",
     commands: ["today", "week", "calendar", "remind", "tasks", "followup", "commitments", "checkins"]
   },
-  { heading: "Setup & status", commands: ["setup", "status", "doctor", "config", "auth", "privacy", "trust"] }
+  { heading: "Setup & status", commands: ["onboard", "setup", "status", "doctor", "config", "auth", "privacy", "trust"] },
+  {
+    heading: "Automation & agents",
+    commands: [
+      "proactive",
+      "daemon",
+      "scheduler",
+      "job",
+      "orchestrate",
+      "agents",
+      "swarm",
+      "objectives",
+      "playbook",
+      "propose",
+      "approval",
+      "approvals",
+      "actions",
+      "session",
+      "watch-folder",
+      "webhook",
+      "routine",
+      "agent-notices"
+    ]
+  },
+  {
+    heading: "Connections",
+    commands: ["mcp", "messaging", "inbox", "email", "feeds", "weather", "time", "web-action", "home", "voice", "listen"]
+  },
+  {
+    heading: "Documents & analysis",
+    commands: ["read", "show", "ingest", "demo", "csv", "benford", "keywords", "trend", "diversity"]
+  },
+  { heading: "Reports & history", commands: ["brief", "recap", "history", "runs", "on-this-day", "glance", "anomaly"] },
+  {
+    heading: "Diagnostics",
+    commands: [
+      "metrics",
+      "telemetry",
+      "traces",
+      "latency",
+      "cost",
+      "tools",
+      "analytics",
+      "debug",
+      "runtime",
+      "loopback",
+      "snapshot",
+      "context",
+      "settings",
+      "spec"
+    ]
+  }
 ];
 
 /**
