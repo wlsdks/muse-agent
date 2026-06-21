@@ -7,12 +7,10 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
-import { join } from "node:path";
 
 import { buildGroundingReverifyPrompt, filterReflectionsAgainstStore, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, REVERIFY_SYSTEM_PROMPT, synthesizeReflections, type GroundingReverify, type Reflection, type ReflectionInput } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
-import { createGateEmbedder, createMuseRuntimeAssembly, resolveEpisodesFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createMuseRuntimeAssembly, resolveEpisodesFile, resolveReflectionsFile as sharedResolveReflectionsFile } from "@muse/autoconfigure";
 import {
   addReflections,
   listReflections,
@@ -26,7 +24,7 @@ import type { Command } from "commander";
 import type { ProgramIO } from "./program.js";
 
 export function resolveReflectionsFile(env: Record<string, string | undefined> = process.env): string {
-  return env.MUSE_REFLECTIONS_FILE?.trim() || join(homedir(), ".muse", "reflections.json");
+  return sharedResolveReflectionsFile(env);
 }
 
 export interface ReflectionPassOptions {

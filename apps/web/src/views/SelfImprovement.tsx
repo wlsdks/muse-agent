@@ -3,10 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { AsyncBlock, Badge, Card, Stat } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { formatProbabilityPct } from "../lib/percent.js";
-import { strategyStatusLabel, summarizeStrategies, summarizeWeaknesses, weaknessAxisLabel } from "./self-improvement.js";
+import { strategyStatusLabel, summarizeReflections, summarizeStrategies, summarizeWeaknesses, weaknessAxisLabel } from "./self-improvement.js";
 
 import type { ApiClient } from "../api/client.js";
-import type { PlaybookStrategiesResponse, WeaknessesResponse } from "../api/types.js";
+import type { PlaybookStrategiesResponse, ReflectionsResponse, WeaknessesResponse } from "../api/types.js";
 
 export function SelfImprovementView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
@@ -19,11 +19,17 @@ export function SelfImprovementView({ client }: { client: ApiClient }) {
     queryFn: () => client.get<PlaybookStrategiesResponse>("/api/self-improvement/playbook"),
     queryKey: ["self-improvement-playbook", client.baseUrl]
   });
+  const reflections = useQuery({
+    queryFn: () => client.get<ReflectionsResponse>("/api/self-improvement/reflections"),
+    queryKey: ["self-improvement-reflections", client.baseUrl]
+  });
 
   const entries = weaknesses.data?.entries ?? [];
   const { total, axes } = summarizeWeaknesses(entries);
   const strategyEntries = strategies.data?.entries ?? [];
   const strategyCounts = summarizeStrategies(strategyEntries);
+  const reflectionEntries = reflections.data?.entries ?? [];
+  const reflectionCounts = summarizeReflections(reflectionEntries);
 
   return (
     <div className="content-narrow">
@@ -101,6 +107,33 @@ export function SelfImprovementView({ client }: { client: ApiClient }) {
               </div>
             );
           })}
+        </AsyncBlock>
+      </div>
+
+      <h2 className="page-title" style={{ marginTop: 32, fontSize: 20 }}>
+        {t("si.reflectionsTitle")}
+      </h2>
+      <p className="muted" style={{ marginTop: 4 }}>
+        {t("si.reflectionsSubtitle", { n: reflectionCounts.total, g: reflectionCounts.grounded })}
+      </p>
+
+      <div style={{ marginTop: 16 }}>
+        <AsyncBlock
+          loading={reflections.isLoading}
+          error={reflections.error}
+          empty={reflectionEntries.length === 0}
+        >
+          {reflectionEntries.map((entry) => (
+            <div key={entry.id} style={{ marginBottom: 10 }}>
+              <Card>
+                <p style={{ margin: "0 0 8px" }}>{entry.insight}</p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <span className="mono subtle">{t("si.support", { n: entry.supportCount })}</span>
+                  <span className="mono subtle">{t("si.sources", { n: entry.sourceCount })}</span>
+                </div>
+              </Card>
+            </div>
+          ))}
         </AsyncBlock>
       </div>
     </div>

@@ -641,3 +641,35 @@ ratchet: api 942/942 · fabrication 0 · self-eval exit 0 · check exit 0 · smo
 - **리뷰지점**: mutation-first — sourceCount→supportCount 변이 시 "sourceCount equals sourceIds.length" RED(judge#2 독립 재확인)·ordering(listReflections 재사용). 경로정합: resolveReflectionsFile=CLI와 동일 `~/.muse/reflections.json`+MUSE_REFLECTIONS_FILE. 보안: read-only GET·동일 auth 게이트·재수출 export-from 블록(lint clean). 정직한 갭: 웹 뷰 후속·CLI resolver 통일(형제).
 - **리스크**: 없음(autoconf 3+apps/api 4 파일, api 942/942·pnpm check exit 0·smoke 52/0·lint clean, judge#1 FAIL→fix→judge#2 PASS 드릴 완결).
 - **lesson(드릴 교훈)**: 두 개의 의미상-다른 숫자필드(supportCount=강화 vs sourceCount=grounding소스)는 conflate해도 타입체크·테스트(typeof)·lint 전부 통과 — **필드 정확성은 "이 입력→이 값" 단언 + mutation-RED만이 보증**. grounding신호는 특히: 잘못된 필드=콘솔이 인사이트 근거강도를 거짓보고. ④b judge는 게이트-그린 미묘 필드결함을 안정적으로 잡는다.
+
+## fire 70 · 2026-06-21 · skill v2.0.0 · feb85e9e
+meta: surface=web · value-class=new-capability · pkg=@muse/web(+memory regression-fix) · kind=reflections-web-section · verdict=PASS · firesSinceDrill=1
+ratchet: web tests 110/110 (+3) · fabrication 0 · self-eval exit 0 · smoke:broad 52/0 · lint clean · ★fires 61-69 main 안착(tight merge-push) + cross-loop byte-hygiene 회귀 수정
+
+- **무엇**: `SelfImprovementView`에 read-only "Reflections" 섹션 추가 — fire 69 reflections API 소비, insight·supportCount·**sourceCount**(grounding신호) 표시. 순수 `summarizeReflections`(total + grounded=sourceCount>0 카운트) "N total, G grounded" 요약 + 타입 + i18n(en/ko). 자기강화 콘솔 3 read 섹션 완성(weaknesses+strategies+reflections).
+- **왜**: 자기강화 콘솔 reflections 뷰(fire 69 API의 뷰). (web,view) 한도 내. **+동봉 회귀수정**: learning-surfacing 루프가 `packages/memory/recently-learned.ts:127`에 raw NUL(0x00) 3개를 템플릿 구분자로 넣어 repo byte-hygiene 게이트(전 루프 공유)를 깸 → `\u0000`(런타임 동일·소스 바이트-clean)으로 수정(memory 553/553·byte-hygiene 8/8 그린, judge가 behavior-preserving 확인).
+- **리뷰지점**: mutation-first — summarizeReflections(`>0`→`>=0` 변이→2 RED·grounded 하드코딩0→1 RED), judge 독립 재확인. grounded 경계=sourceCount>0(=`>=0`이면 0소스 ungrounded를 grounded로 거짓표기 방지, honesty). 두 필드(support/source) 분리표시·insight escaped children. 기존 weaknesses+strategies 섹션 무손상·queryKey `["self-improvement-reflections"]` 분리. i18n {n}/{g} 패리티.
+- **★merge-to-main 해결**: fires 61-69(9 fire) deferred saga 종료 — 동시 ~15 루프가 origin/main 빠르게 밀어 매 push가 non-FF race 패배(4분 check 도중 main 전진). 해결=**단일 통과 check 후 tight fetch-merge-push 루프(재-check 없이 초단위)**가 race 이김(attempt 1 성공). 교훈: 고동시성에선 push-시도마다 풀-check 재실행=영원히 race 패배; 1회 통과 후 tight merge-push가 정답.
+- **리스크**: 없음(apps/web 5 + memory 1 파일, web 110/110·byte-hygiene 8/8·memory 553/553·smoke 52/0·lint clean. cli 5 실패는 saturation 타임아웃[격리 41/41·32/32 그린, 82s/41s 지속시간], 무관. 독립 Opus ④b judge가 honesty경계·기존섹션·byte-fix behavior-preserve 검증 후 PASS).
+- **환경 플레이크 추가**: `chat-ink-render`·`document-reader`·`program`(PDF/Ink) cli 테스트도 saturation 타임아웃 클래스(messaging-webhooks·server.scheduler/mcp·web-search-policy에 추가). merge-check flake-exclusion에 포함.
+
+## fire 71 · 2026-06-21 · skill v2.0.0 · 502861bb
+meta: surface=cli · value-class=refactor · pkg=@muse/cli · kind=resolver-unification · verdict=PASS · firesSinceDrill=2
+ratchet: cli 2889/2889 · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 52/0 · lint clean · ★다양성 RATCHET 전환(web-view 5/8→cli refactor)
+
+- **무엇**: CLI가 자기 복제하던 경로 resolver 3종(`resolveAuthoredSkillsDir`·`resolveSkillRewardsFile`[commands-skills.ts]·`resolveReflectionsFile`[commands-reflections.ts])을 @muse/autoconfigure 공유본으로 통일 — 하드코딩 `~/.muse/...` 리터럴 제거, CLI는 얇은 위임 wrapper(export명·`= process.env` 디폴트 유지→~7 caller 무변경)만. autoconfigure가 단일 진실원천. 보너스: 공유본은 env override tilde 확장(CLI raw `||`엔 없던 개선).
+- **왜**: fire 62(skill)·69(reflections)에서 내가 만든 gate-asymmetry 청산 — CLI private 복제 vs autoconfigure 공유본이 갈리면 한쪽 경로 변경 시 silent drift. **다양성 RATCHET**: (web,view) 5/8라 web-view 금지 → (cli, refactor)로 전환(콘솔 write 항목은 web-view거나 보안민감 상태변경이라 보류). 동봉: 내 fire-70 저널(surfaces.md:650)에 실수로 박힌 raw NUL 1개 제거(byte-hygiene 게이트 복구).
+- **리뷰지점**: behavior-preserve(refactor 핵심) — 3 wrapper가 동일 경로/env키 resolve(judge가 autoconfigure provider-paths 대조, tilde확장만 차이=개선). mutation-first: resolveReflectionsFile를 sharedRewards로 위임시 default-path 단언 2 RED(judge 독립 재확인). 리터럴 0개·export/시그니처 무변경·orphan import(homedir/join) commands-reflections에서만 제거(skills는 resolveSkillsDir가 아직 사용). 정직한 갭: 콘솔 write(skills curate·MCP allowlist edit·daemon 토글)는 env→runtime 브리지/보안설계 필요해 후속.
+- **리스크**: 없음(apps/cli 3파일 + 저널 byte-fix, cli build clean·cli 2889/2889·pnpm check exit 0·smoke 52/0·lint clean, 독립 Opus ④b judge가 behavior-preserve·경로정합·mutation·diversity 검증 후 PASS).
+- **lesson**: 저널에 제어바이트(NUL 등)를 *설명*할 때 실수로 literal byte를 박지 마라 — fire 70이 NUL 수정을 기술하며 저널에 literal NUL을 박았고, 커밋시 byte-hygiene grep이 NUL-in-pipeline 에러로 silent 실패해 통과. 교훈: 저널 byte-scan을 git diff 파이프 대신 파일 직접 grep(NUL 안전)으로.
+
+## fire 72 · 2026-06-21 · skill v2.0.0 · a3a357a9
+meta: surface=web · value-class=new-capability · pkg=@muse/web+api · kind=mcp-allowlist-editor(STATE-CHANGE) · verdict=PASS · firesSinceDrill=3
+ratchet: web 118/118 · api 942/942 · fabrication 0 · self-eval exit 0 · smoke:broad 52/0 · lint clean · ★judge가 보안-clobber 적발→fix→PASS(maker≠judge)
+
+- **무엇**: MCP allowlist를 웹에서 **편집** — `McpServersView` Security 섹션(fire 66 read)에 add/remove 컨트롤(텍스트입력+Add, 서버명별 ×) 추가, 기존 auth-게이트 `PUT /api/mcp/security` 호출. 순수 `addToAllowlist`(dedup·trim·empty무시)·`removeFromAllowlist`(filter) + read-modify-write(현재 effective 정책 기반). 빈목록일 때 "추가하면 허용목록 서버만 연결" 힌트(empty→restrictive flip 정직 표시). MCP 콘솔 read+write 완성.
+- **왜**: 진안 "웹에서 MCP 다 관리"의 allowlist 편집(콘솔 #1 영역 완성). read-view 우물 고갈→EXHAUSTION에 따라 CONTROL(상태변경)로. (web,view+mutation) 5/8 한도 내.
+- **★maker≠judge 작동(보안 clobber 적발→수정)**: judge#1이 FAIL — PUT가 `allowedStdioCommands` 누락→서버 save()가 full-row replace로 그 필드를 **permissive 디폴트(9 commands)로 리셋**(in-memory-stores.ts:238, validateStdioCommand 강제) → 사용자가 하드닝한 stdio 허용목록이 서버-allowlist 편집 시 silent 광역화=보안 회귀. 게다가 웹 타입/shaper가 allowedStdioCommands를 노출조차 안 해 read-modify-write 구조적 불가. **수정**: shaper(toMcpSecurityPolicyResponse)+웹 타입에 allowedStdioCommands 노출 + PUT가 effective.allowedStdioCommands 보존 송신(maxToolOutputLength도). fresh judge#2 PASS — clobber 종료, effective→PUT end-to-end 보존 확인(`?? []` fallback은 AsyncBlock이 로드된 데이터에만 컨트롤 렌더라 unreachable).
+- **리뷰지점**: mutation-first — addToAllowlist dedup제거→RED·removeFromAllowlist no-op→RED·shaper allowedStdioCommands 제거→test RED(셋 다 judge 독립 재확인). 보안: 기존 auth-게이트 PUT만(신규 unauth 경로 0)·두 정책필드(stdio·cap) 보존 송신·서버명 escaped children·invalidate `["mcp-security"]`. 기존 서버목록+connect/disconnect 무손상. i18n en/ko 패리티.
+- **리스크**: 없음(apps/api 2 + apps/web 5 파일, web 118/118·api 942/942·smoke 52/0·lint clean, judge#1 보안-FAIL→fix→judge#2 PASS).
+- **lesson**: read-modify-write로 정책/설정 객체를 PUT할 때, 서버 save()가 full-row replace면 **모든 기존 필드를 명시적으로 되돌려 보내야** 한다(누락=디폴트 리셋=silent 회귀). 특히 보안 필드(allowedStdioCommands)는 GET 응답에 노출돼 있어야 보존 가능 — 노출 안 된 필드는 read-modify-write 구조적 불가. judge가 이 클래스(부분-PUT clobber)를 게이트-그린에서 잡음.
