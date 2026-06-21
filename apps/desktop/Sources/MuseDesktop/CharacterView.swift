@@ -10,9 +10,24 @@ final class CharacterView: NSView {
     enum State { case idle, listening, thinking, speaking }
     enum Look { case goddess, orb, vector, pixel, harp }
 
-    /// The goddess mascot image (the README hero, transparent background).
-    /// nil → fall back to the orb.
-    private static var goddessImage: NSImage? { MuseAssets.goddess }
+    /// Pick the frame that matches Muse's current behaviour. Every non-neutral
+    /// frame is optional and falls back to the neutral portrait, so blink / wink
+    /// / talk / emotion behaviours appear as those PNGs are added to Resources.
+    private func currentGoddessFrame() -> NSImage? {
+        let neutral = MuseAssets.frame()
+        switch state {
+        case .speaking:
+            return (mouthOpen ? MuseAssets.frame("talk") : nil) ?? neutral   // lip-sync
+        case .listening:
+            return MuseAssets.frame("happy") ?? neutral
+        case .thinking:
+            return MuseAssets.frame("think") ?? neutral
+        case .idle:
+            if tick % 250 < 5, let wink = MuseAssets.frame("wink") { return wink }   // playful wink ~every 10s
+            if blinking, let blink = MuseAssets.frame("blink") { return blink }
+            return neutral
+        }
+    }
 
     var state: State = .idle { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
@@ -72,7 +87,7 @@ final class CharacterView: NSView {
 
     private func animate() {
         tick += 1
-        blinking = (tick % 75 == 0)                                   // a blink every ~3s
+        blinking = (tick % 75 < 4)                                    // a ~160ms blink every ~3s
         mouthOpen = (state == .speaking) && ((tick / 6) % 2 == 0)     // flap while speaking
         needsDisplay = true
     }
@@ -83,10 +98,10 @@ final class CharacterView: NSView {
 
         switch look {
         case .goddess:
-            if let img = Self.goddessImage {
+            if let img = currentGoddessFrame() {
                 drawGoddess(img, in: bounds)
             } else {
-                VoiceOrb.draw(in: bounds, state: state, phase: phase) // fallback if resource missing
+                VoiceOrb.draw(in: bounds, state: state, phase: phase) // fallback if no goddess art
             }
             return
         case .orb:
