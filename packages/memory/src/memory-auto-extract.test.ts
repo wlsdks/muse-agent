@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { FactSupersession } from "./index.js";
 import { createUserMemoryAutoExtractHook } from "./memory-auto-extract.js";
 import { InMemoryUserMemoryStore } from "./memory-user-store.js";
+import { formatLearnedConfirmation } from "./recently-learned.js";
 
 function fakeProvider(extractionJson: string): ModelProvider {
   return {
@@ -55,5 +56,23 @@ describe("createUserMemoryAutoExtractHook — onLearned", () => {
     });
     await hook.afterComplete?.(...turn("u", "my pet is a dog"));
     expect(learned).toEqual([]);
+  });
+
+  it("a learned change drives a cited confirmation line end-to-end (onLearned → formatLearnedConfirmation)", async () => {
+    const store = new InMemoryUserMemoryStore();
+    store.upsertFact("u", "home_city", "Seoul");
+    let line: string | undefined;
+    const hook = createUserMemoryAutoExtractHook({
+      store,
+      modelProvider: fakeProvider('{"facts":{"home_city":"Busan"}}'),
+      model: "m",
+      extractionCooldownMs: 0,
+      onLearned: (entries) => {
+        const memory = store.findByUserId("u");
+        line = memory ? formatLearnedConfirmation(entries, memory) : undefined;
+      }
+    });
+    await hook.afterComplete?.(...turn("u", "I moved to Busan"));
+    expect(line).toBe('📝 Got it — home city is now "Busan" (changed from "Seoul").');
   });
 });

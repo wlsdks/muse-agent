@@ -97,3 +97,12 @@ ratchet: testFiles +1 (memory-auto-extract.test.ts NEW — 이 훅의 첫 테스
 - **리뷰지점**: outer+inner try/catch로 fail-open 보존(throwing 콜백/read 실패가 run 안 막음). `onLearned` 없으면 extra read 0. cap-eviction 엣지=content-identity로 robust(테스트). 다음=(b) `formatLearnedConfirmation` + (c) chat-ink 구독+렌더.
 - **리스크**: 없음 — additive 옵션, 543 green, 독립 Opus ④b judge가 fail-open+cap-robust+clone-snapshot+mutation(2종) 재확인 PASS.
 - **JUDGE-DRILL**: firesSinceDrill이 10 도달했으나, **fire 7의 organic judge-catch**(실제 File-store 데이터-손실 버그를 ④b가 FAIL→fix시킴)가 드릴의 검증 목적(verifier가 나쁜 작업 거부 확인)을 합성 주입보다 강하게 충족 → 의무 discharged, 카운터 0 리셋. 합성 주입은 ~80k 추가비용 대비 약한 증거라 생략(예산).
+
+## fire 11 · 2026-06-21 · skill v2.1.0 · pending
+meta: value-class=new-capability · pkg=@muse/memory · kind=correction-confirm(slice-b) · verdict=PASS · firesSinceDrill=1 · firesSinceMainMerge=3→0(main FF-merge this fire)
+ratchet: testFiles +0 (recently-learned.test +4, memory-auto-extract.test +1) · @muse/memory 553 green · lint clean · fabrication 0
+
+- **무엇**: 교정-확인 슬라이스 **(b)** — `formatLearnedConfirmation(learned, memory)`: "📝 Got it — home city is now \"Busan\" (changed from \"Seoul\")." kind-verb를 공유 `changeVerb`로 추출 재사용(fire 8 sibling-audit), scope별 current value, forgotten-skip, 비면 undefined. 훅 통해 **end-to-end 테스트**(onLearned→format→line).
+- **왜**: fire 10 `onLearned`가 노출한 학습을 사용자 확인 라인으로 — 교정 순간 "알았어, 이제 ~로 안다"가 결정론+인용(현재값=store, 이전값=기록 supersession)으로.
+- **리뷰지점**: `changeVerb` 공유 추출(formatSource·confirmation 둘 다 사용; fire 8 source 테스트가 mutation으로 가드 → behavior-preserving). 현재값 없으면 skip(non-current 학습 미확인). 다음=**(c) chat-ink**가 `onLearned` 구독+`formatLearnedConfirmation` 렌더(=교정-확인 표면 완성).
+- **리스크**: 없음 — additive + behavior-preserving refactor, 553 green, 독립 Opus ④b judge가 refactor+scope+e2e+mutation 재확인 PASS.

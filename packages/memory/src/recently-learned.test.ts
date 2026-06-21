@@ -7,7 +7,46 @@ import { join } from "node:path";
 import type { FactSupersession } from "./index.js";
 import { FileUserMemoryStore } from "./memory-user-store-file.js";
 import { InMemoryUserMemoryStore } from "./memory-user-store.js";
-import { projectRecentlyLearned, renderRecentlyLearnedLines, selectNewSupersessions, summarizeRecentlyLearned, type RecentlyLearnedItem } from "./recently-learned.js";
+import { formatLearnedConfirmation, projectRecentlyLearned, renderRecentlyLearnedLines, selectNewSupersessions, summarizeRecentlyLearned, type RecentlyLearnedItem } from "./recently-learned.js";
+
+describe("formatLearnedConfirmation", () => {
+  const e = (key: string, prev: string, kind?: "refine" | "contradict", scope?: "fact" | "preference"): FactSupersession => ({
+    key,
+    previousValue: prev,
+    replacedAt: new Date("2026-06-21T00:00:00Z"),
+    ...(kind ? { kind } : {}),
+    ...(scope ? { scope } : {})
+  });
+
+  it("returns undefined when there is nothing confirmable", () => {
+    expect(formatLearnedConfirmation([], { facts: {} })).toBeUndefined();
+    // a learned key whose value was since removed → skipped (no current value to confirm)
+    expect(formatLearnedConfirmation([e("pet", "cat")], { facts: {} })).toBeUndefined();
+  });
+
+  it("acknowledges a changed fact, citing the prior value", () => {
+    expect(formatLearnedConfirmation([e("home_city", "Seoul", "contradict")], { facts: { home_city: "Busan" } })).toBe(
+      '📝 Got it — home city is now "Busan" (changed from "Seoul").'
+    );
+  });
+
+  it("resolves a preference-scoped learning's current value from preferences", () => {
+    expect(
+      formatLearnedConfirmation([e("reply_style", "brief", "refine", "preference")], {
+        facts: {},
+        preferences: { reply_style: "detailed" }
+      })
+    ).toBe('📝 Got it — reply style is now "detailed" (refined from "brief").');
+  });
+
+  it("joins multiple learnings", () => {
+    expect(
+      formatLearnedConfirmation([e("home_city", "Seoul", "contradict"), e("role", "student", "contradict")], {
+        facts: { home_city: "Busan", role: "founder" }
+      })
+    ).toBe('📝 Got it — home city is now "Busan" (changed from "Seoul"); role is now "founder" (changed from "student").');
+  });
+});
 
 describe("selectNewSupersessions", () => {
   const e = (key: string, prev: string, ms: number, scope?: "fact" | "preference"): FactSupersession => ({
