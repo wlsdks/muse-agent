@@ -116,7 +116,7 @@ ratchet: testFiles +0 · no code change (planner step) · fabrication 0
 - **리뷰지점**: 코드 0줄 → ④b judge N/A. (c1)이 fire 10/11을 드디어 production 소비 + monoculture 깸(@muse/cli). chat-ink는 `loop/surfaces` 소유라 dedup 명시.
 - **lesson**: 분해는 seam을 실제 탐색하기 전엔 전제가 틀릴 수 있다 — **첫 실제 탐색에서 전제가 깨지면 즉시 재분해**(억지로 안 맞는 경로에 끼워넣지 말 것). 무인 루프가 스스로 판단(질문 없이).
 
-## fire 13 · 2026-06-21 · skill v2.1.0 · pending
+## fire 13 · 2026-06-21 · skill v2.1.0 · 2fd61dcc
 meta: value-class=wiring · pkg=@muse/cli · kind=chat-correction-confirm(slice-c1) · verdict=PASS · firesSinceDrill=3 · firesSinceMainMerge=2
 ratchet: testFiles +0 (chat-auto-memory.test +3) · @muse/cli 2890 green · lint clean · fabrication 0
 
