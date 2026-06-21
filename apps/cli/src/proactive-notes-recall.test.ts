@@ -24,6 +24,17 @@ describe("proactiveMatchesFromIndex", () => {
     expect(out[1]!.source).toBe("c.md");
     expect(out[0]!.cosine).toBeGreaterThan(out[1]!.cosine!);
   });
+
+  it("tags an untrusted note's match trusted:false via the predicate (NP-proactive) and leaves others trusted", () => {
+    const out = proactiveMatchesFromIndex([1, 0, 0], chunks, 3, (file) => file === "a.md");
+    expect(out.find((m) => m.source === "a.md")?.trusted).toBe(false);
+    expect(out.find((m) => m.source === "c.md")?.trusted).toBeUndefined();
+  });
+
+  it("no predicate → no match is tagged (no over-marking)", () => {
+    const out = proactiveMatchesFromIndex([1, 0, 0], chunks, 3);
+    expect(out.every((m) => m.trusted === undefined)).toBe(true);
+  });
 });
 
 describe("createIndexedProactiveInvestigator", () => {

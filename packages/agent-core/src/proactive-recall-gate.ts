@@ -90,10 +90,20 @@ export function decideProactiveRecall(
   const maxChars = options?.maxChars && options.maxChars > 0 ? Math.trunc(options.maxChars) : DEFAULT_MAX_CHARS;
   const queryTokens = options?.query ? lexicalTokens(options.query) : new Set<string>();
   const snippet = selectRelevantExcerpt(top.text, queryTokens, maxChars);
+  // grounded≠true for the PROACTIVE surface: an UNSOLICITED nudge that quotes a
+  // single top source is laundering if that source is untrusted (a URL-ingested
+  // note, MCP/tool output) — calling third-party content "Related in your notes"
+  // is a false-provenance claim Muse volunteered. When the top match is
+  // `trusted:false`, relabel it as an external source the user saved + append the
+  // scrutiny cue (surface-with-cue, consistent with the ask/chat untrusted-only
+  // notice — proactivity never silently presents poisoned content as the user's own).
+  const finding = top.trusted === false
+    ? `📎 Related (from an external source you saved) — [${top.source}] ${snippet} ⚠️ verify before trusting`
+    : `📎 Related in your notes — [${top.source}] ${snippet}`;
   return {
     confidence,
-    finding: `📎 Related in your notes — [${top.source}] ${snippet}`,
-    reason: "confident recall",
+    finding,
+    reason: top.trusted === false ? "confident recall (untrusted source — cued)" : "confident recall",
     surface: true
   };
 }

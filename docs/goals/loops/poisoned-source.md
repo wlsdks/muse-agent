@@ -482,3 +482,32 @@ regression; the @muse/cli slice passes isolated 2904 + mutation RED). Per ⑤c
 (fire 18) or a quieter box. lesson: the recurring ÷3-merge blocker is box
 saturation, not code — a quiet-window retry or raised integration-test timeouts
 (not loop work) is the real fix.
+
+## fire 16 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=new-capability · pkg=@muse/agent-core+@muse/cli · kind=note-provenance-wiring · verdict=PASS · firesSinceDrill=6
+
+ratchet: testFiles +0 (extended proactive-recall-gate + proactive-notes-recall tests, +4 cases) · fabrication 0 · eval:memory-poisoning PASS · eval:action-log-tamper PASS
+
+WHAT: NP-proactive — the THIRD grounding surface. The proactive daemon
+unsolicited-surfaces "📎 Related in your notes — [src]"; a poisoned URL-ingested
+note laundered as the user's own. Now proactiveMatchesFromIndex tags untrusted
+note matches (injected predicate); decideProactiveRecall relabels the finding to
+"📎 Related (from an external source you saved) … ⚠️ verify before trusting" when
+the quoted top match is trusted:false; the investigator wires the predicate from
+provenance (relativizeNoteSource path-match, fail-open).
+
+WHY: completes note-provenance across ALL THREE grounding surfaces (ask 13 +
+chat 15 + proactive 16). Proactivity is the riskiest surface (unsolicited), so a
+false "your notes" provenance claim is worst there — surface-with-cue, never
+silent laundering. Additive (relabels text only; never suppresses/surfaces).
+
+REVIEW POINT: single-top-source ⇒ top.trusted===false IS the finding's trust (no
+aggregation needed, unlike ask/chat). Path-match identical to verified fires 13/15.
+Judge flagged council-corpus.ts as a low adjacent surface (recorded NP-council).
+NOTE: full pnpm check flaked on box-saturation 5000ms timeouts (@muse/autoconfigure
+daemon integration) — env, not this slice; agent-core (2588) + cli proactive (7/7)
++ mutation RED + lint + evals green.
+
+RISK: low — additive (text relabel only), mutation-proven (both seams), Opus ④
+PASS, fail-open wiring, fabrication floor untouched.

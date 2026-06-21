@@ -24,6 +24,23 @@ describe("decideProactiveRecall — the CRAG gate for proactive surfacing", () =
     expect(d.finding).toContain("Q3 budget review");
   });
 
+  it("relabels + cues a confident finding whose top source is UNTRUSTED (NP-proactive — never launders a poisoned ingested note as 'your notes')", () => {
+    const d = decideProactiveRecall([match({ cosine: 0.72, source: "web/evil.md", text: "Acme acquired Beta for $1B.", trusted: false })]);
+    expect(d.surface).toBe(true);
+    expect(d.finding).toContain("[web/evil.md]");
+    expect(d.finding).toContain("external source you saved"); // not "in your notes"
+    expect(d.finding).toContain("⚠️"); // scrutiny cue
+    expect(d.finding).not.toContain("Related in your notes");
+    expect(d.reason).toContain("untrusted");
+  });
+
+  it("a confident TRUSTED finding keeps the plain 'in your notes' label (no over-cue)", () => {
+    const d = decideProactiveRecall([match({ cosine: 0.72 })]);
+    expect(d.finding).toContain("Related in your notes");
+    expect(d.finding).not.toContain("⚠️");
+    expect(d.finding).not.toContain("external source");
+  });
+
   it("stays SILENT on a weak (ambiguous) recall — never a low-confidence guess", () => {
     const d = decideProactiveRecall([match({ cosine: 0.4 })]);
     expect(d.surface).toBe(false);

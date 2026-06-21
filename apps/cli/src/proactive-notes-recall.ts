@@ -16,9 +16,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { decideProactiveRecall, FindingResurfaceSuppressor, type KnowledgeMatch } from "@muse/agent-core";
+import { relativizeNoteSource } from "@muse/recall";
+import { resolveNoteProvenanceFile, resolveNotesDir } from "@muse/autoconfigure";
 
 import { cosineSimilarity, embed } from "./embed.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
+import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 
 interface IndexChunk {
   readonly file: string;
@@ -39,12 +42,16 @@ interface NotesIndex {
 export function proactiveMatchesFromIndex(
   queryVec: readonly number[],
   chunks: readonly IndexChunk[],
-  topK = 3
+  topK = 3,
+  /** Returns true when a chunk's note FILE is an externally-ingested (untrusted)
+   *  note — its match is tagged `trusted:false` so the proactive finding is cued
+   *  instead of laundered as "your notes". Absent ⇒ all trusted. Pure/injectable. */
+  isUntrusted?: (file: string) => boolean
 ): KnowledgeMatch[] {
   return chunks
     .map((c): KnowledgeMatch => {
       const cos = cosineSimilarity(queryVec, c.embedding);
-      return { cosine: cos, score: cos, source: c.file, text: c.text };
+      return { cosine: cos, score: cos, source: c.file, text: c.text, ...(isUntrusted?.(c.file) ? { trusted: false } : {}) };
     })
     .sort((a, b) => (b.cosine ?? 0) - (a.cosine ?? 0))
     .slice(0, Math.max(1, Math.trunc(topK)));
@@ -89,7 +96,18 @@ export function createIndexedProactiveInvestigator(
     } catch {
       return undefined;
     }
-    const matches = proactiveMatchesFromIndex(queryVec, chunks, options.topK ?? 3);
+    // Externally-ingested (untrusted) notes — so the proactive finding for a
+    // poisoned URL-ingested note is cued, not laundered as "your notes" (NP-proactive).
+    // Fail-open: a provenance read error → no tagging (all trusted), never blocks the nudge.
+    let isUntrusted: ((file: string) => boolean) | undefined;
+    try {
+      const untrusted = untrustedNotePaths(await readNoteProvenance(resolveNoteProvenanceFile(process.env as Parameters<typeof resolveNoteProvenanceFile>[0])));
+      if (untrusted.size > 0) {
+        const notesDir = resolveNotesDir(process.env as Parameters<typeof resolveNotesDir>[0]);
+        isUntrusted = (file: string): boolean => untrusted.has(relativizeNoteSource(file, notesDir));
+      }
+    } catch { /* provenance is best-effort — never block the proactive nudge */ }
+    const matches = proactiveMatchesFromIndex(queryVec, chunks, options.topK ?? 3, isUntrusted);
     const decision = decideProactiveRecall(matches, {
       query,
       ...(options.confidentAt !== undefined ? { confidentAt: options.confidentAt } : {})
