@@ -94,3 +94,15 @@ ratchet: testFiles +0 (1 case into commands-status.test.ts + 1 existing assertio
 - **리스크**: 낮음. diff: commands-status.ts + 그 테스트 + program.test.ts 기존 assertion 1개.
 - lesson: 표시 렌더를 바꾸면 좁은 파일 테스트(commands-status.test.ts)만 보지 말고 **풀 @muse/cli 스위트**로 cross-file assertion 회귀(program.test.ts가 옛 출력 pin)를 잡아야 한다 — 형제-감사는 src 형제뿐 아니라 그 출력을 assert하는 테스트 형제까지.
 - 레퍼런스: starship/lazygit 등 at-a-glance 상태표기는 상대시간 관행. https://starship.rs/
+
+## fire 9 · 2026-06-22 · skill v2.1.0 · 991c1de7
+meta: value-class=render+identity-copy · pkg=@muse/cli · kind=render · verdict=PASS · firesSinceDrill=9
+ratchet: 변경연관 테스트만 실행(발열정책) · muse-banner.test 3/3 · 라이브 렌더 확인 · lint 0 · fabrication 0
+
+- **무엇**: 진안 첫화면 피드백 반영. ① 태그라인(+status/hint) 들여쓰기 3→2칸(아트·chat-ink paddingLeft:2 recap/입력과 동일 컬럼) ② 태그라인 밑 장식용 cyan rule(`─`×38) 제거(+테스트의 그 색 의존 제거) ③ 마스코트 64→**56열** 재생성(gen-mascot-ansi.mjs, 동일 hi-res 마스터, sextant로 화질 유지; 진안이 56 선택). +버전 drift 0.1.0→0.1.1(v0.1.1 릴리스, fire-5 가드가 잡음).
+- **왜**: 진안이 라이브 스플래시 보고 지적 — 태그라인 좌측 공백 과다(3 vs 2), 하늘색 줄 정체불명, 캐릭터 큼. 마스코트는 진안 명시 지시로 리사이즈(소유자 승인).
+- **리뷰지점**: 라이브 hands-on(태그라인 2칸·rule 없음·`--version` 0.1.1) + 마스코트 56 preview-png를 Read로 화질 확인(64/52/44 비교 후 56 선택, 눈·얼굴·머리·후광 또렷). mutation-first(배너 테스트). ★④b judge가 색-모드 assertion이 제거된 rule에 의존했음을 검증하고 `\x1b[38`(마스코트 트루컬러)로 교체가 cheat 아님을 확인. byte-hygiene raw 0x1B=0. 독립 Opus ④b PASS(7/7).
+- **리스크**: 낮음. diff 4파일(banner/test/mascot/version). 마스코트 재생성은 머신 생성(byte-identical 재현). 다양성: render kind.
+- live: `node dist/index.js` 스플래시 = 마스코트(56×33) → 2칸 태그라인 → (rule 없음); preview PNG로 56열 화질 양호 확인.
+- 레퍼런스: starship/lazygit 좌정렬 단일컬럼 splash; sextant(U+1FB00) 2×3 서브픽셀 렌더. https://starship.rs/
+- ★발열 정책 전환(진안 2026-06-22): 이 fire부터 풀 스위트/`pnpm check`/smoke 매-fire 금지 → 변경연관 vitest 파일만. cron 92b2d826→e5696b6a로 가벼운 ④/④b 게이트 재등록. [[feedback_minimal_test_runs]]
