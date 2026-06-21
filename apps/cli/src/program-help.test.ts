@@ -80,3 +80,20 @@ describe("muse --help first screen (wiring)", () => {
     expect(text).toContain("muse setup local");
   });
 });
+
+describe("muse --help command list is sorted (scannable, not insertion-order)", () => {
+  it("lists subcommands alphabetically — a name out of insertion order proves the sort", () => {
+    const out: string[] = [];
+    const io: ProgramIO = { stderr: () => undefined, stdout: (s) => { out.push(s); } };
+    const program = createProgram(io);
+    program.outputHelp();
+    const help = out.join("");
+    // `chat` is registered AFTER `spec` (insertion order), so chat-before-spec
+    // can only hold when the list is alphabetically sorted.
+    expect(help.indexOf("\n  chat")).toBeGreaterThanOrEqual(0);
+    expect(help.indexOf("\n  spec")).toBeGreaterThanOrEqual(0);
+    expect(help.indexOf("\n  chat")).toBeLessThan(help.indexOf("\n  spec"));
+    // a second independent pair
+    expect(help.indexOf("\n  ask")).toBeLessThan(help.indexOf("\n  status"));
+  });
+});

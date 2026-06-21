@@ -40,6 +40,7 @@ import {
   readImageAttachment,
   firstOpenToday,
   formatJobsList,
+  formatNoModelMessage,
   greetingName,
   formatMemoryView,
   formatRecallHits,
@@ -868,12 +869,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
 
   const assembly = createMuseRuntimeAssembly();
   if (!assembly.modelProvider) {
-    process.stderr.write(
-      "muse: no model configured yet.\n" +
-      "  • Local (free):  muse setup local      (installs/points at an Ollama model)\n" +
-      "  • Cloud:         muse setup model       (OpenAI / Anthropic / Gemini key)\n" +
-      "  Then run `muse` again.\n"
-    );
+    process.stderr.write(formatNoModelMessage());
     process.exitCode = 1;
     return;
   }

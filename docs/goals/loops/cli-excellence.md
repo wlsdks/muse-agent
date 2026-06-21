@@ -83,3 +83,186 @@ ratchet: testFiles +0 (3 cases into program-help.test.ts) · @muse/cli formatUnk
 - **리스크**: 낮음. diff 2파일(program.ts + 테스트). 다양성: fire1-6(info-projection/onboarding/identity-copy/render/perf/empty-state) → fire7 error-guidance, 새 kind.
 - **레퍼런스**: git "did you mean" + CLI 발견성(unknown→top commands) 관행. https://www.npmjs.com/package/commander
 - note: smoke:cli 7 pass / 2 fail = fire 5 A/B 확정 chat 라운드트립 환경 타임아웃, 내 unknown-command 변경과 무관(`muse --help` 프로브 PASS).
+
+## fire 8 · 2026-06-22 · skill v2.1.0 · f2dba36f
+meta: value-class=info-projection · pkg=@muse/cli · kind=info-projection · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles +0 (1 case into commands-status.test.ts + 1 existing assertion updated) · @muse/cli 2953 green · check 0 · smoke:cli 9/9 · lint 0 · fabrication 0
+
+- **무엇**: `muse status` at-a-glance 대시보드의 7개 raw UTC ISO 타임스탬프(last update/followups next/episodes last/patterns last/reminders next/cost as of/last notice)를 공유 `formatRelativeTime`로 humanize — ≤7d "3h ago"/"in 2d", >7d 읽기쉬운 로컬datetime, invalid 그대로. `--json`/collectStatus는 raw ISO 유지(머신 소비자).
+- **왜**: at-a-glance인데 `2026-06-05T19:34:48.334Z`는 한눈에 안 읽힘(진안 실사용 관찰). 결정론 변환(fabrication 0), 기존 헬퍼 재사용.
+- **리뷰지점**: LIVE hands-on(`node dist/index.js status` → `last update: 2026-06-06 04:34` 확인), mutation-first RED(rel 제거→raw ISO), 새 테스트 seeds now-3h→"3h ago". ★maker≠judge가 값을 함: ④b judge가 **풀 스위트 회귀**(program.test.ts cost line이 raw ISO assert) 적발→FAIL→기존 assertion을 humanized 형태(formatLocalDateTime)로 수정→재판정 PASS(5/5). 형제-감사: 다른 status ISO assertion 전수 grep(없음). 여신 아트 불가침.
+- **리스크**: 낮음. diff: commands-status.ts + 그 테스트 + program.test.ts 기존 assertion 1개.
+- lesson: 표시 렌더를 바꾸면 좁은 파일 테스트(commands-status.test.ts)만 보지 말고 **풀 @muse/cli 스위트**로 cross-file assertion 회귀(program.test.ts가 옛 출력 pin)를 잡아야 한다 — 형제-감사는 src 형제뿐 아니라 그 출력을 assert하는 테스트 형제까지.
+- 레퍼런스: starship/lazygit 등 at-a-glance 상태표기는 상대시간 관행. https://starship.rs/
+
+## fire 9 · 2026-06-22 · skill v2.1.0 · 991c1de7
+meta: value-class=render+identity-copy · pkg=@muse/cli · kind=render · verdict=PASS · firesSinceDrill=9
+ratchet: 변경연관 테스트만 실행(발열정책) · muse-banner.test 3/3 · 라이브 렌더 확인 · lint 0 · fabrication 0
+
+- **무엇**: 진안 첫화면 피드백 반영. ① 태그라인(+status/hint) 들여쓰기 3→2칸(아트·chat-ink paddingLeft:2 recap/입력과 동일 컬럼) ② 태그라인 밑 장식용 cyan rule(`─`×38) 제거(+테스트의 그 색 의존 제거) ③ 마스코트 64→**56열** 재생성(gen-mascot-ansi.mjs, 동일 hi-res 마스터, sextant로 화질 유지; 진안이 56 선택). +버전 drift 0.1.0→0.1.1(v0.1.1 릴리스, fire-5 가드가 잡음).
+- **왜**: 진안이 라이브 스플래시 보고 지적 — 태그라인 좌측 공백 과다(3 vs 2), 하늘색 줄 정체불명, 캐릭터 큼. 마스코트는 진안 명시 지시로 리사이즈(소유자 승인).
+- **리뷰지점**: 라이브 hands-on(태그라인 2칸·rule 없음·`--version` 0.1.1) + 마스코트 56 preview-png를 Read로 화질 확인(64/52/44 비교 후 56 선택, 눈·얼굴·머리·후광 또렷). mutation-first(배너 테스트). ★④b judge가 색-모드 assertion이 제거된 rule에 의존했음을 검증하고 `\x1b[38`(마스코트 트루컬러)로 교체가 cheat 아님을 확인. byte-hygiene raw 0x1B=0. 독립 Opus ④b PASS(7/7).
+- **리스크**: 낮음. diff 4파일(banner/test/mascot/version). 마스코트 재생성은 머신 생성(byte-identical 재현). 다양성: render kind.
+- live: `node dist/index.js` 스플래시 = 마스코트(56×33) → 2칸 태그라인 → (rule 없음); preview PNG로 56열 화질 양호 확인.
+- 레퍼런스: starship/lazygit 좌정렬 단일컬럼 splash; sextant(U+1FB00) 2×3 서브픽셀 렌더. https://starship.rs/
+- ★발열 정책 전환(진안 2026-06-22): 이 fire부터 풀 스위트/`pnpm check`/smoke 매-fire 금지 → 변경연관 vitest 파일만. cron 92b2d826→e5696b6a로 가벼운 ④/④b 게이트 재등록. [[feedback_minimal_test_runs]]
+
+## fire 10 · 2026-06-22 · skill v2.1.0 · 28cbf359 · ★JUDGE-DRILL
+meta: value-class=onboarding · pkg=@muse/cli · kind=onboarding · verdict=PASS · firesSinceDrill=0 (reset)
+ratchet: 변경연관 테스트만(발열정책) · chat-ink-core+chat-ink-nomodel 2 green · lint 0 · fabrication 0
+
+- **무엇**: 새 유저가 모델 미설정으로 `muse` 실행 시 보던 `muse: no model configured yet.` 밋밋한 에러 → 정체성-리드 local-first 온보딩으로 교체. 순수 `formatNoModelMessage()`(chat-ink-core, MUSE_TAGLINE + local(free/private)·cloud(opt-in)·`muse setup wizard`) 추출 + runChatInk no-model 분기에 **배선**.
+- **왜**: 첫 유저의 진짜 첫 화면(zero-config)이 제품 정체성을 안 보여줬다. 모든 명령 실재(setup local/model/wizard), local-first 기본 framing.
+- **리뷰지점**: ★이 fire는 JUDGE-DRILL(firesSinceDrill=10/연속allPASS9≥8). 먼저 **inert(헬퍼+테스트만, 미배선)** 버전을 독립 ④b에 제출 → judge가 "dead code, live 경로 불변, 테스트 격리만"으로 **정확히 FAIL**(검증자 teeth 증명). 그 후 runChatInk에 배선 + **wired-path 통합 테스트**(vi.mock createMuseRuntimeAssembly→no-provider, runChatInk 구동, stderr 캡처) 추가. mutation-first 양면(카피 + 배선; 배선 되돌리면 통합테스트 RED). 재-judge PASS(6/6).
+- **리스크**: 낮음. diff 4파일. early-return(exitCode=1) 보존. 다양성: onboarding kind. chat-ink.ts 국소 편집(분기 1곳).
+- live: no-model 분기는 TTY 전용이라 셸 직접캡처 대신 vi.mock 통합테스트로 live 경로 grade.
+- lesson: "헬퍼 추가+테스트"만으론 inert일 수 있다 — 표시-변경은 반드시 **배선된 경로를 grade하는 테스트**(여기선 vi.mock으로 runChatInk 구동)까지 있어야 진짜. JUDGE-DRILL이 이걸 실증.
+- 레퍼런스: 60초-to-value 온보딩(첫 화면이 다음 행동 1개를 명확히). https://www.appcues.com/blog/best-user-onboarding-examples
+
+## fire 11 · 2026-06-22 · skill v2.1.0 · d650e179
+meta: value-class=render · pkg=@muse/cli · kind=render · verdict=PASS · firesSinceDrill=1
+ratchet: 변경연관 테스트만(발열정책) · commands-doctor doctorStatusMarker 1 green · lint 0 · fabrication 0
+
+- **무엇**: `muse doctor --local` 헬스 화면에서 WARN 체크가 중립 `·`로 렌더돼 OK `✓`와 구분 안 됨(23줄 중 "주의 필요"가 안 보임). 순수 export `doctorStatusMarker(status)` 추출(ok→✓/warn→⚠/fail→✗)해 formatLocalDoctor에 배선. warn=⚠로 스캔 가능.
+- **왜**: 헬스체크의 핵심은 "뭐가 문제인지 한눈에"(brew/flutter doctor 관행). `·`는 OK와 시각 동일이라 경고가 묻혔다. 순수 presentation(분류/카운트/--full JSON 불변), ⚠는 CLI 기존 경고 글리프와 일관.
+- **리뷰지점**: 테스트가 3매핑 + warn≠"·" grade(배선 확인), mutation-first RED(warn→· 되돌리면 fail). 라이브 `doctor --local`에 3 warn 모두 ⚠ 표시 확인. 형제-감사: 옛 `·` 마커 assert하는 테스트 없음(grep). 독립 Opus ④b PASS(6/6).
+- **리스크**: 낮음. diff 2파일(commands-doctor.ts + 테스트). 다양성: render kind(fire 4/9 render였으나 최근8 ≥6 동일아님). 여신 아트 무관.
+- live: `node dist/index.js doctor --local` → `⚠ ollama-perf…` `⚠ at-rest encryption…` `⚠ mcp.json…` + `Overall: WARN — 3 warning(s) (20 ok / 3 warn / 0 fail)`.
+- 레퍼런스: brew/flutter doctor 스캔 가능 마커 관행([!]/⚠). https://docs.flutter.dev/reference/flutter-doctor
+
+## fire 12 · 2026-06-22 · skill v2.1.0 · 03b3d3c2
+meta: value-class=progress · pkg=@muse/cli · kind=progress · verdict=PASS · firesSinceDrill=2
+ratchet: 변경연관 테스트만(발열정책) · commands-notes-rag 43/43(파일전체) · lint 0 · fabrication 0
+
+- **무엇**: `muse notes reindex`의 per-file onProgress 라인에 `[i/N]` 위치 prefix 추가(found.length 중 몇 번째). 캐시(skip) 파일은 무음 유지. embedded/failed 라인만 위치 표시.
+- **왜**: 긴 reindex가 위치 없이 `+path`만 흘러 "멈춘 듯" 보였다(③ 반응성). progress kind = fresh(최근 render 3회 회피). 실제 루프 index+found.length라 fabrication 0, presentation만(카운트/인덱스 불변).
+- **리뷰지점**: 테스트가 실제 onProgress 캡처 grade([1/2]/[2/2]), mutation-first RED(prefix 제거→fail). 라이브 3파일 reindex로 `[1/3][2/3][3/3]` 확인. ★maker≠judge가 또 값을 함: 첫 ④b가 **형제 회귀**(corrupt-PDF 테스트가 startsWith("✗") assert) 적발→FAIL→그 assertion을 `[i/N]` prefix 반영 regex로 수정→재판정 PASS(5/5). commands-read는 별도 prefix-less emitter라 무관(14/14).
+- **리스크**: 낮음. diff 2파일.
+- live: `node dist/index.js notes reindex --dir <3 notes>` → `[1/3] + …a.md` `[2/3] + …b.md` `[3/3] + …c.md` `Done. 3 embedded`.
+- lesson: 출력 형식을 바꾸면 **그 출력을 assert하는 모든 테스트를 grep**(startsWith/toContain)해 형제까지 같은 fire에 고쳐야 한다 — 좁은 `-t` 한 테스트만 돌리면 cross-file 형제 회귀를 놓친다(judge가 풀-파일 실행으로 잡음). 형제-감사 = src뿐 아니라 그 출력 assert 테스트까지.
+- 레퍼런스: 진행 표기 `[i/N]`(npm/pip/lazygit식 위치 카운터). https://github.com/jesseduffield/lazygit
+
+## fire 13 · 2026-06-22 · skill v2.1.0 · 40afdeec
+meta: value-class=first-screen · pkg=@muse/cli · kind=first-screen · verdict=PASS · firesSinceDrill=3
+ratchet: 변경연관 테스트만(발열정책) · program-help 정렬테스트 1 green · lint 0 · fabrication 0
+
+- **무엇**: `muse --help`의 ~80 명령이 insertion 순서라 스캔 불가 → `configureHelp({sortSubcommands,sortOptions})`로 알파벳 정렬. 첫 글자로 명령 찾기 가능. 하단 quickstart는 데일리-드라이버 강조 유지. display-only(명령 추가/삭제/리네임 없음, dispatch 불변).
+- **왜**: 발견성(②/① 첫화면). gh/docker는 정렬/그룹; insertion-order 80개는 벽. 정렬은 commander-native 단일 fire win(그룹화는 더 큰 작업 → 후속).
+- **리뷰지점**: 테스트가 실제 outputHelp 순서 grade(chat<spec는 chat이 spec 뒤 등록이라 정렬 시에만 성립 → 우연 아님), mutation-first RED(configureHelp 제거→insertion→fail). 라이브 `--help` Commands가 A-정렬(actions/agent-notices/agents/analytics…). 형제-감사: 명령 insertion-순서 assert 테스트 없음(chat-ink /help는 별 surface). Did-you-mean 경로 무관. 독립 Opus ④b PASS(6/6).
+- **리스크**: 낮음. diff 2파일. 다양성: first-screen kind.
+- live: `node dist/index.js --help` Commands 섹션 알파벳순.
+- ◦ FOLLOW-UP(backlog): 80 명령 카테고리 그룹화(gh식 CORE/…)는 commander helpGroup(13+)로 가능하나 큰 큐레이션 → decompose 필요.
+- 레퍼런스: gh/docker 명령 그룹·정렬 관행. https://cli.github.com/manual/
+
+## fire 14 · 2026-06-22 · skill v2.1.0 · 5c4a4640
+meta: value-class=info-projection · pkg=@muse/cli · kind=info-projection · verdict=PASS · firesSinceDrill=4
+ratchet: 변경연관 테스트만(발열정책) · commands-doctor formatDoctorSummaryLine 3 green · lint 0 · fabrication 0
+
+- **무엇**: 기본 `muse doctor` 한 줄 요약의 raw UTC ISO stamp(`(2026-06-21T16:09:48.322Z)`)를 humanize. 순수 export `formatDoctorSummaryLine(snapshot, now)` 추출(공유 formatRelativeTime: just now/3h ago/>7d 로컬datetime/absent 생략) + 액션 배선. fire-8(status 타임스탬프) 형제-완성.
+- **왜**: 헬스 스냅샷이 얼마나 stale한지 raw ISO는 암산 강요. "(just now)/(Nh ago)"가 staleness 즉시 표시. 결정론(now 주입), --full/--json/--local 경로 불변.
+- **리뷰지점**: 테스트가 반환 라인 grade([ok] … (3h ago), raw ISO 없음, absent→stamp 생략), mutation-first RED(raw stamp 복원→2 fail). 라이브 `muse doctor` → `[OK] 6 섹션 — OK 6 (just now)`. 형제-감사: 옛 raw 요약 assert 테스트 없음(today의 generatedAt은 별 surface). 독립 Opus ④b PASS(6/6).
+- **리스크**: 낮음. diff 2파일. DoctorSummary export는 benign. 다양성: info-projection(최근8 중 1회).
+- live: `node dist/index.js doctor` → `[OK] 6 섹션 — OK 6 (just now)`.
+- 레퍼런스: at-a-glance 상태는 상대시간(fire-8과 동일 패턴, brew/flutter doctor staleness 표기). https://docs.flutter.dev/reference/flutter-doctor
+
+## fire 15 · 2026-06-22 · skill v2.1.0 · 10ca51f1
+meta: value-class=info-projection · pkg=@muse/cli · kind=info-projection · verdict=PASS · firesSinceDrill=5
+ratchet: 변경연관 테스트만(발열정책) · commands-remind formatReminderList 3 green(파일 28/28) · lint 0 · fabrication 0
+
+- **무엇**: `muse remind list`가 지난(overdue) pending 알림을 upcoming과 동일 표시 → 무엇이 늦었는지 스캔 불가(박스에 4개 수주째 overdue 무표시). pending & dueAt<now면 `(⚠ overdue)` 추가(기존 (repeats)/(fired) suffix 컨벤션). formatReminderList export + nowMs 주입. fired는 미표시(이미 발화), bad/absent dueAt 안전 무시.
+- **왜**: 늦은 항목이 한눈에 보여야 함(status는 "(N overdue)" 카운트만, list는 항목별 표시 없었음). 결정론(실 timestamp 비교), fabrication 0.
+- **리뷰지점**: 테스트가 실 포맷 출력 grade(past→(⚠ overdue), future 미표시, fired 미표시), mutation-first RED(overdue 분기 끄면 fail). 라이브 4 알림 모두 `(⚠ overdue)`(반복 포함 `운동 (⚠ overdue) (repeats daily)`). 독립 Opus ④b PASS(6/6).
+- **리스크**: 낮음. diff 2파일. export+optional param 후방호환. 다양성: info-projection(최근8 중 2회나 다른 surface=remind).
+- live: `node dist/index.js remind list` → 각 overdue 알림에 `(⚠ overdue)`.
+- 레퍼런스: 할일/리마인더 UI의 overdue 강조 관행(빨강/⚠). https://todoist.com/help
+
+## fire 16 · 2026-06-22 · skill v2.1.0 · 335a4741
+meta: value-class=info-projection · pkg=@muse/cli · kind=info-projection · verdict=PASS · firesSinceDrill=6
+ratchet: 변경연관 테스트만(발열정책) · chat-repl formatReminderList 2 green · lint 0 · fabrication 0
+
+- **무엇**: fire-15 형제 완성 — 인-챗 리마인더 리스트("리마인더 뭐 있어?", chat-repl formatReminderList)에도 `(⚠ overdue)`/`(⚠ 지남)` 마커. 포매터에 optional `overdue?` 추가 + 호출부(이미 pending 필터)에서 dueAt<now 계산. korean-aware.
+- **왜**: `muse remind list`(fire 15)와 인-챗 경로 일관성 — 늦은 알림이 두 surface 모두에서 스캔 가능. 결정론(실 dueAt), fabrication 0, fired는 호출부 필터로 제외.
+- **리뷰지점**: 포매터 테스트가 실 출력 grade(KO 지남/EN overdue, future 미표시), mutation-first RED(마커 끄면 2 fail). 인-챗 경로는 모델 intent-gated라 헤드리스 라이브 불가 — 순수 포매터 단위테스트 + 호출부 dueMs<now(fire-15 검증 로직 미러)로 충분. 독립 Opus ④b PASS(6/6). 비-pending은 호출부 필터로 도달 불가.
+- **리스크**: 낮음. diff 2파일. optional 필드 후방호환. 다양성: info-projection(parity 완성).
+- live(테스트 대용): 포매터 단위테스트가 마커 렌더 확인(인-챗 경로는 intent-gated).
+- 레퍼런스: fire 15와 동일(overdue 강조 관행).
+
+## fire 17 · 2026-06-22 · skill v2.1.0 · c84cdcf0
+meta: value-class=info-projection · pkg=@muse/cli · kind=info-projection · verdict=PASS · firesSinceDrill=7
+ratchet: 변경연관 테스트만(발열정책) · human-formatters 33/33 · root-eslint 0 · fabrication 0
+
+- **무엇**: `muse tasks list`가 과거-기한 task를 upcoming과 동일 표시(박스 31개 전부 수주 overdue 무표시) → not-done & dueAt<now면 `(⚠ overdue)`(formatTaskRow). fire 15/16(reminder)의 tasks 확장. nowMs 주입, done/undated/unparseable 안전 제외.
+- **왜**: daily-driver(31개)에서 늦은 일이 한눈에. 결정론, fabrication 0. ⚠는 이 파일 urgent badge에 이미 사용중이라 일관.
+- **리뷰지점**: 테스트가 실 렌더 row grade(past→(⚠ overdue), future/done 미표시), mutation-first RED. 라이브 `tasks list` 31개 모두 표시. 형제-감사: 유일 caller=commands-tasks(today는 formatLocalDate만, chat-repl은 별도 formatTaskList), 기존 urgent 테스트 무사(33/33). 독립 Opus ④b PASS(5/5).
+- **리스크**: 낮음. diff 2파일. nowMs optional 후방호환.
+- lesson: scoped lint은 `npx eslint`(루트 flat config 못 읽을 수 있음) 대신 **`./node_modules/.bin/eslint`**로 — ④b judge가 첫 라운드에서 내가 놓친 no-regex-spaces(정규식 이중공백) 2건을 잡음. 정규식 리터럴의 연속공백은 `{2}` 양화사로.
+- live: `node dist/index.js tasks list` → 과거 task에 `(⚠ overdue)`.
+- 레퍼런스: fire 15/16(overdue 강조 관행).
+
+## fire 18 · 2026-06-22 · skill v2.1.0 · e4f953f24
+meta: value-class=perf · pkg=@muse/cli · kind=perf · verdict=PASS · firesSinceDrill=8
+ratchet: info-projection 4연속(14-17) 깸 → perf로 전환 · 변경연관 테스트만(발열정책) · muse-spec 6/6 + program.test 243/243 · root-eslint 0 · raw-ESC 0
+
+- **무엇**: `muse spec` / `muse spec --json`에 프리-프레임워크 fast path(fire 5 `--version` 패턴 미러). 신규 leaf `muse-spec.ts`(MUSE_RUNTIME_SPEC·formatSpec·trySpecFastPath); program.ts spec 액션은 formatSpec로 렌더(단일 진실원, 행동 무변경); index.ts가 program.js import 전에 trySpecFastPath 호출.
+- **왜**: spec은 완전 static인데도 ~100모듈 그래프 로드로 0.5s. fast path로 **0.50s→0.02s(~20배)**. "최고급 CLI" 시작속도(③ perf, 최저서빙 축). `spec --help`는 fast-path 미적용→commander 유지.
+- **리뷰지점**: 출력 바이트-동일(text 79B·json 145B diff 0), `spec --help` framework 유지, mutation-first RED(text 1 fail / `runner` 바꾸면 program.test 포함 2 fail — tautology 회피 위해 리터럴 핀). 형제-감사: spec 유일 참조=program.test:60(framework json), 243/243 무사. 독립 Opus ④b PASS(8/8).
+- **리스크**: 낮음. diff 4파일(2 src 배선 + 1 신규 + 1 test). 데이터 단일 진실원이라 드리프트 0.
+- lesson: 같은 파일 내 `formatSpec===const` 비교는 tautological(mutation이 양변 동시 변경 → green) — 출력 텍스트는 테스트에 **리터럴로 직접 핀**해야 진짜 RED. mutation-first가 이걸 잡음.
+- live: `node dist/index.js spec`(0.02s) / `spec --json`(0.03s) 출력 framework와 바이트-동일; `spec --help` 정상 usage.
+- 레퍼런스: gh/starship 등 즉시-시작 CLI 관행(trivial probe는 풀 init 회피); 내부 fire 5 `muse-version.ts` 패턴.
+
+## fire 19 · 2026-06-22 · skill v2.1.0 · fea987e47 (JUDGE-DRILL)
+meta: value-class=error-guidance · pkg=@muse/cli · kind=error-guidance · verdict=PASS · firesSinceDrill=0 (drill reset)
+ratchet: info-projection 4(14-17)+perf(18) → error-guidance 전환 · unknown-subcommand 6/6 + program.test 243/243 · root-eslint 0 · raw-ESC 0
+
+- **무엇**: `muse <group> <typo>`(예 `muse memory serch`)가 stock commander 막다른 `error: unknown command 'serch'` 대신 grounded 블록 출력 — 신규 `unknown-subcommand.ts`(`formatUnknownSubcommand` pure + `attachUnknownSubcommandGuidance` 배선). 그룹별 commander `command:*` 핸들러가 `'muse <group> <attempted>'` + "Did you mean"(closest-command Levenshtein, 없으면 unique-prefix) + `Available <group> commands: <실 레지스트리 정렬목록>` 출력. fire 7(top-level)을 서브그룹으로 확장.
+- **왜**: ~38개 서브그룹의 오타가 zero-help 막다른 길이었음. 제안+유효 서브 실목록으로 복구 경로 제공(gh/git did-you-mean 관행). 근거: 목록·제안 모두 LIVE 레지스트리(`group.commands`)에서 파생 — fabrication 0.
+- **리뷰지점**: 테스트가 실 렌더 문자열 + 배선(실 commander program parse→stderr) 양쪽 grade, mutation-first RED(format 문자열 깨면 3-4 fail). 형제-감사: program.test 243/243(fire 7 top-level 무사). 그룹이 자체 default action 보유 시(`remind`) command:* 미발화 → **무변경**(no-regression, 안전 폴백). 독립 Opus ④b PASS(8/8).
+- **리스크**: 낮음. diff 3파일(2 신규 + program.ts 배선 1줄+import). default-action 그룹은 기존 동작 유지.
+- lesson(DRILL): 고의 나쁜 슬라이스(fabricated 'show' 하드코딩 + `typeof===string` tautological 테스트 + 미배선 dead code) 주입 → 독립 verifier가 4규칙(behavioral/mutation-RED/fabrication/wiring) 전부로 FAIL 확인 → 롤백 → 진짜 grounded fix는 PASS. 게이팅 검증자가 rubber-stamp 아님(양방향 보정) 입증.
+- live: `memory serch`→"Did you mean 'muse memory search'?"+실목록; `calendar evnts`→events 제안; `memory show`(유효) 정상 exit 0; `memory s`(ambiguous) 제안 없이 실목록.
+- 레퍼런스: git/gh "did you mean" + 유효 서브 나열 관행; 내부 fire 7 top-level unknown-command 패턴.
+
+## fire 20 · 2026-06-22 · skill v2.1.0 · 558650c96
+meta: value-class=first-screen · pkg=@muse/cli · kind=first-screen · verdict=PASS · firesSinceDrill=1
+ratchet: info-projection(14-17)+perf(18)+error-guidance(19) → first-screen 전환 · command-groups 5/5 + program.test 237 불변 · root-eslint 0 · raw-ESC 0
+
+- **무엇**: `muse --help`이 103개 top-level 명령을 평평한 280줄 벽으로 출력 → 데일리 명령을 순서있는 카테고리 헤딩으로(Chat & ask · Memory & knowledge · Planning & time · Setup & status), 롱테일(~78)은 기본 "Commands:" 헤딩에 마지막. 신규 `command-groups.ts`(`COMMAND_GROUPS` 순서목록 + `applyCommandGroups`: commander14 helpGroup 부착 + program.commands in-place 정렬로 헤딩 순서 제어). **DECOMPOSE 1차 슬라이스**(롱테일 분류는 후속).
+- **왜**: 첫화면 #1 가치 — 신규/복귀 유저가 280줄에서 핵심을 못 찾던 것을 상단 헤딩으로 즉시 노출(gh/git식 그룹화). 근거: 헤딩 멤버는 LIVE 레지스트리(`program.commands.find`)에서만 — 미등록명은 skip(fabrication 0, all-absent 그룹은 헤딩도 안 남).
+- **리뷰지점**: 테스트가 helpInformation() 실 렌더의 헤딩 순서+멤버 위치 grade, mutation-first RED(헤딩 텍스트/순서 깨면 2 fail). dispatch 무결성(reorder는 name기반 dispatch에 무해, spec/memory show/doctor 라이브 정상), 꼬리 78개 유지(드롭 0), fire-2 quickstart·fire-7 unknown 무사(program.test 237). commander `.commands` readonly 타입 회피 캐스트는 런타임 mutable 배열이라 sound(judge 확인). 독립 Opus ④b PASS(8/8).
+- **리스크**: 낮음. diff 3파일(2 신규 + program.ts 배선). 캐스트 1곳(주석 정당화). 부분 분류라 롱테일은 후속.
+- live: `muse --help` → Chat & ask(11)→Memory(32)→Planning(55)→Setup(73)→Commands:(90); 각 그룹 알파벳 정렬, 데일리 명령 상단.
+- 레퍼런스: gh CLI/git 카테고리화 help 관행; commander14 helpGroup API(node_modules 타입 확인, 코드 복붙 없음).
+
+## fire 21 · 2026-06-22 · skill v2.1.0 · ac05edae2
+meta: value-class=first-screen · pkg=@muse/cli · kind=first-screen · verdict=PASS · firesSinceDrill=2
+ratchet: first-screen 2/8(20,21<6 OK) · command-groups 5/5 + program.test 237 불변 · root-eslint 0 · raw-ESC 0
+
+- **무엇**: fire 20 그룹화 확장 — `muse --help` 롱테일(74개 still "Commands:" 벽)을 5개 추가 카테고리로 분류(Automation & agents · Connections · Documents & analysis · Reports & history · Diagnostics) + onboard을 Setup & status로 이동. 메커니즘 무변경, COMMAND_GROUPS **데이터만** 확장(applyCommandGroups가 임의 개수 처리). 꼬리 74→14(잔여는 meta/system: completion/config-path/export/import/logo/maintenance/open/pattern/persona/reflections/skills/specs/tui/user).
+- **왜**: fire 20이 핵심 29개만 그룹화 → 나머지 74개가 여전히 벽이라 첫화면 일관성 미완. 9개 헤딩으로 103개 명령 전부 항해 가능(gh식). 근거: 멤버 전부 LIVE 레지스트리에서만(89개 교차확인 fabrication 0, 그룹간 중복 0 — uniqueness 테스트 가드).
+- **리뷰지점**: 테스트가 helpInformation() 실 렌더의 9개 헤딩 순서 grade, mutation-first RED(disjoint rename→indexOf -1, COMMAND_GROUPS reverse→positions 비오름차순; superstring rename은 indexOf substring 한계지만 현실적 2 breakage class는 잡음). dispatch 무결성(spec/proactive --help/memory show 정상), program.test 237 불변. 독립 Opus ④b PASS(8/8).
+- **리스크**: 낮음. diff 2파일(데이터+테스트). 분류는 주관적이나 근거+유니크. 14개 meta는 정직히 Commands:.
+- live: `muse --help` → 9 헤딩 순서대로(Chat&ask 11→…→Diagnostics 229→Commands: 258), 꼬리 14, onboard→Setup&status.
+- 레퍼런스: gh CLI 카테고리 help; fire 20 메커니즘 재사용(코드 복붙 없음).
+
+## fire 22 · 2026-06-22 · skill v2.1.0 · 749fed5cf
+meta: value-class=empty-state · pkg=@muse/cli · kind=empty-state · verdict=PASS · firesSinceDrill=3
+ratchet: empty-state(fire 6 이후 첫) → info-projection 4·first-screen 2 깸 · commands-objectives 11/11 · root-eslint 0 · raw-ESC 0
+
+- **무엇**: `muse objectives list`가 빈 상태에서 barren dead-end "No objectives." 출력 → 액션-베어링 `No objectives yet. Register one with \`muse objectives add "watch the deploy until it is green"\`.`로. JSON 모드(`--json`)는 친절문구 미누출 유지(기계출력 청결).
+- **왜**: 신규 유저가 빈 명령에서 "어떻게 시작?" 막다른 길 → 다음 행동(실 `muse objectives add <spec...>`) 안내. 좋은 모델(contacts/skills/feeds "No X. <next>")과 일관. 근거: `muse objectives add` 실재(--help 확인), fabrication 0.
+- **리뷰지점**: 기존 behavioral 테스트(run()→stdout .toBe) 형제-감사로 3곳 갱신(50/137 assert + 144 JSON-guard), mutation-first RED(터스로 되돌리면 2 fail). JSON 분기는 empty-state 전에 return(누출 0). 형제 barren(episode/checkins/commitments)은 backlog. 독립 Opus ④b PASS(8/8).
+- **리스크**: 낮음. diff 2파일. 메시지 1줄+테스트 3곳. JSON 경로 불변.
+- live: `objectives list --user nobodyxyz` → 액션 메시지; `--json` → {objectives:[],total:0} 친절문구 없음.
+- 레퍼런스: gh/charm 빈-상태 "next action" 관행; 내부 contacts/skills/feeds 액션-베어링 empty-state 모델.
+
+## fire 23 · 2026-06-22 · skill v2.1.0 · bce22a366
+meta: value-class=info-accuracy · pkg=@muse/cli · kind=info-projection · verdict=PASS · firesSinceDrill=4
+ratchet: info-projection 3/8(16,17,23<6 OK) · program.test 238/238 · root-eslint 0 · raw-ESC 0
+
+- **무엇**: `muse status`가 local-only ON(기본)에서도 `model: ollama/gemma4:12b (inferred from GEMINI_API_KEY)` 출력 = **거짓**(architecture.md: local-only면 resolveDefaultModel이 클라우드 키 무시·로컬 기본 반환). 바로 아래 privacy 라인과 모순·프라이버시 유저 불안. fix: `resolveModelInfo`를 doctor의 modelEnvCheck에 맞춰 — local-only면 클라우드 키 귀속 금지, 대신 `(local-only default — <KEY> ignored)`(stray 클라우드 키 있을 때).
+- **왜**: 첫화면 marquee의 **fabrication-floor 위반**(거짓 정보). doctor는 이미 올바름(commands-doctor-checks.ts:72-90 + 테스트 414)이나 status가 형제-불일치. 근거: posture를 단일 진실원 `evaluateLocalOnlyPosture(merged).enabled`에서 파생(status privacy 라인·doctor와 동일).
+- **리뷰지점**: 새 테스트가 status --json + 렌더 양쪽 grade(local-only ON+GEMINI → modelInferredFrom undefined·"local-only default — GEMINI_API_KEY ignored"·NOT "inferred from"), mutation-first RED(게이트를 if(false)로 깨면 fail). 형제-감사: 기존 local-only=false 추론 테스트(program.test 7790/7806) 무사(238/238), `modelLocalOnlyIgnoredKey`는 additive. 독립 Opus ④b PASS(8/8, 양방향 라이브 확인).
+- **리스크**: 낮음. diff 2파일. local-only=false 경로 불변. 새 필드 additive(jq 소비자 무손상).
+- live: `GEMINI_API_KEY=x status`(local-only ON) → "(local-only default — GEMINI_API_KEY ignored)"; `MUSE_LOCAL_ONLY=false` → "(inferred from GEMINI_API_KEY)" 보존.
+- 레퍼런스: 내부 doctor modelEnvCheck(올바른 형제) + architecture.md local-only 규칙.

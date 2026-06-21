@@ -35,27 +35,29 @@ export function renderMuseBanner(options: MuseBannerOptions = {}): string {
   const tint = (value: string, color: Parameters<typeof colorize>[1]): string => colorize(value, color, options);
 
   const tagline = tint(MUSE_TAGLINE, "dim");
-  const rule = tint("─".repeat(38), "cyan");
 
+  // Tagline + status lines share the art's 2-space indent so the whole
+  // splash (art · tagline · the recap/input below, all at column 2) reads
+  // as one left-aligned column — no stray extra-indented line, and no
+  // decorative rule competing with the mascot for attention.
   const art = colorAllowed(options)
     ? MUSE_MASCOT_ANSI.split("\n").map((line) => `  ${line}`)
-    : [`   ${tint("♪ ♫ ♬", "cyan")}`, ...WORDMARK.map((line) => `   ${tint(line, "cyan")}`)];
+    : [`  ${tint("♪ ♫ ♬", "cyan")}`, ...WORDMARK.map((line) => `  ${tint(line, "cyan")}`)];
 
   const lines: string[] = [
     "",
     ...art,
-    `   ${tagline}`,
-    `   ${rule}`
+    `  ${tagline}`
   ];
 
   if (options.status) {
-    lines.push(`   ${tint(options.status, "dim")}`);
+    lines.push(`  ${tint(options.status, "dim")}`);
   }
   if (options.subStatus) {
-    lines.push(`   ${tint(options.subStatus, "dim")}`);
+    lines.push(`  ${tint(options.subStatus, "dim")}`);
   }
   if (options.hint) {
-    lines.push(`   ${tint(options.hint, "dim")}`);
+    lines.push(`  ${tint(options.hint, "dim")}`);
   }
   lines.push("");
   return lines.join("\n");

@@ -255,3 +255,38 @@ describe("muse status — privacy posture line (wiring)", () => {
     expect(text).toContain("local-only off — no cloud credentials configured");
   });
 });
+
+describe("muse status — humanized timestamps (at-a-glance time)", () => {
+  it("renders the persona 'last update' as relative time, not a raw UTC ISO string", async () => {
+    // Seed a deterministic, recent updatedAt via an isolated memory file.
+    const recentIso = new Date(Date.now() - 3 * 3_600_000).toISOString(); // 3h ago
+    const userKey = "tsuser";
+    const memFile = tmpFile("user-memory.json", JSON.stringify({
+      version: 1,
+      users: { [userKey]: { userId: userKey, facts: { name: "T" }, preferences: {}, recentTopics: [], updatedAt: recentIso } }
+    }));
+    const out: string[] = [];
+    const io: ProgramIO = { stderr: () => undefined, stdout: (s) => { out.push(s); } };
+    const program = new Command();
+    program.exitOverride();
+    registerStatusCommand(program, io);
+    const prev: Record<string, string | undefined> = {
+      MUSE_USER_MEMORY_FILE: process.env.MUSE_USER_MEMORY_FILE,
+      MUSE_USER_ID: process.env.MUSE_USER_ID,
+      MUSE_PERSONA: process.env.MUSE_PERSONA
+    };
+    process.env.MUSE_USER_MEMORY_FILE = memFile;
+    process.env.MUSE_USER_ID = userKey;
+    delete process.env.MUSE_PERSONA;
+    try {
+      await program.parseAsync(["node", "muse", "status"]);
+    } finally {
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === undefined) delete process.env[k]; else process.env[k] = v;
+      }
+    }
+    const text = out.join("");
+    expect(text).toMatch(/last update: 3h ago/);   // humanized, not the ISO
+    expect(text).not.toContain(recentIso);          // the raw UTC ISO must be gone
+  });
+});

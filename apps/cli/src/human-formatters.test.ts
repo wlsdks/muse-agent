@@ -283,3 +283,23 @@ describe("formatBytes — promotes through B/KB/MB/GB so a multi-GB note doesn't
     expect(formatBytes(-1024 * 1024)).toBe("size unknown");
   });
 });
+
+describe("formatTaskList — overdue tasks are flagged", () => {
+  const NOW = new Date("2026-06-22T00:00:00Z").getTime();
+  it("marks a not-done task past its dueAt with (⚠ overdue), leaves a future one unmarked", () => {
+    const out = formatTaskList({ status: "open", tasks: [
+      { id: "t1", title: "Ship fix", dueAt: "2026-05-11T18:00:00Z" },
+      { id: "t2", title: "Plan Q3", dueAt: "2026-07-01T09:00:00Z" }
+    ], total: 2 }, NOW);
+    expect(out).toMatch(/Ship fix {2}due .* \(⚠ overdue\)/u);   // tz-independent
+    expect(out).toMatch(/- \[t2\] Plan Q3 {2}due /u);
+    expect(out).not.toMatch(/Plan Q3.*overdue/u);
+  });
+  it("does NOT flag a done task even if its dueAt is past", () => {
+    const out = formatTaskList({ status: "all", tasks: [
+      { id: "t3", title: "Old thing", status: "done", dueAt: "2026-05-01T09:00:00Z" }
+    ], total: 1 }, NOW);
+    expect(out).toContain("(done)");
+    expect(out).not.toContain("overdue");
+  });
+});

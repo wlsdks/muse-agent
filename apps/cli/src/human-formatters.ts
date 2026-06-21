@@ -20,14 +20,17 @@ interface HumanTaskRow {
   readonly urgent?: boolean;
 }
 
-export function formatTaskList(payload: { tasks: readonly HumanTaskRow[]; status?: string; total?: number }): string {
+export function formatTaskList(
+  payload: { tasks: readonly HumanTaskRow[]; status?: string; total?: number },
+  nowMs: number = Date.now()
+): string {
   const tasks = payload.tasks;
   const status = payload.status ?? "open";
   if (tasks.length === 0) {
     return `Tasks (${status}): (none)\n`;
   }
   const header = `Tasks (${tasks.length} ${status}):\n`;
-  const lines = tasks.map((task) => formatTaskRow(task));
+  const lines = tasks.map((task) => formatTaskRow(task, nowMs));
   return `${header}${lines.join("\n")}\n`;
 }
 
@@ -259,11 +262,15 @@ function normalizeKeyValue(
   return Object.entries(record).map(([key, value]) => ({ key, value: String(value) }));
 }
 
-function formatTaskRow(task: HumanTaskRow): string {
+function formatTaskRow(task: HumanTaskRow, nowMs: number = Date.now()): string {
   const idTag = `[${shortId(task.id)}]`;
   const urgentBadge = task.urgent ? "⚠ " : "";
   const statusBadge = task.status === "done" ? " (done)" : "";
-  const dueLabel = task.dueAt ? `  due ${shortDateTime(task.dueAt)}` : "";
+  // A not-done task past its dueAt is overdue — flag it so a late item is
+  // scannable instead of blending in (parity with `muse remind list`).
+  const dueMs = task.dueAt ? new Date(task.dueAt).getTime() : Number.NaN;
+  const overdue = task.status !== "done" && Number.isFinite(dueMs) && dueMs < nowMs ? " (⚠ overdue)" : "";
+  const dueLabel = task.dueAt ? `  due ${shortDateTime(task.dueAt)}${overdue}` : "";
   const tagsLabel = task.tags && task.tags.length > 0 ? `  #${task.tags.join(" #")}` : "";
   return `  - ${idTag} ${urgentBadge}${task.title}${statusBadge}${dueLabel}${tagsLabel}`;
 }

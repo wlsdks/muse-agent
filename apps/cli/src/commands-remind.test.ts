@@ -6,7 +6,7 @@ import { readReminders, writeReminders, type PersistedReminder } from "@muse/mcp
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { filterRemindersBySearch, registerRemindCommands, resolveLocalReminderId, type RemindCommandHelpers } from "./commands-remind.js";
+import { filterRemindersBySearch, formatReminderList, registerRemindCommands, resolveLocalReminderId, type RemindCommandHelpers } from "./commands-remind.js";
 
 interface ApiCall {
   readonly path: string;
@@ -318,5 +318,27 @@ describe("filterRemindersBySearch", () => {
     const rems = [{ text: "Alpha" }, { text: "beta" }];
     expect(filterRemindersBySearch(rems, "ALPHA")).toHaveLength(1);
     expect(filterRemindersBySearch(rems, "   ")).toHaveLength(2);
+  });
+});
+
+describe("formatReminderList — overdue pending reminders are flagged", () => {
+  const NOW = new Date("2026-06-22T00:00:00Z").getTime();
+  const mk = (over: Record<string, unknown>) => ({ status: "pending", total: 1, reminders: [over] });
+
+  it("marks a pending reminder whose dueAt has passed with (⚠ overdue)", () => {
+    const out = formatReminderList(mk({ id: "rem_aaaaaaaa", dueAt: "2026-06-06T12:31:00Z", text: "알람", status: "pending" }), NOW);
+    expect(out).toContain("알람 (⚠ overdue)");
+  });
+
+  it("does NOT flag a future pending reminder", () => {
+    const out = formatReminderList(mk({ id: "rem_bbbbbbbb", dueAt: "2026-07-01T09:00:00Z", text: "약 먹기", status: "pending" }), NOW);
+    expect(out).toContain("약 먹기");
+    expect(out).not.toContain("overdue");
+  });
+
+  it("does NOT flag a fired reminder even if its dueAt is past (it already fired)", () => {
+    const out = formatReminderList(mk({ id: "rem_cccccccc", dueAt: "2026-06-06T12:31:00Z", text: "운동", status: "fired" }), NOW);
+    expect(out).toContain("(fired)");
+    expect(out).not.toContain("overdue");
   });
 });

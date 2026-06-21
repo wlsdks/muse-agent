@@ -11,8 +11,11 @@ import {
 } from "./credential-store.js";
 import { formatCitations } from "./human-formatters.js";
 import { closestCommandName } from "./closest-command.js";
+import { applyCommandGroups } from "./command-groups.js";
 import { MUSE_TAGLINE } from "./muse-identity.js";
+import { formatSpec } from "./muse-spec.js";
 import { MUSE_CLI_VERSION } from "./muse-version.js";
+import { attachUnknownSubcommandGuidance } from "./unknown-subcommand.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
 import {
   appendLastChatTurn,
@@ -266,6 +269,13 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       writeOut: io.stdout
     });
 
+  // Muse exposes ~80 commands; insertion order makes `muse --help` an
+  // unscannable wall. Sort commands + options alphabetically so a name is
+  // findable by its first letter (the quickstart block below still
+  // highlights the daily-driver few).
+
+  program.configureHelp({ sortSubcommands: true, sortOptions: true });
+
   program.addHelpText("after", () => `\n${museQuickstartHelp()}`);
 
   program
@@ -282,20 +292,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     .description("Print the fixed runtime stack")
     .option("--json", "Print machine-readable JSON")
     .action((options: { readonly json?: boolean }) => {
-      const spec = {
-        agentCore: "model-agnostic",
-        cli: "typescript + ink",
-        database: "postgresql + kysely",
-        runner: "rust",
-        server: "fastify"
-      };
-
-      if (options.json) {
-        io.stdout(`${JSON.stringify(spec, null, 2)}\n`);
-        return;
-      }
-
-      io.stdout("Muse stack: TypeScript, Node.js, Fastify, PostgreSQL, Kysely, Ink, Rust runner\n");
+      io.stdout(formatSpec(options.json));
     });
 
   program
@@ -641,6 +638,15 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     ...(io.todayShells ? { shells: io.todayShells } : {})
   });
   registerVoiceCommands(program, io, { apiRequest, readApiOptions, writeOutput });
+
+  // A typo'd subcommand of a group (`muse memory bogus`) otherwise hit
+  // commander's dead-end "unknown command 'bogus'"; ground it like the
+  // top-level catch-all does, with a suggestion + the real subcommand list.
+  attachUnknownSubcommandGuidance(program, io.stderr);
+
+  // Group the 100+ top-level commands under ordered headings in `--help` so
+  // the daily-driver commands surface first instead of a flat wall.
+  applyCommandGroups(program);
 
   // Catch-all positional: no arg → print help; unknown arg →
   // closest-command suggestion instead of commander's confusing

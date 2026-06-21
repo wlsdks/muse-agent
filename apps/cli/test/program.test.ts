@@ -6410,7 +6410,10 @@ describe("cli program", () => {
       await program.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
       const text = output.join("");
       expect(text).toContain("cost (today): $1.2340, 5678 tokens over 12 run(s)");
-      expect(text).toContain("as of: 2026-05-14T12:00:00Z");
+      // The dashboard humanises timestamps; a >7d-old `asOfIso` renders as a
+      // readable local datetime (not the raw UTC ISO).
+      expect(text).toContain(`as of: ${formatLocalDateTime("2026-05-14T12:00:00Z")}`);
+      expect(text).not.toContain("as of: 2026-05-14T12:00:00Z");
     } finally {
       if (prev === undefined) delete process.env.MUSE_TOKEN_COST_TODAY_FILE;
       else process.env.MUSE_TOKEN_COST_TODAY_FILE = prev;
@@ -7834,6 +7837,63 @@ describe("cli program", () => {
       restore("ollama", "OLLAMA_BASE_URL");
       restore("modelKeysFile", "MUSE_MODEL_KEYS_FILE");
       restore("localOnly", "MUSE_LOCAL_ONLY");
+    }
+  });
+
+  it("muse status: local-only (default) + ambient cloud key ⇒ LOCAL default, NOT 'inferred from GEMINI_API_KEY'", async () => {
+    const prev = {
+      model: process.env.MUSE_MODEL,
+      defaultModel: process.env.MUSE_DEFAULT_MODEL,
+      gemini: process.env.GEMINI_API_KEY,
+      anthropic: process.env.ANTHROPIC_API_KEY,
+      openai: process.env.OPENAI_API_KEY,
+      openrouter: process.env.OPENROUTER_API_KEY,
+      ollama: process.env.OLLAMA_BASE_URL,
+      localOnly: process.env.MUSE_LOCAL_ONLY,
+      keysFile: process.env.MUSE_MODEL_KEYS_FILE
+    };
+    delete process.env.MUSE_MODEL;
+    delete process.env.MUSE_DEFAULT_MODEL;
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_BASE_URL;
+    delete process.env.MUSE_LOCAL_ONLY; // default ⇒ local-only ON
+    process.env.GEMINI_API_KEY = "gem-test"; // a stray cloud key the runtime must IGNORE
+    process.env.MUSE_MODEL_KEYS_FILE = path.join(await mkdtemp(path.join(tmpdir(), "muse-status-lo-")), "missing.json");
+    try {
+      const { io, output } = captureOutput();
+      const program = createProgram({ ...io, fetch: async () => { throw new Error("no fetch"); } });
+      await program.parseAsync(["node", "muse", "status", "--user", "stark", "--json"], { from: "node" });
+      const snap = JSON.parse(output.join("")) as {
+        model?: string;
+        modelInferredFrom?: string;
+        modelLocalOnlyIgnoredKey?: string;
+      };
+      expect(snap.model, "model is the LOCAL default, not the cloud-inferred one").toMatch(/^ollama\//u);
+      expect(snap.modelInferredFrom, "must NOT attribute the local model to a cloud key under local-only").toBeUndefined();
+      expect(snap.modelLocalOnlyIgnoredKey).toBe("GEMINI_API_KEY");
+
+      const { io: iof, output: outf } = captureOutput();
+      const programf = createProgram({ ...iof, fetch: async () => { throw new Error("no fetch"); } });
+      await programf.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
+      const line = outf.join("");
+      expect(line, "the privacy-misleading attribution must be gone").not.toContain("inferred from GEMINI_API_KEY");
+      expect(line).toContain("(local-only default — GEMINI_API_KEY ignored)");
+    } finally {
+      const restore = (v: string | undefined, k: string): void => {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      };
+      restore(prev.model, "MUSE_MODEL");
+      restore(prev.defaultModel, "MUSE_DEFAULT_MODEL");
+      restore(prev.gemini, "GEMINI_API_KEY");
+      restore(prev.anthropic, "ANTHROPIC_API_KEY");
+      restore(prev.openai, "OPENAI_API_KEY");
+      restore(prev.openrouter, "OPENROUTER_API_KEY");
+      restore(prev.ollama, "OLLAMA_BASE_URL");
+      restore(prev.localOnly, "MUSE_LOCAL_ONLY");
+      restore(prev.keysFile, "MUSE_MODEL_KEYS_FILE");
     }
   });
 

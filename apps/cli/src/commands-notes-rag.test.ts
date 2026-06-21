@@ -314,8 +314,8 @@ describe("reindexNotes — a corrupt document is skipped VISIBLY, not silently (
     // The corrupt file is not stored as a hollow entry.
     expect(summary.index.files.some((f) => f.path.endsWith("corrupt.pdf"))).toBe(false);
     // VISIBILITY: the skip is reported via onProgress, not swallowed.
-    expect(progress.some((l) => l.startsWith("✗") && l.includes("corrupt.pdf") && /could not read/.test(l))).toBe(true);
-    expect(progress.some((l) => l.startsWith("+") && l.includes("good.md"))).toBe(true);
+    expect(progress.some((l) => /^\[\d+\/\d+\] ✗ /.test(l) && l.includes("corrupt.pdf") && /could not read/.test(l))).toBe(true);
+    expect(progress.some((l) => /^\[\d+\/\d+\] \+ /.test(l) && l.includes("good.md"))).toBe(true);
   });
 });
 
@@ -483,5 +483,26 @@ describe("reindexNotes — totalFiles plumbing (drives the empty-state)", () => 
     await writeFile(join(dir, "a.md"), "hello world", "utf8");
     const summary = await reindexNotes({ dir, fetchImpl: fakeEmbedFetch(), force: true, indexPath: join(dir, "index.json"), model: "nomic-embed-text" });
     expect(summary.totalFiles).toBe(1);
+  });
+});
+
+describe("reindexNotes — [i/N] progress position on each embedded file", () => {
+  it("prefixes onProgress lines with the file's position among the total found", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "muse-progress-rag-"));
+    await writeFile(join(dir, "a.md"), "alpha note body", "utf8");
+    await writeFile(join(dir, "b.md"), "beta note body", "utf8");
+    const lines: string[] = [];
+    await reindexNotes({
+      dir,
+      fetchImpl: fakeEmbedFetch(),
+      force: true,
+      indexPath: join(dir, "index.json"),
+      model: "nomic-embed-text",
+      onProgress: (line) => lines.push(line)
+    });
+    const embedded = lines.filter((l) => l.includes("embedded"));
+    expect(embedded.length).toBe(2);
+    expect(embedded.some((l) => l.startsWith("[1/2] +"))).toBe(true);
+    expect(embedded.some((l) => l.startsWith("[2/2] +"))).toBe(true);
   });
 });

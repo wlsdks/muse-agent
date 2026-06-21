@@ -15,6 +15,17 @@
 - ✓ `muse --version` pre-framework fast path (~500ms→~90ms) + version 0.0.0→0.1.0 single-source — cli-excellence fire 5
 - ✓ `muse notes reindex` honest empty-state when 0 markdown found (vs misleading "Done. 0 embedded") — cli-excellence fire 6
 - ✓ unknown-command discovery on-ramp (no close match → Popular commands, registry-intersected) — cli-excellence fire 7
+- ✓ muse status dashboard timestamps humanized (raw UTC ISO → "3h ago"/local datetime; --json raw kept) — cli-excellence fire 8
+- ✓ REPL splash polish: tagline 2-space aligned + stray cyan rule removed + mascot slimmed 64→56 cols (Jinan-directed) — cli-excellence fire 9
+- ✓ no-model first-run identity-led onboarding screen (wired; JUDGE-DRILL caught the inert version) — cli-excellence fire 10
+- ✓ muse doctor --local warnings scannable (⚠ marker, not neutral ·) — cli-excellence fire 11
+- ✓ muse notes reindex [i/N] progress position (responsiveness) — cli-excellence fire 12
+- ✓ muse --help command list sorted alphabetically (scannable, configureHelp) — cli-excellence fire 13
+- ✓ muse --help command GROUPING into categories — DONE cli-excellence fires 20-21 (core + long-tail, 9 ordered headings)
+- ✓ muse doctor default summary timestamp humanized (fire-8 sibling) — cli-excellence fire 14
+- ✓ muse remind list flags overdue pending reminders (⚠ overdue) — cli-excellence fire 15
+- ✓ chat-repl in-chat reminder list overdue marker (parity with remind list) — cli-excellence fire 16
+- ✓ muse tasks list flags overdue tasks (⚠ overdue) — cli-excellence fire 17
 - ✓ eval:two-edit-fix completeness battery — computer-control fire 54: a harder multi-step eval (2 edits across 2 files; test passes only if BOTH bugs fixed) that catches a stop-after-one-edit model. Mirrors eval-multifile-fix harness; OUTCOME-graded; discrimination verified deterministically (one-edit→FAIL, both→PASS). 12B PASSes 1/1 live (cross-file 2-edit completeness confirmed — cumulative effect of fires 47/49/51). Opus ④b judge PASS. Kept standalone (pass^1); promote into eval:multistep once pass^k-confirmed. REMAINING flywheel directions: wrong-first-fix re-iterate eval (naive first edit insufficient → must re-read+re-edit), or theme repoint if the vein is exhausted. (detail in docs/goals/loops/computer-control.md fire 54)
 
 - ✓ eval:multistep regression-lock aggregator — computer-control fire 53: bundles the 3 multi-step evals (computer-task/multifile-fix/edit-run-verify) into one gate (pnpm eval:multistep) so their fires-40-51 FAIL→PASS gains can't silently rot; mirrors eval:self-improving (Ollama-skip→exit0, any-fail→exit1, MUSE_EVAL_REPEAT passthrough for pass^k). Live ALL PASS 3/3; Opus ④b judge PASS. Done backlog direction (1). REMAINING next directions: (2) harder multi-step fixture (2-edit cross-file / wrong-first-fix re-iterate) to keep raising the bar; (3) theme repoint if the deterministic vein is exhausted (agent-core well over-mined; consider a fresh sub-area or repoint). (detail in docs/goals/loops/computer-control.md fire 53)
@@ -2928,6 +2939,13 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ✓ Fan-in synthesis/verify DEADLINE — multi-agent fire 21 (sibling-audit completion of fire 20): extracted a shared `withDeadline` helper (DRY) and bounded the orchestration's synthesize + verify model calls (a hung synthesizer/verifier stalled the run after workers completed). Now ALL orchestration model calls are bounded by workerTimeoutMs; timeout → existing fail-soft keeps prior output. Mutation-first. (One ◦ remains: SupervisorAgent.run deadline — but SupervisorAgent has NO real (non-test) usage, so deprioritized.)
 - ◦ Per-worker deadline follow-ups (multi-agent fire-20 siblings): (a) wrap `SupervisorAgent.run`'s bare `await worker.run` (different class, single-worker handoff path) with the same deadline; (b) AbortSignal/provider cancellation so a timed-out worker's underlying call is actually CANCELLED (frees the GPU), not just abandoned — the deadline currently bounds the WAIT, not the compute.
 - ⏳ BLOCKER (shared pnpm check RED, NOT multi-agent): `@muse/autoconfigure` diagnostic-provider runtime-assembly e2e tests (runtime-assembly-e2e / -cache-e2e / -streaming-e2e + autoconfigure.test.ts) time out at 5000ms. PROVEN pre-existing + unrelated to the multi-agent loop (autoconfigure doesn't depend on @muse/multi-agent). Cause is in the recently-merged sibling LOCAL-SPEED loop's Ollama-adapter changes (num_predict cap / num_thread / num_gpu / num_batch). The responsible loop (or 진안) should triage — it blocks the shared `pnpm check` gate for every loop on the box.
+- ✓ muse spec / spec --json pre-framework fast path (0.5s→0.02s, ~20x; single-source via muse-spec.ts) — cli-excellence fire 18
+- ✓ grounded unknown-subcommand guidance (muse <group> <typo> → did-you-mean + real subcommand list, ~38 groups; fire-7 pattern extended) — cli-excellence fire 19
+- ✓ muse --help category grouping (ordered headings for daily-driver commands; commander14 helpGroup + group-order control) — cli-excellence fire 20
+- ✓ muse --help long-tail categorization (5 more headings: Automation/Connections/Documents/Reports/Diagnostics; tail 74→14) — cli-excellence fire 21
+- ✓ muse objectives list barren empty-state → action-bearing grounded next-action — cli-excellence fire 22
+- ◦ barren empty-state siblings: episode list / checkins list / commitments scan → action-bearing next-action (same class as fire 22, lower-traffic) (cli-excellence)
+- ✓ muse status model-source: local-only ignores ambient cloud key (was falsely "inferred from GEMINI_API_KEY"; mirrors doctor) — cli-excellence fire 23
 
 - ✓ companion time-of-day greeting (IdleChatter.timeGreeting) — desktop-enhance fire 6
 - ✓ localize Automation status badges (autonomy-labels) — desktop-enhance fire 7

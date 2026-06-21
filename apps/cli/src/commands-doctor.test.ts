@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   classifyHomeAlertsConfig,
   classifyMcpServersField,
+  doctorStatusMarker,
+  formatDoctorSummaryLine,
   classifyWebWatchConfig,
   embedModelCheck,
   episodeIndexHealth,
@@ -559,3 +561,32 @@ describe("selfLearningCheck — verifiable autonomy (B1 §7)", () => {
     expect(c.detail).toContain("MUSE_IDLE_LEARNING_ENABLED");
   });
 })
+
+describe("doctorStatusMarker — warnings are visually distinct from OK", () => {
+  it("maps ok→✓, warn→⚠ (not a neutral dot), fail→✗", () => {
+    expect(doctorStatusMarker("ok")).toBe("✓");
+    expect(doctorStatusMarker("warn")).toBe("⚠");   // scannable, not "·"
+    expect(doctorStatusMarker("fail")).toBe("✗");
+    // a warning must NOT render the same as the old neutral middle-dot
+    expect(doctorStatusMarker("warn")).not.toBe("·");
+  });
+});
+
+describe("formatDoctorSummaryLine — humanized generated-at stamp", () => {
+  const now = new Date("2026-06-22T12:00:00Z");
+  it("renders the stamp as relative time, not a raw UTC ISO", () => {
+    const line = formatDoctorSummaryLine(
+      { status: "ok", statusLabel: "OK 6", summary: "6 sections", generatedAt: "2026-06-22T09:00:00Z" },
+      now
+    );
+    expect(line).toBe("[ok] 6 sections — OK 6 (3h ago)");
+    expect(line).not.toContain("2026-06-22T09:00:00Z");   // raw ISO gone
+  });
+  it("falls back to a readable local datetime past 7 days (never a bare Z stamp)", () => {
+    const line = formatDoctorSummaryLine({ status: "ok", summary: "ok", generatedAt: "2026-05-01T09:00:00Z" }, now);
+    expect(line).not.toMatch(/\dT\d\d:\d\d.*Z\)/);          // not the raw ISO
+  });
+  it("omits the stamp entirely when generatedAt is absent", () => {
+    expect(formatDoctorSummaryLine({ status: "ok", summary: "ok" }, now)).toBe("[ok] ok");
+  });
+});

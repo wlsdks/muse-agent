@@ -458,7 +458,13 @@ export async function reindexNotes(
   const found = await walkMarkdown(options.dir);
   const next: FileEntry[] = [];
   let embedded = 0, skipped = 0, failed = 0;
+  let position = 0;
+  // `[i/N]` position so a long reindex shows progress, not a silent stall.
+  // Cached files stay quiet (they're instant); embedded/failed files report
+  // their position among the N found.
   for (const { path, mtimeMs } of found) {
+    position += 1;
+    const at = `[${position.toString()}/${found.length.toString()}] `;
     const prior = known.get(path);
     if (prior && prior.mtimeMs === mtimeMs) {
       next.push(prior);
@@ -470,7 +476,7 @@ export async function reindexNotes(
       body = await extractDocumentText(path);
     } catch (cause) {
       failed += 1;
-      options.onProgress?.(`✗ ${path} (could not read — skipped: ${cause instanceof Error ? cause.message : String(cause)})`);
+      options.onProgress?.(`${at}✗ ${path} (could not read — skipped: ${cause instanceof Error ? cause.message : String(cause)})`);
       continue;
     }
     const overlap = Math.min(200, Math.max(0, Math.floor(chunkChars / 20)));
@@ -499,12 +505,12 @@ export async function reindexNotes(
       if (priorEntry) {
         next.push(priorEntry);
       }
-      options.onProgress?.(`✗ ${path} (embedding failed — kept ${priorEntry ? "previous index entry" : "nothing"})`);
+      options.onProgress?.(`${at}✗ ${path} (embedding failed — kept ${priorEntry ? "previous index entry" : "nothing"})`);
       continue;
     }
     next.push({ chunks: out, mtimeMs, path });
     embedded += 1;
-    options.onProgress?.(`+ ${path} (${out.length.toString()}/${chunks.length.toString()} chunk${chunks.length === 1 ? "" : "s"} embedded)`);
+    options.onProgress?.(`${at}+ ${path} (${out.length.toString()}/${chunks.length.toString()} chunk${chunks.length === 1 ? "" : "s"} embedded)`);
   }
   const index: NotesIndex = {
     builtAtIso: new Date().toISOString(),

@@ -563,7 +563,10 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
     });
 }
 
-function formatReminderList(payload: { reminders: ReadonlyArray<Record<string, unknown>>; status: string; total: number }): string {
+export function formatReminderList(
+  payload: { reminders: ReadonlyArray<Record<string, unknown>>; status: string; total: number },
+  nowMs: number = Date.now()
+): string {
   if (payload.reminders.length === 0) {
     return `Reminders (${payload.status}): (none)\n`;
   }
@@ -573,7 +576,11 @@ function formatReminderList(payload: { reminders: ReadonlyArray<Record<string, u
     const text = String(reminder.text ?? "");
     const repeats = typeof reminder.recurrence === "string" ? ` (repeats ${reminder.recurrence})` : "";
     const fired = reminder.status === "fired" ? " (fired)" : "";
-    return `  - [${id.slice(0, 12)}] ${shortDateTime(dueAt)}  ${text}${repeats}${fired}`;
+    // A still-pending reminder whose dueAt has passed is overdue — flag it so a
+    // late item is scannable instead of blending in with upcoming ones.
+    const dueMs = dueAt ? new Date(dueAt).getTime() : Number.NaN;
+    const overdue = reminder.status !== "fired" && Number.isFinite(dueMs) && dueMs < nowMs ? " (⚠ overdue)" : "";
+    return `  - [${id.slice(0, 12)}] ${shortDateTime(dueAt)}  ${text}${overdue}${repeats}${fired}`;
   });
   return `Reminders (${payload.reminders.length} ${payload.status}):\n${lines.join("\n")}\n`;
 }
