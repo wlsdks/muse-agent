@@ -55,6 +55,7 @@ private struct SettingsView: View {
     @State private var muted: Bool
     @State private var museURL: String
     @State private var showAdvanced = false
+    @State private var launchAtLogin = LaunchAtLogin.isEnabled
 
     private let s = UIStrings.current()
 
@@ -89,6 +90,7 @@ private struct SettingsView: View {
                 chatSection
                 appearanceSection
                 voiceSection
+                startupSection
                 privacySection
                 advancedSection
                 footer
@@ -161,6 +163,16 @@ private struct SettingsView: View {
             }
             .toggleStyle(.switch).tint(violet)
             .onChange(of: muted) { _, v in onMute(v) }
+        }
+    }
+
+    private var startupSection: some View {
+        card(s.sectionStartup) {
+            Toggle(isOn: $launchAtLogin) { Text(s.launchAtLogin).foregroundStyle(ink) }
+                .toggleStyle(.switch).tint(violet)
+                .onChange(of: launchAtLogin) { _, v in
+                    if !LaunchAtLogin.set(v) { launchAtLogin = LaunchAtLogin.isEnabled }  // revert on failure
+                }
         }
     }
 
