@@ -1,17 +1,27 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { AsyncBlock, Badge, Card } from "../components/ui.js";
+import { AsyncBlock, Badge, Button, Card } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
-import { summarizeSkills } from "./skill-list.js";
+import { canAdjustReward, rewardDelta, summarizeSkills } from "./skill-list.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { SkillsResponse } from "../api/types.js";
 
 export function SkillsView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
+  const qc = useQueryClient();
   const skills = useQuery({
     queryFn: () => client.get<SkillsResponse>("/api/self-improvement/skills"),
     queryKey: ["skills", client.baseUrl]
+  });
+
+  const reward = useMutation({
+    mutationFn: ({ name, direction }: { name: string; direction: "up" | "down" }) =>
+      client.post<{ name: string; reward: number }>(
+        `/api/self-improvement/skills/${encodeURIComponent(name)}/reward`,
+        { delta: rewardDelta(direction) }
+      ),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: ["skills"] })
   });
 
   const entries = skills.data?.entries ?? [];
@@ -43,9 +53,31 @@ export function SkillsView({ client }: { client: ApiClient }) {
                       </p>
                     ) : null}
                   </div>
-                  <span className="mono subtle" style={{ flexShrink: 0 }}>
-                    {t("skills.reward", { n: entry.reward })}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    <span className="mono subtle">
+                      {t("skills.reward", { n: entry.reward })}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      title={t("skills.rewardUp")}
+                      ariaLabel={t("skills.rewardUp")}
+                      disabled={reward.isPending || !canAdjustReward(entry.reward, "up")}
+                      onClick={() => reward.mutate({ name: entry.name, direction: "up" })}
+                    >
+                      ▲
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      title={t("skills.rewardDown")}
+                      ariaLabel={t("skills.rewardDown")}
+                      disabled={reward.isPending || !canAdjustReward(entry.reward, "down")}
+                      onClick={() => reward.mutate({ name: entry.name, direction: "down" })}
+                    >
+                      ▼
+                    </Button>
+                  </div>
                 </div>
               </Card>
             </div>

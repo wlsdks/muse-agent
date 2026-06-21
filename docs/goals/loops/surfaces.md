@@ -592,3 +592,12 @@ ratchet: api 924/924 isolated · smoke:broad 52/0 (+1) · fabrication 0 · self-
 - **리뷰지점(상태변경=게이트 증명이 핵심)**: **contract-faithful 실HTTP smoke**(가짜 레지스트리 아님)가 τ-bench no-partial-side-effect 증명 — reward 누적 persist(+2→2→+1→3), 무효 delta 3종(문자열·누락·0) 각 400, **무효 후 유효 +1이 정확히 4 착지**(무효가 mutate했다면 4 아님)로 부작용-0 입증. auth: write前 동일 authed 게이트 우회 없음. mutation-first: parseRewardDelta(Number.isFinite 제거→NaN/Inf 3 RED·비0 제거→0 RED). 입력안전: name은 고정 파일의 JSON 키일 뿐 경로탈출 불가. 독립 Opus ④b judge가 5축(게이트증명·auth·행동검증·입력안전·다양성) 검증 후 PASS.
 - **리스크**: 없음(apps/api 3파일, api 924/924 isolated·smoke 52/0·lint clean·build clean).
 - **환경 플레이크 메모(무관, 비차단)**: 풀 `pnpm check`에서 `apps/api/test/messaging-webhooks.test.ts`(LINE webhook gating)가 ~20s 타임아웃 1건 — 동시 6+ 루프 포화로 buildServer가 vitest 20s 한도 초과. **격리 단독 4/4 GREEN**(이 fire 첫 check 64a에선 통과)이라 내 슬라이스(self-improvement, messaging과 무관)와 무관한 환경 false-timeout. fire 64는 3배수 아니라 main-merge 없음, 브랜치 push만. 후속: 이 클래스는 박스 포화 신호, 테스트 회귀 아님([[project_test_hygiene_loop]]).
+
+## fire 65 · 2026-06-21 · skill v2.0.0 · <pending>
+meta: surface=web · value-class=new-capability · pkg=@muse/web · kind=skills-reward-buttons(view+mutation) · verdict=PASS · firesSinceDrill=4
+ratchet: web tests 101/101 (+9) · fabrication 0 · self-eval exit 0 · check exit 0(messaging-webhooks 이번엔 통과=환경 확정) · smoke:broad 52/0 · lint clean
+
+- **무엇**: `SkillsView`에 ▲/▼ reward 버튼 배선 — fire 64의 `POST /api/self-improvement/skills/:name/reward`를 useMutation으로 호출(body {delta: rewardDelta(dir)}, onSuccess invalidate `["skills"]`로 목록 갱신). 순수 헬퍼 `rewardDelta`(up→+1/down→-1)·`canAdjustReward`(서버 [-5,5] clamp 인지: +5에서 ▲ disable·-5에서 ▼ disable) + i18n(skills.rewardUp/Down en/ko). McpServers connect/disconnect mutation 패턴 미러.
+- **왜**: 진안 "스킬 컨트롤"을 read(62/63)+route(64) 다음 — 이제 **웹에서 직접 강화/약화**(end-to-end 완성). canAdjustReward로 guaranteed no-op 클릭 차단(+5에서 더 ▲ 못 누름)=정직한 UI(클램프 경계 노출). (web,view) 5/8로 RATCHET 한도 내.
+- **리뷰지점**: mutation-first — canAdjustReward(>=5→>5 변이→"5+up→false" RED)·rewardDelta(상수화→"down→-1" RED), 독립 judge 재확인. 웹 테스트 인프라(renderToStaticMarkup, RTL/DOM 없음)라 클릭→mutation 단위테스트 불가 → McpServers와 동일 accepted 패턴(순수 결정로직 단위테스트 + 버튼 배선 inspection). 배선 정합(judge inspection): encodeURIComponent(name)↔라우트 decodeURIComponent 쌍·queryKey `["skills"]` prefix-match로 갱신·양 버튼 `disabled={pending || !canAdjustReward}`. 상태안전: 기존 auth-게이트 라우트만 호출(신규 노출 0)·escaped children. i18n en/ko 패리티. 정직한 갭: curate/author 액션 후속.
+- **리스크**: 없음(apps/web 4파일, web build tsc+vite·web 101/101·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 경계로직·배선·상태안전·다양성·mutation 검증 후 PASS).

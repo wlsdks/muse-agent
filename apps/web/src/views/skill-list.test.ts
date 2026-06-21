@@ -1,6 +1,46 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeSkills } from "./skill-list.js";
+import { canAdjustReward, rewardDelta, summarizeSkills } from "./skill-list.js";
+
+describe("rewardDelta", () => {
+  it("up → 1", () => {
+    expect(rewardDelta("up")).toBe(1);
+  });
+
+  it("down → -1", () => {
+    expect(rewardDelta("down")).toBe(-1);
+  });
+});
+
+describe("canAdjustReward", () => {
+  it("reward 5 + up → false (at ceiling)", () => {
+    expect(canAdjustReward(5, "up")).toBe(false);
+  });
+
+  it("reward 5 + down → true (can still decrease)", () => {
+    expect(canAdjustReward(5, "down")).toBe(true);
+  });
+
+  it("reward -5 + down → false (at floor)", () => {
+    expect(canAdjustReward(-5, "down")).toBe(false);
+  });
+
+  it("reward -5 + up → true (can still increase)", () => {
+    expect(canAdjustReward(-5, "up")).toBe(true);
+  });
+
+  it("reward 0 + up → true", () => {
+    expect(canAdjustReward(0, "up")).toBe(true);
+  });
+
+  it("reward 0 + down → true", () => {
+    expect(canAdjustReward(0, "down")).toBe(true);
+  });
+
+  it("reward 4 + up → true (one step below ceiling)", () => {
+    expect(canAdjustReward(4, "up")).toBe(true);
+  });
+});
 
 describe("summarizeSkills", () => {
   it("empty list → all zero", () => {

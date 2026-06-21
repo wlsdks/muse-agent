@@ -194,6 +194,8 @@ const en = {
   "skills.subtitle": "Skills Muse has learned to apply. {n} total, {a} avoided.",
   "skills.reward": "reward {n}",
   "skills.avoided": "avoided",
+  "skills.rewardUp": "Reinforce",
+  "skills.rewardDown": "Discourage",
 
   "nav.selfImprovement": "Self-improvement",
   "si.title": "Self-improvement",
@@ -399,6 +401,8 @@ const ko: Strings = {
   "skills.subtitle": "Muse가 적용하도록 학습한 스킬. 총 {n}개, 회피 {a}개.",
   "skills.reward": "보상 {n}",
   "skills.avoided": "회피",
+  "skills.rewardUp": "강화",
+  "skills.rewardDown": "약화",
 
   "nav.selfImprovement": "자기강화",
   "si.title": "자기강화",
