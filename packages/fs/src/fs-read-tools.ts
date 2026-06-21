@@ -281,9 +281,23 @@ export function createFileReadTool(options: FsReadToolsOptions = {}, policyPromi
         // line offset would be imprecise and is omitted.
         let nextOffset = truncated ? start + sliced.length + 1 : undefined;
         if (text.length > maxTextChars) {
-          text = text.slice(0, maxTextChars);
+          const capped = text.slice(0, maxTextChars);
           truncated = true;
-          nextOffset = undefined;
+          // A char-cap cuts mid-line. Rather than drop paging entirely, TRIM the
+          // trailing partial line so the page ends on a clean boundary, and page
+          // from the first not-fully-shown line — deterministic, no partial line.
+          // `completeLines` is the count of NEWLINE-terminated lines in the cut
+          // (conservative: it treats the boundary line as not-yet-complete, so a
+          // re-read overlaps by at most one line — never skips one). A single line
+          // longer than the cap has no newline, so it can't be paged BY LINE.
+          const completeLines = (capped.match(/\n/gu) ?? []).length;
+          if (completeLines > 0) {
+            text = capped.slice(0, capped.lastIndexOf("\n"));
+            nextOffset = start + completeLines + 1;
+          } else {
+            text = capped;
+            nextOffset = undefined;
+          }
         }
         options.onPathRead?.(safe);
         // FULL read = started at the top (`start === 0`, i.e. no offset / offset 1)

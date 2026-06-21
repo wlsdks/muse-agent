@@ -76,15 +76,44 @@ describe("file_read / file_list / file_grep", () => {
       expect(whole["nextOffset"]).toBeUndefined();
     });
 
-    it("a CHAR-capped read omits nextOffset EVEN when also line-truncated (the char cut wins — no imprecise offset)", async () => {
-      // 10 lines of ~50 chars; limit:8 is line-truncated (would be nextOffset 9)
-      // BUT 8 joined lines (~400 chars) exceed the 100-char cap → cut mid-line,
-      // so nextOffset must be cleared. This pins that the char-cap branch wins.
+    it("a CHAR-capped read TRIMS to a clean line boundary and pages from the next line (no partial line)", async () => {
+      // 10 lines of ~50 chars; the first 100 chars hold 1 complete line + part of
+      // the 2nd. The page is trimmed to the complete line and nextOffset continues
+      // from line 2 — deterministic paging without a trailing partial line.
       await writeFile(join(root, "wide.txt"), Array.from({ length: 10 }, (_, i) => `${(i + 1).toString()}-${"x".repeat(48)}`).join("\n"));
       const tool = createFileReadTool({ ...opts(), maxTextChars: 100 });
       const out = (await tool.execute({ limit: 8, path: join(root, "wide.txt") }, ctx)) as JsonObject;
       expect(out["truncated"]).toBe(true);
+      expect(out["nextOffset"]).toBe(2);
+      expect(String(out["text"]).split("\n")).toHaveLength(1); // only the 1 complete line, no partial
+      expect(String(out["text"]).endsWith("x")).toBe(true);
+    });
+
+    it("a SINGLE line longer than the cap can't be paged by line — nextOffset stays undefined", async () => {
+      await writeFile(join(root, "giant.txt"), "z".repeat(300)); // one 300-char line, no newline
+      const tool = createFileReadTool({ ...opts(), maxTextChars: 100 });
+      const out = (await tool.execute({ path: join(root, "giant.txt") }, ctx)) as JsonObject;
+      expect(out["truncated"]).toBe(true);
       expect(out["nextOffset"]).toBeUndefined();
+      expect(String(out["text"]).length).toBe(100);
+    });
+
+    it("char-cap paging round-trips: every line is eventually read, none skipped", async () => {
+      await writeFile(join(root, "doc.txt"), Array.from({ length: 10 }, (_, i) => `line${(i + 1).toString()}-${"y".repeat(20)}`).join("\n"));
+      const tool = createFileReadTool({ ...opts(), maxTextChars: 60 });
+      const seen: string[] = [];
+      let offset = 1;
+      for (let guard = 0; guard < 30; guard += 1) {
+        const out = (await tool.execute({ offset, path: join(root, "doc.txt") }, ctx)) as JsonObject;
+        seen.push(...String(out["text"]).split("\n").filter(Boolean));
+        const next = out["nextOffset"];
+        if (typeof next !== "number") break;
+        expect(next).toBeGreaterThan(offset); // always advances — no infinite loop
+        offset = next;
+      }
+      for (let i = 1; i <= 10; i += 1) {
+        expect(seen.some((l) => l.startsWith(`line${i.toString()}-`))).toBe(true);
+      }
     });
 
     it("a COMPLETE read fires onFullRead; a truncated (offset/limit) read does NOT", async () => {

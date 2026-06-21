@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 36 · 2026-06-21 · skill v2.0 · <commit-pending> (char-cap reads page cleanly — resolves fire-35 finding; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/fs · kind=reliability/paging · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles 1072→1072 (+2 cases fs-read-tools: char-cap trim + round-trip; 1 rewritten, mutation-valid) · fabrication 0 · @muse/fs 격리 172 · pnpm check exit 0 · lint clean · Ollama DOWN
+- 무엇: char-cap(maxTextChars 초과 mid-line cut)이 nextOffset을 clear해 모델이 페이징 못함(fire-35 64K cap이 자주 트리거). FIX: char-cap이 trailing partial line을 line-boundary로 TRIM + `nextOffset = start + completeLines + 1`(completeLines=capped의 newline 수=보수적, 경계 라인은 full re-read). 단일 거대 라인(newline 없음)은 nextOffset undefined(라인 페이징 불가).
+- 왜: fire-35 ④b가 짚은 backlog ◦ 해소 — 64K cap이 char-cap을 흔하게 만들어 un-pageable hole이 자주 발생. 페이징 스토리 완성(line-trunc fire 24 + char-cap fire 36).
+- 리뷰지점: mutation-valid(옛 clear-nextOffset로 되돌리면 trim 테스트 + 10라인 round-trip 둘 다 RED). ④b judge PASS — **페이징 루프 구동: EVERY 라인 read, NONE skipped**(boundary overlap만, gap 0), nextOffset 항상 advance(무한루프 0), char-cap이 truncated=true 유지→onFullRead 억제(grounding 불변), numbered+empty/1-line/no-trailing-newline edge 정확.
+- 리스크: 낮음 — char-cap 블록만(line-trunc/grounding/grep/list 불변). ④b PASS.
+lesson: ④b finding을 backlog ◦로 기록→다음 fire가 해소하는 사이클이 작동. 페이징 paging은 *모든 truncation 경로*(line+char)가 일관 nextOffset 줘야; 보수적 경계(complete-lines-only, boundary 라인 re-read)가 skip(데이터손실)보다 안전.
+
 ## fire 35 · 2026-06-21 · skill v2.0 · 26a8a105 (file_read caps to fit the model context — 200K overflow fix)
 meta: value-class=new-capability · pkg=@muse/fs+apps/cli · kind=context-fit/reliability · verdict=PASS · firesSinceDrill=7
 ratchet: testFiles 1072→1072 (+2 cases fileReadCharBudget value+enforcement, mutation-valid) · fabrication 0 · @muse/fs 격리 170 · @muse/cli 격리 2827 · pnpm check exit 0 · lint clean · Ollama DOWN
