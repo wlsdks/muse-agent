@@ -1,7 +1,7 @@
 ---
 name: release
-version: 1.1.0
-description: Use when 진안 wants to cut a Muse release / tag a version — "릴리스 찍어줘", "release 만들자", "v0.2 내자", "버전 올려줘", or asks which version number is next. Decides the next SemVer number from the commits per docs/VERSIONING.md, verifies the build is releasable, then bumps + changelogs + commits + tags + pushes + creates the GitHub Release (pre-release while 0.x). Muse-specific.
+version: 1.2.0
+description: Use when 진안 wants to cut/tag a Muse release or asks anything about the next version — "릴리스 찍어줘", "release 만들자", "버전 올려줘", "v0.2 내자", "patch 올려줘", "다음 버전 뭐야", "changelog/릴리스 노트 만들어줘", "GitHub release 올려줘", "이번엔 minor야 patch야". Reads the full commit history since the last tag, AUTO-DECIDES patch vs minor vs major (patch climbs by default, minor only on a breaking public-surface change or an explicit milestone — per docs/VERSIONING.md), writes curated user-facing release notes from those commits, then bumps + changelogs + commits + tags + pushes + creates the GitHub Release (pre-release while 0.x). Muse-specific.
 ---
 
 > **Versioning.** This skill carries a `version` (above). Bump it (patch = wording,
@@ -17,6 +17,14 @@ bump, changelog, commit, tag, push → create the GitHub Release. The single
 source of truth for *what a number means* is
 [`docs/VERSIONING.md`](../../../docs/VERSIONING.md) — this skill is its
 executable form. If the two ever disagree, the doc wins; fix this skill.
+
+**Two jobs must be A+ every time — follow the bundled rubric, don't improvise:**
+the **version decision** (patch vs minor vs major) and the **release notes**
+(curated from the *entire* commit history since the last tag). Both procedures,
+with worked examples and the quality bar, live in
+[`references/release-notes.md`](references/release-notes.md). Read it before
+Step 1 and Step 3; it is the part that makes the output identical-quality on
+every run.
 
 **Releases are deliberate, human-cut milestones — never automated per commit.**
 `main` iterates continuously (autonomous loops included), so a release is a
@@ -68,7 +76,9 @@ If there are **no releasable commits** since the last tag (only the tag commit
 itself, or nothing but loop-journal `docs/goals/loops/**` churn), say so and
 stop — an empty release is noise.
 
-State the chosen number and the one-line reason before proceeding.
+The full top-to-bottom decision algorithm (with the exact `grep` for detecting
+a breaking change) is [`references/release-notes.md` §A](references/release-notes.md#a-decide-the-number-deterministic).
+State the chosen number as `vX.Y.Z → vX.Y.Z'  (PATCH/MINOR — <reason>)` before proceeding.
 
 ## Step 2 — prove it's releasable (scaled to the bump)
 
@@ -107,15 +117,13 @@ churns). Stage with **explicit paths** (other loops may have files staged).
 1. **Bump** root `package.json` `version` → the chosen number. (Workspace
    `packages/*` stay `private` + `0.0.0`; not published to npm — root version is
    the single source of truth.)
-2. **CHANGELOG** — draft the section from the commits since the last tag, then
-   curate. Generate the raw material mechanically:
-   ```bash
-   git log --pretty='- %s' "$(git describe --tags --abbrev=0)"..origin/main \
-     | grep -vE '^- (Merge |docs\(loops\)|chore\(release\))' || true
-   ```
-   Group into Keep-a-Changelog headings (`feat:`→**Added**, `fix:`→**Fixed**,
-   breaking→**Changed (breaking)**), drop internal noise, fold any standing
-   `## [Unreleased]` items in, and write a new `## [X.Y.Z] - YYYY-MM-DD` section.
+2. **CHANGELOG** — analyse the **entire** commit history since the last tag and
+   curate it into user-facing notes following
+   [`references/release-notes.md` §B](references/release-notes.md#b-write-the-notes-analyse-the-whole-history-since-the-last-tag):
+   gather every commit, filter process noise (`chore(release)` / `docs(loops)`),
+   classify by type, **rewrite each into a user-benefit bullet (never paste raw
+   subjects)**, write a one–two-sentence headline, fold in any standing
+   `## [Unreleased]` items, and write a new `## [X.Y.Z] - YYYY-MM-DD` section.
    Get today's date from the environment / `currentDate`, never guess it.
 3. **Commit**: `chore(release): vX.Y.Z` (paths: `package.json CHANGELOG.md`).
 4. **Rebase** onto `origin/main` if it moved (`git fetch` then `git rebase
@@ -155,3 +163,7 @@ what was a known local flake), the tag + release URL, and anything deferred.
 - **Don't bump to `1.0.0` casually** — it's a stability promise; meet the gate.
 - The policy lives in `docs/VERSIONING.md`. Change the rule there first, then
   mirror it here and bump this skill's `version`.
+- **Hit the A+ bar** in [`references/release-notes.md` §Quality bar](references/release-notes.md#quality-bar-what-a-means-here)
+  before finishing: number correct per §A, every user-facing commit since the
+  last tag represented, no raw commit subjects, breaking changes on top with a
+  one-line migration, `--prerelease` while major = 0.
