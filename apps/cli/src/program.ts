@@ -19,6 +19,7 @@ import {
 } from "./chat-history.js";
 import {
   apiRequest,
+  chatTurnPersistText,
   configPath,
   dropUndefined,
   readApiOptions,
@@ -438,7 +439,11 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       // call can pick up the conversation. Cap kept implicit (the
       // reader trims by recent N turns); --reset clears.
       if (options.local) {
-        const responseText = isRecord(body) && typeof body.response === "string" ? body.response : undefined;
+        // Persist the CUE-FREE twin (responseForHistory) so the display-only
+        // source-check warnings runLocalChat appended aren't replayed as trusted
+        // grounding evidence on the next session's priorHistory (poisoned-source
+        // fire 5; parity with the Ink chat's fire-4 fix). See chatTurnPersistText.
+        const responseText = chatTurnPersistText(body);
         if (responseText) {
           await appendLastChatTurn({ message, response: responseText });
         }

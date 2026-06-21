@@ -101,3 +101,95 @@ zero-drift across 11 cases). Sibling ◦ recorded: chat-surface machine twin
 
 RISK: low — additive optional field, deterministic, mutation-proven (neuter the
 helper return → 8 RED), independent Opus ④ judge PASS.
+
+## fire 4 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=bug-fix · pkg=@muse/cli (chat-grounding/chat-ink) · kind=evidence-hygiene · verdict=PASS · firesSinceDrill=4
+
+ratchet: testFiles +0 (extended chat-finalize + chat-ink-render) · fabrication 0 · pkg/kind ≠ fires 1-3 (new kind=evidence-hygiene) · eval:memory-poisoning PASS · eval:action-log-tamper PASS
+
+WHAT: the Ink chat appended DISPLAY-only source-check cues (untrusted-only /
+citation / conflict ⚠️ warnings) to the answer and then stored that cue-laden
+string into conversation history. `conversationMatches` maps every history turn
+to a cosine-1 TRUSTED grounding match — so Muse's own untrusted-source WARNING
+got replayed as TRUSTED grounding evidence the next turn (grounded≠true
+self-pollution: an untrusted-source warning laundered into trusted evidence).
+FIX (Slice A): `finalizeGatedChatAnswer` returns `{display, forHistory}`
+(forHistory = answer+receipt, no cues); the Ink chat persists `forHistory` at
+all three persist sites (history.push, onCommit→appendLastChatTurn, autoLearn)
+and shows `display` at the display sites.
+
+WHY: a self-poisoning evidence loop on the PRIMARY companion surface — the gate
+itself was being fed Muse's own warning text as trusted evidence. Additive to
+the gate (display + verdict unchanged; only persisted text changed).
+
+REVIEW POINT: decomposed — Slice A (Ink, this fire) + Slice B (one-shot `muse
+chat` persist via program.ts appendLastChatTurn, recorded as backlog ◦). Scope
+care: display vs forHistory routing across 6 sites (3 persist, 3 display);
+sibling-audit confirmed by the ④ judge. Added a render-layer wiring test
+(distinct display/forHistory mock → committed===forHistory) closing the judge's
+noted coverage gap; mutation-proven (persist→display = RED).
+
+RISK: low — only PERSISTED text changed; verdict/displayed answer byte-identical,
+deterministic, mutation-proven at unit + render layers, independent Opus ④ PASS.
+
+## fire 5 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=bug-fix · pkg=@muse/cli (chat-repl/program/program-helpers) · kind=evidence-hygiene · verdict=PASS · firesSinceDrill=5
+
+ratchet: testFiles +0 (extended program-helpers test) · fabrication 0 · pkg=cli kind=evidence-hygiene (2nd consecutive — completes the fire-4 decomposition, NOT a new well) · eval:memory-poisoning PASS · eval:action-log-tamper PASS
+
+WHAT: Slice B — the one-shot `muse chat`/desktop sibling of fire 4. `runLocalChat`
+returned the cue-laden `.display`; program.ts persisted it via `appendLastChatTurn`
+→ re-fed as trusted grounding evidence on the next session's `priorHistory`. The
+desktop companion runs ONLY chat, so this was a live recurring path. FIX:
+`runLocalChat` now returns a `responseForHistory` cue-free twin (parallel-tracked
+through every real-content transform; display-only affordances — source-check
+cues + repeat-weakness nudge — excluded); new pure `chatTurnPersistText(body)`
+selects the twin; program.ts persists via it.
+
+WHY: completes the fire-4 Ink fix across BOTH chat surfaces — the self-pollution
+loop (Muse's own warning replayed as trusted evidence) is now closed everywhere a
+chat turn is persisted. Display + run-log byte-identical (only appendLastChatTurn
+changed).
+
+REVIEW POINT: 2nd consecutive (cli, evidence-hygiene) — justified as decomposition
+completion (Slice B of fire 4), not a fresh same-well pick; next fire should
+diversify (pkg/kind). Judge confirmed the parallel-track audit (every transform
+mirrored, nudge correctly excluded). chatTurnPersistText fallback keeps remote/
+legacy paths byte-identical.
+
+RISK: low — only persisted text changed; deterministic, mutation-proven, Opus ④ PASS.
+
+## fire 6 · 2026-06-21 · poisoned-source · (no-ship — probe-gated rollback, no source touched)
+
+meta: value-class=de-scope · pkg=@muse/agent-core (injection.ts — NOT touched) · kind=injection-pattern · verdict=NO-SHIP · firesSinceDrill=6
+
+ratchet: testFiles +0 · fabrication 0 · pkg/kind diversified from recent cli/evidence-hygiene (per fire-5 flag) · MERGE→MAIN fire (÷3) — merged fires 4,5
+
+WHAT: 3rd attempt at T1-a-ko-resid (Korean output-clamp + role-hijack injection
+patterns) with the FULL sharpened recipe (terminal-imperative-only verbs +
+ReDoS-safe `[^\n]` filler + `(?![가-힣])` clause-boundary reported-speech
+exclusion). Probe-FIRST: reached 0 FP on 60 benign + 10/10 malicious + no ReDoS,
+but harder benign probing kept surfacing NEW benign shapes (rhetorical-? , adnominal/
+quotative 답하라던/행동하라는/말해라하고, quoted reported speech) the anchors can't
+exclude. Rolled back at the PROBE stage — zero source/test/gate budget spent.
+
+WHY (no-ship + DE-SCOPE): 3 attempts now confirm these two classes are NOT
+regex-separable from benign Korean at the 0-FP bar — distinguishing a direct
+command-to-the-assistant from reported/adnominal/quotative/rhetorical/quoted
+imperative needs a learned classifier / dependency-parse / NER, out of loop-slice
+scope (runtime model fixed). De-scoped in backlog; do NOT re-attempt as a regex
+slice. The shipped ignore-previous-instructions Korean pattern stays the floor.
+
+REVIEW POINT: probe-first gating is what made this cheap — the empirical FP probe
+IS the verification that blocked the build. Read-side deterministic vein is now
+mature (5 ships across feed-trust + ask/chat machine + chat hygiene); remaining
+candidate = write-side auto-extract source-attribution verification (uncertain gap)
+or 진안 theme repoint.
+
+lesson: a Korean injection-regex slice at the 0-FP bar is a receding target —
+each harder benign probe surfaces a new reported/embedded/rhetorical imperative
+shape. PROBE-FIRST with a corpus spanning reported/adnominal/quotative/rhetorical/
+quoted forms BEFORE writing source; if FP shapes keep multiplying across rounds,
+the class is not regex-tractable — stop and de-scope, don't keep patching anchors.
