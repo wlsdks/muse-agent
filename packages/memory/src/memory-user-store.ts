@@ -91,7 +91,8 @@ export const MAX_FACT_HISTORY_ENTRIES = 50;
 export function collectFactSupersessions(
   existingFacts: Readonly<Record<string, string>>,
   patchFacts: Readonly<Record<string, string>>,
-  now: Date
+  now: Date,
+  scope: "fact" | "preference" = "fact"
 ): FactSupersession[] {
   const out: FactSupersession[] = [];
   for (const [key, nextValue] of Object.entries(patchFacts)) {
@@ -102,7 +103,8 @@ export function collectFactSupersessions(
       // supersession worth logging — label it by the conservative branch).
       const change = classifyValueChange(prior, nextValue);
       const kind: "refine" | "contradict" = change === "refine" ? "refine" : "contradict";
-      out.push({ key, previousValue: prior, replacedAt: now, kind });
+      // scope omitted for facts (back-compat: legacy + fact entries carry none).
+      out.push({ key, previousValue: prior, replacedAt: now, kind, ...(scope === "preference" ? { scope } : {}) });
     }
   }
   return out;
@@ -251,7 +253,10 @@ export class InMemoryUserMemoryStore implements UserMemoryStore {
     const now = new Date();
     const factHistory = appendFactHistory(
       existing?.factHistory,
-      collectFactSupersessions(existing?.facts ?? {}, patch.facts ?? {}, now)
+      [
+        ...collectFactSupersessions(existing?.facts ?? {}, patch.facts ?? {}, now),
+        ...collectFactSupersessions(existing?.preferences ?? {}, patch.preferences ?? {}, now, "preference")
+      ]
     );
     const updated: UserMemory = {
       facts: mergeRecordTouchLast(existing?.facts ?? {}, patch.facts ?? {}),
