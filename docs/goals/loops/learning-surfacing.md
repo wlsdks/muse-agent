@@ -200,3 +200,12 @@ ratchet: testFiles +0 (commands-memory.test +3) · @muse/cli commands-memory 12 
 - **왜**: `why`는 **가장 깊은 "show your work" citation 표면**인데 forgotten fact에 대해 거짓말 = fabrication=0 위반. 정직성 회복.
 - **리뷰지점**: `keysWithActiveRetraction`(fire 18 machinery, newest-event) → re-`set`은 reopens(잊힘 아님; 테스트). 정상 키 `why` 무변(무회귀). 다양성: kind=why-honesty(forgotten-surface-wiring과 구분되는 correctness fix).
 - **리스크**: 없음 — commands-memory 12 green, 독립 Opus ④b judge가 버그-real+fix+re-set+무회귀+mutation 재확인 PASS.
+
+## fire 22 · 2026-06-21 · skill v2.1.0 · 6cd0603a
+meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=belief-value-timeline · verdict=PASS · firesSinceDrill=2 · firesSinceMainMerge=1
+ratchet: testFiles +0 (belief-provenance-store.test +3, commands-memory.test +1) · @muse/memory 584 green · commands-memory 13 green · lint clean · fabrication 0
+
+- **무엇**: `muse memory why <변경된키>`가 **값-변경 경로** 표시 — "value path: Seoul (2026-06-10) → Busan (2026-06-20)"(count뿐 아니라 실제 값+날짜). @muse/memory `beliefValueTimeline`(순수, retraction 제외, 연속 재확인 collapse, oldest→newest) + `formatBeliefWhy` 렌더(`distinctValueCount > 1`일 때).
+- **왜**: `why`는 **가장 깊은 "show your work" 표면**인데 "changed 2×"만 보였음. 실제 진화 경로(값+날짜)로 사용자가 자기 믿음이 *어떻게* 변했는지 봄. cited(각 step = 기록 entry, no model).
+- **리뷰지점**: 순수 projection(@muse/memory) + thin render(@muse/cli). `distinctValueCount > 1` gate(안정 belief `why` 무변, 무회귀). refinement는 정직히 2 step. 다양성 kind=belief-value-timeline(fire 21 why-honesty와 구분).
+- **리스크**: 없음 — additive, memory 584 + commands-memory 13 green, 독립 Opus ④b judge가 collapse+citation+무회귀+mutation 재확인 PASS. (cli program.test TUI 1 timeout=포화 flake, 무관.)

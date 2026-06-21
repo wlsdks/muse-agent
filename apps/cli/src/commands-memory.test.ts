@@ -39,6 +39,15 @@ describe("formatBeliefWhy — honest about a key you had Muse FORGET", () => {
     expect(out).toContain("home_city = Busan");
     expect(out).not.toContain("you had me forget");
   });
+
+  it("shows the value PATH for a CHANGED belief, not just the count", () => {
+    const out = formatBeliefWhy(
+      [rec({ value: "Seoul", learnedAt: "2026-06-10T00:00:00Z" }), rec({ value: "Busan", learnedAt: "2026-06-20T00:00:00Z" })],
+      "home_city",
+      NOW
+    );
+    expect(out).toContain("value path: Seoul (2026-06-10) → Busan (2026-06-20)");
+  });
 });
 
 const facts = { name: "Jin", city: "Seoul", role: "engineer" };

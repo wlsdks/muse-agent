@@ -491,6 +491,36 @@ export function selectRecentlyForgotten(
   return out.sort((a, b) => Date.parse(b.forgottenAt) - Date.parse(a.forgottenAt)).slice(0, max);
 }
 
+export interface BeliefValueStep {
+  readonly value: string;
+  /** ISO timestamp this value was first recorded (the change point). */
+  readonly learnedAt: string;
+}
+
+/**
+ * The CHANGE path a belief's value took, oldest→newest — "Seoul (2026-06-10) →
+ * Busan (2026-06-20)". Built from the recorded provenance entries for the key
+ * (retractions excluded — they carry no value); consecutive re-confirmations of
+ * the SAME value collapse, so only genuine changes appear. A stable belief
+ * yields one step. The deepest "show your work": not just "changed 2×" but the
+ * actual values and when. Pure + cited (each step is a recorded entry); the code
+ * builds it, never the model.
+ */
+export function beliefValueTimeline(entries: readonly BeliefProvenance[], key: string): readonly BeliefValueStep[] {
+  const sorted = entries
+    .filter((e) => e.key === key && e.retraction !== true)
+    .slice()
+    .sort((a, b) => Date.parse(a.learnedAt) - Date.parse(b.learnedAt));
+  const out: BeliefValueStep[] = [];
+  for (const e of sorted) {
+    const prev = out[out.length - 1];
+    if (!prev || prev.value.trim().toLowerCase() !== e.value.trim().toLowerCase()) {
+      out.push({ learnedAt: e.learnedAt, value: e.value });
+    }
+  }
+  return out;
+}
+
 export function defaultBeliefProvenanceFile(): string {
   const fromEnv = process.env.MUSE_BELIEF_PROVENANCE_FILE?.trim();
   if (fromEnv && fromEnv.length > 0) return fromEnv;
