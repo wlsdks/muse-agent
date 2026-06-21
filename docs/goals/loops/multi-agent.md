@@ -4,7 +4,7 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
-## fire 15 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · <pending-commit>
+## fire 15 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · d08bb006
 meta: value-class=wiring(exposure-completion) · pkg=@muse/cli · kind=human-stderr-surfacing · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles +0 (cases added to commands-ask.test.ts) · fabrication 0 · eval:orchestration PASS · DIVERSE-kind (human-stderr vs fire-14 json) · calibration-aware
 
