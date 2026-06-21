@@ -100,6 +100,46 @@ binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (the method).
 - Testcontainers for PostgreSQL query behavior.
 - Direct unit tests for every export of every helper module — no implicit-only coverage.
 
+## Run only the narrowest test that proves THIS change (Jinan, 2026-06-22)
+
+Running hundreds/thousands of tests "to be safe" is noise — it proves
+nothing about the specific change and only saturates the machine. Run
+the tests **directly related to the code you touched** and nothing more:
+
+```bash
+pnpm --filter @muse/<pkg> test -- <file>        # one file
+pnpm --filter @muse/<pkg> test -- -t "<name>"   # one test by name
+```
+
+- Don't run a whole package suite, the whole repo, or `pnpm check` (full
+  workspace build+test) for a small change. `pnpm check` is a pre-merge /
+  human gate, NOT a per-edit step — autonomous loops especially must use
+  narrow per-package filters, never `pnpm check`.
+- Build only the package(s) you touched (`tsc -b` resolves stale upstream).
+- The gate ladder above still applies, but pick the **single rung that
+  exposes your change** — not every rung.
+
+## Verify UI/web changes in a real browser (Jinan, 2026-06-22)
+
+The macOS desktop app renders the bundled `apps/web` in a WKWebView, so a
+web layout change *is* a desktop-app change. CSS layout bugs (scroll,
+overflow, element sizing) do NOT show up in `vitest` — they only appear in
+a real render. After any `apps/web` UI/layout change:
+
+1. `pnpm --filter @muse/web build`, serve `dist` on a local port.
+2. Drive it with the Playwright MCP (`mcp__plugin_playwright_playwright__*`)
+   and **measure** — a headless browser is a sufficient proxy for the
+   WKWebView (WebKit) render.
+3. Assert numbers, not vibes: the changed view's `.content` is bounded to
+   the viewport and `scrollTop > 0` after a tall probe; no container
+   overgrows the viewport; icons/images render at their intended size.
+
+Recurring scroll/blowout regression classes to check first: missing
+`html, body { height: 100% }` (breaks the `%`-height chain), a grid row
+left at `auto` instead of `minmax(0, 1fr)`, a flex child without
+`min-height: 0`, and viewBox-only SVGs with no intrinsic/CSS size (fall
+back to ~300×150 and blow up the layout).
+
 ## Anti-patterns
 
 - Don't replace a real test with a comment.
@@ -107,3 +147,5 @@ binary LLM-judge — see [`agent-testing.md`](agent-testing.md) (the method).
 - Don't skip the verification gate above the cheapest one that exposes the change you made.
 - Don't claim "tested" when the only thing that ran was `tsc`.
 - Don't accept fall-back assertions on tool-using flows — assert the tool was actually called.
+- Don't run the full suite / `pnpm check` for a small change; run the narrowest related test.
+- Don't claim a UI/layout fix works without a real-browser measurement.
