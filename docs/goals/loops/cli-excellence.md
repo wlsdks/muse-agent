@@ -222,3 +222,14 @@ ratchet: info-projection 4(14-17)+perf(18) → error-guidance 전환 · unknown-
 - lesson(DRILL): 고의 나쁜 슬라이스(fabricated 'show' 하드코딩 + `typeof===string` tautological 테스트 + 미배선 dead code) 주입 → 독립 verifier가 4규칙(behavioral/mutation-RED/fabrication/wiring) 전부로 FAIL 확인 → 롤백 → 진짜 grounded fix는 PASS. 게이팅 검증자가 rubber-stamp 아님(양방향 보정) 입증.
 - live: `memory serch`→"Did you mean 'muse memory search'?"+실목록; `calendar evnts`→events 제안; `memory show`(유효) 정상 exit 0; `memory s`(ambiguous) 제안 없이 실목록.
 - 레퍼런스: git/gh "did you mean" + 유효 서브 나열 관행; 내부 fire 7 top-level unknown-command 패턴.
+
+## fire 20 · 2026-06-22 · skill v2.1.0 · 558650c96
+meta: value-class=first-screen · pkg=@muse/cli · kind=first-screen · verdict=PASS · firesSinceDrill=1
+ratchet: info-projection(14-17)+perf(18)+error-guidance(19) → first-screen 전환 · command-groups 5/5 + program.test 237 불변 · root-eslint 0 · raw-ESC 0
+
+- **무엇**: `muse --help`이 103개 top-level 명령을 평평한 280줄 벽으로 출력 → 데일리 명령을 순서있는 카테고리 헤딩으로(Chat & ask · Memory & knowledge · Planning & time · Setup & status), 롱테일(~78)은 기본 "Commands:" 헤딩에 마지막. 신규 `command-groups.ts`(`COMMAND_GROUPS` 순서목록 + `applyCommandGroups`: commander14 helpGroup 부착 + program.commands in-place 정렬로 헤딩 순서 제어). **DECOMPOSE 1차 슬라이스**(롱테일 분류는 후속).
+- **왜**: 첫화면 #1 가치 — 신규/복귀 유저가 280줄에서 핵심을 못 찾던 것을 상단 헤딩으로 즉시 노출(gh/git식 그룹화). 근거: 헤딩 멤버는 LIVE 레지스트리(`program.commands.find`)에서만 — 미등록명은 skip(fabrication 0, all-absent 그룹은 헤딩도 안 남).
+- **리뷰지점**: 테스트가 helpInformation() 실 렌더의 헤딩 순서+멤버 위치 grade, mutation-first RED(헤딩 텍스트/순서 깨면 2 fail). dispatch 무결성(reorder는 name기반 dispatch에 무해, spec/memory show/doctor 라이브 정상), 꼬리 78개 유지(드롭 0), fire-2 quickstart·fire-7 unknown 무사(program.test 237). commander `.commands` readonly 타입 회피 캐스트는 런타임 mutable 배열이라 sound(judge 확인). 독립 Opus ④b PASS(8/8).
+- **리스크**: 낮음. diff 3파일(2 신규 + program.ts 배선). 캐스트 1곳(주석 정당화). 부분 분류라 롱테일은 후속.
+- live: `muse --help` → Chat & ask(11)→Memory(32)→Planning(55)→Setup(73)→Commands:(90); 각 그룹 알파벳 정렬, 데일리 명령 상단.
+- 레퍼런스: gh CLI/git 카테고리화 help 관행; commander14 helpGroup API(node_modules 타입 확인, 코드 복붙 없음).
