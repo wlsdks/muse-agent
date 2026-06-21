@@ -398,6 +398,99 @@ export function selectVolatileBeliefs(
     .map((p) => ({ currentValue: p.value, distinctValueCount: p.distinctValueCount, key: p.key, kind: p.kind }));
 }
 
+export interface RecentlyLearnedFact {
+  readonly key: string;
+  readonly kind: "fact" | "preference";
+  readonly value: string;
+  /** ISO timestamp Muse first learned this key. */
+  readonly firstSeen: string;
+  /** `user` = you stated it; `auto` = Muse inferred it (correctable). */
+  readonly source: "auto" | "user";
+}
+
+/**
+ * The facts Muse learned for the FIRST time within a recency window — the
+ * other half of "recently learned about you". The factHistory projection only
+ * catches CHANGES (a key with a prior value); a brand-new fact records no
+ * supersession, so it would never surface there. This selects keys whose
+ * `firstSeen` is within the window AND that have stayed STABLE
+ * (`distinctValueCount === 1`) — a changed/flip-flopping key is the
+ * supersession/volatile signal, not a first-learning, so it's excluded (no
+ * double-count). Newest-first; capped. Pure — the code selects, citing the
+ * recorded firstSeen, never the model.
+ */
+export function selectRecentlyLearnedFacts(
+  provenance: readonly FactProvenance[],
+  opts: { readonly now: number; readonly withinDays?: number; readonly maxResults?: number }
+): readonly RecentlyLearnedFact[] {
+  const windowMs = Math.max(1, opts.withinDays ?? DEFAULT_FACT_STALE_DAYS) * 86_400_000;
+  const max = Math.max(1, Math.trunc(opts.maxResults ?? 5));
+  return provenance
+    .filter((p) => p.distinctValueCount === 1)
+    .filter((p) => {
+      const age = opts.now - Date.parse(p.firstSeen);
+      return Number.isFinite(age) && age >= 0 && age <= windowMs;
+    })
+    .slice()
+    .sort((a, b) => Date.parse(b.firstSeen) - Date.parse(a.firstSeen))
+    .slice(0, max)
+    .map((p) => ({ firstSeen: p.firstSeen, key: p.key, kind: p.kind, source: p.source, value: p.value }));
+}
+
+/**
+ * Render a first-learning as ONE cited, attribution-bearing line — "home city:
+ * Busan (you told me · 2026-06-20)" vs "(I noticed · …)". The attribution is the
+ * recorded provenance `source`: a USER-stated fact is your deliberate truth; an
+ * `auto` one is Muse's inference, which you can correct. Honest about HOW it was
+ * learned, not just WHAT. Pure; the date is the recorded firstSeen.
+ */
+export function formatFirstLearned(fact: RecentlyLearnedFact): string {
+  const attribution = fact.source === "user" ? "you told me" : "I noticed";
+  return `${fact.key.replace(/_/gu, " ")}: ${fact.value} (${attribution} · ${fact.firstSeen.slice(0, 10)})`;
+}
+
+export interface RecentlyForgotten {
+  readonly key: string;
+  /** ISO timestamp of the retraction — when you had Muse forget this. */
+  readonly forgottenAt: string;
+}
+
+/**
+ * Keys Muse FORGOT at your correction within a recency window — the other half
+ * of "Learns you": the identity's promise is that it forgets the moment you
+ * correct it, and this makes that visible. A key qualifies when its NEWEST
+ * provenance event is a retraction (an explicit `forget`) inside the window; a
+ * later re-`set` clears it (same newest-event rule as keysWithActiveRetraction),
+ * so a re-learned key never shows as forgotten. Newest-first; capped. Pure +
+ * cited (the recorded retraction timestamp); the code selects, never the model.
+ */
+export function selectRecentlyForgotten(
+  entries: readonly BeliefProvenance[],
+  opts: { readonly now: number; readonly withinDays?: number; readonly maxResults?: number }
+): readonly RecentlyForgotten[] {
+  const windowMs = Math.max(1, opts.withinDays ?? DEFAULT_FACT_STALE_DAYS) * 86_400_000;
+  const max = Math.max(1, Math.trunc(opts.maxResults ?? 5));
+  const newestByKey = new Map<string, BeliefProvenance>();
+  for (const e of entries) {
+    const prev = newestByKey.get(e.key);
+    if (!prev || Date.parse(e.learnedAt) >= Date.parse(prev.learnedAt)) {
+      newestByKey.set(e.key, e);
+    }
+  }
+  const out: RecentlyForgotten[] = [];
+  for (const [key, newest] of newestByKey) {
+    if (newest.retraction !== true) {
+      continue;
+    }
+    const age = opts.now - Date.parse(newest.learnedAt);
+    if (!Number.isFinite(age) || age < 0 || age > windowMs) {
+      continue;
+    }
+    out.push({ forgottenAt: newest.learnedAt, key });
+  }
+  return out.sort((a, b) => Date.parse(b.forgottenAt) - Date.parse(a.forgottenAt)).slice(0, max);
+}
+
 export function defaultBeliefProvenanceFile(): string {
   const fromEnv = process.env.MUSE_BELIEF_PROVENANCE_FILE?.trim();
   if (fromEnv && fromEnv.length > 0) return fromEnv;
