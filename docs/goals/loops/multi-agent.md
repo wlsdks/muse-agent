@@ -4,6 +4,29 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
+## fire 4 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (reverted)
+meta: value-class=none(no-ship) · pkg=@muse/cli(reverted) · kind=honesty-translation · verdict=NO-SHIP · firesSinceDrill=2
+ratchet: testFiles +0 · fabrication 0 (unchanged) · no source committed · consecutive allPASS reset (no-ship, not a drill)
+
+**What (attempted)** — Tried to translate fire-2's all-failed `finalAnswer: ""` signal into an honest
+user-facing refusal in the CLI decompose seam (`ask-decompose.ts`), so an all-ungrounded `muse ask`
+doesn't show a blank answer. MUTATION-FIRST RED achieved (seam returned blank); a seam-level fix went GREEN.
+
+**Why reverted** — Mid-build I found an EXISTING test (`ask-decompose.test.ts:216`, "returns an empty
+answer when every sub-task fails — caller falls back, no fabrication") that codifies a deliberate contract:
+the seam returns `""` BY DESIGN and the CALLER is meant to fall back. My fix was in the wrong layer and
+contradicted that contract. The correct fix lives in the caller (`commands-ask.ts`), but (a) I could not
+trace the non-`--with-tools` decompose output path in the 2700-line god-file to confirm a blank is even
+printed, and (b) there is NO command-level test harness to assert the user-facing output (the existing
+`commands-ask-*.test.ts` only unit-test pure helpers). Per the loop's calibration discipline — never ship
+an unverifiable cross-layer behavior change into untraceable code — I `git restore`d both files. Working
+tree clean; no source committed.
+
+lesson: A new return-value SIGNAL (fire 2's `""`) demands a same-fire sibling-audit of its CONSUMERS. The
+consumer here is a god-file with no command-level harness — so the real prerequisite slice is BUILDING that
+harness (drive the full `muse ask` with a fake runtime + assert stdout), not the honesty translation itself.
+Backlog blocker recorded. RED-then-revert is a valid honest outcome, not a failure.
+
 ## fire 3 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · 8c2b8e8f
 meta: value-class=wiring · pkg=@muse/api · kind=response-dto-exposure · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles +1 (orchestrate-route-signal-exposure) · fabrication 0 · eval:orchestration/decomposition SKIP (Ollama down) · pkg/kind cell distinct (api/run-wiring f1 → multi-agent/guard f2 → api/dto-exposure f3) · consecutive allPASS=3 (drill at ≥8)
