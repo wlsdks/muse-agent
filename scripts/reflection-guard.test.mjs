@@ -41,8 +41,8 @@ const REFLECTION_SURFACES = [
     verifierMarker: "lost"
   },
   {
-    file: "apps/cli/src/chat-repl.ts",
-    retryMarker: "const actNow",
+    file: "packages/agent-core/src/false-done-reprompt.ts",
+    retryMarker: "runResistingFalseDone",
     surface: "false-done action re-run",
     verifierMarker: "actionToolRan("
   },
