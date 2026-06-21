@@ -40,6 +40,24 @@ describe("buildAskRunLog (cli.local ask run-log payload — shared success/failu
     expect((entry.response as { decomposition?: unknown }).decomposition).toBeUndefined();
   });
 
+  it("carries the sourceCheck signals on a grounded-but-untrusted answer (grounded≠true flywheel fuel — a grounded answer resting on untrusted sources logged as a clean success is invisible)", () => {
+    const entry = buildAskRunLog({
+      query: "any news about Acme?",
+      timings: { totalMs: 1 },
+      grounded: "grounded",
+      response: "Acme acquired Beta [from feed: TechBlog].",
+      success: true,
+      toolsUsed: [],
+      sourceCheck: { untrustedOnly: true, citationUnsupported: false, citationUncited: false }
+    });
+    expect((entry.response as { sourceCheck?: { untrustedOnly?: boolean } }).sourceCheck?.untrustedOnly).toBe(true);
+  });
+
+  it("omits the sourceCheck key entirely on a clean grounded answer (no noise)", () => {
+    const entry = buildAskRunLog({ query: "q", timings: {}, grounded: "grounded", response: "a", success: true, toolsUsed: [] });
+    expect((entry.response as { sourceCheck?: unknown }).sourceCheck).toBeUndefined();
+  });
+
   it("builds a FAILURE entry (success:false + error) — the seam #6 needs to trace a thrown run", () => {
     const entry = buildAskRunLog({
       query: "broken run",
