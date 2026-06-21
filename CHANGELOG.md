@@ -10,11 +10,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [0.1.1] - 2026-06-21
 
-A polish-and-harden release on top of the first cut — **early / experimental,
-macOS only**. The headline is a much richer native macOS companion and a
-deeper "shows its work" grounding edge: poisoned external sources (URL-ingested
-notes, past sessions, tool/feed output) can no longer launder into a confident
-"your own data" answer on any surface.
+A broad polish-and-harden release on top of the first cut — **early /
+experimental, macOS only**. Three things got much richer: the native macOS
+companion, the "learns _you_" loop (Muse now shows you what it just learned and
+forgot, with sources), and the "shows its work" grounding edge (poisoned
+external sources — URL-ingested notes, past sessions, tool/feed output — can no
+longer launder into a confident "your own data" answer on any surface).
 
 ### Added
 
@@ -24,43 +25,66 @@ notes, past sessions, tool/feed output) can no longer launder into a confident
   first-run onboarding with a local-AI readiness check, a Korean-localized UI,
   and one-tap access to the full app.
 - **Set Muse up entirely from Settings** — install/remove local models, connect
-  calendars (macOS / CalDAV / Google), and connect a messenger (Telegram /
-  Discord / Slack / LINE) without touching a config file.
-- **Source-trust cues across every grounding surface** — an answer (or a
-  proactive nudge) that rests on an externally-ingested note, a past session, or
-  tool/feed output is now marked as resting on an unverified source instead of
-  being presented as your own data; when a poisonable source disagrees with your
-  own note, Muse names the conflict and tells you to trust your own.
-- **Memory you can inspect** — `muse memory show` / `muse memory why` now surface
-  the _forgotten_ half too (what you had Muse forget, and the value-change path
+  calendars (macOS / CalDAV / Google), connect a messenger (Telegram / Discord /
+  Slack / LINE), and manage background daemons + the MCP server allowlist,
+  without touching a config file.
+- **Muse shows you what it learned about you** — after a conversation it surfaces
+  a cited "got it, here's what I now know" confirmation, and `muse recap` /
+  `muse status` / `muse brief` now carry cited "recently learned about you" and
+  "Lately about you" lines (preferences as well as facts, with honest
+  first-time-vs-updated attribution and a truthful recency window).
+- **…and what it forgot** — `muse memory show` / `muse memory why` surface the
+  _forgotten_ half too (what you had Muse forget, and the value-change path
   behind a fact, not just a count), and `muse status` shows a compact
-  "recently forgotten" line.
-- **Local-first privacy posture, made visible** — surfaced on the chat HUD, the
+  "recently forgotten" line. When you correct a fact in chat, Muse cites the
+  prior value it's replacing.
+- **Source-trust cues across every grounding surface** — an answer or a proactive
+  nudge resting on an externally-ingested note, a past session, or tool/feed
+  output is now marked as resting on an unverified source instead of being
+  presented as your own data; when a poisonable source disagrees with your own
+  note, Muse names the conflict and tells you to trust your own. The provenance
+  bit follows a poisoned session into long-term memory so it can't launder later.
+- **Local-first privacy posture, made visible** — on the chat HUD, the
   `muse status` dashboard, and the `--help` / first-run screens, with a
   local-first quickstart.
 - **Steadier multi-agent orchestration** — opt-in per-worker deadlines that
   explicitly terminate a hung worker, fan-in/synthesis calls bounded by that
-  deadline, and detection of redundant (repeated) sub-tasks surfaced as an
-  advisory.
-- **Self-improvement console** — a learned-strategies section and a reflections
-  API for seeing what Muse has learned about working with you.
+  deadline, detection of redundant (repeated) sub-tasks surfaced as an advisory,
+  and a reasoning-vs-action alignment check on sequenced handoffs.
+- **More reliable tool use on a small local model** — Muse now nudges the model
+  off an identical repeated tool call, and when it invents or mis-types a tool
+  name it's routed to the nearest real tool (or the command runner) instead of
+  failing.
+- **Self-improvement web console** — view and reward learned skills, see
+  reflections and learned strategies, and edit the MCP allowlist, all from the
+  console (backed by new read/write self-improvement API routes).
+- **Local-model speed controls (opt-in)** — model warmup on server start, a
+  generation-length cap (`MUSE_OLLAMA_NUM_PREDICT`), `num_thread` / `num_gpu`
+  Ollama knobs, and a live FrugalGPT-style tiered cascade.
 
 ### Changed
 
-- **Sharper terminal art** — the goddess mascot now renders in truecolor
-  sextants with a transparent background and legible eyes in the CLI/REPL banner.
+- **Sharper terminal art** — the goddess mascot renders in truecolor sextants
+  with a transparent background and legible eyes in the CLI/REPL banner, sized
+  for clarity.
 - **Faster, friendlier CLI** — instant `muse --version` via a pre-framework fast
-  path, a discovery on-ramp when you type an unknown command, and honest
-  empty-states (e.g. `muse notes reindex` with no markdown found).
+  path, a discovery on-ramp when you type an unknown command, honest empty-states
+  (e.g. `muse notes reindex` with no markdown found), and first screens aligned
+  to the learns-you, local-first identity.
+- **Clearer truncation of capped output** — file and command results that hit a
+  size limit now carry a self-labelled marker (and a narrowing hint) so the model
+  re-runs tighter instead of trusting a silently-cut result.
 
 ### Fixed
 
-- The floating companion now hides while the full app is open, and its input
-  field grows vertically with an open-full action in the bubble.
+- The floating companion hides while the full app is open, and its input field
+  grows vertically with an open-full action in the bubble; web scroll and bubble
+  layout fixes.
 - `muse --version` no longer reports `0.0.0`.
-- Various local-model speed/robustness fixes: opt-in model warmup on server
-  start, valid-UTF-8 truncation of capped command output, and byte-hygiene
-  corrections.
+- `file_list` no longer reports truncated when the matches exactly equal the
+  limit; capped `run_command` output stays valid UTF-8 (no split multibyte char).
+- Byte-hygiene corrections (escape raw NUL delimiter bytes), and `muse doctor`
+  now reports the `MUSE_OLLAMA_NUM_PREDICT` speed setting.
 
 ## [0.1.0] - 2026-06-21
 
