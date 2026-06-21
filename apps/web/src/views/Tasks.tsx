@@ -89,6 +89,7 @@ export function TasksView({ client }: { client: ApiClient }) {
         <input
           className="input"
           placeholder={t("tasks.placeholder")}
+          aria-label={t("tasks.placeholder")}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={(e) => {

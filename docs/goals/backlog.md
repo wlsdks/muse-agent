@@ -161,7 +161,13 @@
   - ◦ web 설정/daemon 토글 — proactivity·episodic·skill학습·watch daemon on/off:
     - ✓ daemon-flags read API — `GET /api/settings/daemon-flags`(shapeDaemonFlags: 6 플래그 effective on/off, parseBoolean 데몬과 동일 resolver, settings-routes.ts) — surfaces fire 67 (`668c4df5`); NEXT=웹 Settings 뷰가 소비
     - ✓ web Settings 데몬 카드 — `SettingsView`에 "Background daemons" 카드(fire 67 daemon-flags API 소비, label+on/off 배지, summarizeFlags "N of M enabled") — surfaces fire 68 (`2433dbfb`); 설정 콘솔 읽기-side 완성
-    - ◦ 토글 write — 데몬 플래그 on/off PUT (env→runtime 브리지 필요; ~80 env 플래그 점진 배선, 상태변경)
+    - ◦ 토글 write (DECOMPOSED — fire 73 Opus 분석): 데몬 플래그 on/off는 **아키텍처 브리지** 필요. 근본 원인: 모든 플래그 read-site가 `parseBoolean(env.X)`를 **assembly/startup 시점**에 읽고 runtime-settings store를 안 봄(server.ts:103·autoconf:1091에 store는 있으나 미연결). runtime PUT만으론 inert(데몬이 env만 봄)=정직성 위반("on" 표기하나 실제 off). loop-sized 슬라이스:
+      - ◦ S1: 브리지 seam `resolveEffectiveFlag(key, env, runtimeSettings)`(runtime override > env > default) 순수+테스트
+      - ◦ S2: read-site를 per-request/재평가로 바꿀 수 있는 첫 플래그 선정(startup-only 아닌 것) + 그 read-site를 S1 경유로 배선(이게 "데몬이 토글을 honor"의 핵심, 아키텍처 변경)
+      - ◦ S3: `PUT /api/settings/daemon-flags/:key`가 runtime-settings에 override write(auth·bool 검증·contract-faithful 라운드트립) + fire-67 GET이 effective(override 반영) 보고 — **S2와 같은 fire에**(없으면 inert/거짓표기)
+      - ◦ S4+: 나머지 플래그 read-site 점진 배선(플래그당 1 fire, honor 확인 후에만 GET이 그 플래그 override 반영)
+      - 주의: S3를 S2 없이 단독 출하 금지(정직성). 첫 honest 슬라이스 = S1+S2+S3 한 플래그 end-to-end.
+- 🛑 BLOCKER-HIGH(공유 main 회귀, 비-surfaces): `@muse/autoconfigure` runtime-assembly e2e가 **HANG**(`runtime-assembly-e2e/cache-e2e/streaming-e2e`·`autoconfigure.test`·`background-review-wiring`, 60s timeout도 미완=진짜 행, saturation 아님). origin/main 머지된 타루프 agent-run 회귀 추정(agent-core logprobs `792a408a` / execute-tool reserve `232f04e9` / model 변경). **전 루프 pnpm check + API 조립 차단**. agent-core/model/multi-agent 오너가 bisect+fix 필요(surfaces 도메인 아님). 발견 surfaces fire 75.
 - ⚠ FLAKY(공유, 비-surfaces): `@muse/model/src/web-search-policy.test.ts > property fuzz > never throws…`가 ~1/3 비결정 실패(격리 2/3 통과) — 모든 루프 merge-to-main을 간헐 차단. @muse/model 오너/test-hygiene 루프가 fuzz 생성기 seed 고정 필요
   - ✓ web MCP allowlist 보안 섹션 (읽기) — `McpServersView`가 `GET /api/mcp/security` 소비, 허용목록·도구출력 상한 표시; summarizeAllowlist의 빈목록=unrestricted 정직신호 — surfaces fire 66 (`eac90550`)
   - ✓ web MCP allowlist 편집 — `McpServersView` Security 섹션 add/remove 컨트롤이 `PUT /api/mcp/security` 호출(addToAllowlist/removeFromAllowlist, effective 정책 read-modify-write로 allowedStdioCommands+maxToolOutputLength 보존) — surfaces fire 72 (judge가 stdio-clobber 적발→shaper/타입에 allowedStdioCommands 노출+보존으로 fix) (`a3a357a9`)

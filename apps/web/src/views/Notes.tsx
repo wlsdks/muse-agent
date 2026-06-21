@@ -76,6 +76,7 @@ export function NotesView({ client }: { client: ApiClient }) {
         <input
           className="input"
           placeholder={t("notes.searchPlaceholder")}
+          aria-label={t("notes.searchPlaceholder")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
@@ -153,6 +154,7 @@ export function NotesView({ client }: { client: ApiClient }) {
               <input
                 className="input"
                 placeholder={t("notes.namePlaceholder")}
+                aria-label={t("notes.namePlaceholder")}
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
               />
@@ -160,6 +162,7 @@ export function NotesView({ client }: { client: ApiClient }) {
                 className="textarea"
                 style={{ minHeight: 360, fontFamily: "var(--font-mono)", fontSize: 13 }}
                 placeholder={t("notes.bodyPlaceholder")}
+                aria-label={t("notes.bodyPlaceholder")}
                 value={editBody}
                 onChange={(e) => setEditBody(e.target.value)}
               />

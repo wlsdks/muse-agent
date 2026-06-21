@@ -38,6 +38,7 @@ export function ToolsView({ client }: { client: ApiClient }) {
         className="input"
         style={{ margin: "16px 0" }}
         placeholder={t("tools.filterPlaceholder")}
+        aria-label={t("tools.filterPlaceholder")}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
