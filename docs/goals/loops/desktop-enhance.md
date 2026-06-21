@@ -221,3 +221,23 @@ browser-check: n/a (Swift-only; menu bar has no DOM)
 
 mutation-first: .last→.first turned 3 tests RED; restored → 3/3 GREEN.
 ④b independent Opus judge: PASS.
+
+## fire 10 · 2026-06-22 · skill v2.1.0 · (pending commit)
+meta: value-class=onboarding-guidance-correctness · area=onboarding · kind=refactor · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles +1 (OnboardingGuidanceTests, 4 cases) · companion×refactor 1 · companion×feature 1 · settings×feature 1 · server×refactor 1 · web×ux 1 · web×i18n 1 · web×a11y 1 · tests×test 1 · menu×refactor 1 · onboarding×refactor 1 · fabrication 0
+browser-check: n/a (Swift-only; onboarding is AppKit/SwiftUI)
+
+- **What**: extracted first-run onboarding's fix-it guidance out of OnboardingWindow
+  into a pure MuseDesktopCore.OnboardingGuidance.text(for:korean:) + 4 tests;
+  removed the inline private duplicate.
+- **Why**: the guidance that tells a new user how to fix a not-ready local AI
+  (run `ollama serve` / `ollama pull <model>`) is the first-run success path — the
+  model-missing case interpolates the exact model id the user copy-pastes, so it
+  must be precise and was previously untestable inside SwiftUI.
+- **Review point**: byte-identical strings to the old inline code (both langs, all
+  3 OllamaStatus cases); exhaustive switch (no default masking a future case).
+  Independent Opus ④b judge confirmed equivalence + grep'd no dead duplicate.
+- **Risk**: none — display copy only, behavior-preserving. No security surface.
+
+mutation-first: hardcoding the model in the pull command turned 3 tests RED;
+restored → 4/4 GREEN. ④b independent Opus judge: PASS.

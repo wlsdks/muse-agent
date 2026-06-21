@@ -2934,3 +2934,4 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ✓ accessible Automation tablist (tabKeyNav + ARIA roles) — desktop-enhance fire 8 (JUDGE-DRILL)
 - ◦ Automation tabs: move DOM focus to the newly-selected tab on Arrow (roving-tabindex focus-follow, APG conformance) — desktop-enhance follow-up
 - ✓ extract+test menu status line composition (MenuStatus) — desktop-enhance fire 9
+- ✓ extract+test onboarding fix-it guidance (OnboardingGuidance) — desktop-enhance fire 10
