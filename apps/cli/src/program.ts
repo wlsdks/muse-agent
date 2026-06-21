@@ -11,6 +11,7 @@ import {
 } from "./credential-store.js";
 import { formatCitations } from "./human-formatters.js";
 import { closestCommandName } from "./closest-command.js";
+import { applyCommandGroups } from "./command-groups.js";
 import { MUSE_TAGLINE } from "./muse-identity.js";
 import { formatSpec } from "./muse-spec.js";
 import { MUSE_CLI_VERSION } from "./muse-version.js";
@@ -642,6 +643,10 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   // commander's dead-end "unknown command 'bogus'"; ground it like the
   // top-level catch-all does, with a suggestion + the real subcommand list.
   attachUnknownSubcommandGuidance(program, io.stderr);
+
+  // Group the 100+ top-level commands under ordered headings in `--help` so
+  // the daily-driver commands surface first instead of a flat wall.
+  applyCommandGroups(program);
 
   // Catch-all positional: no arg → print help; unknown arg →
   // closest-command suggestion instead of commander's confusing
