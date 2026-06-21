@@ -241,3 +241,25 @@ browser-check: n/a (Swift-only; onboarding is AppKit/SwiftUI)
 
 mutation-first: hardcoding the model in the pull command turned 3 tests RED;
 restored → 4/4 GREEN. ④b independent Opus judge: PASS.
+
+## fire 11 · 2026-06-22 · skill v2.1.0 · (pending commit)
+meta: value-class=webview-security · area=webview · kind=refactor · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +1 (WebNavPolicyTests, 6 cases) · companion×refactor 1 · companion×feature 1 · settings×feature 1 · server×refactor 1 · web×ux 1 · web×i18n 1 · web×a11y 1 · tests×test 1 · menu×refactor 1 · onboarding×refactor 1 · webview×refactor 1 · fabrication 0
+browser-check: n/a (native WKNavigationDelegate, not web content)
+
+- **What**: extracted the app WebView's navigation gate into a pure
+  MuseDesktopCore.WebNavPolicy.decide(scheme:host:) + 6 tests; the delegate now
+  switches on it. Loopback+inert(about/data/blob)→in-app, other http(s)→browser,
+  else→blocked.
+- **Why**: this is the security boundary that keeps the embedded WebView pinned to
+  the local Muse server (a malicious link in content can't navigate the app away).
+  It was buried in the WKNavigationDelegate, untestable — now the host EXACT-match
+  (so "localhost.evil.com" is NOT local) is a pinned, mutation-proven property.
+- **Review point**: byte-equivalent to the old inline logic; threat-modeled by the
+  independent Opus ④b judge — no input yields .allow for a non-loopback host, and
+  both known gaps (host case-sensitivity, IPv6 ::1) fail SAFE (→ browser, never
+  in-app). It ran the exact→contains bypass mutation itself.
+- **Risk**: low — behavior-preserving security refactor; no env/Keychain touched.
+
+mutation-first: exact host-match → contains() (security bypass) turned the
+lookalike test RED; restored → 6/6 GREEN. ④b independent Opus judge: PASS.
