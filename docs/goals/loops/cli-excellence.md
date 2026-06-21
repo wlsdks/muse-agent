@@ -118,3 +118,14 @@ ratchet: 변경연관 테스트만(발열정책) · chat-ink-core+chat-ink-nomod
 - live: no-model 분기는 TTY 전용이라 셸 직접캡처 대신 vi.mock 통합테스트로 live 경로 grade.
 - lesson: "헬퍼 추가+테스트"만으론 inert일 수 있다 — 표시-변경은 반드시 **배선된 경로를 grade하는 테스트**(여기선 vi.mock으로 runChatInk 구동)까지 있어야 진짜. JUDGE-DRILL이 이걸 실증.
 - 레퍼런스: 60초-to-value 온보딩(첫 화면이 다음 행동 1개를 명확히). https://www.appcues.com/blog/best-user-onboarding-examples
+
+## fire 11 · 2026-06-22 · skill v2.1.0 · d650e179
+meta: value-class=render · pkg=@muse/cli · kind=render · verdict=PASS · firesSinceDrill=1
+ratchet: 변경연관 테스트만(발열정책) · commands-doctor doctorStatusMarker 1 green · lint 0 · fabrication 0
+
+- **무엇**: `muse doctor --local` 헬스 화면에서 WARN 체크가 중립 `·`로 렌더돼 OK `✓`와 구분 안 됨(23줄 중 "주의 필요"가 안 보임). 순수 export `doctorStatusMarker(status)` 추출(ok→✓/warn→⚠/fail→✗)해 formatLocalDoctor에 배선. warn=⚠로 스캔 가능.
+- **왜**: 헬스체크의 핵심은 "뭐가 문제인지 한눈에"(brew/flutter doctor 관행). `·`는 OK와 시각 동일이라 경고가 묻혔다. 순수 presentation(분류/카운트/--full JSON 불변), ⚠는 CLI 기존 경고 글리프와 일관.
+- **리뷰지점**: 테스트가 3매핑 + warn≠"·" grade(배선 확인), mutation-first RED(warn→· 되돌리면 fail). 라이브 `doctor --local`에 3 warn 모두 ⚠ 표시 확인. 형제-감사: 옛 `·` 마커 assert하는 테스트 없음(grep). 독립 Opus ④b PASS(6/6).
+- **리스크**: 낮음. diff 2파일(commands-doctor.ts + 테스트). 다양성: render kind(fire 4/9 render였으나 최근8 ≥6 동일아님). 여신 아트 무관.
+- live: `node dist/index.js doctor --local` → `⚠ ollama-perf…` `⚠ at-rest encryption…` `⚠ mcp.json…` + `Overall: WARN — 3 warning(s) (20 ok / 3 warn / 0 fail)`.
+- 레퍼런스: brew/flutter doctor 스캔 가능 마커 관행([!]/⚠). https://docs.flutter.dev/reference/flutter-doctor
