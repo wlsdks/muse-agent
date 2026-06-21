@@ -260,6 +260,34 @@ describe("OllamaProvider — native /api/chat request wire shape", () => {
     expect(lastBody()).not.toHaveProperty("tools");
   });
 
+  // GROUNDING-PRESERVATION INVARIANTS (local-speed fire 9). Muse's grounding /
+  // citation / honesty contract AND the grounded evidence both ride in the
+  // system message; the runtime budgets against the full num_ctx. A "speed"
+  // change that drops the system message or shrinks num_ctx below the prompt
+  // silently turns grounded recall into ungrounded parametric generation
+  // (fabrication > 0). These pin the contract so such a change fails the suite,
+  // not just an LLM judge.
+  it("ALWAYS forwards the system message to the wire, even on a large prompt (a speed change must never drop the grounding/citation system prompt)", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    const grounded = "=== NOTES ===\n".concat("note ".repeat(4000)); // > any heuristic "long" threshold
+    await p.generate(userReq({
+      messages: [
+        { content: "cite your sources; say 'I am not sure' if unknown", role: "system" },
+        { content: grounded, role: "user" }
+      ]
+    }));
+    const roles = (lastBody().messages as Array<{ role: string }>).map((m) => m.role);
+    expect(roles).toContain("system");
+    expect(roles).toEqual(["system", "user"]);
+  });
+
+  it("sends the configured num_ctx regardless of prompt length (never silently shrinks the window below what a grounded prompt needs)", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numCtx: 16384 });
+    const huge = "token ".repeat(20000);
+    await p.generate(userReq({ messages: [{ content: huge, role: "user" }] }));
+    expect((lastBody().options as { num_ctx: number }).num_ctx).toBe(16384);
+  });
+
   it("passes temperature, num_predict, format, and tools through when provided", async () => {
     const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
     await p.generate(

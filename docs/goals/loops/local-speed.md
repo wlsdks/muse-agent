@@ -81,3 +81,14 @@ ratchet: (cli, doctor-discoverability) 2/8 (fire 6 num_batch, fire 8 num_predict
 - 리뷰지점: env명 실재(autoconfigure:197 read + adapter:385 num_predict 매핑, ④ judge grep 재확인), whitespace `.trim()` 가드(numPredict="  "→미보고), always "ok"(옵션 노브), num_predict 단독 set 시 num_batch 힌트 여전히 표시(num_batch는 unset이므로 coherent).
 - 리스크: 없음 — doctor advisory만, 모델/런타임/grounding 무관 → 정확성 회귀 0.
   검증: cli 2875 pass isolated(신규 2 OUTCOME) · MUTATION-FIRST(num_predict push 제거 → 1 RED; revert→green) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(env명 실재·env-flake 정직·value-first·ratchet OK·결함 0). ⚠️full pnpm check는 박스 메모리압박(동시루프)으로 OOM(SIGABRT)+무관 flake(@muse/model web-search-policy property-fuzz·@muse/cli document-reader PDF 5s 타임아웃) — 둘 다 isolated-green, 내 변경은 apps/cli string-only로 무관 → env flake로 판정(fire 3·6 동일 클래스).
+
+## fire 9 · 2026-06-21 · local-speed · <commit>
+meta: value-class=test(regression-guard) · pkg=@muse/model · kind=judge-drill+grounding-guard · verdict=PASS · firesSinceDrill=0
+ratchet: (model) 3,7,9 but kind=regression-guard distinct from 2,7 adapter-wiring · fabrication 0 · TEST-ONLY 소스 무변경
+- ★JUDGE-DRILL (연속 allPASS=8 트리거, 미루기 불가): 가짜 나쁜-슬라이스 → ④ judge FAIL 확인 → 롤백 → 진짜 fix.
+- 드릴: 고의 나쁜 슬라이스 = opt-in `MUSE_OLLAMA_LEAN_PROMPT`가 긴 턴(>8000자)에 system 메시지를 드롭("속도"). 결정론 게이트는 GREEN(opt-in·happy-path 테스트만). 독립 Opus ④ judge가 **정확히 FAIL** — system 메시지가 grounding/citation/honesty 계약 + 근거증거 자체를 운반(commands-ask.ts:2008-2089)하므로 드롭=fabrication, >8000 트리거가 정확히 grounded 턴에 발화, opt-in은 구제 못함(플래그 목적이 floor를 깸), 테스트가 tell(드롭 콘텐츠를 "grounding rules"로 명명하고 제거를 성공으로 채점). → ④ 게이트가 rubber-stamp 아님 입증(8 fire가 의존한 게이트 검증). git restore 롤백.
+- 진짜 fix(shipped): grounding-preservation 회귀 가드 2종(@muse/model adapter-ollama.test.ts) — (1) 큰 프롬프트에도 system 메시지 ALWAYS 와이어 전달(roles==["system","user"]), (2) configured num_ctx는 프롬프트 길이 무관 불변(절대 silent 축소 안 함). 드릴이 노출한 불변식을 "judge가 잡음"에서 "결정론 스위트가 잡음"으로 격상(fabrication=0 floor 방어 심화).
+- 리뷰지점: 와이어 body 채점(declaration-only 아님), MUTATION-FIRST 양 가드(judge가 자체 재현: filter system→test1 RED; num_ctx Math.min(,4096)→test2+기존스냅샷 6 RED; revert→green), 소스 byte-clean(test-only→정확성 회귀 0 trivially), 불변식 실재(system=grounding 계약·num_ctx 축소=silent truncation, 어댑터 주석 문서화).
+- 리스크: 없음 — test-only, 런타임 무변경.
+  검증: model 384 pass(신규 2 가드) · MUTATION-FIRST 2종(독립 judge가 재현 RED) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(가드 슬라이스, 자체 mutation 재현·불변식 실재 확인·env-crash 정직·결함 0). ⚠️full pnpm check는 박스 OOM(SIGABRT, packages/runtime-state 무관)으로 abort하나 packages/model은 그 run 내 384 pass(fire 8 동일 env 클래스).
+lesson: judge-드릴은 가짜-슬라이스를 *결정론 게이트는 통과*하되 *불변식만 위반*하게 설계해야 JUDGE를 시험한다(소스변경으로 기존 테스트를 깨면 ③이 잡아 judge 미검증). grounding 계약은 system 메시지에 탑재 → "프롬프트 다이어트/lean" 류 속도최적화는 거의 항상 floor 위반. 드릴의 부산물(불변식 회귀가드)을 진짜-fix로 출하하면 드릴이 영구 방어로 전환됨.
