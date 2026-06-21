@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 30 · 2026-06-21 · skill v2.0 · <commit-pending> (file_list deterministic sort; AgentRuntime re-prompt decomposed; 3-fire merge)
+## fire 30 · 2026-06-21 · skill v2.0 · eea41daf (file_list deterministic sort; AgentRuntime re-prompt decomposed; 3-fire merge)
 meta: value-class=new-capability · pkg=@muse/fs · kind=determinism/reproducibility · verdict=PASS · firesSinceDrill=1
 ratchet: testFiles 1071→1071 (+1 case fs-read-tools file_list, mutation-valid) · fabrication 0 · @muse/fs 격리 167 · pnpm check exit 0 · lint clean · Ollama DOWN(measure-first 불가)
 - 무엇: file_list가 glob 순서(Node 미보장, filesystem-defined)로 반환 → 머신/pass^k 반복 간 순서 흔들림=12B 입력 flake. FIX: `matches.sort()`(canonical full-path lexicographic) 반환 전. 정직 scope: glob 루프는 limit서 break 유지 → >limit set은 glob-bound(pre-existing), ORDER만 결정론화.
