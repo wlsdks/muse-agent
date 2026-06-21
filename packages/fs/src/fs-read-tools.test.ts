@@ -286,6 +286,24 @@ describe("file_read / file_list / file_grep", () => {
       expect(out["error"]).toBe("pattern is required");
     });
 
+    it("reports truncated=false when matches EXACTLY equal the limit (no phantom next page)", async () => {
+      for (const f of ["x1.md", "x2.md", "x3.md"]) await writeFile(join(root, f), "x");
+      const tool = createFileListTool(opts());
+      const out = (await tool.execute({ cwd: root, limit: 3, pattern: "*.md" }, ctx)) as JsonObject;
+      expect((out["paths"] as string[]).length).toBe(3);
+      expect(out["count"]).toBe(3);
+      expect(out["truncated"]).toBe(false);
+    });
+
+    it("reports truncated=true and returns exactly `limit` when there are MORE than the limit", async () => {
+      for (const f of ["y1.md", "y2.md", "y3.md", "y4.md"]) await writeFile(join(root, f), "x");
+      const tool = createFileListTool(opts());
+      const out = (await tool.execute({ cwd: root, limit: 3, pattern: "*.md" }, ctx)) as JsonObject;
+      expect((out["paths"] as string[]).length).toBe(3);
+      expect(out["count"]).toBe(3);
+      expect(out["truncated"]).toBe(true);
+    });
+
     it("honors .gitignore by default and can be overridden", async () => {
       await writeFile(join(root, ".gitignore"), "ignored/\n*.log\n");
       await mkdir(join(root, "ignored"), { recursive: true });

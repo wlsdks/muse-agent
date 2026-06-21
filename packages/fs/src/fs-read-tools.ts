@@ -380,13 +380,18 @@ export function createFileListTool(options: FsReadToolsOptions = {}, policyPromi
           } catch {
             continue;
           }
-          if (matches.length >= limit) {
+          // Collect ONE past the limit so `truncated` reflects whether there are
+          // genuinely MORE matches than `limit`. Breaking at `>= limit` reported
+          // a dir with EXACTLY `limit` matches as truncated=true — making the
+          // model chase a non-existent next page.
+          if (matches.length > limit) {
             break;
           }
         }
       } catch (error) {
         return refusalResult(error, pattern);
       }
+      const truncated = matches.length > limit;
       // `glob` iteration order is implementation/filesystem-defined (unspecified
       // by Node), so the same cwd could list files in a different order across
       // machines / pass^k repeats — input flake for the local model. Sort to a
@@ -394,7 +399,10 @@ export function createFileListTool(options: FsReadToolsOptions = {}, policyPromi
       // still the glob-bounded first `limit`, a pre-existing truncation; only the
       // returned ORDER is made deterministic here.)
       matches.sort();
-      return { count: matches.length, cwd, pattern, paths: matches, truncated: matches.length >= limit };
+      if (truncated) {
+        matches.length = limit;
+      }
+      return { count: matches.length, cwd, pattern, paths: matches, truncated };
     }
   };
 }

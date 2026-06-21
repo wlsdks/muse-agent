@@ -5,6 +5,15 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 59 · 2026-06-21 · skill v2.0 · <commit> (@muse/fs file_list: truncated=true 거짓양성 수정 — 정확히 limit개면 완전한 목록인데 phantom 다음 페이지를 쫓던 버그)
+meta: value-class=correctness(list-signal-accuracy) · pkg=@muse/fs · kind=fs/list-truncation-accuracy · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +2 cases(exactly-limit→truncated false, >limit→true+count=limit) · fabrication 0 · @muse/fs 182 vitest(~1s) · lint 0/0 · ★박스 load~35 → narrow per-pkg vitest는 동작(full pnpm check만 timeout)
+- 무엇: file_list가 glob을 `matches.length >= limit`에서 break하고 `truncated = >= limit`로 설정 → 디렉터리에 정확히 limit개 매치 시 truncated=true 거짓양성 → 모델이 없는 다음 페이지를 쫓음. 수정: limit+1까지 1개 더 수집(sentinel)해 "정확히 limit"(완전)과 ">limit"(잘림) 구별 → `truncated = matches.length > limit`, truncated일 때만 sort 후 limit로 slice.
+- 왜: 정확한 list 신호 = grep/edit/LIST 체인의 LIST 레그 신뢰성(거짓 truncated → 불필요 재조회/완전 목록 불신). ★박스 load~35로 LLM eval·full pnpm check timeout이나 narrow @muse/fs vitest는 ~1s에 동작(180→182) → 검증 가능. 다양성: @muse/fs = fires 57/58 crates/runner 연속 깸(다른 pkg+kind).
+- 리뷰지점: 5케이스 트레이스(0/<L/==L/==L+1/>>L 전부 정확), count==paths.length 불변(slice 후 읽음), over-scan은 +1 bounded, limit≥1(asPositiveInt+schema min1). mutation(truncated를 >=로 되돌림→exactly-limit 테스트 RED). 독립 Opus ④b judge VERDICT PASS(전 케이스 트레이스·무회귀·OUTCOME채점·diversity·fabrication0).
+- 리스크: >limit 케이스의 반환 SET은 여전히 glob-bounded prefix(기존 한계, docstring 정직). result-object SHAPE 무변경 → fs 소비자 무영향. fire 59는 ×3 아님 → main 머지 없음. ⑤c[55-58]는 load~35로 여전히 보류(fire 60 재시도).
+lesson: 박스 극포화에서도 narrow per-package vitest(<2s suite)는 통과 — full pnpm check만 5000ms 벽에 걸림. 그래서 작은-패키지 슬라이스(@muse/fs 같은)는 load~35에서도 검증·진행 가능, cargo-runner 독점에서 벗어날 길.
+
 ## fire 58 · 2026-06-21 · skill v2.0 · 88021934 (crates/runner: in-band truncation marker on run_command output — model SEES output was cut, not just a bool flag)
 meta: value-class=new-capability(reliability-signal) · pkg=crates/runner · kind=runner/truncation-marker · verdict=PASS · firesSinceDrill=2
 ratchet: cargo tests +1(marks_only) +updated caps_output(형제) · fabrication 0 · crates/runner 15 cargo tests · lint 0/0 · ★박스 load~40 → cargo-only 검증(LLM eval·pnpm check 전부 timeout)
