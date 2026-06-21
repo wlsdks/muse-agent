@@ -197,6 +197,24 @@ describe("file_read / file_list / file_grep", () => {
       expect(paths.some((p) => p.includes("node_modules"))).toBe(false);
     });
 
+    it("returns a DETERMINISTIC (sorted) order, not the unspecified glob-iteration order", async () => {
+      // glob order is filesystem-defined → flaky model input across pass^k. The
+      // tool must sort. Fixture chosen so glob's order (top-level files, then
+      // subdirs) differs from sorted order (subdirs interleaved alphabetically).
+      for (const f of ["zebra.ts", "alpha.ts", "beta.ts"]) await writeFile(join(root, f), "x");
+      await mkdir(join(root, "lib"), { recursive: true });
+      await mkdir(join(root, "src"), { recursive: true });
+      await writeFile(join(root, "lib", "util.ts"), "x");
+      await writeFile(join(root, "src", "app.ts"), "x");
+      const tool = createFileListTool(opts());
+      const out = (await tool.execute({ cwd: root, pattern: "**/*.ts" }, ctx)) as JsonObject;
+      const paths = out["paths"] as string[];
+      // the returned order is sorted (by full path) — reproducible regardless of
+      // the filesystem's glob-iteration order.
+      expect(paths).toEqual([...paths].sort());
+      expect(paths.length).toBe(5);
+    });
+
     it("requires a pattern", async () => {
       const tool = createFileListTool(opts());
       const out = (await tool.execute({}, ctx)) as JsonObject;

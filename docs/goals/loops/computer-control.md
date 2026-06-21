@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 30 · 2026-06-21 · skill v2.0 · <commit-pending> (file_list deterministic sort; AgentRuntime re-prompt decomposed; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/fs · kind=determinism/reproducibility · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles 1071→1071 (+1 case fs-read-tools file_list, mutation-valid) · fabrication 0 · @muse/fs 격리 167 · pnpm check exit 0 · lint clean · Ollama DOWN(measure-first 불가)
+- 무엇: file_list가 glob 순서(Node 미보장, filesystem-defined)로 반환 → 머신/pass^k 반복 간 순서 흔들림=12B 입력 flake. FIX: `matches.sort()`(canonical full-path lexicographic) 반환 전. 정직 scope: glob 루프는 limit서 break 유지 → >limit set은 glob-bound(pre-existing), ORDER만 결정론화.
+- 왜: Ollama down으로 measure-first 불가→gap-scout. eval:computer-task가 pass^k라 결정론 입력이 재현성 직결. 다양성 RATCHET: agent-core/honesty 5연 후 fs/determinism로 전환.
+- 리뷰지점: mutation-valid(sort 제거→RED; glob이 fixture서 sorted 아님). ④b judge PASS — count/truncated/exclude/ignore/sandbox 다 불변(정렬은 필터+cap된 배열만 reorder), 정직 scope(order≠set). AgentRuntime re-prompt(eval-mover)는 invasive+Ollama-gated+chat-repl 중복가능성으로 backlog 분해(30a 순수 helper/30b 런타임 배선/30c eval 검증).
+- 리스크: 낮음 — 반환 순서만(file_read/grep/write/path-safety 불변). ④b PASS.
+lesson: false-done 백스톱(25-29)은 *CLI chat* 경로를 고치지 eval(AgentRuntime 직접구동)은 별경로 — eval을 올리려면 re-prompt가 런타임층에 있어야(분해 기록). measure-first 불가시 결정론/재현성도 정당한 reliability vein. 정직 scope(order vs set)가 over-claim보다 낫다.
+
 ## fire 29 · 2026-06-21 · skill v2.0 · 0dbc38d3 (JUDGE-DRILL #3 ✅ + terse "Done." claim added safely)
 meta: value-class=new-capability(+drill) · pkg=@muse/agent-core · kind=honesty/false-done · verdict=DRILL-PASS+judge#2-PASS · firesSinceDrill=0(reset)
 ratchet: testFiles 1071→1071 (+3 terse positives + 7 negation negatives, mutation-valid) · fabrication 0 · @muse/agent-core 격리 2537 · pnpm check exit 0 · lint clean

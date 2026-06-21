@@ -347,6 +347,13 @@ export function createFileListTool(options: FsReadToolsOptions = {}, policyPromi
       } catch (error) {
         return refusalResult(error, pattern);
       }
+      // `glob` iteration order is implementation/filesystem-defined (unspecified
+      // by Node), so the same cwd could list files in a different order across
+      // machines / pass^k repeats — input flake for the local model. Sort to a
+      // deterministic, scannable order. (For the rare >limit case the SET is
+      // still the glob-bounded first `limit`, a pre-existing truncation; only the
+      // returned ORDER is made deterministic here.)
+      matches.sort();
       return { count: matches.length, cwd, pattern, paths: matches, truncated: matches.length >= limit };
     }
   };
