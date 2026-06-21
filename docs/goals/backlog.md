@@ -1,6 +1,7 @@
 # Muse dev backlog — the living ledger
 
 - ✓ muse status privacy posture line — cli-excellence fire 1
+- ✓ muse --help / non-TTY first-screen local-first quickstart block — cli-excellence fire 2
 - ◦ chat REPL bottom HUD (chat-ink.ts) shows model·proactive·agent·tools·skills·tokens but NOT the local-only privacy posture — sibling of the `muse status` privacy line (cli-excellence fire 1). Surface a compact 🔒 indicator when local-only is on. Gate: `pnpm --filter @muse/cli test`. (cli-excellence theme — different (pkg,kind) than fire 1)
 
 - ✓ run-intent execute-tool exposure reserve — computer-control fire 51: eval:edit-run-verify FAILed with test-passes=true but model-ran-test=false — the model fixed the bug but never ran run_command to verify, because capToolsByRelevance starved run_command: the FILE_PATH-boosted file cluster filled all 3 relevantReserve slots (run_command rank 4 → dropped, not advertised). Added RUN_INTENT_RE + a dedicated reserve for the top relevant execute-risk tool on a run/test/build prompt (fire-4's file-reserve sibling). Deterministic exposure fix; 2 mutation-verified tests; @muse/agent-core 2573 green; Opus ④b judge PASS. OUTCOME flip unconfirmed (run_command now exposed; 12B selection stochastic). (detail in docs/goals/loops/computer-control.md fire 51)

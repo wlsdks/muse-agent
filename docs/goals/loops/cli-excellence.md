@@ -16,3 +16,14 @@ ratchet: testFiles +0 (added 5 cases to existing commands-status.test.ts) · @mu
 
 ### sibling-audit (이번 fire 미적용 → backlog)
 - chat REPL 하단 HUD(chat-ink.ts:822-833)는 model·proactive·agent·tools·skills·tokens를 보여주나 **local-only posture 미표시** — 같은 클래스 형제. 공간 제약 + 라이브 상태라 별도 fire로(다른 (pkg,kind)).
+
+## fire 2 · 2026-06-21 · skill v2.1.0 · 009800bf
+meta: value-class=new-capability · pkg=@muse/cli · kind=first-screen/onboarding · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles +1 (program-help.test.ts) · @muse/cli 2895 green · check exit 0 · smoke:cli 9/9 · lint 0 · fabrication 0
+
+- **무엇**: `muse --help` / 비-TTY 첫화면(파이프·CI·`muse | cat`)에 local-first "60초 quickstart" 블록 추가. 순수 export `museQuickstartHelp()` + `createProgram`에서 `addHelpText("after", …)` 와이어링. 4개 실명령(muse / muse setup local / muse remember / muse status) + "LOCAL model by default; cloud egress refused unless you opt out" 정체성 리드.
+- **왜**: commander 기본 help는 명령 나열만 — 첫 발견자에게 "뭘 먼저 할지"도 "로컬-우선"도 안 알려줬다. 60초-to-value(웹 리서치 벤치마크)를 첫화면에 직접. fabrication=0: 모든 줄이 실명령, 클레임은 local-only-policy.ts/CLAUDE.md에 grounded.
+- **리뷰지점**: 와이어링 테스트가 실제 렌더 출력을 grade(선언 아님), mutation-first RED 확인. 루트 addHelpText("after")는 서브커맨드 help로 새지 않음(muse status --help에 quickstart 0회). diff는 program.ts + 새 테스트로 한정, 여신 아트 불가침. 독립 Opus ④b judge PASS(6/6).
+- **리스크**: 낮음. 다양성: fire1=info-projection(status) → fire2=first-screen(--help), 다른 kind.
+- **레퍼런스**: gemini-cli vs claude-code 첫화면 비교 + 60초-to-value 온보딩. https://shipyard.build/blog/claude-code-vs-gemini-cli/ · https://www.appcues.com/blog/best-user-onboarding-examples
+- lesson: 동시-루프 환경에서 fire 시작 fetch는 금세 stale → 머지가 끌어온 raw-NUL byte-hygiene 회귀를 자체 수정하려다, origin/main이 이미 canonical 픽스(commit 4871aca9, backslash-u-0000 escape)를 가진 걸 발견 → 자체수정 폐기하고 최신 origin/main 재머지로 canonical 픽스 채택. 교훈: 머지가 끌어온 회귀는 자체 패치 전에 origin이 이미 고쳤는지 먼저 확인(divergent fix 회피). 또 self-eval은 풀 테스트 미실행이라 byte-hygiene 회귀를 못 잡음 — `pnpm check`가 진짜 게이트.
