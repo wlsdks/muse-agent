@@ -198,3 +198,15 @@ ratchet: 변경연관 테스트만(발열정책) · human-formatters 33/33 · ro
 - lesson: scoped lint은 `npx eslint`(루트 flat config 못 읽을 수 있음) 대신 **`./node_modules/.bin/eslint`**로 — ④b judge가 첫 라운드에서 내가 놓친 no-regex-spaces(정규식 이중공백) 2건을 잡음. 정규식 리터럴의 연속공백은 `{2}` 양화사로.
 - live: `node dist/index.js tasks list` → 과거 task에 `(⚠ overdue)`.
 - 레퍼런스: fire 15/16(overdue 강조 관행).
+
+## fire 18 · 2026-06-22 · skill v2.1.0 · e4f953f24
+meta: value-class=perf · pkg=@muse/cli · kind=perf · verdict=PASS · firesSinceDrill=8
+ratchet: info-projection 4연속(14-17) 깸 → perf로 전환 · 변경연관 테스트만(발열정책) · muse-spec 6/6 + program.test 243/243 · root-eslint 0 · raw-ESC 0
+
+- **무엇**: `muse spec` / `muse spec --json`에 프리-프레임워크 fast path(fire 5 `--version` 패턴 미러). 신규 leaf `muse-spec.ts`(MUSE_RUNTIME_SPEC·formatSpec·trySpecFastPath); program.ts spec 액션은 formatSpec로 렌더(단일 진실원, 행동 무변경); index.ts가 program.js import 전에 trySpecFastPath 호출.
+- **왜**: spec은 완전 static인데도 ~100모듈 그래프 로드로 0.5s. fast path로 **0.50s→0.02s(~20배)**. "최고급 CLI" 시작속도(③ perf, 최저서빙 축). `spec --help`는 fast-path 미적용→commander 유지.
+- **리뷰지점**: 출력 바이트-동일(text 79B·json 145B diff 0), `spec --help` framework 유지, mutation-first RED(text 1 fail / `runner` 바꾸면 program.test 포함 2 fail — tautology 회피 위해 리터럴 핀). 형제-감사: spec 유일 참조=program.test:60(framework json), 243/243 무사. 독립 Opus ④b PASS(8/8).
+- **리스크**: 낮음. diff 4파일(2 src 배선 + 1 신규 + 1 test). 데이터 단일 진실원이라 드리프트 0.
+- lesson: 같은 파일 내 `formatSpec===const` 비교는 tautological(mutation이 양변 동시 변경 → green) — 출력 텍스트는 테스트에 **리터럴로 직접 핀**해야 진짜 RED. mutation-first가 이걸 잡음.
+- live: `node dist/index.js spec`(0.02s) / `spec --json`(0.03s) 출력 framework와 바이트-동일; `spec --help` 정상 usage.
+- 레퍼런스: gh/starship 등 즉시-시작 CLI 관행(trivial probe는 풀 init 회피); 내부 fire 5 `muse-version.ts` 패턴.
