@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { UserMemory } from "./index.js";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { FileUserMemoryStore } from "./memory-user-store-file.js";
+import { InMemoryUserMemoryStore } from "./memory-user-store.js";
 import { projectRecentlyLearned, renderRecentlyLearnedLines, summarizeRecentlyLearned, type RecentlyLearnedItem } from "./recently-learned.js";
 
 function mem(
@@ -57,6 +63,21 @@ describe("projectRecentlyLearned", () => {
     expect(projectRecentlyLearned(mem({ factHistory: history }))).toHaveLength(5);
   });
 
+  it("excludes learnings older than sinceMs (so a surface can say 'recently' truthfully)", () => {
+    const memory = mem({
+      facts: { home_city: "Busan", role: "founder" },
+      factHistory: [
+        { key: "role", previousValue: "student", replacedAt: new Date("2026-01-01T00:00:00Z"), kind: "contradict" },
+        { key: "home_city", previousValue: "Seoul", replacedAt: new Date("2026-06-20T00:00:00Z"), kind: "contradict" }
+      ]
+    });
+    const sinceMs = new Date("2026-06-01T00:00:00Z").getTime();
+    const items = projectRecentlyLearned(memory, { sinceMs });
+    expect(items.map((i) => i.key)).toEqual(["home_city"]); // role (Jan) is outside the window
+    // no bound → both appear
+    expect(projectRecentlyLearned(memory).map((i) => i.key)).toEqual(["home_city", "role"]);
+  });
+
   it("treats a legacy entry with no recorded kind as the conservative 'changed' framing", () => {
     const items = projectRecentlyLearned(
       mem({
@@ -76,6 +97,44 @@ describe("projectRecentlyLearned", () => {
     );
     expect(items[0]?.currentValue).toBeUndefined();
     expect(items[0]?.previousValue).toBe("cat");
+  });
+
+  it("resolves a preference-scoped learning's current value from the preferences store", () => {
+    const items = projectRecentlyLearned({
+      facts: {},
+      preferences: { reply_style: "detailed" },
+      factHistory: [
+        { key: "reply_style", previousValue: "brief", replacedAt: new Date("2026-06-21T00:00:00Z"), kind: "contradict", scope: "preference" }
+      ]
+    });
+    expect(items[0]).toMatchObject({ key: "reply_style", currentValue: "detailed", previousValue: "brief" });
+  });
+
+  it("surfaces a CHANGED preference end-to-end via the store (not just facts)", () => {
+    const store = new InMemoryUserMemoryStore();
+    store.upsertPreference("u", "reply_style", "brief");
+    const memory = store.upsertPreference("u", "reply_style", "detailed");
+    const items = projectRecentlyLearned(memory);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ key: "reply_style", currentValue: "detailed", previousValue: "brief" });
+  });
+
+  it("surfaces a changed preference after a File-store write→read round-trip (scope persists to disk)", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-rl-")), "user-memory.json");
+    const writer = new FileUserMemoryStore({ file });
+    await writer.upsertPreference("u", "reply_style", "brief");
+    await writer.upsertPreference("u", "reply_style", "detailed");
+    // A fresh instance forces a read from disk — where the "preference" scope must
+    // have survived serialization (the bug fire-7's ④b judge caught: without it, the
+    // entry resolves from facts on reload and silently disappears).
+    const reader = new FileUserMemoryStore({ file });
+    const memory = await reader.findByUserId("u");
+    if (!memory) {
+      throw new Error("expected the user memory to load from disk");
+    }
+    const items = projectRecentlyLearned(memory);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ key: "reply_style", currentValue: "detailed", previousValue: "brief" });
   });
 });
 

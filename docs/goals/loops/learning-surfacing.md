@@ -41,3 +41,31 @@ ratchet: testFiles +0 (recently-learned.test +4 cases) · @muse/memory 519 green
 - **리뷰지점**: 순수. head-or-undefined + post-filter count + single/many 분기 = render엔 없는 컴팩트 표현 정책(judge가 value 진짜로 확인). surfaces 0겹침(@muse/memory leaf).
 - **리스크**: 없음 — additive, 519 green, lint clean, 독립 Opus ④b judge PASS.
 - **lesson**: main FF-push가 동시 ~16 루프 + grounding 훅(~1분) 때문에 반복 non-FF로 밀림 — fire 3 main-merge가 race에서 짐(브랜치 `b350718d`는 안전). 무한 재시도 대신 다음 fire로 이월(merge로 누적, 한 번에 main 적재). 근본 해결 = 머신 포화 시 동시 루프 수 줄이기(진안 판단).
+
+## fire 5 · 2026-06-21 · skill v2.1.0 · a1ef683b
+meta: value-class=wiring · pkg=@muse/cli · kind=surface-wiring · verdict=PASS · firesSinceDrill=5 · firesSinceMainMerge=1
+ratchet: testFiles +0 (commands-status.test +2 cases) · @muse/cli 245 files/2869 tests green · lint clean · fabrication 0
+
+- **무엇**: `muse status`에 **"recently learned: <컴팩트 1줄>"** 추가 — 새 `readRecentlyLearnedLine(memoryFile, userId)`(typed store `findByUserId` → `projectRecentlyLearned` → `summarizeRecentlyLearned`)를 액션이 계산, `snapshot.persona.recentlyLearned` 필드 + human 렌더 1줄. 두 번째 사용자-facing 표면(자주 보는 daily-driver 대시보드).
+- **왜**: `memory show`(fire 3, 풀 리스트)에 이어 `status`(매일 보는 곳)에 컴팩트 1줄로. 정체성을 일상에서 체감.
+- **리뷰지점**: **typed store 경유 필수** — raw memoryDoc은 `replacedAt`이 string이라 `.getTime()` 정렬이 깨짐(judge가 명시 확인). 빈 시 snapshot 필드/human 라인 둘 다 생략(기존 `workingHours` idiom). `--json` shape는 additive(schemaVersion 무변). surfaces 미접촉(status); `today`는 surfaces 소유 → 별도.
+- **리스크**: 없음 — additive(import+helper+optional field+render line), 독립 Opus ④b judge가 전체 cli 2869 + mutation 재확인 PASS.
+
+## fire 6 · 2026-06-21 · skill v2.1.0 · 2803ce09
+meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=recency-window · verdict=PASS · firesSinceDrill=6 · firesSinceMainMerge=2
+ratchet: testFiles +0 (recently-learned.test +1, commands-status.test +1) · @muse/memory 523 green · @muse/cli status 21 green · lint clean · fabrication 0
+
+- **무엇**: `projectRecentlyLearned`에 `sinceMs`(epoch-ms 하한) 옵션 추가 — `replacedAt < sinceMs` 학습은 제외. `muse status`가 **30일 윈도우**(`readRecentlyLearnedLine`의 `nowMs - 30d`)로 배선 → 반년 전 학습이 "recently"로 안 뜸.
+- **왜**: 윈도우 없으면 변경이 드물 때 status가 months-old supersession을 "recently learned"로 표시 = **"recently"가 거짓**. 윈도우가 그 정직성 회복.
+- **리뷰지점**: 옵션 생략 시 무바운드(backward-compat — `memory show`는 전부 계속 표시). `nowMs` injectable(테스트 결정론, 실행은 `Date.now()` 기본). `continue`는 `limit`-break 뒤 → old skip이 limit 슬롯 안 먹음.
+- **리스크**: 없음 — additive 옵션, memory 523 + status 21 green, 독립 Opus ④b judge가 boundary + 양쪽 패키지 mutation 재확인 PASS.
+
+## fire 7 · 2026-06-21 · skill v2.1.0 · 6163c7e6
+meta: value-class=new-capability · pkg=@muse/memory · kind=preference-learning · verdict=PASS · firesSinceDrill=7 · firesSinceMainMerge=3→0(main FF-merge this fire)
+ratchet: testFiles +0 (recently-learned.test +4 cases) · @muse/memory 529 green · @muse/cli surfaces 59 green · lint clean · fabrication 0
+
+- **무엇**: **preference 학습 표면화** — `FactSupersession`에 `scope`("fact"|"preference") 추가, InMemory + File `upsertPreference`가 preference 변경을 supersession으로 기록, `projectRecentlyLearned`가 scope별로 `facts`/`preferences`에서 `currentValue` 해결. 이제 `memory show`·`status`가 facts뿐 아니라 **preferences/vetoes/goals 변경도 자동 surface**(full UserMemory 전달).
+- **왜**: "what Muse learned about you"가 facts만 다뤘는데, 선호/거부/목표가 더 중요한 학습. 코드-선택 + 인용 + fab=0 불변식 유지.
+- **리뷰지점**: scope absent=fact(back-compat, fact 직렬화 byte-unchanged). Kysely는 factHistory 자체를 안 함(pre-existing, 일관). `veto:`/`goal:` 접두 키는 raw로 렌더(polish 후속 backlog).
+- **리스크**: 없음(now). ④b judge가 **File-store가 디스크 직렬화에서 scope를 드롭하는 버그**를 잡음 → 3 round-trip 사이트(type+memoryToStored+storedToMemory) fix + 직렬화경계 넘는 round-trip 테스트(RED-on-removal teeth 확인) → 재judge PASS.
+- **lesson**: 지속(persistent) store를 만지는 슬라이스의 e2e 테스트는 InMemory가 아니라 **직렬화 경계를 건너야**(write→fresh-instance read). InMemory-only e2e는 직렬화 버그를 못 잡고 거짓 통과 — ④b adversarial judge가 정확히 이걸 적발(gating verifier 가치 실증).

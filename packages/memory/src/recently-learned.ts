@@ -32,8 +32,17 @@ function formatSource(entry: FactSupersession): string {
  * this stays fabrication-free.
  */
 export function projectRecentlyLearned(
-  memory: Pick<UserMemory, "facts" | "factHistory">,
-  options?: { readonly limit?: number }
+  memory: Pick<UserMemory, "facts" | "factHistory"> & { readonly preferences?: Readonly<Record<string, string>> },
+  options?: {
+    readonly limit?: number;
+    /**
+     * Lower bound (epoch ms) on `replacedAt`: only learnings updated at or after
+     * this instant are projected. Use it so a glanceable surface says "recently"
+     * truthfully — without it a months-old supersession still shows when changes
+     * are rare. Omit for no time bound.
+     */
+    readonly sinceMs?: number;
+  }
 ): readonly RecentlyLearnedItem[] {
   const history = memory.factHistory ?? [];
   const limit = Math.max(0, options?.limit ?? DEFAULT_LIMIT);
@@ -47,14 +56,18 @@ export function projectRecentlyLearned(
       // Equal timestamps: the later-appended entry is the newer learning.
       return byTime !== 0 ? byTime : b.index - a.index;
     });
+  const sinceMs = options?.sinceMs;
   const items: RecentlyLearnedItem[] = [];
   for (const { entry } of ordered) {
     if (items.length >= limit) {
       break;
     }
+    if (sinceMs !== undefined && entry.replacedAt.getTime() < sinceMs) {
+      continue;
+    }
     items.push({
       key: entry.key,
-      currentValue: memory.facts[entry.key],
+      currentValue: entry.scope === "preference" ? memory.preferences?.[entry.key] : memory.facts[entry.key],
       previousValue: entry.previousValue,
       replacedAt: entry.replacedAt,
       kind: entry.kind ?? "changed",
