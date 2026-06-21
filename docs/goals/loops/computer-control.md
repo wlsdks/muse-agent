@@ -5,7 +5,7 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 59 · 2026-06-21 · skill v2.0 · <commit> (@muse/fs file_list: truncated=true 거짓양성 수정 — 정확히 limit개면 완전한 목록인데 phantom 다음 페이지를 쫓던 버그)
+## fire 59 · 2026-06-21 · skill v2.0 · ad6ddc17 (@muse/fs file_list: truncated=true 거짓양성 수정 — 정확히 limit개면 완전한 목록인데 phantom 다음 페이지를 쫓던 버그)
 meta: value-class=correctness(list-signal-accuracy) · pkg=@muse/fs · kind=fs/list-truncation-accuracy · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles +2 cases(exactly-limit→truncated false, >limit→true+count=limit) · fabrication 0 · @muse/fs 182 vitest(~1s) · lint 0/0 · ★박스 load~35 → narrow per-pkg vitest는 동작(full pnpm check만 timeout)
 - 무엇: file_list가 glob을 `matches.length >= limit`에서 break하고 `truncated = >= limit`로 설정 → 디렉터리에 정확히 limit개 매치 시 truncated=true 거짓양성 → 모델이 없는 다음 페이지를 쫓음. 수정: limit+1까지 1개 더 수집(sentinel)해 "정확히 limit"(완전)과 ">limit"(잘림) 구별 → `truncated = matches.length > limit`, truncated일 때만 sort 후 limit로 slice.
