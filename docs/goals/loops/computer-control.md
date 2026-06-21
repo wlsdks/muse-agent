@@ -5,6 +5,16 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 49 · 2026-06-21 · skill v2.0 · <commit> (measure→STEP-REPETITION discovery→deterministic dup-call nudge; MAST arXiv:2503.13657)
+meta: value-class=new-capability · pkg=@muse/agent-core · kind=step-repetition-guard · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +0 / +1 case (execute-model-loop dup-nudge, mutation-verified) · fabrication 0 · @muse/agent-core 2569 · execute-model-loop 15 · pnpm check @muse/voice SIGABRT(격리 124/124, agent-core 무관) · lint 0/0 · Ollama UP
+- 측정 재정의: MUSE_TASK_DEBUG 트레이스가 진짜 모드를 드러냄 — "early-stop"(fire 48 추정)이 아니라 **STEP-REPETITION**: 12B가 file_read(test)→file_read(math)→file_read(test)→file_read(math)→… 동일 파일 반복 read 후 정지, 편집 0(eval의 `tools=[file_read]`가 dedup된 이름이라 반복을 가렸음). MAST(arXiv:2503.13657) 최상위 멀티-스텝 실패모드.
+- 무엇: model-loop dedup이 동일 반복 콜에 캐시 결과를 신호 없이 반환 → 모델이 같은 content 받고 무한 재read. FIX: `withRepetitionNudge` — duplicate일 때만 MODEL-FACING tool 메시지에 "동일 반복 — 다음 행동(편집/실행)하라" 1줄 추가(blocking+streaming 양 루프=형제-감사). trace/metric(executed.result) 무변경, 정적 문자열(fabrication 0).
+- 왜: 결정론·안전(re-run 루프 아님 → reflection-guard 표면 아님)·on-theme(측정된 실제 블로커)·논문근거. dedup의 write-invalidation 덕에 편집後 재read는 duplicate 아님 → 정당한 재read에 오발 0. fire 48이 미룬 invasive re-prompt 대신, 측정이 드러낸 더 안전+직접적 fix.
+- 리뷰지점: mutation-first(nudge 무력화 시 정확히 dup-nudge 테스트 RED). 독립 Opus ④b judge가 양 루프 배선·dedup 오발0·trace 무오염·fabrication0·정직성 검증 → VERDICT PASS.
+- 리스크: OUTCOME(eval flip) 미확정 — stochastic(한 run은 nudge 타깃 반복, 다른 run은 distinct 콜)·다중 실패모드·~5min/run로 1-2회 inconclusive. nudge는 delivery 증명됨(unit+mutation), 효능은 미확정(정직). fire 49는 ×3 아님 → main 머지 없음.
+lesson: 측정 깊이가 결정적 — fire 48이 `tools=[file_read]`(dedup된 이름)로 "early-stop" 추정했으나 MUSE_TASK_DEBUG 전체 트레이스가 STEP-REPETITION을 드러냄. 진단은 dedup된 요약이 아니라 RAW 트레이스로. 측정이 invasive re-prompt(위험)보다 안전+직접적 결정론 fix를 드러냄.
+
 ## fire 48 · 2026-06-21 · skill v2.0 · 07110284 (measure+DECOMPOSE: dual-eval converges on EARLY-STOP as #1 blocker; 30c decomposed, not rammed; ⑤c delivers 46/47 to main)
 meta: value-class=refactor(work-list)+measure · pkg=docs/backlog+agent-core(diagnosis) · kind=decompose-design-sensitive · verdict=N/A · firesSinceDrill=2
 ratchet: testFiles unchanged · fabrication 0 · self-eval green · eval:computer-task PASS · eval:multifile-fix FAIL(early-stop) · eval:edit-run-verify FAIL(early-stop) · Ollama UP · ⑤c main-merge(fire 48=×3, delivers 46/47)
