@@ -22,7 +22,17 @@ struct UIStrings {
     var menuLanguage: String { t("언어", "Language") }
     var menuMute: String { t("음성 끄기", "Mute voice") }
     var menuSettings: String { t("설정…", "Settings…") }
+    var menuGuide: String { t("시작 가이드", "Getting started") }
     var menuQuit: String { t("Muse 종료", "Quit Muse") }
+
+    // Onboarding
+    var onboardWelcome: String { t("Muse에 오신 걸 환영해요", "Welcome to Muse") }
+    var onboardSubtitle: String { t("세상이 아니라 너를 학습하는 개인 AI.\n모두 네 Mac에서, 로컬로 동작해요.",
+                                    "The personal AI that learns you, not the world.\nIt all runs locally, on your Mac.") }
+    var onboardChecking: String { t("로컬 AI 준비 상태 확인 중…", "Checking your local AI…") }
+    var onboardReady: String { t("로컬 AI 준비 완료 — 시작해요!", "Your local AI is ready — let's go!") }
+    var onboardOpenFull: String { t("Muse 시작하기", "Start using Muse") }
+    var onboardStart: String { t("나중에", "Later") }
     var characterGoddess: String { t("여신", "Goddess") }
     var characterOrb: String { t("오브", "Orb") }
 

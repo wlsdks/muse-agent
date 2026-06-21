@@ -17,6 +17,7 @@ final class MuseController: NSObject, NSMenuDelegate {
     private weak var statusInfoItem: NSMenuItem?
     private lazy var settingsWindow = SettingsWindowController()
     private lazy var webWindow = MuseWebWindowController()
+    private lazy var onboarding = OnboardingWindowController()
 
     func start() {
         panel.orderFrontRegardless()
@@ -31,6 +32,8 @@ final class MuseController: NSObject, NSMenuDelegate {
         hotKey = GlobalHotKey(keyCode: UInt32(kVK_Space), modifiers: UInt32(controlKey | optionKey)) { [weak self] in
             self?.toggleVisibility()
         }
+        onboarding.onOpenFull = { [weak self] in self?.openFullApp() }
+        onboarding.showIfFirstRun()
     }
 
     private func toggleVisibility() {
@@ -98,6 +101,7 @@ final class MuseController: NSObject, NSMenuDelegate {
 
         muteItem = add(menu, s.menuMute, #selector(toggleMute))
         menu.addItem(.separator())
+        add(menu, s.menuGuide, #selector(openGuide))
         add(menu, s.menuSettings, #selector(openSettings), key: ",")
         add(menu, s.menuQuit, #selector(quit), key: "q")
 
@@ -131,6 +135,11 @@ final class MuseController: NSObject, NSMenuDelegate {
     @objc private func openFullApp() {
         NSApp.activate(ignoringOtherApps: true)
         webWindow.show()
+    }
+
+    @objc private func openGuide() {
+        onboarding.onOpenFull = { [weak self] in self?.openFullApp() }
+        onboarding.show()
     }
 
     @objc private func openSettings() {
