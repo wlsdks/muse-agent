@@ -445,7 +445,10 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         // fire 5; parity with the Ink chat's fire-4 fix). See chatTurnPersistText.
         const responseText = chatTurnPersistText(body);
         if (responseText) {
-          await appendLastChatTurn({ message, response: responseText });
+          // Persist the per-turn untrusted-source verdict so a later episode capture
+          // marks the episode trusted:false even for this one-shot turn (EP-1b).
+          const responseUntrusted = isRecord(body) && body.untrustedOnly === true;
+          await appendLastChatTurn({ message, response: responseText, responseUntrusted });
         }
       }
 

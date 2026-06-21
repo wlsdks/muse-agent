@@ -125,6 +125,19 @@ export interface McpServerSummary {
   readonly updatedAt: number;
 }
 
+export interface McpSecurityPolicyView {
+  allowedServerNames: string[];
+  maxToolOutputLength: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface McpSecurityResponse {
+  configDefault: McpSecurityPolicyView;
+  effective: McpSecurityPolicyView;
+  stored: McpSecurityPolicyView | null;
+}
+
 interface HistoryEntry {
   readonly runId?: string;
   readonly inputPreview?: string;
@@ -256,6 +269,36 @@ export interface WeaknessesResponse {
   entries: WeaknessView[];
 }
 
+export interface PlaybookStrategyView {
+  id: string;
+  text: string;
+  tag: string | null;
+  origin: string | null;
+  reward: number;
+  probation: boolean;
+  timesObserved: number;
+  source: string | null;
+  createdAt: string;
+}
+
+export interface PlaybookStrategiesResponse {
+  total: number;
+  entries: PlaybookStrategyView[];
+}
+
+export interface SkillView {
+  name: string;
+  description: string;
+  source: string;
+  reward: number;
+  avoided: boolean;
+}
+
+export interface SkillsResponse {
+  total: number;
+  entries: SkillView[];
+}
+
 export interface UserMemoryResponse {
   readonly facts?: Record<string, string>;
   readonly preferences?: Record<string, string>;
@@ -282,4 +325,13 @@ export interface InboxResponse {
   readonly inbound: readonly InboundMessage[];
   readonly providerId: string;
   readonly total: number;
+}
+
+export interface DaemonFlagView {
+  key: string;
+  label: string;
+  enabled: boolean;
+}
+export interface DaemonFlagsResponse {
+  flags: DaemonFlagView[];
 }

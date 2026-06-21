@@ -12,12 +12,14 @@ const baseUrl = `http://127.0.0.1:${port}`;
 // don't pollute the developer's real personal store.
 const notesDir = mkdtempSync(pathJoin(tmpdir(), "muse-smoke-notes-"));
 const tasksFile = pathJoin(mkdtempSync(pathJoin(tmpdir(), "muse-smoke-tasks-")), "tasks.json");
+const skillRewardsFile = pathJoin(mkdtempSync(pathJoin(tmpdir(), "muse-smoke-skillrw-")), "skill-rewards.json");
 const env = {
   ...process.env,
   MUSE_MODEL: "diagnostic/smoke",
   MUSE_MODEL_PROVIDER_ID: "diagnostic",
   MUSE_NOTES_DIR: notesDir,
   MUSE_TASKS_FILE: tasksFile,
+  MUSE_SKILL_REWARDS_FILE: skillRewardsFile,
   PORT: String(port)
 };
 const api = spawn("pnpm", ["--filter", "@muse/api", "dev"], {
@@ -849,6 +851,58 @@ try {
       `expected providers array, got ${JSON.stringify(providers)}`);
     assert(providers.providers.some((info) => info.id === "local" && info.local === true),
       `expected baseline local tasks provider, got ${JSON.stringify(providers.providers)}`);
+  });
+
+  await record("POST /api/self-improvement/skills/:name/reward accumulates and rejects invalid deltas", async () => {
+    const skillUrl = `${baseUrl}/api/self-improvement/skills/smoke-skill/reward`;
+
+    // First adjustment: reward starts at 0, +2 → 2.
+    const r1 = await fetch(skillUrl, {
+      body: JSON.stringify({ delta: 2 }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    }).then((response) => response.json());
+    assert(r1.reward === 2, `expected reward=2 after +2, got ${r1.reward}`);
+
+    // Second adjustment: reward persists and accumulates: 2 + 1 → 3.
+    const r2 = await fetch(skillUrl, {
+      body: JSON.stringify({ delta: 1 }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    }).then((response) => response.json());
+    assert(r2.reward === 3, `expected reward=3 after +1 (persists+accumulates), got ${r2.reward}`);
+
+    // Invalid delta: string → 400 (gate rejects, no mutation).
+    const bad1 = await fetch(skillUrl, {
+      body: JSON.stringify({ delta: "bad" }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(bad1.status === 400, `expected 400 for string delta, got ${bad1.status}`);
+
+    // Invalid delta: missing field → 400 (gate rejects, no mutation).
+    const bad2 = await fetch(skillUrl, {
+      body: JSON.stringify({}),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(bad2.status === 400, `expected 400 for missing delta, got ${bad2.status}`);
+
+    // Invalid delta: zero → 400 (gate rejects, no mutation).
+    const bad3 = await fetch(skillUrl, {
+      body: JSON.stringify({ delta: 0 }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    });
+    assert(bad3.status === 400, `expected 400 for zero delta, got ${bad3.status}`);
+
+    // Prove the three 400s did NOT mutate the stored reward: 3 + 1 → 4, not 3+1+bad+bad+bad.
+    const r3 = await fetch(skillUrl, {
+      body: JSON.stringify({ delta: 1 }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    }).then((response) => response.json());
+    assert(r3.reward === 4, `expected reward=4 (invalid calls had no side-effect on stored 3), got ${r3.reward}`);
   });
 
   await record("/api/notes REST round-trips save → list → search → read → append", async () => {

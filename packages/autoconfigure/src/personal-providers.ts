@@ -50,6 +50,7 @@ import {
 export {
   resolveActionLogFile,
   resolveAuthoredSkillsDir,
+  resolveSkillRewardsFile,
   resolvePendingApprovalsFile,
   resolveBriefingSidecarFile,
   resolveContactsFile,
@@ -84,6 +85,7 @@ export {
   resolveTelegramOffsetFile,
   resolveVetoesFile,
   resolvePlaybookFile,
+  resolveReflectionsFile,
   resolveSuppressedLessonsFile,
   resolveLearningPauseFile,
   resolvePlanCacheFile,

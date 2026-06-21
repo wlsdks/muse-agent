@@ -8087,6 +8087,23 @@ describe("runDuePatternNotices", () => {
 });
 
 describe("personal-episodes-store", () => {
+  it("round-trips the `trusted:false` provenance bit (episode-laundering defense) and omits it when absent/true", async () => {
+    const { readEpisodes, upsertEpisode } = await import("../src/index.js");
+    const { mkdtempSync, readFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "muse-ep-trust-"));
+    const file = join(dir, "episodes.json");
+    const base = { endedAt: "2026-06-21T01:00:00.000Z", startedAt: "2026-06-21T00:00:00.000Z", userId: "u1" };
+    await upsertEpisode(file, { ...base, id: "ep_poison", summary: "discussed Acme via a feed", trusted: false });
+    await upsertEpisode(file, { ...base, id: "ep_clean", summary: "discussed the Q3 budget" });
+    const got = await readEpisodes(file);
+    expect(got.find((e) => e.id === "ep_poison")?.trusted).toBe(false);
+    expect(got.find((e) => e.id === "ep_clean")?.trusted).toBeUndefined();
+    // Only persisted when false — a clean episode's serialized form carries no key.
+    expect(readFileSync(file, "utf8")).not.toMatch(/"id":\s*"ep_clean"[^}]*"trusted"/u);
+  });
+
   it("read tolerates missing / corrupt / wrong-shape files and drops invalid entries", async () => {
     const { readEpisodes } = await import("../src/index.js");
     const { mkdtempSync, writeFileSync } = await import("node:fs");

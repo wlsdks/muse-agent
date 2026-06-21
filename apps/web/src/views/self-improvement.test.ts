@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeWeaknesses, weaknessAxisLabel } from "./self-improvement.js";
+import { strategyStatusLabel, summarizeStrategies, summarizeWeaknesses, weaknessAxisLabel } from "./self-improvement.js";
 
 describe("weaknessAxisLabel", () => {
   it("grounding-gap → Grounding gap", () => {
@@ -53,5 +53,34 @@ describe("summarizeWeaknesses", () => {
 
   it("single entry with unique axis → total 1, axes 1", () => {
     expect(summarizeWeaknesses([{ axis: "misgrounding" }])).toEqual({ total: 1, axes: 1 });
+  });
+});
+
+describe("strategyStatusLabel", () => {
+  it("probation strategy → probation (not yet acting)", () => {
+    expect(strategyStatusLabel({ probation: true })).toBe("probation");
+  });
+
+  it("graduated strategy → active", () => {
+    expect(strategyStatusLabel({ probation: false })).toBe("active");
+  });
+});
+
+describe("summarizeStrategies", () => {
+  it("empty list → all zero", () => {
+    expect(summarizeStrategies([])).toEqual({ total: 0, active: 0, probation: 0 });
+  });
+
+  it("counts active vs probation distinctly", () => {
+    const out = summarizeStrategies([{ probation: false }, { probation: true }, { probation: false }]);
+    expect(out).toEqual({ total: 3, active: 2, probation: 1 });
+  });
+
+  it("all probation → active 0", () => {
+    expect(summarizeStrategies([{ probation: true }, { probation: true }])).toEqual({
+      total: 2,
+      active: 0,
+      probation: 2
+    });
   });
 });

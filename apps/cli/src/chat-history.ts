@@ -42,6 +42,13 @@ export const SESSION_BOUNDARY_CONTENT = "[SESSION_BOUNDARY]";
 export interface LastChatLine {
   readonly role: "user" | "assistant";
   readonly content: string;
+  /**
+   * `true` when this ASSISTANT turn rested on UNTRUSTED-only sources. Persisted so
+   * a later end-of-session episode capture marks the episode `trusted:false` even
+   * for turns from a prior process (one-shot `muse chat` / resumed session) — the
+   * episode-laundering defense (MemoryGraft arXiv:2512.16962). Absent ⇒ trusted.
+   */
+  readonly untrustedOnly?: boolean;
 }
 
 export interface ActivityEvent {
@@ -89,21 +96,32 @@ export async function readLastChatHistory(): Promise<readonly LastChatLine[]> {
         && typeof parsed.content === "string"
         && parsed.content.length > 0
       ) {
-        lines.push({ content: parsed.content, role: parsed.role });
+        lines.push({
+          content: parsed.content,
+          role: parsed.role,
+          ...(parsed.untrustedOnly === true ? { untrustedOnly: true } : {})
+        });
       }
     } catch { /* skip malformed lines */ }
   }
   return lines.slice(-HISTORY_TURN_LIMIT * 2);
 }
 
-export async function appendLastChatTurn(turn: { readonly message: string; readonly response: string }): Promise<void> {
+export async function appendLastChatTurn(turn: {
+  readonly message: string;
+  readonly response: string;
+  /** `true` when this answer rested on untrusted-only sources — persisted on the
+   *  assistant line so episode capture can mark the episode trusted:false even for
+   *  one-shot / resumed turns (episode-laundering defense, MemoryGraft). */
+  readonly responseUntrusted?: boolean;
+}): Promise<void> {
   const filePath = lastChatHistoryPath();
   await mkdir(path.dirname(filePath), { recursive: true });
   // Scrub before the write so a leaked secret doesn't persist on
   // disk and round-trip back into the model on --continue.
   const payload =
     `${JSON.stringify({ content: redactSecretsInText(turn.message), role: "user" })}\n` +
-    `${JSON.stringify({ content: redactSecretsInText(turn.response), role: "assistant" })}\n`;
+    `${JSON.stringify({ content: redactSecretsInText(turn.response), role: "assistant", ...(turn.responseUntrusted === true ? { untrustedOnly: true } : {}) })}\n`;
   await writeFile(filePath, payload, { flag: "a", mode: 0o600 });
 }
 

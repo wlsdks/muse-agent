@@ -111,6 +111,10 @@ const en = {
   "mcp.toolCount": "{n} tools",
   "mcp.connect": "Connect",
   "mcp.disconnect": "Disconnect",
+  "mcp.securityTitle": "Security",
+  "mcp.allowlistUnrestricted": "All servers allowed — no allowlist restriction.",
+  "mcp.allowlistRestricted": "Only these {n} servers allowed:",
+  "mcp.toolOutputCap": "Tool-output cap: {n} chars",
 
   "settings.title": "Settings",
   "settings.connection": "Connection",
@@ -123,6 +127,10 @@ const en = {
   "settings.ready": "ready",
   "settings.notSet": "not set",
   "settings.language": "Language",
+  "settings.daemons": "Background daemons",
+  "settings.daemonsSummary": "{enabled} of {total} enabled",
+  "settings.on": "on",
+  "settings.off": "off",
   "settings.credit": "Design system derived from Linear via VoltAgent/awesome-design-md (MIT). See apps/web/design/DESIGN.md.",
 
   "chat.askAnything": "Ask Muse anything",
@@ -189,12 +197,25 @@ const en = {
   "dash.samples": "Samples",
   "dash.topTools": "Most-used tools",
 
+  "nav.skills": "Skills",
+  "skills.title": "Skills",
+  "skills.subtitle": "Skills Muse has learned to apply. {n} total, {a} avoided.",
+  "skills.reward": "reward {n}",
+  "skills.avoided": "avoided",
+  "skills.rewardUp": "Reinforce",
+  "skills.rewardDown": "Discourage",
+
   "nav.selfImprovement": "Self-improvement",
   "si.title": "Self-improvement",
   "si.subtitle": "What Muse has noticed it couldn't answer or do. {n} weaknesses across {a} areas.",
   "si.count": "seen {n}×",
   "si.mastery": "mastery",
-  "si.lastSeen": "last seen"
+  "si.lastSeen": "last seen",
+  "si.strategiesTitle": "Learned strategies",
+  "si.strategiesSubtitle": "Strategies Muse distilled from your feedback. {active} active, {probation} on probation.",
+  "si.active": "active",
+  "si.probation": "probation",
+  "si.reward": "reward {n}"
 } as const;
 
 export type StringKey = keyof typeof en;
@@ -305,6 +326,10 @@ const ko: Strings = {
   "mcp.toolCount": "도구 {n}개",
   "mcp.connect": "연결",
   "mcp.disconnect": "끊기",
+  "mcp.securityTitle": "보안",
+  "mcp.allowlistUnrestricted": "모든 서버 허용 — 허용목록 제한 없음.",
+  "mcp.allowlistRestricted": "이 {n}개 서버만 허용:",
+  "mcp.toolOutputCap": "도구 출력 상한: {n}자",
 
   "settings.title": "설정",
   "settings.connection": "연결",
@@ -317,6 +342,10 @@ const ko: Strings = {
   "settings.ready": "준비됨",
   "settings.notSet": "미설정",
   "settings.language": "언어",
+  "settings.daemons": "백그라운드 데몬",
+  "settings.daemonsSummary": "{total}개 중 {enabled}개 켜짐",
+  "settings.on": "켜짐",
+  "settings.off": "꺼짐",
   "settings.credit": "디자인 시스템은 VoltAgent/awesome-design-md(MIT)의 Linear에서 가져왔습니다. apps/web/design/DESIGN.md 참고.",
 
   "chat.askAnything": "무엇이든 Muse에게 물어보세요",
@@ -383,12 +412,25 @@ const ko: Strings = {
   "dash.samples": "표본 수",
   "dash.topTools": "많이 쓴 도구",
 
+  "nav.skills": "스킬",
+  "skills.title": "스킬",
+  "skills.subtitle": "Muse가 적용하도록 학습한 스킬. 총 {n}개, 회피 {a}개.",
+  "skills.reward": "보상 {n}",
+  "skills.avoided": "회피",
+  "skills.rewardUp": "강화",
+  "skills.rewardDown": "약화",
+
   "nav.selfImprovement": "자기강화",
   "si.title": "자기강화",
   "si.subtitle": "Muse가 답하거나 하지 못했다고 스스로 인지한 것. {a}개 영역에 걸쳐 {n}건.",
   "si.count": "{n}회 관측",
   "si.mastery": "숙달도",
-  "si.lastSeen": "최근 관측"
+  "si.lastSeen": "최근 관측",
+  "si.strategiesTitle": "학습된 전략",
+  "si.strategiesSubtitle": "Muse가 당신의 피드백에서 정제한 전략. 활성 {active}개, 수습 {probation}개.",
+  "si.active": "활성",
+  "si.probation": "수습",
+  "si.reward": "보상 {n}"
 };
 
 export const DICTIONARIES: Record<Lang, Strings> = { en, ko };

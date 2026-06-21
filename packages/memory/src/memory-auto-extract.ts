@@ -252,13 +252,16 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
         if (!payload) {
           return;
         }
-        // Provenance gate: a fact/preference whose value the MODEL asserted (in
-        // its reply) but the USER never said (absent from their turn) is dropped
-        // — never persisted as "what you told me". Vetoes/goals are explicit
-        // user directives and left as-is.
-        // Only filter a proper Record — a malformed array-shaped facts/preferences
-        // (a reasoning-off model sometimes emits one) is left untouched so the
-        // downstream sanitizer still rejects it instead of being silently coerced.
+        // Provenance gate: a fact/preference/veto/goal whose value the MODEL
+        // asserted (in its reply) but the USER never said (absent from their turn)
+        // is dropped — never persisted as "what you told me". Vetoes/goals get the
+        // SAME gate (the extractor mines the assistant reply, so a poisoned
+        // tool/feed line surfaced there could otherwise distil a veto/goal the user
+        // never stated — a write-side poisoned-source vector on the proactivity /
+        // standing-objective slots; a genuinely user-stated directive survives).
+        // Only filter the proper shape — a malformed array-shaped facts/preferences
+        // (or non-array vetoes/goals) is left untouched so the downstream sanitizer
+        // still rejects it instead of being silently coerced.
         const groundedPayload: ExtractionPayload = {
           ...payload,
           ...(payload.facts && !Array.isArray(payload.facts)
@@ -266,6 +269,12 @@ export function createUserMemoryAutoExtractHook(options: UserMemoryAutoExtractOp
             : {}),
           ...(payload.preferences && !Array.isArray(payload.preferences)
             ? { preferences: dropModelAssertedValues(payload.preferences, boundedUser, boundedAssistant) }
+            : {}),
+          ...(Array.isArray(payload.vetoes)
+            ? { vetoes: dropModelAssertedSlots(payload.vetoes, boundedUser, boundedAssistant) }
+            : {}),
+          ...(Array.isArray(payload.goals)
+            ? { goals: dropModelAssertedSlots(payload.goals, boundedUser, boundedAssistant) }
             : {})
         };
         const provenance: ProvenanceContext | undefined = options.provenanceStore
@@ -380,6 +389,21 @@ function distinctiveValueTokens(text: string): string[] {
  * tokens) survives (fail-open — we can't attribute it, so we keep it). Pure +
  * exported; the same shape as the citation gate (code, not a prompt plea).
  */
+/**
+ * The per-value provenance test shared by the fact/preference gate AND the
+ * veto/goal gate (single source of truth — no drift): a VALUE is the MODEL's
+ * assertion (not the user's) when all its distinctive tokens appear in the
+ * assistant reply yet NONE appear in the user's own turn. A value with no
+ * distinctive tokens (an inferred boolean) is NOT model-asserted (fail-open —
+ * unattributable, so kept). Pure.
+ */
+function isModelAssertedValue(value: string, userTokens: ReadonlySet<string>, assistantTokens: ReadonlySet<string>): boolean {
+  const valueTokens = distinctiveValueTokens(value);
+  return valueTokens.length > 0
+    && valueTokens.every((token) => assistantTokens.has(token))
+    && valueTokens.every((token) => !userTokens.has(token));
+}
+
 export function dropModelAssertedValues(
   record: Readonly<Record<string, string>>,
   userTurn: string,
@@ -389,15 +413,39 @@ export function dropModelAssertedValues(
   const assistantTokens = new Set(distinctiveValueTokens(assistantOutput));
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(record)) {
-    const valueTokens = distinctiveValueTokens(value);
-    const modelAsserted = valueTokens.length > 0
-      && valueTokens.every((token) => assistantTokens.has(token))
-      && valueTokens.every((token) => !userTokens.has(token));
-    if (!modelAsserted) {
+    if (!isModelAssertedValue(value, userTokens, assistantTokens)) {
       out[key] = value;
     }
   }
   return out;
+}
+
+/**
+ * The veto/goal SIBLING of {@link dropModelAssertedValues}: drop any extracted
+ * slot whose `value` is the model's assertion, not the user's (same provenance
+ * test). The extractor mines the ASSISTANT reply too, so a poisoned tool/feed
+ * line the assistant surfaced ("the user never wants reminders") could otherwise
+ * be distilled into a veto/goal the user never stated — a write-side
+ * poisoned-source vector on the slots that drive proactivity / standing
+ * objectives. A genuinely user-stated veto/goal (its value tokens are in the user
+ * turn) survives untouched. Pure.
+ */
+export function dropModelAssertedSlots(
+  slots: readonly ExtractedSlot[],
+  userTurn: string,
+  assistantOutput: string
+): ExtractedSlot[] {
+  const userTokens = new Set(distinctiveValueTokens(userTurn));
+  const assistantTokens = new Set(distinctiveValueTokens(assistantOutput));
+  return slots.filter((slot) => {
+    // The raw extractor array is untrusted: a malformed element (null, a bare
+    // string, a missing/non-string value) is passed THROUGH so the downstream
+    // sanitizer rejects it — the gate only judges well-formed slots, never throws.
+    if (!slot || typeof slot !== "object" || typeof (slot as ExtractedSlot).value !== "string") {
+      return true;
+    }
+    return !isModelAssertedValue((slot as ExtractedSlot).value, userTokens, assistantTokens);
+  });
 }
 
 function readSessionId(context: AgentRunContextView): string | undefined {

@@ -3,10 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { AsyncBlock, Badge, Card, Stat } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { formatProbabilityPct } from "../lib/percent.js";
-import { summarizeWeaknesses, weaknessAxisLabel } from "./self-improvement.js";
+import { strategyStatusLabel, summarizeStrategies, summarizeWeaknesses, weaknessAxisLabel } from "./self-improvement.js";
 
 import type { ApiClient } from "../api/client.js";
-import type { WeaknessesResponse } from "../api/types.js";
+import type { PlaybookStrategiesResponse, WeaknessesResponse } from "../api/types.js";
 
 export function SelfImprovementView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
@@ -15,9 +15,15 @@ export function SelfImprovementView({ client }: { client: ApiClient }) {
     queryFn: () => client.get<WeaknessesResponse>("/api/self-improvement/weaknesses"),
     queryKey: ["self-improvement", client.baseUrl]
   });
+  const strategies = useQuery({
+    queryFn: () => client.get<PlaybookStrategiesResponse>("/api/self-improvement/playbook"),
+    queryKey: ["self-improvement-playbook", client.baseUrl]
+  });
 
   const entries = weaknesses.data?.entries ?? [];
   const { total, axes } = summarizeWeaknesses(entries);
+  const strategyEntries = strategies.data?.entries ?? [];
+  const strategyCounts = summarizeStrategies(strategyEntries);
 
   return (
     <div className="content-narrow">
@@ -57,6 +63,44 @@ export function SelfImprovementView({ client }: { client: ApiClient }) {
               </Card>
             </div>
           ))}
+        </AsyncBlock>
+      </div>
+
+      <h2 className="page-title" style={{ marginTop: 32, fontSize: 20 }}>
+        {t("si.strategiesTitle")}
+      </h2>
+      <p className="muted" style={{ marginTop: 4 }}>
+        {t("si.strategiesSubtitle", { active: strategyCounts.active, probation: strategyCounts.probation })}
+      </p>
+
+      <div style={{ marginTop: 16 }}>
+        <AsyncBlock
+          loading={strategies.isLoading}
+          error={strategies.error}
+          empty={strategyEntries.length === 0}
+        >
+          {strategyEntries.map((entry) => {
+            const status = strategyStatusLabel(entry);
+            return (
+              <div key={entry.id} style={{ marginBottom: 10 }}>
+                <Card>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <Badge tone={status === "active" ? "ok" : "neutral"}>{t(`si.${status}`)}</Badge>
+                        {entry.tag ? <Badge tone="neutral">{entry.tag}</Badge> : null}
+                        {entry.origin ? <span className="mono subtle">{entry.origin}</span> : null}
+                      </div>
+                      <p style={{ margin: "6px 0 0" }}>{entry.text}</p>
+                    </div>
+                    <span className="mono subtle" style={{ flexShrink: 0 }}>
+                      {t("si.reward", { n: entry.reward })}
+                    </span>
+                  </div>
+                </Card>
+              </div>
+            );
+          })}
         </AsyncBlock>
       </div>
     </div>

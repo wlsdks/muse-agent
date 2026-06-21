@@ -5,7 +5,8 @@ import { AsyncBlock, Badge, Button, Card } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
-import type { ModelsResponse } from "../api/types.js";
+import type { DaemonFlagsResponse, ModelsResponse } from "../api/types.js";
+import { summarizeFlags } from "./settings-flags.js";
 
 interface SetupSection {
   readonly ok?: boolean;
@@ -38,6 +39,10 @@ export function SettingsView({
   const models = useQuery({
     queryFn: () => client.get<ModelsResponse>("/api/models"),
     queryKey: ["models", client.baseUrl]
+  });
+  const daemonFlags = useQuery({
+    queryFn: () => client.get<DaemonFlagsResponse>("/api/settings/daemon-flags"),
+    queryKey: ["daemon-flags", client.baseUrl]
   });
 
   const sectionOk = (s?: SetupSection) => Boolean(s?.ok ?? s?.ready ?? s?.configured);
@@ -123,6 +128,34 @@ export function SettingsView({
               </div>
             ))}
           </AsyncBlock>
+        </Card>
+      </div>
+
+      <div style={{ marginTop: 16 }}>
+        <Card title={t("settings.daemons")}>
+          {(() => {
+            const flags = daemonFlags.data?.flags ?? [];
+            const sum = summarizeFlags(flags);
+            return (
+              <>
+                <p className="subtle" style={{ marginBottom: 8, fontSize: 12 }}>
+                  {t("settings.daemonsSummary", { enabled: sum.enabled, total: sum.total })}
+                </p>
+                <AsyncBlock loading={daemonFlags.isLoading} error={daemonFlags.error} empty={flags.length === 0}>
+                  {flags.map((flag) => (
+                    <div className="row" key={flag.key}>
+                      <div className="row-main">
+                        <div className="row-title">{flag.label}</div>
+                      </div>
+                      <Badge tone={flag.enabled ? "ok" : "neutral"}>
+                        {flag.enabled ? t("settings.on") : t("settings.off")}
+                      </Badge>
+                    </div>
+                  ))}
+                </AsyncBlock>
+              </>
+            );
+          })()}
         </Card>
       </div>
 
