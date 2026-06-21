@@ -4,7 +4,7 @@
 > Worktree `/tmp/muse-learning-surfacing` (branch `loop/learning-surfacing`), Tier2 push + 3-fire main FF-merge (진안 명시). Cron session-only 20m (`e8138ee2`).
 > Convention: [README](README.md). One entry per fire; `meta:` lines are grep-able counters for the (pkg, kind) ratchet.
 
-## fire 1 · 2026-06-21 · skill v2.1.0 · pending
+## fire 1 · 2026-06-21 · skill v2.1.0 · ede0c046
 meta: value-class=new-capability · pkg=@muse/memory · kind=learned-projection · verdict=PASS · firesSinceDrill=1 · firesSinceMainMerge=1
 ratchet: testFiles +1 (recently-learned.test.ts, 6 cases) · @muse/memory 41 files/505 tests green · full pnpm build green · lint clean · fabrication 0
 
