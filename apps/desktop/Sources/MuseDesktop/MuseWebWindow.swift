@@ -12,8 +12,21 @@ final class MuseWebWindowController: NSObject, WKNavigationDelegate {
 
     func show() {
         if window == nil { build() }
-        load()
         window?.makeKeyAndOrderFront(nil)
+
+        // Manual override (advanced): a URL set in Settings loads directly.
+        let override = PrefsStore.load().museURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let override, !override.isEmpty {
+            load(override)
+            return
+        }
+
+        // Otherwise: ensure the bundled self-contained server is up, then load it.
+        showStarting()
+        ServerManager.shared.ensureRunning { [weak self] ok in
+            guard let self else { return }
+            if ok { self.load(ServerManager.shared.baseURL) } else { self.showUnreachable() }
+        }
     }
 
     private func build() {
@@ -38,9 +51,28 @@ final class MuseWebWindowController: NSObject, WKNavigationDelegate {
         webView = web
     }
 
-    private func load() {
-        guard let url = URL(string: PrefsStore.load().resolvedMuseURL) else { return }
+    private func load(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
         webView?.load(URLRequest(url: url))
+    }
+
+    private func showStarting() {
+        let html = """
+        <html><head><meta charset="utf-8"><style>
+          :root { color-scheme: dark; }
+          body { margin:0; height:100vh; display:flex; align-items:center; justify-content:center;
+                 font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+                 background:radial-gradient(120% 120% at 50% 0%, #1b1730 0%, #0d0b16 60%, #070610 100%); color:#e7e3f5; }
+          .card { text-align:center; }
+          .dot { width:46px;height:46px;margin:0 auto 18px;border-radius:50%;
+                 background:radial-gradient(circle at 35% 30%, #b9a3ff, #6d52e8 60%, #2a2150);
+                 box-shadow:0 0 30px #6d52e8aa; animation:pulse 1.4s ease-in-out infinite; }
+          @keyframes pulse { 0%,100%{transform:scale(0.9);opacity:.7} 50%{transform:scale(1.08);opacity:1} }
+          p { color:#a59ec9; font-size:14px; }
+        </style></head><body><div class="card"><div class="dot"></div>
+          <p>Waking Muse…</p></div></body></html>
+        """
+        webView?.loadHTMLString(html, baseURL: nil)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -52,7 +84,7 @@ final class MuseWebWindowController: NSObject, WKNavigationDelegate {
     }
 
     private func showUnreachable() {
-        let url = PrefsStore.load().resolvedMuseURL
+        let url = ServerManager.shared.baseURL
         let html = """
         <html><head><meta charset="utf-8"><style>
           :root { color-scheme: dark; }

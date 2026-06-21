@@ -61,6 +61,17 @@ export interface PersistedEpisode {
    * recency cap would otherwise drop it. Optional — older entries lack it.
    */
   readonly importance?: number;
+  /**
+   * `false` when the session this episode summarises rested on UNTRUSTED sources
+   * (tool/web/MCP/feed output the assistant surfaced). Recalled later as grounding
+   * evidence it then carries the same `trusted:false` provenance bit feeds/tool
+   * output do, so an answer resting SOLELY on it trips the untrusted-only
+   * source-check cue instead of being laundered as "your own history" (the
+   * MemoryGraft temporal-propagation vector, arXiv:2512.16962). Absent ⇒ trusted
+   * (the user's own session); only stored when `false`, so clean/older entries
+   * are unaffected.
+   */
+  readonly trusted?: boolean;
 }
 
 // Move a present-but-corrupt store aside so the next upsert
@@ -131,7 +142,10 @@ export function serializeEpisode(episode: PersistedEpisode): JsonObject {
       : {}),
     ...(typeof episode.importance === "number" && Number.isFinite(episode.importance)
       ? { importance: episode.importance }
-      : {})
+      : {}),
+    // Only persisted when false (absent ⇒ trusted) — mirrors the KnowledgeMatch
+    // `trusted` convention so clean/legacy episodes stay byte-identical.
+    ...(episode.trusted === false ? { trusted: false } : {})
   };
 }
 
@@ -531,6 +545,9 @@ function isPersistedEpisode(value: unknown): value is PersistedEpisode {
     if (!candidate.topics.every((topic) => typeof topic === "string")) return false;
   }
   if (candidate.importance !== undefined && typeof candidate.importance !== "number") {
+    return false;
+  }
+  if (candidate.trusted !== undefined && typeof candidate.trusted !== "boolean") {
     return false;
   }
   return true;

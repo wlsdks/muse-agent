@@ -328,7 +328,7 @@ describe("MuseChatApp render — plain chat + editing", () => {
       yield { type: "done" };
     }
     const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
-      finalizeAnswer: async () => ({ display: "I don't have that recorded yet.", forHistory: "I don't have that recorded yet." }),
+      finalizeAnswer: async () => ({ display: "I don't have that recorded yet.", forHistory: "I don't have that recorded yet.", untrustedOnly: false }),
       onCommit: (_q: string, answer: string) => { committed = answer; },
       stream: () => fabricated()
     })));
@@ -351,7 +351,8 @@ describe("MuseChatApp render — plain chat + editing", () => {
     const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
       finalizeAnswer: async () => ({
         display: "your tasks: write report\n\n⚠️ 출처 확인: 도구로 가져온 데이터(tool-fetched)에만 근거합니다.",
-        forHistory: "your tasks: write report"
+        forHistory: "your tasks: write report",
+        untrustedOnly: true
       }),
       onCommit: (_q: string, answer: string) => { committed = answer; },
       stream: () => streamRaw()

@@ -147,4 +147,38 @@ describe("finalizeGatedChatAnswer — forHistory excludes display-only source-ch
     });
     expect(result.forHistory).toBe(result.display); // trusted + cited → no cue appended
   });
+
+  it("reports untrustedOnly=true when the answer rested on untrusted-only sources (feeds the episode-trust bit, MemoryGraft)", async () => {
+    const result = await finalizeGatedChatAnswer({
+      answer: "할 일은 보고서 작성 1건이에요",
+      matches: [],
+      question: "내 할일 뭐 있어?",
+      toolsUsed: ["muse.tasks.list"],
+      toolGroundingSources: [{ source: "muse.tasks.list", text: "할 일: 보고서 작성" }]
+    });
+    expect(result.untrustedOnly).toBe(true);
+  });
+
+  it("reports untrustedOnly=false for a trusted note-grounded answer", async () => {
+    const result = await finalizeGatedChatAnswer({
+      answer: "비밀번호는 muse2026 입니다 [from wifi.md]",
+      matches,
+      question: "사무실 와이파이 비밀번호 뭐야?"
+    });
+    expect(result.untrustedOnly).toBe(false);
+  });
+
+  it("a chat answer resting ONLY on a poisoned EPISODE (trusted:false, as hitsToMatches now produces) surfaces the untrusted cue (EP-3)", async () => {
+    const poisonedEpisode: readonly KnowledgeMatch[] = [
+      { cosine: 0.9, score: 0.9, source: "session: ep_x", text: "Acme acquired Beta for $1B", trusted: false }
+    ];
+    const result = await finalizeGatedChatAnswer({
+      answer: "Acme acquired Beta for $1B [from session: ep_x]",
+      matches: poisonedEpisode,
+      question: "did Acme acquire Beta?"
+    });
+    expect(result.untrustedOnly).toBe(true);
+    expect(result.display).toContain("출처 확인"); // the untrusted-only chat cue
+    expect(result.forHistory).not.toContain("출처 확인"); // cue stays out of persisted history
+  });
 });

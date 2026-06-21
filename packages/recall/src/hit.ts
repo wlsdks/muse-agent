@@ -3,6 +3,14 @@ export interface RecallHit {
   readonly ref: string;
   readonly score: number;
   readonly snippet: string;
+  /**
+   * `false` when this hit is an episode whose session rested on UNTRUSTED sources
+   * (PersistedEpisode.trusted === false). Propagated to the chat grounding match so
+   * an answer resting solely on a poisoned episode trips the untrusted-only
+   * source-check cue instead of laundering it as trusted "your own history"
+   * (MemoryGraft arXiv:2512.16962). Absent ⇒ trusted.
+   */
+  readonly trusted?: boolean;
 }
 
 /**
