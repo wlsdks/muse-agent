@@ -93,7 +93,7 @@ ratchet: (model) 3,7,9 but kind=regression-guard distinct from 2,7 adapter-wirin
   검증: model 384 pass(신규 2 가드) · MUTATION-FIRST 2종(독립 judge가 재현 RED) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(가드 슬라이스, 자체 mutation 재현·불변식 실재 확인·env-crash 정직·결함 0). ⚠️full pnpm check는 박스 OOM(SIGABRT, packages/runtime-state 무관)으로 abort하나 packages/model은 그 run 내 384 pass(fire 8 동일 env 클래스).
 lesson: judge-드릴은 가짜-슬라이스를 *결정론 게이트는 통과*하되 *불변식만 위반*하게 설계해야 JUDGE를 시험한다(소스변경으로 기존 테스트를 깨면 ③이 잡아 judge 미검증). grounding 계약은 system 메시지에 탑재 → "프롬프트 다이어트/lean" 류 속도최적화는 거의 항상 floor 위반. 드릴의 부산물(불변식 회귀가드)을 진짜-fix로 출하하면 드릴이 영구 방어로 전환됨.
 
-## fire 10 · 2026-06-21 · local-speed · <commit>
+## fire 10 · 2026-06-21 · local-speed · 792a408a
 meta: value-class=wiring · pkg=@muse/agent-core · kind=runtime-logprobs-plumbing · verdict=PASS · firesSinceDrill=1
 ratchet: @muse/agent-core FRESH (fires 1-9 미접촉) · fabrication 0 · default wire byte-identical
 - 무엇: 에이전트 런타임에 opt-in 토큰 logprobs 배선. `AgentRunInput.logprobs`/`topLogprobs` → 양 request-build seam(loopRequest generate + streamLoopRequest stream)에서 `ModelRequest.logprobs`로 전달, `AgentRunResult.response.logprobs`로 round-trip 복귀. `logprobsFromInput()` 헬퍼(미설정→{} = byte-identical, 두 seam 동기화). 이제 AGENT run을 `summarizeTokenConfidence`로 confidence 채점 가능.
