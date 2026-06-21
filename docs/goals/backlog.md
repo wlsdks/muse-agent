@@ -105,7 +105,11 @@
     - ✓ web Skills reward 버튼 — `SkillsView` ▲/▼ 버튼이 fire 64 POST reward 라우트 호출(useMutation+invalidate `["skills"]`); canAdjustReward로 [-5,5] 경계 no-op 차단 — surfaces fire 65 (`0e082ec8`); 스킬 컨트롤 read+write end-to-end 완성
     - ◦ web Skills curate/author — 스킬 활성/비활성·세션에서 스킬 작성(authorSkillsFromSession 기존) 웹 노출 (상태변경, 후속)
     - ◦ CLI 스킬 resolver 통일(형제) — `apps/cli/commands-skills.ts`의 private `resolveAuthoredSkillsDir`/`resolveSkillRewardsFile`를 autoconfigure 공유본으로 통일(commands-skills·commands-learned·chat-ink 3파일 import 변경), gate-asymmetry 제거
-  - ◦ web 설정/daemon 토글 — proactivity·episodic·skill학습·watch daemon on/off (PUT /settings/:key 기존, ~80 env 플래그는 env→runtime 브리지 필요)
+  - ◦ web 설정/daemon 토글 — proactivity·episodic·skill학습·watch daemon on/off:
+    - ✓ daemon-flags read API — `GET /api/settings/daemon-flags`(shapeDaemonFlags: 6 플래그 effective on/off, parseBoolean 데몬과 동일 resolver, settings-routes.ts) — surfaces fire 67 (`<pending>`); NEXT=웹 Settings 뷰가 소비
+    - ◦ web Settings 뷰 — fire 67 daemon-flags API 소비(플래그 목록·on/off 배지)
+    - ◦ 토글 write — 데몬 플래그 on/off PUT (env→runtime 브리지 필요; ~80 env 플래그 점진 배선, 상태변경)
+- ⚠ FLAKY(공유, 비-surfaces): `@muse/model/src/web-search-policy.test.ts > property fuzz > never throws…`가 ~1/3 비결정 실패(격리 2/3 통과) — 모든 루프 merge-to-main을 간헐 차단. @muse/model 오너/test-hygiene 루프가 fuzz 생성기 seed 고정 필요
   - ✓ web MCP allowlist 보안 섹션 (읽기) — `McpServersView`가 `GET /api/mcp/security` 소비, 허용목록·도구출력 상한 표시; summarizeAllowlist의 빈목록=unrestricted 정직신호 — surfaces fire 66 (`eac90550`)
   - ◦ web MCP 콘솔 확장 (나머지) — add/remove 서버 + allowlist(`PUT /api/mcp/security`) 편집 (상태변경, API 기존; 읽기는 fire 66 done)
 - ✓ Playbook eviction PEVI-parity (PEVI arXiv:2012.15085): `retainPlaybookEntries` now ranks bank-overflow survival on the Wilson-LCB `retentionUtility` (inline-replicated `rankingUtility`, NOT the rolled-back `effectiveStrategyReward` shrinkage), so a thin-but-lucky strategy no longer evicts a battle-tested one; no-tally falls back byte-identically to clampReward(reward) — self-improvement fire 1

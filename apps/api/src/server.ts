@@ -56,6 +56,7 @@ import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messagin
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
 import { registerAccountabilityRoutes } from "./accountability-routes.js";
 import { registerSelfImprovementRoutes } from "./self-improvement-routes.js";
+import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
 import { registerAgentNoticesRoutes } from "./agent-notices-routes.js";
 import { registerSetupRoutes } from "./setup-routes.js";
@@ -329,6 +330,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authoredSkillsDir: options.authoredSkillsDir ?? resolveAuthoredSkillsDir(process.env),
     skillRewardsFile: options.skillRewardsFile ?? resolveSkillRewardsFile(process.env)
   });
+
+  registerSettingsRoutes(server, { authService });
 
   // Optional Phase B daemon: every MUSE_REMINDER_TICK_MS (default
   // 60s) call runDueReminders. Activates only when the user has

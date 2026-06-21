@@ -610,3 +610,13 @@ ratchet: web tests 104/104 (+3) · fabrication 0 · self-eval exit 0 · check ex
 - **왜**: 진안 "웹에서 MCP 관리"의 보안 표면 — 어떤 외부 MCP 서버가 허용됐는지 웹에서 본다. **핵심 정직-불변식**: 코드(in-memory-stores.ts:209 `length===0 || includes`)상 **빈 허용목록=모든 서버 허용**(opt-in)이라, UI가 빈목록을 "0개 허용"(=전부 차단 암시)으로 표기하면 위험한 거짓 — "모든 서버 허용/제한없음"으로 표기해야. summarizeAllowlist의 unrestricted가 이 정직신호.
 - **리뷰지점**: mutation-first — summarizeAllowlist(`===0`→`>0` 변이 시 빈목록 honesty 케이스 3 RED·`unrestricted:false` 하드코딩→1 RED), 독립 judge 재확인. effective 정책 사용(configDefault/stored 아님)·데이터 부재 시 honestly "unrestricted" degrade. 보안: read-only GET(서버측 auth 게이트)·허용목록 escaped children·기존 서버목록+connect/disconnect 무손상. i18n en/ko 키셋+토큰({n}) 패리티. 정직한 갭: allowlist 편집(PUT)·서버 add/remove는 후속(상태변경).
 - **리스크**: 없음(apps/web 5파일, web build tsc+vite·web 104/104·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 빈목록-정직불변식·effective사용·읽기전용·다양성·mutation 검증 후 PASS).
+- **merge-to-main 메모**: fire 66 ⑤c가 flaky `@muse/model web-search-policy` property-fuzz(격리 2/3 통과=비결정적) + saturation 타임아웃에 막혀 deferred. fires 61-66 브랜치 안전, fire 69 윈도우 재시도.
+
+## fire 67 · 2026-06-21 · skill v2.0.0 · <pending>
+meta: surface=api · value-class=new-capability · pkg=@muse/api · kind=settings-daemon-flags-api · verdict=PASS · firesSinceDrill=6
+ratchet: api 932/932 · fabrication 0 · self-eval exit 0 · check exit 0 · smoke:broad 52/0 · lint clean · ★다양성 RATCHET 강제 전환(web-view 5/8→api-read)
+
+- **무엇**: 설정 콘솔 영역 개시 — read-only `GET /api/settings/daemon-flags`가 핵심 백그라운드 데몬/기능 플래그 6종(episodic memory·home-watch·conflict-watch·proactive-agent-turn·background-review[skill학습]·knowledge-search)의 **effective on/off**를 보고. 순수 `shapeDaemonFlags(env)`가 각 플래그를 `parseBoolean(env[key], 기본값)`으로 — 데몬 실제 read-site와 **동일 resolver+기본값**(전부 false 확인)이라 거짓보고 0. 신규 `settings-routes.ts`(auth 게이트, self-improvement 패턴 미러) + server.ts 배선.
+- **왜**: 진안 "proactivity·episodic·skill학습·watch daemon 웹에서 토글"의 데이터 레이어(read-first). **다양성 RATCHET 강제**: 최근 8 fire 중 (web,view)가 5/8 — 또 web-view면 6/8 위반이라 이번은 반드시 다른 kind → (api,read)로 전환(설정 영역). 토글(PUT)+웹 뷰는 후속.
+- **리뷰지점(정직=effective state)**: 6 플래그 기본값이 실제 read-site와 일치해야 거짓 안 함 — 독립 judge가 6개 전부 read-site 대조(episodic chat-end-session:97·home-watch tick-daemons:678·conflict commands-daemon:580·proactive server:351·bg-review autoconf:840·knowledge autoconf:629, 전부 false) 확인. parseBoolean 재사용(truthy={true,1,yes,on}, 손수 `==="true"` 아님→런타임과 안 갈림). mutation-first: 기본값 flip→empty-env 테스트 RED·env 무시→override 테스트 RED. 보안: read-only GET·동일 auth 게이트·고정 6키 화이트리스트(process.env 통째 덤프 아님, 시크릿 노출 0)·불리언만. 정직한 갭: 토글 write·웹 뷰 후속.
+- **리스크**: 없음(apps/api 3파일, api build clean·api 932/932·pnpm check exit 0·smoke:broad 52/0·lint clean, 독립 Opus ④b judge가 6-기본값-정직·parseBoolean재사용·auth·시크릿0·다양성 검증 후 PASS).
