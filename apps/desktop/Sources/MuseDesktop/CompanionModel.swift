@@ -50,6 +50,7 @@ final class CompanionModel: ObservableObject {
     private var idleTimer: Timer?
     private var idleLineIndex = 0
     private var showingIdleLine = false
+    private var lastIdleText = ""
 
     /// Muse greets you and, while idle, drifts a friendly line into a speech
     /// bubble now and then — so she feels present and talks first, instead of a
@@ -57,7 +58,7 @@ final class CompanionModel: ObservableObject {
     /// the bubble is empty), and clears itself after a few seconds.
     func startIdleChatter() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { [weak self] in self?.showIdleLine() }
-        let timer = Timer(timeInterval: 80, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 150, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.showIdleLine() }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -72,16 +73,36 @@ final class CompanionModel: ObservableObject {
 
     private func showIdleLine() {
         guard !busy, !listening, !inputVisible, bubble.isEmpty else { return }
-        let lines = idleLines()
-        let line = lines[idleLineIndex % lines.count]
+        // Show a quick line instantly (never feels dead), then replace it with a
+        // genuinely generated thought from the local model when it arrives.
+        let canned = idleLines()[idleLineIndex % idleLines().count]
         idleLineIndex += 1
-        bubble = line
-        showingIdleLine = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
-            guard let self else { return }
-            if self.showingIdleLine, self.bubble == line { self.bubble = "" }
+        setIdle(canned)
+        Task { [weak self] in await self?.generateIdleThought() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 16) { [weak self] in
+            guard let self, self.showingIdleLine, self.bubble == self.lastIdleText else { return }
             self.showingIdleLine = false
+            self.bubble = ""
         }
+    }
+
+    private func setIdle(_ text: String) {
+        lastIdleText = text
+        bubble = text
+        showingIdleLine = true
+    }
+
+    /// Ask the local model for a short, genuine one-liner — so Muse speaks her own
+    /// thought, not only a fixed phrase. Replaces the canned line if still idle.
+    private func generateIdleThought() async {
+        let prompt = language == .korean
+            ? "사용자에게 건넬 짧고 따뜻한 한마디를 한 문장으로만 말해줘. 가벼운 인사나 도움 제안이면 좋아. 설명 없이 그 문장만."
+            : "Say one short, warm sentence to your user — a light greeting or gentle offer to help. Just the sentence, nothing else."
+        guard let thought = try? await MuseBridge.ask(query: prompt) else { return }
+        let clean = thought.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, clean.count <= 160,
+              !clean.lowercased().contains("i'm not sure"), !clean.contains("잘 모르") else { return }
+        if showingIdleLine, bubble == lastIdleText { setIdle(clean) }
     }
 
     /// Live model-download/load feedback — only while the user is waiting to talk
@@ -104,6 +125,7 @@ final class CompanionModel: ObservableObject {
     /// Closing returns to just-the-orb (clears the bubble).
     func clickOrb() {
         guard !busy else { return }
+        showingIdleLine = false   // user is engaging — stop idle-line management
         if listening { stopVoiceAndTranscribe(); return } // tap while recording → finish + transcribe
         inputVisible.toggle()
         if !inputVisible { bubble = "" }

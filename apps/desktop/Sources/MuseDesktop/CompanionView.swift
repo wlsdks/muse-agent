@@ -7,6 +7,7 @@ import SwiftUI
 struct CompanionView: View {
     @ObservedObject var model: CompanionModel
     @State private var drift = false
+    @FocusState private var inputFocused: Bool
 
     private let accent = Color(red: 0.62, green: 0.91, blue: 1.0)
     private let violet = Color(red: 0.55, green: 0.45, blue: 0.95)
@@ -26,11 +27,14 @@ struct CompanionView: View {
         .animation(.easeInOut(duration: 0.22), value: model.bubble)
         .animation(.easeInOut(duration: 0.22), value: model.orbState)
         .onAppear { drift = true; model.startIdleChatter() }
+        .onChange(of: model.inputVisible) { _, visible in
+            if visible { inputFocused = true }   // ready to type the moment input appears
+        }
     }
 
     private var orb: some View {
         OrbRepresentable(lookName: model.lookName, state: model.orbState, onClick: { model.clickOrb() })
-            .frame(width: 188, height: 224)
+            .frame(width: 150, height: 178)
             .offset(y: drift ? -5 : 5)
             .animation(.easeInOut(duration: 3.2).repeatForever(autoreverses: true), value: drift)
     }
@@ -39,22 +43,25 @@ struct CompanionView: View {
         if !model.bubble.isEmpty {
             VStack(spacing: 0) {
                 card {
+                    // Hugs its text: wraps up to a max width, grows vertically to
+                    // fit — no fixed box. Scrolls only when an answer is very long.
                     ScrollView {
                         Text(model.bubble)
                             .font(.system(size: 13.5))
                             .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: 280, alignment: .leading)
                             .textSelection(.enabled)
                             .lineSpacing(2.5)
                     }
-                    .frame(maxHeight: 150)
+                    .frame(maxHeight: 220)
+                    .fixedSize(horizontal: true, vertical: true)
                 }
-                // speech-bubble tail pointing down toward the goddess
-                DownTriangle()
-                    .fill(.ultraThinMaterial)
-                    .frame(width: 22, height: 11)
-                    .offset(y: -1)
+                DownTriangle().fill(.ultraThinMaterial).frame(width: 22, height: 11).offset(y: -1)
             }
+            .frame(maxWidth: .infinity)            // center the content-sized bubble
+            .contentShape(Rectangle())
+            .onTapGesture { model.clickOrb() }      // tap Muse's message to reply
         } else if model.orbState == .thinking {
             card { HStack { TypingIndicator(color: violet); Spacer() } }
         }
@@ -91,6 +98,7 @@ struct CompanionView: View {
                 .textFieldStyle(.plain)
                 .font(.system(size: 13.5))
                 .lineLimit(1...6)
+                .focused($inputFocused)
                 .onSubmit { model.submit() }
 
             Button(action: { model.submit() }) {
