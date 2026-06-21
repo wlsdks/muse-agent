@@ -1,8 +1,36 @@
 import { describe, expect, it } from "vitest";
 
 import { MUSE_TAGLINE } from "./muse-identity.js";
-import { createProgram, museQuickstartHelp } from "./program.js";
+import { createProgram, formatUnknownCommand, museQuickstartHelp } from "./program.js";
 import type { ProgramIO } from "./program.js";
+
+describe("formatUnknownCommand — typo nudge vs discovery on-ramp", () => {
+  const known = ["chat", "ask", "status", "today", "remember", "setup", "calendar", "recall", "doctor"];
+
+  it("nudges 'Did you mean' for a near-miss typo (no popular dump)", () => {
+    const out = formatUnknownCommand("statuss", known);
+    expect(out).toContain("error: unknown command 'statuss'");
+    expect(out).toContain("Did you mean 'muse status'?");
+    expect(out).not.toContain("Popular commands:");
+  });
+
+  it("offers a Popular-commands discovery on-ramp when nothing is close", () => {
+    const out = formatUnknownCommand("zqxwv", known);
+    expect(out).toContain("error: unknown command 'zqxwv'");
+    expect(out).not.toContain("Did you mean");
+    expect(out).toContain("Popular commands:");
+    expect(out).toContain("muse chat");
+    expect(out).toContain("muse status");
+  });
+
+  it("only names commands that exist in the live registry (no fabricated command)", () => {
+    // a registry missing most populars → the hint lists only the present ones
+    const out = formatUnknownCommand("zqxwv", ["ask", "doctor"]);
+    expect(out).toContain("muse ask");
+    expect(out).not.toContain("muse chat");   // 'chat' not registered here
+    expect(out).not.toContain("muse status");
+  });
+});
 
 describe("MUSE_TAGLINE (first-screen identity)", () => {
   it("states the learns-you, local-first identity rather than a generic label", () => {

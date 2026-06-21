@@ -669,13 +669,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       program.outputHelp();
       return;
     }
-    const known = listAllCommandNames(program);
-    const suggestion = closestCommandName(attempted, known) ?? uniqueCommandPrefix(attempted, known);
-    io.stderr(`error: unknown command '${attempted}'\n`);
-    if (suggestion) {
-      io.stderr(`Did you mean 'muse ${suggestion}'?\n`);
-    }
-    io.stderr("Run `muse --help` for the list of commands.\n");
+    io.stderr(formatUnknownCommand(attempted, listAllCommandNames(program)));
     process.exitCode = 1;
   });
 
@@ -712,6 +706,35 @@ export function uniqueCommandPrefix(input: string, names: readonly string[]): st
   if (prefix.length < 2) return undefined;
   const matches = names.filter((name) => name.toLowerCase().startsWith(prefix));
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+// The daily-driver + onboarding commands a new user most likely wants.
+// Filtered against the LIVE registry before display, so the discovery
+// hint can only ever name a command that actually exists (fabrication 0).
+const POPULAR_COMMANDS = ["chat", "ask", "status", "today", "remember", "setup"] as const;
+
+/**
+ * The stderr block for an unknown `muse <x>`. A close/prefix match gets a
+ * "Did you mean" nudge; when nothing is close (a real typo / a new user
+ * guessing), a bare "unknown command" + "run --help" (which dumps 100+
+ * commands) is a dead end — so surface a short list of POPULAR commands
+ * (intersected with the real registry) as a discovery on-ramp. Pure +
+ * exported so the guidance is gradeable without spawning the CLI.
+ */
+export function formatUnknownCommand(attempted: string, known: readonly string[]): string {
+  const suggestion = closestCommandName(attempted, known) ?? uniqueCommandPrefix(attempted, known);
+  const lines = [`error: unknown command '${attempted}'`];
+  if (suggestion) {
+    lines.push(`Did you mean 'muse ${suggestion}'?`);
+    lines.push("Run `muse --help` for the list of commands.");
+  } else {
+    const popular = POPULAR_COMMANDS.filter((name) => known.includes(name));
+    if (popular.length > 0) {
+      lines.push(`Popular commands: ${popular.map((name) => `muse ${name}`).join(" · ")}`);
+    }
+    lines.push("Run `muse --help` for the full list of commands.");
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 
