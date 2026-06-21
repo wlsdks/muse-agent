@@ -73,7 +73,7 @@ ratchet: (model+autoconfigure, adapter-wiring) 2/7 (fire 2 num_batch throughput 
   형제-감사: num_predict를 fire-6 doctor museSpeedEnvCheck에 노출 → backlog ◦(focused 유지차 defer). 어댑터 옵션 형제(num_ctx/num_batch/keep_alive)는 이미 디폴트 보유 — num_predict가 유일한 무-디폴트 폭주 노브였음.
 lesson: generate() 콜사이트를 "maxOutputTokens 안 건다"고 grep만 보고 단정하지 말 것 — 각 콜의 인자를 실제로 읽어 확인하라(이번엔 background 루프 전부 cap돼 있었음). 진짜 무제한은 런타임 defaults가 비어있는 메인 경로였다. 모티베이션도 grounding 대상이다.
 
-## fire 8 · 2026-06-21 · local-speed · <commit>
+## fire 8 · 2026-06-21 · local-speed · 5971e7ae
 meta: value-class=micro-fix · pkg=apps/cli · kind=doctor-discoverability · verdict=PASS · firesSinceDrill=8
 ratchet: (cli, doctor-discoverability) 2/8 (fire 6 num_batch, fire 8 num_predict) · fabrication 0 · advisory-only 무런타임변경
 - 무엇: fire-6 `museSpeedEnvCheck`/`readMuseSpeedEnv`에 `MUSE_OLLAMA_NUM_PREDICT`(fire-7 생성캡) 추가 — 이제 doctor가 Muse 속도 env 4종(num_batch/num_ctx/keep_alive/num_predict) 모두 보고. 일관성 수정.
