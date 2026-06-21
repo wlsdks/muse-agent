@@ -5,7 +5,7 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 44 · 2026-06-21 · skill v2.0 · <commit> (run_command silent-truncation flag — model never reads a cut log as complete)
+## fire 44 · 2026-06-21 · skill v2.0 · 9aa8ef28 (run_command silent-truncation flag — model never reads a cut log as complete)
 meta: value-class=new-capability · pkg=@muse/tools · kind=runner-output-truncation-integrity · verdict=PASS · firesSinceDrill=7
 ratchet: testFiles +0 files / +3 cases (cap shortens→truncated true; cap larger→false; runner truncated=true preserved) · fabrication 0 · @muse/tools 92 pass/1 skip · pnpm check exit 0 · lint 0/0 · Ollama DOWN (evals skip) · ★JUDGE-DRILL due fire 46 (consecutive allPASS will hit 8)
 - 무엇: run_command 도구(`runner.ts` createRustRunnerTool.execute)가 모델-지정 `maxOutputBytes`로 stdout/stderr를 다시 slice하면서 `...response`로 `truncated`를 그대로 펴서, cap이 출력을 잘랐는데 러너 자신은 안 잘랐을 때 `truncated`가 false로 남음 → 모델이 잘린 로그를 완전한 것으로 읽고 오결론(예: 잘린 로그로 "테스트 통과"). FIX: `capTruncated = sliced.length < original.length` 계산해 `truncated: response.truncated || capTruncated`. 진짜 true를 false로 뒤집지 않음(monotone).
