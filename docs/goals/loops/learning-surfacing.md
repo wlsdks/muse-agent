@@ -31,3 +31,13 @@ ratchet: testFiles +0 (human-formatters.test +2 cases) · @muse/cli 245 files/28
 - **왜**: fire 1·2의 @muse/memory 결정론 토대를 실제 화면으로. 정체성 "Learns you, not the world."의 첫 가시적 증거 — 그것도 무근거 주장은 코드가 못 내보내는 채로.
 - **리뷰지점**: local/file 경로 한정(factHistory 있는 곳; API 경로는 부재=정직, 서버측 factHistory 미populate). 섹션은 8B 무관 순수 project→render. surfaces 루프가 commands-memory.ts는 안 만짐(today만) → 충돌 회피 타깃.
 - **리스크**: 없음 — 기존 memory-show 동작(facts/prefs/veto/goal/topics) 무변, 빈/부재 시 헤더 생략(false-header 테스트), 독립 Opus ④b judge가 전체 cli 2861 + mutation 재확인 PASS.
+
+## fire 4 · 2026-06-21 · skill v2.1.0 · 8cf59bcb
+meta: value-class=new-capability · pkg=@muse/memory · kind=learned-summary · verdict=PASS · firesSinceDrill=4 · firesSinceMainMerge=3(fire3 main-merge가 race에서 밀림; 이 fire에서 누적 재시도)
+ratchet: testFiles +0 (recently-learned.test +4 cases) · @muse/memory 519 green · lint clean · fabrication 0
+
+- **무엇**: `summarizeRecentlyLearned(items)` 신규 — `status`/`today` 같은 공간제약 표면용 **컴팩트 1줄**(최근 인용 학습 1건 + `(+N more)`). `renderRecentlyLearnedLines` 재사용 → forget-filter+citation 상속, forgotten은 count도 안 부풀림. 비면 undefined.
+- **왜**: 풀 리스트(memory show, fire 3)가 안 맞는 좁은 표면을 다음 fire가 한 줄로 surface하도록 unblock. 컴팩트도 실제 출처를 가리킴.
+- **리뷰지점**: 순수. head-or-undefined + post-filter count + single/many 분기 = render엔 없는 컴팩트 표현 정책(judge가 value 진짜로 확인). surfaces 0겹침(@muse/memory leaf).
+- **리스크**: 없음 — additive, 519 green, lint clean, 독립 Opus ④b judge PASS.
+- **lesson**: main FF-push가 동시 ~16 루프 + grounding 훅(~1분) 때문에 반복 non-FF로 밀림 — fire 3 main-merge가 race에서 짐(브랜치 `b350718d`는 안전). 무한 재시도 대신 다음 fire로 이월(merge로 누적, 한 번에 main 적재). 근본 해결 = 머신 포화 시 동시 루프 수 줄이기(진안 판단).

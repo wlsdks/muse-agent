@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { UserMemory } from "./index.js";
-import { projectRecentlyLearned, renderRecentlyLearnedLines, type RecentlyLearnedItem } from "./recently-learned.js";
+import { projectRecentlyLearned, renderRecentlyLearnedLines, summarizeRecentlyLearned, type RecentlyLearnedItem } from "./recently-learned.js";
 
 function mem(
   partial: Partial<Pick<UserMemory, "facts" | "factHistory">>
@@ -116,5 +116,47 @@ describe("renderRecentlyLearnedLines", () => {
 
   it("returns [] for no items", () => {
     expect(renderRecentlyLearnedLines([])).toEqual([]);
+  });
+});
+
+describe("summarizeRecentlyLearned", () => {
+  function item(over: Partial<RecentlyLearnedItem>): RecentlyLearnedItem {
+    return {
+      key: "home_city",
+      currentValue: "Busan",
+      previousValue: "Seoul",
+      replacedAt: new Date("2026-06-21T00:00:00Z"),
+      kind: "contradict",
+      source: 'updated from "Seoul" on 2026-06-21',
+      ...over
+    };
+  }
+
+  it("returns undefined when nothing is currently surfaced", () => {
+    expect(summarizeRecentlyLearned([])).toBeUndefined();
+    // an item whose fact was forgotten is filtered out by the render layer
+    expect(summarizeRecentlyLearned([item({ currentValue: undefined })])).toBeUndefined();
+  });
+
+  it("returns the single cited line with no count when there is exactly one", () => {
+    expect(summarizeRecentlyLearned([item({})])).toBe('home city: Busan (updated from "Seoul" on 2026-06-21)');
+  });
+
+  it("returns the most-recent cited line plus a (+N more) count", () => {
+    const out = summarizeRecentlyLearned([
+      item({ key: "home_city", currentValue: "Busan", source: "s1" }),
+      item({ key: "role", currentValue: "founder", source: "s2" }),
+      item({ key: "pet", currentValue: "dog", source: "s3" })
+    ]);
+    expect(out).toBe("home city: Busan (s1) (+2 more)");
+  });
+
+  it("a forgotten fact does not inflate the (+N more) count", () => {
+    const out = summarizeRecentlyLearned([
+      item({ key: "home_city", currentValue: "Busan", source: "s1" }),
+      item({ key: "pet", currentValue: undefined, source: "s2" }),
+      item({ key: "role", currentValue: "founder", source: "s3" })
+    ]);
+    expect(out).toBe("home city: Busan (s1) (+1 more)");
   });
 });

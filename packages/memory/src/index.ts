@@ -571,6 +571,6 @@ export {
 // Deterministic "what Muse recently learned about you" projection over the
 // append-only factHistory (learning-surfacing). Code — not the model — selects
 // what to surface, and every item cites its recorded supersession.
-export { projectRecentlyLearned, renderRecentlyLearnedLines, type RecentlyLearnedItem } from "./recently-learned.js";
+export { projectRecentlyLearned, renderRecentlyLearnedLines, summarizeRecentlyLearned, type RecentlyLearnedItem } from "./recently-learned.js";
 
 
