@@ -34,6 +34,8 @@ struct UIStrings {
                                 "Chat, today, tasks, calendar, notes, memory & tools — no terminal needed.") }
     var sectionAppearance: String { t("외형", "Appearance") }
     var sectionVoice: String { t("음성", "Voice") }
+    var sectionStartup: String { t("시작", "Startup") }
+    var launchAtLogin: String { t("로그인 시 Muse 자동 실행", "Launch Muse at login") }
     var sectionPrivacy: String { t("프라이버시", "Privacy") }
     var sectionAdvanced: String { t("고급", "Advanced") }
     var rowCharacter: String { t("캐릭터", "Character") }
