@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ evening-recap derived-context neutralization: gatherEveningRecap wraps all 14 untrusted free-text segments (belief value/key, titles, names, topics) with neutralizeInjectionSpans+escapeSystemPromptMarkers before the digest is sent off-box — closes the OWASP ASI06/ASI07 summary-exfil hole (doctrine P5) — context-strategy fire 21 (detail in docs/goals/loops/context-strategy.md)
+
 - ✓ stale-fact caution propagated to the chat persona (buildMusePersona staleKeys + chat-repl staleFactKeys) — full ask↔chat mark-parity (contested/provisional/stale); fire-16 deferred chat-side done (doctrine P3 #3) — context-strategy fire 20 (detail in docs/goals/loops/context-strategy.md)
 
 - ✓ conversation-trim summary overshoot fixed: trimConversationMessages reconciles against the HARD budget after inserting the compaction summary (re-trims removable history; summary + last user turn never dropped) — context-strategy fire 19 (detail in docs/goals/loops/context-strategy.md)
