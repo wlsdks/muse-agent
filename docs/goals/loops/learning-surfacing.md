@@ -153,7 +153,7 @@ ratchet: testFiles +1 (brief-learned.test.ts NEW, 3 cases) · @muse/cli 2895 gre
 - **리뷰지점**: 기존 brief beat 패턴(`try{read→select→format→stdout}catch{}`) 그대로. cited text는 escape+neutralize(주입 승격 방지, `<<end>>` 테스트). forgotten 제외 상속. `userMemory` 재사용(중복 read 없음).
 - **리스크**: 없음 — additive beat, cli 2895 green, 독립 Opus ④b judge가 consume+citation+security+무회귀 재확인 PASS.
 
-## fire 17 · 2026-06-21 · skill v2.1.0 · pending
+## fire 17 · 2026-06-21 · skill v2.1.0 · 1a73e5fc
 meta: value-class=new-capability · pkg=@muse/memory+@muse/cli · kind=source-attribution · verdict=PASS · firesSinceDrill=7 · firesSinceMainMerge=3→0(main FF-merge this fire)
 ratchet: testFiles +0 (belief-provenance-store.test +3) · @muse/memory 572 green · @muse/cli recap 33 green · lint clean · fabrication 0
 
