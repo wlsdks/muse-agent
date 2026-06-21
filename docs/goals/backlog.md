@@ -117,7 +117,7 @@
   - ✓ reflections API — read-only `GET /api/self-improvement/reflections`(shapeReflections: listReflections recency정렬·sourceCount=sourceIds.length grounding신호, autoconf resolveReflectionsFile) — surfaces fire 69 (★JUDGE-DRILL: judge#1이 sourceCount필드-conflate FAIL→fix→judge#2 PASS) (`c5bf5484`); NEXT=웹 reflections 섹션
   - ✓ web reflections 섹션 — `SelfImprovementView`에 fire 69 reflections API 소비(insight·supportCount·sourceCount, summarizeReflections grounded=sourceCount>0) — surfaces fire 70 (`feb85e9e`); 자기강화 콘솔 3 read 섹션 완성
 - ✓ FIXED (cross-loop 회귀): `packages/memory/recently-learned.ts:127` raw NUL(0x00) 3개 → ` `(byte-hygiene 게이트 복구, 전 루프 unblock) — surfaces fire 70
-  - ◦ CLI resolveReflectionsFile 통일(형제) — autoconf 공유본으로(skills resolver 통일과 묶음 가능)
+  - ✓ CLI resolver 통일(형제) — `resolveAuthoredSkillsDir`/`resolveSkillRewardsFile`/`resolveReflectionsFile` 모두 autoconfigure 공유본 위임(하드코딩 리터럴 제거, gate-asymmetry 청산) — surfaces fire 71
   - ◦ web 자기강화 대시보드 (나머지) — eval 스코어보드 *읽기* (dev-INFRA라 개인 콘솔 노출 여부 재검토; weaknesses+playbook+reflections done)
   - ◦ web 스킬 컨트롤 — skills 목록 + reward/curate/author (신규 API + 웹):
     - ✓ skills 목록 API — read-only `GET /api/self-improvement/skills` (shapeSkills: authored 스킬+reward 병합, reward DESC·name ASC, avoided=isSkillAvoided; autoconfigure `resolveSkillRewardsFile` 신설) — surfaces fire 62 (`cffe2d94`); NEXT=웹 뷰가 이 API 소비(새 Skills 뷰/nav)
@@ -125,7 +125,7 @@
     - ✓ skill reward API (상태변경) — `POST /api/self-improvement/skills/:name/reward` (parseRewardDelta·auth·adjustSkillReward, 무효→400 no-op, smoke 누적+부작용0 증명) — surfaces fire 64, 첫 웹콘솔 write 라우트 (`e55867d7`); NEXT=Skills 뷰에 thumbs up/down 버튼이 이 라우트 호출
     - ✓ web Skills reward 버튼 — `SkillsView` ▲/▼ 버튼이 fire 64 POST reward 라우트 호출(useMutation+invalidate `["skills"]`); canAdjustReward로 [-5,5] 경계 no-op 차단 — surfaces fire 65 (`0e082ec8`); 스킬 컨트롤 read+write end-to-end 완성
     - ◦ web Skills curate/author — 스킬 활성/비활성·세션에서 스킬 작성(authorSkillsFromSession 기존) 웹 노출 (상태변경, 후속)
-    - ◦ CLI 스킬 resolver 통일(형제) — `apps/cli/commands-skills.ts`의 private `resolveAuthoredSkillsDir`/`resolveSkillRewardsFile`를 autoconfigure 공유본으로 통일(commands-skills·commands-learned·chat-ink 3파일 import 변경), gate-asymmetry 제거
+    - ✓ CLI 스킬 resolver 통일(형제) — autoconfigure 공유본 위임 완료 — surfaces fire 71
   - ◦ web 설정/daemon 토글 — proactivity·episodic·skill학습·watch daemon on/off:
     - ✓ daemon-flags read API — `GET /api/settings/daemon-flags`(shapeDaemonFlags: 6 플래그 effective on/off, parseBoolean 데몬과 동일 resolver, settings-routes.ts) — surfaces fire 67 (`668c4df5`); NEXT=웹 Settings 뷰가 소비
     - ✓ web Settings 데몬 카드 — `SettingsView`에 "Background daemons" 카드(fire 67 daemon-flags API 소비, label+on/off 배지, summarizeFlags "N of M enabled") — surfaces fire 68 (`2433dbfb`); 설정 콘솔 읽기-side 완성

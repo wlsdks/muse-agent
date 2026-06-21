@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { reflectionsToStore, renderReflections } from "./commands-reflections.js";
+import { reflectionsToStore, renderReflections, resolveReflectionsFile } from "./commands-reflections.js";
 import type { StoredReflection } from "@muse/mcp";
+
+describe("resolveReflectionsFile", () => {
+  it("honours MUSE_REFLECTIONS_FILE env override", () => {
+    expect(resolveReflectionsFile({ MUSE_REFLECTIONS_FILE: "/tmp/r.json" })).toBe("/tmp/r.json");
+  });
+
+  it("defaults to ~/.muse/reflections.json when env key is absent", () => {
+    expect(resolveReflectionsFile({}).endsWith("/.muse/reflections.json")).toBe(true);
+  });
+});
 
 describe("renderReflections", () => {
   it("shows the empty state with a refresh hint", () => {
