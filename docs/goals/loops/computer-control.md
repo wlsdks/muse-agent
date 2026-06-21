@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 34 · 2026-06-21 · skill v2.0 · <commit-pending> (run_command timeout → actionable message; fire-23 spawn-error sibling)
+## fire 34 · 2026-06-21 · skill v2.0 · f349d50d (run_command timeout → actionable message; fire-23 spawn-error sibling)
 meta: value-class=new-capability · pkg=crates/runner · kind=reliability-nudge · verdict=PASS · firesSinceDrill=6
 ratchet: testFiles 1072→1072 (+2 cargo: helper + E2E timeout; TS 무변경) · fabrication 0 · crates/runner cargo 12 · @muse/tools 격리 289(무회귀) · pnpm check exit 0 · lint clean · Ollama DOWN(30c 보류)
 - 무엇: Rust runner가 타임아웃 시 `{timed_out:true, error:None}` — bare flag, 메시지 없음(12B가 놓침). FIX(`describe_timeout`): timeout 경로 `error`에 `"timed out after {ms}ms, killed — retry with larger timeoutMs"`(ms=effective clamped). 와이어링 `error: if timed_out {Some} else {None}`; TS는 error passthrough(무편집).
