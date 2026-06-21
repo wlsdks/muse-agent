@@ -223,3 +223,43 @@ is untrusted model output) → guard passes malformed elements through.
 
 RISK: low — only DROPS poisoned writes (never adds), user-stated directives
 survive (calibrated), malformed-robust, mutation-proven at helper + wiring, Opus ④ PASS.
+
+## fire 8 · 2026-06-21 · poisoned-source · (scout + decompose — no code shipped)
+
+meta: value-class=scout/decompose · pkg=N/A (discovery fire) · kind=gap-scout · verdict=NO-SHIP(decompose) · firesSinceDrill=8
+
+ratchet: testFiles +0 · fabrication 0 · MERGE→MAIN n/a (fire 8 not ÷3)
+
+WHAT: spent the fire on an Opus gap-scout (codegraph + WebSearch) after confirming
+the VISION surface mature (gateVisionAction: independent-evidence two-pass,
+required-unverified blocks, optional dropped+re-derived, path=sanitized slug from
+gated title). The scout (independently citing MemoryGraft arXiv:2512.16962 +
+LTM-security survey arXiv:2604.16548) found the LAST untrusted→memory laundering
+path: the EPISODE store. The `trusted:false` bit propagated to feeds (fire 2),
+tool output, and veto/goal (fire 7) but NOT to episodes — a session whose
+assistant turns repeated tool/feed-grounded content is summarised and stored with
+no trust field, then surfaced next session as TRUSTED grounding evidence (so the
+untrusted-only cue never fires on it).
+
+WHY (decompose, no rush): VERIFICATION showed the scout's "1 fire" under-counted
+the threading depth — the trust signal isn't reliably recoverable from transcript
+text at capture (chat tool/feed citation format is inconsistent; fires 4-5
+stripped cues from persisted turns), and the bit must thread
+turn→store→embedding-index→recall→cue for BOTH ask and chat. Genuinely 3-4
+components / multi-fire. This fire's budget already went to deep discovery (the
+Opus scout alone ~123k tokens), so per DECOMPOSE-ON-DEFER + loop-budget caps I
+converted the verified finding into 3 sequenced loop-sized backlog slices (EP-1
+turn-trust+store-field foundation → EP-2 ask recall threading → EP-3 chat parity)
++ a runner-up (trust-aware conflict cue), rather than rush a fragile multi-layer
+change late in budget.
+
+REVIEW POINT: ★ EP-1/2/3 in backlog are the next fires' high-value fuel (the only
+genuinely-open deterministic poisoned-source vein left, paper-grounded). All other
+surfaces (recall ask/chat, write-side memory facts/prefs/veto/goal, vision,
+proactive/reflection faithfulness) confirmed mature this fire.
+
+lesson: an Opus gap-scout that returns a "1-fire" estimate still needs
+verify-then-apply — the episode-trust slice's real cost is the trust-propagation
+threading (turn→store→index→cue), not the store field. When a scout finding is
+multi-layer, DECOMPOSE into sequenced slices the same fire rather than starting a
+fragile partial; the discovery budget is well spent if it yields sequenced fuel.
