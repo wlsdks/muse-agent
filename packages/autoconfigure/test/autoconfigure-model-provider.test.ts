@@ -221,4 +221,19 @@ describe("createModelProvider — Ollama base URL is honoured", () => {
     expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2", MUSE_OLLAMA_NUM_PREDICT: "3.5" }))
       .not.toHaveProperty("num_predict");
   });
+
+  it("maps MUSE_OLLAMA_NUM_THREAD / MUSE_OLLAMA_NUM_GPU onto the wire (num_gpu=0 = CPU-only is kept), omits unset/junk", async () => {
+    expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2", MUSE_OLLAMA_NUM_THREAD: "8" }))
+      .toMatchObject({ num_thread: 8 });
+    // num_gpu=0 (CPU-only) is a valid opt-in — must reach the wire, not be dropped
+    expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2", MUSE_OLLAMA_NUM_GPU: "0" }))
+      .toMatchObject({ num_gpu: 0 });
+    expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2", MUSE_OLLAMA_NUM_GPU: "33" }))
+      .toMatchObject({ num_gpu: 33 });
+    const none = await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2" });
+    expect(none).not.toHaveProperty("num_thread");
+    expect(none).not.toHaveProperty("num_gpu");
+    expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2", MUSE_OLLAMA_NUM_THREAD: "x" }))
+      .not.toHaveProperty("num_thread");
+  });
 });

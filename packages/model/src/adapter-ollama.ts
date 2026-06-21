@@ -48,6 +48,8 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   private readonly numCtx: number;
   private readonly numBatch: number | undefined;
   private readonly numPredict: number | undefined;
+  private readonly numThread: number | undefined;
+  private readonly numGpu: number | undefined;
   private static traceSeq = 0;
 
   constructor(options: OllamaProviderOptions = {}) {
@@ -77,6 +79,15 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     // background/internal callers already pass an explicit cap and so win.)
     this.numPredict = options.numPredict !== undefined && Number.isFinite(options.numPredict) && options.numPredict > 0
       ? Math.trunc(options.numPredict)
+      : undefined;
+    // Opt-in CPU thread count; unset/invalid → undefined → Ollama auto-detects.
+    this.numThread = options.numThread !== undefined && Number.isFinite(options.numThread) && options.numThread > 0
+      ? Math.trunc(options.numThread)
+      : undefined;
+    // Opt-in GPU layer count; `0` is VALID (CPU-only), so the guard is `>= 0`
+    // — unset/non-finite/negative → undefined → Ollama auto-detects.
+    this.numGpu = options.numGpu !== undefined && Number.isFinite(options.numGpu) && options.numGpu >= 0
+      ? Math.trunc(options.numGpu)
       : undefined;
   }
 
@@ -378,6 +389,8 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         // memory + RAG + tasks + calendar) routinely exceeds that.
         num_ctx: this.numCtx,
         ...(this.numBatch !== undefined ? { num_batch: this.numBatch } : {}),
+        ...(this.numThread !== undefined ? { num_thread: this.numThread } : {}),
+        ...(this.numGpu !== undefined ? { num_gpu: this.numGpu } : {}),
         ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
         // An explicit per-request maxOutputTokens always wins; otherwise the
         // opt-in provider default caps an unbounded generate; else omitted.
