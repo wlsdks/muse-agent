@@ -5,6 +5,36 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 51 · 2026-06-21 · skill v2.0 · 232f04e9 (run-intent execute-tool exposure reserve — run_command no longer starved by the file cluster; fire-4 sibling)
+meta: value-class=new-capability · pkg=@muse/agent-core · kind=tool-filter/exposure-reserve · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles +0 / +2 cases (run-intent reserve positive+no-over-exposure) · fabrication 0 · @muse/agent-core 2573 · tool-filter 37 · pnpm check exit 0 · lint 0/0 · Ollama UP · ★main ff-merge(fire 51=×3, delivers 49/50/51)
+- 측정: edit-run-verify 재측정 — FAIL이나 **test-passes=true**(버그 수정됨: sum a-b→a+b, file_read→read→edit). model-ran-test=false: 모델이 node_run/muse.skills.run만 시도, run_command 미선택. 코드 정독 결론: capToolsByRelevance에서 mandatory≥cap이면 optional은 relevantReserve(top 3)만 생존, FILE_PATH 부스트로 file 클러스터 3개가 reserve 독점 → **run_command(system/execute, rank 4) DROP** → 모델이 verify용 runner를 선택 불가. fire 4가 file 클러스터 reserve를 만든 것의 execute-tool 형제 갭.
+- 무엇: RUN_INTENT_RE(run/test/build/execute/verify/lint, EN+KO) 추가. run-intent 프롬프트면 relevantReserve에 더해 **top relevant execute-risk optional 도구(run_command) 1개 추가 reserve**. "파일 고치고 테스트 실행" 작업이 file 클러스터+runner 둘 다 유지.
+- 왜: 측정된 starvation(코드로 확증)·on-theme(verify 단계)·결정론·다른 (pkg,kind)=tool-filter/exposure-reserve(fires 47-50 not-exposed 게이트와 다른 메커니즘, fire-50 judge 노트 준수). 가드: execute-risk+score>0+중복방지, 최대 +1, run-intent 없으면 미작동.
+- 리뷰지점: mutation-first(runReserve 무력화 시 정확히 positive 테스트 RED, no-over-exposure GREEN). 독립 Opus ④b judge가 Set-union 비-inert·무회귀(union은 추가만)·precision 가드·band 영향 pre-existing·결정론·다른표면 검증 → VERDICT PASS.
+- 리스크: OUTCOME flip 미확정(run_command 노출은 됐으나 12B 선택은 stochastic — exposure starvation은 코드로 제거, 선택은 모델-행동). 정직. RUN_INTENT_RE 광범위하나 cap-초과+execute+score>0 삼중가드로 무해. ⑤c로 49/50/51 main 전달.
+lesson: edit-run-verify FAIL의 진짜 원인은 모델-행동이 아니라 결정론적 EXPOSURE starvation(run_command가 cap에 밀려 노출 안 됨) — 측정+코드정독이 "모델이 게으르다"는 오진을 막음. fire-4 reserve는 file만 보호했고 execute 형제를 놓쳤음(형제-감사 교훈).
+
+## fire 50 · 2026-06-21 · skill v2.0 · 7106cab3 (★eval:multifile-fix FAIL→PASS validated; + command-as-name → execute-tool recovery for edit-run-verify)
+meta: value-class=new-capability+measure · pkg=@muse/agent-core · kind=not-exposed-recovery(command-name) · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles +0 / +2 cases (command-name positive+negative integration) · fabrication 0 · @muse/agent-core 2571 · agent-runtime 135 · pnpm check @muse/runtime-settings SIGABRT(격리 통과, 무관) · lint 0/0 · Ollama UP · ★eval:multifile-fix PASS (2/2 관측 this fire, 직전까지 STABLE FAIL)
+- ★측정 마일스톤: Ollama up 재측정 — **eval:multifile-fix가 PASS**(2/2 관측: file_read→file_read→file_edit(a+b→a*b), test-passes=true). 다수 fire STABLE FAIL이었음 → fires 47(not-exposed 제안)+49(repetition nudge)가 멀티스텝 신뢰성을 실제로 끌어올림(라이브 검증).
+- 무엇: 그러나 eval:edit-run-verify는 FAIL — 새 구체 트레이스: 12B가 **명령행 전체를 tool 이름으로** 방출(`node --exec "/var/.../sum.test.mjs"`). fire-47 token-overlap은 {node,exec,...} vs {run,command} 무교집합이라 미스 → 맨-에러 dead-end. FIX(fire-47 형제-완성): not-exposed 게이트에서 이름이 command-shaped(공백 포함=식별자 아님)이고 active execute 도구가 있으면 "이름은 식별자여야 한다 — 명령은 '<run_command>'의 인자로" 안내.
+- 왜: 측정된 dead-end(edit-run-verify FAIL 원인)·on-theme·결정론·STABLE-FAIL eval flip 가능. fire 47이 node_run(공유토큰 run)은 잡고 command-as-name은 놓친 형제 갭.
+- 리뷰지점: mutation-first(commandShaped=false면 정확히 command-name 테스트 RED). 독립 Opus ④b judge가 wiring 비-inert·trigger 정밀(공백=비식별자, !suggestion 게이트)·fabrication0·무회귀 검증 → VERDICT PASS. judge 노트: agent-core 우물 잘 팠다, 다음 fire는 다른 (pkg,kind).
+- 리스크: edit-run-verify OUTCOME flip 미확정(stochastic; fix는 dead-end 닫음, 이후 성공은 모델-행동). 정직. agent-core 4연속(47-50) — 다음 fire 다른 표면. fire 50은 ×3 아님 → main 머지 없음.
+lesson: 측정이 단계적 진전을 검증+다음 갭 발굴 — multifile-fix는 47/49로 FAIL→PASS, edit-run-verify는 command-as-name이라는 새 형제 갭 노출. 같은 메커니즘(not-exposed 게이트)의 형제-완성은 정당하나 4연속 후엔 (pkg,kind) 전환.
+
+## fire 49 · 2026-06-21 · skill v2.0 · 12b399cf (measure→STEP-REPETITION discovery→deterministic dup-call nudge; MAST arXiv:2503.13657)
+meta: value-class=new-capability · pkg=@muse/agent-core · kind=step-repetition-guard · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +0 / +1 case (execute-model-loop dup-nudge, mutation-verified) · fabrication 0 · @muse/agent-core 2569 · execute-model-loop 15 · pnpm check @muse/voice SIGABRT(격리 124/124, agent-core 무관) · lint 0/0 · Ollama UP
+- 측정 재정의: MUSE_TASK_DEBUG 트레이스가 진짜 모드를 드러냄 — "early-stop"(fire 48 추정)이 아니라 **STEP-REPETITION**: 12B가 file_read(test)→file_read(math)→file_read(test)→file_read(math)→… 동일 파일 반복 read 후 정지, 편집 0(eval의 `tools=[file_read]`가 dedup된 이름이라 반복을 가렸음). MAST(arXiv:2503.13657) 최상위 멀티-스텝 실패모드.
+- 무엇: model-loop dedup이 동일 반복 콜에 캐시 결과를 신호 없이 반환 → 모델이 같은 content 받고 무한 재read. FIX: `withRepetitionNudge` — duplicate일 때만 MODEL-FACING tool 메시지에 "동일 반복 — 다음 행동(편집/실행)하라" 1줄 추가(blocking+streaming 양 루프=형제-감사). trace/metric(executed.result) 무변경, 정적 문자열(fabrication 0).
+- 왜: 결정론·안전(re-run 루프 아님 → reflection-guard 표면 아님)·on-theme(측정된 실제 블로커)·논문근거. dedup의 write-invalidation 덕에 편집後 재read는 duplicate 아님 → 정당한 재read에 오발 0. fire 48이 미룬 invasive re-prompt 대신, 측정이 드러낸 더 안전+직접적 fix.
+- 리뷰지점: mutation-first(nudge 무력화 시 정확히 dup-nudge 테스트 RED). 독립 Opus ④b judge가 양 루프 배선·dedup 오발0·trace 무오염·fabrication0·정직성 검증 → VERDICT PASS.
+- 리스크: OUTCOME(eval flip) 미확정 — stochastic(한 run은 nudge 타깃 반복, 다른 run은 distinct 콜)·다중 실패모드·~5min/run로 1-2회 inconclusive. nudge는 delivery 증명됨(unit+mutation), 효능은 미확정(정직). fire 49는 ×3 아님 → main 머지 없음.
+lesson: 측정 깊이가 결정적 — fire 48이 `tools=[file_read]`(dedup된 이름)로 "early-stop" 추정했으나 MUSE_TASK_DEBUG 전체 트레이스가 STEP-REPETITION을 드러냄. 진단은 dedup된 요약이 아니라 RAW 트레이스로. 측정이 invasive re-prompt(위험)보다 안전+직접적 결정론 fix를 드러냄.
+
 ## fire 48 · 2026-06-21 · skill v2.0 · 07110284 (measure+DECOMPOSE: dual-eval converges on EARLY-STOP as #1 blocker; 30c decomposed, not rammed; ⑤c delivers 46/47 to main)
 meta: value-class=refactor(work-list)+measure · pkg=docs/backlog+agent-core(diagnosis) · kind=decompose-design-sensitive · verdict=N/A · firesSinceDrill=2
 ratchet: testFiles unchanged · fabrication 0 · self-eval green · eval:computer-task PASS · eval:multifile-fix FAIL(early-stop) · eval:edit-run-verify FAIL(early-stop) · Ollama UP · ⑤c main-merge(fire 48=×3, delivers 46/47)

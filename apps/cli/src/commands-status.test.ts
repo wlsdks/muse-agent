@@ -62,7 +62,7 @@ describe("readRecentlyLearnedLine", () => {
       }
     });
     const nowMs = new Date("2026-06-25T00:00:00.000Z").getTime(); // both within the 30-day window
-    expect(await readRecentlyLearnedLine(p, "stark", nowMs)).toBe('home city: Busan (updated from "Seoul" on 2026-06-21) (+1 more)');
+    expect(await readRecentlyLearnedLine(p, "stark", nowMs)).toBe('home city: Busan (changed from "Seoul" on 2026-06-21) (+1 more)');
   });
 
   it("drops a learning older than the 30-day window so status stays truthfully 'recent'", async () => {
@@ -80,7 +80,7 @@ describe("readRecentlyLearnedLine", () => {
       }
     });
     const nowMs = new Date("2026-06-25T00:00:00.000Z").getTime(); // role (Jan) is >30 days old, home_city (Jun 20) is in-window
-    expect(await readRecentlyLearnedLine(p, "stark", nowMs)).toBe('home city: Busan (updated from "Seoul" on 2026-06-20)');
+    expect(await readRecentlyLearnedLine(p, "stark", nowMs)).toBe('home city: Busan (changed from "Seoul" on 2026-06-20)');
   });
 });
 

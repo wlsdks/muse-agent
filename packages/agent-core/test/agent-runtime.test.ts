@@ -6,7 +6,7 @@ import { InMemoryExemplarRetriever, InMemoryPromptLayerRegistry } from "@muse/pr
 import { COMPACTION_SUMMARY_PREFIX, InMemoryConversationSummaryStore } from "@muse/memory";
 import { InMemoryAgentRunHistoryStore, InMemoryCheckpointStore, InMemoryHookTraceStore } from "@muse/runtime-state";
 import { GuardBlockRateMonitor } from "@muse/policy";
-import { ToolRegistry } from "@muse/tools";
+import { ToolRegistry, createDefaultToolExposurePolicy } from "@muse/tools";
 import {
   createAgentRuntime,
   createAgentCheckpointState,
@@ -1147,6 +1147,73 @@ describe("AgentRuntime", () => {
     expect(blocked?.result.status).toBe("blocked");
     expect(String(blocked?.result.output)).toContain("not exposed");
     expect(String(blocked?.result.output)).not.toContain("Did you mean");
+  });
+
+  it("points a COMMAND-LINE-shaped tool name at the active execute tool (node --exec … → run_command)", async () => {
+    // The 12B sometimes emits a whole command line AS the tool name; it shares no
+    // token with run_command so token-overlap misses it — route it to the execute tool.
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Run a local command.",
+          inputSchema: { type: "object", properties: { command: { type: "string" } }, required: ["command"] },
+          name: "run_command",
+          risk: "execute"
+        },
+        execute: executeTool
+      }
+    ]);
+    const captured: { result: { status?: string; output?: unknown }; toolCall: { id: string } }[] = [];
+    const runtime = createAgentRuntime({
+      hooks: [{ afterTool: (_ctx, toolCall, result) => { captured.push({ result: result as { status?: string; output?: unknown }, toolCall }); }, id: "cap" }],
+      maxToolCalls: 1,
+      // Expose the execute tool deterministically (no mutation-intent dependence).
+      toolExposurePolicy: createDefaultToolExposurePolicy({ allowWriteWithoutMutationIntent: true }),
+      modelProvider: createSequenceProvider([
+        { id: "tool", model: "test-model", output: "Running.", toolCalls: [{ arguments: {}, id: "tc-1", name: 'node --exec "x.mjs"' }] },
+        { id: "final", model: "test-model", output: "Done." }
+      ]),
+      toolRegistry
+    });
+
+    await runtime.run({ messages: [{ content: "run the test to verify", role: "user" }], metadata: { localMode: true, maxTools: 6 }, model: "provider/model", runId: "run-cmdname" });
+    expect(executeTool).not.toHaveBeenCalled();
+    const blocked = captured.find((e) => e.toolCall.id === "tc-1");
+    expect(blocked?.result.status).toBe("blocked");
+    expect(String(blocked?.result.output)).toContain("not a command line");
+    expect(String(blocked?.result.output)).toContain("call 'run_command'");
+  });
+
+  it("does NOT give a command-line recovery when no execute tool is active (only a read tool)", async () => {
+    const executeTool = vi.fn(() => ({ ok: true }));
+    const toolRegistry = new ToolRegistry([
+      {
+        definition: {
+          description: "Read a file.",
+          inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+          name: "file_read",
+          risk: "read"
+        },
+        execute: executeTool
+      }
+    ]);
+    const captured: { result: { status?: string; output?: unknown }; toolCall: { id: string } }[] = [];
+    const runtime = createAgentRuntime({
+      hooks: [{ afterTool: (_ctx, toolCall, result) => { captured.push({ result: result as { status?: string; output?: unknown }, toolCall }); }, id: "cap" }],
+      maxToolCalls: 1,
+      modelProvider: createSequenceProvider([
+        { id: "tool", model: "test-model", output: "Running.", toolCalls: [{ arguments: {}, id: "tc-1", name: 'node --exec "x.mjs"' }] },
+        { id: "final", model: "test-model", output: "Done." }
+      ]),
+      toolRegistry
+    });
+
+    await runtime.run({ messages: [{ content: "read a.ts", role: "user" }], model: "provider/model", runId: "run-cmdname-2" });
+    const blocked = captured.find((e) => e.toolCall.id === "tc-1");
+    expect(blocked?.result.status).toBe("blocked");
+    expect(String(blocked?.result.output)).toContain("not exposed");
+    expect(String(blocked?.result.output)).not.toContain("not a command line");
   });
 
   it("executes when the enum argument is valid (the gate only blocks out-of-vocabulary values)", async () => {

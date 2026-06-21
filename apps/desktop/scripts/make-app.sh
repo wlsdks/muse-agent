@@ -8,7 +8,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."   # → apps/desktop
 
-APP="MuseDesktop.app"
+APP="Muse.app"
 EXE="MuseDesktop"
 BUNDLE_ID="com.muse.desktop"
 
@@ -17,7 +17,7 @@ swift build -c release
 BIN="$(swift build -c release --show-bin-path)/$EXE"
 [ -x "$BIN" ] || { echo "release binary missing: $BIN" >&2; exit 1; }
 
-rm -rf "$APP"
+rm -rf "$APP" "MuseDesktop.app"   # drop the old name too
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$EXE"
 
@@ -25,6 +25,10 @@ cp "$BIN" "$APP/Contents/MacOS/$EXE"
 # goddess mascot image) into the app so Bundle.module resolves them at runtime.
 BIN_DIR="$(swift build -c release --show-bin-path)"
 for b in "$BIN_DIR"/*.bundle; do [ -e "$b" ] && cp -R "$b" "$APP/Contents/Resources/"; done
+
+# The goddess app icon (Dock / Finder / ⌘-Tab).
+[ -f AppIcon.icns ] || { echo "AppIcon.icns missing — run scripts/make-icon.sh first" >&2; exit 1; }
+cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 # SELF-CONTAINED: compile the Muse CLI into a single binary (bun runtime baked
 # in) and bundle it inside the .app, so the companion needs NO external node,
@@ -48,6 +52,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleName</key><string>Muse</string>
   <key>CFBundleDisplayName</key><string>Muse</string>
   <key>CFBundleExecutable</key><string>${EXE}</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>

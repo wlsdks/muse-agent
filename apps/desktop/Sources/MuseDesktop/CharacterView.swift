@@ -10,15 +10,9 @@ final class CharacterView: NSView {
     enum State { case idle, listening, thinking, speaking }
     enum Look { case goddess, orb, vector, pixel, harp }
 
-    /// The goddess mascot image (the README hero, transparent background),
-    /// bundled as a resource. Loaded once; nil → fall back to the orb.
-    private static let goddessImage: NSImage? = {
-        for bundle in [Bundle.module, Bundle.main] {
-            if let url = bundle.url(forResource: "muse-goddess", withExtension: "png"),
-               let img = NSImage(contentsOf: url) { return img }
-        }
-        return nil
-    }()
+    /// The goddess mascot image (the README hero, transparent background).
+    /// nil → fall back to the orb.
+    private static var goddessImage: NSImage? { MuseAssets.goddess }
 
     var state: State = .idle { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?

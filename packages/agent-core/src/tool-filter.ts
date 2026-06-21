@@ -69,6 +69,17 @@ const RELEVANT_OPTIONAL_FLOOR = 3;
 const FILE_PATH_RE = /(?:\/[\w.-]+\/[\w./-]*|[\w-]+\.(?:mjs|cjs|js|ts|tsx|jsx|py|rb|go|rs|java|kt|c|h|cpp|cc|cs|php|swift|json|ya?ml|toml|md|txt|sh|sql|html?|css|scss))/u;
 const FILE_PATH_DOMAIN_BONUS = 3;
 
+/**
+ * A RUN/VERIFY intent in the prompt — "run the test", "build", "execute it",
+ * "compile". A "fix the file AND run the test" task needs BOTH the files cluster
+ * (reserved via FILE_PATH above) AND the execute tool (run_command); without a
+ * dedicated reserve the 3-slot file cluster starves run_command, so the model
+ * fixes the bug but can never RUN to verify (observed live: eval:edit-run-verify
+ * FAILed with test-passes=true but model-ran-test=false). The execute-tool
+ * sibling of the FILE_PATH file-cluster reserve (fire 4).
+ */
+const RUN_INTENT_RE = /\b(?:run|runs|running|execute|exec|test|tests|build|builds|compile|verify|lint|typecheck)\b|실행|테스트|빌드|컴파일|검증/iu;
+
 export class DefaultToolFilter implements ToolFilter {
   private readonly extraKeywords: Readonly<Record<string, readonly string[]>>;
   private readonly maxTools: number;
@@ -212,7 +223,22 @@ export function capToolsByRelevance(
     .filter((tool) => scoreFor(tool.definition) > 0)
     .slice(0, RELEVANT_OPTIONAL_FLOOR);
 
-  const survivors = new Set<MuseTool>([...mandatory, ...rankedOptional.slice(0, remaining), ...relevantReserve]);
+  // On a RUN/VERIFY task, ALSO reserve the top relevant execute tool (run_command)
+  // so the file cluster doesn't starve the runner the task needs to verify — the
+  // execute-tool sibling of the file-cluster reserve above.
+  const runReserve = RUN_INTENT_RE.test(context.userMessage)
+    ? rankedOptional.find((tool) =>
+        tool.definition.risk === "execute" &&
+        scoreFor(tool.definition) > 0 &&
+        !relevantReserve.includes(tool))
+    : undefined;
+
+  const survivors = new Set<MuseTool>([
+    ...mandatory,
+    ...rankedOptional.slice(0, remaining),
+    ...relevantReserve,
+    ...(runReserve ? [runReserve] : [])
+  ]);
   return tools.filter((tool) => survivors.has(tool));
 }
 
