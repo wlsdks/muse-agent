@@ -4,7 +4,7 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
-## fire 14 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · <pending-commit>
+## fire 14 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · 25f5f6d1
 meta: value-class=wiring(gap-fix) · pkg=@muse/cli · kind=json-serialization · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles +0 (cases added to commands-ask.test.ts) · fabrication 0 · eval:orchestration/decomposition PASS · DIVERSE (cli/json-serialization, not multi-agent package) · ★found a REAL gap the fire-11/13 exhaustion claim MISSED
 
