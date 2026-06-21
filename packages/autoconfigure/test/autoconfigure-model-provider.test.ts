@@ -186,4 +186,30 @@ describe("createModelProvider — Ollama base URL is honoured", () => {
     expect(await capturedGenerateUrl({ MUSE_MODEL: "ollama/llama3.2" }))
       .toBe("http://127.0.0.1:11434/api/chat");
   });
+
+  async function capturedGenerateOptions(env: Record<string, string>): Promise<Record<string, unknown>> {
+    let options: Record<string, unknown> = {};
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      options = (JSON.parse(String(init?.body)) as { options: Record<string, unknown> }).options;
+      return new Response(JSON.stringify({ message: { content: "ok" }, model: "m" }), { status: 200 });
+    }) as typeof globalThis.fetch;
+    try {
+      const provider = createModelProvider({ MUSE_LOCAL_ONLY: "false", ...env });
+      await provider?.generate({ messages: [{ content: "hi", role: "user" }], model: "ollama/llama3.2" });
+    } finally {
+      globalThis.fetch = original;
+    }
+    return options;
+  }
+
+  it("maps MUSE_OLLAMA_NUM_BATCH onto the wire `num_batch`, and omits it when unset", async () => {
+    expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2", MUSE_OLLAMA_NUM_BATCH: "1024" }))
+      .toMatchObject({ num_batch: 1024 });
+    expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2" }))
+      .not.toHaveProperty("num_batch");
+    // a junk value parses to 0 → adapter rejects (>0) → omitted, not a broken option on the wire
+    expect(await capturedGenerateOptions({ MUSE_MODEL: "ollama/llama3.2", MUSE_OLLAMA_NUM_BATCH: "16x" }))
+      .not.toHaveProperty("num_batch");
+  });
 });

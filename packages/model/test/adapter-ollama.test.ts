@@ -287,6 +287,30 @@ describe("OllamaProvider — native /api/chat request wire shape", () => {
     expect((lastBody().options as { num_ctx: number }).num_ctx).toBe(32768);
   });
 
+  it("passes num_batch through when set (opt-in prompt-eval throughput lever)", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numBatch: 1024 });
+    await p.generate(userReq());
+    expect(lastBody().options).toEqual({ num_batch: 1024, num_ctx: 32768 });
+  });
+
+  it("omits num_batch by default so the wire is byte-identical to today", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
+    await p.generate(userReq());
+    expect(lastBody().options).not.toHaveProperty("num_batch");
+  });
+
+  it("truncates a fractional numBatch and rejects a non-positive one (omits → Ollama default 512)", async () => {
+    const frac = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numBatch: 768.9 });
+    await frac.generate(userReq());
+    expect((lastBody().options as { num_batch: number }).num_batch).toBe(768);
+
+    for (const bad of [0, -256, Number.NaN]) {
+      const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }), numBatch: bad });
+      await p.generate(userReq());
+      expect(lastBody().options).not.toHaveProperty("num_batch");
+    }
+  });
+
   it("maps assistant tool_calls and tool-role messages into the native shape", async () => {
     const p = new OllamaProvider({ fetch: jsonFetch({ message: { content: "ok" } }) });
     await p.generate(

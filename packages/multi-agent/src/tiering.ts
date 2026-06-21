@@ -26,6 +26,37 @@ export interface PlanTieredRunArgs {
   readonly tasks: readonly TieredTask[];
   readonly models: TierModels;
   readonly canHoldBothTiers: () => boolean | Promise<boolean>;
+  /**
+   * Cascade escalation input (FrugalGPT, arXiv:2305.05176): a per-task map
+   * of the FAST pass's answer confidence (mean token logprob). A task whose
+   * id is present here, which classified `fast` but came back LOW-confidence,
+   * escalates to `heavy` instead of being accepted. Tasks ABSENT from the map
+   * (the default first pass) are untouched — the plan is byte-identical to a
+   * call with no map, so the existing single-pass behaviour is preserved.
+   */
+  readonly priorConfidence?: ReadonlyMap<string, number | undefined>;
+  /** Mean-logprob below which a fast answer escalates. Default −1.0. */
+  readonly escalateThreshold?: number;
+}
+
+/**
+ * Escalate a fast-tier answer to the heavy model when its confidence is too
+ * low — the cascade gate (FrugalGPT, arXiv:2305.05176). `confidence` is the
+ * fast answer's mean token logprob (always ≤ 0; higher = more confident).
+ * Undefined / non-finite confidence (logprobs absent or all tokens filtered)
+ * escalates too: the safe direction, mirroring classifyTier's default-to-heavy
+ * — a low-confidence fast answer is never silently kept.
+ */
+export const DEFAULT_CASCADE_ESCALATE_LOGPROB = -1.0;
+
+export function shouldEscalateToHeavy(
+  confidence: number | undefined,
+  threshold: number = DEFAULT_CASCADE_ESCALATE_LOGPROB
+): boolean {
+  if (confidence === undefined || !Number.isFinite(confidence)) {
+    return true;
+  }
+  return confidence < threshold;
 }
 
 // Reasoning is checked BEFORE lookup so a task that carries both signals
@@ -91,7 +122,17 @@ export async function planTieredRun(args: PlanTieredRunArgs): Promise<TieredRunP
 
   return {
     assignments: args.tasks.map((task) => {
-      const tier = classifyTier(task.text);
+      let tier = classifyTier(task.text);
+      // Cascade: a fast-classified task with a KNOWN low fast-pass confidence
+      // escalates to heavy. Only tasks present in priorConfidence are eligible
+      // (absent = first pass = unchanged); a heavy task never de-escalates.
+      if (
+        tier === "fast" &&
+        args.priorConfidence?.has(task.id) === true &&
+        shouldEscalateToHeavy(args.priorConfidence.get(task.id), args.escalateThreshold)
+      ) {
+        tier = "heavy";
+      }
       return { id: task.id, model: tier === "fast" ? args.models.fast : args.models.heavy, tier };
     }),
     collapsedToHeavy: false,

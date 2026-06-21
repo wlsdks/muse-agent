@@ -481,6 +481,8 @@ DO NOT adopt (identity conflict): cloud channels/gateway, cloud realtime voice p
 
 ## test-hygiene theme — open (low-quality/flaky tests to fix, coverage gaps to fill)
 
+- ◦ **`scripts/reflection-guard.test.mjs` pre-existing FAIL on main (registry drift)** — the guard asserts the false-done re-run retry marker `'const actNow'` exists in `apps/cli/src/chat-repl.ts`, but the surface moved/renamed → `node --test scripts/reflection-guard.test.mjs` is RED on origin/main (`fc6f2ba1`). Not in `pnpm self-eval` (which gates lint/capabilities/counts, not this file), so it rots silently. Fix = re-point the registry entry to the marker's current name/location in chat-repl.ts (find the false-done re-run path, confirm its verifier is intact), then re-pin. (discovered local-speed fire 1 — unrelated to that slice, which adds no retry/reflection surface)
+
 - ✓ DONE (fire 14) **FIX flaky-boundary: `@muse/messaging pending-approval-store "caps to 200"`** — 205 sequential disk records (~3s, flaked at 5028ms under load) → rewritten as one `fs.writeFile` seed of e0..e203 + one record of e204 (3040ms→73ms), same assertions, mutation-pinned (cap slice + cap removal both caught).
 
 - ◦ **machine-load timeouts under concurrent loops** — with ~6 loop worktrees running vitest at once, *trivial* tests (`@muse/agent-core sanitizeFollowupSummary` — a one-line `.replace`; `@muse/mcp` plan-cache `caps at MAX_PLAN_CACHE_ENTRIES`) hit the 5000ms vitest default and time out under CPU starvation, reddening full `pnpm check`. NOT a test-quality issue (functions are linear) — an environment/oversubscription artifact (plan-cache passes in 1.3s isolated). Candidate slice: raise the global vitest `testTimeout` (e.g. 5000→15000ms) in the shared vitest config so concurrent-loop load can't manufacture false failures — weigh against masking a *real* future slowdown. (observed test-hygiene fire 2)
@@ -2339,6 +2341,27 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ◦ **ask latency on the browser path** — ~90s/turn measured (10K-token prompt eval ≈ 40s × 2
   rounds on gemma4). Levers: prompt diet under --with-tools (skip notes blocks on clear
   browse intent?), KV prefix reuse across rounds, smaller tool list (above).
+  · UPDATE (local-speed fire 2): `MUSE_OLLAMA_NUM_BATCH` now wires Ollama's `num_batch` (prompt-eval
+  batch size) opt-in — a larger batch directly attacks that 40s prompt-eval cost. Verify the real win
+  with `bench:local` on a long prompt once Ollama is up + tune the recommended value.
+- ◦ **cascade routing C2/C3 (decomposed local-speed fire 3; FrugalGPT arXiv:2305.05176)** — fire 3
+  shipped C1: the escalation-decision primitive `shouldEscalateToHeavy(confidence, threshold)` +
+  `planTieredRun` optional `priorConfidence`/`escalateThreshold` (a fast-classified task with a KNOWN
+  low fast-pass mean-logprob escalates to heavy; absent = unchanged, byte-identical). REMAINING:
+  · **C2 (runtime two-pass wiring)** — in `muse ask --tiered` / multi-agent runtime, after the FAST
+  pass run `summarizeTokenConfidence` (@muse/agent-core, already computed at commands-ask.ts:2870) on
+  the answer logprobs, feed the mean-logprob into a re-plan (`planTieredRun` with priorConfidence) and
+  re-run escalated tasks on heavy. Needs logprobs requested on the fast pass + the two-pass loop;
+  bound to 1 retry (no unbounded cascade). >1 fire.
+  · **C3 (live eval)** — use `bench:local` (fire 1) for the latency win + accuracy parity: cascade vs
+  always-heavy on a mixed easy/hard set; assert faster mean latency AND no grounding/answer regression.
+  Needs Ollama up.
+- ◦ **local-speed sibling adapter knobs (enumerated fire 2, deferred)** — beyond `num_batch`, Ollama
+  exposes `num_thread` (CPU threads) and `num_gpu` (layers offloaded to GPU) as per-request speed
+  levers. Deferred: both are hardware-specific and Ollama's auto-detection is usually right, so the
+  value is lower + needs per-box `bench:local` measurement to justify a non-default. Wire behind
+  `MUSE_OLLAMA_NUM_THREAD` / `MUSE_OLLAMA_NUM_GPU` (same opt-in/omit-by-default pattern as num_batch)
+  only if a measured box shows a win.
 - ✓→Done **injection-pattern cross-span tightening** — the EN role_override family + 2 KO
   role_override + 1 KO extraction regexes used unbounded `.*`/`/s`, so three unrelated words from
   DIFFERENT sentences combined into a false hit (live repro: "disregard the noise … finally …

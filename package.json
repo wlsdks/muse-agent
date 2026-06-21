@@ -29,6 +29,7 @@
     "dashboard": "node scripts/dashboard-server.mjs",
     "dashboard:tunnel": "bash scripts/dashboard-tunnel.sh",
     "smoke:broad": "node scripts/smoke-broad-http.mjs",
+    "bench:local": "node scripts/bench-local.mjs",
     "smoke:cli": "pnpm --filter @muse/cli build && node scripts/smoke-cli.mjs",
     "smoke:binary": "pnpm --filter @muse/cli build && node scripts/smoke-cli-binary.mjs",
     "smoke:diagnostic": "node scripts/smoke-diagnostic-runtime.mjs",

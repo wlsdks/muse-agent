@@ -185,7 +185,13 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
         baseUrl: baseUrl ?? normalizeOllamaBaseUrl(env.OLLAMA_BASE_URL),
         defaultModel,
         models,
-        numCtx: parseInteger(env.MUSE_OLLAMA_NUM_CTX, DEFAULT_OLLAMA_NUM_CTX)
+        numCtx: parseInteger(env.MUSE_OLLAMA_NUM_CTX, DEFAULT_OLLAMA_NUM_CTX),
+        // Opt-in only: absent env → undefined → adapter omits `num_batch`
+        // → Ollama's default. A junk value parses to 0, which the adapter
+        // rejects (>0), so it also falls back to the default.
+        ...(env.MUSE_OLLAMA_NUM_BATCH !== undefined
+          ? { numBatch: parseInteger(env.MUSE_OLLAMA_NUM_BATCH, 0) }
+          : {})
       });
     case "openai":
       return new OpenAIProvider({
