@@ -1,6 +1,6 @@
 import AVFoundation
 import MuseDesktopCore
-import TTSKit
+@preconcurrency import TTSKit
 
 /// Speaks an answer aloud. Abstracted so the panel's logic stays testable and
 /// so speech can be turned off (`MUSE_DESKTOP_SPEAK=0`) without branching.

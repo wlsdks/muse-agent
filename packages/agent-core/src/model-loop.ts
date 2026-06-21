@@ -113,6 +113,21 @@ export type ModelLoopStreamEvent =
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "citations" }>)
   | ({ readonly runId: string } & Extract<ModelEvent, { readonly type: "error" }>);
 
+// When a small local model re-issues an IDENTICAL tool call (same name+args, no
+// intervening mutation — the deduplicator returns the cached result), it gets the
+// same content back and can loop re-reading without ever acting (MAST
+// "step repetition", arXiv:2503.13657 — a top multi-step failure mode; observed
+// live in eval:multifile-fix as repeated file_read with no edit). Appending this
+// to the MODEL-FACING tool message (only on a duplicate) gives a deterministic
+// cue to break the loop and take the next action. Trace/metric copies
+// (`executed.result`) are untouched.
+const REPEAT_TOOL_CALL_NUDGE =
+  "\n\n(NOTE: this was an IDENTICAL repeat of an earlier tool call this run — the result is unchanged. Do NOT repeat the same call; take the next concrete action toward the goal, e.g. edit the file or run the test.)";
+
+function withRepetitionNudge(content: string, isDuplicate: boolean): string {
+  return isDuplicate ? `${content}${REPEAT_TOOL_CALL_NUDGE}` : content;
+}
+
 function interruptedExecution(
   request: ModelRequest,
   intermediateMessages: ModelMessage[],
@@ -254,7 +269,10 @@ export async function executeModelLoop(
       // output doesn't blow the context window. Original
       // executed.result.output is left intact for traces / metrics
       // — only the message-bound copy is truncated.
-      const messageContent = capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms);
+      const messageContent = withRepetitionNudge(
+        capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms),
+        Boolean(duplicate?.duplicate)
+      );
       toolMessages.push({
         content: messageContent,
         name: toolCall.name,
@@ -392,7 +410,10 @@ export async function* executeStreamingModelLoop(
       // output doesn't blow the context window. Original
       // executed.result.output is left intact for traces / metrics
       // — only the message-bound copy is truncated.
-      const messageContent = capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms);
+      const messageContent = withRepetitionNudge(
+        capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms),
+        Boolean(duplicate?.duplicate)
+      );
       toolMessages.push({
         content: messageContent,
         name: toolCall.name,

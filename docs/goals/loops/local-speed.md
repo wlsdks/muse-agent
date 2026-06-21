@@ -61,3 +61,34 @@ ratchet: cli 2/6 (fire 4 correctness-hardening vs fire 6 capability, distinct ki
 - 리뷰지점: doctor checks 배열에 실제 push(commands-doctor.ts 조립부, 매 실행 렌더), env 이름 3개 다 런타임이 실제 읽는 실명(autoconfigure num_ctx/num_batch·adapter keep_alive — judge 재확인), always "ok"(옵션 노브 미설정=안전기본이지 오설정 아님, warn은 노이즈), whitespace=.trim()로 unset 취급(broken `num_batch=` 안 나감), 힌트 비-과장(num_batch=프롬프트 배치크기, 큰값=throughput↑ VRAM 비용).
 - 리스크: 없음 — advisory diagnostic만, 모델/런타임/grounding/tool 무관 → 정확성 회귀 0. always-ok라 worst 등급 못 올림(기존 verdict 불변).
   검증: cli 2865 pass(신규 4 OUTCOME 케이스) · MUTATION-FIRST(힌트 always-empty → 3 RED; revert→green) · pnpm check rc=0(api 888 + cli 2865) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(env명 실재 grep재확인, wired-and-live 확인, value-first 판정, 결함 0, merge 안전).
+
+## fire 7 · 2026-06-21 · local-speed · 2dacfb99
+meta: value-class=new-capability · pkg=@muse/model+@muse/autoconfigure · kind=adapter-wiring · verdict=PASS · firesSinceDrill=7
+ratchet: (model+autoconfigure, adapter-wiring) 2/7 (fire 2 num_batch throughput vs fire 7 output cap = distinct lever) · fabrication 0 · default wire byte-identical
+- 무엇: opt-in 생성-길이 디폴트 캡 `MUSE_OLLAMA_NUM_PREDICT` — maxOutputTokens 없는 요청에만 적용되는 num_predict 천장. env → autoconfigure → `OllamaProvider({numPredict})` → native options. 우선순위: request.maxOutputTokens > this.numPredict(디폴트) > omit. 어댑터가 검증 단일권위(>0·finite·trunc, 아니면 omit). 미설정 = 오늘의 무제한(-1) 그대로.
+- 왜: Ollama 디폴트 num_predict=-1(무제한)이라 maxOutputTokens 안 거는 generate는 루핑 로컬모델이 폭주 가능 = 지연/리소스 blowup. ★실제 무제한 경로 = **메인 에이전트 런타임**(agent-runtime.ts:323,384 `this.defaults?.maxOutputTokens`, autoconfigure가 미설정 → 포그라운드 muse ask/chat 무제한) + orchestrate 워커(caller 미설정 시). [정정: 첫 모티베이션은 background 루프(proactive-notice·memory-auto-extract·followup-firing·knowledge-recall)를 무제한이라 잘못 지목 → ④ judge가 GROUNDED≠TRUE 슬립 적발, 실제 검증 결과 그것들은 전부 cap됨(512/200/200/24). 코드는 옳고 갭도 실재하나 예시가 틀렸어서 정정함].
+- 리뷰지점: opt-in 기본-off(미설정 시 와이어 byte-identical, 기존 스냅샷 green), request maxOutputTokens가 항상 이김(명시 요청 N토큰은 글로벌 캡 무시), junk/0/neg/3.5 env → omit(parseInteger 정수정규식+>0 가드), 비-ollama 누수 없음(ollama case만 생성), generate+stream 양 경로 동일(buildNativeChatBody).
+- 리스크: 낮음 — 기본 경로 불변(정확성 회귀 0 by construction). 캡 SET 시 긴 답 truncate 가능하나 (a) 이미 출하된 per-request maxOutputTokens와 동종 opt-in 트레이드오프, (b) grounding 게이트는 생성된 텍스트에 동작 → truncation은 completeness만 해치지 faithfulness/fabrication-rate 불변(④ judge 명시 확인). 정직한 한계: 미실측(Ollama down) — 캡의 지연 win 크기는 C3/bench로 후속.
+  검증: model 382 pass + autoconfigure 623 pass(신규 4+1 OUTCOME, 와이어 body 채점) · MUTATION-FIRST(우선순위 반전 → "maxOutputTokens WINS" 1 RED; revert→green) · pnpm check rc=0(model 382 + api 888 + cli 2873) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(코드 정확·갭 실재·게이트 그린; 단 모티베이션 misgrounding 적발 → 코드주석+저널 정정 완료).
+  형제-감사: num_predict를 fire-6 doctor museSpeedEnvCheck에 노출 → backlog ◦(focused 유지차 defer). 어댑터 옵션 형제(num_ctx/num_batch/keep_alive)는 이미 디폴트 보유 — num_predict가 유일한 무-디폴트 폭주 노브였음.
+lesson: generate() 콜사이트를 "maxOutputTokens 안 건다"고 grep만 보고 단정하지 말 것 — 각 콜의 인자를 실제로 읽어 확인하라(이번엔 background 루프 전부 cap돼 있었음). 진짜 무제한은 런타임 defaults가 비어있는 메인 경로였다. 모티베이션도 grounding 대상이다.
+
+## fire 8 · 2026-06-21 · local-speed · 5971e7ae
+meta: value-class=micro-fix · pkg=apps/cli · kind=doctor-discoverability · verdict=PASS · firesSinceDrill=8
+ratchet: (cli, doctor-discoverability) 2/8 (fire 6 num_batch, fire 8 num_predict) · fabrication 0 · advisory-only 무런타임변경
+- 무엇: fire-6 `museSpeedEnvCheck`/`readMuseSpeedEnv`에 `MUSE_OLLAMA_NUM_PREDICT`(fire-7 생성캡) 추가 — 이제 doctor가 Muse 속도 env 4종(num_batch/num_ctx/keep_alive/num_predict) 모두 보고. 일관성 수정.
+- 왜: fire 7이 num_predict env를 출하했는데 fire-6 doctor 체크가 3종만 보고하고 num_predict를 조용히 누락 → "speed env" 줄이 불완전/오도. 출하된 레버를 discoverable화(fire 6 num_batch와 동일 근거).
+- 리뷰지점: env명 실재(autoconfigure:197 read + adapter:385 num_predict 매핑, ④ judge grep 재확인), whitespace `.trim()` 가드(numPredict="  "→미보고), always "ok"(옵션 노브), num_predict 단독 set 시 num_batch 힌트 여전히 표시(num_batch는 unset이므로 coherent).
+- 리스크: 없음 — doctor advisory만, 모델/런타임/grounding 무관 → 정확성 회귀 0.
+  검증: cli 2875 pass isolated(신규 2 OUTCOME) · MUTATION-FIRST(num_predict push 제거 → 1 RED; revert→green) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(env명 실재·env-flake 정직·value-first·ratchet OK·결함 0). ⚠️full pnpm check는 박스 메모리압박(동시루프)으로 OOM(SIGABRT)+무관 flake(@muse/model web-search-policy property-fuzz·@muse/cli document-reader PDF 5s 타임아웃) — 둘 다 isolated-green, 내 변경은 apps/cli string-only로 무관 → env flake로 판정(fire 3·6 동일 클래스).
+
+## fire 9 · 2026-06-21 · local-speed · efc944ab
+meta: value-class=test(regression-guard) · pkg=@muse/model · kind=judge-drill+grounding-guard · verdict=PASS · firesSinceDrill=0
+ratchet: (model) 3,7,9 but kind=regression-guard distinct from 2,7 adapter-wiring · fabrication 0 · TEST-ONLY 소스 무변경
+- ★JUDGE-DRILL (연속 allPASS=8 트리거, 미루기 불가): 가짜 나쁜-슬라이스 → ④ judge FAIL 확인 → 롤백 → 진짜 fix.
+- 드릴: 고의 나쁜 슬라이스 = opt-in `MUSE_OLLAMA_LEAN_PROMPT`가 긴 턴(>8000자)에 system 메시지를 드롭("속도"). 결정론 게이트는 GREEN(opt-in·happy-path 테스트만). 독립 Opus ④ judge가 **정확히 FAIL** — system 메시지가 grounding/citation/honesty 계약 + 근거증거 자체를 운반(commands-ask.ts:2008-2089)하므로 드롭=fabrication, >8000 트리거가 정확히 grounded 턴에 발화, opt-in은 구제 못함(플래그 목적이 floor를 깸), 테스트가 tell(드롭 콘텐츠를 "grounding rules"로 명명하고 제거를 성공으로 채점). → ④ 게이트가 rubber-stamp 아님 입증(8 fire가 의존한 게이트 검증). git restore 롤백.
+- 진짜 fix(shipped): grounding-preservation 회귀 가드 2종(@muse/model adapter-ollama.test.ts) — (1) 큰 프롬프트에도 system 메시지 ALWAYS 와이어 전달(roles==["system","user"]), (2) configured num_ctx는 프롬프트 길이 무관 불변(절대 silent 축소 안 함). 드릴이 노출한 불변식을 "judge가 잡음"에서 "결정론 스위트가 잡음"으로 격상(fabrication=0 floor 방어 심화).
+- 리뷰지점: 와이어 body 채점(declaration-only 아님), MUTATION-FIRST 양 가드(judge가 자체 재현: filter system→test1 RED; num_ctx Math.min(,4096)→test2+기존스냅샷 6 RED; revert→green), 소스 byte-clean(test-only→정확성 회귀 0 trivially), 불변식 실재(system=grounding 계약·num_ctx 축소=silent truncation, 어댑터 주석 문서화).
+- 리스크: 없음 — test-only, 런타임 무변경.
+  검증: model 384 pass(신규 2 가드) · MUTATION-FIRST 2종(독립 judge가 재현 RED) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(가드 슬라이스, 자체 mutation 재현·불변식 실재 확인·env-crash 정직·결함 0). ⚠️full pnpm check는 박스 OOM(SIGABRT, packages/runtime-state 무관)으로 abort하나 packages/model은 그 run 내 384 pass(fire 8 동일 env 클래스).
+lesson: judge-드릴은 가짜-슬라이스를 *결정론 게이트는 통과*하되 *불변식만 위반*하게 설계해야 JUDGE를 시험한다(소스변경으로 기존 테스트를 깨면 ③이 잡아 judge 미검증). grounding 계약은 system 메시지에 탑재 → "프롬프트 다이어트/lean" 류 속도최적화는 거의 항상 floor 위반. 드릴의 부산물(불변식 회귀가드)을 진짜-fix로 출하하면 드릴이 영구 방어로 전환됨.

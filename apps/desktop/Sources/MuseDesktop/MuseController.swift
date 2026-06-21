@@ -9,6 +9,8 @@ final class MuseController: NSObject {
     private var statusItem: NSStatusItem?
     private var hotKey: GlobalHotKey?
     private var muteItem: NSMenuItem?
+    private lazy var settingsWindow = SettingsWindowController()
+    private lazy var webWindow = MuseWebWindowController()
 
     func start() {
         panel.orderFrontRegardless()
@@ -32,24 +34,25 @@ final class MuseController: NSObject {
 
     private func installMenuBar() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        // The glowing orb itself, so Muse is recognizable in the menu bar.
-        let icon = VoiceOrb.icon(diameter: 18)
-        icon.isTemplate = false
-        item.button?.image = icon
+        // The goddess herself, so Muse is recognizable in the menu bar.
+        item.button?.image = MuseAssets.menuBarIcon(height: 18)
         item.button?.toolTip = "Muse — click for options (⌃⌥Space to show/hide)"
 
         let menu = NSMenu()
         add(menu, "Show / Hide Muse  (⌃⌥Space)", #selector(toggleFromMenu))
+        add(menu, "Open Muse  (full app)", #selector(openFullApp))
+        menu.addItem(.separator())
 
         let characterItem = NSMenuItem(title: "Character", action: nil, keyEquivalent: "")
         let characterMenu = NSMenu()
-        // Two refined looks: the glowing "Orb" (default) and the glowing "Harp" (lyre).
-        let names = ["orb", "harp"]
+        // The goddess (default) and the glowing orb.
+        let names = ["goddess", "orb"]
+        let currentLook = PrefsStore.load().look ?? "goddess"
         for name in names {
             let mi = NSMenuItem(title: name.capitalized, action: #selector(pickCharacter(_:)), keyEquivalent: "")
             mi.representedObject = name
             mi.target = self
-            mi.state = (name == "orb") ? .on : .off
+            mi.state = (name == currentLook) ? .on : .off
             characterMenu.addItem(mi)
         }
         characterItem.submenu = characterMenu
@@ -70,6 +73,7 @@ final class MuseController: NSObject {
 
         muteItem = add(menu, "Mute voice", #selector(toggleMute))
         menu.addItem(.separator())
+        add(menu, "Settings…", #selector(openSettings), key: ",")
         add(menu, "Quit Muse", #selector(quit), key: "q")
 
         item.menu = menu
@@ -85,6 +89,28 @@ final class MuseController: NSObject {
     }
 
     @objc private func toggleFromMenu() { toggleVisibility() }
+
+    @objc private func openFullApp() {
+        NSApp.activate(ignoringOtherApps: true)
+        webWindow.show()
+    }
+
+    @objc private func openSettings() {
+        settingsWindow.isMuted = { [weak self] in self?.panel.voiceMuted ?? false }
+        settingsWindow.onCharacter = { [weak self] name in
+            self?.panel.setCharacter(name)
+            if self?.panel.isVisible == false { self?.toggleVisibility() }
+        }
+        settingsWindow.onLanguage = { [weak self] lang in self?.panel.setLanguage(lang) }
+        settingsWindow.onMute = { [weak self] muted in
+            self?.panel.voiceMuted = muted
+            self?.muteItem?.state = muted ? .on : .off
+        }
+        settingsWindow.onOpenFull = { [weak self] in self?.openFullApp() }
+        settingsWindow.onQuit = { NSApplication.shared.terminate(nil) }
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow.show()
+    }
 
     @objc private func pickCharacter(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }

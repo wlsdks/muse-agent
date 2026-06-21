@@ -8,12 +8,21 @@ public struct CompanionPrefs: Codable, Equatable, Sendable {
     public var originX: Double?
     public var originY: Double?
     public var language: String?
+    /// URL of the local Muse web UI shown in the full-app window.
+    public var museURL: String?
 
-    public init(look: String? = nil, originX: Double? = nil, originY: Double? = nil, language: String? = nil) {
+    public init(look: String? = nil, originX: Double? = nil, originY: Double? = nil, language: String? = nil, museURL: String? = nil) {
         self.look = look
         self.originX = originX
         self.originY = originY
         self.language = language
+        self.museURL = museURL
+    }
+
+    /// The configured Muse web URL, or the local default (Vite dev server).
+    public var resolvedMuseURL: String {
+        let trimmed = museURL?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty == false ? trimmed! : "http://127.0.0.1:5173")
     }
 
     public func encoded() -> String {
