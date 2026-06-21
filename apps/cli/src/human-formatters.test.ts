@@ -64,6 +64,24 @@ describe("formatMemoryShow — surfaces 'what Muse recently learned about you' w
   });
 });
 
+describe("formatMemoryShow — surfaces the FORGETS half (what you had Muse forget)", () => {
+  it("renders the forgotten section with each cited line", () => {
+    const out = formatMemoryShow({
+      userId: "stark",
+      facts: { home_city: "Busan" },
+      recentlyForgotten: ["old employer (forgotten 2026-06-19)", "commute mode (forgotten 2026-06-18)"]
+    });
+    expect(out).toContain("Forgotten at your correction:");
+    expect(out).toContain("- old employer (forgotten 2026-06-19)");
+    expect(out).toContain("- commute mode (forgotten 2026-06-18)");
+  });
+
+  it("omits the forgotten section entirely when nothing was forgotten (no false header)", () => {
+    expect(formatMemoryShow({ userId: "stark", facts: { name: "Stark" }, recentlyForgotten: [] })).not.toContain("Forgotten at your correction:");
+    expect(formatMemoryShow({ userId: "stark", facts: { name: "Stark" } })).not.toContain("Forgotten at your correction:");
+  });
+});
+
 describe("formatTaskList — surfaces the urgent flag", () => {
   it("marks an urgent task with ⚠ and leaves a normal task unmarked", () => {
     const out = formatTaskList({ status: "open", tasks: [
