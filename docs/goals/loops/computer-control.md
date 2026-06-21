@@ -5,7 +5,7 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 42 · 2026-06-21 · skill v2.0 · <commit> (stringified-JSON object/array tool-arg coercion — multi_edit edits-as-string)
+## fire 42 · 2026-06-21 · skill v2.0 · 8f9066aa (stringified-JSON object/array tool-arg coercion — multi_edit edits-as-string)
 meta: value-class=new-capability · pkg=@muse/tools · kind=arg-coercion/structured-repair · verdict=PASS · firesSinceDrill=5
 ratchet: testFiles +0 files / +1 case (coerceToolArguments structured: positive·whitespace·already-structured·both type-mismatches·non-JSON·empty·bare-scalar) · fabrication 0 · @muse/tools 89 pass/1 skip · pnpm check exit 0 · lint 0/0 · Ollama DOWN (evals skip) · main ff-merge (fire 42 = ×3)
 - 무엇: tool-calling 결정론 "repair" 절반(`tools-argument-validation.ts`의 coerceToolArguments)이 SCALAR 인자만 교정("5"→5)하고 object/array 타입 인자엔 아무것도 안 했음. 12B가 구조화 인자를 JSON 문자열로 흘리면(예: file_multi_edit의 `edits`가 `"[{...}]"`) 데이터는 맞는데 호출 실패. FIX: `coerceStructured` 추가 — 값이 비지 않은 문자열이고 JSON.parse 성공 + 파싱 타입이 선언 타입과 일치(array→Array.isArray, object→isRecord=null·array 제외)할 때만 파싱값 반환, 그 외 untouched. coerceScalar의 구조화 짝(arXiv:2509.18847). 공유 함수라 ReAct executor + plan-execute 둘 다 자동 적용.
