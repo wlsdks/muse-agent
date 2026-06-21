@@ -2,10 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AsyncBlock, Badge, Button, Card } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
-import { canConnect, canDisconnect, mcpStatusTone, summarizeMcpServers } from "./mcp-status.js";
+import { canConnect, canDisconnect, mcpStatusTone, summarizeAllowlist, summarizeMcpServers } from "./mcp-status.js";
 
 import type { ApiClient } from "../api/client.js";
-import type { McpServerSummary } from "../api/types.js";
+import type { McpSecurityResponse, McpServerSummary } from "../api/types.js";
 
 export function McpServersView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
@@ -13,6 +13,10 @@ export function McpServersView({ client }: { client: ApiClient }) {
   const servers = useQuery({
     queryFn: () => client.get<readonly McpServerSummary[]>("/api/mcp/servers"),
     queryKey: ["mcp-servers", client.baseUrl]
+  });
+  const security = useQuery({
+    queryFn: () => client.get<McpSecurityResponse>("/api/mcp/security"),
+    queryKey: ["mcp-security", client.baseUrl]
   });
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["mcp-servers"] });
 
@@ -80,6 +84,43 @@ export function McpServersView({ client }: { client: ApiClient }) {
               </Card>
             </div>
           ))}
+        </AsyncBlock>
+      </div>
+
+      <div style={{ marginTop: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>{t("mcp.securityTitle")}</h2>
+        <AsyncBlock loading={security.isLoading} error={security.error}>
+          <Card>
+            {(() => {
+              const effective = security.data?.effective ?? { allowedServerNames: [], maxToolOutputLength: 0 };
+              const allowlist = summarizeAllowlist(effective);
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div>
+                    {allowlist.unrestricted ? (
+                      <Badge tone="warn">{t("mcp.allowlistUnrestricted")}</Badge>
+                    ) : (
+                      <>
+                        <p style={{ margin: "0 0 6px", fontSize: 13 }}>
+                          {t("mcp.allowlistRestricted", { n: allowlist.allowedCount })}
+                        </p>
+                        <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13 }}>
+                          {effective.allowedServerNames.map((name) => (
+                            <li key={name}>
+                              <Badge tone="ok">{name}</Badge>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                  <p className="muted" style={{ margin: 0, fontSize: 13 }}>
+                    {t("mcp.toolOutputCap", { n: effective.maxToolOutputLength })}
+                  </p>
+                </div>
+              );
+            })()}
+          </Card>
         </AsyncBlock>
       </div>
     </div>

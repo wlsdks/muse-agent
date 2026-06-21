@@ -32,3 +32,18 @@ export function summarizeMcpServers(servers: readonly McpServerSummary[]): {
     connected: servers.filter((s) => s.status.toUpperCase() === "CONNECTED").length
   };
 }
+
+/**
+ * Summarises the MCP security allowlist policy.
+ * IMPORTANT: empty allowedServerNames means EVERY server is allowed (opt-in posture),
+ * not "nothing allowed". unrestricted:true when the list is empty.
+ */
+export function summarizeAllowlist(policy: { allowedServerNames: readonly string[] }): {
+  allowedCount: number;
+  unrestricted: boolean;
+} {
+  return {
+    allowedCount: policy.allowedServerNames.length,
+    unrestricted: policy.allowedServerNames.length === 0
+  };
+}

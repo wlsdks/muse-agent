@@ -154,6 +154,9 @@ export function rankRecallCandidates(args: {
   readonly limit: number;
   readonly source: "notes" | "episodes" | "all";
   readonly adaptive?: boolean;
+  /** Episode ids whose session rested on untrusted sources — their hits are tagged
+   *  `trusted:false` (EP-3 episode-laundering defense). Absent ⇒ all trusted. */
+  readonly untrustedEpisodeIds?: ReadonlySet<string>;
 }): readonly RecallHit[] {
   const queryTokens = recallContentTokens(args.queryText ?? "");
   const combined = (vec: readonly number[], text: string): number =>
@@ -166,7 +169,7 @@ export function rankRecallCandidates(args: {
   }
   if (args.source !== "notes") {
     for (const ep of args.episodeEntries) {
-      scored.push({ embedding: ep.embedding, hit: { score: combined(ep.embedding, ep.summary), ref: ep.id, snippet: relevantExcerpt(ep.summary, queryTokens), source: "episodes" } });
+      scored.push({ embedding: ep.embedding, hit: { score: combined(ep.embedding, ep.summary), ref: ep.id, snippet: relevantExcerpt(ep.summary, queryTokens), source: "episodes", ...(args.untrustedEpisodeIds?.has(ep.id) ? { trusted: false } : {}) } });
     }
   }
   const limit = Math.max(1, args.limit);
@@ -339,12 +342,19 @@ export async function searchRecall(opts: {
     summary: entry.summary,
     embedding: entry.embedding
   }));
+  // Episodes whose session rested on untrusted sources (trusted:false) — their
+  // recall hits are tagged untrusted so the chat untrusted-only cue fires on a
+  // poisoned episode instead of laundering it as "your own history" (EP-3 /
+  // MemoryGraft). Built from the SAME store read that already computes liveIds.
+  let untrustedEpisodeIds = new Set<string>();
   if (episodeEntries.length > 0) {
-    const liveIds = new Set((await readEpisodes(resolveEpisodesFile(env))).map((episode) => episode.id));
+    const sourceEpisodes = await readEpisodes(resolveEpisodesFile(env));
+    const liveIds = new Set(sourceEpisodes.map((episode) => episode.id));
+    untrustedEpisodeIds = new Set(sourceEpisodes.filter((episode) => episode.trusted === false).map((episode) => episode.id));
     episodeEntries = filterLiveEpisodeEntries(episodeEntries, liveIds);
   }
 
-  return rankRecallCandidates({ adaptive: opts.adaptive, episodeEntries, limit, noteChunks, queryText: query, queryVec, source });
+  return rankRecallCandidates({ adaptive: opts.adaptive, episodeEntries, limit, noteChunks, queryText: query, queryVec, source, untrustedEpisodeIds });
 }
 
 export function registerRecallCommand(program: Command, io: ProgramIO): void {

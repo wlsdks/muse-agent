@@ -41,6 +41,15 @@ import { lexicalTokens } from "./knowledge-recall.js";
 export interface SessionTurnLine {
   readonly role: "user" | "assistant";
   readonly content: string;
+  /**
+   * `true` when this ASSISTANT turn's answer rested on UNTRUSTED-only sources
+   * (the source-check cue fired). Persisted per-turn so end-of-session episode
+   * capture can mark the episode `trusted:false` even for turns from a PRIOR
+   * process (a one-shot `muse chat` or a resumed session) the live REPL's
+   * in-memory verdict never saw — the episode-laundering defense (MemoryGraft
+   * arXiv:2512.16962). Absent ⇒ trusted/unknown.
+   */
+  readonly untrustedOnly?: boolean;
 }
 
 export interface SessionBoundaryRef {

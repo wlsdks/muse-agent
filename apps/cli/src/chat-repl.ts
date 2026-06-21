@@ -765,6 +765,10 @@ export async function runLocalChat(
     // The cue-free twin for persistence (appendLastChatTurn) — keeps display-only
     // source-check warnings out of the next session's grounding evidence (fire 5).
     responseForHistory: finalResponseForHistory,
+    // Whether this answer rested on untrusted-only sources — persisted per-turn so a
+    // later episode capture marks the episode trusted:false even for this one-shot
+    // turn the live REPL never saw (episode-laundering defense, EP-1b / MemoryGraft).
+    untrustedOnly: finalized.untrustedOnly,
     runId: result.runId,
     toolsUsed
   };

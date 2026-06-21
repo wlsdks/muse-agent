@@ -193,3 +193,198 @@ each harder benign probe surfaces a new reported/embedded/rhetorical imperative
 shape. PROBE-FIRST with a corpus spanning reported/adnominal/quotative/rhetorical/
 quoted forms BEFORE writing source; if FP shapes keep multiplying across rounds,
 the class is not regex-tractable — stop and de-scope, don't keep patching anchors.
+
+## fire 7 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=new-capability(hardening) · pkg=@muse/memory · kind=write-gate-hardening · verdict=PASS · firesSinceDrill=7
+
+ratchet: testFiles +0 (extended auto-extract-provenance-gate test) · fabrication 0 · pkg=@muse/memory NEW (≠ recent cli/agent-core) · kind=write-gate-hardening NEW · eval:memory-poisoning PASS · eval:action-log-tamper PASS
+
+WHAT: the user-memory auto-extractor's provenance gate `dropModelAssertedValues`
+(drops a value whose distinctive tokens are all in the assistant reply, none in
+the user turn — so a tool/feed line the assistant surfaced isn't persisted as
+"what you told me") was applied to ONLY facts+preferences. vetoes+goals
+(ExtractedSlot[]) bypassed it → a poisoned tool/feed-sourced veto/goal could be
+distilled and persisted, driving proactivity/standing-objectives. FIX: shared
+`isModelAssertedValue` predicate (behavior-preserving for facts/prefs) +
+`dropModelAssertedSlots` (malformed-array-robust: passes bad elements through to
+the sanitizer, never throws) wired for vetoes+goals.
+
+WHY: closes a write-side poisoned-source vector — the gate protected 2 of 4 slot
+kinds (a sibling-audit miss). The scout candidate's facts/prefs hypothesis was
+REFUTED (already closed); the real gap was the veto/goal siblings.
+
+REVIEW POINT: behavior-preserving refactor verified (498 memory tests); both
+mutation arms RED (helper gate→keep-all; wiring remove-veto-line→end-to-end RED);
+judge sibling-audit confirmed vetoes+goals were the ONLY ungated
+model-from-assistant slot kinds (muse remember / muse user add / inferPreferences
+all user-sourced). Caught a crash-on-malformed-slot bug mid-build (the slot array
+is untrusted model output) → guard passes malformed elements through.
+
+RISK: low — only DROPS poisoned writes (never adds), user-stated directives
+survive (calibrated), malformed-robust, mutation-proven at helper + wiring, Opus ④ PASS.
+
+## fire 8 · 2026-06-21 · poisoned-source · (scout + decompose — no code shipped)
+
+meta: value-class=scout/decompose · pkg=N/A (discovery fire) · kind=gap-scout · verdict=NO-SHIP(decompose) · firesSinceDrill=8
+
+ratchet: testFiles +0 · fabrication 0 · MERGE→MAIN n/a (fire 8 not ÷3)
+
+WHAT: spent the fire on an Opus gap-scout (codegraph + WebSearch) after confirming
+the VISION surface mature (gateVisionAction: independent-evidence two-pass,
+required-unverified blocks, optional dropped+re-derived, path=sanitized slug from
+gated title). The scout (independently citing MemoryGraft arXiv:2512.16962 +
+LTM-security survey arXiv:2604.16548) found the LAST untrusted→memory laundering
+path: the EPISODE store. The `trusted:false` bit propagated to feeds (fire 2),
+tool output, and veto/goal (fire 7) but NOT to episodes — a session whose
+assistant turns repeated tool/feed-grounded content is summarised and stored with
+no trust field, then surfaced next session as TRUSTED grounding evidence (so the
+untrusted-only cue never fires on it).
+
+WHY (decompose, no rush): VERIFICATION showed the scout's "1 fire" under-counted
+the threading depth — the trust signal isn't reliably recoverable from transcript
+text at capture (chat tool/feed citation format is inconsistent; fires 4-5
+stripped cues from persisted turns), and the bit must thread
+turn→store→embedding-index→recall→cue for BOTH ask and chat. Genuinely 3-4
+components / multi-fire. This fire's budget already went to deep discovery (the
+Opus scout alone ~123k tokens), so per DECOMPOSE-ON-DEFER + loop-budget caps I
+converted the verified finding into 3 sequenced loop-sized backlog slices (EP-1
+turn-trust+store-field foundation → EP-2 ask recall threading → EP-3 chat parity)
++ a runner-up (trust-aware conflict cue), rather than rush a fragile multi-layer
+change late in budget.
+
+REVIEW POINT: ★ EP-1/2/3 in backlog are the next fires' high-value fuel (the only
+genuinely-open deterministic poisoned-source vein left, paper-grounded). All other
+surfaces (recall ask/chat, write-side memory facts/prefs/veto/goal, vision,
+proactive/reflection faithfulness) confirmed mature this fire.
+
+lesson: an Opus gap-scout that returns a "1-fire" estimate still needs
+verify-then-apply — the episode-trust slice's real cost is the trust-propagation
+threading (turn→store→index→cue), not the store field. When a scout finding is
+multi-layer, DECOMPOSE into sequenced slices the same fire rather than starting a
+fragile partial; the discovery budget is well spent if it yields sequenced fuel.
+
+## fire 9 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=new-capability(hardening) · pkg=@muse/mcp+@muse/cli · kind=episode-provenance/trust-tagging · verdict=PASS · firesSinceDrill=9
+
+ratchet: testFiles +0 (extended mcp + cli tests) · fabrication 0 · pkg/kind NEW (episode store + capture + recall) · eval:memory-poisoning PASS · eval:action-log-tamper PASS · MERGE→MAIN fire (÷3)
+
+WHAT: shipped EP-1+EP-2 (fire-8 decomposition) — the episode-provenance trust bit,
+closing the LAST untrusted→memory laundering path for the Ink-chat→ask path
+(MemoryGraft arXiv:2512.16962). PersistedEpisode.trusted? (+serialize/validate
+round-trip) ← captureEndOfSessionEpisode(untrustedSession) ← chat-ink bridges the
+session verdict (runChatInk closure set by an onUntrustedAnswer prop, reset on
+/reset, read at the post-unmount capture) ← finalizeGatedChatAnswer now returns
+`untrustedOnly` (same cue computation, no drift). commands-ask tags episode
+grounding evidence trusted:false (store-lookup) so an answer resting solely on a
+poisoned episode trips the untrusted-only cue instead of being laundered as "your
+own history".
+
+WHY: the `trusted:false` bit reached feeds/tool/veto/goal but not episodes — a
+session that grounded on poisoned sources became "trusted" history next session.
+Additive (only adds a scrutiny-cue path; never changes a grounded verdict).
+
+REVIEW POINT: multi-layer slice (store + capture + chat-grounding return + chat-ink
+bridge + ask consumer); the bridge is the subtle part (capture runs post-unmount →
+a runChatInk closure, not a component ref). Honest deferrals (judge-confirmed, in
+backlog): EP-1b (per-turn PERSISTENCE for resumed/one-shot under-mark — current
+in-memory bridge only covers the live Ink process, fail-open) + EP-3 (chat-surface
+cue parity). Judge also flagged the inline ask-tag lacks a direct unit test (minor
+follow-up recorded).
+
+RISK: low — additive, mutation-proven at 3 seams (capture/finalize/store), Opus ④
+PASS (over/under-mark verified, conservative cue, byte-identical clean episodes).
+
+MERGE→MAIN DEFERRED (⑤c blocked, NOT by this slice): after merging origin/main,
+`pnpm check` fails ONLY on `@muse/model` `web-search-policy` property-fuzz — a
+5000ms TEST TIMEOUT (not an assertion), reproducible in isolation at 7.2s under
+sustained box saturation from concurrent cron loops (the recorded env issue:
+"concurrent loops saturate machine → slow tests false-timeout at 5000ms"). Not my
+package, not the merge content, not a code regression. Per ⑤c I did NOT force the
+push past a red check; fire 9 is verified + on the branch; the main-merge retries
+next ÷3 fire (box may be quieter / test-hygiene loop can raise the fuzz test's
+testTimeout). BLOCKER also a real test-quality signal: web-search-policy's nested
+property-fuzz needs a larger testTimeout or a smaller corpus (env-independent).
+
+## fire 10 · 2026-06-21 · poisoned-source · (see commit) — JUDGE-DRILL
+
+meta: value-class=judge-drill+new-capability · pkg=@muse/recall (+apps/cli) · kind=verifier-drill / helper-extraction · verdict=PASS · firesSinceDrill=0 (RESET by this drill)
+
+ratchet: testFiles +0 (extended grounding-notices test) · fabrication 0 · DRILL fire (firesSinceDrill≥10 hard-counter) · eval:memory-poisoning PASS · eval:action-log-tamper PASS
+
+WHAT: the scheduled JUDGE-DRILL (firesSinceDrill hit 10). Drilled on a genuine
+real fix — the fire-9 EP-2 follow-up (extract the inline ask episode-evidence tag
+into a tested `untrustedEpisodeMatch` helper). STEP 1: planted a deliberately
+INERT test (shape-only — asserted source/text/score but NOT the security-critical
+`trusted:false` bit; proven mutation-blind: dropping trusted:false kept it green).
+STEP 2: an independent Opus ④ judge FAILED it with a concrete violation — it ran
+the mutation itself, saw the test stay green, named the missing trusted:false +
+cue-firing assertions, contrasted the sibling untrustedFeedMatch behavioral test.
+STEP 3: rolled back the inert test, shipped the REAL behavioral test (toEqual
+trusted:false + untrustedOnlyGroundingNotice fires + trusted-note-clears-it),
+mutation-RED proven, re-judged PASS.
+
+WHY: proves the maker≠judge verifier is NOT a rubber-stamp on this fixed-Opus-tier
+loop (the compensating control for same-model judging). Also genuinely closes the
+EP-2 follow-up (the inline ask tag now a tested pure helper).
+
+REVIEW POINT: the drill is the value here — a real bad-slice → independent FAIL →
+rollback → real fix → PASS cycle, recorded for audit. firesSinceDrill reset to 0.
+
+RISK: none net — the only shipped change is the helper extraction (byte-equivalent
+to the prior inline tag) + a behavioral test; the inert drill test was rolled back.
+
+## fire 11 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=hardening(fail-open-close) · pkg=@muse/cli+@muse/agent-core · kind=trust-persistence · verdict=PASS · firesSinceDrill=1
+
+ratchet: testFiles +0 (extended cli + program tests) · fabrication 0 · eval:memory-poisoning PASS · eval:action-log-tamper PASS
+
+WHAT: EP-1b — per-turn trust PERSISTENCE, closing fire-9's fail-OPEN under-mark.
+Fire 9's in-memory bridge only covered the live Ink process; a one-shot `muse
+chat` turn (the desktop companion's only path) or a RESUMED session under-marked
+its episode. Now SessionTurnLine + LastChatLine carry `untrustedOnly?`;
+appendLastChatTurn persists it (only when true; redaction intact); both persist
+callers wire it (one-shot via runLocalChat→program.ts; Ink/resumed via onCommit);
+captureEndOfSessionEpisode ORs the in-memory option with `range.turns.some(assistant
+untrustedOnly)` → trusted:false even for prior-process turns.
+
+WHY: completes the episode-provenance defense reliably (fail-CLOSE across all
+turn sources, not just the live process). Additive (provenance bit + scrutiny-cue
+path only; never changes a grounded verdict).
+
+REVIEW POINT: multi-file (schema + 2 persist callers + capture aggregation); the
+back-compat is the subtle part (optional everywhere, legacy lines → trusted,
+clean turns byte-identical). EP-1a+EP-1b+EP-2 complete; only EP-3 (chat-surface
+recall cue parity) remains. The fire-9 ⑤c merge-to-main is STILL deferred (env
+timeout) — retries fire 12 (next ÷3; the timeout hasn't recurred since).
+
+RISK: low — additive, mutation-proven (capture-aggregation + round-trip), Opus ④
+PASS, back-compat green across all SessionTurnLine consumers.
+
+## fire 12 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=hardening · pkg=@muse/recall+@muse/cli · kind=recall-cue-wiring · verdict=PASS · firesSinceDrill=2
+
+ratchet: testFiles +0 (extended commands-recall + chat-finalize tests) · fabrication 0 · eval:memory-poisoning PASS · eval:action-log-tamper PASS · MERGE→MAIN fire (÷3) — also retries the deferred fire-9 merge
+
+WHAT: EP-3 — chat-surface cue parity. RecallHit gains `trusted?`; searchRecall
+tags poisoned-episode hits trusted:false (from its existing readEpisodes — single
+read); rankRecallCandidates carries the tag; hitsToMatches propagates it → the
+chat untrusted-only cue fires when a chat answer rests solely on a poisoned
+episode (parity with the ask path's EP-2).
+
+WHY: completes the episode-provenance defense across BOTH grounded surfaces — the
+MemoryGraft (arXiv:2512.16962) episode-laundering vector is now closed end-to-end
+(write-time tag fires 9/11 → ask cue fire 2 + chat cue fire 12). Additive
+(scrutiny-cue only; verdict untouched).
+
+REVIEW POINT: judge traced the full chain (MMR preserves the hit object, bit not
+stripped); no over-firing (trusted note clears it; clean episodes silent). Two
+judge-surfaced RESIDUALS recorded as backlog ◦ (out of scope, larger design):
+(1) poisoned NOTES have no provenance bit (the fundamental GROUNDED≠TRUE
+note-veracity gap); (2) the cue is advisory, not refusing/down-ranking.
+
+RISK: low — additive, mutation-proven (ranker tag + chat cue), Opus ④ PASS,
+back-compat green across all RecallHit consumers.

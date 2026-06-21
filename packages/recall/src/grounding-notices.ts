@@ -59,6 +59,20 @@ export function untrustedFeedMatch(feedName: string, title: string, summary?: st
   return { cosine: 1, score: 1, source: `feed: ${feedName}`, text: summary ? `${title} ${summary}` : title, trusted: false };
 }
 
+/**
+ * Build grounding evidence for a PAST-SESSION episode whose source-trust verdict is
+ * `trusted:false` — the session it summarises rested on untrusted (tool/web/MCP/feed)
+ * sources (PersistedEpisode.trusted === false). Recalled later, an answer resting
+ * SOLELY on such an episode trips the untrusted-only source-check cue instead of being
+ * laundered as trusted "your own history" (MemoryGraft arXiv:2512.16962). Mirrors the
+ * ask wedge's inline `session: <id>` evidence shape so only the trust bit changes.
+ * A TRUSTED episode uses the plain inline shape (absent flag) — this is only for the
+ * untrusted ones. Pure.
+ */
+export function untrustedEpisodeMatch(episodeId: string, summary: string, score = 1): KnowledgeMatch {
+  return { cosine: score, score, source: `session: ${episodeId}`, text: summary, trusted: false };
+}
+
 /** Structured machine-surface twin of the three human source-check cues. */
 export interface SourceCheckSignals {
   /** The faithful answer rests ONLY on untrusted (tool/web/MCP/feed) provenance. */
