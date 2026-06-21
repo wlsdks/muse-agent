@@ -5,7 +5,7 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
-## fire 35 · 2026-06-21 · skill v2.0 · <commit-pending> (file_read caps to fit the model context — 200K overflow fix)
+## fire 35 · 2026-06-21 · skill v2.0 · 26a8a105 (file_read caps to fit the model context — 200K overflow fix)
 meta: value-class=new-capability · pkg=@muse/fs+apps/cli · kind=context-fit/reliability · verdict=PASS · firesSinceDrill=7
 ratchet: testFiles 1072→1072 (+2 cases fileReadCharBudget value+enforcement, mutation-valid) · fabrication 0 · @muse/fs 격리 170 · @muse/cli 격리 2827 · pnpm check exit 0 · lint clean · Ollama DOWN
 - 무엇: agent가 file_read를 maxTextChars 없이 생성→200K 기본(~50K토큰)인데 numCtx=32768(DEFAULT_OLLAMA_NUM_CTX). 단일 max read가 전체 윈도 초과→런타임이 프롬프트/히스토리 silently truncate(adapter-ollama LIVE 문서: 8K 윈도가 프롬프트 통째 먹고 1토큰). FIX: 순수 `fileReadCharBudget(tokens)=max(4K, floor(tokens/2)*4)`(윈도 절반); agent가 `fileReadCharBudget(DEFAULT_OLLAMA_NUM_CTX)`=64K 전달. 큰 파일은 nextOffset 페이징.
