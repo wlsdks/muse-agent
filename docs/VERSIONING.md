@@ -9,12 +9,17 @@ it before tagging anything.
 - **`0.x` IS the beta.** Major version `0` already means "initial development,
   anything may change" — so we do **not** append `-beta`. While the major is
   `0`, every GitHub Release is flagged **pre-release**.
-- **`0.MINOR.0`** (`0.2.0`, `0.3.0`, … `0.9.0`) — a release that adds a new
-  user-visible capability or surface (any `feat:`). This is the normal march.
-- **`0.x.PATCH`** (`0.1.1`, `0.1.2`) — fixes / perf / docs / internal hardening
-  only, **no new capability** (`fix:` / `refactor:` / `chore:`).
+- **PATCH is the number that climbs.** Every routine release — fix, feature, or
+  improvement — bumps **PATCH**, which counts up without resetting:
+  `0.1.1 → 0.1.2 → … → 0.1.200`. This is the same shape as Claude Code's
+  `2.1.157` and is what `release-please` does for a pre-`1.0` project
+  (`bump-patch-for-minor-pre-major`).
+- **MINOR (`0.2.0`) is rare and deliberate** — a breaking change to the public
+  surface, or a milestone wave you explicitly want to mark. A minor bump resets
+  patch to `0`, so reserve it (`bump-minor-pre-major` — breaking bumps minor,
+  not major, while in `0.x`).
 - **`1.0.0`** — cut only when the stability gate below is fully met.
-- Releases are **deliberate, human-cut milestones**, never automated per commit.
+- Releases are **deliberate, human-cut snapshots**, never automated per commit.
 
 ## Why `0.x` and not `-beta`
 
@@ -28,13 +33,19 @@ the runway into a *specific* major (see [Pre-release runway](#pre-release-runway
 ## Which number moves (while in `0.x`)
 
 The change drives the bump — and we already write [Conventional
-Commits](https://www.conventionalcommits.org/), so the mapping is mechanical:
+Commits](https://www.conventionalcommits.org/), so the mapping is mechanical.
+The default is **always PATCH**; only two things escalate to MINOR:
 
 | The release contains… | Bump | Example |
 | --- | --- | --- |
-| A new user-visible capability or surface (`feat:`) | **MINOR** | `0.1.0 → 0.2.0` |
-| Only fixes, perf, docs, refactors, deps (`fix:`/`refactor:`/`chore:`/`docs:`) | **PATCH** | `0.1.0 → 0.1.1` |
-| A breaking change to a public surface | **MINOR** + a loud note | `0.2.0 → 0.3.0` |
+| Routine work — fixes, features, perf, docs, refactors, improvements (**the default, ~99% of releases**) | **PATCH** | `0.1.7 → 0.1.8` |
+| A breaking change to a public surface | **MINOR** + a loud note | `0.1.40 → 0.2.0` |
+| A milestone wave you deliberately want to mark | **MINOR** | `0.1.40 → 0.2.0` |
+
+So a `feat:` does **not** bump minor by itself — it rides PATCH like everything
+else, and the patch number keeps climbing (`0.1.200` is normal and expected).
+Reserve MINOR for the two escalators above, because bumping it resets patch to
+`0` and starts the climb over.
 
 > While the major is `0`, a breaking change bumps MINOR (you cannot bump major
 > without committing to `1.0`). Call it out explicitly under a **Changed
@@ -42,7 +53,8 @@ Commits](https://www.conventionalcommits.org/), so the mapping is mechanical:
 
 "Public surface" for Muse = the `muse` **CLI commands**, the documented
 **config / env vars** (`MUSE_*`), and the **on-disk store formats** under
-`~/.muse`. Changing any of those in a breaking way is a breaking change.
+`~/.muse`. A breaking change to any of those is what escalates a release to
+MINOR.
 
 ## The `1.0.0` gate
 
