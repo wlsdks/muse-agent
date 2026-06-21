@@ -388,3 +388,31 @@ note-veracity gap); (2) the cue is advisory, not refusing/down-ranking.
 
 RISK: low — additive, mutation-proven (ranker tag + chat cue), Opus ④ PASS,
 back-compat green across all RecallHit consumers.
+
+## fire 13 · 2026-06-21 · poisoned-source · (see commit)
+
+meta: value-class=new-capability · pkg=@muse/cli+@muse/autoconfigure · kind=note-provenance · verdict=PASS · firesSinceDrill=3
+
+ratchet: testFiles +1 (note-provenance.test.ts) · fabrication 0 · NEW vein (note-veracity, the fundamental GROUNDED≠TRUE residual) · eval:memory-poisoning PASS · eval:action-log-tamper PASS
+
+WHAT: NP-ask — note provenance for URL-ingested notes. `muse notes ingest --url`
+writes fetched web content verbatim as a note that grounds as a trusted "your own
+note" (poisoned-page laundering). New note-provenance store (~/.muse/note-
+provenance.json) + resolveNoteProvenanceFile; ingest --url records it (fail-soft);
+the ASK path tags note grounding evidence trusted:false for ingested-note paths →
+the untrusted-only cue fires on an ingested-note-only answer.
+
+WHY: opens the note-veracity vein — the fundamental GROUNDED≠TRUE residual the
+fire-12 judge flagged (grounding proves claim↔source match, not source veracity).
+Closes it for the one Muse-controlled external-ingest path (URL). Additive (only a
+scrutiny cue; verdict untouched).
+
+REVIEW POINT: the path-match crux (ingest's resolveUrlNotePath slug ===
+relativizeNoteSource) was judge-verified live (the silent-no-op failure mode is
+ruled out). Three precise follow-ups recorded (judge-surfaced): NP with-tools
+augmented-citation bypass (a Map last-value-wins dedup overwrites the trust bit —
+fix at groundedOnUntrustedOnly to OR, hardening feeds/episodes too); NP-chat
+parity; a direct inline-tag test. User-authored notes stay trusted (no over-mark).
+
+RISK: low — additive, store mutation-proven, path-match verified, Opus ④ PASS,
+fail-soft ingest, fabrication floor untouched.

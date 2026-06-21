@@ -450,6 +450,21 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
         if (options.overwrite === true) body.overwrite = true;
         payload = (await helpers.apiRequest(io, command, "/api/notes/save", body, "POST")) as Record<string, unknown>;
       }
+      // Record external provenance for a URL-ingested note so recall tags its
+      // grounding evidence trusted:false (the note-veracity half of GROUNDED≠TRUE —
+      // a poisoned web page laundered into a note must not ground as a trusted "your
+      // own note"). Fail-soft: a provenance write must never break the ingest.
+      if (url) {
+        try {
+          const { resolveNoteProvenanceFile } = await import("@muse/autoconfigure");
+          const { recordIngestedNote } = await import("./note-provenance.js");
+          await recordIngestedNote(resolveNoteProvenanceFile(process.env as Parameters<typeof resolveNoteProvenanceFile>[0]), {
+            ingestedAt: new Date().toISOString(),
+            path: notePath,
+            sourceUrl: url
+          });
+        } catch { /* provenance is best-effort — never block the ingest */ }
+      }
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;

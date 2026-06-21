@@ -31,7 +31,8 @@ import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrie
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, isMemoryInjection, isUnbackedActionClaim, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
 import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys, staleFactKeys } from "@muse/memory";
-import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNoteProvenanceFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
 import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, selectReflectionsForRecall, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
@@ -2496,7 +2497,18 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // note is always covered. This only ADDS evidence — it can prevent a
         // false "ungrounded", never cause a false "grounded": a drifted value
         // that appears in no cited note still scores uncovered → ungrounded.
-        const baseNoteMatches = scored.map((r) => ({ cosine: r.score, score: r.score, source: relativizeNoteSource(r.file, notesDir), text: r.chunk.text }));
+        // Notes ingested from an external URL (muse notes ingest --url) are
+        // third-party content — tag their grounding evidence trusted:false so an
+        // answer resting solely on a poisoned ingested note trips the untrusted-only
+        // cue instead of laundering it as a trusted "your own note" (the GROUNDED≠TRUE
+        // note-veracity gap). User-authored notes carry no entry → stay trusted.
+        const untrustedNoteSources = untrustedNotePaths(
+          await readNoteProvenance(resolveNoteProvenanceFile(process.env as MuseEnvironment))
+        );
+        const baseNoteMatches = scored.map((r) => {
+          const source = relativizeNoteSource(r.file, notesDir);
+          return { cosine: r.score, score: r.score, source, text: r.chunk.text, ...(untrustedNoteSources.has(source) ? { trusted: false } : {}) };
+        });
         const noteMatches = options.withTools && index
           ? augmentNoteEvidenceWithCited(
               baseNoteMatches,

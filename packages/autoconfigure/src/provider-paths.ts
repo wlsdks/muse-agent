@@ -140,6 +140,10 @@ export function resolveEpisodesFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_EPISODES_FILE", "episodes.json");
 }
 
+export function resolveNoteProvenanceFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_NOTE_PROVENANCE_FILE", "note-provenance.json");
+}
+
 export function resolveContactsFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_CONTACTS_FILE", "contacts.json");
 }
