@@ -18,7 +18,7 @@ final class FloatingPanel: NSPanel {
 
     init() {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 360, height: 360),
+            contentRect: NSRect(x: 0, y: 0, width: 360, height: 440),
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered, defer: false
         )
@@ -32,7 +32,7 @@ final class FloatingPanel: NSPanel {
         isMovableByWindowBackground = true // drag the background to reposition
 
         let hosting = NSHostingView(rootView: CompanionView(model: model))
-        hosting.frame = NSRect(x: 0, y: 0, width: 360, height: 360)
+        hosting.frame = NSRect(x: 0, y: 0, width: 360, height: 440)
         hosting.autoresizingMask = [.width, .height]
         contentView = hosting
 

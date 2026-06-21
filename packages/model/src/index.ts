@@ -201,6 +201,15 @@ export interface OllamaProviderOptions extends Omit<OpenAICompatibleProviderOpti
    * autoconfigure layer maps `MUSE_OLLAMA_NUM_BATCH` for opt-in tuning.
    */
   readonly numBatch?: number;
+  /**
+   * Ollama's `num_predict` DEFAULT — the generation-length ceiling applied
+   * ONLY to requests that don't set `maxOutputTokens`. Ollama's own default
+   * is −1 (unbounded), so a looping small model on a background generate can
+   * run away; an opt-in cap bounds that latency. An explicit per-request
+   * `maxOutputTokens` always wins. Unset ⇒ no cap (today's behaviour); the
+   * autoconfigure layer maps `MUSE_OLLAMA_NUM_PREDICT`.
+   */
+  readonly numPredict?: number;
 }
 
 export interface AnthropicProviderOptions {

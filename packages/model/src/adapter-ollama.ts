@@ -47,6 +47,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   private readonly nativeDefaultModel?: string;
   private readonly numCtx: number;
   private readonly numBatch: number | undefined;
+  private readonly numPredict: number | undefined;
   private static traceSeq = 0;
 
   constructor(options: OllamaProviderOptions = {}) {
@@ -66,6 +67,16 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     // own default (512). Only a valid positive value opts in.
     this.numBatch = options.numBatch !== undefined && Number.isFinite(options.numBatch) && options.numBatch > 0
       ? Math.trunc(options.numBatch)
+      : undefined;
+    // DEFAULT generation cap for requests that don't set maxOutputTokens.
+    // Unset/invalid → undefined → no cap → Ollama's unbounded default (-1).
+    // The main agent runtime issues generates with `maxOutputTokens:
+    // defaults?.maxOutputTokens`, which autoconfigure leaves unset — so the
+    // foreground `muse ask`/`chat` path is unbounded and a looping small
+    // model can run away. An opt-in ceiling bounds that latency. (Most
+    // background/internal callers already pass an explicit cap and so win.)
+    this.numPredict = options.numPredict !== undefined && Number.isFinite(options.numPredict) && options.numPredict > 0
+      ? Math.trunc(options.numPredict)
       : undefined;
   }
 
@@ -368,7 +379,13 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         num_ctx: this.numCtx,
         ...(this.numBatch !== undefined ? { num_batch: this.numBatch } : {}),
         ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
-        ...(request.maxOutputTokens !== undefined ? { num_predict: request.maxOutputTokens } : {})
+        // An explicit per-request maxOutputTokens always wins; otherwise the
+        // opt-in provider default caps an unbounded generate; else omitted.
+        ...(request.maxOutputTokens !== undefined
+          ? { num_predict: request.maxOutputTokens }
+          : this.numPredict !== undefined
+            ? { num_predict: this.numPredict }
+            : {})
       },
       stream,
       // Keep the model resident between turns so each request doesn't pay the

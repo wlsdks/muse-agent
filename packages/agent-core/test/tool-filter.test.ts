@@ -474,6 +474,36 @@ describe("inflection-aware keyword matching (agrees with @muse/tools selection)"
     expect(names).toContain("file_grep");
   });
 
+  it("reserves the execute tool on a RUN task so the file cluster doesn't starve run_command (edit-run-verify)", () => {
+    // A "fix the file AND run the test" task needs the 3 file tools AND the runner.
+    // The 3-slot file reserve would otherwise drop run_command (rank 4) so the
+    // model fixes the bug but can never RUN to verify.
+    const core = (name: string): MuseTool => tool({ description: name, domain: "core", inputSchema: {}, name, risk: "read" });
+    const fileT = (name: string): MuseTool => tool({ description: name, domain: "files", inputSchema: {}, keywords: ["file"], name, risk: "write" });
+    const tools: readonly MuseTool[] = [
+      core("c1"), core("c2"), core("c3"), core("c4"), core("c5"), core("c6"), core("c7"),
+      fileT("file_read"), fileT("file_grep"), fileT("file_edit"),
+      tool({ description: "run a command", domain: "system", inputSchema: {}, keywords: ["run", "test", "execute"], name: "run_command", risk: "execute" })
+    ];
+    const kept = capToolsByRelevance(tools, { maxTools: 6, userMessage: "fix the bug in /tmp/proj/src/sum.mjs and run the test to verify" }).map((t) => t.definition.name);
+    // Both the file cluster AND the runner survive (the model can edit AND verify).
+    expect(kept).toContain("file_edit");
+    expect(kept).toContain("run_command");
+  });
+
+  it("does NOT reserve the execute tool when there is NO run intent (no over-exposure of the runner)", () => {
+    const core = (name: string): MuseTool => tool({ description: name, domain: "core", inputSchema: {}, name, risk: "read" });
+    const fileT = (name: string): MuseTool => tool({ description: name, domain: "files", inputSchema: {}, keywords: ["file"], name, risk: "write" });
+    const tools: readonly MuseTool[] = [
+      core("c1"), core("c2"), core("c3"), core("c4"), core("c5"), core("c6"), core("c7"),
+      fileT("file_read"), fileT("file_grep"), fileT("file_edit"),
+      tool({ description: "run a command", domain: "system", inputSchema: {}, keywords: ["run", "test", "execute"], name: "run_command", risk: "execute" })
+    ];
+    // A pure read/inspect task with no run/test/build intent.
+    const kept = capToolsByRelevance(tools, { maxTools: 6, userMessage: "open /tmp/proj/src/sum.mjs and explain what the function does" }).map((t) => t.definition.name);
+    expect(kept).not.toContain("run_command");
+  });
+
   it("still drops an IRRELEVANT optional tool when mandatory fills the cap (no clutter past the cap)", () => {
     const core = (name: string): MuseTool => tool({ description: name, domain: "core", inputSchema: {}, name, risk: "read" });
     const tools: readonly MuseTool[] = [

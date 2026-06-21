@@ -59,6 +59,35 @@ describe("executeModelLoop", () => {
     expect(result.toolResults[0]?.result.output).toBe("ran echo");
   });
 
+  it("nudges the model when it REPEATS an identical tool call (MAST step-repetition guard), not on the first", async () => {
+    // The dedup only memoizes COMPLETED results, so the stub returns status:"completed".
+    let turn = 0;
+    const turns = [
+      resp("reading", [call("t1", "echo")]),
+      resp("reading again", [call("t2", "echo")]), // identical name+args {} → a duplicate
+      resp("final")
+    ];
+    const dupRunner = {
+      maxToolCalls: 5,
+      generateWithTracing: async () => turns[Math.min(turn++, turns.length - 1)]!,
+      executeToolCall: async (_ctx: AgentRunContext, toolCall: ModelToolCall): Promise<ExecutedToolResult> => ({
+        result: { id: toolCall.id, name: toolCall.name, output: `ran ${toolCall.name}`, status: "completed" },
+        toolCall
+      }),
+    } as unknown as ModelLoopRunner;
+
+    const result = await executeModelLoop(dupRunner, context(), provider, request());
+    const toolMsgs = result.intermediateMessages.filter((m) => m.role === "tool");
+    expect(toolMsgs).toHaveLength(2);
+    // First call: plain result, no nudge.
+    expect(String(toolMsgs[0]?.content)).toBe("ran echo");
+    expect(String(toolMsgs[0]?.content)).not.toContain("IDENTICAL repeat");
+    // Second (duplicate) call: same content PLUS the step-repetition nudge.
+    expect(String(toolMsgs[1]?.content)).toContain("ran echo");
+    expect(String(toolMsgs[1]?.content)).toContain("IDENTICAL repeat");
+    expect(String(toolMsgs[1]?.content)).toContain("take the next concrete action");
+  });
+
   it("disables tools entirely when maxToolCalls is 0 (returns the first turn untouched)", async () => {
     const ran: string[] = [];
     const result = await executeModelLoop(
