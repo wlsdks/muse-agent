@@ -149,6 +149,7 @@ export function McpServersView({ client }: { client: ApiClient }) {
                       value={addInput}
                       onChange={(e) => setAddInput(e.target.value)}
                       placeholder={t("mcp.allowlistAddPlaceholder")}
+                      aria-label={t("mcp.allowlistAddPlaceholder")}
                       style={{ flex: 1 }}
                     />
                     <Button

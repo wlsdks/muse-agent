@@ -356,6 +356,7 @@ export class MultiAgentOrchestrator {
   private readonly messageBus?: AgentMessageBus;
   private readonly historyStore?: OrchestrationHistoryStore;
   private readonly clock: () => Date;
+  private readonly workerTimeoutMs?: number;
 
   constructor(options: {
     readonly workers: readonly AgentWorker[];
@@ -363,6 +364,16 @@ export class MultiAgentOrchestrator {
     readonly messageBus?: AgentMessageBus;
     readonly historyStore?: OrchestrationHistoryStore;
     readonly clock?: () => Date;
+    /**
+     * Per-worker wall-clock deadline (ms). A worker whose run exceeds it is
+     * marked `failed` (MAST "unaware of termination" — explicit termination of a
+     * hung sub-agent) and the run proceeds with the survivors instead of hanging
+     * forever. Opt-in: omitted ⇒ no deadline (legacy behavior). The deadline
+     * bounds the WAIT, not the underlying compute — without provider-level
+     * cancellation the abandoned call may still run; see backlog for the
+     * AbortSignal follow-up.
+     */
+    readonly workerTimeoutMs?: number;
   }) {
     if (options.workers.length === 0) {
       throw new NoAgentWorkerError("MultiAgentOrchestrator requires at least one worker");
@@ -373,6 +384,16 @@ export class MultiAgentOrchestrator {
     this.messageBus = options.messageBus;
     this.historyStore = options.historyStore;
     this.clock = options.clock ?? (() => new Date());
+    this.workerTimeoutMs = options.workerTimeoutMs;
+  }
+
+  /**
+   * Run a worker under the optional per-worker deadline. A hung worker rejects
+   * at the deadline so the caller's existing catch marks it `failed` and the run
+   * continues — the same path a throwing worker takes.
+   */
+  private async runWorkerWithDeadline(worker: AgentWorker, input: AgentRunInput): Promise<AgentRunResult> {
+    return withDeadline(() => worker.run(input), this.workerTimeoutMs, `worker "${worker.id}"`);
   }
 
   async run(input: AgentRunInput, options: OrchestrationRunOptions = {}): Promise<MultiAgentOrchestrationResult> {
@@ -453,7 +474,8 @@ export class MultiAgentOrchestrator {
       objectiveFromInput(input),
       options.verifyFinalAnswer,
       options.detectConflicts,
-      options.detectRedundancies
+      options.detectRedundancies,
+      this.workerTimeoutMs
     );
     const raw = response.raw as
       | { readonly conflicts?: readonly string[]; readonly redundancies?: readonly string[]; readonly verification?: { readonly satisfied: boolean } }
@@ -502,7 +524,7 @@ export class MultiAgentOrchestrator {
 
     for (const worker of workers) {
       try {
-        const raw = await worker.run(withSelectedWorker(currentInput, worker));
+        const raw = await this.runWorkerWithDeadline(worker, withSelectedWorker(currentInput, worker));
         const parsed = parseWorkerResult(raw);
         if (!parsed.ok) {
           results.push({ error: parsed.reason, status: "failed", workerId: worker.id });
@@ -538,7 +560,7 @@ export class MultiAgentOrchestrator {
   private async runParallel(input: AgentRunInput, workers: readonly AgentWorker[]): Promise<readonly OrchestrationStepResult[]> {
     return Promise.all(workers.map(async (worker): Promise<OrchestrationStepResult> => {
       try {
-        const raw = await worker.run(withSelectedWorker(input, worker));
+        const raw = await this.runWorkerWithDeadline(worker, withSelectedWorker(input, worker));
         const parsed = parseWorkerResult(raw);
         if (!parsed.ok) {
           await this.publishWorkerFailure(worker.id, new Error(parsed.reason)).catch(() => undefined);
@@ -696,6 +718,30 @@ function hasCjkCodePoint(value: string): boolean {
   return false;
 }
 
+/**
+ * Run `operation` under an optional wall-clock deadline (MAST "unaware of
+ * termination"). Without one it is a transparent passthrough. With one, a hung
+ * operation rejects at the deadline so the caller's existing catch can fail-soft
+ * — bounding the WAIT, not the underlying compute (no provider cancellation; the
+ * abandoned call may still run). The timer is always cleared so a fast operation
+ * leaves no dangling handle. Shared by the per-worker guard and the fan-in
+ * synthesis/verification calls so the policy never drifts.
+ */
+async function withDeadline<T>(operation: () => Promise<T>, timeoutMs: number | undefined, label: string): Promise<T> {
+  if (!timeoutMs || timeoutMs <= 0) {
+    return operation();
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} exceeded the ${timeoutMs.toString()}ms deadline`)), timeoutMs);
+  });
+  try {
+    return await Promise.race([operation(), deadline]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function buildOrchestrationResponse(
   runId: string,
   model: string,
@@ -706,7 +752,8 @@ async function buildOrchestrationResponse(
   objective?: string,
   verifyFinalAnswer?: (objective: string, output: string) => Promise<{ readonly satisfied: boolean; readonly missing?: string }>,
   detectConflicts?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<readonly string[]>,
-  detectRedundancies?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<readonly string[]>
+  detectRedundancies?: (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) => Promise<readonly string[]>,
+  synthesisTimeoutMs?: number
 ): Promise<AgentRunResult["response"]> {
   const cap = maxOutputCharsPerWorker && maxOutputCharsPerWorker > 0 ? maxOutputCharsPerWorker : undefined;
   // Neutralize each completed worker's output ONCE, BEFORE summarize/cap, and feed
@@ -743,7 +790,7 @@ async function buildOrchestrationResponse(
       return undefined;
     }
     try {
-      const s = await synthesizeFinalAnswer(completedParts, guidance);
+      const s = await withDeadline(() => synthesizeFinalAnswer(completedParts, guidance), synthesisTimeoutMs, "fan-in synthesis");
       return typeof s === "string" && s.trim().length > 0 ? s : undefined;
     } catch {
       return undefined;
@@ -760,12 +807,12 @@ async function buildOrchestrationResponse(
   let verification: { readonly satisfied: boolean; readonly missing?: string } | undefined;
   if (verifyFinalAnswer && objective && objective.trim().length > 0 && output.trim().length > 0) {
     try {
-      let verdict = await verifyFinalAnswer(objective, output);
+      let verdict = await withDeadline(() => verifyFinalAnswer(objective, output), synthesisTimeoutMs, "fan-in verification");
       if (!verdict.satisfied && verdict.missing && verdict.missing.trim().length > 0) {
         const fixed = await trySynthesize(`Make sure the final answer also fully covers: ${verdict.missing.trim()}`);
         if (fixed && fixed.trim() !== output.trim()) {
           output = fixed;
-          verdict = await verifyFinalAnswer(objective, output);
+          verdict = await withDeadline(() => verifyFinalAnswer(objective, output), synthesisTimeoutMs, "fan-in verification");
         }
       }
       verification = verdict.missing ? { missing: verdict.missing, satisfied: verdict.satisfied } : { satisfied: verdict.satisfied };

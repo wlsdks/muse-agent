@@ -5,6 +5,8 @@ import MuseDesktopCore
 extension Notification.Name {
     /// Posted by the floating companion's "open full app" button.
     static let museOpenFullApp = Notification.Name("museOpenFullApp")
+    /// Posted when the full-app window closes (restore the companion).
+    static let museFullAppClosed = Notification.Name("museFullAppClosed")
 }
 
 /// Owns the companion's app-level pieces: the floating panel, a menu-bar item,
@@ -26,6 +28,10 @@ final class MuseController: NSObject, NSMenuDelegate {
         NotificationCenter.default.addObserver(
             forName: .museOpenFullApp, object: nil, queue: .main
         ) { [weak self] _ in self?.openFullApp() }
+        // Restore the floating companion when the full app window closes.
+        NotificationCenter.default.addObserver(
+            forName: .museFullAppClosed, object: nil, queue: .main
+        ) { [weak self] _ in self?.panel.orderFrontRegardless() }
         // Control-Option-Space toggles the panel from anywhere (two real
         // modifiers — avoids the macOS 15+ Option-only-hotkey bug; Carbon path
         // needs no Accessibility permission).
@@ -50,7 +56,11 @@ final class MuseController: NSObject, NSMenuDelegate {
         // A clean music note — Muse, the goddess of song — reads crisply at
         // menu-bar size (a detailed portrait turns to mud that small). Template
         // image so it adapts to light/dark menu bars.
-        let note = NSImage(systemSymbolName: "music.note", accessibilityDescription: "Muse")
+        // A cluster of notes (a lyre/harp would be ideal but isn't an SF Symbol)
+        // — bolder + more legible than a single note at menu-bar size.
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .bold)
+        let note = NSImage(systemSymbolName: "music.quarternote.3", accessibilityDescription: "Muse")?
+            .withSymbolConfiguration(config)
         note?.isTemplate = true
         item.button?.image = note
         item.button?.toolTip = "Muse — click for options (⌃⌥Space to show/hide)"
@@ -67,12 +77,12 @@ final class MuseController: NSObject, NSMenuDelegate {
         statusInfoItem = info
 
         // The primary action first — one click into the full app (chat + everything).
-        let openItem = add(menu, s.menuOpenFull, #selector(openFullApp))
-        openItem.image = NSImage(systemSymbolName: "bubble.left.and.bubble.right.fill", accessibilityDescription: nil)
-        add(menu, s.menuShowHide, #selector(toggleFromMenu))
+        add(menu, s.menuOpenFull, #selector(openFullApp), icon: "macwindow")
+        add(menu, s.menuShowHide, #selector(toggleFromMenu), icon: "eye")
         menu.addItem(.separator())
 
         let characterItem = NSMenuItem(title: s.menuCharacter, action: nil, keyEquivalent: "")
+        characterItem.image = NSImage(systemSymbolName: "person.crop.circle", accessibilityDescription: nil)
         let characterMenu = NSMenu()
         let names = [("goddess", s.characterGoddess), ("orb", s.characterOrb)]
         let currentLook = PrefsStore.load().look ?? "goddess"
@@ -87,6 +97,7 @@ final class MuseController: NSObject, NSMenuDelegate {
         menu.addItem(characterItem)
 
         let languageItem = NSMenuItem(title: s.menuLanguage, action: nil, keyEquivalent: "")
+        languageItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
         let languageMenu = NSMenu()
         let current = AppLanguage.fromPersisted(PrefsStore.load().language)
         for lang in AppLanguage.allCases {
@@ -99,20 +110,21 @@ final class MuseController: NSObject, NSMenuDelegate {
         languageItem.submenu = languageMenu
         menu.addItem(languageItem)
 
-        muteItem = add(menu, s.menuMute, #selector(toggleMute))
+        muteItem = add(menu, s.menuMute, #selector(toggleMute), icon: "speaker.slash")
         menu.addItem(.separator())
-        add(menu, s.menuGuide, #selector(openGuide))
-        add(menu, s.menuSettings, #selector(openSettings), key: ",")
-        add(menu, s.menuQuit, #selector(quit), key: "q")
+        add(menu, s.menuGuide, #selector(openGuide), icon: "questionmark.circle")
+        add(menu, s.menuSettings, #selector(openSettings), key: ",", icon: "gearshape")
+        add(menu, s.menuQuit, #selector(quit), key: "q", icon: "power")
 
         item.menu = menu
         statusItem = item
     }
 
     @discardableResult
-    private func add(_ menu: NSMenu, _ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
+    private func add(_ menu: NSMenu, _ title: String, _ action: Selector, key: String = "", icon: String? = nil) -> NSMenuItem {
         let mi = NSMenuItem(title: title, action: action, keyEquivalent: key)
         mi.target = self
+        if let icon { mi.image = NSImage(systemSymbolName: icon, accessibilityDescription: nil) }
         menu.addItem(mi)
         return mi
     }
@@ -133,6 +145,7 @@ final class MuseController: NSObject, NSMenuDelegate {
     @objc private func toggleFromMenu() { toggleVisibility() }
 
     @objc private func openFullApp() {
+        panel.orderOut(nil)   // don't float the companion over the full app
         NSApp.activate(ignoringOtherApps: true)
         webWindow.show()
     }

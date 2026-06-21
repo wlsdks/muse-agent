@@ -52,6 +52,7 @@ import { detectConflictingWritesInBatch } from "./tool-batch-conflict.js";
 import { ToolCallDeduplicator } from "./tool-call-deduplicator.js";
 import { ToolFailureStreakTracker } from "./tool-failure-streak.js";
 import { ToolLoopProgressTracker } from "./tool-loop-progress.js";
+import { REVERIFY_NUDGE, ReverifyNudgeTracker, hasRunVerifyIntent, toolsIncludeExecute } from "./reverify-nudge.js";
 import type { AgentRunContext } from "./types.js";
 
 export interface ModelLoopRunner {
@@ -158,6 +159,8 @@ export async function executeModelLoop(
   const progress = new ToolLoopProgressTracker();
   const failureStreak = new ToolFailureStreakTracker();
   const shellPhase = new GeneralShellPhaseGate((request.tools ?? []).map((tool) => tool.name));
+  const reverify = new ReverifyNudgeTracker();
+  const reverifyRunIntent = hasRunVerifyIntent(request.messages);
   const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
     ? now() + runner.maxRunWallclockMs
@@ -202,6 +205,17 @@ export async function executeModelLoop(
     const calls = response.toolCalls ?? [];
 
     if (calls.length === 0 || (activeTools?.length ?? 0) === 0) {
+      // Re-verification nudge: the model is finishing, but if it edited a file
+      // and never re-ran a verifying command (and tools are still live so it
+      // can), prompt it ONCE to re-run before answering — a reported failure can
+      // hide a second one that only surfaces after the first is fixed and re-run.
+      if (
+        (activeTools?.length ?? 0) > 0 &&
+        reverify.consumeNudge({ hasExecuteTool: toolsIncludeExecute(activeTools), runIntent: reverifyRunIntent })
+      ) {
+        messages = [...messages, { content: REVERIFY_NUDGE, role: "user" }];
+        continue;
+      }
       return {
         finalResponse: response,
         intermediateMessages,
@@ -262,6 +276,7 @@ export async function executeModelLoop(
         progress.record(executed.result.output, mutating);
         failureStreak.record(toolCall.name, executed.result.status);
         shellPhase.record(toolCall.name, executed.result.output);
+        reverify.recordTool(toolRisk);
       }
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);
@@ -311,6 +326,8 @@ export async function* executeStreamingModelLoop(
   const progress = new ToolLoopProgressTracker();
   const failureStreak = new ToolFailureStreakTracker();
   const shellPhase = new GeneralShellPhaseGate((request.tools ?? []).map((tool) => tool.name));
+  const reverify = new ReverifyNudgeTracker();
+  const reverifyRunIntent = hasRunVerifyIntent(request.messages);
   const now = runner.now ?? Date.now;
   const deadlineMs = runner.maxRunWallclockMs && runner.maxRunWallclockMs > 0
     ? now() + runner.maxRunWallclockMs
@@ -350,6 +367,17 @@ export async function* executeStreamingModelLoop(
     const calls = response.toolCalls ?? [];
 
     if (calls.length === 0 || (activeTools?.length ?? 0) === 0) {
+      // Re-verification nudge: the model is finishing, but if it edited a file
+      // and never re-ran a verifying command (and tools are still live so it
+      // can), prompt it ONCE to re-run before answering — a reported failure can
+      // hide a second one that only surfaces after the first is fixed and re-run.
+      if (
+        (activeTools?.length ?? 0) > 0 &&
+        reverify.consumeNudge({ hasExecuteTool: toolsIncludeExecute(activeTools), runIntent: reverifyRunIntent })
+      ) {
+        messages = [...messages, { content: REVERIFY_NUDGE, role: "user" }];
+        continue;
+      }
       return {
         finalResponse: response,
         intermediateMessages,
@@ -403,6 +431,7 @@ export async function* executeStreamingModelLoop(
         progress.record(executed.result.output, mutating);
         failureStreak.record(toolCall.name, executed.result.status);
         shellPhase.record(toolCall.name, executed.result.output);
+        reverify.recordTool(toolRisk);
       }
       toolsUsed.push(toolCall.name);
       toolResults.push(executed);

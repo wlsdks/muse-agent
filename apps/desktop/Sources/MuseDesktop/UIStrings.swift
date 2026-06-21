@@ -16,7 +16,7 @@ struct UIStrings {
     private func t(_ ko: String, _ en: String) -> String { lang == .korean ? ko : en }
 
     // Menu bar
-    var menuOpenFull: String { t("Muse 열기 (전체 앱)", "Open Muse (full app)") }
+    var menuOpenFull: String { t("Muse 앱 열기", "Open Muse app") }
     var menuShowHide: String { t("Muse 보이기 / 숨기기  (⌃⌥Space)", "Show / Hide Muse  (⌃⌥Space)") }
     var menuCharacter: String { t("캐릭터", "Character") }
     var menuLanguage: String { t("언어", "Language") }

@@ -5,6 +5,53 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 59 · 2026-06-21 · skill v2.0 · ad6ddc17 (@muse/fs file_list: truncated=true 거짓양성 수정 — 정확히 limit개면 완전한 목록인데 phantom 다음 페이지를 쫓던 버그)
+meta: value-class=correctness(list-signal-accuracy) · pkg=@muse/fs · kind=fs/list-truncation-accuracy · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +2 cases(exactly-limit→truncated false, >limit→true+count=limit) · fabrication 0 · @muse/fs 182 vitest(~1s) · lint 0/0 · ★박스 load~35 → narrow per-pkg vitest는 동작(full pnpm check만 timeout)
+- 무엇: file_list가 glob을 `matches.length >= limit`에서 break하고 `truncated = >= limit`로 설정 → 디렉터리에 정확히 limit개 매치 시 truncated=true 거짓양성 → 모델이 없는 다음 페이지를 쫓음. 수정: limit+1까지 1개 더 수집(sentinel)해 "정확히 limit"(완전)과 ">limit"(잘림) 구별 → `truncated = matches.length > limit`, truncated일 때만 sort 후 limit로 slice.
+- 왜: 정확한 list 신호 = grep/edit/LIST 체인의 LIST 레그 신뢰성(거짓 truncated → 불필요 재조회/완전 목록 불신). ★박스 load~35로 LLM eval·full pnpm check timeout이나 narrow @muse/fs vitest는 ~1s에 동작(180→182) → 검증 가능. 다양성: @muse/fs = fires 57/58 crates/runner 연속 깸(다른 pkg+kind).
+- 리뷰지점: 5케이스 트레이스(0/<L/==L/==L+1/>>L 전부 정확), count==paths.length 불변(slice 후 읽음), over-scan은 +1 bounded, limit≥1(asPositiveInt+schema min1). mutation(truncated를 >=로 되돌림→exactly-limit 테스트 RED). 독립 Opus ④b judge VERDICT PASS(전 케이스 트레이스·무회귀·OUTCOME채점·diversity·fabrication0).
+- 리스크: >limit 케이스의 반환 SET은 여전히 glob-bounded prefix(기존 한계, docstring 정직). result-object SHAPE 무변경 → fs 소비자 무영향. fire 59는 ×3 아님 → main 머지 없음. ⑤c[55-58]는 load~35로 여전히 보류(fire 60 재시도).
+lesson: 박스 극포화에서도 narrow per-package vitest(<2s suite)는 통과 — full pnpm check만 5000ms 벽에 걸림. 그래서 작은-패키지 슬라이스(@muse/fs 같은)는 load~35에서도 검증·진행 가능, cargo-runner 독점에서 벗어날 길.
+
+## fire 58 · 2026-06-21 · skill v2.0 · 88021934 (crates/runner: in-band truncation marker on run_command output — model SEES output was cut, not just a bool flag)
+meta: value-class=new-capability(reliability-signal) · pkg=crates/runner · kind=runner/truncation-marker · verdict=PASS · firesSinceDrill=2
+ratchet: cargo tests +1(marks_only) +updated caps_output(형제) · fabrication 0 · crates/runner 15 cargo tests · lint 0/0 · ★박스 load~40 → cargo-only 검증(LLM eval·pnpm check 전부 timeout)
+- 무엇: 러너가 stdout/stderr를 max_output_bytes로 cap할 때 기존엔 `truncated: bool`만 신호 → 로컬 12B가 놓치고 잘린 로그를 전체로 읽음("tests passed"를 부분 실행에서 결론). 잘린 스트림에 self-labelled in-band 마커(`[muse: output truncated…]`) 추가(per-stream, 이미 계산된 stdout_truncated/stderr_truncated 사용) → 모델이 텍스트에서 부분임을 봄. bool 필드는 프로그램 소비자용으로 유지.
+- 왜: run_command 출력 신호 = 멀티스텝 verify 단계 신뢰성. ★박스 load~40(10+ 동시루프)로 LLM eval·pnpm check·full vitest 전부 timeout → cargo-검증 가능한 Rust 슬라이스만 이 fire에 가능. fire-57도 runner지만 distinct kind(truncation-SIGNAL vs utf8-ENCODING). reflection-guard 무관(retry 아님).
+- 리뷰지점: cargo 15 pass, OUTCOME 통합테스트(실제 bash 200KB→1024 cap→마커 등장), mutation(mark no-op→마커 테스트 2개 RED). no-regression 앵커=large_output(미truncated→마커 없음, 정확 200000). 독립 Opus ④b judge가 TS소비자 추적(capTruncated 안 깨짐, TS는 fake invoke)·per-stream 배선·contract-pollution(self-labelled 수용)·cap-overage(마커 ~110B 메타, 수용)·diversity 검증 → VERDICT PASS.
+- 리스크: 마커가 stdout "raw output" 계약을 약간 변경(self-labelled로 완화, bool 유지). model이 작은 cap 설정 시 마커가 잘릴 수 있으나 capTruncated가 true 유지(무해). fire 58은 ×3 아님 → main 머지 없음. ⑤c[55/56/57]는 여전히 load~40로 보류(fire 60 재시도).
+lesson: 박스 극포화(load 40)에서도 cargo-verifiable Rust 슬라이스는 진행 가능(vitest 5000ms 벽 없음) — 환경이 LLM/TS 검증을 막아도 fire를 헛돌리지 않는 길. 단 출력-계약 변경은 형제 테스트(exact-len pin) 동시 갱신 필수.
+
+## fire 57 · 2026-06-21 · skill v2.0 · 589a2272 (crates/runner: trim split multibyte char on truncated run_command output — clean UTF-8, no U+FFFD)
+meta: value-class=correctness(output-integrity) · pkg=crates/runner · kind=runner/utf8-truncation · verdict=PASS · firesSinceDrill=1
+ratchet: cargo tests +2(split-char trim, complete-tail intact) · fabrication 0 · crates/runner 14 cargo tests · lint 0/0 · ★eval e2e 박스포화로 미측정(reverify-fix 또 timeout)
+- 무엇: run_command 러너의 drainer가 출력을 BYTE 단위로 cap → 멀티바이트 UTF-8 문자 중간에서 잘리면 from_utf8_lossy가 U+FFFD(�)로 치환 → 모델이 verify 로그를 손상으로 읽음. `trim_partial_utf8_tail`로 잘린 마지막 부분 문자를 제거(truncated일 때만) → 잘린 출력도 깨끗한 valid UTF-8.
+- 왜: run_command 출력 무결성 = 멀티스텝 체인의 verify 단계(모델이 이 출력으로 다음 행동 결정). 정직: 박스 포화로 LLM eval(eval:reverify-fix) 또 타임아웃 → 결정론적 cargo-검증 슬라이스 선택(Ollama 불요). 다양성: crates/runner(Rust) = scripts(53/54/55)·agent-core(56) 우물과 완전 다른 (pkg,kind).
+- 리뷰지점: cargo 14 pass, mutation(trim no-op→split-char 테스트 RED) 확인. 독립 Opus ④b judge VERDICT PASS(종료성·non-inert·무회귀·value·diversity·fabrication0). judge 비차단 노트(interior-binary over-trim + O(n²)) 즉시 반영 — while→3회-bounded 루프(부분문자 ≤3바이트, 내부 invalid는 over-trim 안 함, O(n)).
+- 리스크: 정상(미truncated) 출력 무변경(if truncated 가드). interior-binary는 bounded로 ≤3 pop 후 lossy(기존 동작). modest scope(정확히 char 경계서 잘린 멀티바이트 출력만)이나 실제 correctness. fire 57은 ×3 → 55/56/57 main 전달.
+lesson: 박스 포화로 LLM eval이 막히면 — 결정론적 cargo/unit 슬라이스(fresh pkg)로 전환해 fire를 헛돌리지 않는다. judge 비차단 노트도 cheap+correct면 같은 fire에 반영(calibration).
+
+## fire 56 · 2026-06-21 · skill v2.0 · fc77a088 (★JUDGE-DRILL PASS + real fix: re-verification nudge wired into the model loop; firesSinceDrill reset)
+meta: value-class=new-capability(reliability-mechanism)+judge-drill · pkg=@muse/agent-core · kind=model-loop/reverify-nudge · verdict=PASS · firesSinceDrill=0
+ratchet: testFiles +2(reverify-nudge unit + model-loop-reverify behavioral) · fabrication 0 · @muse/agent-core 2589 · apps/cli 2890(isolation) · lint 0/0 · mutation RED-confirmed · ④b judge PASS · Ollama UP(but eval saturated)
+- ★JUDGE-DRILL(firesSinceDrill≥10 의무): 먼저 INERT 슬라이스 주입(reverify-nudge.ts 헬퍼+12 단위테스트 GREEN이나 model-loop에 미배선=선언-only) → 독립 Opus judge가 정확히 FAIL("not wired, eval 여전히 FAIL, declaration-only", grep 증거+누락 배선 명시) → judge 비-rubber-stamp 입증 → 진짜 fix로 진행. drill 성공.
+- 무엇(real fix): fire 55가 발굴한 갭(12B가 편집 후 재-READ로 확인하고 재-EXECUTE 안 함) 수정 — `ReverifyNudgeTracker`(write→pendingEdit, execute→clear; consumeNudge=one-shot) + executeModelLoop·executeStreamingModelLoop **양쪽** termination 가드에 배선: 모델이 미검증 편집 후 종료하려 하면(tools live·run-intent·execute도구 존재) REVERIFY_NUDGE user 메시지 1회 주입+continue(재실행 유도). 형제-audit: 양 루프.
+- 왜: fire 55 측정 발견이 정당화. 다양성: @muse/agent-core/model-loop = scripts/eval(53/54/55) 연속 깸. reflection-guard 준수(재시도가 결정론 "재실행했나" 체크로 게이트, one-shot).
+- 리뷰지점: **결정론 행동 테스트**(scripted provider로 executeModelLoop 구동 — edit→finish는 nudge 주입+재프롬프트, edit→run→finish는 nudge 없음, edit→finish→finish는 1회만+종료, no-run-intent는 nudge 없음). mutation: consumeNudge 무력화→nudge-fires 2 테스트 RED, 음성 2 GREEN. 독립 Opus ④b judge가 배선·형제·종료·over-fire·가드·메시지페어링·정직-caveat 전수 검증(자체 mutation 재실행) → VERDICT PASS.
+- 리스크/정직: ★e2e eval:reverify-fix(12B FAIL→PASS) **이 fire 미확정** — 박스 포화(동시루프)로 eval 1케이스가 >560s 타임아웃. 그래서 결정론 배선(루프가 nudge 주입+재프롬프트)은 증명, 확률적 12B-준수(그후 재실행+beta수정)는 미검증→backlog(클린박스 확인). over-fire는 1턴·one-shot로 bounded. pnpm check 1-FAIL은 apps/cli /forget 렌더 포화-flake(격리 2890 GREEN, 내 변경 무관). fire 56은 ×3 아님→main 머지 없음.
+lesson: 무인 retry/nudge 슬라이스는 박스 포화로 e2e LLM eval이 막혀도 — scripted-provider 결정론 행동 테스트로 *메커니즘*(루프가 재프롬프트한다)을 증명 가능; 확률적 LLM-준수는 정직히 분리·backlog. drill은 inert-but-green 슬라이스(헬퍼+단위테스트만, 미배선)가 가장 현실적인 나쁜-슬라이스 — judge가 grep으로 잡음.
+
+## fire 55 · 2026-06-21 · skill v2.0 · ee783e75 (eval:reverify-fix — RE-VERIFICATION probe surfaces a REAL blocker: 12B re-reads its edit but doesn't re-run)
+meta: value-class=new-capability(harder-eval/flywheel)+finding · pkg=scripts/eval · kind=eval-fixture/re-verification · verdict=PASS(probe valid; 12B FAILs it=finding) · firesSinceDrill=9
+ratchet: testFiles unchanged · fabrication 0 · eval:reverify-fix valid+discriminating(neither/only-reported→FAIL, both→PASS, 결정론 검증) · 12B FAIL 1/1(genuine gap) · lint 0/0 · Ollama UP
+- 무엇: 테스트가 FIRST 실패에서 exit(순차 assertion)이라 둘째 버그(beta)가 첫째(alpha) 고치고 RE-RUN하기 전엔 숨겨짐. 보고된 버그만 고치고 re-run 없이 done 선언하면 둘째 못 봄 → FAIL. two-edit-fix(둘 다 upfront 노출)와 다른 차원=RE-VERIFICATION(첫 에러를 전부로 믿지 말고 재실행 확인).
+- ★발견(flywheel 성과): 12B FAIL 1/1 — trace: run_command(alpha fail)→read alpha→edit alpha→**read alpha(재읽기로 "확인")**→정지. run_command-calls=1 — **테스트를 재실행 안 함** → 숨은 beta 못 봄. 즉 12B는 편집을 재-READ로 확인하고 재-EXECUTE 안 하는 갭(거짓-완료/재검증 부재). 기존 eval(전부 upfront/단일-fix)은 못 잡던 진짜 멀티스텝 신뢰성 갭.
+- 왜: backlog flywheel — 테마 성숙(3 eval PASS) 후 더 어려운 차원 probe가 다음 product 블로커를 발굴(설계대로). standalone red-probe(어느 게이트에도 미편입 → CI 무영향; 미래 fix가 GREEN으로 뒤집을 진행 신호, agent-testing.md "miss를 케이스로").
+- 리뷰지점: 결정론 discrimination(only-reported-fixed→FAIL=stop-after-first 포착). 독립 Opus ④b judge가 distinct-dimension·discrimination·OUTCOME-grade·finding-real(run_command-calls=1=재실행 안 함)·red-probe 정당성 검증 → VERDICT PASS. judge 비차단 노트: pick-evals.mjs:41 greedy regex가 "reverify" 경로를 grounding 배터리로 오라우팅(pre-existing) → backlog.
+- 리스크: 3연속 scripts/eval(53 agg,54 fixture,55 fixture); (scripts,eval-fixture)×2이나 distinct 차원+value-first(진짜 블로커 발굴)로 정당. eval RED(12B 갭)는 의도된 probe 결과. fire 55는 ×3 아님 → main 머지 없음. ★fire 56=firesSinceDrill≥10 JUDGE-DRILL(의무).
+lesson: 테마 성숙 후 flywheel(더 어려운 eval)이 product 블로커를 재가동 — reverify-fix가 "12B는 편집을 재읽기로 확인하고 재실행 안 함" 발굴. 다음 product slice=재검증 nudge(편집 후 액션-required 태스크인데 재실행 0이면 1회 재실행 유도, reflection-guard-compliant; agent-core 정당화됨).
+
 ## fire 54 · 2026-06-21 · skill v2.0 · 5ea43240 (eval:two-edit-fix — multi-step COMPLETENESS battery (2 edits/2 files); 12B PASSes, bar raised)
 meta: value-class=new-capability(harder-eval/flywheel) · pkg=scripts/eval · kind=eval-fixture/completeness · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles unchanged · fabrication 0 · eval:two-edit-fix PASS 1/1 (live) · discrimination verified(one-edit→FAIL/both→PASS) · lint 0/0 · main ff-merge(fire 54=×3, delivers 53/54) · Ollama UP

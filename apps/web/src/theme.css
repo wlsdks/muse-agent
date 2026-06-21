@@ -277,7 +277,7 @@ button {
   padding: var(--s-lg);
 }
 .view {
-  height: 100%;
+  min-height: 100%;
   animation: viewIn 0.16s ease;
 }
 @keyframes viewIn {

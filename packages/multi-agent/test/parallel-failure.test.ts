@@ -22,6 +22,43 @@ function syntheticWorker(id: string, behavior: "ok" | "throw" | "delayed-ok"): R
   });
 }
 
+function hangingWorker(id: string): RuleBasedAgentWorker {
+  // Never resolves and never throws — models a wedged model call.
+  return new RuleBasedAgentWorker(id, `worker ${id}`, ["task"], () => new Promise<AgentRunResult>(() => undefined));
+}
+
+describe("MultiAgentOrchestrator per-worker deadline — explicit termination of a hung worker", () => {
+  for (const mode of ["parallel", "sequential"] as const) {
+    it(`${mode}: a hung worker is terminated at the deadline and marked failed; survivors complete`, async () => {
+      const orchestrator = new MultiAgentOrchestrator({
+        workerTimeoutMs: 40,
+        workers: [syntheticWorker("alive", "ok"), hangingWorker("stuck")]
+      });
+
+      const result = await orchestrator.run(
+        { messages: [{ content: "task", role: "user" }], model: "diagnostic" },
+        { mode }
+      );
+
+      const byId = Object.fromEntries(result.results.map((step) => [step.workerId, step]));
+      expect(byId.alive?.status).toBe("completed");
+      expect(byId.stuck?.status).toBe("failed");
+      expect(byId.stuck?.error).toMatch(/deadline/u);
+    }, 3000);
+  }
+
+  it("no deadline set ⇒ a normal run is unaffected (backward-compatible)", async () => {
+    const orchestrator = new MultiAgentOrchestrator({
+      workers: [syntheticWorker("a", "ok"), syntheticWorker("b", "ok")]
+    });
+    const result = await orchestrator.run(
+      { messages: [{ content: "task", role: "user" }], model: "diagnostic" },
+      { mode: "parallel" }
+    );
+    expect(result.results.every((step) => step.status === "completed")).toBe(true);
+  });
+});
+
 describe("MultiAgentOrchestrator parallel + bus interactions", () => {
   it("parallel mode publishes one bus message per worker even when some fail", async () => {
     const messageBus = new InMemoryAgentMessageBus();

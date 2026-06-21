@@ -22,7 +22,7 @@
 import { readFile } from "node:fs/promises";
 
 import { isMemoryInjection } from "@muse/agent-core";
-import { classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, keysWithActiveRetraction, normalizeMemoryKey, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
+import { beliefValueTimeline, classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, keysWithActiveRetraction, normalizeMemoryKey, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
 import { readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/mcp";
 import type { Command } from "commander";
@@ -209,6 +209,14 @@ export function formatBeliefWhy(
     `${prov.kind} ${prov.key} = ${prov.value} — ${verb} ${prov.lastConfirmed}`,
     `  ↳ confirmed ${prov.confirmCount.toString()}× since ${prov.firstSeen} · ${freshness} · ${durable ? "durable" : "provisional"}${volatileNote}`
   ];
+  // For a belief that CHANGED, show the actual value path (not just the count) —
+  // the deepest "show your work": Seoul (date) → Busan (date).
+  if (prov.distinctValueCount > 1) {
+    const timeline = beliefValueTimeline(records as unknown as readonly BeliefProvenance[], key);
+    if (timeline.length > 1) {
+      lines.push(`  ↳ value path: ${timeline.map((step) => `${step.value} (${step.learnedAt.slice(0, 10)})`).join(" → ")}`);
+    }
+  }
   // The newest record carries the evidence excerpt / session; the excerpt only
   // exists for inferred (auto) beliefs.
   const latest = [...records]

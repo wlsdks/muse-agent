@@ -220,7 +220,10 @@ final class CharacterView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
-        if !didDrag { onClick?() }
+        if !didDrag {
+            window?.makeKey()   // so the input field can take keyboard focus immediately
+            onClick?()
+        }
         downPoint = nil
     }
 

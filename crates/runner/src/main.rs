@@ -152,12 +152,29 @@ fn run_request(request: RunnerRequest) -> RunnerResponse {
     RunnerResponse {
         ok: status.map(|status| status.success()).unwrap_or(false) && !timed_out,
         status: status.and_then(|status| status.code()),
-        stdout,
-        stderr,
+        // Append an in-band marker to a stream that was cut. The `truncated` bool
+        // alone is easily missed by the local model — which then reads a CUT log
+        // as the whole thing and concludes wrongly ("tests passed" off a partial
+        // run). The marker is self-labelled (`[muse: …]`) so it can't be confused
+        // with program output, and the bool stays for programmatic consumers.
+        stdout: mark_if_truncated(stdout, stdout_truncated),
+        stderr: mark_if_truncated(stderr, stderr_truncated),
         timed_out,
         truncated: stdout_truncated || stderr_truncated,
         error: if timed_out { Some(describe_timeout(timeout.as_millis())) } else { None },
     }
+}
+
+/// Self-labelled marker appended to a captured stream that was truncated at the
+/// capture limit, so the model SEES in the text that output is partial.
+const OUTPUT_TRUNCATION_MARKER: &str =
+    "\n[muse: output truncated at the capture limit — re-run a narrower command or raise max_output_bytes to see the rest]";
+
+fn mark_if_truncated(mut text: String, truncated: bool) -> String {
+    if truncated {
+        text.push_str(OUTPUT_TRUNCATION_MARKER);
+    }
+    text
 }
 
 /// Read a child pipe to EOF on its own thread, retaining at most
@@ -183,8 +200,31 @@ fn spawn_drainer<R: Read + Send + 'static>(
                 }
             }
         }
+        // A byte-boundary cut can split a trailing multi-byte UTF-8 char, which
+        // `from_utf8_lossy` would then turn into a U+FFFD replacement char — the
+        // model reads that as corruption in a verify log. Drop the partial tail
+        // so truncated output stays clean valid UTF-8.
+        if truncated {
+            trim_partial_utf8_tail(&mut kept);
+        }
         (String::from_utf8_lossy(&kept).into_owned(), truncated)
     })
+}
+
+/// Drop a trailing partial multi-byte UTF-8 char (left by a byte-boundary cut)
+/// so the kept bytes are valid UTF-8. Bounded: a partial char is at most 3
+/// trailing bytes, so this pops at most 3 times.
+fn trim_partial_utf8_tail(bytes: &mut Vec<u8>) {
+    // A partial trailing char is at most 3 bytes, so try at most 3 pops. Bounding
+    // it means a buffer with INTERIOR invalid bytes (a binary blob) is never
+    // over-trimmed — only a genuine byte-boundary cut of the last char is fixed;
+    // anything else falls through to from_utf8_lossy unchanged.
+    for _ in 0..3 {
+        if std::str::from_utf8(bytes).is_ok() {
+            return;
+        }
+        bytes.pop();
+    }
 }
 
 /// Append `chunk` to `kept` up to `max_output_bytes`. Returns `true` if any
@@ -270,6 +310,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn trims_a_split_multibyte_char_so_truncated_output_has_no_replacement_char() {
+        // "한" is 3 bytes (EA B0 9C). A byte cap landing after 2 of them leaves a
+        // partial char; without the trim, from_utf8_lossy yields U+FFFD.
+        let mut bytes = vec![b'o', b'k', 0xEA, 0xB0];
+        trim_partial_utf8_tail(&mut bytes);
+        assert_eq!(bytes, vec![b'o', b'k']);
+        assert!(!String::from_utf8_lossy(&bytes).contains('\u{FFFD}'));
+    }
+
+    #[test]
+    fn keeps_a_complete_multibyte_tail_intact() {
+        let mut bytes = "ab한".as_bytes().to_vec();
+        trim_partial_utf8_tail(&mut bytes);
+        assert_eq!(String::from_utf8(bytes).unwrap(), "ab한");
+    }
+
+    #[test]
     fn rejects_blank_commands() {
         let response = run_request(RunnerRequest {
             command: " ".to_string(),
@@ -350,8 +407,20 @@ mod tests {
 
         assert!(!response.timed_out);
         assert!(response.ok);
-        assert_eq!(response.stdout.len(), 1024, "output is capped at max_output_bytes");
+        // stdout is the capped 1024 bytes of program output PLUS the self-labelled
+        // in-band truncation marker (the capped content itself is unchanged).
+        assert!(response.stdout.starts_with(&"a".repeat(1024)), "the capped program output is preserved");
+        assert!(response.stdout.contains("[muse: output truncated"), "a truncated stream carries the in-band marker");
+        assert_eq!(response.stdout.len(), 1024 + OUTPUT_TRUNCATION_MARKER.len());
         assert!(response.truncated);
+    }
+
+    #[test]
+    fn marks_only_a_truncated_stream() {
+        assert_eq!(mark_if_truncated("ok".to_string(), false), "ok");
+        let marked = mark_if_truncated("ok".to_string(), true);
+        assert!(marked.starts_with("ok"));
+        assert!(marked.contains("[muse: output truncated"));
     }
 
     #[test]

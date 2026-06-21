@@ -1,6 +1,44 @@
 import { describe, expect, it } from "vitest";
 
-import { formatFirstLearned, selectRecentlyForgotten, selectRecentlyLearnedFacts, type BeliefProvenance, type FactProvenance } from "./belief-provenance-store.js";
+import { beliefValueTimeline, formatFirstLearned, selectRecentlyForgotten, selectRecentlyLearnedFacts, type BeliefProvenance, type FactProvenance } from "./belief-provenance-store.js";
+
+describe("beliefValueTimeline (the value-change path — deepest show-your-work)", () => {
+  const tl = (over: Partial<BeliefProvenance>): BeliefProvenance => ({
+    userId: "u",
+    key: "home_city",
+    kind: "fact",
+    value: "Seoul",
+    learnedAt: "2026-06-10T00:00:00Z",
+    ...over
+  });
+
+  it("returns the distinct value changes oldest→newest, collapsing re-confirmations of the same value", () => {
+    const out = beliefValueTimeline(
+      [
+        tl({ value: "Seoul", learnedAt: "2026-06-10T00:00:00Z" }),
+        tl({ value: "Seoul", learnedAt: "2026-06-12T00:00:00Z" }),
+        tl({ value: "Busan", learnedAt: "2026-06-20T00:00:00Z" })
+      ],
+      "home_city"
+    );
+    expect(out).toEqual([
+      { value: "Seoul", learnedAt: "2026-06-10T00:00:00Z" },
+      { value: "Busan", learnedAt: "2026-06-20T00:00:00Z" }
+    ]);
+  });
+
+  it("excludes retraction markers (they carry no value)", () => {
+    const out = beliefValueTimeline(
+      [tl({ value: "Seoul", learnedAt: "2026-06-10T00:00:00Z" }), tl({ value: "", learnedAt: "2026-06-19T00:00:00Z", retraction: true })],
+      "home_city"
+    );
+    expect(out).toEqual([{ value: "Seoul", learnedAt: "2026-06-10T00:00:00Z" }]);
+  });
+
+  it("yields a single step for a stable belief", () => {
+    expect(beliefValueTimeline([tl({ value: "Busan" })], "home_city")).toHaveLength(1);
+  });
+});
 
 const bp = (over: Partial<BeliefProvenance>): BeliefProvenance => ({
   userId: "u",

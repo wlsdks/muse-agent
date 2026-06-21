@@ -4,6 +4,134 @@ Theme: lead-worker orchestration / sub-agent handoff reliability (MAST coordinat
 guards · handoff schema validation · explicit termination). Worktree `/tmp/muse-multi-agent`,
 branch `loop/multi-agent`. Tier2 (push every fire; merge-to-main every 3rd fire).
 
+## fire 21 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · 2781f385 — sibling-audit completion of fire 20
+meta: value-class=new-capability(sibling-completion) · pkg=@muse/multi-agent · kind=termination-guard · verdict=PASS(verified, judge-round skipped at user wrap-up) · firesSinceDrill=9
+ratchet: testFiles +0 (2 cases added to orchestrate-synthesis.test.ts, suite 248→250) · fabrication 0 · eval:orchestration PASS · reuses fire-20's judge-approved mechanism
+
+**What** — Sibling-audit completion of fire 20: extracted fire-20's per-worker deadline into a shared module-level
+`withDeadline<T>(operation, timeoutMs, label)` (DRY — `runWorkerWithDeadline` now delegates to it) and applied it
+to the OTHER orchestration model calls that could also hang: the fan-in SYNTHESIS (`synthesizeFinalAnswer`) and
+VERIFICATION (`verifyFinalAnswer`) inside `buildOrchestrationResponse`. Fire 20 bounded the workers; a hung
+synthesizer/verifier still stalled the run AFTER workers completed. Now all orchestration model calls are bounded
+by the same `workerTimeoutMs` (passed through to buildOrchestrationResponse). A timed-out synthesis/verify rejects
+→ the EXISTING fail-soft catch keeps the prior output (concatenation / unverified answer).
+
+**Why** — Completes the termination guard across EVERY model call in the orchestration, not just workers. The
+synthesis/verify hang was the genuine remaining infinite-hang vector (uncovered by fire 20).
+
+**Review points** — (1) MUTATION-FIRST: removing the `this.workerTimeoutMs` call-site arg hangs both fan-in tests
+to the 3000ms cap (RED); restored. (2) DRY: one `withDeadline` shared by worker + synthesis + verify so the policy
+never drifts. (3) Fail-soft preserved (timeout → existing catch → keep prior output). (4) Backward-compatible
+(no timeout ⇒ transparent). Judge round SKIPPED — user ended the loop; the mechanism was independently Opus-judged
+in fire 20 and this is the same mechanism applied to 2 more call sites + a DRY refactor.
+
+**Risk** — Same honest scope as fire 20 (bounds the WAIT not the compute). ★pnpm check RED only in the
+pre-existing, proven-unrelated `@muse/autoconfigure` sibling regression. Blast radius clean (multi-agent 250
+pass · lint 0 · eval:orchestration PASS). ★FINAL FIRE — 진안 ended the loop here (merge to main + cleanup).
+
+## fire 20 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · 0fb6e829 — ★NEW CAPABILITY (breaks the sentinel streak)
+meta: value-class=new-capability · pkg=@muse/multi-agent · kind=termination-guard · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles +0 (3 cases added to parallel-failure.test.ts, suite 245→248) · fabrication 0 · eval:orchestration PASS · FRESH kind (termination-guard, never done) · breaks 4-fire no-ship streak
+
+**What** — Added an OPT-IN per-worker wall-clock DEADLINE to `MultiAgentOrchestrator` (`workerTimeoutMs?`). Before
+this, a HUNG worker (a wedged model call that never resolves) stalled the WHOLE orchestration forever — there was
+NO timeout anywhere in worker execution (runSequential + runParallel both `await worker.run()` bare). New private
+`runWorkerWithDeadline` `Promise.race`s worker.run against a timer; on timeout it rejects, the EXISTING per-worker
+catch marks that worker `failed`, and the run proceeds with survivors. Omitted ⇒ transparent worker.run (legacy).
+Wired into both runSequential + runParallel.
+
+**Why** — This is the theme's THIRD pillar ("명시적 termination") and it was genuinely UNCOVERED — fire-16's audit
+checked the COUNCIL's termination (round cap) but MISSED that the orchestrator has no hung-worker bound. MAST
+"unaware of termination" (a hung sub-agent). A real new capability, not exposure/hardening.
+
+**Review points** — (1) MUTATION-FIRST: forcing the no-deadline path hangs BOTH hung-worker tests to the 3000ms
+cap (RED); the no-deadline backward-compat test stays green. (2) Mechanism: timer cleared in `finally` (no leak),
+`new Promise<never>` executor synchronous (no async-executor lint). (3) HONEST scope: doc states the deadline
+bounds the WAIT not the compute (no provider cancellation → abandoned call may still run; AbortSignal deferred).
+(4) Independent Opus ④ judge PASS — proved correctness + that the pre-existing pnpm-check RED is unrelated.
+
+**Risk** — ★pnpm check is RED but ONLY in `@muse/autoconfigure` (diagnostic-provider runtime-assembly e2e, 5s
+timeouts) — PROVEN PRE-EXISTING + UNRELATED: (a) reverting this slice still fails identically; (b) the judge
+verified @muse/autoconfigure does NOT depend on @muse/multi-agent (absent from package.json) so this change
+STRUCTURALLY cannot cause it. The cause is a sibling local-speed loop's Ollama-adapter merges (num_predict/
+num_thread/num_batch). Logged as a backlog blocker for that loop. My slice's blast radius is clean (multi-agent
+248 pass · api orchestrate consumers 11 pass + builds · lint 0 · eval:orchestration PASS). DEFERRED follow-ups:
+(i) the `SupervisorAgent.run` route path (different class) still bare-awaits worker.run — wrap it too; (ii)
+AbortSignal/provider cancellation to free the GPU, not just the wait.
+
+## fire 19 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (sentinel — 4th straight, compact)
+meta: value-class=none(no-ship) · pkg=none · kind=regression-sentinel · verdict=NO-SHIP · firesSinceDrill=7
+ratchet: testFiles 1090 · fabrication 0 · self-eval green · sibling merge touched 0 orchestration source files
+Sentinel check only: synced (16 sibling-loop files merged, 0 in my theme's surface), self-eval green, no new
+orchestration gap. Theme comprehensively complete (fire-16 audit). No new notification (not ÷3, nothing new since
+fire 18's). ★REPOINT cron `972211ed` — 4 straight sentinel fires. (Compact entry: degenerate-loop journal hygiene.)
+
+## fire 18 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (sentinel held — 3rd straight; ÷3 merge)
+meta: value-class=none(no-ship) · pkg=none · kind=regression-sentinel · verdict=NO-SHIP · firesSinceDrill=6
+ratchet: testFiles +0 (1090, +1 from sibling loop) · fabrication 0 · self-eval green · ÷3 merge fires 16-18 to main
+
+**What** — ⓪ sync + self-eval (green). Scanned for new orchestration-source changes since fire 17: none (the
+only one, the FrugalGPT cascade `5f4df275`, was already verified guard-covered in fire 17). No new gap. Theme
+remains comprehensively complete (fire-16 multi-surface audit). 3rd straight no-ship (16, 17, 18) — the loop is
+now confirmed in pure regression-sentinel mode on a complete theme.
+
+lesson: When a theme is genuinely complete and the user hasn't repointed, the honest steady state is a cheap
+sentinel fire: sync → self-eval (regression check) → scan for new sibling-loop changes in the theme's surface →
+no-ship if clean. Don't re-run the full multi-surface audit each fire (fire 16 did it); just diff what changed.
+★REPOINT cron `972211ed` remains the right call — 3 straight sentinel fires is the unambiguous signal. ÷3 trend
+PushNotification sent (scheduled cadence, not spam — escalates the 3-straight-no-ship state).
+
+## fire 17 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (sentinel held — new orchestration path verified guarded)
+meta: value-class=none(no-ship) · pkg=none · kind=regression-sentinel-verify · verdict=NO-SHIP · firesSinceDrill=5
+ratchet: testFiles +0 · fabrication 0 · self-eval green · ★fires 7-15 NOW MERGED to main (⑤c blocker resolved)
+
+**What** — ⓪ sync surfaced two facts: (1) ★the ⑤c merge blocker RESOLVED — fires 7-15 (`d08bb006`) are now an
+ancestor of origin/main, so the branch landed on main (the fire-15 retry or a later push won the race). (2) a
+DIFFERENT loop (local-speed) merged `feat(api): FrugalGPT cascade in tiered orchestration` (arXiv:2305.05176) —
+a NEW orchestration entry-point in my theme-adjacent space. Did the regression-sentinel check it: does the
+tiered/cascade path bypass my coordination guards? VERIFIED NO — `buildTieredOrchestration` only builds the
+worker list; both consuming POST routes (multi-agent-routes.ts:177, 288) wire `detectConflicts` +
+`detectRedundancies` (fire 8) into the orchestrator, and the fan-in still runs `buildOrchestrationResponse`. The
+cascade only changes per-WORKER model selection (fast→heavy escalation), transparent to the cross-worker fan-in
+guards. No gap.
+
+**Why no-ship** — The theme is comprehensively complete (fire-16 multi-surface audit) AND the one new
+orchestration path that landed since is confirmed guard-covered. No clean high-value slice. self-eval green
+(sentinel held — no regression from the concurrent merges).
+
+lesson: A degenerate-but-honest loop on a complete theme STILL earns its keep as a regression sentinel — this
+fire caught a new orchestration entry-point from a sibling loop and verified it didn't slip past the coordination
+guards. That IS the residual value when no new capability remains. ★REPOINT still the right call (vein complete);
+no new notification (nothing requiring 진안 action changed — the merge ask is now resolved, only the repoint
+recommendation stands, already surfaced 4×).
+
+## fire 16 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · NO-SHIP (evidence-backed completeness)
+meta: value-class=none(no-ship) · pkg=none · kind=multi-surface-audit · verdict=NO-SHIP · firesSinceDrill=4
+ratchet: testFiles +0 · fabrication 0 · self-eval green (regression sentinel held) · no source · scout-signals clean (no traces)
+
+**What (audited this fire)** — Applied the fire-14 lesson (audit EVERY layer before concluding) across all
+surfaces, producing an evidence-backed coverage map:
+- **CLI exposure** (runDecomposedAgentAsk → DecomposedAskResult → stderr + --json + run-log): COMPLETE (fires 14-15
+  closed the redundancy/reasoningActionGaps gaps; calibration-aware split human vs machine).
+- **API orchestrator exposure** (buildOrchestrationResponse → raw): COMPLETE — conflicts + redundancies +
+  verification all detected and exposed; FM-2.6 correctly N/A (fan-out parallel, not sequenced).
+- **Plan-time dedup** (dedupeSubtasks): correctly CONSERVATIVE (exact normalized match) — semantic near-dup merge
+  would risk a false-merge that DROPS a real sub-task (worse than a wasted run), so this is right by design.
+- **Council debate termination** (council.ts): BOUNDED + verified — round cap + debateProgressed Δ-gate +
+  ReConcile consensus gate (arXiv:2309.13007) + outlier-screen + conformity-flip guards. No gap.
+
+**Why no-ship** — Every coordination surface is now complete/correct. Remaining candidates are all sub-threshold:
+coordinationHealthy summary exposure (borderline-redundant — a JSON consumer already has all 4 signals; weighed 5×
+across fires 12-16, the oscillation itself confirms it's marginal; also subtly excludes `truncated`), semantic
+plan-time dedup (calibration-risky false-merge), marginal MAST modes (not deterministically detectable on a small
+model). Forcing any would be scraping.
+
+lesson: This no-ship DIFFERS from the fire-11/13 premature ones — it's backed by a CONCRETE multi-surface audit
+(CLI+API exposure, dedup design, council termination), not an assumption. The fire-14 correction taught: audit
+the actual layers before claiming exhausted. Having now done that exhaustively, the theme IS comprehensively
+complete. ★REPOINT remains the right call (4th surfacing — async only, no new notification: nothing new since
+fire 15's). ⑤c merge of fires 7-15 still needs 진안's manual `loop/multi-agent → main` merge.
+
 ## fire 15 · 2026-06-21 · multi-agent · loop-creator v2.0.0 · d08bb006
 meta: value-class=wiring(exposure-completion) · pkg=@muse/cli · kind=human-stderr-surfacing · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles +0 (cases added to commands-ask.test.ts) · fabrication 0 · eval:orchestration PASS · DIVERSE-kind (human-stderr vs fire-14 json) · calibration-aware
