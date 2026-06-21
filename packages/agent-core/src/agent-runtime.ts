@@ -812,9 +812,21 @@ export class AgentRuntime {
       // token overlap so the next turn self-corrects (the executor's
       // not-registered path already does this — this is its not-EXPOSED sibling).
       const suggestion = nearestToolName(toolCall.name, activeTools.map((tool) => tool.name));
+      // A small model sometimes emits a whole COMMAND LINE as the tool name
+      // (`node --exec "…"`) — a name with whitespace is never a valid identifier,
+      // and token-overlap won't match `run_command` (observed live in
+      // eval:edit-run-verify). Point it at the active execute tool so it re-issues
+      // the command through that tool's ARGUMENTS instead of as a bogus name.
+      const commandShaped = !suggestion && /\s/u.test(toolCall.name.trim());
+      const execTool = commandShaped ? activeTools.find((tool) => tool.risk === "execute") : undefined;
+      const recovery = suggestion
+        ? `. Did you mean '${suggestion}'? Call that exact name.`
+        : execTool
+          ? `. A tool name must be a single identifier, not a command line — to run a command, call '${execTool.name}' with the command in its arguments.`
+          : "";
       const executed = blockedToolResult(
         toolCall,
-        `Error: tool was not exposed to the model: ${toolCall.name}${suggestion ? `. Did you mean '${suggestion}'? Call that exact name.` : ""}`
+        `Error: tool was not exposed to the model: ${toolCall.name}${recovery}`
       );
       await this.invokeHooks("afterTool", context, executed);
       return executed;
