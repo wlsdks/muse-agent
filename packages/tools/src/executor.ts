@@ -1,7 +1,6 @@
 import { ToolOutputSanitizer } from "@muse/policy";
 
 import type {
-  MuseTool,
   ToolCallRequest,
   ToolExecutionResult,
   ToolExecutionValue,
@@ -39,7 +38,7 @@ export class ToolExecutor {
     const tool = this.registry.get(request.name);
 
     if (!tool) {
-      const suggestion = nearestToolName(request.name, this.registry.list());
+      const suggestion = nearestToolName(request.name, this.registry.list().map((registered) => registered.definition.name));
       return this.failed(
         request,
         `Error: tool not found: ${request.name}${suggestion ? `. Did you mean '${suggestion}'? Call that exact registered name.` : ""}`
@@ -91,13 +90,16 @@ export class ToolExecutor {
 }
 
 /**
- * When the model calls a name that isn't registered (a small model commonly
+ * When the model calls a name that isn't available (a small model commonly
  * HALLUCINATES an intuitive name — `node_run` for the real `run_command`), name
- * the closest registered tool so the next turn can call it instead of guessing
+ * the closest available tool so the next turn can call it instead of guessing
  * blindly. Deterministic: ranks by shared snake/dot-case token overlap, requires
- * ≥1 shared token (so an unrelated miss gets NO misleading suggestion).
+ * ≥1 shared token (so an unrelated miss gets NO misleading suggestion). Takes the
+ * candidate NAMES (not MuseTool[]) so BOTH the executor's not-registered path AND
+ * the AgentRuntime not-EXPOSED gate (which only has the active ModelTool names)
+ * can share one suggester.
  */
-function nearestToolName(requested: string, tools: readonly MuseTool[]): string | undefined {
+export function nearestToolName(requested: string, names: readonly string[]): string | undefined {
   const tokenize = (name: string): Set<string> =>
     new Set(name.toLowerCase().split(/[^a-z0-9]+/u).filter((part) => part.length > 0));
   const wanted = tokenize(requested);
@@ -105,8 +107,7 @@ function nearestToolName(requested: string, tools: readonly MuseTool[]): string 
     return undefined;
   }
   let best: { name: string; score: number } | undefined;
-  for (const tool of tools) {
-    const name = tool.definition.name;
+  for (const name of names) {
     let shared = 0;
     for (const token of tokenize(name)) {
       if (wanted.has(token)) {

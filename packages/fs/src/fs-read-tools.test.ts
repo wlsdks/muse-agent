@@ -398,6 +398,32 @@ describe("file_read / file_list / file_grep", () => {
       expect((all["matches"] as unknown[]).length).toBe(50);
     });
 
+    it("a TRUNCATED grep carries an actionable narrowing hint so the 12B can re-run tighter (not page blindly)", async () => {
+      await writeFile(join(root, "many.txt"), Array.from({ length: 50 }, () => `match${"x".repeat(14)}`).join("\n"));
+      const capped = createFileGrepTool({ ...opts(), maxGrepOutputChars: 100 });
+      const out = (await capped.execute({ mode: "content", path: root, pattern: "match" }, ctx)) as JsonObject;
+      expect(out["truncated"]).toBe(true);
+      expect(String(out["hint"])).toContain("narrow the search");
+      expect(String(out["hint"])).toContain("glob"); // default glob "**/*" → suggest a glob
+    });
+
+    it("a NON-truncated grep carries NO hint (no pollution of a complete result)", async () => {
+      await writeFile(join(root, "few.txt"), "one match\ntwo match");
+      const tool = createFileGrepTool(opts());
+      const out = (await tool.execute({ mode: "content", path: root, pattern: "match" }, ctx)) as JsonObject;
+      expect(out["truncated"]).toBe(false);
+      expect(out["hint"]).toBeUndefined();
+    });
+
+    it("the narrowing hint omits the glob suggestion when a glob was already supplied", async () => {
+      await writeFile(join(root, "many.txt"), Array.from({ length: 50 }, () => `match${"x".repeat(14)}`).join("\n"));
+      const capped = createFileGrepTool({ ...opts(), maxGrepOutputChars: 100 });
+      const out = (await capped.execute({ glob: "**/*.txt", mode: "content", path: root, pattern: "match" }, ctx)) as JsonObject;
+      expect(out["truncated"]).toBe(true);
+      expect(String(out["hint"])).toContain("more specific");
+      expect(String(out["hint"])).not.toContain("glob");
+    });
+
     it("content mode marks READ but NOT FULLY-READ — a partial grep cannot ground a whole-file overwrite", async () => {
       await writeFile(join(root, "z.md"), "alpha\nbeta dentist\ngamma");
       const read: string[] = [];
