@@ -23,3 +23,12 @@ ratchet: pkg/kind DIFFERS from fire 1 (scripts/measurement-infra → model+autoc
 - 리스크: 낮음 — 기본 경로 불변. 미실측 = 속도 win의 *크기*만 미지(슬라이스는 "측정된 숫자"가 아닌 "배선된 opt-in 레버"를 주장; 실측 튜닝은 backlog 후속).
   검증: model 366 pass + autoconfigure 622 pass · MUTATION-FIRST 2종(A: num_batch 절대-미방출→2 RED; B: 항상-512→5 RED 기존 와이어 스냅샷 포함; revert→green) · pnpm check rc=0(api 864 + cli 2857) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(자체 mutation 재현, 전 edge값 omit 추적, 결함 0).
   형제-감사: num_thread/num_gpu(하드웨어-오프로드 노브)는 enumerate 후 backlog ◦ defer(하드웨어-특정·Ollama 자동탐지 보통 정확·박스별 bench 필요).
+
+## fire 3 · 2026-06-21 · local-speed · <commit>
+meta: value-class=new-capability · pkg=@muse/multi-agent · kind=cascade-routing(paper) · verdict=PASS · firesSinceDrill=3
+ratchet: pkg/kind DIFFERS (scripts/infra → model/adapter → multi-agent/cascade) · fabrication 0 · 기본경로 byte-identical
+- 무엇: FrugalGPT(arXiv:2305.05176) 캐스케이드 escalation 결정 프리미티브 C1. `shouldEscalateToHeavy(confidence, threshold=-1.0)` + `DEFAULT_CASCADE_ESCALATE_LOGPROB`(@muse/multi-agent tiering.ts) + `planTieredRun`에 optional `priorConfidence?: ReadonlyMap<id, number|undefined>`/`escalateThreshold` — fast로 분류됐고 priorConfidence에 존재하며 fast-pass mean-logprob이 낮은 task를 heavy로 escalate(plan assignment = 실제 terminal state 변화). confidence=mean token logprob(≤0, 높을수록 자신감), undefined/NaN/-Inf → escalate(안전방향, classifyTier의 default-to-heavy 미러).
+- 왜: 기존 classifyTier는 텍스트로 tier를 *사전*결정만(lexical) — fast 답이 약해도 그대로 수용. 진짜 cascade(빠른모델 먼저→약하면 heavy로 승급)가 빠진 레버. summarizeTokenConfidence(@muse/agent-core)가 이미 confidence를 계산하지만(commands-ask.ts:2870) escalation 결정엔 안 씀 → 그 갭. 런타임 two-pass(C2)+실측(C3)은 backlog로 decompose(DECOMPOSE-ON-DEFER, 쉬운 걸로 안 내려감).
+- 리뷰지점: 기본(priorConfidence 없음)=plan byte-identical(`.has(id)===true` 가드), heavy task는 절대 de-escalate 안 함(`tier==="fast"` 가드), classifyTier 불변(const→let만), 패키지 결합 없음(plain number, agent-core 타입 import 안 함), strict `<`(정확히 -1.0은 escalate 안 함).
+- 리스크: 낮음 — 행동 inert by default. C1은 실제 planner(planTieredRun, apps/api multi-agent-routes.ts:460 호출)에 배선된 행동변화지 dead primitive 아님(④ judge가 declaration-only 아님으로 명시 판정). C2가 priorConfidence를 실제 logprob으로 채우는 런타임 루프.
+  검증: multi-agent 215 pass · MUTATION-FIRST 2종(A: `<`→`>` 5 RED; B: `.has` 가드→`!==undefined` ABSENT-untouched 1 RED; revert→green) · pnpm check rc=0(api 880 + cli 2857; 첫 run의 messaging-webhooks 1-FAIL은 병렬 env-leak flake = isolated 880/880 + 내 변경은 api/messaging 무관, rerun rc=0) · smoke:broad 51/0 · lint rc=0 · 독립 Opus ④ judge PASS(자체 mutation 재현, declaration-only crux HONEST 판정, 결함 0).

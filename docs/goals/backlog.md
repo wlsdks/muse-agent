@@ -2335,6 +2335,18 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
   · UPDATE (local-speed fire 2): `MUSE_OLLAMA_NUM_BATCH` now wires Ollama's `num_batch` (prompt-eval
   batch size) opt-in — a larger batch directly attacks that 40s prompt-eval cost. Verify the real win
   with `bench:local` on a long prompt once Ollama is up + tune the recommended value.
+- ◦ **cascade routing C2/C3 (decomposed local-speed fire 3; FrugalGPT arXiv:2305.05176)** — fire 3
+  shipped C1: the escalation-decision primitive `shouldEscalateToHeavy(confidence, threshold)` +
+  `planTieredRun` optional `priorConfidence`/`escalateThreshold` (a fast-classified task with a KNOWN
+  low fast-pass mean-logprob escalates to heavy; absent = unchanged, byte-identical). REMAINING:
+  · **C2 (runtime two-pass wiring)** — in `muse ask --tiered` / multi-agent runtime, after the FAST
+  pass run `summarizeTokenConfidence` (@muse/agent-core, already computed at commands-ask.ts:2870) on
+  the answer logprobs, feed the mean-logprob into a re-plan (`planTieredRun` with priorConfidence) and
+  re-run escalated tasks on heavy. Needs logprobs requested on the fast pass + the two-pass loop;
+  bound to 1 retry (no unbounded cascade). >1 fire.
+  · **C3 (live eval)** — use `bench:local` (fire 1) for the latency win + accuracy parity: cascade vs
+  always-heavy on a mixed easy/hard set; assert faster mean latency AND no grounding/answer regression.
+  Needs Ollama up.
 - ◦ **local-speed sibling adapter knobs (enumerated fire 2, deferred)** — beyond `num_batch`, Ollama
   exposes `num_thread` (CPU threads) and `num_gpu` (layers offloaded to GPU) as per-request speed
   levers. Deferred: both are hardware-specific and Ollama's auto-detection is usually right, so the

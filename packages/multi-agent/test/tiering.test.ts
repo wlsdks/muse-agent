@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyTier, planTieredRun } from "../src/index.js";
+import { classifyTier, planTieredRun, shouldEscalateToHeavy } from "../src/index.js";
 
 const MODELS = { fast: "ollama/qwen3:1.7b", heavy: "ollama/qwen3:8b" } as const;
 
@@ -65,5 +65,82 @@ describe("planTieredRun", () => {
     expect(plan.collapsedToHeavy).toBe(true);
     expect(plan.mode).toBe("sequential");
     expect(plan.assignments.every((a) => a.model === "ollama/qwen3:8b")).toBe(true);
+  });
+
+  it("cascade: a fast task with a KNOWN low fast-pass confidence escalates to heavy", async () => {
+    const plan = await planTieredRun({
+      canHoldBothTiers: () => true,
+      models: MODELS,
+      priorConfidence: new Map([["a", -2.0]]), // below default −1.0
+      tasks
+    });
+    // task "a" classified fast but escalates; task "b" was heavy already
+    expect(plan.assignments).toEqual([
+      { id: "a", model: "ollama/qwen3:8b", tier: "heavy" },
+      { id: "b", model: "ollama/qwen3:8b", tier: "heavy" }
+    ]);
+  });
+
+  it("cascade: a fast task with HIGH fast-pass confidence stays fast (no needless escalation)", async () => {
+    const plan = await planTieredRun({
+      canHoldBothTiers: () => true,
+      models: MODELS,
+      priorConfidence: new Map([["a", -0.2]]), // above default −1.0
+      tasks
+    });
+    expect(plan.assignments[0]).toEqual({ id: "a", model: "ollama/qwen3:1.7b", tier: "fast" });
+  });
+
+  it("cascade: undefined/absent fast-pass confidence escalates (safe direction)", async () => {
+    const plan = await planTieredRun({
+      canHoldBothTiers: () => true,
+      models: MODELS,
+      priorConfidence: new Map([["a", undefined]]),
+      tasks
+    });
+    expect(plan.assignments[0]).toEqual({ id: "a", model: "ollama/qwen3:8b", tier: "heavy" });
+  });
+
+  it("cascade: a task ABSENT from priorConfidence is untouched — byte-identical to no map", async () => {
+    const plan = await planTieredRun({
+      canHoldBothTiers: () => true,
+      models: MODELS,
+      priorConfidence: new Map([["b", -2.0]]), // only b present; a not eligible
+      tasks
+    });
+    expect(plan.assignments[0]).toEqual({ id: "a", model: "ollama/qwen3:1.7b", tier: "fast" });
+  });
+
+  it("cascade: honours an escalateThreshold override", async () => {
+    const plan = await planTieredRun({
+      canHoldBothTiers: () => true,
+      escalateThreshold: -0.1, // strict: even −0.2 now escalates
+      models: MODELS,
+      priorConfidence: new Map([["a", -0.2]]),
+      tasks
+    });
+    expect(plan.assignments[0].tier).toBe("heavy");
+  });
+});
+
+describe("shouldEscalateToHeavy", () => {
+  it("escalates a below-threshold (low) confidence and keeps an above-threshold one", () => {
+    expect(shouldEscalateToHeavy(-2.0)).toBe(true); // < −1.0 default
+    expect(shouldEscalateToHeavy(-0.5)).toBe(false); // > −1.0
+  });
+
+  it("does NOT escalate exactly at the threshold (strict <)", () => {
+    expect(shouldEscalateToHeavy(-1.0)).toBe(false);
+  });
+
+  it("escalates on undefined or non-finite confidence (the safe direction)", () => {
+    expect(shouldEscalateToHeavy(undefined)).toBe(true);
+    expect(shouldEscalateToHeavy(Number.NaN)).toBe(true);
+    expect(shouldEscalateToHeavy(Number.NEGATIVE_INFINITY)).toBe(true);
+  });
+
+  it("honours a custom threshold", () => {
+    expect(shouldEscalateToHeavy(-0.3, -0.1)).toBe(true);
+    expect(shouldEscalateToHeavy(-0.3, -0.5)).toBe(false);
   });
 });
