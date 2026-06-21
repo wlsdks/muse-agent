@@ -71,6 +71,18 @@ struct UIStrings {
     var msgLineSecret: String { t("LINE 채널 시크릿", "LINE channel secret") }
     var msgSave: String { t("저장 & 연결", "Save & connect") }
     var msgSaved: String { t("저장됨 — 서버 재시작 중…", "Saved — restarting the server…") }
+    var sectionCalendars: String { t("캘린더 연결", "Calendars") }
+    var calHint: String { t("캘린더를 연결하면 Muse가 일정을 읽고 관리해요.",
+                            "Connect a calendar so Muse can read and manage your events.") }
+    var calMacOS: String { t("macOS 캘린더 사용 (이 Mac)", "Use macOS Calendar (this Mac)") }
+    var calCaldavURL: String { t("CalDAV URL", "CalDAV URL") }
+    var calCaldavUser: String { t("CalDAV 사용자명", "CalDAV username") }
+    var calCaldavPass: String { t("CalDAV 앱 비밀번호", "CalDAV app password") }
+    var calGoogleHint: String { t("Google: client id / secret / refresh token (OAuth로 발급).",
+                                  "Google: client id / secret / refresh token (obtained via OAuth).") }
+    var calGClientId: String { t("Google client ID", "Google client ID") }
+    var calGClientSecret: String { t("Google client secret", "Google client secret") }
+    var calGRefresh: String { t("Google refresh token", "Google refresh token") }
     var sectionPrivacy: String { t("프라이버시", "Privacy") }
     var sectionAdvanced: String { t("고급", "Advanced") }
     var rowCharacter: String { t("캐릭터", "Character") }

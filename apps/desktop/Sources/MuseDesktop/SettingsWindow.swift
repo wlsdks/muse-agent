@@ -58,6 +58,8 @@ private struct SettingsView: View {
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var creds = MessagingCredentials.load()
     @State private var msgSaved = false
+    @State private var cal = CalendarCredentials.load()
+    @State private var calSaved = false
     @State private var models: [OllamaModel] = []
     @State private var pullName = ""
     @State private var pulling = false
@@ -97,6 +99,7 @@ private struct SettingsView: View {
                 modelsSection
                 voiceSection
                 startupSection
+                calendarSection
                 messagingSection
                 privacySection
                 advancedSection
@@ -214,6 +217,28 @@ private struct SettingsView: View {
     }
 
     @MainActor private func reloadModels() async { models = await OllamaModels.list() }
+
+    private var calendarSection: some View {
+        card(s.sectionCalendars) {
+            Text(s.calHint).font(.system(size: 11)).foregroundStyle(faint)
+            Toggle(isOn: $cal.enableMacOS) { Text(s.calMacOS).foregroundStyle(ink) }
+                .toggleStyle(.switch).tint(violet)
+            field(s.calCaldavURL, $cal.caldavURL)
+            field(s.calCaldavUser, $cal.caldavUsername)
+            field(s.calCaldavPass, $cal.caldavPassword, secure: true)
+            Text(s.calGoogleHint).font(.system(size: 11)).foregroundStyle(faint)
+            field(s.calGClientId, $cal.gcalClientId)
+            field(s.calGClientSecret, $cal.gcalClientSecret, secure: true)
+            field(s.calGRefresh, $cal.gcalRefreshToken, secure: true)
+            Button(s.msgSave) {
+                cal.save()
+                ServerManager.shared.restart()
+                calSaved = true
+            }
+            .buttonStyle(.borderedProminent).tint(violet)
+            if calSaved { Text(s.msgSaved).font(.system(size: 11)).foregroundStyle(faint) }
+        }
+    }
 
     private var messagingSection: some View {
         card(s.sectionMessengers) {

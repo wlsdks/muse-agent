@@ -74,6 +74,8 @@ final class ServerManager {
         if (env["MUSE_LOCAL_ONLY"] ?? "").isEmpty { env["MUSE_LOCAL_ONLY"] = "true" }
         // Messenger tokens (Keychain) → the server connects Telegram/Discord/Slack/LINE.
         for (key, value) in MessagingCredentials.load().serverEnv() { env[key] = value }
+        // Calendar connections (Keychain) → macOS / CalDAV / Google providers.
+        for (key, value) in CalendarCredentials.load().serverEnv() { env[key] = value }
 
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: bin)
