@@ -68,3 +68,30 @@ describe("captureEndOfSessionEpisode — episode-write salience admission (SSGM 
     expect(result.status).toBe("captured"); // rich summary → retained despite importance 1
   });
 });
+
+describe("captureEndOfSessionEpisode — episode-provenance trust bit (episode-laundering defense, MemoryGraft arXiv:2512.16962)", () => {
+  it("marks the episode trusted:false when the session rested on untrusted sources", async () => {
+    const result = await captureEndOfSessionEpisode({ ...opts(rich, richSummary), untrustedSession: true });
+    expect(result.status).toBe("captured");
+    expect(result.status === "captured" && result.episode.trusted).toBe(false);
+  });
+
+  it("leaves the trust bit ABSENT for a clean session (no over-marking the user's own history)", async () => {
+    const result = await captureEndOfSessionEpisode({ ...opts(rich, richSummary), untrustedSession: false });
+    expect(result.status).toBe("captured");
+    expect(result.status === "captured" && result.episode.trusted).toBeUndefined();
+  });
+
+  it("marks trusted:false from a PERSISTED per-turn flag even without the in-memory option (EP-1b: one-shot/resumed turns from a prior process)", async () => {
+    // The assistant turn carries untrustedOnly (as persisted to last-chat.jsonl by a
+    // one-shot `muse chat` or a prior Ink process) — NO untrustedSession option here.
+    const richUntrusted: SessionTurnLine[] = [
+      { content: "summarise the plan", role: "user" },
+      { content: "shipped the Q3 budget review Friday using bullet points and assigned owners", role: "assistant", untrustedOnly: true },
+      { content: "great", role: "user" }
+    ];
+    const result = await captureEndOfSessionEpisode(opts(richUntrusted, richSummary));
+    expect(result.status).toBe("captured");
+    expect(result.status === "captured" && result.episode.trusted).toBe(false);
+  });
+});
