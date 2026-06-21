@@ -5,6 +5,16 @@
 > Cron `47491301` (every 20m, session-only; re-registered 2026-06-21 from ready/2-computer-control.md — prior `18d30a58` expired with its session). Stop: `CronDelete 47491301`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 55 · 2026-06-21 · skill v2.0 · <commit> (eval:reverify-fix — RE-VERIFICATION probe surfaces a REAL blocker: 12B re-reads its edit but doesn't re-run)
+meta: value-class=new-capability(harder-eval/flywheel)+finding · pkg=scripts/eval · kind=eval-fixture/re-verification · verdict=PASS(probe valid; 12B FAILs it=finding) · firesSinceDrill=9
+ratchet: testFiles unchanged · fabrication 0 · eval:reverify-fix valid+discriminating(neither/only-reported→FAIL, both→PASS, 결정론 검증) · 12B FAIL 1/1(genuine gap) · lint 0/0 · Ollama UP
+- 무엇: 테스트가 FIRST 실패에서 exit(순차 assertion)이라 둘째 버그(beta)가 첫째(alpha) 고치고 RE-RUN하기 전엔 숨겨짐. 보고된 버그만 고치고 re-run 없이 done 선언하면 둘째 못 봄 → FAIL. two-edit-fix(둘 다 upfront 노출)와 다른 차원=RE-VERIFICATION(첫 에러를 전부로 믿지 말고 재실행 확인).
+- ★발견(flywheel 성과): 12B FAIL 1/1 — trace: run_command(alpha fail)→read alpha→edit alpha→**read alpha(재읽기로 "확인")**→정지. run_command-calls=1 — **테스트를 재실행 안 함** → 숨은 beta 못 봄. 즉 12B는 편집을 재-READ로 확인하고 재-EXECUTE 안 하는 갭(거짓-완료/재검증 부재). 기존 eval(전부 upfront/단일-fix)은 못 잡던 진짜 멀티스텝 신뢰성 갭.
+- 왜: backlog flywheel — 테마 성숙(3 eval PASS) 후 더 어려운 차원 probe가 다음 product 블로커를 발굴(설계대로). standalone red-probe(어느 게이트에도 미편입 → CI 무영향; 미래 fix가 GREEN으로 뒤집을 진행 신호, agent-testing.md "miss를 케이스로").
+- 리뷰지점: 결정론 discrimination(only-reported-fixed→FAIL=stop-after-first 포착). 독립 Opus ④b judge가 distinct-dimension·discrimination·OUTCOME-grade·finding-real(run_command-calls=1=재실행 안 함)·red-probe 정당성 검증 → VERDICT PASS. judge 비차단 노트: pick-evals.mjs:41 greedy regex가 "reverify" 경로를 grounding 배터리로 오라우팅(pre-existing) → backlog.
+- 리스크: 3연속 scripts/eval(53 agg,54 fixture,55 fixture); (scripts,eval-fixture)×2이나 distinct 차원+value-first(진짜 블로커 발굴)로 정당. eval RED(12B 갭)는 의도된 probe 결과. fire 55는 ×3 아님 → main 머지 없음. ★fire 56=firesSinceDrill≥10 JUDGE-DRILL(의무).
+lesson: 테마 성숙 후 flywheel(더 어려운 eval)이 product 블로커를 재가동 — reverify-fix가 "12B는 편집을 재읽기로 확인하고 재실행 안 함" 발굴. 다음 product slice=재검증 nudge(편집 후 액션-required 태스크인데 재실행 0이면 1회 재실행 유도, reflection-guard-compliant; agent-core 정당화됨).
+
 ## fire 54 · 2026-06-21 · skill v2.0 · 5ea43240 (eval:two-edit-fix — multi-step COMPLETENESS battery (2 edits/2 files); 12B PASSes, bar raised)
 meta: value-class=new-capability(harder-eval/flywheel) · pkg=scripts/eval · kind=eval-fixture/completeness · verdict=PASS · firesSinceDrill=8
 ratchet: testFiles unchanged · fabrication 0 · eval:two-edit-fix PASS 1/1 (live) · discrimination verified(one-edit→FAIL/both→PASS) · lint 0/0 · main ff-merge(fire 54=×3, delivers 53/54) · Ollama UP

@@ -84,7 +84,8 @@
     "eval:edit-run-verify": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-edit-run-verify.mjs",
     "eval:multifile-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-multifile-fix.mjs",
     "eval:multistep": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-multistep.mjs",
-    "eval:two-edit-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-two-edit-fix.mjs"
+    "eval:two-edit-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-two-edit-fix.mjs",
+    "eval:reverify-fix": "pnpm --filter @muse/fs build && pnpm --filter @muse/tools build && pnpm --filter \"@muse/autoconfigure...\" build && node scripts/eval-reverify-fix.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
