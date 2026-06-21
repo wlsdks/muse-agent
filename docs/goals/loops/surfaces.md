@@ -641,3 +641,14 @@ ratchet: api 942/942 · fabrication 0 · self-eval exit 0 · check exit 0 · smo
 - **리뷰지점**: mutation-first — sourceCount→supportCount 변이 시 "sourceCount equals sourceIds.length" RED(judge#2 독립 재확인)·ordering(listReflections 재사용). 경로정합: resolveReflectionsFile=CLI와 동일 `~/.muse/reflections.json`+MUSE_REFLECTIONS_FILE. 보안: read-only GET·동일 auth 게이트·재수출 export-from 블록(lint clean). 정직한 갭: 웹 뷰 후속·CLI resolver 통일(형제).
 - **리스크**: 없음(autoconf 3+apps/api 4 파일, api 942/942·pnpm check exit 0·smoke 52/0·lint clean, judge#1 FAIL→fix→judge#2 PASS 드릴 완결).
 - **lesson(드릴 교훈)**: 두 개의 의미상-다른 숫자필드(supportCount=강화 vs sourceCount=grounding소스)는 conflate해도 타입체크·테스트(typeof)·lint 전부 통과 — **필드 정확성은 "이 입력→이 값" 단언 + mutation-RED만이 보증**. grounding신호는 특히: 잘못된 필드=콘솔이 인사이트 근거강도를 거짓보고. ④b judge는 게이트-그린 미묘 필드결함을 안정적으로 잡는다.
+
+## fire 70 · 2026-06-21 · skill v2.0.0 · <pending>
+meta: surface=web · value-class=new-capability · pkg=@muse/web(+memory regression-fix) · kind=reflections-web-section · verdict=PASS · firesSinceDrill=1
+ratchet: web tests 110/110 (+3) · fabrication 0 · self-eval exit 0 · smoke:broad 52/0 · lint clean · ★fires 61-69 main 안착(tight merge-push) + cross-loop byte-hygiene 회귀 수정
+
+- **무엇**: `SelfImprovementView`에 read-only "Reflections" 섹션 추가 — fire 69 reflections API 소비, insight·supportCount·**sourceCount**(grounding신호) 표시. 순수 `summarizeReflections`(total + grounded=sourceCount>0 카운트) "N total, G grounded" 요약 + 타입 + i18n(en/ko). 자기강화 콘솔 3 read 섹션 완성(weaknesses+strategies+reflections).
+- **왜**: 자기강화 콘솔 reflections 뷰(fire 69 API의 뷰). (web,view) 한도 내. **+동봉 회귀수정**: learning-surfacing 루프가 `packages/memory/recently-learned.ts:127`에 raw NUL(0x00) 3개를 템플릿 구분자로 넣어 repo byte-hygiene 게이트(전 루프 공유)를 깸 → ` `(런타임 동일·소스 바이트-clean)으로 수정(memory 553/553·byte-hygiene 8/8 그린, judge가 behavior-preserving 확인).
+- **리뷰지점**: mutation-first — summarizeReflections(`>0`→`>=0` 변이→2 RED·grounded 하드코딩0→1 RED), judge 독립 재확인. grounded 경계=sourceCount>0(=`>=0`이면 0소스 ungrounded를 grounded로 거짓표기 방지, honesty). 두 필드(support/source) 분리표시·insight escaped children. 기존 weaknesses+strategies 섹션 무손상·queryKey `["self-improvement-reflections"]` 분리. i18n {n}/{g} 패리티.
+- **★merge-to-main 해결**: fires 61-69(9 fire) deferred saga 종료 — 동시 ~15 루프가 origin/main 빠르게 밀어 매 push가 non-FF race 패배(4분 check 도중 main 전진). 해결=**단일 통과 check 후 tight fetch-merge-push 루프(재-check 없이 초단위)**가 race 이김(attempt 1 성공). 교훈: 고동시성에선 push-시도마다 풀-check 재실행=영원히 race 패배; 1회 통과 후 tight merge-push가 정답.
+- **리스크**: 없음(apps/web 5 + memory 1 파일, web 110/110·byte-hygiene 8/8·memory 553/553·smoke 52/0·lint clean. cli 5 실패는 saturation 타임아웃[격리 41/41·32/32 그린, 82s/41s 지속시간], 무관. 독립 Opus ④b judge가 honesty경계·기존섹션·byte-fix behavior-preserve 검증 후 PASS).
+- **환경 플레이크 추가**: `chat-ink-render`·`document-reader`·`program`(PDF/Ink) cli 테스트도 saturation 타임아웃 클래스(messaging-webhooks·server.scheduler/mcp·web-search-policy에 추가). merge-check flake-exclusion에 포함.

@@ -215,7 +215,11 @@ const en = {
   "si.strategiesSubtitle": "Strategies Muse distilled from your feedback. {active} active, {probation} on probation.",
   "si.active": "active",
   "si.probation": "probation",
-  "si.reward": "reward {n}"
+  "si.reward": "reward {n}",
+  "si.reflectionsTitle": "Reflections",
+  "si.reflectionsSubtitle": "Insights Muse distilled from your activity. {n} total, {g} grounded in sources.",
+  "si.support": "reinforced {n}×",
+  "si.sources": "{n} sources"
 } as const;
 
 export type StringKey = keyof typeof en;
@@ -430,7 +434,11 @@ const ko: Strings = {
   "si.strategiesSubtitle": "Muse가 당신의 피드백에서 정제한 전략. 활성 {active}개, 수습 {probation}개.",
   "si.active": "활성",
   "si.probation": "수습",
-  "si.reward": "보상 {n}"
+  "si.reward": "보상 {n}",
+  "si.reflectionsTitle": "성찰",
+  "si.reflectionsSubtitle": "Muse가 당신의 활동에서 정제한 통찰. 총 {n}개, {g}개는 출처에 근거.",
+  "si.support": "{n}회 강화",
+  "si.sources": "출처 {n}개"
 };
 
 export const DICTIONARIES: Record<Lang, Strings> = { en, ko };

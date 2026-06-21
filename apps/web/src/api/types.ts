@@ -335,3 +335,15 @@ export interface DaemonFlagView {
 export interface DaemonFlagsResponse {
   flags: DaemonFlagView[];
 }
+
+export interface ReflectionView {
+  id: string;
+  insight: string;
+  supportCount: number;
+  sourceCount: number;
+  createdAt: number;
+}
+export interface ReflectionsResponse {
+  total: number;
+  entries: ReflectionView[];
+}
