@@ -29,6 +29,23 @@ describe("applyEdit / applyEdits (pure, no disk)", () => {
     expect(applyEdit("abc", { new_string: "z", old_string: "q" }).ok).toBe(false);
   });
 
+  it("a gross-miss old_string (no close line) STILL gets the recovery action, not a bare 'not found'", () => {
+    // "zzz qqq www" shares no words with any file line → no nearestLineHint.
+    const out = applyEdit("alpha beta\ngamma delta\n", { new_string: "x", old_string: "zzz qqq www" });
+    expect(out.ok).toBe(false);
+    const reason = (out as { reason: string }).reason;
+    expect(reason).toContain("file_read"); // tells the model HOW to recover
+    expect(reason).toContain("byte-for-byte"); // and WHY it missed (exact-match requirement)
+  });
+
+  it("a near-miss old_string (shares words) names the closest line to copy", () => {
+    const out = applyEdit("const total = sum(a, b);\n", { new_string: "x", old_string: "const total = sum(a,b)" });
+    expect(out.ok).toBe(false);
+    const reason = (out as { reason: string }).reason;
+    expect(reason).toContain("Closest line");
+    expect(reason).toContain("copy the exact text");
+  });
+
   it("applies edits in order, aborting on first failure", () => {
     expect(applyEdits("a b", [{ new_string: "A", old_string: "a" }, { new_string: "B", old_string: "b" }])).toEqual({ content: "A B", ok: true });
     expect(applyEdits("a b", [{ new_string: "A", old_string: "a" }, { new_string: "Z", old_string: "missing" }]).ok).toBe(false);

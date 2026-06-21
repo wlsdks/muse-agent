@@ -271,8 +271,12 @@ export function applyEdit(content: string, spec: FsEditSpec): EditOutcome {
   const hint = nearestLineHint(content, spec.old_string);
   return {
     ok: false,
+    // A gross miss (no close line) is exactly when the model is MOST lost, so it
+    // needs the recovery action too — not a bare "not found" it would only retry.
     reason: `old_string not found: ${JSON.stringify(spec.old_string.slice(0, 80))}${
-      hint ? `. Closest line in the file is ${JSON.stringify(hint)} — read the file and copy the exact text` : ""
+      hint
+        ? `. Closest line in the file is ${JSON.stringify(hint)} — read the file and copy the exact text`
+        : " — re-read the file with file_read and copy the exact current text (old_string must match byte-for-byte, including whitespace)"
     }`
   };
 }

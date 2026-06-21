@@ -5,6 +5,15 @@
 > Cron `18d30a58` (every 15m, session-only). Stop: `CronDelete 18d30a58`. Convention: [README](README.md).
 > NOTE: fires 1-2 docs는 동시-루프 INDEX 충돌 cascade로 rebase 대신 origin/main 리셋 후 fire 3에서 통합 재기록(히스토리 보존; fire 1-2 해시 ee635ab0/8ea83aab는 orphaned but 기록용).
 
+## fire 39 · 2026-06-21 · skill v2.0 · <commit-pending> (file_edit not-found recovery action for the no-hint case; 3-fire merge)
+meta: value-class=new-capability · pkg=@muse/fs · kind=reliability-nudge/message · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles 1072→1072 (+2 cases fs-write-tools no-hint+hint message, mutation-valid) · fabrication 0 · @muse/fs 격리 175 · pnpm check exit 0 · lint clean · Ollama DOWN
+- 무엇: old_string mismatch는 12B의 #1 edit 실패. applyEdit(file_edit+multi_edit 둘 다 backing)이 exact→fuzzy→unescape 후 실패; 복구 액션은 nearestLineHint가 close line 찾을 때만 있었음. **no-hint(gross miss=모델이 가장 길 잃은 곳)**는 bare "old_string not found: X"만 → 맹목 retry. FIX: no-hint도 `re-read with file_read + copy byte-for-byte(whitespace 포함)` 조언.
+- 왜: 다양성 — 최근 35·36·38이 @muse/fs context-fit이라 다른 kind(reliability-nudge/message) 강제. file_move(clobber 이미 가드)·file_delete(approval-gated) scout=clean. edit 실패 복구가 12B 멀티스텝 신뢰성의 핵심.
+- 리뷰지점: mutation-valid(suffix→""→gross-miss RED; 메시지 CONTENT 검증 "file_read"+"byte-for-byte"). ④b judge PASS — **순수 advice(라인 추측 0, ok:false 유지, match 파이프라인 byte-identical)**, advice sound(이 분기 도달=fuzzy/whitespace 이미 소진→byte-exact가 정확히 필요), 형제 multi_edit가 메시지 상속(covered), write/move는 다른 경로.
+- 리스크: 낮음 — 실패 reason 문자열만(match 로직 0 변경). ④b PASS.
+lesson: 복구 메시지는 *모델이 가장 길 잃은 케이스*(no-hint gross miss)에 *가장* 필요한데 종종 거기가 가장 terse — hint 있는 쉬운 케이스만 actionable한 비대칭을 감사. 형제(multi_edit)는 공유 함수(applyEdit) 통해 한 변경으로 covered.
+
 ## fire 38 · 2026-06-21 · skill v2.0 · 9fa2a6dc (file_grep output context-fit cap — fire-35 sibling)
 meta: value-class=new-capability · pkg=@muse/fs+apps/cli · kind=context-fit/reliability · verdict=PASS · firesSinceDrill=1
 ratchet: testFiles 1072→1072 (+1 case fs-read-tools grep cap, mutation-valid) · fabrication 0 · @muse/fs 격리 173 · @muse/cli 빌드 clean · pnpm check exit 0 · lint clean · Ollama DOWN
