@@ -2326,6 +2326,15 @@ ordering, SHIPPED) and #2's mechanism+measurement are in Done below. Next from t
 - ◦ **ask latency on the browser path** — ~90s/turn measured (10K-token prompt eval ≈ 40s × 2
   rounds on gemma4). Levers: prompt diet under --with-tools (skip notes blocks on clear
   browse intent?), KV prefix reuse across rounds, smaller tool list (above).
+  · UPDATE (local-speed fire 2): `MUSE_OLLAMA_NUM_BATCH` now wires Ollama's `num_batch` (prompt-eval
+  batch size) opt-in — a larger batch directly attacks that 40s prompt-eval cost. Verify the real win
+  with `bench:local` on a long prompt once Ollama is up + tune the recommended value.
+- ◦ **local-speed sibling adapter knobs (enumerated fire 2, deferred)** — beyond `num_batch`, Ollama
+  exposes `num_thread` (CPU threads) and `num_gpu` (layers offloaded to GPU) as per-request speed
+  levers. Deferred: both are hardware-specific and Ollama's auto-detection is usually right, so the
+  value is lower + needs per-box `bench:local` measurement to justify a non-default. Wire behind
+  `MUSE_OLLAMA_NUM_THREAD` / `MUSE_OLLAMA_NUM_GPU` (same opt-in/omit-by-default pattern as num_batch)
+  only if a measured box shows a win.
 - ✓→Done **injection-pattern cross-span tightening** — the EN role_override family + 2 KO
   role_override + 1 KO extraction regexes used unbounded `.*`/`/s`, so three unrelated words from
   DIFFERENT sentences combined into a false hit (live repro: "disregard the noise … finally …

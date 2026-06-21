@@ -46,6 +46,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   private readonly nativeFetch: typeof globalThis.fetch;
   private readonly nativeDefaultModel?: string;
   private readonly numCtx: number;
+  private readonly numBatch: number | undefined;
   private static traceSeq = 0;
 
   constructor(options: OllamaProviderOptions = {}) {
@@ -61,6 +62,11 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     this.numCtx = options.numCtx !== undefined && Number.isFinite(options.numCtx) && options.numCtx > 0
       ? Math.trunc(options.numCtx)
       : DEFAULT_OLLAMA_NUM_CTX;
+    // Unset/invalid → undefined → no `num_batch` on the wire → Ollama's
+    // own default (512). Only a valid positive value opts in.
+    this.numBatch = options.numBatch !== undefined && Number.isFinite(options.numBatch) && options.numBatch > 0
+      ? Math.trunc(options.numBatch)
+      : undefined;
   }
 
   override async listModels(): Promise<readonly ModelInfo[]> {
@@ -360,6 +366,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         // truncates anything over it — Muse's prompt (persona +
         // memory + RAG + tasks + calendar) routinely exceeds that.
         num_ctx: this.numCtx,
+        ...(this.numBatch !== undefined ? { num_batch: this.numBatch } : {}),
         ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
         ...(request.maxOutputTokens !== undefined ? { num_predict: request.maxOutputTokens } : {})
       },

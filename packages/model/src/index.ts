@@ -193,6 +193,14 @@ export interface OllamaProviderOptions extends Omit<OpenAICompatibleProviderOpti
    * the autoconfigure layer maps `MUSE_OLLAMA_NUM_CTX`.
    */
   readonly numCtx?: number;
+  /**
+   * Ollama's `num_batch` — the prompt-processing batch size (Ollama
+   * default 512). A larger batch raises prompt-eval throughput (the
+   * dominant cost on long prompts) at the cost of more VRAM. Left
+   * unset by default so the wire is byte-identical to today; the
+   * autoconfigure layer maps `MUSE_OLLAMA_NUM_BATCH` for opt-in tuning.
+   */
+  readonly numBatch?: number;
 }
 
 export interface AnthropicProviderOptions {
