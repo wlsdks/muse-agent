@@ -400,7 +400,10 @@ export {
   MAX_BELIEF_PROVENANCE_ENTRIES,
   provisionalFactKeys,
   readBeliefProvenance,
+  formatFirstLearned,
   selectPromotableFacts,
+  selectRecentlyForgotten,
+  selectRecentlyLearnedFacts,
   selectVolatileBeliefs,
   staleFactKeys,
   writeBeliefProvenance,
@@ -409,6 +412,8 @@ export {
   type FactFreshness,
   type FactProvenance,
   type PromotableFact,
+  type RecentlyForgotten,
+  type RecentlyLearnedFact,
   type VolatileBelief
 } from "./belief-provenance-store.js";
 

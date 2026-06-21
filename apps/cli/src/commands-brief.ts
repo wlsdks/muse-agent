@@ -36,11 +36,13 @@ import {
 } from "@muse/autoconfigure";
 import type { CalendarEvent } from "@muse/calendar";
 import { detectCalendarConflicts, formatBirthdayBriefLine, readCheckins, readContacts, readProactiveHistory, readReflections, readReminders, resolveUpcomingBirthdays, selectDueCheckins, type PersistedCheckin, type PersistedReminder } from "@muse/mcp";
+import { projectRecentlyLearned } from "@muse/memory";
 
 import { briefFocusBeat } from "./calendar-focus.js";
 import { collectDatedNotes, formatOnThisDayBrief, selectOnThisDay } from "./on-this-day.js";
 import { formatBriefConflicts } from "./brief-conflicts.js";
 import { formatBriefFeedLines, selectBriefFeedHeadlines } from "./brief-feeds.js";
+import { formatBriefLearnedLine } from "./brief-learned.js";
 import { formatBriefReflectionLine, selectBriefReflection } from "./brief-reflection.js";
 import { resolveReflectionsFile } from "./commands-reflections.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
@@ -524,6 +526,18 @@ export function registerBriefCommand(program: Command, io: ProgramIO): void {
         if (surfaced) io.stdout(formatBriefReflectionLine(surfaced));
       } catch {
         // reflections store missing/corrupt — the brief stands on its own
+      }
+
+      // "Lately about you": the morning sibling of the evening recap's
+      // recently-learned section — one cited line of what Muse learned about you
+      // in the last 30 days, from the user-memory already read above.
+      try {
+        const learned = userMemory
+          ? formatBriefLearnedLine(projectRecentlyLearned(userMemory, { sinceMs: now.getTime() - 30 * 86_400_000 }))
+          : undefined;
+        if (learned) io.stdout(learned);
+      } catch {
+        // user-memory unreadable — the brief stands on its own
       }
 
       try {
