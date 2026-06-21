@@ -79,6 +79,13 @@ export interface FsReadToolsOptions extends PathSafetyOptions {
   readonly extractDocxText?: (data: Buffer) => Promise<string>;
   /** Cap on returned characters for a text/PDF/DOCX read. Default 200,000. */
   readonly maxTextChars?: number;
+  /**
+   * Cap on the TOTAL characters of file_grep content matches (sum of match
+   * texts) — like {@link maxTextChars} for grep, so a broad grep can't dominate
+   * a small model's context. Default 200,000 (effectively the GREP_MAX_MATCHES
+   * cap); the agent passes {@link fileReadCharBudget}.
+   */
+  readonly maxGrepOutputChars?: number;
   /** Files larger than this are refused. Default 25MB. */
   readonly maxFileBytes?: number;
   /**
@@ -504,8 +511,10 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
       }
 
       const ignoreFilter: IgnoreFilter | undefined = args["includeIgnored"] === true ? undefined : await createIgnoreFilter(searchRoot);
+      const maxGrepOutputChars = options.maxGrepOutputChars ?? DEFAULT_MAX_TEXT_CHARS;
       const matchedFiles: string[] = [];
       const contentMatches: Array<{ readonly file: string; readonly line: number; readonly text: string }> = [];
+      let contentChars = 0;
       let scanned = 0;
       let truncated = false;
 
@@ -561,8 +570,12 @@ export function createFileGrepTool(options: FsReadToolsOptions = {}, policyPromi
             // pathological long line can't drive catastrophic backtracking.
             const lineText = rawLine.length > GREP_MAX_LINE_LENGTH ? rawLine.slice(0, GREP_MAX_LINE_LENGTH) : rawLine;
             if (regex.test(lineText)) {
-              contentMatches.push({ file: safe, line: index + 1, text: lineText.slice(0, 500) });
-              if (contentMatches.length >= GREP_MAX_MATCHES) {
+              const text = lineText.slice(0, 500);
+              contentMatches.push({ file: safe, line: index + 1, text });
+              contentChars += text.length;
+              // Stop on EITHER the match-count cap OR the total-output-char cap —
+              // the latter keeps a broad grep from overflowing a small context.
+              if (contentMatches.length >= GREP_MAX_MATCHES || contentChars >= maxGrepOutputChars) {
                 truncated = true;
                 break;
               }

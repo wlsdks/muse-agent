@@ -1499,6 +1499,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // overflow it and silently drop the prompt/history. The model pages
           // larger files via the returned nextOffset.
           maxTextChars: fileReadCharBudget(DEFAULT_OLLAMA_NUM_CTX),
+          // Same context budget for a broad file_grep — 200 matches × 500 chars
+          // would otherwise nearly fill the window.
+          maxGrepOutputChars: fileReadCharBudget(DEFAULT_OLLAMA_NUM_CTX),
           onPathRead: (canonicalPath) => fsReadPaths.add(canonicalPath),
           onFullRead: (canonicalPath) => fsFullReadPaths.add(canonicalPath),
           // file_read reads an IMAGE file via the same local vision the screen-
