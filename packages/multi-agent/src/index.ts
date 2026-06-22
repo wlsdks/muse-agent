@@ -1,6 +1,6 @@
 import type { AgentRunResult } from "@muse/agent-core";
-export { createWorkerResult, parseWorkerResult, validateWorkerHandoff } from "./worker-result.js";
-export type { ParsedWorkerResult, WorkerHandoff } from "./worker-result.js";
+export { createWorkerResult, parseHandoffPart, parseWorkerResult, validateWorkerHandoff } from "./worker-result.js";
+export type { HandoffPart, ParsedHandoffPart, ParsedWorkerResult, WorkerHandoff } from "./worker-result.js";
 import type { AgentWorker } from "./workers.js";
 
 export type { AgentMessage, AgentMessageBus, AgentMessageHandler, InMemoryAgentMessageBusOptions } from "./agent-message-bus.js";

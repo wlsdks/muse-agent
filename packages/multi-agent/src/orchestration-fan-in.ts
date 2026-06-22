@@ -3,6 +3,7 @@ import { neutralizeInjectionSpans } from "@muse/agent-core";
 import { trimToolOutput } from "@muse/memory";
 import { createRunId } from "@muse/shared";
 import type { OrchestrationStepResult } from "./index.js";
+import { parseHandoffPart } from "./worker-result.js";
 import { joinMessages } from "./workers.js";
 
 /** The user's request to verify the final answer against — the latest user turn,
@@ -73,9 +74,20 @@ export async function buildOrchestrationResponse(
   // Optional final-answer synthesis: fuse the completed workers into ONE
   // coherent answer. Fail-soft — a throwing / empty synthesizer keeps the
   // concatenation, so the orchestration never loses its output.
+  //
+  // Enforce the typed hand-off schema at THIS seam (fan-in is the second MAST
+  // cascade boundary): the parts are built from the NEUTRALIZED output, so a
+  // worker whose raw output passed the worker boundary but is entirely an
+  // injection span has collapsed to the placeholder here — content-free yet
+  // non-blank. `parseHandoffPart` drops such a part fail-close so the synthesizer
+  // / conflict / redundancy fan-in never consumes a content-free hand-off as if
+  // it were a real answer. The per-worker concatenation above still shows every
+  // completed worker honestly; only the FUSION inputs are schema-gated.
   const completedParts = results
     .filter((r) => r.status === "completed")
-    .map((r) => ({ output: safeOutputs[results.indexOf(r)] ?? "", workerId: r.workerId }));
+    .map((r) => parseHandoffPart({ output: safeOutputs[results.indexOf(r)] ?? "", workerId: r.workerId }))
+    .filter((parsed): parsed is { ok: true; part: { workerId: string; output: string } } => parsed.ok)
+    .map((parsed) => parsed.part);
 
   // Fuse the workers into one answer, optionally steered by `guidance` (the gap
   // the verifier found). Fail-soft — empty/throw keeps the prior output.
