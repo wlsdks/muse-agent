@@ -152,75 +152,16 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
       return reply.status(400).send(parsed.error);
     }
 
-    const allSpecs = await options.agentSpecRegistry.listEnabled();
-    const requestedIds = parsed.value.workerIds;
-    const selected = requestedIds
-      ? allSpecs.filter((spec) => requestedIds.includes(spec.name))
-      : orderWorkersForPipeline(allSpecs);
+    const prepared = await prepareOrchestration(options, parsed.value, historyStore);
 
-    if (selected.length === 0) {
-      return reply.status(409).send({
-        code: "NO_AGENT_WORKERS",
-        message: requestedIds
-          ? "No enabled agent specs match the requested workerIds"
-          : "No enabled agent specs are available to orchestrate"
-      } satisfies ApiError);
+    if ("error" in prepared) {
+      return reply.status(prepared.error.status).send(prepared.error.body);
     }
 
-    const messageBus = new InMemoryAgentMessageBus();
-    const input: AgentRunInput = {
-      messages: [{ content: parsed.value.message, role: "user" }],
-      model: parsed.value.model ?? options.defaultModel ?? "default"
-    };
-    let workers: AgentWorker[];
-    let effectiveMode = parsed.value.mode;
-    if (parsed.value.tiered) {
-      const tiered = await buildTieredOrchestration(
-        selected,
-        options.agentRuntime!,
-        resolveOrchestrateTierModels(input.model, process.env),
-        resolveTierCapacityProbe(process.env)
-      );
-      workers = tiered.workers;
-      if (tiered.collapsedToHeavy) {
-        effectiveMode = "sequential";
-      }
-    } else {
-      workers = selected.map((spec) => createSpecWorker(spec, options.agentRuntime!));
-    }
-    const orchestrator = new MultiAgentOrchestrator({ historyStore, messageBus, workers });
-
-    const summarizer = parsed.value.summarize === true
-      ? createWorkerSummarizer(options.modelProvider, input.model)
-      : undefined;
-    const synthesizer = parsed.value.synthesize === true
-      ? createWorkerSynthesizer(options.modelProvider, input.model)
-      : undefined;
-    const verifier = parsed.value.verify === true
-      ? createAnswerVerifier(options.modelProvider, input.model)
-      : undefined;
-    const detectConflicts = options.embed
-      ? (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) =>
-          detectFanInConflicts(parts, options.embed!)
-      : undefined;
-    const detectRedundancies = options.embed
-      ? (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) =>
-          detectFanInRedundancy(parts, options.embed!)
-      : undefined;
+    const { messageBus, input, orchestrator, orchestrationOptions } = prepared;
 
     try {
-      const orchestration = await orchestrator.run(input, {
-        ...(effectiveMode ? { mode: effectiveMode } : {}),
-        ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {}),
-        ...(parsed.value.maxOutputCharsPerWorker !== undefined
-          ? { maxOutputCharsPerWorker: parsed.value.maxOutputCharsPerWorker }
-          : {}),
-        ...(summarizer ? { summarizeWorkerOutput: summarizer } : {}),
-        ...(synthesizer ? { synthesizeFinalAnswer: synthesizer } : {}),
-        ...(verifier ? { verifyFinalAnswer: verifier } : {}),
-        ...(detectConflicts ? { detectConflicts } : {}),
-        ...(detectRedundancies ? { detectRedundancies } : {})
-      });
+      const orchestration = await orchestrator.run(input, orchestrationOptions);
 
       return {
         conversation: messageBus.getConversation().map(toConversationEntry),
@@ -263,72 +204,13 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
       return reply.status(400).send(parsed.error);
     }
 
-    const allSpecs = await options.agentSpecRegistry.listEnabled();
-    const requestedIds = parsed.value.workerIds;
-    const selected = requestedIds
-      ? allSpecs.filter((spec) => requestedIds.includes(spec.name))
-      : orderWorkersForPipeline(allSpecs);
+    const prepared = await prepareOrchestration(options, parsed.value, historyStore);
 
-    if (selected.length === 0) {
-      return reply.status(409).send({
-        code: "NO_AGENT_WORKERS",
-        message: requestedIds
-          ? "No enabled agent specs match the requested workerIds"
-          : "No enabled agent specs are available to orchestrate"
-      } satisfies ApiError);
+    if ("error" in prepared) {
+      return reply.status(prepared.error.status).send(prepared.error.body);
     }
 
-    const messageBus = new InMemoryAgentMessageBus();
-    const input: AgentRunInput = {
-      messages: [{ content: parsed.value.message, role: "user" }],
-      model: parsed.value.model ?? options.defaultModel ?? "default"
-    };
-    let workers: AgentWorker[];
-    let effectiveMode = parsed.value.mode;
-    if (parsed.value.tiered) {
-      const tiered = await buildTieredOrchestration(
-        selected,
-        options.agentRuntime!,
-        resolveOrchestrateTierModels(input.model, process.env),
-        resolveTierCapacityProbe(process.env)
-      );
-      workers = tiered.workers;
-      if (tiered.collapsedToHeavy) {
-        effectiveMode = "sequential";
-      }
-    } else {
-      workers = selected.map((spec) => createSpecWorker(spec, options.agentRuntime!));
-    }
-    const orchestrator = new MultiAgentOrchestrator({ historyStore, messageBus, workers });
-    const summarizer = parsed.value.summarize === true
-      ? createWorkerSummarizer(options.modelProvider, input.model)
-      : undefined;
-    const synthesizer = parsed.value.synthesize === true
-      ? createWorkerSynthesizer(options.modelProvider, input.model)
-      : undefined;
-    const verifier = parsed.value.verify === true
-      ? createAnswerVerifier(options.modelProvider, input.model)
-      : undefined;
-    const detectConflicts = options.embed
-      ? (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) =>
-          detectFanInConflicts(parts, options.embed!)
-      : undefined;
-    const detectRedundancies = options.embed
-      ? (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) =>
-          detectFanInRedundancy(parts, options.embed!)
-      : undefined;
-    const orchestrationOptions = {
-      ...(effectiveMode ? { mode: effectiveMode } : {}),
-      ...(parsed.value.maxWorkers !== undefined ? { maxWorkers: parsed.value.maxWorkers } : {}),
-      ...(parsed.value.maxOutputCharsPerWorker !== undefined
-        ? { maxOutputCharsPerWorker: parsed.value.maxOutputCharsPerWorker }
-        : {}),
-      ...(summarizer ? { summarizeWorkerOutput: summarizer } : {}),
-      ...(synthesizer ? { synthesizeFinalAnswer: synthesizer } : {}),
-      ...(verifier ? { verifyFinalAnswer: verifier } : {}),
-      ...(detectConflicts ? { detectConflicts } : {}),
-      ...(detectRedundancies ? { detectRedundancies } : {})
-    };
+    const { messageBus, input, orchestrator, orchestrationOptions, effectiveMode } = prepared;
 
     reply.header("content-type", "text/event-stream; charset=utf-8");
     reply.header("cache-control", "no-cache");
@@ -338,6 +220,106 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
       Readable.from(toMultiAgentSseStream({ messageBus, orchestrator, input, options: orchestrationOptions, mode: effectiveMode ?? "sequential" }))
     );
   });
+}
+
+interface PreparedOrchestrationError {
+  readonly error: { readonly status: number; readonly body: ApiError };
+}
+
+type OrchestrationRunOptions = NonNullable<Parameters<MultiAgentOrchestrator["run"]>[1]>;
+
+interface PreparedOrchestration {
+  readonly messageBus: InMemoryAgentMessageBus;
+  readonly input: AgentRunInput;
+  readonly orchestrator: MultiAgentOrchestrator;
+  readonly orchestrationOptions: OrchestrationRunOptions;
+  readonly effectiveMode: OrchestrationMode | undefined;
+}
+
+// Shared setup for both /orchestrate handlers: spec selection, worker
+// construction (incl. tiered), message bus, input, and orchestration
+// options. Returns an `error` envelope (with the HTTP status the caller
+// must send) instead of writing to `reply`, so the two handlers keep
+// their distinct response shapes (JSON vs SSE) while sharing this body.
+async function prepareOrchestration(
+  options: MultiAgentRouteOptions,
+  parsed: OrchestrateBody,
+  historyStore: OrchestrationHistoryStore
+): Promise<PreparedOrchestration | PreparedOrchestrationError> {
+  const allSpecs = await options.agentSpecRegistry.listEnabled();
+  const requestedIds = parsed.workerIds;
+  const selected = requestedIds
+    ? allSpecs.filter((spec) => requestedIds.includes(spec.name))
+    : orderWorkersForPipeline(allSpecs);
+
+  if (selected.length === 0) {
+    return {
+      error: {
+        body: {
+          code: "NO_AGENT_WORKERS",
+          message: requestedIds
+            ? "No enabled agent specs match the requested workerIds"
+            : "No enabled agent specs are available to orchestrate"
+        },
+        status: 409
+      }
+    };
+  }
+
+  const messageBus = new InMemoryAgentMessageBus();
+  const input: AgentRunInput = {
+    messages: [{ content: parsed.message, role: "user" }],
+    model: parsed.model ?? options.defaultModel ?? "default"
+  };
+  let workers: AgentWorker[];
+  let effectiveMode = parsed.mode;
+  if (parsed.tiered) {
+    const tiered = await buildTieredOrchestration(
+      selected,
+      options.agentRuntime!,
+      resolveOrchestrateTierModels(input.model, process.env),
+      resolveTierCapacityProbe(process.env)
+    );
+    workers = tiered.workers;
+    if (tiered.collapsedToHeavy) {
+      effectiveMode = "sequential";
+    }
+  } else {
+    workers = selected.map((spec) => createSpecWorker(spec, options.agentRuntime!));
+  }
+  const orchestrator = new MultiAgentOrchestrator({ historyStore, messageBus, workers });
+
+  const summarizer = parsed.summarize === true
+    ? createWorkerSummarizer(options.modelProvider, input.model)
+    : undefined;
+  const synthesizer = parsed.synthesize === true
+    ? createWorkerSynthesizer(options.modelProvider, input.model)
+    : undefined;
+  const verifier = parsed.verify === true
+    ? createAnswerVerifier(options.modelProvider, input.model)
+    : undefined;
+  const detectConflicts = options.embed
+    ? (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) =>
+        detectFanInConflicts(parts, options.embed!)
+    : undefined;
+  const detectRedundancies = options.embed
+    ? (parts: ReadonlyArray<{ readonly workerId: string; readonly output: string }>) =>
+        detectFanInRedundancy(parts, options.embed!)
+    : undefined;
+  const orchestrationOptions: OrchestrationRunOptions = {
+    ...(effectiveMode ? { mode: effectiveMode } : {}),
+    ...(parsed.maxWorkers !== undefined ? { maxWorkers: parsed.maxWorkers } : {}),
+    ...(parsed.maxOutputCharsPerWorker !== undefined
+      ? { maxOutputCharsPerWorker: parsed.maxOutputCharsPerWorker }
+      : {}),
+    ...(summarizer ? { summarizeWorkerOutput: summarizer } : {}),
+    ...(synthesizer ? { synthesizeFinalAnswer: synthesizer } : {}),
+    ...(verifier ? { verifyFinalAnswer: verifier } : {}),
+    ...(detectConflicts ? { detectConflicts } : {}),
+    ...(detectRedundancies ? { detectRedundancies } : {})
+  };
+
+  return { effectiveMode, input, messageBus, orchestrationOptions, orchestrator };
 }
 
 interface SseStreamArgs {

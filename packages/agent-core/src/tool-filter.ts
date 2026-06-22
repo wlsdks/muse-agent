@@ -10,6 +10,7 @@
  * Untagged tools are always included so existing tools keep working.
  */
 
+import { keywordMatchesPromptTokens } from "@muse/tools";
 import type { MuseTool, MuseToolDefinition } from "@muse/tools";
 
 export interface ToolFilterContext {
@@ -274,60 +275,20 @@ function isMandatoryTool(definition: MuseToolDefinition, recentSet: ReadonlySet<
   return !domain || domain === "core";
 }
 
-const NON_ASCII_RE = /[^\u0000-\u007f]/u;
-
 /**
- * Keyword → prompt matcher — INFLECTION-AWARE, mirroring `@muse/tools`
- * `tokenMatchesKeywordWord` / `keywordMatchesPromptTokens` exactly so the
- * agent-core ranking layer (cap / `shouldKeep`) and the `@muse/tools`
- * selection layer agree on which tools a prompt makes relevant. They used
- * to disagree: selection accepted inflections (`lights`→`light`) while this
- * copy demanded a strict `\blight\b`, so a domain tool ranked HIGH by
- * selection scored 0 here and could be evicted from the ≤6 window.
- *
- * The rule (per word of the keyword; multi-word keywords need EVERY word to
- * hit some token):
- *  - ASCII word ≥4 chars: a token matches when `token.startsWith(word)` and
- *    the suffix is ≤3 chars — `lights`→`light`, but `research`≠`search`,
- *    `homework`≠`home`.
- *  - ASCII word <4 chars: EXACT token only, so `on`/`off` don't prefix-match
- *    inside `online`/`office`.
- *  - CJK word: containment (Korean/CJK attach particles to the stem and have
- *    no whitespace word boundary).
- *
- * Tokenization matches `@muse/tools`: lowercase, split on any non-
- * letter/digit (Unicode-aware).
+ * Keyword -> prompt matcher. Delegates to `@muse/tools`
+ * `keywordMatchesPromptTokens` (which uses the shared `tokenMatchesKeywordWord`)
+ * so the agent-core ranking layer (cap / `shouldKeep`) and the `@muse/tools`
+ * selection layer share ONE inflection-aware matcher and agree on which tools a
+ * prompt makes relevant. The local token cache keeps the per-prompt
+ * tokenization cheap across the many keyword comparisons in one filter pass.
  */
 function keywordMatchesPrompt(keyword: string, promptLower: string): boolean {
   const tokens = tokenizePromptCache(promptLower);
   if (tokens.size === 0) {
     return false;
   }
-  const words = keyword
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((word) => word.length > 0);
-  if (words.length === 0) {
-    return false;
-  }
-  return words.every((word) => {
-    for (const token of tokens) {
-      if (tokenMatchesKeywordWord(token, word)) {
-        return true;
-      }
-    }
-    return false;
-  });
-}
-
-function tokenMatchesKeywordWord(token: string, word: string): boolean {
-  if (token === word) {
-    return true;
-  }
-  if (NON_ASCII_RE.test(word)) {
-    return word.length >= 2 ? token.includes(word) : false;
-  }
-  return word.length >= 4 && token.startsWith(word) && token.length - word.length <= 3;
+  return keywordMatchesPromptTokens(keyword, tokens);
 }
 
 const promptTokenCache = new Map<string, Set<string>>();

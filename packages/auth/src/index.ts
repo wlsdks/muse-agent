@@ -168,9 +168,7 @@ export class Auth implements MuseAuth {
       return undefined;
     }
 
-    const token = this.options.jwt.createToken(user);
-    const expiresAt = this.options.jwt.extractExpiration(token) ?? new Date(Date.now() + defaultJwtExpirationMs);
-    return { expiresAt, token, user: publicUser(user) };
+    return buildLoginResult(this.options.jwt, user);
   }
 
   register(input: { readonly email: string; readonly name: string; readonly password: string }): LoginResult {
@@ -186,9 +184,7 @@ export class Auth implements MuseAuth {
       name: input.name,
       passwordHash
     });
-    const token = this.options.jwt.createToken(user);
-    const expiresAt = this.options.jwt.extractExpiration(token) ?? new Date(Date.now() + defaultJwtExpirationMs);
-    return { expiresAt, token, user: publicUser(user) };
+    return buildLoginResult(this.options.jwt, user);
   }
 
   changePassword(input: {
@@ -226,36 +222,11 @@ export class Auth implements MuseAuth {
   }
 
   authenticateBearer(token: string | undefined): AuthIdentity | undefined {
-    if (!token) {
-      return undefined;
-    }
-
-    const claims = this.options.jwt.parseToken(token);
-
-    if (!claims) {
-      return undefined;
-    }
-
-    const expiresAt = new Date(claims.exp * 1_000);
-    if (!Number.isFinite(expiresAt.getTime())) {
-      return undefined;
-    }
-
-    return {
-      accountId: claims.accountId,
-      email: claims.email,
-      expiresAt,
-      tokenId: claims.jti,
-      userId: claims.sub
-    };
+    return identityFromToken(this.options.jwt, token);
   }
 
   logout(token: string | undefined): boolean {
-    if (!token) {
-      return false;
-    }
-
-    return Boolean(this.options.jwt.parseToken(token));
+    return isValidLogoutToken(this.options.jwt, token);
   }
 }
 
@@ -328,42 +299,15 @@ export class AsyncAuth implements MuseAuth {
   }
 
   async authenticateBearer(token: string | undefined): Promise<AuthIdentity | undefined> {
-    if (!token) {
-      return undefined;
-    }
-
-    const claims = this.options.jwt.parseToken(token);
-
-    if (!claims) {
-      return undefined;
-    }
-
-    const expiresAt = new Date(claims.exp * 1_000);
-    if (!Number.isFinite(expiresAt.getTime())) {
-      return undefined;
-    }
-
-    return {
-      accountId: claims.accountId,
-      email: claims.email,
-      expiresAt,
-      tokenId: claims.jti,
-      userId: claims.sub
-    };
+    return identityFromToken(this.options.jwt, token);
   }
 
   async logout(token: string | undefined): Promise<boolean> {
-    if (!token) {
-      return false;
-    }
-
-    return Boolean(this.options.jwt.parseToken(token));
+    return isValidLogoutToken(this.options.jwt, token);
   }
 
   private createLoginResult(user: User): LoginResult {
-    const token = this.options.jwt.createToken(user);
-    const expiresAt = this.options.jwt.extractExpiration(token) ?? new Date(Date.now() + defaultJwtExpirationMs);
-    return { expiresAt, token, user: publicUser(user) };
+    return buildLoginResult(this.options.jwt, user);
   }
 }
 
@@ -394,5 +338,45 @@ function publicUser(user: User): Omit<User, "passwordHash"> {
     id: user.id,
     name: user.name
   };
+}
+
+// Shared await-free core for Auth/AsyncAuth, which differ ONLY in the store await.
+function buildLoginResult(jwt: JwtTokenProvider, user: User): LoginResult {
+  const token = jwt.createToken(user);
+  const expiresAt = jwt.extractExpiration(token) ?? new Date(Date.now() + defaultJwtExpirationMs);
+  return { expiresAt, token, user: publicUser(user) };
+}
+
+function identityFromToken(jwt: JwtTokenProvider, token: string | undefined): AuthIdentity | undefined {
+  if (!token) {
+    return undefined;
+  }
+
+  const claims = jwt.parseToken(token);
+
+  if (!claims) {
+    return undefined;
+  }
+
+  const expiresAt = new Date(claims.exp * 1_000);
+  if (!Number.isFinite(expiresAt.getTime())) {
+    return undefined;
+  }
+
+  return {
+    accountId: claims.accountId,
+    email: claims.email,
+    expiresAt,
+    tokenId: claims.jti,
+    userId: claims.sub
+  };
+}
+
+function isValidLogoutToken(jwt: JwtTokenProvider, token: string | undefined): boolean {
+  if (!token) {
+    return false;
+  }
+
+  return Boolean(jwt.parseToken(token));
 }
 

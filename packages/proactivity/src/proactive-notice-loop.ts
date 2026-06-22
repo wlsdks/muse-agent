@@ -360,56 +360,15 @@ export async function runDueProactiveNotices(
   const imminent: ImminentItem[] = [];
 
   if (options.calendarRegistry) {
-    try {
-      const events = await options.calendarRegistry.listEvents({ from: nowDate, to: cutoff });
-      for (const event of events) {
-        if (event.allDay) continue;
-        // A malformed feed / hand-edited ~/.muse/calendar.json yields
-        // an Invalid Date here. NaN range comparisons are all false,
-        // so without this it slips through and `.toISOString()` below
-        // throws — aborting the whole tick (every later imminent item
-        // silently lost). Mirrors the task path's dueAt NaN guard.
-        if (Number.isNaN(event.startsAt.getTime())) continue;
-        if (event.startsAt < nowDate || event.startsAt > cutoff) continue;
-        if (isCalendarOptedOut(event)) continue;
-        imminent.push({
-          factSheet: calendarFactSheet(event, nowDate),
-          id: event.id,
-          kind: "calendar",
-          startsAt: event.startsAt,
-          text: calendarNoticeText(event, nowDate),
-          title: event.title
-        });
-      }
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      errors.push(`calendar.listEvents failed: ${message}`);
-    }
+    const collected = await collectImminentCalendar(options.calendarRegistry, nowDate, cutoff);
+    imminent.push(...collected.items);
+    errors.push(...collected.errors);
   }
 
   if (options.tasksFile) {
-    try {
-      const tasks = await readTasks(options.tasksFile);
-      for (const task of tasks) {
-        if (task.status !== "open") continue;
-        if (!task.dueAt) continue;
-        if (task.proactive === false) continue;
-        const dueAt = new Date(task.dueAt);
-        if (Number.isNaN(dueAt.getTime())) continue;
-        if (dueAt < nowDate || dueAt > cutoff) continue;
-        imminent.push({
-          factSheet: taskFactSheet(task, dueAt, nowDate),
-          id: task.id,
-          kind: "task",
-          startsAt: dueAt,
-          text: taskNoticeText(task, dueAt, nowDate),
-          title: task.title
-        });
-      }
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      errors.push(`tasks.readTasks failed: ${message}`);
-    }
+    const collected = await collectImminentTasks(options.tasksFile, nowDate, cutoff);
+    imminent.push(...collected.items);
+    errors.push(...collected.errors);
   }
 
   if (imminent.length === 0) {
@@ -470,110 +429,19 @@ export async function runDueProactiveNotices(
       break;
     }
 
-    let rawNoticeText = phaseDActive
-      ? await synthesizeNoticeText(item, options).catch((cause) => {
-          const message = cause instanceof Error ? cause.message : String(cause);
-          errors.push(`${item.kind}:${item.id} synthesis: ${message}`);
-          return item.text;
-        })
-      : item.text;
-    // Anticipation: autonomously investigate the likely unstated
-    // need behind this item and surface the finding unasked. Fail-
-    // open — a failed/empty investigation just omits the finding;
-    // the notice still fires.
-    if (options.investigate) {
-      try {
-        const finding = await options.investigate({
-          factSheet: item.factSheet,
-          kind: item.kind,
-          title: item.title
-        });
-        if (finding && finding.trim().length > 0) {
-          rawNoticeText = `${rawNoticeText}\n${finding.trim()}`;
-        }
-      } catch {
-        // investigation failed — keep the base notice
-      }
-    }
-    // Scrub before any downstream sink — the synthesised notice
-    // saw persona facts + task summaries that may quote a secret.
-    const noticeText = redactSecretsInText(rawNoticeText);
-
-    const firedAtIso = now().toISOString();
-    // Quiet-hours suppression applied to BOTH sinks (the messaging sink would
-    // otherwise bypass the terminal-only `gateProactiveNoticeSink` and nag at
-    // night). Matches the terminal gate's drop semantics: the notice is skipped,
-    // not deferred — these are "nice to know" ambient notices.
-    const quietNow = options.quietHours !== undefined && isQuietHour(now().getHours(), options.quietHours);
-    try {
-      if (quietNow) {
-        // suppressed — deliver nothing on either sink
-      } else if (sinkChoice === "terminal" && options.terminalSink) {
-        await options.terminalSink.deliver({ kind: item.kind, text: noticeText, title: item.title });
-      } else {
-        await sendWithRetry(
-          options.messagingRegistry,
-          options.providerId,
-          { destination: options.destination, text: noticeText }
-        );
-      }
+    const { delivered } = await deliverImminentItem(item, {
+      errors,
+      ledgerForCap,
+      now,
+      nowDate,
+      options,
+      phaseDActive,
+      sinkChoice
+    });
+    if (delivered) {
       firedThisRun += 1;
       nextFired = [...nextFired, candidate];
       seen.add(key);
-      // Trust ledger: record the delivered surface for the
-      // precision scoreboard + count it against the daily cap. Fail-open.
-      if (options.trustLedgerFile) {
-        const surfacedAtMs = nowDate.getTime();
-        ledgerForCap.push({ kind: item.kind, sourceKey: sourceKey(item.kind, item.id), surfacedAtMs, title: item.title });
-        try {
-          await appendSurfaced(options.trustLedgerFile, { id: item.id, kind: item.kind, surfacedAtMs, title: item.title });
-        } catch (cause) {
-          const message = cause instanceof Error ? cause.message : String(cause);
-          errors.push(`trust ledger write failed: ${message}`);
-        }
-      }
-      // Broker fan-out: publish the same notice so live
-      // chat-stream subscribers see it inline. Always alongside the
-      // messaging-sink delivery — not a replacement. Fail-soft per
-      // the broker contract (in-memory broker never throws).
-      if (options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
-        options.agentInitiatedNoticeBroker.publish(options.agentInitiatedNoticeUserId, {
-          generatedAt: firedAtIso,
-          kind: item.kind,
-          sourceId: item.id,
-          text: noticeText
-        });
-      }
-      if (options.historyFile) {
-        await appendProactiveHistory(options.historyFile, {
-          destination: options.destination,
-          firedAtIso,
-          itemId: item.id,
-          kind: item.kind,
-          providerId: sinkChoice === "terminal" ? "terminal" : options.providerId,
-          startIso: item.startsAt.toISOString(),
-          status: "delivered",
-          text: noticeText,
-          title: item.title
-        });
-      }
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      errors.push(`${item.kind}:${item.id}: ${message}`);
-      if (options.historyFile) {
-        await appendProactiveHistory(options.historyFile, {
-          destination: options.destination,
-          error: message,
-          firedAtIso,
-          itemId: item.id,
-          kind: item.kind,
-          providerId: options.providerId,
-          startIso: item.startsAt.toISOString(),
-          status: "failed",
-          text: noticeText,
-          title: item.title
-        });
-      }
     }
   }
 
@@ -587,6 +455,216 @@ export async function runDueProactiveNotices(
   }
 
   return { errors, fired: firedThisRun, imminent: imminent.length };
+}
+
+interface DeliverImminentContext {
+  // `errors` and `ledgerForCap` are the caller's live arrays — the
+  // helper mutates them in place exactly as the inlined loop body did.
+  readonly errors: string[];
+  readonly ledgerForCap: TrustLedgerEntry[];
+  readonly now: () => Date;
+  readonly nowDate: Date;
+  readonly options: RunDueProactiveNoticesOptions;
+  readonly phaseDActive: boolean;
+  readonly sinkChoice: ProactiveSinkChoice;
+}
+
+// Per-item delivery: synthesize → investigate → redact → send (terminal
+// or messaging, quiet-hours-gated) → trust-ledger + broker + history.
+// Returns whether the notice was delivered so the caller can advance
+// firedThisRun / nextFired / seen; all failure paths are caught here and
+// recorded into `ctx.errors` rather than thrown.
+async function deliverImminentItem(
+  item: ImminentItem,
+  ctx: DeliverImminentContext
+): Promise<{ readonly delivered: boolean }> {
+  const { errors, ledgerForCap, now, nowDate, options, phaseDActive, sinkChoice } = ctx;
+
+  let rawNoticeText = phaseDActive
+    ? await synthesizeNoticeText(item, options).catch((cause) => {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        errors.push(`${item.kind}:${item.id} synthesis: ${message}`);
+        return item.text;
+      })
+    : item.text;
+  // Anticipation: autonomously investigate the likely unstated
+  // need behind this item and surface the finding unasked. Fail-
+  // open — a failed/empty investigation just omits the finding;
+  // the notice still fires.
+  if (options.investigate) {
+    try {
+      const finding = await options.investigate({
+        factSheet: item.factSheet,
+        kind: item.kind,
+        title: item.title
+      });
+      if (finding && finding.trim().length > 0) {
+        rawNoticeText = `${rawNoticeText}\n${finding.trim()}`;
+      }
+    } catch {
+      // investigation failed — keep the base notice
+    }
+  }
+  // Scrub before any downstream sink — the synthesised notice
+  // saw persona facts + task summaries that may quote a secret.
+  const noticeText = redactSecretsInText(rawNoticeText);
+
+  const firedAtIso = now().toISOString();
+  // Quiet-hours suppression applied to BOTH sinks (the messaging sink would
+  // otherwise bypass the terminal-only `gateProactiveNoticeSink` and nag at
+  // night). Matches the terminal gate's drop semantics: the notice is skipped,
+  // not deferred — these are "nice to know" ambient notices.
+  const quietNow = options.quietHours !== undefined && isQuietHour(now().getHours(), options.quietHours);
+  // Set the instant the send resolves — BEFORE the trust-ledger / broker /
+  // history side-effects. A throw in those later steps still leaves the item
+  // counted as delivered (matching the inlined body, where firedThisRun was
+  // incremented at this exact point and a later throw fell to the catch with
+  // the increment already applied).
+  let delivered = false;
+  try {
+    if (quietNow) {
+      // suppressed — deliver nothing on either sink
+    } else if (sinkChoice === "terminal" && options.terminalSink) {
+      await options.terminalSink.deliver({ kind: item.kind, text: noticeText, title: item.title });
+    } else {
+      await sendWithRetry(
+        options.messagingRegistry,
+        options.providerId,
+        { destination: options.destination, text: noticeText }
+      );
+    }
+    delivered = true;
+    // Trust ledger: record the delivered surface for the
+    // precision scoreboard + count it against the daily cap. Fail-open.
+    if (options.trustLedgerFile) {
+      const surfacedAtMs = nowDate.getTime();
+      ledgerForCap.push({ kind: item.kind, sourceKey: sourceKey(item.kind, item.id), surfacedAtMs, title: item.title });
+      try {
+        await appendSurfaced(options.trustLedgerFile, { id: item.id, kind: item.kind, surfacedAtMs, title: item.title });
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        errors.push(`trust ledger write failed: ${message}`);
+      }
+    }
+    // Broker fan-out: publish the same notice so live
+    // chat-stream subscribers see it inline. Always alongside the
+    // messaging-sink delivery — not a replacement. Fail-soft per
+    // the broker contract (in-memory broker never throws).
+    if (options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
+      options.agentInitiatedNoticeBroker.publish(options.agentInitiatedNoticeUserId, {
+        generatedAt: firedAtIso,
+        kind: item.kind,
+        sourceId: item.id,
+        text: noticeText
+      });
+    }
+    if (options.historyFile) {
+      await appendProactiveHistory(options.historyFile, {
+        destination: options.destination,
+        firedAtIso,
+        itemId: item.id,
+        kind: item.kind,
+        providerId: sinkChoice === "terminal" ? "terminal" : options.providerId,
+        startIso: item.startsAt.toISOString(),
+        status: "delivered",
+        text: noticeText,
+        title: item.title
+      });
+    }
+    return { delivered };
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    errors.push(`${item.kind}:${item.id}: ${message}`);
+    if (options.historyFile) {
+      await appendProactiveHistory(options.historyFile, {
+        destination: options.destination,
+        error: message,
+        firedAtIso,
+        itemId: item.id,
+        kind: item.kind,
+        providerId: options.providerId,
+        startIso: item.startsAt.toISOString(),
+        status: "failed",
+        text: noticeText,
+        title: item.title
+      });
+    }
+    return { delivered };
+  }
+}
+
+interface CollectedImminent {
+  readonly items: readonly ImminentItem[];
+  readonly errors: readonly string[];
+}
+
+// A thrown registry/store read is caught and returned as an error string
+// (never propagated) so one failing source can't abort the whole tick.
+async function collectImminentCalendar(
+  calendarRegistry: CalendarProviderRegistry,
+  nowDate: Date,
+  cutoff: Date
+): Promise<CollectedImminent> {
+  const items: ImminentItem[] = [];
+  const errors: string[] = [];
+  try {
+    const events = await calendarRegistry.listEvents({ from: nowDate, to: cutoff });
+    for (const event of events) {
+      if (event.allDay) continue;
+      // A malformed feed / hand-edited ~/.muse/calendar.json yields
+      // an Invalid Date here. NaN range comparisons are all false,
+      // so without this it slips through and `.toISOString()` below
+      // throws — aborting the whole tick (every later imminent item
+      // silently lost). Mirrors the task path's dueAt NaN guard.
+      if (Number.isNaN(event.startsAt.getTime())) continue;
+      if (event.startsAt < nowDate || event.startsAt > cutoff) continue;
+      if (isCalendarOptedOut(event)) continue;
+      items.push({
+        factSheet: calendarFactSheet(event, nowDate),
+        id: event.id,
+        kind: "calendar",
+        startsAt: event.startsAt,
+        text: calendarNoticeText(event, nowDate),
+        title: event.title
+      });
+    }
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    errors.push(`calendar.listEvents failed: ${message}`);
+  }
+  return { errors, items };
+}
+
+async function collectImminentTasks(
+  tasksFile: string,
+  nowDate: Date,
+  cutoff: Date
+): Promise<CollectedImminent> {
+  const items: ImminentItem[] = [];
+  const errors: string[] = [];
+  try {
+    const tasks = await readTasks(tasksFile);
+    for (const task of tasks) {
+      if (task.status !== "open") continue;
+      if (!task.dueAt) continue;
+      if (task.proactive === false) continue;
+      const dueAt = new Date(task.dueAt);
+      if (Number.isNaN(dueAt.getTime())) continue;
+      if (dueAt < nowDate || dueAt > cutoff) continue;
+      items.push({
+        factSheet: taskFactSheet(task, dueAt, nowDate),
+        id: task.id,
+        kind: "task",
+        startsAt: dueAt,
+        text: taskNoticeText(task, dueAt, nowDate),
+        title: task.title
+      });
+    }
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    errors.push(`tasks.readTasks failed: ${message}`);
+  }
+  return { errors, items };
 }
 
 /**

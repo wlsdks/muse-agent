@@ -29,14 +29,13 @@ import { basename, join, relative } from "node:path";
 
 import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, resolveRecallConfidentAt, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
-import { answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, isMemoryInjection, isUnbackedActionClaim, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence } from "@muse/agent-core";
+import { answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCorpusOverview, isMemoryInjection, isUnbackedActionClaim, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence } from "@muse/agent-core";
 import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys, staleFactKeys } from "@muse/memory";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNoteProvenanceFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { evaluateArithmeticExpression } from "@muse/mcp";
-import { acquireOllamaLease, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, selectReflectionsForRecall, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
+import { acquireOllamaLease, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, selectReflectionsForRecall, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import { fetchReadableUrl, type MessageApprovalGate } from "@muse/domain-tools";
 import { redactSecretsInText } from "@muse/shared";
 import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildCalendarContextBlock, buildContactContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
@@ -70,7 +69,7 @@ import { resolveReflectionsFile } from "./commands-reflections.js";
 import { routeAskTierModel } from "./ask-tier-models.js";
 import { shouldDecompose } from "@muse/multi-agent";
 import { runDecomposedAgentAsk } from "./ask-decompose.js";
-import { CASUAL_RESPONSES, META_RESPONSE, ACTION_GUIDE } from "./ask-fast-paths.js";
+import { tryDeterministicAnswer } from "./ask-fast-paths.js";
 export { CASUAL_RESPONSES, META_RESPONSE, ACTION_GUIDE } from "./ask-fast-paths.js";
 import { decompositionJsonFields, decompositionStderrNotes, renderAskStreamError, type AskStreamEvent, type AskStreamResult, type DecompositionTrustSignals } from "./ask-result-output.js";
 export { decompositionJsonFields, decompositionStderrNotes, renderAskStreamError, type AskStreamEvent, type AskStreamResult } from "./ask-result-output.js";
@@ -88,14 +87,7 @@ import { embed } from "./embed.js";
 import { rankPlaybookEntriesByRelevance } from "./playbook-embed-rank.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
 import { readClipboardText } from "./clipboard-reader.js";
-import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
-import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
-import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
-import { detectDateDiffQuery, formatDateDiff } from "./date-diff-query.js";
 import { createCitationStreamFilter } from "./citation-stream.js";
-import { convertUnit, detectUnitConversion, formatConversion } from "./unit-conversion.js";
-import { detectPercentageQuery, formatPercentage } from "./percentage-query.js";
-import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
 import { docxToText, emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isPdfDocument, isPptxDocument, parsePdfBuffer, pptxToText } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { buildAskRunLog, resolvePersona, writeRunLog } from "./program-helpers.js";
@@ -653,170 +645,18 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         imageAttachments = [loaded.attachment];
       }
 
-      // A pure social prompt ("hi" / "thanks" / "bye") is not a question about
-      // the notes — answer it conversationally and skip retrieval, the
-      // empty-corpus on-ramp, the citation gate, and the grounding-verdict
-      // warning (tool-calling.md: don't run the retrieval machinery on a
-      // greeting). Precision-first detector, so a real question never short-
-      // circuits. The fastest path in the CLI — no model call, no embedding.
-      const casualKind = classifyCasualPrompt(query);
-      if (casualKind) {
-        const reply = CASUAL_RESPONSES[casualKind];
+      // Deterministic non-RAG short-circuits (social / arithmetic / date /
+      // countdown / date-diff / unit / percentage / timezone / meta / action):
+      // each is precision-first and skips retrieval, the empty-corpus on-ramp,
+      // the citation gate, and the grounding-verdict warning. The local 8B is
+      // confidently wrong on the numeric/date ones, so Muse computes them exactly
+      // here — no model call, no embedding. A miss falls through to normal recall.
+      const deterministic = tryDeterministicAnswer(query, options);
+      if (deterministic) {
         if (options.json) {
-          io.stdout(`${JSON.stringify({ answer: reply, casual: casualKind, query })}\n`);
+          io.stdout(`${JSON.stringify(deterministic.jsonPayload)}\n`);
         } else {
-          io.stdout(`${reply}\n`);
-        }
-        return;
-      }
-
-      // A PURE arithmetic question ("what is 1847 * 2963?") isn't a notes
-      // question, and the local 8B gets the digits wrong — it can't multiply
-      // reliably. Compute it EXACTLY and deterministically here, skipping
-      // retrieval and the model entirely. Precision-first: only a query that is
-      // nothing but a calculation short-circuits ("what is my Q3 budget?" has
-      // letters, so it never does), and a malformed expression falls through to
-      // the normal path rather than emitting a wrong/garbage answer.
-      const arithmeticExpression = detectArithmeticQuery(query);
-      if (arithmeticExpression) {
-        const evaluated = evaluateArithmeticExpression(arithmeticExpression);
-        if ("result" in evaluated) {
-          const answer = formatArithmeticResult(arithmeticExpression, evaluated.result);
-          if (options.json) {
-            io.stdout(`${JSON.stringify({ answer, arithmetic: { expression: arithmeticExpression, result: evaluated.result }, query })}\n`);
-          } else {
-            io.stdout(`${answer}\n`);
-          }
-          return;
-        }
-      }
-
-      // A pure relative-DATE question ("what's the date next Friday?") — the 8B
-      // miscounts dates (and doesn't reliably know today). Resolve it through the
-      // SAME date grammar reminders/tasks use and answer the exact calendar date.
-      // Precision-first: `parseReminderDueAt` is the gate — an event name ("my
-      // dentist appointment") fails to parse and falls through to normal recall.
-      const datePhrase = detectDateQuery(query);
-      if (datePhrase !== null) {
-        const resolved = parseReminderDueAt(datePhrase, () => new Date());
-        if (!(resolved instanceof Error)) {
-          const answer = formatDateAnswer(datePhrase, resolved, { includeTime: phraseHasTime(datePhrase) });
-          if (options.json) {
-            io.stdout(`${JSON.stringify({ answer, date: { iso: resolved, phrase: datePhrase }, query })}\n`);
-          } else {
-            io.stdout(`${answer}\n`);
-          }
-          return;
-        }
-      }
-
-      // A pure date-COUNTDOWN question ("how many days until Christmas?", "weeks
-      // until June 20"). The 8B counts days across months/years CONFIDENTLY WRONG;
-      // resolve the target via the date grammar and count EXACTLY. Precision-first:
-      // a target the grammar can't parse falls through to recall.
-      const countdown = detectCountdownQuery(query);
-      if (countdown) {
-        const now = new Date();
-        const resolved = parseReminderDueAt(countdown.targetPhrase, () => now);
-        if (!(resolved instanceof Error)) {
-          const days = countdownDays(now, resolved);
-          if (days >= 0) {
-            const answer = formatCountdown(countdown.unit, days, resolved, countdown.ko);
-            if (options.json) {
-              io.stdout(`${JSON.stringify({ answer, countdown: { days, target: resolved, unit: countdown.unit }, query })}\n`);
-            } else {
-              io.stdout(`${answer}\n`);
-            }
-            return;
-          }
-        }
-      }
-
-      // A pure date-DIFFERENCE question ("how many days between June 1 and Aug 15",
-      // "how long from X to Y"). The 8B is confidently off-by-one; count it EXACTLY
-      // from literal dates. Precision-first: both endpoints must parse, else recall.
-      const dateDiff = detectDateDiffQuery(query, new Date());
-      if (dateDiff) {
-        const answer = formatDateDiff(dateDiff);
-        if (options.json) {
-          io.stdout(`${JSON.stringify({ answer, dateDiff: { days: dateDiff.days, from: dateDiff.from.toISOString(), to: dateDiff.to.toISOString(), unit: dateDiff.unit }, query })}\n`);
-        } else {
-          io.stdout(`${answer}\n`);
-        }
-        return;
-      }
-
-      // A pure UNIT-conversion question ("how many km in 5 miles?", "100F in C?")
-      // — the 8B miscalculates conversions (temperature needs a formula). Convert
-      // it EXACTLY. Precision-first: only fires when both units are known and in
-      // the same dimension, else it falls through to recall.
-      const conversion = detectUnitConversion(query);
-      if (conversion) {
-        const result = convertUnit(conversion.value, conversion.from, conversion.to);
-        if (result !== null) {
-          const answer = formatConversion(conversion.value, conversion.from, conversion.to, result);
-          if (options.json) {
-            io.stdout(`${JSON.stringify({ answer, conversion: { ...conversion, result }, query })}\n`);
-          } else {
-            io.stdout(`${answer}\n`);
-          }
-          return;
-        }
-      }
-
-      // Percentage word-problems (tips, discounts, tax, raises) — "18% of $54",
-      // "$80 with 15% off", "200 plus 8%", "20% tip on 45". The 8B miscalculates
-      // these and the symbolic arithmetic fast-path can't reach them (they carry
-      // words + currency). Compute EXACTLY. Precision-first: only the recognised
-      // shapes fire, else it falls through to recall.
-      const percentage = detectPercentageQuery(query);
-      if (percentage) {
-        const answer = formatPercentage(percentage);
-        if (options.json) {
-          io.stdout(`${JSON.stringify({ answer, percentage, query })}\n`);
-        } else {
-          io.stdout(`${answer}\n`);
-        }
-        return;
-      }
-
-      // Time-zone questions — "what's 9am PST in Seoul?", "what time is it in
-      // Tokyo?". The 8B doesn't reliably know the current time, the offsets, or
-      // DST; compute it EXACTLY from the host clock + IANA database. Precision-
-      // first: only fires when every named zone resolves, else falls through.
-      const timezone = detectTimezoneQuery(query);
-      if (timezone) {
-        const answer = formatTimezone(timezone, new Date());
-        if (options.json) {
-          io.stdout(`${JSON.stringify({ answer, timezone, query })}\n`);
-        } else {
-          io.stdout(`${answer}\n`);
-        }
-        return;
-      }
-
-      // A question ABOUT Muse itself ("what can you do?") is answered from the
-      // accurate capability description, not the local model's over-claimed
-      // free-composition — same grounding short-circuit as a social prompt.
-      if (classifyMetaPrompt(query)) {
-        if (options.json) {
-          io.stdout(`${JSON.stringify({ answer: META_RESPONSE, meta: true, query })}\n`);
-        } else {
-          io.stdout(`${META_RESPONSE}\n`);
-        }
-        return;
-      }
-
-      // An imperative DO-something request ("remind me to…", "email Sarah…") on
-      // the chat-only path: the model would happily say "I'll remind you…" — a
-      // FALSE PROMISE, since the no-tools path can't act. Be honest and point at
-      // the path that actually can (which asks before any outbound send). On
-      // --with-tools the agent really does it, so don't short-circuit there.
-      if (!options.withTools && classifyActionRequest(query)) {
-        if (options.json) {
-          io.stdout(`${JSON.stringify({ actionRequest: true, needsTools: true, query })}\n`);
-        } else {
-          io.stdout(`${ACTION_GUIDE}\n`);
+          io.stdout(`${deterministic.answer}\n`);
         }
         return;
       }
