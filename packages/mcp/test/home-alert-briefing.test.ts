@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { resolveHomeAlertLine, type HomeAlertCheck } from "../src/smart-home.js";
 import { runDueSituationalBriefing } from "../src/situational-briefing-loop.js";
-import { writeObjectives } from "../src/personal-objectives-store.js";
+import { writeObjectives } from "@muse/stores";
 
 const noWait = { baseDelayMs: 0, sleep: async () => {} };
 

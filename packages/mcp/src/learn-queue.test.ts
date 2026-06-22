@@ -10,7 +10,7 @@ import {
   readPendingLearnEvents,
   resolveLearnQueueFile,
   type LearnCorrectionEvent
-} from "./learn-queue.js";
+} from "@muse/stores";
 
 let dir: string;
 let file: string;

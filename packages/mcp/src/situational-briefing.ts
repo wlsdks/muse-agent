@@ -10,7 +10,7 @@
  */
 
 import { computeAvailability, type AvailabilityEventLike } from "./calendar-availability.js";
-import type { StandingObjective } from "./personal-objectives-store.js";
+import type { StandingObjective } from "@muse/stores";
 
 /**
  * Duck-typed imminent item — mirrors the public fields of the

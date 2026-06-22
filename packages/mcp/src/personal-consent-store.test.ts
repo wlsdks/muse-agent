@@ -8,7 +8,7 @@ import {
   readConsents,
   recordConsent,
   type ScopedConsent
-} from "./personal-consent-store.js";
+} from "@muse/stores";
 
 function tmpFile(): string {
   return join(mkdtempSync(join(tmpdir(), "muse-consent-")), "consents.json");

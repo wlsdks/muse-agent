@@ -10,7 +10,7 @@ import {
   serializeObjective,
   writeObjectives,
   type StandingObjective
-} from "./personal-objectives-store.js";
+} from "@muse/stores";
 
 function tmpFile(): string {
   const dir = mkdtempSync(join(tmpdir(), "muse-objectives-"));

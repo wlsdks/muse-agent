@@ -437,6 +437,9 @@ importers:
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
+      '@muse/stores':
+        specifier: workspace:*
+        version: link:../stores
       '@muse/tools':
         specifier: workspace:*
         version: link:../tools
@@ -601,6 +604,18 @@ importers:
       vitest:
         specifier: ^4.1.7
         version: 4.1.7(@types/node@25.9.1)(vite@8.0.14(@types/node@25.9.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  packages/stores:
+    dependencies:
+      '@muse/mcp-shared':
+        specifier: workspace:*
+        version: link:../mcp-shared
+      '@muse/memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/tools:
     dependencies:

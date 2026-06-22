@@ -5,14 +5,14 @@ import { describe, expect, it } from "vitest";
 
 import { performConsentedAction } from "./consented-action.js";
 import { runDueObjectives, type ObjectiveEvaluation } from "./objective-evaluation-loop.js";
-import { recordConsent } from "./personal-consent-store.js";
+import { recordConsent } from "@muse/stores";
 import {
   appendActionLog,
   queryActionLog,
   readActionLog,
   type ActionLogEntry
-} from "./personal-action-log-store.js";
-import { addObjective, readObjectives, type StandingObjective } from "./personal-objectives-store.js";
+} from "@muse/stores";
+import { addObjective, readObjectives, type StandingObjective } from "@muse/stores";
 
 function tmpDir(): string {
   return mkdtempSync(join(tmpdir(), "muse-actionlog-"));

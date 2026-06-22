@@ -8,7 +8,7 @@ import {
   removeEpisode,
   serializeEpisode,
   type PersistedEpisode
-} from "./personal-episodes-store.js";
+} from "@muse/stores";
 import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
 
 /**

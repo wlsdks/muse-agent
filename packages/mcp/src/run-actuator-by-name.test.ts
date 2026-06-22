@@ -5,8 +5,8 @@ import { join } from "node:path";
 import type { JsonObject } from "@muse/shared";
 import { describe, expect, it } from "vitest";
 
-import type { Contact } from "./personal-contacts-store.js";
-import { readActionLog } from "./personal-action-log-store.js";
+import type { Contact } from "@muse/stores";
+import { readActionLog } from "@muse/stores";
 import { runActuatorByName, type RunActuatorByNameDeps } from "./run-actuator-by-name.js";
 
 function recordingFetch(): { fetchImpl: typeof fetch; calls: string[] } {

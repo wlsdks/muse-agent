@@ -15,7 +15,7 @@ import {
   selectTasksDueWithin,
   serializeTaskForModel,
   type PersistedTask
-} from "./personal-tasks-store.js";
+} from "@muse/stores";
 
 /**
  * `muse.tasks` loopback MCP server — personal todo list backed by a

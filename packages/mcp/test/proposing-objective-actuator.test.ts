@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createProposingObjectiveActuator } from "../src/objective-evaluator.js";
-import type { StandingObjective } from "../src/personal-objectives-store.js";
-import { readProposedActions } from "../src/personal-proposed-action-store.js";
+import type { StandingObjective } from "@muse/stores";
+import { readProposedActions } from "@muse/stores";
 
 const objective: StandingObjective = {
   id: "obj-1",

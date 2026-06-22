@@ -19,8 +19,8 @@
  * real provider request shape with only the HTTP boundary faked.
  */
 
-import { appendActionLog } from "./personal-action-log-store.js";
-import { resolveContact, type Contact } from "./personal-contacts-store.js";
+import { appendActionLog } from "@muse/stores";
+import { resolveContact, type Contact } from "@muse/stores";
 import type { EmailSender } from "./email-provider.js";
 
 export interface EmailDraft {

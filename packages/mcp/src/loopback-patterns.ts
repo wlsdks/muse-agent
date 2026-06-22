@@ -11,7 +11,7 @@ import type { LoopbackMcpServer } from "./loopback.js";
 import {
   readPatternsFired,
   writePatternsFired
-} from "./personal-patterns-fired-store.js";
+} from "@muse/stores";
 
 /**
  * `muse.pattern` loopback MCP server — exposes the

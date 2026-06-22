@@ -19,7 +19,7 @@ import {
   patchObjective,
   readObjectives,
   type StandingObjective
-} from "./personal-objectives-store.js";
+} from "@muse/stores";
 
 export type ObjectiveEvaluation =
   | { readonly outcome: "met" }

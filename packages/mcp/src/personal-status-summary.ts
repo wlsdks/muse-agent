@@ -16,9 +16,9 @@
  * imported by both surfaces.
  */
 
-import type { PersistedFollowup } from "./personal-followups-store.js";
-import type { StandingObjective } from "./personal-objectives-store.js";
-import type { PersistedReminder } from "./personal-reminders-store.js";
+import type { PersistedFollowup } from "@muse/stores";
+import type { StandingObjective } from "@muse/stores";
+import type { PersistedReminder } from "@muse/stores";
 
 export interface RemindersSummary {
   readonly pending: number;

@@ -11,7 +11,7 @@
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import type { ActionLogEntry } from "./personal-action-log-store.js";
+import type { ActionLogEntry } from "@muse/stores";
 
 export interface RecentActionsToolDeps {
   /** The action-log entries, append-ordered (oldest first), as written. */

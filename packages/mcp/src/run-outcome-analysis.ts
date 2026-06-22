@@ -1,4 +1,4 @@
-import { topicKeyFromMessage } from "./weakness-ledger.js";
+import { topicKeyFromMessage } from "@muse/stores";
 
 /**
  * Run-log outcome analysis — the failure-RATE the cumulative weakness ledger

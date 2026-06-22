@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseHomeAlertChecks, resolveHomeAlertLine } from "../src/smart-home.js";
 import { runDueSituationalBriefing } from "../src/situational-briefing-loop.js";
-import { writeObjectives } from "../src/personal-objectives-store.js";
+import { writeObjectives } from "@muse/stores";
 
 describe("parseHomeAlertChecks — parse the briefing home-alert config", () => {
   it("parses valid checks and drops invalid / non-array / malformed entries", () => {

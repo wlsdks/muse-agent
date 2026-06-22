@@ -19,10 +19,10 @@ import { join as pathJoin } from "node:path";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
-import { readFollowups } from "./personal-followups-store.js";
-import { readObjectives } from "./personal-objectives-store.js";
-import { readProactiveHistory } from "./personal-proactive-history-store.js";
-import { readReminders } from "./personal-reminders-store.js";
+import { readFollowups } from "@muse/stores";
+import { readObjectives } from "@muse/stores";
+import { readProactiveHistory } from "@muse/stores";
+import { readReminders } from "@muse/stores";
 import { readSessionLock } from "./proactive-notice-loop.js";
 import {
   summariseEpisodesRows,

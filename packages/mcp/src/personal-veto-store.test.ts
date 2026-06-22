@@ -10,7 +10,7 @@ import {
   recordVeto,
   removeVeto,
   type ActionVeto
-} from "./personal-veto-store.js";
+} from "@muse/stores";
 
 function tmpFile(): string {
   return join(mkdtempSync(join(tmpdir(), "muse-veto-review-")), "vetoes.json");

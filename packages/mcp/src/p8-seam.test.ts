@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
 
-import { addObjective, type StandingObjective } from "./personal-objectives-store.js";
+import { addObjective, type StandingObjective } from "@muse/stores";
 import { runDueSituationalBriefing } from "./situational-briefing-loop.js";
 import type { BriefingImminent } from "./situational-briefing.js";
 

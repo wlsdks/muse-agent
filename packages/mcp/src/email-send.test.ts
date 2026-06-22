@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 
 import { GmailEmailProvider } from "./email-provider.js";
 import { composeForward, replyEmailWithApproval, replySubject, sendEmailWithApproval, type EmailApprovalGate } from "./email-send.js";
-import { readActionLog } from "./personal-action-log-store.js";
-import type { Contact } from "./personal-contacts-store.js";
+import { readActionLog } from "@muse/stores";
+import type { Contact } from "@muse/stores";
 
 const CONTACTS: Contact[] = [
   { email: "bob@example.com", id: "c_bob", name: "Bob" },

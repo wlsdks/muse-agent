@@ -6,8 +6,8 @@
  * appended to the reviewable action log.
  */
 
-import { appendActionLog } from "./personal-action-log-store.js";
-import { isProposalActionable, patchProposedActionStatus, readProposedActions } from "./personal-proposed-action-store.js";
+import { appendActionLog } from "@muse/stores";
+import { isProposalActionable, patchProposedActionStatus, readProposedActions } from "@muse/stores";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
 

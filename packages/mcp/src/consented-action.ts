@@ -12,9 +12,9 @@
 
 import { redactSecretsInText } from "@muse/shared";
 
-import { findConsent } from "./personal-consent-store.js";
-import { appendActionLog, type ActionResult } from "./personal-action-log-store.js";
-import { hasVeto } from "./personal-veto-store.js";
+import { findConsent } from "@muse/stores";
+import { appendActionLog, type ActionResult } from "@muse/stores";
+import { hasVeto } from "@muse/stores";
 
 export interface ConsentedActionRequest {
   readonly url: string;

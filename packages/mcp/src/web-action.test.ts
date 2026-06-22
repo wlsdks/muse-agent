@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { performWebActionWithApproval, type WebActionApprovalGate, type WebActionRequest } from "./web-action.js";
-import { readActionLog } from "./personal-action-log-store.js";
+import { readActionLog } from "@muse/stores";
 
 // Records every HTTP call so a test can assert the action fired (or
 // didn't) and carried the real request shape. Never a "did it" flag.

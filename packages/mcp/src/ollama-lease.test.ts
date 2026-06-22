@@ -9,7 +9,7 @@ import {
   isOllamaLeaseHeldByOther,
   releaseOllamaLease,
   resolveOllamaLeaseFile
-} from "./ollama-lease.js";
+} from "@muse/stores";
 
 let dir: string;
 let file: string;

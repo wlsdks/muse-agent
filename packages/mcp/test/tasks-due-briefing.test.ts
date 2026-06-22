@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
 
-import { resolveTasksDueLine, type PersistedTask } from "../src/personal-tasks-store.js";
+import { resolveTasksDueLine, type PersistedTask } from "@muse/stores";
 import { runDueSituationalBriefing } from "../src/situational-briefing-loop.js";
-import { writeObjectives } from "../src/personal-objectives-store.js";
+import { writeObjectives } from "@muse/stores";
 
 const now = new Date(2026, 4, 20, 8, 0); // May 20 2026
 function iso(y: number, m: number, d: number): string {

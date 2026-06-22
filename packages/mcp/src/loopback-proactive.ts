@@ -15,7 +15,7 @@
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
-import { readProactiveHistory } from "./personal-proactive-history-store.js";
+import { readProactiveHistory } from "@muse/stores";
 
 export interface ProactiveMcpServerOptions {
   /** Path to ~/.muse/proactive-history.json. */

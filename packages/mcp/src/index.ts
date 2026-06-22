@@ -467,7 +467,7 @@ export {
   type PersistedTask,
   type TaskRefResolution,
   type TaskStatusFilter
-} from "./personal-tasks-store.js";
+} from "@muse/stores";
 
 // Personal followups store — agent-self-followup design doc step 2.
 // The detector (`extractFollowupPromises` in @muse/agent-core)
@@ -488,7 +488,7 @@ export {
   type FollowupStatus,
   type FollowupStatusFilter,
   type PersistedFollowup
-} from "./personal-followups-store.js";
+} from "@muse/stores";
 export {
   addObjective,
   patchObjective,
@@ -498,7 +498,7 @@ export {
   type ObjectiveKind,
   type ObjectiveStatus,
   type StandingObjective
-} from "./personal-objectives-store.js";
+} from "@muse/stores";
 export {
   isProposalActionable,
   patchProposedActionStatus,
@@ -508,7 +508,7 @@ export {
   type ProposedAction,
   type ProposedActionKind,
   type ProposedActionStatus
-} from "./personal-proposed-action-store.js";
+} from "@muse/stores";
 export {
   confirmProposedAction,
   declineProposedAction,
@@ -530,7 +530,7 @@ export {
   serializeConsent,
   writeConsents,
   type ScopedConsent
-} from "./personal-consent-store.js";
+} from "@muse/stores";
 export {
   performConsentedAction,
   type ConsentedActionOutcome,
@@ -552,7 +552,7 @@ export {
   type ActionLogChainVerification,
   type ActionLogEntry,
   type ActionResult
-} from "./personal-action-log-store.js";
+} from "@muse/stores";
 export {
   hasVeto,
   queryVetoes,
@@ -562,7 +562,7 @@ export {
   serializeVeto,
   writeVetoes,
   type ActionVeto
-} from "./personal-veto-store.js";
+} from "@muse/stores";
 export {
   adjustPlaybookReward,
   bumpPlaybookObservation,
@@ -581,13 +581,13 @@ export {
   retainPlaybookEntries,
   writePlaybook,
   type PlaybookEntry
-} from "./personal-playbook-store.js";
+} from "@muse/stores";
 export {
   isLearningPaused,
   readLearningPauseState,
   setLearningPaused,
   type LearningPauseState
-} from "./learning-pause-store.js";
+} from "@muse/stores";
 export {
   incrementSuppressionBlocked,
   MAX_SUPPRESSED_LESSONS,
@@ -596,7 +596,7 @@ export {
   recordSuppressedLesson,
   writeSuppressedLessons,
   type SuppressedLesson
-} from "./suppressed-lessons-store.js";
+} from "@muse/stores";
 export {
   adjustSkillReward,
   isSkillAvoided,
@@ -604,7 +604,7 @@ export {
   SKILL_AVOID_BELOW,
   SKILL_REWARD_MAX,
   SKILL_REWARD_MIN
-} from "./skill-rewards-store.js";
+} from "@muse/stores";
 export {
   MAX_PLAN_CACHE_ENTRIES,
   queryPlanCache,
@@ -613,7 +613,7 @@ export {
   writePlanCache,
   type PlanCacheEntry,
   type PlanCacheStep
-} from "./personal-plan-cache-store.js";
+} from "@muse/stores";
 export {
   composeSituationalBriefing,
   resolveDayShapeLine,
@@ -705,7 +705,7 @@ export {
   type Contact,
   type ContactResolution,
   type UpcomingBirthday
-} from "./personal-contacts-store.js";
+} from "@muse/stores";
 export {
   extractEmailAddress,
   extractPlainTextBody,
@@ -817,7 +817,7 @@ export {
   readFollowupLlmBudget,
   writeFollowupLlmBudget,
   type FollowupLlmBudgetRecord
-} from "./personal-followup-llm-budget-store.js";
+} from "@muse/stores";
 
 // Pattern-detection cooldown sidecar — step 4 of
 // docs/design/pattern-detection.md. Tracks the last firing time
@@ -831,7 +831,7 @@ export {
   recordPatternFired,
   writePatternsFired,
   type PatternFiredRecord
-} from "./personal-patterns-fired-store.js";
+} from "@muse/stores";
 
 export {
   readFadedMemoryKeys,
@@ -841,7 +841,7 @@ export {
   writeRecallHits,
   type RecallHitInput,
   type RecallHitRecord
-} from "./personal-recall-hits-store.js";
+} from "@muse/stores";
 
 // Pattern-detection firing engine — wiring half of step 4. The
 // `apps/api/src/pattern-tick.ts` setInterval rider drives this on
@@ -868,7 +868,7 @@ export {
   type ProactiveOutcome,
   type TrustLedgerEntry,
   type TrustScore
-} from "./proactive-trust-ledger.js";
+} from "@muse/stores";
 
 export {
   addToQuarantine,
@@ -878,7 +878,7 @@ export {
   type AddToQuarantineInput,
   type QuarantineStatus,
   type SwarmQuarantineEntry
-} from "./swarm-quarantine-store.js";
+} from "@muse/stores";
 
 export {
   addReflections,
@@ -890,7 +890,7 @@ export {
   type NewReflection,
   type ReflectionRetentionOptions,
   type StoredReflection
-} from "./reflections-store.js";
+} from "@muse/stores";
 
 // Episodic memory store — step 1 of docs/design/episodic-memory.md.
 // Pure CRUD over `~/.muse/episodes.json`; later steps add the
@@ -917,7 +917,7 @@ export {
   type EpisodeTheme,
   type PersistedEpisode,
   type TopicAbsence
-} from "./personal-episodes-store.js";
+} from "@muse/stores";
 
 // Note-family absence — the filesystem counterpart to topic-absence: a folder
 // of notes the user used to update regularly that has gone silent vs its own
@@ -938,7 +938,7 @@ export {
   withFileLock,
   writeMaybeEncrypted,
   type EncryptAtRestOptions
-} from "./encrypted-file.js";
+} from "@muse/stores";
 
 // Self-followup firing engine — step 4 of agent-self-followup.md.
 // Re-enters the model to compose the delivery message, sends via
@@ -969,7 +969,7 @@ export {
   type ReminderRecurrence,
   type ReminderStatusFilter,
   type ReminderVia
-} from "./personal-reminders-store.js";
+} from "@muse/stores";
 export { removeRemindersForEvent, rescheduleRemindersForEvent, syncRemindersOnEventDelete, syncRemindersOnEventReschedule } from "./event-reminder-link.js";
 
 export {
@@ -998,7 +998,7 @@ export {
   type RemediableWeakness,
   type WeaknessAxis,
   type WeaknessEntry
-} from "./weakness-ledger.js";
+} from "@muse/stores";
 export {
   analyzeRunOutcomes,
   type RunOutcomeEntry,
@@ -1011,7 +1011,7 @@ export {
   readReminderHistory,
   type AppendReminderHistoryOptions,
   type ReminderHistoryEntry
-} from "./personal-reminder-history-store.js";
+} from "@muse/stores";
 
 // Phase B firing engine — see docs/design/reminder-firing.md. The
 // CLI's `muse remind run` and a future scheduler hook share this.
@@ -1048,7 +1048,7 @@ export {
   rotateProactiveHistoryFiles,
   type AppendProactiveHistoryOptions,
   type ProactiveHistoryEntry
-} from "./personal-proactive-history-store.js";
+} from "@muse/stores";
 
 // Outbound messaging loopback (Phase 3 of docs/design/messaging.md):
 // the LLM can call `muse.messaging.{providers, send}` once the user
@@ -1192,7 +1192,7 @@ export {
   isOllamaLeaseHeldByOther,
   releaseOllamaLease,
   resolveOllamaLeaseFile
-} from "./ollama-lease.js";
+} from "@muse/stores";
 
 export {
   MAX_LEARN_QUEUE_EVENTS,
@@ -1201,6 +1201,6 @@ export {
   readPendingLearnEvents,
   resolveLearnQueueFile,
   type LearnCorrectionEvent
-} from "./learn-queue.js";
+} from "@muse/stores";
 export * from "./upload-path-validator.js";
 export * from "./web-download-tool.js";

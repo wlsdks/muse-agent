@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
 
-import { queryActionLog } from "../src/personal-action-log-store.js";
-import { isProposalActionable, proposeMessageAction, readProposedActions } from "../src/personal-proposed-action-store.js";
+import { queryActionLog } from "@muse/stores";
+import { isProposalActionable, proposeMessageAction, readProposedActions } from "@muse/stores";
 import { confirmProposedAction, declineProposedAction } from "../src/proposed-action-confirm.js";
 
 function capturing(sent: OutboundMessage[]): MessagingProvider {

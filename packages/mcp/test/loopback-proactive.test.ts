@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { readMock } = vi.hoisted(() => ({ readMock: vi.fn() }));
-vi.mock("../src/personal-proactive-history-store.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/personal-proactive-history-store.js")>();
+vi.mock("@muse/stores", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@muse/stores")>();
   // Default to the real tolerant reader; individual tests override with a
   // one-shot rejection to reach the otherwise-unreachable catch branch
   // (the real reader never throws — missing/corrupt file degrades to []).
@@ -15,7 +15,7 @@ vi.mock("../src/personal-proactive-history-store.js", async (importOriginal) => 
 });
 
 import { createProactiveMcpServer } from "../src/loopback-proactive.js";
-import type { ProactiveHistoryEntry } from "../src/personal-proactive-history-store.js";
+import type { ProactiveHistoryEntry } from "@muse/stores";
 
 let dir: string;
 let counter = 0;

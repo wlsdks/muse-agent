@@ -1,4 +1,4 @@
-import { readReminders, writeReminders, type PersistedReminder } from "./personal-reminders-store.js";
+import { readReminders, writeReminders, type PersistedReminder } from "@muse/stores";
 
 /**
  * Event↔reminder lifecycle sync. `--remind` links a reminder to its event by

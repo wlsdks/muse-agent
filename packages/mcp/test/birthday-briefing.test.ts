@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
 
-import { formatBirthdayBriefLine, resolveUpcomingBirthdays, type Contact } from "../src/personal-contacts-store.js";
+import { formatBirthdayBriefLine, resolveUpcomingBirthdays, type Contact } from "@muse/stores";
 import { runDueSituationalBriefing } from "../src/situational-briefing-loop.js";
-import { writeObjectives } from "../src/personal-objectives-store.js";
+import { writeObjectives } from "@muse/stores";
 
 describe("formatBirthdayBriefLine", () => {
   const now = new Date(2026, 4, 20); // May 20

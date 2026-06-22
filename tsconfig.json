@@ -89,6 +89,9 @@
       "path": "./packages/skills"
     },
     {
+      "path": "./packages/stores"
+    },
+    {
       "path": "./packages/tools"
     },
     {

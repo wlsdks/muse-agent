@@ -16,7 +16,7 @@ import type { MuseTool } from "@muse/tools";
 
 import { extractEmailAddress, type EmailProvider, type EmailReader, type EmailSearcher, type EmailSender } from "./email-provider.js";
 import { composeForward, replyEmailWithApproval, replySubject, sendEmailWithApproval, type EmailApprovalGate } from "./email-send.js";
-import type { Contact } from "./personal-contacts-store.js";
+import type { Contact } from "@muse/stores";
 
 export interface EmailSendToolDeps {
   readonly contacts: () => Promise<readonly Contact[]> | readonly Contact[];

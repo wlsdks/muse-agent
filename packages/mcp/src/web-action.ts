@@ -17,7 +17,7 @@
 
 import { redactSecretsInText } from "@muse/shared";
 
-import { appendActionLog } from "./personal-action-log-store.js";
+import { appendActionLog } from "@muse/stores";
 import { parseRetryAfterMs } from "./http-retry.js";
 
 export interface WebActionRequest {

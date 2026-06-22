@@ -5,10 +5,10 @@ import { describe, expect, it } from "vitest";
 
 import { performConsentedAction } from "./consented-action.js";
 import { runDueObjectives, type ObjectiveEvaluation } from "./objective-evaluation-loop.js";
-import { appendActionLog, queryActionLog } from "./personal-action-log-store.js";
-import { recordConsent } from "./personal-consent-store.js";
-import { hasVeto } from "./personal-veto-store.js";
-import { addObjective, readObjectives, type StandingObjective } from "./personal-objectives-store.js";
+import { appendActionLog, queryActionLog } from "@muse/stores";
+import { recordConsent } from "@muse/stores";
+import { hasVeto } from "@muse/stores";
+import { addObjective, readObjectives, type StandingObjective } from "@muse/stores";
 import { undoLoggedAction } from "./undo-action.js";
 
 /**

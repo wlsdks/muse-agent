@@ -10,7 +10,7 @@
 import { createRunId, type JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import { resolveContact, resolveUpcomingBirthdays, type Contact } from "./personal-contacts-store.js";
+import { resolveContact, resolveUpcomingBirthdays, type Contact } from "@muse/stores";
 
 const BIRTHDAY_RE = /^(?:\d{4}-)?(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/u;
 

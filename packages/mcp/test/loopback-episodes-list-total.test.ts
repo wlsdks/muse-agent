@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createEpisodesMcpServer } from "../src/loopback-episodes.js";
-import { writeEpisodes, type PersistedEpisode } from "../src/personal-episodes-store.js";
+import { writeEpisodes, type PersistedEpisode } from "@muse/stores";
 
 const ep = (id: string, endedAt: string): PersistedEpisode => ({ endedAt, id, startedAt: endedAt, summary: `s-${id}`, topics: [], userId: "stark" });
 

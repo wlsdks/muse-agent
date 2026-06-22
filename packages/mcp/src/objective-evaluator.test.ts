@@ -10,8 +10,8 @@ import {
   createModelObjectiveEvaluator,
   parseObjectiveVerdict
 } from "./objective-evaluator.js";
-import { queryActionLog } from "./personal-action-log-store.js";
-import type { StandingObjective } from "./personal-objectives-store.js";
+import { queryActionLog } from "@muse/stores";
+import type { StandingObjective } from "@muse/stores";
 
 function objective(overrides: Partial<StandingObjective> = {}): StandingObjective {
   return {

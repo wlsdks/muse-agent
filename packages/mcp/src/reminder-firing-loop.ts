@@ -1,14 +1,14 @@
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { sendWithRetry } from "./messaging-retry.js";
-import { appendReminderHistory } from "./personal-reminder-history-store.js";
+import { appendReminderHistory } from "@muse/stores";
 import {
   filterReminders,
   fireReminder,
   mutateReminders,
   readReminders,
   type PersistedReminder
-} from "./personal-reminders-store.js";
+} from "@muse/stores";
 import type {
   ProactiveActivitySource,
   ProactiveAgentRuntimeLike

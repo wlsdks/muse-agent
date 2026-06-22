@@ -10,8 +10,8 @@ import {
   resolveFollowupRef,
   serializeFollowup,
   snoozeFollowup
-} from "./personal-followups-store.js";
-import { parseReminderDueAt } from "./personal-reminders-store.js";
+} from "@muse/stores";
+import { parseReminderDueAt } from "@muse/stores";
 
 /**
  * `muse.followup` loopback MCP server — gives the agent

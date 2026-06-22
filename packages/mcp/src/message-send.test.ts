@@ -6,7 +6,7 @@ import { MessagingProviderRegistry, TelegramProvider, type OutboundReceipt } fro
 import { describe, expect, it } from "vitest";
 
 import { sendMessageWithApproval, type MessageApprovalGate } from "./message-send.js";
-import { readActionLog } from "./personal-action-log-store.js";
+import { readActionLog } from "@muse/stores";
 
 interface SentRecord {
   readonly providerId: string;

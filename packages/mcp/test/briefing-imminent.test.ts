@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { deriveBriefingImminent, deriveCalendarBriefingImminent, type BriefingCalendarEvent } from "../src/briefing-imminent.js";
-import { writeTasks, type PersistedTask } from "../src/personal-tasks-store.js";
+import { writeTasks, type PersistedTask } from "@muse/stores";
 
 const NOW = new Date("2026-05-31T12:00:00.000Z"); // window with default lead (120m) = [12:00, 14:00]
 const at = (iso: string) => new Date(iso);

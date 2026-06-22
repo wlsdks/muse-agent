@@ -9,7 +9,7 @@ import {
   listPending,
   readQuarantine,
   setQuarantineStatus
-} from "./swarm-quarantine-store.js";
+} from "@muse/stores";
 
 describe("swarm-quarantine-store — inbound know-how lands inert until promoted", () => {
   let dir: string;

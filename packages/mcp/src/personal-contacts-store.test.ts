@@ -15,7 +15,7 @@ import {
   resolveUpcomingBirthdays,
   serializeContact,
   type Contact
-} from "./personal-contacts-store.js";
+} from "@muse/stores";
 
 function tempFile(): string {
   return join(mkdtempSync(join(tmpdir(), "muse-contacts-")), "contacts.json");

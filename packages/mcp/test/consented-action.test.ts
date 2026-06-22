@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { performConsentedAction, type PerformConsentedActionOptions } from "../src/consented-action.js";
-import { readActionLog } from "../src/personal-action-log-store.js";
-import { recordConsent } from "../src/personal-consent-store.js";
-import { recordVeto } from "../src/personal-veto-store.js";
+import { readActionLog } from "@muse/stores";
+import { recordConsent } from "@muse/stores";
+import { recordVeto } from "@muse/stores";
 
 let dir: string;
 let consentFile: string;

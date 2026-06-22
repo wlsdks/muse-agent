@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runDueObjectives, type ObjectiveEvaluation, type RunDueObjectivesOptions } from "../src/objective-evaluation-loop.js";
-import { addObjective, readObjectives, type StandingObjective } from "../src/personal-objectives-store.js";
+import { addObjective, readObjectives, type StandingObjective } from "@muse/stores";
 
 let dir: string;
 let file: string;

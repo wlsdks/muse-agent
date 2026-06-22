@@ -13,7 +13,7 @@ import {
   upsertFollowup,
   writeFollowups,
   type PersistedFollowup
-} from "./personal-followups-store.js";
+} from "@muse/stores";
 
 function tmpFile(): string {
   const dir = mkdtempSync(join(tmpdir(), "muse-followups-"));

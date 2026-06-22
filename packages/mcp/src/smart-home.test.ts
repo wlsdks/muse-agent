@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildHomeAssistantServiceCall, performHomeActionWithApproval } from "./smart-home.js";
 import type { WebActionApprovalGate } from "./web-action.js";
-import { readActionLog } from "./personal-action-log-store.js";
+import { readActionLog } from "@muse/stores";
 
 function recordingFetch(): { fetchImpl: typeof fetch; calls: { url: string; method: string; body?: string; bearer: boolean }[] } {
   const calls: { url: string; method: string; body?: string; bearer: boolean }[] = [];

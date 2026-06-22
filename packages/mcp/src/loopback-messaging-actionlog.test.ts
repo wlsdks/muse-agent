@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { createLoopbackMcpConnection } from "./loopback.js";
 import { createMessagingMcpServer } from "./loopback-messaging.js";
-import { readActionLog } from "./personal-action-log-store.js";
+import { readActionLog } from "@muse/stores";
 
 function fakeTelegram(): MessagingProvider {
   return {

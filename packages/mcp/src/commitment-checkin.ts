@@ -18,7 +18,7 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { withFileMutationQueue } from "./atomic-file-store.js";
+import { withFileMutationQueue } from "@muse/stores";
 import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";
 
 export type CheckinStatus = "scheduled" | "fired" | "cancelled";

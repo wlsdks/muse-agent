@@ -7,8 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { EmailDraft } from "../src/email-send.js";
 import { sendEmailWithApproval } from "../src/email-send.js";
 import type { EmailSender } from "../src/email-provider.js";
-import { readActionLog } from "../src/personal-action-log-store.js";
-import type { Contact } from "../src/personal-contacts-store.js";
+import { readActionLog } from "@muse/stores";
+import type { Contact } from "@muse/stores";
 
 const CONTACTS: readonly Contact[] = [
   { email: "bob@example.com", id: "c1", name: "Bob" },

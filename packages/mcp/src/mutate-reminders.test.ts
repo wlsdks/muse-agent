@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { mutateReminders, readReminders, writeReminders } from "./personal-reminders-store.js";
-import type { PersistedReminder } from "./personal-reminders-store.js";
+import { mutateReminders, readReminders, writeReminders } from "@muse/stores";
+import type { PersistedReminder } from "@muse/stores";
 
 const r = (id: string): PersistedReminder => ({
   createdAt: "2026-06-12T00:00:00.000Z",

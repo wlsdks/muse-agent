@@ -16,10 +16,10 @@
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { sendWithRetry } from "./messaging-retry.js";
-import { appendActionLog } from "./personal-action-log-store.js";
+import { appendActionLog } from "@muse/stores";
 import type { ObjectiveEvaluation } from "./objective-evaluation-loop.js";
-import type { StandingObjective } from "./personal-objectives-store.js";
-import { proposeMessageAction } from "./personal-proposed-action-store.js";
+import type { StandingObjective } from "@muse/stores";
+import { proposeMessageAction } from "@muse/stores";
 import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
 
 const SYSTEM_PROMPT =

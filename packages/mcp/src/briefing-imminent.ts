@@ -12,7 +12,7 @@
  * composer.
  */
 
-import { readTasks } from "./personal-tasks-store.js";
+import { readTasks } from "@muse/stores";
 import type { BriefingImminent } from "./situational-briefing.js";
 
 const DEFAULT_LEAD_MINUTES = 120;

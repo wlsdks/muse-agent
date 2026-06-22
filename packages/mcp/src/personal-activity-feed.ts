@@ -23,9 +23,9 @@
 
 import { promises as fs } from "node:fs";
 
-import { readFollowups, type PersistedFollowup } from "./personal-followups-store.js";
-import { readProactiveHistory } from "./personal-proactive-history-store.js";
-import { readReminderHistory } from "./personal-reminder-history-store.js";
+import { readFollowups, type PersistedFollowup } from "@muse/stores";
+import { readProactiveHistory } from "@muse/stores";
+import { readReminderHistory } from "@muse/stores";
 
 export type ActivityKind = "reminder" | "proactive" | "followup" | "pattern" | "episode";
 

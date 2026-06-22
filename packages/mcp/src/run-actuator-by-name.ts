@@ -13,7 +13,7 @@ import type { JsonObject } from "@muse/shared";
 
 import { createEmailSendTool } from "./email-tool.js";
 import { GmailEmailProvider } from "./email-provider.js";
-import type { Contact } from "./personal-contacts-store.js";
+import type { Contact } from "@muse/stores";
 import type { EmailApprovalGate } from "./email-send.js";
 import { createHomeActionTool } from "./smart-home-tool.js";
 import { createWebActionTool } from "./web-action-tool.js";

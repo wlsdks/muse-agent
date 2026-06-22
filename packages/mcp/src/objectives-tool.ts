@@ -10,7 +10,7 @@
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import type { StandingObjective } from "./personal-objectives-store.js";
+import type { StandingObjective } from "@muse/stores";
 
 export interface ObjectivesListToolDeps {
   readonly objectives: () => Promise<readonly StandingObjective[]> | readonly StandingObjective[];

@@ -35,7 +35,7 @@ import {
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { sendWithRetry } from "./messaging-retry.js";
-import { isPatternDismissed, isPatternOnCooldown, readPatternsFired, recordPatternFired } from "./personal-patterns-fired-store.js";
+import { isPatternDismissed, isPatternOnCooldown, readPatternsFired, recordPatternFired } from "@muse/stores";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
 
 export interface RunDuePatternNoticesOptions {

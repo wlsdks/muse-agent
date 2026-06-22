@@ -32,7 +32,7 @@ import {
   markFollowupFired,
   readFollowups,
   type PersistedFollowup
-} from "./personal-followups-store.js";
+} from "@muse/stores";
 import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
 
 export interface RunDueFollowupsOptions {

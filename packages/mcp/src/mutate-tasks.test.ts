@@ -4,8 +4,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { mutateTasks, readTasks, writeTasks } from "./personal-tasks-store.js";
-import type { PersistedTask } from "./personal-tasks-store.js";
+import { mutateTasks, readTasks, writeTasks } from "@muse/stores";
+import type { PersistedTask } from "@muse/stores";
 
 const t = (id: string): PersistedTask => ({
   createdAt: "2026-06-12T00:00:00.000Z",

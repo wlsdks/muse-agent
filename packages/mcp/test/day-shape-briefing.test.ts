@@ -6,7 +6,7 @@ import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage
 import { describe, expect, it } from "vitest";
 
 import { resolveDayShapeLine, type AvailabilityEventLike } from "../src/index.js";
-import { writeObjectives } from "../src/personal-objectives-store.js";
+import { writeObjectives } from "@muse/stores";
 import { runDueSituationalBriefing } from "../src/situational-briefing-loop.js";
 
 const NOW = new Date(2026, 4, 20, 9, 0); // May 20 2026, 09:00 local

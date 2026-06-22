@@ -14,7 +14,7 @@ import {
   sourceKey,
   withinDailyCap,
   type TrustLedgerEntry
-} from "./proactive-trust-ledger.js";
+} from "@muse/stores";
 
 const surfaced = (over: Partial<TrustLedgerEntry> = {}): TrustLedgerEntry => ({
   kind: "calendar",

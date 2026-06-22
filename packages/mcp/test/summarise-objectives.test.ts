@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { StandingObjective } from "../src/personal-objectives-store.js";
+import type { StandingObjective } from "@muse/stores";
 import { summariseObjectivesRows } from "../src/personal-status-summary.js";
 
 const obj = (userId: string, status: string, spec = "watch the build"): StandingObjective =>

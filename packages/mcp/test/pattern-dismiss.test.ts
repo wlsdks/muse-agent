@@ -10,7 +10,7 @@ import {
   isPatternDismissed,
   readPatternsFired,
   writePatternsFired
-} from "../src/personal-patterns-fired-store.js";
+} from "@muse/stores";
 import { runDuePatternNotices } from "../src/pattern-firing-loop.js";
 
 function capturingProvider(sent: OutboundMessage[]): MessagingProvider {

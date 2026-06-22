@@ -12,8 +12,8 @@
  *      correction is as accountable as the original action.
  */
 
-import { appendActionLog } from "./personal-action-log-store.js";
-import { recordVeto } from "./personal-veto-store.js";
+import { appendActionLog } from "@muse/stores";
+import { recordVeto } from "@muse/stores";
 
 export interface UndoLoggedActionOptions {
   readonly userId: string;

@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { createHomeActionTool } from "./smart-home-tool.js";
 import type { WebActionApprovalGate } from "./web-action.js";
-import { readActionLog } from "./personal-action-log-store.js";
+import { readActionLog } from "@muse/stores";
 
 function recordingFetch(): { fetchImpl: typeof fetch; calls: { url: string; body?: string }[] } {
   const calls: { url: string; body?: string }[] = [];

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { MessageDraft } from "../src/message-send.js";
 import { sendMessageWithApproval, type SendMessageWithApprovalOptions } from "../src/message-send.js";
-import { readActionLog } from "../src/personal-action-log-store.js";
+import { readActionLog } from "@muse/stores";
 
 let dir: string;
 let logFile: string;

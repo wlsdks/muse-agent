@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { composeSituationalBriefing, type BriefingImminent } from "./situational-briefing.js";
-import type { StandingObjective } from "./personal-objectives-store.js";
+import type { StandingObjective } from "@muse/stores";
 
 const NOW = new Date("2026-05-19T12:00:00.000Z");
 

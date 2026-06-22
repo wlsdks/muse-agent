@@ -6,7 +6,7 @@ import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage
 import { describe, expect, it } from "vitest";
 
 import { extractEmailAddress, unreadBriefingLine, type EmailProvider, type EmailSummary } from "../src/index.js";
-import { writeObjectives } from "../src/personal-objectives-store.js";
+import { writeObjectives } from "@muse/stores";
 import { runDueSituationalBriefing } from "../src/situational-briefing-loop.js";
 
 describe("extractEmailAddress", () => {

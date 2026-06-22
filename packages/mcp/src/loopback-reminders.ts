@@ -5,8 +5,8 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 import { errorMessage, readString } from "./loopback-helpers.js";
 import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, startOfLocalDay, withTimeOfDay } from "@muse/mcp-shared";
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
-import { readReminderHistory } from "./personal-reminder-history-store.js";
-import { recordTimeParseWeakness, recordWeakness } from "./weakness-ledger.js";
+import { readReminderHistory } from "@muse/stores";
+import { recordTimeParseWeakness, recordWeakness } from "@muse/stores";
 import {
   compareRemindersByDueAt,
   filterReminders,
@@ -19,7 +19,7 @@ import {
   resolveReminderRef,
   serializeReminderForModel,
   type PersistedReminder
-} from "./personal-reminders-store.js";
+} from "@muse/stores";
 
 /**
  * `muse.reminders` loopback MCP server — passive personal

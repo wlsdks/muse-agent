@@ -3031,7 +3031,7 @@ describe("muse.tasks loopback server", () => {
 
     it("clamps month-end overflow instead of rolling into a later month", async () => {
       const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
-      const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
+      const { parseTaskDueAt } = await import("@muse/stores");
       const jan31 = () => new Date("2026-01-31T12:00:00Z");
 
       // "in 1 month" from Jan 31 → Feb 28 (2026 non-leap), NOT
@@ -3063,7 +3063,7 @@ describe("muse.tasks loopback server", () => {
 
     it("returns undefined (not an Invalid Date) for out-of-range offsets", async () => {
       const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
-      const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
+      const { parseTaskDueAt } = await import("@muse/stores");
       const now = () => new Date("2026-05-10T12:00:00Z");
       for (const phrase of [
         "in 9999999999 days",
@@ -3081,7 +3081,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves the 'N <unit> from now/today' phrasing the same as 'in N <unit>'", async () => {
-      const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
+      const { parseTaskDueAt } = await import("@muse/stores");
       const now = () => new Date("2026-06-07T12:00:00Z");
       // The spoken form must land on the same date the "in N" form already did.
       expect(parseTaskDueAt("100 days from now", now)).toBe(parseTaskDueAt("in 100 days", now));
@@ -3092,7 +3092,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves a small spelled-out number before a time unit ('in two weeks', 'three days from now')", async () => {
-      const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
+      const { parseTaskDueAt } = await import("@muse/stores");
       const now = () => new Date("2026-06-07T12:00:00Z");
       expect(parseTaskDueAt("in two weeks", now)).toBe(parseTaskDueAt("in 2 weeks", now));
       expect(parseTaskDueAt("two weeks from today", now)).toBe(parseTaskDueAt("in 2 weeks", now));
@@ -3102,7 +3102,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves the filler 'coming' in a weekday phrase ('this coming Monday')", async () => {
-      const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
+      const { parseTaskDueAt } = await import("@muse/stores");
       const now = () => new Date("2026-06-07T12:00:00Z"); // a Sunday
       expect(parseTaskDueAt("this coming Monday", now)).toBe(parseTaskDueAt("this Monday", now));
       expect(parseTaskDueAt("coming Monday", now)).toBe(parseTaskDueAt("Monday", now));
@@ -3110,7 +3110,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves a Korean absolute date ('2026년 8월 15일' / '8월 15일'), with or without a time", async () => {
-      const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
+      const { parseTaskDueAt } = await import("@muse/stores");
       const now = () => new Date("2026-06-07T12:00:00Z");
       // Full Korean date → that exact ISO day (2026-08-15 is a Saturday).
       expect(parseTaskDueAt("2026년 8월 15일", now)).toMatch(/^2026-08-15/u);
@@ -3128,8 +3128,8 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("rejects impossible calendar dates instead of silently rolling them over", async () => {
-      const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
-      const { parseReminderDueAt } = await import("../src/personal-reminders-store.js");
+      const { parseTaskDueAt } = await import("@muse/stores");
+      const { parseReminderDueAt } = await import("@muse/stores");
       const now = () => new Date("2026-05-19T12:00:00Z");
 
       // `new Date("2026-02-30")` rolls to Mar 2 — accepting it would
@@ -4871,7 +4871,7 @@ describe("muse.reminders loopback server", () => {
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { readWeaknesses } = await import("../src/weakness-ledger.js");
+    const { readWeaknesses } = await import("@muse/stores");
     const dir = mkdtempSync(join(tmpdir(), "muse-rem-tp-"));
     const weaknessesFile = join(dir, "weaknesses.json");
     const server = createRemindersMcpServer({ file: join(dir, "reminders.json"), weaknessesFile });

@@ -8,7 +8,7 @@ import { createWebActionTool } from "./web-action-tool.js";
 import type { WebActionApprovalGate } from "./web-action.js";
 import { validateToolDefinitions } from "@muse/tools";
 
-import { readActionLog } from "./personal-action-log-store.js";
+import { readActionLog } from "@muse/stores";
 
 function recordingFetch(): { fetchImpl: typeof fetch; calls: { url: string; method: string }[] } {
   const calls: { url: string; method: string }[] = [];

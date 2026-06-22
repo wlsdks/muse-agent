@@ -39,11 +39,11 @@ export interface AgentInitiatedNoticeBrokerLike {
   }): void;
 }
 
-import { appendProactiveHistory } from "./personal-proactive-history-store.js";
-import { readTasks, type PersistedTask } from "./personal-tasks-store.js";
-import { appendSurfaced, avoidedSourceKeys, readTrustLedger, sourceKey, withinDailyCap, type TrustLedgerEntry } from "./proactive-trust-ledger.js";
-import { firedKey, readProactiveFired, readSessionLock, writeProactiveFired, type ProactiveFiredEntry, type ProactiveFiredKind } from "./proactive-notice-store.js";
-export { firedKey, readProactiveFired, readSessionLock, writeProactiveFired, writeSessionLock, type ProactiveFiredEntry, type ProactiveFiredKind, type SessionLockPayload } from "./proactive-notice-store.js";
+import { appendProactiveHistory } from "@muse/stores";
+import { readTasks, type PersistedTask } from "@muse/stores";
+import { appendSurfaced, avoidedSourceKeys, readTrustLedger, sourceKey, withinDailyCap, type TrustLedgerEntry } from "@muse/stores";
+import { firedKey, readProactiveFired, readSessionLock, writeProactiveFired, type ProactiveFiredEntry, type ProactiveFiredKind } from "@muse/stores";
+export { firedKey, readProactiveFired, readSessionLock, writeProactiveFired, writeSessionLock, type ProactiveFiredEntry, type ProactiveFiredKind, type SessionLockPayload } from "@muse/stores";
 
 /**
  * Order imminent items soonest-first so the most time-critical one
