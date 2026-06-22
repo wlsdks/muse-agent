@@ -115,3 +115,11 @@ ratchet: testFiles 1113→1114 · fabrication 0 · eval:orchestration PASS (no r
   wiring it into the orchestrator run loop and the orphan-recovery policy are the
   explicit Gap4-S2/S4 follow-ups, not a defect. No new internal deps (the store
   is dependency-free); index.ts edit is additive re-exports only.
+
+## fire 5 · 2026-06-23 · skill v2.0.0 · 3ac6c4a57
+meta: value-class=wiring · pkg=@muse/multi-agent · kind=wiring · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles +2 (orchestrate-run-registry.test.ts @muse/multi-agent, server.multi-agent-runs.test.ts @muse/api) · fabrication 0 · eval:orchestration PASS pass^3 (gemma4)
+- 무엇: SubAgentRunRegistry(fire 3에서 만들었으나 inert였던 store)를 라이브 MultiAgentOrchestrator에 배선 — 실제 run이 parent + 각 child worker run을 register하고 running→completed/failed/timed-out로 전이; deadline 초과 worker는 detectable한 timed-out 레코드(새 markTimedOut). apps/api 양 orchestrate 라우트(JSON+SSE 공유 prepareOrchestration)에도 배선 + 라이브 GET /api/multi-agent/runs 표면 신설.
+- 왜: built-but-unwired store = 이 루프가 막으려는 "looks done but isn't live" 트랩. fire 3가 명시적으로 flag한 inert-store 리스크를 닫음. 부작용 전용(오케스트레이션 result 불변, no-registry run은 backward-compatible).
+- 리뷰지점: grounding/citation 경로 미접촉(fabrication=0 유지). OUTCOME-graded — 테스트는 레지스트리 결과 STATE(parent/child status, parent→child 관계, activeCount, timed-out 탐지)를 검증, 호출-여부 아님. MUTATION-FIRST ×2 RED 확인(내 mutation: child complete 제거; ④b 독립 mutation: parent complete 제거 → 둘 다 RED→GREEN). 독립 Opus ④b PASS(7개 점검 항목 전부 concrete 증거). pnpm check exit 0(api 960 + cli 2996 pass), lint clean.
+- 리스크: deadline→timed-out 매핑이 에러 메시지 regex(/exceeded the .* deadline/u)에 의존 — withDeadline의 메시지 포맷에 결합. ④b가 오분류 없음 확인했으나 그 메시지 문자열을 바꾸면 매핑이 조용히 깨짐(향후 sentinel 에러 타입이 더 견고). 동일 worker id가 한 run에 중복 시 child 레코드 공유(throw 아님, benign).
