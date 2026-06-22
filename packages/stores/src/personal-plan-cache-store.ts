@@ -9,9 +9,8 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
-import { withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 /** Newest templates kept — bounds the file + retrieval cost. */
 export const MAX_PLAN_CACHE_ENTRIES = 100;
@@ -64,17 +63,7 @@ export async function readPlanCache(file: string): Promise<readonly PlanCacheEnt
 
 export async function writePlanCache(file: string, entries: readonly PlanCacheEntry[]): Promise<void> {
   const payload = `${JSON.stringify({ entries }, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  const handle = await fs.open(tmp, "w", 0o600);
-  try {
-    await handle.writeFile(payload, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await atomicWriteFile(file, payload);
 }
 
 export async function recordPlanTemplate(file: string, entry: PlanCacheEntry): Promise<void> {

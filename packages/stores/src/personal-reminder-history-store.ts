@@ -11,11 +11,10 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
 import { redactSecretsInText } from "@muse/shared";
 
-import { withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface ReminderHistoryEntry {
   readonly reminderId: string;
@@ -72,11 +71,7 @@ export async function appendReminderHistory(
     const next = [...existing, scrubbed];
     const trimmed = next.length > capacity ? next.slice(next.length - capacity) : next;
     const payload: PersistedShape = { entries: trimmed, version: 1 };
-    const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-    await fs.mkdir(dirname(file), { recursive: true });
-    await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
-    await fs.rename(tmp, file);
-    await fs.chmod(file, 0o600).catch(() => undefined);
+    await atomicWriteFile(file, `${JSON.stringify(payload, null, 2)}\n`);
   });
 }
 

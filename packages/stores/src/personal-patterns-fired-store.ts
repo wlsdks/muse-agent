@@ -17,9 +17,8 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
-import { withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 
 export interface PatternFiredRecord {
   readonly patternId: string;
@@ -63,10 +62,7 @@ export async function writePatternsFired(file: string, records: readonly Pattern
     ? records.slice(records.length - MAX_FIRED_ENTRIES)
     : records;
   const payload = `${JSON.stringify({ fired: trimmed }, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(tmp, payload, "utf8");
-  await fs.rename(tmp, file);
+  await atomicWriteFile(file, payload);
 }
 
 export async function recordPatternFired(file: string, patternId: string, firedAtMs: number): Promise<void> {

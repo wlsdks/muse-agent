@@ -1,3 +1,4 @@
+import { atomicWriteFile } from "./atomic-file-store.js";
 /**
  * Pure data layer for the personal todo list (`~/.muse/tasks.json`).
  *
@@ -13,7 +14,6 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
 
 import type { JsonObject, JsonValue } from "@muse/shared";
 
@@ -109,20 +109,7 @@ export async function mutateTasks(
 
 export async function writeTasks(file: string, tasks: readonly PersistedTask[]): Promise<void> {
   const payload = `${JSON.stringify({ tasks }, null, 2)}\n`;
-  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  await fs.mkdir(dirname(file), { recursive: true });
-  // fsync before rename so a power-loss/crash can't commit a rename over a
-  // not-yet-flushed (0-byte/partial) tmp file — matches the followups /
-  // objectives / contacts / action-log stores.
-  const handle = await fs.open(tmp, "w", 0o600);
-  try {
-    await handle.writeFile(payload, "utf8");
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await fs.rename(tmp, file);
-  await fs.chmod(file, 0o600).catch(() => undefined);
+  await atomicWriteFile(file, payload);
 }
 
 export function serializeTask(task: PersistedTask): JsonObject {
