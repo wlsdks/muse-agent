@@ -51,3 +51,14 @@ ratchet: testFiles +0 (same files, +3 tests = 15) · fabrication 0 · eval:recal
 - **리뷰 지점 (새 실패 모드)**: live 15/24(63%), hit@1 14/16, triad = confident-correct 7 · under-confidence 7 · **confident-wrong 2**. 7케이스에선 confident-wrong=0이었는데 24케이스가 **숨은 confident-wrong 2를 노출** — Muse가 틀린 기억(stale `_old`)을 자신만만하게 회상(abstain보다 나쁨). → 보정은 단순 "바 낮추기"가 아니라 precision/recall 양면. **fire 3의 안전 판단 확증**: 7케이스로 바 낮췄으면 confident-wrong 늘려 거짓말 출하. 3b는 under-confidence(7)를 줄이되 confident-wrong(2)를 안 늘리는 보정이어야(아마 margin 기반 + correction recency).
 - **리스크**: confident-wrong 2건은 correction 케이스(stale가 current 압도) 의심 — 3b/충돌회상(슬라이스 3) 둘 다와 연결. eval:recall-quality는 standalone(CI 게이트 아님)이라 63%가 다른 게이트를 깨지 않음.
 - 검증: `node --test` 15/15 GREEN + MUTATION(size guard) RED · live 15/24 + 진단 · production 무수정(데이터/테스트만) · 독립 Opus ④b judge PASS(8 absent 전부 unanswerable·16 positive resolve·correction teeth·confident-wrong 진짜 측정 확인).
+
+## fire 5 · 2026-06-23 · skill v2.1.0 · loop/recall-spine
+
+meta: value-class=finding(no-ship) · pkg=@muse/agent-core · kind=calibration · verdict=NO-SHIP(rolled back) · firesSinceDrill=5
+ratchet: testFiles +0 · fabrication 0 (floor untouched — change reverted) · finding: 24-case max-cosine distribution + blast-radius
+
+- **무엇**: 슬라이스 3b 시도 — `classifyRetrievalConfidence`에 margin-based PROMOTION(바 아래라도 강한 margin top은 confident). 측정: 24-case max-cosine positives 0.32–0.70 vs absents 0.20–0.35가 OVERLAP(min-pos 0.318 < max-absent 0.346) → 단일 임계값 분리 불가, 그러나 margin은 분리(absents ≤0.113). 구현+테스트했으나 **롤백**.
+- **왜 롤백**: blanket 변경이 `classifyRetrievalConfidence`(공유 게이트)를 건드려 **기존 테스트 10개 깨짐**(proactive-recall/council/notes가 옛 임계값 의존). ④b 정신상 "무관 state 손상" → 안전 규약대로 git restore 롤백(main 추적 파일도 복원+재빌드). fabrication 플로어 무손상.
+- **리뷰 지점**: 좋은 자체-발견 2건 — (1) caller가 바를 RAISE한 경우 promotion이 undercut하는 fail-safe 위반을 테스트가 잡아 `mayPromote = confidentAt <= DEFAULT` 가드 추가; (2) 결정적 게이트(vitest 10 fail)가 blast-radius를 잡음 = 게이트가 작동. 분포/margin 데이터는 backlog 3b에 영구 기록.
+- **리스크/다음**: 3b는 OPT-IN으로 재스코프 — memory-recall 경로만 `promoteOnMargin` 옵션 전달, proactive/council/notes 불변. 다음 fire가 그 버전.
+- lesson: 공유 게이트(classifyRetrievalConfidence 등)의 행동 변경은 절대 blanket로 하지 말 것 — 먼저 caller를 sibling-audit(grep)해 blast-radius를 보고, 신호 변경은 OPT-IN 옵션으로 호출 경로별 격리. measure-first가 "값"은 줬지만 "공유 함수라는 사실"을 sibling-audit로 먼저 확인했어야 구현 전에 OPT-IN 설계를 했을 것(구현→10 fail→롤백 토큰 낭비 회피).
