@@ -14,7 +14,7 @@
  * caller gathers the file mtimes; this is the deterministic, unit-testable core.
  */
 
-import { medianGap } from "./median-gap.js";
+import { medianGap } from "@muse/mcp-shared";
 
 export interface NoteActivityEvent {
   /** The note family — typically the top-level folder under the notes dir. */

@@ -20,7 +20,7 @@ import { dirname } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
 
-import { formatDueLocal } from "./local-due-format.js";
+import { formatDueLocal } from "@muse/mcp-shared";
 import { withFileLock } from "./encrypted-file.js";
 import { parseTaskDueAt } from "./personal-tasks-store.js";
 

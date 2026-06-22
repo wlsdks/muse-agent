@@ -8,7 +8,7 @@
  */
 
 import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
-import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
+import { resolveRelativeTimePhrase } from "@muse/mcp-shared";
 
 export { fetchWithRetry, isRetriableStatus, parseRetryAfterMs, type RetryOptions } from "./http-retry.js";
 

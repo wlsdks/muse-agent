@@ -17,8 +17,8 @@ import { dirname } from "node:path";
 
 import type { JsonObject, JsonValue } from "@muse/shared";
 
-import { formatDueLocal } from "./local-due-format.js";
-import { isoDateHeadRoundTrips, resolveRelativeTimePhrase } from "./loopback-relative-time.js";
+import { formatDueLocal } from "@muse/mcp-shared";
+import { isoDateHeadRoundTrips, resolveRelativeTimePhrase } from "@muse/mcp-shared";
 import { withFileLock } from "./encrypted-file.js";
 
 export interface PersistedTask {

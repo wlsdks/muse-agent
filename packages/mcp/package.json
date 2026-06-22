@@ -21,6 +21,7 @@
     "@muse/calendar": "workspace:*",
     "@muse/db": "workspace:*",
     "@muse/fs": "workspace:*",
+    "@muse/mcp-shared": "workspace:*",
     "@muse/memory": "workspace:*",
     "@muse/messaging": "workspace:*",
     "@muse/shared": "workspace:*",

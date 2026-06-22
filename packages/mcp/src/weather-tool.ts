@@ -9,7 +9,7 @@
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
-import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
+import { resolveRelativeTimePhrase } from "@muse/mcp-shared";
 import { OpenMeteoWeatherProvider, resolveForecastLine, resolveWeatherLine, type WeatherProvider } from "./weather.js";
 
 export interface WeatherToolDeps {

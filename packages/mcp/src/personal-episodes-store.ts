@@ -24,7 +24,7 @@ import { promises as fs } from "node:fs";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { withFileMutationQueue } from "./atomic-file-store.js";
-import { medianGap } from "./median-gap.js";
+import { medianGap } from "@muse/mcp-shared";
 import {
   decryptFileAtRest,
   encryptFileAtRest,

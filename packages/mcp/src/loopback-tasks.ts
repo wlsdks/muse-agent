@@ -4,7 +4,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 
 import type { LoopbackMcpServer } from "./loopback.js";
 import { readString, readStringArray, errorMessage } from "./loopback-helpers.js";
-import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
+import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, startOfLocalDay, withTimeOfDay } from "@muse/mcp-shared";
 import {
   compareTasksByDueDate,
   parseTaskDueAt,
