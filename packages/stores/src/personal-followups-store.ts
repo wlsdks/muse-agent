@@ -119,7 +119,7 @@ export async function cleanupFollowupTempFiles(file: string): Promise<readonly s
   const base = file.split("/").pop() ?? file;
   let entries: readonly { readonly name: string }[];
   try {
-    entries = (await fs.readdir(dir, { withFileTypes: true })) as unknown as readonly { readonly name: string }[];
+    entries = (await fs.readdir(dir, { withFileTypes: true }));
   } catch {
     return [];
   }

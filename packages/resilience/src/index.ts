@@ -110,7 +110,7 @@ export class TimeoutError extends Error {
 
 export class RetryExhaustedError extends Error {
   readonly attempts: number;
-  readonly cause: unknown;
+  override readonly cause: unknown;
 
   constructor(attempts: number, cause: unknown) {
     super(`Retry attempts exhausted after ${attempts} attempt(s)`);
