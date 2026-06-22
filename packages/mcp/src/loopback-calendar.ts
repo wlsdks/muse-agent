@@ -6,7 +6,7 @@ import type {
 } from "@muse/calendar";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
-import { computeAvailability } from "./calendar-availability.js";
+import { computeAvailability } from "@muse/mcp-shared";
 import { detectCalendarConflicts } from "./calendar-conflicts.js";
 import { formatDueLocal } from "@muse/mcp-shared";
 import { readBoolean, readString, readStringArray, errorMessage } from "./loopback-helpers.js";

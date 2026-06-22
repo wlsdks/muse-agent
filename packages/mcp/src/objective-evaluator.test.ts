@@ -9,7 +9,7 @@ import {
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,
   parseObjectiveVerdict
-} from "./objective-evaluator.js";
+} from "@muse/proactivity";
 import { queryActionLog } from "@muse/stores";
 import type { StandingObjective } from "@muse/stores";
 

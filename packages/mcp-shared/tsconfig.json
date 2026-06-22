@@ -12,5 +12,12 @@
   "exclude": [
     "dist"
   ],
-  "references": []
+  "references": [
+    {
+      "path": "../messaging"
+    },
+    {
+      "path": "../shared"
+    }
+  ]
 }

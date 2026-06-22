@@ -18,7 +18,7 @@
 import { redactSecretsInText } from "@muse/shared";
 
 import { appendActionLog } from "@muse/stores";
-import { parseRetryAfterMs } from "./http-retry.js";
+import { parseRetryAfterMs } from "@muse/mcp-shared";
 
 export interface WebActionRequest {
   readonly url: string;

@@ -16,5 +16,8 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@muse/messaging": "workspace:*",
+    "@muse/shared": "workspace:*"
+  }
 }

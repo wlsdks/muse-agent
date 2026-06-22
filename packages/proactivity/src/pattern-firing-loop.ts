@@ -34,7 +34,7 @@ import {
 } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
-import { sendWithRetry } from "./messaging-retry.js";
+import { sendWithRetry } from "@muse/mcp-shared";
 import { isPatternDismissed, isPatternOnCooldown, readPatternsFired, recordPatternFired } from "@muse/stores";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
 

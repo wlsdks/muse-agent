@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { analyzeRunOutcomes } from "./run-outcome-analysis.js";
+import { analyzeRunOutcomes } from "@muse/proactivity";
 
 describe("analyzeRunOutcomes — run-log failure rate + top failing topics", () => {
   it("tallies outcomes and computes the fail rate over LABELLED runs only", () => {

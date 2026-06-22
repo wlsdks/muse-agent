@@ -15,7 +15,7 @@
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
-import { sendWithRetry } from "./messaging-retry.js";
+import { sendWithRetry } from "@muse/mcp-shared";
 import { appendActionLog } from "@muse/stores";
 import type { ObjectiveEvaluation } from "./objective-evaluation-loop.js";
 import type { StandingObjective } from "@muse/stores";

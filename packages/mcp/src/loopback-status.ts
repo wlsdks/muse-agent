@@ -23,7 +23,7 @@ import { readFollowups } from "@muse/stores";
 import { readObjectives } from "@muse/stores";
 import { readProactiveHistory } from "@muse/stores";
 import { readReminders } from "@muse/stores";
-import { readSessionLock } from "./proactive-notice-loop.js";
+import { readSessionLock } from "@muse/proactivity";
 import {
   summariseEpisodesRows,
   summariseFollowupsRows,

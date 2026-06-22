@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { addObjective, type StandingObjective } from "@muse/stores";
 import { runDueSituationalBriefing } from "./situational-briefing-loop.js";
-import type { BriefingImminent } from "./situational-briefing.js";
+import type { BriefingImminent } from "@muse/proactivity";
 import { OpenMeteoWeatherProvider } from "./weather.js";
 
 function fakeJsonResponse(payload: unknown): Response {

@@ -10,7 +10,7 @@
  */
 import { promises as fs } from "node:fs";
 
-import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
+import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
 
 export interface WatchRule {

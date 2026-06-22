@@ -9,7 +9,7 @@ import {
   serializeEpisode,
   type PersistedEpisode
 } from "@muse/stores";
-import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
+import type { ProactiveModelProviderLike } from "@muse/proactivity";
 
 /**
  * `muse.episode` loopback MCP server — gives the agent

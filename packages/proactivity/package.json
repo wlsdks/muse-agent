@@ -1,0 +1,18 @@
+{
+  "name": "@muse/proactivity",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc -b", "test": "vitest run", "typecheck": "tsc -p tsconfig.json --noEmit" },
+  "dependencies": {
+    "@muse/calendar": "workspace:*",
+    "@muse/mcp-shared": "workspace:*",
+    "@muse/memory": "workspace:*",
+    "@muse/messaging": "workspace:*",
+    "@muse/shared": "workspace:*",
+    "@muse/stores": "workspace:*"
+  }
+}

@@ -15,7 +15,7 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 import { readString } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
 import { sliceWithoutLoneSurrogate } from "./notes-providers-local.js";
-import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
+import type { ProactiveModelProviderLike } from "@muse/proactivity";
 
 /**
  * `muse.notes` loopback MCP server.

@@ -26,6 +26,9 @@
       "path": "../mcp-shared"
     },
     {
+      "path": "../proactivity"
+    },
+    {
       "path": "../memory"
     },
     {

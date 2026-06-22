@@ -9,9 +9,9 @@
  * (outbound-safety).
  */
 
-import type { RetryOptions } from "./http-retry.js";
+import type { RetryOptions } from "@muse/mcp-shared";
 import { createHomeStateSnapshot } from "./smart-home.js";
-import { parseWatchRule, type WebWatch } from "./web-watch.js";
+import { parseWatchRule, type WebWatch } from "@muse/proactivity";
 
 export interface HomeWatchConnection {
   readonly baseUrl: string;

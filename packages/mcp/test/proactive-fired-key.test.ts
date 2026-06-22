@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { runDueProactiveNotices } from "../src/index.js";
-import { firedKey } from "../src/proactive-notice-loop.js";
+import { firedKey } from "@muse/proactivity";
 
 describe("firedKey — collision-free dedup key for the {kind,id,startIso} tuple", () => {
   it("two DISTINCT tuples that space-joined to the same string get DISTINCT keys (no separator-injection collision)", () => {

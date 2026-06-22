@@ -289,7 +289,7 @@ export {
   type AvailabilityEventLike,
   type BusyBlock,
   type FreeSlot
-} from "./calendar-availability.js";
+} from "@muse/mcp-shared";
 export {
   detectCalendarConflicts,
   selectUpcomingConflicts,
@@ -337,7 +337,7 @@ export { createWebReadMcpServer, type WebReadMcpServerOptions } from "./loopback
 export { extractReadableText, type ReadableResult } from "./web-readable.js";
 export { assertPublicHttpUrl, assertPublicHttpUrlSync, isPrivateAddress, isPrivateIPv4, isPrivateIPv6, type HostLookup, type UrlGuardResult } from "./web-url-guard.js";
 export { fetchReadableUrl, isPdfContentType, isReadableContentType, type FetchReadableUrlOptions, type FetchReadableUrlResult } from "./fetch-readable-url.js";
-export { gateProactiveNoticeSink, isQuietHour, parseQuietHours, type QuietHourRange } from "./quiet-hours.js";
+export { gateProactiveNoticeSink, isQuietHour, parseQuietHours, type QuietHourRange } from "@muse/proactivity";
 export {
   appendCheckins,
   buildCheckinQuestion,
@@ -357,7 +357,7 @@ export {
   type RunDueCheckinsSummary,
   type ScheduleCheckinsOptions,
   type SnoozeCheckinResult
-} from "./commitment-checkin.js";
+} from "@muse/proactivity";
 
 export {
   CHROME_DEVTOOLS_MCP_SERVER_NAME,
@@ -400,7 +400,7 @@ export {
   type WatchTrigger,
   type WebWatch,
   type WebWatchRunner
-} from "./web-watch.js";
+} from "@muse/proactivity";
 export {
   homeWatchesFromConfig,
   type HomeWatchConnection
@@ -421,13 +421,13 @@ export {
   type KnowledgeAmbientTrigger,
   type RunAmbientNoticeTickOptions,
   type RunAmbientNoticeTickSummary
-} from "./ambient-notice-loop.js";
+} from "@muse/proactivity";
 export {
   MacOsActiveWindowSource,
   parseActiveWindowSignal,
   type MacOsActiveWindowSourceOptions
-} from "./macos-ambient-source.js";
-export { sendWithRetry, type SendWithRetryOptions } from "./messaging-retry.js";
+} from "@muse/proactivity";
+export { sendWithRetry, type SendWithRetryOptions } from "@muse/mcp-shared";
 
 // Notes provider abstraction. LocalDir, Apple Notes (osascript), and
 // Notion (api.notion.com) are all real adapters. The `muse.notes-multi`
@@ -515,13 +515,13 @@ export {
   type ConfirmOutcome,
   type ConfirmProposedActionOptions,
   type DeclineProposedActionOptions
-} from "./proposed-action-confirm.js";
+} from "@muse/proactivity";
 export {
   runDueObjectives,
   type ObjectiveEvaluation,
   type RunDueObjectivesOptions,
   type RunDueObjectivesSummary
-} from "./objective-evaluation-loop.js";
+} from "@muse/proactivity";
 export {
   findConsent,
   hasConsent,
@@ -536,7 +536,7 @@ export {
   type ConsentedActionOutcome,
   type ConsentedActionRequest,
   type PerformConsentedActionOptions
-} from "./consented-action.js";
+} from "@muse/proactivity";
 export {
   ACTION_LOG_GENESIS_HASH,
   appendActionLog,
@@ -619,13 +619,13 @@ export {
   resolveDayShapeLine,
   type BriefingImminent,
   type SituationalBriefingInput
-} from "./situational-briefing.js";
+} from "@muse/proactivity";
 export {
   deriveBriefingImminent,
   deriveCalendarBriefingImminent,
   type BriefingCalendarEvent,
   type BriefingCalendarLister
-} from "./briefing-imminent.js";
+} from "@muse/proactivity";
 export {
   runDueSituationalBriefing,
   type RunDueSituationalBriefingOptions,
@@ -636,7 +636,7 @@ export {
   isRetriableStatus,
   parseRetryAfterMs,
   type RetryOptions
-} from "./http-retry.js";
+} from "@muse/mcp-shared";
 export {
   describeWeatherCode,
   formatDailyForecast,
@@ -800,12 +800,12 @@ export {
   parseObjectiveVerdict,
   type MessagingObjectiveActuatorOptions,
   type ModelObjectiveEvaluatorOptions
-} from "./objective-evaluator.js";
+} from "@muse/proactivity";
 export {
   undoLoggedAction,
   type UndoLoggedActionOptions,
   type UndoLoggedActionResult
-} from "./undo-action.js";
+} from "@muse/proactivity";
 
 // LLM-fallback budget tracker — step 5 of agent-self-followup.md.
 // Per-day counter so MUSE_FOLLOWUP_LLM_FALLBACK=true can't
@@ -852,8 +852,8 @@ export {
   runDuePatternNotices,
   type RunDuePatternNoticesOptions,
   type RunDuePatternNoticesSummary
-} from "./pattern-firing-loop.js";
-export { type AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
+} from "@muse/proactivity";
+export { type AgentInitiatedNoticeBrokerLike } from "@muse/proactivity";
 export { createNotesInvestigator } from "./notes-investigator.js";
 
 export {
@@ -926,7 +926,7 @@ export {
   detectNoteFamilyAbsence,
   type NoteActivityEvent,
   type NoteFamilyAbsence
-} from "./note-family-absence.js";
+} from "@muse/proactivity";
 
 // Reusable encryption-at-rest for the function-based JSON stores — AES-256-GCM
 // envelope + the user-memory key, cross-process locked, fail-closed migration.
@@ -947,7 +947,7 @@ export {
   runDueFollowups,
   type RunDueFollowupsOptions,
   type RunDueFollowupsSummary
-} from "./followup-firing-loop.js";
+} from "@muse/proactivity";
 
 // Personal reminders store — passive reminder list shared between
 // the REST routes, the CLI, and `muse today` (both surfaces).
@@ -1004,7 +1004,7 @@ export {
   type RunOutcomeEntry,
   type RunOutcomeSummary,
   type RunOutcomeTopic
-} from "./run-outcome-analysis.js";
+} from "@muse/proactivity";
 
 export {
   appendReminderHistory,
@@ -1019,7 +1019,7 @@ export {
   runDueReminders,
   type RunDueRemindersOptions,
   type RunDueRemindersSummary
-} from "./reminder-firing-loop.js";
+} from "@muse/proactivity";
 
 // Proactive surfacing (Phase A — calendar imminence, Phase B —
 // tasks due-soon). See docs/design/proactive-surfacing.md.
@@ -1041,7 +1041,7 @@ export {
   type RunDueProactiveNoticesOptions,
   type RunDueProactiveNoticesSummary,
   type SessionLockPayload
-} from "./proactive-notice-loop.js";
+} from "@muse/proactivity";
 export {
   appendProactiveHistory,
   readProactiveHistory,

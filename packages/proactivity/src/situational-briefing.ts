@@ -9,7 +9,7 @@
  * only decides WHAT the briefing says given the current context.
  */
 
-import { computeAvailability, type AvailabilityEventLike } from "./calendar-availability.js";
+import { computeAvailability, type AvailabilityEventLike } from "@muse/mcp-shared";
 import type { StandingObjective } from "@muse/stores";
 
 /**

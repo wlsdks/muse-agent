@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { performConsentedAction } from "./consented-action.js";
-import { runDueObjectives, type ObjectiveEvaluation } from "./objective-evaluation-loop.js";
+import { performConsentedAction } from "@muse/proactivity";
+import { runDueObjectives, type ObjectiveEvaluation } from "@muse/proactivity";
 import { recordConsent } from "@muse/stores";
 import { addObjective, readObjectives, type StandingObjective } from "@muse/stores";
 

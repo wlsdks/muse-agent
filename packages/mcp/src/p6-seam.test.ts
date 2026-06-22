@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { performConsentedAction } from "./consented-action.js";
-import { runDueObjectives, type ObjectiveEvaluation } from "./objective-evaluation-loop.js";
+import { performConsentedAction } from "@muse/proactivity";
+import { runDueObjectives, type ObjectiveEvaluation } from "@muse/proactivity";
 import { appendActionLog, queryActionLog } from "@muse/stores";
 import { recordConsent } from "@muse/stores";
 import { hasVeto } from "@muse/stores";
 import { addObjective, readObjectives, type StandingObjective } from "@muse/stores";
-import { undoLoggedAction } from "./undo-action.js";
+import { undoLoggedAction } from "@muse/proactivity";
 
 /**
  * P6 target audit (the P→P seam check). P6's two bullets ARE a

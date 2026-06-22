@@ -1,7 +1,7 @@
 import { MessagingProviderError, type MessagingProvider, type MessagingProviderRegistry, type OutboundReceipt } from "@muse/messaging";
 import { describe, expect, it, vi } from "vitest";
 
-import { sendWithRetry } from "./messaging-retry.js";
+import { sendWithRetry } from "@muse/mcp-shared";
 
 function fakeRegistry(send: (providerId: string, message: { destination: string; text: string }) => Promise<OutboundReceipt>): MessagingProviderRegistry {
   return {

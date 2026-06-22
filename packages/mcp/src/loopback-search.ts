@@ -1,6 +1,6 @@
 import { stripUntrustedTerminalChars, type JsonObject, type JsonValue } from "@muse/shared";
 
-import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
+import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
 import type { LoopbackMcpServer } from "./loopback.js";
 import { buildJsonToolSchema, readString } from "./loopback-helpers.js";
 

@@ -12,7 +12,7 @@ import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
 import { listHomeAssistantStates, performHomeActionWithApproval, readHomeAssistantState } from "./smart-home.js";
-import type { RetryOptions } from "./http-retry.js";
+import type { RetryOptions } from "@muse/mcp-shared";
 import type { WebActionApprovalGate } from "./web-action.js";
 
 export interface HomeActionToolDeps {

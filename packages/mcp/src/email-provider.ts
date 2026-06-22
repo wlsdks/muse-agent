@@ -12,7 +12,7 @@
  * briefing daemon (needs-reply surfacing) can reuse it.
  */
 
-import { fetchWithRetry, parseRetryAfterMs, type RetryOptions } from "./http-retry.js";
+import { fetchWithRetry, parseRetryAfterMs, type RetryOptions } from "@muse/mcp-shared";
 
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
 

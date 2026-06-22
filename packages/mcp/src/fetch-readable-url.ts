@@ -9,7 +9,7 @@
  * is exercised over real request shapes with only the network faked.
  */
 
-import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
+import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
 import { extractReadableText } from "./web-readable.js";
 import { assertPublicHttpUrl, type HostLookup } from "./web-url-guard.js";
 

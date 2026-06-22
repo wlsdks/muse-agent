@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { addObjective, type StandingObjective } from "@muse/stores";
 import { runDueSituationalBriefing } from "./situational-briefing-loop.js";
-import type { BriefingImminent } from "./situational-briefing.js";
+import type { BriefingImminent } from "@muse/proactivity";
 
 /**
  * P8 target audit (the P→P seam check). P8's bullets ARE a

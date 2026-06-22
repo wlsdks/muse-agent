@@ -16,9 +16,9 @@ import { dirname } from "node:path";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
-import { sendWithRetry } from "./messaging-retry.js";
+import { sendWithRetry } from "@muse/mcp-shared";
 import { readObjectives } from "@muse/stores";
-import { composeSituationalBriefing, type BriefingImminent } from "./situational-briefing.js";
+import { composeSituationalBriefing, type BriefingImminent } from "@muse/proactivity";
 import { unreadBriefingLine, type EmailProvider } from "./email-provider.js";
 import { resolveWeatherLine, type WeatherProvider } from "./weather.js";
 

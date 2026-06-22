@@ -11,7 +11,7 @@
  * a lifestyle actuator and are out of scope.
  */
 
-import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
+import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
 import { performWebActionWithApproval, type WebActionApprovalGate, type WebActionOutcome, type WebActionRequest } from "./web-action.js";
 
 export interface HomeAssistantServiceCall {

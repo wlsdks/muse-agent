@@ -7,10 +7,10 @@
  * briefing daemon can reuse it.
  */
 
-import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
+import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
 import { resolveRelativeTimePhrase } from "@muse/mcp-shared";
 
-export { fetchWithRetry, isRetriableStatus, parseRetryAfterMs, type RetryOptions } from "./http-retry.js";
+export { fetchWithRetry, isRetriableStatus, parseRetryAfterMs, type RetryOptions } from "@muse/mcp-shared";
 
 /**
  * The calendar date (YYYY-MM-DD) of an instant AS SEEN in a given IANA timezone.
