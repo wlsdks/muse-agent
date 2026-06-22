@@ -204,7 +204,10 @@ async function main() {
       hybrid: true,
       topK
     });
-    const confidence = classifyRetrievalConfidence(matches);
+    // the memory-recall path opts in to margin promotion (notes/proactive/council
+    // keep the default OFF behavior); this is the calibration evidence for wiring
+    // promoteOnMargin into the production memory-recall call site (fire 3b follow-up).
+    const confidence = classifyRetrievalConfidence(matches, { promoteOnMargin: true });
     return { confidence, topSource: matches[0]?.source ?? null };
   };
 

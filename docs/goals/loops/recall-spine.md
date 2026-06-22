@@ -62,3 +62,14 @@ ratchet: testFiles +0 · fabrication 0 (floor untouched — change reverted) · 
 - **리뷰 지점**: 좋은 자체-발견 2건 — (1) caller가 바를 RAISE한 경우 promotion이 undercut하는 fail-safe 위반을 테스트가 잡아 `mayPromote = confidentAt <= DEFAULT` 가드 추가; (2) 결정적 게이트(vitest 10 fail)가 blast-radius를 잡음 = 게이트가 작동. 분포/margin 데이터는 backlog 3b에 영구 기록.
 - **리스크/다음**: 3b는 OPT-IN으로 재스코프 — memory-recall 경로만 `promoteOnMargin` 옵션 전달, proactive/council/notes 불변. 다음 fire가 그 버전.
 - lesson: 공유 게이트(classifyRetrievalConfidence 등)의 행동 변경은 절대 blanket로 하지 말 것 — 먼저 caller를 sibling-audit(grep)해 blast-radius를 보고, 신호 변경은 OPT-IN 옵션으로 호출 경로별 격리. measure-first가 "값"은 줬지만 "공유 함수라는 사실"을 sibling-audit로 먼저 확인했어야 구현 전에 OPT-IN 설계를 했을 것(구현→10 fail→롤백 토큰 낭비 회피).
+
+## fire 6 · 2026-06-23 · skill v2.1.0 · loop/recall-spine
+
+meta: value-class=new-capability · pkg=@muse/agent-core · kind=calibration · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles +1 (recall-confidence.test.ts, 11 cases) · fabrication 0 · eval:recall-quality 63%→75% (under-confidence 7→4)
+
+- **무엇**: 슬라이스 3b OPT-IN 재구현 — `classifyRetrievalConfidence`에 `promoteOnMargin?: boolean`(기본 off). on이면 바 아래 top이라도 floor(0.45)+margin(0.15) 충족 시 confident로 승격, 단 caller가 바를 RAISE했으면 억제(fail-safe). memory-recall 경로만 opt-in(eval solve가 켬), proactive/council/notes는 기본 off로 불변.
+- **왜**: fire 5 blast-radius(공유 게이트 blanket 변경이 10 테스트 깨뜨림)를 opt-in으로 격리 해소. under-confidence(맞는 기억인데 abstain)를 fabrication 안 늘리고 rescue.
+- **리뷰 지점**: live 63%→75%(+3 rescue), triad confident-correct 7→10·under-confidence 7→4·confident-wrong 2(불변)·absents 전부 abstain. 게이트는 아직 75%<85%: 남은 4 under-confidence는 0.45 floor 아래(더 어려움), confident-wrong 2는 correction 케이스(stale가 current 압도 — 슬라이스 3/conflict 영역). 다음: production memory-recall 호출부에 promoteOnMargin 배선(eval이 값 증명, 배선이 남은 슬라이스).
+- **리스크**: 상수(0.45/0.15)는 이 골든셋 분포 기반 — 더 큰 calibration 셋(3c, muse doctor --calibration)으로 재확인 권장. confident-wrong은 promotion이 바 위에서만 안 건드려 불변(논리적으로 보장).
+- 검증: agent-core 전체 **2621 passed/0 failed**(기본 off가 fire 5의 10 깨짐 포함 전부 보존) · `node --test`/vitest 11 cases + MUTATION 4분기 RED · live 18/24 + absents 전수 abstain · 독립 Opus ④b judge PASS(300k-case fuzz로 default-off 바이트 등가 증명, 두 가드 독립 차단, fail-safe 올림/내림 바 정확).

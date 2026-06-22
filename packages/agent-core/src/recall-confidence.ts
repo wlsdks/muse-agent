@@ -43,6 +43,20 @@ export function resolveRecallConfidentAt(env: NodeJS.ProcessEnv = process.env): 
 const CONFIDENCE_SOFT_BAND = 0.05;
 const CONFIDENCE_MIN_MARGIN = 0.08;
 
+// OPT-IN margin PROMOTION (the symmetric counterpart of the flat-demotion). A top
+// BELOW the absolute bar but with a CLEAR lead over the runner-up is a confident
+// single-entry match, not a weak cluster — so it is promoted to `confident`
+// WITHOUT lowering the bar. Rescues short personal-memory entries whose absolute
+// cosine sits under a notes-calibrated bar on a compressed-scale embedder
+// (nomic-embed-text-v2-moe), measured on the recall-quality golden set: right
+// entries lead by margin ≥0.15 while the absent/distractor set is flat (margins
+// ≤0.11) AND every absent top is below PROMOTE_FLOOR — so no absent is ever
+// promoted, preserving fabrication=0. OFF by default so the shared callers
+// (proactive/council/notes) are unchanged; ONLY a path that opts in via
+// `promoteOnMargin` gets it. (CRAG arXiv:2401.15884.)
+const CONFIDENCE_PROMOTE_FLOOR = 0.45;
+const CONFIDENCE_PROMOTE_MARGIN = 0.15;
+
 /**
  * CRAG (arXiv 2401.15884): a lightweight retrieval evaluator grades whether
  * the retrieved evidence is trustworthy. Deterministic local version — the
@@ -55,7 +69,7 @@ const CONFIDENCE_MIN_MARGIN = 0.08;
  */
 export function classifyRetrievalConfidence(
   matches: readonly KnowledgeMatch[],
-  options?: { readonly confidentAt?: number }
+  options?: { readonly confidentAt?: number; readonly promoteOnMargin?: boolean }
 ): RetrievalConfidence {
   if (matches.length === 0) {
     return "none";
@@ -63,11 +77,19 @@ export function classifyRetrievalConfidence(
   const confidentAt = finiteOr(options?.confidentAt, DEFAULT_CONFIDENT_AT);
   const scores = matches.map((match) => match.cosine ?? match.score).sort((a, b) => b - a);
   const top = scores[0]!;
-  if (top < confidentAt) {
-    return "ambiguous";
-  }
   const runnerUp = scores[1] ?? 0;
+  const margin = top - runnerUp;
+  if (top < confidentAt) {
+    // OPT-IN only: a sub-bar top with a clear lead is promoted. Suppressed when a
+    // caller RAISED the bar (deliberate stricter abstention — never undercut it).
+    return options?.promoteOnMargin
+      && confidentAt <= DEFAULT_CONFIDENT_AT
+      && top >= CONFIDENCE_PROMOTE_FLOOR
+      && margin >= CONFIDENCE_PROMOTE_MARGIN
+      ? "confident"
+      : "ambiguous";
+  }
   const borderlineTop = top < confidentAt + CONFIDENCE_SOFT_BAND;
-  const flatDistribution = top - runnerUp < CONFIDENCE_MIN_MARGIN;
+  const flatDistribution = margin < CONFIDENCE_MIN_MARGIN;
   return borderlineTop && flatDistribution ? "ambiguous" : "confident";
 }
