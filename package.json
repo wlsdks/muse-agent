@@ -73,6 +73,7 @@
     "self-eval:test": "node --test scripts/*.test.mjs",
     "precheck:grounding": "pnpm --filter \"@muse/autoconfigure...\" build && pnpm --filter @muse/cli build && node scripts/precheck-grounding.mjs",
     "eval:embedder-ab": "pnpm --filter @muse/cli build && node apps/cli/scripts/eval-embedder-ab.mjs",
+    "eval:recall-quality": "pnpm --filter @muse/agent-core build && pnpm --filter @muse/autoconfigure build && pnpm --filter @muse/cli build && node scripts/eval-recall-quality.mjs",
     "eval:conformal-tools": "pnpm --filter @muse/model build && node scripts/eval-conformal-tools.mjs",
     "eval:orchestration": "pnpm --filter @muse/model build && pnpm --filter @muse/multi-agent build && node scripts/verify-orchestration.mjs",
     "eval:decomposition": "pnpm --filter @muse/model build && pnpm --filter @muse/multi-agent build && node scripts/verify-decomposition.mjs",
