@@ -1011,6 +1011,38 @@ async function buildWebSearchScenario() {
   }
 }
 
+// history_search (the user's OWN PAST CONVERSATIONS by topic) vs its two nearest
+// confusables: knowledge_search (the user's NOTES + ingested DOCUMENTS) and the
+// web search tool (the public internet). The carve is the SOURCE — a prior
+// discussion/"what did we talk about" is history_search; a written note/doc is
+// knowledge_search; live external facts are the web.
+async function buildHistorySearchScenario() {
+  try {
+    const recall = await import("../packages/recall/dist/history-search-tool.js");
+    const ac = await import("../packages/autoconfigure/dist/index.js");
+    const mcp = await import("../packages/mcp/dist/index.js");
+    const domainTools = await import("../packages/domain-tools/dist/index.js");
+    const search = mcp.createLoopbackMcpMuseTools(domainTools.createSearchMcpServer())[0];
+    const instances = [recall.createHistorySearchTool({ records: () => [] }), ac.createNotesKnowledgeSearchTool({}), search];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "What did we decide about the VPN setup when we talked about it before?", expectTool: "history_search", requireArgs: ["query"], note: "EN prior-conversation recall → history_search (NOT knowledge_search — a past DISCUSSION, not a note)" },
+      { prompt: "Find that earlier conversation where I mentioned the ramen place.", expectTool: "history_search", requireArgs: ["query"], note: "EN 'find that earlier conversation' → history_search" },
+      { prompt: "예전에 분기 보고서 얘기했던 대화 좀 찾아줘.", expectTool: "history_search", requireArgs: ["query"], note: "KO 'find the past conversation about the quarterly report' → history_search (user's language)" },
+      { prompt: "When did we last talk about the database migration plan?", expectTool: "history_search", requireArgs: ["query"], note: "EN 'when did we last talk about X' → history_search" },
+      // confusable neighbours
+      { prompt: "What does my note say about the office Wi-Fi password?", expectTool: "knowledge_search", requireArgs: ["query"], note: "EN written NOTE lookup → knowledge_search (NOT history_search — a note, not a conversation)" },
+      { prompt: "Search the web for the latest Node.js LTS version.", expectTool: "muse.search.search", requireArgs: ["query"], note: "EN public-web fact → web search (NOT history_search)" },
+      // IrrelAcc: a present-tense statement about a past chat is not a search request
+      { prompt: "어제 너랑 얘기해서 정말 도움이 됐어.", expectNoTool: true, note: "KO 'talking with you yesterday really helped' → NO tool (gratitude about a past chat, NOT a search request)" }
+    ];
+    return { label: "history-search (past conversations vs notes/web + statement IrrelAcc)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "history-search", skip: `@muse/recall or @muse/autoconfigure not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 async function buildRecallVsCrudScenario() {
   try {
     const mcp = await import("../packages/mcp/dist/index.js");
@@ -1402,6 +1434,7 @@ async function main() {
     await buildNotesScenario(),
     await buildFollowupScenario(),
     await buildRecallVsCrudScenario(),
+    await buildHistorySearchScenario(),
     await buildWebSearchScenario()
   ];
   // Optional substring filter (MUSE_EVAL_SCENARIO) so a single scenario can be

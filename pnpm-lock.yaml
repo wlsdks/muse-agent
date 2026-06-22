@@ -338,6 +338,9 @@ importers:
       '@muse/proactivity':
         specifier: workspace:*
         version: link:../proactivity
+      '@muse/recall':
+        specifier: workspace:*
+        version: link:../recall
       '@muse/resilience':
         specifier: workspace:*
         version: link:../resilience
@@ -638,6 +641,9 @@ importers:
       '@muse/stores':
         specifier: workspace:*
         version: link:../stores
+      '@muse/tools':
+        specifier: workspace:*
+        version: link:../tools
 
   packages/resilience:
     dependencies:

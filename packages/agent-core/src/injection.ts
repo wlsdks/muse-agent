@@ -62,7 +62,7 @@ export function defangMemoryInjection(value: string): string {
   return isMemoryInjection(value) ? "(stored note hidden — its text looked like an instruction)" : value;
 }
 
-const INJECTION_SPAN_PLACEHOLDER = "[removed: injected instruction]";
+export const INJECTION_SPAN_PLACEHOLDER = "[removed: injected instruction]";
 
 /**
  * SPAN-level neutralization for PROSE (episode summaries, feed text, note chunks,

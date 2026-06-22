@@ -242,7 +242,7 @@ export {
   type CitationPrecisionReport
 } from "./citation-precision.js";
 export { untrustedOnlySentences } from "./untrusted-sentences.js";
-export { MEMORY_INJECTION_PATTERNS, isMemoryInjection, defangMemoryInjection, neutralizeInjectionSpans, stripInjectionEvasionChars } from "./injection.js";
+export { MEMORY_INJECTION_PATTERNS, INJECTION_SPAN_PLACEHOLDER, isMemoryInjection, defangMemoryInjection, neutralizeInjectionSpans, stripInjectionEvasionChars } from "./injection.js";
 export {
   reportCitationRecall,
   stripCitationMarkers,

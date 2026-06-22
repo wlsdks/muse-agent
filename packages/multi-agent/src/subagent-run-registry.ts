@@ -1,0 +1,226 @@
+/**
+ * Tracks LIVE lifecycle of spawned sub-agent runs: run id, parent→child
+ * relationship, status, timeout, and liveness/heartbeat. Distinct from
+ * `OrchestrationHistory`, which records only FINISHED runs for audit —
+ * this registry tracks RUNNING runs so orphaned/stalled child runs are
+ * detectable before they complete.
+ *
+ * Reimplements the openclaw subagent-registry lifecycle mechanism (MIT,
+ * no code copied — clean Muse implementation).
+ */
+
+export type SubAgentRunStatus = "running" | "completed" | "failed" | "timed-out";
+
+export interface SubAgentRunRecord {
+  readonly runId: string;
+  readonly parentRunId?: string;
+  readonly status: SubAgentRunStatus;
+  readonly startedAt: Date;
+  readonly lastHeartbeatAt: Date;
+  readonly timeoutMs: number;
+  readonly finishedAt?: Date;
+  readonly outcome?: string;
+  readonly error?: string;
+}
+
+export interface SubAgentRunRegistryOptions {
+  readonly now?: () => Date;
+  readonly defaultTimeoutMs?: number;
+}
+
+export interface RegisterRunArgs {
+  readonly runId: string;
+  readonly parentRunId?: string;
+  readonly timeoutMs?: number;
+}
+
+interface MutableRunRecord {
+  runId: string;
+  parentRunId?: string;
+  status: SubAgentRunStatus;
+  startedAt: Date;
+  lastHeartbeatAt: Date;
+  timeoutMs: number;
+  finishedAt?: Date;
+  outcome?: string;
+  error?: string;
+}
+
+const TERMINAL_STATUSES = new Set<SubAgentRunStatus>(["completed", "failed", "timed-out"]);
+
+function freeze(record: MutableRunRecord): SubAgentRunRecord {
+  return Object.freeze({ ...record });
+}
+
+export class SubAgentRunRegistry {
+  private readonly records = new Map<string, MutableRunRecord>();
+  private readonly insertionOrder: string[] = [];
+  private readonly now: () => Date;
+  private readonly defaultTimeoutMs: number;
+
+  constructor(options: SubAgentRunRegistryOptions = {}) {
+    this.now = options.now ?? (() => new Date());
+    this.defaultTimeoutMs = options.defaultTimeoutMs ?? 0;
+  }
+
+  register(args: RegisterRunArgs): SubAgentRunRecord {
+    const { runId, parentRunId, timeoutMs } = args;
+
+    if (!runId || runId.trim() === "") {
+      throw new RangeError("runId must be a non-empty string");
+    }
+
+    if (this.records.has(runId)) {
+      throw new Error(`run id already registered: "${runId}" — duplicate run id is a coordination bug`);
+    }
+
+    if (parentRunId !== undefined && !this.records.has(parentRunId)) {
+      throw new Error(`parentRunId "${parentRunId}" is not registered — a child must attach to a known parent`);
+    }
+
+    const now = this.now();
+    const record: MutableRunRecord = {
+      lastHeartbeatAt: now,
+      runId,
+      startedAt: now,
+      status: "running",
+      timeoutMs: timeoutMs ?? this.defaultTimeoutMs
+    };
+
+    if (parentRunId !== undefined) {
+      record.parentRunId = parentRunId;
+    }
+
+    this.records.set(runId, record);
+    this.insertionOrder.push(runId);
+
+    return freeze(record);
+  }
+
+  heartbeat(runId: string): boolean {
+    const record = this.records.get(runId);
+
+    if (record === undefined || record.status !== "running") {
+      return false;
+    }
+
+    record.lastHeartbeatAt = this.now();
+    return true;
+  }
+
+  complete(runId: string, outcome?: string): boolean {
+    const record = this.records.get(runId);
+
+    if (record === undefined || TERMINAL_STATUSES.has(record.status)) {
+      return false;
+    }
+
+    record.status = "completed";
+    record.finishedAt = this.now();
+    record.outcome = outcome;
+    return true;
+  }
+
+  fail(runId: string, error?: string): boolean {
+    const record = this.records.get(runId);
+
+    if (record === undefined || TERMINAL_STATUSES.has(record.status)) {
+      return false;
+    }
+
+    record.status = "failed";
+    record.finishedAt = this.now();
+    record.error = error;
+    return true;
+  }
+
+  markTimedOut(runId: string, error?: string): boolean {
+    const record = this.records.get(runId);
+
+    if (record === undefined || TERMINAL_STATUSES.has(record.status)) {
+      return false;
+    }
+
+    record.status = "timed-out";
+    record.finishedAt = this.now();
+    record.error = error;
+    return true;
+  }
+
+  get(runId: string): SubAgentRunRecord | undefined {
+    const record = this.records.get(runId);
+    return record === undefined ? undefined : freeze(record);
+  }
+
+  list(): readonly SubAgentRunRecord[] {
+    return this.insertionOrder.map((id) => freeze(this.records.get(id)!));
+  }
+
+  children(parentRunId: string): readonly SubAgentRunRecord[] {
+    return this.insertionOrder
+      .map((id) => this.records.get(id)!)
+      .filter((record) => record.parentRunId === parentRunId)
+      .map(freeze);
+  }
+
+  activeCount(): number {
+    let count = 0;
+    for (const record of this.records.values()) {
+      if (record.status === "running") count++;
+    }
+    return count;
+  }
+
+  detectStalled(): readonly SubAgentRunRecord[] {
+    const now = this.now();
+    return this.insertionOrder
+      .map((id) => this.records.get(id)!)
+      .filter((record) => {
+        if (record.status !== "running" || record.timeoutMs <= 0) return false;
+        return now.getTime() - record.lastHeartbeatAt.getTime() > record.timeoutMs;
+      })
+      .map(freeze);
+  }
+
+  markStalledAsTimedOut(): readonly SubAgentRunRecord[] {
+    const stalled = this.detectStalled();
+    const now = this.now();
+    const transitioned: SubAgentRunRecord[] = [];
+
+    for (const frozen of stalled) {
+      const record = this.records.get(frozen.runId)!;
+      record.status = "timed-out";
+      record.finishedAt = now;
+      transitioned.push(freeze(record));
+    }
+
+    return transitioned;
+  }
+
+  detectOrphaned(): readonly SubAgentRunRecord[] {
+    return this.insertionOrder
+      .map((id) => this.records.get(id)!)
+      .filter((record) => {
+        if (record.status !== "running" || record.parentRunId === undefined) return false;
+        const parent = this.records.get(record.parentRunId);
+        return parent !== undefined && TERMINAL_STATUSES.has(parent.status);
+      })
+      .map(freeze);
+  }
+
+  recoverOrphaned(error?: string): readonly SubAgentRunRecord[] {
+    const orphaned = this.detectOrphaned();
+    const now = this.now();
+    const recovered: SubAgentRunRecord[] = [];
+
+    for (const frozen of orphaned) {
+      const record = this.records.get(frozen.runId)!;
+      record.status = "failed";
+      record.finishedAt = now;
+      record.error = error;
+      recovered.push(freeze(record));
+    }
+
+    return recovered;
+  }
+}

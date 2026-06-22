@@ -21,6 +21,9 @@
     },
     {
       "path": "../stores"
+    },
+    {
+      "path": "../tools"
     }
   ]
 }

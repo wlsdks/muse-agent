@@ -11,7 +11,8 @@
 import { createCachingEmbedder } from "@muse/agent-core";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { withChromeDevToolsRisk, withOfficialMcpRisk, type McpManager } from "@muse/mcp";
-import { addContact, queryContacts, readActionLog, readFollowups, readObjectives, readReminders, readTasks, removeContact, resolveUpcomingBirthdays } from "@muse/stores";
+import { createHistorySearchTool, type HistoryRecord } from "@muse/recall";
+import { addContact, queryContacts, readActionLog, readEpisodes, readFollowups, readObjectives, readReminders, readTasks, removeContact, resolveUpcomingBirthdays } from "@muse/stores";
 import { collectDatedNotes, createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createEmailReadMessageTool, createEmailReadTool, createEmailSearchTool, createFeedsSearchTool, createHomeEntitiesTool, createHomeStateTool, createObjectivesListTool, createOnThisDayTool, createRecentActionsTool, createRememberFactTool, createUpcomingBirthdaysTool, createWeatherTool, createWorldTimeTool, GmailEmailProvider, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import type { UserMemoryStore } from "@muse/memory";
 import { createSchedulerTools, DynamicScheduler } from "@muse/scheduler";
@@ -21,6 +22,7 @@ import { createOllamaEmbedder } from "./context-engineering-builders.js";
 import { readEpisodeKnowledgeEntries } from "./episodes-knowledge-source.js";
 import { parseBoolean } from "./env-parsers.js";
 import { readFeedKnowledgeEntries } from "./feeds-knowledge-source.js";
+import { buildHistoryRecords } from "./history-records-provider.js";
 import { createNotesKnowledgeSearchTool } from "./knowledge-corpus.js";
 import {
   resolveActionLogFile,
@@ -159,6 +161,30 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     })];
   })();
 
+  // `history_search` — the agent-callable "find where we talked about X" over
+  // the user's OWN past: chat episodes, notes, AND remembered facts (every
+  // source the tool advertises). Deterministic (CJK-aware lexical, no
+  // embeddings / no Ollama), so it is ON by default; opt out with
+  // MUSE_HISTORY_SEARCH_ENABLED=false. Per-source fail-soft: a thrown
+  // episodes/notes/memory reader drops only that source's records and degrades
+  // to the tool's no-match notice when none match (never breaks the agent loop).
+  const historySearchTools: MuseTool[] = (() => {
+    if (!parseBoolean(env.MUSE_HISTORY_SEARCH_ENABLED, true)) {
+      return [];
+    }
+    const userId = resolveDefaultUserId(env);
+    const historyNotesProvider = notesRegistry?.primary();
+    return [createHistorySearchTool({
+      records: (): Promise<readonly HistoryRecord[]> =>
+        buildHistoryRecords({
+          readEpisodes: () => readEpisodes(episodesFile),
+          ...(historyNotesProvider ? { notesProvider: historyNotesProvider } : {}),
+          userMemoryStore,
+          userId
+        })
+    })];
+  })();
+
   // Smart-home READ tools (home_state / home_entities) — perception, no
   // approval gate (unlike the gated home_action write). Opt-in via the
   // Home Assistant base URL + long-lived token.
@@ -212,6 +238,7 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     () => runnerTools,
     () => skillTools,
     () => knowledgeSearchTools,
+    () => historySearchTools,
     () => homeReadTools,
     () => emailReadTools,
     () => [createWeatherTool(env.MUSE_WEATHER_LOCATION?.trim() ? { defaultLocation: env.MUSE_WEATHER_LOCATION.trim() } : {})],
