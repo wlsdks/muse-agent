@@ -199,7 +199,7 @@ export async function rankKnowledgeChunks(
   if (options.hybrid === true) {
     const rrfK = Math.max(1, Math.trunc(finiteOr(options.rrfK, 60)));
     const queryTokens = lexicalTokens(query);
-    const key = (chunk: KnowledgeChunk): string => `${chunk.source} ${chunk.text}`;
+    const key = (chunk: KnowledgeChunk): string => `${chunk.source}\x00${chunk.text}`;
     const cosByKey = new Map<string, number>();
     const lexByKey = new Map<string, number>();
     const embByKey = new Map<string, readonly number[]>();

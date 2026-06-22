@@ -5,6 +5,7 @@ export * from "./chunks.js";
 export * from "./weakness.js";
 export * from "./verdict.js";
 export * from "./hit.js";
+export * from "./history-search.js";
 export * from "./conflict.js";
 export { MEMORY_INJECTION_PATTERNS, isMemoryInjection, defangMemoryInjection, neutralizeInjectionSpans, stripInjectionEvasionChars } from "@muse/agent-core";
 export * from "./prompt-escape.js";
