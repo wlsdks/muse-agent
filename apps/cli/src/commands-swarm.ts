@@ -24,6 +24,28 @@ import { embed } from "./embed.js";
 import type { ProgramIO } from "./program.js";
 
 /**
+ * Read an inbound A2A request body with a hard size cap so an unbounded
+ * (or malicious) POST can't exhaust memory — mirrors the webhook server's
+ * `readBody`. Rejects with "payload too large" once the cap is exceeded.
+ */
+export function readSwarmBody(req: import("node:http").IncomingMessage, maxBytes = 1024 * 1024): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let received = 0;
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      received += chunk.length;
+      if (received > maxBytes) {
+        req.destroy(new Error("payload too large"));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", reject);
+  });
+}
+
+/**
  * Produce one council member's reasoning, honouring this node's grounded-council
  * posture: in grounded mode (`MUSE_A2A_COUNCIL_GROUNDED`) the member self-abstains
  * (returns "") when its OWN notes hold no confident evidence for the question, so
@@ -363,19 +385,25 @@ export function registerSwarmCommands(program: Command, io: ProgramIO): void {
         ...(councilReason ? { councilReason } : {})
       });
       const server = createServer((req, res) => {
-        const chunks: Buffer[] = [];
-        req.on("data", (c: Buffer) => chunks.push(c));
-        req.on("end", () => {
-          void handler({
-            body: Buffer.concat(chunks).toString("utf8"),
-            headers: req.headers as Record<string, string | undefined>,
-            method: req.method ?? "GET",
-            path: req.url ?? "/"
-          }).then((r) => {
+        void readSwarmBody(req)
+          .then((body) =>
+            handler({
+              body,
+              headers: req.headers as Record<string, string | undefined>,
+              method: req.method ?? "GET",
+              path: req.url ?? "/"
+            })
+          )
+          .then((r) => {
             res.writeHead(r.status, { "content-type": r.contentType });
             res.end(r.body);
+          })
+          .catch(() => {
+            if (!res.headersSent) {
+              res.writeHead(413, { "content-type": "text/plain" });
+            }
+            res.end("payload too large");
           });
-        });
       });
       await new Promise<void>((resolve) => {
         server.listen(port, options.host, () => {

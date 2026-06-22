@@ -107,9 +107,21 @@ export async function readTrustLedger(file: string): Promise<readonly TrustLedge
 }
 
 async function writeTrustLedger(file: string, entries: readonly TrustLedgerEntry[]): Promise<void> {
-  const trimmed = entries.length > MAX_LEDGER_ENTRIES
-    ? entries.slice(entries.length - MAX_LEDGER_ENTRIES)
-    : entries;
+  // FIFO trim — but vetoed entries are learned avoidance and must NEVER be
+  // evicted: partition them out and FIFO-trim only the non-vetoed entries,
+  // otherwise a burst of newer surfaces would drop an old veto and the source
+  // would resurface (the precise failure the veto exists to prevent).
+  let trimmed: readonly TrustLedgerEntry[];
+  if (entries.length > MAX_LEDGER_ENTRIES) {
+    const vetoed = entries.filter((e) => e.outcome === "vetoed");
+    const rest = entries.filter((e) => e.outcome !== "vetoed");
+    const trimmedRest = rest.length > MAX_LEDGER_ENTRIES
+      ? rest.slice(rest.length - MAX_LEDGER_ENTRIES)
+      : rest;
+    trimmed = [...vetoed, ...trimmedRest];
+  } else {
+    trimmed = entries;
+  }
   // Atomic, fsync'd write via the shared primitive (randomUUID tmp → no same-ms
   // rename-collision crash; upgrades the prior non-fsync write to durable).
   await atomicWriteFile(file, `${JSON.stringify({ surfaced: trimmed }, null, 2)}\n`);

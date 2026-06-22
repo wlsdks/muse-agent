@@ -423,6 +423,28 @@ describe("mergeSalientFacts", () => {
   it("returns empty array when both inputs are empty", () => {
     expect(mergeSalientFacts([], [])).toEqual([]);
   });
+
+  it("keeps a just-refreshed fact on cap overflow (superseding key re-orders to the end)", () => {
+    // `budget` is the oldest previous entry but is superseded by fresh, so it
+    // is the FRESHEST fact and must survive eviction. Without delete-before-set
+    // it keeps its early insertion slot and is evicted as if stale.
+    const prev: StructuredFact[] = [
+      { key: "budget", value: "100만원", category: "NUMERIC" },
+      ...Array.from({ length: 4 }, (_, i) => ({
+        key: `old_fact_${i}`,
+        value: `val_${i}`,
+        category: "GENERAL" as const
+      }))
+    ];
+    const fresh: StructuredFact[] = [{ key: "budget", value: "200만원", category: "NUMERIC" }];
+
+    const merged = mergeSalientFacts(prev, fresh, 3);
+
+    expect(merged.length).toBe(3);
+    const budget = merged.find((f) => f.key === "budget");
+    expect(budget).toBeDefined();
+    expect(budget?.value).toBe("200만원");
+  });
 });
 
 // ---------------------------------------------------------------------------

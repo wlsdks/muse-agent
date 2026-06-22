@@ -431,7 +431,7 @@ export function validatePlan(input: PlanValidationInput): PlanValidationResult {
     const firstIndex = seenKeys.get(key);
     if (firstIndex !== undefined) {
       errors.push({
-        reason: `repeats step ${firstIndex.toString()} verbatim`,
+        reason: `repeats step ${(firstIndex + 1).toString()} verbatim`,
         stepIndex: index,
         tool: step.tool
       });

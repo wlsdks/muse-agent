@@ -12,7 +12,12 @@
  */
 
 import { readInbox } from "./inbox-store.js";
-import { advanceInboxInjectionCursor, readInboxInjectionCursor } from "./inbox-injection-cursor.js";
+import {
+  advanceInboxInjectionCursor,
+  readInboxInjectionCursor,
+  type InboxInjectionCursor,
+  type SourceCursor
+} from "./inbox-injection-cursor.js";
 import type { InboundMessage } from "./types.js";
 
 export interface InboxSourceConfig {
@@ -116,7 +121,7 @@ export class FileBackedInboxContextProvider {
     // Group by (providerId, source) so the cursor for a source moves
     // to the newest ISO we actually shipped — not to messages still
     // sitting in the unshipped tail.
-    const advanceBySource = new Map<string, { cursorFile: string; advance: Record<string, string> }>();
+    const advanceBySource = new Map<string, { cursorFile: string; advance: Record<string, SourceCursor> }>();
     for (const { message, providerId } of surfaced) {
       const config = collected.find((entry) => entry.config.providerId === providerId)?.config;
       if (!config) continue;
@@ -124,9 +129,17 @@ export class FileBackedInboxContextProvider {
         advance: {},
         cursorFile: config.cursorFile
       };
+      // Track the newest surfaced instant per source AND the set of
+      // messageIds surfaced AT that instant, so a second message sharing
+      // the boundary timestamp is remembered (and not re-surfaced) while
+      // an identical-timestamp message we did NOT ship stays fresh.
       const current = bucket.advance[message.source];
-      if (!current || message.receivedAtIso > current) {
-        bucket.advance[message.source] = message.receivedAtIso;
+      const mm = Date.parse(message.receivedAtIso);
+      const cm = current ? Date.parse(current.iso) : Number.NaN;
+      if (!current || (Number.isFinite(mm) && Number.isFinite(cm) && mm > cm) || (!Number.isFinite(cm) && message.receivedAtIso > current.iso)) {
+        bucket.advance[message.source] = { ids: [message.messageId], iso: message.receivedAtIso };
+      } else if (message.receivedAtIso === current.iso) {
+        bucket.advance[message.source] = { ids: [...current.ids, message.messageId], iso: current.iso };
       }
       advanceBySource.set(config.cursorFile, bucket);
     }
@@ -152,7 +165,7 @@ export class FileBackedInboxContextProvider {
 
 export function filterFresh(
   inbox: readonly InboundMessage[],
-  cursor: Readonly<Record<string, string>>,
+  cursor: InboxInjectionCursor,
   perProviderLimit: number
 ): readonly InboundMessage[] {
   // Compare parsed instants, not raw ISO strings. receivedAtIso is
@@ -179,13 +192,39 @@ export function filterFresh(
       return true;
     }
     const mm = Date.parse(message.receivedAtIso);
-    const lm = Date.parse(last);
+    const lm = Date.parse(last.iso);
     if (Number.isFinite(mm) && Number.isFinite(lm)) {
-      return mm > lm;
+      if (mm > lm) {
+        return true;
+      }
+      // At the boundary instant a message is fresh ONLY if the cursor
+      // tracks surfaced ids at that instant AND this id is not among
+      // them — so two distinct messages sharing a receivedAtIso are both
+      // eventually delivered, instead of one advancing the cursor past
+      // the other (message loss). An EMPTY id set is a legacy/strict
+      // boundary: the message at the instant is already-seen (preserving
+      // the original `mm > lm` semantics).
+      if (mm === lm) {
+        return last.ids.length > 0 && !last.ids.includes(message.messageId);
+      }
+      return false;
     }
-    return message.receivedAtIso > last;
+    if (message.receivedAtIso > last.iso) {
+      return true;
+    }
+    if (message.receivedAtIso === last.iso) {
+      return last.ids.length > 0 && !last.ids.includes(message.messageId);
+    }
+    return false;
   });
-  return fresh.slice(-perProviderLimit);
+  // Take the OLDEST `perProviderLimit` fresh messages (a contiguous
+  // prefix of the ascending-sorted list), NOT the newest. The caller
+  // advances the cursor to the newest message it actually surfaces, so
+  // surfacing the newest N would jump the cursor past the older fresh
+  // messages dropped by the cap — they'd be marked "already injected"
+  // and lost forever. A contiguous oldest prefix keeps the unshipped
+  // tail strictly newer than the cursor, so it resurfaces next turn.
+  return fresh.slice(0, perProviderLimit);
 }
 
 function toSummary(message: InboundMessage): InboundSummary {

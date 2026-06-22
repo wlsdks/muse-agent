@@ -243,8 +243,12 @@ export function mergeSalientFacts(
   const merged = new Map<string, StructuredFact>();
 
   // Previous first (older), then fresh (newer) — newer overwrites older.
+  // Delete-before-set so a superseding key takes a fresh end-of-order slot;
+  // a Map keeps the ORIGINAL insertion position on a plain re-set, which would
+  // leave a just-refreshed fact early in the order and evictable on overflow.
   for (const fact of [...previous, ...fresh]) {
     const key = normalizeMemoryKey(fact.key);
+    merged.delete(key);
     merged.set(key, { ...fact, key });
   }
 

@@ -436,6 +436,16 @@ describe("classifyReminderListQuery — the VIEW-my-reminders intent the model f
       expect(classifyReminderListQuery(q)).toBe(false);
     }
   });
+
+  it("treats 'what reminders are set' as a LIST query — bare 'set' must not veto it", () => {
+    expect(classifyReminderListQuery("what reminders are set")).toBe(true);
+    expect(classifyReminderListQuery("What reminders are set?")).toBe(true);
+  });
+
+  it("still vetoes 'set' as the leading write verb", () => {
+    expect(classifyReminderListQuery("set a reminder for 5pm")).toBe(false);
+    expect(classifyReminderListQuery("Set reminder to call mom")).toBe(false);
+  });
 });
 
 describe("classifyContactLookup — extract the contact name from a details lookup (the 8B abstains)", () => {

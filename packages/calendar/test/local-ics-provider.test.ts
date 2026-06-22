@@ -107,6 +107,38 @@ describe("expandRecurringEvent + recurring .ics", () => {
     expect(insts.map((e) => e.startsAt.toISOString().slice(0, 10))).toEqual(["2028-02-29", "2029-02-28", "2030-02-28"]);
   });
 
+  it("a DAILY series anchored a year before the window still surfaces in-window instances (cap is relative to the window, not the base)", () => {
+    // base a year+ before the query window: > MAX_RECURRENCE_INSTANCES (200) daily
+    // steps away, so a base-anchored cap is exhausted before reaching the window.
+    const farPast = {
+      ...base,
+      startsAt: new Date("2025-05-04T09:00:00Z"),
+      endsAt: new Date("2025-05-04T09:15:00Z"),
+      recurrence: "FREQ=DAILY"
+    };
+    const insts = expandRecurringEvent(farPast, from, to);
+    expect(insts.length).toBeGreaterThanOrEqual(6); // one per day across the 7-day window
+    for (const e of insts) {
+      expect(e.endsAt.getTime()).toBeGreaterThanOrEqual(from.getTime());
+      expect(e.startsAt.getTime()).toBeLessThanOrEqual(to.getTime());
+    }
+  });
+
+  it("a WEEKLY series anchored years before the window still reaches it", () => {
+    const farPast = {
+      ...base,
+      startsAt: new Date("2022-05-02T09:00:00Z"), // a Monday, ~4 years before the window
+      endsAt: new Date("2022-05-02T09:15:00Z"),
+      recurrence: "FREQ=WEEKLY"
+    };
+    const insts = expandRecurringEvent(farPast, from, to);
+    expect(insts.length).toBeGreaterThanOrEqual(1);
+    for (const e of insts) {
+      expect(e.endsAt.getTime()).toBeGreaterThanOrEqual(from.getTime());
+      expect(e.startsAt.getTime()).toBeLessThanOrEqual(to.getTime());
+    }
+  });
+
   it("a genuinely unsupported RRULE (e.g. HOURLY) surfaces the base event, never fabricated instances", () => {
     expect(expandRecurringEvent({ ...base, recurrence: "FREQ=HOURLY" }, from, to)).toEqual([{ ...base, recurrence: "FREQ=HOURLY" }]);
   });

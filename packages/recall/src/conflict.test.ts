@@ -71,6 +71,11 @@ describe("detectSourceConflict â€” evidence-vs-evidence contradiction (groundedâ
     expect(detectSourceConflict([a, b])).toEqual([]);
   });
 
+  it("ignores benign trailing punctuation in the value (5 vs 5. is not a conflict)", () => {
+    expect(detectSourceConflict([hit("a.md", "count: 5"), hit("b.md", "count: 5.")])).toEqual([]);
+    expect(detectSourceConflict([hit("a.md", "capital: Paris"), hit("b.md", "capital: Paris!")])).toEqual([]);
+  });
+
   it("returns [] for unrelated hits (no shared labelled field)", () => {
     const a = hit("a.md", "The meeting is on Tuesday.");
     const b = hit("b.md", "Remember to water the plants.");

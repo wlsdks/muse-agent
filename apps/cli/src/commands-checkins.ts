@@ -192,6 +192,7 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
         : result.reason === "already-cancelled" ? `Check-in '${id}' is already cancelled.`
         : `No scheduled check-in matches '${id}'. Run \`muse checkins list\` to see ids.`;
       io.stderr(`${message}\n`);
+      process.exitCode = 1;
     });
 
   checkins
@@ -202,6 +203,7 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
       const parsed = parseReminderDueAt(when, () => new Date());
       if (parsed instanceof Error) {
         io.stderr(`muse checkins snooze: ${parsed.message}\n`);
+        process.exitCode = 1;
         return;
       }
       const file = checkinsFile();
@@ -224,5 +226,6 @@ export function registerCheckinsCommands(program: Command, io: ProgramIO): void 
         : result.reason === "already-cancelled" ? `Check-in '${id}' is cancelled — nothing to snooze.`
         : `No scheduled check-in matches '${id}'. Run \`muse checkins list\` to see ids.`;
       io.stderr(`${message}\n`);
+      process.exitCode = 1;
     });
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { MuseTool, MuseToolDefinition } from "@muse/tools";
 import { filterToolsForContext } from "@muse/tools";
 
-import { DefaultToolFilter, capToolsByRelevance, inferDomain } from "../src/tool-filter.js";
+import { DefaultToolFilter, capToolsByRelevance, inferDomain, promptTokenCacheSize } from "../src/tool-filter.js";
 
 function tool(definition: MuseToolDefinition): MuseTool {
   return { definition, execute: () => "ok" };
@@ -15,6 +15,20 @@ const tools: readonly MuseTool[] = [
   tool({ description: "Note search", domain: "notes", inputSchema: {}, name: "muse.notes.search", risk: "read" }),
   tool({ description: "No domain", inputSchema: {}, name: "legacy.untagged", risk: "read" })
 ];
+
+describe("promptTokenCache bound", () => {
+  it("does not grow without limit when classifying many distinct prompts", () => {
+    // The home tool's keyword "light" makes the keyword matcher (and thus the
+    // prompt-token cache) run on every classified prompt. Feed 5000 distinct
+    // prompts and assert the cache stays bounded rather than retaining one
+    // entry per prompt forever (the long-running-daemon leak).
+    const homeTool = tool({ description: "Home", domain: "home", inputSchema: {}, keywords: ["light"], name: "home_state", risk: "read" });
+    for (let i = 0; i < 5_000; i += 1) {
+      capToolsByRelevance([homeTool], { maxTools: 6, userMessage: `distinct prompt number ${i.toString()} zzz` });
+    }
+    expect(promptTokenCacheSize()).toBeLessThanOrEqual(1_000);
+  });
+});
 
 describe("DefaultToolFilter", () => {
   const filter = new DefaultToolFilter();

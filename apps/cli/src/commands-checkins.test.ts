@@ -127,6 +127,52 @@ describe("checkins list — ordered by due date, soonest first (sibling parity w
   });
 });
 
+describe("checkins snooze/cancel — failure paths exit non-zero (parity with scan/list)", () => {
+  const prevEnv = process.env.MUSE_CHECKINS_FILE;
+  beforeEach(() => {
+    process.env.MUSE_CHECKINS_FILE = join(mkdtempSync(join(tmpdir(), "muse-checkins-")), "checkins.json");
+  });
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.MUSE_CHECKINS_FILE;
+    else process.env.MUSE_CHECKINS_FILE = prevEnv;
+  });
+
+  it("snooze with an unparseable <when> exits 1, not 0", async () => {
+    await writeCheckins(checkinsFile(), [checkin({ id: "c1", sourceKey: "c1" })]);
+    const r = await runCheckins(["snooze", "c1", "notarealtime"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("muse checkins snooze:");
+  });
+
+  it("snooze of a non-matching id exits 1, not 0", async () => {
+    await writeCheckins(checkinsFile(), [checkin({ id: "c1", sourceKey: "c1" })]);
+    const r = await runCheckins(["snooze", "nope", "next week"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("No scheduled check-in matches 'nope'");
+  });
+
+  it("cancel of a non-matching id exits 1, not 0", async () => {
+    await writeCheckins(checkinsFile(), [checkin({ id: "c1", sourceKey: "c1" })]);
+    const r = await runCheckins(["cancel", "nope"]);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("No scheduled check-in matches 'nope'");
+  });
+
+  it("a successful snooze still exits 0", async () => {
+    await writeCheckins(checkinsFile(), [checkin({ id: "c1", sourceKey: "c1" })]);
+    const r = await runCheckins(["snooze", "c1", "next week"]);
+    expect(r.exitCode).toBeUndefined();
+    expect(r.stdout).toContain("Snoozed check-in");
+  });
+
+  it("a successful cancel still exits 0", async () => {
+    await writeCheckins(checkinsFile(), [checkin({ id: "c1", sourceKey: "c1" })]);
+    const r = await runCheckins(["cancel", "c1"]);
+    expect(r.exitCode).toBeUndefined();
+    expect(r.stdout).toContain("Cancelled check-in");
+  });
+});
+
 describe("checkins scan — numeric option validation (parity with calendar/feeds/today)", () => {
   const prevEnv = process.env.MUSE_CHECKINS_FILE;
   beforeEach(() => {

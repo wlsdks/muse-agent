@@ -316,10 +316,11 @@ function runChild(
       resolve({ exitCode, signal: typeof signal === "string" ? signal : null, stderr, stdout, timedOut });
     });
 
-    if (options.stdin && child.stdin) {
-      child.stdin.write(options.stdin);
-      child.stdin.end();
-    } else if (child.stdin) {
+    if (child.stdin) {
+      child.stdin.on("error", () => undefined);
+      if (options.stdin) {
+        child.stdin.write(options.stdin);
+      }
       child.stdin.end();
     }
   });

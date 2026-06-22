@@ -269,31 +269,31 @@ export function registerSetupCommands(program: Command, io: ProgramIO): void {
  * calendar (local provider works offline, optional remote
  * providers later), then messaging (Slack/Discord/Telegram/LINE).
  */
-async function runSetupWizard(io: { stderr(line: string): void; stdout(line: string): void }): Promise<void> {
-  io.stdout("");
-  io.stdout("─── Muse setup wizard ────────────────────────────");
-  io.stdout("Three steps: model → calendar → messaging.");
-  io.stdout("You can stop at any step and resume with `muse setup <area>` later.");
-  io.stdout("");
+export async function runSetupWizard(io: { stderr(line: string): void; stdout(line: string): void }): Promise<void> {
+  io.stdout("\n");
+  io.stdout("─── Muse setup wizard ────────────────────────────\n");
+  io.stdout("Three steps: model → calendar → messaging.\n");
+  io.stdout("You can stop at any step and resume with `muse setup <area>` later.\n");
+  io.stdout("\n");
 
-  io.stdout("[1/3] Model provider");
-  io.stdout("─────────────────────");
+  io.stdout("[1/3] Model provider\n");
+  io.stdout("─────────────────────\n");
   await runModelSetup(io);
-  io.stdout("");
+  io.stdout("\n");
 
-  io.stdout("[2/3] Calendar");
-  io.stdout("─────────────────");
+  io.stdout("[2/3] Calendar\n");
+  io.stdout("─────────────────\n");
   await runCalendarSetup(io);
-  io.stdout("");
+  io.stdout("\n");
 
-  io.stdout("[3/3] Messaging");
-  io.stdout("──────────────────");
+  io.stdout("[3/3] Messaging\n");
+  io.stdout("──────────────────\n");
   await runMessagingSetup(io);
-  io.stdout("");
+  io.stdout("\n");
 
-  io.stdout("──── Wizard complete ────");
-  io.stdout("Run `muse setup` (no args) to verify the final health-check report.");
-  io.stdout("");
+  io.stdout("──── Wizard complete ────\n");
+  io.stdout("Run `muse setup` (no args) to verify the final health-check report.\n");
+  io.stdout("\n");
 }
 
 async function renderSetupStatus(): Promise<string> {

@@ -110,7 +110,9 @@ export {
 export {
   advanceInboxInjectionCursor,
   readInboxInjectionCursor,
-  writeInboxInjectionCursor
+  writeInboxInjectionCursor,
+  type InboxInjectionCursor,
+  type SourceCursor
 } from "./inbox-injection-cursor.js";
 
 export {

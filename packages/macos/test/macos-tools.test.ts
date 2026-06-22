@@ -1,3 +1,6 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 import { validateToolDefinitions } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
@@ -116,8 +119,15 @@ describe("mac_app_open — Tier 1 open app/URL/file", () => {
   it("opens a file path directly (no -a)", async () => {
     let argv: readonly string[] = [];
     const tool = createMacAppOpenTool({ runner: async (a) => { argv = a; return ok(""); } });
+    await tool.execute({ target: "/tmp/report.pdf" }, ctx);
+    expect(argv).toEqual(["/tmp/report.pdf"]);
+  });
+
+  it("expands a leading ~/ before spawning open (spawn does no shell expansion)", async () => {
+    let argv: readonly string[] = [];
+    const tool = createMacAppOpenTool({ runner: async (a) => { argv = a; return ok(""); } });
     await tool.execute({ target: "~/report.pdf" }, ctx);
-    expect(argv).toEqual(["~/report.pdf"]);
+    expect(argv).toEqual([join(homedir(), "report.pdf")]);
   });
 
   it("forces a URL into a specific app via -a app target", async () => {

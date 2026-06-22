@@ -156,6 +156,22 @@ describe("muse.skills.run allowlist enforcement", () => {
     expect(out.timedOut).toBe(true);
     expect(fakeChild.killed).toBe(true);
   });
+
+  it("survives an EPIPE on the child's stdin (binary exited before consuming stdin) without crashing the parent", async () => {
+    // Pre-fix runChild wrote/ended child.stdin with no `error` listener.
+    // A binary that exits while the parent is writing closes the pipe and
+    // the Writable emits an `error` (EPIPE); EventEmitter's contract is to
+    // THROW when an `error` event has no listener, taking down the parent.
+    const fakeChild = makeFakeChild({ exitCode: 0, stdinEpipeOnWrite: true, stdout: "ok\n" });
+    spawnMock.mockReturnValueOnce(fakeChild);
+    const tool = createSkillRunTool(makeRegistry([gh]), { spawnImpl: spawnMock as never });
+    const out = (await tool.execute(
+      { command: "gh pr list", name: "gh", stdin: "payload" },
+      { runId: "r-1" }
+    )) as { readonly exitCode: number | null; readonly stdout: string };
+    expect(out.exitCode).toBe(0);
+    expect(out.stdout).toContain("ok");
+  });
 });
 
 interface FakeChildOptions {
@@ -163,12 +179,19 @@ interface FakeChildOptions {
   readonly stderr?: string;
   readonly exitCode?: number | null;
   readonly neverClose?: boolean;
+  /** Emit an `error` (EPIPE) on stdin the moment the parent writes/ends it. */
+  readonly stdinEpipeOnWrite?: boolean;
+}
+
+interface FakeStdin extends EventEmitter {
+  write(payload: string): void;
+  end(): void;
 }
 
 interface FakeChild extends EventEmitter {
   readonly stdout: EventEmitter;
   readonly stderr: EventEmitter;
-  readonly stdin: { write(payload: string): void; end(): void };
+  readonly stdin: FakeStdin;
   kill(signal?: string): boolean;
   fireClose(code: number | null, signal?: string): void;
   killed: boolean;
@@ -178,7 +201,15 @@ function makeFakeChild(options: FakeChildOptions): FakeChild {
   const emitter = new EventEmitter() as FakeChild;
   emitter.stdout = new EventEmitter();
   emitter.stderr = new EventEmitter();
-  emitter.stdin = { end: () => undefined, write: () => undefined };
+  const stdin = new EventEmitter() as FakeStdin;
+  const epipe = () => {
+    if (options.stdinEpipeOnWrite) {
+      stdin.emit("error", Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
+    }
+  };
+  stdin.write = () => epipe();
+  stdin.end = () => epipe();
+  emitter.stdin = stdin;
   emitter.killed = false;
   emitter.kill = (_signal?: string) => {
     emitter.killed = true;

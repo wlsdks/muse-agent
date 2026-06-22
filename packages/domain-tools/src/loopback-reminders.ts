@@ -259,11 +259,12 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           const scoped = filterReminders(all, status, now);
           const matches = scoped
             .filter((reminder) => reminder.text.toLowerCase().includes(needle))
-            .sort(compareRemindersByDueAt)
-            .slice(0, maxListEntries);
+            .sort(compareRemindersByDueAt);
+          const shownMatches = matches.slice(0, maxListEntries);
           return {
             query,
-            reminders: matches.map((reminder) => serializeReminderForModel(reminder, now)) as JsonValue,
+            reminders: shownMatches.map((reminder) => serializeReminderForModel(reminder, now)) as JsonValue,
+            shown: shownMatches.length,
             status,
             total: matches.length
           };

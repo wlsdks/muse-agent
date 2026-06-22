@@ -120,4 +120,37 @@ describe("proposed actions — draft-first, confirm-to-execute (outbound-safety)
     expect((await readProposedActions(file))[0]!.status).toBe("pending");
     expect((await queryActionLog(actionLogFile, {}))[0]).toMatchObject({ result: "failed" });
   });
+
+  it("two concurrent confirms of the same pending proposal send EXACTLY once", async () => {
+    const { actionLogFile, file } = paths();
+    const proposal = await proposeMessageAction(file, draft);
+    const sent: OutboundMessage[] = [];
+    // A send that yields control before recording, so two unguarded confirms
+    // would both clear the pending check and both send (the double-send bug).
+    const slow: MessagingProvider = {
+      describe: () => ({ description: "t", displayName: "T", id: "telegram" }),
+      id: "telegram",
+      async send(message: OutboundMessage): Promise<OutboundReceipt> {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        sent.push(message);
+        return { destination: message.destination, messageId: "m1", providerId: "telegram" };
+      }
+    };
+    const registry = new MessagingProviderRegistry([slow]);
+
+    const [first, second] = await Promise.all([
+      confirmProposedAction({ actionLogFile, file, id: proposal.id, registry }),
+      confirmProposedAction({ actionLogFile, file, id: proposal.id, registry })
+    ]);
+
+    expect(sent).toHaveLength(1);
+    const executed = [first, second].filter((r) => r.executed);
+    const refused = [first, second].filter((r) => !r.executed);
+    expect(executed).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(refused[0]).toMatchObject({ executed: false, reason: "already executed" });
+    expect((await readProposedActions(file))[0]!.status).toBe("executed");
+    const performed = (await queryActionLog(actionLogFile, {})).filter((e) => e.result === "performed");
+    expect(performed).toHaveLength(1);
+  });
 });

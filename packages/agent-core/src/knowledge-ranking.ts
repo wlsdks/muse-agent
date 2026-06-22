@@ -258,7 +258,7 @@ export async function rankKnowledgeChunks(
     scored.push({ embedding, match: { cosine: score, score, source: chunk.source, text: chunk.text } });
   }
   if (options.diversify === true && scored.length > topK) {
-    const lambda = Math.min(1, Math.max(0, finiteOr(options.mmrLambda, 0.7)));
+    const lambda = Math.min(1, Math.max(0, finiteOr(options.mmrLambda, 0.5)));
     const order = selectByMmr(
       scored.map((entry, index) => ({ embedding: entry.embedding, key: String(index), relevance: entry.match.score })),
       lambda,

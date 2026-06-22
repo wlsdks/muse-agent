@@ -4,9 +4,20 @@ import { join } from "node:path";
 
 import type { SetupStatusSnapshot } from "@muse/autoconfigure";
 import { Command } from "commander";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { comparePreviewEntriesByWhen, formatSetupStatusLines, registerSchedulerCommands, type PreviewEntry } from "./commands-scheduler-setup.js";
+vi.mock("./setup-model.js", () => ({
+  runModelSetup: (io: { stdout(s: string): void }) => { io.stdout("model step\n"); return Promise.resolve(); },
+  SETUP_MODEL_PROVIDER_SPECS: []
+}));
+vi.mock("./setup-calendar.js", () => ({
+  runCalendarSetup: (io: { stdout(s: string): void }) => { io.stdout("calendar step\n"); return Promise.resolve(); }
+}));
+vi.mock("./setup-messaging.js", () => ({
+  runMessagingSetup: (io: { stdout(s: string): void }) => { io.stdout("messaging step\n"); return Promise.resolve(); }
+}));
+
+import { comparePreviewEntriesByWhen, formatSetupStatusLines, registerSchedulerCommands, runSetupWizard, type PreviewEntry } from "./commands-scheduler-setup.js";
 import type { ProgramIO } from "./program.js";
 
 const entry = (when: string, label: string, kind: PreviewEntry["kind"] = "reminder"): PreviewEntry =>
@@ -130,5 +141,22 @@ describe("formatSetupStatusLines — an `ok` section's advisory nextStep is stil
     const out = formatSetupStatusLines(snap).join("\n");
     expect(out).toContain("voice — stt=openai-whisper, tts=openai-tts");
     expect(out).not.toContain("MUSE_PIPER_VOICE");
+  });
+});
+
+describe("runSetupWizard — banner/section lines carry their own newline (do not run together)", () => {
+  it("every wizard stdout line ends with a newline so steps are not concatenated", async () => {
+    const chunks: string[] = [];
+    await runSetupWizard({ stderr: () => {}, stdout: (s) => chunks.push(s) });
+    // ProgramIO.stdout appends nothing — the caller owns the trailing \n.
+    // A bare line missing it would run into the next on one terminal line.
+    for (const chunk of chunks) {
+      expect(chunk.endsWith("\n"), `wizard chunk lacked a trailing newline: ${JSON.stringify(chunk)}`).toBe(true);
+    }
+    // And the section headers must each be their OWN line, never glued to text.
+    const joined = chunks.join("");
+    expect(joined).toContain("[1/3] Model provider\n");
+    expect(joined).not.toContain("[1/3] Model provider─");
+    expect(joined).not.toContain("Three steps: model → calendar → messaging.You can stop");
   });
 });

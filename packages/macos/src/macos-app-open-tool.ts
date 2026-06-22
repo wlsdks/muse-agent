@@ -1,3 +1,6 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 import type { JsonObject } from "@muse/shared";
 import type { MuseTool } from "@muse/tools";
 
@@ -11,6 +14,11 @@ const OPEN_TIMEOUT_MS = 15_000;
 /** A URL (scheme://) or a filesystem path — vs a bare app name. */
 function looksLikeUrlOrPath(target: string): boolean {
   return /^[a-z][a-z0-9+.-]*:\/\//iu.test(target) || /^[~/.]/u.test(target);
+}
+
+/** `spawn` does no shell expansion, so a leading `~/` must be resolved before argv. */
+function expandTilde(p: string): string {
+  return p.startsWith("~/") ? join(homedir(), p.slice(2)) : p;
 }
 
 export interface MacAppOpenToolDeps {
@@ -57,7 +65,7 @@ export function createMacAppOpenTool(deps: MacAppOpenToolDeps = {}): MuseTool {
       const app = typeof args["app"] === "string" ? args["app"].trim() : "";
       const argv = app.length > 0
         ? ["-a", app, target]
-        : (looksLikeUrlOrPath(target) ? [target] : ["-a", target]);
+        : (looksLikeUrlOrPath(target) ? [expandTilde(target)] : ["-a", target]);
       let result: MacCommandResult;
       try {
         result = await runner(argv);

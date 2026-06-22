@@ -8,9 +8,52 @@ import { AuthoredSkillStore } from "@muse/skills";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { buildSwarmSkillDraft, gatherCouncil, registerSwarmCommands, renderCouncilResult, renderPending, renderShareDraft, type CouncilGatherOverride } from "./commands-swarm.js";
+import { EventEmitter } from "node:events";
+
+import { buildSwarmSkillDraft, gatherCouncil, readSwarmBody, registerSwarmCommands, renderCouncilResult, renderPending, renderShareDraft, type CouncilGatherOverride } from "./commands-swarm.js";
 import type { ProgramIO } from "./program.js";
 import { hasCouncilConsensus, type CouncilUtterance } from "@muse/agent-core";
+
+describe("readSwarmBody — inbound A2A body is size-capped (no unbounded accumulation)", () => {
+  class MockReq extends EventEmitter {
+    destroyed = false;
+    destroyError: Error | undefined;
+    destroy(err?: Error): void {
+      this.destroyed = true;
+      this.destroyError = err;
+      this.emit("error", err);
+    }
+  }
+
+  it("resolves the full body when under the cap", async () => {
+    const req = new MockReq();
+    const p = readSwarmBody(req as unknown as import("node:http").IncomingMessage, 1024);
+    req.emit("data", Buffer.from("hello "));
+    req.emit("data", Buffer.from("world"));
+    req.emit("end");
+    await expect(p).resolves.toBe("hello world");
+    expect(req.destroyed).toBe(false);
+  });
+
+  it("destroys the request and rejects once the byte cap is exceeded", async () => {
+    const req = new MockReq();
+    const p = readSwarmBody(req as unknown as import("node:http").IncomingMessage, 8);
+    // First chunk fits, second blows the cap — the old code would keep
+    // accumulating unbounded; the guard must destroy + reject here.
+    req.emit("data", Buffer.from("12345"));
+    req.emit("data", Buffer.from("67890"));
+    await expect(p).rejects.toThrow("payload too large");
+    expect(req.destroyed).toBe(true);
+  });
+
+  it("defaults to a 1 MiB cap — a >1 MiB body is rejected", async () => {
+    const req = new MockReq();
+    const p = readSwarmBody(req as unknown as import("node:http").IncomingMessage);
+    req.emit("data", Buffer.alloc(1024 * 1024 + 1));
+    await expect(p).rejects.toThrow("payload too large");
+    expect(req.destroyed).toBe(true);
+  });
+});
 
 describe("gatherCouncil + renderCouncilResult", () => {
   const peer = (id: string) => ({ id, secret: "s", url: `https://${id}/a2a` });

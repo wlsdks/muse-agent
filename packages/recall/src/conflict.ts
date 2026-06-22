@@ -64,9 +64,14 @@ function isAttributeLabel(field: string): boolean {
   return !PROSE_LABELS.has(field) && !/\d$/u.test(field);
 }
 
-/** Comparison key for a value: lowercase, collapse whitespace, strip wrapping quotes/trailing punctuation. */
+/** Comparison key for a value: lowercase, collapse whitespace, strip wrapping quotes and leading/trailing punctuation. */
 function valueKey(value: string): string {
-  return value.toLowerCase().replace(/\s+/gu, " ").replace(/^["'`]+|["'`]+$/gu, "").trim();
+  return value
+    .toLowerCase()
+    .replace(/\s+/gu, " ")
+    .replace(/^["'`]+|["'`]+$/gu, "")
+    .replace(/^[\p{P}\s]+|[\p{P}\s]+$/gu, "")
+    .trim();
 }
 
 /** The first labelled value per field within one snippet (intra-hit duplicates ignored). */

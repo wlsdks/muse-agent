@@ -80,6 +80,29 @@ function occurrenceStart(base: Date, rule: ParsedRrule, i: number): Date {
 }
 
 /**
+ * Index of the first occurrence whose end can fall at/after `fromMs`, so the
+ * MAX_RECURRENCE_INSTANCES cap is spent on the QUERY WINDOW, not exhausted
+ * stepping through years of past occurrences before reaching it. Computed by
+ * integer arithmetic from the fixed period (the cadence's average ms for
+ * MONTHLY/YEARLY); deliberately UNDER-estimates (floor, then back off one) so
+ * day-clamping / month-length variance never skips a real in-window instance.
+ */
+function firstWindowIndex(base: Date, rule: ParsedRrule, fromMs: number, durationMs: number): number {
+  const baseMs = base.getTime();
+  const earliestStartMs = fromMs - durationMs; // an occurrence whose end ≥ fromMs may start this early
+  if (earliestStartMs <= baseMs) return 0;
+  const dayMs = 86_400_000;
+  const periodMs =
+    rule.freq === "DAILY" ? rule.interval * dayMs
+    : rule.freq === "WEEKLY" ? rule.interval * 7 * dayMs
+    : rule.freq === "MONTHLY" ? rule.interval * 30 * dayMs
+    : rule.freq === "YEARLY" ? rule.interval * 365 * dayMs
+    : dayMs;
+  const estimate = Math.floor((earliestStartMs - baseMs) / periodMs);
+  return Math.max(0, estimate - 1); // back off one so an under-count from clamping can't skip an instance
+}
+
+/**
  * Expand a recurring event into the instances that fall within `[from, to]`.
  * Non-recurring (or an unsupported RRULE) ⇒ the event unchanged. Handles
  * FREQ=DAILY/WEEKLY/MONTHLY/YEARLY (+INTERVAL/COUNT/UNTIL) — monthly/yearly step
@@ -100,7 +123,8 @@ export function expandRecurringEvent(event: CalendarEvent, from: Date, to: Date)
   const fromMs = from.getTime();
   const toMs = to.getTime();
   const out: CalendarEvent[] = [];
-  for (let i = 0; i < MAX_RECURRENCE_INSTANCES; i += 1) {
+  const firstIndex = firstWindowIndex(base, rule, fromMs, durationMs);
+  for (let n = 0, i = firstIndex; n < MAX_RECURRENCE_INSTANCES; n += 1, i += 1) {
     if (rule.count !== undefined && i >= rule.count) break;
     const startMs = occurrenceStart(base, rule, i).getTime();
     if (rule.until !== undefined && startMs > rule.until) break;

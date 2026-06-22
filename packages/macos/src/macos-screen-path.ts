@@ -6,7 +6,7 @@
  * traversal guard is unit-testable in isolation.
  */
 
-import { realpathSync } from "node:fs";
+import { lstatSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve as resolvePath } from "node:path";
 
@@ -15,6 +15,14 @@ export function tryRealpath(p: string): string {
     return realpathSync(p);
   } catch {
     return p;
+  }
+}
+
+export function isSymlink(p: string): boolean {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
   }
 }
 
@@ -34,7 +42,8 @@ function expandTilde(p: string): string {
 
 export function resolveScreenshotPath(
   raw: string,
-  realpath: (p: string) => string = tryRealpath
+  realpath: (p: string) => string = tryRealpath,
+  symlinkAt: (p: string) => boolean = isSymlink
 ): { ok: true; resolved: string } | { ok: false; error: string } {
   const expanded = expandTilde(raw.trim());
   const name = basename(expanded);
@@ -55,9 +64,14 @@ export function resolveScreenshotPath(
   const resolved = resolvePath(parent, name);
   // A pre-existing symlink AT the target is FOLLOWED on write (`screencapture -x`
   // opens with O_TRUNC), so the parent-dir check alone lets `<allowed>/shot.png ->
-  // /etc/passwd` escape. Realpath the FULL target and re-check the real write
-  // location is still within an allowed root — mirrors the loopback-filesystem
-  // symlink-escape fix. A non-existent target realpaths to itself (no escape).
+  // /etc/passwd` escape. A symlink AT the target is rejected outright regardless of
+  // whether its target exists — a DANGLING symlink throws in realpath (which would
+  // otherwise read as "no escape") yet still redirects the write on creation.
+  if (symlinkAt(resolved)) {
+    return { ok: false, error: `screenshot path is a symlink and could redirect the write outside the allowed dirs: ${resolved}` };
+  }
+  // Realpath the FULL target and re-check the real write location is still within an
+  // allowed root — mirrors the loopback-filesystem symlink-escape fix.
   const realTarget = realpath(resolved);
   if (realTarget !== resolved && !withinRoot(tryRealpath(dirname(realTarget)))) {
     return { ok: false, error: `screenshot path resolves through a symlink outside the allowed dirs: ${realTarget}` };

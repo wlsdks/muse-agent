@@ -7,7 +7,7 @@
  */
 
 import { appendActionLog } from "@muse/stores";
-import { isProposalActionable, patchProposedActionStatus, readProposedActions } from "@muse/stores";
+import { isProposalActionable, patchProposedActionStatus, readProposedActions, withFileMutationQueue } from "@muse/stores";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
@@ -30,49 +30,54 @@ export type ConfirmOutcome =
  */
 export async function confirmProposedAction(options: ConfirmProposedActionOptions): Promise<ConfirmOutcome> {
   const now = options.now ?? (() => new Date());
-  const proposals = await readProposedActions(options.file);
-  const proposal = proposals.find((p) => p.id === options.id);
-  if (!proposal) {
-    return { executed: false, reason: `no proposed action '${options.id}'` };
-  }
-  if (proposal.status !== "pending") {
-    return { executed: false, reason: `already ${proposal.status}` };
-  }
-  if (!isProposalActionable(proposal, now())) {
-    // Past its expiry — outbound-safety: a timed-out approval never sends.
-    return { executed: false, reason: "expired" };
-  }
-  const whenIso = now().toISOString();
-  try {
-    const receipt = await options.registry.send(proposal.providerId, {
-      destination: proposal.destination,
-      text: proposal.text
-    });
-    await patchProposedActionStatus(options.file, proposal.id, "executed", whenIso);
-    await appendActionLog(options.actionLogFile, {
-      detail: `confirmed proposal ${proposal.id} → ${proposal.providerId}:${proposal.destination}`,
-      id: `act_${proposal.id}_${Date.parse(whenIso).toString(36)}`,
-      result: "performed",
-      userId: proposal.userId,
-      what: proposal.summary,
-      when: whenIso,
-      why: proposal.reason
-    });
-    return { executed: true, messageId: receipt.messageId };
-  } catch (cause) {
-    const message = cause instanceof Error ? cause.message : String(cause);
-    // Leave it `pending` so the user can retry; record the failure.
-    await appendActionLog(options.actionLogFile, {
-      detail: `send failed: ${message}`,
-      id: `act_${proposal.id}_${Date.parse(whenIso).toString(36)}`,
-      result: "failed",
-      userId: proposal.userId,
-      what: proposal.summary,
-      when: whenIso,
-      why: proposal.reason
-    });
-    return { executed: false, reason: `send failed: ${message}` };
-  }
+  // Serialize read→guard→send→patch on the per-file mutation queue so two
+  // concurrent confirms can't both pass the `pending` check and double-send:
+  // the second runs only after the first has flipped status to `executed`.
+  return withFileMutationQueue(options.file, async () => {
+    const proposals = await readProposedActions(options.file);
+    const proposal = proposals.find((p) => p.id === options.id);
+    if (!proposal) {
+      return { executed: false, reason: `no proposed action '${options.id}'` };
+    }
+    if (proposal.status !== "pending") {
+      return { executed: false, reason: `already ${proposal.status}` };
+    }
+    if (!isProposalActionable(proposal, now())) {
+      // Past its expiry — outbound-safety: a timed-out approval never sends.
+      return { executed: false, reason: "expired" };
+    }
+    const whenIso = now().toISOString();
+    try {
+      const receipt = await options.registry.send(proposal.providerId, {
+        destination: proposal.destination,
+        text: proposal.text
+      });
+      await patchProposedActionStatus(options.file, proposal.id, "executed", whenIso);
+      await appendActionLog(options.actionLogFile, {
+        detail: `confirmed proposal ${proposal.id} → ${proposal.providerId}:${proposal.destination}`,
+        id: `act_${proposal.id}_${Date.parse(whenIso).toString(36)}`,
+        result: "performed",
+        userId: proposal.userId,
+        what: proposal.summary,
+        when: whenIso,
+        why: proposal.reason
+      });
+      return { executed: true, messageId: receipt.messageId };
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      // Leave it `pending` so the user can retry; record the failure.
+      await appendActionLog(options.actionLogFile, {
+        detail: `send failed: ${message}`,
+        id: `act_${proposal.id}_${Date.parse(whenIso).toString(36)}`,
+        result: "failed",
+        userId: proposal.userId,
+        what: proposal.summary,
+        when: whenIso,
+        why: proposal.reason
+      });
+      return { executed: false, reason: `send failed: ${message}` };
+    }
+  });
 }
 
 export interface DeclineProposedActionOptions {

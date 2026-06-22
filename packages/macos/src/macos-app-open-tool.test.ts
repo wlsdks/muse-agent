@@ -1,3 +1,6 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 import type { MacCommandResult } from "./macos-exec.js";
 import { describe, expect, it } from "vitest";
 
@@ -38,8 +41,15 @@ describe("createMacAppOpenTool", () => {
   it("opens a filesystem path directly (no -a) — not as a bare app name", async () => {
     let argv: readonly string[] = [];
     const tool = createMacAppOpenTool({ runner: async (a) => { argv = a; return ok(""); } });
-    await tool.execute({ target: "~/report.pdf" }, ctx);
-    expect(argv).toEqual(["~/report.pdf"]);
+    await tool.execute({ target: "/tmp/report.pdf" }, ctx);
+    expect(argv).toEqual(["/tmp/report.pdf"]);
+  });
+
+  it("expands a leading ~/ to homedir before spawning (spawn does no shell expansion)", async () => {
+    let argv: readonly string[] = [];
+    const tool = createMacAppOpenTool({ runner: async (a) => { argv = a; return ok(""); } });
+    await tool.execute({ target: "~/Documents/x.pdf" }, ctx);
+    expect(argv).toEqual([join(homedir(), "Documents/x.pdf")]);
   });
 
   it("forces a specific app with -a when `app` is given", async () => {

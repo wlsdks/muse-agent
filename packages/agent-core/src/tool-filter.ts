@@ -292,6 +292,10 @@ function keywordMatchesPrompt(keyword: string, promptLower: string): boolean {
 }
 
 const promptTokenCache = new Map<string, Set<string>>();
+// Bound the cache so a long-running daemon classifying many distinct prompts
+// doesn't grow it without limit. Map preserves insertion order, so deleting the
+// first key on overflow is FIFO eviction.
+const PROMPT_TOKEN_CACHE_MAX = 1_000;
 
 function tokenizePromptCache(promptLower: string): Set<string> {
   const cached = promptTokenCache.get(promptLower);
@@ -304,8 +308,19 @@ function tokenizePromptCache(promptLower: string): Set<string> {
       tokens.add(token);
     }
   }
+  if (promptTokenCache.size >= PROMPT_TOKEN_CACHE_MAX) {
+    const oldest = promptTokenCache.keys().next().value;
+    if (oldest !== undefined) {
+      promptTokenCache.delete(oldest);
+    }
+  }
   promptTokenCache.set(promptLower, tokens);
   return tokens;
+}
+
+/** Current entry count of the prompt-token cache. Observability for the bound. */
+export function promptTokenCacheSize(): number {
+  return promptTokenCache.size;
 }
 
 /**

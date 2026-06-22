@@ -48,13 +48,18 @@ const sampleMessages: readonly InboundMessage[] = [
 
 describe("filterFresh", () => {
   it("filters out messages older than the cursor per source", () => {
-    const fresh = filterFresh(sampleMessages, { C1: "2026-05-11T08:00:00.000Z" }, 10);
+    const fresh = filterFresh(sampleMessages, { C1: { ids: [], iso: "2026-05-11T08:00:00.000Z" } }, 10);
     expect(fresh.map((m) => m.messageId)).toEqual(["2", "3"]);
   });
 
-  it("caps to perProviderLimit (newest first)", () => {
+  it("caps to perProviderLimit (OLDEST first, so the cursor advances over a contiguous prefix)", () => {
+    // The cap keeps the OLDEST perProviderLimit fresh messages: the
+    // caller advances the cursor to the newest it surfaces, so keeping a
+    // contiguous oldest prefix leaves the unshipped tail strictly newer
+    // than the cursor (it resurfaces next turn). Keeping the NEWEST N
+    // would jump the cursor past — and silently lose — the older ones.
     const fresh = filterFresh(sampleMessages, {}, 2);
-    expect(fresh).toHaveLength(2);
+    expect(fresh.map((m) => m.messageId)).toEqual(["1", "2"]);
   });
 
   it("ties on parsed instant resolve by messageId asc, independent of file-array insertion order", () => {
@@ -80,18 +85,18 @@ describe("filterFresh", () => {
       { messageId: "newer", providerId: "telegram", receivedAtIso: "2026-05-11T08:00:00.500Z", source: "C1", text: "hi" },
       { messageId: "older", providerId: "slack", receivedAtIso: "2026-05-11T07:00:00.000Z", source: "C1", text: "old" }
     ];
-    const fresh = filterFresh(msgs, { C1: "2026-05-11T08:00:00Z" }, 10);
+    const fresh = filterFresh(msgs, { C1: { ids: [], iso: "2026-05-11T08:00:00Z" } }, 10);
     expect(fresh.map((m) => m.messageId)).toEqual(["newer"]); // not silently dropped
 
-    // Cross-provider offset ordering: -05:00 day is "…05-10…" but
-    // its instant is the newest; slice(-2) must keep the two
-    // instant-newest, in instant order.
+    // Cross-provider offset ordering: -05:00 day is "…05-10…" but its
+    // instant is the newest. Sort is by parsed instant ascending, and
+    // the cap keeps the two OLDEST in instant order.
     const ordered: readonly InboundMessage[] = [
       { messageId: "a", providerId: "slack", receivedAtIso: "2026-05-11T00:00:00.000Z", source: "X", text: "" },
       { messageId: "b", providerId: "slack", receivedAtIso: "2026-05-11T00:00:01.000Z", source: "X", text: "" },
       { messageId: "c", providerId: "discord", receivedAtIso: "2026-05-10T20:00:02-05:00", source: "X", text: "" }
     ];
-    expect(filterFresh(ordered, {}, 2).map((m) => m.messageId)).toEqual(["b", "c"]);
+    expect(filterFresh(ordered, {}, 2).map((m) => m.messageId)).toEqual(["a", "b"]);
   });
 });
 
@@ -112,8 +117,8 @@ describe("FileBackedInboxContextProvider", () => {
     expect(second).toBeUndefined();
 
     const cursor = await readInboxInjectionCursor(cursorFile);
-    expect(cursor.C1).toBe("2026-05-11T08:05:00.000Z");
-    expect(cursor.C2).toBe("2026-05-11T08:10:00.000Z");
+    expect(cursor.C1?.iso).toBe("2026-05-11T08:05:00.000Z");
+    expect(cursor.C2?.iso).toBe("2026-05-11T08:10:00.000Z");
   });
 
   it("returns undefined when no messages exist", async () => {

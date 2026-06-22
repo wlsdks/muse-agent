@@ -109,7 +109,10 @@ describe("validatePlan — exact-duplicate detection", () => {
     const dupError = result.errors.find((e) => e.reason.startsWith("repeats step"));
     expect(dupError).toBeDefined();
     expect(dupError?.stepIndex).toBe(1);
-    expect(dupError?.reason).toBe("repeats step 0 verbatim");
+    // 1-based to match every other plan message (the PlanValidationError render
+    // and the dependency/precondition errors all report step N+1). A dup of the
+    // FIRST step reads as "repeats step 1", never "repeats step 0".
+    expect(dupError?.reason).toBe("repeats step 1 verbatim");
   });
 
   it("near-duplicate (different args) is NOT flagged", () => {

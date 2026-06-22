@@ -8,8 +8,14 @@
  *
  * v1:
  *   { version: 1, lastInjectedAt: { [source]: ISO8601 } }
- * v2 (current):
+ * v2:
  *   { version: 2, byUser: { [userKey]: { [source]: ISO8601 } } }
+ * v2 (current, per-source value):
+ *   the inner `[source]` value is EITHER a bare ISO string (legacy,
+ *   still accepted on read) OR `{ iso: ISO8601, ids: string[] }`. The
+ *   `ids` are the messageIds surfaced AT the boundary `iso` — needed so
+ *   a second distinct message sharing the boundary timestamp is not
+ *   skipped by a timestamp-only `mm > lm` comparison.
  *
  * `userKey` is the caller's `userId` or the literal `"_global"` when
  * `userId` is omitted (single-user install). v1 data is migrated into
@@ -20,14 +26,28 @@
  * Telegram has a single global source which we key as `"_global"`.
  */
 
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
 const GLOBAL_USER_KEY = "_global";
 
+/**
+ * In-memory cursor for one source: the boundary instant plus the
+ * messageIds surfaced exactly at that instant (the same-timestamp
+ * tie-break set). `ids` is empty for legacy timestamp-only data.
+ */
+export interface SourceCursor {
+  readonly iso: string;
+  readonly ids: readonly string[];
+}
+
+export type InboxInjectionCursor = Readonly<Record<string, SourceCursor>>;
+type PersistedByUser = Readonly<Record<string, InboxInjectionCursor>>;
+
 interface PersistedShapeV2 {
   readonly version: 2;
-  readonly byUser: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  readonly byUser: Readonly<Record<string, Readonly<Record<string, SourceCursor>>>>;
 }
 
 function userKey(userId: string | undefined): string {
@@ -36,7 +56,24 @@ function userKey(userId: string | undefined): string {
   return trimmed.length === 0 ? GLOBAL_USER_KEY : trimmed;
 }
 
-async function readPersisted(file: string): Promise<Readonly<Record<string, Readonly<Record<string, string>>>>> {
+function parseSourceCursor(value: unknown): SourceCursor | undefined {
+  // Legacy timestamp-only shape: a bare ISO string.
+  if (typeof value === "string") {
+    return value.trim().length > 0 ? { ids: [], iso: value } : undefined;
+  }
+  if (value && typeof value === "object") {
+    const obj = value as { iso?: unknown; ids?: unknown };
+    if (typeof obj.iso === "string" && obj.iso.trim().length > 0) {
+      const ids = Array.isArray(obj.ids)
+        ? obj.ids.filter((id): id is string => typeof id === "string")
+        : [];
+      return { ids, iso: obj.iso };
+    }
+  }
+  return undefined;
+}
+
+async function readPersisted(file: string): Promise<PersistedByUser> {
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
@@ -54,13 +91,14 @@ async function readPersisted(file: string): Promise<Readonly<Record<string, Read
   }
   const versioned = parsed as { version?: unknown; byUser?: unknown; lastInjectedAt?: unknown };
   if (versioned.version === 2 && versioned.byUser && typeof versioned.byUser === "object") {
-    const out: Record<string, Record<string, string>> = {};
+    const out: Record<string, Record<string, SourceCursor>> = {};
     for (const [key, value] of Object.entries(versioned.byUser as Record<string, unknown>)) {
       if (value && typeof value === "object") {
-        const inner: Record<string, string> = {};
-        for (const [source, iso] of Object.entries(value as Record<string, unknown>)) {
-          if (typeof iso === "string" && iso.trim().length > 0) {
-            inner[source] = iso;
+        const inner: Record<string, SourceCursor> = {};
+        for (const [source, raw] of Object.entries(value as Record<string, unknown>)) {
+          const cursor = parseSourceCursor(raw);
+          if (cursor) {
+            inner[source] = cursor;
           }
         }
         out[key] = inner;
@@ -70,10 +108,11 @@ async function readPersisted(file: string): Promise<Readonly<Record<string, Read
   }
   // v1 migration: fold the flat map into the `_global` user slot.
   if (versioned.lastInjectedAt && typeof versioned.lastInjectedAt === "object") {
-    const inner: Record<string, string> = {};
-    for (const [source, iso] of Object.entries(versioned.lastInjectedAt as Record<string, unknown>)) {
-      if (typeof iso === "string" && iso.trim().length > 0) {
-        inner[source] = iso;
+    const inner: Record<string, SourceCursor> = {};
+    for (const [source, raw] of Object.entries(versioned.lastInjectedAt as Record<string, unknown>)) {
+      const cursor = parseSourceCursor(raw);
+      if (cursor) {
+        inner[source] = cursor;
       }
     }
     return { [GLOBAL_USER_KEY]: inner };
@@ -81,74 +120,100 @@ async function readPersisted(file: string): Promise<Readonly<Record<string, Read
   return {};
 }
 
-async function writePersisted(
-  file: string,
-  byUser: Readonly<Record<string, Readonly<Record<string, string>>>>
-): Promise<void> {
+async function writePersisted(file: string, byUser: PersistedByUser): Promise<void> {
   const payload: PersistedShapeV2 = { byUser, version: 2 };
-  const tmp = `${file}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
+  // The tmp name MUST be unique per in-flight write: two concurrent
+  // writes in the same millisecond+pid would otherwise pick the same
+  // tmp path and one rename consumes the other's tmp → ENOENT / lost
+  // update. A random uuid guarantees uniqueness.
+  const tmp = `${file}.tmp-${process.pid.toString()}-${randomUUID()}`;
   await fs.mkdir(dirname(file), { recursive: true });
   await fs.writeFile(tmp, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
   await fs.rename(tmp, file);
   await fs.chmod(file, 0o600).catch(() => undefined);
 }
 
+// Per-file mutation queue: writeInboxInjectionCursor / advanceInboxInjectionCursor
+// are read-modify-write, so two concurrent calls would otherwise both read the
+// same `existing` and the second write would clobber the first (last-writer-wins
+// — a silently dropped cursor advance that re-injects an already-seen message).
+// Serialising the WHOLE op per file makes the cursor lossless under concurrency,
+// mirroring the pending-approval store.
+const mutationQueues = new Map<string, Promise<unknown>>();
+function serializePerFile<T>(file: string, op: () => Promise<T>): Promise<T> {
+  const prior = mutationQueues.get(file) ?? Promise.resolve();
+  const next = prior.then(op, op);
+  mutationQueues.set(file, next.then(() => undefined, () => undefined));
+  return next;
+}
+
 export async function readInboxInjectionCursor(
   file: string,
   userId?: string
-): Promise<Readonly<Record<string, string>>> {
+): Promise<InboxInjectionCursor> {
   const byUser = await readPersisted(file);
   return byUser[userKey(userId)] ?? {};
 }
 
 export async function writeInboxInjectionCursor(
   file: string,
-  cursor: Readonly<Record<string, string>>,
+  cursor: InboxInjectionCursor,
   userId?: string
 ): Promise<void> {
-  const existing = await readPersisted(file);
-  const sanitized: Record<string, string> = {};
-  for (const [source, iso] of Object.entries(cursor)) {
-    if (typeof iso === "string" && iso.trim().length > 0) {
-      sanitized[source] = iso;
+  await serializePerFile(file, async () => {
+    const existing = await readPersisted(file);
+    const sanitized: Record<string, SourceCursor> = {};
+    for (const [source, value] of Object.entries(cursor)) {
+      if (value && typeof value.iso === "string" && value.iso.trim().length > 0) {
+        sanitized[source] = { ids: [...value.ids], iso: value.iso };
+      }
     }
-  }
-  const next = { ...existing, [userKey(userId)]: sanitized };
-  await writePersisted(file, next);
+    const next = { ...existing, [userKey(userId)]: sanitized };
+    await writePersisted(file, next);
+  });
 }
 
 /**
  * Merge an `advance` map into the persisted cursor for `userId`.
- * Each (source → iso) pair is only written when the new timestamp
- * is a strictly later instant than the existing one. Other users'
- * cursors are preserved untouched. Returns the merged cursor for
- * the supplied user so callers can avoid an extra read.
+ * For each source the new boundary is written when it is a strictly
+ * later instant than the existing one (replacing the tie-break id set);
+ * when the new boundary equals the existing instant the surfaced ids
+ * are UNIONED so the same-timestamp tie-break grows monotonically.
+ * Other users' cursors are preserved untouched. Returns the merged
+ * cursor for the supplied user so callers can avoid an extra read.
  */
 export async function advanceInboxInjectionCursor(
   file: string,
-  advance: Readonly<Record<string, string>>,
+  advance: Readonly<Record<string, SourceCursor>>,
   userId?: string
-): Promise<Readonly<Record<string, string>>> {
-  const existing = await readPersisted(file);
-  const key = userKey(userId);
-  const current = existing[key] ?? {};
-  const merged: Record<string, string> = { ...current };
-  for (const [source, iso] of Object.entries(advance)) {
-    // Compare parsed instants, not raw strings: lexicographic
-    // ordering is wrong across mixed precision ("…01.500Z" sorts
-    // BEFORE "…01Z") and timezone offsets, which would stall the
-    // cursor and re-inject the same message every poll.
-    const incoming = Date.parse(iso);
-    if (Number.isNaN(incoming)) {
-      continue;
+): Promise<InboxInjectionCursor> {
+  return serializePerFile(file, async () => {
+    const existing = await readPersisted(file);
+    const key = userKey(userId);
+    const current = existing[key] ?? {};
+    const merged: Record<string, SourceCursor> = { ...current };
+    for (const [source, value] of Object.entries(advance)) {
+      // Compare parsed instants, not raw strings: lexicographic
+      // ordering is wrong across mixed precision ("…01.500Z" sorts
+      // BEFORE "…01Z") and timezone offsets, which would stall the
+      // cursor and re-inject the same message every poll.
+      const incoming = Date.parse(value.iso);
+      if (Number.isNaN(incoming)) {
+        continue;
+      }
+      const prior = merged[source];
+      const priorTime = prior !== undefined ? Date.parse(prior.iso) : Number.NaN;
+      if (Number.isNaN(priorTime) || incoming > priorTime) {
+        merged[source] = { ids: [...value.ids], iso: value.iso };
+      } else if (incoming === priorTime) {
+        // Same boundary instant: union the surfaced ids so a second
+        // distinct message at this timestamp isn't re-surfaced.
+        const union = new Set<string>([...prior!.ids, ...value.ids]);
+        merged[source] = { ids: [...union], iso: prior!.iso };
+      }
     }
-    const prior = merged[source];
-    const priorTime = prior !== undefined ? Date.parse(prior) : Number.NaN;
-    if (Number.isNaN(priorTime) || incoming > priorTime) {
-      merged[source] = iso;
-    }
-  }
-  const nextByUser = { ...existing, [key]: merged };
-  await writePersisted(file, nextByUser);
-  return merged;
+    const nextByUser = { ...existing, [key]: merged };
+    await writePersisted(file, nextByUser);
+    return merged;
+  });
 }

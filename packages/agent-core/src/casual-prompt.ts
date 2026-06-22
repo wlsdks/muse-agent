@@ -340,8 +340,15 @@ export function classifyReminderListQuery(query: string): boolean {
   if (q.length === 0 || q.length > 80) {
     return false;
   }
-  // A clear write/mutate intent is NOT a list request.
-  if (/추가|등록|설정|만들|기억해|삭제|지워|제거|없애|취소|미뤄|미루|연기|스누즈|바꿔|변경|\b(add|create|set|delete|remove|clear|cancel|snooze|reschedule|change)\b/u.test(q)) {
+  // A clear write/mutate intent is NOT a list request. NOTE: bare "set" is
+  // excluded from the anywhere-in-prompt verbs because "what reminders are set"
+  // is a legitimate LIST phrasing — "set" there is a past participle, not the
+  // write verb. Write-intent "set" is only the LEADING command verb ("set a
+  // reminder"), checked separately below.
+  if (/추가|등록|설정|만들|기억해|삭제|지워|제거|없애|취소|미뤄|미루|연기|스누즈|바꿔|변경|\b(add|create|delete|remove|clear|cancel|snooze|reschedule|change)\b/u.test(q)) {
+    return false;
+  }
+  if (/^set\b/u.test(q)) {
     return false;
   }
   return REMINDER_LIST_PATTERNS.some((re) => re.test(q));

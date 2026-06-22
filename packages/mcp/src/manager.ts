@@ -17,7 +17,8 @@
  */
 
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { accessSync, constants as fsConstants, readFileSync, statSync } from "node:fs";
+import { delimiter, join as joinPath } from "node:path";
 
 import type { MuseTool } from "@muse/tools";
 
@@ -437,7 +438,10 @@ export class McpManager {
  * caller flips the server to `disabled` with an unhealthy
  * diagnostic.
  *
- * Hash input: the resolved `command` file bytes. For `node`-style
+ * Hash input: the resolved `command` file bytes. A bare command
+ * name (`npx`, `node`) is resolved against `PATH` (which-style)
+ * before hashing — hashing the literal name would ENOENT and the
+ * pin would never verify the real binary. For `node`-style
  * invocations where the entrypoint script lives in `args[0]`, we
  * also fold that file's bytes into the hash. The hash is read
  * once per connect — production reconnect cycles aren't on a
@@ -457,10 +461,17 @@ export function verifyServerFingerprint(server: McpServer): { matched: boolean; 
   if (!command) {
     return { matched: false, reason: "fingerprint pinned but stdio command path missing from config" };
   }
+  const resolvedCommand = resolveExecutablePath(command);
+  if (!resolvedCommand) {
+    return {
+      matched: false,
+      reason: `fingerprint pinned but command "${command}" could not be resolved to an executable on PATH — refusing connect`
+    };
+  }
   const entrypoint = readNodeEntrypointPath(server.config);
   const hash = createHash("sha256");
   try {
-    hash.update(readFileSync(command));
+    hash.update(readFileSync(resolvedCommand));
     if (entrypoint) hash.update(readFileSync(entrypoint));
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
@@ -485,6 +496,51 @@ function readCommandPath(config: unknown): string | undefined {
   if (!config || typeof config !== "object") return undefined;
   const c = (config as { command?: unknown }).command;
   return typeof c === "string" && c.length > 0 ? c : undefined;
+}
+
+/**
+ * Resolve a stdio `command` to the real executable file we hash.
+ * A stdio MCP `command` is frequently a BARE name (`npx`, `node`,
+ * `uvx`) rather than a path — `readFileSync("npx")` would ENOENT, so
+ * the pin must walk `PATH` (which-style) to find the actual binary
+ * before hashing. An absolute/relative path is used as-is when it
+ * points at a real file. Returns `undefined` (fail-closed: caller
+ * refuses the connect) when no executable can be found, so a missing
+ * binary never silently passes the pin.
+ */
+function resolveExecutablePath(command: string): string | undefined {
+  if (command.includes("/")) {
+    return isRegularFile(command) ? command : undefined;
+  }
+  const pathEnv = process.env.PATH ?? "";
+  const pathExtEnv = process.platform === "win32" ? process.env.PATHEXT ?? "" : "";
+  const extensions = pathExtEnv ? ["", ...pathExtEnv.split(";").filter(Boolean)] : [""];
+  for (const dir of pathEnv.split(delimiter).filter(Boolean)) {
+    for (const ext of extensions) {
+      const candidate = joinPath(dir, `${command}${ext}`);
+      if (isExecutableFile(candidate)) return candidate;
+    }
+  }
+  return undefined;
+}
+
+function isRegularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function isExecutableFile(path: string): boolean {
+  if (!isRegularFile(path)) return false;
+  if (process.platform === "win32") return true;
+  try {
+    accessSync(path, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function readNodeEntrypointPath(config: unknown): string | undefined {

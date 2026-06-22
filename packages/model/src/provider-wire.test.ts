@@ -40,11 +40,12 @@ describe("toOpenAIResponsesRequest", () => {
     expect(out.tools ?? []).toEqual([]);
   });
 
-  it("wraps assistant turns as input_text (Responses API input shape, not output)", () => {
+  it("emits output_text for assistant turns and input_text for user/system (Responses API input shape)", () => {
     const out = toOpenAIResponsesRequest(
       {
         model: "openai/gpt-4o",
         messages: [
+          { role: "system" as const, content: "be brief" },
           { role: "user" as const, content: "hi" },
           { role: "assistant" as const, content: "hello back" },
           { role: "user" as const, content: "ok" }
@@ -57,8 +58,9 @@ describe("toOpenAIResponsesRequest", () => {
       role: item.role,
       type: item.content[0]?.type
     }))).toEqual([
+      { role: "system", type: "input_text" },
       { role: "user", type: "input_text" },
-      { role: "assistant", type: "input_text" },
+      { role: "assistant", type: "output_text" },
       { role: "user", type: "input_text" }
     ]);
   });
@@ -68,14 +70,14 @@ describe("toOpenAIResponsesRequest", () => {
     expect(out.tools).toEqual([{ type: "web_search" }]);
   });
 
-  it("preserves caller-supplied function tools alongside web_search", () => {
+  it("emits caller-supplied function tools in the flat Responses shape alongside web_search", () => {
     const request = {
       ...base,
       tools: [{ name: "get_time", description: "", inputSchema: { type: "object" }, risk: "read" as const }]
     };
     const out = toOpenAIResponsesRequest(request, "gpt-4o", { enabled: true, maxUses: 5 });
     expect(out.tools).toEqual([
-      { type: "function", function: { name: "get_time", description: "", parameters: { type: "object" } } },
+      { type: "function", name: "get_time", description: "", parameters: { type: "object" } },
       { type: "web_search" }
     ]);
   });

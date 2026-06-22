@@ -143,7 +143,9 @@ export function toOpenAIResponsesRequest(
   for (const tool of request.tools ?? []) {
     tools.push({
       type: "function",
-      function: { name: tool.name, description: tool.description ?? "", parameters: tool.inputSchema }
+      name: tool.name,
+      description: tool.description ?? "",
+      parameters: tool.inputSchema
     });
   }
 
@@ -155,7 +157,7 @@ export function toOpenAIResponsesRequest(
     input: request.messages.map((m) => ({
       role: m.role,
       content: [{
-        type: "input_text",
+        type: m.role === "assistant" ? "output_text" : "input_text",
         text: typeof m.content === "string" ? m.content : ""
       }]
     })),

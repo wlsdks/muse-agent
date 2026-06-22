@@ -31,7 +31,14 @@ export function reorderForLongContext<T extends { readonly score: number }>(item
 
 /** The closest markdown heading PRECEDING the chunk's position in its note. */
 export function nearestHeading(noteText: string, chunkText: string): string | undefined {
-  const at = noteText.indexOf(chunkText.slice(0, 80).trim());
+  // A chunk may carry an OVERLAP PREFIX (the tail of the previous chunk, joined
+  // with a blank line by `applyOverlap`). That prefix is a copy of text that
+  // appears EARLIER in the note, so `indexOf` of the chunk's first 80 chars
+  // would resolve to the previous chunk's position and attribute the wrong
+  // heading. Anchor on the chunk's OWN start instead: the overlap prefix is the
+  // run before the first blank-line break, and it duplicates earlier text, so
+  // strip it and locate by the remaining (un-overlapped) body.
+  const at = locateChunkStart(noteText, chunkText);
   if (at < 0) return undefined;
   const before = noteText.slice(0, at);
   const headings = [...before.matchAll(/^#{1,6}[ \t]+(.+)$/gmu)];
@@ -40,6 +47,33 @@ export function nearestHeading(noteText: string, chunkText: string): string | un
   // section heading, fall back to the title only when it is not the sole match.
   if (!last) return undefined;
   return last;
+}
+
+/**
+ * Locate a chunk's OWN start offset in the note, tolerant of an overlap
+ * prefix. `indexOf(slice(0,80))` works for a chunk that sits verbatim in the
+ * note. An overlap chunk is `<tail>\n\n<body>` where `<tail>` is a duplicate of
+ * earlier text and the `\n\n` join is synthetic — so the whole chunk does NOT
+ * appear verbatim at the prefix's location. When the verbatim match fails,
+ * strip the leading blank-line-delimited prefix and locate by the body, whose
+ * un-overlapped start IS verbatim in the note.
+ */
+function locateChunkStart(noteText: string, chunkText: string): number {
+  const wholeStart = noteText.indexOf(chunkText.slice(0, 80).trim());
+  if (wholeStart >= 0 && noteText.startsWith(chunkText, wholeStart)) {
+    return wholeStart;
+  }
+  const breakAt = chunkText.indexOf("\n\n");
+  if (breakAt >= 0) {
+    const body = chunkText.slice(breakAt + 2).trim();
+    if (body.length > 0) {
+      const bodyAt = noteText.indexOf(body.slice(0, 80));
+      if (bodyAt >= 0) {
+        return bodyAt;
+      }
+    }
+  }
+  return wholeStart;
 }
 
 /**

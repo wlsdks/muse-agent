@@ -21,6 +21,14 @@ describe("nearestHeading", () => {
   it("falls back to the title heading or undefined", () => {
     expect(nearestHeading("no headings here", "no headings here")).toBeUndefined();
   });
+
+  it("attributes the chunk's OWN section when the chunk carries an overlap prefix from the prior section", () => {
+    // applyOverlap joins the previous chunk's tail to this chunk with a blank
+    // line. The prefix here is from the 준비물 section but the chunk body lives
+    // under 일정 — the heading must be 일정, not 준비물 (the prefix's section).
+    const overlapped = ["멀티탭을 챙긴다.", "9월 20일 출발, 23일 귀국."].join("\n\n");
+    expect(nearestHeading(NOTE, overlapped)).toBe("일정");
+  });
 });
 
 describe("annotateNoteChunks", () => {

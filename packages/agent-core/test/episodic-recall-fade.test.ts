@@ -165,6 +165,28 @@ describe("StoreBackedEpisodicRecallProvider — Ebbinghaus fade down-ranking", (
     expect(ids[1]).toBe("sess-A");
   });
 
+  it("fade is non-destructive: a match above minScore is NOT excluded when the fade multiplier alone drops it below", async () => {
+    // baseSim (Jaccard) for this query/narrative is ~0.286 — above minScore 0.2,
+    // but baseSim * FADE_PENALTY (0.5) ≈ 0.143 < 0.2. Under the old code the
+    // faded score was gated against minScore and the episode vanished entirely
+    // (destructive), contradicting the down-rank-only contract.
+    const partialOverlapStore = makeStore([
+      { sessionId: "sess-fade", narrative: "alpha beta foxtrot golf", createdAt: SAME_DATE }
+    ]);
+    const partialQuery = "alpha beta charlie delta echo";
+    const provider = new StoreBackedEpisodicRecallProvider({
+      fadedKeys: async () => new Set(["sess-fade"]),
+      minScore: 0.2,
+      recencyWeight: 0,
+      store: partialOverlapStore,
+      topK: 10,
+      now: () => NOW_MS
+    });
+    const snap = await provider.resolve(partialQuery);
+    const ids = snap?.matches.map((m) => m.sessionId) ?? [];
+    expect(ids).toContain("sess-fade");
+  });
+
   it("non-faded session is not penalised (similarity multiplier stays 1.0)", async () => {
     const providerNoFade = new StoreBackedEpisodicRecallProvider({
       minScore: 0.05,

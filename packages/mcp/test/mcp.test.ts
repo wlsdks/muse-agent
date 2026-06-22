@@ -736,6 +736,61 @@ describe("McpManager", () => {
     });
     expect(malformedPin.matched).toBe(true);
   });
+
+  it("verifyServerFingerprint resolves a BARE command name via PATH before hashing (regression)", async () => {
+    const { verifyServerFingerprint } = await import("../src/manager.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join, delimiter } = await import("node:path");
+    const { createHash } = await import("node:crypto");
+
+    // A stdio server invoked by a bare name, exactly like `npx`/`node`.
+    const dir = mkdtempSync(join(tmpdir(), "muse-mcp-fingerprint-path-"));
+    const cmdName = "fake-mcp-bin";
+    const binPath = join(dir, cmdName);
+    const contents = "#!/bin/sh\necho hi\n";
+    writeFileSync(binPath, contents, { mode: 0o755 });
+    const actualHash = createHash("sha256").update(contents).digest("hex");
+
+    const baseServer = {
+      id: "id-1",
+      name: "fake",
+      transportType: "stdio" as const,
+      autoConnect: false,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = `${dir}${delimiter}${originalPath ?? ""}`;
+    try {
+      // OLD behaviour: readFileSync("fake-mcp-bin") ENOENT → matched:false.
+      // FIXED: resolved via PATH, real bytes hashed → pin matches.
+      const matched = verifyServerFingerprint({
+        ...baseServer,
+        config: { command: cmdName, args: [], fingerprintSha256: actualHash }
+      });
+      expect(matched.matched).toBe(true);
+
+      // A swapped binary at the same name still trips the pin.
+      const mismatch = verifyServerFingerprint({
+        ...baseServer,
+        config: { command: cmdName, args: [], fingerprintSha256: "0".repeat(64) }
+      });
+      expect(mismatch.matched).toBe(false);
+      expect(mismatch.reason).toMatch(/fingerprint mismatch/i);
+    } finally {
+      process.env.PATH = originalPath;
+    }
+
+    // A bare name NOT on PATH is fail-closed (cannot resolve → refuse).
+    const unresolvable = verifyServerFingerprint({
+      ...baseServer,
+      config: { command: "definitely-not-a-real-command-xyz", args: [], fingerprintSha256: actualHash }
+    });
+    expect(unresolvable.matched).toBe(false);
+    expect(unresolvable.reason).toMatch(/could not be resolved/i);
+  });
 });
 
 describe("Kysely MCP stores", () => {

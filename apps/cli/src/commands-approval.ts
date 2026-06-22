@@ -159,15 +159,12 @@ export function registerApprovalCommands(program: Command, io: ProgramIO): void 
         process.exitCode = 1;
         return;
       }
-      // Flip the entry's state then write back, and ALSO call the
-      // trust-grant path so future runs skip the gate.
       const updated: PendingRequest = {
         ...target,
         decidedAtIso: new Date().toISOString(),
         decidedBy: "cli-approve",
         status: "approved"
       };
-      await rewriteApprovals(all.map((e) => e.id === id ? updated : e));
 
       // Trust grant — mirror the muse trust grant logic inline so
       // we don't need a circular import. Same on-disk file shape.
@@ -175,7 +172,10 @@ export function registerApprovalCommands(program: Command, io: ProgramIO): void 
       let trustDoc: { version: 1; users: Record<string, { trustedTools: string[]; blockedTools: string[] }> } = { users: {}, version: 1 };
       try {
         const raw = await readFile(trustFilePath, "utf8");
-        trustDoc = JSON.parse(raw);
+        const parsed = JSON.parse(raw) as Partial<typeof trustDoc>;
+        if (parsed && parsed.version === 1 && parsed.users) {
+          trustDoc = parsed as typeof trustDoc;
+        }
       } catch { /* empty */ }
       const entry = trustDoc.users[target.userKey] ?? { blockedTools: [], trustedTools: [] };
       if (!entry.trustedTools.includes(target.toolName)) {
@@ -187,6 +187,11 @@ export function registerApprovalCommands(program: Command, io: ProgramIO): void 
       const tmp = `${trustFilePath}.tmp-${process.pid.toString()}-${Date.now().toString()}`;
       await writeFile(tmp, `${JSON.stringify(trustDoc, null, 2)}\n`, { mode: 0o600 });
       await rename(tmp, trustFilePath);
+
+      // Flip the approval entry's state ONLY after the trust write succeeds,
+      // so a malformed trust.json can't leave the entry approved on disk
+      // while the grant never landed.
+      await rewriteApprovals(all.map((e) => e.id === id ? updated : e));
 
       io.stdout(`Approved ${id} → '${target.toolName}' added to trust list for ${target.userKey}\n`);
     });

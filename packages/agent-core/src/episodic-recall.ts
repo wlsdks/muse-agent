@@ -40,6 +40,14 @@ export interface EpisodicMatch {
   readonly sessionId: string;
   readonly narrative: string;
   readonly similarity?: number;
+  /**
+   * The Ebbinghaus-faded score used for SORT ORDER ONLY. The fade penalty is a
+   * non-destructive down-rank (see the fade comment in the provider): it must
+   * never push a match below `minScore` and exclude it, so the minScore gate
+   * runs on `similarity` (pre-penalty) while ordering uses this. Absent when no
+   * fade applies, in which case order falls back to `similarity`.
+   */
+  readonly sortScore?: number;
   readonly createdAtIso?: string;
   /**
    * Set by the A-MAC factual-confidence pass (arXiv:2603.04549) when this
@@ -538,16 +546,18 @@ export class StoreBackedEpisodicRecallProvider implements EpisodicRecallProvider
         !isRecentlyReengaged(recallStats?.get(summary.sessionId), nowMs, FADE_REINSTATE_MAX_AGE_MS)
           ? FADE_PENALTY
           : 1;
+      const preFadeScore = baseSim + recencyBoost;
       scored.push({
         createdAtIso,
         narrative: summary.narrative,
         sessionId: summary.sessionId,
-        similarity: (baseSim + recencyBoost) * fadePenalty
+        similarity: preFadeScore,
+        sortScore: preFadeScore * fadePenalty
       });
     }
-    scored.sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0));
+    scored.sort((a, b) => (b.sortScore ?? b.similarity ?? 0) - (a.sortScore ?? a.similarity ?? 0));
     const consolidated = consolidateNearDuplicates(scored, narrativeVecs);
-    const adaptiveK = selectByClusterTransition(consolidated.map((m) => m.similarity ?? 0), { topK: this.topK });
+    const adaptiveK = selectByClusterTransition(consolidated.map((m) => m.sortScore ?? m.similarity ?? 0), { topK: this.topK });
     const strength = narrativeVecs.size > 0 ? EPISODIC_INHIBITION_STRENGTH : 0;
     const top = applyLateralInhibition(consolidated, narrativeVecs, {
       topK: adaptiveK,

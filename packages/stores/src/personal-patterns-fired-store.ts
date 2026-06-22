@@ -57,10 +57,22 @@ export async function readPatternsFired(file: string): Promise<readonly PatternF
 export async function writePatternsFired(file: string, records: readonly PatternFiredRecord[]): Promise<void> {
   // FIFO trim — keep the most recent N. Two thousand entries covers
   // years of daily firing per pattern; the trim guards pathological
-  // clock drift or bulk-replay scenarios.
-  const trimmed = records.length > MAX_FIRED_ENTRIES
-    ? records.slice(records.length - MAX_FIRED_ENTRIES)
-    : records;
+  // clock drift or bulk-replay scenarios. Dismissals are NEVER trimmed:
+  // a dismissal is learned avoidance (the user vetoed this pattern), so
+  // partition them out and FIFO-trim only the plain fires — otherwise a
+  // burst of newer fires would evict an old dismissal and Muse would
+  // resume suggesting a pattern the user explicitly silenced.
+  let trimmed: readonly PatternFiredRecord[];
+  if (records.length > MAX_FIRED_ENTRIES) {
+    const dismissals = records.filter((r) => r.dismissed === true);
+    const fires = records.filter((r) => r.dismissed !== true);
+    const trimmedFires = fires.length > MAX_FIRED_ENTRIES
+      ? fires.slice(fires.length - MAX_FIRED_ENTRIES)
+      : fires;
+    trimmed = [...dismissals, ...trimmedFires];
+  } else {
+    trimmed = records;
+  }
   const payload = `${JSON.stringify({ fired: trimmed }, null, 2)}\n`;
   await atomicWriteFile(file, payload);
 }

@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -84,6 +84,35 @@ describe("muse approval — typo-tolerant id resolution (goal-468/472 sibling)",
     expect(parsed.entries.map((e) => e.id)).toEqual(["req-abc123"]);
     expect(parsed.total, "list --json must carry `total` — convention parity").toBe(1);
     expect(parsed.userKey).toBe("u");
+    process.exitCode = undefined;
+  });
+});
+
+describe("muse approval approve — malformed trust.json must not corrupt on-disk state", () => {
+  it("a trust.json lacking a top-level `users` object does not flip the approval before failing", async () => {
+    const { approvals, trust } = pendingFile("req-malformed1");
+    // {} parses fine but has no `users` — the unvalidated old code would
+    // overwrite the safe default with {} then throw on `.users[...]`,
+    // AFTER the approval entry had already been flipped to "approved".
+    writeFileSync(trust, "{}\n");
+    process.exitCode = undefined;
+    const r = await run(approvals, trust, ["approve", "req-malformed1"]);
+
+    // The approval must succeed cleanly (no unhandled rejection / crash) ...
+    expect(r.stdout).toContain("Approved req-malformed1");
+    expect(r.exitCode ?? process.exitCode).toBeFalsy();
+
+    // ... the trust file must hold a valid, granted shape ...
+    const trustDoc = JSON.parse(readFileSync(trust, "utf8")) as {
+      version: number;
+      users: Record<string, { trustedTools: string[]; blockedTools: string[] }>;
+    };
+    expect(trustDoc.version).toBe(1);
+    expect(trustDoc.users.u?.trustedTools).toContain("fs.write");
+
+    // ... and the on-disk approval entry must be consistently "approved".
+    const approvalLine = JSON.parse(readFileSync(approvals, "utf8").trim()) as { status: string };
+    expect(approvalLine.status).toBe("approved");
     process.exitCode = undefined;
   });
 });
