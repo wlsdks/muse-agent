@@ -275,4 +275,78 @@ describe("SubAgentRunRegistry", () => {
     expect(stalled).toContain("override");
     expect(stalled).not.toContain("default");
   });
+
+  it("detectOrphaned flags a running child whose parent reached a terminal status", () => {
+    const registry = fresh();
+    registry.register({ runId: "p" });
+    registry.register({ runId: "c", parentRunId: "p" });
+
+    // parent still running → child not orphaned
+    expect(registry.detectOrphaned().map((r) => r.runId)).toEqual([]);
+
+    registry.complete("p");
+    // parent finished, child still running → child is orphaned
+    expect(registry.detectOrphaned().map((r) => r.runId)).toEqual(["c"]);
+  });
+
+  it("detectOrphaned flags a child registered against an already-terminal parent", () => {
+    const registry = fresh();
+    registry.register({ runId: "p" });
+    registry.fail("p");
+    registry.register({ runId: "c", parentRunId: "p" });
+
+    expect(registry.detectOrphaned().map((r) => r.runId)).toEqual(["c"]);
+  });
+
+  it("detectOrphaned ignores parentless (root) runs and already-terminal children", () => {
+    const registry = fresh();
+    registry.register({ runId: "root" }); // no parent → never orphaned
+    registry.register({ runId: "p" });
+    registry.register({ runId: "c", parentRunId: "p" });
+    registry.complete("p");
+    registry.complete("c"); // child already terminal → not orphaned
+
+    expect(registry.detectOrphaned()).toEqual([]);
+  });
+
+  it("recoverOrphaned transitions orphans to failed; they drop from detectOrphaned and activeCount", () => {
+    const registry = fresh();
+    registry.register({ runId: "p" });
+    registry.register({ runId: "c1", parentRunId: "p" });
+    registry.register({ runId: "c2", parentRunId: "p" });
+    registry.register({ runId: "live" }); // unrelated root, stays running
+    clock = 500;
+    registry.complete("p");
+
+    clock = 900;
+    const recovered = registry.recoverOrphaned("parent abandoned child");
+
+    expect(recovered.map((r) => r.runId).sort()).toEqual(["c1", "c2"]);
+    expect(recovered[0].status).toBe("failed");
+    expect(recovered[0].finishedAt).toEqual(new Date(900));
+    expect(recovered[0].error).toBe("parent abandoned child");
+
+    // no longer orphaned
+    expect(registry.detectOrphaned()).toEqual([]);
+    // only the unrelated root is still active
+    expect(registry.activeCount()).toBe(1);
+    expect(registry.get("live")!.status).toBe("running");
+  });
+
+  it("recoverOrphaned does not touch unrelated running state", () => {
+    const registry = fresh();
+    registry.register({ runId: "p" });
+    registry.register({ runId: "c", parentRunId: "p" });
+    registry.register({ runId: "sibling-root" });
+    registry.register({ runId: "other-parent" });
+    registry.register({ runId: "other-child", parentRunId: "other-parent" });
+    registry.complete("p");
+
+    registry.recoverOrphaned();
+
+    // other-parent still running → other-child is NOT orphaned, untouched
+    expect(registry.get("other-child")!.status).toBe("running");
+    expect(registry.get("sibling-root")!.status).toBe("running");
+    expect(registry.get("c")!.status).toBe("failed");
+  });
 });

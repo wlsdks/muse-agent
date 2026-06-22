@@ -196,4 +196,31 @@ export class SubAgentRunRegistry {
 
     return transitioned;
   }
+
+  detectOrphaned(): readonly SubAgentRunRecord[] {
+    return this.insertionOrder
+      .map((id) => this.records.get(id)!)
+      .filter((record) => {
+        if (record.status !== "running" || record.parentRunId === undefined) return false;
+        const parent = this.records.get(record.parentRunId);
+        return parent !== undefined && TERMINAL_STATUSES.has(parent.status);
+      })
+      .map(freeze);
+  }
+
+  recoverOrphaned(error?: string): readonly SubAgentRunRecord[] {
+    const orphaned = this.detectOrphaned();
+    const now = this.now();
+    const recovered: SubAgentRunRecord[] = [];
+
+    for (const frozen of orphaned) {
+      const record = this.records.get(frozen.runId)!;
+      record.status = "failed";
+      record.finishedAt = now;
+      record.error = error;
+      recovered.push(freeze(record));
+    }
+
+    return recovered;
+  }
 }
