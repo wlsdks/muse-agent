@@ -1,5 +1,7 @@
 # Muse dev backlog — the living ledger
 
+- ✓ stale-demotion WIRED into the ask related-footer (buildAskConnections, @muse/recall hit.ts) — recall-spine fire 9: a superseded note no longer outranks the current one in '💡 Related in your brain'. No import cycle (conflict→hit type-only), footer-only scope, 35/35 recall tests, ④b PASS. NEXT: demote in the ANSWER recall path (KnowledgeMatch in commands-ask.ts) — bigger, cli, main-repo verify.
+
 - ✓ recall-conflict staleness demotion (detectStaleMarker + demoteStaleHits, @muse/recall conflict.ts) — recall-spine fire 8: high-precision past/superseded markers (예전에/지금은 아니/used to/no longer) demote a stale entry below its current counterpart so a correction recalls the CURRENT value top-1 (addresses confident-wrong). Pure, lossless (demote not drop), 32/32 conflict tests, ④b PASS + precision-tightened. UNWIRED — production wiring into the recall path is the follow-up.
 
 - ★ 응집도 트랙(C+) 명령 표면 감사 — recall-spine fire 7: **102개 command 모듈**. 골든패스 온전(ask/remember/recall/memory[+forget 서브명령]/chat `/forget`). 정리 후보(분석/수치 노이즈, 대부분 테스트 0): benford·diversity·keywords·trend·latency·analytics (전부 test=없음, 37–59줄). 결정론 작업이나 behavior-preserving 검증에 cli 테스트 스위트(deps) 필요 → 격리 worktree에서 싸게 검증 불가, **메인-레포 검증 fire**여야. loop-sized 슬라이스:

@@ -1,3 +1,5 @@
+import { demoteStaleHits } from "./conflict.js";
+
 export interface RecallHit {
   readonly source: "notes" | "episodes" | "memory";
   readonly ref: string;
@@ -33,8 +35,12 @@ export function buildAskConnections(params: {
     ...params.notes.map((n) => ({ ref: n.file, score: n.score, snippet: n.text, source: "notes" as const })),
     ...params.episodes.map((e) => ({ ref: e.id, score: e.score, snippet: e.summary, source: "episodes" as const }))
   ];
-  return hits
-    .filter((h) => Number.isFinite(h.score) && h.score >= floor)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+  // Demote explicitly-stale entries below current ones BEFORE the top-N cut, so a
+  // superseded note ("used to live in Seoul") never outranks the current one in
+  // the "related in your brain" footer (fire 8's demoteStaleHits, now wired).
+  return demoteStaleHits(
+    hits
+      .filter((h) => Number.isFinite(h.score) && h.score >= floor)
+      .sort((a, b) => b.score - a.score)
+  ).slice(0, limit);
 }

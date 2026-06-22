@@ -95,3 +95,14 @@ ratchet: testFiles +0 (conflict.test.ts +5) · fabrication 0 · confident-wrong 
 - **리뷰 지점**: ④b judge가 5개 false positive 적발(더 이상="no further"·previously=중립·었었=구어 이중과거) → 약한 마커 제거해 conservative high-precision으로 좁히고 그 입력들을 negative 테스트로 고정. 내 correction 케이스는 강한 마커(예전에+지금은 아니/used to+not anymore)로 여전히 잡힘. **UNWIRED** — production 회상 경로 배선은 후속(promoteOnMargin과 동일 패턴).
 - **리스크**: 미배선이라 라이브 영향 0. 배선 시 conservative 마커라 false-positive 데모션 위험 낮음(놓침=데모션 안 함, 항목은 그대로 노출). cross-package 검증은 main이 동시 루프發 transient build 깨짐이라 narrow vitest(conflict.test만)로 검증 — 32/32.
 - lesson: maker가 "high-precision"이라 주장해도 ④b가 실제 false-positive 입력을 뽑아 검증 — 주장 라벨이 아니라 적대적 입력으로 정밀도를 강제하고, 그 입력을 negative 테스트로 박아 회귀 방지.
+
+## fire 9 · 2026-06-23 · skill v2.1.0 · loop/recall-spine
+
+meta: value-class=wiring · pkg=@muse/recall · kind=recall-conflict-wiring · verdict=PASS · firesSinceDrill=9
+ratchet: testFiles +1 (hit.test.ts) · fabrication 0 · fire-8 코드 라이브화(footer)
+
+- **무엇**: fire 8의 `demoteStaleHits`를 `buildAskConnections`(hit.ts, "💡 Related in your brain" footer)에 배선 — score 정렬 後 / top-N 컷 前에 적용해 stale 노트가 현재 노트 위에 안 옴. fire 8의 dormant 코드가 첫 production 경로에 라이브.
+- **왜**: 출하했으나 미배선이던 능력을 실제 동작으로. footer는 RecallHit[]를 쓰는 유일한 깨끗한 배선 지점.
+- **리뷰 지점**: 순환 위험(hit↔conflict)을 ④b가 확인 — conflict→hit가 type-only, select가 hit 미import라 런타임 순환 없음. all-fresh 리스트엔 identity-order(안정 partition)라 무회귀. **footer-only** 스코프 — 답변 grounding 경로(KnowledgeMatch)는 불변. 그게 더 큰 효과지만 cli+main 검증 필요라 follow-up.
+- **리스크**: footer라 효과 modest(답변 본문 아님). 답변-경로 데모션이 confident-wrong의 본진 — backlog에 follow-up 기록. main이 동시 루프發 빌드 깨짐이라 narrow vitest로 검증(35/35).
+- lesson: 같은 패키지 내 함수 재사용 배선은 import 방향(type-only vs value)을 먼저 확인해 순환을 피하라 — conflict→hit가 type-only였기에 hit→conflict value-import가 안전했다.
