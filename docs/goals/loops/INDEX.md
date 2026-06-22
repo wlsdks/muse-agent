@@ -6,7 +6,7 @@
 
 | slug | theme | journal | last fire | last commit | skill | status |
 |---|---|---|---|---|---|---|
-| `recall-spine` | 개인 기억/회상 비서 golden path 강화 (worktree `/tmp/muse-recall-spine`) | [recall-spine.md](recall-spine.md) | 7 | `loop/recall-spine` | v2.1.0 | active (cron `ffe5773d`, session-only, Tier1) |
+| `recall-spine` | 개인 기억/회상 비서 golden path 강화 (worktree `/tmp/muse-recall-spine`) | [recall-spine.md](recall-spine.md) | 8 | `loop/recall-spine` | v2.1.0 | active (cron `ffe5773d`, session-only, Tier1) |
 | `tool-hardening` | TOOL expansion & hardening (main worktree) | [tool-hardening.md](tool-hardening.md) | 148 | `177a6c9b` | v1.14.0 | active (cron, session-only) |
 | `cognition` | agent-core 인지 강화 (worktree `agent-core-enhance`) | [cognition.md](cognition.md) | 39 | — | — | superseded → re-registered as `agent-core-cognition` (v1.14.0, cron 42e5d7ba) |
 | `agent-core-cognition` | agent-core 인지 코어 강화 (worktree `agent-core-enhance`) | [agent-core-cognition.md](agent-core-cognition.md) | 63 | `dad16a57` | v1.14.0 | STOPPED fire 63 (Jinan directive; cron 42e5d7ba deleted) |

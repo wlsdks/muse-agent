@@ -165,3 +165,46 @@ export function detectSourceConflict(hits: readonly RecallHit[]): readonly Sourc
   }
   return conflicts;
 }
+
+/**
+ * Explicit PAST/superseded markers — text the user wrote to say a fact is no
+ * longer true ("예전에는 …", "used to …", "no longer …"). HIGH-PRECISION only:
+ * a marker must be an UNAMBIGUOUS supersession cue, not ordinary past tense, so a
+ * plain recollection ("어제 회의했다" / "I visited Paris") is NOT flagged.
+ *
+ * Deliberately CONSERVATIVE: weak markers were dropped because they fire on
+ * still-current statements — `더 이상`/`previously` carry a common non-supersession
+ * sense ("더 이상 질문 없습니다" = no further questions; "as previously discussed,
+ * still on") and bare double-past `았었/었었` is colloquial for completed-but-current
+ * events ("먹었었던 음식이 지금도 최애"). Missing a stale entry only costs a demotion
+ * (the entry still appears); a false positive would wrongly demote a current fact,
+ * so precision is weighted over recall here.
+ */
+const STALE_MARKERS = [
+  /예전에/u, /이전에/u, /옛날에/u, /지금은\s*아니/u,
+  /\bused to\b/iu, /\bno longer\b/iu, /\bnot anymore\b/iu, /\bformerly\b/iu
+];
+
+/**
+ * True when a memory snippet explicitly marks itself as PAST/superseded. Pure,
+ * deterministic. Used to demote a stale entry below its current counterpart so a
+ * correction ("home is Busan now", with an old "used to live in Seoul" note)
+ * surfaces the CURRENT value top-1 instead of a confident WRONG recall — the
+ * identity's "FORGETS the moment you correct it" on the retrieval side.
+ */
+export function detectStaleMarker(text: string): boolean {
+  return STALE_MARKERS.some((re) => re.test(text));
+}
+
+/**
+ * Stable partition that pushes stale-marked hits BELOW non-stale ones while
+ * preserving each group's relative order (so scores/ranking are otherwise
+ * untouched). When a current and a stale entry about the same subject are both
+ * retrieved, the current one becomes top-1. Pure; returns a new array.
+ */
+export function demoteStaleHits(hits: readonly RecallHit[]): RecallHit[] {
+  const fresh: RecallHit[] = [];
+  const stale: RecallHit[] = [];
+  for (const hit of hits) (detectStaleMarker(hit.snippet) ? stale : fresh).push(hit);
+  return [...fresh, ...stale];
+}

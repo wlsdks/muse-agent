@@ -1,9 +1,45 @@
 import { describe, expect, it } from "vitest";
 
-import { conflictCueFromMatches, detectSourceConflict, formatSourceConflictWarning, groundingConflictCue } from "./conflict.js";
+import { conflictCueFromMatches, demoteStaleHits, detectSourceConflict, detectStaleMarker, formatSourceConflictWarning, groundingConflictCue } from "./conflict.js";
 import type { RecallHit } from "./hit.js";
 
 const hit = (ref: string, snippet: string, score = 0.7): RecallHit => ({ ref, score, snippet, source: "notes" });
+
+describe("detectStaleMarker — explicit past/superseded cue (FORGETS on the retrieval side)", () => {
+  it("flags KO supersession markers (예전에 / 았었 / 지금은 아니), not plain past tense", () => {
+    expect(detectStaleMarker("예전에는 서울에 살았었다. 지금은 아니다.")).toBe(true);
+    expect(detectStaleMarker("지금 내가 사는 도시는 부산이다.")).toBe(false);
+    expect(detectStaleMarker("어제 친구와 회의했다.")).toBe(false);
+  });
+
+  it("flags EN supersession markers (used to / no longer / not anymore), not plain past/now", () => {
+    expect(detectStaleMarker("I used to work out at a home gym, but not anymore.")).toBe(true);
+    expect(detectStaleMarker("I now go to the gym near my office every morning.")).toBe(false);
+    expect(detectStaleMarker("I visited Paris last year.")).toBe(false);
+  });
+
+  it("PRECISION: dropped weak markers do NOT fire on still-current statements", () => {
+    // these previously false-fired on 더 이상 / previously / 었었 (④b-found); must be false now
+    expect(detectStaleMarker("더 이상 질문 없습니다.")).toBe(false); // "no further questions"
+    expect(detectStaleMarker("As previously discussed, the meeting is still on Tuesday.")).toBe(false);
+    expect(detectStaleMarker("전에 먹었었던 그 음식이 지금도 최애다.")).toBe(false); // colloquial double-past, current
+  });
+
+  it("demoteStaleHits moves a stale entry BELOW the current one so top-1 is current (OUTCOME)", () => {
+    const stale = hit("home_city_old", "예전에는 서울에 살았었다. 지금은 아니다.", 0.9);
+    const current = hit("home_city", "지금 내가 사는 도시는 부산이다.", 0.5);
+    const out = demoteStaleHits([stale, current]);
+    expect(out[0]!.ref).toBe("home_city"); // current wins top-1 despite lower score
+    expect(out[1]!.ref).toBe("home_city_old");
+  });
+
+  it("demoteStaleHits preserves relative order within each group (stable)", () => {
+    const a = hit("a", "fresh one", 0.8);
+    const b = hit("b", "fresh two", 0.7);
+    const s = hit("s", "used to be true", 0.95);
+    expect(demoteStaleHits([s, a, b]).map((h) => h.ref)).toEqual(["a", "b", "s"]);
+  });
+});
 
 describe("detectSourceConflict — evidence-vs-evidence contradiction (grounded≠true)", () => {
   it("flags two sources giving different values for the same labelled field", () => {

@@ -84,3 +84,14 @@ ratchet: testFiles +0 · fabrication 0 · 응집도 트랙(C+) 첫 진입(이전
 - **리뷰 지점**: 트랙-2 실작업(명령 hide·god-file 분해)은 behavior-preserving 검증에 cli 테스트(deps)가 필요해 격리 worktree에서 싸게 검증 불가 — **메인-레포 검증 fire**여야 한다(이 박스 worktree는 per-package node_modules 없음). promoteOnMargin 배선도 깨끗한 memory 타겟 없어 공유 knowledge-recall 경로 변경 = notes 검증 필요(별도 슬라이스).
 - **리스크**: commands-ask.ts는 동시 루프도 만져 merge 충돌 위험 → 추출 전 main churn 확인. 인라인 fire가 worktree-deps 한계로 수확체감 — 트랙-2/배선은 cron 자율(full 검증 가능 컨텍스트)에 적합.
 - lesson: worktree-격리 루프는 zero-dep(node:test) 또는 단일-패키지(agent-core) 슬라이스에 강하고, cross-package/cli/Ollama 검증이 필요한 슬라이스엔 약하다 — 테마 슬라이스 풀을 짤 때 검증 가능성(worktree vs 메인-레포 vs Ollama)을 (pkg,kind)와 함께 분류해 고르면 헛스핀을 줄인다.
+
+## fire 8 · 2026-06-23 · skill v2.1.0 · loop/recall-spine
+
+meta: value-class=new-capability · pkg=@muse/recall · kind=recall-conflict · verdict=PASS · firesSinceDrill=8
+ratchet: testFiles +0 (conflict.test.ts +5) · fabrication 0 · confident-wrong 대응(stale 데모션)
+
+- **무엇**: `detectStaleMarker` + `demoteStaleHits` (@muse/recall conflict.ts) — 명시적 과거/철회 마커(예전에/지금은 아니/used to/no longer/not anymore/formerly)가 붙은 기억을 현재값 아래로 안정-정렬. correction 케이스(stale `_old`가 current 압도 = fire 4/6의 confident-wrong)에서 현재값이 top-1이 되게. 순수·무손실(데모션, 드롭 아님).
+- **왜**: confident-wrong 2가 남은 회상 품질 최악 갭(abstain보다 나쁜 자신만만한 틀린 회상). detectSourceConflict는 `label: value`만 파싱해 prose형 correction을 못 잡음 → 직교적 lexical 신호로 보완.
+- **리뷰 지점**: ④b judge가 5개 false positive 적발(더 이상="no further"·previously=중립·었었=구어 이중과거) → 약한 마커 제거해 conservative high-precision으로 좁히고 그 입력들을 negative 테스트로 고정. 내 correction 케이스는 강한 마커(예전에+지금은 아니/used to+not anymore)로 여전히 잡힘. **UNWIRED** — production 회상 경로 배선은 후속(promoteOnMargin과 동일 패턴).
+- **리스크**: 미배선이라 라이브 영향 0. 배선 시 conservative 마커라 false-positive 데모션 위험 낮음(놓침=데모션 안 함, 항목은 그대로 노출). cross-package 검증은 main이 동시 루프發 transient build 깨짐이라 narrow vitest(conflict.test만)로 검증 — 32/32.
+- lesson: maker가 "high-precision"이라 주장해도 ④b가 실제 false-positive 입력을 뽑아 검증 — 주장 라벨이 아니라 적대적 입력으로 정밀도를 강제하고, 그 입력을 negative 테스트로 박아 회귀 방지.
