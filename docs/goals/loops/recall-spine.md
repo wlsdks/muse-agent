@@ -28,3 +28,15 @@ ratchet: testFiles +0 (same file, +5 tests = 13 total) · fabrication 0 · eval:
 - **리스크**: 재보정은 fabrication-floor-sensitive — 바를 낮추면 absent 케이스가 confident-wrong로 샐 수 있음. fire 3는 반드시 absent abstain을 pass^k로 동시 검증. ④b judge 비차단 메모: diversify 경로 top-1=최고 cosine, fallback 경로 top-1=최고 fused-RRF — hit@1 ≠ (confident-correct+under-confidence) 어긋나면 이 경로 차이부터 확인.
 - 검증: `node --test` 13/13 GREEN + MUTATION 4분기 RED(독립 ④b judge가 재현) · live gate 3/7 불변 + 진단 hit@1 5/5 · production 무수정(git diff = +60 .mjs / +32 .test only) · 독립 Opus ④b judge PASS.
 - **다양성 메모**: fire 1·2 모두 (scripts, eval-new) — ratchet(6/8) 미발동이나 fire 3는 반드시 다른 (pkg,kind)로: @muse/agent-core recall-confidence 재보정(kind=calibration/memory-defense).
+
+## fire 3 · 2026-06-23 · skill v2.1.0 · loop/recall-spine
+
+meta: value-class=planning(decompose) · pkg=docs(backlog) · kind=decompose · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +0 · fabrication 0 (untouched — refused to guess the floor) · finding-only fire
+
+- **무엇**: fire 2가 가리킨 confidence-바 재보정을 착수하기 전, cosine 분포를 측정(일회성 probe). DECOMPOSE-ON-DEFER로 fabrication-sensitive·>1-fire 항목을 안전 슬라이스 3a/3b/3c로 쪼개 backlog 기록. 코드 행동 변경 없음(docs/backlog only).
+- **왜**: 바(`DEFAULT_CONFIDENT_AT=0.55`)는 곧 fabrication=0 플로어. 7개 데이터로 상수를 낮추면 absent 1건만 새도 거짓말 → 도박 금지. 측정-먼저 + 안전 우선.
+- **리뷰 지점 (결정적 발견)**: max-cosine(게이트가 쓰는 값) positives **0.34–0.56** vs absents **0.20–0.28** — 분리되나 margin ~0.06로 얇음. 진짜 원인: clear-match가 0.34–0.47인데 주석은 "~0.61"로 calibrated → **0.55 바는 옛 임베더(nomic-embed-text)용이고 디폴트가 v2-moe로 바뀌며 cosine 스케일이 낮아졌는데 바가 안 따라감**(stale·too-high). 부수 관찰: correction 케이스는 matches[0](부산 0.466)≠max-cosine(서울_old 0.556) — 게이트 confident는 max-cosine(stale 엔트리) 때문, 제시는 current. ④b judge의 diversify top-1 메모가 실재 확인됨 — 3b에서 "confidence가 제시 엔트리 기준인가"도 점검할 것.
+- **리스크**: 3b(바 변경)는 반드시 absent abstain을 pass^k로 동시 검증. 큰 N(3a) 없이 상수 변경 금지.
+- lesson: fabrication-critical 임계값(confidence 바 등)은 작은 N(여기 7)으로 재보정하지 말 것 — 먼저 calibration-grade 데이터셋을 키우고(3a), 변경 시 negative(abstain) 케이스 전수가 pass^k로 유지되는지 동반 검증. 작은 측정이 "바가 틀렸다"는 입증엔 충분해도 "새 바가 안전하다"는 입증엔 불충분.
+- **다양성 메모**: fire 1·2는 (scripts, eval-new), fire 3은 (docs, decompose) — kind 전환 완료. fire 4(3a)는 scripts/eval로 복귀하나 3b는 반드시 agent-core/calibration로.
