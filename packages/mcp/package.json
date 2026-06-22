@@ -18,19 +18,17 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "@muse/calendar": "workspace:*",
     "@muse/db": "workspace:*",
-    "@muse/fs": "workspace:*",
     "@muse/mcp-shared": "workspace:*",
     "@muse/proactivity": "workspace:*",
-    "@muse/memory": "workspace:*",
-    "@muse/messaging": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/stores": "workspace:*",
     "@muse/tools": "workspace:*",
     "kysely": "^0.29.2"
   },
   "devDependencies": {
-    "@muse/domain-tools": "workspace:*"
+    "@muse/domain-tools": "workspace:*",
+    "@muse/memory": "workspace:*",
+    "@muse/messaging": "workspace:*"
   }
 }

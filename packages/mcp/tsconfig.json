@@ -14,25 +14,13 @@
   ],
   "references": [
     {
-      "path": "../calendar"
-    },
-    {
       "path": "../db"
-    },
-    {
-      "path": "../fs"
     },
     {
       "path": "../mcp-shared"
     },
     {
       "path": "../proactivity"
-    },
-    {
-      "path": "../memory"
-    },
-    {
-      "path": "../messaging"
     },
     {
       "path": "../shared"

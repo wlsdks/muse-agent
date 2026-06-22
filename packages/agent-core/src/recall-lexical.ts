@@ -5,9 +5,7 @@
  * importer creates a cycle through the other.
  */
 
-export function finiteOr(value: number | undefined, fallback: number): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
+export { finiteOr } from "@muse/shared";
 
 // Drop high-frequency function words so lexical overlap (and the RRF
 // lexical rank) keys on CONTENT terms — otherwise a decoy sharing only

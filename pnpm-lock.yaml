@@ -89,15 +89,16 @@ importers:
       '@muse/skills':
         specifier: workspace:*
         version: link:../../packages/skills
-      '@muse/tools':
-        specifier: workspace:*
-        version: link:../../packages/tools
       '@muse/voice':
         specifier: workspace:*
         version: link:../../packages/voice
       fastify:
         specifier: ^5.8.5
         version: 5.8.5
+    devDependencies:
+      '@muse/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
 
   apps/cli:
     dependencies:
@@ -458,24 +459,12 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.4.3)
-      '@muse/calendar':
-        specifier: workspace:*
-        version: link:../calendar
       '@muse/db':
         specifier: workspace:*
         version: link:../db
-      '@muse/fs':
-        specifier: workspace:*
-        version: link:../fs
       '@muse/mcp-shared':
         specifier: workspace:*
         version: link:../mcp-shared
-      '@muse/memory':
-        specifier: workspace:*
-        version: link:../memory
-      '@muse/messaging':
-        specifier: workspace:*
-        version: link:../messaging
       '@muse/proactivity':
         specifier: workspace:*
         version: link:../proactivity
@@ -495,6 +484,12 @@ importers:
       '@muse/domain-tools':
         specifier: workspace:*
         version: link:../domain-tools
+      '@muse/memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@muse/messaging':
+        specifier: workspace:*
+        version: link:../messaging
 
   packages/mcp-shared:
     dependencies:

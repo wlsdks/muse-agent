@@ -1,5 +1,5 @@
 import type { ModelMessage, ModelResponse } from "@muse/model";
-import type { JsonObject } from "@muse/shared";
+import { isRecord, type JsonObject } from "@muse/shared";
 import type { VerifiedSource } from "./types.js";
 
 /**
@@ -95,9 +95,7 @@ export function stringField(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+export { isRecord };
 
 export function withResponseFilterRaw(response: ModelResponse, id: string): JsonObject {
   return {
