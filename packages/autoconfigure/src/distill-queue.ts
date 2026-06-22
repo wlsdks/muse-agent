@@ -76,7 +76,7 @@ export interface DistillQueuedDeps {
 
 /** Returns the number of strategies actually recorded this tick. */
 export async function distillQueuedCorrections(deps: DistillQueuedDeps): Promise<number> {
-  // Kill switch (B1 §5): paused ⇒ zero writes, queue untouched (resume catches up).
+  // Kill switch: paused ⇒ zero writes, queue untouched (resume catches up).
   if (deps.pauseFile && (await isLearningPaused(deps.pauseFile))) {
     return 0;
   }
@@ -98,7 +98,7 @@ export async function distillQueuedCorrections(deps: DistillQueuedDeps): Promise
     if (event.correction.trim().length === 0) {
       continue; // grounding fence: no real correction ⇒ no lesson
     }
-    // "Undo that teaches" (B1 §5): if the user previously UNDID a lesson learned
+    // "Undo that teaches": if the user previously UNDID a lesson learned
     // from THIS correction, don't silently re-learn it. Match the incoming
     // correction (the stable signal) against the veto's source — NOT the LLM's
     // paraphrased output, which varies run to run — and skip BEFORE the costly
@@ -150,9 +150,9 @@ export async function distillQueuedCorrections(deps: DistillQueuedDeps): Promise
       createdAt: now().toISOString(),
       id: newId(),
       // Unattended write ⇒ PROBATION: recorded + visible but not injected
-      // until a real reinforce graduates it (self-confirmation guard, B1 §5).
+      // until a real reinforce graduates it (self-confirmation guard).
       probation: true,
-      // Provenance (B1 §4): distilled from a REAL correction ⇒ grounded; keep
+      // Provenance: distilled from a REAL correction ⇒ grounded; keep
       // the correction as the "why" `muse learned` shows.
       origin: "grounded",
       source: event.correction,

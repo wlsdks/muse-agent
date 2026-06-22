@@ -623,7 +623,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const searchLoopbackTools = loopback.search;
   const schedulerHandle: { current: DynamicScheduler | undefined } = { current: undefined };
 
-  // P20 knowledge: expose `knowledge_search` over the user's live
+  // Expose `knowledge_search` over the user's live
   // notes when opted in. Off by default — it embeds the corpus per
   // query (local Ollama), so it stays opt-in like episodic embedding.
   const knowledgeSearchTools: MuseTool[] = (() => {
@@ -1012,8 +1012,8 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       conversationSummaryStore: parseBoolean(env.MUSE_CONVERSATION_SUMMARY_PERSIST, true)
         ? conversationSummaryStore
         : undefined,
-      // Context Engineering Phases 1, 2, 4. Each is opt-out (Phase 1)
-      // or opt-in (Phases 2, 4) — see `buildActiveContextProvider`,
+      // Each provider is opt-out (active context) or opt-in (inbox, tool
+      // filter) — see `buildActiveContextProvider`,
       // `buildInboxContextProvider`, `buildToolFilter` for the toggle
       // semantics.
       activeContextProvider,
@@ -1021,7 +1021,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       ...(playbookProvider ? { playbookProvider } : {}),
       ...(planCacheProvider ? { planCacheProvider } : {}),
       inboxContextProvider: buildInboxContextProvider(env),
-      // Phase 3: store-backed episodic recall. Reuses the same
+      // Store-backed episodic recall. Reuses the same
       // ConversationSummaryStore that conversation-summary persistence
       // already writes to, so cross-session memory works the moment a
       // session compacts.

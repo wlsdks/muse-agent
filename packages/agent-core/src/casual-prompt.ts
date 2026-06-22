@@ -99,8 +99,7 @@ const ACTION_REQUEST_RE =
 // this (every code noun class/test/error/variable/import has a non-code sense →
 // "fix the variable rate mortgage"), and NEITHER can a bare path prefix
 // (app/build/tests/lib are common words → "update my app/website",
-// "change my tests/quizzes") — fire 26 + the first fire-27 attempt failed on
-// exactly those. So a path is only a signal when it leads to a `name.<code-ext>`.
+// "change my tests/quizzes"). So a path is only a signal when it leads to a `name.<code-ext>`.
 const FILE_PATH_TOKEN =
   "(?:[\\w.~/-]*/)?[\\w-]+\\.(?:tsx?|jsx?|mjs|cjs|py|rs|go|java|cpp?|hpp?|cs|rb|php|swift|kt|scala|sh|bash|zsh|sql|md|json|ya?ml|toml|ini|cfg|conf|css|scss|html?|xml|svg)\\b";
 

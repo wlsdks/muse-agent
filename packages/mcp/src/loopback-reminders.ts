@@ -143,7 +143,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           }
           const parsed = parseReminderDueAt(dueAtRaw, now);
           if (parsed instanceof Error) {
-            // Whetstone (agent-path sibling of `calendar add`, fire 26): the
+            // Whetstone (agent-path sibling of `calendar add`): the
             // deterministic parser couldn't resolve this dueAt phrase — record the
             // time-parse weakness so a recurring misread surfaces. Fail-soft.
             if (options.weaknessesFile) {

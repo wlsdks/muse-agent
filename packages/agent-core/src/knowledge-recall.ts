@@ -1582,7 +1582,7 @@ export function monthDayKeys(text: string): Set<string> {
 function answerAssertsUnsupportedValue(answer: string, matches: readonly KnowledgeMatch[]): boolean {
   const stripped = answer.replace(/\[[^\]]*\]/gu, " ");
   const evidence = unionContentTokens(matches);
-  // DATE drift (ask-path counterpart of the chat date gate, fire 31): bind month+day so
+  // DATE drift (ask-path counterpart of the chat date gate): bind month+day so
   // a calendar/renewal date that drifts by a day (Sep 14 vs the note's Sep 13) flags even
   // when the day "14" appears elsewhere in evidence. Month names are stoplisted from the
   // bare-number path, so this is the only place a drifted prose/KO date can be caught.

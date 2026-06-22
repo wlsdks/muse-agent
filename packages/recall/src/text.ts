@@ -55,7 +55,7 @@ const CLAUSE_SPLIT_RE = /[.!?\n;:—–―]+|\b(?:but|however|though|although|ye
 // A clause that NEGATES grounds no positive claim — it is a refusal RESTATEMENT
 // ("…that isn't in your notes" / "…못 찾았어요"), not a tacked-on assertion. Used
 // so widening the seam set above does not misread a refusal's own (negative)
-// continuation as a hedge-then-assert (the fire-139 regression).
+// continuation as a hedge-then-assert.
 const NEGATION_RE = /\b(?:no|not|never|none|nothing|nope)\b|n['']t|없|모르|안\s|못\s/iu;
 
 // …UNLESS the negated clause also carries concrete data (a digit — a time, a

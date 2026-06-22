@@ -175,8 +175,8 @@ export async function executeModelLoop(
     // Wall-clock deadline cuts the loop short BEFORE the next model
     // call — disables tools for the final synthesis turn so the
     // model returns a clean response instead of asking for another
-    // tool we'd refuse. Honours the iter's "explicit limits and
-    // timeouts" non-negotiable from CLAUDE.md.
+    // tool we'd refuse. Honours the "explicit limits and timeouts"
+    // non-negotiable from CLAUDE.md.
     // No-progress early-exit (arXiv:2505.17616): a stalled read loop (the last
     // window observations near-identical) also disables tools → forces a clean
     // synthesis instead of burning the rest of the budget on spin.

@@ -663,7 +663,7 @@ export class AgentRuntime {
     // block when the trim fires. When unset
     // (no provider / no userId / empty memory), trim sees `undefined`
     // and behaves identically to before.
-    // Phase 5 plumbing: also pipe the active task / focus from the
+    // Also pipe the active task / focus from the
     // active-context snapshot into `importanceContext` so
     // `scoreMessageImportance` boosts messages that mention the
     // user's current work — otherwise the scorer only sees the

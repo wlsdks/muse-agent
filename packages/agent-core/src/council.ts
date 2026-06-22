@@ -857,7 +857,7 @@ export async function synthesizeCouncilAnswer(
   // arXiv:2507.14649 — semantic cosine signal): drop off-topic peers before synthesis.
   // Semantic cosine natively handles KO paraphrase + cross-lingual on-topic peers
   // (no lexical token overlap needed). Skipped entirely when no embed — no lexical fallback
-  // (the lexical gate was the fire-39 false-drop failure; absence is correct here).
+  // (a lexical fallback was the false-drop failure; absence is correct here).
   const offTopicExcluded: { peerId: string; reason: "off-topic" }[] = [];
   let onTopic: readonly CouncilUtterance[] = usable;
   if (options.embed) {
