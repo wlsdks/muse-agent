@@ -26,13 +26,7 @@
  * top of the inline filesystem-only `createNotesMcpServer`.
  */
 
-import {
-  AppleNotesProvider,
-  LocalDirNotesProvider,
-  NotesProviderRegistry,
-  NotionNotesProvider,
-  type NotesProvider
-} from "@muse/mcp";
+import { AppleNotesProvider, LocalDirNotesProvider, NotesProviderRegistry, NotionNotesProvider, type NotesProvider } from "@muse/domain-tools";
 
 import type { MuseEnvironment } from "../index.js";
 import { resolveCredentialsFile, resolveNotesDir } from "../provider-paths.js";

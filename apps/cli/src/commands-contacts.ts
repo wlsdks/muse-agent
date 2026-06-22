@@ -28,7 +28,7 @@ function contactsFile(): string {
 
 /** Read every note body from the local notes dir (best-effort; an unreadable note is skipped). */
 async function readNoteBodies(dir: string): Promise<string[]> {
-  const { LocalDirNotesProvider } = await import("@muse/mcp");
+  const { LocalDirNotesProvider } = await import("@muse/domain-tools");
   const provider = new LocalDirNotesProvider({ notesDir: dir });
   const bodies: string[] = [];
   for (const entry of await provider.list()) {

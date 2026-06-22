@@ -66,6 +66,9 @@
     },
     {
       "path": "../../packages/voice"
+    },
+    {
+      "path": "../../packages/domain-tools"
     }
   ]
 }

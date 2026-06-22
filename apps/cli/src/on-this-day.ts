@@ -6,9 +6,9 @@
  * `./on-this-day.js`) and adds the CLI/brief text rendering.
  */
 
-import { type OnThisDayHit } from "@muse/mcp";
+import { type OnThisDayHit } from "@muse/domain-tools";
 
-export { collectDatedNotes, extractNoteDate, selectOnThisDay, type OnThisDayHit } from "@muse/mcp";
+export { collectDatedNotes, extractNoteDate, selectOnThisDay, type OnThisDayHit } from "@muse/domain-tools";
 
 const fmtDate = (d: Date): string => d.toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" });
 

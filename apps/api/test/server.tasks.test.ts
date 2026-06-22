@@ -2,11 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  AppleRemindersProvider,
-  LocalFileTasksProvider,
-  TasksProviderRegistry
-} from "@muse/mcp";
+import { AppleRemindersProvider, LocalFileTasksProvider, TasksProviderRegistry } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 import { buildServer } from "../src/server.js";

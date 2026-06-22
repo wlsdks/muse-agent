@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { WebActionApprovalGate } from "@muse/mcp";
+import type { WebActionApprovalGate } from "@muse/domain-tools";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 

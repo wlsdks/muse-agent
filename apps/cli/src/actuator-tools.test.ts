@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createAgentRuntime, groundToolArguments } from "@muse/agent-core";
-import { createContactsAddTool } from "@muse/mcp";
+import { createContactsAddTool } from "@muse/domain-tools";
 import type { ModelProvider, ModelResponse } from "@muse/model";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";

@@ -12,7 +12,7 @@ import type { AgentSpecResolver } from "@muse/agent-core";
 import { parseBoolean } from "@muse/autoconfigure";
 import { extractBearerToken } from "@muse/auth";
 import type { AgentSpecRegistry } from "@muse/agent-specs";
-import { describeBuiltinLoopbackMcpServers } from "@muse/mcp";
+import { describeBuiltinLoopbackMcpServers } from "@muse/domain-tools";
 import type { RuntimeSettings } from "@muse/runtime-settings";
 import type { FastifyInstance } from "fastify";
 

@@ -1,5 +1,5 @@
 import { DefaultToolFilter } from "@muse/agent-core";
-import { createHomeActionTool, createHomeEntitiesTool, createHomeStateTool } from "@muse/mcp";
+import { createHomeActionTool, createHomeEntitiesTool, createHomeStateTool } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 // The REAL home tools, run through the REAL relevance filter. Proves a

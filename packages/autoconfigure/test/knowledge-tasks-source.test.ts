@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { LocalFileTasksProvider } from "@muse/mcp";
+import { LocalFileTasksProvider } from "@muse/domain-tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { assembleKnowledgeCorpus, createNotesKnowledgeSearchTool } from "../src/knowledge-corpus.js";

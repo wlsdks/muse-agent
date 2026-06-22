@@ -16,7 +16,7 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, extname, relative, sep } from "node:path";
 
 import { createMuseRuntimeAssembly, resolveNotesDir } from "@muse/autoconfigure";
-import { LocalDirNotesProvider } from "@muse/mcp";
+import { LocalDirNotesProvider } from "@muse/domain-tools";
 import { redactSecretsInText } from "@muse/shared";
 import type { Command } from "commander";
 

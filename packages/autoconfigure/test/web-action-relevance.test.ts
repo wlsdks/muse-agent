@@ -1,5 +1,5 @@
 import { DefaultToolFilter } from "@muse/agent-core";
-import { createWebActionTool } from "@muse/mcp";
+import { createWebActionTool } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 // The REAL web_action tool through the REAL relevance filter. web_action

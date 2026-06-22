@@ -10,40 +10,8 @@
 
 import { createCachingEmbedder } from "@muse/agent-core";
 import type { CalendarProviderRegistry } from "@muse/calendar";
-import {
-  addContact,
-  collectDatedNotes,
-  createContactsAddTool,
-  createContactsFindTool,
-  createContactsRemoveTool,
-  createEmailReadMessageTool,
-  createEmailReadTool,
-  createEmailSearchTool,
-  createFeedsSearchTool,
-  createHomeEntitiesTool,
-  createHomeStateTool,
-  createObjectivesListTool,
-  createOnThisDayTool,
-  createRecentActionsTool,
-  createRememberFactTool,
-  createUpcomingBirthdaysTool,
-  createWeatherTool,
-  createWorldTimeTool,
-  GmailEmailProvider,
-  queryContacts,
-  readActionLog,
-  readFollowups,
-  readObjectives,
-  readReminders,
-  readTasks,
-  removeContact,
-  resolveUpcomingBirthdays,
-  withChromeDevToolsRisk,
-  withOfficialMcpRisk,
-  type McpManager,
-  type NotesProviderRegistry,
-  type TasksProviderRegistry
-} from "@muse/mcp";
+import { addContact, queryContacts, readActionLog, readFollowups, readObjectives, readReminders, readTasks, removeContact, resolveUpcomingBirthdays, withChromeDevToolsRisk, withOfficialMcpRisk, type McpManager } from "@muse/mcp";
+import { collectDatedNotes, createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createEmailReadMessageTool, createEmailReadTool, createEmailSearchTool, createFeedsSearchTool, createHomeEntitiesTool, createHomeStateTool, createObjectivesListTool, createOnThisDayTool, createRecentActionsTool, createRememberFactTool, createUpcomingBirthdaysTool, createWeatherTool, createWorldTimeTool, GmailEmailProvider, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import type { UserMemoryStore } from "@muse/memory";
 import { createSchedulerTools, DynamicScheduler } from "@muse/scheduler";
 import type { MuseTool } from "@muse/tools";

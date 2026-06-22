@@ -35,7 +35,8 @@ import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile,
 import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, selectReflectionsForRecall, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { acquireOllamaLease, evaluateArithmeticExpression, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, selectReflectionsForRecall, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { fetchReadableUrl, type MessageApprovalGate } from "@muse/domain-tools";
 import { redactSecretsInText } from "@muse/shared";
 import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildCalendarContextBlock, buildContactContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
@@ -1390,7 +1391,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // (content search) — read-risk, home-sandboxed, fail-closed on a denied
         // path. The home-wide sandbox supersedes the old 3-folder file_read.
         const { createFsReadTools, createFsWriteTools, fileReadCharBudget, pathSafetyOptionsFromEnv } = await import("@muse/fs");
-        const { createWebDownloadTool } = await import("@muse/mcp");
+        const { createWebDownloadTool } = await import("@muse/domain-tools");
         const { DEFAULT_OLLAMA_NUM_CTX, isWebEgressAllowed } = await import("@muse/model");
         // Sandbox overrides: MUSE_FS_ROOTS narrows the allow-root (default home),
         // MUSE_FS_DENY adds deny prefixes on top of the credential defaults.
@@ -1549,17 +1550,18 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           const env = process.env as MuseEnvironment;
           let result: unknown;
           if (act.route === "calendar") {
-            const { createCalendarMcpServer } = await import("@muse/mcp");
+            const { createCalendarMcpServer } = await import("@muse/domain-tools");
             const addTool = createCalendarMcpServer({ registry: buildCalendarRegistry(env) }).tools.find((t) => t.name === "add");
             result = await addTool?.execute({ ...act.fields, startsAt: normalizeStartsAt(String(act.fields.startsAt)) });
           } else if (act.route === "note") {
-            const { createNotesMcpServer } = await import("@muse/mcp");
+            const { createNotesMcpServer } = await import("@muse/domain-tools");
             const appendTool = createNotesMcpServer({ notesDir: resolveNotesDir(env) }).tools.find((t) => t.name === "append");
             const notePath = typeof act.fields.path === "string" ? act.fields.path : "expenses.md";
             const noteContent = act.kind === "receipt" ? `- ${String(act.fields.note)}\n` : `${String(act.fields.note)}\n`;
             result = await appendTool?.execute({ content: noteContent, path: notePath });
           } else {
-            const { addContact, createContactsAddTool, readContacts } = await import("@muse/mcp");
+            const { addContact, readContacts } = await import("@muse/mcp");
+        const { createContactsAddTool } = await import("@muse/domain-tools");
             const file = resolveContactsFile(env);
             // Use the store's id-idempotent + queued addContact (not a raw read+append):
             // with the tool's name-match id-reuse this UPDATES an existing contact in
@@ -1589,7 +1591,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             io.stdout("\n(draft only — re-run with --apply to create it)\n");
             return;
           }
-          const { createCalendarMcpServer } = await import("@muse/mcp");
+          const { createCalendarMcpServer } = await import("@muse/domain-tools");
           const registry = buildCalendarRegistry(process.env as MuseEnvironment);
           const addTool = createCalendarMcpServer({ registry }).tools.find((t) => t.name === "add");
           if (!addTool) { io.stderr("no calendar provider configured\n"); process.exitCode = 1; return; }

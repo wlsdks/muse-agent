@@ -13,27 +13,9 @@
  * later (assigned after `activeContextProvider` is built).
  */
 
-import {
-  createCalendarMcpServer,
-  createEpisodesMcpServer,
-  createFollowupsMcpServer,
-  createHistoryMcpServer,
-  createLoopbackMcpMuseTools,
-  createMathMcpServer,
-  createMessagingMcpServer,
-  createNotesMcpServer,
-  createNotesRegistryMcpServer,
-  createPatternsMcpServer,
-  createProactiveMcpServer,
-  createRemindersMcpServer,
-  createStatusMcpServer,
-  createTasksMcpServer,
-  createTasksRegistryMcpServer,
-  createSearchMcpServer,
-  createWebReadMcpServer,
-  type MessageApprovalGate
-} from "@muse/mcp";
-import type { NotesProviderRegistry, TasksProviderRegistry } from "@muse/mcp";
+import { createLoopbackMcpMuseTools, createMathMcpServer } from "@muse/mcp";
+import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
+import type { NotesProviderRegistry, TasksProviderRegistry } from "@muse/domain-tools";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { MuseTool } from "@muse/tools";

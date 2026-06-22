@@ -2,11 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  LocalDirNotesProvider,
-  NotesProviderRegistry,
-  NotionNotesProvider
-} from "@muse/mcp";
+import { LocalDirNotesProvider, NotesProviderRegistry, NotionNotesProvider } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 import { buildServer } from "../src/server.js";

@@ -104,7 +104,7 @@ export function formatRelatedNotes(targetPath: string, related: readonly Related
 
 /** Read every note body via the local provider and build the wiki-link graph. Shared by `notes links` / `notes graph` / `recall --expand`. */
 export async function loadNoteLinkGraph(dir: string): Promise<import("./notes-links.js").NoteLinkGraph> {
-  const { LocalDirNotesProvider } = await import("@muse/mcp");
+  const { LocalDirNotesProvider } = await import("@muse/domain-tools");
   const { buildNoteLinkGraph } = await import("./notes-links.js");
   const provider = new LocalDirNotesProvider({ notesDir: dir });
   const entries = await provider.list();

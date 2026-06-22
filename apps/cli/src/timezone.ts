@@ -6,12 +6,12 @@
  * Pure + dependency-free. Read-only.
  */
 
-import { formatTimeInZone, resolveTimezone } from "@muse/mcp";
+import { formatTimeInZone, resolveTimezone } from "@muse/domain-tools";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
 
-export { formatTimeInZone, resolveTimezone } from "@muse/mcp";
+export { formatTimeInZone, resolveTimezone } from "@muse/domain-tools";
 
 export function registerTimeCommand(program: Command, io: ProgramIO): void {
   program

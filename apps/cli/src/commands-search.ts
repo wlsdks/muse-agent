@@ -15,7 +15,8 @@
  * to keep the cold-path < 100 ms.
  */
 
-import { createSearchMcpServer, createLoopbackMcpConnection, normaliseTimeRange } from "@muse/mcp";
+import { createLoopbackMcpConnection } from "@muse/mcp";
+import { createSearchMcpServer, normaliseTimeRange } from "@muse/domain-tools";
 import { redactSecretsInText, stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 
@@ -131,7 +132,7 @@ export function registerSearchCommand(program: Command, io: ProgramIO): void {
       // print (when --json is also set, JSON still wins for stdout).
       if (options.toNotes && options.toNotes.trim().length > 0) {
         const { resolveNotesDir } = await import("@muse/autoconfigure");
-        const { LocalDirNotesProvider } = await import("@muse/mcp");
+        const { LocalDirNotesProvider } = await import("@muse/domain-tools");
         const notesDir = resolveNotesDir(process.env);
         const provider = new LocalDirNotesProvider({ notesDir });
         const lines: string[] = [

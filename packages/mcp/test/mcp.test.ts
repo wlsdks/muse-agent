@@ -10,68 +10,8 @@ import {
 } from "kysely";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  compareFollowupsByScheduledFor,
-  compareRemindersByDueAt,
-  compareTasksByDueDate,
-  createDefaultLoopbackMcpServers,
-  createLoopbackMcpConnection,
-  createLoopbackMcpMuseTools,
-  createCryptoMcpServer,
-  createSearchMcpServer,
-  createDiffMcpServer,
-  createFetchMcpServer,
-  createFilesystemMcpServer,
-  createEpisodesMcpServer,
-  createFollowupsMcpServer,
-  createJsonMcpServer,
-  createPatternsMcpServer,
-  createMathMcpServer,
-  createMessagingMcpServer,
-  createNotesMcpServer,
-  createRemindersMcpServer,
-  createNotesRegistryMcpServer,
-  createTasksMcpServer,
-  createRegexMcpServer,
-  AppleNotesProvider,
-  AppleRemindersProvider,
-  LocalDirNotesProvider,
-  LocalFileTasksProvider,
-  NotesProviderError,
-  NotesProviderRegistry,
-  NotesValidationError,
-  NotionNotesProvider,
-  NotionTasksProvider,
-  TasksProviderError,
-  TasksProviderRegistry,
-  TasksValidationError,
-  createContextReferenceMcpServer,
-  createTasksRegistryMcpServer,
-  createUrlMcpServer,
-  createMcpSecurityPolicyInsert,
-  createMcpServerInsert,
-  createMcpServerUpdate,
-  createTextUtilsMcpServer,
-  createTimeMcpServer,
-  DefaultMcpTransportConnector,
-  InMemoryMcpSecurityPolicyStore,
-  InMemoryMcpServerStore,
-  isPrivateOrReservedHost,
-  isPublicHttpUrl,
-  KyselyMcpSecurityPolicyStore,
-  KyselyMcpServerStore,
-  mapMcpSecurityPolicyRow,
-  mapMcpServerRow,
-  McpConnectionError,
-  isRetryableMcpConnectStatus,
-  McpManager,
-  McpSecurityPolicyProvider,
-  normalizeMcpSecurityPolicy,
-  validateMcpServer,
-  validateStdioArgs,
-  validateStdioCommand,
-  type McpConnection
-} from "../src/index.js";
+import { compareFollowupsByScheduledFor, compareRemindersByDueAt, compareTasksByDueDate, createLoopbackMcpConnection, createLoopbackMcpMuseTools, createCryptoMcpServer, createDiffMcpServer, createJsonMcpServer, createMathMcpServer, createRegexMcpServer, createUrlMcpServer, createMcpSecurityPolicyInsert, createMcpServerInsert, createMcpServerUpdate, createTextUtilsMcpServer, createTimeMcpServer, DefaultMcpTransportConnector, InMemoryMcpSecurityPolicyStore, InMemoryMcpServerStore, isPrivateOrReservedHost, isPublicHttpUrl, KyselyMcpSecurityPolicyStore, KyselyMcpServerStore, mapMcpSecurityPolicyRow, mapMcpServerRow, McpConnectionError, isRetryableMcpConnectStatus, McpManager, McpSecurityPolicyProvider, normalizeMcpSecurityPolicy, validateMcpServer, validateStdioArgs, validateStdioCommand, type McpConnection } from "../src/index.js";
+import { createDefaultLoopbackMcpServers, createSearchMcpServer, createFetchMcpServer, createFilesystemMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createPatternsMcpServer, createMessagingMcpServer, createNotesMcpServer, createRemindersMcpServer, createNotesRegistryMcpServer, createTasksMcpServer, AppleNotesProvider, AppleRemindersProvider, LocalDirNotesProvider, LocalFileTasksProvider, NotesProviderError, NotesProviderRegistry, NotesValidationError, NotionNotesProvider, NotionTasksProvider, TasksProviderError, TasksProviderRegistry, TasksValidationError, createContextReferenceMcpServer, createTasksRegistryMcpServer } from "@muse/domain-tools";
 
 // The stdio fixtures below spawn `node -e <inline ESM>` that bare-imports
 // `@modelcontextprotocol/sdk`. pnpm keeps that dep only under this package's
@@ -8626,7 +8566,7 @@ describe("personal-followup-llm-budget-store", () => {
 
 describe("personal-status-summary helpers (direct unit tests)", () => {
   it("summariseRemindersRows counts pending/fired/overdue and picks earliest pending dueAt as next", async () => {
-    const { summariseRemindersRows } = await import("../src/index.js");
+    const { summariseRemindersRows } = await import("@muse/domain-tools");
     const past = "2026-05-12T08:00:00Z";
     const future = "2026-05-13T09:00:00Z";
     const nowMs = Date.parse("2026-05-13T00:00:00Z");
@@ -8644,13 +8584,13 @@ describe("personal-status-summary helpers (direct unit tests)", () => {
   });
 
   it("summariseRemindersRows: empty rows return zero counts and no next", async () => {
-    const { summariseRemindersRows } = await import("../src/index.js");
+    const { summariseRemindersRows } = await import("@muse/domain-tools");
     const summary = summariseRemindersRows([], Date.now());
     expect(summary).toEqual({ fired: 0, nextDueAt: undefined, nextText: undefined, overdue: 0, pending: 0, total: 0 });
   });
 
   it("summariseRemindersRows skips rows with missing id or unparseable dueAt", async () => {
-    const { summariseRemindersRows } = await import("../src/index.js");
+    const { summariseRemindersRows } = await import("@muse/domain-tools");
     const rows = [
       { id: 42 as never, text: "missing id-string", dueAt: "2026-05-12T08:00:00Z", status: "pending", createdAt: "" },
       { id: "rem_bad_due", text: "no-iso", dueAt: "not-a-date", status: "pending", createdAt: "" }
@@ -8662,7 +8602,7 @@ describe("personal-status-summary helpers (direct unit tests)", () => {
   });
 
   it("summariseFollowupsRows filters by userId and counts scheduled/fired/cancelled", async () => {
-    const { summariseFollowupsRows } = await import("../src/index.js");
+    const { summariseFollowupsRows } = await import("@muse/domain-tools");
     const rows = [
       { id: "fu_s_a", userId: "stark", scheduledFor: "2030-02-01T00:00:00Z", status: "scheduled", summary: "Later", createdAt: "" },
       { id: "fu_s_b", userId: "stark", scheduledFor: "2030-01-01T00:00:00Z", status: "scheduled", summary: "Earlier", createdAt: "" },
@@ -8677,7 +8617,7 @@ describe("personal-status-summary helpers (direct unit tests)", () => {
   });
 
   it("summariseFollowupsRows: rhodey-only rows when filtering as stark → zero", async () => {
-    const { summariseFollowupsRows } = await import("../src/index.js");
+    const { summariseFollowupsRows } = await import("@muse/domain-tools");
     const rows = [
       { id: "fu_other", userId: "rhodey", scheduledFor: "2030-01-01T00:00:00Z", status: "scheduled", summary: "Other", createdAt: "" }
     ];
@@ -8687,7 +8627,7 @@ describe("personal-status-summary helpers (direct unit tests)", () => {
   });
 
   it("summariseEpisodesRows filters by userId and picks newest endedAt as last", async () => {
-    const { summariseEpisodesRows } = await import("../src/index.js");
+    const { summariseEpisodesRows } = await import("@muse/domain-tools");
     const rows = [
       { id: "ep_a", userId: "stark", endedAt: "2026-05-12T22:00:00Z", summary: "Older" },
       { id: "ep_b", userId: "stark", endedAt: "2026-05-13T08:00:00Z", summary: "Newest" },
@@ -8702,7 +8642,7 @@ describe("personal-status-summary helpers (direct unit tests)", () => {
   });
 
   it("summariseEpisodesRows compares parsed instants, not raw strings (mixed precision / tz offsets)", async () => {
-    const { summariseEpisodesRows } = await import("../src/index.js");
+    const { summariseEpisodesRows } = await import("@muse/domain-tools");
     // ...00.500Z is LATER than ...00Z, but lexicographically
     // "...00Z" > "...00.500Z" — pre-fix this returned "earlier".
     const precision = [
@@ -8732,7 +8672,7 @@ describe("personal-status-summary helpers (direct unit tests)", () => {
   });
 
   it("summarisePatternsFiredRows: counts every row with a string patternId; only valid firedAtMs updates last", async () => {
-    const { summarisePatternsFiredRows } = await import("../src/index.js");
+    const { summarisePatternsFiredRows } = await import("@muse/domain-tools");
     const rows = [
       { patternId: "pat_a", firedAtMs: 1_700_000_000_000 },
       { patternId: "pat_b", firedAtMs: 1_800_000_000_000 },
@@ -8746,13 +8686,13 @@ describe("personal-status-summary helpers (direct unit tests)", () => {
   });
 
   it("summarisePatternsFiredRows: zero rows → no lastFiredAtIso", async () => {
-    const { summarisePatternsFiredRows } = await import("../src/index.js");
+    const { summarisePatternsFiredRows } = await import("@muse/domain-tools");
     const summary = summarisePatternsFiredRows([]);
     expect(summary).toEqual({ lastFiredAtIso: undefined, total: 0 });
   });
 
   it("summarisePatternsFiredRows: a finite but out-of-Date-range firedAtMs degrades, never throws", async () => {
-    const { summarisePatternsFiredRows } = await import("../src/index.js");
+    const { summarisePatternsFiredRows } = await import("@muse/domain-tools");
     let summary: ReturnType<typeof summarisePatternsFiredRows>;
     expect(() => {
       summary = summarisePatternsFiredRows([
@@ -8770,7 +8710,7 @@ describe("personal-status-summary helpers (direct unit tests)", () => {
 
 describe("readActivityFeed — corrupt firedAtMs must not sink the whole feed", () => {
   it("drops a pattern row with an out-of-range firedAtMs instead of throwing", async () => {
-    const { readActivityFeed } = await import("../src/index.js");
+    const { readActivityFeed } = await import("@muse/domain-tools");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8792,7 +8732,7 @@ describe("readActivityFeed — corrupt firedAtMs must not sink the whole feed", 
   });
 
   it("orders the merged feed by instant, not raw ISO string (mixed precision / offset)", async () => {
-    const { readActivityFeed } = await import("../src/index.js");
+    const { readActivityFeed } = await import("@muse/domain-tools");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8818,7 +8758,8 @@ describe("readActivityFeed — corrupt firedAtMs must not sink the whole feed", 
 
 describe("muse.status loopback server", () => {
   it("snapshot returns the model from the constructor's `options.model` (overrides env)", async () => {
-    const { createStatusMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createStatusMcpServer } = await import("@muse/domain-tools");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8851,7 +8792,8 @@ describe("muse.status loopback server", () => {
   });
 
   it("notes_index returns each file's byte size — the description promises 'relative path + size'", async () => {
-    const { createStatusMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createStatusMcpServer } = await import("@muse/domain-tools");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8874,7 +8816,8 @@ describe("muse.status loopback server", () => {
   });
 
   it("snapshot surfaces reminders / followups / episodes / patterns summaries from their respective stores", async () => {
-    const { createStatusMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createStatusMcpServer } = await import("@muse/domain-tools");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8972,7 +8915,8 @@ describe("muse.status loopback server", () => {
   });
 
   it("snapshot falls back to process.env.MUSE_MODEL when no options.model is set", async () => {
-    const { createStatusMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createStatusMcpServer } = await import("@muse/domain-tools");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -9163,7 +9107,8 @@ describe("muse.history loopback server", () => {
   }
 
   it("recent merges every store newest-first and skips non-fired followups", async () => {
-    const { createHistoryMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createHistoryMcpServer } = await import("@muse/domain-tools");
     const files = await seedFiles();
     const conn = createLoopbackMcpConnection(createHistoryMcpServer(files));
 
@@ -9180,7 +9125,8 @@ describe("muse.history loopback server", () => {
   });
 
   it("recent honours kind / sinceIso / limit filters and rejects invalid kind", async () => {
-    const { createHistoryMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createHistoryMcpServer } = await import("@muse/domain-tools");
     const files = await seedFiles();
     const conn = createLoopbackMcpConnection(createHistoryMcpServer(files));
 
@@ -9202,7 +9148,8 @@ describe("muse.history loopback server", () => {
   });
 
   it("a fractional limit < 1 falls back to the default feed, NOT an empty one", async () => {
-    const { createHistoryMcpServer, createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createLoopbackMcpConnection } = await import("../src/index.js");
+    const { createHistoryMcpServer } = await import("@muse/domain-tools");
     const conn = createLoopbackMcpConnection(createHistoryMcpServer(await seedFiles()));
     const full = await conn.callTool!("recent", {});
     const fractional = await conn.callTool!("recent", { limit: 0.5 });

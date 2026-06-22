@@ -1,5 +1,6 @@
 import { DefaultToolFilter } from "@muse/agent-core";
-import { createEmailSearchTool, type EmailSearcher, type MuseTool } from "@muse/mcp";
+import { type MuseTool } from "@muse/mcp";
+import { createEmailSearchTool, type EmailSearcher } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 // search_email is only useful in reach when the user is looking for

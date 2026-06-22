@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { EmailSummary } from "@muse/mcp";
+import type { EmailSummary } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 import { renderEmailNote, safeEmailId, syncEmailsToNotes } from "./email-sync.js";

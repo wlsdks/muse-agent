@@ -1,5 +1,5 @@
 import { DefaultToolFilter } from "@muse/agent-core";
-import { createWorldTimeTool } from "@muse/mcp";
+import { createWorldTimeTool } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 // The REAL world_time tool through the REAL relevance filter — proves a

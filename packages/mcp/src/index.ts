@@ -290,53 +290,26 @@ export {
   type BusyBlock,
   type FreeSlot
 } from "@muse/mcp-shared";
-export {
-  detectCalendarConflicts,
-  selectUpcomingConflicts,
-  type CalendarConflict,
-  type ConflictEventLike,
-  type UpcomingConflictNotice
-} from "./calendar-conflicts.js";
 export { formatDueLocal } from "@muse/mcp-shared";
+export * from "./loopback-helpers.js";
+export * from "./provider-routing.js";
 export {
   createCryptoMcpServer,
-  createDefaultLoopbackMcpServers,
-  createCalendarMcpServer,
-  resolveEventByRef,
-  type EventRefLike,
-  type EventRefResolution,
-  createTasksMcpServer,
   createDiffMcpServer,
-  createFetchMcpServer,
-  createFilesystemMcpServer,
-  describeBuiltinLoopbackMcpServers,
   createJsonMcpServer,
   createLoopbackMcpConnection,
   createLoopbackMcpMuseTools,
   createMathMcpServer,
   evaluateArithmeticExpression,
-  createNotesMcpServer,
   createRegexMcpServer,
-  createSearchMcpServer,
   createTextUtilsMcpServer,
   createTimeMcpServer,
   createUrlMcpServer,
   type BuiltinLoopbackOptions,
-  type FetchMcpServerOptions,
-  type FilesystemMcpServerOptions,
-  type LoopbackMcpCatalogEntry,
   type LoopbackMcpServer,
-  type LoopbackMcpToolDefinition,
-  type NotesMcpServerOptions,
-  type SearchMcpServerOptions
+  type LoopbackMcpToolDefinition
 } from "./loopback.js";
 
-export { normaliseTimeRange } from "./loopback-search.js";
-
-export { createWebReadMcpServer, type WebReadMcpServerOptions } from "./loopback-web-read.js";
-export { extractReadableText, type ReadableResult } from "./web-readable.js";
-export { assertPublicHttpUrl, assertPublicHttpUrlSync, isPrivateAddress, isPrivateIPv4, isPrivateIPv6, type HostLookup, type UrlGuardResult } from "./web-url-guard.js";
-export { fetchReadableUrl, isPdfContentType, isReadableContentType, type FetchReadableUrlOptions, type FetchReadableUrlResult } from "./fetch-readable-url.js";
 export { gateProactiveNoticeSink, isQuietHour, parseQuietHours, type QuietHourRange } from "@muse/proactivity";
 export {
   appendCheckins,
@@ -401,10 +374,6 @@ export {
   type WebWatch,
   type WebWatchRunner
 } from "@muse/proactivity";
-export {
-  homeWatchesFromConfig,
-  type HomeWatchConnection
-} from "./home-watch.js";
 
 export {
   createAmbientNoticeRunner,
@@ -433,18 +402,10 @@ export { sendWithRetry, type SendWithRetryOptions } from "@muse/mcp-shared";
 // Notion (api.notion.com) are all real adapters. The `muse.notes-multi`
 // MCP server in `loopback-notes-registry.ts` routes between them via
 // providerId.
-export {
-  createNotesRegistryMcpServer,
-  type NotesRegistryMcpServerOptions
-} from "./loopback-notes-registry.js";
 
 // Tasks registry MCP server. Companion to muse.tasks
 // (filesystem-only) — exposes `muse.tasks-multi.*` against any
 // composed TasksProviderRegistry.
-export {
-  createTasksRegistryMcpServer,
-  type TasksRegistryMcpServerOptions
-} from "./loopback-tasks-registry.js";
 
 // Relative-time phrase resolver (originally loopback-tasks-only).
 // Re-exported so HTTP routes can mirror the MCP tool's dueAt parsing
@@ -627,66 +588,11 @@ export {
   type BriefingCalendarLister
 } from "@muse/proactivity";
 export {
-  runDueSituationalBriefing,
-  type RunDueSituationalBriefingOptions,
-  type RunDueSituationalBriefingSummary
-} from "./situational-briefing-loop.js";
-export {
   fetchWithRetry,
   isRetriableStatus,
   parseRetryAfterMs,
   type RetryOptions
 } from "@muse/mcp-shared";
-export {
-  describeWeatherCode,
-  formatDailyForecast,
-  formatRainHeadsUp,
-  formatWeather,
-  isoInZone,
-  OpenMeteoWeatherProvider,
-  resolveForecastLine,
-  resolveWeatherLine,
-  type CurrentWeather,
-  type DailyForecast,
-  type ForecastTarget,
-  type GeocodedLocation,
-  type RainOutlook,
-  type RainOutlookOptions,
-  type WeatherProvider
-} from "./weather.js";
-export {
-  createWeatherTool,
-  type WeatherToolDeps
-} from "./weather-tool.js";
-export {
-  createWorldTimeTool,
-  formatTimeInZone,
-  resolveTimezone,
-  type WorldTimeToolDeps
-} from "./world-time.js";
-export { createRememberFactTool, type RememberFactStore } from "./remember-fact-tool.js";
-export { createObjectivesListTool, type ObjectivesListToolDeps } from "./objectives-tool.js";
-export { createRecentActionsTool, type RecentActionsToolDeps } from "./recent-actions-tool.js";
-export { createFeedsSearchTool, type FeedEntryLike, type FeedsSearchToolDeps } from "./feeds-search-tool.js";
-export {
-  collectDatedNotes,
-  createOnThisDayTool,
-  extractNoteDate,
-  selectOnThisDay,
-  type DatedNote,
-  type OnThisDayHit,
-  type OnThisDayToolDeps
-} from "./on-this-day-tool.js";
-export {
-  createContactsAddTool,
-  createContactsFindTool,
-  createContactsRemoveTool,
-  createUpcomingBirthdaysTool,
-  type ContactsAddToolDeps,
-  type ContactsFindToolDeps,
-  type ContactsRemoveToolDeps,
-  type UpcomingBirthdaysToolDeps
-} from "./contacts-tool.js";
 export {
   addContact,
   contactIdentifier,
@@ -706,93 +612,6 @@ export {
   type ContactResolution,
   type UpcomingBirthday
 } from "@muse/stores";
-export {
-  extractEmailAddress,
-  extractPlainTextBody,
-  GmailAuthError,
-  GmailEmailProvider,
-  summarizeInbox,
-  unreadBriefingLine,
-  type EmailMessage,
-  type EmailProvider,
-  type EmailReader,
-  type EmailSearcher,
-  type EmailSender,
-  type EmailSummary
-} from "./email-provider.js";
-export {
-  replyEmailWithApproval,
-  composeForward,
-  replySubject,
-  sendEmailWithApproval,
-  type ApprovalDecision,
-  type EmailApprovalGate,
-  type EmailDraft,
-  type ReplyEmailWithApprovalOptions,
-  type SendEmailOutcome,
-  type SendEmailWithApprovalOptions
-} from "./email-send.js";
-export {
-  sendMessageWithApproval,
-  type MessageApprovalGate,
-  type MessageDraft,
-  type SendMessageOutcome,
-  type SendMessageWithApprovalOptions
-} from "./message-send.js";
-export {
-  createEmailReadMessageTool,
-  createEmailReadTool,
-  createEmailForwardTool,
-  createEmailReplyTool,
-  createEmailSearchTool,
-  createEmailSendTool,
-  type EmailReadMessageToolDeps,
-  type EmailReadToolDeps,
-  type EmailForwardToolDeps,
-  type EmailReplyToolDeps,
-  type EmailSearchToolDeps,
-  type EmailSendToolDeps
-} from "./email-tool.js";
-export {
-  performWebActionWithApproval,
-  type PerformWebActionWithApprovalOptions,
-  type WebActionApprovalDecision,
-  type WebActionApprovalGate,
-  type WebActionOutcome,
-  type WebActionRequest
-} from "./web-action.js";
-export {
-  createWebActionTool,
-  type WebActionToolDeps
-} from "./web-action-tool.js";
-export {
-  buildHomeAssistantServiceCall,
-  createHomeStateSnapshot,
-  listHomeAssistantStates,
-  performHomeActionWithApproval,
-  parseHomeAlertChecks,
-  readHomeAssistantState,
-  resolveHomeAlertLine,
-  type HomeAlertCheck,
-  type HomeAlertConnection,
-  type HomeAssistantServiceCall,
-  type HomeEntitiesQuery,
-  type HomeState,
-  type HomeStateQuery,
-  type PerformHomeActionWithApprovalOptions
-} from "./smart-home.js";
-export {
-  createHomeActionTool,
-  createHomeEntitiesTool,
-  createHomeStateTool,
-  type HomeActionToolDeps,
-  type HomeStateToolDeps
-} from "./smart-home-tool.js";
-export {
-  runActuatorByName,
-  type RunActuatorByNameDeps,
-  type RunActuatorResult
-} from "./run-actuator-by-name.js";
 export {
   createMessagingObjectiveActuator,
   createModelObjectiveEvaluator,
@@ -854,7 +673,6 @@ export {
   type RunDuePatternNoticesSummary
 } from "@muse/proactivity";
 export { type AgentInitiatedNoticeBrokerLike } from "@muse/proactivity";
-export { createNotesInvestigator } from "./notes-investigator.js";
 
 export {
   appendSurfaced,
@@ -970,7 +788,6 @@ export {
   type ReminderStatusFilter,
   type ReminderVia
 } from "@muse/stores";
-export { removeRemindersForEvent, rescheduleRemindersForEvent, syncRemindersOnEventDelete, syncRemindersOnEventReschedule } from "./event-reminder-link.js";
 
 export {
   BKT_GUESS,
@@ -1053,138 +870,47 @@ export {
 // Outbound messaging loopback (Phase 3 of docs/design/messaging.md):
 // the LLM can call `muse.messaging.{providers, send}` once the user
 // has wired any provider via env tokens.
-export {
-  createMessagingMcpServer,
-  type MessagingMcpServerOptions
-} from "./loopback-messaging.js";
 
 // Reminders loopback — the LLM can add/list/clear reminders against
 // the same `~/.muse/reminders.json` the CLI / REST surface uses.
 // Read-only at fire time; passive surfacing through `muse today`.
-export {
-  createRemindersMcpServer,
-  type RemindersMcpServerOptions
-} from "./loopback-reminders.js";
 
 // Followup loopback — agent introspection + control over its own
 // self-captured follow-up promises. List/cancel/snooze only; capture
 // is automatic via the runtime hook, firing is daemon-only.
-export {
-  createFollowupsMcpServer,
-  type FollowupsMcpServerOptions
-} from "./loopback-followups.js";
 
 // Episode loopback — agent introspection over prior-session
 // summaries. List / search / show / remove / clear; capture is
 // automatic via the REPL exit hook, never agent-issued.
-export {
-  createEpisodesMcpServer,
-  type EpisodesMcpServerOptions
-} from "./loopback-episodes.js";
 
 // Pattern loopback — agent-driven audit + cooldown reset. The
 // daemon stays the sole firer (no `fire`/`record` tool here).
-export {
-  createPatternsMcpServer,
-  type PatternsMcpServerOptions
-} from "./loopback-patterns.js";
 
 // Proactive surfacing audit loopback — `muse.proactive.history`
 // over ~/.muse/proactive-history.json.
-export {
-  createProactiveMcpServer,
-  type ProactiveMcpServerOptions
-} from "./loopback-proactive.js";
 
 // JARVIS self-observability loopback — `muse.status.snapshot` for
 // external clients (Codex / Claude Desktop) to read persona +
 // tasks + last notice + trust in one structured call.
-export {
-  createStatusMcpServer,
-  type StatusMcpServerOptions
-} from "./loopback-status.js";
 
 // Unified activity-feed loopback — `muse.history.recent` merges
 // the five personal audit stores so an agent can answer
 // "what did you do for me?" in one call instead of fanning out
 // across muse.reminders.history / muse.proactive.history / etc.
-export {
-  createHistoryMcpServer,
-  type HistoryMcpServerOptions
-} from "./loopback-history.js";
 
 // Underlying helper, exported so the CLI's `muse history` command
 // shares the merge logic instead of duplicating it.
-export {
-  ACTIVITY_KINDS,
-  readActivityFeed,
-  type ActivityEntry,
-  type ActivityKind,
-  type ReadActivityFeedOptions
-} from "./personal-activity-feed.js";
 
 // Dashboard summarizers shared between the `muse.status.snapshot`
 // MCP tool and the `muse status` CLI command — keeps the two
 // surfaces' coverage from drifting.
-export {
-  summariseEpisodesRows,
-  summariseFollowupsRows,
-  summariseObjectivesRows,
-  summarisePatternsFiredRows,
-  summariseRemindersRows,
-  type EpisodesSummary,
-  type FollowupsSummary,
-  type ObjectivesSummary,
-  type PatternsFiredSummary,
-  type RemindersSummary
-} from "./personal-status-summary.js";
 
 // Context reference MCP server (Context Engineering 1.d
 // foundation). `muse.context.fetch` / `muse.context.list` against an
 // in-process ContextReferenceStore.
-export {
-  createContextReferenceMcpServer,
-  type ContextReferenceMcpServerOptions
-} from "./loopback-context.js";
-
-export {
-  AppleNotesProvider,
-  LocalDirNotesProvider,
-  NotesProviderError,
-  NotesProviderRegistry,
-  NotesValidationError,
-  NotionNotesProvider,
-  isRetryableNotesStatus,
-  type AppleNotesProviderOptions,
-  type LocalDirNotesProviderOptions,
-  type NotesAppendInput,
-  type NotesContent,
-  type NotesEntry,
-  type NotesProvider,
-  type NotesProviderInfo,
-  type NotesSaveInput,
-  type NotesSearchHit,
-  type NotionNotesProviderOptions
-} from "./notes-providers.js";
 
 // Tasks provider abstraction. Mirrors the notes-providers
 // pattern.
-export {
-  AppleRemindersProvider,
-  LocalFileTasksProvider,
-  NotionTasksProvider,
-  TasksProviderError,
-  TasksProviderRegistry,
-  TasksValidationError,
-  type AppleRemindersProviderOptions,
-  type LocalFileTasksProviderOptions,
-  type NotionTasksProviderOptions,
-  type Task,
-  type TaskInput,
-  type TaskSearchHit,
-  type TasksProvider,
-  type TasksProviderInfo
-} from "./tasks-providers.js";
 
 export {
   DEFAULT_LEASE_STALE_MS,
@@ -1202,5 +928,3 @@ export {
   resolveLearnQueueFile,
   type LearnCorrectionEvent
 } from "@muse/stores";
-export * from "./upload-path-validator.js";
-export * from "./web-download-tool.js";

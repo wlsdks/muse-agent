@@ -1,5 +1,6 @@
 import { DefaultToolFilter } from "@muse/agent-core";
-import { createCalendarMcpServer, createTasksMcpServer, type MuseTool } from "@muse/mcp";
+import { type MuseTool } from "@muse/mcp";
+import { createCalendarMcpServer, createTasksMcpServer } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 // Plurals / natural phrasing for the loopback domains, through the REAL

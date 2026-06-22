@@ -1,5 +1,5 @@
 import { DefaultToolFilter } from "@muse/agent-core";
-import { createEmailReadTool, createWeatherTool, type EmailProvider } from "@muse/mcp";
+import { createEmailReadTool, createWeatherTool, type EmailProvider } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 // Natural-prompt exposure for weather + email, through the REAL filter.

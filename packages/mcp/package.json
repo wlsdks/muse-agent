@@ -29,5 +29,8 @@
     "@muse/stores": "workspace:*",
     "@muse/tools": "workspace:*",
     "kysely": "^0.29.2"
+  },
+  "devDependencies": {
+    "@muse/domain-tools": "workspace:*"
   }
 }

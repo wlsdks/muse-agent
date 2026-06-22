@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createAgentRuntime, createKnowledgeSearchTool } from "@muse/agent-core";
-import { LocalDirNotesProvider } from "@muse/mcp";
+import { LocalDirNotesProvider } from "@muse/domain-tools";
 import type { ModelProvider } from "@muse/model";
 import { ToolRegistry } from "@muse/tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

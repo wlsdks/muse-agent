@@ -4,7 +4,7 @@
  * fail-soft (a missing location / unreadable store just omits the section).
  */
 
-import { OpenMeteoWeatherProvider, resolveWeatherLine, type WeatherProvider } from "@muse/mcp";
+import { OpenMeteoWeatherProvider, resolveWeatherLine, type WeatherProvider } from "@muse/domain-tools";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 
 import { compareFeedEntriesNewestFirst, defaultFeedsFile, filterRecentFeedEntries, readFeedsStore } from "./feeds-store.js";

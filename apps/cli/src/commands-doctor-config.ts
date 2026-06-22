@@ -1,5 +1,6 @@
 import { isRecord } from "@muse/shared";
-import { parseHomeAlertChecks, webWatchesFromConfig } from "@muse/mcp";
+import { webWatchesFromConfig } from "@muse/mcp";
+import { parseHomeAlertChecks } from "@muse/domain-tools";
 
 /**
  * Path-from-env resolver matching the empty-env-shadow

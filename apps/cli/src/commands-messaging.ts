@@ -19,7 +19,7 @@ import type {
   MessagingProviderRegistry,
   OutboundReceipt
 } from "@muse/messaging";
-import { sendMessageWithApproval, type MessageApprovalGate } from "@muse/mcp";
+import { sendMessageWithApproval, type MessageApprovalGate } from "@muse/domain-tools";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 

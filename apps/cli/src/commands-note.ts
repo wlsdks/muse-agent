@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { resolveNotesDir } from "@muse/autoconfigure";
-import { createNotesMcpServer } from "@muse/mcp";
+import { createNotesMcpServer } from "@muse/domain-tools";
 import type { SpeechToTextProvider } from "@muse/voice";
 import type { Command } from "commander";
 

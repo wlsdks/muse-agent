@@ -3,12 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
-import {
-  LocalDirNotesProvider,
-  createNotesInvestigator,
-  runDueProactiveNotices,
-  writeTasks
-} from "@muse/mcp";
+import { runDueProactiveNotices, writeTasks } from "@muse/mcp";
+import { LocalDirNotesProvider, createNotesInvestigator } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 function fakeJsonResponse(payload: unknown): Response {

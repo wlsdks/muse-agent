@@ -23,7 +23,7 @@ import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
-import { syncRemindersOnEventDelete } from "@muse/mcp";
+import { syncRemindersOnEventDelete } from "@muse/domain-tools";
 import { resolveRemindersFile } from "@muse/autoconfigure";
 
 interface CalendarRoutesGate {

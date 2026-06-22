@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createChannelApprovalGate, LogMessagingProvider, MessagingProviderRegistry, listPendingApprovals } from "@muse/messaging";
-import { readActionLog, runActuatorByName } from "@muse/mcp";
+import { readActionLog } from "@muse/mcp";
+import { runActuatorByName } from "@muse/domain-tools";
 import type { JsonObject } from "@muse/shared";
 import { describe, expect, it } from "vitest";
 

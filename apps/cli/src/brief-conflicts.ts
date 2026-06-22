@@ -4,7 +4,7 @@
  * day is the single thing you most want flagged at a glance.
  */
 
-import type { CalendarConflict } from "@muse/mcp";
+import type { CalendarConflict } from "@muse/domain-tools";
 
 const clock = (date: Date): string => date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 

@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { EmailApprovalGate, EmailSender } from "@muse/mcp";
+import type { EmailApprovalGate, EmailSender } from "@muse/domain-tools";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 

@@ -1,4 +1,4 @@
-import type { DailyForecast, WeatherProvider } from "@muse/mcp";
+import type { DailyForecast, WeatherProvider } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 import { formatWeekAgenda, formatWeekForecast, groupWeekAgenda, resolveWeekForecasts } from "./commands-week.js";

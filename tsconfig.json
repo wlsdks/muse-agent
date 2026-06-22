@@ -35,6 +35,9 @@
       "path": "./packages/db"
     },
     {
+      "path": "./packages/domain-tools"
+    },
+    {
       "path": "./packages/fs"
     },
     {

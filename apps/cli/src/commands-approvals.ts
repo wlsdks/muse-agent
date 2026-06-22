@@ -9,7 +9,7 @@
  */
 
 import { resolvePendingApprovalsFile } from "@muse/autoconfigure";
-import type { HostLookup } from "@muse/mcp";
+import type { HostLookup } from "@muse/domain-tools";
 import { clearPendingApproval, listPendingApprovals, type PendingApproval } from "@muse/messaging";
 import type { JsonObject } from "@muse/shared";
 import type { Command } from "commander";

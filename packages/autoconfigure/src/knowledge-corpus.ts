@@ -1,6 +1,6 @@
 import { finiteOr } from "@muse/shared";
 import { annotateNoteChunks, chunkText, classifyRetrievalConfidence, edgeLoadByRelevance, rankKnowledgeChunksWithHop, renderKnowledgeMatches, type KnowledgeChunk, type KnowledgeMatch } from "@muse/agent-core";
-import type { NotesProvider, TasksProvider } from "@muse/mcp";
+import type { NotesProvider, TasksProvider } from "@muse/domain-tools";
 import type { MuseTool } from "@muse/tools";
 
 /**

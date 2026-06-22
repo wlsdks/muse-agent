@@ -14,7 +14,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { EmailProvider, EmailSummary } from "@muse/mcp";
+import type { EmailProvider, EmailSummary } from "@muse/domain-tools";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 
 /** Pull the most recent `limit` inbox emails into recallable notes. Returns the count written. */

@@ -17,7 +17,8 @@ import {
   resolveReflectionsFile,
   resolveSkillRewardsFile
 } from "@muse/autoconfigure";
-import { queryContacts, runActuatorByName } from "@muse/mcp";
+import { queryContacts } from "@muse/mcp";
+import { runActuatorByName } from "@muse/domain-tools";
 import type { JsonObject } from "@muse/shared";
 import { InMemoryRuntimeSettingsStore, RuntimeSettings } from "@muse/runtime-settings";
 import Fastify, { type FastifyInstance } from "fastify";

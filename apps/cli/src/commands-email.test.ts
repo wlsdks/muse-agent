@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { EmailApprovalGate, EmailMessage, EmailReader, EmailSender } from "@muse/mcp";
+import type { EmailApprovalGate, EmailMessage, EmailReader, EmailSender } from "@muse/domain-tools";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
@@ -94,7 +94,7 @@ describe("muse email sync — pull recent emails into recallable notes (contract
   });
 
   it("writes one recallable note per email (from/subject/snippet), idempotent by message id", async () => {
-    const { GmailEmailProvider } = await import("@muse/mcp");
+    const { GmailEmailProvider } = await import("@muse/domain-tools");
     const notesDir = mkdtempSync(join(tmpdir(), "muse-email-sync-"));
     const fetchImpl = gmailFetch({
       list: { messages: [{ id: "m1" }, { id: "m2" }] },
@@ -136,7 +136,7 @@ describe("muse email sync — pull recent emails into recallable notes (contract
 
   it("a Gmail read error is surfaced (fail-soft, no crash)", async () => {
     const notesDir = mkdtempSync(join(tmpdir(), "muse-email-sync-err-"));
-    const { GmailEmailProvider } = await import("@muse/mcp");
+    const { GmailEmailProvider } = await import("@muse/domain-tools");
     const boom = (async () => { throw new Error("network down"); }) as unknown as typeof globalThis.fetch;
     const res = await run(["sync"], { emailSource: new GmailEmailProvider("tok", boom), notesDir });
     expect(res.exitCode).toBe(1);

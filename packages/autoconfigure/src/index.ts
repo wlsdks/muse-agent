@@ -22,25 +22,8 @@ import {
   InMemoryCacheStatsStore,
   InMemoryResponseCache
 } from "@muse/cache";
-import {
-  createContextReferenceMcpServer,
-  createDefaultLoopbackMcpServers,
-  createFetchMcpServer,
-  createFilesystemMcpServer,
-  createLoopbackMcpMuseTools,
-  type MessageApprovalGate,
-  upsertFollowup,
-  type LoopbackMcpServer,
-  type McpManager,
-  type McpTransportConnector,
-  type McpSecurityPolicyProvider,
-  type McpSecurityPolicyStore,
-  type McpServerInput,
-  type McpServerStore,
-  type NotesProviderRegistry,
-  type PersistedFollowup,
-  type TasksProviderRegistry
-} from "@muse/mcp";
+import { createLoopbackMcpMuseTools, upsertFollowup, type LoopbackMcpServer, type McpManager, type McpTransportConnector, type McpSecurityPolicyProvider, type McpSecurityPolicyStore, type McpServerInput, type McpServerStore, type PersistedFollowup } from "@muse/mcp";
+import { createContextReferenceMcpServer, createDefaultLoopbackMcpServers, createFetchMcpServer, createFilesystemMcpServer, type MessageApprovalGate, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import {
   createUserMemoryAutoExtractHook,
   defaultBeliefProvenanceFile,

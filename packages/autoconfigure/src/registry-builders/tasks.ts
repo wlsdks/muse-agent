@@ -31,13 +31,7 @@
  * filesystem-only `createTasksMcpServer`.
  */
 
-import {
-  AppleRemindersProvider,
-  LocalFileTasksProvider,
-  NotionTasksProvider,
-  TasksProviderRegistry,
-  type TasksProvider
-} from "@muse/mcp";
+import { AppleRemindersProvider, LocalFileTasksProvider, NotionTasksProvider, TasksProviderRegistry, type TasksProvider } from "@muse/domain-tools";
 
 import type { MuseEnvironment } from "../index.js";
 import { resolveTasksFile } from "../provider-paths.js";

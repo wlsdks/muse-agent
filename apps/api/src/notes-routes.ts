@@ -21,10 +21,7 @@
  * mapping once the consumers settle.
  */
 
-import {
-  createNotesMcpServer,
-  type NotesProviderRegistry
-} from "@muse/mcp";
+import { createNotesMcpServer, type NotesProviderRegistry } from "@muse/domain-tools";
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 

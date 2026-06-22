@@ -14,12 +14,8 @@
  * enhancement injected here.
  */
 
-import {
-  runDueSituationalBriefing,
-  type BriefingImminent,
-  type EmailProvider,
-  type WeatherProvider
-} from "@muse/mcp";
+import { type BriefingImminent } from "@muse/mcp";
+import { runDueSituationalBriefing, type EmailProvider, type WeatherProvider } from "@muse/domain-tools";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";

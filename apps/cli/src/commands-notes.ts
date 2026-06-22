@@ -12,7 +12,7 @@ import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative } from "node:path";
 
 import { resolveNotesDir } from "@muse/autoconfigure";
-import { createNotesMcpServer, fetchReadableUrl } from "@muse/mcp";
+import { createNotesMcpServer, fetchReadableUrl } from "@muse/domain-tools";
 import type { Command } from "commander";
 
 import {

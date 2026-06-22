@@ -16,7 +16,7 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
-import { isRetriableStatus } from "@muse/mcp";
+import { isRetriableStatus } from "@muse/domain-tools";
 import { formatErrorForTerminal, stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";
 

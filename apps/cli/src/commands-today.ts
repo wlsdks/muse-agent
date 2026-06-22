@@ -295,7 +295,7 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
           // Banner goes to stderr so a piped stdout consumer
           // still gets only the prose.
           const { resolveNotesDir } = await import("@muse/autoconfigure");
-          const { LocalDirNotesProvider } = await import("@muse/mcp");
+          const { LocalDirNotesProvider } = await import("@muse/domain-tools");
           const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
           const provider = new LocalDirNotesProvider({ notesDir });
           const title = `Today brief — ${shortDateLabel(briefing.generatedAt)}`;

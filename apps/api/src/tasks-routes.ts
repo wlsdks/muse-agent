@@ -19,15 +19,8 @@
 
 import { randomUUID } from "node:crypto";
 
-import {
-  compareTasksByDueDate,
-  parseTaskDueAt,
-  readTasks,
-  readTaskStatusFilter,
-  writeTasks,
-  type PersistedTask,
-  type TasksProviderRegistry
-} from "@muse/mcp";
+import { compareTasksByDueDate, parseTaskDueAt, readTasks, readTaskStatusFilter, writeTasks, type PersistedTask } from "@muse/mcp";
+import { type TasksProviderRegistry } from "@muse/domain-tools";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";

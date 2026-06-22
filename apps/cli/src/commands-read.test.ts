@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { LocalDirNotesProvider } from "@muse/mcp";
+import { LocalDirNotesProvider } from "@muse/domain-tools";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { buildDocumentNoteBody, ensureNoteMarkdownExtension, extractDocumentText, ingestDirectoryToNotes, isLikelyBinary, isPdfDocument, noteIdForDocument, saveDocumentToNotes } from "./commands-read.js";

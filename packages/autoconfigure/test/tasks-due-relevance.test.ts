@@ -1,5 +1,6 @@
 import { DefaultToolFilter } from "@muse/agent-core";
-import { createLoopbackMcpMuseTools, createTasksMcpServer } from "@muse/mcp";
+import { createLoopbackMcpMuseTools } from "@muse/mcp";
+import { createTasksMcpServer } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 // The REAL tasks loopback tools, projected the production way, through

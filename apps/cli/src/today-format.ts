@@ -4,12 +4,8 @@
  * formatters are its primary consumer.
  */
 
-import {
-  computeAvailability,
-  detectCalendarConflicts,
-  type AvailabilityEventLike,
-  type Contact,
-} from "@muse/mcp";
+import { computeAvailability, type AvailabilityEventLike, type Contact } from "@muse/mcp";
+import { detectCalendarConflicts } from "@muse/domain-tools";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 
 import type { RecallHit } from "./commands-recall.js";

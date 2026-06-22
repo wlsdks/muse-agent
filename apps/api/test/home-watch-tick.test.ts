@@ -1,4 +1,4 @@
-import { homeWatchesFromConfig } from "@muse/mcp";
+import { homeWatchesFromConfig } from "@muse/domain-tools";
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
 

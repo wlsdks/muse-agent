@@ -13,11 +13,7 @@
  * Auth: `requireAuthenticated` (same posture as `/api/today`).
  */
 
-import {
-  ACTIVITY_KINDS,
-  readActivityFeed,
-  type ActivityKind
-} from "@muse/mcp";
+import { ACTIVITY_KINDS, readActivityFeed, type ActivityKind } from "@muse/domain-tools";
 import type { FastifyInstance } from "fastify";
 
 import { readQueryInteger } from "./compat-parsers.js";

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createAgentRuntime } from "@muse/agent-core";
-import { createHomeActionTool, type WebActionApprovalGate } from "@muse/mcp";
+import { createHomeActionTool, type WebActionApprovalGate } from "@muse/domain-tools";
 import type { ModelProvider, ModelResponse } from "@muse/model";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";

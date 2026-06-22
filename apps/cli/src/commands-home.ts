@@ -7,7 +7,7 @@
  */
 
 import { resolveActionLogFile } from "@muse/autoconfigure";
-import { listHomeAssistantStates, performHomeActionWithApproval, readHomeAssistantState, type WebActionApprovalGate } from "@muse/mcp";
+import { listHomeAssistantStates, performHomeActionWithApproval, readHomeAssistantState, type WebActionApprovalGate } from "@muse/domain-tools";
 import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";
 

@@ -26,11 +26,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import {
-  ACTIVITY_KINDS,
-  readActivityFeed,
-  type ActivityKind
-} from "@muse/mcp";
+import { ACTIVITY_KINDS, readActivityFeed, type ActivityKind } from "@muse/domain-tools";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";

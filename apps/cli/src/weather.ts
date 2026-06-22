@@ -5,7 +5,7 @@
  * briefing daemon can reuse it; this file is just the CLI surface.
  */
 
-import { OpenMeteoWeatherProvider, formatDailyForecast, formatRainHeadsUp, formatWeather, type GeocodedLocation, type CurrentWeather, type WeatherProvider } from "@muse/mcp";
+import { OpenMeteoWeatherProvider, formatDailyForecast, formatRainHeadsUp, formatWeather, type GeocodedLocation, type CurrentWeather, type WeatherProvider } from "@muse/domain-tools";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";

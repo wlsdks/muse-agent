@@ -42,52 +42,8 @@ import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW,
 import { FileUserMemoryStore } from "@muse/memory";
 import type { PatternMatch } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import {
-  createAmbientNoticeRunner,
-  createMessagingObjectiveActuator,
-  createModelObjectiveEvaluator,
-  createProposingObjectiveActuator,
-  createWebWatchRunner,
-  deriveBriefingImminent,
-  deriveCalendarBriefingImminent,
-  FileAmbientSignalSource,
-  formatBirthdayBriefLine,
-  gateProactiveNoticeSink,
-  isQuietHour,
-  homeWatchesFromConfig,
-  parseQuietHours,
-  MacOsActiveWindowSource,
-  parseAmbientNoticeRules,
-  queryContacts,
-  resolveUpcomingBirthdays,
-  runDueCheckins,
-  runDueFollowups,
-  runDueObjectives,
-  runDuePatternNotices,
-  runDueProactiveNotices,
-  readEpisodes,
-  resolveLearnQueueFile,
-  GmailEmailProvider,
-  type EmailProvider,
-  decayStalePlaybookRewards,
-  isLearningPaused,
-  queryPlaybook,
-  recordPlaybookStrategy,
-  removePlaybookStrategy,
-  runDueReminders,
-  runDueSituationalBriefing,
-  selectUpcomingConflicts,
-  webWatchesFromConfig,
-  CHROME_DEVTOOLS_MCP_SERVER_NAME,
-  type AmbientNoticeRunner,
-  type BriefingCalendarLister,
-  type ChromeSnapshotConnection,
-  type ProactiveNoticeSink,
-  type WebWatchRunner,
-  readProactiveHistory,
-  readRecallHits,
-  writeFadedMemoryKeys
-} from "@muse/mcp";
+import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, formatBirthdayBriefLine, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, queryContacts, resolveUpcomingBirthdays, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, readEpisodes, resolveLearnQueueFile, decayStalePlaybookRewards, isLearningPaused, queryPlaybook, recordPlaybookStrategy, removePlaybookStrategy, runDueReminders, webWatchesFromConfig, CHROME_DEVTOOLS_MCP_SERVER_NAME, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type ProactiveNoticeSink, type WebWatchRunner, readProactiveHistory, readRecallHits, writeFadedMemoryKeys } from "@muse/mcp";
+import { homeWatchesFromConfig, GmailEmailProvider, type EmailProvider, runDueSituationalBriefing, selectUpcomingConflicts } from "@muse/domain-tools";
 import type { MuseTool } from "@muse/tools";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -329,7 +285,7 @@ async function defaultKnowledgeEnrich(env: NodeJS.ProcessEnv): Promise<((query: 
   if (!parseBoolean(env.MUSE_BRIEFING_RELATED_KNOWLEDGE_ENABLED, false)) return undefined;
   try {
     const { createKnowledgeEnricher, createOllamaEmbedder, resolveNotesDir } = await import("@muse/autoconfigure");
-    const { LocalDirNotesProvider } = await import("@muse/mcp");
+    const { LocalDirNotesProvider } = await import("@muse/domain-tools");
     const notesDir = resolveNotesDir(env as unknown as Parameters<typeof resolveNotesDir>[0]);
     return createKnowledgeEnricher({
       embed: createOllamaEmbedder(env.MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL),

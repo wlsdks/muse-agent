@@ -36,36 +36,8 @@ import { distillQueuedCorrections } from "./distill-queue.js";
 import { isModelResidentLive } from "./model-resident.js";
 import { osIdleMs } from "./os-idle.js";
 import { isOnAcPower } from "./power-state.js";
-import {
-  createMessagingObjectiveActuator,
-  createModelObjectiveEvaluator,
-  createNotesInvestigator,
-  deriveBriefingImminent,
-  deriveCalendarBriefingImminent,
-  FileAmbientSignalSource,
-  MacOsActiveWindowSource,
-  extractEmailAddress,
-  GmailEmailProvider,
-  LocalDirNotesProvider,
-  LocalFileTasksProvider,
-  OpenMeteoWeatherProvider,
-  homeWatchesFromConfig,
-  parseHomeAlertChecks,
-  readTasks,
-  resolveDayShapeLine,
-  resolveHomeAlertLine,
-  resolveTasksDueLine,
-  parseAmbientNoticeRules,
-  formatBirthdayBriefLine,
-  queryContacts,
-  resolveUpcomingBirthdays,
-  webWatchesFromConfig,
-  isOllamaLeaseHeldByOther,
-  resolveOllamaLeaseFile,
-  resolveLearnQueueFile,
-  decayStalePlaybookRewards,
-  type BriefingImminent
-} from "@muse/mcp";
+import { createMessagingObjectiveActuator, createModelObjectiveEvaluator, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, MacOsActiveWindowSource, readTasks, resolveDayShapeLine, resolveTasksDueLine, parseAmbientNoticeRules, formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, webWatchesFromConfig, isOllamaLeaseHeldByOther, resolveOllamaLeaseFile, resolveLearnQueueFile, decayStalePlaybookRewards, type BriefingImminent } from "@muse/mcp";
+import { createNotesInvestigator, extractEmailAddress, GmailEmailProvider, LocalDirNotesProvider, LocalFileTasksProvider, OpenMeteoWeatherProvider, homeWatchesFromConfig, parseHomeAlertChecks, resolveHomeAlertLine } from "@muse/domain-tools";
 import { startAmbientTick } from "./ambient-tick.js";
 import { startWebWatchTick } from "./web-watch-tick.js";
 import { startFollowupTick } from "./followup-tick.js";

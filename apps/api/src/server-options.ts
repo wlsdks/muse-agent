@@ -9,7 +9,7 @@ import type { ActiveContextProvider, AgentInitiatedNoticeBroker, AgentRuntime } 
 import type { AgentSpecRegistry } from "@muse/agent-specs";
 import type { MuseAuth } from "@muse/auth";
 import type { CalendarCredentialStore, CalendarProviderRegistry } from "@muse/calendar";
-import type { NotesProviderRegistry, TasksProviderRegistry } from "@muse/mcp";
+import type { NotesProviderRegistry, TasksProviderRegistry } from "@muse/domain-tools";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { ConversationSummaryStore, TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";

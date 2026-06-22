@@ -9,7 +9,7 @@
  */
 
 import { resolveActionLogFile } from "@muse/autoconfigure";
-import { performWebActionWithApproval, type WebActionApprovalGate } from "@muse/mcp";
+import { performWebActionWithApproval, type WebActionApprovalGate } from "@muse/domain-tools";
 import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";
 

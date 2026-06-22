@@ -4,15 +4,8 @@
  * command-registration surface in `commands-calendar.ts`.
  */
 
-import {
-  detectCalendarConflicts,
-  resolveRelativeTimePhrase,
-  type AvailabilityEventLike,
-  type AvailabilityResult,
-  type CalendarConflict,
-  type ConflictEventLike,
-  type PersistedReminder
-} from "@muse/mcp";
+import { resolveRelativeTimePhrase, type AvailabilityEventLike, type AvailabilityResult, type PersistedReminder } from "@muse/mcp";
+import { detectCalendarConflicts, type CalendarConflict, type ConflictEventLike } from "@muse/domain-tools";
 
 /**
  * Reduce-based min/max over a number array. `Math.min(...arr)` /

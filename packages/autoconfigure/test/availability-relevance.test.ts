@@ -1,5 +1,6 @@
 import { DefaultToolFilter } from "@muse/agent-core";
-import { createCalendarMcpServer, createLoopbackMcpMuseTools } from "@muse/mcp";
+import { createLoopbackMcpMuseTools } from "@muse/mcp";
+import { createCalendarMcpServer } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 
 // The REAL calendar loopback tools, projected the production way
