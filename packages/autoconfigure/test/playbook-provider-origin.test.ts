@@ -8,7 +8,7 @@ import { recordPlaybookStrategy } from "@muse/mcp";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildPlaybookProvider } from "../src/context-engineering-builders.js";
-import type { MuseEnvironment } from "../src/environment.js";
+import type { MuseEnvironment } from "../src/index.js";
 
 let files: string[] = [];
 const freshFile = (): string => {
