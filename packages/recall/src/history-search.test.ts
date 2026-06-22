@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { searchHistory, type HistoryRecord } from "./history-search.js";
+import { searchHistory, searchHistoryHybrid, type HistoryRecord } from "./history-search.js";
 
 const rec = (ref: string, text: string, source: HistoryRecord["source"] = "episodes", timestampMs?: number): HistoryRecord => ({
   ref,
@@ -96,5 +96,108 @@ describe("searchHistory — deterministic lexical history search (Gap1-S1)", () 
     const bySource = new Map(hits.map((h) => [h.ref, h.source]));
     expect(bySource.get("n1")).toBe("notes");
     expect(bySource.get("e1")).toBe("episodes");
+  });
+});
+
+const erec = (
+  ref: string,
+  text: string,
+  embedding: readonly number[],
+  source: HistoryRecord["source"] = "episodes",
+  timestampMs?: number
+): HistoryRecord => ({ ref, source, text, embedding, ...(timestampMs === undefined ? {} : { timestampMs }) });
+
+describe("searchHistoryHybrid — lexical+cosine RRF fusion (Gap1-S3)", () => {
+  it("surfaces a semantically-close record the lexical pass MISSES (the fusion payoff)", () => {
+    // The query shares NO content term with p1's wording, but p1's embedding is
+    // aligned with the query vector — pure lexical returns nothing, hybrid surfaces it.
+    const corpus = [
+      erec("p1", "We covered the reimbursement workflow for travel costs.", [1, 0, 0]),
+      erec("d1", "Notes about the office plants and the new coffee machine.", [0, 1, 0])
+    ];
+    const query = "expense claim process";
+    const queryVector = [1, 0, 0];
+
+    const lexicalOnly = searchHistory(query, corpus);
+    expect(lexicalOnly).toHaveLength(0); // lexical genuinely misses
+
+    const hybrid = searchHistoryHybrid(query, corpus, { queryVector });
+    expect(hybrid.length).toBeGreaterThanOrEqual(1);
+    expect(hybrid[0]!.ref).toBe("p1");
+    expect(hybrid[0]!.score).toBeGreaterThan(0);
+  });
+
+  it("does NOT surface a record far in both lexical AND embedding space (precision invariant)", () => {
+    const corpus = [
+      erec("near", "alpha report budget", [1, 0, 0]),
+      erec("far", "totally unrelated kitchen sink", [0, 0, 1])
+    ];
+    const hybrid = searchHistoryHybrid("alpha report", corpus, { queryVector: [1, 0, 0] });
+    expect(hybrid.map((h) => h.ref)).toContain("near");
+    expect(hybrid.every((h) => h.ref !== "far")).toBe(true);
+  });
+
+  it("respects the minCosine floor — a weakly-similar record below the floor is dropped", () => {
+    // weak's cosine to the query is ~0.196 (just under 0.2); it shares no lexical term.
+    const corpus = [erec("weak", "unrelated wording entirely", [5, 1, 0])];
+    const queryVector = [1, 0, 0]; // cos = 5/sqrt(26) ≈ 0.9806 -> well above; build a real sub-floor case below
+    expect(searchHistoryHybrid("zzz", corpus, { queryVector, minCosine: 0.99 })).toHaveLength(0);
+    // Above the floor it surfaces:
+    expect(searchHistoryHybrid("zzz", corpus, { queryVector, minCosine: 0.9 }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("falls back to byte-identical lexical search when no queryVector is given", () => {
+    const corpus = [
+      erec("s1", "vpn mtu packets dropped on wifi", [1, 0, 0]),
+      erec("s2", "lunch plans friday", [0, 1, 0])
+    ];
+    const hybrid = searchHistoryHybrid("vpn mtu", corpus); // no queryVector
+    const lexical = searchHistory("vpn mtu", corpus);
+    expect(hybrid).toEqual(lexical);
+  });
+
+  it("falls back to lexical when the query vector is present but NO record carries an embedding", () => {
+    const corpus = [rec("s1", "vpn mtu packets"), rec("s2", "lunch friday")];
+    const hybrid = searchHistoryHybrid("vpn mtu", corpus, { queryVector: [1, 0, 0] });
+    expect(hybrid).toEqual(searchHistory("vpn mtu", corpus));
+  });
+
+  it("fuses BOTH signals — a record strong in lexical AND cosine outranks a single-signal record", () => {
+    const corpus = [
+      erec("both", "alpha report alpha report alpha", [1, 0, 0]), // top lexical + top cosine
+      erec("lexOnly", "alpha report once", [0, 1, 0]), // lexical only
+      erec("cosOnly", "unrelated wording", [1, 0, 0]) // cosine only (no shared term)
+    ];
+    const hits = searchHistoryHybrid("alpha report", corpus, { queryVector: [1, 0, 0] });
+    expect(hits[0]!.ref).toBe("both");
+  });
+
+  it("caps to topK keeping the highest-fused records", () => {
+    const corpus = [
+      erec("strong", "alpha report alpha report", [1, 0, 0], "episodes", 1_000),
+      erec("mid", "alpha once", [1, 0, 0], "episodes", 9_000),
+      erec("weak", "beta note", [0, 1, 0], "episodes", 5_000)
+    ];
+    const hits = searchHistoryHybrid("alpha report", corpus, { queryVector: [1, 0, 0], topK: 2 });
+    expect(hits).toHaveLength(2);
+    expect(hits.every((h) => h.ref !== "weak")).toBe(true);
+  });
+
+  it("breaks a genuine fused-score tie toward the more recent record (recency tiebreak)", () => {
+    // lexOnly ranks #1 in lexRanking; cosOnly ranks #1 in cosRanking; they share no
+    // list, so both get identical RRF score 1/(k+1) — the recency tiebreak decides.
+    const corpus = [
+      erec("lexOnly", "alpha report", [0, 1, 0], "episodes", 1_000), // top lexical, off-axis embed
+      erec("cosOnly", "unrelated wording", [1, 0, 0], "episodes", 9_000) // off-lexical, top cosine
+    ];
+    const hits = searchHistoryHybrid("alpha report", corpus, { queryVector: [1, 0, 0] });
+    expect(hits).toHaveLength(2);
+    expect(hits[0]!.score).toBeCloseTo(hits[1]!.score, 12); // genuinely tied fused score
+    expect(hits[0]!.ref).toBe("cosOnly"); // newer (9000) wins the tie
+  });
+
+  it("returns an empty array when nothing matches either signal", () => {
+    const corpus = [erec("s1", "kitchen sink", [0, 0, 1])];
+    expect(searchHistoryHybrid("alpha report", corpus, { queryVector: [1, 0, 0] })).toHaveLength(0);
   });
 });
