@@ -11,9 +11,7 @@ function sum(rows: readonly TokenCostDailyRow[], pick: (r: TokenCostDailyRow) =>
   return rows.reduce((acc, r) => acc + pick(r), 0);
 }
 
-export function formatAccuracyPct(accuracy: number | undefined): string {
-  return formatProbabilityPct(accuracy);
-}
+export { formatProbabilityPct as formatAccuracyPct } from "../lib/percent.js";
 
 export function DashboardView({ client }: { client: ApiClient }) {
   const { locale, t } = useI18n();
@@ -43,7 +41,7 @@ export function DashboardView({ client }: { client: ApiClient }) {
   const days = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b));
   const maxDay = Math.max(1, ...days.map(([, v]) => v));
 
-  const accuracyPct = formatAccuracyPct(tools.data?.accuracy);
+  const accuracyPct = formatProbabilityPct(tools.data?.accuracy);
   const topTools = (tools.data?.byTool ?? []).slice(0, 8);
 
   const anyLoading = cost.isLoading || tools.isLoading || latency.isLoading;

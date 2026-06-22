@@ -4,6 +4,8 @@
  * over its own p95 percentile helper.
  */
 
+import { percentileMs } from "./observability-percentile.js";
+
 export type SloViolationType = "latency" | "error_rate";
 
 export interface SloViolation {
@@ -167,27 +169,4 @@ export class SloAlertEvaluator {
       this.#results.shift();
     }
   }
-}
-
-function percentileMs(values: readonly number[], percentile: number): number {
-  if (values.length === 0) {
-    return 0;
-  }
-  if (percentile <= 0) {
-    return Math.round(Math.min(...values));
-  }
-  if (percentile >= 1) {
-    return Math.round(Math.max(...values));
-  }
-  const sorted = [...values].sort((a, b) => a - b);
-  const rank = percentile * (sorted.length - 1);
-  const lower = Math.floor(rank);
-  const upper = Math.ceil(rank);
-  if (lower === upper) {
-    return Math.round(sorted[lower] ?? 0);
-  }
-  const weight = rank - lower;
-  const lowerValue = sorted[lower] ?? 0;
-  const upperValue = sorted[upper] ?? lowerValue;
-  return Math.round(lowerValue * (1 - weight) + upperValue * weight);
 }

@@ -115,13 +115,6 @@ export function rankFileCandidates(candidates: readonly FileCandidate[], query: 
   return scored.map((entry) => entry.candidate);
 }
 
-export interface FileReadFsImpl {
-  /** All readable files under the roots (depth-bounded walk). */
-  listCandidates(roots: readonly string[]): Promise<readonly FileCandidate[]>;
-  readFile(path: string): Promise<Buffer>;
-  realpath?(path: string): Promise<string>;
-}
-
 const WALK_DEPTH = 3;
 
 export async function walkCandidates(roots: readonly string[]): Promise<readonly FileCandidate[]> {

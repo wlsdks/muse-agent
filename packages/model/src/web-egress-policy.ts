@@ -14,7 +14,9 @@
  * orthogonal by design.
  */
 
-const FALSY_BOOLEAN_VALUES: ReadonlySet<string> = new Set(["false", "0", "no", "off"]);
+// Canonical falsy-spelling set shared with web-search-policy.ts so the two
+// kill-switch parsers can never drift apart.
+export const FALSY_BOOLEAN_VALUES: ReadonlySet<string> = new Set(["false", "0", "no", "off"]);
 
 /**
  * True unless `MUSE_WEB_EGRESS` is an explicit falsy spelling

@@ -1,3 +1,5 @@
+import { FALSY_BOOLEAN_VALUES } from "./web-egress-policy.js";
+
 export interface WebSearchPolicy {
   readonly enabled: boolean;
   readonly maxUses: number;
@@ -74,7 +76,6 @@ function strictPositiveInt(raw: string): number | undefined {
 }
 
 const TRUTHY_BOOLEAN_VALUES: ReadonlySet<string> = new Set(["true", "1", "yes", "on"]);
-const FALSY_BOOLEAN_VALUES: ReadonlySet<string> = new Set(["false", "0", "no", "off"]);
 
 function parseBooleanTriState(value: string | undefined): boolean | undefined {
   if (value === undefined) return undefined;

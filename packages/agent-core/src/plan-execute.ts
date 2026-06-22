@@ -217,8 +217,7 @@ export function validateStepDependencies(steps: readonly PlanStep[]): readonly P
         const isForward = ref > i + 1;
         const isDangling = ref < 1 || ref > steps.length;
         if (isSelf || isForward || isDangling) {
-          const kind = isDangling && ref >= 1 && ref <= steps.length ? "forward" :
-            isDangling ? "dangling" : "forward";
+          const kind = isDangling ? "dangling" : "forward";
           errors.push({
             reason: `arg references step ${ref.toString()} (${kind}): un-dispatchable in a sequential plan`,
             stepIndex: i,

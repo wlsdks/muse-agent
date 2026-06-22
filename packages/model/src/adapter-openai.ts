@@ -32,12 +32,16 @@ import type {
   OpenRouterProviderOptions
 } from "./index.js";
 
+interface OpenAIWireConfig {
+  readonly apiKey?: string;
+  readonly baseUrl: string;
+  readonly defaultModel?: string;
+  readonly fetchImpl: typeof globalThis.fetch;
+  readonly headers: Readonly<Record<string, string>>;
+}
+
 export class OpenAIProvider extends OpenAICompatibleProvider {
-  private readonly openaiApiKey?: string;
-  private readonly openaiBaseUrl: string;
-  private readonly openaiDefaultModel?: string;
-  private readonly openaiFetchImpl: typeof globalThis.fetch;
-  private readonly openaiHeaders: Readonly<Record<string, string>>;
+  private readonly wire: OpenAIWireConfig;
 
   constructor(options: OpenAIProviderOptions = {}) {
     super({
@@ -45,26 +49,28 @@ export class OpenAIProvider extends OpenAICompatibleProvider {
       baseUrl: options.baseUrl ?? "https://api.openai.com/v1",
       id: options.id ?? "openai"
     });
-    this.openaiApiKey = options.apiKey;
-    this.openaiBaseUrl = (options.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/u, "");
-    this.openaiDefaultModel = options.defaultModel;
-    this.openaiFetchImpl = options.fetch ?? globalThis.fetch;
-    this.openaiHeaders = options.headers ?? {};
+    this.wire = {
+      apiKey: options.apiKey,
+      baseUrl: (options.baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/u, ""),
+      defaultModel: options.defaultModel,
+      fetchImpl: options.fetch ?? globalThis.fetch,
+      headers: options.headers ?? {}
+    };
   }
 
   override async generate(request: ModelRequest): Promise<ModelResponse> {
     const policy = (request.metadata?.webSearchPolicy as { enabled: boolean; maxUses: number } | undefined)
       ?? { enabled: false, maxUses: 5 };
 
-    const url = `${this.openaiBaseUrl}/responses`;
-    const body = JSON.stringify(toOpenAIResponsesRequest(request, this.openaiDefaultModel, policy));
+    const url = `${this.wire.baseUrl}/responses`;
+    const body = JSON.stringify(toOpenAIResponsesRequest(request, this.wire.defaultModel, policy));
 
-    const response = await this.openaiFetchImpl(url, {
+    const response = await this.wire.fetchImpl(url, {
       body,
       headers: {
         "content-type": "application/json",
-        ...(this.openaiApiKey ? { authorization: `Bearer ${this.openaiApiKey}` } : {}),
-        ...this.openaiHeaders
+        ...(this.wire.apiKey ? { authorization: `Bearer ${this.wire.apiKey}` } : {}),
+        ...this.wire.headers
       },
       method: "POST"
     });
@@ -97,15 +103,15 @@ export class OpenAIProvider extends OpenAICompatibleProvider {
     const policy = (request.metadata?.webSearchPolicy as { enabled: boolean; maxUses: number } | undefined)
       ?? { enabled: false, maxUses: 5 };
 
-    const url = `${this.openaiBaseUrl}/responses`;
-    const body = JSON.stringify({ ...toOpenAIResponsesRequest(request, this.openaiDefaultModel, policy), stream: true });
+    const url = `${this.wire.baseUrl}/responses`;
+    const body = JSON.stringify({ ...toOpenAIResponsesRequest(request, this.wire.defaultModel, policy), stream: true });
 
-    const response = await this.openaiFetchImpl(url, {
+    const response = await this.wire.fetchImpl(url, {
       body,
       headers: {
         "content-type": "application/json",
-        ...(this.openaiApiKey ? { authorization: `Bearer ${this.openaiApiKey}` } : {}),
-        ...this.openaiHeaders
+        ...(this.wire.apiKey ? { authorization: `Bearer ${this.wire.apiKey}` } : {}),
+        ...this.wire.headers
       },
       method: "POST"
     });

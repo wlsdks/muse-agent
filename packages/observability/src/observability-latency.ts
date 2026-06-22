@@ -19,6 +19,7 @@
 import type { MuseDatabase } from "@muse/db";
 import type { Kysely } from "kysely";
 import { sql } from "kysely";
+import { percentileMs } from "./observability-percentile.js";
 import type { QueryableTraceEventSink, TraceEventInput } from "./index.js";
 
 export const LATENCY_DEFAULT_BUCKET_SIZE_MS = 60 * 60 * 1000;
@@ -232,29 +233,6 @@ function roundedMean(values: readonly number[]): number {
   }
   const sum = values.reduce((acc, value) => acc + value, 0);
   return Math.round(sum / values.length);
-}
-
-function percentileMs(values: readonly number[], percentile: number): number {
-  if (values.length === 0) {
-    return 0;
-  }
-  if (percentile <= 0) {
-    return Math.round(Math.min(...values));
-  }
-  if (percentile >= 1) {
-    return Math.round(Math.max(...values));
-  }
-  const sorted = [...values].sort((a, b) => a - b);
-  const rank = percentile * (sorted.length - 1);
-  const lower = Math.floor(rank);
-  const upper = Math.ceil(rank);
-  if (lower === upper) {
-    return Math.round(sorted[lower] ?? 0);
-  }
-  const weight = rank - lower;
-  const lowerValue = sorted[lower] ?? 0;
-  const upperValue = sorted[upper] ?? 0;
-  return Math.round(lowerValue + (upperValue - lowerValue) * weight);
 }
 
 function toNumberOrZero(value: string | number | null | undefined): number {

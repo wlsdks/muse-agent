@@ -126,11 +126,11 @@ export function createAgentSpecInsert(
     enabled: normalized.enabled,
     id: normalized.id,
     independent_execution: normalized.independentExecution,
-    keywords: toJsonArray(normalized.keywords),
+    keywords: [...normalized.keywords],
     mode: normalized.mode,
     name: normalized.name,
     system_prompt: normalized.systemPrompt ?? null,
-    tool_names: toJsonArray(normalized.toolNames),
+    tool_names: [...normalized.toolNames],
     updated_at: normalized.updatedAt
   };
 }
@@ -149,10 +149,6 @@ export function mapAgentSpecRow(row: AgentSpecRow): AgentSpec {
     toolNames: toStringArray(row.tool_names),
     updatedAt: toDate(row.updated_at)
   };
-}
-
-function toJsonArray(values: readonly string[]): JsonValue[] {
-  return values.map((value) => value);
 }
 
 function toStringArray(value: JsonValue): readonly string[] {
