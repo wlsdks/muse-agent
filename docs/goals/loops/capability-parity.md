@@ -41,7 +41,7 @@ concurrent-loop hygiene I did not entangle with that uncommitted work — the
 write-back ✓ line went to the top of my worktree's backlog (append-only, low
 conflict risk) and the full detail lives here.
 
-## fire 2 · 2026-06-23 · skill v2.0.0 · __SHA__
+## fire 2 · 2026-06-23 · skill v2.0.0 · 3d94f370d
 meta: value-class=new-capability · pkg=@muse/recall (+@muse/autoconfigure wiring) · kind=tool-exposure · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles 1111→1113 (+2: history-search-tool unit + history-search wiring) · toolCases 342→349 (+7 eval:tools golden) · fabrication 0 (retrieval tool quotes stored text, no-overlap → explicit no-match) · pnpm check exit 0 · lint exit 0 · eval:tools history-search 7/7 STABLE 3/3 live (gemma4:12b)
 
