@@ -294,7 +294,7 @@ export function tokenMatchesKeywordWord(token: string, word: string): boolean {
  * A keyword matches when every word in it hits some prompt token — single-word
  * keywords need one hit, multi-word keywords ("pay rent") need all their words.
  */
-function keywordMatchesPromptTokens(keyword: string, promptTokens: ReadonlySet<string>): boolean {
+export function keywordMatchesPromptTokens(keyword: string, promptTokens: ReadonlySet<string>): boolean {
   const words = keyword.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((word) => word.length > 0);
   if (words.length === 0) return false;
   return words.every((word) => {

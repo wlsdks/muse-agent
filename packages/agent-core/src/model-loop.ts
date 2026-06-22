@@ -143,6 +143,135 @@ function interruptedExecution(
   };
 }
 
+/** Trackers threaded through the shared per-batch tool-execution body. */
+interface ToolBatchTrackers {
+  readonly deduplicator: ToolCallDeduplicator;
+  readonly progress: ToolLoopProgressTracker;
+  readonly failureStreak: ToolFailureStreakTracker;
+  readonly shellPhase: GeneralShellPhaseGate;
+  readonly reverify: ReverifyNudgeTracker;
+}
+
+interface ToolBatchState {
+  toolCallCount: number;
+  messages: readonly ModelMessage[];
+  readonly deadlineMs: number | undefined;
+  readonly now: () => number;
+  readonly anchorTerms: readonly string[];
+}
+
+interface ToolBatchResult {
+  readonly toolCallCount: number;
+  readonly messages: readonly ModelMessage[];
+}
+
+/**
+ * Per-batch tool-execution body shared by the blocking and streaming
+ * loops. Yields a `tool-result` stream event per executed call (the
+ * blocking caller iterates without forwarding them); mutates the shared
+ * `toolResults` / `toolsUsed` / `intermediateMessages` arrays and the
+ * trackers in place, and RETURNS the advanced `toolCallCount` and the
+ * `messages` array (caller-owned scalars threaded explicitly to keep
+ * behaviour identical to the inlined copies).
+ */
+async function* runToolBatch(
+  runner: ModelLoopRunner,
+  context: AgentRunContext,
+  calls: readonly ModelToolCall[],
+  activeTools: ModelRequest["tools"],
+  assistantMessage: ModelMessage,
+  intermediateMessages: ModelMessage[],
+  toolResults: ExecutedToolResult[],
+  toolsUsed: string[],
+  trackers: ToolBatchTrackers,
+  state: ToolBatchState
+): AsyncGenerator<ModelLoopStreamEvent, ToolBatchResult, void> {
+  const { deduplicator, progress, failureStreak, shellPhase, reverify } = trackers;
+  const { deadlineMs, now, anchorTerms } = state;
+  let toolCallCount = state.toolCallCount;
+  const toolMessages: ModelMessage[] = [];
+
+  intermediateMessages.push(assistantMessage);
+  let messages: readonly ModelMessage[] = [...state.messages, assistantMessage];
+
+  // A batch the model already emitted is honoured even if the
+  // deadline passed during the model call (the established
+  // contract: the deadline disables tools for the *next* turn).
+  // But once the deadline is crossed *while we run this batch*
+  // sequentially — N calls each hitting a slow/hung MCP server —
+  // the remaining calls are skipped so the wall-clock cap is a
+  // real execution bound, not just a between-turn boundary.
+  const batchStartedPastDeadline = deadlineMs !== undefined && now() > deadlineMs;
+  // Conflicting-write guard (AgentSpec arXiv:2503.18666): a 2nd write to the same
+  // target with conflicting args in this batch is withheld (zero side-effect) so
+  // a double-act can't reach a write actuator.
+  const conflictingIds = detectConflictingWritesInBatch(calls, (call) => {
+    const risk = (activeTools ?? []).find((t) => t.name === call.name)?.risk;
+    return risk === "write" || risk === "execute";
+  });
+  for (const toolCall of calls) {
+    const remaining = runner.maxToolCalls - toolCallCount;
+    const crossedDeadlineMidBatch = !batchStartedPastDeadline
+      && deadlineMs !== undefined && now() > deadlineMs;
+    const conflicting = conflictingIds.has(toolCall.id);
+    const canRun = remaining > 0 && !crossedDeadlineMidBatch && !conflicting;
+    const duplicate = canRun ? deduplicator.check(toolCall) : undefined;
+    const executed = duplicate?.duplicate
+      ? { result: duplicate.result, toolCall }
+      : conflicting
+        ? blockedToolResult(toolCall, "Error: conflicting write withheld — ambiguous duplicate action in this batch")
+        : canRun
+          ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
+          : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
+              ? "Error: run wall-clock deadline reached"
+              : "Error: max tool call limit reached");
+
+    const grounding = groundingSourceFromExecuted(executed);
+    yield { runId: context.runId, toolCall, type: "tool-result", ...(grounding ? { grounding } : {}) };
+    toolCallCount += canRun ? 1 : 0;
+    const toolRisk = (activeTools ?? []).find((t) => t.name === toolCall.name)?.risk;
+    const mutating = toolRisk === "write" || toolRisk === "execute";
+    deduplicator.record(toolCall, executed.result, mutating);
+    // Feed only GENUINE executions (not blocked / exact-dups) to the stall
+    // tracker; a mutating call resets the window (it advanced state).
+    if (canRun && !duplicate?.duplicate) {
+      progress.record(executed.result.output, mutating);
+      failureStreak.record(toolCall.name, executed.result.status);
+      shellPhase.record(toolCall.name, executed.result.output);
+      reverify.recordTool(toolRisk);
+    }
+    toolsUsed.push(toolCall.name);
+    toolResults.push(executed);
+    // cap individual tool results so a single big
+    // output doesn't blow the context window. Original
+    // executed.result.output is left intact for traces / metrics
+    // — only the message-bound copy is truncated.
+    const messageContent = withRepetitionNudge(
+      capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms),
+      Boolean(duplicate?.duplicate)
+    );
+    toolMessages.push({
+      content: messageContent,
+      name: toolCall.name,
+      role: "tool",
+      toolCallId: toolCall.id
+    });
+  }
+
+  const toolSummary = renderToolResults(
+    toolResults
+      .map((item) => `${item.result.name}: ${capToolOutput(item.result.output, item.result.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms)}`)
+      .join("\n\n")
+  );
+  const nextMessages = [...messages, ...toolMessages];
+  messages = toolSummary
+    ? appendSystemSection(nextMessages, toolSummary, "tool-results")
+    : nextMessages;
+  intermediateMessages.push(...toolMessages);
+
+  return { messages, toolCallCount };
+}
+
 export async function executeModelLoop(
   runner: ModelLoopRunner,
   context: AgentRunContext,
@@ -229,83 +358,27 @@ export async function executeModelLoop(
       role: "assistant",
       toolCalls: calls
     };
-    const toolMessages: ModelMessage[] = [];
 
-    intermediateMessages.push(assistantMessage);
-    messages = [...messages, assistantMessage];
-
-    // A batch the model already emitted is honoured even if the
-    // deadline passed during the model call (the established
-    // contract: the deadline disables tools for the *next* turn).
-    // But once the deadline is crossed *while we run this batch*
-    // sequentially — N calls each hitting a slow/hung MCP server —
-    // the remaining calls are skipped so the wall-clock cap is a
-    // real execution bound, not just a between-turn boundary.
-    const batchStartedPastDeadline = deadlineMs !== undefined && now() > deadlineMs;
-    // Conflicting-write guard (AgentSpec arXiv:2503.18666): a 2nd write to the same
-    // target with conflicting args in this batch is withheld (zero side-effect) so
-    // a double-act can't reach a write actuator.
-    const conflictingIds = detectConflictingWritesInBatch(calls, (call) => {
-      const risk = (activeTools ?? []).find((t) => t.name === call.name)?.risk;
-      return risk === "write" || risk === "execute";
-    });
-    for (const toolCall of calls) {
-      const remaining = runner.maxToolCalls - toolCallCount;
-      const crossedDeadlineMidBatch = !batchStartedPastDeadline
-        && deadlineMs !== undefined && now() > deadlineMs;
-      const conflicting = conflictingIds.has(toolCall.id);
-      const canRun = remaining > 0 && !crossedDeadlineMidBatch && !conflicting;
-      const duplicate = canRun ? deduplicator.check(toolCall) : undefined;
-      const executed = duplicate?.duplicate
-        ? { result: duplicate.result, toolCall }
-        : conflicting
-          ? blockedToolResult(toolCall, "Error: conflicting write withheld — ambiguous duplicate action in this batch")
-          : canRun
-            ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
-            : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
-                ? "Error: run wall-clock deadline reached"
-                : "Error: max tool call limit reached");
-
-      toolCallCount += canRun ? 1 : 0;
-      const toolRisk = (activeTools ?? []).find((t) => t.name === toolCall.name)?.risk;
-      const mutating = toolRisk === "write" || toolRisk === "execute";
-      deduplicator.record(toolCall, executed.result, mutating);
-      // Feed only GENUINE executions (not blocked / exact-dups) to the stall
-      // tracker; a mutating call resets the window (it advanced state).
-      if (canRun && !duplicate?.duplicate) {
-        progress.record(executed.result.output, mutating);
-        failureStreak.record(toolCall.name, executed.result.status);
-        shellPhase.record(toolCall.name, executed.result.output);
-        reverify.recordTool(toolRisk);
-      }
-      toolsUsed.push(toolCall.name);
-      toolResults.push(executed);
-      // cap individual tool results so a single big
-      // output doesn't blow the context window. Original
-      // executed.result.output is left intact for traces / metrics
-      // — only the message-bound copy is truncated.
-      const messageContent = withRepetitionNudge(
-        capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms),
-        Boolean(duplicate?.duplicate)
-      );
-      toolMessages.push({
-        content: messageContent,
-        name: toolCall.name,
-        role: "tool",
-        toolCallId: toolCall.id
-      });
-    }
-
-    const toolSummary = renderToolResults(
-      toolResults
-        .map((item) => `${item.result.name}: ${capToolOutput(item.result.output, item.result.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms)}`)
-        .join("\n\n")
+    const batch = runToolBatch(
+      runner,
+      context,
+      calls,
+      activeTools,
+      assistantMessage,
+      intermediateMessages,
+      toolResults,
+      toolsUsed,
+      { deduplicator, progress, failureStreak, shellPhase, reverify },
+      { anchorTerms, deadlineMs, messages, now, toolCallCount }
     );
-    const nextMessages = [...messages, ...toolMessages];
-    messages = toolSummary
-      ? appendSystemSection(nextMessages, toolSummary, "tool-results")
-      : nextMessages;
-    intermediateMessages.push(...toolMessages);
+    // Blocking path: drain the per-batch generator without forwarding its
+    // tool-result events; the streaming path yields them instead.
+    let step = await batch.next();
+    while (!step.done) {
+      step = await batch.next();
+    }
+    messages = step.value.messages;
+    toolCallCount = step.value.toolCallCount;
   }
 }
 
@@ -391,76 +464,21 @@ export async function* executeStreamingModelLoop(
       role: "assistant",
       toolCalls: calls
     };
-    const toolMessages: ModelMessage[] = [];
 
-    intermediateMessages.push(assistantMessage);
-    messages = [...messages, assistantMessage];
-
-    const batchStartedPastDeadline = deadlineMs !== undefined && now() > deadlineMs;
-    // Conflicting-write guard (AgentSpec arXiv:2503.18666): see executeModelLoop.
-    const conflictingIds = detectConflictingWritesInBatch(calls, (call) => {
-      const risk = (activeTools ?? []).find((t) => t.name === call.name)?.risk;
-      return risk === "write" || risk === "execute";
-    });
-    for (const toolCall of calls) {
-      const remaining = runner.maxToolCalls - toolCallCount;
-      const crossedDeadlineMidBatch = !batchStartedPastDeadline
-        && deadlineMs !== undefined && now() > deadlineMs;
-      const conflicting = conflictingIds.has(toolCall.id);
-      const canRun = remaining > 0 && !crossedDeadlineMidBatch && !conflicting;
-      const duplicate = canRun ? deduplicator.check(toolCall) : undefined;
-      const executed = duplicate?.duplicate
-        ? { result: duplicate.result, toolCall }
-        : conflicting
-          ? blockedToolResult(toolCall, "Error: conflicting write withheld — ambiguous duplicate action in this batch")
-          : canRun
-            ? await runner.executeToolCall(context, toolCall, activeTools ?? [])
-            : blockedToolResult(toolCall, crossedDeadlineMidBatch && remaining > 0
-                ? "Error: run wall-clock deadline reached"
-                : "Error: max tool call limit reached");
-
-      const grounding = groundingSourceFromExecuted(executed);
-      yield { runId: context.runId, toolCall, type: "tool-result", ...(grounding ? { grounding } : {}) };
-      toolCallCount += canRun ? 1 : 0;
-      const toolRisk = (activeTools ?? []).find((t) => t.name === toolCall.name)?.risk;
-      const mutating = toolRisk === "write" || toolRisk === "execute";
-      deduplicator.record(toolCall, executed.result, mutating);
-      // Feed only GENUINE executions (not blocked / exact-dups) to the stall
-      // tracker; a mutating call resets the window (it advanced state).
-      if (canRun && !duplicate?.duplicate) {
-        progress.record(executed.result.output, mutating);
-        failureStreak.record(toolCall.name, executed.result.status);
-        shellPhase.record(toolCall.name, executed.result.output);
-        reverify.recordTool(toolRisk);
-      }
-      toolsUsed.push(toolCall.name);
-      toolResults.push(executed);
-      // cap individual tool results so a single big
-      // output doesn't blow the context window. Original
-      // executed.result.output is left intact for traces / metrics
-      // — only the message-bound copy is truncated.
-      const messageContent = withRepetitionNudge(
-        capToolOutput(executed.result.output, toolCall.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms),
-        Boolean(duplicate?.duplicate)
-      );
-      toolMessages.push({
-        content: messageContent,
-        name: toolCall.name,
-        role: "tool",
-        toolCallId: toolCall.id
-      });
-    }
-
-    const toolSummary = renderToolResults(
-      toolResults
-        .map((item) => `${item.result.name}: ${capToolOutput(item.result.output, item.result.name, runner.maxToolOutputChars, runner.contextReferenceStore, anchorTerms)}`)
-        .join("\n\n")
+    const batchResult = yield* runToolBatch(
+      runner,
+      context,
+      calls,
+      activeTools,
+      assistantMessage,
+      intermediateMessages,
+      toolResults,
+      toolsUsed,
+      { deduplicator, progress, failureStreak, shellPhase, reverify },
+      { anchorTerms, deadlineMs, messages, now, toolCallCount }
     );
-    const nextMessages = [...messages, ...toolMessages];
-    messages = toolSummary
-      ? appendSystemSection(nextMessages, toolSummary, "tool-results")
-      : nextMessages;
-    intermediateMessages.push(...toolMessages);
+    messages = batchResult.messages;
+    toolCallCount = batchResult.toolCallCount;
   }
 }
 

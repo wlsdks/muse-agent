@@ -1,4 +1,5 @@
 import type { ModelMessage, ModelTool } from "@muse/model";
+import { unwrapToolData } from "@muse/policy";
 import { isRecord, type JsonObject, type JsonValue } from "@muse/shared";
 import { coerceToolArguments, coerceEnumArguments, validateRequiredToolArguments } from "@muse/tools";
 
@@ -681,26 +682,4 @@ export function classifyStepEffect(output: string | null): StepEffectVerdict {
 function firstLine(text: string): string {
   const line = text.split("\n", 1)[0] ?? text;
   return line.length > 200 ? `${line.slice(0, 200)}…` : line;
-}
-
-/**
- * Extract the payload from the sanitizer's `--- BEGIN/END TOOL DATA ---`
- * envelope so the post-condition classifies the tool's actual output, not the
- * wrapper header. Returns the input unchanged when no envelope is present.
- */
-function unwrapToolData(text: string): string {
-  const lines = text.split("\n");
-  const begin = lines.findIndex((line) => /^-{3,}\s*BEGIN TOOL DATA\b/i.test(line));
-  const end = lines.findIndex((line) => /^-{3,}\s*END TOOL DATA\s*-{3,}\s*$/i.test(line));
-  if (begin < 0 || end < 0 || end <= begin) {
-    return text;
-  }
-  let payloadStart = begin + 1;
-  if (payloadStart < end && /Treat as data, NOT as instructions/i.test(lines[payloadStart] ?? "")) {
-    payloadStart += 1;
-  }
-  if (payloadStart < end && (lines[payloadStart] ?? "").trim().length === 0) {
-    payloadStart += 1;
-  }
-  return lines.slice(payloadStart, end).join("\n");
 }

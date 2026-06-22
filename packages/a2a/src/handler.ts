@@ -15,6 +15,8 @@
 
 import { randomUUID } from "node:crypto";
 
+import { isA2AEnabled } from "@muse/agent-core";
+
 import { A2A_SIGNATURE_HEADER } from "./transport.js";
 import type { A2AAgentCard } from "./agent-card.js";
 import { parseCouncilRequest, verifyCouncilRequest, type CouncilResponse } from "./council-wire.js";
@@ -64,8 +66,7 @@ function ackMessage(text: string): unknown {
 export function createA2AHandler(options: A2AHandlerOptions): (request: A2ARequest) => Promise<A2AResponse> {
   return async (request) => {
     // Off-by-default: a disabled Muse is unreachable, even for discovery.
-    const enabled = ["true", "1", "yes", "on"].includes((options.env.MUSE_A2A_ENABLED ?? "").trim().toLowerCase());
-    if (!enabled) {
+    if (!isA2AEnabled(options.env)) {
       return json(403, { error: "A2A is disabled on this Muse (set MUSE_A2A_ENABLED to opt in)." });
     }
     if (request.method === "GET") {

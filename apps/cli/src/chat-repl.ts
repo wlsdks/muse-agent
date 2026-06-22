@@ -20,17 +20,12 @@
 
 import type { Readable } from "node:stream";
 
-import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@muse/autoconfigure";
+import { createMuseRuntimeAssembly, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
-import { classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, isUnbackedActionClaim, runResistingFalseDone, type KnowledgeMatch } from "@muse/agent-core";
+import { classifyCasualPrompt, isUnbackedActionClaim, runResistingFalseDone, type KnowledgeMatch } from "@muse/agent-core";
 import type { AskTimeNudge, WeaknessEntry } from "@muse/stores";
 
-import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
-import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
-import { detectDateQuery, formatDateAnswer, phraseHasTime } from "./date-query.js";
-import { detectDateDiffQuery, formatDateDiff } from "./date-diff-query.js";
-import { detectTimezoneQuery, formatTimezone } from "./timezone-query.js";
 import { buildQueryRewritePrompt, chatWeaknessAxis, defaultChatConflictEmbedder, factKeysToInject, finalizeGatedChatAnswer, isChatAbstention, isChatGroundedSuccess, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding, type ChatWeaknessAxis } from "./chat-grounding.js";
 import { createQwenReverify } from "./grounding-eval-runner.js";
 import { isRecord } from "./credential-store.js";
@@ -45,7 +40,12 @@ import {
 } from "./program-helpers.js";
 import { closestCommandName } from "./closest-command.js";
 import { isTaskCompletionReport, matchCompletedTask } from "./task-completion.js";
+import { resolveChatFastPath } from "./chat-fast-path.js";
 import type { ProgramIO } from "./program.js";
+
+// The deterministic fast-path renderers moved to a sibling module; re-export the
+// public ones so chat-repl's surface (and its tests) stay stable.
+export { formatNotesOverview, formatReminderList, formatTaskList } from "./chat-fast-path-format.js";
 
 const AGENT_MODES: readonly string[] = ["react", "plan_execute"];
 
@@ -196,94 +196,6 @@ export function createTuiChatSubmitter(
   };
 }
 
-// A question ABOUT Muse ("뭐 할 수 있어?") gets a DETERMINISTIC, honest answer.
-// Free-composing on the local model over-claims AND was observed dumping an
-// unrelated note (the user's wifi password) into a "what can you do?" reply.
-// Every clause here is a capability actually verified to work — honesty about
-// what Muse can do is the same edge as honesty about recall.
-const DESKTOP_META_KO =
-  "저는 당신의 노트와 메모에서 답을 찾아 출처까지 함께 알려드려요. 모르면 추측하지 않고 \"잘 모르겠어요\"라고 솔직히 말씀드려요. " +
-  "할 일·리마인더·일정도 추가하고 정리해드릴 수 있어요. 모든 건 이 기기 안에서만 처리되고 밖으로 나가지 않습니다.";
-const DESKTOP_META_EN =
-  "I answer from your own notes and memos and quote the exact source — and if I'm not sure, I say so instead of guessing. " +
-  "I can also add and organize your tasks, reminders, and calendar events. Everything runs on this device and nothing leaves it.";
-
-/**
- * Render a notes-corpus inventory for "내 노트 뭐 있어?" / "what notes do I have".
- * Top-K recall ranks every note weakly for a whole-corpus query, so the gate
- * abstains ("I can't list them") — wrong; we DO know the corpus. Deterministic,
- * KO/EN by message script, clean notes-relative paths (no home dir).
- */
-export function formatNotesOverview(noteFiles: readonly string[], total: number, korean: boolean): string {
-  const lines = noteFiles.map((file) => `  • ${file}`);
-  const more = total > noteFiles.length
-    ? [korean ? `  … 외 ${(total - noteFiles.length).toString()}개 더` : `  … and ${(total - noteFiles.length).toString()} more`]
-    : [];
-  const head = korean
-    ? `저장된 노트가 ${total.toString()}개 있어요. 이 중 무엇이든 물어보시면 출처와 함께 답해드릴게요:`
-    : `You have ${total.toString()} note${total === 1 ? "" : "s"}. Ask me about any of them and I'll quote the source:`;
-  return [head, ...lines, ...more].join("\n");
-}
-
-/** Render the open-task list for the deterministic "내 할일 뭐 있어?" short-circuit.
- *  `dueLocal` is a pre-rendered LOCAL-time string (never the raw UTC ISO). */
-export function formatTaskList(
-  tasks: readonly { readonly title: string; readonly dueLocal?: string; readonly urgent?: boolean }[],
-  korean: boolean
-): string {
-  if (tasks.length === 0) {
-    return korean ? "지금은 열린 할 일이 없어요." : "You have no open tasks right now.";
-  }
-  const lines = tasks.map((task) => {
-    const due = task.dueLocal ? (korean ? ` — ${task.dueLocal} 마감` : ` — due ${task.dueLocal}`) : "";
-    const flag = task.urgent ? "⚡ " : "";
-    return `  • ${flag}${task.title}${due}`;
-  });
-  const head = korean
-    ? `열린 할 일이 ${tasks.length.toString()}개 있어요:`
-    : `You have ${tasks.length.toString()} open task${tasks.length === 1 ? "" : "s"}:`;
-  return [head, ...lines].join("\n");
-}
-
-/** A deterministic reminder list for the chat surface (parity with formatTaskList). */
-export function formatReminderList(
-  reminders: readonly { readonly text: string; readonly dueLocal?: string; readonly overdue?: boolean }[],
-  korean: boolean
-): string {
-  if (reminders.length === 0) {
-    return korean ? "지금은 예정된 리마인더가 없어요." : "You have no upcoming reminders right now.";
-  }
-  const lines = reminders.map((reminder) => {
-    const due = reminder.dueLocal ? ` — ${reminder.dueLocal}` : "";
-    // Flag a past-due pending reminder so a late item is scannable in-chat too
-    // (parity with `muse remind list`'s (⚠ overdue) marker).
-    const overdue = reminder.overdue ? (korean ? " (⚠ 지남)" : " (⚠ overdue)") : "";
-    return `  • ${reminder.text}${due}${overdue}`;
-  });
-  const head = korean
-    ? `예정된 리마인더가 ${reminders.length.toString()}개 있어요:`
-    : `You have ${reminders.length.toString()} upcoming reminder${reminders.length === 1 ? "" : "s"}:`;
-  return [head, ...lines].join("\n");
-}
-
-/** One contact's known details on a single line — the deterministic answer to a
- *  "<name> 전화번호 / 관계 / 이메일" lookup the 8B fumbles. */
-function formatContactDetails(
-  contact: { readonly name: string; readonly phone?: string; readonly email?: string; readonly handle?: string; readonly relationship?: string; readonly birthday?: string },
-  korean: boolean
-): string {
-  const parts: string[] = [];
-  if (contact.phone) parts.push(korean ? `전화 ${contact.phone}` : `phone ${contact.phone}`);
-  if (contact.email) parts.push(korean ? `이메일 ${contact.email}` : `email ${contact.email}`);
-  if (contact.handle) parts.push(korean ? `핸들 ${contact.handle}` : `handle ${contact.handle}`);
-  if (contact.relationship) parts.push(korean ? `관계 ${contact.relationship}` : `relationship ${contact.relationship}`);
-  if (contact.birthday) parts.push(korean ? `생일 ${contact.birthday}` : `birthday ${contact.birthday}`);
-  if (parts.length === 0) {
-    return korean ? `${contact.name} 연락처는 있지만 세부 정보가 저장돼 있지 않아요.` : `${contact.name} is saved, but with no details.`;
-  }
-  return `${contact.name} — ${parts.join(", ")}`;
-}
-
 /** Keep only the named keys from a fact map (preserving values). */
 export function filterFactsToKeys(facts: Readonly<Record<string, string>>, keys: readonly string[]): Record<string, string> {
   const allow = new Set(keys);
@@ -332,167 +244,13 @@ export async function runLocalChat(
     throw new Error("Local chat requires MUSE_MODEL and a configured model provider");
   }
 
-  // A question ABOUT Muse itself short-circuits to a deterministic, honest
-  // capability answer BEFORE any model call — the local model otherwise
-  // over-claims and (observed) injects an unrelated note into the reply.
-  if (classifyMetaPrompt(message)) {
-    return { response: /[가-힣]/u.test(message) ? DESKTOP_META_KO : DESKTOP_META_EN, runId: "local-meta", toolsUsed: [] };
-  }
-
-  // "내 노트 뭐 있어?" / "what notes do I have" wants the INVENTORY, but top-K
-  // recall ranks the whole corpus weakly so the model refused or dumped raw
-  // "ref=…" ids. List it deterministically when the user actually has notes.
-  if (classifyCorpusOverview(message)) {
-    // Lazy import: a STATIC import of the big `commands-ask` module pulls its
-    // async-init dependency graph into chat-repl's module init, which the bun
-    // `--compile` bundler emits as a top-level `await init_commands_ask()` in a
-    // sync context → the bundled desktop binary crashes at startup. Defer it.
-    const { listNoteFiles, notesCorpusFileCount } = await import("./commands-ask.js");
-    const notesDir = resolveNotesDir(process.env as Record<string, string | undefined>);
-    const total = await notesCorpusFileCount(notesDir).catch(() => 0);
-    if (total > 0) {
-      return {
-        response: formatNotesOverview(await listNoteFiles(notesDir), total, /[가-힣]/u.test(message)),
-        runId: "local-corpus",
-        toolsUsed: []
-      };
-    }
-  }
-
-  // "내 할일 뭐 있어?" — the to-do LIST intent. qwen3:8b reads the possessive
-  // "뭐 있어" as a memory question and won't call tasks.list (it DOES for the
-  // identical "내 일정 뭐 있어?" → calendar.list), so without this the recall gate
-  // wrongly abstains "그건 아직 기억하고 있지 않아요" while open tasks sit on disk.
-  // List them deterministically — same remedy as the notes corpus overview above.
-  if (classifyTaskListQuery(message)) {
-    const { formatDueLocal } = await import("@muse/mcp-shared");
-    const { readTasks, compareTasksByDueDate } = await import("@muse/stores");
-    const { resolveTasksFile } = await import("@muse/autoconfigure");
-    const tasksFile = resolveTasksFile(process.env as Record<string, string | undefined>);
-    const open = (await readTasks(tasksFile).catch(() => []))
-      .filter((task) => task.status === "open")
-      .sort(compareTasksByDueDate);
-    return {
-      response: formatTaskList(
-        open.map((task) => ({
-          title: task.title,
-          ...(task.dueAt ? { dueLocal: formatDueLocal(task.dueAt) } : {}),
-          ...(task.urgent ? { urgent: true } : {})
-        })),
-        /[가-힣]/u.test(message)
-      ),
-      runId: "local-tasks",
-      toolsUsed: []
-    };
-  }
-
-  // "리마인더 뭐 있어?" — the reminder LIST intent, the exact sibling of the
-  // task-list case above (the 8B reads "뭐 있어" as a memory question and won't
-  // call reminders.list, so the recall gate wrongly abstains "없습니다" while
-  // pending reminders sit on disk). List the pending ones deterministically.
-  if (classifyReminderListQuery(message)) {
-    const { formatDueLocal } = await import("@muse/mcp-shared");
-    const { readReminders } = await import("@muse/stores");
-    const { resolveRemindersFile } = await import("@muse/autoconfigure");
-    const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
-    const pending = (await readReminders(remindersFile).catch(() => []))
-      .filter((reminder) => reminder.status === "pending")
-      .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
-    return {
-      response: formatReminderList(
-        pending.map((reminder) => ({ dueLocal: formatDueLocal(reminder.dueAt), overdue: new Date(reminder.dueAt).getTime() < Date.now(), text: reminder.text })),
-        /[가-힣]/u.test(message)
-      ),
-      runId: "local-reminders",
-      toolsUsed: []
-    };
-  }
-
-  // "박지훈 전화번호 알려줘" — a contact-detail lookup. The 8B won't call
-  // find_contact for these (it abstains, even claiming it has no contact feature),
-  // so resolve the named contact deterministically. resolveContact is the
-  // precision gate: an unknown name (or a non-contact phrase) falls through to the
-  // normal path instead of short-circuiting.
-  const contactName = classifyContactLookup(message);
-  if (contactName) {
-    const { queryContacts, resolveContact } = await import("@muse/stores");
-    const { resolveContactsFile } = await import("@muse/autoconfigure");
-    const contacts = await queryContacts(resolveContactsFile(process.env as Record<string, string | undefined>)).catch(() => []);
-    const resolution = resolveContact(contacts, contactName);
-    const korean = /[가-힣]/u.test(message);
-    if (resolution.status === "resolved") {
-      return { response: formatContactDetails(resolution.contact, korean), runId: "local-contact", toolsUsed: [] };
-    }
-    if (resolution.status === "ambiguous") {
-      const names = resolution.matches.map((contact) => contact.name).join(", ");
-      return {
-        response: korean ? `여러 명이 있어요: ${names}. 누구를 말씀하시는 건가요?` : `Several match: ${names}. Which one?`,
-        runId: "local-contact",
-        toolsUsed: []
-      };
-    }
-    // status "unknown" → not a known contact; fall through to the normal path.
-  }
-
-  // Pure arithmetic ("12 times 4", "what is (1200+850)/2") — the local 8B
-  // confidently mis-multiplies ("12 times 4" → "24"), so compute it
-  // deterministically through the same evaluator the muse.math tool uses rather
-  // than trusting the model's digits. The precision-first detector only fires on
-  // a query that is NOTHING but a calculation, so a notes question is untouched.
-  const arithmeticExpression = detectArithmeticQuery(message);
-  if (arithmeticExpression) {
-    const { evaluateArithmeticExpression } = await import("@muse/mcp");
-    const evaluated = evaluateArithmeticExpression(arithmeticExpression);
-    if ("result" in evaluated) {
-      return {
-        response: formatArithmeticResult(arithmeticExpression, evaluated.result),
-        runId: "local-arithmetic",
-        toolsUsed: []
-      };
-    }
-  }
-
-  // Sibling deterministic compute fast-paths — the 8B is confidently off-by-days
-  // on calendar math (it answered "189 days" and "209 days" for counts whose
-  // exact values are 201 and 217). Count those EXACTLY from the host clock, same
-  // as the arithmetic path. Each detector is precision-first (falls through to
-  // grounded recall unless the query is NOTHING but that computation).
-  {
-    const datePhrase = detectDateQuery(message);
-    if (datePhrase !== null) {
-      const { parseReminderDueAt } = await import("@muse/stores");
-      const resolved = parseReminderDueAt(datePhrase, () => new Date());
-      if (!(resolved instanceof Error)) {
-        return {
-          response: formatDateAnswer(datePhrase, resolved, { includeTime: phraseHasTime(datePhrase) }),
-          runId: "local-date",
-          toolsUsed: []
-        };
-      }
-    }
-    const countdown = detectCountdownQuery(message);
-    if (countdown) {
-      const { parseReminderDueAt } = await import("@muse/stores");
-      const now = new Date();
-      const resolved = parseReminderDueAt(countdown.targetPhrase, () => now);
-      if (!(resolved instanceof Error)) {
-        const days = countdownDays(now, resolved);
-        if (days >= 0) {
-          return { response: formatCountdown(countdown.unit, days, resolved, countdown.ko), runId: "local-countdown", toolsUsed: [] };
-        }
-      }
-    }
-    const dateDiff = detectDateDiffQuery(message, new Date());
-    if (dateDiff) {
-      return { response: formatDateDiff(dateDiff), runId: "local-date-diff", toolsUsed: [] };
-    }
-    // Time-zone conversion / "what time is it in X" — the 8B doesn't reliably know
-    // offsets or DST (it answered "5am"/"6am" for 3pm New York → Seoul, exact: 4am
-    // EDT). formatTimezone computes it DST-correctly from the IANA database.
-    const timezone = detectTimezoneQuery(message);
-    if (timezone) {
-      return { response: formatTimezone(timezone, new Date()), runId: "local-timezone", toolsUsed: [] };
-    }
+  // Deterministic fast-paths (meta / corpus / tasks / reminders / contacts /
+  // arithmetic / date / countdown / date-diff / timezone) short-circuit BEFORE
+  // any model call — each returns the uniform `{ response, runId, toolsUsed }`
+  // shape, or `undefined` to fall through to grounded recall below.
+  const fastPath = await resolveChatFastPath(message);
+  if (fastPath) {
+    return fastPath;
   }
 
   // A bare greeting / social prompt never needs a tool — but projecting the tool

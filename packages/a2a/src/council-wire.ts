@@ -16,6 +16,8 @@
 
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
+import { isA2AEnabled } from "@muse/agent-core";
+
 import type { A2APeer } from "./peer-registry.js";
 import type { A2AEnv } from "./transport.js";
 
@@ -115,8 +117,7 @@ export interface RequestCouncilReasoningOptions {
  * or null if the swarm is off, the peer doesn't participate, or anything fails.
  */
 export async function requestCouncilReasoning(options: RequestCouncilReasoningOptions): Promise<string | null> {
-  const enabled = ["true", "1", "yes", "on"].includes((options.env.MUSE_A2A_ENABLED ?? "").trim().toLowerCase());
-  if (!enabled || options.question.trim().length === 0) return null;
+  if (!isA2AEnabled(options.env) || options.question.trim().length === 0) return null;
   const signature = signCouncilRequest(options.fromPeerId, options.question, options.peer.secret);
   const fetchImpl = options.fetchImpl ?? fetch;
   const effectiveTimeoutMs = options.timeoutMs ?? DEFAULT_COUNCIL_TIMEOUT_MS;

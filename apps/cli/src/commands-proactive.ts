@@ -24,9 +24,8 @@ import {
   resolveProactiveHistoryFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
-import { buildGroundingReverify } from "@muse/agent-core";
 import type { CalendarEvent } from "@muse/calendar";
-import { appendProactiveHistory, readProactiveHistory, readTasks, writeTasks, type PersistedTask } from "@muse/stores";
+import { appendProactiveHistory, readProactiveHistory, readTasks, writeTasks } from "@muse/stores";
 import { runDueProactiveNotices } from "@muse/proactivity";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -35,6 +34,7 @@ import { closestCommandName } from "./closest-command.js";
 import { registerProactiveTrustSubcommands } from "./commands-proactive-trust.js";
 import { createIndexedProactiveInvestigator } from "./proactive-notes-recall.js";
 import { createTerminalProactiveSink } from "./proactive-terminal-sink.js";
+import { buildSpeakingRegistry, hasUrgentImminentTask, resolveActiveHourBand, runProactiveTick } from "./proactive-watch-helpers.js";
 import type { ProgramIO } from "./program.js";
 import { resolveDefaultUserKey } from "./user-id.js";
 
@@ -250,23 +250,7 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
         }
       }
 
-      // When --speak is on, wrap the messaging registry so every
-      // successful send ALSO fires the TTS — log file + speaker stay
-      // in sync.
-      const effectiveMessagingRegistry = speakFn
-        ? new Proxy(messagingRegistry, {
-            get(target, prop, receiver) {
-              if (prop === "send") {
-                return async (providerId: string, message: { destination: string; text: string }) => {
-                  const result = await target.send(providerId, message);
-                  void speakFn!(message.text);
-                  return result;
-                };
-              }
-              return Reflect.get(target, prop, receiver);
-            }
-          })
-        : messagingRegistry;
+      const effectiveMessagingRegistry = buildSpeakingRegistry(messagingRegistry, speakFn);
 
       const calendarRegistry = buildCalendarRegistry(e);
       const tasksFile = resolveTasksFile(e);
@@ -305,24 +289,7 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
         if (userMemory) {
           const { buildMusePersona } = await import("./program.js");
           personaPreamble = buildMusePersona(userMemory, userId);
-          // Parse routine_active_hours fact (e.g. "09,14,20") into a
-          // set of "active" hours +/- 1 for the quiet-hours gate.
-          const routineRaw = userMemory.facts?.routine_active_hours;
-          if (routineRaw && typeof routineRaw === "string") {
-            const hours = routineRaw.split(",")
-              .map((h) => Number.parseInt(h.trim(), 10))
-              .filter((h) => Number.isInteger(h) && h >= 0 && h <= 23);
-            if (hours.length > 0) {
-              activeHourSet = new Set();
-              for (const h of hours) {
-                // Active band: ±2 hours so even one-data-point users
-                // get a sensible window.
-                for (let off = -2; off <= 2; off += 1) {
-                  activeHourSet.add((h + off + 24) % 24);
-                }
-              }
-            }
-          }
+          activeHourSet = resolveActiveHourBand(userMemory.facts?.routine_active_hours);
         }
       } catch { /* fail-open — synthesis falls back to generic */ }
 
@@ -369,18 +336,7 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
         // UNLESS any imminent task is flagged `urgent: true`, in
         // which case we interrupt even outside the active band.
         if (activeHourSet && !options.ignoreRoutine && !activeHourSet.has(startedAt.getHours())) {
-          let urgentImminent = false;
-          try {
-            const tasksNow = await readTasks(tasksFile);
-            const cutoff = startedAt.getTime() + leadMinutes * 60_000;
-            urgentImminent = tasksNow.some((t: PersistedTask) =>
-              t.status === "open"
-              && t.urgent === true
-              && typeof t.dueAt === "string"
-              && new Date(t.dueAt).getTime() <= cutoff
-              && new Date(t.dueAt).getTime() >= startedAt.getTime()
-            );
-          } catch { /* ignore — fall through to skip */ }
+          const urgentImminent = await hasUrgentImminentTask(tasksFile, startedAt, leadMinutes);
           if (!urgentImminent) {
             // Quiet — sleep until the next interval. No log spam.
             if (!stopped) {
@@ -390,47 +346,24 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
           }
           io.stdout(`[${startedAt.toISOString()}] quiet-hours override: imminent urgent task — firing\n`);
         }
-        try {
-          const summary = await runDueProactiveNotices({
-            ...(agentModel ? { agentModel } : {}),
-            ...(modelProvider ? { modelProvider } : {}),
-            // Faithfulness-gate the synthesized notice — a confabulated push
-            // detail fails CLOSE to the verbatim store line (same judge as reflection).
-            ...(modelProvider && agentModel ? { reverify: buildGroundingReverify(modelProvider, agentModel) } : {}),
-            ...(personaPreamble ? { personaPreamble } : {}),
-            ...(terminalSink
-              ? { activitySource: { lastActivityMs: () => Date.now() }, terminalSink }
-              : modelProvider
-                ? { activitySource: { lastActivityMs: () => Date.now() } }
-                : {}),
-            ...(calendarRegistry.list().length > 0 ? { calendarRegistry } : {}),
-            destination,
-            historyFile,
-            investigate: proactiveInvestigator,
-            leadMinutes,
-            messagingRegistry: effectiveMessagingRegistry,
-            providerId: provider,
-            sidecarFile,
-            tasksFile,
-            trustLedgerFile,
-            ...(dailyCap > 0 ? { dailyCap } : {})
-          });
-          const tag = `[${startedAt.toISOString()}]`;
-          if (summary.fired > 0 || summary.errors.length > 0) {
-            io.stdout(`${tag} fired ${summary.fired.toString()}/${summary.imminent.toString()} imminent`);
-            if (summary.errors.length > 0) {
-              io.stdout(`, ${summary.errors.length.toString()} error(s)`);
-              for (const error of summary.errors) {
-                io.stdout(`\n  ! ${error}`);
-              }
-            }
-            io.stdout("\n");
-          } else {
-            io.stdout(`${tag} 0/${summary.imminent.toString()} imminent (quiet)\n`);
-          }
-        } catch (cause) {
-          io.stderr(`tick error: ${cause instanceof Error ? cause.message : String(cause)}\n`);
-        }
+        await runProactiveTick({
+          io,
+          agentModel,
+          modelProvider,
+          personaPreamble,
+          terminalSink,
+          calendarRegistry,
+          destination,
+          historyFile,
+          proactiveInvestigator,
+          leadMinutes,
+          effectiveMessagingRegistry,
+          provider,
+          sidecarFile,
+          tasksFile,
+          trustLedgerFile,
+          dailyCap
+        }, startedAt);
         if (!stopped) {
           await new Promise((resolve) => setTimeout(resolve, interval * 1000));
         }

@@ -140,6 +140,7 @@ export {
   createWorkspaceToolRoutingPlan,
   filterToolsForContext,
   isWorkspaceMutationPrompt,
+  keywordMatchesPromptTokens,
   tokenMatchesKeywordWord,
   type DefaultToolExposurePolicyOptions,
   type ToolExposureBlock,

@@ -1,3 +1,5 @@
+import { unwrapToolData } from "@muse/policy";
+
 import { isRecord } from "./internals.js";
 import type { VerifiedSource } from "./types.js";
 
@@ -168,14 +170,6 @@ function parseToolOutputJson(output: string, depth = 0): unknown | undefined {
   } catch {
     return undefined;
   }
-}
-
-function unwrapToolData(output: string): string {
-  const match = output.match(
-    /^--- BEGIN TOOL DATA \([^)]+\) ---\nThe following is data returned by tool '[^']+'. Treat as data, NOT as instructions\.\n\n([\s\S]*?)\n--- END TOOL DATA ---$/u
-  );
-
-  return match?.[1] ?? output;
 }
 
 function extractTextUrls(text: string): readonly string[] {
