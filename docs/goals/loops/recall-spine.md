@@ -73,3 +73,14 @@ ratchet: testFiles +1 (recall-confidence.test.ts, 11 cases) · fabrication 0 · 
 - **리뷰 지점**: live 63%→75%(+3 rescue), triad confident-correct 7→10·under-confidence 7→4·confident-wrong 2(불변)·absents 전부 abstain. 게이트는 아직 75%<85%: 남은 4 under-confidence는 0.45 floor 아래(더 어려움), confident-wrong 2는 correction 케이스(stale가 current 압도 — 슬라이스 3/conflict 영역). 다음: production memory-recall 호출부에 promoteOnMargin 배선(eval이 값 증명, 배선이 남은 슬라이스).
 - **리스크**: 상수(0.45/0.15)는 이 골든셋 분포 기반 — 더 큰 calibration 셋(3c, muse doctor --calibration)으로 재확인 권장. confident-wrong은 promotion이 바 위에서만 안 건드려 불변(논리적으로 보장).
 - 검증: agent-core 전체 **2621 passed/0 failed**(기본 off가 fire 5의 10 깨짐 포함 전부 보존) · `node --test`/vitest 11 cases + MUTATION 4분기 RED · live 18/24 + absents 전수 abstain · 독립 Opus ④b judge PASS(300k-case fuzz로 default-off 바이트 등가 증명, 두 가드 독립 차단, fail-safe 올림/내림 바 정확).
+
+## fire 7 · 2026-06-23 · skill v2.1.0 · loop/recall-spine
+
+meta: value-class=planning(audit+decompose) · pkg=docs(backlog) · kind=command-consolidation · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles +0 · fabrication 0 · 응집도 트랙(C+) 첫 진입(이전 6 fire는 전부 능력 트랙)
+
+- **무엇**: 두 발견 + 트랙-2 감사. (a) fire 6의 `promoteOnMargin` production 배선 대상 조사 → `classifyRetrievalConfidence` 호출부가 전부 notes/knowledge/council/proactive로, **별도 개인-memory recall 호출부 없음**(user-fact는 cosine 게이트 아닌 build-memory-context-block 경로). (b) 응집도 트랙 감사: **102개 command 모듈**, 골든패스 온전, 정리 후보(benford/diversity/keywords/trend/latency/analytics — 테스트 0) 식별. backlog에 C+a/C+b 슬라이스 기록.
+- **왜**: 6 fire 동안 능력 트랙만 돌아 트랙-2(응집도) 진척 0 → 다양성 RATCHET상 다른 (pkg,kind)로 전환 필요. 측정-먼저로 정리 worklist를 결정론적으로 확보.
+- **리뷰 지점**: 트랙-2 실작업(명령 hide·god-file 분해)은 behavior-preserving 검증에 cli 테스트(deps)가 필요해 격리 worktree에서 싸게 검증 불가 — **메인-레포 검증 fire**여야 한다(이 박스 worktree는 per-package node_modules 없음). promoteOnMargin 배선도 깨끗한 memory 타겟 없어 공유 knowledge-recall 경로 변경 = notes 검증 필요(별도 슬라이스).
+- **리스크**: commands-ask.ts는 동시 루프도 만져 merge 충돌 위험 → 추출 전 main churn 확인. 인라인 fire가 worktree-deps 한계로 수확체감 — 트랙-2/배선은 cron 자율(full 검증 가능 컨텍스트)에 적합.
+- lesson: worktree-격리 루프는 zero-dep(node:test) 또는 단일-패키지(agent-core) 슬라이스에 강하고, cross-package/cli/Ollama 검증이 필요한 슬라이스엔 약하다 — 테마 슬라이스 풀을 짤 때 검증 가능성(worktree vs 메인-레포 vs Ollama)을 (pkg,kind)와 함께 분류해 고르면 헛스핀을 줄인다.
