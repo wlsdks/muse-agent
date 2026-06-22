@@ -5,6 +5,7 @@ import {
   InMemoryAgentMessageBus,
   InMemoryOrchestrationHistoryStore,
   MultiAgentOrchestrator,
+  SubAgentRunRegistry,
   detectFanInConflicts,
   detectFanInRedundancy,
   planTieredRun,
@@ -28,6 +29,7 @@ export interface MultiAgentRouteOptions {
   readonly historyStore?: OrchestrationHistoryStore;
   readonly modelProvider?: ModelProvider;
   readonly embed?: (text: string) => Promise<readonly number[]>;
+  readonly runRegistry?: SubAgentRunRegistry;
 }
 
 interface ApiError {
@@ -52,6 +54,7 @@ type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: 
 
 export function registerMultiAgentRoutes(server: FastifyInstance, options: MultiAgentRouteOptions): void {
   const historyStore = options.historyStore ?? new InMemoryOrchestrationHistoryStore();
+  const runRegistry = options.runRegistry ?? new SubAgentRunRegistry();
 
   server.get("/api/multi-agent/orchestrations", async (request, reply) => {
     const limitRaw = (request.query as { readonly limit?: string } | undefined)?.limit;
@@ -93,6 +96,28 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
 
   server.get("/api/multi-agent/orchestrations/stats", async () => {
     return historyStore.summary();
+  });
+
+  // Live sub-agent run lifecycle (running runs + any stalled→timed-out
+  // transitions), distinct from the finished-run audit above. Marking
+  // stalled runs as timed-out on read makes a hung sub-agent observable
+  // without a background sweep.
+  server.get("/api/multi-agent/runs", async () => {
+    const timedOut = runRegistry.markStalledAsTimedOut();
+    return {
+      activeCount: runRegistry.activeCount(),
+      runs: runRegistry.list().map((run) => ({
+        finishedAt: run.finishedAt?.toISOString(),
+        lastHeartbeatAt: run.lastHeartbeatAt.toISOString(),
+        parentRunId: run.parentRunId,
+        runId: run.runId,
+        startedAt: run.startedAt.toISOString(),
+        status: run.status,
+        ...(run.outcome ? { outcome: run.outcome } : {}),
+        ...(run.error ? { error: run.error } : {})
+      })),
+      timedOutOnRead: timedOut.length
+    };
   });
 
   server.get("/api/multi-agent/orchestrations/:runId", async (request, reply) => {
@@ -152,7 +177,7 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
       return reply.status(400).send(parsed.error);
     }
 
-    const prepared = await prepareOrchestration(options, parsed.value, historyStore);
+    const prepared = await prepareOrchestration(options, parsed.value, historyStore, runRegistry);
 
     if ("error" in prepared) {
       return reply.status(prepared.error.status).send(prepared.error.body);
@@ -204,7 +229,7 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
       return reply.status(400).send(parsed.error);
     }
 
-    const prepared = await prepareOrchestration(options, parsed.value, historyStore);
+    const prepared = await prepareOrchestration(options, parsed.value, historyStore, runRegistry);
 
     if ("error" in prepared) {
       return reply.status(prepared.error.status).send(prepared.error.body);
@@ -244,7 +269,8 @@ interface PreparedOrchestration {
 async function prepareOrchestration(
   options: MultiAgentRouteOptions,
   parsed: OrchestrateBody,
-  historyStore: OrchestrationHistoryStore
+  historyStore: OrchestrationHistoryStore,
+  runRegistry: SubAgentRunRegistry
 ): Promise<PreparedOrchestration | PreparedOrchestrationError> {
   const allSpecs = await options.agentSpecRegistry.listEnabled();
   const requestedIds = parsed.workerIds;
@@ -287,7 +313,7 @@ async function prepareOrchestration(
   } else {
     workers = selected.map((spec) => createSpecWorker(spec, options.agentRuntime!));
   }
-  const orchestrator = new MultiAgentOrchestrator({ historyStore, messageBus, workers });
+  const orchestrator = new MultiAgentOrchestrator({ historyStore, messageBus, runRegistry, workers });
 
   const summarizer = parsed.summarize === true
     ? createWorkerSummarizer(options.modelProvider, input.model)

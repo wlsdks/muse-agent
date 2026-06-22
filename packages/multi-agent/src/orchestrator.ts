@@ -20,6 +20,7 @@ import type {
 } from "./index.js";
 import { parseWorkerResult, validateWorkerHandoff } from "./worker-result.js";
 import { type AgentWorker, NoAgentWorkerError } from "./workers.js";
+import type { SubAgentRunRegistry } from "./subagent-run-registry.js";
 
 export class SupervisorAgent {
   private readonly workers: readonly AgentWorker[];
@@ -140,6 +141,7 @@ export class MultiAgentOrchestrator {
   private readonly historyStore?: OrchestrationHistoryStore;
   private readonly clock: () => Date;
   private readonly workerTimeoutMs?: number;
+  private readonly runRegistry?: SubAgentRunRegistry;
 
   constructor(options: {
     readonly workers: readonly AgentWorker[];
@@ -147,6 +149,15 @@ export class MultiAgentOrchestrator {
     readonly messageBus?: AgentMessageBus;
     readonly historyStore?: OrchestrationHistoryStore;
     readonly clock?: () => Date;
+    /**
+     * Live sub-agent run registry. When provided, the orchestration's parent
+     * run and EACH spawned worker child run are registered, status-transitioned
+     * (running → completed/failed/timed-out), and a hung worker becomes a
+     * detectable `timed-out` record — so an orphaned/stalled child run is
+     * observable BEFORE the orchestration finishes (distinct from the
+     * finished-run audit in `historyStore`). Opt-in: omitted ⇒ no registration.
+     */
+    readonly runRegistry?: SubAgentRunRegistry;
     /**
      * Per-worker wall-clock deadline (ms). A worker whose run exceeds it is
      * marked `failed` (MAST "unaware of termination" — explicit termination of a
@@ -168,6 +179,7 @@ export class MultiAgentOrchestrator {
     this.historyStore = options.historyStore;
     this.clock = options.clock ?? (() => new Date());
     this.workerTimeoutMs = options.workerTimeoutMs;
+    this.runRegistry = options.runRegistry;
   }
 
   /**
@@ -183,11 +195,13 @@ export class MultiAgentOrchestrator {
     const mode = options.mode ?? "sequential";
     const runId = input.runId ?? this.idFactory();
     const startedAt = this.clock();
+    this.registerParentRun(runId);
     let selectedWorkers: readonly AgentWorker[];
 
     try {
       selectedWorkers = this.selectWorkers(options.workerIds, options.maxWorkers);
     } catch (error) {
+      this.runRegistry?.fail(runId, error instanceof Error ? error.message : "selection failed");
       this.recordHistory({
         completedCount: 0,
         failedCount: 0,
@@ -213,6 +227,7 @@ export class MultiAgentOrchestrator {
         results = await this.runSequential({ ...input, runId }, selectedWorkers);
       }
     } catch (error) {
+      this.runRegistry?.fail(runId, error instanceof Error ? error.message : "orchestration failed");
       this.recordHistory({
         completedCount: 0,
         failedCount: selectedWorkers.length,
@@ -229,6 +244,7 @@ export class MultiAgentOrchestrator {
 
     if (!results.some((result) => result.status === "completed")) {
       const error = new NoAgentWorkerError("No worker completed the orchestration");
+      this.runRegistry?.fail(runId, error.message);
       this.recordHistory({
         completedCount: 0,
         failedCount: results.length,
@@ -277,8 +293,52 @@ export class MultiAgentOrchestrator {
       ...(raw?.redundancies && raw.redundancies.length > 0 ? { redundancies: raw.redundancies } : {}),
       ...(raw?.verification ? { verificationSatisfied: raw.verification.satisfied } : {})
     });
+    this.runRegistry?.complete(runId, `${completedCount.toString()}/${results.length.toString()} workers completed`);
 
     return { mode, response, results, runId };
+  }
+
+  private registerParentRun(runId: string): void {
+    if (!this.runRegistry || this.runRegistry.get(runId) !== undefined) {
+      return;
+    }
+    this.runRegistry.register({ runId, ...(this.workerTimeoutMs ? { timeoutMs: this.workerTimeoutMs } : {}) });
+  }
+
+  /**
+   * Register a spawned worker as a child run, run it, and transition its
+   * registry record to a terminal status — `timed-out` when the per-worker
+   * deadline fired (so a hung sub-agent is a detectable timed-out record),
+   * else `failed` on any other error, `completed` on success. The worker's
+   * own outcome (`AgentRunResult`) is returned unchanged; the registry side
+   * effect never alters the orchestration result. Child run id namespaces the
+   * worker under the parent so the same worker id across runs never collides.
+   */
+  private async runRegisteredWorker(parentRunId: string, worker: AgentWorker, input: AgentRunInput): Promise<AgentRunResult> {
+    if (!this.runRegistry) {
+      return this.runWorkerWithDeadline(worker, input);
+    }
+    const childRunId = `${parentRunId}::${worker.id}`;
+    if (this.runRegistry.get(childRunId) === undefined) {
+      this.runRegistry.register({
+        runId: childRunId,
+        parentRunId,
+        ...(this.workerTimeoutMs ? { timeoutMs: this.workerTimeoutMs } : {})
+      });
+    }
+    try {
+      const result = await this.runWorkerWithDeadline(worker, input);
+      this.runRegistry.complete(childRunId);
+      return result;
+    } catch (error) {
+      const message = errorMessage(error);
+      if (/exceeded the .* deadline/u.test(message)) {
+        this.runRegistry.markTimedOut(childRunId, message);
+      } else {
+        this.runRegistry.fail(childRunId, message);
+      }
+      throw error;
+    }
   }
 
   private recordHistory(entry: Omit<OrchestrationHistoryEntry, "durationMs" | "conversation">): void {
@@ -307,7 +367,7 @@ export class MultiAgentOrchestrator {
 
     for (const worker of workers) {
       try {
-        const raw = await this.runWorkerWithDeadline(worker, withSelectedWorker(currentInput, worker));
+        const raw = await this.runRegisteredWorker(input.runId!, worker, withSelectedWorker(currentInput, worker));
         const parsed = parseWorkerResult(raw);
         if (!parsed.ok) {
           results.push({ error: parsed.reason, status: "failed", workerId: worker.id });
@@ -343,7 +403,7 @@ export class MultiAgentOrchestrator {
   private async runParallel(input: AgentRunInput, workers: readonly AgentWorker[]): Promise<readonly OrchestrationStepResult[]> {
     return Promise.all(workers.map(async (worker): Promise<OrchestrationStepResult> => {
       try {
-        const raw = await this.runWorkerWithDeadline(worker, withSelectedWorker(input, worker));
+        const raw = await this.runRegisteredWorker(input.runId!, worker, withSelectedWorker(input, worker));
         const parsed = parseWorkerResult(raw);
         if (!parsed.ok) {
           await this.publishWorkerFailure(worker.id, new Error(parsed.reason)).catch(() => undefined);

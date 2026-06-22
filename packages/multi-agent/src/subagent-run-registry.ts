@@ -134,6 +134,19 @@ export class SubAgentRunRegistry {
     return true;
   }
 
+  markTimedOut(runId: string, error?: string): boolean {
+    const record = this.records.get(runId);
+
+    if (record === undefined || TERMINAL_STATUSES.has(record.status)) {
+      return false;
+    }
+
+    record.status = "timed-out";
+    record.finishedAt = this.now();
+    record.error = error;
+    return true;
+  }
+
   get(runId: string): SubAgentRunRecord | undefined {
     const record = this.records.get(runId);
     return record === undefined ? undefined : freeze(record);
