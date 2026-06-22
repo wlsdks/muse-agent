@@ -25,7 +25,7 @@ import { stripUntrustedTerminalChars } from "@muse/shared";
 
 import { recurringEpisodeThreads, type RecurringThread } from "./chat-ink-core.js";
 
-export const CHAT_REFLECTION_SYSTEM =
+const CHAT_REFLECTION_SYSTEM =
   "You are Muse reflecting on the user's PAST SESSIONS. From ONLY the session summaries and recurring topics given, write ONE short, useful observation a personal assistant would notice — a thread the user keeps returning to, an unresolved follow-up they mentioned, or a pattern across sessions. " +
   "Output ONLY a JSON object, no prose: {\"insight\":\"<one sentence, second person, under 30 words>\"}. " +
   "If there is no honest cross-session pattern, output {\"insight\":\"\"}. " +

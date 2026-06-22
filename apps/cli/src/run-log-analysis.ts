@@ -17,7 +17,7 @@ export interface RunLogEvent {
   readonly success?: boolean | null;
 }
 
-export type FailureKind = "ungrounded" | "failed" | "misgrounded" | "contested";
+type FailureKind = "ungrounded" | "failed" | "misgrounded" | "contested";
 
 export interface FailureCluster {
   /** Normalized representative of the failing message — the candidate work's subject. */

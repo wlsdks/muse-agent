@@ -112,10 +112,7 @@ export function renderInboxSection(
       // JARVIS-class freshness affordance. When `nowIso`
       // is wired (the runtime caller has it), humanise the
       // timestamp to "[5 min ago]" / "[3h ago]" so the agent reads
-      // recency directly instead of parsing ISO datetimes. Mirrors
-      // iter-53 for episodic recall and iter-41 / 52 for events,
-      // reminders, tasks. Legacy callers (no nowIso) still get the
-      // raw ISO — existing contract preserved.
+      // recency directly instead of parsing ISO datetimes. Legacy callers (no nowIso) still get the raw ISO — existing contract preserved.
       const timeLabel = nowIso
         ? humanizeRelativeFromIso(nowIso, receivedAtIsoSafe) ?? receivedAtIsoSafe
         : receivedAtIsoSafe;

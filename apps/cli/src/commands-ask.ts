@@ -29,7 +29,7 @@ import { basename, join, relative } from "node:path";
 
 import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, resolveRecallConfidentAt, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
-import { answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, isMemoryInjection, isUnbackedActionClaim, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence, type CasualPromptKind } from "@muse/agent-core";
+import { answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCasualPrompt, classifyCorpusOverview, classifyMetaPrompt, isMemoryInjection, isUnbackedActionClaim, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence } from "@muse/agent-core";
 import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys, staleFactKeys } from "@muse/memory";
 import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNoteProvenanceFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
@@ -38,7 +38,7 @@ import type { CalendarEvent } from "@muse/calendar";
 import { acquireOllamaLease, evaluateArithmeticExpression, fetchReadableUrl, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, selectReflectionsForRecall, type ActionLogEntry, type Contact, type MessageApprovalGate, type PersistedReminder, type PersistedTask } from "@muse/mcp";
 import { redactSecretsInText } from "@muse/shared";
 import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildCalendarContextBlock, buildContactContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
-export { allUserMemoryFacts, buildDiskContents, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
+export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, sufficiencyAdvisory, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, sufficiencyAdvisory, urlGroundingSource };
 import { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource } from "@muse/recall";
@@ -67,10 +67,14 @@ import { parseShellHistory, selectShellCommands } from "./shell-history.js";
 import { resolveReflectionsFile } from "./commands-reflections.js";
 import { routeAskTierModel } from "./ask-tier-models.js";
 import { shouldDecompose } from "@muse/multi-agent";
-import { runDecomposedAgentAsk, type DecomposedAskResult } from "./ask-decompose.js";
+import { runDecomposedAgentAsk } from "./ask-decompose.js";
+import { CASUAL_RESPONSES, META_RESPONSE, ACTION_GUIDE } from "./ask-fast-paths.js";
+export { CASUAL_RESPONSES, META_RESPONSE, ACTION_GUIDE } from "./ask-fast-paths.js";
+import { decompositionJsonFields, decompositionStderrNotes, renderAskStreamError, type AskStreamEvent, type AskStreamResult, type DecompositionTrustSignals } from "./ask-result-output.js";
+export { decompositionJsonFields, decompositionStderrNotes, renderAskStreamError, type AskStreamEvent, type AskStreamResult } from "./ask-result-output.js";
 import { crossLingualUnsupportedFraction, rescueActionsCrossLingual, rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
 
-export { resolveAskTierModels, routeAskTierModel, type AskTierModels } from "./ask-tier-models.js";
+export { resolveAskTierModels, routeAskTierModel } from "./ask-tier-models.js";
 import { parseBoundedInt } from "./parse-bounded-int.js";
 export { parseBoundedInt } from "./parse-bounded-int.js";
 import type { Command } from "commander";
@@ -99,35 +103,6 @@ import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
 import { resolveDefaultUserKey } from "./user-id.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
-
-
-
-// Instant, on-brand replies for a PURE social prompt — so a bare "hi" / "thanks"
-// gets a clean conversational line instead of the empty-corpus on-ramp + a
-// fabricated `[action: …]` citation + a "treat as unverified" grounding warning.
-// Deterministic (no model call, no retrieval), so it is also the fastest path.
-export const CASUAL_RESPONSES: Record<CasualPromptKind, string> = {
-  farewell: "Take care — I'll be here when you need your notes.",
-  greeting: "Hi! I answer from your own notes — ask me anything you've saved and I'll quote the source, or tell you honestly when it isn't there.",
-  thanks: "You're welcome."
-};
-
-// An ACCURATE, honest description of what Muse actually does — so a "what can
-// you do?" question doesn't make the local model free-compose an OVER-CLAIMED
-// answer ("I can manage your schedule…") that then gets a grounding warning.
-// Honesty about its OWN capabilities is the same edge as honesty about recall.
-export const META_RESPONSE =
-  "I answer questions from your own notes and quote the exact source — and I tell you \"I'm not sure\" instead of guessing. " +
-  "Everything runs locally on your machine; nothing leaves. " +
-  "Add notes with `muse read <file> --save-to-notes <id>`, then ask me anything you've saved — or run `muse demo` to see a cited answer and an honest refusal in about 30 seconds.";
-
-// Honest guide for an action request on the chat-only path — so Muse never says
-// "I'll remind you…" without actually doing it (a false promise).
-export const ACTION_GUIDE =
-  "That's something to DO, not a question — and on this path I can only read and answer, so I won't pretend to have done it. " +
-  "Re-run with `--with-tools` and I'll actually do it (I show the exact action and ask before any outbound send or change). " +
-  "Reads stay silent; writes/sends always ask first.";
-
 
 
 
@@ -469,20 +444,6 @@ function defaultUserKey(user: string | undefined, persona: string | undefined): 
  * (unit slip like `5x`, `abc`, `0`) rejects with a clear
  * message instead of silently using the default.
  */
-export interface AskStreamEvent {
-  readonly type: string;
-  readonly text?: string;
-  readonly error?: { readonly message?: string };
-  readonly response?: { readonly logprobs?: readonly { readonly token: string; readonly logprob: number }[] };
-}
-
-export interface AskStreamResult {
-  readonly answer: string;
-  readonly error?: string;
-  /** Observational token logprobs from the done event (MUSE_LOGPROBS=1). */
-  readonly logprobs?: readonly { readonly token: string; readonly logprob: number }[];
-}
-
 /**
  * The --with-tools exposure cap. tool-calling.md: every extra tool raises the
  * wrong-selection probability on a small local model — the relevance-sorted
@@ -527,87 +488,6 @@ export async function consumeAskStream(
     }
   }
   return { answer, ...(logprobs ? { logprobs } : {}) };
-}
-
-/**
- * Render a chat-only stream failure. `--json` must stay a
- * parseable contract even on error — emit a structured object
- * on stdout (with any partial answer) so `muse ask --json | jq`
- * can detect it, rather than empty stdout + a human-only stderr
- * line. Pure so the unit test can pin the contract directly.
- */
-/** A fan-out's trust signals for the `--json` payload + the run-log. */
-export interface DecompositionTrustSignals {
-  readonly subtaskCount: number;
-  readonly truncated: boolean;
-  readonly subtaskConflicts?: readonly string[];
-  readonly subtaskRedundancies?: readonly string[];
-  readonly reasoningActionGaps?: readonly string[];
-  readonly synthesisIncomplete?: readonly string[];
-}
-
-/**
- * The `decomposition` block for the `muse ask --json` payload: a MACHINE consumer
- * (the whole point of `--json`) can't read the human stderr banner, so a fan-out that
- * CONTRADICTED itself, DROPPED a sub-result, or was TRUNCATED would otherwise reach a
- * script wearing a clean `groundedVerdict:"grounded"` — a GROUNDED≠TRUE leak. Emits the
- * block ONLY for a decomposed run (no noise on the single-run common path); empty signal
- * arrays are omitted. Pure (additive — never touches the answer or the verdict).
- */
-export function decompositionJsonFields(
-  decomposed: DecomposedAskResult
-): { readonly decomposition?: DecompositionTrustSignals } {
-  if (!decomposed.decomposed) return {};
-  return {
-    decomposition: {
-      subtaskCount: decomposed.subtaskCount,
-      truncated: decomposed.truncated,
-      ...(decomposed.subtaskConflicts && decomposed.subtaskConflicts.length > 0 ? { subtaskConflicts: decomposed.subtaskConflicts } : {}),
-      ...(decomposed.subtaskRedundancies && decomposed.subtaskRedundancies.length > 0 ? { subtaskRedundancies: decomposed.subtaskRedundancies } : {}),
-      ...(decomposed.reasoningActionGaps && decomposed.reasoningActionGaps.length > 0 ? { reasoningActionGaps: decomposed.reasoningActionGaps } : {}),
-      ...(decomposed.synthesisIncomplete && decomposed.synthesisIncomplete.length > 0 ? { synthesisIncomplete: decomposed.synthesisIncomplete } : {})
-    }
-  };
-}
-
-/**
- * The human-facing stderr WARNING lines for a decomposed run (pure, so it's testable
- * unlike the inline god-file prints). Surfaces the CORRECTNESS-relevant fan-in signals a
- * `muse ask` user should verify: a cross-sub-task CONTRADICTION (workers disagree), and
- * REDUNDANCY (two sub-answers near-identical → the synthesis may over-weight that point).
- * Deliberately does NOT surface `reasoningActionGaps`: that lexical signal over-fires on
- * legitimate paraphrase/decide downstreams (measured, see lead-worker.ts) — too noisy for a
- * prominent human warning, so it stays in the `--json` payload where a consumer can weight it.
- * Each line is a multi-line block; the caller appends the trailing newline.
- */
-export function decompositionStderrNotes(decomposed: DecomposedAskResult): readonly string[] {
-  const notes: string[] = [];
-  if (decomposed.subtaskConflicts && decomposed.subtaskConflicts.length > 0) {
-    notes.push(`⚠️ sub-results disagree — verify before trusting:\n${decomposed.subtaskConflicts.map((c) => `  • ${c}`).join("\n")}`);
-  }
-  if (decomposed.subtaskRedundancies && decomposed.subtaskRedundancies.length > 0) {
-    notes.push(`ℹ sub-tasks produced near-identical results (the answer may over-weight a point):\n${decomposed.subtaskRedundancies.map((c) => `  • ${c}`).join("\n")}`);
-  }
-  return notes;
-}
-
-export function renderAskStreamError(params: {
-  readonly json: boolean;
-  readonly query: string;
-  readonly model: string;
-  readonly answer: string;
-  readonly error: string;
-}): { readonly stdout?: string; readonly stderr?: string } {
-  if (params.json) {
-    return {
-      stdout: `${JSON.stringify(
-        { query: params.query, model: params.model, answer: params.answer, error: params.error },
-        null,
-        2
-      )}\n`
-    };
-  }
-  return { stderr: `\n(error: ${params.error})\n` };
 }
 
 export function registerAskCommand(program: Command, io: ProgramIO): void {
@@ -1595,7 +1475,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       if (tierRoute) {
         io.stderr(`(tier: ${tierRoute.tier} → ${model})\n`);
       }
-      // A FAILED ask must still leave a success:false run-log trace (fire 6) —
+      // A FAILED ask must still leave a success:false run-log trace —
       // without it scout-signals / doctor failRate see zero ask-failure signal,
       // though chat-repl already writes one. Best-effort: a logging failure never
       // masks the real error, and every failure path returns before the success

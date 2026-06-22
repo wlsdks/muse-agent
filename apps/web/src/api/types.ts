@@ -125,7 +125,7 @@ export interface McpServerSummary {
   readonly updatedAt: number;
 }
 
-export interface McpSecurityPolicyView {
+interface McpSecurityPolicyView {
   allowedServerNames: string[];
   allowedStdioCommands: string[];
   maxToolOutputLength: number;
@@ -255,7 +255,7 @@ export interface VetoesResponse {
   readonly total: number;
 }
 
-export interface WeaknessView {
+interface WeaknessView {
   axis: string;
   topic: string;
   count: number;
@@ -270,7 +270,7 @@ export interface WeaknessesResponse {
   entries: WeaknessView[];
 }
 
-export interface PlaybookStrategyView {
+interface PlaybookStrategyView {
   id: string;
   text: string;
   tag: string | null;
@@ -287,7 +287,7 @@ export interface PlaybookStrategiesResponse {
   entries: PlaybookStrategyView[];
 }
 
-export interface SkillView {
+interface SkillView {
   name: string;
   description: string;
   source: string;
@@ -328,7 +328,7 @@ export interface InboxResponse {
   readonly total: number;
 }
 
-export interface DaemonFlagView {
+interface DaemonFlagView {
   key: string;
   label: string;
   enabled: boolean;
@@ -337,7 +337,7 @@ export interface DaemonFlagsResponse {
   flags: DaemonFlagView[];
 }
 
-export interface ReflectionView {
+interface ReflectionView {
   id: string;
   insight: string;
   supportCount: number;

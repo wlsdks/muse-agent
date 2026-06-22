@@ -5,7 +5,7 @@ import type { FastifyInstance } from "fastify";
 import { requireAuthenticated } from "./server-helpers.js";
 import type { ServerOptions } from "./server.js";
 
-export interface WeaknessView {
+interface WeaknessView {
   readonly axis: string;
   readonly topic: string;
   readonly count: number;
@@ -42,7 +42,7 @@ export function shapeWeaknesses(entries: readonly WeaknessEntry[]): WeaknessesRe
   };
 }
 
-export interface PlaybookStrategyView {
+interface PlaybookStrategyView {
   readonly id: string;
   readonly text: string;
   readonly tag: string | null;
@@ -89,7 +89,7 @@ export function shapePlaybook(entries: readonly PlaybookEntry[]): PlaybookStrate
   };
 }
 
-export interface SkillView {
+interface SkillView {
   readonly name: string;
   readonly description: string;
   readonly source: string;
@@ -130,7 +130,7 @@ export function parseRewardDelta(body: unknown): number | undefined {
   return delta;
 }
 
-export interface ReflectionView {
+interface ReflectionView {
   readonly id: string;
   readonly insight: string;
   readonly supportCount: number;

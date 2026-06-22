@@ -24,7 +24,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import { sendWithRetry } from "./messaging-retry.js";
 import { appendActionLog, type ActionResult } from "./personal-action-log-store.js";
 
-export interface ApprovalDecision {
+interface ApprovalDecision {
   readonly approved: boolean;
   readonly reason?: string;
 }

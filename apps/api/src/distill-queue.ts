@@ -4,4 +4,4 @@
  * grounding-fenced, brake-respecting implementation. Re-exported here to keep
  * this app's existing imports + tests pointing at a stable local path.
  */
-export { distillQueuedCorrections, type DistillQueuedDeps } from "@muse/autoconfigure";
+export { distillQueuedCorrections } from "@muse/autoconfigure";

@@ -165,7 +165,7 @@ export function renderGroundingDelta(on: GroundingEvalResult, off: GroundingEval
   ].join("\n");
 }
 
-export interface SquadSliceItem {
+interface SquadSliceItem {
   readonly title: string;
   readonly context: string;
   readonly question: string;

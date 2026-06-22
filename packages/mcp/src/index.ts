@@ -297,7 +297,7 @@ export {
   type ConflictEventLike,
   type UpcomingConflictNotice
 } from "./calendar-conflicts.js";
-export { formatDueLocal } from "./local-due-format.js";
+export { formatDueLocal } from "@muse/mcp-shared";
 export {
   createCryptoMcpServer,
   createDefaultLoopbackMcpServers,
@@ -449,7 +449,7 @@ export {
 // Relative-time phrase resolver (originally loopback-tasks-only).
 // Re-exported so HTTP routes can mirror the MCP tool's dueAt parsing
 // rather than duplicate semantics.
-export { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
+export { resolveRelativeTimePhrase } from "@muse/mcp-shared";
 
 // Personal task store — pure data layer shared between the MCP tool,
 // the REST routes, and the CLI's --local mode.

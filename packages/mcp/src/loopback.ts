@@ -310,9 +310,6 @@ export function createDefaultLoopbackMcpServers(options: BuiltinLoopbackOptions 
 
 
 
-// Avoid unused-import warning for the type alias.
-export type LoopbackToolRisk = ToolRisk;
-
 /**
  * `muse.calendar` provider-neutral calendar surface.
  *
@@ -325,7 +322,6 @@ export type LoopbackToolRisk = ToolRisk;
 export {
   createCalendarMcpServer,
   resolveEventByRef,
-  type CalendarMcpServerOptions,
   type EventRefLike,
   type EventRefResolution
 } from "./loopback-calendar.js";
@@ -339,6 +335,5 @@ export {
  * keep working without import-site edits.
  */
 export {
-  createTasksMcpServer,
-  type TasksMcpServerOptions
+  createTasksMcpServer
 } from "./loopback-tasks.js";

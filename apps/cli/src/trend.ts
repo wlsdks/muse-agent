@@ -12,8 +12,8 @@
  * normal approximation of the S statistic, graded by the usual z critical values.
  */
 
-export type TrendDirection = "increasing" | "decreasing" | "none";
-export type TrendSignificance = "strong" | "significant" | "not-significant" | "insufficient";
+type TrendDirection = "increasing" | "decreasing" | "none";
+type TrendSignificance = "strong" | "significant" | "not-significant" | "insufficient";
 
 // Below this many points the normal approximation is unreliable.
 export const MIN_TREND_SAMPLE = 8;

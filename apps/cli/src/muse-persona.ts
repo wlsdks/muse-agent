@@ -59,7 +59,7 @@ interface JarvisPersonaMemory {
  * — fewer moving parts, no manual input, the LLM does the matching
  * with the rest of the persona block.
  */
-export interface EpisodicPersonaHint {
+interface EpisodicPersonaHint {
   readonly endedAt: string;
   readonly summary: string;
   readonly topics?: readonly string[];

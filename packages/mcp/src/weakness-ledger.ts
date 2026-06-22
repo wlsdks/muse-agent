@@ -33,7 +33,7 @@ export const WEAKNESS_MASTERED_AT = 0.95;
 // confirmation (`lastResolved`), then expires — the model likely forgot over a long
 // idle gap, so a topic that recurs after it should re-surface on the FIRST recurrence
 // instead of needing ~3 fresh failures to claw pKnown back below the 0.95 threshold.
-// A quarter, matching the belief-provenance fact-stale horizon + fire 30's idle fade.
+// A quarter, matching the belief-provenance fact-stale horizon + the idle fade.
 // (Modeled as a retention horizon, not a continuous decay-through-threshold: the
 // mastered band [0.95, 1.0] is too narrow for a stable gradual decay.)
 export const WEAKNESS_MASTERY_RETENTION_DAYS = 90;

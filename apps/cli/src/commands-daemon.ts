@@ -956,7 +956,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       };
 
       // Disuse-decay — the FORGETTING half of continuous RL over the learned
-      // bank (slice 1 distills new strategies; this fades old ones). A
+      // bank (the distill step adds new strategies; this fades old ones). A
       // positive-reward strategy you stopped using sinks back toward neutral so
       // a one-off thumbs-up can't steer the agent forever. Same MUSE_SELFLEARN
       // switch + the learning-pause brake (a paused user's bank is frozen);
@@ -980,7 +980,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
             // FELT forgetting: when a preference you TAUGHT crosses from
             // healthy into near-forgotten (reward >1 → ≤1) purely from disuse, tell
             // you so you can RESCUE it before it's gone — the symmetric other half
-            // of the learned-notice (slice 4). SAFE: surfacing only; the decay
+            // of the learned-notice. SAFE: surfacing only; the decay
             // itself is the existing model-free RL, untouched.
             const fading = (await queryPlaybook(playbookFile))
               .filter((s) => { const prev = beforeReward.get(s.id); return prev !== undefined && prev > 1 && (s.reward ?? 0) <= 1; })
@@ -996,7 +996,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         } catch { /* fail-soft — background maintenance must never break the daemon */ }
       };
 
-      // Autonomous playbook CONSOLIDATE — the unattended distill (slice 1) writes
+      // Autonomous playbook CONSOLIDATE — the unattended distill writes
       // PROBATION strategies; exact/lexical near-duplicates are deduped at write
       // time, but SEMANTIC paraphrases the lexical dedup misses still accumulate.
       // This merges near-duplicate PROBATION strategies into one via the LLM

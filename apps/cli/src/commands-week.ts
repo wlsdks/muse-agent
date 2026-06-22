@@ -18,7 +18,7 @@ type Env = Record<string, string | undefined>;
 // `groupWeekAgenda` + WeekDay/WeekAgendaInput moved to @muse/autoconfigure so the
 // `week_agenda` agent tool and this command share one implementation; re-exported
 // for callers/tests.
-export { groupWeekAgenda, type WeekAgendaInput, type WeekDay } from "@muse/autoconfigure";
+export { groupWeekAgenda, type WeekDay } from "@muse/autoconfigure";
 
 const DAY_MS = 86_400_000;
 

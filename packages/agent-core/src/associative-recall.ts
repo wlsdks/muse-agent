@@ -109,7 +109,6 @@ export function personalizedPageRank(
   const maxIter = Math.max(1, Math.trunc(clampFinite(opts?.iterations, 1, 1e6, PPR_ITERATIONS_DEFAULT)));
   const epsilon = Math.max(0, clampFinite(opts?.epsilon, 0, 1, PPR_EPSILON_DEFAULT));
 
-  // Build the teleport distribution.
   const teleport = new Map<string, number>();
   let seedSum = 0;
   for (const [key, w] of seeds) {
@@ -151,7 +150,6 @@ export function personalizedPageRank(
     out.set(node, row);
   }
 
-  // Initialize scores uniformly.
   let scores = new Map<string, number>();
   const init = 1 / m;
   for (const node of nodes) {

@@ -116,7 +116,7 @@ export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
  * send an iMessage), so it stays dark until explicitly enabled — mirrors the
  * env-gated posture of the email / smart-home actuators.
  */
-export function macActuatorsEnabled(env: MuseEnvironment): boolean {
+function macActuatorsEnabled(env: MuseEnvironment): boolean {
   const value = env.MUSE_MACOS_ACTUATORS?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
@@ -231,7 +231,7 @@ export function buildEmailApprovalGate(deps: {
  * delivered, so the act is DENIED (outbound-safety — a wrong autonomous
  * click/submit toward a third-party site can't be rolled back).
  */
-export function buildBrowserApprovalGate(deps: {
+function buildBrowserApprovalGate(deps: {
   readonly io: ProgramIO;
   readonly confirmAction: (message: string) => Promise<boolean>;
   readonly isInteractive?: () => boolean;

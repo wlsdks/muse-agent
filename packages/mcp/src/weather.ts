@@ -8,7 +8,7 @@
  */
 
 import { fetchWithRetry, type RetryOptions } from "./http-retry.js";
-import { resolveRelativeTimePhrase } from "./loopback-relative-time.js";
+import { resolveRelativeTimePhrase } from "@muse/mcp-shared";
 
 export { fetchWithRetry, isRetriableStatus, parseRetryAfterMs, type RetryOptions } from "./http-retry.js";
 
@@ -130,7 +130,7 @@ export function describeWeatherCode(code: number): string {
  * vs Springfield, Missouri); it's dropped when it merely repeats the city
  * name (Seoul's admin1 is "Seoul") so the line never reads "Seoul, Seoul".
  */
-export function formatPlace(location: GeocodedLocation): string {
+function formatPlace(location: GeocodedLocation): string {
   const region = location.admin1 && location.admin1 !== location.name ? location.admin1 : undefined;
   return [location.name, region, location.country].filter(Boolean).join(", ");
 }

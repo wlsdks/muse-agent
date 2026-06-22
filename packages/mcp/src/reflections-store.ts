@@ -28,11 +28,11 @@ export const MAX_REFLECTIONS = 500;
 
 const DAY_MS_REFLECT = 24 * 60 * 60_000;
 /** Half-life (days) of a stored reflection's recency term in the retention score. */
-export const REFLECTION_RETENTION_HALF_LIFE_DAYS = 30;
+const REFLECTION_RETENTION_HALF_LIFE_DAYS = 30;
 /** Weight of the salience (support) term relative to recency in the retention score. */
-export const REFLECTION_SALIENCE_WEIGHT = 1;
+const REFLECTION_SALIENCE_WEIGHT = 1;
 /** Support count at/above which a reflection's salience term saturates to 1. */
-export const REFLECTION_SALIENCE_FULL_SUPPORT = 5;
+const REFLECTION_SALIENCE_FULL_SUPPORT = 5;
 
 export interface ReflectionRetentionOptions {
   readonly halfLifeDays?: number;

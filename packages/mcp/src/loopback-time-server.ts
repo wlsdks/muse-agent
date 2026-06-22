@@ -1,7 +1,7 @@
 import type { JsonObject } from "@muse/shared";
 
 import { buildJsonToolSchema } from "./loopback-helpers.js";
-import { isoDateHeadRoundTrips } from "./loopback-relative-time.js";
+import { isoDateHeadRoundTrips } from "@muse/mcp-shared";
 import type { BuiltinLoopbackOptions, LoopbackMcpServer } from "./loopback.js";
 
 /**

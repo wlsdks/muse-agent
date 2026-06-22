@@ -37,7 +37,7 @@ interface InvokeHooksDeps {
 }
 
 /** Default per-hook timeout — generous, so only a pathological hang is cut. */
-export const DEFAULT_HOOK_TIMEOUT_MS = 30_000;
+const DEFAULT_HOOK_TIMEOUT_MS = 30_000;
 
 async function invokeWithTimeout(invoke: () => Awaitable<void>, timeoutMs: number): Promise<void> {
   const work = (async () => { await invoke(); })();

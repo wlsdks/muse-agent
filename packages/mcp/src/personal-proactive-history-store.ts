@@ -23,7 +23,7 @@ import { redactSecretsInText } from "@muse/shared";
 
 import { withFileMutationQueue } from "./atomic-file-store.js";
 
-import type { ProactiveFiredKind } from "./proactive-notice-loop.js";
+import type { ProactiveFiredKind } from "./proactive-notice-store.js";
 
 export interface ProactiveHistoryEntry {
   /** "calendar" | "task" — same union the dedupe sidecar uses. */

@@ -44,6 +44,9 @@
       "path": "./packages/mcp"
     },
     {
+      "path": "./packages/mcp-shared"
+    },
+    {
       "path": "./packages/memory"
     },
     {

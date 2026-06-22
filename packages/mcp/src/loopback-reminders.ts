@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { errorMessage, readString } from "./loopback-helpers.js";
-import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
+import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, startOfLocalDay, withTimeOfDay } from "@muse/mcp-shared";
 import type { LoopbackMcpServer, LoopbackMcpToolDefinition } from "./loopback.js";
 import { readReminderHistory } from "./personal-reminder-history-store.js";
 import { recordTimeParseWeakness, recordWeakness } from "./weakness-ledger.js";
@@ -143,7 +143,7 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           }
           const parsed = parseReminderDueAt(dueAtRaw, now);
           if (parsed instanceof Error) {
-            // Whetstone (agent-path sibling of `calendar add`, fire 26): the
+            // Whetstone (agent-path sibling of `calendar add`): the
             // deterministic parser couldn't resolve this dueAt phrase — record the
             // time-parse weakness so a recurring misread surfaces. Fail-soft.
             if (options.weaknessesFile) {

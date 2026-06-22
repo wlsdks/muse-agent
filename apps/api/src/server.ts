@@ -94,7 +94,7 @@ import {
 
 export { unwrapErrorMessage };
 
-export type { CorsOptions, ServerOptions, ToolCatalogEntry } from "./server-options.js";
+export type { CorsOptions, ServerOptions } from "./server-options.js";
 import type { ServerOptions } from "./server-options.js";
 
 export function buildServer(options: ServerOptions = {}): FastifyInstance {
@@ -277,7 +277,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       proactiveHistoryFile: options.proactiveHistoryFile
     });
   }
-  // LINE webhook (Phase 2.b.2): only registered when both the channel
+  // LINE webhook: only registered when both the channel
   // secret and an inbox file path are configured. The plugin scopes a
   // buffer-mode JSON parser so signature verification sees raw bytes.
   const lineSecret = process.env.MUSE_LINE_CHANNEL_SECRET?.trim();
@@ -389,7 +389,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   startHomeWatchDaemonIfConfigured(env, server, options);
   warmUpModelIfConfigured(env, options);
 
-  // Optional Phase 2.a.3 daemon: poll Telegram every
+  // Optional daemon: poll Telegram every
   // MUSE_TELEGRAM_POLL_INTERVAL_MS (default 30s) and persist each
   // new InboundMessage into telegramInboxFile. Off unless the user
   // sets MUSE_TELEGRAM_POLL_ENABLED=1 — keeps fresh installs quiet.
@@ -403,7 +403,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     // The daemon walks Bot API directly, so it needs the concrete
     // TelegramProvider (with offset persistence) rather than the
     // registry's generic fetchInbound — that one reads from the
-    // inbox file once Phase 2.a.4 wiring is in place.
+    // inbox file once that wiring is in place.
     const telegram = options.messaging.require("telegram");
     if (telegram instanceof TelegramProvider) {
       const pollMsRaw = process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS
@@ -514,7 +514,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     });
   }
 
-  // Optional Phase 2.d.3 daemon: poll a user-configured list of
+  // Optional daemon: poll a user-configured list of
   // Slack channels (MUSE_SLACK_POLL_CHANNELS=C0123,C0456) every
   // MUSE_SLACK_POLL_INTERVAL_MS (default 30s) and persist each new
   // message into slackInboxFile. Off unless MUSE_SLACK_POLL_ENABLED=1.
@@ -546,7 +546,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     }
   }
 
-  // Optional Phase 2.c.3 daemon: poll a user-configured list of
+  // Optional daemon: poll a user-configured list of
   // Discord channels (MUSE_DISCORD_POLL_CHANNELS=ch1,ch2) every
   // MUSE_DISCORD_POLL_INTERVAL_MS (default 30s) and persist each
   // new message into discordInboxFile. Off unless the user sets

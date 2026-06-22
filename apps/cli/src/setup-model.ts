@@ -21,7 +21,7 @@ interface SetupModelIO {
   readonly home?: string;
 }
 
-export type SetupModelProviderId =
+type SetupModelProviderId =
   | "openai"
   | "anthropic"
   | "gemini"

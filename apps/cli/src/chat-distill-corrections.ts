@@ -81,12 +81,10 @@ export interface DistillCorrectionsOptions {
 }
 
 /** A strategy whose reward moved this session, with the new (clamped) reward. */
-export interface RewardedStrategy {
+interface RewardedStrategy {
   readonly text: string;
   readonly reward: number;
 }
-/** Back-compat alias: a strategy a correction decayed. */
-export type DecayedStrategy = RewardedStrategy;
 
 export type DistillResult =
   | { readonly status: "recorded"; readonly strategies: readonly { readonly text: string; readonly tag?: string }[]; readonly decayed: readonly RewardedStrategy[]; readonly reinforced: readonly RewardedStrategy[]; readonly lowConsistencyRejected: number }

@@ -262,7 +262,7 @@ export {
   stripKeyDetailsBlock
 } from "./salient-facts.js";
 
-// Context Engineering Phase 5: message importance scoring.
+// Message importance scoring.
 export {
   IMPORTANCE_DEFAULT_THRESHOLD,
   recencyBonus,

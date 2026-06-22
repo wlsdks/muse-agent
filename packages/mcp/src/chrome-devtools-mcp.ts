@@ -101,7 +101,7 @@ export function chromeDevToolsToolRisk(toolName: string): ToolRisk {
  * resize — is out of a daily assistant's scope, so it's curated out of
  * the agent catalog. Bare tool names (the part after the server prefix).
  */
-export const CHROME_DAILY_DRIVER_TOOLS: ReadonlySet<string> = new Set([
+const CHROME_DAILY_DRIVER_TOOLS: ReadonlySet<string> = new Set([
   "take_snapshot",
   "take_screenshot",
   "navigate_page",

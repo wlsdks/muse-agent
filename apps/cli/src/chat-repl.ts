@@ -173,7 +173,7 @@ export function createTuiChatSubmitter(
       body = await runChat(message);
     } catch (error) {
       // A FAILED chat run must still leave a `success:false` trace — error-analysis
-      // fuel that previously vanished (the run-log was happy-path only). #6 slice 6d.
+      // fuel that previously vanished (the run-log was happy-path only).
       await writeRunLog(io.workspaceDir ?? process.cwd(), {
         message,
         ...(options.model !== undefined ? { model: options.model } : {}),
@@ -201,10 +201,10 @@ export function createTuiChatSubmitter(
 // unrelated note (the user's wifi password) into a "what can you do?" reply.
 // Every clause here is a capability actually verified to work — honesty about
 // what Muse can do is the same edge as honesty about recall.
-export const DESKTOP_META_KO =
+const DESKTOP_META_KO =
   "저는 당신의 노트와 메모에서 답을 찾아 출처까지 함께 알려드려요. 모르면 추측하지 않고 \"잘 모르겠어요\"라고 솔직히 말씀드려요. " +
   "할 일·리마인더·일정도 추가하고 정리해드릴 수 있어요. 모든 건 이 기기 안에서만 처리되고 밖으로 나가지 않습니다.";
-export const DESKTOP_META_EN =
+const DESKTOP_META_EN =
   "I answer from your own notes and memos and quote the exact source — and if I'm not sure, I say so instead of guessing. " +
   "I can also add and organize your tasks, reminders, and calendar events. Everything runs on this device and nothing leaves it.";
 
@@ -268,7 +268,7 @@ export function formatReminderList(
 
 /** One contact's known details on a single line — the deterministic answer to a
  *  "<name> 전화번호 / 관계 / 이메일" lookup the 8B fumbles. */
-export function formatContactDetails(
+function formatContactDetails(
   contact: { readonly name: string; readonly phone?: string; readonly email?: string; readonly handle?: string; readonly relationship?: string; readonly birthday?: string },
   korean: boolean
 ): string {
@@ -665,7 +665,7 @@ export async function runLocalChat(
   // `.display` (answer + receipt + source-check cues) is what this one-shot surface
   // PRINTS; `.forHistory` (cue-free) is what the caller PERSISTS via appendLastChatTurn,
   // so the display-only source-check warnings aren't replayed as trusted grounding
-  // evidence on the next session's priorHistory (parity with the Ink chat, fire 4).
+  // evidence on the next session's priorHistory (parity with the Ink chat).
   const finalized = await finalizeGatedChatAnswer({
     answer: result.response.output,
     history: options.priorHistory ?? [],
@@ -690,7 +690,7 @@ export async function runLocalChat(
   // The persisted twin tracks `response` through the REAL-content transforms below
   // (fallback, task-completion, unbacked-action self-correction), but excludes the
   // display-only affordances appended to `finalResponse` for the user: the source-check
-  // cues `finalized.forHistory` already dropped (fire 4 + 5) AND the repeat-weakness
+  // cues `finalized.forHistory` already dropped AND the repeat-weakness
   // nudge added later — neither is conversational content, so neither may be replayed
   // as trusted grounding evidence on the next session's priorHistory.
   const responseForHistory = usedEmptyFallback ? emptyAnswerFallback(message) : withReceiptForHistory;
@@ -728,7 +728,7 @@ export async function runLocalChat(
     finalResponseForHistory = `${finalResponseForHistory}${heads}`;
   }
 
-  // Whetstone slice 1 — record the turn's failure signal to the weakness ledger
+  // Record the turn's failure signal to the weakness ledger
   // (detect → classify → persist). Fire-and-forget: a ledger write must never
   // break a turn. `unbacked-action` is always a true failure; a refusal is a
   // softer "couldn't answer" gap (may just be a missing note) — both are useful
@@ -766,7 +766,7 @@ export async function runLocalChat(
   return {
     response: finalResponse,
     // The cue-free twin for persistence (appendLastChatTurn) — keeps display-only
-    // source-check warnings out of the next session's grounding evidence (fire 5).
+    // source-check warnings out of the next session's grounding evidence.
     responseForHistory: finalResponseForHistory,
     // Whether this answer rested on untrusted-only sources — persisted per-turn so a
     // later episode capture marks the episode trusted:false even for this one-shot
@@ -962,7 +962,7 @@ export function parseAgentMode(value: string | undefined): AgentMode | undefined
  * comfortably alongside the rest of the prompt on modern context
  * windows.
  */
-export function readChatResponseText(value: unknown): string {
+function readChatResponseText(value: unknown): string {
   if (isRecord(value) && typeof value.response === "string") {
     return value.response;
   }

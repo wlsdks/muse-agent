@@ -51,7 +51,7 @@ export interface ReminderHint {
  * the user?" without guessing — and so it can propose plans aligned
  * with the user's actual rhythm.
  */
-export interface RoutineHint {
+interface RoutineHint {
   /** Hours of day the user is typically active, e.g. `[9, 14, 20]`. */
   readonly activeHours?: readonly number[];
   /** Day-of-week labels the user is typically active, e.g. `["Mon", "Tue"]`. */

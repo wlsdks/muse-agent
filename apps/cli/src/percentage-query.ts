@@ -8,7 +8,7 @@
  * recognised shapes fire, so a non-percentage question falls through to recall.
  */
 
-export type PercentageKind = "of" | "off" | "increase" | "decrease" | "tip";
+type PercentageKind = "of" | "off" | "increase" | "decrease" | "tip";
 
 export interface PercentageQuery {
   readonly kind: PercentageKind;

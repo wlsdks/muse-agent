@@ -2766,7 +2766,7 @@ describe("muse.tasks loopback server", () => {
     // Invariant: EVERY quoted example after "Examples:" must
     // actually resolve — the error message is a user contract and
     // must never advertise a phrasing the grammar can't parse.
-    const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+    const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
     const examplesPart = (result.error ?? "").split("Examples:")[1] ?? "";
     const examples = [...examplesPart.matchAll(/"([^"]+)"/gu)].map((m) => m[1]!);
     expect(examples.length).toBeGreaterThanOrEqual(10);
@@ -2830,7 +2830,7 @@ describe("muse.tasks loopback server", () => {
 
   describe("resolveRelativeTimePhrase", () => {
     it("resolves 'this <weekday>' like 'next <weekday>' (the model emits 'this friday')", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const now = () => new Date("2026-05-25T12:00:00+09:00"); // a Monday
       // "this friday at 3pm" was mis-parsed ("this" as a weekday) → undefined,
       // so the model's natural calendar prompt failed at calendar.add.
@@ -2842,7 +2842,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("parses 'in N <unit>' offsets", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const fixed = new Date("2026-05-10T12:00:00Z");
       const now = () => fixed;
       expect(resolveRelativeTimePhrase("in 30 seconds", now)?.toISOString())
@@ -2862,7 +2862,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("parses compact unit-suffix offsets ('in 1h', 'in 30m', 'in 5 hrs')", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const now = () => new Date("2026-05-10T12:00:00Z");
       expect(resolveRelativeTimePhrase("in 1h", now)?.toISOString())
         .toBe("2026-05-10T13:00:00.000Z");
@@ -2896,7 +2896,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("treats the indefinite article 'a'/'an' as quantity 1", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const now = () => new Date("2026-05-10T12:00:00Z");
       expect(resolveRelativeTimePhrase("in a minute", now)?.toISOString())
         .toBe("2026-05-10T12:01:00.000Z");
@@ -2917,7 +2917,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves precise fractional / compound durations (half / quarter / and-a-half)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const base = new Date("2026-05-18T09:00:00.000Z");
       const now = () => base;
       const mins = (p: string): number | undefined => {
@@ -2943,7 +2943,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves decimal-notation durations ('in 1.5 hours', 'in 2.5 days')", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const base = new Date("2026-05-18T09:00:00.000Z");
       const now = () => base;
       const mins = (p: string): number | undefined => {
@@ -2977,7 +2977,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves two-unit compound durations ('in 2 hours 30 minutes')", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const base = new Date("2026-05-18T09:00:00.000Z");
       const now = () => base;
       const mins = (p: string): number | undefined => {
@@ -3009,7 +3009,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("parses 'in N month(s)' with calendar-month math (goal 110)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const fixed = new Date("2026-05-10T12:00:00Z");
       const now = () => fixed;
 
@@ -3030,7 +3030,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("clamps month-end overflow instead of rolling into a later month", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
       const jan31 = () => new Date("2026-01-31T12:00:00Z");
 
@@ -3062,7 +3062,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("returns undefined (not an Invalid Date) for out-of-range offsets", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const { parseTaskDueAt } = await import("../src/personal-tasks-store.js");
       const now = () => new Date("2026-05-10T12:00:00Z");
       for (const phrase of [
@@ -3165,7 +3165,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("supports time-of-day suffixes (am/pm/HH:MM/noon/midnight)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const tomorrow6pm = resolveRelativeTimePhrase("tomorrow at 6pm", () => new Date("2026-05-10T12:00:00Z"));
       expect(tomorrow6pm?.getHours()).toBe(18);
       expect(tomorrow6pm?.getMinutes()).toBe(0);
@@ -3182,7 +3182,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("accepts the time without the 'at' keyword (goal 159)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-10T12:00:00Z"); // Sunday
 
       const tomorrow9am = resolveRelativeTimePhrase("tomorrow 9am", ref);
@@ -3213,7 +3213,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("accepts a bare hour as a 24h time, symmetric with Korean 시 and HH:MM", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-10T12:00:00Z"); // Sunday
 
       const at3 = resolveRelativeTimePhrase("tomorrow at 3", ref);
@@ -3239,7 +3239,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves named day-parts (morning/afternoon/evening/night)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-10T12:00:00Z"); // Sunday
 
       const morn = resolveRelativeTimePhrase("tomorrow morning", ref);
@@ -3266,7 +3266,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves a standalone day-part as today at that hour", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-18T09:00:00Z"); // Monday
 
       const tonight = resolveRelativeTimePhrase("tonight", ref);
@@ -3289,7 +3289,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves a bare time (no day word) as today at that time", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-18T09:00:00Z"); // Monday
 
       const at5 = resolveRelativeTimePhrase("at 5pm", ref);
@@ -3313,7 +3313,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves an absolute month-name date (with next-occurrence + impossible-date rejection)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-18T12:00:00Z"); // Monday
 
       const may20 = resolveRelativeTimePhrase("May 20", ref);
@@ -3345,7 +3345,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves 'day after tomorrow' (+2 days, English counterpart of 모레)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-18T12:00:00Z"); // Monday May 18
 
       const dat = resolveRelativeTimePhrase("day after tomorrow", ref);
@@ -3365,7 +3365,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves Korean day + time phrases (goal 160)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-15T12:00:00Z"); // Friday
 
       const tomorrowPm3 = resolveRelativeTimePhrase("내일 오후 3시", ref);
@@ -3400,7 +3400,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves a bare Korean time with no day word → today at that time (symmetric with English bare time)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-15T12:00:00Z"); // Friday
       const today = ref().getDate();
 
@@ -3429,7 +3429,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves the 반 (half-past) shorthand (goal 163)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-15T12:00:00Z"); // Friday
 
       const tomorrowPm330 = resolveRelativeTimePhrase("내일 오후 3시 반", ref);
@@ -3458,7 +3458,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves Korean duration offsets — 후 / 뒤 (goal 161)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-15T12:00:00Z");
 
       expect(resolveRelativeTimePhrase("30분 후", ref)?.toISOString())
@@ -3483,7 +3483,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("resolves Korean weekday phrases — 다음 주 / 이번 주 (goal 162)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const ref = () => new Date("2026-05-15T12:00:00Z"); // Friday
 
       // Bare weekday → next occurrence (always future), default 09:00.
@@ -3513,7 +3513,7 @@ describe("muse.tasks loopback server", () => {
     });
 
     it("returns undefined for unsupported phrases (caller decides fallback)", async () => {
-      const { resolveRelativeTimePhrase } = await import("../src/loopback-relative-time.js");
+      const { resolveRelativeTimePhrase } = await import("@muse/mcp-shared");
       const now = () => new Date("2026-05-10T12:00:00Z");
       expect(resolveRelativeTimePhrase("sometime", now)).toBeUndefined();
       expect(resolveRelativeTimePhrase("yesterday", now)).toBeUndefined();

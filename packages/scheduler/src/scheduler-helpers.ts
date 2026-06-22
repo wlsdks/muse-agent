@@ -30,7 +30,6 @@ type ScheduledJobExecutionRow = Selectable<ScheduledJobExecutionTable>;
 export const defaultTimezone = "UTC";
 export const defaultRetryCount = 3;
 
-export { SchedulerValidationError } from "./scheduler-errors.js";
 export { maxRetryCountCeiling, requireText, validateCronExpression, validateExecutionTimeout, validateJobName, validateJobTypeFields, validateRetryConfig, validateTimezone } from "./scheduler-validation.js";
 
 export function compareJobs(left: ScheduledJob, right: ScheduledJob): number {

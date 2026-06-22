@@ -27,7 +27,7 @@ interface StoredCredential {
   readonly updatedAt: string;
 }
 
-export interface CredentialStore {
+interface CredentialStore {
   readonly tokens: Record<string, StoredCredential>;
 }
 

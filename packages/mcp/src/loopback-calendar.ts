@@ -8,10 +8,10 @@ import type { JsonObject, JsonValue } from "@muse/shared";
 
 import { computeAvailability } from "./calendar-availability.js";
 import { detectCalendarConflicts } from "./calendar-conflicts.js";
-import { formatDueLocal } from "./local-due-format.js";
+import { formatDueLocal } from "@muse/mcp-shared";
 import { readBoolean, readString, readStringArray, errorMessage } from "./loopback-helpers.js";
 import type { LoopbackMcpServer } from "./loopback.js";
-import { hasTimeComponent, isoDateHeadRoundTrips, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, resolveRelativeTimePhrase, startOfLocalDay, withTimeOfDay } from "./loopback-relative-time.js";
+import { hasTimeComponent, isoDateHeadRoundTrips, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, resolveRelativeTimePhrase, startOfLocalDay, withTimeOfDay } from "@muse/mcp-shared";
 import { syncRemindersOnEventDelete, syncRemindersOnEventReschedule } from "./event-reminder-link.js";
 
 /** Recurrence cadences the calendar `add` tool accepts (mapped to an RRULE FREQ). */

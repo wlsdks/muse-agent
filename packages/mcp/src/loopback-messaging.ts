@@ -61,7 +61,7 @@ const DENY_WITHOUT_CONFIRMATION: MessageApprovalGate = () => ({
  * tool simply isn't registered — same pattern as the empty-registry
  * branch.
  */
-export interface PollNowDispatcher {
+interface PollNowDispatcher {
   (providerId: string, source?: string): Promise<{ ingested: number }>;
 }
 
@@ -71,7 +71,7 @@ export interface PollNowDispatcher {
  * Returns per-provider ingestion counts plus any per-provider errors
  * so a single bad channel doesn't black out the rest.
  */
-export interface PollAllDispatcher {
+interface PollAllDispatcher {
   (): Promise<{
     readonly ingestedByProvider: Readonly<Record<string, number>>;
     readonly errors: readonly { readonly providerId: string; readonly message: string }[];

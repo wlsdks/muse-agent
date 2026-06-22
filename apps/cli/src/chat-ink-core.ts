@@ -593,7 +593,7 @@ export function recurringEpisodeThreads(
 }
 
 /** The most-recent prior value for `key` from the supersession log, or undefined. */
-export function latestPriorValue(
+function latestPriorValue(
   factHistory: MemorySnapshot["factHistory"],
   key: string
 ): { readonly previousValue: string; readonly replacedAt: string } | undefined {

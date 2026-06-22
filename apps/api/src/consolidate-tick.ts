@@ -204,7 +204,7 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
     if (options.isModelResident && !(await options.isModelResident())) return;
     firing = true;
     try {
-      // Idle REM phase (B1 Slice 1): distill ONE queued correction into a
+      // Idle REM phase: distill ONE queued correction into a
       // learned strategy while idle — the felt "grows-with-you" payoff. Runs
       // behind the same brakes as the skill merge.
       if (options.distillQueued) {
@@ -213,7 +213,7 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
           options.logger?.(`consolidate-tick: distilled ${learned.toString()} strategy(ies) from queued corrections`);
         }
       }
-      // Idle RL phase (B1 Slice 2): fade strategies the user stopped reinforcing.
+      // Idle RL phase: fade strategies the user stopped reinforcing.
       if (options.decayStale) {
         const decayed = await options.decayStale();
         if (decayed > 0) {

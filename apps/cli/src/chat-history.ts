@@ -25,7 +25,7 @@ import { redactSecretsInText } from "@muse/shared";
 
 import { isRecord } from "./credential-store.js";
 
-export const HISTORY_TURN_LIMIT = 12;
+const HISTORY_TURN_LIMIT = 12;
 // Files larger than this many lines (each turn = 1 line, so 60 lines =
 // 30 turns) trigger an LLM compaction pass at REPL boot. The compacted
 // file then holds a single synthesized "summary" entry plus the last
@@ -209,25 +209,6 @@ export async function appendActivity(event: ActivityEvent): Promise<void> {
   const stamped = { ...event, tsIso: event.tsIso ?? new Date().toISOString() };
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, `${JSON.stringify(stamped)}\n`, { flag: "a", mode: 0o600 });
-}
-
-/**
- * Heuristic: when did the user's `routine_active_hours` fact last
- * change? We don't track per-fact mtime, so the closest signal is
- * `updatedAt` on the whole memory blob. If undefined or older than
- * the staleness threshold, the REPL fires a background re-aggregation.
- *
- * Cheap; returns Date.now() (effectively "fresh") when no signal
- * exists so we don't spam fact-writes on every empty REPL boot.
- */
-export function parseRoutineUpdateMs(memory: {
-  readonly facts: Readonly<Record<string, string>>;
-  readonly updatedAt?: Date;
-} | undefined): number {
-  if (!memory) return Date.now();
-  if (!memory.facts.routine_active_hours) return 0; // no fact yet → always stale
-  const ts = memory.updatedAt instanceof Date ? memory.updatedAt.getTime() : Date.now();
-  return Number.isFinite(ts) ? ts : Date.now();
 }
 
 /**

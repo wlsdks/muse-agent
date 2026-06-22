@@ -23,7 +23,7 @@ import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
  * `@muse/mcp` deliberately does not depend on `@muse/agent-core`; the safety
  * core already guarantees only these kinds are ever accepted into quarantine.
  */
-export type A2APayloadKind = "skill" | "strategy" | "council-utterance";
+type A2APayloadKind = "skill" | "strategy" | "council-utterance";
 
 export type QuarantineStatus = "pending" | "promoted" | "rejected";
 

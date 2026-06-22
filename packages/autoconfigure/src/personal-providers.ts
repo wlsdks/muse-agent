@@ -24,7 +24,6 @@
 
 import { mkdirSync } from "node:fs";
 
-import type { MessagingProvider } from "@muse/messaging";
 import type {
   SkillCatalogEntry,
   SkillCatalogProvider
@@ -198,9 +197,6 @@ export function ensureNotesDir(notesDir: string): void {
 // `buildMessagingRegistry` lives in `./registry-builders/messaging.ts`.
 // Re-exported so external call-sites stay byte-identical.
 export { buildMessagingRegistry } from "./registry-builders/messaging.js";
-
-// Suppress unused-import warning when only the type is referenced.
-export type { MessagingProvider };
 
 /**
  * Context-engineering provider builders (Phases 1–5 + telemetry)

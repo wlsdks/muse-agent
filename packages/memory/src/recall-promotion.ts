@@ -37,7 +37,7 @@ const DEFAULT_MAX_PROMOTED = 3;
 const DEFAULT_MIN_DISTINCT_ACCESS_DAYS = 2;
 
 /** Count the distinct UTC calendar days present in a list of epoch-ms accesses. */
-export function distinctAccessDays(accessMs: readonly number[]): number {
+function distinctAccessDays(accessMs: readonly number[]): number {
   const days = new Set<string>();
   for (const ms of accessMs) {
     if (Number.isFinite(ms)) days.add(new Date(ms).toISOString().slice(0, 10));

@@ -160,7 +160,7 @@ export function startProactiveDaemonIfConfigured(
     ? Number(env.MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS)
     : undefined;
 
-  // P0-b3: a real notes-backed investigator over the primary notes
+  // A real notes-backed investigator over the primary notes
   // provider so the proactive notice surfaces "📎 Related notes: …"
   // for the imminent item's topic, unasked.
   const proactiveNotesProvider = options.notesProviderRegistry?.primary();
@@ -551,10 +551,10 @@ export function startConsolidateDaemonIfConfigured(
     // Model-resident brake: never cold-load the multi-GB model unattended —
     // merge only when it's already loaded in Ollama (fail-closed).
     ...(consolidateModel ? { isModelResident: () => isModelResidentLive(consolidateModel) } : {}),
-    // Idle REM phase (B1 Slice 1): distill queued corrections into learned
+    // Idle REM phase: distill queued corrections into learned
     // strategies while idle, behind the brakes (the felt grows-with-you path).
     ...(consolidateModel && consolidateProvider ? { distillQueued: () => distillQueuedCorrections({ model: consolidateModel, modelProvider: consolidateProvider, embed: createGateEmbedder(env), playbookFile: resolvePlaybookFile(env), queueFile: resolveLearnQueueFile(env), suppressedLessonsFile: resolveSuppressedLessonsFile(env), pauseFile: resolveLearningPauseFile(env) }) } : {}),
-    // Idle RL phase (B1 Slice 2): fade positive-reward strategies the user has
+    // Idle RL phase: fade positive-reward strategies the user has
     // stopped reinforcing back toward neutral, so a stale thumbs-up doesn't
     // steer the agent forever. Cheap + local (no model needed), behind the brakes.
     decayStale: () => decayStalePlaybookRewards(resolvePlaybookFile(env), { nowMs: Date.now() }),

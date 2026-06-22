@@ -687,7 +687,7 @@ export type NoticeGroundingReverify = (input: {
   readonly query: string;
 }) => Promise<boolean>;
 
-export const NOTICE_GROUNDING_QUERY =
+const NOTICE_GROUNDING_QUERY =
   "Does this heads-up state ONLY facts present in the item details (time, title, location)?";
 
 export async function synthesizeNoticeText(

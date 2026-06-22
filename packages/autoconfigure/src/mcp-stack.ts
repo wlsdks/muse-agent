@@ -48,7 +48,7 @@ export function assembleMcpStack(
 ): McpStack {
   const serverStore = createMcpServerStore(db, env);
   const externalServerInputs = [...loadExternalMcpConfig(env)];
-  // Turnkey P18: MUSE_CHROME_DEVTOOLS_ENABLED auto-registers the
+  // MUSE_CHROME_DEVTOOLS_ENABLED auto-registers the
   // Chrome DevTools MCP preset (auto-connect) so the user need not
   // hand-write the npx command + --browser-url in mcp.json. Skipped
   // if they already declared `chrome-devtools` themselves.

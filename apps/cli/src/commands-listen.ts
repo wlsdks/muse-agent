@@ -119,7 +119,6 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
         );
       };
 
-      // Phase F.1 — wake-word ambient mode.
       if (options.wake && options.wake.trim().length > 0) {
         const detector = new TextScanWakeWordDetector({ phrase: options.wake.trim() });
         const clipSeconds = parseBoundedInt(options.clipSeconds, "--clip-seconds", 2, 30, 5);
@@ -194,7 +193,6 @@ export function registerListenCommand(program: Command, io: ProgramIO, helpers: 
         return;
       }
 
-      // Phase C — push-to-talk.
       io.stdout("Press Enter to start recording, Enter again to stop.\n");
       await shells.waitForEnter();
       io.stdout("Recording... press Enter to stop.\n");

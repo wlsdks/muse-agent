@@ -16,7 +16,7 @@ export interface TaskFlowInput {
   readonly status: "open" | "done";
 }
 
-export type FlowTrend = "growing" | "shrinking" | "steady";
+type FlowTrend = "growing" | "shrinking" | "steady";
 
 export interface TaskFlowStats {
   readonly windowDays: number;

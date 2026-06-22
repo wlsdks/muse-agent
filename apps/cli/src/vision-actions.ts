@@ -11,7 +11,7 @@ import type { ModelProvider } from "@muse/model";
  * invents), and the caller stays draft-first (show the draft, write only on
  * --apply).
  */
-export type VisionActionKind = "event" | "receipt" | "contact" | "document" | "other";
+type VisionActionKind = "event" | "receipt" | "contact" | "document" | "other";
 
 export interface VisionAction {
   readonly kind: VisionActionKind;

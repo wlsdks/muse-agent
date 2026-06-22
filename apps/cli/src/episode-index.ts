@@ -23,7 +23,7 @@ import type { PersistedEpisode } from "@muse/mcp";
 
 export const EPISODE_INDEX_SCHEMA_VERSION = 1;
 
-export interface EpisodeIndexEntry {
+interface EpisodeIndexEntry {
   readonly id: string;
   readonly userId: string;
   readonly summary: string;
@@ -120,13 +120,6 @@ export function episodeIndexStale(
     }
   }
   return false;
-}
-
-export interface ReindexEpisodesSummary {
-  readonly embedded: number;
-  readonly skipped: number;
-  readonly indexPath: string;
-  readonly index: EpisodeIndex;
 }
 
 /**

@@ -84,7 +84,7 @@ export function Empty({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
 
-export function Spinner() {
+function Spinner() {
   return <span className="spinner" aria-label="loading" />;
 }
 

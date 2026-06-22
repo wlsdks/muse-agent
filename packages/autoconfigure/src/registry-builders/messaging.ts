@@ -46,7 +46,7 @@ export function buildMessagingRegistry(env: MuseEnvironment): MessagingProviderR
     // `offsetFile` and `inboxFile` are always wired. The provider
     // only touches them on demand: `pollUpdates` reads/writes the
     // offset; `fetchInbound` reads the inbox when configured (and
-    // otherwise falls through to a snapshot poll). The Phase 2.a.3
+    // otherwise falls through to a snapshot poll). The polling
     // daemon appends new messages to the same inbox so the web
     // panel / REST converge on a single store.
     registry.register(new TelegramProvider({
@@ -57,8 +57,8 @@ export function buildMessagingRegistry(env: MuseEnvironment): MessagingProviderR
   }
   const discordToken = tokenFor("MUSE_DISCORD_BOT_TOKEN", "discord");
   if (discordToken) {
-    // Phase 2.c.1+2: afterFile drives pollUpdates' cursor.
-    // Phase 2.c.4: inboxFile makes fetchInbound serve the
+    // afterFile drives pollUpdates' cursor.
+    // inboxFile makes fetchInbound serve the
     // daemon-fed store (channel-filtered when source is given).
     // Both files are wired unconditionally; the provider only
     // touches them on demand, so an absent file is fine.
@@ -70,8 +70,8 @@ export function buildMessagingRegistry(env: MuseEnvironment): MessagingProviderR
   }
   const slackToken = tokenFor("MUSE_SLACK_BOT_TOKEN", "slack");
   if (slackToken) {
-    // Phase 2.d.1+2: afterFile drives pollUpdates' per-channel ts
-    // cursor. Phase 2.d.4: inboxFile makes fetchInbound serve the
+    // afterFile drives pollUpdates' per-channel ts
+    // cursor. inboxFile makes fetchInbound serve the
     // daemon-fed store (channel-filtered when source is given).
     // Both files are wired unconditionally; the provider only
     // touches them on demand, so an absent file is fine.

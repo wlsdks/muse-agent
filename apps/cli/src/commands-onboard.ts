@@ -30,7 +30,7 @@ export interface OnboardingState {
   readonly indexBuilt: boolean;
 }
 
-export interface OnboardStep {
+interface OnboardStep {
   readonly id: string;
   readonly title: string;
   readonly status: "ok" | "action";

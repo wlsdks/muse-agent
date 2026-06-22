@@ -33,7 +33,7 @@ interface MemoryStore {
  * ~0.14–0.16 (the rescue's measured separation); below the floor a sentence is a
  * genuine miss, not a language artifact.
  */
-export const DEFAULT_CROSS_LINGUAL_FAITHFULNESS_FLOOR = 0.2;
+const DEFAULT_CROSS_LINGUAL_FAITHFULNESS_FLOOR = 0.2;
 
 /**
  * The misgrounding probe's unsupported fraction, made CROSS-LINGUAL. The lexical

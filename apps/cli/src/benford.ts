@@ -34,7 +34,7 @@ export function benfordExpected(d: number): number {
   return Math.log10(1 + 1 / d);
 }
 
-export type BenfordConformity = "consistent" | "deviates" | "strong-deviation" | "insufficient";
+type BenfordConformity = "consistent" | "deviates" | "strong-deviation" | "insufficient";
 
 // Below this many usable values the first-digit test is unreliable.
 const MIN_BENFORD_SAMPLE = 30;

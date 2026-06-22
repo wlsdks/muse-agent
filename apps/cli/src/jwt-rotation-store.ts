@@ -30,7 +30,7 @@ import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
-export interface PreviousSecretEntry {
+interface PreviousSecretEntry {
   readonly secret: string;
   readonly rotatedAt: string;
   readonly validUntil: string;

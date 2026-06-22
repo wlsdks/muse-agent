@@ -146,7 +146,7 @@ import { registerTelemetryCommands } from "./commands-telemetry.js";
 import { registerTodayCommands, type TodayCommandShells } from "./commands-today.js";
 import { registerVoiceCommands } from "./commands-voice.js";
 
-export interface CliPromptAdapter {
+interface CliPromptAdapter {
   text(options: { readonly message: string; readonly placeholder?: string }): Promise<string>;
   password(options: { readonly message: string }): Promise<string>;
 }
@@ -465,7 +465,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         // Persist the CUE-FREE twin (responseForHistory) so the display-only
         // source-check warnings runLocalChat appended aren't replayed as trusted
         // grounding evidence on the next session's priorHistory (poisoned-source
-        // fire 5; parity with the Ink chat's fire-4 fix). See chatTurnPersistText.
+        // poisoned-source defense; parity with the Ink chat). See chatTurnPersistText.
         const responseText = chatTurnPersistText(body);
         if (responseText) {
           // Persist the per-turn untrusted-source verdict so a later episode capture
