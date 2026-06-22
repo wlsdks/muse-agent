@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": ["scripts/**", "apps/cli/scripts/**"],
+  "ignore": ["scripts/**", "apps/cli/scripts/**", "apps/desktop/scripts/**", "harness/runner/**"],
   "workspaces": {
     "apps/cli": {
       "entry": ["src/job-worker.ts"]
