@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { ModelProvider } from "@muse/model";
-import { queryPlaybook, recordPlaybookStrategy } from "@muse/mcp";
+import { queryPlaybook, recordPlaybookStrategy } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { distillSessionCorrections } from "./chat-distill-corrections.js";

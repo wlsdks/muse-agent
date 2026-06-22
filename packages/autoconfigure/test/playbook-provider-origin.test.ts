@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { rankPlaybookStrategies } from "@muse/agent-core";
-import { recordPlaybookStrategy } from "@muse/mcp";
+import { recordPlaybookStrategy } from "@muse/stores";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildPlaybookProvider } from "../src/context-engineering-builders.js";

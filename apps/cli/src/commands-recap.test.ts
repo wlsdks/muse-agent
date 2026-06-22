@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeBeliefProvenance } from "@muse/memory";
-import { appendActionLog, recordWeakness, writeContacts, writeEpisodes, writeTasks } from "@muse/mcp";
+import { appendActionLog, recordWeakness, writeContacts, writeEpisodes, writeTasks } from "@muse/stores";
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 

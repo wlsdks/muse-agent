@@ -14,20 +14,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import {
-  compareRemindersByDueAt,
-  filterReminders,
-  fireReminder,
-  parseReminderDueAt,
-  parseReminderVia,
-  readReminders,
-  readReminderHistory,
-  readReminderStatusFilter,
-  serializeReminder,
-  writeReminders,
-  type PersistedReminder,
-  type ReminderRecurrence
-} from "@muse/mcp";
+import { compareRemindersByDueAt, filterReminders, fireReminder, parseReminderDueAt, parseReminderVia, readReminders, readReminderHistory, readReminderStatusFilter, serializeReminder, writeReminders, type PersistedReminder, type ReminderRecurrence } from "@muse/stores";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";

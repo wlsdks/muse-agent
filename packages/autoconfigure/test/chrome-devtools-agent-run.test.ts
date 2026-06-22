@@ -1,11 +1,5 @@
 import { createAgentRuntime } from "@muse/agent-core";
-import {
-  CHROME_DEVTOOLS_MCP_SERVER_NAME,
-  InMemoryMcpServerStore,
-  McpManager,
-  createChromeDevToolsMcpServer,
-  type McpConnection
-} from "@muse/mcp";
+import { CHROME_DEVTOOLS_MCP_SERVER_NAME, InMemoryMcpServerStore, McpManager, createChromeDevToolsMcpServer, type McpConnection } from "@muse/mcp";
 import type { ModelProvider } from "@muse/model";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";

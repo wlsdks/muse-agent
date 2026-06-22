@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { appendActionLog, type ActionLogEntry } from "@muse/mcp";
+import { appendActionLog, type ActionLogEntry } from "@muse/stores";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 

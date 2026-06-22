@@ -31,15 +31,7 @@ import {
   type ConversationSummaryStore,
   type UserMemoryStore
 } from "@muse/memory";
-import {
-  InMemoryMcpSecurityPolicyStore,
-  InMemoryMcpServerStore,
-  KyselyMcpSecurityPolicyStore,
-  KyselyMcpServerStore,
-  type McpSecurityPolicyInput,
-  type McpSecurityPolicyStore,
-  type McpServerStore
-} from "@muse/mcp";
+import { InMemoryMcpSecurityPolicyStore, InMemoryMcpServerStore, KyselyMcpSecurityPolicyStore, KyselyMcpServerStore, type McpSecurityPolicyInput, type McpSecurityPolicyStore, type McpServerStore } from "@muse/mcp";
 import {
   InMemoryLatencyQuery,
   InMemoryMuseTracer,

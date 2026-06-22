@@ -14,7 +14,7 @@
  * enhancement injected here.
  */
 
-import { type BriefingImminent } from "@muse/mcp";
+import { type BriefingImminent } from "@muse/proactivity";
 import { runDueSituationalBriefing, type EmailProvider, type WeatherProvider } from "@muse/domain-tools";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 

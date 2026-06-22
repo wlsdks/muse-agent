@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { appendProactiveHistory, type ProactiveHistoryEntry } from "@muse/mcp";
+import { appendProactiveHistory, type ProactiveHistoryEntry } from "@muse/stores";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { buildServer } from "../src/server.js";

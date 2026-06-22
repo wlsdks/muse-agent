@@ -10,7 +10,7 @@
  * Default off so a fresh install doesn't expose an empty file.
  */
 
-import { readProactiveHistory } from "@muse/mcp";
+import { readProactiveHistory } from "@muse/stores";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";

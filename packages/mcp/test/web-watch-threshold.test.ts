@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createWebWatchRunner,
-  detectWatchTrigger,
-  webWatchesFromConfig,
-  type ProactiveNoticeSink,
-  type WebWatch
-} from "../src/index.js";
+import { createWebWatchRunner, detectWatchTrigger, webWatchesFromConfig, type ProactiveNoticeSink, type WebWatch } from "@muse/proactivity";
 
 describe("detectWatchTrigger — numeric below/above threshold (price-drop alert)", () => {
   it("below fires on the rising edge of crossing under, not every poll while under", () => {

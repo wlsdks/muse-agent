@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createCalendarMcpServer, resolveEventByRef } from "../src/index.js";
-import { computeAvailability, type AvailabilityEventLike } from "@muse/mcp";
+import { computeAvailability, type AvailabilityEventLike } from "@muse/mcp-shared";
 
 const D = (iso: string) => new Date(iso);
 function ev(title: string, startsAt: string, endsAt: string, allDay = false): AvailabilityEventLike {

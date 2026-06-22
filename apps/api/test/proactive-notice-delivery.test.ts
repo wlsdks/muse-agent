@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
-import { runDueProactiveNotices, writeTasks } from "@muse/mcp";
+import { writeTasks } from "@muse/stores";
+import { runDueProactiveNotices } from "@muse/proactivity";
 import { LocalDirNotesProvider, createNotesInvestigator } from "@muse/domain-tools";
 import { describe, expect, it } from "vitest";
 

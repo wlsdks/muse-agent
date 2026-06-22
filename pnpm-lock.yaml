@@ -56,6 +56,9 @@ importers:
       '@muse/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
+      '@muse/mcp-shared':
+        specifier: workspace:*
+        version: link:../../packages/mcp-shared
       '@muse/memory':
         specifier: workspace:*
         version: link:../../packages/memory
@@ -74,6 +77,9 @@ importers:
       '@muse/policy':
         specifier: workspace:*
         version: link:../../packages/policy
+      '@muse/proactivity':
+        specifier: workspace:*
+        version: link:../../packages/proactivity
       '@muse/runtime-settings':
         specifier: workspace:*
         version: link:../../packages/runtime-settings
@@ -89,6 +95,9 @@ importers:
       '@muse/skills':
         specifier: workspace:*
         version: link:../../packages/skills
+      '@muse/stores':
+        specifier: workspace:*
+        version: link:../../packages/stores
       '@muse/voice':
         specifier: workspace:*
         version: link:../../packages/voice
@@ -132,6 +141,9 @@ importers:
       '@muse/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
+      '@muse/mcp-shared':
+        specifier: workspace:*
+        version: link:../../packages/mcp-shared
       '@muse/memory':
         specifier: workspace:*
         version: link:../../packages/memory
@@ -144,6 +156,9 @@ importers:
       '@muse/multi-agent':
         specifier: workspace:*
         version: link:../../packages/multi-agent
+      '@muse/proactivity':
+        specifier: workspace:*
+        version: link:../../packages/proactivity
       '@muse/prompts':
         specifier: workspace:*
         version: link:../../packages/prompts
@@ -156,6 +171,9 @@ importers:
       '@muse/skills':
         specifier: workspace:*
         version: link:../../packages/skills
+      '@muse/stores':
+        specifier: workspace:*
+        version: link:../../packages/stores
       '@muse/tools':
         specifier: workspace:*
         version: link:../../packages/tools
@@ -317,6 +335,9 @@ importers:
       '@muse/observability':
         specifier: workspace:*
         version: link:../observability
+      '@muse/proactivity':
+        specifier: workspace:*
+        version: link:../proactivity
       '@muse/resilience':
         specifier: workspace:*
         version: link:../resilience
@@ -335,6 +356,9 @@ importers:
       '@muse/skills':
         specifier: workspace:*
         version: link:../skills
+      '@muse/stores':
+        specifier: workspace:*
+        version: link:../stores
       '@muse/tools':
         specifier: workspace:*
         version: link:../tools
@@ -465,15 +489,9 @@ importers:
       '@muse/mcp-shared':
         specifier: workspace:*
         version: link:../mcp-shared
-      '@muse/proactivity':
-        specifier: workspace:*
-        version: link:../proactivity
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
-      '@muse/stores':
-        specifier: workspace:*
-        version: link:../stores
       '@muse/tools':
         specifier: workspace:*
         version: link:../tools
@@ -490,6 +508,12 @@ importers:
       '@muse/messaging':
         specifier: workspace:*
         version: link:../messaging
+      '@muse/proactivity':
+        specifier: workspace:*
+        version: link:../proactivity
+      '@muse/stores':
+        specifier: workspace:*
+        version: link:../stores
 
   packages/mcp-shared:
     dependencies:
@@ -611,6 +635,12 @@ importers:
       '@muse/mcp':
         specifier: workspace:*
         version: link:../mcp
+      '@muse/mcp-shared':
+        specifier: workspace:*
+        version: link:../mcp-shared
+      '@muse/stores':
+        specifier: workspace:*
+        version: link:../stores
 
   packages/resilience:
     dependencies:

@@ -12,12 +12,7 @@ import {
   type BackgroundReviewInput,
   type SessionTurnLine
 } from "@muse/agent-core";
-import {
-  formatFollowupLlmBudgetDay,
-  incrementFollowupLlmBudget,
-  isFollowupLlmBudgetExhausted,
-  readFollowupLlmBudget
-} from "@muse/mcp";
+import { formatLocalDay as formatFollowupLlmBudgetDay, incrementFollowupLlmBudget, isFollowupLlmBudgetExhausted, readFollowupLlmBudget } from "@muse/stores";
 import type { UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import { AuthoredSkillStore } from "@muse/skills";

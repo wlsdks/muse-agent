@@ -24,7 +24,7 @@ import { selectByMarginalValue, selectByMmr } from "@muse/agent-core";
 
 import { depositCoRecall, readTrails, resolveTrailsFile, writeTrails } from "./recall-trail.js";
 import { resolveEpisodesFile, resolveNoteProvenanceFile, resolveNotesDir } from "@muse/autoconfigure";
-import { readEpisodes } from "@muse/mcp";
+import { readEpisodes } from "@muse/stores";
 import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 import type { Command } from "commander";
 

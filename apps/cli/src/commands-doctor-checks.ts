@@ -1,5 +1,5 @@
 import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel } from "@muse/autoconfigure";
-import type { DevFixableWeakness } from "@muse/mcp";
+import type { DevFixableWeakness } from "@muse/stores";
 import { promises as fs } from "node:fs";
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
 

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { runDueProactiveNotices } from "../src/index.js";
+import { runDueProactiveNotices } from "@muse/proactivity";
 import { firedKey } from "@muse/proactivity";
 
 describe("firedKey — collision-free dedup key for the {kind,id,startIso} tuple", () => {

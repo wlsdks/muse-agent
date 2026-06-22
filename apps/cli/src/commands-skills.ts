@@ -13,7 +13,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { createGateEmbedder, createMuseRuntimeAssembly, resolveAuthoredSkillsDir as sharedResolveAuthoredSkillsDir, resolveSkillRewardsFile as sharedResolveSkillRewardsFile } from "@muse/autoconfigure";
-import { adjustSkillReward, isSkillAvoided, readSkillRewards } from "@muse/mcp";
+import { adjustSkillReward, isSkillAvoided, readSkillRewards } from "@muse/stores";
 import { AuthoredSkillStore, loadSkillsFromDirectory } from "@muse/skills";
 import type { Command } from "commander";
 

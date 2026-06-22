@@ -1,7 +1,7 @@
 import { chunkText, cosineSimilarity, defangMemoryInjection, lexicalOverlap, lexicalTokens, neutralizeInjectionSpans, rankPlaybookStrategies, renderPlaybookSection, type KnowledgeMatch } from "@muse/agent-core";
 
 import { escapeSystemPromptMarkers } from "./prompt-escape.js";
-import type { ActionLogEntry, Contact } from "@muse/mcp";
+import type { ActionLogEntry, Contact } from "@muse/stores";
 
 /**
  * SB-1: rank past-session episode summaries against the query so `muse ask`

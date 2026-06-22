@@ -1,5 +1,5 @@
 import { isRecord } from "@muse/shared";
-import { webWatchesFromConfig } from "@muse/mcp";
+import { webWatchesFromConfig } from "@muse/proactivity";
 import { parseHomeAlertChecks } from "@muse/domain-tools";
 
 /**

@@ -18,22 +18,8 @@
 import { randomUUID } from "node:crypto";
 
 import { buildMessagingRegistry, resolveReminderHistoryFile, resolveRemindersFile } from "@muse/autoconfigure";
-import {
-  compareRemindersByDueAt,
-  filterReminders,
-  fireReminder,
-  parseReminderDueAt,
-  readReminderHistory,
-  readReminders,
-  readReminderStatusFilter,
-  resolveReminderRef,
-  runDueReminders,
-  serializeReminder,
-  writeReminders,
-  type PersistedReminder,
-  type ReminderHistoryEntry,
-  type ReminderRecurrence
-} from "@muse/mcp";
+import { compareRemindersByDueAt, filterReminders, fireReminder, parseReminderDueAt, readReminderHistory, readReminders, readReminderStatusFilter, resolveReminderRef, serializeReminder, writeReminders, type PersistedReminder, type ReminderHistoryEntry, type ReminderRecurrence } from "@muse/stores";
+import { runDueReminders } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { Command } from "commander";
 

@@ -35,7 +35,8 @@ import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile,
 import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { acquireOllamaLease, evaluateArithmeticExpression, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, selectReflectionsForRecall, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { evaluateArithmeticExpression } from "@muse/mcp";
+import { acquireOllamaLease, parseReminderDueAt, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, selectReflectionsForRecall, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import { fetchReadableUrl, type MessageApprovalGate } from "@muse/domain-tools";
 import { redactSecretsInText } from "@muse/shared";
 import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildCalendarContextBlock, buildContactContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
@@ -112,7 +113,7 @@ async function recordAskWeaknessLive(query: string, axis: AskWeaknessAxis | null
     return;
   }
   try {
-    const { recordWeakness } = await import("@muse/mcp");
+    const { recordWeakness } = await import("@muse/stores");
     const { resolveWeaknessesFile } = await import("@muse/autoconfigure");
     await recordAskWeakness(query, axis, {
       recordWeakness,
@@ -126,7 +127,7 @@ async function recordAskWeaknessLive(query: string, axis: AskWeaknessAxis | null
 
 async function recordAskWeaknessResolvedLive(query: string): Promise<void> {
   try {
-    const { recordWeaknessResolved } = await import("@muse/mcp");
+    const { recordWeaknessResolved } = await import("@muse/stores");
     const { resolveWeaknessesFile } = await import("@muse/autoconfigure");
     await recordAskWeaknessResolved(query, {
       recordWeaknessResolved,
@@ -1559,7 +1560,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
             const noteContent = act.kind === "receipt" ? `- ${String(act.fields.note)}\n` : `${String(act.fields.note)}\n`;
             result = await appendTool?.execute({ content: noteContent, path: notePath });
           } else {
-            const { addContact, readContacts } = await import("@muse/mcp");
+            const { addContact, readContacts } = await import("@muse/stores");
         const { createContactsAddTool } = await import("@muse/domain-tools");
             const file = resolveContactsFile(env);
             // Use the store's id-idempotent + queued addContact (not a raw read+append):
@@ -1900,7 +1901,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // into the model's reasoning (the held graduation stays user-gated).
       let probationSuggestion: { readonly text: string; readonly id: string } | undefined;
       try {
-        const { queryPlaybook } = await import("@muse/mcp");
+        const { queryPlaybook } = await import("@muse/stores");
         const { resolvePlaybookFile } = await import("@muse/autoconfigure");
         const envTopK = Number(process.env.MUSE_PLAYBOOK_INJECT_TOPK);
         const topK = Number.isFinite(envTopK) && envTopK >= 1 ? envTopK : undefined;
@@ -2845,7 +2846,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // failure (not just the daily recap) — a deterministic user-facing nudge.
       if (!options.json && askAxis !== null) {
         try {
-          const { askTimeWeaknessNudge, readWeaknesses, renderAskTimeNudge, topicKeyFromMessage } = await import("@muse/mcp");
+          const { askTimeWeaknessNudge, readWeaknesses, renderAskTimeNudge, topicKeyFromMessage } = await import("@muse/stores");
           const { resolveWeaknessesFile } = await import("@muse/autoconfigure");
           const weaknessEntries = await readWeaknesses(resolveWeaknessesFile(process.env as Record<string, string | undefined>));
           const nudge = askTimeWeaknessNudge(weaknessEntries, topicKeyFromMessage(query), { nowMs: Date.now() });

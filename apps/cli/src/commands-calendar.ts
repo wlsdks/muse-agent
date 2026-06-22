@@ -16,7 +16,8 @@ import { readFile, writeFile } from "node:fs/promises";
 
 import { resolveLocalCalendarFile, resolveRemindersFile, resolveWeaknessesFile } from "@muse/autoconfigure";
 import { eventsToIcs, LocalCalendarProvider, type CalendarEvent, type IcsEvent } from "@muse/calendar";
-import { computeAvailability, readReminders, recordTimeParseWeakness, recordWeakness, writeReminders, type PersistedReminder } from "@muse/mcp";
+import { computeAvailability } from "@muse/mcp-shared";
+import { readReminders, recordTimeParseWeakness, recordWeakness, writeReminders, type PersistedReminder } from "@muse/stores";
 import { detectCalendarConflicts, removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/domain-tools";
 export { removeRemindersForEvent, rescheduleRemindersForEvent } from "@muse/domain-tools";
 import type { Command } from "commander";

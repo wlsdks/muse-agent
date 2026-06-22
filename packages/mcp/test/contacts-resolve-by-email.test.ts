@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveContact, serializeContact, type Contact } from "../src/index.js";
+import { resolveContact, serializeContact, type Contact } from "@muse/stores";
 
 const C1: Contact = { email: "bob@acme.com", handle: "@bobby", id: "c1", name: "Bob Acme" };
 const C2: Contact = { email: "bob@other.com", id: "c2", name: "Bob Other" };

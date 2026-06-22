@@ -4,12 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  FileAmbientSignalSource,
-  parseAmbientNoticeRules,
-  runAmbientNoticeTick,
-  type ProactiveNoticeSink
-} from "../src/index.js";
+import { FileAmbientSignalSource, parseAmbientNoticeRules, runAmbientNoticeTick, type ProactiveNoticeSink } from "@muse/proactivity";
 
 let dir: string;
 let file: string;

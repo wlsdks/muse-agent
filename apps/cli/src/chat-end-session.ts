@@ -38,12 +38,7 @@ import {
   type SessionTurnLine,
   type SummariseSessionOptions
 } from "@muse/agent-core";
-import {
-  readEpisodes,
-  upsertEpisode,
-  vacuumEpisodes,
-  type PersistedEpisode
-} from "@muse/mcp";
+import { readEpisodes, upsertEpisode, vacuumEpisodes, type PersistedEpisode } from "@muse/stores";
 import { parseBoolean, resolveEpisodesFile } from "@muse/autoconfigure";
 import { redactSecretsInText } from "@muse/shared";
 

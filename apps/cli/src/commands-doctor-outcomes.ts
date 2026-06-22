@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 
-import { analyzeRunOutcomes, type RunOutcomeEntry, type RunOutcomeSummary } from "@muse/mcp";
+import { analyzeRunOutcomes, type RunOutcomeEntry, type RunOutcomeSummary } from "@muse/proactivity";
 
 import type { ProgramIO } from "./program.js";
 

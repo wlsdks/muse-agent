@@ -30,16 +30,7 @@ import { promises as fs } from "node:fs";
 import { join, resolve as pathResolve } from "node:path";
 
 import type { CalendarEvent, CalendarProviderRegistry } from "@muse/calendar";
-import {
-  compareFollowupsByScheduledFor,
-  compareRemindersByDueAt,
-  readFollowups,
-  readReminders,
-  serializeFollowup,
-  serializeReminder,
-  type PersistedFollowup,
-  type PersistedReminder
-} from "@muse/mcp";
+import { compareFollowupsByScheduledFor, compareRemindersByDueAt, readFollowups, readReminders, serializeFollowup, serializeReminder, type PersistedFollowup, type PersistedReminder } from "@muse/stores";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";

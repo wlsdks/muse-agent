@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computeEpisodeRetention, selectRetainedEpisodes, type PersistedEpisode } from "../src/index.js";
+import { computeEpisodeRetention, selectRetainedEpisodes, type PersistedEpisode } from "@muse/stores";
 
 const NOW = Date.parse("2026-05-27T00:00:00Z");
 const ep = (id: string, endedAt: string, importance?: number): PersistedEpisode => ({

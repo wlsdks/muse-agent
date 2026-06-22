@@ -26,12 +26,7 @@ import {
   predictUpcomingNeeds,
   type PatternMatch
 } from "@muse/memory";
-import {
-  dismissPattern,
-  readPatternsFired,
-  writePatternsFired,
-  type PatternFiredRecord
-} from "@muse/mcp";
+import { dismissPattern, readPatternsFired, writePatternsFired, type PatternFiredRecord } from "@muse/stores";
 import { resolvePatternsFiredFile } from "@muse/autoconfigure";
 import { dailyCounts, detectChangePoint, type ChangePoint, type DayCount } from "@muse/agent-core";
 import type { Command } from "commander";

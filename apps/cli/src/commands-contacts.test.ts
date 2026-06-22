@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { queryContacts, type Contact } from "@muse/mcp";
+import { queryContacts, type Contact } from "@muse/stores";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 

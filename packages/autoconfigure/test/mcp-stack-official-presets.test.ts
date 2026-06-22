@@ -1,14 +1,4 @@
-import {
-  GITHUB_MCP_SERVER_NAME,
-  InMemoryMcpServerStore,
-  LINEAR_MCP_SERVER_NAME,
-  McpManager,
-  NOTION_MCP_SERVER_NAME,
-  SENTRY_MCP_SERVER_NAME,
-  createGitHubMcpServer,
-  withOfficialMcpRisk,
-  type McpConnection
-} from "@muse/mcp";
+import { GITHUB_MCP_SERVER_NAME, InMemoryMcpServerStore, LINEAR_MCP_SERVER_NAME, McpManager, NOTION_MCP_SERVER_NAME, SENTRY_MCP_SERVER_NAME, createGitHubMcpServer, withOfficialMcpRisk, type McpConnection } from "@muse/mcp";
 import { describe, expect, it } from "vitest";
 
 import { assembleMcpStack } from "../src/mcp-stack.js";

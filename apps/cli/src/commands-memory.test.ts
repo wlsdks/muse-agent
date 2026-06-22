@@ -1,4 +1,4 @@
-import type { RecallHitRecord } from "@muse/mcp";
+import type { RecallHitRecord } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { formatBeliefWhy, formatConsolidationPlan, promoteRecalledMemories, searchMemoryEntries } from "./commands-memory.js";

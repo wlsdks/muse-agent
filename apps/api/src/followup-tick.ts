@@ -17,10 +17,7 @@
  * to [5s, 1h] for the same reason the other ticks clamp.
  */
 
-import {
-  runDueFollowups,
-  type ProactiveModelProviderLike
-} from "@muse/mcp";
+import { runDueFollowups, type ProactiveModelProviderLike } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";

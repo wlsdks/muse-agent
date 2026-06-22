@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ActionLogEntry } from "@muse/mcp";
+import type { ActionLogEntry } from "@muse/stores";
 
 import { selectGroundingActions } from "./commands-ask.js";
 

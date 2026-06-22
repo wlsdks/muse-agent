@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { createAgentRuntime } from "@muse/agent-core";
 import { GmailEmailProvider, createEmailSendTool, type EmailApprovalGate } from "@muse/domain-tools";
 import type { ModelProvider, ModelResponse } from "@muse/model";
-import type { Contact } from "@muse/mcp";
+import type { Contact } from "@muse/stores";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 

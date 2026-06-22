@@ -4,7 +4,8 @@
  * command-registration surface in `commands-calendar.ts`.
  */
 
-import { resolveRelativeTimePhrase, type AvailabilityEventLike, type AvailabilityResult, type PersistedReminder } from "@muse/mcp";
+import { resolveRelativeTimePhrase, type AvailabilityEventLike, type AvailabilityResult } from "@muse/mcp-shared";
+import { type PersistedReminder } from "@muse/stores";
 import { detectCalendarConflicts, type CalendarConflict, type ConflictEventLike } from "@muse/domain-tools";
 
 /**

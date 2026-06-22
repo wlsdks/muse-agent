@@ -7,7 +7,7 @@
  * paraphrasing the citation away.
  */
 
-import type { StoredReflection } from "@muse/mcp";
+import type { StoredReflection } from "@muse/stores";
 
 export interface BriefReflectionOptions {
   /** Only surface an insight this fresh (days), so a stale one isn't repeated every morning forever. */

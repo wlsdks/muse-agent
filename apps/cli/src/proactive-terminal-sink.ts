@@ -1,5 +1,5 @@
 import { stripUntrustedTerminalChars } from "@muse/shared";
-import type { ProactiveNoticeSink } from "@muse/mcp";
+import type { ProactiveNoticeSink } from "@muse/proactivity";
 
 /**
  * Render one proactive notice as a prompt-safe terminal line.

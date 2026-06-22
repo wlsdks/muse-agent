@@ -9,7 +9,7 @@
  */
 
 import { resolveContactsFile } from "@muse/autoconfigure";
-import { queryContacts } from "@muse/mcp";
+import { queryContacts } from "@muse/stores";
 import { extractEmailAddress, GmailEmailProvider, summarizeInbox, type EmailMessage, type EmailProvider, type EmailReader, type EmailSummary } from "@muse/domain-tools";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 import type { Command } from "commander";

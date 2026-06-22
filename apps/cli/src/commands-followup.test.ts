@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeFollowups, type PersistedFollowup } from "@muse/mcp";
+import { writeFollowups, type PersistedFollowup } from "@muse/stores";
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 

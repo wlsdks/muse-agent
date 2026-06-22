@@ -9,7 +9,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { appendReminderHistory } from "@muse/mcp";
+import { appendReminderHistory } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { buildServer } from "../src/server.js";

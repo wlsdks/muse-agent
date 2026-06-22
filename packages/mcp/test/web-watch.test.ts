@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { detectWatchTrigger } from "../src/index.js";
+import { detectWatchTrigger } from "@muse/proactivity";
 
 describe("detectWatchTrigger — appears (rising edge)", () => {
   it("fires when the term newly appears, not while it persists", () => {

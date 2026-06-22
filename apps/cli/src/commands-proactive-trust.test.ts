@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { renderTrustScoreboard } from "./commands-proactive-trust.js";
-import type { TrustLedgerEntry } from "@muse/mcp";
+import type { TrustLedgerEntry } from "@muse/stores";
 
 const entry = (over: Partial<TrustLedgerEntry>): TrustLedgerEntry => ({
   kind: "task",

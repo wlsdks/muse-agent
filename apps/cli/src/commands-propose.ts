@@ -10,7 +10,8 @@
  */
 
 import { buildMessagingRegistry, resolveActionLogFile } from "@muse/autoconfigure";
-import { confirmProposedAction, declineProposedAction, isProposalActionable, readProposedActions } from "@muse/mcp";
+import { isProposalActionable, readProposedActions } from "@muse/stores";
+import { confirmProposedAction, declineProposedAction } from "@muse/proactivity";
 import { homedir } from "node:os";
 import { join } from "node:path";
 

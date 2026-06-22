@@ -18,12 +18,7 @@ import { dirname } from "node:path";
 
 import type { AgentInitiatedNoticeBroker } from "@muse/agent-core";
 import { buildGroundingReverify } from "@muse/agent-core";
-import {
-  runDueProactiveNotices,
-  type ProactiveActivitySource,
-  type ProactiveAgentRuntimeLike,
-  type ProactiveModelProviderLike
-} from "@muse/mcp";
+import { runDueProactiveNotices, type ProactiveActivitySource, type ProactiveAgentRuntimeLike, type ProactiveModelProviderLike } from "@muse/proactivity";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 

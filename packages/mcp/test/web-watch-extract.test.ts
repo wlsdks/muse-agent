@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createWebWatchRunner,
-  detectWatchTrigger,
-  webWatchesFromConfig,
-  type ProactiveNoticeSink,
-  type WebWatch
-} from "../src/index.js";
+import { createWebWatchRunner, detectWatchTrigger, webWatchesFromConfig, type ProactiveNoticeSink, type WebWatch } from "@muse/proactivity";
 
 describe("detectWatchTrigger — extract narrows the snapshot to a region before matching", () => {
   it("onAnyChange fires only when the EXTRACTED region changes, ignoring page noise", () => {

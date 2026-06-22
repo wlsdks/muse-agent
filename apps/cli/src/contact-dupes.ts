@@ -6,7 +6,7 @@
  * `muse notes conflicts` for the people graph.
  */
 
-import type { Contact } from "@muse/mcp";
+import type { Contact } from "@muse/stores";
 
 export interface DuplicatePair {
   readonly a: { readonly id: string; readonly name: string };

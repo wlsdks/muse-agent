@@ -10,7 +10,7 @@
 
 import { PLAYBOOK_AVOID_BELOW } from "@muse/agent-core";
 import { resolveLearningPauseFile, resolvePlaybookFile } from "@muse/autoconfigure";
-import { isLearningPaused, queryPlaybook, readReflections, readSkillRewards, SKILL_AVOID_BELOW } from "@muse/mcp";
+import { isLearningPaused, queryPlaybook, readReflections, readSkillRewards, SKILL_AVOID_BELOW } from "@muse/stores";
 import { AuthoredSkillStore } from "@muse/skills";
 import type { Command } from "commander";
 

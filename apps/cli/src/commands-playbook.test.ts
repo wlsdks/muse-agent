@@ -37,7 +37,7 @@ describe("muse playbook pause / resume — the learning kill switch (B1 §5)", (
     const { mkdtemp } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { isLearningPaused } = await import("@muse/mcp");
+    const { isLearningPaused } = await import("@muse/stores");
     const dir = await mkdtemp(join(tmpdir(), "muse-pause-"));
     const pauseFile = join(dir, "learning-paused.json");
     const prev = process.env.MUSE_LEARNING_PAUSE_FILE;
@@ -66,7 +66,7 @@ describe("muse playbook undo — remove AND teach not to re-learn (B1 §5)", () 
     const { mkdtemp } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { recordPlaybookStrategy, queryPlaybook, querySuppressedLessons } = await import("@muse/mcp");
+    const { recordPlaybookStrategy, queryPlaybook, querySuppressedLessons } = await import("@muse/stores");
     const dir = await mkdtemp(join(tmpdir(), "muse-pbundo-"));
     const file = join(dir, "playbook.json");
     const suppressed = join(dir, "suppressed.json");
@@ -98,7 +98,7 @@ describe("muse playbook reward — manual reinforce/penalise", () => {
     const { mkdtemp } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { recordPlaybookStrategy, queryPlaybook } = await import("@muse/mcp");
+    const { recordPlaybookStrategy, queryPlaybook } = await import("@muse/stores");
     const dir = await mkdtemp(join(tmpdir(), "muse-pbreward-"));
     const file = join(dir, "playbook.json");
     const prev = process.env.MUSE_PLAYBOOK_FILE;

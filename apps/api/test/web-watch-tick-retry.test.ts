@@ -1,4 +1,4 @@
-import { webWatchesFromConfig } from "@muse/mcp";
+import { webWatchesFromConfig } from "@muse/proactivity";
 import { MessagingProviderError, MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
 

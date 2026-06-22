@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { readTasks, writeTasks, type PersistedTask } from "@muse/mcp";
+import { readTasks, writeTasks, type PersistedTask } from "@muse/stores";
 import { Command } from "commander";
 import { afterEach, describe, expect, it } from "vitest";
 

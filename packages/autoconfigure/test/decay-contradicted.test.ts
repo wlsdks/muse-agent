@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { isInjectableStrategy, PLAYBOOK_AVOID_BELOW, type CorrectionPolarity } from "@muse/agent-core";
-import { readPlaybook, recordPlaybookStrategy, setLearningPaused, type PlaybookEntry } from "@muse/mcp";
+import { readPlaybook, recordPlaybookStrategy, setLearningPaused, type PlaybookEntry } from "@muse/stores";
 import type { ModelProvider } from "@muse/model";
 import { afterEach, describe, expect, it } from "vitest";
 

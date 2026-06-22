@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { readContacts, resolveContact, serializeContact, type Contact } from "../src/index.js";
+import { readContacts, resolveContact, serializeContact, type Contact } from "@muse/stores";
 
 let dir: string;
 let file: string;

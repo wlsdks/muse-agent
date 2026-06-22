@@ -9,14 +9,7 @@
 import { randomUUID } from "node:crypto";
 
 import { resolveObjectivesFile } from "@muse/autoconfigure";
-import {
-  addObjective,
-  patchObjective,
-  readObjectives,
-  serializeObjective,
-  type ObjectiveKind,
-  type ObjectiveStatus
-} from "@muse/mcp";
+import { addObjective, patchObjective, readObjectives, serializeObjective, type ObjectiveKind, type ObjectiveStatus } from "@muse/stores";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";

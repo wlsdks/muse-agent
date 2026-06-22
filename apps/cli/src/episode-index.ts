@@ -19,7 +19,7 @@ import { promises as fs } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
-import type { PersistedEpisode } from "@muse/mcp";
+import type { PersistedEpisode } from "@muse/stores";
 
 export const EPISODE_INDEX_SCHEMA_VERSION = 1;
 

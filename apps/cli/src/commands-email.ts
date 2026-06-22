@@ -9,7 +9,7 @@
 import { join } from "node:path";
 
 import { resolveActionLogFile, resolveContactsFile, resolveNotesDir } from "@muse/autoconfigure";
-import { queryContacts } from "@muse/mcp";
+import { queryContacts } from "@muse/stores";
 import { GmailEmailProvider, extractEmailAddress, composeForward, replyEmailWithApproval, replySubject, sendEmailWithApproval, type EmailApprovalGate, type EmailProvider, type EmailReader, type EmailSender } from "@muse/domain-tools";
 import { confirm, isCancel } from "@clack/prompts";
 import type { Command } from "commander";

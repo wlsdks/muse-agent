@@ -3,7 +3,8 @@ import { resolveActionLogFile, resolveContactsFile, resolveEpisodesFile, resolve
 import { defaultBeliefProvenanceFile, deriveFactProvenance, FileUserMemoryStore, formatFirstLearned, projectRecentlyLearned, readBeliefProvenance, renderRecentlyLearnedLines, selectRecentlyForgotten, selectRecentlyLearnedFacts, selectVolatileBeliefs } from "@muse/memory";
 
 import { resolveMemoryUserId } from "./commands-memory.js";
-import { detectNoteFamilyAbsence, detectTopicAbsence, type NoteActivityEvent, readActionLog, readContacts, readEpisodes, readFollowups, readReminders, readTasks, readWeaknesses, remediationHint, resolveUpcomingBirthdays, selectRemediableWeaknesses } from "@muse/mcp";
+import { detectTopicAbsence, readActionLog, readContacts, readEpisodes, readFollowups, readReminders, readTasks, readWeaknesses, remediationHint, resolveUpcomingBirthdays, selectRemediableWeaknesses } from "@muse/stores";
+import { detectNoteFamilyAbsence, type NoteActivityEvent } from "@muse/proactivity";
 import { escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/recall";
 import type { Command } from "commander";
 import { type Dirent, promises as fs } from "node:fs";

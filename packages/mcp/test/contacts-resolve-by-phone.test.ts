@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveContact, type Contact } from "../src/index.js";
+import { resolveContact, type Contact } from "@muse/stores";
 
 const MOM: Contact = { id: "c1", name: "Mom", phone: "+1 415-555-0101" };
 const BOB: Contact = { id: "c2", name: "Bob Acme", phone: "(212) 555-9999" };

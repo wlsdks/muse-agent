@@ -33,7 +33,7 @@ import {
   type SessionTurnLine
 } from "@muse/agent-core";
 import { createGateEmbedder, resolvePlaybookFile } from "@muse/autoconfigure";
-import { adjustPlaybookReward, queryPlaybook, recordPlaybookStrategy, type PlaybookEntry } from "@muse/mcp";
+import { adjustPlaybookReward, queryPlaybook, recordPlaybookStrategy, type PlaybookEntry } from "@muse/stores";
 
 import { readLastChatHistory, readSessionBoundaries } from "./chat-history.js";
 

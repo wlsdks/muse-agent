@@ -16,20 +16,7 @@ import {
   resolveTasksFile
 } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
-import {
-  compareFollowupsByScheduledFor,
-  compareRemindersByDueAt,
-  compareTasksByDueDate,
-  queryContacts,
-  readFollowups,
-  readReminders,
-  readTasks,
-  resolveUpcomingBirthdays,
-  serializeFollowup,
-  serializeReminder,
-  serializeTask,
-  type PersistedTask,
-} from "@muse/mcp";
+import { compareFollowupsByScheduledFor, compareRemindersByDueAt, compareTasksByDueDate, queryContacts, readFollowups, readReminders, readTasks, resolveUpcomingBirthdays, serializeFollowup, serializeReminder, serializeTask, type PersistedTask } from "@muse/stores";
 
 import { resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
 import { formatTodayBrief, type TodayBriefing } from "./today-format.js";

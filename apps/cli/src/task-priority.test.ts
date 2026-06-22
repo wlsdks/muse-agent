@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { PersistedTask } from "@muse/mcp";
+import type { PersistedTask } from "@muse/stores";
 
 import { formatTaskQueue, rankTasksByUrgency, TASK_AGING_DAYS, taskEffectiveDueMs } from "./task-priority.js";
 

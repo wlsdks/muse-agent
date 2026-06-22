@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createHttpSnapshot, webWatchesFromConfig } from "../src/index.js";
+import { createHttpSnapshot, webWatchesFromConfig } from "@muse/proactivity";
 
 const noWait = { baseDelayMs: 0, sleep: async () => {} };
 

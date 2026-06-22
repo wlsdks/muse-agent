@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Contact } from "@muse/mcp";
+import type { Contact } from "@muse/stores";
 
 import { contactGroundingEvidence, contactMatchScore } from "./commands-ask.js";
 

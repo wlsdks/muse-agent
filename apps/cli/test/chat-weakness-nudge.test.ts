@@ -1,4 +1,4 @@
-import { askTimeWeaknessNudge, renderAskTimeNudge, topicKeyFromMessage, type WeaknessEntry } from "@muse/mcp";
+import { askTimeWeaknessNudge, renderAskTimeNudge, topicKeyFromMessage, type WeaknessEntry } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { chatRepeatWeaknessNudge } from "../src/chat-repl.js";

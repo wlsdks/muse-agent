@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { removeRemindersForEvent, rescheduleRemindersForEvent } from "../src/index.js";
-import { readReminders, writeReminders, type PersistedReminder } from "@muse/mcp";
+import { readReminders, writeReminders, type PersistedReminder } from "@muse/stores";
 
 const NOW = Date.parse("2026-06-10T12:00:00Z");
 const reminder = (over: Partial<PersistedReminder>): PersistedReminder => ({

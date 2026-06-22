@@ -12,7 +12,7 @@
 
 import type { MuseEnvironment } from "@muse/autoconfigure";
 import { resolveActionLogFile, resolveContactsFile } from "@muse/autoconfigure";
-import { appendActionLog, queryContacts, resolveContact } from "@muse/mcp";
+import { appendActionLog, queryContacts, resolveContact } from "@muse/stores";
 import { GmailEmailProvider, createEmailForwardTool, createEmailReplyTool, createEmailSendTool, createHomeActionTool, createWebActionTool, createAllowlistPathValidator, type EmailApprovalGate, type HostLookup, type MessageApprovalGate, type WebActionApprovalGate } from "@muse/domain-tools";
 import { defaultFileReadRoots, type FsWriteApprovalGate } from "@muse/fs";
 import { isWebEgressAllowed } from "@muse/model";

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { contactGroundingEvidence, contactMatchScore, formatContactBirthday } from "@muse/recall";
-import type { Contact } from "@muse/mcp";
+import type { Contact } from "@muse/stores";
 
 const dana: Contact = {
   name: "Dana Lee",

@@ -35,7 +35,8 @@ import {
   resolveTasksFile
 } from "@muse/autoconfigure";
 import type { CalendarEvent } from "@muse/calendar";
-import { formatBirthdayBriefLine, readCheckins, readContacts, readProactiveHistory, readReflections, readReminders, resolveUpcomingBirthdays, selectDueCheckins, type PersistedCheckin, type PersistedReminder } from "@muse/mcp";
+import { formatBirthdayBriefLine, readContacts, readProactiveHistory, readReflections, readReminders, resolveUpcomingBirthdays, type PersistedReminder } from "@muse/stores";
+import { readCheckins, selectDueCheckins, type PersistedCheckin } from "@muse/proactivity";
 import { detectCalendarConflicts } from "@muse/domain-tools";
 import { projectRecentlyLearned } from "@muse/memory";
 

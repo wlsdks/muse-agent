@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createAmbientNoticeRunner,
-  MacOsActiveWindowSource,
-  parseActiveWindowSignal,
-  parseAmbientNoticeRules,
-  type ProactiveNoticeSink
-} from "../src/index.js";
+import { createAmbientNoticeRunner, MacOsActiveWindowSource, parseActiveWindowSignal, parseAmbientNoticeRules, type ProactiveNoticeSink } from "@muse/proactivity";
 
 describe("parseActiveWindowSignal — osascript output → AmbientSignal", () => {
   it("reads app (line 1) + window title (line 2)", () => {

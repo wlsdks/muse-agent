@@ -1,4 +1,4 @@
-import { readPlaybook, readWeaknesses, readSkillRewards, adjustSkillReward, isSkillAvoided, readReflections, listReflections, type PlaybookEntry, type WeaknessEntry, type StoredReflection } from "@muse/mcp";
+import { readPlaybook, readWeaknesses, readSkillRewards, adjustSkillReward, isSkillAvoided, readReflections, listReflections, type PlaybookEntry, type WeaknessEntry, type StoredReflection } from "@muse/stores";
 import { loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import type { FastifyInstance } from "fastify";
 

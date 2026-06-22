@@ -12,11 +12,8 @@
  * clamped to [5s, 1h] like the others; single-flight; fail-soft.
  */
 
-import {
-  runDueObjectives,
-  type ObjectiveEvaluation,
-  type StandingObjective
-} from "@muse/mcp";
+import { type StandingObjective } from "@muse/stores";
+import { runDueObjectives, type ObjectiveEvaluation } from "@muse/proactivity";
 
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";
 

@@ -3,13 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
-import {
-  computeTrustScore,
-  readTrustLedger,
-  recordOutcome,
-  runDueProactiveNotices,
-  writeTasks
-} from "@muse/mcp";
+import { computeTrustScore, readTrustLedger, recordOutcome, writeTasks } from "@muse/stores";
+import { runDueProactiveNotices } from "@muse/proactivity";
 import { describe, expect, it } from "vitest";
 
 /**

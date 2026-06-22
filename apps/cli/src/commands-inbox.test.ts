@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeContacts, type Contact } from "@muse/mcp";
+import { writeContacts, type Contact } from "@muse/stores";
 import { type EmailMessage, type EmailProvider, type EmailReader, type EmailSummary } from "@muse/domain-tools";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";

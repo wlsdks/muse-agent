@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { readCheckins, writeCheckins, type PersistedCheckin } from "@muse/mcp";
+import { readCheckins, writeCheckins, type PersistedCheckin } from "@muse/proactivity";
 import { Command } from "commander";
 
 import { checkinsFile, registerCheckinsCommands, scanSessionCheckins } from "./commands-checkins.js";

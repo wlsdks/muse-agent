@@ -1,12 +1,5 @@
 import { createAgentRuntime } from "@muse/agent-core";
-import {
-  GITHUB_MCP_SERVER_NAME,
-  InMemoryMcpServerStore,
-  McpManager,
-  createGitHubMcpServer,
-  withOfficialMcpRisk,
-  type McpConnection
-} from "@muse/mcp";
+import { GITHUB_MCP_SERVER_NAME, InMemoryMcpServerStore, McpManager, createGitHubMcpServer, withOfficialMcpRisk, type McpConnection } from "@muse/mcp";
 import type { ModelProvider } from "@muse/model";
 import { ToolRegistry, createDefaultToolExposurePolicy } from "@muse/tools";
 import { describe, expect, it, vi } from "vitest";

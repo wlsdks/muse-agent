@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createUpcomingBirthdaysTool } from "../src/index.js";
-import { type Contact } from "@muse/mcp";
+import { type Contact } from "@muse/stores";
 
 const PEOPLE: Contact[] = [
   { birthday: "12-25", email: "bob@acme.com", id: "c1", name: "Bob Acme" },

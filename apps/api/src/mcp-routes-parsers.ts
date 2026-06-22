@@ -13,12 +13,7 @@
  * the nested-config walk.
  */
 
-import type {
-  McpSecurityPolicyInput,
-  McpServer,
-  McpServerInput,
-  McpTransportType
-} from "@muse/mcp";
+import type { McpSecurityPolicyInput, McpServer, McpServerInput, McpTransportType } from "@muse/mcp";
 
 import type { ApiError, ParseResult } from "./compat-responses.js";
 export type { ApiError, ParseResult };

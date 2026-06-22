@@ -1,5 +1,5 @@
 import { assertiveLabels, cosineSimilarity, type GroundednessReport } from "@muse/agent-core";
-import type { ActionLogEntry } from "@muse/mcp";
+import type { ActionLogEntry } from "@muse/stores";
 import { allUserMemoryFacts, selectGroundingActions, selectMemoryFacts, type MemoryFact } from "@muse/recall";
 
 export type EmbedFn = (text: string) => Promise<readonly number[]>;

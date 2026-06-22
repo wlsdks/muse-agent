@@ -7,7 +7,7 @@
  */
 
 import { collapseNearDuplicateCommitments, detectCorrections, detectUserCommitments, findSupersededPreferenceId, inferPreferenceFromCorrection, selectDischargedCommitments, selectOpenCommitments, type Awaitable, type SessionTurnLine } from "@muse/agent-core";
-import { appendCheckins, cancelCheckin, readCheckins, scheduleCheckins, writeCheckins, type PersistedCheckin } from "@muse/mcp";
+import { appendCheckins, cancelCheckin, readCheckins, scheduleCheckins, writeCheckins, type PersistedCheckin } from "@muse/proactivity";
 import type { UserModelSlot } from "@muse/memory";
 
 import { createGateEmbedder } from "./context-engineering-builders.js";

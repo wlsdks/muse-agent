@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createPeerRegistry, receiveAndQuarantine, sendToPeer } from "@muse/a2a";
-import { addToQuarantine, listPending, readQuarantine } from "@muse/mcp";
+import { addToQuarantine, listPending, readQuarantine } from "@muse/stores";
 import { AuthoredSkillStore } from "@muse/skills";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

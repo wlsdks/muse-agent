@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createTasksMcpServer } from "../src/index.js";
-import { writeTasks, type PersistedTask } from "@muse/mcp";
+import { writeTasks, type PersistedTask } from "@muse/stores";
 
 const TASKS: PersistedTask[] = [
   { createdAt: "2026-05-01T00:00:00", id: "t1", notes: "Q3 numbers", status: "open", tags: ["work"], title: "ship report" }, // "work" ONLY in the tag

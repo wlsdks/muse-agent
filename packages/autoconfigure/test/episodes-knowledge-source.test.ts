@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeEpisodes } from "@muse/mcp";
+import { writeEpisodes } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { readEpisodeKnowledgeEntries } from "../src/episodes-knowledge-source.js";

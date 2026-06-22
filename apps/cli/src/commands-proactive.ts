@@ -26,7 +26,8 @@ import {
 } from "@muse/autoconfigure";
 import { buildGroundingReverify } from "@muse/agent-core";
 import type { CalendarEvent } from "@muse/calendar";
-import { appendProactiveHistory, readProactiveHistory, readTasks, runDueProactiveNotices, writeTasks, type PersistedTask } from "@muse/mcp";
+import { appendProactiveHistory, readProactiveHistory, readTasks, writeTasks, type PersistedTask } from "@muse/stores";
+import { runDueProactiveNotices } from "@muse/proactivity";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -152,7 +153,7 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
       }
 
       try {
-        const { readTasks } = await import("@muse/mcp");
+        const { readTasks } = await import("@muse/stores");
         const tasks = await readTasks(tasksFile);
         const dueSoon = tasks.filter((task) => {
           if (task.status !== "open" || !task.dueAt || task.proactive === false) return false;
@@ -550,7 +551,7 @@ export function registerProactiveCommands(program: Command, io: ProgramIO, helpe
         ? e.MUSE_PROACTIVE_SIDECAR_FILE.trim()
         : join(homedir(), ".muse", "proactive-fired.json");
       try {
-        const { readProactiveFired, writeProactiveFired } = await import("@muse/mcp");
+        const { readProactiveFired, writeProactiveFired } = await import("@muse/proactivity");
         const fired = await readProactiveFired(sidecarFile);
         const purged = fired.filter((e2) => !(e2.kind === "task" && e2.id === entry.itemId));
         if (purged.length !== fired.length) {

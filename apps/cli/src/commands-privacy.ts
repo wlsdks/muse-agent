@@ -20,7 +20,7 @@ import {
   resolveRemindersFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
-import { isFileEncryptedAtRest } from "@muse/mcp";
+import { isFileEncryptedAtRest } from "@muse/stores";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";

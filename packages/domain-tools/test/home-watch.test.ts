@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { homeWatchesFromConfig } from "../src/index.js";
-import { createWebWatchRunner, type ProactiveNoticeSink, type WebWatch } from "@muse/mcp";
+import { createWebWatchRunner, type ProactiveNoticeSink, type WebWatch } from "@muse/proactivity";
 
 const noWait = { baseDelayMs: 0, sleep: async () => {} };
 

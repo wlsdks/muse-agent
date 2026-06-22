@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fireReminder, nextReminderOccurrence, normalizeReminderRecurrence, resolveReminderRef, type PersistedReminder } from "../src/index.js";
+import { fireReminder, nextReminderOccurrence, normalizeReminderRecurrence, resolveReminderRef, type PersistedReminder } from "@muse/stores";
 
 describe("resolveReminderRef — edit a reminder by id OR by a word from its text (one shot, not a 2-step search)", () => {
   const reminders: PersistedReminder[] = [

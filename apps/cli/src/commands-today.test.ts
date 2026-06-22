@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { writeFollowups, writeReminders, type Contact, type PersistedFollowup, type PersistedReminder } from "@muse/mcp";
+import { writeFollowups, writeReminders, type Contact, type PersistedFollowup, type PersistedReminder } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { annotateEventTitle, formatConnectionsSection, formatEpisodeRevisitLine, formatEvents, formatHeadlines, formatLargestBreak, formatNextEvent, formatOverdue, formatRevisitSection, formatStaleTasksSection, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, largestBreakBetweenEvents, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, readUpcomingBirthdays, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine, selectEpisodeToRevisit, selectStaleTasks, selectTodayOverdue } from "./commands-today.js";

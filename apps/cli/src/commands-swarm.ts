@@ -14,13 +14,7 @@ import { join } from "node:path";
 import { buildDebateQuestion, buildGroundingReverifyPrompt, councilConsensusScore, debateProgressed, detectConformityFlips, hasCouncilConsensusSemantic, isA2AEnabled, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, prepareOutbound, produceCouncilReasoning, produceGroundedCouncilReasoning, REVERIFY_SYSTEM_PROMPT, selectDissentingExclusions, synthesizeCouncilAnswer, type CouncilAnswer, type CouncilUtterance, type GroundingReverify } from "@muse/agent-core";
 import { AGENT_CARD_PATH, buildMuseAgentCard, createA2AHandler, loadPeerConfig, requestCouncilReasoning, sendToPeer, type A2APeer } from "@muse/a2a";
 import { createMuseRuntimeAssembly, resolveAuthoredSkillsDir } from "@muse/autoconfigure";
-import {
-  addToQuarantine,
-  listPending,
-  readQuarantine,
-  setQuarantineStatus,
-  type SwarmQuarantineEntry
-} from "@muse/mcp";
+import { addToQuarantine, listPending, readQuarantine, setQuarantineStatus, type SwarmQuarantineEntry } from "@muse/stores";
 import { AuthoredSkillStore } from "@muse/skills";
 import type { ModelProvider } from "@muse/model";
 import type { Command } from "commander";

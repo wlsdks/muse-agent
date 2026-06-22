@@ -7,7 +7,7 @@
  * their domain; this stitches the tracked-item stores together.
  */
 
-import { queryContacts, readReminders, readTasks } from "@muse/mcp";
+import { queryContacts, readReminders, readTasks } from "@muse/stores";
 import { findAcrossDomains, resolveContactsFile, resolveLocalCalendarFile, resolveRemindersFile, resolveTasksFile, type FindDomain } from "@muse/autoconfigure";
 import { LocalCalendarProvider, type CalendarEvent } from "@muse/calendar";
 import type { Command } from "commander";

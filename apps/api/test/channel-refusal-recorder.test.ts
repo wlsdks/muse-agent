@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { readActionLog } from "@muse/mcp";
+import { readActionLog } from "@muse/stores";
 import { describe, expect, it, vi } from "vitest";
 
 import { createChannelRefusalRecorder } from "../src/channel-refusal-recorder.js";

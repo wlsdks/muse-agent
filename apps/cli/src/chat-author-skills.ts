@@ -18,7 +18,7 @@ import {
   type SessionTurnLine
 } from "@muse/agent-core";
 import { resolveAuthoredSkillsDir } from "@muse/autoconfigure";
-import { adjustSkillReward } from "@muse/mcp";
+import { adjustSkillReward } from "@muse/stores";
 import { AuthoredSkillStore, type Skill } from "@muse/skills";
 
 import { readLastChatHistory, readSessionBoundaries } from "./chat-history.js";

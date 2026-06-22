@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { readReminders, writeReminders, type PersistedReminder } from "@muse/mcp";
+import { readReminders, writeReminders, type PersistedReminder } from "@muse/stores";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 

@@ -11,14 +11,7 @@ import { randomUUID } from "node:crypto";
 import { buildGroundingReverifyPrompt, filterReflectionsAgainstStore, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, REVERIFY_SYSTEM_PROMPT, synthesizeReflections, type GroundingReverify, type Reflection, type ReflectionInput } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
 import { createGateEmbedder, createMuseRuntimeAssembly, resolveEpisodesFile, resolveReflectionsFile as sharedResolveReflectionsFile } from "@muse/autoconfigure";
-import {
-  addReflections,
-  listReflections,
-  readEpisodes,
-  readReflections,
-  type NewReflection,
-  type StoredReflection
-} from "@muse/mcp";
+import { addReflections, listReflections, readEpisodes, readReflections, type NewReflection, type StoredReflection } from "@muse/stores";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";

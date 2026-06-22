@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { encryptFileAtRest, isFileEncryptedAtRest } from "@muse/mcp";
+import { encryptFileAtRest, isFileEncryptedAtRest } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { atRestDoctorCheck, collectPrivacyPosture, formatPrivacyPosture, type PrivacyPosture } from "./commands-privacy.js";

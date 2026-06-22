@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createAgentRuntime, createKnowledgeSearchTool } from "@muse/agent-core";
-import { runAmbientNoticeTick, type AmbientNoticeRule, type ProactiveNoticeSink } from "@muse/mcp";
+import { runAmbientNoticeTick, type AmbientNoticeRule, type ProactiveNoticeSink } from "@muse/proactivity";
 import { LocalDirNotesProvider } from "@muse/domain-tools";
 import type { ModelProvider } from "@muse/model";
 import { ToolRegistry } from "@muse/tools";

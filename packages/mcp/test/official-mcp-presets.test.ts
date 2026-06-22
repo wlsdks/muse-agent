@@ -1,28 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  GITHUB_MCP_SERVER_NAME,
-  InMemoryMcpServerStore,
-  LINEAR_MCP_SERVER_NAME,
-  McpManager,
-  McpSecurityPolicyProvider,
-  NOTION_MCP_SERVER_NAME,
-  OFFICIAL_MCP_PRESETS,
-  SENTRY_MCP_SERVER_NAME,
-  createGitHubMcpServer,
-  createLinearMcpServer,
-  createNotionMcpServer,
-  createSentryMcpServer,
-  githubMcpToolRisk,
-  linearMcpToolRisk,
-  normalizeMcpSecurityPolicy,
-  notionMcpToolRisk,
-  resolveOfficialMcpPreset,
-  sentryMcpToolRisk,
-  validateMcpServer,
-  withOfficialMcpRisk,
-  type McpConnection
-} from "../src/index.js";
+import { GITHUB_MCP_SERVER_NAME, InMemoryMcpServerStore, LINEAR_MCP_SERVER_NAME, McpManager, McpSecurityPolicyProvider, NOTION_MCP_SERVER_NAME, OFFICIAL_MCP_PRESETS, SENTRY_MCP_SERVER_NAME, createGitHubMcpServer, createLinearMcpServer, createNotionMcpServer, createSentryMcpServer, githubMcpToolRisk, linearMcpToolRisk, normalizeMcpSecurityPolicy, notionMcpToolRisk, resolveOfficialMcpPreset, sentryMcpToolRisk, validateMcpServer, withOfficialMcpRisk, type McpConnection } from "../src/index.js";
 import type { MuseTool } from "@muse/tools";
 
 describe("official MCP presets — factory shape + officially-public provenance", () => {

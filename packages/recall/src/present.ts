@@ -3,7 +3,8 @@ import { isAbsolute, join, relative } from "node:path";
 
 import { citedSourcesIn, lexicalOverlap, lexicalTokens, neutralizeInjectionSpans, type ContradictionPair } from "@muse/agent-core";
 import { escapeSystemPromptMarkers } from "./prompt-escape.js";
-import { formatDueLocal, type PersistedReminder, type PersistedTask } from "@muse/mcp";
+import { formatDueLocal } from "@muse/mcp-shared";
+import { type PersistedReminder, type PersistedTask } from "@muse/stores";
 
 /**
  * SB-1/G2: the most-recent watched-feed headlines across ALL feeds, newest

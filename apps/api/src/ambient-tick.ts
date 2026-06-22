@@ -9,14 +9,8 @@
  * Off by default; the daemon-config gate lives in `tick-daemons.ts`.
  */
 
-import {
-  createAmbientNoticeRunner,
-  sendWithRetry,
-  type AmbientNoticeRule,
-  type AmbientSignalSource,
-  type KnowledgeAmbientTrigger,
-  type ProactiveNoticeSink
-} from "@muse/mcp";
+import { sendWithRetry } from "@muse/mcp-shared";
+import { createAmbientNoticeRunner, type AmbientNoticeRule, type AmbientSignalSource, type KnowledgeAmbientTrigger, type ProactiveNoticeSink } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";

@@ -1,4 +1,4 @@
-import type { PlaybookEntry, StoredReflection, WeaknessEntry } from "@muse/mcp";
+import type { PlaybookEntry, StoredReflection, WeaknessEntry } from "@muse/stores";
 import type { Skill } from "@muse/skills";
 import { describe, expect, it } from "vitest";
 

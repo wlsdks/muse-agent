@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { gateProactiveNoticeSink, isQuietHour, parseQuietHours, type ProactiveNoticeSink } from "../src/index.js";
+import { gateProactiveNoticeSink, isQuietHour, parseQuietHours, type ProactiveNoticeSink } from "@muse/proactivity";
 
 describe("parseQuietHours", () => {
   it("parses bare and HH:MM forms, rounding to the hour", () => {

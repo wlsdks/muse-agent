@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createAmbientNoticeRunner,
-  knowledgeAmbientQuery,
-  type AmbientSignal,
-  type ProactiveNoticeSink
-} from "../src/index.js";
+import { createAmbientNoticeRunner, knowledgeAmbientQuery, type AmbientSignal, type ProactiveNoticeSink } from "@muse/proactivity";
 
 /**
  * SB-3 knowledge-triggered ambient notice: the active WINDOW TITLE alone

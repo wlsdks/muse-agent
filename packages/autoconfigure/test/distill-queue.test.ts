@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { CorrectionExchange, DistilledStrategy } from "@muse/agent-core";
-import { enqueueLearnEvent, readPendingLearnEvents, readPlaybook, recordPlaybookStrategy } from "@muse/mcp";
+import { enqueueLearnEvent, readPendingLearnEvents, readPlaybook, recordPlaybookStrategy } from "@muse/stores";
 import type { ModelProvider } from "@muse/model";
 import { afterEach, describe, expect, it } from "vitest";
 

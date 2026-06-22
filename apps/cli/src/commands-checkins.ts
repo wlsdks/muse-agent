@@ -8,7 +8,8 @@
 
 import { selectDischargedCommitments, selectOpenCommitments } from "@muse/agent-core";
 import { createGateEmbedder } from "@muse/autoconfigure";
-import { appendCheckins, cancelCheckin, parseReminderDueAt, readCheckins, scheduleCheckins, snoozeCheckin, writeCheckins, type PersistedCheckin } from "@muse/mcp";
+import { parseReminderDueAt } from "@muse/stores";
+import { appendCheckins, cancelCheckin, readCheckins, scheduleCheckins, snoozeCheckin, writeCheckins, type PersistedCheckin } from "@muse/proactivity";
 import type { Command } from "commander";
 import { homedir } from "node:os";
 import { join } from "node:path";

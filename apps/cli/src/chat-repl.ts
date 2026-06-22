@@ -24,7 +24,7 @@ import { createMuseRuntimeAssembly, resolveNotesDir, resolveTasksFile } from "@m
 import type { Command } from "commander";
 
 import { classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, isUnbackedActionClaim, runResistingFalseDone, type KnowledgeMatch } from "@muse/agent-core";
-import type { AskTimeNudge, WeaknessEntry } from "@muse/mcp";
+import type { AskTimeNudge, WeaknessEntry } from "@muse/stores";
 
 import { detectArithmeticQuery, formatArithmeticResult } from "./arithmetic-query.js";
 import { countdownDays, detectCountdownQuery, formatCountdown } from "./countdown-query.js";
@@ -365,7 +365,8 @@ export async function runLocalChat(
   // wrongly abstains "그건 아직 기억하고 있지 않아요" while open tasks sit on disk.
   // List them deterministically — same remedy as the notes corpus overview above.
   if (classifyTaskListQuery(message)) {
-    const { readTasks, compareTasksByDueDate, formatDueLocal } = await import("@muse/mcp");
+    const { formatDueLocal } = await import("@muse/mcp-shared");
+    const { readTasks, compareTasksByDueDate } = await import("@muse/stores");
     const { resolveTasksFile } = await import("@muse/autoconfigure");
     const tasksFile = resolveTasksFile(process.env as Record<string, string | undefined>);
     const open = (await readTasks(tasksFile).catch(() => []))
@@ -390,7 +391,8 @@ export async function runLocalChat(
   // call reminders.list, so the recall gate wrongly abstains "없습니다" while
   // pending reminders sit on disk). List the pending ones deterministically.
   if (classifyReminderListQuery(message)) {
-    const { readReminders, formatDueLocal } = await import("@muse/mcp");
+    const { formatDueLocal } = await import("@muse/mcp-shared");
+    const { readReminders } = await import("@muse/stores");
     const { resolveRemindersFile } = await import("@muse/autoconfigure");
     const remindersFile = resolveRemindersFile(process.env as Record<string, string | undefined>);
     const pending = (await readReminders(remindersFile).catch(() => []))
@@ -413,7 +415,7 @@ export async function runLocalChat(
   // normal path instead of short-circuiting.
   const contactName = classifyContactLookup(message);
   if (contactName) {
-    const { queryContacts, resolveContact } = await import("@muse/mcp");
+    const { queryContacts, resolveContact } = await import("@muse/stores");
     const { resolveContactsFile } = await import("@muse/autoconfigure");
     const contacts = await queryContacts(resolveContactsFile(process.env as Record<string, string | undefined>)).catch(() => []);
     const resolution = resolveContact(contacts, contactName);
@@ -458,7 +460,7 @@ export async function runLocalChat(
   {
     const datePhrase = detectDateQuery(message);
     if (datePhrase !== null) {
-      const { parseReminderDueAt } = await import("@muse/mcp");
+      const { parseReminderDueAt } = await import("@muse/stores");
       const resolved = parseReminderDueAt(datePhrase, () => new Date());
       if (!(resolved instanceof Error)) {
         return {
@@ -470,7 +472,7 @@ export async function runLocalChat(
     }
     const countdown = detectCountdownQuery(message);
     if (countdown) {
-      const { parseReminderDueAt } = await import("@muse/mcp");
+      const { parseReminderDueAt } = await import("@muse/stores");
       const now = new Date();
       const resolved = parseReminderDueAt(countdown.targetPhrase, () => now);
       if (!(resolved instanceof Error)) {
@@ -798,7 +800,7 @@ async function recordChatWeakness(
   deps: RecordChatWeaknessDeps = {}
 ): Promise<number | undefined> {
   try {
-    const recordWeakness = deps.recordWeakness ?? (await import("@muse/mcp")).recordWeakness;
+    const recordWeakness = deps.recordWeakness ?? (await import("@muse/stores")).recordWeakness;
     const { resolveWeaknessesFile } = await import("@muse/autoconfigure");
     const file = deps.weaknessesFile ?? resolveWeaknessesFile(process.env as Record<string, string | undefined>);
     const entry = await recordWeakness(file, { axis, message });
@@ -833,7 +835,7 @@ export interface ResolveChatWeaknessDeps {
  */
 export async function chatResolveWeakness(message: string, deps: ResolveChatWeaknessDeps = {}): Promise<void> {
   try {
-    const recordWeaknessResolved = deps.recordWeaknessResolved ?? (await import("@muse/mcp")).recordWeaknessResolved;
+    const recordWeaknessResolved = deps.recordWeaknessResolved ?? (await import("@muse/stores")).recordWeaknessResolved;
     const file = deps.weaknessesFile ?? (await import("@muse/autoconfigure")).resolveWeaknessesFile(process.env as Record<string, string | undefined>);
     await recordWeaknessResolved(file, message);
   } catch {
@@ -890,7 +892,7 @@ export interface ChatRepeatNudgeDeps {
  */
 export async function chatRepeatWeaknessNudge(message: string, deps: ChatRepeatNudgeDeps = {}): Promise<string | undefined> {
   try {
-    const mcp = deps.readWeaknesses && deps.selectNudge && deps.render && deps.topicKey ? undefined : await import("@muse/mcp");
+    const mcp = deps.readWeaknesses && deps.selectNudge && deps.render && deps.topicKey ? undefined : await import("@muse/stores");
     const readWeaknesses = deps.readWeaknesses ?? mcp!.readWeaknesses;
     const selectNudge = deps.selectNudge ?? mcp!.askTimeWeaknessNudge;
     const render = deps.render ?? mcp!.renderAskTimeNudge;
@@ -911,7 +913,7 @@ export async function chatRepeatWeaknessNudge(message: string, deps: ChatRepeatN
  * lazily here — a STATIC import would break the bun-compiled desktop binary.
  */
 async function autoCompleteReportedTask(message: string): Promise<string | null> {
-  const { readTasks, writeTasks } = await import("@muse/mcp");
+  const { readTasks, writeTasks } = await import("@muse/stores");
   const file = resolveTasksFile(process.env as Record<string, string | undefined>);
   const tasks = await readTasks(file);
   const openTasks = tasks.filter((task) => task.status === "open");

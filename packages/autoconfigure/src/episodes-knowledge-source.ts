@@ -1,4 +1,4 @@
-import { readEpisodes } from "@muse/mcp";
+import { readEpisodes } from "@muse/stores";
 
 import type { EpisodeSummaryLike } from "./knowledge-corpus.js";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sortImminentByStart } from "../src/index.js";
+import { sortImminentByStart } from "@muse/proactivity";
 
 const at = (iso: string) => new Date(iso);
 

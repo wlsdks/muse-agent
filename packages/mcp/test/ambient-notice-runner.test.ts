@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createAmbientNoticeRunner,
-  type AmbientNoticeRule,
-  type AmbientSignal,
-  type ProactiveNoticeSink
-} from "../src/index.js";
+import { createAmbientNoticeRunner, type AmbientNoticeRule, type AmbientSignal, type ProactiveNoticeSink } from "@muse/proactivity";
 
 const standup: AmbientNoticeRule = {
   id: "standup",

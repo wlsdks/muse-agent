@@ -11,13 +11,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import {
-  computeTrustScore,
-  readTrustLedger,
-  recordOutcome,
-  type ProactiveOutcome,
-  type TrustLedgerEntry
-} from "@muse/mcp";
+import { computeTrustScore, readTrustLedger, recordOutcome, type ProactiveOutcome, type TrustLedgerEntry } from "@muse/stores";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";

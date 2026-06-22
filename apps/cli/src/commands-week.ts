@@ -7,7 +7,7 @@
  */
 
 import { groupWeekAgenda, resolveContactsFile, resolveLocalCalendarFile, resolveTasksFile, type WeekDay } from "@muse/autoconfigure";
-import { readTasks } from "@muse/mcp";
+import { readTasks } from "@muse/stores";
 import { OpenMeteoWeatherProvider, type DailyForecast, type WeatherProvider } from "@muse/domain-tools";
 import type { Command } from "commander";
 

@@ -1,4 +1,4 @@
-import type { Contact } from "@muse/mcp";
+import type { Contact } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { buildContactNetwork, formatContactNetwork } from "./contact-network.js";

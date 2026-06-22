@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { addContact, queryContacts } from "@muse/mcp";
+import { addContact, queryContacts } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { assembleKnowledgeCorpus, createNotesKnowledgeSearchTool, type ContactsSource } from "../src/knowledge-corpus.js";

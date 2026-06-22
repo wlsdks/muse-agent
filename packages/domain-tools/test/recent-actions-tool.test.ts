@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createRecentActionsTool } from "../src/index.js";
-import { type ActionLogEntry } from "@muse/mcp";
+import { type ActionLogEntry } from "@muse/stores";
 
 // Append-ordered (oldest first), as the action log is written.
 const ENTRIES: ActionLogEntry[] = [

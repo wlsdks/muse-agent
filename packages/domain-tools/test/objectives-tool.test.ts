@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createObjectivesListTool } from "../src/index.js";
-import { type StandingObjective } from "@muse/mcp";
+import { type StandingObjective } from "@muse/stores";
 
 const OBJ: StandingObjective[] = [
   { createdAt: "2026-06-01T00:00:00Z", id: "o1", kind: "until", spec: "watch the CI until it's green", status: "active", userId: "u" },

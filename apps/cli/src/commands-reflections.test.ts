@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { reflectionsToStore, renderReflections, resolveReflectionsFile } from "./commands-reflections.js";
-import type { StoredReflection } from "@muse/mcp";
+import type { StoredReflection } from "@muse/stores";
 
 describe("resolveReflectionsFile", () => {
   it("honours MUSE_REFLECTIONS_FILE env override", () => {
@@ -95,7 +95,7 @@ describe("runReflectionPass", () => {
 
   it("with embed: NOOP-drops a fresh insight that paraphrases an ALREADY-stored one (Mem0 cross-tick dedup)", async () => {
     const { runReflectionPass } = await import("./commands-reflections.js");
-    const { addReflections, readReflections } = await import("@muse/mcp");
+    const { addReflections, readReflections } = await import("@muse/stores");
     const { mkdtemp, rm } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");

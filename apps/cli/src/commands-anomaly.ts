@@ -8,7 +8,7 @@
 
 import { dailyCounts, mostAnomalousDays, type DayAnomaly } from "@muse/agent-core";
 import { resolveActionLogFile, resolveEpisodesFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
-import { readActionLog, readEpisodes, readReminders, readTasks } from "@muse/mcp";
+import { readActionLog, readEpisodes, readReminders, readTasks } from "@muse/stores";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";

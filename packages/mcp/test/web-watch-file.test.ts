@@ -3,12 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import {
-  createFileSnapshot,
-  createWebWatchRunner,
-  webWatchesFromConfig,
-  type ProactiveNoticeSink
-} from "../src/index.js";
+import { createFileSnapshot, createWebWatchRunner, webWatchesFromConfig, type ProactiveNoticeSink } from "@muse/proactivity";
 
 function tmpFile(name: string, body: string): string {
   const dir = mkdtempSync(join(tmpdir(), "muse-filewatch-"));

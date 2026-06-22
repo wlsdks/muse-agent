@@ -15,7 +15,7 @@ import { stat, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { readSessionLock, writeSessionLock, type SessionLockPayload } from "@muse/mcp";
+import { readSessionLock, writeSessionLock, type SessionLockPayload } from "@muse/proactivity";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";

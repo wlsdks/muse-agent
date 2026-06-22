@@ -118,7 +118,7 @@ describe("applySkillRewardsFromSession — RL reward over authored skills", () =
   const rewardsFile = () => join(mkdtempSync(join(tmpdir(), "muse-skrw-")), "skill-rewards.json");
 
   it("decays the skill that applied to a corrected request; an unrelated one is untouched", async () => {
-    const { readSkillRewards } = await import("@muse/mcp");
+    const { readSkillRewards } = await import("@muse/stores");
     const file = rewardsFile();
     const res = await applySkillRewardsFromSession({
       listSkills: async () => [reportSkill, blogSkill],
@@ -133,7 +133,7 @@ describe("applySkillRewardsFromSession — RL reward over authored skills", () =
   });
 
   it("reinforces the skill that applied to an approved request", async () => {
-    const { readSkillRewards } = await import("@muse/mcp");
+    const { readSkillRewards } = await import("@muse/stores");
     const file = rewardsFile();
     const res = await applySkillRewardsFromSession({
       listSkills: async () => [reportSkill, blogSkill],

@@ -18,6 +18,12 @@
     },
     {
       "path": "../mcp"
+    },
+    {
+      "path": "../mcp-shared"
+    },
+    {
+      "path": "../stores"
     }
   ]
 }

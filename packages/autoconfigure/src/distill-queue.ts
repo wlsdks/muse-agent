@@ -21,17 +21,7 @@ import {
   type CorrectionExchange,
   type DistilledStrategy
 } from "@muse/agent-core";
-import {
-  bumpPlaybookObservation,
-  incrementSuppressionBlocked,
-  isLearningPaused,
-  markLearnEventsDone,
-  queryPlaybook,
-  querySuppressedLessons,
-  readPendingLearnEvents,
-  recordPlaybookStrategy,
-  type LearnCorrectionEvent
-} from "@muse/mcp";
+import { bumpPlaybookObservation, incrementSuppressionBlocked, isLearningPaused, markLearnEventsDone, queryPlaybook, querySuppressedLessons, readPendingLearnEvents, recordPlaybookStrategy, type LearnCorrectionEvent } from "@muse/stores";
 
 export interface DistillQueuedDeps {
   readonly queueFile: string;

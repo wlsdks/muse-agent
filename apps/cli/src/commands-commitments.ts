@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 
 import { detectUserCommitments, type UserCommitment } from "@muse/agent-core";
 import { resolveTasksFile } from "@muse/autoconfigure";
-import { readTasks, writeTasks, type PersistedTask } from "@muse/mcp";
+import { readTasks, writeTasks, type PersistedTask } from "@muse/stores";
 import type { Command } from "commander";
 
 import { readLastChatHistory } from "./chat-history.js";

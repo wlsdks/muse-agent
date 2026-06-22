@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { PersistedEpisode } from "@muse/mcp";
+import type { PersistedEpisode } from "@muse/stores";
 
 import { selectPersonaEpisodes } from "../src/episode-selection.js";
 

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { EpisodicRecallProvider, EpisodicRecallSnapshot } from "@muse/agent-core";
-import { readRecallHits } from "@muse/mcp";
+import { readRecallHits } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { withRecallHitRecording } from "../src/context-engineering-builders.js";

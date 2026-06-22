@@ -3,13 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
-import {
-  addObjective,
-  createMessagingObjectiveActuator,
-  createModelObjectiveEvaluator,
-  readObjectives,
-  type StandingObjective
-} from "@muse/mcp";
+import { addObjective, readObjectives, type StandingObjective } from "@muse/stores";
+import { createMessagingObjectiveActuator, createModelObjectiveEvaluator } from "@muse/proactivity";
 import { describe, expect, it } from "vitest";
 
 import { startObjectivesTick } from "../src/objectives-tick.js";

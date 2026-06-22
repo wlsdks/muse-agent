@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
 
-import { resolveDayShapeLine, type AvailabilityEventLike } from "@muse/mcp";
+import { type AvailabilityEventLike } from "@muse/mcp-shared";
+import { resolveDayShapeLine } from "@muse/proactivity";
 import { writeObjectives } from "@muse/stores";
 import { runDueSituationalBriefing } from "@muse/domain-tools";
 

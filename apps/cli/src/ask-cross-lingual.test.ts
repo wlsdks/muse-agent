@@ -1,5 +1,5 @@
 import { reportSentenceGroundedness } from "@muse/agent-core";
-import type { ActionLogEntry } from "@muse/mcp";
+import type { ActionLogEntry } from "@muse/stores";
 import { describe, expect, it, vi } from "vitest";
 
 import { crossLingualUnsupportedFraction, rescueActionsCrossLingual, rescueMemoryCrossLingual } from "./ask-cross-lingual.js";

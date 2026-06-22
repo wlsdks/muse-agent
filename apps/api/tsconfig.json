@@ -69,6 +69,15 @@
     },
     {
       "path": "../../packages/domain-tools"
+    },
+    {
+      "path": "../../packages/mcp-shared"
+    },
+    {
+      "path": "../../packages/stores"
+    },
+    {
+      "path": "../../packages/proactivity"
     }
   ]
 }

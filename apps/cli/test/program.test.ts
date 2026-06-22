@@ -3323,7 +3323,7 @@ describe("cli program", () => {
   });
 
   it("muse remind history --local renders newest-first with status icons and route", async () => {
-    const { appendReminderHistory } = await import("@muse/mcp");
+    const { appendReminderHistory } = await import("@muse/stores");
     const root = await mkdtemp(path.join(tmpdir(), "muse-cli-remind-hist-"));
     const historyFile = path.join(root, "history.json");
     const prev = process.env.MUSE_REMINDER_HISTORY_FILE;

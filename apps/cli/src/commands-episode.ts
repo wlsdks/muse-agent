@@ -15,19 +15,7 @@
  * less error-prone.
  */
 
-import {
-  clearEpisodes,
-  decryptEpisodesAtRest,
-  encryptEpisodesAtRest,
-  isEpisodesEncrypted,
-  planEpisodeConsolidation,
-  readEpisodes,
-  recurringThemes,
-  removeEpisode,
-  serializeEpisode,
-  writeEpisodes,
-  type PersistedEpisode
-} from "@muse/mcp";
+import { clearEpisodes, decryptEpisodesAtRest, encryptEpisodesAtRest, isEpisodesEncrypted, planEpisodeConsolidation, readEpisodes, recurringThemes, removeEpisode, serializeEpisode, writeEpisodes, type PersistedEpisode } from "@muse/stores";
 import { resolveEpisodesFile } from "@muse/autoconfigure";
 import { copyFile } from "node:fs/promises";
 import type { Command } from "commander";

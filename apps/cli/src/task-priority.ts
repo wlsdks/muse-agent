@@ -1,4 +1,4 @@
-import type { PersistedTask } from "@muse/mcp";
+import type { PersistedTask } from "@muse/stores";
 
 // "What should I do next?" — a principled urgency ranking over your open tasks.
 //

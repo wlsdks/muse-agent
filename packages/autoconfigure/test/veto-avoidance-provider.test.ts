@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { recordVeto } from "@muse/mcp";
+import { recordVeto } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { buildVetoAvoidanceProvider } from "../src/context-engineering-builders.js";

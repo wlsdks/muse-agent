@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createAgentRuntime, type VetoAvoidanceProvider } from "@muse/agent-core";
-import { queryVetoes, readVetoes, recordVeto, removeVeto } from "@muse/mcp";
+import { queryVetoes, readVetoes, recordVeto, removeVeto } from "@muse/stores";
 import type { ModelProvider, ModelRequest } from "@muse/model";
 import { describe, expect, it } from "vitest";
 

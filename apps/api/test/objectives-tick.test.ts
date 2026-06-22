@@ -2,12 +2,8 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  addObjective,
-  readObjectives,
-  type ObjectiveEvaluation,
-  type StandingObjective
-} from "@muse/mcp";
+import { addObjective, readObjectives, type StandingObjective } from "@muse/stores";
+import { type ObjectiveEvaluation } from "@muse/proactivity";
 import { describe, expect, it } from "vitest";
 
 import { startObjectivesTick } from "../src/objectives-tick.js";

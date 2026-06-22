@@ -1,4 +1,4 @@
-import type { Contact } from "@muse/mcp";
+import type { Contact } from "@muse/stores";
 
 interface ContactNetworkEdge {
   readonly name: string;

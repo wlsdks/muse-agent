@@ -4,7 +4,8 @@
  * formatters are its primary consumer.
  */
 
-import { computeAvailability, type AvailabilityEventLike, type Contact } from "@muse/mcp";
+import { computeAvailability, type AvailabilityEventLike } from "@muse/mcp-shared";
+import { type Contact } from "@muse/stores";
 import { detectCalendarConflicts } from "@muse/domain-tools";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 

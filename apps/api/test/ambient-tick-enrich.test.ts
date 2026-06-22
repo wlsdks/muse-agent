@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { FileAmbientSignalSource, parseAmbientNoticeRules } from "@muse/mcp";
+import { FileAmbientSignalSource, parseAmbientNoticeRules } from "@muse/proactivity";
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 

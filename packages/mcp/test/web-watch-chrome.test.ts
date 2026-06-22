@@ -1,12 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  createChromeSnapshot,
-  createWebWatchRunner,
-  webWatchesFromConfig,
-  type ChromeSnapshotConnection,
-  type ProactiveNoticeSink
-} from "../src/index.js";
+import { createChromeSnapshot, createWebWatchRunner, webWatchesFromConfig, type ChromeSnapshotConnection, type ProactiveNoticeSink } from "@muse/proactivity";
 
 // Contract-faithful fake of the Chrome DevTools MCP connection: the
 // real chrome-devtools-mcp `take_snapshot` returns the live page's text

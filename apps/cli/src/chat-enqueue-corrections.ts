@@ -18,7 +18,7 @@ import {
   type SessionBoundaryRef,
   type SessionTurnLine
 } from "@muse/agent-core";
-import { enqueueLearnEvent, isLearningPaused, resolveLearnQueueFile } from "@muse/mcp";
+import { enqueueLearnEvent, isLearningPaused, resolveLearnQueueFile } from "@muse/stores";
 import { resolveLearningPauseFile } from "@muse/autoconfigure";
 
 import { readLastChatHistory, readSessionBoundaries } from "./chat-history.js";

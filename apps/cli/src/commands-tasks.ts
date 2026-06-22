@@ -15,16 +15,7 @@ import { randomUUID } from "node:crypto";
 
 import { openLoops, type OpenLoop } from "@muse/agent-core";
 import { resolveTasksFile } from "@muse/autoconfigure";
-import {
-  compareTasksByDueDate,
-  parseTaskDueAt,
-  readTasks,
-  readTaskStatusFilter,
-  resolveTaskRef,
-  serializeTask,
-  writeTasks,
-  type PersistedTask
-} from "@muse/mcp";
+import { compareTasksByDueDate, parseTaskDueAt, readTasks, readTaskStatusFilter, resolveTaskRef, serializeTask, writeTasks, type PersistedTask } from "@muse/stores";
 import type { Command } from "commander";
 
 import { isApiUnreachable, withApiLocalFallback } from "./program-helpers.js";

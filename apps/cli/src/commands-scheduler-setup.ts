@@ -10,7 +10,7 @@
  */
 
 import { collectSetupStatusJson, resolveFollowupsFile, type SetupStatusSnapshot } from "@muse/autoconfigure";
-import { readFollowups } from "@muse/mcp";
+import { readFollowups } from "@muse/stores";
 import type { Command } from "commander";
 
 import { runCalendarSetup } from "./setup-calendar.js";

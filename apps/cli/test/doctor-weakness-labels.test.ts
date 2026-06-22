@@ -1,4 +1,4 @@
-import type { WeaknessEntry } from "@muse/mcp";
+import type { WeaknessEntry } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { formatWeaknesses } from "../src/commands-doctor.js";

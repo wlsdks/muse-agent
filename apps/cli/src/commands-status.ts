@@ -20,7 +20,8 @@ import { join } from "node:path";
 
 import { evaluateLocalOnlyPosture, mergeModelKeysFromFile, resolveDefaultModel, type LocalOnlyStatusSnapshot } from "@muse/autoconfigure";
 import { defaultBeliefProvenanceFile, FileUserMemoryStore, projectRecentlyLearned, readBeliefProvenance, selectRecentlyForgotten, summarizeRecentlyLearned } from "@muse/memory";
-import { readFollowups, readObjectives, readReminders, readSessionLock } from "@muse/mcp";
+import { readFollowups, readObjectives, readReminders } from "@muse/stores";
+import { readSessionLock } from "@muse/proactivity";
 import { summariseEpisodesRows, summariseFollowupsRows, summariseObjectivesRows, summarisePatternsFiredRows, summariseRemindersRows } from "@muse/domain-tools";
 import type { Command } from "commander";
 

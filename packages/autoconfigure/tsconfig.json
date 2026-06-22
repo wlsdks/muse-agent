@@ -72,6 +72,12 @@
     },
     {
       "path": "../domain-tools"
+    },
+    {
+      "path": "../stores"
+    },
+    {
+      "path": "../proactivity"
     }
   ]
 }

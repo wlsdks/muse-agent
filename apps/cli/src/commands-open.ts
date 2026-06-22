@@ -20,13 +20,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import {
-  readFollowups,
-  readObjectives,
-  readProactiveHistory,
-  readReminders,
-  readTasks
-} from "@muse/mcp";
+import { readFollowups, readObjectives, readProactiveHistory, readReminders, readTasks } from "@muse/stores";
 import type { Command } from "commander";
 
 import { findJobsByIdPrefix } from "./commands-jobs.js";

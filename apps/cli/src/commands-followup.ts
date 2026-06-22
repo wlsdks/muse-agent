@@ -18,17 +18,7 @@
  */
 
 import { resolveFollowupsFile } from "@muse/autoconfigure";
-import {
-  cancelFollowup,
-  compareFollowupsByScheduledFor,
-  parseReminderDueAt,
-  readFollowups,
-  readFollowupStatusFilter,
-  serializeFollowup,
-  snoozeFollowup,
-  type FollowupStatusFilter,
-  type PersistedFollowup
-} from "@muse/mcp";
+import { cancelFollowup, compareFollowupsByScheduledFor, parseReminderDueAt, readFollowups, readFollowupStatusFilter, serializeFollowup, snoozeFollowup, type FollowupStatusFilter, type PersistedFollowup } from "@muse/stores";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";

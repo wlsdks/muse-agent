@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AgentRunContext, HookStage } from "@muse/agent-core";
-import { readCheckins } from "@muse/mcp";
+import { readCheckins } from "@muse/proactivity";
 import type { ModelResponse } from "@muse/model";
 import { describe, expect, it } from "vitest";
 

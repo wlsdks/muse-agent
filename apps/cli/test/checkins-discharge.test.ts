@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { readCheckins, scheduleCheckins, writeCheckins } from "@muse/mcp";
+import { readCheckins, scheduleCheckins, writeCheckins } from "@muse/proactivity";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { scanSessionCheckins } from "../src/commands-checkins.js";

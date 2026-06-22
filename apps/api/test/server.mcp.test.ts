@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  DefaultMcpTransportConnector,
-  InMemoryMcpSecurityPolicyStore,
-  InMemoryMcpServerStore,
-  McpManager,
-  McpSecurityPolicyProvider,
-  type McpConnection
-} from "@muse/mcp";
+import { DefaultMcpTransportConnector, InMemoryMcpSecurityPolicyStore, InMemoryMcpServerStore, McpManager, McpSecurityPolicyProvider, type McpConnection } from "@muse/mcp";
 import { buildServer } from "../src/server.js";
 import { createFakeMcpAdminServer, createMcpFixtureServerCode } from "./helpers/fake-mcp-admin-server.js";
 import { createAuthService } from "./helpers/test-auth.js";

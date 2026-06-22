@@ -8,7 +8,7 @@
  */
 
 import { resolveActionLogFile } from "@muse/autoconfigure";
-import { decryptActionLogAtRest, encryptActionLogAtRest, isActionLogEncrypted, queryActionLog, serializeActionLogEntry, verifyActionLogChainFile, type ActionLogEntry } from "@muse/mcp";
+import { decryptActionLogAtRest, encryptActionLogAtRest, isActionLogEncrypted, queryActionLog, serializeActionLogEntry, verifyActionLogChainFile, type ActionLogEntry } from "@muse/stores";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";

@@ -16,14 +16,7 @@
  * upstream messenger or stalling firing forever.
  */
 
-import {
-  isQuietHour,
-  parseQuietHours,
-  runDueReminders,
-  type ProactiveActivitySource,
-  type ProactiveAgentRuntimeLike,
-  type QuietHourRange
-} from "@muse/mcp";
+import { isQuietHour, parseQuietHours, runDueReminders, type ProactiveActivitySource, type ProactiveAgentRuntimeLike, type QuietHourRange } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 export interface ReminderTickOptions {

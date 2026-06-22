@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { appendActionLog as defaultAppendActionLog, type ActionLogEntry } from "@muse/mcp";
+import { appendActionLog as defaultAppendActionLog, type ActionLogEntry } from "@muse/stores";
 import type { ChannelApprovalRefusal } from "@muse/messaging";
 
 /**

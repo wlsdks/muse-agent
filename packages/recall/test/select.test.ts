@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { allUserMemoryFacts, buildMemoryContextBlock, defangMemoryInjection, rankEpisodeHits, renderMemoryFact, selectGroundingActions, selectMemoryFacts } from "@muse/recall";
-import type { ActionLogEntry } from "@muse/mcp";
+import type { ActionLogEntry } from "@muse/stores";
 
 describe("buildMemoryContextBlock — provisional (once-seen, unconfirmed) facts are marked (G4-followup)", () => {
   it("annotates a provisional fact 'unconfirmed' but leaves a durable one clean", () => {

@@ -17,10 +17,7 @@
  * filesystem-walk cost trivial. Clamped to [60s, 1h].
  */
 
-import {
-  runDuePatternNotices,
-  type AgentInitiatedNoticeBrokerLike
-} from "@muse/mcp";
+import { runDuePatternNotices, type AgentInitiatedNoticeBrokerLike } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";

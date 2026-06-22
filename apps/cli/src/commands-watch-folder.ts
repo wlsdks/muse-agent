@@ -36,7 +36,7 @@ import {
   resolveProactiveHistoryFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
-import { appendProactiveHistory, parseTaskDueAt, readTasks, writeTasks, type PersistedTask } from "@muse/mcp";
+import { appendProactiveHistory, parseTaskDueAt, readTasks, writeTasks, type PersistedTask } from "@muse/stores";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";

@@ -5,7 +5,8 @@ import { join } from "node:path";
 import type { FastifyInstance } from "fastify";
 
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
-import { addObjective, writeTasks, type BriefingImminent } from "@muse/mcp";
+import { addObjective, writeTasks } from "@muse/stores";
+import { type BriefingImminent } from "@muse/proactivity";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { startSituationalBriefingDaemonIfConfigured } from "../src/tick-daemons.js";

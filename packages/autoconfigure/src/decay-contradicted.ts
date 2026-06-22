@@ -21,7 +21,7 @@
 
 import { classifyCorrectionContradiction, isInjectableStrategy, PLAYBOOK_AVOID_BELOW, type CorrectionPolarity } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
-import { adjustPlaybookReward, isLearningPaused, queryPlaybook } from "@muse/mcp";
+import { adjustPlaybookReward, isLearningPaused, queryPlaybook } from "@muse/stores";
 
 export interface CorrectionSignal {
   /** Playbook id of the probation entry this correction was distilled into (for de-dup/logging). */

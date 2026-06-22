@@ -10,7 +10,8 @@ import {
 } from "kysely";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { compareFollowupsByScheduledFor, compareRemindersByDueAt, compareTasksByDueDate, createLoopbackMcpConnection, createLoopbackMcpMuseTools, createCryptoMcpServer, createDiffMcpServer, createJsonMcpServer, createMathMcpServer, createRegexMcpServer, createUrlMcpServer, createMcpSecurityPolicyInsert, createMcpServerInsert, createMcpServerUpdate, createTextUtilsMcpServer, createTimeMcpServer, DefaultMcpTransportConnector, InMemoryMcpSecurityPolicyStore, InMemoryMcpServerStore, isPrivateOrReservedHost, isPublicHttpUrl, KyselyMcpSecurityPolicyStore, KyselyMcpServerStore, mapMcpSecurityPolicyRow, mapMcpServerRow, McpConnectionError, isRetryableMcpConnectStatus, McpManager, McpSecurityPolicyProvider, normalizeMcpSecurityPolicy, validateMcpServer, validateStdioArgs, validateStdioCommand, type McpConnection } from "../src/index.js";
+import { createLoopbackMcpConnection, createLoopbackMcpMuseTools, createCryptoMcpServer, createDiffMcpServer, createJsonMcpServer, createMathMcpServer, createRegexMcpServer, createUrlMcpServer, createMcpSecurityPolicyInsert, createMcpServerInsert, createMcpServerUpdate, createTextUtilsMcpServer, createTimeMcpServer, DefaultMcpTransportConnector, InMemoryMcpSecurityPolicyStore, InMemoryMcpServerStore, isPrivateOrReservedHost, isPublicHttpUrl, KyselyMcpSecurityPolicyStore, KyselyMcpServerStore, mapMcpSecurityPolicyRow, mapMcpServerRow, McpConnectionError, isRetryableMcpConnectStatus, McpManager, McpSecurityPolicyProvider, normalizeMcpSecurityPolicy, validateMcpServer, validateStdioArgs, validateStdioCommand, type McpConnection } from "../src/index.js";
+import { compareFollowupsByScheduledFor, compareRemindersByDueAt, compareTasksByDueDate } from "@muse/stores";
 import { createDefaultLoopbackMcpServers, createSearchMcpServer, createFetchMcpServer, createFilesystemMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createPatternsMcpServer, createMessagingMcpServer, createNotesMcpServer, createRemindersMcpServer, createNotesRegistryMcpServer, createTasksMcpServer, AppleNotesProvider, AppleRemindersProvider, LocalDirNotesProvider, LocalFileTasksProvider, NotesProviderError, NotesProviderRegistry, NotesValidationError, NotionNotesProvider, NotionTasksProvider, TasksProviderError, TasksProviderRegistry, TasksValidationError, createContextReferenceMcpServer, createTasksRegistryMcpServer } from "@muse/domain-tools";
 
 // The stdio fixtures below spawn `node -e <inline ESM>` that bare-imports
@@ -2581,7 +2582,7 @@ describe("muse.tasks loopback server", () => {
   });
 
   it("quarantines a corrupt store instead of silently destroying it on next write (goal 189)", async () => {
-    const { readTasks, writeTasks } = await import("../src/index.js");
+    const { readTasks, writeTasks } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
     const dir = mkdtempSync(`${tmpdir}/muse-tasks-quarantine-`);
@@ -4733,12 +4734,12 @@ describe("muse.messaging loopback server", () => {
 
 describe("parseReminderVia", () => {
   it("returns undefined when input is undefined (caller spreads result optionally)", async () => {
-    const { parseReminderVia } = await import("../src/index.js");
+    const { parseReminderVia } = await import("@muse/stores");
     expect(parseReminderVia(undefined)).toBeUndefined();
   });
 
   it("trims and returns the cleaned ReminderVia on valid input", async () => {
-    const { parseReminderVia } = await import("../src/index.js");
+    const { parseReminderVia } = await import("@muse/stores");
     expect(parseReminderVia({ destination: "  C123  ", providerId: " slack " })).toEqual({
       destination: "C123",
       providerId: "slack"
@@ -4746,7 +4747,7 @@ describe("parseReminderVia", () => {
   });
 
   it("returns an Error explaining the rejection branches", async () => {
-    const { parseReminderVia } = await import("../src/index.js");
+    const { parseReminderVia } = await import("@muse/stores");
     expect(parseReminderVia(null)).toBeInstanceOf(Error);
     expect(parseReminderVia("string")).toBeInstanceOf(Error);
     expect(parseReminderVia({ destination: "x" })).toMatchObject({ message: expect.stringContaining("non-empty") });
@@ -5132,7 +5133,7 @@ describe("muse.reminders loopback server", () => {
 
 describe("runDueReminders", () => {
   it("delivers due reminders, fires them, persists once at the end", async () => {
-    const { runDueReminders } = await import("../src/index.js");
+    const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5184,7 +5185,7 @@ describe("runDueReminders", () => {
   });
 
   it("readReminders drops an entry with an unparseable dueAt instead of letting it sit un-fireable", async () => {
-    const { readReminders } = await import("../src/index.js");
+    const { readReminders } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5204,7 +5205,7 @@ describe("runDueReminders", () => {
   });
 
   it("does not write when no reminders are due (idempotent zero-call)", async () => {
-    const { runDueReminders } = await import("../src/index.js");
+    const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync, statSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5226,7 +5227,7 @@ describe("runDueReminders", () => {
   });
 
   it("collects per-reminder errors without aborting the loop", async () => {
-    const { runDueReminders } = await import("../src/index.js");
+    const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5267,7 +5268,8 @@ describe("runDueReminders", () => {
   });
 
   it("persists the status flip after EACH delivery so a crash mid-tick doesn't re-fire (goal 069)", async () => {
-    const { runDueReminders, readReminders } = await import("../src/index.js");
+    const { readReminders } = await import("@muse/stores");
+    const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5341,7 +5343,7 @@ describe("runDueReminders", () => {
   });
 
   it("respects per-reminder via override (Phase C); falls back to defaults when via is absent", async () => {
-    const { runDueReminders } = await import("../src/index.js");
+    const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5390,7 +5392,7 @@ describe("runDueReminders", () => {
   });
 
   it("retries transient messaging failures with exponential backoff (goal 149)", async () => {
-    const { runDueReminders } = await import("../src/index.js");
+    const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5429,7 +5431,7 @@ describe("runDueReminders", () => {
   });
 
   it("breaks out of the retry loop early on non-retryable messaging errors (goal 149)", async () => {
-    const { runDueReminders } = await import("../src/index.js");
+    const { runDueReminders } = await import("@muse/proactivity");
     const { MessagingProviderError } = await import("@muse/messaging");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
@@ -5468,7 +5470,7 @@ describe("runDueReminders", () => {
 
 describe("corrupt-store quarantine — reminders + followups + history audit logs", () => {
   it("readReminders quarantines a corrupt file instead of destroying it on next write", async () => {
-    const { readReminders, writeReminders } = await import("../src/index.js");
+    const { readReminders, writeReminders } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
     const dir = mkdtempSync(`${tmpdir}/muse-rem-quarantine-`);
@@ -5489,7 +5491,7 @@ describe("corrupt-store quarantine — reminders + followups + history audit log
   });
 
   it("readFollowups quarantines a corrupt file instead of destroying it on next write", async () => {
-    const { readFollowups, writeFollowups } = await import("../src/index.js");
+    const { readFollowups, writeFollowups } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
     const dir = mkdtempSync(`${tmpdir}/muse-fu-quarantine-`);
@@ -5509,7 +5511,7 @@ describe("corrupt-store quarantine — reminders + followups + history audit log
   });
 
   it("readProactiveHistory quarantines a corrupt audit log instead of destroying it on next append", async () => {
-    const { readProactiveHistory, appendProactiveHistory } = await import("../src/index.js");
+    const { readProactiveHistory, appendProactiveHistory } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
     const dir = mkdtempSync(`${tmpdir}/muse-ph-quarantine-`);
@@ -5538,7 +5540,7 @@ describe("corrupt-store quarantine — reminders + followups + history audit log
   });
 
   it("readReminderHistory quarantines a corrupt audit log instead of destroying it on next append", async () => {
-    const { readReminderHistory, appendReminderHistory } = await import("../src/index.js");
+    const { readReminderHistory, appendReminderHistory } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
     const dir = mkdtempSync(`${tmpdir}/muse-rh-quarantine-`);
@@ -5564,7 +5566,7 @@ describe("corrupt-store quarantine — reminders + followups + history audit log
   });
 
   it("a MISSING history file is NOT quarantined (absence is not corruption)", async () => {
-    const { readProactiveHistory, readReminderHistory } = await import("../src/index.js");
+    const { readProactiveHistory, readReminderHistory } = await import("@muse/stores");
     const { mkdtempSync, readdirSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
     const dir = mkdtempSync(`${tmpdir}/muse-hist-missing-`);
@@ -5574,7 +5576,7 @@ describe("corrupt-store quarantine — reminders + followups + history audit log
   });
 
   it("readFollowups drops an entry with an unparseable scheduledFor instead of letting it sit un-fireable", async () => {
-    const { readFollowups } = await import("../src/index.js");
+    const { readFollowups } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
     const dir = mkdtempSync(`${tmpdir}/muse-fu-badtime-`);
@@ -5594,7 +5596,7 @@ describe("corrupt-store quarantine — reminders + followups + history audit log
   });
 
   it("readEpisodes quarantines a corrupt store so upsert doesn't wipe episodic memory", async () => {
-    const { readEpisodes, upsertEpisode } = await import("../src/index.js");
+    const { readEpisodes, upsertEpisode } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync, readdirSync, readFileSync } = await import("node:fs");
     const tmpdir = await import("node:os").then((m) => m.tmpdir());
     const dir = mkdtempSync(`${tmpdir}/muse-ep-quarantine-`);
@@ -5621,7 +5623,7 @@ describe("corrupt-store quarantine — reminders + followups + history audit log
 
 describe("reminder-history-store", () => {
   it("readReminderHistory returns empty for missing or malformed files", async () => {
-    const { readReminderHistory } = await import("../src/index.js");
+    const { readReminderHistory } = await import("@muse/stores");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5634,7 +5636,7 @@ describe("reminder-history-store", () => {
   });
 
   it("appends entries (newest-last on disk) and reads newest-first with limit", async () => {
-    const { appendReminderHistory, readReminderHistory } = await import("../src/index.js");
+    const { appendReminderHistory, readReminderHistory } = await import("@muse/stores");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5693,7 +5695,7 @@ describe("runDueReminders Phase D (agent synthesis)", () => {
   }
 
   it("synthesises the reminder text via agent when activity window is fresh", async () => {
-    const { runDueReminders } = await import("../src/index.js");
+    const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5731,7 +5733,7 @@ describe("runDueReminders Phase D (agent synthesis)", () => {
   });
 
   it("falls back to flat text when activity window has lapsed", async () => {
-    const { runDueReminders } = await import("../src/index.js");
+    const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5764,7 +5766,7 @@ describe("runDueReminders Phase D (agent synthesis)", () => {
   });
 
   it("records the synthesis error in summary + still delivers the flat text", async () => {
-    const { runDueReminders } = await import("../src/index.js");
+    const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5796,7 +5798,8 @@ describe("runDueReminders Phase D (agent synthesis)", () => {
 
 describe("runDueReminders historyFile", () => {
   it("appends a 'delivered' entry on success and a 'failed' entry with error on failure", async () => {
-    const { runDueReminders, readReminderHistory } = await import("../src/index.js");
+    const { readReminderHistory } = await import("@muse/stores");
+    const { runDueReminders } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5862,7 +5865,7 @@ describe("muse.reminders.history tool", () => {
   });
 
   it("returns persisted entries newest-first with optional limit", async () => {
-    const { appendReminderHistory } = await import("../src/index.js");
+    const { appendReminderHistory } = await import("@muse/stores");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5925,7 +5928,7 @@ describe("runDueProactiveNotices", () => {
   }
 
   it("retries transient messaging failures with exponential backoff (goal 070)", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -5963,7 +5966,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("suppresses the MESSAGING sink during quiet hours (no night-time nag bypass)", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6010,7 +6013,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("treats a non-finite leadMinutes as the default instead of silently surfacing nothing", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6046,7 +6049,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("gives up after 3 attempts and records failure in history (goal 070)", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6087,7 +6090,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("breaks out of the retry loop early on non-retryable messaging errors (goal 148)", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { MessagingProviderError } = await import("@muse/messaging");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
@@ -6128,7 +6131,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("scrubs accidental credentials from delivered notice text (goal 086)", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6165,7 +6168,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("skips firing when sessionLockFile points at an active marker (goal 052)", async () => {
-    const { runDueProactiveNotices, writeSessionLock } = await import("../src/index.js");
+    const { runDueProactiveNotices, writeSessionLock } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6219,7 +6222,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("fires imminent events, persists the sidecar, dedupes on a second run", async () => {
-    const { runDueProactiveNotices, readProactiveFired } = await import("../src/index.js");
+    const { runDueProactiveNotices, readProactiveFired } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6259,7 +6262,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("re-fires when an event's startsAt changes (moved meeting)", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6296,7 +6299,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("skips all-day events", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6320,7 +6323,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("appends location when present", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6344,7 +6347,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("returns an error string but does not crash when messaging.send throws", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6371,7 +6374,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("returns an error and does not crash when calendar.listEvents throws", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6394,7 +6397,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("fires due-soon open tasks (Phase B) and dedupes the same way as calendar", async () => {
-    const { runDueProactiveNotices, readProactiveFired } = await import("../src/index.js");
+    const { runDueProactiveNotices, readProactiveFired } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6460,7 +6463,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("re-fires a rescheduled task (same id, new dueAt)", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6512,7 +6515,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("Phase C: skips calendar events whose title or notes contain [no-proactive]", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6566,7 +6569,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("Phase C: skips tasks with proactive: false even when imminent", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6607,7 +6610,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("Phase D: synthesises notice text via agent when active-session window is in range", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6654,7 +6657,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("Phase D: falls back to flat text when no recent activity", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6695,7 +6698,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("Phase D: falls back to flat text + records error when synthesis throws", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6732,7 +6735,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("Phase D: prefers modelProvider over agentRuntime when both set", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6782,7 +6785,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("Phase D: publishes to the agent-initiated-notice broker alongside the messaging send", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6823,7 +6826,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("Phase D: does not publish to the broker when agentInitiatedNoticeUserId is missing", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6852,7 +6855,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("Phase D: drops back to flat text when synthesis emits tool-call JSON", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6892,7 +6895,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("combines calendar + task sources in one run", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6932,7 +6935,8 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("appends a delivered-row to historyFile when configured", async () => {
-    const { runDueProactiveNotices, readProactiveHistory } = await import("../src/index.js");
+    const { readProactiveHistory } = await import("@muse/stores");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -6968,7 +6972,8 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("appends a failed-row to historyFile when messaging.send throws", async () => {
-    const { runDueProactiveNotices, readProactiveHistory } = await import("../src/index.js");
+    const { readProactiveHistory } = await import("@muse/stores");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7005,7 +7010,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("readProactiveHistory returns empty + tolerates missing / corrupt files", async () => {
-    const { readProactiveHistory } = await import("../src/index.js");
+    const { readProactiveHistory } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7017,7 +7022,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("skips an Invalid-Date calendar event instead of crashing the whole tick", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7049,7 +7054,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("selectProactiveSink: terminal only when a sink is wired AND presence is recorded", async () => {
-    const { selectProactiveSink } = await import("../src/index.js");
+    const { selectProactiveSink } = await import("@muse/proactivity");
     expect(selectProactiveSink({ lastActivityMs: () => 1 }, false)).toBe("messaging");
     expect(selectProactiveSink({ lastActivityMs: () => 1 }, true)).toBe("terminal");
     expect(selectProactiveSink({ lastActivityMs: () => undefined }, true)).toBe("messaging");
@@ -7057,7 +7062,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("selectProactiveSink: presence older than the freshness window falls back to messaging", async () => {
-    const { selectProactiveSink } = await import("../src/index.js");
+    const { selectProactiveSink } = await import("@muse/proactivity");
     const now = 1_700_000_000_000;
     const win = { maxAgeMs: 300_000, nowMs: now };
     expect(selectProactiveSink({ lastActivityMs: () => now - 60_000 }, true, win)).toBe("terminal");
@@ -7067,7 +7072,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("routes the notice to the terminal sink (not messaging) when local presence is recorded", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7101,7 +7106,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("falls back to messaging when terminal presence is stale (backgrounded terminal, no black-hole)", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7136,7 +7141,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("falls back to messaging when a terminal sink is wired but no presence is recorded", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7167,7 +7172,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("autonomously investigates the unstated need and surfaces the finding in the unasked notice", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7205,7 +7210,7 @@ describe("runDueProactiveNotices", () => {
   });
 
   it("fail-open: a throwing investigator never drops the notice", async () => {
-    const { runDueProactiveNotices } = await import("../src/index.js");
+    const { runDueProactiveNotices } = await import("@muse/proactivity");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7235,7 +7240,7 @@ describe("runDueProactiveNotices", () => {
 
 describe("runDueFollowups", () => {
   it("synthesizes, delivers, and marks due followups as fired", async () => {
-    const { runDueFollowups } = await import("../src/index.js");
+    const { runDueFollowups } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7316,7 +7321,7 @@ describe("runDueFollowups", () => {
   });
 
   it("zero-due is a no-op: no synthesis, no send, no rewrite", async () => {
-    const { runDueFollowups } = await import("../src/index.js");
+    const { runDueFollowups } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync, statSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7354,7 +7359,7 @@ describe("runDueFollowups", () => {
   });
 
   it("captures per-followup errors without aborting the loop", async () => {
-    const { runDueFollowups } = await import("../src/index.js");
+    const { runDueFollowups } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7423,7 +7428,7 @@ describe("runDueFollowups", () => {
   });
 
   it("records an error and skips delivery when synthesis returns empty text", async () => {
-    const { runDueFollowups } = await import("../src/index.js");
+    const { runDueFollowups } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7467,7 +7472,7 @@ describe("runDueFollowups", () => {
   });
 
   it("respects maxPerTick — leaves overflow due-but-not-fired", async () => {
-    const { runDueFollowups } = await import("../src/index.js");
+    const { runDueFollowups } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7502,7 +7507,7 @@ describe("runDueFollowups", () => {
   });
 
   it("fires the most-overdue followup first under a tight maxPerTick", async () => {
-    const { runDueFollowups } = await import("../src/index.js");
+    const { runDueFollowups } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7524,13 +7529,13 @@ describe("runDueFollowups", () => {
     });
     expect(summary.delivered).toBe(1);
     expect(summary.fired[0]?.id).toBe("fu_oldest"); // the most-overdue, NOT the file-first fu_recent
-    const { readFollowups } = await import("../src/index.js");
+    const { readFollowups } = await import("@muse/stores");
     const remaining = (await readFollowups(file)).filter((f) => f.status === "scheduled").map((f) => f.id).sort();
     expect(remaining).toEqual(["fu_mid", "fu_recent"]); // the less-overdue two stay scheduled (not starved-wrong)
   });
 
   it("a non-finite maxPerTick (NaN from a typo'd env knob) falls back to the default, not silently zero", async () => {
-    const { runDueFollowups } = await import("../src/index.js");
+    const { runDueFollowups } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7566,7 +7571,7 @@ describe("runDueFollowups", () => {
   });
 
   it("retries transient messaging failures with exponential backoff (goal 156)", async () => {
-    const { runDueFollowups } = await import("../src/index.js");
+    const { runDueFollowups } = await import("@muse/proactivity");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7618,7 +7623,7 @@ describe("runDueFollowups", () => {
   });
 
   it("breaks out of the retry loop early on non-retryable messaging errors (goal 156)", async () => {
-    const { runDueFollowups } = await import("../src/index.js");
+    const { runDueFollowups } = await import("@muse/proactivity");
     const { MessagingProviderError } = await import("@muse/messaging");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
@@ -7663,7 +7668,7 @@ describe("runDueFollowups", () => {
 
 describe("snoozeFollowup", () => {
   it("updates scheduledFor on a scheduled entry and leaves others untouched", async () => {
-    const { snoozeFollowup, readFollowups } = await import("../src/index.js");
+    const { snoozeFollowup, readFollowups } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7686,7 +7691,7 @@ describe("snoozeFollowup", () => {
   });
 
   it("returns undefined and does not rewrite when the entry is already fired or cancelled", async () => {
-    const { snoozeFollowup, readFollowups } = await import("../src/index.js");
+    const { snoozeFollowup, readFollowups } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync, statSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7836,7 +7841,7 @@ describe("muse.followup loopback server", () => {
 
 describe("personal-patterns-fired-store", () => {
   it("read tolerates missing / bad / wrong-shape files and drops malformed entries", async () => {
-    const { readPatternsFired } = await import("../src/index.js");
+    const { readPatternsFired } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7869,7 +7874,7 @@ describe("personal-patterns-fired-store", () => {
   });
 
   it("recordPatternFired appends atomically; isPatternOnCooldown picks the newest entry per id", async () => {
-    const { recordPatternFired, readPatternsFired, isPatternOnCooldown } = await import("../src/index.js");
+    const { recordPatternFired, readPatternsFired, isPatternOnCooldown } = await import("@muse/stores");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7897,7 +7902,7 @@ describe("personal-patterns-fired-store", () => {
 
 describe("runDuePatternNotices", () => {
   it("delivers fireable pattern suggestions, records the fire, returns the summary", async () => {
-    const { runDuePatternNotices } = await import("../src/index.js");
+    const { runDuePatternNotices } = await import("@muse/proactivity");
     const { mkdtempSync, mkdirSync, writeFileSync, utimesSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7956,7 +7961,7 @@ describe("runDuePatternNotices", () => {
   });
 
   it("zero-fireable is a no-op (no send, no record write)", async () => {
-    const { runDuePatternNotices } = await import("../src/index.js");
+    const { runDuePatternNotices } = await import("@muse/proactivity");
     const { mkdtempSync, mkdirSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -7981,7 +7986,7 @@ describe("runDuePatternNotices", () => {
   });
 
   it("collects per-pattern errors and does NOT record a failed pattern", async () => {
-    const { runDuePatternNotices } = await import("../src/index.js");
+    const { runDuePatternNotices } = await import("@muse/proactivity");
     const { mkdtempSync, mkdirSync, writeFileSync, utimesSync, readFileSync, statSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8028,7 +8033,7 @@ describe("runDuePatternNotices", () => {
 
 describe("personal-episodes-store", () => {
   it("round-trips the `trusted:false` provenance bit (episode-laundering defense) and omits it when absent/true", async () => {
-    const { readEpisodes, upsertEpisode } = await import("../src/index.js");
+    const { readEpisodes, upsertEpisode } = await import("@muse/stores");
     const { mkdtempSync, readFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8045,7 +8050,7 @@ describe("personal-episodes-store", () => {
   });
 
   it("read tolerates missing / corrupt / wrong-shape files and drops invalid entries", async () => {
-    const { readEpisodes } = await import("../src/index.js");
+    const { readEpisodes } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8082,7 +8087,7 @@ describe("personal-episodes-store", () => {
   });
 
   it("upsert replaces by id; remove + clear behave correctly", async () => {
-    const { upsertEpisode, removeEpisode, clearEpisodes, readEpisodes } = await import("../src/index.js");
+    const { upsertEpisode, removeEpisode, clearEpisodes, readEpisodes } = await import("@muse/stores");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8132,7 +8137,7 @@ describe("personal-episodes-store", () => {
   });
 
   it("vacuum keeps the N most-recent by endedAt and returns the drop count", async () => {
-    const { upsertEpisode, vacuumEpisodes, readEpisodes } = await import("../src/index.js");
+    const { upsertEpisode, vacuumEpisodes, readEpisodes } = await import("@muse/stores");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8162,7 +8167,7 @@ describe("personal-episodes-store", () => {
   });
 
   it("vacuum is deterministic when episodes share the same endedAt (id tiebreaker — newer id desc)", async () => {
-    const { upsertEpisode, vacuumEpisodes, readEpisodes } = await import("../src/index.js");
+    const { upsertEpisode, vacuumEpisodes, readEpisodes } = await import("@muse/stores");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8185,7 +8190,7 @@ describe("personal-episodes-store", () => {
   });
 
   it("vacuumEpisodes finite-guards maxEntries so a NaN / Infinity / 0 / negative caller-supplied cap falls back to the default instead of wiping the entire episodes file (NaN: Math.max(1, Math.trunc(NaN)) === NaN, slice(0, NaN) === [], writeEpisodes([]) DESTROYS the file)", async () => {
-    const { upsertEpisode, vacuumEpisodes, readEpisodes } = await import("../src/index.js");
+    const { upsertEpisode, vacuumEpisodes, readEpisodes } = await import("@muse/stores");
     const { mkdtemp } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8226,7 +8231,7 @@ describe("personal-episodes-store", () => {
   });
 
   it("serialize emits topics only when present and non-empty", async () => {
-    const { serializeEpisode } = await import("../src/index.js");
+    const { serializeEpisode } = await import("@muse/stores");
     const withTopics = serializeEpisode({
       endedAt: "2026-05-12T22:18:00Z",
       id: "ep_t",
@@ -8512,7 +8517,7 @@ describe("muse.pattern loopback server", () => {
 
 describe("personal-followup-llm-budget-store", () => {
   it("read tolerates missing / bad-JSON / wrong-shape files (returns undefined)", async () => {
-    const { readFollowupLlmBudget } = await import("../src/index.js");
+    const { readFollowupLlmBudget } = await import("@muse/stores");
     const { mkdtempSync, writeFileSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8534,7 +8539,7 @@ describe("personal-followup-llm-budget-store", () => {
   });
 
   it("incrementFollowupLlmBudget increments same-day; resets on date change", async () => {
-    const { incrementFollowupLlmBudget, readFollowupLlmBudget } = await import("../src/index.js");
+    const { incrementFollowupLlmBudget, readFollowupLlmBudget } = await import("@muse/stores");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -8554,7 +8559,7 @@ describe("personal-followup-llm-budget-store", () => {
   });
 
   it("isFollowupLlmBudgetExhausted: no record / date mismatch → false; cap reached → true; cap <= 0 → true (safety)", async () => {
-    const { isFollowupLlmBudgetExhausted } = await import("../src/index.js");
+    const { isFollowupLlmBudgetExhausted } = await import("@muse/stores");
     expect(isFollowupLlmBudgetExhausted(undefined, "2026-05-13", 20)).toBe(false);
     expect(isFollowupLlmBudgetExhausted({ calls: 19, date: "2026-05-13" }, "2026-05-13", 20)).toBe(false);
     expect(isFollowupLlmBudgetExhausted({ calls: 20, date: "2026-05-13" }, "2026-05-13", 20)).toBe(true);
@@ -8950,7 +8955,7 @@ describe("followup write durability + temp-file recovery (goal 038)", () => {
     const { mkdtempSync, readFileSync, readdirSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { writeFollowups } = await import("../src/index.js");
+    const { writeFollowups } = await import("@muse/stores");
     const dir = mkdtempSync(join(tmpdir(), "muse-fu-durability-"));
     const file = join(dir, "followups.json");
     await writeFollowups(file, [
@@ -8967,7 +8972,7 @@ describe("followup write durability + temp-file recovery (goal 038)", () => {
     const { mkdtempSync, writeFileSync, readdirSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { cleanupFollowupTempFiles } = await import("../src/index.js");
+    const { cleanupFollowupTempFiles } = await import("@muse/stores");
     const dir = mkdtempSync(join(tmpdir(), "muse-fu-orphan-"));
     const file = join(dir, "followups.json");
     writeFileSync(file, JSON.stringify({ followups: [] }), "utf8");
@@ -8989,7 +8994,7 @@ describe("sensitive store file-mode lock-ins (goal 035)", () => {
     const { mkdtempSync, statSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { writeFollowups } = await import("../src/index.js");
+    const { writeFollowups } = await import("@muse/stores");
     const dir = mkdtempSync(join(tmpdir(), "muse-store-mode-fu-"));
     const file = join(dir, "followups.json");
     await writeFollowups(file, [
@@ -9003,7 +9008,7 @@ describe("sensitive store file-mode lock-ins (goal 035)", () => {
     const { mkdtempSync, statSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { writeEpisodes, writeReminders, writeTasks } = await import("../src/index.js");
+    const { writeEpisodes, writeReminders, writeTasks } = await import("@muse/stores");
     const dir = mkdtempSync(join(tmpdir(), "muse-store-mode-sweep-"));
 
     const epFile = join(dir, "episodes.json");
@@ -9030,7 +9035,7 @@ describe("sensitive store file-mode lock-ins (goal 035)", () => {
     const { mkdtempSync, statSync, chmodSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
-    const { writeProactiveFired } = await import("../src/index.js");
+    const { writeProactiveFired } = await import("@muse/proactivity");
     const dir = mkdtempSync(join(tmpdir(), "muse-proactive-mode-"));
     const file = join(dir, "proactive-fired.json");
 
@@ -9174,7 +9179,7 @@ describe("proactive-history rotation on capacity (goal 079)", () => {
   }
 
   it("rotates the live file to .1 + shifts older archives + drops past the retention budget", async () => {
-    const { appendProactiveHistory, readProactiveHistory, rotateProactiveHistoryFiles } = await import("../src/index.js");
+    const { appendProactiveHistory, readProactiveHistory, rotateProactiveHistoryFiles } = await import("@muse/stores");
     const { mkdtempSync, readFileSync, existsSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -9217,7 +9222,7 @@ describe("proactive-history rotation on capacity (goal 079)", () => {
   });
 
   it("scrubs credential shapes from title / text / error before persistence (goal 139)", async () => {
-    const { appendProactiveHistory, readProactiveHistory } = await import("../src/index.js");
+    const { appendProactiveHistory, readProactiveHistory } = await import("@muse/stores");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");
@@ -9272,7 +9277,7 @@ describe("proactive-history rotation on capacity (goal 079)", () => {
   });
 
   it("preserves the pre-079 trim-without-rotation path when archiveMaxFiles is 0 / unset", async () => {
-    const { appendProactiveHistory, readProactiveHistory } = await import("../src/index.js");
+    const { appendProactiveHistory, readProactiveHistory } = await import("@muse/stores");
     const { mkdtempSync, existsSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");
     const { join } = await import("node:path");

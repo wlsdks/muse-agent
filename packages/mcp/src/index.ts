@@ -283,14 +283,6 @@ export {
   mapMcpServerRow
 } from "./server-stores.js";
 
-export {
-  computeAvailability,
-  type AvailabilityResult,
-  type AvailabilityEventLike,
-  type BusyBlock,
-  type FreeSlot
-} from "@muse/mcp-shared";
-export { formatDueLocal } from "@muse/mcp-shared";
 export * from "./loopback-helpers.js";
 export * from "./provider-routing.js";
 export {
@@ -309,28 +301,6 @@ export {
   type LoopbackMcpServer,
   type LoopbackMcpToolDefinition
 } from "./loopback.js";
-
-export { gateProactiveNoticeSink, isQuietHour, parseQuietHours, type QuietHourRange } from "@muse/proactivity";
-export {
-  appendCheckins,
-  buildCheckinQuestion,
-  cancelCheckin,
-  readCheckins,
-  runDueCheckins,
-  scheduleCheckins,
-  selectDueCheckins,
-  snoozeCheckin,
-  writeCheckins,
-  type CancelCheckinResult,
-  type CheckinMutationReason,
-  type CheckinSendRegistry,
-  type CheckinStatus,
-  type PersistedCheckin,
-  type RunDueCheckinsOptions,
-  type RunDueCheckinsSummary,
-  type ScheduleCheckinsOptions,
-  type SnoozeCheckinResult
-} from "@muse/proactivity";
 
 export {
   CHROME_DEVTOOLS_MCP_SERVER_NAME,
@@ -360,44 +330,6 @@ export {
   type OfficialMcpPresetOptions
 } from "./official-mcp-presets.js";
 
-export {
-  createChromeSnapshot,
-  createFileSnapshot,
-  createHttpSnapshot,
-  createWebWatchRunner,
-  detectWatchTrigger,
-  parseWatchRule,
-  webWatchesFromConfig,
-  type ChromeSnapshotConnection,
-  type WatchRule,
-  type WatchTrigger,
-  type WebWatch,
-  type WebWatchRunner
-} from "@muse/proactivity";
-
-export {
-  createAmbientNoticeRunner,
-  deriveAmbientNotices,
-  FileAmbientSignalSource,
-  knowledgeAmbientQuery,
-  parseAmbientNoticeRules,
-  runAmbientNoticeTick,
-  type AmbientNotice,
-  type AmbientNoticeRunner,
-  type AmbientNoticeRule,
-  type AmbientSignal,
-  type AmbientSignalSource,
-  type KnowledgeAmbientTrigger,
-  type RunAmbientNoticeTickOptions,
-  type RunAmbientNoticeTickSummary
-} from "@muse/proactivity";
-export {
-  MacOsActiveWindowSource,
-  parseActiveWindowSignal,
-  type MacOsActiveWindowSourceOptions
-} from "@muse/proactivity";
-export { sendWithRetry, type SendWithRetryOptions } from "@muse/mcp-shared";
-
 // Notes provider abstraction. LocalDir, Apple Notes (osascript), and
 // Notion (api.notion.com) are all real adapters. The `muse.notes-multi`
 // MCP server in `loopback-notes-registry.ts` routes between them via
@@ -410,462 +342,55 @@ export { sendWithRetry, type SendWithRetryOptions } from "@muse/mcp-shared";
 // Relative-time phrase resolver (originally loopback-tasks-only).
 // Re-exported so HTTP routes can mirror the MCP tool's dueAt parsing
 // rather than duplicate semantics.
-export { resolveRelativeTimePhrase } from "@muse/mcp-shared";
 
 // Personal task store — pure data layer shared between the MCP tool,
 // the REST routes, and the CLI's --local mode.
-export {
-  compareTasksByDueDate,
-  parseTaskDueAt,
-  readTasks,
-  readTaskStatusFilter,
-  resolveTaskRef,
-  resolveTasksDueLine,
-  selectTasksDueWithin,
-  serializeTask,
-  writeTasks,
-  type DueTask,
-  type PersistedTask,
-  type TaskRefResolution,
-  type TaskStatusFilter
-} from "@muse/stores";
 
 // Personal followups store — agent-self-followup design doc step 2.
 // The detector (`extractFollowupPromises` in @muse/agent-core)
 // produces typed promises; this layer persists them to
 // `~/.muse/followups.json` so the firing daemon (later step) can
 // pick them up and honour them.
-export {
-  cancelFollowup,
-  cleanupFollowupTempFiles,
-  compareFollowupsByScheduledFor,
-  markFollowupFired,
-  readFollowups,
-  readFollowupStatusFilter,
-  serializeFollowup,
-  snoozeFollowup,
-  upsertFollowup,
-  writeFollowups,
-  type FollowupStatus,
-  type FollowupStatusFilter,
-  type PersistedFollowup
-} from "@muse/stores";
-export {
-  addObjective,
-  patchObjective,
-  readObjectives,
-  serializeObjective,
-  writeObjectives,
-  type ObjectiveKind,
-  type ObjectiveStatus,
-  type StandingObjective
-} from "@muse/stores";
-export {
-  isProposalActionable,
-  patchProposedActionStatus,
-  proposeMessageAction,
-  readProposedActions,
-  writeProposedActions,
-  type ProposedAction,
-  type ProposedActionKind,
-  type ProposedActionStatus
-} from "@muse/stores";
-export {
-  confirmProposedAction,
-  declineProposedAction,
-  type ConfirmOutcome,
-  type ConfirmProposedActionOptions,
-  type DeclineProposedActionOptions
-} from "@muse/proactivity";
-export {
-  runDueObjectives,
-  type ObjectiveEvaluation,
-  type RunDueObjectivesOptions,
-  type RunDueObjectivesSummary
-} from "@muse/proactivity";
-export {
-  findConsent,
-  hasConsent,
-  readConsents,
-  recordConsent,
-  serializeConsent,
-  writeConsents,
-  type ScopedConsent
-} from "@muse/stores";
-export {
-  performConsentedAction,
-  type ConsentedActionOutcome,
-  type ConsentedActionRequest,
-  type PerformConsentedActionOptions
-} from "@muse/proactivity";
-export {
-  ACTION_LOG_GENESIS_HASH,
-  appendActionLog,
-  computeEntryHash,
-  decryptActionLogAtRest,
-  encryptActionLogAtRest,
-  isActionLogEncrypted,
-  queryActionLog,
-  readActionLog,
-  serializeActionLogEntry,
-  verifyActionLogChain,
-  verifyActionLogChainFile,
-  type ActionLogChainVerification,
-  type ActionLogEntry,
-  type ActionResult
-} from "@muse/stores";
-export {
-  hasVeto,
-  queryVetoes,
-  readVetoes,
-  recordVeto,
-  removeVeto,
-  serializeVeto,
-  writeVetoes,
-  type ActionVeto
-} from "@muse/stores";
-export {
-  adjustPlaybookReward,
-  bumpPlaybookObservation,
-  decayStalePlaybookRewards,
-  decryptPlaybookAtRest,
-  encryptPlaybookAtRest,
-  isPlaybookEncrypted,
-  MAX_PLAYBOOK_ENTRIES,
-  PLAYBOOK_DECAY_STALE_DAYS,
-  PLAYBOOK_REWARD_MAX,
-  PLAYBOOK_REWARD_MIN,
-  queryPlaybook,
-  readPlaybook,
-  recordPlaybookStrategy,
-  removePlaybookStrategy,
-  retainPlaybookEntries,
-  writePlaybook,
-  type PlaybookEntry
-} from "@muse/stores";
-export {
-  isLearningPaused,
-  readLearningPauseState,
-  setLearningPaused,
-  type LearningPauseState
-} from "@muse/stores";
-export {
-  incrementSuppressionBlocked,
-  MAX_SUPPRESSED_LESSONS,
-  querySuppressedLessons,
-  readSuppressedLessons,
-  recordSuppressedLesson,
-  writeSuppressedLessons,
-  type SuppressedLesson
-} from "@muse/stores";
-export {
-  adjustSkillReward,
-  isSkillAvoided,
-  readSkillRewards,
-  SKILL_AVOID_BELOW,
-  SKILL_REWARD_MAX,
-  SKILL_REWARD_MIN
-} from "@muse/stores";
-export {
-  MAX_PLAN_CACHE_ENTRIES,
-  queryPlanCache,
-  readPlanCache,
-  recordPlanTemplate,
-  writePlanCache,
-  type PlanCacheEntry,
-  type PlanCacheStep
-} from "@muse/stores";
-export {
-  composeSituationalBriefing,
-  resolveDayShapeLine,
-  type BriefingImminent,
-  type SituationalBriefingInput
-} from "@muse/proactivity";
-export {
-  deriveBriefingImminent,
-  deriveCalendarBriefingImminent,
-  type BriefingCalendarEvent,
-  type BriefingCalendarLister
-} from "@muse/proactivity";
-export {
-  fetchWithRetry,
-  isRetriableStatus,
-  parseRetryAfterMs,
-  type RetryOptions
-} from "@muse/mcp-shared";
-export {
-  addContact,
-  contactIdentifier,
-  decryptContactsAtRest,
-  encryptContactsAtRest,
-  formatBirthdayBriefLine,
-  isContactsEncrypted,
-  linkContacts,
-  queryContacts,
-  readContacts,
-  removeContact,
-  resolveContact,
-  resolveUpcomingBirthdays,
-  serializeContact,
-  writeContacts,
-  type Contact,
-  type ContactResolution,
-  type UpcomingBirthday
-} from "@muse/stores";
-export {
-  createMessagingObjectiveActuator,
-  createModelObjectiveEvaluator,
-  createProposingObjectiveActuator,
-  parseObjectiveVerdict,
-  type MessagingObjectiveActuatorOptions,
-  type ModelObjectiveEvaluatorOptions
-} from "@muse/proactivity";
-export {
-  undoLoggedAction,
-  type UndoLoggedActionOptions,
-  type UndoLoggedActionResult
-} from "@muse/proactivity";
 
 // LLM-fallback budget tracker — step 5 of agent-self-followup.md.
 // Per-day counter so MUSE_FOLLOWUP_LLM_FALLBACK=true can't
 // silently burn the user's quota.
-export {
-  formatLocalDay as formatFollowupLlmBudgetDay,
-  incrementFollowupLlmBudget,
-  isFollowupLlmBudgetExhausted,
-  readFollowupLlmBudget,
-  writeFollowupLlmBudget,
-  type FollowupLlmBudgetRecord
-} from "@muse/stores";
 
 // Pattern-detection cooldown sidecar — step 4 of
 // docs/design/pattern-detection.md. Tracks the last firing time
 // per detector-assigned pattern id so a fired suggestion does not
 // re-spam the user within MUSE_PROACTIVE_PATTERN_COOLDOWN_MS.
-export {
-  dismissPattern,
-  isPatternDismissed,
-  isPatternOnCooldown,
-  readPatternsFired,
-  recordPatternFired,
-  writePatternsFired,
-  type PatternFiredRecord
-} from "@muse/stores";
-
-export {
-  readFadedMemoryKeys,
-  readRecallHits,
-  recordRecallHits,
-  writeFadedMemoryKeys,
-  writeRecallHits,
-  type RecallHitInput,
-  type RecallHitRecord
-} from "@muse/stores";
 
 // Pattern-detection firing engine — wiring half of step 4. The
 // `apps/api/src/pattern-tick.ts` setInterval rider drives this on
 // MUSE_PROACTIVE_PATTERN_TICK_MS; the engine itself is pure data
 // over the messaging registry + cooldown sidecar so tests skip the
 // daemon entirely.
-export {
-  runDuePatternNotices,
-  type RunDuePatternNoticesOptions,
-  type RunDuePatternNoticesSummary
-} from "@muse/proactivity";
-export { type AgentInitiatedNoticeBrokerLike } from "@muse/proactivity";
-
-export {
-  appendSurfaced,
-  avoidedSourceKeys,
-  computeTrustScore,
-  isSourceAvoided,
-  readTrustLedger,
-  recordOutcome,
-  sourceKey,
-  withinDailyCap,
-  type ProactiveOutcome,
-  type TrustLedgerEntry,
-  type TrustScore
-} from "@muse/stores";
-
-export {
-  addToQuarantine,
-  listPending,
-  readQuarantine,
-  setQuarantineStatus,
-  type AddToQuarantineInput,
-  type QuarantineStatus,
-  type SwarmQuarantineEntry
-} from "@muse/stores";
-
-export {
-  addReflections,
-  listReflections,
-  readReflections,
-  scoreReflectionRetention,
-  selectReflectionsForRecall,
-  selectRetainedReflections,
-  type NewReflection,
-  type ReflectionRetentionOptions,
-  type StoredReflection
-} from "@muse/stores";
 
 // Episodic memory store — step 1 of docs/design/episodic-memory.md.
 // Pure CRUD over `~/.muse/episodes.json`; later steps add the
 // session-boundary sentinel, end-of-session summariser hook,
 // persona surfacing, and `muse episode` CLI.
-export {
-  clearEpisodes,
-  computeEpisodeRetention,
-  decryptEpisodesAtRest,
-  detectTopicAbsence,
-  encryptEpisodesAtRest,
-  isEpisodesEncrypted,
-  planEpisodeConsolidation,
-  readEpisodes,
-  recurringThemes,
-  removeEpisode,
-  selectRetainedEpisodes,
-  serializeEpisode,
-  upsertEpisode,
-  vacuumEpisodes,
-  writeEpisodes,
-  type EpisodeConsolidation,
-  type EpisodeRetentionOptions,
-  type EpisodeTheme,
-  type PersistedEpisode,
-  type TopicAbsence
-} from "@muse/stores";
 
 // Note-family absence — the filesystem counterpart to topic-absence: a folder
 // of notes the user used to update regularly that has gone silent vs its own
 // cadence. Surfaced in the evening recap's "gone quiet" section.
-export {
-  detectNoteFamilyAbsence,
-  type NoteActivityEvent,
-  type NoteFamilyAbsence
-} from "@muse/proactivity";
 
 // Reusable encryption-at-rest for the function-based JSON stores — AES-256-GCM
 // envelope + the user-memory key, cross-process locked, fail-closed migration.
-export {
-  decryptFileAtRest,
-  encryptFileAtRest,
-  isFileEncryptedAtRest,
-  readMaybeEncrypted,
-  withFileLock,
-  writeMaybeEncrypted,
-  type EncryptAtRestOptions
-} from "@muse/stores";
 
 // Self-followup firing engine — step 4 of agent-self-followup.md.
 // Re-enters the model to compose the delivery message, sends via
 // the messaging registry, marks the entry fired.
-export {
-  runDueFollowups,
-  type RunDueFollowupsOptions,
-  type RunDueFollowupsSummary
-} from "@muse/proactivity";
 
 // Personal reminders store — passive reminder list shared between
 // the REST routes, the CLI, and `muse today` (both surfaces).
-export {
-  compareRemindersByDueAt,
-  filterReminders,
-  fireReminder,
-  nextReminderOccurrence,
-  normalizeReminderRecurrence,
-  parseReminderDueAt,
-  parseReminderVia,
-  resolveReminderRef,
-  type ReminderRefResolution,
-  readReminders,
-  readReminderStatusFilter,
-  serializeReminder,
-  writeReminders,
-  type PersistedReminder,
-  type ReminderRecurrence,
-  type ReminderStatusFilter,
-  type ReminderVia
-} from "@muse/stores";
-
-export {
-  BKT_GUESS,
-  BKT_LEARN,
-  BKT_PRIOR,
-  BKT_SLIP,
-  WEAKNESS_MASTERED_AT,
-  WEAKNESS_MASTERY_RETENTION_DAYS,
-  bktUpdate,
-  askTimeWeaknessNudge,
-  isMasteredWeakness,
-  readWeaknesses,
-  recordTimeParseWeakness,
-  recordWeakness,
-  recordWeaknessResolved,
-  remediationHint,
-  renderAskTimeNudge,
-  selectDevFixableWeaknesses,
-  selectRemediableWeaknesses,
-  topicKeyFromMessage,
-  upsertWeakness,
-  writeWeaknesses,
-  type AskTimeNudge,
-  type DevFixableWeakness,
-  type RemediableWeakness,
-  type WeaknessAxis,
-  type WeaknessEntry
-} from "@muse/stores";
-export {
-  analyzeRunOutcomes,
-  type RunOutcomeEntry,
-  type RunOutcomeSummary,
-  type RunOutcomeTopic
-} from "@muse/proactivity";
-
-export {
-  appendReminderHistory,
-  readReminderHistory,
-  type AppendReminderHistoryOptions,
-  type ReminderHistoryEntry
-} from "@muse/stores";
 
 // Phase B firing engine — see docs/design/reminder-firing.md. The
 // CLI's `muse remind run` and a future scheduler hook share this.
-export {
-  runDueReminders,
-  type RunDueRemindersOptions,
-  type RunDueRemindersSummary
-} from "@muse/proactivity";
 
 // Proactive surfacing (Phase A — calendar imminence, Phase B —
 // tasks due-soon). See docs/design/proactive-surfacing.md.
-export {
-  readProactiveFired,
-  readSessionLock,
-  runDueProactiveNotices,
-  selectProactiveSink,
-  sortImminentByStart,
-  writeProactiveFired,
-  writeSessionLock,
-  type ProactiveActivitySource,
-  type ProactiveAgentRuntimeLike,
-  type ProactiveFiredEntry,
-  type ProactiveFiredKind,
-  type ProactiveModelProviderLike,
-  type ProactiveNoticeSink,
-  type ProactiveSinkChoice,
-  type RunDueProactiveNoticesOptions,
-  type RunDueProactiveNoticesSummary,
-  type SessionLockPayload
-} from "@muse/proactivity";
-export {
-  appendProactiveHistory,
-  readProactiveHistory,
-  rotateProactiveHistoryFiles,
-  type AppendProactiveHistoryOptions,
-  type ProactiveHistoryEntry
-} from "@muse/stores";
 
 // Outbound messaging loopback (Phase 3 of docs/design/messaging.md):
 // the LLM can call `muse.messaging.{providers, send}` once the user
@@ -912,19 +437,3 @@ export {
 // Tasks provider abstraction. Mirrors the notes-providers
 // pattern.
 
-export {
-  DEFAULT_LEASE_STALE_MS,
-  acquireOllamaLease,
-  isOllamaLeaseHeldByOther,
-  releaseOllamaLease,
-  resolveOllamaLeaseFile
-} from "@muse/stores";
-
-export {
-  MAX_LEARN_QUEUE_EVENTS,
-  enqueueLearnEvent,
-  markLearnEventsDone,
-  readPendingLearnEvents,
-  resolveLearnQueueFile,
-  type LearnCorrectionEvent
-} from "@muse/stores";

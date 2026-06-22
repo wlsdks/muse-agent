@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { recordPlaybookStrategy } from "@muse/mcp";
+import { recordPlaybookStrategy } from "@muse/stores";
 
 import { formatIdleLearnedNotice, idleLearnedNoticeForUser, renderLearnedDigest } from "./commands-learned.js";
 

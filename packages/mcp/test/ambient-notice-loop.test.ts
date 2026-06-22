@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  deriveAmbientNotices,
-  runAmbientNoticeTick,
-  type AmbientNoticeRule,
-  type ProactiveNoticeSink
-} from "../src/index.js";
+import { deriveAmbientNotices, runAmbientNoticeTick, type AmbientNoticeRule, type ProactiveNoticeSink } from "@muse/proactivity";
 
 const standupRule: AmbientNoticeRule = {
   id: "standup-notes",

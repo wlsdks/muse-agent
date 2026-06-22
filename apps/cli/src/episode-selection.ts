@@ -1,4 +1,4 @@
-import type { PersistedEpisode } from "@muse/mcp";
+import type { PersistedEpisode } from "@muse/stores";
 
 /**
  * Choose which episodes survive the persona cap (Generative Agents,

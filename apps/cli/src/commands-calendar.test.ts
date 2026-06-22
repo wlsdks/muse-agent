@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { LocalCalendarProvider } from "@muse/calendar";
-import { type PersistedReminder } from "@muse/mcp";
+import { type PersistedReminder } from "@muse/stores";
 import { Command } from "commander";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -417,7 +417,7 @@ describe("muse calendar add — create a local event from the terminal", () => {
     const prevWeak = process.env.MUSE_WEAKNESSES_FILE;
     process.env.MUSE_WEAKNESSES_FILE = join(dir, "weaknesses.json");
     try {
-      const { readWeaknesses } = await import("@muse/mcp");
+      const { readWeaknesses } = await import("@muse/stores");
       const bad = await runAdd(["Team meeting", "--at", "blarghday next quux"]);
       expect(bad.error).toMatch(/--at must be/);
       expect((await readWeaknesses(process.env.MUSE_WEAKNESSES_FILE)).some((e) => e.axis === "time-parse")).toBe(true);

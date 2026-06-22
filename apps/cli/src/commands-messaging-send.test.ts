@@ -1,4 +1,4 @@
-import { readActionLog } from "@muse/mcp";
+import { readActionLog } from "@muse/stores";
 import { Command } from "commander";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";

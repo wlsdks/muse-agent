@@ -24,7 +24,7 @@ import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
 
 import { createGateEmbedder, createOllamaEmbedder } from "./embedder-base.js";
 import type { JsonObject } from "@muse/shared";
-import { readFadedMemoryKeys, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits } from "@muse/mcp";
+import { readFadedMemoryKeys, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits } from "@muse/stores";
 import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 

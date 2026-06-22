@@ -24,7 +24,7 @@ import { readFile } from "node:fs/promises";
 import { isMemoryInjection } from "@muse/agent-core";
 import { beliefValueTimeline, classifyFactFreshness, consolidationPlan, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, FileUserMemoryStore, keysWithActiveRetraction, normalizeMemoryKey, projectRecentlyLearned, readBeliefProvenance, recordRetraction, renderRecentlyLearnedLines, selectPromotableFacts, selectPromotableMemories, selectRecentlyForgotten, type BeliefProvenance, type ConsolidationPlan } from "@muse/memory";
 import { resolveFadedMemoriesFile, resolveRecallHitsFile } from "@muse/autoconfigure";
-import { readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/mcp";
+import { readRecallHits, writeFadedMemoryKeys, type RecallHitRecord } from "@muse/stores";
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";

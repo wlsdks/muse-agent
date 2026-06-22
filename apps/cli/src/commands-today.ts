@@ -21,11 +21,7 @@ import {
   resolveEpisodesFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
-import {
-  queryContacts,
-  readTasks,
-  readEpisodes,
-} from "@muse/mcp";
+import { queryContacts, readTasks, readEpisodes } from "@muse/stores";
 import {
   TODAY_BRIEF_SYSTEM_PROMPT as BRIEF_SYSTEM_PROMPT,
   buildTodayBriefUserMessage

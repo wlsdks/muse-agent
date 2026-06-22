@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { proposeMessageAction, readProposedActions } from "@muse/mcp";
+import { proposeMessageAction, readProposedActions } from "@muse/stores";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 

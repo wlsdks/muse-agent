@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { readSkillRewards } from "@muse/mcp";
+import { readSkillRewards } from "@muse/stores";
 import { AuthoredSkillStore } from "@muse/skills";
 
 import {

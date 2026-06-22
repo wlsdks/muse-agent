@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { readWeaknesses, recordWeakness } from "@muse/mcp";
+import { readWeaknesses, recordWeakness } from "@muse/stores";
 import type { KnowledgeMatch } from "@muse/agent-core";
 
 import { createTuiChatSubmitter, emptyAnswerFallback, filterFactsToKeys, formatNotesOverview, formatReminderList, formatTaskList, parseAgentMode, recordChatWeaknessForTurn } from "./chat-repl.js";

@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { StoreBackedEpisodicRecallProvider } from "@muse/agent-core";
 import { consolidationPlan } from "@muse/memory";
 import { InMemoryConversationSummaryStore } from "@muse/memory";
-import { readFadedMemoryKeys, readRecallHits, recordRecallHits, writeFadedMemoryKeys } from "@muse/mcp";
+import { readFadedMemoryKeys, readRecallHits, recordRecallHits, writeFadedMemoryKeys } from "@muse/stores";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 

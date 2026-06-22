@@ -8,7 +8,8 @@
 
 import { createMuseRuntimeAssembly, evaluateLocalOnlyPosture, parseBoolean, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
-import { isSkillAvoided, readCheckins, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks } from "@muse/mcp";
+import { isSkillAvoided, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks } from "@muse/stores";
+import { readCheckins } from "@muse/proactivity";
 import { aggregateActivitySignals, contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, recordRetraction, selectFireablePatterns } from "@muse/memory";
 import { AuthoredSkillStore, loadSkillsFromDirectory, type Skill } from "@muse/skills";
 import { render } from "ink";

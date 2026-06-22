@@ -16,19 +16,7 @@
 
 import { randomUUID } from "node:crypto";
 
-import {
-  addContact,
-  queryActionLog,
-  queryContacts,
-  queryVetoes,
-  readObjectives,
-  removeContact,
-  serializeActionLogEntry,
-  serializeContact,
-  serializeObjective,
-  serializeVeto,
-  type Contact
-} from "@muse/mcp";
+import { addContact, queryActionLog, queryContacts, queryVetoes, readObjectives, removeContact, serializeActionLogEntry, serializeContact, serializeObjective, serializeVeto, type Contact } from "@muse/stores";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";

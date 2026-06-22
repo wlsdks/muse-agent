@@ -11,7 +11,7 @@
  * deterministic — reuses the calendar free/busy engine; no model.
  */
 
-import { computeAvailability, type AvailabilityEventLike } from "@muse/mcp";
+import { computeAvailability, type AvailabilityEventLike } from "@muse/mcp-shared";
 
 export interface DayFocus {
   /** Start of the working window for this day. */

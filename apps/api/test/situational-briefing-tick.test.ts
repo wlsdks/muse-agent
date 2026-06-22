@@ -3,13 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, TelegramProvider } from "@muse/messaging";
-import {
-  addObjective,
-  deriveBriefingImminent,
-  deriveCalendarBriefingImminent,
-  writeTasks,
-  type StandingObjective
-} from "@muse/mcp";
+import { addObjective, writeTasks, type StandingObjective } from "@muse/stores";
+import { deriveBriefingImminent, deriveCalendarBriefingImminent } from "@muse/proactivity";
 import { describe, expect, it } from "vitest";
 
 import { startSituationalBriefingTick } from "../src/situational-briefing-tick.js";

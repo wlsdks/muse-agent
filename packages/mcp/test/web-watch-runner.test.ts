@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createWebWatchRunner, type ProactiveNoticeSink, type WebWatch } from "../src/index.js";
+import { createWebWatchRunner, type ProactiveNoticeSink, type WebWatch } from "@muse/proactivity";
 
 function setup(snapshots: Array<string | undefined>) {
   const delivered: { text: string; title: string; kind: string }[] = [];

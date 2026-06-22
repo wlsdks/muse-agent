@@ -8,7 +8,8 @@
  * Off by default; the daemon-config gate lives in `tick-daemons.ts`.
  */
 
-import { createWebWatchRunner, sendWithRetry, type ProactiveNoticeSink, type WebWatch } from "@muse/mcp";
+import { sendWithRetry } from "@muse/mcp-shared";
+import { createWebWatchRunner, type ProactiveNoticeSink, type WebWatch } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 
 import { isQuietHour, type QuietHourRange } from "./reminder-tick.js";

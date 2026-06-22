@@ -25,7 +25,7 @@ import {
   selfLearningCheck,
   type OllamaTagsEntry
 } from "./commands-doctor.js";
-import type { WeaknessEntry } from "@muse/mcp";
+import type { WeaknessEntry } from "@muse/stores";
 
 describe("conformal abstention calibration (muse doctor --calibration)", () => {
   it("parseAlpha clamps to (0,1), defaults 0.1 on bad input", () => {

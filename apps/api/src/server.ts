@@ -17,7 +17,7 @@ import {
   resolveReflectionsFile,
   resolveSkillRewardsFile
 } from "@muse/autoconfigure";
-import { queryContacts } from "@muse/mcp";
+import { queryContacts } from "@muse/stores";
 import { runActuatorByName } from "@muse/domain-tools";
 import type { JsonObject } from "@muse/shared";
 import { InMemoryRuntimeSettingsStore, RuntimeSettings } from "@muse/runtime-settings";

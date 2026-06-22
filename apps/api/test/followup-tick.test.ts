@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import type { ProactiveModelProviderLike } from "@muse/mcp";
+import type { ProactiveModelProviderLike } from "@muse/proactivity";
 import { describe, expect, it } from "vitest";
 
 import { startFollowupTick } from "../src/followup-tick.js";

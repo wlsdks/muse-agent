@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { readPendingLearnEvents } from "@muse/mcp";
+import { readPendingLearnEvents } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { enqueueSessionCorrections } from "./chat-enqueue-corrections.js";

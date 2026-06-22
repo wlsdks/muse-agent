@@ -1,9 +1,4 @@
-import {
-  McpSecurityPolicyProvider,
-  type McpManager,
-  type McpSecurityPolicyStore,
-  type McpServer
-} from "@muse/mcp";
+import { McpSecurityPolicyProvider, type McpManager, type McpSecurityPolicyStore, type McpServer } from "@muse/mcp";
 import { ToolOutputSanitizer } from "@muse/policy";
 import type { FastifyInstance } from "fastify";
 

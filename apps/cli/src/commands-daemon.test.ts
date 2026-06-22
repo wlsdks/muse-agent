@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { buildCheckinQuestion, enqueueLearnEvent, readPendingLearnEvents, readPlaybook, readProposedActions, readReflections, setLearningPaused, writeCheckins, writeEpisodes, writeFollowups, writeObjectives, writePlaybook, type PersistedCheckin, type PersistedEpisode } from "@muse/mcp";
+import { enqueueLearnEvent, readPendingLearnEvents, readPlaybook, readProposedActions, readReflections, setLearningPaused, writeEpisodes, writeFollowups, writeObjectives, writePlaybook, type PersistedEpisode } from "@muse/stores";
+import { buildCheckinQuestion, writeCheckins, type PersistedCheckin } from "@muse/proactivity";
 import { Command } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 

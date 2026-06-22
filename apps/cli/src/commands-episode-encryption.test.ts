@@ -2,7 +2,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { isEpisodesEncrypted, upsertEpisode, type PersistedEpisode } from "@muse/mcp";
+import { isEpisodesEncrypted, upsertEpisode, type PersistedEpisode } from "@muse/stores";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 

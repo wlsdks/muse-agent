@@ -1,17 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  CHROME_DEVTOOLS_MCP_SERVER_NAME,
-  InMemoryMcpServerStore,
-  McpManager,
-  chromeDevToolsToolRisk,
-  createChromeDevToolsMcpServer,
-  withChromeDevToolsRisk,
-  validateMcpServer,
-  normalizeMcpSecurityPolicy,
-  McpSecurityPolicyProvider,
-  type McpConnection
-} from "../src/index.js";
+import { CHROME_DEVTOOLS_MCP_SERVER_NAME, InMemoryMcpServerStore, McpManager, chromeDevToolsToolRisk, createChromeDevToolsMcpServer, withChromeDevToolsRisk, validateMcpServer, normalizeMcpSecurityPolicy, McpSecurityPolicyProvider, type McpConnection } from "../src/index.js";
 import type { MuseTool } from "@muse/tools";
 
 describe("createChromeDevToolsMcpServer", () => {

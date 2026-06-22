@@ -6,7 +6,7 @@ import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runDueSituationalBriefing } from "../src/index.js";
-import { composeSituationalBriefing, type BriefingImminent } from "@muse/mcp";
+import { composeSituationalBriefing, type BriefingImminent } from "@muse/proactivity";
 
 const RELATED = "[notes/acme.md] prep: bring the Q3 deck";
 const imminentItem: BriefingImminent = { kind: "event", startsAt: new Date(Date.now() + 30 * 60_000), title: "Acme strategy meeting" };

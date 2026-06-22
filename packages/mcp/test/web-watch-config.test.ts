@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createWebWatchRunner, webWatchesFromConfig, type ProactiveNoticeSink } from "../src/index.js";
+import { createWebWatchRunner, webWatchesFromConfig, type ProactiveNoticeSink } from "@muse/proactivity";
 
 function sequenceFetch(bodies: Array<{ status: number; body: string }>) {
   let i = 0;
