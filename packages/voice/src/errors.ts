@@ -11,7 +11,7 @@ export class VoiceValidationError extends Error {
 export class VoiceProviderError extends Error {
   readonly providerId: string;
   readonly code: string;
-  readonly cause?: unknown;
+  override readonly cause?: unknown;
 
   constructor(providerId: string, code: string, message: string, cause?: unknown) {
     super(message);

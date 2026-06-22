@@ -126,7 +126,7 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           }
           let dirents: Array<{ name: string; isDirectory(): boolean }>;
           try {
-            dirents = (await nodeReaddir(safe.absolute, { withFileTypes: true })) as unknown as Array<{ name: string; isDirectory(): boolean }>;
+            dirents = await nodeReaddir(safe.absolute, { withFileTypes: true });
           } catch (error) {
             return { error: `cannot list directory: ${error instanceof Error ? error.message : String(error)}` };
           }
@@ -516,7 +516,7 @@ async function walkMarkdownFrom(
   visited.add(dir);
   let entries: Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>;
   try {
-    entries = (await nodeReaddir(dir, { withFileTypes: true })) as unknown as Array<{ name: string; isDirectory(): boolean; isFile(): boolean }>;
+    entries = await nodeReaddir(dir, { withFileTypes: true });
   } catch {
     return;
   }

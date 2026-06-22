@@ -33,6 +33,8 @@
  *   - `MUSE_VOICE_TTS_MODEL` / `MUSE_VOICE_STT_MODEL` — model overrides.
  */
 
+import { accessSync, constants } from "node:fs";
+
 import {
   OpenAITtsProvider,
   OpenAIWhisperSttProvider,
@@ -57,7 +59,6 @@ function detectWhisperBinarySync(): string | undefined {
     for (const name of ["whisper-cli", "whisper-cpp"]) {
       const candidate = `${dir.replace(/\/+$/, "")}/${name}`;
       try {
-        const { accessSync, constants } = require("node:fs") as typeof import("node:fs");
         accessSync(candidate, constants.X_OK);
         return candidate;
       } catch { /* miss */ }

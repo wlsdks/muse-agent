@@ -126,15 +126,15 @@ export function registerTasksRoutes(server: FastifyInstance, gate: TasksRoutesGa
       ...existing,
       ...(typeof body.title === "string" && body.title.trim().length > 0 ? { title: body.title.trim() } : {}),
       ...(typeof body.notes === "string"
-        ? body.notes.length > 0 ? { notes: body.notes } : { notes: undefined as unknown as string }
+        ? body.notes.length > 0 ? { notes: body.notes } : { notes: undefined }
         : {}),
       ...(Array.isArray(body.tags)
         ? body.tags.length > 0
           ? { tags: (body.tags as unknown[]).filter((entry): entry is string => typeof entry === "string") }
-          : { tags: undefined as unknown as readonly string[] }
+          : { tags: undefined }
         : {}),
       ...(dueAt === null
-        ? { dueAt: undefined as unknown as string }
+        ? { dueAt: undefined }
         : dueAt !== undefined ? { dueAt } : {}),
       ...(typeof body.urgent === "boolean" ? { urgent: body.urgent } : {})
     };

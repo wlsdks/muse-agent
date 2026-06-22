@@ -475,9 +475,9 @@ export function registerTasksCommands(program: Command, io: ProgramIO, helpers: 
         // Clear-out semantics: --notes "" / --tags "" / --due none drop the field.
         const cleared: PersistedTask = {
           ...patched,
-          ...(typeof updates.notes === "string" && updates.notes.length === 0 ? { notes: undefined as unknown as string } : {}),
-          ...(Array.isArray(updates.tags) && (updates.tags as readonly string[]).length === 0 ? { tags: undefined as unknown as readonly string[] } : {}),
-          ...(updates.dueAt === null ? { dueAt: undefined as unknown as string } : {})
+          ...(typeof updates.notes === "string" && updates.notes.length === 0 ? { notes: undefined } : {}),
+          ...(Array.isArray(updates.tags) && (updates.tags as readonly string[]).length === 0 ? { tags: undefined } : {}),
+          ...(updates.dueAt === null ? { dueAt: undefined } : {})
         };
         const next = [...all];
         next[index] = cleared;

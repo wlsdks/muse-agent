@@ -179,9 +179,8 @@ function normalizeRecord(record: RecallHitRecord): RecallHitRecord {
   if (!Array.isArray(raw)) return record;
   const cleaned = (raw as unknown[]).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   if (cleaned.length === 0) {
-    const out: Record<string, unknown> = { ...record };
-    delete out["recentAccessMs"];
-    return out as unknown as RecallHitRecord;
+    const { recentAccessMs: _omit, ...out } = record;
+    return out;
   }
   return { ...record, recentAccessMs: cleaned.slice(-MAX_RECENT_ACCESS) };
 }

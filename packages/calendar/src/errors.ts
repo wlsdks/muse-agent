@@ -59,7 +59,7 @@ export function parseRetryAfterMs(header: string | null | undefined, nowMs: numb
 export class CalendarProviderError extends Error {
   readonly providerId: string;
   readonly code: string;
-  readonly cause?: unknown;
+  override readonly cause?: unknown;
   /**
    * `true` when the underlying HTTP status was a
    * 5xx or a 429. Optional `status` parameter on the constructor

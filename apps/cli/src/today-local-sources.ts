@@ -212,11 +212,7 @@ export async function collectNotesRecursive(
   }
   let entries: { readonly name: string; isDirectory(): boolean; isFile(): boolean }[];
   try {
-    entries = (await fs.readdir(absDir, { withFileTypes: true })) as unknown as {
-      readonly name: string;
-      isDirectory(): boolean;
-      isFile(): boolean;
-    }[];
+    entries = await fs.readdir(absDir, { withFileTypes: true });
   } catch {
     return;
   }
