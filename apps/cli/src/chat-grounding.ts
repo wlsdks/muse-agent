@@ -21,8 +21,7 @@ export {
   answerAssertsUnsupportedIdentifier,
   answerAssertsUnsupportedIpAddress,
   answerAssertsUnsupportedNumber,
-  answerAssertsUnsupportedUrl,
-  valueNumbers
+  answerAssertsUnsupportedUrl
 } from "./chat-grounding-value-gate.js";
 
 // Per-turn grounding for the conversational surface (`muse chat`).

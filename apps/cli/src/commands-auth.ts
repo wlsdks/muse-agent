@@ -22,7 +22,7 @@ import {
 } from "./jwt-rotation-store.js";
 import type { ProgramIO } from "./program.js";
 
-export interface ReadApiOptionsResult {
+interface ReadApiOptionsResult {
   readonly baseUrl: string;
   readonly token?: string;
 }

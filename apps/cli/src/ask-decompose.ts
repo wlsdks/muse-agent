@@ -3,7 +3,7 @@ import { detectSubtaskConflicts, detectSubtaskRedundancies, runLeadWorkerTask, v
 import { answerIsRefusal } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
-export interface AskGroundingSource {
+interface AskGroundingSource {
   readonly source: string;
   readonly text: string;
 }
@@ -14,7 +14,7 @@ export interface AskAgentRunResult {
   readonly groundingSources?: readonly AskGroundingSource[];
 }
 
-export interface AskAgentRunner {
+interface AskAgentRunner {
   run(input: AgentRunInput): Promise<AskAgentRunResult>;
 }
 

@@ -30,17 +30,11 @@ export {
   EPISODIC_CLUSTER_DROP_RATIO,
   EPISODIC_CONSOLIDATION_THRESHOLD,
   EPISODIC_INHIBITION_STRENGTH,
-  episodeTimeBoost,
-  computeRecencyBoost,
   flagEpisodicConflicts,
-  hasCjkChar,
-  jaccardSimilarity,
-  selectByClusterTransition,
-  TOKEN_NON_WORD_RE,
-  tokenSet
+  selectByClusterTransition
 } from "./episodic-ranking.js";
 export type { EpisodicConflictFlag } from "./episodic-ranking.js";
-export { MAX_EPISODIC_CHARS, renderEpisodicSection } from "./episodic-render.js";
+export { renderEpisodicSection } from "./episodic-render.js";
 
 export interface EpisodicMatch {
   readonly sessionId: string;

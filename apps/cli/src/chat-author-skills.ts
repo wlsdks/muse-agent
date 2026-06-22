@@ -93,7 +93,7 @@ export async function authorSkillsFromSession(options: AuthorSkillsOptions): Pro
   return { skills: authored, status: "authored" };
 }
 
-export interface SkillRewardChange {
+interface SkillRewardChange {
   readonly name: string;
   readonly reward: number;
 }

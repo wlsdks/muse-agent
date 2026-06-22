@@ -143,7 +143,7 @@ export function formatCsvAggregate(result: AggregateResult, where?: WhereClause)
   return `${result.op} of ${result.column ?? ""}${whereNote} = ${roundIfNeeded(result.value ?? 0)} (over ${(result.counted ?? 0).toString()} value(s)${skippedNote})\n`;
 }
 
-export interface GroupAggregateRow {
+interface GroupAggregateRow {
   readonly key: string;
   readonly result: AggregateResult;
 }

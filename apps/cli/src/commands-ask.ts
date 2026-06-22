@@ -71,10 +71,10 @@ import { runDecomposedAgentAsk } from "./ask-decompose.js";
 import { CASUAL_RESPONSES, META_RESPONSE, ACTION_GUIDE } from "./ask-fast-paths.js";
 export { CASUAL_RESPONSES, META_RESPONSE, ACTION_GUIDE } from "./ask-fast-paths.js";
 import { decompositionJsonFields, decompositionStderrNotes, renderAskStreamError, type AskStreamEvent, type AskStreamResult, type DecompositionTrustSignals } from "./ask-result-output.js";
-export { decompositionJsonFields, decompositionStderrNotes, renderAskStreamError, type AskStreamEvent, type AskStreamResult, type DecompositionTrustSignals } from "./ask-result-output.js";
+export { decompositionJsonFields, decompositionStderrNotes, renderAskStreamError, type AskStreamEvent, type AskStreamResult } from "./ask-result-output.js";
 import { crossLingualUnsupportedFraction, rescueActionsCrossLingual, rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
 
-export { resolveAskTierModels, routeAskTierModel, type AskTierModels } from "./ask-tier-models.js";
+export { resolveAskTierModels, routeAskTierModel } from "./ask-tier-models.js";
 import { parseBoundedInt } from "./parse-bounded-int.js";
 export { parseBoundedInt } from "./parse-bounded-int.js";
 import type { Command } from "commander";

@@ -8,7 +8,7 @@
 
 import { type OnThisDayHit } from "@muse/mcp";
 
-export { collectDatedNotes, extractNoteDate, selectOnThisDay, type DatedNote, type OnThisDayHit } from "@muse/mcp";
+export { collectDatedNotes, extractNoteDate, selectOnThisDay, type OnThisDayHit } from "@muse/mcp";
 
 const fmtDate = (d: Date): string => d.toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" });
 

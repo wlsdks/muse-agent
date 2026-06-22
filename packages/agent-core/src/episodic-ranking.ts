@@ -48,11 +48,11 @@ export function cosineSimilarity(a: readonly number[], b: readonly number[]): nu
 // Hangul alone would leave Japanese / Chinese narratives with an
 // empty token set → zero recall, even when query and narrative
 // shared every meaningful character.
-export const TOKEN_NON_WORD_RE = /[^a-z0-9가-힯一-鿿぀-ゟ゠-ヿ]+/u;
+const TOKEN_NON_WORD_RE = /[^a-z0-9가-힯一-鿿぀-ゟ゠-ヿ]+/u;
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-export function hasCjkChar(value: string): boolean {
+function hasCjkChar(value: string): boolean {
   for (const ch of value) {
     const code = ch.codePointAt(0) ?? 0;
     if (

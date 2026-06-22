@@ -85,7 +85,7 @@ export function joinMessages(messages: readonly ModelMessage[]): string {
 // agglutinates particles without spaces ("우선순위" inside
 // "우선순위를"), where a word-boundary rule would wrongly miss the
 // stem. Same posture as packages/policy/src/topic-drift.ts.
-export function containsKeywordWithBoundary(haystack: string, keyword: string): boolean {
+function containsKeywordWithBoundary(haystack: string, keyword: string): boolean {
   if (keyword.length === 0) {
     return false;
   }

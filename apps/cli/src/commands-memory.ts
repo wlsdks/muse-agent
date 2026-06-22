@@ -705,7 +705,7 @@ export function parseKindSegment(kind: string): "facts" | "preferences" {
  * dashboard or commit-style message can render "added 2, changed
  * 1, removed 0" without re-walking the data.
  */
-export interface MemoryDiffSlot {
+interface MemoryDiffSlot {
   readonly added: Readonly<Record<string, string>>;
   readonly changed: Readonly<Record<string, { readonly from: string; readonly to: string }>>;
   readonly removed: Readonly<Record<string, string>>;

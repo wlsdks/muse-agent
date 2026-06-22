@@ -94,7 +94,7 @@ import {
 
 export { unwrapErrorMessage };
 
-export type { CorsOptions, ServerOptions, ToolCatalogEntry } from "./server-options.js";
+export type { CorsOptions, ServerOptions } from "./server-options.js";
 import type { ServerOptions } from "./server-options.js";
 
 export function buildServer(options: ServerOptions = {}): FastifyInstance {

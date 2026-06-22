@@ -93,7 +93,6 @@ export {
 // Locally-used moved symbols re-exported so existing `./knowledge-recall.js`
 // imports of them keep resolving.
 export {
-  CITATION_RE,
   classifyRetrievalConfidence,
   DEFAULT_CONFIDENT_AT,
   fuseByReciprocalRank,

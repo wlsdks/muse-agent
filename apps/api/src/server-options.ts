@@ -215,7 +215,7 @@ export interface ServerOptions {
   readonly injectionDetectionCounter?: InjectionDetectionCounter;
 }
 
-export interface ToolCatalogEntry {
+interface ToolCatalogEntry {
   readonly name: string;
   readonly description: string;
   readonly risk: "read" | "write" | "execute";

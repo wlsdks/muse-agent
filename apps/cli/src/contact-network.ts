@@ -1,11 +1,11 @@
 import type { Contact } from "@muse/mcp";
 
-export interface ContactNetworkEdge {
+interface ContactNetworkEdge {
   readonly name: string;
   readonly as?: string;
 }
 
-export interface ContactNetworkSecondEdge {
+interface ContactNetworkSecondEdge {
   readonly name: string;
   readonly via: string;
   readonly as?: string;

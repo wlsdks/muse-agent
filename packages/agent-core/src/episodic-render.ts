@@ -10,7 +10,7 @@ import { stripUntrustedTerminalChars } from "@muse/shared";
 import type { EpisodicRecallSnapshot } from "./episodic-recall.js";
 import { humanizeRelativeFromIso } from "./time-helpers.js";
 
-export const MAX_EPISODIC_CHARS = 1_500;
+const MAX_EPISODIC_CHARS = 1_500;
 
 export function renderEpisodicSection(
   snapshot: EpisodicRecallSnapshot | undefined,

@@ -79,7 +79,7 @@ export async function saveDocumentToNotes(
 // `muse read` and `muse ask --file` can use it without an import cycle. Re-export
 // the surface so existing importers of these from `commands-read` keep working.
 export { isLikelyBinary, isPdfDocument, parsePdfBuffer } from "./document-reader.js";
-export { extractDocumentText, type PdfParsed };
+export { extractDocumentText };
 
 /** Derive a sandbox-safe note id from a file's path relative to the scanned dir. */
 export function noteIdForDocument(dir: string, filePath: string, prefix: string): string {

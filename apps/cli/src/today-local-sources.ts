@@ -171,7 +171,7 @@ export async function readLocalEvents(
   }));
 }
 
-export async function readOpenTasks(tasksFile: string): Promise<readonly { id: string; title: string }[]> {
+async function readOpenTasks(tasksFile: string): Promise<readonly { id: string; title: string }[]> {
   const all = await readTasks(tasksFile);
   return all
     .filter((task: PersistedTask) => task.status === "open")

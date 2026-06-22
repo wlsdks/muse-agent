@@ -68,7 +68,6 @@ export type CompatRecord = JsonObject & {
 };
 
 export type CompatCollection = Map<string, CompatRecord>;
-export type { CompatBody } from "./compat-parsers.js";
 
 interface CompatState {
   readonly sessionTags: Map<string, CompatRecord[]>;

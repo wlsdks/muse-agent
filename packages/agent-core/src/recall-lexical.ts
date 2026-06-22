@@ -28,7 +28,7 @@ export const LEXICAL_STOPWORDS = new Set([
 // (`\p{L}`/`\p{N}` cover a–z and 0–9). A single CJK syllable IS a meaningful word
 // (unlike a lone Latin letter), so CJK tokens are kept at length ≥ 1; Latin/digit
 // tokens still need length ≥ 2 to drop stray letters.
-export function lexicalTokenList(text: string): string[] {
+function lexicalTokenList(text: string): string[] {
   return text.toLowerCase()
     .split(/[^\p{L}\p{N}]+/u)
     .filter((token) => {

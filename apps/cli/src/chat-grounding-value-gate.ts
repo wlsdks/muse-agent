@@ -13,7 +13,7 @@ import { monthDayKeys, type KnowledgeMatch } from "@muse/agent-core";
 // as VALUES — 1-2 digit numbers are counts / ordinals ("the 1st", "12th",
 // "serves 4") and date parts ("…-02-28"), whose reformatting ("3" vs "03",
 // "Sep 14") would otherwise cause false refusals.
-export function valueNumbers(text: string): Set<string> {
+function valueNumbers(text: string): Set<string> {
   const out = new Set<string>();
   for (const run of text.match(/\d[\d,]*\d|\d/gu) ?? []) {
     const digits = run.replace(/,/gu, "");

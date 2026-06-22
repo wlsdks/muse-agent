@@ -41,7 +41,7 @@ import { formatLocalDate, formatLocalDateTime as shortDateTimeBrief } from "./hu
 export { formatHeadlines, formatWeatherLine, resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
 import { resolveTodayFeedHeadlines, resolveTodayWeatherLine } from "./commands-today-feeds.js";
 import { formatEpisodeRevisitLine, formatStaleTasksSection, selectEpisodeToRevisit, selectStaleTasks } from "./today-stale-revisit.js";
-export { formatEpisodeRevisitLine, formatStaleTasksSection, selectEpisodeToRevisit, selectStaleTasks, type DueEpisode, type StaleTask } from "./today-stale-revisit.js";
+export { formatEpisodeRevisitLine, formatStaleTasksSection, selectEpisodeToRevisit, selectStaleTasks } from "./today-stale-revisit.js";
 import { formatNoteFocusSection, selectNoteFocus, type NoteMtime } from "./note-focus.js";
 import {
   annotateEventTitle,
@@ -67,16 +67,13 @@ export {
   pickConnectionQuery,
   relativeDueTag,
   selectTodayOverdue,
-  type TodayBriefing,
 } from "./today-format.js";
 import { collectNotesRecursive, composeLocalBriefing } from "./today-local-sources.js";
 export {
   buildLocalTodayText,
-  composeLocalBriefing,
   readDueFollowups,
   readDueReminders,
   readLocalEvents,
-  readOpenTasks,
   readUpcomingBirthdays,
 } from "./today-local-sources.js";
 import { loadActivePersonaPreamble } from "./persona-store.js";

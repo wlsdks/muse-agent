@@ -7,7 +7,7 @@ import {
   type TtsFormat,
   type VoiceProviderRegistry
 } from "@muse/voice";
-import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
 
@@ -164,8 +164,3 @@ function sendVoiceError(reply: FastifyReply, error: unknown): FastifyReply {
   reply.log.error({ err: error }, "voice route internal error");
   return reply.status(500).send({ code: "VOICE_INTERNAL_ERROR", error: "internal voice processing error" });
 }
-
-// Re-export to silence "unused param" lint complaints when the typed
-// FastifyRequest is read from `request.body` inline; keeping the import
-// makes the request-shape more discoverable in IDEs.
-export type { FastifyRequest };
