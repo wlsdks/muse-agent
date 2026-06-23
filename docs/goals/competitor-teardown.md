@@ -1437,7 +1437,7 @@ Key distinctive mechanisms:
 
 1. **Active Job Markers** (`/src/cron/active-jobs.ts`): Process-global `Map<jobId, CronActiveJobMarker>` with generation + token tracking. `markCronJobActive()` assigns unique tokens; `isCronActiveJobMarkerCurrent()` validates before finalizing. Survives module reloads (stored in global singleton via Symbol.for), preventing duplicate fires when a wake-path or re-entrant call tries to fire an already-executing job.
 
-2. **Croner LRU Cache** (`/src/cron/schedule.ts`): Cron expressions are parsed lazily and cached in an LRU map (max 512 entries, key = timezone expression). Handles timezone edge cases (Asia/Shanghai year-rollback bug) by retrying nextRun() from next-second and tomorrow-UTC if the result is in the past.
+2. **Croner LRU Cache** (`/src/cron/schedule.ts`): Cron expressions are parsed lazily and cached in an LRU map (max 512 entries, key = timezone+expression). Handles timezone edge cases (Asia/Shanghai year-rollback bug) by retrying nextRun() from next-second and tomorrow-UTC if the result is in the past.
 
 3. **Transient Retry with Exponential Backoff** (`/src/cron/retry-hint.ts`, `/src/cron/service/jobs.ts`): Errors are regex-classified into rate_limit, overloaded, network, timeout, server_error. One-shot jobs ('at' schedule) retry with backoff (30s, 60s, 5m, 15m, 1h); auto-disable after max attempts (default 3). Recurring jobs apply backoff but preserve their natural schedule, using max(naturalNext, backoffNext).
 
