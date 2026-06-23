@@ -21,7 +21,7 @@
 
 Theme: Muse를 hermes/openclaw 급 peer로. grounding/local 해자는 floor로 유지하고, 둘 다 가졌는데 Muse가 얇거나 없는 **순수 에이전트 역량 4개**를 결정론-우선으로 메운다. (소스: /Users/jinan/ai/hermes-agent, /Users/jinan/ai/openclaw 코드레벨 인벤토리.)
 
-> 📋 **전체 갭 카탈로그 (221개, 12개 도메인)**: [`capability-parity-backlog.md`](capability-parity-backlog.md) — 2026-06-23 12-도메인 워크플로우가 클론 소스를 코드레벨로 분석해 추출한 개발 가능 작업 항목 전수 목록 (참조-전용, Muse 자체 구현 방식 + verify 게이트 포함). 아래 Gap 1–4는 그중 1차로 착수해 완료한 슬라이스들이고, 나머지는 카탈로그에서 ★ 우선순위로 픽.
+> 📋 **전체 기회 카탈로그 (166개, 13개 도메인)**: [`capability-parity-backlog.md`](capability-parity-backlog.md) — 2026-06-23 **2단계 grounded 워크플로우**가 openclaw/hermes 소스를 **실제로 253개 파일 열어** 역량을 인벤토리한 뒤 Muse 기회로 도출. 모든 근거 파일경로는 경쟁사 레포에 실재함을 기계 검증(미해결 1건 폐기). 참조-전용, Muse 자체 구현 방식 + verify 게이트 포함. 아래 Gap 1–4는 1차 착수 완료 슬라이스, 나머지는 카탈로그에서 ★ 우선순위로 픽.
 
 ### Gap 1 — 에이전트가 호출 가능한 자기 과거 검색 (가장 큰 갭; 둘 다 있고 Muse만 없음)
 hermes `session_search_tool.py`(FTS5 trigram, CJK), openclaw `memory-search.ts`(FTS5 + 하이브리드 BM25+vector+MMR). Muse는 episodic recall이 내부용일 뿐 "전에 X 얘기한 대화/메모 찾아줘"를 에이전트가 호출할 도구가 없음.

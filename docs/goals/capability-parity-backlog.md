@@ -1,1744 +1,1483 @@
-# Capability-Parity Backlog — reaching hermes / openclaw level
+# What Muse Should Build — grounded in openclaw & hermes analysis
 
-> Generated 2026-06-23 by a 12-domain analysis workflow over the cloned reference
-> sources (`/Users/jinan/ai/openclaw` — TS/JS; `/Users/jinan/ai/hermes-agent` —
-> Python) cross-checked against Muse's own packages.
+> Generated 2026-06-23 by a **2-stage grounded workflow**: (1) 13 analysts read the
+> actual competitor source (`/Users/jinan/ai/openclaw` TS/JS · `/Users/jinan/ai/hermes-agent`
+> Python) and inventoried real capabilities — **253 competitor files opened**;
+> (2) 13 analysts mapped each verified capability to a Muse opportunity, checking Muse for status.
 >
-> **221 developable work items** across 12 capability domains.
+> **Every evidence path below was mechanically verified to exist in the competitor repo.**
+> Items whose cited file did not resolve were dropped (1 dropped of 167 raw)
+> — this is the fix for the earlier pass, where agents projected Muse's own filenames onto openclaw.
 >
-> **Reference-only.** Every item cites a concrete competitor mechanism but proposes
-> **Muse's own** implementation that respects the non-negotiables: local-first
-> (Ollama default, `MUSE_LOCAL_ONLY` on, cloud egress fail-close), the grounding /
-> citation floor (fabrication = 0), model-agnostic `agent-core`, draft-first
-> fail-close outbound, banking out of scope, deterministic guards. No item makes a
-> cloud vendor the runtime owner or relies on a bigger model.
+> **166 opportunities** across 13 domains. Reference-only: each is **Muse's own**
+> local-first, grounding-respecting build (Ollama default, `MUSE_LOCAL_ONLY` on, fabrication=0,
+> model-agnostic core, draft-first outbound, banking out of scope). No item makes a cloud vendor
+> the runtime owner or relies on a bigger model.
 >
-> **How to read:** `gap` = `missing` (Muse has nothing) or `partial` (exists but
-> weaker). `priority` ★1–5 = leverage toward parity. `effort` S/M/L. Pick work via
-> the `improve-muse` skill; build per `harness/host/dev-loop.md` §3.
->
-> **Caveat:** competitor file paths and mechanisms were read from source and are
-> reliable, but any quantitative benefit figures in a `Value` line (e.g. "8–15%
-> improvement") are **analyst-asserted, not measured** — treat them as hypotheses to
-> prove with the item's own `Verify` gate, never as established facts.
-
-## Legend
-
-- **★★★★★ / ★★★★** — highest-leverage parity gaps; do these first.
-- **gap: missing** — a capability the reference agents have and Muse lacks entirely.
-- **gap: partial** — Muse has a weaker/narrower version; the item is the hardening delta.
-- Each item names the **Muse package/file** it lands in and a **verify** gate.
+> **Reading:** `status` = `none` (Muse lacks it) / `partial` (weaker version). `★1–5` =
+> leverage toward parity. `S/M/L` = effort. **Based-on** cites the verified competitor file.
+> Quantitative figures in *Value* are analyst-asserted hypotheses — prove via the *Verify* gate.
 
 
-## Priority index (★★★★★ and ★★★★ first)
+## Priority index — do these first
 
 
-### ★★★★★ (21)
+### ★★★★★ (12)
 
-- `LLM-1` — Implement plain-text tool-call promotion from leaked text responses
-- `CTX-1` — Automatic context-reference expansion with @ syntax
-- `CTX-2` — Preflight compression check before API call
-- `MEM-1` — Implement local-model REM/Light sleep background dreaming scheduler with short-term promotion
-- `MEM-2` — Implement memory flush protocol (pre-compaction write gate with append-only constraint)
-- `SKL-1` — Skill installation and marketplace: basic hub discovery (search multiple skill sources)
-- `SKL-2` — Skill validation and risk scanning at author/install time (no prompt-injection)
-- `TSF-1` — Implement deterministic URL secret redaction in tool results and logs
-- `TSF-2` — Implement tool-loop guardrail with repeated failure detection
-- `TSF-3` — Implement redaction of secrets in tool output and logs (prefix-based + patterns)
-- `REL-1` — Implement API error classifier with priority-ordered taxonomy
-- `AUT-1` — Managed-cron contract + external scheduler integration (at-most-once, dedup, re-arm semantics)
-- `AUT-2` — Workflow serialization: save multi-turn plan + branching as replayable workflow (for team/community sharing)
-- `ORC-1` — Implement supervisor agent gateway for distributed endpoint management
-- `CHN-1` — Implement generic webhook receiver for inbound integrations
-- `CHN-2` — Implement thread-aware message routing with origin tracking
-- `MED-1` — STT provider registry + dispatch abstraction
-- `MED-2` — Document text + image extraction (PDF-first)
-- `WEB-1` — Implement web search provider ABC + registry
-- `WEB-2` — Implement browser provider ABC + registry for cloud browsers
-- `UX-1` — Context-aware progressive onboarding hints (first-time tips)
+- `CTX-1` — Legacy summary prefix stripping on re-compaction
+- `MEM-1` — Multi-Provider Memory Backend Interface
+- `MEM-2` — Concept Tagging and Semantic Vocabulary Extraction
+- `MEM-3` — LanceDB Importance-Ranked Vector Store
+- `TSF-1` — Tool-Level Policy Conformance Groups
+- `REL-1` — Jittered exponential backoff with decorrelated seeds
+- `REL-2` — Comprehensive API error classification taxonomy
+- `CHN-1` — Webhook HMAC validation with constant-time comparison and rate limiting
+- `MED-1` — Multi-Provider TTS Fallback with Ordered Chain
+- `WEB-1` — Pluggable Web Search Provider Registry with Capability Routing
+- `I18N-1` — CLI locale resolution from environment variables
+- `I18N-2` — Catalog parity enforcement via test suite
 
-### ★★★★ (45)
+### ★★★★ (32)
 
-- `LLM-2` — Implement thinking-level budgeting (token budgets per reasoning level)
-- `LLM-3` — Implement Anthropic cache-retention and session-affinity headers
-- `LLM-4` — Implement message-level tool-call deduplication by hash
-- `CTX-3` — Multi-pass conversation compression with iterative summary refinement
-- `CTX-4` — Configurable compression thresholds (working budget vs hard limit)
-- `CTX-5` — Head/tail message protection with token-budget tail mode
-- `CTX-6` — Image/video content token estimation and selective pruning
-- `CTX-7` — System-prompt three-tier assembly (stable/context/volatile)
-- `CTX-8` — Provider-specific context-length resolution with fallback chain
-- `MEM-3` — Build deterministic curation loop: auto-archive stale episodic memories + mark for consolidation review
-- `MEM-4` — Implement backup/snapshot system for episodic & knowledge stores with rollback capability
-- `SKL-3` — Skill bundles (load N skills under one /command)
-- `SKL-4` — Skill installation: 'muse skills install' from GitHub/registry with conflict resolution
-- `TSF-4` — Implement SSRF IP address blocking for network policy
-- `TSF-5` — Add homoglyph and zero-width evasion defense to injection patterns
-- `TSF-6` — Implement file-safety read denylist for .env and credential stores
-- `TSF-7` — Implement tool-result mutation verification (write_file / patch success confirmation)
-- `TSF-8` — Implement concurrent tool execution with interrupt handling
-- `REL-2` — Add jittered exponential backoff with concurrent session decorrelation
-- `REL-3` — Per-turn recovery state tracker with one-shot guards
-- `AUT-3` — Session lifecycle + expiry management (idle reset, daily reset, suspension recovery)
-- `AUT-4` — Cron job run-history + failure tracking (persisted execution log, run duration, error classification, backoff counters)
-- `AUT-5` — Model switch + version mismatch detection in cron / background jobs (fallback chain, fast mode, auth profile override)
-- `AUT-6` — Consolidation curator loop: idle-triggered skill merge (pinned skills never touched, archive old versions, test consolidated skills)
-- `ORC-2` — Add turn-level session context and source metadata tracking
-- `ORC-3` — Implement typed event streaming dispatcher with adapter rendering hooks
-- `ORC-4` — Add turn interruption and steering for active agent runs
-- `CHN-3` — Add delivery-routing logic to support multi-platform delivery targets
-- `CHN-4` — Add approval-gate enforcement for outbound delivery targets
-- `MED-3` — TTS persona registry + multi-voice fallback chain
-- `MED-4` — TTS streaming synthesis surface
-- `MED-5` — Structured document metadata extraction
-- `MED-6` — Image generation provider registry (local + remote dispatch)
-- `MED-7` — Vision input grounding verification (image OCR confidence gate)
-- `WEB-3` — Implement Firecrawl web search + extract provider
-- `WEB-4` — Implement Brave Search provider (free tier, local-compatible)
-- `WEB-5` — Implement SearXNG local provider with aggregate scoring
-- `WEB-6` — Add web extract capability to built-in muse.web server
-- `WEB-7` — Implement provider capability matrix for tool routing
-- `UX-2` — Tool call preview + verb+detail formatting (skin-aware display)
-- `UX-3` — Stream diagnostics + retry logging (per-attempt counters, upstream headers)
-- `UX-4` — Doctor command with --lint (read-only structured findings, JSON output)
-- `UX-5` — Busy-input mode hints + /verbose cycling for tool progress
-- `UX-6` — Error type classification + actionable remediation (retry vs config-fix vs user-error)
-- `UX-7` — First-run config validation + remediation wizard (non-interactive guided tour)
+- `LLM-1` — Anthropic native output_config.effort (thinking level) mapping
+- `CTX-2` — Parenthesis-aware reference preservation in chunking
+- `CTX-3` — File-operation metadata tracking in compactions
+- `CTX-4` — Compression metadata with summary-end markers
+- `MEM-4` — Memory Wiki / Knowledge Vault with Hand-Curated Separation
+- `MEM-5` — Deep Dreaming with Light Sleep + REM Phases
+- `MEM-6` — Spaced-Practice Short-Term to Long-Term Promotion Pipeline
+- `MEM-7` — Pluggable Embedding Provider Interface with Multi-Model Support
+- `SKL-1` — Skill Config Variable Extraction and Frontmatter Resolution
+- `SKL-2` — Skill Workshop Proposal and Approval Quarantine Workflow
+- `TSF-2` — Network SSRF Policy & URL Credential Redaction
+- `TSF-3` — Execution Approval Configuration & Allowlisting
+- `TSF-4` — Tool Result Classification for Loop Detection
+- `REL-3` — Per-attempt recovery bookkeeping with one-shot guards
+- `REL-4` — Rate limit state parsing from response headers
+- `REL-5` — Turn finalization with cleanup-error isolation
+- `AUT-1` — Job delivery modes (announce/webhook/silent) with stale-response suppression
+- `AUT-2` — Cron job idempotency via dedup_key and re-arming
+- `ORC-1` — Multi-Agent Session Lifecycle & Eviction
+- `ORC-2` — Session Event Bridge with Progress Callbacks
+- `ORC-3` — Permission Gateway with Child Approval Timeout
+- `CHN-2` — Multi-account Slack/Discord with per-account config & token resolution
+- `CHN-3` — Thread-aware auto-reply routing per account with reply mode tracking
+- `CHN-4` — Deterministic send-error classification with retryability signals
+- `MED-2` — Streaming Audio Synthesis (TTS ReadableStream)
+- `MED-3` — Audio Format Transcoding & Platform-Adaptive Delivery
+- `MED-4` — PDF Extraction with Image Fallback (OCR via Vision Model)
+- `WEB-2` — Pluggable Browser Provider Registry with Cloud Auto-Detection
+- `WEB-3` — Native JavaScript Dialog Supervisor with Agent Visibility
+- `UX-1` — Structured Health Checks with Repair Contracts and CI-Ready Linting
+- `I18N-3` — Lazy-loaded locale splitting for web bundle optimization
+- `I18N-4` — Hierarchical dotted-key fallback with depth-first traversal
 
 ---
 
 
 ## 1. LLM Runtime · Providers · Tool-Call Repair · Prompt Caching
 
-_18 items_
+_12 opportunities · 25 competitor files read_
 
 
-### `LLM-1` Implement plain-text tool-call promotion from leaked text responses  ★★★★★ · M · missing
+### `LLM-1` Anthropic native output_config.effort (thinking level) mapping  ★★★★ · M · none
 
-- **Reference:** openclaw/packages/tool-call-repair/src/promote.ts: `promoteStandalonePlainTextToolCallMessage` extracts '[tool_name: args]' blocks from plain text and promotes to structured tool calls; stream-normalizer.ts: state machine for detecting inline JSON payloads
-- **Muse approach:** Create packages/model/src/tool-call-promoter.ts with functions: (1) `detectPlainTextToolCall(text, allowedNames)` to identify candidate tool syntax, (2) `promoteToToolCall(block, resolver)` to rebuild structured calls. Integrate into the agent-core model-loop after text accumulation but before done-event emission. Small local models often emit '[fetch_content: {"url": "..."}]' instead of native tool calls; promotion recovers intent from the escaped text.
-- **Value:** Hermes sees 8-15% improvement in small-model tool-calling reliability by promoting leaked plain-text blocks; Muse currently silently discards these.
-- **Verify:** Unit test in packages/model/test/tool-call-promoter.test.ts with fixtures of leaked Ollama/LM Studio output; integration test in agent-core showing a plain-text tool call reaches tool dispatch.
+- **Based on (openclaw):** `packages/llm-core/src/model-contracts/anthropic.ts` — Normalized thinking/reasoning level mapping across providers (openclaw/hermes pattern)
+- **Muse today:** none — packages/model/src/adapter-anthropic.ts, provider-anthropic.ts, and index.ts show no output_config, effort field, or thinking-level normalization
+- **Proposal:** Add thinking-level resolution to packages/model/src/provider-anthropic.ts. Define ThinkingLevelMap type with normalized levels (minimal, low, medium, high, max). Extend toAnthropicRequest to accept an optional thinking_effort field from ModelRequest and translate it to output_config.effort. Build a per-model allowlist (claude-opus, claude-sonnet, etc.) that supports native thinking; older models get a no-op. Extend ModelRequest.reasoning to accept detailed thinking config.
+- **Value:** Enables Muse to use Anthropic's native extended thinking (claude-opus reasoning) while maintaining provider-agnostic request API; critical for leveraging native model reasoning without cloud SDK coupling
+- **Verify:** Unit test: verify that request with thinking_effort='high' maps to output_config.effort='high' for Opus; older Claude returns no-op. Integration test: generate with thinking enabled and verify thinking_tokens appear in response.usage.
 
-### `LLM-2` Implement thinking-level budgeting (token budgets per reasoning level)  ★★★★ · M · partial
+### `LLM-2` Prompt caching message-history transformation (multi-turn cache markers)  ★★★ · M · partial
 
-- **Reference:** openclaw/packages/llm-core/src/types.ts: `ThinkingBudgets` interface with per-level token caps; hermes-agent/agent/anthropic_adapter.py: `THINKING_BUDGET` dict mapping efforts to token limits
-- **Muse approach:** Add `thinkingBudgets` field to `ModelRequest` (packages/model/src/index.ts) and extend `ModelCapabilities` with per-level budget metadata. Adapter-specific implementations (adapter-anthropic.ts, adapter-ollama.ts) extract declared budgets and encode them in wire payloads (Anthropic's `output_config.budget_tokens`, Ollama's `num_predict` override per effort level). Store budget discovery in the model metadata during listModels so budget conflicts surface early.
-- **Value:** Small local models hit reasoning-budget limits unpredictably; budgeting prevents runaway token consumption and enables honest cost forecasting per reasoning level.
-- **Verify:** Add test in packages/model/test covering budget validation against model metadata, wire encoding in adapter tests, and runtime rejection when requested budget exceeds model max.
+- **Based on (hermes):** `agent/prompt_caching.py` — Chat-completion message history transformation (Anthropic prompt caching) in hermes
+- **Muse today:** partial — packages/cache/src has AnthropicPromptCache class and test shows cacheSystemPrompt/cacheTools support; packages/prompts/src has cache boundary markers. But no per-message cache_control block placement (all at top level).
+- **Proposal:** Enhance packages/cache/src to implement apply_anthropic_cache_control: place cache_control markers on system prompt block + last 3 non-system message blocks (not just the outer request level). Update toAnthropicRequest in packages/model/src/provider-anthropic.ts to walk the message array and inject cache_control: {type: 'ephemeral', ttl_seconds: 300} at appropriate content-block positions (system only, tool results, assistant text). Preserve existing test coverage.
+- **Value:** Enables ~75% token savings on multi-turn conversations by caching the most-recent stable prefix instead of whole-request; cost reduction without model changes
+- **Verify:** Unit test: verify that a 5-turn conversation with cache markers produces usage.cache_read_input_tokens > 0 on the 4th+ turn. Cost regression test: confirm total tokens for multi-turn drops by measured ~75% vs uncached.
 
-### `LLM-3` Implement Anthropic cache-retention and session-affinity headers  ★★★★ · M · partial
+### `LLM-3` Event-driven streaming with separate final-result promise (AsyncIterable + Promise<Result>)  ★★★ · M · partial
 
-- **Reference:** openclaw/packages/llm-core/src/types.ts: `cacheRetention` ('none'|'short'|'long'), `sessionId`, `promptCacheKey` in StreamOptions; hermes-agent/agent/prompt_caching.py: system_and_3 layout strategy applying cache_control to system + last 3 non-system messages
-- **Muse approach:** Extend packages/model/src/index.ts `ModelRequest` with `cacheRetention?: 'short'|'long'` and `sessionId?: string` fields. In adapter-anthropic.ts, apply cache_control breakpoints using the Hermes system_and_3 strategy: wrap system + last 3 non-system messages with `cache_control: { type: 'ephemeral', ttl: cacheRetention === 'long' ? '1h' : '5m' }`. Add session-affinity headers when sessionId is set (Anthropic beta-user-id header). Wire through the agent-core model-invocation layer so cache options flow from settings → request metadata.
-- **Value:** Anthropic prompt caching cuts multi-turn conversation costs by ~75%; Muse builds long system prompts (persona + memory + tools + RAG) that re-hit cache every turn. Missing session affinity loses cache hits across agent restarts.
-- **Verify:** Unit test in packages/cache/test showing cache_control insertion and TTL mapping; integration test with real Anthropic API (gated by API-key check) verifying cache hit reported in usage.cache_read_input_tokens.
+- **Based on (openclaw):** `packages/llm-core/src/utils/event-stream.ts` — Event-driven streaming with separate final-result promise (openclaw pattern)
+- **Muse today:** partial — packages/model/src/index.ts defines ModelProvider.stream() as AsyncIterable<ModelEvent>. model-loop.ts yields events but streams and final result are tightly coupled; callers can't elegantly await final message while iterating.
+- **Proposal:** Create packages/model/src/event-stream.ts: EventStream<T, R> implements AsyncIterable<T> with separate Promise<R> for final result. Queue + waiting-callbacks handle async push/iteration. ModelProvider.stream() returns {[Symbol.asyncIterator](): AsyncIterator<ModelEvent>, result: Promise<ModelResponse>}. Update adapter implementations to yield events and resolve final promise on 'done' event. Update model-loop.ts and streaming callers to leverage separate promise for clean final-result handling.
+- **Value:** Separates streaming progress (delta-by-delta) from final-result awaiting; prevents message fragmentation and enables proper error propagation without complex event reconstruction
+- **Verify:** Unit test: stream ModelRequest, iterate 10 deltas while simultaneously awaiting .result promise; verify both complete without deadlock and final response is clean. Regression: existing streaming iterators still work.
 
-### `LLM-4` Implement message-level tool-call deduplication by hash  ★★★★ · S · missing
+### `LLM-4` Tool-call plain-text repair with streaming state machine  ★★ · L · partial
 
-- **Reference:** hermes-agent/agent/tool_dispatch_helpers.py: module-level utilities for parallelism, mutation tracking; agent loop deduplicates tool calls within a single message by serialized arguments to prevent duplicate file writes
-- **Muse approach:** Create packages/agent-core/src/tool-call-deduplicator.ts (or extend existing ToolCallDeduplicator if present) with a function `deduplicateToolCallsInMessage(toolCalls, hashFn)` that removes exact duplicates (same name + arguments hash) while preserving order of first occurrence. Use SHA256 of JSON-serialized arguments as the hash. Integrate into model-loop.ts before tool-batch dispatch. Small models sometimes emit the same tool call twice (e.g., fetch_content with identical URL); dedup prevents double-execution and idempotency violations.
-- **Value:** Ollama/LM Studio small models emit duplicate tool calls in a single turn; without dedup, file_write executes twice on the same path, corrupting files. Hermes dedup is a safety gate.
-- **Verify:** Unit test in packages/agent-core/test with multiple tool calls, some identical, verifying dedup preserves first and removes duplicates.
+- **Based on (openclaw):** `packages/tool-call-repair/src/promote.ts, packages/tool-call-repair/src/stream-normalizer.ts` — Plain-text tool-call repair and promotion + Streaming tool-call text normalization (openclaw pattern)
+- **Muse today:** partial — packages/model/src/provider-shared.ts has recoverToolArgsJson() and sanitizeToolCallName(); adapter-ollama.ts recovers args from strings. But no streaming state machine for partial-tag buffering across deltas, no plain-text [tool:name] bracket format detection or promotion to native ToolCall blocks.
+- **Proposal:** Create packages/model/src/tool-call-repair.ts with PlainTextToolCallStreamNormalizer state machine: detect bracket ([tool:name]...) and XML-ish tool-call formats in text deltas, buffer partial payloads across chunk boundaries, emit normalized tool-call events. Export from index.ts. Integrate into streaming path in adapter-ollama.ts and OpenAI-compatible path. Add hooks in ModelProvider.stream to optional repair middleware.
+- **Value:** Small local models (gemma4, qwen) leak tool calls as text when instruction-tuning is weak; stateful streaming repair recovers them without losing information, preventing tool-routing fallbacks
+- **Verify:** Streaming test: mock a Qwen model that emits '[tool: search]\n{"query": "test"}' across 3 deltas; verify normalizer buffers and emits proper tool-call event. End-to-end: confirm leaky-model paths now route correctly instead of falling back to clarification.
 
-### `LLM-5` Add provider-specific thinking-format adapters (Qwen/DeepSeek/OpenAI)  ★★★ · M · partial
+### `LLM-5` Message sanitization with surrogate recovery (UTF-8 + control char handling)  ★★ · S · none
 
-- **Reference:** hermes-agent/agent/think_scrubber.py: StreamingThinkScrubber state machine strips '<think>', '<thinking>', '<reasoning>', '<REASONING_SCRATCHPAD>' tags per-delta; openclaw/packages/agent-core/src/reasoning.ts: `resolveAgentReasoningOption` with thinkingLevelMap per model API
-- **Muse approach:** Extend packages/model/src/provider-shared.ts with a `createLeadingThinkStripper` variant (currently exists but only for Ollama). Add format-discovery to adapter listModels: query model metadata (OpenRouter, models.dev) to detect which format the model uses. Store in `ModelCapabilities.reasoning` + a new `thinkingFormat` field. Wire adapters (adapter-ollama.ts, adapter-openai.ts) use the format-specific stripper on incoming deltas and apply header logic (Qwen's `thinking` block vs Anthropic's output_config).
-- **Value:** Qwen/DeepSeek models via Ollama emit reasoning in their own XML-like syntax; without per-format stripping, the syntax leaks into user-facing text or blocks tool-calling. Hermes handles 5 formats; Muse only strips Ollama Qwen.
-- **Verify:** Integration test in packages/model/test covering a Qwen model (if available locally) or mocked response with Qwen thinking tags; verify scrubber produces clean text-delta stream events.
+- **Based on (hermes):** `agent/message_sanitization.py` — Message and tool-payload sanitization with surrogate recovery (hermes pattern)
+- **Muse today:** none — packages/model/src/provider-shared.ts and provider-openai-parse.ts show no surrogate handling or control-char escaping. No multi-field coverage for reasoning_content or tool arguments.
+- **Proposal:** Add packages/model/src/message-sanitizer.ts: export sanitizeMessages(messages: ModelMessage[]) that walks all message content, tool arguments, and optional reasoning fields; replaces lone surrogates (U+D800-DFFF) with U+FFFD and unescaped control chars (0x00-0x1F) with safe escapes. Integrate into toAnthropicRequest, toGeminiRequest, toOpenAIChatRequest. No-op on clean input.
+- **Value:** Byte-level models emit invalid UTF-8 that crashes JSON.dumps; deterministic sanitization prevents downstream crashes and silent data loss in multi-field structures
+- **Verify:** Unit test: ModelMessage with lone surrogates in content and tool arguments; verify all replaced with U+FFFD and JSON stringification succeeds. Regression: ensure clean messages are byte-identical after sanitization.
 
-### `LLM-6` Implement per-model adaptive thinking-level mapping (effort aliases)  ★★★ · M · partial
+### `LLM-6` Streaming thinking/reasoning block scrubber with partial-tag buffering  ★★ · M · partial
 
-- **Reference:** hermes-agent/agent/lmstudio_reasoning.py: `resolve_lmstudio_effort` maps user reasoning_config.effort ('medium'/'high'/'xhigh') onto LM Studio's allowed_options (which may be ['off','on'] or ['off','minimal','low','medium','high','xhigh']), returning None when unsupported so the field is omitted; anthropic_adapter.py: ADAPTIVE_EFFORT_MAP with 'minimal'→'low' downgrade for older Claude
-- **Muse approach:** Extend packages/model/src/index.ts `ModelCapabilities` with `thinkingEffortMap?: Record<string, string | null>` (normalized effort → provider-native value, or null to omit). In adapter listModels, query model metadata (OpenRouter, models.dev snapshot, or Ollama /api/show) for `capabilities.reasoning.allowed_options` and build the map. In stream/generate methods, resolve the requested reasoning level through the map before encoding on the wire. Muse's agent-core already has a reasoning-level abstraction; map it through per-model adapters.
-- **Value:** LM Studio and older Claude models have non-standard reasoning-effort vocabularies; wrong effort values cause 400 errors or silent fallback. Adaptive mapping hides provider differences from the agent loop.
-- **Verify:** Test in packages/model/test with mock LM Studio /api/models response containing allowed_options; verify adapter produces correct effort string or omits field when unsupported.
+- **Based on (hermes):** `agent/think_scrubber.py` — Streaming reasoning/thinking block scrubbing with partial-tag buffering (hermes think_scrubber.py)
+- **Muse today:** partial — packages/model/src/provider-shared.ts has stripLeadingThinkBlock() and createLeadingThinkStripper() that handle <think> tags. But createLeadingThinkStripper only strips LEADING blocks; no support for multiple variants (<thinking>, <reasoning>, <thought>), no per-consumer scrubbing for TTS/CLI hygiene.
+- **Proposal:** Enhance packages/model/src/provider-shared.ts: extend createLeadingThinkStripper to handle variants (<thinking>, <reasoning>, <REASONING_SCRATCHPAD>, <thought>) and optionally scrub mid-stream (not just leading). Export as createUniversalThinkStripper(options: {stripLeading?: boolean; stripAll?: boolean; variants?: string[]}). Add StreamingThinkScrubber facade that composites stripe + buffering logic for multi-consumer use (CLI, TTS, gateway). Apply in streaming model loops.
+- **Value:** Ensures consistent reasoning-free output across all consumers (UI, TTS, logging) without per-consumer custom filtering; prevents reasoning leakage in non-expert interfaces
+- **Verify:** Streaming test: model emits '<thinking>solve step 1</thinking>answer', split across 3 deltas; verify scrubber yields only 'answer' and empty scrubbed blocks correctly. Multi-variant test: verify <reasoning>, <REASONING_SCRATCHPAD> are also handled. Consumer test: TTS flow receives only cleaned text.
 
-### `LLM-7` Implement model-metadata versioning and stale-detection for local endpoints  ★★★ · M · missing
+### `LLM-7` Tool parallelism gating with destructive-command + file-path conflict detection  ★★ · M · partial
 
-- **Reference:** hermes-agent/agent/model_metadata.py: disk-cache with TTL (_MODEL_CACHE_TTL=3600 for OpenRouter, _ENDPOINT_MODEL_CACHE_TTL=300 for local endpoints), atomic_json_write for safe concurrent writes, endpoint-specific caching keyed by (host, port, model-name)
-- **Muse approach:** Add a `ModelMetadataStore` interface in packages/model/src/model-catalog.ts. Extend OllamaProvider.listModels to cache the response in ~/.muse/cache/ollama_models_<host>_<port>.json with 5m TTL (local changes are fast; 5m captures most updates). On each list call, compare timestamps; if cache is fresh, return cached. If stale, re-query and write atomically. When a model appears to be new (unknown sha256 of capabilities) or disappears, refresh immediately. Record the endpoint's last-known-good capabilities snapshot so a model-delete doesn't cause cascading failures in the agent loop.
-- **Value:** Ollama can add/remove/update models during Muse runtime; stale listModels caches cause the agent to try removed models or miss new reasoning models. Hermes with 5m local TTL catches 95%+ of user-level changes without network roundtrips.
-- **Verify:** Test in packages/model/test: mock listModels call with cached response; verify 5m TTL is respected; add a model and verify immediate refresh after timestamp mismatch.
+- **Based on (hermes):** `agent/tool_dispatch_helpers.py` — Tool parallelism gating with file-path conflict detection (hermes pattern)
+- **Muse today:** partial — packages/agent-core/src/tool-batch-conflict.ts detects write-write conflicts on same identity arg. But no never-parallel tool allowlist (clarify), no destructive-command regex (rm/mv/sed -i/git-reset), no file-path-overlap detection across different tools targeting the same path.
+- **Proposal:** Enhance packages/agent-core/src/tool-batch-conflict.ts with: (1) NEVER_PARALLEL_TOOLS constant (clarify, etc.). (2) isDestructiveCommand(tool, args) regex detector for rm/mv/cp with overwrite/git-reset/output-redirect. (3) extractFilePaths(tool, args): parse tool.inputSchema + args to detect file paths (e.g. file_edit.path, shell.command→sed -i target). (4) shouldParallelizeToolBatch(calls, tools, isMutating) returns false if batch contains never-parallel tools, destructive commands, or overlapping file-path scopes. Export and apply in model-loop.ts tool-execution gating.
+- **Value:** Prevents data races when local models emit legitimate parallel read-only batches while blocking write-write and destructive races; fine-grained parallelism unlocks performance without safety compromise
+- **Verify:** Unit test: batch=[file_read('/tmp/a'), file_read('/tmp/b')] → parallelizable=true. Batch=[file_edit('/tmp/a', {content:'new'}), file_edit('/tmp/a', {content:'other'})] → parallelizable=false. Batch=[shell('rm file'), anything] → parallelizable=false.
 
-### `LLM-8` Implement tool-call argument coercion with schema-guided type repair  ★★★ · M · partial
+### `LLM-8` Gemini native API transport with OpenAI-compatible facade + tier detection  ★★ · S · partial
 
-- **Reference:** openclaw/packages/tool-call-repair/src/promote.ts: PromotedPlainTextToolCallBlockFactory builds provider-native tool calls with argument coercion; hermes-agent/agent/message_sanitization.py: `_repair_tool_call_arguments` handles JSON parse failures and type mismatches
-- **Muse approach:** Muse already has packages/tools/src/tools-argument-validation.ts with `coerceToolArguments` (scalar + structured coercion). Extend it with a `validateAndRepairToolCall(toolCall, schema)` function that: (1) coerces args via coerceToolArguments, (2) walks tool-call argument strings for unescaped control chars / surrogates and repairs them, (3) validates required args are present, returning a repair report. Integrate into agent-core tool-batch dispatch after a tool call is extracted from the model response but before execution, so the runtime can log repair metrics and choose to re-ask the model if coercion changes semantics.
-- **Value:** Small models emit tool arguments with off-by-one type errors ('"5"' instead of 5, or stringified JSON for object params). Muse's current coercion is lossless but silent; repair + validation metrics show when models consistently fumble certain schema shapes.
-- **Verify:** Unit test in packages/tools/test with tool calls containing type mismatches; verify coercion succeeds and repair report is accurate; integration test showing metrics recorded.
+- **Based on (hermes):** `agent/gemini_native_adapter.py` — Gemini native API transport with OpenAI-compatible facade (hermes pattern)
+- **Muse today:** partial — packages/model/src/adapter-gemini.ts exists and uses Gemini native generateContent API (not OpenAI-compat). But no tier detection (free vs paid), no rate-limit header probing to gate free-tier features.
+- **Proposal:** Enhance packages/model/src/adapter-gemini.ts: add probeGeminiTier() that makes a lightweight request and inspects response headers (x-ratelimit-*) to detect free tier. Cache tier result. Block unsupported features (batching, vision, reasoning) on free tier by returning canUseFeature=false. Export tier info in ModelCapabilities.cost field ("free" vs "medium"). Update listModels to filter by tier.
+- **Value:** Prevents silent free-tier failures (quota exhaustion, feature unavailable) by upfront tier detection; graceful degradation instead of cryptic errors
+- **Verify:** Unit test: mock free-tier rate-limit headers, verify tier detection returns 'free'. Mock paid-tier headers, verify 'paid'. Feature-gating test: free tier blocks vision models from selection.
 
-### `LLM-9` Implement provider-aware token-counting and context-budget enforcement  ★★★ · M · partial
+### `LLM-9` Model catalog with provider compatibility metadata (models.dev-like registry)  ★ · L · none
 
-- **Reference:** hermes-agent/agent/model_metadata.py: `get_model_metadata` fetches context windows and max output, used by context-compression logic; chat_completion_helpers.py: `estimate_request_context_tokens` for both Chat Completions and Responses API payloads
-- **Muse approach:** Create packages/model/src/token-estimation.ts with provider-aware estimators: `estimatePromptTokens(model, messages, tools)` and `estimateCompletionTokens(model)`. For Anthropic, apply Anthropic's token-counting rules (tool definitions are cheaper per token). For OpenAI, use their per-model estimates. For Ollama, use a simple char/4 heuristic since Ollama doesn't expose token counters. Integrate into agent-core's context-budgeting layer so the agent can make trim decisions (truncate tool output, drop old memory) BEFORE calling the model, preventing silent truncation.
-- **Value:** Ollama silently truncates long prompts (observed: 8K context ate entire --with-tools prompt, left 1 output token). Pre-flight token budgeting lets the agent gracefully degrade instead of hitting the context ceiling.
-- **Verify:** Unit test in packages/model/test with known-good token counts from OpenAI (test fixtures); integration test with real Ollama showing estimate vs. actual token usage.
+- **Based on (openclaw):** `packages/model-catalog-core/src/model-catalog-types.ts` — Model catalog with provider compatibility metadata (openclaw pattern)
+- **Muse today:** none — packages/model/src/index.ts has ModelCapabilities and ModelInfo types; no central catalog with 40+ provider-specific compat flags (supportsStore, cacheControlFormat, requiresThinkingAsText, etc.). Static capabilities are hardcoded per-model in adapters.
+- **Proposal:** Create packages/model-catalog/src with: (1) ModelCompatConfig interface with provider-specific flags (supportsEagerToolInputStreaming, cacheControlFormat, supportsXhighEffort, requiresThinkingAsText, etc.). (2) MODEL_CATALOG: a JSON/TypeScript record mapping provider+modelId to compat flags. (3) resolveCompat(provider, modelId): returns merged {defaultFlags + overrides}. Build offline-first snapshot of common models (Anthropic, OpenAI, Gemini, Ollama). Optional: lazy-load from models.dev API with 60-min refresh. Apply in provider adapters to auto-adjust request shape (e.g. thinking→text for legacy models).
+- **Value:** Centralizes model metadata so a single model definition works across fundamentally different APIs with auto-detected workarounds; eliminates per-adapter hardcoding and shrinks maintenance surface
+- **Verify:** Unit test: query MODEL_CATALOG for claude-opus-4 returns {supportsNativeThinking: true, supportsCache: true}; legacy claude-3-sonnet returns {supportsNativeThinking: false}. Integration: adapter uses compat flags to auto-omit thinking from legacy model request.
 
-### `LLM-10` Implement provider-capability discovery from models.dev or vendor registries  ★★ · L · missing
+### `LLM-10` AWS Bedrock Converse API integration with credential chain + dynamic model discovery  ★ · L · none
 
-- **Reference:** hermes-agent/agent/models_dev.py: full ModelInfo dataclass (reasoning, tool_call, attachment, context_window, cost_input/output, cost_cache_read/write, knowledge_cutoff, interleaved reasoning format); bundles offline snapshot + disk cache + network refresh every 60m
-- **Muse approach:** Create packages/model/src/model-catalog.ts with a ModelCatalog interface. Lazy-load a bundled models.dev snapshot (run-build-time fetch from https://models.dev/api.json) into packages/model/src/models-dev-snapshot.json. At adapter listModels time, merge snapshot metadata (cost, cache pricing, reasoning format, context limits) with provider-native responses. Cache in ~/.muse/cache/models_catalog.json with 1h TTL. Fall back to provider-native metadata if snapshot is stale; upgrade snapshot weekly in CI.
-- **Value:** Offline-first model metadata (cost, reasoning format, cache support) lets Muse make deployment-aware decisions without network calls. Small models emit wrong capability flags; the snapshot is ground truth.
-- **Verify:** Unit test loading snapshot and merging with mocked provider response; integration test with real Ollama listModels showing merged capabilities including reasoning format and cost fields from snapshot.
+- **Based on (hermes):** `agent/bedrock_adapter.py` — AWS Bedrock Converse API integration with dynamic model discovery (hermes pattern)
+- **Muse today:** none — No bedrock adapter exists in packages/model/src. Only OpenAI-compatible, Anthropic native, Gemini, and Ollama adapters present.
+- **Proposal:** Create packages/model/src/adapter-bedrock.ts: Direct boto3-equivalent using AWS SDK for JavaScript. Manage separate runtime + control-plane clients per region. Support Bedrock Converse API (not OpenAI-compat endpoint). Lazy-import AWS SDK (optional peer dep) to keep startup fast. Credential chain: env vars (AWS_ACCESS_KEY_ID), profiles, IAM instance roles. Dynamic model discovery via ListFoundationModels + cache. Export BedrockProviderOptions and BedrockProvider class. Wire into ModelProviderRegistry.
+- **Value:** AWS-native environments get zero API-key management (IAM-based); Converse API is canonical Bedrock path. Unlocks Bedrock exclusive models (Claude via Bedrock) without OpenAI-compat fragility
+- **Verify:** Unit test: mock AWS SDK, verify credentials resolved from env chain. Integration test (requires AWS account): list models and send inference, verify response parsed correctly. Regression: existing providers unaffected.
 
-### `LLM-11` Implement stateful streaming-delta text normalization for surrogate characters and invalid UTF-8  ★★ · S · partial
+### `LLM-11` Multi-provider model ID normalization (preview→stable, model renames)  ★ · S · none
 
-- **Reference:** hermes-agent/agent/message_sanitization.py: `_sanitize_messages_surrogates` walks nested message/tool-call structures replacing UTF-8 lone surrogates with U+FFFD; `_escape_invalid_chars_in_json_strings` escapes unescaped control chars (0x00-0x1F) inside JSON
-- **Muse approach:** Create packages/model/src/text-normalizer.ts with two stateless helpers: (1) `sanitizeSurrogates(text: string)` — regex-replace lone surrogates (U+D800–U+DFFF) with U+FFFD, (2) `sanitizeInvalidJsonChars(jsonStr: string)` — character-by-character walk tracking string boundaries, escaping unescaped control chars. Apply sanitizeSurrogates to every text-delta before emitting from stream handlers (adapter-ollama.ts, adapter-openai.ts). Apply sanitizeInvalidJsonChars to tool-call argument strings before JSON.parse so byte-level reasoning models (Xiaomi/mimo, Kimi, GLM) don't crash the OpenAI SDK.
-- **Value:** Byte-level reasoning models (Xiaomi, Kimi) emit lone surrogates and control chars in reasoning blocks; Muse currently silent-fails on json.dumps. Hermes prevents SDK crashes with pre-flight scrubbing.
-- **Verify:** Unit test in packages/model/test with synthetic surrogate/control-char payloads; mock a stream event from a reasoning model and verify the scrubber produces safe output.
+- **Based on (openclaw):** `packages/model-catalog-core/src/provider-model-id-normalize.ts` — Multi-provider model ID normalization with preview-to-stable promotion (openclaw pattern)
+- **Muse today:** none — packages/model/src/index.ts has parseModelName() but no normalization for preview→stable transitions (gemini-3.1-flash-lite-preview), provider renames, or model deprecation mapping.
+- **Proposal:** Create packages/model/src/model-id-normalize.ts: normalizeModelId(provider, modelId) → normalizedId. Implement per-provider functions: normalizeGooglePreviewId (preview→GA), normalizeTogetherId (Kimi versioning), etc. Maintain a DEPRECATED_MODELS map {old→new}. Apply in ModelProviderRegistry.selectModel() and provider.listModels() to present canonical names to users while internally routing to current APIs.
+- **Value:** Models/providers rename/deprecate constantly; centralized normalization prevents config breakage when endpoints transition from preview to stable
+- **Verify:** Unit test: normalizeGooglePreviewId('gemini-3.1-flash-lite-preview') → 'gemini-3.1-flash-lite'. Registry test: old model name still works via deprecation map redirect.
 
-### `LLM-12` Implement Ollama reason-effort probing and adaptive request building  ★★ · S · missing
+### `LLM-12` Anthropic native streaming vision support (streaming image+text handling)  ★ · S · partial
 
-- **Reference:** hermes-agent/agent/lmstudio_reasoning.py: probe allowed_options from /api/models response, map user reasoning_config to provider vocabulary, return None to omit unsupported efforts; chat_completion_helpers.py: build request kwargs conditionally based on model capabilities
-- **Muse approach:** In adapter-ollama.ts `listModels`, extract `capabilities.reasoning.allowed_options` from each /api/show response (Ollama ≥0.30.0+). Store in a per-model metadata cache (keyed by model ID). In `stream` and `generate`, if reasoning is requested, check allowed_options and resolve the user's reasoning effort ('medium'/'high'/'xhigh') through a mapping table (Ollama uses OpenAI-style effort names). Only include `reasoning_effort` on the wire if the resolved effort is in the allowed set; omit otherwise (let Ollama fall back to model default). This prevents 400 errors on reasoning-capable models that don't expose the full effort range.
-- **Value:** Qwen 3.5/3.6 on Ollama support reasoning but may limit effort levels; Muse currently hardcodes 'medium' without probing, causing silent failures or unexpected token usage.
-- **Verify:** Integration test in packages/model/test with a local Ollama instance (if available) or mocked /api/show response; verify allowed_options parsing and request building.
-
-### `LLM-13` Implement graceful degradation for providers without streaming  ★★ · M · partial
-
-- **Reference:** openclaw/packages/llm-runtime/src/stream.ts: `stream()` and `complete()` entry points are both present; hermes-agent uses chat_completions.py transport layer with fallback to non-streaming requests when SSE fails
-- **Muse approach:** Muse's ModelProvider interface already has both `generate()` (blocking) and `stream()` (async iterable). Enhance the agent-core model-loop.ts to detect when a provider's stream() returns empty or times out, then fall back to generate() and emit synthetic text-delta events from the buffered response. Record a fallback event in metrics so users know when streaming degraded. Ensure the fallback path still captures tool calls, usage, and citations correctly.
-- **Value:** Network flakes or provider-side stream failures currently cause hard failures; graceful fallback to polling completes the turn with slight latency increase instead of aborting. Hermes fallback catches ~5% of production issues.
-- **Verify:** Test in agent-core/test: mock a stream() that yields nothing, verify model-loop falls back to generate() and emits correct events; verify metrics record the fallback.
-
-### `LLM-14` Implement request payload inspection hooks for debugging and sanitization  ★★ · M · partial
-
-- **Reference:** openclaw/packages/llm-core/src/types.ts: `onPayload` hook in StreamOptions to inspect/replace provider payloads before sending; hermes-agent uses this for request logging and sanitization checkpoints
-- **Muse approach:** Extend packages/model/src/index.ts `ModelRequest` with optional `onPayload?: (payload: unknown, model: ModelInfo) => unknown` callback. Thread it through adapter-base.ts OpenAICompatibleProvider.stream() / generate() methods. Before fetch, invoke the hook (if present) and use the result as the wire payload. Apply this to sanitization: hermes wraps onPayload with `_sanitize_messages_surrogates` so every request is scrubbed before send. Muse's local-only context means onPayload is also useful for bytecode inspection of large prompts before they hit the model.
-- **Value:** Request hooks enable observability (logging large payloads for debugging), security (sanitization), and cost optimization (pre-send message compression). Openclaw uses hooks extensively; Muse lacks them.
-- **Verify:** Unit test in packages/model/test with a mock hook that logs/modifies payloads; verify the modified payload reaches the provider wire method.
-
-### `LLM-15` Implement per-provider stream-error recovery with exponential backoff  ★★ · M · partial
-
-- **Reference:** hermes-agent/agent/chat_completion_helpers.py: per-provider request timeouts and stale-call detection; OpenAI SDK has built-in retry with exponential backoff for rate limits and transient errors
-- **Muse approach:** Create packages/resilience/src/stream-retry.ts with `retryableStreamError(error, provider)` function that classifies stream errors (rate limit → backoff, timeout → immediate retry, parse error → abort). Extend OpenAICompatibleProvider.stream() to wrap the fetch stream in a retry loop (exponential backoff: 100ms initial, max 10s, jitter). Record retry counts in metrics. Disable retries for non-idempotent operations (tool execution, not text generation).
-- **Value:** Ollama streams timeout or stall on heavy system load; retry with backoff completes the turn instead of failing. Hermes retry logic catches ~10% of transient failures.
-- **Verify:** Test in packages/model/test: mock a stream that throws a rate-limit error, verify retry succeeds; mock a hard error, verify abort. Measure backoff delays.
-
-### `LLM-16` Implement model-capability fallback ranking for tool selection  ★★ · M · missing
-
-- **Reference:** openclaw/packages/model-catalog-core/src/model-catalog-refs.ts: stores and normalizes model capability metadata (supportsTools, supportsStructuredOutput, thinkingFormat); agent can query and rank models by capabilities to pick the best fit
-- **Muse approach:** Extend packages/model/src/index.ts with a `ModelSelectionCriteria` interface (already partial) to include capability-based ranking. Add a function `rankModelsByCapabilities(criteria, availableModels)` that filters models by required capabilities and sorts by preference (least cost, lowest latency, highest reasoning level). Integrate into agent-core's model-selection layer so when the primary model doesn't support tools, the agent can transparently pick a fallback model from the registry that does. Store fallback preferences in settings so users can configure their tier-1 model (local fast) and tier-2 (remote capable).
-- **Value:** Small local models lack tool-calling; without fallback ranking, the agent either fails or makes bad decisions. Ranked fallback lets Muse degrade gracefully (local → remote) while staying within user's configured budget and latency SLAs.
-- **Verify:** Unit test in packages/model/test: given multiple models with different capability subsets, verify ranking returns best fit for a given criteria; integration test with model registry showing fallback selection.
-
-### `LLM-17` Implement usage-normalization for providers with non-standard token-counting  ★ · S · partial
-
-- **Reference:** openclaw/packages/llm-core/src/types.ts: Usage interface with input/output/cacheRead/cacheWrite fields; each provider adapter normalizes its wire format (e.g., OpenAI's prompt_tokens_details.cached_tokens, Anthropic's cache_read_input_tokens) to the unified struct
-- **Muse approach:** Extend packages/model/src/index.ts `ModelUsage` to include `cacheWriteTokens?: number` (Anthropic-specific). In each adapter's response parser (adapter-anthropic.ts, adapter-openai.ts, adapter-ollama.ts), normalize the wire-format usage into ModelUsage with all fields filled. For Ollama, which may not report cached tokens, default to 0. For OpenAI, map `prompt_tokens_details.cached_tokens` to `cacheReadTokens`. Ensure observability/token-usage recording (packages/observability/src/observability-token-cost.ts) handles all fields so cost rollup includes cache savings.
-- **Value:** Anthropic cache writes cost 10% of reads; without normalized usage recording, Muse can't measure cache effectiveness or forecast costs accurately when mixing providers.
-- **Verify:** Unit test in packages/model/test for each adapter's usage-parsing; verify all fields (including cache tokens) normalize correctly; integration test in packages/observability showing cost calculation includes cache components.
-
-### `LLM-18` Implement API-key rotation and provider-auth fallback chains  ★ · L · missing
-
-- **Reference:** hermes-agent/agent/anthropic_adapter.py: supports API keys, OAuth setup tokens, and Claude Code keychain credentials with automatic detection; bedrock_adapter.py: AWS identity chains (env, profile, STS assume-role)
-- **Muse approach:** Create packages/model/src/auth-chain.ts with an `AuthResolver` interface. For each provider adapter, implement an auth-resolution chain: OpenAI: env var → settings → hardcoded key; Anthropic: API key → OAuth token → Claude Code credentials → keychain. On auth failure (401), rotate to the next credential in the chain and retry. Record successful credential in metrics so users know which auth method worked. This is LOCAL-ONLY because credentials are never shipped to a server; they're resolved at request time in the runtime.
-- **Value:** Users often configure multiple API keys (dev vs prod, multiple orgs); fallback chains let the agent pick the right credential without trial-and-error. OAuth expiry causes silent failures; credential rotation catches expiry and promotes the next key.
-- **Verify:** Unit test in packages/model/test: mock multiple credentials in settings, verify resolution order; integration test with real API (if safe) or mock 401 response, verify fallback.
+- **Based on (openclaw):** `packages/llm-core/src/model-contracts/anthropic.ts` — Normalized provider capabilities with vision streaming variant handling (implied in openclaw)
+- **Muse today:** partial — packages/model/src/provider-anthropic.ts has vision attachment support in toAnthropicMessage (base64 + url). But no streaming vision metadata or incremental vision-block handling; only full-message attachment transform.
+- **Proposal:** Extend packages/model/src/provider-anthropic.ts toAnthropicRequest: detect vision models (claude-opus-4 with vision flag); add streaming support for incremental image blocks if Anthropic's streaming API surfaces partial vision progress (checkpoint with Anthropic v1 spec). For non-streaming, keep current attach-to-message logic.
+- **Value:** Enables streaming vision requests to Anthropic (if API supports), reducing time-to-first-token for vision-heavy workflows
+- **Verify:** Unit test: vision message with attachment streams incrementally (if supported). Regression: non-vision still works identically.
 
 ## 2. Context Engineering · Compression · References · Windowing
 
-_20 items_
+_13 opportunities · 20 competitor files read_
 
 
-### `CTX-1` Automatic context-reference expansion with @ syntax  ★★★★★ · M · missing
+### `CTX-1` Legacy summary prefix stripping on re-compaction  ★★★★★ · S · none
 
-- **Reference:** hermes: agent/context_references.py - parse_context_references() + preprocess_context_references_async() handles @file, @folder, @git, @url, @diff, @staged
-- **Muse approach:** Add a context-references package (or extend packages/agent-core/src) with a parser for @file:path, @folder:path, @git:ref, @url:... tokens in user messages. Expand references into inline blocks with token budgeting (hard limit 50% of context, soft 25%), blocking expansion if it exceeds capacity. Land in packages/agent-core/src/context-references.ts with exports for parse/expand/preprocess.
-- **Value:** Users can inline file snippets, folder trees, git diffs into messages without copy-paste, drastically reducing manual context injection friction and token overhead by smart inlining.
-- **Verify:** Unit test: @file with line ranges (@file:path:10-20), @folder (recursive tree), @git:HEAD (diff); integration: token budget enforcement blocks when > 50% of window
+- **Based on (hermes):** `agent/context_compressor.py` — hermes: _HISTORICAL_SUMMARY_PREFIXES tuple holds old prefix variants; normalizer strips stale prefixes so old directives don't hijack model replies
+- **Muse today:** none — packages/memory/src/memory-conversation-summary-store.ts doesn't strip legacy prefixes on re-load
+- **Proposal:** Add LEGACY_COMPACTION_SUMMARY_PREFIXES tuple to packages/memory/src/index.ts (capturing old COMPACTION_SUMMARY_PREFIX formats across releases). In applyStoredConversationSummary() (packages/agent-core/src/context-transforms.ts), strip any legacy prefix found in summary narrative before re-injecting. Prevents carryover of old compression semantics into new sessions.
+- **Value:** Sessions resume across client updates. Stale directives from older releases contradict new semantics. Scrubbing ensures consistent model behavior post-update.
+- **Verify:** A summary from v0.8 with old prefix 'resume exactly from Active Task' has that prefix removed before v0.9 uses it.
 
-### `CTX-2` Preflight compression check before API call  ★★★★★ · S · missing
+### `CTX-2` Parenthesis-aware reference preservation in chunking  ★★★★ · S · none
 
-- **Reference:** hermes: turn_context.py lines 292-325 - estimate_request_tokens_rough() before API, triggers preflight compression if should_compress() returns true
-- **Muse approach:** Add preflight-compression logic to packages/agent-core/src/runtime.ts (or agent orchestrator). Before calling the model, estimate tokens using estimateConversationTokens(); if over threshold, call trimConversationMessages() inline so the first LLM call already fits. Gate via MUSE_PREFLIGHT_COMPRESSION_ENABLED env var, default true.
-- **Value:** Avoids first-pass failures from token overflow and keeps sessions from needing recovery/retry when they cross the window just before the model call.
-- **Verify:** Scenario: 20k estimated tokens, 24k window; preflight trims to <24k before API, no overflow error
+- **Based on (openclaw):** `packages/markdown-core/src/render-aware-chunking.ts` — openclaw: findMarkdownIRPreservedSplitIndex() avoids breaking file refs like (path/file.ts)
+- **Muse today:** none — packages/agent-core/src/recall-chunking.ts splits only on paragraph/word boundaries, no paren-depth tracking
+- **Proposal:** Enhance packages/agent-core/src/recall-chunking.ts chunkText() to track parenthesis depth and prefer splits outside parentheses. Store lastOutsideParenBreak and lastOutsideParenWhitespaceBreak to avoid breaking file paths and references.
+- **Value:** File paths and URLs in parentheses stay intact through chunking, preserving retrievability and citation accuracy.
+- **Verify:** A chunk split with '(path/to/file.ts)' inside keeps the full path intact in one chunk.
 
-### `CTX-3` Multi-pass conversation compression with iterative summary refinement  ★★★★ · M · partial
+### `CTX-3` File-operation metadata tracking in compactions  ★★★★ · S · none
 
-- **Reference:** hermes: agent/context_compressor.py lines 13-16 - iterative summary updates (preserves info across multiple compactions); turn_context.py lines 337-364 shows 3-pass loop checking _compression_made_progress()
-- **Muse approach:** Enhance packages/memory/src/memory-token-trim.ts to support iterative compression: after first summarization pass, re-estimate tokens and if progress was made (> 5% token reduction OR message count drop), re-run compression on the result. Stop when no progress is detected. Add progress-check function: _compressionMadeProgress(origTokens, newTokens, origCount, newCount) returns boolean.
-- **Value:** Successive compression passes recover more detail in summaries when middle turns are deeply nested, improving semantic retention without hitting diminishing returns.
-- **Verify:** Test: compress 40 messages, verify 2-3 passes fire; token reduction > 5% triggers next pass; check final summary preserves more specifics than single-pass
+- **Based on (openclaw):** `packages/agent-core/src/harness/compaction/compaction.ts` — openclaw: extractFileOperations() tracks read/write/edit files; CompactionDetails stores readFiles + modifiedFiles; formatFileOperations() appends as XML metadata tags
+- **Muse today:** none — packages/memory/src/memory-token-trim.ts has no file-operation tracking; no metadata extraction from tool calls
+- **Proposal:** Add extractFileOperations() to packages/memory/src (or new file file-operations-metadata.ts). Track read/write/edit files from tool results in the compaction range. Store in ConversationTrimResult as readFiles / modifiedFiles arrays. Append as XML-style summary metadata tags (<read-files>, <modified-files>) to the compaction summary so future model context knows what's been edited without full code inclusion.
+- **Value:** Model knows what files were touched to avoid repeating changes or reading stale cache. File metadata is cheap compression-safe state conveyance.
+- **Verify:** Compaction summary includes '<read-files>src/main.ts, src/util.ts</read-files>' tags extracted from prior tool calls.
 
-### `CTX-4` Configurable compression thresholds (working budget vs hard limit)  ★★★★ · S · partial
+### `CTX-4` Compression metadata with summary-end markers  ★★★★ · S · none
 
-- **Reference:** hermes: turn_context.py line 81-82 - workingBudgetTokens vs hardBudgetTokens; context_compressor.py lines 64-66 threshold_percent, protect_first_n, protect_last_n
-- **Muse approach:** Extend packages/memory/src/memory-token-trim.ts ConversationTrimOptions to support two threshold tiers: workingBudgetTokens (soft proactive trigger, e.g. 75% of window) and hardBudgetTokens (absolute limit). Also expose protect_first_n (count of leading messages to keep verbatim) and protect_last_n (tail budget mode vs fixed count). Emit via MUSE_COMPRESSION_WORKING_BUDGET, MUSE_COMPRESSION_PROTECT_FIRST_N env vars.
-- **Value:** Allows proactive recompaction while quality is high (working budget) instead of only reacting when hard limit is hit, improving summary quality incrementally.
-- **Verify:** Config: working=16k, hard=20k on 20k window; compress at 16k not 20k; test protect_first_n=3 keeps first 3 user messages verbatim
+- **Based on (hermes):** `agent/context_compressor.py` — hermes: Compressed summaries receive _compressed_summary metadata key; SUMMARY_END_MARKER ('--- END OF CONTEXT SUMMARY ...') appended to signal boundary
+- **Muse today:** none — packages/memory/src/memory-conversation-summary-store.ts stores narrative but adds no explicit boundary marker or metadata
+- **Proposal:** Add COMPRESSED_SUMMARY_METADATA_KEY and SUMMARY_END_MARKER to packages/memory/src/index.ts. When insertCompactionSummary() generates a summary, append '--- END OF CONTEXT SUMMARY ---' marker. Tag the system message with _compressed_summary metadata (dropped by wire sanitizers before strict API gateways). Prevents weak models from re-executing old tasks embedded in the summary.
+- **Value:** LLMs confuse summaries with instructions and can re-run old steps. Metadata + explicit markers prevent misinterpretation of old context.
+- **Verify:** Summary message includes end marker; model doesn't re-execute old tasks from summary content.
 
-### `CTX-5` Head/tail message protection with token-budget tail mode  ★★★★ · M · partial
+### `CTX-5` Render-aware markdown chunking with style preservation  ★★★ · M · none
 
-- **Reference:** hermes: context_compressor.py line 257-267 - _estimate_msg_budget_tokens() counts full tool_call envelope not just args; turn_context.py protects head (protect_first_n) and tail (protect_last_n via token budget not fixed count)
-- **Muse approach:** Refactor packages/memory/src/memory-token-trim.ts to replace fixed protect_last_n message count with protect_last_n_tokens (token budget). When trimming, accumulate tokens backward from tail until token budget is exhausted, not just a message count. This handles large multi-tool-call assistant messages correctly (258 tokens vs 1 message). Add _estimateMessageTokensForBudget() that counts tool_call envelope weight, not just content.
-- **Value:** Prevents tail protection from being gamed by large assistant turns with parallel tool calls that look like '1 message' but are actually 1000 tokens, making compression budgets predictable.
-- **Verify:** Scenario: 1 assistant message with 8 parallel tool_calls weighs ~1200 tokens; protect_last_n_tokens=2000 preserves it; protect_last_n_tokens=800 drops it
+- **Based on (openclaw):** `packages/markdown-core/src/render-aware-chunking.ts` — openclaw: style spans + link offset adjustment during render-bounded splitting
+- **Muse today:** none — packages/agent-core/src/recall-chunking.ts has char-based splitting, no format preservation
+- **Proposal:** Add render-aware chunking to packages/agent-core/src/recall-chunking.ts: renderMarkdownIRChunksWithinLimit() splits by rendered size (not character count), tracking style spans and link offsets across chunk boundaries. Use binary-search-like logic to find character split points that fit rendered token budgets while preserving bold/italic/links.
+- **Value:** Prevents markdown corruption (links split mid-URL, code blocks mid-backtick) when knowledge chunks are token-constrained.
+- **Verify:** Test that a chunk containing '**bold [link](path.ts)**' splits at word boundary, not mid-format.
 
-### `CTX-6` Image/video content token estimation and selective pruning  ★★★★ · M · partial
+### `CTX-6` Subdirectory hint discovery with lazy loading  ★★★ · M · none
 
-- **Reference:** hermes: context_compressor.py lines 153-163 - _IMAGE_TOKEN_ESTIMATE (1600 flat per image), _IMAGE_CHAR_EQUIVALENT, _content_length_for_budget() counts images; lines 311-333 _strip_image_parts_from_parts() replaces old images with [screenshot removed] placeholder
-- **Muse approach:** Extend packages/memory/src/memory-token-trim.ts _estimateMessageTokensForBudget() to detect multimodal content (image_url, input_image, image parts in lists) and add flat 1600 tokens per image. When trimming old history, selectively strip images via _stripImagePartsFromContent() replacing them with [screenshot removed] placeholder. Preserve recent images (tail protection).
-- **Value:** Multimodal conversations (vision agent output, screenshots, diagrams) no longer blow token budgets silently; trimming can recover significant space by dropping old images while keeping recent visual context.
-- **Verify:** Scenario: 5 screenshot messages (8k tokens) + text; trim with image budget handling drops old images, preserves recent ones, reduces tokens by ~80%
+- **Based on (hermes):** `agent/subdirectory_hints.py` — hermes: SubdirectoryHintTracker loads AGENTS.md/.cursorrules per directory on first access, caps at 8KB, walks up 5 ancestors
+- **Muse today:** none — No per-directory context file loading; no lazy AGENTS.md/.cursorrules discovery in Muse
+- **Proposal:** Create packages/agent-core/src/subdirectory-hints.ts with SubdirectoryHintTracker. On tool_call (read_file, search, etc.), extract directory and load AGENTS.md/.cursorrules from that dir + up to 5 ancestors if not already cached. Cap each file at 8KB. Append hints as system section context without modifying prompt (preserves caching). Dedupe via _loaded_dirs Set.
+- **Value:** Large projects have context files at each level. Lazy discovery surfaces relevant rules as agent navigates, without pre-loading every possible context file and bloating the session.
+- **Verify:** Agent reads src/auth/main.ts; hints from src/auth/AGENTS.md and src/AGENTS.md auto-surface; second read of same dir doesn't re-load.
 
-### `CTX-7` System-prompt three-tier assembly (stable/context/volatile)  ★★★★ · M · partial
+### `CTX-7` Compression threshold tuning with context-window ratio  ★★★ · S · partial
 
-- **Reference:** hermes: agent/system_prompt.py lines 10-20 - three tiers: stable (identity, tools, platform hints), context (context files, caller system_message), volatile (memory, USER.md, timestamp). Stable cached for prefix-cache warmth.
-- **Muse approach:** Extend packages/prompts/src (or create packages/agent-core/src/system-prompt-builder.ts) to structure prompt assembly into three functions: buildStableSystemTier() (identity + tool guidance + platform hints; built once per session), buildContextSystemTier(cwd) (load .cursorrules, CLAUDE.md, caller system_message; built per session), buildVolatileSystemTier() (memory, timestamp, current mode; built every turn). Join with double newlines. Return prompt + tier boundaries for cache instrumentation.
-- **Value:** Enables upstream prefix caching on Claude/Anthropic models by keeping stable tier immutable, dramatically improving latency on long-running sessions. Also lets callers selectively override context files per session.
-- **Verify:** Build prompt 3x, verify stable tier never changes; context tier changes only across sessions; volatile tier changes every turn; check prefix cache hit rate increases
+- **Based on (hermes):** `agent/context_compressor.py` — hermes: should_compress() checks prompt_tokens > threshold_tokens; dynamic threshold via _compute_threshold_tokens() with percentage-based + degenerate small-window handling
+- **Muse today:** partial — packages/memory/src/memory-token-trim.ts has workingBudgetTokens + hardBudgetTokens but no dynamic threshold percentage tuning per model's effective window
+- **Proposal:** Enhance ConversationTrimOptions in packages/memory/src/index.ts: add thresholdPercentage (default 75%) and effectiveContextWindow (contextWindow - maxCompletionTokens). In trimConversationMessages(), compute dynamic threshold as percentage of effective window, with degenerate case (window <10k) triggered at 85% instead. Fire compression before provider hard limit, not at it.
+- **Value:** Triggers fire early enough to preserve quality, late enough to maximize budget usage. Tuning per model's actual output reservation prevents provider-side rejections.
+- **Verify:** A 10k-token model with 1k max_completion_tokens triggers at 85% of 9k (7.65k), not 75%.
 
-### `CTX-8` Provider-specific context-length resolution with fallback chain  ★★★★ · S · partial
+### `CTX-8` Split-turn prefix summarization for mid-conversation boundaries  ★★★ · M · partial
 
-- **Reference:** hermes: agent/model_metadata.py lines 190-300+ - get_model_context_length() tries: cached value, provider API (Anthropic/OpenAI), hardcoded family fallback, error-extracted from failed request
-- **Muse approach:** Extend packages/model-adapters/src with a model-metadata.ts that caches context lengths per model/provider and tries a fallback chain: localStorage cache, provider catalog API (for known providers), hardcoded family defaults (claude-opus=200k, gemma4=8k), or return a conservative default (8k). Update after each failed request that includes a context-limit error. Call this early in autoconfigure so compression thresholds can be sized correctly.
-- **Value:** Muse can run across many model/provider combos without guessing context lengths; failures are recorded so later attempts work; local-only fallback (hardcoded) keeps things working offline.
-- **Verify:** Query claude-opus via Anthropic API: returns 200k; query unknown model: falls back to 8k default; cache it; restart: uses cached value
+- **Based on (openclaw):** `packages/agent-core/src/harness/compaction/compaction.ts` — openclaw: When findCutPoint() splits an in-progress turn, messagesToSummarize + turnPrefixMessages are separated; prefix gets generateTurnPrefixSummary() with specialized prompt focusing early decisions + context bridge
+- **Muse today:** partial — packages/memory/src/memory-token-trim.ts has trimming logic but no specialized split-turn prefix handling
+- **Proposal:** Enhance insertCompactionSummary() in packages/memory/src/memory-token-trim.ts: when isSplitTurn=true, separate turnPrefixMessages from messagesToSummarize. Call generateTurnPrefixSummary() on prefix with a prompt targeting early decisions + context needed by the retained suffix. Concatenate both summaries with markdown separator so the boundary is explicit.
+- **Value:** Conversations rarely end at message boundaries. Split-turn summarization preserves the context bridge between discarded prefix and kept suffix, preventing causality breaks.
+- **Verify:** A cut splitting an assistant's multi-step response generates both prefix summary (what was attempted) and full summary (the plan).
 
-### `CTX-9` Compressed summary metadata tagging (non-wire-exposed keys)  ★★★ · S · missing
+### `CTX-9` Focus-topic-guided compression with asymmetric detail allocation  ★★ · M · none
 
-- **Reference:** hermes: context_compressor.py lines 75-85 - COMPRESSED_SUMMARY_METADATA_KEY = '_compressed_summary' (underscore-prefixed so wire sanitizers strip it before reaching strict gateways like Fireworks)
-- **Muse approach:** Update packages/memory/src/memory-token-trim.ts insertCompactionSummary() to tag summary messages with _compressed_summary: true metadata key. Add a sanitizer in packages/model (or before wire transmission) that strips underscore-prefixed keys from all messages before API calls. Document the contract: underscore keys = internal only, never reach the wire.
-- **Value:** Lets frontends (CLI, desktop, TUI, gateway) render summaries distinctly from real user/assistant messages without content-prefix heuristics, and prevents strict API gateways from rejecting unknown-key payloads.
-- **Verify:** Compress conversation, check summary message has {_compressed_summary: true}; before wire call, verify key is stripped; test Fireworks-compatible API call succeeds
+- **Based on (hermes):** `agent/context_compressor.py` — hermes: compress() accepts optional focus_topic; summarization prompt directs ~60-70% allocation to focus-topic content with full detail
+- **Muse today:** none — packages/memory/src/memory-token-trim.ts has uniform importance scoring, no focus-topic guidance
+- **Proposal:** Add focusTopic parameter to ConversationTrimOptions in packages/memory/src/memory-token-trim.ts. When set, scoreMessageContent() weights messages mentioning the focus topic +0.4 (vs uniform weighting). Pass focusTopic into compaction summary generation so the summarizer allocates ~70% tokens to focus-content with verbatim detail (file paths, values) and summarizes others aggressively.
+- **Value:** Compression preserves deep detail on user's current priority while aggressively compacting tangential old work, maintaining focus across recompaction cycles.
+- **Verify:** Compacting a conversation with focusTopic='authentication' preserves full file paths + error messages in auth-related messages while summarizing unrelated tool outputs.
 
-### `CTX-10` Summary end-of-summary marker to prevent model confusion  ★★★ · S · missing
+### `CTX-10` Context-reference expansion with @-syntax and token tracking  ★★ · M · none
 
-- **Reference:** hermes: context_compressor.py lines 92-95 - _SUMMARY_END_MARKER = '--- END OF CONTEXT SUMMARY — respond to the message below, not the summary above ---' prevents weak models from re-emitting summary as output
-- **Muse approach:** Update packages/memory/src/memory-token-trim.ts insertCompactionSummary() to append _SUMMARY_END_MARKER to every summary message (whether standalone or merged into tail). Add a test case with a weak/small model to verify it doesn't regurgitate the summary; also test that the marker is included in summary block rendered to user.
-- **Value:** Prevents hallucinations on small models that misread the summary as fresh user input or re-emit it as their own output, increasing reliability on gemma4 and other local-first models.
-- **Verify:** Compress & inject summary, verify marker is appended; run with gemma4, check output does NOT repeat summary text
+- **Based on (hermes):** `agent/context_references.py` — hermes: parse_context_references() extracts @file/@folder/@diff/@url syntax; preprocess inlines content + tracks injected_tokens
+- **Muse today:** none — No @-syntax reference expansion in Muse; no inline-context-expansion with token tracking
+- **Proposal:** Add parseContextReferences() to packages/agent-core/src/context-transforms.ts (or new file context-references.ts). Extract @file:"path":10-20, @diff, @staged, @folder, @git:COMMIT, @url patterns from user messages via regex. Inline fetched content into messages, track injected_tokens for budget accounting. Scan inlined content for injection threats via deterministic pattern matching (no LLM).
+- **Value:** Users say '@file:path.ts' and agent gets that content instantly without asking. Token counting stays accurate across reference expansion so budget trim accounts for injected context.
+- **Verify:** User message '@file:src/main.ts:1-50' expands inline; injected_tokens is added to budget calculation; malicious '@file:../../../etc/passwd' is rejected.
 
-### `CTX-11` Coding-context posture and workspace snapshot injection  ★★★ · M · partial
+### `CTX-11` Tool-result deduplication and pre-LLM compression  ★★ · M · none
 
-- **Reference:** hermes: agent/coding_context.py lines 1-50 - RuntimeMode selects 'coding' vs 'general', caches workspace snapshot (git root, lockfile, context files) into stable system-prompt tier; lines 51-149 model-specific edit-format steering
-- **Muse approach:** Extend packages/autoconfigure/src/context-engineering-builders.ts to detect if running in a git repo and (when MUSE_CODING_CONTEXT_ENABLED=true) inject a 'Coding Context' system section into the prompt that includes: git root, detected package manager/lockfile, list of context files (.cursorrules, .hermes.md, CLAUDE.md), and model-family edit-format nudge (replace vs patch). Build once at session start, cache in system prompt tier (never re-probe per turn).
-- **Value:** Coding models get grounded in the project's actual structure and tool conventions without needing tool calls; also steers them toward the edit format they were trained on, reducing rewrites and wasted reasoning.
-- **Verify:** In a git repo with package.json, detect it; inject 'Coding Context' with git root, npm as package manager, .cursorrules detected; verify never re-probed on turn 2+
+- **Based on (hermes):** `agent/context_compressor.py` — hermes: _prune_old_tool_results() does 2-pass: dedup identical results (hash-based), then summarize old results as '[tool_name]first_arg (N chars result)'; preserves tail + recent
+- **Muse today:** none — packages/memory/src/memory-token-trim.ts trims messages but doesn't pre-compactify tool results
+- **Proposal:** Add pruneOldToolResults() to packages/memory/src/memory-token-trim.ts (or new file tool-result-compression.ts). Pass 1: hash-dedupe identical tool outputs (same content = one kept, others dropped). Pass 2: before LLM summarization, replace old results (before prune_boundary) with compact form '[tool_name]arg (N chars)'. Keep last protect_tail_count results verbatim. Returns (prunedMessages, prunedCount).
+- **Value:** Tool outputs (file listings, command output) dominate token count. Pre-LLM dedup+summarization (no model call) buys space before expensive summarization, speeds up compression.
+- **Verify:** Two identical 'ls -la' results are deduplicated; old 'grep' results become '[grep]pattern (1523 chars)'.
 
-### `CTX-12` User/project memory section rendering with MEMORY.md and USER.md  ★★★ · M · partial
+### `CTX-12` Iterative summary updates with previous-summary context  ★★ · M · partial
 
-- **Reference:** hermes: agent/system_prompt.py lines 113-150 (build_system_prompt_parts); agent/prompt_builder.py lines 144-150 MEMORY_GUIDANCE; turn_context.py handles memory prefetch + on_turn_start() lifecycle
-- **Muse approach:** Extend packages/prompts/src/system-prompt-layer-registry.ts or create packages/agent-core/src/memory-section-renderer.ts to support: renderUserMemorySectionFromStore(userMemoryStore) which loads user preferences, personality, habits from store and renders into a stable '[User Profile]' block; also renderProjectMemorySection(path) to optionally load .hermes.md or project-local MEMORY.md into volatile tier. Add lifecycle hook on_turn_start() to prefetch external memories.
-- **Value:** Agent remembers user preferences, project conventions, and long-term facts without tool calls; memory is always present in prompt (not fetched on demand), improving consistency and reducing tool-call overhead.
-- **Verify:** Load user memory with timezone=UTC, workStyle=async; render into prompt; verify section appears; test project MEMORY.md loads into volatile tier
+- **Based on (openclaw):** `packages/agent-core/src/harness/compaction/compaction.ts` — openclaw: generateSummary() accepts optional previousSummary; selects SUMMARIZATION_PROMPT (initial) vs UPDATE_SUMMARIZATION_PROMPT (incremental); update preserves prior info while adding new completions
+- **Muse today:** partial — packages/memory/src/memory-token-trim.ts generates summaries but doesn't use prior summary to guide incremental updates; memory-conversation-summary-store.ts stores but doesn't feed back
+- **Proposal:** Enhance insertCompactionSummary() in packages/memory/src/memory-token-trim.ts to accept previousSummary (from ConversationSummaryStore.get()). Use conditional prompts: SUMMARIZATION_PROMPT (initial) vs UPDATE_SUMMARIZATION_PROMPT (incremental, explicitly preserving prior info while adding new work + decisions). Update prompt names the sections: Goal, Constraints, Progress (Done/In Progress/Blocked), Key Decisions, Next Steps, Critical Context.
+- **Value:** Recompression cycles don't lose context already summarized. Iterative updates prevent summary erosion and maintain continuity across multiple compactions in long sessions.
+- **Verify:** Second compaction in a session produces a summary that retains facts from the first summary + adds new progress.
 
-### `CTX-13` Auxiliary model for compression summarization  ★★★ · M · missing
+### `CTX-13` Prompt-cache-friendly system prompt partitioning  ★ · M · partial
 
-- **Reference:** hermes: agent/context_compressor.py lines 26 (from agent.auxiliary_client), conversation_compression.py lines 74-200 check_compression_model_feasibility() probes aux model and warns if too small; uses cheap/fast aux for summaries
-- **Muse approach:** Create packages/model-adapters/src/auxiliary-model-client.ts that manages a separate LLM client for compression tasks (cheap, local-first by default). Add env vars MUSE_COMPRESSION_MODEL (default 'gemma4:12b'), MUSE_COMPRESSION_BASE_URL. When trimConversationMessages() needs a summary, call getAuxiliaryClient('compression').complete(summarizePrompt) instead of the main model. Add feasibility check at startup: warn if aux model context < main model's compression threshold.
-- **Value:** Keeps compression lightweight on local models (gemma4 can summarize while main model is available); doesn't bottleneck the primary model on summarization; users can swap a tiny model in for aux tasks.
-- **Verify:** Set aux to tiny local model; trigger compression; verify aux.complete() is called, main model not blocked; test warning fires if aux context < threshold
-
-### `CTX-14` Structured summary template with resolved/pending tracking  ★★★ · M · partial
-
-- **Reference:** hermes: context_compressor.py lines 37-69 - summary template sections: '## Historical Task Snapshot', '## Historical In-Progress State', '## Historical Pending User Asks', '## Historical Remaining Work'; each marked HISTORICAL to prevent model from treating it as active instructions
-- **Muse approach:** Update packages/memory/src/memory-token-trim.ts insertCompactionSummary() to use a structured template for the summary content: include sections for [Resolved Questions], [In-Progress Work], [Pending User Requests], [Key Files/Context], each marked with ## Historical prefix. Add a summarize-prompt template builder in packages/prompts that instructs the aux model to extract these sections from the compacted conversation. Prefix the whole summary with the HISTORICAL_SUMMARY_PREFIX warning.
-- **Value:** Summaries are structured and scanned predictably by the model; historical sections are clearly marked as non-actionable, reducing false task resumption after compression.
-- **Verify:** Compress conversation, verify summary has '## Historical Task Snapshot', '## Historical Pending Asks', each section extracted correctly; test model doesn't re-execute pending asks
-
-### `CTX-15` Path mention extraction for relevant-file tracking  ★★ · S · missing
-
-- **Reference:** hermes: context_compressor.py lines 181-215 - _PATH_MENTION_RE regex finds file paths in content, _collect_path_mentions() dedupes and limits to 12 paths per message for summarizer input
-- **Muse approach:** Add path-mention extraction to packages/agent-core/src/context-transforms.ts or packages/memory/src. Create _extractPathMentions(content, limit=12) that runs a regex over conversation content and collects unique file/folder paths mentioned. Feed this list to the conversation summarizer as 'relevant files touched in this window' context so the summary can note which files were involved.
-- **Value:** Summaries become more grounded by including 'files modified/read in this window' which helps the model understand scope; also enables future file-diff-aware compression strategies.
-- **Verify:** Parse message mentioning /path/to/file.ts, /another/dir; extract unique paths; verify limit=12 is enforced; test regex handles quoted and unquoted paths
-
-### `CTX-16` Tool-call argument truncation for compression (JSON-safe shrinking)  ★★ · S · missing
-
-- **Reference:** hermes: context_compressor.py lines 336-379 - _truncate_tool_call_args_json() parses tool args, shrinks long string leaves, re-serializes to keep valid JSON (avoids broke schemas sent to strict gateways)
-- **Muse approach:** Add to packages/memory/src/memory-tool-output-trim.ts (or create memory-tool-call-compression.ts) a function _truncateLongToolArguments(toolCall, maxStringChars=200) that: parses arguments JSON, recursively shortens string values > maxStringChars to maxStringChars + '...[truncated]', preserves structure, re-serializes with ensure_ascii=false (CJK/emoji safe).
-- **Value:** Compression can aggressively prune old tool-call arguments (e.g. a 10k-line file content passed to an edit tool) without breaking JSON schema validation on strict API gateways.
-- **Verify:** Tool call with 20kb file content in args; truncate to 200 chars; verify JSON is valid; test with Fireworks/strict-schema gateway
-
-### `CTX-17` Turn-context abstraction for per-turn setup prologue  ★★ · L · partial
-
-- **Reference:** hermes: agent/turn_context.py lines 87-438 - TurnContext dataclass + build_turn_context() captures per-turn setup (user message, history, system prompt, memory prefetch, plugin context) so run_conversation loop is shrunk by 470 lines of inline prologue
-- **Muse approach:** Create packages/agent-core/src/turn-context.ts with a TurnContextInput + TurnContextSnapshot dataclass and buildTurnContext() function that encapsulates: user message sanitization, history hydration, memory prefetch, plugin-hook invocation (pre_llm_call), compression preflight, system prompt cache check, interrupt state reset. Return snapshot with all values the loop needs, keeping runtime.ts loop body clean.
-- **Value:** Agent runtime becomes dramatically simpler; per-turn concerns (prefetch, compression, plugin composition) are isolated in testable, reusable module; easier to add new per-turn hooks without polluting orchestrator.
-- **Verify:** Refactor runtime loop to use buildTurnContext(); verify all per-turn setup still happens; check loop body is < 300 lines; test with preflight compression, plugin context injection
-
-### `CTX-18` Manual compression focus topic (guided compression)  ★★ · M · missing
-
-- **Reference:** hermes: context_compressor.py line 92-106 focus_topic parameter, lines 503-550 _derive_auto_focus_topic() extracts topic from recent turns; conversation_loop.py has /compress <topic> command
-- **Muse approach:** Add to packages/agent-core/src (or agent-orchestrator) a compress(focusTopic?: string) method that: if focusTopic is provided, passes it to the summarizer prompt so the aux model prioritizes preserving info related to that topic. Also add auto-focus detection: if compression is triggered by token overflow (not manual), sample recent 3 turns, extract keywords, use as auto focus topic. Expose via CLI /compress <topic> command or programmatic API.
-- **Value:** Users can manually guide compression toward important topics ('focus on auth refactor, not the initial requirements chat'). Auto-focus makes automated compression smarter by detecting what the user was just working on.
-- **Verify:** Manual: /compress 'auth refactor'; verify summary focuses on auth work. Auto: 3-turn overflow; verify auto_focus_topic is extracted; summary emphasizes recent keyword patterns
-
-### `CTX-19` Subdirectory hints and project-structure awareness in prompts  ★★ · S · missing
-
-- **Reference:** hermes: agent/subdirectory_hints.py generates brief readme-style hints of git subdirs, mentioned in turn_context.py and system_prompt.py for coding context
-- **Muse approach:** Create packages/agent-core/src/subdirectory-hints.ts: when coding-context is enabled and in a git repo, scan immediate subdirectories (depth=1) for README.md, __init__.py, package.json to infer function. Build a brief '[Project Structure]' hint block (< 500 chars) that describes what each top-level dir does. Inject into volatile system tier. Cache per session.
-- **Value:** Agents working in large monorepos get grounded in project layout without reading every README; reduces tool calls to navigate structure; guides file edits to the right directory.
-- **Verify:** Scan repo with src/, tests/, docs/, scripts/ dirs; generate structure hint; inject into system prompt; verify < 500 chars
-
-### `CTX-20` Has-content-to-compress preflight gate  ★ · S · missing
-
-- **Reference:** hermes: context_engine.py lines 129-140 has_content_to_compress() - returns False when transcript is still entirely protected (head+tail) so /compress command doesn't waste an LLM call
-- **Muse approach:** Add to packages/memory/src/memory-token-trim.ts a hasContentToCompress(messages, protect_first_n, protect_last_n) function that returns False if all messages fall within the protected head+tail boundary (nothing compressible). Call this before triggering compression so the CLI can report 'nothing to compress yet' without making an API call. Also useful for the compression command's preflight check.
-- **Value:** Saves unnecessary API calls to the aux model when conversation is too short to compress. Improves perceived responsiveness and reduces overhead.
-- **Verify:** 5-message conversation, protect_first_n=2, protect_last_n=2; hasContentToCompress returns false; 20-message conversation returns true
+- **Based on (hermes):** `agent/system_prompt.py` — hermes: system prompt built in 3 tiers (stable/context/volatile) with cache_control at stable+context boundary
+- **Muse today:** partial — packages/prompts/src/index.ts has buildSystemPrompt() + prompt layers but no tier-based cache partitioning; packages/agent-core/src/context-transforms.ts injects multiple context sections post-composition
+- **Proposal:** Add PromptCachePartition interface to packages/prompts/src/index.ts with stable (identity, tools, skills, platform hints, model info) / context (caller system_message, AGENTS.md) / volatile (memory, USER.md, session info, active-context, inbox, episodic) tiers. buildSystemPrompt() should compose these with clear boundaries and return both fullPrompt and cacheControlMarker. Compression triggers prompt rebuild only, leaving cache warm.
+- **Value:** Prompt caching cuts costs ~75% on multi-turn when stable+context prefix is reused across turns. Partitioning isolates volatile content (memory, timestamps) so cache survives memory updates.
+- **Verify:** System prompt is composed once per session; memory updates trigger re-render of volatile section only; cache hit rate stays >80% across 10+ turns.
 
 ## 3. Memory · Vector Store · Active Memory · Insights · Curation
 
-_19 items_
+_11 opportunities · 18 competitor files read_
 
 
-### `MEM-1` Implement local-model REM/Light sleep background dreaming scheduler with short-term promotion  ★★★★★ · M · missing
+### `MEM-1` Multi-Provider Memory Backend Interface  ★★★★★ · M · none
 
-- **Reference:** openclaw/extensions/memory-core/src/dreaming.ts + short-term-promotion.ts: manages scheduled deep/light dreaming via cron with recall-hit frequency tracking and concept-tag scoring to promote high-value snippets from short-term daily memory into long-term durable summary
-- **Muse approach:** Create packages/memory/src/dreaming-scheduler.ts implementing a managed cron pattern (using existing scheduler package) that periodically (configurable, ~1/week default) runs a local-only extraction pass: collect short-term episodic recall hits from episodic-store, rank by frequency + diversity + recency using existing actr-activation.ts + episodic-ranking.ts, promote top-K snippets into a durable DREAMS.md summary file in the workspace. Includes concept-tag extraction via simple regex/NLP heuristics on hit text to aid future recall.
-- **Value:** Moves Muse from passive memory (extract-and-store) to active consolidation (promote-and-reflect), preserving high-signal memories across session boundaries without cloud. Directly mirrors OpenClaw's dreaming loop.
-- **Verify:** Unit test that schedules a dream pass, verifies short-term snippets are promoted to DREAMS.md; integration test that hits > threshold frequency + diversity trigger promotion; observe concept tags in output.
+- **Based on (hermes):** `agent/memory_manager.py` — Hermes MemoryManager + MemoryProvider ABC pattern enabling Honcho/Hindsight/Mem0 pluggability
+- **Muse today:** none — packages/memory/src (UserMemoryStore + TaskMemoryStore exist, no MemoryProvider ABC)
+- **Proposal:** Create packages/memory/src/memory-provider.ts with MemoryProvider ABC (initialize, prefetch, sync_turn, get_tool_schemas, handle_tool_call, optional lifecycle hooks). Implement builtin provider wrapping UserMemoryStore + TaskMemoryStore. Manager coordinates single external provider via ThreadPoolExecutor-like pattern; streaming context scrubber sanitizes memory tags at chunk boundaries. Fail-close: external provider failure degrades gracefully, never blocks turn.
+- **Value:** Unlocks third-party memory backend integration (Honcho citation tracking, Hindsight evidence pointers) without forking Muse memory core. One-provider limit prevents tool-schema bloat.
+- **Verify:** Test memory provider instantiation, prefetch async execution, tool-schema synthesis from provider.get_tool_schemas(), turn-sync lifecycle, and degradation when external provider times out.
 
-### `MEM-2` Implement memory flush protocol (pre-compaction write gate with append-only constraint)  ★★★★★ · M · missing
+### `MEM-2` Concept Tagging and Semantic Vocabulary Extraction  ★★★★★ · M · none
 
-- **Reference:** openclaw/extensions/memory-core/src/flush-plan.ts: before context compaction, generates a user-facing 'flush' turn where agent reflects on durable facts to capture before history compression, targets timestamped memory/YYYY-MM-DD.md file with append-only semantics and read-only protection on bootstrap files (MEMORY.md, DREAMS.md, SOUL.md)
-- **Muse approach:** Add packages/memory/src/memory-flush-gate.ts: when conversation-trim detects working-budget or hard-limit pressure, insert a synthetic 'pre-compaction flush' turn into the agent prompt with system instruction to write durable observations to memory/YYYY-MM-DD.md (created if missing, append-only when it exists). Include guardrails: timestamp filename, read-only marker enforcement on core memory files, 3-turn lookahead to detect if flush output was already written mid-session.
-- **Value:** Prevents durable facts from being lost during session compaction. Matches hermes/memory_tool.py's frozen-snapshot pattern but as a deterministic trim gate, not a manual tool. Critical for long-running agents.
-- **Verify:** Test that compaction-triggered flush inserts prompt; verify timestamped memory file is created/appended; confirm append-only enforcement blocks overwrites; check that MEMORY.md is marked read-only in output.
+- **Based on (openclaw):** `extensions/memory-core/src/concept-vocabulary.ts` — OpenClaw deriveConceptTags() — extract semantic tags via stop-word filtering + script-family analysis for cross-lingual indexing
+- **Muse today:** none — packages/memory/src (pinned-entities, salient-facts exist; no concept-vocabulary module)
+- **Proposal:** Create packages/memory/src/concept-vocabulary.ts exporting deriveConceptTags(text) → string[] (stop-word filtered, script-family labeled: latin/cjk/mixed). Build script-family.ts detector (reuse existing episodic-recall's cosineSimilarity precedent). Tag ShortTermRecallEntry.conceptTags on every auto-extract. Enable faceted search in recall tools ("security", "database", "user management" tags). Pure deterministic extraction — no model calls, respects local-first constraint.
+- **Value:** Enables semantic clustering and faceted memory recall without external embedding on every fact. Cross-lingual indexing surfaces relevant memories across language boundaries.
+- **Verify:** Test deriveConceptTags() on English/Korean/mixed content; verify stop-word filtering excludes corpus-common terms; confirm script-family detection routes Latin/CJK/mixed correctly; test faceted recall returning tagged memories.
 
-### `MEM-3` Build deterministic curation loop: auto-archive stale episodic memories + mark for consolidation review  ★★★★ · M · missing
+### `MEM-3` LanceDB Importance-Ranked Vector Store  ★★★★★ · L · none
 
-- **Reference:** hermes-agent/agent/curator.py: background skill curator runs on idle trigger (not cron), auto-transitions skills to stale/archived states based on inactivity timestamps (30d stale, 90d archive), maintains .curator_state with paused flag, supports pinned (protected) skills, never deletes only archives (recoverable)
-- **Muse approach:** Create packages/memory/src/memory-curator.ts: deterministic per-episode curation logic that tracks last-access timestamp on episodic-store records. On scheduler tick (daily default, configurable via MUSE_MEMORY_CURATOR_INTERVAL), scan episodes older than stale_threshold (30d default), mark them readonly/archived in a .episodes.archive metadata file, remove from active recall but preserve for historical context. Include a curator-state.json for paused flag, last-run-at, archive manifest. Never delete, only archive. Respect pinned-entities.ts markers.
-- **Value:** Prevents episodic memory bloat in long-running agents while keeping data recoverable. Matches hermes curator pattern but for memory, not skills. Enables memory consumption budgeting.
-- **Verify:** Test stale detection by backdating episode access timestamps; verify archives are created and excluded from recall; confirm pinned episodes bypass archival; test curator-state pause flag prevents runs; verify no episodes are deleted.
+- **Based on (openclaw):** `extensions/memory-lancedb/index.ts` — OpenClaw lancedb extension — Apache Arrow columnar persistent long-term memory with importance weighting and category taxonomy
+- **Muse today:** none — packages/stores/src (personal-episodes-store has episodic; no LanceDB import)
+- **Proposal:** Create packages/stores/src/lancedb-memory-store.ts wrapping LanceDB with MemoryEntry schema: {id, text, embedding, importance (0-1), category (preference|fact|decision|entity|other), createdAt}. Auto-capture hooks run on turn-end (extract via existing auto-extract, embed, persist). Auto-recall hooks run pre-turn (retrieve by similarity + importance weight, inject into knowledge corpus). Importance user-settable per entry; default 0.5. Respects MUSE_LOCAL_ONLY — embeddings already local via Ollama.
+- **Value:** Persistent learned semantic memory across sessions. Importance field prevents critical facts (team names, core decisions) from being diluted by ephemeral observations.
+- **Verify:** Test auto-capture extracting + embedding facts, LanceDB persistence across sessions, importance-weighted ranking, category filtering in queries, and auto-recall injection into knowledge corpus.
 
-### `MEM-4` Implement backup/snapshot system for episodic & knowledge stores with rollback capability  ★★★★ · M · missing
+### `MEM-4` Memory Wiki / Knowledge Vault with Hand-Curated Separation  ★★★★ · M · none
 
-- **Reference:** hermes-agent/agent/curator_backup.py: pre-curation snapshots of skills dir as tar.gz with manifest (reason, timestamp, file count, size), supports rollback (restores + moves current aside as separate snapshot), includes cron-jobs.json snapshot to handle curator consolidation side effects
-- **Muse approach:** Create packages/memory/src/memory-backup.ts: before curator runs or on manual trigger, snapshot memory stores (episodic DB, belief-provenance store, memory-wiki index if present) as atomic tar.gz in .memory/backups/<ISO-UTC>/ with manifest.json (timestamp, size, record count, trigger reason). Support rollback: move current store aside, extract snapshot, log reversal. Keep last N (default 5) backups. Guard: exclude .memory/backups/ from snapshots (recursion). Store manifest fields: backup_id, created_at, backup_reason, episodic_record_count, provenance_entry_count, snapshot_size_bytes.
-- **Value:** Protects against memory corruption from curator bugs or manual edits. Matches hermes curator_backup.py pattern exactly. Essential for production reliability when episodic store is large.
-- **Verify:** Create snapshot, verify tarball structure and manifest; restore snapshot, confirm episodic records match pre-snapshot state; test that rollback moves current store aside; verify exclusion of backup dir from snapshot itself; test cleanup of old backups.
+- **Based on (openclaw):** `extensions/memory-wiki/index.ts` — OpenClaw memory-wiki plugin — separate hand-curated reference vault from learned session memory, with wiki_search/wiki_get/wiki_lint/wiki_apply tools
+- **Muse today:** none — packages/memory/src (no wiki-specific module; note-recall exists but not vault abstraction)
+- **Proposal:** Create packages/memory-wiki/ plugin exporting createWikiPromptSectionBuilder(config) and createWikiCorpusSupplement(). Wiki tools: wiki_search (FTS + embedding hybrid), wiki_get (excerpt + source), wiki_lint (orphan + circular-ref detection), wiki_apply (edit markdown vault). Register via registerMemoryPromptSupplement() and registerMemoryCorpusSupplement() into memory-core's builder. Store state in source-sync + import-runs keyed stores. Vault lives in MUSE_HOME/memory-wiki/*.md (human-editable). Completely separate from learned episodic/task memory.
+- **Value:** Operators curate stable reference knowledge (API docs, decision logs, runbooks) separately from agent-learned patterns. Reduces noise in learned memory, surfaces authoritative sources reliably.
+- **Verify:** Test wiki_search finding markdown snippets, wiki_get returning correct excerpts with provenance, wiki_lint detecting orphans, wiki_apply persisting edits, and prompt section including wiki context without learned-memory clutter.
 
-### `MEM-5` Implement insight-generation pipeline: session cost/token/tool usage metrics over configurable time window  ★★★ · M · missing
+### `MEM-5` Deep Dreaming with Light Sleep + REM Phases  ★★★★ · M · partial
 
-- **Reference:** hermes-agent/agent/insights.py: InsightsEngine queries session DB over N days, computes overview (token count, session count, cost estimates), model/platform/tool breakdowns, skill usage distributions, activity pattern trends, formats as terminal charts and JSON
-- **Muse approach:** Add packages/memory/src/session-insights.ts: query agent-core's existing message-history (via db provider abstraction), aggregate over configurable days (30 default). Compute: total sessions, messages per session, token usage (input/output via estimator), tool call distribution, memory-store write frequency, episodic hits per session. Generate both terminal summary (ascii tables) and JSON export. Use existing token-estimator.ts for token counting. No cloud calls — pure local aggregation.
-- **Value:** Gives operators visibility into memory system health and cost allocation (especially important when using cloud models). Hermes surfaces this via insights CLI; Muse needs equivalent instrumentation.
-- **Verify:** Integration test: create synthetic session history, generate insights, verify token sums match expected counts, check tool tallies are correct, validate JSON schema; unit test chart formatting.
+- **Based on (openclaw):** `extensions/memory-core/src/dreaming.ts` — OpenClaw dreaming.ts — managed cron jobs with light-sleep (incremental narrative) + REM (deep consolidation) phases; narrative synthesis of promoted short-term recalls
+- **Muse today:** partial — packages/memory/src (consolidationPlan exists; no explicit light-sleep vs REM distinction, no dreaming narrative synthesis)
+- **Proposal:** Extend packages/memory/src/recall-promotion.ts with dreamingPlan(promotedMemories, phase: 'light'|'rem') that generates narrative summaries. Light-sleep: incremental digest (~5-10 facts) with temporal ordering. REM: deeper pass extracting theme clusters (e.g., "user prefers async work", "database performance is critical"). Persist dream-diary entries in episodic store. Gate via scheduler (e.g., light-sleep every 12h, REM every 7d). Phase signals control which promotions run (REM gates elevation to always-on persona). Narrative generation uses small local model (not local-only enforcement required if deferred to cloud only on explicit opt-in).
+- **Value:** Mimics human sleep consolidation. Agent re-processes activity without prompts, extracting behavioral themes and decision patterns. Produces human-readable summaries for review without explicit memory browsing.
+- **Verify:** Test light-sleep generating incremental digests, REM producing themed narratives, phase-gating promotions, dream-diary persistence, and scheduler triggering correct phase on interval.
 
-### `MEM-6` Add memory-wiki indexing & query layer: structured knowledge graph with claim freshness tracking  ★★★ · L · missing
+### `MEM-6` Spaced-Practice Short-Term to Long-Term Promotion Pipeline  ★★★★ · M · partial
 
-- **Reference:** openclaw/extensions/memory-wiki/src/compile.ts + claim-health.ts: maintains markdown-based knowledge graph with entities/concepts/syntheses, tracks claim freshness (contested/stale/healthy), manages related-pages graph, auto-compiles dashboard with open-questions report, supports import from external sources (ChatGPT, Obsidian)
-- **Muse approach:** Create packages/memory/src/memory-wiki-index.ts: parse markdown files in memory/ directory, extract wikilinks (hyphenated filenames), build an in-memory graph of pages + claims (via regex extraction of 'fact: VALUE' entries). Store in a local sqlite cache (.memory/wiki-index.db). Support queries: 'what do we know about X', 'list related entities', 'show contradictory claims'. Include freshness scoring (age-based decay + edit-frequency bonus) to rank which claims to refresh. No embedding storage — keyword + graph nav only.
-- **Value:** Transforms flat memory files into queryable knowledge base. Mirrors OpenClaw's wiki structure but simpler (no import pipeline, no Obsidian sync). Enables agent to reason about what it knows + what needs updating.
-- **Verify:** Parse sample memory markdown, verify graph structure is built correctly, test wikilink extraction, confirm freshness decay formula works, query test: retrieve entities by keyword, check related-pages traversal.
+- **Based on (openclaw):** `extensions/memory-core/src/short-term-promotion.ts` — OpenClaw short-term-promotion.ts — track recall frequency + diversity across days, promote durable (spaced) patterns over massed (single-session) bursts
+- **Muse today:** partial — packages/memory/src/recall-promotion.ts (has scoreRecallHit + selectPromotableMemories; missing queryHashes, recallDays, concept-diversity weighting)
+- **Proposal:** Extend RecallHitLike to include queryHashes: Set<string> and recallDays: Set<string> (ISO date strings). Track per-memory: how many distinct queries retrieved it, on how many distinct calendar days. Modify selectPromotableMemories(records) to weight by diversity: distinct-days count must exceed threshold (default 2) BEFORE a memory can promote into always-on persona. Prevents massed single-session bursts from polluting personality. Decay half-life remains 21 days. Integrate with dreaming narrative (themed facts come from diverse access patterns, not noise).
+- **Value:** Separates durable learned patterns (proven useful across multiple days/contexts) from transient single-session observations. Persona stays focused on what the agent actually relies on repeatedly.
+- **Verify:** Test spaced-practice gate: memory accessed 10x in one day stays ineligible; accessed 3x across 3 different days promotes. Verify decay and distinct-day thresholds work together. Confirm promoted facts feed into dream narratives.
 
-### `MEM-7` Build memory-consistency checker: detect & report contradictory recalled facts with confidence levels  ★★★ · M · missing
+### `MEM-7` Pluggable Embedding Provider Interface with Multi-Model Support  ★★★★ · M · partial
 
-- **Reference:** openclaw/extensions/memory-wiki/src/claim-health.ts: buildClaimContradictionClusters() groups claims by topic, detects contradictions (same subject, different value), rates contradictions as 'contested' vs 'healthy', implements WIKI_AGING_DAYS freshness decay
-- **Muse approach:** Create packages/memory/src/memory-consistency-checker.ts: after episodic recall + knowledge-base query, scan returned facts for contradictions: extract (topic, claim) pairs via simple regex or NLP (e.g., 'X is Y' vs 'X is Z'), surface conflicts with confidence scores. Store conflict log in .memory/conflicts.json: {topic, claims: [{text, source_sessionId, timestamp}], severity: 'high'|'medium'|'low'}. Severity based on recency (newer claims override older) + frequency (claims with more hits win). Integrate into agent prompt as '[Memory conflicts detected: X]' note for human review.
-- **Value:** Prevents agent from acting on contradictory beliefs. Addresses A-MAC conformal abstention requirement (arXiv:2603.04549). Muse's episodic-render already flags conflicts; this generalizes to all memory sources.
-- **Verify:** Inject contradictory episodic recalls, verify conflict detection triggers, check confidence scoring (newer > older), test log storage format, confirm prompt injection happens and is grounded.
+- **Based on (openclaw):** `extensions/memory-core/src/memory/embeddings.ts` — OpenClaw embeddings.ts — multi-provider adapter supporting OpenAI, local GGUF (llama.cpp), generic EmbeddingProvider API; hybrid merge with temporal decay
+- **Muse today:** partial — packages/autoconfigure/src/embedder-base.ts (createOllamaEmbedder exists; no multi-provider abstraction, no hybrid merge with decay)
+- **Proposal:** Create packages/model/src/embedding-provider.ts with EmbeddingProvider ABC (embedQuery(text), embedBatch(texts)). Implement OllamaEmbeddingProvider, GenericHttpEmbeddingProvider (for custom backends). Extend knowledge-ranking.ts rankKnowledgeChunks() to accept embedProvider instead of hardcoded embed function. Hybrid merge: combine vectorScore (cosine) with temporal-decay boost + frequency-decay. Query normalization + chunk-split BEFORE embedding (deterministic preprocessing). Fail-close: if embedProvider throws, fall back to BM25-only ranking.
+- **Value:** Decouples embedding model choice from ranking. Supports Honcho/Mem0 backends that provide embeddings natively. Temporal+frequency weighting improves relevance of recent, frequently-accessed knowledge.
+- **Verify:** Test embedQuery/embedBatch round-tripping through Ollama provider, fallback to BM25 on embedding error, hybrid ranking combining vector+temporal scores, and query normalization producing deterministic outputs.
 
-### `MEM-8` Add memory hotspot analyzer: identify high-recall topics and suggest curation focus areas  ★★★ · M · missing
+### `MEM-8` Session-Level Insights and Usage Analytics Engine  ★★★ · M · none
 
-- **Reference:** openclaw/extensions/memory-core/src/short-term-promotion.ts: deriveConceptTags() extracts recurring concepts, summarizeConceptTagScriptCoverage() shows which topics appear frequently in short-term promotions
-- **Muse approach:** Create packages/memory/src/memory-hotspot-analyzer.ts: on curator schedule, analyze episodic-store recall logs (access_times field), compute topic frequency via simple NLP (extract nouns + noun phrases from episode summaries). Group into clusters: 'auth_issues', 'database_migrations', 'config_problems', etc. Rank by frequency + recency. Output .memory/hotspots-report.json: {topic: string, frequency: number, last_accessed: ISO, related_episodes: [sessionIds], recommendation: string}. Recommendation: 'consolidate', 'extract to knowledge-base', 'create task reminder', etc.
-- **Value:** Surfaces memory system blindspots to operator. Enables data-driven memory curation priorities. Muse has no equivalent.
-- **Verify:** Create episodic store with biased topic distribution, run analyzer, verify topic clustering, check frequency ranking, confirm recommendations are sensible, test report JSON schema.
+- **Based on (hermes):** `agent/insights.py` — Hermes InsightsEngine — aggregate session/token/tool/skill/cost data; expose trends and self-awareness without external analytics
+- **Muse today:** none — packages/cache/src (token counting exists); no session-level aggregation engine
+- **Proposal:** Create packages/autoconfigure/src/insights-engine.ts exporting InsightsEngine.generate(days=30). Query session DB (via RunStoreProvider pattern already in place) for sessions, token counts, tool_usage, skill_usage within window. Compute: overview (total tokens, cost USD, model breakdown), platform breakdown, tool breakdown (top N tools), skill usage (skill_view vs manage_count), activity patterns (sessions/day, distribution). Return structured dict: {overview, models, platforms, tools, skills, activity}. Cost estimation via existing cache.estimateCostUsd(). Supports per-source filtering (model/platform/tool).
+- **Value:** Agent self-awareness of its own usage patterns. Token spend, tool preference, skill evolution grounded in real data. Bridges in-house and cloud billing visibility.
+- **Verify:** Test generating insights over 7/30/90-day windows, verifying token counts match cache records, cost USD matches model pricing, tool rankings are accurate, skill usage distinguishes view vs manage operations.
 
-### `MEM-9` Add memory indexing statistics: compute and expose store health metrics (fragmentation, hit rates, coverage)  ★★★ · M · missing
+### `MEM-9` Memory Flushing Delta + Prompt Section Builder  ★★★ · L · none
 
-- **Reference:** hermes-agent/agent/insights.py: computes overview including session count, message count, tool call distribution, skill usage; openclaw memory-wiki: generates dashboard with open-questions, contradictions, freshness status
-- **Muse approach:** Create packages/memory/src/memory-stats.ts: compute memory system health metrics on curator tick. Metrics: episodic-store (total records, avg summary length, fragmentation ratio = archived_records / total), belief-provenance-store (total entries, coverage = entries_with_evidence / entries), user-model-store (slots populated, version distribution), recall-hit-rate (hits per episode / total hits), hottest topics (top-5 by access), episodic hitrate over last-N-sessions (trending up/down). Output to .memory/stats.json with hourly datapoints (last 30d). Serve via optional HTTP endpoint or CLI command.
-- **Value:** Enables ops to monitor memory system health. Detects degradation early (rising fragmentation, low coverage, missing provenance). Muse has no visibility today.
-- **Verify:** Create memory stores in various states, run stats, verify all metrics computed, check output schema, confirm trending calculation is correct, test CLI output formatting.
+- **Based on (openclaw):** `extensions/memory-core/src/flush-plan.ts` — OpenClaw flush-plan.ts + buildPromptSection() — identify delta edits in MEMORY.md during compression, decide which memory tier to inject based on session state
+- **Muse today:** none — packages/memory/src/memory-token-trim.ts (context compression exists; no flush-plan or prompt-section-builder modules)
+- **Proposal:** Create packages/memory/src/memory-flush-plan.ts exporting buildMemoryFlushPlan() that identifies MEMORY.md delta edits preserving key insights during compression (via git-like diff or hash comparison). Companion buildPromptSection() decides what memory tier to inject: full dump vs compact vs omit, based on session state (task-active, long-session, recent-edits). Coordinate via dreaming-state.ts keyed store tracking what's already in context. Prevents memory from bloating system prompt in sessions >20k tokens. Flush plan runs during CompactionTrimmer invocation.
+- **Value:** Optimizes long-session context packing. Memory stays fresh without inflating prompt. Distinguishes what changed from what's stable.
+- **Verify:** Test delta detection identifies new facts vs stable ones, buildPromptSection() returns compact vs full based on budget, and dreaming-state prevents double-injection of already-in-context facts.
 
-### `MEM-10` Add vector search via local embeddings (optional, degraded-graceful when unavailable)  ★★ · L · partial
+### `MEM-10` Skill Curation Automaton with Stale Marking and Prefix Clustering  ★★ · L · partial
 
-- **Reference:** openclaw/extensions/memory-lancedb/index.ts: integrates LanceDB + local embedding provider, stores episode vectors, supports hybrid search (BM25 keyword + vector), gracefully degrades to keyword-only when embeddings unavailable, includes auto-capture filtering to remove envelope sludge
-- **Muse approach:** Extend packages/memory/src/episodic-recall.ts to optionally load local embeddings (via @xenova/transformers or similar on-device model, lazy-loaded). When available, store episode embeddings in episodic-store as optional vector field. Hybrid search: keyword search (existing jaccardSimilarity), when embeddings present also compute cosine-similarity, merge via weighted combination (default 0.6 keyword + 0.4 vector). Graceful degrade: if embedding model fails to load or is too large, emit warning and use keyword-only. No cloud egress.
-- **Value:** Improves episodic recall quality for long-running agents where keyword overlap is weak (e.g., 'how did that issue resolve' vs prior 'database migration failed'). Muse already has episodic ranking; this adds the vector dimension without breaking existing flows.
-- **Verify:** Load embedding model, verify vector dimension matches store schema, test hybrid search merges scores correctly, confirm keyword-only fallback when model unavailable, check memory overhead of vector storage.
+- **Based on (hermes):** `agent/curator.py` — Hermes Curator — auxiliary-model agent spawned on inactivity trigger, marks stale (30d), archives (90d), clusters by prefix, merges into umbrellas
+- **Muse today:** partial — packages/agent-core/src/skill-merge.ts, packages/skills/src (skill-merge-gate exists; no curator orchestrator, no should_run_now gate, no prefix clustering)
+- **Proposal:** Create packages/skills/src/skill-curator.ts exporting SkillCurator with should_run_now(lastRunMs) staleness gate (30d stale, 90d archive threshold), apply_automatic_transitions() walking authored-skill-store marking old skills. On consolidate=true, spawn forked-agent with CURATOR_REVIEW_PROMPT identifying PREFIX CLUSTERS (hermes-*, pr-*, test-*, etc.). Merge overlapping narrow skills into SKILL.md + support files. Pinned skills exempt from auto-archive. Never touches user-created umbrella classes. Respects Muse's constraint: curator is deterministic state machine + optional LLM review, not LLM-driven throughout.
+- **Value:** Prevents skill library from growing unbounded with one-session micro-skills. Maintains discoverability via semantic umbrellas. Auto-archive cleans unused knowledge without operator intervention.
+- **Verify:** Test should_run_now() triggers on 30-day stale threshold, apply_automatic_transitions() marks skills correctly, prefix clustering identifies hermes-*, pr-*, test-* groups, and merging preserves SKILL.md structure.
 
-### `MEM-11` Implement belief provenance backfill: add source tracking to historical episodic memories  ★★ · S · partial
+### `MEM-11` Active Memory with Secondary Agent Delegation + Circuit Breaker  ★★ · M · none
 
-- **Reference:** hermes-agent/agent/memory_provider.py + memory_tool.py: frozen memory snapshot at session start, durable belief store with entry delimiters, supports multi-platform attachment (user_id, session_id, platform); packages/memory's belief-provenance-store.ts already stores provenance (session + excerpt) but only for auto-extracted facts
-- **Muse approach:** Extend packages/memory/src/belief-provenance-store.ts to support backfill mode: scan existing episodic-store.json (unversioned legacy), attempt to locate each episode's source session ID from context-reference-store metadata if available, reconstruct partial provenance (session_id + approximate timestamp), write as 'backfilled: true' entries in provenance store. Only backfill once (idempotent via marker). Enables future fact-checking tools to know 'which session said this'.
-- **Value:** Enables accountability / fact-checking pipeline downstream. Closes loop with hermes' durable memory model. Muse has provenance for new facts but loses source for old recall.
-- **Verify:** Create episodic store, run backfill, verify provenance entries created for existing episodes, confirm backfill marker prevents re-runs, check that sessions without context-reference metadata are marked 'unknown' rather than dropped.
-
-### `MEM-12` Add temporal decay to episodic recall ranking with configurable half-life  ★★ · S · partial
-
-- **Reference:** openclaw/extensions/memory-core/src/short-term-promotion.ts: DEFAULT_RECENCY_HALF_LIFE_DAYS = 14, applyTemporalDecayToHybridResults() applies exponential decay to recall scores based on episode age
-- **Muse approach:** Extend packages/agent-core/src/episodic-ranking.ts: add temporalDecay(ageMs: number, halfLifeMs: number): number function using exp(-ln(2) * ageMs / halfLifeMs). Integrate into existing ranking pipeline as optional stage: after similarity compute, apply decay multiplier so episodes older than ~2 weeks gradually lose relevance. Make configurable via MUSE_EPISODIC_RECENCY_HALF_LIFE (days). Default 14d per OpenClaw convention.
-- **Value:** Prevents ancient recalls from dominating current relevance. Muse has recency boost but not exponential decay; this adds standard Ebbinghaus-curve behavior matching cognitive science.
-- **Verify:** Score same episode at age 0, 7d, 14d, 28d; verify decay curve matches exp(-ln(2)*t/halfLife), confirm configurable half-life works, test that 14d old = 0.5x original score.
-
-### `MEM-13` Implement episodic consolidation: merge near-duplicate episode summaries with citation merging  ★★ · L · partial
-
-- **Reference:** openclaw/extensions/memory-core/src/dreaming-narrative.ts + dreaming-phases.ts: consolidation phase reads dream entries, identifies umbrella-themes across similar episodes, rewrites episodic-store to store merged canonical summaries with cross-references
-- **Muse approach:** Create packages/memory/src/episodic-consolidation.ts: on curator trigger or manual call, scan episodic-store for near-duplicates (cosine-sim > 0.85 on stored summaries using existing episodic-ranking.ts). For each cluster: generate umbrella narrative (template: '[Umbrella: topic] Covers episodes: [session A, B, C]. Key facts: [merged list]'). Rewrite episodic-store to replace cluster members with single umbrella + store original sessionIds in a cross_references field. Update episodic-ranking to prefer consolidated records. Idempotent via consolidation_marker in record metadata.
-- **Value:** Reduces episodic memory footprint for agents running 100+ sessions. Hermes uses consolidation as opt-in curator pass; Muse needs it for scale.
-- **Verify:** Create episodic store with similar episodes, run consolidation, verify clusters detected, confirm umbrella narrative generated, check cross-references preserved, validate that recall still works (umbrella is returned for related queries).
-
-### `MEM-14` Add episodic salience-aware trimming: protect high-value episodes during context compaction  ★★ · S · partial
-
-- **Reference:** openclaw/extensions/memory-core/src/short-term-promotion.ts: tracks queryHashes + recallDays to compute totalScore and maxScore, promotes high-scoring snippets; agent-core/src/message-importance.ts scores messages by task relevance + episodic grounding
-- **Muse approach:** Extend packages/agent-core/src/message-importance.ts: when compaction runs, score episodic matches by their short-term recall contribution (using existing episodic-ranking logic + recent-access history). In conversation-trim logic, when removing old messages, preserve messages with episodic citations that have high salience-score. Add config: MUSE_EPISODIC_SALIENCE_PROTECT_THRESHOLD (default 0.7). Messages cited by high-recall episodes are harder to trim.
-- **Value:** Preserves important context across compaction boundaries. Prevents losing task-critical episodes. Muse's trim already has importance-aware strategy; this adds episodic grounding awareness.
-- **Verify:** Create conversation with episodic citations, set high salience on cited episode, trigger compaction, verify that messages citing high-salience episodes are preserved longer than low-salience ones.
-
-### `MEM-15` Implement memory compression codec: store episode summaries with configurable length budgets  ★★ · L · missing
-
-- **Reference:** hermes-agent/trajectory_compressor.py: protects first/last turns, compresses middle turns via auxiliary model summarization, targets token budget (default 15250), replaces compressed region with single summary message
-- **Muse approach:** Create packages/memory/src/episodic-compression.ts: when episodic-store grows (size > threshold or record count > threshold), run compression pass: collect episodes by age cohort (1w, 1-4w, 1-3m, 3m+). For oldest cohort, apply lossy summarization: template-based reduction ('Session [date]: accomplished [X], learned [Y], unresolved [Z]') + token estimation to fit within max_summary_tokens (default 150 per episode). Rewrite episodic-store with compressed summaries, archive full text in .memory/episodic-archive/. Idempotent via compression_version marker. Deterministic (no LLM) to avoid cloud egress.
-- **Value:** Prevents episodic memory from becoming a bottleneck in long-running agents (100+ sessions). Hermes uses aux-model compression; Muse needs local-only alternative.
-- **Verify:** Create large episodic store, trigger compression, verify summaries are generated and fit token budget, check that archived text is retrievable, confirm idempotence (re-run doesn't double-compress), measure size reduction.
-
-### `MEM-16` Add belief supersession tracking: maintain version history of fact updates with justification  ★★ · M · partial
-
-- **Reference:** packages/memory/src/recently-learned.ts: selectNewSupersessions() already tracks which facts replace which; belief-provenance-store.ts stores evidence. But no version history.
-- **Muse approach:** Extend packages/memory/src/memory-user-store.ts + belief-provenance-store.ts: when a fact is updated (via auto-extract or manual edit), don't overwrite: instead append new version and mark old version as superseded_by: [new_key]. Store history in provenance store with versioning: {fact_key, version: 1, value, provenance, superseded_at, superseded_by_key}. Query interface: get_fact_history(key) returns [v1, v2, ...] with timeline. Enables agent to understand belief evolution ('we thought X, then updated to Y, then learned it was Z').
-- **Value:** Supports belief audit trail and learning accountability. Matches Hindsight/Artemis philosophy. Hermes doesn't have this but it's valuable for interpretability.
-- **Verify:** Create fact, update it twice, call get_fact_history, verify all versions present with correct supersession chain, confirm provenance timestamps are ordered, test query with non-existent key returns empty.
-
-### `MEM-17` Implement multi-user memory isolation with namespace segregation  ★ · M · missing
-
-- **Reference:** hermes-agent/agent/memory_provider.py: initialize() receives user_id + user_id_alt (platform-scoped), supports per-profile provider scoping; memory_manager.py enforces one-external-provider limit but allows per-session delegation
-- **Muse approach:** Extend packages/memory/src/ stores (episodic-store, belief-provenance-store, memory-wiki-index, backup snapshots): add optional user_id namespace parameter. When user_id is set, all store paths become .memory/<user_id>/episodic.json (default .memory/episodic.json for single-user). Auto-detect multi-user mode: if agent receives calls with different user_id, switch to namespaced storage. Include migration: scan legacy .memory/ for user-less records, move to default namespace on first multi-user run.
-- **Value:** Enables Muse to run as shared agent across multiple users without cross-contamination. Hermes has this; Muse currently assumes single-user.
-- **Verify:** Create stores, call with user_id=alice, verify path is .memory/alice/*, call with user_id=bob, verify separate namespace, query with alice, confirm bob's data is hidden, test legacy migration.
-
-### `MEM-18` Implement memory garbage collection: auto-delete unreferenced provenance entries beyond retention window  ★ · M · missing
-
-- **Reference:** hermes-agent/agent/curator.py: DEFAULT_ARCHIVE_AFTER_DAYS = 90, applies automatic transitions; curator_backup.py: keeps last N snapshots (default 5), older ones can be pruned
-- **Muse approach:** Create packages/memory/src/memory-gc.ts: on curator schedule, scan belief-provenance-store for entries older than retention_days (default 180). Cross-check against active episodic-store and user-model-store: if the fact being referenced is no longer in those stores (deleted or explicitly superseded), mark provenance entry as 'unreferenced'. On second pass (next run), delete unreferenced entries older than retention_cutoff. Conservative approach: never aggressively prune, always keep 180d minimum, require double-confirmation before delete. Log deletions to .memory/gc-log.json for audit.
-- **Value:** Prevents provenance store from growing unbounded in multi-year agents. Hermes curator includes archive/prune; Muse needs GC for operational sustainability.
-- **Verify:** Create old provenance entries for deleted facts, run GC, verify unreferenced marking, confirm deletion only happens on second run, check gc-log records, verify active provenance is never deleted.
-
-### `MEM-19` Implement context-scoped memory isolation: allow sub-agents to maintain separate episodic namespaces  ★ · M · missing
-
-- **Reference:** hermes-agent/agent/memory_provider.py: on_delegation() hook observes subagent work, supports per-subagent scoping via agent_context parameter ('primary', 'subagent', 'cron', 'flush')
-- **Muse approach:** Extend packages/memory/src/episodic-store.ts + packages/memory/src/memory-auto-extract.ts: add optional agent_id / agent_context parameter to all memory operations. When agent_id is set, episodic records are namespaced: .memory/episodic-<agent_id>.json. Auto-extract hook receives agent context, tags facts with origin agent_id. Recall preferentially returns same-agent episodic matches, with cross-agent as fallback (lower ranking). Subagent runs via multi-agent orchestrator automatically set agent_id to disambiguate.
-- **Value:** Prevents subagent memory from polluting parent-agent context. Supports hierarchical multi-agent architectures. Hermes has this; Muse needs it for orchestrator scale.
-- **Verify:** Create parent agent, spawn subagent, have both extract facts, verify episodic stores are separate, query from parent, confirm parent gets own memories first, test cross-agent recall fallback, verify subagent isolation is enforced.
+- **Based on (openclaw):** `extensions/active-memory/index.ts` — OpenClaw active-memory.ts — spawn secondary agent for recall with bounded timeouts, circuit breaker on repeated timeouts, result caching with TTL
+- **Muse today:** none — packages/agent-core/src (multi-agent orchestration exists; no active-memory module with secondary delegation + circuit breaker + caching)
+- **Proposal:** Create packages/agent-core/src/active-memory.ts exporting createActiveMemoryRecaller(config). Spawns secondary agent to execute memory_search/memory_get scoped to target agent. Bounded timeouts: 15s default, max 120s. Circuit breaker: max 3 consecutive timeouts → 60s cooldown before retry. LRU cache (15s TTL, max 1000 entries) storing results by query hash. Injects summary + recent transcript snippet into primary agent context. Failure modes degrade gracefully: partial data returned rather than blocking. Respects MUSE_LOCAL_ONLY: secondary agent uses same local model as primary.
+- **Value:** Multi-agent memory coordination without stalling primary loop. Allows delegation while maintaining rich context. Prevents cascading latency from slow recall.
+- **Verify:** Test secondary agent spawning with memory_search tool, circuit breaker opening after 3 timeouts, cache hit reducing latency, graceful degradation on timeout (returns partial), and TTL expiration evicting old entries.
 
 ## 4. Skills · Authoring · Bundles · Commands · Curation
 
-_20 items_
+_13 opportunities · 18 competitor files read_
 
 
-### `SKL-1` Skill installation and marketplace: basic hub discovery (search multiple skill sources)  ★★★★★ · L · missing
+### `SKL-1` Skill Config Variable Extraction and Frontmatter Resolution  ★★★★ · M · none
 
-- **Reference:** hermes-agent: tools/skills_hub.py + hermes_cli/skills_hub.py — unified_search() across official, skills.sh, GitHub, ClawHub, LobHub, and local skills with pagination, trust levels, and filtering
-- **Muse approach:** Implement a `SkillSource` interface in `packages/skills/src/skill-source.ts` (inspect, fetch, list methods). Create adapters for GitHub (read SKILL.md from repo), agentskills.io API (JSON registry), and local filesystem. Add a `muse.skills.search` tool in `packages/tools/src/muse-tools-skills.ts` that queries sources in sequence (with timeout), returns paginated metadata (name, description, source, trust level). Store results in memory (no persistence yet).
-- **Value:** Lets users discover skills from public repos and registries without manual GitHub browsing; foundation for future hub integration.
-- **Verify:** Call muse.skills.search with query 'test', confirm results from at least 2 sources (github, local), each with name, description, trust_level.
+- **Based on (hermes):** `agent/skill_utils.py` — Skills declare config keys in frontmatter; values injected from config.yaml with fallback defaults
+- **Muse today:** none — packages/skills/src/skill-contract.ts, skill-parser.ts
+- **Proposal:** Extend SkillFrontmatter in packages/skills/src/skill-contract.ts to add optional `config?: readonly string[]` field. In skill-parser.ts, parse `config:` block as an array of strings. In packages/autoconfigure/src/personal-providers.ts, resolve config values from muse config and inject as a `configValues` object into the SkillCatalogEntry so agents see what values are available before skill execution.
+- **Value:** Skills can declare runtime dependencies (API keys, paths, toggles) without hardcoding, enabling authors to write once and users to configure per-environment
+- **Verify:** Write test in packages/skills/test/skill-parser.test.ts parsing `config: ["api_key", "output_dir"]` and verify muse.skills.read returns configValues block with resolved values or placeholders
 
-### `SKL-2` Skill validation and risk scanning at author/install time (no prompt-injection)  ★★★★★ · M · partial
+### `SKL-2` Skill Workshop Proposal and Approval Quarantine Workflow  ★★★★ · L · partial
 
-- **Reference:** Muse already has this for authored skills (scanSkillBodyForRisks in authored-skill-store.ts), but OpenClaw does it at install time via workshop + skill-workshop scan; hermes has tools/skills_guard.py content-hash scanning
-- **Muse approach:** Extend the existing `scanSkillBodyForRisks` in `packages/skills/src/authored-skill-store.ts` to be called also for externally-installed skills (not just authored). Add a `validateSkillContent` function to `packages/skills/src/skill-validation.ts` (new file) that mirrors the OpenClaw scan: prompt-injection patterns (ignore/disregard/ignore instructions), dangerous shell (rm -rf, pipe to bash), embedded secrets (AWS keys, PEM headers). Call it in `muse.skills.install` before persisting to disk, quarantine flagged skills to .muse/skills/.quarantine/.
-- **Value:** Prevents prompt-injection and credential leaks from untrusted external skills; quarantine+manual review keeps the agent safe without blocking all installs.
-- **Verify:** Try to install a SKILL.md with 'ignore all previous instructions' in the body, confirm it's quarantined and not usable until manually reviewed.
+- **Based on (openclaw):** `src/skills/workshop/service.ts` — proposeCreateSkill drafts proposal in memory; SkillProposalRecord stores metadata/origin/approval; applySkillProposal persists approved proposals
+- **Muse today:** partial — packages/skills/src/authored-skill-store.ts scanSkillBodyForRisks()
+- **Proposal:** Extend authored-skill-store.ts: add proposeSkill(draft, origin) that always writes to `.pending/` folder with a manifest (metadata, origin, timestamp, risk-scan results). Add approveSkill(name) that moves from `.pending/` to active. In packages/agent-core/src, gate auto-authored skills behind this workflow — agent proposes, human approves, then writeOrPatch() commits. Display approval UI in CLI showing risk reasons and allowing bulk-reject or selective approve.
+- **Value:** Prevents surprise auto-authored skills with prompt-injection from silently activating; users review before accepting, maintaining control over their skill library
+- **Verify:** Test in packages/skills/test/authored-skill-store.test.ts: proposeSkill(draft) writes to `.pending/`; approveSkill() moves to active; pending skills are not listed by listAuthored()
 
-### `SKL-3` Skill bundles (load N skills under one /command)  ★★★★ · M · missing
+### `SKL-3` Skill Platform and Environment Runtime Gating  ★★★ · M · none
 
-- **Reference:** hermes-agent: agent/skill_bundles.py — YAML manifest files in ~/.hermes/skill-bundles/*.yaml naming multiple skills to load as a unit, with conflict resolution (bundles override single skills), custom bundle instructions, and reporting of missing skills
-- **Muse approach:** Implement a `SkillBundle` interface and loader in `packages/skills/src/skill-bundles.ts` mirroring Hermes's YAML-based manifest (bundle name, skills list, optional instruction). Store bundles in `~/.muse/skill-bundles/` alongside skills. Add `muse.skills.bundle` tool to invoke them. Register bundles in the autoconfigure layer at `packages/autoconfigure/src/skills-runtime.ts` alongside individual skills, with bundle-wins precedence in slash-command dispatch.
-- **Value:** Enables power users to group related skills (e.g., 'backend-dev' = test + review + PR workflow) into single reusable commands, reducing cognitive load and copy-paste.
-- **Verify:** Write a ~/.muse/skill-bundles/test-bundle.yaml, invoke via /test-bundle, confirm all 3 skills load with the bundle header note and optional bundle instruction appears.
+- **Based on (hermes):** `agent/skill_utils.py` — Skills declare target platforms (darwin/linux/windows/termux) and runtime env (kanban/docker/s6); offer-time filter hides incompatible skills
+- **Muse today:** none — packages/skills/src/skill-contract.ts, skill-loader.ts
+- **Proposal:** Add `platforms?: readonly string[]` and `environment?: readonly string[]` to SkillFrontmatter (packages/skills/src/skill-contract.ts). In skill-parser.ts, parse both as arrays from frontmatter. In packages/autoconfigure/src/personal-providers.ts buildSkillRegistry(), detect current platform (process.platform) and environment (env vars or config keys), then filter before returning to registry.
+- **Value:** Users won't be prompted to use macOS-only skills on Linux, or Docker-specific skills on bare metal, reducing model confusion and failed invocations
+- **Verify:** Test in packages/skills/test/skill-loader.test.ts: a skill with `platforms: ["darwin"]` is skipped on linux (and vice versa); explicit skill name load bypasses filter
 
-### `SKL-4` Skill installation: 'muse skills install' from GitHub/registry with conflict resolution  ★★★★ · L · missing
+### `SKL-4` Foreground vs Background Skill Authoring Provenance Tracking  ★★★ · S · partial
 
-- **Reference:** OpenClaw: docs/tools/skills.md + packages — 'openclaw skills install <slug>' from ClawHub, Git URL, or local path with SRI verification, update tracking, and conflict resolution (precedence levels)
-- **Muse approach:** Add `muse.skills.install` tool (execute risk) in `packages/tools/src/muse-tools-skills.ts` that accepts a GitHub URL (e.g., 'owner/repo@ref:skills/skill-name'), agentskills.io identifier, or local path. Download the SKILL.md (via fetch or git), parse it, validate (no traversal, safe names), store in ~/.muse/skills/. Record the source/version in a .muse/skill-manifest.json for update tracking. Later roots (workspace) override earlier ones (user), matching `buildSkillRegistry` precedence.
-- **Value:** Enables one-shot skill install without manual GitHub navigation or copy-paste; foundation for hub-driven skill ecosystem.
-- **Verify:** Call install with a GitHub URL to a test SKILL.md in a public repo, confirm the skill appears in muse.skills.list and is runnable.
+- **Based on (hermes):** `tools/skill_provenance.py` — ContextVar tracks write origin (foreground agent vs background_review); curator never auto-archives user-created skills, only agent-synthesized ones
+- **Muse today:** partial — packages/skills/src/authored-skill-store.ts
+- **Proposal:** Extend the `muse` metadata block in serializeAuthoredSkill() to include an `origin?: "foreground" | "background_review"` field (defaulting to "foreground" for user skills). Pass origin when calling writeOrPatch(). In consolidate() and curate(), check origin before archiving — only archive skills with origin="background_review", preserving all foreground user creations.
+- **Value:** Curator can safely auto-consolidate agent-proposed skills without the risk of silently archiving a user's handcrafted skill, maintaining user agency and trust
+- **Verify:** Test in packages/skills/test/authored-skill-store.test.ts: a skill with origin="foreground" is never archived by curate() even if idle; background_review origin is eligible
 
-### `SKL-5` Skill preprocessing: template variable substitution (${HERMES_SKILL_DIR}, ${HERMES_SESSION_ID})  ★★★ · S · missing
+### `SKL-5` Skill Marketplace and Multi-Source Registry with Integrity Hashing  ★★★ · L · none
 
-- **Reference:** hermes-agent: agent/skill_preprocessing.py — substitute_template_vars() replaces ${HERMES_SKILL_DIR} and ${HERMES_SESSION_ID} in skill content so skills can reference their own directory and session context without hardcoding paths
-- **Muse approach:** Add a `preprocessSkillContent()` function to `packages/skills/src/skill-parser.ts` that runs on skill load. Detect ${MUSE_SKILL_DIR} and ${MUSE_SESSION_ID} in the body, substitute when available (skill baseDir is known, session_id from context). Leave unresolved tokens in place for debugging. Apply this in the `createSkillReadTool` in `packages/tools/src/muse-tools-skills.ts` before returning the body.
-- **Value:** Lets skill authors write `./scripts/setup.sh` as `${MUSE_SKILL_DIR}/scripts/setup.sh` so they work without absolute paths; session_id enables skill-specific logging or audit trails.
-- **Verify:** Create a SKILL.md with body containing `Path: ${MUSE_SKILL_DIR}/templates`, read it via muse.skills.read, confirm the template path is substituted with the actual skill base directory.
+- **Based on (hermes):** `tools/skills_hub.py` — SkillSource ABC defines registry adapter interface; HubLockFile tracks integrity hashes; sources: GitHub, marketplace taps with search/fetch/quarantine
+- **Muse today:** none — packages/autoconfigure/src/personal-providers.ts
+- **Proposal:** Create `packages/skills/src/skill-sources.ts` defining a SkillSource interface (fetch, search, verify). Implement LocalGitHubSource (fetches from github.com/owner/repo raw URLs) and RemoteHTTPSource (fetches from taps/registries). In packages/autoconfigure/src/personal-providers.ts, extend buildSkillRegistry() to accept optional external skill sources from config (e.g., MUSE_SKILL_SOURCES="https://skills-hub.example.com"). Download and cache with sha256 verification. Store a `skills.lock.json` locally recording source URLs and hashes for reproducibility.
+- **Value:** Users can share and discover skills beyond their local workspace, enabling community skill reuse while maintaining offline-first integrity verification (no cloud-owner required)
+- **Verify:** Integration test: fetch a skill from a remote GitHub raw URL, verify sha256, cache locally, muse.skills.list includes it; corrupted remote skill fails verify and is skipped
 
-### `SKL-6` Skill metadata: `platforms` field for OS-specific gating  ★★★ · S · missing
+### `SKL-6` Curator Background Task Idle Trigger and Auto-Transition State Machine  ★★★ · M · partial
 
-- **Reference:** hermes-agent: tools/skills_tool.py — SKILL.md frontmatter 'platforms: [macos, linux]' gates skills to specific OSes, filtered at load time; agentskills.io standard
-- **Muse approach:** Add `platforms?: readonly string[]` to the `SkillFrontmatter` interface in `packages/skills/src/skill-contract.ts` (values: 'darwin', 'linux', 'win32'). Extend `FileSystemSkillLoader.loadAll()` in `packages/skills/src/skill-loader.ts` to skip skills whose platform list doesn't include `process.platform`. Document in the skill-parser JSDoc.
-- **Value:** Prevents macOS-only CLI tools (e.g., osascript) from appearing on Linux, reducing agent confusion and failed tool invocations; mirrors Hermes/OpenClaw standard.
-- **Verify:** Create a SKILL.md with 'platforms: [linux]' in frontmatter, load it on macOS, confirm it's filtered out of the registry.
+- **Based on (hermes):** `agent/curator.py` — Background task spawns on idle after interval; apply_automatic_transitions archives unused; config: enabled/interval_hours/min_idle_hours/stale_after_days/archive_after_days
+- **Muse today:** partial — packages/skills/src/authored-skill-store.ts curate() and consolidate()
+- **Proposal:** Create `packages/skills/src/skill-curator-daemon.ts` exporting a SkillCuratorDaemon class. Constructor accepts { staleAfterDays, archiveAfterDays, consolidationThreshold, checkIntervalMs }. Exposes async run() that periodically calls curate() and consolidate() on the AuthoredSkillStore. In packages/agent-core or packages/cli, integrate the daemon: at session-end or on idle timer, spawn curator in background. Make all config keys MUSE_SKILL_* env vars so users can tune or disable.
+- **Value:** Authored skills automatically transition from active to stale to archived without explicit user action, keeping the library focused and the local model's tool-choice accurate without bloat
+- **Verify:** Integration test: AuthoredSkillStore with daemon spawned; a skill unused for staleAfterDays is auto-transitioned to .archive/ when daemon runs; verify via listArchived()
 
-### `SKL-7` Skill enable/disable per-agent via config (skills.entries.<name>.enabled flag)  ★★★ · M · missing
+### `SKL-7` Disabled Skills Per-User Configuration and Caching  ★★ · S · none
 
-- **Reference:** OpenClaw: docs/tools/skills-config.md — skills.entries.<skill-name> section with 'enabled: true/false' to gate skills per agent, independent of location/precedence
-- **Muse approach:** Add a 'skillsConfig' section to Muse's config system (e.g., env var `MUSE_SKILLS_CONFIG_JSON` or ~/.muse/skills-config.json with structure `{ entries: { '<skill-name>': { enabled: boolean } } }`). Extend `FileSystemSkillLoader.loadAll()` to filter by enabled status after loading. Update `muse.skills.list` to show enabled/disabled status. Gating is independent of precedence (workspace still overrides user even if user skill is disabled).
-- **Value:** Lets users disable built-in or problematic skills without uninstalling them; useful for experimentation or per-workspace specialization.
-- **Verify:** Disable 'research' skill via config, call muse.skills.list, confirm it's not in the list but still shows as disabled in a separate section.
+- **Based on (hermes):** `agent/skill_utils.py` — Users silently disable noisy/broken skills via config.skills.disabled list; caching avoids repeated config parses on cold start
+- **Muse today:** none — packages/autoconfigure/src/personal-providers.ts, packages/skills/src/skill-loader.ts
+- **Proposal:** Add `MUSE_DISABLED_SKILLS` env var and/or a `disabled?: readonly string[]` key in the Muse config file (alongside skills.external_dirs if added later). In packages/autoconfigure/src/personal-providers.ts buildSkillRegistry(), read the disable list once and pass it to the FileSystemSkillLoader. In loader, filter by name after reading but before returning so disabled skills are loadable via explicit name (not hidden completely).
+- **Value:** Users can quickly silence problematic skills without deleting them, reducing session friction when a skill is flaky or irrelevant to the user's domain
+- **Verify:** Test in packages/skills/test/skill-loader.test.ts: skill named "broken" in MUSE_DISABLED_SKILLS is omitted from list() but loadable via explicit get("broken")
 
-### `SKL-8` Skill search and filtering: name, description, tags, and platforms in muse.skills.list output  ★★★ · M · partial
+### `SKL-8` Skill User Instruction Extraction from Authoring Scaffolding  ★★ · M · none
 
-- **Reference:** hermes-agent: tools/skills_tool.py::skills_list() — returns paginated metadata; OpenClaw supports agent allowlists that filter which skills each agent sees
-- **Muse approach:** Extend `muse.skills.list` in `packages/tools/src/muse-tools-skills.ts` to accept optional filters: `query` (searches name + description), `tags` (array, any-match), `requiresBins` (exact match on binary), `platforms` (exact match on platform). Return paginated results (100 skills per page). Document that filtering is client-side (skills registry returns full list, tool does the filtering).
-- **Value:** Enables the agent to find skills by capability ('show me testing skills') without manual catalog browsing or remembering exact names.
-- **Verify:** Call muse.skills.list with query='test' and tags=['testing'], confirm only skills matching both criteria return.
+- **Based on (hermes):** `agent/skill_commands.py` — Extract user request from skill scaffolding markers (single-skill, bundle formats); return just instruction for memory providers, keeping memory clean
+- **Muse today:** none — packages/skills/src/authored-skill-store.ts, packages/tools/src/muse-tools-skills.ts
+- **Proposal:** In packages/skills/src/skill-parser.ts, add optional parsing for a `<!-- user-instruction: ... -->` or `<!-- request: ... -->` marker in the skill body. Export an `extractUserInstructionFromSkill()` function that returns the marker content if present, otherwise undefined. In packages/agent-core/src (memory provider), when recording a skill execution, prefer extractUserInstructionFromSkill() so the memory stores the bare user request, not the expanded skill body.
+- **Value:** Session memory stays concise: agents recall "user asked for a git commit message generator" not the full skill markdown, reducing token cost and improving recall precision
+- **Verify:** Unit test in packages/skills/test/skill-parser.test.ts: a skill with `<!-- user-instruction: generate git messages -->` extracts that instruction; one without returns undefined
 
-### `SKL-9` Skill preprocessing: inline shell command execution (!`cmd` → stdout)  ★★ · M · missing
+### `SKL-9` Skill Entry Visibility and Access Control (Exposure Flags)  ★★ · M · none
 
-- **Reference:** hermes-agent: agent/skill_preprocessing.py — expand_inline_shell() runs !`cmd` snippets at skill load time (e.g., !`git version` → '2.43.0'), with stdout capture, error handling, and output capping (4KB max)
-- **Muse approach:** Extend `packages/skills/src/skill-parser.ts` with an `expandInlineShell()` function that detects `!\`...\`` patterns, spawns them via `node:child_process` with the skill dir as cwd, captures output (16KB cap to match muse.skills.run), and substitutes. Gate it behind a config flag `MUSE_SKILL_INLINE_SHELL` (default false) to prevent untrusted skill execution. Run after template-var substitution in `createSkillReadTool`.
-- **Value:** Enables dynamic skill content: e.g., '!`ls ./templates`' auto-populates the list of available templates, keeping skills DRY and reducing copy-paste maintenance burden.
-- **Verify:** Create a SKILL.md with body '!`echo hello world`', read it via muse.skills.read with MUSE_SKILL_INLINE_SHELL=true, confirm output shows 'hello world' in place of the snippet.
+- **Based on (openclaw):** `src/skills/types.ts` — SkillEntry exposes flags: includeInRuntimeRegistry, includeInAvailableSkillsPrompt, userInvocable; agent skillFilter narrows visible skills per role
+- **Muse today:** none — packages/skills/src/skill-contract.ts, packages/tools/src/muse-tools-skills.ts
+- **Proposal:** Add `exposure?: { includeInPrompt?: boolean; userInvocable?: boolean }` to SkillFrontmatter (packages/skills/src/skill-contract.ts). In packages/autoconfigure/src/personal-providers.ts, toCatalogEntry() respects these flags when building the SkillCatalogEntry. In muse-tools-skills.ts, muse.skills.list filters by includeInPrompt; muse.skills.read and muse.skills.run still allow explicit load (userInvocable check only blocks prompting, not direct calls).
+- **Value:** Authors can author internal helper skills or advanced/niche skills that don't clutter the main agent prompt, while keeping them accessible to advanced users or other agents
+- **Verify:** Test in packages/tools/test/muse-tools-skills.test.ts: a skill with `exposure.includeInPrompt=false` is omitted from list() but readable via read() and runnable via run()
 
-### `SKL-10` Skill metadata: `tags` field for categorization and search  ★★ · S · missing
+### `SKL-10` Skill Bundles: Group Related Skills Under Coordinated Commands  ★★ · L · none
 
-- **Reference:** hermes-agent: tools/skills_tool.py — SKILL.md metadata.hermes.tags field for categorization (fine-tuning, llm, etc.); used by search and discovery
-- **Muse approach:** Add `tags?: readonly string[]` to `SkillFrontmatter` in `packages/skills/src/skill-contract.ts`. Expose tags in `muse.skills.list` output. Add optional `tags` filter to `muse.skills.list` input schema (e.g., 'list skills tagged with workflow'). Filter implementation in `packages/tools/src/muse-tools-skills.ts`.
-- **Value:** Enables domain-aware skill discovery without marketplace backend: user/LLM can filter skills by intent ('testing', 'web-scrape', 'auth') without naming exact skills.
-- **Verify:** Add tags to 2 skills ('testing' and 'web'), call muse.skills.list with tags filter for 'testing', confirm only the testing skill returns.
+- **Based on (hermes):** `agent/skill_bundles.py` — scan_bundles walks bundle dir, parses skills list, slugifies name; build_bundle_invocation_message loads all skills content
+- **Muse today:** none — packages/skills/src/skill-contract.ts, packages/skills/src/skill-loader.ts
+- **Proposal:** Create a new `packages/skills/src/skill-bundles.ts` module. Define a BundleManifest type (name, description, skills: string[]). Add bundle-loading logic that scans for `BUNDLE.md` files (alongside SKILL.md folders) containing YAML frontmatter + a markdown body. In packages/autoconfigure/src/personal-providers.ts, extend buildSkillRegistry() to parse bundles and wrap their member skills into virtual "bundle:name" entries that muse.skills.read returns as a coordinated group.
+- **Value:** Users can ask the agent for a cohesive workflow ("run the full release bundle") and get all related skills presented together, reducing friction vs finding and invoking skills individually
+- **Verify:** Test in new packages/skills/test/skill-bundles.test.ts: a BUNDLE.md with skills: ["git-commit", "npm-publish"] loads both and muse.skills.read("bundle:release") returns both members
 
-### `SKL-11` Skill authoring: session-aware skill capture and consolidation (curator loop)  ★★ · M · partial
+### `SKL-11` External Skill Directories with Layered Precedence and Configuration  ★★ · M · partial
 
-- **Reference:** Muse already has authored-skill-store.ts with authoring + consolidation, but Hermes has curator lifecycle (skill_bundles.py, tools) with auto-archive of stale skills and periodic consolidation runs (SkillOpt umbrella merging with validation gates)
-- **Muse approach:** Extend `AuthoredSkillStore` in `packages/skills/src/authored-skill-store.ts` with a `curateAutomated()` method (already has `curate()` for archival). Wire it into agent-core's session-end hook so it runs after every N turns (configurable, default 50). Consolidate via the existing `consolidate()` method with feedback-retry and validation gates. Add a `muse.skills.curator-status` tool to show queued consolidations and archived skills (read-only, for observability).
-- **Value:** Keeps authored skills fresh and non-redundant without manual curation burden; prevents skill library bloat on long-running agents.
-- **Verify:** Author 2 similar skills, run curator with consolidation, confirm they're merged into 1 umbrella skill and the originals are archived.
+- **Based on (hermes):** `agent/skill_utils.py` — get_all_skills_dirs returns local ~/.hermes/skills then config.skills.external_dirs expanded; iter walks sorted SKILL.md excluding .git/.venv/.pytest_cache
+- **Muse today:** partial — packages/autoconfigure/src/personal-providers.ts buildSkillRegistry()
+- **Proposal:** Extend MuseEnvironment in packages/autoconfigure/src/index.ts to support MUSE_SKILL_EXTERNAL_DIRS (comma-separated paths). In personal-providers.ts buildSkillRegistry(), parse that env var and insert external dirs into the roots array with correct precedence (after user but before workspace, so workspace wins). Skip .git, .venv, .pytest_cache folders during walk. Extend SkillSourceInfo to record which external dir a skill came from so users can trace origin.
+- **Value:** Teams can maintain shared skill repos without symlinks; users can layer personal, team, and workspace skills with clear override semantics
+- **Verify:** Test in packages/autoconfigure/test/skills-registry-precedence.test.ts: a skill in external_dir[0] overrides one in external_dir[1] if same name; user dir overrides both
 
-### `SKL-12` Skill config injection: resolve metadata.hermes.config values and inject into prompt  ★★ · M · missing
+### `SKL-12` Skill Custom Tool Dispatch and Runtime Routing  ★ · M · none
 
-- **Reference:** hermes-agent: agent/skill_commands.py::_inject_skill_config() — skills declare metadata.hermes.config keys (e.g., ['browser.enabled']), these are resolved from config.yaml and injected into the skill message so the agent knows the values
-- **Muse approach:** Extend `SkillFrontmatter` to include `config?: readonly string[]` (optional array of config key names). In `packages/tools/src/muse-tools-skills.ts`, extend `createSkillReadTool` to look up config keys (from `MUSE_CONFIG_*` env vars or a future config provider) and append a '[Skill config: ...]' block before returning the body. Document that config keys are resolved best-effort (missing keys are noted as '(not set)').
-- **Value:** Lets skills declare runtime dependencies on config values without hardcoding them; the agent sees the current values in the prompt.
-- **Verify:** Author a SKILL.md declaring metadata.muse.config = ['browser.enabled'], set MUSE_CONFIG_BROWSER_ENABLED=true, read the skill, confirm the config block shows 'browser.enabled = true'.
+- **Based on (openclaw):** `src/skills/types.ts` — SkillCommandDispatchSpec declares kind/tool/toolName/argMode; at invocation, tool router directs command to named tool without model interpretation
+- **Muse today:** none — packages/skills/src/skill-contract.ts, packages/tools/src/muse-tools-skills.ts
+- **Proposal:** Add `dispatch?: { toolName?: string; argMode?: "raw" | "split" }` to SkillFrontmatter. In packages/tools/src/muse-tools-skills.ts createSkillRunTool(), before spawning, check if skill.frontmatter.dispatch exists and toolName is set. If present, route to that tool (via a dispatch map passed into createSkillRunTool options) instead of spawning a subprocess. This enables skills to invoke muse.* tools deterministically without model indirection.
+- **Value:** Skills can safely orchestrate muse tools (e.g., a skill invoking muse.notes.read to compose a report) with zero-latency dispatch and no model misinterpretation risk
+- **Verify:** Test in packages/tools/test/muse-tools-skills.test.ts: a skill with `dispatch.toolName="muse.notes.read"` routes the command to that tool's execute, not spawn
 
-### `SKL-13` Skill rewards and usage tracking (leverage skill-rewards-store)  ★★ · M · partial
+### `SKL-13` Skill Template Variable Substitution and Inline Shell Preprocessing  ★ · L · none
 
-- **Reference:** Muse has skill-rewards-store but it's not integrated into skill-tools or usage tracking; Hermes has tools/skill_usage.py that bumps usage counters, feeds curator priority
-- **Muse approach:** Wire the existing `skill-rewards-store` (`packages/stores/src/skill-rewards-store.ts`) into `createSkillReadTool` and `createSkillRunTool` in `packages/tools/src/muse-tools-skills.ts` so every read/run increments a usage counter for that skill. Also update `AuthoredSkillStore.recordUsage()` to persist lastUsedAt in the skill metadata (already done). Export usage stats via a new `muse.skills.usage-stats` tool (read-only).
-- **Value:** Feeds the curator with usage data to rank skills by utility (never-used older skills archived before frequently-used ones); enables future analytics on which skills are actually valuable.
-- **Verify:** Read a skill 3 times, call usage-stats, confirm read count = 3 for that skill.
-
-### `SKL-14` Skill metadata: `version` and `homepage` for provenance tracking  ★ · S · partial
-
-- **Reference:** hermes-agent: tools/skills_tool.py + OpenClaw docs — optional 'version: 1.0.0' and agentskills.io-standard 'homepage' for skill provenance and update checks; tracked in lock files
-- **Muse approach:** Add `version?: string` and `homepage?: string` to `SkillFrontmatter` in `packages/skills/src/skill-contract.ts`. Update the skill-loader to log version mismatches when reloading (warn if version changed since last load, useful for external skill sources). Store version in skill-rewards-store or a new .muse/skill-manifest.json for future update checks.
-- **Value:** Tracks which version of an external/hub skill is installed, enabling future update notifications; homepage enables skill authors to point to docs.
-- **Verify:** Add version: 1.0.0 to a SKILL.md, reload the skill, check that the registry entry includes version and it's logged as loaded.
-
-### `SKL-15` Skill directory context injection: ${MUSE_SKILL_DIR} and relative-path hints in prompts  ★ · S · partial
-
-- **Reference:** hermes-agent: agent/skill_commands.py::_build_skill_message() — appends '[Skill directory: /path/to/skill] Resolve any relative paths...' so the agent can run skill-bundled scripts via absolute paths
-- **Muse approach:** Extend `createSkillReadTool` in `packages/tools/src/muse-tools-skills.ts` to always append a '[Skill directory: <baseDir>]' hint after the body, explaining that relative paths in the skill refer to that directory. This mirrors the template-var substitution: skill authors can write './templates/config.yaml' and the agent learns it means '<baseDir>/templates/config.yaml'.
-- **Value:** Clarifies to the agent how to resolve skill-relative paths, preventing confusion and enabling skills that reference bundled templates/scripts without absolute paths.
-- **Verify:** Read a skill with a relative path './scripts/setup.sh' in the body, confirm the skill directory hint appears below the content.
-
-### `SKL-16` Slash-command slash-completion: /skill-name autocomplete and discovery in TUI/CLI  ★ · S · missing
-
-- **Reference:** hermes-agent: agent/skill_commands.py + CLI integration — Telegram/CLI resolves slash commands by normalizing skill names (hyphen/underscore interchangeability), falling back to bundles
-- **Muse approach:** Add logic to `packages/skills/src/skill-registry.ts` to support slug-based lookup (e.g., 'my-skill', 'my_skill', 'MySkill' all resolve to the same skill). Extend `muse.skills.read` to accept either the full name or the slug. Export a `resolveSkillSlug()` function for use in TUI/CLI integration. Document that `/my-skill`, `/my_skill`, `/myskill` are equivalent.
-- **Value:** Reduces friction in TUI usage where typos or case-sensitivity matter; mirrors Telegram bot slash-command flexibility.
-- **Verify:** Create a skill named 'my-skill', call muse.skills.read with 'my_skill', confirm it resolves to the same skill.
-
-### `SKL-17` Skill composition and nesting: call other skills from within a skill body  ★ · S · missing
-
-- **Reference:** OpenClaw: agent-core/harness/skills.ts — skills are formatted as XML blocks; nested calls could invoke other skills via tool calls (implicit via agent loop, not explicit yet)
-- **Muse approach:** Add a note to the skill body formatting (in `createSkillReadTool`) documenting how to call other skills: 'You can call muse.skills.read to load another skill's content, then muse.skills.run to invoke it. Skills are composable — use read to check prerequisites.' No code change needed — this is documentation + convention. Later, if needed, add explicit `muse.skills.call(skillName, ...)` that executes the skill in-band (not via tool call).
-- **Value:** Enables power-user skills that orchestrate simpler primitives (e.g., a 'full-test' skill that calls 'unit-test', 'lint', 'integration-test' in sequence).
-- **Verify:** Document in skill-tools README that calling other skills is done via explicit muse.skills.read + muse.skills.run calls, demonstrate with a composite skill that calls 2 others.
-
-### `SKL-18` Skill migration/versioning: upgrade path when skill structure changes  ★ · S · missing
-
-- **Reference:** OpenClaw: docs mention skill format evolution; Hermes handles bundled vs. user versions via sync manifest tracking user-modified state
-- **Muse approach:** Add a `schemaVersion: '1'` field to `SkillFrontmatter` (defaults to '1'). When loading, check if schema > current support and log a warning (fail-open, don't block). In future if SKILL.md format changes (e.g., 'requires' → 'metadata.muse.requires'), the version field lets loaders coexist. For now, document in the skill-contract that version 1 is current and expected.
-- **Value:** Future-proofs the skill format; when/if we need to evolve SKILL.md structure, existing skills can be auto-migrated or marked as deprecated.
-- **Verify:** Create a SKILL.md with schemaVersion: '2', load it, confirm a warning is logged but the skill still loads (fail-open).
-
-### `SKL-19` Skill permissions and allowlists: per-agent skill visibility (no global access)  ★ · M · missing
-
-- **Reference:** OpenClaw: docs/tools/skills.md — agents.defaults.skills and agents.list[].skills allowlists restrict which skills each agent can see, independent of location/precedence
-- **Muse approach:** Add an optional `skillAllowlist?: readonly string[]` to the agent config (future work: this would live in a Muse agents config file, not present yet). In `buildSkillRegistry`, filter skills at list time: if allowlist is set, only return skills whose names are in the list. Implement as a wrapper `SkillRegistry` that filters on reads. Default (no allowlist) = all skills visible.
-- **Value:** In multi-agent setups, lock down agents to specific skills (e.g., 'docwriter' agent can't see 'database-migration' skill). Prevents accidental tool use across agent personas.
-- **Verify:** Set a skill allowlist for an agent, load that agent, confirm muse.skills.list only returns allowed skills.
-
-### `SKL-20` Skill performance profiling: track execution time and failures per skill  ★ · M · missing
-
-- **Reference:** hermes-agent: tools/skill_usage.py — usage counters; no explicit perf profiling but framework exists for extending
-- **Muse approach:** Extend the skill-rewards-store to track (in addition to usage count): execution time (ms), success/failure flags, and error message (first 200 chars). In `createSkillRunTool`, wrap execution with timing and outcome recording. Export via `muse.skills.performance-stats` (read-only) showing slowest, most-failed skills. Data persists in the rewards store.
-- **Value:** Identifies skills that are slow or flaky (e.g., external API timeouts), helping prioritize optimization or debugging.
-- **Verify:** Run a skill that takes 5+ seconds, call performance-stats, confirm execution time is recorded and the skill shows as slowest.
+- **Based on (hermes):** `agent/skill_preprocessing.py` — substitute_template_vars replaces token placeholders; expand_inline_shell executes shell snippets before returning body
+- **Muse today:** none — packages/skills/src/skill-parser.ts, packages/tools/src/muse-tools-skills.ts
+- **Proposal:** In packages/tools/src/muse-tools-skills.ts createSkillReadTool(), after fetching the skill, preprocess the body: (1) replace `{{configVar}}` tokens with values from resolved config (from frontmatter.config), (2) find and execute `<!-- shell: ... -->` code blocks in isolated spawn, inject their stdout back into the body. Return the expanded body. Limit shell execution to 5s timeout and safe commands (no rm -rf, no credential access).
+- **Value:** Skill authors can embed dynamic content (current date, user name, shell command output) in skill markdown without requiring agent interpolation, reducing model token consumption and improving skill portability
+- **Verify:** Integration test: a skill with body `"Today is {{date}}"` and config resolve returns "Today is 2026-06-23"; a skill with `<!-- shell: echo hello -->` returns body with "hello" injected
 
 ## 5. Tool Execution · Guardrails · File Safety · Net Policy · Secrets
 
-_16 items_
+_11 opportunities · 11 competitor files read_
 
 
-### `TSF-1` Implement deterministic URL secret redaction in tool results and logs  ★★★★★ · M · partial
+### `TSF-1` Tool-Level Policy Conformance Groups  ★★★★★ · S · partial
 
-- **Reference:** openclaw: packages/net-policy/src/redact-sensitive-url.ts — redactSensitiveUrl() redacts query params and userinfo from parsed URLs
-- **Muse approach:** Add a @muse/net-policy package with URL redaction matching openclaw's sensitive query parameter names (token, api_key, secret, etc.) and redact both userinfo and sensitive query params. Land in packages/net-policy/src/url-redaction.ts; export via @muse/policy for use in observability/logging layers. Deterministic, not prompt-based.
-- **Value:** Prevents API keys and OAuth tokens in URLs from leaking into logs and model context when tools emit them in outputs or error messages.
-- **Verify:** Test that https://api.example.com?api_key=sk-abc123 redacts to https://api.example.com?api_key=*** in tool result logs.
+- **Based on (openclaw):** `extensions/policy/src/tool-policy-conformance.ts` — POLICY_TOOL_GROUPS maps 30+ tool names to semantic groups (group:fs, group:runtime, group:web, group:memory, group:sessions, etc.) enabling policy rules to target families by single group name.
+- **Muse today:** partial — packages/tools/src/index.ts uses domain field (messaging, calendar, tasks, notes, system, core) for tool filtering, but no conformance groups for policy rules or deny/allow scoping
+- **Proposal:** Extend packages/policy/src/index.ts with toolConformanceGroups: export const TOOL_CONFORMANCE_GROUPS = { 'group:fs': [file_read, file_grep, file_edit, file_list], 'group:runtime': [run_command, ...], 'group:web': [web_read, web_action, web_download], ... }. Support expandGroup(ruleTarget) to resolve 'group:X' into concrete tool names. Use in exec-approvals + tool-exposure-policy so adding a new file tool auto-includes it in group:fs rules.
+- **Value:** Scales policy management. Policy rules written once against group:fs apply to all file tools (now + future) without manual update. Reduces config duplication.
+- **Verify:** Write a policy rule denying group:fs. Add file_read + file_grep to approved tools. Verify both denied by expandGroup lookup. Add a new file tool; verify automatically denied by group.
 
-### `TSF-2` Implement tool-loop guardrail with repeated failure detection  ★★★★★ · L · missing
+### `TSF-2` Network SSRF Policy & URL Credential Redaction  ★★★★ · M · none
 
-- **Reference:** hermes: agent/tool_guardrails.py — ToolCallGuardrailController tracks exact_failure_counts, same_tool_failure_counts, idempotent_tool tracking, config-driven warn/block thresholds
-- **Muse approach:** Add tool-loop guardrail to @muse/agent-core. Create ToolLoopGuard class that tracks per-signature call hashes and result hashes, counts exact/same-tool failures, warns after N failures, blocks after M. Distinguish idempotent (read_file) vs mutating (write_file) tools. Land in packages/agent-core/src/tool-loop-guard.ts. Integrate into guard-pipeline.ts.
-- **Value:** Detects when the agent is stuck retrying the same tool call with identical arguments or the same tool failing repeatedly without changing strategy.
-- **Verify:** After 5 identical read_file calls returning the same result, guardrail warns; after 8 same_tool failures, it blocks.
+- **Based on (openclaw):** `packages/net-policy/src/redact-sensitive-url.ts` — Pattern-based detection + redaction of sensitive URL query params (token, key, password, auth, etc.) with Unicode separator handling, preserving scheme/host for debuggability.
+- **Muse today:** none — packages/policy/src/migration-redaction.ts - only redacts generic patterns (email, url, token), no URL-param-specific credential detection
+- **Proposal:** Add url-credential-redactor to packages/policy/src/; expose redactSensitiveUrl(urlString) + redactSensitiveUrlLikeString(malformed) pattern-matching library. Detect case-insensitive query param keys (token, api_key, auth, password, etc.) via URL constructor; mask values inline. Applied by web-read-tool and domain-tools fetch paths before logging/tracing.
+- **Value:** Prevents leakage of API keys & OAuth tokens in HTTP logs and transcript surfaces, especially when URLs appear in tool arguments or tool output traces.
+- **Verify:** Write test: pass URLs with token=sk-xxx&api_key=secret in query; verify keys masked in output, scheme+host preserved, malformed URLs handled by regex fallback.
 
-### `TSF-3` Implement redaction of secrets in tool output and logs (prefix-based + patterns)  ★★★★★ · M · partial
+### `TSF-3` Execution Approval Configuration & Allowlisting  ★★★★ · M · partial
 
-- **Reference:** hermes: agent/redact.py — redact_sensitive_text() masks sk-*, ghp_*, gho_*, xox-*, AIza*, JWTs (eyJ*), auth headers, DB connstrings, private keys, form bodies, URLs with query secrets
-- **Muse approach:** Enhance @muse/policy redaction. Add comprehensive secret pattern library (vendor prefixes: sk-, ghp_, npm_, pypi-, etc.; JWT eyJ*; auth headers; DB connstrings; private keys). Implement redact_sensitive_text(text, force?, code_file?) with cheap substring pre-checks to avoid regex overhead on clean text. Land in packages/policy/src/redaction.ts and export via @muse/policy.
-- **Value:** Prevents API keys, tokens, JWTs, and private key material from appearing unredacted in observability logs and tool transcripts.
-- **Verify:** redact_sensitive_text('sk-proj-abc123') returns 'sk-p...123'; redact_sensitive_text('Bearer sk-abc123') masks the token.
+- **Based on (openclaw):** `extensions/policy/src/policy-state.ts` — Per-agent or global exec approval settings: security level (deny/allowlist/full), ask mode (off/on-miss/always), auto-allow-skills flag. Pattern-based allowlist entries support optional argPattern.
+- **Muse today:** partial — apps/cli/src/commands-approvals.ts + packages/messaging track PendingApproval for async gate, but no pattern-based allowlist or security-level (deny/allowlist/full) enum in exec-approvals.json
+- **Proposal:** Enhance packages/policy/src/exec-approvals-schema.ts to support: security level (deny | allowlist | full), ask mode (off | on-miss | always), auto-allow-skills boolean, and allowlist[] with {tool, argPattern?} (regex). scanPolicyExecApprovals() merges legacy + modern with dedup. Validation layer ensures pattern is valid regex. Used by beforeTool hook to gate run_command/shell execution.
+- **Value:** Fine-grained per-tool approval. deny blocks entirely, allowlist restricts to patterns (e.g., only node in 'tests/' dir), full allows any. Reduces approval-spam while maintaining security.
+- **Verify:** Set deny on run_command. Verify hook blocks execution. Set allowlist with argPattern='npm test'. Verify 'npm test' allowed, 'rm -rf' denied. Pattern mismatch; verify blocked.
 
-### `TSF-4` Implement SSRF IP address blocking for network policy  ★★★★ · L · missing
+### `TSF-4` Tool Result Classification for Loop Detection  ★★★★ · S · partial
 
-- **Reference:** openclaw: packages/net-policy/src/ip.ts — isBlockedSpecialUseIpv4Address(), isBlockedSpecialUseIpv6Address(), detectsCloudMetadataIPs; hermes: tool_guardrails.py respects IP ranges
-- **Muse approach:** Add IP parsing and SSRF validation to @muse/net-policy. Implement isBlockedSpecialUseIpv4(), isBlockedSpecialUseIpv6(), parseCanonicalIpAddress(), and isPrivateOrLoopbackIpAddress(). Block RFC 1918 private ranges, loopback, link-local, cloud metadata (100.100.100.200, fd00:ec2::254), and RFC 2544 benchmark ranges by default. Land in packages/net-policy/src/ip-policy.ts.
-- **Value:** Blocks SSRF attacks via private IP address literals and cloud metadata endpoints without requiring external validation.
-- **Verify:** isBlockedSpecialUseIpv4Address('192.168.1.1') returns true; isBlockedSpecialUseIpv4Address('8.8.8.8') returns false.
+- **Based on (hermes):** `agent/tool_result_classification.py` — file_mutation_result_landed(tool_name, result) returns True when write_file or patch result proves mutation succeeded. Used by guardrail loop detector to distinguish success from failure accurately.
+- **Muse today:** partial — packages/fs/src/fs-write-tools.ts returns success/bytes_written, packages/agent-core/src/tool-failure-streak.ts checks status='completed' but no unified classification layer distinguishing 'result contains success signal' vs 'tool returned error'
+- **Proposal:** Add tool-result-classifier.ts to packages/agent-core/src/. Export isToolMutationLanded(toolName: string, result: ToolExecutionResult): boolean checking tool-specific success signals: file_write has bytes_written key, patch has success=true, file_delete has deleted=true, calendar_add/send_message have id keys. Used by model-loop to reset failure streaks when a mutation proves landed. Prevents false-positive no-progress detection when tool succeeds but emits warnings.
+- **Value:** Distinguishes tool success from failure accurately. Prevents false-positive circuit-breaker when file operations succeed but emit warnings. Enables accurate cascading-failure vs stall detection.
+- **Verify:** Call file_write; verify isToolMutationLanded returns true even if result contains warning text. Call file_grep (read-only); verify returns false. Call with tool_name not in classifier; verify false (safe default).
 
-### `TSF-5` Add homoglyph and zero-width evasion defense to injection patterns  ★★★★ · M · partial
+### `TSF-5` Policy Evidence Attestation & Cryptographic Hashing  ★★★ · M · none
 
-- **Reference:** openclaw: packages/net-policy/src/ip.ts (embedded IPv4 detection); hermes: N/A; muse: packages/agent-core/src/injection.ts has stripInjectionEvasionChars but no homoglyph normalization
-- **Muse approach:** Extend @muse/policy's normalizeForInjectionDetection() to normalize homoglyphs (Cyrillic і→i) and HTML entity decoding before injection pattern matching. Maintain byte-identical preservation for clean text. Add homoglyph map for common substitution glyphs. Land in packages/policy/src/injection-patterns.ts as enhanced normalizeForInjectionDetection().
-- **Value:** Prevents injection attacks using visual homoglyphs (іgnore vs ignore) or HTML entities (&#105;gnore) from bypassing pattern detection.
-- **Verify:** isMemoryInjection('іgnore previous instructions') (Cyrillic і) returns true when normalized.
+- **Based on (openclaw):** `extensions/policy/src/policy-state.ts` — SHA256 hashing of stable JSON representations of policy document, workspace config, and findings; createPolicyAttestation() bundles policy path, hashes, checkedAt timestamp.
+- **Muse today:** none — packages/policy/src/ - has injection/pii patterns but no policy-inventory or attestation/hash support
+- **Proposal:** Add policy-attestation.ts to packages/policy/src/. Implement policyDocumentHash(config) + policyWorkspaceHash(mcp/model/fs/secrets) + policyFindingsHash(findings[]) using SHA256 of stable JSON. createPolicyAttestation() returns { policyPath, docHash, workspaceHash, findingsHash, checkedAt, signature }. Exposed from policy/index.ts for audit trails.
+- **Value:** Enables tamper-evident proof that a specific config + workspace state + findings were audited at a point in time; foundation for compliance audits and policy change tracking.
+- **Verify:** Hash identical config twice; verify same hash. Change one config field; verify different hash. Pass to external audit tool; verify signature holds.
 
-### `TSF-6` Implement file-safety read denylist for .env and credential stores  ★★★★ · M · partial
+### `TSF-6` Sandbox Posture Auditing with Multi-Backend Support  ★★★ · M · none
 
-- **Reference:** hermes: agent/file_safety.py — get_read_block_error() blocks .env, .env.local, .env.production, auth.json, .npmrc, .pgpass, .pypirc, MCP token files
-- **Muse approach:** Extend @muse/fs path-safety to include read-denial rules. Create getReadBlockError(path, hermesDirs) function that blocks project-local .env files, Muse's own state dirs (if any), and well-known credential stores (.npmrc, .netrc, .pypirc). Defense-in-depth only (terminal can still read). Land in packages/fs/src/fs-path-safety.ts.
-- **Value:** Defends-in-depth against accidental credential leakage by blocking model from read-accessing secret-bearing .env files.
-- **Verify:** file_read('.env') returns error 'Access denied: .env is a secret-bearing environment file'; file_read('.env.example') succeeds.
+- **Based on (openclaw):** `extensions/policy/src/policy-state.ts` — Inventory sandbox backend (docker/ssh), browser CDP source ranges, container mounts, network mode, security profiles (apparmor/seccomp). Scope-aware: defaults + per-agent overrides.
+- **Muse today:** none — crates/runner has sandbox integration but no policy/evidence reporting of backend type, mounts, or security profile
+- **Proposal:** Add sandbox-posture.ts to packages/policy/src/. Export SandboxPostureEvidence interface {backend: 'docker'|'ssh'|'none', mounts?: {src, dest, readonly}[], networkMode?: string, securityProfile?: {type: 'apparmor'|'seccomp', rules?: string}, cdpSourceRanges?: string[]}. scanPolicySandboxPosture(runtimeConfig) reads runner config and returns evidence. Integrate into policy-inventory so workspace can declare sandbox infrastructure.
+- **Value:** Maps actual code-execution isolation. Personal agents and compliance audits understand whether run_command is isolated and what network policies apply.
+- **Verify:** Configure muse-runner with docker backend + apparmor profile. Scan sandbox posture; verify backend=docker, securityProfile.type=apparmor. Change to ssh; verify backend changes. No sandbox; verify backend=none.
 
-### `TSF-7` Implement tool-result mutation verification (write_file / patch success confirmation)  ★★★★ · S · partial
+### `TSF-7` Tool Posture Auditing with Inheritance Tracking  ★★★ · M · partial
 
-- **Reference:** hermes: agent/tool_result_classification.py — file_mutation_result_landed() checks write_file for 'bytes_written' and patch for 'success': true
-- **Muse approach:** Create @muse/tool-results package. Implement classifyToolResultType(toolName, result) that detects when write_file/patch actually succeeded (not just claimed to). Check for 'bytes_written' in write_file JSON, 'success': true in patch. Use for guardrail loop detection and verifier feedback. Land in packages/tool-results/src/result-classification.ts.
-- **Value:** Distinguishes between tool claims of success and actual filesystem mutations, preventing false-done-reprompt and guardrail evasion via fabricated success messages.
-- **Verify:** file_mutation_result_landed('write_file', '{"bytes_written": 100}') returns true; file_mutation_result_landed('write_file', '{"error": "..."}) returns false.
+- **Based on (openclaw):** `extensions/policy/src/policy-state.ts` — Captures per-tool profile (read-only/audit/full), allow/deny/elevatedAllowFrom lists, fs restrictions (workspaceOnly), exec settings (host/security/ask). Scope-aware: global + per-agent with inheritance. Tracks explicit vs inherited.
+- **Muse today:** partial — packages/fs/src/fs-path-safety.ts + tool-filter.ts have read-only/audit concepts but no unified tool-posture evidence registry with inheritance tracking
+- **Proposal:** Add tool-posture.ts to packages/policy/src/. Export scanPolicyToolPosture(toolRegistry, runtimeConfig) returning ToolPostureEvidence[] where each has {toolName, profile: 'read-only'|'audit'|'full', allowList?, denyList?, fsRestriction?, execMode?, scope: 'global'|'agent'|'default', inherited: boolean}. Inspect runtime + per-agent overrides. Use in policy-inventory to declare tool-level risk scoping.
+- **Value:** Granular tool-level risk scoping. Security teams restrict terminal to sandbox-only execution or deny dangerous tools entirely. Inheritance tracking shows what was inherited from global vs what was agent-specific.
+- **Verify:** Set global run_command profile to read-only. Set agent-X override to full. Scan tool posture; verify global inherited=true, agent-X inherited=false, both appear in report. Remove agent override; verify reverts to inherited=true.
 
-### `TSF-8` Implement concurrent tool execution with interrupt handling  ★★★★ · L · partial
+### `TSF-8` Preventive SSL/TLS CA Bundle Verification  ★★★ · S · none
 
-- **Reference:** hermes: agent/tool_executor.py — execute_tool_calls_concurrent() uses ThreadPoolExecutor, thread-local interrupts, per-thread activity callbacks, heartbeat loop
-- **Muse approach:** Enhance @muse/executor concurrent path (likely exists but incomplete). Implement thread-based concurrent tool execution with: (1) per-thread interrupt flags propagated to workers, (2) thread-local activity callbacks for long-running tools, (3) periodic heartbeat loop (5s intervals) to prevent gateway inactivity timeout, (4) graceful cancellation of pending futures on user interrupt. Land in crates/executor/src/concurrent.rs or packages/executor if TypeScript-based.
-- **Value:** Executes multiple independent tools in parallel while respecting user interrupts and keeping the gateway informed of progress on long-running batches.
-- **Verify:** Run 5 tools concurrently; mid-execution, send interrupt signal; verify remaining futures cancel gracefully within 3 seconds.
+- **Based on (hermes):** `agent/ssl_guard.py` — verify_ca_bundle() pre-flight validates HERMES_CA_BUNDLE, SSL_CERT_FILE, REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE env vars before SDK uses them. Checks: exists, is file, >=1KB, can create SSL context, >=1 CA certs loaded. Early errors with actionable hints.
+- **Muse today:** none — packages/model/src/ adapters read env vars but no pre-flight CA-bundle validation. No early error on missing/corrupted certs.
+- **Proposal:** Add ssl-guard.ts to packages/model/src/. Export verifyCABundle(envVarNames: string[]) pre-flight validator. Checks each var: path exists, is regular file, size >=1KB, can instantiate tls.createSecureContext(), context has >=1 CA cert loaded. Throws with actionable hint (pip install --force-reinstall certifi for Python; npm list node --depth=0 for Node env). Called by model-provider-registry before first provider initialization. Can skip via MUSE_SKIP_SSL_GUARD.
+- **Value:** Fails closed before network calls. Broken CA bundles cause opaque errors deep in SDK. Pre-flight catches config typos, missing files, corrupted bundles at startup with clear repair hints.
+- **Verify:** Set SSL_CERT_FILE to nonexistent path; verify early error with hint. Set to empty file; verify size error. Set to valid bundle; verify success. Unset all CA vars; verify fallback to system default works.
 
-### `TSF-9` Add profile-scoped secret resolution (multi-profile credential isolation)  ★★★ · M · missing
+### `TSF-9` Comprehensive Policy Evidence Inventory  ★★ · L · partial
 
-- **Reference:** hermes: agent/secret_scope.py — set_secret_scope() + get_secret() enforce per-profile .env isolation via contextvars; fail-close when multiplexing active
-- **Muse approach:** Create @muse/secret-scope package. Implement context-var-based secret scope that stores per-profile .env mappings. Add set_secret_scope(secrets), get_secret(name, default), and load_env_file(path). Mark genuinely-global env vars (PATH, HOME, LANG) as exempt. When multiplexing active, fail-close on unscoped reads. Land in packages/secret-scope/src/index.ts.
-- **Value:** Isolates credentials across concurrent multi-profile Muse sessions, preventing profile A's API keys from leaking to profile B's agent runs.
-- **Verify:** When multiplexing active and no scope set, get_secret('OPENAI_API_KEY') throws UnscopedSecretError; with scope set returns from scope dict.
+- **Based on (openclaw):** `extensions/policy/src/policy-state.ts` — collectPolicyEvidence() scans 13+ categories: channels, mcpServers, modelProviders, modelRefs, network, ingress, gatewayExposure, agentWorkspace, toolPosture, sandboxPosture, dataHandling, secrets, authProfiles, execApprovals.
+- **Muse today:** partial — packages/mcp/src/manager.ts + packages/agent-core/src/agent-runtime.ts list MCP servers + tools, but no unified policy evidence registry with source URIs, scope (global/agent/defaults), or inherited-vs-explicit tracking
+- **Proposal:** Add policy-inventory.ts to packages/policy/src/. Export collectPolicyEvidence(runtimeConfig, workspace) scanning: mcpServers (health + allowlist), modelProviders (adapter type + endpoint), exposed tools (domain + risk), fileRoots + denylists, exec approvals (mode + allowlist patterns), sandbox backend (docker/ssh/etc), network policy (SSRF guard enabled). Return evidence[] with {category, source (oc:// URI), scope, explicit, inherited}. Integrate into AgentRuntimeOptions so runtime snapshot is audit-ready.
+- **Value:** Enables security teams and personal agents to understand external integrations, permission boundaries, data handling posture, and secret surface without reading raw config. Feeds compliance audits and risk dashboards.
+- **Verify:** Scan a test workspace with 2 MCP servers, 3 models, fs deny-list, exec approvals. Verify evidence includes all 7 categories, each with source URI, scope, inherited-flag. Add new tool; verify it appears in next scan.
 
-### `TSF-10` Implement SSL CA certificate pre-validation on startup  ★★★ · S · missing
+### `TSF-10` Tool-Call Loop Guardrails with Configurable Thresholds  ★★ · M · partial
 
-- **Reference:** hermes: agent/ssl_guard.py — verify_ca_bundle() checks HERMES_CA_BUNDLE / SSL_CERT_FILE / certifi before any HTTPS call, with user-actionable error messages
-- **Muse approach:** Add SSL validation to @muse/env or @muse/runtime startup. Create verifyCABundle() function that checks MUSE_CA_BUNDLE, SSL_CERT_FILE env vars and Node's certifi equivalent; validate file exists, is readable, and loads without errors. Call at runtime init before any outbound network. Land in packages/runtime/src/ssl-guard.ts.
-- **Value:** Detects broken CA bundle configuration before the first HTTPS request fails cryptically, providing users with clear repair instructions.
-- **Verify:** When SSL_CERT_FILE=/broken/path, verifyCABundle() throws SSLConfigurationError with repair hint before runtime starts.
+- **Based on (hermes):** `agent/tool_guardrails.py` — ToolCallGuardrailController tracks exact-failure counts (same tool+args), same-tool-failure counts, no-progress on idempotent tools. Warn after exact_failure=2, same_tool_failure=3; hard-stop after exact_failure=5, same_tool_failure=8.
+- **Muse today:** partial — packages/agent-core/src/tool-failure-streak.ts + tool-loop-progress.ts handle per-tool-status streaks and no-progress stall detection, but no unified exact-failure or same-tool-failure counters with warn/hard-stop thresholds
+- **Proposal:** Enhance packages/agent-core/src/tool-guardrails.ts (new file). Implement ToolCallGuardrailController tracking per-turn: exactFailure (same tool+args), sameToolFailure (tool name only), noProgress (idempotent hash equality). Warn thresholds (exactFailure=2, sameToolFailure=3), hard-stop thresholds (exactFailure=5, sameToolFailure=8); configurable via AgentRuntimeOptions. before_call() checks hard-stop; after_call() updates counts. Returns {action: 'allow'|'warn'|'block'|'halt'}. Integrated into model-loop before tool execution.
+- **Value:** Circuit-breaker for cascading tool failures. Warnings nudge smart models; hard-stops prevent infinite loops. Exact-failure detection catches stuck tools early. Distinct from deduplicator (which memos identical calls) and stall detector (which checks result similarity).
+- **Verify:** Call tool X with args A, fail twice. Verify warn on 2nd fail. Fail 5 times total; verify hard-stop halts loop. Call different tool Y; verify counters separate. Reset on success; verify streaks clear.
 
-### `TSF-11` Implement deterministic shell-command destructiveness detection  ★★★ · M · missing
+### `TSF-11` Comprehensive Credential Redaction Engine  ★ · M · partial
 
-- **Reference:** hermes: agent/tool_dispatch_helpers.py — _is_destructive_command() detects rm, rmdir, git reset --hard, truncate, format-disk commands for pre-checkpoint
-- **Muse approach:** Add shell command classification to @muse/shell or @muse/runner. Create isDestructiveCommand(cmdString) that identifies rm, rmdir, git reset, git clean, truncate, dd, format-disk, mkfs patterns. Use for pre-checkpoint decision in concurrent/sequential tool execution. Land in packages/runner/src/destructiveness-check.ts or crates/runner/src/destructiveness.rs.
-- **Value:** Automatically checkpoints the workspace before executing destructive commands, enabling rollback if the agent mistakenly runs rm -rf or similar.
-- **Verify:** isDestructiveCommand('rm -rf /') returns true; isDestructiveCommand('rm -rf src/old/') returns true; isDestructiveCommand('cat file.txt') returns false.
-
-### `TSF-12` Implement tool middleware / pre-tool-call plugin system  ★★★ · M · missing
-
-- **Reference:** hermes: agent/tool_executor.py — _apply_tool_request_middleware_for_agent() pre-processes args before execution; hermes_cli/plugins get_pre_tool_call_block_message() allows external blocks
-- **Muse approach:** Add middleware pipeline to @muse/agent-core tool execution. Create ToolRequestMiddleware interface (before_call hook that can modify args, trace decisions). Register middleware in AgentRuntime. Integrate into executor's tool-call dispatch so each tool call passes through middleware chain before execution. Land in packages/agent-core/src/tool-middleware.ts. Wire into tool executor.
-- **Value:** Allows external systems (auditing, compliance, custom guardrails) to inspect/modify tool arguments before execution without embedding logic in core.
-- **Verify:** Middleware can set request middleware trace; tool executor includes trace in post_tool_call observability events.
-
-### `TSF-13` Implement tool-output message content type detection for multimodal handling  ★★★ · S · partial
-
-- **Reference:** hermes: agent/tool_dispatch_helpers.py — _is_multimodal_tool_result() detects image/vision results; unwraps dicts to OpenAI-style content lists
-- **Muse approach:** Add multimodal tool-result handling to @muse/agent-core. Create isMultimodalToolResult(result) that detects presence of image/vision data in tool output. Implement unwrapMultimodalContent(result) that converts internal _multimodal dict format to OpenAI-style [{type: 'text'}, {type: 'image_url'}] for vision-capable providers. Land in packages/agent-core/src/tool-result-unwrap.ts.
-- **Value:** Transparently handles image-based tool results (file_read on images, browser screenshots) and sends them to vision-capable models without requiring model-specific wrapper code.
-- **Verify:** isMultimodalToolResult({_multimodal: true, blocks: [{type: 'image_base64', ...}]}) returns true; models receive [{type: 'text'}, {type: 'image_url'}] format.
-
-### `TSF-14` Implement budget-enforced tool-output truncation per turn  ★★★ · M · missing
-
-- **Reference:** hermes: tools/tool_result_storage.py — enforce_turn_budget() sums all tool-result content for the turn and truncates if over context budget
-- **Muse approach:** Add tool-result budgeting to @muse/agent-core. Create BudgetConfig with max_single_result_chars and max_turn_total_chars. Implement enforceToolResultBudget(messages, budget) that sums tool-result message lengths and truncates with 'next_offset' hint if over limit. Call after every tool result collection. Land in packages/agent-core/src/tool-result-budget.ts.
-- **Value:** Prevents a single large tool result or many results in one turn from consuming the entire context window, forcing useful conversation to be truncated.
-- **Verify:** With budget=50k, 10 tools returning 10k each truncates the 10th result with nextOffset hint.
-
-### `TSF-15` Implement cross-profile write guard (soft boundary for multi-profile isolation)  ★★ · M · missing
-
-- **Reference:** hermes: agent/file_safety.py — classify_cross_profile_target() and get_cross_profile_warning() soft-guard writes to other profiles' skills/plugins/cron/memories
-- **Muse approach:** Add profile-aware write guard to @muse/fs. Create classifyCrossProfileTarget(path, activeProfileName) that detects writes to ~/.muse/profiles/<other-name>/skills etc. Return warning dict with active/target profile names. Defense-in-depth (agent can still write with explicit consent). Land in packages/fs/src/fs-path-safety.ts alongside read-denylist.
-- **Value:** Prevents accidental cross-profile pollution by warning when the agent tries to write to another Muse profile's state directories.
-- **Verify:** Detect ~/.muse/profiles/other-profile/skills/foo.ts and return warning with active_profile and target_profile.
-
-### `TSF-16` Implement CIDR range checking for IP allowlist/denylist rules  ★★ · M · missing
-
-- **Reference:** openclaw: packages/net-policy/src/ip.ts — isIpInCidr(ip, cidr) parses CIDR notation and matches IPs against ranges
-- **Muse approach:** Extend @muse/net-policy IP support. Implement isIpInCidr(ip: string, cidr: string) that parses CIDR ranges (e.g., 192.168.0.0/16) and checks if an IP literal matches. Support both IPv4 and IPv6. Use for per-deployment network policy rules (e.g., allow only certain AWS regions by IP block). Land in packages/net-policy/src/ip-policy.ts.
-- **Value:** Enables fine-grained network policy (allowlist/denylist by CIDR blocks) without hardcoding individual IPs.
-- **Verify:** isIpInCidr('192.168.1.50', '192.168.0.0/16') returns true; isIpInCidr('10.0.0.1', '192.168.0.0/16') returns false.
+- **Based on (hermes):** `agent/redact.py` — redact_sensitive_text() applies 13+ regex patterns: vendor prefixes (sk-, ghp_, xox, AIza, etc.), ENV assignments, JSON fields, auth headers, Telegram tokens, private key blocks, DB connection strings, JWT (eyJ...), E.164 phones. Masking preserves 6 prefix + 4 suffix for long tokens.
+- **Muse today:** partial — packages/policy/src/migration-redaction.ts + tool-output-sanitizer.ts detect tokens + redact, but no vendor-prefix patterns (sk-, ghp_, xox-, AIza, etc.), no auth-header/JWT/DB-connection-string/phone-number patterns, no masking strategy (prefix+suffix preservation)
+- **Proposal:** Enhance packages/policy/src/redaction-engine.ts (new comprehensive version). Export redactSensitiveText(text, {patterns, force, codeFile}): apply 13+ patterns (vendor prefixes sk- / ghp_ / xox / AIza / stripe / telegram, ENV KEY=, JSON key:value, auth headers, JWT eyJ..., DB URIs, phone E.164, private-key blocks). Masking: short tokens fully masked, long tokens preserve 6 chars prefix + 4 suffix. Pre-gate expensive regexes. Integrate into tool-output-sanitizer.ts + model-invocation.ts so logs/transcripts never leak credentials.
+- **Value:** Prevents credential leakage into logs, transcripts, and user-visible output across 30+ secret shapes (OpenAI, GitHub, Slack, Google, AWS, Stripe, etc.). Critical for multi-tenant gateways and user-facing logs.
+- **Verify:** Pass text with sk-xxx token, ghp_ token, JWT eyJ..., DB postgres://user:pass@..., AWS key=AKIA..., phone +1-555-0123. Verify all masked. Verify 6+4 preservation for long tokens. Verify short tokens fully masked.
 
 ## 6. Reliability · Retry · Error Classification · Rate Limit · Budgets
 
-_17 items_
+_13 opportunities · 16 competitor files read_
 
 
-### `REL-1` Implement API error classifier with priority-ordered taxonomy  ★★★★★ · L · missing
+### `REL-1` Jittered exponential backoff with decorrelated seeds  ★★★★★ · S · partial
 
-- **Reference:** hermes-agent/agent/error_classifier.py — 1366-line FailoverReason enum + classify_api_error() pipeline with 40+ pattern categories (auth, billing, rate_limit, context_overflow, provider-specific) and recovery hints (retryable, should_compress, should_rotate_credential, should_fallback)
-- **Muse approach:** Create packages/resilience/src/error-classifier.ts implementing a structured FailoverReason enum (auth, billing, rate_limit, context_overflow, timeout, server_error, format_error, model_not_found) and classify() function that applies a priority-ordered pipeline: status code + message pattern matching → error code classification → transport error heuristics. Recovery hints (retryable, shouldCompress, shouldRotateCredential) guide the retry loop. Local-model constraint: patterns are deterministic regex/string matches, no LLM-based heuristics.
-- **Value:** Enables smart recovery decisions (retry vs fallback vs compression vs fail-fast) per error type, eliminating retry amplification when rate limits / billing hits occur. Reduces wasted token spend by routing non-retryable errors (bad API key, model-not-found) to fallback immediately.
-- **Verify:** Unit test classify() against 50+ synthetic error shapes (401/403/402/429/400/413/5xx, including wrapped OpenRouter errors, Anthropic thinking sigs, llama.cpp grammar rejections). Verify retryable/shouldCompress/shouldRotateCredential flags are set correctly per error reason.
+- **Based on (hermes):** `agent/retry_utils.py` — hermes agent/retry_utils.py jittered_backoff()
+- **Muse today:** partial — /Users/jinan/side-project/Muse/packages/resilience/src/index.ts:computeRetryDelay (lines 464-490)
+- **Proposal:** Enhance computeRetryDelay in @muse/resilience to support jitter ratio adjustment per attempt using an atomic-counter XOR seed for decorrelation, preventing thundering-herd retries across multi-agent scenarios. Add jitterRatio validation and atomic seed generation.
+- **Value:** Prevents cascading failures when multiple Muse agents hit rate-limited providers simultaneously; essential for multi-agent scenarios where retry storms amplify provider load.
+- **Verify:** Unit test with 100 concurrent retry attempts verifies seed variance > 50% across instances.
 
-### `REL-2` Add jittered exponential backoff with concurrent session decorrelation  ★★★★ · M · partial
+### `REL-2` Comprehensive API error classification taxonomy  ★★★★★ · M · partial
 
-- **Reference:** hermes-agent/agent/retry_utils.py — jittered_backoff() uses decorrelated jitter (base * 2^(attempt-1) + uniform jitter) seeded from time_ns() ^ counter to prevent thundering herd when multiple sessions hit same provider concurrently
-- **Muse approach:** Enhance packages/resilience/src/index.ts retry policy to include jitter-aware backoff. Add decorrelatedJitterBackoff() function that computes delay = min(base * 2^(attempt-1), maxDelay) + jitter, where jitter = uniform(0, jitterRatio * delay). Seed the RNG from monotonic counter + time to avoid retry spikes when multiple agents retry same provider. Named export so callers can use it in custom retry loops.
-- **Value:** Prevents retry spikes that exhaust per-minute rate limits even faster. With multiple Muse instances or background tasks, jitter prevents synchronized retry bursts that knock the provider offline further.
-- **Verify:** Generate 100 backoff sequences across 10 parallel simulated retries, verify jitter spreads delays uniformly (no clustering), and max delay never exceeds configured cap. Test cross-process seed uniqueness by simulating time collisions.
+- **Based on (hermes):** `agent/error_classifier.py` — hermes agent/error_classifier.py classify_api_error()
+- **Muse today:** partial — /Users/jinan/side-project/Muse/packages/model/src/provider-base.ts:isRetryableHttpStatus (lines 65-69)
+- **Proposal:** Build @muse/resilience/error-classifier with priority-ordered pipeline: provider patterns → HTTP status → error code extraction → message patterns → SSL/TLS transient detection. Return ClassifiedError enum (auth, billing, rate_limit, overloaded, context_overflow, image_too_large, model_not_found, content_policy_blocked) with recovery hints. Integrate with ModelProviderError.retryable decision.
+- **Value:** Enables smart failover without generic retry loops; distinguishes transient 402 billing resets from permanent exhaustion, context overflow (needs compression) from network blips.
+- **Verify:** Test suite with 20+ error patterns from real provider responses (OpenAI 429, Anthropic 529, Gemini overloaded, etc.) verifies correct classification per pattern.
 
-### `REL-3` Per-turn recovery state tracker with one-shot guards  ★★★★ · M · missing
+### `REL-3` Per-attempt recovery bookkeeping with one-shot guards  ★★★★ · S · none
 
-- **Reference:** hermes-agent/agent/turn_retry_state.py — TurnRetryState dataclass with 16+ one-shot booleans (codex_auth_retry_attempted, thinking_sig_retry_attempted, etc.) preventing duplicate recovery attempts on same API call
-- **Muse approach:** Create packages/agent-core/src/turn-retry-state.ts with TurnRetryState interface tracking per-provider auth retries (codex, anthropic, nous), format-recovery attempts (thinking-sig stripping, multimodal-tool-content downgrade, image shrink, grammar fallback), and restart signals (compressed_messages, length_continuation). One instance per API call attempt. Guards are plain booleans checked before each recovery branch fires.
-- **Value:** Prevents redundant recovery attempts (e.g., stripping thinking blocks twice on same turn) that waste tokens and confuse debugging logs. Makes recovery bookkeeping explicit and testable instead of threaded through 2000+ lines of loop code.
-- **Verify:** Verify each guard boolean defaults false, fires recovery exactly once per turn, and resets fresh on next API call attempt. Test with a sequence of errors (thinking-sig + image-too-large) that would trigger multiple guards; confirm no double-execution.
+- **Based on (hermes):** `agent/turn_retry_state.py` — hermes agent/turn_retry_state.py TurnRetryState
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages/agent-core/src/model-loop.ts (no centralized recovery state tracking)
+- **Proposal:** Create @muse/agent-core/turn-recovery-state with TurnRecoveryState dataclass tracking boolean guards per recovery branch (format_retry_attempted, image_compression_attempted, etc.). Fresh instance per model loop iteration; each guard fires once. Consolidates scattered inline *_attempted locals threaded through model-loop.ts.
+- **Value:** Eliminates scattered recovery attempt flags; provides single testable home for bookkeeping. Ensures each format-recovery branch (thinking stripping, etc.) runs once per attempt without re-running on success.
+- **Verify:** Unit test verifies guard fires once, remains false on subsequent attempts; integration test with streaming loop shows no duplicate recovery attempts.
 
-### `REL-4` Capture and parse rate-limit headers (x-ratelimit-* standard)  ★★★ · M · missing
+### `REL-4` Rate limit state parsing from response headers  ★★★★ · S · none
 
-- **Reference:** hermes-agent/agent/rate_limit_tracker.py — parse_rate_limit_headers() extracts 12 headers (limit/remaining/reset per minute/hour for requests/tokens) and formats display with ASCII progress bar and reset countdown.
-- **Muse approach:** Create packages/resilience/src/rate-limit-tracker.ts with RateLimitBucket (limit, remaining, resetSeconds, capturedAt) and RateLimitState (requests_min, requests_hour, tokens_min, tokens_hour). Export parseRateLimitHeaders(headers, provider) that normalizes header keys to lowercase (HTTP headers are case-insensitive) and extracts integers. Add formatRateLimitDisplay() for CLI/observability output. Hook into model provider stream result to capture headers after each call.
-- **Value:** Operators can monitor when approaching hard limits and preemptively pause runs. Enables rate-limit-aware scheduling — don't start a 10M-token run when only 2M TPH remains.
-- **Verify:** Parse mock headers with mixed case (X-RateLimit-Limit-Tokens vs x-ratelimit-limit-tokens), verify reset countdown adjusts for elapsed time (capturedAt), format output contains usage %, remaining tokens, reset time in human-friendly units (M/K for counts, h/m/s for durations).
+- **Based on (hermes):** `agent/rate_limit_tracker.py` — hermes agent/rate_limit_tracker.py parse_rate_limit_headers()
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages/mcp-shared/src/http-retry.ts (only parseRetryAfterMs for Retry-After header, no x-ratelimit-* parsing)
+- **Proposal:** Build @muse/observability/rate-limit-tracker with parse_rate_limit_headers() extracting x-ratelimit-{limit,remaining}-{requests,tokens} and reset windows into RateLimitState dataclass with RateLimitBucket per window (limit, remaining, reset_seconds). Provide usage_pct and format_rate_limit_display() for dashboard.
+- **Value:** Gives agents visibility into quota consumption without guessing. Supports per-minute and hourly windows for requests and tokens. Users see exactly when buckets reset and headroom remaining.
+- **Verify:** Unit test parses real Anthropic/OpenAI rate-limit headers; integration test records state after rate-limited response, verifies remaining decrements and reset time advances.
 
-### `REL-5` Implement per-agent iteration budget with thread-safe consume/refund  ★★★ · M · missing
+### `REL-5` Turn finalization with cleanup-error isolation  ★★★★ · M · partial
 
-- **Reference:** hermes-agent/agent/iteration_budget.py — IterationBudget with consume() / refund() for parent (90 iter default) and subagents (50 iter default), refunds execute_code turns so they don't count toward limit
-- **Muse approach:** Create packages/observability/src/iteration-budget.ts with IterationBudget class (max_total: number, private _used, thread-safe via mutex-like lock). Export consume(): bool (returns true if iteration allowed; increments counter), refund(): void for delegated tool calls. Parent agent initialized with max_total=90, subagents with max_total=50 (configurable). Hook into AgentRuntime.run() between tool iterations.
-- **Value:** Prevents runaway loops (infinite tool calls). Subagent budgets prevent a delegated task from starving parent. Refund path for execute_code keeps low-level tool batches lean (they shouldn't consume iteration budget if the parent is driving orchestration).
-- **Verify:** consume() returns true 90 times then false; refund() decrements counter; test concurrent consume from two threads (use lock/atomic semantics). Verify subagent gets independent 50-budget instance.
+- **Based on (openclaw):** `extensions/diagnostics-otel/src/service.ts` — openclaw extensions/diagnostics-otel/src/service.ts turn_finalizer pattern
+- **Muse today:** partial — /Users/jinan/side-project/Muse/packages/agent-core/src/agent-runtime.ts:finalizeInvocation (lines ~400-450) handles cleanup but no independent error isolation per step
+- **Proposal:** Refactor finalizeInvocation in @muse/agent-core/agent-runtime.ts to use TurnFinalizer pattern: each cleanup step (trajectory save, cache write, summary persist, hook invocation) runs independently with try/except, collecting errors into cleanup_errors array rather than propagating. Budget exhaustion gets explicit audit trail. Plugin hooks fire (afterComplete, onError) at right seams.
+- **Value:** Cleanup failures never lose the response. Trajectory, cache, and resource teardown can fail independently without skipping subsequent steps. Budget exhaustion and iteration overruns get explicit audit trails.
+- **Verify:** Unit test fails one cleanup step (e.g., cache write), verifies response still returns and error captured; integration test shows summary persisted despite hook failure.
 
-### `REL-6` Implement context compression trigger and API  ★★★ · M · partial
+### `REL-6` Cross-session rate limit guard for shared provider quota  ★★★ · M · none
 
-- **Reference:** hermes-agent/agent/error_classifier.py — classify_api_error() returns should_compress=True for context_overflow / long_context_tier / payload_too_large / server_disconnect+large_session, which triggers compression loop in run_agent.py
-- **Muse approach:** Extend packages/memory/src/memory-token-trim.ts to export async compressContext(messages, targetTokens): Promise<Message[]> that applies message importance trimming + system-instruction elision until under budget. Call from model-loop retry logic when classified error has should_compress=True. Pass approx_tokens + context_length to error classifier so it can detect 'large session' heuristic (>60% of window or >120k tokens for small-context models).
-- **Value:** When a model returns 413 or context-overflow 400, automatically shrink the turn's message history instead of failing. Recovers requests that would otherwise require manual truncation.
-- **Verify:** Send request at 95% context fill; trigger 400 context-overflow error; verify compressContext() is called, message count decreases, retried request fits within limit. Test that generic 400 + large session heuristic correctly identifies overflow vs other 400 reasons.
+- **Based on (hermes):** `agent/nous_rate_guard.py` — hermes agent/nous_rate_guard.py record_nous_rate_limit()
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages/resilience/src (no cross-session state for multiplexed providers)
+- **Proposal:** Build @muse/resilience/provider-quota-guard reading/writing ~/.muse/rate_limits/{providerId}.json after 429 responses. Distinguish account-level quota exhaustion (remaining==0, reset >= 60s) from upstream transience (seconds-scale). Automatic expiry of stale state. Prevent false-positive breaker trips when specific model temp outage vs genuine account depletion.
+- **Value:** Multiplexed providers like OpenRouter return 429 from either caller's quota or upstream model blip. Cross-session breaker prevents false-positive blocks killing all requests when specific model temporarily down.
+- **Verify:** Unit test simulates genuine quota exhaustion vs upstream transience, verifies only genuine blocks subsequent requests; integration test across two sessions verifies state persistence.
 
-### `REL-7` Add retry policy for provider-credential rotation  ★★ · M · partial
+### `REL-7` Iteration budget with thread-safe consume/refund counter  ★★★ · S · partial
 
-- **Reference:** hermes-agent/agent/turn_retry_state.py (lines 42-47) + hermes's run_agent.py retry loop — per-provider OAuth refresh (codex, anthropic, nous) runs once before escalating to fallback
-- **Muse approach:** Extend packages/model/src/model-provider.ts or create packages/resilience/src/credential-rotator.ts to define CredentialRotationStrategy interface (rotateCredential(provider, model): Promise<boolean>). Update retry loop in agent-core to check classified error's should_rotate_credential flag and attempt rotation before retry. Support Anthropic native, OpenAI, Gemini refresh flows. Only attempt once per API call (tracked in TurnRetryState).
-- **Value:** When a provider's API token expires mid-session, automatic refresh prevents the turn from hard-failing — instead it re-authenticates and retries transparently. Reduces user confusion and manual re-auth prompts.
-- **Verify:** Inject a mock CredentialRotationStrategy that succeeds once then fails; verify retry happens after rotation and uses new credential. Test that rotation is only attempted once even if multiple retries needed.
+- **Based on (hermes):** `agent/iteration_budget.py` — hermes agent/iteration_budget.py IterationBudget
+- **Muse today:** partial — /Users/jinan/side-project/Muse/packages/agent-core/src/step-budget.ts (token budget only, not iteration count budget; no refund for execute_code)
+- **Proposal:** Extend @muse/agent-core/step-budget.ts with IterationBudgetTracker (separate from token budget): thread-safe consume() returns true if used < max, increments counter, else false. Support refund() for tool-call iterations (execute_code doesn't burn budget). Parent caps at max_iterations; each subagent gets independent budget. Expose used/remaining properties.
+- **Value:** Prevents runaway agent loops without blocking. Programmatic tool calls (muse.tools.execute) refund iteration to avoid burning budget on non-LLM steps. Subagents get independent budgets while parent never exceeds max.
+- **Verify:** Unit test verifies consume increment, refund decrement, max enforcement; test shows execute_code refunds while model calls do not.
 
-### `REL-8` Add provider-specific error pattern library (pluggable)  ★★ · M · missing
+### `REL-8` Configurable LLM request timeout and retry limits per provider  ★★★ · M · none
 
-- **Reference:** hermes-agent/agent/error_classifier.py — 300+ pattern lists (lines 96-436) including provider-specific wording: Anthropic thinking sigs, llama.cpp grammar errors, OpenRouter policy blocks, xAI Grok entitlements, AWS Bedrock context-length patterns, Chinese error messages
-- **Muse approach:** Create packages/resilience/src/error-patterns.ts with exported pattern lists (BILLING_PATTERNS, RATE_LIMIT_PATTERNS, CONTEXT_OVERFLOW_PATTERNS, etc.) and provider-specific overrides as a map: Map<provider, patterns>. Let error-classifier.classify() pull from base patterns + provider-specific entries. Pre-seed with Ollama/llama.cpp patterns (local-first priority), OpenAI, Anthropic, Gemini. Make pluggable via registerErrorPatterns(provider, patterns) for future extensibility.
-- **Value:** Keeps error messages up-to-date as providers change their wording without modifying the classifier. New provider integrations can register patterns immediately.
-- **Verify:** Register Ollama-specific context patterns; send a Ollama context-overflow error; verify it classifies as context_overflow not unknown. Test that provider-specific patterns override base patterns when provider is set.
+- **Based on (openclaw):** `packages/llm-core/src/types.ts` — openclaw packages/llm-core/src/types.ts StreamOptions
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages/model/src (no timeoutMs or maxRetryDelayMs fields on request; resilience/index.ts has defaults but no per-request override)
+- **Proposal:** Add StreamOptions-style fields to ModelRequest: timeoutMs (HTTP timeout per attempt), maxRetries (max SDK attempts, default 2), maxRetryDelayMs (cap on server-requested delays, default 60s). Map these through provider adapters (OpenAI timeout, Anthropic max_retries, Ollama timeout). Validate maxRetryDelayMs prevents runaway waits.
+- **Value:** Unified timeout/retry configuration across heterogeneous providers. Prevents SDK defaults from blocking agent turns indefinitely. Caps server-requested delays to keep user-facing response times predictable.
+- **Verify:** Unit test with mocked provider enforces timeout per request, verifies maxRetryDelayMs cap applied; integration test shows request with custom timeouts succeeds where defaults would fail.
 
-### `REL-9` Implement turn finalizer for post-attempt bookkeeping  ★★ · M · missing
+### `REL-9` Account usage windows with reset times and freshness tracking  ★★ · M · none
 
-- **Reference:** hermes-agent/agent/turn_finalizer.py — post-attempt cleanup: record final error reason, mark turn as exhausted vs recoverable, emit structured diagnostics
-- **Muse approach:** Create packages/agent-core/src/turn-finalizer.ts with finalizeTurn(context, attempt, result, error) callback. Called after each API call attempt (success or failure). Records: final error reason, recovery path taken (auth refresh / fallback / compression / retry), attempt count, token usage deltas. Emits to observability sink (observability-slo-alert, budget-tracker, agent-metrics). No user-facing output — purely internal bookkeeping.
-- **Value:** Operators can query: 'how many turns failed due to rate limits vs auth vs model-not-found?' Enables targeted debugging and cost analysis.
-- **Verify:** Send sequence: (success), (429 rate-limit+fallback succeeds), (401 auth+retry succeeds), (400 format-error non-retryable). Verify turn-finalizer records reason, recovery path, and metrics for each. Test observability hooks are called in correct order.
+- **Based on (hermes):** `agent/account_usage.py` — hermes agent/account_usage.py AccountUsageSnapshot
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages/observability/src (MonthlyBudgetTracker exists but no multi-window per-provider usage snapshots)
+- **Proposal:** Build @muse/observability/account-usage with AccountUsageSnapshot dataclass (provider, source, fetched_at, title, plan, windows with label/used_percent/reset_at/detail). Support provider-specific builders (build_anthropic_usage_snapshot, etc.). render_account_usage_lines() formats for dashboard. Freshness tracking via fetched_at timestamp.
+- **Value:** Unified view of usage across provider-specific quota systems. Freshness tracking shows age of data. Reset-time visibility tells when buckets replenish. Graceful degradation when data unavailable.
+- **Verify:** Unit test builds snapshot from Anthropic API response, verifies window structure, timestamps, and percentages render correctly in terminal format.
 
-### `REL-10` Add cross-session rate-limit guard (shared state file)  ★★ · L · missing
+### `REL-10` Safe error introspection without triggering getters  ★★ · S · none
 
-- **Reference:** hermes-agent/agent/nous_rate_guard.py — records rate-limit state to ~/.hermes/rate_limits/nous.json so all CLI/gateway/cron sessions can check before retrying, preventing retry amplification (3 SDK retries × 3 Hermes retries × N concurrent sessions = N×9 calls hammering rate-limited provider)
-- **Muse approach:** Create packages/resilience/src/rate-limit-guard.ts with recordRateLimitState(provider, resetSeconds, stateDir?) writing to ~/.muse/rate_limits/{provider}.json. Export isRateLimited(provider) that checks file mtime + reset time. Call from retry logic: if isRateLimited() returns true, fail fast without retry. Use atomic file replacement (write temp file, rename) to avoid corruption. State file expires 5+ minutes after reset time.
-- **Value:** When Nous Portal (or any provider) is hammered by one session, other concurrent sessions immediately back off instead of piling on more requests. Protects provider from cascading failure and reduces wasted token spend.
-- **Verify:** Write rate-limit state from session 1; verify session 2 reads it and skips retry. Simulate concurrent writes (race condition); verify file is not corrupted and both sessions see consistent state. Test that state expires after reset time.
+- **Based on (openclaw):** `src/infra/diagnostic-error-metadata.ts` — openclaw src/infra/diagnostic-error-metadata.ts diagnosticErrorCategory()
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages (no safe error introspection pattern; instanceof checks used in resilience/index.ts)
+- **Proposal:** Build @muse/observability/safe-error-introspection with diagnosticErrorCategory() using instanceof checks not .name property, diagnosticErrorCode() via getOwnPropertyDescriptor (no getter invocation), findDiagnosticErrorProperty() walking error chains with cycle detection. Classify transport errors (ECONNRESET, ETIMEDOUT, etc.) deterministically.
+- **Value:** Safe error inspection without triggering userland getters that might hide errors or corrupt state. Minimal trust in mutable Error properties. Transport-class classification enables proper telemetry routing.
+- **Verify:** Unit test with custom Error subclass having getter-based .name property verifies inspector bypasses it; test error chains with cycles verifies cycle detection.
 
-### `REL-11` Add model-fallback pool with provider balancing  ★★ · M · partial
+### `REL-11` Stream-based request/response contract with error encoding  ★★ · S · partial
 
-- **Reference:** hermes-agent/agent/run_agent.py — when primary model fails a non-retryable error or exhausts retries, consult fallback_models list in order until one succeeds or list exhausted
-- **Muse approach:** Enhance packages/resilience/src/index.ts ModelFallbackStrategy to accept fallback sequence and track per-fallback success/failure metrics. On should_fallback=true from classifier, iterate fallbacks in order and attempt each. Record which fallback succeeded so the agent can emit 'fell back from openai/gpt-4 to anthropic/claude-3-5' to logs. Thread fallback result back to turn so agent can report it to user.
-- **Value:** When primary model provider is down or rate-limited permanently, automatically try backup provider without user intervention. Increases reliability and throughput for multi-provider setups.
-- **Verify:** Configure fallback sequence [primary, fallback1, fallback2]. Mock primary and fallback1 to fail with non-retryable errors; verify fallback2 succeeds and is used. Test fallback chain terminates cleanly when all fail.
+- **Based on (openclaw):** `packages/llm-runtime/src/stream.ts` — openclaw packages/llm-runtime/src/stream.ts stream() complete()
+- **Muse today:** partial — /Users/jinan/side-project/Muse/packages/model/src/index.ts (ModelResponse interface has no error encoding; ModelEvent has type:error but no stopReason propagation)
+- **Proposal:** Extend ModelResponse in @muse/model/index.ts to add optional stopReason field (error, aborted, max_tokens, etc.) and errorMessage. Ensure errors are encoded in response stream not thrown, allowing callers to handle success/error/abort uniformly without breaking promise chains.
+- **Value:** Failure propagation through streams avoids breaking caller's promise chains. Errors land in final response rather than bubbling as exceptions. Caller code handles all outcomes uniformly.
+- **Verify:** Unit test streams error response with stopReason and errorMessage, verifies caller receives complete stream without exception; integration test shows error handling without try/catch.
 
-### `REL-12` Implement timeout detection and recovery (client-side deadline)  ★★ · M · partial
+### `REL-12` Prometheus metric collection with series cardinality limit  ★ · M · none
 
-- **Reference:** hermes-agent/agent/error_classifier.py — timeout error detection from type names (ReadTimeout, ConnectTimeout, APITimeoutError) and message patterns ('timed out', 'deadline exceeded'), classified as retryable with transport rebuild
-- **Muse approach:** Enhance packages/resilience/src/index.ts withTimeout() to support per-attempt timeout tracking. When a timeout fires, classify as FailoverReason.timeout (retryable). In model-loop, on timeout classification, rebuild the model provider client (disconnect + reconnect) before retry. Track timeout count per provider to detect chronic timeouts that should escalate to fallback.
-- **Value:** Transient network timeouts don't kill runs — client rebuilds connection and retries. Chronic timeouts on a provider escalate to fallback instead of retrying forever.
-- **Verify:** Simulate a flaky provider that times out once then succeeds; verify withTimeout fires, classify returns timeout, client rebuilds, second attempt succeeds. Simulate provider that always times out; verify after 3 timeouts it escalates to fallback instead of infinite retries.
+- **Based on (openclaw):** `extensions/diagnostics-prometheus/src/service.ts` — openclaw extensions/diagnostics-prometheus/src/service.ts createPrometheusMetricStore()
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages/observability (no Prometheus metrics implementation; AgentMetrics interface exists but no Prometheus exporter)
+- **Proposal:** Build @muse/observability-prometheus with createPrometheusMetricStore() maintaining counters/gauges/histograms with bucket definitions (DURATION_BUCKETS_SECONDS, TOKEN_BUCKETS). metricKey() de-duplicates series by name+labels. canCreateSeries() enforces MAX_PROMETHEUS_SERIES (2048); exceeds increment dropped counter. Low-cardinality label validation.
+- **Value:** Prevents cardinality explosion in production Prometheus. High-dimensional tags capped at 2K series to avoid memory runaway. Dropped series counter alerts ops when hitting limits.
+- **Verify:** Unit test creates 2050 series, verifies 2048 succeed and 2 increment dropped counter; integration test exports valid Prometheus format.
 
-### `REL-13` Implement adaptive backoff based on error type  ★★ · M · missing
+### `REL-13` OpenTelemetry diagnostics with content-capture policy  ★ · L · partial
 
-- **Reference:** hermes-agent/agent/retry_utils.py backoff + error_classifier.py reason — different error types imply different cooldown strategies (rate_limit: wait full reset time, timeout: quick retry, server_error: exponential backoff)
-- **Muse approach:** Extend computeRetryDelay() in packages/resilience/src/index.ts to accept error reason as parameter. If reason=rate_limit and reset_seconds is known (from rate-limit headers), use that directly instead of exponential backoff. If reason=timeout, use shorter backoff (500ms base) with fast multiplier (1.5x) to recover quickly. If reason=server_error, use standard exponential. Thread error reason through retry loop.
-- **Value:** Rate-limited waits the full reset time (no guessing); timeout-caused backoff is snappy; server errors retry at normal exponential pace. Reduces latency for recoverable errors.
-- **Verify:** Retry with reason=rate_limit, reset_seconds=120; verify first delay is ~120s. Retry with reason=timeout; verify delays are 500ms, 750ms, 1.1s (1.5x). Retry with reason=server_error; verify delays are 100ms, 200ms, 400ms (2x).
-
-### `REL-14` Implement turn-lifecycle metrics sink (structured diagnostics)  ★ · M · missing
-
-- **Reference:** openclaw/extensions/diagnostics-otel/src/service.ts — emits structured diagnostic events (model.call.completed, model.call.error, session.recovery.requested) with OpenTelemetry attributes for tracing + metrics
-- **Muse approach:** Create packages/observability/src/turn-lifecycle-metrics.ts exporting TurnLifecycleEvent union (turn_started, model_call_started, model_call_completed, model_call_error, recovery_attempted, turn_completed) and TurnLifecycleMetricsSink interface. Emit to existing AgentMetrics via recordEvent(). Capture: attempt count, error reason, recovery action, token usage deltas, wall-clock time per attempt. Integrate with OTel exporter in observability-tracers.ts.
-- **Value:** Enables observability dashboards: 'what % of turns hit rate limits?', 'average recovery success rate per provider', 'cost per recovery attempt'. Turn-level metrics are the next level of detail above agent-level metrics.
-- **Verify:** Emit 50 turn events (success/rate-limit/auth/format-error with various recovery paths); verify each event carries correct attempt count, error reason, token deltas. Test OTel export carries all events with proper trace linking.
-
-### `REL-15` Add per-tool-call timeout and resource guards  ★ · M · missing
-
-- **Reference:** hermes-agent/agent/turn_retry_state.py + run_agent.py — guards on tool execution time + output size to prevent a single tool call from consuming entire turn deadline or token budget
-- **Muse approach:** Create packages/tools/src/tool-execution-guards.ts exporting ToolExecutionGuards with maxTimeoutMs, maxOutputChars. Check before executing: if wall-clock since turn start + expected tool time > turn deadline, skip tool. After execution: if output exceeds maxOutputChars, truncate (same as model-output trimming in model-loop). Emit truncation event to observability.
-- **Value:** Prevents a runaway tool (e.g., search that returns 500K chars) from consuming entire token budget mid-turn. Keeps turn responsive even if one tool misbehaves.
-- **Verify:** Set maxOutputChars=1000; execute tool that returns 50K chars; verify output is truncated and event is emitted. Set maxTimeoutMs and turn deadline; try to execute tool near deadline; verify tool is skipped with reason 'insufficient time'.
-
-### `REL-16` Implement structured error audit log (non-blocking)  ★ · M · missing
-
-- **Reference:** hermes-agent/agent/error_classifier.py output fed to run_agent.py error journal; openclaw diagnostics-otel logs error events with classified reason
-- **Muse approach:** Create packages/observability/src/error-audit-log.ts exporting ErrorAuditEntry with timestamp, provider, model, error reason (from FailoverReason), status code, recovery path, whether it succeeded. Log to sqlite table (uses existing db/kysely integration) or stdout. Non-blocking append (queue + background writer). Query API: list errors by date/provider/reason/recovery, count distribution.
-- **Value:** Operators can review: 'all 402 billing errors in June', 'which providers had the most timeout errors', 'did fallback succeed more often than retry?'. Post-incident analysis.
-- **Verify:** Generate 100 errors with various reasons/statuses/recovery paths; verify all are logged with correct fields. Query by date range, provider, reason; verify returned rows match filter. Verify append is non-blocking (no latency spike).
-
-### `REL-17` Add health check for provider availability (polled)  ★ · L · missing
-
-- **Reference:** hermes-agent/agent — implicit via rate-limit tracking and cross-session guards; openclaw runtime does per-provider liveness probes
-- **Muse approach:** Create packages/resilience/src/provider-health-check.ts with ProviderHealthChecker that periodically (every 30s configurable) sends a lightweight request to each provider (e.g., echo tool, simple prompt). Records: latency, error reason, success rate. Export isProviderHealthy(provider) returning bool. Hook into fallback decision: if fallback provider is unhealthy, try next one or fail faster.
-- **Value:** Detects provider outages before users hit them. Enables health dashboard and automatic runbook triggers ('OpenAI is down for 10min, try Anthropic').
-- **Verify:** Mock provider that's down; verify health check fails and isProviderHealthy returns false. Start provider; verify health check succeeds after next poll interval. Test with 3 providers; verify fallback skips unhealthy ones.
+- **Based on (openclaw):** `extensions/diagnostics-otel/src/service.ts` — openclaw extensions/diagnostics-otel/src/service.ts createDiagnosticsOtelService()
+- **Muse today:** partial — /Users/jinan/side-project/Muse/packages/observability/src/observability-tracers.ts (OpenTelemetry types defined but no content-capture policy or semantic conventions)
+- **Proposal:** Enhance @muse/observability with full OTel integration: createDiagnosticsOtelService() with BatchSpanProcessor, PeriodicExportingMetricReader, BatchLogRecordProcessor. Content-capture policy controls logging of inputMessages, outputMessages, toolInputs, toolOutputs, systemPrompt based on config. Redact sensitive text, truncate JSON to 128KB, enforce max array items (200) and object fields (64).
+- **Value:** Production-grade telemetry export without bleeding PII. Semantic conventions enable ML observability tools to ingest traces natively. Content policy lets users control export vs local retention.
+- **Verify:** Integration test exports OTel trace with inputMessages redacted per policy, verifies JSON truncation and array/field limits applied; validate with OpenTelemetry collector.
 
 ## 7. Background Autonomy · Cron · Proactive Review · Trajectory
 
-_18 items_
+_13 opportunities · 19 competitor files read_
 
 
-### `AUT-1` Managed-cron contract + external scheduler integration (at-most-once, dedup, re-arm semantics)  ★★★★★ · L · partial
+### `AUT-1` Job delivery modes (announce/webhook/silent) with stale-response suppression  ★★★★ · M · partial
 
-- **Reference:** hermes-agent/docs/chronos-managed-cron-contract.md: three-endpoint wire contract (provision/cancel/relay), NAS-mediated JWT trust model, agent→NAS→scheduler→agent callback, at-most-once + dedup via store CAS, reconcile self-healing, 60-120s TTL JWT verification
-- **Muse approach:** Extend `packages/scheduler/src` to add `ManagedCronProvider` interface alongside existing `NodeCronScheduler`. New module `managed-cron-client.ts` implements Hermes' pattern: `reconcile()` computes next-run-at, `provision()` POSTs to manager `/api/cron/provision`, `cancel()` cancels one-shot. Inbound `/api/cron/fire` webhook (in apps/api) verifies JWT → claims job via store CAS (`claimJobForFire`) → fires → re-arms. Idempotent dedupe via `{jobId, fireAt}` key. Reconcile runs on start + after mutation. NO forking (small Muse model; direct execution).
-- **Value:** Allows Muse to scale to zero while idle on hosted platforms (fire only on genuine due time via external manager). Enables multi-replica agent setups with shared cron state (Hermes' key production pattern).
-- **Verify:** Integration test: (1) `provision()` to mock manager succeeds, (2) webhook `/api/cron/fire` with valid JWT fires job + re-arms next, (3) duplicate relay with stale `fireAt` is rejected (claim already advanced), (4) job mutation triggers reconcile (missing → provision, stale → re-arm), (5) manager unreachable → fallback to local in-process ticker.
+- **Based on (openclaw):** `src/cron/delivery.ts` — Cron delivery with stale-acknowledgement suppression and subagent preferences (openclaw/src/cron/delivery.ts)
+- **Muse today:** partial — packages/scheduler/src/scheduler-runtime.ts has webhook + notificationChannelId but lacks announce fallback, silent-token suppression, or subagent-aware suppression of interim text
+- **Proposal:** Extend packages/scheduler/src/scheduler-runtime.ts SchedulerMessaging to support three delivery modes: announce (fallback-deliver final text when agent didn't send), webhook (POST payload), and silent (no output). Add structured execution-denial metadata parsing so failures are detected deterministically, not via prose parsing.
+- **Value:** Completes Muse's job-delivery contract so scheduled jobs can route output to multiple channels (chat, webhook, external) and respects user preference for no-output runs — parity with openclaw's delivery semantics.
+- **Verify:** Unit test: a silent job produces no output; announce mode falls back when agent doesn't send; webhook POSTs the payload.
 
-### `AUT-2` Workflow serialization: save multi-turn plan + branching as replayable workflow (for team/community sharing)  ★★★★★ · L · missing
+### `AUT-2` Cron job idempotency via dedup_key and re-arming  ★★★★ · M · partial
 
-- **Reference:** openclaw/docs/automation/taskflow.md: Task Flow manages multi-step durable flows; workflows are stored + can be replayed; Lobster workflow files (YAML) define steps + approval gates
-- **Muse approach:** Add `packages/proactivity/src/workflow-capture.ts`: after multi-turn session (>5 turns, or explicit `/save-workflow`), serialize conversation to `~/.muse/workflows/<name>.yaml`: (1) metadata (name, intent, tags), (2) step sequence (user message → model response → tools used), (3) decision points (if user corrected, mark as branch), (4) success signal (final outcome). Export: `muse workflow save session:<id> --name daily-report --tags standup,async`. Reuse: `muse workflow run daily-report [--with <vars>]` replays (prompts for branches). Publish: export YAML for sharing.
-- **Value:** Teams can share working agent workflows ('here's how we do market intel'). Enables template skills (workflow-level, not single-skill). Reproducible complex tasks across users.
-- **Verify:** Test: (1) capture serializes multi-turn session as YAML, (2) replay runs workflow (user prompted at branch points), (3) variable substitution works ({{date}}, {{topic}}), (4) exported workflow is valid YAML, (5) shared workflow runs identically on another machine.
+- **Based on (hermes):** `docs/chronos-managed-cron-contract.md` — Managed-cron with external scheduler (hermes/docs/chronos-managed-cron-contract.md: 'dedup_key for transient provision failures, at-most-once via store-level CAS claim')
+- **Muse today:** partial — packages/scheduler/src/scheduler-locks.ts has KyselyDistributedSchedulerLock with CAS (ON CONFLICT DO UPDATE WHERE), but no dedup_key concept for re-arming or one-shot job auto-delete
+- **Proposal:** Add `dedup_key` to ScheduledJob (optional, for one-shot tracking). In DynamicScheduler trigger, after success, for one-shot recurring jobs marked with next_run_at=null, auto-delete the job record. Add `maxRunCount` (auto-delete after N runs). Re-arming logic: before releasing lock, advance next_run_at under lock (same pattern as CAS claim now does).
+- **Value:** One-shot cron jobs auto-cleanup after firing, reducing store clutter. Idempotent re-arming survives transient provision failures without manual retry. Aligns Muse with hermes' serverless-ready cron model.
+- **Verify:** Test: create one-shot job, trigger, verify auto-deleted; create 3-run-max job, fire 3x, verify auto-deleted on 3rd.
 
-### `AUT-3` Session lifecycle + expiry management (idle reset, daily reset, suspension recovery)  ★★★★ · M · missing
+### `AUT-3` Command-payload execution (shell scripts inside Gateway/scheduler)  ★★★ · M · none
 
-- **Reference:** hermes-agent/docs/session-lifecycle.md: session expiry policy with idle/daily reset modes, entry state-machine, `_is_session_expired()`, `was_auto_reset`/`resume_pending` flags, background expiry watcher
-- **Muse approach:** Implement `packages/proactivity/src/session-lifecycle.ts` with `SessionEntry` record (metadata + reset flags), `SessionStore` (in-memory + file-backed via atomic-file-store), policy evaluator (`isSessionExpired`, `shouldReset`), and background watcher task (`startSessionExpiryWatcher`) that finalizes old sessions and marks stale entries. Integrate into server's tick-daemon via `session-expiry-tick.ts`; CLI side benefits from shared session store interface. Reuse existing `atomic-file-store` + `personal-action-log-store` patterns for persistence.
-- **Value:** Enables session context preservation across turns and multi-turn learning signals (background review can see session drift). Prevents unbounded memory growth of abandoned conversations.
-- **Verify:** Write test asserting: (1) idle-expired session is marked `was_auto_reset=true`, (2) resume-pending session preserves session_id on next access, (3) daily reset fires at configured hour, (4) suspended session forces hard reset, (5) background watcher evicts stale cached agents after idle TTL.
+- **Based on (openclaw):** `docs/automation/cron-jobs.md` — Scheduled cron jobs with multiple execution styles (openclaw/docs/automation/cron-jobs.md mechanism: 'Command payload: runs shell inside Gateway (no model)')
+- **Muse today:** none — packages/scheduler: only supports agent jobs or MCP tool invocation; no shell command execution
+- **Proposal:** Add jobType 'command' to packages/scheduler/src/index.ts ScheduledJob. In packages/scheduler/src/dynamic-scheduler.ts dispatcher, detect command jobs and execute shell payload (via child_process) capturing stdout/stderr. Store result in ScheduledJobExecution without model invocation.
+- **Value:** Enables lightweight batch jobs (backups, cleanup, reports) to run on schedule without an LLM, reducing cost and latency for deterministic tasks.
+- **Verify:** Integration test: schedule a 'ls' command, trigger it, verify stdout in execution result.
 
-### `AUT-4` Cron job run-history + failure tracking (persisted execution log, run duration, error classification, backoff counters)  ★★★★ · S · partial
+### `AUT-4` Transient-failure detection and skipped-run classification  ★★★ · M · none
 
-- **Reference:** openclaw/docs/automation/cron-jobs.md: `openclaw cron runs --id <job-id>` shows history; run records capture status (ok/error/timeout), duration, result; failure alerts with backoff + consecutive-skip counters
-- **Muse approach:** Extend `packages/scheduler/src/scheduler-stores.ts` with `CronRunHistoryStore` (already has execution recorder): add `queryRunHistory(jobId, limit?, since?)` that returns sorted run records. CLI command `muse schedule runs <jobId> [--limit N] [--since <date>]` queries + formats (duration, status, error preview). Failure alerts: track consecutive-error count in job metadata, suppress after N consecutive failures unless `failureAlert.includeSkipped=true`. Reuse existing run-record persistence (execution-recorder already saves to DB).
-- **Value:** Operator visibility into why jobs fail + recurring failure patterns. Backoff gates noisy re-notifications (rate-limit, auth failures). Shows whether a schedule is reliable or needs tuning.
-- **Verify:** Test: (1) query job runs returns records sorted by date, (2) failed run shows error classification (timeout/auth/rate-limit), (3) N consecutive failures suppress alerts, (4) skip counter persists across runs, (5) manual retry resets backoff counter.
+- **Based on (openclaw):** `docs/automation/cron-jobs.md` — Isolated cron with preflight provider checks and model fallbacks (openclaw/docs/automation/cron-jobs.md: 'If loopback/private/.local endpoint unreachable, marks run skipped (not error)')
+- **Muse today:** none — packages/scheduler/src/dynamic-scheduler.ts treats all job failures uniformly; no preflight checks or skipped-run status
+- **Proposal:** In packages/scheduler/src/dynamic-scheduler.ts, before agent execution, probe configured local endpoints (ollama, openai-compat). If unreachable (mark as 'skipped' not 'failed'). Cache endpoint result 5m. In ScheduledJobExecution index.ts, add distinct skipped status + metadata ("provider offline"). Treat skipped runs separately from retries.
+- **Value:** Cold-start failures (local LLM server down) surface clearly as transient 'skipped', not permanent errors. Prevents hammering dead endpoints and avoids retry backoff for infrastructure issues.
+- **Verify:** Test: mock offline ollama endpoint, trigger job, verify skipped status vs. failed; verify cache prevents re-probing within 5m.
 
-### `AUT-5` Model switch + version mismatch detection in cron / background jobs (fallback chain, fast mode, auth profile override)  ★★★★ · M · missing
+### `AUT-5` Foreground/background job execution styles (main/isolated/custom session)  ★★★ · M · partial
 
-- **Reference:** openclaw/docs/automation/cron-jobs.md: per-job model override + fallback chain; fast mode per model config; auth profile override on live model-switch; isolated jobs track provider/model/auth for each run
-- **Muse approach:** Extend `ScheduledJob` interface in `packages/scheduler/src/index.ts` to add optional `modelOverride?: string`, `fallbackModels?: string[]`, `fastMode?: 'auto'|'on'|'off'`, `authProfileId?: string`. `ScheduledJobDispatcher` resolves model via precedence: per-job override → agent default. On cloud-provider timeout, retry with fallback model (like OpenClaw pattern). Store resolved model + auth in execution record so run history shows which model actually ran. CLI: `muse schedule edit <id> --model claude-opus --fallbacks claude-sonnet,claude-haiku`.
-- **Value:** Allows users to force expensive tasks to cheaper models, or slow tasks to faster inference. Survives model provider downtime via fallbacks. Audit trail of actual model used (cost tracking, model-specific failure analysis).
-- **Verify:** Test: (1) per-job model override is used, (2) fallback retries on timeout, (3) fast mode is passed to provider, (4) auth profile override is applied to fallback model, (5) execution record captures final model + auth used.
+- **Based on (openclaw):** `docs/automation/cron-jobs.md` — Scheduled cron jobs with multiple execution styles (openclaw/docs/automation/cron-jobs.md: main-session enqueues system event, isolated fresh per run, custom session)
+- **Muse today:** partial — packages/scheduler/src/dynamic-scheduler.ts only supports agent jobs (no session-style distinction); ScheduledAgentExecutor is a callback, not a configurable style
+- **Proposal:** Add `sessionStyle` to ScheduledJob ('main'|'isolated'|'custom') and optional `sessionId` for custom. In DynamicScheduler, detect style: main → enqueue system event to wake existing session; isolated → spawn fresh agent session; custom → enqueue to named sessionId. Default main.
+- **Value:** Flexible execution: routine jobs integrate with ongoing conversation (main), or run detached (isolated), or join specific session (custom). Matches openclaw's job flexibility.
+- **Verify:** Test: main job enqueues event; isolated job spawns fresh session; custom job routes to named sessionId.
 
-### `AUT-6` Consolidation curator loop: idle-triggered skill merge (pinned skills never touched, archive old versions, test consolidated skills)  ★★★★ · L · partial
+### `AUT-6` Auto-stagger job execution to prevent thundering-herd  ★★ · S · none
 
-- **Reference:** hermes-agent/agent/curator.py: when idle (no activity ≥ interval_hours), fork agent to pin/archive/consolidate overlapping skills. Never deletes (archive is recoverable). Consolidate via agent-guided merge, test merged skill, then mark old as archived
-- **Muse approach:** Extend `packages/proactivity/src` with `curator-consolidation-loop.ts` (part of idle-daemon tick): when idle ≥ `MUSE_SKILL_CONSOLIDATE_IDLE_HOURS` (default 24h, gated by `MUSE_SKILL_CONSOLIDATE_ENABLED`), fork a local-model session to (1) list all user skills, (2) find overlapping pairs (cosine sim on SKILL.md content ≥ 0.7), (3) for each pair, run merge prompt ('these cover the same topic; consolidate into one'), (4) test merged skill on a scenario from both old skills, (5) if test passes, mark old skills archived (not deleted), new skill active. Integrate into `startIdleCuratorTick()` in apps/api.
-- **Value:** Prevents skill library sprawl (10+ overlapping Docker skills → 1 consolidated). Merges learning from multiple sessions (pattern-matching across contexts). Archive-not-delete keeps recovery path (skill can be un-archived if consolidation was wrong).
-- **Verify:** Test: (1) idle cursor runs when activity silent ≥ interval, (2) overlap detection finds similar skills, (3) merged skill is authored + stored, (4) old skills marked archived (not deleted), (5) merged skill is tested on both old scenarios, (6) pinned skills are never consolidated.
+- **Based on (openclaw):** `docs/automation/cron-jobs.md` — Scheduled cron jobs with auto-stagger (openclaw/docs/automation/cron-jobs.md: 'Auto-stagger top-of-hour by 5m unless --exact')
+- **Muse today:** none — packages/scheduler/src/scheduler-helpers.ts computeNextRunAt has no stagger logic
+- **Proposal:** Add optional `staggerEnabled` (default true) to ScheduledJob and `staggerMaxMinutes` (default 5) to DynamicSchedulerOptions. In packages/scheduler/src/scheduler-helpers.ts computeNextRunAt, after resolving cron time, if minute==0 and stagger enabled, add random[0, staggerMaxMinutes] offset. Unless --exact flag passed.
+- **Value:** Prevents cache-stampedes and load spikes when many jobs trigger at top-of-hour. Distributes load smoothly without user coordination.
+- **Verify:** Unit test: compute next run for top-of-hour cron; verify offset added is within stagger range; verify --exact disables stagger.
 
-### `AUT-7` Insights engine + usage analytics (token cost, tool usage patterns, skill load/edit frequency, activity by hour/day)  ★★★ · M · missing
+### `AUT-7` Cron job suggestions and catalog automation  ★★ · M · none
 
-- **Reference:** hermes-agent/agent/insights.py: InsightsEngine.generate(days=30) queries sessions + tool_calls + skill_usage from SQLite; computes overview (tokens, cost, duration), model/platform/tool breakdowns, skill/activity patterns; `format_terminal()` + `format_gateway()`
-- **Muse approach:** Add `packages/agent-core/src/insights-engine.ts` (or `apps/api/src/insights`): query SessionDB (Muse already has Postgres session records from hermes-state if on server, or episodic-store from memory). Compute overview (total input/output/cache tokens, estimated cost via existing pricing module), model breakdown (sessions per model, tokens), tool usage (count from session records), skill usage (from memory store skill-view tool calls). Format as JSON + text (CLI/API response). Integrate as CLI command `muse insights [--days N] [--format json]` + API `GET /api/insights`.
-- **Value:** User-facing observability: cost tracking, model selection patterns, tool reliability, skill ROI. Feeds improvement loop (which skills to consolidate, which tool choices are expensive).
-- **Verify:** Test: (1) query sessions + tool calls over N days, (2) compute aggregates (total tokens, avg/session), (3) format_terminal renders bar charts + top-N rankings, (4) breakdown by model shows token + cost split, (5) skill usage extracts from agent's tool-call log.
+- **Based on (hermes):** `cron/suggestions.py` — Cron job suggestions and catalog automation (hermes/cron/suggestions.py: ready-to-run specs with source tracking, MAX_PENDING=5 cap, acceptance/dismiss state machine)
+- **Muse today:** none — packages/scheduler: no suggestions feature; no proposal/acceptance/dismiss workflow
+- **Proposal:** Add packages/scheduler/src/suggestions.ts with Suggestion type (dedup_key, source: 'catalog'|'blueprint'|'usage'|'integration', status: 'pending'|'accepted'|'dismissed', spec: ScheduledJobInput). In DynamicScheduler, expose createSuggestion(source, spec) and acceptSuggestion(dedup_key). Store dismissed dedup_keys so they're never re-offered. Cap pending to 5 (MAX_PENDING).
+- **Value:** Surfaces automation opportunities to user (detected from usage patterns via background-review, or curated from catalog) without spamming. One-tap acceptance. Lowers friction to job creation.
+- **Verify:** Test: create suggestion, verify in pending list; accept it, verify job created; dismiss another, verify never re-offered.
 
-### `AUT-8` Cron delivery targets with platform-specific routing + announcement fallback  ★★★ · S · partial
+### `AUT-8` Usage insights and historical analysis engine  ★★ · M · none
 
-- **Reference:** openclaw/docs/automation/cron-jobs.md: announce + webhook modes; channel allowlist validation; reroute stale targets; DM pairing-store approvals excluded; platform prefix validation (telegram:id vs slack:id); failure-destination separate from primary
-- **Muse approach:** Extend `SchedulerMessaging` in `packages/scheduler/src/scheduler-runtime.ts` with delivery-options resolver: `announce` mode falls back to configured channel if agent didn't send; `webhook` mode POSTs structured event; `none` suppresses both. Add `failureDestination` override (separate from primary). Validate platform prefixes (if `delivery.to='telegram:123'`, require `channel='telegram'`). CLI: `muse schedule edit <id> --announce --channel slack --to channel:C1234 --failure-dest @me`.
-- **Value:** Users can route job outputs to different channels + fallback on agent silence. Separate failure notifications (DND-aware, different audience). Platform validation prevents silent misroutes.
-- **Verify:** Test: (1) announce mode uses channel if agent didn't send, (2) webhook POSTs structured event, (3) platform prefix mismatch is rejected, (4) failure destination overrides primary, (5) stale target is re-validated via allowlist.
+- **Based on (hermes):** `agent/insights.py` — Usage insights and historical analysis engine (hermes/agent/insights.py: timeframe queries, token/cost/duration breakdowns, model/tool/skill usage, activity patterns)
+- **Muse today:** none — packages/agent-core: has activity/ACT-R/telemetry but no usage-analytics queries (tokens, cost by model/tool, activity histograms)
+- **Proposal:** Add packages/agent-core/src/usage-insights.ts InsightsEngine with generate(days=30) method. Query agent_runs table (via MuseDatabase) for timeframe, compute: total tokens (input/output/cache), cost estimation per session, model/tool/skill breakdowns (tool_calls JSON), activity patterns (histograms by day-of-week, hour, streaks). Export formatTerminal() and formatMessaging() for display.
+- **Value:** Passive historical awareness of agent patterns (cost/productivity/tool preference) without real-time dashboards. Informs what to optimize next. Parity with hermes insights.
+- **Verify:** Test: insert mock agent_runs, call generate(30), verify token sums, model breakdowns, and activity patterns are computed.
 
-### `AUT-9` Persistent cron session (build-on-history pattern for recurring workflows)  ★★★ · M · missing
+### `AUT-9` Active-hours gating with task-based wake triggers  ★★ · M · partial
 
-- **Reference:** openclaw/docs/automation/cron-jobs.md sessionTarget='custom': `session:xxx` persists context across runs; enables workflows like daily standups that build on previous summaries; `session:market-intel` runs against the same conversation history each day
-- **Muse approach:** Extend `ScheduledJob` to support `sessionType: 'isolated' | 'main' | 'custom'` + optional `customSessionId?: string`. In `ScheduledJobDispatcher`, when session-type is 'custom', reuse the same session_id across runs (route via SessionStore). First run creates the session; subsequent runs append to existing transcript. Transcript loading: if session exists, load full history; if new, start blank. CLI: `muse schedule add --message 'Summarize today.' --session session:daily-standup --cron '0 9 * * *'`.
-- **Value:** Enables persistent workflows (daily standup builds on yesterday's summary, weekly report accumulates context). Common in production agent usage (market updates with prior context, incident logs that grow).
-- **Verify:** Test: (1) first run creates session, (2) second run loads prior transcript, (3) run 2 message appends to run 1, (4) model sees full history, (5) session reset doesn't lose prior runs (archived, not deleted).
+- **Based on (openclaw):** `src/infra/heartbeat-runner.ts` — Heartbeat periodic polling with active-hours and task-based wake (openclaw/src/infra/heartbeat-runner.ts: isWithinActiveHours, listDueCommitmentsForSession, phases)
+- **Muse today:** partial — packages/agent-core/src/active-context.ts surfaces active-hours but doesn't gate scheduling; no heartbeat phase machine or task-based wake
+- **Proposal:** In packages/scheduler/src/dynamic-scheduler.ts, before firing scheduled agent job, check isWithinActiveHours(job.timezone). If false, reschedule to next active window. Add optional taskListResolver callback to DynamicSchedulerOptions; if provided, gate execution on listDueCommitmentsForSession returning non-empty (work pending). Respect HEARTBEAT_SKIP_CRON_IN_PROGRESS flag.
+- **Value:** Prevents jobs from firing during user's off-hours or when no work is pending, reducing noise. Respects user's rhythm and prevents wasted compute.
+- **Verify:** Test: configure active-hours 9-17, schedule job at 8pm, verify skipped; with pending task, verify fires; skip flag prevents concurrent fire.
 
-### `AUT-10` Time-series resource tracking: CPU/memory/token-per-second, model provider latency, tool execution time percentiles  ★★★ · M · missing
+### `AUT-10` Standing orders for permanent cron-backed operating authority  ★★ · L · none
 
-- **Reference:** hermes-agent/agent/insights.py: compute_overview aggregates duration, tokens, cost across sessions; hermes-agent tracks tool_call_count + session duration in DB for later analytics
-- **Muse approach:** Add `packages/observability/src/perf-tracker.ts`: on `afterTool`, record `{ toolName, status, durationMs, inputTokens, outputTokens }`. On `afterComplete`, record `{ totalDuration, modelSwitches, toolCount }`. Append to `~/.muse/perf-samples.jsonl` (FIFO trim 10k). CLI: `muse perf [--window 7d] [--tool <name>]` shows: avg tool duration by tool, p50/p95 latency, model provider latency (if tracked via switch events), token throughput (tokens/sec). Integrate into insights engine.
-- **Value:** Performance observability: which tools are slow, which models have high latency, regression detection (same tool slower this week). Feeds cost optimization (prefer fast cheap models).
-- **Verify:** Test: (1) afterTool records duration + status, (2) afterComplete records summary, (3) query perf-samples by tool name, (4) compute p50/p95 latency, (5) identify slowest tools, (6) perf regression detected when avg duration increases >20%.
+- **Based on (openclaw):** `docs/automation/standing-orders.md` — Standing orders for permanent operating authority (openclaw/docs/automation/standing-orders.md: scope, triggers, approval gates, escalation rules in workspace files)
+- **Muse today:** none — packages/agent-core: no standing-orders concept; cron jobs exist but no pre-authorized scope/escalation rules
+- **Proposal:** Add packages/agent-core/src/standing-orders.ts with StandingOrder interface (scope: string[], triggers: ScheduledJobInput[], approvalGates: {action, requiresSign-off}, escalationRules: {when, stop, notify}). Load from agent workspace (AGENTS.md, SOUL.md). Before executing cron job matching standing order trigger, check escalationRules; if triggered, stop and ask user instead of proceeding.
+- **Value:** Shifts bottleneck from per-task prompting to pre-defined authority boundaries. Routine work happens on schedule without repeating approval requests. Escalation prevents silent failures.
+- **Verify:** Test: define standing order scope, trigger cron job, verify within scope auto-proceeds; verify escalation rule stops and notifies.
 
-### `AUT-11` Escalation + stuck-loop detection: reset session after 3 consecutive failed turns, mark for manual review  ★★★ · M · partial
+### `AUT-11` Session trajectory compression for training/analysis  ★ · M · none
 
-- **Reference:** hermes-agent/docs/session-lifecycle.md _suspend_stuck_loop_sessions: if session active across 3+ consecutive restarts, auto-suspend (hard wipe). Monitors retry count + restart count to detect stuck loops
-- **Muse approach:** Enhance `packages/proactivity/src/session-lifecycle.ts` with `detectStuckLoops()` logic (run in background watcher): if a session's last 3 turns all have `status='error'` OR last 3 tool calls all `status='failed'`, mark `escalated=true` + append to `~/.muse/escalated-sessions.jsonl`. CLI: `muse escalations list` shows stuck sessions + reason (error chain or failure chain). Manual surface: `muse escalations triage <sessionId>` to review cause + decide: reset (clear context) vs abort (mark done). Integrate into session expiry watcher (escalated sessions get extra scrutiny, not auto-reset).
-- **Value:** Prevents infinite-retry loops (session gets stuck, keeps failing, hides user. Now surfaced + escalated to human). Operator visibility into systemic failures (provider down, tool broken, task impossible).
-- **Verify:** Test: (1) 3 consecutive failed turns → escalated=true, (2) escalated session is NOT auto-reset, (3) escalations list shows session + reason, (4) triage command resets/aborts and records decision, (5) session no longer escalated after reset.
+- **Based on (hermes):** `trajectory_compressor.py` — Session trajectory saving with compression (hermes/trajectory_compressor.py: ShareGPT format, token-budget compression, success/failure splits)
+- **Muse today:** none — packages/agent-core: no trajectory save or compression; plan-execute tests reference trajectories but don't persist
+- **Proposal:** Add packages/agent-core/src/trajectory-saver.ts with save(messages: Message[], metadata: {model, timestamp, completed}) → JSONL append. Add trajectory-compressor.ts: compress(messages, maxTokens) → replaces middle region with human summary, preserves first/last turns. Separate files by success/failure for dataset quality filtering.
+- **Value:** Builds training signal from real agent runs. Compression preserves semantic value while fitting under context limits. Enables fine-tuning and dataset audits without storing full transcripts.
+- **Verify:** Test: save 100-turn trajectory, compress to 5000 tokens, verify first/last preserved; check JSONL format is valid.
 
-### `AUT-12` Session transcript compression (summarize old turns, preserve recent context for prompt caching)  ★★★ · M · partial
+### `AUT-12` Background review for memory/skill auto-learning from cron runs  ★ · S · partial
 
-- **Reference:** hermes-agent/trajectory_compressor.py + session-lifecycle.md: compress old turns via summary when session gets long; preserve recent turns for prefix-cache; old summaries linked to original turns (trace back)
-- **Muse approach:** Enhance `packages/memory/src/episodic-store.ts` with compression: when session exceeds N turns (default 100), summarize oldest M turns (default 50) to 1-2 bullets. Replace turns in transcript with summary + pointer. Store original turns to backup file (archived, not deleted). Keep recent K turns (default 20) uncompressed for prefix cache. Hook: run compression in `afterComplete` if turn-count threshold hit, fire-and-forget (fail-soft). CLI: `muse compress [--session <id>] [--keep-turns N]`.
-- **Value:** Long sessions stay in context window (context-efficient). Prefix cache warming kept alive (recent turns uncompressed). Archival trail preserved (audit, recovery).
-- **Verify:** Test: (1) session >100 turns → oldest 50 compressed to summary, (2) summary captures key facts (names, decisions), (3) recent 20 turns uncompressed, (4) model can reference compressed turns, (5) original turns backed up (recoverable), (6) compression survives restart.
+- **Based on (hermes):** `agent/background_review.py` — Background forked agent for autonomous self-improvement (hermes/agent/background_review.py: spawn daemon thread, tool whitelist, memory/skill updates)
+- **Muse today:** partial — packages/agent-core/src/background-review.ts has the engine (trigger evaluation, counter store), but is NOT integrated into cron job completion path; runReview hook is injected but not called by scheduler
+- **Proposal:** In packages/scheduler/src/dynamic-scheduler.ts, after agent job completes, check if background-review should fire (import BackgroundReviewInput logic). If enabled, call a registered backgroundReviewCallback(input) fire-and-forget. Collect memory/skill update signals (tool failures, user corrections in cron output) and persist without blocking job delivery.
+- **Value:** Scheduled jobs auto-improve agent memory/skills without user coaching. Captures patterns from batch work, reducing manual skill authoring.
+- **Verify:** Test: run agent job, verify background review fires fire-and-forget after job completes; memory/skill updates persist.
 
-### `AUT-13` Trajectory recording + session artifact logging (conversation shape, outcome, efficiency metrics)  ★★ · S · missing
+### `AUT-13` Task ledger with push-driven completion notifications  ★ · M · none
 
-- **Reference:** hermes-agent/agent/trajectory.py: save_trajectory() appends JSONL per session with ShareGPT format, timestamp, model, completion status; hermes-agent stores failed trajectories separately for failure analysis
-- **Muse approach:** Add `packages/agent-core/src/trajectory-recorder.ts`: on `afterComplete`, serialize `{ turns: messages[], model, completedAt, success, metadata: { toolCalls, switches, duration } }` to `~/.muse/trajectories.jsonl` (append-only, FIFO trim at 10k). Separate `failed-trajectories.jsonl` for session where `success=false` or final tool call failed. Integrate via `HookStage` (afterComplete), fire-and-forget. Reuse existing JSON append + trim patterns (proactive-notice-store).
-- **Value:** Enables post-hoc analysis: which task shapes fail (tool-heavy, long chains), model selection patterns, efficiency vs cost. Feeds eval:orchestration evals (trajectory match, step efficiency). Ground for skill authoring (what session patterns warrant reusable skills).
-- **Verify:** Test: (1) successful session → `trajectories.jsonl`, (2) failed session → `failed-trajectories.jsonl`, (3) both files append-only + trim to 10k, (4) metadata includes tool call count + duration, (5) failed status is `true` when final turn has tool error.
-
-### `AUT-14` Commit-outcome preference learning: score model/tool choices by whether they led to successful outcomes  ★★ · M · missing
-
-- **Reference:** hermes-agent/agent/insights.py _compute_model_breakdown + background_review.py skill trigger: tool-iteration cadence is outcome-sensitive (hard tasks = many tool iterations = skill trigger sooner); Hermes never captures model choice success rate explicitly but uses task-difficulty (iterations) as salience
-- **Muse approach:** Add `packages/agent-core/src/outcome-scoring.ts`: on `afterComplete`, score the session outcome (`success=true` if final tool was successful + user didn't correct), model used, tool choices made. Store scored outcomes to `~/.muse/outcomes.jsonl` (model, tool_sequence, success, duration). Query by model to compute success rate + average steps. Integrate into insights engine (show model success %). Use in auto-model-selection heuristic (prefer models with >80% success rate on similar tasks).
-- **Value:** Data-driven model selection: cheap models that succeed on your tasks vs expensive models that fail. Feeds earned-proactivity style credibility scoring (which tools you trust on which task types).
-- **Verify:** Test: (1) successful session scores outcome=true, (2) session with correction scores outcome=false, (3) outcomes queryable by model, (4) success rate computed as fraction of true outcomes, (5) insights engine reports per-model success %.
-
-### `AUT-15` Proactive scheduler: bring-forward notifications for overdue items (task approaching true deadline, calendar event imminent, overdue check-in)  ★★ · S · partial
-
-- **Reference:** hermes-agent/docs/session-lifecycle.md session context + proactive-notice-loop.ts: calendar lead window (imminent) + tasks due soon (lead) + check-ins due (lead). Hermes synthesizes ONE-LINE LLM heads-up inline to live chat when user active; Muse has most of this but no persistent deferred-notification queue
-- **Muse approach:** Enhance `packages/proactivity/src/proactive-notice-loop.ts` with `DeferredNotificationQueue` (store imminent items that fired but user was DND). On quiet-hours end or first user activity after, surface queued items in order. Also add `bring-forward` command (`muse proactive bring-forward`) that scans deferred queue + surfaces N most-recent items. Integrate into daemon's wake logic: on quiet-hours end, check deferred queue before computing next-due items.
-- **Value:** Users don't miss deadlines due to DND window (notified on quiet-hours end). Proactivity queue survives daemon restart (durably stored).
-- **Verify:** Test: (1) imminent item during DND is queued (not surfaced), (2) on DND end, queued items are surfaced in FIFO order, (3) bring-forward command shows queued items + count, (4) queue survives restart (persisted), (5) old queued items are discarded (expiry: if due date passed).
-
-### `AUT-16` Multi-turn expectation-setting: declare upfront what the session is about so proactivity + skills know context  ★★ · S · missing
-
-- **Reference:** hermes-agent/docs/session-lifecycle.md SessionContext: session metadata injected into system prompt (where did message come from, shared vs private, what platforms are connected); OpenClaw session types (main/isolated/custom) affect context availability; agents know if they're in a focused cron job vs ambient chat
-- **Muse approach:** Add `packages/agent-core/src/session-context-builder.ts`: at session start, optionally declare `{ sessionType: 'learning'|'task'|'ambient', focus?: string, expectedDuration?: string }`. Store in SessionEntry. Inject into system prompt (e.g. 'You are in a 15-minute learning session on Docker; stay focused'). Use to gate proactivity (suppress ambient notices in 'learning' mode) and skill authoring (focus='Docker' → skills tagged Docker). CLI: `muse session focus --task 'Debugging prod issue' --expected-duration 30m`.
-- **Value:** Proactivity respects focus mode (no unrelated notices during deep work). Skills are scoped (Docker-specific learning in Docker session, not generic). Users control agent behavior without system-prompt editing.
-- **Verify:** Test: (1) session declared with focus='learning' suppresses ambient proactive notices, (2) focus is injected into system prompt, (3) skills authored in 'learning' session are tagged with focus keyword, (4) session-end summary mentions focus (learned re: Docker), (5) DND during focus overrides normal quiet-hours.
-
-### `AUT-17` Scheduling suggestions + patterns: detect recurring tasks and propose cron jobs or standing objectives  ★★ · M · missing
-
-- **Reference:** hermes-agent/cron/suggestions.py + suggestion_catalog.py: detect patterns in user's chat (weekly standup, daily briefing, monthly report) and suggest cron jobs. Hermes suggests based on explicit keywords + time patterns
-- **Muse approach:** Add `packages/proactivity/src/schedule-suggestions.ts`: after background review, scan recent turns for patterns: (1) repeated requests at same time ('every Monday', 'daily'), (2) standing phrases ('send me the weekly', 'recap from today'), (3) check-in language ('how did', 'did we'). Suggest as `{ kind: 'cron'|'objective', text: string, cron?: string, reason: string }` stored to `~/.muse/suggested-schedules.json`. CLI: `muse schedule suggest` shows pending suggestions + accept/dismiss. On accept: create cron job or objective. Use confidence gate (only suggest if ≥2 instances + >5 days apart).
-- **Value:** Reduces user friction: 'I said this three times' → 'Want me to schedule it?' User discovers automation opportunities without explicit `/schedule` command.
-- **Verify:** Test: (1) detect repeated request pattern (same text 2+ times >5 days apart), (2) suggest cron job with extracted expression, (3) suggest objective if 'watch X until Y' pattern, (4) confidence gate suppresses <2 instances, (5) accept creates scheduled job, (6) dismiss marks in avoid-list (no re-suggest).
-
-### `AUT-18` Background review salience gating: only schedule skill review when window had tool failures  ★ · S · partial
-
-- **Reference:** hermes-agent/agent/background_review.py `isSkillReviewSalient()`: tool failures flag (status='failed') gates skill-review trigger; successful-only windows are low-salience; write-time gating per arXiv:2603.15994
-- **Muse approach:** Update `packages/agent-core/src/background-review.ts` `ReviewSalience` interface + `evaluateReviewTriggers()` to apply write-time salience gating: when `reviewSkill=true` AND `salience.toolFailures === 0`, downgrade to `reviewSkill=false`. Already half-implemented (counters track toolFailures); just gate the final trigger decision. No new LLM, no new data source — purely a filter on existing counters.
-- **Value:** Prevents skill-review LLM calls on smooth sessions (only successful tool calls). Reduces review cost + noise while preserving learning from hard tasks (failures are the signal that skill is worth authoring).
-- **Verify:** Test: (1) all-successful tool calls → salience.toolFailures=0 → reviewSkill=false (trigger gated), (2) one-failed call → salience.toolFailures≥1 → reviewSkill=true, (3) counter values match window length.
+- **Based on (openclaw):** `docs/automation/tasks.md` — Background task ledger for activity tracking (openclaw/docs/automation/tasks.md: queued→running→terminal, linked to task/run/session, 7-day prune)
+- **Muse today:** none — packages/scheduler: tracks executions but no unified task ledger; no task-state machine or completion notifications
+- **Proposal:** Add packages/scheduler/src/task-ledger.ts with Task (queued|running|ok|error|skipped|timed_out|cancelled) state machine. On job trigger, create task entry linked to job_id + run_id + session_id. On completion, push notification to requester session (wakes waiting user). 7-day auto-prune. Export task_list/task_show/task_cancel CLI commands.
+- **Value:** Single ledger for all background work (detached from conversation). Completion notifications prevent polling loops. Task-session linkage traces execution path across workers.
+- **Verify:** Test: trigger job, create task; complete job, verify notification pushed; list tasks, verify 7-day cutoff.
 
 ## 8. Multi-Agent Orchestration · ACP · Sub-Agents · Gateways
 
-_18 items_
+_14 opportunities · 22 competitor files read_
 
 
-### `ORC-1` Implement supervisor agent gateway for distributed endpoint management  ★★★★★ · L · missing
+### `ORC-1` Multi-Agent Session Lifecycle & Eviction  ★★★★ · M · partial
 
-- **Reference:** openclaw/extensions/codex-supervisor/src/supervisor.ts — CodexSupervisor class manages connections to multiple Codex app-server endpoints, lists sessions, reads transcripts, steers/interrupts turns
-- **Muse approach:** Create packages/gateway/src/supervisor-agent.ts implementing a LocalSupervisor class that: (1) maintains a registry of local agent endpoints (spawned via scheduler/proactivity), (2) probes endpoint readiness with lightweight ping, (3) routes new requests to the least-busy endpoint by querying session count, (4) provides listSessions/readSession/sendToSession/interruptSession methods matching the endpoint interface. Respects local-only by spawning only local Ollama-backed agents; no cloud vendor routing.
-- **Value:** Moves Muse from single-agent per session toward multi-agent load balancing and supervision, enabling high-concurrency workloads and graceful endpoint degradation (if one agent crashes, others still serve).
-- **Verify:** Test that supervisor correctly routes 5 simultaneous messages to 2 local agents, failover when one endpoint fails, and maintains session affinity across turns.
+- **Based on (openclaw):** `packages/acp-core/src/session.ts` — openclaw's in-memory session store with TTL-based eviction, idle tracking, and runId binding
+- **Muse today:** partial — packages/multi-agent/src/subagent-run-registry.ts tracks live sub-agent runs with status/timeout/heartbeat but lacks: (1) idle TTL eviction for long-lived parents, (2) AbortController per-session cancellation, (3) bounded capacity with FIFO eviction policy, (4) session resume/resume-from-parent chain
+- **Proposal:** Extend SubAgentRunRegistry in packages/multi-agent/src to add: IdleSessionEvictorPolicy (30min default TTL, evict oldest-idle on capacity overflow), AbortController per-session for cascading cancellation, sessionResumeContext tracking (parent_sessionId + resume marker). Fail-close TTL: evict before timeout fires so no stalled child outlives its parent.
+- **Value:** Parents can now clean up idle children automatically without manual GC; runaway multi-turn chains are bounded by capacity, preventing memory leaks in long-running swarms.
+- **Verify:** SubAgentRunRegistry test: register 5k sessions, heartbeat 2k, advance time past TTL, verify detectStalled() identifies 3k timed-out and evict drops oldest 2k when capacity hit.
 
-### `ORC-2` Add turn-level session context and source metadata tracking  ★★★★ · M · partial
+### `ORC-2` Session Event Bridge with Progress Callbacks  ★★★★ · M · partial
 
-- **Reference:** hermes-agent/gateway/session.py SessionSource dataclass (platform, chat_id, user_id, thread_id, chat_type, etc.) + gateway/run.py session caching by LRU/TTL
-- **Muse approach:** Extend packages/multi-agent/src/orchestrator.ts and packages/agent-core/src to add TurnContext interface: { sessionKey, turnId, source: SessionSource, profile?, timestamp }. Muse already has sessionKey; add SessionSource (platform, userId, channelId, threadId) as optional metadata injected by messaging adapters. Store in orchestration-history.ts for audit trail. Hermes uses this for system prompt injection (telling the agent where it's running); Muse uses it for response routing back to the originating channel.
-- **Value:** Enables message routing to reply in the original channel/thread, and supports multiplexed profiles (serve multiple orgs/workspaces from one Muse instance without cross-contamination).
-- **Verify:** Test that a message from Slack thread A is routed back to thread A (not thread B), and that two sessions from different profiles don't mix message history.
+- **Based on (hermes):** `acp_adapter/events.py` — hermes' event callbacks bridging AIAgent threaded signals (tool_started, message, thought, tool_completed) to ACP session updates with deduplication
+- **Muse today:** partial — packages/multi-agent/src/agent-message-bus.ts provides pub/sub for inter-agent messages but (1) no event-to-plan-entry bridge (events aren't surfaced as parent-visible progress), (2) no deduplication FIFO queue for concurrent tool calls, (3) no thought/reasoning callback channel, (4) onProposal callback in orchestrate.ts is loose, not a formal event bridge
+- **Proposal:** Create packages/multi-agent/src/session-event-bridge.ts: (1) EventBridgeSession maps child tool_started→parent task/plan-entry, thought→advisory reasoning-delta, tool_completed→result, (2) FIFO deduplication queue (key=toolCallId) so duplicate-firing doesn't spawn two plan entries, (3) asyncio.run_coroutine_threadsafe-like batching so parent sees clean task tree, (4) integrate into SubAgentRunRegistry so heartbeat() is triggered by event arrivals. Extend agent-message-bus to emit structured events (not just messages).
+- **Value:** Parents see real-time child progress without blocking; plan deduplication renders legible task trees for long-running multi-step orchestrations; progress callbacks enable responsive UIs.
+- **Verify:** Test: child emits tool_started twice (dedup check), tool_completed once; parent event bridge collects exactly 2 plan entries (started, completed); no orphaned started-without-completed.
 
-### `ORC-3` Implement typed event streaming dispatcher with adapter rendering hooks  ★★★★ · M · missing
+### `ORC-3` Permission Gateway with Child Approval Timeout  ★★★★ · M · none
 
-- **Reference:** hermes-agent/gateway/stream_dispatch.py GatewayEventDispatcher — routes typed stream events (MessageChunk, ToolCallChunk, etc.) through adapters' render_message_event/format_tool_event hooks
-- **Muse approach:** Create packages/messaging/src/stream-dispatcher.ts implementing StreamEventDispatcher class: (1) consumes typed events from agent execution (MessageChunk, ToolStart, ToolEnd, Commentary), (2) routes through an adapter's render methods (no-op for unknown platforms), (3) enqueues rendered lines to a delivery sink (e.g., Telegram/Slack streaming API). Makes tool-progress rendering pluggable so adapters decide native chrome vs plaintext; solves the 'tool updates race the final message' problem Hermes solved.
-- **Value:** Unifies event delivery across all channel adapters; solves streaming ordering bugs and lets platforms (Discord, Slack) render tool progress natively instead of as fallback text.
-- **Verify:** Test that tool-progress events are rendered in order on Slack; that a platform adapter can suppress tool chrome and the response still completes cleanly.
+- **Based on (hermes):** `acp_adapter/permissions.py` — hermes' ACP PermissionOption mapping (allow_once/allow_session/allow_always/deny) with timeout-aware future scheduling (5s default) from worker thread
+- **Muse today:** none — packages/macos/src/macos-tools.ts has approval gates (approvalGate callback) but only for outbound actions; packages/multi-agent has no child-permission forwarding (a parent blocking on dangerous child operation).
+- **Proposal:** Create packages/multi-agent/src/permission-gateway.ts: (1) PermissionRequest wraps child tool-call + risk level + description, routed to parent's approvalGate with unique perm-check-{uuid} id, (2) parent responds allow_once/allow_session/allow_always/deny within 5s (configurable timeout), (3) timeout = deny (fail-close), (4) session-level cache (allow_session applies to all subsequent same-tool in that child session). Integrate into tool-runner so a child's dangerous tool blocks until parent approves.
+- **Value:** Multi-agent systems gain parent oversight of dangerous child operations (write tools, API calls); unique request ids prevent concurrent collision/races; timeout-aware scheduling prevents hangs.
+- **Verify:** Test: child requests permission for dangerous_tool with 5s timeout, parent doesn't respond within time, permission-gateway blocks child and returns deny, subsequent request in same session uses cache (allow_session).
 
-### `ORC-4` Add turn interruption and steering for active agent runs  ★★★★ · M · missing
+### `ORC-4` Typed ACP Protocol Gateway & Agent Capability Negotiation  ★★★ · M · partial
 
-- **Reference:** openclaw/extensions/codex-supervisor/src/supervisor.ts interruptSession/sendToSession with turnId resolution — finds in-progress turn and sends turn/steer or turn/interrupt RPC
-- **Muse approach:** Extend packages/multi-agent/src to add TurnInterrupt interface with turnId + reason (user_request | deadline | resource_limit). Track active turns in orchestrator via new ActiveTurnRegistry (sessionKey → { turnId, workerId, startTime, cancelToken }). On interrupt: (1) set cancelToken, (2) wait for agent's event loop to check it, (3) capture partial output. On steer: (1) inject a new message into the agent's message history, (2) resume execution. Both are local-only without cloud API dependencies.
-- **Value:** Lets users stop long-running agents (e.g., infinite loop in a tool) and redirect them mid-turn (e.g., 'actually, check the staging DB instead'). Critical for interactive UX in messaging apps.
-- **Verify:** Test that /stop cancels a 30-second sleep within 100ms; that /steer injects a message and the next tool call reflects the new instruction.
+- **Based on (openclaw):** `packages/gateway-protocol/src/index.ts` — openclaw's TypeBox-validated ACP schemas for agent lifecycle (initialize, authenticate, create/load/resume sessions), model capabilities, tool unification
+- **Muse today:** partial — packages/a2a/src/agent-card.ts publishes a minimal A2A card (skills, extensions, capabilities.streaming/pushNotifications) but: (1) no session lifecycle ops (initialize/load/resume/fork), (2) no model capability query (supportedReasoningEfforts, maxTokens, vision), (3) no tool unification schema (read/edit/execute/fetch/think ToolKind enum), (4) no device-auth handshake
+- **Proposal:** Extend packages/a2a/src/agent-card.ts to include SessionLifecycleCapabilities (initialize, load, resume, fork ops with schema) and ModelCapabilityAdvertisement (modelId, reasoning-effort levels, max I/O tokens, vision boolean). Create packages/model/src/capability-schema.ts exporting ModelCapabilityInfo (matching openclaw's ToolKind classification + ModelInfo) so parent agents query child capabilities before spawn. Add device-identity fields (publicKey) to agent-card for future Ed25519 signing per-peer.
+- **Value:** Parent agents introspect child capabilities (reasoning effort, token limits, vision) before spawn, routing requests to the right backend and degrading gracefully if a feature is unavailable; protocol-level schema validation prevents silent incompatibilities.
+- **Verify:** A2A card roundtrip test: buildMuseAgentCard() includes sessionLifecycleCapabilities and modelCapabilities, a parent agent parses the card and correctly identifies that child can/cannot do reasoning, vision, extended context.
 
-### `ORC-5` Implement endpoint health probing and circuit-breaker pattern  ★★★ · S · missing
+### `ORC-5` Tool Delegation with Concurrent Batching Caps  ★★★ · M · partial
 
-- **Reference:** openclaw/extensions/codex-supervisor/src/supervisor.ts probeEndpoints() — calls thread/loaded/list on each endpoint, catches errors, returns {endpointId, ok, detail}
-- **Muse approach:** Add packages/resilience/src/endpoint-health.ts with EndpointProber: (1) periodic probe of agent socket readiness (every 10s), (2) track failure count and latency, (3) circuit-breaker state (healthy, degraded, down), (4) supervisor routes away from unhealthy agents. Lightweight — just a TCP connect + close, no work. Local-only: probes are to localhost:port.
-- **Value:** Prevents cascading failures when one local agent becomes unresponsive; supervisor retries the request against a healthy peer instead of timing out.
-- **Verify:** Test that supervisor marks an agent down after 3 probes fail; then re-enables it when probes succeed again.
+- **Based on (hermes):** `acp_adapter/tools.py` — hermes' delegate_task tool that batches sub-task execution with concurrent-children cap to prevent runaway parallelism
+- **Muse today:** partial — packages/multi-agent/src/lead-worker.ts defines Subtask splitting and execution but (1) no explicit batching of sub-tasks (sequential or all-at-once), (2) no concurrent-children capacity limit (could spawn unbounded fan-out), (3) no humanized task-call id (tc-{uuid}), (4) no polished-status marker per sub-task
+- **Proposal:** Add packages/multi-agent/src/task-delegation-batcher.ts: (1) BatchedSubtaskExecutor with maxConcurrentChildren config (default 3), queues tasks and materializes results once all complete or timeout fires, (2) assign humanized id tc-{uuid4} per task for audit, (3) track per-task status ('pending'|'running'|'completed'|'failed') + humanized title for observability. Integrate into lead-worker orchestration path so splitSubtasks() delegates through the batcher.
+- **Value:** Multi-agent fan-out is capped, preventing GPU/memory overload from unbounded child spawning; observability per task makes runaway parallelism detectable (audit shows which tc-id stalled).
+- **Verify:** Unit test: batch 10 subtasks with maxConcurrentChildren=3, measure that at most 3 run in parallel, verify tc-ids are unique+humanized, status transitions correctly from pending→running→completed.
 
-### `ORC-6` Add session resumption and crash recovery for distributed agents  ★★★ · L · missing
+### `ORC-6` Provider Detection & Multi-Backend Auth Inheritance  ★★★ · M · partial
 
-- **Reference:** hermes-agent/acp_adapter/session.py SessionManager + gateway/session.py load_session/resume_session — persists session state to SessionDB; on restart, recover from last checkpoint
-- **Muse approach:** Extend packages/multi-agent/src/subagent-run-registry.ts and packages/db/ to persist SubAgentRun snapshots to Postgres (sessionKey, turnId, workerId, checkpoint, lastMessage, status). On resume: (1) query DB for the last complete turn, (2) reload agent into memory, (3) resume from next turn. Graceful degradation — if DB is unavailable, fall back to in-memory (current Muse behavior). Encryption-at-rest via packages/memory.
-- **Value:** If a local Ollama agent crashes or the host reboots, the next request for that session resumes cleanly from the last checkpoint instead of losing history.
-- **Verify:** Test that persisting a mid-turn checkpoint and killing the agent allows a new instance to resume on next message without losing history.
+- **Based on (hermes):** `acp_adapter/auth.py` — hermes' detection of active runtime provider (openrouter/anthropic/azure) and auth fallback when agent not yet configured
+- **Muse today:** partial — packages/model/src/index.ts has multi-provider adapters (anthropic/gemini/openai/ollama) with factory createModelProvider(providerId) but (1) no provider-auto-detect from env/config (assumes caller knows which to use), (2) no auth inheritance from parent→child (child re-bootstraps from scratch), (3) no callable api_key fallback (assumes static env vars)
+- **Proposal:** Add packages/model/src/provider-detection.ts: (1) detectActiveProvider() reads MUSE_MODEL_PROVIDER env or inspects loaded config to find which provider is active, (2) createChildProviderAdapter() reuses parent's provider+auth if child not explicitly configured (inheritance), (3) support Callable<Promise<ApiKey>> for dynamic secrets (fetch from vault/pass on demand). Integrate into SupervisorAgent's worker spawning.
+- **Value:** Child agents inherit parent's model provider config automatically, eliminating redundant authentication and bootstrap; dynamic secrets (Callable) let parents provide fresh creds without hardcoding.
+- **Verify:** Test: parent with active anthropic provider spawns child worker; child detectActiveProvider() returns anthropic with inherited API key, fallback attempts parent's provider if child not configured.
 
-### `ORC-7` Implement draft-first approval gate for multi-agent outbound actions  ★★★ · M · partial
+### `ORC-7` Lazy Runtime Registration with Plugin Service Lifecycle  ★★★ · S · partial
 
-- **Reference:** hermes-agent/acp_adapter/permissions.py make_approval_callback; openclaw/extensions/acpx/src manages approval policy per-model
-- **Muse approach:** Extend packages/multi-agent/src/orchestrator.ts to intercept outbound actions from workers (tool calls, file writes, network requests) and collect them into a 'draft' (Muse calls these 'sketches' in agent-core). Before executing, check packages/policy/'s approval rules: (1) if high-risk (delete file, send email), ask for human approval, (2) if low-risk, auto-approve. Muse already has policy/approval-gate; the gap is that multi-agent orchestration doesn't currently funnel worker actions through this gate — they run immediately. Route all worker outputs through agent-core's grounding + reflection layer (already present) before the fan-in.
-- **Value:** Prevents a rogue worker from deleting critical files even if it was selected by the supervisor; all edits go through the existing Muse approval flow.
-- **Verify:** Test that a worker's file-delete action is held for approval before execution; that a concurrent worker's read still completes while the delete waits.
+- **Based on (openclaw):** `extensions/acpx/register.runtime.ts` — openclaw's ACPX lazy proxy for heavy service init, deferred until first session, with clean start/stop lifecycle
+- **Muse today:** partial — packages/multi-agent/src doesn't expose lazy service init; SupervisorAgent creates workers eagerly. packages/model/src/index.ts has provider factories but no lazy-wrap pattern.
+- **Proposal:** Create packages/agent-core/src/lazy-service-registry.ts: (1) LazyServiceProxy<T> wraps an async factory, first .get() call blocks until init (serialize first-call via Promise.race against timeout), (2) start() explicitly initializes; stop() teardown (unregisters from runtime, kills orphaned processes). Provide to SupervisorAgent so workers are lazy-loaded only when first run() comes in. Back runtime-tool-registry init.
+- **Value:** Plugin systems with multiple backends avoid cold-start penalties (don't init unused endpoints); clean lifecycle prevents orphaned processes on Muse shutdown.
+- **Verify:** Test: LazyServiceProxy with 100ms init delay, first .get() blocks ~100ms, second .get() returns cached, stop() releases resources.
 
-### `ORC-8` Implement worker output synthesis with conflict and redundancy detection  ★★★ · M · partial
+### `ORC-8` Model Capability Introspection & Reasoning Effort Routing  ★★★ · M · partial
 
-- **Reference:** openclaw/extensions/orchestration/src/orchestration-fan-in.ts detectConflicts/detectRedundancies with synthesis guidance (arXiv:2605.02801 +15.6% quality gain)
-- **Muse approach:** Muse already has orchestration-fan-in.ts with synthesis and verification. The gap is detectConflicts and detectRedundancies are callable but not IMPLEMENTED — they're optional parameters passed in. Create packages/agent-core/src/fan-in-verifiers.ts with: (1) detectConflicts(parts[]) → runs a grounded fact-checker over worker outputs to find contradictions, (2) detectRedundancies(parts[]) → labels redundant information so the synthesizer avoids repeating it. Both are bounded (one model call each). Wire them into orchestrator.ts by default if no custom verifiers are provided.
-- **Value:** Automatically flags contradictory worker outputs (e.g., 'bug fixed in v1.2' vs 'bug still open in v1.2') before presenting them; surfaces redundant info so synthesizer combines intelligently.
-- **Verify:** Test that two workers contradicting each other on a fact are flagged; that redundant detail (the same point from two workers) is detected.
+- **Based on (openclaw):** `extensions/codex/src/app-server/models.ts` — openclaw's listCodexAppServerModels() with inputModalities + supportedReasoningEfforts, and shared-client lease pattern to prevent connection pool explosion
+- **Muse today:** partial — packages/model/src has listModels() per provider but (1) no unified reasoning-effort query (openclaw asks 'does this model support extended_thinking?'), (2) no input/output modality introspection (can it take images? multimodal output?), (3) no shared-client lease pattern for connection pooling, (4) no pagination (fetches full list every time)
+- **Proposal:** Extend packages/model/src/index.ts: (1) add reasoningEfforts?: string[] to ModelCapabilities, (2) add inputModalities, outputModalities to ModelInfo, (3) implement ModelCapabilityCache with LRU eviction + TTL (5min), paginated listModels(offset, limit) with caching, (4) SharedClientLease pattern: borrowClient(providerId) → {release()} so concurrent queries share one connection. Parent agents use this to query 'does child-backend support reasoning?' before delegating.
+- **Value:** Parent agents discover which models support reasoning/vision/extended-context before spawn, routing requests to capable backends and failing fast when feature unavailable; connection pooling prevents exhaustion in high-concurrency scenarios.
+- **Verify:** Test: listModels() with pagination (limit=10, offset=20) returns page 3, ModelCapabilityCache caches results, second call is instant, LRU evicts oldest after capacity hit.
 
-### `ORC-9` Implement graceful degradation when a worker fails  ★★★ · M · partial
+### `ORC-9` Turn Collection & Message Streaming Buffering  ★★★ · M · partial
 
-- **Reference:** openclaw/packages/multi-agent/src/orchestrator.ts selectWorker() fallback logic; hermes-agent/gateway/run.py agent cache eviction and fallback handling
-- **Muse approach:** Muse's orchestrator already retries on worker failure (maxHandoffs). The gap is GRACEFUL DEGRADATION — when a worker is consistently failing, exclude it and don't retry. Extend orchestrator.ts with FailureTracker: (1) track consecutive failures per worker (up to 3), (2) if 3 consecutive, mark as 'degraded' and exclude from future handoff selection, (3) periodic health-check (once per minute) to re-enable. Combine with endpoint-health probing — if endpoint is down, don't even try to reach its workers.
-- **Value:** A broken worker doesn't poison every request; the supervisor learns to avoid it and still serves other requests against healthy workers.
-- **Verify:** Test that after 3 worker failures, it's excluded; that a 5th request routes to a fallback worker; that periodic re-enable kicks in.
+- **Based on (openclaw):** `extensions/codex/src/conversation-turn-collector.ts` — openclaw's turn-collector that buffers async streaming notifications (item/agentMessage/delta, item/completed, turn/completed) and playback-materializes full turns
+- **Muse today:** partial — packages/multi-agent/src/agent-message-bus.ts is a pub/sub broker but (1) doesn't buffer pending notifications until turnId set, (2) no playback materialization (just forwards messages), (3) no timeout with 100ms floor (unbuffered real-time only), (4) doesn't bind async streaming to specific child turns
+- **Proposal:** Create packages/multi-agent/src/turn-collector.ts: (1) TurnCollector(threadId, turnId) buffers notifications (toolStarted, delta, toolCompleted, turnCompleted) until turnId is assigned, (2) playback() returns materialized Turn with full sequence, (3) timeout with configurable floor (default 100ms) to unblock long-polls, (4) integrate into session-event-bridge so parent turns can collect child output fragments and materialize before synthesis. Distinct from agent-message-bus (which is stateless pub/sub).
+- **Value:** Streaming responses from children are correctly bound to their parent turns even when out-of-order; long-polls don't hang indefinitely; parents see complete turn history for audit.
+- **Verify:** Test: threadId='t1', notifications arrive out-of-order (delta before toolStarted), collector buffers both, turnId assigned, playback() returns correct sequence.
 
-### `ORC-10` Implement model routing and session-level model selection per turn  ★★ · S · partial
+### `ORC-10` Multi-Endpoint Supervisor & Health Checking  ★★ · L · none
 
-- **Reference:** openclaw/extensions/codex/src/conversation-control.ts setCodexConversationModel — turn-level model override via turn/start {model: 'custom-model'}; hermes-agent/acp_adapter/session.py handles toolset expansion per model
-- **Muse approach:** Extend packages/agent-core/src/orchestrate.ts to accept Optional<turnModel> in OrchestrateOptions. If set, override agent-core's default model for this turn. In packages/multi-agent/src/orchestrator.ts, allow per-worker model selection in WorkerRunOptions. Hermes links model to toolset (model A has tools X,Y; model B has X,Y,Z); Muse already does this in autoconfigure. The gap is allowing a USER (via /model command) to override the model mid-session.
-- **Value:** Lets users switch between gemma4:12b (faster, general) and a specialized model (code, math) without restarting the session or agent.
-- **Verify:** Test that a user command /model gemma2:27b persists the preference and the next turn uses that model.
+- **Based on (openclaw):** `extensions/codex-supervisor/src/supervisor.ts` — openclaw's CodexSupervisor routing across stdio-proxy/websocket endpoints with auto-discovery, thread listing, and endpoint health reprobing
+- **Muse today:** none — packages/multi-agent/src/orchestrator.ts routes to AgentWorkers by id+canHandle score but assumes single local runtime; no multi-backend coordination, no health checking, no pagination
+- **Proposal:** Create packages/multi-agent/src/supervisor-endpoint-registry.ts: (1) Endpoint discovery via agent-card polling (A2A /.well-known/agent-card.json), (2) Health status cache with exponential backoff retry (1s→30s), (3) listWorkers() with pagination (offset+limit), (4) readWorkerStatus(workerId) fetches live run state. Gate to local-only: only probe file:// (loopback) endpoints or MUSE_MULTI_ENDPOINT_URLS allowlist.
+- **Value:** Muse can now discover and load-balance work across multiple local inference backends (Ollama, LM Studio, multiple GPU machines) without manual config, mirroring hermes→openclaw federation.
+- **Verify:** Integration test: start 3 loopback test endpoints (mock agent-cards), SupervisorEndpointRegistry discovers all, health check marks one down, listWorkers() pages correctly, selectWorker() avoids downed endpoint.
 
-### `ORC-11` Add process lifecycle management and lease tracking for spawned agents  ★★ · S · missing
+### `ORC-11` Session Persistence & Compression Lineage Tracking  ★★ · M · none
 
-- **Reference:** openclaw/extensions/acpx/src/process-lease.ts createAcpxProcessLeaseId, withAcpxLeaseEnvironment — environment-variable-based lease tracking; process-reaper.ts cleanupOpenClawOwnedAcpxProcessTree
-- **Muse approach:** Create packages/proactivity/src/agent-process-lease.ts: (1) assign each spawned agent a leaseId (UUID), (2) pass it via MUSE_AGENT_LEASE env var, (3) on supervisor shutdown, kill only agents with MUSE_AGENT_LEASE set (child processes spawned by Muse), not unrelated processes. Use node:child_process with detached: false (the default) so child agents inherit the parent's process group and get SIGTERM on parent exit. Respects local-only: all processes are local.
-- **Value:** Prevents zombie agent processes accumulating on restart; enables clean shutdown sequences where the supervisor waits for agents to finish their current turn before exiting.
-- **Verify:** Test that killing the supervisor process does not leave orphaned node processes; that agents receive SIGTERM within 1 second of supervisor shutdown.
+- **Based on (hermes):** `acp_adapter/provenance.py` — hermes' session DB persistence (parent_session_id, compression_depth, creator_kind) to reconstruct multi-agent ancestry without parsing status text
+- **Muse today:** none — packages/multi-agent/src/subagent-run-registry.ts tracks parentRunId but (1) no DB persistence (in-memory only, lost on restart), (2) no compression_depth computation, (3) no root_session_id chain walk, (4) no sessionProvenance metadata export
+- **Proposal:** Create packages/multi-agent/src/session-persistence-db.ts: (1) SQLite store (mirroring hermes SessionDB) with columns: runId, parentRunId, sessionStart, sessionEnd, compressionDepth, creatorKind, endReason, (2) walk parent chain on register to compute compressionDepth (0 for root, +1 per level), (3) exportSessionProvenance(runId) returns {currentMuseSessionId, rootMuseSessionId, compressionDepth, creatorKind} for audit, (4) prune old sessions on startup (age > 30 days). Integrate into orchestrator on worker.run().
+- **Value:** Long-running multi-agent workflows have durable audit trails; parents reconstruct children lineage and detect compression depth (a deeply-nested handoff), enabling observability and failure forensics across restarts.
+- **Verify:** Test: create 3-level hierarchy (parent→worker1→worker2), persist to DB, restart Muse, query rootSessionId from worker2's record shows parent, compressionDepth=2.
 
-### `ORC-12` Add multi-model expert routing with per-worker model assignment  ★★ · S · partial
+### `ORC-12` Session Workdir Translation & Platform Bridging  ★★ · S · partial
 
-- **Reference:** openclaw arXiv:2605.02801 MAST with per-worker model assignment; Muse/packages/agent-core has council orchestration but not per-proposer model override
-- **Muse approach:** Extend packages/multi-agent/src/workers.ts AgentWorker interface to include Optional<preferredModel>. In orchestrator.ts run(), pass worker.preferredModel to the worker's agent-core invocation. Allows a 'code-expert' worker to use a code-tuned model while 'general' uses the default. Hermes links models to tool schemas; Muse already does this in autoconfigure. The gap is explicit per-worker model hints in the orchestration layer.
-- **Value:** Specialized workers get their preferred model (code expert on deepseek-coder, knowledge expert on mistral), boosting quality without increasing latency (parallel execution).
-- **Verify:** Test that a code-worker gets its declared model even if the default is different; verify parallel execution doesn't serialize model loading.
+- **Based on (hermes):** `acp_adapter/session.py` — hermes' Windows→WSL path translation (C:\Users → /mnt/<drive>) and per-task cwd override registration
+- **Muse today:** partial — packages/multi-agent has AgentRunInput.cwd but (1) no cross-platform path translation (Windows users can't run WSL workers), (2) no per-task override registry, (3) no path-normalization for symlinks/relative paths, (4) subprocess env inheritance not explicitly controlled
+- **Proposal:** Create packages/multi-agent/src/workdir-translator.ts: (1) PlatformWorkdirBridge detects runtime OS, (2) Windows→WSL translator: 'C:\\Users\\alice\\Documents' → '/mnt/c/Users/alice/Documents', (3) per-task-id override registry so orchestrator can register 'worker-1' ↦ '/custom/path' for one-off redirects, (4) normalize paths (resolve symlinks, abs-path enforcement). Use in orchestrator.run() to override currentInput.cwd per worker.
+- **Value:** Cross-platform multi-agent teams (Windows editor spawning WSL Hermes) work transparently; per-task overrides let orchestrators redirect child workdirs without rebuilding workers.
+- **Verify:** Test on Windows+WSL: PlatformWorkdirBridge.translate('C:\\data') returns '/mnt/c/data', per-task override registered, worker gets correct cwd in env.
 
-### `ORC-13` Add session list and metadata query API with pagination  ★★ · M · partial
+### `ORC-13` Process Supervisor with Multi-Scope Lifecycle & Grouped Cancellation  ★★ · L · partial
 
-- **Reference:** openclaw/extensions/codex-supervisor/src/supervisor.ts listSessions/listSessionSnapshot with includeStored/maxStoredSessions and cursor-based pagination
-- **Muse approach:** Extend packages/multi-agent/src or messaging/src with SessionQueryAPI: (1) list all active sessions (supervisor + its agents), (2) return metadata (session key, last turn time, participant count, model), (3) cursor-based pagination (e.g., ?cursor=0&limit=20). Muse has messaging/inbox-store.ts for sessions; query it with indexed lookups. Hermes uses session_search agent tool for this — Muse has eval:agent tools but not a dedicated 'list_sessions' tool exposed via A2A/ACP.
-- **Value:** Dashboards can enumerate all active Muse sessions and their state without polling every agent; supervisors can make load-balancing decisions based on session metadata.
-- **Verify:** Test that /list-sessions returns 100 sessions in <100ms with cursor pagination; verify timestamps are correct.
+- **Based on (openclaw):** `src/process/supervisor/supervisor.ts` — openclaw's createProcessSupervisor with scopeKey grouping, enforced timeouts (overall + no-output), and cancelScope() mass-termination
+- **Muse today:** partial — packages/multi-agent/src/subagent-run-registry.ts tracks timeout + detects stalled but (1) no AbortController per-scope for cascading cancellation, (2) no no-output-timeout (only total timeout), (3) no mass cancelScope() operation, (4) no PTY process supervisor (assumes in-process agents only)
+- **Proposal:** Extend packages/multi-agent/src/subagent-run-registry.ts or create packages/multi-agent/src/process-supervisor.ts: (1) ProcessScope groups runs by scopeKey (e.g., 'orchestration-run-123'), (2) registerProcessRun(scopeKey, processHandle) with overallTimeout + noOutputTimeout (no heartbeat in N seconds), (3) cancelScope(scopeKey) sends SIGTERM to all processes in that scope, (4) integrate with SubAgentRunRegistry so children in a failed parent scope auto-cancel. Support Node child_process.spawn() + AbortSignal propagation.
+- **Value:** Multi-agent fan-out with cascading cancellation: parent fails → all child processes are mass-terminated, no orphaned subprocesses; no-output timeout catches hung workers that miss heartbeats.
+- **Verify:** Test: create scope with 5 child processes, trigger cancelScope(), all receive SIGTERM within 2s; no-output-timeout fires after 10s silence, marking process stalled.
 
-### `ORC-14` Add adaptive worker timeout based on task complexity  ★★ · S · partial
+### `ORC-14` ACP Session Manager & History Persistence for Resume  ★★ · M · none
 
-- **Reference:** openclaw arXiv:2605.02801 adaptive timeouts per task complexity; hermes-agent/gateway/run.py _AGENT_CACHE_IDLE_TTL_SECS and request timeout management
-- **Muse approach:** Extend packages/multi-agent/src/orchestrator.ts with AdaptiveTimeoutPolicy: (1) classify task complexity from input (word count, tool count, recursion), (2) set worker timeout accordingly (simple: 5s, medium: 30s, complex: 120s), (3) cap at global orchestrationTimeoutMs. Muse already has workerTimeoutMs in orchestrator options; add a callback workerTimeoutPolicy?(input) → ms. Use heuristics: input.messages.length × wordCount as a proxy for complexity.
-- **Value:** Prevents a simple greeting from waiting 2 minutes for a worker; complex research tasks get the time they need without artificially timing out at 10s.
-- **Verify:** Test that a simple 'hi' task times out workers after 5s; a 'research this topic' task allows 120s.
-
-### `ORC-15` Implement leader-worker orchestration with elected lead agent  ★★ · L · missing
-
-- **Reference:** openclaw/packages/acp-core/src/session.ts and multi-agent/src/lead-worker.ts LeadWorkerOrchestrator — one agent leads, others are workers; lead synthesizes and routes to workers
-- **Muse approach:** Extend packages/multi-agent/src/lead-worker.ts (currently just a stub): (1) designate one agent as lead (e.g., the one that scores highest on canHandle for the input), (2) give lead the ability to invoke other workers as tools ('call_worker' tool), (3) let the lead decide when to delegate, (4) lead synthesizes the final answer. Differs from supervisor orchestration (lead is ONE of the agents, not external). Useful for hierarchical task decomposition (lead breaks down the problem, delegates to specialists, composes answer).
-- **Value:** Enables more sophisticated delegation patterns where the lead agent itself decides whether to involve other specialists, vs the supervisor making that decision upfront.
-- **Verify:** Test that a lead agent can call a 'research' worker tool and incorporate the response into its answer.
-
-### `ORC-16` Implement ACP server adapter for OpenClaw/Codex interop  ★ · L · missing
-
-- **Reference:** hermes-agent/acp_adapter/server.py AcpServer class exposing Hermes via ACP protocol; acp_adapter/session.py SessionManager + events.py callbacks
-- **Muse approach:** Create packages/acp/src/acp-server.ts (if not already present) implementing ACP protocol server: (1) expose agent-card.json, (2) handle new_session/load_session/send_message/interrupt, (3) translate between ACP message shapes and Muse's internal RunInput/RunResult. Muse already has packages/a2a; ACP is a superset. Serve over HTTP+WebSocket on a local port (default 7000) so OpenClaw Codex instances can launch Muse as a subprocess and talk back via ACP. Fully local — no cloud egress.
-- **Value:** Makes Muse a drop-in replacement for OpenClaw's acpx runtime; enables OpenClaw supervisors to orchestrate Muse agents alongside Codex instances in a heterogeneous swarm.
-- **Verify:** Test that an OpenClaw supervisor can list Muse sessions and send a message; verify the message routes to an agent and the response flows back.
-
-### `ORC-17` Add agent performance profiling and latency tracking per worker  ★ · M · missing
-
-- **Reference:** openclaw/scripts/bench-gateway-*.ts and test suite performance benchmarks; hermes-agent/gateway performance hooks in callbacks
-- **Muse approach:** Create packages/observability/src/agent-metrics.ts with WorkerMetrics: (1) track per-worker stats (total_calls, avg_latency, success_rate, errors), (2) store in Postgres with rolling 7-day retention, (3) expose via API /metrics?worker=code-expert&window=24h. Tie into orchestrator.ts to record latency on each worker run. Use for load balancing (prefer faster workers) and alerting (if a worker's latency spikes, something's wrong with its model).
-- **Value:** Supervisors can make data-driven routing decisions (prefer the code-expert worker if it's fast, avoid it if latency is high); ops can diagnose model performance regressions.
-- **Verify:** Test that worker latencies are recorded and aggregated; that a slow worker is deprioritized on the next request.
-
-### `ORC-18` Add council-based worker selection (plurality voting on canHandle scores)  ★ · L · missing
-
-- **Reference:** openclaw arXiv:2605.02801 MAST worker selection via multi-agent council vote; Muse/packages/agent-core/src/council.ts council orchestration
-- **Muse approach:** Create packages/multi-agent/src/council-worker-selector.ts implementing CouncilWorkerSelector: (1) run canHandle in parallel across multiple 'selector agents' (e.g., 3 specialized decision-makers), (2) each scores workers independently, (3) aggregate via plurality vote, (4) select the highest-scored worker. More robust than single supervisor ranking (arXiv:2605.02801 finding). Muse already has council orchestration in agent-core; reuse council.ts's voting logic. A selector agent is just a lightweight classifier (30 token model)..
-- **Value:** More robust worker selection; harder to fool or manipulate compared to a single supervisor's ranking heuristic.
-- **Verify:** Test that a council of 3 selectors correctly identifies the best worker more often than 1 selector alone.
+- **Based on (hermes):** `acp_adapter/session.py` — hermes' SessionManager mapping ACP sessions to agents, persisting to SessionDB for resume-across-restarts with history filtering by cwd+source
+- **Muse today:** none — packages/multi-agent has no session-manager abstraction; orchestrator creates new AgentRunInput each time, no resume mechanism.
+- **Proposal:** Create packages/multi-agent/src/session-manager.ts: (1) SessionManager(db, agentFactory) maps sessionId → AgentWorkerSession, (2) newSession(workerId, cwd, model, history) creates + persists, (3) loadSession(sessionId) resumes from DB with history intact, (4) filterSessions(cwd, source) for session discovery (matching hermes pattern), (5) SessionDB schema: sessionId, workerId, cwd, model, historyId, sessionState ('active'|'suspended'|'closed'), (6) integrate into SupervisorAgent.run() as resume-first: check DB before spawning fresh worker.
+- **Value:** Agents killed mid-turn resume cleanly without losing history; parents reconnect and continue without re-execution of prior steps; session persistence survives Muse restarts.
+- **Verify:** Test: create session, kill mid-run, restart Muse, loadSession(sessionId) returns same history + session state, resume from last checkpoint.
 
 ## 9. Channels & Integrations · Messaging · Webhooks · Inbound Routing
 
-_19 items_
+_11 opportunities · 17 competitor files read_
 
 
-### `CHN-1` Implement generic webhook receiver for inbound integrations  ★★★★★ · M · missing
+### `CHN-1` Webhook HMAC validation with constant-time comparison and rate limiting  ★★★★★ · M · none
 
-- **Reference:** hermes-agent: /Users/jinan/ai/hermes-agent/gateway/platforms/webhook.py (200+ lines of WebhookAdapter handling HTTP POST, HMAC validation, route-based delivery dispatch)
-- **Muse approach:** Create `packages/messaging/src/webhook-receiver.ts` that implements a local HTTP server (Node's `http` module) to listen on a configurable port, validate HMAC-SHA256 signatures per route, parse JSON payloads into InboundMessage shape, and dispatch to agent via inbound-responder. Routes are stored in a local JSON file (webhook-subscriptions.json) alongside inbox storage. Fail-close on signature mismatch (deterministic guard).
-- **Value:** Enables Muse to ingest from GitHub, GitLab, Stripe, monitoring systems, and other webhook-emitting SaaS without polling—a core missing inbound path that competitors support natively.
-- **Verify:** Integration test: POST a signed JSON payload to the receiver, verify it lands in inbox-store and renders in inbox context; POST with wrong signature should reject with 401.
+- **Based on (openclaw):** `/Users/jinan/ai/openclaw/extensions/webhooks/src/http.ts` — openclaw implements safeEqualSecret() for constant-time HMAC, fixed-window rate limiting per-route with deque tracking, and secret resolution from env|file|exec
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages/messaging/src: no webhook handling in messaging package; LINE webhook is written to inbox file by external apps/api routes, no HMAC validation layer
+- **Proposal:** Add @muse/messaging/src/webhook-receiver.ts: export validateWebhookSignature(secret, body, signature, algorithm='sha256') using constant-time comparison (crypto.timingSafeEqual), and createWebhookRateLimiter(maxPerMinute) with fixed-window deque tracking per route. Wrap in fail-close semantics: reject on timing-attack risk or rate-limit breach. Apps/api/src/messaging-webhooks-routes.ts imports these guards before appending inbound.
+- **Value:** Prevents timing attacks on webhook secrets and DoS via webhook flood; critical for production-grade Slack/Discord webhook integration.
+- **Verify:** Unit tests: constant-time comparison, rate limit deque behavior, rejection on tampering. Integration: call webhook route twice with same signature, verify first succeeds and second hits rate limit.
 
-### `CHN-2` Implement thread-aware message routing with origin tracking  ★★★★★ · M · missing
+### `CHN-2` Multi-account Slack/Discord with per-account config & token resolution  ★★★★ · M · none
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/extensions/slack/src/channel.ts + thread-ownership plugin; hermes-agent: gateway/delivery.py thread_metadata_for_source(), _reply_anchor_for_event()
-- **Muse approach:** Extend `InboundMessage` and `OutboundMessage` in `packages/messaging/src/types.ts` to carry optional `threadId` / `replyToId`. Update `packages/messaging/src/inbound-thread-store.ts` to group messages by (source, threadId) so multi-turn conversations stay coherent. Providers (Slack, Discord, Telegram topics) pass thread metadata on inbound; outbound routes use it for native-threaded replies.
-- **Value:** Enables Muse to maintain threaded conversations natively in Slack/Discord/Telegram forums, vastly improving UX when the agent is part of an ongoing discussion rather than isolated replies.
-- **Verify:** Slack inbound test: send a message in a thread (thread_ts present), verify inbound_thread_store groups it; send outbound with threadId, verify Slack provider routes to thread_id parameter.
+- **Based on (openclaw):** `/Users/jinan/ai/openclaw/extensions/slack/src/accounts.ts` — openclaw resolveSlackAccount() reads enabled/disabled state + per-account overrides from channels.slack, resolves tokens from env (SLACK_BOT_TOKEN) or config (channels.slack.accounts.{id}.botToken), tracks tokenSource
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages/messaging/src/slack-provider.ts: single token only, no multi-account support; credential store is per-providerId, not per-account
+- **Proposal:** Add multi-account abstraction to @muse/messaging: extend SlackProvider/DiscordProvider to accept an accountId param in SlackProviderOptions, resolve token from FileMessagingCredentialStore with key pattern `slack:account123`, and track tokenSource ('env'|'config'|'none'). Store merged config (base + per-account overrides) in new PerAccountSlackConfig shape. Registry.send() accepts optional accountId to select the instance.
+- **Value:** Enables agents to operate across multiple Slack workspaces/Discord guilds simultaneously without token collision, essential for enterprise multi-org setups.
+- **Verify:** Test SlackProvider with multiple accounts, verify each resolves distinct tokens, and that registry.send(providerId, message, accountId) routes to the correct account.
 
-### `CHN-3` Add delivery-routing logic to support multi-platform delivery targets  ★★★★ · M · partial
+### `CHN-3` Thread-aware auto-reply routing per account with reply mode tracking  ★★★★ · M · partial
 
-- **Reference:** hermes-agent: /Users/jinan/ai/hermes-agent/gateway/delivery.py (DeliveryTarget.parse, delivery routing by 'telegram:123', 'origin', 'local', platform-specific rules)
-- **Muse approach:** Extend `packages/messaging/src/types.ts` to add `DeliveryTarget` type supporting 'telegram:chatid', 'slack:channel', 'discord:channel', 'origin' (back to source), 'local' (inbox-only). In `packages/messaging/src/outbound-router.ts` (new), implement `routeMessageToTarget()` that parses the target string and dispatches to the appropriate provider. Local-only policy gate enforces cloud egress refusal.
-- **Value:** Allows agent responses to be routed not just to the source channel but to explicit named targets (e.g., 'notify on-call via telegram:12345'), and supports local-only fallback ('origin' → back to where the inbound came from).
-- **Verify:** Unit test: parse 'telegram:123456789' → {platform: telegram, chatId: '123456789'}; parse 'origin' → mirrors SessionSource; send to 'discord:C123ABC' routes to Discord provider with destination C123ABC.
+- **Based on (openclaw):** `/Users/jinan/ai/openclaw/extensions/slack/src/action-runtime.ts` — openclaw SlackActionContext carries replyToMode ('off'/'first'/'all'/'batched'), resolveSlackReplyingThreadTs() injects threadTs, hasRepliedRef tracks whether a reply has been sent
+- **Muse today:** partial — /Users/jinan/side-project/Muse/packages/agent-core/src/inbox-context.ts: InboxSnapshot has source (channel id), but no thread tracking; /Users/jinan/side-project/Muse/packages/messaging/src/inbound-responder.ts: respondToInbound() always replies to source, no per-account replyToMode config
+- **Proposal:** Extend InboundMessage in @muse/messaging to include optional threadTs (Slack), channelThreadId (Discord), threadId (generic). Add ReplyModeConfig per account ('off'/'first'/'all'). In inbound-responder.ts, resolveReplyDestination(message, replyMode, threadTracker) returns {destination, threadId} or null if mode='off' or already replied in 'first' mode. Persist threadReplies in inbound-reply-cursor.ts alongside message ids.
+- **Value:** Prevents message leakage across threads, respects per-account reply behavior, and enables 'first reply only' mode for noisy channels.
+- **Verify:** Test replyToMode='first': send two messages in same thread, verify only first triggers agent reply; test mode='off': verify no replies sent; test mode='all': verify both get replies.
 
-### `CHN-4` Add approval-gate enforcement for outbound delivery targets  ★★★★ · M · partial
+### `CHN-4` Deterministic send-error classification with retryability signals  ★★★★ · M · none
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/extensions/slack/src/approval-native.ts; Muse already has channel-approval-gate but only for inbound-source approval
-- **Muse approach:** Enhance `packages/messaging/src/channel-approval-gate.ts` to add outbound-target approval flow: before send, check if target is in allowlist; if not and requires approval, store in pending-approval-store and notify user via safe channel (e.g., local notifications). Resume on user confirmation message (e.g. 'approve telegram:12345'). Deterministic guard, no LLM judgment.
-- **Value:** Prevents agent from sending unsolicited messages to new/untrusted targets without explicit human approval—critical safety rail for local-first agents with inbound surface.
-- **Verify:** Unit test: agent tries to send to unapproved 'telegram:new_chat', approval-gate blocks and records PendingApproval; user sends 'approve telegram:new_chat', gate clears and next send succeeds.
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/gateway/platforms/base.py` — hermes SendResult carries error_kind (rate_limited|unauthorized|not_found|invalid_message|transient_network), retryable flag drives stream_consumer branching logic
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages/messaging/src/types.ts: OutboundReceipt is minimal {providerId, destination, messageId, raw?}, no error classification; inbound-responder.ts just logs errors, no branching on retryability
+- **Proposal:** Extend OutboundReceipt in @muse/messaging to add error_kind?: 'rate_limited'|'unauthorized'|'not_found'|'invalid_message'|'transient_network'|'unknown' and retryable: boolean. Update each provider's send() to classify errors (e.g. Telegram 429 → rate_limited, 403 → unauthorized). In inbound-responder.ts, after send failure, branch: rate_limited/transient_network → don't mark handled (retry next pass), authorization/not_found → mark handled + log (permanent failure).
+- **Value:** Intelligent retry logic: transient failures are retried, permanent ones are abandoned; prevents duplicate replies and silent message loss.
+- **Verify:** Simulate rate-limit error from Slack, verify message is NOT marked handled and error is logged. Simulate 404, verify message IS marked handled. Verify retry on next polling cycle.
 
-### `CHN-5` Implement per-provider rate-limiting and in-flight request tracking  ★★★ · M · missing
+### `CHN-5` Unified DM policy resolution with multi-layer allow-from filtering  ★★★ · M · none
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/extensions/webhooks/src/http.ts createFixedWindowRateLimiter(), createWebhookInFlightLimiter(); hermes-agent: gateway/platforms/base.py _float_env() + rate-limit tracking
-- **Muse approach:** Create `packages/resilience/src/rate-limiter.ts` with fixed-window rate limiter (per-provider, per-destination) and in-flight request semaphore. Each provider's send() calls `rateLimiter.checkQuota()` before attempt; on 429/rate-limit response, sleep and retry (with exponential backoff). Store state in memory (acceptable for local-first) with optional DB persistence for multi-turn consistency.
-- **Value:** Prevents hammering platform APIs and getting rate-limited, which would cause message loss; also detects upstream abuse/misconfiguration early before retry storms.
-- **Verify:** Test: send 50 messages rapid-fire to one provider with rate limit of 10/min, verify queued and rate-limited; monitor doesn't exceed ceiling.
+- **Based on (openclaw):** `/Users/jinan/ai/openclaw/extensions/slack/src/accounts.ts` — openclaw resolveSlackAccountDmPolicy() returns 'pairing'|'ignore'|custom, resolveSlackAccountAllowFrom() applies account→channel→user inclusion filtering with mapAllowFromEntries()
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages/messaging/src/channel-approval-gate.ts: only validates tool risk (read/write/execute), not inbound channel/user allowlist; no dm policy concept
+- **Proposal:** Add DmPolicy config to MuseEnvironment + parsing in @muse/autoconfigure: MUSE_SLACK_DM_POLICY ('pairing'|'ignore'), MUSE_SLACK_ALLOW_FROM (CSV user/channel ids). Extend createChannelApprovalGate() to check allowFrom list before creating approval gate; deny inbound from non-allowed users with reason. Store config in FileMessagingCredentialStore as provider metadata.
+- **Value:** Fine-grained inbound access control: agents can reject unwanted DMs and limit to specific users/channels, essential for shared agents or restricted deployments.
+- **Verify:** Test channel-approval-gate with allowFrom set to specific user id; verify inbound from unlisted user is rejected with clear reason, and listed user passes through.
 
-### `CHN-6` Implement per-channel message history / conversation threading store  ★★★ · M · partial
+### `CHN-6` Delivery routing with silence-narration detection and platform-agnostic targets  ★★★ · M · none
 
-- **Reference:** openclaw: slack src/sent-thread-cache.ts; hermes-agent: gateway/session.py SessionSource tracking chat context
-- **Muse approach:** Extend `packages/messaging/src/inbound-thread-store.ts` to also store outbound messages keyed by (provider, source, threadId). Create `packages/messaging/src/conversation-context.ts` that returns recent bidirectional conversation (inbound + outbound, chronological) for a source. Used by agent context-engineering to inject conversation history into prompts.
-- **Value:** Allows agent to see what it previously said in a channel/thread, reducing hallucination and improving coherence in ongoing conversations. Also enables 'continue previous answer' workflows.
-- **Verify:** Test: send outbound, fetch conversation context for that (source, threadId), verify both inbound and outbound messages are present and chronologically sorted.
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/gateway/delivery.py` — hermes DeliveryTarget.parse() resolves 'origin'/'local'/'telegram:chat_id' strings, _is_silence_narration() regex skips '(silent)' or '…' deliveries, adapters handle splitting/chunking
+- **Muse today:** none — /Users/jinan/side-project/Muse: no explicit delivery routing; inbound-responder.ts sends to source always, no routing abstraction. No silence detection.
+- **Proposal:** Add @muse/messaging/src/delivery-router.ts: DeliveryTarget enum ('origin'|'local') or string 'slack:C123'/'discord:channel123', isSilenceNarration(text) regex matching '(silent)', '…', '🔇'. Create a messaging-send tool in @muse/agent-core that accepts target param (user says 'send to #general'), resolves target ID via channel directory (future), and routes via provider + silence detection.
+- **Value:** Flexible message routing: agents can target specific channels/users, cron jobs route to designated channels, silence prevents spam; enables bot-to-bot signaling and fine-grained message delivery.
+- **Verify:** Test send with text='(silent)': verify no message is dispatched. Test send with target='slack:C123': verify message routes to correct channel. Test silence with agent-generated responses.
 
-### `CHN-7` Add per-provider idempotency tracking to prevent duplicate sends on retry  ★★★ · S · missing
+### `CHN-7` Platform-agnostic message normalization with media refs and reply semantics  ★★ · L · partial
 
-- **Reference:** hermes-agent: gateway/platforms/webhook.py _seen_deliveries dict, idempotency_cache with TTL (1 hour); openclaw: task-flow webhook requires revision field for optimistic locking
-- **Muse approach:** Create `packages/messaging/src/outbound-idempotency-store.ts` that stores (provider, destination, message_hash, timestamp) in a local JSON file. Before send, check if this exact message was sent in the last N hours; if yes, return cached receipt instead of re-sending. On success, record with TTL. Deterministic deduplication (no LLM).
-- **Value:** Prevents duplicate messages to users when the agent retries on network failure or when the user re-triggers the same request—critical for reliability in local-first systems without cloud transactionality.
-- **Verify:** Test: send message, simulate send failure + retry, verify second attempt finds cached entry and returns same receipt without actually sending twice.
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/gateway/platforms/base.py` — hermes MessageEvent normalizes across platforms: message_id, platform_update_id, media_urls/media_types, reply_to_* fields, auto_skill, channel_prompt, channel_context with backfilled history
+- **Muse today:** partial — /Users/jinan/side-project/Muse/packages/messaging/src/types.ts: InboundMessage has messageId, source, text, sender, receivedAtIso, raw; Discord/Telegram providers populate these, but no media_urls, no reply_to_message_id, no backfilled history
+- **Proposal:** Extend InboundMessage interface in @muse/messaging/src/types.ts to add: media_urls?: string[], media_types?: string[], reply_to_message_id?: string, backfilled_context?: {prior_messages: InboundMessage[]}. Update each provider (Slack, Discord, Telegram) to populate these fields. In inbox-surface.ts, render media refs as '[attached: image]' in summary. Store backfilled context in inbound-thread-store for agent context.
+- **Value:** Unified context across platforms: agents see consistent reply/mention semantics and media attachments; enables richer, context-aware responses.
+- **Verify:** Test Discord message with media attachment and reply: verify InboundMessage.media_urls is populated and reply_to_message_id is set. Render in inbox summary and confirm agent sees context.
 
-### `CHN-8` Add inbound message deduplication and replay attack prevention  ★★★ · S · missing
+### `CHN-8` Channel directory with friendly-name aliasing and dynamic discovery  ★★ · M · none
 
-- **Reference:** hermes-agent: gateway/platforms/webhook.py _seen_deliveries + idempotency_cache; hermes-agent: delivery.py _is_silence_narration() for content-based dedup
-- **Muse approach:** Create `packages/messaging/src/inbound-deduplication.ts` that stores (providerId, source, messageId, timestamp) in a local JSON file. On inbound, check if messageId was already processed; if yes, skip. Also add content-based dedup for silence narrations ('(silent)', '…', etc.) to ignore no-op responses. Use TTL-based cleanup to bound file size.
-- **Value:** Prevents duplicate processing of the same message if a provider retries webhook delivery or polling fetches the same message twice—critical for reliability and avoiding duplicate agent runs.
-- **Verify:** Test: POST webhook twice with same messageId, verify second one is rejected as duplicate; send inbound twice from same source (same messageId), verify second is skipped.
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/gateway/channel_directory.py` — hermes builds channel_directory.json periodically from adapters + session data, overlay channel_aliases.json applies durable human-friendly names, send_message tool reads directory for action='list'
+- **Muse today:** none — /Users/jinan/side-project/Muse: no channel directory; no friendly-name resolution; no dynamic discovery. Agents must use raw channel IDs.
+- **Proposal:** Add @muse/messaging/src/channel-directory.ts: ChannelDirectory persists to ~/.muse/channel-directory.json, built from live adapters.getChannels() calls (requires provider extension). User-maintained ~/.muse/channel-aliases.json overlay applies friendly names ('work-group' → 'C123'). Add messaging_list_channels() MCP tool that returns {platform, id, name, type} entries, and extend send/respond tools to accept friendly names (resolved via directory). Rebuild directory on startup + hourly timer.
+- **Value:** Human-friendly channel addressing: users never memorize chat IDs; 'send to work-group' works, and directory auto-discovers reachable channels for autocomplete.
+- **Verify:** Create channel-aliases.json with friendly name, verify send_message tool lists it, resolve friendly name to ID, and send succeeds to actual channel.
 
-### `CHN-9` Implement multi-provider fan-out for critical notifications  ★★★ · M · missing
+### `CHN-9` Provider profile abstraction with declarative auth modes and vision support flags  ★★ · S · partial
 
-- **Reference:** hermes-agent: gateway/delivery.py fallback delivery chains (try primary, fall back to secondary); openclaw: channel-plugin-api router with fallback
-- **Muse approach:** Create `packages/messaging/src/fan-out-router.ts` that takes a list of delivery targets and sends to all (or first-success). On send, collect all receipts and return array. Agent can specify 'notify(targets: ["telegram:12345", "discord:C123", "local"])' to ensure redundancy. Fail-close: if all targets fail, raise error instead of silent drop.
-- **Value:** Enables critical notifications to reach user via multiple channels (e.g., ping Telegram AND Discord), reducing chance of missed alerts. Also enables graceful degradation: try primary platform, fall back to local storage if all fail.
-- **Verify:** Test: send to [telegram, discord, local], verify all three receive message; simulate one provider failure, verify other two succeed; all fail → error raised.
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/providers/base.py` — hermes ProviderProfile dataclass (name, api_mode, auth_type, env_vars, supports_vision, fallback_models), transport reads this instead of 20+ boolean flags
+- **Muse today:** partial — /Users/jinan/side-project/Muse/packages/messaging/src/types.ts: MessagingProviderInfo has id, displayName, description, local?; providers are instantiated directly with options, no declarative profile
+- **Proposal:** Add @muse/messaging/src/provider-profile.ts: MessagingProviderProfile dataclass (name, auth_type: 'api_key'|'oauth_device_code'|'env_only', env_vars, supports_inbound, supports_media, supports_threads). Each provider (Slack, Discord, etc.) exports a static profile. Registry.require() returns both provider instance and its profile, so tools/CLI can inspect capabilities without instantiation. Future: pluggable provider registration keyed by profile.
+- **Value:** Declarative provider capabilities: tools can filter by 'supports_inbound', CLI can show auth requirements upfront, new providers plug in via profile only.
+- **Verify:** Create a mock provider with profile, register it, verify registry.describe() returns profile fields, and tool filtering works.
 
-### `CHN-10` Add provider-specific message format transformations and entity escaping  ★★ · S · partial
+### `CHN-10` Session-scoped delivery info persistence for multi-part responses  ★ · S · none
 
-- **Reference:** hermes-agent: gateway/platforms/base.py utf16_len(), _prefix_within_utf16_limit() for Telegram; openclaw: slack escapeSlackText(), Discord markdown handling
-- **Muse approach:** Create `packages/messaging/src/message-formatters.ts` with platform-specific text sanitizers: Slack link wrapping (<channel|name>), Discord markdown escaping, Telegram HTML entity escaping, LINE text limitation (2000 chars). Providers call `.format()` before send(); allows rich future payloads (embeds, buttons) to transform per-platform.
-- **Value:** Prevents formatting bugs (Slack links rendered as raw URLs, Discord codeblocks breaking, Telegram truncation) and enables richer outputs (embeds, buttons) when platform-specific message types are added later.
-- **Verify:** Unit test: send message with Slack channel reference, verify <channel|name> wrapping; send message with emoji to Telegram, verify UTF-16 length counting; send long Discord message, verify markdown preserved.
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/gateway/platforms/webhook.py` — hermes WebhookAdapter._delivery_info (keyed by chat_id) stores delivery target resolved from route config on first send, reused by interim + final responses, never popped until TTL
+- **Muse today:** none — /Users/jinan/side-project/Muse/packages/messaging/src: no webhook adapter; inbound-responder sends each message independently, no interim-vs-final distinction
+- **Proposal:** Add @muse/messaging/src/delivery-session.ts: DeliverySession keyed by (providerId, source, runId), stores target channel + thread resolved on first send, reused by agent-generated intermediate messages and final response. Implement in webhook scenario: first streaming chunk → resolve target, all chunks → use cached target. Clean up session on TTL (5min) or explicit close.
+- **Value:** Seamless multi-part delivery: status messages and final response route to same destination without repeating lookup; supports streaming responses and interim progress.
+- **Verify:** Emit three messages in same session (interim, status, final), verify all three route to same channel without target resolution repeating.
 
-### `CHN-11` Implement message chunking / splitting for platforms with length limits  ★★ · M · partial
+### `CHN-11` Model-agnostic transport abstraction with pluggable API mode handlers  ★ · M · partial
 
-- **Reference:** hermes-agent: gateway/platforms/base.py should_send_media_as_audio(), _custom_unit_to_cp() and truncate_message(); Muse has clamp logic but no auto-chunking
-- **Muse approach:** Create `packages/messaging/src/message-chunker.ts` with per-provider chunking strategy: Slack/Discord/Telegram split on 4000-char boundaries with overlap markers ('...[cont'd]...'), LINE splits with '[1/3]' footer. Providers with native chunking support (Discord embeds) use that; text-only default to simple newline chunking. Store chunks in outbound-idempotency-store to track all parts of a multi-part send.
-- **Value:** Allows long agent responses (e.g. detailed analysis, code diffs) to be delivered without truncation; improves user experience for verbose outputs.
-- **Verify:** Test: send 8000-char message to Telegram with 4000-char limit, verify split into 2 messages with continuation markers; verify both land in conversation context.
-
-### `CHN-12` Add provider-agnostic sender identity tracking (user/bot account metadata)  ★★ · S · partial
-
-- **Reference:** hermes-agent: gateway/session.py SessionSource.platform + user_id / chat_id fields; openclaw: accounts.runtime.ts resolveSlackAccount() for multi-account support
-- **Muse approach:** Extend `InboundMessage` and `OutboundMessage` in `packages/messaging/src/types.ts` to carry optional `accountId` (e.g., 'slack:bot_user_xoxb_...', 'telegram:my_bot_token'). In `packages/autoconfigure/src/personal-providers.ts`, track which account/token is wired for each provider. Allows multi-account setups where different Slack bots or Telegram accounts deliver to different channels.
-- **Value:** Enables advanced setups where Muse uses different credentials per channel/provider (e.g., separate bot account per Slack workspace), and tracks which account sent each message for audit/context.
-- **Verify:** Test: configure two Slack bot tokens, verify inbound messages from each workspace carry correct accountId; send outbound with explicit accountId, verify correct token is used.
-
-### `CHN-13` Implement delivery failure callback and async delivery status tracking  ★★ · M · missing
-
-- **Reference:** hermes-agent: gateway/platforms/base.py _POST_DELIVERY_CALLBACK_TIMEOUT_SECONDS, post-delivery-callback logic; openclaw: webhooks http.ts describeWebhookOutcome() with detailed error codes
-- **Muse approach:** Create `packages/messaging/src/delivery-status-store.ts` that records (messageId, status, errorCode, timestamp, retryCount) for each outbound. Add optional `deliveryCallbackUrl` to OutboundMessage so agent can request a callback when message is delivered/failed. Scheduler daemon polls provider's API (Discord reactions, Slack message status, etc.) to update delivery status.
-- **Value:** Allows agent to know whether a message actually reached the user or failed silently, enabling workflows like 'if delivery failed, escalate to on-call' or 'retry critical alerts'.
-- **Verify:** Test: send message, simulate delivery failure on provider side, verify delivery-status-store records failure with error code; verify callback URL is called with status if provided.
-
-### `CHN-14` Implement per-provider configuration schema validation and credential rotation  ★★ · S · partial
-
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/extensions/slack/src/config.ts (extensive Zod schemas); hermes-agent: gateway/config.py PlatformConfig with extra fields per adapter
-- **Muse approach:** Create `packages/messaging/src/provider-config.ts` with Zod schemas for each provider (token format, base URLs, timeouts, rate limits, etc.). In `packages/autoconfigure/src/messaging-poll-dispatchers.ts`, validate config at startup. Add `packages/messaging/src/credential-rotation.ts` to support graceful token updates: new token is tested before old is removed, preventing downtime.
-- **Value:** Prevents misconfigurations (malformed tokens, wrong provider IDs) from silently causing sends to fail; enables credential rotation without downtime (e.g., when token expires).
-- **Verify:** Test: configure invalid Slack token format, verify startup error with clear message; rotate token, verify sends work with new token before old is removed.
-
-### `CHN-15` Add channel discovery and enumeration for all providers  ★★ · M · partial
-
-- **Reference:** openclaw: slack src/resolve-channels.ts listChannels(); hermes-agent: gateway/platforms/base.py list_channels(); Discord/Telegram list_chats()
-- **Muse approach:** Create `packages/messaging/src/channel-discovery.ts` with per-provider discovery methods: Slack conversations.list, Discord guilds.getChannels, Telegram getChats (premium bot API), LINE getGroupSummary. Muse agent can query 'list_channels(provider="slack")' to get available destinations. Cache results with TTL. Optional: store in db for smart autocomplete.
-- **Value:** Allows user/agent to discover available channels without manual config; enables workflows like 'post update to all #engineering channels' (fan-out by pattern matching).
-- **Verify:** Test: call list_channels('slack'), verify returns array of {id, name, isPrivate, memberCount}; call list_channels('telegram'), verify returns chat list; results are cached.
-
-### `CHN-16` Add message delivery feedback loop: detect provider errors and emit observability signals  ★ · S · partial
-
-- **Reference:** hermes-agent: gateway/delivery.py _send_result_failed(), _send_result_error(); openclaw: webhooks http.ts mapMutationStatus() with detailed error code mapping
-- **Muse approach:** Create `packages/observability/src/messaging-signals.ts` that emits structured logs when send fails (error code, retry count, duration, upstream error). Providers catch provider-specific errors (e.g., Slack 'channel_not_found', Telegram 'user_blocked') and map to standard error codes (CHANNEL_UNKNOWN, USER_BLOCKED, RATE_LIMITED, etc.). Agent can inspect these signals to decide retry strategy.
-- **Value:** Provides visibility into why sends are failing (e.g., 'user_blocked' vs 'network_error') so agent and user can take appropriate action; improves debugging of integration issues.
-- **Verify:** Integration test: send to invalid Slack channel, capture observability signal with error code 'CHANNEL_NOT_FOUND'; verify agent can access signal and decide recovery action.
-
-### `CHN-17` Add support for rich message payloads (embeds, buttons, file attachments)  ★ · L · missing
-
-- **Reference:** openclaw: slack src/send.runtime.ts with blocks/attachments; hermes-agent: gateway/platforms/base.py send_media_as_audio(), media handling; WhatsApp/Telegram media APIs
-- **Muse approach:** Extend `OutboundMessage` in `packages/messaging/src/types.ts` to support optional `rich` field carrying platform-agnostic payload shape (title, description, buttons, imageUrl, etc.). Each provider's send() transforms into native format: Slack blocks, Discord embeds, Telegram HTML + inline buttons, etc. Media attachments stored locally with hash-based dedup in outbound-idempotency-store.
-- **Value:** Enables richer agent outputs: structured cards, buttons/actions, file links, images—moving beyond plain text and matching what competitors offer natively.
-- **Verify:** Test: create rich payload with title+description+button, send to Slack → verify blocks rendered; send to Telegram → verify HTML + inline button; send to Discord → verify embed.
-
-### `CHN-18` Implement message editing and deletion support for delivered messages  ★ · M · missing
-
-- **Reference:** openclaw: Slack src/send.runtime.ts chat.update for edits; Telegram/Discord APIs support message.edit(); hermes-agent: gateway delivery tracking for amendment
-- **Muse approach:** Extend `OutboundReceipt` to carry `canEdit` / `canDelete` flags. Create `packages/messaging/src/outbound-amendment.ts` with `editMessage()` and `deleteMessage()` that each provider implements if the platform supports it. Store receipt metadata (messageId, channelId, provider) in outbound-idempotency-store. Agent can later call 'edit message X with new text' or 'delete message X'.
-- **Value:** Allows agent to fix mistakes (typos, incorrect data) by editing sent messages, or clean up spam/errors by deletion—improves user experience and trust.
-- **Verify:** Test: send message to Slack, get receipt, call editMessage() with new text, verify Slack message is updated; call deleteMessage(), verify message is removed.
-
-### `CHN-19` Implement reusable provider-agnostic message templates for common patterns  ★ · M · missing
-
-- **Reference:** hermes-agent: gateway/platforms/base.py message formatting; openclaw: slack blocks/progress-blocks.ts template system
-- **Muse approach:** Create `packages/messaging/src/message-templates.ts` with TypeScript template functions for common patterns: alert (title, severity, action), update (status, percentage, eta), listing (title, items, pagination). Templates accept platform-agnostic params and output format appropriate to each provider. Agent calls `alertTemplate({title, severity, action})` and it renders as Slack emoji+bold, Discord color-coded embed, Telegram HTML, etc.
-- **Value:** Reduces boilerplate for agent when outputting structured messages; ensures consistent UX across platforms; enables theme/style updates in one place.
-- **Verify:** Test: use alertTemplate({title: 'Deployment failed', severity: 'critical', action: 'Rollback'}), send to Slack/Discord/Telegram, verify each renders appropriately with correct styling.
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/agent/transports/__init__.py` — hermes get_transport(api_mode) returns transport from registry, lazy discovery imports transports.{anthropic,chat_completions,codex,bedrock}, each normalizes response to uniform NormalizedResponse
+- **Muse today:** partial — /Users/jinan/side-project/Muse/packages/model/src: has ModelAdapter interface + implementations (openai, anthropic, etc.), but no transport abstraction layer; normalization is per-adapter, not pluggable
+- **Proposal:** Extend @muse/model with pluggable transport pattern: export Transport interface (request → normalized response), move api_mode dispatch from AIAgent.callModel() into dedicated transport registry. Each provider registers a transport via api_mode key. Keep ModelAdapter for credential/config, but have Transport own the wire protocol + response normalization. This unifies model + messaging under same pluggable arch.
+- **Value:** Unified pluggable architecture: new providers (messaging adapters, LLM backends) plug in via single registry pattern, reducing config complexity.
+- **Verify:** Register mock transport for a new api_mode, call it via registry, verify response is normalized correctly, and provider SDK is never imported directly by agent.
 
 ## 10. Voice · Speech · Media Gen/Understanding · Document Extract
 
-_19 items_
+_14 opportunities · 21 competitor files read_
 
 
-### `MED-1` STT provider registry + dispatch abstraction  ★★★★★ · M · missing
+### `MED-1` Multi-Provider TTS Fallback with Ordered Chain  ★★★★★ · M · none
 
-- **Reference:** hermes-agent: /Users/jinan/ai/hermes-agent/agent/transcription_registry.py + transcription_provider.py — pluggable STT backend registry with built-in (Whisper, local_command, Groq, OpenAI, Mistral, xAI) + plugin extensibility, provider selection via config.yaml stt.provider
-- **Muse approach:** Create /Users/jinan/side-project/Muse/packages/voice/src/sttt-registry.ts implementing a thread-safe provider map (like hermes) with a SpeechToTextProvider ABC defining name, is_available(), list_models(), get_setup_schema(), and transcribe(file_path, model?, language?). Built-ins (WhisperCpp, Piper via local pipe, local command via shell) always win over plugins. Muse's local-only constraint eliminates cloud STT providers from being RUNTIME owners, but the abstraction allows user-installed plugin providers (OpenRouter Whisper, Deepgram via user setup).
-- **Value:** Unifies Muse's scattered STT implementations (openai-whisper.ts, whisper-cpp.ts) into one dispatcher, enabling tool-layer routing of transcribe_audio to the selected active provider without hardcoded conditionals.
-- **Deps:** voice package (existing WhisperCpp, OpenAIWhisper implementations); agent-core (tool dispatch)
-- **Verify:** Unit test: register WhisperCppSttProvider and OpenAIWhisperSttProvider, confirm built-in takes precedence when both configured; integration test: transcribe_audio tool routes to correct provider based on stt.provider config key.
+- **Based on (openclaw):** `packages/speech-core/src/tts.ts` — OpenClaw synthesizeSpeech() executes ordered provider chain via resolveTtsProviderCandidates()
+- **Muse today:** none — packages/voice/src/registry.ts, types.ts — only single provider dispatch, no fallback
+- **Proposal:** Add TtsProviderChain to packages/voice/src/registry.ts with tryProviders(providers[], request) that sequentially attempts each STT/TTS provider and returns first success, with optional fallback policies ('fail'/'skip-local'/'skip-cloud'). Respect MUSE_LOCAL_ONLY during chain traversal.
+- **Value:** Resilience: TTS continues if primary provider fails (API down, auth fail, format unsupported on one provider but supported on next). Critical for voice mode reliability.
+- **Verify:** Test fallback: primary fails, secondary succeeds; primary format unsupported, secondary handles it; respect MUSE_LOCAL_ONLY and skip cloud providers when flag set.
 
-### `MED-2` Document text + image extraction (PDF-first)  ★★★★★ · L · missing
+### `MED-2` Streaming Audio Synthesis (TTS ReadableStream)  ★★★★ · M · none
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/extensions/document-extract/document-extractor.ts — extracts text (max 200K chars) + images from PDFs via clawpdf engine; handles passwords, page selection, image quality/dimension limits; returns {text, images: [{type, data: base64, mimeType}]}
-- **Muse approach:** Create /Users/jinan/side-project/Muse/packages/document-extraction/src/pdf-extractor.ts. Use a local PDF library (PDF.js for node, or pdfium via wasm). Extract text via text layer first; if text is sparse (< minTextChars threshold), extract images (max dimension 10K, format to PNG base64). Attach extracted images as VisionExtractInput attachments so vision-extract.ts can OCR them locally. Return {text: string, images: [{data: base64, mimeType: 'image/png'}], pageCount: number}.
-- **Value:** Enables grounded vision actions on document PDFs (snap receipt photo, upload invoice PDF → extract merchant+total+date → draft expense note, gate on grounding verification). Unlocks drafting from both photos and PDFs with unified extraction pipeline.
-- **Deps:** vision-extract (agent-core); PDF.js or pdfium library (new dep); shared (base64 utils)
-- **Verify:** Test: extract a 3-page receipt PDF (text + images), confirm text ≤ 200K chars, image count correct; grounding test: pass extracted images to vision-extract.ts, confirm OCR finds document text.
+- **Based on (openclaw):** `packages/speech-core/src/tts.ts` — OpenClaw textToSpeechStream() + streamSpeech() return ReadableStream<Uint8Array> directly from providers
+- **Muse today:** none — packages/voice/src/openai-tts.ts — synthesize() buffers entire response, no streaming
+- **Proposal:** Add optional stream() method to TextToSpeechProvider interface in packages/voice/src/types.ts. Implement in OpenAITtsProvider to return fetch() response body directly (no buffering). Add synthesizeStream(request) export that returns ReadableStream<Uint8Array> and falls back to synthesize()+buffer if stream() unavailable. Wire into voice-mode for low-latency delivery.
+- **Value:** Low-latency voice output in chat/REPL — stream-as-you-synthesize instead of waiting for full audio buffer. Reduces perceived latency by 50-80%.
+- **Verify:** Test: streamSpeech() returns stream that emits first chunk within 100ms; buffering path (fallback) still works; stream closes cleanly.
 
-### `MED-3` TTS persona registry + multi-voice fallback chain  ★★★★ · M · partial
+### `MED-3` Audio Format Transcoding & Platform-Adaptive Delivery  ★★★★ · M · partial
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/packages/speech-core/src/tts.ts lines 384-401 (collectTtsPersonas) + 810-846 (resolveTtsPersonaFromPrefs + getTtsPersona + setTtsPersona + listTtsPersonas) — TTS personas as named config entries with per-persona provider bindings, persona override in user prefs, fallback chain (persona → provider config → defaults)
-- **Muse approach:** Extend /Users/jinan/side-project/Muse/packages/voice/src/registry.ts to add a TtsPersona interface (id, label?, description?, provider, providers: {[providerId]: SpeechProviderConfig}) + TtsPersonaRegistry that reads from config.agents.defaults.ttsPersonas + persists to userPrefs.tts.persona. Implement resolveTtsPersona(config, prefsPath) → ResolvedTtsPersona | undefined following openclaw's three-tier fallback (user prefs persona → active persona from config → none).
-- **Value:** Enables per-voice personality control (e.g., 'narrator', 'casual', 'formal') with provider-specific voice bindings (Piper English male, OpenAI Alloy, etc.), landing user voice preference persistence without hardcoding.
-- **Deps:** voice package (registry); model (config schema updates)
-- **Verify:** Test: set persona in prefs, confirm getTtsPersona returns it; switch to another persona, confirm prefs update; fallback chain test: persona missing provider binding falls back to config default or none.
+- **Based on (openclaw):** `packages/speech-core/src/tts.ts` — OpenClaw maybePreTranscodeForVoiceDelivery() converts MP3→Opus for Telegram, validates channel codecs
+- **Muse today:** partial — packages/voice/src/types.ts supports TtsFormat (mp3, wav, opus, aac, flac) but no transcoding logic
+- **Proposal:** Add packages/voice/src/audio-transcode.ts with maybeTranscodeAudio(buffer, fromFormat, toFormat) using ffmpeg-wasm or similar lazy-loaded codec. Wire into TTS delivery path: before sending to messaging platform, check platform requirements and transcode if needed. Default: send provider's native format, let delivery layer adapt.
+- **Value:** Agents can send voice notes to Telegram (needs Opus), Slack (needs MP3), Discord (needs Opus) without re-invoking TTS. Saves latency and API cost.
+- **Verify:** Test: MP3→Opus converts within 500ms; WAV→MP3 works; format validation rejects unsupported targets; fallback gracefully (send native if transcode fails).
 
-### `MED-4` TTS streaming synthesis surface  ★★★★ · L · partial
+### `MED-4` PDF Extraction with Image Fallback (OCR via Vision Model)  ★★★★ · M · partial
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/packages/speech-core/src/tts.ts lines 1570-1699 (streamSpeech function) — streams audio in chunks via ReadableStream, with provider fallback chain and latency tracking; returns TtsSynthesisStreamResult with release() cleanup
-- **Muse approach:** Add streamTextToSpeech(text, cfg, options) → Promise<{success, audioStream?: ReadableStream<Uint8Array>, error?, latencyMs?, release?: () => Promise<void>}> to /Users/jinan/side-project/Muse/packages/voice/src/openai-tts.ts and piper.ts. Implement fallback chain (primary provider → fallback providers) with attempt tracking. For Piper (local), use child_process.spawn() to stream raw PCM and wrap in ReadableStream. For OpenAI, use their chunk streaming when available.
-- **Value:** Enables low-latency voice output for voice-mode UI (progressive audio playback instead of buffering full response), critical for interactive agent conversations.
-- **Deps:** voice package (TTS providers); shared (stream utilities)
-- **Verify:** Integration test: stream a 100-char prompt, consume stream in chunks, confirm release() cleanup happens; fallback test: primary fails, stream switches to fallback with latencyMs reflecting overall attempt.
+- **Based on (openclaw):** `extensions/document-extract/document-extractor.ts` — OpenClaw extractPdfContent() text extraction, fallback to image extraction + vision (lines 78-96)
+- **Muse today:** partial — packages/fs/src/fs-document.ts has extractPdfTextWithPdfjs() but no fallback to image/OCR
+- **Proposal:** Enhance packages/fs/src/fs-document.ts extractPdfTextWithPdfjs(): if extracted text.length < minTextChars (e.g., 200), fall back to image extraction. For each page ≤ maxPages (e.g., 5), render to PNG via canvas or pdfjs canvas, call vision_analyze() (injected describeImage), accumulate OCR text. Return {text, images?, ocr_used?}. Wire into file_read tool.
+- **Value:** Scanned PDFs, image-only docs no longer fail silently. Vision-OCR recovers text from low-quality or embedded images, grounding the agent's claims.
+- **Verify:** Test: text PDF extracts via pdfjs; image-only PDF falls back to vision; OCR text is grounded (cites page); minTextChars threshold triggers fallback correctly.
 
-### `MED-5` Structured document metadata extraction  ★★★★ · L · missing
+### `MED-5` Image Generation (Text-to-Image & Image Editing) with Provider Registry  ★★★ · L · none
 
-- **Reference:** hermes-agent: /Users/jinan/ai/hermes-agent/agent/image_gen_provider.py (parallel pattern) — abstractly, the image generation provider dynamically declares modalities (text, image) via capabilities(), so a unified tool routes user input to the right provider mode. Document extraction applies the same pattern: declare what document types a provider supports and route to the right extraction handler.
-- **Muse approach:** Create /Users/jinan/side-project/Muse/packages/document-extraction/src/document-processor.ts implementing extractStructuredFromDocument(buffer, mimeType, schema, instruction) → Promise<{ok, data?, raw, error?}> (mirrors vision-extract.ts). For PDF: first try text extraction; if sparse, extract images and route to vision-extract.ts (OCR path). For DOCX/XLSX: parse via local library (docx, xlsx), convert to text, apply structured extraction. Temperature-0 structured output (responseFormat: schema) enforces schema compliance. Grounding floor: omit non-visible fields, never invent.
-- **Value:** Automates processing of uploaded documents (invoices, contracts, expense reports) into structured fields (date, amount, vendor, signatory) without cloud APIs, landing grounded vision actions for document workflows.
-- **Deps:** vision-extract (agent-core); pdf-extractor (above); docx, xlsx libraries (new deps)
-- **Verify:** Test: extract invoice PDF with schema {required: [merchant, total, date]}, confirm fields match visible text; failure test: omit visible total, extraction fails closed; XLSX test: spreadsheet row → structured extraction.
+- **Based on (hermes):** `agent/image_gen_provider.py` — Hermes ImageGenProvider.generate() routes text-to-image vs image-editing based on image_url presence
+- **Muse today:** none — packages/ — no image generation tool or provider at all
+- **Proposal:** Create packages/media/src/image-gen-provider.ts with ImageGenProvider interface { generate(text, image_url?, model?, options?) → {url, path, mimeType, modality} }. Implement adapters for local Ollama (if model supports it), OpenAI DALL-E, xAI (all behind local-only gate). Route on image_url: present → inpaint/edit endpoint, absent → text-to-image. Register in agent-core tool executor.
+- **Value:** Enables agents to generate and iterate on visual assets locally (when Ollama has vision+generation), with cloud fallback (gated). Moves Muse toward visual-creative parity.
+- **Verify:** Test: text→image generates URL/file; image+text→edit generates edited image; MUSE_LOCAL_ONLY=1 blocks OpenAI fallback; result has modality indicator.
 
-### `MED-6` Image generation provider registry (local + remote dispatch)  ★★★★ · M · missing
+### `MED-6` TTS Directive Parsing & Runtime Voice Overrides  ★★★ · S · none
 
-- **Reference:** hermes-agent: /Users/jinan/ai/hermes-agent/agent/image_gen_provider.py + image_gen_registry.py — unified text-to-image and image-to-image dispatch; providers declare modalities (text, image) + max_reference_images; routing: if image_url present → image-to-image else text-to-image
-- **Muse approach:** Create /Users/jinan/side-project/Muse/packages/image-generation/src/image-gen-registry.ts + image-gen-provider.ts. Define ImageGenProvider ABC (name, display_name, is_available(), list_models(), capabilities() → {modalities, max_reference_images}, generate(prompt, aspect_ratio, image_url?, reference_image_urls?) → {success, image, model, prompt, aspect_ratio, modality, provider, error?}). Registry is route-layer only — Muse's local-only policy means built-in implementations must be LOCAL (stable diffusion via Ollama/ComfyUI socket, or refuse cloud). User-installed plugins can register cloud providers (OpenAI, FAL, etc.) but are opt-in via explicit allow-list (fail-close).
-- **Value:** Unifies image generation tool dispatch for Muse, enabling agent to request text-to-image OR image editing via one interface; local-first implementations (Ollama diffusion) satisfy local-only constraint.
-- **Deps:** model (config); shared (image format utils); new image-generation package
-- **Verify:** Unit test: register local StableDiffusion provider + OpenAI provider, confirm local is first candidate; tool test: pass image_url → modality: 'image' returned; no image_url → modality: 'text'; capabilities() test: declare max_reference_images: 3, agent sees it in dynamic schema.
+- **Based on (openclaw):** `packages/speech-core/src/tts.ts` — OpenClaw parseTtsDirectives() parses [[tts:voice=aria]] and [[tts:text]]...[[/tts:text]] inline blocks
+- **Muse today:** none — packages/voice/ — no directive parsing; agent output shipped as-is to TTS
+- **Proposal:** Add packages/voice/src/tts-directives.ts with parseTtsDirectives(text) → {directives: {voice?, model?, speed?, language?}, cleanText}. Directives format: [[tts:voice=aria,speed=1.2]] or [[tts:model=tts-1-hd]]. In agent-core runtime (agent-runtime.ts), after final output, apply directives to synthesize() request. Fallback policy: 'provider-defaults' if override missing.
+- **Value:** Agents specify voice/speed/language per-message without context switch. 'Speak faster' mid-conversation, switch voices for dialogue — all in output.
+- **Verify:** Test: [[tts:voice=nova,speed=1.5]] parsed and applied; clean text excludes directive syntax; invalid directive ignored with fallback; speed ∈ [0.25, 4.0].
 
-### `MED-7` Vision input grounding verification (image OCR confidence gate)  ★★★★ · M · partial
+### `MED-7` Vision Model Routing (Native vs Text Pipeline with Capability Auto-Selection)  ★★★ · M · partial
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/packages/speech-core/src/tts.ts + vision-extract.ts — uses two independent calls (classify image, then extract by kind + transcribe all text for verification) to gate hallucination; Muse apps/cli/src/vision-actions.ts already implements this for receipts/events
-- **Muse approach:** Extend /Users/jinan/side-project/Muse/packages/agent-core/src/vision-extract.ts to add verifyExtractionAgainstEvidence(extracted, imageBase64) → Promise<{verified: string[], unverified: string[]}>. Call independent OCR pass on image (temperature 0, instruction: 'transcribe EVERY piece of visible text') and compare digit-runs + word tokens against extracted fields. A field is verified if its key tokens appear in evidence transcript. This is ALREADY working in vision-actions.ts; refactor into vision-extract.ts as a reusable gate. Return {verified, unverified} so agent knows which fields are grounded.
-- **Value:** Prevents fabricated vision extraction fields from leaking into persisted data (calendar events, contacts, expense notes); deterministic code-based gate (not prompt-based) means it reliably blocks hallucinations.
-- **Deps:** agent-core (vision-extract); shared (token matching utils)
-- **Verify:** Test: extract {merchant: 'Acme', total: '$50'} from receipt, verification finds both in evidence → verified: [merchant, total]; extract {tax: '$5'} (not visible) → unverified: [tax]; agent sees unverified list, refuses auto-apply.
+- **Based on (hermes):** `agent/image_routing.py` — Hermes decide_image_input_mode() routes 'native'/'text' based on provider capability; auto checks model.supports_vision
+- **Muse today:** partial — packages/model/src/index.ts defines vision capability; packages/macos/src/macos-screen-tools.ts calls injected describeImage() but no routing logic
+- **Proposal:** Add packages/model/src/vision-routing.ts with decideImageInputMode(image, model, auxiliary.vision.provider?, mode='auto') → 'native'|'text'. In 'auto': check model.capabilities.vision, then check auxiliary override, then check cost (local vision is free, cloud vision ∈ [low, high] cost). Text-mode calls vision_analyze() up-front (packages/macos describeImage pattern), prepends result to context. Native-mode attaches image bytes via ModelMessage.attachments.
+- **Value:** Agents automatically choose efficient path: local models use native pixels, cloud models describe first (cheaper). Users control via auxiliary.vision.provider or MUSE_LOCAL_ONLY.
+- **Verify:** Test: auto-mode picks 'native' for Gemini (vision=true), 'text' for Ollama gemma (vision=false); provider override honored; MUSE_LOCAL_ONLY=1 forces text-mode.
 
-### `MED-8` Audio codec auto-transcode routing  ★★★ · M · missing
+### `MED-8` Image Asset Caching (Local Materialization of Ephemeral URLs)  ★★★ · M · none
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/packages/speech-core/src/tts.ts lines 1375-1418 (maybePreTranscodeForVoiceDelivery) — detects channel audio format requirements, transcodes audio buffer pre-delivery (e.g., MP3→WAV for telephony, OGG→MP3 for web)
-- **Muse approach:** Add audioTranscodeRouter(audioBuffer, sourceFormat, targetFormat?, channel?) → Promise<{audioBuffer, format, extension}> to /Users/jinan/side-project/Muse/packages/voice/src/audio-transcode.ts using ffmpeg-wasm or node-ffmpeg (local-only, no cloud codec service). Channel-aware routing checks delivery.preferAudioFileFormat and transcodesAudio flags from channel registry. If transcode fails, returns original buffer + warning log (fail-soft, like openclaw).
-- **Value:** Ensures voice output compatibility across Muse delivery channels (macOS native voice note, browser HTML5, messaging APIs) without manual codec selection by users.
-- **Deps:** voice package; macos package (channel registry); ffmpeg-wasm or node-ffmpeg (new optional dep)
-- **Verify:** Test: route Piper WAV through channel needing MP3, confirm transcode occurs and buffer is smaller; fallback test: ffmpeg unavailable, original buffer returned with log warning.
+- **Based on (hermes):** `agent/image_gen_provider.py` — Hermes save_url_image() caches generated images to $HERMES_HOME/cache/images/ with content-type sniffing
+- **Muse today:** none — packages/media/ — no image caching layer exists
+- **Proposal:** Add packages/cache/src/image-cache.ts with saveImageUrl(url, timeout_sec=3600, max_bytes=50*1024*1024) → {localPath, mimeType, cachedAt, expiresAt}. Save to ~/.muse/cache/images/prefix_YYYYMMDD_HHMMSS_uuid8.ext, sniff MIME from response headers + magic bytes. Before returning ephemeral URL to agent, cache it. Cache cleanup: hourly eviction of expired entries.
+- **Value:** Generated images (xAI, fallback OpenAI) survive delivery delays. Browser tools, messaging tools reference cached local paths instead of dead URLs.
+- **Verify:** Test: saveImageUrl() downloads and caches; MIME sniffing works (JPEG, PNG, WebP); expiration honored; cleanup removes stale entries; cache dir created if missing.
 
-### `MED-9` Stable Diffusion image generation (local via Ollama/ComfyUI)  ★★★ · M · missing
+### `MED-9` Media Understanding Tools (Image/Video/Audio Description)  ★★★ · M · partial
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/extensions/openai/image-generation-provider.ts as reference pattern; hermes plugin model: comfyui, fal, xai providers in /Users/jinan/ai/hermes-agent/plugins/image_gen/
-- **Muse approach:** Create /Users/jinan/side-project/Muse/packages/image-generation/src/stable-diffusion-provider.ts. Implement ImageGenProvider for Ollama's local diffusion models (SDXL, SD1.5 if available). Use Ollama's HTTP API (localhost:11434/api/generate with vision/image params). For text-to-image: POST {model, prompt, aspect_ratio} to /api/generate. For image-to-image: encode reference_image to base64, include in request body (check Ollama's image conditioning API). Fallback gracefully if Ollama unavailable (is_available() returns false, tool skips provider). Return {image: base64 PNG, model, prompt, aspect_ratio, modality: 'text'|'image', provider: 'ollama-diffusion'}.
-- **Value:** Enables local image generation without cloud APIs, satisfying local-only constraint; Ollama socket availability (already in voice-mode setup) makes this nearly free.
-- **Deps:** image-generation (registry); model (config for Ollama socket); shared (base64 image utils)
-- **Verify:** Test: POST to Ollama diffusion model with prompt, confirm PNG base64 returned; image-to-image test: pass reference image, confirm modality: 'image'; Ollama unavailable test: is_available() returns false.
+- **Based on (openclaw):** `extensions/media-understanding-core/runtime-api.ts` — OpenClaw describeImageFile(), describeVideoFile(), transcribeAudioFile() abstract vision/audio models
+- **Muse today:** partial — packages/macos/src/macos-screen-tools.ts has describeImage() but only for screenshots; no tools for user-uploaded media
+- **Proposal:** Create packages/domain-tools/src/media-understand-tools.ts exporting three tools: describe_image_file(path?, url?, language?), describe_video_file(path, language?, focus?), transcribe_audio_file(path, model?). Each calls vision_analyze() or stt.transcribe(). Results include timestamps (video), language (audio), and citation pointers for grounding. Wire into agent-core tool registry.
+- **Value:** Users upload images/videos/audio; agent analyzes them locally (Ollama) or via grounded cloud fallback. Enables media-rich interactions: 'what's in this screenshot', 'transcribe my voice memo', 'analyze this video'.
+- **Verify:** Test: describe_image_file(path) returns text; transcribe_audio_file() returns text + language; describe_video_file(path) returns scene descriptions + timestamps; grounding gates prevent fabrication.
 
-### `MED-10` Vision-to-action routing with multi-provider fallback  ★★★ · M · partial
+### `MED-10` Video Generation (Text-to-Video & Image-to-Video) with Duration/Aspect Metadata  ★★ · L · none
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/packages/speech-core/src/tts.ts lines 1461-1565 (provider fallback loop: for each candidate, try synthesis, on error push attempt + fallback) — fail-soft attempt tracking + latency per provider
-- **Muse approach:** Extend /Users/jinan/side-project/Muse/packages/agent-core/src/vision-extract.ts. Current extractStructuredFromImage() uses provider.generate() directly. Refactor to resolveVisionProviders(model?, cfg?) → VisionProviderCandidate[] (primary + fallbacks per openclaw pattern), then loop: for each provider candidate, try extraction, on error record attempt + fallback reason. Return {ok, data?, error?, attempts?: [{provider, outcome, reasonCode, latencyMs, error?}]}. This mirrors TTS fallback chain, enabling agent to gracefully degrade when Ollama vision unavailable (e.g., swap to OpenAI Gemini if available).
-- **Value:** Hardens vision extraction against single-provider failures; enables A/B testing of vision models locally (gemma4 → Llava → OpenAI fallback chain) with diagnostic attempt tracking.
-- **Deps:** agent-core (vision-extract); voice (provider registry pattern as template)
-- **Verify:** Test: extraction with gemma4, confirm success + attempts=[{provider: 'ollama:gemma4', outcome: 'success', latencyMs}]; Ollama unavailable test: fallback to OpenAI (if configured), confirm attempts shows both attempts.
+- **Based on (hermes):** `agent/video_gen_provider.py` — Hermes VideoGenProvider.generate() mirrors image_gen design, routes text-to-video vs animation on image_url
+- **Muse today:** none — packages/ — no video generation capability exists
+- **Proposal:** Create packages/media/src/video-gen-provider.ts parallel to image-gen, with VideoGenProvider { generate(text, image_url?, aspect_ratio?, duration?, audio?, model?) → {url, path, duration_ms, modality} }. Implement adapters for FAL, xAI, Google Veo (behind local-only + grounding gate). Expose capability metadata (supported_aspect_ratios, max_duration_sec, audio_support). Route: image_url → animation, else → text-to-video.
+- **Value:** Agents can generate video content (e.g., training materials, social media) with deterministic routing and grounding-aware fallback. Capability metadata enables length-aware prompting.
+- **Verify:** Test: text→video generates URL with duration_ms; image+text→animation; aspect_ratio honored; duration ≤ max_duration; grounding gate prevents fabricated metadata.
 
-### `MED-11` Speech-to-speech (STT → LLM → TTS) voice loop  ★★★ · L · missing
+### `MED-11` TTS User Preferences & Session-State Persistence  ★★ · M · none
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/packages/speech-core/src/tts.ts + voice-models.ts — voice model refs (provider + timeoutMs) enable chaining STT output through agent → TTS, with per-model timeout overrides
-- **Muse approach:** Add voice-loop orchestrator to /Users/jinan/side-project/Muse/packages/voice/src/voice-loop.ts: transcribeAndRespond(audioBuffer, agentContext) → Promise<{transcription, agentResponse, audioPath, attempts}). Flow: (1) transcribeAudio(buffer) via STT registry, (2) pass transcript + context to agent.run(), (3) synthesizeSpeech(response.output) via TTS registry with fallback chain. Return {transcription, agentResponse, audioPath, attempts: [{stage: 'stt'|'tts', provider, latencyMs}]}. Grounding: transcription confidence reported by STT provider gated in agent system prompt (low confidence → 'clarify what you said' priming).
-- **Value:** Unifies voice I/O into one endpoint for voice-mode UI and interactive agents; enables true voice conversation without manual transcript-response coupling.
-- **Deps:** voice (sttt-registry, tts-registry, streaming); agent-core (agent.run); shared (audio buffer utils)
-- **Verify:** Integration test: feed audio buffer (voice memo), confirm transcription → agent response → audio output chain works; fallback test: STT fails, error propagates; TTS fails, agent response is text-only.
+- **Based on (openclaw):** `packages/speech-core/src/tts.ts` — OpenClaw readPrefs() / updatePrefs() persist ~/.openclaw/settings/tts.json; getTtsProvider() checks prefs first
+- **Muse today:** none — packages/voice/src/registry.ts — no preference persistence; no state across turns
+- **Proposal:** Add packages/voice/src/tts-preferences.ts with TtsPreferences { enabled, provider, voice, persona, speed, summarize?, maxLength_chars? }. Persist to ~/.muse/user-<id>/voice-prefs.json (aligned with memory.json structure). In voice-mode REPL, check prefs before each synthesis; setVoice/setSpeed/setProvider update prefs + current turn. Support session overrides (--voice flag).
+- **Value:** User 'use Nova voice for now' and it sticks for the session. 'Save that for next time' and prefs persist. No context lost between voice-mode runs.
+- **Verify:** Test: setVoice updates prefs.json; next REPL session reads same voice; session --voice flag overrides; prefs survive CLI restart.
 
-### `MED-12` Speech provider voice model selection  ★★★ · M · partial
+### `MED-12` Transcription Model Catalog with Metadata & Built-in Dispatch Order  ★★ · S · none
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/packages/speech-core/voice-models.ts — declares voice model refs per provider (e.g., {provider: 'openai', model: 'tts-1', voice: 'alloy'}) and routes by provider + voice availability
-- **Muse approach:** Extend /Users/jinan/side-project/Muse/packages/voice/src/types.ts + registry.ts to include VoiceModelRef interface (provider, model, voice, label, timeoutMs?). Add resolveVoiceModels(cfg, providerId) → VoiceModelRef[] (returns available voice models for a provider). TTS providers expose listVoices() → {id, label, description}[] (Piper returns {id: 'en_US-libritts-high', label: 'English US LibriTTS'}, OpenAI returns {id: 'alloy', label: 'Alloy (male, neutral)'}). Agent system prompt includes hint: 'available voices: alloy, nova, shimmer' so it can request specific voice via [[tts:voice=alloy]] directive (already in voice-mode.md design).
-- **Value:** Enables agent + user to request specific voice (persona binding) without hardcoding provider details; mirrors openclaw's voice model selection UX.
-- **Deps:** voice (types, registry, provider adapters); agent-core (directive parsing already exists)
-- **Verify:** Test: Piper provider, resolveVoiceModels returns en_US variants; OpenAI provider returns alloy/nova/shimmer; agent system prompt includes voice hint; [[tts:voice=nova]] parsed and routed correctly.
+- **Based on (hermes):** `agent/transcription_provider.py` — Hermes transcription_provider.py list_models() returns catalog; dispatch checks built-ins first, rejects plugins shadowing built-ins
+- **Muse today:** none — packages/voice/src/registry.ts lists providers but no model catalog, no dispatch guard
+- **Proposal:** Extend packages/voice/src/types.ts SpeechToTextProvider with optional listModels() → [{id, display, languages, max_audio_sec}]. Implement in Whisper/Groq/Mistral adapters. In VoiceProviderRegistry, add requireSttModel(provider_id, model_id) with built-in-always-win guard. Export listSttModels() for CLI /stt-models or voice-mode model picker.
+- **Value:** Agents and users know which STT models are available, what languages each supports, max audio length per model. Can switch models without config rewrites.
+- **Verify:** Test: listModels() returns non-empty array with {id, languages}; requireSttModel() rejects non-existent model; built-in guard prevents plugin shadowing.
 
-### `MED-13` Video generation provider abstraction (text-to-video + image-to-video)  ★★ · M · missing
+### `MED-13` Voice Catalog & Persona-Aware Voice Selection UI  ★★ · S · none
 
-- **Reference:** hermes-agent: /Users/jinan/ai/hermes-agent/agent/video_gen_provider.py — unified text-to-video + image-to-video dispatch with capabilities (modalities, aspect_ratios, resolutions, max_duration, supports_audio, max_reference_images); response: {success, video, model, prompt, modality, aspect_ratio, duration, provider, error?}
-- **Muse approach:** Create /Users/jinan/side-project/Muse/packages/video-generation/src/video-gen-provider.ts + video-gen-registry.ts. Mirror image-gen pattern: VideoGenProvider ABC with generate(prompt, aspect_ratio?, image_url?, ...) → {success, video, model, prompt, modality: 'text'|'image', aspect_ratio, duration, provider, error?}. Routing: image_url present → image-to-video else text-to-video. Local-only: no built-in local video gen (hardware cost too high for commodity machines); registry exists for user-installed plugins (FAL, xAI, etc.) via allow-list. Fail-close: if no provider configured, return error rather than hallucinate.
-- **Value:** Establishes video generation surface for future local-or-user-installed provider expansion; prevents agent from attempting video generation without explicit configuration.
-- **Deps:** model (config); shared (media format utils); new video-generation package
-- **Verify:** Unit test: video-gen-registry empty, tool call returns error 'no video generation provider configured'; plugin registration test: FAL provider registered, tool routes prompt to FAL with modality detection.
+- **Based on (openclaw):** `packages/speech-core/voice-models.ts` — OpenClaw resolveSupportedVoiceModelRefs() filters catalog; synthesizeVoiceModelCatalogEntries() exports {id, display, language, gender, preview_url}
+- **Muse today:** none — packages/voice/src/types.ts TtsProviderInfo.availableVoices is string[] only, no metadata
+- **Proposal:** Add packages/voice/src/voice-catalog.ts with VoiceModelCatalogEntry { id, provider, display, language, gender?, preview_url?, capabilities: {tts, realtime_transcription, realtime_voice} }. TtsProvider.listVoices() → VoiceModelCatalogEntry[]. Export synthesizeVoiceCatalogEntries(providers[]) for CLI /tts-voices. Wire into voice-mode voice picker (--voice with auto-complete).
+- **Value:** Voice-mode REPL shows preview URLs, filters by language/gender/capability. Users pick voices visually instead of blind 'alloy' / 'echo' strings.
+- **Verify:** Test: listVoices() returns catalog with preview_url; preview URLs are valid HTTP; gender/language filter works; realtime_voice flag gates realtime synthesis.
 
-### `MED-14` Music generation provider abstraction  ★★ · M · missing
+### `MED-14` Provider-Scoped Directive Tokens (e.g., Azure-Only Output Format)  ★ · S · none
 
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/src/music-generation/ — unified music generation with modes (generate vs edit), capabilities (maxTracks, supportsLyrics, supportsInstrumental, supportsDuration, supportedFormats), generation (prompt, lyrics?, instrumental?, durationSeconds?, format?) → {tracks: [{buffer, mimeType, fileName}], model, lyrics?, metadata?}
-- **Muse approach:** Create /Users/jinan/side-project/Muse/packages/audio-generation/src/music-gen-provider.ts + music-gen-registry.ts. Define MusicGenProvider ABC (name, capabilities() → {supportsLyrics, supportsInstrumental, maxTracks, supportedFormats}, generateMusic(prompt, lyrics?, instrumental?, durationSeconds?, format?) → {tracks: [{buffer, mimeType}], model, error?}). Like video-gen: no local built-in (model size prohibitive); registry for user-installed plugins (Google MusicLM, xAI, FAL, etc.). Muse's local-only gate: MUSE_LOCAL_ONLY=on blocks non-local providers at runtime assembly (fail-close).
-- **Value:** Establishes music generation surface in Muse; enables future expansion to local TTS-like music or user-installed cloud plugin (xAI, Google); prevents agent from attempting music generation without explicit opt-in.
-- **Deps:** model (config); shared (audio format utils); new audio-generation package
-- **Verify:** Registry test: no providers registered, tool returns 'music generation not available'; plugin registration: xAI provider registered, tool routes with capabilities checking.
-
-### `MED-15` STT model selection + language hints  ★★ · S · missing
-
-- **Reference:** hermes-agent: /Users/jinan/ai/hermes-agent/agent/transcription_provider.py lines 100-122 — list_models() → [{id, display?, languages?, max_audio_seconds?}]; transcribe(file_path, model?, language?) signature
-- **Muse approach:** Add to /Users/jinan/side-project/Muse/packages/voice/src/types.ts: SttModelInfo interface (id, display, languages?, maxAudioSeconds?). Extend SpeechToTextProvider: listModels() → SttModelInfo[]. Whisper and Whisper.cpp return [{id: 'base', languages: ['multi']}, {id: 'small', languages: ['multi']}]. Agent system prompt (voice-mode) includes: 'STT language: auto-detect' (no language override for now, future-proof). Tool layer passes language hint when available (e.g., calendar event with language tag).
-- **Value:** Enables future multi-language voice input without code changes; establishes model selection surface (user picks whisper size for accuracy vs latency tradeoff).
-- **Deps:** voice (types, registry, stpt-providers)
-- **Verify:** Test: Whisper provider lists small/base/large models with language metadata; agent system prompt reflects model list.
-
-### `MED-16` Attachment context for extracted documents/images  ★★ · S · partial
-
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/src/speech-core/src/tts.ts (not attachment-specific); Muse: /Users/jinan/side-project/Muse/packages/agent-core/src/attachment-context.ts lines 21-110 — already parses user-attached files in metadata, surfaces in [Attached Files] section
-- **Muse approach:** Extend /Users/jinan/side-project/Muse/packages/agent-core/src/attachment-context.ts to support vision-extract references. When extracting a PDF document or image: call extractStructuredFromDocument() → {text, images}, then add synthetic attachments to metadata: {attachments: [{name: 'extracted_document.pdf', mimeType: 'application/pdf', description: 'Extracted: {merchant, total, date}', ref: <store-id>}]}. Downstream tools can fetch full extracted content by ref. This reuses existing attachment-context rendering without code duplication.
-- **Value:** Surfaces extracted document metadata in system prompt so agent sees document extraction results BEFORE tools run, enabling planning (e.g., 'create expense note from {merchant, total}').
-- **Deps:** agent-core (attachment-context); document-extraction (above)
-- **Verify:** Test: extract PDF invoice, confirm [Attached Files] section includes extracted summary; agent sees it in system prompt.
-
-### `MED-17` Audio fingerprinting + caching for TTS (voice memo dedup)  ★★ · M · missing
-
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/packages/speech-core/src/tts.ts lines 216-217 (lastTtsAttempt tracking) — not full caching, but status tracking; hermes pattern: plugins can cache generated media
-- **Muse approach:** Add /Users/jinan/side-project/Muse/packages/cache/src/tts-audio-cache.ts: computeHash(text + provider + voice + persona) → sha256 hex. On TTS request, check cache.get(hash) before calling provider. If hit, return cached audio + {cached: true, savedLatencyMs}. On success, cache.set(hash, audioBuffer, ttl: 30 days). This prevents re-synthesizing the same phrase (e.g., daily greeting) 100 times. Cache key includes persona/voice so 'hello' in Alloy voice ≠ 'hello' in Shimmer voice.
-- **Value:** Reduces TTS latency + provider load for repetitive phrases (greetings, status updates, reminders); improves voice-mode responsiveness for frequently-repeated content.
-- **Deps:** cache (existing); voice (tts providers)
-- **Verify:** Test: synthesize 'good morning' with voice=alloy twice, confirm second hit returns cached audio + {cached: true}; different voice (shimmer) does not hit cache; cache TTL expires after 30 days.
-
-### `MED-18` Tool-generated image/video caching (media asset lifetime)  ★ · M · missing
-
-- **Reference:** openclaw: /Users/jinan/ai/openclaw/extensions/image-generation-core/src/runtime.ts + video-generation-core — generated assets returned as {buffer, mimeType, fileName}, stored in temp workspace, lifecycle managed by caller (OpenClaw agent cleanup hooks)
-- **Muse approach:** Add /Users/jinan/side-project/Muse/packages/cache/src/media-asset-cache.ts: generated images/videos stored with key (tool + params hash) and TTL (7 days for images, 1 day for videos due to disk cost). On tool invocation, check cache.get(hash). If hit, return cached path + {cached: true}. On generation, cache.set(hash, assetBuffer, {ttl, metadata: {tool, promptSummary}}). Cleanup: periodic job removes expired assets. This prevents re-generating identical images when user re-runs prompt.
-- **Value:** Reduces image/video generation costs + latency for repeated content requests; improves agent efficiency when handling repetitive creative tasks.
-- **Deps:** cache (existing); image-generation, video-generation (above)
-- **Verify:** Test: generate 'a cat' image twice, second hit returns cached path; modify prompt slightly ('a black cat'), cache miss triggers new generation; 7-day TTL verified by mock clock.
-
-### `MED-19` Multimodal embedding extraction from documents + images  ★ · L · missing
-
-- **Reference:** hermes-agent + openclaw: no direct multimodal embedding support in either, but both extract text + images separately and assume downstream agents do semantic search. This is a forward-looking item for Muse's semantic memory.
-- **Muse approach:** Add /Users/jinan/side-project/Muse/packages/vision/src/multimodal-embedding.ts: embeddingProvider.embed({text, imageBase64?, imageUrl?}) → {embedding: number[], modality: 'text'|'image'|'multimodal', model}. Use local embedding model (CLIP via Ollama, or similar). For documents: extract text → embed; extract images → embed separately, then mean-pool both embeddings. This feeds episodic-memory storage for 'remember this receipt format' / 'similar documents' retrieval (future integration with recall.ts). Grounding: embeddings are deterministic (same text always → same vector), so no fabrication floor needed.
-- **Value:** Enables semantic recall of documents, images, and extracted information ('show me receipts like this', 'find similar invoices'), landing better long-term memory UX.
-- **Deps:** vision (image handling); recall (episodic-memory); embedding provider (new, local CLIP or similar)
-- **Verify:** Test: embed receipt image + text, confirm embedding length consistent; semantic search: embed similar receipt, cosine similarity > 0.8; grounding: same text → same embedding.
+- **Based on (openclaw):** `extensions/azure-speech/speech-provider.ts` — OpenClaw buildAzureSpeechProvider() parseDirectiveToken() handles [[tts:output_format]], [[tts:lang]] specific to Azure
+- **Muse today:** none — packages/voice/src/ — no provider-specific directive support
+- **Proposal:** Extend TtsDirective parsing in packages/voice/src/tts-directives.ts to support provider-scoped overrides: [[tts:openai:model=tts-1-hd]], [[tts:azure:output_format=audio-16khz-32kbitrate-mono-pcm]]. In synthesis path, filter directives by provider and apply only matching scoped ones. Document per-provider directives in adapter files.
+- **Value:** Agents can leverage provider-specific features (Azure output formats, xAI models) inline without hardcoding provider names. Directives become provider-agnostic UI.
+- **Verify:** Test: [[tts:azure:output_format=opus]] parsed correctly; non-Azure directives ignored when Azure is primary; fallback gracefully if scoped directive unsupported.
 
 ## 11. Web · Browser Control · Search Providers · Content Extraction
 
-_18 items_
+_13 opportunities · 28 competitor files read_
 
 
-### `WEB-1` Implement web search provider ABC + registry  ★★★★★ · M · missing
+### `WEB-1` Pluggable Web Search Provider Registry with Capability Routing  ★★★★★ · M · none
 
-- **Reference:** /Users/jinan/ai/hermes-agent/agent/web_search_provider.py and web_search_registry.py — pluggable ABC with is_available(), supports_search(), supports_extract(), search(), extract() methods; registry resolves active provider by config.yaml key or legacy preference order
-- **Muse approach:** Create @muse/web-provider package with TypeScript ABC (WebSearchProvider, WebSearchRegistry) matching hermes's contract. ABC requires name, display_name, is_available(), supports_search(), supports_extract(), search(), extract() methods. Registry implements _resolve() with 3-tier fallback (explicit config, single-eligible shortcut, legacy preference). Land in packages/web-provider/src/provider.ts and registry.ts; loopback-search.ts becomes built-in 'duckduckgo-html' provider instance.
-- **Value:** Enables Muse to swap search backends (Firecrawl, Brave, Exa, Tavily, etc.) without forking core logic; unblocks multi-provider testing and operator choice parity with hermes.
-- **Verify:** Create searxng and duckduckgo-html provider implementations, wire both into registry, verify resolution rules (config wins, single-eligible shortcut, legacy fallback) with unit tests
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/agent/web_search_provider.py` — Hermes' WebSearchProvider ABC with search()/extract() dispatch and fallback cascade
+- **Muse today:** none — packages/model/src/web-search-policy.ts — only policy gating, no provider abstraction; packages/mcp/src — no multi-provider web search routing
+- **Proposal:** Add `packages/web-search/src/web-search-provider.ts` with WebSearchProvider ABC (search, extract methods + capability flags). Implement local-first providers: BraveSearchProvider, DuckDuckGoSearchProvider, SearxngProvider. Add web-search-registry.ts for config-driven selection (MUSE_WEB_SEARCH_BACKEND env). Route agent web_search tool calls through registry; fall back via preference order.
+- **Value:** Agents can swap web backends without code changes; Muse stays local-first (Brave free tier, Searxng self-hosted) while supporting optional cloud (Tavily/Exa) via packages/model adapters pattern Muse already uses
+- **Verify:** Write a test that swaps backend configs and verifies search results come from the selected provider; confirm Brave/Searxng work offline
 
-### `WEB-2` Implement browser provider ABC + registry for cloud browsers  ★★★★★ · M · missing
+### `WEB-2` Pluggable Browser Provider Registry with Cloud Auto-Detection  ★★★★ · M · partial
 
-- **Reference:** /Users/jinan/ai/hermes-agent/agent/browser_provider.py and browser_registry.py — ABC with name, is_available(), create_session(task_id), close_session(session_id), emergency_cleanup(); registry selects active provider with explicit config + legacy preference (browser-use → browserbase, firecrawl explicit-only)
-- **Muse approach:** Create @muse/browser-provider package with TypeScript ABC (BrowserProvider, BrowserRegistry) matching hermes shape. ABC: name, display_name, is_available(), create_session(), close_session(), emergency_cleanup(), get_setup_schema(). Registry: _resolve() with explicit-config gate + legacy-preference walk. Land in packages/browser-provider/src/provider.ts and registry.ts. Native puppeteer controller becomes 'local' provider (always available, returns mock session metadata).
-- **Value:** Unblocks cloud browser backends (Browserbase, Browser Use, Firecrawl cloud mode) without modifying browser-tools.ts; enables operator to pay for or self-host managed sessions on demand.
-- **Verify:** Create 'local' provider for existing puppeteer controller, implement registry resolution with 3 test cases (explicit config, single eligible, legacy walk), verify emergency_cleanup doesn't raise on missing creds
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/agent/browser_registry.py` — Hermes' BrowserProvider ABC + browser_registry.py with cloud provider fallback chain
+- **Muse today:** partial — packages/browser/src/puppeteer-controller.ts — local Chromium only via puppeteer; packages/mcp/src/chrome-devtools-mcp.ts — user's running Chrome (read-only wrapper). No cloud provider support (Browserbase, Browser Use, Firecrawl).
+- **Proposal:** Add `packages/browser/src/browser-provider.ts` ABC with create_session() → {cdpUrl, features}. Implement LocalPuppeteerBrowserProvider (current behavior). Add cloud stubs: BrowserbaseProvider, BrowserUseProvider, FirecrawlBrowserProvider in `packages/browser/src/providers/`. Build browser-registry.ts to resolve provider via MUSE_BROWSER_PROVIDER env (local default). Browser controller factory routes through registry; agents stay agnostic.
+- **Value:** Muse can opt into cloud browser execution (Browserbase for stealth, Browser Use for multi-tab) without touching agent code or violating local-first default
+- **Verify:** Unit test that swaps providers and confirms create_session returns correct CDP URL shape; integration test with local provider
 
-### `WEB-3` Implement Firecrawl web search + extract provider  ★★★★ · L · missing
+### `WEB-3` Native JavaScript Dialog Supervisor with Agent Visibility  ★★★★ · S · partial
 
-- **Reference:** /Users/jinan/ai/openclaw/extensions/firecrawl/src/firecrawl-search-provider.ts and firecrawl-fetch-provider.ts — implements WebSearchProvider with both search() and extract() capabilities; firecrawl-client.ts wraps the API with caching (SEARCH_CACHE, SCRAPE_CACHE) and SSRF guarding (allowHostnames, isPrivateIpAddress checks)
-- **Muse approach:** Create @muse/firecrawl-provider package with FirecrawlWebSearchProvider class implementing WebSearchProvider ABC. Land in packages/firecrawl-provider/src/provider.ts. Implement: name='firecrawl', is_available() checks env FIRECRAWL_API_KEY, supports_search()=true, supports_extract()=true, search() and extract() methods calling the Firecrawl API with caching (Map<key, {value, expiresAt}>) and SSRF guards (reuse web-url-guard from domain-tools). Lazy-load the API client via dynamic import to defer deps until provider is selected.
-- **Value:** Firecrawl is the highest-priority paid backend in hermes's legacy preference order; enables extraction from JS-heavy sites and crawl operations Muse can't do locally.
-- **Verify:** Unit test with mocked Firecrawl API responses; integration test against a real key if available; verify caching logic (expiresAt honored, stale entries evicted), SSRF guard rejects localhost/10.0.0.0/8 URLs
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/tools/browser_dialog_tool.py` — Hermes' browser_dialog tool + dialog supervisor responding to pending dialogs in snapshots
+- **Muse today:** partial — packages/browser/src/puppeteer-controller.ts — auto-accepts dialogs and surfaces them in snapshot.dialog field. Missing: agent-facing browser_dialog tool to respond (dismiss, fill prompt) or wait on pending dialogs
+- **Proposal:** Add `browser_dialog` tool to `packages/browser/src/browser-tools.ts` (alongside browser_click/browser_type). Tool signature: {action: 'accept'|'dismiss', prompt_text?: string, dialog_id?: string}. Extend BrowserController with method: respondToDialog(dialogId, action, text). Update PuppeteerBrowserController to track dialog IDs and expose them in snapshot. Gated by approval gate (dismiss is free, accept/prompt-fill are execute).
+- **Value:** Agents unblock pages with native JS dialogs (payment confirmations, quantity prompts) without hanging; fail-close on agent refusal (no dialog → no page submission)
+- **Verify:** Unit test snapshot includes dialog with stable ID; tool can accept/dismiss via ID. Integration test: navigate to page with dialog, verify agent can read and respond.
 
-### `WEB-4` Implement Brave Search provider (free tier, local-compatible)  ★★★★ · M · missing
+### `WEB-4` Screenshot + Vision-Based Page Understanding Integration  ★★★ · S · partial
 
-- **Reference:** /Users/jinan/ai/openclaw/extensions/brave/src/brave-web-search-provider.ts — BRAVE_SEARCH_API_KEY, free API tier available, keyword search only (no extract)
-- **Muse approach:** Create @muse/brave-provider package. BraveWebSearchProvider implementing WebSearchProvider ABC (search only, extract unimplemented). Land in packages/brave-provider/src/provider.ts. is_available() checks BRAVE_SEARCH_API_KEY; supports_search()=true, supports_extract()=false. search() method calls Brave API (lazy-loaded). Free tier makes this a strong fallback for operators who want to avoid DuckDuckGo's HTML scraping brittleness.
-- **Value:** Brave provides a stable API alternative to DDG HTML scraping; free tier removes API key friction; fills gap between DDG (fragile) and paid tiers (Firecrawl/Exa/Tavily).
-- **Verify:** Unit test with mocked Brave API; verify free tier key detection; test supports_extract()=false enforcement in registry routing
+- **Based on (openclaw):** `/Users/jinan/ai/openclaw/extensions/browser/src/browser-tool.actions.ts` — OpenClaw's executeSnapshotAction returning both ariaSnapshot (text) + screenshot buffer + vision model call
+- **Muse today:** partial — packages/browser/src/browser-tools.ts has browser_look (screenshot + vision). Missing: unified snapshot that includes screenshot base64 inline (agents now choose snapshot vs look separately; no single atomic snapshot-with-visual)
+- **Proposal:** Extend PageSnapshot to optionally carry screenshotBase64?: string. Update PuppeteerBrowserController.snapshot() to attach screenshot when page is visual-heavy (heuristic: div-heavy, low text density, or explicit flag). Modify browser_read to accept includeScreenshot?: boolean param. Store screenshot in controller cache (reuse across multiple tool calls to avoid double-capture).
+- **Value:** Agents can read a snapshot (text + elements) with optional inline screenshot in one call, reducing round-trips. Vision model focus remains in browser_look (intent-driven), but snapshot can hint 'screenshot available' field
+- **Verify:** Unit test snapshot includes screenshot base64 when page qualifies. Agent test: confirm browser_read with includeScreenshot returns both text and image
 
-### `WEB-5` Implement SearXNG local provider with aggregate scoring  ★★★★ · S · partial
+### `WEB-5` Form Field Normalization and Intelligent Type Inference  ★★★ · M · partial
 
-- **Reference:** /Users/jinan/ai/hermes-agent/plugins/web/searxng/provider.py — SEARXNG_URL config, search() only (no extract), result aggregation with score sorting; hermes preference order #5
-- **Muse approach:** Refactor existing loopback-search.ts SearXNG path as a formal WebSearchProvider class (SearxngWebSearchProvider) in packages/web-provider/src/providers/searxng.ts. Extract the querySearxng() logic into provider's search() method. is_available() checks SEARXNG_URL env or config.yaml web.searxng_url. Add result sorting by score (like hermes does) so operator's SearXNG instance scoring is respected. Keep DDG fallback outside the registry (in main search resolution logic) as Muse's zero-config default.
-- **Value:** Formalizes SearXNG as a first-class provider; enables operator to weight which SearXNG engines run via the existing searxngEngines parameter; improves result relevance when SearXNG is the primary backend.
-- **Verify:** Verify score sorting (results ordered descending by score); test SearXNG URL resolution from both env var and config key; confirm DDG fallback still works when SearXNG unreachable
+- **Based on (openclaw):** `/Users/jinan/ai/openclaw/extensions/browser/src/browser-tool.actions.ts` — OpenClaw's normalizeBrowserFormField with type detection (text, select, checkbox, file, password) and file-chooser arming
+- **Muse today:** partial — packages/browser/src/matcher.ts — element matching by role/name. Missing: rich form field types (detect select vs text vs file); no file-chooser arming (setInputFiles prep)
+- **Proposal:** Enhance `packages/browser/src/matcher.ts` normalizeBrowserElement() to detect and annotate field type (text, password, email, number, select, checkbox, radio, file, textarea). Extend SnapshotElement with fieldType?: string. Update type() in PuppeteerBrowserController to arm file-chooser BEFORE setInputFiles when type=file. Modify browser_type to auto-select option when target='Country' text='Korea' on a <select>.
+- **Value:** Agents don't send text to a checkbox or try typing into file inputs; form fills auto-detect and coerce types (dropdown selection doesn't need browser_click, just browser_type)
+- **Verify:** Unit test: snapshot includes fieldType for various inputs. Agent test: browser_type on a select auto-picks option; file input arms chooser correctly
 
-### `WEB-6` Add web extract capability to built-in muse.web server  ★★★★ · M · partial
+### `WEB-6` Web Content Extraction with Mozilla Readability Fallback  ★★★ · M · none
 
-- **Reference:** /Users/jinan/ai/hermes-agent/plugins/web/firecrawl/provider.py extract() method; openclaw's web-content-core/src/provider-runtime-shared.ts shows caching and format negotiation (markdown vs text)
-- **Muse approach:** Extend loopback-web-read.ts (muse.web MCP server) with a second tool: web_extract (alongside existing read). Land in packages/domain-tools/src/loopback-web-read.ts. Add extract(urls: []) tool that fetches multiple URLs in parallel, returns [{url, title, content, metadata}] shape. Reuse existing extractReadableText() for text mode. Add optional 'format' param (markdown | text, default text for local-model compatibility). Cache extracted pages (in-memory Map<url, {content, expiresAt}>) with 1-hour TTL to avoid re-fetching on repeated reads.
-- **Value:** Unifies search+extract workflow: muse.search returns URLs, muse.web.extract fetches them in one call; reduces latency vs sequential read calls; improves local model's ability to answer multi-source questions.
-- **Verify:** Test extract([urls]) with mocked fetch; verify parallel fetching (not sequential); check cache hit/miss logic; confirm format param routes to markdown or text extraction
+- **Based on (openclaw):** `/Users/jinan/ai/openclaw/extensions/web-readability/web-content-extractor.ts` — OpenClaw's WebContentExtractionPlugin using @mozilla/readability for lightweight article extraction
+- **Muse today:** none — packages/browser/src — no readability integration; browser_read returns snapshot (text capped at BROWSER_MAX_TEXT). No article/main-content extraction.
+- **Proposal:** Add `packages/web-extract/src/web-readability.ts` exporting extractArticle(html: string, options?: {format: 'text'|'markdown'}) using @mozilla/readability library (lazy-load). Add tool `web_extract_article` to packages/tools with inputs {url}. Uses browser to fetch + readability to parse. Returns {title, byline, content, textLength}. Use when user asks to 'extract the article' vs read the page. Gated as 'read' (no state change).
+- **Value:** Users get clean article text from news/blog pages without noise (navigation, ads, sidebars). Local-only (readability runs client-side); no cloud dependency
+- **Verify:** Unit test readability extraction on sample HTML. Tool test: navigate to blog post, extract_article returns clean body text
 
-### `WEB-7` Implement provider capability matrix for tool routing  ★★★★ · S · missing
+### `WEB-7` Snapshot Accessibility Tree Generation with Deduplication and Stable Refs  ★★★ · M · partial
 
-- **Reference:** /Users/jinan/ai/hermes-agent/agent/web_search_registry.py _resolve() logic applies capability filter: 'search' routes to providers with supports_search()=true; 'extract' routes to supports_extract()=true only
-- **Muse approach:** Extend packages/web-provider/src/registry.ts with capability-aware resolution. Implement _resolve(configured, capability) that filters providers by the capability ('search' or 'extract') before applying fallback logic. When a model calls web_search, only providers with supports_search()=true are eligible. When it calls web_extract, only supports_extract()=true. Land routing logic in registry.ts resolve() function. This prevents routing a search-only provider (Brave, SearXNG) to an extract request.
-- **Value:** Enables Muse to match search/extract requests to the right backend (e.g., Firecrawl for both, Brave for search-only); future-proofs when new providers with asymmetric capabilities are added; improves operator UX (config errors surfaced clearly, not silently downgraded).
-- **Verify:** Test routing: web_search request with only extract-capable provider available → error or fallback to DuckDuckGo; web_extract request with only search-capable provider → error; test mixed providers (one search-only, one dual) → each routed correctly
+- **Based on (openclaw):** `/Users/jinan/ai/openclaw/extensions/browser/src/browser/chrome-mcp.snapshot.ts` — OpenClaw's flattenChromeMcpSnapshotToAriaNodes with dedup tracking and bounded ref assignment
+- **Muse today:** partial — packages/browser/src/matcher.ts generates refs (0, 1, 2...). Missing: deduplication tracking (same element → same ref across snapshots); role-based filtering (INTERACTIVE_ROLES, CONTENT_ROLES); bounded node count with overflow reporting
+- **Proposal:** Enhance PuppeteerBrowserController snapshot collection to track element fingerprints (domPath + text hash) and reuse refs for stable elements across calls. Filter by role: include INTERACTIVE_ROLES (button, link, textbox, select...) + CONTENT_ROLES (heading, paragraph...), exclude structural noise. Cap at SNAPSHOT_ELEMENT_CEILING with overflow report (total / shown / nextRef). Update snapshot return to include deduplication stability guarantee in docs.
+- **Value:** Agents get stable element references across multiple reads (same button always has same @e5 ref), reducing confusion when page re-renders. Dedup + role filtering keeps snapshots focused, fighting snapshot bloat on large pages
+- **Verify:** Unit test: same page snapshot twice, confirm matching elements have same ref. Large-page test: snapshot with 500+ elements returns capped list with dedup guarantee
 
-### `WEB-8` Implement Exa web search provider (paid, dual-mode search+extract)  ★★★ · M · missing
+### `WEB-8` Raw Chrome DevTools Protocol (CDP) Passthrough Tool  ★★ · M · none
 
-- **Reference:** /Users/jinan/ai/hermes-agent/plugins/web/exa/provider.py — EXA_API_KEY auth, search() and extract() both supported; legacy preference order position #4 (after firecrawl, parallel, tavily)
-- **Muse approach:** Create @muse/exa-provider package. ExaWebSearchProvider class implementing both search() and extract() by delegating to the Exa SDK (lazy-loaded). Land in packages/exa-provider/src/provider.ts. Support both 'search' and 'extract' capabilities; is_available() checks EXA_API_KEY env var. Result normalization to match hermes shape: {success, data/error}.
-- **Value:** Exa is position #4 in hermes fallback order; provides neural/semantic search alternative to keyword-only backends; enables local model to benefit from ML-scored relevance without running embed model locally.
-- **Verify:** Unit tests with mocked Exa API; verify both search() and extract() response shapes match expected {success, data}; test fallback when EXA_API_KEY unset
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/tools/browser_cdp_tool.py` — Hermes' browser_cdp tool sending arbitrary CDP commands via WebSocket bridge
+- **Muse today:** none — packages/browser/src — no CDP passthrough; puppeteer wraps CDP but no agent-facing raw protocol tool
+- **Proposal:** Add `browser_cdp` tool to `packages/browser/src/browser-tools.ts`. Tool signature: {method: string, params: JsonObject}. Extend PuppeteerBrowserController with cdpSendCommand(method, params) that routes JSON-RPC over the browser's CDP socket. Gate as 'execute' risk (unbound power). Document use cases: network interception, advanced cookies, iframe eval.
+- **Value:** Agents get escape hatch for browser operations outside the curated tool surface (e.g., intercepting network requests, manipulating cookies, evaluating code in cross-origin iframes) without adding 20+ niche tools
+- **Verify:** Unit test CDP roundtrip with mock protocol responses. Integration test: execute a known CDP method (e.g., Network.enable) and verify response shape
 
-### `WEB-9` Implement Tavily web search provider (paid research API)  ★★★ · M · missing
+### `WEB-9` Session-Aware Browser Tab Tracking and Auto-Cleanup  ★★ · M · none
 
-- **Reference:** /Users/jinan/ai/hermes-agent/plugins/web/tavily/provider.py — TAVILY_API_KEY auth, search() and extract() both available; legacy preference #3
-- **Muse approach:** Create @muse/tavily-provider package. TavilyWebSearchProvider implementing WebSearchProvider ABC. Land in packages/tavily-provider/src/provider.ts. is_available() checks TAVILY_API_KEY; supports_search()=true, supports_extract()=true. Implement search() and extract() methods calling the Tavily API (lazy-loaded httpx/fetch). Normalize responses to {success, data/error} shape.
-- **Value:** Tavily is position #3 in hermes fallback order; provides source+metadata-rich extraction; blocks Muse's ability to compete on research-heavy tasks without setup.
-- **Verify:** Mocked Tavily API responses; verify search() returns {success, data: {web: [...]}}; extract() returns {success, data: [{url, title, content, ...}]}
+- **Based on (openclaw):** `/Users/jinan/ai/openclaw/extensions/browser/src/browser-runtime.ts` — OpenClaw's closeTrackedBrowserTabsForSessions + trackSessionBrowserTab for per-task lifecycle
+- **Muse today:** none — packages/browser/src/puppeteer-controller.ts — no multi-tab tracking or session-aware cleanup. Puppeteer page stays open until close() is called.
+- **Proposal:** Add `packages/browser/src/session-manager.ts` tracking opened tabs by sessionId. Extend BrowserController with methods: trackTab(tabId, sessionId) and closeSessionTabs(sessionId). Modify PuppeteerBrowserController to record tab IDs on open(); hook into agent runtime lifecycle to call closeSessionTabs(sessionId) on run completion or error. Prevents tab orphaning.
+- **Value:** Agents can open multiple tabs per run without manual cleanup; framework auto-closes them when run ends, preventing resource leaks and tab-window clutter
+- **Verify:** Unit test track/close lifecycle. Integration test: run opens 3 tabs, confirms all closed on run completion
 
-### `WEB-10` Add extract-mode caching with smart invalidation  ★★★ · M · partial
+### `WEB-10` Accessibility Tree Snapshot with ARIA/Role-Based Element References  ★★ · M · partial
 
-- **Reference:** /Users/jinan/ai/openclaw/extensions/firecrawl/src/firecrawl-client.ts lines 34-41 (SEARCH_CACHE, SCRAPE_CACHE with expiresAt logic)
-- **Muse approach:** Extend packages/domain-tools/src/web-readable.ts or a new packages/domain-tools/src/web-cache.ts module. Implement WebCacheStore interface: get(url, mode): {content?, expiresAt?}; set(url, mode, content, ttlMs); invalidate(patterns). Land cache in domain-tools. Integrate into loopback-web-read.ts: before fetching, check cache; on success, store with default 24h TTL. Add web_cache_invalidate tool to the server (no-op if cache disabled). Respect Cache-Control headers (max-age, no-cache) when present.
-- **Value:** Reduces redundant fetches and API calls when the model re-reads the same URL in a session; respects HTTP semantics (Cache-Control); improves response latency on knowledge-heavy tasks.
-- **Verify:** Test cache hit (second read returns cached content within TTL); test expiry (read after TTL returns fresh content); test Cache-Control header override (no-cache forces fresh fetch)
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/tools/browser_tool.py` — Hermes' ariaSnapshot (accessibility tree text) with ref IDs (@e1, @e2) for agent grounding
+- **Muse today:** partial — packages/browser/src/browser-tools.ts already returns elements with refs (numbered). Missing: ARIA-native naming (role + accessible name per ARIA spec), explicit tree structure hints for nested content
+- **Proposal:** Enhance packages/browser/src/matcher.ts to build full ARIA tree from accessibility properties (getComputedAccessibleName, role from role attribute / implicit). Return structured tree in snapshot showing nesting (main > nav > link, etc.). Document ref assignment: @e1 for first interactive, @e2 for second, with stable ordering (DOM order). Add snapshot.ariaTree?: TreeNode for agents wanting full hierarchy.
+- **Value:** Agents understand page semantics deeply (main landmark vs aside, form grouped fields) without vision. ARIA-native naming prevents mismatching similarly-labeled elements (two 'Submit' buttons in different contexts get distinguished by role + context)
+- **Verify:** Unit test ARIA snapshot includes role, accessible name, nesting. Agent test: two 'Submit' buttons are disambiguated by ARIA context
 
-### `WEB-11` Implement Browserbase cloud browser provider  ★★★ · L · missing
+### `WEB-11` Browser Act Execution with Per-Action Timeout and Stale-Target Recovery  ★★ · M · partial
 
-- **Reference:** /Users/jinan/ai/hermes-agent/plugins/browser/browserbase/provider.py — BrowserProvider subclass with is_available() checking BROWSERBASE_API_KEY, create_session() returns {session_name, bb_session_id, cdp_url, features}; legacy preference order #2
-- **Muse approach:** Create packages/browserbase-provider/src/provider.ts with BrowserbaseProvider implementing BrowserProvider ABC. name='browserbase', is_available() checks BROWSERBASE_API_KEY env, create_session(task_id) calls Browserbase API to create a session and returns the CDP URL. Land session lifecycle (create/close/emergency_cleanup) in provider.ts. Lazy-load the HTTP client. The native browser-tools.ts connects to the returned CDP URL instead of the local puppeteer instance. Session pooling/cleanup is provider-managed (emergency_cleanup called on SIGTERM).
-- **Value:** Enables operators to delegate browser control to a managed service (Browserbase); unblocks headless extraction from highly dynamic sites; reduces local resource usage for long-running agents.
-- **Verify:** Mock Browserbase API create_session response; verify session_name and cdp_url are returned; test close_session() and emergency_cleanup() error handling (both must never raise)
+- **Based on (openclaw):** `/Users/jinan/ai/openclaw/extensions/browser/src/browser-tool.actions.ts` — OpenClaw's executeActAction with BROWSER_ACT_REQUEST_TIMEOUT_SLACK_MS negotiation and Chrome target churn retry
+- **Muse today:** partial — packages/browser/src/puppeteer-controller.ts sets protocolTimeoutMs globally. Missing: per-action timeout negotiation; stale-target recovery (Chrome kills targets → retry without targetId)
+- **Proposal:** Add timeout params to BrowserController action methods: click(ref, timeoutMs?), type(ref, text, submit, timeoutMs?). In PuppeteerBrowserController, wrap each Puppeteer action in try-catch for 'Chrome target was closed' errors. On stale-target error: re-query the element (re-find by role/text) and retry once. Default timeout = 10s; agent can override per-action.
+- **Value:** Dynamic pages that churn targets mid-action (React re-renders, iframes load) don't fail; agents can tune timeouts for slow networks or heavy pages without global config changes
+- **Verify:** Unit test: mock stale-target error, confirm retry without targetId succeeds. Agent test: page with heavy re-rendering, confirm action succeeds after retry
 
-### `WEB-12` Implement Browser Use cloud browser provider (with gateway support)  ★★★ · L · missing
+### `WEB-12` Provider Configuration Contract with Secret Resolution Templates  ★★ · S · partial
 
-- **Reference:** /Users/jinan/ai/hermes-agent/plugins/browser/browser_use/provider.py — dual auth (direct API key OR managed Nous gateway); idempotency tracking for retried creates; legacy preference order #1
-- **Muse approach:** Create packages/browser-use-provider/src/provider.ts with BrowserUseProvider implementing BrowserProvider ABC. name='browser-use'. is_available() checks BROWSER_USE_API_KEY OR managed-gateway token. create_session() supports both direct API and gateway mode (config: tool_gateway.browser='gateway' prefers managed). Implement idempotency tracking (Map<task_id, idempotency_key>) for 409 retry detection. Land in packages/browser-use-provider/src. Emergency cleanup must handle both auth modes gracefully.
-- **Value:** Browser Use is hermes's #1 fallback browser backend; managed-gateway mode enables billing through Nous subscription (reduces operator friction); direct API key path supports self-billed users.
-- **Verify:** Test both auth paths (direct key and managed gateway); verify idempotency key reuse on 409 'already in progress'; test emergency_cleanup() with missing credentials
+- **Based on (openclaw):** `/Users/jinan/ai/openclaw/packages/web-content-core/src/provider-runtime-shared.ts` — OpenClaw's provider config layer resolving ${VAR}/env-var/secret-ref patterns for all backends
+- **Muse today:** partial — packages/model/src — has provider base classes (Anthropic, OpenAI, Gemini adapters). Missing: unified secret-resolution for non-model providers (web search, browser, content extraction); no config-scoped overrides (tools.web.search vs tools.browser)
+- **Proposal:** Add `packages/config/src/provider-config.ts` with resolveConfigValue(raw: string|{$ref: string}, context: {env, secrets, exec?}) → string. Support ${VAR}, MUSE_VAR env-refs, secretref-env: legacy, and exec-based secrets (e.g. 1password). Add per-tool scoped config: tools.web.search, tools.browser, tools.extract with per-provider overrides. Use in web-search-registry, browser-registry to resolve API keys without hardcoding.
+- **Value:** Operators can configure all providers (web search, browser, extraction) via env vars / secret stores without duplicating resolution logic per provider
+- **Verify:** Unit test: config resolver handles ${VAR}, env-refs, legacy secretref-env. Integration test: web search and browser both use resolved API keys from same config layer
 
-### `WEB-13` Implement browser session pooling and lifecycle management  ★★★ · M · missing
+### `WEB-13` Multi-Backend Browser Execution via Agent-Browser CLI Pattern  ★ · L · partial
 
-- **Reference:** /Users/jinan/ai/hermes-agent/agent/browser_provider.py create_session(task_id), close_session(session_id), emergency_cleanup(); pools sessions across tasks, closes stale/abandoned sessions
-- **Muse approach:** Create packages/browser-session/src/session-pool.ts with BrowserSessionPool managing cloud browser provider sessions. Implement: create(task_id) → session_id; get(session_id) → provider + CDP URL; close(session_id); cleanup_stale(max_age_ms). Land in packages/browser-session/src. Hook into agent-core's task lifecycle: create session on task start, close on task end or timeout. SIGTERM handler calls emergency_cleanup(). For local provider (puppeteer), pooling is a no-op (one instance per agent process).
-- **Value:** Prevents session leaks (abandoned cloud sessions drain credits); enables efficient resource usage (reuse sessions across related tasks); handles graceful shutdown (SIGTERM cleanup).
-- **Verify:** Test session creation and close; verify stale sessions (> max_age) are evicted; test SIGTERM handler calls provider.emergency_cleanup() on all open sessions; mock cloud provider with session limits
-
-### `WEB-14` Implement vision-grounded image content extraction in web reads  ★★ · S · partial
-
-- **Reference:** /Users/jinan/ai/openclaw/extensions/browser/src/browser/vision.js describeBrowserScreenshot(); loopback-web-read.ts already has describeImage callback hook but it's unused
-- **Muse approach:** Extend packages/domain-tools/src/loopback-web-read.ts to bind the describeImage callback (already present in WebReadMcpServerOptions) to web_read tool's IMG handling. When an <img> is encountered in a page and describeImage is bound, fetch the image and call describeImage({imageBase64, mimeType}) instead of just stripping the tag. Embed the vision description in the readable text output (e.g., '[Image: {description}]'). Land in packages/domain-tools/src/loopback-web-read.ts.
-- **Value:** Local model can reason about charts, diagrams, infographics in web pages without leaving the local system; unblocks reading visual-heavy content (research papers with figures, dashboards, etc.).
-- **Verify:** Test with a page containing <img> tags; mock describeImage callback; verify image is fetched, base64-encoded, and description is embedded in output text
-
-### `WEB-15` Implement content deduplication and fragment-based extraction  ★★ · M · missing
-
-- **Reference:** /Users/jinan/ai/openclaw/extensions/web-readability/src/readability.ts (uses Mozilla Readability library for smart content extraction, boilerplate removal)
-- **Muse approach:** Create packages/web-content/src/fragment-extractor.ts. Implement URL#fragment-aware extraction: when a URL includes #section-name or #line-n, extract only that DOM subtree (not the whole page). Add deduplication logic: hash extracted content, skip re-extraction if hash matches recent cache entry. Land in packages/web-content/src. Integrate into loopback-web-read.ts extract() method: parse URL fragment, extract subtree if present, deduplicate on hash. This unblocks large-document workflows (TOC → jump to section → extract).
-- **Value:** Enables fine-grained reading (jump to a specific section of a long article); reduces token load by extracting only relevant portions; improves local model's ability to navigate document-heavy tasks.
-- **Verify:** Test URL#fragment extraction (e.g., example.com/article#section-2 extracts only that section); test hash-based deduplication (identical content hashes avoid re-fetch); compare extracted text length with/without fragment
-
-### `WEB-16` Build pluggable search provider for external MCP servers  ★★ · M · missing
-
-- **Reference:** hermes pattern: plugins/web/<name>/provider.py registers via PluginContext.register_web_search_provider(); openclaw: extensions/<name>/ with definePluginEntry and api.registerWebSearchProvider()
-- **Muse approach:** Implement MCP-server-friendly provider registration: create packages/web-provider/src/external-provider-adapter.ts. Adapter wraps an external MCP tool (web_search, web_extract) as a WebSearchProvider instance without requiring code changes. Configuration-driven: config.yaml can list external MCPs that provide web_search or web_extract tools; they are auto-wrapped and added to the registry. Land in packages/web-provider/src/external-provider-adapter.ts. This lets operators plug in e.g. a custom Perplexity MCP server or a proprietary enterprise search API without forking Muse.
-- **Value:** Extends search capability without code changes; allows operators to integrate proprietary/enterprise search backends; future-proofs Muse for new search APIs without release cycles.
-- **Verify:** Create a mock external MCP tool provider (fake web_search MCP server); verify it can be registered and invoked via the adapter; test capability detection (search vs extract) from the MCP tool definition
-
-### `WEB-17` Implement DuckDuckGo HTML provider as formal searchable backend  ★★ · S · partial
-
-- **Reference:** /Users/jinan/ai/hermes-agent/plugins/web/ddgs/provider.py — search-only provider, legacy preference order #7 (fallback of fallbacks)
-- **Muse approach:** Extract the existing DuckDuckGo HTML parsing logic (parseDuckDuckGoHtml from loopback-search.ts) into a formal DuckDuckGoWebSearchProvider class in packages/web-provider/src/providers/duckduckgo.ts. Implement WebSearchProvider ABC: name='duckduckgo-html', is_available()=true (no credentials), supports_search()=true, supports_extract()=false, search() method. Keep this as the final fallback in the registry (position #7 after all paid/self-hosted options). Land in packages/web-provider/src/providers/duckduckgo.ts.
-- **Value:** Formalizes DDG as a guaranteed-available zero-config fallback; improves code clarity (explicit provider vs. inline fallback); enables operators to explicitly prefer/disable DDG via config.
-- **Verify:** Verify parseDuckDuckGoHtml() still works on DDG HTML samples; test is_available()=true unconditionally; ensure DDG is position #7 in registry fallback order (after all paid providers)
-
-### `WEB-18` Add health-check / 'doctor' command for search/browser providers  ★★ · M · partial
-
-- **Reference:** /Users/jinan/ai/openclaw/extensions/browser/browser-doctor.ts detectLegacyClawdBrowserProfileResidue(), noteChromeMcpBrowserReadiness(); hermes: hermes doctor checks provider availability and credentials
-- **Muse approach:** Create packages/web-provider/src/doctor.ts and packages/browser-provider/src/doctor.ts with health-check functions. Land in each provider package: export doctorSearchProviders() and doctorBrowserProviders() that test each provider's is_available() and perform a lightweight smoke test (e.g., a dummy API call with test credentials). Integrate into CLI: 'muse doctor' already exists; extend it to call these functions and report provider status. Output: list of available providers, active selection (what would be used), any configuration errors.
-- **Value:** Operators can quickly diagnose search/browser provider setup issues; reduces support burden; improves onboarding clarity for new providers.
-- **Verify:** Run 'muse doctor' with various env vars set/unset; verify available providers are listed; test error messages for misconfigured backends (wrong API key format, unreachable SearXNG URL, etc.)
+- **Based on (hermes):** `/Users/jinan/ai/hermes-agent/tools/browser_tool.py` — Hermes' agent-browser CLI subprocess model supporting local Chromium, Browser Use cloud, Browserbase cloud with session isolation
+- **Muse today:** partial — packages/browser/src uses puppeteer-core directly in-process (local Chromium). No subprocess CLI abstraction; no cloud runtime swap support
+- **Proposal:** Build `packages/browser-cli/src/agent-browser-cli.ts` subprocess wrapper. Muse CLI would invoke 'agent-browser open --url X --session-id Y' instead of linking puppeteer. CLI server manages session lifecycle per task_id. Return JSON snapshot over stdout. Supports local (puppeteer) and cloud via env (BROWSER_USE_API_KEY, BROWSERBASE_API_KEY). Keeps agent code unchanged; wiring is at CLI boundary.
+- **Value:** Decouples agent from browser implementation; cloud execution becomes a deployment choice (CI/cloud agent → cloud browser; dev → local Chromium) without code changes
+- **Verify:** CLI integration test: invoke agent-browser as subprocess, verify session isolation and JSON snapshot output. Confirm local and cloud (stub) paths both work
 
 ## 12. CLI/TUI/UX · Onboarding · Diagnostics · Usage Surfaces
 
-_19 items_
+_13 opportunities · 22 competitor files read_
 
 
-### `UX-1` Context-aware progressive onboarding hints (first-time tips)  ★★★★★ · S · missing
+### `UX-1` Structured Health Checks with Repair Contracts and CI-Ready Linting  ★★★★ · M · partial
 
-- **Reference:** hermes-agent/agent/onboarding.py: busy_input_hint_*(), tool_progress_hint_*(), is_seen(config, flag) — shown once per install at behavior fork points, tracked in config.yaml
-- **Muse approach:** Create apps/cli/src/onboarding-hints.ts with pure hint-content functions (no agent deps, lightweight) + flag persistence in .muse/config.json. Hook into ask command to show hints at behavior forks (first long tool execution, first message while busy, first index build). Track seen flags per-install like Hermes does.
-- **Value:** Users see contextual help exactly when they hit a feature (long-running tools, concurrent msgs, tool-progress cycling) without blocking first-run; reduces support friction.
-- **Verify:** Unit tests for computeHint() pure logic; integration test that muse ask shows hint once then never again; e2e that /verbose cycles after tool-progress hint.
+- **Based on (openclaw):** `docs/cli/doctor.md` — OpenClaw doctor.md: detect(ctx, scope?) -> HealthFinding[] and repair?(ctx, findings) -> HealthRepairResult contracts. Findings carry checkId for --skip/--only filters, severity, fixHint. Exit codes 0/1/2.
+- **Muse today:** partial — apps/cli/src/commands-doctor*.ts — has local checks (modelEnvCheck, localOnlyCheck, etc.) but no repair() contract, no --lint (CI-friendly JSON), no per-finding checkId, no --skip/--only filtering, no structured HealthFinding type with fixHint
+- **Proposal:** Extend packages/observability (or new packages/doctor-core) with HealthFinding {checkId, severity, message, path?, line?, column?, ocPath?, fixHint?} and HealthRepairResult {applied, skipped, failed}. Separate concerns: detect owns diagnosis, repair owns mutation. Add --lint flag to CLI for CI gates returning JSON. Add --skip checkId1,checkId2 to skip known issues.
+- **Value:** Mature health systems separate diagnosis from mutation and enable CI gating. Muse's doctor currently only reports; repair + structured findings unblock automated remediation and CI/CD integration.
+- **Verify:** muse doctor --lint outputs JSON with checkId field. muse doctor --skip notes-index-stale skips that check. muse doctor --repair applies fixes with --confirm gate.
 
-### `UX-2` Tool call preview + verb+detail formatting (skin-aware display)  ★★★★ · M · partial
+### `UX-2` Streaming Error Diagnostics with Transient Exception Chain Analysis  ★★★ · M · none
 
-- **Reference:** hermes-agent/agent/display.py: build_tool_preview(), get_tool_emoji(), skin-aware _diff_ansi() with hex color resolution from active skin
-- **Muse approach:** Extend apps/cli/src/chat-ink.ts tool rendering to include build_tool_preview() for one-line summaries (tool name + primary arg truncated, e.g. 'read_file /path/to/...'). Store tool verb+detail in a shared config (json, not hardcoded), resolve skin colors at startup like Hermes does.
-- **Value:** Tool calls render compactly and readably in CLI streaming output; user sees what tool is running before it completes, reducing confusion on long-running tasks.
-- **Verify:** Test build_tool_preview() truncation at max_len boundaries; verify verb+detail render in chat-ink; e2e long tool call shows truncated preview on first line.
+- **Based on (hermes):** `agent/stream_diag.py` — Hermes stream_diag.py per-attempt metadata (provider, CF ray, bytes before drop) plus exception chains in fixed format make retries debuggable at scale
+- **Muse today:** none — packages/model/src, packages/observability/src — no exception chain flattening, no per-attempt breadcrumbs (provider name, error class, attempt, base_url)
+- **Proposal:** Add stream-diagnostics module to packages/observability/src: stream_diag_init() per-attempt dict {started_at, first_chunk_at, chunks, bytes, headers, http_status}, capture_response() snapshots provider/model/CF-Ray, flatten_exception_chain() walks __cause__/__context__ dedup to render nested errors as 'Outer <- Inner', log_stream_retry() records attempt counter, mid_tool_call flag, elapsed time. Export to model adapters for inline use.
+- **Value:** Transient LLM stream failures (mid-token drops, provider-side 5xx) are common frustrations. Capturing per-attempt metadata + exception chains in fixed format makes it actionable — operators answer 'is one CF edge / downstream provider responsible?' without swimming in logs.
+- **Verify:** Unit test: stream dies at byte 512, captured dict shows {bytes: 512, provider: 'openrouter', http_status: 503, attempt: 2}. flatten_exception_chain() reduces 5-deep cause chain to 2 line output.
 
-### `UX-3` Stream diagnostics + retry logging (per-attempt counters, upstream headers)  ★★★★ · M · missing
+### `UX-3` Cron Job Form with Payload Locking and Stagger Configuration  ★★★ · M · partial
 
-- **Reference:** hermes-agent/agent/stream_diag.py: stream_diag_init(), stream_diag_capture_response() capturing cf-ray, x-openrouter-provider, bytes/chunks/elapsed/ttfb, flatten_exception_chain() for multi-cause errors
-- **Muse approach:** Create packages/observability/src/stream-diagnostics.ts with stream_diag_init() struct (started_at, chunks, bytes, headers dict) + capture_response() on stream open. Hook into model adapters' streaming to populate this; log structured WARNING with diag to observability sink when retry occurs. Include Ollama upstream headers (if available).
-- **Value:** When Ollama or local model streaming fails mid-response, logs capture which attempt, how many bytes/chunks arrived, upstream headers for post-hoc analysis — enables users to diagnose edge-server or provider issues.
-- **Verify:** Inject fault in model adapter streaming, verify diag struct is populated + logged; check log contains chunk count, elapsed time, headers; verify exception chain flattening on nested errors.
+- **Based on (openclaw):** `ui/src/ui/app-defaults.ts` — OpenClaw DEFAULT_CRON_FORM: 50+ fields including staggerAmount/staggerUnit (seconds), sessionTarget (isolated/shared), wakeMode (now/backoff), deliveryMode (announce/quiet), failureAlertMode/failureAlertAfter/failureAlertCooldownSeconds, payloadLocked (gates edit)
+- **Muse today:** partial — packages/scheduler/src/index.ts — ScheduledJob has cronExpression, timezone, retryOnFailure, maxRetryCount, executionTimeoutMs, notificationChannelId, webhookUrl, but NO staggerAmount/staggerUnit, NO sessionTarget, NO wakeMode, NO deliveryMode, NO failureAlertMode/failureAlertAfter/failureAlertCooldownSeconds, NO payloadLocked
+- **Proposal:** Extend ScheduledJob in packages/scheduler/src/index.ts to add: staggerAmount, staggerUnit (enum 'seconds'|'minutes'), sessionTarget ('isolated'|'shared'), wakeMode ('now'|'backoff'), deliveryMode ('announce'|'quiet'), failureAlertMode ('none'|'after-n-failures'), failureAlertAfter (count), failureAlertCooldownSeconds, payloadLocked (bool gate for payload field edit). Update normalizeScheduledJob and validation in scheduler-validation.ts.
+- **Value:** Stagger + wakeMode prevent thundering herd from recurring jobs (e.g., 100 sensors polling at :00s all at once). deliveryMode lets operators mute noisy success notifications. payloadLocked safety switch prevents accidental re-execution of the wrong payload.
+- **Verify:** Save job with staggerAmount: 30, staggerUnit: 'seconds', verify next executions stagger by 30s. payloadLocked: true prevents UI edit of agentPrompt. failureAlertMode: 'after-n-failures', failureAlertAfter: 3 triggers only after 3 consecutive failures.
 
-### `UX-4` Doctor command with --lint (read-only structured findings, JSON output)  ★★★★ · M · partial
+### `UX-4` Theme and Terminal Detection with ANSI 256-Color Downsampling  ★★★ · M · partial
 
-- **Reference:** openclaw/docs/cli/doctor.md: three postures (inspect, repair --fix, lint --lint), --json output mode, --severity-min level filtering, --skip/--only check selection
-- **Muse approach:** Extend apps/cli/src/commands-doctor.ts: add --lint mode (read-only) that emits structured findings {id, severity, message, remediation?} instead of interactive repairs. Add --json flag to output JSON array of findings. Implement --severity-min {info|warning|error} filter. Keep --fix interactive (status quo). Lint mode safe for CI/preflight gates.
-- **Value:** CI pipelines, pre-upgrade checks, and status dashboards can query Muse health as machine-readable structured findings without triggering interactive prompts or repairs.
-- **Verify:** Run muse doctor --lint --json, verify JSON array of {id, severity, message}; test --severity-min warning filters; test --skip/--only selection; verify CI doesn't prompt.
+- **Based on (hermes):** `ui-tui/src/theme.ts` — Hermes theme.ts: detectLightMode() checks HERMES_TUI_LIGHT -> HERMES_TUI_THEME -> HERMES_TUI_BACKGROUND (hex luminance) -> COLORFGBG (XFCE/rxvt/Terminal.app) -> TERM_PROGRAM allow-list. normalizeAnsiForeground() maps hex to ANSI8-bit via Rec.709 luma + hue/saturation/lightness matching. Light/dark palettes explicit.
+- **Muse today:** partial — apps/cli/src/tty-color.ts, muse-banner.ts — has colorize() but no detectLightMode signal chain, no COLORFGBG or Terminal.app detection, no ANSI8-bit downsampling for light terminals, no light/dark palette separation
+- **Proposal:** Extend apps/cli/src/tty-color.ts with detectLightMode() signal chain: env.MUSE_TUI_LIGHT -> env.MUSE_TUI_THEME -> env.MUSE_TUI_BACKGROUND (hex luminance check) -> COLORFGBG (XFCE/rxvt) -> TERM_PROGRAM allow-list (Apple_Terminal defaults light). Add normalizeAnsiForeground(hex) using Rec.709 luma + HSL matching to ANSI8-bit palette. Maintain separate DARK_THEME and LIGHT_THEME palettes (e.g., DARK uses #FFD700, LIGHT uses #8B6914).
+- **Value:** Terminal theming is invisible when it works, jarring when wrong. Multi-signal detection (env > background hint > terminal type) + ANSI color normalization for light 8-bit terminals is sophisticated; users can override via env vars without breaking light-mode UIs.
+- **Verify:** COLORFGBG=7:0 (light bg) triggers light palette. Apple_Terminal defaults light. Hex #FFD700 downsamples to correct ANSI8-bit yellow on light 256-color terminal.
 
-### `UX-5` Busy-input mode hints + /verbose cycling for tool progress  ★★★★ · S · missing
+### `UX-5` Tool Execution Display with Diff Rendering and Skin-Aware Emoji  ★★★ · M · partial
 
-- **Reference:** hermes-agent/agent/onboarding.py: busy_input_hint_cli(mode), tool_progress_hint_cli() — once-shown, context-aware tips on first long tool and first message-while-busy
-- **Muse approach:** Add to apps/cli/src/onboarding-hints.ts: busyInputHint(mode: 'interrupt'|'queue'|'steer') and toolProgressHint(). Hook into ask command: after first long-running tool (>3s) that streams, show tool_progress hint once + offer /verbose command. After first message received while busy, show busy_input hint once. Track in ~/.muse/config.json under hints.seen.
-- **Value:** Users discover /verbose cycling (all → new → off) and /busy mode options organically at the moment they're needed, not via docs; reduces friction on first-time long tasks.
-- **Verify:** Mock long-running tool, verify hint shows once; send msg while tool running, verify busy hint shows once; toggle /verbose, verify cycling works.
+- **Based on (hermes):** `agent/display.py` — Hermes display.py: LocalEditSnapshot (before dict), _diff_ansi() resolves skin colors for diff output, _hex_fg() converts hex to ANSI8-bit, get_tool_emoji() resolves from skin.tool_emojis > tool registry > default, diff colors from ui_error/ui_ok skin colors with tinted backgrounds
+- **Muse today:** partial — apps/cli/src/chat-ink-render.test.ts, citation-stream.ts — renders tool output but no LocalEditSnapshot, no skin-aware diff colors, no get_tool_emoji() with fallback chain, no tool output length limiting config
+- **Proposal:** Add tool-display module to packages/tools/src: LocalEditSnapshot {paths: {[path]: before-text}}, set_tool_preview_max_len()/get_tool_preview_max_len() for config-driven limits. _diff_ansi(before, after, skin) resolves ANSI from theme + returns colored diff lines. get_tool_emoji(toolName, skin, registry) resolves from: (1) skin.tool_emojis overrides, (2) registry.emoji, (3) default. Pre-snapshot files before execution for low-latency diff rendering.
+- **Value:** CLI tool output formatting looks cosmetic but affects readability at scale. Skin-aware emoji + theme-adaptive diff colors prevent 'red-on-blue' readability disasters. Pre-snapshot enables local diff rendering without re-fetching files.
+- **Verify:** Tool output exceeds tool_preview_max_len (4KB), truncated output shows '[... 2KB more]'. Diff uses ui_error color on light theme (darker shade, not red). /file emoji overridden by skin.tool_emojis['file'].
 
-### `UX-6` Error type classification + actionable remediation (retry vs config-fix vs user-error)  ★★★★ · M · partial
+### `UX-6` Memory Monitoring and Graceful Exit for Long-Running CLI  ★★★ · M · partial
 
-- **Reference:** hermes stream_diag: flatten_exception_chain() distinguishing RemoteProtocolError vs ConnectError vs ReadError; OpenClaw doctor: remediation suggestions per finding type
-- **Muse approach:** Create packages/observability/src/error-classification.ts with classifyError(error): {type: 'transient'|'config'|'user'|'unknown', retryable: bool, remediation?: string, errorChain: string}. Hook into ask command error handling to classify and suggest (e.g., 'Ollama offline — run: ollama serve', 'No notes found — run: muse ingest'). Store classification in observability for analytics.
-- **Value:** When errors occur, users see the root cause + the exact next command to fix it, not generic 'something went wrong'; dramatically reduces support load.
-- **Verify:** Inject Ollama offline error, verify classifyError returns retryable=false + 'ollama serve' remediation; inject permission error, verify user error classification.
+- **Based on (hermes):** `ui-tui/src/entry.tsx` — Hermes entry.tsx: shebang node --max-old-space-size=8192 --expose-gc, resets terminal modes on startup (DEC mouse tracking), setupGracefulExit() installs SIGHUP/SIGTERM handlers, startMemoryMonitor() polls heap, critical threshold triggers process.exit(137), heap dumps auto-trigger, recordParentLifecycle() breadcrumbs
+- **Muse today:** partial — apps/cli/src/program.ts, chat-repl.ts — has graceful exit for SIGTERM but no memory monitoring, no heap dump on OOM, no exit code 137 for OOM distinction, no terminal mode reset (mouse tracking, raw mode), no parent-process lifecycle breadcrumbs
+- **Proposal:** Enhance apps/cli/src/program.ts with memory-monitor module: startMemoryMonitor(options: {criticalThresholdMB, highThresholdMB}) polls v8.getHeapStatistics() on interval. Critical threshold triggers process.exit(137) + stderr 'OOM on heap=512MB'. High threshold logs heap dump path to agent.log. setupGracefulExit() already exists, extend with resetTerminalModes() (write ANSI to clear DEC mouse tracking, raw mode). recordParentLifecycle() writes lifecycle breadcrumbs {started_at, memory_warning_at, exited_at, exit_code} to parent's agent.log.
+- **Value:** Long-running TUIs crash silently without cleanup. Terminal modes (mouse tracking, raw mode) left armed break the parent shell. Memory monitoring + heap dumps + exit code 137 + parent-process logging transforms 'TUI died' into actionable 'OOM on heap=512MB, dump=/path'.
+- **Verify:** TUI runs for 30min, heap grows to critical threshold, process.exit(137) fires with 'OOM' message. Heap dump written. Parent shell functional after exit. Lifecycle breadcrumb in parent.log shows memory_warning_at timestamp.
 
-### `UX-7` First-run config validation + remediation wizard (non-interactive guided tour)  ★★★★ · M · partial
+### `UX-7` Multi-Channel Session Display with Context-Aware Naming  ★★ · S · partial
 
-- **Reference:** openclaw doctor --fix --non-interactive: safe migrations without prompts; hermes onboarding: profile_build_directive() instructing agent on first-message opt-in flow
-- **Muse approach:** Extend apps/cli/src/commands-onboard.ts to add --auto-fix mode (non-interactive, safe migrations only): detect and repair common issues (missing .muse/config.json, wrong MUSE_NOTES_DIR, missing Ollama connection). Log changes to muse.log. Pair with contextual hints so user learns what happened. Never touch unsafe settings without --force.
-- **Value:** Users who run muse onboard --auto-fix get a working setup in one command; first-run is <30s instead of debugging Ollama/paths manually.
-- **Verify:** Delete .muse/config.json, run muse onboard --auto-fix, verify config is created and populated; check log records migration; run again, verify no duplicate migration.
+- **Based on (openclaw):** `ui/src/ui/session-display.ts` — OpenClaw parseSessionKey() extracts session type (main/subagent/cron/direct-chat/group-chat), CHANNEL_LABELS maps channels to human-readable names, resolveSessionDisplayName() applies typed prefixes (Subagent:/Cron:) and prefers user label > displayName > fallback
+- **Muse today:** partial — packages/runtime-state/src/session-tags.ts — carries sessionId, userId, tags but no display metadata. apps/web/src/views — no resolveSessionDisplayName, no CHANNEL_LABELS, no session type parsing
+- **Proposal:** Add session-display module to packages/runtime-state/src: CHANNEL_LABELS map {imessage, telegram, discord, signal, slack, whatsapp, matrix, email, sms} -> human names. parseSessionKey(key: string) -> {type: 'main'|'subagent'|'cron'|'direct-chat'|'group-chat', channelId?, userId?}. resolveSessionDisplayName(key, userLabel?, displayName?) returns 'Discord · user#1234' or 'Subagent: task-x' with type prefix applied.
+- **Value:** Showing 'Discord · user#1234' vs 'agent:main:discord:direct:user#1234' changes usability drastically. Abstraction here pays off when channels proliferate (mail, Teams, etc.).
+- **Verify:** parseSessionKey('agent:subagent:discord:direct:user123') returns {type: 'subagent', channelId: 'discord', userId: 'user123'}. resolveSessionDisplayName with type prefix renders 'Subagent: Discord · user#123'.
 
-### `UX-8` Decimal money parsing + formatting (fail-safe, exact precision)  ★★★ · S · missing
+### `UX-8` Slash Command Routing with Stale-Flight Detection and Local Tool Fallback  ★★ · M · none
 
-- **Reference:** hermes-agent/agent/billing_view.py: parse_money(value) → Decimal (never raises), format_money() whole/fractional rules, CardInfo.masked property
-- **Muse approach:** Create apps/cli/src/money-formatting.ts (or packages/observability if billing surfaces go there later) with parse_money(value): Decimal | undefined (defensive, no throw) and format_money(value): string following Hermes' rules: whole dollars no decimals, fractions always 2dp. Export for CLI /cost display, future web billing UI.
-- **Value:** Cost displays in CLI (muse cost command) render correctly with no rounding errors or NaN leakage; local-model runs have $0 cost but the machinery is ready for future cloud integrations.
-- **Verify:** Unit tests: parse_money('142.5'), parse_money('100'), parse_money(null); format_money tests verify 2dp on fractions, whole dollars no decimals.
+- **Based on (hermes):** `ui-tui/src/app/createSlashHandler.ts` — Hermes createSlashHandler.ts: per-command flight counter prevents stale handlers, stale() = flight !== current || sid !== current.sid, guarded/guardedErr wrappers discard results if stale, findSlashCommand() queries local registry, fallback uses catalog.canon for canonicalized name, dispatch types exec/plugin/alias/skill/send
+- **Muse today:** none — apps/cli/src/chat-ink.ts — has slash command menu rendering but no flight tracking, no stale detection, no local registry fallback for canonicalized names, no dispatch type union with state checking
+- **Proposal:** Add slash-command-router module to packages/tools/src (or new packages/slash-router): SlashHandlerContext {gateway, local catalog, transcript page/send/sys}, SlashCommand with dispatch type union (exec/plugin/alias/skill/send). createSlashHandler() initializes per-command flight counter, stale() checks flight !== current || sid !== current.sid, guarded wrapper discards results if stale. findSlashCommand() queries local registry, fallback uses catalog.canon for alias resolution, ambiguous matches show up to 6 suggestions.
+- **Value:** Slash handlers in reactive TUIs need flight tracking to prevent race conditions (user sends /cmd, switches session before response arrives). Local registry + catalog fallback + alias resolution + ambiguity hints make dispatch robust without server round-trips.
+- **Verify:** User sends /ask, switches session before response arrives — result is discarded (stale() detected). /ask vs /ask-memory ambiguous match shows 2 suggestions. /a (alias) expands to /agent and delegates dispatch.
 
-### `UX-9` Usage + cost dashboard (web UI with daily aggregation, time-range filters)  ★★★ · M · partial
+### `UX-9` State-Driven TUI with Nanostores Atoms and React Hooks  ★★ · L · none
 
-- **Reference:** openclaw/ui/src/ui/app-render-usage-tab.ts: renderUsageTab(), mergeUsageCacheStatus(), usage filters (startDate, endDate, scope, agentId, query), cost-daily bar chart aggregation
-- **Muse approach:** Enhance apps/web/src/views/Dashboard.tsx to add a 'Usage' tab with date-range picker, per-model token aggregation, daily cost bars (even if $0 for local), cache-status indicator (fresh/partial/stale/refreshing). Leverage existing observability token-cost queries. Hide cost columns when MUSE_LOCAL_ONLY=true.
-- **Value:** Users see their token usage over time (7d rolling default) with visual per-day breakdown; ready for future billing integration; proves observability data is queryable.
-- **Verify:** Render Dashboard with 7d token-cost rows; verify date range picker changes aggregation; check cache-status badge updates; ensure cost=0 columns render cleanly on local-only.
+- **Based on (hermes):** `ui-tui/src/app/turnStore.ts` — Hermes turnStore.ts: $turnState = atom<TurnState>() (immutable nanostores), useTurnSelector<T>(selector) bridges nanostores to React useSyncExternalStore, patchTurnState() shallow merge or function-based update, granular selectors prevent cascading re-renders
+- **Muse today:** none — apps/cli/src/tui.ts — uses React hooks (useState) but no nanostores, no atom pattern, no granular selectors (renders full re-render on any state change), no useSyncExternalStore bridge for external state
+- **Proposal:** If a Muse TUI (web or future terminal rebuild) is planned: adopt nanostores for immutable atom-based state. Create $turnState = atom<TurnState>(initialValue) carrying {activity[], outcome, reasoning, streamPendingTools[], subagents[], todos[], tools[], turnTrail[]}. Export useTurnSelector<T>(selector: (state) => T) wrapping useSyncExternalStore for granular subscriptions. Use patchTurnState() for shallow merge or function-based updates, avoiding full re-render when one field changes.
+- **Value:** Nanostores + React hooks avoid Redux boilerplate while staying immutable + debuggable. Granular selectors + atom listen() subscriptions prevent cascading re-renders — critical for terminal UIs with tight frame budgets.
+- **Verify:** Render component subscribing only to activity[] via useTurnSelector(s => s.activity) does not re-render when todos[] changes. Atom listen() logs state changes for debugging.
 
-### `UX-10` Tool output diff rendering with skin-aware colors  ★★★ · M · partial
+### `UX-10` Usage Metrics Tab with Daily Bar Tooltips and Dynamic Layout  ★★ · M · none
 
-- **Reference:** hermes-agent/agent/display.py: _diff_ansi() resolving skin colors from hex config, _MAX_INLINE_DIFF_FILES/LINES limits, file/hunk/minus/plus color codes
-- **Muse approach:** Create apps/cli/src/diff-renderer.ts with renderDiff(before: string, after: string, maxFiles=6, maxLines=80) using ansi-escapes. Resolve colors at startup from (theme, fallback to dark-theme defaults). Add to chat-ink tool-output rendering when diff is detected in output. Respect Muse's theme config.
-- **Value:** When tools produce file diffs (read_file comparison, before-after snapshots), CLI renders them compactly with syntax color, bounded by line count to avoid spam.
-- **Verify:** Unit test: renderDiff() with 10 file changes, verify only first 6 rendered; test line limit; verify ANSI color codes in output; e2e tool shows colored diff.
+- **Based on (openclaw):** `ui/src/ui/views/usage-render-overview.ts` — OpenClaw usage-render-overview.ts: renderFloatingDailyBarTooltip renders date/tokens/cost/breakdown on hover/focus, positionFloatingDailyBarTooltip() clamps to viewport + flips if margin violated, tooltip state machine tracks activeDailyBarTooltip + reasons set (hover|focus), floating tooltip reuses single DOM element mutated in-place
+- **Muse today:** none — apps/web/src/views — Dashboard exists but no usage metrics tab, no floating tooltip pattern, no daily bar chart with interactive breakdowns, no viewport clamping + flip logic
+- **Proposal:** Add usage-metrics view to apps/web/src/views (or update Dashboard.tsx): renderFloatingDailyBarTooltip(day, tokens, cost, breakdown) displays {date, tokens, cost_breakdown per provider}. positionFloatingDailyBarTooltip(tooltipRect, barRect, viewportRect) clamps to 8px margin, flips below if top margin violated. activeDailyBarTooltip tracks {sourceElem, reasonsSet: Set<'hover'|'focus'>, content}. Reuse single DOM element, MutationObserver tracks mount/unmount. suppressNextDailyBarFocusTooltip timer prevents rapid re-shows.
+- **Value:** Usage visualization tooltips need sub-100ms interaction latency. Floating single-element reuse + requestAnimationFrame positioning + stale-suppression timers keep the dashboard responsive even with frequent bar updates.
+- **Verify:** Hover bar shows tooltip in <100ms. Tooltip clamped to viewport with 8px margin. Tab away and back doesn't show stale tooltip. Flip-below logic engages when tooltip height + bar > viewport top.
 
-### `UX-11` Tool execution profiler + timing ladder (started_at, completed_at per tool, p50/p95 latency)  ★★★ · M · partial
+### `UX-11` Interactive Onboarding Wizard with Multi-Flow Selection and Locale Awareness  ★★ · M · partial
 
-- **Reference:** hermes-agent/agent/stream_diag.py: per-attempt started_at/first_chunk_at/elapsed time tracking; openclaw usage-tab: latency summary p50Ms, p95Ms
-- **Muse approach:** Extend packages/observability/src/observability-latency.ts to record tool_started, tool_completed per tool call (not just model latency). Add compute_tool_latencies() returning {toolName: string, p50Ms, p95Ms, samples}. Export CLI /cost command variant /perf to show tool-latency ladder (sorted DESC by p95). Store in observability sink.
-- **Value:** Users see which tools are slow (read_file on large files, web_search network latency, etc.) and where to optimize; identifies tools that need caching or parallelization.
-- **Verify:** Record 10 runs of a slow tool, compute p50/p95, verify /perf ladder is sorted, verify slowest tool is first.
+- **Based on (openclaw):** `docs/cli/onboard.md` — OpenClaw onboard.md: guided setup flows (quickstart/manual/import), locale-aware prompts, provider selection, auth-mode switching (plaintext/ref/OAuth), non-interactive flag for CI, post-setup bootstrap of workspace files (AGENTS.md, SOUL.md, IDENTITY.md)
+- **Muse today:** partial — apps/cli/src/commands-onboard.ts — has single deterministic step flow (Ollama → chat model → embed model → corpus → index) but NO multi-flow selection (quickstart/manual/import), NO locale awareness, NO auth-mode switching, NO post-setup bootstrap of workspace files (AGENTS.md, SOUL.md, IDENTITY.md), NO non-interactive flag for CI
+- **Proposal:** Enhance commands-onboard.ts with: (1) Multi-flow selection prompt asking 'quickstart (defaults) / manual (pick models) / import (restore backup)'. (2) Locale detection via LANG/LC_ALL for prompts. (3) Auth-mode flags (--auth-mode plaintext|ref|oauth) for credential setup. (4) Post-setup bootstrap: if ready, generate AGENTS.md (example agents), SOUL.md (instructions), IDENTITY.md (user profile hint). (5) Add --non-interactive flag that auto-selects quickstart path, suitable for CI scripting.
+- **Value:** Multi-flow onboarding respects user expertise (power users can skip 'pick model' if they know it). Locale + locale-aware prompts + post-setup file bootstrap make the wedge feel polished. Non-interactive mode unblocks CI/Docker setup.
+- **Verify:** muse onboard --flow quickstart auto-selects defaults without prompts. --flow manual prompts for model selection. --non-interactive + --flow quickstart runs unattended. AGENTS.md bootstrapped at end contains example agent invite. Prompts localized to LANG=fr_FR.
 
-### `UX-12` Cache health probes + refresh status indicator (fresh/partial/stale/refreshing)  ★★★ · M · partial
+### `UX-12` Account Usage Windows with Provider-Specific Rendering and Reset Countdown  ★ · L · none
 
-- **Reference:** openclaw/ui/src/ui/app-render-usage-tab.ts: cacheStatus {status, cachedFiles, pendingFiles, staleFiles, refreshedAt}, mergeUsageCacheStatus() for multi-source
-- **Muse approach:** Create packages/observability/src/cache-health.ts with CacheStatus {status: 'fresh'|'partial'|'stale'|'refreshing', cachedFiles, pendingFiles, staleFiles, refreshedAt?}. Implement registerCacheHealthProbe() pattern so notes-index, memory-store, tool-registry can report probe results. Dashboard usage-tab and status --watch show cache refresh status badge.
-- **Value:** Users see at-a-glance whether their notes index is up-to-date, memory store is being synced, tool registry refreshed; prevents confusion on 'why is my index out of date'.
-- **Verify:** Register two probe providers (notes, memory); force stale on one, check status shows 'partial'; trigger refresh, check status becomes 'fresh'.
+- **Based on (hermes):** `agent/account_usage.py` — Hermes account_usage.py: AccountUsageWindow (label, used_percent, reset_at, detail), AccountUsageSnapshot (immutable, fail-open, provider-aware), render_account_usage_lines() with reset-time countdown (in {days}d {hours}h, local tz)
+- **Muse today:** none — packages/observability/src, apps/web/src — no AccountUsageSnapshot type, no usage window rendering, no reset countdown formatting, no provider-specific variance handling (e.g., MiniMax inverted usage_percent)
+- **Proposal:** Add usage-account module to packages/observability/src: AccountUsageWindow (label, used_percent, reset_at, detail), AccountUsageSnapshot (provider, source, fetched_at, title, plan, windows[], details, unavailable_reason), render_account_usage_lines() converting snapshot to markdown lines with reset-time countdown in local tz. Handle provider variance (MiniMax: invert usage_percent, prefer model_remains). Use Decimal end-to-end, fail-open design.
+- **Value:** Usage snapshots inform user decisions (should I wait for reset? upgrade?). Immutable dataclasses + provider-aware design + local tz formatting prevent time-zone confusion and allow graceful degradation when auth fails.
+- **Verify:** AccountUsageSnapshot renders two windows (daily_requests, monthly_tokens) with correct reset countdown ('in 5d 3h', not raw UTC). MiniMax variant inverts usage_percent correctly. Fails open when provider auth unavailable.
 
-### `UX-13` Session activity log + run summary (tools executed, tokens used, time elapsed, success/failure)  ★★★ · M · partial
+### `UX-13` Banner Markup Parsing with Theme-Driven Color Gradients  ★ · S · partial
 
-- **Reference:** openclaw/ui/src/ui/activity-model.ts: ActivityEntry tracking tool calls, tool results; hermes stream_diag: attempt logging with kind (stream success/failure)
-- **Muse approach:** Extend observability to emit session-level activity summaries after each turn: {turnId, startedAt, endedAt, elapsedMs, toolsExecuted: [{name, status, elapsedMs, costUsd}], totalTokens, totalCostUsd, finalStatus: 'ok'|'error'|'partial'}. Display in muse cost command as turn-by-turn breakdown, and in web dashboard activity feed.
-- **Value:** Users understand what happened in each turn (which tools ran, how long, cost, success/fail), aiding debugging and learning system behavior; provides foundation for future analytics.
-- **Verify:** Run ask with 3 tool calls, verify session summary records all 3, totals are correct, status matches final outcome.
+- **Based on (hermes):** `ui-tui/src/banner.ts` — Hermes banner.ts: parseRichMarkup() regex-matches [#RRGGBB]...[/] color regions, LOGO_ART (ASCII art) + CADUCEUS_ART (Braille art) plain strings, colorize() maps gradients to theme palette (LOGO_GRADIENT, CADUC_GRADIENT), logo()/caduceus() return [color, text][] arrays, artWidth() computes rendered width
+- **Muse today:** partial — apps/cli/src/muse-banner.ts, muse-mascot-ansi.ts — has ASCII art + basic colorize but no parseRichMarkup for [#hex]...[/] markup, no gradient arrays (LOGO_GRADIENT, CADUC_GRADIENT), no [color, text][] tuple output, no artWidth() for rendered width calculation
+- **Proposal:** Extend apps/cli/src/muse-banner.ts with banner-markup module: parseRichMarkup(text) regex-matches [#RRGGBB]...[/] regions, returns [color_hex, text][] tuples. Store LOGO_ART and CADUCEUS_ART as plain strings (6 and 15 lines). Add LOGO_GRADIENT = [0,0,1,1,2,2] (indices into theme.colors) and colorize() maps gradient indices to theme palette. Export logo(skin) and caduceus(skin) returning colored [color, text][] arrays for ink/blessed renderer. artWidth(tuples) computes rendered width.
+- **Value:** ASCII art + gradients make TUI banners memorable. Parameterizing color mapping over theme means banners adapt to light/dark automatically without duplicating art or hardcoding colors.
+- **Verify:** logo() with dark theme renders gold gradient (#FFD700), light theme renders darker gold (#8B6914). Braille art (caduceus) applies correct 15-element gradient. artWidth(tuples) matches actual rendered width in terminal.
 
-### `UX-14` Streaming progress indicator + ETA for long-running tasks (chunks/bytes/elapsed, expected total)  ★★★ · M · partial
+## 13. Internationalization · Localization (multi-language UX + output)
 
-- **Reference:** hermes display.py: _tool_progress track chunks/bytes/elapsed; openclaw tool-stream: throttle at 80ms, limit to 50 updates per run to avoid spam
-- **Muse approach:** Enhance apps/cli/src/chat-ink.ts tool-output rendering to track stream progress: on each chunk, update a progress line (10% completion bars or 'chunk 42/120' text, elapsed time). Throttle updates to 80ms like Hermes. For long operations, show estimated time-to-completion (if we have a file size or token budget). Hide when --quiet or /verbose=off.
-- **Value:** Long-running tools (web_search, read_large_file, image_generate) show live progress so user doesn't think it's hung; reduces impatience and accidental interrupts.
-- **Verify:** Mock 30-second tool with chunk callbacks, verify progress bar renders every 80ms, verify ETA shown, verify not spammed (max 50 updates).
+_15 opportunities · 16 competitor files read_
 
-### `UX-15` Billing state parser + fail-open structure (login/balance/monthly-cap/auto-reload)  ★★ · S · missing
 
-- **Reference:** hermes-agent/agent/billing_view.py: BillingState dataclass, billing_state_from_payload(), role-based permissions (is_admin, can_charge), fail-open on 401/unreachable
-- **Muse approach:** Create packages/observability/src/billing-state.ts with BillingState dataclass (logged_in, balance_usd: Decimal, monthly_cap, auto_reload, card, error on fetch failure). Implement billing_state_from_payload() parser. Return logged_in=false + empty fields gracefully when endpoint unreachable, never crash. Designed for future /api/billing/state endpoint.
-- **Value:** When Muse adds optional cloud tier in future, billing UI has proven, fail-open architecture identical to Hermes; users never see crashes on billing fetch failure.
-- **Verify:** Unit tests: parse valid payload, parse missing org, parse with card/cap/reload; verify logged_in=false when fetch fails; check can_charge permissions.
+### `I18N-1` CLI locale resolution from environment variables  ★★★★★ · M · none
 
-### `UX-16` Model fallback attempt tracking + display (provider/model/error per attempt)  ★★ · M · partial
+- **Based on (openclaw):** `src/wizard/i18n/index.ts` — resolveWizardLocaleFromEnv checks OPENCLAW_LOCALE, LC_ALL, LC_MESSAGES, LANG in priority order; normalizes encoding suffixes and regional variants
+- **Muse today:** none — Muse CLI apps/cli/src has no environment-based locale detection; all CLI output is hardcoded English
+- **Proposal:** Add packages/i18n-cli with resolveLocaleFromEnv() that checks MUSE_LOCALE, LC_ALL, LC_MESSAGES, LANG in priority order, normalizes encoding (UTF-8 strips), and maps regional variants (zh_HK -> zh-TW). Integrate into apps/cli main startup via global.locale singleton read-once pattern.
+- **Value:** CLI users get output in their system language without config; covers Linux/macOS/Windows environment variations
+- **Verify:** CLI run with LANG=ko_KR.UTF-8 produces Korean output; MUSE_LOCALE=de overrides; fallback to en when unknown
 
-- **Reference:** openclaw/ui/src/ui/app-tool-stream.ts: FallbackAttempt {provider, model, ...}, tool-stream activity log showing fallback chain
-- **Muse approach:** Enhance packages/model adapters to emit 'attempt' events {runId, seq, provider, model, startedAt, errorType, retryable} on fallback. Store in observability sink. CLI status output can show fallback ladder when --watch flag is used (or /perf command). Web dashboard can show attempt chain in run details.
-- **Value:** When Muse has multiple local models or future cloud fallbacks, users see the full attempt chain (which model failed with what error, which one succeeded), aiding debugging and model selection.
-- **Verify:** Mock model adapter to return retryable error on first call, success on second; verify attempt events emitted; check status --watch shows fallback chain.
+### `I18N-2` Catalog parity enforcement via test suite  ★★★★★ · S · none
 
-### `UX-17` Token usage breakdown by model + step type (prompt vs completion vs cached)  ★★ · M · partial
+- **Based on (hermes):** `tests/agent/test_i18n.py` — hermes test_catalog_keys_match_english() flattens all YAML catalogs, asserts every non-English locale has identical key set as en.yaml; test_catalog_placeholders_match_english() regex-matches {placeholder} tokens
+- **Muse today:** none — apps/web/e2e/i18n.spec.ts only tests toggling between languages; no validation that en and ko have matching keys or placeholder format
+- **Proposal:** Add apps/web/src/i18n/strings.test.ts that flattens en and ko dicts, asserts key parity, and validates {placeholder} format consistency. Run on CI. Catch incomplete translations and typos before deploy.
+- **Value:** Incomplete translations caught at test time, not silently at runtime; prevents UX breakage from missing keys or mismatched placeholders
+- **Verify:** Test fails if ko is missing a key from en; test fails if ko has {count} but en has {n}; test passes on parity
 
-- **Reference:** openclaw usage-tab: daily cost aggregation by model; hermes billing_view: parse decimal balances; muse observability already has TokenUsageRecord with prompt/completion/cached counts
-- **Muse approach:** Enhance apps/cli/src/commands-ask.ts or create /cost command variant to query observability TokenCostQuery and display: this-session tokens broken down by (model, step_type: 'system'|'act'|'tool'|'extract'), with subtotals for prompt-vs-completion, cache-hit benefit (cached_tokens × 10% cost ratio for future OpenAI Anthropic).  Web dashboard Usage tab shows same breakdown.
-- **Value:** Users see where tokens are spent (which model, which phase of reasoning) and understand cache hit benefit; informs model/strategy choices.
-- **Verify:** Query token-cost by step_type, verify act/extract/tool totals are correct; check cached_tokens are tracked; render in /cost CLI output.
+### `I18N-3` Lazy-loaded locale splitting for web bundle optimization  ★★★★ · M · partial
 
-### `UX-18` Observability event type registry + filtering (emit events by category, dashboard subscribe to subsets)  ★★ · M · partial
+- **Based on (openclaw):** `ui/src/i18n/lib/registry.ts` — openclaw's DEFAULT_LOCALE (en) bundled inline; 18 lazy locales via dynamic imports with loaders() returning Promise<LocaleModule>, cached in memory on first access
+- **Muse today:** partial — apps/web/src/i18n/strings.ts embeds all locales statically (en + ko both hardcoded in one bundle); no lazy loading, no network round-trip optimization
+- **Proposal:** Refactor apps/web/src/i18n to lazy-load non-English locales. Keep en inline; move ko/future locales to dynamic imports (e.g., import('./locales/ko.js')). Cache loaded locales in memory. Update I18nProvider to async-load on first useI18n() outside the default language.
+- **Value:** Users only download English by default; switching languages adds single network round-trip, not zero-cost bloat
+- **Verify:** Bundle size en-only < 50% of current; first switch to ko loads once and caches; reload preserves cached locale
 
-- **Reference:** hermes stream_events.py: categorized stream events (start, chunk, error, retry); openclaw activity-model: updateActivityFromToolEvent filtering by event stream type
-- **Muse approach:** Extend packages/observability/src/index.ts to emit typed events: {eventType: 'tool_started'|'tool_chunk'|'tool_completed'|'model_attempt'|'error_classify'|'hint_shown', ...payload}. CLI and web UI can subscribe to subsets (e.g., web only listens to completed events, CLI listens to everything). Implement in-memory EventBus pattern for local routing.
-- **Value:** Future observability consumers (analytics, dashboards, external integrations) have a clean pub/sub model instead of querying stored data; enables real-time streaming dashboards.
-- **Verify:** Emit 3 event types in sequence, verify CLI listener receives all, verify dashboard listener filters to completed only.
+### `I18N-4` Hierarchical dotted-key fallback with depth-first traversal  ★★★★ · M · partial
 
-### `UX-19` Latency SLO tracking + alerting (p95 baseline, deviation detection)  ★★ · M · partial
+- **Based on (openclaw):** `ui/src/i18n/lib/translate.ts` — openclaw's t(key, params) splits 'approval.approve' by dot, walks TranslationMap tree. Missing in target locale falls back to English entire tree walk. Returns bare key path if English misses too. Params via {placeholder} regex; returns original if format fails.
+- **Muse today:** partial — apps/web/src/i18n/index.tsx has simple flat-dict t() that falls back to en[key], but no dotted-path traversal or error recovery for malformed placeholders
+- **Proposal:** Enhance apps/web/src/i18n/index.tsx fill() to handle dotted keys: t('nav.primary') splits to nav->primary walk. If locale dict missing, walk en. If en also missing, return bare key (never undefined/null). Add try-catch on regex replace to return original string on format error (malformed placeholder).
+- **Value:** Incomplete translations never crash; partial locales work. Typos in translation placeholders don't silently lose values. Graceful degradation UX.
+- **Verify:** t('nav.primary') returns translated value; t('missing.key') returns 'missing.key'; t('hi {name}', {}) returns 'hi {name}'
 
-- **Reference:** openclaw usage-tab latency summary; muse observability already has observability-slo-alert.ts
-- **Muse approach:** Complete observability-slo-alert.ts: define SLO {metric: 'p95_latency_ms', baseline: 2000, window: '7d', deviation_threshold: 1.5}. Track deviations and emit alert events when p95 > baseline × threshold for 3+ runs in a row. Store SLO violations in observability sink. CLI /perf can show 'latency degraded 50% vs baseline'.
-- **Value:** Users detect when system performance has regressed (model slower, local hardware change, Ollama setup change) and get alerted before noticing manually.
-- **Verify:** Set baseline to 100ms, simulate 10 runs averaging 160ms, verify alert fires on 3rd run above threshold.
+### `I18N-5` Language normalization for CLI with 40+ aliases  ★★★ · S · none
+
+- **Based on (hermes):** `agent/i18n.py` — hermes _normalize_lang() accepts bare codes (en), natural aliases (english, Deutsch, 中文), regional tags (zh-CN, zh-Hans, pt-BR), and native scripts (українська, 한국어). Case-insensitive; maps 40+ aliases; unknown -> DEFAULT_LANGUAGE
+- **Muse today:** none — packages/i18n-cli (not yet created) would need normalization; currently no CLI language arg at all
+- **Proposal:** In packages/i18n-cli, add normalizeLanguage(input: string) -> Lang that accepts 'en'/'ko', natural names ('english', '한국어', 'korean'), and regional variants (en-US, ko-KR). Return normalized Lang or 'en' fallback. Use in CLI --language flag and env var resolution.
+- **Value:** Users type 'korean' or '한국어' instead of exact code; multilingual teams with mixed systems all resolve correctly
+- **Verify:** normalizeLanguage('korean') = 'ko'; normalizeLanguage('영어') = 'en'; normalizeLanguage('unknown') = 'en'
+
+### `I18N-6` Scoped translator for agent subflows with key prefix delegation  ★★★ · M · none
+
+- **Based on (openclaw):** `src/wizard/i18n/index.ts` — openclaw's createSetupTranslator({keyPrefix, locale}) auto-prefixes non-absolute keys. Keys starting with 'common.' or 'wizard.' skip prefix; others get 'wizard.{section}.{key}'. Shared keys remain importable from any subflow.
+- **Muse today:** none — Muse has no CLI i18n at all; no agent subflow localization pattern
+- **Proposal:** In packages/i18n-cli, export createScopedT(prefix: string, locale: Lang): Translate that auto-prefixes non-absolute keys. 'chat.help' becomes 'chat.section.help' for a 'section' scope. Keys starting 'common.' or 'chat.' skip prefix. Shared strings reusable across CLI flows.
+- **Value:** Agent subflows (chat, decompose, recall) reuse shared UI strings without deep nesting; changes to common strings propagate globally; reduces duplication
+- **Verify:** createScopedT('approval', ko)('myKey') -> ko['approval.myKey']; ('common.ok') -> ko['common.ok']
+
+### `I18N-7` Multi-level config resolution for language preference with caching  ★★★ · M · none
+
+- **Based on (hermes):** `agent/i18n.py` — hermes get_language() resolves HERMES_LANGUAGE env > _config_language_cached() (display.language from config.yaml, cached via @lru_cache) > DEFAULT_LANGUAGE. reset_language_cache() clears caches for runtime config changes.
+- **Muse today:** none — packages/i18n-cli not yet created; Muse has no CLI config-file-based language preference
+- **Proposal:** In packages/i18n-cli, add getLanguage(): Lang that resolves MUSE_LOCALE env > config.display.language (from runtime-settings, cached via lru-cache) > 'en'. Export resetLanguageCache() to clear both caches on config hotload.
+- **Value:** Env override for quick testing; config file for persistent user choice; cached resolution avoids repeated I/O in hot paths (agent prompts, CLI commands)
+- **Verify:** MUSE_LOCALE=ko getLanguage() -> 'ko'; config.display.language='ko' returns 'ko'; resetLanguageCache() clears the cache
+
+### `I18N-8` Catalog flattening with nested YAML structure for maintainability  ★★★ · M · none
+
+- **Based on (hermes):** `agent/i18n.py` — hermes _load_catalog(lang) reads nested YAML (gateway: { reset: { header: ... } }), calls _flatten_into() to convert to dotted flat dict. Flattening once per process; subsequent .t() calls hit memory cache. Thread-safe via _catalog_lock.
+- **Muse today:** none — Muse web app uses flat TypeScript dicts; no nested structure. CLI has no i18n at all.
+- **Proposal:** Create packages/i18n-core with loadCatalog(lang: Lang): Translations that (1) accepts nested YAML structure (e.g., { nav: { primary: '...' } }) (2) flattens to dotted keys (nav.primary) (3) caches in memory (4) thread-safe via _catalog_lock. Use in CLI for maintainable translation files.
+- **Value:** Translators edit readable nested YAML instead of flat keys. Flattening happens once per process; hot paths hit cache. Scales to many languages.
+- **Verify:** loadCatalog('ko') from nested YAML returns flat dict; second call returns cached result; parallel calls don't race
+
+### `I18N-9` Storage-persisted locale preference with system fallback  ★★ · S · partial
+
+- **Based on (openclaw):** `ui/src/i18n/lib/translate.ts` — openclaw's I18nManager reads localStorage[openclaw.i18n.locale], falls back to navigator.language resolution; setLocale() persists; unsubscribe() returns cleanup
+- **Muse today:** partial — apps/web/src/i18n/index.tsx already persists to localStorage[muse.lang] and falls back to navigator.language; but no unsubscribe cleanup or observable pattern
+- **Proposal:** Enhance apps/web/src/i18n/index.tsx with explicit subscription/unsubscribe pattern. Export I18nProvider-scoped listeners and a cleanup function. Add test that verifies storage survives SSR contexts (try-catch on localStorage).
+- **Value:** Users stay in chosen language across sessions; navigator fallback handles first visit without friction; cleanup prevents memory leaks in tests
+- **Verify:** Language persists across page reload; new user defaults to navigator.language; SSR context doesn't crash localStorage
+
+### `I18N-10` Format-safe string interpolation with error recovery  ★★ · S · partial
+
+- **Based on (openclaw):** `ui/src/i18n/lib/translate.ts` — openclaw's t() replaces /{\w+}/ globally. If param missing, keeps placeholder intact. If format() raises KeyError/IndexError/ValueError, logs warning and returns original string unchanged.
+- **Muse today:** partial — apps/web/src/i18n/index.tsx fill() does {\w+} replace but doesn't guard against missing params or malformed templates
+- **Proposal:** Enhance apps/web/src/i18n/index.tsx fill() to: (1) if param missing, keep placeholder (2) wrap regex replace in try-catch, return original on error, log warning. Add test for typo resilience.
+- **Value:** Typos in translation placeholders surface as {placeholder} in UI, not silent data loss or crash. Helps localization teams catch interpolation bugs early.
+- **Verify:** fill('hi {name}', {}) -> 'hi {name}'; fill('hi {name}', {user: 'Bob'}) -> 'hi {user}' (still shows literal {name})
+
+### `I18N-11` Bundled vs. wheel vs. source locale resolution with sysconfig fallback  ★★ · M · none
+
+- **Based on (hermes):** `agent/i18n.py` — hermes _locales_dir() checks HERMES_BUNDLED_LOCALES env, then <repo>/locales (source), then sysconfig schemes (pip wheel). Falls back to source path for logging if all missing.
+- **Muse today:** none — Muse has no CLI i18n; no multi-deployment-mode locale loading
+- **Proposal:** In packages/i18n-cli, add localesDir(): string that checks MUSE_BUNDLED_LOCALES env, then <repo>/locales (source dev), then sysconfig purelib/platlib (wheel install). Falls back to source for informative error. Load locales relative to this path.
+- **Value:** Supports sealed installs (Nix container), source dev, and pip-wheel production without special config. Testers inject MUSE_BUNDLED_LOCALES for offline testing.
+- **Verify:** MUSE_BUNDLED_LOCALES=/offline localesDir() -> /offline; wheel install localesDir() -> sysconfig path; dev fallback to <repo>/locales
+
+### `I18N-12` Exhaustive language type with optional fields for staged rollout  ★★ · M · partial
+
+- **Based on (hermes):** `web/src/i18n/types.ts` — hermes Translations interface defines mandatory keys and optional keys marked with '?' for staged rollout. Optional keys fall back to English literals in components until translated.
+- **Muse today:** partial — apps/web/src/i18n/strings.ts has StringKey type enforcing all keys match en, but no optional field pattern for gradual rollout of new strings
+- **Proposal:** Update apps/web/src/i18n/strings.ts to add optional marker syntax (e.g., 'future.key?': undefined in Strings type). Components null-coalesce missing optional strings to en fallback. Allows shipping partial locales without TypeScript errors; unblock new features for en-only users first.
+- **Value:** New languages ship faster with partial translation. Optional keys prevent TypeScript errors. Stagger feature rollout across languages.
+- **Verify:** Type-check with optional key missing from ko -> no error; runtime returns ko['key'] || en['key']
+
+### `I18N-13` React context provider with localStorage persistence and fallback locale  ★★ · S · partial
+
+- **Based on (hermes):** `web/src/i18n/context.tsx` — hermes I18nProvider wraps app with I18nContext, getInitialLocale() reads localStorage[hermes-locale], validates with isLocale(), defaults to 'en'. setLocale() updates state and try-catch writes localStorage. useI18n() hook returns {locale, setLocale, t: Translations}. LOCALE_META maps 16 locales to endonyms.
+- **Muse today:** partial — apps/web/src/i18n/index.tsx already has Provider + useI18n hook + localStorage, but no endonym display (native names like '간체 중문')
+- **Proposal:** Enhance apps/web/src/i18n/index.tsx to export LOCALE_META constant mapping Lang to endonym + flag. Use in language picker UI to show native names instead of codes. Validate locale with isLocale() before reading localStorage.
+- **Value:** Language picker shows '한국어' not 'ko'; prevents ambiguity. Matches user's language preference in their own script.
+- **Verify:** LOCALE_META['ko'] = { endonym: '한국어', flag: '🇰🇷' }; picker displays endonym; invalid lang validated out
+
+### `I18N-14` Static message scope enforcement with catalog versioning  ★ · L · none
+
+- **Based on (openclaw):** `scripts/control-ui-i18n.ts` — openclaw control-ui-i18n.ts uses OpenAI/Anthropic with glossary.json (term memory) and LLM-based translation with caching, batching (20 items, 2k char), and provenance tracking (model/provider, timestamp)
+- **Muse today:** none — Muse has no automated translation tooling; no LLM-driven i18n pipeline
+- **Proposal:** Create scripts/translate-cli-i18n.ts that scans apps/cli/src and packages/*/src for string literals matching i18n keys. Supports manual dispatch to local LLM (ollama + gemma4:12b via packages/model) with glossary.json (product names: 'Muse' -> 'Muse' for all langs). Records term memory (.i18n/{lang}.tm.jsonl) with hash, model, timestamp. Batches up to 20 items, fail-close on LLM timeout.
+- **Value:** Scales CLI translation to many locales without per-language translator. Glossary ensures Muse/product names consistent. Term memory auditable (which LLM version, when translated).
+- **Verify:** Script translates 100 English strings to ko via ollama; glossary enforces 'Muse' -> 'Muse' in all; .i18n/ko.tm.jsonl records provenance
+
+### `I18N-15` Raw copy baseline detection and drift analysis for UI localization  ★ · M · none
+
+- **Based on (openclaw):** `scripts/control-ui-i18n.ts` — openclaw RAW_COPY_BASELINE_PATH tracks untranslated UI strings by kind (html-attribute, html-text, object-property), path, line, text, count. control-ui-i18n reports new/removed/changed raw copy; helps identify UI needing translation.
+- **Muse today:** none — Muse has no baseline tracking of raw English UI strings needing i18n
+- **Proposal:** Add scripts/i18n-baseline.ts that scans apps/web/src and apps/cli/src for hardcoded strings (not from i18n dicts), emits raw-copy-baseline.json with {kind, path, line, text, count}. CI tracks drift: fail if new raw copy detected. Helps schedule proactive translation.
+- **Value:** Catch new English UI strings before release; track raw-copy debt over sprints; schedule translation proactively instead of reactive.
+- **Verify:** Baseline detects hardcoded 'Chat' in button label; drift report shows +1 new raw copy; adding i18n key removes it from report
 
 ---
 
 ## Totals
 
-- Items: **221** (deduped from 221 raw; 0 intra-domain duplicates removed)
-- Gap: missing **125** · partial **96**
-- Effort: S **54** · M **135** · L **32**
-- Tiers: ★★★★★ **21** · ★★★★ **45** · ★★★ **63** · ★★ **65** · ★ **27**
+- Opportunities: **166** (from 167 raw; 1 dropped for unverifiable evidence path)
+- Competitor files actually opened: **253**
+- Muse status: none **88** · partial **78**
+- Effort: S **40** · M **104** · L **22**
+- Tiers: ★★★★★ **12** · ★★★★ **32** · ★★★ **48** · ★★ **53** · ★ **21**
+
+### Dropped (evidence path did not resolve)
+
+- orchestration: Typed Worker Result Parsing with Validation → hermes/acp_adapter tools validation patterns
