@@ -15,11 +15,38 @@
  * string otherwise — callers don't have to branch.
  */
 
+export type TerminalBackground = "dark" | "light" | "unknown";
+
 export interface AnsiOptions {
   /** Override the TTY probe — useful for tests. */
   readonly isTty?: boolean;
   /** Force colour on even when isTty is false (rare; used in golden tests). */
   readonly force?: boolean;
+  /** Override the detected terminal background — useful for tests. */
+  readonly background?: TerminalBackground;
+}
+
+/**
+ * Detect the terminal's background lightness from `COLORFGBG` (set by
+ * many terminals as `"<fg>;<bg>"`, e.g. rxvt/xterm/Konsole). Used to
+ * avoid near-invisible low-contrast output on a light theme. Returns
+ * "unknown" when the variable is absent or unparseable — callers then
+ * keep their default behaviour. Pure (env passed in for testability).
+ */
+export function detectTerminalBackground(env: NodeJS.ProcessEnv = process.env): TerminalBackground {
+  const raw = env.COLORFGBG;
+  if (!raw) return "unknown";
+  // "fg;bg" or rxvt's "fg;;bg" — the background is the LAST field. A
+  // single field is just a foreground and tells us nothing about the bg.
+  const fields = raw.split(";").map((f) => f.trim()).filter((f) => f.length > 0);
+  if (fields.length < 2) return "unknown";
+  const bg = Number(fields[fields.length - 1]);
+  if (!Number.isInteger(bg)) return "unknown";
+  // De-facto COLORFGBG convention over the 16-colour palette: 7 and
+  // 9–15 are light shades; 0–6 and 8 are dark.
+  if (bg === 7 || (bg >= 9 && bg <= 15)) return "light";
+  if ((bg >= 0 && bg <= 6) || bg === 8) return "dark";
+  return "unknown";
 }
 
 const RESET = "\x1b[0m";
@@ -51,6 +78,12 @@ export function colorAllowed(options: AnsiOptions = {}): boolean {
  */
 export function colorize(value: string, color: keyof typeof COLORS, options: AnsiOptions = {}): string {
   if (!colorAllowed(options)) return value;
+  // `dim` (grey) is near-invisible on a light terminal background; render
+  // it plain there rather than as unreadable low-contrast text. Only kicks
+  // in when the background is KNOWN light — unknown keeps current behaviour.
+  if (color === "dim" && (options.background ?? detectTerminalBackground()) === "light") {
+    return value;
+  }
   const code = COLORS[color];
   if (!code) return value;
   return `${code}${value}${RESET}`;
