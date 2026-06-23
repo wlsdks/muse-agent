@@ -96,6 +96,9 @@ const defaultMaxBreakers = 1_000;
 const defaultRetryAttempts = 3;
 const defaultRetryDelayMs = 100;
 const defaultRetryMultiplier = 2;
+// Cap on a server-advised retry-after when the caller set no maxDelayMs,
+// so a hostile/absurd "retry after 1h" can't hang the retry loop.
+const defaultMaxRetryAfterMs = 60_000;
 
 export class CircuitBreakerOpenError extends Error {
   readonly breakerName: string;
@@ -350,8 +353,8 @@ export async function retry<T>(operation: () => Awaitable<T>, options: RetryOpti
       // content_policy / context_overflow) fails fast; transient and
       // genuinely-unknown errors stay retryable (preserves the old
       // retry-by-default behavior). An explicit `retryable` overrides.
-      const retryablePolicy =
-        options.retryable ?? ((candidate: unknown) => classifyError(candidate).recovery.retryable);
+      const classified = classifyError(error);
+      const retryablePolicy = options.retryable ?? (() => classified.recovery.retryable);
       if (retryablePolicy(error, attempt) === false) {
         throw error;
       }
@@ -360,7 +363,16 @@ export async function retry<T>(operation: () => Awaitable<T>, options: RetryOpti
         break;
       }
 
-      await sleep(computeRetryDelay(attempt, options));
+      // Honor a server-advised retry-after over our own backoff (don't
+      // hammer a rate-limited provider), but cap it so an absurd value
+      // can't hang the loop — the caller's maxDelayMs if set, else 60s.
+      const base = computeRetryDelay(attempt, options);
+      const retryAfterCap = finiteOr(options.maxDelayMs, defaultMaxRetryAfterMs);
+      const waitMs =
+        classified.retryAfterMs !== null
+          ? Math.min(retryAfterCap, Math.max(base, classified.retryAfterMs))
+          : base;
+      await sleep(waitMs);
     }
   }
 

@@ -45,6 +45,13 @@ export interface ClassifiedError {
   readonly statusCode: number | null;
   readonly message: string;
   readonly recovery: RecoveryHints;
+  /**
+   * Server-advised wait before retrying, in ms, when the error carries
+   * one (a `retry-after` header, a numeric `retryAfter`/`retry_after`
+   * field, or a "try again in Ns" message). `null` when none is
+   * present — callers fall back to their own backoff.
+   */
+  readonly retryAfterMs: number | null;
 }
 
 const RETRYABLE_REASONS: ReadonlySet<ErrorReason> = new Set([
@@ -71,7 +78,7 @@ export function classifyError(error: unknown): ClassifiedError {
   const statusCode = extractStatus(error);
   const message = extractMessage(error);
   const reason = classifyReason(error, statusCode, message);
-  return { reason, statusCode, message, recovery: recoveryFor(reason) };
+  return { reason, statusCode, message, recovery: recoveryFor(reason), retryAfterMs: extractRetryAfterMs(error, message) };
 }
 
 function classifyReason(error: unknown, status: number | null, message: string): ErrorReason {
@@ -116,6 +123,62 @@ function classifyReason(error: unknown, status: number | null, message: string):
   if (providerRetryable === true) return "server_error";
 
   return "unknown";
+}
+
+const RETRY_AFTER_MESSAGE = /(?:retry|try) (?:again )?(?:in|after) (\d+(?:\.\d+)?) ?(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes)\b/i;
+const RESETS_IN_MESSAGE = /resets? in (\d+(?:\.\d+)?) ?(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes)\b/i;
+const WAIT_MESSAGE = /(?:please )?wait (\d+(?:\.\d+)?) ?(ms|s|sec|secs|second|seconds|m|min|mins|minute|minutes)\b/i;
+
+function unitToMs(value: number, unit: string): number {
+  const u = unit.toLowerCase();
+  if (u === "ms") return Math.round(value);
+  if (u.startsWith("m")) return Math.round(value * 60_000); // m/min/minute(s)
+  return Math.round(value * 1_000); // s/sec/second(s)
+}
+
+function extractRetryAfterMs(error: unknown, message: string): number | null {
+  // Explicit numeric fields first (seconds by convention; *Ms = ms).
+  const ms = readNumberProp(error, "retryAfterMs");
+  if (ms !== null && ms >= 0) return Math.round(ms);
+  for (const key of ["retryAfter", "retry_after"]) {
+    const seconds = readNumberProp(error, key);
+    if (seconds !== null && seconds >= 0) return Math.round(seconds * 1_000);
+  }
+  // `retry-after` header (numeric seconds only — HTTP-date form needs a
+  // clock and this stays pure).
+  const header = readHeader(error, "retry-after");
+  if (header !== null) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1_000);
+  }
+  // Message patterns.
+  for (const re of [RETRY_AFTER_MESSAGE, RESETS_IN_MESSAGE, WAIT_MESSAGE]) {
+    const m = re.exec(message);
+    if (m && m[1] !== undefined && m[2] !== undefined) {
+      return unitToMs(Number(m[1]), m[2]);
+    }
+  }
+  return null;
+}
+
+function readHeader(error: unknown, name: string): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  for (const holder of [error, (error as { response?: unknown }).response]) {
+    if (typeof holder !== "object" || holder === null) continue;
+    const headers = (holder as { headers?: unknown }).headers;
+    if (typeof headers !== "object" || headers === null) continue;
+    // Header bags: a plain object, or a Map/Headers with a get().
+    const getter = (headers as { get?: unknown }).get;
+    if (typeof getter === "function") {
+      const value = (getter as (k: string) => unknown).call(headers, name);
+      if (typeof value === "string") return value;
+    }
+    for (const key of [name, name.toLowerCase()]) {
+      const value = (headers as Record<string, unknown>)[key];
+      if (typeof value === "string" || typeof value === "number") return String(value);
+    }
+  }
+  return null;
 }
 
 function extractStatus(error: unknown): number | null {

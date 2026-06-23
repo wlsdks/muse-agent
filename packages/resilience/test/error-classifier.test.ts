@@ -69,6 +69,51 @@ describe("classifyError", () => {
   });
 });
 
+describe("classifyError retry-after extraction", () => {
+  it("reads a numeric retryAfter (seconds) and retry_after and retryAfterMs", () => {
+    expect(classifyError({ status: 429, retryAfter: 30 }).retryAfterMs).toBe(30_000);
+    expect(classifyError({ status: 429, retry_after: 5 }).retryAfterMs).toBe(5_000);
+    expect(classifyError({ status: 429, retryAfterMs: 500 }).retryAfterMs).toBe(500);
+  });
+
+  it("reads a retry-after header from an object bag or a get()-style bag", () => {
+    expect(classifyError({ status: 429, headers: { "retry-after": "12" } }).retryAfterMs).toBe(12_000);
+    const withGet = { status: 429, response: { headers: new Map([["retry-after", "7"]]) } };
+    expect(classifyError(withGet).retryAfterMs).toBe(7_000);
+  });
+
+  it("parses retry-after from message text with units", () => {
+    expect(classifyError(new Error("Rate limited, try again in 2 seconds")).retryAfterMs).toBe(2_000);
+    expect(classifyError(new Error("retry after 30s")).retryAfterMs).toBe(30_000);
+    expect(classifyError(new Error("quota resets in 3m")).retryAfterMs).toBe(180_000);
+    expect(classifyError(new Error("please wait 500ms")).retryAfterMs).toBe(500);
+  });
+
+  it("is null when no retry-after is present", () => {
+    expect(classifyError(new Error("boom")).retryAfterMs).toBeNull();
+  });
+});
+
+describe("retry honors server-advised retry-after", () => {
+  it("waits the retry-after instead of the default backoff", async () => {
+    const waits: number[] = [];
+    const op = () => Promise.reject({ status: 429, retryAfter: 2, message: "rate limited" });
+    await expect(
+      retry(op, { maxAttempts: 2, sleep: async (ms) => { waits.push(ms); } })
+    ).rejects.toBeDefined();
+    expect(waits).toEqual([2_000]); // not the ~100ms default
+  });
+
+  it("caps an absurd retry-after at 60s when no maxDelayMs is set", async () => {
+    const waits: number[] = [];
+    const op = () => Promise.reject({ status: 429, retryAfter: 3_600, message: "rate limited" });
+    await expect(
+      retry(op, { maxAttempts: 2, sleep: async (ms) => { waits.push(ms); } })
+    ).rejects.toBeDefined();
+    expect(waits).toEqual([60_000]);
+  });
+});
+
 describe("retry default policy uses the classifier", () => {
   it("fails fast on a clearly-permanent error with NO explicit retryable fn", async () => {
     let attempts = 0;
