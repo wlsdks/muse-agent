@@ -60,3 +60,56 @@ describe("VoiceProviderRegistry.synthesizeWithPersona", () => {
     await expect(registry.synthesizeWithPersona({ id: "muse" }, { text: "hi" })).rejects.toThrow(/No TTS provider/);
   });
 });
+
+describe("VoiceProviderRegistry.synthesizeWithFallback", () => {
+  function tts(id: string, behavior: "ok" | "fail", seen: string[]): TextToSpeechProvider {
+    return {
+      id,
+      describe: () => ({ id, displayName: id, description: "", local: true, availableVoices: [], supportedFormats: ["wav"] }),
+      synthesize: async (): Promise<TtsResponse> => {
+        seen.push(id);
+        if (behavior === "fail") throw new Error(`${id} down`);
+        return { audio: new Uint8Array(), mimeType: "audio/wav", format: "wav" };
+      }
+    };
+  }
+
+  it("returns the first provider's result and does not try the rest", async () => {
+    const seen: string[] = [];
+    const registry = new VoiceProviderRegistry();
+    registry.registerTts(tts("piper", "ok", seen));
+    registry.registerTts(tts("backup", "ok", seen));
+    await registry.synthesizeWithFallback({ text: "hi" });
+    expect(seen).toEqual(["piper"]); // short-circuits on first success
+  });
+
+  it("falls through a failing provider to the next that succeeds", async () => {
+    const seen: string[] = [];
+    const registry = new VoiceProviderRegistry();
+    registry.registerTts(tts("piper", "fail", seen));
+    registry.registerTts(tts("backup", "ok", seen));
+    await registry.synthesizeWithFallback({ text: "hi" });
+    expect(seen).toEqual(["piper", "backup"]); // tried piper, fell to backup
+  });
+
+  it("honors an explicit provider order", async () => {
+    const seen: string[] = [];
+    const registry = new VoiceProviderRegistry();
+    registry.registerTts(tts("piper", "ok", seen));
+    registry.registerTts(tts("backup", "ok", seen));
+    await registry.synthesizeWithFallback({ text: "hi" }, ["backup", "piper"]);
+    expect(seen).toEqual(["backup"]);
+  });
+
+  it("throws naming every failure when all providers fail", async () => {
+    const seen: string[] = [];
+    const registry = new VoiceProviderRegistry();
+    registry.registerTts(tts("piper", "fail", seen));
+    registry.registerTts(tts("backup", "fail", seen));
+    await expect(registry.synthesizeWithFallback({ text: "hi" })).rejects.toThrow(/piper: piper down.*backup: backup down/);
+  });
+
+  it("throws when no provider is registered", async () => {
+    await expect(new VoiceProviderRegistry().synthesizeWithFallback({ text: "hi" })).rejects.toThrow(/No TTS provider/);
+  });
+});

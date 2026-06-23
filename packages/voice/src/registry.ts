@@ -84,6 +84,44 @@ export class VoiceProviderRegistry {
     }
     return provider.synthesize(resolved.request);
   }
+
+  /**
+   * Synthesize with a provider FALLBACK chain: try each TTS provider in
+   * order (the given ids, else every registered provider in registration
+   * order) and return the FIRST success. When one fails (binary missing,
+   * transient error), move to the next instead of failing the whole call
+   * — a local-first resilience win when several TTS backends are
+   * installed. Throws only when every provider failed or none is
+   * registered, naming each attempt's failure.
+   */
+  async synthesizeWithFallback(request: TtsRequest, providerIds?: readonly string[]): Promise<TtsResponse> {
+    const ids = providerIds && providerIds.length > 0 ? providerIds : [...this.tts.keys()];
+    if (ids.length === 0) {
+      throw new VoiceProviderError(
+        "(fallback)",
+        "TTS_NOT_FOUND",
+        `No TTS provider available${registeredHint([...this.tts.keys()])}`
+      );
+    }
+    const failures: string[] = [];
+    for (const id of ids) {
+      const provider = this.tts.get(id);
+      if (!provider) {
+        failures.push(`${id}: not registered`);
+        continue;
+      }
+      try {
+        return await provider.synthesize(request);
+      } catch (error) {
+        failures.push(`${id}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    throw new VoiceProviderError(
+      ids[0] ?? "(fallback)",
+      "TTS_SYNTHESIS_FAILED",
+      `All TTS providers failed: ${failures.join("; ")}`
+    );
+  }
 }
 
 function registeredHint(ids: readonly string[]): string {
