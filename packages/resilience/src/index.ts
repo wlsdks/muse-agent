@@ -8,6 +8,15 @@ import {
 import type { JsonObject } from "@muse/shared";
 import { finiteOr } from "@muse/shared";
 
+import { classifyError } from "./error-classifier.js";
+
+export {
+  classifyError,
+  type ClassifiedError,
+  type ErrorReason,
+  type RecoveryHints
+} from "./error-classifier.js";
+
 export type Awaitable<T> = T | Promise<T>;
 export type CircuitBreakerState = "closed" | "open" | "half_open";
 
@@ -336,7 +345,14 @@ export async function retry<T>(operation: () => Awaitable<T>, options: RetryOpti
       // architecture.md) MUST fail fast with its own clean message.
       // Wrapping it in RetryExhaustedError("…3 attempt(s)") both
       // lies about the count and buries the root cause.
-      if (options.retryable?.(error, attempt) === false) {
+      // Default policy: the deterministic classifier — a clearly
+      // permanent error (auth / bad_request / model_not_found /
+      // content_policy / context_overflow) fails fast; transient and
+      // genuinely-unknown errors stay retryable (preserves the old
+      // retry-by-default behavior). An explicit `retryable` overrides.
+      const retryablePolicy =
+        options.retryable ?? ((candidate: unknown) => classifyError(candidate).recovery.retryable);
+      if (retryablePolicy(error, attempt) === false) {
         throw error;
       }
 
