@@ -146,6 +146,23 @@ describe("boundary and cancellation helpers", () => {
     expect(redactSecretsInText("")).toBe("");
   });
 
+  it("redactSecretsInText redacts sensitive URL query-parameter values (keeping the param name)", () => {
+    // Generic api_key in a URL — value isn't a known vendor shape but is still a secret.
+    expect(redactSecretsInText("see https://api.example.com/v1/x?api_key=Zm9vYmFyc2VjcmV0&q=1"))
+      .toBe("see https://api.example.com/v1/x?api_key=[redacted-url-credential]&q=1");
+    // Presigned-S3-style: signature + credential params both redacted.
+    const presigned = "https://s3.example.com/o?X-Amz-Signature=deadbeef0123456789&X-Amz-Credential=AKIAEXAMPLE";
+    const out = redactSecretsInText(presigned);
+    expect(out).toContain("X-Amz-Signature=[redacted-url-credential]");
+    expect(out).toContain("X-Amz-Credential=[redacted-url-credential]");
+    // Bare access_token / token params.
+    expect(redactSecretsInText("cb https://h/p?access_token=abc.def.ghi&state=ok"))
+      .toBe("cb https://h/p?access_token=[redacted-url-credential]&state=ok");
+    // No false positive on non-sensitive params.
+    expect(redactSecretsInText("https://h/p?id=123&page=2&q=hello"))
+      .toBe("https://h/p?id=123&page=2&q=hello");
+  });
+
   it("redactSecretsInText redacts PEM-encoded private keys (RSA / EC / OPENSSH / bare) as one unit so a key accidentally pasted into a note / tool output / chat message can't round-trip through Slack / Discord / Telegram / the proactive log", () => {
     const rsaKey = [
       "-----BEGIN RSA PRIVATE KEY-----",

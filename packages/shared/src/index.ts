@@ -135,6 +135,17 @@ const SECRET_PATTERNS: ReadonlyArray<{ readonly name: string; readonly regex: Re
   // credential-free `https://host` lacks `:pass@` and is left
   // intact. Sibling of the migration-redaction connection rule.
   { name: "connection-uri", regex: /\b[a-z][a-z0-9+.-]*:\/\/[^\s/?#@:]*:[^\s/?#@]+@[^\s)"'<>]+/giu },
+  // A secret carried as a URL query-parameter VALUE (presigned S3
+  // `?X-Amz-Signature=…`, `?api_key=…`, `?access_token=…`, a generic
+  // `?token=…`). These leak into logs / proactive notices / tool output
+  // even when the value isn't a recognised vendor shape, so match by the
+  // sensitive KEY and redact whatever value follows. Variable-length
+  // lookbehind keeps the `key=` prefix (V8 supports it); the value class
+  // is a simple negated set, so no catastrophic backtracking.
+  {
+    name: "url-credential",
+    regex: /(?<=[?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|session[_-]?token|client[_-]?secret|authorization|auth|password|passwd|pwd|secret|signature|sig|token|x-amz-(?:signature|credential|security-token))=)[^&\s#"'<>]+/giu
+  },
   // Order matters: the more-specific Anthropic / OpenAI-project
   // prefixes must run before the generic `sk-` so a token like
   // `sk-ant-api03-...` lands in the right bucket.
