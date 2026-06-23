@@ -1,7 +1,11 @@
 import { VoiceProviderError } from "./errors.js";
+import { resolveTtsPersona } from "./persona.js";
 import type {
   SpeechToTextProvider,
-  TextToSpeechProvider
+  TextToSpeechProvider,
+  TtsPersona,
+  TtsRequest,
+  TtsResponse
 } from "./types.js";
 
 /**
@@ -59,6 +63,26 @@ export class VoiceProviderRegistry {
       );
     }
     return provider;
+  }
+
+  /**
+   * Synthesize using a persona's defaults (provider + voice/format/speed)
+   * with the request's explicit fields taking precedence. The persona
+   * picks the provider; when it names none, the primary TTS provider is
+   * used. Keeps "the voice of Muse" consistent without every caller
+   * restating provider/voice.
+   */
+  async synthesizeWithPersona(persona: TtsPersona | undefined, request: TtsRequest): Promise<TtsResponse> {
+    const resolved = resolveTtsPersona(persona, request);
+    const provider = resolved.providerId !== undefined ? this.requireTts(resolved.providerId) : this.primaryTts();
+    if (!provider) {
+      throw new VoiceProviderError(
+        resolved.providerId ?? "(primary)",
+        "TTS_NOT_FOUND",
+        `No TTS provider available${registeredHint([...this.tts.keys()])}`
+      );
+    }
+    return provider.synthesize(resolved.request);
   }
 }
 

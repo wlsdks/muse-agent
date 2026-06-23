@@ -67,6 +67,20 @@ export interface TtsResponse {
   readonly raw?: unknown;
 }
 
+/**
+ * A named bundle of TTS defaults (which provider + voice/format/speed)
+ * so the same "voice of Muse" is reused across calls without every
+ * caller restating provider/voice. A per-call TtsRequest field always
+ * overrides the persona's value.
+ */
+export interface TtsPersona {
+  readonly id: string;
+  readonly providerId?: string;
+  readonly voice?: string;
+  readonly format?: TtsFormat;
+  readonly speed?: number;
+}
+
 export interface TextToSpeechProvider {
   readonly id: string;
   describe(): TtsProviderInfo;

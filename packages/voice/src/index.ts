@@ -18,9 +18,11 @@ export type {
   TtsProviderInfo,
   TtsRequest,
   TtsResponse,
-  TtsFormat
+  TtsFormat,
+  TtsPersona
 } from "./types.js";
 export { VoiceProviderError, VoiceValidationError } from "./errors.js";
+export { resolveTtsPersona, type ResolvedTtsPersona } from "./persona.js";
 export {
   OpenAIWhisperSttProvider,
   type OpenAIWhisperSttProviderOptions
