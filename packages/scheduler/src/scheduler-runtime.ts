@@ -1,5 +1,5 @@
 import type { McpManager } from "@muse/mcp";
-import { TimeoutError, withTimeout } from "@muse/resilience";
+import { classifyError, TimeoutError, withTimeout } from "@muse/resilience";
 import type { MuseTool } from "@muse/tools";
 
 import { SchedulerExecutionError } from "./scheduler-errors.js";
@@ -142,6 +142,13 @@ export class ScheduledJobDispatcher {
       } catch (error) {
         lastError = error;
 
+        // Fail fast on a clearly-permanent error (bad tool name,
+        // model-not-found, auth, validation) — retrying it just burns the
+        // remaining attempts and delays the inevitable failure. Transient
+        // and genuinely-unknown errors still retry.
+        if (!classifyError(error).recovery.retryable) {
+          break;
+        }
         if (attempt < attempts) {
           await this.sleep(this.retryDelayMs);
         }

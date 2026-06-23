@@ -289,6 +289,44 @@ describe("ScheduledJobDispatcher", () => {
     expect(attempts).toBe(1); // non-finite → single attempt, never unbounded
   });
 
+  it("fails fast on a clearly-permanent error — does NOT burn the remaining retry attempts", async () => {
+    let attempts = 0;
+    const dispatcher = new ScheduledJobDispatcher({
+      agentExecutor: {
+        execute: () => {
+          attempts += 1;
+          throw Object.assign(new Error("model gone"), { status: 404 }); // permanent → model_not_found
+        }
+      },
+      mcpInvoker: createUnusedMcpInvoker(),
+      retryDelayMs: 0,
+      sleep: async () => {}
+    });
+    const job = createAgentJob({ retryOnFailure: true, maxRetryCount: 5 });
+
+    await expect(dispatcher.runWithTimeoutAndRetry(job)).rejects.toThrow("model gone");
+    expect(attempts).toBe(1); // failed fast — did not retry a permanent error 5 times
+  });
+
+  it("still retries a transient/unknown error to the configured count", async () => {
+    let attempts = 0;
+    const dispatcher = new ScheduledJobDispatcher({
+      agentExecutor: {
+        execute: () => {
+          attempts += 1;
+          throw new Error("temporary blip"); // unknown → retryable
+        }
+      },
+      mcpInvoker: createUnusedMcpInvoker(),
+      retryDelayMs: 0,
+      sleep: async () => {}
+    });
+    const job = createAgentJob({ retryOnFailure: true, maxRetryCount: 4 });
+
+    await expect(dispatcher.runWithTimeoutAndRetry(job)).rejects.toThrow("temporary blip");
+    expect(attempts).toBe(4); // transient → retried fully
+  });
+
   it("reports timeout failures with job context", async () => {
     const dispatcher = new ScheduledJobDispatcher({
       agentExecutor: {
