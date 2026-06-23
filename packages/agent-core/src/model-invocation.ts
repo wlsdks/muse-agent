@@ -18,7 +18,7 @@
 
 import { estimateCostUsd } from "@muse/cache";
 import type { CircuitBreaker, FallbackStrategy, RetryOptions } from "@muse/resilience";
-import { retry, withTimeout } from "@muse/resilience";
+import { retry, scaleRequestTimeout, withTimeout } from "@muse/resilience";
 import { decideWebSearchPolicy, parseModelName, type ModelProvider, type ModelRequest, type ModelResponse, type WebSearchSettings } from "@muse/model";
 import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observability";
 import type { JsonObject } from "@muse/shared";
@@ -138,12 +138,32 @@ async function invokeWithFallback(args: InvokeModelArgs): Promise<ModelResponse>
   }
 }
 
+/**
+ * Rough char-based token estimate of a request — enough to scale the
+ * timeout (no precision needed). Counts message content + serialized
+ * tool-call args at ~4 chars/token.
+ */
+function estimateRequestTokens(request: ModelRequest): number {
+  let chars = 0;
+  for (const message of request.messages) {
+    chars += message.content.length;
+    for (const toolCall of message.toolCalls ?? []) {
+      chars += toolCall.name.length + JSON.stringify(toolCall.arguments).length;
+    }
+  }
+  return Math.ceil(chars / 4);
+}
+
 async function invokeWithResilience(args: InvokeModelArgs): Promise<ModelResponse> {
   const operation = () => {
     if (args.requestTimeoutMs === undefined) {
       return args.provider.generate(args.request);
     }
-    return withTimeout(() => args.provider.generate(args.request), args.requestTimeoutMs);
+    // Scale the cap UP for large requests so a legitimately-slow large
+    // local-model generation isn't killed prematurely; small requests
+    // keep the base cap (byte-identical).
+    const timeoutMs = scaleRequestTimeout(args.requestTimeoutMs, estimateRequestTokens(args.request));
+    return withTimeout(() => args.provider.generate(args.request), timeoutMs);
   };
   if (!args.retry) {
     return operation();

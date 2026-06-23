@@ -517,6 +517,38 @@ export function computeRetryDelay(attempt: number, options: RetryPolicy = {}): n
   return Number.isFinite(jittered) ? jittered : base;
 }
 
+const DEFAULT_REQUEST_MS_PER_TOKEN = 4;
+const DEFAULT_MAX_REQUEST_TIMEOUT_MS = 600_000;
+
+export interface RequestTimeoutScaleOptions {
+  /** Estimated wall-clock budget per input token (prefill). Default 4ms. */
+  readonly msPerToken?: number;
+  /** Hard ceiling on the scaled timeout. Default 600_000ms (10 min). */
+  readonly maxTimeoutMs?: number;
+}
+
+/**
+ * Scale a request timeout UP for large requests so a legitimately-slow
+ * large local-model generation isn't killed by a fixed cap, while a
+ * small request keeps the base cap. Deterministic: never returns below
+ * the base, never above maxTimeoutMs. A non-positive base (the
+ * "no timeout" convention) passes through untouched.
+ */
+export function scaleRequestTimeout(
+  baseTimeoutMs: number,
+  estimatedTokens: number,
+  options: RequestTimeoutScaleOptions = {}
+): number {
+  if (!Number.isFinite(baseTimeoutMs) || baseTimeoutMs <= 0) {
+    return baseTimeoutMs;
+  }
+  const msPerToken = Math.max(0, finiteOr(options.msPerToken, DEFAULT_REQUEST_MS_PER_TOKEN));
+  const maxTimeoutMs = Math.max(baseTimeoutMs, finiteOr(options.maxTimeoutMs, DEFAULT_MAX_REQUEST_TIMEOUT_MS));
+  const tokens = Number.isFinite(estimatedTokens) && estimatedTokens > 0 ? estimatedTokens : 0;
+  const scaled = Math.max(baseTimeoutMs, Math.round(tokens * msPerToken));
+  return Math.min(scaled, maxTimeoutMs);
+}
+
 
 export function isCancellationLikeError(error: unknown): boolean {
   if (!error || typeof error !== "object") {
