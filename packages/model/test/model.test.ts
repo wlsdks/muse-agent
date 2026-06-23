@@ -1387,7 +1387,7 @@ describe("OllamaProvider model-not-found hint (goal 176)", () => {
     const provider = new OllamaProvider({ baseUrl: "http://o.test/v1", defaultModel: "qwen3:8b", fetch: notFound, models: ["qwen3:8b"] });
     const err = await provider.generate({ messages: [{ content: "hi", role: "user" }], model: "ollama/qwen3:8b" })
       .then(() => undefined, (e: unknown) => e as Error);
-    expect(err?.message).toContain("Ollama /api/chat failed with 404");
+    expect(err?.message).toContain("Ollama /api/chat [qwen3:8b] failed with 404");
     expect(err?.message).toContain("ollama pull qwen3:8b");
   });
 
@@ -1398,7 +1398,7 @@ describe("OllamaProvider model-not-found hint (goal 176)", () => {
       events.push(ev);
     }
     const errEvent = events.find((e) => e.type === "error") as { error: Error } | undefined;
-    expect(errEvent?.error.message).toContain("Ollama stream failed with 404");
+    expect(errEvent?.error.message).toContain("Ollama stream [qwen3:8b] failed with 404");
     expect(errEvent?.error.message).toContain("ollama pull qwen3:8b");
   });
 

@@ -484,6 +484,11 @@ describe("OllamaProvider.generate — error handling (ModelProviderError with co
     await expect(p.generate(userReq({ model: "ollama/foo" }))).rejects.toThrow(/ollama pull foo/);
   });
 
+  it("names the model in a non-404 failure message (which-model-failed diagnostics)", async () => {
+    const p = new OllamaProvider({ fetch: jsonFetch("internal error", { ok: false, status: 500 }) });
+    await expect(p.generate(userReq({ model: "ollama/gemma4:12b" }))).rejects.toThrow(/\[gemma4:12b\]/);
+  });
+
   it("throws a retryable error on a non-JSON 200 (transport anomaly)", async () => {
     const p = new OllamaProvider({ fetch: jsonFetch("<html>proxy</html>", { ok: true }) });
     await expect(p.generate(userReq())).rejects.toMatchObject({ retryable: true });

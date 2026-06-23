@@ -343,14 +343,15 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     label: string
   ): Promise<ModelProviderError> {
     const bodyText = (await resp.text().catch(() => "")) || resp.statusText;
-    let message = `Ollama ${label} failed with ${resp.status.toString()}: ${bodyText}`;
-    // Name the exact fix for the canonical first-run footgun
-    // (model not pulled), mirroring the embed-model hints.
-    if (resp.status === 404 && /not found/iu.test(bodyText)) {
-      const model = (request.model ?? this.nativeDefaultModel ?? "").replace(/^ollama\//u, "");
-      if (model.length > 0) {
-        message += ` — run \`ollama pull ${model}\` (or check the model name).`;
-      }
+    // Name the model in EVERY failure — when several local models are
+    // installed, "which model failed?" is the first debugging question, and
+    // a bare status+body doesn't answer it. Mirrors the embed-model hints.
+    const model = (request.model ?? this.nativeDefaultModel ?? "").replace(/^ollama\//u, "");
+    const modelLabel = model.length > 0 ? ` [${model}]` : "";
+    let message = `Ollama ${label}${modelLabel} failed with ${resp.status.toString()}: ${bodyText}`;
+    // Name the exact fix for the canonical first-run footgun (model not pulled).
+    if (resp.status === 404 && /not found/iu.test(bodyText) && model.length > 0) {
+      message += ` — run \`ollama pull ${model}\` (or check the model name).`;
     }
     return new ModelProviderError(this.id, message, isRetryableHttpStatus(resp.status));
   }
