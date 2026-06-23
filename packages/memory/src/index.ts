@@ -296,6 +296,13 @@ export {
   type ToolResultSummaryOptions
 } from "./tool-output-summary.js";
 
+// Stale inline-image stripping: drop multi-MB base64 image bytes from
+// turns before the current one (re-shipped every turn otherwise).
+export {
+  stripStaleImageAttachments,
+  type StripStaleImagesResult
+} from "./media-strip.js";
+
 
 export interface KyselyTaskMemoryStoreOptions {
   readonly now?: () => Date;

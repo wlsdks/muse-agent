@@ -36,6 +36,7 @@ import {
   renderKeyDetailsBlock,
   stripKeyDetailsBlock
 } from "./salient-facts.js";
+import { stripStaleImageAttachments } from "./media-strip.js";
 import { createApproximateTokenEstimator } from "./token-estimator.js";
 
 // Re-exported for backwards compatibility — the @muse/memory barrel
@@ -82,7 +83,10 @@ export function trimConversationMessages(
     options.workingBudgetTokens !== undefined
       ? Math.max(0, Math.min(options.workingBudgetTokens, hardBudgetTokens))
       : undefined;
-  const messages = [...inputMessages];
+  // Structural hygiene (runs every call, like boundary integrity): drop
+  // multi-MB inline image bytes from stale turns so they aren't re-shipped
+  // to the model on every turn. Byte-identical no-op when no stale image.
+  const messages = [...stripStaleImageAttachments(inputMessages).messages];
 
   if (hardBudgetTokens <= 0) {
     const lastUserIndex = findLastIndex(messages, (message) => message.role === "user");
