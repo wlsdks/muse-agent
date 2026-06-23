@@ -61,6 +61,14 @@ export interface RetryPolicy {
   readonly jitterRatio?: number;
   readonly random?: () => number;
   readonly retryable?: (error: unknown, attempt: number) => boolean;
+  /**
+   * Backoff jitter strategy. "decorrelated" (AWS-style: next ∈
+   * [initialDelayMs, prevDelay*3], capped) spreads concurrent retries
+   * against a shared backend (e.g. several background tasks hitting the
+   * local Ollama at once) better than the default symmetric jitterRatio.
+   * Unset = the existing exponential + jitterRatio behavior.
+   */
+  readonly jitter?: "decorrelated";
 }
 
 export interface RetryOptions extends RetryPolicy {
@@ -330,6 +338,8 @@ export async function retry<T>(operation: () => Awaitable<T>, options: RetryOpti
   const maxAttempts = Math.max(1, options.maxAttempts ?? defaultRetryAttempts);
   const sleep = options.sleep ?? delay;
   let lastError: unknown;
+  // Decorrelated jitter carries the previous delay forward; seed at initial.
+  let prevDelay = Math.max(0, finiteOr(options.initialDelayMs, defaultRetryDelayMs));
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
@@ -366,7 +376,10 @@ export async function retry<T>(operation: () => Awaitable<T>, options: RetryOpti
       // Honor a server-advised retry-after over our own backoff (don't
       // hammer a rate-limited provider), but cap it so an absurd value
       // can't hang the loop — the caller's maxDelayMs if set, else 60s.
-      const base = computeRetryDelay(attempt, options);
+      const base = options.jitter === "decorrelated"
+        ? computeDecorrelatedRetryDelay(prevDelay, options)
+        : computeRetryDelay(attempt, options);
+      prevDelay = base;
       const retryAfterCap = finiteOr(options.maxDelayMs, defaultMaxRetryAfterMs);
       const waitMs =
         classified.retryAfterMs !== null
@@ -515,6 +528,23 @@ export function computeRetryDelay(attempt: number, options: RetryPolicy = {}): n
   // misbehaving injected `random` can't leak a non-finite delay.
   const jittered = Math.min(maxDelay, Math.max(0, base - jitter + rng() * jitter * 2));
   return Number.isFinite(jittered) ? jittered : base;
+}
+
+/**
+ * AWS "decorrelated jitter" backoff: the next delay is drawn uniformly
+ * from [initialDelayMs, prevDelay*3] and capped at maxDelayMs. Unlike the
+ * attempt-indexed exponential, it depends on the PREVIOUS delay, which
+ * de-synchronizes several callers retrying a shared backend at once
+ * (https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
+ */
+export function computeDecorrelatedRetryDelay(prevDelayMs: number, options: RetryPolicy = {}): number {
+  const initial = Math.max(0, finiteOr(options.initialDelayMs, defaultRetryDelayMs));
+  const maxDelay = Math.max(initial, finiteOr(options.maxDelayMs, Number.MAX_SAFE_INTEGER));
+  const prev = Math.max(initial, finiteOr(prevDelayMs, initial));
+  const rng = options.random ?? Math.random;
+  const upper = Math.min(maxDelay, prev * 3);
+  const delay = initial + rng() * Math.max(0, upper - initial);
+  return Number.isFinite(delay) ? Math.min(maxDelay, delay) : initial;
 }
 
 const DEFAULT_REQUEST_MS_PER_TOKEN = 4;
