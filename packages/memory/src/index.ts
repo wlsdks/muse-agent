@@ -219,6 +219,17 @@ export const DEFAULT_CACHE_KEY_MAX_CHARS = 2_000;
 export const DEFAULT_TOKEN_CACHE_MAX_ENTRIES = 50_000;
 export const DEFAULT_TOKEN_CACHE_TTL_MS = 5 * 60 * 1_000;
 export const DEFAULT_MESSAGE_STRUCTURE_OVERHEAD = 20;
+/**
+ * Per-tool-call wire-envelope overhead, in tokens, ON TOP of the
+ * tool name + serialized arguments. A provider tool_use / tool_result
+ * block carries structural keys (`type`, `id`, `name`, role wrapper)
+ * that the raw name+args string does not. Counting only name+args
+ * undercounts a turn that fires several tools in parallel — N tool
+ * calls share a SINGLE message overhead today, so the budget silently
+ * over-fills and trimming triggers too late. Adding this per call
+ * makes multi-tool turns count honestly.
+ */
+export const DEFAULT_TOOL_CALL_ENVELOPE_OVERHEAD = 8;
 export const DEFAULT_COMPACTION_THRESHOLD = 3;
 /**
  * Suggested ratio for `workingBudgetTokens` when callers don't set

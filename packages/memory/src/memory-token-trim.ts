@@ -21,6 +21,7 @@ import {
   COMPACTION_SUMMARY_PREFIX,
   DEFAULT_COMPACTION_THRESHOLD,
   DEFAULT_MESSAGE_STRUCTURE_OVERHEAD,
+  DEFAULT_TOOL_CALL_ENVELOPE_OVERHEAD,
   type ConversationMessage,
   type ConversationTrimOptions,
   type ConversationTrimResult,
@@ -646,14 +647,23 @@ function estimateMessageTokens(
   messageStructureOverhead: number
 ): number {
   if (message.role === "assistant") {
+    // Each parallel tool call carries its own wire envelope (type/id/
+    // name keys) beyond name+args; charge it per call so an N-tool turn
+    // isn't undercounted into a single message overhead.
     const toolCallTokens = (message.toolCalls ?? []).reduce(
-      (total, toolCall) => total + estimator.estimate(toolCall.name + JSON.stringify(toolCall.arguments)),
+      (total, toolCall) =>
+        total +
+        estimator.estimate(toolCall.name + JSON.stringify(toolCall.arguments)) +
+        DEFAULT_TOOL_CALL_ENVELOPE_OVERHEAD,
       0
     );
     return estimator.estimate(message.content) + toolCallTokens + messageStructureOverhead;
   }
 
-  return estimator.estimate(message.content) + messageStructureOverhead;
+  // A tool-result message has its own envelope (tool_result wrapper +
+  // tool_call_id) on top of the content.
+  const toolResultEnvelope = message.role === "tool" ? DEFAULT_TOOL_CALL_ENVELOPE_OVERHEAD : 0;
+  return estimator.estimate(message.content) + messageStructureOverhead + toolResultEnvelope;
 }
 
 function estimateTextTokens(text: string, estimator: TokenEstimator, messageStructureOverhead: number): number {

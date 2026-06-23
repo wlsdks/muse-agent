@@ -125,6 +125,26 @@ describe("conversation trimming", () => {
     expect(result.messages.at(-1)?.content).toBe("latest");
   });
 
+  it("counts each parallel tool call's wire envelope (multi-tool turn is not undercounted)", () => {
+    // Two assistant turns, identical content, differing only in how many
+    // tool calls they carry. The 3-call turn must cost meaningfully more
+    // than the 1-call turn — at least ~2 extra envelopes — even though the
+    // tool args are tiny. Pre-fix both collapsed to one message overhead.
+    const one = estimateConversationTokens([assistantMultiTool(["a"])], { estimator: lengthEstimator });
+    const three = estimateConversationTokens([assistantMultiTool(["a", "b", "c"])], {
+      estimator: lengthEstimator
+    });
+    // 2 extra calls: each adds its name (1 char) + "{}" args (2) + envelope (8) = 11.
+    expect(three - one).toBe(22);
+  });
+
+  it("charges a tool-result message its own wire envelope", () => {
+    const withTool = estimateConversationTokens([toolFor("call-x", "ok")], { estimator: lengthEstimator });
+    const asUser = estimateConversationTokens([user("ok")], { estimator: lengthEstimator });
+    // identical content ("ok") + same base overhead; the tool envelope is the gap.
+    expect(withTool - asUser).toBe(8);
+  });
+
   it("drops leading system memory before dropping fresh tool observations", () => {
     const result = trimConversationMessages(
       [
@@ -135,8 +155,11 @@ describe("conversation trimming", () => {
         tool("search result")
       ],
       {
+        // Budget = exact size of the kept user+assistant+tool trio.
+        // Includes per-tool-call (+8) and tool-result (+8) wire-envelope
+        // overhead, so the leading system memories are what gets dropped.
         estimator: lengthEstimator,
-        maxContextWindowTokens: 97,
+        maxContextWindowTokens: 113,
         outputReserveTokens: 0
       }
     );
