@@ -1,6 +1,6 @@
 import { chunkText, cosineSimilarity, defangMemoryInjection, lexicalOverlap, lexicalTokens, neutralizeInjectionSpans, rankPlaybookStrategies, renderPlaybookSection, type KnowledgeMatch } from "@muse/agent-core";
 
-import { escapeSystemPromptMarkers } from "./prompt-escape.js";
+import { escapeSystemPromptMarkers, sanitizeFenceLabel } from "./prompt-escape.js";
 import type { ActionLogEntry, Contact } from "@muse/stores";
 
 const EPISODE_IMPORTANCE_WEIGHT = 0.15;
@@ -140,7 +140,9 @@ export function allUserMemoryFacts(
  * is kept ("favorite color: blue").
  */
 export function renderMemoryFact(fact: MemoryFact): string {
-  const topic = fact.key.replace(/[_-]+/gu, " ").trim();
+  // Sanitize the key BEFORE deriving the topic — a poisoned key carrying a
+  // newline / `<<…>>` could otherwise forge a fence boundary from this line.
+  const topic = sanitizeFenceLabel(fact.key).replace(/[_-]+/gu, " ").trim();
   // Defang at render time so a value poisoned at write time can't steer the model
   // when this fact enters the grounding block / conflict cue; the raw value stays
   // in the store for the user to inspect + remove.
@@ -179,7 +181,8 @@ export function buildMemoryContextBlock(
           : stale?.has(f.key)
             ? STALE_FACT_MARK
             : "";
-      return `<<memory ${(i + 1).toString()} — ${f.key}>>\n${renderMemoryFact(f)}${mark}\n[memory: ${f.key}]\n<<end>>`;
+      const keyLabel = sanitizeFenceLabel(f.key);
+      return `<<memory ${(i + 1).toString()} — ${keyLabel}>>\n${renderMemoryFact(f)}${mark}\n[memory: ${keyLabel}]\n<<end>>`;
     })
     .join("\n\n");
 }
@@ -274,7 +277,7 @@ export function buildContactContextBlock(
         c.about ? `notes: ${safe(c.about)}` : undefined
       ].filter((f): f is string => f !== undefined).join(", ");
       const safeName = safe(c.name);
-      return `<<contact ${(i + 1).toString()} — ${c.id}>>\n${safeName}${fields ? ` — ${fields}` : ""}\n[contact: ${safeName}]\n<<end>>`;
+      return `<<contact ${(i + 1).toString()} — ${sanitizeFenceLabel(c.id)}>>\n${safeName}${fields ? ` — ${fields}` : ""}\n[contact: ${safeName}]\n<<end>>`;
     })
     .join("\n\n");
 }

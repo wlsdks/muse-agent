@@ -52,3 +52,19 @@ export function escapeSystemPromptMarkers(text: string): string {
   }
   return out;
 }
+
+/**
+ * Sanitize a LABEL (a memory key / contact id) that is interpolated into
+ * a grounding-block fence HEADER (`<<memory N — <label>>>`, `[memory:
+ * <label>]`). Unlike `escapeSystemPromptMarkers` (for free-text VALUES),
+ * a label must stay copy-clean for the citation matcher — but a poisoned
+ * / auto-extracted key carrying a newline or `<<`/`>>` could otherwise
+ * break the single-line fence and forge a `<<end>>` boundary + a fake
+ * entry. Strips ONLY control bytes (incl. newline), DEL, and angle
+ * brackets — chars that never appear in a real identifier — so a normal
+ * key is byte-identical (the citation gate matches by token overlap, so
+ * this never weakens a legitimate citation). Pure + idempotent.
+ */
+export function sanitizeFenceLabel(label: string): string {
+  return label.replace(/[\u0000-\u001f\u007f<>]/gu, "");
+}
