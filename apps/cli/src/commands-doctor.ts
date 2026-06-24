@@ -15,7 +15,8 @@ import { existsSync, promises as fs } from "node:fs";
 import { formatRelativeTime } from "./human-formatters.js";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
-import { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, readMuseSpeedEnv, readOllamaPerfEnv, schedulerPauseCheck, selfLearningCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
+import { backgroundProcessCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, readMuseSpeedEnv, readOllamaPerfEnv, schedulerPauseCheck, selfLearningCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
+import { backgroundStoreFile } from "./commands-background.js";
 import { findOllamaModelTag, isOllamaTagsEntry, type OllamaTagsEntry } from "./commands-doctor-ollama.js";
 import { readNotesIndexEmbedModel } from "./commands-doctor-checks.js";
 import { embedModelCheck, formatBytes } from "./commands-doctor-checks.js";
@@ -34,7 +35,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { describeOfficialMcpPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveWeaknessesFile, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
-import { defaultSchedulerPauseFile, isLearningPaused, isMasteredWeakness, readEpisodes, readSchedulerPauseState, readWeaknesses, selectDevFixableWeaknesses, type DevFixableWeakness, type WeaknessEntry } from "@muse/stores";
+import { defaultSchedulerPauseFile, isLearningPaused, isMasteredWeakness, readBackgroundProcesses, readEpisodes, readSchedulerPauseState, readWeaknesses, selectDevFixableWeaknesses, type DevFixableWeakness, type WeaknessEntry } from "@muse/stores";
 import type { Command } from "commander";
 
 import { resolveLaunchAgentFile } from "./commands-daemon.js";
@@ -344,6 +345,7 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   // identity, alongside the cloud-egress ("can't reach a cloud") posture above.
   checks.push(atRestDoctorCheck(await collectPrivacyPosture(env)));
   checks.push({ name: "scheduler", ...schedulerPauseCheck(await readSchedulerPauseState(defaultSchedulerPauseFile(env))) });
+  checks.push({ name: "background", ...backgroundProcessCheck(await readBackgroundProcesses(backgroundStoreFile())) });
 
   // ~/.muse layout
   const muse_home = resolveMuseEnvPath(process.env.MUSE_HOME, join(homedir(), ".muse"));

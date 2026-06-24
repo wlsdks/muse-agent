@@ -346,3 +346,20 @@ export function schedulerPauseCheck(
     ? { detail: `autonomous scheduled jobs are PAUSED${state.since ? ` (since ${state.since})` : ""} — run \`muse scheduler resume\` to re-enable`, status: "warn" }
     : { detail: "scheduler active — autonomous jobs fire on schedule", status: "ok" };
 }
+
+/**
+ * Surface FAILED background processes (a dev server / watch build that
+ * crashed) so the user notices instead of assuming it's still up. Pure —
+ * takes the already-read registry records. A failed one warns; otherwise
+ * reports the running count.
+ */
+export function backgroundProcessCheck(
+  records: readonly { readonly id: string; readonly status: string }[]
+): { readonly detail: string; readonly status: "ok" | "warn" } {
+  const failed = records.filter((record) => record.status === "failed");
+  if (failed.length > 0) {
+    return { detail: `${failed.length.toString()} background process(es) failed (e.g. ${failed[0]!.id}) — see \`muse bg logs <id>\``, status: "warn" };
+  }
+  const running = records.filter((record) => record.status === "running").length;
+  return { detail: running > 0 ? `${running.toString()} background process(es) running` : "no background processes", status: "ok" };
+}
