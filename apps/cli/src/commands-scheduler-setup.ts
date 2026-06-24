@@ -10,7 +10,7 @@
  */
 
 import { collectSetupStatusJson, resolveFollowupsFile, type SetupStatusSnapshot } from "@muse/autoconfigure";
-import { readFollowups } from "@muse/stores";
+import { defaultSchedulerPauseFile, readFollowups, readSchedulerPauseState, setSchedulerPaused } from "@muse/stores";
 import type { Command } from "commander";
 
 import { runCalendarSetup } from "./setup-calendar.js";
@@ -170,6 +170,30 @@ export function registerSchedulerCommands(program: Command, io: ProgramIO, helpe
       for (const entry of upcoming) {
         io.stdout(`  · ${entry.when}  [${entry.kind}] ${entry.label}\n`);
       }
+    });
+
+  scheduler
+    .command("pause")
+    .description("Pause autonomous scheduled jobs (a running daemon honors it; manual triggers still run)")
+    .action(async () => {
+      await setSchedulerPaused(defaultSchedulerPauseFile(), true, new Date().toISOString());
+      io.stdout("Scheduler paused — autonomous jobs will not fire until `muse scheduler resume`.\n");
+    });
+
+  scheduler
+    .command("resume")
+    .description("Resume autonomous scheduled jobs")
+    .action(async () => {
+      await setSchedulerPaused(defaultSchedulerPauseFile(), false);
+      io.stdout("Scheduler resumed — autonomous jobs will fire on schedule again.\n");
+    });
+
+  scheduler
+    .command("pause-status")
+    .description("Show whether autonomous scheduled jobs are paused")
+    .action(async () => {
+      const state = await readSchedulerPauseState(defaultSchedulerPauseFile());
+      io.stdout(state.paused ? `Paused${state.since ? ` since ${state.since}` : ""}.\n` : "Running (not paused).\n");
     });
 }
 

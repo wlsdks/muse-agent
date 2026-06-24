@@ -13,8 +13,15 @@
  */
 
 import { promises as fs } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
+
+/** Shared pause-file path so the CLI toggle and the daemon agree. Override with MUSE_SCHEDULER_PAUSE_FILE. */
+export function defaultSchedulerPauseFile(env: Readonly<Record<string, string | undefined>> = process.env): string {
+  return env.MUSE_SCHEDULER_PAUSE_FILE ?? join(homedir(), ".muse", "scheduler-paused.json");
+}
 
 export interface SchedulerPauseState {
   readonly paused: boolean;

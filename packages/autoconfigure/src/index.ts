@@ -24,7 +24,7 @@ import {
   InMemoryResponseCache
 } from "@muse/cache";
 import { createLoopbackMcpMuseTools, type LoopbackMcpServer, type McpManager, type McpTransportConnector, type McpSecurityPolicyProvider, type McpSecurityPolicyStore, type McpServerInput, type McpServerStore } from "@muse/mcp";
-import { upsertFollowup, type PersistedFollowup } from "@muse/stores";
+import { defaultSchedulerPauseFile, isSchedulerPaused, upsertFollowup, type PersistedFollowup } from "@muse/stores";
 import { createContextReferenceMcpServer, createDefaultLoopbackMcpServers, createFetchMcpServer, createFilesystemMcpServer, type MessageApprovalGate, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import {
   createUserMemoryAutoExtractHook,
@@ -696,6 +696,9 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       : undefined,
     executionStore: schedulerExecutionStore,
     distributedLock: schedulerLock,
+    // User kill-switch: a cron-fired job is skipped while the user has paused
+    // the scheduler (toggled by `muse scheduler pause`); manual triggers still run.
+    isPaused: () => isSchedulerPaused(defaultSchedulerPauseFile(env)),
     store: schedulerStore
   });
   schedulerHandle.current = schedulerService;
