@@ -333,3 +333,16 @@ export function formatBytes(bytes: number | undefined): string {
   if (bytes >= 1_000) return `${(bytes / 1_000).toFixed(0)} kB`;
   return `${bytes.toString()} B`;
 }
+
+/**
+ * Surface the scheduler pause kill-switch so a deliberately-paused scheduler
+ * doesn't read as "broken" (autonomous jobs silently not firing is otherwise
+ * confusing). Pure — takes the already-read pause state.
+ */
+export function schedulerPauseCheck(
+  state: { readonly paused: boolean; readonly since?: string }
+): { readonly detail: string; readonly status: "ok" | "warn" } {
+  return state.paused
+    ? { detail: `autonomous scheduled jobs are PAUSED${state.since ? ` (since ${state.since})` : ""} — run \`muse scheduler resume\` to re-enable`, status: "warn" }
+    : { detail: "scheduler active — autonomous jobs fire on schedule", status: "ok" };
+}
