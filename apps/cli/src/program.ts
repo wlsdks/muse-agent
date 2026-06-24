@@ -125,6 +125,7 @@ import { registerNotesRagCommands } from "./commands-notes-rag.js";
 import { registerNoteCommand } from "./commands-note.js";
 import { registerRememberCommands } from "./commands-remember.js";
 import { registerStatusCommand } from "./commands-status.js";
+import { registerBackgroundCommand } from "./commands-background.js";
 import { registerRoutineCommand } from "./commands-routine.js";
 import { registerTrustCommands } from "./commands-trust.js";
 import { registerWatchFolderCommand } from "./commands-watch-folder.js";
@@ -581,6 +582,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerSetupLocalCommand(program, io, { readConfigStore, writeConfigStore });
   registerSetupVoiceCommand(program, io);
   registerStatusCommand(program, io);
+  registerBackgroundCommand(program, io);
   registerBriefCommand(program, io);
   registerRecapCommand(program, io);
   registerRememberCommands(program, io);
