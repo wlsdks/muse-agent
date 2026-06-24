@@ -3,6 +3,7 @@ export * from "./encrypted-file.js";
 export * from "./learn-queue.js";
 export * from "./learning-pause-store.js";
 export * from "./ollama-lease.js";
+export * from "./session-crash-marker.js";
 export * from "./personal-action-log-store.js";
 export * from "./personal-consent-store.js";
 export * from "./personal-contacts-store.js";
