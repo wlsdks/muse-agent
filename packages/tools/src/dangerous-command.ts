@@ -35,7 +35,13 @@ const RULES: readonly (readonly [RegExp, string])[] = [
   // Formatting a filesystem.
   [/\bmkfs(?:\.[a-z0-9]+)?\s+[^\n]*\/dev\//iu, "filesystem format of a device"],
   // Overwrite the whole disk with zeros/urandom via dd handled above; also catch wipefs.
-  [/\bwipefs\b[^\n]*\/dev\//iu, "wipe filesystem signatures from a device"]
+  [/\bwipefs\b[^\n]*\/dev\//iu, "wipe filesystem signatures from a device"],
+  // Recursive permission/ownership change of the ROOT or HOME tree — breaks
+  // the OS (sudo/SSH refuse a world-writable tree) and isn't reversible by
+  // re-running. Targets bare / · /* · ~ · $HOME only, like the rm rule, so a
+  // relative `chmod -R 755 ./dist` passes through.
+  [/\bchmod\s+(?:-[a-z]+\s+)*-?[a-zA-Z]*\bR[a-zA-Z]*\s+(?:[0-7]{3,4}|[ugoa]*[+=][rwxXst]+)\s+(?:\/\*?|~\/?|\$HOME)(?:\s|$)/u, "recursive permission change of root or home"],
+  [/\bchown\s+(?:-[a-z]+\s+)*-?[a-zA-Z]*\bR[a-zA-Z]*\s+\S+\s+(?:\/\*?|~\/?|\$HOME)(?:\s|$)/u, "recursive ownership change of root or home"]
 ];
 
 /**

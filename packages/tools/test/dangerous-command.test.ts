@@ -16,7 +16,12 @@ describe("classifyDangerousCommand", () => {
       "dd if=/dev/zero of=/dev/disk2 bs=1m",
       "mkfs.ext4 /dev/sdb1",
       "wipefs -a /dev/sda",
-      "echo x > /dev/sda"
+      "echo x > /dev/sda",
+      "chmod -R 777 /",
+      "chmod -R 755 ~",
+      "sudo chmod -R u+rwx /*",
+      "chown -R nobody /",
+      "chown -R user:group ~/"
     ]) {
       expect(classifyDangerousCommand(cmd).dangerous, cmd).toBe(true);
     }
@@ -32,7 +37,10 @@ describe("classifyDangerousCommand", () => {
       "npm test",
       "git status",
       "dd if=input.img of=output.img",
-      "echo hello > out.txt"
+      "echo hello > out.txt",
+      "chmod -R 755 ./dist",
+      "chmod +x ./script.sh",
+      "chown -R me ./project"
     ]) {
       expect(classifyDangerousCommand(cmd).dangerous, cmd).toBe(false);
     }
