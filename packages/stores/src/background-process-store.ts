@@ -135,3 +135,18 @@ export async function removeBackgroundProcess(file: string, id: string): Promise
 export async function getBackgroundProcess(file: string, id: string): Promise<BackgroundProcessRecord | undefined> {
   return (await readBackgroundProcesses(file)).find((p) => p.id === id);
 }
+
+/**
+ * Remove every TERMINAL (exited/failed/killed) record, keeping only running
+ * ones, and return the removed records so the caller can delete their log
+ * files (the auto-cap bounds record count but their on-disk logs would
+ * otherwise linger). Running processes are never touched.
+ */
+export async function pruneTerminalBackgroundProcesses(file: string): Promise<readonly BackgroundProcessRecord[]> {
+  let removed: readonly BackgroundProcessRecord[] = [];
+  await mutateBackgroundProcesses(file, (current) => {
+    removed = current.filter((p) => p.status !== "running");
+    return current.filter((p) => p.status === "running");
+  });
+  return removed;
+}

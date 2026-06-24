@@ -16,6 +16,7 @@ import type { Command } from "commander";
 import { classifyDangerousCommand } from "@muse/tools";
 import {
   createNodeBackgroundSpawner,
+  pruneTerminalBackgroundProcesses,
   readBackgroundProcesses,
   spawnBackgroundProcess,
   stopBackgroundProcess,
@@ -96,6 +97,18 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
       } catch (error) {
         io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
       }
+    });
+
+  bg.command("prune")
+    .description("Remove finished background processes from the registry and delete their log files")
+    .action(async () => {
+      const removed = await pruneTerminalBackgroundProcesses(backgroundStoreFile());
+      for (const record of removed) {
+        if (record.logFile) {
+          await fs.rm(record.logFile, { force: true }).catch(() => undefined);
+        }
+      }
+      io.stdout(`Pruned ${removed.length.toString()} finished background process(es).\n`);
     });
 
   bg.command("stop <id>")

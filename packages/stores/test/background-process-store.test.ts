@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   getBackgroundProcess,
+  pruneTerminalBackgroundProcesses,
   readBackgroundProcesses,
   registerBackgroundProcess,
   removeBackgroundProcess,
@@ -57,6 +58,16 @@ describe("background-process registry store (X-3)", () => {
     await registerBackgroundProcess(file, rec({ id: "b" }));
     await removeBackgroundProcess(file, "a");
     expect((await readBackgroundProcesses(file)).map((p) => p.id)).toEqual(["b"]);
+  });
+
+  it("prune removes terminal records (returning them), keeps running", async () => {
+    const file = tmpFile();
+    await registerBackgroundProcess(file, rec({ id: "run", status: "running" }));
+    await registerBackgroundProcess(file, rec({ id: "done", status: "exited", exitCode: 0 }));
+    await registerBackgroundProcess(file, rec({ id: "bad", status: "failed", exitCode: 1 }));
+    const removed = await pruneTerminalBackgroundProcesses(file);
+    expect(removed.map((r) => r.id).sort()).toEqual(["bad", "done"]);
+    expect((await readBackgroundProcesses(file)).map((r) => r.id)).toEqual(["run"]);
   });
 
   it("reads a missing or corrupt file as empty (never throws)", async () => {

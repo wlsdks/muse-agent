@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -76,6 +76,19 @@ describe("muse bg (read-only command)", () => {
     const h = harness(file);
     await h.program.parseAsync(["bg", "stop", "nope"], { from: "user" });
     expect(h.err.join("")).toContain("No background process with id 'nope'");
+  });
+
+  it("bg prune removes finished processes and deletes their logs, keeping running", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-bgcmd-"));
+    const logFile = join(dir, "done.log");
+    writeFileSync(logFile, "old output", "utf8");
+    const store = join(dir, "p.json");
+    writeFileSync(store, JSON.stringify({ processes: [rec({ id: "run", status: "running" }), rec({ id: "done", status: "exited", exitCode: 0, logFile })] }), "utf8");
+    const h = harness(store);
+    await h.program.parseAsync(["bg", "prune"], { from: "user" });
+    expect(h.out.join("")).toMatch(/Pruned 1 finished/);
+    expect(JSON.parse(readFileSync(store, "utf8")).processes.map((p: { id: string }) => p.id)).toEqual(["run"]);
+    expect(existsSync(logFile)).toBe(false);
   });
 
   it("bg run REFUSES a catastrophic command and starts nothing", async () => {
