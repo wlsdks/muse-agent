@@ -86,9 +86,36 @@ export async function mutateBackgroundProcesses(
   });
 }
 
-/** Add a record (or replace one with the same id — a re-register is idempotent). */
+const DEFAULT_MAX_TERMINAL = 50;
+
+/**
+ * Self-bound the registry: keep every `running` record but at most
+ * `maxTerminal` finished (exited/failed/killed) ones, dropping the OLDEST
+ * terminal first (by end time, falling back to start time). Without this the
+ * registry grows forever as background processes come and go. Preserves the
+ * order of the kept records. Pure.
+ */
+export function capBackgroundProcesses(
+  records: readonly BackgroundProcessRecord[],
+  maxTerminal: number = DEFAULT_MAX_TERMINAL
+): readonly BackgroundProcessRecord[] {
+  const terminal = records.filter((record) => record.status !== "running");
+  if (terminal.length <= maxTerminal) {
+    return records;
+  }
+  const keep = new Set(
+    [...terminal]
+      .sort((a, b) => (b.endedAt ?? b.startedAt).localeCompare(a.endedAt ?? a.startedAt))
+      .slice(0, maxTerminal)
+  );
+  return records.filter((record) => record.status === "running" || keep.has(record));
+}
+
+/** Add a record (or replace one with the same id — a re-register is idempotent). Caps terminal records. */
 export async function registerBackgroundProcess(file: string, record: BackgroundProcessRecord): Promise<void> {
-  await mutateBackgroundProcesses(file, (current) => [...current.filter((p) => p.id !== record.id), record]);
+  await mutateBackgroundProcesses(file, (current) =>
+    capBackgroundProcesses([...current.filter((p) => p.id !== record.id), record])
+  );
 }
 
 export async function updateBackgroundProcess(
