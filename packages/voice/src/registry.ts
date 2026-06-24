@@ -1,5 +1,6 @@
 import { VoiceProviderError } from "./errors.js";
 import { resolveTtsPersona } from "./persona.js";
+import { truncateForTts } from "./tts-truncate.js";
 import type {
   SpeechToTextProvider,
   TextToSpeechProvider,
@@ -82,7 +83,7 @@ export class VoiceProviderRegistry {
         `No TTS provider available${registeredHint([...this.tts.keys()])}`
       );
     }
-    return provider.synthesize(resolved.request);
+    return provider.synthesize({ ...resolved.request, text: truncateForTts(resolved.request.text) });
   }
 
   /**
@@ -111,7 +112,7 @@ export class VoiceProviderRegistry {
         continue;
       }
       try {
-        return await provider.synthesize(request);
+        return await provider.synthesize({ ...request, text: truncateForTts(request.text) });
       } catch (error) {
         failures.push(`${id}: ${error instanceof Error ? error.message : String(error)}`);
       }

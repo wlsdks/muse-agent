@@ -46,6 +46,7 @@ export {
   type PiperTtsProviderOptions
 } from "./piper.js";
 export { VoiceProviderRegistry } from "./registry.js";
+export { truncateForTts } from "./tts-truncate.js";
 export {
   FakeAudioFrameWakeWordDetector,
   TextScanWakeWordDetector,
