@@ -134,6 +134,35 @@ export function assertPublicHttpUrlSync(rawUrl: string): UrlGuardResult {
   return { ok: true, url };
 }
 
+const URL_CANDIDATE_RE = /https?:\/\/[^\s<>"'`)\]]+/giu;
+
+/**
+ * Extract the SSRF-SAFE public http(s) URLs from freeform text (a user
+ * message, a fetched page). Finds bare URLs — markdown-link targets too,
+ * since the pattern stops at the closing paren/bracket — strips trailing
+ * sentence punctuation, de-duplicates preserving first-seen order, and
+ * keeps ONLY those that pass {@link assertPublicHttpUrlSync}. A
+ * private/loopback/non-http lure (e.g. an injected
+ * `http://169.254.169.254/…` cloud-metadata link) is dropped. Pure +
+ * synchronous (no DNS) — defense-in-depth for any path that would act on a
+ * URL found in untrusted text.
+ */
+export function extractPublicHttpUrls(text: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const match of text.matchAll(URL_CANDIDATE_RE)) {
+    const candidate = match[0].replace(/[.,;:!?]+$/u, "");
+    if (seen.has(candidate)) {
+      continue;
+    }
+    seen.add(candidate);
+    if (assertPublicHttpUrlSync(candidate).ok) {
+      out.push(candidate);
+    }
+  }
+  return out;
+}
+
 export async function assertPublicHttpUrl(rawUrl: string, options: { readonly lookup?: HostLookup } = {}): Promise<UrlGuardResult> {
   const sync = assertPublicHttpUrlSync(rawUrl);
   if (!sync.ok) return sync;
