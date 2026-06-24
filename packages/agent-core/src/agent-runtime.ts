@@ -32,10 +32,13 @@ import type {
   HookTraceStore
 } from "@muse/runtime-state";
 import {
+  COMPACTION_SUMMARY_PREFIX,
+  summarizeDroppedContext,
   trimConversationMessages,
   type ContextReferenceStore,
   type ConversationSummaryStore,
-  type ConversationTrimOptions
+  type ConversationTrimOptions,
+  type DroppedContextSummarizer
 } from "@muse/memory";
 import type { GuardBlockRateMonitor } from "@muse/policy";
 import { createRunId } from "@muse/shared";
@@ -196,6 +199,8 @@ export class AgentRuntime {
   private readonly retry?: RetryOptions;
   private readonly requestTimeoutMs?: number;
   private readonly contextWindow?: ConversationTrimOptions;
+  private readonly contextSummarizer?: DroppedContextSummarizer;
+  private readonly contextSummaryMaxChars: number;
   private readonly metrics: AgentMetrics;
   private readonly tracer: MuseTracer;
   private readonly tokenUsageSink?: TokenUsageSink;
@@ -262,6 +267,8 @@ export class AgentRuntime {
     this.retry = options.retry;
     this.requestTimeoutMs = options.requestTimeoutMs;
     this.contextWindow = options.contextWindow;
+    this.contextSummarizer = options.contextSummarizer;
+    this.contextSummaryMaxChars = options.contextSummaryMaxChars ?? 600;
     this.metrics = options.metrics ?? createNoOpAgentMetrics();
     this.tracer = options.tracer ?? createNoOpMuseTracer();
     this.tokenUsageSink = options.tokenUsageSink;
@@ -504,6 +511,23 @@ export class AgentRuntime {
       this.userMemoryMaxEntries
     );
     let preparedRequest = this.prepareModelRequest(summaryAppliedContext.input, selected.model, personaSnapshot, activeContextSnapshot);
+    // CMP-2: when a compaction fired and an aux summarizer is configured,
+    // summarize the dropped window with the cheap aux model and append it to
+    // the deterministic [Conversation summary …] block. Fail-open — an empty
+    // result leaves the deterministic summary untouched (no aux call when
+    // unconfigured, so existing behavior is byte-identical).
+    if (this.contextSummarizer && preparedRequest.contextWindow?.summaryInserted && preparedRequest.dropped && preparedRequest.dropped.length > 0) {
+      const auxSummary = await summarizeDroppedContext(preparedRequest.dropped, this.contextSummarizer, {
+        fallback: "",
+        maxChars: this.contextSummaryMaxChars
+      });
+      if (auxSummary.length > 0) {
+        preparedRequest = {
+          ...preparedRequest,
+          request: { ...preparedRequest.request, messages: augmentCompactionSummary(preparedRequest.request.messages, auxSummary) }
+        };
+      }
+    }
     // Budget ENFORCEMENT (opt-in): the meter alone never stopped an
     // over-budget turn — when a cap is configured, whole sections are evicted
     // lowest-priority-first so the 12B's window is spent on what matters.
@@ -649,6 +673,7 @@ export class AgentRuntime {
     activeContextSnapshot?: ActiveContextSnapshot
   ): {
     readonly contextWindow?: AgentContextWindowReport;
+    readonly dropped?: readonly ModelMessage[];
     readonly request: Pick<ModelRequest, "messages" | "metadata" | "model">;
   } {
     if (!this.contextWindow) {
@@ -694,6 +719,7 @@ export class AgentRuntime {
         summaryInserted: trimResult.summaryInserted,
         triggeredBy: trimResult.triggeredBy
       },
+      dropped: trimResult.dropped,
       request: {
         messages: trimResult.messages,
         metadata: input.metadata,
@@ -1102,4 +1128,33 @@ function logprobsFromInput(
 
 export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   return new AgentRuntime(options);
+}
+
+/**
+ * Append a CMP-2 auxiliary-model dropped-context summary to the
+ * deterministic `[Conversation summary …]` system message, preserving the
+ * deterministic floor (the `[Key details]`/pinned-entity blocks). Returns
+ * the array unchanged when `aux` is blank or no compaction-summary message
+ * is present (e.g. a turn that didn't compact). Pure.
+ */
+export function augmentCompactionSummary(
+  messages: readonly ModelMessage[],
+  aux: string
+): readonly ModelMessage[] {
+  const trimmed = aux.trim();
+  if (trimmed.length === 0) {
+    return messages;
+  }
+  const idx = messages.findIndex(
+    (message) =>
+      message.role === "system" &&
+      typeof message.content === "string" &&
+      message.content.startsWith(COMPACTION_SUMMARY_PREFIX)
+  );
+  if (idx === -1) {
+    return messages;
+  }
+  const target = messages[idx]!;
+  const augmented = { ...target, content: `${target.content}\n[Dropped-context summary: ${trimmed}]` };
+  return messages.map((message, i) => (i === idx ? augmented : message));
 }

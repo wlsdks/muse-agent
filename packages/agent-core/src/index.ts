@@ -519,6 +519,7 @@ export { HookRegistry } from "./hook-registry.js";
 
 export {
   AgentRuntime,
+  augmentCompactionSummary,
   createAgentRuntime,
   type AgentRuntimeOptions,
   type AgentRuntimeStreamEvent,

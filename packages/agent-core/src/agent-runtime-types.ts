@@ -30,7 +30,8 @@ import type {
 import type {
   ContextReferenceStore,
   ConversationSummaryStore,
-  ConversationTrimOptions
+  ConversationTrimOptions,
+  DroppedContextSummarizer
 } from "@muse/memory";
 import type { GuardBlockRateMonitor } from "@muse/policy";
 import type {
@@ -119,6 +120,18 @@ export interface AgentRuntimeOptions {
   readonly retry?: RetryOptions;
   readonly requestTimeoutMs?: number;
   readonly contextWindow?: ConversationTrimOptions;
+  /**
+   * Optional auxiliary-model summarizer (CMP-2). When set AND a compaction
+   * fired this turn, the messages dropped by the trim are summarized by
+   * this injected model and the result is appended to the deterministic
+   * `[Conversation summary …]` block. Fail-open: any error/empty result
+   * leaves the deterministic summary untouched. Unset = no aux call (the
+   * default; existing behavior byte-identical). Model-agnostic by
+   * construction — the runtime never names a provider.
+   */
+  readonly contextSummarizer?: DroppedContextSummarizer;
+  /** Char cap for the aux dropped-context summary (default 600). */
+  readonly contextSummaryMaxChars?: number;
   readonly metrics?: AgentMetrics;
   readonly tracer?: MuseTracer;
   readonly tokenUsageSink?: TokenUsageSink;
