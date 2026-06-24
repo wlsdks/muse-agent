@@ -2,6 +2,7 @@ export * from "./atomic-file-store.js";
 export * from "./encrypted-file.js";
 export * from "./learn-queue.js";
 export * from "./learning-pause-store.js";
+export * from "./scheduler-pause-store.js";
 export * from "./ollama-lease.js";
 export * from "./session-crash-marker.js";
 export * from "./background-process-store.js";

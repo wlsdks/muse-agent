@@ -38,6 +38,7 @@ export class DynamicScheduler {
   private readonly lockTtlBufferMs: number;
   private readonly handles = new Map<string, ScheduledTaskHandle>();
   private readonly activeRuns = new ActiveRunTracker();
+  private readonly isPaused?: () => Promise<boolean>;
 
   constructor(options: DynamicSchedulerOptions) {
     this.store = options.store;
@@ -51,6 +52,7 @@ export class DynamicScheduler {
     this.cronScheduler = options.cronScheduler;
     this.now = options.now ?? (() => new Date());
     this.lockTtlBufferMs = options.lockTtlBufferMs ?? defaultLockTtlBufferMs;
+    this.isPaused = options.isPaused;
   }
 
   async loadEnabledJobs(): Promise<number> {
@@ -163,7 +165,7 @@ export class DynamicScheduler {
     this.cancelJob(job.id);
 
     const handle = this.cronScheduler.schedule(job, () => {
-      void this.activeRuns.track(this.runScheduledJob(job, false));
+      void this.activeRuns.track(this.runScheduledJob(job, false, true));
     });
 
     if (handle) {
@@ -178,7 +180,13 @@ export class DynamicScheduler {
     this.handles.delete(id);
   }
 
-  private async runScheduledJob(job: ScheduledJob, dryRun: boolean): Promise<string> {
+  private async runScheduledJob(job: ScheduledJob, dryRun: boolean, automatic = false): Promise<string> {
+    // User pause kill-switch: skip AUTONOMOUS (cron-fired) runs while paused;
+    // a manual `trigger` still runs — explicit intent wins.
+    if (automatic && this.isPaused && (await this.isPaused())) {
+      await this.store.updateExecutionResult(job.id, "skipped", "skipped: scheduler paused by user");
+      return "skipped: scheduler paused by user";
+    }
     const lockTtlMs = Math.max(minLockTtlMs, resolveJobTimeout(job, defaultExecutionTimeoutMs) + this.lockTtlBufferMs);
 
     if (!dryRun && !(await this.distributedLock.tryAcquire(job.id, lockTtlMs))) {

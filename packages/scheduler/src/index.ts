@@ -204,6 +204,12 @@ export interface DynamicSchedulerOptions {
   readonly cronScheduler?: CronScheduler;
   readonly now?: () => Date;
   readonly lockTtlBufferMs?: number;
+  /**
+   * Optional user kill-switch: when it resolves true, AUTOMATIC firings are
+   * skipped (a manual `trigger` still runs). Wire `() =>
+   * isSchedulerPaused(pauseFile)`. Unset = never paused.
+   */
+  readonly isPaused?: () => Promise<boolean>;
 }
 
 export {

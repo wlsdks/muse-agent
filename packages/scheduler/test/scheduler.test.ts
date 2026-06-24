@@ -670,6 +670,53 @@ describe("normalizeScheduledJob maxRetryCount finite guard", () => {
   });
 });
 
+describe("DynamicScheduler pause kill-switch (CRON)", () => {
+  function fireableScheduler(isPaused: () => Promise<boolean>) {
+    const store = new InMemoryScheduledJobStore({ idFactory: () => "job-1" });
+    const executions = new InMemoryScheduledJobExecutionStore({ idFactory: () => "exec-1" });
+    const executed: string[] = [];
+    let fire: (() => void) | undefined;
+    const cronScheduler: CronScheduler = {
+      schedule: (_job, cb) => { fire = cb; return { cancel: () => undefined }; }
+    };
+    const service = new DynamicScheduler({
+      cronScheduler,
+      dispatcher: new ScheduledJobDispatcher({
+        agentExecutor: { execute: async () => { executed.push("ran"); return "done"; } },
+        mcpInvoker: createUnusedMcpInvoker()
+      }),
+      executionStore: executions,
+      isPaused,
+      store
+    });
+    return { service, store, executions, executed, fire: () => fire?.() };
+  }
+
+  it("skips an AUTOMATIC firing while paused (executor never runs)", async () => {
+    const h = fireableScheduler(async () => true);
+    const saved = await h.service.create({ agentPrompt: "Run", cronExpression: "0 * * * * *", jobType: "agent", name: "J" });
+    h.fire();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.executed).toEqual([]);
+    expect(h.store.findById(saved.id)?.lastStatus).toBe("skipped");
+  });
+
+  it("runs an automatic firing when NOT paused", async () => {
+    const h = fireableScheduler(async () => false);
+    await h.service.create({ agentPrompt: "Run", cronExpression: "0 * * * * *", jobType: "agent", name: "J" });
+    h.fire();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.executed).toEqual(["ran"]);
+  });
+
+  it("still runs a MANUAL trigger even while paused (explicit intent wins)", async () => {
+    const h = fireableScheduler(async () => true);
+    const saved = await h.service.create({ agentPrompt: "Run", cronExpression: "0 * * * * *", jobType: "agent", name: "J" });
+    await h.service.trigger(saved.id);
+    expect(h.executed).toEqual(["ran"]);
+  });
+});
+
 function createAgentJob(overrides: Partial<ScheduledJob> = {}): ScheduledJob {
   return {
     agentPrompt: "Run",
