@@ -2,6 +2,7 @@ import { CalendarProviderRegistry } from "@muse/calendar";
 import {
   createAgentRuntime,
   createFollowupCaptureHook,
+  createModelDroppedContextSummarizer,
   InMemoryAgentInitiatedNoticeBroker,
   type ActiveContextProvider,
   type AgentInitiatedNoticeBroker,
@@ -607,6 +608,13 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       circuitBreaker: circuitBreakerRegistry.get("model.generate"),
       contextReferenceStore,
       contextWindow: contextWindowOptions,
+      // CMP-2 aux-model compaction (opt-in via MUSE_AUX_COMPACTION): summarize
+      // the compacted-away turns with the SAME local model and append the recap
+      // to the deterministic summary. Off by default (the extra local call adds
+      // latency on a compaction turn); fail-open + model-agnostic in the runtime.
+      ...(parseBoolean(env.MUSE_AUX_COMPACTION, false)
+        ? { contextSummarizer: createModelDroppedContextSummarizer(modelProvider, defaultModel) }
+        : {}),
       historyStore,
       hooks: runtimeHooks,
       hookTraceStore,

@@ -517,6 +517,8 @@ export {
 
 export { HookRegistry } from "./hook-registry.js";
 
+export { createModelDroppedContextSummarizer } from "./dropped-context-summarizer.js";
+
 export {
   AgentRuntime,
   augmentCompactionSummary,
