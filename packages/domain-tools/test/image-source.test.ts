@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { extractImageSources } from "../src/index.js";
+import { extractImageSources, resolveImageAttachmentCandidates } from "../src/index.js";
 
 describe("extractImageSources (MED-12)", () => {
   it("extracts image URLs and excludes non-image URLs", () => {
@@ -28,5 +28,25 @@ describe("extractImageSources (MED-12)", () => {
   it("de-duplicates and returns empty arrays when there are no image sources", () => {
     expect(extractImageSources("/x/a.png and again /x/a.png").paths).toEqual(["/x/a.png"]);
     expect(extractImageSources("no images here")).toEqual({ paths: [], urls: [] });
+  });
+});
+
+describe("resolveImageAttachmentCandidates", () => {
+  const text = "attach ~/safe/a.png and /sensitive/b.png and /missing/c.png";
+
+  it("keeps only paths that are BOTH safe and existing", () => {
+    const out = resolveImageAttachmentCandidates(text, {
+      isPathSafe: (p) => !p.includes("/sensitive/"),
+      fileExists: (p) => !p.includes("/missing/")
+    });
+    expect(out).toEqual(["~/safe/a.png"]);
+  });
+
+  it("drops everything when the safety gate rejects all", () => {
+    expect(resolveImageAttachmentCandidates(text, { isPathSafe: () => false, fileExists: () => true })).toEqual([]);
+  });
+
+  it("drops everything when nothing exists", () => {
+    expect(resolveImageAttachmentCandidates(text, { isPathSafe: () => true, fileExists: () => false })).toEqual([]);
   });
 });

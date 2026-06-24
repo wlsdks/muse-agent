@@ -23,6 +23,25 @@ export interface ImageSources {
   readonly paths: readonly string[];
 }
 
+export interface ImageAttachmentResolveDeps {
+  /** True when the path is NOT a sensitive/denied location (wire fs-path-safety). */
+  readonly isPathSafe: (path: string) => boolean;
+  /** True when the path exists on disk and is a readable file. */
+  readonly fileExists: (path: string) => boolean;
+}
+
+/**
+ * The LOCAL image paths in `text` that are SAFE to auto-attach: detected by
+ * {@link extractImageSources}, then gated to those that pass the injected
+ * path-safety check AND exist on disk. Both gates are required — a path-shaped
+ * token in prose that doesn't resolve, or one under a sensitive dir, is
+ * dropped. Pure (filesystem + safety injected) so an auto-attach flow has a
+ * deterministic, testable candidate list and never reads an unvetted path.
+ */
+export function resolveImageAttachmentCandidates(text: string, deps: ImageAttachmentResolveDeps): string[] {
+  return extractImageSources(text).paths.filter((path) => deps.isPathSafe(path) && deps.fileExists(path));
+}
+
 export function extractImageSources(text: string): ImageSources {
   const urls = extractPublicHttpUrls(text).filter((url) => IMAGE_EXT_RE.test(url));
   const paths: string[] = [];
