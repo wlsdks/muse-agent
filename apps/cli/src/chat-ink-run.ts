@@ -60,6 +60,7 @@ import { idleLearnedNoticeForUser } from "./commands-learned.js";
 import { resolveDefaultUserKey } from "./user-id.js";
 import { DEFAULT_EMBED_MODEL } from "./embed-model-default.js";
 import { runEndOfSessionPipeline } from "./chat-end-session-pipeline.js";
+import { beginSessionWithCrashCheck, endSessionClean, sessionMarkerPath } from "./session-recovery.js";
 
 const h = React.createElement;
 
@@ -146,6 +147,14 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
   // extractor which turns belong to THIS session (read on exit, below).
   await appendActivity({ kind: "repl-start", userId }).catch(() => undefined);
   await appendSessionBoundary({ tsIso: new Date().toISOString(), userId }).catch(() => undefined);
+  // SES crash-recovery: detect a prior session that never reached its clean
+  // end (marker survived) and record this start. The turns are already
+  // durable in last-chat.jsonl, so a prior crash is a notice, not data loss.
+  const sesMarker = sessionMarkerPath();
+  const priorCrash = await beginSessionWithCrashCheck(sesMarker, { pid: process.pid, startedAt: new Date().toISOString() }).catch(() => undefined);
+  if (priorCrash) {
+    process.stderr.write("(note: the previous Muse session didn't close cleanly — your last messages were preserved)\n");
+  }
 
   const provider = assembly.modelProvider;
   type ChatStream = AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
@@ -657,6 +666,9 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     userId,
     sessionUntrusted
   });
+  // Clean shutdown reached — clear the crash marker so the next boot doesn't
+  // misreport this session as a crash.
+  await endSessionClean(sesMarker).catch(() => undefined);
 }
 
 /**
