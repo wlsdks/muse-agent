@@ -6,13 +6,21 @@
  * check; the spawn/stop tool + agent wiring is the attended follow-up.
  */
 
+import { randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { Command } from "commander";
 
-import { readBackgroundProcesses, stopBackgroundProcess, type BackgroundProcessRecord } from "@muse/stores";
+import { classifyDangerousCommand } from "@muse/tools";
+import {
+  createNodeBackgroundSpawner,
+  readBackgroundProcesses,
+  spawnBackgroundProcess,
+  stopBackgroundProcess,
+  type BackgroundProcessRecord
+} from "@muse/stores";
 
 import type { ProgramIO } from "./program.js";
 
@@ -66,6 +74,28 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
         return;
       }
       io.stdout(body.endsWith("\n") ? body : `${body}\n`);
+    });
+
+  bg.command("run <command...>")
+    .description("Start a long-running command in the background (survives this turn)")
+    .action(async (parts: string[]) => {
+      const command = parts.join(" ");
+      try {
+        const record = await spawnBackgroundProcess(command, {}, {
+          storeFile: backgroundStoreFile(),
+          spawner: createNodeBackgroundSpawner(),
+          logFileFor: (id) => join(homedir(), ".muse", "bg-logs", `${id}.log`),
+          now: () => new Date(),
+          newId: () => `bg-${randomUUID().slice(0, 8)}`,
+          classifyDanger: (cmd) => {
+            const verdict = classifyDangerousCommand(cmd);
+            return verdict.dangerous ? verdict.reason : undefined;
+          }
+        });
+        io.stdout(`Started '${record.id}' (pid ${record.pid.toString()}). Logs: muse bg logs ${record.id}\n`);
+      } catch (error) {
+        io.stderr(`${error instanceof Error ? error.message : String(error)}\n`);
+      }
     });
 
   bg.command("stop <id>")

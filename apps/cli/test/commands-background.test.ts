@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -76,5 +76,23 @@ describe("muse bg (read-only command)", () => {
     const h = harness(file);
     await h.program.parseAsync(["bg", "stop", "nope"], { from: "user" });
     expect(h.err.join("")).toContain("No background process with id 'nope'");
+  });
+
+  it("bg run REFUSES a catastrophic command and starts nothing", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-bgcmd-")), "p.json");
+    writeFileSync(file, JSON.stringify({ processes: [] }), "utf8");
+    const h = harness(file);
+    await h.program.parseAsync(["bg", "run", "--", "rm", "-rf", "/"], { from: "user" });
+    expect(h.err.join("")).toMatch(/refused/i);
+    expect(JSON.parse(readFileSync(file, "utf8")).processes).toEqual([]);
+  });
+
+  it("bg run starts a real background command and records it", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-bgcmd-")), "p.json");
+    writeFileSync(file, JSON.stringify({ processes: [] }), "utf8");
+    const h = harness(file);
+    await h.program.parseAsync(["bg", "run", "--", process.execPath, "-e", "process.exit(0)"], { from: "user" });
+    expect(h.out.join("")).toMatch(/Started 'bg-/);
+    expect(JSON.parse(readFileSync(file, "utf8")).processes).toHaveLength(1);
   });
 });
