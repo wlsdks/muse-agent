@@ -29,17 +29,34 @@ export function backgroundStoreFile(): string {
   return process.env.MUSE_BACKGROUND_PROCESSES_FILE ?? join(homedir(), ".muse", "background-processes.json");
 }
 
-export function formatBackgroundProcessList(records: readonly BackgroundProcessRecord[]): string {
+/** Compact uptime for a running process, e.g. "3m", "2h", "1d". Empty for an unparseable/future start. */
+export function formatUptime(startedAt: string, now: Date): string {
+  const ms = now.getTime() - Date.parse(startedAt);
+  if (!Number.isFinite(ms) || ms < 0) {
+    return "";
+  }
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "<1m";
+  if (minutes < 60) return `${minutes.toString()}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours.toString()}h`;
+  return `${Math.floor(hours / 24).toString()}d`;
+}
+
+export function formatBackgroundProcessList(records: readonly BackgroundProcessRecord[], now: Date = new Date()): string {
   if (records.length === 0) {
     return "No background processes.";
   }
   const running = records.filter((record) => record.status === "running").length;
   const lines = [`${records.length.toString()} background process(es), ${running.toString()} running:`];
   for (const record of records) {
-    const detail =
-      record.status === "running"
-        ? `pid ${record.pid.toString()}`
-        : `${record.status}${record.exitCode !== undefined && record.exitCode !== null ? ` (exit ${record.exitCode.toString()})` : ""}`;
+    let detail: string;
+    if (record.status === "running") {
+      const up = formatUptime(record.startedAt, now);
+      detail = `pid ${record.pid.toString()}${up ? `, up ${up}` : ""}`;
+    } else {
+      detail = `${record.status}${record.exitCode !== undefined && record.exitCode !== null ? ` (exit ${record.exitCode.toString()})` : ""}`;
+    }
     lines.push(`  ${record.id}  [${record.status}]  ${record.command}  — ${detail}`);
   }
   return lines.join("\n");

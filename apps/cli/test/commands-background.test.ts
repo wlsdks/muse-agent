@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { type BackgroundProcessRecord } from "@muse/stores";
 
-import { formatBackgroundProcessList, registerBackgroundCommand } from "../src/commands-background.js";
+import { formatBackgroundProcessList, formatUptime, registerBackgroundCommand } from "../src/commands-background.js";
 
 const rec = (over: Partial<BackgroundProcessRecord>): BackgroundProcessRecord => ({
   id: "p", pid: 4242, command: "npm run dev", startedAt: "2026-06-24T00:00:00.000Z", status: "running", ...over
@@ -23,6 +23,28 @@ describe("formatBackgroundProcessList", () => {
     expect(out).toContain("2 background process(es), 1 running");
     expect(out).toContain("a  [running]  npm run dev  — pid 4242");
     expect(out).toContain("b  [exited]  npm run dev  — exited (exit 0)");
+  });
+
+  it("shows compact uptime for a running process", () => {
+    const out = formatBackgroundProcessList(
+      [rec({ id: "a", startedAt: "2026-06-24T00:00:00.000Z" })],
+      new Date("2026-06-24T02:30:00.000Z")
+    );
+    expect(out).toContain("pid 4242, up 2h");
+  });
+});
+
+describe("formatUptime", () => {
+  const now = new Date("2026-06-24T03:00:00.000Z");
+  it("formats minutes/hours/days compactly", () => {
+    expect(formatUptime("2026-06-24T02:59:30.000Z", now)).toBe("<1m");
+    expect(formatUptime("2026-06-24T02:45:00.000Z", now)).toBe("15m");
+    expect(formatUptime("2026-06-24T01:00:00.000Z", now)).toBe("2h");
+    expect(formatUptime("2026-06-21T03:00:00.000Z", now)).toBe("3d");
+  });
+  it("returns empty for an unparseable or future start", () => {
+    expect(formatUptime("not-a-date", now)).toBe("");
+    expect(formatUptime("2026-06-24T04:00:00.000Z", now)).toBe("");
   });
 });
 
