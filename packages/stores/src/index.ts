@@ -6,6 +6,7 @@ export * from "./ollama-lease.js";
 export * from "./session-crash-marker.js";
 export * from "./background-process-store.js";
 export * from "./background-process-spawn.js";
+export * from "./node-background-spawner.js";
 export * from "./personal-action-log-store.js";
 export * from "./personal-consent-store.js";
 export * from "./personal-contacts-store.js";
