@@ -351,14 +351,31 @@ export class NoOpPromptCache implements PromptCache {
 }
 
 export function buildCacheKey(command: AgentCacheCommand, toolNames: readonly string[]): string {
-  return sha256(`${buildScopeFingerprint(command, toolNames)}|${command.userPrompt}`);
+  return sha256(`${buildScopeFingerprint(command, toolNames)}|${normalizeCacheText(command.userPrompt)}`);
+}
+
+/**
+ * Normalize prompt text before it enters a cache key so trivially-different
+ * renderings hash IDENTICALLY (PC-4): CRLF/CR → LF, strip per-line trailing
+ * whitespace, trim the ends. Prompts differing only in line endings or
+ * trailing spaces — common across platforms / re-renders — then share a
+ * cache entry instead of missing. Pure + idempotent; only end-of-line /
+ * end-of-string whitespace is removed, never semantic content.
+ */
+export function normalizeCacheText(text: string): string {
+  return text
+    .replace(/\r\n?/gu, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+$/u, ""))
+    .join("\n")
+    .trim();
 }
 
 export function buildScopeFingerprint(command: AgentCacheCommand, toolNames: readonly string[]): string {
   const metadata = command.metadata ?? {};
   const parts = [
-    command.systemPrompt ?? "",
-    [...toolNames].sort().join(","),
+    normalizeCacheText(command.systemPrompt ?? ""),
+    [...new Set(toolNames)].sort().join(","),
     command.model ?? "",
     command.mode ?? "react",
     command.responseFormat ?? "text",
