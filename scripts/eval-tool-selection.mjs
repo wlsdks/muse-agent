@@ -103,6 +103,34 @@ async function buildRealScenario() {
   }
 }
 
+// background_list (X-3, read-only "what's running in the background?") vs its
+// nearest confusable recent_actions ("what have you DONE for me?"). The carve:
+// running PROCESSES (dev server / build) is background_list; past ACTIONS
+// (sends / bookings / refusals) is recent_actions. Plus IrrelAcc on a report.
+async function buildBackgroundScenario() {
+  try {
+    const dt = await import("../packages/domain-tools/dist/index.js");
+    const instances = [
+      dt.createBackgroundListTool({ processes: () => [] }),
+      dt.createRecentActionsTool({ actions: () => [] })
+    ];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      { prompt: "What background processes are running right now?", expectTool: "background_list", note: "EN running processes → background_list" },
+      { prompt: "Is my dev server still up?", expectTool: "background_list", note: "EN dev-server status → background_list" },
+      { prompt: "백그라운드에 뭐 돌고 있어?", expectTool: "background_list", note: "KO what's running in background → background_list" },
+      // confusable neighbour: past ACTIONS, not running processes
+      { prompt: "What have you done for me so far?", expectTool: "recent_actions", note: "EN past actions → recent_actions (NOT background_list)" },
+      // IrrelAcc: a report that the build works is not a status query
+      { prompt: "Thanks, the build passes now.", expectNoTool: true, note: "EN report → NO tool (not a process-status lookup)" }
+    ];
+    return { label: "background-list (running processes vs recent_actions)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "background-list", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 // unit_convert (deterministic physical-unit conversion) vs its two nearest
 // confusables: math_eval (arithmetic over operators) and the web search tool
 // (live data like currency). The carve is the question shape — "convert X <unit>
@@ -1400,6 +1428,7 @@ async function main() {
   let scenarios = [
     { label: "synthetic", tools: SYNTHETIC_TOOLS, cases: SYNTHETIC_CASES },
     await buildRealScenario(),
+    await buildBackgroundScenario(),
     await buildUnitConvertScenario(),
     await buildLunarScenario(),
     await buildLunarToSolarScenario(),

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  defaultBackgroundProcessesFile,
   getBackgroundProcess,
   pruneTerminalBackgroundProcesses,
   readBackgroundProcesses,
@@ -58,6 +59,11 @@ describe("background-process registry store (X-3)", () => {
     await registerBackgroundProcess(file, rec({ id: "b" }));
     await removeBackgroundProcess(file, "a");
     expect((await readBackgroundProcesses(file)).map((p) => p.id)).toEqual(["b"]);
+  });
+
+  it("defaultBackgroundProcessesFile honors the env override, else ~/.muse default", () => {
+    expect(defaultBackgroundProcessesFile({ MUSE_BACKGROUND_PROCESSES_FILE: "/tmp/x.json" })).toBe("/tmp/x.json");
+    expect(defaultBackgroundProcessesFile({})).toMatch(/[/\\]\.muse[/\\]background-processes\.json$/);
   });
 
   it("prune removes terminal records (returning them), keeps running", async () => {

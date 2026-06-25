@@ -16,6 +16,7 @@ import type { Command } from "commander";
 import { classifyDangerousCommand } from "@muse/tools";
 import {
   createNodeBackgroundSpawner,
+  defaultBackgroundProcessesFile,
   pruneTerminalBackgroundProcesses,
   readBackgroundProcesses,
   reconcileBackgroundProcesses,
@@ -27,7 +28,7 @@ import {
 import type { ProgramIO } from "./program.js";
 
 export function backgroundStoreFile(): string {
-  return process.env.MUSE_BACKGROUND_PROCESSES_FILE ?? join(homedir(), ".muse", "background-processes.json");
+  return defaultBackgroundProcessesFile();
 }
 
 /** Compact uptime for a running process, e.g. "3m", "2h", "1d". Empty for an unparseable/future start. */

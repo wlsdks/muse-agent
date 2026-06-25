@@ -14,9 +14,18 @@
  */
 
 import { promises as fs } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 import { atomicWriteFile } from "./atomic-file-store.js";
 import { withFileLock } from "./encrypted-file.js";
+
+/** Shared registry-file path so the CLI `bg` commands and the agent's
+ *  `background_list` tool read/write the SAME file. Override with
+ *  MUSE_BACKGROUND_PROCESSES_FILE. */
+export function defaultBackgroundProcessesFile(env: Readonly<Record<string, string | undefined>> = process.env): string {
+  return env.MUSE_BACKGROUND_PROCESSES_FILE ?? join(homedir(), ".muse", "background-processes.json");
+}
 
 export type BackgroundProcessStatus = "running" | "exited" | "failed" | "killed";
 

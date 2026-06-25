@@ -12,8 +12,8 @@ import { createCachingEmbedder } from "@muse/agent-core";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import { withChromeDevToolsRisk, withOfficialMcpRisk, type McpManager } from "@muse/mcp";
 import { createHistorySearchTool, type HistoryRecord } from "@muse/recall";
-import { addContact, queryContacts, readActionLog, readEpisodes, readFollowups, readObjectives, readReminders, readTasks, removeContact, resolveUpcomingBirthdays } from "@muse/stores";
-import { collectDatedNotes, createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createEmailReadMessageTool, createEmailReadTool, createEmailSearchTool, createFeedsSearchTool, createHomeEntitiesTool, createHomeStateTool, createObjectivesListTool, createOnThisDayTool, createRecentActionsTool, createRememberFactTool, createUpcomingBirthdaysTool, createWeatherTool, createWorldTimeTool, GmailEmailProvider, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
+import { addContact, defaultBackgroundProcessesFile, queryContacts, readActionLog, readBackgroundProcesses, readEpisodes, readFollowups, readObjectives, readReminders, readTasks, removeContact, resolveUpcomingBirthdays } from "@muse/stores";
+import { collectDatedNotes, createBackgroundListTool, createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createEmailReadMessageTool, createEmailReadTool, createEmailSearchTool, createFeedsSearchTool, createHomeEntitiesTool, createHomeStateTool, createObjectivesListTool, createOnThisDayTool, createRecentActionsTool, createRememberFactTool, createUpcomingBirthdaysTool, createWeatherTool, createWorldTimeTool, GmailEmailProvider, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import type { UserMemoryStore } from "@muse/memory";
 import { createSchedulerTools, DynamicScheduler } from "@muse/scheduler";
 import type { MuseTool } from "@muse/tools";
@@ -246,6 +246,7 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     () => [createRememberFactTool({ store: userMemoryStore })],
     () => [createObjectivesListTool({ objectives: () => readObjectives(resolveObjectivesFile(env)) })],
     () => [createRecentActionsTool({ actions: () => readActionLog(resolveActionLogFile(env)) })],
+    () => [createBackgroundListTool({ processes: () => readBackgroundProcesses(defaultBackgroundProcessesFile(env)) })],
     () => [createOnThisDayTool({ datedNotes: () => collectDatedNotes(notesDir) })],
     () => [createFeedsSearchTool({ feedEntries: () => readFeedKnowledgeEntries(resolveFeedsFile(env), 200) })],
     () => [createOverdueContactsTool({
