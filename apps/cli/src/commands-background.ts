@@ -67,8 +67,13 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
 
   bg.command("list")
     .description("List tracked background processes (running + recently finished)")
-    .action(async () => {
+    .option("--json", "Emit the registry as JSON (for scripts / jq)")
+    .action(async (options: { readonly json?: boolean }) => {
       const records = await readBackgroundProcesses(backgroundStoreFile());
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ processes: records }, null, 2)}\n`);
+        return;
+      }
       io.stdout(`${formatBackgroundProcessList(records)}\n`);
     });
 

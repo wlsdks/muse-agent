@@ -73,6 +73,15 @@ describe("muse bg (read-only command)", () => {
     expect(h.out.join("")).toContain("x  [running]  npm run dev");
   });
 
+  it("bg list --json emits the registry as parseable JSON", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "muse-bgcmd-")), "p.json");
+    writeFileSync(file, JSON.stringify({ processes: [rec({ id: "x" })] }), "utf8");
+    const h = harness(file);
+    await h.program.parseAsync(["bg", "list", "--json"], { from: "user" });
+    const parsed = JSON.parse(h.out.join("")) as { processes: { id: string }[] };
+    expect(parsed.processes.map((p) => p.id)).toEqual(["x"]);
+  });
+
   it("bg logs <id> prints the captured log", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-bgcmd-"));
     const logFile = join(dir, "x.log");
