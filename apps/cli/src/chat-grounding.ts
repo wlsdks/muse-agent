@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { assertiveUnsupportedFraction, detectEvidenceContradictions, evidenceIsUntrustedOnly, groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, reportSentenceGroundedness, stripCitationMarkers, untrustedOnlySentences, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
-import { conflictCueFromMatches, misgroundedOutcome, type MemoryFact } from "@muse/recall";
+import { conflictCueFromMatches, misgroundedOutcome, stripGroundingFences, type MemoryFact } from "@muse/recall";
 
 import {
   answerAssertsUnsupportedDate,
@@ -384,8 +384,7 @@ export async function finalizeGatedChatAnswer(args: FinalizeGatedChatAnswerArgs)
     : args.reverify
       ? await gateChatAnswerWithReverify(args.question, args.answer, evidence, args.knownFactKeys ?? [], args.reverify)
       : gateChatAnswer(args.question, args.answer, evidence, args.knownFactKeys ?? []);
-  const repaired = stripTruncatedCitation(gated);
-  const deFabbed = stripFabricatedCitations(repaired, args.matches.map((match) => match.source));
+  const deFabbed = stripChatAnswerArtifacts(gated, args.matches.map((match) => match.source));
   const receipted = withGroundingReceipt(deFabbed, groundedNoteSources(args.matches, deFabbed), /[가-힣]/u.test(args.question));
   // grounded≠true: a faithful chat answer resting only on untrusted tool sources
   // gets the same scrutiny cue the ask path surfaces (every-surface parity).
@@ -697,6 +696,17 @@ export function stripFabricatedCitations(answer: string, sources: readonly strin
     })
     .replace(/[ \t]+\n/gu, "\n")
     .trimEnd();
+}
+
+/**
+ * Post-gate strips for a chat answer, mirroring the ask path: remove any
+ * grounding-block FENCE tag the model echoed (`<<memory N — label>>`, `<<note
+ * …>>`, `<<end>>`) so an internal context marker never leaks to the user, plus
+ * truncated and fabricated citations. Ask already strips fences (commands-ask
+ * post-stream); this brings chat to parity in the SHARED finalizer.
+ */
+export function stripChatAnswerArtifacts(answer: string, sources: readonly string[]): string {
+  return stripFabricatedCitations(stripGroundingFences(stripTruncatedCitation(answer)), sources);
 }
 
 /** Append a "shows its work" source receipt when chat answered FROM the user's
