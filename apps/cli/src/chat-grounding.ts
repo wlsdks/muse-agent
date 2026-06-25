@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { assertiveUnsupportedFraction, detectEvidenceContradictions, evidenceIsUntrustedOnly, groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, reportSentenceGroundedness, stripCitationMarkers, untrustedOnlySentences, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
-import { conflictCueFromMatches, misgroundedOutcome, stripGroundingFences, type MemoryFact } from "@muse/recall";
+import { conflictCueFromMatches, misgroundedOutcome, stripEchoedCiteAs, stripGroundingFences, type MemoryFact } from "@muse/recall";
 
 import {
   answerAssertsUnsupportedDate,
@@ -701,12 +701,13 @@ export function stripFabricatedCitations(answer: string, sources: readonly strin
 /**
  * Post-gate strips for a chat answer, mirroring the ask path: remove any
  * grounding-block FENCE tag the model echoed (`<<memory N — label>>`, `<<note
- * …>>`, `<<end>>`) so an internal context marker never leaks to the user, plus
- * truncated and fabricated citations. Ask already strips fences (commands-ask
+ * …>>`, `<<end>>`) so an internal context marker never leaks to the user, an
+ * echoed "cite as" citation INSTRUCTION the model parroted, plus truncated and
+ * fabricated citations. Ask already applies all of these (commands-ask
  * post-stream); this brings chat to parity in the SHARED finalizer.
  */
 export function stripChatAnswerArtifacts(answer: string, sources: readonly string[]): string {
-  return stripFabricatedCitations(stripGroundingFences(stripTruncatedCitation(answer)), sources);
+  return stripFabricatedCitations(stripEchoedCiteAs(stripGroundingFences(stripTruncatedCitation(answer))), sources);
 }
 
 /** Append a "shows its work" source receipt when chat answered FROM the user's

@@ -19,4 +19,10 @@ describe("stripChatAnswerArtifacts (chat post-gate strips — ask parity)", () =
     const out = stripChatAnswerArtifacts("VPN on [from vpn.md]", ["vpn.md"]);
     expect(out).toContain("[from vpn.md]");
   });
+
+  it("strips an echoed 'cite as' instruction the model parroted, keeping the citation", () => {
+    const out = stripChatAnswerArtifacts("VPN on. cite as [from vpn.md]", ["vpn.md"]);
+    expect(out).not.toMatch(/cite\s+as/i);
+    expect(out).toContain("[from vpn.md]");
+  });
 });
