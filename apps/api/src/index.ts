@@ -1,4 +1,5 @@
 import { createApiServerOptions, seedExternalMcpServers } from "@muse/autoconfigure";
+import { createGracefulShutdown } from "./graceful-shutdown.js";
 import { resolveListenHost, resolveListenPort } from "./listen-config.js";
 import { buildServer } from "./server.js";
 import { watchParentProcess } from "./parent-watch.js";
@@ -32,3 +33,14 @@ if (seeded.length > 0) {
 const server = buildServer(options);
 
 await server.listen({ host, port });
+
+// Graceful shutdown: drain in-flight cron runs before the process exits.
+const schedulerService = options.scheduler?.service;
+const shutdown = createGracefulShutdown({
+  drainScheduler: schedulerService ? () => schedulerService.shutdown() : undefined,
+  closeServer: () => server.close(),
+
+  log: (message) => { console.log(`[muse] ${message}`); }
+});
+process.on("SIGTERM", () => void shutdown());
+process.on("SIGINT", () => void shutdown());
