@@ -62,6 +62,15 @@ export function formatBackgroundProcessList(records: readonly BackgroundProcessR
   return lines.join("\n");
 }
 
+/** Last `n` lines of `text` (a single trailing newline is ignored). Returns all when n<=0 or non-finite. */
+export function tailLines(text: string, n: number): string {
+  if (!Number.isFinite(n) || n <= 0) {
+    return text;
+  }
+  const lines = text.replace(/\n$/u, "").split("\n");
+  return lines.slice(-n).join("\n");
+}
+
 export function registerBackgroundCommand(program: Command, io: ProgramIO): void {
   const bg = program.command("bg").description("Inspect background processes Muse has started");
 
@@ -79,7 +88,8 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
 
   bg.command("logs <id>")
     .description("Show the captured output of a background process by id")
-    .action(async (id: string) => {
+    .option("--tail <n>", "Show only the last N lines (a long-running process's log can be huge)")
+    .action(async (id: string, options: { readonly tail?: string }) => {
       const record = (await readBackgroundProcesses(backgroundStoreFile())).find((entry) => entry.id === id);
       if (!record) {
         io.stderr(`No background process with id '${id}'.\n`);
@@ -96,7 +106,9 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
         io.stderr(`Could not read log file ${record.logFile}.\n`);
         return;
       }
-      io.stdout(body.endsWith("\n") ? body : `${body}\n`);
+      const tail = options.tail !== undefined ? Number.parseInt(options.tail, 10) : 0;
+      const shown = tail > 0 ? tailLines(body, tail) : body;
+      io.stdout(shown.endsWith("\n") ? shown : `${shown}\n`);
     });
 
   bg.command("run <command...>")

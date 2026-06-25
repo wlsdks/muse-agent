@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { type BackgroundProcessRecord } from "@muse/stores";
 
-import { formatBackgroundProcessList, formatUptime, registerBackgroundCommand } from "../src/commands-background.js";
+import { formatBackgroundProcessList, formatUptime, registerBackgroundCommand, tailLines } from "../src/commands-background.js";
 
 const rec = (over: Partial<BackgroundProcessRecord>): BackgroundProcessRecord => ({
   id: "p", pid: 4242, command: "npm run dev", startedAt: "2026-06-24T00:00:00.000Z", status: "running", ...over
@@ -31,6 +31,18 @@ describe("formatBackgroundProcessList", () => {
       new Date("2026-06-24T02:30:00.000Z")
     );
     expect(out).toContain("pid 4242, up 2h");
+  });
+});
+
+describe("tailLines", () => {
+  it("returns the last n lines, ignoring a single trailing newline", () => {
+    expect(tailLines("a\nb\nc\nd\n", 2)).toBe("c\nd");
+    expect(tailLines("a\nb\nc", 2)).toBe("b\nc");
+  });
+  it("returns all when n>=line count or n<=0", () => {
+    expect(tailLines("a\nb", 5)).toBe("a\nb");
+    expect(tailLines("a\nb", 0)).toBe("a\nb");
+    expect(tailLines("a\nb", Number.NaN)).toBe("a\nb");
   });
 });
 
@@ -91,6 +103,20 @@ describe("muse bg (read-only command)", () => {
     const h = harness(store);
     await h.program.parseAsync(["bg", "logs", "x"], { from: "user" });
     expect(h.out.join("")).toContain("server listening on :3000");
+  });
+
+  it("bg logs <id> --tail shows only the last N lines", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-bgcmd-"));
+    const logFile = join(dir, "x.log");
+    writeFileSync(logFile, "line1\nline2\nline3\nline4\n", "utf8");
+    const store = join(dir, "p.json");
+    writeFileSync(store, JSON.stringify({ processes: [rec({ id: "x", logFile })] }), "utf8");
+    const h = harness(store);
+    await h.program.parseAsync(["bg", "logs", "x", "--tail", "2"], { from: "user" });
+    const out = h.out.join("");
+    expect(out).toContain("line3");
+    expect(out).toContain("line4");
+    expect(out).not.toContain("line1");
   });
 
   it("bg logs <id> errors for an unknown id", async () => {
