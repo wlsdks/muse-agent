@@ -505,8 +505,13 @@ export function startConsolidateDaemonIfConfigured(
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
   const consolidateModel = options.defaultModel;
   const consolidateProvider = options.modelProvider;
+  // Deterministic curate cadence: auto-archive authored skills idle this many
+  // days so the local model isn't choosing among stale skills. Default 90d
+  // (recoverable archive); MUSE_SKILL_CURATE_IDLE_DAYS=0 disables.
+  const curateIdleDays = Number(env.MUSE_SKILL_CURATE_IDLE_DAYS ?? "90");
   const consolidateHandle = startConsolidateTick({
     authoredSkillsDir,
+    ...(Number.isFinite(curateIdleDays) && curateIdleDays > 0 ? { curateMaxIdleDays: curateIdleDays } : {}),
     errorLogger: (message) => server.log.warn(message),
     lastActivityMs: () => activitySource.lastActivityMs(),
     logger: (message) => server.log.info(message),

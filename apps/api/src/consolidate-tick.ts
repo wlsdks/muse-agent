@@ -95,6 +95,17 @@ export interface ConsolidateTickOptions {
   readonly rejectLedgerFile?: string;
   /** Consecutive rejects before cooldown. Default 2. */
   readonly cooldownThreshold?: number;
+  /**
+   * Deterministic curate phase: archive authored skills idle longer than this
+   * many days (`AuthoredSkillStore.curate`) so the local model isn't choosing
+   * among stale skills (tool-calling.md). Cheap + model-free, so it runs behind
+   * ONLY the idle gate — before the LLM brakes — and prunes even when the model
+   * is cold or on battery. Omitted / non-positive ⇒ phase skipped. archive =
+   * recoverable rename, never delete.
+   */
+  readonly curateMaxIdleDays?: number;
+  /** Test seam for the curate phase — defaults to AuthoredSkillStore.curate. Returns archived names. */
+  readonly runCurate?: () => Promise<readonly string[]>;
   readonly intervalMs?: number;
   readonly threshold?: number;
   readonly minClusterSize?: number;
@@ -186,24 +197,45 @@ export function startConsolidateTick(options: ConsolidateTickOptions): Consolida
       );
     });
 
+  const runCurate =
+    options.runCurate ??
+    (async (): Promise<readonly string[]> => {
+      const store = new AuthoredSkillStore({ dir: options.authoredSkillsDir });
+      return store.curate(options.curateMaxIdleDays ?? 0);
+    });
+
   const tickOnce = async (): Promise<void> => {
     if (firing) return;
     const at = now();
     if (options.quietHours && isQuietHour(at.getHours(), options.quietHours)) return;
     if (!isIdleForConsolidate(at.getTime(), options.lastActivityMs(), idleThresholdMs)) return;
-    // Brake-first: when a real OS-idle probe is wired, the LLM merge ALSO
-    // requires the MACHINE to be idle (not just Muse's /api), fail-closed —
-    // so it never strains the laptop while the user works in another app.
-    if (options.osIdleMs && !isOsIdleEnough(options.osIdleMs(), idleThresholdMs)) return;
-    // Brake-first: a heavy LLM merge must not drain the battery — AC only.
-    if (options.isOnAcPower && !isPowerOkForLlm(options.isOnAcPower())) return;
-    // Brake-first: never contend with a live foreground call for Ollama.
-    if (options.isForegroundBusy && (await options.isForegroundBusy())) return;
-    // Brake-first: never COLD-load the multi-GB model in the background — only
-    // merge when it's already resident (a foreground call warmed it).
-    if (options.isModelResident && !(await options.isModelResident())) return;
     firing = true;
     try {
+      // Deterministic curate phase: archive skills idle past the threshold.
+      // Cheap + model-free, so it runs behind ONLY the idle gate — BEFORE the
+      // LLM brakes below — pruning stale skills even when the model is cold or
+      // on battery. Idempotent (re-archiving an archived skill is a no-op).
+      if (options.curateMaxIdleDays !== undefined && options.curateMaxIdleDays > 0) {
+        try {
+          const archived = await runCurate();
+          if (archived.length > 0) {
+            options.logger?.(`consolidate-tick: archived ${archived.length.toString()} stale skill(s)`);
+          }
+        } catch (cause) {
+          options.errorLogger?.(`consolidate-tick (curate): ${cause instanceof Error ? cause.message : String(cause)}`);
+        }
+      }
+      // Brake-first: when a real OS-idle probe is wired, the LLM merge ALSO
+      // requires the MACHINE to be idle (not just Muse's /api), fail-closed —
+      // so it never strains the laptop while the user works in another app.
+      if (options.osIdleMs && !isOsIdleEnough(options.osIdleMs(), idleThresholdMs)) return;
+      // Brake-first: a heavy LLM merge must not drain the battery — AC only.
+      if (options.isOnAcPower && !isPowerOkForLlm(options.isOnAcPower())) return;
+      // Brake-first: never contend with a live foreground call for Ollama.
+      if (options.isForegroundBusy && (await options.isForegroundBusy())) return;
+      // Brake-first: never COLD-load the multi-GB model in the background — only
+      // merge when it's already resident (a foreground call warmed it).
+      if (options.isModelResident && !(await options.isModelResident())) return;
       // Idle REM phase: distill ONE queued correction into a
       // learned strategy while idle — the felt "grows-with-you" payoff. Runs
       // behind the same brakes as the skill merge.

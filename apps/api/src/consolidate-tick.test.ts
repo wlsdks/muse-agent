@@ -398,3 +398,55 @@ describe("startConsolidateTick.tickOnce — held-out gate on the REAL default pa
     expect(logs.some((m) => m.includes("folded 2 skills"))).toBe(true);
   });
 });
+
+describe("startConsolidateTick.tickOnce — curate phase (stale skill auto-archive)", () => {
+  it("runs curate when idle past the threshold and logs the archived count", async () => {
+    let curated = 0;
+    const logs: string[] = [];
+    const handle = startConsolidateTick(baseOptions({
+      lastActivityMs: () => NOW.getTime() - IDLE_MS - 1,
+      curateMaxIdleDays: 90,
+      runCurate: async () => { curated += 1; return ["stale-a", "stale-b"]; },
+      logger: (m) => logs.push(m)
+    }));
+    await handle.tickOnce();
+    expect(curated).toBe(1);
+    expect(logs.some((m) => m.includes("archived 2 stale skill"))).toBe(true);
+  });
+
+  it("does NOT curate when the user is still active", async () => {
+    let curated = 0;
+    const handle = startConsolidateTick(baseOptions({
+      lastActivityMs: () => NOW.getTime() - 60_000,
+      curateMaxIdleDays: 90,
+      runCurate: async () => { curated += 1; return []; }
+    }));
+    await handle.tickOnce();
+    expect(curated).toBe(0);
+  });
+
+  it("curates EVEN when the model is cold — curate runs before the LLM brakes", async () => {
+    let curated = 0;
+    let consolidated = 0;
+    const handle = startConsolidateTick(baseOptions({
+      lastActivityMs: () => NOW.getTime() - IDLE_MS - 1,
+      curateMaxIdleDays: 90,
+      isModelResident: () => false, // LLM brake: blocks consolidate
+      runCurate: async () => { curated += 1; return ["stale"]; },
+      runConsolidate: async () => { consolidated += 1; return []; }
+    }));
+    await handle.tickOnce();
+    expect(curated).toBe(1); // curate ran (model-free, before the brake)
+    expect(consolidated).toBe(0); // consolidate deferred by the cold-model brake
+  });
+
+  it("skips the curate phase when curateMaxIdleDays is absent", async () => {
+    let curated = 0;
+    const handle = startConsolidateTick(baseOptions({
+      lastActivityMs: () => NOW.getTime() - IDLE_MS - 1,
+      runCurate: async () => { curated += 1; return []; }
+    }));
+    await handle.tickOnce();
+    expect(curated).toBe(0);
+  });
+});
