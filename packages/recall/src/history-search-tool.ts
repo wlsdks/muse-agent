@@ -1,6 +1,6 @@
 import type { MuseTool } from "@muse/tools";
 
-import { searchHistory, type HistoryRecord, type HistorySearchHit } from "./history-search.js";
+import { searchHistoryHybrid, type HistoryRecord, type HistorySearchHit } from "./history-search.js";
 
 export interface HistorySearchToolOptions {
   /**
@@ -12,6 +12,16 @@ export interface HistorySearchToolOptions {
   readonly records: () => Promise<readonly HistoryRecord[]> | readonly HistoryRecord[];
   /** Default cap on returned hits when the model omits `topK`. Default 5. */
   readonly defaultTopK?: number;
+  /**
+   * OPT-IN query embedder (same model/space as the records' `embedding`). When
+   * present, the query is embedded and the search fuses lexical BM25 with cosine
+   * similarity (RRF) so a PARAPHRASE sharing no term with the matching record is
+   * still found. Absent — or a thrown embed, or records carrying no embedding —
+   * degrades to the deterministic CJK-aware lexical search, byte-identical to the
+   * default. Embeddings cost a local Ollama call, so the runtime injects this
+   * only when hybrid history search is opted in.
+   */
+  readonly embed?: (text: string) => Promise<readonly number[]>;
 }
 
 const NO_MATCH = "No earlier conversation, note, or remembered fact matched that. Nothing was found — do not invent a past discussion.";
@@ -20,10 +30,11 @@ const MAX_TOP_K = 20;
 /**
  * A read-only `history_search` tool: the agent-callable "find where we talked
  * about X" over the user's OWN past — chat episodes, notes, and remembered
- * facts — ranked deterministically by CJK-aware lexical relevance (no model,
- * no embeddings). Each hit is labelled `[source:ref]` so an answer built on it
- * can cite the real item; a no-overlap query returns an explicit no-match
- * notice rather than a fabricated memory.
+ * facts — ranked by CJK-aware lexical relevance, OR (when an `embed` is injected
+ * and the records carry embeddings) by lexical BM25 fused with embedding-cosine
+ * so a paraphrase is found too. Each hit is labelled `[source:ref]` so an answer
+ * built on it can cite the real item; a no-overlap, far-in-embedding-space query
+ * returns an explicit no-match notice rather than a fabricated memory.
  *
  * Distinct from `knowledge_search` (the user's NOTES + ingested DOCUMENTS) and
  * from the chronological recent-activity feed: this one searches PAST
@@ -67,7 +78,18 @@ export function createHistorySearchTool(options: HistorySearchToolOptions): Muse
       } catch {
         return NO_MATCH;
       }
-      const hits = searchHistory(query, records, { topK });
+      // Embed the query for hybrid fusion only when an embedder is injected; a
+      // thrown embed leaves queryVector undefined so searchHistoryHybrid degrades
+      // to pure lexical (never fails the search over an Ollama hiccup).
+      let queryVector: readonly number[] | undefined;
+      if (options.embed && query.trim().length > 0) {
+        try {
+          queryVector = await options.embed(query);
+        } catch {
+          queryVector = undefined;
+        }
+      }
+      const hits = searchHistoryHybrid(query, records, { topK, ...(queryVector ? { queryVector } : {}) });
       if (hits.length === 0) {
         return NO_MATCH;
       }

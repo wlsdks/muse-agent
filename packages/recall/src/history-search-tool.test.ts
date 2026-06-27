@@ -99,3 +99,52 @@ describe("createHistorySearchTool — agent-callable history search (Gap1-S2)", 
     expect(text).not.toContain("ep-1");
   });
 });
+
+describe("createHistorySearchTool — hybrid (lexical + embedding-cosine) when embed is injected (A2)", () => {
+  // A deterministic stand-in for the local embedder: a record/query about cats
+  // maps to one axis, dogs to another. "feline companion" shares NO lexical term
+  // with "pet cat", so only the cosine arm can connect them.
+  const topicVector = (text: string): readonly number[] => {
+    if (/feline|cat|고양이/iu.test(text)) return [1, 0];
+    if (/canine|dog|강아지/iu.test(text)) return [0, 1];
+    return [0, 0];
+  };
+  const embedded = (ref: string, text: string): HistoryRecord => ({ ...rec(ref, text), embedding: topicVector(text) });
+
+  it("surfaces a PARAPHRASE the lexical search alone misses (semantic hit)", async () => {
+    const corpus = [
+      embedded("ep-cat", "We talked about my cat and its vet visit last week."),
+      embedded("ep-dog", "Notes on the dog park walk and the new leash.")
+    ];
+    const embed = (text: string): Promise<readonly number[]> => Promise.resolve(topicVector(text));
+
+    // Lexical-only (no embed): "feline companion" shares no term → no match.
+    const lexicalOnly = createHistorySearchTool({ records: () => corpus });
+    const lexOut = await lexicalOnly.execute({ query: "feline companion" }, ctx);
+    expect(String(lexOut)).not.toContain("ep-cat");
+    expect(String(lexOut).toLowerCase()).toContain("no");
+
+    // Hybrid (embed injected): the cosine arm connects "feline" to the cat record.
+    const hybrid = createHistorySearchTool({ records: () => corpus, embed });
+    const hybridOut = await hybrid.execute({ query: "feline companion" }, ctx);
+    expect(String(hybridOut)).toContain("ep-cat");
+    expect(String(hybridOut)).not.toContain("ep-dog");
+  });
+
+  it("degrades to byte-identical lexical search when records carry no embedding", async () => {
+    const corpus = [rec("ep-1", "the quarterly budget review and the launch retro")];
+    const embed = (text: string): Promise<readonly number[]> => Promise.resolve(topicVector(text));
+    const hybrid = createHistorySearchTool({ records: () => corpus, embed });
+    const lexical = createHistorySearchTool({ records: () => corpus });
+    const q = { query: "quarterly budget" };
+    expect(String(await hybrid.execute(q, ctx))).toBe(String(await lexical.execute(q, ctx)));
+  });
+
+  it("fails soft to lexical when the query embedder throws (no crash, still finds the lexical hit)", async () => {
+    const corpus = [embedded("ep-cat", "the cat and the vet visit")];
+    const embed = (): Promise<readonly number[]> => Promise.reject(new Error("ollama down"));
+    const tool = createHistorySearchTool({ records: () => corpus, embed });
+    const out = await tool.execute({ query: "cat vet" }, ctx);
+    expect(String(out)).toContain("ep-cat");
+  });
+});

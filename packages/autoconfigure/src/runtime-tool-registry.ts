@@ -174,14 +174,25 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     }
     const userId = resolveDefaultUserId(env);
     const historyNotesProvider = notesRegistry?.primary();
+    // OPT-IN hybrid (lexical BM25 + embedding-cosine RRF): off by default because
+    // it embeds the query AND every history record per call (local Ollama cost),
+    // like knowledge_search. When on, the SAME embedder feeds the tool's query
+    // embed and the record embeddings so they share one vector space.
+    const historyEmbedder = parseBoolean(env.MUSE_HISTORY_SEARCH_HYBRID, false)
+      ? createCachingEmbedder(createOllamaEmbedder(
+          env.MUSE_HISTORY_SEARCH_EMBED_MODEL?.trim() || "nomic-embed-text-v2-moe"
+        ))
+      : undefined;
     return [createHistorySearchTool({
       records: (): Promise<readonly HistoryRecord[]> =>
         buildHistoryRecords({
           readEpisodes: () => readEpisodes(episodesFile),
           ...(historyNotesProvider ? { notesProvider: historyNotesProvider } : {}),
           userMemoryStore,
-          userId
-        })
+          userId,
+          ...(historyEmbedder ? { embed: historyEmbedder } : {})
+        }),
+      ...(historyEmbedder ? { embed: historyEmbedder } : {})
     })];
   })();
 

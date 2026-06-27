@@ -19,6 +19,16 @@ export interface HistoryRecordsProviderDeps {
   readonly userId: string;
   /** Truncate each note body to bound CPU/snippet cost. Default 4000. */
   readonly maxNoteChars?: number;
+  /**
+   * OPT-IN record embedder (same model/space as the tool's query embed). When
+   * present, each record's text is embedded so `history_search` can fuse lexical
+   * BM25 with embedding-cosine (a paraphrase is found, not just a term match).
+   * Absent ⇒ records carry no embedding and the search stays pure lexical. Costs
+   * one local Ollama call per record, so the runtime injects it only when hybrid
+   * history search is opted in; per-record fail-soft (a thrown embed drops only
+   * that record's vector, leaving it lexical-only — never blocks the search).
+   */
+  readonly embed?: (text: string) => Promise<readonly number[]>;
 }
 
 const DEFAULT_MAX_NOTE_CHARS = 4000;
@@ -41,7 +51,30 @@ export async function buildHistoryRecords(deps: HistoryRecordsProviderDeps): Pro
     resolveNoteRecords(deps),
     resolveMemoryRecords(deps)
   ]);
-  return [...episodes, ...notes, ...memory];
+  const records = [...episodes, ...notes, ...memory];
+  return deps.embed ? attachEmbeddings(records, deps.embed) : records;
+}
+
+/**
+ * Best-effort embed each record's text for hybrid fusion. Per-record fail-soft:
+ * a thrown embed leaves that record lexical-only (no embedding field), so an
+ * Ollama hiccup never drops a record from the search — it just loses the
+ * paraphrase-rescue for that one item.
+ */
+async function attachEmbeddings(
+  records: readonly HistoryRecord[],
+  embed: (text: string) => Promise<readonly number[]>
+): Promise<readonly HistoryRecord[]> {
+  return Promise.all(
+    records.map(async (record): Promise<HistoryRecord> => {
+      try {
+        const embedding = await embed(record.text);
+        return embedding.length > 0 ? { ...record, embedding } : record;
+      } catch {
+        return record;
+      }
+    })
+  );
 }
 
 async function resolveEpisodeRecords(deps: HistoryRecordsProviderDeps): Promise<readonly HistoryRecord[]> {
