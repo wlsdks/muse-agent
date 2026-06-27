@@ -102,6 +102,39 @@ export class FileCheckpointStore implements CheckpointStore {
     return all.length > 0 ? all[all.length - 1] : undefined;
   }
 
+  /**
+   * Runs that crashed/were interrupted mid-execution — every run whose LATEST
+   * checkpoint isn't a terminal `complete` phase. The resume command replays these.
+   * Most-recently-touched first. (Reads each run file's saved runId, not the
+   * sanitized filename, so it round-trips correctly.)
+   */
+  async listResumable(): Promise<readonly { readonly runId: string; readonly step: number; readonly phase: string; readonly updatedAt: Date }[]> {
+    let names: string[];
+    try {
+      names = (await readdir(this.#dir)).filter((n) => n.endsWith(".json"));
+    } catch {
+      return [];
+    }
+    const out: { runId: string; step: number; phase: string; updatedAt: Date }[] = [];
+    for (const name of names) {
+      let checkpoints: readonly ExecutionCheckpoint[];
+      try {
+        const raw = await readFile(join(this.#dir, name), "utf8");
+        const parsed: unknown = JSON.parse(raw);
+        if (!Array.isArray(parsed)) continue;
+        checkpoints = parsed.map(deserialize).filter((c): c is ExecutionCheckpoint => c !== undefined).sort(byStep);
+      } catch {
+        continue;
+      }
+      const latest = checkpoints[checkpoints.length - 1];
+      if (!latest) continue;
+      const phase = typeof (latest.state as { phase?: unknown }).phase === "string" ? (latest.state as { phase: string }).phase : "unknown";
+      if (phase === "complete") continue; // a finished run isn't resumable
+      out.push({ phase, runId: latest.runId, step: latest.step, updatedAt: latest.createdAt });
+    }
+    return out.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  }
+
   async save(input: SaveCheckpointInput): Promise<ExecutionCheckpoint> {
     const checkpoint: ExecutionCheckpoint = {
       createdAt: input.createdAt ?? new Date(),

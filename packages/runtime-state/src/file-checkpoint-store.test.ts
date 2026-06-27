@@ -71,6 +71,24 @@ describe("FileCheckpointStore — durable local checkpoints so a crashed run can
     }
   });
 
+  it("listResumable returns only runs whose latest checkpoint is NOT complete (crashed mid-run)", async () => {
+    const dir = tmpDir();
+    try {
+      const store = new FileCheckpointStore(join(dir, "c"));
+      // a crashed run: latest phase "act"
+      await store.save({ runId: "crashed", state: state("start"), step: 0 });
+      await store.save({ runId: "crashed", state: state("act"), step: 2 });
+      // a finished run: latest phase "complete"
+      await store.save({ runId: "done", state: state("start"), step: 0 });
+      await store.save({ runId: "done", state: state("complete"), step: 100 });
+      const resumable = await store.listResumable();
+      expect(resumable.map((r) => r.runId)).toEqual(["crashed"]); // "done" excluded
+      expect(resumable[0]).toMatchObject({ phase: "act", step: 2 });
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   it("bounds disk: prunes the oldest run files beyond maxRuns", async () => {
     const dir = tmpDir();
     try {

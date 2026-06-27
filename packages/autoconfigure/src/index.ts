@@ -815,6 +815,7 @@ export { resolveDefaultUserId } from "./user-id.js";
 export { resolveFeedsFile } from "./personal-providers.js";
 export { aggregateTokenUsage, readLocalTokenUsage, type TokenUsageGroup, type TokenUsageSummary } from "@muse/observability";
 export { createUsageRecordingProvider } from "./usage-recording-provider.js";
+export { FileCheckpointStore } from "@muse/runtime-state";
 
 export { describeOfficialMcpPosture, type OfficialMcpPresetPosture } from "./official-mcp-posture.js";
 
