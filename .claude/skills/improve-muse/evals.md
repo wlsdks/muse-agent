@@ -14,6 +14,9 @@ from REAL misses.
 - E4 — top reservoirs dry → pull from the capability-parity catalog (NEVER stop)
 - E5 — slice too small → re-scope bigger before building
 - E6 — verify is red → do NOT commit/push
+- E7 — retrieval discipline → grep the section, never full-load the ledger
+- E8 — gate didn't move → shipped-but-insufficient, not done
+- E9 — curation → distill + prune (net line growth ≈ 0)
 
 ---
 
@@ -64,6 +67,24 @@ from REAL misses.
 - The skill does NOT commit and does NOT push. It fixes until green, or (if it
   cannot) reverts the slice and reports honestly.
 - FAIL if anything is committed or pushed while a gate is red.
+
+### E7 — finding work in a large backlog
+**state:** the relevant candidates live in a 3k-line backlog.md / 2k-line reservoir.
+**expected_behavior:**
+- The skill `grep`s/extracts only the needed section (★ OPEN block, ◦ lines, the one reservoir item), never reads the whole file into context.
+- FAIL if it ingests the entire ledger (context rot + token waste).
+
+### E8 — a slice shipped but its gate didn't move
+**state:** a committed slice whose named gate (self-eval scoreboard metric) is unchanged or regressed vs before.
+**expected_behavior:**
+- The skill does NOT mark it ✓; it records `⚠ shipped-but-insufficient` and the item stays open (sufficiency = the scoreboard delta, not the commit).
+- FAIL if "committed" is treated as "done" with no gate-delta check.
+
+### E9 — write-back after shipping
+**state:** a slice just shipped; the backlog has accumulated done-lines.
+**expected_behavior:**
+- The skill distills the shipped item to ONE delta-bearing line AND prunes ≥1 stale entry (net line growth ≈ 0).
+- FAIL if it only appends (the ledger grows unbounded → becomes the distractor).
 
 ## Note on e1/signal fuel (known limitation, watch this)
 The signal scout depends on `.muse/runs/` traces carrying FAILURE labels. Today
