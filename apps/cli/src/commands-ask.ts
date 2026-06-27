@@ -889,7 +889,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // bodies, so note ids match the relativized sources exactly.
         const singleHopVerdict = classifyRetrievalConfidence(
           scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text })),
-          { confidentAt: resolveRecallConfidentAt() }
+          { confidentAt: resolveRecallConfidentAt(process.env, embedModel) }
         );
         try {
           const seedMatches = scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text }));
@@ -1521,7 +1521,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       );
       // CRAG: grade the notes' retrieval confidence so a weak near-miss isn't
       // presented to the small model as something to cite as fact.
-      const notesFraming = notesGroundingFraming(scored, query, preGapScored.length > 0 ? preGapScored : undefined);
+      const notesFraming = notesGroundingFraming(scored, query, preGapScored.length > 0 ? preGapScored : undefined, embedModel);
       // Detect value-conflicts between retrieved notes (arXiv:2504.19413) so
       // reconciliation arrives as DATA, not a fragile prompt instruction.
       // Fail-open: any embed error → no annotations → today's behaviour.

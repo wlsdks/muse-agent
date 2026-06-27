@@ -219,12 +219,16 @@ export function notesGroundingFraming(
   // Verdict is derived from this when supplied — the pre-gap-cut top-K so a
   // gap-cut that trims the prompt window to k=1 doesn't make runnerUp=0 and
   // flip "ambiguous"→"confident" (floor violation). Prompt window stays trimmed.
-  verdictInput?: readonly ScoredChunk[]
+  verdictInput?: readonly ScoredChunk[],
+  // The index's embed model, so the confidence bar matches the embedder's cosine
+  // scale (v2-moe sits lower than nomic; a nomic-tuned bar over-abstains on it).
+  // Omitted ⇒ the conservative default bar (unchanged behavior).
+  embedModel?: string
 ): { readonly verdict: RetrievalConfidence; readonly header: string; readonly guidance?: string } {
   const verdictSet = verdictInput ?? scored;
   const cosineVerdict = verdictSet.length === 0
     ? "none"
-    : classifyRetrievalConfidence(verdictSet.map((s) => ({ cosine: s.score, source: s.file, score: s.score, text: s.chunk.text })), { confidentAt: resolveRecallConfidentAt() });
+    : classifyRetrievalConfidence(verdictSet.map((s) => ({ cosine: s.score, source: s.file, score: s.score, text: s.chunk.text })), { confidentAt: resolveRecallConfidentAt(process.env, embedModel) });
   // nomic's cosine space is compressed, so a genuinely-relevant note can sit
   // just below the confident cosine threshold and get falsely flagged LOW —
   // a soft false-refusal ("verify, may not be in your notes") on a correctly

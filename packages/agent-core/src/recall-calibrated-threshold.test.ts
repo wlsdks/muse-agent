@@ -71,3 +71,44 @@ describe("resolveRecallConfidentAt — opt-in, fail-safe (mirrors the chat gate 
     expect(verifyGrounding(answer, matches, query, { confidentAt: noOverride }).verdict).toBe("grounded");
   });
 });
+
+describe("resolveRecallConfidentAt — embedder-aware calibrated bar (conformal, 24/12 edge corpus)", () => {
+  it("returns the v2-moe-calibrated 0.45 for the compressed-scale default embedder", () => {
+    expect(resolveRecallConfidentAt({}, "nomic-embed-text-v2-moe")).toBeCloseTo(0.45, 6);
+  });
+
+  it("keeps nomic-embed-text at the conservative 0.55 (its 0.44–0.51 distractors would leak at 0.45)", () => {
+    expect(resolveRecallConfidentAt({}, "nomic-embed-text")).toBe(DEFAULT_CONFIDENT_AT);
+  });
+
+  it("normalizes a provider prefix and :tag so ollama/<model>:latest still keys", () => {
+    expect(resolveRecallConfidentAt({}, "ollama/nomic-embed-text-v2-moe:latest")).toBeCloseTo(0.45, 6);
+  });
+
+  it("an UNKNOWN embedder falls back to the conservative default (never a guessed bar)", () => {
+    expect(resolveRecallConfidentAt({}, "some-future-embedder")).toBe(DEFAULT_CONFIDENT_AT);
+    expect(resolveRecallConfidentAt({})).toBe(DEFAULT_CONFIDENT_AT);
+  });
+
+  it("an explicit MUSE_GROUNDING_MIN_COSINE override beats the embedder default", () => {
+    expect(resolveRecallConfidentAt({ MUSE_GROUNDING_MIN_COSINE: "0.62" }, "nomic-embed-text-v2-moe")).toBeCloseTo(0.62, 6);
+  });
+
+  it("the v2-moe bar classifies a sub-0.55 clear top CONFIDENT that 0.55 would over-abstain on", () => {
+    // A genuine v2-moe match at 0.49 (above 0.45, below 0.55) with a far runner-up.
+    const m: readonly KnowledgeMatch[] = [
+      { source: "note", text: "the answer-bearing note", score: 0.49, cosine: 0.49 },
+      { source: "other", text: "unrelated", score: 0.25, cosine: 0.25 }
+    ];
+    expect(classifyRetrievalConfidence(m, { confidentAt: resolveRecallConfidentAt({}, "nomic-embed-text-v2-moe") })).toBe("confident");
+    expect(classifyRetrievalConfidence(m, { confidentAt: resolveRecallConfidentAt({}, "nomic-embed-text") })).toBe("ambiguous");
+  });
+
+  it("an absent-like top (≤0.415 max-negative) STAYS ambiguous at the v2-moe bar — fabrication-safe", () => {
+    const absent: readonly KnowledgeMatch[] = [
+      { source: "note", text: "near miss", score: 0.41, cosine: 0.41 },
+      { source: "other", text: "unrelated", score: 0.2, cosine: 0.2 }
+    ];
+    expect(classifyRetrievalConfidence(absent, { confidentAt: resolveRecallConfidentAt({}, "nomic-embed-text-v2-moe") })).toBe("ambiguous");
+  });
+});

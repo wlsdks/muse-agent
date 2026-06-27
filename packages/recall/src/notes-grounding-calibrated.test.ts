@@ -39,4 +39,23 @@ describe("notesGroundingFraming honors the conformal-calibrated MUSE_GROUNDING_M
     process.env.MUSE_GROUNDING_MIN_COSINE = "not-a-number";
     expect(notesGroundingFraming(verdictSet).verdict).toBe("confident");
   });
+
+  it("v2-moe embedder: a genuine sub-0.55 match the nomic bar over-abstains on is now confident", () => {
+    // A real v2-moe match at 0.49 with a far runner-up (no lexical overlap, so the
+    // strongLexical upgrade can't fire — only the calibrated cosine bar decides).
+    const subBar: readonly ScoredChunk[] = [
+      chunk("policy.md", "renewal date and premium figures for the coverage", 0.49),
+      chunk("misc.md", "unrelated grocery jottings", 0.24)
+    ];
+    expect(notesGroundingFraming(subBar, undefined, undefined, "nomic-embed-text").verdict).toBe("ambiguous");
+    expect(notesGroundingFraming(subBar, undefined, undefined, "nomic-embed-text-v2-moe").verdict).toBe("confident");
+  });
+
+  it("v2-moe embedder: an absent-like top (≤0.415) STILL abstains — fabrication-safe", () => {
+    const absent: readonly ScoredChunk[] = [
+      chunk("car.md", "car inspection and plate details", 0.40),
+      chunk("misc.md", "unrelated", 0.20)
+    ];
+    expect(notesGroundingFraming(absent, undefined, undefined, "nomic-embed-text-v2-moe").verdict).toBe("ambiguous");
+  });
 });

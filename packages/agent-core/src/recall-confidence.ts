@@ -9,26 +9,54 @@ import { finiteOr } from "./recall-lexical.js";
 
 export type RetrievalConfidence = "confident" | "ambiguous" | "none";
 
-// Default top-cosine bar for "confident". Calibrated live on nomic-embed-text:
-// a clearly-relevant personal note scored ~0.61 while personal distractors
-// scored ~0.44–0.51, so 0.55 splits them. BEST-EFFORT only — nomic's cosine
-// space is compressed (even unrelated encyclopedic text can score ~0.54), so
-// this flags weak personal grounding, it is NOT a hard relevant/irrelevant cut.
+// Conservative top-cosine bar for "confident" when the active embedder is
+// UNKNOWN. Calibrated live on nomic-embed-text: a clearly-relevant personal note
+// scored ~0.61 while distractors scored ~0.44–0.51, so 0.55 splits them.
+// BEST-EFFORT only — the cosine space is compressed, so this flags weak personal
+// grounding, it is NOT a hard relevant/irrelevant cut.
 export const DEFAULT_CONFIDENT_AT = 0.55;
 
+// The bar is EMBEDDER-SPECIFIC: a different embedder produces a different cosine
+// SCALE, so one constant can't serve both. nomic-embed-text-v2-moe (the shipped
+// default) lives on a more compressed scale, so the nomic-tuned 0.55 over-abstains
+// — it discards genuine matches for no fabrication-safety gain. The v2-moe bar is
+// CONFORMAL-CALIBRATED, not guessed: over the 24-answerable / 12-refuse edge corpus
+// (`muse doctor --calibration`) genuine matches separate from absents at a clean
+// gap [0.415 max-absent, 0.460 first-clear-positive]; a 0.45 bar holds 12/12
+// refuses with margin AND lifts answerable coverage 15/24 → 21/24 vs 0.55 (same
+// fabrication-safety, far less over-abstention). nomic STAYS 0.55 — at 0.45 its
+// 0.44–0.51 distractors would leak (an embedder-blind bump would regress it).
+const RECALL_CONFIDENT_BAR_BY_EMBEDDER: Readonly<Record<string, number>> = {
+  "nomic-embed-text": 0.55,
+  "nomic-embed-text-v2-moe": 0.45
+};
+
+/** Strip a provider prefix (`ollama/`) and a `:tag` so `ollama/nomic-…:latest` keys cleanly. */
+function normalizeEmbedModelKey(embedModel: string): string {
+  return embedModel.trim().replace(/^.*\//u, "").replace(/:.*$/u, "");
+}
+
 /**
- * Resolve the recall confidence bar from `MUSE_GROUNDING_MIN_COSINE` — the
- * conformal-calibrated threshold `muse doctor --calibration` emits (KnowNo /
- * conformal prediction, arXiv:2307.01928). Mirrors the chat gate's parse
- * (`resolveGroundingMinScore`) EXACTLY so chat and the RGV recall path agree on
- * one number: finite, `> 0 && <= 1`, else the hardcoded `DEFAULT_CONFIDENT_AT`.
- * STRICTLY opt-in and fail-safe: a missing or out-of-range env changes nothing,
- * so the fabrication=0 floor is preserved; a valid override may only RAISE the
- * abstention bar.
+ * Resolve the recall confidence bar. Precedence:
+ *  1. `MUSE_GROUNDING_MIN_COSINE` — an explicit conformal-calibrated override
+ *     (`muse doctor --calibration` emits it; KnowNo / conformal, arXiv:2307.01928).
+ *  2. The EMBEDDER-SPECIFIC calibrated bar when `embedModel` is a known embedder.
+ *  3. The conservative `DEFAULT_CONFIDENT_AT` for an unknown embedder.
+ * Fail-safe: a missing / out-of-range env and an unknown embedder both fall back
+ * to the conservative 0.55, so the fabrication=0 floor is never weakened by accident.
  */
-export function resolveRecallConfidentAt(env: NodeJS.ProcessEnv = process.env): number {
+export function resolveRecallConfidentAt(env: NodeJS.ProcessEnv = process.env, embedModel?: string): number {
   const raw = Number(env.MUSE_GROUNDING_MIN_COSINE);
-  return Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : DEFAULT_CONFIDENT_AT;
+  if (Number.isFinite(raw) && raw > 0 && raw <= 1) {
+    return raw;
+  }
+  if (embedModel) {
+    const bar = RECALL_CONFIDENT_BAR_BY_EMBEDDER[normalizeEmbedModelKey(embedModel)];
+    if (bar !== undefined) {
+      return bar;
+    }
+  }
+  return DEFAULT_CONFIDENT_AT;
 }
 
 // Margin calibration (adaptive confidence). Near the compressed-cosine floor a
