@@ -49,16 +49,39 @@ export {
 // persona's "say you don't know" line governs.
 export const CHAT_GROUNDING_MIN_SCORE = 0.5;
 
+// The floor is EMBEDDER-SPECIFIC: each embedder produces a different cosine scale.
+// CHAT_GROUNDING_MIN_SCORE (0.5) was calibrated on nomic-embed-text, but the
+// shipped default is nomic-embed-text-v2-moe, whose compressed scale tops genuine
+// matches ~0.42–0.46 — so a 0.5 floor filters OUT real hits and the chat surface
+// over-abstains. The v2-moe floor (0.45) is CONFORMAL-CALIBRATED, not guessed:
+// over the 24-answerable / 12-refuse edge corpus (`muse doctor --calibration`)
+// genuine hits separate from absents at a clean gap [0.415 max-absent, 0.460
+// first-clear-positive], so 0.45 keeps the clearly-genuine hits while still
+// filtering every absent (fabrication-safe). nomic STAYS 0.5.
+const CHAT_GROUNDING_MIN_SCORE_BY_EMBEDDER: Readonly<Record<string, number>> = {
+  "nomic-embed-text": 0.5,
+  "nomic-embed-text-v2-moe": 0.45
+};
+
 /**
- * The cosine a retrieval hit must clear to be treated as authoritative. Defaults
- * to CHAT_GROUNDING_MIN_SCORE (0.5); `MUSE_GROUNDING_MIN_COSINE` overrides it with
- * the conformal-calibrated value from `muse doctor --calibration` (e.g. 0.559 at
- * α=0.10). Opt-in: the floor is unchanged until a value is set, and an
- * out-of-range value is ignored, so a bad env can never silently break the gate.
+ * The cosine a retrieval hit must clear to be treated as authoritative. Precedence:
+ *  1. `MUSE_GROUNDING_MIN_COSINE` — an explicit conformal-calibrated override
+ *     (`muse doctor --calibration` emits it).
+ *  2. the EMBEDDER-SPECIFIC calibrated floor for the ACTIVE embedder — resolved
+ *     from `embedModel`, else `MUSE_RECALL_EMBED_MODEL`, else `DEFAULT_EMBED_MODEL`
+ *     (so every call site auto-tracks the shipped default without threading).
+ *  3. the conservative `CHAT_GROUNDING_MIN_SCORE` (0.5) for an unknown embedder.
+ * Fail-safe: a missing / out-of-range env both fall back to the active embedder's
+ * floor (or 0.5), so a bad env can never silently break the gate.
  */
-export function resolveGroundingMinScore(env: NodeJS.ProcessEnv = process.env): number {
+export function resolveGroundingMinScore(env: NodeJS.ProcessEnv = process.env, embedModel?: string): number {
   const raw = Number(env.MUSE_GROUNDING_MIN_COSINE);
-  return Number.isFinite(raw) && raw > 0 && raw <= 1 ? raw : CHAT_GROUNDING_MIN_SCORE;
+  if (Number.isFinite(raw) && raw > 0 && raw <= 1) {
+    return raw;
+  }
+  const model = embedModel ?? env.MUSE_RECALL_EMBED_MODEL?.trim() ?? DEFAULT_EMBED_MODEL;
+  const key = model.trim().replace(/^.*\//u, "").replace(/:.*$/u, "");
+  return CHAT_GROUNDING_MIN_SCORE_BY_EMBEDDER[key] ?? CHAT_GROUNDING_MIN_SCORE;
 }
 
 // Cap the injected passages so a broad query can't balloon the prompt on a
@@ -283,7 +306,7 @@ export async function retrieveChatGrounding(
       embedModel,
       env
     });
-    return { block: formatChatGroundingBlock(hits, opts.minScore ?? resolveGroundingMinScore()), matches: hitsToMatches(hits) };
+    return { block: formatChatGroundingBlock(hits, opts.minScore ?? resolveGroundingMinScore(env, embedModel)), matches: hitsToMatches(hits) };
   } catch {
     return { block: "", matches: [] };
   }
@@ -846,7 +869,10 @@ export function gateChatAnswer(
   const decision = chatGatePrecheck(question, answer, matches, knownFactKeys);
   if (decision === "pass") return answer;
   if (decision === "abstain") return chatAbstention(question);
-  const { verdict } = verifyGrounding(answer, matches, question);
+  // Use the SAME embedder-aware floor as retrieval so the answer gate doesn't
+  // re-abstain on a genuine v2-moe hit (≈0.46) that the 0.5/0.55 nomic bar would
+  // wrongly call "weak" — which would undo the retrieval fix.
+  const { verdict } = verifyGrounding(answer, matches, question, { confidentAt: resolveGroundingMinScore() });
   return verdict === "grounded" ? answer : chatAbstention(question);
 }
 
@@ -887,7 +913,10 @@ export async function gateChatAnswerWithReverify(
   const decision = chatGatePrecheck(question, answer, matches, knownFactKeys);
   if (decision === "pass") return answer;
   if (decision === "abstain") return chatAbstention(question);
-  const { verdict } = await verifyGroundingWithReverify(answer, matches, question, reverify);
+  // Same embedder-aware floor as the retrieval filter + the non-reverify gate, so
+  // the reverify-escalation path doesn't judge a genuine v2-moe hit against the
+  // stale nomic bar.
+  const { verdict } = await verifyGroundingWithReverify(answer, matches, question, reverify, { confidentAt: resolveGroundingMinScore() });
   return verdict === "grounded" ? answer : chatAbstention(question);
 }
 

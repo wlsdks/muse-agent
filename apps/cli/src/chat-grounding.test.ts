@@ -92,18 +92,31 @@ describe("refreshStaleNotesIndexForChat — re-embeds on a MODEL change even whe
   });
 });
 
-describe("resolveGroundingMinScore — the conformal-calibrated threshold is opt-in via env (A1c)", () => {
-  it("defaults to CHAT_GROUNDING_MIN_SCORE (0.5) when the env is unset", () => {
-    expect(resolveGroundingMinScore({})).toBe(CHAT_GROUNDING_MIN_SCORE);
+describe("resolveGroundingMinScore — embedder-aware floor + conformal env override (A1c)", () => {
+  it("defaults to the ACTIVE embedder's floor: v2-moe (the shipped default) → 0.45", () => {
+    // empty env ⇒ no MUSE_RECALL_EMBED_MODEL ⇒ DEFAULT_EMBED_MODEL (v2-moe) ⇒ 0.45,
+    // NOT the nomic-calibrated 0.5 (which over-filters genuine v2-moe hits).
+    expect(resolveGroundingMinScore({})).toBeCloseTo(0.45, 6);
   });
 
-  it("honours a valid MUSE_GROUNDING_MIN_COSINE override (the calibrated value)", () => {
+  it("keeps the legacy nomic-embed-text at 0.5 (its distractors would leak at 0.45)", () => {
+    expect(resolveGroundingMinScore({ MUSE_RECALL_EMBED_MODEL: "nomic-embed-text" })).toBe(CHAT_GROUNDING_MIN_SCORE);
+    expect(resolveGroundingMinScore({}, "nomic-embed-text")).toBe(CHAT_GROUNDING_MIN_SCORE);
+  });
+
+  it("normalizes a provider prefix + :tag, and an unknown embedder falls back to 0.5", () => {
+    expect(resolveGroundingMinScore({}, "ollama/nomic-embed-text-v2-moe:latest")).toBeCloseTo(0.45, 6);
+    expect(resolveGroundingMinScore({}, "some-future-embedder")).toBe(CHAT_GROUNDING_MIN_SCORE);
+  });
+
+  it("honours a valid MUSE_GROUNDING_MIN_COSINE override (beats the embedder floor)", () => {
     expect(resolveGroundingMinScore({ MUSE_GROUNDING_MIN_COSINE: "0.559" })).toBeCloseTo(0.559, 6);
+    expect(resolveGroundingMinScore({ MUSE_GROUNDING_MIN_COSINE: "0.559", MUSE_RECALL_EMBED_MODEL: "nomic-embed-text" })).toBeCloseTo(0.559, 6);
   });
 
-  it("ignores an out-of-range / garbage value (never silently breaks the gate)", () => {
+  it("ignores an out-of-range / garbage override (falls back to the active embedder floor)", () => {
     for (const bad of ["0", "1.2", "-0.3", "nope", ""]) {
-      expect(resolveGroundingMinScore({ MUSE_GROUNDING_MIN_COSINE: bad })).toBe(CHAT_GROUNDING_MIN_SCORE);
+      expect(resolveGroundingMinScore({ MUSE_GROUNDING_MIN_COSINE: bad, MUSE_RECALL_EMBED_MODEL: "nomic-embed-text" })).toBe(CHAT_GROUNDING_MIN_SCORE);
     }
   });
 
@@ -447,7 +460,8 @@ describe("formatChatGroundingBlock", () => {
   });
 
   it("returns '' when every hit is below the relevance threshold (refusal floor intact)", () => {
-    expect(formatChatGroundingBlock([hit({ score: CHAT_GROUNDING_MIN_SCORE - 0.01 })])).toBe("");
+    // Below the ACTIVE embedder floor (v2-moe 0.45 by default), not the nomic 0.5.
+    expect(formatChatGroundingBlock([hit({ score: resolveGroundingMinScore() - 0.01 })])).toBe("");
   });
 
   it("returns '' for no hits", () => {
