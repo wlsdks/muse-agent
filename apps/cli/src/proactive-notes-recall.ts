@@ -15,7 +15,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { decideProactiveRecall, FindingResurfaceSuppressor, type KnowledgeMatch } from "@muse/agent-core";
+import { decideProactiveRecall, FindingResurfaceSuppressor, resolveRecallConfidentAt, type KnowledgeMatch } from "@muse/agent-core";
 import { relativizeNoteSource } from "@muse/recall";
 import { resolveNoteProvenanceFile, resolveNotesDir } from "@muse/autoconfigure";
 
@@ -90,9 +90,14 @@ export function createIndexedProactiveInvestigator(
     }
     const chunks = (index.files ?? []).flatMap((f) => f.chunks ?? []);
     if (chunks.length === 0) return undefined;
+    // The embed model the index was built with — drives BOTH the query embed and
+    // the confidence bar (the bar is embedder-specific; the v2-moe default tops
+    // genuine matches ~0.42–0.46, so the nomic-calibrated 0.55 leaves the proactive
+    // "Related in your notes" surface effectively dead on the shipped default).
+    const effectiveEmbedModel = options.embedModel ?? index.model ?? DEFAULT_EMBED_MODEL;
     let queryVec: readonly number[];
     try {
-      queryVec = await embedText(query, options.embedModel ?? index.model ?? DEFAULT_EMBED_MODEL);
+      queryVec = await embedText(query, effectiveEmbedModel);
     } catch {
       return undefined;
     }
@@ -110,7 +115,9 @@ export function createIndexedProactiveInvestigator(
     const matches = proactiveMatchesFromIndex(queryVec, chunks, options.topK ?? 3, isUntrusted);
     const decision = decideProactiveRecall(matches, {
       query,
-      ...(options.confidentAt !== undefined ? { confidentAt: options.confidentAt } : {})
+      // Default to the EMBEDDER-AWARE bar (0.45 for v2-moe) so the surface isn't
+      // dead on the shipped default; an explicit option still wins.
+      confidentAt: options.confidentAt ?? resolveRecallConfidentAt(process.env, effectiveEmbedModel)
     });
     if (!decision.surface || decision.finding === undefined) return undefined;
     // Anti-nag: withhold an identical finding already surfaced within the cooldown.

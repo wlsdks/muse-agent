@@ -79,6 +79,48 @@ describe("createIndexedProactiveInvestigator", () => {
     expect(await investigate({ factSheet: "", kind: "task", title: "Anything" })).toBeUndefined();
   });
 
+  // The bar is EMBEDDER-AWARE: on the shipped default (v2-moe) a genuine match tops
+  // out ~0.42–0.46, so the nomic-calibrated 0.55 would leave the proactive surface
+  // dead. Default to the v2-moe-calibrated 0.45 so the surface actually fires.
+  const writeV2Index = async () => {
+    await writeFile(indexFile, JSON.stringify({
+      files: [{ chunks: [
+        { embedding: [1, 0, 0], file: "q3.md", text: "Q3 budget review prep: bring the forecast." },
+        { embedding: [0, 1, 0], file: "cat.md", text: "Cat vaccination next spring." }
+      ] }],
+      model: "nomic-embed-text-v2-moe",
+      version: 1
+    }), "utf8");
+  };
+
+  it("v2-moe: surfaces a genuine sub-0.55 match (cosine 0.46) the nomic 0.55 bar would have left dead", async () => {
+    await writeV2Index();
+    const investigate = createIndexedProactiveInvestigator({
+      embedText: async () => [0.46, 0, 0.8879], // cosine 0.46 to q3.md, 0 to cat.md
+      indexFile
+    });
+    expect(await investigate({ factSheet: "", kind: "task", title: "Q3 budget review" })).toContain("[q3.md]");
+  });
+
+  it("v2-moe: an explicit stricter confidentAt (0.55) still holds the 0.46 match silent (override wins)", async () => {
+    await writeV2Index();
+    const investigate = createIndexedProactiveInvestigator({
+      confidentAt: 0.55,
+      embedText: async () => [0.46, 0, 0.8879],
+      indexFile
+    });
+    expect(await investigate({ factSheet: "", kind: "task", title: "Q3 budget review" })).toBeUndefined();
+  });
+
+  it("v2-moe: an absent-like match below the 0.45 floor (cosine 0.40) stays silent — fabrication-safe", async () => {
+    await writeV2Index();
+    const investigate = createIndexedProactiveInvestigator({
+      embedText: async () => [0.40, 0, 0.9165], // cosine 0.40 to q3.md → below the v2-moe floor
+      indexFile
+    });
+    expect(await investigate({ factSheet: "", kind: "task", title: "Q3 budget review" })).toBeUndefined();
+  });
+
   it("anti-nag: the SAME finding for a recurring item is suppressed within the cooldown, re-shown after (arXiv:2410.12361)", async () => {
     await writeIndex();
     let clock = 1_000_000;
