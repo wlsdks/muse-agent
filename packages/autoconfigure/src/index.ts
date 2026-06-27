@@ -68,6 +68,7 @@ import {
 import { CircuitBreakerRegistry } from "@muse/resilience";
 import { RuntimeSettings } from "@muse/runtime-settings";
 import {
+  FileCheckpointStore,
   type AgentRunHistoryStore,
   type DebugReplayCaptureStore,
   type HookTraceStore,
@@ -134,7 +135,8 @@ import {
   resolveReminderHistoryFile,
   resolveRemindersFile,
   resolveTasksFile,
-  resolveTokenUsageFile
+  resolveTokenUsageFile,
+  resolveCheckpointsDir
 } from "./personal-providers.js";
 
 export {
@@ -177,6 +179,7 @@ export {
   resolveSlackInboxFile,
   resolveTasksFile,
   resolveTokenUsageFile,
+  resolveCheckpointsDir,
   resolveTelegramInboxFile,
   resolveTelegramOffsetFile,
   resolveVetoesFile,
@@ -611,6 +614,11 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const agentRuntime = modelProvider && defaultModel
     ? createAgentRuntime({
       agentSpecResolver,
+      // Persist execution checkpoints so a crashed/interrupted run can resume from
+      // its last step (the langgraph fault-tolerance gap). Local-first uses a file
+      // store (the no-DB default previously persisted NOTHING — every checkpoint
+      // was a silent no-op); the server keeps its DB path untouched.
+      ...(db ? {} : { checkpointStore: new FileCheckpointStore(resolveCheckpointsDir(env)) }),
       cacheMetrics,
       circuitBreaker: circuitBreakerRegistry.get("model.generate"),
       contextReferenceStore,

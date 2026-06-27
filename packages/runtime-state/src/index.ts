@@ -208,3 +208,4 @@ export type {
 export * from "./debug-replay.js";
 export * from "./run-history.js";
 export * from "./session-tags.js";
+export { FileCheckpointStore, type FileCheckpointStoreOptions } from "./file-checkpoint-store.js";

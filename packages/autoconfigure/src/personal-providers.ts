@@ -81,6 +81,7 @@ export {
   resolveSlackInboxFile,
   resolveTasksFile,
   resolveTokenUsageFile,
+  resolveCheckpointsDir,
   resolveWeaknessesFile,
   resolveTelegramInboxFile,
   resolveTelegramOffsetFile,

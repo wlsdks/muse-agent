@@ -44,6 +44,12 @@ export function resolveTokenUsageFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_TOKEN_USAGE_FILE", "token-usage.jsonl");
 }
 
+/** Local-first checkpoint directory — where the no-DB product persists per-run
+ *  execution checkpoints so a crashed run can resume (one JSON file per runId). */
+export function resolveCheckpointsDir(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_CHECKPOINTS_DIR", "checkpoints");
+}
+
 export function resolveNotesIndexFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_NOTES_INDEX_FILE", "notes-index.json");
 }
