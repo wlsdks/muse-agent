@@ -13,6 +13,18 @@
 >
 > **231 opportunities.** `status` = none (Muse lacks it) / partial (weaker). `★1–5` = leverage.
 > `S/M/L` = effort. Quantitative figures in *Value* are analyst hypotheses — prove via *Verify*.
+>
+> ⚠️ **THE `status` COLUMN IS A 2026-06-23 SNAPSHOT AND IS NOW STALE — RUN THE
+> FRESHNESS GUARD BEFORE PICKING.** A prolific 2026-06 build wave shipped many ★5
+> items still marked `none`/`partial` here, including (verified in `git log` + the
+> main backlog's ✅ build-queue): the CMP-* compaction family (aux-model compression,
+> media stripping, tool-result summarization, envelope token counting), REL-* error
+> taxonomy + retry/backoff, CRON-1 error-classified retry, MED-1/2/3 TTS fallback +
+> persona + truncation, SEC-1 URL-secret redaction, TCR-3 surrogate sanitization,
+> WEB-5 SSRF URL extraction, MEM-1 fence scrubbing, CUR-1 skill-curator lifecycle,
+> and the recall confidence-bar (embedder-aware on notes/chat/proactive + doctor).
+> Cross-check each candidate against the code (codegraph / `git log`) — do NOT trust
+> a `none`/`partial` label here on its own.
 
 
 ## Priority index — do these first
