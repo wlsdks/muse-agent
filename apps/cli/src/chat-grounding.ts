@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { assertiveUnsupportedFraction, detectEvidenceContradictions, evidenceIsUntrustedOnly, groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, reportSentenceGroundedness, stripCitationMarkers, untrustedOnlySentences, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
-import { conflictCueFromMatches, misgroundedOutcome, stripEchoedCiteAs, stripGroundingFences, type AskOutcome, type MemoryFact } from "@muse/recall";
+import { conflictCueFromMatches, corroborationReceiptLine, misgroundedOutcome, stripEchoedCiteAs, stripGroundingFences, type AskOutcome, type MemoryFact } from "@muse/recall";
 
 import {
   answerAssertsUnsupportedDate,
@@ -769,6 +769,12 @@ export function withGroundingReceipt(
   if (sources.length === 0 || isChatAbstention(answer) || expressesNoInformation(answer) || answer.includes("[from")) return answer;
   const label = korean ? "노트" : "from";
   let receipt = `${answer}\n\n📎 ${label}: ${sources.join(", ")}`;
+  // POSITIVE corroboration signal (default-on, parity with the ask wedge): a claim
+  // backed by ≥2 INDEPENDENT sources is the realistic local-first hedge against
+  // GROUNDED≠TRUE (a single poisoned/stale note can't fake independent agreement).
+  // Non-noisy — fires only on the multi-source minority, rewards corroboration
+  // rather than penalizing a legitimately single-source fact.
+  receipt += corroborationReceiptLine(sources, korean);
   // Quorum hedge (A2, biology — Becker et al. 2022/2023): when the answer rests
   // on a SINGLE independent witness source, honestly acknowledge it isn't
   // corroborated. Opt-in (`MUSE_QUORUM_HEDGE=1`) and default-off, because most

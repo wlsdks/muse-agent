@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
-import { citedSourcesIn, lexicalOverlap, lexicalTokens, neutralizeInjectionSpans, type ContradictionPair } from "@muse/agent-core";
+import { citedSourcesIn, independentWitnessCount, lexicalOverlap, lexicalTokens, neutralizeInjectionSpans, quorumVerdict, type ContradictionPair } from "@muse/agent-core";
 import { escapeSystemPromptMarkers } from "./prompt-escape.js";
 import { formatDueLocal } from "@muse/mcp-shared";
 import { type PersistedReminder, type PersistedTask } from "@muse/stores";
@@ -163,7 +163,25 @@ export function formatSourceReceipts(
       : hit && isAbsolute(hit.file) ? hit.file : isAbsolute(note) ? note : join(notesDir, note);
     return `   • ${lead}${snippet ? ` — "${snippet}"` : driftNote}${target ? `\n     ${target}` : ""}`;
   });
-  return `\n📎 From your notes (open to verify):\n${blocks.join("\n")}\n`;
+  return `\n📎 From your notes (open to verify):\n${blocks.join("\n")}${corroborationReceiptLine(cited)}\n`;
+}
+
+/**
+ * A POSITIVE corroboration signal (the realistic, local-first answer to GROUNDED≠TRUE):
+ * the grounding gate proves a claim MATCHES its cited source, never that the source is
+ * TRUE — but a claim independently backed by ≥2 distinct sources is harder for a single
+ * poisoned/stale note to fake than a single-source one. So when an answer rests on a
+ * quorum of independent witnesses, say so honestly ("shows its work"). Default-on and
+ * non-noisy: it fires ONLY on the multi-source minority — it never penalizes a
+ * legitimately single-source personal fact (that stays an opt-in hedge), only rewards
+ * corroboration. Pure. `sources` need not be pre-deduped (witness count dedupes).
+ */
+export function corroborationReceiptLine(sources: readonly string[], korean = false): string {
+  const witnesses = independentWitnessCount(sources);
+  if (quorumVerdict(witnesses) !== "corroborated") return "";
+  return korean
+    ? `\n✓ 독립된 출처 ${witnesses.toString()}곳이 같은 답을 뒷받침해요.`
+    : `\n✓ corroborated by ${witnesses.toString()} independent sources.`;
 }
 
 /** Coarse PAST age for a staleness hint — "9d ago" / "3w ago" / "8mo ago" / "2y ago". Pure. */

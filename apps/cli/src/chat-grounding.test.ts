@@ -697,3 +697,16 @@ describe("chatTraceOutcome — labels a chat turn for the error-analysis run-log
     expect(out).toBe("misgrounded");
   });
 });
+
+describe("withGroundingReceipt — default-on corroboration parity with the ask wedge", () => {
+  it("surfaces corroboration when the chat answer drew on ≥2 independent notes", () => {
+    const out = withGroundingReceipt("MTU is 1420.", ["vpn.md", "net.md"], false, {});
+    expect(out).toContain("corroborated by 2 independent sources");
+  });
+  it("stays silent on a single-note answer (no false corroboration, no opt-in needed)", () => {
+    expect(withGroundingReceipt("MTU is 1420.", ["vpn.md"], false, {})).not.toContain("corroborated");
+  });
+  it("Korean answer gets the Korean corroboration line", () => {
+    expect(withGroundingReceipt("MTU는 1420이에요.", ["vpn.md", "net.md"], true, {})).toContain("독립된 출처 2곳");
+  });
+});

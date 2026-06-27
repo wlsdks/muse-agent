@@ -16,6 +16,7 @@ import {
   filterNotesByScope,
   formatCoarseAge,
   formatNonNoteReceipts,
+  corroborationReceiptLine,
   formatSourceReceipts,
   formatSourcesFooter,
   formatStalenessWarning,
@@ -312,5 +313,41 @@ describe("recentFeedHeadlines", () => {
   });
   it("returns nothing for a non-positive limit", () => {
     expect(recentFeedHeadlines([], 0)).toEqual([]);
+  });
+});
+
+describe("corroborationReceiptLine — POSITIVE cross-source signal (the local-first hedge against GROUNDED≠TRUE)", () => {
+  it("fires only when ≥2 INDEPENDENT sources back the answer (quorum)", () => {
+    expect(corroborationReceiptLine(["a.md", "b.md"])).toContain("corroborated by 2 independent sources");
+    expect(corroborationReceiptLine(["a.md", "b.md", "c.md"])).toContain("corroborated by 3 independent sources");
+  });
+
+  it("stays SILENT for a single source — never penalizes a legitimately single-source fact", () => {
+    expect(corroborationReceiptLine(["a.md"])).toBe("");
+    expect(corroborationReceiptLine([])).toBe("");
+  });
+
+  it("dedupes — two chunks from the SAME file are ONE witness, not corroboration", () => {
+    expect(corroborationReceiptLine(["a.md", "a.md"])).toBe("");
+    expect(corroborationReceiptLine(["a.md", " a.md "])).toBe(""); // whitespace-normalized
+  });
+
+  it("Korean variant when requested", () => {
+    expect(corroborationReceiptLine(["a.md", "b.md"], true)).toContain("독립된 출처 2곳");
+  });
+
+  it("the ask wedge receipt (formatSourceReceipts) surfaces corroboration when the answer cites 2 notes", () => {
+    const chunks = [
+      { file: "vpn.md", text: "WireGuard uses 1420 MTU on most links." },
+      { file: "net.md", text: "The office tunnel MTU is 1420 bytes." }
+    ];
+    const out = formatSourceReceipts("MTU is 1420 [from vpn.md] [from net.md].", "/notes", chunks, "mtu") ?? "";
+    expect(out).toContain("corroborated by 2 independent sources");
+  });
+
+  it("the ask wedge stays silent on a single-note answer (no false corroboration)", () => {
+    const chunks = [{ file: "vpn.md", text: "WireGuard uses 1420 MTU on most links." }];
+    const out = formatSourceReceipts("MTU is 1420 [from vpn.md].", "/notes", chunks, "mtu") ?? "";
+    expect(out).not.toContain("corroborated");
   });
 });
