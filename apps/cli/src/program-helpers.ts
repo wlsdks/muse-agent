@@ -91,6 +91,31 @@ export interface AskRunLogParams {
     readonly citationUnsupported: boolean;
     readonly citationUncited: boolean;
   };
+  /**
+   * What retrieval actually surfaced for this answer — the top sources + their
+   * cosine score, BEFORE the answer/citation step. Lets a local trace answer
+   * "why this answer / why these sources / what ranked but wasn't cited", which
+   * the final `grounded`/citations alone can't. Read-only forensics (P1.2).
+   */
+  readonly retrieval?: readonly RetrievalTraceEntry[];
+}
+
+export interface RetrievalTraceEntry {
+  readonly source: string;
+  readonly score: number;
+}
+
+/**
+ * Summarize ranked retrieval matches into the trace's `retrieval` field — top-K
+ * source + cosine (falling back to score), rounded. Pure + exported for tests.
+ */
+export function summarizeRetrieval(
+  matches: readonly { readonly source: string; readonly cosine?: number; readonly score: number }[],
+  topK = 5
+): readonly RetrievalTraceEntry[] {
+  return matches
+    .slice(0, Math.max(0, Math.trunc(topK)))
+    .map((m) => ({ score: Number((m.cosine ?? m.score).toFixed(4)), source: m.source }));
 }
 
 /**
@@ -113,6 +138,7 @@ export function buildAskRunLog(params: AskRunLogParams): RunLogInput {
       toolsUsed: params.toolsUsed,
       ...(params.decomposition !== undefined ? { decomposition: params.decomposition } : {}),
       ...(params.sourceCheck !== undefined ? { sourceCheck: params.sourceCheck } : {}),
+      ...(params.retrieval !== undefined ? { retrieval: params.retrieval } : {}),
       ...(params.errorMessage !== undefined ? { error: params.errorMessage } : {})
     },
     source: "cli.local"

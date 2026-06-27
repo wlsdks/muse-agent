@@ -93,7 +93,7 @@ import { readClipboardText } from "./clipboard-reader.js";
 import { createCitationStreamFilter } from "./citation-stream.js";
 import { docxToText, emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isPdfDocument, isPptxDocument, parsePdfBuffer, pptxToText } from "./document-reader.js";
 import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
-import { buildAskRunLog, resolvePersona, writeRunLog } from "./program-helpers.js";
+import { buildAskRunLog, resolvePersona, summarizeRetrieval, writeRunLog, type RetrievalTraceEntry } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
@@ -1922,6 +1922,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       let collectedAnswer = "";
       let answerLogprobs: AskStreamResult["logprobs"];
       let toolsUsed: readonly string[] = [];
+      // What retrieval surfaced (top sources + cosine) for the run-log trace, so
+      // "why this answer / which sources ranked" is answerable locally (P1.2).
+      let askRetrieval: readonly RetrievalTraceEntry[] | undefined;
       // The agent's read-tool outputs (web fetches, knowledge_search, …) — the
       // evidence the --with-tools answer was grounded in. Fed into the output
       // grounding verdict below so a web-grounded answer isn't false-flagged
@@ -2329,6 +2332,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           // provenance bit feeds groundedOnUntrustedOnly (grounded≠true).
           ...agentGroundingSources.map((s) => ({ ...exactMatch(`tool: ${s.source}`, s.text), trusted: false }))
         ];
+        askRetrieval = summarizeRetrieval(scoredMatches);
         // The coverage check strips citation markers before scoring, so a LIST
         // answer whose claims live only inside `[task: …]` / `[event: …]` markers
         // (the model put the titles in the citation, not the prose) would score
@@ -2695,7 +2699,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         success: true,
         toolsUsed,
         ...(decompositionSignals ? { decomposition: decompositionSignals } : {}),
-        ...(sourceCheck ? { sourceCheck } : {})
+        ...(sourceCheck ? { sourceCheck } : {}),
+        ...(askRetrieval && askRetrieval.length > 0 ? { retrieval: askRetrieval } : {})
       }));
       // Whetstone fuel: an ASK failure becomes a weakness-ledger entry so doctor
       // / error-analysis can mine real-usage gaps — previously only chat-repl fed

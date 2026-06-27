@@ -1,6 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { buildAskRunLog, chatTurnPersistText, defaultConfigPath, firstNonEmpty, readResponseGrounded, readResponseSuccess, setConfigValue, unsetConfigValue } from "./program-helpers.js";
+import { buildAskRunLog, chatTurnPersistText, defaultConfigPath, firstNonEmpty, readResponseGrounded, readResponseSuccess, setConfigValue, summarizeRetrieval, unsetConfigValue } from "./program-helpers.js";
+
+describe("summarizeRetrieval + buildAskRunLog retrieval — 'why this answer' trace (P1.2)", () => {
+  it("summarizeRetrieval takes top-K, prefers cosine over score, rounds", () => {
+    const out = summarizeRetrieval([
+      { source: "vpn.md", cosine: 0.621345, score: 0.5 },
+      { source: "net.md", cosine: 0.41, score: 0.41 },
+      { source: "x.md", score: 0.3 }
+    ], 2);
+    expect(out).toEqual([{ source: "vpn.md", score: 0.6213 }, { source: "net.md", score: 0.41 }]);
+  });
+
+  it("buildAskRunLog embeds retrieval in the trace response (readable by the analyzer / a future inspector)", () => {
+    const entry = buildAskRunLog({
+      query: "q", timings: {}, grounded: "grounded", response: "a", success: true, toolsUsed: [],
+      retrieval: [{ source: "vpn.md", score: 0.62 }]
+    });
+    expect((entry.response as { retrieval?: unknown }).retrieval).toEqual([{ source: "vpn.md", score: 0.62 }]);
+  });
+
+  it("omits retrieval when absent (back-compat: no empty key)", () => {
+    const entry = buildAskRunLog({ query: "q", timings: {}, grounded: "grounded", response: "a", success: true, toolsUsed: [] });
+    expect((entry.response as Record<string, unknown>)).not.toHaveProperty("retrieval");
+  });
+});
 
 describe("buildAskRunLog (cli.local ask run-log payload — shared success/failure builder, #6 slice 6a)", () => {
   it("builds a success entry whose response carries success:true and the lifted fields", () => {
