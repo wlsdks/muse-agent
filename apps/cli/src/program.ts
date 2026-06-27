@@ -68,6 +68,7 @@ import { registerMemoryCommands } from "./commands-memory.js";
 import { registerAnalyticsCommands } from "./commands-analytics.js";
 import { registerCostCommands } from "./commands-cost.js";
 import { registerResumeCommand } from "./commands-resume.js";
+import { registerTraceCommand } from "./commands-trace.js";
 import { registerDebugCommands } from "./commands-debug.js";
 import { registerDoctorCommand } from "./commands-doctor.js";
 import { registerLatencyCommands } from "./commands-latency.js";
@@ -629,6 +630,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerDoctorCommand(program, io, { apiRequest, writeOutput });
   registerCostCommands(program, io, { apiRequest, writeOutput });
   registerResumeCommand(program, io);
+  registerTraceCommand(program, io);
   registerLatencyCommands(program, io, { apiRequest, writeOutput });
   registerTracesCommands(program, io, { apiRequest, writeOutput });
   registerSettingsCommands(program, io, { apiRequest, writeOutput });
