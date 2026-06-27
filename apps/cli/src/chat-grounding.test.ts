@@ -14,6 +14,7 @@ import {
   CHAT_GROUNDING_MAX_HITS,
   CHAT_GROUNDING_MIN_SCORE,
   chatAbstention,
+  chatTraceOutcome,
   chatAutoReindexEnabled,
   conversationMatches,
   expressesNoInformation,
@@ -668,5 +669,31 @@ describe("answerAssertsUnsupportedUrl — filename tokens are not domains (false
     // phishing domain, so they must NOT be treated as filenames — the guard still abstains.
     expect(answerAssertsUnsupportedUrl("download it from acme-backup.zip", [note("no url")], "where?")).toBe(true);
     expect(answerAssertsUnsupportedUrl("watch team-video.mov", [note("no url")], "where?")).toBe(true);
+  });
+});
+
+describe("chatTraceOutcome — labels a chat turn for the error-analysis run-log (misgrounding fuel)", () => {
+  const note = (text: string): KnowledgeMatch => ({ cosine: 0.8, score: 0.8, source: "n.md", text });
+
+  it("an unbacked action → null (an action failure, not a grounding verdict)", () => {
+    expect(chatTraceOutcome({ answer: "Done — I emailed Sam.", matches: [], refusal: false, unbackedAction: true })).toBeNull();
+  });
+
+  it("a refusal → 'abstain' (honest no-answer, NOT a misgrounding failure)", () => {
+    expect(chatTraceOutcome({ answer: "I'm not sure.", matches: [note("rent is 1,250,000 KRW")], refusal: true, unbackedAction: false })).toBe("abstain");
+  });
+
+  it("a fully-supported answer → 'grounded' (no fuel)", () => {
+    expect(chatTraceOutcome({ answer: "The office VPN MTU is 1380.", matches: [note("The office VPN MTU is 1380 on wg0.")], refusal: false, unbackedAction: false })).toBe("grounded");
+  });
+
+  it("a PARTIAL misgrounding (a backed sentence + an unsupported one) → 'misgrounded' — the fuel the flywheel was missing", () => {
+    const out = chatTraceOutcome({
+      answer: "The office VPN MTU is 1380. Your home wifi password is hunter2.",
+      matches: [note("The office VPN MTU is 1380 on wg0.")],
+      refusal: false,
+      unbackedAction: false
+    });
+    expect(out).toBe("misgrounded");
   });
 });

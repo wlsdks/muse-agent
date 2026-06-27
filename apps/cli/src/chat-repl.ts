@@ -26,7 +26,7 @@ import type { Command } from "commander";
 import { classifyCasualPrompt, isUnbackedActionClaim, runResistingFalseDone, type KnowledgeMatch } from "@muse/agent-core";
 import type { AskTimeNudge, WeaknessEntry } from "@muse/stores";
 
-import { buildQueryRewritePrompt, chatWeaknessAxis, defaultChatConflictEmbedder, factKeysToInject, finalizeGatedChatAnswer, isChatAbstention, isChatGroundedSuccess, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding, type ChatWeaknessAxis } from "./chat-grounding.js";
+import { buildQueryRewritePrompt, chatTraceOutcome, chatWeaknessAxis, defaultChatConflictEmbedder, factKeysToInject, finalizeGatedChatAnswer, isChatAbstention, isChatGroundedSuccess, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding, type ChatWeaknessAxis } from "./chat-grounding.js";
 import { createQwenReverify } from "./grounding-eval-runner.js";
 import { isRecord } from "./credential-store.js";
 import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
@@ -525,6 +525,11 @@ export async function runLocalChat(
 
   return {
     response: finalResponse,
+    // Outcome label for the run-log trace (writeRunLog lifts `grounded` to the top
+    // level) so a chat MISGROUNDING becomes error-analysis FUEL instead of a
+    // grounded:null happy-path row — parity with the ask path. Casual turns assert
+    // no claim, so they carry no grounding verdict.
+    grounded: isCasual ? null : chatTraceOutcome({ answer: finalResponse, matches, refusal: chatRefusal, unbackedAction }),
     // The cue-free twin for persistence (appendLastChatTurn) — keeps display-only
     // source-check warnings out of the next session's grounding evidence.
     responseForHistory: finalResponseForHistory,

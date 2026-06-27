@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { assertiveUnsupportedFraction, detectEvidenceContradictions, evidenceIsUntrustedOnly, groundedOnUntrustedOnly, independentWitnessCount, quorumVerdict, reportCitationPrecision, reportCitationRecall, reportSentenceGroundedness, stripCitationMarkers, untrustedOnlySentences, verifyGrounding, verifyGroundingWithReverify, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
-import { conflictCueFromMatches, misgroundedOutcome, stripEchoedCiteAs, stripGroundingFences, type MemoryFact } from "@muse/recall";
+import { conflictCueFromMatches, misgroundedOutcome, stripEchoedCiteAs, stripGroundingFences, type AskOutcome, type MemoryFact } from "@muse/recall";
 
 import {
   answerAssertsUnsupportedDate,
@@ -556,6 +556,30 @@ export function chatWeaknessAxis(args: {
     return "misgrounding";
   }
   return null;
+}
+
+/**
+ * Map a chat turn to the run-log `grounded` OUTCOME label (the ask-path vocabulary
+ * the error-analysis flywheel reads), so a chat misgrounding becomes trace FUEL
+ * instead of vanishing as a `grounded:null` happy-path row. Parity with ask's
+ * askOutcomeLabel→misgroundedOutcome chain via the shared {@link chatWeaknessAxis}:
+ * misgrounding→`misgrounded` (the failure class run-log-analysis clusters), a
+ * refusal→`abstain` (honest, NOT a failure), a supported answer→`grounded`. An
+ * `unbacked-action` is an action failure, not a grounding verdict → no label
+ * (the turn's `success:false` / heads-up carries it). Pure.
+ */
+export function chatTraceOutcome(args: {
+  readonly refusal: boolean;
+  readonly unbackedAction: boolean;
+  readonly answer: string;
+  readonly matches: readonly KnowledgeMatch[];
+}): AskOutcome {
+  switch (chatWeaknessAxis(args)) {
+    case "misgrounding": return "misgrounded";
+    case "grounding-gap": return "abstain";
+    case "unbacked-action": return null;
+    default: return "grounded";
+  }
 }
 
 /**
