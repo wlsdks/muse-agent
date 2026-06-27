@@ -20,8 +20,8 @@
   "scripts": {
     "build": "pnpm -r --sort --if-present build",
     "check": "pnpm build && pnpm test",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content",
+    "lint:fix": "eslint . --fix --cache --cache-location node_modules/.cache/eslint/ --cache-strategy content",
     "deadcode": "knip",
     "guard:core": "node scripts/guard-immutable.mjs",
     "check:capabilities": "node scripts/check-capabilities-drift.mjs",
