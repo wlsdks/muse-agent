@@ -23,9 +23,9 @@
  */
 
 import { existsSync, statSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join, relative } from "node:path";
+import { join } from "node:path";
 
 import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, resolveRecallConfidentAt, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
@@ -55,6 +55,7 @@ import { citationPrecisionNotice, citationRecallNotice, sourceCheckSignals, untr
 
 export { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
 export { diversifyAskChunks, notesGroundingFraming };
+export { listNoteFiles, notesCorpusFileCount, resolveAskMaxTools, selectGraphConnections };
 import { askOutcomeLabel, askWeaknessAxis, contestedOutcome, createStageTimer, misgroundedOutcome, recordAskWeakness, recordAskWeaknessResolved, untrustedFeedMatch } from "@muse/recall";
 import type { AskWeaknessAxis } from "@muse/recall";
 export { askOutcomeLabel, askWeaknessAxis, createStageTimer, recordAskWeakness, recordAskWeaknessResolved };
@@ -82,9 +83,9 @@ export { resolveAskTierModels, routeAskTierModel } from "./ask-tier-models.js";
 import { parseBoundedInt } from "./parse-bounded-int.js";
 import type { Command } from "commander";
 
-import { cosine, isNotesIndexStale, loadNoteLinkGraph, NOTE_FILE_RE, reindexNotes } from "./commands-notes-rag.js";
+import { cosine, isNotesIndexStale, loadNoteLinkGraph, reindexNotes } from "./commands-notes-rag.js";
 import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles } from "./commands-recall.js";
-import { linkExpandRefs, noteLinkView, resolveNoteId, type NoteLinkGraph } from "./notes-links.js";
+import { linkExpandRefs } from "./notes-links.js";
 import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
 import { rankPlaybookEntriesByRelevance } from "./playbook-embed-rank.js";
@@ -98,6 +99,7 @@ import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./pr
 import type { ProgramIO } from "./program.js";
 import { withSigintAbort } from "./sigint-abort.js";
 import { resolveDefaultUserKey } from "./user-id.js";
+import { listNoteFiles, notesCorpusFileCount, resolveAskMaxTools, selectGraphConnections } from "./ask-corpus-helpers.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
 
 
@@ -283,109 +285,6 @@ export const NOTES_ONLY_TOOL_ALLOWLIST = ["muse.notes", "muse.notes-multi", "mus
 const RECALL_FORBIDDEN_TOOL_NAMES = ["remember_fact"] as const;
 
 /**
- * The EXPLICIT `[[wiki-link]]` neighbours of the notes that just answered — the
- * notes they link to (resolved) plus the notes that link to them (backlinks) —
- * for the `--connect` footer. This is the user-AUTHORED connection structure the
- * embedding "Related in your brain" footer can't see: a note can be a deliberate
- * Zettelkasten neighbour without being embedding-similar. Pure over an already-
- * loaded graph; the grounded notes themselves are excluded, dups collapse, and
- * the list is capped. Ad-hoc sources (clipboard / url / a one-off `--file`) that
- * aren't in the note graph simply resolve to nothing and contribute no links.
- */
-export function selectGraphConnections(
-  graph: NoteLinkGraph,
-  groundedNoteFiles: readonly string[],
-  limit = 6
-): string[] {
-  const groundedIds = new Set<string>();
-  for (const file of groundedNoteFiles) {
-    const id = resolveNoteId(graph, file) ?? resolveNoteId(graph, basename(file));
-    if (id) groundedIds.add(id);
-  }
-  const seen = new Set<string>([...groundedIds].map((id) => id.toLowerCase()));
-  const out: string[] = [];
-  for (const id of groundedIds) {
-    const view = noteLinkView(graph, id);
-    for (const o of view.outbound) {
-      if (o.resolvedId && !seen.has(o.resolvedId.toLowerCase())) {
-        seen.add(o.resolvedId.toLowerCase());
-        out.push(o.resolvedId);
-      }
-    }
-    for (const source of view.backlinks) {
-      if (!seen.has(source.toLowerCase())) {
-        seen.add(source.toLowerCase());
-        out.push(source);
-      }
-    }
-  }
-  return out.slice(0, Math.max(1, limit));
-}
-
-
-
-/**
- * Count note files (`.md/.markdown/.txt/.pdf`) actually present under the
- * notes dir, recursively — the true "does the user have a corpus" signal,
- * independent of whether embedding succeeded. Missing/unreadable dir ⇒ 0.
- */
-/**
- * The user's note files (relative to `dir`), sorted, capped at `max`. Used to
- * answer a whole-corpus overview ("what's in my notes?") with the real
- * inventory instead of a low-confidence refusal. Same walk + filter as
- * `notesCorpusFileCount`. Pure of side effects; exported for direct coverage.
- */
-export async function listNoteFiles(dir: string, max = 40): Promise<string[]> {
-  const out: string[] = [];
-  const stack = [dir];
-  while (stack.length > 0) {
-    const current = stack.pop()!;
-    let entries;
-    try {
-      entries = await readdir(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
-      const full = join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(full);
-      } else if (entry.isFile() && NOTE_FILE_RE.test(entry.name)) {
-        out.push(relative(dir, full));
-      }
-    }
-  }
-  return out.sort((a, b) => a.localeCompare(b)).slice(0, max);
-}
-
-
-export async function notesCorpusFileCount(dir: string): Promise<number> {
-  let count = 0;
-  const stack = [dir];
-  while (stack.length > 0) {
-    const current = stack.pop()!;
-    let entries;
-    try {
-      entries = await readdir(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
-      if (entry.isDirectory()) {
-        stack.push(join(current, entry.name));
-      } else if (entry.isFile() && NOTE_FILE_RE.test(entry.name)) {
-        count += 1;
-      }
-    }
-  }
-  return count;
-}
-
-
-
-/**
  * Whether the user has ANY personal data Muse can ground on besides notes —
  * remembered facts/preferences, contacts, open tasks, or reminders. Used to
  * suppress the empty-notes on-ramp for a user who has clearly set Muse up with
@@ -445,29 +344,6 @@ function defaultUserKey(user: string | undefined, persona: string | undefined): 
   const resolved = resolvePersona(persona);
   return resolved ? `${base}@${resolved}` : base;
 }
-
-/**
- * Absent flag → fallback. A genuine number is truncated and
- * clamped to [min, max]. A non-numeric / out-of-low-bound value
- * (unit slip like `5x`, `abc`, `0`) rejects with a clear
- * message instead of silently using the default.
- */
-/**
- * The --with-tools exposure cap. tool-calling.md: every extra tool raises the
- * wrong-selection probability on a small local model — the relevance-sorted
- * plan keeps the best N, so a browse prompt still sees browser_open and an
- * action prompt its actuator. MUSE_ASK_MAX_TOOLS overrides; 0/'off' uncaps.
- */
-export function resolveAskMaxTools(env: Record<string, string | undefined>): number | undefined {
-  const raw = env.MUSE_ASK_MAX_TOOLS?.trim().toLowerCase();
-  if (raw === "0" || raw === "off") return undefined;
-  const parsed = Number(raw);
-  if (raw && Number.isInteger(parsed) && parsed > 0) return parsed;
-  return 10;
-}
-
-
-
 
 /**
  * Drain the chat-only fast-path model stream. A provider `error`
