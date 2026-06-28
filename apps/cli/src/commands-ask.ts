@@ -25,7 +25,7 @@
 import { existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, resolveRecallConfidentAt, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, implicitSuccessReinforceDelta, isInjectableStrategy, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, resolveRecallConfidentAt, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCorpusOverview, isMemoryInjection, isUnbackedActionClaim, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence } from "@muse/agent-core";
 import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys, staleFactKeys } from "@muse/memory";
@@ -1217,6 +1217,9 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // default `muse ask` answer too. Fail-soft; zero strategies ⇒ no block.
       let playbookSection: string | undefined;
       let appliedStrategy: string | undefined;
+      // The id of the strategy actually injected (top-ranked) — so a verified-grounded
+      // answer can implicitly REINFORCE it below (the positive half of the loop).
+      let appliedStrategyId: string | undefined;
       // A relevant PROBATION strategy (one the daemon distilled UNATTENDED from a
       // past correction — recorded but NEVER injected) to SURFACE as a suggestion
       // at recall time, so a correction the user made resurfaces the moment its
@@ -1245,9 +1248,16 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           playbookSection = selectPlaybookSection(entries, query, topK);
           appliedStrategy = playbookSection ? topAppliedStrategy(entries, query, topK) : undefined;
         }
+        // The applied strategy's id (for implicit reinforcement below) — matched in
+        // the store entries (which carry the id) by the injected text. MUST also be
+        // INJECTABLE: a probation/avoided entry with byte-identical text must never be
+        // the match, else a +0.1 reward would auto-graduate a probation strategy and
+        // break the user-gated self-confirmation guard.
+        appliedStrategyId = appliedStrategy ? entries.find((e) => e.text === appliedStrategy && isInjectableStrategy(e))?.id : undefined;
       } catch {
         playbookSection = undefined;
         appliedStrategy = undefined;
+        appliedStrategyId = undefined;
         probationSuggestion = undefined;
       }
 
@@ -2179,6 +2189,19 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       await recordAskWeaknessLive(query, askAxis, askHint);
       if (askOutcome === "grounded" && !askIsActionRequest) {
         await recordAskWeaknessResolvedLive(query);
+        // Positive half of the reinforcement loop: a strategy that was injected AND
+        // led to an answer the EXTERNAL grounding gate verified earns a gentle reward
+        // (≪ the explicit ±1 of a correction/approval), so what quietly works resists
+        // disuse-decay. Probation strategies are never injected → never reach here, so
+        // the self-confirmation guard holds. Best-effort + fail-soft.
+        const reinforceDelta = implicitSuccessReinforceDelta(askOutcome);
+        if (appliedStrategyId && reinforceDelta > 0) {
+          try {
+            const { adjustPlaybookReward } = await import("@muse/stores");
+            const { resolvePlaybookFile } = await import("@muse/autoconfigure");
+            await adjustPlaybookReward(resolvePlaybookFile(process.env as Record<string, string | undefined>), appliedStrategyId, reinforceDelta, Date.now());
+          } catch { /* reinforcement is best-effort — a reward write must never break the answer */ }
+        }
       }
       // Runtime learn→apply: if THIS ask failed on a topic that is now a RECURRING
       // user-remediable weakness, surface the remediation AT the moment of repeated

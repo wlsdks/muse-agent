@@ -6,6 +6,8 @@ import {
   clampReward,
   createAgentRuntime,
   effectiveStrategyReward,
+  IMPLICIT_SUCCESS_REINFORCE_DELTA,
+  implicitSuccessReinforceDelta,
   isAvoidedStrategy,
   PLAYBOOK_AVOID_BELOW,
   PLAYBOOK_INJECT_DEDUP_THRESHOLD,
@@ -1311,5 +1313,23 @@ describe("rankingUtility — PEVI pessimistic confidence-bound ranking (arXiv:20
     expect(sysPosA).toBeGreaterThanOrEqual(0);
     expect(sysPosB).toBeGreaterThanOrEqual(0);
     expect(sysPosB).toBeLessThan(sysPosA);   // proven (B) is first in the injected block
+  });
+});
+
+describe("implicitSuccessReinforceDelta — the positive half of the reinforcement loop", () => {
+  it("a verified 'grounded' success earns the small positive reward", () => {
+    expect(implicitSuccessReinforceDelta("grounded")).toBe(IMPLICIT_SUCCESS_REINFORCE_DELTA);
+    expect(IMPLICIT_SUCCESS_REINFORCE_DELTA).toBeGreaterThan(0);
+  });
+
+  it("an ungrounded / misgrounded / contested / refused outcome reinforces NOTHING (the weakness ledger owns the negative signal)", () => {
+    for (const bad of ["ungrounded", "misgrounded", "contested", "refused", "abstain", "", "GROUNDED"]) {
+      expect(implicitSuccessReinforceDelta(bad)).toBe(0);
+    }
+  });
+
+  it("the implicit reward is far SMALLER than an explicit correction (−1) — a single correction outweighs ~10 silent successes (no self-confirmation drowning)", () => {
+    expect(IMPLICIT_SUCCESS_REINFORCE_DELTA).toBeLessThan(0.2);
+    expect(IMPLICIT_SUCCESS_REINFORCE_DELTA * 5).toBeLessThan(1); // 5 successes still < one explicit ±1
   });
 });

@@ -400,6 +400,30 @@ export function rankingUtility(s: PlaybookStrategy, nowMs?: number): number {
   return raw;
 }
 
+/**
+ * The gentle positive reward for an INJECTABLE strategy that was applied to an
+ * answer the EXTERNAL grounding gate verified as "grounded" — NOT the strategy's
+ * own self-report. This is the implicit POSITIVE half of the reinforcement loop:
+ * before it, reward only moved on a user CORRECTION (−1 decay) or an EXPLICIT
+ * approval (+1), so a strategy that quietly worked every day still faded under
+ * disuse-decay. Now a verified-grounded success nudges the applied strategy up.
+ *
+ * Deliberately SMALL (≪ the explicit ±1): an explicit correction outweighs ~10 of
+ * these, so the bank reinforces what quietly works WITHOUT letting a stochastic
+ * success drown out a real correction. No self-confirmation loop: a probation
+ * strategy is never injected, so it is never "applied", so it never reaches here —
+ * its graduation stays user-gated. Only a clean grounded success reinforces; an
+ * ungrounded / misgrounded / refused outcome reinforces nothing (the weakness
+ * ledger records those as the negative signal).
+ */
+export const IMPLICIT_SUCCESS_REINFORCE_DELTA = 0.1;
+
+/** The reward delta for an applied strategy given the ask's terminal outcome:
+ *  +IMPLICIT_SUCCESS_REINFORCE_DELTA on a verified "grounded" success, else 0. */
+export function implicitSuccessReinforceDelta(outcome: string): number {
+  return outcome === "grounded" ? IMPLICIT_SUCCESS_REINFORCE_DELTA : 0;
+}
+
 /** Lifecycle action from Memp (arXiv 2508.06433): deprecate a confidently-bad entry, graduate a confidently-good probation entry, retain otherwise. */
 export type StrategyLifecycleAction = "retain" | "deprecate" | "graduate";
 
