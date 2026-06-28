@@ -289,6 +289,15 @@ async function* runToolBatch(
       role: "tool",
       toolCallId: toolCall.id
     });
+    // Per-tool checkpoint for a MULTI-tool batch (rare): the post-batch checkpoint is
+    // written only after ALL calls in the response, so a crash BETWEEN two tools in one
+    // response would lose the ones already run — resume couldn't replay+dedup them, risking
+    // a re-send/re-book. A 1-tool batch (the norm) is fully covered by the post-batch one,
+    // so this fires only when it adds protection. Every tool pushes a result message
+    // (above), so the replayed transcript is consistent. Best-effort (recordCheckpoint swallows).
+    if (calls.length > 1) {
+      await recordCheckpoint({ checkpointStore: runner.checkpointStore, context, messages: [...messages, ...toolMessages], phase: "act", step: toolCallCount });
+    }
   }
 
   const toolSummary = renderToolResults(

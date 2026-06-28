@@ -78,6 +78,22 @@ describe("executeModelLoop", () => {
     expect(act!.state.encodedMessages.join("|")).toContain("|tool|");
   });
 
+  it("per-tool checkpoints a MULTI-tool batch — a crash BETWEEN two tools in one response can't lose the first (resume replays+dedups it, no re-execution)", async () => {
+    const saved: { readonly step: number; readonly state: { encodedMessages: string[] } }[] = [];
+    const checkpointStore = {
+      save: async (c: { step: number; state: { encodedMessages: string[] } }) => { saved.push(c); return c; },
+      findByRunId: async () => [], findLatestByRunId: async () => undefined, deleteByRunId: async () => undefined
+    };
+    await executeModelLoop(
+      runner({ checkpointStore, turns: [resp("calling", [call("t1", "echo"), call("t2", "echo")]), resp("final answer")] }),
+      context(), provider, request(),
+    );
+    // A 2-tool batch must checkpoint AFTER the FIRST tool (step 1), not only after the whole
+    // batch (step 2) — else a crash between t1 and t2 loses t1's already-run result on resume.
+    expect(saved.map((c) => c.step)).toContain(1);
+    expect(saved.map((c) => c.step)).toContain(2);
+  });
+
   it("does NOT checkpoint when the model requests no tools (nothing mid-loop to resume)", async () => {
     const saved: unknown[] = [];
     const checkpointStore = {
