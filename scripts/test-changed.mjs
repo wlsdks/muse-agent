@@ -29,10 +29,13 @@ function git(args) {
   }
 }
 
-// Union of staged + unstaged (+ committed-since-main, unless --uncommitted).
+// Union of staged + unstaged + UNTRACKED (a brand-new file — e.g. a freshly added
+// `*.test.ts` — is NOT in `git diff`, so without ls-files it would be silently
+// skipped) (+ committed-since-main, unless --uncommitted).
 const sources = [
   ["diff", "--name-only"],
   ["diff", "--name-only", "--cached"],
+  ["ls-files", "--others", "--exclude-standard"],
   ...(uncommittedOnly ? [] : [["diff", "--name-only", "origin/main...HEAD"]])
 ];
 const changed = new Set();
