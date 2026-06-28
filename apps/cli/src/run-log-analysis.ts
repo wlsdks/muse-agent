@@ -15,6 +15,30 @@ export interface RunLogEvent {
   readonly grounded?: unknown;
   /** Run outcome (`false` = the run failed). */
   readonly success?: boolean | null;
+  /** What retrieval surfaced (from `response.retrieval`): the top sources + scores.
+   *  Lets the analyzer tell an actionable grounding MISS (confident personal
+   *  evidence existed but the answer wasn't grounded in it) from a non-actionable
+   *  one (a general-knowledge / missing-note question with no confident source). */
+  readonly retrieval?: readonly { readonly source: string; readonly score: number }[];
+}
+
+// Synthetic grounding-evidence sources (not real personal NOTES): exact-match
+// entries the ask path injects for tasks/events/memory/etc. carry a constant 1.0
+// and are not "the user has a relevant note" — so they don't count as confident
+// personal evidence for the actionable-failure test.
+const SYNTHETIC_SOURCE = /^(task|event|memory|session|tool|contact|action|command|commit|reminder|calendar|feed):/u;
+
+// The confident-recall cosine floor (v2-moe default). A retrieved real note at or
+// above this is genuine evidence the answer SHOULD have grounded in.
+const CONFIDENT_PERSONAL_BAR = 0.45;
+
+/** True when retrieval surfaced a confident REAL personal note (file source ≥ the
+ *  bar). Older traces (no retrieval field) → true, preserving prior behavior. */
+function hadConfidentPersonalSource(event: RunLogEvent): boolean {
+  if (!Array.isArray(event.retrieval)) return true;
+  return event.retrieval.some(
+    (r) => typeof r.score === "number" && r.score >= CONFIDENT_PERSONAL_BAR && !SYNTHETIC_SOURCE.test(r.source)
+  );
 }
 
 type FailureKind = "ungrounded" | "failed" | "misgrounded" | "contested";
@@ -54,6 +78,14 @@ export function isFailureEvent(event: RunLogEvent): boolean {
   if (event.success === false) return true;
   const verdict = groundingVerdict(event.grounded);
   if (verdict === undefined || !NOT_GROUNDED.has(verdict)) return false;
+  // An ungrounded/weak answer is only an ACTIONABLE failure when there was confident
+  // personal evidence to ground in. A general-knowledge question ("what is 2+2?") or
+  // a missing-note question has no confident source — its ungrounded answer is correct
+  // (or a user data gap), NOT a Muse bug, so it must not pollute the flywheel as a
+  // false failure. `misgrounded`/`contested` ALWAYS count (a source WAS matched).
+  if ((verdict === "ungrounded" || verdict === "weak") && !hadConfidentPersonalSource(event)) {
+    return false;
+  }
   // An ungrounded EMPTY answer is a non-answer (the model produced nothing —
   // typically a no-tool dev/test run), not an actionable grounding miss. Only an
   // ungrounded NON-EMPTY answer is a real missed attempt worth turning into work.

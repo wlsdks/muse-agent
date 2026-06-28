@@ -22,6 +22,28 @@ describe("isFailureEvent (what counts as a signal worth turning into work)", () 
     expect(isFailureEvent({ grounded: null, message: "hi", success: null })).toBe(false);
   });
 
+  // Actionable-failure gate: an ungrounded answer is only a Muse bug worth fueling the
+  // flywheel when confident PERSONAL evidence existed but wasn't grounded in. A general-
+  // knowledge question (no relevant note) must NOT pollute the signal as a false failure.
+  const ung = (answer: string, retrieval: { source: string; score: number }[]) =>
+    ({ answer, grounded: "ungrounded", message: "q", retrieval, success: true }) satisfies RunLogEvent;
+
+  it("does NOT count a general-knowledge ungrounded answer (no confident real note retrieved)", () => {
+    expect(isFailureEvent(ung("Paris.", [{ source: "trip.md", score: 0.22 }, { source: "task: ship", score: 1 }]))).toBe(false);
+  });
+  it("DOES count an ungrounded answer when a CONFIDENT real note (≥0.45) was retrieved but not grounded in", () => {
+    expect(isFailureEvent(ung("Your MTU is 1500.", [{ source: "vpn.md", score: 0.62 }]))).toBe(true);
+  });
+  it("does NOT count an ungrounded answer whose only ≥0.45 sources are SYNTHETIC exact-matches (task:/event:/…)", () => {
+    expect(isFailureEvent(ung("Done.", [{ source: "task: x", score: 1 }, { source: "event: y", score: 1 }]))).toBe(false);
+  });
+  it("misgrounded ALWAYS counts even with weak retrieval (a source WAS matched — GROUNDED≠TRUE)", () => {
+    expect(isFailureEvent({ answer: "x", grounded: "misgrounded", message: "q", retrieval: [{ source: "n.md", score: 0.2 }], success: true })).toBe(true);
+  });
+  it("an OLD trace with no retrieval field still counts (backward compat — unchanged behavior)", () => {
+    expect(isFailureEvent({ answer: "x", grounded: "ungrounded", message: "q", success: true })).toBe(true);
+  });
+
   it("does NOT treat an ungrounded EMPTY answer as a failure (a non-answer / dev no-op is not actionable work)", () => {
     expect(isFailureEvent({ answer: "", grounded: "ungrounded", message: "open example.com", success: true })).toBe(false);
     expect(isFailureEvent({ answer: "   ", grounded: "ungrounded", message: "open example.com", success: true })).toBe(false);

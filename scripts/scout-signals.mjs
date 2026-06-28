@@ -26,9 +26,15 @@ async function readEvents(dir) {
       if (!trimmed) continue;
       try {
         const event = JSON.parse(trimmed);
-        // Lift the answer text up so the analyzer can drop empty (no-op) answers.
+        // Lift the answer text + retrieval up so the analyzer can drop empty (no-op)
+        // answers AND tell an actionable grounding miss from a general-knowledge one.
         const answer = event?.response?.response;
-        events.push(typeof answer === "string" ? { ...event, answer } : event);
+        const retrieval = event?.response?.retrieval;
+        events.push({
+          ...event,
+          ...(typeof answer === "string" ? { answer } : {}),
+          ...(Array.isArray(retrieval) ? { retrieval } : {})
+        });
       } catch {
         // a half-written line — skip, never crash the scout
       }
