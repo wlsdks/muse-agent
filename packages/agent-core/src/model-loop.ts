@@ -15,7 +15,7 @@
  * while the loop control flow lives in its own module.
  */
 
-import { USAGE_RECORDED_BY_RUNTIME_FLAG } from "@muse/model";
+import { ModelProviderError, USAGE_RECORDED_BY_RUNTIME_FLAG } from "@muse/model";
 import type {
   ModelEvent,
   ModelMessage,
@@ -75,6 +75,14 @@ export interface ModelLoopRunner {
   readonly maxRunWallclockMs?: number;
   /** Wall-clock source for the deadline (injectable so the mid-batch cut is testable without timing flake). Defaults to `Date.now`. */
   readonly now?: () => number;
+  /**
+   * Idle cut for the STREAMING path: if the provider emits no event for this many
+   * ms, the stream is closed and the turn fails instead of blocking forever. The
+   * blocking path gets this via `withTimeout`; the streaming `for await` did not, so
+   * a hung local Ollama stream could hang the whole agent (the smoke:live stall).
+   * Defaults to 180s; 0/undefined-after-default disables. Injectable for tests.
+   */
+  readonly streamIdleTimeoutMs?: number;
   readonly tracer: MuseTracer;
   readonly metrics: AgentMetrics;
   readonly tokenUsageSink?: TokenUsageSink;
@@ -516,6 +524,52 @@ export async function* executeStreamingModelLoop(
   }
 }
 
+export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 180_000;
+
+/**
+ * Wrap a model event stream with an IDLE timeout: if the provider emits no next
+ * event within `idleMs`, close the underlying stream and throw — so a hung
+ * provider (a stalled local Ollama) fails the turn instead of blocking the agent
+ * forever. `idleMs <= 0` disables (passes through). The timer resets on EACH event,
+ * so a slow-but-progressing stream is never cut; only a true stall trips it. Pure
+ * wrapper — exported for direct testing without a live model.
+ */
+export async function* withStreamIdleTimeout<T>(
+  source: AsyncIterable<T>,
+  idleMs: number,
+  providerId: string
+): AsyncGenerator<T> {
+  if (!(idleMs > 0)) {
+    yield* source;
+    return;
+  }
+  const iterator = source[Symbol.asyncIterator]();
+  try {
+    for (;;) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const idle = new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new ModelProviderError(providerId, `model stream idle for >${idleMs.toString()}ms — provider stalled`, false)),
+          idleMs
+        );
+      });
+      let step: IteratorResult<T>;
+      try {
+        step = await Promise.race([iterator.next(), idle]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      if (step.done) return;
+      yield step.value;
+    }
+  } finally {
+    // Close the underlying stream/fetch on idle-abort OR normal completion —
+    // FIRE-AND-FORGET: awaiting `.return()` on a HUNG stream would block until its
+    // own stalled await resolves, re-introducing the very hang we're cutting.
+    void iterator.return?.()?.catch(() => undefined);
+  }
+}
+
 async function* streamModelTurn(
   runner: ModelLoopRunner,
   context: AgentRunContext,
@@ -536,8 +590,9 @@ async function* streamModelTurn(
   // request so a usage-recording provider decorator skips it (no double-count).
   const flaggedRequest: ModelRequest = { ...request, metadata: { ...request.metadata, [USAGE_RECORDED_BY_RUNTIME_FLAG]: true } };
 
+  const idleMs = runner.streamIdleTimeoutMs ?? DEFAULT_STREAM_IDLE_TIMEOUT_MS;
   try {
-    for await (const event of provider.stream(flaggedRequest)) {
+    for await (const event of withStreamIdleTimeout(provider.stream(flaggedRequest), idleMs, provider.id)) {
       if (event.type === "text-delta") {
         streamedOutput += event.text;
         if (options.forwardTextDeltas) {
