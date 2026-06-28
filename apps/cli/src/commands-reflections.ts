@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 import { buildGroundingReverifyPrompt, filterReflectionsAgainstStore, parseGroundingReverifyJson, REVERIFY_RESPONSE_FORMAT, REVERIFY_SYSTEM_PROMPT, synthesizeReflections, type GroundingReverify, type Reflection, type ReflectionInput } from "@muse/agent-core";
 import type { ModelProvider } from "@muse/model";
 import { createGateEmbedder, createMuseRuntimeAssembly, resolveEpisodesFile, resolveReflectionsFile as sharedResolveReflectionsFile } from "@muse/autoconfigure";
-import { addReflections, listReflections, readEpisodes, readReflections, type NewReflection, type StoredReflection } from "@muse/stores";
+import { addReflections, decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest, listReflections, readEpisodes, readReflections, type NewReflection, type StoredReflection } from "@muse/stores";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -148,6 +148,54 @@ export function registerReflectionsCommand(program: Command, io: ProgramIO): voi
         sources = new Map(episodes.map((ep) => [ep.id, { startedAt: ep.startedAt, summary: ep.summary }]));
       } catch { /* no episodes — fall back to bare ids */ }
       io.stdout(`${renderReflections(entries, sources)}\n`);
+    });
+
+  reflections
+    .command("encrypt")
+    .description("Encrypt the reflections store at rest (AES-256-GCM; key = MUSE_MEMORY_KEY or per-host) — reflections are what Muse noticed about you")
+    .option("--json", "Emit a structured result")
+    .action(async (options: { readonly json?: boolean }) => {
+      const file = resolveReflectionsFile();
+      const result = await encryptFileAtRest(file);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ encrypted: true, file, ...result }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(
+        result.alreadyEncrypted
+          ? `Reflections are already encrypted at rest (${file}).\n`
+          : `Encrypted reflections at rest: ${file}\n` +
+            (result.backupPath
+              ? `Plaintext backup saved: ${result.backupPath}\n  ⚠ This backup is CLEARTEXT — delete it once 'muse reflections' works with your key.\n`
+              : "") +
+            `Set MUSE_MEMORY_KEY to a stable secret so the key survives a host/user change.\n`
+      );
+    });
+
+  reflections
+    .command("decrypt")
+    .description("Revert the reflections store to plaintext at rest")
+    .option("--json", "Emit a structured result")
+    .action(async (options: { readonly json?: boolean }) => {
+      const file = resolveReflectionsFile();
+      const result = await decryptFileAtRest(file);
+      if (options.json) {
+        io.stdout(`${JSON.stringify({ encrypted: false, file, ...result }, null, 2)}\n`);
+        return;
+      }
+      io.stdout(
+        result.alreadyPlaintext
+          ? `Reflections are already plaintext at rest (${file}).\n`
+          : `Reverted reflections to plaintext at rest: ${file}\n`
+      );
+    });
+
+  reflections
+    .command("encryption-status")
+    .description("Report whether the reflections store is encrypted at rest (no key needed)")
+    .action(async () => {
+      const file = resolveReflectionsFile();
+      io.stdout(`Reflections at rest: ${await isFileEncryptedAtRest(file) ? "ENCRYPTED" : "plaintext"} (${file})\n`);
     });
 
   reflections

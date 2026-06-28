@@ -17,6 +17,7 @@ import {
   resolveEpisodesFile,
   resolveNotesDir,
   resolvePlaybookFile,
+  resolveReflectionsFile,
   resolveRemindersFile,
   resolveTasksFile
 } from "@muse/autoconfigure";
@@ -55,6 +56,7 @@ function storeDefs(env: Env): readonly { name: string; path: string; encryptable
     { encryptCommand: "muse actions encrypt", encryptable: true, name: "action-log", path: resolveActionLogFile(env) },
     { encryptCommand: "muse contacts encrypt", encryptable: true, name: "contacts", path: resolveContactsFile(env) },
     { encryptCommand: "muse playbook encrypt", encryptable: true, name: "playbook", path: resolvePlaybookFile(env) },
+    { encryptCommand: "muse reflections encrypt", encryptable: true, name: "reflections", path: resolveReflectionsFile(env) },
     { encryptable: false, name: "tasks", path: resolveTasksFile(env) },
     { encryptable: false, name: "reminders", path: resolveRemindersFile(env) },
     { encryptable: false, name: "notes", path: resolveNotesDir(env) }

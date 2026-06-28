@@ -11,9 +11,8 @@
  *   - Tolerant reads: missing / bad-JSON / wrong-shape → empty.
  */
 
-import { promises as fs } from "node:fs";
-
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { withFileMutationQueue } from "./atomic-file-store.js";
+import { isFileEncryptedAtRest, readMaybeEncrypted, writeMaybeEncrypted } from "./encrypted-file.js";
 
 export interface StoredReflection {
   readonly id: string;
@@ -93,16 +92,17 @@ function isReflection(value: unknown): value is StoredReflection {
 
 const normalize = (insight: string): string => insight.toLowerCase().replace(/\s+/gu, " ").trim();
 
-export async function readReflections(file: string): Promise<readonly StoredReflection[]> {
-  let raw: string;
-  try {
-    raw = await fs.readFile(file, "utf8");
-  } catch {
+export async function readReflections(file: string, env: NodeJS.ProcessEnv = process.env): Promise<readonly StoredReflection[]> {
+  // Encryption-at-rest, format-preserving: reads a plaintext OR an encrypted file
+  // transparently (fail-closed on a wrong key); a once-encrypted reflections store
+  // stays encrypted. Reflections are "what Muse noticed about you" — personal.
+  const { text } = await readMaybeEncrypted(file, env);
+  if (text === undefined) {
     return [];
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw) as unknown;
+    parsed = JSON.parse(text) as unknown;
   } catch {
     return [];
   }
@@ -114,14 +114,17 @@ export async function readReflections(file: string): Promise<readonly StoredRefl
   );
 }
 
-async function writeReflections(file: string, entries: readonly StoredReflection[], nowMs: number): Promise<void> {
+async function writeReflections(file: string, entries: readonly StoredReflection[], nowMs: number, env: NodeJS.ProcessEnv = process.env): Promise<void> {
   // Trim to the cap by SALIENCE-weighted retention (recency + support), not pure
   // recency — a high-support recurring insight must not be evicted for a thinner
   // but newer one (Generative Agents arXiv:2304.03442). With equal support this
   // reduces to recency, ties broken by createdAtMs so it still agrees with the
   // newest-first display order.
   const trimmed = selectRetainedReflections(entries, nowMs, MAX_REFLECTIONS);
-  await atomicWriteFile(file, `${JSON.stringify({ reflections: trimmed }, null, 2)}\n`);
+  // Preserve the file's current format (once encrypted, stays encrypted; plaintext
+  // stays plaintext until the user runs the encrypt flow) — the proven per-store pattern.
+  const encrypted = await isFileEncryptedAtRest(file);
+  await writeMaybeEncrypted(file, `${JSON.stringify({ reflections: trimmed }, null, 2)}\n`, encrypted, env);
 }
 
 export interface NewReflection {
@@ -139,12 +142,13 @@ export interface NewReflection {
 export async function addReflections(
   file: string,
   incoming: readonly NewReflection[],
-  options: { readonly nowMs?: number } = {}
+  options: { readonly nowMs?: number } = {},
+  env: NodeJS.ProcessEnv = process.env
 ): Promise<number> {
   if (incoming.length === 0) return 0;
   const nowMs = Number.isFinite(options.nowMs) ? options.nowMs! : Date.now();
   return withFileMutationQueue(file, async () => {
-    const existing = await readReflections(file);
+    const existing = await readReflections(file, env);
     const seen = new Set(existing.map((r) => normalize(r.insight)));
     const fresh: StoredReflection[] = [];
     for (const r of incoming) {
@@ -153,7 +157,7 @@ export async function addReflections(
       seen.add(key);
       fresh.push({ createdAtMs: r.createdAtMs, id: r.id, insight: r.insight, sourceIds: [...r.sourceIds], supportCount: r.supportCount });
     }
-    if (fresh.length > 0) await writeReflections(file, [...existing, ...fresh], nowMs);
+    if (fresh.length > 0) await writeReflections(file, [...existing, ...fresh], nowMs, env);
     return fresh.length;
   });
 }
