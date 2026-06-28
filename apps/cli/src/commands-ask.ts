@@ -27,7 +27,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrievalConfidence, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, resolveRecallConfidentAt, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, splitCompoundQuery, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
+import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, resolveRecallConfidentAt, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCorpusOverview, isMemoryInjection, isUnbackedActionClaim, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence } from "@muse/agent-core";
 import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys, staleFactKeys } from "@muse/memory";
@@ -47,7 +47,7 @@ import { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource } 
 export { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource };
 import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy } from "@muse/recall";
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
-import { dedupNearDuplicateChunks, diversifyAskChunks, notesGroundingFraming, secondHopAugmentChunks, shouldSecondHop } from "@muse/recall";
+import { dedupNearDuplicateChunks, diversifyAskChunks, notesGroundingFraming } from "@muse/recall";
 import { groundedSourceSummary, optionalGroundingRelevance, optionalGroundingSections } from "@muse/recall";
 import { citationPrecisionNotice, citationRecallNotice, sourceCheckSignals, untrustedEpisodeMatch, untrustedOnlyGroundingNotice, type SourceCheckSignals } from "@muse/recall";
 
@@ -63,7 +63,7 @@ import { drawBestGroundedRedraft, groundingVerdictNotice } from "@muse/recall";
 export { drawBestGroundedRedraft, groundingVerdictNotice };
 import { buildAskConnections, groundingConflictCue } from "@muse/recall";
 export { buildAskConnections };
-import type { FileEntry, IndexChunk } from "@muse/recall";
+import type { FileEntry } from "@muse/recall";
 
 import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.js";
 import { parseShellHistory, selectShellCommands } from "./shell-history.js";
@@ -83,7 +83,6 @@ import type { Command } from "commander";
 
 import { cosine, isNotesIndexStale, loadNoteLinkGraph, reindexNotes } from "./commands-notes-rag.js";
 import { filterLiveNoteIndexFiles } from "./commands-recall.js";
-import { linkExpandRefs } from "./notes-links.js";
 import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
 import { rankPlaybookEntriesByRelevance } from "./playbook-embed-rank.js";
@@ -100,6 +99,7 @@ import { userHasOtherPersonalData } from "./ask-user-data-presence.js";
 import { collectAutoImageAttachments, loadImageAttachment } from "./ask-image-attachments.js";
 import { CITATION_INSTRUCTION_LINES, REASONING_PRINCIPLE_LINES } from "./ask-prompt-constants.js";
 import { buildSessionFeedReflectionGrounding } from "./ask-session-grounding.js";
+import { retrieveAndRankNotes } from "./ask-note-retrieval.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
 
 
@@ -575,142 +575,29 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // refuse to answer just because the embedding endpoint is
       // down — degrade to "no notes grounding" and still answer
       // from tasks + calendar + memory + general knowledge.
-      let scored: Array<{ chunk: IndexChunk; file: string; score: number }> = [];
-      // Pre-gap-cut top-K: used for the confidence verdict so a gap-cut that
-      // trims scored to 1 chunk doesn't flip "ambiguous"→"confident" by making
-      // runnerUp=0 (the floor violation). The PROMPT WINDOW stays gap-cut-trimmed
-      // (scored); only the verdict input reverts to the untrimmed distribution.
-      let preGapScored: Array<{ chunk: IndexChunk; file: string; score: number }> = [];
-      // Hoisted for the set-level sufficiency advisory: clause texts paired with
-      // their embeddings so the advisory can check coverage per sub-query.
-      let subqueryEmbeddings: ReadonlyArray<readonly number[]> = [];
-      let splitClauses: readonly string[] = [];
-      let notesUnavailable = false;
-      let queryVec: number[] | undefined;
+      // Notes RAG core: embed → rank/MMR → graph-augment → second-hop. See
+      // ask-note-retrieval.ts. `scored`/`notesUnavailable` stay reassignable — P7
+      // (ad-hoc) and P13 (dedup) mutate `scored`, and ad-hoc grounding clears
+      // `notesUnavailable`.
+      const askStages = createStageTimer();
+      const retrieval = await retrieveAndRankNotes({
+        embedModel,
+        indexFiles: index.files,
+        json: options.json === true,
+        notesDir,
+        onStderr: (text) => { io.stderr(text); },
+        query,
+        scope: options.scope?.trim(),
+        topK
+      });
+      let scored = retrieval.scored;
+      let notesUnavailable = retrieval.notesUnavailable;
+      const { preGapScored, queryVec, splitClauses, subqueryEmbeddings } = retrieval;
       // The "open to verify" target for an AD-HOC grounding source whose receipt
       // would otherwise point at a fabricated `.muse/notes/<source>` path: the
       // real URL for a `--url` answer (openable), or `null` for an ephemeral
-      // `--clipboard` answer (nothing to open). Notes / files are absent here and
-      // keep their normal local path.
+      // `--clipboard` answer (nothing to open). Notes / files keep their local path.
       const adHocVerifyTargets = new Map<string, string | null>();
-      const askStages = createStageTimer();
-      try {
-        // S3 narrate-the-wait (B2): a REAL stage delta before the embed —
-        // on a 10–40s local model the pre-answer gap reads as a hang; this
-        // makes it read as thinking. Narrates only stages that happen.
-        if (!options.json) {
-          io.stderr("🔎 searching your notes…\n");
-        }
-        queryVec = await embed(query, embedModel);
-        // Skip index entries whose note file was deleted since the last
-        // reindex — otherwise `ask` grounds on (and cites) a note that no
-        // longer exists. recall / today --connect already guard this.
-        // --scope <folder>: ground only on notes under that top-level collection.
-        const scope = options.scope?.trim();
-        const liveNoteFiles = filterLiveNoteIndexFiles(index.files, existsSync);
-        const scopedNoteFiles = scope ? filterNotesByScope(liveNoteFiles, notesDir, scope) : liveNoteFiles;
-        if (scope && liveNoteFiles.length > 0 && scopedNoteFiles.length === 0 && !options.json) {
-          io.stderr(`muse: no notes under '${scope}/' — grounding on nothing for this question.\n`);
-        }
-        const allScored = scopedNoteFiles.flatMap((f) => f.chunks.map((chunk) => ({
-          chunk,
-          file: f.path,
-          score: cosine(queryVec!, chunk.embedding)
-        })));
-        preGapScored = [...allScored].sort((a, b) => b.score - a.score).slice(0, topK);
-        // RAG-Fusion (arXiv:2402.03367): for a compound question each clause
-        // gets its own embedding → its own cosine ranking over the same chunk
-        // set → all rankings (full-query + per-clause + lexical) fused via RRF.
-        // A blended full-query embedding alone can sit between two topics so
-        // one answer-bearing chunk falls out of topK; per-clause rankings rescue
-        // both. Fail-open: any embed error leaves clause vectors empty and the
-        // path is byte-identical to a non-compound query. Per-chunk `score`
-        // stays the full-query cosine so classifyRetrievalConfidence is unchanged.
-        try {
-          const clauses = splitCompoundQuery(query);
-          if (clauses.length >= 2) {
-            splitClauses = clauses;
-            subqueryEmbeddings = await Promise.all(clauses.map((c) => embed(c, embedModel)));
-          }
-        } catch {
-          subqueryEmbeddings = [];
-          splitClauses = [];
-        }
-        // Hybrid (cosine + lexical + per-clause RRF) MMR selection so a query's
-        // distinctive keywords surface the answer-bearing note even when
-        // nomic's compressed cosine ranks it below near-misses — and the
-        // grounding stays diverse, not three near-duplicate chunks.
-        scored = diversifyAskChunks(allScored, topK, undefined, query, subqueryEmbeddings);
-        // Graph-augmented recall (HippoRAG / GraphRAG, Edge et al. 2024): pull in
-        // chunks from notes 1-hop LINKED from the CONFIDENT matches — the
-        // answer-bearing note the question's note links to (a [[wiki-link]]) but
-        // whose own text didn't match the query, which the embedding ranking
-        // alone misses. Fabrication-SAFE: only the user's OWN real notes are
-        // added; it fires ONLY from a confident seed (a weak/off-corpus query
-        // pulls in nothing); the linked chunk keeps its real (low) cosine, so the
-        // confidence verdict — keyed on the TOP match — is unchanged; best-effort
-        // (never fails the ask). The link graph is built from the SAME index
-        // bodies, so note ids match the relativized sources exactly.
-        const singleHopVerdict = classifyRetrievalConfidence(
-          scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text })),
-          { confidentAt: resolveRecallConfidentAt(process.env, embedModel) }
-        );
-        try {
-          const seedMatches = scored.map((s) => ({ cosine: s.score, score: s.score, source: relativizeNoteSource(s.file, notesDir), text: s.chunk.text }));
-          if (singleHopVerdict === "confident") {
-            const noteBodies = scopedNoteFiles
-              .map((f) => ({ body: f.chunks.map((c) => c.text).join("\n"), id: relativizeNoteSource(f.path, notesDir) }));
-            const seen = new Set(seedMatches.map((m) => m.source));
-            for (const ref of linkExpandRefs({ noteBodies, seedRefs: seedMatches.map((m) => m.source), cap: 2 })) {
-              if (seen.has(ref)) continue;
-              const best = allScored
-                .filter((s) => relativizeNoteSource(s.file, notesDir) === ref)
-                .sort((a, b) => b.score - a.score)[0];
-              if (best && !scored.includes(best)) {
-                scored = [...scored, best];
-                seen.add(ref);
-              }
-            }
-          }
-        } catch {
-          // graph expansion is best-effort — a malformed graph never fails the ask
-        }
-        // Second-hop AUGMENT (pseudo-relevance feedback): a two-hop question
-        // ("내 매니저의 상사 누구야") names only the hop-1 entity, so the answer
-        // note shares no token with the query and single-hop recall misses it
-        // (measured hit@4 2/5 → 4/5 on the two-hop battery). From the top seed(s)
-        // we re-rank the SAME in-memory chunks by cosine to the SEED's embedding
-        // (no re-embed — the bridge entity lives in the seed text) and APPEND
-        // the best non-present chunk(s), scored against the ORIGINAL query.
-        // AUGMENT-only: `scored`'s single-hop order is byte-identical; appended
-        // bridges carry their real (low) query-relative cosine so the
-        // confidence verdict (keyed on the TOP match) is unchanged. Cost-measured
-        // (slice-1c): wall-clock ~0 (in-memory cosine, zero re-embed), but
-        // UNGATED it fires on every single-hop query and appends only-irrelevant
-        // chunks. So it is CONFIDENCE-GATED — promoted to DEFAULT-ON but the hop
-        // is SKIPPED when the single-hop match is confident (already settled;
-        // appending bridges would only muddy it). `MUSE_RECALL_SECOND_HOP=false`
-        // is an explicit override; the citation gate is the hard backstop.
-        const secondHopEnabled = process.env.MUSE_RECALL_SECOND_HOP !== "false";
-        if (secondHopEnabled && shouldSecondHop(singleHopVerdict) && queryVec && scored.length > 0) {
-          try {
-            const additions = secondHopAugmentChunks(queryVec, cosine, allScored, scored.slice(0, 2), scored, 2);
-            for (const add of additions) {
-              if (!scored.includes(add)) scored = [...scored, add];
-            }
-          } catch {
-            // second-hop is best-effort — never fails the ask
-          }
-        }
-      } catch (cause) {
-        notesUnavailable = true;
-        const detail = cause instanceof Error ? cause.message : String(cause);
-        io.stderr(
-          `(notes search unavailable — embedding via '${embedModel}' failed: ${detail}. ` +
-          `Answering without notes context. To restore RAG grounding: ` +
-          `\`ollama pull ${embedModel}\` (and ensure Ollama is running).)\n`
-        );
-      }
 
       // --file: ad-hoc grounding on an explicitly-named file (read-only, NOT
       // ingested into the corpus). Reuses the NOTES citation class — the file's
