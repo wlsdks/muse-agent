@@ -89,10 +89,37 @@ describe("FileCheckpointStore — durable local checkpoints so a crashed run can
     }
   });
 
+  it("findResumableCheckpoint resumes from the latest PROGRESS step, not a terminal `failed` sentinel that shadows it", async () => {
+    const dir = tmpDir();
+    try {
+      const store = new FileCheckpointStore(join(dir, "c"));
+      await store.save({ runId: "r", state: state("start"), step: 0 });
+      await store.save({ runId: "r", state: state("act"), step: 2 }); // real progress
+      await store.save({ runId: "r", state: state("failed"), step: 900 }); // sentinel w/ original msgs, high step
+      const resumable = await store.findResumableCheckpoint("r");
+      expect(resumable?.step).toBe(2); // the PROGRESS act step, not the shadowing 900
+      expect((resumable!.state as { phase: string }).phase).toBe("act");
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("findResumableCheckpoint returns undefined for a COMPLETED run (nothing to resume)", async () => {
+    const dir = tmpDir();
+    try {
+      const store = new FileCheckpointStore(join(dir, "c"));
+      await store.save({ runId: "r", state: state("act"), step: 2 });
+      await store.save({ runId: "r", state: state("complete"), step: 100 });
+      expect(await store.findResumableCheckpoint("r")).toBeUndefined();
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
   it("bounds disk: prunes the oldest run files beyond maxRuns", async () => {
     const dir = tmpDir();
     try {
-      const store = new FileCheckpointStore(join(dir, "c"), { maxRuns: 2 });
+      const store = new FileCheckpointStore(join(dir, "c"), { maxRuns: 2, pruneIntervalSaves: 1 });
       for (const id of ["r1", "r2", "r3"]) {
         await store.save({ runId: id, state: state("s"), step: 0 });
         await new Promise((r) => setTimeout(r, 5)); // distinct mtimes

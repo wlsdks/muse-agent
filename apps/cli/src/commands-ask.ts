@@ -40,7 +40,7 @@ import { fetchReadableUrl, resolveImageAttachmentCandidates, type MessageApprova
 import { isSensitivePath } from "@muse/fs";
 
 import { loadAutoImageAttachments } from "./auto-image.js";
-import { redactSecretsInText } from "@muse/shared";
+import { createRunId, redactSecretsInText } from "@muse/shared";
 import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildCalendarContextBlock, buildContactContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, stripGroundingFences, sufficiencyAdvisory, urlGroundingSource } from "@muse/recall";
@@ -1925,6 +1925,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       // What retrieval surfaced (top sources + cosine) for the run-log trace, so
       // "why this answer / which sources ranked" is answerable locally (P1.2).
       let askRetrieval: readonly RetrievalTraceEntry[] | undefined;
+      // One run id shared across the runtime input, token-usage attribution, the
+      // checkpoints, AND the run-log filename — so per-run cost works and `muse
+      // trace <id>` links a run to its steps (they were unrelated ids).
+      const askRunId = createRunId();
       // The agent's read-tool outputs (web fetches, knowledge_search, …) — the
       // evidence the --with-tools answer was grounded in. Fed into the output
       // grounding verdict below so a web-grounded answer isn't false-flagged
@@ -1965,6 +1969,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // the after-complete auto-extract HOOK (skipped) — see
         // RECALL_FORBIDDEN_TOOL_NAMES and readSkipAutoExtract.
         const askMetadata = {
+          runId: askRunId,
           userId: userKey,
           forbiddenToolNames: [...RECALL_FORBIDDEN_TOOL_NAMES],
           skipUserMemoryAutoExtract: true,
@@ -2010,7 +2015,8 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
                 { content: query, role: "user", ...(imageAttachments.length > 0 ? { attachments: imageAttachments } : {}) }
               ],
               metadata: askMetadata,
-              model
+              model,
+              runId: askRunId
             });
             collectedAnswer = result.response.output ?? "";
             toolsUsed = result.toolsUsed ?? [];
@@ -2692,6 +2698,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       await writeRunLog(io.workspaceDir ?? process.cwd(), buildAskRunLog({
         query,
         model,
+        runId: askRunId,
         timings: askStages.timings(),
         ...(answerLogprobs ? { confidence: summarizeTokenConfidence(answerLogprobs) ?? null } : {}),
         grounded: askOutcome,

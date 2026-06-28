@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildAskRunLog, chatTurnPersistText, defaultConfigPath, firstNonEmpty, readResponseGrounded, readResponseSuccess, setConfigValue, summarizeRetrieval, unsetConfigValue } from "./program-helpers.js";
 
 describe("summarizeRetrieval + buildAskRunLog retrieval — 'why this answer' trace (P1.2)", () => {
-  it("summarizeRetrieval takes top-K, prefers cosine over score, rounds", () => {
+  it("summarizeRetrieval keeps ASSEMBLY order (notes lead), top-K, prefers cosine, rounds", () => {
+    // Order preserved on purpose: synthetic exact-match entries (constant 1.0) must
+    // NOT be sorted above the real cosine notes that actually informed the answer.
     const out = summarizeRetrieval([
       { source: "vpn.md", cosine: 0.621345, score: 0.5 },
       { source: "net.md", cosine: 0.41, score: 0.41 },
-      { source: "x.md", score: 0.3 }
+      { source: "task: x", cosine: 1, score: 1 } // synthetic — would dominate if sorted
     ], 2);
     expect(out).toEqual([{ source: "vpn.md", score: 0.6213 }, { source: "net.md", score: 0.41 }]);
   });

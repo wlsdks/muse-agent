@@ -44,7 +44,10 @@ export function parseRunEvent(runId: string, raw: string): RunDetail | undefined
   }
   const response = (event.response && typeof event.response === "object" ? event.response : {}) as Record<string, unknown>;
   const retrieval = Array.isArray(response.retrieval)
-    ? response.retrieval.filter((r): r is { source: string; score: number } => !!r && typeof r === "object" && typeof (r as { source?: unknown }).source === "string")
+    ? response.retrieval.filter((r): r is { source: string; score: number } =>
+        !!r && typeof r === "object"
+        && typeof (r as { source?: unknown }).source === "string"
+        && typeof (r as { score?: unknown }).score === "number") // guard `.score.toFixed` against a malformed entry
     : [];
   return {
     answer: asString(response.response),

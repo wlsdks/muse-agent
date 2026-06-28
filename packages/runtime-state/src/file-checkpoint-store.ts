@@ -9,7 +9,7 @@
  * a missing / corrupt file reads as no checkpoints (never throws into the agent loop).
  */
 
-import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { createRunId, type JsonObject } from "@muse/shared";
@@ -44,10 +44,17 @@ function deserialize(raw: unknown): ExecutionCheckpoint | undefined {
 
 const byStep = (a: ExecutionCheckpoint, b: ExecutionCheckpoint): number => a.step - b.step;
 
+function checkpointPhase(c: ExecutionCheckpoint): string {
+  const p = (c.state as { phase?: unknown }).phase;
+  return typeof p === "string" ? p : "unknown";
+}
+
 export interface FileCheckpointStoreOptions {
   readonly maxCheckpointsPerRun?: number;
   /** Cap on the number of distinct run files kept; the oldest are pruned. */
   readonly maxRuns?: number;
+  /** Amortize retention: scan/prune the dir only every Nth save (default 25). */
+  readonly pruneIntervalSaves?: number;
   readonly idFactory?: () => string;
 }
 
@@ -55,20 +62,27 @@ export class FileCheckpointStore implements CheckpointStore {
   readonly #dir: string;
   readonly #maxPerRun: number;
   readonly #maxRuns: number;
+  readonly #pruneInterval: number;
   readonly #idFactory: () => string;
   #ensuredDir = false;
+  #savesSincePrune = 0;
 
   constructor(dir: string, options: FileCheckpointStoreOptions = {}) {
     this.#dir = dir;
     this.#maxPerRun = options.maxCheckpointsPerRun ?? DEFAULT_MAX_PER_RUN;
     this.#maxRuns = options.maxRuns ?? DEFAULT_MAX_RUNS;
+    this.#pruneInterval = Math.max(1, options.pruneIntervalSaves ?? 25);
     this.#idFactory = options.idFactory ?? (() => createRunId("checkpoint"));
   }
 
   /** Bound disk: keep only the most-recently-modified `maxRuns` run files. A
    *  completed run's checkpoints linger for replay (P3) but never grow unbounded.
-   *  Best-effort — a prune failure never breaks a save. */
+   *  Amortized — only scans the dir every Nth save (the per-step hot loop calls
+   *  save many times). Best-effort — a prune failure never breaks a save. */
   async #pruneOldRuns(): Promise<void> {
+    this.#savesSincePrune += 1;
+    if (this.#savesSincePrune < this.#pruneInterval) return;
+    this.#savesSincePrune = 0;
     try {
       const names = (await readdir(this.#dir)).filter((n) => n.endsWith(".json"));
       if (names.length <= this.#maxRuns) return;
@@ -103,8 +117,24 @@ export class FileCheckpointStore implements CheckpointStore {
   }
 
   /**
-   * Runs that crashed/were interrupted mid-execution — every run whose LATEST
-   * checkpoint isn't a terminal `complete` phase. The resume command replays these.
+   * The checkpoint to RESUME a run from: the latest PROGRESS checkpoint (phase
+   * `act`/`start`), NOT a terminal sentinel. A graceful failure writes a `failed`
+   * checkpoint at a high step holding the ORIGINAL (pre-progress) messages — if
+   * resume used the max-step checkpoint it would replay from scratch and re-run
+   * every finished tool. Returns undefined for a `complete`d run (nothing to resume).
+   */
+  async findResumableCheckpoint(runId: string): Promise<ExecutionCheckpoint | undefined> {
+    const all = await this.findByRunId(runId);
+    const latest = all[all.length - 1];
+    if (!latest || checkpointPhase(latest) === "complete") return undefined;
+    const progress = all.filter((c) => checkpointPhase(c) === "act" || checkpointPhase(c) === "start");
+    return progress[progress.length - 1] ?? latest;
+  }
+
+  /**
+   * Runs that crashed/were interrupted mid-execution and can be resumed — every run
+   * that did NOT reach `complete` and still has a progress checkpoint to resume from.
+   * The reported step/phase is the PROGRESS point, not a terminal `failed` sentinel.
    * Most-recently-touched first. (Reads each run file's saved runId, not the
    * sanitized filename, so it round-trips correctly.)
    */
@@ -127,10 +157,10 @@ export class FileCheckpointStore implements CheckpointStore {
         continue;
       }
       const latest = checkpoints[checkpoints.length - 1];
-      if (!latest) continue;
-      const phase = typeof (latest.state as { phase?: unknown }).phase === "string" ? (latest.state as { phase: string }).phase : "unknown";
-      if (phase === "complete") continue; // a finished run isn't resumable
-      out.push({ phase, runId: latest.runId, step: latest.step, updatedAt: latest.createdAt });
+      if (!latest || checkpointPhase(latest) === "complete") continue; // a finished run isn't resumable
+      const progress = checkpoints.filter((c) => checkpointPhase(c) === "act" || checkpointPhase(c) === "start");
+      const at = progress[progress.length - 1] ?? latest;
+      out.push({ phase: checkpointPhase(at), runId: at.runId, step: at.step, updatedAt: latest.createdAt });
     }
     return out.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
   }
@@ -153,7 +183,13 @@ export class FileCheckpointStore implements CheckpointStore {
       await mkdir(this.#dir, { recursive: true });
       this.#ensuredDir = true;
     }
-    await writeFile(join(this.#dir, runFileName(input.runId)), JSON.stringify(capped.map(serialize)), "utf8");
+    // Atomic write: a crash mid-write must not corrupt the file and lose ALL prior
+    // good checkpoints for this run — exactly when fault-tolerance matters. Write a
+    // temp file then rename (atomic on POSIX); the reader never sees a partial file.
+    const target = join(this.#dir, runFileName(input.runId));
+    const tmp = `${target}.${checkpoint.id}.tmp`;
+    await writeFile(tmp, JSON.stringify(capped.map(serialize)), "utf8");
+    await rename(tmp, target);
     await this.#pruneOldRuns();
     return checkpoint;
   }

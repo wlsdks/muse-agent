@@ -59,6 +59,9 @@ export interface RunLogInput {
 export interface AskRunLogParams {
   readonly query: string;
   readonly model?: string;
+  /** The agent run id — written into the event so the run-log FILENAME matches the
+   *  checkpoints' runId (lets `muse trace <id>` link a run to its steps). */
+  readonly runId?: string;
   readonly timings: Record<string, number>;
   /** summarizeTokenConfidence output (may be null); omitted from the entry when undefined. */
   readonly confidence?: unknown;
@@ -113,6 +116,10 @@ export function summarizeRetrieval(
   matches: readonly { readonly source: string; readonly cosine?: number; readonly score: number }[],
   topK = 5
 ): readonly RetrievalTraceEntry[] {
+  // Preserve ASSEMBLY order (semantic note matches lead the array). Do NOT sort by
+  // score: the synthetic exact-match entries (task:/event:/memory:) carry a constant
+  // 1.0 and would dominate the top-K, burying the real cosine-ranked notes that
+  // actually informed the answer — the opposite of useful for "why this answer".
   return matches
     .slice(0, Math.max(0, Math.trunc(topK)))
     .map((m) => ({ score: Number((m.cosine ?? m.score).toFixed(4)), source: m.source }));
@@ -130,6 +137,7 @@ export function buildAskRunLog(params: AskRunLogParams): RunLogInput {
     message: params.query,
     ...(params.model !== undefined ? { model: params.model } : {}),
     response: {
+      ...(params.runId !== undefined ? { runId: params.runId } : {}),
       timings: params.timings,
       ...(params.confidence !== undefined ? { confidence: params.confidence } : {}),
       grounded: params.grounded,

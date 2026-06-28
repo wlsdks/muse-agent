@@ -102,3 +102,17 @@ describe("aggregateTokenUsage — pure totals + per-model/run/day, NaN-guarded",
     expect(out.byDay).toHaveLength(0);
   });
 });
+
+describe("JsonlTokenUsageSink — bounded (no unbounded growth)", () => {
+  it("caps the in-memory mirror to maxRows (ring buffer — no server heap leak)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-usage-"));
+    try {
+      const sink = new JsonlTokenUsageSink(join(dir, "u.jsonl"), 3); // tiny cap
+      for (let i = 0; i < 10; i++) await sink.record(rec({ runId: `r${i}` }));
+      expect(sink.list()).toHaveLength(3); // only the last 3 kept in memory
+      expect(sink.list().map((r) => r.runId)).toEqual(["r7", "r8", "r9"]);
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+});

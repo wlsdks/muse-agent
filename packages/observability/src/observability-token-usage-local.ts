@@ -10,7 +10,7 @@
  * load-bearing), and a corrupt line is skipped, never thrown.
  */
 
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { QueryableTokenUsageSink, TokenUsageRecord } from "./index.js";
@@ -53,23 +53,50 @@ function deserializeRecord(raw: Record<string, unknown>): TokenUsageRecord {
 }
 
 /** Appends each usage record to `filePath` (JSONL) AND mirrors in memory so the
- *  in-process TokenCostQuery still works. mkdir is lazy + cached. */
+ *  in-process TokenCostQuery still works. mkdir is lazy + cached.
+ *
+ *  Bounded: the in-memory mirror is a ring buffer (a long-lived server process
+ *  can't leak heap), and the JSONL file is amortized-trimmed to the last `maxRows`
+ *  so it can't grow forever (it was append-only with no retention). */
 export class JsonlTokenUsageSink implements QueryableTokenUsageSink {
   readonly #events: TokenUsageRecord[] = [];
+  readonly #maxRows: number;
   #ensuredDir = false;
+  #appendsSinceTrim = 0;
 
-  constructor(private readonly filePath: string) {}
+  constructor(private readonly filePath: string, maxRows = 50_000) {
+    this.#maxRows = Math.max(1, maxRows);
+  }
 
   async record(event: TokenUsageRecord): Promise<void> {
     this.#events.push({ ...event });
+    if (this.#events.length > this.#maxRows) this.#events.splice(0, this.#events.length - this.#maxRows);
     try {
       if (!this.#ensuredDir) {
         await mkdir(dirname(this.filePath), { recursive: true });
         this.#ensuredDir = true;
       }
       await appendFile(this.filePath, `${JSON.stringify(serializeRecord(event))}\n`, "utf8");
+      // Amortized retention: every 500 appends, rewrite the file to the last maxRows.
+      this.#appendsSinceTrim += 1;
+      if (this.#appendsSinceTrim >= 500) {
+        this.#appendsSinceTrim = 0;
+        await this.#trimFile();
+      }
     } catch {
       /* telemetry is best-effort — a usage-log write must never break a turn */
+    }
+  }
+
+  async #trimFile(): Promise<void> {
+    try {
+      const lines = (await readFile(this.filePath, "utf8")).split("\n").filter((l) => l.trim().length > 0);
+      if (lines.length <= this.#maxRows) return;
+      const tmp = `${this.filePath}.tmp`;
+      await writeFile(tmp, `${lines.slice(-this.#maxRows).join("\n")}\n`, "utf8");
+      await rename(tmp, this.filePath);
+    } catch {
+      /* best-effort retention */
     }
   }
 

@@ -43,9 +43,9 @@ export function registerResumeCommand(program: Command, io: ProgramIO): void {
         io.stdout(`${formatResumableRuns(await store.listResumable())}\n`);
         return;
       }
-      const latest = await store.findLatestByRunId(runId);
+      const latest = await store.findResumableCheckpoint(runId);
       if (!latest) {
-        io.stderr(`No checkpoint found for run '${runId}'. Run \`muse resume\` to list resumable runs.\n`);
+        io.stderr(`No resumable checkpoint for run '${runId}' (it may have completed). Run \`muse resume\` to list resumable runs.\n`);
         return;
       }
       const assembly = createMuseRuntimeAssembly({});
@@ -53,9 +53,25 @@ export function registerResumeCommand(program: Command, io: ProgramIO): void {
         io.stderr("No model is configured, so the run can't be resumed.\n");
         return;
       }
+      // A corrupt/garbled checkpoint makes resumeRunInputFromCheckpoint throw
+      // (ModelRoutingError); a runtime failure rethrows. Catch both → a clean message,
+      // never an unhandled-rejection stack, and DON'T delete the checkpoint on failure
+      // so the run stays resumable.
+      let input;
+      try {
+        input = resumeRunInputFromCheckpoint(latest.state as AgentCheckpointState, { runId });
+      } catch {
+        io.stderr(`The checkpoint for '${runId}' is corrupt and can't be resumed.\n`);
+        return;
+      }
       io.stderr(`Resuming '${runId}' from step ${latest.step.toString()}…\n`);
-      const result = await assembly.agentRuntime.run(resumeRunInputFromCheckpoint(latest.state as AgentCheckpointState, { runId }));
-      io.stdout(`${result.response.output}\n`);
+      try {
+        const result = await assembly.agentRuntime.run(input);
+        io.stdout(`${result.response.output}\n`);
+      } catch (error) {
+        io.stderr(`Resume of '${runId}' failed: ${error instanceof Error ? error.message : String(error)}. It stays resumable — try again.\n`);
+        return;
+      }
       // The resumed run reached completion — clear its checkpoints so it isn't
       // offered for resume again.
       await store.deleteByRunId(runId);
