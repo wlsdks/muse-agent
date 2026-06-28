@@ -418,10 +418,24 @@ export function rankingUtility(s: PlaybookStrategy, nowMs?: number): number {
  */
 export const IMPLICIT_SUCCESS_REINFORCE_DELTA = 0.1;
 
-/** The reward delta for an applied strategy given the ask's terminal outcome:
- *  +IMPLICIT_SUCCESS_REINFORCE_DELTA on a verified "grounded" success, else 0. */
-export function implicitSuccessReinforceDelta(outcome: string): number {
-  return outcome === "grounded" ? IMPLICIT_SUCCESS_REINFORCE_DELTA : 0;
+/**
+ * The reward delta for an applied strategy given the ask's terminal outcome:
+ * +IMPLICIT_SUCCESS_REINFORCE_DELTA on a CLEAN verified "grounded" success, else 0.
+ *
+ * `hasSourceCheckCaveat` gates against the GROUNDED≠TRUE-weak success the whole-
+ * answer verdict can still label "grounded": an answer resting only on untrusted/
+ * poisonable sources, or carrying a citation that resolves but doesn't support its
+ * claim (ALCE precision), or an uncited groundable claim. Reinforcing a strategy on
+ * one of those would let a misgrounding the probe MISSED corrupt the bank, so a
+ * source-check caveat reinforces nothing — only a pristine grounded answer does.
+ */
+export function implicitSuccessReinforceDelta(
+  outcome: string,
+  opts?: { readonly hasSourceCheckCaveat?: boolean }
+): number {
+  if (outcome !== "grounded") return 0;
+  if (opts?.hasSourceCheckCaveat === true) return 0;
+  return IMPLICIT_SUCCESS_REINFORCE_DELTA;
 }
 
 /** Lifecycle action from Memp (arXiv 2508.06433): deprecate a confidently-bad entry, graduate a confidently-good probation entry, retain otherwise. */

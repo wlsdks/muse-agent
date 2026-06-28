@@ -2194,7 +2194,10 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         // (≪ the explicit ±1 of a correction/approval), so what quietly works resists
         // disuse-decay. Probation strategies are never injected → never reach here, so
         // the self-confirmation guard holds. Best-effort + fail-soft.
-        const reinforceDelta = implicitSuccessReinforceDelta(askOutcome);
+        // A source-check caveat (untrusted-only sources / unsupported / uncited
+        // citation — `sourceCheck` is set only then) marks a GROUNDED≠TRUE-weak
+        // success that must NOT reinforce, so a missed misgrounding can't corrupt the bank.
+        const reinforceDelta = implicitSuccessReinforceDelta(askOutcome, { hasSourceCheckCaveat: Boolean(sourceCheck) });
         if (appliedStrategyId && reinforceDelta > 0) {
           try {
             const { adjustPlaybookReward } = await import("@muse/stores");

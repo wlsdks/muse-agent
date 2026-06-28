@@ -1317,9 +1317,14 @@ describe("rankingUtility — PEVI pessimistic confidence-bound ranking (arXiv:20
 });
 
 describe("implicitSuccessReinforceDelta — the positive half of the reinforcement loop", () => {
-  it("a verified 'grounded' success earns the small positive reward", () => {
+  it("a CLEAN verified 'grounded' success earns the small positive reward", () => {
     expect(implicitSuccessReinforceDelta("grounded")).toBe(IMPLICIT_SUCCESS_REINFORCE_DELTA);
+    expect(implicitSuccessReinforceDelta("grounded", { hasSourceCheckCaveat: false })).toBe(IMPLICIT_SUCCESS_REINFORCE_DELTA);
     expect(IMPLICIT_SUCCESS_REINFORCE_DELTA).toBeGreaterThan(0);
+  });
+
+  it("a GROUNDED-but-source-check-caveated success reinforces NOTHING (untrusted-only / unsupported / uncited citation — a missed misgrounding must not corrupt the bank)", () => {
+    expect(implicitSuccessReinforceDelta("grounded", { hasSourceCheckCaveat: true })).toBe(0);
   });
 
   it("an ungrounded / misgrounded / contested / refused outcome reinforces NOTHING (the weakness ledger owns the negative signal)", () => {
