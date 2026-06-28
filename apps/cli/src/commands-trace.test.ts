@@ -56,3 +56,38 @@ describe("muse trace — local run inspector (time-travel)", () => {
     expect(out).toContain("⚠ m");
   });
 });
+
+describe("muse trace — GROUNDED≠TRUE integrity signals in the detail", () => {
+  const ev = (response: Record<string, unknown>) => JSON.stringify({
+    grounded: "grounded", message: "q", recordedAt: "2026-06-28T10:00:00Z", success: true,
+    response: { response: "answer", toolsUsed: [], ...response }
+  });
+
+  it("parseRunEvent surfaces sourceCheck when a 'grounded' answer rested on untrusted/uncited sources", () => {
+    const d = parseRunEvent("r", ev({ sourceCheck: { untrustedOnly: true, citationUnsupported: false, citationUncited: true } }))!;
+    expect(d.sourceCheck).toEqual({ untrustedOnly: true, citationUnsupported: false, citationUncited: true });
+  });
+
+  it("parseRunEvent omits sourceCheck when the answer is clean (no false noise)", () => {
+    const d = parseRunEvent("r", ev({ sourceCheck: { untrustedOnly: false, citationUnsupported: false, citationUncited: false } }))!;
+    expect(d.sourceCheck).toBeUndefined();
+  });
+
+  it("parseRunEvent surfaces decomposition trust signals (fan-out contradiction / truncation)", () => {
+    const d = parseRunEvent("r", ev({ decomposition: { subtaskCount: 3, truncated: true, subtaskConflicts: ["A vs B"] } }))!;
+    expect(d.decomposition).toEqual({ truncated: true, subtaskConflicts: ["A vs B"] });
+  });
+
+  it("formatRunDetail shows the ⚠ grounded≠true caveat AND the fan-out caveat", () => {
+    const out = formatRunDetail(parseRunEvent("r", ev({
+      sourceCheck: { untrustedOnly: true, citationUnsupported: false, citationUncited: false },
+      decomposition: { subtaskCount: 2, truncated: false, synthesisIncomplete: ["task X"] }
+    }))!, []);
+    expect(out).toContain("⚠ grounded≠true: rested only on UNTRUSTED sources");
+    expect(out).toContain("⚠ fan-out: dropped 1 sub-result(s)");
+  });
+
+  it("formatRunDetail shows NO caveat line for a clean grounded answer", () => {
+    expect(formatRunDetail(parseRunEvent("r", ev({}))!, [])).not.toContain("grounded≠true");
+  });
+});

@@ -24,13 +24,55 @@ export interface RunSummary {
   readonly recordedAt: string;
 }
 
+export interface SourceCheckSignals {
+  readonly untrustedOnly: boolean;
+  readonly citationUnsupported: boolean;
+  readonly citationUncited: boolean;
+}
+
+export interface DecompositionSignals {
+  readonly subtaskConflicts?: readonly string[];
+  readonly synthesisIncomplete?: readonly string[];
+  readonly truncated?: boolean;
+}
+
 export interface RunDetail extends RunSummary {
   readonly answer: string;
   readonly retrieval: readonly { readonly source: string; readonly score: number }[];
   readonly toolsUsed: readonly string[];
+  /** GROUNDED≠TRUE caveats captured at answer time: a "grounded" answer that rested
+   *  only on untrusted sources, or carried an unsupported / uncited citation. */
+  readonly sourceCheck?: SourceCheckSignals;
+  /** Fan-out (decompose) trust signals: a sub-answer contradiction / dropped result / truncation. */
+  readonly decomposition?: DecompositionSignals;
 }
 
 function asString(v: unknown, fallback = ""): string { return typeof v === "string" ? v : fallback; }
+function asBool(v: unknown): boolean { return v === true; }
+function strList(v: unknown): readonly string[] | undefined {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : undefined;
+}
+
+function parseSourceCheck(v: unknown): SourceCheckSignals | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const r = v as Record<string, unknown>;
+  const sc = { citationUncited: asBool(r.citationUncited), citationUnsupported: asBool(r.citationUnsupported), untrustedOnly: asBool(r.untrustedOnly) };
+  return sc.untrustedOnly || sc.citationUnsupported || sc.citationUncited ? sc : undefined;
+}
+
+function parseDecomposition(v: unknown): DecompositionSignals | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const r = v as Record<string, unknown>;
+  const conflicts = strList(r.subtaskConflicts);
+  const incomplete = strList(r.synthesisIncomplete);
+  const truncated = asBool(r.truncated);
+  if (!truncated && !conflicts?.length && !incomplete?.length) return undefined;
+  return {
+    ...(truncated ? { truncated } : {}),
+    ...(conflicts?.length ? { subtaskConflicts: conflicts } : {}),
+    ...(incomplete?.length ? { synthesisIncomplete: incomplete } : {})
+  };
+}
 
 /** Parse the LAST event of a run-log JSONL file into a summary (the final outcome). */
 export function parseRunEvent(runId: string, raw: string): RunDetail | undefined {
@@ -57,7 +99,9 @@ export function parseRunEvent(runId: string, raw: string): RunDetail | undefined
     retrieval,
     runId,
     success: typeof event.success === "boolean" ? event.success : null,
-    toolsUsed: Array.isArray(response.toolsUsed) ? response.toolsUsed.filter((t): t is string => typeof t === "string") : []
+    toolsUsed: Array.isArray(response.toolsUsed) ? response.toolsUsed.filter((t): t is string => typeof t === "string") : [],
+    ...(parseSourceCheck(response.sourceCheck) ? { sourceCheck: parseSourceCheck(response.sourceCheck) } : {}),
+    ...(parseDecomposition(response.decomposition) ? { decomposition: parseDecomposition(response.decomposition) } : {})
   };
 }
 
@@ -96,6 +140,26 @@ export function formatRunDetail(detail: RunDetail, checkpoints: readonly { reado
     `  A: ${detail.answer.slice(0, 300)}${detail.answer.length > 300 ? "…" : ""}`,
     `  grounding: ${detail.grounded ?? "—"}   success: ${String(detail.success)}   tools: ${detail.toolsUsed.length > 0 ? detail.toolsUsed.join(", ") : "none"}`
   ];
+  if (detail.sourceCheck) {
+    // A "grounded" verdict can still be GROUNDED≠TRUE — surface the caveats the
+    // verdict alone hides, so a confident answer resting on poisonable/uncited
+    // sources is visible in the inspector.
+    const cues = [
+      detail.sourceCheck.untrustedOnly ? "rested only on UNTRUSTED sources" : "",
+      detail.sourceCheck.citationUnsupported ? "a citation was UNSUPPORTED" : "",
+      detail.sourceCheck.citationUncited ? "a claim was UNCITED" : ""
+    ].filter((c) => c.length > 0);
+    if (cues.length > 0) lines.push(`  ⚠ grounded≠true: ${cues.join("; ")}`);
+  }
+  if (detail.decomposition) {
+    const d = detail.decomposition;
+    const parts = [
+      d.subtaskConflicts?.length ? `sub-answers contradicted (${d.subtaskConflicts.length})` : "",
+      d.synthesisIncomplete?.length ? `dropped ${d.synthesisIncomplete.length} sub-result(s)` : "",
+      d.truncated ? "fan-out TRUNCATED" : ""
+    ].filter((p) => p.length > 0);
+    if (parts.length > 0) lines.push(`  ⚠ fan-out: ${parts.join("; ")}`);
+  }
   if (detail.retrieval.length > 0) {
     lines.push("  retrieved (why this answer):");
     for (const r of detail.retrieval) lines.push(`    ${r.score.toFixed(4)}  ${r.source}`);
