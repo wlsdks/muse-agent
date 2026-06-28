@@ -104,7 +104,7 @@ updated: 2026-06-08
    소유; 게이트 하나를 강화하거나 verb_noun 도구 하나 추가. 새 프레임워크 추상화 금지.
 5. **VERIFY (fail-closed)** — `node scripts/pick-evals.mjs`가 diff→정확한 eval/smoke 부분집합을
    매핑해 출력(외워서가 아니라 코드; grounding/safety엔 MUSE_EVAL_REPEAT=3 자동) + 불변식
-   (fabrication=0 *실트레이스에도*, lint 0/0, 변경 패키지 test, 교차패키지면 `pnpm check`).
+   (fabrication=0 *실트레이스에도*, lint 0/0, **`pnpm test:changed`**(vitest related — 변경 파일 관련 테스트만, 패키지 전체 suite 아님), 커밋-전/교차패키지면 `pnpm check`).
    grounding/safety는 pass^k k≥3. 독립 evaluator = harness-evaluator 서브에이전트(write 도구 없음),
    eval:judge 메타평가로 보정. green 아니면 done 아님.
 6. **WRITE-BACK (완료 게이트 — 이거 없이 done 선언 불가)** — (a) 고친 실패를 STABLE-3/3 golden case로;

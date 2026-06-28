@@ -83,8 +83,10 @@ listed here still binds.
    prompt), tests first where they bite. Build the packages you touched.
 
 5. **VERIFY (fail-closed, maker≠judge, OUTCOME-tied).** A slice is NOT done until:
-   - the narrow related tests + `tsc -b` build + `pnpm lint` pass (run the
-     rung that exposes THIS change; live evals when Ollama is up);
+   - the narrow related tests + `tsc -b` build + `pnpm lint` pass — run
+     `pnpm test:changed` (vitest `related` on your git-changed files, NOT a whole
+     package suite; ~12.8k cases across 1194 files makes a full run per slice pure
+     waste), the rung that exposes THIS change; live evals when Ollama is up;
    - a mutation check confirms the new test has teeth (RED on a code mutation);
    - an **independent evaluator** (a different subagent than the one that built
      it) judges PASS against the acceptance criteria. Uncertain ⇒ FAIL, don't
