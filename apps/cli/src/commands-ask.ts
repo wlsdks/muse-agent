@@ -24,22 +24,20 @@
 
 import { existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
 
 import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, decideRecallClarification, detectEvidenceContradictions, enforceAnswerCitations, explainGroundingVerdict, lexicalOverlap, lexicalTokens, normalizeContactCitations, normalizeFromPrefixedCitations, normalizeMemoryCitations, normalizeSlotCitations, parseGroundingReverifyJson, resolveRecallConfidentAt, REVERIFY_RESPONSE_FORMAT, renderPlaybookSection, reorderForLongContext, REVERIFY_SYSTEM_PROMPT, screenClaimsBySemanticSupport, segmentClaims, selectBestGroundedDraft, summarizeTokenConfidence, verifyGrounding, verifyGroundingPerClaim, verifyGroundingWithReverify, type ContradictionPair, type GroundingReverify } from "@muse/agent-core";
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCorpusOverview, isMemoryInjection, isUnbackedActionClaim, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence } from "@muse/agent-core";
 import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys, staleFactKeys } from "@muse/memory";
-import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveNoteProvenanceFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveAnswerTemperature, resolveContactsFile, resolveNoteProvenanceFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { acquireOllamaLease, readActionLog, readContacts, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
+import { acquireOllamaLease, readContacts, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import { fetchReadableUrl, type MessageApprovalGate } from "@muse/domain-tools";
 
-import { createRunId, redactSecretsInText } from "@muse/shared";
-import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildCalendarContextBlock, buildContactContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
+import { createRunId } from "@muse/shared";
+import { allUserMemoryFacts, buildDiskContents, buildCalendarContextBlock, buildContactContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
 export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, stripGroundingFences, sufficiencyAdvisory, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, sufficiencyAdvisory, urlGroundingSource };
@@ -65,8 +63,6 @@ import { buildAskConnections, groundingConflictCue } from "@muse/recall";
 export { buildAskConnections };
 import type { FileEntry } from "@muse/recall";
 
-import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.js";
-import { parseShellHistory, selectShellCommands } from "./shell-history.js";
 
 import { routeAskTierModel } from "./ask-tier-models.js";
 import { shouldDecompose } from "@muse/multi-agent";
@@ -75,7 +71,7 @@ import { tryDeterministicAnswer } from "./ask-fast-paths.js";
 export { CASUAL_RESPONSES, META_RESPONSE, ACTION_GUIDE } from "./ask-fast-paths.js";
 import { decompositionJsonFields, decompositionStderrNotes, renderAskStreamError, type AskStreamEvent, type AskStreamResult, type DecompositionTrustSignals } from "./ask-result-output.js";
 export { decompositionJsonFields, decompositionStderrNotes, renderAskStreamError, type AskStreamEvent, type AskStreamResult } from "./ask-result-output.js";
-import { crossLingualUnsupportedFraction, rescueActionsCrossLingual, rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
+import { crossLingualUnsupportedFraction, rescueMemoryCrossLingual } from "./ask-cross-lingual.js";
 
 export { resolveAskTierModels, routeAskTierModel } from "./ask-tier-models.js";
 import { parseBoundedInt } from "./parse-bounded-int.js";
@@ -100,6 +96,7 @@ import { collectAutoImageAttachments, loadImageAttachment } from "./ask-image-at
 import { CITATION_INSTRUCTION_LINES, REASONING_PRINCIPLE_LINES } from "./ask-prompt-constants.js";
 import { buildSessionFeedReflectionGrounding } from "./ask-session-grounding.js";
 import { retrieveAndRankNotes } from "./ask-note-retrieval.js";
+import { buildActivityGrounding } from "./ask-activity-grounding.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
 
 
@@ -1290,61 +1287,16 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
       }
       const memoryBlock = buildMemoryContextBlock(matchedMemories, { contestedKeys: contestedMemoryKeys, provisionalKeys: provisionalMemoryKeys, staleKeys: staleMemoryKeys });
 
-      // OPT-IN shell-history grounding (B3): "what was that command?" — read the
-      // user's history ONLY when --shell is passed, match by token overlap, and
-      // SECRET-REDACT every command before it reaches the model (history holds
-      // `export TOKEN=…` lines). Local + read-only; never on by default.
-      let matchedCommands: readonly string[] = [];
-      if (options.shell === true) {
-        try {
-          const histFile = process.env.MUSE_SHELL_HISTORY_FILE?.trim()
-            || process.env.HISTFILE?.trim()
-            || join(homedir(), ".zsh_history");
-          const raw = await readFile(histFile, "utf8");
-          matchedCommands = selectShellCommands(parseShellHistory(raw), lexicalTokens(query))
-            .map((cmd) => redactSecretsInText(cmd));
-        } catch {
-          // no history file / unreadable — silently skip
-        }
-      }
-      const shellBlock = buildShellContextBlock(matchedCommands);
-
-      // OPT-IN git grounding (B3 perception): "what did I work on?" / "what was
-      // that commit?" — read the current repo's HEAD reflog as a FILE (no spawn,
-      // so not the runner's execution path) ONLY when --git is passed. Embeds the
-      // canonical `[commit: <subject>]` hint so the model cites the subject the
-      // gate accepts (the wrapper-hint pattern proven for tasks/events).
-      let matchedCommits: readonly GitCommit[] = [];
-      if (options.git === true) {
-        try {
-          const reflogFile = process.env.MUSE_GIT_REFLOG_FILE?.trim()
-            || join(process.cwd(), ".git", "logs", "HEAD");
-          const raw = await readFile(reflogFile, "utf8");
-          matchedCommits = selectGitCommits(parseGitReflog(raw), lexicalTokens(query));
-        } catch {
-          // not a git repo / unreadable — silently skip
-        }
-      }
-      const gitBlock = buildGitContextBlock(matchedCommits);
-
-      // Action-log grounding (B3 transparency): "did you send that? / what have
-      // you done on my behalf?" — answer from Muse's OWN record of acts taken,
-      // matched by query overlap. The user's local audit trail, default-on.
-      let matchedActions: readonly ActionLogEntry[] = [];
-      if (options.actions !== false) {
-        try {
-          const all = await readActionLog(resolveActionLogFile(process.env as Record<string, string | undefined>));
-          matchedActions = selectGroundingActions(all, query);
-          if (matchedActions.length === 0 && all.length > 0) {
-            try {
-              matchedActions = await rescueActionsCrossLingual(all, query, (t) => embed(t, embedModel));
-            } catch { /* embed unavailable — keep lexical-empty result */ }
-          }
-        } catch {
-          // action log missing or unreadable — silently skip
-        }
-      }
-      const actionBlock = buildActionContextBlock(matchedActions);
+      // Activity grounding — shell history / git reflog / action log. Each reads a
+      // FILE (no spawn), gated by its flag, fail-soft. See ask-activity-grounding.ts.
+      const { actionBlock, gitBlock, matchedActions, matchedCommands, matchedCommits, shellBlock } =
+        await buildActivityGrounding({
+          actions: options.actions !== false,
+          embedModel,
+          git: options.git === true,
+          query,
+          shell: options.shell === true
+        });
 
       // Phase 2 (runtime self-tuning): the ACE playbook's [Learned
       // Strategies] reach the agent-runtime (--with-tools) path via the
