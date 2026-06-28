@@ -12,8 +12,9 @@
  * trusted (absent ⇒ trusted, mirroring the KnowledgeMatch convention). Keyed by the
  * note's path RELATIVE to the notes root — the same form recall's note evidence uses.
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { readFile } from "node:fs/promises";
+
+import { atomicWriteFile } from "@muse/stores";
 
 export interface NoteProvenanceEntry {
   /** Note path relative to the notes root (matches recall's `relativizeNoteSource`). */
@@ -58,8 +59,10 @@ export async function readNoteProvenance(file: string): Promise<readonly NotePro
 export async function recordIngestedNote(file: string, entry: NoteProvenanceEntry): Promise<void> {
   const existing = await readNoteProvenance(file);
   const next = [...existing.filter((e) => e.path !== entry.path), entry];
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, JSON.stringify({ notes: next }, null, 2), { mode: 0o600 });
+  // Atomic: the note-provenance ledger backs the `[from …]` citation chain — a
+  // crash mid-write of a raw writeFile corrupts it, breaking provenance for every
+  // ingested note until it's rebuilt.
+  await atomicWriteFile(file, JSON.stringify({ notes: next }, null, 2));
 }
 
 /**

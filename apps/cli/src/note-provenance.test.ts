@@ -46,3 +46,30 @@ describe("note-provenance — externally-ingested notes are recorded so recall c
     expect(await readNoteProvenance(wrong)).toEqual([]);
   });
 });
+
+describe("note-provenance — atomic write (the citation-provenance ledger can't be corrupted mid-write)", () => {
+  it("leaves NO .tmp-* orphan and a complete valid-JSON file after a write (atomicWriteFile temp+rename)", async () => {
+    const { readdirSync } = await import("node:fs");
+    const { dirname } = await import("node:path");
+    const f = file();
+    await recordIngestedNote(f, { path: "a.md", sourceUrl: "https://x.test/a", ingestedAt: "2026-06-28T00:00:00Z" });
+    const dir = dirname(f);
+    expect(readdirSync(dir).some((n) => n.includes(".tmp-"))).toBe(false); // no leftover temp
+    const back = await readNoteProvenance(f);
+    expect(back.map((e) => e.path)).toEqual(["a.md"]); // round-trips intact
+  });
+
+  it("stays a single complete valid-JSON file under concurrent writes (never a torn/partial write)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const f = file();
+    await Promise.all(
+      Array.from({ length: 12 }, (_, i) =>
+        recordIngestedNote(f, { path: `n${i.toString()}.md`, sourceUrl: `https://x.test/${i.toString()}`, ingestedAt: "2026-06-28T00:00:00Z" })
+      )
+    );
+    // The file must ALWAYS parse to a well-formed { notes: [...] } — a raw non-atomic
+    // writeFile racing 12 ways could leave a truncated/interleaved JSON that throws here.
+    const parsed = JSON.parse(readFileSync(f, "utf8"));
+    expect(Array.isArray(parsed.notes)).toBe(true);
+  });
+});

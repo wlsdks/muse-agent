@@ -5,7 +5,9 @@
  * `commands-notes-rag.ts`, chat-grounding lazy-imports these by name.
  */
 
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
+
+import { atomicWriteFile } from "@muse/stores";
 import { homedir } from "node:os";
 import { basename as pathBasename, join as pathJoin, resolve as pathResolve, sep as pathSep } from "node:path";
 
@@ -212,8 +214,10 @@ export function isNotesIndexValid(candidate: { readonly version?: unknown } | nu
 }
 
 async function saveIndex(path: string, index: NotesIndex): Promise<void> {
-  await mkdir(pathJoin(path, ".."), { recursive: true });
-  await writeFile(path, `${JSON.stringify(index, null, 2)}\n`, { mode: 0o600 });
+  // Atomic (tmp + fsync + rename): the notes index is the grounding wedge's corpus
+  // backbone — a crash mid-write of a raw writeFile would leave a truncated/partial
+  // JSON that fails to parse, silently zeroing every cited recall until a reindex.
+  await atomicWriteFile(path, `${JSON.stringify(index, null, 2)}\n`);
 }
 
 /**
