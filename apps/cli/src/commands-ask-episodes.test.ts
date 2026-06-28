@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { rankEpisodeHits } from "./commands-ask.js";
+import { rankEpisodeHits } from "@muse/recall";
 
 const episodes = [
   { embedding: [1, 0, 0], id: "e1", summary: "discussed the Q3 budget plan" },

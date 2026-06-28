@@ -31,16 +31,16 @@ import { buildGroundingReverifyPrompt, chunkText, citedSourcesIn, classifyRetrie
 import { buildAttributedRepairPrompt, describeImage, extractStructuredFromImage, repairToEvidence, REPAIR_SYSTEM_PROMPT } from "@muse/agent-core";
 import { answerPromisesAction, assertiveUnsupportedFraction, classifyActionRequest, classifyCorpusOverview, isMemoryInjection, isUnbackedActionClaim, reportSentenceGroundedness, requestsToolAction, stripCitationMarkers, worstUnsupportedSentence } from "@muse/agent-core";
 import { contestedFactKeys, defaultBeliefProvenanceFile, deriveFactProvenance, FileBeliefProvenanceStore, normalizeMemoryKey, provisionalFactKeys, staleFactKeys } from "@muse/memory";
-import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveEpisodesFile, resolveNoteProvenanceFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
+import { buildCalendarRegistry, createMuseRuntimeAssembly, resolveActionLogFile, resolveAnswerTemperature, resolveContactsFile, resolveNoteProvenanceFile, resolveNotesDir, resolveNotesIndexFile, resolveRemindersFile, resolveTasksFile, type MuseEnvironment } from "@muse/autoconfigure";
 import { readNoteProvenance, untrustedNotePaths } from "./note-provenance.js";
 import type { MuseTool } from "@muse/tools";
 import type { CalendarEvent } from "@muse/calendar";
-import { acquireOllamaLease, readActionLog, readContacts, readEpisodes, readReflections, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, selectReflectionsForRecall, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
+import { acquireOllamaLease, readActionLog, readContacts, readReminders, readTasks, releaseOllamaLease, resolveOllamaLeaseFile, type ActionLogEntry, type Contact, type PersistedReminder, type PersistedTask } from "@muse/stores";
 import { fetchReadableUrl, type MessageApprovalGate } from "@muse/domain-tools";
 
 import { createRunId, redactSecretsInText } from "@muse/shared";
-import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildCalendarContextBlock, buildContactContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
-export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, rankEpisodeHits, recentFeedHeadlines, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
+import { allUserMemoryFacts, buildDiskContents, buildActionContextBlock, buildCalendarContextBlock, buildContactContextBlock, buildGitContextBlock, buildMemoryContextBlock, buildNoteContextBlock, buildShellContextBlock, buildReminderContextBlock, buildTaskContextBlock, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts } from "@muse/recall";
+export { allUserMemoryFacts, collectCitedNoteAges, contactGroundingEvidence, contactMatchScore, filterNotesByScope, formatCoarseAge, formatContactBirthday, formatNonNoteReceipts, formatSourceReceipts, formatSourcesFooter, formatStalenessWarning, groundingSectionLines, provenanceDate, provenanceSnippet, relativizeNoteSource, relevantSnippet, renderMemoryFact, selectMemoryFacts };
 import { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, stripGroundingFences, sufficiencyAdvisory, urlGroundingSource } from "@muse/recall";
 export { answerIsRefusal, composeChatSystemContent, corpusOnboardingHint, formatCorpusOverview, formatGraphLinksSection, looksLikeBinaryContent, queryHasAdHocGrounding, shouldWarmClose, stripEchoedCiteAs, sufficiencyAdvisory, urlGroundingSource };
 import { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource } from "@muse/recall";
@@ -68,7 +68,6 @@ import type { FileEntry, IndexChunk } from "@muse/recall";
 import { parseGitReflog, selectGitCommits, type GitCommit } from "./git-reflog.js";
 import { parseShellHistory, selectShellCommands } from "./shell-history.js";
 
-import { resolveReflectionsFile } from "./commands-reflections.js";
 import { routeAskTierModel } from "./ask-tier-models.js";
 import { shouldDecompose } from "@muse/multi-agent";
 import { runDecomposedAgentAsk } from "./ask-decompose.js";
@@ -83,16 +82,14 @@ import { parseBoundedInt } from "./parse-bounded-int.js";
 import type { Command } from "commander";
 
 import { cosine, isNotesIndexStale, loadNoteLinkGraph, reindexNotes } from "./commands-notes-rag.js";
-import { filterLiveEpisodeEntries, filterLiveNoteIndexFiles } from "./commands-recall.js";
+import { filterLiveNoteIndexFiles } from "./commands-recall.js";
 import { linkExpandRefs } from "./notes-links.js";
 import { formatConnectionsSection } from "./commands-today.js";
 import { embed } from "./embed.js";
 import { rankPlaybookEntriesByRelevance } from "./playbook-embed-rank.js";
-import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
 import { readClipboardText } from "./clipboard-reader.js";
 import { createCitationStreamFilter } from "./citation-stream.js";
 import { docxToText, emlToText, extractDirectoryDocuments, formatDirectoryCapNotice, formatUrlTruncationNotice, htmlToText, isDocxDocument, isEmlDocument, isHtmlDocument, isPdfDocument, isPptxDocument, parsePdfBuffer, pptxToText } from "./document-reader.js";
-import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
 import { buildAskRunLog, resolvePersona, summarizeRetrieval, writeRunLog, type RetrievalTraceEntry } from "./program-helpers.js";
 import { buildMusePersona, formatCurrentContextLine, readPipedStdin } from "./program.js";
 import type { ProgramIO } from "./program.js";
@@ -102,6 +99,7 @@ import { listNoteFiles, notesCorpusFileCount, resolveAskMaxTools, selectGraphCon
 import { userHasOtherPersonalData } from "./ask-user-data-presence.js";
 import { collectAutoImageAttachments, loadImageAttachment } from "./ask-image-attachments.js";
 import { CITATION_INSTRUCTION_LINES, REASONING_PRINCIPLE_LINES } from "./ask-prompt-constants.js";
+import { buildSessionFeedReflectionGrounding } from "./ask-session-grounding.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
 
 
@@ -908,79 +906,17 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         }
       }
 
-      // Auto-refresh the episode index (mirrors the notes auto-reindex above)
-      // so past sessions stay groundable without a manual `muse episode
-      // reindex` — incremental (only new/changed summaries re-embed), gated by
-      // --no-auto-reindex, fail-soft. Without this the episode grounding below
-      // silently saw a stale/empty index for anyone who hadn't reindexed.
-      if (options.autoReindex !== false && queryVec) {
-        try {
-          const sourceEpisodes = await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>));
-          const prevIndex = await loadEpisodeIndex(defaultEpisodeIndexFile());
-          if (episodeIndexStale(prevIndex, sourceEpisodes, embedModel)) {
-            const built = await buildEpisodeIndex({
-              embedFn: (text) => embed(text, embedModel),
-              episodes: sourceEpisodes,
-              model: embedModel,
-              nowIso: new Date().toISOString(),
-              previous: prevIndex
-            });
-            await saveEpisodeIndex(defaultEpisodeIndexFile(), built.index);
-            if (built.embedded > 0) {
-              io.stderr(`(auto-refreshed episode index: ${built.embedded.toString()} embedded, ${built.skipped.toString()} cached)\n`);
-            }
-          }
-        } catch {
-          // episode-index refresh failed — grounding still works on whatever index exists
-        }
-      }
-
-      // SB-1 (second brain): also ground on past-session episode summaries
-      // so `muse ask "what did I decide about X?"` reaches your prior
-      // conversations, not just notes. Same embed model only (a cross-model
-      // cosine is meaningless); optional + fail-soft.
-      let episodeHits: Array<{ id: string; summary: string; score: number }> = [];
-      // Episodes whose session rested on untrusted sources (trusted:false) — their
-      // grounding evidence is tagged untrusted below so an answer resting solely on
-      // a poisoned episode trips the untrusted-only source-check cue instead of being
-      // laundered as trusted "your own history" (MemoryGraft arXiv:2512.16962).
-      let untrustedEpisodeIds = new Set<string>();
-      if (queryVec) {
-        try {
-          const epIndex = await loadEpisodeIndex(defaultEpisodeIndexFile());
-          if (epIndex && epIndex.model === embedModel && epIndex.entries.length > 0) {
-            // Drop episodes vacuumed/deleted from the source since indexing.
-            const sourceEpisodes = await readEpisodes(resolveEpisodesFile(process.env as Record<string, string | undefined>));
-            const liveIds = new Set(sourceEpisodes.map((e) => e.id));
-            untrustedEpisodeIds = new Set(sourceEpisodes.filter((e) => e.trusted === false).map((e) => e.id));
-            episodeHits = rankEpisodeHits(queryVec, filterLiveEpisodeEntries(epIndex.entries, liveIds), topK);
-          }
-        } catch {
-          // episodes index missing / unreadable — grounding still works
-        }
-      }
-      const episodeBlock = buildEpisodeContextBlock(episodeHits);
-
-      // SB-1/G2: recent watched-feed headlines as world-state knowledge, so
-      // "what's new in X?" reaches the user's subscribed feeds. Time-ordered
-      // (not embedded); capped to keep the prompt tight. Optional + fail-soft.
-      let feedHeadlines: Array<{ feedName: string; title: string; publishedAt: string; summary: string }> = [];
-      try {
-        const store = await readFeedsStore(defaultFeedsFile());
-        feedHeadlines = recentFeedHeadlines(store.feeds, 8);
-      } catch {
-        // feeds store missing / unreadable — grounding still works
-      }
-      const feedBlock = buildFeedContextBlock(feedHeadlines);
-
-      // Dreaming closes the loop: the user's own grounded reflections (the
-      // higher-level model Muse built of them) inform the answer. Insight text
-      // only — already grounded; no-op when there are none. Fail-soft.
-      let reflectionLines: string[] = [];
-      try {
-        reflectionLines = selectReflectionsForRecall(await readReflections(resolveReflectionsFile()), Date.now()).slice(0, 5).map((r) => `- ${r.insight}`);
-      } catch { /* no reflections — grounding still works */ }
-      const reflectionBlock = reflectionLines.length === 0 ? "(none yet)" : reflectionLines.join("\n");
+      // Second-brain grounding: past-session episodes (auto-refreshed + untrusted-
+      // tagged), recent feed headlines, and the user's own reflections. Each store
+      // is optional + fail-soft. See ask-session-grounding.ts.
+      const { episodeBlock, episodeHits, feedBlock, feedHeadlines, reflectionBlock, reflectionLines, untrustedEpisodeIds } =
+        await buildSessionFeedReflectionGrounding({
+          autoReindex: options.autoReindex !== false,
+          embedModel,
+          onStderr: (text) => { io.stderr(text); },
+          queryVec,
+          topK
+        });
 
       // Build assembly + chat-only fast path. `--actuators` (only
       // meaningful with --with-tools) injects the gated state-changing

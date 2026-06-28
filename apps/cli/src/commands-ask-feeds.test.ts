@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { recentFeedHeadlines } from "./commands-ask.js";
+import { recentFeedHeadlines } from "@muse/recall";
 
 const feeds = [
   {

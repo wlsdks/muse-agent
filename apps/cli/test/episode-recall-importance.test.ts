@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { rankEpisodeHits } from "../src/commands-ask.js";
+import { rankEpisodeHits } from "@muse/recall";
 import { buildEpisodeIndex } from "../src/episode-index.js";
 
 describe("rankEpisodeHits importance", () => {
