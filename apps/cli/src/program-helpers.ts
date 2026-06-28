@@ -16,7 +16,7 @@
  * the chat REPL itself stays in program.ts.
  */
 
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -669,7 +669,40 @@ export async function writeRunLog(workspaceDir: string, input: RunLogInput, now 
 
   await mkdir(runDir, { recursive: true });
   await writeFile(filePath, `${JSON.stringify(event)}\n`, { flag: "a" });
+  // Bound the run-log: it was append-per-run forever (observed 1000+ files), which
+  // both wastes disk and slows every reader that globs the dir (scout-signals, the
+  // flywheel, `muse trace`). Keep the most-recent MUSE_RUN_LOG_MAX_FILES; the
+  // flywheel cares about RECENT recurring failures, so pruning the oldest is safe.
+  const cap = Number(process.env.MUSE_RUN_LOG_MAX_FILES);
+  await pruneRunLogDir(runDir, Number.isFinite(cap) && cap > 0 ? cap : 2_000);
   return filePath;
+}
+
+/**
+ * Keep only the most-recently-modified `maxFiles` `.jsonl` run-logs in `runDir`,
+ * pruning the oldest. Best-effort + exported for tests: a missing dir / stat error
+ * never throws (a retention failure must not break a turn). Returns the count pruned.
+ */
+export async function pruneRunLogDir(runDir: string, maxFiles: number): Promise<number> {
+  if (!Number.isFinite(maxFiles) || maxFiles < 1) return 0;
+  let files: string[];
+  try {
+    files = (await readdir(runDir)).filter((name) => name.endsWith(".jsonl"));
+  } catch {
+    return 0;
+  }
+  if (files.length <= maxFiles) return 0;
+  const withMtime = await Promise.all(files.map(async (name) => {
+    try {
+      return { mtime: (await stat(path.join(runDir, name))).mtimeMs, name };
+    } catch {
+      return { mtime: 0, name };
+    }
+  }));
+  withMtime.sort((a, b) => b.mtime - a.mtime); // newest first
+  const toPrune = withMtime.slice(Math.trunc(maxFiles));
+  await Promise.all(toPrune.map((entry) => rm(path.join(runDir, entry.name), { force: true }).catch(() => undefined)));
+  return toPrune.length;
 }
 
 function readResponseRunId(value: unknown): string | undefined {

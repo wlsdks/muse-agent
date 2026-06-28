@@ -256,3 +256,43 @@ describe("unsetConfigValue — set's missing inverse (revert a key to the built-
     expect(() => unsetConfigValue({}, "apirurl")).toThrow(/Unsupported config key 'apirurl'.*did you mean 'apiUrl'/u);
   });
 });
+
+describe("pruneRunLogDir — bound the unbounded run-log (retention)", () => {
+  it("keeps the most-recent maxFiles, prunes the oldest, returns the prune count", async () => {
+    const { mkdtempSync, writeFileSync, rmSync, readdirSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { pruneRunLogDir } = await import("./program-helpers.js");
+    const dir = mkdtempSync(join(tmpdir(), "muse-runlog-"));
+    try {
+      for (const id of ["a", "b", "c", "d"]) {
+        writeFileSync(join(dir, `${id}.jsonl`), "{}\n");
+        await new Promise((r) => setTimeout(r, 5)); // distinct mtimes (a oldest … d newest)
+      }
+      writeFileSync(join(dir, "notes.txt"), "x"); // non-jsonl is ignored
+      const pruned = await pruneRunLogDir(dir, 2);
+      expect(pruned).toBe(2); // a, b (oldest) removed
+      const left = readdirSync(dir).filter((n) => n.endsWith(".jsonl")).sort();
+      expect(left).toEqual(["c.jsonl", "d.jsonl"]);
+      expect(readdirSync(dir)).toContain("notes.txt"); // untouched
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+
+  it("under the cap → no prune (returns 0); a missing dir → 0 (never throws)", async () => {
+    const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { pruneRunLogDir } = await import("./program-helpers.js");
+    expect(await pruneRunLogDir("/no/such/runs/dir", 100)).toBe(0);
+    const dir = mkdtempSync(join(tmpdir(), "muse-runlog-"));
+    try {
+      writeFileSync(join(dir, "a.jsonl"), "{}\n");
+      expect(await pruneRunLogDir(dir, 100)).toBe(0);
+      expect(await pruneRunLogDir(dir, 0)).toBe(0); // invalid cap → no-op
+    } finally {
+      rmSync(dir, { force: true, recursive: true });
+    }
+  });
+});
