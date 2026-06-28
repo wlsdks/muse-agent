@@ -1,5 +1,8 @@
 # Muse dev backlog — the living ledger
 
+- ✓ flywheel actionable-failure gate (`isFailureEvent`, run-log-analysis) — an `ungrounded`/`weak` answer is fuel ONLY when retrieval surfaced a CONFIDENT real personal note (non-synthetic ≥0.45) that wasn't grounded in; general-knowledge / missing-note questions (low-cosine + synthetic exact-matches only) are non-actionable and excluded. Same false-positive class as cab66be1 (misgrounding). Uses the P1.2 retrieval capture; scout-signals lifts it. GATE: scout-signals failure clusters 4→2 (retrieval-bearing general-K excluded; remaining 2 are pre-P1.2 traces → age out). 20/20 + mutation + ④b PASS. ◦ refill: when traces with retrieval dominate, re-check the cluster count drops further.
+- ✓ langgraph-parity P1-P4 (2026-06-28, this session, all pushed + full-repo green): P1.1 local `muse cost` (token capture decorator, no double-count) · P1.2 retrieval-in-trace · P2 durable checkpoints + per-step + `muse resume` (resume-from-progress) · P3 `muse trace` time-travel inspector · P4 rerank seam (foundation; live provider model-gated). + adversarial-review hardening (8 real bugs fixed: resume-shadowing, runId unification, corrupt-resume, unbounded-growth, atomic-write, prune-perf, trace-crash, retrieval-order).
+
 ### Langchain/langgraph-parity assessment (2026-06-28) — shipped 5, the rest are honest limits
 
 A capability audit vs langchain/langgraph: Muse provides every core agent primitive
