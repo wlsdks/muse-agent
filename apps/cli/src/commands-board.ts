@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ToolApprovalGate } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolveObjectivesFile } from "@muse/autoconfigure";
-import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, FileAgentTaskBoard, planParallelSubtasks, resolveReview, retryTask, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
+import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, FileAgentTaskBoard, planParallelSubtasks, reclaimStaleTasks, resolveReview, retryTask, staleInProgressTasks, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
 import { readObjectives } from "@muse/stores";
 import type { Command } from "commander";
 
@@ -22,6 +22,12 @@ const OUTBOUND_RE = /\b(send|email|e-mail|reply|forward|post|dm|message|text|pub
 /** True when a task's effect leaves the machine toward a person → it must be reviewed, not auto-run. */
 export function taskNeedsReview(title: string): boolean {
   return OUTBOUND_RE.test(title);
+}
+
+/** Staleness threshold for a zombie in-progress task — 30 min default, `MUSE_BOARD_STALE_MS` override. */
+export function boardStaleMs(env: Record<string, string | undefined>): number {
+  const raw = Number(env.MUSE_BOARD_STALE_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 30 * 60 * 1000;
 }
 
 /**
@@ -205,6 +211,17 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
     });
 
   board
+    .command("reclaim")
+    .description("Recover zombie tasks — a task stuck in-progress past the staleness window (a crashed run) → blocked, so it can be retried")
+    .action(async () => {
+      const store = new FileAgentTaskBoard();
+      const stale = staleInProgressTasks(await store.list(), Date.now(), boardStaleMs(process.env));
+      if (stale.length === 0) { io.stdout("No stale in-progress tasks — nothing to reclaim.\n"); return; }
+      await store.mutate((tasks) => reclaimStaleTasks(tasks, Date.now(), boardStaleMs(process.env)));
+      io.stdout(`Reclaimed ${stale.length.toString()} stale task(s) → blocked (retry to re-run):\n${stale.map((t) => `  ${t.id.slice(0, 8)}  ${t.title}`).join("\n")}\n`);
+    });
+
+  board
     .command("review <id>")
     .description("Approve or reject a task parked in the review column (draft-first: an outbound task is sent ONLY on approval)")
     .option("--approve", "Approve — complete the task")
@@ -223,6 +240,13 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
     .action(async (opts: { readonly all?: boolean }) => {
       const store = new FileAgentTaskBoard();
       const executor = makeAgentExecutor(io);
+      // Recover zombies first: a task stuck in-progress from a prior CRASHED run would otherwise
+      // block its dependents forever. Reclaim → blocked (not auto-re-run — outbound-safety).
+      const stale = staleInProgressTasks(await store.list(), Date.now(), boardStaleMs(process.env));
+      if (stale.length > 0) {
+        await store.mutate((tasks) => reclaimStaleTasks(tasks, Date.now(), boardStaleMs(process.env)));
+        io.stderr(`Reclaimed ${stale.length.toString()} stale in-progress task(s) from a crashed run → blocked.\n`);
+      }
       let ran = 0;
       for (;;) {
         const before = await store.list();

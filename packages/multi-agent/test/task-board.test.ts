@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addTask, expandTaskIntoSubtasks, lastFailureReason, nextReadyTask, recordTaskRun, retryTask, taskDepsMet, transitionTask, type AgentTask } from "../src/task-board.js";
+import { addTask, expandTaskIntoSubtasks, lastFailureReason, nextReadyTask, reclaimStaleTasks, recordTaskRun, retryTask, staleInProgressTasks, taskDepsMet, transitionTask, type AgentTask } from "../src/task-board.js";
 
 const task = (over: Partial<AgentTask> & { id: string }): AgentTask => ({
   createdAt: "2026-06-28T00:00:00Z",
@@ -116,5 +116,30 @@ describe("expandTaskIntoSubtasks — parallel mode (#3, independent sub-tasks)",
   it("default mode stays sequential (backward-compatible)", () => {
     const board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "g" }, "t0"), "p", subs, "t1");
     expect(board.find((t) => t.id === "s2")!.dependsOn).toEqual(["s1"]); // chained
+  });
+});
+
+describe("zombie recovery — staleInProgressTasks / reclaimStaleTasks (liveness)", () => {
+  const NOW = Date.parse("2026-06-29T12:00:00Z");
+  const STALE = 30 * 60 * 1000;
+  const at = (iso: string, over: Partial<AgentTask> = {}): AgentTask => task({ id: "t", status: "in_progress", updatedAt: iso, ...over });
+  it("flags an in-progress task older than the window; spares a recent one and non-in_progress", () => {
+    const old = at("2026-06-29T11:00:00Z");               // 60 min old → stale
+    const recent = at("2026-06-29T11:50:00Z", { id: "r" }); // 10 min → fresh
+    const doneOld = at("2026-06-29T09:00:00Z", { id: "d", status: "done" });
+    expect(staleInProgressTasks([old, recent, doneOld], NOW, STALE).map((t) => t.id)).toEqual(["t"]);
+  });
+  it("a non-parseable updatedAt is treated as not-stale (never reclaim on a bad timestamp)", () => {
+    expect(staleInProgressTasks([at("not-a-date")], NOW, STALE)).toEqual([]);
+  });
+  it("reclaim moves a stale in-progress task → blocked with a reason; a crashed run is NOT auto-re-queued (no double-execute)", () => {
+    const out = reclaimStaleTasks([at("2026-06-29T11:00:00Z")], NOW, STALE);
+    expect(out[0]).toMatchObject({ status: "blocked" });
+    expect(out[0]!.blockedReason).toMatch(/crashed/u);
+    expect(out[0]!.status).not.toBe("todo"); // must wait for an explicit retry, not auto-run
+  });
+  it("no stale tasks → board returned unchanged", () => {
+    const board = [at("2026-06-29T11:55:00Z")];
+    expect(reclaimStaleTasks(board, NOW, STALE)).toEqual(board);
   });
 });

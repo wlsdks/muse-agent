@@ -2,7 +2,7 @@ import type { ModelToolCall } from "@muse/model";
 import type { AgentTask } from "@muse/multi-agent";
 import { describe, expect, it } from "vitest";
 
-import { boardTaskPrompt, boardToolApprovalGate, formatBoard, selectObjectiveSpecsToSeed, taskNeedsReview } from "./commands-board.js";
+import { boardStaleMs, boardTaskPrompt, boardToolApprovalGate, formatBoard, selectObjectiveSpecsToSeed, taskNeedsReview } from "./commands-board.js";
 
 const t = (over: Partial<AgentTask> & { id: string; title: string }): AgentTask => ({
   createdAt: "t0", dependsOn: [], runs: [], status: "todo", updatedAt: "t0", ...over
@@ -82,5 +82,14 @@ describe("boardTaskPrompt — synthesis / retry / plain prompt (#3)", () => {
   });
   it("dependencyOutputs takes precedence over retryReason (a synthesis re-run still synthesizes)", () => {
     expect(boardTaskPrompt("g", { dependencyOutputs: ["r1", "r2"], retryReason: "x" })).toMatch(/Combine these/u);
+  });
+});
+
+describe("boardStaleMs — zombie staleness threshold", () => {
+  it("defaults to 30 minutes", () => { expect(boardStaleMs({})).toBe(30 * 60 * 1000); });
+  it("honors a positive MUSE_BOARD_STALE_MS override", () => { expect(boardStaleMs({ MUSE_BOARD_STALE_MS: "60000" })).toBe(60000); });
+  it("ignores a non-numeric / non-positive override → default", () => {
+    expect(boardStaleMs({ MUSE_BOARD_STALE_MS: "nope" })).toBe(30 * 60 * 1000);
+    expect(boardStaleMs({ MUSE_BOARD_STALE_MS: "-5" })).toBe(30 * 60 * 1000);
   });
 });

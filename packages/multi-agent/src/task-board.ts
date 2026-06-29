@@ -186,6 +186,37 @@ export function expandTaskIntoSubtasks(
   );
 }
 
+/**
+ * Tasks stuck `in_progress` past `staleMs` — a run that started but never recorded an outcome,
+ * i.e. the process died mid-execution (a "zombie"; the board is otherwise synchronous, so a
+ * lingering in_progress can only be a crash). Pure; a non-parseable `updatedAt` is treated as
+ * not-stale (never reclaim on a bad timestamp).
+ */
+export function staleInProgressTasks(tasks: readonly AgentTask[], nowMs: number, staleMs: number): AgentTask[] {
+  return tasks.filter((t) => {
+    if (t.status !== "in_progress") return false;
+    const age = nowMs - Date.parse(t.updatedAt);
+    return Number.isFinite(age) && age >= staleMs;
+  });
+}
+
+/**
+ * Recover zombie tasks: a stale `in_progress` task → `blocked` (NOT auto-re-queued). A crashed
+ * run may have half-applied a side effect and the in-memory dedup is gone, so re-running it
+ * autonomously could double-execute (the resume hazard) — it waits for an explicit `retry`
+ * instead. Stamps a reason so the board shows why. Pure.
+ */
+export function reclaimStaleTasks(tasks: readonly AgentTask[], nowMs: number, staleMs: number): AgentTask[] {
+  const stale = new Set(staleInProgressTasks(tasks, nowMs, staleMs).map((t) => t.id));
+  if (stale.size === 0) return [...tasks];
+  const nowIso = new Date(nowMs).toISOString();
+  return tasks.map((t) =>
+    stale.has(t.id)
+      ? { ...t, blockedReason: "stale in-progress — a run likely crashed; `board retry` to re-run", status: "blocked", updatedAt: nowIso }
+      : t
+  );
+}
+
 /** A task's answer from its most recent completed run — what a container synthesis reads. */
 export function latestOutput(task: AgentTask): string | undefined {
   if (task.result !== undefined) return task.result;
