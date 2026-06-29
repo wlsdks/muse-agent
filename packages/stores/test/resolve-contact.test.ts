@@ -105,3 +105,20 @@ describe("resolveContact — KO name normalization (recipient resolution must no
     expect(r.status).toBe("unknown");
   });
 });
+
+describe("resolveContact — KR phone international/domestic format (E.164 trunk-prefix)", () => {
+  it("a domestically-stored KR mobile resolves from the +82 international form (and vice versa)", () => {
+    const domestic = [{ id: "1", name: "홍길동", phone: "010-1234-5678" }];
+    expect(resolveContact(domestic, "+82 10-1234-5678").status).toBe("resolved");
+    expect(resolveContact(domestic, "+821012345678").status).toBe("resolved");
+    expect(resolveContact(domestic, "010-1234-5678").status).toBe("resolved"); // regression: domestic still works
+
+    const intl = [{ id: "2", name: "Kim", phone: "+82 10-9876-5432" }];
+    expect(resolveContact(intl, "010-9876-5432").status).toBe("resolved");
+  });
+  it("does NOT match two genuinely different numbers (no false recipient)", () => {
+    const contacts = [{ id: "x", name: "X", phone: "010-1234-5678" }];
+    expect(resolveContact(contacts, "010-5555-6666").status).toBe("unknown");
+    expect(resolveContact(contacts, "9999999").status).toBe("unknown");
+  });
+});

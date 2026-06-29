@@ -374,7 +374,12 @@ function phoneMatches(a: string, b: string): boolean {
   if (da.length < 7 || db.length < 7) {
     return false;
   }
-  return da === db || da.endsWith(db) || db.endsWith(da);
+  const suffixMatch = (x: string, y: string): boolean => x === y || x.endsWith(y) || y.endsWith(x);
+  // Also compare with a leading national-trunk prefix (a leading 0, DROPPED in the E.164
+  // international form) normalised off: KR "010-1234-5678" is the same number as "+82 10-1234-5678",
+  // but the trunk 0 sits where the country code would be, so a raw suffix compare misses it. A
+  // contact synced in international format must still resolve from a domestic number, and vice versa.
+  return suffixMatch(da, db) || suffixMatch(da.replace(/^0+/u, ""), db.replace(/^0+/u, ""));
 }
 
 function matchesExact(contact: Contact, q: string): boolean {
