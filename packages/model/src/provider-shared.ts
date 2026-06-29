@@ -60,7 +60,11 @@ export function sanitizeToolCallName(raw: string | undefined): string {
     return "unknown";
   }
   const cut = raw.split(/<\|/u)[0] ?? raw;
-  const cleaned = cut.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\ufeff]/gu, "").trim();
+  let cleaned = cut.replace(/[\u0000-\u001f\u007f\u200b-\u200f\u2028\u2029\ufeff]/gu, "").trim();
+  // Repair tool-NAME malformations a small local model emits (sibling of recoverToolArgsJson): surrounding
+  // quotes, a trailing call-paren `evaluate()`, an echoed OpenAI-style `functions.` prefix — each
+  // otherwise fails to match a registered tool and DROPS the call.
+  cleaned = cleaned.replace(/^["'`](.*)["'`]$/u, "$1").replace(/\s*\([^)]*\)\s*$/u, "").replace(/^functions\./u, "").trim();
   return cleaned.length > 0 ? cleaned : "unknown";
 }
 

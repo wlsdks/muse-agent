@@ -44,3 +44,11 @@ ratchet: pkg(model)/kind(tool-call-hardening) — DIVERSIFIED off the 2 recall f
 - WHY (gap): reproduced — gemma4-class models emit these in tool-call args; each unrecovered = a DROPPED tool call = a failed agent action. Tool-calling reliability is the binding constraint on a local model (tool-calling.md). openclaw has a dedicated tool-call-repair package; Muse only handled fenced + brace-matched JSON.
 - REVIEW: 8 behavioral tests (each malformation → the right OBJECT) + mutation RED + the SAFETY invariant (apostrophe-in-value preserved; re-parse guard ⇒ never a wrong value, only recover-or-undefined). model + wider suites green.
 - RISK: the unquoted-key/single-quote regexes are heuristic — but the re-parse guard bounds the blast radius to "no recovery" (undefined), never a corrupted value. Streaming-level repair (openclaw stream-normalizer) is out of scope (deliberately — Muse uses native tool_calls, not text-streamed JSON).
+
+## fire 5 · 2026-06-30 · skill v2.0 · fire5
+meta: value-class=correctness-capability · pkg=@muse/model · kind=tool-call-hardening · verdict=PASS · firesSinceDrill=5
+ratchet: pkg(model)/kind(tool-call-hardening) — SAME (pkg,kind) as fire-4 (sibling completion: fire-4=args, fire-5=names). model now 3× (fire-1,4,5); tool-call vein COMPLETE. **NEXT fire MUST diversify to a non-model, non-recall (pkg,kind)** (model+tool-call would hit the 8-fire ratchet soon). fabrication 0.
+- WHAT: harden `sanitizeToolCallName` — strip a trailing call-paren `evaluate()`, surrounding quotes `"math_eval"`, an echoed OpenAI-style `functions.` prefix. Sibling of fire-4's arg repair → tool-call MALFORMATION recovery now complete (names + args).
+- WHY (gap): each malformed NAME fails to match a registered tool → DROPPED call (same failure as a bad arg). Tool-calling reliability is the local-model binding constraint (tool-calling.md).
+- REVIEW: 8 behavioral tests (each malformation → the exact registered name; clean name unchanged; empty→unknown) + mutation RED. No over-strip (a paren-less / mid-string-"functions" name is untouched — regexes are end-anchored). model suite 417 green.
+- RISK: heuristic regexes — but bounded: worst case a real malformation isn't recovered (call drops as before), never a wrong name (over-strip guarded by end-anchors + the clean-name test).
