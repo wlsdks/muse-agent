@@ -31,6 +31,20 @@ const CITATION_FROM_RE = /\[from\s+([^\]]+?)\s*\]/giu;
 const SENTINEL = "\u{E000}";
 const SENTINEL_RE = /\u{E000}\d+\u{E000}/gu;
 
+// A sentence where Muse declares it LACKS the asked-for info (an abstention) is the
+// opposite of a groundable claim — it asserts ABSENCE, not a fact. Its tokens ("time",
+// "appointment") can still overlap the broad evidence union (tasks/reminders) and look
+// "citable", but flagging an honest "I don't have that" as a missing-citation claim
+// punishes the very behavior the grounding edge wants (abstain over fabricate). So
+// abstention sentences are excluded from the citable set. EN + KO self-knowledge negation.
+const ABSTENTION_EN_RE = /\b(i\s+(do\s+not|don'?t|cannot|can'?t|could\s+not|couldn'?t|am\s+not)\s+(have|find|see|know|recall|locate|sure|certain|aware)|i'?m\s+not\s+(sure|certain|aware|able)|i'?m\s+afraid\s+i\s+(do\s+not|don'?t|cannot|can'?t)|there\s+(is|are)\s+no\b|no\s+[\w''-]+(\s+[\w''-]+){0,4}\s+(is|are|was|were)?\s*(listed|recorded|found|noted|mentioned|available)|not\s+(in\s+your\s+(notes|records|memory|context)|listed|recorded|available|specified))/iu;
+const ABSTENTION_KO_RE = /(없(습니다|어요|네요|음|다|고)|모르(겠|겠습니다|ㄴ다)|확실하지\s*않|찾을\s*수\s*없|기록에\s*(는\s*)?없|정보가\s*없)/u;
+
+/** True when a sentence is an ABSTENTION — Muse stating it lacks/can't find/isn't sure of the info. */
+export function isAbstentionSentence(sentence: string): boolean {
+  return ABSTENTION_EN_RE.test(sentence) || ABSTENTION_KO_RE.test(sentence);
+}
+
 /**
  * Remove `[from <source>]` citation markers from an answer — they are Muse's own
  * attribution metadata, not claims, and their internal "." (e.g. `.md]`) would
@@ -71,7 +85,7 @@ export function reportCitationRecall(
       if (evidenceTokens.has(token)) covered += 1;
     }
     const citable = covered / tokens.size >= effectiveFloor;
-    if (!citable) continue;
+    if (!citable || isAbstentionSentence(sentence)) continue;
     citableCount += 1;
     if (hasCitation) citedCount += 1;
     else uncited.push(sentence);
