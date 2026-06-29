@@ -98,3 +98,23 @@ describe("expandTaskIntoSubtasks — board-as-handoff (a complex task → sub-ta
     expect(expandTaskIntoSubtasks(once, "p", [{ id: "x1", title: "a" }, { id: "x2", title: "b" }], "t2")).toEqual(once); // already decomposed
   });
 });
+
+describe("expandTaskIntoSubtasks — parallel mode (#3, independent sub-tasks)", () => {
+  const subs = [{ id: "s1", title: "research A" }, { id: "s2", title: "research B" }, { id: "s3", title: "research C" }];
+  it("parallel mode gives each sub-task NO inter-dependency (all immediately runnable)", () => {
+    const board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "compare A B C" }, "t0"), "p", subs, "t1", "parallel");
+    expect(board.find((t) => t.id === "s1")!.dependsOn).toEqual([]);
+    expect(board.find((t) => t.id === "s2")!.dependsOn).toEqual([]); // NOT chained (vs sequential)
+    expect(board.find((t) => t.id === "s3")!.dependsOn).toEqual([]);
+    expect(board.find((t) => t.id === "p")!.dependsOn).toEqual(["s1", "s2", "s3"]); // container still waits for all
+  });
+  it("all parallel sub-tasks are ready at once (a true fan-out, unlike the sequential chain)", () => {
+    const board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "g" }, "t0"), "p", subs, "t1", "parallel");
+    const ready = board.filter((t) => t.status === "todo" && taskDepsMet(t, board) && !t.decomposed);
+    expect(ready.map((t) => t.id).sort()).toEqual(["s1", "s2", "s3"]); // all three runnable now
+  });
+  it("default mode stays sequential (backward-compatible)", () => {
+    const board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "g" }, "t0"), "p", subs, "t1");
+    expect(board.find((t) => t.id === "s2")!.dependsOn).toEqual(["s1"]); // chained
+  });
+});

@@ -142,16 +142,18 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
 
   board
     .command("expand <id>")
-    .description("Decompose a complex task into sub-tasks on the board (it becomes a container that auto-completes when its sub-tasks are done; `board run --all` works the chain in order)")
-    .action(async (id: string) => {
+    .description("Decompose a complex task into sub-tasks on the board (it becomes a container that auto-completes when its sub-tasks are done; `board run --all` works them)")
+    .option("--parallel", "Treat the sub-tasks as INDEPENDENT (no ordering) instead of a sequential chain — for work that doesn't build step-on-step")
+    .action(async (id: string, opts: { readonly parallel?: boolean }) => {
       const store = new FileAgentTaskBoard();
       const parent = (await store.list()).find((t) => t.id.startsWith(id));
       if (!parent) { io.stderr(`muse board expand: no task ${id}\n`); process.exitCode = 1; return; }
       if (parent.decomposed) { io.stdout(`${parent.id.slice(0, 8)} is already decomposed.\n`); return; }
       const subs = decomposeRequest(parent.title).map((s) => ({ id: randomUUID(), title: s.text }));
       if (subs.length < 2) { io.stdout(`"${parent.title}" isn't decomposable into multiple steps — leaving it as a single task.\n`); return; }
-      await store.mutate((tasks) => expandTaskIntoSubtasks(tasks, parent.id, subs, new Date().toISOString()));
-      io.stdout(`Expanded ${parent.id.slice(0, 8)} into ${subs.length.toString()} sub-tasks:\n${subs.map((s, i) => `  ${(i + 1).toString()}. ${s.title}`).join("\n")}\n`);
+      const mode = opts.parallel ? "parallel" : "sequential";
+      await store.mutate((tasks) => expandTaskIntoSubtasks(tasks, parent.id, subs, new Date().toISOString(), mode));
+      io.stdout(`Expanded ${parent.id.slice(0, 8)} into ${subs.length.toString()} ${mode} sub-tasks:\n${subs.map((s, i) => `  ${(i + 1).toString()}. ${s.title}`).join("\n")}\n`);
     });
 
   board

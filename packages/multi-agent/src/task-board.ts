@@ -141,24 +141,32 @@ export function tasksFromSubtasks(
 
 /**
  * Board-as-handoff (S5 wired through the dispatcher): EXPAND a parent task into a sub-task
- * DAG on the board. The sub-tasks are chained sequentially (s_i waits on s_{i-1} — matching
- * decomposeRequest's ordered steps, where a later step builds on the earlier one's result),
- * and the parent is rewired to depend on them all + flagged `decomposed` so it becomes a
- * CONTAINER: the dispatcher runs the sub-tasks in dependency order, then auto-completes the
- * parent. A no-op if the parent is missing, already decomposed, or there's nothing to expand
- * into (<2 sub-tasks isn't a decomposition). The caller supplies sub-task ids + the clock.
+ * DAG on the board. The parent is rewired to depend on every sub-task + flagged `decomposed`
+ * so it becomes a CONTAINER the dispatcher runs the sub-tasks for, then auto-completes.
+ *
+ * `mode` shapes the sub-task graph:
+ * - `"sequential"` (default) — a chain (s_i waits on s_{i-1}), for ordered steps where a later
+ *   one builds on the earlier one's result (decomposeRequest's "X then Y").
+ * - `"parallel"` — INDEPENDENT sub-tasks (no inter-dependencies), all immediately runnable, for
+ *   work that doesn't need ordering ("research A / research B / research C"). With cloud
+ *   providers these run truly concurrently; on one local model they still run, just serially.
+ *
+ * A no-op if the parent is missing, already decomposed, or there's nothing to expand into
+ * (<2 sub-tasks isn't a decomposition). The caller supplies sub-task ids + the clock.
  */
 export function expandTaskIntoSubtasks(
   tasks: readonly AgentTask[],
   parentId: string,
   subtasks: readonly { readonly id: string; readonly title: string }[],
-  nowIso: string
+  nowIso: string,
+  mode: "sequential" | "parallel" = "sequential"
 ): AgentTask[] {
   const parent = tasks.find((t) => t.id === parentId);
   if (!parent || parent.decomposed || subtasks.length < 2) return [...tasks];
   let board: AgentTask[] = [...tasks];
   subtasks.forEach((sub, i) => {
-    board = addTask(board, { id: sub.id, title: sub.title, ...(i > 0 ? { dependsOn: [subtasks[i - 1]!.id] } : {}) }, nowIso);
+    const dependsOn = mode === "sequential" && i > 0 ? [subtasks[i - 1]!.id] : [];
+    board = addTask(board, { dependsOn, id: sub.id, title: sub.title }, nowIso);
   });
   const subIds = subtasks.map((s) => s.id);
   return board.map((t) =>
