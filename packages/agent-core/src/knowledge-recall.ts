@@ -48,7 +48,7 @@ import {
 } from "./knowledge-ranking.js";
 import { reorderForLongContext } from "./recall-chunking.js";
 import { classifyRetrievalConfidence, DEFAULT_CONFIDENT_AT } from "./recall-confidence.js";
-import { finiteOr, fuseByReciprocalRank, LEXICAL_STOPWORDS, lexicalTokens } from "./recall-lexical.js";
+import { finiteOr, fuseByReciprocalRank, LEXICAL_STOPWORDS, lexicalTokens, normalizeForRecall } from "./recall-lexical.js";
 import { comparableScript } from "./script-family.js";
 
 // Re-exports preserving the original public surface (symbols NOT used in this
@@ -272,8 +272,10 @@ export function renderKnowledgeMatches(matches: readonly KnowledgeMatch[], optio
 }
 
 function resolvesExact(value: string, allowed: readonly string[]): boolean {
-  const v = value.trim().toLowerCase();
-  return allowed.some((item) => item.trim().toLowerCase() === v);
+  // NFC both sides so a KO citation marker (e.g. a Hangul note title) resolves to its source
+  // regardless of NFD/NFC origin — the sibling of the lexical tokeniser's normalisation.
+  const v = normalizeForRecall(value).trim().toLowerCase();
+  return allowed.some((item) => normalizeForRecall(item).trim().toLowerCase() === v);
 }
 
 // Free-text citations (task/event/reminder titles): the model may PARAPHRASE

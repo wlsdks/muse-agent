@@ -1,3 +1,5 @@
+import { normalizeForRecall } from "@muse/agent-core";
+
 import type { RecallHit } from "./hit.js";
 import { renderMemoryFact, type MemoryFact } from "./select.js";
 
@@ -56,7 +58,7 @@ const PROSE_LABELS = new Set([
 
 /** Normalize a field label for matching: lowercase, collapse whitespace, trim. */
 function normalizeField(label: string): string {
-  return label.toLowerCase().replace(/\s+/gu, " ").trim();
+  return normalizeForRecall(label).toLowerCase().replace(/\s+/gu, " ").trim();
 }
 
 /** A label is a real attribute only if it's not a prose prefix and doesn't end in a digit (a stray time/number). */

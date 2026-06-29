@@ -28,3 +28,11 @@ ratchet: pkg(agent-core,autoconfigure)/kind(recall-bugfix) — fire-0 docs, fire
 - WHY (gap): openclaw has normalization-core; Muse's recall tokeniser did NOT NFC-normalize → a macOS-NFD Korean note never matched an NFC query (REPRODUCED: NFD vs NFC '한국어' → disjoint token sets). The grounding edge silently missed a real KO note + falsely abstained — a CORE-edge correctness bug, high value for a bilingual + macOS product.
 - REVIEW: behavioral test (NFD phrase ≡ NFC phrase tokens) + mutation RED + ASCII unchanged + NFC (not NFKC, lossless). test:changed agent-core 1524 + autoconfigure 282 green.
 - RISK: NFC is canonical-composition (safe); other raw-string recall comparisons (citation exact-resolve, memory-key match) may still be NFC/NFD-naive — noted as a follow-up sibling (not in this fire's proven scope).
+
+## fire 3 · 2026-06-30 · skill v2.0 · fire3
+meta: value-class=correctness-capability · pkg=@muse/memory+@muse/agent-core+@muse/recall · kind=recall-bugfix · verdict=PASS · firesSinceDrill=3
+ratchet: pkg(memory,agent-core,recall)/kind(recall-bugfix) — 2nd recall fire (fire-2 sibling completion, NOT new vein); 8-fire ratchet not tripped (4 fires). NEXT fire MUST diversify to a different (pkg,kind). fabrication 0.
+- WHAT: NFC sibling-audit completion — fire-2 fixed the lexical tokeniser; this NFC-normalizes the 3 remaining recall-comparison sites: `normalizeMemoryKey` (memory, inlined — below agent-core, cycle), `resolvesExact` (agent-core citation resolution), `normalizeField` (recall conflict). KO recall fix now COMPLETE (lexical + semantic + key + citation + conflict all NFC).
+- WHY (gap): a half-done NFC fix is a real risk — some recall paths normalized, others not = inconsistent KO matching. openclaw normalization-core centralizes this; Muse's was scattered + NFC-naive at these 3 sites.
+- REVIEW: normalizeMemoryKey NFD≡NFC test + mutation RED + ASCII slug unchanged. resolvesExact/normalizeField call the fire-2-tested normalizeForRecall (primitive covered) + caller regression (memory 393, recall 40 green). memory gained NO agent-core import (acyclic).
+- RISK: resolvesExact/normalizeField lack a DIRECT behavioral test (private fns) — covered by the tested primitive + caller suites; a dedicated citation/conflict KO test would be a stronger lock (follow-up).
