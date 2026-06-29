@@ -33,6 +33,12 @@ export interface AgentTask {
   readonly runs: readonly TaskRun[];
   /** Set when blocked/failed — surfaced for human input and replayed on retry. */
   readonly blockedReason?: string;
+  /**
+   * True once this task was EXPANDED into sub-tasks (board-as-handoff): it becomes a
+   * container that depends on them and auto-completes when they're done — the dispatcher
+   * runs the sub-tasks, not the container, and never re-expands it.
+   */
+  readonly decomposed?: boolean;
 }
 
 /** True when EVERY task this one depends on is `done` (a missing/incomplete dep ⇒ not met). */
@@ -131,6 +137,35 @@ export function tasksFromSubtasks(
   nowIso: string
 ): AgentTask[] {
   return subtasks.reduce<AgentTask[]>((board, s) => addTask(board, s, nowIso), []);
+}
+
+/**
+ * Board-as-handoff (S5 wired through the dispatcher): EXPAND a parent task into a sub-task
+ * DAG on the board. The sub-tasks are chained sequentially (s_i waits on s_{i-1} — matching
+ * decomposeRequest's ordered steps, where a later step builds on the earlier one's result),
+ * and the parent is rewired to depend on them all + flagged `decomposed` so it becomes a
+ * CONTAINER: the dispatcher runs the sub-tasks in dependency order, then auto-completes the
+ * parent. A no-op if the parent is missing, already decomposed, or there's nothing to expand
+ * into (<2 sub-tasks isn't a decomposition). The caller supplies sub-task ids + the clock.
+ */
+export function expandTaskIntoSubtasks(
+  tasks: readonly AgentTask[],
+  parentId: string,
+  subtasks: readonly { readonly id: string; readonly title: string }[],
+  nowIso: string
+): AgentTask[] {
+  const parent = tasks.find((t) => t.id === parentId);
+  if (!parent || parent.decomposed || subtasks.length < 2) return [...tasks];
+  let board: AgentTask[] = [...tasks];
+  subtasks.forEach((sub, i) => {
+    board = addTask(board, { id: sub.id, title: sub.title, ...(i > 0 ? { dependsOn: [subtasks[i - 1]!.id] } : {}) }, nowIso);
+  });
+  const subIds = subtasks.map((s) => s.id);
+  return board.map((t) =>
+    t.id === parentId
+      ? { ...t, decomposed: true, dependsOn: [...t.dependsOn, ...subIds], updatedAt: nowIso }
+      : t
+  );
 }
 
 /** The reason of a task's most recent FAILED run — the context a retry replays. */

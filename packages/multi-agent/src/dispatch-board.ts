@@ -40,6 +40,12 @@ export async function dispatchNextTask(
   const ready = nextReadyTask(tasks);
   if (!ready) return { tasks: [...tasks] };
 
+  // A decomposed CONTAINER becomes ready only once all its sub-tasks are done — the work was
+  // the sub-tasks, so it auto-completes without an executor run (board-as-handoff).
+  if (ready.decomposed) {
+    return { outcome: "completed", ran: ready, tasks: recordTaskRun(tasks, ready.id, { at: nowIso, reason: "all sub-tasks completed", status: "completed" }) };
+  }
+
   let board = transitionTask(tasks, ready.id, "in_progress", nowIso);
   const retryReason = lastFailureReason(ready);
 

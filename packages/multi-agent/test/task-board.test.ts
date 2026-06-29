@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { lastFailureReason, nextReadyTask, recordTaskRun, retryTask, taskDepsMet, transitionTask, type AgentTask } from "../src/task-board.js";
+import { addTask, expandTaskIntoSubtasks, lastFailureReason, nextReadyTask, recordTaskRun, retryTask, taskDepsMet, transitionTask, type AgentTask } from "../src/task-board.js";
 
 const task = (over: Partial<AgentTask> & { id: string }): AgentTask => ({
   createdAt: "2026-06-28T00:00:00Z",
@@ -66,5 +66,35 @@ describe("agent task board — the durable Kanban coordination core", () => {
       const done = [task({ id: "a", status: "done" })];
       expect(retryTask(done, "a", "t3")).toEqual(done); // not blocked → no-op
     });
+  });
+});
+
+describe("expandTaskIntoSubtasks — board-as-handoff (a complex task → sub-task DAG)", () => {
+  const subs = [{ id: "s1", title: "step one" }, { id: "s2", title: "step two" }, { id: "s3", title: "step three" }];
+  it("adds the sub-tasks as a sequential chain and rewires the parent to depend on them + marks it decomposed", () => {
+    const board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "big goal" }, "t0"), "p", subs, "t1");
+    expect(board.find((t) => t.id === "s1")!.dependsOn).toEqual([]);
+    expect(board.find((t) => t.id === "s2")!.dependsOn).toEqual(["s1"]); // chained
+    expect(board.find((t) => t.id === "s3")!.dependsOn).toEqual(["s2"]);
+    const parent = board.find((t) => t.id === "p")!;
+    expect(parent.decomposed).toBe(true);
+    expect(parent.dependsOn).toEqual(["s1", "s2", "s3"]); // waits on every sub-task
+  });
+  it("the dispatcher runs the chain IN ORDER (s1 → s2 → s3), the parent never first", () => {
+    let board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "big goal" }, "t0"), "p", subs, "t1");
+    expect(nextReadyTask(board)!.id).toBe("s1");           // only s1 is ready (s2/s3 wait, parent waits)
+    board = transitionTask(board, "s1", "done", "t2");
+    expect(nextReadyTask(board)!.id).toBe("s2");
+    board = transitionTask(board, "s2", "done", "t3");
+    expect(nextReadyTask(board)!.id).toBe("s3");
+    board = transitionTask(board, "s3", "done", "t4");
+    expect(nextReadyTask(board)!.id).toBe("p");            // only NOW is the container ready
+  });
+  it("is a no-op on a missing parent, an already-decomposed parent, or a non-decomposition (<2 sub-tasks)", () => {
+    const base = addTask([], { id: "p", title: "g" }, "t0");
+    expect(expandTaskIntoSubtasks(base, "ghost", subs, "t1")).toEqual(base);
+    expect(expandTaskIntoSubtasks(base, "p", [{ id: "only", title: "one" }], "t1")).toEqual(base);
+    const once = expandTaskIntoSubtasks(base, "p", subs, "t1");
+    expect(expandTaskIntoSubtasks(once, "p", [{ id: "x1", title: "a" }, { id: "x2", title: "b" }], "t2")).toEqual(once); // already decomposed
   });
 });

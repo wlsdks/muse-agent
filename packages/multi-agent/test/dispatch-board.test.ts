@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { dispatchNextTask, resolveReview, type TaskExecutor } from "../src/dispatch-board.js";
-import { addTask, recordTaskRun, retryTask, tasksFromSubtasks, type AgentTask } from "../src/task-board.js";
+import { addTask, expandTaskIntoSubtasks, recordTaskRun, retryTask, tasksFromSubtasks, type AgentTask } from "../src/task-board.js";
 
 const ok: TaskExecutor = async () => ({ status: "completed" });
 const fail: TaskExecutor = async () => ({ reason: "boom", status: "failed" });
@@ -54,5 +54,18 @@ describe("resolveReview — the human-review gate (S6, draft-first)", () => {
   it("is a no-op on a task that isn't in review (only a parked task can be approved — no self-approve, no double-approve)", () => {
     const done = recordTaskRun(addTask([], { id: "a", title: "x" }, "t0").map((t) => ({ ...t, status: "in_progress" as const })), "a", { at: "t1", status: "completed" });
     expect(resolveReview(done, "a", true, "t2")).toEqual(done); // already done → unchanged
+  });
+});
+
+describe("dispatchNextTask — a decomposed CONTAINER auto-completes (board-as-handoff)", () => {
+  it("a decomposed parent whose sub-tasks are done auto-completes WITHOUT calling the executor", async () => {
+    let board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "goal" }, "t0"), "p", [{ id: "s1", title: "a" }, { id: "s2", title: "b" }], "t1");
+    board = board.map((t) => (t.id === "s1" || t.id === "s2") ? { ...t, status: "done" as const } : t); // sub-tasks done
+    let executorCalls = 0;
+    const out = await dispatchNextTask(board, async () => { executorCalls += 1; return { status: "completed" }; }, "t2");
+    expect(out.ran?.id).toBe("p");
+    expect(out.outcome).toBe("completed");
+    expect(out.tasks.find((t) => t.id === "p")!.status).toBe("done");
+    expect(executorCalls).toBe(0); // the container did NOT run the agent — its work was the sub-tasks
   });
 });

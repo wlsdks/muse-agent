@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ToolApprovalGate } from "@muse/agent-core";
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
-import { addTask, dispatchNextTask, FileAgentTaskBoard, resolveReview, retryTask, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
+import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, FileAgentTaskBoard, resolveReview, retryTask, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
@@ -110,6 +110,20 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
       const dependsOn = opts.dependsOn ? opts.dependsOn.split(",").map((s) => s.trim()).filter(Boolean) : [];
       await new FileAgentTaskBoard().mutate((tasks) => addTask(tasks, { dependsOn, id, title, ...(opts.desc ? { description: opts.desc } : {}) }, new Date().toISOString()));
       io.stdout(`Added ${id.slice(0, 8)} — ${title}\n`);
+    });
+
+  board
+    .command("expand <id>")
+    .description("Decompose a complex task into sub-tasks on the board (it becomes a container that auto-completes when its sub-tasks are done; `board run --all` works the chain in order)")
+    .action(async (id: string) => {
+      const store = new FileAgentTaskBoard();
+      const parent = (await store.list()).find((t) => t.id.startsWith(id));
+      if (!parent) { io.stderr(`muse board expand: no task ${id}\n`); process.exitCode = 1; return; }
+      if (parent.decomposed) { io.stdout(`${parent.id.slice(0, 8)} is already decomposed.\n`); return; }
+      const subs = decomposeRequest(parent.title).map((s) => ({ id: randomUUID(), title: s.text }));
+      if (subs.length < 2) { io.stdout(`"${parent.title}" isn't decomposable into multiple steps — leaving it as a single task.\n`); return; }
+      await store.mutate((tasks) => expandTaskIntoSubtasks(tasks, parent.id, subs, new Date().toISOString()));
+      io.stdout(`Expanded ${parent.id.slice(0, 8)} into ${subs.length.toString()} sub-tasks:\n${subs.map((s, i) => `  ${(i + 1).toString()}. ${s.title}`).join("\n")}\n`);
     });
 
   board
