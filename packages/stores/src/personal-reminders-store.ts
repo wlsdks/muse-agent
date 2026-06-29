@@ -297,9 +297,27 @@ export function nextReminderOccurrence(dueAt: string, recurrence: ReminderRecurr
     }
     return next.toISOString();
   }
-  const periodMs = recurrence === "weekly" ? 7 * 86_400_000 : 86_400_000;
-  const periods = Math.max(1, Math.ceil((fromMs - due + 1) / periodMs));
-  return new Date(due + periods * periodMs).toISOString();
+  // Daily/weekly step in LOCAL days (setDate), not flat 86_400_000-ms ticks: across a DST
+  // transition a real day is 23/25h, so flat-ms drifts a daily 09:00 reminder (rent, medication)
+  // to 10:00/08:00 after the change. Step from the ORIGINAL due — like the monthly branch — and
+  // advance until strictly after `from` (skips periods missed during daemon downtime).
+  const stepDays = recurrence === "weekly" ? 7 : 1;
+  const dueDate = new Date(due);
+  let n = 1;
+  let next = addLocalDays(dueDate, stepDays * n);
+  while (next.getTime() <= fromMs) {
+    n += 1;
+    next = addLocalDays(dueDate, stepDays * n);
+  }
+  return next.toISOString();
+}
+
+// Advance a date by whole days in LOCAL time, preserving the wall-clock time across DST (the
+// daily/weekly counterpart of addMonthsClamped's local-time stepping).
+function addLocalDays(date: Date, days: number): Date {
+  const d = new Date(date.getTime());
+  d.setDate(d.getDate() + days);
+  return d;
 }
 
 /**
