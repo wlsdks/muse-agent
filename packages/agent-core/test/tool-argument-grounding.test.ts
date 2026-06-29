@@ -204,3 +204,20 @@ describe("groundToolArguments — nested OBJECT value: clean fabricated string l
     expect(out.dropped).toEqual([]);
   });
 });
+
+describe("groundToolArguments — KO normalization (a real arg must not false-drop on NFD/NFC/full-width)", () => {
+  it("a KO location the model fills NFC grounds against an NFD utterance (not dropped as fabricated)", () => {
+    const r = groundToolArguments({ location: "회의실".normalize("NFC"), title: "미팅" }, ["location"], "회의실에서 만나자".normalize("NFD"));
+    expect(r.dropped).not.toContain("location");
+    expect(r.args.location).toBe("회의실".normalize("NFC"));
+  });
+  it("a full-width-digit arg grounds against the ASCII utterance form", () => {
+    const r = groundToolArguments({ room: "１２３호" }, ["room"], "123호에서 보자");
+    expect(r.dropped).not.toContain("room");
+  });
+  it("STILL drops a genuinely fabricated arg — the anti-fabrication guard is not weakened", () => {
+    const r = groundToolArguments({ location: "강남역" }, ["location"], "회의 잡아줘");
+    expect(r.dropped).toContain("location");
+    expect(r.args.location).toBeUndefined();
+  });
+});
