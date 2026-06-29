@@ -73,10 +73,20 @@ function addMonthsClamped(date: Date, months: number): Date {
 /** The i-th occurrence's start, computed from the BASE (not cumulatively) so a
  *  monthly Jan-31 series stays 31st-or-clamped each month rather than drifting. */
 function occurrenceStart(base: Date, rule: ParsedRrule, i: number): Date {
-  if (rule.freq === "DAILY") return new Date(base.getTime() + i * rule.interval * 86_400_000);
-  if (rule.freq === "WEEKLY") return new Date(base.getTime() + i * rule.interval * 7 * 86_400_000);
+  if (rule.freq === "DAILY") return addLocalDays(base, i * rule.interval);
+  if (rule.freq === "WEEKLY") return addLocalDays(base, i * rule.interval * 7);
   if (rule.freq === "MONTHLY") return addMonthsClamped(base, i * rule.interval);
   return addMonthsClamped(base, i * rule.interval * 12); // YEARLY
+}
+
+// Step whole DAYS in LOCAL time (setDate), not flat 86_400_000-ms ticks: across a DST transition a
+// real day is 23 or 25 hours, so flat-ms stepping drifts a daily 10:00 event to 11:00 (or 09:00)
+// after the change. setDate preserves the wall-clock time — a daily/weekly event keeps its hour.
+// (MONTHLY/YEARLY already step in local time via addMonthsClamped's setMonth.)
+function addLocalDays(base: Date, days: number): Date {
+  const d = new Date(base.getTime());
+  d.setDate(d.getDate() + days);
+  return d;
 }
 
 /**

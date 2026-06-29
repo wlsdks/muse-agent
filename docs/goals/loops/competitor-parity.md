@@ -98,3 +98,11 @@ ratchet: NEW pkg (@muse/mcp-shared) + NEW kind (relative-time-coverage) — dive
 - WHY (probe): "일주일 뒤" / "이틀 뒤" / "한 주 뒤" — more natural than "1주 뒤"/"2일 뒤" — all returned undefined, so a user's "일주일 뒤 알림" lost its time. Common scheduling phrasings, unambiguous semantics (일주일 = exactly 7 days).
 - REVIEW: 9 tests (each phrase → correct +N days, reference time preserved; digit forms unchanged) + mutation RED + false-match probes (이번 주·일요일·하루종일·삼일·한 시간 unaffected — ^-anchor + the `$`-anchored offset regex protect). test:changed green.
 - RISK: sibling gaps remain (Sino day words 삼일/사일, "오는 토요일", "3일 후 오후 3시" offset+time, bare "3시"→03:00 AM default) — noted in backlog, NOT in this fire's scope (the AM/PM default is a policy call, deliberately untouched).
+
+## fire 12 · 2026-06-30 · skill v2.0 · fire12
+meta: value-class=correctness-bugfix · pkg=@muse/calendar · kind=recurrence-bugfix · verdict=PASS · firesSinceDrill=2
+ratchet: NEW pkg (@muse/calendar) + NEW kind (recurrence-bugfix) — genuinely DIVERSIFIED off the KO-locale run (normalization 2-9, scheduling 11) into non-locale calendar date math. fabrication 0.
+- WHAT: `expandRecurringEvent` DAILY/WEEKLY occurrence times used FLAT 86_400_000-ms stepping. New `addLocalDays` (setDate, local-time) preserves the wall-clock hour across DST. MONTHLY/YEARLY already local (addMonthsClamped) — unchanged.
+- WHY (bug, PROBED + reproduced): a real day across a DST transition is 23/25h, so a daily 10:00 event DRIFTED to 11:00 after the US spring-forward (Mar 8 2026, America/New_York) — a wrong calendar time silently set. Provider-neutral (CalDAV/ICS sync, any-TZ users); KST itself has no DST so the primary user was unaffected, but the engine was wrong.
+- REVIEW: 2 DST tests (daily 10:00 + weekly 09:00 stay put across Mar 8) under a pinned TZ + mutation RED (revert to flat-ms → 11:00) + monthly clamping verified intact (Jan31→Feb28→Mar31 recover) + full calendar suite 160 green (no regression; KST daily/weekly unchanged since setDate==flat-ms with no DST).
+- RISK: firstWindowIndex still flat-ms estimates the start index but the loop filters per-occurrence (endMs≥fromMs), so the DST-aware times can't skip/dup an in-window instance. Verified by the judge at a window edge.
