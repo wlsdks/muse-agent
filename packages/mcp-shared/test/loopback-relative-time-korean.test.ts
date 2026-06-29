@@ -45,3 +45,27 @@ describe("resolveKoreanRelativePhrase (moved into the korean module)", () => {
     expect(resolveKoreanRelativePhrase("", ref)).toBeUndefined();
   });
 });
+
+describe("resolveKoreanRelativePhrase — spelled-out KO duration words (일주일/한 주/이틀, the natural phrasing)", () => {
+  const REF = new Date(2026, 6, 6, 10, 0, 0); // Mon 2026-07-06 10:00 local
+  const dayOf = (phrase: string): number | undefined => resolveKoreanRelativePhrase(phrase, REF)?.getDate();
+  it("week words resolve to +7N days, preserving the reference time", () => {
+    expect(dayOf("일주일 뒤")).toBe(13);   // +7d
+    expect(dayOf("일주일 후")).toBe(13);
+    expect(dayOf("1주일 뒤")).toBe(13);
+    expect(dayOf("이주일 뒤")).toBe(20);   // +14d
+    expect(dayOf("한 주 뒤")).toBe(13);
+    expect(dayOf("두 주 뒤")).toBe(20);
+    expect(resolveKoreanRelativePhrase("일주일 뒤", REF)?.getHours()).toBe(10);
+  });
+  it("native day words resolve to +N days", () => {
+    expect(dayOf("하루 뒤")).toBe(7);
+    expect(dayOf("이틀 뒤")).toBe(8);
+    expect(dayOf("사흘 후")).toBe(9);
+    expect(dayOf("나흘 뒤")).toBe(10);
+  });
+  it("does NOT change the existing digit forms (regression)", () => {
+    expect(dayOf("1주 뒤")).toBe(13);
+    expect(dayOf("3일 뒤")).toBe(9);
+  });
+});

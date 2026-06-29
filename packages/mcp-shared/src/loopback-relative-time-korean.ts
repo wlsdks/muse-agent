@@ -192,7 +192,19 @@ function resolveKoreanWeekdayPhrase(phrase: string, reference: Date): Date | und
  * calendar-month semantics; the rest are flat ms offsets.
  */
 function resolveKoreanDurationOffset(phrase: string, reference: Date): Date | undefined {
-  const m = /^(\d+)\s*(분|시간|일|주|개월|달)\s*(?:후|뒤)$/u.exec(phrase);
+  // Spelled-out Korean week durations a digit-only regex misses: "일주일"/"이주일" (Sino number +
+  // 주일) and "한 주"/"두 주" (native number + 주) are the NATURAL way Koreans say "in N weeks" —
+  // more common than "1주". Normalise to the digit form first; the semantics are unambiguous
+  // (일주일 = exactly 7 days). `(?!일)` keeps "한 주" from eating the 주 of a "주일" form.
+  const normalized = phrase
+    .replace(/^일\s*주일/u, "1주").replace(/^이\s*주일/u, "2주").replace(/^삼\s*주일/u, "3주").replace(/^사\s*주일/u, "4주")
+    .replace(/^한\s*주(?!일)/u, "1주").replace(/^두\s*주(?!일)/u, "2주").replace(/^세\s*주(?!일)/u, "3주").replace(/^네\s*주(?!일)/u, "4주")
+    // Native-Korean DAY words (the same spelled-out class): 하루=1일 … 나흘=4일 — "이틀 뒤" is as
+    // common as "2일 뒤". Anchored so they only fire as the leading duration token.
+    .replace(/^하루/u, "1일").replace(/^이틀/u, "2일").replace(/^사흘/u, "3일").replace(/^나흘/u, "4일");
+  // "주일" before "주" in the alternation = longest-match-first (so "1주일" reads as a week, not
+  // "주" + a stray "일"). "주일" is the same 7-day unit as "주".
+  const m = /^(\d+)\s*(분|시간|일|주일|주|개월|달)\s*(?:후|뒤)$/u.exec(normalized);
   if (!m) {
     return undefined;
   }
@@ -204,7 +216,7 @@ function resolveKoreanDurationOffset(phrase: string, reference: Date): Date | un
   const offsetMs = unit === "분" ? amount * 60_000
     : unit === "시간" ? amount * 3_600_000
     : unit === "일" ? amount * 86_400_000
-    : unit === "주" ? amount * 7 * 86_400_000
+    : unit === "주" || unit === "주일" ? amount * 7 * 86_400_000
     : 0;
   return new Date(reference.getTime() + offsetMs);
 }
