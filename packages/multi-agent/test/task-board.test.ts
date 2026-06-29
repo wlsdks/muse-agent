@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addTask, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, retryTask, staleInProgressTasks, taskDepsMet, transitionTask, type AgentTask } from "../src/task-board.js";
+import { addTask, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, removeTask, retryTask, staleInProgressTasks, taskDepsMet, transitionTask, type AgentTask } from "../src/task-board.js";
 
 const task = (over: Partial<AgentTask> & { id: string }): AgentTask => ({
   createdAt: "2026-06-28T00:00:00Z",
@@ -159,5 +159,18 @@ describe("latestOutput — the answer a synthesis container reads", () => {
   });
   it("undefined when no completed run has output", () => {
     expect(latestOutput({ ...task({ id: "a" }), runs: [{ at: "t1", reason: "x", status: "failed" }] })).toBeUndefined();
+  });
+});
+
+describe("removeTask — delete a task + prune dangling deps", () => {
+  it("removes the task AND strips its id from any dependent's dependsOn (no ghost-blocked dependents)", () => {
+    const board = [task({ id: "a", status: "done" }), task({ dependsOn: ["a", "x"], id: "b" })];
+    const out = removeTask(board, "a");
+    expect(out.map((t) => t.id)).toEqual(["b"]);
+    expect(out[0]!.dependsOn).toEqual(["x"]); // "a" pruned, "x" kept
+  });
+  it("is a no-op for an unknown id", () => {
+    const board = [task({ id: "a" })];
+    expect(removeTask(board, "ghost")).toEqual(board);
   });
 });

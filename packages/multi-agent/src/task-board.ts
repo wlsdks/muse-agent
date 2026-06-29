@@ -217,6 +217,17 @@ export function reclaimStaleTasks(tasks: readonly AgentTask[], nowMs: number, st
   );
 }
 
+/**
+ * Remove a task and prune its id from every other task's `dependsOn`, so removing a sub-task
+ * never leaves a dependent stuck waiting on a ghost dependency (taskDepsMet treats a missing
+ * dep as unmet). Pure; a no-op for an unknown id.
+ */
+export function removeTask(tasks: readonly AgentTask[], id: string): AgentTask[] {
+  return tasks
+    .filter((t) => t.id !== id)
+    .map((t) => (t.dependsOn.includes(id) ? { ...t, dependsOn: t.dependsOn.filter((d) => d !== id) } : t));
+}
+
 /** A task's answer from its most recent completed run — what a container synthesis reads. */
 export function latestOutput(task: AgentTask): string | undefined {
   if (task.result !== undefined) return task.result;

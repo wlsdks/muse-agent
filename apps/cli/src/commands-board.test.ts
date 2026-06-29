@@ -2,7 +2,7 @@ import type { ModelToolCall } from "@muse/model";
 import type { AgentTask } from "@muse/multi-agent";
 import { describe, expect, it } from "vitest";
 
-import { boardStaleMs, boardTaskPrompt, boardToolApprovalGate, formatBoard, selectObjectiveSpecsToSeed, taskNeedsReview } from "./commands-board.js";
+import { boardStaleMs, boardTaskPrompt, formatTaskDetail, boardToolApprovalGate, formatBoard, selectObjectiveSpecsToSeed, taskNeedsReview } from "./commands-board.js";
 
 const t = (over: Partial<AgentTask> & { id: string; title: string }): AgentTask => ({
   createdAt: "t0", dependsOn: [], runs: [], status: "todo", updatedAt: "t0", ...over
@@ -91,5 +91,18 @@ describe("boardStaleMs — zombie staleness threshold", () => {
   it("ignores a non-numeric / non-positive override → default", () => {
     expect(boardStaleMs({ MUSE_BOARD_STALE_MS: "nope" })).toBe(30 * 60 * 1000);
     expect(boardStaleMs({ MUSE_BOARD_STALE_MS: "-5" })).toBe(30 * 60 * 1000);
+  });
+});
+
+describe("formatTaskDetail — board show <id>", () => {
+  it("renders status, deps, run history and the result (a container's synthesis)", () => {
+    const d = formatTaskDetail(t({ id: "c1", title: "compare A B", status: "done", decomposed: true, synthesize: true, dependsOn: ["s1", "s2"], result: "A wins on speed", runs: [{ at: "t1", status: "completed", output: "A wins on speed" }] }));
+    expect(d).toContain("container, synthesis");
+    expect(d).toContain("depends on: s1, s2");
+    expect(d).toContain("result:");
+    expect(d).toContain("A wins on speed");
+  });
+  it("shows a blocked reason when present", () => {
+    expect(formatTaskDetail(t({ id: "z", title: "x", status: "blocked", blockedReason: "crashed" }))).toContain("blocked: crashed");
   });
 });

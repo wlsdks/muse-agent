@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ToolApprovalGate } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolveObjectivesFile } from "@muse/autoconfigure";
-import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, FileAgentTaskBoard, planParallelSubtasks, reclaimStaleTasks, resolveReview, retryTask, staleInProgressTasks, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
+import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, FileAgentTaskBoard, latestOutput, planParallelSubtasks, reclaimStaleTasks, removeTask, resolveReview, retryTask, staleInProgressTasks, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
 import { readObjectives } from "@muse/stores";
 import type { Command } from "commander";
 
@@ -28,6 +28,23 @@ export function taskNeedsReview(title: string): boolean {
 export function boardStaleMs(env: Record<string, string | undefined>): number {
   const raw = Number(env.MUSE_BOARD_STALE_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : 30 * 60 * 1000;
+}
+
+/** Full detail of one task — status, deps, run history, and its result (a container's synthesis). Pure. */
+export function formatTaskDetail(task: AgentTask): string {
+  const lines = [task.id, `  ${task.title}`, `  status: ${task.status}${task.decomposed === true ? ` (container${task.synthesize === true ? ", synthesis" : ""})` : ""}`];
+  if (task.dependsOn.length > 0) lines.push(`  depends on: ${task.dependsOn.join(", ")}`);
+  if (task.blockedReason !== undefined && task.blockedReason.length > 0) lines.push(`  blocked: ${task.blockedReason}`);
+  if (task.runs.length > 0) {
+    lines.push(`  runs (${task.runs.length.toString()}):`);
+    for (const r of task.runs) lines.push(`    [${r.at}] ${r.status}${r.reason !== undefined ? ` — ${r.reason}` : ""}`);
+  }
+  const out = latestOutput(task);
+  if (out !== undefined) {
+    lines.push("  result:");
+    for (const line of out.split("\n")) lines.push(`    ${line}`);
+  }
+  return lines.join("\n");
 }
 
 /**
@@ -208,6 +225,26 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
     .action(async (id: string) => {
       await new FileAgentTaskBoard().mutate((tasks) => retryTask(tasks, id, new Date().toISOString()));
       io.stdout(`Re-queued ${id.slice(0, 8)} (if it was blocked)\n`);
+    });
+
+  board
+    .command("show <id>")
+    .description("Show a task's full detail — status, dependencies, run history, and its result/answer (e.g. a container's synthesis)")
+    .action(async (id: string) => {
+      const task = (await new FileAgentTaskBoard().list()).find((t) => t.id.startsWith(id));
+      if (!task) { io.stderr(`muse board show: no task ${id}\n`); process.exitCode = 1; return; }
+      io.stdout(`${formatTaskDetail(task)}\n`);
+    });
+
+  board
+    .command("rm <id>")
+    .description("Remove a task from the board (its id is also pruned from any task that depended on it)")
+    .action(async (id: string) => {
+      const store = new FileAgentTaskBoard();
+      const task = (await store.list()).find((t) => t.id.startsWith(id));
+      if (!task) { io.stderr(`muse board rm: no task ${id}\n`); process.exitCode = 1; return; }
+      await store.mutate((tasks) => removeTask(tasks, task.id));
+      io.stdout(`Removed ${task.id.slice(0, 8)} — ${task.title}\n`);
     });
 
   board
