@@ -99,6 +99,7 @@ import { registerHistoryCommand } from "./commands-history.js";
 import { registerOpenCommand } from "./commands-open.js";
 import { registerNotesCommands } from "./commands-notes.js";
 import { registerSchedulerCommands, registerSetupCommands } from "./commands-scheduler-setup.js";
+import { registerSetupCloudCommand } from "./commands-setup-cloud.js";
 import { registerSetupLocalCommand } from "./commands-setup-local.js";
 import { registerSetupVoiceCommand } from "./commands-setup-voice.js";
 import { registerBriefCommand } from "./commands-brief.js";
@@ -584,6 +585,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerSchedulerCommands(program, io, { apiRequest, writeOutput });
   registerSetupCommands(program, io);
   registerSetupLocalCommand(program, io, { readConfigStore, writeConfigStore });
+  registerSetupCloudCommand(program, io, { readConfigStore, writeConfigStore });
   registerSetupVoiceCommand(program, io);
   registerStatusCommand(program, io);
   registerBackgroundCommand(program, io);
