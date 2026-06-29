@@ -14,3 +14,9 @@ describe("normalizeMemoryKey NFC (KO fact keys match regardless of NFD/NFC origi
     expect(normalizeMemoryKey("home-address")).toBe("home_address");
   });
 });
+
+describe("normalizeMemoryKey full-width fold", () => {
+  it("a full-width-digit KO key matches its ASCII form", () => {
+    expect(normalizeMemoryKey("와이파이 １２３".normalize("NFC"))).toBe(normalizeMemoryKey("와이파이 123"));
+  });
+});

@@ -21,3 +21,18 @@ describe("recall lexical NFC normalization (KO Hangul NFD↔NFC consistency)", (
     expect([...lexicalTokens("wifi password staging")]).toEqual(["wifi", "password", "staging"]);
   });
 });
+
+describe("recall full-width ASCII fold (CJK 全角 → half-width, the sibling of the NFC fix)", () => {
+  it("a note with full-width digits/letters tokenises the same as ASCII (recall miss gone)", () => {
+    const full = [...lexicalTokens("금액 １２３ ＡＢＣ")];
+    const half = [...lexicalTokens("금액 123 abc")];
+    expect(full.sort()).toEqual(half.sort());
+    expect(full).toContain("123");
+  });
+  it("normalizeForRecall folds full-width but leaves ASCII + Hangul untouched (no over-normalization)", () => {
+    expect(normalizeForRecall("１２３")).toBe("123");
+    expect(normalizeForRecall("ＡＢＣ")).toBe("abc".toUpperCase());
+    expect(normalizeForRecall("wifi 123")).toBe("wifi 123");
+    expect(normalizeForRecall("한국어")).toBe("한국어");
+  });
+});

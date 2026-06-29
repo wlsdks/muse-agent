@@ -127,12 +127,13 @@ export function appendFactHistory(
  * kept (Korean keys survive); empty result falls back to the original.
  */
 export function normalizeMemoryKey(key: string): string {
-  // NFC FIRST so a KO key composed at the keyboard (NFC) and the SAME key stored decomposed
-  // by macOS (NFD) canonicalise identically — else a Korean fact key never matches on lookup.
-  // Inlined (not the shared normalizeForRecall): @muse/memory is below @muse/agent-core, so it
-  // can't import it without a cycle — same NFC behaviour, see recall-lexical.ts.
+  // NFC + full-width-ASCII fold FIRST (mirrors the shared normalizeForRecall; inlined because
+  // @muse/memory is below @muse/agent-core and can't import it without a cycle): a KO key composed
+  // at the keyboard and the same key stored NFD (macOS) — or typed full-width "１２３" vs ASCII
+  // "123" — canonicalise identically, else a Korean fact key never matches on lookup.
   const normalized = key
     .normalize("NFC")
+    .replace(/[！-～]/gu, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
     .trim()
     .replace(/([a-z0-9])([A-Z])/gu, "$1_$2")
     .toLowerCase()

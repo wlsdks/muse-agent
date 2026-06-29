@@ -15,7 +15,11 @@ export { finiteOr } from "@muse/shared";
  * Used by the lexical tokeniser below and the embed-input path (one normalisation seam for recall).
  */
 export function normalizeForRecall(text: string): string {
-  return text.normalize("NFC");
+  // NFC (Hangul composition) THEN fold full-width ASCII (U+FF01–FF5E, 全角 — common on CJK
+  // keyboards: digits "１２３", letters "ＡＢＣ") to half-width, so a note typed/pasted full-width
+  // matches an ASCII query. Targeted fold (NOT full NFKC, which also folds ligatures + distinct
+  // chars = over-normalization); the canonical sibling of the NFC fix for the SAME recall-miss class.
+  return text.normalize("NFC").replace(/[！-～]/gu, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
 }
 
 // Drop high-frequency function words so lexical overlap (and the RRF
