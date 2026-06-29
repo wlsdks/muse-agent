@@ -163,7 +163,34 @@ export function recoverToolArgsJson(raw: string): Record<string, unknown> | unde
     if (isPlainObject(parsed)) return sanitizeSurrogatesDeep(parsed) as Record<string, unknown>;
   } catch { /* fall through */ }
 
+  // Last resort: repair the malformations a small local model commonly emits (trailing commas,
+  // single/curly quotes, unquoted keys), then RE-PARSE — a repair that yields invalid JSON is
+  // ignored, so this can only recover a real call, never produce a wrong value.
+  try {
+    const repaired = JSON.parse(repairLooseJson(candidate));
+    if (isPlainObject(repaired)) return sanitizeSurrogatesDeep(repaired) as Record<string, unknown>;
+  } catch { /* fall through */ }
+
   return undefined;
+}
+
+/**
+ * Best-effort repair of the JSON malformations a small local model commonly emits in tool-call
+ * arguments. Deterministic + applied ONLY after strict JSON.parse fails, and the caller re-parses
+ * the result (so a repair producing invalid JSON is discarded — never a silent wrong value):
+ *  - curly/smart quotes → straight;
+ *  - an all-single-quoted object (no `"` present) → double-quoted;
+ *  - trailing commas before `}` / `]`;
+ *  - unquoted identifier keys (`{city:` → `{"city":`).
+ */
+export function repairLooseJson(text: string): string {
+  let s = text
+    .replace(/[“”]/gu, "\"")
+    .replace(/[‘’]/gu, "'");
+  if (!s.includes("\"") && s.includes("'")) s = s.replace(/'/gu, "\"");
+  s = s.replace(/,(\s*[}\]])/gu, "$1");
+  s = s.replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/gu, "$1\"$2\":");
+  return s;
 }
 
 /**

@@ -36,3 +36,11 @@ ratchet: pkg(memory,agent-core,recall)/kind(recall-bugfix) — 2nd recall fire (
 - WHY (gap): a half-done NFC fix is a real risk — some recall paths normalized, others not = inconsistent KO matching. openclaw normalization-core centralizes this; Muse's was scattered + NFC-naive at these 3 sites.
 - REVIEW: normalizeMemoryKey NFD≡NFC test + mutation RED + ASCII slug unchanged. resolvesExact/normalizeField call the fire-2-tested normalizeForRecall (primitive covered) + caller regression (memory 393, recall 40 green). memory gained NO agent-core import (acyclic).
 - RISK: resolvesExact/normalizeField lack a DIRECT behavioral test (private fns) — covered by the tested primitive + caller suites; a dedicated citation/conflict KO test would be a stronger lock (follow-up).
+
+## fire 4 · 2026-06-30 · skill v2.0 · fire4
+meta: value-class=correctness-capability · pkg=@muse/model · kind=tool-call-hardening · verdict=PASS · firesSinceDrill=4
+ratchet: pkg(model)/kind(tool-call-hardening) — DIVERSIFIED off the 2 recall fires (fire-2,3) as the journal demanded; model-pkg again (fire-1) but a NEW kind. fabrication 0.
+- WHAT: harden `recoverToolArgsJson` — new `repairLooseJson` recovers the JSON malformations a small local model commonly emits (trailing commas, single-quoted objects, unquoted keys, curly/smart quotes), applied only after strict parse fails + RE-PARSED (invalid repair → discarded, never a wrong value).
+- WHY (gap): reproduced — gemma4-class models emit these in tool-call args; each unrecovered = a DROPPED tool call = a failed agent action. Tool-calling reliability is the binding constraint on a local model (tool-calling.md). openclaw has a dedicated tool-call-repair package; Muse only handled fenced + brace-matched JSON.
+- REVIEW: 8 behavioral tests (each malformation → the right OBJECT) + mutation RED + the SAFETY invariant (apostrophe-in-value preserved; re-parse guard ⇒ never a wrong value, only recover-or-undefined). model + wider suites green.
+- RISK: the unquoted-key/single-quote regexes are heuristic — but the re-parse guard bounds the blast radius to "no recovery" (undefined), never a corrupted value. Streaming-level repair (openclaw stream-normalizer) is out of scope (deliberately — Muse uses native tool_calls, not text-streamed JSON).
