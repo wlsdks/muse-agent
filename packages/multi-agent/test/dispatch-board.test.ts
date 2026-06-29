@@ -69,3 +69,28 @@ describe("dispatchNextTask — a decomposed CONTAINER auto-completes (board-as-h
     expect(executorCalls).toBe(0); // the container did NOT run the agent — its work was the sub-tasks
   });
 });
+
+describe("dispatchNextTask — a SYNTHESIS (parallel) container combines its sub-task outputs (#3)", () => {
+  it("runs the executor over the finished sub-task outputs instead of auto-completing", async () => {
+    // parallel expansion → container has synthesize:true; sub-tasks completed WITH outputs
+    let board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "compare A B" }, "t0"), "p", [{ id: "s1", title: "A" }, { id: "s2", title: "B" }], "t1", "parallel");
+    board = recordTaskRun(board, "s1", { at: "t2", output: "A is fast", status: "completed" });
+    board = recordTaskRun(board, "s2", { at: "t3", output: "B is safe", status: "completed" });
+    let seenOutputs: readonly string[] | undefined;
+    const out = await dispatchNextTask(board, async (_t, ctx) => {
+      seenOutputs = ctx.dependencyOutputs;
+      return { output: "A is fast; B is safe — pick by need", status: "completed" };
+    }, "t4");
+    expect(out.ran?.id).toBe("p");
+    expect(seenOutputs).toEqual(["A is fast", "B is safe"]); // the parallel outputs were handed to the synthesizer
+    expect(out.tasks.find((t) => t.id === "p")!.result).toBe("A is fast; B is safe — pick by need"); // synthesis stored
+  });
+  it("a SEQUENTIAL container still auto-completes (no synthesize flag → no executor run)", async () => {
+    let board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "g" }, "t0"), "p", [{ id: "s1", title: "a" }, { id: "s2", title: "b" }], "t1"); // sequential
+    board = board.map((t) => (t.id === "s1" || t.id === "s2") ? { ...t, status: "done" as const } : t);
+    let called = 0;
+    const out = await dispatchNextTask(board, async () => { called += 1; return { status: "completed" }; }, "t2");
+    expect(out.tasks.find((t) => t.id === "p")!.status).toBe("done");
+    expect(called).toBe(0);
+  });
+});

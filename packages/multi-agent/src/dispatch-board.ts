@@ -9,17 +9,23 @@
  * its own judgement (outbound-safety: a side-effecting task does not self-approve).
  */
 
-import { lastFailureReason, nextReadyTask, recordTaskRun, transitionTask, type AgentTask, type TaskRun } from "./task-board.js";
+import { lastFailureReason, latestOutput, nextReadyTask, recordTaskRun, transitionTask, type AgentTask, type TaskRun } from "./task-board.js";
 
 export interface TaskExecutionResult {
   readonly status: "completed" | "failed";
   readonly reason?: string;
+  /** The agent's answer — stored on the task so a synthesis container can later combine it. */
+  readonly output?: string;
   /** Completed work whose EFFECT needs human sign-off before it counts as done (→ review column). */
   readonly needsReview?: boolean;
 }
 
-/** Runs one task. `retryReason` is the prior failure (present only on a retry) to avoid repeating it. */
-export type TaskExecutor = (task: AgentTask, ctx: { readonly retryReason?: string }) => Promise<TaskExecutionResult>;
+/**
+ * Runs one task. `retryReason` is the prior failure (present only on a retry) to avoid repeating
+ * it; `dependencyOutputs` is present only for a SYNTHESIS container — the finished outputs of its
+ * parallel sub-tasks, to be combined into one answer.
+ */
+export type TaskExecutor = (task: AgentTask, ctx: { readonly retryReason?: string; readonly dependencyOutputs?: readonly string[] }) => Promise<TaskExecutionResult>;
 
 export interface DispatchResult {
   readonly tasks: AgentTask[];
@@ -40,18 +46,28 @@ export async function dispatchNextTask(
   const ready = nextReadyTask(tasks);
   if (!ready) return { tasks: [...tasks] };
 
-  // A decomposed CONTAINER becomes ready only once all its sub-tasks are done — the work was
-  // the sub-tasks, so it auto-completes without an executor run (board-as-handoff).
-  if (ready.decomposed) {
+  // A decomposed container becomes ready only once all its sub-tasks are done. A SEQUENTIAL
+  // container auto-completes (the last sub-task already produced the answer); a SYNTHESIS
+  // (parallel) container instead runs the executor over its sub-tasks' outputs to combine them.
+  if (ready.decomposed && !ready.synthesize) {
     return { outcome: "completed", ran: ready, tasks: recordTaskRun(tasks, ready.id, { at: nowIso, reason: "all sub-tasks completed", status: "completed" }) };
   }
 
   let board = transitionTask(tasks, ready.id, "in_progress", nowIso);
   const retryReason = lastFailureReason(ready);
+  const dependencyOutputs = ready.decomposed && ready.synthesize
+    ? ready.dependsOn
+        .map((depId) => tasks.find((t) => t.id === depId))
+        .map((dep) => (dep ? latestOutput(dep) : undefined))
+        .filter((out): out is string => out !== undefined)
+    : undefined;
 
   let result: TaskExecutionResult;
   try {
-    result = await executor(ready, retryReason !== undefined ? { retryReason } : {});
+    result = await executor(ready, {
+      ...(retryReason !== undefined ? { retryReason } : {}),
+      ...(dependencyOutputs !== undefined ? { dependencyOutputs } : {})
+    });
   } catch (cause) {
     result = { reason: cause instanceof Error ? cause.message : String(cause), status: "failed" };
   }
@@ -59,7 +75,7 @@ export async function dispatchNextTask(
   if (result.status === "completed" && result.needsReview) {
     return { outcome: "review", ran: ready, tasks: transitionTask(board, ready.id, "review", nowIso) };
   }
-  const run: TaskRun = { at: nowIso, status: result.status, ...(result.reason !== undefined ? { reason: result.reason } : {}) };
+  const run: TaskRun = { at: nowIso, status: result.status, ...(result.reason !== undefined ? { reason: result.reason } : {}), ...(result.output !== undefined ? { output: result.output } : {}) };
   board = recordTaskRun(board, ready.id, run);
   return { outcome: result.status, ran: ready, tasks: board };
 }

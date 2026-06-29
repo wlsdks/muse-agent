@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ToolApprovalGate } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolveObjectivesFile } from "@muse/autoconfigure";
-import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, FileAgentTaskBoard, resolveReview, retryTask, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
+import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, FileAgentTaskBoard, planParallelSubtasks, resolveReview, retryTask, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
 import { readObjectives } from "@muse/stores";
 import type { Command } from "commander";
 
@@ -76,16 +76,22 @@ export const boardToolApprovalGate: ToolApprovalGate = ({ risk }) =>
  * prior failure into the prompt so the agent corrects rather than repeats it. Outbound work is
  * DRAFTED then parked `needsReview` (never sent). The real seam wiring the board to the agent.
  */
+/** Build the prompt for a task run: a synthesis fan-in, a retry, or the plain goal. */
+export function boardTaskPrompt(title: string, ctx: { readonly retryReason?: string; readonly dependencyOutputs?: readonly string[] }): string {
+  if (ctx.dependencyOutputs && ctx.dependencyOutputs.length > 0) {
+    return `Combine these sub-task results into one clear, self-contained answer for the goal "${title}":\n\n${ctx.dependencyOutputs.map((o, i) => `[${(i + 1).toString()}] ${o}`).join("\n\n")}`;
+  }
+  if (ctx.retryReason) return `${title}\n\n(A previous attempt failed: ${ctx.retryReason}. Take a different approach.)`;
+  return title;
+}
+
 function makeAgentExecutor(io: ProgramIO): TaskExecutor {
   return async (task, ctx) => {
     const assembly = createMuseRuntimeAssembly();
     if (!assembly.agentRuntime || !assembly.defaultModel) return { reason: "no local agent runtime configured (set MUSE_MODEL)", status: "failed" };
-    const prompt = ctx.retryReason
-      ? `${task.title}\n\n(A previous attempt failed: ${ctx.retryReason}. Take a different approach.)`
-      : task.title;
     try {
       const result = await assembly.agentRuntime.run({
-        messages: [{ content: prompt, role: "user" }],
+        messages: [{ content: boardTaskPrompt(task.title, ctx), role: "user" }],
         model: assembly.defaultModel,
         runId: `board-${randomUUID()}`,
         toolApprovalGate: boardToolApprovalGate
@@ -95,8 +101,9 @@ function makeAgentExecutor(io: ProgramIO): TaskExecutor {
       io.stdout(`\n${out}\n`);
       const tools = result.toolsUsed ?? [];
       if (tools.length > 0) io.stderr(`(tools used: ${tools.join(", ")})\n`);
-      // Draft-first: an outbound task is drafted above but PARKED for approval, not sent.
-      return taskNeedsReview(task.title) ? { needsReview: true, status: "completed" } : { status: "completed" };
+      // Draft-first: an outbound task is drafted above but PARKED for approval, not sent. The
+      // output is returned so a synthesis container can later combine the sub-task answers.
+      return taskNeedsReview(task.title) ? { needsReview: true, output: out, status: "completed" } : { output: out, status: "completed" };
     } catch (cause) {
       return { reason: cause instanceof Error ? cause.message : String(cause), status: "failed" };
     }
@@ -142,18 +149,42 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
 
   board
     .command("expand <id>")
-    .description("Decompose a complex task into sub-tasks on the board (it becomes a container that auto-completes when its sub-tasks are done; `board run --all` works them)")
-    .option("--parallel", "Treat the sub-tasks as INDEPENDENT (no ordering) instead of a sequential chain — for work that doesn't build step-on-step")
-    .action(async (id: string, opts: { readonly parallel?: boolean }) => {
+    .description("Decompose a complex task into sub-tasks. By default the model splits it into INDEPENDENT parallel sub-tasks when it can (combined by a synthesis step), else a sequential chain.")
+    .option("--parallel", "Force INDEPENDENT (parallel) sub-tasks from the deterministic split — no model call")
+    .option("--sequential", "Force a sequential chain from the deterministic split — no model call")
+    .action(async (id: string, opts: { readonly parallel?: boolean; readonly sequential?: boolean }) => {
       const store = new FileAgentTaskBoard();
       const parent = (await store.list()).find((t) => t.id.startsWith(id));
       if (!parent) { io.stderr(`muse board expand: no task ${id}\n`); process.exitCode = 1; return; }
       if (parent.decomposed) { io.stdout(`${parent.id.slice(0, 8)} is already decomposed.\n`); return; }
-      const subs = decomposeRequest(parent.title).map((s) => ({ id: randomUUID(), title: s.text }));
+
+      let subs: { readonly id: string; readonly title: string }[];
+      let mode: "sequential" | "parallel";
+      if (opts.parallel || opts.sequential) {
+        subs = decomposeRequest(parent.title).map((s) => ({ id: randomUUID(), title: s.text }));
+        mode = opts.parallel ? "parallel" : "sequential";
+      } else {
+        // Auto: ask the model for a true parallel fan-out; fall back to the deterministic
+        // sequential split when it declines (a single/sequential goal).
+        const assembly = createMuseRuntimeAssembly();
+        const generate = async (p: string): Promise<string> => {
+          if (!assembly.modelProvider || !assembly.defaultModel) return "NONE";
+          const r = await assembly.modelProvider.generate({ maxOutputTokens: 256, messages: [{ content: p, role: "user" }], model: assembly.defaultModel, temperature: 0 });
+          return r.output ?? "";
+        };
+        const parallel = await planParallelSubtasks(parent.title, { generate }).catch(() => [] as string[]);
+        if (parallel.length >= 2) {
+          subs = parallel.map((title) => ({ id: randomUUID(), title }));
+          mode = "parallel";
+        } else {
+          subs = decomposeRequest(parent.title).map((s) => ({ id: randomUUID(), title: s.text }));
+          mode = "sequential";
+        }
+      }
+
       if (subs.length < 2) { io.stdout(`"${parent.title}" isn't decomposable into multiple steps — leaving it as a single task.\n`); return; }
-      const mode = opts.parallel ? "parallel" : "sequential";
       await store.mutate((tasks) => expandTaskIntoSubtasks(tasks, parent.id, subs, new Date().toISOString(), mode));
-      io.stdout(`Expanded ${parent.id.slice(0, 8)} into ${subs.length.toString()} ${mode} sub-tasks:\n${subs.map((s, i) => `  ${(i + 1).toString()}. ${s.title}`).join("\n")}\n`);
+      io.stdout(`Expanded ${parent.id.slice(0, 8)} into ${subs.length.toString()} ${mode} sub-tasks${mode === "parallel" ? " (combined by a synthesis step when done)" : ""}:\n${subs.map((s, i) => `  ${(i + 1).toString()}. ${s.title}`).join("\n")}\n`);
     });
 
   board

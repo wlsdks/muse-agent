@@ -2,7 +2,7 @@ import type { ModelToolCall } from "@muse/model";
 import type { AgentTask } from "@muse/multi-agent";
 import { describe, expect, it } from "vitest";
 
-import { boardToolApprovalGate, formatBoard, selectObjectiveSpecsToSeed, taskNeedsReview } from "./commands-board.js";
+import { boardTaskPrompt, boardToolApprovalGate, formatBoard, selectObjectiveSpecsToSeed, taskNeedsReview } from "./commands-board.js";
 
 const t = (over: Partial<AgentTask> & { id: string; title: string }): AgentTask => ({
   createdAt: "t0", dependsOn: [], runs: [], status: "todo", updatedAt: "t0", ...over
@@ -65,5 +65,22 @@ describe("selectObjectiveSpecsToSeed — standing-objective → board seeding (f
     const first = selectObjectiveSpecsToSeed(objs, new Set(["already on board"]));
     const existingAfter = new Set(["already on board", ...first]);
     expect(selectObjectiveSpecsToSeed(objs, existingAfter)).toEqual([]);
+  });
+});
+
+describe("boardTaskPrompt — synthesis / retry / plain prompt (#3)", () => {
+  it("dependencyOutputs → a synthesis prompt that combines the sub-results for the goal", () => {
+    const p = boardTaskPrompt("compare A and B", { dependencyOutputs: ["A is fast", "B is safe"] });
+    expect(p).toMatch(/Combine these sub-task results/u);
+    expect(p).toContain("compare A and B");
+    expect(p).toContain("A is fast");
+    expect(p).toContain("B is safe");
+  });
+  it("retryReason (no deps) → a retry prompt; plain goal otherwise", () => {
+    expect(boardTaskPrompt("do X", { retryReason: "timeout" })).toMatch(/previous attempt failed: timeout/u);
+    expect(boardTaskPrompt("do X", {})).toBe("do X");
+  });
+  it("dependencyOutputs takes precedence over retryReason (a synthesis re-run still synthesizes)", () => {
+    expect(boardTaskPrompt("g", { dependencyOutputs: ["r1", "r2"], retryReason: "x" })).toMatch(/Combine these/u);
   });
 });

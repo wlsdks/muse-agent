@@ -17,6 +17,8 @@ export interface TaskRun {
   readonly status: "completed" | "failed";
   /** Why it failed (fed into the retry's context) / a short completion note. */
   readonly reason?: string;
+  /** The agent's produced answer for this run — kept so a synthesis container can combine it. */
+  readonly output?: string;
 }
 
 export interface AgentTask {
@@ -39,6 +41,14 @@ export interface AgentTask {
    * runs the sub-tasks, not the container, and never re-expands it.
    */
   readonly decomposed?: boolean;
+  /**
+   * A decomposed container that must COMBINE its (parallel, independent) sub-task outputs into
+   * one answer when they finish — instead of just auto-completing (the sequential case, where
+   * the last sub-task already IS the synthesis). Set by a parallel expansion.
+   */
+  readonly synthesize?: boolean;
+  /** The agent's answer from this task's last completed run (kept for a container to synthesize). */
+  readonly result?: string;
 }
 
 /** True when EVERY task this one depends on is `done` (a missing/incomplete dep ⇒ not met). */
@@ -87,7 +97,7 @@ export function recordTaskRun(tasks: readonly AgentTask[], id: string, run: Task
       return { ...t, runs, status: "blocked", updatedAt: run.at, ...(run.reason !== undefined ? { blockedReason: run.reason } : {}) };
     }
     const { blockedReason: _dropped, ...rest } = t;
-    return { ...rest, runs, status: "done", updatedAt: run.at };
+    return { ...rest, runs, status: "done", updatedAt: run.at, ...(run.output !== undefined ? { result: run.output } : {}) };
   });
 }
 
@@ -171,9 +181,19 @@ export function expandTaskIntoSubtasks(
   const subIds = subtasks.map((s) => s.id);
   return board.map((t) =>
     t.id === parentId
-      ? { ...t, decomposed: true, dependsOn: [...t.dependsOn, ...subIds], updatedAt: nowIso }
+      ? { ...t, decomposed: true, dependsOn: [...t.dependsOn, ...subIds], updatedAt: nowIso, ...(mode === "parallel" ? { synthesize: true } : {}) }
       : t
   );
+}
+
+/** A task's answer from its most recent completed run — what a container synthesis reads. */
+export function latestOutput(task: AgentTask): string | undefined {
+  if (task.result !== undefined) return task.result;
+  for (let i = task.runs.length - 1; i >= 0; i--) {
+    const run = task.runs[i]!;
+    if (run.status === "completed" && run.output !== undefined) return run.output;
+  }
+  return undefined;
 }
 
 /** The reason of a task's most recent FAILED run — the context a retry replays. */
