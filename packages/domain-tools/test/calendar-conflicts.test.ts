@@ -118,3 +118,24 @@ describe("selectUpcomingConflicts — the proactive-notice layer (future clashes
     ], { now, withinDays: 7 })).toEqual([]);
   });
 });
+
+describe("detectCalendarConflicts — all-day events are not time-clashes (excluded)", () => {
+  const timed = (title: string, h1: number, h2: number): ConflictEventLike =>
+    ({ endsAt: new Date(2026, 6, 15, h2, 0), startsAt: new Date(2026, 6, 15, h1, 0), title });
+  const allDay = (title: string): ConflictEventLike =>
+    ({ allDay: true, endsAt: new Date(2026, 6, 16, 0, 0), startsAt: new Date(2026, 6, 15, 0, 0), title });
+
+  it("an all-day event does NOT conflict with a timed event the same day (no false clash)", () => {
+    expect(detectCalendarConflicts([allDay("휴가"), timed("3pm call", 15, 16)])).toEqual([]);
+  });
+  it("two overlapping all-day events do not conflict each other", () => {
+    expect(detectCalendarConflicts([allDay("Vacation"), allDay("Conference")])).toEqual([]);
+  });
+  it("STILL detects a real timed overlap (the fix doesn't suppress genuine clashes)", () => {
+    const out = detectCalendarConflicts([timed("A", 15, 16), timed("B", 15, 17)]);
+    expect(out).toHaveLength(1);
+  });
+  it("adjacent timed events that merely touch (16:00) still do not conflict", () => {
+    expect(detectCalendarConflicts([timed("A", 15, 16), timed("C", 16, 17)])).toEqual([]);
+  });
+});

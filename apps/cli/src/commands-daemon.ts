@@ -151,7 +151,7 @@ export interface DaemonHelpers {
    * the same clash notifies ONCE across ticks) without a real calendar provider.
    * Absent → the registered calendar provider's `listEvents`.
    */
-  readonly conflictWatchCalendarLister?: (range: { readonly from: Date; readonly to: Date }) => Promise<readonly { readonly title: string; readonly startsAt: Date; readonly endsAt: Date }[]>;
+  readonly conflictWatchCalendarLister?: (range: { readonly from: Date; readonly to: Date }) => Promise<readonly { readonly title: string; readonly startsAt: Date; readonly endsAt: Date; readonly allDay?: boolean }[]>;
 }
 
 // Followups REQUIRE a model to synthesize their message. The real
@@ -1130,7 +1130,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         try {
           const events = await conflictWatchLister({ from: now, to: new Date(nowMs + conflictWithinDays * 86_400_000) });
           const notices = selectUpcomingConflicts(
-            events.map((ev) => ({ title: ev.title, startsAt: ev.startsAt, endsAt: ev.endsAt })),
+            events.map((ev) => ({ allDay: ev.allDay, title: ev.title, startsAt: ev.startsAt, endsAt: ev.endsAt })),
             { now, withinDays: conflictWithinDays }
           );
           if (notices.length === 0) return;

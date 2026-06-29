@@ -210,7 +210,7 @@ export function createCalendarMcpServer(options: CalendarMcpServerOptions): Loop
           try {
             const events = await registry.listEvents({ from, to }, providerId);
             const conflicts = detectCalendarConflicts(
-              events.map((e) => ({ endsAt: e.endsAt, startsAt: e.startsAt, title: e.title }))
+              events.map((e) => ({ allDay: e.allDay, endsAt: e.endsAt, startsAt: e.startsAt, title: e.title }))
             );
             return {
               conflicts: conflicts.map((c) => ({

@@ -12,6 +12,8 @@ export interface ConflictEventLike {
   readonly title: string;
   readonly startsAt: Date;
   readonly endsAt: Date;
+  /** All-day events span the whole day and are NOT time-clashes — excluded from conflict detection. */
+  readonly allDay?: boolean;
 }
 
 export interface CalendarConflict {
@@ -30,6 +32,10 @@ export interface CalendarConflict {
  */
 export function detectCalendarConflicts(events: readonly ConflictEventLike[]): CalendarConflict[] {
   const valid = events.filter((e) => {
+    // An all-day event spans the whole day, so it would "overlap" EVERY timed event that day and
+    // flood the user with false clashes ("Vacation overlaps your 3pm call"). All-day markers are
+    // not time-clashes — exclude them at the core so no caller can reintroduce the noise.
+    if (e.allDay === true) return false;
     const s = e.startsAt.getTime();
     const t = e.endsAt.getTime();
     return Number.isFinite(s) && Number.isFinite(t) && t > s;
