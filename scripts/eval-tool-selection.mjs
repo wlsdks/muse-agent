@@ -1439,7 +1439,17 @@ async function buildPtcScenario() {
       { prompt: "What is 144 divided by 12?", expectTool: "math_eval", requireArgs: ["expression"], note: "single arithmetic call → math_eval (NOT run_tool_plan)" },
       { prompt: "What's the current date and time?", expectTool: "time_now", note: "single lookup → time_now (NOT run_tool_plan)" }
     ];
-    return { label: "run-tool-plan (PTC multi-step vs single-call over-selection)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+    // Few-shot exemplars: run_tool_plan is a BRAND-NEW tool with no trace history, so a 12B never
+    // imitates it from scratch. These paraphrases (NOT the test prompts) teach the carve —
+    // multi-step chain → run_tool_plan, single-call → the native tool (restraint). arXiv 2508.15214.
+    const exemplarBank = [
+      { prompt: "Look up the current time, then work out how many hours remain until midnight.", tool: "run_tool_plan" },
+      { prompt: "오늘 날짜를 알아낸 다음 그걸 가지고 다음 회의까지 며칠인지 계산해줘.", tool: "run_tool_plan" },
+      { prompt: "Get today's date and then add two weeks to it to find the deadline.", tool: "run_tool_plan" },
+      { prompt: "What time is it right now?", tool: "time_now" },
+      { prompt: "Compute 50 times 3.", tool: "math_eval" }
+    ];
+    return { label: "run-tool-plan (PTC multi-step vs single-call over-selection)", tools, exemplarBank, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {
     return { label: "run-tool-plan", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
   }
