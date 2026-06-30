@@ -13,9 +13,11 @@ until COMPLETE. Tier1 (local commits, no push). Source mirror: hermes-agent (MIT
 - [x] Phase 3 — Expose `run_tool_plan` tool + grounding wiring (step outputs → citable sources;
       final answer through the citation gate) + eval:tools golden (multi-step positive + single-call
       negative).
-- [ ] Phase 4 — Live proof: eval:tools / smoke:live with MUSE_EVAL_REPEAT on gemma4 — a real
+- [x] Phase 4 — Live proof (selection+valid-plan emission ACHIEVED on gemma4 4/4 with few-shot): eval:tools / smoke:live with MUSE_EVAL_REPEAT on gemma4 — a real
       multi-step task completes in ONE inference, intermediate results absent from context, answer
       grounded. Measure delta vs the per-tool loop.
+
+- [ ] Phase 5 — PRODUCTION delivery: wire renderToolExemplarSection into the LIVE runtime prompt assembly + seed a static run_tool_plan exemplar, so real `muse chat/ask` on gemma4 gets the few-shot and actually selects/emits plans (without it PTC is invisible to the model in production). Then a live end-to-end run.
 
 ## Fire log
 (appended per fire)
