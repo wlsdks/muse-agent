@@ -10,7 +10,7 @@ until COMPLETE. Tier1 (local commits, no push). Source mirror: hermes-agent (MIT
 - [x] Phase 2 — Wire to AgentRuntime's gated path (toolApprovalGate + groundToolArguments per step) +
       the 5 hostile-review acceptance tests (deny⇒no effect; fabrication⇒dropped; cycle⇒error;
       injection⇒data-only; 1-step⇒unwrapped).
-- [ ] Phase 3 — Expose `run_tool_plan` tool + grounding wiring (step outputs → citable sources;
+- [x] Phase 3 — Expose `run_tool_plan` tool + grounding wiring (step outputs → citable sources;
       final answer through the citation gate) + eval:tools golden (multi-step positive + single-call
       negative).
 - [ ] Phase 4 — Live proof: eval:tools / smoke:live with MUSE_EVAL_REPEAT on gemma4 — a real
@@ -34,3 +34,10 @@ verdict: PASS · Phase 2 (wire the plan executor seam to AgentRuntime's gated si
 - REVIEW: 4 acceptance (DENY⇒step2 never executes/empty effect sink; WRITE/execute-risk DENY⇒no effect = outbound-safety; arg-grounding parity = an ungrounded groundedArg dropped at the gate; 1-step⇒native-equivalent) + mutation RED (block guard not throwing ⇒ DENY tests RED) + agent-core FULL suite 2720/2720 (no regression) + 0 TS errors + lint 0.
 - SCOPE (honest): Phase 2 = gated EXECUTION only. "fabrication⇒projected-result dropped" needs the grounding/citation wiring = Phase 3, deliberately not faked here.
 - RISK: gated tool output is injection-spotlighted by the @muse/tools executor (faithful) — Phase 3's grounding wiring must feed the RAW step outputs to the citable-source set.
+
+## fire 3 · 2026-06-30 · fire3 · Phase 3
+verdict: PASS · Phase 3 (expose run_tool_plan + grounding wiring + eval golden)
+- WHAT: `run_tool_plan` tool (packages/tools/src/muse-tools-plan.ts, risk=execute, rich plan schema + "use when multi-step/data-flow; not when single call" + example), registered at runtime-tool-registry (NOT in the 25-read-only createMuseTools factory — invariant kept). Intercepted in `executeToolCall` (after exposed-check, before approval): parse with knownTools=other active tools (nested run_tool_plan ⇒ unknown-tool parse error, no recursion) → `executeToolPlanGated` → projected `result` returned as a COMPLETED tool result; parse error / blocked step ⇒ clean BLOCKED result (no throw/crash).
+- WHY (grounding/fabrication=0 crux): the projected result flows through capToolOutput → a citable tool-message + `groundingSourceFromExecuted` → AgentRunResult.groundingSources, so the final answer is grounded against it by `verifyGrounding`. The model only ever sees `result` (not the intermediate dumps), so it can't legitimately assert intermediate data; an unsupported claim is flagged ungrounded — result-only is fail-close. Raw steps[] NOT separately wired (too invasive for the single-result chokepoint; result-only is the safe minimum).
+- REVIEW: 5 tests via a REAL model loop (scripted provider): multi-step executes through the gate + result completed + groundingSources contains run_tool_plan + 1 inference; fabrication⇒dropped via REAL verifyGrounding (supported=grounded, fabricated=ungrounded); nested run_tool_plan blocked (no recursion); parse error ⇒ clean blocked; denied step ⇒ no partial effect. + mutation RED (neuter verifyGrounding coverage gate ⇒ fabrication test RED) + agent-core 2725 + tools 312 + autoconfigure 645 + 0 TS + lint 0.
+- RISK: run_tool_plan intercepted BEFORE its own approval, but EVERY step is gated via executeToolPlanGated→executeToolCall (Phase 2), so a write/send step is still draft-first fail-close — the container approval is redundant, not a bypass. Phase 4 = the live gemma4 proof.

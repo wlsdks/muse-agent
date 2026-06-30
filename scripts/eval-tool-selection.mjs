@@ -1419,6 +1419,32 @@ async function buildTimeToolsExemplarScenario() {
   return { ...base, exemplarBank: TIME_EXEMPLAR_BANK, label: "real-time-tools+exemplars (A/B arm)" };
 }
 
+// run_tool_plan (PTC) — the ONE multi-call orchestrator. The carve: a task needing SEVERAL chained
+// tool calls (one tool's output feeding another) is run_tool_plan; a SINGLE-call task must pick that
+// single tool, never run_tool_plan (over-selection is worse than a native call — tool-calling.md #5).
+async function buildPtcScenario() {
+  try {
+    const plan = await import("../packages/tools/dist/muse-tools-plan.js");
+    const time = await import("../packages/tools/dist/muse-tools-time.js");
+    const data = await import("../packages/tools/dist/muse-tools-data.js");
+    const now = () => new Date("2026-06-30T00:00:00Z");
+    const instances = [plan.createRunToolPlanTool(), time.createTimeNowTool(now), time.createTimeDiffTool(), data.createMathEvalTool()];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      // POSITIVE: a genuine 2-step chain (today's date → days until a target) → run_tool_plan.
+      { prompt: "First get today's date, then use it to compute how many days are left until 2026-12-25.", expectTool: "run_tool_plan", note: "EN multi-step chain (time_now → time_diff) → run_tool_plan" },
+      { prompt: "지금 날짜를 먼저 알아낸 다음, 그걸로 2026-12-25까지 며칠 남았는지 계산해줘.", expectTool: "run_tool_plan", note: "KO multi-step chain → run_tool_plan" },
+      // NEGATIVE: a SINGLE-call task must pick that one tool, NEVER run_tool_plan (no over-selection).
+      { prompt: "What is 144 divided by 12?", expectTool: "math_eval", requireArgs: ["expression"], note: "single arithmetic call → math_eval (NOT run_tool_plan)" },
+      { prompt: "What's the current date and time?", expectTool: "time_now", note: "single lookup → time_now (NOT run_tool_plan)" }
+    ];
+    return { label: "run-tool-plan (PTC multi-step vs single-call over-selection)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "run-tool-plan", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 async function main() {
   if (!(await ollamaReachable())) {
     console.log(`eval:tools skipped — Ollama (${OLLAMA_BASE}) or model ${MODEL} unreachable. Start \`ollama serve\` with ${MODEL}.`);
@@ -1428,6 +1454,7 @@ async function main() {
   let scenarios = [
     { label: "synthetic", tools: SYNTHETIC_TOOLS, cases: SYNTHETIC_CASES },
     await buildRealScenario(),
+    await buildPtcScenario(),
     await buildBackgroundScenario(),
     await buildUnitConvertScenario(),
     await buildLunarScenario(),

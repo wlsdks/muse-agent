@@ -58,7 +58,7 @@ import type { ActiveContextProvider, ActiveContextSnapshot } from "./active-cont
 import { applyAttachmentContext as applyAttachmentContextFn } from "./attachment-context.js";
 import { joinUserMessages } from "./internals.js";
 import { groundToolArguments } from "./tool-argument-grounding.js";
-import { executeToolPlan, type ToolPlan, type ToolPlanExecutor, type ToolPlanResult } from "./tool-plan.js";
+import { executeToolPlan, parseToolPlan, type ToolPlan, type ToolPlanExecutor, type ToolPlanResult } from "./tool-plan.js";
 import type { ToolCallMiddleware } from "./tool-call-middleware.js";
 import {
   applyActiveContext as applyActiveContextFn,
@@ -174,6 +174,9 @@ function clampRunLimit(value: number | undefined, fallback: number): number {
     ? Math.max(0, Math.trunc(value))
     : fallback;
 }
+
+/** The single PTC orchestrator tool name (defined as a MuseTool in `@muse/tools`). */
+const RUN_TOOL_PLAN_TOOL_NAME = "run_tool_plan";
 
 /**
  * Thrown by {@link AgentRuntime.executeToolPlanGated}'s executor when a plan step's gated tool call
@@ -778,6 +781,54 @@ export class AgentRuntime {
     return executeToolPlan(plan, executor);
   }
 
+  /**
+   * Handle a {@link RUN_TOOL_PLAN_TOOL_NAME} call: parse the plan (knownTools = the OTHER exposed
+   * tools, so a nested run_tool_plan is an unknown-tool parse error and recursion is impossible),
+   * run it through the gated path, and project the result back as a normal COMPLETED tool result.
+   * A parse error or a {@link ToolPlanStepBlockedError} (denied/invalid/failed step) becomes a
+   * BLOCKED tool result — never a throw — so the model loop continues and a blocked step (Phase 2's
+   * guarantee) leaves no partial downstream effect. The projected `result` is the ONLY value that
+   * re-enters context, and because it is a completed tool output it is automatically a citable
+   * grounding source (groundingSourceFromExecuted) — the final answer is grounded against it.
+   */
+  private async runToolPlanTool(
+    context: AgentRunContext,
+    toolCall: ModelToolCall,
+    activeTools: readonly ModelTool[]
+  ): Promise<ExecutedToolResult> {
+    const knownTools = new Set(
+      activeTools.map((tool) => tool.name).filter((name) => name !== RUN_TOOL_PLAN_TOOL_NAME)
+    );
+    const parsed = parseToolPlan(toolCall.arguments, { knownTools });
+    if ("error" in parsed) {
+      const executed = blockedToolResult(toolCall, `Error: invalid tool plan: ${parsed.error}`);
+      await this.invokeHooks("afterTool", context, executed);
+      return executed;
+    }
+
+    let planResult: ToolPlanResult;
+    try {
+      planResult = await this.executeToolPlanGated(parsed, context);
+    } catch (error) {
+      const reason = error instanceof ToolPlanStepBlockedError
+        ? `plan step '${error.tool}' did not complete (${error.status}): ${error.output}`
+        : error instanceof Error ? error.message : String(error);
+      const executed = blockedToolResult(toolCall, `Error: ${reason}`);
+      await this.invokeHooks("afterTool", context, executed);
+      return executed;
+    }
+
+    const output = typeof planResult.result === "string"
+      ? planResult.result
+      : JSON.stringify(planResult.result ?? null);
+    const executed: ExecutedToolResult = {
+      result: { id: toolCall.id, name: toolCall.name, output, status: "completed" },
+      toolCall
+    };
+    await this.invokeHooks("afterTool", context, executed);
+    return executed;
+  }
+
   private modelTools(context: AgentRunContext): readonly ModelTool[] {
     if (!this.toolRegistry) {
       return [];
@@ -913,6 +964,18 @@ export class AgentRuntime {
       );
       await this.invokeHooks("afterTool", context, executed);
       return executed;
+    }
+
+    // PTC interception (run BEFORE this tool's own approval/grounding): run_tool_plan is an
+    // orchestrator, not a leaf tool — its EXECUTE handler is a dead-end. Parse the plan, then run
+    // every step through this same gated path (executeToolPlanGated → executeToolCall), and return
+    // the PROJECTED result as a normal COMPLETED tool result so the model loop binds it as a
+    // citable tool message (capToolOutput) and the grounding gate scores the final answer against
+    // it. knownTools excludes run_tool_plan itself, so a nested PTC plan is an unknown-tool parse
+    // error (no recursion). A parse error / blocked step becomes a normal blocked tool result —
+    // never a throw that crashes the model loop.
+    if (toolCall.name === RUN_TOOL_PLAN_TOOL_NAME) {
+      return this.runToolPlanTool(context, toolCall, activeTools);
     }
 
     await this.invokeHooks("beforeTool", context, toolCall);
