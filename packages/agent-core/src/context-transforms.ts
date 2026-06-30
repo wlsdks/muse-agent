@@ -45,6 +45,7 @@ import {
   metadataString,
   renderUserMemorySection
 } from "./runtime-helpers.js";
+import { renderToolExemplarSection, selectToolExemplars, type ToolExemplar } from "./tool-exemplars.js";
 import type {
   AgentRunContext,
   AgentRunInput,
@@ -471,6 +472,48 @@ export function applyPromptLayers(
       }
     }
   };
+}
+
+/**
+ * Inject the few-shot tool-exemplar section (`selectToolExemplars` →
+ * `renderToolExemplarSection`) so a small local model imitates a proven tool
+ * selection instead of reasoning from scratch — the delivery mechanism for
+ * Programmatic Tool Calling, which a 12B never selects without an exemplar
+ * (Phase 4: 0/2 → 4/4). Only fires when tools are actually exposed this turn;
+ * the restraint cases in the bank keep IrrelAcc from degrading. Fail-open: a
+ * bad bank / no lexical overlap / empty query ⇒ no section, never a throw.
+ */
+export function applyToolExemplars(
+  context: AgentRunContext,
+  bank: readonly ToolExemplar[] | undefined,
+  exposedToolNames: readonly string[],
+  topK: number
+): AgentRunInput {
+  if (!bank || bank.length === 0 || exposedToolNames.length === 0) {
+    return context.input;
+  }
+  try {
+    const query = latestUserPrompt(context.input.messages);
+    if (!query) {
+      return context.input;
+    }
+    const selected = selectToolExemplars(query, bank, topK);
+    const rendered = renderToolExemplarSection(selected);
+    if (!rendered) {
+      return context.input;
+    }
+    return {
+      ...context.input,
+      messages: appendSystemSection(context.input.messages, rendered, "tool-exemplars"),
+      metadata: {
+        ...context.input.metadata,
+        toolExemplarApplied: true,
+        toolExemplarCount: selected.length
+      }
+    };
+  } catch {
+    return failedMetadata(context.input, "toolExemplarsFailed");
+  }
 }
 
 export async function applyPromptExemplars(

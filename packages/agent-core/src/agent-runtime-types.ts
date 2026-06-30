@@ -50,6 +50,7 @@ import type { HookRegistry } from "./hook-registry.js";
 import type { InboxContextProvider } from "./inbox-context.js";
 import type { PlanStep } from "./plan-execute.js";
 import type { SkillCatalogProvider } from "./skills-context.js";
+import type { ToolExemplar } from "./tool-exemplars.js";
 import type { TelemetryAggregator } from "./telemetry-aggregator.js";
 import type { ToolFilter } from "./tool-filter.js";
 import type {
@@ -144,6 +145,15 @@ export interface AgentRuntimeOptions {
   readonly responseFilters?: readonly ResponseFilterStage[];
   readonly exemplarRetriever?: ExemplarRetriever;
   readonly exemplarTopK?: number;
+  /**
+   * Few-shot tool-exemplar seed bank injected into the live tool-selection
+   * prompt so the local model imitates a proven selection — the delivery
+   * mechanism for Programmatic Tool Calling (a 12B never picks `run_tool_plan`
+   * without it). Absent ⇒ no section (the autoconfigure builder withholds it
+   * when `MUSE_TOOL_EXEMPLARS=false`). Fail-open per transform.
+   */
+  readonly toolExemplarBank?: readonly ToolExemplar[];
+  readonly toolExemplarTopK?: number;
   readonly promptLayerRegistry?: PromptLayerRegistry;
   /**
    * Context Engineering Phase 1: pull current time / timezone /

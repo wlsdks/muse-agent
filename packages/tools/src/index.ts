@@ -160,6 +160,8 @@ export {
 
 export { createMuseTools, hasNestedUnboundedQuantifier, type MuseToolFactoryOptions } from "./muse-tools.js";
 
+export { createRunToolPlanTool } from "./muse-tools-plan.js";
+
 /**
  * Rust runner integration. Implementation lives in `./runner.ts`
  * (lifted out so the runner-protocol code stays cohesive). Re-exported

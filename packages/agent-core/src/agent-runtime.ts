@@ -41,7 +41,7 @@ import {
   type DroppedContextSummarizer
 } from "@muse/memory";
 import type { GuardBlockRateMonitor } from "@muse/policy";
-import { createRunId } from "@muse/shared";
+import { createRunId, type JsonObject } from "@muse/shared";
 import {
   ToolExecutor,
   ToolRegistry,
@@ -58,6 +58,8 @@ import type { ActiveContextProvider, ActiveContextSnapshot } from "./active-cont
 import { applyAttachmentContext as applyAttachmentContextFn } from "./attachment-context.js";
 import { joinUserMessages } from "./internals.js";
 import { groundToolArguments } from "./tool-argument-grounding.js";
+import { executeToolPlan, parseToolPlan, type ToolPlan, type ToolPlanExecutor, type ToolPlanResult } from "./tool-plan.js";
+import type { ToolExemplar } from "./tool-exemplars.js";
 import type { ToolCallMiddleware } from "./tool-call-middleware.js";
 import {
   applyActiveContext as applyActiveContextFn,
@@ -66,6 +68,7 @@ import {
   applyInboxContextWithGrounding as applyInboxContextWithGroundingFn,
   applyPromptExemplars as applyPromptExemplarsFn,
   applyPromptLayers as applyPromptLayersFn,
+  applyToolExemplars as applyToolExemplarsFn,
   applyStoredConversationSummary as applyStoredConversationSummaryFn,
   applyUserMemory as applyUserMemoryFn,
   persistConversationSummaryFromRequest as persistConversationSummaryFromRequestFn,
@@ -174,6 +177,28 @@ function clampRunLimit(value: number | undefined, fallback: number): number {
     : fallback;
 }
 
+/** The single PTC orchestrator tool name (defined as a MuseTool in `@muse/tools`). */
+const RUN_TOOL_PLAN_TOOL_NAME = "run_tool_plan";
+
+/**
+ * Thrown by {@link AgentRuntime.executeToolPlanGated}'s executor when a plan step's gated tool call
+ * does NOT complete (approval denied, validation/grounding rejected, or the handler failed).
+ * `executeToolPlan` propagates it and aborts the plan, so no downstream step runs — a denied or
+ * failed step leaves no partial side effect (the #1 PTC invariant, outbound-safety.md).
+ */
+export class ToolPlanStepBlockedError extends Error {
+  readonly tool: string;
+  readonly status: ToolExecutionResult["status"];
+  readonly output: string;
+  constructor(tool: string, status: ToolExecutionResult["status"], output: string) {
+    super(`tool plan step '${tool}' did not complete (${status}): ${output}`);
+    this.name = "ToolPlanStepBlockedError";
+    this.tool = tool;
+    this.status = status;
+    this.output = output;
+  }
+}
+
 export class AgentRuntime {
   private readonly modelProvider?: ModelProvider;
   private readonly modelRegistry?: ModelProviderRegistry;
@@ -213,6 +238,8 @@ export class AgentRuntime {
   private readonly responseFilters: readonly ResponseFilterStage[];
   private readonly exemplarRetriever?: ExemplarRetriever;
   private readonly exemplarTopK: number;
+  private readonly toolExemplarBank?: readonly ToolExemplar[];
+  private readonly toolExemplarTopK: number;
   private readonly promptLayerRegistry?: PromptLayerRegistry;
   private readonly activeContextProvider?: ActiveContextProvider;
   private readonly ambientSnapshotProvider?: AmbientSnapshotProvider;
@@ -281,6 +308,8 @@ export class AgentRuntime {
     this.responseFilters = options.responseFilters ?? [];
     this.exemplarRetriever = options.exemplarRetriever;
     this.exemplarTopK = Math.max(1, options.exemplarTopK ?? 3);
+    this.toolExemplarBank = options.toolExemplarBank;
+    this.toolExemplarTopK = Math.max(1, options.toolExemplarTopK ?? 3);
     this.promptLayerRegistry = options.promptLayerRegistry;
     this.activeContextProvider = options.activeContextProvider;
     this.ambientSnapshotProvider = options.ambientSnapshotProvider;
@@ -473,6 +502,11 @@ export class AgentRuntime {
     );
     await this.recordRunStart(layeredContext, selected.provider.id, selected.model);
 
+    // Resolve the exposed tool set ONCE (the exposure plan keys off the user
+    // prompt, which the system-section transforms never mutate) so the
+    // tool-exemplar few-shot and the model request advertise the identical set.
+    const tools = this.modelTools(layeredContext);
+
     const memoryAppliedInput = await applyUserMemoryFn(layeredContext, this.userMemoryProvider, this.userMemoryMaxEntries);
     const clarifyAppliedInput = applyClarifyDirectiveFn({ ...layeredContext, input: memoryAppliedInput });
     const memoryAppliedContext: AgentRunContext = { ...layeredContext, input: clarifyAppliedInput };
@@ -495,7 +529,13 @@ export class AgentRuntime {
     );
     const attachmentAppliedInput = applyAttachmentContextFn({ ...memoryAppliedContext, input: playbookInput });
     const skillsAppliedInput = await applySkillsContextFn({ ...memoryAppliedContext, input: attachmentAppliedInput }, this.skillCatalogProvider);
-    const activeContextContext: AgentRunContext = { ...memoryAppliedContext, input: skillsAppliedInput };
+    const toolExemplarInput = applyToolExemplarsFn(
+      { ...memoryAppliedContext, input: skillsAppliedInput },
+      this.toolExemplarBank,
+      tools.map((tool) => tool.name),
+      this.toolExemplarTopK
+    );
+    const activeContextContext: AgentRunContext = { ...memoryAppliedContext, input: toolExemplarInput };
     const { input: inboxAppliedInput, groundingSources: inboxGroundingSources } = await applyInboxContextWithGroundingFn(activeContextContext, this.inboxContextProvider);
     const inboxAppliedContext: AgentRunContext = { ...activeContextContext, input: inboxAppliedInput };
     const episodicAppliedInput = await applyEpisodicRecallFn(inboxAppliedContext, this.episodicRecallProvider);
@@ -544,7 +584,6 @@ export class AgentRuntime {
     if (promptBudget) {
       recordPromptBudgetSpanAttributes(runSpan, promptBudgetSpanAttributes(promptBudget));
     }
-    const tools = this.modelTools(layeredContext);
     const cacheKey = buildCacheKey(cacheableModelRequest(preparedRequest.request), tools.map((tool) => tool.name));
     const cached = await this.readCache(cacheKey, selected.model);
 
@@ -728,6 +767,84 @@ export class AgentRuntime {
     };
   }
 
+  /**
+   * Execute a parsed PTC {@link ToolPlan} where EVERY step runs through the SAME gated single-tool
+   * path as a native tool call ({@link executeToolCall}: beforeTool hook → approval gate → arg
+   * coercion/required/enum validation → arg grounding → executor → afterTool hook). It does not
+   * bypass or re-implement a single gate — it binds the plan interpreter's pluggable executor seam
+   * ({@link executeToolPlan}) to that method. A step whose gated call does not COMPLETE (denied,
+   * invalid, or failed) throws {@link ToolPlanStepBlockedError}, which aborts the plan before any
+   * later step runs, so a blocked step leaves no partial downstream effect. A 1-step plan is
+   * therefore gate-equivalent to a single native tool call. Phase 2 scope is gated EXECUTION only;
+   * grounding/citation of the plan's projected result is Phase 3.
+   */
+  async executeToolPlanGated(plan: ToolPlan, context: AgentRunContext): Promise<ToolPlanResult> {
+    const activeTools = this.modelTools(context);
+    let stepIndex = 0;
+    const executor: ToolPlanExecutor = async (tool, args) => {
+      stepIndex += 1;
+      const toolCall: ModelToolCall = {
+        arguments: args as JsonObject,
+        id: `${context.runId}-ptc-${stepIndex.toString()}`,
+        name: tool
+      };
+      const executed = await this.executeToolCall(context, toolCall, activeTools);
+      if (executed.result.status !== "completed") {
+        throw new ToolPlanStepBlockedError(tool, executed.result.status, executed.result.output);
+      }
+      return executed.result.output;
+    };
+    return executeToolPlan(plan, executor);
+  }
+
+  /**
+   * Handle a {@link RUN_TOOL_PLAN_TOOL_NAME} call: parse the plan (knownTools = the OTHER exposed
+   * tools, so a nested run_tool_plan is an unknown-tool parse error and recursion is impossible),
+   * run it through the gated path, and project the result back as a normal COMPLETED tool result.
+   * A parse error or a {@link ToolPlanStepBlockedError} (denied/invalid/failed step) becomes a
+   * BLOCKED tool result — never a throw — so the model loop continues and a blocked step (Phase 2's
+   * guarantee) leaves no partial downstream effect. The projected `result` is the ONLY value that
+   * re-enters context, and because it is a completed tool output it is automatically a citable
+   * grounding source (groundingSourceFromExecuted) — the final answer is grounded against it.
+   */
+  private async runToolPlanTool(
+    context: AgentRunContext,
+    toolCall: ModelToolCall,
+    activeTools: readonly ModelTool[]
+  ): Promise<ExecutedToolResult> {
+    const knownTools = new Set(
+      activeTools.map((tool) => tool.name).filter((name) => name !== RUN_TOOL_PLAN_TOOL_NAME)
+    );
+    const parsed = parseToolPlan(toolCall.arguments, { knownTools });
+    if ("error" in parsed) {
+      const executed = blockedToolResult(toolCall, `Error: invalid tool plan: ${parsed.error}`);
+      await this.invokeHooks("afterTool", context, executed);
+      return executed;
+    }
+
+    let planResult: ToolPlanResult;
+    try {
+      planResult = await this.executeToolPlanGated(parsed, context);
+    } catch (error) {
+      const reason = error instanceof ToolPlanStepBlockedError
+        ? `plan step '${error.tool}' did not complete (${error.status}): ${error.output}`
+        : error instanceof Error ? error.message : String(error);
+      const executed = blockedToolResult(toolCall, `Error: ${reason}`);
+      await this.invokeHooks("afterTool", context, executed);
+      return executed;
+    }
+
+    const output = typeof planResult.result === "string"
+      ? planResult.result
+      : JSON.stringify(planResult.result ?? null);
+    const executed: ExecutedToolResult = {
+      result: { id: toolCall.id, name: toolCall.name, output, status: "completed" },
+      toolCall
+    };
+    await this.invokeHooks("afterTool", context, executed);
+    return executed;
+  }
+
   private modelTools(context: AgentRunContext): readonly ModelTool[] {
     if (!this.toolRegistry) {
       return [];
@@ -863,6 +980,18 @@ export class AgentRuntime {
       );
       await this.invokeHooks("afterTool", context, executed);
       return executed;
+    }
+
+    // PTC interception (run BEFORE this tool's own approval/grounding): run_tool_plan is an
+    // orchestrator, not a leaf tool — its EXECUTE handler is a dead-end. Parse the plan, then run
+    // every step through this same gated path (executeToolPlanGated → executeToolCall), and return
+    // the PROJECTED result as a normal COMPLETED tool result so the model loop binds it as a
+    // citable tool message (capToolOutput) and the grounding gate scores the final answer against
+    // it. knownTools excludes run_tool_plan itself, so a nested PTC plan is an unknown-tool parse
+    // error (no recursion). A parse error / blocked step becomes a normal blocked tool result —
+    // never a throw that crashes the model loop.
+    if (toolCall.name === RUN_TOOL_PLAN_TOOL_NAME) {
+      return this.runToolPlanTool(context, toolCall, activeTools);
     }
 
     await this.invokeHooks("beforeTool", context, toolCall);

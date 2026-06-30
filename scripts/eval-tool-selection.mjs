@@ -1419,6 +1419,42 @@ async function buildTimeToolsExemplarScenario() {
   return { ...base, exemplarBank: TIME_EXEMPLAR_BANK, label: "real-time-tools+exemplars (A/B arm)" };
 }
 
+// run_tool_plan (PTC) — the ONE multi-call orchestrator. The carve: a task needing SEVERAL chained
+// tool calls (one tool's output feeding another) is run_tool_plan; a SINGLE-call task must pick that
+// single tool, never run_tool_plan (over-selection is worse than a native call — tool-calling.md #5).
+async function buildPtcScenario() {
+  try {
+    const plan = await import("../packages/tools/dist/muse-tools-plan.js");
+    const time = await import("../packages/tools/dist/muse-tools-time.js");
+    const data = await import("../packages/tools/dist/muse-tools-data.js");
+    const now = () => new Date("2026-06-30T00:00:00Z");
+    const instances = [plan.createRunToolPlanTool(), time.createTimeNowTool(now), time.createTimeDiffTool(), data.createMathEvalTool()];
+    const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
+    const byName = new Set(tools.map((t) => t.name));
+    const cases = [
+      // POSITIVE: a genuine 2-step chain (today's date → days until a target) → run_tool_plan.
+      { prompt: "First get today's date, then use it to compute how many days are left until 2026-12-25.", expectTool: "run_tool_plan", note: "EN multi-step chain (time_now → time_diff) → run_tool_plan" },
+      { prompt: "지금 날짜를 먼저 알아낸 다음, 그걸로 2026-12-25까지 며칠 남았는지 계산해줘.", expectTool: "run_tool_plan", note: "KO multi-step chain → run_tool_plan" },
+      // NEGATIVE: a SINGLE-call task must pick that one tool, NEVER run_tool_plan (no over-selection).
+      { prompt: "What is 144 divided by 12?", expectTool: "math_eval", requireArgs: ["expression"], note: "single arithmetic call → math_eval (NOT run_tool_plan)" },
+      { prompt: "What's the current date and time?", expectTool: "time_now", note: "single lookup → time_now (NOT run_tool_plan)" }
+    ];
+    // Few-shot exemplars: run_tool_plan is a BRAND-NEW tool with no trace history, so a 12B never
+    // imitates it from scratch. These paraphrases (NOT the test prompts) teach the carve —
+    // multi-step chain → run_tool_plan, single-call → the native tool (restraint). arXiv 2508.15214.
+    const exemplarBank = [
+      { prompt: "Look up the current time, then work out how many hours remain until midnight.", tool: "run_tool_plan" },
+      { prompt: "오늘 날짜를 알아낸 다음 그걸 가지고 다음 회의까지 며칠인지 계산해줘.", tool: "run_tool_plan" },
+      { prompt: "Get today's date and then add two weeks to it to find the deadline.", tool: "run_tool_plan" },
+      { prompt: "What time is it right now?", tool: "time_now" },
+      { prompt: "Compute 50 times 3.", tool: "math_eval" }
+    ];
+    return { label: "run-tool-plan (PTC multi-step vs single-call over-selection)", tools, exemplarBank, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
+  } catch (error) {
+    return { label: "run-tool-plan", skip: `not built (${error instanceof Error ? error.message : String(error)})`, tools: [], cases: [] };
+  }
+}
+
 async function main() {
   if (!(await ollamaReachable())) {
     console.log(`eval:tools skipped — Ollama (${OLLAMA_BASE}) or model ${MODEL} unreachable. Start \`ollama serve\` with ${MODEL}.`);
@@ -1428,6 +1464,7 @@ async function main() {
   let scenarios = [
     { label: "synthetic", tools: SYNTHETIC_TOOLS, cases: SYNTHETIC_CASES },
     await buildRealScenario(),
+    await buildPtcScenario(),
     await buildBackgroundScenario(),
     await buildUnitConvertScenario(),
     await buildLunarScenario(),

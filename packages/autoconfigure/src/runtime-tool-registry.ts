@@ -16,7 +16,7 @@ import { addContact, defaultBackgroundProcessesFile, queryContacts, readActionLo
 import { collectDatedNotes, createBackgroundListTool, createContactsAddTool, createContactsFindTool, createContactsRemoveTool, createEmailReadMessageTool, createEmailReadTool, createEmailSearchTool, createFeedsSearchTool, createHomeEntitiesTool, createHomeStateTool, createObjectivesListTool, createOnThisDayTool, createRecentActionsTool, createRememberFactTool, createUpcomingBirthdaysTool, createWeatherTool, createWorldTimeTool, GmailEmailProvider, type NotesProviderRegistry, type TasksProviderRegistry } from "@muse/domain-tools";
 import type { UserMemoryStore } from "@muse/memory";
 import { createSchedulerTools, DynamicScheduler } from "@muse/scheduler";
-import type { MuseTool } from "@muse/tools";
+import { createRunToolPlanTool, type MuseTool } from "@muse/tools";
 
 import { createOllamaEmbedder } from "./context-engineering-builders.js";
 import { readEpisodeKnowledgeEntries } from "./episodes-knowledge-source.js";
@@ -226,8 +226,13 @@ export function buildRuntimeToolRegistry(deps: RuntimeToolRegistryDeps): Dynamic
     ];
   })();
 
+  // PTC: the ONE multi-call orchestrator (run_tool_plan), intercepted in AgentRuntime and run
+  // through the gated path so a multi-step task lands in ONE inference. Gated with the ambient
+  // tools (no tools → no orchestrator to chain them).
+  const ptcTools: readonly MuseTool[] = parseBoolean(env.MUSE_TOOLS_ENABLED, true) ? [createRunToolPlanTool()] : [];
   return new DynamicToolRegistry([
     () => museTools,
+    () => ptcTools,
     () => loopbackMcpTools,
     () => getContextReferenceLoopbackTools(),
     () => notesLoopbackTools,

@@ -122,6 +122,7 @@ import {
   buildVetoAvoidanceProvider,
   buildPlaybookProvider,
   buildPlanCacheProvider,
+  buildToolExemplarBank,
   buildVoiceRegistry,
   ensureNotesDir,
   mergeModelKeysFromFile,
@@ -610,6 +611,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const vetoAvoidanceProvider = buildVetoAvoidanceProvider(env);
   const playbookProvider = buildPlaybookProvider(env);
   const planCacheProvider = buildPlanCacheProvider(env);
+  const toolExemplarBank = buildToolExemplarBank(env);
   const contextWindowOptions = buildContextWindowOptions(env);
   const agentRuntime = modelProvider && defaultModel
     ? createAgentRuntime({
@@ -683,6 +685,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       ...(vetoAvoidanceProvider ? { vetoAvoidanceProvider } : {}),
       ...(playbookProvider ? { playbookProvider } : {}),
       ...(planCacheProvider ? { planCacheProvider } : {}),
+      ...(toolExemplarBank ? { toolExemplarBank } : {}),
       inboxContextProvider: buildInboxContextProvider(env),
       // Store-backed episodic recall. Reuses the same
       // ConversationSummaryStore that conversation-summary persistence

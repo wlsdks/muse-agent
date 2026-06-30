@@ -214,7 +214,8 @@ export {
   buildToolFilter,
   buildVetoAvoidanceProvider,
   buildPlaybookProvider,
-  buildPlanCacheProvider
+  buildPlanCacheProvider,
+  buildToolExemplarBank
 } from "./context-engineering-builders.js";
 
 /**

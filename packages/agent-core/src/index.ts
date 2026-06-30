@@ -525,6 +525,7 @@ export { createModelDroppedContextSummarizer } from "./dropped-context-summarize
 
 export {
   AgentRuntime,
+  ToolPlanStepBlockedError,
   augmentCompactionSummary,
   createAgentRuntime,
   type AgentRuntimeOptions,
@@ -565,7 +566,20 @@ export {
 export { sanitiseCitations, type SanitiseCitationsResult } from "./citation-sanitiser.js";
 export { applyCitationSanitisation, buildModelRequestWithWebSearch } from "./model-invocation.js";
 export { renderToolExemplarSection, selectToolExemplars, type ToolExemplar } from "./tool-exemplars.js";
+export { RUN_TOOL_PLAN_EXEMPLAR_BANK } from "./tool-plan-exemplars.js";
+export { applyToolExemplars } from "./context-transforms.js";
 export { summarizeTokenConfidence, type TokenConfidenceSummary } from "./token-confidence.js";
 export { baseLevelActivation, computeActivationBoost } from "./actr-activation.js";
 export { adjustConfidenceFloor, sdtCriterion, summarizeNoticeResponses, type NoticeResponseStats } from "./sdt-criterion.js";
 export { splitCompoundQuery } from "./compound-query.js";
+export {
+  parseToolPlan,
+  executeToolPlan,
+  DEFAULT_MAX_PLAN_STEPS,
+  type ToolPlan,
+  type ToolPlanStep,
+  type ToolPlanResult,
+  type ToolPlanStepOutput,
+  type ToolPlanExecutor,
+  type ParseToolPlanOptions
+} from "./tool-plan.js";
