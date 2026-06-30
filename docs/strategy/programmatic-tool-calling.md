@@ -1,8 +1,27 @@
 # Programmatic Tool Calling (PTC) — design
 
-> Status: DESIGN (for review). Source mirror: hermes-agent `tools/code_execution_tool.py`
-> (MIT/Apache) — pattern reimplemented Muse-native, not copied. Picked 2026-06-30 by Jinan as
-> the "big bet" from the openclaw/hermes capability comparison.
+> Status: **SHIPPED ✅** (2026-06-30, branch `feat/programmatic-tool-calling`). Source mirror:
+> hermes-agent `tools/code_execution_tool.py` (MIT/Apache) — pattern reimplemented Muse-native, not
+> copied. Picked 2026-06-30 by Jinan as the "big bet" from the openclaw/hermes capability comparison.
+>
+> **What shipped** (all phases independently maker≠judge verified; journal:
+> `docs/goals/loops/programmatic-tool-calling.md`):
+> - Phase 1 — pure plan schema + DAG interpreter (`agent-core/tool-plan.ts`): backward-`$`-ref-only
+>   (acyclic by construction), value-level substitution (injection guard).
+> - Phase 2 — `AgentRuntime.executeToolPlanGated`: every step reuses the native gated path
+>   (approval + arg-grounding); a blocked step aborts (no partial effect).
+> - Phase 3 — `run_tool_plan` tool + grounding: only the projected result re-enters context as a
+>   citable source, so `verifyGrounding` keeps fabrication=0; intermediate outputs never leak.
+> - Phase 4 — live proof on gemma4:12b: with few-shot, 4/4 selection + VALID nested-plan emission
+>   (0/2 without — a new tool is invisible to a 12B without exemplars).
+> - Phase 5 — production wiring: `applyToolExemplars` injects the tool-exemplar few-shot into the
+>   live prompt + a seeded `RUN_TOOL_PLAN_EXEMPLAR_BANK` (default-on, `MUSE_TOOLS_ENABLED` /
+>   `MUSE_TOOL_EXEMPLARS` opt-outs).
+> - Hardening — closed-set result/arg projections `count` / `first` / `last`.
+>
+> **Deferred (grow from real need, §3A/§7):** `filter`-by-literal (a larger grammar); v2 sandboxed
+> arbitrary code (a much bigger security review — the plan-first form was shipped precisely to avoid
+> it). The transform set + a wider exemplar bank grow from real traces, not speculation.
 
 ## 1. The problem it solves (Muse's self-documented #1 bottleneck)
 
