@@ -3182,3 +3182,7 @@ Design: docs/strategy/secret-source.md · convergence pick (openclaw+hermes both
 - ✓ Phase 3 — scoping + redaction wiring into live log sinks (secret never in model/grounding)
 - ~ Phase 4 — 1Password+Bitwarden (DEFERRED, design-optional)
 - ✓ Phase 5 — wire into live outbound credential-fetch + e2e + doctor + docs
+
+## COMPETITOR-CONVERGENCE — EXHAUSTED (loop/competitor-convergence)
+Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ Muse-lacks, freshness-checked).
+- ✓ CONVERGENCE EXHAUSTED (3 independent scouts) — PTC · SecretSource · MCP supply-chain audit shipped; surface closed vs both rivals. Re-point to a frontier axis or stop = Jinan's call.

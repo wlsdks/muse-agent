@@ -232,6 +232,12 @@ export {
   validateStdioCommand
 } from "./validators.js";
 
+export {
+  auditMcpServerConfig,
+  type McpServerAuditResult,
+  type McpServerAuditTarget
+} from "./server-audit.js";
+
 export function createMcpMuseTool(serverName: string, tool: McpRemoteTool, connection: McpConnection): MuseTool {
   return {
     definition: {

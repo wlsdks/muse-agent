@@ -358,13 +358,22 @@ describe("api server: MCP", () => {
       },
       url: "/api/mcp/servers"
     });
+    // Run the fixture server from a temp .mjs FILE, not `node -e <inline code>`: the supply-chain
+    // audit (server-audit.ts) deliberately refuses an interpreter inline-code flag, which is exactly
+    // the launch shape a real malicious MCP server would use. The file lives INSIDE packages/mcp (the
+    // spawn cwd) so its bare `@modelcontextprotocol/sdk` imports resolve against the workspace
+    // node_modules — a tmpdir has none.
+    const { writeFile, rm } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const fixturePath = join(process.cwd(), "..", "..", "packages", "mcp", `mcp-fixture-${process.pid.toString()}.mjs`);
+    await writeFile(fixturePath, createMcpFixtureServerCode(), "utf8");
     const created = await server.inject({
       headers,
       method: "POST",
       payload: {
         autoConnect: true,
         config: {
-          args: ["--input-type=module", "-e", createMcpFixtureServerCode()],
+          args: [fixturePath],
           command: "node",
           cwd: "../../packages/mcp"
         },
@@ -431,6 +440,7 @@ describe("api server: MCP", () => {
     expect(toolCall.json().output).not.toContain("Ignore previous instructions");
     expect(toolCall.json().output).toContain("[SANITIZED]");
     expect(disconnected.json()).toEqual({ status: "DISCONNECTED" });
+    await rm(fixturePath, { force: true });
   });
 
   it("returns local MCP preflight diagnostics when no remote admin endpoint is configured", async () => {
