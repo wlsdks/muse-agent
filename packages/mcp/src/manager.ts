@@ -44,6 +44,7 @@ import {
   type McpServerValidationOptions,
   type McpTransportConnector
 } from "./index.js";
+import { auditMcpServerConfig } from "./server-audit.js";
 import { validateMcpServer } from "./validators.js";
 
 export class McpManager {
@@ -75,6 +76,16 @@ export class McpManager {
     if (!(policy.allowedServerNames.length === 0 || policy.allowedServerNames.includes(input.name))) {
       this.statuses.set(input.name, "disabled");
       this.health.set(input.name, this.createHealthSnapshot(input.name, "unhealthy", "Server denied by policy"));
+      return undefined;
+    }
+
+    const registerAudit = auditMcpServerConfig({ transportType: input.transportType, config: input.config ?? {} });
+    if (!registerAudit.safe) {
+      this.statuses.set(input.name, "disabled");
+      this.health.set(
+        input.name,
+        this.createHealthSnapshot(input.name, "unhealthy", auditReason(registerAudit.reasons))
+      );
       return undefined;
     }
 
@@ -143,6 +154,20 @@ export class McpManager {
       this.statuses.set(name, "disabled");
       this.health.set(name, this.createHealthSnapshot(name, "unhealthy", "Server denied by security policy"));
       return false;
+    }
+
+    if (server) {
+      // Static config audit — defense-in-depth past the name allowlist.
+      // A server that PASSES the allowlist can still ship a malicious
+      // launch line (download-and-exec, command injection, a binary
+      // staged in /tmp). Refuse it terminally, exactly like an
+      // allowlist denial: disabled + unhealthy, never a reconnect loop.
+      const connectAudit = auditMcpServerConfig({ transportType: server.transportType, config: server.config });
+      if (!connectAudit.safe) {
+        this.statuses.set(name, "disabled");
+        this.health.set(name, this.createHealthSnapshot(name, "unhealthy", auditReason(connectAudit.reasons)));
+        return false;
+      }
     }
 
     if (!server || !this.connector) {
@@ -567,4 +592,8 @@ async function closeConnectionQuietly(connection: McpConnection): Promise<void> 
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function auditReason(reasons: readonly string[]): string {
+  return `Static security audit failed: ${reasons.join("; ")}`;
 }
