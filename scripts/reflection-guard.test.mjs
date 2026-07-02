@@ -23,13 +23,13 @@ const REFLECTION_SURFACES = [
     verifierMarker: "verify("
   },
   {
-    file: "packages/agent-core/src/knowledge-recall.ts",
+    file: "packages/agent-core/src/recall-verdict.ts",
     retryMarker: "reverify(",
     surface: "weak-band reverify escalation",
     verifierMarker: "fail-closed"
   },
   {
-    file: "apps/cli/src/commands-ask.ts",
+    file: "apps/cli/src/ask-grounding-verdict.ts",
     retryMarker: "drawBestGroundedRedraft(",
     surface: "--best-of resample",
     verifierMarker: "confirm"
