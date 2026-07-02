@@ -113,7 +113,9 @@ function storedToMemory(stored: StoredMemory): UserMemory {
   return {
     facts: { ...stored.facts },
     preferences: { ...stored.preferences },
-    recentTopics: [...stored.recentTopics],
+    // Tolerant like parseStoredDate below: a hand-edited / legacy entry may
+    // lack recentTopics entirely — that must not crash every read of the store.
+    recentTopics: [...(stored.recentTopics ?? [])],
     updatedAt: parseStoredDate(stored.updatedAt),
     userId: stored.userId,
     ...(stored.userModel ? { userModel: stored.userModel } : {}),
@@ -121,6 +123,20 @@ function storedToMemory(stored: StoredMemory): UserMemory {
       ? { factHistory: stored.factHistory.map((entry): FactSupersession => ({ key: entry.key, previousValue: entry.previousValue, replacedAt: parseStoredDate(entry.replacedAt), ...(entry.kind === "refine" || entry.kind === "contradict" ? { kind: entry.kind } : {}), ...(entry.scope === "preference" ? { scope: entry.scope } : {}) })) }
       : {})
   };
+}
+
+/**
+ * The orphaned legacy bucket for `userId`, when one exists: the "default"
+ * entry counts as the resolved user's memory ONLY when that user has no
+ * bucket of their own (and is not "default" itself).
+ */
+function legacyDefaultEntry(data: StoredFile, userId: string): StoredMemory | undefined {
+  // A slot-qualified identity ("user@work") is a deliberate sub-profile — it
+  // starts empty by design and never inherits the legacy base bucket.
+  if (userId === "default" || userId.includes("@") || data.users[userId] !== undefined) {
+    return undefined;
+  }
+  return data.users["default"];
 }
 
 export class FileUserMemoryStore implements UserMemoryStore {
@@ -138,7 +154,22 @@ export class FileUserMemoryStore implements UserMemoryStore {
   async findByUserId(userId: string): Promise<UserMemory | undefined> {
     const { file: data } = await this.read();
     const entry = data.users[userId];
-    return entry ? storedToMemory(entry) : undefined;
+    if (entry) {
+      // The bucket KEY is the identity; a legacy entry's stored userId may be
+      // absent or drifted, so the requested key is authoritative.
+      return { ...storedToMemory(entry), userId };
+    }
+    // Legacy-bucket healing: the session user id resolves from
+    // MUSE_USER_ID ?? USER ?? "default", so a context without USER (an old
+    // daemon, an early version) wrote the SAME human's facts under "default"
+    // while today's session reads e.g. "stark" — and "learns you" looked
+    // empty on a box with real history. This is a single-user local store:
+    // when the resolved bucket doesn't exist, the orphaned "default" bucket
+    // is that user's memory. Reads surface it; the first write migrates it
+    // (see patch). A deliberately-named coexisting bucket is never touched —
+    // the fallback only fires when the resolved bucket is ABSENT.
+    const legacy = legacyDefaultEntry(data, userId);
+    return legacy ? { ...storedToMemory(legacy), userId } : undefined;
   }
 
   async upsertFact(userId: string, rawKey: string, value: string): Promise<UserMemory> {
@@ -229,20 +260,28 @@ export class FileUserMemoryStore implements UserMemoryStore {
     return this.serializeWrite(async () => this.withFileLock(async () => {
       const { file: data, encrypted } = await this.read();
       const existingStored = data.users[userId];
+      // One-time convergence of the orphaned legacy "default" bucket (see
+      // findByUserId): the first write under the resolved user adopts the
+      // legacy data as its baseline and drops the "default" key in the same
+      // write, so the store converges to one bucket per human.
+      const legacy = existingStored === undefined ? legacyDefaultEntry(data, userId) : undefined;
       const baseline: UserMemory = existingStored
         ? storedToMemory(existingStored)
-        : {
-            facts: {},
-            preferences: {},
-            recentTopics: [],
-            updatedAt: this.now(),
-            userId
-          };
+        : legacy
+          ? { ...storedToMemory(legacy), userId }
+          : {
+              facts: {},
+              preferences: {},
+              recentTopics: [],
+              updatedAt: this.now(),
+              userId
+            };
       const updated: UserMemory = { ...mutator(baseline), updatedAt: this.now() };
-      const next: StoredFile = {
-        ...data,
-        users: { ...data.users, [userId]: memoryToStored(updated) }
-      };
+      const users: Record<string, StoredMemory> = { ...data.users, [userId]: memoryToStored(updated) };
+      if (legacy) {
+        delete users["default"];
+      }
+      const next: StoredFile = { ...data, users };
       await this.write(next, encrypted);
       return updated;
     }));

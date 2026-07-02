@@ -8280,6 +8280,7 @@ describe("cli program", () => {
     process.env.MUSE_USER_MEMORY_FILE = userMemoryFile;
     try {
       await fsp.writeFile(userMemoryFile, JSON.stringify({
+        version: 1,
         users: {
           stark: {
             facts: { name: "Stark" },
@@ -8304,6 +8305,7 @@ describe("cli program", () => {
 
       // Missing → omitted from JSON (no "(none)" filler).
       await fsp.writeFile(userMemoryFile, JSON.stringify({
+        version: 1,
         users: { stark: { facts: {}, preferences: {}, updatedAt: "2026-05-15T00:00:00Z" } }
       }), "utf8");
       const { io: io3, output: out3 } = captureOutput();
@@ -8314,6 +8316,7 @@ describe("cli program", () => {
 
       // Whitespace-only treated as missing.
       await fsp.writeFile(userMemoryFile, JSON.stringify({
+        version: 1,
         users: {
           stark: {
             facts: {},
@@ -8343,6 +8346,7 @@ describe("cli program", () => {
     try {
       // Preferences win over facts (active-context.ts precedence).
       await fsp.writeFile(userMemoryFile, JSON.stringify({
+        version: 1,
         users: {
           stark: {
             facts: { name: "Stark", current_focus: "fact-side" },
@@ -8367,6 +8371,7 @@ describe("cli program", () => {
 
       // Falls back to facts when preferences.current_focus absent.
       await fsp.writeFile(userMemoryFile, JSON.stringify({
+        version: 1,
         users: {
           stark: {
             facts: { current_focus: "fact-only focus" },
@@ -8383,6 +8388,7 @@ describe("cli program", () => {
 
       // Missing → omitted from JSON (no fake "(none)" string).
       await fsp.writeFile(userMemoryFile, JSON.stringify({
+        version: 1,
         users: { stark: { facts: {}, preferences: {}, updatedAt: "2026-05-15T00:00:00Z" } }
       }), "utf8");
       const { io: io4, output: out4 } = captureOutput();
@@ -8405,6 +8411,7 @@ describe("cli program", () => {
     // slot-keyed `stark@work` record. A slot-aware status MUST pick
     // the second one when MUSE_PERSONA=work.
     await fsp.writeFile(userMemoryFile, JSON.stringify({
+      version: 1,
       users: {
         stark: { facts: { name: "Stark (home)" }, preferences: {}, updatedAt: "2026-05-13T00:00:00Z" },
         "stark@work": {
@@ -8450,7 +8457,7 @@ describe("cli program", () => {
       expect(snap.persona.factCount).toBe(2);            // name + role
       expect(snap.persona.preferenceCount).toBe(2);      // tone + veto:no_emoji
       expect(snap.persona.vetoCount).toBe(1);
-      expect(snap.persona.updatedAt).toBe("2026-05-15T00:00:00Z");
+      expect(snap.persona.updatedAt).toBe("2026-05-15T00:00:00.000Z");
 
       // With no MUSE_PERSONA, status falls back to the bare record
       // and effectiveUserKey is omitted from the snap.

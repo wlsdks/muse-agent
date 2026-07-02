@@ -284,10 +284,15 @@ async function collectStatus(userId: string) {
   const activePreamble = personaStore ? resolveActivePersonaPreamble(personaStore) : "";
   const builtinDescription = BUILTIN_PERSONAS.find((p) => p.id === activeTemplateId)?.description;
 
-  const memoryDoc = await safeReadJson(userMemoryFile) as { users?: Record<string, unknown> } | undefined;
-  const persona = (memoryDoc?.users?.[effectiveUserKey] ?? undefined) as
-    | { facts?: Record<string, string>; preferences?: Record<string, string>; updatedAt?: string }
-    | undefined;
+  // Read through the store API (not a raw JSON parse) so status sees exactly
+  // what ask/chat/recall see — including the encrypted-at-rest format and the
+  // legacy "default"-bucket healing a raw read would miss.
+  const personaMemory = await new FileUserMemoryStore({ file: userMemoryFile })
+    .findByUserId(effectiveUserKey)
+    .catch(() => undefined);
+  const persona = personaMemory
+    ? { facts: personaMemory.facts, preferences: personaMemory.preferences, updatedAt: personaMemory.updatedAt.toISOString() }
+    : undefined;
 
   const recentlyLearnedLine = await readRecentlyLearnedLine(userMemoryFile, effectiveUserKey).catch(() => undefined);
   const recentlyForgottenLine = await readRecentlyForgottenLine(defaultBeliefProvenanceFile()).catch(() => undefined);

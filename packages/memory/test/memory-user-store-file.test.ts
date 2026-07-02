@@ -410,3 +410,94 @@ describe("FileUserMemoryStore — encryption at rest (data-loss-critical)", () =
     expect((await store.encryptAtRest()).alreadyEncrypted).toBe(false);
   });
 });
+
+describe("FileUserMemoryStore — legacy 'default' bucket healing (single-user identity)", () => {
+  // The session user id resolves MUSE_USER_ID ?? USER ?? "default", so a
+  // context without USER wrote the same human's facts under "default" while
+  // today's session reads an OS-named bucket — and "learns you" looked empty
+  // on a box with real history (found by a live product probe).
+  async function seededStore(users: Record<string, unknown>) {
+    const { file, store } = await newStore();
+    await writeFile(file, JSON.stringify({ version: 1, users }), "utf8");
+    return { file, store };
+  }
+  const legacyBucket = {
+    facts: { dentist: "Dr. Kim at Smile Dental" },
+    preferences: { tone: "concise" },
+    recentTopics: ["dental"],
+    updatedAt: "2026-05-01T00:00:00.000Z",
+    userId: "default"
+  };
+
+  it("READ fallback: a user with no bucket sees the orphaned default bucket as their memory", async () => {
+    const { store } = await seededStore({ default: legacyBucket });
+    const memory = await store.findByUserId("stark");
+    expect(memory?.facts.dentist).toBe("Dr. Kim at Smile Dental");
+    expect(memory?.preferences.tone).toBe("concise");
+    expect(memory?.userId).toBe("stark");
+  });
+
+  it("no fallback when the user has their OWN bucket (deliberate coexisting identities untouched)", async () => {
+    const { store } = await seededStore({
+      default: legacyBucket,
+      stark: { facts: { city: "Seoul" }, preferences: {}, recentTopics: [], updatedAt: "2026-06-01T00:00:00.000Z", userId: "stark" }
+    });
+    const memory = await store.findByUserId("stark");
+    expect(memory?.facts.dentist).toBeUndefined();
+    expect(memory?.facts.city).toBe("Seoul");
+    const asDefault = await store.findByUserId("default");
+    expect(asDefault?.facts.dentist).toBe("Dr. Kim at Smile Dental");
+  });
+
+  it("a slot-qualified identity (user@slot) never inherits the legacy bucket — slots start empty by design", async () => {
+    const { store } = await seededStore({ default: legacyBucket });
+    expect(await store.findByUserId("stark@work")).toBeUndefined();
+  });
+
+  it("no fallback invents memory: absent default + absent bucket stays undefined", async () => {
+    const { store } = await seededStore({});
+    expect(await store.findByUserId("stark")).toBeUndefined();
+  });
+
+  it("WRITE migration: the first write under the resolved user adopts the legacy data and drops 'default'", async () => {
+    const { file, store } = await seededStore({ default: legacyBucket });
+    await store.upsertFact("stark", "favorite_language", "TypeScript");
+    const raw = JSON.parse(await readFile(file, "utf8")) as { users: Record<string, { facts: Record<string, string> }> };
+    expect(raw.users.default).toBeUndefined();
+    expect(raw.users.stark.facts.dentist).toBe("Dr. Kim at Smile Dental");
+    expect(raw.users.stark.facts.favorite_language).toBe("TypeScript");
+  });
+
+  it("a write under 'default' itself never migrates anything", async () => {
+    const { file, store } = await seededStore({ default: legacyBucket });
+    await store.upsertFact("default", "city", "Busan");
+    const raw = JSON.parse(await readFile(file, "utf8")) as { users: Record<string, { facts: Record<string, string> }> };
+    expect(raw.users.default.facts.dentist).toBe("Dr. Kim at Smile Dental");
+    expect(raw.users.default.facts.city).toBe("Busan");
+  });
+
+  it("other named buckets survive the migration untouched", async () => {
+    const { file, store } = await seededStore({
+      default: legacyBucket,
+      "smoke-user": { facts: { probe: "x" }, preferences: {}, recentTopics: [], updatedAt: "2026-06-01T00:00:00.000Z", userId: "smoke-user" }
+    });
+    await store.upsertFact("stark", "favorite_language", "TypeScript");
+    const raw = JSON.parse(await readFile(file, "utf8")) as { users: Record<string, { facts: Record<string, string> }> };
+    expect(raw.users["smoke-user"].facts.probe).toBe("x");
+    expect(raw.users.default).toBeUndefined();
+  });
+});
+
+describe("FileUserMemoryStore — legacy minimal entries read without crashing", () => {
+  it("an entry lacking recentTopics/userId (hand-edited or legacy) still reads; the bucket key is the identity", async () => {
+    const { file, store } = await newStore();
+    await writeFile(file, JSON.stringify({
+      version: 1,
+      users: { stark: { facts: { name: "Stark" }, preferences: { working_hours: "9-18" }, updatedAt: "2026-05-15T00:00:00Z" } }
+    }), "utf8");
+    const memory = await store.findByUserId("stark");
+    expect(memory?.facts.name).toBe("Stark");
+    expect(memory?.recentTopics).toEqual([]);
+    expect(memory?.userId).toBe("stark");
+  });
+});
