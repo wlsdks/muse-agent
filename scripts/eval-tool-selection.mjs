@@ -75,6 +75,16 @@ const SYNTHETIC_CASES = [
 
 // Muse's ACTUAL built-in tools — proves production names/descriptions are
 // selectable. Includes the confusable time_now vs time_diff pair on purpose.
+// The domain tool factories (create*Tool / create*McpServer) moved from
+// @muse/mcp to @muse/domain-tools in the domain-tools split; the loopback
+// connection/projection helpers stayed in mcp. Merge both dists so the
+// scenario builders keep one namespace.
+async function importMuseToolPackages() {
+  const mcp = await import("../packages/mcp/dist/index.js");
+  const domainTools = await import("../packages/domain-tools/dist/index.js");
+  return { ...mcp, ...domainTools };
+}
+
 async function buildRealScenario() {
   try {
     const data = await import("../packages/tools/dist/muse-tools-data.js");
@@ -139,7 +149,7 @@ async function buildUnitConvertScenario() {
   try {
     const units = await import("../packages/tools/dist/muse-tools-units.js");
     const data = await import("../packages/tools/dist/muse-tools-data.js");
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const search = mcp.createLoopbackMcpMuseTools(mcp.createSearchMcpServer())[0];
     const instances = [units.createUnitConvertTool(), data.createMathEvalTool(), search];
     const tools = instances.map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
@@ -380,7 +390,7 @@ async function buildTimeToolsScenario() {
 // the real loopback tool DEFINITIONS (selection only; a stub registry suffices).
 async function buildPersonalCrudScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const stubCalendar = { createEvent: async () => ({}), deleteEvent: async () => undefined, listEvents: async () => [], updateEvent: async () => ({}) };
     const servers = [
       mcp.createTasksMcpServer({ file: "/tmp/eval-crud-tasks.json" }),
@@ -423,7 +433,7 @@ async function buildPersonalCrudScenario() {
 // so keeping them apart is the value. Selection-only (empty stub registry).
 async function buildCalendarReadScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const stubCalendar = { createEvent: async () => ({}), deleteEvent: async () => undefined, listEvents: async () => [], updateEvent: async () => ({}) };
     const server = mcp.createCalendarMcpServer({ registry: stubCalendar });
     const interesting = new Set(["list", "availability", "conflicts"]);
@@ -453,7 +463,7 @@ async function buildCalendarReadScenario() {
 // "할 일에 추가" (task) or "알림 맞춰" (reminder) prompt must NOT land on a note tool.
 async function buildNotesScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const servers = [
       mcp.createNotesMcpServer({ notesDir: "/tmp/eval-notes" }),
       mcp.createTasksMcpServer({ file: "/tmp/eval-notes-tasks.json" }),
@@ -491,7 +501,7 @@ async function buildNotesScenario() {
 // because only `.definition` (name/description/schema) is read for SELECTION.
 async function buildContactsScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const instances = [
       mcp.createContactsFindTool({ contacts: () => [] }),
       mcp.createUpcomingBirthdaysTool({ contacts: () => [] })
@@ -518,7 +528,7 @@ async function buildContactsScenario() {
 // FILTER intent stays on list while a free-text FIND stays on search.
 async function buildTasksTagScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const server = mcp.createTasksMcpServer({ file: "/tmp/eval-tasks-tag.json" });
     const interesting = new Set(["list", "search"]);
     const muse = mcp.createLoopbackMcpMuseTools(server).filter((t) => interesting.has(t.definition.name.split(".").pop()));
@@ -543,7 +553,7 @@ async function buildTasksTagScenario() {
 async function buildWeekAgendaScenario() {
   try {
     const ac = await import("../packages/autoconfigure/dist/index.js");
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const stubCalendar = { createEvent: async () => ({}), deleteEvent: async () => undefined, listEvents: async () => [], updateEvent: async () => ({}) };
     const lists = [
       ...mcp.createLoopbackMcpMuseTools(mcp.createCalendarMcpServer({ registry: stubCalendar })),
@@ -584,7 +594,7 @@ async function buildWeekAgendaScenario() {
 async function buildDayRecapScenario() {
   try {
     const ac = await import("../packages/autoconfigure/dist/index.js");
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const recap = ac.createDayRecapTool({ recapInput: () => ({ completedTasks: [], firedReminders: [], overdueReminders: [], overdueTasks: [] }) });
     const today = ac.createTodayBriefTool({ todayInput: () => ({ events: [], followups: [], reminders: [], tasks: [] }) });
     const actions = mcp.createRecentActionsTool({ actions: () => [] });
@@ -618,7 +628,7 @@ async function buildDayRecapScenario() {
 async function buildFindItemsScenario() {
   try {
     const ac = await import("../packages/autoconfigure/dist/index.js");
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const instances = [
       ac.createFindItemsTool({ find: () => ({}) }),
       mcp.createContactsFindTool({ contacts: () => [] }),
@@ -651,7 +661,7 @@ async function buildFindItemsScenario() {
 // use" neighbours (tasks = a to-do, notes = free-form note).
 async function buildRememberFactScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const stubStore = { upsertFact: () => undefined, upsertPreference: () => undefined };
     const namespaced = [
       mcp.createNotesMcpServer({ notesDir: "/tmp/eval-remember-notes" }),
@@ -693,7 +703,7 @@ async function buildRememberFactScenario() {
 // a real "Bob" so the trap has a concrete delete target.
 async function buildContactsCrudScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const contacts = () => [{ id: "c1", name: "Bob" }];
     const namespaced = mcp.createLoopbackMcpMuseTools(mcp.createTasksMcpServer({ file: "/tmp/eval-contacts-crud-tasks.json" })).filter((t) => t.definition.name === "muse.tasks.add");
     const instances = [
@@ -730,7 +740,7 @@ async function buildContactsCrudScenario() {
 // unwanted message toward another person, the highest-blast-radius false-positive.
 async function buildEmailSendScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const contacts = () => [{ email: "bob@acme.com", id: "c1", name: "Bob" }];
     const stub = { reader: { recent: () => [], get: () => undefined }, sender: { send: () => ({ ok: true }) }, approvalGate: () => ({ approved: false }), actionLogFile: "/tmp/eval-email-actionlog.json", userId: "u" };
     const provider = { listRecent: () => [], search: () => [], get: () => undefined };
@@ -775,7 +785,7 @@ async function buildEmailSendScenario() {
 // channels so the model also keeps the channels apart (chat DM vs iMessage).
 async function buildMessagingSendScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const mac = await import("../packages/macos/dist/index.js");
     const messagingServer = mcp.createMessagingMcpServer({
       registry: { list: () => [], get: () => undefined, describe: () => ({ id: "telegram" }) },
@@ -814,7 +824,7 @@ async function buildMessagingSendScenario() {
 async function buildOverdueScenario() {
   try {
     const ac = await import("../packages/autoconfigure/dist/index.js");
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const instances = [
       ac.createOverdueContactsTool({ interactions: () => [] }),
       mcp.createContactsFindTool({ contacts: () => [] })
@@ -838,7 +848,7 @@ async function buildOverdueScenario() {
 // tracking?" → list_objectives.
 async function buildActionsScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const instances = [
       mcp.createRecentActionsTool({ actions: () => [] }),
       mcp.createObjectivesListTool({ objectives: () => [] })
@@ -863,7 +873,7 @@ async function buildActionsScenario() {
 // objectives, while "show my to-dos" stays on tasks.list.
 async function buildObjectivesScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const obj = mcp.createObjectivesListTool({ objectives: () => [] });
     const tasksList = mcp.createLoopbackMcpMuseTools(mcp.createTasksMcpServer({ file: "/tmp/eval-obj-tasks.json" })).filter((t) => t.definition.name === "muse.tasks.list");
     const tools = [obj, ...tasksList].map((t) => ({ name: t.definition.name, description: t.definition.description, inputSchema: t.definition.inputSchema }));
@@ -887,7 +897,7 @@ async function buildObjectivesScenario() {
 // must NOT route to the date-cued tool.
 async function buildOnThisDayScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const notesServer = mcp.createNotesMcpServer({ notesDir: "/tmp/eval-otd-notes" });
     const search = mcp.createLoopbackMcpMuseTools(notesServer).filter((t) => t.definition.name.split(".").pop() === "search");
     const instances = [mcp.createOnThisDayTool({ datedNotes: () => [] }), ...search];
@@ -913,7 +923,7 @@ async function buildOnThisDayScenario() {
 // off by default, which is exactly why feeds_search exists.
 async function buildFeedsScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const instances = [
       mcp.createFeedsSearchTool({ feedEntries: () => [] }),
       mcp.createEmailSearchTool({ searcher: { search: async () => [] } })
@@ -943,7 +953,7 @@ async function buildFeedsScenario() {
 // followup tool.
 async function buildFollowupScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const stubCalendar = { createEvent: async () => ({}), deleteEvent: async () => undefined, listEvents: async () => [], updateEvent: async () => ({}) };
     const servers = [
       mcp.createFollowupsMcpServer({ file: "/tmp/eval-followups.json" }),
@@ -1017,7 +1027,7 @@ async function buildFollowupScenario() {
 // for X" must route to web search, not notes recall or a URL read.
 async function buildWebSearchScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const ac = await import("../packages/autoconfigure/dist/index.js");
     const search = mcp.createLoopbackMcpMuseTools(mcp.createSearchMcpServer())[0];
     const webRead = mcp.createLoopbackMcpMuseTools(mcp.createWebReadMcpServer())[0];
@@ -1048,7 +1058,7 @@ async function buildHistorySearchScenario() {
   try {
     const recall = await import("../packages/recall/dist/history-search-tool.js");
     const ac = await import("../packages/autoconfigure/dist/index.js");
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const domainTools = await import("../packages/domain-tools/dist/index.js");
     const search = mcp.createLoopbackMcpMuseTools(domainTools.createSearchMcpServer())[0];
     const instances = [recall.createHistorySearchTool({ records: () => [] }), ac.createNotesKnowledgeSearchTool({}), search];
@@ -1073,7 +1083,7 @@ async function buildHistorySearchScenario() {
 
 async function buildRecallVsCrudScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const ac = await import("../packages/autoconfigure/dist/index.js");
     const stubCalendar = { createEvent: async () => ({}), deleteEvent: async () => undefined, listEvents: async () => [], updateEvent: async () => ({}) };
     const servers = [
@@ -1105,7 +1115,7 @@ async function buildRecallVsCrudScenario() {
 
 async function buildActuatorScenario() {
   try {
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const ac = await import("../packages/autoconfigure/dist/index.js");
     const instances = [
       mcp.createWebActionTool({ fetchImpl: fetch, approvalGate: {}, actionLogFile: "/tmp/eval-actuator.json", userId: "eval" }),
@@ -1235,7 +1245,7 @@ async function buildFileWriteScenario() {
 async function buildMacActuatorScenario() {
   try {
     const mac = await import("../packages/macos/dist/index.js");
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const ac = await import("../packages/autoconfigure/dist/index.js");
     const instances = [
       mac.createMacShortcutRunTool(),
@@ -1323,7 +1333,7 @@ async function buildMacActuatorScenario() {
 async function buildBrowserScenario() {
   try {
     const browser = await import("../packages/browser/dist/index.js");
-    const mcp = await import("../packages/mcp/dist/index.js");
+    const mcp = await importMuseToolPackages();
     const ac = await import("../packages/autoconfigure/dist/index.js");
     const stubController = {};
     const allowGate = () => ({ approved: true });
