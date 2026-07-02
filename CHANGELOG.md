@@ -8,6 +8,32 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-07-02
+
+Deterministic-safety hardening, from a fresh source-level scout of what the
+fastest-moving open agents (openclaw, hermes) shipped in the last nine days.
+Early / experimental, macOS only.
+
+### Fixed
+
+- **A hung local model can no longer freeze Muse.** Every model HTTP call now
+  carries an abort signal plus a safety-cap timeout (`MUSE_MODEL_TIMEOUT_MS`,
+  default 5 min, `0` disables) — a wedged Ollama socket times out and retries
+  instead of blocking the turn and every daemon tick behind it forever, and
+  Ctrl-C during `muse ask` now stops the actual generation, not just the
+  output. Streaming keeps its dedicated stall detector and is never
+  total-capped, so long answers are safe.
+- **The dangerous-command guard resists obfuscation.** The fail-close gate on
+  `run_command` now normalizes and re-scans commands at real command
+  positions: `$(echo rm) -rf /`, `$IFS`-obfuscation, base64-decode-piped-to-
+  shell, `--recur`-style flag abbreviation, and `eval "$(curl …)"` all block,
+  while quoted mentions (`git commit -m "rm -rf /"`) and `git rm --cached`
+  no longer false-trigger. Approval prompts redact secrets before display.
+- **Consent, veto, objectives, and draft-approval records can no longer be
+  lost to a process race.** The four outbound-safety stores now take the same
+  cross-process file lock the task/reminder stores already used — a daemon
+  tick and a manual command can't clobber each other's fail-close records.
+
 ## [0.2.1] - 2026-07-02
 
 Trust-signal accuracy release, driven by a fresh-eyes product probe: the
