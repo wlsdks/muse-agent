@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 
 import type { JsonObject, JsonValue } from "@muse/shared";
 
-import { readString } from "./loopback-helpers.js";
-import type { LoopbackMcpServer } from "./loopback.js";
+import { readString } from "@muse/mcp";
+import type { LoopbackMcpServer } from "@muse/mcp";
 
 /**
  * `muse.diff` line-diff utilities — the largest single ambient

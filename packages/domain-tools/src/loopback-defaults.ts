@@ -1,12 +1,20 @@
 import { MessagingProviderRegistry } from "@muse/messaging";
-import { type BuiltinLoopbackOptions, type LoopbackMcpServer, createCryptoMcpServer, createDiffMcpServer, createJsonMcpServer, createMathMcpServer, createRegexMcpServer, createTextUtilsMcpServer, createTimeMcpServer, createUrlMcpServer } from "@muse/mcp";
+import { type BuiltinLoopbackOptions, type LoopbackMcpServer } from "@muse/mcp";
 import type { ToolRisk } from "@muse/tools";
 
+import { createCryptoMcpServer } from "./loopback-crypto.js";
+import { createDiffMcpServer } from "./loopback-diff-server.js";
 import { createFetchMcpServer } from "./loopback-fetch.js";
 import { createFilesystemMcpServer } from "./loopback-filesystem.js";
+import { createJsonMcpServer } from "./loopback-json-server.js";
+import { createMathMcpServer } from "./loopback-math-server.js";
 import { createMessagingMcpServer } from "./loopback-messaging.js";
+import { createRegexMcpServer } from "./loopback-regex.js";
 import { createRemindersMcpServer } from "./loopback-reminders.js";
 import { createSearchMcpServer } from "./loopback-search.js";
+import { createTextUtilsMcpServer } from "./loopback-text-utils-server.js";
+import { createTimeMcpServer } from "./loopback-time-server.js";
+import { createUrlMcpServer } from "./loopback-url-server.js";
 
 export interface LoopbackMcpCatalogEntry {
   readonly name: string;

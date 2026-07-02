@@ -1,7 +1,7 @@
 import type { JsonObject } from "@muse/shared";
 
-import { readString } from "./loopback-helpers.js";
-import type { LoopbackMcpServer } from "./loopback.js";
+import { readString } from "@muse/mcp";
+import type { LoopbackMcpServer } from "@muse/mcp";
 
 /**
  * `muse.text` text-stat utilities — character/line/word count and

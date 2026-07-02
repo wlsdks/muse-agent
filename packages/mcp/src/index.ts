@@ -291,18 +291,10 @@ export {
 
 export * from "./loopback-helpers.js";
 export * from "./provider-routing.js";
+export { evaluateArithmeticExpression } from "./arithmetic.js";
 export {
-  createCryptoMcpServer,
-  createDiffMcpServer,
-  createJsonMcpServer,
   createLoopbackMcpConnection,
   createLoopbackMcpMuseTools,
-  createMathMcpServer,
-  evaluateArithmeticExpression,
-  createRegexMcpServer,
-  createTextUtilsMcpServer,
-  createTimeMcpServer,
-  createUrlMcpServer,
   type BuiltinLoopbackOptions,
   type LoopbackMcpServer,
   type LoopbackMcpToolDefinition

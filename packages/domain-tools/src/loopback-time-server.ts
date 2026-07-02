@@ -1,8 +1,8 @@
 import type { JsonObject } from "@muse/shared";
 
-import { buildJsonToolSchema } from "./loopback-helpers.js";
+import { buildJsonToolSchema } from "@muse/mcp";
 import { isoDateHeadRoundTrips } from "@muse/mcp-shared";
-import type { BuiltinLoopbackOptions, LoopbackMcpServer } from "./loopback.js";
+import type { BuiltinLoopbackOptions, LoopbackMcpServer } from "@muse/mcp";
 
 /**
  * `muse.time` clock + date utilities — `now` (timezone-aware ISO +

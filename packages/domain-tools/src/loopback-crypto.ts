@@ -3,8 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { JsonObject } from "@muse/shared";
 
-import type { BuiltinLoopbackOptions, LoopbackMcpServer } from "./loopback.js";
-import { readString } from "./loopback-helpers.js";
+import type { BuiltinLoopbackOptions, LoopbackMcpServer } from "@muse/mcp";
+import { readString } from "@muse/mcp";
 
 /**
  * Decode bytes to a UTF-8 string, but ERROR (not silently U+FFFD-corrupt) when the

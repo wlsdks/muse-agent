@@ -1,8 +1,8 @@
 import type { JsonObject, JsonValue } from "@muse/shared";
 import { hasNestedUnboundedQuantifier } from "@muse/tools";
 
-import type { LoopbackMcpServer } from "./loopback.js";
-import { readString } from "./loopback-helpers.js";
+import type { LoopbackMcpServer } from "@muse/mcp";
+import { readString } from "@muse/mcp";
 
 /**
  * `muse.regex` loopback MCP server — bounded regex utilities.
