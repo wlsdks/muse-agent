@@ -83,9 +83,8 @@ realistic partial hedge. Deeper veracity needs a human/product call, not an auto
 
 Tier S (safety/correctness, 당장):
 - ✓ (DS-1, 8ccf4b92) 모델 HTTP 호출 AbortSignal+safety-cap timeout 관통 — ModelRequest.signal, 전 어댑터 fetch 배선, 스트리밍은 caller-signal만(idle-timeout이 스톨 담당), caller-abort=non-retryable/timeout=retryable 분류, ask Ctrl-C가 실제 HTTP를 중단. 12 tests mutation-RED, smoke:live 23/0. 잔여 ◦: chat REPL(Ink) ESC→AbortController 배선.
-- ★ (DS-2) **위험명령 승인 게이트 격차** — Muse `dangerous-command.ts` raw regex 9개 vs hermes `tools/approval.py` ~50규칙 + 정규화 패스 + 역난독화(base64/hex decode-pipe shape, $IFS, `$(echo rm)` 치환 재스캔, GNU 플래그 축약, eval $(curl)) + 승인 프롬프트 시크릿 마스킹(미배선인 redactSecretsInText). fail-close 비협상 최전선. (M)
-- ★ (DS-3) **consent/objectives/veto 스토어가 in-process 큐만** — `withFileMutationQueue`는 프로세스 내 Map; 데몬+수동 명령 레이스에 outbound-safety 게이트 기록 lost-update 가능. `withFileLock`(O_EXCL) 승격, tasks/reminders/playbook은 이미 안전. (S/M)
-
+- ✓ (DS-2, 13fa0537) 위험명령 게이트 격리-강화 — 정규화 패스(quote-aware 주석 strip·$IFS·라인연속·echo/printf 치환 해석) + 커맨드-포지션 센티널 앵커링으로 우회 7클래스 차단, 잠재 오탐(git rm --cached·인용 문자열)도 수정, 승인 프롬프트 시크릿 마스킹, 8KB 초과 fail-close, <1ms/8KB. 클래스별 차단+near-miss 쌍 테스트, 뮤테이션 RED 2층.
+- ✓ (DS-3, 97d5bbdf) consent/objectives/veto + proposed-action(draft-first 게이트, ad-hoc 큐였음) 4개 스토어 크로스-프로세스 withFileLock 승격 — 외부락 블로킹 + 50-병렬 무손실 테스트, 락 우회 시 RED 11. 잔여 in-process-큐 스토어 15종은 outbound-safety 무관으로 보존.
 Tier A (싸고 즉효):
 - ◦ (DS-4) V8 compile cache (`module.enableCompileCache()`, ~10줄) — 모든 muse 호출 콜드스타트 단축 (openclaw entry.compile-cache.ts 패턴; --version/--help fast-path 동봉 검토)
 - ◦ (DS-5) aux 컴팩션 요약기 failure-cooldown + <10%-절약 2회 연속 시 skip (hermes context_compressor.py:1096; CLI-freeze 클래스) — `dropped-context-summarizer.ts` 쿨다운 부재 확인됨
