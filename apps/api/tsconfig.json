@@ -29,7 +29,13 @@
       "path": "../../packages/calendar"
     },
     {
+      "path": "../../packages/domain-tools"
+    },
+    {
       "path": "../../packages/mcp"
+    },
+    {
+      "path": "../../packages/mcp-shared"
     },
     {
       "path": "../../packages/memory"
@@ -50,6 +56,12 @@
       "path": "../../packages/policy"
     },
     {
+      "path": "../../packages/proactivity"
+    },
+    {
+      "path": "../../packages/recall"
+    },
+    {
       "path": "../../packages/runtime-settings"
     },
     {
@@ -65,19 +77,10 @@
       "path": "../../packages/skills"
     },
     {
-      "path": "../../packages/voice"
-    },
-    {
-      "path": "../../packages/domain-tools"
-    },
-    {
-      "path": "../../packages/mcp-shared"
-    },
-    {
       "path": "../../packages/stores"
     },
     {
-      "path": "../../packages/proactivity"
+      "path": "../../packages/voice"
     }
   ]
 }

@@ -80,6 +80,9 @@ importers:
       '@muse/proactivity':
         specifier: workspace:*
         version: link:../../packages/proactivity
+      '@muse/recall':
+        specifier: workspace:*
+        version: link:../../packages/recall
       '@muse/runtime-settings':
         specifier: workspace:*
         version: link:../../packages/runtime-settings

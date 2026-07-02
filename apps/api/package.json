@@ -27,6 +27,7 @@
     "@muse/observability": "workspace:*",
     "@muse/policy": "workspace:*",
     "@muse/proactivity": "workspace:*",
+    "@muse/recall": "workspace:*",
     "@muse/runtime-settings": "workspace:*",
     "@muse/runtime-state": "workspace:*",
     "@muse/scheduler": "workspace:*",

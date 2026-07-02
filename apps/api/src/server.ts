@@ -8,6 +8,7 @@ import {
   parseBoolean,
   resolveActionLogFile,
   resolveContactsFile,
+  resolveNotesIndexFile,
   resolveObjectivesFile,
   resolvePendingApprovalsFile,
   resolveVetoesFile,
@@ -31,6 +32,7 @@ import { registerCompatibilityRoutes } from "./compat-routes.js";
 import { registerNotesRoutes } from "./notes-routes.js";
 import { registerMessagingRoutes } from "./messaging-routes.js";
 import { lineWebhookPlugin } from "./messaging-webhooks-routes.js";
+import { registerAskRoutes } from "./ask-routes.js";
 import { registerBoardRoutes } from "./board-routes.js";
 import { registerHistoryRoutes } from "./history-routes.js";
 import { registerProactiveRoutes } from "./proactive-routes.js";
@@ -256,6 +258,28 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       authService,
       notesDir: options.notesDir,
       ...(options.notesProviderRegistry ? { notesProviderRegistry: options.notesProviderRegistry } : {})
+    });
+  }
+  if (options.notesDir && options.modelProvider && options.defaultModel) {
+    const askModelProvider = options.modelProvider;
+    const envEmbedModel = process.env.MUSE_EMBED_MODEL?.trim();
+    registerAskRoutes(server, {
+      answerModel: options.defaultModel,
+      authService,
+      ...(envEmbedModel ? { embedModel: envEmbedModel } : {}),
+      generateAnswer: async ({ system, user, model, temperature }) => {
+        const response = await askModelProvider.generate({
+          messages: [
+            { content: system, role: "system" },
+            { content: user, role: "user" }
+          ],
+          model,
+          ...(temperature !== undefined ? { temperature } : {})
+        });
+        return response.output;
+      },
+      notesDir: options.notesDir,
+      notesIndexFile: resolveNotesIndexFile(process.env as Record<string, string | undefined>)
     });
   }
   if (options.voice) {

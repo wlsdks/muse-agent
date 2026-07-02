@@ -1,7 +1,7 @@
 import { lexicalTokens } from "@muse/agent-core";
 import { describe, expect, it } from "vitest";
 
-import { parseGitReflog, selectGitCommits } from "../src/git-reflog.js";
+import { parseGitReflog, selectGitCommits } from "./git-reflog.js";
 
 const line = (oldH: string, newH: string, msg: string): string =>
   `${oldH} ${newH} Stark <dev@x.io> 1780430344 +0900\t${msg}`;

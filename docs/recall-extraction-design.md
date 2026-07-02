@@ -1,6 +1,11 @@
 # Design: extract grounded-recall presentation/orchestration out of `commands-ask.ts`
 
-Status: proposal for review. Addresses finding #2 of the 2026-06-13 quality review.
+Status: SHIPPED through phase 3 (2026-07-03). Phase 1 8782e6d1; retrieval-corpus
+core 63295fc8b; stage modules + injected runtime a8a9d60ae; `runGroundedRecall`
+seam + `POST /api/ask` + parity/fabrication tests + the
+`verify-grounded-recall-seam` live battery in the same session. Remaining
+follow-up: retrofit the CLI's `registerAskCommand` sequencing onto the seam
+(it already consumes the same stage functions).
 
 ## Problem (restated with evidence)
 
