@@ -43,6 +43,7 @@ import { selectPersonaEpisodes } from "./episode-selection.js";
 import { MuseChatApp, OUTBOUND_ACTUATORS, PROACTIVE_LEAD_MS, type RunChatInkOptions } from "./chat-ink.js";
 import { renderMuseBanner } from "./muse-banner.js";
 import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.js";
+import { recordChatTurnTrace } from "./chat-repl.js";
 import { defaultChatConflictEmbedder, finalizeGatedChatAnswer, retrieveChatGrounding } from "./chat-grounding.js";
 import { createQwenReverify } from "./grounding-eval-runner.js";
 import { searchRecall } from "./commands-recall.js";
@@ -627,13 +628,25 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
       const judge = assembly.modelProvider && "generate" in assembly.modelProvider
         ? createQwenReverify(assembly.modelProvider, assembly.defaultModel ?? "default")
         : undefined;
-      return finalizeGatedChatAnswer({
+      const finalized = await finalizeGatedChatAnswer({
         ...args,
         knownFactKeys: Object.keys(snap?.facts ?? {}),
         memories: Object.entries(snap?.facts ?? {}).map(([key, value]) => ({ key, value })),
         embed: defaultChatConflictEmbedder(),
         ...(judge ? { reverify: judge } : {})
       });
+      // Trace parity with the single-turn path (cli.local): interactive Ink turns
+      // previously wrote NO run-log trace, so a misgrounding in the MOST-USED
+      // surface was invisible to error analysis (zero flywheel fuel from real
+      // sessions).
+      await recordChatTurnTrace({
+        answer: finalized.forHistory,
+        matches: args.matches,
+        ...(assembly.defaultModel !== undefined ? { model: assembly.defaultModel } : {}),
+        question: args.question,
+        source: "cli.ink"
+      });
+      return finalized;
     },
     groundingFor: (prompt: string) => retrieveChatGrounding(prompt),
     historyWindow: resolveChatHistoryWindow(process.env),

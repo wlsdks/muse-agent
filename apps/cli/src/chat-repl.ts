@@ -196,6 +196,41 @@ export function createTuiChatSubmitter(
   };
 }
 
+/**
+ * One chat turn → one run-log trace, outcome-labelled (`grounded`) the same way
+ * for EVERY chat surface. The single-turn path gets this via
+ * `createTuiChatSubmitter`; the interactive Ink session calls it from its
+ * finalize step (before this, Ink turns wrote NO trace — the most-used surface
+ * produced zero error-analysis fuel). Casual turns assert no claim → grounded
+ * stays null. Best-effort by contract: a logging failure never disturbs the turn.
+ */
+export async function recordChatTurnTrace(
+  args: {
+    readonly question: string;
+    readonly answer: string;
+    readonly matches: readonly KnowledgeMatch[];
+    readonly model?: string;
+    readonly source: "cli.local" | "cli.ink";
+    readonly workspaceDir?: string;
+  },
+  write: typeof writeRunLog = writeRunLog
+): Promise<void> {
+  const isCasual = classifyCasualPrompt(args.question) !== null;
+  // Same two-detector refusal check the single-turn path uses (isChatAbstention
+  // catches the gate's own phrasing; REFUSAL_RE catches the model's).
+  const refusal = isChatAbstention(args.answer) || looksLikeRefusal(args.answer);
+  await write(args.workspaceDir ?? process.cwd(), {
+    message: args.question,
+    ...(args.model !== undefined ? { model: args.model } : {}),
+    response: {
+      grounded: isCasual ? null : chatTraceOutcome({ answer: args.answer, matches: args.matches, refusal, unbackedAction: false }),
+      response: args.answer,
+      success: true
+    },
+    source: args.source
+  }).catch(() => undefined);
+}
+
 /** Keep only the named keys from a fact map (preserving values). */
 export function filterFactsToKeys(facts: Readonly<Record<string, string>>, keys: readonly string[]): Record<string, string> {
   const allow = new Set(keys);

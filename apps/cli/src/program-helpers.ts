@@ -53,7 +53,7 @@ export interface RunLogInput {
   readonly message: string;
   readonly model?: string;
   readonly response: unknown;
-  readonly source?: "cli.local" | "cli.remote" | "cli.remote.stream";
+  readonly source?: "cli.local" | "cli.remote" | "cli.remote.stream" | "cli.ink";
 }
 
 export interface AskRunLogParams {
