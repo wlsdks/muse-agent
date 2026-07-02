@@ -1,4 +1,5 @@
 import { promises as fs } from "node:fs";
+import { unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -32,10 +33,39 @@ const seed = (i: number): ProposedAction => ({
 } as unknown as ProposedAction);
 
 describe("proposed-action store under concurrency — draft-first proposals must not be lost", () => {
+  it("blocks its write while an externally-held (cross-process) lock is present", async () => {
+    // DS-3: this store IS outbound-safety.md as code — the draft-first approval
+    // gate — so it moved off the in-process-only mutation queue onto the
+    // cross-process file lock (personal-tasks-store's mutateTasks pattern), the
+    // same primitive already proven on personal-tasks-store / personal-reminders-
+    // store. Simulate another process already holding the lock the way a
+    // sibling process would (creating the lock file directly, bypassing
+    // withFileLock).
+    const file = join(dir, "locked.json");
+    const lockPath = `${file}.lock`;
+    await writeFile(lockPath, "external-holder", "utf8");
+
+    let resolved = false;
+    const pending = proposeMessageAction(file, {
+      destination: "C1", providerId: "slack", reason: "r", summary: "s", text: "t", userId: "u"
+    }).then(() => { resolved = true; });
+
+    // Without the lock wrapper this assertion goes RED — the write proceeds
+    // immediately regardless of the externally-held lock file.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(resolved).toBe(false);
+    expect(await readProposedActions(file)).toHaveLength(0);
+
+    await unlink(lockPath);
+    await pending;
+    expect(resolved).toBe(true);
+    expect(await readProposedActions(file)).toHaveLength(1);
+  }, 10_000);
+
   it("applies EVERY status patch when many fire at once (no crash, no clobber)", async () => {
     // Regression: read-modify-write + `${pid}-${Date.now()}` tmp → concurrent
     // patches crashed (ENOENT) and clobbered each other (an approve/decline
-    // silently lost). A per-file mutation queue + random-uuid tmp fixes both.
+    // silently lost). The cross-process file lock + random-uuid tmp fixes both.
     const file = join(dir, "proposed.json");
     await writeProposedActions(file, Array.from({ length: 10 }, (_v, i) => seed(i)));
     const results = await Promise.allSettled(
@@ -46,13 +76,13 @@ describe("proposed-action store under concurrency — draft-first proposals must
     expect(executed).toEqual(["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"]);
   });
 
-  it("persists every concurrently-proposed action", async () => {
+  it("persists every concurrently-proposed action (no lost draft over 50 parallel writers)", async () => {
     const file = join(dir, "propose.json");
     const input = (i: number) => ({ destination: "C1", providerId: "slack", reason: "r", summary: `s${i}`, text: `t${i}`, userId: "u" });
-    const results = await Promise.allSettled(Array.from({ length: 12 }, (_v, i) => proposeMessageAction(file, input(i))));
+    const results = await Promise.allSettled(Array.from({ length: 50 }, (_v, i) => proposeMessageAction(file, input(i))));
     expect(results.filter((r) => r.status === "rejected")).toHaveLength(0);
-    expect(await readProposedActions(file)).toHaveLength(12);
-  });
+    expect(await readProposedActions(file)).toHaveLength(50);
+  }, 30_000);
 
   it("works sequentially too (patch + read round-trip)", async () => {
     const file = join(dir, "seq.json");

@@ -21,7 +21,8 @@ import { promises as fs } from "node:fs";
 
 import type { JsonObject } from "@muse/shared";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile } from "./atomic-file-store.js";
+import { withFileLock } from "./encrypted-file.js";
 
 export type ObjectiveKind = "watch" | "until" | "notify";
 export type ObjectiveStatus = "active" | "done" | "escalated" | "cancelled";
@@ -95,10 +96,12 @@ export async function writeObjectives(file: string, objectives: readonly Standin
  * updates its spec/status without duplicating).
  */
 export async function addObjective(file: string, objective: StandingObjective): Promise<void> {
-  // Serialise the read-modify-write: two concurrent registrations must not each
-  // read the same snapshot and clobber one another (a lost objective = a
-  // standing intent the daemon never acts on).
-  await withFileMutationQueue(file, async () => {
+  // Serialised read-modify-write under a CROSS-PROCESS file lock (mirrors
+  // personal-tasks-store's mutateTasks): the in-process-only mutation queue
+  // does not stop the daemon's re-evaluation tick and a manual CLI registration
+  // (separate processes) from each reading the same snapshot and clobbering the
+  // other (a lost objective = a standing intent the daemon never acts on).
+  await withFileLock(file, async () => {
     const existing = await readObjectives(file);
     const filtered = existing.filter((entry) => entry.id !== objective.id);
     await writeObjectives(file, [...filtered, objective]);
@@ -117,7 +120,7 @@ export async function patchObjective(
   id: string,
   patch: Partial<Omit<StandingObjective, "id">>
 ): Promise<StandingObjective | undefined> {
-  return withFileMutationQueue(file, async () => {
+  return withFileLock(file, async () => {
     const existing = await readObjectives(file);
     const target = existing.find((entry) => entry.id === id);
     if (!target) {

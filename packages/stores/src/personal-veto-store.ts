@@ -20,7 +20,8 @@ import { promises as fs } from "node:fs";
 
 import type { JsonObject } from "@muse/shared";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile } from "./atomic-file-store.js";
+import { withFileLock } from "./encrypted-file.js";
 
 export interface ActionVeto {
   readonly id: string;
@@ -73,10 +74,13 @@ export async function writeVetoes(file: string, vetoes: readonly ActionVeto[]): 
  * REPLACES (updating the reason/timestamp without duplicating).
  */
 export async function recordVeto(file: string, veto: ActionVeto): Promise<void> {
-  // Serialise the read-modify-write: a lost veto = a learned-avoidance the agent
-  // forgets, so it re-attempts an action the user already refused (outbound-
-  // safety reversibility / veto). Concurrent records must not clobber.
-  await withFileMutationQueue(file, async () => {
+  // Serialised read-modify-write under a CROSS-PROCESS file lock (mirrors
+  // personal-tasks-store's mutateTasks): the in-process-only mutation queue
+  // does not stop the daemon and a manual CLI veto (separate processes) from
+  // each reading the same snapshot and clobbering the other. A lost veto = a
+  // learned-avoidance the agent forgets, so it re-attempts an action the user
+  // already refused (outbound-safety reversibility / veto).
+  await withFileLock(file, async () => {
     const existing = await readVetoes(file);
     const filtered = existing.filter((entry) => entry.id !== veto.id);
     await writeVetoes(file, [...filtered, veto]);
@@ -121,7 +125,7 @@ export async function queryVetoes(
  * longer injects and the consented-action gate no longer blocks.
  */
 export async function removeVeto(file: string, id: string): Promise<boolean> {
-  return withFileMutationQueue(file, async () => {
+  return withFileLock(file, async () => {
     const existing = await readVetoes(file);
     const next = existing.filter((entry) => entry.id !== id);
     if (next.length === existing.length) {

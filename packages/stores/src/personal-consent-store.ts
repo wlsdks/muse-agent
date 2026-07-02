@@ -18,7 +18,8 @@ import { promises as fs } from "node:fs";
 
 import type { JsonObject } from "@muse/shared";
 
-import { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
+import { atomicWriteFile } from "./atomic-file-store.js";
+import { withFileLock } from "./encrypted-file.js";
 
 export interface ScopedConsent {
   readonly id: string;
@@ -89,13 +90,15 @@ export async function writeConsents(file: string, consents: readonly ScopedConse
  * duplicating).
  */
 export async function recordConsent(file: string, consent: ScopedConsent): Promise<void> {
-  // Serialise the read-modify-write: two concurrent grants must not each read
-  // the same snapshot and clobber one another. A lost consent record is
-  // outbound-safety-relevant (rule 5: standing objectives need RECORDED scoped
-  // consent before acting toward a third party — a silently-dropped grant means
-  // a later legitimate action is wrongly refused, or a concurrent write corrupts
-  // the set the fail-closed check reads).
-  await withFileMutationQueue(file, async () => {
+  // Serialised read-modify-write under a CROSS-PROCESS file lock (mirrors
+  // personal-tasks-store's mutateTasks): the in-process-only mutation queue
+  // does not stop the daemon and a manual CLI grant (separate processes) from
+  // each reading the same snapshot and clobbering the other. A lost consent
+  // record is outbound-safety-relevant (rule 5: standing objectives need
+  // RECORDED scoped consent before acting toward a third party — a silently
+  // dropped grant means a later legitimate action is wrongly refused, or a
+  // concurrent write corrupts the set the fail-closed check reads).
+  await withFileLock(file, async () => {
     const existing = await readConsents(file);
     const filtered = existing.filter((entry) => entry.id !== consent.id);
     await writeConsents(file, [...filtered, consent]);
