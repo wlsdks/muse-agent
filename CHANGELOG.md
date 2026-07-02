@@ -8,33 +8,112 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
-### Changed — 2026-07-02 repo-wide quality initiative
+## [0.2.0] - 2026-07-02
 
-- **CI**: a workspace-wide gate (`ci.yml`: lint + comment-marker guard +
-  full build/test) now protects every push — previously only `harness/**`
-  was covered. `.nvmrc` aligned to node 24.
-- **Structure**: seven god files decomposed behavior-preservingly on a
-  re-export-hub pattern (agent-core `council`/`knowledge-recall`/`playbook`,
-  autoconfigure `index`→`runtime-assembly`, cli
-  `chat-grounding`/`commands-daemon`/`commands-ask`); the loopback tool-server
-  family unified under `@muse/domain-tools` (transport stays in `@muse/mcp`).
-- **Hygiene**: ~260 iteration/history markers swept from source comments
-  (now guarded by `pnpm lint:comments`); duplicated `errorMessage`/
-  `resolveHomeDir`/`isRecord`/`clamp` consolidated into `@muse/shared`;
-  `domain-tools` + `stores` barrels curated to named exports
-  (public surface −205 symbols); knip dead exports removed; `apps/web`
-  brought under eslint.
-- **Removed**: six noise analytics CLI commands
-  (`benford`/`diversity`/`keywords`/`trend`/`latency`/`analytics`, ~1.1k LOC).
-- **Dependencies**: latest-stable across the tree (react 19.2.7, vitest
-  4.1.9, eslint 10.6, fastify 5.9, ink 7.1, vite 8.1 …), dev majors
-  `@types/node` 26 + `testcontainers` 12, and **commander 15** (zero source
-  changes needed); ten identical vitest configs collapsed into
-  `vitest.shared.ts`.
-- **Eval integrity**: the domain-tools split had silently broken 5
-  `verify-*.mjs` batteries, a broad-smoke case, and 232 of 365
-  `eval:tools` cases (skips masked as green) — all restored
-  (eval:tools 360/365 live, smoke:broad 52/52, smoke:live 23/0).
+Muse grows from a grounded Q&A companion into a **durable local agent**: runs
+now checkpoint and resume after a crash, long tasks run as managed background
+processes, complex requests fan out over a persistent task board, and one
+model call can execute a whole multi-step tool plan — all still local-first
+and citation-gated. The release also lands a repo-wide code-quality overhaul,
+which is why it is a minor bump: six little-used analytics commands were
+removed from the CLI. Early / experimental, macOS only.
+
+### Changed (breaking)
+
+- **Breaking:** the six deterministic-statistics commands `muse benford`,
+  `muse diversity`, `muse keywords`, `muse trend`, `muse latency`, and
+  `muse analytics` are removed. They were demo-grade analysis surfaces
+  outside Muse's "learns you" core; if you scripted them, pin `v0.1.2`.
+  Everything else on the CLI surface is unchanged (verified by the full
+  parser test suite and a live-binary probe after the commander 15 upgrade).
+
+### Added
+
+- **Crash-safe runs**: every agent run writes durable local checkpoints
+  after each tool step; `muse resume` re-runs a crashed or interrupted run
+  from its last checkpoint without re-executing completed side-effecting
+  tools, and `muse trace` is a local time-travel inspector that shows what
+  each answer retrieved, which tools ran, and any grounding caveats.
+- **Background processes**: `muse bg run/list/stop/restart/logs/prune`
+  manages long-running commands with a crash-safe registry, PID
+  reconciliation after a crash, uptime display, and `muse doctor`
+  surfacing of failures; agents get a matching read-only `background_list`
+  tool.
+- **Task board**: `muse board` — a persistent Kanban for agent work.
+  Complex tasks decompose into a sub-task DAG (sequential or parallel
+  fan-out with combined synthesis), standing objectives can seed the board,
+  zombie in-progress tasks are reclaimed after a crash, and the web console
+  renders a live board view.
+- **Programmatic Tool Calling**: `run_tool_plan` lets the local model plan a
+  multi-step tool chain in ONE inference and have a deterministic DAG
+  interpreter execute it through the same gated tool path — proven live on
+  gemma4:12b via few-shot exemplars.
+- **SecretSource**: tools read secrets on demand from your local vault
+  (Keychain/env) instead of holding them in prompt context; hardened by two
+  adversarial red-team passes. External MCP servers now pass a fail-close
+  static supply-chain audit before Muse will connect.
+- **Smarter self-learning**: reinforcement credit now targets the strategy
+  that was ACTUALLY injected into the session (not a lookalike), and a
+  cleanly-grounded success implicitly rewards the strategy that helped.
+- **Recall additions**: an agent-callable `history_search` tool (hybrid
+  lexical+semantic fusion, CJK-aware) and a default-on cross-source
+  corroboration hedge on grounded answers.
+- **Cloud opt-in wizard**: `muse setup cloud` walks through BYO-key setup
+  for Gemini/OpenAI/Anthropic/OpenRouter — strictly opt-in; local-only mode
+  still refuses cloud egress in code. `muse models` lists every model with
+  its capability profile.
+- **Voice**: a persona layer for TTS, a multi-provider fallback chain, and
+  sentence-boundary capping for over-long speech.
+- **Local cost visibility**: `muse cost local` shows token usage persisted
+  locally per run/day — no cloud telemetry.
+- **Vision**: `muse ask --auto-image` auto-attaches images referenced in
+  your prompt (with a sensitive-path gate).
+- **Privacy hardening**: encryption-at-rest for the reflections and
+  belief-provenance stores; sensitive URL query values redacted; grounding
+  citation fences protected against forgery and scrubbed from answers.
+
+### Fixed
+
+- **Recall calibration**: the confidence floor is now embedder-aware and
+  conformally calibrated — the default embedder no longer over-abstains on
+  answerable personal questions across ask, chat, and proactive surfaces
+  (answerable coverage 15/24 → 21/24 with zero fabrication regressions).
+- **Korean & Unicode correctness**: NFC normalization across the whole
+  recall path (NFD notes now match NFC queries), full-width character
+  folding, Korean mobile-number matching across domestic/E.164 forms,
+  natural Korean duration phrases in the scheduler, and Korean actuator
+  arguments no longer false-dropped by the anti-fabrication guard.
+- **Time correctness**: daily/weekly calendar and reminder recurrences no
+  longer drift an hour across DST; all-day events no longer produce false
+  conflict warnings.
+- **Resilience**: a hung model stream times out instead of hanging the
+  agent; retries fail fast on permanent errors; malformed tool-call JSON
+  and tool names from small local models are repaired deterministically;
+  catastrophic `run_command` inputs (recursive rm/chmod at root) are
+  fail-close blocked.
+- **Durability**: grounding corpus and sidecar stores write atomically (no
+  mid-write corruption); the run log is retention-bounded.
+- A verified bug-hunt fixed 26 correctness bugs across the tree and locked
+  them with 40 regression tests, plus many smaller stability fixes.
+
+### Changed
+
+- **Repo-wide quality overhaul (2026-07-02)**: a workspace-wide CI gate
+  (lint + comment-marker guard + full build/test) now protects every push;
+  seven god files were decomposed behavior-preservingly (including the
+  2,306-line ask pipeline); `@muse/mcp` was split into focused packages
+  (`stores`/`proactivity`/`domain-tools`/`mcp-shared`) with the loopback
+  tool-server family unified; package barrels are curated named exports
+  (−205 public symbols); duplicated utilities consolidated into
+  `@muse/shared`.
+- **Dependencies**: latest stable across the tree (React 19.2.7, vitest
+  4.1.9, eslint 10.6, fastify 5.9, ink 7.1, vite 8.1, commander 15,
+  `@types/node` 26, testcontainers 12).
+- **Eval integrity restored**: the package split had silently broken 232 of
+  365 tool-selection eval cases plus six verify/smoke batteries (skips
+  masked as green) — all live again (eval:tools 360/365, smoke:broad 52/52,
+  smoke:live 23/0), and a previously-masked date-reasoning regression is
+  now tracked openly.
 
 ## [0.1.2] - 2026-06-22
 
