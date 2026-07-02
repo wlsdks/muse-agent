@@ -392,10 +392,8 @@ try {
   });
 
   await record("Nine loopback MCP servers (time/text/math/json/url/crypto/diff/regex/search) expose tools end-to-end", async () => {
-    const {
-      createDefaultLoopbackMcpServers,
-      createLoopbackMcpConnection
-    } = await import(`${rootDir}/packages/mcp/dist/index.js`);
+    const { createDefaultLoopbackMcpServers } = await import(`${rootDir}/packages/domain-tools/dist/index.js`);
+    const { createLoopbackMcpConnection } = await import(`${rootDir}/packages/mcp/dist/index.js`);
     const servers = createDefaultLoopbackMcpServers();
     assert(servers.length === 9, `expected 9 default loopback servers, got ${servers.length}`);
     const names = servers.map((s) => s.name).sort();
