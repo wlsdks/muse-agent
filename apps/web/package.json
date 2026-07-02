@@ -11,15 +11,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.100.14",
-    "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "@tanstack/react-query": "^5.101.2",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
-    "@types/react": "^19.2.15",
+    "@playwright/test": "^1.61.1",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.2",
-    "vite": "^8.0.14"
+    "@vitejs/plugin-react": "^6.0.3",
+    "vite": "^8.1.2"
   }
 }

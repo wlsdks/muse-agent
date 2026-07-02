@@ -20,7 +20,7 @@
     "@muse/shared": "workspace:*",
     "@muse/tools": "workspace:*",
     "ignore": "^7.0.5",
-    "pdfjs-dist": "^6.0.227",
+    "pdfjs-dist": "^6.1.200",
     "mammoth": "^1.12.0"
   }
 }

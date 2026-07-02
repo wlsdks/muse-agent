@@ -34,7 +34,7 @@
     "@muse/skills": "workspace:*",
     "@muse/stores": "workspace:*",
     "@muse/voice": "workspace:*",
-    "fastify": "^5.8.5"
+    "fastify": "^5.9.0"
   },
   "devDependencies": {
     "@muse/tools": "workspace:*"

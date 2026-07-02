@@ -17,6 +17,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.9"
   }
 }
