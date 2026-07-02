@@ -213,6 +213,7 @@ function main() {
 
   gates.lint = gateExit("pnpm -s lint");
   gates.capabilities = gateExit("pnpm -s check:capabilities");
+  gates.envInventory = gateExit("pnpm -s check:env");
   gates.testFiles = { status: "pass", value: countTestFiles() };
   // The prescribed CAPABILITIES.md ledger was intentionally removed (f4c195df —
   // "so the agent discovers work itself"). Only emit this count WHEN the file
