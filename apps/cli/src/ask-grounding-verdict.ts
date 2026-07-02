@@ -254,8 +254,12 @@ export async function runGroundingVerdict(params: {
         // ALCE per-citation support: a cited source that resolves but doesn't
         // support its sentence (right source, wrong claim) the whole-answer
         // verdict can miss. Only on a grounded answer (else the verdict warns).
+        // Both ALCE cues read the UNexpanded answer — expandContentCitations
+        // rewrites `[memory: x]` to bare content for coverage scoring, which
+        // would erase the very citations these cues look for (observed false
+        // "carries no citation" on a visibly-cited memory-fact answer).
         const citationNotice = !verdictNotice && imageAttachments.length === 0
-          ? citationPrecisionNotice(verdictAnswer, scoredMatches)
+          ? citationPrecisionNotice(collectedAnswer, scoredMatches)
           : undefined;
         if (citationNotice && !options.json) {
           io.stderr(citationNotice);
@@ -263,7 +267,7 @@ export async function runGroundingVerdict(params: {
         // ALCE citation RECALL: a groundable claim handed over with no [from …]
         // attribution. Complement to the precision cue; grounded answers only.
         const recallNotice = !verdictNotice && imageAttachments.length === 0
-          ? citationRecallNotice(verdictAnswer, scoredMatches)
+          ? citationRecallNotice(collectedAnswer, scoredMatches)
           : undefined;
         if (recallNotice && !options.json) {
           io.stderr(recallNotice);

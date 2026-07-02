@@ -25,7 +25,15 @@ export interface CitationRecallReport {
 /** A sentence counts as citable when ≥ this fraction of its content tokens are in the evidence union. */
 export const DEFAULT_CITATION_RECALL_FLOOR = 0.5;
 
-const CITATION_FROM_RE = /\[from\s+([^\]]+?)\s*\]/giu;
+/**
+ * EVERY citation-marker kind the ask/chat prompts teach (the grounding-citations
+ * catalog): `[from <file>]` plus the ten `[<kind>: <content>]` forms. The
+ * recall/precision/trust diagnostics must recognize ALL of them — matching only
+ * `[from ...]` made a visibly-cited `[memory: ...]` answer fire a false
+ * "carries no citation" warning on the flagship recall path.
+ */
+export const CITATION_MARKER_RE =
+  /\[(?:from\s+|(?:feed|task|event|reminder|session|contact|command|commit|memory|action):\s*)([^\]]+?)\s*\]/giu;
 // Private-use sentinel so a `[from x.md]` marker's internal "." can't split a
 // sentence; its presence in a masked sentence marks "this sentence was cited".
 const SENTINEL = "\u{E000}";
@@ -46,13 +54,14 @@ export function isAbstentionSentence(sentence: string): boolean {
 }
 
 /**
- * Remove `[from <source>]` citation markers from an answer — they are Muse's own
- * attribution metadata, not claims, and their internal "." (e.g. `.md]`) would
- * otherwise split into a junk sentence that a per-sentence groundedness probe
- * scores unsupported (an observed misgrounding false positive). Pure.
+ * Remove citation markers (every kind — `[from x.md]`, `[memory: topic]`, …)
+ * from an answer — they are Muse's own attribution metadata, not claims, and
+ * their internal "." (e.g. `.md]`) would otherwise split into a junk sentence
+ * that a per-sentence groundedness probe scores unsupported (an observed
+ * misgrounding false positive). Pure.
  */
 export function stripCitationMarkers(text: string): string {
-  return text.replace(CITATION_FROM_RE, " ");
+  return text.replace(CITATION_MARKER_RE, " ");
 }
 
 export function reportCitationRecall(
@@ -69,7 +78,7 @@ export function reportCitationRecall(
   }
 
   let counter = 0;
-  const masked = answer.replace(CITATION_FROM_RE, () => ` ${SENTINEL}${(counter++).toString()}${SENTINEL} `);
+  const masked = answer.replace(CITATION_MARKER_RE, () => ` ${SENTINEL}${(counter++).toString()}${SENTINEL} `);
 
   let citableCount = 0;
   let citedCount = 0;

@@ -1,4 +1,5 @@
 import { lexicalTokens, type KnowledgeMatch } from "./knowledge-recall.js";
+import { CITATION_MARKER_RE } from "./citation-recall.js";
 import { splitPreservingSentencePunctuation } from "./internals.js";
 
 /**
@@ -69,10 +70,15 @@ export function reportCitationPrecision(
   }
 
   const citedSources: string[] = [];
-  const masked = answer.replace(CITATION_FROM_RE, (_m, src: string) => {
+  const fromMasked = answer.replace(CITATION_FROM_RE, (_m, src: string) => {
     citedSources.push(src.trim());
     return ` ${SENTINEL}${(citedSources.length - 1).toString()}${SENTINEL} `;
   });
+  // The other marker kinds ([memory: …], [task: …], …) resolve by kind-specific
+  // semantics the grounding verdict owns — precision judges only file citations,
+  // but the markers are still masked out so their internal punctuation can't
+  // split sentences and their content isn't scored as claim tokens.
+  const masked = fromMasked.replace(CITATION_MARKER_RE, " ");
 
   const pairs: CitationPrecisionPair[] = [];
   const unsupported: string[] = [];

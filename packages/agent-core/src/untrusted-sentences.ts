@@ -1,4 +1,5 @@
 import { trustBySourceMap, type KnowledgeMatch } from "./knowledge-recall.js";
+import { CITATION_MARKER_RE } from "./citation-recall.js";
 import { splitPreservingSentencePunctuation } from "./internals.js";
 
 /**
@@ -29,10 +30,13 @@ export function untrustedOnlySentences(
   const trustBySource = trustBySourceMap(matches);
 
   const citedSources: string[] = [];
-  const masked = answer.replace(CITATION_FROM_RE, (_m, src: string) => {
+  const fromMasked = answer.replace(CITATION_FROM_RE, (_m, src: string) => {
     citedSources.push(src.trim());
     return ` ${SENTINEL}${(citedSources.length - 1).toString()}${SENTINEL} `;
   });
+  // Non-[from] marker kinds are masked out (not trust-paired) — their internal
+  // punctuation must not split sentences; their trust is the verdict's concern.
+  const masked = fromMasked.replace(CITATION_MARKER_RE, " ");
 
   const flagged: string[] = [];
   for (const sentenceMasked of splitPreservingSentencePunctuation(masked)) {
