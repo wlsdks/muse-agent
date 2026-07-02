@@ -1,0 +1,220 @@
+import { cosineSimilarity } from "./episodic-recall.js";
+import { lexicalTokens } from "./knowledge-recall.js";
+
+// Jaccard similarity between two token sets (arXiv:2503.05856 — outlier screen).
+// Two EMPTY sets return 0 (no shared content) — not 1 — so a content-empty peer
+// cannot masquerade as high-support.
+function jaccardSimilarity(a: ReadonlySet<string>, b: ReadonlySet<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let inter = 0;
+  for (const t of a) { if (b.has(t)) inter++; }
+  return inter / (a.size + b.size - inter);
+}
+
+export interface CouncilUtterance {
+  /** The participating peer's id (e.g. "phone", "alice"). */
+  readonly peerId: string;
+  /** Their reasoning about the question. */
+  readonly reasoning: string;
+}
+
+export type CouncilConsensusStrength = "strong" | "weak";
+
+/**
+ * Classify the panel's aggregate consensus strength from the per-member support
+ * distribution (ConfMAD, arXiv:2509.14034 — Lin & Hooi EMNLP'25: carry a confidence
+ * signal through multi-agent aggregation rather than treating all consensus as equally
+ * trustworthy). ADVISORY-ONLY per arXiv:2511.07784 (consensus masks flawed reasoning;
+ * agreement is a confidence signal, never a truth signal — this result must never gate
+ * or alter the synthesized answer).
+ *
+ * MEDIAN not min: robust against one low-but-surviving member after the outlier screen.
+ * Mirrors screenCouncilOutliers' median use. Solo/empty panel → "strong" (no disagreement
+ * possible).
+ */
+export function classifyCouncilConsensus(
+  supports: readonly number[],
+  opts: { readonly floor: number }
+): CouncilConsensusStrength {
+  if (supports.length <= 1) return "strong";
+  const sorted = [...supports].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0
+    ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
+    : (sorted[mid] ?? 0);
+  return median < opts.floor ? "weak" : "strong";
+}
+
+export interface CouncilAnswer {
+  readonly answer: string;
+  /** Peer ids whose reasoning the answer drew on — always a subset of the inputs. */
+  readonly contributors: readonly string[];
+  /** Peers quarantined by the consensus-outlier screen before synthesis (arXiv:2503.05856). Omitted when none. */
+  readonly excludedPeers?: readonly { readonly peerId: string; readonly reason: string }[];
+  /** Advisory signal: "weak" when the panel's median pairwise support fell below the floor (ConfMAD arXiv:2509.14034). Never alters the answer. */
+  readonly consensus?: CouncilConsensusStrength;
+}
+
+export interface OutlierScreenOptions {
+  /** Minimum panel size before any exclusion is attempted. Default 3. */
+  readonly minPanel?: number;
+  /** A member's mean pairwise similarity below this absolute floor is suspect. Default 0.08. */
+  readonly absFloor?: number;
+  /** Suspect only when support is also below relFloor × median(support). Default 0.5. */
+  readonly relFloor?: number;
+  /**
+   * Precomputed per-member support values (e.g. from `councilMemberSupportsSemantic`).
+   * When provided, these replace the internally-computed Jaccard supports and the
+   * caller-supplied `absFloor` applies (or `COSINE_ABS_FLOOR` when not set).
+   */
+  readonly precomputedSupports?: readonly number[];
+}
+
+export interface CouncilScreenResult {
+  readonly kept: readonly CouncilUtterance[];
+  readonly excluded: readonly { readonly peerId: string; readonly reason: "consensus-outlier" }[];
+}
+
+/**
+ * Each member's mean pairwise Jaccard token-similarity to all OTHER members.
+ * Empty reasoning → support 0 (a silent/failed peer can't claim high agreement).
+ * Pure, deterministic, order-stable.
+ */
+export function councilMemberSupports(utterances: readonly CouncilUtterance[]): number[] {
+  const n = utterances.length;
+  if (n === 0) return [];
+  const tokens: Set<string>[] = utterances.map((u) => lexicalTokens(u.reasoning));
+  return utterances.map((_, i) => {
+    if (n === 1) return 1;
+    let sum = 0;
+    for (let j = 0; j < n; j++) {
+      if (j !== i) {
+        sum += jaccardSimilarity(tokens[i] ?? new Set<string>(), tokens[j] ?? new Set<string>());
+      }
+    }
+    return sum / (n - 1);
+  });
+}
+
+/**
+ * Embedding cosine threshold for the semantic outlier screen (arXiv:2507.14649 — Cleanse:
+ * semantic consistency over embedding space instead of surface lexical overlap). These
+ * replace the Jaccard absFloor (0.08) when a `councilMemberSupportsSemantic` vector is
+ * fed to `screenCouncilOutliers`.
+ *
+ * Jaccard lives in ~[0, 0.2] for council text; nomic cosine lives in ~[0.1, 0.9].
+ * At cosine ~0.9 two texts agree (cross-lingual or paraphrase); ~0.1 they are
+ * semantically unrelated. Setting the floor at 0.4 keeps agreeing peers (cosine ≥ 0.6+)
+ * and quarantines genuine outliers (cosine ≤ 0.2). A single threshold applies to both
+ * directions — proven by the fake-embedder test pairs; tune on a live KO/EN battery
+ * (backlog item: calibrate COSINE_ABS_FLOOR on real nomic council runs).
+ */
+export const COSINE_ABS_FLOOR = 0.4;
+
+/**
+ * Each member's mean pairwise embedding cosine-similarity to all OTHER members.
+ * Implements the Cleanse semantic consistency signal (arXiv:2507.14649, Joo & Cho 2025):
+ * embedding space catches cross-lingual and paraphrase agreement that Jaccard misses.
+ *
+ * n===1 → [1] (sole speaker trivially agrees with no one).
+ * An empty vector (length 0) or a failed embed → that member's support = 0, mirroring
+ * the empty-Jaccard silent-peer rule — a failed embed cannot claim agreement.
+ * Never throws: embed errors are caught per-member; a failing member gets support 0.
+ */
+export async function councilMemberSupportsSemantic(
+  utterances: readonly CouncilUtterance[],
+  embed: (text: string) => Promise<readonly number[]>
+): Promise<number[]> {
+  const n = utterances.length;
+  if (n === 0) return [];
+  const vecs: (readonly number[])[] = await Promise.all(
+    utterances.map(async (u) => {
+      if (u.reasoning.trim().length === 0) return [];
+      try { return await embed(u.reasoning); } catch { return []; }
+    })
+  );
+  return utterances.map((_, i) => {
+    if (n === 1) return 1;
+    const vi = vecs[i] ?? [];
+    if (vi.length === 0) return 0;
+    let sum = 0;
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      const vj = vecs[j] ?? [];
+      sum += vj.length === 0 ? 0 : cosineSimilarity(vi, vj);
+    }
+    return sum / (n - 1);
+  });
+}
+
+/**
+ * True iff n ≤ 1 (solo panel trivially agrees) OR every member's support ≥ agreeAt.
+ * ReConcile consensus gate (arXiv:2309.13007): terminates the debate round budget
+ * early when the panel has converged, avoiding wasted inference on already-agreed results.
+ * Never throws — an empty-reasoning member gets support 0 → not consensus.
+ */
+export const DEFAULT_COUNCIL_AGREE_AT = 0.16;
+// 2× the outlier absFloor (0.08): paraphrased agreement scores ~0.19+, divergent panels
+// score 0.02–0.06. This gap is wide enough to be stable across realistic lexical variation.
+
+export function hasCouncilConsensus(
+  utterances: readonly CouncilUtterance[],
+  opts?: { readonly agreeAt?: number }
+): boolean {
+  const n = utterances.length;
+  if (n <= 1) return true;
+  const agreeAt = opts?.agreeAt ?? DEFAULT_COUNCIL_AGREE_AT;
+  const supports = councilMemberSupports(utterances);
+  return supports.every((s) => s >= agreeAt);
+}
+
+/**
+ * Cosine-scale agreement threshold for the semantic ReConcile consensus gate
+ * (arXiv:2309.13007 + arXiv:2507.14649 — Cleanse): agreeing peers (including
+ * cross-lingual KO+EN via the multilingual embedder) score cosine ≥0.6; genuinely
+ * divergent peers score ≤0.25. 0.5 sits cleanly in the gap. Distinct from
+ * COSINE_ABS_FLOOR (0.4): that is the outlier-screen floor for quarantining a
+ * deceptive member; this is the consensus bar every member must clear to stop the
+ * debate — a stricter gate (higher bar for "we agree") makes the early-exit safe.
+ */
+export const DEFAULT_COUNCIL_AGREE_AT_COSINE = 0.5;
+
+/**
+ * Semantic ReConcile consensus gate (arXiv:2309.13007 + arXiv:2507.14649 — Cleanse):
+ * uses embedding cosine instead of lexical Jaccard so cross-lingual panels (KO+EN) that
+ * genuinely agree are not falsely scored as diverged.
+ *
+ * n ≤ 1 → true. Else: every member's mean pairwise cosine must be ≥ agreeAt.
+ * Fail-open: a thrown embed inside councilMemberSupportsSemantic yields support 0
+ * for that member (the primitive's own contract) → consensus fails → no throw here.
+ * Keep hasCouncilConsensus (Jaccard) as the no-embed fallback; this does NOT replace it.
+ */
+export async function hasCouncilConsensusSemantic(
+  utterances: readonly CouncilUtterance[],
+  embed: (text: string) => Promise<readonly number[]>,
+  opts?: { readonly agreeAt?: number }
+): Promise<boolean> {
+  const n = utterances.length;
+  if (n <= 1) return true;
+  const agreeAt = opts?.agreeAt ?? DEFAULT_COUNCIL_AGREE_AT_COSINE;
+  const supports = await councilMemberSupportsSemantic(utterances, embed);
+  return supports.every((s) => s >= agreeAt);
+}
+
+/**
+ * The panel's consensus LEVEL as a scalar: the MINIMUM member support (mean
+ * pairwise embedding cosine). This is the exact signal hasCouncilConsensusSemantic
+ * thresholds — consensus ⟺ min support ≥ agreeAt — exposed so a debate loop can
+ * track whether a refinement round actually MOVED the panel toward agreement.
+ * n ≤ 1 → 1 (a solo/empty panel trivially agrees). Fail-soft: a failed embed
+ * gives that member support 0 (councilMemberSupportsSemantic's contract), lowering
+ * the min — never throws.
+ */
+export async function councilConsensusScore(
+  utterances: readonly CouncilUtterance[],
+  embed: (text: string) => Promise<readonly number[]>
+): Promise<number> {
+  if (utterances.length <= 1) return 1;
+  const supports = await councilMemberSupportsSemantic(utterances, embed);
+  return supports.length === 0 ? 0 : Math.min(...supports);
+}
