@@ -573,7 +573,7 @@ export function seedDeduplicatorFromHistory(
   }
 }
 
-export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 180_000;
+const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 180_000;
 
 /**
  * Wrap a model event stream with an IDLE timeout: if the provider emits no next

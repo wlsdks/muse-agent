@@ -13,6 +13,7 @@ import { join } from "node:path";
 import type { Command } from "commander";
 
 import { FileCheckpointStore, resolveCheckpointsDir, type MuseEnvironment } from "@muse/autoconfigure";
+import type { SourceCheckSignals } from "@muse/recall";
 
 import type { ProgramIO } from "./program.js";
 
@@ -24,13 +25,7 @@ export interface RunSummary {
   readonly recordedAt: string;
 }
 
-export interface SourceCheckSignals {
-  readonly untrustedOnly: boolean;
-  readonly citationUnsupported: boolean;
-  readonly citationUncited: boolean;
-}
-
-export interface DecompositionSignals {
+interface DecompositionSignals {
   readonly subtaskConflicts?: readonly string[];
   readonly synthesisIncomplete?: readonly string[];
   readonly truncated?: boolean;

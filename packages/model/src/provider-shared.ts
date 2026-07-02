@@ -187,7 +187,7 @@ export function recoverToolArgsJson(raw: string): Record<string, unknown> | unde
  *  - trailing commas before `}` / `]`;
  *  - unquoted identifier keys (`{city:` → `{"city":`).
  */
-export function repairLooseJson(text: string): string {
+function repairLooseJson(text: string): string {
   let s = text
     .replace(/[“”]/gu, "\"")
     .replace(/[‘’]/gu, "'");
