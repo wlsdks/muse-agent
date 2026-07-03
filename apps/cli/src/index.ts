@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// Enable the V8 compile cache before any other module in the graph — see
+// compile-cache.ts for why this must stay the first import.
+import "./compile-cache.js";
 import { trySpecFastPath } from "./muse-spec.js";
 import { tryVersionFastPath } from "./muse-version.js";
 
