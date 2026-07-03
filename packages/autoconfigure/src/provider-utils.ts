@@ -24,15 +24,24 @@ export function readCredentialsSync(file: string): Record<string, Record<string,
 /**
  * Pull a non-empty string field from a credentials-record. Tolerant
  * by design — `undefined` record OR missing key OR wrong type OR
- * empty string all return `undefined` so the caller can chain with
- * `??`.
+ * empty/whitespace-only string all return `undefined` so the caller
+ * can chain with `??`. Trimmed so a whitespace-only value (a stray
+ * `"   "` in `~/.muse/{models,mcp-credentials,...}.json`) is treated
+ * as absent instead of silently becoming a broken credential — e.g. a
+ * literal `Authorization: Bearer   ` header that fails auth upstream
+ * with a confusing error, rather than falling back cleanly. Mirrors
+ * every env-var token lookup in this file, which already `.trim()`s.
  */
 export function stringField(record: { readonly [key: string]: unknown } | undefined, key: string): string | undefined {
   if (!record) {
     return undefined;
   }
   const value = record[key];
-  return typeof value === "string" && value.length > 0 ? value : undefined;
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
 }
 
 /**

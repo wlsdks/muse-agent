@@ -41,6 +41,13 @@ describe("stringField", () => {
     expect(stringField({}, "token")).toBeUndefined();
     expect(stringField(undefined, "token")).toBeUndefined();
   });
+  it("treats a whitespace-only value as absent, not a broken credential", () => {
+    expect(stringField({ token: "   " }, "token")).toBeUndefined();
+    expect(stringField({ token: "\t\n " }, "token")).toBeUndefined();
+  });
+  it("trims surrounding whitespace off a real value", () => {
+    expect(stringField({ token: "  ghp_abc123  " }, "token")).toBe("ghp_abc123");
+  });
 });
 
 describe("clampPositive (env-numeric context-window guard)", () => {
