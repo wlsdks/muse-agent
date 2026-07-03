@@ -8,6 +8,30 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-07-03
+
+Three correctness fixes surfaced by a fresh backlog pass, all tied to Muse
+honestly reporting its own state — an ungrounded answer, an MCP connection
+audit, and a credential check each had a case where they silently lied.
+Early / experimental, macOS only.
+
+### Fixed
+
+- **A complex `muse ask --with-tools` request that decomposes into several
+  sub-tasks, where EVERY sub-task fails to find an answer, no longer prints
+  a blank line.** It now gives the same honest "I'm not sure" refusal Muse
+  gives everywhere else, so the citation/refusal messaging around it works
+  correctly too.
+- **`muse doctor` no longer falsely reports an official MCP preset
+  (GitHub/Notion/Linear/Sentry) as "blocked".** When you explicitly enable
+  one with a credential, Muse automatically permits it even under a strict
+  allowlist — the doctor's audit view now reports that same reality instead
+  of a stale "blocked" reading.
+- **A whitespace-only value in a `~/.muse/*.json` credentials file
+  (model API key, MCP token, or messaging bot token) is now correctly
+  treated as no credential at all**, instead of being used as-is and
+  silently producing a broken auth header.
+
 ## [0.2.6] - 2026-07-03
 
 Three more source-level scouting findings against the fastest-moving open
