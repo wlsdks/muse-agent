@@ -5,7 +5,9 @@
 
 export { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 export { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest } from "./encrypted-file.js";
-export { enqueueLearnEvent, markLearnEventsDone, readPendingLearnEvents, resolveLearnQueueFile } from "./learn-queue.js";
+export { ageCutoffMs, pruneByAge } from "./retention.js";
+export type { PruneByAgeOptions, PruneByAgeResult } from "./retention.js";
+export { enqueueLearnEvent, markLearnEventsDone, pruneLearnQueueByAge, readPendingLearnEvents, resolveLearnQueueFile } from "./learn-queue.js";
 export type { LearnCorrectionEvent } from "./learn-queue.js";
 export { isLearningPaused, setLearningPaused } from "./learning-pause-store.js";
 export { defaultSchedulerPauseFile, isSchedulerPaused, readSchedulerPauseState, setSchedulerPaused } from "./scheduler-pause-store.js";
@@ -17,8 +19,10 @@ export type { BackgroundProcessRecord } from "./background-process-store.js";
 export { reconcileBackgroundProcesses, spawnBackgroundProcess, stopBackgroundProcess } from "./background-process-spawn.js";
 export type { BackgroundSpawner, SpawnedChild } from "./background-process-spawn.js";
 export { createNodeBackgroundSpawner } from "./node-background-spawner.js";
-export { appendActionLog, decryptActionLogAtRest, encryptActionLogAtRest, isActionLogEncrypted, queryActionLog, readActionLog, serializeActionLogEntry, verifyActionLogChainFile } from "./personal-action-log-store.js";
-export type { ActionLogEntry, ActionResult } from "./personal-action-log-store.js";
+export { classifyProactiveHeartbeat, defaultProactiveHeartbeatDir, readProactiveHeartbeat, recordProactiveHeartbeat } from "./proactive-heartbeat.js";
+export type { ProactiveHeartbeat, ProactiveHeartbeatMark, ProactiveHeartbeatSignal, ProactiveHeartbeatStatus, ProactiveHeartbeatThresholds, ProactiveHeartbeatVerdict } from "./proactive-heartbeat.js";
+export { appendActionLog, decryptActionLogAtRest, encryptActionLogAtRest, isActionLogEncrypted, pruneActionLogByAge, queryActionLog, readActionLog, serializeActionLogEntry, verifyActionLogChainFile } from "./personal-action-log-store.js";
+export type { ActionLogEntry, ActionLogPruneResult, ActionResult } from "./personal-action-log-store.js";
 export { findConsent, hasConsent, readConsents, recordConsent } from "./personal-consent-store.js";
 export type { ScopedConsent } from "./personal-consent-store.js";
 export { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, formatBirthdayBriefLine, isContactsEncrypted, linkContacts, queryContacts, readContacts, removeContact, resolveContact, resolveUpcomingBirthdays, serializeContact, writeContacts } from "./personal-contacts-store.js";

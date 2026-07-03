@@ -39,7 +39,8 @@ export interface AgentInitiatedNoticeBrokerLike {
   }): void;
 }
 
-import { appendProactiveHistory } from "@muse/stores";
+import { appendProactiveHistory, recordProactiveHeartbeat } from "@muse/stores";
+import { dirname } from "node:path";
 import { readTasks, type PersistedTask } from "@muse/stores";
 import { appendSurfaced, avoidedSourceKeys, readTrustLedger, sourceKey, withinDailyCap, type TrustLedgerEntry } from "@muse/stores";
 import { firedKey, readProactiveFired, readSessionLock, writeProactiveFired, type ProactiveFiredEntry, type ProactiveFiredKind } from "@muse/stores";
@@ -313,6 +314,16 @@ export interface RunDueProactiveNoticesOptions {
    * `trustLedgerFile`.
    */
   readonly dailyCap?: number;
+  /**
+   * Directory for the liveness heartbeat files (DS-8). The `alive`
+   * mark is touched at the START of every tick and the `fired` mark at
+   * the END of a tick that returned without throwing, so `muse doctor`
+   * can tell a stopped ticker from one that runs but fails every pass.
+   * Defaults to the directory of `sidecarFile` (co-located with the
+   * proactive state) so no extra wiring is needed; pass `null` to
+   * disable. Writes are fail-soft and never break the tick.
+   */
+  readonly heartbeatDir?: string | null;
 }
 
 export interface RunDueProactiveNoticesSummary {
@@ -331,7 +342,47 @@ export interface RunDueProactiveNoticesSummary {
   readonly sessionLockedUntil?: string;
 }
 
+/**
+ * Public entrypoint: wraps the tick body with the DS-8 liveness heartbeat.
+ * `alive` is written before any work; `fired` only after the body returns
+ * without throwing (a clean pass). A throwing tick leaves `fired` stale so
+ * `muse doctor` sees "running but failing". Heartbeat writes are fail-soft
+ * and are NEVER allowed to change the tick's own success/failure.
+ */
 export async function runDueProactiveNotices(
+  options: RunDueProactiveNoticesOptions
+): Promise<RunDueProactiveNoticesSummary> {
+  const heartbeatDir = resolveHeartbeatDir(options);
+  const now = options.now ?? (() => new Date());
+  if (heartbeatDir) {
+    await recordProactiveHeartbeat(heartbeatDir, "alive", now).catch(() => false);
+  }
+  const summary = await runDueProactiveNoticesInner(options);
+  // `fired` marks a CLEAN pass. The inner loop catches per-item delivery
+  // failures into `summary.errors` rather than throwing, so a tick that
+  // reached items but failed EVERY delivery would otherwise still look
+  // healthy. Gate on an empty error list so a persistently-failing ticker
+  // (alive fresh, fired stale) is distinguishable from a healthy idle one.
+  if (heartbeatDir && summary.errors.length === 0) {
+    await recordProactiveHeartbeat(heartbeatDir, "fired", now).catch(() => false);
+  }
+  return summary;
+}
+
+/**
+ * Heartbeat directory: explicit `heartbeatDir` wins (`null` disables);
+ * otherwise co-locate with the proactive sidecar so the live daemon emits
+ * heartbeats with no extra wiring.
+ */
+function resolveHeartbeatDir(options: RunDueProactiveNoticesOptions): string | undefined {
+  if (options.heartbeatDir === null) return undefined;
+  if (typeof options.heartbeatDir === "string" && options.heartbeatDir.length > 0) {
+    return options.heartbeatDir;
+  }
+  return options.sidecarFile ? dirname(options.sidecarFile) : undefined;
+}
+
+async function runDueProactiveNoticesInner(
   options: RunDueProactiveNoticesOptions
 ): Promise<RunDueProactiveNoticesSummary> {
   const now = options.now ?? (() => new Date());

@@ -43,10 +43,11 @@ import { FileUserMemoryStore } from "@muse/memory";
 import type { PatternMatch } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, readEpisodes, resolveLearnQueueFile, decayStalePlaybookRewards, isLearningPaused, queryPlaybook, recordPlaybookStrategy, removePlaybookStrategy, readProactiveHistory, readRecallHits, writeFadedMemoryKeys } from "@muse/stores";
-import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, runDueReminders, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
+import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, runDueBackgroundExitNotices, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, runDueReminders, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, GmailEmailProvider, type EmailProvider, runDueSituationalBriefing, selectUpcomingConflicts } from "@muse/domain-tools";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { backgroundStoreFile } from "./commands-background.js";
 import { buildLaunchAgentPlist, LAUNCH_AGENT_LABEL, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
 import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
 import { dirname, join } from "node:path";
@@ -247,6 +248,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const trustLedgerFile = e.MUSE_PROACTIVE_TRUST_FILE?.trim()?.length
         ? e.MUSE_PROACTIVE_TRUST_FILE.trim()
         : join(homedir(), ".muse", "proactive-trust.json");
+      const backgroundExitNotifiedFile = (): string => join(homedir(), ".muse", "bg-exit-notified.json");
       const dailyCapRaw = e.MUSE_PROACTIVE_DAILY_CAP ? Number(e.MUSE_PROACTIVE_DAILY_CAP) : 0;
       const dailyCap = Number.isFinite(dailyCapRaw) && dailyCapRaw > 0 ? Math.trunc(dailyCapRaw) : 0;
       const followupsFile = resolveFollowupsFile(e);
@@ -427,6 +429,27 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           }
         }
         io.stdout("\n");
+      };
+
+      const backgroundExitNoticeTick = async (): Promise<void> => {
+        const summary = await runDueBackgroundExitNotices({
+          destination,
+          messagingRegistry,
+          notifiedFile: backgroundExitNotifiedFile(),
+          providerId: provider,
+          storeFile: backgroundStoreFile()
+        });
+        if (summary.notified > 0 || summary.errors.length > 0) {
+          const tag = `[${new Date().toISOString()}]`;
+          io.stdout(`${tag} background-exit: notified ${summary.notified.toString()}/${summary.pending.toString()} pending`);
+          if (summary.errors.length > 0) {
+            io.stdout(`, ${summary.errors.length.toString()} error(s)`);
+            for (const error of summary.errors) {
+              io.stdout(`\n  ! ${error}`);
+            }
+          }
+          io.stdout("\n");
+        }
       };
 
       const remindersTick = async (): Promise<void> => {
@@ -1026,6 +1049,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
 
       const runTick = async (): Promise<void> => {
         await proactiveTick();
+        await backgroundExitNoticeTick();
         await remindersTick();
         await followupTick();
         await checkinsTick();

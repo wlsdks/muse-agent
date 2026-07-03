@@ -1,4 +1,5 @@
 export * from "./ambient-notice-loop.js";
+export * from "./background-exit-notice-loop.js";
 export * from "./briefing-imminent.js";
 export * from "./commitment-checkin.js";
 export * from "./consented-action.js";

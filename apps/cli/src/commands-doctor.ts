@@ -17,6 +17,8 @@ import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
 import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
 import { backgroundStoreFile } from "./commands-background.js";
+import { readProactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
+export { heartbeatStatusToCheckStatus, proactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 import { findOllamaModelTag, isOllamaTagsEntry, type OllamaTagsEntry } from "./commands-doctor-ollama.js";
 import { readNotesIndexEmbedModel } from "./commands-doctor-checks.js";
 import { embedModelCheck, formatBytes, recallCalibrationCheck } from "./commands-doctor-checks.js";
@@ -348,6 +350,7 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   checks.push(atRestDoctorCheck(await collectPrivacyPosture(env)));
   checks.push({ name: "scheduler", ...schedulerPauseCheck(await readSchedulerPauseState(defaultSchedulerPauseFile(env))) });
   checks.push({ name: "background", ...backgroundProcessCheck(await readBackgroundProcesses(backgroundStoreFile())) });
+  checks.push(await readProactiveHeartbeatCheck(env));
 
   // ~/.muse layout
   const muse_home = resolveMuseEnvPath(process.env.MUSE_HOME, join(homedir(), ".muse"));
