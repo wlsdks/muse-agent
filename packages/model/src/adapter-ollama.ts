@@ -41,6 +41,11 @@ import type {
 // 1 output token). Override per-install with MUSE_OLLAMA_NUM_CTX.
 export const DEFAULT_OLLAMA_NUM_CTX = 32_768;
 
+// Bound on the /api/show context-window probe. Short: it runs before the first
+// chat and must never block startup — on timeout it fails soft to today's
+// configured num_ctx.
+export const DEFAULT_CONTEXT_PROBE_TIMEOUT_MS = 3_000;
+
 export class OllamaProvider extends OpenAICompatibleProvider {
   private readonly nativeBaseUrl: string;
   private readonly nativeFetch: typeof globalThis.fetch;
@@ -50,6 +55,9 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   private readonly numPredict: number | undefined;
   private readonly numThread: number | undefined;
   private readonly numGpu: number | undefined;
+  private readonly probeContextWindow: boolean;
+  private readonly contextWindowByModel = new Map<string, number | undefined>();
+  private readonly clampWarned = new Set<string>();
   private static traceSeq = 0;
 
   constructor(options: OllamaProviderOptions = {}) {
@@ -89,6 +97,12 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     this.numGpu = options.numGpu !== undefined && Number.isFinite(options.numGpu) && options.numGpu >= 0
       ? Math.trunc(options.numGpu)
       : undefined;
+    // OFF by default: when unset the wire is byte-identical to today (no
+    // /api/show call, no clamp). Opt in via MUSE_OLLAMA_PROBE_CONTEXT to have
+    // the adapter learn each model's real context length and clamp num_ctx DOWN
+    // when it was configured higher than the model can honour (avoids Ollama
+    // silently truncating the prompt). Never clamps UP.
+    this.probeContextWindow = options.probeContextWindow ?? false;
   }
 
   override async listModels(): Promise<readonly ModelInfo[]> {
@@ -99,8 +113,49 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     }));
   }
 
+  /**
+   * The num_ctx this request will actually send. With probing off (default)
+   * that is the configured value verbatim. With probing on, the model's live
+   * context window is fetched once (cached per model) and, if it is SMALLER
+   * than the configured num_ctx, the configured value is clamped down to it and
+   * a one-time warning is emitted — so Ollama never silently truncates a prompt
+   * budgeted against a window the model can't honour. Fail-soft: a failed /
+   * unavailable / larger-or-equal probe leaves the configured value unchanged.
+   */
+  private async effectiveNumCtx(model: string): Promise<number> {
+    if (!this.probeContextWindow) {
+      return this.numCtx;
+    }
+    const name = model.replace(/^ollama\//u, "").trim();
+    if (name.length === 0) {
+      return this.numCtx;
+    }
+    let native: number | undefined;
+    if (this.contextWindowByModel.has(name)) {
+      native = this.contextWindowByModel.get(name);
+    } else {
+      native = await probeOllamaContextWindow(this.nativeBaseUrl, name, this.nativeFetch);
+      this.contextWindowByModel.set(name, native);
+    }
+    if (native !== undefined && native < this.numCtx) {
+      if (!this.clampWarned.has(name)) {
+        this.clampWarned.add(name);
+        process.stderr.write(
+          `[muse] Ollama model ${name} supports only ${native.toString()} context tokens but num_ctx is set to ${this.numCtx.toString()}; clamping to ${native.toString()} to avoid silent prompt truncation (lower MUSE_OLLAMA_NUM_CTX to <= ${native.toString()}).\n`
+        );
+      }
+      return native;
+    }
+    return this.numCtx;
+  }
+
   override async generate(request: ModelRequest): Promise<ModelResponse> {
-    const body = this.buildNativeChatBody(request, false);
+    // Only the probe path awaits; with it off, generate stays synchronous up to
+    // the fetch (so signal-listener timing is byte-identical to before).
+    const numCtx = this.probeContextWindow
+      ? await this.effectiveNumCtx(request.model ?? this.nativeDefaultModel ?? "")
+      : this.numCtx;
+    const body = this.buildNativeChatBody(request, false, numCtx);
     const signal = modelCallSignal(request.signal);
     const resp = await this.nativeFetchOrThrow(`${this.nativeBaseUrl}/api/chat`, {
       body: JSON.stringify(body),
@@ -161,7 +216,10 @@ export class OllamaProvider extends OpenAICompatibleProvider {
   }
 
   override async *stream(request: ModelRequest): AsyncIterable<ModelEvent> {
-    const body = this.buildNativeChatBody(request, true);
+    const numCtx = this.probeContextWindow
+      ? await this.effectiveNumCtx(request.model ?? this.nativeDefaultModel ?? "")
+      : this.numCtx;
+    const body = this.buildNativeChatBody(request, true, numCtx);
     let resp: Response;
     const signal = modelCallSignal(request.signal, { streaming: true });
     try {
@@ -373,7 +431,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
     return new ModelProviderError(this.id, message, isRetryableHttpStatus(resp.status));
   }
 
-  private buildNativeChatBody(request: ModelRequest, stream: boolean): Record<string, unknown> {
+  private buildNativeChatBody(request: ModelRequest, stream: boolean, effectiveNumCtx: number = this.numCtx): Record<string, unknown> {
     const modelName = (request.model ?? this.nativeDefaultModel ?? "").replace(/^ollama\//, "");
     return {
       messages: request.messages.map((msg) => {
@@ -405,7 +463,7 @@ export class OllamaProvider extends OpenAICompatibleProvider {
         // Ollama defaults num_ctx low (2048–4096) and silently
         // truncates anything over it — Muse's prompt (persona +
         // memory + RAG + tasks + calendar) routinely exceeds that.
-        num_ctx: this.numCtx,
+        num_ctx: effectiveNumCtx,
         ...(this.numBatch !== undefined ? { num_batch: this.numBatch } : {}),
         ...(this.numThread !== undefined ? { num_thread: this.numThread } : {}),
         ...(this.numGpu !== undefined ? { num_gpu: this.numGpu } : {}),
@@ -446,6 +504,90 @@ export class OllamaProvider extends OpenAICompatibleProvider {
           }
         : {})
     };
+  }
+}
+
+interface OllamaShowResponse {
+  readonly model_info?: Record<string, unknown>;
+}
+
+/**
+ * Pull the model's native context length out of an /api/show `model_info` map.
+ * Ollama keys it by architecture — `gemma4.context_length`, `qwen3.context_length`
+ * (verified live against gemma4:12b → 262144). We resolve the architecture from
+ * `general.architecture` first, then fall back to ANY `*.context_length` /
+ * `context_length` key, since the exact prefix varies by model and Ollama
+ * version. Returns a positive integer or undefined on any unexpected shape.
+ */
+export function extractOllamaContextLength(modelInfo: unknown): number | undefined {
+  if (!modelInfo || typeof modelInfo !== "object" || Array.isArray(modelInfo)) {
+    return undefined;
+  }
+  const info = modelInfo as Record<string, unknown>;
+  const arch = typeof info["general.architecture"] === "string" ? (info["general.architecture"] as string) : undefined;
+  const keys: string[] = [];
+  if (arch) keys.push(`${arch}.context_length`);
+  for (const key of Object.keys(info)) {
+    if ((key.endsWith(".context_length") || key === "context_length") && !keys.includes(key)) {
+      keys.push(key);
+    }
+  }
+  for (const key of keys) {
+    const value = info[key];
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return Math.trunc(value);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Probe a live Ollama server for a model's real native context window via
+ * POST /api/show. Bounded-timeout and TOTALLY fail-soft: any error, timeout,
+ * non-200, non-JSON body, or unrecognised shape returns undefined so the caller
+ * falls back to its configured/static behaviour — this never throws and must
+ * never block startup. `baseUrl` may be the `/v1` compat URL or the native root;
+ * the `/v1` suffix is stripped either way.
+ */
+export async function probeOllamaContextWindow(
+  baseUrl: string,
+  model: string,
+  fetchImpl?: typeof globalThis.fetch,
+  options: { readonly timeoutMs?: number } = {}
+): Promise<number | undefined> {
+  const name = model.replace(/^ollama\//u, "").trim();
+  if (name.length === 0) {
+    return undefined;
+  }
+  const nativeBase = baseUrl.replace(/\/v1\/?$/u, "");
+  const fetchFn = fetchImpl ?? globalThis.fetch.bind(globalThis);
+  const timeoutMs = options.timeoutMs !== undefined && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+    ? options.timeoutMs
+    : DEFAULT_CONTEXT_PROBE_TIMEOUT_MS;
+  let signal: AbortSignal | undefined;
+  try {
+    signal = AbortSignal.timeout(timeoutMs);
+  } catch {
+    signal = undefined;
+  }
+  try {
+    const resp = await fetchFn(`${nativeBase}/api/show`, {
+      body: JSON.stringify({ name }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+      ...(signal ? { signal } : {})
+    });
+    if (!resp.ok) {
+      return undefined;
+    }
+    const raw = await resp.text().catch(() => "");
+    const parsed = parseJson(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return undefined;
+    }
+    return extractOllamaContextLength((parsed as OllamaShowResponse).model_info);
+  } catch {
+    return undefined;
   }
 }
 

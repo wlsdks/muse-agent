@@ -240,6 +240,15 @@ export interface OllamaProviderOptions extends Omit<OpenAICompatibleProviderOpti
    * Maps `MUSE_OLLAMA_NUM_GPU`.
    */
   readonly numGpu?: number;
+  /**
+   * Opt-in: probe each model's real context window via `/api/show` (once,
+   * cached per model) and clamp `num_ctx` DOWN if it was configured larger than
+   * the model can honour — preventing Ollama from silently truncating a prompt
+   * budgeted against a window the model doesn't support. OFF by default (the
+   * wire stays byte-identical, no extra request). Never clamps up; fail-soft on
+   * a probe error. Maps `MUSE_OLLAMA_PROBE_CONTEXT`.
+   */
+  readonly probeContextWindow?: boolean;
 }
 
 export interface AnthropicProviderOptions {
@@ -273,7 +282,7 @@ export { DEFAULT_MODEL_CALL_TIMEOUT_MS, fetchOrThrowAsProviderError, isRetryable
 export { createLeadingThinkStripper, recoverToolArgsJson, sanitizeLoneSurrogates, sanitizeToolCallName, stripLeadingThinkBlock } from "./provider-shared.js";
 export { DiagnosticModelProvider } from "./adapter-diagnostic.js";
 export { OpenAIProvider, OpenRouterProvider } from "./adapter-openai.js";
-export { DEFAULT_OLLAMA_NUM_CTX, OllamaProvider, sanitizeOllamaToolSchema } from "./adapter-ollama.js";
+export { DEFAULT_CONTEXT_PROBE_TIMEOUT_MS, DEFAULT_OLLAMA_NUM_CTX, OllamaProvider, extractOllamaContextLength, probeOllamaContextWindow, sanitizeOllamaToolSchema } from "./adapter-ollama.js";
 export { isWellFormedBase64 } from "./base64-image.js";
 export { AnthropicProvider } from "./adapter-anthropic.js";
 export { GeminiProvider } from "./adapter-gemini.js";
