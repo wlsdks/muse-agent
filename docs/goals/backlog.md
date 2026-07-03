@@ -466,17 +466,8 @@ openclaw `subagent-registry.ts`(persistent run registry·async announce non-poll
 
 - ✓ vision write-path grounding gate (capability-boost fire 5 retry → DONE): `vision-actions.ts` now runs an INDEPENDENT evidence transcription (a separate `describeImage` pass) and a deterministic `gateVisionAction`/`fieldIsGrounded` over every extracted field — a value not confirmable in the evidence lands in `action.unverified`, is flagged in the draft, and the `--apply` path REFUSES the autonomous write while unverified is non-empty (code gate, not a prompt). The 3 fire-5 defects are fixed: (a) digit grounding requires only ≥4-length runs (year/amount/phone-block) so a worded-month date ("June 7" ⇒ "2026-06-07" via the year) and a country-code phone are NOT false-dropped, with a word/entity (incl. CJK) majority fallback for text; (b) empty/failed evidence fails CLOSED (every field unverified), matching the text precedent; (c) false-drop regression tests landed (worded-month date, country-code phone, separator amount, CJK). Verified: 9 new unit tests + `eval:vision` asserts the gate doesn't over-drop the real fixtures' headline fields — STABLE 3/3 on gemma4:12b; full check + lint green.
 
-## ⚠ BLOCKER (poisoned-source ⑤c, fires 13-15 unmerged to main)
-
-The 3-fire main-merge for poisoned-source fires 13/14/15 is DEFERRED — `pnpm check`
-cannot go green under 6 concurrent loops: every failure is a uniform 5000ms timeout
-on heavy integration/fuzz tests (rotating across @muse/model, @muse/autoconfigure
-daemon, etc.), pure box saturation, NOT a real regression (each slice passes its
-package isolated + mutation RED). Per ⑤c, no force-merge past a red check. Retry at
-the next ÷3 (fire 18) or a quieter box. DURABLE FIX (infra, not loop work): raise the
-shared vitest integration testTimeout (5s→20-30s) so heavy tests survive saturation,
-or run the merge check in a quiet window. The fire-15 @muse/model fuzz bump (c4ca44bb)
-removed one flake source; the daemon tests are the next.
+✓ (freshness guard, 2026-07-03) poisoned-source fires 13-15 blocker resolved — fires
+13-18 (FINAL) all merged to main (86746f93 etc.), superseded.
 
 ## ★ Open — Muse edge hardening (WIDENED loop theme, 진안-directed 2026-06-20 after fire 8)
 
