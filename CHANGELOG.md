@@ -8,6 +8,29 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-07-03
+
+Three more source-level scouting findings against the fastest-moving open
+agents, each closing a real gap: silent context-window truncation, no way
+to reach a gated self-hosted LLM, and no visibility into what auto-trimming
+would drop. Early / experimental, macOS only.
+
+### Added
+
+- **Muse can now learn a local Ollama model's real context window instead
+  of trusting a static, sometimes-wrong catalog value.** Opt in with
+  `MUSE_OLLAMA_PROBE_CONTEXT=true`: Muse asks Ollama directly, and if your
+  configured context size is larger than what the model actually supports,
+  it's clamped down automatically (with a one-time warning) so prompts
+  never get silently truncated.
+- **Custom HTTP headers can now be attached to every model request** via
+  `MUSE_MODEL_EXTRA_HEADERS` (a JSON object) — for a self-hosted LLM gateway
+  behind a reverse proxy or service-token auth that needs more than a
+  standard API key.
+- **A new `/compact` command in chat previews what auto-compaction would
+  drop** — message count, token budget, and which messages would go —
+  before it happens, without touching your conversation.
+
 ## [0.2.5] - 2026-07-03
 
 A second round of source-level scouting against the fastest-moving open
