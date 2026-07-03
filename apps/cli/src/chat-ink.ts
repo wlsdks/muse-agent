@@ -12,6 +12,8 @@
 import { Box, Static, Text, useApp, useCursor, useInput } from "ink";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
+import { trimConversationMessages, type ConversationTrimOptions } from "@muse/memory";
+
 import {
   buildTurnMessages,
   chatHelp,
@@ -19,6 +21,7 @@ import {
   emptyInput,
   extractAttachmentPaths,
   imageMimeForPath,
+  formatCompactPreview,
   formatJobsList,
   formatMemoryView,
   formatTrust,
@@ -69,6 +72,7 @@ const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[]
   { cmd: "trust", desc: "show this user's trusted + blocked tools" },
   { cmd: "persona", desc: "show the active persona slot" },
   { cmd: "history", desc: "how many turns are in context" },
+  { cmd: "compact", desc: "preview what compaction would drop from context (read-only)" },
   { cmd: "save", desc: "save the last reply to a note file" },
   { cmd: "copy", desc: "copy the last reply to the clipboard" },
   { cmd: "cost", desc: "show this session's token usage" },
@@ -116,6 +120,12 @@ const INPUT_COL_OFFSET = 4;
 export const PROACTIVE_LEAD_MS = 60 * 60_000;
 const PROACTIVE_POLL_MS = 45_000;
 
+// Fallback trim budget for `/compact` when the caller doesn't wire a
+// `contextWindow` prop (e.g. an older test harness) — mirrors
+// `buildContextWindowOptions`'s own defaults so the preview still means
+// something rather than silently no-op-ing.
+const DEFAULT_CONTEXT_WINDOW: ConversationTrimOptions = { maxContextWindowTokens: 128_000, outputReserveTokens: 4_096 };
+
 export interface RunChatInkOptions {
   readonly model?: string;
   readonly continueHistory?: boolean;
@@ -160,6 +170,9 @@ export function MuseChatApp(props: {
     readonly toolGroundingSources?: readonly { readonly source: string; readonly text: string }[];
   }) => Promise<{ readonly display: string; readonly forHistory: string; readonly untrustedOnly: boolean }>;
   readonly historyWindow?: number;
+  /** The live runtime's trim budget (`buildContextWindowOptions(process.env)`), so
+   *  `/compact` previews against the SAME config the real compaction would use. */
+  readonly contextWindow?: ConversationTrimOptions;
   readonly personaPrompt: () => string | undefined;
   readonly stream: (messages: readonly ChatTurnMessage[], model: string) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
   readonly streamWithTools: (messages: readonly ChatTurnMessage[], model: string, requestApproval: (toolName: string, detail: string, kind: "outbound" | "tool") => Promise<boolean>) => AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; grounding?: { source: string; text: string }; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
@@ -428,6 +441,21 @@ export function MuseChatApp(props: {
       }
       if (slash.cmd === "history") {
         note(`${historyRef.current.length} turns in this conversation. /new starts fresh; /clear just clears the screen.`);
+        return;
+      }
+      if (slash.cmd === "compact") {
+        // Dry run only — reads historyRef.current, never writes it. Approximates
+        // the system prompt with the persona/base line; the per-turn additions
+        // (active-agent prefix, retrieval grounding block, matched skills) depend
+        // on the NEXT message and can't be known ahead of a real turn, so this
+        // slightly UNDER-counts the system-prompt token cost. The trim DECISION
+        // itself is the exact function + budget config the live runtime uses.
+        const trimOptions: ConversationTrimOptions = {
+          ...(props.contextWindow ?? DEFAULT_CONTEXT_WINDOW),
+          systemPrompt: props.personaPrompt() ?? formatCurrentContextLine()
+        };
+        const result = trimConversationMessages(historyRef.current, trimOptions);
+        note(formatCompactPreview(historyRef.current.length, result));
         return;
       }
       if (slash.cmd === "recall") {

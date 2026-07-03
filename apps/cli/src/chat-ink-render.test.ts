@@ -255,6 +255,7 @@ describe("MuseChatApp render — every slash command responds", () => {
     { input: "/trust", contains: ["› /trust", "Trusted tools (0)"] },
     { input: "/persona", contains: ["› /persona", "persona"] },
     { input: "/history", contains: ["› /history", "turns in this conversation"] },
+    { input: "/compact", contains: ["› /compact", "Compaction preview", "nothing would be dropped right now"] },
     { input: "/cost", contains: ["› /cost", "No tokens used yet"] },
     { input: "/save", contains: ["Nothing to save yet"] },
     { input: "/copy", contains: ["Nothing to save yet"] },
@@ -271,6 +272,66 @@ describe("MuseChatApp render — every slash command responds", () => {
       for (const needle of c.contains) expect(frame, `"${c.input}" frame missing: ${needle}`).toContain(needle);
     });
   }
+});
+
+describe("MuseChatApp render — /compact preview", () => {
+  const bigHistory = Array.from({ length: 30 }, (_, i) => ({
+    content: `earlier turn number ${i.toString()} `.repeat(60),
+    role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant"
+  }));
+
+  it("reports removedCount > 0 when the seeded history exceeds a tiny context window, without mutating history", async () => {
+    let capturedMessages: readonly { role: string; content: string }[] = [];
+    async function* reply(): AsyncGenerator<{ type: string; text?: string }> {
+      yield { type: "text-delta", text: "ok." };
+      yield { type: "done" };
+    }
+    // contextWindow is a prop (mirrors buildContextWindowOptions(process.env) in
+    // chat-ink-run.ts) — tiny here so the seeded history is well over budget,
+    // without touching global process.env.
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+      history: bigHistory,
+      contextWindow: { maxContextWindowTokens: 500, outputReserveTokens: 50 },
+      stream: (messages: readonly { role: string; content: string }[]) => {
+        capturedMessages = messages;
+        return reply();
+      }
+    })));
+    await tick();
+    // NB: don't wait on "would drop" — that phrase is also in the command's OWN
+    // autocomplete description ("...would drop from context...") and would
+    // match the still-open picker before Enter is even processed. "trigger:"
+    // only appears in the real formatCompactPreview output, past Enter.
+    stdin.write("/compact"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["› /compact", "trigger:"], 3000);
+    expect(frame).toContain("Compaction preview");
+    expect(frame).toContain("would drop");
+    expect(frame).toContain("trigger:");
+
+    // The seeded history must still be fully intact for the NEXT real turn —
+    // /compact is a read-only preview, it must never trim historyRef.current.
+    stdin.write("one more message"); await tick(); stdin.write("\r");
+    await waitForFrame(lastFrame, ["ok."]);
+    unmount();
+    const historyPortion = capturedMessages.filter((m) => m.role === "user" || m.role === "assistant");
+    // buildTurnMessages appends the new user turn last; every seeded turn
+    // must still be present ahead of it, unreduced by /compact.
+    expect(historyPortion.length).toBe(bigHistory.length + 1);
+    for (const [i, seeded] of bigHistory.entries()) {
+      expect(historyPortion[i]?.content).toBe(seeded.content);
+    }
+  });
+
+  it("nothing would be dropped when the seeded history fits the default (unset) context window", async () => {
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+      history: [{ content: "hi", role: "user" }, { content: "hello!", role: "assistant" }]
+    })));
+    await tick();
+    stdin.write("/compact"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["› /compact", "nothing would be dropped right now"]);
+    unmount();
+    expect(frame).toContain("nothing would be dropped right now");
+  });
 });
 
 describe("MuseChatApp render — plain chat + editing", () => {

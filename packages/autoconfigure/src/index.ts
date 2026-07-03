@@ -165,3 +165,8 @@ export {
   parseInteger,
   parseOptionalString
 } from "./env-parsers.js";
+
+// The single source of truth for the AgentRuntime's live trim budget, so a
+// context-preview surface (e.g. the chat `/compact` command) computes from
+// the SAME options the real runtime uses and never drifts out of sync.
+export { buildContextWindowOptions } from "./runtime-wiring.js";

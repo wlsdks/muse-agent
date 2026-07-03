@@ -114,4 +114,10 @@ describe("buildContextWindowOptions", () => {
       "importanceThreshold",
     );
   });
+
+  it("is reachable from the public @muse/autoconfigure barrel (../src/index.js), not just runtime-wiring.js directly — this is the single source of truth the chat /compact preview relies on", async () => {
+    const barrel = await import("../src/index.js");
+    expect(barrel.buildContextWindowOptions).toBe(buildContextWindowOptions);
+    expect(barrel.buildContextWindowOptions(env())).toEqual(buildContextWindowOptions(env()));
+  });
 });

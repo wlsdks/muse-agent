@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { MUSE_TAGLINE } from "./muse-identity.js";
 
+import { trimConversationMessages, type ConversationMessage } from "@muse/memory";
+
 import {
   buildTurnMessages,
   type ChatTurnMessage,
@@ -11,6 +13,7 @@ import {
   emptyInput,
   extractAttachmentPaths,
   imageMimeForPath,
+  formatCompactPreview,
   friendlyError,
   buildRecap,
   chatToolApprovalGate,
@@ -462,6 +465,66 @@ describe("formatJobsList", () => {
   });
   it("empty-state line when no jobs", () => {
     expect(formatJobsList([])).toMatch(/No background jobs yet/);
+  });
+});
+
+describe("formatCompactPreview", () => {
+  it("reports nothing dropped when the conversation is well under budget", () => {
+    const messages: ConversationMessage[] = [
+      { content: "hi", role: "user" },
+      { content: "hello!", role: "assistant" }
+    ];
+    const result = trimConversationMessages(messages, { maxContextWindowTokens: 128_000, outputReserveTokens: 4_096 });
+    expect(result.removedCount).toBe(0);
+    const out = formatCompactPreview(messages.length, result);
+    expect(out).toContain("Compaction preview — 2 message(s) in context");
+    expect(out).toContain("nothing would be dropped right now.");
+  });
+
+  it("reports the SAME numbers a direct trimConversationMessages call produces when the budget is exceeded", () => {
+    const messages: ConversationMessage[] = Array.from({ length: 40 }, (_, i) => ({
+      content: `turn number ${i.toString()} `.repeat(50),
+      role: i % 2 === 0 ? "user" : "assistant"
+    }));
+    const options = { maxContextWindowTokens: 500, outputReserveTokens: 50 };
+    const result = trimConversationMessages(messages, options);
+    expect(result.removedCount).toBeGreaterThan(0);
+
+    const out = formatCompactPreview(messages.length, result);
+    expect(out).toContain(`Compaction preview — ${messages.length.toString()} message(s) in context`);
+    expect(out).toContain(`tokens: ~${result.estimatedTokens.toString()} / ${result.budgetTokens.toString()} budget`);
+    expect(out).toContain(`would drop ${result.removedCount.toString()} message(s) (trigger: ${result.triggeredBy})`);
+
+    // Re-running the SAME trim directly must match what the preview reported —
+    // the preview never hand-rolls its own numbers.
+    const again = trimConversationMessages(messages, options);
+    expect(again.removedCount).toBe(result.removedCount);
+    expect(again.estimatedTokens).toBe(result.estimatedTokens);
+    expect(again.dropped.length).toBe(result.dropped.length);
+  });
+
+  it("never mutates the input array passed in", () => {
+    const messages: ConversationMessage[] = Array.from({ length: 20 }, (_, i) => ({
+      content: `turn ${i.toString()} `.repeat(80),
+      role: i % 2 === 0 ? "user" : "assistant"
+    }));
+    const snapshot = messages.map((m) => ({ ...m }));
+    const result = trimConversationMessages(messages, { maxContextWindowTokens: 300, outputReserveTokens: 50 });
+    formatCompactPreview(messages.length, result);
+    expect(messages).toEqual(snapshot);
+    expect(messages.length).toBe(20);
+  });
+
+  it("strips untrusted terminal control chars from the oldest-dropped preview", () => {
+    const ESC = String.fromCharCode(27);
+    const messages: ConversationMessage[] = Array.from({ length: 20 }, (_, i) => ({
+      content: i === 0 ? `${ESC}[2Ksneaky content` : `padding content number ${i.toString()} `.repeat(40),
+      role: i % 2 === 0 ? "user" : "assistant"
+    }));
+    const result = trimConversationMessages(messages, { maxContextWindowTokens: 300, outputReserveTokens: 50 });
+    expect(result.removedCount).toBeGreaterThan(0);
+    const out = formatCompactPreview(messages.length, result);
+    expect(out).not.toContain(ESC);
   });
 });
 

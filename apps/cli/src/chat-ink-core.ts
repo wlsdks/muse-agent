@@ -8,7 +8,7 @@
 import { readFile as fsReadFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
-import { normalizeMemoryKey } from "@muse/memory";
+import { normalizeMemoryKey, type ConversationTrimResult } from "@muse/memory";
 import { clamp, redactSecretsInText, stripUntrustedTerminalChars } from "@muse/shared";
 
 import { MUSE_TAGLINE } from "./muse-identity.js";
@@ -758,6 +758,34 @@ export function greetingName(facts: Readonly<Record<string, string>> | undefined
   if (raw.length === 0) return undefined;
   const first = stripUntrustedTerminalChars(raw).replace(/\s+/gu, " ").trim().split(" ")[0] ?? "";
   return first.length > 0 ? first.slice(0, 40) : undefined;
+}
+
+/**
+ * Render `/compact` — a read-only preview of what the NEXT proactive
+ * compaction pass would drop from the in-context conversation, computed
+ * from the same `trimConversationMessages` result the live runtime would
+ * produce. Never mutates anything; it's a preview only.
+ */
+export function formatCompactPreview(totalMessages: number, result: ConversationTrimResult): string {
+  const lines: string[] = [
+    `Compaction preview — ${totalMessages} message(s) in context`,
+    `  tokens: ~${result.estimatedTokens} / ${result.budgetTokens} budget`
+  ];
+  if (result.removedCount === 0) {
+    lines.push("  nothing would be dropped right now.");
+    return lines.join("\n");
+  }
+  lines.push(`  would drop ${result.removedCount} message(s) (trigger: ${result.triggeredBy})`);
+  const byRole = new Map<string, number>();
+  for (const m of result.dropped) byRole.set(m.role, (byRole.get(m.role) ?? 0) + 1);
+  lines.push(`    ${[...byRole.entries()].map(([role, count]) => `${count} ${role}`).join(", ")}`);
+  const oldest = result.dropped[0];
+  if (oldest) {
+    const preview = stripUntrustedTerminalChars(oldest.content).replace(/\s+/gu, " ").trim().slice(0, 60);
+    lines.push(`    oldest dropped: [${oldest.role}] ${preview}${preview.length === 60 ? "…" : ""}`);
+  }
+  if (result.summaryInserted) lines.push("  a conversation summary would be inserted in their place.");
+  return lines.join("\n");
 }
 
 export type ForgetResolution =

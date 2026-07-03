@@ -6,7 +6,7 @@
  * (MuseChatApp) lives in chat-ink.ts; render-free logic lives in chat-ink-core.ts.
  */
 
-import { createMuseRuntimeAssembly, evaluateLocalOnlyPosture, parseBoolean, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
+import { buildContextWindowOptions, createMuseRuntimeAssembly, evaluateLocalOnlyPosture, parseBoolean, resolveEpisodesFile, resolveFollowupsFile, resolveLocalCalendarFile, resolvePatternsFiredFile, resolveRemindersFile, resolveTasksFile } from "@muse/autoconfigure";
 import { LocalCalendarProvider } from "@muse/calendar";
 import { isSkillAvoided, readEpisodes, readFollowups, readPatternsFired, readSkillRewards, readTasks } from "@muse/stores";
 import { readCheckins } from "@muse/proactivity";
@@ -650,6 +650,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     },
     groundingFor: (prompt: string) => retrieveChatGrounding(prompt),
     historyWindow: resolveChatHistoryWindow(process.env),
+    contextWindow: buildContextWindowOptions(process.env),
     stream,
     streamWithTools,
     memorySnapshot,
