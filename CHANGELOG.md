@@ -8,6 +8,32 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-07-03
+
+A second round of source-level scouting against the fastest-moving open
+agents, this time turning up five real self-bugs — two of them in code
+shipped earlier today. Early / experimental, macOS only.
+
+### Fixed
+
+- **A crashed external MCP server no longer stays broken until you notice
+  and manually reconnect.** It now self-heals on the very next call.
+- **Non-ASCII output from background processes and Shortcuts can no longer
+  get corrupted.** Korean/CJK/emoji text that happened to split across a
+  process's output stream — window titles, skill output, tar file listings,
+  notification text — could turn into garbled replacement characters;
+  fixed at all eight affected call sites.
+- **A single transient hiccup in the background context-summarizer no
+  longer costs 10 minutes of degraded compaction** — it retries with
+  backoff before giving up.
+- **The local multi-model advisory feature (added earlier today) is now
+  ~44% faster** for a typical turn — advisor models can be capped
+  independently of the model that writes the final answer, since the turn
+  was waiting on the slowest advisor's full-length output.
+- **A future schema upgrade to your feeds, episode, or notes index can no
+  longer silently wipe your data** — a version mismatch now backs up the
+  old file before starting fresh, instead of silently discarding it.
+
 ## [0.2.4] - 2026-07-03
 
 Runtime resilience and safety hardening, closing every finding from a
