@@ -417,3 +417,176 @@ export function backgroundProcessCheck(
   const running = records.filter((record) => record.status === "running").length;
   return { detail: running > 0 ? `${running.toString()} background process(es) running` : "no background processes", status: "ok" };
 }
+
+/**
+ * Known cloud-sync folder fragments. Muse's local file stores rely on an
+ * O_EXCL cross-process lock (`atomic-file-store.ts`) that a multi-device
+ * sync client (iCloud/Dropbox/Google Drive/OneDrive) can race — two devices
+ * syncing the "same" store concurrently is a corruption path the lock was
+ * never designed to arbitrate across machines.
+ */
+const CLOUD_SYNC_PATTERNS: readonly { readonly label: string; readonly pattern: RegExp }[] = [
+  { label: "iCloud Drive", pattern: /Library[/\\]Mobile Documents/i },
+  { label: "macOS CloudStorage mount (Dropbox/Drive/OneDrive/Box)", pattern: /Library[/\\]CloudStorage/i },
+  { label: "Dropbox", pattern: /(^|[/\\])Dropbox([/\\]|$)/i },
+  { label: "Google Drive", pattern: /Google ?Drive/i },
+  { label: "OneDrive", pattern: /OneDrive/i }
+];
+
+/**
+ * DS-11 check 1/4 — is Muse's state directory sitting inside a known
+ * cloud-sync folder? Pure string match against `statePath`, so there is no
+ * I/O to fail on.
+ */
+export function cloudSyncFolderCheck(statePath: string): LocalCheck {
+  const match = CLOUD_SYNC_PATTERNS.find((candidate) => candidate.pattern.test(statePath));
+  if (!match) {
+    return { detail: `${statePath} is on local, non-cloud-synced storage`, name: "state dir placement", status: "ok" };
+  }
+  return {
+    detail: `${statePath} is inside a cloud-sync folder (${match.label}) — multi-device sync can race Muse's local file-store lock and corrupt concurrent writes. Move MUSE_HOME to local, non-synced storage (e.g. ~/.muse)`,
+    name: "state dir placement",
+    status: "warn"
+  };
+}
+
+/**
+ * DS-11 check 2/4 — is Muse's state directory on a volatile (tmpfs/ramfs)
+ * mount? Linux-only, best-effort via `/proc/mounts`. macOS/other platforms
+ * return `undefined` so the check is silently OMITTED there rather than
+ * adding a line doctor can't act on. Any read/parse failure degrades to a
+ * soft "skipped" verdict — this must never throw and take `muse doctor`
+ * down with it.
+ */
+export async function volatileMountCheck(
+  statePath: string,
+  platform: NodeJS.Platform = process.platform,
+  readMounts: () => Promise<string> = () => fs.readFile("/proc/mounts", "utf8")
+): Promise<LocalCheck | undefined> {
+  if (platform !== "linux") {
+    return undefined;
+  }
+  try {
+    const raw = await readMounts();
+    let best: { readonly mountPoint: string; readonly fsType: string } | undefined;
+    for (const line of raw.split("\n")) {
+      const fields = line.trim().split(/\s+/);
+      const mountPoint = fields[1];
+      const fsType = fields[2];
+      if (!mountPoint || !fsType) continue;
+      const underMount = statePath === mountPoint || statePath.startsWith(`${mountPoint === "/" ? "" : mountPoint}/`);
+      if (!underMount) continue;
+      if (!best || mountPoint.length > best.mountPoint.length) {
+        best = { fsType, mountPoint };
+      }
+    }
+    if (!best) {
+      return { detail: `could not determine the mount for ${statePath} — skipped`, name: "state dir mount", status: "ok" };
+    }
+    if (best.fsType === "tmpfs" || best.fsType === "ramfs") {
+      return {
+        detail: `${statePath} is on a volatile ${best.fsType} mount (${best.mountPoint}) — sessions, credentials, and memory will NOT survive a reboot. Move MUSE_HOME to persistent storage`,
+        name: "state dir mount",
+        status: "warn"
+      };
+    }
+    return { detail: `${statePath} is on a persistent ${best.fsType} mount`, name: "state dir mount", status: "ok" };
+  } catch {
+    return { detail: "could not read mount info — skipped", name: "state dir mount", status: "ok" };
+  }
+}
+
+export interface SensitiveFileTarget {
+  readonly label: string;
+  readonly path: string;
+}
+
+interface SensitiveFileModeResult extends SensitiveFileTarget {
+  readonly mode: number | undefined;
+}
+
+/**
+ * Stat each known sensitive store file and report its mode. `mode:
+ * undefined` means missing/unreadable — NOT an error, a store that hasn't
+ * been written yet is normal. Never throws: a per-file stat failure is
+ * swallowed individually so one bad path can't take the whole check down.
+ */
+export async function readSensitiveFileModes(
+  targets: readonly SensitiveFileTarget[],
+  statFn: (path: string) => Promise<{ readonly mode: number }> = (p) => fs.stat(p)
+): Promise<SensitiveFileModeResult[]> {
+  const results: SensitiveFileModeResult[] = [];
+  for (const target of targets) {
+    try {
+      const stat = await statFn(target.path);
+      results.push({ ...target, mode: stat.mode });
+    } catch {
+      results.push({ ...target, mode: undefined });
+    }
+  }
+  return results;
+}
+
+/**
+ * DS-11 check 3/4 — generalizes the live finding (`recall-hits.json` found
+ * at mode 644, looser than the 600 every personal store writes by default)
+ * across every known sensitive file, so it catches drift from a restored
+ * backup, a manual chmod, or a loose umask — not just the one file a probe
+ * happened to notice. Pure verdict over already-read modes.
+ */
+export function permissionModeDriftCheck(results: readonly SensitiveFileModeResult[]): LocalCheck {
+  const present = results.filter((r): r is SensitiveFileModeResult & { readonly mode: number } => r.mode !== undefined);
+  if (present.length === 0) {
+    return { detail: "no sensitive store files found yet — nothing to check", name: "file permissions", status: "ok" };
+  }
+  const drifted = present.filter((r) => (r.mode & 0o077) !== 0);
+  if (drifted.length > 0) {
+    const list = drifted.map((r) => `${r.label} (${(r.mode & 0o777).toString(8)})`).join(", ");
+    return {
+      detail: `${drifted.length.toString()}/${present.length.toString()} sensitive file(s) are group/world-readable: ${list} — run \`chmod 600 <file>\` (Muse writes 0600 by default; a restored backup, manual chmod, or a loose umask can drift this)`,
+      name: "file permissions",
+      status: "warn"
+    };
+  }
+  return { detail: `${present.length.toString()} sensitive store file(s) checked — all owner-only (0600)`, name: "file permissions", status: "ok" };
+}
+
+/**
+ * DS-11 check 4/4 — floor for `MUSE_MAX_TOOL_OUTPUT_CHARS` (default 8_000,
+ * see `runtime-assembly.ts`). Mirrors the runtime's own internal
+ * `TOOL_OUTPUT_MIN_CAP` (`packages/memory/src/tool-output-importance.ts`,
+ * 1_000 chars) — that floor only clamps the context-window AUTO-scaling
+ * path; a raw env override bypasses it entirely, so e.g.
+ * `MUSE_MAX_TOOL_OUTPUT_CHARS=50` truncates a typical tool's JSON reply
+ * mid-object. Per the non-negotiable "tool output is untrusted, tool loops
+ * have explicit limits" — a limit set too tight silently starves the
+ * grounding/citation gate instead of protecting anything.
+ */
+export const TOOL_OUTPUT_CAP_ADVISORY_FLOOR_CHARS = 1_000;
+
+export function toolResultCapAdvisoryCheck(env: Record<string, string | undefined>): LocalCheck {
+  const name = "tool-result cap";
+  try {
+    const raw = env.MUSE_MAX_TOOL_OUTPUT_CHARS?.trim();
+    if (!raw) {
+      return { detail: "MUSE_MAX_TOOL_OUTPUT_CHARS not set — default 8,000 chars (~2,000 tokens) per tool result", name, status: "ok" };
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed)) {
+      return { detail: `MUSE_MAX_TOOL_OUTPUT_CHARS='${raw}' is not a number — the runtime falls back to the 8,000-char default`, name, status: "ok" };
+    }
+    if (parsed <= 0) {
+      return { detail: "MUSE_MAX_TOOL_OUTPUT_CHARS is 0 or negative — the tool-output cap is DISABLED (results pass through uncapped)", name, status: "ok" };
+    }
+    if (parsed < TOOL_OUTPUT_CAP_ADVISORY_FLOOR_CHARS) {
+      return {
+        detail: `MUSE_MAX_TOOL_OUTPUT_CHARS=${parsed.toString()} is below the ${TOOL_OUTPUT_CAP_ADVISORY_FLOOR_CHARS.toString()}-char sane floor — a typical tool's JSON reply will truncate mid-response, starving the grounding/citation gate of evidence. Raise it (8,000 is the default) unless you have a specific reason to cap this low`,
+        name,
+        status: "warn"
+      };
+    }
+    return { detail: `MUSE_MAX_TOOL_OUTPUT_CHARS=${parsed.toString()} — above the sane floor`, name, status: "ok" };
+  } catch {
+    return { detail: "could not evaluate MUSE_MAX_TOOL_OUTPUT_CHARS — skipped", name, status: "ok" };
+  }
+}

@@ -15,7 +15,7 @@ import { existsSync, promises as fs } from "node:fs";
 import { formatRelativeTime } from "./human-formatters.js";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
-import { backgroundProcessCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, readMuseSpeedEnv, readOllamaPerfEnv, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
+import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
 import { backgroundStoreFile } from "./commands-background.js";
 import { findOllamaModelTag, isOllamaTagsEntry, type OllamaTagsEntry } from "./commands-doctor-ollama.js";
 import { readNotesIndexEmbedModel } from "./commands-doctor-checks.js";
@@ -34,11 +34,13 @@ import { isRecord } from "@muse/shared";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { describeOfficialMcpPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveWeaknessesFile, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
+import { describeOfficialMcpPosture, LOCAL_FIRST_DEFAULT_MODEL, mergeModelKeysFromFile, parseBoolean, resolveActionLogFile, resolveContactsFile, resolveDefaultModel, resolveEpisodesFile, resolveLearningPauseFile, resolveNotesDir, resolveRecallHitsFile, resolveReflectionsFile, resolveWeaknessesFile, type OfficialMcpPresetPosture } from "@muse/autoconfigure";
+import { defaultBeliefProvenanceFile } from "@muse/memory";
 import { defaultSchedulerPauseFile, isLearningPaused, isMasteredWeakness, readBackgroundProcesses, readEpisodes, readSchedulerPauseState, readWeaknesses, selectDevFixableWeaknesses, type DevFixableWeakness, type WeaknessEntry } from "@muse/stores";
 import type { Command } from "commander";
 
 import { resolveLaunchAgentFile } from "./commands-daemon.js";
+import { defaultCredentialPath } from "./credential-store.js";
 import { DEFAULT_EMBED_MODEL, isNotesIndexStale } from "./commands-notes-rag.js";
 import { defaultEpisodeIndexFile, loadEpisodeIndex } from "./episode-index.js";
 import { resolveOllamaUrl } from "./ollama-url.js";
@@ -359,6 +361,42 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   } catch {
     checks.push({ detail: `${muse_home} missing — first run hasn't seeded it yet`, name: "~/.muse home", status: "warn" });
   }
+
+  // DS-11 — state-directory integrity: is ~/.muse (or MUSE_HOME) somewhere
+  // that can silently corrupt or lose Muse's local file stores? Each of
+  // these degrades to "ok"/"skipped" on any read failure rather than
+  // throwing — a diagnostic probe must never take `muse doctor` down.
+  checks.push(cloudSyncFolderCheck(muse_home));
+  const volatileCheck = await volatileMountCheck(muse_home);
+  if (volatileCheck) {
+    checks.push(volatileCheck);
+  }
+
+  // Sensitive-file permission drift — generalizes the live finding
+  // (recall-hits.json found at 644) to every store Muse writes 0600 by
+  // default. `defaultCredentialPath` can throw on a fully-stripped env
+  // (no HOME at all); that's a config problem the check reports as
+  // "unreadable" rather than crashing doctor over.
+  const sensitiveTargets: SensitiveFileTarget[] = [
+    { label: "user-memory.json", path: join(muse_home, "user-memory.json") },
+    { label: "action-log.json", path: resolveActionLogFile(env) },
+    { label: "recall-hits.json", path: resolveRecallHitsFile(env) },
+    { label: "contacts.json", path: resolveContactsFile(env) },
+    { label: "reflections.json", path: resolveReflectionsFile(env) },
+    { label: "weaknesses.json", path: resolveWeaknessesFile(env) },
+    { label: "belief-provenance.json", path: defaultBeliefProvenanceFile() }
+  ];
+  try {
+    sensitiveTargets.push({ label: "credentials.json", path: defaultCredentialPath() });
+  } catch {
+    // no resolvable HOME — the credential store itself is unreachable, not
+    // something this advisory check should crash over.
+  }
+  checks.push(permissionModeDriftCheck(await readSensitiveFileModes(sensitiveTargets)));
+
+  // Tool-result-cap advisory — a `MUSE_MAX_TOOL_OUTPUT_CHARS` set too low
+  // silently truncates tool evidence feeding the grounding/citation gate.
+  checks.push(toolResultCapAdvisoryCheck(env));
 
   // mcp.json
   const mcp_path = resolveMuseEnvPath(process.env.MUSE_MCP_CONFIG, join(muse_home, "mcp.json"));
