@@ -1101,7 +1101,7 @@ DO NOT adopt (identity conflict): cloud channels/gateway, cloud realtime voice p
 - ✓ (2026-07-03, eaee9691) doctor posture allowlist mismatch fixed — `describeOfficialMcpPosture` now mirrors `assembleMcpStack`'s turnkey auto-add (`enabled && credentialPresent`), so an eligible preset is never falsely reported "blocked". Documents the one unmodeled mcp.json-override edge case. Mutation-checked + independent-evaluator PASS. 11 tests (2 flipped/added).
 
 
-- ◦ official-MCP cred file-path whitespace trim + native OS-keychain backend behind `resolveOfficialMcpToken` (fire-7 follow-ups: env path trims, file path passes a whitespace-only token through as literal `Bearer   ` — cosmetic, fails auth upstream, no leak; keychain is the secure-source upgrade behind the single resolver seam).
+- ✓ (2026-07-03, 9fe88bcd) credential-file whitespace trim fixed at the shared root — `stringField` (provider-utils.ts) now trims + rejects whitespace-only, fixing all 4 real call sites at once (MCP token, model API key, suggestedModel, messaging bot token), not just the MCP case. Mutation-checked + independent-evaluator PASS. 662 tests. Native OS-keychain backend remains open (separate, bigger design piece).
 
 ## Done — loop infrastructure (2026-06-12, 진안-directed)
 
