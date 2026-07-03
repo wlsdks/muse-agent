@@ -364,6 +364,16 @@ export {
   type ScoredCandidate
 } from "./verifier-vote.js";
 export {
+  buildReferenceBlock,
+  moaFanout,
+  type MoaActingUsage,
+  type MoaFanoutOptions,
+  type MoaFanoutResult,
+  type MoaReferenceResult,
+  type MoaReferenceUsage,
+  type MoaSlot
+} from "./moa-fanout.js";
+export {
   A2A_MAX_CONTENT_CHARS,
   A2ASafetyError,
   classifyInbound,
