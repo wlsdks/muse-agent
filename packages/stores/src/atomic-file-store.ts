@@ -14,6 +14,11 @@
  *      two concurrent callers each read the SAME snapshot and the later write
  *      clobbers the earlier one (last-writer-wins → silent data loss). Fix: a
  *      per-file mutation queue that serialises the whole read-modify-write.
+ *   3. DIRECTORY DURABILITY — a rename() is not itself durable until the
+ *      parent directory's own fd is fsynced (the dirent update can journal
+ *      separately from the file data, so a crash could otherwise lose the
+ *      rename even though the renamed-to file is fully written). Fix:
+ *      best-effort fsync of the parent directory after the rename.
  *
  * These were fixed inline in four stores already (pending-approval, action-log,
  * proposed-action, recall-hits); this module is the single shared
@@ -52,6 +57,27 @@ export async function atomicWriteFile(file: string, contents: string, options: A
     }
     await fs.rename(tmp, file);
     await fs.chmod(file, mode).catch(() => undefined);
+    // Best-effort: fsync the PARENT directory so the rename's directory-entry
+    // update is itself durable. Without this, a crash between rename() and the
+    // dirent hitting disk can lose the rename even though the file's own
+    // contents were already fsynced above — some filesystems journal directory
+    // metadata separately from file data. Not all platforms support fsync on a
+    // directory fd (macOS can throw EINVAL/EISDIR on some filesystems), so this
+    // upgrade never fails the write that already succeeded.
+    if (options.fsync !== false) {
+      const dir = dirname(file);
+      try {
+        const dirHandle = await fs.open(dir, "r");
+        try {
+          await dirHandle.sync();
+        } finally {
+          await dirHandle.close();
+        }
+      } catch {
+        // Directory fsync unsupported on this platform/filesystem — the file
+        // write + rename already succeeded, so this is not a correctness failure.
+      }
+    }
   } catch (error) {
     // A write/fsync/rename failure must not leave the tmp as an orphan — it
     // would accumulate as `*.tmp-*` litter in the sidecar store dir. Best-effort

@@ -1,10 +1,31 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { promises as fsMocked } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Mock } from "vitest";
 
 import { atomicWriteFile, withFileMutationQueue } from "../src/atomic-file-store.js";
+
+// The SUT (atomic-file-store.ts) imports `{ promises as fs } from "node:fs"`.
+// A plain `vi.spyOn` on that live module-namespace binding throws ("Module
+// namespace is not configurable in ESM"), so the directory-fsync tests below
+// mock the whole "node:fs" module and swap in a `vi.fn` for `promises.open`
+// (defaulting to a real pass-through) — every other `promises.*` export,
+// and the test file's own `node:fs/promises` helper imports above, stay real.
+// The static `fsMocked` import above resolves through this same factory, so it
+// IS the mock the SUT sees (vi.importMock does its own auto-mock instead and
+// is NOT the same object — don't use it here).
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    promises: { ...actual.promises, open: vi.fn(actual.promises.open.bind(actual.promises)) },
+  };
+});
+
+const realOpen = (await vi.importActual<typeof import("node:fs")>("node:fs")).promises.open;
 
 let dir: string;
 
@@ -60,6 +81,43 @@ describe("atomicWriteFile", () => {
     await mkdir(target);
     await expect(atomicWriteFile(target, '{"x":1}')).rejects.toBeTruthy();
     expect((await readdir(dir)).filter((e) => e.includes(".tmp-"))).toEqual([]);
+  });
+
+  it("fsyncs the PARENT directory after the rename (dirent durability, not just file durability)", async () => {
+    const openMock = fsMocked.open as Mock;
+    openMock.mockClear();
+    const file = join(dir, "e");
+    await atomicWriteFile(file, "durable");
+    expect(await readFile(file, "utf8")).toBe("durable");
+    // The parent dir must be opened read-only (post-rename fsync target).
+    const dirOpenCall = openMock.mock.calls.find((call) => call[0] === dirname(file) && call[1] === "r");
+    expect(dirOpenCall).toBeTruthy();
+  });
+
+  it("still resolves successfully when the parent-directory fsync is unsupported/fails (best-effort, not a correctness requirement)", async () => {
+    const openMock = fsMocked.open as Mock;
+    const file = join(dir, "f");
+    openMock.mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      if (args[0] === dirname(file) && args[1] === "r") {
+        throw Object.assign(new Error("EINVAL: directory fsync not supported"), { code: "EINVAL" });
+      }
+      return realOpen(...args);
+    });
+    try {
+      await expect(atomicWriteFile(file, "still-durable-enough")).resolves.toBeUndefined();
+      expect(await readFile(file, "utf8")).toBe("still-durable-enough");
+    } finally {
+      openMock.mockImplementation(realOpen);
+    }
+  });
+
+  it("skips the parent-directory fsync when fsync: false is passed (matches the tmp-file fsync knob)", async () => {
+    const openMock = fsMocked.open as Mock;
+    openMock.mockClear();
+    const file = join(dir, "g");
+    await atomicWriteFile(file, "no-durability", { fsync: false });
+    const dirOpenCall = openMock.mock.calls.find((call) => call[0] === dirname(file) && call[1] === "r");
+    expect(dirOpenCall).toBeUndefined();
   });
 });
 
