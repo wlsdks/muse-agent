@@ -31,6 +31,7 @@ import {
   normalizeReconnectPolicy,
   type CheckPackageForMalwareAdvisoryOptions,
   type McpConnection,
+  type McpConnectionResolution,
   type McpHealthSnapshot,
   type McpHealthStatus,
   type McpManagerOptions,
@@ -225,6 +226,17 @@ export class McpManager {
       const connection = await this.connector.connect(server, await this.securityPolicyProvider.currentPolicy());
       const tools = await connection.listTools();
 
+      if (isDeadConnection(connection)) {
+        // The child died BETWEEN connect() returning and listTools()
+        // finishing — the tools we just read belong to an already-dead
+        // transport. Committing them would cache a stale catalog against a
+        // corpse; retire it and arm a reconnect instead.
+        await closeConnectionQuietly(connection);
+        this.statuses.set(name, "failed");
+        this.scheduleReconnect(name, connection.disconnectReason ?? "connection closed during catalog refresh");
+        return false;
+      }
+
       this.connections.set(name, connection);
       this.tools.set(name, tools);
       this.statuses.set(name, "connected");
@@ -285,6 +297,18 @@ export class McpManager {
 
     try {
       const tools = await connection.listTools();
+
+      if (isDeadConnection(connection)) {
+        // Same mid-refresh race as connect(): the transport closed while
+        // listTools() was in flight, so these tools are stale. Retire the
+        // dead connection and arm a reconnect rather than caching them.
+        await closeConnectionQuietly(connection);
+        this.connections.delete(name);
+        this.tools.delete(name);
+        this.statuses.set(name, "failed");
+        return this.scheduleReconnect(name, connection.disconnectReason ?? "connection closed during health check");
+      }
+
       this.tools.set(name, tools);
       this.statuses.set(name, "connected");
 
@@ -420,8 +444,70 @@ export class McpManager {
 
   toMuseTools(): readonly MuseTool[] {
     return [...this.connections.entries()].flatMap(([serverName, connection]) =>
-      (this.tools.get(serverName) ?? []).map((tool) => createMcpMuseTool(serverName, tool, connection))
+      (this.tools.get(serverName) ?? []).map((tool) =>
+        createMcpMuseTool(serverName, tool, connection, () => this.ensureLiveConnection(serverName))
+      )
     );
+  }
+
+  /**
+   * Resolve the CURRENT live connection for a server at tool-invocation
+   * time, self-healing a dead one. This is the `requireConnectedSession`
+   * seam: a cached connection whose transport died (stdio child crashed)
+   * is retired here and a fresh reconnect attempted, so the NEXT tool call
+   * succeeds transparently instead of failing forever. It reuses the
+   * connect() reconnect path (same backoff/circuit) and never retry-storms
+   * a permanently-down server.
+   */
+  private async ensureLiveConnection(name: string): Promise<McpConnectionResolution> {
+    const existing = this.connections.get(name);
+
+    if (existing && this.statuses.get(name) === "connected" && !isDeadConnection(existing)) {
+      return { connection: existing };
+    }
+
+    const disconnectReason = isDeadConnection(existing) ? existing?.disconnectReason : undefined;
+
+    if (existing) {
+      await closeConnectionQuietly(existing);
+      this.connections.delete(name);
+      this.tools.delete(name);
+      if (this.statuses.get(name) === "connected") {
+        this.statuses.set(name, "failed");
+      }
+    }
+
+    // A disabled server (non-retryable failure / policy denial) is
+    // terminal, and a server still inside its reconnect backoff window (or
+    // one that has exhausted maxAttempts) must NOT be hammered on every
+    // tool call — surface the disconnect reason without a fresh attempt.
+    if (this.statuses.get(name) === "disabled" || !this.reconnectAllowedNow(name)) {
+      return { error: formatDisconnectError(name, disconnectReason, this.health.get(name)?.error) };
+    }
+
+    const reconnected = await this.connect(name);
+    const fresh = reconnected ? this.connections.get(name) : undefined;
+    if (fresh) {
+      return { connection: fresh };
+    }
+
+    return { error: formatDisconnectError(name, disconnectReason, this.health.get(name)?.error) };
+  }
+
+  /**
+   * Is an on-demand reconnect allowed right now, or would it retry-storm a
+   * server that's already backing off / has given up? A fresh crash (no
+   * backoff armed yet) is allowed; inside the backoff window it waits; once
+   * maxAttempts is exhausted (`nextReconnectAt` cleared while attempts > 0)
+   * it stays terminal.
+   */
+  private reconnectAllowedNow(name: string): boolean {
+    const health = this.health.get(name);
+    const nextReconnectAt = health?.nextReconnectAt;
+    if (nextReconnectAt) {
+      return nextReconnectAt.getTime() <= this.now().getTime();
+    }
+    return (health?.reconnectAttempts ?? 0) === 0;
   }
 
   private scheduleReconnect(name: string, error: string): McpHealthSnapshot {
@@ -616,6 +702,15 @@ function readNodeEntrypointPath(config: unknown): string | undefined {
   if (!Array.isArray(args)) return undefined;
   const first = args.find((value: unknown) => typeof value === "string" && !value.startsWith("-"));
   return typeof first === "string" ? first : undefined;
+}
+
+function isDeadConnection(connection: McpConnection | undefined): boolean {
+  return connection?.connected === false;
+}
+
+function formatDisconnectError(name: string, disconnectReason?: string, reconnectError?: string): string {
+  const head = `MCP server '${name}' disconnected${disconnectReason ? `: ${disconnectReason}` : ""}`;
+  return reconnectError ? `${head}; reconnect failed: ${reconnectError}` : head;
 }
 
 async function closeConnectionQuietly(connection: McpConnection): Promise<void> {

@@ -98,7 +98,33 @@ export interface McpConnection {
   listTools(): Awaitable<readonly McpRemoteTool[]>;
   callTool?(toolName: string, args: JsonObject): Awaitable<string | JsonValue>;
   close?(): Awaitable<void>;
+  /**
+   * Live transport health. `false` means the underlying transport has
+   * closed or errored (e.g. a stdio child process died) — the SDK
+   * client's `onclose`/`onerror` flipped it. `undefined`/absent means
+   * the connection type doesn't report liveness (loopback in-process
+   * connections never die this way), so it is treated as alive. The
+   * manager uses this to retire + rebuild a dead cached connection
+   * instead of calling into it and getting the SDK's generic
+   * "Not connected".
+   */
+  readonly connected?: boolean;
+  /** Why the transport went down, surfaced in the compound reconnect error. */
+  readonly disconnectReason?: string;
 }
+
+/**
+ * Result of re-resolving the CURRENT live connection for a server at
+ * tool-invocation time. `createMcpMuseTool`'s execute path asks for this
+ * on every call instead of closing over one connection object captured at
+ * build time — so a retire+reconnect (a crashed stdio server self-healing
+ * on the next turn) is transparent to the already-built tool, and a
+ * permanent failure surfaces a clear `error` rather than the SDK's generic
+ * "Not connected".
+ */
+export type McpConnectionResolution =
+  | { readonly connection: McpConnection; readonly error?: undefined }
+  | { readonly connection?: undefined; readonly error: string };
 
 export interface McpTransportConnector {
   connect(server: McpServer, policy: McpSecurityPolicy): Promise<McpConnection>;
@@ -259,7 +285,21 @@ export {
   type OsvEcosystem
 } from "./osv-check.js";
 
-export function createMcpMuseTool(serverName: string, tool: McpRemoteTool, connection: McpConnection): MuseTool {
+export function createMcpMuseTool(
+  serverName: string,
+  tool: McpRemoteTool,
+  connection: McpConnection,
+  /**
+   * Optional per-invocation resolver for the CURRENT live connection.
+   * When supplied (the manager's `toMuseTools` path), execute re-resolves
+   * the connection on every call — so a dead stdio server is retired and
+   * reconnected transparently and this tool keeps working, instead of the
+   * closure staying pinned to a connection object that died. When omitted
+   * (loopback in-process tools that never lose their transport), execute
+   * uses the captured `connection` unchanged.
+   */
+  resolveConnection?: () => Awaitable<McpConnectionResolution>
+): MuseTool {
   return {
     definition: {
       description: tool.description,
@@ -271,12 +311,26 @@ export function createMcpMuseTool(serverName: string, tool: McpRemoteTool, conne
       risk: tool.risk ?? "read"
     },
     execute: async (args) => {
-      if (!connection.callTool) {
+      let activeConnection = connection;
+
+      if (resolveConnection) {
+        const resolved = await resolveConnection();
+        if (resolved.error !== undefined) {
+          // A dead, un-reconnectable server. Surface the compound
+          // "disconnected: <reason>; reconnect failed: <reason2>" the
+          // manager built — never the SDK's opaque "Not connected" —
+          // and redact any secret the reason text may echo.
+          return `Error: MCP tool '${tool.name}' failed: ${redactMcpSecrets(resolved.error)}`;
+        }
+        activeConnection = resolved.connection;
+      }
+
+      if (!activeConnection.callTool) {
         return `Error: MCP tool '${tool.name}' is not callable`;
       }
 
       try {
-        return await connection.callTool(tool.name, args);
+        return await activeConnection.callTool(tool.name, args);
       } catch (error) {
         // A mid-session callTool rejection (auth expired → 401, server
         // 500, request timeout, an SDK throw) MUST surface to the agent

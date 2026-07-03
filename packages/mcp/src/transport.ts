@@ -187,10 +187,36 @@ export class DefaultMcpTransportConnector implements McpTransportConnector {
 }
 
 class SdkMcpConnection implements McpConnection {
+  private alive = true;
+  private closeReason: string | undefined;
+
   constructor(
     private readonly client: Client,
     private readonly requestTimeoutMs: number
-  ) {}
+  ) {
+    // Nothing else told Muse when a stdio child died: without these the
+    // connection stayed cached as a live object forever and every later
+    // call failed the same way until a human reconnected. onclose/onerror
+    // are the SDK's designated user hooks (Protocol invokes them from its
+    // internal transport handlers) — flip liveness so the manager retires
+    // and rebuilds this connection on the next use.
+    this.client.onclose = () => {
+      this.alive = false;
+      this.closeReason ??= "transport closed";
+    };
+    this.client.onerror = (error: Error) => {
+      this.alive = false;
+      this.closeReason = error instanceof Error ? error.message : String(error);
+    };
+  }
+
+  get connected(): boolean {
+    return this.alive;
+  }
+
+  get disconnectReason(): string | undefined {
+    return this.closeReason;
+  }
 
   async listTools(): Promise<readonly McpRemoteTool[]> {
     // Wrap into the typed error carrying the HTTP status so the manager
