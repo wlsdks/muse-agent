@@ -63,7 +63,7 @@ import type { FileEntry } from "@muse/recall";
 
 import { routeAskTierModel } from "./ask-tier-models.js";
 import { shouldDecompose } from "@muse/multi-agent";
-import { runDecomposedAgentAsk } from "./ask-decompose.js";
+import { decomposedAnswerOrRefusal, runDecomposedAgentAsk } from "./ask-decompose.js";
 import { tryDeterministicAnswer } from "./ask-fast-paths.js";
 export { CASUAL_RESPONSES, META_RESPONSE, ACTION_GUIDE } from "./ask-fast-paths.js";
 import { decompositionJsonFields, decompositionStderrNotes, renderAskStreamError, type AskStreamEvent, type AskStreamResult, type DecompositionTrustSignals } from "./ask-result-output.js";
@@ -1078,7 +1078,12 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
               runner: assembly.agentRuntime,
               systemPrompt
             });
-            collectedAnswer = decomposed.answer;
+            // An all-sub-tasks-failed decomposition returns "" (the seam's
+            // documented fail-closed contract) — never print that verbatim
+            // (blank output, and answerIsRefusal("") is false so the honest-
+            // refusal UX below would silently skip too). Convert to an
+            // explicit refusal so citation gate + refusal UX both fire.
+            collectedAnswer = decomposedAnswerOrRefusal(decomposed.answer);
             toolsUsed = [...decomposed.toolsUsed];
             agentGroundingSources = [...decomposed.groundingSources];
             // Hoist the fan-out trust signals so the --json payload + run-log can read

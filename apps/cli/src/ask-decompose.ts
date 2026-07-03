@@ -47,6 +47,23 @@ export interface DecomposedAskResult {
   readonly reasoningActionGaps?: readonly string[];
 }
 
+/**
+ * `runDecomposedAgentAsk`'s `answer` is `""` when every sub-task failed to
+ * ground (the seam's documented contract — see the "returns an empty answer
+ * when every sub-task fails" test below; the seam itself stays fail-closed
+ * and unchanged). The CALLER must never print that blank string verbatim: an
+ * empty string satisfies neither a grounded answer NOR `answerIsRefusal`
+ * (which matches on marker phrases, so `""` matches none), so a decomposed
+ * all-failed `muse ask --with-tools` would silently print nothing AND skip
+ * every honest-refusal UX downstream (warm-close, opt-in-source tip,
+ * sourceCheck all branch on `answerIsRefusal`). This turns the blank into an
+ * explicit, marker-bearing refusal so those all fire correctly.
+ */
+export function decomposedAnswerOrRefusal(answer: string): string {
+  if (answer.trim().length > 0) return answer;
+  return "I'm not sure — none of the sub-tasks for this question could be answered from your grounded sources.";
+}
+
 const PLANNER_SYSTEM_PROMPT =
   "사용자 요청을 독립적으로 처리할 수 있는 하위 작업으로 나눠라. " +
   "각 하위 작업을 한 줄에 하나씩, 번호나 불릿 없이 출력하라. " +

@@ -1,7 +1,8 @@
 import type { AgentRunInput } from "@muse/agent-core";
+import { answerIsRefusal } from "@muse/recall";
 import { describe, expect, it, vi } from "vitest";
 
-import { parsePlannerLines, runDecomposedAgentAsk, type AskAgentRunResult } from "./ask-decompose.js";
+import { decomposedAnswerOrRefusal, parsePlannerLines, runDecomposedAgentAsk, type AskAgentRunResult } from "./ask-decompose.js";
 
 describe("parsePlannerLines — strips real list markers but PRESERVES leading-digit content", () => {
   it("preserves '1분기' (Q1) — the old greedy regex collapsed 3 distinct quarters into identical text", () => {
@@ -12,6 +13,23 @@ describe("parsePlannerLines — strips real list markers but PRESERVES leading-d
   });
   it("drops blank lines", () => {
     expect(parsePlannerLines("회의 요약\n\n  \n액션 추출")).toEqual(["회의 요약", "액션 추출"]);
+  });
+});
+
+describe("decomposedAnswerOrRefusal — the caller-side fix for a decomposed all-failed answer", () => {
+  it("passes a non-empty answer through unchanged", () => {
+    expect(decomposedAnswerOrRefusal("SYNTH")).toBe("SYNTH");
+  });
+
+  it("turns the seam's empty-answer contract into an explicit, marker-bearing refusal (never a blank print)", () => {
+    const result = decomposedAnswerOrRefusal("");
+    expect(result.length).toBeGreaterThan(0);
+    expect(answerIsRefusal(result)).toBe(true);
+  });
+
+  it("treats a whitespace-only answer the same as empty", () => {
+    const result = decomposedAnswerOrRefusal("   \n  ");
+    expect(answerIsRefusal(result)).toBe(true);
   });
 });
 
