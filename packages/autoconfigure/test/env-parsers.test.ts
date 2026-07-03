@@ -4,6 +4,7 @@ import {
   parseBoolean,
   parseBooleanTriState,
   parseCsv,
+  parseHeaderMap,
   parseInteger,
   parseNonNegativeFloat,
   parseNonNegativeInteger,
@@ -159,6 +160,44 @@ describe("parseOptionalString", () => {
   });
 });
 
+// MUSE_MODEL_EXTRA_HEADERS — the LAN-gateway (LiteLLM / reverse proxy /
+// Cloudflare-Access service-token) auth-header surface (DS-22).
+describe("parseHeaderMap", () => {
+  it("returns undefined for unset / blank input", () => {
+    expect(parseHeaderMap(undefined)).toBeUndefined();
+    expect(parseHeaderMap("")).toBeUndefined();
+    expect(parseHeaderMap("   ")).toBeUndefined();
+  });
+
+  it("parses a JSON object of string headers", () => {
+    expect(parseHeaderMap('{"X-Gateway-Token":"abc123","X-Team":"muse"}')).toEqual({
+      "X-Gateway-Token": "abc123",
+      "X-Team": "muse"
+    });
+  });
+
+  it("falls back to undefined (never throws) on malformed JSON", () => {
+    expect(parseHeaderMap("not json")).toBeUndefined();
+    expect(parseHeaderMap("{unterminated")).toBeUndefined();
+  });
+
+  it("falls back to undefined on a non-object JSON value (array, string, number)", () => {
+    expect(parseHeaderMap("[1,2,3]")).toBeUndefined();
+    expect(parseHeaderMap('"just a string"')).toBeUndefined();
+    expect(parseHeaderMap("42")).toBeUndefined();
+    expect(parseHeaderMap("null")).toBeUndefined();
+  });
+
+  it("falls back to undefined (rejects the WHOLE map) when any value is non-string", () => {
+    expect(parseHeaderMap('{"X-Ok":"fine","X-Bad":123}')).toBeUndefined();
+    expect(parseHeaderMap('{"X-Nested":{"a":1}}')).toBeUndefined();
+  });
+
+  it("returns undefined for an empty object (no headers to add)", () => {
+    expect(parseHeaderMap("{}")).toBeUndefined();
+  });
+});
+
 // Property-based fuzz (backlog P4/P5 — zero property tests before this). The
 // env parsers each carry a hard contract: "None throws — invalid input maps to
 // the fallback, so a typo'd MUSE_* var won't abort runtime boot." Example tests
@@ -204,6 +243,7 @@ describe("env-parsers — property fuzz (never-throws + always-valid-or-fallback
         parseSloErrorRate(input, FB_FLOAT);
         parseCsv(input);
         parseOptionalString(input);
+        parseHeaderMap(input);
       }).not.toThrow();
     }
   });

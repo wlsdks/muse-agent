@@ -14,7 +14,7 @@ import {
   type ModelProvider
 } from "@muse/model";
 
-import { parseBoolean, parseCsv, parseInteger, parseNonNegativeFloat, parseNonNegativeInteger, parseOptionalString } from "./env-parsers.js";
+import { parseBoolean, parseCsv, parseHeaderMap, parseInteger, parseNonNegativeFloat, parseNonNegativeInteger, parseOptionalString } from "./env-parsers.js";
 
 /**
  * Temperature for Muse's user-facing ANSWER generation (chat / ask). Set
@@ -96,6 +96,14 @@ function inferDefaultModelFromCredentials(env: MuseEnvironment): string | undefi
  * + provider-specific env. Falls through to `OpenAICompatibleProvider`
  * when an unknown providerId is paired with `MUSE_MODEL_BASE_URL`
  * (the local Ollama / LM Studio / vLLM path).
+ *
+ * `MUSE_MODEL_EXTRA_HEADERS` (a JSON object string, e.g.
+ * `'{"X-Gateway-Token":"abc123"}'`) is merged onto every request for
+ * every provider family here — the surface a self-hosted LAN LLM
+ * gateway (LiteLLM, a reverse proxy, Cloudflare-Access service-token
+ * auth) needs when it requires a header beyond the standard
+ * `Authorization: Bearer <apiKey>`. Absent/malformed → no extra
+ * headers (`parseHeaderMap`'s fail-soft contract), never a boot abort.
  */
 import { OPENAI_COMPAT_PRESETS } from "./openai-compat-presets.js";
 
@@ -138,6 +146,7 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
     ?? (baseUrl ? "openai-compatible" : providerIdFromPrefix(defaultModel))
     ?? "openai-compatible";
   const models = parseCsv(env.MUSE_MODEL_LIST) ?? [parseModelName(defaultModel).modelId];
+  const extraHeaders = parseHeaderMap(env.MUSE_MODEL_EXTRA_HEADERS);
 
   // Local-only / no-cloud-egress: fail CLOSED (and loud) before any
   // cloud provider is instantiated. Silently disabling the runtime would
@@ -167,6 +176,7 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
         apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.ANTHROPIC_API_KEY),
         baseUrl,
         defaultModel,
+        ...(extraHeaders ? { headers: extraHeaders } : {}),
         models
       });
     case "gemini":
@@ -174,6 +184,7 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
         apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.GEMINI_API_KEY ?? env.GOOGLE_API_KEY),
         baseUrl,
         defaultModel,
+        ...(extraHeaders ? { headers: extraHeaders } : {}),
         models
       });
     case "ollama":
@@ -184,6 +195,7 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
         // back to 127.0.0.1. `MUSE_MODEL_BASE_URL` still wins.
         baseUrl: baseUrl ?? normalizeOllamaBaseUrl(env.OLLAMA_BASE_URL),
         defaultModel,
+        ...(extraHeaders ? { headers: extraHeaders } : {}),
         models,
         numCtx: parseInteger(env.MUSE_OLLAMA_NUM_CTX, DEFAULT_OLLAMA_NUM_CTX),
         // Opt-in only: absent env → undefined → adapter omits `num_batch`
@@ -205,6 +217,12 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
           : {}),
         ...(env.MUSE_OLLAMA_NUM_GPU !== undefined
           ? { numGpu: parseNonNegativeInteger(env.MUSE_OLLAMA_NUM_GPU, -1) }
+          : {}),
+        // Opt-in /api/show context-window probe: when on, clamps num_ctx down to
+        // the model's real window so an over-large MUSE_OLLAMA_NUM_CTX can't
+        // cause silent prompt truncation. Off by default (byte-identical wire).
+        ...(parseBoolean(env.MUSE_OLLAMA_PROBE_CONTEXT, false)
+          ? { probeContextWindow: true }
           : {})
       });
     case "openai":
@@ -212,6 +230,7 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
         apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.OPENAI_API_KEY),
         baseUrl,
         defaultModel,
+        ...(extraHeaders ? { headers: extraHeaders } : {}),
         models
       });
     case "openrouter":
@@ -220,6 +239,7 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
         appName: parseOptionalString(env.MUSE_APP_NAME) ?? "Muse",
         baseUrl,
         defaultModel,
+        ...(extraHeaders ? { headers: extraHeaders } : {}),
         models,
         siteUrl: parseOptionalString(env.MUSE_SITE_URL)
       });
@@ -230,6 +250,7 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
           apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env[preset.envKey]),
           baseUrl: baseUrl ?? preset.baseUrl,
           defaultModel,
+          ...(extraHeaders ? { headers: extraHeaders } : {}),
           id: providerId,
           models
         });
@@ -242,6 +263,7 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
         apiKey: parseOptionalString(env.MUSE_MODEL_API_KEY ?? env.OPENAI_API_KEY),
         baseUrl,
         defaultModel,
+        ...(extraHeaders ? { headers: extraHeaders } : {}),
         id: providerId,
         models
       });

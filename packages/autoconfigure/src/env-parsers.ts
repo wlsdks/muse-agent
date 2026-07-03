@@ -161,3 +161,42 @@ export function parseOptionalString(value: string | undefined): string | undefin
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
 }
+
+/**
+ * Parse a JSON-object-string env var into a string-to-string header map,
+ * e.g. `MUSE_MODEL_EXTRA_HEADERS='{"X-Gateway-Token":"abc123"}'` for a
+ * self-hosted LAN LLM gateway (LiteLLM, a reverse proxy, Cloudflare-Access
+ * service-token auth) that requires a header beyond the standard
+ * `Authorization: Bearer <apiKey>`.
+ *
+ * Same fail-soft contract as every other parser here: undefined/blank,
+ * invalid JSON, a non-object (array/primitive), or any non-string value
+ * all map to `undefined` (no headers) rather than throwing — a malformed
+ * value must never abort runtime boot. Rejects the WHOLE map on a single
+ * bad entry rather than silently dropping it, so a typo doesn't quietly
+ * lose the one header a self-hosted gateway actually requires to
+ * authenticate.
+ */
+export function parseHeaderMap(value: string | undefined): Record<string, string> | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return undefined;
+  }
+  const out: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(parsed as Record<string, unknown>)) {
+    if (key.trim().length === 0 || typeof raw !== "string") {
+      return undefined;
+    }
+    out[key] = raw;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}

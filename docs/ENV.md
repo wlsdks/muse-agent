@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **480** variables.
+Total: **482** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -253,6 +253,7 @@ Total: **480** variables.
 | `MUSE_MODEL` | apps/api, apps/cli, apps/web, packages/autoconfigure, packages/domain-tools, packages/model |
 | `MUSE_MODEL_API_KEY` | packages/autoconfigure |
 | `MUSE_MODEL_BASE_URL` | packages/autoconfigure, packages/model |
+| `MUSE_MODEL_EXTRA_HEADERS` | packages/autoconfigure |
 | `MUSE_MODEL_KEYS_FILE` | packages/autoconfigure |
 | `MUSE_MODEL_LIST` | packages/autoconfigure |
 | `MUSE_MODEL_PROVIDER_ID` | apps/cli, apps/web, packages/autoconfigure |
@@ -291,6 +292,7 @@ Total: **480** variables.
 | `MUSE_OLLAMA_NUM_GPU` | packages/autoconfigure, packages/model |
 | `MUSE_OLLAMA_NUM_PREDICT` | apps/cli, packages/autoconfigure, packages/model |
 | `MUSE_OLLAMA_NUM_THREAD` | packages/autoconfigure, packages/model |
+| `MUSE_OLLAMA_PROBE_CONTEXT` | packages/autoconfigure, packages/model |
 | `MUSE_OUTPUT_GUARDS_ENABLED` | packages/autoconfigure |
 | `MUSE_OUTPUT_GUARD_PII_MASK_ENABLED` | packages/autoconfigure |
 | `MUSE_OUTPUT_GUARD_SYSTEM_PROMPT_CANARY_TOKENS` | packages/autoconfigure |

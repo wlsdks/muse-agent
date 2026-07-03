@@ -455,6 +455,26 @@ describe("OpenAICompatibleProvider", () => {
     });
   });
 
+  it("merges a configured `headers` option onto every request alongside the bearer authorization (LAN gateway auth, DS-22)", async () => {
+    let seenHeaders: Record<string, string> = {};
+    const provider = new OpenAICompatibleProvider({
+      apiKey: "sk-test",
+      baseUrl: "https://gateway.internal.test/v1",
+      defaultModel: "gpt-test",
+      headers: { "X-Gateway-Token": "secret-token-abc" },
+      fetch: async (_url, init) => {
+        seenHeaders = init?.headers as Record<string, string>;
+        return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }], id: "c1", model: "gpt-test" }));
+      }
+    });
+
+    await provider.generate({ messages: [{ content: "hi", role: "user" }], model: "gpt-test" });
+
+    expect(seenHeaders["content-type"]).toBe("application/json");
+    expect(seenHeaders.authorization).toBe("Bearer sk-test");
+    expect(seenHeaders["X-Gateway-Token"]).toBe("secret-token-abc");
+  });
+
   it("suppresses Qwen3 thinking via chat_template_kwargs, only for qwen3 models", async () => {
     const bodies: Record<string, unknown>[] = [];
     const makeProvider = (defaultModel: string) => new OpenAICompatibleProvider({
@@ -630,6 +650,46 @@ describe("provider adapters", () => {
       capabilities: { cost: "free", local: true },
       modelId: "llama3.2"
     });
+  });
+
+  it("OpenAIProvider (Responses API) merges a configured `headers` option (LAN gateway auth, DS-22)", async () => {
+    let seenHeaders: Record<string, string> = {};
+    const provider = new OpenAIProvider({
+      apiKey: "sk-test",
+      baseUrl: "https://gateway.internal.test/v1",
+      defaultModel: "gpt-test",
+      headers: { "X-Gateway-Token": "secret-token-abc" },
+      fetch: async (_url, init) => {
+        seenHeaders = (init as { headers: Record<string, string> }).headers;
+        return new Response(JSON.stringify({ id: "resp-1", model: "gpt-test", output: [] }));
+      }
+    });
+
+    await provider.generate({ messages: [{ content: "hi", role: "user" }], model: "gpt-test" });
+
+    expect(seenHeaders.authorization).toBe("Bearer sk-test");
+    expect(seenHeaders["X-Gateway-Token"]).toBe("secret-token-abc");
+  });
+
+  it("OpenRouterProvider merges a configured `headers` option WITH its own HTTP-Referer/X-Title, without clobbering either", async () => {
+    let seenHeaders: Record<string, string> = {};
+    const provider = new OpenRouterProvider({
+      apiKey: "sk-or-test",
+      appName: "Muse",
+      fetch: async (_url, init) => {
+        seenHeaders = init?.headers as Record<string, string>;
+        return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }], id: "c1", model: "m" }));
+      },
+      headers: { "X-Gateway-Token": "secret-token-abc" },
+      siteUrl: "https://example.com"
+    });
+
+    await provider.generate({ messages: [{ content: "hi", role: "user" }], model: "m" });
+
+    expect(seenHeaders.authorization).toBe("Bearer sk-or-test");
+    expect(seenHeaders["HTTP-Referer"]).toBe("https://example.com");
+    expect(seenHeaders["X-Title"]).toBe("Muse");
+    expect(seenHeaders["X-Gateway-Token"]).toBe("secret-token-abc");
   });
 
   it("maps Anthropic message responses to provider-neutral responses", async () => {
