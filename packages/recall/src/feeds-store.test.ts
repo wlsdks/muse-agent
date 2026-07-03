@@ -1,8 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { promises as fsPromises } from "node:fs";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   FEEDS_STORE_SCHEMA_VERSION,
@@ -201,6 +202,61 @@ describe("readFeedsStore — tolerant-read normalises each feed's `entries` to a
       lastFetchedAt: "2026-05-21T10:00:00Z",
       entries: [{ id: "e1", title: "T", link: "L", publishedAt: "2026-05-21T09:00:00Z", summary: "S" }]
     });
+  });
+});
+
+describe("readFeedsStore — version-mismatch backup (DS-20: a schema bump must never silently discard the user's feed list)", () => {
+  let dir: string;
+  let file: string;
+
+  const mismatchedPayload = {
+    version: 999,
+    feeds: [{ id: "x", url: "https://x/rss", name: "X", entries: [] }]
+  };
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "muse-feeds-store-version-test-"));
+    file = join(dir, "feeds.json");
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("still returns the empty default on a version mismatch (existing behavior preserved)", async () => {
+    await writeFile(file, JSON.stringify(mismatchedPayload));
+    const store = await readFeedsStore(file);
+    expect(store).toEqual({ version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] });
+  });
+
+  it("preserves the original file's content at a backup path before falling back to empty", async () => {
+    const raw = JSON.stringify(mismatchedPayload);
+    await writeFile(file, raw);
+    await readFeedsStore(file);
+    const entries = await readdir(dir);
+    const backupName = entries.find((name) => name.startsWith("feeds.json.bak-v999-"));
+    expect(backupName).toBeDefined();
+    const backedUp = await readFile(join(dir, backupName!), "utf8");
+    expect(backedUp).toBe(raw);
+    // renamed away, not left mismatched at the canonical path
+    await expect(readFile(file, "utf8")).rejects.toThrow();
+  });
+
+  it("does NOT create a backup when the version matches (regression guard — no behavior change on the healthy path)", async () => {
+    await writeFile(file, JSON.stringify({ version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] }));
+    await readFeedsStore(file);
+    const entries = await readdir(dir);
+    expect(entries.some((name) => name.includes(".bak-"))).toBe(false);
+    // original file untouched at the canonical path
+    await expect(readFile(file, "utf8")).resolves.toContain(FEEDS_STORE_SCHEMA_VERSION.toString());
+  });
+
+  it("a backup-rename failure is fail-soft — the read still returns the empty default without throwing", async () => {
+    await writeFile(file, JSON.stringify(mismatchedPayload));
+    const renameSpy = vi.spyOn(fsPromises, "rename").mockRejectedValueOnce(new Error("EACCES: permission denied"));
+    await expect(readFeedsStore(file)).resolves.toEqual({ version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] });
+    expect(renameSpy).toHaveBeenCalled();
   });
 });
 

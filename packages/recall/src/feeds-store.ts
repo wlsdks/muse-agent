@@ -20,6 +20,8 @@ import { homedir } from "node:os";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 import { XMLParser } from "fast-xml-parser";
 
+import { backupVersionMismatchedStore } from "./store-version-backup.js";
+
 export const FEEDS_STORE_SCHEMA_VERSION = 1;
 
 export interface FeedEntry {
@@ -67,6 +69,7 @@ export async function readFeedsStore(file: string): Promise<FeedsStore> {
   }
   const candidate = parsed as Partial<FeedsStore>;
   if (candidate.version !== FEEDS_STORE_SCHEMA_VERSION) {
+    await backupVersionMismatchedStore(file, candidate.version);
     return { version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] };
   }
   const feeds = (candidate.feeds ?? [])

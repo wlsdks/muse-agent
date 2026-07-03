@@ -1,8 +1,9 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { promises as fsPromises } from "node:fs";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildEpisodeIndex, EPISODE_INDEX_SCHEMA_VERSION, episodeIndexStale, loadEpisodeIndex, type EpisodeIndex } from "./episode-index.js";
 
@@ -198,5 +199,58 @@ describe("loadEpisodeIndex — per-entry validation drops corrupt episode rows s
       entries: []
     });
     expect((await loadEpisodeIndex(file))?.builtAtIso).toBe("");
+  });
+});
+
+describe("loadEpisodeIndex — version-mismatch backup (DS-20: episodes are NOT re-derivable if the index write-back silently wipes the source of truth)", () => {
+  let dir: string;
+  let file: string;
+
+  const mismatchedPayload = {
+    version: 999,
+    model: "m",
+    builtAtIso: "2026-05-21T10:00:00Z",
+    entries: [{ id: "e1", userId: "u", summary: "s", startedAt: "a", endedAt: "b", embedding: [0.1, 0.2] }]
+  };
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "muse-episode-index-version-test-"));
+    file = join(dir, "episodes-index.json");
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("still returns undefined on a version mismatch (existing behavior preserved)", async () => {
+    await writeFile(file, JSON.stringify(mismatchedPayload));
+    expect(await loadEpisodeIndex(file)).toBeUndefined();
+  });
+
+  it("preserves the original file's content at a backup path before falling back to undefined", async () => {
+    const raw = JSON.stringify(mismatchedPayload);
+    await writeFile(file, raw);
+    await loadEpisodeIndex(file);
+    const entries = await readdir(dir);
+    const backupName = entries.find((name) => name.startsWith("episodes-index.json.bak-v999-"));
+    expect(backupName).toBeDefined();
+    const backedUp = await readFile(join(dir, backupName!), "utf8");
+    expect(backedUp).toBe(raw);
+    await expect(readFile(file, "utf8")).rejects.toThrow();
+  });
+
+  it("does NOT create a backup when the version matches (regression guard — no behavior change on the healthy path)", async () => {
+    await writeFile(file, JSON.stringify({ version: EPISODE_INDEX_SCHEMA_VERSION, model: "m", builtAtIso: "x", entries: [] }));
+    await loadEpisodeIndex(file);
+    const entries = await readdir(dir);
+    expect(entries.some((name) => name.includes(".bak-"))).toBe(false);
+  });
+
+  it("a backup-rename failure is fail-soft — the read still returns undefined without throwing", async () => {
+    await writeFile(file, JSON.stringify(mismatchedPayload));
+    const renameSpy = vi.spyOn(fsPromises, "rename").mockRejectedValueOnce(new Error("EACCES: permission denied"));
+    await expect(loadEpisodeIndex(file)).resolves.toBeUndefined();
+    expect(renameSpy).toHaveBeenCalled();
   });
 });

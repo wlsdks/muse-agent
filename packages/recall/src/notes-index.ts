@@ -16,6 +16,7 @@ import { annotateNoteChunks } from "@muse/agent-core";
 import { parsePdfBuffer } from "./document-reader.js";
 import { embed } from "./embed.js";
 import { chunkText } from "./notes-chunk.js";
+import { backupVersionMismatchedStore } from "./store-version-backup.js";
 
 const DEFAULT_CHUNK_CHARS = 600;
 
@@ -197,8 +198,14 @@ export async function loadIndex(path: string): Promise<NotesIndex | undefined> {
   if (!parsed || typeof parsed !== "object") return undefined;
   const candidate = parsed as Partial<NotesIndex>;
   // Version mismatch → discard so reindex rebuilds clean rather
-  // than carrying incompatible entries forward.
-  if (!isNotesIndexValid(candidate)) return undefined;
+  // than carrying incompatible entries forward — but back the prior
+  // file up first (see store-version-backup.ts): reindexNotes writes
+  // back on the next run, so an undiscarded mismatch would otherwise
+  // be silently overwritten with zero trace.
+  if (!isNotesIndexValid(candidate)) {
+    await backupVersionMismatchedStore(path, candidate.version);
+    return undefined;
+  }
   return candidate as NotesIndex;
 }
 

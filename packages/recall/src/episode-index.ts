@@ -21,6 +21,8 @@ import { homedir } from "node:os";
 
 import type { PersistedEpisode } from "@muse/stores";
 
+import { backupVersionMismatchedStore } from "./store-version-backup.js";
+
 export const EPISODE_INDEX_SCHEMA_VERSION = 1;
 
 interface EpisodeIndexEntry {
@@ -68,7 +70,10 @@ export async function loadEpisodeIndex(file: string): Promise<EpisodeIndex | und
   }
   if (!parsed || typeof parsed !== "object") return undefined;
   const candidate = parsed as Partial<EpisodeIndex>;
-  if (candidate.version !== EPISODE_INDEX_SCHEMA_VERSION) return undefined;
+  if (candidate.version !== EPISODE_INDEX_SCHEMA_VERSION) {
+    await backupVersionMismatchedStore(file, candidate.version);
+    return undefined;
+  }
   if (typeof candidate.model !== "string" || !Array.isArray(candidate.entries)) return undefined;
   const builtAtIso = typeof candidate.builtAtIso === "string" ? candidate.builtAtIso : "";
   const entries = candidate.entries.filter(isValidEpisodeIndexEntry);
