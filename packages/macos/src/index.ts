@@ -12,3 +12,4 @@
  */
 
 export * from "./macos-tools.js";
+export * from "./macos-reminders-mirror.js";

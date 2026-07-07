@@ -14,6 +14,7 @@
 import { randomUUID } from "node:crypto";
 
 import { compareRemindersByDueAt, filterReminders, fireReminder, parseReminderDueAt, parseReminderVia, readReminders, readReminderHistory, readReminderStatusFilter, serializeReminder, writeReminders, type PersistedReminder, type ReminderRecurrence } from "@muse/stores";
+import { mirrorReminderToApple } from "@muse/macos";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -87,7 +88,14 @@ export function registerRemindersRoutes(server: FastifyInstance, gate: Reminders
       ...(via ? { via } : {})
     };
     await writeReminders(remindersFile, [...reminders, created]);
-    return reply.status(201).send(serializeReminder(created));
+    // Opt-in Apple Reminders mirror (MUSE_APPLE_REMINDERS_MIRROR). Self-gated +
+    // fail-soft: it never fails the create — a miss returns `mirrorWarning` so
+    // the caller (CLI / web) can surface it.
+    const mirror = await mirrorReminderToApple({ text: created.text, dueAt: created.dueAt });
+    return reply.status(201).send({
+      ...serializeReminder(created),
+      ...(mirror.warning ? { mirrorWarning: mirror.warning } : {})
+    });
   });
 
   server.post("/api/reminders/:id/snooze", async (request, reply) => {

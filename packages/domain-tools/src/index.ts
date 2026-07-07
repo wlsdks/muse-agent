@@ -36,7 +36,7 @@ export { createNotesRegistryMcpServer } from "./loopback-notes-registry.js";
 export { createPatternsMcpServer } from "./loopback-patterns.js";
 export { createProactiveMcpServer } from "./loopback-proactive.js";
 export { createRegexMcpServer } from "./loopback-regex.js";
-export { createRemindersMcpServer } from "./loopback-reminders.js";
+export { createRemindersMcpServer, type ReminderMirror, type RemindersMcpServerOptions } from "./loopback-reminders.js";
 export { createSearchMcpServer, normaliseTimeRange } from "./loopback-search.js";
 export { createStatusMcpServer } from "./loopback-status.js";
 export { createTasksMcpServer } from "./loopback-tasks.js";

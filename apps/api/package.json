@@ -18,6 +18,7 @@
     "@muse/autoconfigure": "workspace:*",
     "@muse/calendar": "workspace:*",
     "@muse/domain-tools": "workspace:*",
+    "@muse/macos": "workspace:*",
     "@muse/mcp": "workspace:*",
     "@muse/mcp-shared": "workspace:*",
     "@muse/memory": "workspace:*",

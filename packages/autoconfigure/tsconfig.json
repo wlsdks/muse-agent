@@ -74,6 +74,9 @@
       "path": "../domain-tools"
     },
     {
+      "path": "../macos"
+    },
+    {
       "path": "../stores"
     },
     {

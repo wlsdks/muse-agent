@@ -15,6 +15,7 @@
 
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMathMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
+import { mirrorReminderToApple } from "@muse/macos";
 import type { NotesProviderRegistry, TasksProviderRegistry } from "@muse/domain-tools";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
@@ -146,7 +147,13 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
       maxListEntries: parseInteger(env.MUSE_REMINDERS_LIST_MAX, 12),
       // Whetstone: an agent `reminder add` with an unparseable dueAt records a
       // time-parse weakness (the agent-path sibling of CLI `calendar add`).
-      weaknessesFile: resolveWeaknessesFile(env)
+      weaknessesFile: resolveWeaknessesFile(env),
+      // Opt-in one-way mirror into Apple Reminders.app (iPhone/Watch). Injected
+      // ONLY when MUSE_APPLE_REMINDERS_MIRROR is on, so an off/absent switch
+      // never reaches osascript. Self-gates on env too (defence in depth).
+      ...(parseBoolean(env.MUSE_APPLE_REMINDERS_MIRROR, false)
+        ? { mirror: (reminder) => mirrorReminderToApple(reminder, { env }) }
+        : {})
     })
   );
 

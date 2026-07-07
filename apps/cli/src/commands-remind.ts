@@ -19,6 +19,7 @@ import { randomUUID } from "node:crypto";
 
 import { buildMessagingRegistry, resolveReminderHistoryFile, resolveRemindersFile } from "@muse/autoconfigure";
 import { compareRemindersByDueAt, filterReminders, fireReminder, parseReminderDueAt, readReminderHistory, readReminders, readReminderStatusFilter, resolveReminderRef, serializeReminder, writeReminders, type PersistedReminder, type ReminderHistoryEntry, type ReminderRecurrence } from "@muse/stores";
+import { mirrorReminderToApple } from "@muse/macos";
 import { runDueReminders } from "@muse/proactivity";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { Command } from "commander";
@@ -163,6 +164,13 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
         const file = localRemindersFile();
         const existing = await readReminders(file);
         await writeReminders(file, [...existing, created]);
+        // Opt-in Apple Reminders mirror (MUSE_APPLE_REMINDERS_MIRROR). Self-gated
+        // + fail-soft: it never blocks or rolls back the local write; a failure
+        // surfaces as a stderr warning only.
+        const mirror = await mirrorReminderToApple({ text: created.text, dueAt: created.dueAt });
+        if (mirror.warning) {
+          io.stderr(`muse: ${mirror.warning}\n`);
+        }
         return serializeReminder(created);
       };
       const addApi = async (): Promise<Record<string, unknown>> => {
@@ -179,6 +187,11 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
+      }
+      // The API path mirrors server-side and returns `mirrorWarning` on a
+      // fail-soft miss; surface it on the CLI so a non-local add isn't silent.
+      if (typeof payload.mirrorWarning === "string" && payload.mirrorWarning.length > 0) {
+        io.stderr(`muse: ${payload.mirrorWarning}\n`);
       }
       const id = String(payload.id ?? "");
       const dueAt = String(payload.dueAt ?? "");

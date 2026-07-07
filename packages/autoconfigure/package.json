@@ -24,6 +24,7 @@
     "@muse/calendar": "workspace:*",
     "@muse/db": "workspace:*",
     "@muse/domain-tools": "workspace:*",
+    "@muse/macos": "workspace:*",
     "@muse/mcp": "workspace:*",
     "@muse/memory": "workspace:*",
     "@muse/messaging": "workspace:*",

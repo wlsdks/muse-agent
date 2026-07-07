@@ -53,6 +53,9 @@ importers:
       '@muse/domain-tools':
         specifier: workspace:*
         version: link:../../packages/domain-tools
+      '@muse/macos':
+        specifier: workspace:*
+        version: link:../../packages/macos
       '@muse/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
@@ -323,6 +326,9 @@ importers:
       '@muse/domain-tools':
         specifier: workspace:*
         version: link:../domain-tools
+      '@muse/macos':
+        specifier: workspace:*
+        version: link:../macos
       '@muse/mcp':
         specifier: workspace:*
         version: link:../mcp

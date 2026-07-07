@@ -47,11 +47,28 @@ import {
  * is read/write storage only. The reminder appears in `muse today`
  * automatically once dueAt has passed.
  */
+/**
+ * One-way create-only mirror of a newly-added reminder into an external
+ * surface (Apple Reminders.app). Injected by the wiring layer so
+ * @muse/domain-tools stays free of any macOS dependency. Fail-soft: a
+ * rejected/failed mirror NEVER fails the Muse write — the returned `warning`
+ * is surfaced in the tool result instead.
+ */
+export type ReminderMirror = (
+  reminder: { readonly text: string; readonly dueAt: string }
+) => Promise<{ readonly mirrored: boolean; readonly warning?: string }>;
+
 export interface RemindersMcpServerOptions {
   readonly file: string;
   readonly idFactory?: () => string;
   readonly now?: () => Date;
   readonly maxListEntries?: number;
+  /**
+   * When set, a successful `add` also mirrors the reminder into Apple
+   * Reminders (injected — see {@link ReminderMirror}). Omitted ⇒ no mirror,
+   * behaviour unchanged.
+   */
+  readonly mirror?: ReminderMirror;
   /**
    * When set, the `history` tool is registered so the agent can audit
    * recent delivery attempts. Backed by the same file the firing
@@ -181,7 +198,25 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           } catch (error) {
             return { error: errorMessage(error) };
           }
-          return { reminder: serializeReminderForModel(created, now) as JsonValue, ...(recurrenceNote ? { note: recurrenceNote } : {}) };
+          // Best-effort Apple-Reminders mirror. Fail-soft: it must NEVER turn a
+          // successful Muse write into a tool error — a failure surfaces as a
+          // visible `mirrorNote` in the result, nothing more.
+          let mirrorNote: string | undefined;
+          if (options.mirror) {
+            try {
+              const outcome = await options.mirror({ text: created.text, dueAt: created.dueAt });
+              if (outcome.warning) {
+                mirrorNote = outcome.warning;
+              }
+            } catch (error) {
+              mirrorNote = `Apple Reminders mirror failed: ${errorMessage(error)}`;
+            }
+          }
+          return {
+            reminder: serializeReminderForModel(created, now) as JsonValue,
+            ...(recurrenceNote ? { note: recurrenceNote } : {}),
+            ...(mirrorNote ? { mirrorNote } : {})
+          };
         },
         inputSchema: {
           additionalProperties: false,

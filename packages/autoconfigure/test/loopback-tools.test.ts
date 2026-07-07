@@ -129,6 +129,20 @@ describe("buildLoopbackTools — gating", () => {
     expect(approved).toHaveLength(1); // gate approved → provider.send called
   });
 
+  it("consent pin: MUSE_APPLE_REMINDERS_MIRROR absent ⇒ no Apple mirror is wired (add produces no mirrorNote, zero osascript)", async () => {
+    const findAdd = (bundle: LoopbackToolsBundle) =>
+      bundle.reminders.find((t) => t.definition.name.endsWith("add"))!;
+    // env is {} in baseDeps → the mirror is never injected, so `add` cannot
+    // reach osascript. Executing it on a real (non-macOS-touching) tmp store.
+    const bundle = buildLoopbackTools(baseDeps());
+    const out = (await findAdd(bundle).execute(
+      { text: "milk", dueAt: "2026-06-11T00:00:00.000Z" },
+      {} as never
+    )) as { reminder?: unknown; mirrorNote?: string };
+    expect(out.reminder).toBeDefined();
+    expect(out.mirrorNote).toBeUndefined();
+  });
+
   it("exposes the multi-provider registry surfaces only when ≥2 providers are registered", () => {
     expect(buildLoopbackTools(baseDeps({ notesRegistry: duckRegistry(1), tasksRegistry: duckRegistry(1) })).notesRegistry).toEqual([]);
     const multi = buildLoopbackTools(baseDeps({ notesRegistry: duckRegistry(2), tasksRegistry: duckRegistry(2) }));
