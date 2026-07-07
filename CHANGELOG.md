@@ -8,6 +8,32 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.8] - 2026-07-07
+
+Muse can now learn from what you browse — the start of "learns you without
+you writing notes". Your Chrome history becomes a first-class, cited memory
+source, 100% locally: nothing ever leaves your machine, and nothing is read
+until you explicitly ask. Early / experimental, macOS only.
+
+### Added
+
+- **`muse browsing sync` imports your Chrome browsing history into Muse's
+  local store** — opt-in by running the command (no daemon or background
+  process ever touches the Chrome file), zero new dependencies, zero
+  network calls, and the store is written owner-read-only. Only page
+  visits (http/https) are ingested; cookies and passwords are never
+  touched. `muse browsing search` and `muse browsing recent` explore it.
+- **`muse ask` can now answer from pages you visited, with a real
+  citation.** "그 러스트 블로그 뭐였지?" gets a grounded answer marked
+  `[browsing: blog.rust-lang.org]` plus a "🌐 from pages you visited"
+  receipt — under the same deterministic citation gate as every other
+  source, so a made-up page citation is stripped by code. Page titles are
+  treated as untrusted third-party text throughout (prompt-injection
+  escaping, untrusted-source cue). Korean queries match Korean titles.
+- **The agent can search your history in conversation** via a new
+  `browsing_search` tool ("that article I read last week"), verified to
+  route correctly on the local model alongside web search and feed search.
+
 ## [0.2.7] - 2026-07-03
 
 Three correctness fixes surfaced by a fresh backlog pass, all tied to Muse
