@@ -8,6 +8,27 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.9] - 2026-07-07
+
+Browsing memory grows up: Muse can now keep learning from your browsing
+passively (one opt-in switch), and a Korean question can find an
+English-titled page. Early / experimental, macOS only.
+
+### Added
+
+- **Set-and-forget browsing sync.** With `MUSE_BROWSING_AUTO_SYNC=true`
+  the daemon quietly imports new Chrome visits about once an hour
+  (`MUSE_BROWSING_SYNC_INTERVAL_MINUTES` to tune) — no more remembering
+  to run the sync command. Still strictly opt-in: with the switch off
+  (the default), no background process ever touches the Chrome file, and
+  a test pins that guarantee.
+- **Cross-language recall over your browsing history.** Page titles are
+  now embedded locally at sync time, so asking "지난주에 본 러스트
+  블로그 뭐였지?" finds "Announcing Rust 1.80.0" — a Korean question
+  reaching an English page, verified live on the local model. Everything
+  stays on your machine (localhost embedder only), and if the local
+  model is offline, syncing simply continues without embeddings.
+
 ## [0.2.8] - 2026-07-07
 
 Muse can now learn from what you browse — the start of "learns you without
