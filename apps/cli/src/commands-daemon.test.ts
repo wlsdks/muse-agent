@@ -3,6 +3,9 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+
+import { readBrowsingStore } from "@muse/recall";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
 import { enqueueLearnEvent, readPendingLearnEvents, readPlaybook, readProposedActions, readReflections, setLearningPaused, writeEpisodes, writeFollowups, writeObjectives, writePlaybook, type PersistedEpisode } from "@muse/stores";
@@ -44,7 +47,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -69,6 +72,7 @@ async function runDaemon(
       ...(opts.consolidateMerge ? { consolidateMerge: opts.consolidateMerge } : {}),
       ...(opts.consolidateValidate ? { consolidateValidate: opts.consolidateValidate } : {}),
       ...(opts.conflictWatchCalendarLister ? { conflictWatchCalendarLister: opts.conflictWatchCalendarLister } : {}),
+      ...(opts.browsingSync ? { browsingSync: opts.browsingSync } : {}),
       // Default: followup tick disabled (no model) so proactive cases stay hermetic.
       resolveFollowupModel: opts.resolveFollowupModel ?? (async () => undefined)
     });
@@ -1429,5 +1433,102 @@ describe("muse daemon — conflict-watch tick proactively warns of upcoming doub
     expect(on.stdout).toContain("conflicts:  enabled");
     const off = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env: tmpEnv(), registry });
     expect(off.stdout).toContain("conflicts:  disabled (set MUSE_CONFLICT_WATCH_ENABLED)");
+  });
+});
+
+// Browsing auto-sync (stage 3a) — the opt-in daemon half of `muse browsing sync`.
+// The consent contract is identity-critical: OFF by default performs ZERO Chrome
+// access; the env var being set IS the standing consent.
+describe("muse daemon — opt-in browsing auto-sync tick", () => {
+  interface SeedRow { readonly id: number; readonly url: string; readonly title: string | null; readonly visitTime: number }
+  function buildHistoryDb(file: string, rows: readonly SeedRow[]): void {
+    const db = new DatabaseSync(file);
+    db.exec("CREATE TABLE IF NOT EXISTS urls(id INTEGER PRIMARY KEY, url TEXT, title TEXT, visit_count INTEGER)");
+    db.exec("CREATE TABLE IF NOT EXISTS visits(id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER)");
+    const insertUrl = db.prepare("INSERT INTO urls(id, url, title, visit_count) VALUES(?, ?, ?, 1)");
+    const insertVisit = db.prepare("INSERT INTO visits(id, url, visit_time) VALUES(?, ?, ?)");
+    for (const row of rows) { insertUrl.run(row.id, row.url, row.title); insertVisit.run(row.id, row.id, BigInt(row.visitTime)); }
+    db.close();
+  }
+  const HISTORY_CURSOR = 13_390_000_000_000_000;
+  function seedHistory(dir: string): string {
+    const file = join(dir, "History");
+    buildHistoryDb(file, [
+      { id: 1, url: "https://blog.example/rust", title: "Rust guide", visitTime: HISTORY_CURSOR + 2_000_000 },
+      { id: 2, url: "https://news.example/ai", title: "AI news", visitTime: HISTORY_CURSOR + 4_000_000 }
+    ]);
+    return file;
+  }
+
+  // THE CONSENT PIN: absent gate ⇒ the sync path (the ONLY code that locates +
+  // reads the Chrome file) is never entered, so the archive is never written —
+  // provably identical to today's "no daemon touches Chrome" contract.
+  it("default (gate absent): performs ZERO Chrome access — no sync, no archive written", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-browsing-off-"));
+    const historyFile = seedHistory(dir);
+    const storeFile = join(dir, "browsing.json");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_CHROME_HISTORY_FILE: historyFile, MUSE_BROWSING_FILE: storeFile };
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).not.toContain("browsing:");
+    // The sync writes the archive; its absence proves the Chrome file was never read.
+    expect(existsSync(storeFile)).toBe(false);
+  });
+
+  it("gate explicitly false: the sync seam is NEVER called (spy proves the path is not entered)", async () => {
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_BROWSING_AUTO_SYNC: "false" };
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    let calls = 0;
+    const browsingSync = async (): Promise<{ synced: number; total: number }> => { calls += 1; return { synced: 0, total: 0 }; };
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { browsingSync, env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(calls).toBe(0);
+    expect(res.stdout).not.toContain("browsing:");
+  });
+
+  it("opted in (gate true): syncs new Chrome visits into the local archive end-to-end", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-browsing-on-"));
+    const historyFile = seedHistory(dir);
+    const storeFile = join(dir, "browsing.json");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_BROWSING_AUTO_SYNC: "true", MUSE_CHROME_HISTORY_FILE: historyFile, MUSE_BROWSING_FILE: storeFile };
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toMatch(/browsing: synced 2 new visits/);
+    const store = await readBrowsingStore(storeFile);
+    expect(store.visits.map((v) => v.url).sort()).toEqual(["https://blog.example/rust", "https://news.example/ai"]);
+  });
+
+  it("fail-soft: a missing Chrome file yields a quiet, non-throwing tick — daemon stays up", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-browsing-missing-"));
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_BROWSING_AUTO_SYNC: "true", MUSE_CHROME_HISTORY_FILE: join(dir, "does-not-exist") };
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+
+    const res = await runDaemon(["--once", "--provider", "telegram", "--destination", "555"], { env, registry });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toContain("daemon --once complete");
+    expect(res.stdout).not.toContain("browsing: synced");
+  });
+
+  it("--status reports browsing auto-sync enabled/disabled for discoverability", async () => {
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const on = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], {
+      env: { ...tmpEnv(), MUSE_BROWSING_AUTO_SYNC: "true" }, registry
+    });
+    expect(on.stdout).toContain("browsing:   enabled");
+    const off = await runDaemon(["--status", "--provider", "telegram", "--destination", "555"], { env: tmpEnv(), registry });
+    expect(off.stdout).toContain("browsing:   disabled (set MUSE_BROWSING_AUTO_SYNC)");
   });
 });

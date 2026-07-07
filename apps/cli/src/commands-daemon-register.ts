@@ -45,6 +45,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import { formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, readEpisodes, resolveLearnQueueFile, decayStalePlaybookRewards, isLearningPaused, queryPlaybook, recordPlaybookStrategy, removePlaybookStrategy, readProactiveHistory, readRecallHits, writeFadedMemoryKeys } from "@muse/stores";
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, runDueBackgroundExitNotices, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, runDueReminders, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, GmailEmailProvider, type EmailProvider, runDueSituationalBriefing, selectUpcomingConflicts } from "@muse/domain-tools";
+import { BROWSING_SYNC_LIMIT, locateChromeHistoryFile, shouldAutoSyncBrowsing, syncBrowsingHistory } from "@muse/recall";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { backgroundStoreFile } from "./commands-background.js";
@@ -147,6 +148,14 @@ export interface DaemonHelpers {
    * Absent → the registered calendar provider's `listEvents`.
    */
   readonly conflictWatchCalendarLister?: (range: { readonly from: Date; readonly to: Date }) => Promise<readonly { readonly title: string; readonly startsAt: Date; readonly endsAt: Date; readonly allDay?: boolean }[]>;
+  /**
+   * Test seam — inject the browsing-history sync the opt-in auto-sync tick runs,
+   * so a smoke can assert the CONSENT contract (the default performs ZERO Chrome
+   * access) and the opted-in sync without touching a real Chrome file. This seam
+   * is the ONLY path that locates + reads the Chrome history, so a spy on it that
+   * is never called proves the gate held. Absent → the real locate + sync.
+   */
+  readonly browsingSync?: (args: { readonly env: NodeJS.ProcessEnv; readonly storeFile: string; readonly limit: number }) => Promise<{ readonly synced: number; readonly total: number }>;
 }
 
 export function registerDaemonCommands(program: Command, io: ProgramIO, helpers: DaemonHelpers = {}): void {
@@ -388,6 +397,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`  email-sync: ${parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false) && e.MUSE_GMAIL_TOKEN?.trim() ? "enabled (recent emails → recall)" : "disabled (set MUSE_EMAIL_SYNC_ENABLED + MUSE_GMAIL_TOKEN)"}\n`);
         io.stdout(`  msg-poll:   ${parseBoolean(e.MUSE_MESSAGING_POLL_ENABLED, false) ? "enabled (new inbound → recallable)" : "disabled (set MUSE_MESSAGING_POLL_ENABLED)"}\n`);
         io.stdout(`  conflicts:  ${parseBoolean(e.MUSE_CONFLICT_WATCH_ENABLED, false) ? `enabled (warns of upcoming double-bookings, next ${(e.MUSE_CONFLICT_WATCH_WITHIN_DAYS ?? "7").toString()}d)` : "disabled (set MUSE_CONFLICT_WATCH_ENABLED)"}\n`);
+        io.stdout(`  browsing:   ${parseBoolean(e.MUSE_BROWSING_AUTO_SYNC, false) ? `enabled (Chrome history → recall every ${(e.MUSE_BROWSING_SYNC_INTERVAL_MINUTES ?? "60").toString()} min)` : "disabled (set MUSE_BROWSING_AUTO_SYNC)"}\n`);
         // The resolved source paths — the first thing to check when a
         // tick "isn't firing": is it reading the file you think it is?
         io.stdout(`sources:\n`);
@@ -1024,6 +1034,39 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         } catch { /* fail-soft — a calendar hiccup must never break the daemon */ }
       };
 
+      // Opt-in browsing auto-sync — the always-on half of `muse browsing sync`:
+      // the daemon reads NEW Chrome visits into the local archive on its own tick,
+      // so the knows-me model keeps learning from what you read WITHOUT you
+      // remembering to run the command (the manual-effort gap that starved recall).
+      // CONSENT: off by default — the gate is checked FIRST, before any locate/read,
+      // so an absent/false/garbage MUSE_BROWSING_AUTO_SYNC performs ZERO Chrome-file
+      // access (the env var being set IS the standing consent, mirroring
+      // MUSE_MACOS_ACTUATORS). Interval-throttled (default 60 min); in-memory
+      // last-sync (the cursor makes a redundant sync cheap + idempotent, like the
+      // sibling email/messaging ticks). Read-only + written locally; fail-soft.
+      const browsingIntervalRaw = e.MUSE_BROWSING_SYNC_INTERVAL_MINUTES ? Number(e.MUSE_BROWSING_SYNC_INTERVAL_MINUTES) : 60;
+      const browsingIntervalMinutes = Number.isFinite(browsingIntervalRaw) && browsingIntervalRaw > 0 ? Math.trunc(browsingIntervalRaw) : 60;
+      const browsingSyncIntervalMs = browsingIntervalMinutes * 60 * 1000;
+      const defaultBrowsingSync = async (args: { env: NodeJS.ProcessEnv; storeFile: string; limit: number }): Promise<{ synced: number; total: number }> => {
+        const historyFile = await locateChromeHistoryFile({ env: args.env });
+        if (!historyFile) return { synced: 0, total: 0 };
+        return syncBrowsingHistory({ historyFile, limit: args.limit, storeFile: args.storeFile });
+      };
+      let lastBrowsingSyncMs: number | undefined;
+      const browsingAutoSyncTick = async (): Promise<void> => {
+        if (!parseBoolean(e.MUSE_BROWSING_AUTO_SYNC, false)) return; // consent gate FIRST — no Chrome access when off
+        const nowMs = Date.now();
+        if (!shouldAutoSyncBrowsing(lastBrowsingSyncMs, nowMs, browsingSyncIntervalMs)) return;
+        lastBrowsingSyncMs = nowMs;
+        try {
+          const storeFile = e.MUSE_BROWSING_FILE?.trim()?.length
+            ? e.MUSE_BROWSING_FILE.trim()
+            : join(homedir(), ".muse", "browsing.json");
+          const { synced } = await (helpers.browsingSync ?? defaultBrowsingSync)({ env: e, limit: BROWSING_SYNC_LIMIT, storeFile });
+          if (synced > 0) io.stdout(`[${new Date(nowMs).toISOString()}] browsing: synced ${synced.toString()} new visit${synced === 1 ? "" : "s"} (ask about them with \`muse ask\`)\n`);
+        } catch { /* fail-soft — a Chrome-file hiccup must never break the daemon */ }
+      };
+
       // DS-13: age-based retention for unbounded append-only local state
       // (.muse/runs, .muse/checkpoints, ~/.muse/action-log.json,
       // ~/.muse/learn-queue.jsonl). `maybeAutoPrune` already self-gates via a
@@ -1068,6 +1111,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await recapTick();
         await messagingPollTick();
         await conflictWatchTick();
+        await browsingAutoSyncTick();
         await retentionPruneTick();
       };
 

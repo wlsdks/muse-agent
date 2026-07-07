@@ -5,29 +5,28 @@
  *   muse browsing search <query> [--limit N]
  *   muse browsing recent [--limit N]
  *
- * Running `muse browsing sync` IS the consent: nothing reads the browser
- * history until the user asks. The archive lives at `~/.muse/browsing.json`
- * (mode 0o600) so search / recall never re-touch the live Chrome file.
+ * Consent is explicit either way: nothing reads the browser history until
+ * the user runs `muse browsing sync` OR sets `MUSE_BROWSING_AUTO_SYNC=true`
+ * (the daemon's standing opt-in; off by default and pinned by test). The
+ * archive lives at `~/.muse/browsing.json` (mode 0o600) so search / recall
+ * never re-touch the live Chrome file.
  */
 
 import { stripUntrustedTerminalChars } from "@muse/shared";
 import {
+  BROWSING_SYNC_LIMIT,
   compareBrowsingVisitsNewestFirst,
   defaultBrowsingFile,
   locateChromeHistoryFile,
-  mergeBrowsingVisits,
   readBrowsingStore,
-  readChromeHistoryVisits,
   searchBrowsingVisits,
-  writeBrowsingStore,
-  type BrowsingVisit
+  syncBrowsingHistory
 } from "@muse/recall";
 import type { Command } from "commander";
 
 import type { ProgramIO } from "./program.js";
 
-/** Max visits read from Chrome per `sync` run — bounds a single pass over a large History file. */
-export const BROWSING_SYNC_LIMIT = 2000;
+export { BROWSING_SYNC_LIMIT };
 
 /**
  * Human-readable line for one visit. `title` / `url` are page-controlled
@@ -63,13 +62,6 @@ export function parseBrowsingLimit(raw: string | undefined, fallback: number, ca
   return Math.min(cap, Math.trunc(parsed));
 }
 
-/** Exact WebKit-epoch µs of a visit, parsed from the `<micros>-<hash>` id — 0 when unparseable. */
-function cursorFromVisit(visit: BrowsingVisit): number {
-  const prefix = visit.id.split("-")[0];
-  const micros = Number(prefix);
-  return Number.isFinite(micros) ? micros : 0;
-}
-
 export function registerBrowsingCommand(program: Command, io: ProgramIO): void {
   const browsing = program
     .command("browsing")
@@ -85,16 +77,12 @@ export function registerBrowsingCommand(program: Command, io: ProgramIO): void {
         process.exitCode = 1;
         return;
       }
-      const file = defaultBrowsingFile();
-      const store = await readBrowsingStore(file);
-      const incoming = await readChromeHistoryVisits(historyFile, {
-        sinceVisitTime: store.lastVisitTimeCursor,
-        limit: BROWSING_SYNC_LIMIT
+      const { synced, total } = await syncBrowsingHistory({
+        historyFile,
+        limit: BROWSING_SYNC_LIMIT,
+        storeFile: defaultBrowsingFile()
       });
-      const visits = mergeBrowsingVisits(store.visits, incoming);
-      const nextCursor = incoming.reduce((max, v) => Math.max(max, cursorFromVisit(v)), store.lastVisitTimeCursor);
-      await writeBrowsingStore(file, { version: store.version, visits, lastVisitTimeCursor: nextCursor });
-      io.stdout(`synced ${incoming.length.toString()} new visits (total ${visits.length.toString()})\n`);
+      io.stdout(`synced ${synced.toString()} new visits (total ${total.toString()})\n`);
     });
 
   browsing
