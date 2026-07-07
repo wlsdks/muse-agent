@@ -8,6 +8,22 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.17] - 2026-07-07
+
+Connecting your Mac's data to Muse is now one guided command. Early /
+experimental, macOS only.
+
+### Added
+
+- **`muse setup data`** walks you through everything Muse can learn
+  from, in one flow: import your Contacts (runs immediately, shows the
+  count), sync your Chrome history, and turn on the standing switches
+  (hourly browsing auto-sync, Reminders/Notes mirrors) — emitted as a
+  ready-to-paste snippet for your shell profile. Every step asks first
+  and defaults to no; scripting uses explicit per-feature flags (there
+  is deliberately no --yes). A fresh install's onboarding now points
+  here, so the "empty Muse" problem solves itself on day one.
+
 ## [0.2.16] - 2026-07-07
 
 Your address book can now feed Muse's memory. Early / experimental,
