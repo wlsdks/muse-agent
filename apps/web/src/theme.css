@@ -830,9 +830,13 @@ button {
   padding: var(--s-md) var(--s-lg);
   background: var(--canvas);
 }
-.composer-box {
+.composer-wrap {
+  position: relative;
   max-width: 760px;
   margin: 0 auto;
+}
+.composer-box {
+  width: 100%;
   display: flex;
   gap: var(--s-sm);
   align-items: flex-end;
@@ -841,6 +845,104 @@ button {
   border-radius: var(--r-lg);
   padding: var(--s-xs);
   transition: border-color 0.12s ease;
+}
+
+/* ── Desk pet (pixel bluebird on the composer's top edge) ──── */
+
+/* Out of flow + non-interactive: the pet must NEVER change the composer
+   box's geometry or intercept a click. It stands ON the top border. */
+.desk-pet {
+  position: absolute;
+  left: 12px;
+  bottom: 100%;
+  margin-bottom: -3px;
+  pointer-events: none;
+  z-index: 2;
+  image-rendering: pixelated;
+  will-change: transform;
+}
+.desk-pet-flip {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-origin: center bottom;
+}
+.desk-pet-px {
+  position: absolute;
+  left: 0;
+  top: 0;
+  background: transparent;
+}
+.desk-pet-chirp {
+  position: absolute;
+  right: -6px;
+  top: -10px;
+  background: transparent;
+}
+.desk-pet-zzz {
+  position: absolute;
+  right: -12px;
+  top: -14px;
+  background: transparent;
+  animation: deskPetZzz 1.6s steps(1, end) infinite;
+}
+@keyframes deskPetZzz {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+.desk-pet-note {
+  position: absolute;
+  right: -8px;
+  top: -8px;
+  background: transparent;
+  animation: deskPetNote 1.8s ease-out infinite;
+}
+@keyframes deskPetNote {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  30% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-13px);
+  }
+}
+.desk-pet-heart {
+  position: absolute;
+  left: 50%;
+  margin-left: -7px;
+  top: -20px;
+  background: transparent;
+  animation: deskPetHeart 1.2s ease-out both;
+}
+@keyframes deskPetHeart {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.6);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desk-pet-zzz,
+  .desk-pet-note,
+  .desk-pet-heart {
+    animation: none;
+  }
 }
 .composer-box:focus-within {
   border-color: var(--primary-focus);

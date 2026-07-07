@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useChatStream } from "../api/useChatStream.js";
 import { useVoice } from "../api/useVoice.js";
+import { DeskPet } from "../components/DeskPet.js";
 import { Markdown } from "../components/markdown.js";
 import { Button, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
@@ -19,11 +20,12 @@ function readToken(): string {
 export function ChatView({ client }: { client: ApiClient }) {
   const { t } = useI18n();
   const token = readToken();
-  const { activeTool, pending, reset, send, turns } = useChatStream(client.baseUrl, token);
+  const { activeTool, error, pending, reset, send, turns } = useChatStream(client.baseUrl, token);
   const voice = useVoice(client.baseUrl, token);
   const [draft, setDraft] = useState("");
   const [autoSpeak, setAutoSpeak] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerWrapRef = useRef<HTMLDivElement>(null);
   const spokenRef = useRef<number>(turns.length);
 
   useEffect(() => {
@@ -121,7 +123,9 @@ export function ChatView({ client }: { client: ApiClient }) {
 
       <div className="chat-composer">
         {voice.error && <div className="banner err" style={{ maxWidth: 760, margin: "0 auto 8px" }}>{voice.error}</div>}
-        <div className="composer-box">
+        <div className="composer-wrap" ref={composerWrapRef}>
+          <DeskPet boundsRef={composerWrapRef} inFlight={pending} error={error} />
+          <div className="composer-box">
           <button
             className={`mic-btn${voice.recording ? " recording" : ""}`}
             title={voice.recording ? t("chat.micStop") : t("chat.mic")}
@@ -140,6 +144,7 @@ export function ChatView({ client }: { client: ApiClient }) {
           <Button variant="primary" onClick={submit} disabled={pending || !draft.trim()} title={t("common.send")} ariaLabel={t("common.send")}>
             <Icon.send className="nav-icon" />
           </Button>
+          </div>
         </div>
         <div style={{ maxWidth: 760, margin: "8px auto 0", display: "flex", alignItems: "center", gap: 12 }}>
           <label className="autospeak-toggle">

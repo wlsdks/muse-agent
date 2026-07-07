@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && vite build",
     "dev": "vite --host 127.0.0.1",
+    "gen:favicon": "tsx scripts/gen-favicon.ts",
     "test:e2e": "playwright test",
     "test": "vitest run src",
     "typecheck": "tsc -p tsconfig.json --noEmit"
