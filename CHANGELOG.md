@@ -8,6 +8,23 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-07-07
+
+Muse notes can now follow you into Apple Notes. Early / experimental,
+macOS only.
+
+### Added
+
+- **Apple Notes mirror.** With `MUSE_APPLE_NOTES_MIRROR=true` (off by
+  default), a note you deliberately create in Muse — in chat, via
+  `muse notes save`, or through the API — is also created in Apple
+  Notes.app, with multi-line content preserved. Deliberate is the key
+  word: bulk imports, the daily quick-note inbox, and edits of existing
+  notes never mirror, so Notes.app doesn't get spammed, and your Muse
+  notes (the recall corpus) are provably untouched by the mirror. Note
+  text is escaped against both HTML and AppleScript injection, each
+  layer mutation-tested with hostile payloads.
+
 ## [0.2.13] - 2026-07-07
 
 Muse reminders can now follow you onto your iPhone and Watch. Early /
