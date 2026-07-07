@@ -8,6 +8,29 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-07-07
+
+Muse's vision now has proven Korean coverage — and the proof reversed
+our own hypothesis. Early / experimental, macOS only.
+
+### Added
+
+- **Korean documents are now part of the vision test floor.** Two
+  realistic Korean fixtures (a receipt and an event flyer) and Korean
+  cases across both vision batteries permanently guard field
+  extraction, grounded answers, and honest abstention on Hangul
+  content.
+- **A measured model decision, recorded in code.** A head-to-head run
+  showed gemma4:12b handles all Korean cases cleanly (6/6 actions, 5/5
+  grounding) while the candidate qwen3-vl:8b consistently failed
+  calendar-event extraction in both languages — so the default stays
+  gemma4, with the measurement written into the code so the rationale
+  can't rot.
+- **`MUSE_VISION_MODEL` lets you point image understanding at a
+  different local model** without touching the chat model — fail-soft
+  (an unavailable override falls back safely), and `muse doctor` shows
+  which vision model is active.
+
 ## [0.2.11] - 2026-07-07
 
 The browsing and feed recall shipped this week are now permanently
