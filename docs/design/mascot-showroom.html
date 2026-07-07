@@ -1,0 +1,327 @@
+<meta charset="utf-8">
+<title>Muse 데스크 펫 — 파랑새 미리보기</title>
+<style>
+  :root {
+    --canvas: #010102;
+    --panel: #16171d;
+    --panel-2: #1d1e26;
+    --border: #2a2b33;
+    --ink: #f7f8f8;
+    --muted: #8a8f98;
+    --indigo: #5e6ad2;
+    --indigo-2: #828fff;
+    --amber: #d9a441;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--canvas); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 48px 24px 96px; }
+  .eyebrow {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--indigo-2); margin: 0 0 10px;
+  }
+  h1 { font-size: 26px; font-weight: 650; margin: 0 0 6px; text-wrap: balance; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 40px; max-width: 60ch; }
+  h2 { font-size: 15px; font-weight: 600; margin: 48px 0 14px; }
+  h2 .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 8px; }
+
+  /* ── live stage: a faithful mock of the chat composer ── */
+  .stage {
+    background: var(--canvas); border: 1px solid var(--border); border-radius: 14px;
+    padding: 72px 28px 24px; position: relative; overflow: hidden;
+  }
+  .composer-wrap { position: relative; }
+  .composer {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 16px;
+    color: var(--muted); font-size: 14px;
+  }
+  .composer svg { flex: none; opacity: 0.7; }
+  #pet {
+    position: absolute; bottom: 100%; left: 0; pointer-events: none;
+    will-change: transform;
+  }
+  #pet .px { width: 3px; height: 3px; background: transparent; }
+  #chirp { position: absolute; pointer-events: none; }
+  #chirp .px { width: 3px; height: 3px; background: transparent; }
+
+  /* ── big showcase ── */
+  .show {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 28px; display: flex; flex-wrap: wrap; gap: 28px; align-items: center;
+  }
+  .show-bird { width: 120px; height: 112px; position: relative; flex: none; padding-top: 8px; }
+  .show-bird .px { width: 8px; height: 8px; background: transparent; }
+  .show-bird .ov { position: absolute; width: 8px; height: 8px; background: transparent; left: 44px; top: 0; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; }
+  .controls button {
+    background: var(--panel-2); color: var(--ink); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+    font-family: inherit;
+  }
+  .controls button:hover { border-color: var(--indigo); }
+  .controls button:focus-visible { outline: 2px solid var(--indigo-2); outline-offset: 1px; }
+  .controls button.on { background: var(--indigo); border-color: var(--indigo); }
+  .show-note { color: var(--muted); font-size: 13px; flex: 1 1 240px; min-width: 200px; }
+
+  /* ── stills ── */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+  figure { margin: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  figure img { display: block; width: 100%; image-rendering: pixelated; }
+  figcaption { padding: 10px 14px; font-size: 12.5px; color: var(--muted); }
+  figure.wide { grid-column: 1 / -1; }
+
+  /* ── facts table ── */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  td { padding: 9px 12px; border-top: 1px solid var(--border); vertical-align: top; }
+  td:first-child { color: var(--muted); white-space: nowrap; width: 132px; }
+
+  @media (prefers-reduced-motion: reduce) { #pet, .show-bird { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Muse desk pet · 코드로 그린 픽셀 새 · 이미지 파일 0개</p>
+  <h1>입력창 위에 사는 꼬마 파랑새 🐦</h1>
+  <p class="sub">행복을 물어다 준다는 동화 속 <b>파랑새</b>입니다. 앱 팔레트(페리윙클/인디고)를 그대로 입은
+  통통하고 귀여운 픽셀 새 — 실제 컴포넌트와 동일한 픽셀 데이터·팔레트로 움직입니다. 채팅 입력창 모서리를
+  콩콩 뛰어다니고, 끝에 닿으면 돌아서고, 응답을 기다릴 땐 눈을 크게 뜨고 귀 기울입니다.</p>
+
+  <h2>라이브 — 실제 크기 (3px 픽셀)<span class="mono">앱의 composer 모형 위</span></h2>
+  <div class="stage">
+    <div class="composer-wrap" id="bounds">
+      <div id="pet"><div class="px" id="petpx"></div></div>
+      <div id="chirp" hidden><div class="px" id="chirppx"></div></div>
+      <div class="composer">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8a8f98" stroke-width="1.8" stroke-linecap="round"><path d="M12 3v10M8 7a4 4 0 0 0 8 0M12 17v4M8 21h8"/></svg>
+        Muse에게 메시지…
+      </div>
+    </div>
+  </div>
+
+  <h2>크게 보기 — 포즈 전환<span class="mono">8px 픽셀 · 버튼으로 상태 강제</span></h2>
+  <div class="show">
+    <div class="show-bird"><div class="px" id="bigpx"></div><div class="ov" id="bigov"></div></div>
+    <div class="controls" id="ctl">
+      <button data-mode="live" class="on">자유행동</button>
+      <button data-mode="attend">생각중(집중)</button>
+      <button data-mode="chirp">응답 도착(짹!)</button>
+      <button data-motion="flap">파닥</button>
+      <button data-motion="doze">꾸벅(졸기)</button>
+      <button data-motion="stretch">기지개</button>
+      <button data-motion="shake">부르르</button>
+      <button data-motion="sing">노래</button>
+      <button data-motion="heart">하트 ♥</button>
+      <button data-pose="stand">서기</button>
+      <button data-pose="blink">깜빡</button>
+      <button data-pose="tilt">갸웃</button>
+      <button data-pose="peck">콕콕</button>
+      <button data-pose="preen">깃털 고르기</button>
+      <button data-pose="tail">꼬리 탁</button>
+      <button data-pose="hopUp">홉(공중)</button>
+    </div>
+    <p class="show-note">새 전체가 코드 데이터(13×11 문자 매트릭스)라서 색·모양·행동 전부 즉시 수정 가능합니다.
+    새 모션 — 파닥(날갯짓)·꾸벅(오래 쉬면 졸기 + z)·기지개·부르르(에러 반응)·노래(혼자 흥얼 ♪)·하트(칭찬 시 예약 훅).</p>
+  </div>
+
+  <h2>실제 앱 캡처 <span class="mono">Playwright · 빌드된 dist 기준</span></h2>
+  <div class="grid">
+    <figure class="wide"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABRAAAAEiCAIAAAAOA2lmAAAJLklEQVR4nOzdoY6cVRiA4VNY1ZquKrKCJjjuA1MBElMMQXTSO5jMHZBF4MAgQXAL3EFdk5rapmKvgARFwoaX9pD9d2b+mefRR+yOODlvvvznXNx/8HAAAAAAN300AAAAgH8RzAAAABAEMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABAEMwAAAAQBDMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABAEMwAAAAQBDMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABAEMwAAAAQBDMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABAEMwAAAAQBDMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAISLAezd7up6nKvt5nIA62TvAuDcmDADAABAEMwAAAAQBDMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABAuHf/wcMBLGF3dT1YznZzOYC7Z+9alr0L4JSYMAMAAEAQzAAAABAEMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABAuBgAnKXd1fVYg+3mcgD8zd4F7JMJMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABA8A7zArwHCAAAa+dUz7+ZMAMAAEAQzAAAABAEMwAAAATBDAAAAEEwAwAAQHBLNsBJWcsNn/Pm/yO3hsJ62buA42TCDAAAAEEwAwAAQBDMAAAAEHzDDB/w7PmrwYd8v/t8cuWL7cvJlb7+gtuwd82wdwHwfibMAAAAEAQzAAAABMEMAAAAwTfM/8l7gAAAsHZO9dyGCTMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAAS3ZAOswOnd8HkX3BoKx8beNcPeBcfMhBkAAACCYAYAAIAgmAEAACD4hpkz9ez5q3E4b16/nVz5+MmjsQYvti/H0r799Onkyu2Ac2HvWpa9C4D3M2EGAACAIJgBAAAgCGYAAAAIZ/cNs/cAZ3gPEACAY+ZUP8Op/vZMmAEAACAIZgAAAAiCGQAAAIJgBgAAgCCYAQAAIAhmAAAACIIZAAAAgmAGAACAIJgBAAAgXAw4Sz//8NlY2u7qeiztzeu3kysfP3k0DufrP3+fXPnLx08nV37yxR8DuMnetSx7FwDvZ8IMAAAAQTADAABAEMwAAAAQBDMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAATBDAAAAOFiAHAgz56/GnzI97vPJ1e+2L6cXLm7up5cud1cDuAme9cMexecBhNmAAAACIIZAAAAgmAGAACA4BtmOIDHTx5Nrnzz+u3kyu++ejcO58dfnw7g1Nm7ADg3JswAAAAQBDMAAAAEwQwAAADhRL5h9h7gDO8BAgBwzJzqZzjV75MJMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAAhBO5JRvgeBz2hs83r99Ornz85NFYg/kbPud9++nTyZXbAefC3rUsexecBhNmAAAACIIZAAAAgmAGAACA4BtmWMx2czm5cnd1Pbny/3yp9W6swfyvBOyHvWuGvQvgPJkwAwAAQBDMAAAAEAQzAAAAhKP+htl7gMvyHiAAAPvnVL8sp/p9MmEGAACAIJgBAAAgCGYAAAAIghkAAACCYAYAAIBw1LdkA6zRzz98Npa2u7oeS1vLraFf//n75MpfPp694fOTL/4YwE32rmXZu+A0mDADAABAEMwAAAAQBDMAAAAE3zDDAWw3l2Np280AuFP2LgDOjQkzAAAABMEMAAAAQTADAABAOOpvmL0HuCzvAQIAsH9O9ctyqt8nE2YAAAAIghkAAACCYAYAAIAgmAEAACAIZgAAAAhHfUs2AP/X/L2d83eBfvfVu3E4P/46e8MnsF72LuA4mTADAABAEMwAAAAQBDMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAATvMP8n7wECAMDaOdVzGybMAAAAEAQzAAAABMEMAAAAQTADAABAEMwAAAAQ3JINsALbzeXkyt3V9eTK+VtDxzjkXaDz5n8lYD/sXTPsXXDMTJgBAAAgCGYAAAAIghkAAACCYAYAAIAgmAEAACAIZgAAAAiCGQAAAMLZvcPsPcAZ3gMEAOCYOdXPcKq/PRNmAAAACIIZAAAAgmAGAACAIJgBAAAgCGYAAAAIZ3dLNsBpu4v7MLebAXCn7F3AcTJhBgAAgCCYAQAAIAhmAAAACIIZAAAAgmAGAACAIJgBAAAgCGYAAAAI9+4/eDgAAACAm0yYAQAAIAhmAAAACIIZAAAAgmAGAACAIJgBAAAgXAwAztJvP20nV375zW4czlr+TmA/7F3APpkwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABAEMwAAAAQBDMAAAAE7zDv1V28yOeVPwAA2Cen+vNhwgwAAABBMAMAAEAQzAAAABAEMwAAAATBDAAAAMEt2QBnai13bLoLFPgnexewTybMAAAAEAQzAAAABMEMAAAAQTADAABAEMwAAAAQBDMAAAAEwQwAAADh3v0HDwcAAABwkwkzAAAABMEMAAAAQTADAABAEMwAAAAQBDMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABAEMwAAAAQBDMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABAEMwAAAAQBDMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABAEMwAAAAQBDMAAAAEwQwAAABBMAMAAEAQzAAAABAEMwAAAATBDAAAAEEwAwAAQBDMAAAAEAQzAAAABMEMAAAAQTADAABA+AsAAP//lzeS+QAAAAZJREFUAwDPKkgJ7OoroQAAAABJRU5ErkJggg==" alt="입력창 위를 뛰어다니는 6프레임 연속 캡처">
+      <figcaption>홉 시퀀스 — 서기 → 공중(다리 접힘) → 착지(다리 벌림), 6프레임</figcaption></figure>
+    <figure><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAYwAAAFUCAIAAAC4NpxfAAAFS0lEQVR4nOzcIa5TURhG0VOoak2rQCJAMw8MBolBEQQNEkHSNEEgyTNMAIlhCswAR4LBEkRHQIImQd37Ht1t1pLHnmTnV99ytd4MgKpbAyBMpIA0kQLSlgPgmrx+exxTvXuz/ee7SwpIEykgTaSANJEC0kQKSBMpIE2kgDSRAtJECkgTKSBNpIA0kQLSRApIEykgTaSANJEC0kQKSBMpIE2kgDQb58Bf5uyU3wSXFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaYvVejMAqlxSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpC0HJ3W4Og5u3n63HZwnlxSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWmL1XozmMdO+WWzj35aLikgTaSANJEC0kQKSBMpIE2kgDSRAtJECkgTKSBNpIA0kQLSRApIEykgTaSANJEC0kQKSBMpIE2kgDSRAtJECkgTKSBNpIA0kQLSRApIEykgTaSANJEC0kQKSBMpIE2kgDSRAtJECkgTKSBNpIA0kQLSRApIEykgTaSANJEC0har9WYwxrOX38ZU9x7cGdy894eHY6pX+6/jFPa77WAelxSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkXtXE+Z6d8jjkb5z++/xxT2Vb/P57ffzymuvvoy2AelxSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkXtXF+Koer45hqzsb5HOe4j/709+cx1cfb03fK97vt4HRcUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpC0HJzVna3zOPvqLJ7/GufnwafpOOefLJQWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJqN82uw323HVIer45hqzj76GOe3cT7HnD/itFxSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkLVbrzQCockkBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkCZSQJpIAWkiBaSJFJAmUkCaSAFpIgWkiRSQJlJAmkgBaSIFpIkUkPYHAAD///4QjqQAAAAGSURBVAMAMFAwHOGy18MAAAAASUVORK5CYII=" alt="응답 도착 순간 — 머리 위 음표 두 개">
+      <figcaption>응답 도착 — 기쁨의 홉 + 인디고 음표 ♪</figcaption></figure>
+    <figure><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWwAAAFECAIAAACMApO1AAAE1UlEQVR4nOzcIY6UWRSG4VMzpapMtZjMyBEzevYxBgESA4Yg6LCDSu2AtCEYFBIEW2AHOBIQWILoFZCgO0H9byVd3f08G7jiJm+O+tab7W4AlvptAAIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRAZL1cDIOF5dzl+zPz4abzyUCJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJKvNdjccz13bSb0u9llPh0sESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESGys/oKd1NvNPutxuUSARESARESARESARESARESARESARESARESARESARESARESARESARESARESARESARESARESARESAZD1wTV4c/pulnu8/DqfBJQIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkq812N7fRo2efZqm///1zuL2e/HNvlvrr/w/DVS4RIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIFnPCSs7qdfl6+dvs9Rd23Z9+OP9LPXm9+U7qa++LH935my4yiUCJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJCICJKvNdjdcdbi4nKXKxmpx1/ZZi/25ndRjcokAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAyXo4qrJ1WvZZnz74PjfNy7d/DDefSwRIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIbKz+wv78bJY6XFzOUmWfdebmbawW5Y84LpcIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkIgIkKw2290ALOUSARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRAZL1cCu8e72fpe4/PsxS1/Uup8MlAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiSrzXY3AEu5RIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIDkJwAAAP//Pn4hvgAAAAZJREFUAwCFqDS2IqbE8QAAAABJRU5ErkJggg==" alt="요청 대기 중 집중 자세">
+      <figcaption>생각중(집중) — 멈춰 서서 눈을 크게 뜨고 귀 기울임</figcaption></figure>
+    <figure class="wide"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAWwAAAFECAIAAACMApO1AAAEy0lEQVR4nOzcIY4TUBhG0TcwqjWtAokAzT4wCJAYMARBww6a7oCMwaGQINgCO8CRYLAEMSsgQZOMerfQduacDTzxkptffeeL5WoAzLo1AAIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRARIRAZLzwdHYXVyOm2S7WQ9On0sESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESM4Wy9Vgf27aTuqh2Gc9Hi4RIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERIBERILGxegU7qdebfdb9cokAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAydliuRrX0fPX38asew/uDP69t7uHY9ab7ddxCNvNevA3lwiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQiAiQHPXGatlJLcrG6o/vP8cs267/x8v7j8esu4++DP7mEgESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQGSo95YPZTdxeWYVTZWi1PcZ332+/OY9eH2/E7qdrMe7I9LBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEhEBEjOB3tVtk7LPuurp7/GqXn3cX4nlePhEgESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESEQESG6tX2G7WY9bu4nLMKvusY5zexmpR/oj9cokAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAiYgAydliuRoAs1wiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQCIiQHI+uBY+vd+OWU9e7MasQ73L8XCJAImIAImIAImIAImIAImIAImIAImIAImIAImIAImIAImIAImIAImIAImIAImIAImIAImIAImIAMnZYrkaALNcIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkAiIkDyBwAA//89JfQNAAAABklEQVQDADFTNDOU9faiAAAAAElFTkSuQmCC" alt="채팅 화면 전체 문맥에서의 크기감">
+      <figcaption>가까이 보기 — 통통한 원형 실루엣 · 단일 점 눈 + 볼터치 + 노란 부리</figcaption></figure>
+  </div>
+
+  <h2>확정된 사실들</h2>
+  <table>
+    <tr><td>에셋</td><td>이미지 파일 0개 — box-shadow로 그림 (픽셀당 그림자 1개)</td></tr>
+    <tr><td>레이아웃 영향</td><td>0 — 펫 유무와 무관하게 입력창 좌표 동일, pointer-events 없음(클릭 절대 안 막음)</td></tr>
+    <tr><td>접근성</td><td>prefers-reduced-motion 시 정지 프레임, 타이머 전부 클린업</td></tr>
+    <tr><td>오리지널리티</td><td>수학적으로 깔끔한 원형(래스터 원) 실루엣 · 높고 앞쪽에 찍은 단일 점 눈 · 볼터치 · 몸통 곡선을 따르는 날개 초승달 · 짧은 꼬리 틱 — 동화 속 파랑새(행복을 부르는 새) 모티프. 13×11 그리드, 이미지 0개</td></tr>
+    <tr><td>검증</td><td>웹 전체 172/172 통과 · lint 0 · 실브라우저(빌드된 dist) 이동 실측(272→292px 홉)·레이아웃 영향 0(입력창 좌표 동일)·pose 캡처</td></tr>
+  </table>
+</div>
+
+<script>
+(function () {
+  var PALETTE = { ".":"", B:"#8b9dff", S:"#6b78e8", W:"#f4f1ea", K:"#1b1e2e", C:"#e79ab0", A:"#f2c14e", T:"#6b78e8", L:"#b7a98f" };
+  var CHIRP_COLOR = "#828fff";
+  var FRAMES = {
+    stand:["....BBBB.....","...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...",".TBBBBBBKBB..","TTBSBBBBBBA..","..BSSBBBCB...","..BBSWWWBB...","...BBWWWB....",".............",".....L.L....."],
+    blink:["....BBBB.....","...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...",".TBBBBBKKBB..","TTBSBBBBBBA..","..BSSBBBCB...","..BBSWWWBB...","...BBWWWB....",".............",".....L.L....."],
+    hopUp:["...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...",".TBBBBBBKBB..","TTBSBBBBBBA..","..BSSBBBCB...","..BBSWWWBB...","...BBWWWB....",".............",".............","............."],
+    hopLand:["....BBBB.....","...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...",".TBBBBBBKBB..","TTBSBBBBBBA..","..BSSBBBCB...","..BBSWWWBB...","...BBWWWB....",".............","....L...L...."],
+    tilt:["....BBBB.....","...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...",".TBBBBBBBBB..","TTBSBBBKBBB..","..BSSBBCBBA..","..BBSWWWBB...","...BBWWWB....",".............",".....L.L....."],
+    peck:["....BBBB.....","...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...",".TBBBBBBBBB..","TTBSBBBBKBB..","..BSSBBCBB...","..BBSWWWBBAA.","...BBWWWB....",".............",".....L.L....."],
+    preen:[".............","...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...",".TBSBBBBBBB..","TTBSBKCBBBB..","..BBABBBBB...","..BBSWWWBB...","...BBWWWB....","....BBBB.....",".....L.L....."],
+    tail:["....BBBB.....","...BBBBBB....","..BBBBBBBB...",".TBBBBBBBB...","TTBBBBBBKBB..","TTBSBBBBBBA..","..BSSBBBCB...","..BBSWWWBB...","...BBWWWB....",".............",".....L.L....."],
+    attend:["....BBBB.....","...BBBBBB....","..BBBBBBBB...","..BBBBBBKB...",".TBBBBBBBBA..","TTBSBBBBCBB..","..BSSBBBBB...","..BBSWWWBB...","...BBWWWB....",".............",".....L.L....."],
+    flapA:["....BBBB.....","...BBBBBB....",".SBBBBBBBBS..","..BBBBBBBB...",".TBBBBBBKBB..","TTBSBBBBBBA..","..BSSBBBCB...","..BBSWWWBB...","...BBWWWB....",".............",".....L.L....."],
+    flapB:["....BBBB.....","...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...","STBBBBBBKBBS.","TTBSBBBBBBA..","..BSSBBBCB...","..BBSWWWBB...","...BBWWWB....",".............",".....L.L....."],
+    stretch:["....BBBB.....","...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...",".TBBBBBBKBB..","TTBSBBBBBBA..",".SBSSBBBCB...","SBBBSWWWBB...","...BBWWWB....","..L..........",".......L....."],
+    ruffleA:[".....BBBB....","....BBBBBB...","...BBBBBBBB..","...BBBBBBBB..",".TBBBBBBBKBB.","TTBBSBBBBBBA.","..SBSBBBBCB..","...BBSWWWBB..","....BBWWWB...",".............",".....L.L....."],
+    ruffleB:["...BBBB......","..BBBBBB.....",".BBBBBBBB....",".BBBBBBBB....","TBBBBBBKBB...","TBSBBBBBBAS..",".BSSBBBCB....",".BBSWWWBBS...","..BBWWWB.....",".............",".....L.L....."],
+    doze:[".............","....BBBB.....","...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...",".TBBBBKKBBA..","TTBSBBBBBB...","..BSSBBBCB...","..BBSWWWBB...","...BBWWWB....","............."],
+    sing:["....BBBB.....","...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...",".TBBBBBBKBB..","TTBSBBBBBBA..","..BSSBBBCBA..","..BBSWWWBB...","...BBWWWB....",".............",".....L.L....."],
+    droop:[".............","....BBBB.....","...BBBBBB....","..BBBBBBBB...","..BBBBBBBB...",".TBBBBBBKB...","TTBSBBBBCBA..","..BSSWWWBB...","..BBWWWBB....","...BBWB......",".....L.L....."]
+  };
+  var CHIRP_FRAME = ["CC....","CC..CC","....CC","......"];
+  var MUTED = "#8a8f98", HEARTC = "#f2789f";
+  var ZZZ_FRAME = ["ZZZ",".Z.","ZZZ"];
+  var NOTE_FRAME = [".N",".N","NN"];
+  var HEART_FRAME = [".H.H.","HHHHH","HHHHH",".HHH.","..H.."];
+
+  function shadow(frame, px, palette) {
+    var out = [];
+    for (var r = 0; r < frame.length; r++) {
+      var row = frame[r];
+      for (var c = 0; c < row.length; c++) {
+        var col = (palette || PALETTE)[row[c]];
+        if (col) out.push((c * px) + "px " + (r * px) + "px 0 0 " + col);
+      }
+    }
+    return out.join(", ");
+  }
+
+  var petpx = document.getElementById("petpx");
+  var bigpx = document.getElementById("bigpx");
+  var pet = document.getElementById("pet");
+  var chirp = document.getElementById("chirp");
+  var chirppx = document.getElementById("chirppx");
+  var bounds = document.getElementById("bounds");
+  var bigov = document.getElementById("bigov");
+  var motionTimer = null;
+  chirppx.style.boxShadow = shadow(CHIRP_FRAME, 3, { C: CHIRP_COLOR });
+
+  function stopMotion() {
+    if (motionTimer) { clearInterval(motionTimer); motionTimer = null; }
+    bigov.style.boxShadow = ""; bigov.style.transform = ""; bigov.style.opacity = "1";
+  }
+  function playMotion(name) {
+    stopMotion();
+    mode = "motion";
+    chirp.hidden = true; chirpLeft = 0;
+    if (name === "doze") {
+      setPose("doze");
+      bigov.style.left = "88px"; bigov.style.top = "0px";
+      var zon = true;
+      motionTimer = setInterval(function () {
+        bigov.style.boxShadow = zon ? shadow(ZZZ_FRAME, 8, { Z: MUTED }) : "";
+        zon = !zon;
+      }, 520);
+      return;
+    }
+    if (name === "sing") {
+      setPose("sing");
+      bigov.style.left = "86px";
+      var sy = 0;
+      motionTimer = setInterval(function () {
+        bigov.style.boxShadow = shadow(NOTE_FRAME, 8, { N: MUTED });
+        bigov.style.top = (2 - sy) + "px";
+        bigov.style.opacity = sy < 26 ? "0.95" : "0";
+        sy = (sy + 4) % 38;
+      }, 150);
+      return;
+    }
+    if (name === "heart") {
+      setPose("stand");
+      bigov.style.left = "44px";
+      var hy = 0;
+      motionTimer = setInterval(function () {
+        bigov.style.boxShadow = shadow(HEART_FRAME, 8, { H: HEARTC });
+        bigov.style.top = (2 - hy) + "px";
+        bigov.style.opacity = hy < 42 ? "1" : "0";
+        hy += 4;
+        if (hy > 48) { stopMotion(); setPose("stand"); }
+      }, 110);
+      return;
+    }
+    var seq = name === "flap" ? ["flapA", "flapB", "flapA", "flapB", "flapA", "flapB", "stand"]
+      : name === "stretch" ? ["stretch", "stretch", "stretch", "stretch", "stand"]
+      : ["ruffleA", "ruffleB", "ruffleA", "ruffleB", "ruffleA", "droop", "droop", "stand"]; // shake
+    var i = 0;
+    motionTimer = setInterval(function () {
+      setPose(seq[i]);
+      i++;
+      if (i >= seq.length) { stopMotion(); setPose("stand"); }
+    }, 200);
+  }
+
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var mode = "live";            // live | attend | chirp
+  var pose = "stand";
+  var x = 40, dir = 1;
+  var plan = [];                // queued steps for the live loop
+  var chirpLeft = 0;
+
+  function setPose(p) {
+    pose = p;
+    var s = shadow(FRAMES[p], 3);
+    petpx.style.boxShadow = s;
+    bigpx.style.boxShadow = shadow(FRAMES[p], 8);
+  }
+  function place() {
+    pet.style.transform = "translateX(" + x + "px) scaleX(" + dir + ")";
+    chirp.style.left = (x + (dir === 1 ? 20 : -8)) + "px";
+    chirp.style.bottom = "calc(100% + 32px)";
+  }
+  function refill() {
+    var roll = Math.random();
+    if (roll < 0.45) {
+      var hops = 2 + Math.floor(Math.random() * 3);
+      for (var i = 0; i < hops; i++) { plan.push("hopUp", "hopLand"); }
+      plan.push("stand");
+    } else {
+      var idles = ["blink", "tilt", "peck", "preen", "tail"];
+      plan.push(idles[Math.floor(Math.random() * idles.length)], "stand", "stand");
+    }
+  }
+  function tick() {
+    if (mode === "attend") { setPose("attend"); return; }
+    if (chirpLeft > 0) {
+      chirpLeft--;
+      setPose(chirpLeft % 2 === 0 ? "hopUp" : "hopLand");
+      chirp.hidden = false;
+      if (chirpLeft === 0) { chirp.hidden = true; mode = "live"; }
+      place();
+      return;
+    }
+    if (mode !== "live") return;
+    if (plan.length === 0) refill();
+    var step = plan.shift();
+    if (step === "hopUp") {
+      x += dir * 7;
+      var max = bounds.clientWidth - 41;
+      if (x <= 4) { x = 4; dir = 1; }
+      if (x >= max) { x = max; dir = -1; }
+    }
+    setPose(step);
+    place();
+  }
+
+  document.getElementById("ctl").addEventListener("click", function (e) {
+    var b = e.target.closest("button");
+    if (!b) return;
+    document.querySelectorAll("#ctl button").forEach(function (n) { n.classList.remove("on"); });
+    b.classList.add("on");
+    chirp.hidden = true; chirpLeft = 0;
+    if (b.dataset.motion) { playMotion(b.dataset.motion); return; }
+    stopMotion();
+    if (b.dataset.mode === "live") { mode = "live"; plan = []; }
+    else if (b.dataset.mode === "attend") { mode = "attend"; }
+    else if (b.dataset.mode === "chirp") { mode = "chirp"; chirpLeft = 6; }
+    else if (b.dataset.pose) { mode = "pose"; setPose(b.dataset.pose); }
+  });
+
+  setPose("stand");
+  place();
+  if (!reduced) { setInterval(tick, 430); }
+})();
+</script>
