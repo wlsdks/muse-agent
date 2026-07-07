@@ -23,6 +23,7 @@ import {
 } from "@muse/memory";
 import { clamp, redactSecretsInText, stripUntrustedTerminalChars } from "@muse/shared";
 
+import { needsContextualRewrite, type ChatGrounding } from "./chat-grounding.js";
 import { MUSE_TAGLINE } from "./muse-identity.js";
 
 /**
@@ -122,6 +123,44 @@ export interface InputResult {
  */
 export function normalizeChatInput(raw: string): string {
   return raw.trim().normalize("NFC");
+}
+
+export interface ContextualRewriteDeps {
+  /** Retrieve grounding for a (possibly rewritten) query. */
+  readonly retrieve: (query: string) => Promise<ChatGrounding>;
+  /**
+   * Resolve the turn into a self-contained retrieval query using the recent
+   * conversation. Omit to never rewrite (fails open to the raw turn).
+   */
+  readonly rewrite?: (
+    history: readonly ChatTurnMessage[],
+    message: string
+  ) => Promise<string>;
+}
+
+/**
+ * Multi-turn retrieval parity with `runLocalChat`'s inline rewrite: an
+ * anaphoric follow-up ("그거 언제 바뀌었지?", "what about that one") embeds on
+ * the pronoun, not the topic, so retrieval misses the note the conversation
+ * is plainly about. Fires the rewrite ONLY when `needsContextualRewrite`
+ * says so, and fails open to the RAW turn on any rewrite error or when no
+ * `rewrite` dependency is supplied — a bad rewrite can at worst rank notes
+ * poorly, never block retrieval.
+ */
+export function createContextualGroundingLookup(
+  deps: ContextualRewriteDeps
+): (prompt: string, history: readonly ChatTurnMessage[]) => Promise<ChatGrounding> {
+  return async (prompt, history) => {
+    if (!deps.rewrite || !needsContextualRewrite(prompt, history.length)) {
+      return deps.retrieve(prompt);
+    }
+    try {
+      const rewritten = await deps.rewrite(history, prompt);
+      return deps.retrieve(rewritten);
+    } catch {
+      return deps.retrieve(prompt);
+    }
+  };
 }
 
 function codepoints(value: string): string[] {

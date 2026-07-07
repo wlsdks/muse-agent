@@ -157,7 +157,7 @@ export function MuseChatApp(props: {
   readonly skills: readonly SkillInfo[];
   readonly skillsDir: string;
   readonly skillsPromptFor: (prompt: string) => string;
-  readonly groundingFor?: (prompt: string) => Promise<ChatGrounding>;
+  readonly groundingFor?: (prompt: string, history: readonly ChatTurnMessage[]) => Promise<ChatGrounding>;
   /**
    * The shared post-stream pipeline (gate -> citation strips -> receipt). The
    * audit found this surface rendered the raw stream ungated while every other
@@ -551,7 +551,7 @@ export function MuseChatApp(props: {
     const base = props.personaPrompt() ?? formatCurrentContextLine();
     const agentPrefix = activeAgent ? `${activeAgent.prompt}\n\n` : "";
     const grounding: ChatGrounding = props.groundingFor
-      ? await props.groundingFor(message).catch(() => ({ block: "", matches: [] }))
+      ? await props.groundingFor(message, historyRef.current).catch(() => ({ block: "", matches: [] }))
       : { block: "", matches: [] };
     const system = agentPrefix + base + grounding.block + props.skillsPromptFor(message);
     const messages = buildTurnMessages(system, historyRef.current, message + attachmentBlock, props.historyWindow, imageAttachments);

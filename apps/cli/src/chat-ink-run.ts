@@ -26,6 +26,7 @@ import {
   buildRecap,
   chatToolApprovalGate,
   composeMorningGreeting,
+  createContextualGroundingLookup,
   readImageAttachment,
   firstOpenToday,
   formatNoModelMessage,
@@ -44,7 +45,15 @@ import { MuseChatApp, OUTBOUND_ACTUATORS, PROACTIVE_LEAD_MS, type RunChatInkOpti
 import { renderMuseBanner } from "./muse-banner.js";
 import { loadAgents, resolveAgentsDir, type AgentDef } from "./commands-agents.js";
 import { recordChatTurnTrace } from "./chat-repl.js";
-import { defaultChatConflictEmbedder, finalizeGatedChatAnswer, retrieveChatGrounding } from "./chat-grounding.js";
+import {
+  buildQueryRewritePrompt,
+  defaultChatConflictEmbedder,
+  finalizeGatedChatAnswer,
+  parseQueryRewrite,
+  QUERY_REWRITE_RESPONSE_FORMAT,
+  QUERY_REWRITE_SYSTEM_PROMPT,
+  retrieveChatGrounding
+} from "./chat-grounding.js";
 import { createQwenReverify } from "./grounding-eval-runner.js";
 import { searchRecall } from "./commands-recall.js";
 import { readTrust } from "./commands-trust.js";
@@ -601,6 +610,30 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     }
     return items;
   };
+
+  // Multi-turn retrieval parity with `runLocalChat`: the Ink surface retrieved
+  // on the RAW turn only — this was the one chat path that never resolved an
+  // anaphoric follow-up into a self-contained query before grounding.
+  const groundingForTurn = createContextualGroundingLookup({
+    retrieve: retrieveChatGrounding,
+    ...(provider && "generate" in provider
+      ? {
+          rewrite: async (history, prompt) => {
+            const rewritten = await provider.generate({
+              maxOutputTokens: 80,
+              messages: [
+                { content: QUERY_REWRITE_SYSTEM_PROMPT, role: "system" },
+                { content: buildQueryRewritePrompt(history, prompt), role: "user" }
+              ],
+              model,
+              responseFormat: QUERY_REWRITE_RESPONSE_FORMAT,
+              temperature: 0
+            });
+            return parseQueryRewrite(rewritten.output ?? "", prompt);
+          }
+        }
+      : {})
+  });
   const instance = render(h(MuseChatApp, {
     agents,
     banner,
@@ -648,7 +681,7 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
       });
       return finalized;
     },
-    groundingFor: (prompt: string) => retrieveChatGrounding(prompt),
+    groundingFor: groundingForTurn,
     historyWindow: resolveChatHistoryWindow(process.env),
     contextWindow: buildContextWindowOptions(process.env),
     // `/compact <topic>` (a real, focused compaction) uses the SAME model

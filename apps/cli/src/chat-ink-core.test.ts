@@ -5,6 +5,7 @@ import { trimConversationMessages, type ConversationMessage } from "@muse/memory
 
 import {
   buildTurnMessages,
+  createContextualGroundingLookup,
   type ChatTurnMessage,
   resolveChatHistoryWindow,
   chatHelp,
@@ -62,6 +63,52 @@ describe("normalizeChatInput — NFC-normalize + trim a submitted chat turn (mac
   });
   it("is a no-op on already-NFC ASCII text", () => {
     expect(normalizeChatInput("hello world")).toBe("hello world");
+  });
+});
+
+describe("createContextualGroundingLookup — resolve an anaphoric follow-up BEFORE grounding retrieval (Ink-chat parity with runLocalChat's inline rewrite)", () => {
+  const history: readonly ChatTurnMessage[] = [
+    { content: "우리 사무실 와이파이 비밀번호 뭐야?", role: "user" },
+    { content: "muse2026 입니다 [from wifi.md]", role: "assistant" }
+  ];
+
+  it("a follow-up pronoun question retrieves against the REWRITTEN query, not the raw pronoun turn", async () => {
+    const seen: string[] = [];
+    const lookup = createContextualGroundingLookup({
+      retrieve: async (query) => { seen.push(query); return { block: "", matches: [] }; },
+      rewrite: async () => "와이파이 비밀번호 언제 바뀌었는지"
+    });
+    await lookup("그거 언제 바뀌었지?", history);
+    expect(seen).toEqual(["와이파이 비밀번호 언제 바뀌었는지"]);
+  });
+
+  it("a self-contained question skips the rewrite entirely — retrieves on the raw turn", async () => {
+    const seen: string[] = [];
+    const lookup = createContextualGroundingLookup({
+      retrieve: async (query) => { seen.push(query); return { block: "", matches: [] }; },
+      rewrite: async () => { throw new Error("must not be called"); }
+    });
+    await lookup("회사 와이파이 비밀번호 뭐야?", history);
+    expect(seen).toEqual(["회사 와이파이 비밀번호 뭐야?"]);
+  });
+
+  it("fails open to the RAW turn when the rewrite dependency throws", async () => {
+    const seen: string[] = [];
+    const lookup = createContextualGroundingLookup({
+      retrieve: async (query) => { seen.push(query); return { block: "", matches: [] }; },
+      rewrite: async () => { throw new Error("model unavailable"); }
+    });
+    await lookup("그거 언제 바뀌었지?", history);
+    expect(seen).toEqual(["그거 언제 바뀌었지?"]);
+  });
+
+  it("with no `rewrite` dependency (no provider), never rewrites — always retrieves on the raw turn", async () => {
+    const seen: string[] = [];
+    const lookup = createContextualGroundingLookup({
+      retrieve: async (query) => { seen.push(query); return { block: "", matches: [] }; }
+    });
+    await lookup("그거 언제 바뀌었지?", history);
+    expect(seen).toEqual(["그거 언제 바뀌었지?"]);
   });
 });
 
