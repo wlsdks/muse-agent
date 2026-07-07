@@ -1,9 +1,11 @@
 /**
- * End-of-session opt-in distillation sequence: after the Ink chat unmounts,
- * capture the episode and run the opt-in idle-learning / playbook / skill /
- * check-in / preference distill steps. Split out of runChatInk so the runtime
- * wiring stays focused; each step is opt-in + fail-soft so a flaky model never
- * blocks exit.
+ * End-of-session distillation sequence: after the Ink chat unmounts, capture
+ * the episode and run the playbook / skill / check-in / preference distill
+ * steps. Playbook distillation and skill authoring are ON BY DEFAULT (Muse
+ * "learns you, not the world" out of the box); the rest (idle-learning,
+ * check-in autoscan, preference autoinfer, skill consolidation) stay opt-in.
+ * Split out of runChatInk so the runtime wiring stays focused; every step is
+ * fail-soft so a flaky model never blocks exit.
  */
 
 import { parseBoolean } from "@muse/autoconfigure";
@@ -39,26 +41,34 @@ export async function runEndOfSessionPipeline(args: {
 
   // End-of-session auto-distillation: turn any correction the user made this
   // session into a generalised [Learned Strategies] entry (ReasoningBank,
-  // arXiv 2509.25140). Opt-in + fail-soft so a flaky model never blocks exit.
+  // arXiv 2509.25140). The playbook branch below is ON BY DEFAULT (Muse
+  // "learns you" out of the box); idle-learning stays opt-in. Fail-soft so a
+  // flaky model never blocks exit.
   if (parseBoolean(process.env.MUSE_IDLE_LEARNING_ENABLED, false)) {
     // Idle self-learning (B1): ENQUEUE this session's corrections for the
     // Sleep daemon to distill later behind the brakes — no exit-time LLM
     // call, no manual step. Mutually exclusive with MUSE_PLAYBOOK_DISTILL.
     const { enqueueSessionCorrections } = await import("./chat-enqueue-corrections.js");
     await enqueueSessionCorrections({ userId }).catch(() => undefined);
-  } else if (parseBoolean(process.env.MUSE_PLAYBOOK_DISTILL_ENABLED, false)) {
+  } else if (parseBoolean(process.env.MUSE_PLAYBOOK_DISTILL_ENABLED, true)) {
     const { distillSessionCorrections } = await import("./chat-distill-corrections.js");
-    await distillSessionCorrections({
+    const result = await distillSessionCorrections({
       model,
       modelProvider: modelProvider as Parameters<typeof distillSessionCorrections>[0]["modelProvider"],
       userId
     }).catch(() => undefined);
+    if (result?.status === "recorded") {
+      for (const s of result.strategies) {
+        process.stderr.write(`💾 Learned strategy: ${s.text}\n`);
+      }
+    }
   }
 
   // End-of-session skill authoring: turn a procedural correction into a
-  // reusable, execute-gated SKILL.md (picked up next session). Opt-in +
-  // fail-soft so a flaky model never blocks exit.
-  if (parseBoolean(process.env.MUSE_SKILL_AUTHOR_ENABLED, false)) {
+  // reusable, execute-gated SKILL.md (picked up next session). On by
+  // default (Muse "learns you" out of the box); fail-soft so a flaky model
+  // never blocks exit.
+  if (parseBoolean(process.env.MUSE_SKILL_AUTHOR_ENABLED, true)) {
     const { authorSkillsFromSession, applySkillRewardsFromSession } = await import("./chat-author-skills.js");
     const result = await authorSkillsFromSession({
       model,

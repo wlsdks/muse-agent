@@ -36,10 +36,11 @@ describe("idleLearnedNoticeForUser — counts probation strategies from the play
 });
 
 describe("renderLearnedDigest", () => {
-  it("shows an enable hint when nothing has been learned", () => {
+  it("shows a disable hint (learning is ON by default) when nothing has been learned", () => {
     const out = renderLearnedDigest({ reflections: [], skills: [], strategies: [] });
     expect(out).toContain("hasn't learned anything");
-    expect(out).toContain("MUSE_PLAYBOOK_DISTILL_ENABLED");
+    expect(out).toContain("ON by default");
+    expect(out).toContain("MUSE_PLAYBOOK_DISTILL_ENABLED=false");
   });
 
   it("lists trusted strategies/skills (reward ≥ 1, highest first) and hides neutral ones", () => {

@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { buildSkillRegistry } from "@muse/autoconfigure";
 
 import type { Skill } from "@muse/skills";
+import { createSkillRunTool, type SkillCatalogToolEntry, type SkillRegistryView } from "@muse/tools";
 
 import { applySkillRewardsFromSession, authorSkillsFromSession } from "./chat-author-skills.js";
 import { selectRelevantSkills } from "./chat-skills.js";
@@ -107,6 +108,60 @@ describe("authorSkillsFromSession", () => {
     expect(relevant.map((s) => s.name)).toContain("export-then-attach");
     const irrelevant = selectRelevantSkills(all, "what is the weather today");
     expect(irrelevant.map((s) => s.name)).not.toContain("export-then-attach");
+  });
+
+  // Skill authoring is ON BY DEFAULT (MUSE_SKILL_AUTHOR_ENABLED unset ⇒ true,
+  // chat-end-session-pipeline.ts) — this proves flipping that default did NOT
+  // loosen the execute-gate: a freshly authored skill still cannot be run via
+  // `muse.skills.run` until a human promotes it (adds requires.bins by hand).
+  it("safety invariant: a skill authored on the default-on path is still refused by muse.skills.run (never promoted)", async () => {
+    const base = mkdtempSync(join(tmpdir(), "muse-auth-safety-"));
+    const authoredDir = join(base, "authored");
+    const userDir = join(base, "user");
+
+    // No MUSE_SKILL_AUTHOR_ENABLED override here — this call is exactly what the
+    // pipeline now makes on an unset (default-on) env.
+    const authoring = await authorSkillsFromSession({
+      model: "m",
+      modelProvider: stub(draftOutput),
+      authoredDir,
+      readBoundaries: async () => boundaries,
+      readLines: async () => correctedSession
+    });
+    expect(authoring.status).toBe("authored");
+
+    const registry = await buildSkillRegistry({
+      MUSE_SKILLS_DIR: userDir,
+      MUSE_AUTHORED_SKILLS_DIR: authoredDir
+    } as unknown as Parameters<typeof buildSkillRegistry>[0]);
+    const skill = registry!.get("export-then-attach")!;
+    // Structural gate: an authored SkillDraft can never carry requires.bins.
+    expect(skill.frontmatter.requires?.bins).toBeUndefined();
+    expect(skill.frontmatter.requires?.anyBins).toBeUndefined();
+
+    // Same registry-view mapping the real runtime wires (skills-runtime.ts) —
+    // exercised here directly against `muse.skills.run`.
+    const view: SkillRegistryView = {
+      get: (name): SkillCatalogToolEntry | undefined => {
+        const found = registry!.get(name);
+        return found
+          ? {
+              body: found.body,
+              description: found.description,
+              name: found.name,
+              ...(found.frontmatter.requires?.anyBins ? { requiresAnyBins: [...found.frontmatter.requires.anyBins] } : {}),
+              ...(found.frontmatter.requires?.bins ? { requiresBins: [...found.frontmatter.requires.bins] } : {})
+            }
+          : undefined;
+      },
+      list: () => []
+    };
+    const runTool = createSkillRunTool(view);
+    const result = (await runTool.execute(
+      { command: "rm -rf /", name: "export-then-attach" },
+      { runId: "r-1" }
+    )) as { readonly error?: string };
+    expect(result.error).toMatch(/declares no requires\.bins/u);
   });
 });
 

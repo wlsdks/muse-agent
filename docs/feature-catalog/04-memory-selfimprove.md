@@ -168,7 +168,7 @@ Status legend: ✅ ran live · 🧪 tests-as-evidence · ⬜ code-only · ⚠ br
 
 ### H4. `muse learned` — learning dashboard
 - **What:** Shows trusted/avoided strategies & skills + recent reflections.
-- **Status:** ✅ ran → reveals **learning is OFF by default**: prints `MUSE_PLAYBOOK_DISTILL_ENABLED=true MUSE_SKILL_AUTHOR_ENABLED=true` to enable. IMPORTANT product fact: self-learning (distill + author) is opt-in.
+- **Status:** ✅ ran → self-learning (distill + author) is **ON by default**; the empty-digest hint prints `MUSE_PLAYBOOK_DISTILL_ENABLED=false MUSE_SKILL_AUTHOR_ENABLED=false` to turn it off for a session.
 - **Evidence:** `commands-learned.test.ts`.
 
 ---
@@ -216,7 +216,7 @@ Status legend: ✅ ran live · 🧪 tests-as-evidence · ⬜ code-only · ⚠ br
 
 ### Drift / suspicious items (small):
 1. **`muse specs` is genuinely server-only** (verified): requires API server at :3030, `--local` is `unknown option`, no auto-fallback (every other domain command falls back to the local store). Follow-up: add `--local` or document the server requirement. (⚠ only surface in this domain that doesn't work standalone. = INDEX B3.)
-2. **Self-learning is OFF by default** — `muse learned` advertises `MUSE_PLAYBOOK_DISTILL_ENABLED` + `MUSE_SKILL_AUTHOR_ENABLED` must be set. Docs describe the capabilities as present (correct) but a reader could assume they're auto-on; FEATURES.md §158 does note "기본 꺼짐" for background consolidation. Minor — make the opt-in nature of distill/author explicit if not already.
+2. **Self-learning is now ON by default** (was off) — `MUSE_PLAYBOOK_DISTILL_ENABLED` + `MUSE_SKILL_AUTHOR_ENABLED` default true; `muse learned`'s empty-digest hint now shows how to set them `=false` to opt out. Background skill CONSOLIDATION (`MUSE_SKILL_CONSOLIDATE_ENABLED`) is unaffected and stays off by default (FEATURES.md §158 "기본 꺼짐" still applies to that step only).
 3. **Episodic memory is OFF by default** (`MUSE_EPISODIC_MEMORY_ENABLED=true` required). This is the substrate reflections/themes/dreaming feed on — so a fresh install shows "no episodes / no reflections / no themes" until enabled. Help text documents the flag; just flagging the dependency chain (episodes → themes/reflections/consolidate) for docs accuracy.
 
 ### NOT broken (clarifications):

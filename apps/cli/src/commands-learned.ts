@@ -2,10 +2,10 @@
  * `muse learned` — one honest view of what Muse has LEARNED about working with
  * you: the strategies and skills it now trusts (high reward), the ones it has
  * learned to avoid (corrected too often), and the grounded reflections it has
- * formed. The "shows its work" edge turned on Muse's OWN self-improvement, so
- * the (default-off) learning is legible enough to trust and turn on. Pure
- * composition of the playbook, authored-skill, skill-reward, and reflection
- * stores — no model call.
+ * formed. The "shows its work" edge turned on Muse's OWN self-improvement,
+ * which learns by default — this view makes it legible enough to trust (or
+ * turn off). Pure composition of the playbook, authored-skill, skill-reward,
+ * and reflection stores — no model call.
  */
 
 import { PLAYBOOK_AVOID_BELOW } from "@muse/agent-core";
@@ -121,9 +121,9 @@ export function renderLearnedDigest(input: LearnedDigestInput): string {
       ...pausedBanner,
       "Muse hasn't learned anything about working with you yet.",
       "",
-      "Learning is OFF by default. Turn it on for a session with:",
-      "  MUSE_PLAYBOOK_DISTILL_ENABLED=true  MUSE_SKILL_AUTHOR_ENABLED=true",
-      "then correct or approve Muse in chat — it reinforces what works and retires what it keeps getting wrong."
+      "Learning is ON by default — correct or approve Muse in chat and it reinforces",
+      "what works and retires what it keeps getting wrong. To turn it off for a session:",
+      "  MUSE_PLAYBOOK_DISTILL_ENABLED=false  MUSE_SKILL_AUTHOR_ENABLED=false"
     ].join("\n");
   }
 
