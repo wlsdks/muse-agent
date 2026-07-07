@@ -22,6 +22,7 @@
  */
 
 import { createNotesMcpServer, type NotesProviderRegistry } from "@muse/domain-tools";
+import { isAppleNotesMirrorEnabled, mirrorNoteToApple } from "@muse/macos";
 import type { JsonObject, JsonValue } from "@muse/shared";
 import type { FastifyInstance } from "fastify";
 
@@ -46,7 +47,15 @@ type ToolResult = string | JsonValue;
 type ExecuteFn = (args: JsonObject) => Promise<ToolResult> | ToolResult;
 
 export function registerNotesRoutes(server: FastifyInstance, gate: NotesRoutesGate): void {
-  const mcp = createNotesMcpServer({ notesDir: gate.notesDir });
+  // Opt-in Apple Notes mirror (MUSE_APPLE_NOTES_MIRROR). Injected ONLY when the
+  // switch is on so an off/absent posture never reaches osascript (the mirror
+  // self-gates on env too). Fires only on `POST /api/notes/save` creates — the
+  // save tool's create-only gate — and its `mirrorNote` flows through the
+  // handler's result verbatim. There is no ingest REST route, so no over-fire.
+  const mcp = createNotesMcpServer({
+    notesDir: gate.notesDir,
+    ...(isAppleNotesMirrorEnabled(process.env) ? { mirror: (note) => mirrorNoteToApple(note) } : {})
+  });
   const tools = new Map<string, ExecuteFn>(
     mcp.tools.map((tool) => [tool.name, tool.execute])
   );

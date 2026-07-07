@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **489** variables.
+Total: **490** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -41,6 +41,7 @@ Total: **489** variables.
 | `MUSE_API_TOKEN` | apps/cli |
 | `MUSE_API_URL` | apps/cli |
 | `MUSE_APPLE_NOTES_FOLDER` | packages/autoconfigure |
+| `MUSE_APPLE_NOTES_MIRROR` | apps/api, apps/cli, packages/autoconfigure, packages/macos |
 | `MUSE_APPLE_REMINDERS_LIST` | packages/autoconfigure |
 | `MUSE_APPLE_REMINDERS_MIRROR` | apps/api, apps/cli, packages/autoconfigure, packages/macos |
 | `MUSE_APPROVALS_FILE` | apps/cli |

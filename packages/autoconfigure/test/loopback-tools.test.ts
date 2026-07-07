@@ -143,6 +143,20 @@ describe("buildLoopbackTools — gating", () => {
     expect(out.mirrorNote).toBeUndefined();
   });
 
+  it("consent pin: MUSE_APPLE_NOTES_MIRROR absent ⇒ no Apple Notes mirror is wired (save produces no mirrorNote, zero osascript)", async () => {
+    const findSave = (bundle: LoopbackToolsBundle) =>
+      bundle.notes.find((t) => t.definition.name.endsWith("save"))!;
+    // env is {} in baseDeps → the mirror is never injected, so a `save` create
+    // cannot reach osascript. Writes to a real (non-macOS-touching) tmp notes dir.
+    const bundle = buildLoopbackTools(baseDeps());
+    const out = (await findSave(bundle).execute(
+      { content: "hi", path: "consent-pin.md" },
+      {} as never
+    )) as { created?: boolean; mirrorNote?: string };
+    expect(out.created).toBe(true);
+    expect(out.mirrorNote).toBeUndefined();
+  });
+
   it("exposes the multi-provider registry surfaces only when ≥2 providers are registered", () => {
     expect(buildLoopbackTools(baseDeps({ notesRegistry: duckRegistry(1), tasksRegistry: duckRegistry(1) })).notesRegistry).toEqual([]);
     const multi = buildLoopbackTools(baseDeps({ notesRegistry: duckRegistry(2), tasksRegistry: duckRegistry(2) }));

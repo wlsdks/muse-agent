@@ -15,7 +15,7 @@
 
 import { createLoopbackMcpMuseTools } from "@muse/mcp";
 import { createCalendarMcpServer, createEpisodesMcpServer, createFollowupsMcpServer, createHistoryMcpServer, createMathMcpServer, createMessagingMcpServer, createNotesMcpServer, createNotesRegistryMcpServer, createPatternsMcpServer, createProactiveMcpServer, createRemindersMcpServer, createStatusMcpServer, createTasksMcpServer, createTasksRegistryMcpServer, createSearchMcpServer, createWebReadMcpServer, type MessageApprovalGate } from "@muse/domain-tools";
-import { mirrorReminderToApple } from "@muse/macos";
+import { mirrorNoteToApple, mirrorReminderToApple } from "@muse/macos";
 import type { NotesProviderRegistry, TasksProviderRegistry } from "@muse/domain-tools";
 import type { CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
@@ -98,7 +98,14 @@ export function buildLoopbackTools(deps: LoopbackToolsDeps): LoopbackToolsBundle
         // LLM-judge search mode opts in only when modelProvider +
         // defaultModel are wired (same gate as episodes). Substring
         // mode keeps working without a model.
-        ...llmJudge
+        ...llmJudge,
+        // Opt-in one-way create-only mirror into Apple Notes.app (visible across
+        // the Apple ecosystem). Injected ONLY when MUSE_APPLE_NOTES_MIRROR is on,
+        // so an off/absent switch never reaches osascript. Self-gates on env too
+        // (defence in depth).
+        ...(parseBoolean(env.MUSE_APPLE_NOTES_MIRROR, false)
+          ? { mirror: (note) => mirrorNoteToApple(note, { env }) }
+          : {})
       }))
     : [];
 

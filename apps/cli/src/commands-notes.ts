@@ -12,7 +12,8 @@ import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, join, relative } from "node:path";
 
 import { resolveNotesDir } from "@muse/autoconfigure";
-import { createNotesMcpServer, fetchReadableUrl } from "@muse/domain-tools";
+import { createNotesMcpServer, deriveMirrorNoteTitle, fetchReadableUrl } from "@muse/domain-tools";
+import { mirrorNoteToApple } from "@muse/macos";
 import type { Command } from "commander";
 
 import {
@@ -395,6 +396,19 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
           args.overwrite = true;
         }
         payload = await callLocalTool("save", args);
+        // Opt-in Apple Notes mirror (MUSE_APPLE_NOTES_MIRROR). Create-only:
+        // only a genuine NEW note fires it (never an overwrite-in-place edit).
+        // Self-gated + fail-soft — it never blocks or rolls back the local
+        // write; a failure surfaces as a `mirrorNote` / stderr warning. The
+        // shared `callLocalTool` server is deliberately mirror-free so `ingest`
+        // (which reuses `save`) does not over-fire; the mirror is scoped to the
+        // deliberate `notes save` create here.
+        if (payload.created === true) {
+          const mirror = await mirrorNoteToApple({ body: content, title: deriveMirrorNoteTitle(notePath, content) });
+          if (mirror.warning) {
+            payload = { ...payload, mirrorNote: mirror.warning };
+          }
+        }
       } else {
         const body: Record<string, unknown> = { content, path: notePath };
         if (options.overwrite === true) {
@@ -405,6 +419,12 @@ export function registerNotesCommands(program: Command, io: ProgramIO, helpers: 
       if (options.json) {
         helpers.writeOutput(io, payload);
         return;
+      }
+      // The API path mirrors server-side and returns `mirrorNote` on a
+      // fail-soft miss; surface it (local path set the same field above) so a
+      // save isn't silent about a mirror failure.
+      if (typeof payload.mirrorNote === "string" && payload.mirrorNote.length > 0) {
+        io.stderr(`muse: ${payload.mirrorNote}\n`);
       }
       io.stdout(formatNoteSaved(payload as unknown as Parameters<typeof formatNoteSaved>[0]));
     });

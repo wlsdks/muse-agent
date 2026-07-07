@@ -29,6 +29,36 @@ import type { ProactiveModelProviderLike } from "@muse/proactivity";
  * the existing tests) keep working without import-site edits.
  */
 
+/**
+ * One-way create-only mirror of a newly-created note into an external surface
+ * (Apple Notes.app). Injected by the wiring layer so @muse/domain-tools stays
+ * free of any macOS dependency — the exact sibling of the reminders
+ * `ReminderMirror` seam. Fail-soft: a rejected/failed mirror NEVER fails the
+ * Muse write; the returned `warning` is surfaced as `mirrorNote` in the tool
+ * result instead.
+ */
+export type NoteMirror = (
+  note: { readonly title: string; readonly body: string }
+) => Promise<{ readonly mirrored: boolean; readonly warning?: string }>;
+
+/**
+ * Title for a mirrored note: the first Markdown heading in the leading lines,
+ * else the file's basename stem. Deterministic + pure so the wiring layers and
+ * their tests derive an identical title. Never empty (falls back to the raw
+ * path, then a constant).
+ */
+export function deriveMirrorNoteTitle(relPath: string, content: string): string {
+  for (const line of content.split(/\r?\n/u, 10)) {
+    const heading = /^#{1,6}\s+(.+?)\s*#*\s*$/u.exec(line);
+    if (heading && heading[1] && heading[1].trim().length > 0) {
+      return heading[1].trim();
+    }
+  }
+  const base = relPath.split(/[\\/]/u).pop() ?? relPath;
+  const stem = base.replace(/\.[^.]+$/u, "");
+  return stem.length > 0 ? stem : (relPath.length > 0 ? relPath : "Muse note");
+}
+
 export interface NotesMcpServerOptions {
   readonly notesDir: string;
   readonly defaultSearchLimit?: number;
@@ -60,6 +90,13 @@ export interface NotesMcpServerOptions {
    * assert the atomic `wx` write refuses to clobber it.
    */
   readonly probeExists?: (absolutePath: string) => Promise<boolean>;
+  /**
+   * When set, a `save` that CREATES a new note (not an overwrite of an existing
+   * one) also mirrors it into Apple Notes (injected — see {@link NoteMirror}).
+   * Omitted ⇒ no mirror, behaviour unchanged. Create-only: append / delete /
+   * overwrite-in-place never fire it.
+   */
+  readonly mirror?: NoteMirror;
 }
 
 interface NotesPathSafe {
@@ -381,10 +418,28 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
             }
             return { error: `cannot write note: ${error instanceof Error ? error.message : String(error)}` };
           }
+          // Best-effort Apple-Notes mirror. Create-only: fires ONLY when this
+          // write brought a NEW note file into being (`!exists`), never on an
+          // overwrite-in-place (that is an edit, and the mirror is one-way). It
+          // runs strictly after the note is persisted and can NEVER fail the
+          // Muse write — a failure surfaces as a visible `mirrorNote`, nothing
+          // more. The Muse-side file is already written and is left untouched.
+          let mirrorNote: string | undefined;
+          if (options.mirror && !exists) {
+            try {
+              const outcome = await options.mirror({ body: content, title: deriveMirrorNoteTitle(safe.relative, content) });
+              if (outcome.warning) {
+                mirrorNote = outcome.warning;
+              }
+            } catch (error) {
+              mirrorNote = `Apple Notes mirror failed: ${error instanceof Error ? error.message : String(error)}`;
+            }
+          }
           return {
             created: !exists,
             path: safe.relative,
-            sizeBytes: Buffer.byteLength(content, "utf8")
+            sizeBytes: Buffer.byteLength(content, "utf8"),
+            ...(mirrorNote ? { mirrorNote } : {})
           } satisfies JsonObject;
         },
         inputSchema: {
