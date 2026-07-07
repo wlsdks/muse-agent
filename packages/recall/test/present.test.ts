@@ -316,24 +316,25 @@ describe("recentFeedHeadlines", () => {
   });
 });
 
-describe("corroborationReceiptLine — POSITIVE cross-source signal (the local-first hedge against GROUNDED≠TRUE)", () => {
-  it("fires only when ≥2 INDEPENDENT sources back the answer (quorum)", () => {
+describe("corroborationReceiptLine — always-VISIBLE corroboration posture (the local-first hedge against GROUNDED≠TRUE)", () => {
+  it("fires 'corroborated' when ≥2 INDEPENDENT sources back the answer (quorum)", () => {
     expect(corroborationReceiptLine(["a.md", "b.md"])).toContain("corroborated by 2 independent sources");
     expect(corroborationReceiptLine(["a.md", "b.md", "c.md"])).toContain("corroborated by 3 independent sources");
   });
 
-  it("stays SILENT for a single source — never penalizes a legitimately single-source fact", () => {
-    expect(corroborationReceiptLine(["a.md"])).toBe("");
+  it("states the single source PLAINLY instead of staying silent — never penalizes it, but never hides the posture either", () => {
+    expect(corroborationReceiptLine(["a.md"])).toBe("\n· single source: a.md");
     expect(corroborationReceiptLine([])).toBe("");
   });
 
-  it("dedupes — two chunks from the SAME file are ONE witness, not corroboration", () => {
-    expect(corroborationReceiptLine(["a.md", "a.md"])).toBe("");
-    expect(corroborationReceiptLine(["a.md", " a.md "])).toBe(""); // whitespace-normalized
+  it("dedupes — two chunks from the SAME file are ONE witness, not corroboration (still reported as single-source)", () => {
+    expect(corroborationReceiptLine(["a.md", "a.md"])).toBe("\n· single source: a.md");
+    expect(corroborationReceiptLine(["a.md", " a.md "])).toBe("\n· single source: a.md"); // whitespace-normalized
   });
 
-  it("Korean variant when requested", () => {
+  it("Korean variant when requested (both postures)", () => {
     expect(corroborationReceiptLine(["a.md", "b.md"], true)).toContain("독립된 출처 2곳");
+    expect(corroborationReceiptLine(["a.md"], true)).toBe("\n· 단일 출처: a.md");
   });
 
   it("the ask wedge receipt (formatSourceReceipts) surfaces corroboration when the answer cites 2 notes", () => {
@@ -345,9 +346,10 @@ describe("corroborationReceiptLine — POSITIVE cross-source signal (the local-f
     expect(out).toContain("corroborated by 2 independent sources");
   });
 
-  it("the ask wedge stays silent on a single-note answer (no false corroboration)", () => {
+  it("the ask wedge states single-source PLAINLY on a single-note answer (no false corroboration, but no silence either)", () => {
     const chunks = [{ file: "vpn.md", text: "WireGuard uses 1420 MTU on most links." }];
     const out = formatSourceReceipts("MTU is 1420 [from vpn.md].", "/notes", chunks, "mtu") ?? "";
     expect(out).not.toContain("corroborated");
+    expect(out).toContain("single source: vpn.md");
   });
 });

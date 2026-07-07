@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 
-import { citedSourcesIn, cosineSimilarity, independentWitnessCount, lexicalOverlap, lexicalTokens, neutralizeInjectionSpans, quorumVerdict, type ContradictionPair } from "@muse/agent-core";
+import { citedSourcesIn, cosineSimilarity, lexicalOverlap, lexicalTokens, neutralizeInjectionSpans, quorumVerdict, type ContradictionPair } from "@muse/agent-core";
 import { escapeSystemPromptMarkers } from "./prompt-escape.js";
 import type { BrowsingVisit } from "./browsing-store.js";
 import { formatDueLocal } from "@muse/mcp-shared";
@@ -323,21 +323,34 @@ export function formatSourceReceipts(
 }
 
 /**
- * A POSITIVE corroboration signal (the realistic, local-first answer to GROUNDED≠TRUE):
- * the grounding gate proves a claim MATCHES its cited source, never that the source is
- * TRUE — but a claim independently backed by ≥2 distinct sources is harder for a single
- * poisoned/stale note to fake than a single-source one. So when an answer rests on a
- * quorum of independent witnesses, say so honestly ("shows its work"). Default-on and
- * non-noisy: it fires ONLY on the multi-source minority — it never penalizes a
- * legitimately single-source personal fact (that stays an opt-in hedge), only rewards
- * corroboration. Pure. `sources` need not be pre-deduped (witness count dedupes).
+ * An always-VISIBLE corroboration POSTURE (the realistic, local-first answer to
+ * GROUNDED≠TRUE): the grounding gate proves a claim MATCHES its cited source,
+ * never that the source is TRUE — but a claim independently backed by ≥2
+ * distinct sources is harder for a single poisoned/stale note to fake than a
+ * single-source one. So the receipt always states which posture the answer is
+ * in — "shows its work" applies to the EVIDENCE COUNT too, not just the citation
+ * itself: `✓ corroborated by N sources` for a quorum of witnesses, or `single
+ * source: <name>` when exactly one grounds it. Deliberately NOT a hard gate —
+ * most personal facts genuinely live in exactly ONE note (your rent is in
+ * lease.md and nowhere else), so silently staying quiet on a single source would
+ * hide the very distinction this line exists to make; a quorum default-on REFUSAL
+ * would instead manufacture false friction on that majority case (`quorum.ts`).
+ * Pure. `sources` need not be pre-deduped (witness count dedupes).
  */
 export function corroborationReceiptLine(sources: readonly string[], korean = false): string {
-  const witnesses = independentWitnessCount(sources);
-  if (quorumVerdict(witnesses) !== "corroborated") return "";
-  return korean
-    ? `\n✓ 독립된 출처 ${witnesses.toString()}곳이 같은 답을 뒷받침해요.`
-    : `\n✓ corroborated by ${witnesses.toString()} independent sources.`;
+  const distinct = [...new Set(sources.map((s) => s.trim()).filter((s) => s.length > 0))];
+  const witnesses = distinct.length;
+  const verdict = quorumVerdict(witnesses);
+  if (verdict === "corroborated") {
+    return korean
+      ? `\n✓ 독립된 출처 ${witnesses.toString()}곳이 같은 답을 뒷받침해요.`
+      : `\n✓ corroborated by ${witnesses.toString()} independent sources.`;
+  }
+  if (verdict === "single") {
+    const only = distinct[0] ?? "";
+    return korean ? `\n· 단일 출처: ${only}` : `\n· single source: ${only}`;
+  }
+  return "";
 }
 
 /** Coarse PAST age for a staleness hint — "9d ago" / "3w ago" / "8mo ago" / "2y ago". Pure. */

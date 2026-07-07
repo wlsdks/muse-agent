@@ -365,9 +365,9 @@ describe("groundingReceipt (source quoted)", () => {
     // distinctive token) and the below-threshold note are excluded.
     expect(groundedNoteSources(matches, "비밀번호는 muse2026 입니다.")).toEqual(["seoul_office.md"]);
   });
-  it("appends a 📎 receipt to a grounded answer (Korean)", () => {
+  it("appends a 📎 receipt to a grounded answer (Korean) — plus the always-visible single-source posture line", () => {
     expect(withGroundingReceipt("비밀번호는 muse2026 입니다.", ["seoul_office.md"], true))
-      .toBe("비밀번호는 muse2026 입니다.\n\n📎 노트: seoul_office.md");
+      .toBe("비밀번호는 muse2026 입니다.\n\n📎 노트: seoul_office.md\n· 단일 출처: seoul_office.md");
   });
   it("does NOT receipt an abstention or a source-less answer", () => {
     expect(withGroundingReceipt(chatAbstention("내 생일?"), ["x.md"], true)).toBe(chatAbstention("내 생일?"));
@@ -714,8 +714,10 @@ describe("withGroundingReceipt — default-on corroboration parity with the ask 
     const out = withGroundingReceipt("MTU is 1420.", ["vpn.md", "net.md"], false, {});
     expect(out).toContain("corroborated by 2 independent sources");
   });
-  it("stays silent on a single-note answer (no false corroboration, no opt-in needed)", () => {
-    expect(withGroundingReceipt("MTU is 1420.", ["vpn.md"], false, {})).not.toContain("corroborated");
+  it("states single-source PLAINLY on a single-note answer (no false corroboration, no silence either)", () => {
+    const out = withGroundingReceipt("MTU is 1420.", ["vpn.md"], false, {});
+    expect(out).not.toContain("corroborated");
+    expect(out).toContain("single source: vpn.md");
   });
   it("Korean answer gets the Korean corroboration line", () => {
     expect(withGroundingReceipt("MTU는 1420이에요.", ["vpn.md", "net.md"], true, {})).toContain("독립된 출처 2곳");
