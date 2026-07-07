@@ -8,6 +8,30 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.19] - 2026-07-08
+
+The bluebird takes over every surface — and fixed a real chat bug on
+the way. Early / experimental, macOS only.
+
+### Added
+
+- **The mascot is everywhere now.** The README opens with an animated
+  bluebird (a self-contained SVG generated from the same pixel data —
+  it blinks and tilts right on GitHub), and `muse logo` plus the chat
+  banner render the bird in the terminal with true-color half-blocks
+  (it even blinks once; NO_COLOR gets a clean text fallback). One
+  canonical pixel source (`@muse/mascot`) feeds every surface, with a
+  drift guard so the app's copy can never silently diverge. The old
+  goddess artwork is retired.
+
+### Fixed
+
+- **Chat's message list now actually scrolls.** A broken CSS height
+  chain meant the chat scroller never scrolled (the whole page moved
+  instead) — found while investigating the mascot's clipped head,
+  which is also fixed: the bird and its chirp/zzz/heart overlays now
+  always have headroom above the input.
+
 ## [0.2.18] - 2026-07-07
 
 Muse has a face now — meet the bluebird. Plus focused compaction, a
