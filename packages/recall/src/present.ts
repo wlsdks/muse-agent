@@ -26,6 +26,75 @@ export function recentFeedHeadlines(
     .slice(0, limit);
 }
 
+interface FeedHeadline {
+  feedName: string;
+  title: string;
+  publishedAt: string;
+  summary: string;
+}
+
+/** Feeds embed titles only, same model + prefixes as browsing, so the SAME cross-lingual floor (0.18) separates real KO↔EN matches from noise. */
+const FEED_COSINE_FLOOR = 0.18;
+
+function feedHeadlineKey(h: { feedName: string; title: string; publishedAt: string }): string {
+  return `${h.feedName}\u0000${h.title}\u0000${h.publishedAt}`;
+}
+
+/**
+ * Feed headlines for the ask grounding block: the recency window (today's base
+ * behaviour, always first) UNION a query-relevant rescue arm that surfaces
+ * OLDER-than-window entries matching the query.
+ *
+ * The rescue arm fires ONLY when `queryEmbedding` is supplied (i.e. the archive
+ * holds embedded entries) — so with no embeddings this is BYTE-IDENTICAL to
+ * `recentFeedHeadlines` (regression-pinned). When it fires: lexical overlap on
+ * title+summary (Korean-safe via `lexicalTokens`) UNION a cross-lingual cosine
+ * arm (a KO query → an EN headline the lexical arm can't reach). Lexical hits
+ * rank above semantic-only; rescues are deduped against the recency base and
+ * capped at `queryLimit`. Pure (no IO, no Date.now).
+ */
+export function selectFeedHeadlinesForQuery(
+  feeds: ReadonlyArray<{ readonly name: string; readonly entries: ReadonlyArray<{ readonly title: string; readonly publishedAt: string; readonly summary: string; readonly embedding?: readonly number[] }> }>,
+  query: string,
+  recencyLimit: number,
+  queryEmbedding?: readonly number[],
+  queryLimit = 6
+): FeedHeadline[] {
+  const base = recentFeedHeadlines(feeds, recencyLimit);
+  if (!queryEmbedding || queryLimit <= 0) {
+    return base;
+  }
+  const queryTokens = lexicalTokens(query);
+  const scored = feeds
+    .flatMap((feed) => feed.entries.map((e) => ({ e, feed })))
+    .map(({ e, feed }) => {
+      const overlap = queryTokens.size > 0 ? lexicalOverlap(queryTokens, `${e.title} ${e.summary}`) : 0;
+      const cosine = e.embedding && e.embedding.length > 0 ? cosineSimilarity(queryEmbedding, e.embedding) : 0;
+      return { cosine, e, feed, overlap };
+    })
+    .filter((s) => s.overlap > 0 || s.cosine >= FEED_COSINE_FLOOR);
+  scored.sort((a, b) => {
+    const aLex = a.overlap > 0 ? 1 : 0;
+    const bLex = b.overlap > 0 ? 1 : 0;
+    if (aLex !== bLex) {
+      return bLex - aLex;
+    }
+    const recency = (Date.parse(b.e.publishedAt) || 0) - (Date.parse(a.e.publishedAt) || 0);
+    return aLex === 1 ? b.overlap - a.overlap || recency : b.cosine - a.cosine || recency;
+  });
+  const seen = new Set(base.map(feedHeadlineKey));
+  const rescues: FeedHeadline[] = [];
+  for (const s of scored) {
+    const h: FeedHeadline = { feedName: s.feed.name, publishedAt: s.e.publishedAt, summary: s.e.summary, title: s.e.title };
+    const key = feedHeadlineKey(h);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rescues.push(h);
+    if (rescues.length >= queryLimit) break;
+  }
+  return [...base, ...rescues];
+}
+
 /**
  * The registrable hostname a browsing visit is grounded/cited by —
  * `https://news.ycombinator.com/item?id=1` → `news.ycombinator.com`, leading

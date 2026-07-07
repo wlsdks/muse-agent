@@ -21,11 +21,14 @@ import { formatErrorForTerminal, stripUntrustedTerminalChars } from "@muse/share
 import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
+import { defaultEmbedModel } from "./council-corpus.js";
+import { embed } from "./embed.js";
 import { collapseNearDuplicates } from "./feed-dedupe.js";
 import { pluralize } from "./pluralize.js";
 import {
   compareFeedEntriesNewestFirst,
   defaultFeedsFile,
+  embedFeedEntries,
   filterRecentFeedEntries,
   mergeFeedEntries,
   parseFeedBody,
@@ -36,6 +39,15 @@ import {
   type FeedsStore
 } from "./feeds-store.js";
 import type { ProgramIO } from "./program.js";
+
+/**
+ * The localhost embedder for feed titles (`search_document:`-prefixed). Wired
+ * into every ingest path (add + refresh) so a KO query can later reach an EN
+ * headline; per-entry fail-soft (Ollama down ⇒ entries still ingest, unembedded).
+ */
+function feedTitleEmbedder(): (text: string) => Promise<readonly number[]> {
+  return (text) => embed(text, defaultEmbedModel(process.env));
+}
 
 /**
  * Fetch the feed body. Supports `file://` so the
@@ -222,13 +234,22 @@ export function parseFeedSearchLimit(raw: string | undefined, fallback: number, 
   return Math.min(cap, Math.trunc(parsed));
 }
 
-async function refreshSingleFeed(record: FeedRecord, io: ProgramIO): Promise<{ readonly record: FeedRecord; readonly ok: boolean }> {
+async function refreshSingleFeed(
+  record: FeedRecord,
+  io: ProgramIO,
+  embedFn?: (text: string) => Promise<readonly number[]>
+): Promise<{ readonly record: FeedRecord; readonly ok: boolean }> {
   try {
     const body = await loadFeedBody(record.url);
     const incoming = parseFeedBody(body);
     // Merge with the on-disk archive so entries that rolled off
-    // the publisher's window survive locally (deduped, capped).
-    const entries = mergeFeedEntries(record.entries, incoming);
+    // the publisher's window survive locally (deduped, capped). The
+    // merge carries forward stored title embeddings across a same-title
+    // republish, so a refresh never wipes them.
+    const merged = mergeFeedEntries(record.entries, incoming);
+    const entries = embedFn
+      ? await embedFeedEntries(merged, embedFn, { incomingIds: new Set(incoming.map((e) => e.id)) })
+      : merged;
     return { ok: true, record: { ...record, lastFetchedAt: new Date().toISOString(), entries } };
   } catch (cause) {
     io.stderr(`  ${record.id}: ${formatErrorForTerminal(cause)}\n`);
@@ -272,7 +293,11 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
       let entries: readonly FeedEntry[];
       try {
         const body = await loadFeedBody(trimmedUrl);
-        entries = parseFeedBody(body);
+        const parsed = parseFeedBody(body);
+        // Embed titles on add so cross-lingual recall works immediately;
+        // per-entry fail-soft (Ollama down ⇒ entries added unembedded, backfilled
+        // on a later refresh).
+        entries = await embedFeedEntries(parsed, feedTitleEmbedder(), { incomingIds: new Set(parsed.map((e) => e.id)) });
       } catch (cause) {
         io.stderr(`muse feeds add: initial fetch failed: ${formatErrorForTerminal(cause)}\n`);
         process.exitCode = 1;
@@ -365,9 +390,10 @@ export function registerFeedsCommand(program: Command, io: ProgramIO): void {
       }
       const refreshed: FeedRecord[] = [];
       let succeeded = 0;
+      const embedFn = feedTitleEmbedder();
       for (const feed of store.feeds) {
         if (targets.includes(feed)) {
-          const result = await refreshSingleFeed(feed, io);
+          const result = await refreshSingleFeed(feed, io, embedFn);
           refreshed.push(result.record);
           if (result.ok) succeeded += 1;
         } else {

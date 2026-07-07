@@ -7,9 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   FEEDS_STORE_SCHEMA_VERSION,
+  FEED_BACKFILL_CAP,
   compareFeedEntriesNewestFirst,
+  embedFeedEntries,
+  feedDocEmbedText,
+  feedQueryEmbedText,
+  mergeFeedEntries,
   parseFeedBody,
-  readFeedsStore
+  readFeedsStore,
+  writeFeedsStore,
+  type FeedEntry
 } from "./feeds-store.js";
 
 describe("parseFeedBody — RSS 2.0", () => {
@@ -257,6 +264,143 @@ describe("readFeedsStore — version-mismatch backup (DS-20: a schema bump must 
     const renameSpy = vi.spyOn(fsPromises, "rename").mockRejectedValueOnce(new Error("EACCES: permission denied"));
     await expect(readFeedsStore(file)).resolves.toEqual({ version: FEEDS_STORE_SCHEMA_VERSION, feeds: [] });
     expect(renameSpy).toHaveBeenCalled();
+  });
+});
+
+describe("mergeFeedEntries — embedding carry-forward across refresh (the critical feeds delta)", () => {
+  const entry = (id: string, title: string, embedding?: readonly number[]): FeedEntry => ({
+    id, title, link: `https://x/${id}`, publishedAt: "2026-05-20T00:00:00Z", summary: `s-${id}`,
+    ...(embedding ? { embedding } : {})
+  });
+
+  it("PRESERVES the stored embedding when a refresh re-fetches the SAME id with an UNCHANGED title (incoming has none)", () => {
+    const prev = [entry("e1", "Rust 2.0 released", [0.1, 0.2, 0.3])];
+    const incoming = [entry("e1", "Rust 2.0 released")]; // fresh parse — never carries an embedding
+    const merged = mergeFeedEntries(prev, incoming);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.embedding, "carried forward, not wiped by the republish").toEqual([0.1, 0.2, 0.3]);
+  });
+
+  it("DROPS the stale embedding when the republished title CHANGED (so backfill re-embeds the new title)", () => {
+    const prev = [entry("e1", "Old title", [0.1, 0.2, 0.3])];
+    const incoming = [entry("e1", "New corrected title")];
+    const merged = mergeFeedEntries(prev, incoming);
+    expect(merged[0]!.title, "incoming content wins").toBe("New corrected title");
+    expect(merged[0]!.embedding, "title changed ⇒ old title-embedding is stale, dropped").toBeUndefined();
+  });
+
+  it("incoming's OWN embedding wins when present (a pre-embedded republish)", () => {
+    const prev = [entry("e1", "T", [0.1, 0.2, 0.3])];
+    const incoming = [entry("e1", "T", [0.9, 0.9, 0.9])];
+    expect(mergeFeedEntries(prev, incoming)[0]!.embedding).toEqual([0.9, 0.9, 0.9]);
+  });
+
+  it("a brand-new incoming entry with no embedding is stored unembedded (no false carry-forward)", () => {
+    expect(mergeFeedEntries([], [entry("new", "fresh")])[0]!.embedding).toBeUndefined();
+  });
+
+  it("repeated same-id/same-title refreshes keep the embedding stable (regression: not wiped on EVERY refresh)", () => {
+    let carried: readonly FeedEntry[] = [entry("e1", "Stable headline", [0.5, 0.6, 0.7])];
+    for (let i = 0; i < 5; i += 1) {
+      carried = mergeFeedEntries(carried, [entry("e1", "Stable headline")]);
+    }
+    expect(carried[0]!.embedding).toEqual([0.5, 0.6, 0.7]);
+  });
+});
+
+describe("embedFeedEntries — bounded, fail-soft embed pass", () => {
+  const mk = (id: string, embedding?: readonly number[]): FeedEntry => ({
+    id, title: `t-${id}`, link: `https://x/${id}`, publishedAt: "2026-05-19T00:00:00Z", summary: "",
+    ...(embedding ? { embedding } : {})
+  });
+  const embed = async (): Promise<readonly number[]> => [1, 2, 3];
+
+  it("embeds all NEW (incoming) entries, and bounds backfill of old ones at the cap", async () => {
+    const entries = [mk("new1"), mk("old1"), mk("old2"), mk("old3")];
+    const out = await embedFeedEntries(entries, embed, { incomingIds: new Set(["new1"]), backfillCap: 1 });
+    expect(out.find((e) => e.id === "new1")!.embedding).toEqual([1, 2, 3]);
+    const backfilled = out.filter((e) => e.id.startsWith("old") && e.embedding !== undefined);
+    expect(backfilled).toHaveLength(1);
+  });
+
+  it("passes the search_document-prefixed TITLE to the embedder", async () => {
+    const seen: string[] = [];
+    const capture = async (text: string): Promise<readonly number[]> => { seen.push(text); return [0.1]; };
+    await embedFeedEntries([mk("a")], capture, { incomingIds: new Set(["a"]) });
+    expect(seen).toEqual(["search_document: t-a"]);
+  });
+
+  it("rounds each embedding component to 5 significant digits on store", async () => {
+    const precise = async (): Promise<readonly number[]> => [0.123456789, 0.987654321];
+    const out = await embedFeedEntries([mk("a")], precise, { incomingIds: new Set(["a"]) });
+    expect(out[0]!.embedding).toEqual([0.12346, 0.98765]);
+  });
+
+  it("skips an entry that already has an embedding (no re-embed)", async () => {
+    let calls = 0;
+    const counting = async (): Promise<readonly number[]> => { calls += 1; return [9]; };
+    const out = await embedFeedEntries([mk("has", [0.5])], counting, { incomingIds: new Set() });
+    expect(calls).toBe(0);
+    expect(out[0]!.embedding).toEqual([0.5]);
+  });
+
+  it("is fail-soft per entry: an embed error keeps the entry without an embedding", async () => {
+    const throwing = async (): Promise<readonly number[]> => { throw new Error("boom"); };
+    const out = await embedFeedEntries([mk("a")], throwing, { incomingIds: new Set(["a"]) });
+    expect(out).toHaveLength(1);
+    expect(out[0]!.embedding).toBeUndefined();
+  });
+
+  it("defaults backfillCap to FEED_BACKFILL_CAP", () => {
+    expect(FEED_BACKFILL_CAP).toBe(200);
+  });
+});
+
+describe("feed embed prefixes — task-prefixed nomic-embed-text-v2-moe convention", () => {
+  it("doc side is search_document:-prefixed on the TITLE", () => {
+    expect(feedDocEmbedText({ title: "Rust 2.0 released" })).toBe("search_document: Rust 2.0 released");
+  });
+  it("query side is search_query:-prefixed (identical string to browsing's, so ONE embed is shared)", () => {
+    expect(feedQueryEmbedText("지난주 러스트 소식")).toBe("search_query: 지난주 러스트 소식");
+  });
+});
+
+describe("readFeedsStore — embedding round-trip + tolerant embedding read", () => {
+  let dir: string;
+  let file: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "muse-feeds-embed-test-"));
+    file = join(dir, "feeds.json");
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("round-trips a valid entry embedding through write → read", async () => {
+    await writeFeedsStore(file, {
+      version: FEEDS_STORE_SCHEMA_VERSION,
+      feeds: [{ id: "f", url: "https://f/rss", name: "F", entries: [
+        { id: "e1", title: "T", link: "L", publishedAt: "2026-05-21T09:00:00Z", summary: "S", embedding: [0.1, 0.2, 0.3] }
+      ] }]
+    });
+    const store = await readFeedsStore(file);
+    expect(store.feeds[0]!.entries[0]!.embedding).toEqual([0.1, 0.2, 0.3]);
+  });
+
+  it("strips a MALFORMED embedding without dropping the entry", async () => {
+    await writeFile(file, JSON.stringify({
+      version: FEEDS_STORE_SCHEMA_VERSION,
+      feeds: [{ id: "f", url: "https://f/rss", name: "F", entries: [
+        { id: "bad-type", title: "T1", link: "L", publishedAt: "d", summary: "s", embedding: "not-an-array" },
+        { id: "empty", title: "T2", link: "L", publishedAt: "d", summary: "s", embedding: [] },
+        { id: "nan", title: "T3", link: "L", publishedAt: "d", summary: "s", embedding: [0.1, null] }
+      ] }]
+    }));
+    const store = await readFeedsStore(file);
+    const entries = store.feeds[0]!.entries;
+    expect(entries).toHaveLength(3); // entries kept
+    expect(entries.every((e) => e.embedding === undefined)).toBe(true); // malformed embeddings stripped
+    expect(entries.map((e) => e.title)).toEqual(["T1", "T2", "T3"]);
   });
 });
 

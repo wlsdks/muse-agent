@@ -3,6 +3,8 @@ export {
   FEEDS_STORE_SCHEMA_VERSION,
   compareFeedEntriesNewestFirst,
   defaultFeedsFile,
+  embedFeedEntries,
+  feedDocEmbedText,
   filterRecentFeedEntries,
   mergeFeedEntries,
   parseFeedBody,

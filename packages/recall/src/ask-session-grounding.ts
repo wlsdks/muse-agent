@@ -8,14 +8,14 @@
  * the trust signals, and the run-log.
  */
 
-import { buildBrowsingContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, recentFeedHeadlines, selectBrowsingVisitsForQuery, type BrowsingHit } from "./present.js";
+import { buildBrowsingContextBlock, buildEpisodeContextBlock, buildFeedContextBlock, selectBrowsingVisitsForQuery, selectFeedHeadlinesForQuery, type BrowsingHit } from "./present.js";
 import { rankEpisodeHits } from "./select.js";
 import { readEpisodes, readReflections, selectReflectionsForRecall } from "@muse/stores";
 
 import { filterLiveEpisodeEntries } from "./live-files.js";
 import { buildEpisodeIndex, defaultEpisodeIndexFile, episodeIndexStale, loadEpisodeIndex, saveEpisodeIndex } from "./episode-index.js";
-import { defaultFeedsFile, readFeedsStore } from "./feeds-store.js";
-import { browsingQueryEmbedText, readBrowsingStore } from "./browsing-store.js";
+import { defaultFeedsFile, readFeedsStore, type FeedRecord } from "./feeds-store.js";
+import { browsingQueryEmbedText, readBrowsingStore, type BrowsingVisit } from "./browsing-store.js";
 
 export interface SessionFeedReflectionGrounding {
   readonly episodeHits: Array<{ id: string; summary: string; score: number }>;
@@ -100,39 +100,55 @@ export async function buildSessionFeedReflectionGrounding(params: {
   }
   const episodeBlock = buildEpisodeContextBlock(episodeHits);
 
-  // SB-1/G2: recent watched-feed headlines as world-state knowledge. Time-ordered
-  // (not embedded); capped to keep the prompt tight. Optional + fail-soft.
-  let feedHeadlines: Array<{ feedName: string; title: string; publishedAt: string; summary: string }> = [];
+  // SB-1/G2 + Stage 4: watched-feed headlines AND the LOCAL Chrome browsing archive
+  // both get a cross-lingual query-relevant arm. Read both stores up front so a
+  // SINGLE `search_query:`-prefixed query embed serves BOTH (feeds' rescue arm and
+  // browsing's cross-lingual arm use the SAME vector — never embed the query twice;
+  // both prefix functions produce the identical string). The vec fires ONLY when at
+  // least one archive holds embedded entries (the notes `queryVec` is the unprefixed
+  // RAG space — unusable here), and falls back to each surface's lexical/recency base
+  // when the embedder is down. Every read is optional + fail-soft.
+  let feeds: readonly FeedRecord[] = [];
   try {
-    const store = await readFeedsStore(defaultFeedsFile());
-    feedHeadlines = recentFeedHeadlines(store.feeds, 8);
+    feeds = (await readFeedsStore(defaultFeedsFile())).feeds;
   } catch {
     // feeds store missing / unreadable — grounding still works
   }
-  const feedBlock = buildFeedContextBlock(feedHeadlines);
-
-  // Stage 2/3b: the user's LOCAL Chrome browsing history ("that rust blog I read last
-  // week"). Unlike feeds (pure recency), the archive can hold thousands of visits, so
-  // selection is query-relevant: lexical overlap (Korean-safe) UNIONed with a
-  // cross-lingual cosine arm when titles were embedded at sync time — so a KO query
-  // reaches an EN-titled page. The query embed is PREFIXED (`search_query:`) and fires
-  // ONLY when the archive actually holds embedded visits (the notes `queryVec` is the
-  // unprefixed RAG space — unusable here — so this mirrors the memory/action rescue's
-  // fresh prefixed embed), fail-soft to lexical-only. Optional + fail-soft throughout.
-  let browsingHits: BrowsingHit[] = [];
+  let visits: readonly BrowsingVisit[] = [];
   try {
-    const store = await readBrowsingStore(browsingFile);
-    let browsingQueryVec: readonly number[] | undefined;
-    if (store.visits.some((v) => v.embedding && v.embedding.length > 0)) {
-      try {
-        browsingQueryVec = await embedFn(browsingQueryEmbedText(queryText), embedModel);
-      } catch {
-        // embedder down — cross-lingual arm off, lexical selection still runs
-      }
-    }
-    browsingHits = selectBrowsingVisitsForQuery(store.visits, queryText, 6, browsingQueryVec);
+    visits = (await readBrowsingStore(browsingFile)).visits;
   } catch {
     // browsing store missing / unreadable — grounding still works
+  }
+
+  let crossLingualQueryVec: readonly number[] | undefined;
+  const anyEmbedded =
+    feeds.some((f) => f.entries.some((e) => e.embedding && e.embedding.length > 0)) ||
+    visits.some((v) => v.embedding && v.embedding.length > 0);
+  if (anyEmbedded) {
+    try {
+      crossLingualQueryVec = await embedFn(browsingQueryEmbedText(queryText), embedModel);
+    } catch {
+      // embedder down — both cross-lingual arms off, lexical/recency bases still run
+    }
+  }
+
+  // Feeds: recency window (base, always present) UNION query-relevant rescues.
+  let feedHeadlines: Array<{ feedName: string; title: string; publishedAt: string; summary: string }> = [];
+  try {
+    feedHeadlines = selectFeedHeadlinesForQuery(feeds, queryText, 8, crossLingualQueryVec);
+  } catch {
+    // selection failed — grounding still works
+  }
+  const feedBlock = buildFeedContextBlock(feedHeadlines);
+
+  // Browsing: "that rust blog I read last week" — lexical (Korean-safe) UNION the
+  // cross-lingual cosine arm so a KO query reaches an EN-titled page.
+  let browsingHits: BrowsingHit[] = [];
+  try {
+    browsingHits = selectBrowsingVisitsForQuery(visits, queryText, 6, crossLingualQueryVec);
+  } catch {
+    // selection failed — grounding still works
   }
   const browsingBlock = buildBrowsingContextBlock(browsingHits);
 

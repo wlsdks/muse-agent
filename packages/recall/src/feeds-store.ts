@@ -20,6 +20,7 @@ import { homedir } from "node:os";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 import { XMLParser } from "fast-xml-parser";
 
+import { roundVectorForStore } from "./browsing-store.js";
 import { backupVersionMismatchedStore } from "./store-version-backup.js";
 
 export const FEEDS_STORE_SCHEMA_VERSION = 1;
@@ -30,6 +31,28 @@ export interface FeedEntry {
   readonly link: string;
   readonly publishedAt: string;
   readonly summary: string;
+  /**
+   * OPTIONAL title embedding (nomic-embed-text-v2-moe, 768-dim), computed at
+   * refresh/add time so a KO query can reach an EN headline the same way browsing
+   * does. Additive + backward-compatible: the schema stays v1, a pre-embed entry
+   * simply lacks it and stays lexically matchable. TITLE ONLY (parity with the
+   * browsing choice — summaries are long/HTML-ish and would dilute the vector).
+   */
+  readonly embedding?: readonly number[];
+}
+
+/**
+ * nomic-embed-text-v2-moe is task-prefixed: the STORED headline is the
+ * `search_document:` side and the query the `search_query:` side. Identical
+ * convention to `browsingDocEmbedText`/`browsingQueryEmbedText` (same model, same
+ * cross-lingual floor), so the query embed is SHARED with browsing (one call).
+ */
+export function feedDocEmbedText(entry: Pick<FeedEntry, "title">): string {
+  return `search_document: ${entry.title}`;
+}
+
+export function feedQueryEmbedText(query: string): string {
+  return `search_query: ${query}`;
 }
 
 export interface FeedRecord {
@@ -82,8 +105,28 @@ function normalizeFeedRecord(raw: FeedRecord): FeedRecord {
   return {
     ...raw,
     name: typeof raw.name === "string" && raw.name.length > 0 ? raw.name : raw.id,
-    entries: Array.isArray(raw.entries) ? raw.entries : []
+    entries: Array.isArray(raw.entries) ? raw.entries.map(normalizeFeedEntry) : []
   };
+}
+
+/**
+ * Tolerate BOTH entry shapes on read: an entry with a valid embedding keeps it; a
+ * pre-embed entry (no `embedding` key) passes through verbatim; a MALFORMED
+ * embedding (non-array / empty / non-finite) is stripped WITHOUT dropping the
+ * entry — it just falls back to lexical/recency matching. Mirrors the browsing
+ * store's tolerant read.
+ */
+function normalizeFeedEntry(entry: FeedEntry): FeedEntry {
+  if (!entry || typeof entry !== "object") return entry;
+  const e = entry as FeedEntry & { embedding?: unknown };
+  if (!("embedding" in e)) return entry;
+  const valid =
+    Array.isArray(e.embedding) &&
+    e.embedding.length > 0 &&
+    e.embedding.every((n) => typeof n === "number" && Number.isFinite(n));
+  if (valid) return entry;
+  const { embedding: _drop, ...rest } = e;
+  return rest as FeedEntry;
 }
 
 export async function writeFeedsStore(file: string, store: FeedsStore): Promise<void> {
@@ -241,11 +284,19 @@ export const DEFAULT_FEED_ENTRIES_CAP = 200;
  * expose only the most recent N items, so without a merge the local
  * store would forget anything older than the publisher's window.
  *
- * Dedup key is `entry.id` — incoming wins (publishers occasionally
- * republish with updated title / summary). Sort is newest-first by
- * `publishedAt` (parseable ISO); entries with missing / unparseable
- * dates sort to the tail in input order. Final list is sliced to
- * `cap` (default {@link DEFAULT_FEED_ENTRIES_CAP}).
+ * Dedup key is `entry.id` — incoming wins on the CONTENT fields
+ * (publishers occasionally republish with an updated title / summary).
+ * Sort is newest-first by `publishedAt` (parseable ISO); entries with
+ * missing / unparseable dates sort to the tail in input order. Final
+ * list is sliced to `cap` (default {@link DEFAULT_FEED_ENTRIES_CAP}).
+ *
+ * EMBEDDING CARRY-FORWARD (why feeds differ from browsing): every refresh
+ * re-fetches the SAME ids with a freshly-parsed entry that has NO embedding,
+ * so a blind "incoming wins" would wipe the stored embedding on EVERY refresh.
+ * So when incoming and stored share an id and incoming lacks an embedding, the
+ * stored embedding is carried forward — but ONLY if the title is unchanged (the
+ * embedding is OF the title). A changed title makes the old embedding stale, so
+ * it is dropped and the next backfill re-embeds the new title.
  *
  * Pure — no IO, no `Date.now()` — so the unit test pins every
  * branch.
@@ -260,7 +311,13 @@ export function mergeFeedEntries(
     if (entry.id) byId.set(entry.id, entry);
   }
   for (const entry of incoming) {
-    if (entry.id) byId.set(entry.id, entry);  // incoming wins on republish
+    if (!entry.id) continue;
+    const stored = byId.get(entry.id);
+    if (stored?.embedding && !entry.embedding && stored.title === entry.title) {
+      byId.set(entry.id, { ...entry, embedding: stored.embedding });
+    } else {
+      byId.set(entry.id, entry);  // incoming wins on republish (stale/absent embedding dropped)
+    }
   }
   const merged = [...byId.values()].sort(compareFeedEntriesNewestFirst);
   const effectiveCap = Number.isFinite(cap) && cap > 0
@@ -307,4 +364,48 @@ export function filterRecentFeedEntries(
     if (!Number.isFinite(t)) return true;
     return t >= cutoff.getTime();
   }).sort(compareFeedEntriesNewestFirst);
+}
+
+/**
+ * Per-run cap on RE-embedding already-stored, not-yet-embedded entries. Fresh
+ * `incomingIds` are ALWAYS embedded; this bounds only the backfill so a pre-embed
+ * archive converges over several refreshes instead of one giant stall. Mirrors
+ * BROWSING_BACKFILL_CAP.
+ */
+export const FEED_BACKFILL_CAP = 200;
+
+/**
+ * Embed the titles of `entries` that lack an embedding. Fresh `incomingIds` are
+ * ALWAYS embedded; older entries consume a bounded `backfillCap` budget. Per-entry
+ * fail-soft: an embed error keeps the entry WITHOUT an embedding (a refresh never
+ * fails because Ollama is down). Pure mechanism — the embedder is injected. Mirrors
+ * `embedBrowsingVisits`.
+ */
+export async function embedFeedEntries(
+  entries: readonly FeedEntry[],
+  embed: (text: string) => Promise<readonly number[]>,
+  opts: { readonly incomingIds: ReadonlySet<string>; readonly backfillCap?: number }
+): Promise<readonly FeedEntry[]> {
+  const backfillCap = opts.backfillCap ?? FEED_BACKFILL_CAP;
+  let backfillUsed = 0;
+  const out: FeedEntry[] = [];
+  for (const entry of entries) {
+    if (entry.embedding && entry.embedding.length > 0) {
+      out.push(entry);
+      continue;
+    }
+    const isNew = opts.incomingIds.has(entry.id);
+    if (!isNew && backfillUsed >= backfillCap) {
+      out.push(entry);
+      continue;
+    }
+    try {
+      const vec = await embed(feedDocEmbedText(entry));
+      out.push({ ...entry, embedding: roundVectorForStore(vec) });
+      if (!isNew) backfillUsed += 1;
+    } catch {
+      out.push(entry); // fail-soft: store without an embedding, never abort the refresh
+    }
+  }
+  return out;
 }
