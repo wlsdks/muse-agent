@@ -54,7 +54,9 @@ const BATTERIES = [
   { axis: "⏰ ACTUATION: task local-time confirmation (no UTC misread)", file: "apps/cli/scripts/verify-task-local-time.mjs", name: "task-local-time" },
   { axis: "⏰ ACTUATION: calendar local-time confirmation (no raw-ISO echo)", file: "apps/cli/scripts/verify-calendar-local-time.mjs", name: "calendar-local-time" },
   { axis: "★ VISION: grounding floor on the image surface (answer visible / abstain on absent)", file: "apps/cli/scripts/verify-vision-grounding.mjs", name: "vision-grounding" },
-  { axis: "★ WEDGE: runGroundedRecall seam (the API-surface pipeline; fabrication stripped IN the seam)", file: "apps/cli/scripts/verify-grounded-recall-seam.mjs", name: "grounded-recall-seam" }
+  { axis: "★ WEDGE: runGroundedRecall seam (the API-surface pipeline; fabrication stripped IN the seam)", file: "apps/cli/scripts/verify-grounded-recall-seam.mjs", name: "grounded-recall-seam" },
+  { axis: "★ WEDGE: browsing cited recall (local history under the citation gate)", file: "apps/cli/scripts/verify-browsing-recall.mjs", name: "browsing-recall" },
+  { axis: "★ WEDGE: cross-lingual feed rescue (KO query → EN headline out of the recency window)", file: "apps/cli/scripts/verify-feed-crosslingual.mjs", name: "feed-crosslingual" }
 ];
 
 async function ollamaReachable() {
