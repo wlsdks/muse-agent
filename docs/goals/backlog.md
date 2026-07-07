@@ -90,7 +90,8 @@ realistic partial hedge. Deeper veracity needs a human/product call, not an auto
 - ✓ (41b03ac8) Stage 2: ask grounded-recall 통합 — 12번째 인용 마커 `[browsing: <hostname>]`(exact-match, false-KEEP 불가), CJK-aware 렉시컬 선택, feeds와 바이트 동일 인젝션 이스케이프, untrustedBrowsingMatch(trusted:false) ask+verdict 양경로, 🌐 영수증. gemma4 라이브 라운드트립 빌더+평가자 이중 검증. groundedSurfaces 플로어 유지(30).
 - ✓ (2d4d490d) Stage 3a: 데몬 opt-in 자동 sync — MUSE_BROWSING_AUTO_SYNC(기본 off), 60분 스로틀, sync 코어 @muse/recall로 추출(커맨드/데몬 공유). consent pin(기본값에서 Chrome 접근 0회, 스파이 seam=프로덕션 경로) 뮤테이션 검증. 독립평가 7/7 PASS.
 - ✓ (39fd8506) Stage 3b: cross-lingual 임베딩 recall — sync 시 타이틀 임베딩(v2-moe, search_query:/search_document: 프리픽스 필수), 하이브리드 선택(렉시컬∪코사인≥0.18), KO질의→EN타이틀 라이브 STABLE 3/3 + negative A/B 증명. merge-clobber 리스크 평가자 조사로 반증(strict cursor + 병합후 재임베딩). fail-soft 전방위.
-- ◦ Stage 4 후보(미착수): feeds도 동일 KO↔EN 한계(recency-only, 미임베딩) — browsing 패턴 이식; browsing.json이 임베딩으로 ~21MB@2000방문 — 커지면 sidecar 분리 검토; verify-browsing 라이브 배터리로 groundedSurfaces 30→31; `--json` grounded 블록 패리티(feeds도 빠짐) ⏳진안 결정; 브라우징 테마 → proactive/recap 연결("요즘 X 많이 보시네요").
+- ✓ (b28511d6) Stage 4: feeds cross-lingual — 인제스트 시 타이틀 임베딩 + recency 베이스 위 rescue 암(렉시컬∪코사인≥0.18, no-vec ⇒ 바이트 동일 회귀핀), 쿼리 임베딩 ask당 1회 feeds/browsing 공유. RSS 특유 merge-clobber(매 refresh 동일 id 재수신 → 임베딩 전멸 위험)를 title-동일 캐리포워드로 해소(5×-refresh 안정성 핀, 뮤테이션 RED 확인). KO질의→윈도우 밖 EN 헤드라인 `[feed:]` 인용 라이브 STABLE 2/2 + negative A/B. 독립평가 8/8 PASS.
+- ◦ Stage 5 후보(미착수): 스토어 sidecar 분리 검토(browsing ~21MB@2000, feeds ~2.1MB/피드 — 커지면); verify-browsing/feeds 라이브 배터리로 groundedSurfaces 30→32; `--json` grounded 블록 패리티(feeds/browsing 둘 다 빠짐) ⏳진안 결정; 브라우징/피드 테마 → proactive/recap 연결("요즘 X 많이 보시네요").
 
 ## ★ 2026-07-03 found-during-DS-7: withFileLock 재시도 경합이 풀 스위트 병렬 부하에서 flaky (pre-existing, DS-3와 무관)
 
