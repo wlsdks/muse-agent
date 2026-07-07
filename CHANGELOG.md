@@ -8,6 +8,22 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.16] - 2026-07-07
+
+Your address book can now feed Muse's memory. Early / experimental,
+macOS only.
+
+### Added
+
+- **`muse contacts import --apple` imports your macOS Contacts** —
+  names, phones, emails, and birthdays (year-less birthdays included) —
+  into Muse's contact store, so birthday briefings, overdue-contact
+  nudges, and "send it to 민수" recipient resolution finally have data
+  to work with. The merge is additive-only: anything you've set by hand
+  (relationships, notes) is never overwritten, and re-running the
+  import converges instead of duplicating. If macOS hasn't granted
+  Contacts access yet, you get a clear instruction instead of a hang.
+
 ## [0.2.15] - 2026-07-07
 
 Korean voice input works out of the (opt-in) box, and "방해금지 켜줘"
