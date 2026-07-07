@@ -199,6 +199,68 @@ describe("enforceAnswerCitations — output-side recall grounding gate", () => {
     });
   });
 
+  describe("tolerant resolution — resolve a REAL source cited with realistic format variance BEFORE concluding fabrication (over-deletion remediation)", () => {
+    const allowed = { notes: ["notes/vpn-setup.md"] };
+
+    it("basename (no directory prefix): the claim SURVIVES and the marker is rewritten to the canonical allowed path", () => {
+      const out = enforceAnswerCitations("VPN needs MTU 1380 [from vpn-setup.md].", allowed);
+      expect(out.text).toBe("VPN needs MTU 1380 [from notes/vpn-setup.md].");
+      expect(out.stripped).toEqual([]);
+    });
+
+    it("underscore instead of hyphen: the claim SURVIVES with the canonical rewrite", () => {
+      const out = enforceAnswerCitations("VPN needs MTU 1380 [from vpn_setup.md].", allowed);
+      expect(out.text).toBe("VPN needs MTU 1380 [from notes/vpn-setup.md].");
+      expect(out.stripped).toEqual([]);
+    });
+
+    it("no file extension: the claim SURVIVES with the canonical rewrite", () => {
+      const out = enforceAnswerCitations("VPN needs MTU 1380 [from vpn-setup].", allowed);
+      expect(out.text).toBe("VPN needs MTU 1380 [from notes/vpn-setup.md].");
+      expect(out.stripped).toEqual([]);
+    });
+
+    it("human title paraphrase (\"VPN Setup Notes\" for vpn-setup.md): the claim SURVIVES with the canonical rewrite", () => {
+      const out = enforceAnswerCitations("VPN needs MTU 1380 [from VPN Setup Notes].", allowed);
+      expect(out.text).toBe("VPN needs MTU 1380 [from notes/vpn-setup.md].");
+      expect(out.stripped).toEqual([]);
+    });
+
+    it("a real note mis-cited by the WRONG directory prefix SURVIVES (stronger form of the old protection): the marker is corrected, not left mis-cited or dropped", () => {
+      const out = enforceAnswerCitations("The deadline is March 3 [from wrong-dir/vpn-setup.md]. Bye.", allowed);
+      expect(out.text).toBe("The deadline is March 3 [from notes/vpn-setup.md]. Bye.");
+      expect(out.stripped).toEqual([]);
+    });
+
+    it("AMBIGUITY fail-close: two DISTINCT real sources both tolerantly match the same citation — treated as UNRESOLVED, so the claim is dropped rather than guessed", () => {
+      // "vpn" ⊆ {vpn,setup,guide} AND "setup" ⊆ {vpn,setup,guide} — the citation's
+      // tokens cover BOTH real notes' identifying words, so which one it means is
+      // genuinely ambiguous; the resolver must not guess between two real sources.
+      const tied = { notes: ["notes/vpn.md", "notes/setup.md"] };
+      const out = enforceAnswerCitations("The deadline is March 3 [from VPN Setup Guide]. Bye.", tied);
+      expect(out.text).toBe("Bye.");
+      expect(out.stripped).toEqual(["VPN Setup Guide"]);
+    });
+
+    it("a wholly fabricated note sharing no tokens with any real source is still DROPPED, not tolerantly rescued", () => {
+      const out = enforceAnswerCitations("Your SSN is on file [from secrets/ssn.md].", allowed);
+      expect(out.text).toBe("");
+      expect(out.stripped).toEqual(["secrets/ssn.md"]);
+    });
+
+    it("feeds tolerate a basename-style / extra-word variant too", () => {
+      const out = enforceAnswerCitations("A launch happened [feed: rust weekly newsletter].", { feeds: ["Rust Weekly"] });
+      expect(out.text).toBe("A launch happened [feed: Rust Weekly].");
+      expect(out.stripped).toEqual([]);
+    });
+
+    it("browsing tolerates a 'www.' prefix the model tacks onto a real host, resolving unambiguously", () => {
+      const out = enforceAnswerCitations("You read the guide [browsing: www.blog.rust-lang.org].", { browsing: ["blog.rust-lang.org"] });
+      expect(out.text).toBe("You read the guide [browsing: blog.rust-lang.org].");
+      expect(out.stripped).toEqual([]);
+    });
+  });
+
   it("cleans up the whitespace a stripped citation leaves (no ' .' or double space in the user-facing answer)", () => {
     // A removed citation must not leave a space-before-punctuation or a double
     // space — the answer is shown to the user, so the gate tidies the prose. Here the

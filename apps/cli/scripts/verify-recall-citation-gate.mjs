@@ -18,6 +18,11 @@
  *      SSN is on file." surviving the strip would be the exact leak this closes.
  *      Deterministic (not live-elicited) per the loop-engineering guidance that a
  *      reliable in-battery gate-function assertion beats a flaky elicitation.
+ *   5. (over-deletion remediation, positive) a REAL note cited with realistic
+ *      format variance — basename only, or hyphen swapped for underscore — is
+ *      tolerantly resolved and its marker REWRITTEN to the canonical path, not
+ *      dropped: the fix must not delete a genuinely-grounded claim just because
+ *      the local model didn't echo the marker byte-for-byte.
  *
  *   node apps/cli/scripts/verify-recall-citation-gate.mjs   (ollama/qwen3:8b)
  *
@@ -114,6 +119,25 @@ const leakClosed = !gatedTampered.text.includes("SSN is on file") && !gatedTampe
 leakClosed
   ? pass("the clause-leak fix holds: the fabricated CLAUSE is gone, not just its citation marker")
   : fail(`the fabricated clause survived un-cited (the leak this slice closes): text="${gatedTampered.text}"`);
+
+// 5) Over-deletion remediation, POSITIVE (deterministic): a real note cited by
+// basename (no directory) or with an underscore instead of a hyphen must SURVIVE
+// with its marker rewritten to the canonical allowed path — not be dropped as if
+// fabricated. Uses the same real source as case 1/2 so the check is meaningful
+// against this battery's own corpus shape.
+const basenameCited = "The office VPN needs MTU 1380 [from vpn.md].";
+const gatedBasename = enforceAnswerCitations(basenameCited, { notes: realSources });
+const basenameOk = gatedBasename.text.includes("[from notes/vpn.md]") && gatedBasename.stripped.length === 0;
+basenameOk
+  ? pass("a real note cited by BASENAME (no directory) survives, rewritten to the canonical path")
+  : fail(`basename citation was NOT tolerantly resolved: text="${gatedBasename.text}" stripped=${JSON.stringify(gatedBasename.stripped)}`);
+
+const underscoreCited = "I fixed the office VPN on 2026-05-12 [from journal/2026_05_12.md].";
+const gatedUnderscore = enforceAnswerCitations(underscoreCited, { notes: realSources });
+const underscoreOk = gatedUnderscore.text.includes("[from journal/2026-05-12.md]") && gatedUnderscore.stripped.length === 0;
+underscoreOk
+  ? pass("a real note cited with UNDERSCORES instead of hyphens survives, rewritten to the canonical path")
+  : fail(`underscore-variant citation was NOT tolerantly resolved: text="${gatedUnderscore.text}" stripped=${JSON.stringify(gatedUnderscore.stripped)}`);
 
 console.log(failures === 0 ? "\nverify-recall-citation-gate: ALL PASS" : `\nverify-recall-citation-gate: ${failures} FAILURE(S)`);
 process.exit(failures === 0 ? 0 : 1);

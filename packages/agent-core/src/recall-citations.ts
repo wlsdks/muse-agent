@@ -23,6 +23,62 @@ function resolvesExact(value: string, allowed: readonly string[]): boolean {
   return allowed.some((item) => normalizeForRecall(item).trim().toLowerCase() === v);
 }
 
+const FILE_EXT_RE = /\.[a-z0-9]{1,8}$/iu;
+
+function basenameOf(value: string): string {
+  const parts = value.trim().split(/[/\\]/u);
+  return parts[parts.length - 1] ?? value;
+}
+
+/** Fold away the noise a real identifier legitimately varies on — directory
+ * prefix, file extension, hyphen/underscore-vs-space — down to a comparable
+ * core form. `"notes/vpn-setup.md"`, `"vpn_setup.md"`, and `"vpn-setup"` all
+ * fold to `"vpn setup"`. */
+function canonicalFormOf(value: string): string {
+  const base = normalizeForRecall(basenameOf(value)).trim().toLowerCase();
+  return base.replace(FILE_EXT_RE, "").replace(/[-_]+/gu, " ").trim();
+}
+
+/**
+ * Tolerant resolution for an EXACT-match class (notes/feeds/browsing — path /
+ * name / hostname identifiers), tried only AFTER exact match already failed.
+ * The local model routinely cites a real source by basename, without its
+ * extension, with hyphens swapped for underscores or spaces, or paraphrased as
+ * a human title ("VPN Setup Notes" for `vpn-setup.md`) — none of which
+ * `resolvesExact` accepts, so treating them as fabrication would delete a
+ * TRUE claim. Tries, in order: (1) the value's canonical form matches exactly
+ * one candidate's canonical form (basename/extension/hyphen-insensitive); (2)
+ * the CANDIDATE's own canonical-form tokens are ALL present in the citation's
+ * tokens (the model may pad a title, but can't inflate an identifier's core
+ * words from nothing). Returns the matched candidate VERBATIM (for the caller
+ * to rewrite the citation to) when exactly one resolves either way.
+ *
+ * Fail-close on ambiguity: when 2+ candidates tie at either stage, this
+ * returns `undefined` (unresolved) rather than guess between two real
+ * sources — the same "don't guess the recipient" posture as contact
+ * resolution. An unresolved citation still falls through to the fabrication
+ * path below, so ambiguity is treated exactly like a genuine invention.
+ */
+function resolveTolerant(value: string, allowed: readonly string[]): string | undefined {
+  const valueCanon = canonicalFormOf(value);
+  if (valueCanon.length === 0) return undefined;
+  const canonMatches = allowed.filter((item) => canonicalFormOf(item) === valueCanon);
+  if (canonMatches.length === 1) return canonMatches[0];
+  if (canonMatches.length > 1) return undefined;
+
+  const valueTokens = lexicalTokens(value);
+  if (valueTokens.size === 0) return undefined;
+  const tokenMatches = allowed.filter((item) => {
+    const itemTokens = lexicalTokens(canonicalFormOf(item));
+    if (itemTokens.size === 0) return false;
+    for (const token of itemTokens) {
+      if (!valueTokens.has(token)) return false;
+    }
+    return true;
+  });
+  return tokenMatches.length === 1 ? tokenMatches[0] : undefined;
+}
+
 // Free-text citations (task/event/reminder titles): the model may PARAPHRASE
 // the title, so an exact match would false-strip a real one. A citation
 // resolves when it shares any CONTENT token with a real item of that type; a
@@ -199,25 +255,31 @@ export function normalizeSlotCitations(
  */
 /**
  * The citation classes the gate validates, keyed by `AllowedCitations` field.
- * Every class now drops the WHOLE claim (sentence) when its citation fails to
- * resolve and no other citation in the sentence is valid — a fabricated CLAUSE
- * must never survive the gate as a bare, uncited assertion (the citation-gate
- * clause leak this closes: the EXACT classes — notes/feeds/browsing, matched by
- * path/name/hostname — used to only lose their marker on a non-resolving hit,
- * leaving the claim behind un-cited). `resolvesExact` already tolerates the
- * normalisation a real source can legitimately vary on (case, NFC, full-width,
- * surrounding whitespace — see `resolvesExact`), so anything that still fails to
- * resolve is either a genuine invention or a citation form no real source can
- * take; either way the safe (fail-close) outcome is to drop the claim, not keep it.
+ * Every class DROPS the whole claim (sentence) when its citation neither
+ * resolves NOR tolerantly resolves, and no other citation in the sentence is
+ * valid — a fabricated CLAUSE must never survive the gate as a bare, uncited
+ * assertion. The EXACT classes (notes/feeds/browsing — matched by
+ * path/name/hostname) carry `tolerant` + `wrap`: `resolvesExact` only tolerates
+ * case/NFC/full-width/whitespace variance, but the local model routinely cites
+ * a real source by basename, without its extension, or paraphrased as a title
+ * — `resolveTolerant` resolves THOSE (fail-closing only on a genuine ambiguous
+ * tie between two real sources), and the citation is REWRITTEN to the
+ * canonical form via `wrap` so the claim survives WITH an accurate citation
+ * instead of either being falsely dropped or kept mis-cited. The free-text
+ * OVERLAP classes already tolerate paraphrase by resolving on shared content
+ * tokens and are kept verbatim (no canonical rewrite — there is no single
+ * "canonical" phrasing for a task/event/reminder title).
  */
 const CITATION_CLASSES: readonly {
   readonly re: RegExp;
   readonly key: keyof AllowedCitations;
   readonly resolves: (value: string, allowed: readonly string[]) => boolean;
+  readonly tolerant?: (value: string, allowed: readonly string[]) => string | undefined;
+  readonly wrap?: (canonical: string) => string;
 }[] = [
-  { key: "notes", re: CITATION_RE, resolves: resolvesExact },
-  { key: "feeds", re: /\[feed:\s*([^\]]+?)\s*\]/giu, resolves: resolvesExact },
-  { key: "browsing", re: /\[browsing:\s*([^\]]+?)\s*\]/giu, resolves: resolvesExact },
+  { key: "notes", re: CITATION_RE, resolves: resolvesExact, tolerant: resolveTolerant, wrap: (v) => `[from ${v}]` },
+  { key: "feeds", re: /\[feed:\s*([^\]]+?)\s*\]/giu, resolves: resolvesExact, tolerant: resolveTolerant, wrap: (v) => `[feed: ${v}]` },
+  { key: "browsing", re: /\[browsing:\s*([^\]]+?)\s*\]/giu, resolves: resolvesExact, tolerant: resolveTolerant, wrap: (v) => `[browsing: ${v}]` },
   { key: "tasks", re: /\[task:\s*([^\]]+?)\s*\]/giu, resolves: resolvesByOverlap },
   { key: "events", re: /\[event:\s*([^\]]+?)\s*\]/giu, resolves: resolvesByOverlap },
   { key: "reminders", re: /\[reminder:\s*([^\]]+?)\s*\]/giu, resolves: resolvesByOverlap },
@@ -256,6 +318,21 @@ function splitCitationSentences(text: string): string[] {
   return out;
 }
 
+type CitationClass = (typeof CITATION_CLASSES)[number];
+
+/** Resolve one citation VALUE against `allowed` — exact first, then (when the
+ * class supports it) the tolerant path. `canonical` is set only when the
+ * tolerant path resolved (an exact hit is kept verbatim by the caller). */
+function resolveCitation(
+  c: CitationClass,
+  value: string,
+  allowed: readonly string[]
+): { readonly valid: boolean; readonly canonical?: string } {
+  if (c.resolves(value, allowed)) return { valid: true };
+  const canonical = c.tolerant?.(value, allowed);
+  return canonical !== undefined ? { valid: true, canonical } : { valid: false };
+}
+
 export function enforceAnswerCitations(answer: string, allowed: AllowedCitations): CitationEnforcement {
   const stripped: string[] = [];
   const kept: string[] = [];
@@ -266,18 +343,18 @@ export function enforceAnswerCitations(answer: string, allowed: AllowedCitations
       for (const m of sentence.matchAll(c.re)) {
         const value = m[1]!.trim();
         const allowedList = allowed[c.key] ?? [];
-        if (c.resolves(value, allowedList)) hasValid = true;
+        if (resolveCitation(c, value, allowedList).valid) hasValid = true;
         else hasInvalid = true;
       }
     }
-    // DROP a sentence grounded ONLY on a citation that fails to resolve — an
-    // un-groundable claim removed by code, not laundered into an un-cited
-    // assertion. A sentence with ANY valid citation is kept and merely loses the
-    // bad marker below (a real source elsewhere in the sentence rescues it).
+    // DROP a sentence grounded ONLY on a citation that fails to resolve (even
+    // tolerantly) — an un-groundable claim removed by code, not laundered into
+    // an un-cited assertion. A sentence with ANY valid citation is kept and
+    // merely loses the bad marker below (a real source elsewhere rescues it).
     if (hasInvalid && !hasValid) {
       for (const c of CITATION_CLASSES) {
         for (const m of sentence.matchAll(c.re)) {
-          if (!c.resolves(m[1]!.trim(), allowed[c.key] ?? [])) stripped.push(m[1]!.trim());
+          if (!resolveCitation(c, m[1]!.trim(), allowed[c.key] ?? []).valid) stripped.push(m[1]!.trim());
         }
       }
       continue;
@@ -286,9 +363,14 @@ export function enforceAnswerCitations(answer: string, allowed: AllowedCitations
     for (const c of CITATION_CLASSES) {
       s = s.replace(c.re, (match: string, raw: string) => {
         const value = raw.trim();
-        if (c.resolves(value, allowed[c.key] ?? [])) return match;
-        stripped.push(value);
-        return "";
+        const { valid, canonical } = resolveCitation(c, value, allowed[c.key] ?? []);
+        if (!valid) {
+          stripped.push(value);
+          return "";
+        }
+        // A TOLERANT hit (not exact) is rewritten to the canonical source so the
+        // claim survives WITH an accurate citation, not a mis-formatted one.
+        return canonical !== undefined && c.wrap ? c.wrap(canonical) : match;
       });
     }
     kept.push(s);
