@@ -19,8 +19,19 @@
 
 import type { ConversationMessage } from "./index.js";
 
+export interface DroppedContextSummarizerOptions {
+  /**
+   * When set, the summarizer is asked to preserve full detail about this
+   * topic while still recording other decisions/facts tersely (hermes'
+   * `/compact <focus>` pattern, adapted). A summarizer that ignores it is
+   * still valid — the option is advisory, not required.
+   */
+  readonly focusTopic?: string;
+}
+
 export type DroppedContextSummarizer = (
-  messages: readonly ConversationMessage[]
+  messages: readonly ConversationMessage[],
+  options?: DroppedContextSummarizerOptions
 ) => Promise<string>;
 
 export interface SummarizeDroppedOptions {
@@ -28,6 +39,8 @@ export interface SummarizeDroppedOptions {
   readonly fallback: string;
   /** Optional hard cap on the aux summary length; longer output is truncated. */
   readonly maxChars?: number;
+  /** Forwarded verbatim to the summarizer as `DroppedContextSummarizerOptions.focusTopic`. */
+  readonly focusTopic?: string;
 }
 
 /**
@@ -46,7 +59,7 @@ export async function summarizeDroppedContext(
     return options.fallback;
   }
   try {
-    const raw = await summarizer(dropped);
+    const raw = await summarizer(dropped, options.focusTopic ? { focusTopic: options.focusTopic } : undefined);
     const trimmed = typeof raw === "string" ? raw.trim() : "";
     if (trimmed.length === 0) {
       return options.fallback;

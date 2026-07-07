@@ -38,4 +38,24 @@ describe("summarizeDroppedContext (CMP-2 aux compaction)", () => {
     const out = await summarizeDroppedContext(dropped, async () => "abcdefghij", { fallback: "DET", maxChars: 4 });
     expect(out).toBe("abcd");
   });
+
+  it("forwards focusTopic to the summarizer as its second argument", async () => {
+    let seenOptions: { focusTopic?: string } | undefined;
+    const summarizer = async (_msgs: typeof dropped, options?: { focusTopic?: string }) => {
+      seenOptions = options;
+      return "ok";
+    };
+    await summarizeDroppedContext(dropped, summarizer, { fallback: "DET", focusTopic: "vacation plans" });
+    expect(seenOptions?.focusTopic).toBe("vacation plans");
+  });
+
+  it("does not pass a focusTopic option when unset", async () => {
+    let seenOptions: { focusTopic?: string } | undefined = { focusTopic: "sentinel" };
+    const summarizer = async (_msgs: typeof dropped, options?: { focusTopic?: string }) => {
+      seenOptions = options;
+      return "ok";
+    };
+    await summarizeDroppedContext(dropped, summarizer, { fallback: "DET" });
+    expect(seenOptions).toBeUndefined();
+  });
 });

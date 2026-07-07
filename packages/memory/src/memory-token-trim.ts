@@ -161,13 +161,15 @@ export function trimConversationMessages(
     // ceiling) even though the trim passes had already hit their target.
     // Reclaim room by re-running the removable-history passes against the
     // HARD budget — never the soft working target, which would over-trim a
-    // proactive compaction. The summary itself sits at index 0 as a leading
-    // system message, so these passes (anchored on firstNonSystemIndex /
-    // the last user turn) never touch it; trimLeadingMemoryMessages is
-    // deliberately EXCLUDED here because it strips leading system messages
-    // and would drop the summary we just inserted. The last user turn stays
-    // protected by every pass, and ensureBoundaryIntegrity keeps the tool
-    // pairing valid after the re-trim.
+    // proactive compaction. The summary sits among the LEADING system
+    // messages (right after any real system prompt — see
+    // `leadingRealSystemCount`), so these passes (anchored on
+    // firstNonSystemIndex / the last user turn) never touch it;
+    // trimLeadingMemoryMessages is deliberately EXCLUDED here because it
+    // strips leading system messages and would drop the summary we just
+    // inserted (or the system prompt in front of it). The last user turn
+    // stays protected by every pass, and ensureBoundaryIntegrity keeps the
+    // tool pairing valid after the re-trim.
     if (totalTokens > hardBudgetTokens) {
       totalTokens = trimOldHistory(messages, tokens, totalTokens, hardBudgetTokens);
       totalTokens -= ensureBoundaryIntegrity(messages, tokens);
@@ -561,12 +563,19 @@ function insertCompactionSummary(
   messageStructureOverhead: number,
   personaSnapshot: string | undefined
 ): number {
-  const previousSummary = messages[0]?.role === "system" && messages[0].content.startsWith(COMPACTION_SUMMARY_PREFIX)
-    ? messages[0].content
+  // Insert AFTER any real leading system message(s) (the caller's actual
+  // system prompt), never before — a provider that caches on a stable
+  // prefix would otherwise see the prefix change on every compaction round
+  // because the summary (which changes every round) was pushed in front of
+  // the unchanging system prompt.
+  const insertIndex = leadingRealSystemCount(messages);
+  const existing = messages[insertIndex];
+  const previousSummary = existing?.role === "system" && existing.content.startsWith(COMPACTION_SUMMARY_PREFIX)
+    ? existing.content
     : undefined;
 
   if (previousSummary) {
-    removeAt(messages, tokens, 0, 1);
+    removeAt(messages, tokens, insertIndex, 1);
   }
 
   const summary: ConversationMessage = {
@@ -575,11 +584,27 @@ function insertCompactionSummary(
   };
   const summaryTokens = estimateMessageTokens(summary, estimator, messageStructureOverhead);
 
-  messages.unshift(summary);
-  tokens.unshift(summaryTokens);
+  messages.splice(insertIndex, 0, summary);
+  tokens.splice(insertIndex, 0, summaryTokens);
   return previousSummary
     ? summaryTokens - estimateTextTokens(previousSummary, estimator, messageStructureOverhead)
     : summaryTokens;
+}
+
+// Leading system messages that are NOT themselves a previously-inserted
+// compaction summary — i.e. the caller's real system prompt. Stops at the
+// first non-system message OR the first summary-prefixed one (the slot a
+// carried-forward summary occupies).
+function leadingRealSystemCount(messages: readonly ConversationMessage[]): number {
+  let index = 0;
+  while (
+    index < messages.length &&
+    messages[index]?.role === "system" &&
+    !messages[index]!.content.startsWith(COMPACTION_SUMMARY_PREFIX)
+  ) {
+    index++;
+  }
+  return index;
 }
 
 function buildCompactionSummaryText(

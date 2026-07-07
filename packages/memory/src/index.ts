@@ -80,6 +80,15 @@ export interface ConversationTrimOptions {
     readonly activeTaskTitle?: string;
     readonly currentFocus?: string;
   };
+  /**
+   * Plumbing only — `trimConversationMessages` itself does not read this
+   * field; it exists so a caller can carry a per-session/per-turn focus
+   * topic (e.g. a chat `/compact <topic>` request) alongside the rest of
+   * the trim config and forward it to `summarizeDroppedContext`'s
+   * `focusTopic` option when a compaction fires and an aux summarizer is
+   * configured. Unset ⇒ no focus directive, byte-identical behavior.
+   */
+  readonly focusTopic?: string;
 }
 
 export interface ConversationTrimResult {
@@ -281,6 +290,18 @@ export {
   renderKeyDetailsBlock,
   stripKeyDetailsBlock
 } from "./salient-facts.js";
+
+// Fail-close post-compaction quality gate for the OPTIONAL aux-LLM summary
+// (hermes/openclaw-inspired safeguard) — deterministic anchor-coverage check,
+// never a second model call.
+export {
+  DEFAULT_ANCHOR_COVERAGE_RATIO,
+  extractCompactionAnchors,
+  verifyCompactionSummaryQuality,
+  type CompactionAnchor,
+  type CompactionQualityGateOptions,
+  type CompactionQualityGateResult
+} from "./compaction-quality-gate.js";
 
 // Message importance scoring.
 export {
@@ -499,7 +520,11 @@ export {
 } from "./memory-token-trim.js";
 
 export { summarizeDroppedContext } from "./context-aux-summary.js";
-export type { DroppedContextSummarizer, SummarizeDroppedOptions } from "./context-aux-summary.js";
+export type {
+  DroppedContextSummarizer,
+  DroppedContextSummarizerOptions,
+  SummarizeDroppedOptions
+} from "./context-aux-summary.js";
 
 // Tool-output trimming primitive (Context Engineering
 // step 1.b). Used by agent-core/model-loop to cap individual tool
