@@ -13,7 +13,7 @@
  * version (the git tag / root package.json / CHANGELOG); a drift test pins
  * it to the root manifest so a release bump can't silently leave it stale.
  */
-export const MUSE_CLI_VERSION = "0.2.12";
+export const MUSE_CLI_VERSION = "0.2.13";
 
 /**
  * Print the version and report handled=true ONLY for the exact, unambiguous

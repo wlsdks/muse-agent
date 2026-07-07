@@ -8,6 +8,30 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-07-07
+
+Muse reminders can now follow you onto your iPhone and Watch. Early /
+experimental, macOS only.
+
+### Added
+
+- **Apple Reminders mirror.** With `MUSE_APPLE_REMINDERS_MIRROR=true`
+  (off by default), any reminder you create in Muse — in chat, via
+  `muse remind add`, or through the API — is also created in Apple
+  Reminders.app, so it shows up across your Apple devices. Muse's own
+  store remains the source of truth for briefings and follow-ups; the
+  mirror is a one-way, best-effort copy that can never fail or lose
+  your reminder (a mirror problem surfaces as a warning with an
+  actionable permission hint). Reminder text is escaped against
+  AppleScript injection, mutation-tested with hostile payloads.
+
+### Fixed
+
+- **The calendar command no longer describes itself as read-only.**
+  Event creation/editing/deletion has been shipped for a while — a
+  stale description string was misleading users (and one of our own
+  capability audits).
+
 ## [0.2.12] - 2026-07-07
 
 Muse's vision now has proven Korean coverage — and the proof reversed
