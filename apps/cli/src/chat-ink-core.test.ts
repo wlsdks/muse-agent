@@ -28,6 +28,7 @@ import {
   greetingName,
   matchAgentNames,
   matchModelNames,
+  normalizeChatInput,
   parseInlineSpans,
   parseMarkdownBlocks,
   parseRememberArg,
@@ -47,6 +48,20 @@ describe("displayWidth", () => {
     expect(displayWidth("hi")).toBe(2);
     expect(displayWidth("안녕")).toBe(4);
     expect(displayWidth("a안")).toBe(3);
+  });
+});
+
+describe("normalizeChatInput — NFC-normalize + trim a submitted chat turn (macOS/Swift delivers Hangul as NFD)", () => {
+  it("folds an NFD Korean turn to its NFC form (the interactive Ink chat's own paste path)", () => {
+    const nfd = "뭐야".normalize("NFD");
+    expect(normalizeChatInput(nfd)).toBe("뭐야".normalize("NFC"));
+    expect(normalizeChatInput(nfd)).not.toBe(nfd);
+  });
+  it("trims surrounding whitespace, same as the old bare .trim()", () => {
+    expect(normalizeChatInput("  hello  ")).toBe("hello");
+  });
+  it("is a no-op on already-NFC ASCII text", () => {
+    expect(normalizeChatInput("hello world")).toBe("hello world");
   });
 });
 

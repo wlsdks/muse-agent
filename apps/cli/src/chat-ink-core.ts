@@ -112,6 +112,18 @@ export interface InputResult {
   readonly submit: boolean;
 }
 
+/**
+ * NFC-normalize a submitted chat turn. macOS/Swift (and several IME / paste
+ * paths) deliver Hangul as NFD — syllables DECOMPOSED into jamo ("뭐" →
+ * ㅁ+ㅜ+ㅓ) — while every classifier/keyword in the chat pipeline is written
+ * in NFC, so an NFD turn silently misses them (parity with the one-shot
+ * `runLocalChat` normalization; the interactive Ink surface submitted the raw
+ * bytes untouched).
+ */
+export function normalizeChatInput(raw: string): string {
+  return raw.trim().normalize("NFC");
+}
+
 function codepoints(value: string): string[] {
   return [...value];
 }

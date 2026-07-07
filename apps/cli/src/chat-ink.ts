@@ -29,6 +29,7 @@ import {
   matchAgentNames,
   matchModelNames,
   matchSlashCommands,
+  normalizeChatInput,
   parseInlineSpans,
   parseMarkdownBlocks,
   parseRememberArg,
@@ -303,7 +304,7 @@ export function MuseChatApp(props: {
   }, [props]);
 
   const submit = useCallback(async (raw: string) => {
-    const message = raw.trim();
+    const message = normalizeChatInput(raw);
     if (message.length === 0) return;
     setCommandNotice(undefined); // clear the previous command result
 
