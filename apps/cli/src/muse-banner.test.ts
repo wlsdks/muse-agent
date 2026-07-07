@@ -4,11 +4,10 @@ import { MUSE_TAGLINE } from "./muse-identity.js";
 import { renderMuseBanner } from "./muse-banner.js";
 
 describe("renderMuseBanner", () => {
-  it("renders the MUSE wordmark, the music motif, and the identity tagline (plain mode)", () => {
+  it("renders the MUSE wordmark and the identity tagline (plain mode)", () => {
     const out = renderMuseBanner();
     // A stable row from the block wordmark.
     expect(out).toContain("███████╗");
-    expect(out).toContain("♪ ♫ ♬");
     expect(out).toContain(MUSE_TAGLINE);
     // the splash leads with the learns-you / local-first identity, not a generic label
     expect(out).toContain("learns you");

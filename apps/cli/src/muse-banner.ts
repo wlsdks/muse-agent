@@ -1,21 +1,12 @@
 /**
  * The REPL splash banner. When colour is active it shows the Muse mascot —
- * the goddess — as terminal art; piped / NO_COLOR output falls back to a
- * plain-text wordmark so a captured REPL log stays free of escape codes.
+ * the bluebird — beside the MUSE wordmark; piped / NO_COLOR output falls back
+ * to a plain-text wordmark so a captured REPL log stays free of escape codes.
  */
 
-import { MUSE_MASCOT_ANSI } from "./muse-mascot-ansi.js";
 import { MUSE_TAGLINE } from "./muse-identity.js";
+import { MUSE_WORDMARK, renderMuseLogoLines } from "./muse-mascot.js";
 import { colorize, colorAllowed, type AnsiOptions } from "./tty-color.js";
-
-const WORDMARK = [
-  "███╗   ███╗██╗   ██╗███████╗███████╗",
-  "████╗ ████║██║   ██║██╔════╝██╔════╝",
-  "██╔████╔██║██║   ██║███████╗█████╗  ",
-  "██║╚██╔╝██║██║   ██║╚════██║██╔══╝  ",
-  "██║ ╚═╝ ██║╚██████╔╝███████║███████╗",
-  "╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚══════╝"
-];
 
 export interface MuseBannerOptions extends AnsiOptions {
   /** Short status line rendered under the wordmark (user / model / tools). */
@@ -36,13 +27,11 @@ export function renderMuseBanner(options: MuseBannerOptions = {}): string {
 
   const tagline = tint(MUSE_TAGLINE, "dim");
 
-  // Tagline + status lines share the art's 2-space indent so the whole
-  // splash (art · tagline · the recap/input below, all at column 2) reads
-  // as one left-aligned column — no stray extra-indented line, and no
-  // decorative rule competing with the mascot for attention.
+  // Bird + wordmark + tagline + status lines share a 2-space indent so the
+  // whole splash reads as one left-aligned column.
   const art = colorAllowed(options)
-    ? MUSE_MASCOT_ANSI.split("\n").map((line) => `  ${line}`)
-    : [`  ${tint("♪ ♫ ♬", "cyan")}`, ...WORDMARK.map((line) => `  ${tint(line, "cyan")}`)];
+    ? renderMuseLogoLines("   ", (line) => tint(line, "cyan")).map((line) => `  ${line}`)
+    : MUSE_WORDMARK.map((line) => `  ${tint(line, "cyan")}`);
 
   const lines: string[] = [
     "",

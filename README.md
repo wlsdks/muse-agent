@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/muse-goddess.png" alt="Muse" width="300" />
+  <img src="docs/assets/mascot.svg" alt="Muse — the bluebird mascot" width="120" />
 </p>
 
 <h1 align="center">Muse</h1>

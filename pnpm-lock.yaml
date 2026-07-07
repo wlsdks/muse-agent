@@ -144,6 +144,9 @@ importers:
       '@muse/macos':
         specifier: workspace:*
         version: link:../../packages/macos
+      '@muse/mascot':
+        specifier: workspace:*
+        version: link:../../packages/mascot
       '@muse/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
@@ -227,6 +230,9 @@ importers:
       '@playwright/test':
         specifier: ^1.61.1
         version: 1.61.1
+      '@types/node':
+        specifier: ^26.1.0
+        version: 26.1.0
       '@types/react':
         specifier: ^19.2.17
         version: 19.2.17
@@ -495,6 +501,8 @@ importers:
       '@muse/tools':
         specifier: workspace:*
         version: link:../tools
+
+  packages/mascot: {}
 
   packages/mcp:
     dependencies:

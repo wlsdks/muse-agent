@@ -24,6 +24,7 @@
     "@muse/domain-tools": "workspace:*",
     "@muse/fs": "workspace:*",
     "@muse/macos": "workspace:*",
+    "@muse/mascot": "workspace:*",
     "@muse/mcp": "workspace:*",
     "@muse/mcp-shared": "workspace:*",
     "@muse/memory": "workspace:*",
