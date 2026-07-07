@@ -1,4 +1,4 @@
-import { independentWitnessCount, quorumVerdict, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
+import { enforceAnswerCitations, independentWitnessCount, quorumVerdict, withUngroundableFallback, type GroundingReverify, type KnowledgeMatch } from "@muse/agent-core";
 import { conflictCueFromMatches, corroborationReceiptLine, stripEchoedCiteAs, stripGroundingFences, type MemoryFact } from "@muse/recall";
 
 import { conversationMatches, resolveGroundingMinScore, shortCitationRef } from "./chat-grounding-evidence.js";
@@ -171,24 +171,24 @@ export function stripTruncatedCitation(answer: string): string {
  * the grounding context. The local model invents citations for data it never
  * grounded — "현재 비가 옵니다 [from weather]" with no weather tool call, "[from
  * internet]", "[from memory]" — which fakes the "shows its work" edge: a source
- * marker the user can't trust. Only a citation naming a real retrieved source
- * (by its notes-relative path OR basename) survives; the answer text is kept.
+ * marker the user can't trust. Routes through the SAME hardened gate the `ask`
+ * path uses (`enforceAnswerCitations`) rather than a second marker-only
+ * implementation: a citation naming a real retrieved source (by its
+ * notes-relative path, basename, or a paraphrase — tolerant resolution) is kept
+ * (rewritten to its canonical short form), and the WHOLE SENTENCE is dropped —
+ * not just the marker — when its only citation is fabricated, so a fabricated
+ * CLAUSE can never survive uncited as a bare confident assertion (the
+ * clause-leak this closes: a marker-only strip left the surrounding invented
+ * claim standing). Allowed sources are the SHORT citation refs (matching what
+ * the grounding block actually showed the model), never the raw absolute path
+ * — a canonical rewrite must never leak the home directory. When every
+ * sentence turns out to rest on a fabricated citation, `withUngroundableFallback`
+ * surfaces the honest hedge instead of a silently blank answer (parity with the
+ * `ask` path's identical fallback after the same gate).
  */
 export function stripFabricatedCitations(answer: string, sources: readonly string[]): string {
   if (!answer.includes("[from ")) return answer;
-  const valid = new Set<string>();
-  for (const source of sources) {
-    const short = shortCitationRef(source).toLowerCase();
-    valid.add(short);
-    valid.add(short.split("/").pop() ?? short);
-  }
-  return answer
-    .replace(/\s*\[from ([^\]]+)\]/gu, (full: string, cited: string) => {
-      const c = cited.trim().toLowerCase();
-      return valid.has(c) || valid.has(c.split("/").pop() ?? c) ? full : "";
-    })
-    .replace(/[ \t]+\n/gu, "\n")
-    .trimEnd();
+  return withUngroundableFallback(enforceAnswerCitations(answer, { notes: sources.map(shortCitationRef) }));
 }
 
 /**

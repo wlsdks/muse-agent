@@ -18,13 +18,14 @@ describe("finalizeGatedChatAnswer (the ONE post-stream pipeline for every chat s
     expect(isChatAbstention(out)).toBe(true);
   });
 
-  it("strips a fabricated citation but keeps a real-source answer + appends the receipt", async () => {
+  it("clause-leak fix: drops the SENTENCE whose only citation is fabricated, keeps the real-source sentence + its receipt (the whole-answer verdict was 'grounded' while an embedded clause cited a nonexistent source)", async () => {
     const { display: out } = await finalizeGatedChatAnswer({
-      answer: "비밀번호는 muse2026 입니다 [from weather]",
+      answer: "비밀번호는 muse2026 입니다 [from wifi.md]. 오늘 비가 옵니다 [from weather].",
       matches,
       question: "사무실 와이파이 비밀번호 뭐야?"
     });
     expect(out).not.toContain("[from weather]");
+    expect(out).not.toContain("오늘 비가");
     expect(out).toContain("muse2026");
     expect(out).toContain("wifi.md");
   });

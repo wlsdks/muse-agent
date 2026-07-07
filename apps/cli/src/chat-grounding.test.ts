@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { KnowledgeMatch } from "@muse/agent-core";
+import { UNGROUNDABLE_ANSWER_NOTICE, type KnowledgeMatch } from "@muse/agent-core";
 
 import {
   answerAssertsUnsupportedDate,
@@ -424,20 +424,32 @@ describe("stripTruncatedCitation (repair a mid-citation runtime truncation)", ()
   });
 });
 
-describe("stripFabricatedCitations (drop a citation for a source that wasn't retrieved)", () => {
+describe("stripFabricatedCitations (routes through the hardened enforceAnswerCitations gate — no second marker-only implementation)", () => {
   const noteSrc = "/Users/x/.muse/notes/wifi_passwords/seoul_office.md";
-  it("strips a fabricated non-existent source, keeping the answer text", () => {
+  it("strips a fabricated non-existent source, keeping a grounded neighbour sentence", () => {
     expect(stripFabricatedCitations("현재 비가 옵니다. [from weather]", [])).toBe("현재 비가 옵니다.");
-    expect(stripFabricatedCitations("아마 맞을 거예요 [from internet]", [noteSrc])).toBe("아마 맞을 거예요");
   });
-  it("keeps a citation that names a REAL retrieved source (short path or basename)", () => {
+  it("clause-leak fix — a citation-less single clause whose ONLY citation is fabricated is dropped whole, not laundered as a bare uncited claim; nothing survives → the honest 'not sure' hedge, never silence", () => {
+    expect(stripFabricatedCitations("아마 맞을 거예요 [from internet]", [noteSrc])).toBe(UNGROUNDABLE_ANSWER_NOTICE);
+  });
+  it("keeps an EXACT short-path citation to a real retrieved source verbatim", () => {
     expect(stripFabricatedCitations("비번은 muse2026 [from wifi_passwords/seoul_office.md]", [noteSrc]))
       .toBe("비번은 muse2026 [from wifi_passwords/seoul_office.md]");
-    expect(stripFabricatedCitations("답 [from seoul_office.md]", [noteSrc])).toBe("답 [from seoul_office.md]");
   });
-  it("keeps the real note citation but strips the fabricated one in a mixed answer", () => {
-    expect(stripFabricatedCitations("비번 muse2026 [from seoul_office.md], 날씨 비 [from weather]", [noteSrc]))
-      .toBe("비번 muse2026 [from seoul_office.md], 날씨 비");
+  it("tolerant resolution — a bare-basename citation to a real source SURVIVES, rewritten to the canonical short path (the realistic variant the model actually emits)", () => {
+    expect(stripFabricatedCitations("답 [from seoul_office.md]", [noteSrc]))
+      .toBe("답 [from wifi_passwords/seoul_office.md]");
+  });
+  it("fabricated-clause-dropped — keeps the real-note sentence, drops the fabricated-citation sentence, in a mixed two-sentence answer", () => {
+    expect(stripFabricatedCitations("비번은 muse2026 입니다 [from seoul_office.md]. 날씨는 맑아요 [from weather].", [noteSrc]))
+      .toBe("비번은 muse2026 입니다 [from wifi_passwords/seoul_office.md].");
+  });
+  it("KO sentence case — Korean-punctuated two-sentence answer drops only the fabricated clause, keeping the grounded neighbour", () => {
+    expect(stripFabricatedCitations("VPN 설정은 완료됐습니다 [from wifi_passwords/seoul_office.md]. 다음 회의는 화요일입니다 [from ghost.md].", [noteSrc]))
+      .toBe("VPN 설정은 완료됐습니다 [from wifi_passwords/seoul_office.md].");
+  });
+  it("a wholly fabricated-and-uncited-elsewhere Korean answer drops to the honest hedge, never a bare confident claim", () => {
+    expect(stripFabricatedCitations("여권 갱신일은 다음 달입니다 [from ghost.md].", [noteSrc])).toBe(UNGROUNDABLE_ANSWER_NOTICE);
   });
   it("leaves an answer with no citation untouched", () => {
     expect(stripFabricatedCitations("그냥 답변입니다.", [])).toBe("그냥 답변입니다.");
