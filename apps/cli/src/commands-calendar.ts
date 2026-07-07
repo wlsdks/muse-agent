@@ -1,8 +1,10 @@
 /**
- * `muse calendar` command group — read-only slice of `/api/calendar/*`.
+ * `muse calendar` command group — read AND write slice of `/api/calendar/*`.
  *
  *   - `muse calendar providers [--local] [--json]`
  *   - `muse calendar events [--from <iso>] [--to <iso>] [--provider <id>] [--local] [--json]`
+ *   - `muse calendar add "<title>" --at <when> [--for <min>] [--location …] [--remind …] [--repeat …]`
+ *   - `muse calendar edit / delete / block / import` — reschedule, cancel, time-block, bulk-import
  *
  * `--local` instantiates `LocalCalendarProvider` against
  * `~/.muse/calendar.json` directly so the CLI works without an API
@@ -81,7 +83,7 @@ function listLocalEventsWide(provider: LocalCalendarProvider): Promise<readonly 
 }
 
 export function registerCalendarCommands(program: Command, io: ProgramIO, helpers: CalendarCommandHelpers): void {
-  const calendar = program.command("calendar").description("Personal calendar (read-only CLI surface)");
+  const calendar = program.command("calendar").description("Personal calendar — view your schedule and create/reschedule/cancel events (add, edit, delete, block, import)");
 
   calendar
     .command("providers")
