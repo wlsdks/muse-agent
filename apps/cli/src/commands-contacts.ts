@@ -12,7 +12,7 @@
 import { overdueContacts, type OverdueContact } from "@muse/agent-core";
 import { interactionsFromEvents, resolveContactsFile, resolveLocalCalendarFile, resolveNotesDir } from "@muse/autoconfigure";
 import { readLocalEvents } from "./today-local-sources.js";
-import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, isContactsEncrypted, linkContacts, queryContacts, resolveContact, resolveUpcomingBirthdays, type Contact } from "@muse/stores";
+import { addContact, contactIdentifier, decryptContactsAtRest, encryptContactsAtRest, isContactsEncrypted, linkContacts, queryContacts, resolveContact, resolveUpcomingBirthdays, writeContacts, type Contact } from "@muse/stores";
 
 import { relatedByCooccurrence } from "./contact-cooccurrence.js";
 import { findDuplicateContacts, formatDuplicateContacts } from "./contact-dupes.js";
@@ -107,6 +107,35 @@ export function formatOverdue(overdue: readonly OverdueContact[]): string {
   return `${lines.join("\n")}\n`;
 }
 
+/**
+ * `muse contacts import --apple` — read the whole Apple Contacts.app address
+ * book and merge it additively into the local people graph. Fail-soft: a
+ * permission denial / read failure leaves the store byte-identical.
+ */
+async function importFromAppleContacts(io: ProgramIO, json: boolean): Promise<void> {
+  const { readAppleContacts } = await import("@muse/macos");
+  const read = await readAppleContacts();
+  if (!read.ok) {
+    io.stderr(`muse contacts import --apple: ${read.error ?? "could not read Apple Contacts"}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const { mergeAppleContacts } = await import("./apple-contacts-merge.js");
+  const file = contactsFile();
+  const existing = await queryContacts(file);
+  const result = mergeAppleContacts(existing, read.contacts, () => createRunId("contact"));
+  await writeContacts(file, result.contacts);
+  if (json) {
+    io.stdout(`${JSON.stringify({ imported: result.imported, updated: result.updated, skipped: result.skipped, total: read.contacts.length })}\n`);
+    return;
+  }
+  io.stdout(
+    `Imported ${result.imported.toString()} new, updated ${result.updated.toString()}, ` +
+      `skipped ${result.skipped.toString()} (already present or no name+phone/email/birthday) ` +
+      `from Apple Contacts (${read.contacts.length.toString()} read).\n`
+  );
+}
+
 export function registerContactsCommands(program: Command, io: ProgramIO): void {
   const contacts = program.command("contacts").description("Manage and resolve your people graph (~/.muse/contacts.json)");
 
@@ -157,10 +186,20 @@ export function registerContactsCommands(program: Command, io: ProgramIO): void 
 
   contacts
     .command("import")
-    .description("Bulk-import contacts from a vCard (.vcf) file — your exported address book")
-    .argument("<file>", "Path to a .vcf file (one or many vCards)")
+    .description("Bulk-import contacts — from a vCard (.vcf) file, or from the macOS Contacts.app with --apple")
+    .argument("[file]", "Path to a .vcf file (one or many vCards); omit when using --apple")
+    .option("--apple", "Import from the macOS Contacts.app instead of a file (reads your whole address book; needs Contacts automation permission)")
     .option("--json", "Emit a structured summary instead of a human line")
-    .action(async (file: string, options: { readonly json?: boolean }) => {
+    .action(async (file: string | undefined, options: { readonly apple?: boolean; readonly json?: boolean }) => {
+      if (options.apple) {
+        await importFromAppleContacts(io, options.json ?? false);
+        return;
+      }
+      if (!file) {
+        io.stderr("usage: muse contacts import <file.vcf> | --apple\n");
+        process.exitCode = 1;
+        return;
+      }
       const { readFile } = await import("node:fs/promises");
       let text: string;
       try {
