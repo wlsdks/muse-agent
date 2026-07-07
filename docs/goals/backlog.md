@@ -94,7 +94,7 @@ realistic partial hedge. Deeper veracity needs a human/product call, not an auto
 - ✓ (644fc899) Stage 5: verify-browsing-recall(4케이스) + verify-feed-crosslingual(3케이스, negative A/B 영구화) 라이브 배터리 — 실제 파이프라인(진짜 builder/normalizer/게이트) 구동, pass^4(빌더 3/3 + 평가자 1회), groundedSurfaces 래칫 30→32. 독립평가 7/7 PASS.
 - ◦ 잔여 후보: 스토어 sidecar 분리 검토(browsing ~21MB@2000 — 커지면); `--json` grounded 블록 패리티(feeds/browsing 둘 다 빠짐) ⏳진안 결정; 브라우징/피드 테마 → proactive/recap 연결("요즘 X 많이 보시네요").
 - ✓ (50b0a319) ① vision 한글 커버리지 — 측정이 가설을 뒤집음: gemma4 6/6+5/5(한글 전승) vs qwen3-vl 4/6(이벤트 스키마 빈출력, 한영 공통 3/3) → **기본값 유지**, 한글 픽스처 2종 영구 게이트화 + MUSE_VISION_MODEL 노브(fail-soft) 배송. 생태계 리서치도 수렴(openclaw 로컬 기본값=gemma4, /v1 경로 툴콜링 열화 경고 → Ollama 네이티브 유지 확정). qwen3.5는 Ollama mmproj/툴콜 템플릿 성숙 시 재평가.
-- ★ NEXT-THEME 후보 (2026-07-07 갭스카우트, 상세는 세션 보고): ② iMessage chat.db 인제스천(⏳진안 이연 — 재제안 금지, 진안이 다시 열 때까지); ③ 한국어 voice 기본값(S — whisper 다국어 GGML + Piper KSS(CC-BY-NC-SA 주의), 스택은 이미 완비); ④ macOS 연락처 임포트 + 온보딩 임포트 위저드(S); ⑤ 캘린더 쓰기 draft-first(M — 진행 중; 스카우트 발견: MacOsCalendarProvider.createEvent 이미 존재, 툴 노출이 실제 작업); ⑥ 프라이버시-계층 클라우드 라우팅(개인 컨텍스트 주입 ask는 무조건 로컬, 무주입 일반 질문만 옵트인 클라우드 — ask-tier-models 인프라 재사용).
+- ★ NEXT-THEME 후보 (2026-07-07 갭스카우트, 상세는 세션 보고): ② iMessage chat.db 인제스천(⏳진안 이연 — 재제안 금지, 진안이 다시 열 때까지); ③ 한국어 voice 기본값(S — whisper 다국어 GGML + Piper KSS(CC-BY-NC-SA 주의), 스택은 이미 완비); ④ macOS 연락처 임포트 + 온보딩 임포트 위저드(S); ✓⑤ 캘린더 쓰기 — **CONVERGED/이미 전량 배송** (2026-07-07 검증: 전 provider createEvent + CLI add/edit/delete + muse.calendar.add 게이트 + eval 13/13 pass^3 한국어 포함 + deny-무효과 계약테스트 — 갭스카우트가 낡은 "read-only" 문자열에 속음, cee1459d로 문자열만 수정. 재제안 금지); ⑥ 프라이버시-계층 클라우드 라우팅(개인 컨텍스트 주입 ask는 무조건 로컬, 무주입 일반 질문만 옵트인 클라우드 — ask-tier-models 인프라 재사용).
 
 ## ★ macOS 커버리지 맵 (2026-07-07 스카우트, 진안 directive "맥에서 왠만한 건 다 되게 — 정책 안에서")
 
