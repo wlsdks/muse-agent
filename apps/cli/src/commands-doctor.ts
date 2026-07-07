@@ -15,12 +15,13 @@ import { existsSync, promises as fs } from "node:fs";
 import { formatRelativeTime } from "./human-formatters.js";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
-import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
+import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
 import { backgroundStoreFile } from "./commands-background.js";
 import { readProactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 export { heartbeatStatusToCheckStatus, proactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 import { findOllamaModelTag, isOllamaTagsEntry, type OllamaTagsEntry } from "./commands-doctor-ollama.js";
-import { readNotesIndexEmbedModel } from "./commands-doctor-checks.js";
+import { focusShortcutsCheck, readNotesIndexEmbedModel } from "./commands-doctor-checks.js";
+import { listShortcutNames } from "@muse/macos";
 import { embedModelCheck, formatBytes, recallCalibrationCheck } from "./commands-doctor-checks.js";
 export { embedModelCheck } from "./commands-doctor-checks.js";
 export { parseNotesIndexEmbedModel } from "./commands-doctor-checks.js";
@@ -513,6 +514,22 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
   // Outbound messengers (Telegram/Discord/Slack/LINE) — opt-in; surface which
   // are wired so the user knows why `muse messaging send` has/has no target.
   checks.push({ name: "messaging", ...messagingConfigCheck(process.env as Record<string, string | undefined>) });
+
+  // Focus / Do-Not-Disturb toggling (mac_system_set focus_on/focus_off) rides a
+  // named user Shortcut — report whether those shortcuts exist. Only meaningful
+  // on macOS with the actuators armed; a `shortcuts list` probe that can't run
+  // (no access / non-darwin) is reported as "can't tell" by the pure check.
+  if (process.platform === "darwin" && parseBoolean(env.MUSE_MACOS_ACTUATORS, false)) {
+    checks.push({ name: "focus shortcuts", ...focusShortcutsCheck(env, await listShortcutNames()) });
+  }
+
+  // Voice loop (STT/TTS) — opt-in, local-only. Report enabled/disabled + the
+  // exact install steps when off; the STT guidance points at the MULTILINGUAL
+  // whisper model so Korean speech works, and the Korean-TTS note carries the
+  // KSS voice's non-commercial license verbatim.
+  for (const check of voiceSetupChecks(env)) {
+    checks.push(check);
+  }
 
   // SecretSource posture — which local vault readers the resolver will use
   // (boolean only; never a secret value).

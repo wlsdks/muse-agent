@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   cloudSyncFolderCheck,
   episodeIndexHealth,
+  focusShortcutsCheck,
   messagingConfigCheck,
   notesIndexHealth,
   permissionModeDriftCheck,
@@ -10,8 +11,85 @@ import {
   recallCalibrationCheck,
   TOOL_OUTPUT_CAP_ADVISORY_FLOOR_CHARS,
   toolResultCapAdvisoryCheck,
+  voiceSetupChecks,
   volatileMountCheck
 } from "./commands-doctor-checks.js";
+
+describe("focusShortcutsCheck — Focus/DND shortcut presence", () => {
+  it("both convention shortcuts present → ok", () => {
+    const check = focusShortcutsCheck({}, ["Morning Routine", "Muse Focus On", "Muse Focus Off"]);
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("Muse Focus On");
+  });
+
+  it("a missing shortcut → warn naming which one + the Set Focus setup", () => {
+    const check = focusShortcutsCheck({}, ["Muse Focus On"]);
+    expect(check.status).toBe("warn");
+    expect(check.detail).toContain("Muse Focus Off");
+    expect(check.detail).toContain("Set Focus");
+  });
+
+  it("can't enumerate shortcuts (undefined) → warn 'couldn't list'", () => {
+    const check = focusShortcutsCheck({}, undefined);
+    expect(check.status).toBe("warn");
+    expect(check.detail).toContain("couldn't list");
+  });
+
+  it("honors MUSE_FOCUS_{ON,OFF}_SHORTCUT overrides", () => {
+    const env = { MUSE_FOCUS_OFF_SHORTCUT: "집중 끄기", MUSE_FOCUS_ON_SHORTCUT: "집중 켜기" };
+    const ok = focusShortcutsCheck(env, ["집중 켜기", "집중 끄기"]);
+    expect(ok.status).toBe("ok");
+    const warn = focusShortcutsCheck(env, ["집중 켜기"]);
+    expect(warn.status).toBe("warn");
+    expect(warn.detail).toContain("집중 끄기");
+  });
+});
+
+describe("voiceSetupChecks — actionable STT/TTS setup guidance", () => {
+  const byName = (checks: ReturnType<typeof voiceSetupChecks>, name: string) => checks.find((c) => c.name === name)!;
+
+  it("both OFF (default env) → ok STT+TTS lines carrying the exact opt-in steps", () => {
+    const checks = voiceSetupChecks({});
+    const stt = byName(checks, "voice:stt");
+    const tts = byName(checks, "voice:tts");
+    expect(stt.status).toBe("ok"); // opt-in OFF is never a health failure
+    expect(tts.status).toBe("ok");
+    expect(stt.detail).toContain("MUSE_VOICE_STT=whisper-cpp");
+    expect(stt.detail).toContain("brew install whisper-cpp");
+    // The Korean-capable MULTILINGUAL model, NOT the English-only build.
+    expect(stt.detail).toContain("ggml-base.bin");
+    expect(stt.detail).toContain("Korean");
+    expect(tts.detail).toContain("MUSE_VOICE_TTS=piper");
+  });
+
+  it("Korean TTS guidance names the KSS voice AND reproduces its non-commercial license verbatim", () => {
+    const tts = byName(voiceSetupChecks({}), "voice:tts");
+    expect(tts.detail).toContain("neurlang/piper-onnx-kss-korean");
+    expect(tts.detail).toContain("CC-BY-NC-SA 4.0");
+    expect(tts.detail.toLowerCase()).toContain("non-commercial");
+  });
+
+  it("reports STT ENABLED when MUSE_VOICE_STT=whisper-cpp", () => {
+    const stt = byName(voiceSetupChecks({ MUSE_VOICE_STT: "whisper-cpp" }), "voice:stt");
+    expect(stt.status).toBe("ok");
+    expect(stt.detail).toContain("ENABLED");
+    expect(stt.detail.toLowerCase()).toContain("multilingual");
+  });
+
+  it("reports TTS ENABLED when piper + a voice path are set", () => {
+    const tts = byName(voiceSetupChecks({ MUSE_VOICE_TTS: "piper", MUSE_PIPER_VOICE: "/v/kss.onnx" }), "voice:tts");
+    expect(tts.status).toBe("ok");
+    expect(tts.detail).toContain("ENABLED");
+    expect(tts.detail).toContain("/v/kss.onnx");
+  });
+
+  it("WARNS on half-configured Piper (MUSE_VOICE_TTS=piper but no MUSE_PIPER_VOICE)", () => {
+    const tts = byName(voiceSetupChecks({ MUSE_VOICE_TTS: "piper" }), "voice:tts");
+    expect(tts.status).toBe("warn");
+    expect(tts.detail).toContain("MUSE_PIPER_VOICE");
+    expect(tts.detail).toContain("will NOT register");
+  });
+});
 
 describe("recallCalibrationCheck — surfaces the recall confidence floor's calibration posture", () => {
   it("ok + the calibrated bar for the v2-moe default embedder", () => {

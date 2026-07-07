@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **490** variables.
+Total: **491** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -161,6 +161,8 @@ Total: **490** variables.
 | `MUSE_FAITHFULNESS_TRIPWIRE` | apps/cli |
 | `MUSE_FAST_MODEL` | apps/api, apps/cli |
 | `MUSE_FEEDS_FILE` | apps/cli, packages/autoconfigure, packages/recall |
+| `MUSE_FOCUS_OFF_SHORTCUT` | apps/cli, packages/macos |
+| `MUSE_FOCUS_ON_SHORTCUT` | apps/cli, packages/macos |
 | `MUSE_FOLLOWUPS_FILE` | apps/cli, packages/autoconfigure |
 | `MUSE_FOLLOWUP_CAPTURE_ENABLED` | packages/autoconfigure |
 | `MUSE_FOLLOWUP_DEFAULT_DESTINATION` | apps/api |
@@ -478,7 +480,7 @@ Total: **490** variables.
 | `MUSE_VETO_AVOIDANCE` | packages/autoconfigure |
 | `MUSE_VISION_MODEL` | apps/cli, packages/autoconfigure |
 | `MUSE_VOICE_OPENAI_API_KEY` | apps/cli, packages/autoconfigure |
-| `MUSE_VOICE_STT` | packages/autoconfigure |
+| `MUSE_VOICE_STT` | apps/cli, packages/autoconfigure |
 | `MUSE_VOICE_STT_MODEL` | packages/autoconfigure |
 | `MUSE_VOICE_TTS` | apps/cli, packages/autoconfigure |
 | `MUSE_VOICE_TTS_MODEL` | packages/autoconfigure |
@@ -497,7 +499,6 @@ Total: **490** variables.
 | `MUSE_WEB_WATCH_PROVIDER` | apps/api |
 | `MUSE_WEB_WATCH_QUIET_HOURS` | apps/api |
 | `MUSE_WEB_WATCH_TICK_MS` | apps/api |
-| `MUSE_WHISPER_CPP_MODEL` | packages/autoconfigure |
-| `MUSE_WHISPER_CPP_MODEL_URL` | packages/voice |
+| `MUSE_WHISPER_CPP_MODEL` | apps/cli, packages/autoconfigure, packages/voice |
 | `MUSE_WHISPER_CPP_PATH` | apps/cli, packages/autoconfigure, packages/voice |
 | `MUSE_WORKSPACE_SKILLS_DIR` | packages/autoconfigure |

@@ -1,5 +1,6 @@
 import { isCalibratedEmbedder, resolveRecallConfidentAt } from "@muse/agent-core";
 import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel, resolveVisionModel } from "@muse/autoconfigure";
+import { DEFAULT_FOCUS_OFF_SHORTCUT, DEFAULT_FOCUS_ON_SHORTCUT } from "@muse/macos";
 import type { DevFixableWeakness } from "@muse/stores";
 import { promises as fs } from "node:fs";
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
@@ -20,6 +21,34 @@ export function messagingConfigCheck(env: Record<string, string | undefined>): {
   return providers.length === 0
     ? { detail: "no messaging provider configured (opt-in — set MUSE_{TELEGRAM,DISCORD,SLACK}_BOT_TOKEN / MUSE_LINE_CHANNEL_ACCESS_TOKEN to enable)", status: "ok" }
     : { detail: `${providers.length.toString()} messenger(s) wired: ${providers.join(", ")}`, status: "ok" };
+}
+
+/**
+ * Whether the two named Focus shortcuts (`mac_system_set` focus_on/focus_off)
+ * exist, so "방해금지 켜줘" / "turn on do not disturb" actually toggles. macOS has
+ * no Focus CLI, so the toggle runs a user Shortcut carrying Apple's "Set Focus"
+ * action; this reports whether those shortcuts are installed. `listOutput`
+ * `undefined` means we couldn't enumerate (no Shortcuts access) — a warn, not a
+ * fail. Only surfaced when the macOS actuators are enabled.
+ */
+export function focusShortcutsCheck(
+  env: Record<string, string | undefined>,
+  listOutput: readonly string[] | undefined
+): { readonly detail: string; readonly status: "ok" | "warn" } {
+  const on = env.MUSE_FOCUS_ON_SHORTCUT?.trim() || DEFAULT_FOCUS_ON_SHORTCUT;
+  const off = env.MUSE_FOCUS_OFF_SHORTCUT?.trim() || DEFAULT_FOCUS_OFF_SHORTCUT;
+  if (listOutput === undefined) {
+    return { detail: `couldn't list Shortcuts — grant Shortcuts access, then create "${on}" + "${off}" (each with the "Set Focus" action) to enable 방해금지/집중모드 toggling`, status: "warn" };
+  }
+  const names = new Set(listOutput);
+  const missing = [on, off].filter((name) => !names.has(name));
+  if (missing.length === 0) {
+    return { detail: `both Focus shortcuts present ("${on}", "${off}") — focus_on/focus_off ready`, status: "ok" };
+  }
+  return {
+    detail: `missing ${missing.map((name) => `"${name}"`).join(" + ")} — create in Shortcuts.app with the "Set Focus" action (On/Off), or point MUSE_FOCUS_ON_SHORTCUT / MUSE_FOCUS_OFF_SHORTCUT at existing ones`,
+    status: "warn"
+  };
 }
 
 /**
@@ -190,6 +219,75 @@ export function weaknessFuelCheck(devFixable: readonly DevFixableWeakness[]): Lo
     name: "weakness ledger",
     status: "ok"
   };
+}
+
+/**
+ * Voice-loop setup guidance (STT + TTS) as actionable doctor lines. Voice is
+ * opt-in and local-only, so being OFF is never a health FAILURE — the checks
+ * stay "ok" and instead carry the exact steps to turn it on. The one warn is a
+ * half-configured Piper (`MUSE_VOICE_TTS=piper` but no `MUSE_PIPER_VOICE`),
+ * which silently won't register.
+ *
+ * The STT guidance points at the MULTILINGUAL `ggml-base.bin` (99 languages
+ * incl. Korean) — NOT the English-only `.en` build — because Korean is the
+ * language the primary user actually speaks. The Korean-TTS guidance names the
+ * KSS Piper voice and reproduces its non-commercial license verbatim, since an
+ * honest note matters if Muse ever ships commercially.
+ */
+export function voiceSetupChecks(env: Record<string, string | undefined>): LocalCheck[] {
+  const sttChoice = env.MUSE_VOICE_STT?.trim().toLowerCase();
+  const ttsChoice = env.MUSE_VOICE_TTS?.trim().toLowerCase();
+  const piperVoice = env.MUSE_PIPER_VOICE?.trim();
+  const useLocalStt = sttChoice === "whisper-cpp";
+  const useLocalTts = ttsChoice === "piper" && !!piperVoice && piperVoice.length > 0;
+
+  const checks: LocalCheck[] = [];
+
+  if (useLocalStt) {
+    checks.push({
+      detail:
+        "local Whisper.cpp ENABLED (MUSE_VOICE_STT=whisper-cpp). Default model ~/.muse/whisper-models/ggml-base.bin is MULTILINGUAL (99 languages incl. Korean; `-l auto` detects the language). MUSE_WHISPER_CPP_MODEL overrides it.",
+      name: "voice:stt",
+      status: "ok"
+    });
+  } else {
+    checks.push({
+      detail:
+        "OFF (opt-in). Enable local, Korean-capable speech-to-text: (1) set MUSE_VOICE_STT=whisper-cpp; " +
+        "(2) install the binary — `brew install whisper-cpp` (macOS) or build github.com/ggerganov/whisper.cpp; " +
+        "(3) download the MULTILINGUAL model — `mkdir -p ~/.muse/whisper-models && curl -L -o ~/.muse/whisper-models/ggml-base.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin`. " +
+        "Use ggml-base.bin (99 languages incl. Korean), NOT ggml-base.en.bin — the .en build will NOT transcribe Korean.",
+      name: "voice:stt",
+      status: "ok"
+    });
+  }
+
+  if (useLocalTts) {
+    checks.push({
+      detail: `local Piper ENABLED (MUSE_VOICE_TTS=piper, voice ${piperVoice ?? ""}).`,
+      name: "voice:tts",
+      status: "ok"
+    });
+  } else if (ttsChoice === "piper") {
+    checks.push({
+      detail:
+        "MUSE_VOICE_TTS=piper is set but MUSE_PIPER_VOICE is empty — Piper will NOT register (no voice model). Point MUSE_PIPER_VOICE at a .onnx voice file to enable local TTS.",
+      name: "voice:tts",
+      status: "warn"
+    });
+  } else {
+    checks.push({
+      detail:
+        "OFF (opt-in). Enable local text-to-speech: (1) set MUSE_VOICE_TTS=piper; (2) install the binary — `pipx install piper-tts` or a release from github.com/rhasspy/piper/releases; " +
+        "(3) download a voice and set MUSE_PIPER_VOICE to its .onnx path. " +
+        "For KOREAN TTS, use the KSS voice: https://huggingface.co/neurlang/piper-onnx-kss-korean — " +
+        "LICENSE: CC-BY-NC-SA 4.0 (Attribution-NonCommercial-ShareAlike). Non-commercial only: fine for personal use, but it may NOT be bundled into a commercial product.",
+      name: "voice:tts",
+      status: "ok"
+    });
+  }
+
+  return checks;
 }
 
 export interface OllamaPerfEnv {
