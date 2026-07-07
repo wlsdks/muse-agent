@@ -94,7 +94,15 @@ realistic partial hedge. Deeper veracity needs a human/product call, not an auto
 - ✓ (644fc899) Stage 5: verify-browsing-recall(4케이스) + verify-feed-crosslingual(3케이스, negative A/B 영구화) 라이브 배터리 — 실제 파이프라인(진짜 builder/normalizer/게이트) 구동, pass^4(빌더 3/3 + 평가자 1회), groundedSurfaces 래칫 30→32. 독립평가 7/7 PASS.
 - ◦ 잔여 후보: 스토어 sidecar 분리 검토(browsing ~21MB@2000 — 커지면); `--json` grounded 블록 패리티(feeds/browsing 둘 다 빠짐) ⏳진안 결정; 브라우징/피드 테마 → proactive/recap 연결("요즘 X 많이 보시네요").
 - ✓ (50b0a319) ① vision 한글 커버리지 — 측정이 가설을 뒤집음: gemma4 6/6+5/5(한글 전승) vs qwen3-vl 4/6(이벤트 스키마 빈출력, 한영 공통 3/3) → **기본값 유지**, 한글 픽스처 2종 영구 게이트화 + MUSE_VISION_MODEL 노브(fail-soft) 배송. 생태계 리서치도 수렴(openclaw 로컬 기본값=gemma4, /v1 경로 툴콜링 열화 경고 → Ollama 네이티브 유지 확정). qwen3.5는 Ollama mmproj/툴콜 템플릿 성숙 시 재평가.
-- ★ NEXT-THEME 후보 (2026-07-07 갭스카우트, 상세는 세션 보고): ② iMessage chat.db 인제스천(S-M, 로컬 모트 최대치, browsing-sync 패턴 재사용, FDA 권한 UX 포함); ③ 한국어 voice 기본값(S — whisper 다국어 GGML + Piper KSS(CC-BY-NC-SA 주의), 스택은 이미 완비); ④ macOS 연락처 임포트 + 온보딩 임포트 위저드(S); ⑤ 캘린더 쓰기 draft-first(M); ⑥ 프라이버시-계층 클라우드 라우팅(개인 컨텍스트 주입 ask는 무조건 로컬, 무주입 일반 질문만 옵트인 클라우드 — 진안 독푸딩 고민의 Muse다운 해법, ask-tier-models 인프라 재사용).
+- ★ NEXT-THEME 후보 (2026-07-07 갭스카우트, 상세는 세션 보고): ② iMessage chat.db 인제스천(⏳진안 이연 — 재제안 금지, 진안이 다시 열 때까지); ③ 한국어 voice 기본값(S — whisper 다국어 GGML + Piper KSS(CC-BY-NC-SA 주의), 스택은 이미 완비); ④ macOS 연락처 임포트 + 온보딩 임포트 위저드(S); ⑤ 캘린더 쓰기 draft-first(M — 진행 중; 스카우트 발견: MacOsCalendarProvider.createEvent 이미 존재, 툴 노출이 실제 작업); ⑥ 프라이버시-계층 클라우드 라우팅(개인 컨텍스트 주입 ask는 무조건 로컬, 무주입 일반 질문만 옵트인 클라우드 — ask-tier-models 인프라 재사용).
+
+## ★ macOS 커버리지 맵 (2026-07-07 스카우트, 진안 directive "맥에서 왠만한 건 다 되게 — 정책 안에서")
+
+스코어보드: 비서-관련 26개 능력 중 **보유 16 / 빌드가능 7 / 정책제외·이연 3**. 정책 필터 실코드 확인: osascript Apple-Events 자동화 허용(퍼베이시브 사용 중), Tier-3 제외 = System Events 키입력/클릭 퍼페티어링만(읽기는 허용), 쓰기는 MUSE_MACOS_ACTUATORS 게이트.
+
+빌드가능 순위(비서 가치순): ① Apple Reminders 쓰기(S — mac_app_read가 이미 읽는 것의 미러; ⚠설계논점: Muse 자체 mutate-reminders와 혼동쌍 — tool-calling.md 위반 위험, 타깃 라우팅 제품결정 필요) ② Apple Notes 쓰기/append(S) ③ Focus/DND 토글(S/M, Shortcuts 키스톤) ④ Apple 연락처 추가(S) ⑤ Photos 검색/내보내기(M) ⑥ 앱 종료(S) ⑦ 다크모드(S, 스크립팅 프로퍼티라 Tier-3 아님) ⑧ 밝기/블루투스(S, Shortcuts).
+
+정책제외 명문화(재검토 방지): AirDrop 전송(공식 경로 없음→Tier-3 필요→제외) · 임의 앱 UI 퍼페티어링(Tier-3) · 자율 발송(draft-first만) · banking(영구) · brew 임의 설치(runner 경유 필수). 이연: iMessage 읽기(진안 결정, FDA 필요).
 
 ## ★ 2026-07-03 found-during-DS-7: withFileLock 재시도 경합이 풀 스위트 병렬 부하에서 flaky (pre-existing, DS-3와 무관)
 
