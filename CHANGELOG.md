@@ -8,6 +8,31 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-07-07
+
+Cross-language recall now covers your RSS feeds too. Early /
+experimental, macOS only.
+
+### Added
+
+- **A Korean question can now find an English feed headline.** Feed
+  entry titles are embedded locally when a feed is added or refreshed,
+  so asking "지난주에 나온 러스트 릴리스 소식 있었어?" surfaces an
+  older "Rust 1.80.0 released" headline from your subscriptions — even
+  when it has fallen out of the recent-headlines window — cited
+  `[feed: ...]` under the same citation gate as everything else. The
+  recent-headlines behavior you already have is unchanged, and if the
+  local model is offline, feed refreshes simply continue without
+  embeddings.
+
+### Fixed
+
+- **Feed refreshes can no longer silently discard the embeddings they
+  just built.** RSS re-delivers the same entries on every refresh; the
+  store merge now carries each entry's embedding forward unless its
+  title actually changed (in which case it is re-embedded on the next
+  pass).
+
 ## [0.2.9] - 2026-07-07
 
 Browsing memory grows up: Muse can now keep learning from your browsing
