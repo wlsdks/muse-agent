@@ -91,7 +91,7 @@ import { CITATION_INSTRUCTION_LINES } from "./ask-prompt-constants.js";
 import { buildSessionFeedReflectionGrounding } from "./ask-session-grounding.js";
 import { retrieveAndRankNotes } from "./ask-note-retrieval.js";
 import { applyAdHocGrounding } from "./ask-adhoc-grounding.js";
-import { runVisionCommandAction } from "./ask-vision-command.js";
+import { resolveSessionVisionModel, runVisionCommandAction } from "./ask-vision-command.js";
 import { runGroundingVerdict } from "./ask-grounding-verdict.js";
 import { buildAskSystemPrompt } from "./ask-system-prompt.js";
 import { finalizeAndRenderAsk } from "./ask-finalize.js";
@@ -734,13 +734,20 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
           errorMessage: failure
         })).catch(() => undefined);
       };
+      // Vision surface may run a dedicated model (MUSE_VISION_MODEL, else the
+      // measured local vision default when the chat model IS the local default).
+      // Fail-soft to `model` when the optional vision model isn't pulled.
+      const visionModel = await resolveSessionVisionModel(model, process.env as MuseEnvironment);
+      if (visionModel !== model) {
+        io.stderr(`(vision: ${visionModel})\n`);
+      }
       if (assembly.modelProvider) {
         const visionProvider = assembly.modelProvider;
         screenVision.current = (input) =>
           describeImage(visionProvider, {
             imageBase64: input.imageBase64,
             mimeType: input.mimeType,
-            model,
+            model: visionModel,
             ...(input.question ? { question: input.question } : {})
           });
       }
@@ -752,7 +759,7 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
         await runVisionCommandAction({
           imageAttachments,
           io,
-          model,
+          model: visionModel,
           modelProvider: assembly.modelProvider,
           options,
           userKey

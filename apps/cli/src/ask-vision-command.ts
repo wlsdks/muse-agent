@@ -9,10 +9,35 @@
  */
 
 import { extractStructuredFromImage } from "@muse/agent-core";
-import { buildCalendarRegistry, resolveContactsFile, resolveNotesDir, type MuseEnvironment } from "@muse/autoconfigure";
+import { buildCalendarRegistry, resolveContactsFile, resolveNotesDir, resolveVisionModel, type MuseEnvironment } from "@muse/autoconfigure";
 import type { ModelProvider } from "@muse/model";
 
 import type { ProgramIO } from "./program.js";
+
+/**
+ * Resolve the vision-surface model for this session, with a best-effort Ollama
+ * availability check so a swap to an OPTIONAL vision model that isn't pulled
+ * fails soft to the chat model instead of erroring. The `/api/tags` probe runs
+ * ONLY when a swap is actually in play (the pure resolver already returned a
+ * DIFFERENT model with no availability data) — the common no-swap path adds zero
+ * latency. A probe failure/timeout leaves the pure resolver's choice, whose own
+ * fail-soft (the vision primitive returns `{ ok:false }`, never throws) backstops.
+ */
+export async function resolveSessionVisionModel(sessionModel: string, env: MuseEnvironment): Promise<string> {
+  const desired = resolveVisionModel({ env, sessionModel });
+  if (desired === sessionModel || !desired.startsWith("ollama/")) {
+    return desired;
+  }
+  const baseUrl = env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+  try {
+    const res = await fetch(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(2000) });
+    const body = (await res.json()) as { models?: ReadonlyArray<{ name?: string }> };
+    const availableModels = (body.models ?? []).map((m) => m.name ?? "").filter(Boolean);
+    return resolveVisionModel({ availableModels, env, sessionModel });
+  } catch {
+    return desired;
+  }
+}
 
 export async function runVisionCommandAction(params: {
   readonly options: {

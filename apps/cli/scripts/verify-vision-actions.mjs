@@ -63,6 +63,18 @@ const cases = [
     file: "document.png",
     grounded: ["title"],
     assert: (a) => a.route === "note" && /kickoff|action/i.test(String(a.fields.title ?? "")) && /api contract|staging|design review/i.test(String(a.fields.body ?? ""))
+  },
+  {
+    name: "KO receipt → route note, 김밥천국 merchant + 15,500 total",
+    file: "receipt-ko.png",
+    grounded: ["merchant"],
+    assert: (a) => a.route === "note" && /김밥천국/.test(String(a.fields.merchant ?? "")) && /15[,.]?500/.test(String(a.fields.total ?? ""))
+  },
+  {
+    name: "KO flyer → route calendar, 오픈소스 title + 7/19 startsAt + 강남역 location",
+    file: "flyer-ko.png",
+    grounded: ["title", "location"],
+    assert: (a) => a.route === "calendar" && /오픈소스/.test(String(a.fields.title ?? "")) && /19/.test(String(a.fields.startsAt ?? "")) && /강남역/.test(String(a.fields.location ?? ""))
   }
 ];
 

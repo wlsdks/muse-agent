@@ -42,9 +42,21 @@ const ABSTAIN_PHRASES = [
   "no mention", "not mention", "not printed", "not shown", "not listed",
   "not provided", "not visible", "not available", "not specified", "not included",
   "no cashier", "no ticket", "no price", "no name", "not find", "couldn't find",
-  "could not find", "i don't see", "i do not see", "no such"
+  "could not find", "i don't see", "i do not see", "no such",
+  // Korean refusal forms — a KO question is answered in KO, so an EN-only phrase
+  // list would miss a correct KO abstention (and worse, pass a KO fabrication).
+  "없습니다", "없어요", "없다", "없음", "찾을 수 없", "보이지 않", "표시되지 않",
+  "확인할 수 없", "알 수 없", "나와 있지 않", "적혀 있지 않", "포함되어 있지 않",
+  "기재되어 있지 않", "나타나 있지 않"
 ];
-const abstained = (text) => { const t = text.toLowerCase(); return ABSTAIN_PHRASES.some((p) => t.includes(p)); };
+// Normalize curly quotes/apostrophes to ASCII so a correct refusal phrased with
+// a typographic apostrophe ("don’t", "I’m") still matches the ASCII phrase list —
+// a Unicode-punctuation miss must not read as a fabrication. Cannot pass an
+// invented answer: a fabricated value states a name/number, not a refusal phrase.
+const abstained = (text) => {
+  const t = text.toLowerCase().replace(/[‘’ʼ]/gu, "'").replace(/[“”]/gu, '"');
+  return ABSTAIN_PHRASES.some((p) => t.includes(p));
+};
 
 let failures = 0;
 function ask(image, question) {
@@ -72,6 +84,17 @@ function check(name, ok, detail) {
   const out = ask("flyer.png", "What is the ticket price for this event?");
   check("ABSENT fact (ticket price) → abstains, no fabrication", abstained(out), out);
 }
+// KO PRESENT fact → must answer with the price printed on the Korean receipt.
+{
+  const out = ask("receipt-ko.png", "참치김밥 가격은 얼마인가요?");
+  check("KO PRESENT fact (참치김밥 4,500) → answered", /4[,.]?500/.test(out), out);
+}
+// KO ABSENT fact → the receipt prints no cashier/staff name; must abstain,
+// NOT fabricate one. (No personal name appears anywhere on the fixture.)
+{
+  const out = ask("receipt-ko.png", "이 영수증을 계산한 직원(캐셔)의 이름은 무엇인가요?");
+  check("KO ABSENT fact (cashier name) → abstains, no fabrication", abstained(out), out);
+}
 
-console.log(failures === 0 ? `\nALL PASS (3) on ${model}` : `\n${failures}/3 FAILED on ${model}`);
+console.log(failures === 0 ? `\nALL PASS (5) on ${model}` : `\n${failures}/5 FAILED on ${model}`);
 process.exit(failures === 0 ? 0 : 1);

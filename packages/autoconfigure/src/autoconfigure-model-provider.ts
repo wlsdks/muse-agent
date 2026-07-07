@@ -42,6 +42,73 @@ import type { MuseEnvironment } from "./index.js";
 export const LOCAL_FIRST_DEFAULT_MODEL = "ollama/gemma4:12b";
 
 /**
+ * The zero-config VISION model. Muse's image surface (`muse ask --image`,
+ * `--auto`/`--extract`, screen-read) can run a dedicated vision model rather than
+ * inheriting the chat default, because the best local grounding-and-chat model is
+ * not always the best local OCR/vision model. This is the winner of the checked-in
+ * head-to-head (`eval:vision` / `eval:vision-grounding`, incl. the Korean
+ * receipt/flyer fixtures).
+ *
+ * MEASURED 2026-07 — gemma4:12b vs qwen3-vl:8b, pass^3 on the Korean + English
+ * fixtures: gemma4 = 6/6 actions + 5/5 grounding; qwen3-vl = 4/6 actions
+ * (consistent EMPTY output on the constrained calendar/event schema — BOTH the
+ * English AND Korean flyer, 3/3, so not a Hangul gap) + 5/5 grounding. gemma4
+ * ALSO already handles the Korean receipt/flyer cleanly. So the flip is NOT
+ * warranted: gemma4 stays the vision default and this equals `LOCAL_FIRST_DEFAULT_MODEL`.
+ *
+ * Keep it EQUAL to `LOCAL_FIRST_DEFAULT_MODEL` (a no-op swap) unless a future
+ * measurement shows a different local model wins WITHOUT regressing any surface —
+ * then a one-line change here flips it. The auto-swap only fires when the chat
+ * default IS the local default (an explicit `--model` / cloud model is respected
+ * as-is) and fails soft to the chat model when the chosen model isn't pulled.
+ * The `MUSE_VISION_MODEL` env is the always-available manual override.
+ */
+export const LOCAL_FIRST_VISION_MODEL = LOCAL_FIRST_DEFAULT_MODEL;
+
+function ollamaTag(modelId: string): string | undefined {
+  return modelId.startsWith("ollama/") ? modelId.slice("ollama/".length) : undefined;
+}
+
+/**
+ * Resolve which model the VISION surface should use for THIS session, given the
+ * already-resolved chat/session model. Pure + deterministic so it is unit-testable
+ * and the fail-soft path is pinned by a test:
+ *
+ *  1. Explicit `MUSE_VISION_MODEL` wins (any provider — the escape hatch).
+ *  2. Else, when the session model is the LOCAL chat default, swap to
+ *     `LOCAL_FIRST_VISION_MODEL` (the measured best local vision model). An
+ *     explicit `--model`/`MUSE_MODEL` or a cloud model is RESPECTED unchanged —
+ *     we never override a deliberate model choice for vision.
+ *  3. FAIL-SOFT: if the chosen vision model differs from the session model, is an
+ *     Ollama model, and `availableModels` is provided but does NOT contain it
+ *     (the optional model isn't pulled), fall back to the session model — a
+ *     missing optional model degrades gracefully, never crashes. When
+ *     `availableModels` is omitted (couldn't query), the choice passes through
+ *     and the vision primitive's own fail-soft (returns `{ ok:false }`, no throw)
+ *     is the backstop.
+ */
+export function resolveVisionModel(params: {
+  readonly sessionModel: string;
+  readonly env: MuseEnvironment;
+  readonly availableModels?: readonly string[];
+}): string {
+  const { sessionModel, env, availableModels } = params;
+  const explicit = parseOptionalString(env.MUSE_VISION_MODEL);
+  const desired = explicit ?? (sessionModel === LOCAL_FIRST_DEFAULT_MODEL ? LOCAL_FIRST_VISION_MODEL : sessionModel);
+  if (desired === sessionModel) {
+    return sessionModel;
+  }
+  const tag = ollamaTag(desired);
+  if (tag !== undefined && availableModels !== undefined) {
+    const have = new Set(availableModels.map((m) => ollamaTag(m) ?? m));
+    if (!have.has(tag)) {
+      return sessionModel;
+    }
+  }
+  return desired;
+}
+
+/**
  * Resolve the default model identifier the runtime should use.
  *
  * Priority: explicit `MUSE_MODEL` (or `MUSE_DEFAULT_MODEL`) wins.

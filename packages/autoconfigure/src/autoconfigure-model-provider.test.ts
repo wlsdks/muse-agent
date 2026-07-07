@@ -1,6 +1,33 @@
 import { describe, expect, it } from "vitest";
 
-import { createModelProvider } from "./autoconfigure-model-provider.js";
+import { createModelProvider, LOCAL_FIRST_DEFAULT_MODEL, LOCAL_FIRST_VISION_MODEL, resolveVisionModel } from "./autoconfigure-model-provider.js";
+
+// The vision-model knob (MUSE_VISION_MODEL) + measured local default. Pure so the
+// swap policy AND the fail-soft path (optional model not pulled → fall back to the
+// chat model, never crash) are pinned without a live model.
+describe("resolveVisionModel — MUSE_VISION_MODEL knob + fail-soft", () => {
+  it("no env, chat model IS the local default → the vision default (currently == chat default, no-op swap per the 2026-07 measurement)", () => {
+    expect(resolveVisionModel({ env: {} as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe(LOCAL_FIRST_VISION_MODEL);
+    expect(LOCAL_FIRST_VISION_MODEL).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+  });
+  it("explicit MUSE_VISION_MODEL wins (the manual override — e.g. pin qwen3-vl)", () => {
+    expect(resolveVisionModel({ env: { MUSE_VISION_MODEL: "ollama/qwen3-vl:8b" } as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe("ollama/qwen3-vl:8b");
+  });
+  it("an explicit non-default chat model is respected (no vision override)", () => {
+    expect(resolveVisionModel({ env: {} as never, sessionModel: "anthropic/claude-haiku-4-5-20251001" })).toBe("anthropic/claude-haiku-4-5-20251001");
+    expect(resolveVisionModel({ env: {} as never, sessionModel: "ollama/qwen3:8b" })).toBe("ollama/qwen3:8b");
+  });
+  it("FAIL-SOFT: a MUSE_VISION_MODEL override not pulled → falls back to the chat model", () => {
+    expect(resolveVisionModel({ availableModels: ["gemma4:12b"], env: { MUSE_VISION_MODEL: "ollama/does-not-exist:8b" } as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+  });
+  it("a MUSE_VISION_MODEL override IS pulled (tags may carry the ollama/ prefix) → used", () => {
+    expect(resolveVisionModel({ availableModels: ["qwen3-vl:8b", "gemma4:12b"], env: { MUSE_VISION_MODEL: "ollama/qwen3-vl:8b" } as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe("ollama/qwen3-vl:8b");
+    expect(resolveVisionModel({ availableModels: ["ollama/qwen3-vl:8b"], env: { MUSE_VISION_MODEL: "ollama/qwen3-vl:8b" } as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe("ollama/qwen3-vl:8b");
+  });
+  it("a non-ollama MUSE_VISION_MODEL override is passed through (no ollama availability check applies)", () => {
+    expect(resolveVisionModel({ availableModels: ["gemma4:12b"], env: { MUSE_VISION_MODEL: "gemini/gemini-2.0-flash" } as never, sessionModel: LOCAL_FIRST_DEFAULT_MODEL })).toBe("gemini/gemini-2.0-flash");
+  });
+});
 
 // Gate the BYO-cloud path (muse setup cloud): once MUSE_LOCAL_ONLY=false + a key is set, the
 // router MUST build the matching cloud provider; with local-only on (the default), a cloud

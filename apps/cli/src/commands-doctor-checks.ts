@@ -1,5 +1,5 @@
 import { isCalibratedEmbedder, resolveRecallConfidentAt } from "@muse/agent-core";
-import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel } from "@muse/autoconfigure";
+import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel, resolveVisionModel } from "@muse/autoconfigure";
 import type { DevFixableWeakness } from "@muse/stores";
 import { promises as fs } from "node:fs";
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
@@ -116,6 +116,22 @@ export function modelEnvCheck(env: Record<string, string | undefined>): LocalChe
   return anyKey
     ? { detail: `inferred from ${anyKey} (MUSE_LOCAL_ONLY=false)`, name: "model env", status: "warn" }
     : { detail: "no MUSE_MODEL / provider key — chat/ask/brief will fail", name: "model env", status: "fail" };
+}
+
+/**
+ * Report which model the VISION surface (`muse ask --image`, `--auto`) will use,
+ * mirroring `resolveVisionModel` so a user can see when the image path runs a
+ * dedicated vision model rather than the chat default (and that `MUSE_VISION_MODEL`
+ * took effect). Pure — no availability probe here; the runtime fail-soft covers a
+ * not-pulled model.
+ */
+export function visionModelCheck(env: Record<string, string | undefined>): LocalCheck {
+  const sessionModel = resolveDefaultModel(env) ?? LOCAL_FIRST_DEFAULT_MODEL;
+  const visionModel = resolveVisionModel({ env, sessionModel });
+  const detail = visionModel === sessionModel
+    ? `${visionModel} (same as chat model)`
+    : `${visionModel}${env.MUSE_VISION_MODEL ? " (MUSE_VISION_MODEL)" : " (local vision default)"}`;
+  return { detail, name: "vision model", status: "ok" };
 }
 
 /**
