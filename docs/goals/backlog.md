@@ -100,7 +100,7 @@ realistic partial hedge. Deeper veracity needs a human/product call, not an auto
 
 스코어보드: 비서-관련 26개 능력 중 **보유 16 / 빌드가능 7 / 정책제외·이연 3**. 정책 필터 실코드 확인: osascript Apple-Events 자동화 허용(퍼베이시브 사용 중), Tier-3 제외 = System Events 키입력/클릭 퍼페티어링만(읽기는 허용), 쓰기는 MUSE_MACOS_ACTUATORS 게이트.
 
-빌드가능 순위(비서 가치순): ① Apple Reminders 쓰기(S — mac_app_read가 이미 읽는 것의 미러; ⚠설계논점: Muse 자체 mutate-reminders와 혼동쌍 — tool-calling.md 위반 위험, 타깃 라우팅 제품결정 필요) ② Apple Notes 쓰기/append(S) ③ Focus/DND 토글(S/M, Shortcuts 키스톤) ④ Apple 연락처 추가(S) ⑤ Photos 검색/내보내기(M) ⑥ 앱 종료(S) ⑦ 다크모드(S, 스크립팅 프로퍼티라 Tier-3 아님) ⑧ 밝기/블루투스(S, Shortcuts).
+빌드가능 순위(비서 가치순): ✓① Apple Reminders — 진안 결정 "Muse 스토어+Apple 미러(단방향)"로 해소(068d2c70, v0.2.13): MUSE_APPLE_REMINDERS_MIRROR opt-in, 모델-facing 툴 신설 없음(혼동쌍 0), 인젝션 5-페이로드 뮤테이션 검증, 3개 생성 지점 훅(이중발사 없음 감사), fail-soft. Notes 미러도 같은 패턴 적용 예정 ② Apple Notes 쓰기/append(S — Reminders 미러 패턴 재사용) ③ Focus/DND 토글(S/M, Shortcuts 키스톤) ④ Apple 연락처 추가(S) ⑤ Photos 검색/내보내기(M) ⑥ 앱 종료(S) ⑦ 다크모드(S, 스크립팅 프로퍼티라 Tier-3 아님) ⑧ 밝기/블루투스(S, Shortcuts).
 
 정책제외 명문화(재검토 방지): AirDrop 전송(공식 경로 없음→Tier-3 필요→제외) · 임의 앱 UI 퍼페티어링(Tier-3) · 자율 발송(draft-first만) · banking(영구) · brew 임의 설치(runner 경유 필수). 이연: iMessage 읽기(진안 결정, FDA 필요).
 
