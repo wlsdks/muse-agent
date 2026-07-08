@@ -21,6 +21,7 @@ import {
   type ConversationTrimResult,
   type DroppedContextSummarizer
 } from "@muse/memory";
+import { type FrameName } from "@muse/mascot";
 import { clamp, redactSecretsInText, stripUntrustedTerminalChars } from "@muse/shared";
 
 import { needsContextualRewrite, type ChatGrounding } from "./chat-grounding.js";
@@ -1000,4 +1001,107 @@ export function resolveForgetKey(keys: readonly string[], query: string): Forget
   if (matches.length === 1) return { key: matches[0] as string, kind: "unique" };
   if (matches.length > 1) return { kind: "ambiguous", matches };
   return { kind: "none" };
+}
+
+/**
+ * Home-screen bird idle loop. A subtle reduction of the desktop companion's
+ * bob/blink idle vocabulary to what reads well at the terminal's 6 half-block
+ * lines: mostly standing, an occasional single-frame blink, and one gentle bob
+ * (`hopUp` lifts the body a pixel, then it settles back to `stand`). Every pose
+ * is a canonical `@muse/mascot` frame — no hand-drawn art — and each renders to
+ * exactly 6 lines, so cycling them never jitters the layout.
+ */
+export const BIRD_IDLE_CYCLE: readonly FrameName[] = [
+  "stand", "stand", "blink", "stand", "stand", "hopUp", "stand", "stand"
+];
+
+/** How long each idle frame holds (ms). ~650ms keeps the motion gentle, well
+ *  inside the "one small bird, not a parade" brief. */
+export const BIRD_FRAME_MS = 650;
+
+/** The frame to draw for a given tick. `animate: false` (reduced-motion /
+ *  NO_COLOR / non-TTY) pins the bird to a single static `stand` pose. */
+export function birdIdleFrame(tick: number, animate = true): FrameName {
+  if (!animate) return "stand";
+  const len = BIRD_IDLE_CYCLE.length;
+  const idx = ((Math.trunc(tick) % len) + len) % len;
+  return BIRD_IDLE_CYCLE[idx] as FrameName;
+}
+
+function envFlagOn(value: string | undefined): boolean {
+  if (value === undefined) return false;
+  const v = value.trim().toLowerCase();
+  return v !== "" && v !== "0" && v !== "false" && v !== "no" && v !== "off";
+}
+
+/** The truecolor half-block bird only makes sense on a color TTY. NO_COLOR
+ *  (https://no-color.org/) or a non-TTY (piped/CI) ⇒ no ANSI-color bird. */
+export function birdColorEnabled(env: Record<string, string | undefined>, isTty: boolean): boolean {
+  if (env.NO_COLOR !== undefined) return false;
+  return isTty;
+}
+
+/** Whether the idle timer should run. Off under NO_COLOR / non-TTY (no bird at
+ *  all) and off under `MUSE_NO_ANIM` (a static bird — the reduced-motion path).
+ *  When this is false the caller renders a single static frame with no timer. */
+export function birdAnimationEnabled(env: Record<string, string | undefined>, isTty: boolean): boolean {
+  if (!birdColorEnabled(env, isTty)) return false;
+  if (envFlagOn(env.MUSE_NO_ANIM)) return false;
+  return true;
+}
+
+/** The HUD status-bar segments, in their canonical default order. */
+export type HudSegmentId = "model" | "locality" | "proactive" | "agent" | "tools" | "skills" | "tokens";
+
+export const HUD_SEGMENTS_DEFAULT: readonly HudSegmentId[] = [
+  "model", "locality", "proactive", "agent", "tools", "skills", "tokens"
+];
+
+const HUD_SEGMENT_SET: ReadonlySet<string> = new Set(HUD_SEGMENTS_DEFAULT);
+
+/** Named presets — sugar over an explicit segment list. */
+export const HUD_PRESETS: Readonly<Record<string, readonly HudSegmentId[]>> = {
+  minimal: ["model", "locality"],
+  full: HUD_SEGMENTS_DEFAULT
+};
+
+/** Parse a comma list into an ordered, de-duplicated list of KNOWN segment ids;
+ *  unknown names and duplicates are dropped silently. */
+function parseHudSegmentList(raw: string): HudSegmentId[] {
+  const seen = new Set<string>();
+  const out: HudSegmentId[] = [];
+  for (const token of raw.split(",")) {
+    const id = token.trim().toLowerCase();
+    if (HUD_SEGMENT_SET.has(id) && !seen.has(id)) {
+      seen.add(id);
+      out.push(id as HudSegmentId);
+    }
+  }
+  return out;
+}
+
+/**
+ * Resolve which HUD segments to render, in order. Precedence:
+ *  1. an explicit comma list — `MUSE_HUD_SEGMENTS` env, else `config.segments`
+ *     (unknown/duplicate names ignored; picks AND orders),
+ *  2. a named preset — `MUSE_HUD` env, else `config.preset` (`minimal`/`full`),
+ *  3. the full default order.
+ * Any step that resolves to an empty/blank selection falls through to the next,
+ * so the HUD is never blank.
+ */
+export function resolveHudSegments(
+  env: Record<string, string | undefined>,
+  config?: { readonly segments?: string; readonly preset?: string }
+): readonly HudSegmentId[] {
+  const rawList = env.MUSE_HUD_SEGMENTS ?? config?.segments;
+  if (rawList !== undefined && rawList.trim().length > 0) {
+    const picked = parseHudSegmentList(rawList);
+    if (picked.length > 0) return picked;
+  }
+  const rawPreset = (env.MUSE_HUD ?? config?.preset)?.trim().toLowerCase();
+  if (rawPreset !== undefined && rawPreset.length > 0) {
+    const preset = HUD_PRESETS[rawPreset];
+    if (preset && preset.length > 0) return preset;
+  }
+  return HUD_SEGMENTS_DEFAULT;
 }

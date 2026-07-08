@@ -4,9 +4,15 @@ import { MUSE_TAGLINE } from "./muse-identity.js";
 import { trimConversationMessages, type ConversationMessage } from "@muse/memory";
 
 import {
+  BIRD_IDLE_CYCLE,
+  birdAnimationEnabled,
+  birdColorEnabled,
+  birdIdleFrame,
   buildTurnMessages,
   createContextualGroundingLookup,
   type ChatTurnMessage,
+  HUD_SEGMENTS_DEFAULT,
+  resolveHudSegments,
   resolveChatHistoryWindow,
   chatHelp,
   cursorCoords,
@@ -791,5 +797,106 @@ describe("formatNoModelMessage — first-run onboarding for a brand-new user", (
     expect(out).toContain("muse setup model");           // real command
     expect(out).toContain("muse setup wizard");          // real command
     expect(out).toMatch(/local.*free|free.*local/i);     // local framed as the free/private default
+  });
+});
+
+describe("birdIdleFrame — home-screen bird idle loop", () => {
+  it("cycles the canonical bob/blink vocabulary and wraps by cycle length", () => {
+    const len = BIRD_IDLE_CYCLE.length;
+    for (let t = 0; t < len * 2 + 3; t++) {
+      expect(birdIdleFrame(t, true)).toBe(BIRD_IDLE_CYCLE[t % len]);
+    }
+  });
+
+  it("includes both a bob (hopUp) and a blink somewhere in the cycle", () => {
+    expect(BIRD_IDLE_CYCLE).toContain("hopUp");
+    expect(BIRD_IDLE_CYCLE).toContain("blink");
+    // still subtle — the bird is standing for most of the loop
+    expect(BIRD_IDLE_CYCLE.filter((f) => f === "stand").length).toBeGreaterThan(BIRD_IDLE_CYCLE.length / 2);
+  });
+
+  it("pins to a single static 'stand' frame under reduced motion (animate=false)", () => {
+    for (const t of [0, 2, 5, 7, 100]) expect(birdIdleFrame(t, false)).toBe("stand");
+  });
+
+  it("handles negative / fractional ticks without going out of range", () => {
+    expect(BIRD_IDLE_CYCLE).toContain(birdIdleFrame(-1, true));
+    expect(BIRD_IDLE_CYCLE).toContain(birdIdleFrame(3.9, true));
+  });
+});
+
+describe("birdColorEnabled / birdAnimationEnabled — reduced-motion + NO_COLOR gates", () => {
+  it("no color bird when NO_COLOR is set (any value), even on a TTY", () => {
+    expect(birdColorEnabled({ NO_COLOR: "" }, true)).toBe(false);
+    expect(birdColorEnabled({ NO_COLOR: "1" }, true)).toBe(false);
+    expect(birdAnimationEnabled({ NO_COLOR: "1" }, true)).toBe(false);
+  });
+
+  it("no color bird when not a TTY (piped / CI)", () => {
+    expect(birdColorEnabled({}, false)).toBe(false);
+    expect(birdAnimationEnabled({}, false)).toBe(false);
+  });
+
+  it("animates on a color TTY with no override", () => {
+    expect(birdColorEnabled({}, true)).toBe(true);
+    expect(birdAnimationEnabled({}, true)).toBe(true);
+  });
+
+  it("MUSE_NO_ANIM disables animation but keeps the (static) color bird", () => {
+    expect(birdAnimationEnabled({ MUSE_NO_ANIM: "1" }, true)).toBe(false);
+    expect(birdColorEnabled({ MUSE_NO_ANIM: "1" }, true)).toBe(true);
+  });
+
+  it("treats falsy MUSE_NO_ANIM values as NOT set (still animates)", () => {
+    for (const v of ["", "0", "false", "no", "off"]) {
+      expect(birdAnimationEnabled({ MUSE_NO_ANIM: v }, true)).toBe(true);
+    }
+  });
+});
+
+describe("resolveHudSegments — customizable status bar", () => {
+  it("defaults to the full ordered segment list when nothing is set", () => {
+    expect(resolveHudSegments({})).toEqual(HUD_SEGMENTS_DEFAULT);
+    expect(resolveHudSegments({})).toEqual(["model", "locality", "proactive", "agent", "tools", "skills", "tokens"]);
+  });
+
+  it("MUSE_HUD_SEGMENTS picks AND orders the listed segments", () => {
+    expect(resolveHudSegments({ MUSE_HUD_SEGMENTS: "tokens,model,tools" })).toEqual(["tokens", "model", "tools"]);
+    expect(resolveHudSegments({ MUSE_HUD_SEGMENTS: "model,locality,tools,skills" })).toEqual(["model", "locality", "tools", "skills"]);
+  });
+
+  it("ignores unknown names and de-duplicates, preserving first-seen order", () => {
+    expect(resolveHudSegments({ MUSE_HUD_SEGMENTS: "model, bogus, MODEL , tools ,tools" })).toEqual(["model", "tools"]);
+  });
+
+  it("falls back to the default when the list has no valid segments", () => {
+    expect(resolveHudSegments({ MUSE_HUD_SEGMENTS: "nonsense,foo" })).toEqual(HUD_SEGMENTS_DEFAULT);
+  });
+
+  it("falls back to the default when the list is empty/blank (never a blank HUD)", () => {
+    expect(resolveHudSegments({ MUSE_HUD_SEGMENTS: "" })).toEqual(HUD_SEGMENTS_DEFAULT);
+    expect(resolveHudSegments({ MUSE_HUD_SEGMENTS: "   " })).toEqual(HUD_SEGMENTS_DEFAULT);
+    expect(resolveHudSegments({ MUSE_HUD_SEGMENTS: " , , " })).toEqual(HUD_SEGMENTS_DEFAULT);
+  });
+
+  it("MUSE_HUD presets are sugar over a segment list", () => {
+    expect(resolveHudSegments({ MUSE_HUD: "minimal" })).toEqual(["model", "locality"]);
+    expect(resolveHudSegments({ MUSE_HUD: "FULL" })).toEqual(HUD_SEGMENTS_DEFAULT);
+    expect(resolveHudSegments({ MUSE_HUD: "  Minimal  " })).toEqual(["model", "locality"]);
+  });
+
+  it("an unknown preset falls back to the default", () => {
+    expect(resolveHudSegments({ MUSE_HUD: "fancy" })).toEqual(HUD_SEGMENTS_DEFAULT);
+  });
+
+  it("an explicit segment list takes precedence over a preset", () => {
+    expect(resolveHudSegments({ MUSE_HUD: "minimal", MUSE_HUD_SEGMENTS: "tools,skills" })).toEqual(["tools", "skills"]);
+  });
+
+  it("supports config-object fallback when the env is unset", () => {
+    expect(resolveHudSegments({}, { segments: "model,tools" })).toEqual(["model", "tools"]);
+    expect(resolveHudSegments({}, { preset: "minimal" })).toEqual(["model", "locality"]);
+    // env wins over config
+    expect(resolveHudSegments({ MUSE_HUD_SEGMENTS: "skills" }, { segments: "model" })).toEqual(["skills"]);
   });
 });

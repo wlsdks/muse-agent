@@ -12,14 +12,21 @@
 import { Box, Static, Text, useApp, useCursor, useInput, useStdout } from "ink";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
+import { FRAMES, toAnsi } from "@muse/mascot";
 import { trimConversationMessages, type ConversationTrimOptions, type DroppedContextSummarizer } from "@muse/memory";
 
 import {
+  BIRD_FRAME_MS,
+  birdAnimationEnabled,
+  birdColorEnabled,
+  birdIdleFrame,
   buildTurnMessages,
   chatHelp,
   cursorCoords,
   emptyInput,
   homeInputCursorY,
+  resolveHudSegments,
+  type HudSegmentId,
   extractAttachmentPaths,
   imageMimeForPath,
   formatCompactPreview,
@@ -232,6 +239,17 @@ export function MuseChatApp(props: {
   const [turns, setTurns] = useState<readonly DisplayTurn[]>(
     props.recap ? [{ role: props.recapRole ?? "system", text: props.recap }] : []
   );
+  const [birdTick, setBirdTick] = useState(0);
+  // Animate the home-screen bird: a gentle idle loop that lives in the LIVE
+  // render tree (not the one-shot <Static> banner), so Ink re-renders it on a
+  // frame timer. Only runs on the empty HOME screen and when animation is
+  // allowed (color TTY, no MUSE_NO_ANIM); cleared on unmount / first turn.
+  useEffect(() => {
+    const isTty = stdout?.isTTY === true;
+    if (turns.length !== 0 || !birdAnimationEnabled(process.env, isTty)) return undefined;
+    const timer = setInterval(() => setBirdTick((t) => t + 1), BIRD_FRAME_MS);
+    return () => clearInterval(timer);
+  }, [stdout, turns.length]);
   const [inputState, setInputState] = useState<InputState>(emptyInput);
   const [streaming, setStreaming] = useState("");
   const [busy, setBusy] = useState(false);
@@ -861,30 +879,52 @@ export function MuseChatApp(props: {
         ? h(Text, { dimColor: true }, "esc to stop · ctrl-c×2 quit")
         : h(Text, { dimColor: true }, "⏎ send · shift+⏎ newline · @file · /help · ctrl-c×2 quit"));
 
-  // HUD: single-line status bar at the very bottom — model, privacy posture,
-  // proactive mode, agent, tools, skills, tokens.
-  const hudElement = h(Box, null,
-    h(Text, { color: "magenta" }, "♪ "),
-    h(Text, { color: "cyan" }, currentModel),
-    h(Text, { dimColor: true }, "  ·  "),
-    h(Text, { color: props.localOnly ? "green" : "yellow" }, props.localOnly ? "🔒 local" : "⚠ cloud"),
-    h(Text, { dimColor: true }, "  ·  proactive "),
-    h(Text, { color: props.proactiveOn ? "green" : "gray" }, props.proactiveOn ? "on" : "off"),
-    h(Text, { dimColor: true }, `  ·  agent `),
-    h(Text, { color: activeAgent ? "yellow" : "gray" }, activeAgent ? activeAgent.name : "default"),
-    h(Text, { dimColor: true }, "  ·  tools "),
-    h(Text, { color: toolsOn ? "green" : "gray" }, toolsOn ? "on" : "off"),
-    h(Text, { dimColor: true }, `  ·  skills ${props.skills.length.toString()}`),
-    sessionTokens > 0 ? h(Text, { dimColor: true }, `  ·  ${formatTokens(sessionTokens)} tok`) : null);
+  // HUD: single-line status bar at the very bottom. Which segments show, and in
+  // what order, is resolved from the environment (`MUSE_HUD_SEGMENTS` comma list
+  // or a `MUSE_HUD` preset); unset ⇒ the full default order below. The render is
+  // a pure map from segment id → the existing colored <Text>, joined with the
+  // ` · ` separator, so nothing about the DEFAULT appearance changes.
+  const hudSegment = (id: HudSegmentId): { readonly label: string; readonly value: React.ReactNode | null } | null => {
+    switch (id) {
+      case "model": return { label: "", value: h(Text, { color: "cyan", key: "hud-v-model" }, currentModel) };
+      case "locality": return { label: "", value: h(Text, { color: props.localOnly ? "green" : "yellow", key: "hud-v-loc" }, props.localOnly ? "🔒 local" : "⚠ cloud") };
+      case "proactive": return { label: "proactive ", value: h(Text, { color: props.proactiveOn ? "green" : "gray", key: "hud-v-pro" }, props.proactiveOn ? "on" : "off") };
+      case "agent": return { label: "agent ", value: h(Text, { color: activeAgent ? "yellow" : "gray", key: "hud-v-agent" }, activeAgent ? activeAgent.name : "default") };
+      case "tools": return { label: "tools ", value: h(Text, { color: toolsOn ? "green" : "gray", key: "hud-v-tools" }, toolsOn ? "on" : "off") };
+      case "skills": return { label: `skills ${props.skills.length.toString()}`, value: null };
+      case "tokens": return sessionTokens > 0 ? { label: `${formatTokens(sessionTokens)} tok`, value: null } : null;
+    }
+  };
+  const hudChildren: React.ReactNode[] = [h(Text, { color: "magenta", key: "hud-note" }, "♪ ")];
+  let hudEmitted = 0;
+  for (const id of resolveHudSegments(process.env)) {
+    const seg = hudSegment(id);
+    if (!seg) continue;
+    const prefix = (hudEmitted === 0 ? "" : "  ·  ") + seg.label;
+    if (prefix.length > 0) hudChildren.push(h(Text, { dimColor: true, key: `hud-l-${id}` }, prefix));
+    if (seg.value !== null) hudChildren.push(seg.value);
+    hudEmitted += 1;
+  }
+  const hudElement = h(Box, null, ...hudChildren);
 
   // HOME: full-height canvas with the input pinned near the bottom. The banner
   // and the flexGrow spacer sit above the input; nothing sits between the spacer
   // and the input, so `homeInputCursorY` counts only the fixed bottom stack.
   if (isHome) {
+    // The animated bird lives INSIDE the flexGrow canvas (centered), above the
+    // fixed bottom stack — so it never shifts the input row, and homeInputCursorY
+    // (which counts only the bottom stack) stays exact. Static frame under
+    // reduced-motion; nothing at all when color is off (NO_COLOR / non-TTY),
+    // where the banner already falls back to a plain wordmark.
+    const isTty = stdout?.isTTY === true;
+    const birdArt = birdColorEnabled(process.env, isTty)
+      ? toAnsi(FRAMES[birdIdleFrame(birdTick, birdAnimationEnabled(process.env, isTty))])
+      : "";
     return h(Box, { flexDirection: "column", height: Math.max(1, rows - 1) },
       transcript,
       h(Box, { marginBottom: 1 }, h(Text, null, props.banner)),
-      h(Box, { flexGrow: 1 }),
+      h(Box, { alignItems: "center", flexDirection: "column", flexGrow: 1, justifyContent: "center" },
+        birdArt.length > 0 ? h(Text, null, birdArt) : null),
       inputBox,
       menuElement,
       noticeElement,

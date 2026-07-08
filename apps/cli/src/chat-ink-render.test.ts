@@ -480,3 +480,44 @@ describe("MuseChatApp HUD — local-only privacy posture", () => {
     expect(frame).not.toContain("🔒 local");
   });
 });
+
+describe("MuseChatApp HUD — customizable segments (env-driven)", () => {
+  const KEYS = ["MUSE_HUD", "MUSE_HUD_SEGMENTS"] as const;
+  async function frameWithEnv(env: Partial<Record<(typeof KEYS)[number], string>>): Promise<string> {
+    const saved = KEYS.map((k) => [k, process.env[k]] as const);
+    for (const k of KEYS) delete process.env[k];
+    Object.assign(process.env, env);
+    try {
+      const { lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({ localOnly: true })));
+      await tick();
+      const frame = lastFrame() ?? "";
+      unmount();
+      return frame;
+    } finally {
+      for (const [k, v] of saved) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+  }
+
+  it("default (no env) shows every segment — no regression", async () => {
+    const frame = await frameWithEnv({});
+    for (const needle of ["🔒 local", "proactive", "agent", "tools", "skills"]) {
+      expect(frame).toContain(needle);
+    }
+  });
+
+  it("MUSE_HUD=minimal trims to model + locality only", async () => {
+    const frame = await frameWithEnv({ MUSE_HUD: "minimal" });
+    expect(frame).toContain("🔒 local");
+    expect(frame).not.toContain("proactive");
+    expect(frame).not.toContain("agent");
+    expect(frame).not.toContain("skills");
+  });
+
+  it("MUSE_HUD_SEGMENTS picks and orders a subset", async () => {
+    const frame = await frameWithEnv({ MUSE_HUD_SEGMENTS: "tools,skills" });
+    expect(frame).toContain("tools");
+    expect(frame).toContain("skills");
+    expect(frame).not.toContain("proactive");
+    expect(frame).not.toContain("🔒 local");
+  });
+});
