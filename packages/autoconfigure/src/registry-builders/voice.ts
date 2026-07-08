@@ -75,7 +75,7 @@ export function buildVoiceRegistry(env: MuseEnvironment): VoiceProviderRegistry 
   // the cloud. Treating it as absent kills every cloud STT/TTS branch
   // below, so only Whisper.cpp / Piper register — and if neither is
   // configured the registry is empty (routes 404), never a silent send.
-  const openAiKey = parseBoolean(env.MUSE_LOCAL_ONLY, true)
+  const openAiKey = parseBoolean(env.MUSE_LOCAL_ONLY, false)
     ? undefined
     : (env.MUSE_VOICE_OPENAI_API_KEY?.trim() || env.OPENAI_API_KEY?.trim());
   const useLocalStt = sttChoice === "whisper-cpp";

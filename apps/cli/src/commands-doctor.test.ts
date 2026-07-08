@@ -419,10 +419,10 @@ describe("modelEnvCheck — reports the model the runtime ACTUALLY uses (mirrors
     expect(check.detail).not.toContain("inferred from GEMINI");
   });
 
-  it("local-only is the DEFAULT (env unset) — still reports the local model, not a cloud key", () => {
+  it("by DEFAULT (env unset) + a cloud key ⇒ reports the inferred cloud model (cloud is the default), warn", () => {
     const check = modelEnvCheck({ GEMINI_API_KEY: "k" });
-    expect(check.status).toBe("ok");
-    expect(check.detail).toContain("gemma4:12b");
+    expect(check.status).toBe("warn");
+    expect(check.detail).toContain("inferred from GEMINI_API_KEY");
   });
 
   it("explicit MUSE_LOCAL_ONLY=false + a cloud key ⇒ warn, inferred from that key", () => {
@@ -435,9 +435,10 @@ describe("modelEnvCheck — reports the model the runtime ACTUALLY uses (mirrors
     expect(modelEnvCheck({ MUSE_LOCAL_ONLY: "true", MUSE_MODEL: "ollama/llama3" }).detail).toBe("ollama/llama3");
   });
 
-  it("no model + opt-out + no key ⇒ fail (chat/ask would fail)", () => {
+  it("no model + local-only off + no key ⇒ ok, falls back to the local default (chat/ask still work)", () => {
     const check = modelEnvCheck({ MUSE_LOCAL_ONLY: "false" });
-    expect(check.status).toBe("fail");
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("gemma4:12b");
   });
 });
 
@@ -463,7 +464,7 @@ describe("localOnlyCheck — local-only / no-cloud-egress posture", () => {
     const check = localOnlyCheck({ MUSE_LOCAL_ONLY: "false", OPENAI_API_KEY: "k" });
     expect(check.status).toBe("warn");
     expect(check.detail).toContain("OPENAI_API_KEY");
-    expect(check.detail).toContain("opt-out");
+    expect(check.detail).toContain("off");
   });
 
   it("explicit OFF (opt-out) + no cloud credentials ⇒ ok (nothing to leak)", () => {
@@ -472,10 +473,10 @@ describe("localOnlyCheck — local-only / no-cloud-egress posture", () => {
     expect(check.detail).toContain("off");
   });
 
-  it("DEFAULT (unset MUSE_LOCAL_ONLY) ⇒ local-only ON, egress blocked", () => {
+  it("DEFAULT (unset MUSE_LOCAL_ONLY) ⇒ local-only OFF, cloud allowed", () => {
     const check = localOnlyCheck({ MUSE_MODEL: "ollama/llama3.2" });
     expect(check.status).toBe("ok");
-    expect(check.detail).toContain("default");
+    expect(check.detail).toContain("off");
   });
 });
 

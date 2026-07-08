@@ -42,11 +42,12 @@ Each model declares its capabilities so the runtime can route safely:
 - Retry classification: `ModelProviderError.retryable` is the source of truth.
   4xx (model-not-found, bad key) MUST fail fast. 5xx and unknown errors MAY retry.
 
-## Local-only mode (no cloud egress)
+## Local-only mode (no cloud egress) — opt-in
 
-`MUSE_LOCAL_ONLY=true` is the privacy/security posture for running Muse
-strictly on local open-source models — nothing may reach a third-party
-cloud LLM/voice API. Deterministic, fail-close (`local-only-policy.ts`):
+`MUSE_LOCAL_ONLY=true` is the OPT-IN privacy/security posture for running
+Muse strictly on local open-source models — nothing may reach a third-party
+cloud LLM/voice API. It is **off by default** (cloud is allowed); when
+switched on it is deterministic, fail-close (`local-only-policy.ts`):
 
 - `classifyProviderLocality(providerId, effectiveBaseUrl)` is the source
   of truth. Local = `ollama` / `lmstudio` / `diagnostic` on a loopback
@@ -55,13 +56,13 @@ cloud LLM/voice API. Deterministic, fail-close (`local-only-policy.ts`):
   off-box host — a REMOTE Ollama/LM-Studio host counts as egress.
 - The model router (`createModelProvider`) throws `LocalOnlyViolationError`
   (loud, not a silent disable) before instantiating a cloud provider.
-- **Local-first default model.** When local-only is on (the default),
-  `resolveDefaultModel` returns the local model (`ollama/gemma4:12b`) and
-  IGNORES ambient cloud keys — cloud-credential inference (GEMINI → OPENAI →
-  …) applies ONLY under an explicit `MUSE_LOCAL_ONLY=false`. Without this a
-  stray `GEMINI_API_KEY` would make the zero-config default a cloud model that
-  the gate then refuses, breaking first-run on any box carrying a cloud key.
-- The voice registry ignores an OpenAI key under local-only, so cloud
+- **Default model resolution.** Cloud is allowed by default, so
+  `resolveDefaultModel` infers a cloud model from an ambient credential
+  (GEMINI → OPENAI → ANTHROPIC → OPENROUTER) and ALWAYS falls back to the
+  local model (`ollama/gemma4:12b`) when no key is present — a fresh box still
+  boots. When `MUSE_LOCAL_ONLY=true`, the local model is forced and ambient
+  cloud keys are IGNORED (so a stray `GEMINI_API_KEY` can never trip the gate).
+- When local-only is on, the voice registry ignores an OpenAI key, so cloud
   STT/TTS never registers (mic audio cannot silently go to OpenAI).
 - `muse doctor` reports the posture; embeddings are already localhost-only.
 - **Image input needs no separate guard**: there is no standalone vision

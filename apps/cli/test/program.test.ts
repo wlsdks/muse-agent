@@ -7046,11 +7046,13 @@ describe("cli program", () => {
     process.env.MUSE_MODEL_KEYS_FILE = path.join(await mkdtemp(path.join(tmpdir(), "muse-cli-doctor-fail-")), "missing.json");
     const prevOllama = process.env.OLLAMA_BASE_URL;
     delete process.env.OLLAMA_BASE_URL;
-    // Opt OUT of local-only so the model-env check takes the cloud-inference
-    // path: with no model AND no key it fails (under local-only the runtime
-    // would resolve the local default, which can't fail — that is P34-12's fix).
+    // Force a deterministic FAIL with no network: opt INTO local-only AND
+    // configure an explicit cloud model — the model router refuses that at boot,
+    // and the doctor's localOnlyCheck previews it as a fail.
     const prevLocalOnly = process.env.MUSE_LOCAL_ONLY;
-    process.env.MUSE_LOCAL_ONLY = "false";
+    process.env.MUSE_LOCAL_ONLY = "true";
+    process.env.MUSE_MODEL = "gemini/gemini-2.0-flash";
+    process.env.GEMINI_API_KEY = "k";
     try {
       const { io, output } = captureOutput();
       const program = createProgram({ ...io, fetch: async () => { throw new Error("api off"); } });
@@ -7331,19 +7333,20 @@ describe("cli program", () => {
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
     delete process.env.OLLAMA_BASE_URL;
-    // This test exercises the cloud-credential inference path, which (post P34-12)
-    // only applies under an explicit opt-out — local-only resolves the local model.
+    // This test exercises the cloud-credential inference path (cloud is allowed by
+    // default now; the explicit MUSE_LOCAL_ONLY=false just pins that posture).
     process.env.MUSE_LOCAL_ONLY = "false";
     process.env.MUSE_MODEL_KEYS_FILE = modelKeysFile;
     try {
-      // No env, no file → fail.
+      // No env, no file, no key → ok, falls back to the local default model.
       const { io: io1, output: out1 } = captureOutput();
       const program1 = createProgram({ ...io1, fetch: async () => { throw new Error("api fetch off"); } });
       await program1.parseAsync(["node", "muse", "doctor", "--local", "--json"], { from: "node" });
       const r1 = JSON.parse(out1.join("")) as { checks: Array<{ name: string; status: string; detail: string }> };
       const probe1 = r1.checks.find((c) => c.name === "model env");
       expect(probe1).toBeDefined();
-      expect(probe1!.status).toBe("fail");
+      expect(probe1!.status).toBe("ok");
+      expect(probe1!.detail).toContain("gemma4:12b");
 
       // File-only with suggestedModel — picked up via the merge.
       await fsp.writeFile(modelKeysFile, JSON.stringify({
@@ -7814,14 +7817,14 @@ describe("cli program", () => {
       expect(snap2.model).toBe("gemini-2.5-pro");
       expect(snap2.modelInferredFrom).toBeUndefined();
 
-      // 3) Nothing resolvable → unset.
+      // 3) No cloud key → falls back to the local default (never unset now).
       delete process.env.MUSE_MODEL;
       delete process.env.GEMINI_API_KEY;
       const { io: io3, output: out3 } = captureOutput();
       const program3 = createProgram({ ...io3, fetch: async () => { throw new Error("no fetch"); } });
       await program3.parseAsync(["node", "muse", "status", "--user", "stark", "--json"], { from: "node" });
       const snap3 = JSON.parse(out3.join("")) as { model?: string; modelInferredFrom?: string };
-      expect(snap3.model).toBeUndefined();
+      expect(snap3.model).toBe("ollama/gemma4:12b");
       expect(snap3.modelInferredFrom).toBeUndefined();
     } finally {
       const restore = (envKey: keyof typeof prev, k: string): void => {
@@ -7840,7 +7843,7 @@ describe("cli program", () => {
     }
   });
 
-  it("muse status: local-only (default) + ambient cloud key ⇒ LOCAL default, NOT 'inferred from GEMINI_API_KEY'", async () => {
+  it("muse status: MUSE_LOCAL_ONLY=true + ambient cloud key ⇒ LOCAL default, NOT 'inferred from GEMINI_API_KEY'", async () => {
     const prev = {
       model: process.env.MUSE_MODEL,
       defaultModel: process.env.MUSE_DEFAULT_MODEL,
@@ -7858,7 +7861,7 @@ describe("cli program", () => {
     delete process.env.OPENAI_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
     delete process.env.OLLAMA_BASE_URL;
-    delete process.env.MUSE_LOCAL_ONLY; // default ⇒ local-only ON
+    process.env.MUSE_LOCAL_ONLY = "true"; // opt-in local-only ⇒ ambient cloud keys ignored
     process.env.GEMINI_API_KEY = "gem-test"; // a stray cloud key the runtime must IGNORE
     process.env.MUSE_MODEL_KEYS_FILE = path.join(await mkdtemp(path.join(tmpdir(), "muse-status-lo-")), "missing.json");
     try {
@@ -7879,7 +7882,7 @@ describe("cli program", () => {
       await programf.parseAsync(["node", "muse", "status", "--user", "stark"], { from: "node" });
       const line = outf.join("");
       expect(line, "the privacy-misleading attribution must be gone").not.toContain("inferred from GEMINI_API_KEY");
-      expect(line).toContain("(local-only default — GEMINI_API_KEY ignored)");
+      expect(line).toContain("(local-only — GEMINI_API_KEY ignored)");
     } finally {
       const restore = (v: string | undefined, k: string): void => {
         if (v === undefined) delete process.env[k];

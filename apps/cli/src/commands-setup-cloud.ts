@@ -44,19 +44,21 @@ export interface CloudSetupPlan {
 }
 
 /**
- * Plan a cloud setup: resolve the model spec + detect whether the two things the cloud path
- * NEEDS from the environment are present — the provider's API key and `MUSE_LOCAL_ONLY=false`
- * (local-only defaults to true, so it must be explicitly disabled). Pure — `undefined` for an
- * unknown provider id.
+ * Plan a cloud setup: resolve the model spec + detect what the cloud path NEEDS from the
+ * environment. Cloud is allowed by default, so the only hard requirement is the provider's
+ * API key — `MUSE_LOCAL_ONLY` only matters when it is explicitly `true` (which blocks cloud
+ * and must be unset). Pure — `undefined` for an unknown provider id.
  */
 export function planCloudSetup(providerId: string, env: NodeJS.ProcessEnv, modelOverride?: string): CloudSetupPlan | undefined {
   const provider = CLOUD_PROVIDERS.find((p) => p.id === providerId);
   if (!provider) return undefined;
   const defaultModel = modelOverride?.trim() ? `${provider.id}/${modelOverride.trim()}` : provider.defaultModel;
   const keyPresent = provider.keyEnvVars.some((k) => (env[k] ?? "").trim().length > 0);
-  const localOnlyDisabled = (env.MUSE_LOCAL_ONLY ?? "").trim().toLowerCase() === "false";
+  // Cloud egress is permitted unless local-only is explicitly forced on.
+  const localOnlyForced = (env.MUSE_LOCAL_ONLY ?? "").trim().toLowerCase() === "true";
+  const localOnlyDisabled = !localOnlyForced;
   const requiredExports: string[] = [];
-  if (!localOnlyDisabled) requiredExports.push("export MUSE_LOCAL_ONLY=false");
+  if (localOnlyForced) requiredExports.push("unset MUSE_LOCAL_ONLY");
   if (!keyPresent) requiredExports.push(`export ${provider.keyEnvVars[0]!}=<your-key>`);
   return { defaultModel, keyPresent, localOnlyDisabled, provider, requiredExports };
 }

@@ -115,23 +115,26 @@ export function resolveVisionModel(params: {
  *
  * LOCAL-FIRST: when local-only is on (the default posture), the zero-config
  * default is the LOCAL model — never a cloud one. This is the whole product
- * stance ("runs entirely on your machine") AND it fixes a real trap: inferring
- * a cloud model from an ambient `GEMINI_API_KEY`/`OPENAI_API_KEY` would then be
- * REFUSED by the local-only gate, so zero-config broke on any box that happened
- * to carry a cloud key. Cloud-credential inference (GEMINI → OPENAI → ANTHROPIC
- * → OPENROUTER → local) applies ONLY when the user explicitly opts out via
- * `MUSE_LOCAL_ONLY=false`. Returns undefined only in the opted-out case with no
- * signal at all.
+ * Cloud is allowed by default (MUSE_LOCAL_ONLY off unless explicitly set), so
+ * cloud-credential inference (GEMINI → OPENAI → ANTHROPIC → OPENROUTER) runs by
+ * default and picks a cloud model when a key is present, otherwise falls back to
+ * the local default — a fresh box with no key still boots on gemma4:12b. When
+ * `MUSE_LOCAL_ONLY=true` is set, the local model is forced and ambient cloud
+ * keys are ignored (so the local-only gate can never be tripped by a stray key).
  */
 export function resolveDefaultModel(env: MuseEnvironment): string | undefined {
   const explicit = parseOptionalString(env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL);
   if (explicit) {
     return explicit;
   }
-  if (parseBoolean(env.MUSE_LOCAL_ONLY, true)) {
+  if (parseBoolean(env.MUSE_LOCAL_ONLY, false)) {
     return LOCAL_FIRST_DEFAULT_MODEL;
   }
-  return inferDefaultModelFromCredentials(env);
+  // Cloud is allowed by default: prefer a model inferred from an ambient cloud
+  // credential, but ALWAYS fall back to the local default so a fresh box with no
+  // cloud key (and no OLLAMA_BASE_URL) still boots on gemma4:12b — never a
+  // no-default-model dead end.
+  return inferDefaultModelFromCredentials(env) ?? LOCAL_FIRST_DEFAULT_MODEL;
 }
 
 function inferDefaultModelFromCredentials(env: MuseEnvironment): string | undefined {
@@ -215,13 +218,11 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
   const models = parseCsv(env.MUSE_MODEL_LIST) ?? [parseModelName(defaultModel).modelId];
   const extraHeaders = parseHeaderMap(env.MUSE_MODEL_EXTRA_HEADERS);
 
-  // Local-only / no-cloud-egress: fail CLOSED (and loud) before any
-  // cloud provider is instantiated. Silently disabling the runtime would
-  // hide the privacy violation the user asked to be protected from.
-  // DEFAULT ON: Muse is local-by-construction ("Tell it everything. It can't
-  // tell anyone." — the README identity). A cloud provider is an explicit
-  // opt-out via MUSE_LOCAL_ONLY=false that forfeits the zero-egress guarantee.
-  if (parseBoolean(env.MUSE_LOCAL_ONLY, true)) {
+  // Local-only / no-cloud-egress: an OPT-IN posture (MUSE_LOCAL_ONLY=true). When
+  // set, fail CLOSED (and loud) before any cloud provider is instantiated —
+  // silently disabling the runtime would hide the privacy violation the user
+  // asked to be protected from. Off by default: cloud providers are allowed.
+  if (parseBoolean(env.MUSE_LOCAL_ONLY, false)) {
     const effectiveBaseUrl = providerId === "ollama"
       ? (baseUrl ?? normalizeOllamaBaseUrl(env.OLLAMA_BASE_URL))
       : OPENAI_COMPAT_PRESETS[providerId]

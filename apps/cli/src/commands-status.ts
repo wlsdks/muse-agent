@@ -543,9 +543,9 @@ function resolveModelInfo(): { model?: string; modelInferredFrom?: string; model
   if (!resolved) {
     return {};
   }
-  // Under local-only (the default) the runtime IGNORES ambient cloud keys and
-  // runs the local default; attributing the model to a cloud key here would
-  // falsely contradict the privacy line shown right below (mirrors muse
+  // Under local-only (opt-in, MUSE_LOCAL_ONLY=true) the runtime IGNORES ambient
+  // cloud keys and runs the local default; attributing the model to a cloud key
+  // here would falsely contradict the privacy line shown right below (mirrors muse
   // doctor's modelEnvCheck). Derive the posture from the canonical evaluator.
   if (evaluateLocalOnlyPosture(merged).enabled) {
     const ignoredCloudKey = [
@@ -690,7 +690,7 @@ function renderStatus(io: ProgramIO, snap: Awaited<ReturnType<typeof collectStat
         ? snap.modelInferredFrom
           ? `${snap.model} (inferred from ${snap.modelInferredFrom})`
           : snap.modelLocalOnlyIgnoredKey
-            ? `${snap.model} (local-only default — ${snap.modelLocalOnlyIgnoredKey} ignored)`
+            ? `${snap.model} (local-only — ${snap.modelLocalOnlyIgnoredKey} ignored)`
             : snap.model
         : "(unset — set MUSE_MODEL or run muse setup model)";
       io.stdout(`  model: ${modelLine}\n`);

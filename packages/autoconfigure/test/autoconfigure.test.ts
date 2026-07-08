@@ -954,14 +954,14 @@ describe("autoconfigure", () => {
       .toBe("anthropic/claude-haiku-4-5-20251001");
   });
 
-  it("resolveDefaultModel is LOCAL-first by default — ignores ambient cloud keys under local-only", () => {
-    // The whole product stance: local-only is on by default, so the
-    // zero-config default is the local model even if a cloud key is in env
-    // (which the local-only gate would refuse anyway). Cloud inference is
-    // gated behind an explicit MUSE_LOCAL_ONLY=false opt-out.
+  it("resolveDefaultModel: cloud allowed by default (infers from a key), falls back to local; MUSE_LOCAL_ONLY forces local", () => {
+    // Default posture is cloud-allowed: a cloud key in env selects that cloud
+    // model; with no key it falls back to the local default so a fresh box still
+    // boots. MUSE_LOCAL_ONLY=true forces the local model and ignores ambient keys.
     expect(resolveDefaultModel({})).toBe("ollama/gemma4:12b");
-    expect(resolveDefaultModel({ GEMINI_API_KEY: "x" })).toBe("ollama/gemma4:12b");
-    expect(resolveDefaultModel({ OPENAI_API_KEY: "x" })).toBe("ollama/gemma4:12b");
+    expect(resolveDefaultModel({ GEMINI_API_KEY: "x" })).toBe("gemini/gemini-2.0-flash");
+    expect(resolveDefaultModel({ OPENAI_API_KEY: "x" })).toBe("openai/gpt-4o-mini");
+    expect(resolveDefaultModel({ MUSE_LOCAL_ONLY: "true", GEMINI_API_KEY: "x" })).toBe("ollama/gemma4:12b");
   });
 
   it("resolveDefaultModel infers from credentials only when local-only is opted out", () => {
@@ -974,8 +974,9 @@ describe("autoconfigure", () => {
       .toBe("openrouter/google/gemini-2.0-flash-001");
   });
 
-  it("resolveDefaultModel returns undefined only when opted out with no credentials", () => {
-    expect(resolveDefaultModel({ MUSE_LOCAL_ONLY: "false" })).toBeUndefined();
+  it("resolveDefaultModel always falls back to the local default (never undefined) when nothing is inferable", () => {
+    expect(resolveDefaultModel({ MUSE_LOCAL_ONLY: "false" })).toBe("ollama/gemma4:12b");
+    expect(resolveDefaultModel({})).toBe("ollama/gemma4:12b");
   });
 
   it("resolveDefaultModel prefers GEMINI over OPENAI when both keys are present (opted out)", () => {

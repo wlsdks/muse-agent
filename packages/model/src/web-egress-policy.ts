@@ -6,7 +6,7 @@
  *
  * It is DELIBERATELY independent of `MUSE_LOCAL_ONLY`, which governs a
  * different egress class — your private data / prompts going to a CLOUD
- * LLM. `MUSE_LOCAL_ONLY` (on by default) keeps the model local; this
+ * LLM. `MUSE_LOCAL_ONLY` (opt-in) keeps the model local when set; this
  * switch (on by default) controls whether the assistant may fetch a
  * *public* URL or run a *public* search. So a user can keep the local-LLM
  * privacy guarantee AND still search the web (the default), or set

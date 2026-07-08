@@ -33,10 +33,10 @@ export function createOllamaEmbedder(model: string): (text: string) => Promise<r
   // this embedder's independent OLLAMA_BASE_URL, so a localhost chat model
   // plus a REMOTE OLLAMA_BASE_URL would silently POST the user's note /
   // memory / episode text off-box. Refusing here closes that egress hole
-  // before any caller can hand the embedder private text. MUSE_LOCAL_ONLY
-  // is ON by default; remote requires the explicit MUSE_LOCAL_ONLY=false
-  // opt-out that forfeits the zero-egress guarantee.
-  if (parseBoolean(process.env.MUSE_LOCAL_ONLY, true) && !isLoopbackUrl(base)) {
+  // before any caller can hand the embedder private text. MUSE_LOCAL_ONLY is
+  // off by default (cloud/remote allowed); a remote embedder is refused only
+  // when the user opts in with MUSE_LOCAL_ONLY=true.
+  if (parseBoolean(process.env.MUSE_LOCAL_ONLY, false) && !isLoopbackUrl(base)) {
     throw new LocalOnlyViolationError("ollama", base);
   }
   // Keep the embed model warm with the SAME knob as the chat model (01717219):

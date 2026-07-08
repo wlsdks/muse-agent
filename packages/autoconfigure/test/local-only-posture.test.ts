@@ -24,7 +24,7 @@ describe("evaluateLocalOnlyPosture — single source of truth for doctor + setup
     const p = evaluateLocalOnlyPosture({ MUSE_LOCAL_ONLY: "false", OPENAI_API_KEY: "k" });
     expect(p).toMatchObject({ enabled: false, status: "warn" });
     expect(p.detail).toContain("OPENAI_API_KEY");
-    expect(p.detail).toContain("opt-out");
+    expect(p.detail).toContain("off");
   });
 
   it("explicit OFF (opt-out) + no cloud credentials ⇒ ok (nothing to leak)", () => {
@@ -33,10 +33,10 @@ describe("evaluateLocalOnlyPosture — single source of truth for doctor + setup
     expect(p.detail).toContain("off");
   });
 
-  it("DEFAULT (unset) ⇒ local-only is ON, egress blocked", () => {
+  it("DEFAULT (unset) ⇒ local-only is OFF, cloud allowed (no key ⇒ nothing to leak)", () => {
     const p = evaluateLocalOnlyPosture({ MUSE_MODEL: "ollama/llama3.2" });
-    expect(p).toMatchObject({ enabled: true, status: "ok" });
-    expect(p.detail).toContain("default");
+    expect(p).toMatchObject({ enabled: false, status: "ok" });
+    expect(p.detail).toContain("off");
   });
 
   // The embedder reads OLLAMA_BASE_URL independently of the chat model, so a
@@ -45,13 +45,13 @@ describe("evaluateLocalOnlyPosture — single source of truth for doctor + setup
   // ollama) while the embedder would egress the user's text — this fail-closes
   // at runtime, but doctor must SURFACE it (not report a false "🔒 ok").
   it("ON + a LOCAL lmstudio chat but a REMOTE OLLAMA_BASE_URL ⇒ fail (embedder egress surfaced)", () => {
-    const p = evaluateLocalOnlyPosture({ MUSE_MODEL: "lmstudio/llama", OLLAMA_BASE_URL: "http://192.168.1.50:11434" });
+    const p = evaluateLocalOnlyPosture({ MUSE_LOCAL_ONLY: "true", MUSE_MODEL: "lmstudio/llama", OLLAMA_BASE_URL: "http://192.168.1.50:11434" });
     expect(p).toMatchObject({ enabled: true, status: "fail" });
     expect(p.detail).toContain("OLLAMA_BASE_URL");
   });
 
   it("ON + a LOCAL lmstudio chat + a LOOPBACK OLLAMA_BASE_URL ⇒ ok (embedder stays on-box)", () => {
-    const p = evaluateLocalOnlyPosture({ MUSE_MODEL: "lmstudio/llama", OLLAMA_BASE_URL: "http://127.0.0.1:11434" });
+    const p = evaluateLocalOnlyPosture({ MUSE_LOCAL_ONLY: "true", MUSE_MODEL: "lmstudio/llama", OLLAMA_BASE_URL: "http://127.0.0.1:11434" });
     expect(p).toMatchObject({ enabled: true, status: "ok" });
   });
 

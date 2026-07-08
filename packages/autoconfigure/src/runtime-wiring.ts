@@ -150,7 +150,7 @@ export function createInputGuards(env: MuseEnvironment): readonly GuardStage[] {
   // when cloud egress is actually possible (MUSE_LOCAL_ONLY off); an explicit
   // MUSE_INPUT_GUARD_PII_ENABLED still forces it on under any posture. (The PII
   // OUTPUT mask stays on regardless — that's transcript/log hygiene, not a block.)
-  const cloudEgressPossible = !parseBoolean(env.MUSE_LOCAL_ONLY, true);
+  const cloudEgressPossible = !parseBoolean(env.MUSE_LOCAL_ONLY, false);
   if (parseBoolean(env.MUSE_INPUT_GUARD_PII_ENABLED, cloudEgressPossible)) {
     guards.push(createPiiInputGuard());
   }
@@ -174,7 +174,7 @@ export function createOutputGuards(env: MuseEnvironment): readonly OutputGuardSt
   // store. So, mirroring the PII INPUT guard, it fires by default ONLY when cloud
   // egress is possible (MUSE_LOCAL_ONLY off); an explicit
   // MUSE_OUTPUT_GUARD_PII_MASK_ENABLED forces it on under any posture.
-  const cloudEgressPossible = !parseBoolean(env.MUSE_LOCAL_ONLY, true);
+  const cloudEgressPossible = !parseBoolean(env.MUSE_LOCAL_ONLY, false);
   if (parseBoolean(env.MUSE_OUTPUT_GUARD_PII_MASK_ENABLED, cloudEgressPossible)) {
     guards.push(createPiiMaskingOutputGuard());
   }

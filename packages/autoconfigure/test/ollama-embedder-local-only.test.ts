@@ -19,18 +19,13 @@ describe("createOllamaEmbedder — MUSE_LOCAL_ONLY fail-close on remote OLLAMA_B
     vi.restoreAllMocks();
   });
 
-  it("refuses LOUD when local-only (default) and OLLAMA_BASE_URL is a remote host — private text never POSTs", async () => {
+  it("under the DEFAULT (no flag) a remote OLLAMA_BASE_URL is allowed — cloud egress is the default posture", async () => {
     process.env.OLLAMA_BASE_URL = "http://192.168.1.50:11434";
-    delete process.env.MUSE_LOCAL_ONLY; // default ON
+    delete process.env.MUSE_LOCAL_ONLY; // default OFF ⇒ cloud/remote allowed
 
-    const fetchSpy = vi.spyOn(globalThis, "fetch");
-
-    // Fail-close at construction: the embedder must throw before any caller
-    // can hand it private note/memory text. A lazy embedder that only throws
-    // on first call still risks an unguarded call site POSTing first.
-    expect(() => createOllamaEmbedder("nomic-embed-text-v2-moe")).toThrow(LocalOnlyViolationError);
-
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // No local-only fail-close by default: constructing against a remote host
+    // succeeds. (Opt in with MUSE_LOCAL_ONLY=true to get the fail-close below.)
+    expect(() => createOllamaEmbedder("nomic-embed-text-v2-moe")).not.toThrow();
   });
 
   it("refuses an explicit MUSE_LOCAL_ONLY=true with a remote host", () => {

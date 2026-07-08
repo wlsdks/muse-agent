@@ -131,9 +131,9 @@ export function modelEnvCheck(env: Record<string, string | undefined>): LocalChe
   if (explicitModel && explicitModel.length > 0) {
     return { detail: explicitModel, name: "model env", status: "ok" };
   }
-  if (parseBoolean(env.MUSE_LOCAL_ONLY, true)) {
+  if (parseBoolean(env.MUSE_LOCAL_ONLY, false)) {
     return {
-      detail: `${resolveDefaultModel(env) ?? LOCAL_FIRST_DEFAULT_MODEL} (local-only default — ambient cloud keys ignored)`,
+      detail: `${resolveDefaultModel(env) ?? LOCAL_FIRST_DEFAULT_MODEL} (local-only on — ambient cloud keys ignored)`,
       name: "model env",
       status: "ok"
     };
@@ -143,8 +143,8 @@ export function modelEnvCheck(env: Record<string, string | undefined>): LocalChe
     "OPENROUTER_API_KEY", "OLLAMA_BASE_URL"
   ].find((k) => (env[k] ?? "").trim().length > 0);
   return anyKey
-    ? { detail: `inferred from ${anyKey} (MUSE_LOCAL_ONLY=false)`, name: "model env", status: "warn" }
-    : { detail: "no MUSE_MODEL / provider key — chat/ask/brief will fail", name: "model env", status: "fail" };
+    ? { detail: `inferred from ${anyKey} (cloud allowed — set MUSE_LOCAL_ONLY=true to force local)`, name: "model env", status: "warn" }
+    : { detail: `${LOCAL_FIRST_DEFAULT_MODEL} (local default — no cloud key set)`, name: "model env", status: "ok" };
 }
 
 /**

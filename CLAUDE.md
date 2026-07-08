@@ -3,9 +3,10 @@
 **Identity (the one line): "Learns you, not the world."**
 Muse is the personal AI that learns *you* — it builds a model of who you are
 (facts/preferences/goals/vetoes), reinforces what works for you, and FORGETS the
-moment you correct it. That model of you stays on a local model with `MUSE_LOCAL_ONLY`
-ON BY DEFAULT (cloud egress refused in code; explicit opt-out forfeits the guarantee) —
-the learning is yours, never the world's. Local-by-construction is the floor, not the pitch.
+moment you correct it. Muse is provider-neutral: it runs on cloud or local models,
+your choice. Privacy is a first-class OPT-IN — `MUSE_LOCAL_ONLY=true` refuses all
+cloud egress in code (fail-close), keeping the model of you strictly on-box. That
+guarantee stays available and defended; it is just no longer forced by default.
 **The FUNCTIONAL edge — "Muse shows its work": one deterministic grounding +
 citation gate under EVERY surface (recall, proactivity, reflection, vision) so every
 claim cites a real source, weak grounding becomes "I'm not sure", and an

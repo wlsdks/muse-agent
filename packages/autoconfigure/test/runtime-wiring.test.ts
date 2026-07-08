@@ -19,13 +19,13 @@ describe("createDefaultRuntimeHooks", () => {
 });
 
 describe("createInputGuards", () => {
-  it("under local-only (the default posture) enables ONLY the injection guard — the PII INPUT block is off so the agent isn't broken on the user's own contacts", () => {
+  it("under local-only (MUSE_LOCAL_ONLY=true) enables ONLY the injection guard — the PII INPUT block is off so the agent isn't broken on the user's own contacts", () => {
     // No third party to leak PII to on-box ⇒ blocking the user's own emails is pure breakage.
-    expect(ids(createInputGuards(env()))).toEqual(["injection-input-guard"]);
+    expect(ids(createInputGuards(env({ MUSE_LOCAL_ONLY: "true" })))).toEqual(["injection-input-guard"]);
   });
 
-  it("enables the PII INPUT guard when cloud egress is possible (local-only OFF)", () => {
-    expect(ids(createInputGuards(env({ MUSE_LOCAL_ONLY: "false" })))).toEqual(["injection-input-guard", "pii-input-guard"]);
+  it("by DEFAULT (cloud egress possible) enables both the injection and PII INPUT guards", () => {
+    expect(ids(createInputGuards(env()))).toEqual(["injection-input-guard", "pii-input-guard"]);
   });
 
   it("an explicit MUSE_INPUT_GUARD_PII_ENABLED forces the PII guard on even under local-only", () => {
@@ -44,12 +44,12 @@ describe("createInputGuards", () => {
 });
 
 describe("createOutputGuards", () => {
-  it("under local-only (default) does NOT mask the answer — asking for your own contact's email shouldn't return s****@****", () => {
-    expect(ids(createOutputGuards(env()))).toEqual([]);
+  it("under local-only (MUSE_LOCAL_ONLY=true) does NOT mask the answer — asking for your own contact's email shouldn't return s****@****", () => {
+    expect(ids(createOutputGuards(env({ MUSE_LOCAL_ONLY: "true" })))).toEqual([]);
   });
 
-  it("enables the PII OUTPUT mask when cloud egress is possible (local-only OFF)", () => {
-    expect(ids(createOutputGuards(env({ MUSE_LOCAL_ONLY: "false" })))).toEqual(["pii-output-mask"]);
+  it("by DEFAULT (cloud egress possible) enables the PII OUTPUT mask", () => {
+    expect(ids(createOutputGuards(env()))).toEqual(["pii-output-mask"]);
   });
 
   it("an explicit MUSE_OUTPUT_GUARD_PII_MASK_ENABLED forces masking on even under local-only", () => {

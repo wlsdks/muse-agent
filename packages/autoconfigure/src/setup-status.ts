@@ -145,9 +145,9 @@ export interface LocalOnlyStatusSnapshot {
 const CLOUD_CREDENTIAL_ENV_KEYS = ["GEMINI_API_KEY", "GOOGLE_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY"] as const;
 
 export function evaluateLocalOnlyPosture(env: Readonly<Record<string, string | undefined>>): LocalOnlyStatusSnapshot {
-  // Local-only is the DEFAULT (Muse is local-by-construction); a cloud
-  // provider requires an explicit MUSE_LOCAL_ONLY=false opt-out.
-  const enabled = parseBoolean(env.MUSE_LOCAL_ONLY, true);
+  // Local-only is an OPT-IN posture (MUSE_LOCAL_ONLY=true); cloud is allowed by
+  // default. When opted in, the runtime fail-closes on any cloud provider.
+  const enabled = parseBoolean(env.MUSE_LOCAL_ONLY, false);
   if (enabled) {
     try {
       // Runs the SAME fail-close the runtime does at boot, so the report
@@ -161,15 +161,15 @@ export function evaluateLocalOnlyPosture(env: Readonly<Record<string, string | u
       if (!isLoopbackUrl(embedBase)) {
         return { detail: `🔒 on, but OLLAMA_BASE_URL points off-box (${embedBase}) — the embedder fails closed, so recall/memory embedding refuses; point OLLAMA_BASE_URL at localhost`, enabled, status: "fail" };
       }
-      return { detail: "🔒 on (default) — cloud LLM + voice egress blocked (fail-closed to local)", enabled, status: "ok" };
+      return { detail: "🔒 on — cloud LLM + voice egress blocked (fail-closed to local)", enabled, status: "ok" };
     } catch (cause) {
       return { detail: cause instanceof Error ? cause.message : "cloud provider selected under local-only", enabled, status: "fail" };
     }
   }
   const cloudKey = CLOUD_CREDENTIAL_ENV_KEYS.find((k) => (env[k] ?? "").trim().length > 0);
   return cloudKey
-    ? { detail: `⚠️ OFF by explicit opt-out — cloud egress possible (${cloudKey} set); unset MUSE_LOCAL_ONLY to restore the zero-egress guarantee`, enabled, status: "warn" }
-    : { detail: "off by explicit opt-out (no cloud credentials configured)", enabled, status: "ok" };
+    ? { detail: `⚠️ local-only off — cloud egress possible (${cloudKey} set); set MUSE_LOCAL_ONLY=true to force local-only`, enabled, status: "warn" }
+    : { detail: "local-only off — cloud allowed (no cloud credentials set)", enabled, status: "ok" };
 }
 
 export interface WebSearchEnvSnapshot {
