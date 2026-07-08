@@ -8,6 +8,47 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.24] - 2026-07-08
+
+A CLI-quality follow-up to 0.2.23: an expert audit turned up ten rough edges in
+help, error handling, and flags — this fixes all of them, each with a test.
+
+### Fixed
+
+- **`muse help <command>` now works.** It renders the target command's full help
+  (identical to `muse <command> --help`); an unknown name gets a grounded error.
+  Previously `help` fell through to the unknown-command path.
+- **Typos in a subcommand are caught, not swallowed.** `muse setup lcoal` used to
+  silently run the `status` dashboard and drop the bad word; it now prints
+  `unknown command` + a "did you mean 'muse setup local'?" suggestion and exits 1.
+  `muse setup` with no argument still shows status.
+- **`-q/--quiet` actually goes quiet.** The flag was wired but unused; it now
+  suppresses the `today` empty-state hints, the two `ask` preference tips, and the
+  chat spinner, while keeping the primary output and errors.
+- **`--no-color` wins over an ambient `FORCE_COLOR`.** Precedence is now
+  `NO_COLOR` > `--no-color` > `FORCE_COLOR` > `TERM=dumb` > TTY detection.
+- **`--no-input` no longer hangs `setup data`.** A non-interactive run takes the
+  safe default instead of blocking on a confirm prompt.
+- **User mistakes read as user mistakes.** An invalid `--config`/`--args` JSON or a
+  corrupt `config.json` now prints one clean fix-it line naming the problem,
+  instead of a scary "internal bug" report with a GitHub-issue link.
+- **`remind snooze` only moves reminders later.** A future reminder snoozed to
+  `max(now, due) + 10min` (a tomorrow-18:00 reminder → 18:10 tomorrow), instead of
+  being pulled back to `now + 10min`; a past-due one still clamps to ~now.
+- **Correct copy-paste hints.** `muse setup` and `muse today` now suggest real
+  commands (`muse tasks add`, `muse calendar add`, correct `remind add` argument
+  order) that run as shown.
+- **Every command is grouped in `--help`.** 21 commands that sat in a bare
+  "Commands:" bucket are now filed under their proper headings, and `completion`
+  appears in its own completion candidate list.
+
+### Changed
+
+- **Docs: local-only is opt-in.** The README now states plainly that Muse runs
+  local by default and is provider-neutral; `MUSE_LOCAL_ONLY=true` is the explicit
+  opt-in that fail-closes all cloud egress (it is no longer described as the
+  enforced default).
+
 ## [0.2.23] - 2026-07-08
 
 A best-in-class pass on the CLI, grounded in the clig.dev guidelines: it starts
