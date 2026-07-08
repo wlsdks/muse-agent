@@ -15,6 +15,7 @@ import type { JsonObject } from "@muse/shared";
 import type { Command } from "commander";
 
 import { buildActuatorTools } from "./actuator-tools.js";
+import { commandErrorLine } from "./format-cli-error.js";
 import type { ProgramIO } from "./program.js";
 
 export interface ApproveResult {
@@ -121,15 +122,15 @@ export function registerApprovalsCommands(program: Command, io: ProgramIO): void
           io.stdout(`Ran ${result.tool ?? "action"} and dismissed the pending approval.\n`);
           return;
         case "declined":
-          io.stderr(`Not run${result.detail ? ` (${result.detail})` : ""} — still pending.\n`);
+          io.stderr(commandErrorLine("approvals approve", `Not run${result.detail ? ` (${result.detail})` : ""} — still pending.`));
           command.error("approvals approve declined", { exitCode: 1 });
           return;
         case "no-tool":
-          io.stderr(`Cannot re-run '${result.tool ?? "?"}' from approvals — not a known actuator, or its provider isn't configured.\n`);
+          io.stderr(commandErrorLine("approvals approve", `Cannot re-run '${result.tool ?? "?"}' from approvals — not a known actuator, or its provider isn't configured.`));
           command.error("approvals approve failed", { exitCode: 1 });
           return;
         default:
-          io.stderr(`No pending approval with id '${id.trim()}' (it may have expired).\n`);
+          io.stderr(commandErrorLine("approvals approve", `No pending approval with id '${id.trim()}' (it may have expired).`));
           command.error("approvals approve failed", { exitCode: 1 });
       }
     });
@@ -144,7 +145,7 @@ export function registerApprovalsCommands(program: Command, io: ProgramIO): void
         io.stdout(`Dismissed pending approval ${id.trim()}.\n`);
         return;
       }
-      io.stderr(`No pending approval with id '${id.trim()}'.\n`);
+      io.stderr(commandErrorLine("approvals clear", `No pending approval with id '${id.trim()}'.`));
       command.error("approvals clear failed", { exitCode: 1 });
     });
 }

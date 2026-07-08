@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { resolveNotesDir } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
+import { commandErrorLine } from "./format-cli-error.js";
 import type { ProgramIO } from "./program.js";
 
 export type ChatExportKind = "chatgpt" | "claude";
@@ -173,7 +174,7 @@ Examples:
       try {
         raw = await readFile(file, "utf8");
       } catch (cause) {
-        io.stderr(`Could not read '${file}': ${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(commandErrorLine("ingest", `Could not read '${file}': ${cause instanceof Error ? cause.message : String(cause)}`));
         process.exitCode = 1;
         return;
       }
@@ -198,13 +199,13 @@ Examples:
             const mail = ingestMbox(raw);
             if (mail.length > 0) { await writeIngested(io, mail, "mbox", options.out); return; }
           }
-          io.stderr(`Could not parse '${file}' as JSON (chat export) — and it isn't a recognizable .mbox either.\n`);
+          io.stderr(commandErrorLine("ingest", `Could not parse '${file}' as JSON (chat export) — and it isn't a recognizable .mbox either.`));
           process.exitCode = 1;
           return;
         }
         const detected = detectChatExport(parsed);
         if (!detected) {
-          io.stderr("Unrecognized export — expected a ChatGPT/Claude `conversations.json` (array of conversations) or an .mbox mail archive.\n");
+          io.stderr(commandErrorLine("ingest", "Unrecognized export — expected a ChatGPT/Claude `conversations.json` (array of conversations) or an .mbox mail archive."));
           process.exitCode = 1;
           return;
         }

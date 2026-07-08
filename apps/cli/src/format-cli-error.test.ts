@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   bugReportUrl,
+  commandErrorLine,
   commandFromArgv,
   formatCliError,
   isExpectedCliError
@@ -95,6 +96,20 @@ describe("formatCliError", () => {
     const decoded = decodeURIComponent(url).replace(/\+/g, " ");
     expect(decoded).toContain("muse ask");
     expect(decoded).toContain("1.2.3");
+  });
+});
+
+describe("commandErrorLine", () => {
+  it("produces the canonical `muse <cmd>: <message>` line, newline-terminated, no bug URL", () => {
+    expect(commandErrorLine("import", "Bundle not found: /x.tar.gz")).toBe("muse import: Bundle not found: /x.tar.gz\n");
+    expect(commandErrorLine("bg logs", "No background process with id 'bg-1'.")).toBe("muse bg logs: No background process with id 'bg-1'.\n");
+  });
+
+  it("shares the same `muse <cmd>:` prefix shape the top-level formatter emits (consistency)", () => {
+    const line = commandErrorLine("ingest", "boom");
+    expect(line.startsWith("muse ingest: ")).toBe(true);
+    expect(line).not.toContain("github.com");
+    expect(line.endsWith("\n")).toBe(true);
   });
 });
 

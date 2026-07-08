@@ -25,6 +25,7 @@ import {
   type BackgroundProcessRecord
 } from "@muse/stores";
 
+import { commandErrorLine } from "./format-cli-error.js";
 import type { ProgramIO } from "./program.js";
 
 export function backgroundStoreFile(): string {
@@ -108,7 +109,7 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
     .action(async (id: string, options: { readonly tail?: string }) => {
       const record = (await readBackgroundProcesses(backgroundStoreFile())).find((entry) => entry.id === id);
       if (!record) {
-        io.stderr(`No background process with id '${id}'.\n`);
+        io.stderr(commandErrorLine("bg logs", `No background process with id '${id}'.`));
         return;
       }
       if (!record.logFile) {
@@ -166,7 +167,7 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
     .action(async (id: string) => {
       const prior = (await readBackgroundProcesses(backgroundStoreFile())).find((entry) => entry.id === id);
       if (!prior) {
-        io.stderr(`No background process with id '${id}'.\n`);
+        io.stderr(commandErrorLine("bg restart", `No background process with id '${id}'.`));
         return;
       }
       try {
@@ -192,7 +193,7 @@ export function registerBackgroundCommand(program: Command, io: ProgramIO): void
     .action(async (id: string) => {
       const result = await stopBackgroundProcess(backgroundStoreFile(), id, (pid) => process.kill(pid), () => new Date());
       if (result === "not_found") {
-        io.stderr(`No background process with id '${id}'.\n`);
+        io.stderr(commandErrorLine("bg stop", `No background process with id '${id}'.`));
       } else if (result === "already_done") {
         io.stdout(`'${id}' is not running.\n`);
       } else {

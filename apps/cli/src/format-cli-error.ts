@@ -38,6 +38,20 @@ const PROGRAMMER_ERROR_NAMES: ReadonlySet<string> = new Set([
   "URIError"
 ]);
 
+/**
+ * Canonical one-line envelope for an EXPECTED, user-facing failure raised from
+ * INSIDE a command handler (not the top-level catch): the same
+ * `muse <cmd>: <message>` prefix shape the top-level formatter uses, minus the
+ * bug-report footer — these are known operational conditions (a missing file, an
+ * unknown id), never defects. Pure: it only builds the newline-terminated line so
+ * the prefix stays consistent across commands; the CALLER keeps ownership of the
+ * exit code and the stream (errors go to `io.stderr`), so a `--json` failure that
+ * must leave stdout empty and the exit code each site already sets are preserved.
+ */
+export function commandErrorLine(command: string, message: string): string {
+  return `muse ${command}: ${message}\n`;
+}
+
 export interface FormatCliErrorOptions {
   /** Muse CLI version stamped into the bug-report URL. */
   readonly version?: string;

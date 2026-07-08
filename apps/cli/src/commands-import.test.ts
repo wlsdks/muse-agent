@@ -1,9 +1,12 @@
 import { EventEmitter } from "node:events";
 import type { spawn } from "node:child_process";
+import { join, resolve } from "node:path";
 
+import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { extractMuseBundle, isSafeMuseEntry, listMuseImportEntries } from "./commands-import.js";
+import { extractMuseBundle, isSafeMuseEntry, listMuseImportEntries, registerImportCommand } from "./commands-import.js";
+import type { ProgramIO } from "./program.js";
 
 interface FakeChild extends EventEmitter {
   stdout: EventEmitter;
@@ -55,6 +58,37 @@ describe("listMuseImportEntries — UTF-8 decode across chunk boundaries (DS-17)
     const entries = await promise;
     expect(entries).toEqual([".muse/notes/회의록 정리.md"]);
     expect(entries[0]).not.toContain("�");
+  });
+});
+
+async function runImport(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const io: ProgramIO = { stderr: (m) => stderr.push(m), stdout: (m) => stdout.push(m) };
+  const prevExit = process.exitCode;
+  process.exitCode = undefined;
+  let exitCode: number | undefined;
+  try {
+    const program = new Command();
+    program.exitOverride();
+    registerImportCommand(program, io);
+    await program.parseAsync(["node", "muse", "import", ...args]);
+    exitCode = process.exitCode;
+  } catch (cause) {
+    exitCode = (cause as { exitCode?: number }).exitCode ?? 1;
+  } finally {
+    process.exitCode = prevExit;
+  }
+  return { exitCode, stderr: stderr.join(""), stdout: stdout.join("") };
+}
+
+describe("muse import — error envelope", () => {
+  it("missing bundle → `muse import:`-prefixed stderr, exit 1, stdout empty", async () => {
+    const missing = join("/nonexistent-muse-test", "bundle.tar.gz");
+    const r = await runImport([missing]);
+    expect(r.stderr).toBe(`muse import: Bundle not found: ${resolve(missing)}\n`);
+    expect(r.stdout).toBe("");
+    expect(r.exitCode).toBe(1);
   });
 });
 

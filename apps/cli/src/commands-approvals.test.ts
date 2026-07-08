@@ -106,7 +106,15 @@ describe("muse approvals", () => {
     expect(ok.stdout).toContain("Dismissed pending approval abc");
     expect((await run(f, [])).stdout).toBe("No pending approvals.\n");
     const miss = await run(f, ["clear", "ghost"]);
-    expect(miss.stderr).toContain("No pending approval with id 'ghost'");
+    expect(miss.stderr).toBe("muse approvals clear: No pending approval with id 'ghost'.\n");
+    expect(miss.stdout).toBe("");
+    expect(miss.exitCode).toBe(1);
+  });
+
+  it("approve <unknown id> → `muse approvals approve:`-prefixed stderr, exit 1, stdout empty", async () => {
+    const miss = await run(file(), ["approve", "ghost"]);
+    expect(miss.stderr).toBe("muse approvals approve: No pending approval with id 'ghost' (it may have expired).\n");
+    expect(miss.stdout).toBe("");
     expect(miss.exitCode).toBe(1);
   });
 

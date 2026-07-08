@@ -1,6 +1,12 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { detectChatExport, ingestChatExport, slugifyTitle } from "./chat-export-ingest.js";
+import { detectChatExport, ingestChatExport, registerIngestCommand, slugifyTitle } from "./chat-export-ingest.js";
+import type { ProgramIO } from "./program.js";
 
 const chatgptExport = [
   {
@@ -85,6 +91,56 @@ describe("ingestChatExport — robustness", () => {
       { name: "notes", chat_messages: [{ sender: "human", text: "b" }] }
     ];
     expect(ingestChatExport(dup).map((c) => c.slug)).toEqual(["notes", "notes-2"]);
+  });
+});
+
+async function runIngest(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const io: ProgramIO = { stderr: (m) => stderr.push(m), stdout: (m) => stdout.push(m) };
+  const prevExit = process.exitCode;
+  process.exitCode = undefined;
+  let exitCode: number | undefined;
+  try {
+    const program = new Command();
+    program.exitOverride();
+    registerIngestCommand(program, io);
+    await program.parseAsync(["node", "muse", "ingest", ...args]);
+    exitCode = process.exitCode;
+  } catch (cause) {
+    exitCode = (cause as { exitCode?: number }).exitCode ?? 1;
+  } finally {
+    process.exitCode = prevExit;
+  }
+  return { exitCode, stderr: stderr.join(""), stdout: stdout.join("") };
+}
+
+function tmpFile(name: string, contents: string): string {
+  const path = join(mkdtempSync(join(tmpdir(), "muse-ingest-")), name);
+  writeFileSync(path, contents, "utf8");
+  return path;
+}
+
+describe("muse ingest — error envelope", () => {
+  it("unreadable file → `muse ingest:`-prefixed stderr, exit 1, stdout empty", async () => {
+    const r = await runIngest([join("/nonexistent-muse-test", "conversations.json")]);
+    expect(r.stderr).toMatch(/^muse ingest: Could not read '/u);
+    expect(r.stdout).toBe("");
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("non-JSON, non-mbox content → `muse ingest:`-prefixed parse error, exit 1, stdout empty", async () => {
+    const r = await runIngest([tmpFile("junk.json", "this is not json {[")]);
+    expect(r.stderr).toMatch(/^muse ingest: Could not parse '.*' as JSON/u);
+    expect(r.stdout).toBe("");
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("valid JSON of an unrecognized shape → `muse ingest:`-prefixed unrecognized error, exit 1, stdout empty", async () => {
+    const r = await runIngest([tmpFile("weird.json", JSON.stringify([{ foo: 1 }]))]);
+    expect(r.stderr).toBe("muse ingest: Unrecognized export — expected a ChatGPT/Claude `conversations.json` (array of conversations) or an .mbox mail archive.\n");
+    expect(r.stdout).toBe("");
+    expect(r.exitCode).toBe(1);
   });
 });
 

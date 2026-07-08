@@ -19,6 +19,7 @@ import { join, resolve } from "node:path";
 import type { Command } from "commander";
 
 import { decryptExportBuffer, isEncryptedExportBuffer } from "./export-crypto.js";
+import { commandErrorLine } from "./format-cli-error.js";
 import type { ProgramIO } from "./program.js";
 
 interface ImportOptions {
@@ -192,7 +193,7 @@ export function registerImportCommand(program: Command, io: ProgramIO): void {
       try {
         await stat(bundlePath);
       } catch {
-        io.stderr(`Bundle not found: ${bundlePath}\n`);
+        io.stderr(commandErrorLine("import", `Bundle not found: ${bundlePath}`));
         process.exitCode = 1;
         return;
       }
@@ -203,14 +204,14 @@ export function registerImportCommand(program: Command, io: ProgramIO): void {
         workingBundle = decrypted.path;
         tempPath = decrypted.tempPath;
       } catch (cause) {
-        io.stderr(`${cause instanceof Error ? cause.message : String(cause)}\n`);
+        io.stderr(commandErrorLine("import", cause instanceof Error ? cause.message : String(cause)));
         process.exitCode = 1;
         return;
       }
       try {
         const entries = await listMuseImportEntries(workingBundle);
         if (entries.length === 0) {
-          io.stderr(`Bundle ${bundlePath} contains no .muse/* entries — refusing to extract.\n`);
+          io.stderr(commandErrorLine("import", `Bundle ${bundlePath} contains no .muse/* entries — refusing to extract.`));
           process.exitCode = 1;
           return;
         }
