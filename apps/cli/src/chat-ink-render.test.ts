@@ -2,6 +2,7 @@ import { render } from "ink-testing-library";
 import React from "react";
 import { describe, expect, it } from "vitest";
 
+import { createContextualGroundingLookup } from "./chat-ink-core.js";
 import { MuseChatApp } from "./chat-ink.js";
 
 // Drive the real Ink component (useInput → reduceInput → submit → render)
@@ -381,6 +382,81 @@ describe("MuseChatApp render — plain chat + editing", () => {
     unmount();
     expect(capturedSystem).toContain("Office VPN MTU is 1380.");
     expect(capturedSystem).toContain("[from vpn.md]");
+  });
+
+  it("NFC-normalizes an NFD-composed turn before it reaches groundingFor (macOS/Swift + IME parity with runLocalChat)", async () => {
+    // Wiring-level check: normalizeChatInput itself is unit-tested in
+    // chat-ink-core.test.ts, but that doesn't prove `submit` in THIS
+    // component actually calls it before grounding — a regression that
+    // reverts the call site (while leaving the helper intact) would pass
+    // every existing unit test. Drive a real NFD-decomposed turn through
+    // stdin and assert what `groundingFor` actually receives.
+    let seenPrompt = "";
+    async function* reply(): AsyncGenerator<{ type: string; text?: string }> {
+      yield { type: "text-delta", text: "ok" };
+      yield { type: "done" };
+    }
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+      groundingFor: async (prompt: string) => { seenPrompt = prompt; return { block: "", matches: [] }; },
+      stream: () => reply()
+    })));
+    await tick();
+    const nfd = "뭐야".normalize("NFD");
+    expect(nfd).not.toBe(nfd.normalize("NFC")); // sanity: the fixture really is decomposed jamo
+    stdin.write(nfd);
+    await tick();
+    stdin.write("\r");
+    await waitForFrame(lastFrame, ["ok"]);
+    unmount();
+    expect(seenPrompt).toBe("뭐야".normalize("NFC"));
+    expect(seenPrompt).not.toBe(nfd);
+  });
+
+  it("a 2-turn conversation resolves a pronoun follow-up to a REWRITTEN query before grounding (parity with runLocalChat's inline rewrite)", async () => {
+    // Wiring-level check for the other half of the parity fix: proves the
+    // REAL createContextualGroundingLookup, driven by MuseChatApp's own
+    // history bookkeeping across two real turns, actually reaches this
+    // component's grounding call — not just the helper in isolation
+    // (already covered in chat-ink-core.test.ts).
+    const seenQueries: string[] = [];
+    const notesByQuery: Record<string, { block: string; source: string; text: string }> = {
+      "와이파이 비밀번호 언제 바뀌었는지": {
+        block: "\n\n[NOTES] Changed on 2026-06-01. [from wifi.md]",
+        source: "wifi.md",
+        text: "Changed on 2026-06-01."
+      }
+    };
+    const groundingFor = createContextualGroundingLookup({
+      retrieve: async (query: string) => {
+        seenQueries.push(query);
+        const hit = notesByQuery[query];
+        return hit ? { block: hit.block, matches: [{ cosine: 0.9, score: 0.9, source: hit.source, text: hit.text }] } : { block: "", matches: [] };
+      },
+      rewrite: async () => "와이파이 비밀번호 언제 바뀌었는지"
+    });
+    let capturedSystem = "";
+    async function* answer(text: string): AsyncGenerator<{ type: string; text?: string }> {
+      yield { type: "text-delta", text };
+      yield { type: "done" };
+    }
+    const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps({
+      groundingFor,
+      stream: (messages: readonly { role: string; content: string }[]) => {
+        capturedSystem = messages.find((m) => m.role === "system")?.content ?? "";
+        return answer(capturedSystem.includes("2026-06-01") ? "2026-06-01." : "sure.");
+      }
+    })));
+    await tick();
+    // Turn 1 — self-contained, no history yet: retrieves on the raw turn.
+    stdin.write("우리 사무실 와이파이 비밀번호 뭐야?"); await tick(); stdin.write("\r");
+    await waitForFrame(lastFrame, ["sure."]);
+    // Turn 2 — anaphoric follow-up: must resolve via the rewritten query.
+    stdin.write("그거 언제 바뀌었지?"); await tick(); stdin.write("\r");
+    const frame = await waitForFrame(lastFrame, ["2026-06-01."]);
+    unmount();
+    expect(seenQueries).toEqual(["우리 사무실 와이파이 비밀번호 뭐야?", "와이파이 비밀번호 언제 바뀌었는지"]);
+    expect(capturedSystem).toContain("Changed on 2026-06-01.");
+    expect(frame).toContain("2026-06-01.");
   });
 
   it("applies finalizeAnswer to the streamed bubble AND the committed history (the audit's ink-gate hole)", async () => {
