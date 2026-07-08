@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.30] - 2026-07-09
+
+### Added
+
+- **Chat starter prompts.** The empty chat now shows tappable starter chips grounded in
+  what Muse can actually do — "오늘 일정 정리 / Summarize my day", "이번 주 할 일 / Tasks
+  this week", "최근 노트 요약 / Summarize my notes", "뭘 도와줄 수 있어? / What can you
+  help with?". Tapping one fills the input and focuses it (never auto-sends, so you stay
+  in control); the chips disappear once a conversation starts.
+
 ## [0.2.29] - 2026-07-09
 
 Web/desktop UI polish (real-browser verified).
