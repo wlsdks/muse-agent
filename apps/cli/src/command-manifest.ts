@@ -59,7 +59,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
   },
   {
     "name": "approval",
-    "description": "Pending tool-call approvals (audit + decide)",
+    "description": "Tool-call trust decisions — audit pending tool requests, grant/deny to your trust list (for outbound sends see `muse approvals`)",
     "argsTerm": "",
     "hasOptions": false,
     "subcommands": [
@@ -71,7 +71,7 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
   },
   {
     "name": "approvals",
-    "description": "Review/dismiss channel actions awaiting your approval (the live pending worklist)",
+    "description": "Outbound action worklist — confirm/dismiss draft-first sends awaiting your OK (for tool-call trust see `muse approval`)",
     "argsTerm": "",
     "hasOptions": false,
     "subcommands": [

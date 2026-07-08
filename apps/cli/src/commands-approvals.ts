@@ -84,7 +84,7 @@ function formatPending(entry: PendingApproval): string {
 export function registerApprovalsCommands(program: Command, io: ProgramIO): void {
   const approvals = program
     .command("approvals")
-    .description("Review/dismiss channel actions awaiting your approval (the live pending worklist)");
+    .description("Outbound action worklist — confirm/dismiss draft-first sends awaiting your OK (for tool-call trust see `muse approval`)");
 
   approvals
     .command("list", { isDefault: true })

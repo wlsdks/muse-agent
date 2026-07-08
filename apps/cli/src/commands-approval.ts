@@ -107,7 +107,7 @@ async function logPendingApproval(input: {
 }
 
 export function registerApprovalCommands(program: Command, io: ProgramIO): void {
-  const approval = program.command("approval").description("Pending tool-call approvals (audit + decide)");
+  const approval = program.command("approval").description("Tool-call trust decisions — audit pending tool requests, grant/deny to your trust list (for outbound sends see `muse approvals`)");
 
   approval
     .command("list")
