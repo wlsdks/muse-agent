@@ -142,8 +142,31 @@ export const CODEX_HONEST_COPY =
 /** Warm one-liner shown in the branded intro bar (KO · EN). */
 export const FIRST_RUN_INTRO = "반가워요 — Muse를 어떻게 쓸지 30초면 정해요  ·  Welcome — let's set up Muse in ~30s";
 
-/** Step-framed picker prompt (KO · EN). */
-export const FIRST_RUN_PICK_MESSAGE = "1 / 3 · 어떻게 생각하게 할까요?   ·   How should Muse think?";
+/** Total major steps in the first-run wizard — every step header derives its `N` from this, so the numbering can't silently drift. */
+export const TOTAL_FIRST_RUN_STEPS = 3;
+
+/**
+ * ONE consistent step-header format for every major wizard step (KO · EN), so the
+ * steps read as distinct, labeled blocks instead of one undifferentiated clack
+ * scroll — and can't regress to an unlabeled list. `N / total · <ko>   ·   <en>`.
+ */
+export function stepHeader(n: number, total: number, ko: string, en: string): string {
+  return `${n.toString()} / ${total.toString()} · ${ko}   ·   ${en}`;
+}
+
+/**
+ * The three MAJOR steps every successful branch walks, pinned so the step framing
+ * can't regress: 1 = model pick, 2 = connect data, 3 = finishing up. Rendered as a
+ * ruled divider before each step by the `step` seam (`renderStepDivider`).
+ */
+export const FIRST_RUN_STEP_HEADERS = {
+  data: stepHeader(2, TOTAL_FIRST_RUN_STEPS, "연결할 데이터", "Connect your data"),
+  finish: stepHeader(3, TOTAL_FIRST_RUN_STEPS, "마무리", "Finishing up"),
+  pick: stepHeader(1, TOTAL_FIRST_RUN_STEPS, "어떻게 생각하게 할까요?", "How should Muse think?")
+} as const;
+
+/** The provider picker's instruction line — the step number lives in the step-1 divider above it (KO · EN). */
+export const FIRST_RUN_PICK_MESSAGE = "하나 고르세요 — 로컬이 안전한 기본값   ·   Pick one — Local is the safe default";
 
 export type FirstRunChoice = "local" | "cloud" | "codex" | "skip";
 
@@ -191,6 +214,8 @@ export interface FirstRunPrompts {
   note?(message: string, title?: string): void;
   intro?(message: string): void;
   outro?(message: string): void;
+  /** Render a labeled step divider (a ruled block) so each step reads as its own section. */
+  step?(header: string): void;
 }
 
 export interface FirstRunWizardDeps {
@@ -277,6 +302,7 @@ async function runFirstRunWizardBody(deps: FirstRunWizardDeps, helpers: WizardHe
 
   prompts.intro?.(FIRST_RUN_INTRO);
 
+  prompts.step?.(FIRST_RUN_STEP_HEADERS.pick);
   const choice = await prompts.select<FirstRunChoice>({
     initialValue: "local",
     message: FIRST_RUN_PICK_MESSAGE,
@@ -292,20 +318,21 @@ async function runFirstRunWizardBody(deps: FirstRunWizardDeps, helpers: WizardHe
     const model = LOCAL_FIRST_DEFAULT_MODEL;
     const config = await deps.readConfig();
     await deps.writeConfig({ ...config, defaultModel: model });
+    const head = `Muse는 로컬 ${model} 에서 생각해요  ·  thinking locally on ${model}.`;
+    let tail = "";
     if (deps.probeLocal) {
       const probe = await deps.probeLocal();
-      prompts.note?.(probe.reachable
-        ? `Ollama 준비됨 · reachable. ${probe.detail}`
-        : `Ollama가 아직 안 켜졌어요 — 설치하고 모델을 받아주세요 · install it and pull the model:\n  brew install ollama && ollama serve\n  ollama pull ${model.replace(/^ollama\//u, "")}\n\n${probe.detail}`,
-      "로컬 모델 · Local model");
+      tail = probe.reachable
+        ? `\nOllama 준비됨 · ready. ${probe.detail}`
+        : `\nOllama가 아직 안 켜졌어요 — 설치하고 모델을 받아주세요 · install it and pull the model:\n  brew install ollama && ollama serve\n  ollama pull ${model.replace(/^ollama\//u, "")}\n\n${probe.detail}`;
     }
-    prompts.note?.(`Muse는 로컬 ${model} 에서 생각해요  ·  thinking locally on ${model}.`, "모델 · Model");
+    prompts.note?.(`${head}${tail}`, "로컬 · Local");
     return finishWithValue(deps, helpers, { choice: "local", wroteDefaultModel: model });
   }
 
   if (choice === "cloud") {
     const providerId = await prompts.select<string>({
-      message: "2 / 3 · 어떤 클라우드 제공자? (모두 공식 · BYO 키)   ·   Which cloud provider?",
+      message: "어떤 클라우드 제공자? (모두 공식 · BYO 키)   ·   Which cloud provider? (all official, BYO key)",
       options: CLOUD_PROVIDERS.map((p) => ({ label: p.label, value: p.id }))
     });
     if (prompts.isCancel(providerId)) {
@@ -322,7 +349,7 @@ async function runFirstRunWizardBody(deps: FirstRunWizardDeps, helpers: WizardHe
 
     let cloudKeyStored = false;
     if (prompts.password) {
-      const entered = await prompts.password({ message: `3 / 3 · ${plan.provider.keyEnvVars[0]} (키를 붙여넣거나, 비워두면 나중에 · paste key or leave blank):` });
+      const entered = await prompts.password({ message: `${plan.provider.keyEnvVars[0]} (키를 붙여넣거나, 비워두면 나중에 · paste key or leave blank):` });
       if (!prompts.isCancel(entered) && String(entered).trim().length > 0) {
         await persistCloudKey(providerId, String(entered).trim(), plan.defaultModel);
         cloudKeyStored = true;
@@ -383,6 +410,7 @@ async function finishWithValue(
   try {
     const dc = await runDataConnectStep(deps);
     dataConnected = dc.chosen;
+    prompts.step?.(FIRST_RUN_STEP_HEADERS.finish);
     skillsScaffolded = await applySmartDefaultsStep(deps);
     const identity: { readonly name?: string } = deps.readIdentity
       ? await deps.readIdentity().catch(() => ({}))
@@ -408,6 +436,7 @@ async function runDataConnectStep(
   const { prompts } = deps;
   if (!deps.runDataConnect || !prompts.multiselect) return { chosen: [] };
 
+  prompts.step?.(FIRST_RUN_STEP_HEADERS.data);
   const selected = await prompts.multiselect<string>({
     message: FIRST_RUN_DATA_MESSAGE,
     options: FIRST_RUN_DATA_OPTIONS.map((o) => ({ hint: o.hint, label: o.label, value: o.value })),
@@ -437,6 +466,20 @@ export interface RunFirstRunInteractiveDeps {
   readonly env?: NodeJS.ProcessEnv;
   readonly home?: string;
   readonly fetch?: typeof globalThis.fetch;
+}
+
+/**
+ * A step divider: a blank line + a ruled, bold step header, so each wizard step
+ * reads as its own block instead of blending into the note-box scroll.
+ * Colour/TTY-safe — under NO_COLOR / a pipe the ANSI is dropped and the plain
+ * header prints between plain rules; no animation, so reduced-motion safe.
+ */
+function renderStepDivider(header: string): string {
+  const rule = "─".repeat(52);
+  if (colorAllowed()) {
+    return `\n${colorize(rule, "dim")}\n${colorize(colorize(header, "cyan"), "bold")}\n${colorize(rule, "dim")}\n`;
+  }
+  return `\n${rule}\n${header}\n${rule}\n`;
 }
 
 /**
@@ -477,7 +520,8 @@ export async function runFirstRunSetupInteractive(deps: RunFirstRunInteractiveDe
       note: (message, title) => clack.note(message, title),
       outro: (message) => clack.outro(message),
       password: (options) => clack.password(options),
-      select: (options) => clack.select(options as never) as Promise<never>
+      select: (options) => clack.select(options as never) as Promise<never>,
+      step: (header) => process.stdout.write(renderStepDivider(header))
     };
     const stdio = { stderr: (m: string) => process.stderr.write(m), stdout: (m: string) => process.stdout.write(m) };
     return await runFirstRunWizard({

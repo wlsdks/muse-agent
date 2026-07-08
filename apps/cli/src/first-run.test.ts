@@ -10,12 +10,15 @@ import {
   CODEX_HONEST_COPY,
   FIRST_RUN_PICK_MESSAGE,
   FIRST_RUN_PROVIDER_OPTIONS,
+  FIRST_RUN_STEP_HEADERS,
   firstRunMarkerPath,
   firstRunSkipRequested,
   isFirstRunMarkerPresent,
   providerKeyPresent,
   runFirstRunWizard,
   shouldRunFirstRunSetup,
+  stepHeader,
+  TOTAL_FIRST_RUN_STEPS,
   writeFirstRunMarker,
   type FirstRunPrompts,
   type FirstRunWizardDeps
@@ -79,11 +82,29 @@ describe("premium picker copy — bilingual KO · EN, Local first", () => {
     }
   });
 
-  it("the pick prompt is step-framed (1 / 3) and bilingual; Codex copy names the unofficial route in both languages", () => {
-    expect(FIRST_RUN_PICK_MESSAGE).toContain("1 / 3");
+  it("the pick prompt is a bilingual instruction line; Codex copy names the unofficial route in both languages", () => {
     expect(/[가-힣]/u.test(FIRST_RUN_PICK_MESSAGE)).toBe(true);
+    expect(/[A-Za-z]/u.test(FIRST_RUN_PICK_MESSAGE)).toBe(true);
+    // The step NUMBER now lives on the step-1 divider, not the picker prompt.
+    expect(FIRST_RUN_PICK_MESSAGE).not.toContain("1 / 3");
     expect(CODEX_HONEST_COPY).toContain("비공식");
     expect(CODEX_HONEST_COPY.toUpperCase()).toContain("UNOFFICIAL");
+  });
+});
+
+describe("step headers — every major step is labeled N / total in ONE consistent format", () => {
+  it("stepHeader renders 'N / total · <ko>   ·   <en>'", () => {
+    expect(stepHeader(2, 3, "연결할 데이터", "Connect your data")).toBe("2 / 3 · 연결할 데이터   ·   Connect your data");
+  });
+
+  it("the three steps are numbered 1/2/3 of the same total and each is bilingual", () => {
+    expect(FIRST_RUN_STEP_HEADERS.pick).toContain(`1 / ${TOTAL_FIRST_RUN_STEPS.toString()}`);
+    expect(FIRST_RUN_STEP_HEADERS.data).toContain(`2 / ${TOTAL_FIRST_RUN_STEPS.toString()}`);
+    expect(FIRST_RUN_STEP_HEADERS.finish).toContain(`3 / ${TOTAL_FIRST_RUN_STEPS.toString()}`);
+    for (const header of Object.values(FIRST_RUN_STEP_HEADERS)) {
+      expect(/[가-힣]/u.test(header)).toBe(true);
+      expect(/[A-Za-z]/u.test(header)).toBe(true);
+    }
   });
 });
 
@@ -250,6 +271,7 @@ interface ValueState {
   dataConnectCalls: number;
   defaultsCalls: number;
   outros: string[];
+  steps: string[];
   celebrated: boolean;
 }
 
@@ -273,7 +295,8 @@ function makeValueDeps(overrides: {
     note: () => undefined,
     outro: (message) => state.outros.push(message),
     password: async () => "",
-    select: async () => overrides.select[selectIdx++] as never
+    select: async () => overrides.select[selectIdx++] as never,
+    step: (header) => state.steps.push(header)
   };
   return {
     applyDefaults: wire
@@ -319,7 +342,7 @@ function makeValueDeps(overrides: {
 }
 
 function freshValueState(): ValueState {
-  return { celebrated: false, dataConnectCalls: 0, defaultsCalls: 0, outros: [] };
+  return { celebrated: false, dataConnectCalls: 0, defaultsCalls: 0, outros: [], steps: [] };
 }
 
 describe("runFirstRunWizard — the install→first-value tail (data-connect · defaults · first-value)", () => {
@@ -338,6 +361,16 @@ describe("runFirstRunWizard — the install→first-value tail (data-connect · 
     // The success line asserts only the real connected count.
     expect(state.outros.at(-1)).toContain("5");
     expect(state.celebrated).toBe(true);
+  });
+
+  it("emits the three step dividers in order (1 pick → 2 data → 3 finish) so steps read as distinct blocks", async () => {
+    const state = freshValueState();
+    await runFirstRunWizard(makeValueDeps({ multiselect: ["contacts"], select: ["local"], state }));
+    expect(state.steps).toEqual([
+      FIRST_RUN_STEP_HEADERS.pick,
+      FIRST_RUN_STEP_HEADERS.data,
+      FIRST_RUN_STEP_HEADERS.finish
+    ]);
   });
 
   it("skipping the data step (empty multi-select) connects nothing and shows a content-free welcome", async () => {

@@ -40,7 +40,7 @@ const DATA_LABELS: Readonly<Record<FirstRunDataStepId, string>> = {
 };
 
 export const FIRST_RUN_DATA_MESSAGE =
-  "연결할 데이터 고르기 (스페이스로 선택 · 전부 로컬 · 건너뛰기 OK)   ·   Connect your data (space to pick — all local, skippable)";
+  "스페이스로 선택 · 전부 로컬 · 건너뛰기 OK   ·   space to pick — all local, skippable";
 
 /**
  * The multi-select rows, pinned so the premium bilingual copy can't silently
