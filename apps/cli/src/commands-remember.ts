@@ -56,6 +56,11 @@ export function registerRememberCommands(program: Command, io: ProgramIO): void 
   program
     .command("remember")
     .description("Tell JARVIS something in natural language — LLM extracts facts/prefs/vetoes/goals into ~/.muse/user-memory.json")
+    .addHelpText("after", `
+Examples:
+  $ muse remember "I'm vegetarian and I hate 8am meetings"   # extracts facts/prefs/goals
+  $ muse remember --json "my timezone is KST"                # structured {written,skipped} output
+  $ muse forget home_city                                    # remove a single remembered fact`)
     .argument("<text...>", "Natural-language statement (one or more words)")
     .option("--user <id>", "User identity (default $MUSE_USER_ID / $USER)")
     .option("--persona <slot>", "Persona slot (work / home)")
@@ -160,6 +165,10 @@ export function registerRememberCommands(program: Command, io: ProgramIO): void 
   program
     .command("forget")
     .description("Remove a fact/preference (`muse forget name`) or the whole persona (`muse forget --all --force`)")
+    .addHelpText("after", `
+Examples:
+  $ muse forget home_city         # remove one fact/preference by key
+  $ muse forget --all --force     # wipe the entire persona (destructive)`)
     .argument("[key]", "Fact or preference key to remove")
     .option("--user <id>", "User identity")
     .option("--persona <slot>", "Persona slot")

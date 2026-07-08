@@ -40,6 +40,11 @@ export interface McpHelpers {
 export function registerMcpCommands(program: Command, io: ProgramIO, helpers: McpHelpers): void {
   const { apiRequest, writeOutput } = helpers;
   const mcp = program.command("mcp").description("Manage MCP servers");
+  mcp.addHelpText("after", `
+Examples:
+  $ muse mcp add filesystem --transport stdio --config '{"command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/tmp"]}'
+  $ muse mcp call filesystem read_file --args '{"path":"/tmp/notes.txt"}'   # invoke a connected tool
+  $ muse mcp config-doctor                                                  # validate every entry in ~/.muse/mcp.json`);
 
   mcp
     .command("config-path")

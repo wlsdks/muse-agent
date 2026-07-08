@@ -110,6 +110,11 @@ export function registerTodayCommands(program: Command, io: ProgramIO, helpers: 
   program
     .command("today")
     .description("Personal morning briefing — open tasks, next 24h calendar, recent notes")
+    .addHelpText("after", `
+Examples:
+  $ muse today            # your morning briefing — tasks, next 24h, recent notes
+  $ muse today --brief    # a 2-3 sentence natural-language summary
+  $ muse today --speak    # read the brief aloud through your speakers`)
     .option("--json", "Print machine-readable JSON instead of the formatted summary")
     .option("--lookahead-hours <n>", "Hours of calendar look-ahead (default 24)")
     .option("--local", "Compose locally without the API (calendar limited to the local file)")

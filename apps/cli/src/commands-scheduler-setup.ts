@@ -239,6 +239,12 @@ export function comparePreviewEntriesByWhen(a: PreviewEntry, b: PreviewEntry): n
 
 export function registerSetupCommands(program: Command, io: ProgramIO): void {
   const setup = program.command("setup").description("Survey or configure Muse (no args → status report)");
+  setup.addHelpText("after", `
+Examples:
+  $ muse setup                          # configuration health-check (model, calendar, notes, voice…)
+  $ muse setup start                    # first-run wizard — "how should Muse think?"
+  $ muse setup data                     # connect Apple Contacts / browsing history (opt-in)
+  $ muse setup cloud --provider gemini  # opt out of local-only, use a cloud model (BYO key)`);
 
   setup
     .command("status", { isDefault: true })

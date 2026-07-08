@@ -232,6 +232,12 @@ export function registerAskCommand(program: Command, io: ProgramIO): void {
     .command("ask")
     .description("Ask a question with your notes as context — RAG-grounded one-shot via local Qwen. Reads piped stdin too: `cat doc.md | muse ask 'summarize this'`")
     .argument("[query...]", "Free-text question (omit to read entire query from stdin)")
+    .addHelpText("after", `
+Examples:
+  $ muse ask "what did I decide about pricing?"      # grounded one-shot from your notes
+  $ muse ask --scope work "who owns the roadmap?"    # ground only on the work/ folder
+  $ muse ask --why "when is the launch?"             # show WHY an answer was refused/flagged
+  $ muse ask --image receipt.jpg --auto              # SEE an image and draft the matching action`)
     .option("--user <id>", "User identity")
     .option("--persona <slot>", "Persona slot")
     .option("--model <tag>", "Chat model override")

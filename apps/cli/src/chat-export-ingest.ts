@@ -162,6 +162,11 @@ export function registerIngestCommand(program: Command, io: ProgramIO): void {
   program
     .command("ingest <file>")
     .description("Ingest an exported AI chat history (ChatGPT/Claude conversations.json) or an .mbox mail archive into your notes corpus")
+    .addHelpText("after", `
+Examples:
+  $ muse ingest conversations.json          # import a ChatGPT/Claude export into your notes
+  $ muse ingest archive.mbox                # import an .mbox mail archive
+  $ muse ingest export.json --out imported  # write into <notes>/imported instead of ingested`)
     .option("--out <dir>", "Destination notes subdir (default: <notes>/ingested)")
     .action(async (file: string, options: { readonly out?: string }) => {
       let raw: string;

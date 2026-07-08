@@ -233,6 +233,12 @@ export function formatBeliefWhy(
 
 export function registerMemoryCommands(program: Command, io: ProgramIO, helpers: MemoryCommandHelpers): void {
   const memory = program.command("memory").description("Personal user-memory facts / preferences");
+  memory.addHelpText("after", `
+Examples:
+  $ muse memory show              # list stored facts & preferences
+  $ muse memory search city       # find a remembered fact by key or value
+  $ muse memory why home_city     # when + which conversation Muse learned it from
+  $ muse memory forget home_city  # forget one fact (vs \`clear\` = wipe everything)`);
 
   memory
     .command("show")

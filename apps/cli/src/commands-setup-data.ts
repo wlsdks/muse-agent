@@ -271,6 +271,11 @@ export function registerSetupDataCommand(program: Command, io: ProgramIO): void 
   setupRoot
     .command("data")
     .description("Connect your data: guided opt-in for Apple Contacts, browsing history, and the Reminders/Notes mirrors")
+    .addHelpText("after", `
+Examples:
+  $ muse setup data              # guided opt-in for every source (all default OFF)
+  $ muse setup data --contacts   # import Apple Contacts now (non-interactive)
+  $ muse setup data --browsing   # sync Chrome browsing history now`)
     .option("--contacts", "Non-interactive: import Apple Contacts now")
     .option("--browsing", "Non-interactive: sync Chrome browsing history now")
     .option("--browsing-auto", "Non-interactive: stage MUSE_BROWSING_AUTO_SYNC=true")

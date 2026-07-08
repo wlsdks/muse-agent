@@ -71,6 +71,11 @@ export function registerSetupCloudCommand(program: Command, io: ProgramIO, helpe
   setupRoot
     .command("cloud")
     .description("Wire Muse to a cloud LLM (Gemini / OpenAI / Anthropic / OpenRouter) — BYO API key")
+    .addHelpText("after", `
+Examples:
+  $ muse setup cloud --provider gemini --check      # report readiness only; don't write config
+  $ muse setup cloud --provider gemini              # use Gemini (needs GEMINI_API_KEY)
+  $ muse setup cloud --provider openai --model gpt-4o-mini`)
     .requiredOption("--provider <id>", `Provider: ${CLOUD_PROVIDERS.map((p) => p.id).join(" | ")}`)
     .option("--model <model>", "Model name (provider default if omitted)")
     .option("--check", "Report readiness only; do not write config")

@@ -57,6 +57,11 @@ export function isSafeSkillName(name: string): boolean {
 
 export function registerSkillsCommands(program: Command, io: ProgramIO): void {
   const skills = program.command("skills").description("List, add, and locate Muse skills (~/.muse/skills)");
+  skills.addHelpText("after", `
+Examples:
+  $ muse skills list                                          # show installed skills
+  $ muse skills add weather --description "check the forecast" # scaffold a new skill folder
+  $ muse skills author                                        # turn last session's corrections into skills`);
 
   skills
     .command("list")
