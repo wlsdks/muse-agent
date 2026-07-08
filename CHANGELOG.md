@@ -8,6 +8,45 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.23] - 2026-07-08
+
+A best-in-class pass on the CLI, grounded in the clig.dev guidelines: it starts
+faster, reads cleaner, and helps you more.
+
+### Added
+
+- **Examples-first help.** The daily-driver commands (ask, today, remember,
+  skills, mcp, ingest, setup) now show a copy-pasteable "Examples:" block on
+  `--help`, safe path first.
+- **Global flags:** `--no-color`, `-q/--quiet` (suppress tips/spinners, keep
+  primary output + errors), and `--no-input` (never prompt — take the safe
+  non-interactive default). A "New here?" hint and a docs/support footer on the
+  top-level help.
+- **Humane errors.** Expected failures (API unreachable, bad flags) print one
+  clean line with a next-step hint; genuine bugs print a pre-filled GitHub issue
+  link with the version + command.
+- **Distinct conversation turns.** Each exchange starts with a dim rule + `#N`
+  number and a bold prompt header, so a long chat is scannable.
+- **Cleaner answers.** Model answers render markdown properly — framed code
+  blocks with a language label (no more raw ```backticks), aligned/nested lists,
+  highlighted inline code, readable links, and blank-line spacing.
+- **A truthful HUD** with a context-usage indicator (`ctx N%`): a local Ollama
+  model reads 🔒 local (the old HUD false-alarmed ⚠ cloud), warning only when
+  data can actually egress. The HUD segments stay customizable.
+
+### Changed
+
+- **~6× faster cold start on light commands.** The CLI now lazy-loads commands
+  instead of importing the whole graph at startup: `--help` 374→68ms,
+  `completion` 386→61ms, `config-path` 384→62ms; heavier commands drop ~40% to
+  their own dependency floor. `--help`, completion, and did-you-mean are
+  unchanged; `--version` stays ~20ms.
+
+### Fixed
+
+- Complete colour discipline: `NO_COLOR` > `FORCE_COLOR` > `--no-color` >
+  `TERM=dumb` > isTTY (a piped/CI/dumb terminal never gets ANSI).
+
 ## [0.2.22] - 2026-07-08
 
 Terminal polish: the `muse` chat gets a living bluebird and a HUD you can shape,
