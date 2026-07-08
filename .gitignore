@@ -101,3 +101,4 @@ harness/runner/last-project-trace.json
 
 # loop scratchpad — local only, like docs/self-eval-scoreboard.json (avoid parallel-loop churn)
 docs/tool-selection-scoreboard.md
+/scratchpad/
