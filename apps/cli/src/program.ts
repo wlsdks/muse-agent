@@ -109,6 +109,7 @@ import { registerImportCommand } from "./commands-import.js";
 import { registerFeedsCommand } from "./commands-feeds.js";
 import { registerBrowsingCommand } from "./commands-browsing.js";
 import { registerGlanceCommand } from "./commands-glance.js";
+import { registerCompanionLineCommand } from "./companion-line.js";
 import { registerPersonaCommand } from "./commands-persona.js";
 import { loadActivePersonaPreamble } from "./persona-store.js";
 import { registerReadCommand } from "./commands-read.js";
@@ -605,6 +606,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerTimeCommand(program, io);
   registerReadCommand(program, io);
   registerGlanceCommand(program, io);
+  registerCompanionLineCommand(program, io);
   registerRecallCommand(program, io);
   registerNoteCommand(program, io);
   registerFeedsCommand(program, io);
