@@ -96,7 +96,7 @@ describe("command manifest drift guard", () => {
   });
 
   it("createProgram registers every stub plus the eager inline commands (no command lost)", () => {
-    const eager = ["config-path", "spec", "tui", "chat", "runtime", "loopback", "snapshot", "context", "completion"];
+    const eager = ["config-path", "spec", "tui", "chat", "runtime", "loopback", "snapshot", "context", "completion", "help"];
     const program = createProgram(stubIo);
     const registered = program.commands.map((c) => c.name()).filter((n): n is string => Boolean(n) && n !== "*");
     const expected = [...eager, ...COMMAND_STUBS.map((s) => s.name)].sort();

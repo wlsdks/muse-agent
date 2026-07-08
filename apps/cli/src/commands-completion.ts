@@ -148,7 +148,7 @@ export function registerCompletionCommand(program: Command, io: ProgramIO): void
         process.exitCode = 1;
         return;
       }
-      const names = collectTopLevelCommandNames(program).filter((name) => name !== "completion");
+      const names = collectTopLevelCommandNames(program);
       const subcommands = collectSubcommandMap(program);
       const script = normalized === "bash"
         ? renderBashCompletion(names, subcommands)

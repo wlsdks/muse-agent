@@ -6640,9 +6640,9 @@ describe("cli program", () => {
     expect(bash).toContain("status");
     expect(bash).toContain("history");
     expect(bash).toContain("export");
-    // The 'completion' verb is excluded from the verb list so
-    // `muse completion <tab>` doesn't suggest itself.
-    expect(bash).not.toMatch(/local subs="[^"]*\bcompletion\b/);
+    // The 'completion' verb itself IS in the verb list so `muse comple<tab>`
+    // completes (it was previously excluded, which broke self-completion).
+    expect(bash).toMatch(/local subs="[^"]*\bcompletion\b/);
 
     const { io: io2, output: out2 } = captureOutput();
     const program2 = createProgram({ ...io2, fetch: async () => { throw new Error("no fetch"); } });

@@ -17,13 +17,47 @@ export const COMMAND_GROUPS: ReadonlyArray<{
   { heading: "Chat & ask", commands: ["chat", "ask", "recall", "find", "search", "summarize"] },
   {
     heading: "Memory & knowledge",
-    commands: ["remember", "memory", "forget", "notes", "note", "episode", "learned", "contacts"]
+    commands: [
+      "remember",
+      "memory",
+      "forget",
+      "notes",
+      "note",
+      "episode",
+      "learned",
+      "contacts",
+      "skills",
+      "persona",
+      "reflections",
+      "pattern",
+      "user"
+    ]
   },
   {
     heading: "Planning & time",
     commands: ["today", "week", "calendar", "remind", "tasks", "followup", "commitments", "checkins"]
   },
-  { heading: "Setup & status", commands: ["onboard", "setup", "status", "doctor", "config", "auth", "privacy", "trust"] },
+  {
+    heading: "Setup & status",
+    commands: [
+      "onboard",
+      "setup",
+      "status",
+      "doctor",
+      "config",
+      "config-path",
+      "auth",
+      "privacy",
+      "trust",
+      "models",
+      "tui",
+      "completion",
+      "help",
+      "export",
+      "import",
+      "maintenance"
+    ]
+  },
   {
     heading: "Automation & agents",
     commands: [
@@ -44,7 +78,10 @@ export const COMMAND_GROUPS: ReadonlyArray<{
       "watch-folder",
       "webhook",
       "routine",
-      "agent-notices"
+      "agent-notices",
+      "bg",
+      "board",
+      "companion-line"
     ]
   },
   {
@@ -53,15 +90,19 @@ export const COMMAND_GROUPS: ReadonlyArray<{
   },
   {
     heading: "Documents & analysis",
-    commands: ["read", "show", "ingest", "demo", "csv"]
+    commands: ["read", "show", "ingest", "browsing", "demo", "csv"]
   },
-  { heading: "Reports & history", commands: ["brief", "recap", "history", "runs", "on-this-day", "glance", "anomaly"] },
+  {
+    heading: "Reports & history",
+    commands: ["brief", "recap", "history", "runs", "resume", "open", "on-this-day", "glance", "anomaly"]
+  },
   {
     heading: "Diagnostics",
     commands: [
       "metrics",
       "telemetry",
       "traces",
+      "trace",
       "cost",
       "tools",
       "debug",
@@ -70,7 +111,9 @@ export const COMMAND_GROUPS: ReadonlyArray<{
       "snapshot",
       "context",
       "settings",
-      "spec"
+      "spec",
+      "specs",
+      "logo"
     ]
   }
 ];

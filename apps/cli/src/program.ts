@@ -47,6 +47,16 @@ import { COMMAND_STUBS } from "./command-manifest.js";
 import { LOADER_BY_NAME, type LazyDeps } from "./command-loaders.js";
 import { registerCompletionCommand } from "./commands-completion.js";
 
+/**
+ * Thrown by a group's default-subcommand guard to ABORT the default action
+ * (e.g. setup's status dashboard) when an unrecognized positional was passed
+ * (`muse setup lcoal`). Commander only lets a `preAction` hook cancel the
+ * action by throwing; the parseAsync wrapper swallows this sentinel so the
+ * grounded guidance the hook already wrote is the only output (no bug-report
+ * footer from the top-level error formatter).
+ */
+class UnknownSubcommandAbort extends Error {}
+
 interface CliPromptAdapter {
   text(options: { readonly message: string; readonly placeholder?: string }): Promise<string>;
   password(options: { readonly message: string }): Promise<string>;
@@ -485,6 +495,30 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   // eager — it is itself a leaf module (a few ms) and enumerates the stubs.
   registerCompletionCommand(program, io);
 
+  // Commander suppresses its implicit `help` command whenever the program has
+  // its own action handler (Muse's catch-all does), so `muse help ask` fell
+  // through to the unknown-command path. Register an explicit one so the
+  // git/npm/docker convention `muse help <cmd>` == `muse <cmd> --help` holds.
+  // The invoked-command hydrator (below) loads `<cmd>`'s real module before
+  // parse, so the printed help is the full command's, not the lazy stub's.
+  program
+    .command("help [command]")
+    .description("Show help for a command (`muse help ask` == `muse ask --help`), or the top-level help with no argument")
+    .action((commandName?: string) => {
+      const target = typeof commandName === "string" ? commandName.trim() : "";
+      if (target.length === 0) {
+        program.outputHelp();
+        return;
+      }
+      const match = program.commands.find((command) => command.name() === target);
+      if (!match) {
+        io.stderr(formatUnknownCommand(target, listAllCommandNames(program)));
+        process.exitCode = 1;
+        return;
+      }
+      match.outputHelp();
+    });
+
   // One shared dependency bag handed to every lazily-loaded registrar; each
   // destructures the subset it needs and ignores the rest, so a single object
   // serves all of them. `shells` is present only when the test harness injects
@@ -593,7 +627,15 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       effectiveArgv,
       parseOptions?.from ?? "node"
     );
-    return originalParseAsync(argv as string[] | undefined, parseOptions as never);
+    try {
+      return await originalParseAsync(argv as string[] | undefined, parseOptions as never);
+    } catch (error) {
+      // The default-subcommand guard aborts via this sentinel AFTER writing its
+      // own grounded guidance + setting exitCode; swallow it so the top-level
+      // error formatter doesn't print a second (bug-report) message.
+      if (error instanceof UnknownSubcommandAbort) return program;
+      throw error;
+    }
   }) as typeof program.parseAsync;
 
   return program;
@@ -623,25 +665,35 @@ function registerCommandStubs(program: Command): void {
 }
 
 /**
- * The top-level command name a given argv targets, skipping global options
- * (and the value of the two value-taking global flags). Undefined when the
+ * The positional operands a given argv targets, in order, skipping global
+ * options (and the value of the two value-taking global flags). Empty when the
  * line names no command (bare `muse`, `--help`, `--version`) so those surfaces
- * stay on the stubs.
+ * stay on the stubs. `[0]` is the invoked command; `muse help <cmd>` uses `[1]`
+ * to hydrate the command whose help is requested.
  */
-function firstOperandName(argv: readonly string[], from: "node" | "electron" | "user"): string | undefined {
+function commandOperands(argv: readonly string[], from: "node" | "electron" | "user"): string[] {
   const args = from === "user" ? [...argv] : argv.slice(from === "electron" ? 1 : 2);
   const valueOptions = new Set(["--api-url", "--token"]);
+  const operands: string[] = [];
+  let literal = false;
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (typeof arg !== "string") continue;
-    if (arg === "--") return args[i + 1];
+    if (literal) {
+      operands.push(arg);
+      continue;
+    }
+    if (arg === "--") {
+      literal = true;
+      continue;
+    }
     if (arg.startsWith("-")) {
       if (valueOptions.has(arg)) i += 1;
       continue;
     }
-    return arg;
+    operands.push(arg);
   }
-  return undefined;
+  return operands;
 }
 
 /**
@@ -657,7 +709,10 @@ async function hydrateInvokedCommand(
   argv: readonly string[],
   from: "node" | "electron" | "user"
 ): Promise<void> {
-  const target = firstOperandName(argv, from);
+  const operands = commandOperands(argv, from);
+  // `muse help <cmd>` must render <cmd>'s REAL help, so hydrate the targeted
+  // command (operand after `help`) rather than the eager `help` command itself.
+  const target = operands[0] === "help" ? operands[1] : operands[0];
   if (!target) return;
   const loader = LOADER_BY_NAME.get(target);
   if (!loader || loadedLoaderIds.has(loader.id)) return;
@@ -697,7 +752,48 @@ function attachLoadedSubcommandGuidance(
       stderr(`${formatUnknownSubcommand(name, operands[0] ?? "", knownSubs)}\n`);
       process.exitCode = 1;
     });
+    attachDefaultSubcommandGuard(group, stderr, name, knownSubs);
   }
+}
+
+/**
+ * Ground an unrecognized positional to a group whose default subcommand would
+ * otherwise SWALLOW it. Commander routes a bare `muse setup lcoal` to the
+ * `isDefault` `status` subcommand (excess args are inherited-allowed), so
+ * `command:*` never fires and the typo silently prints the status dashboard.
+ * When the default subcommand takes ZERO declared positionals, ANY leading
+ * operand that isn't a real subcommand is an unknown-subcommand attempt — so a
+ * `preAction` hook on that default rejects it with the same grounded guidance
+ * the other groups use, while a NO-operand invocation (`muse setup`) still
+ * runs the dashboard. Groups whose default legitimately takes a positional
+ * (e.g. `remind add <when> <text>`) are left untouched.
+ */
+function attachDefaultSubcommandGuard(
+  group: Command,
+  stderr: (text: string) => void,
+  groupName: string,
+  knownSubs: readonly string[]
+): void {
+  const defaultName = (group as { _defaultCommandName?: string })._defaultCommandName;
+  if (!defaultName) return;
+  const defaultCommand = group.commands.find((command) => command.name() === defaultName);
+  if (!defaultCommand) return;
+  const declaredArgs =
+    (defaultCommand as { registeredArguments?: readonly unknown[]; _args?: readonly unknown[] })
+      .registeredArguments ??
+    (defaultCommand as { _args?: readonly unknown[] })._args ??
+    [];
+  if (declaredArgs.length > 0) return;
+  const knownSet = new Set(knownSubs);
+  defaultCommand.hook("preAction", (_thisCommand, actionCommand) => {
+    const attempted = actionCommand.args[0];
+    if (typeof attempted !== "string" || attempted.length === 0 || knownSet.has(attempted)) {
+      return;
+    }
+    stderr(`${formatUnknownSubcommand(groupName, attempted, knownSubs)}\n`);
+    process.exitCode = 1;
+    throw new UnknownSubcommandAbort();
+  });
 }
 
 /**
