@@ -20,6 +20,7 @@ import {
   buildModelRequestWithWebSearch,
   type AgentRunInput
 } from "@muse/agent-core";
+import { gateChatAnswerGrounding } from "@muse/recall";
 import type { AgentSpecInput } from "@muse/agent-specs";
 import type { RuntimeSettingType } from "@muse/runtime-settings";
 import type { JsonObject, JsonValue } from "@muse/shared";
@@ -63,10 +64,34 @@ export async function runChat(
 
   try {
     const result = await options.agentRuntime.run(runInput);
-    return responseMode === "compat" ? toCompatChatResponse(result) : toExtendedChatResponse(result);
+    // Grounding parity with the CLI chat surface: gate the raw agent output before
+    // it leaves, so a fabricated/uncited claim is dropped by code (fabrication=0)
+    // while a properly grounded answer passes UNCHANGED. Evidence is what THIS turn
+    // produced — the read-tool outputs / injected inbox in `groundingSources`.
+    const gate = gateChatAnswerGrounding({
+      answer: result.response.output,
+      evidence: [...(result.groundingSources ?? [])],
+      question: lastUserQuestion(runInput.messages)
+    });
+    const grounded = gate.gated
+      ? { ...result, response: { ...result.response, output: gate.answer } }
+      : result;
+    return responseMode === "compat" ? toCompatChatResponse(grounded, gate) : toExtendedChatResponse(grounded, gate);
   } catch (error) {
     return sendAgentError(reply, error, responseMode);
   }
+}
+
+/** The user's own last turn — the question the grounding gate scores the answer
+ *  against (a chat body always resolves to at least one user message). */
+function lastUserQuestion(messages: AgentRunInput["messages"]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (message?.role === "user" && typeof message.content === "string") {
+      return message.content;
+    }
+  }
+  return "";
 }
 
 export async function runChatStream(
@@ -97,7 +122,11 @@ export async function runChatStream(
 
   reply.header("content-type", "text/event-stream; charset=utf-8");
   reply.header("cache-control", "no-cache");
-  return reply.send(Readable.from(toSseStream(options.agentRuntime.stream(runInput), responseMode)));
+  return reply.send(
+    Readable.from(
+      toSseStream(options.agentRuntime.stream(runInput), responseMode, { question: lastUserQuestion(runInput.messages) })
+    )
+  );
 }
 
 export async function runMultipartChat(

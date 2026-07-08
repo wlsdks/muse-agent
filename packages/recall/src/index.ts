@@ -34,3 +34,4 @@ export * from "./ask-personal-store-grounding.js";
 export * from "./ask-prompt-constants.js";
 export * from "./pipeline.js";
 export * from "./citation-stream.js";
+export * from "./chat-answer-gate.js";

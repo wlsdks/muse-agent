@@ -1,8 +1,17 @@
 import type { AgentRunResult } from "@muse/agent-core";
+import type { GatedChatAnswer } from "@muse/recall";
 import type { AgentRunRecord } from "@muse/runtime-state";
 import type { JsonObject } from "@muse/shared";
 
-export function toCompatChatResponse(result: AgentRunResult) {
+/**
+ * The deterministic grounding gate's verdict for the chat answer (see
+ * `gateChatAnswerGrounding`). Surfaced on every chat response so the API chat
+ * surface reports its grounding work the way `/api/ask` does: the verdict plus the
+ * citations the gate stripped as fabricated.
+ */
+export type ChatGroundingReport = Pick<GatedChatAnswer, "groundingVerdict" | "strippedCitations">;
+
+export function toCompatChatResponse(result: AgentRunResult, grounding?: ChatGroundingReport) {
   const tokenUsage = compatTokenUsage(result.response.usage);
   const metadata = compatResponseMetadata(result);
 
@@ -14,8 +23,10 @@ export function toCompatChatResponse(result: AgentRunResult) {
     errorCode: null,
     errorMessage: null,
     grounded: typeof metadata.grounded === "boolean" ? metadata.grounded : null,
+    groundingVerdict: grounding?.groundingVerdict ?? null,
     metadata,
     model: result.response.model,
+    strippedCitations: grounding ? [...grounding.strippedCitations] : [],
     success: true,
     tokenUsage,
     toolsUsed: result.toolsUsed ?? [],
@@ -38,9 +49,9 @@ function previewText(value: string, maxLength: number): string {
   return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 1)}…`;
 }
 
-export function toExtendedChatResponse(result: AgentRunResult) {
+export function toExtendedChatResponse(result: AgentRunResult, grounding?: ChatGroundingReport) {
   return {
-    ...toCompatChatResponse(result),
+    ...toCompatChatResponse(result, grounding),
     agentSpec: result.agentSpec,
     contextWindow: result.contextWindow,
     fromCache: result.fromCache ?? false,

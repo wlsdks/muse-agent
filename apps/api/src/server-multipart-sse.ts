@@ -1,4 +1,5 @@
 import type { AgentRuntime } from "@muse/agent-core";
+import { gateChatAnswerGrounding, type ChatGroundingSource } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
 export function parseMultipartBody(contentType: string | string[] | undefined, body: Buffer): JsonObject {
@@ -68,10 +69,20 @@ export function sseData(value: string): string {
 
 export async function* toSseStream(
   events: ReturnType<AgentRuntime["stream"]>,
-  responseMode: "extended" | "compat"
+  responseMode: "extended" | "compat",
+  grounding?: { readonly question: string }
 ): AsyncIterable<string> {
+  // Post-stream grounding gate (CLI-chat parity): raw deltas stream live, then the
+  // FULL assembled answer is gated over the evidence THIS turn produced (the
+  // `tool-result` events' grounding). An authoritative `grounding` frame carries the
+  // gated answer + verdict before `done`, so a fabricated/uncited claim never stands
+  // as the final answer even though its tokens flashed by (a post-stream verdict is
+  // the accepted streaming shape). No question wired ⇒ no gate (byte-identical stream).
+  let assembled = "";
+  const evidence: ChatGroundingSource[] = [];
   for await (const event of events) {
     if (event.type === "text-delta") {
+      assembled += event.text;
       yield `event: message\ndata: ${sseData(event.text)}\n\n`;
       continue;
     }
@@ -87,6 +98,10 @@ export async function* toSseStream(
     }
 
     if (event.type === "tool-result") {
+      if (event.grounding) {
+        evidence.push({ source: event.grounding.source, text: event.grounding.text });
+      }
+
       if (responseMode === "compat") {
         yield `event: tool_end\ndata: ${sseData(event.toolCall.name)}\n\n`;
       }
@@ -136,6 +151,20 @@ export async function* toSseStream(
     if (event.type === "synthesis-started") {
       yield `event: synthesis_started\ndata: ${sseData(JSON.stringify({ runId: event.runId }))}\n\n`;
       continue;
+    }
+
+    if (grounding) {
+      const gate = gateChatAnswerGrounding({
+        answer: event.response.output.length > 0 ? event.response.output : assembled,
+        evidence,
+        question: grounding.question
+      });
+      yield `event: grounding\ndata: ${sseData(JSON.stringify({
+        answer: gate.answer,
+        gated: gate.gated,
+        strippedCitations: gate.strippedCitations,
+        verdict: gate.groundingVerdict
+      }))}\n\n`;
     }
 
     if (responseMode === "compat") {
