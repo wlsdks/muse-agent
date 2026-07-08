@@ -27,7 +27,7 @@ import { useShortcuts } from "./useShortcuts.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { Command } from "../components/CommandPalette.js";
-import type { HealthResponse, TasksResponse } from "../api/types.js";
+import type { HealthResponse, TaglineResponse, TasksResponse } from "../api/types.js";
 import type { Lang, StringKey, Translate } from "../i18n/index.js";
 import type { ComponentType } from "react";
 
@@ -127,6 +127,22 @@ export function SidebarNav({
   );
 }
 
+// The sidebar brand block. Pure + i18n-free (t injected) so the fallback
+// behavior — a personalized tagline when present, else the static i18n
+// subtitle — is unit-testable via renderToStaticMarkup without a DOM.
+export function Brand({ tagline, t }: { readonly tagline?: string; readonly t: Translate }) {
+  const sub = tagline && tagline.trim().length > 0 ? tagline : t("brand.sub");
+  return (
+    <div className="brand">
+      <div className="brand-mark">M</div>
+      <div>
+        <div className="brand-name">Muse</div>
+        <div className="brand-sub">{sub}</div>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   return (
     <I18nProvider>
@@ -162,6 +178,15 @@ function Console() {
   const openTasks = useQuery({
     queryFn: () => client.get<TasksResponse>("/api/tasks?status=open"),
     queryKey: ["tasks-count", apiUrl, token]
+  });
+  // Personalized sidebar subtitle. Fetched once per app open per language
+  // (staleTime: Infinity keeps it stable within a session — no flicker); the
+  // static i18n `brand.sub` is the instant fallback while it loads / on error.
+  const tagline = useQuery({
+    queryFn: () => client.get<TaglineResponse>(`/api/identity-tagline?lang=${lang}`),
+    queryKey: ["identity-tagline", apiUrl, lang],
+    retry: 0,
+    staleTime: Infinity
   });
 
   const active: NavEntry = NAV.find((n) => n.id === view) ?? NAV[0]!;
@@ -204,13 +229,7 @@ function Console() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">M</div>
-          <div>
-            <div className="brand-name">Muse</div>
-            <div className="brand-sub">{t("brand.sub")}</div>
-          </div>
-        </div>
+        <Brand tagline={tagline.data?.tagline} t={t} />
 
         <SidebarNav view={view} taskCount={openTasks.data?.total ?? 0} t={t} onSelect={setView} />
 

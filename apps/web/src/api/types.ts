@@ -5,6 +5,11 @@ export interface HealthResponse {
   readonly status?: string;
 }
 
+export interface TaglineResponse {
+  readonly tagline: string;
+  readonly grounded: boolean;
+}
+
 export interface Citation {
   readonly url: string;
   readonly title: string;

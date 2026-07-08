@@ -66,6 +66,7 @@ import { registerAccountabilityRoutes } from "./accountability-routes.js";
 import { registerSelfImprovementRoutes } from "./self-improvement-routes.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
+import { registerIdentityTaglineRoutes } from "./identity-tagline-routes.js";
 import { registerAgentNoticesRoutes } from "./agent-notices-routes.js";
 import { registerSetupRoutes } from "./setup-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
@@ -100,6 +101,32 @@ export { unwrapErrorMessage };
 
 export type { CorsOptions, ServerOptions } from "./server-options.js";
 import type { ServerOptions } from "./server-options.js";
+import type { TaglineModelFn } from "./identity-tagline.js";
+
+/**
+ * The local-model layer for the personalized sidebar tagline, or undefined when
+ * no provider/model is wired or `MUSE_TAGLINE_NO_MODEL` is set. Bounded output —
+ * a subtitle is a handful of words. Fail-soft: the route keeps its deterministic
+ * line if the model errors.
+ */
+function resolveTaglineModel(options: ServerOptions): TaglineModelFn | undefined {
+  if ((process.env.MUSE_TAGLINE_NO_MODEL ?? "").trim().length > 0) return undefined;
+  const provider = options.modelProvider;
+  const model = options.defaultModel;
+  if (!provider || !model) return undefined;
+  return async ({ system, prompt }) => {
+    const response = await provider.generate({
+      maxOutputTokens: 40,
+      messages: [
+        { content: system, role: "system" },
+        { content: prompt, role: "user" }
+      ],
+      model,
+      temperature: 0.8
+    });
+    return response.output ?? "";
+  };
+}
 
 export function buildServer(options: ServerOptions = {}): FastifyInstance {
   const agentSpecRegistry = options.agentSpecRegistry ?? new InMemoryAgentSpecRegistry();
@@ -320,6 +347,12 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   registerActiveContextRoutes(server, {
     authService,
     ...(options.activeContextProvider ? { activeContextProvider: options.activeContextProvider } : {})
+  });
+  const taglineModel = resolveTaglineModel(options);
+  registerIdentityTaglineRoutes(server, {
+    authService,
+    ...(options.userMemoryStore ? { userMemoryStore: options.userMemoryStore } : {}),
+    ...(taglineModel ? { model: taglineModel } : {})
   });
   if (options.agentInitiatedNoticeBroker) {
     registerAgentNoticesRoutes(server, {
