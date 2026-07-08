@@ -52,12 +52,12 @@ Read these five and you know exactly what kind of agent this is.
    you correct it**. A fixed local brain that gets sharper *about you* every day, with no
    weight changes. (`muse memory`, `muse doctor --weaknesses`)
 
-2. **It's yours — _the model of you never leaves._**
-   Everything runs on a local open-source model (`gemma4:12b` via Ollama by default —
-   multimodal + grounding-strong — or any weights you run locally), and that model of you
-   stays on your machine. Cloud egress is **refused in code** (`MUSE_LOCAL_ONLY` on by
-   default): the runtime won't even start against a cloud provider unless you explicitly
-   opt out. The deeper it knows you, the more that matters.
+2. **It's yours — _the model of you can stay on your machine._**
+   Runs on a local open-source model by default (`gemma4:12b` via Ollama —
+   multimodal + grounding-strong — or any weights you run locally), and it's provider-
+   neutral: use cloud or local, your choice. Privacy is a first-class **opt-in** — set
+   `MUSE_LOCAL_ONLY=true` and cloud egress is **refused in code** (the runtime won't even
+   start against a cloud provider). The deeper it knows you, the more that matters.
 
 3. **Honest — _it won't make you up._**
    Every answer, proactive nudge, and insight cites the real source it came from; weak
