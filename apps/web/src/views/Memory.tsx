@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { AsyncBlock, Card, Empty } from "../components/ui.js";
+import { AsyncBlock, Card, Empty, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 
 import type { ApiClient } from "../api/client.js";
@@ -23,7 +23,7 @@ export function memorySubtitle(t: Translate, locale: string, updatedAt?: string)
  * (transparency, not editing): there is no per-fact delete on the API,
  * and curation belongs to the agent/CLI path.
  */
-export function MemoryView({ client }: { client: ApiClient }) {
+export function MemoryView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
   const { locale, t } = useI18n();
   const [userId, setUserId] = useState("default");
 
@@ -65,6 +65,22 @@ export function MemoryView({ client }: { client: ApiClient }) {
       </div>
 
       <AsyncBlock loading={memory.isLoading} error={memory.error}>
+        {facts.length === 0 && prefs.length === 0 && topics.length === 0 ? (
+          <Card>
+            <Empty
+              icon={<Icon.brain />}
+              hint={t("memory.emptyHint")}
+              action={
+                onNavigate
+                  ? { icon: <Icon.chat className="nav-icon" />, label: t("memory.startChat"), onClick: () => onNavigate("chat") }
+                  : undefined
+              }
+            >
+              {t("memory.emptyTitle")}
+            </Empty>
+          </Card>
+        ) : (
+          <>
         <div className="grid grid-2">
           <Card title={t("memory.facts")} count={facts.length}>
             {facts.length === 0 ? (
@@ -109,6 +125,8 @@ export function MemoryView({ client }: { client: ApiClient }) {
               </div>
             </Card>
           </div>
+        )}
+          </>
         )}
       </AsyncBlock>
     </div>

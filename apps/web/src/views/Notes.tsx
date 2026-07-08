@@ -108,7 +108,18 @@ export function NotesView({ client }: { client: ApiClient }) {
               ))}
             </AsyncBlock>
           ) : (
-            <AsyncBlock loading={list.isLoading} error={list.error} empty={files.length === 0}>
+            <AsyncBlock
+              loading={list.isLoading}
+              error={list.error}
+              empty={files.length === 0}
+              emptyIcon={<Icon.note />}
+              emptyLabel={t("notes.empty")}
+              emptyAction={{
+                icon: <Icon.plus className="nav-icon" />,
+                label: t("notes.addFirst"),
+                onClick: startNew
+              }}
+            >
               {files.map((f) => (
                 <div className={`row note-row${active === f.name ? " active" : ""}`} key={f.name}>
                   <button

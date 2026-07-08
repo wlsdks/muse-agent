@@ -61,7 +61,7 @@ interface NavEntry {
   readonly key: string;
   readonly icon: ComponentType<{ className?: string }>;
   readonly group: GroupKey;
-  readonly Component: ComponentType<{ client: ApiClient }>;
+  readonly Component: ComponentType<{ client: ApiClient; onNavigate?: (view: string) => void }>;
 }
 
 export const NAV: readonly NavEntry[] = [
@@ -256,7 +256,7 @@ function Console() {
             {view === "settings" ? (
               <SettingsView client={client} apiUrl={apiUrl} token={token} onSave={updateConnection} />
             ) : (
-              <ActiveComponent client={client} />
+              <ActiveComponent client={client} onNavigate={(id) => setView(id as ViewId)} />
             )}
           </div>
         </section>

@@ -29,7 +29,7 @@ export function timeUntil(iso: string, t: Translate): string {
   return t("rel.inDays", { n: Math.round(hr / 24) });
 }
 
-export function TodayView({ client }: { client: ApiClient }) {
+export function TodayView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
   const { locale, t } = useI18n();
   const brief = useQuery({
     queryFn: () => client.get<TodayBriefingResponse>("/api/today"),
@@ -68,7 +68,17 @@ export function TodayView({ client }: { client: ApiClient }) {
 
       <div className="grid grid-2">
         <Card title={t("today.tasks")} count={tasks.length}>
-          <AsyncBlock loading={brief.isLoading} error={brief.error} empty={tasks.length === 0}>
+          <AsyncBlock
+            loading={brief.isLoading}
+            error={brief.error}
+            empty={tasks.length === 0}
+            emptyIcon={<Icon.task />}
+            emptyAction={
+              onNavigate
+                ? { icon: <Icon.plus className="nav-icon" />, label: t("today.addTask"), onClick: () => onNavigate("tasks") }
+                : undefined
+            }
+          >
             {tasks.slice(0, 6).map((task) => (
               <div className="row" key={task.id}>
                 <div className="row-main">
@@ -80,7 +90,17 @@ export function TodayView({ client }: { client: ApiClient }) {
         </Card>
 
         <Card title={t("today.calendar")} count={events.length}>
-          <AsyncBlock loading={brief.isLoading} error={brief.error} empty={events.length === 0}>
+          <AsyncBlock
+            loading={brief.isLoading}
+            error={brief.error}
+            empty={events.length === 0}
+            emptyIcon={<Icon.calendar />}
+            emptyAction={
+              onNavigate
+                ? { icon: <Icon.plus className="nav-icon" />, label: t("today.addEvent"), onClick: () => onNavigate("calendar") }
+                : undefined
+            }
+          >
             {events.slice(0, 6).map((e) => (
               <div className="row" key={e.id}>
                 <div className="row-main">
@@ -96,7 +116,17 @@ export function TodayView({ client }: { client: ApiClient }) {
 
       <div style={{ marginTop: 16 }}>
         <Card title={t("today.reminders")} count={reminders.length}>
-          <AsyncBlock loading={brief.isLoading} error={brief.error} empty={reminders.length === 0}>
+          <AsyncBlock
+            loading={brief.isLoading}
+            error={brief.error}
+            empty={reminders.length === 0}
+            emptyIcon={<Icon.bell />}
+            emptyAction={
+              onNavigate
+                ? { icon: <Icon.plus className="nav-icon" />, label: t("today.addReminder"), onClick: () => onNavigate("reminders") }
+                : undefined
+            }
+          >
             {reminders.slice(0, 6).map((r) => (
               <div className="row" key={r.id}>
                 <div className="row-main">

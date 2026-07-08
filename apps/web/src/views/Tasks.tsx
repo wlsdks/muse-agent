@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { AsyncBlock, Button, Card, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
@@ -50,6 +50,7 @@ export function TasksView({ client }: { client: ApiClient }) {
   const [filter, setFilter] = useState<"open" | "done" | "all">("open");
   const [title, setTitle] = useState("");
   const [search, setSearch] = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
 
   const key = ["tasks", client.baseUrl, filter];
   const tasks = useQuery({
@@ -87,6 +88,7 @@ export function TasksView({ client }: { client: ApiClient }) {
 
       <div style={{ display: "flex", gap: 8, margin: "16px 0" }}>
         <input
+          ref={titleRef}
           className="input"
           placeholder={t("tasks.placeholder")}
           aria-label={t("tasks.placeholder")}
@@ -125,7 +127,18 @@ export function TasksView({ client }: { client: ApiClient }) {
           </div>
         }
       >
-        <AsyncBlock loading={tasks.isLoading} error={tasks.error} empty={list.length === 0}>
+        <AsyncBlock
+          loading={tasks.isLoading}
+          error={tasks.error}
+          empty={list.length === 0}
+          emptyIcon={<Icon.task />}
+          emptyLabel={t("tasks.empty")}
+          emptyAction={{
+            icon: <Icon.plus className="nav-icon" />,
+            label: t("tasks.addFirst"),
+            onClick: () => titleRef.current?.focus()
+          }}
+        >
           {list.map((task) => (
             <div className="row" key={task.id}>
               <TaskCheckbox status={task.status} onComplete={() => complete.mutate(task.id)} />

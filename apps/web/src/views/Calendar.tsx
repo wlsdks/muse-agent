@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { AsyncBlock, Badge, Button, Card, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
@@ -39,6 +39,7 @@ export function CalendarView({ client }: { client: ApiClient }) {
   const [title, setTitle] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const titleRef = useRef<HTMLInputElement>(null);
 
   const events = useQuery({
     queryFn: () => client.get<CalendarEventsResponse>("/api/calendar/events"),
@@ -86,7 +87,7 @@ export function CalendarView({ client }: { client: ApiClient }) {
         <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 200px 200px auto", alignItems: "end" }}>
           <div>
             <label className="field-label" htmlFor="cal-title">{t("calendar.eventTitle")}</label>
-            <input id="cal-title" className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Standup" />
+            <input ref={titleRef} id="cal-title" className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Standup" />
           </div>
           <div>
             <label className="field-label" htmlFor="cal-start">{t("calendar.start")}</label>
@@ -103,7 +104,18 @@ export function CalendarView({ client }: { client: ApiClient }) {
       </Card>
 
       <div style={{ marginTop: 16 }}>
-        <AsyncBlock loading={events.isLoading} error={events.error} empty={list.length === 0}>
+        <AsyncBlock
+          loading={events.isLoading}
+          error={events.error}
+          empty={list.length === 0}
+          emptyIcon={<Icon.calendar />}
+          emptyLabel={t("calendar.empty")}
+          emptyAction={{
+            icon: <Icon.plus className="nav-icon" />,
+            label: t("calendar.addFirst"),
+            onClick: () => titleRef.current?.focus()
+          }}
+        >
           {[...byDay.entries()].map(([day, evts]) => (
             <div key={day} style={{ marginBottom: 16 }}>
               <Card title={day} count={evts.length}>

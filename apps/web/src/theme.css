@@ -615,6 +615,7 @@ button {
   transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease,
     opacity 0.14s ease, transform 0.08s ease;
   white-space: nowrap;
+  text-decoration: none;
 }
 .btn:disabled {
   opacity: 0.45;
@@ -839,6 +840,9 @@ button {
   color: var(--ink-tertiary);
   font-size: var(--text-ui);
   max-width: 340px;
+}
+.empty-action {
+  margin-top: var(--s-sm);
 }
 .empty.err .empty-ic {
   color: var(--danger);

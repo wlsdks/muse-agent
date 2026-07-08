@@ -80,16 +80,49 @@ export function Badge({
   );
 }
 
+/** An optional call-to-action on an empty state. `onClick` runs an in-app
+ * action (focus a composer, navigate a view); `href` is for a real link. */
+export type EmptyAction = {
+  label: ReactNode;
+  onClick?: () => void;
+  href?: string;
+  icon?: ReactNode;
+};
+
+function EmptyCta({ action }: { action: EmptyAction }) {
+  const inner = (
+    <>
+      {action.icon}
+      {action.label}
+    </>
+  );
+  return (
+    <div className="empty-action">
+      {action.href ? (
+        <a className="btn btn-primary btn-sm" href={action.href}>
+          {inner}
+        </a>
+      ) : (
+        <Button variant="primary" size="sm" onClick={action.onClick}>
+          {inner}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function Empty({
   children,
   hint,
   icon,
-  tone = "neutral"
+  tone = "neutral",
+  action
 }: {
   children: ReactNode;
   hint?: ReactNode;
   icon?: ReactNode;
   tone?: "neutral" | "err";
+  action?: EmptyAction;
 }) {
   const glyph = icon ?? <Icon.inbox />;
   return (
@@ -97,6 +130,7 @@ export function Empty({
       <div className="empty-ic">{glyph}</div>
       <div className="empty-title">{children}</div>
       {hint && <div className="empty-hint">{hint}</div>}
+      {action && <EmptyCta action={action} />}
     </div>
   );
 }
@@ -125,16 +159,24 @@ export function Stat({ value, label, icon }: { value: ReactNode; label: string; 
   );
 }
 
-/** Renders query state uniformly: spinner while loading, warm empty/error state otherwise. */
+/** Renders query state uniformly: spinner while loading, warm empty/error state otherwise.
+ * The empty state optionally carries a CTA (`emptyAction`) and a warmer label/icon so a
+ * fresh, data-empty install can guide the user toward their first action. */
 export function AsyncBlock({
   loading,
   error,
   empty,
+  emptyLabel,
+  emptyIcon,
+  emptyAction,
   children
 }: {
   loading: boolean;
   error?: unknown;
   empty?: boolean;
+  emptyLabel?: ReactNode;
+  emptyIcon?: ReactNode;
+  emptyAction?: EmptyAction;
   children: ReactNode;
 }) {
   const { t } = useI18n();
@@ -153,7 +195,11 @@ export function AsyncBlock({
     );
   }
   if (empty) {
-    return <Empty>{t("common.empty")}</Empty>;
+    return (
+      <Empty icon={emptyIcon} action={emptyAction}>
+        {emptyLabel ?? t("common.empty")}
+      </Empty>
+    );
   }
   return <>{children}</>;
 }

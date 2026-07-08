@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { AsyncBlock, Button, Card, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
@@ -13,6 +13,7 @@ export function RemindersView({ client }: { client: ApiClient }) {
   const qc = useQueryClient();
   const [text, setText] = useState("");
   const [dueAt, setDueAt] = useState("");
+  const whatRef = useRef<HTMLInputElement>(null);
 
   const reminders = useQuery({
     queryFn: () => client.get<RemindersResponse>("/api/reminders?status=pending"),
@@ -49,7 +50,7 @@ export function RemindersView({ client }: { client: ApiClient }) {
         <div style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 220px auto", alignItems: "end" }}>
           <div>
             <label className="field-label" htmlFor="rem-what">{t("reminders.what")}</label>
-            <input id="rem-what" className="input" placeholder={t("reminders.whatPlaceholder")} value={text} onChange={(e) => setText(e.target.value)} />
+            <input ref={whatRef} id="rem-what" className="input" placeholder={t("reminders.whatPlaceholder")} value={text} onChange={(e) => setText(e.target.value)} />
           </div>
           <div>
             <label className="field-label" htmlFor="rem-when">{t("reminders.when")}</label>
@@ -73,7 +74,18 @@ export function RemindersView({ client }: { client: ApiClient }) {
 
       <div style={{ marginTop: 16 }}>
         <Card title={t("reminders.pending")} count={reminders.data?.total ?? 0}>
-          <AsyncBlock loading={reminders.isLoading} error={reminders.error} empty={list.length === 0}>
+          <AsyncBlock
+            loading={reminders.isLoading}
+            error={reminders.error}
+            empty={list.length === 0}
+            emptyIcon={<Icon.bell />}
+            emptyLabel={t("reminders.empty")}
+            emptyAction={{
+              icon: <Icon.plus className="nav-icon" />,
+              label: t("reminders.addFirst"),
+              onClick: () => whatRef.current?.focus()
+            }}
+          >
             {list.map((r) => (
               <div className="row" key={r.id}>
                 <Icon.bell className="nav-icon" />

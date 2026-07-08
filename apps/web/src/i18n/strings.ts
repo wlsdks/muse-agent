@@ -78,6 +78,8 @@ const en = {
   "tasks.search": "Filter tasks…",
   "tasks.yourTasks": "Your tasks",
   "tasks.complete": "Complete",
+  "tasks.empty": "No tasks yet.",
+  "tasks.addFirst": "Add your first task",
 
   "calendar.title": "Calendar",
   "calendar.today": "Today",
@@ -87,6 +89,8 @@ const en = {
   "calendar.eventTitle": "Title",
   "calendar.start": "Start",
   "calendar.end": "End",
+  "calendar.empty": "Nothing on your calendar yet.",
+  "calendar.addFirst": "Add an event",
 
   "reminders.title": "Reminders",
   "reminders.new": "New reminder",
@@ -94,6 +98,17 @@ const en = {
   "reminders.when": "When",
   "reminders.whatPlaceholder": "Call the dentist",
   "reminders.pending": "Pending",
+  "reminders.empty": "No reminders yet.",
+  "reminders.addFirst": "Add your first reminder",
+
+  "notes.empty": "No notes yet.",
+  "notes.addFirst": "Add a note",
+  "today.addTask": "Add a task",
+  "today.addEvent": "Add an event",
+  "today.addReminder": "Add a reminder",
+  "memory.emptyTitle": "Muse hasn't learned anything about you yet.",
+  "memory.emptyHint": "Start a chat and Muse will begin learning who you are.",
+  "memory.startChat": "Start a chat",
 
   "notes.title": "Notes",
   "notes.searchPlaceholder": "Search across all notes…",
@@ -315,6 +330,8 @@ const ko: Strings = {
   "tasks.search": "할 일 검색…",
   "tasks.yourTasks": "내 할 일",
   "tasks.complete": "완료",
+  "tasks.empty": "아직 할 일이 없어요.",
+  "tasks.addFirst": "첫 할 일 추가",
 
   "calendar.title": "캘린더",
   "calendar.today": "오늘",
@@ -324,6 +341,8 @@ const ko: Strings = {
   "calendar.eventTitle": "제목",
   "calendar.start": "시작",
   "calendar.end": "종료",
+  "calendar.empty": "아직 일정이 없어요.",
+  "calendar.addFirst": "일정 추가",
 
   "reminders.title": "리마인더",
   "reminders.new": "새 리마인더",
@@ -331,6 +350,17 @@ const ko: Strings = {
   "reminders.when": "시각",
   "reminders.whatPlaceholder": "치과 예약 전화하기",
   "reminders.pending": "대기 중",
+  "reminders.empty": "아직 리마인더가 없어요.",
+  "reminders.addFirst": "첫 리마인더 추가",
+
+  "notes.empty": "아직 노트가 없어요.",
+  "notes.addFirst": "노트 추가",
+  "today.addTask": "할 일 추가",
+  "today.addEvent": "일정 추가",
+  "today.addReminder": "리마인더 추가",
+  "memory.emptyTitle": "Muse가 아직 당신에 대해 배운 게 없어요.",
+  "memory.emptyHint": "대화를 시작하면 Muse가 당신이 어떤 사람인지 배우기 시작해요.",
+  "memory.startChat": "대화 시작",
 
   "notes.title": "노트",
   "notes.searchPlaceholder": "모든 노트에서 검색…",
