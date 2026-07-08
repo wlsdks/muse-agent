@@ -223,6 +223,25 @@ export async function runModelSetup(io: SetupModelIO): Promise<void> {
   io.stdout("\nTip: `muse setup` shows the current state.\n");
 }
 
+/**
+ * Persist a single provider's key to `~/.muse/models.json` (chmod 600) — the
+ * same store `muse setup model` writes and autoconfigure auto-loads at boot
+ * (`mergeModelKeysFromFile`), so no shell-rc exports are needed. Reused by the
+ * first-run wizard's Cloud path to keep key handling turnkey and in ONE place.
+ */
+export async function persistModelProviderKey(
+  home: string,
+  providerId: string,
+  token: string,
+  suggestedModel: string
+): Promise<string> {
+  const file = pathJoin(home, ".muse", "models.json");
+  const persisted = await readPersisted(file);
+  persisted.providers[providerId] = { suggestedModel, token };
+  await writePersisted(file, persisted);
+  return file;
+}
+
 function maskSecret(token: string): string {
   if (token.length <= 8) {
     return "*".repeat(token.length);

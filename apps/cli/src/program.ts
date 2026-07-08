@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import path from "node:path";
 
 import type { AgentRuntime } from "@muse/agent-core";
@@ -98,6 +99,13 @@ import { registerSetupCloudCommand } from "./commands-setup-cloud.js";
 import { registerSetupLocalCommand } from "./commands-setup-local.js";
 import { registerSetupVoiceCommand } from "./commands-setup-voice.js";
 import { registerSetupDataCommand } from "./commands-setup-data.js";
+import {
+  firstRunSkipRequested,
+  isFirstRunMarkerPresent,
+  providerKeyPresent,
+  runFirstRunSetupInteractive,
+  shouldRunFirstRunSetup
+} from "./first-run.js";
 import { registerBriefCommand } from "./commands-brief.js";
 import { registerRecapCommand } from "./commands-recap.js";
 import { registerApprovalCommands } from "./commands-approval.js";
@@ -267,6 +275,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     .version(MUSE_CLI_VERSION)
     .option("--api-url <url>", "Muse API base URL")
     .option("--token <token>", "Bearer token for authenticated API calls")
+    .option("--no-setup", "Skip the first-run setup wizard and start chat directly")
     .configureOutput({
       writeErr: io.stderr,
       writeOut: io.stdout
@@ -583,6 +592,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   registerSetupCloudCommand(program, io, { readConfigStore, writeConfigStore });
   registerSetupVoiceCommand(program, io);
   registerSetupDataCommand(program, io);
+  registerFirstRunStartCommand(program, io);
   registerStatusCommand(program, io);
   registerBackgroundCommand(program, io);
   registerBriefCommand(program, io);
@@ -670,7 +680,26 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       // the input column each render). `muse repl` stays on readline as a
       // guaranteed-CJK-safe fallback. Piped / non-TTY keeps the help banner.
       if (process.stdin.isTTY && process.stdout.isTTY) {
-        const cliConfig = await readConfigStore(io);
+        let cliConfig = await readConfigStore(io);
+        const noSetupFlag = (program.opts() as { setup?: boolean }).setup === false;
+        const home = io.configDir ? path.dirname(configPath(io)) : homedir();
+        if (shouldRunFirstRunSetup({
+          configuredModel: cliConfig.defaultModel,
+          envModel: process.env.MUSE_MODEL ?? process.env.MUSE_DEFAULT_MODEL,
+          interactive: true,
+          markerPresent: isFirstRunMarkerPresent(home),
+          providerKeyPresent: providerKeyPresent(process.env),
+          skipRequested: firstRunSkipRequested(process.env, noSetupFlag)
+        })) {
+          await runFirstRunSetupInteractive({
+            home,
+            readConfig: () => readConfigStore(io),
+            writeConfig: (config) => writeConfigStore(io, config),
+            ...(io.fetch ? { fetch: io.fetch } : {})
+          });
+          // Pick up any defaultModel the wizard just wrote.
+          cliConfig = await readConfigStore(io);
+        }
         const { runChatInk } = await import("./chat-ink.js");
         await runChatInk({
           continueHistory: true,
@@ -686,6 +715,31 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
   });
 
   return program;
+}
+
+/**
+ * `muse setup start` — launch the SAME first-run "how should Muse think?"
+ * picker on demand (Local / Cloud / Codex), independent of the once-only
+ * auto-launch guard. Reuses the shared wizard so on-demand and first-run stay
+ * identical.
+ */
+function registerFirstRunStartCommand(program: Command, io: ProgramIO): void {
+  const setupRoot = program.commands.find((cmd) => cmd.name() === "setup");
+  if (!setupRoot) {
+    throw new Error("registerFirstRunStartCommand: 'setup' command group must be registered first.");
+  }
+  setupRoot
+    .command("start")
+    .description("Pick how Muse thinks (Local / Cloud API key / Codex) — the friendly first-run wizard, on demand")
+    .action(async () => {
+      const home = io.configDir ? path.dirname(configPath(io)) : homedir();
+      await runFirstRunSetupInteractive({
+        home,
+        readConfig: () => readConfigStore(io),
+        writeConfig: (config) => writeConfigStore(io, config),
+        ...(io.fetch ? { fetch: io.fetch } : {})
+      });
+    });
 }
 
 /**
