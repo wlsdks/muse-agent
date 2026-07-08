@@ -25,12 +25,9 @@ import { appendActivity, appendLastChatTurn, appendSessionBoundary, clearLastCha
 import {
   buildRecap,
   chatToolApprovalGate,
-  composeMorningGreeting,
   createContextualGroundingLookup,
   readImageAttachment,
-  firstOpenToday,
   formatNoModelMessage,
-  greetingName,
   formatRecallHits,
   recurringEpisodeThreads,
   resolveChatHistoryWindow,
@@ -467,33 +464,13 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
       })().catch(() => "")
     : "";
 
-  // First open of the day → greet with the FULL morning briefing instead of the
-  // one-line recap (JARVIS opening the day). A YYYY-MM-DD marker in ~/.muse
-  // gates it to once per day; same-day reopens fall back to the recap line.
+  // The chat opens INSTANTLY — no auto-briefing at startup. Composing the morning
+  // brief here forced a weather network fetch + two local-model reflection calls
+  // on every first-open-of-the-day, so a bare `muse` took seconds to even appear.
+  // The day view is surfaced ON DEMAND (`muse today` / the `/today` slash command),
+  // and the opener stays a cheap local one-line recap.
   let recap = oneLineRecap;
-  let recapRole: "system" | "command" = "system";
-  if (continueHistory) {
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const briefMarkerFile = join(homedir(), ".muse", "last-brief-date");
-    let lastBrief: string | undefined;
-    try { lastBrief = await fsReadFile(briefMarkerFile, "utf8"); } catch { lastBrief = undefined; }
-    if (firstOpenToday(lastBrief, todayStr)) {
-      const brief = await buildLocalTodayText(process.env, parseLookaheadHours(undefined)).catch(() => "");
-      if (brief) {
-        const who = greetingName(memoryHolder.current?.facts);
-        // Proactive reflection: once-a-day, if a cross-session thread is
-        // unresolved, Muse opens with the observation unprompted (speaks-first)
-        // — but only when there's an honest insight, never a nag.
-        const insight = await reflectInsight();
-        recap = composeMorningGreeting({ brief, insight, ...(who ? { who } : {}) });
-        recapRole = "command";
-        try {
-          await mkdir(join(homedir(), ".muse"), { recursive: true });
-          await writeFile(briefMarkerFile, todayStr, "utf8");
-        } catch { /* best-effort; a failed marker just re-briefs next open */ }
-      }
-    }
-  }
+  const recapRole: "system" | "command" = "system";
 
   // "You FEEL it next session" (B2): if Muse distilled anything UNATTENDED
   // while you were away (probation strategies), open with a one-line beat so
