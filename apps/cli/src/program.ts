@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 
 import type { AgentRuntime } from "@muse/agent-core";
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import {
   credentialPath,
   deleteStoredToken,
@@ -17,8 +17,7 @@ import { MUSE_TAGLINE } from "./muse-identity.js";
 import { formatSpec } from "./muse-spec.js";
 import { MUSE_CLI_VERSION } from "./muse-version.js";
 import { cliContextFromGlobals, setCliContext } from "./cli-context.js";
-import { attachUnknownSubcommandGuidance } from "./unknown-subcommand.js";
-import { buildMusePersona, formatCurrentContextLine } from "./muse-persona.js";
+import { formatUnknownSubcommand } from "./unknown-subcommand.js";
 import {
   appendLastChatTurn,
   clearLastChatHistory,
@@ -40,123 +39,13 @@ import {
   writeOutput,
   writeRunLog
 } from "./program-helpers.js";
-import {
-  createTuiChatSubmitter,
-  parseAgentMode,
-  readPipedStdin,
-  resolveChatMessage,
-  runLocalChat
-} from "./chat-repl.js";
-
-export { readPipedStdin };
-import { renderMuseStatusTui, type MuseStatusTuiModel } from "./tui.js";
-import { registerAuthCommands } from "./commands-auth.js";
-import { registerConfigCommands } from "./commands-config.js";
-import { registerListenCommand } from "./commands-listen.js";
-import { registerMcpCommands } from "./commands-mcp.js";
-import { registerAgentsCommands } from "./commands-agents.js";
-import { registerDaemonCommands } from "./commands-daemon.js";
-import { registerIngestCommand } from "./chat-export-ingest.js";
-import { registerOnboardCommand } from "./commands-onboard.js";
-import { registerBoardCommand } from "./commands-board.js";
-import { registerProactiveCommands } from "./commands-proactive.js";
-import { registerModelsCommand } from "./commands-models.js";
-import { registerReflectionsCommand } from "./commands-reflections.js";
-import { registerLearnedCommand } from "./commands-learned.js";
-import { registerSwarmCommands, type CouncilGatherOverride } from "./commands-swarm.js";
-import { registerProposeCommands } from "./commands-propose.js";
-import { registerSkillsCommands } from "./commands-skills.js";
-import { registerOrchestrateCommands } from "./commands-orchestrate.js";
-import { registerCalendarCommands } from "./commands-calendar.js";
-import { registerMemoryCommands } from "./commands-memory.js";
-import { registerCostCommands } from "./commands-cost.js";
-import { registerResumeCommand } from "./commands-resume.js";
-import { registerTraceCommand } from "./commands-trace.js";
-import { registerDebugCommands } from "./commands-debug.js";
-import { registerDoctorCommand } from "./commands-doctor.js";
-import { registerSettingsCommands } from "./commands-settings.js";
-import { registerToolsAdminCommands } from "./commands-tools-admin.js";
-import { registerTracesCommands } from "./commands-traces.js";
-import { registerRunsCommands } from "./commands-runs.js";
-import { registerMessagingCommands } from "./commands-messaging.js";
-import { registerRemindCommands } from "./commands-remind.js";
-import { registerFollowupCommands } from "./commands-followup.js";
-import { registerEpisodeCommands } from "./commands-episode.js";
-import { registerCommitmentsCommands } from "./commands-commitments.js";
-import { registerCheckinsCommands } from "./commands-checkins.js";
-import { registerUserCommands } from "./commands-user.js";
-import { registerPatternCommands } from "./commands-pattern.js";
-import { registerSearchCommand } from "./commands-search.js";
-import { registerCsvCommand } from "./commands-csv.js";
-import { registerLogoCommand } from "./commands-logo.js";
-import { registerSummarizeCommand } from "./commands-summarize.js";
-import { registerOnThisDayCommand } from "./commands-on-this-day.js";
-import { registerFindCommand } from "./commands-find.js";
-import { registerHistoryCommand } from "./commands-history.js";
-import { registerOpenCommand } from "./commands-open.js";
-import { registerNotesCommands } from "./commands-notes.js";
-import { registerSchedulerCommands, registerSetupCommands } from "./commands-scheduler-setup.js";
-import { registerSetupCloudCommand } from "./commands-setup-cloud.js";
-import { registerSetupLocalCommand } from "./commands-setup-local.js";
-import { registerSetupVoiceCommand } from "./commands-setup-voice.js";
-import { registerSetupDataCommand } from "./commands-setup-data.js";
-import {
-  firstRunSkipRequested,
-  isFirstRunMarkerPresent,
-  providerKeyPresent,
-  runFirstRunSetupInteractive,
-  shouldRunFirstRunSetup
-} from "./first-run.js";
-import { registerBriefCommand } from "./commands-brief.js";
-import { registerRecapCommand } from "./commands-recap.js";
-import { registerApprovalCommands } from "./commands-approval.js";
-import { loadImageAttachment, registerAskCommand } from "./commands-ask.js";
-import { registerDemoCommand } from "./commands-demo.js";
-import { registerExportCommand } from "./commands-export.js";
-import { registerCompletionCommand } from "./commands-completion.js";
-import { registerImportCommand } from "./commands-import.js";
-import { registerFeedsCommand } from "./commands-feeds.js";
-import { registerBrowsingCommand } from "./commands-browsing.js";
-import { registerGlanceCommand } from "./commands-glance.js";
-import { registerCompanionLineCommand } from "./companion-line.js";
-import { registerPersonaCommand } from "./commands-persona.js";
 import { loadActivePersonaPreamble } from "./persona-store.js";
-import { registerReadCommand } from "./commands-read.js";
-import { registerRecallCommand } from "./commands-recall.js";
-import { registerShowCommand } from "./commands-show.js";
-import { registerTimeCommand } from "./timezone.js";
-import { registerPrivacyCommand } from "./commands-privacy.js";
-import { registerWeekCommand } from "./commands-week.js";
-import { registerWeatherCommand } from "./weather.js";
-import { registerMaintenanceCommand } from "./commands-maintenance.js";
-import { registerMetricsCommands } from "./commands-metrics.js";
-import { registerSessionCommands } from "./commands-session.js";
-import { registerJobCommands } from "./commands-jobs.js";
-import { registerNotesRagCommands } from "./commands-notes-rag.js";
-import { registerNoteCommand } from "./commands-note.js";
-import { registerRememberCommands } from "./commands-remember.js";
-import { registerStatusCommand } from "./commands-status.js";
-import { registerBackgroundCommand } from "./commands-background.js";
-import { registerRoutineCommand } from "./commands-routine.js";
-import { registerTrustCommands } from "./commands-trust.js";
-import { registerWatchFolderCommand } from "./commands-watch-folder.js";
-import { registerAgentNoticesCommands } from "./commands-agent-notices.js";
-import { registerWebhookCommand } from "./commands-webhook.js";
-import { registerActionsCommands } from "./commands-actions.js";
-import { registerApprovalsCommands } from "./commands-approvals.js";
-import { registerAnomalyCommand } from "./commands-anomaly.js";
-import { registerContactsCommands } from "./commands-contacts.js";
-import { registerEmailCommands } from "./commands-email.js";
-import { registerHomeCommands } from "./commands-home.js";
-import { registerInboxCommand } from "./commands-inbox.js";
-import { registerObjectivesCommands } from "./commands-objectives.js";
-import { registerPlaybookCommands } from "./commands-playbook.js";
-import { registerWebActionCommands } from "./commands-web-action.js";
-import { registerSpecsCommands } from "./commands-specs.js";
-import { registerTasksCommands } from "./commands-tasks.js";
-import { registerTelemetryCommands } from "./commands-telemetry.js";
-import { registerTodayCommands, type TodayCommandShells } from "./commands-today.js";
-import { registerVoiceCommands } from "./commands-voice.js";
+import type { MuseStatusTuiModel } from "./tui.js";
+import type { CouncilGatherOverride } from "./commands-swarm.js";
+import type { TodayCommandShells } from "./commands-today.js";
+import { COMMAND_STUBS } from "./command-manifest.js";
+import { LOADER_BY_NAME, type LazyDeps } from "./command-loaders.js";
+import { registerCompletionCommand } from "./commands-completion.js";
 
 interface CliPromptAdapter {
   text(options: { readonly message: string; readonly placeholder?: string }): Promise<string>;
@@ -345,8 +234,6 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       io.stdout(`${configPath(io)}\n`);
     });
 
-  registerConfigCommands(program, io, { readConfigStore, setConfigValue, unsetConfigValue, writeConfigStore, writeOutput });
-
   program
     .command("spec")
     .description("Print the fixed runtime stack")
@@ -365,6 +252,8 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         readConfigStore(io),
         readStoredToken(io, baseUrl)
       ]);
+      const { renderMuseStatusTui } = await import("./tui.js");
+      const { createTuiChatSubmitter } = await import("./chat-repl.js");
       await (io.renderTui ?? renderMuseStatusTui)({
         apiUrl: baseUrl,
         auth: { hasToken: Boolean(token) },
@@ -450,6 +339,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         });
         return;
       }
+      const { resolveChatMessage, parseAgentMode, runLocalChat } = await import("./chat-repl.js");
       const message = await resolveChatMessage(io, messageParts);
       const cliConfig = await readConfigStore(io);
       const model = options.model ?? cliConfig.defaultModel;
@@ -465,6 +355,7 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
         if (!options.local) {
           throw new Error("--image requires --local (local vision via gemma4; the remote API path has no image channel)");
         }
+        const { loadImageAttachment } = await import("./commands-ask.js");
         const loaded = await loadImageAttachment(options.image);
         if (!loaded.ok) {
           io.stderr(`${loaded.error}\n`);
@@ -547,35 +438,9 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       }
     });
 
-  registerAuthCommands(program, io, {
-    credentialPath,
-    deleteStoredToken,
-    readApiOptions,
-    readStoredToken,
-    resolveAuthToken,
-    writeOutput,
-    writeStoredToken
-  });
-
-  registerListenCommand(program, io, { apiRequest });
-  registerMcpCommands(program, io, { apiRequest, writeOutput });
-  registerProactiveCommands(program, io);
-  registerSwarmCommands(program, io);
-  registerReflectionsCommand(program, io);
-  registerModelsCommand(program, io);
-  registerBoardCommand(program, io);
-  registerLearnedCommand(program, io);
-  registerProposeCommands(program, io);
-  registerDaemonCommands(program, io);
-  registerSkillsCommands(program, io);
-  registerAgentsCommands(program, io);
-  registerIngestCommand(program, io);
-  registerOnboardCommand(program, io);
-
-  registerSpecsCommands(program, io, { apiRequest, writeOutput });
-
-  registerOrchestrateCommands(program, io, { apiRequest, writeOutput });
-
+  // The diagnostics endpoints below are single-line HTTP GETs with no heavy
+  // imports, so they stay eager (a lazy-import round-trip would cost more than
+  // the command does). Everything else is a lazy stub — see registerCommandStubs.
   program
     .command("runtime")
     .description("GET /api/muse/runtime — capabilities, locales, tool risk counts, default model")
@@ -616,98 +481,37 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       io.stdout(`${renderActiveContext(snapshot)}\n`);
     });
 
-  registerCalendarCommands(program, io, { apiRequest, writeOutput });
-  registerMemoryCommands(program, io, { apiRequest, writeOutput });
-  registerMessagingCommands(program, io, { apiRequest, writeOutput });
-  registerRemindCommands(program, io, { apiRequest, writeOutput });
-  registerFollowupCommands(program, io);
-  registerEpisodeCommands(program, io);
-  registerCommitmentsCommands(program, io);
-  registerCheckinsCommands(program, io);
-  registerUserCommands(program, io);
-  registerPatternCommands(program, io);
-  registerSearchCommand(program, io);
-  registerFindCommand(program, io);
-  registerCsvCommand(program, io);
-  registerLogoCommand(program, io);
-  registerSummarizeCommand(program, io);
-  registerOnThisDayCommand(program, io);
-  registerHistoryCommand(program, io);
-  registerOpenCommand(program, io);
-  registerNotesCommands(program, io, { apiRequest, writeOutput });
-  registerSchedulerCommands(program, io, { apiRequest, writeOutput });
-  registerSetupCommands(program, io);
-  registerSetupLocalCommand(program, io, { readConfigStore, writeConfigStore });
-  registerSetupCloudCommand(program, io, { readConfigStore, writeConfigStore });
-  registerSetupVoiceCommand(program, io);
-  registerSetupDataCommand(program, io);
-  registerFirstRunStartCommand(program, io);
-  registerStatusCommand(program, io);
-  registerBackgroundCommand(program, io);
-  registerBriefCommand(program, io);
-  registerRecapCommand(program, io);
-  registerRememberCommands(program, io);
-  registerNotesRagCommands(program, io);
-  registerJobCommands(program, io);
-  registerApprovalCommands(program, io);
-  registerAskCommand(program, io);
-  registerDemoCommand(program, io);
-  registerExportCommand(program, io);
-  registerImportCommand(program, io);
-  registerSessionCommands(program, io);
+  // `completion` reads the LIVE command list to emit its script, so it stays
+  // eager — it is itself a leaf module (a few ms) and enumerates the stubs.
   registerCompletionCommand(program, io);
-  registerMetricsCommands(program, io, { apiRequest, writeOutput });
-  registerMaintenanceCommand(program, io);
-  registerShowCommand(program, io);
-  registerWeatherCommand(program, io);
-  registerPrivacyCommand(program, io);
-  registerWeekCommand(program, io);
-  registerTimeCommand(program, io);
-  registerReadCommand(program, io);
-  registerGlanceCommand(program, io);
-  registerCompanionLineCommand(program, io);
-  registerRecallCommand(program, io);
-  registerNoteCommand(program, io);
-  registerFeedsCommand(program, io);
-  registerBrowsingCommand(program, io);
-  registerPersonaCommand(program, io);
-  registerWatchFolderCommand(program, io);
-  registerRoutineCommand(program, io);
-  registerTrustCommands(program, io);
-  registerWebhookCommand(program, io);
-  registerAgentNoticesCommands(program, io, { apiRequest });
-  registerTasksCommands(program, io, { apiRequest, writeOutput });
-  registerObjectivesCommands(program, io);
-  registerPlaybookCommands(program, io);
-  registerActionsCommands(program, io);
-  registerApprovalsCommands(program, io);
-  registerContactsCommands(program, io);
-  registerAnomalyCommand(program, io);
-  registerInboxCommand(program, io);
-  registerEmailCommands(program, io);
-  registerWebActionCommands(program, io);
-  registerHomeCommands(program, io);
-  registerRunsCommands(program, io, { apiRequest, writeOutput });
-  registerDoctorCommand(program, io, { apiRequest, writeOutput });
-  registerCostCommands(program, io, { apiRequest, writeOutput });
-  registerResumeCommand(program, io);
-  registerTraceCommand(program, io);
-  registerTracesCommands(program, io, { apiRequest, writeOutput });
-  registerSettingsCommands(program, io, { apiRequest, writeOutput });
-  registerToolsAdminCommands(program, io, { apiRequest, writeOutput });
-  registerDebugCommands(program, io, { apiRequest, writeOutput });
-  registerTelemetryCommands(program, io, { apiRequest, writeOutput });
-  registerTodayCommands(program, io, {
+
+  // One shared dependency bag handed to every lazily-loaded registrar; each
+  // destructures the subset it needs and ignores the rest, so a single object
+  // serves all of them. `shells` is present only when the test harness injects
+  // TTS/speaker fakes for `today --brief --speak`.
+  const lazyDeps: LazyDeps = {
     apiRequest,
     writeOutput,
+    readConfigStore,
+    setConfigValue,
+    unsetConfigValue,
+    writeConfigStore,
+    readApiOptions,
+    resolveAuthToken,
+    credentialPath,
+    deleteStoredToken,
+    readStoredToken,
+    writeStoredToken,
     ...(io.todayShells ? { shells: io.todayShells } : {})
-  });
-  registerVoiceCommands(program, io, { apiRequest, readApiOptions, writeOutput });
+  };
 
-  // A typo'd subcommand of a group (`muse memory bogus`) otherwise hit
-  // commander's dead-end "unknown command 'bogus'"; ground it like the
-  // top-level catch-all does, with a suggestion + the real subcommand list.
-  attachUnknownSubcommandGuidance(program, io.stderr);
+  // Register a lightweight STUB (name + description + help term + subcommand
+  // names) for every remaining command WITHOUT importing its handler. `--help`,
+  // completion, and did-you-mean render off these stubs; the real module + its
+  // action are pulled in on first invocation by the parseAsync wrapper below.
+  // This is what keeps `--version` / `--help` / `completion` / a light command
+  // off the ~100-module import tax.
+  registerCommandStubs(program);
 
   // Group the 100+ top-level commands under ordered headings in `--help` so
   // the daily-driver commands surface first instead of a flat wall.
@@ -729,6 +533,13 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
       // the input column each render). `muse repl` stays on readline as a
       // guaranteed-CJK-safe fallback. Piped / non-TTY keeps the help banner.
       if (process.stdin.isTTY && process.stdout.isTTY) {
+        const {
+          firstRunSkipRequested,
+          isFirstRunMarkerPresent,
+          providerKeyPresent,
+          runFirstRunSetupInteractive,
+          shouldRunFirstRunSetup
+        } = await import("./first-run.js");
         let cliConfig = await readConfigStore(io);
         const noSetupFlag = (program.opts() as { setup?: boolean }).setup === false;
         const home = io.configDir ? path.dirname(configPath(io)) : homedir();
@@ -763,32 +574,130 @@ export function createProgram(io: ProgramIO = defaultIO): Command {
     process.exitCode = 1;
   });
 
+  // Lazy dispatch: wrap parseAsync so the invoked command's REAL module graph
+  // is imported + registered (replacing its stub) just before commander
+  // dispatches. `--version`, `--help`, completion, and did-you-mean never name
+  // a lazy command, so they run off the stubs alone and skip the heavy imports.
+  const loadedLoaderIds = new Set<string>();
+  const originalParseAsync = program.parseAsync.bind(program);
+  program.parseAsync = (async (
+    argv?: readonly string[],
+    parseOptions?: { readonly from?: "node" | "electron" | "user" }
+  ): Promise<Command> => {
+    const effectiveArgv = argv ?? process.argv;
+    await hydrateInvokedCommand(
+      program,
+      io,
+      lazyDeps,
+      loadedLoaderIds,
+      effectiveArgv,
+      parseOptions?.from ?? "node"
+    );
+    return originalParseAsync(argv as string[] | undefined, parseOptions as never);
+  }) as typeof program.parseAsync;
+
   return program;
 }
 
 /**
- * `muse setup start` — launch the SAME first-run "how should Muse think?"
- * picker on demand (Local / Cloud / Codex), independent of the once-only
- * auto-launch guard. Reuses the shared wizard so on-demand and first-run stay
- * identical.
+ * Register a lightweight STUB for every lazily-loaded command: enough for
+ * `muse --help`, shell completion, and did-you-mean (name + description +
+ * help term + subcommand names) WITHOUT importing the handler. The stub is
+ * never dispatched — the parseAsync wrapper swaps in the real command on first
+ * invocation — so the placeholder option (which only forces the " [options]"
+ * help suffix) and empty-description subcommand stubs are display-only.
  */
-function registerFirstRunStartCommand(program: Command, io: ProgramIO): void {
-  const setupRoot = program.commands.find((cmd) => cmd.name() === "setup");
-  if (!setupRoot) {
-    throw new Error("registerFirstRunStartCommand: 'setup' command group must be registered first.");
+function registerCommandStubs(program: Command): void {
+  for (const stub of COMMAND_STUBS) {
+    const command = program.command(stub.name).description(stub.description);
+    if (stub.argsTerm) {
+      command.argument(stub.argsTerm);
+    }
+    if (stub.hasOptions) {
+      command.addOption(new Option("--__lazy_help_marker__").hideHelp());
+    }
+    for (const sub of stub.subcommands) {
+      command.command(sub).description("");
+    }
   }
-  setupRoot
-    .command("start")
-    .description("Pick how Muse thinks (Local / Cloud API key / Codex) — the friendly first-run wizard, on demand")
-    .action(async () => {
-      const home = io.configDir ? path.dirname(configPath(io)) : homedir();
-      await runFirstRunSetupInteractive({
-        home,
-        readConfig: () => readConfigStore(io),
-        writeConfig: (config) => writeConfigStore(io, config),
-        ...(io.fetch ? { fetch: io.fetch } : {})
-      });
+}
+
+/**
+ * The top-level command name a given argv targets, skipping global options
+ * (and the value of the two value-taking global flags). Undefined when the
+ * line names no command (bare `muse`, `--help`, `--version`) so those surfaces
+ * stay on the stubs.
+ */
+function firstOperandName(argv: readonly string[], from: "node" | "electron" | "user"): string | undefined {
+  const args = from === "user" ? [...argv] : argv.slice(from === "electron" ? 1 : 2);
+  const valueOptions = new Set(["--api-url", "--token"]);
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (typeof arg !== "string") continue;
+    if (arg === "--") return args[i + 1];
+    if (arg.startsWith("-")) {
+      if (valueOptions.has(arg)) i += 1;
+      continue;
+    }
+    return arg;
+  }
+  return undefined;
+}
+
+/**
+ * Import + register the real command graph for the command an argv invokes,
+ * replacing its stub. Idempotent per loader (a loader owning several top-level
+ * names loads once) and a no-op for non-command / already-loaded lines.
+ */
+async function hydrateInvokedCommand(
+  program: Command,
+  io: ProgramIO,
+  deps: LazyDeps,
+  loadedLoaderIds: Set<string>,
+  argv: readonly string[],
+  from: "node" | "electron" | "user"
+): Promise<void> {
+  const target = firstOperandName(argv, from);
+  if (!target) return;
+  const loader = LOADER_BY_NAME.get(target);
+  if (!loader || loadedLoaderIds.has(loader.id)) return;
+  loadedLoaderIds.add(loader.id);
+  for (const name of loader.names) {
+    const index = program.commands.findIndex((command) => command.name() === name);
+    if (index >= 0) {
+      (program.commands as Command[]).splice(index, 1);
+    }
+  }
+  await loader.load(program, io, deps);
+  // Re-group so the freshly-real command lands under its `--help` heading, and
+  // ground typo'd subcommands of any group it just introduced.
+  applyCommandGroups(program);
+  attachLoadedSubcommandGuidance(program, io.stderr, loader.names);
+}
+
+/**
+ * Wire the grounded unknown-subcommand block onto the groups a lazy loader just
+ * introduced (mirrors the eager `attachUnknownSubcommandGuidance`, but scoped to
+ * the newly-loaded names so groups aren't double-wired across invocations).
+ */
+function attachLoadedSubcommandGuidance(
+  program: Command,
+  stderr: (text: string) => void,
+  names: readonly string[]
+): void {
+  for (const name of names) {
+    const group = program.commands.find((command) => command.name() === name);
+    if (!group) continue;
+    const subs = group.commands
+      .map((sub) => sub.name())
+      .filter((subName): subName is string => Boolean(subName) && subName !== "*");
+    if (subs.length === 0) continue;
+    const knownSubs = [...subs].sort();
+    group.on("command:*", (operands: readonly string[]) => {
+      stderr(`${formatUnknownSubcommand(name, operands[0] ?? "", knownSubs)}\n`);
+      process.exitCode = 1;
     });
+  }
 }
 
 /**
@@ -851,20 +760,5 @@ export function formatUnknownCommand(attempted: string, known: readonly string[]
   }
   return `${lines.join("\n")}\n`;
 }
-
-
-// JARVIS persona helpers (`buildMusePersona`,
-// `formatCurrentContextLine`) live in ./muse-persona.ts and are
-// imported at the top of this file. They're re-exported below so
-// the historical `./program.js` import path keeps working for
-// muse-persona.test.ts and other consumers.
-export { buildMusePersona, formatCurrentContextLine };
-
-
-// Auth / HTTP / SSE / config helpers live in ./program-helpers.ts.
-// Imported at the top of this file; re-exported below so the
-// historical `./program.js` path keeps working for any external
-// consumer (currently none — tests use the createProgram entry).
-
 
 

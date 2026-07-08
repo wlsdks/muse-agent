@@ -11,7 +11,7 @@
 import { groundingSectionLines, optionalGroundingRelevance, optionalGroundingSections } from "@muse/recall";
 
 import { CITATION_INSTRUCTION_LINES, REASONING_PRINCIPLE_LINES } from "./ask-prompt-constants.js";
-import { formatCurrentContextLine } from "./program.js";
+import { formatCurrentContextLine } from "./muse-persona.js";
 
 export function buildAskSystemPrompt(params: {
   readonly personaTemplatePreamble: string;

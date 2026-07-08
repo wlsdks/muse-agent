@@ -15,7 +15,8 @@ import {
   resolveActivePersonaPreamble,
   writePersonaStore
 } from "./persona-store.js";
-import { readPipedStdin, type ProgramIO } from "./program.js";
+import { readPipedStdin } from "./chat-repl.js";
+import type { ProgramIO } from "./program.js";
 
 export function registerPersonaCommand(program: Command, io: ProgramIO): void {
   const persona = program.command("persona").description("System-prompt persona templates");
