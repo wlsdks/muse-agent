@@ -283,7 +283,9 @@ export function registerRemindCommands(program: Command, io: ProgramIO, helpers:
           }
           nextDueAt = parsed;
         } else {
-          nextDueAt = new Date(Date.now() + 10 * 60_000).toISOString();
+          const currentDueMs = new Date(String(reminders[index]!.dueAt ?? "")).getTime();
+          const base = Number.isFinite(currentDueMs) ? Math.max(Date.now(), currentDueMs) : Date.now();
+          nextDueAt = new Date(base + 10 * 60_000).toISOString();
         }
         const snoozed: PersistedReminder = { ...reminders[index]!, dueAt: nextDueAt, status: "pending" };
         const next = [...reminders];

@@ -15,10 +15,12 @@ describe("colorAllowed — clig.dev colour precedence", () => {
     expect(colorAllowed({ env: { NO_COLOR: "" }, isTty: true })).toBe(false); // any value, incl. empty
   });
 
-  it("FORCE_COLOR truthy forces colour on even with --no-color and no TTY", () => {
-    expect(colorAllowed({ env: { FORCE_COLOR: "1" }, isTty: false, noColor: true })).toBe(true);
+  it("FORCE_COLOR truthy forces colour on (no TTY), but an explicit --no-color beats it", () => {
+    expect(colorAllowed({ env: { FORCE_COLOR: "1" }, isTty: false })).toBe(true);
     expect(colorAllowed({ env: { FORCE_COLOR: "3" }, isTty: false })).toBe(true);
     expect(colorAllowed({ env: { FORCE_COLOR: "true" }, isTty: false })).toBe(true);
+    // --no-color now sits ABOVE FORCE_COLOR: a user who typed it wins.
+    expect(colorAllowed({ env: { FORCE_COLOR: "1" }, isTty: false, noColor: true })).toBe(false);
   });
 
   it("FORCE_COLOR falsy values ('0'/'false'/'') do not force colour", () => {
@@ -27,11 +29,15 @@ describe("colorAllowed — clig.dev colour precedence", () => {
     expect(colorAllowed({ env: { FORCE_COLOR: "" }, isTty: false })).toBe(false);
   });
 
-  it("--no-color request disables colour (below FORCE_COLOR, above TTY)", () => {
+  it("--no-color request disables colour (above FORCE_COLOR, below NO_COLOR)", () => {
     expect(colorAllowed({ env: clean, isTty: true, noColor: true })).toBe(false);
+    // beats an ambient FORCE_COLOR…
+    expect(colorAllowed({ env: { FORCE_COLOR: "1" }, isTty: true, noColor: true })).toBe(false);
+    // …but NO_COLOR still outranks --no-color (both mean "no colour" anyway).
+    expect(colorAllowed({ env: { NO_COLOR: "1" }, isTty: true, noColor: true })).toBe(false);
     // reads the shared cli-context when the option isn't passed explicitly
     updateCliContext({ noColor: true });
-    expect(colorAllowed({ env: clean, isTty: true })).toBe(false);
+    expect(colorAllowed({ env: { FORCE_COLOR: "1" }, isTty: true })).toBe(false);
   });
 
   it("TERM=dumb never colours, even on a TTY", () => {

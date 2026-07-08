@@ -313,6 +313,56 @@ describe("muse remind list --search — text filter (sibling parity with `tasks 
   });
 });
 
+describe("muse remind snooze — bumps FORWARD, never earlier (max(now, dueAt) + delta)", () => {
+  const prevEnv = process.env.MUSE_REMINDERS_FILE;
+  let file: string;
+  beforeEach(() => {
+    file = join(mkdtempSync(join(tmpdir(), "muse-rem-snz-")), "reminders.json");
+    process.env.MUSE_REMINDERS_FILE = file;
+  });
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.MUSE_REMINDERS_FILE;
+    else process.env.MUSE_REMINDERS_FILE = prevEnv;
+  });
+
+  it("a reminder due in the FUTURE snoozes to dueAt + 10min, NOT now + 10min", async () => {
+    const future = new Date(Date.now() + 24 * 60 * 60_000); // +24h
+    const rem: PersistedReminder = {
+      id: "rem_future01", text: "vet", dueAt: future.toISOString(),
+      createdAt: "2026-01-01T00:00:00.000Z", status: "pending"
+    };
+    await writeReminders(file, [rem]);
+
+    const r = await runRemind(["snooze", "rem_future01", "--local"]);
+    expect(r.error).toBeUndefined();
+
+    const stored = await readReminders(file);
+    const newDue = new Date(stored[0]!.dueAt).getTime();
+    // Must be ~10 min after the ORIGINAL future dueAt — the bug moved it to ~now.
+    expect(newDue).toBe(future.getTime() + 10 * 60_000);
+    // And strictly LATER than the original (never earlier).
+    expect(newDue).toBeGreaterThan(future.getTime());
+  });
+
+  it("a PAST-due reminder snoozes to ~now + 10min (max clamps to now)", async () => {
+    const rem: PersistedReminder = {
+      id: "rem_past0001", text: "old", dueAt: "2020-01-01T00:00:00.000Z",
+      createdAt: "2019-01-01T00:00:00.000Z", status: "pending"
+    };
+    await writeReminders(file, [rem]);
+
+    const before = Date.now();
+    const r = await runRemind(["snooze", "rem_past0001", "--local"]);
+    const after = Date.now();
+    expect(r.error).toBeUndefined();
+
+    const stored = await readReminders(file);
+    const newDue = new Date(stored[0]!.dueAt).getTime();
+    expect(newDue).toBeGreaterThanOrEqual(before + 10 * 60_000);
+    expect(newDue).toBeLessThanOrEqual(after + 10 * 60_000);
+  });
+});
+
 describe("filterRemindersBySearch", () => {
   it("matches text case-insensitively and returns all on a blank query", () => {
     const rems = [{ text: "Alpha" }, { text: "beta" }];

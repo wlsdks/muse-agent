@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { writeFollowups, writeReminders, type Contact, type PersistedFollowup, type PersistedReminder } from "@muse/stores";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { resetCliContext, setCliContext } from "./cli-context.js";
 
 import { annotateEventTitle, formatConnectionsSection, formatEpisodeRevisitLine, formatEvents, formatHeadlines, formatLargestBreak, formatNextEvent, formatOverdue, formatRevisitSection, formatStaleTasksSection, formatTasks, formatTodayBrief, formatTodayConflicts, formatWeatherLine, largestBreakBetweenEvents, parseLookaheadHours, pickConnectionQuery, readDueFollowups, readDueReminders, readUpcomingBirthdays, relativeDueTag, resolveTodayFeedHeadlines, resolveTodayWeatherLine, selectEpisodeToRevisit, selectStaleTasks, selectTodayOverdue } from "./commands-today.js";
 
@@ -64,6 +66,28 @@ describe("annotateEventTitle — surface a known contact's relationship in an ev
 
   it("lists multiple matched people with their roles", () => {
     expect(annotateEventTitle("Dinner with Dana and Sarah", [dana, sarah])).toBe(" (Dana: your manager; Sarah: your wife)");
+  });
+});
+
+describe("muse today — --quiet suppresses the empty-state seed hints (non-essential chatter)", () => {
+  const empty = { generatedAt: "2026-06-04T09:00:00Z", lookaheadHours: 24 };
+
+  afterEach(() => {
+    resetCliContext();
+  });
+
+  it("a normal run shows the 'fresh start' seed hints", () => {
+    resetCliContext();
+    const out = formatTodayBrief({ ...empty }, true);
+    expect(out).toContain("fresh start");
+    expect(out).toContain("muse tasks add");
+  });
+
+  it("a -q run OMITS the seed hints (isQuiet gates them)", () => {
+    setCliContext({ noColor: false, noInput: false, quiet: true });
+    const out = formatTodayBrief({ ...empty }, true);
+    expect(out).not.toContain("fresh start");
+    expect(out).not.toContain("muse tasks add");
   });
 });
 

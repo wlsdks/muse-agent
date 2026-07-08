@@ -271,7 +271,7 @@ Examples:
     .action(async (name: string, options: { readonly autoConnect: boolean; readonly config: string; readonly description?: string; readonly transport: string }, command) => {
       writeOutput(io, await apiRequest(io, command, "/api/mcp/servers", {
         autoConnect: options.autoConnect,
-        config: parseJsonObject(options.config),
+        config: parseJsonObject(options.config, "--config"),
         description: options.description,
         name,
         transportType: options.transport
@@ -322,15 +322,22 @@ Examples:
         io,
         command,
         `/api/mcp/servers/${encodeURIComponent(serverName)}/tools/${encodeURIComponent(toolName)}/call`,
-        { args: parseJsonObject(options.args) }
+        { args: parseJsonObject(options.args, "--args") }
       ));
     });
 }
 
-function parseJsonObject(value: string): Record<string, unknown> {
-  const parsed = JSON.parse(value) as unknown;
+function parseJsonObject(value: string, flag: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value) as unknown;
+  } catch {
+    throw new Error(
+      `invalid JSON for ${flag}: ${value} — pass valid JSON, e.g. ${flag} '{"command":"echo"}'`
+    );
+  }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("Expected a JSON object");
+    throw new Error(`${flag} must be a JSON object, e.g. ${flag} '{"command":"echo"}'`);
   }
   return parsed as Record<string, unknown>;
 }

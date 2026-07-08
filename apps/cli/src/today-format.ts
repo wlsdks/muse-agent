@@ -9,6 +9,7 @@ import { type Contact } from "@muse/stores";
 import { detectCalendarConflicts } from "@muse/domain-tools";
 import { stripUntrustedTerminalChars } from "@muse/shared";
 
+import { isQuiet } from "./cli-context.js";
 import type { RecallHit } from "./commands-recall.js";
 import { formatHeadlines, formatWeatherLine } from "./commands-today-feeds.js";
 import { formatLocalDate, formatLocalDateTime as shortDateTimeBrief } from "./human-formatters.js";
@@ -180,15 +181,15 @@ function formatEmptyStateHints(briefing: TodayBriefing): string {
     || (briefing.reminders?.length ?? 0) > 0
     || (briefing.followups?.length ?? 0) > 0
     || (briefing.headlines?.length ?? 0) > 0;
-  if (hasContent) {
+  if (hasContent || isQuiet()) {
     return "";
   }
   return [
     "",
     "Looks like a fresh start. A few JARVIS-friendly ways to seed today:",
     "  muse tasks add \"Send Q3 memo\" --due tomorrow",
-    "  muse remind add \"Call vet\" \"tomorrow at 6pm\"",
-    "  muse notes save daily/2026-05-14.md \"Today's plan: ...\"",
+    "  muse remind add \"tomorrow at 6pm\" \"Call vet\"",
+    "  muse notes save --local daily/2026-05-14.md \"Today's plan: ...\"",
     "  muse remember \"I prefer concise Korean replies\"",
     ""
   ].join("\n");

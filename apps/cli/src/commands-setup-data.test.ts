@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { Command } from "commander";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { resetCliContext, setCliContext } from "./cli-context.js";
 import {
   DATA_STEPS,
+  registerSetupDataCommand,
   renderDataSetupSummary,
   runDataSetup,
   type DataSetupActions,
@@ -123,6 +126,36 @@ describe("runDataSetup — consent-first connect-your-data flow", () => {
     expect(actions.importContacts).toHaveBeenCalledTimes(1);
     expect(actions.syncBrowsing).not.toHaveBeenCalled();
     expect(result.stagedSwitches).toEqual(["export MUSE_BROWSING_AUTO_SYNC=true"]);
+  });
+});
+
+describe("muse setup data — honours --no-input / non-TTY (never blocks on a clack prompt)", () => {
+  afterEach(() => {
+    resetCliContext();
+  });
+
+  it("under --no-input takes the safe default (declines all) without prompting or hanging", async () => {
+    setCliContext({ noColor: false, noInput: true, quiet: false });
+    const out: string[] = [];
+    const io = {
+      stderr: () => undefined,
+      stdout: (m: string) => out.push(m)
+    } as unknown as ProgramIO;
+
+    const program = new Command("muse");
+    program.exitOverride();
+    program.command("setup").description("setup");
+    registerSetupDataCommand(program, io);
+
+    // If the no-input signal were ignored this would block on clack's confirm
+    // waiting for a TTY. A resolved parseAsync IS the non-blocking proof.
+    await program.parseAsync(["node", "muse", "setup", "data"]);
+
+    const text = out.join("");
+    expect(text).toContain("Nothing enabled");
+    // No step actually ran (safe default = decline).
+    expect(text).not.toContain("imported");
+    expect(text).not.toContain("synced");
   });
 });
 

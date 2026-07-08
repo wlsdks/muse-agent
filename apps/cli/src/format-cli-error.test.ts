@@ -38,6 +38,17 @@ describe("isExpectedCliError", () => {
     expect(isExpectedCliError(new Error(""))).toBe(false);
     expect(isExpectedCliError("boom")).toBe(false);
   });
+
+  it("treats a JSON SyntaxError as EXPECTED (bad user JSON, not a Muse defect)", () => {
+    let syntaxErr: unknown;
+    try {
+      JSON.parse("{");
+    } catch (e) {
+      syntaxErr = e;
+    }
+    expect(syntaxErr).toBeInstanceOf(SyntaxError);
+    expect(isExpectedCliError(syntaxErr)).toBe(true);
+  });
 });
 
 describe("formatCliError", () => {
@@ -55,6 +66,19 @@ describe("formatCliError", () => {
   it("intentional user-facing throw → clean line, no bug URL", () => {
     const out = formatCliError(new Error("--stream requires remote API chat; omit --local"));
     expect(out).toBe("muse: --stream requires remote API chat; omit --local\n");
+  });
+
+  it("JSON SyntaxError → clean fix-it line, NO bug-report URL", () => {
+    let syntaxErr: unknown;
+    try {
+      JSON.parse("{");
+    } catch (e) {
+      syntaxErr = e;
+    }
+    const out = formatCliError(syntaxErr, { command: "mcp", version: "0.9.9" });
+    expect(out.startsWith("muse: invalid JSON — ")).toBe(true);
+    expect(out).not.toContain("github.com/wlsdks/Muse/issues");
+    expect(out.endsWith("\n")).toBe(true);
   });
 
   it("unexpected (TypeError) → message + bug-report URL carrying version + command", () => {

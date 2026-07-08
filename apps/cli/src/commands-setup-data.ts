@@ -26,6 +26,7 @@ import {
 } from "@muse/recall";
 import type { Command } from "commander";
 
+import { isNoInput } from "./cli-context.js";
 import { importAppleContacts } from "./commands-contacts.js";
 import { defaultEmbedModel } from "./council-corpus.js";
 import { embed } from "./embed.js";
@@ -294,6 +295,10 @@ Examples:
       const result = await runDataSetup({
         actions: { importContacts: defaultImportContacts, syncBrowsing: defaultSyncBrowsing },
         confirm: async (message, defaultValue) => {
+          // `--no-input` (or a non-TTY stdin) means "never prompt" — take the
+          // safe default (every step defaults to NO) instead of blocking on a
+          // clack prompt that would hang a piped / scripted invocation.
+          if (isNoInput() || !process.stdin.isTTY) return defaultValue;
           const answer = await confirm({ initialValue: defaultValue, message });
           return isCancel(answer) ? false : answer === true;
         },

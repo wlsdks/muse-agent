@@ -55,6 +55,7 @@ import {
   type MemorySnapshot,
   type RecurringThread
 } from "./chat-ink-core.js";
+import { isQuiet } from "./cli-context.js";
 import { parseAnswerMarkdown, type MdBlock, type MdListItem, type MdSpan } from "./chat-markdown.js";
 import { type AgentDef } from "./commands-agents.js";
 import { type ChatGrounding } from "./chat-grounding.js";
@@ -336,7 +337,7 @@ export function MuseChatApp(props: {
 
   // Animate a spinner while a reply is in flight (until the first token).
   useEffect(() => {
-    if (!busy) return undefined;
+    if (!busy || isQuiet()) return undefined;
     const timer = setInterval(() => setSpinTick((t) => t + 1), 120);
     return () => clearInterval(timer);
   }, [busy]);

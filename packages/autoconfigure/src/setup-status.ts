@@ -382,7 +382,7 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
         status: calendarLocalStatus,
         ...(calendarBytes !== undefined ? { bytes: calendarBytes } : {}),
         ...(calendarLocalStatus === "info"
-          ? { nextStep: "Local calendar materialises on first `muse cal add` / API call" }
+          ? { nextStep: "Local calendar materialises on first `muse calendar add` / API call" }
           : {})
       }
     },
@@ -423,7 +423,7 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
       status: tasksCount !== undefined ? "ok" : "info",
       ...(tasksCount !== undefined ? { entryCount: tasksCount } : {}),
       ...(tasksCount === undefined
-        ? { nextStep: "Tasks file materialises on first `muse task add`" }
+        ? { nextStep: "Tasks file materialises on first `muse tasks add`" }
         : {})
     },
     voice: voiceStatus,

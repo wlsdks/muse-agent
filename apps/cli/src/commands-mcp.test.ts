@@ -18,6 +18,48 @@ describe("registerMcpCommands — serve subcommand", () => {
   });
 });
 
+describe("mcp add/call --config/--args — invalid JSON is a clean user error, not a bug", () => {
+  it("`mcp add --config '{'` throws a clean fix-it Error and never calls the API", async () => {
+    let apiCalls = 0;
+    const program = new Command("muse");
+    program.exitOverride();
+    registerMcpCommands(program, { stderr: () => undefined, stdout: () => undefined }, {
+      apiRequest: async () => { apiCalls += 1; return undefined; },
+      writeOutput: () => undefined
+    });
+    await expect(
+      program.parseAsync(["node", "muse", "mcp", "add", "foo", "--transport", "stdio", "--config", "{"])
+    ).rejects.toThrow(/invalid JSON for --config: \{ — pass valid JSON/u);
+    expect(apiCalls).toBe(0);
+  });
+
+  it("`mcp call --args 'notjson'` throws a clean fix-it Error and never calls the API", async () => {
+    let apiCalls = 0;
+    const program = new Command("muse");
+    program.exitOverride();
+    registerMcpCommands(program, { stderr: () => undefined, stdout: () => undefined }, {
+      apiRequest: async () => { apiCalls += 1; return undefined; },
+      writeOutput: () => undefined
+    });
+    await expect(
+      program.parseAsync(["node", "muse", "mcp", "call", "srv", "tool", "--args", "notjson"])
+    ).rejects.toThrow(/invalid JSON for --args: notjson — pass valid JSON/u);
+    expect(apiCalls).toBe(0);
+  });
+
+  it("a valid --config JSON object still reaches the API", async () => {
+    let apiCalls = 0;
+    const program = new Command("muse");
+    program.exitOverride();
+    registerMcpCommands(program, { stderr: () => undefined, stdout: () => undefined }, {
+      apiRequest: async () => { apiCalls += 1; return undefined; },
+      writeOutput: () => undefined
+    });
+    await program.parseAsync(["node", "muse", "mcp", "add", "foo", "--transport", "stdio", "--config", "{\"command\":\"echo\"}"]);
+    expect(apiCalls).toBe(1);
+  });
+});
+
 describe("MCP_PRESETS.filesystem.build — refuses to default to filesystem root", () => {
   function withEnv(home: string | undefined, fn: () => void): void {
     const prev = process.env.HOME;

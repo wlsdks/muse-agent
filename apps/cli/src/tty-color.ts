@@ -7,9 +7,9 @@
  * Precedence (highest first — clig.dev colour discipline):
  *
  *   NO_COLOR set (any value)        → never  (https://no-color.org/)
+ *   --no-color requested            → never  (explicit user request beats FORCE_COLOR)
  *   FORCE_COLOR truthy              → always (https://force-color.org/)
  *   `force: true`                   → always (test-only force, same tier)
- *   --no-color requested            → never  (cli-context signal)
  *   TERM=dumb                       → never  (no ANSI capability)
  *   else process.stdout.isTTY       → colour when a TTY, plain when piped/CI
  *
@@ -92,10 +92,11 @@ export function colorAllowed(options: AnsiOptions = {}): boolean {
   const env = options.env ?? process.env;
   // 1. NO_COLOR wins unconditionally (https://no-color.org/).
   if (env.NO_COLOR !== undefined) return false;
-  // 2. FORCE_COLOR (or the test-only `force`) forces colour on.
-  if (forceColorRequested(env) || options.force) return true;
-  // 3. An explicit --no-color request (via cli-context) disables colour.
+  // 2. An explicit --no-color request (via cli-context) beats FORCE_COLOR — a
+  // user who typed --no-color means it even if the env has FORCE_COLOR set.
   if ((options.noColor ?? isColorDisabled()) === true) return false;
+  // 3. FORCE_COLOR (or the test-only `force`) forces colour on.
+  if (forceColorRequested(env) || options.force) return true;
   // 4. A dumb terminal has no ANSI capability.
   if ((env.TERM ?? "").toLowerCase() === "dumb") return false;
   // 5. Otherwise colour only when attached to a TTY.

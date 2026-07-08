@@ -395,12 +395,20 @@ export async function readApiOptions(
 }
 
 export async function readConfigStore(io: ProgramIO): Promise<MuseCliConfig> {
+  const file = configPath(io);
   try {
-    const raw = await readFile(configPath(io), "utf8");
-    const parsed = JSON.parse(raw) as unknown;
+    const raw = await readFile(file, "utf8");
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      throw new Error(
+        `config file is not valid JSON: ${file} — fix or delete it (a fresh one is written on next \`muse setup\`)`
+      );
+    }
 
     if (!isRecord(parsed)) {
-      throw new Error("Invalid Muse config format");
+      throw new Error(`config file is not a JSON object: ${file} — fix or delete it`);
     }
 
     return {

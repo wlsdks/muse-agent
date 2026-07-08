@@ -24,12 +24,16 @@ const ISSUE_TRACKER_URL = "https://github.com/wlsdks/Muse/issues/new";
  * TypeError / ReferenceError / etc. is a bug in Muse, so it earns the
  * report-a-bug footer. A plain `Error("--image requires --local")` is an
  * intentional user-facing message and stays clean.
+ *
+ * `SyntaxError` is deliberately NOT here: at CLI runtime it means bad JSON the
+ * user supplied (a `--config`/`--args` flag or a corrupt config file), which is
+ * user-fixable — genuine source syntax errors fail at module load, never reach
+ * this handler. So a SyntaxError gets a fix-it hint, not the bug-report URL.
  */
 const PROGRAMMER_ERROR_NAMES: ReadonlySet<string> = new Set([
   "TypeError",
   "RangeError",
   "ReferenceError",
-  "SyntaxError",
   "EvalError",
   "URIError"
 ]);
@@ -106,6 +110,9 @@ export function bugReportUrl(errorText: string, options: FormatCliErrorOptions =
 export function formatCliError(error: unknown, options: FormatCliErrorOptions = {}): string {
   const message = errorMessage(error);
   if (isExpectedCliError(error)) {
+    if (error instanceof Error && error.name === "SyntaxError") {
+      return `muse: invalid JSON — ${message}\n`;
+    }
     return `muse: ${message}\n`;
   }
   const version = options.version ?? "unknown";

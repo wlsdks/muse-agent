@@ -14,6 +14,7 @@ import { answerPromisesAction, assertiveUnsupportedFraction, decideRecallClarifi
 import { answerIsRefusal, askOutcomeLabel, askWeaknessAxis, buildAskConnections, contestedOutcome, createStageTimer, formatGraphLinksSection, groundingConflictCue, misgroundedOutcome, recordAskWeakness, recordAskWeaknessResolved, relativizeNoteSource, shouldWarmClose, sufficiencyAdvisory, type AskWeaknessAxis } from "@muse/recall";
 import { resolveNotesDir } from "@muse/autoconfigure";
 
+import { isQuiet } from "./cli-context.js";
 import { crossLingualUnsupportedFraction } from "./ask-cross-lingual.js";
 import { selectGraphConnections } from "./ask-corpus-helpers.js";
 import { loadNoteLinkGraph } from "./commands-notes-rag.js";
@@ -156,7 +157,7 @@ export async function finalizeAndRenderAsk(params: {
       // the user FEELS Muse growing with them. Deterministic (no second model
       // call), grounded in the user's OWN taught strategy, suppressed on a
       // refusal (which applied nothing), and wired to the `undo` reversal.
-      if (!options.json && appliedStrategy && !answerIsRefusal(collectedAnswer)
+      if (!options.json && !isQuiet() && appliedStrategy && !answerIsRefusal(collectedAnswer)
         && lexicalOverlap(lexicalTokens(query), appliedStrategy) > 0) {
         io.stderr(`\n💡 Applied a preference you taught me: "${appliedStrategy}". (Not right? \`muse playbook undo\`.)\n`);
       }
@@ -168,7 +169,7 @@ export async function finalizeAndRenderAsk(params: {
       // entered the model's reasoning (the held graduation stays user-gated); one
       // command applies it. Suppressed on a refusal (no claim to refine) and when a
       // graduated preference already applied (don't double up on one answer).
-      if (!options.json && probationSuggestion && !appliedStrategy && !answerIsRefusal(collectedAnswer)) {
+      if (!options.json && !isQuiet() && probationSuggestion && !appliedStrategy && !answerIsRefusal(collectedAnswer)) {
         io.stderr(`\n💡 You've corrected me on this before — I noted: "${probationSuggestion.text}". Apply it going forward with \`muse playbook reward ${probationSuggestion.id.slice(0, 8)}\`.\n`);
       }
 
