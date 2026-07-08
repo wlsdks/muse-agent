@@ -23,6 +23,7 @@ import {
   type FirstRunPrompts,
   type FirstRunWizardDeps
 } from "./first-run.js";
+import { NEXT_STEPS_BROWSING_COMMAND, NEXT_STEPS_DEMO_COMMAND } from "./first-run-value.js";
 
 const READY: FirstRunSignalsInput = {
   configuredModel: undefined,
@@ -272,6 +273,7 @@ interface ValueState {
   defaultsCalls: number;
   outros: string[];
   steps: string[];
+  notes: string[];
   celebrated: boolean;
 }
 
@@ -292,7 +294,7 @@ function makeValueDeps(overrides: {
     confirm: async () => true,
     isCancel: (v): v is symbol => typeof v === "symbol",
     multiselect: wire ? (async () => overrides.multiselect ?? []) as FirstRunPrompts["multiselect"] : undefined,
-    note: () => undefined,
+    note: (message) => state.notes.push(message),
     outro: (message) => state.outros.push(message),
     password: async () => "",
     select: async () => overrides.select[selectIdx++] as never,
@@ -342,7 +344,7 @@ function makeValueDeps(overrides: {
 }
 
 function freshValueState(): ValueState {
-  return { celebrated: false, dataConnectCalls: 0, defaultsCalls: 0, outros: [], steps: [] };
+  return { celebrated: false, dataConnectCalls: 0, defaultsCalls: 0, notes: [], outros: [], steps: [] };
 }
 
 describe("runFirstRunWizard — the install→first-value tail (data-connect · defaults · first-value)", () => {
@@ -401,6 +403,39 @@ describe("runFirstRunWizard — the install→first-value tail (data-connect · 
     const result = await runFirstRunWizard(makeValueDeps({ identityName: "Jinan", multiselect: [], select: ["local"], state }));
     expect(result.firstValueGrounded).toBe(true);
     expect(state.outros.at(-1)).toContain("Jinan");
+  });
+
+  it("surfaces `muse browsing sync` alongside `muse demo` as an honest first-value suggestion when browsing wasn't connected", async () => {
+    const state = freshValueState();
+    await runFirstRunWizard(makeValueDeps({ multiselect: [], select: ["local"], state }));
+    const hint = state.notes.find((n) => n.includes(NEXT_STEPS_BROWSING_COMMAND));
+    expect(hint).toBeDefined();
+    expect(hint).toContain(`\`${NEXT_STEPS_BROWSING_COMMAND}\``);
+    expect(hint).toContain(`\`${NEXT_STEPS_DEMO_COMMAND}\``);
+  });
+
+  it("drops the browsing-sync suggestion (keeps muse demo) once the user already connected browsing this run", async () => {
+    const state = freshValueState();
+    await runFirstRunWizard(makeValueDeps({
+      dataResult: { browsingSynced: 9 },
+      multiselect: ["browsing"],
+      select: ["local"],
+      state
+    }));
+    const notesText = state.notes.join("\n");
+    expect(notesText).not.toContain(NEXT_STEPS_BROWSING_COMMAND);
+    expect(notesText).toContain(`\`${NEXT_STEPS_DEMO_COMMAND}\``);
+  });
+
+  it("the new next-steps note does NOT change the pinned 3-step header numbering/format", async () => {
+    const state = freshValueState();
+    await runFirstRunWizard(makeValueDeps({ multiselect: ["contacts"], select: ["local"], state }));
+    expect(state.steps).toEqual([
+      FIRST_RUN_STEP_HEADERS.pick,
+      FIRST_RUN_STEP_HEADERS.data,
+      FIRST_RUN_STEP_HEADERS.finish
+    ]);
+    expect(TOTAL_FIRST_RUN_STEPS).toBe(3);
   });
 
   it("is fail-soft: a throwing data-connect never bricks the wizard (still marks + finishes local)", async () => {

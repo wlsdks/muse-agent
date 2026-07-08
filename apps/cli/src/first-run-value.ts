@@ -242,6 +242,33 @@ export function buildFirstValueLine(ctx: FirstValueContext): FirstValueResult {
   return { grounded: false, line };
 }
 
+/** The exact command strings the "what next" hint surfaces — pinned so a test catches drift against the real CLI wiring (`commands-browsing.ts`'s `muse browsing sync`, `ask-fast-paths.ts`'s `muse demo`). */
+export const NEXT_STEPS_BROWSING_COMMAND = "muse browsing sync";
+export const NEXT_STEPS_DEMO_COMMAND = "muse demo";
+
+/** Note title for the "what next" hint, matching the wizard's other bilingual note titles. */
+export const NEXT_STEPS_NOTE_TITLE = "다음 · Next up";
+
+/**
+ * The "get real value now" hint shown after the wizard finishes. ADDITIVE to the
+ * data-connect step, never a replacement: it points at `muse browsing sync` to
+ * seed the corpus from the user's real Chrome history (skipped when the user
+ * already connected browsing this run — no point repeating it) and always
+ * points at `muse demo` for a fast cited-answer + honest-refusal example. This
+ * asserts nothing ABOUT the user (just names two real, always-runnable
+ * commands), so it sits outside the fabrication gate `buildFirstValueLine` uses.
+ */
+export function nextStepsHint(dataConnected: readonly string[]): string {
+  if (dataConnected.includes("browsing")) {
+    return `이제 답변은 방금 연결한 방문 기록에 근거해요 — 예시가 더 보고 싶으면 \`${NEXT_STEPS_DEMO_COMMAND}\`` +
+      `   ·   ` +
+      `Answers now ground in the browsing history you just connected — see another example with \`${NEXT_STEPS_DEMO_COMMAND}\``;
+  }
+  return `\`${NEXT_STEPS_BROWSING_COMMAND}\`로 크롬 방문 기록을 가져와 진짜 답변을 만들어보고, \`${NEXT_STEPS_DEMO_COMMAND}\`로 인용 예시를 확인해보세요` +
+    `   ·   ` +
+    `Seed real answers with \`${NEXT_STEPS_BROWSING_COMMAND}\` (your Chrome history), or see a cited example with \`${NEXT_STEPS_DEMO_COMMAND}\``;
+}
+
 /** Derive the grounded first-value inputs from a `setup data` result (0 counts dropped). */
 export function firstValueContextFromDataResult(
   result: { readonly contacts?: { readonly imported: number }; readonly browsing?: { readonly synced: number } } | undefined

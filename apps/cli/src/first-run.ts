@@ -37,6 +37,8 @@ import {
   FIRST_RUN_DATA_MESSAGE,
   FIRST_RUN_DATA_OPTIONS,
   firstValueContextFromDataResult,
+  nextStepsHint,
+  NEXT_STEPS_NOTE_TITLE,
   scaffoldStarterSkillsIfEmpty,
   smartDefaultsNote,
   type FirstValueContext
@@ -393,10 +395,11 @@ async function runFirstRunWizardBody(deps: FirstRunWizardDeps, helpers: WizardHe
 
 /**
  * The shared "first value" tail every SUCCESSFUL provider branch routes through:
- * offer the data-connect step, apply smart defaults, then show the personalized
- * first-value success line + finale bird. Wholly fail-soft — any step error is
- * swallowed so a value-tail hiccup can never brick the wizard; the marker is
- * still written by `finish`.
+ * offer the data-connect step, apply smart defaults, show the "what next" hint
+ * (`muse browsing sync` / `muse demo`), then the personalized first-value
+ * success line + finale bird. Wholly fail-soft — any step error is swallowed
+ * so a value-tail hiccup can never brick the wizard; the marker is still
+ * written by `finish`.
  */
 async function finishWithValue(
   deps: FirstRunWizardDeps,
@@ -421,6 +424,7 @@ async function finishWithValue(
       ...firstValueContextFromDataResult(dc.result)
     };
     firstValue = buildFirstValueLine(fvCtx);
+    prompts.note?.(nextStepsHint(dataConnected), NEXT_STEPS_NOTE_TITLE);
   } catch {
     // fail-soft: never let the value tail brick `muse`.
   }

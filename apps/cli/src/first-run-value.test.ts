@@ -13,6 +13,9 @@ import {
   firstValueContextFromDataResult,
   firstValueFactAtoms,
   firstValueLineIsSafe,
+  NEXT_STEPS_BROWSING_COMMAND,
+  NEXT_STEPS_DEMO_COMMAND,
+  nextStepsHint,
   scaffoldStarterSkillsIfEmpty,
   smartDefaultsNote,
   STARTER_SKILLS
@@ -93,6 +96,43 @@ describe("smartDefaultsNote", () => {
 
   it("omits the skills line when nothing was scaffolded", () => {
     expect(smartDefaultsNote(0).toLowerCase()).not.toContain("starter skill");
+  });
+});
+
+describe("nextStepsHint — the honest 'get real value now' suggestion (additive to muse demo)", () => {
+  it("exposes the exact real command strings (pinned against commands-browsing.ts / ask-fast-paths.ts)", () => {
+    expect(NEXT_STEPS_BROWSING_COMMAND).toBe("muse browsing sync");
+    expect(NEXT_STEPS_DEMO_COMMAND).toBe("muse demo");
+  });
+
+  it("when browsing was NOT connected this run, suggests both muse browsing sync and muse demo", () => {
+    const hint = nextStepsHint([]);
+    expect(hint).toContain(`\`${NEXT_STEPS_BROWSING_COMMAND}\``);
+    expect(hint).toContain(`\`${NEXT_STEPS_DEMO_COMMAND}\``);
+  });
+
+  it("when the user connected some OTHER source (not browsing), still suggests muse browsing sync", () => {
+    const hint = nextStepsHint(["contacts"]);
+    expect(hint).toContain(`\`${NEXT_STEPS_BROWSING_COMMAND}\``);
+  });
+
+  it("when browsing WAS already connected this run, drops the sync suggestion but keeps muse demo", () => {
+    const hint = nextStepsHint(["browsing"]);
+    expect(hint).not.toContain(NEXT_STEPS_BROWSING_COMMAND);
+    expect(hint).toContain(`\`${NEXT_STEPS_DEMO_COMMAND}\``);
+  });
+
+  it("is bilingual KO · EN in both branches", () => {
+    for (const hint of [nextStepsHint([]), nextStepsHint(["browsing"])]) {
+      expect(/[가-힣]/u.test(hint)).toBe(true);
+      expect(/[A-Za-z]/u.test(hint)).toBe(true);
+    }
+  });
+
+  it("grounds the pitch honestly — mentions the user's OWN real browsing history, no invented claim", () => {
+    const hint = nextStepsHint([]);
+    expect(hint.toLowerCase()).toContain("chrome");
+    expect(hint).toContain("크롬");
   });
 });
 
