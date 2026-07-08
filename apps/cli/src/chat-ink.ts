@@ -43,8 +43,6 @@ import {
   matchModelNames,
   matchSlashCommands,
   normalizeChatInput,
-  parseInlineSpans,
-  parseMarkdownBlocks,
   parseRememberArg,
   parseSlashCommand,
   reduceInput,
@@ -57,6 +55,7 @@ import {
   type MemorySnapshot,
   type RecurringThread
 } from "./chat-ink-core.js";
+import { parseAnswerMarkdown, type MdBlock, type MdListItem, type MdSpan } from "./chat-markdown.js";
 import { type AgentDef } from "./commands-agents.js";
 import { type ChatGrounding } from "./chat-grounding.js";
 import { groupProactiveNotice, imminentItems, pickUnseen, type ProactiveItem } from "./chat-proactive.js";
@@ -105,25 +104,67 @@ function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toString();
 }
 
-/** Render a completed assistant message with light markdown: fenced code
- * (green), headers (bold cyan), inline `code` (yellow) and **bold**. */
+// Left-bar frame shared by code blocks and blockquotes: a dim `│` gutter
+// (round border, left edge only) with the content indented one column. Ink
+// draws the border char regardless of colour, so the frame survives NO_COLOR;
+// only the tint drops. This is the deterministic structure the wall-of-text
+// answer was missing.
+const LEFT_BAR = { borderBottom: false, borderColor: "gray", borderLeft: true, borderRight: false, borderStyle: "round", borderTop: false, flexDirection: "column", paddingLeft: 1 } as const;
+
+/** Render one line's inline spans (bold / italic / inline-code / link) as
+ *  nested `<Text>`; a link renders as `text` + a dim ` (url)`. */
+function renderSpans(spans: readonly MdSpan[], keyPrefix: string): React.ReactElement[] {
+  return spans.map((s, si) => {
+    const key = `${keyPrefix}-${si.toString()}`;
+    if (s.url !== undefined) {
+      return h(React.Fragment, { key },
+        h(Text, { color: "cyan", underline: true }, s.text),
+        h(Text, { dimColor: true }, ` (${s.url})`));
+    }
+    return h(Text, { bold: s.bold === true, color: s.code === true ? "yellow" : undefined, italic: s.italic === true, key }, s.text);
+  });
+}
+
+function renderListItem(item: MdListItem, key: string): React.ReactElement {
+  // A fixed-width marker gutter + a flexible content box gives a hanging
+  // indent: wrapped continuation lines align under the text, not the bullet.
+  const gutter = "  ".repeat(item.level);
+  return h(Box, { key },
+    h(Text, { color: "cyan" }, `${gutter}${item.marker} `),
+    h(Box, { flexDirection: "column", flexGrow: 1 }, h(Text, null, ...renderSpans(item.spans, `${key}-s`))));
+}
+
+/** Render a block from the pure parser. `spaced` inserts a blank line above
+ *  every block after the first so the answer breathes instead of walling up. */
+function renderBlock(block: MdBlock, key: string, spaced: boolean): React.ReactElement {
+  const top = spaced ? { marginTop: 1 } : null;
+  if (block.kind === "code") {
+    return h(Box, { ...LEFT_BAR, ...top, key },
+      block.lang !== undefined && block.lang.length > 0 ? h(Text, { dimColor: true, key: "lang" }, block.lang) : null,
+      ...block.lines.map((ln, li) => h(Text, { color: "green", key: li.toString() }, ln.length > 0 ? ln : " ")));
+  }
+  if (block.kind === "heading") {
+    return h(Box, { ...top, key },
+      h(Text, { bold: true, color: block.level <= 2 ? "cyan" : "blue" }, ...renderSpans(block.spans, `${key}-h`)));
+  }
+  if (block.kind === "list") {
+    return h(Box, { ...top, flexDirection: "column", key }, ...block.items.map((it, li) => renderListItem(it, `${key}-${li.toString()}`)));
+  }
+  if (block.kind === "quote") {
+    return h(Box, { ...LEFT_BAR, ...top, key },
+      ...block.lines.map((ln, li) => h(Text, { dimColor: true, key: li.toString() }, ...renderSpans(ln, `${key}-${li.toString()}`))));
+  }
+  return h(Box, { ...top, flexDirection: "column", key },
+    ...block.lines.map((ln, li) => h(Text, { key: li.toString() }, ...renderSpans(ln, `${key}-${li.toString()}`))));
+}
+
+/** Render a completed assistant message with structured markdown: fenced code
+ *  in a framed block, headings, bulleted/ordered/nested lists, blockquotes,
+ *  inline code/bold/italic/links, and a blank line between block elements. */
 function renderMarkdown(text: string): React.ReactElement {
-  const blocks = parseMarkdownBlocks(text);
+  const blocks = parseAnswerMarkdown(text);
   return h(Box, { flexDirection: "column" },
-    ...blocks.map((block, bi) => {
-      if (block.type === "code") {
-        return h(Box, { borderColor: "gray", borderLeft: true, borderRight: false, borderTop: false, borderBottom: false, borderStyle: "round", flexDirection: "column", key: `c${bi.toString()}`, paddingLeft: 1 },
-          ...block.lines.map((ln, li) => h(Text, { color: "green", key: li.toString() }, ln.length > 0 ? ln : " ")));
-      }
-      return h(Box, { flexDirection: "column", key: `t${bi.toString()}` },
-        ...block.lines.map((line, li) => {
-          const header = /^(#{1,6})\s+(.*)$/u.exec(line);
-          if (header) return h(Text, { bold: true, color: "cyan", key: li.toString() }, header[2] ?? "");
-          const spans = parseInlineSpans(line);
-          return h(Text, { key: li.toString() }, ...spans.map((s, si) =>
-            h(Text, { bold: s.bold === true, color: s.code === true ? "yellow" : undefined, key: si.toString() }, s.text)));
-        }));
-    }));
+    ...blocks.map((block, bi) => renderBlock(block, `b${bi.toString()}`, bi > 0)));
 }
 
 // Box geometry: left border (1) + paddingX (1) + the "› " prompt (2).

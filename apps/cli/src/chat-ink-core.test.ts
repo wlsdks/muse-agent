@@ -43,8 +43,6 @@ import {
   matchAgentNames,
   matchModelNames,
   normalizeChatInput,
-  parseInlineSpans,
-  parseMarkdownBlocks,
   parseRememberArg,
   matchSlashCommands,
   parseSlashCommand,
@@ -304,28 +302,6 @@ describe("summarizeToolArgs / format* strip terminal-control bytes from untruste
   it("formatRecallHits + formatJobsList strip ESC from snippets/prompts", () => {
     expect(formatRecallHits("q", [{ source: "notes", ref: "n1", score: 0.5, snippet: `${ESC}]0;xhello` }])).not.toContain(ESC);
     expect(formatJobsList([{ id: "j1", status: "done", prompt: `${ESC}[2Kgo`, finalText: `${ESC}[1mout` }])).not.toContain(ESC);
-  });
-});
-
-describe("parseMarkdownBlocks", () => {
-  it("separates fenced code from prose and captures the language", () => {
-    const blocks = parseMarkdownBlocks("before\n```ts\nconst x = 1;\n```\nafter");
-    expect(blocks.map((b) => b.type)).toEqual(["text", "code", "text"]);
-    expect(blocks[1]).toEqual({ lang: "ts", lines: ["const x = 1;"], type: "code" });
-    expect(blocks[0]?.lines).toEqual(["before"]);
-    expect(blocks[2]?.lines).toEqual(["after"]);
-  });
-  it("plain text is a single text block", () => {
-    expect(parseMarkdownBlocks("just words")).toEqual([{ lines: ["just words"], type: "text" }]);
-  });
-});
-
-describe("parseInlineSpans", () => {
-  it("splits bold and inline code, keeps plain runs", () => {
-    expect(parseInlineSpans("a **b** c `d` e")).toEqual([
-      { text: "a " }, { bold: true, text: "b" }, { text: " c " }, { code: true, text: "d" }, { text: " e" }
-    ]);
-    expect(parseInlineSpans("plain")).toEqual([{ text: "plain" }]);
   });
 });
 

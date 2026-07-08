@@ -426,59 +426,6 @@ export function parseRememberArg(arg: string): { key: string; value: string } | 
   return { key: normalizeMemoryKey(rawKey), value };
 }
 
-export interface MarkdownBlock {
-  readonly type: "code" | "text";
-  readonly lang?: string;
-  readonly lines: readonly string[];
-}
-
-/** Split text into fenced-code vs prose blocks for terminal rendering. */
-export function parseMarkdownBlocks(text: string): MarkdownBlock[] {
-  const blocks: MarkdownBlock[] = [];
-  let inCode = false;
-  let lang = "";
-  let cur: string[] = [];
-  const flush = (type: "code" | "text"): void => {
-    if (type === "code" || cur.length > 0) {
-      blocks.push(lang ? { lang, lines: cur, type } : { lines: cur, type });
-    }
-    cur = [];
-  };
-  for (const line of text.split("\n")) {
-    const fence = /^```(\w*)\s*$/u.exec(line);
-    if (fence) {
-      if (inCode) { flush("code"); inCode = false; lang = ""; }
-      else { if (cur.length > 0) flush("text"); inCode = true; lang = fence[1] ?? ""; }
-      continue;
-    }
-    cur.push(line);
-  }
-  flush(inCode ? "code" : "text");
-  return blocks;
-}
-
-export interface InlineSpan {
-  readonly text: string;
-  readonly bold?: boolean;
-  readonly code?: boolean;
-}
-
-/** Split one prose line into bold (`**x**`) / inline-code (`` `x` ``) spans. */
-export function parseInlineSpans(line: string): InlineSpan[] {
-  const spans: InlineSpan[] = [];
-  const re = /\*\*([^*]+)\*\*|`([^`]+)`/gu;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(line)) !== null) {
-    if (m.index > last) spans.push({ text: line.slice(last, m.index) });
-    if (m[1] !== undefined) spans.push({ bold: true, text: m[1] });
-    else if (m[2] !== undefined) spans.push({ code: true, text: m[2] });
-    last = m.index + m[0].length;
-  }
-  if (last < line.length) spans.push({ text: line.slice(last) });
-  return spans.length > 0 ? spans : [{ text: line }];
-}
-
 export interface SlashCommand {
   readonly cmd: string;
   readonly desc: string;
