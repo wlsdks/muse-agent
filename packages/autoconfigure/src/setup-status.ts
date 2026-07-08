@@ -29,12 +29,23 @@ import { evaluateWebEgressPosture, isLoopbackUrl } from "@muse/model";
 
 import { resolveEmbedderBase } from "./embedder-base.js";
 import { OPENAI_COMPAT_PRESETS } from "./openai-compat-presets.js";
-import { createModelProvider } from "./autoconfigure-model-provider.js";
+import { createModelProvider, LOCAL_FIRST_DEFAULT_MODEL, resolveDefaultModel } from "./autoconfigure-model-provider.js";
 
 export interface SetupStatusSnapshot {
   readonly model: {
     readonly status: "ok" | "todo";
+    /** The MUSE_MODEL env var, when explicitly set (post models.json merge). */
     readonly muse_model?: string;
+    /**
+     * The model the runtime will ACTUALLY use — mirrors `muse doctor`'s
+     * model-env line (`resolveDefaultModel`). `buildModelSection` always
+     * populates it: a fresh local box resolves to the local default
+     * (`ollama/gemma4:12b`), never nothing. Optional only so pre-existing
+     * literal fixtures need not restate it.
+     */
+    readonly resolvedModel?: string;
+    /** Where `resolvedModel` came from, so a surface can label it truthfully. */
+    readonly modelSource?: "env" | "config" | "cloud" | "local-default";
     readonly keysFile: string;
     readonly providerKeys: readonly string[];
     readonly nextStep?: string;
@@ -286,6 +297,83 @@ export function resolveVoiceStatus(
 }
 
 /**
+ * Read the persisted `defaultModel` from the CLI config store
+ * (`~/.config/muse/config.json`) — the value `muse setup local` / the
+ * first-run wizard write. Setup status credits it exactly like the CLI
+ * runtime does when it launches chat/ask with `--model <config.defaultModel>`.
+ */
+export async function readConfigDefaultModel(file: string): Promise<string | undefined> {
+  try {
+    const raw = await fs.readFile(file, "utf8");
+    const parsed = JSON.parse(raw) as { defaultModel?: unknown };
+    if (parsed && typeof parsed === "object" && typeof parsed.defaultModel === "string") {
+      const trimmed = parsed.defaultModel.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    }
+  } catch {
+    // missing / malformed → no persisted default
+  }
+  return undefined;
+}
+
+/**
+ * Resolve the `model` section the SAME way `muse doctor` resolves its
+ * model-env line (`resolveDefaultModel`), plus the persisted CLI-config
+ * default. A model is ALWAYS resolvable — the runtime falls back to the
+ * local default (`ollama/gemma4:12b`) — so this section is NEVER
+ * "todo"/"not configured": a fresh local box is READY on the local
+ * default, which is exactly what doctor reports. Pure (env + injected
+ * config) so it is directly unit-testable without touching the filesystem.
+ */
+export function buildModelSection(
+  env: MuseEnvironment,
+  args: {
+    readonly keysFile: string;
+    readonly providerKeys: readonly string[];
+    readonly configDefaultModel?: string;
+  }
+): SetupStatusSnapshot["model"] {
+  const explicit = (env.MUSE_MODEL ?? env.MUSE_DEFAULT_MODEL)?.trim();
+  const configModel = args.configDefaultModel?.trim();
+  const localOnly = parseBoolean(env.MUSE_LOCAL_ONLY, false);
+
+  let resolvedModel: string;
+  let modelSource: SetupStatusSnapshot["model"]["modelSource"];
+  if (explicit && explicit.length > 0) {
+    resolvedModel = explicit;
+    modelSource = "env";
+  } else if (configModel && configModel.length > 0) {
+    // Persisted `defaultModel` — what the CLI actually launches with — wins
+    // over ambient cloud-key inference (a user who ran `muse setup local`
+    // chose that model on purpose).
+    resolvedModel = configModel;
+    modelSource = "config";
+  } else {
+    resolvedModel = resolveDefaultModel(env) ?? LOCAL_FIRST_DEFAULT_MODEL;
+    // `resolveDefaultModel` returns the local default unless an ambient cloud
+    // credential was inferred (only possible when local-only is off).
+    modelSource = !localOnly && resolvedModel !== LOCAL_FIRST_DEFAULT_MODEL ? "cloud" : "local-default";
+  }
+
+  // Next-step guidance must NOT lead a local-first user toward cloud vendors.
+  // On the local default it is a soft "customize" nudge; cloud discovery stays
+  // available but secondary.
+  const nextStep = modelSource === "local-default"
+    ? `Ready on the local default ${resolvedModel}. Customize with \`muse setup local\` (other local models) — or \`muse setup model\` to add a cloud provider.`
+    : undefined;
+
+  return {
+    keysFile: args.keysFile,
+    modelSource,
+    providerKeys: args.providerKeys,
+    resolvedModel,
+    status: "ok",
+    ...(explicit && explicit.length > 0 ? { muse_model: explicit } : {}),
+    ...(nextStep ? { nextStep } : {})
+  };
+}
+
+/**
  * Capture a fresh snapshot of the user's setup state. Both surfaces
  * (CLI --json, REST /api/setup/status) call this with no arguments;
  * the env-merge mirrors autoconfigure's runtime boot so the snapshot
@@ -301,6 +389,7 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
     : pathJoin(home, ".muse", "models.json");
   const providerKeys = await readModelKeyState(modelKeysFile, env);
   const museModel = env.MUSE_MODEL?.trim() ?? "";
+  const configDefaultModel = await readConfigDefaultModel(pathJoin(home, ".config", "muse", "config.json"));
 
   const mcpFile = env.MUSE_MCP_CONFIG?.trim() && env.MUSE_MCP_CONFIG.trim().length > 0
     ? env.MUSE_MCP_CONFIG.trim()
@@ -363,7 +452,6 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
   const reminderQuietHours = env.MUSE_REMINDER_QUIET_HOURS?.trim();
   const reminderEnabled = Boolean(reminderProvider && reminderDestination);
 
-  const modelStatus = museModel.length > 0 || providerKeys.length > 0 ? "ok" : "todo";
   const calendarLocalStatus = calendarBytes !== undefined ? "ok" : "info";
   const credentialsStatus = credentialsBytes !== undefined ? "ok" : "info";
   return {
@@ -401,15 +489,7 @@ export async function collectSetupStatusJson(): Promise<SetupStatusSnapshot> {
         ? { nextStep: "Add external servers with `muse mcp config-add` or via /api/admin/mcp/*" }
         : {})
     },
-    model: {
-      keysFile: modelKeysFile,
-      providerKeys,
-      status: modelStatus,
-      ...(museModel.length > 0 ? { muse_model: museModel } : {}),
-      ...(modelStatus === "todo"
-        ? { nextStep: "Run `muse setup model` to wire OpenAI / Anthropic / Gemini / OpenRouter / Ollama / Groq / DeepSeek / Together / Mistral / Moonshot / Cerebras" }
-        : {})
-    },
+    model: buildModelSection(env, { configDefaultModel, keysFile: modelKeysFile, providerKeys }),
     notes: {
       dir: notesDir,
       status: notesCount !== undefined ? "ok" : "info",

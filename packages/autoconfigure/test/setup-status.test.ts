@@ -1,9 +1,91 @@
+import { promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
-import { resolveDefaultModel } from "../src/autoconfigure-model-provider.js";
-import { readActuatorReadiness, readModelKeyState, readWebSearchEnvSnapshot, resolveVoiceStatus } from "../src/setup-status.js";
+import { LOCAL_FIRST_DEFAULT_MODEL, resolveDefaultModel } from "../src/autoconfigure-model-provider.js";
+import { buildModelSection, readActuatorReadiness, readConfigDefaultModel, readModelKeyState, readWebSearchEnvSnapshot, resolveVoiceStatus } from "../src/setup-status.js";
 
 const MISSING_KEYS_FILE = "/dev/null/no-such-keys.json";
+const KEYS_FILE = "/c/models.json";
+
+describe("buildModelSection — model section mirrors `muse doctor`'s resolver", () => {
+  it("fresh box (no MUSE_MODEL, no cloud key, no config) → status ok, names the LOCAL default, no cloud-led hint", () => {
+    // Regression for the release-blocker: setup used to report `todo`/"not
+    // configured" while doctor reported the local default as ready.
+    const section = buildModelSection({}, { keysFile: KEYS_FILE, providerKeys: [] });
+    expect(section.status).toBe("ok");
+    expect(section.resolvedModel).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+    expect(section.resolvedModel).toBe("ollama/gemma4:12b");
+    expect(section.modelSource).toBe("local-default");
+    // muse_model stays env-truthful — it is NOT set from the default.
+    expect(section.muse_model).toBeUndefined();
+    // The next step must not push cloud vendors on a local-first user; it is a
+    // soft customize nudge that leads with the local path.
+    expect(section.nextStep).toContain("local default");
+    expect(section.nextStep).not.toMatch(/^Run `muse setup model`/u);
+    expect(section.nextStep!.indexOf("muse setup local")).toBeLessThan(section.nextStep!.indexOf("muse setup model"));
+  });
+
+  it("explicit MUSE_MODEL → status ok, muse_model + resolvedModel echo it, source env", () => {
+    const section = buildModelSection({ MUSE_MODEL: "ollama/qwen3.5:9b" }, { keysFile: KEYS_FILE, providerKeys: [] });
+    expect(section).toMatchObject({
+      modelSource: "env",
+      muse_model: "ollama/qwen3.5:9b",
+      resolvedModel: "ollama/qwen3.5:9b",
+      status: "ok"
+    });
+  });
+
+  it("persisted config defaultModel (no env) → credited, source config", () => {
+    const section = buildModelSection({}, { configDefaultModel: "ollama/gemma4:12b", keysFile: KEYS_FILE, providerKeys: [] });
+    expect(section).toMatchObject({ modelSource: "config", resolvedModel: "ollama/gemma4:12b", status: "ok" });
+    expect(section.muse_model).toBeUndefined();
+  });
+
+  it("ambient cloud key (local-only off) → cloud model inferred, source cloud, still ok", () => {
+    const section = buildModelSection({ GEMINI_API_KEY: "g" }, { keysFile: KEYS_FILE, providerKeys: ["gemini (env)"] });
+    expect(section.status).toBe("ok");
+    expect(section.modelSource).toBe("cloud");
+    expect(section.resolvedModel).toBe(resolveDefaultModel({ GEMINI_API_KEY: "g" }));
+    expect(section.resolvedModel).toMatch(/^gemini\//u);
+  });
+
+  it("local-only on with a stray cloud key → key IGNORED, falls to the local default", () => {
+    const section = buildModelSection(
+      { GEMINI_API_KEY: "g", MUSE_LOCAL_ONLY: "true" },
+      { keysFile: KEYS_FILE, providerKeys: ["gemini (env)"] }
+    );
+    expect(section.modelSource).toBe("local-default");
+    expect(section.resolvedModel).toBe(LOCAL_FIRST_DEFAULT_MODEL);
+  });
+
+  it("explicit MUSE_MODEL wins over a persisted config default", () => {
+    const section = buildModelSection(
+      { MUSE_MODEL: "ollama/qwen3.5:2b-q4_K_M" },
+      { configDefaultModel: "ollama/gemma4:12b", keysFile: KEYS_FILE, providerKeys: [] }
+    );
+    expect(section).toMatchObject({ modelSource: "env", resolvedModel: "ollama/qwen3.5:2b-q4_K_M" });
+  });
+});
+
+describe("readConfigDefaultModel", () => {
+  it("reads defaultModel from a config.json", async () => {
+    const dir = await fs.mkdtemp(join(tmpdir(), "muse-cfg-"));
+    const file = join(dir, "config.json");
+    await fs.writeFile(file, JSON.stringify({ apiUrl: "http://x", defaultModel: "ollama/gemma4:12b" }), "utf8");
+    expect(await readConfigDefaultModel(file)).toBe("ollama/gemma4:12b");
+  });
+
+  it("returns undefined when the file is missing, blank, or has no defaultModel", async () => {
+    expect(await readConfigDefaultModel("/dev/null/nope.json")).toBeUndefined();
+    const dir = await fs.mkdtemp(join(tmpdir(), "muse-cfg-"));
+    const empty = join(dir, "config.json");
+    await fs.writeFile(empty, JSON.stringify({ apiUrl: "http://x", defaultModel: "   " }), "utf8");
+    expect(await readConfigDefaultModel(empty)).toBeUndefined();
+  });
+});
 
 describe("resolveVoiceStatus", () => {
   it("piper requested but MUSE_PIPER_VOICE unset → warns it silently fell back to paid OpenAI TTS", () => {

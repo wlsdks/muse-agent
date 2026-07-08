@@ -18,11 +18,28 @@
 
 import { totalmem } from "node:os";
 
+import { LOCAL_FIRST_DEFAULT_MODEL } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
 import type { ConfigCommandHelpers } from "./commands-config.js";
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
 import type { ProgramIO } from "./program.js";
+
+/**
+ * Muse's pinned zero-config local model (the bare Ollama tag of
+ * `LOCAL_FIRST_DEFAULT_MODEL`). When it is already pulled, `muse setup local`
+ * credits it as the ready recommendation instead of pushing a multi-GB
+ * power-tier download — kept in sync with the runtime default it mirrors.
+ */
+export const DOCUMENTED_DEFAULT_TAG = LOCAL_FIRST_DEFAULT_MODEL.replace(/^ollama\//u, "");
+
+const DOCUMENTED_DEFAULT_PRESET: LocalModelPreset = {
+  approxSizeGb: 8.1,
+  minRamGb: 16,
+  note: "default; Muse's pinned zero-config local model — already pulled, balanced quality (no download needed)",
+  tag: DOCUMENTED_DEFAULT_TAG,
+  tier: "high"
+};
 
 export interface LocalModelPreset {
   readonly tier: "low" | "mid" | "high" | "power";
@@ -132,8 +149,14 @@ export function pickPreset(installed: ReadonlySet<string>, override?: string): L
       tier: "mid"
     };
   }
-  // Default picker: highest tier already pulled, else highest tier overall
-  // so the user sees the "you should pull this" hint.
+  // Credit Muse's pinned local default first: if it is already pulled, that IS
+  // the recommendation — never push a multi-GB power-tier download onto a box
+  // that already has the zero-config default working.
+  if (installed.has(DOCUMENTED_DEFAULT_TAG)) {
+    return DOCUMENTED_DEFAULT_PRESET;
+  }
+  // Otherwise: highest tier already pulled, else highest tier overall so the
+  // user sees the "you should pull this" hint.
   const reversed = [...LOCAL_MODEL_PRESETS].reverse();
   for (const preset of reversed) {
     if (installed.has(preset.tag)) {

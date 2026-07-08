@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LOCAL_MODEL_PRESETS, checkPresetRam, isEmbedModelPulled, pickPreset } from "./commands-setup-local.js";
+import { DOCUMENTED_DEFAULT_TAG, LOCAL_MODEL_PRESETS, checkPresetRam, isEmbedModelPulled, pickPreset } from "./commands-setup-local.js";
 
 describe("pickPreset", () => {
   it("returns highest-tier preset when nothing pulled (so caller can render pull hint)", () => {
@@ -47,6 +47,26 @@ describe("pickPreset", () => {
     const chosen = pickPreset(new Set(), "qwen3.5:2b-q4_K_M");
     expect(chosen?.tier).toBe("low");
     expect(chosen?.approxSizeGb).toBe(1.9);
+  });
+
+  // Bug 2: on a box that already has Muse's pinned default pulled, `setup local`
+  // must credit it — NOT recommend a 17 GB power-tier download (which wrote no
+  // config, so the setup TODO never cleared).
+  it("credits Muse's pinned default when it is the only model pulled (never the power tier)", () => {
+    const chosen = pickPreset(new Set([DOCUMENTED_DEFAULT_TAG]));
+    expect(chosen?.tag).toBe(DOCUMENTED_DEFAULT_TAG);
+    expect(chosen?.tag).toBe("gemma4:12b");
+    expect(chosen?.tier).not.toBe("power");
+  });
+
+  it("prefers the pinned default even when a higher-tier qwen is ALSO pulled", () => {
+    const chosen = pickPreset(new Set([DOCUMENTED_DEFAULT_TAG, "qwen3.6:27b"]));
+    expect(chosen?.tag).toBe(DOCUMENTED_DEFAULT_TAG);
+  });
+
+  it("an explicit --model override still wins over the pinned default", () => {
+    const chosen = pickPreset(new Set([DOCUMENTED_DEFAULT_TAG]), "qwen2.5:7b-instruct");
+    expect(chosen?.tag).toBe("qwen2.5:7b-instruct");
   });
 });
 

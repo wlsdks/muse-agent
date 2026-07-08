@@ -3144,9 +3144,12 @@ describe("cli program", () => {
       const program = createProgram({ ...io, fetch: async () => { throw new Error("fetch must not be called"); } });
       await program.parseAsync(["node", "muse", "setup"], { from: "node" });
       const text = output.join("");
-      // Each non-ok section should be followed by a `→ nextStep` line.
-      expect(text).toMatch(/\[todo\] model/u);
-      expect(text).toMatch(/→ Run `muse setup model`/u);
+      // A fresh local box resolves the local default and reads `ok` — it must
+      // agree with `muse doctor`, never claim "todo/not configured".
+      expect(text).toMatch(/\[ok\].*model — ollama\/gemma4:12b \(local default\)/u);
+      // …with a soft "you're ready, customize" nudge, not a cloud-first push.
+      expect(text).toMatch(/→ Ready on the local default .*Customize with `muse setup local`/u);
+      // Genuinely non-ok sections (messaging, voice) still surface a `→ nextStep`.
       expect(text).toMatch(/→ Run `muse setup messaging`/u);
       expect(text).toMatch(/→ Run `muse setup model` and pick OpenAI/u);
     } finally {

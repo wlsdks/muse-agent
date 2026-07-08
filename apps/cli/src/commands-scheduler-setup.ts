@@ -360,16 +360,29 @@ export function formatSetupStatusLines(snap: SetupStatusSnapshot): string[] {
     }
   };
 
-  // model
+  // model — always name the resolved model + where it came from, so a
+  // local-first box (no MUSE_MODEL, no cloud key) reads a real value, not a
+  // blank detail. Mirrors `doctor`'s resolver (setup-status.buildModelSection).
   if (snap.model.status === "ok") {
     const detail: string[] = [];
-    if (snap.model.muse_model) {
-      detail.push(`MUSE_MODEL=${snap.model.muse_model}`);
+    if (snap.model.resolvedModel) {
+      // Env stays as `MUSE_MODEL=<model>` (truthful — the var IS set); other
+      // sources name the model + where it came from so the detail is never blank.
+      detail.push(
+        snap.model.modelSource === "env"
+          ? `MUSE_MODEL=${snap.model.resolvedModel}`
+          : `${snap.model.resolvedModel} (${
+            snap.model.modelSource === "config" ? "from config"
+              : snap.model.modelSource === "cloud" ? "inferred from cloud key"
+                : "local default"
+          })`
+      );
     }
     if (snap.model.providerKeys.length > 0) {
       detail.push(`${snap.model.providerKeys.length.toString()} provider key(s): ${snap.model.providerKeys.join(", ")}`);
     }
     push("ok", "model", detail.join(", "));
+    pushNext(snap.model.nextStep);
   } else {
     push("todo", "model", "not configured");
     pushNext(snap.model.nextStep);
