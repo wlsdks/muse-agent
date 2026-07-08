@@ -243,6 +243,156 @@ describe("runFirstRunWizard — picker → config", () => {
   });
 });
 
+interface ValueState {
+  markerChoice?: string;
+  writtenModel?: string;
+  dataFlags?: Record<string, boolean>;
+  dataConnectCalls: number;
+  defaultsCalls: number;
+  outros: string[];
+  celebrated: boolean;
+}
+
+function makeValueDeps(overrides: {
+  readonly select: readonly unknown[];
+  readonly state: ValueState;
+  readonly multiselect?: readonly string[] | symbol;
+  readonly dataResult?: { readonly contactsImported?: number; readonly browsingSynced?: number };
+  readonly dataThrows?: boolean;
+  readonly skillsScaffolded?: number;
+  readonly identityName?: string;
+  readonly withDataDeps?: boolean;
+}): FirstRunWizardDeps {
+  const { state } = overrides;
+  let selectIdx = 0;
+  const wire = overrides.withDataDeps ?? true;
+  const prompts: FirstRunPrompts = {
+    confirm: async () => true,
+    isCancel: (v): v is symbol => typeof v === "symbol",
+    multiselect: wire ? (async () => overrides.multiselect ?? []) as FirstRunPrompts["multiselect"] : undefined,
+    note: () => undefined,
+    outro: (message) => state.outros.push(message),
+    password: async () => "",
+    select: async () => overrides.select[selectIdx++] as never
+  };
+  return {
+    applyDefaults: wire
+      ? async () => {
+          state.defaultsCalls += 1;
+          return { skillsScaffolded: overrides.skillsScaffolded ?? 0 };
+        }
+      : undefined,
+    celebrate: () => {
+      state.celebrated = true;
+    },
+    env: {},
+    home: "/home/u",
+    prompts,
+    readConfig: async () => ({}),
+    ...(overrides.identityName ? { readIdentity: async () => ({ name: overrides.identityName }) } : {}),
+    runDataConnect: wire
+      ? async (flags) => {
+          state.dataConnectCalls += 1;
+          state.dataFlags = flags as unknown as Record<string, boolean>;
+          if (overrides.dataThrows) throw new Error("ingest exploded");
+          const dr = overrides.dataResult;
+          return {
+            alreadyEnabled: [],
+            declined: [],
+            failed: [],
+            stagedSwitches: [],
+            ...(dr?.contactsImported !== undefined
+              ? { contacts: { imported: dr.contactsImported, skipped: 0, total: dr.contactsImported, updated: 0 } }
+              : {}),
+            ...(dr?.browsingSynced !== undefined ? { browsing: { synced: dr.browsingSynced, total: dr.browsingSynced } } : {})
+          };
+        }
+      : undefined,
+    writeConfig: async (config) => {
+      state.writtenModel = config.defaultModel;
+    },
+    writeMarker: async (_home, choice) => {
+      state.markerChoice = choice;
+      return "/home/u/.muse/first-run.json";
+    }
+  };
+}
+
+function freshValueState(): ValueState {
+  return { celebrated: false, dataConnectCalls: 0, defaultsCalls: 0, outros: [] };
+}
+
+describe("runFirstRunWizard — the install→first-value tail (data-connect · defaults · first-value)", () => {
+  it("routes the multi-select picks through setup-data flag mode and grounds the first-value line on the result", async () => {
+    const state = freshValueState();
+    const result = await runFirstRunWizard(makeValueDeps({
+      dataResult: { browsingSynced: 9, contactsImported: 5 },
+      multiselect: ["contacts", "browsing"],
+      select: ["local"],
+      state
+    }));
+    expect(state.dataConnectCalls).toBe(1);
+    expect(state.dataFlags).toEqual({ browsing: true, contacts: true, notesMirror: false, remindersMirror: false });
+    expect(result.dataConnected).toEqual(["contacts", "browsing"]);
+    expect(result.firstValueGrounded).toBe(true);
+    // The success line asserts only the real connected count.
+    expect(state.outros.at(-1)).toContain("5");
+    expect(state.celebrated).toBe(true);
+  });
+
+  it("skipping the data step (empty multi-select) connects nothing and shows a content-free welcome", async () => {
+    const state = freshValueState();
+    const result = await runFirstRunWizard(makeValueDeps({ multiselect: [], select: ["local"], state }));
+    expect(state.dataConnectCalls).toBe(0);
+    expect(result.dataConnected).toEqual([]);
+    expect(result.firstValueGrounded).toBe(false);
+    expect(/\d/u.test(state.outros.at(-1) ?? "")).toBe(false);
+  });
+
+  it("cancelling the data step (symbol) also connects nothing", async () => {
+    const state = freshValueState();
+    const result = await runFirstRunWizard(makeValueDeps({ multiselect: Symbol("cancel"), select: ["local"], state }));
+    expect(state.dataConnectCalls).toBe(0);
+    expect(result.dataConnected).toEqual([]);
+  });
+
+  it("propagates the smart-defaults scaffold count into the result", async () => {
+    const state = freshValueState();
+    const result = await runFirstRunWizard(makeValueDeps({ multiselect: [], select: ["local"], skillsScaffolded: 2, state }));
+    expect(state.defaultsCalls).toBe(1);
+    expect(result.skillsScaffolded).toBe(2);
+  });
+
+  it("greets by a known name when there is no connected source yet", async () => {
+    const state = freshValueState();
+    const result = await runFirstRunWizard(makeValueDeps({ identityName: "Jinan", multiselect: [], select: ["local"], state }));
+    expect(result.firstValueGrounded).toBe(true);
+    expect(state.outros.at(-1)).toContain("Jinan");
+  });
+
+  it("is fail-soft: a throwing data-connect never bricks the wizard (still marks + finishes local)", async () => {
+    const state = freshValueState();
+    const result = await runFirstRunWizard(makeValueDeps({
+      dataThrows: true,
+      multiselect: ["contacts"],
+      select: ["local"],
+      state
+    }));
+    expect(result).toMatchObject({ choice: "local", markerWritten: true, wroteDefaultModel: LOCAL_FIRST_DEFAULT_MODEL });
+    expect(state.markerChoice).toBe("local");
+    // The tail swallowed the error and still reached the success screen.
+    expect(state.celebrated).toBe(true);
+  });
+
+  it("without the value-tail deps wired (tests / non-interactive), the wizard behaves as before", async () => {
+    const state = freshValueState();
+    const result = await runFirstRunWizard(makeValueDeps({ select: ["local"], state, withDataDeps: false }));
+    expect(result.dataConnected).toEqual([]);
+    expect(result.skillsScaffolded).toBe(0);
+    expect(state.dataConnectCalls).toBe(0);
+  });
+});
+
 describe("integration guard — first-run stays OFF under vitest", () => {
   it("the real process env (VITEST set by the runner) suppresses auto-launch", () => {
     // This test runs under vitest, so firstRunSkipRequested(process.env) must

@@ -22,13 +22,25 @@
  */
 
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { LOCAL_FIRST_DEFAULT_MODEL } from "@muse/autoconfigure";
 
 import { CLOUD_PROVIDERS, planCloudSetup } from "./commands-setup-cloud.js";
+import { runDataSetupInFlagMode, type DataSetupFlags, type DataSetupResult } from "./commands-setup-data.js";
+import { resolveSkillsDir } from "./commands-skills.js";
+import {
+  buildFirstValueLine,
+  dataFlagsFromSelection,
+  FIRST_RUN_DATA_MESSAGE,
+  FIRST_RUN_DATA_OPTIONS,
+  firstValueContextFromDataResult,
+  scaffoldStarterSkillsIfEmpty,
+  smartDefaultsNote,
+  type FirstValueContext
+} from "./first-run-value.js";
 import {
   codexSetupSteps,
   detectCodexReadiness,
@@ -168,6 +180,11 @@ export interface FirstRunPrompts {
     readonly initialValue?: T;
     readonly options: readonly { readonly value: T; readonly label: string; readonly hint?: string }[];
   }): Promise<T | symbol>;
+  multiselect?<T>(options: {
+    readonly message: string;
+    readonly required?: boolean;
+    readonly options: readonly { readonly value: T; readonly label: string; readonly hint?: string }[];
+  }): Promise<T[] | symbol>;
   password?(options: { readonly message: string }): Promise<string | symbol>;
   confirm?(options: { readonly message: string; readonly initialValue?: boolean }): Promise<boolean | symbol>;
   isCancel(value: unknown): value is symbol;
@@ -190,6 +207,16 @@ export interface FirstRunWizardDeps {
   readonly probeLocal?: () => Promise<{ readonly reachable: boolean; readonly detail: string }>;
   /** Optional finale flourish (bird + check) printed on a successful config path. */
   readonly celebrate?: () => void;
+  /**
+   * Optional "connect your data" runner — routes the chosen connectors through
+   * the existing `muse setup data` flag-mode path. Absent ⇒ the data-connect
+   * step is skipped (tests / non-interactive).
+   */
+  readonly runDataConnect?: (flags: DataSetupFlags) => Promise<DataSetupResult>;
+  /** Optional smart-defaults applier (scaffold starter skills, etc.); returns the count scaffolded. */
+  readonly applyDefaults?: () => Promise<{ readonly skillsScaffolded: number }>;
+  /** Optional identity read for a personalized first-value line (name if already known). */
+  readonly readIdentity?: () => Promise<{ readonly name?: string }>;
 }
 
 export interface FirstRunResult {
@@ -198,6 +225,12 @@ export interface FirstRunResult {
   readonly codexReady?: boolean;
   readonly cloudKeyStored?: boolean;
   readonly markerWritten: boolean;
+  /** Connector ids the user connected during the data-connect step (empty when skipped). */
+  readonly dataConnected?: readonly string[];
+  /** Starter skills scaffolded by the smart-defaults step (0 when skipped / dir non-empty). */
+  readonly skillsScaffolded?: number;
+  /** Whether the shown first-value success line asserted a real user fact. */
+  readonly firstValueGrounded?: boolean;
 }
 
 /**
@@ -266,9 +299,8 @@ async function runFirstRunWizardBody(deps: FirstRunWizardDeps, helpers: WizardHe
         : `Ollama가 아직 안 켜졌어요 — 설치하고 모델을 받아주세요 · install it and pull the model:\n  brew install ollama && ollama serve\n  ollama pull ${model.replace(/^ollama\//u, "")}\n\n${probe.detail}`,
       "로컬 모델 · Local model");
     }
-    deps.celebrate?.();
-    prompts.outro?.(`다 됐어요 — Muse는 로컬 ${model} 에서 생각해요.  ·  All set — thinking locally on ${model}.`);
-    return finish({ choice: "local", wroteDefaultModel: model });
+    prompts.note?.(`Muse는 로컬 ${model} 에서 생각해요  ·  thinking locally on ${model}.`, "모델 · Model");
+    return finishWithValue(deps, helpers, { choice: "local", wroteDefaultModel: model });
   }
 
   if (choice === "cloud") {
@@ -301,9 +333,7 @@ async function runFirstRunWizardBody(deps: FirstRunWizardDeps, helpers: WizardHe
       ? `${plan.provider.label} 키를 ~/.muse/models.json (chmod 600)에 저장했어요. Muse는 ${plan.defaultModel} 를 써요.\nSaved your ${plan.provider.label} key — Muse will use ${plan.defaultModel}.`
       : `Muse를 ${plan.provider.label} (${plan.defaultModel})로 설정했어요. 마치려면 셸에서 키를 설정하세요 · to finish, export your key:\n  ${plan.requiredExports.join("\n  ")}`,
     "클라우드 · Cloud");
-    deps.celebrate?.();
-    prompts.outro?.(`다 됐어요 — Muse는 ${plan.provider.label} 로 생각해요.  ·  All set — thinking via ${plan.provider.label}.`);
-    return finish({ choice: "cloud", cloudKeyStored, wroteDefaultModel: plan.defaultModel });
+    return finishWithValue(deps, helpers, { choice: "cloud", cloudKeyStored, wroteDefaultModel: plan.defaultModel });
   }
 
   // choice === "codex"
@@ -330,9 +360,75 @@ async function runFirstRunWizardBody(deps: FirstRunWizardDeps, helpers: WizardHe
     "Codex delegation saved. Live routing is in PREVIEW; Muse answers locally until the bridge is verified.",
     "Codex 설정됨 · configured"
   );
+  return finishWithValue(deps, helpers, { choice: "codex", codexReady: true });
+}
+
+/**
+ * The shared "first value" tail every SUCCESSFUL provider branch routes through:
+ * offer the data-connect step, apply smart defaults, then show the personalized
+ * first-value success line + finale bird. Wholly fail-soft — any step error is
+ * swallowed so a value-tail hiccup can never brick the wizard; the marker is
+ * still written by `finish`.
+ */
+async function finishWithValue(
+  deps: FirstRunWizardDeps,
+  helpers: WizardHelpers,
+  partial: Omit<FirstRunResult, "markerWritten" | "dataConnected" | "skillsScaffolded" | "firstValueGrounded">
+): Promise<FirstRunResult> {
+  const { prompts } = deps;
+  let dataConnected: readonly string[] = [];
+  let skillsScaffolded = 0;
+  let firstValue = buildFirstValueLine({});
+
+  try {
+    const dc = await runDataConnectStep(deps);
+    dataConnected = dc.chosen;
+    skillsScaffolded = await applySmartDefaultsStep(deps);
+    const identity: { readonly name?: string } = deps.readIdentity
+      ? await deps.readIdentity().catch(() => ({}))
+      : {};
+    const fvCtx: FirstValueContext = {
+      ...(identity.name ? { userName: identity.name } : {}),
+      ...firstValueContextFromDataResult(dc.result)
+    };
+    firstValue = buildFirstValueLine(fvCtx);
+  } catch {
+    // fail-soft: never let the value tail brick `muse`.
+  }
+
   deps.celebrate?.();
-  prompts.outro?.("다 됐어요 — codex 라우팅이 준비될 때까지 로컬로 시작할게요.  ·  All set — starting local while codex bakes.");
-  return finish({ choice: "codex", codexReady: true });
+  prompts.outro?.(firstValue.line);
+  return helpers.finish({ ...partial, dataConnected, firstValueGrounded: firstValue.grounded, skillsScaffolded });
+}
+
+/** Offer the data-connect multi-select and route the picks through `setup data`. Skips when unwired. */
+async function runDataConnectStep(
+  deps: FirstRunWizardDeps
+): Promise<{ readonly chosen: readonly string[]; readonly result?: DataSetupResult }> {
+  const { prompts } = deps;
+  if (!deps.runDataConnect || !prompts.multiselect) return { chosen: [] };
+
+  const selected = await prompts.multiselect<string>({
+    message: FIRST_RUN_DATA_MESSAGE,
+    options: FIRST_RUN_DATA_OPTIONS.map((o) => ({ hint: o.hint, label: o.label, value: o.value })),
+    required: false
+  });
+  if (prompts.isCancel(selected) || !Array.isArray(selected) || selected.length === 0) {
+    prompts.note?.("나중에 언제든 `muse setup data` 로 연결할 수 있어요  ·  connect anytime with `muse setup data`.", "데이터 · Data");
+    return { chosen: [] };
+  }
+
+  const flags = dataFlagsFromSelection(selected);
+  const result = await deps.runDataConnect(flags);
+  return { chosen: selected, result };
+}
+
+/** Apply the sensible defaults (scaffold starter skills, confirm auto-extract). Skips when unwired. */
+async function applySmartDefaultsStep(deps: FirstRunWizardDeps): Promise<number> {
+  if (!deps.applyDefaults) return 0;
+  const { skillsScaffolded } = await deps.applyDefaults();
+  deps.prompts.note?.(smartDefaultsNote(skillsScaffolded), "기본값 · Smart defaults");
+  return skillsScaffolded;
 }
 
 export interface RunFirstRunInteractiveDeps {
@@ -377,18 +473,23 @@ export async function runFirstRunSetupInteractive(deps: RunFirstRunInteractiveDe
       confirm: (options) => clack.confirm(options),
       intro: (message) => clack.intro(message),
       isCancel: (value) => clack.isCancel(value),
+      multiselect: (options) => clack.multiselect(options as never) as Promise<never>,
       note: (message, title) => clack.note(message, title),
       outro: (message) => clack.outro(message),
       password: (options) => clack.password(options),
       select: (options) => clack.select(options as never) as Promise<never>
     };
+    const stdio = { stderr: (m: string) => process.stderr.write(m), stdout: (m: string) => process.stdout.write(m) };
     return await runFirstRunWizard({
+      applyDefaults: async () => ({ skillsScaffolded: await scaffoldStarterSkillsIfEmpty(resolveSkillsDir(env)) }),
       celebrate: celebrateFirstRun,
       env,
       home,
       probeLocal: () => probeLocalOllama(env, deps.fetch),
       prompts,
       readConfig: deps.readConfig,
+      readIdentity: () => readKnownUserName(env),
+      runDataConnect: (flags) => runDataSetupInFlagMode(stdio, flags, env),
       writeConfig: deps.writeConfig
     });
   } catch {
@@ -418,4 +519,31 @@ async function probeLocalOllama(env: NodeJS.ProcessEnv, fetchImpl?: typeof globa
     // unreachable
   }
   return { detail: "그다음 `muse onboard` 로 마무리하세요 · then run `muse onboard`.", reachable: false };
+}
+
+/** Name-like fact keys the first-value line may greet by (best-effort). */
+const NAME_FACT_KEYS: readonly string[] = ["name", "preferred_name", "full_name", "first_name", "이름"];
+
+/**
+ * Best-effort read of a known display name from the local user-memory store for
+ * the personalized first-value line. On a fresh install there is none — returns
+ * `{}` — so the line falls to a connected-source or content-free welcome. Never
+ * throws (a missing / unreadable store is just "no name").
+ */
+async function readKnownUserName(env: NodeJS.ProcessEnv): Promise<{ name?: string }> {
+  try {
+    const userId = (env.MUSE_USER_ID ?? env.USER ?? "default").trim() || "default";
+    const file = env.MUSE_USER_MEMORY_FILE?.trim() || join(homedir(), ".muse", "user-memory.json");
+    const raw = JSON.parse(await readFile(file, "utf8")) as {
+      users?: Record<string, { facts?: Record<string, string> }>;
+    };
+    const facts = raw.users?.[userId]?.facts ?? {};
+    for (const key of NAME_FACT_KEYS) {
+      const value = (facts[key] ?? "").trim();
+      if (value.length > 0) return { name: value };
+    }
+  } catch {
+    // no name available
+  }
+  return {};
 }

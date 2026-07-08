@@ -223,6 +223,25 @@ export function renderDataSetupSummary(io: ProgramIO, result: DataSetupResult): 
   io.stdout("  • RSS/Atom feeds:        muse feeds add <url>\n");
 }
 
+/**
+ * Run the data-connect steps in FLAG mode with the real default actions —
+ * the reuse seam for the first-run wizard, so ingestion is never hand-rolled
+ * elsewhere. Only the flag-selected steps run; the rest are declined.
+ */
+export async function runDataSetupInFlagMode(
+  io: Pick<ProgramIO, "stdout" | "stderr">,
+  flags: DataSetupFlags,
+  env: NodeJS.ProcessEnv = process.env
+): Promise<DataSetupResult> {
+  return runDataSetup({
+    actions: { importContacts: defaultImportContacts, syncBrowsing: defaultSyncBrowsing },
+    confirm: async () => false,
+    env,
+    flags,
+    io: io as ProgramIO
+  });
+}
+
 async function defaultSyncBrowsing(): Promise<BrowsingSyncOutcome> {
   const historyFile = await locateChromeHistoryFile();
   if (!historyFile) {
