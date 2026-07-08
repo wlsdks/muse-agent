@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **492** variables.
+Total: **502** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -114,6 +114,8 @@ Total: **492** variables.
 | `MUSE_CLI_VERSION` | apps/cli |
 | `MUSE_COMPACTION_IMPORTANCE_THRESHOLD` | packages/autoconfigure |
 | `MUSE_COMPACTION_STRATEGY` | packages/autoconfigure |
+| `MUSE_COMPANION_NO_MODEL` | apps/cli |
+| `MUSE_COMPANION_STATE_FILE` | apps/cli |
 | `MUSE_CONFLICT_WATCH_ENABLED` | apps/api, apps/cli |
 | `MUSE_CONFLICT_WATCH_INTERVAL_MS` | apps/cli |
 | `MUSE_CONFLICT_WATCH_SIDECAR_FILE` | apps/cli |
@@ -180,6 +182,7 @@ Total: **492** variables.
 | `MUSE_FOLLOWUP_SUGGESTION_RETENTION_MS` | packages/autoconfigure |
 | `MUSE_FOLLOWUP_TICK_MS` | apps/api, packages/proactivity |
 | `MUSE_FS_DENY` | apps/cli, packages/fs |
+| `MUSE_FS_DOC_ROOTS` | apps/cli, packages/fs |
 | `MUSE_FS_ROOTS` | apps/cli, packages/fs |
 | `MUSE_FS_TOOLS` | packages/fs |
 | `MUSE_GCAL_CALENDAR_ID` | packages/autoconfigure |
@@ -204,6 +207,8 @@ Total: **492** variables.
 | `MUSE_HOME_WATCH_QUIET_HOURS` | apps/api |
 | `MUSE_HOME_WATCH_TICK_MS` | apps/api |
 | `MUSE_HOOK_TRACE_MAX_ENTRIES` | packages/autoconfigure |
+| `MUSE_HUD` | apps/cli |
+| `MUSE_HUD_SEGMENTS` | apps/cli |
 | `MUSE_IDLE_LEARNING_ENABLED` | apps/cli |
 | `MUSE_INBOUND_AUTO_APPROVE` | apps/api |
 | `MUSE_INBOUND_REPLY_ENABLED` | apps/api |
@@ -261,13 +266,13 @@ Total: **492** variables.
 | `MUSE_MESSAGING_POLL_INTERVAL_MS` | apps/cli |
 | `MUSE_MODEL` | apps/api, apps/cli, apps/web, packages/autoconfigure, packages/domain-tools, packages/model |
 | `MUSE_MODEL_API_KEY` | packages/autoconfigure |
-| `MUSE_MODEL_BASE_URL` | packages/autoconfigure, packages/model |
+| `MUSE_MODEL_BASE_URL` | apps/cli, packages/autoconfigure, packages/model |
 | `MUSE_MODEL_EXTRA_HEADERS` | packages/autoconfigure |
 | `MUSE_MODEL_KEYS_FILE` | packages/autoconfigure |
 | `MUSE_MODEL_LIST` | packages/autoconfigure |
 | `MUSE_MODEL_PROVIDER_ID` | apps/cli, apps/web, packages/autoconfigure |
 | `MUSE_MODEL_REQUEST_TIMEOUT_MS` | packages/autoconfigure |
-| `MUSE_MODEL_TIMEOUT_MS` | packages/model |
+| `MUSE_MODEL_TIMEOUT_MS` | packages/autoconfigure, packages/model |
 | `MUSE_MODEL_TRACE` | packages/model |
 | `MUSE_MULTI_AGENT_DEFAULT_WORKERS` | packages/autoconfigure |
 | `MUSE_MULTI_AGENT_WORKER_TIMEOUT_MS` | apps/api |
@@ -287,6 +292,7 @@ Total: **492** variables.
 | `MUSE_NOTION_TASKS_TOKEN` | packages/autoconfigure |
 | `MUSE_NOTION_TITLE_PROPERTY` | packages/autoconfigure |
 | `MUSE_NOTION_TOKEN` | packages/autoconfigure |
+| `MUSE_NO_ANIM` | apps/cli |
 | `MUSE_OBJECTIVES_DESTINATION` | apps/api |
 | `MUSE_OBJECTIVES_FILE` | apps/cli, packages/autoconfigure |
 | `MUSE_OBJECTIVES_MAX_PER_TICK` | apps/api, packages/proactivity |
@@ -429,6 +435,7 @@ Total: **492** variables.
 | `MUSE_SKILL_COOLDOWN_FILE` | apps/api |
 | `MUSE_SKILL_CURATE_IDLE_DAYS` | apps/api |
 | `MUSE_SKILL_REWARDS_FILE` | packages/autoconfigure |
+| `MUSE_SKIP_FIRST_RUN` | apps/cli |
 | `MUSE_SLACK_AFTER_FILE` | packages/autoconfigure |
 | `MUSE_SLACK_BOT_TOKEN` | apps/cli, packages/autoconfigure, packages/domain-tools |
 | `MUSE_SLACK_INBOX_FILE` | packages/autoconfigure |
@@ -443,9 +450,12 @@ Total: **492** variables.
 | `MUSE_SLO_WINDOW_SECONDS` | packages/autoconfigure |
 | `MUSE_SNAPSHOT_UNAVAILABLE` | apps/api |
 | `MUSE_STATUS_SCHEMA_VERSION` | apps/cli |
+| `MUSE_STREAM_IDLE_TIMEOUT_MS` | packages/agent-core, packages/autoconfigure |
 | `MUSE_SUPPRESSED_LESSONS_FILE` | packages/autoconfigure |
 | `MUSE_SWARM_QUARANTINE_FILE` | apps/cli |
 | `MUSE_TAGLINE` | apps/cli |
+| `MUSE_TAGLINE_NO_MODEL` | apps/api |
+| `MUSE_TAGLINE_STATE_FILE` | apps/api |
 | `MUSE_TASKS_ENABLED` | packages/autoconfigure |
 | `MUSE_TASKS_FILE` | apps/cli, packages/autoconfigure, packages/mcp |
 | `MUSE_TASKS_LIST_MAX` | packages/autoconfigure |
