@@ -79,6 +79,7 @@ private struct OnboardingView: View {
     @State private var checking = true
     @State private var ready = false
     @State private var guidance = ""
+    @State private var readyLine = ""
 
     private let s = UIStrings.current()
     private let violet = Color(red: 0.62, green: 0.52, blue: 1.0)
@@ -145,7 +146,7 @@ private struct OnboardingView: View {
                 Text(s.onboardChecking).foregroundStyle(dim)
             } else if ready {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                Text(s.onboardReady).foregroundStyle(ink)
+                Text(readyLine.isEmpty ? s.onboardReady : readyLine).foregroundStyle(ink)
             } else {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
                 Text(guidance).foregroundStyle(dim).fixedSize(horizontal: false, vertical: true)
@@ -163,7 +164,9 @@ private struct OnboardingView: View {
         checking = true
         let status = await OllamaHealth.check()
         ready = status == .ok
-        guidance = OnboardingGuidance.text(for: status, korean: UIStrings.current().lang == .korean)
+        let korean = UIStrings.current().lang == .korean
+        guidance = OnboardingGuidance.text(for: status, korean: korean)
+        if ready { readyLine = OnboardingGuidance.readyLine(korean: korean, deterministic: WindowPlacer.isTestMode) }
         checking = false
     }
 }
