@@ -8,6 +8,38 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.27] - 2026-07-09
+
+Two headline additions — bring your own ChatGPT-subscription model via Codex, and
+the grounding gate now covers the chat API too — plus memory/observability polish.
+
+### Added
+
+- **Codex delegation (opt-in).** If you have a ChatGPT Plus/Pro subscription and the
+  official `codex` CLI installed + logged in, you can point Muse's chat/ask at it —
+  Muse shells out to the official CLI (read-only sandbox, ephemeral, neutral workdir)
+  and **never touches your OAuth token**. It's **off by default** (local stays the
+  default), selected only via `--model codex/codex-default` or an opt-in setup choice,
+  and blocked under `MUSE_LOCAL_ONLY=true`. Heads-up: using a ChatGPT *subscription* to
+  back a third-party app is an unofficial, gray-area route (a cloud API key is the
+  clean path) — Muse says so up front. Text answers only (no tool-calling via Codex);
+  Muse still grounds and cites the result.
+- **Compaction failure telemetry.** Memory-compaction failures are now classified into
+  bounded reasons (no-compactable-entries / below-threshold / guard-blocked / summary-
+  failed / timeout / provider 4xx·5xx / unknown) instead of opaque strings.
+- **`muse browsing search --json`** now emits the same grounded block (`groundedVerdict`
+  + citations) as `muse ask --json`, for consistent scripting across surfaces.
+
+### Fixed
+
+- **The chat API is now grounded like everything else.** `/chat` and `/api/chat` (and
+  the streaming variants) route through the same deterministic grounding + citation gate
+  as `/api/ask`: an ungroundable claim is dropped by code (→ "I'm not sure"), a grounded
+  answer passes through unchanged, and the response carries the grounding verdict. This
+  closes a real hole in Muse's core "every claim cites a real source" guarantee.
+- The chat-ink "generating…" line and interactive grounding parity (Korean NFC input,
+  pronoun follow-up rewrite) are now regression-guarded with wiring-level tests.
+
 ## [0.2.26] - 2026-07-08
 
 The remaining pre-release polish items from the deep CLI audit: sharper command
