@@ -1,39 +1,50 @@
 /*
- * Muse web theme — derived from design/DESIGN.md (Linear, MIT-licensed,
- * VoltAgent/awesome-design-md). Dark-canvas surface ladder, lavender-blue
- * accent used scarcely, hairline borders, Inter / JetBrains Mono substitutes.
+ * Muse web theme — a calm, precise dark surface inspired by Toss & Apple.
+ * Neutrals carry a subtle cool-violet bias (never flat grey), a considered
+ * elevation ladder (canvas → card → raised) with soft shadows and hairline
+ * borders, and ONE confident indigo accent used with restraint. System font
+ * stack only (SF/-apple-system) — the app ships offline; no webfonts.
  */
 
 :root {
-  --canvas: #010102;
-  --surface-1: #0f1011;
-  --surface-2: #141516;
-  --surface-3: #18191a;
-  --surface-4: #191a1b;
+  /* Elevation ladder — cool-biased darks, not pure grey/black. Each step is a
+     perceptible-but-gentle lift so depth reads without harsh contrast. */
+  --canvas: #0a0b0f;
+  --surface-1: #101219;
+  --surface-2: #161822;
+  --surface-3: #1d202b;
+  --surface-4: #242734;
 
-  --hairline: #23252a;
-  --hairline-strong: #34343a;
-  --hairline-tertiary: #3e3e44;
+  /* Hairlines — soft, blue-tinted separators; never a hard grey line. */
+  --hairline: #22252f;
+  --hairline-strong: #2e3240;
+  --hairline-tertiary: #3b4050;
 
-  --ink: #f7f8f8;
-  --ink-muted: #d0d6e0;
-  --ink-subtle: #8a8f98;
-  --ink-tertiary: #62666d;
+  --ink: #f4f6fb;
+  --ink-muted: #c3c8d6;
+  --ink-subtle: #868ca0;
+  --ink-tertiary: #5b6072;
 
+  /* The single accent — indigo/lavender. Used scarcely, on purpose. */
   --primary: #5e6ad2;
   --primary-hover: #828fff;
-  --primary-focus: #5e69d1;
+  --primary-focus: #6b78e8;
   --on-primary: #ffffff;
+  /* Translucent accent washes for tints/glows (composite over any surface). */
+  --accent-soft: color-mix(in srgb, var(--primary) 16%, transparent);
+  --accent-softer: color-mix(in srgb, var(--primary) 8%, transparent);
 
-  --success: #27a644;
-  --warn: #d9a441;
-  --danger: #d2564b;
+  /* Semantic colors — kept distinct from the accent. */
+  --success: #3fb950;
+  --warn: #e3b341;
+  --danger: #e5534b;
 
   --r-xs: 4px;
   --r-sm: 6px;
-  --r-md: 8px;
-  --r-lg: 12px;
-  --r-xl: 16px;
+  --r-md: 9px;
+  --r-lg: 13px;
+  --r-xl: 18px;
+  --r-card: 16px;
   --r-pill: 9999px;
 
   --s-xxs: 4px;
@@ -44,10 +55,27 @@
   --s-xl: 32px;
   --s-xxl: 48px;
 
-  --font-sans: "Inter", "SF Pro Display", -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  /* Soft, layered elevation shadows — low-opacity so dark surfaces lift
+     without a heavy drop-shadow look. */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 18px 48px -12px rgba(0, 0, 0, 0.55);
+  --shadow-accent: 0 6px 20px -6px color-mix(in srgb, var(--primary) 45%, transparent);
 
-  --sidebar-w: 232px;
+  /* Type scale — a fixed ladder so sizes are chosen, never eyeballed. */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-ui: 13px;
+  --text-body: 14px;
+  --text-md: 15px;
+  --text-lg: 17px;
+  --text-xl: 21px;
+  --text-2xl: 28px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+
+  --sidebar-w: 240px;
   --topbar-h: 56px;
 }
 
@@ -71,10 +99,12 @@ body {
   background: var(--canvas);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.5;
-  letter-spacing: -0.05px;
+  font-size: var(--text-md);
+  line-height: 1.55;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 
@@ -84,7 +114,7 @@ h3,
 h4 {
   margin: 0;
   font-weight: 600;
-  letter-spacing: -0.4px;
+  letter-spacing: -0.02em;
   color: var(--ink);
 }
 
@@ -109,14 +139,26 @@ button {
   border-radius: var(--r-pill);
   border: 3px solid var(--canvas);
 }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--hairline-tertiary);
+}
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
 :focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--primary-focus) 60%, transparent);
-  outline-offset: 1px;
+  outline: 2px solid color-mix(in srgb, var(--primary-focus) 70%, transparent);
+  outline-offset: 2px;
   border-radius: var(--r-sm);
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
 
 /* ── App shell ───────────────────────────────────────────── */
@@ -135,9 +177,9 @@ button {
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: var(--s-xs);
-  padding: var(--s-md);
-  background: var(--canvas);
+  gap: 2px;
+  padding: var(--s-sm) var(--s-sm) var(--s-md);
+  background: color-mix(in srgb, var(--canvas) 82%, #000);
   border-right: 1px solid var(--hairline);
   overflow-y: auto;
 }
@@ -146,64 +188,83 @@ button {
   display: flex;
   align-items: center;
   gap: var(--s-sm);
-  padding: var(--s-xs) var(--s-xs) var(--s-md);
+  padding: var(--s-sm) var(--s-xs) var(--s-md);
 }
 .brand-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-sm);
-  background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-md);
+  background: linear-gradient(140deg, var(--primary-hover), var(--primary));
   display: grid;
   place-items: center;
   color: var(--on-primary);
   font-weight: 700;
-  font-size: 14px;
+  font-size: var(--text-md);
   flex: none;
+  box-shadow: var(--shadow-accent), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 .brand-name {
-  font-weight: 600;
-  font-size: 16px;
-  letter-spacing: -0.4px;
+  font-weight: 650;
+  font-size: var(--text-lg);
+  letter-spacing: -0.02em;
 }
 .brand-sub {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--ink-tertiary);
-  letter-spacing: 0.3px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .nav-group-label {
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.4px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--ink-tertiary);
-  padding: var(--s-md) var(--s-xs) var(--s-xxs);
+  padding: var(--s-md) var(--s-sm) var(--s-xxs);
 }
 
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--s-sm);
   width: 100%;
-  padding: var(--s-xs) var(--s-sm);
+  padding: 8px var(--s-sm);
   border: none;
   border-radius: var(--r-md);
   background: transparent;
   color: var(--ink-subtle);
-  font-size: 14px;
+  font-size: var(--text-body);
   font-weight: 500;
   cursor: pointer;
   text-align: left;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background 0.14s ease, color 0.14s ease;
 }
 .nav-item:hover {
   background: var(--surface-1);
   color: var(--ink-muted);
 }
 .nav-item.active {
-  background: var(--surface-2);
+  background: var(--accent-softer);
   color: var(--ink);
+  font-weight: 600;
+}
+/* A slim accent bar marks the active view — the Toss/Linear left indicator. */
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: -2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: var(--r-pill);
+  background: var(--primary-hover);
+}
+.nav-item.active .nav-icon {
+  color: var(--primary-hover);
+  opacity: 1;
 }
 /* Icons carry only a viewBox (no width/height attr), so they MUST be sized in
    CSS everywhere they appear — not just in the sidebar. Without this, an icon in
@@ -244,12 +305,12 @@ button {
   border: none;
   background: transparent;
   color: var(--ink-subtle);
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
   padding: 3px 9px;
   border-radius: var(--r-sm);
   cursor: pointer;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition: background 0.14s ease, color 0.14s ease;
 }
 .lang-toggle button:hover {
   color: var(--ink-muted);
@@ -257,6 +318,7 @@ button {
 .lang-toggle button.active {
   background: var(--surface-3);
   color: var(--ink);
+  box-shadow: var(--shadow-sm);
 }
 
 /* ── Main column ─────────────────────────────────────────── */
@@ -276,11 +338,13 @@ button {
   flex: none;
   padding: 0 var(--s-lg);
   border-bottom: 1px solid var(--hairline);
-  background: var(--canvas);
+  background: color-mix(in srgb, var(--canvas) 78%, transparent);
+  backdrop-filter: saturate(140%) blur(12px);
 }
 .topbar h2 {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--text-md);
+  font-weight: 650;
+  letter-spacing: -0.01em;
 }
 .topbar .spacer {
   flex: 1;
@@ -290,20 +354,20 @@ button {
   flex: 1;
   min-height: 0; /* let the flex child shrink below content size so overflow scrolls */
   overflow-y: auto;
-  padding: var(--s-lg);
+  padding: var(--s-xl) var(--s-lg) var(--s-xxl);
 }
 .view {
   min-height: 100%;
-  animation: viewIn 0.16s ease;
+  animation: viewIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 @keyframes viewIn {
   from {
     opacity: 0;
-    transform: translateY(4px);
+    transform: translateY(6px);
   }
 }
 .content-narrow {
-  max-width: 920px;
+  max-width: 960px;
   margin: 0 auto;
 }
 
@@ -376,6 +440,7 @@ button {
 .tab.active {
   background: var(--surface-3);
   color: var(--ink);
+  box-shadow: var(--shadow-sm);
 }
 
 /* ── Dashboard bar chart ─────────────────────────────────── */
@@ -451,16 +516,19 @@ button {
 .card {
   background: var(--surface-1);
   border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-card);
   padding: var(--s-lg);
-  transition: border-color 0.14s ease;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 .card:hover {
   border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-md);
 }
 .card.lifted {
   background: var(--surface-2);
   border-color: var(--hairline-strong);
+  box-shadow: var(--shadow-md);
 }
 .card-head {
   display: flex;
@@ -469,13 +537,20 @@ button {
   margin-bottom: var(--s-md);
 }
 .card-head h3 {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--text-md);
+  font-weight: 620;
+  letter-spacing: -0.01em;
 }
 .card-head .count {
-  font-size: 12px;
-  color: var(--ink-tertiary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-subtle);
   font-variant-numeric: tabular-nums;
+  background: var(--surface-3);
+  border-radius: var(--r-pill);
+  padding: 1px 8px;
+  min-width: 20px;
+  text-align: center;
 }
 .card-head .head-action {
   margin-left: auto;
@@ -499,17 +574,18 @@ button {
 }
 
 .eyebrow {
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.4px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ink-subtle);
+  color: var(--primary-hover);
   margin: 0 0 var(--s-xs);
 }
 .page-title {
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: -0.6px;
+  font-size: var(--text-2xl);
+  font-weight: 680;
+  letter-spacing: -0.028em;
+  line-height: 1.15;
 }
 .muted {
   color: var(--ink-subtle);
@@ -519,7 +595,8 @@ button {
 }
 .mono {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--text-ui);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Buttons ─────────────────────────────────────────────── */
@@ -529,34 +606,39 @@ button {
   align-items: center;
   justify-content: center;
   gap: var(--s-xs);
-  padding: 8px 14px;
+  padding: 8px 15px;
   border-radius: var(--r-md);
   border: 1px solid transparent;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--text-body);
+  font-weight: 550;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.12s ease;
+  transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease,
+    opacity 0.14s ease, transform 0.08s ease;
   white-space: nowrap;
 }
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
+}
+.btn:active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.985);
 }
 .btn-primary {
   background: var(--primary);
   color: var(--on-primary);
+  box-shadow: var(--shadow-accent), inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--primary-hover);
 }
 .btn-secondary {
-  background: var(--surface-1);
+  background: var(--surface-2);
   color: var(--ink);
-  border-color: var(--hairline);
+  border-color: var(--hairline-strong);
 }
 .btn-secondary:hover:not(:disabled) {
-  background: var(--surface-2);
-  border-color: var(--hairline-strong);
+  background: var(--surface-3);
+  border-color: var(--hairline-tertiary);
 }
 .btn-ghost {
   background: transparent;
@@ -567,34 +649,35 @@ button {
   color: var(--ink);
 }
 .btn-sm {
-  padding: 5px 10px;
-  font-size: 13px;
+  padding: 5px 11px;
+  font-size: var(--text-ui);
 }
 .btn-danger:hover:not(:disabled) {
-  border-color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
   color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 /* ── Inputs ──────────────────────────────────────────────── */
 
 .field-label {
   display: block;
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: 550;
   color: var(--ink-subtle);
-  margin-bottom: var(--s-xxs);
+  margin-bottom: 6px;
 }
 .input,
 .textarea {
   width: 100%;
   background: var(--surface-1);
   color: var(--ink);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--hairline-strong);
   border-radius: var(--r-md);
-  padding: 9px 12px;
-  font-size: 14px;
+  padding: 10px 13px;
+  font-size: var(--text-body);
   font-family: inherit;
-  transition: border-color 0.12s ease;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, background 0.14s ease;
 }
 .input::placeholder,
 .textarea::placeholder {
@@ -604,6 +687,8 @@ button {
 .textarea:focus {
   outline: none;
   border-color: var(--primary-focus);
+  background: var(--surface-2);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .textarea {
   resize: vertical;
@@ -616,13 +701,14 @@ button {
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 2px 9px;
+  gap: 6px;
+  padding: 3px 10px;
   border-radius: var(--r-pill);
   background: var(--surface-2);
+  border: 1px solid var(--hairline);
   color: var(--ink-muted);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--text-sm);
+  font-weight: 550;
   letter-spacing: 0;
 }
 .badge .dot {
@@ -630,6 +716,7 @@ button {
   height: 6px;
   border-radius: 50%;
   background: var(--ink-subtle);
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);
 }
 .badge.ok {
   color: var(--success);
@@ -662,27 +749,33 @@ button {
   display: flex;
   align-items: center;
   gap: var(--s-sm);
-  padding: var(--s-sm) 0;
+  padding: 11px var(--s-sm);
+  margin: 0 calc(-1 * var(--s-sm));
+  border-radius: var(--r-md);
   border-bottom: 1px solid var(--hairline);
+  transition: background 0.14s ease;
 }
 .row:last-child {
   border-bottom: none;
+}
+.row:hover {
+  background: var(--surface-2);
 }
 .row .row-main {
   min-width: 0;
   flex: 1;
 }
 .row .row-title {
-  font-size: 14px;
+  font-size: var(--text-body);
   color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .row .row-meta {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--ink-tertiary);
-  margin-top: 2px;
+  margin-top: 3px;
 }
 .row-actions {
   display: flex;
@@ -691,8 +784,8 @@ button {
 }
 
 .checkbox {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   border-radius: var(--r-sm);
   border: 1.5px solid var(--hairline-tertiary);
   background: transparent;
@@ -702,16 +795,55 @@ button {
   place-items: center;
   color: var(--success);
   padding: 0;
+  transition: border-color 0.14s ease, background 0.14s ease;
 }
 .checkbox:hover {
-  border-color: var(--ink-subtle);
+  border-color: var(--primary-hover);
+  background: var(--accent-softer);
 }
 
+/* Empty / error / loading placeholder — a warm, composed state, never a bare
+   line of flat grey text. An optional icon chip + title + hint stack. */
 .empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   text-align: center;
-  color: var(--ink-tertiary);
-  font-size: 14px;
+  color: var(--ink-subtle);
+  font-size: var(--text-body);
   padding: var(--s-xl) var(--s-md);
+}
+.empty-ic {
+  width: 44px;
+  height: 44px;
+  margin-bottom: var(--s-xs);
+  border-radius: var(--r-lg);
+  display: grid;
+  place-items: center;
+  color: var(--ink-subtle);
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+}
+.empty-ic svg {
+  width: 22px;
+  height: 22px;
+}
+.empty-title {
+  color: var(--ink-muted);
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+.empty-hint {
+  color: var(--ink-tertiary);
+  font-size: var(--text-ui);
+  max-width: 340px;
+}
+.empty.err .empty-ic {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
 }
 
 .note-row {
@@ -758,17 +890,41 @@ button {
 .stat {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 .stat .value {
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: -0.6px;
+  font-size: var(--text-2xl);
+  font-weight: 680;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
 }
 .stat .label {
-  font-size: 12px;
+  font-size: var(--text-ui);
+  font-weight: 500;
   color: var(--ink-subtle);
+}
+
+/* A stat card that leads with an accent icon chip — the Toss summary tile. */
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: var(--s-md);
+}
+.stat-ic {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: var(--r-lg);
+  display: grid;
+  place-items: center;
+  color: var(--primary-hover);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--primary) 26%, transparent);
+}
+.stat-ic svg {
+  width: 20px;
+  height: 20px;
 }
 
 /* ── Chat ────────────────────────────────────────────────── */
@@ -799,35 +955,50 @@ button {
   flex-direction: column;
   gap: var(--s-lg);
 }
+.chat-welcome-ic {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-xl);
+  color: var(--primary-hover);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--primary) 26%, transparent);
+  box-shadow: var(--shadow-accent);
+}
+.chat-welcome-ic svg {
+  width: 28px;
+  height: 28px;
+}
 .msg {
   display: flex;
   gap: var(--s-sm);
 }
 .msg .avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--r-sm);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-md);
   flex: none;
   display: grid;
   place-items: center;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--text-xs);
+  font-weight: 700;
 }
 .msg.user .avatar {
   background: var(--surface-3);
+  border: 1px solid var(--hairline-strong);
   color: var(--ink-muted);
 }
 .msg.assistant .avatar {
-  background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+  background: linear-gradient(140deg, var(--primary-hover), var(--primary));
   color: var(--on-primary);
+  box-shadow: var(--shadow-accent);
 }
 .msg .bubble {
   padding-top: 3px;
   min-width: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: var(--text-md);
+  line-height: 1.65;
   color: var(--ink-muted);
 }
 .msg.user .bubble {
@@ -855,11 +1026,12 @@ button {
   display: flex;
   gap: var(--s-sm);
   align-items: flex-end;
-  background: var(--surface-1);
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-lg);
-  padding: var(--s-xs);
-  transition: border-color 0.12s ease;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-xl);
+  padding: 6px;
+  box-shadow: var(--shadow-md);
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
 }
 
 /* ── Desk pet (pixel bluebird on the composer's top edge) ──── */
@@ -961,6 +1133,7 @@ button {
 }
 .composer-box:focus-within {
   border-color: var(--primary-focus);
+  box-shadow: var(--shadow-md), 0 0 0 3px var(--accent-soft);
 }
 .composer-box textarea {
   flex: 1;
@@ -1324,15 +1497,17 @@ button {
   gap: var(--s-sm);
 }
 .notice {
-  border-left: 2px solid var(--primary);
-  padding: var(--s-xs) var(--s-sm);
-  background: var(--surface-1);
+  border-left: 2px solid var(--primary-hover);
+  padding: 10px var(--s-md);
+  background: linear-gradient(90deg, var(--accent-softer), transparent 70%), var(--surface-1);
   border-radius: 0 var(--r-md) var(--r-md) 0;
 }
 .notice .notice-text {
-  font-size: 14px;
+  font-size: var(--text-body);
+  color: var(--ink-muted);
 }
 .notice .notice-time {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--ink-tertiary);
+  margin-top: 2px;
 }

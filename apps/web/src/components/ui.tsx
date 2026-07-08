@@ -80,24 +80,52 @@ export function Badge({
   );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="empty">{children}</div>;
+export function Empty({
+  children,
+  hint,
+  icon,
+  tone = "neutral"
+}: {
+  children: ReactNode;
+  hint?: ReactNode;
+  icon?: ReactNode;
+  tone?: "neutral" | "err";
+}) {
+  const glyph = icon ?? <Icon.inbox />;
+  return (
+    <div className={tone === "err" ? "empty err" : "empty"}>
+      <div className="empty-ic">{glyph}</div>
+      <div className="empty-title">{children}</div>
+      {hint && <div className="empty-hint">{hint}</div>}
+    </div>
+  );
 }
 
 function Spinner() {
   return <span className="spinner" aria-label="loading" />;
 }
 
-export function Stat({ value, label }: { value: ReactNode; label: string }) {
-  return (
+export function Stat({ value, label, icon }: { value: ReactNode; label: string; icon?: ReactNode }) {
+  const body = (
     <div className="stat">
       <span className="value">{value}</span>
       <span className="label">{label}</span>
     </div>
   );
+  if (!icon) {
+    return body;
+  }
+  return (
+    <div className="stat-card">
+      <span className="stat-ic" aria-hidden="true">
+        {icon}
+      </span>
+      {body}
+    </div>
+  );
 }
 
-/** Renders query state uniformly: spinner while loading, message on error. */
+/** Renders query state uniformly: spinner while loading, warm empty/error state otherwise. */
 export function AsyncBlock({
   loading,
   error,
@@ -118,7 +146,11 @@ export function AsyncBlock({
     );
   }
   if (error) {
-    return <Empty>{error instanceof Error ? error.message : t("common.loadFailed")}</Empty>;
+    return (
+      <Empty tone="err" icon={<Icon.alert />} hint={error instanceof Error ? error.message : undefined}>
+        {t("common.loadFailed")}
+      </Empty>
+    );
   }
   if (empty) {
     return <Empty>{t("common.empty")}</Empty>;
@@ -210,6 +242,22 @@ export const Icon = {
       <>
         <rect x="3" y="5" width="18" height="14" rx="2" />
         <path d="M3 7l9 6 9-6" />
+      </>
+    ),
+  inbox: (p: IconProps) =>
+    base(
+      p,
+      <>
+        <path d="M3 12h5l2 3h4l2-3h5" />
+        <path d="M5 5h14l2 7v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-5z" />
+      </>
+    ),
+  alert: (p: IconProps) =>
+    base(
+      p,
+      <>
+        <path d="M12 3l9 16H3z" />
+        <path d="M12 10v4M12 17v.5" />
       </>
     )
 };

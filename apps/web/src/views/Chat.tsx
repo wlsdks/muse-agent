@@ -64,9 +64,12 @@ export function ChatView({ client }: { client: ApiClient }) {
       <div className="chat-scroll" ref={scrollRef}>
         <div className="chat-thread">
           {turns.length === 0 && (
-            <div className="empty" style={{ marginTop: 80 }}>
-              <div style={{ color: "var(--ink-muted)", fontSize: 18, marginBottom: 6 }}>{t("chat.askAnything")}</div>
-              <div>{t("chat.askSub")}</div>
+            <div className="empty chat-welcome" style={{ marginTop: 96 }}>
+              <div className="empty-ic chat-welcome-ic" aria-hidden="true">
+                <Icon.chat />
+              </div>
+              <div className="empty-title" style={{ fontSize: "var(--text-xl)" }}>{t("chat.askAnything")}</div>
+              <div className="empty-hint">{t("chat.askSub")}</div>
             </div>
           )}
           {turns.map((turn, i) => (

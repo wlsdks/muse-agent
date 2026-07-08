@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { AsyncBlock, Card, Stat } from "../components/ui.js";
+import { AsyncBlock, Card, Icon, Stat } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
 import { safeDateTime } from "../lib/datetime.js";
 
@@ -54,15 +54,15 @@ export function TodayView({ client }: { client: ApiClient }) {
         {t("today.summary", { events: events.length, reminders: reminders.length, tasks: tasks.length })}
       </p>
 
-      <div className="grid grid-3" style={{ margin: "24px 0" }}>
+      <div className="grid grid-3" style={{ margin: "28px 0" }}>
         <Card>
-          <Stat value={tasks.length} label={t("today.openTasks")} />
+          <Stat value={tasks.length} label={t("today.openTasks")} icon={<Icon.task />} />
         </Card>
         <Card>
-          <Stat value={events.length} label={t("today.upcomingEvents")} />
+          <Stat value={events.length} label={t("today.upcomingEvents")} icon={<Icon.calendar />} />
         </Card>
         <Card>
-          <Stat value={reminders.length} label={t("today.pendingReminders")} />
+          <Stat value={reminders.length} label={t("today.pendingReminders")} icon={<Icon.bell />} />
         </Card>
       </div>
 
