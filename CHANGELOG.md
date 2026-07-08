@@ -8,6 +8,30 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.26] - 2026-07-08
+
+The remaining pre-release polish items from the deep CLI audit: sharper command
+naming, a consistent error voice, and a knob for a slow model.
+
+### Fixed
+
+- **`approval` vs `approvals` are no longer confusable.** The two adjacent groups
+  both exposed `approve <id>`/`list`; their descriptions now name their distinct
+  domains and cross-reference each other — `approval` = tool-call trust decisions,
+  `approvals` = the outbound draft-first action worklist. (Names unchanged — no
+  breaking change.)
+- **Consistent error voice.** `import`, `ingest`, `bg`, and `approvals` now print
+  failures through one `muse <command>: <message>` envelope instead of a mix of
+  ad-hoc prefixes, with exit codes and stdout/stderr routing unchanged.
+
+### Added
+
+- **`MUSE_STREAM_IDLE_TIMEOUT_MS`** makes the streaming idle-timeout tunable. A
+  model that connects but never responds no longer freezes `ask`/`chat` for the
+  fixed 3 minutes — set e.g. `MUSE_STREAM_IDLE_TIMEOUT_MS=8000` to fail fast. The
+  default (180 s) is unchanged, and the value can only *shorten* a real stall
+  (`0`/negative/non-numeric fall back to the default, so it can't be disabled).
+
 ## [0.2.25] - 2026-07-08
 
 A second, deeper pre-release CLI audit (four independent expert passes — no
