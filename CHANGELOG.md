@@ -8,6 +8,66 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.20] - 2026-07-08
+
+Muse gets a face and a fresh coat of paint: the pixel bluebird now lives across
+the whole app, the in-app UI got a Toss/Apple-grade redesign, the `muse` chat
+fills your terminal like a proper TUI — and Muse is now provider-neutral, with
+cloud allowed by default.
+
+### ⚠️ Heads-up
+
+- **Cloud is now allowed by default; `MUSE_LOCAL_ONLY` is opt-in.** Muse runs on
+  cloud or local models — your choice. To keep the old strictly-on-device
+  posture (no cloud egress, fail-closed), set `MUSE_LOCAL_ONLY=true`: the
+  guarantee and its gate are fully kept, just no longer forced. With no cloud key
+  set, Muse still boots on the local default (gemma4:12b).
+
+### Added
+
+- **The bluebird, everywhere.** An original, code-drawn pixel bluebird mascot is
+  now the app icon, the menu-bar glyph, the animated desktop companion, the CLI
+  banner, and the web DeskPet — the old goddess imagery is retired.
+- **A companion with personality.** The desktop bluebird cracks little jokes,
+  teases gently, and speaks real, grounded context (your next reminder, a due
+  task) — varied every time, and it can never assert a fact it doesn't have
+  (fabrication = 0).
+- **Toss/Apple-grade in-app redesign.** The web UI (chat, today, sidebar, cards,
+  empty states) moved from flat grey to a calm, precise dark design — a
+  considered accent, soft depth, tabular numerals, refined typography.
+- **A personalized sidebar tagline.** Instead of a fixed "AI Conductor", the
+  sidebar shows a fun line personalized to what Muse knows about you ("개발자·커피
+  담당") — different each open, and grounded (never invented).
+- **Full-screen `muse` chat.** The terminal chat now fills the screen like a
+  proper TUI: banner on top, a big canvas, the input pinned at the bottom, a
+  one-line status bar — Korean (IME) input preserved.
+- **Grounded proactive openers** (`muse companion-line`) drawn from your real
+  calendar / reminders / notes.
+
+### Changed
+
+- **Instant chat open.** `muse` no longer composes a full morning briefing on
+  startup (a weather fetch + two model calls) — the chat appears immediately; the
+  day view is on demand via `muse today`.
+- The onboarding window is centered and right-sized with an Apple-style layout,
+  and its "ready" copy now reads human (and varies), not a machine string.
+
+### Fixed
+
+- The bundled desktop CLI crashed at startup on `node:sqlite` — fixed, so the
+  companion's openers and real in-app chat work again.
+- `file_read` no longer scans Downloads / Desktop / Documents unprompted (no more
+  surprise macOS permission prompt); it's opt-in via `MUSE_FS_DOC_ROOTS`.
+- Chat answers route through a hardened citation gate; the interactive chat gains
+  contextual query rewrite, NFC-normalized input, and weakness-ledger parity.
+- The chat mascot no longer clips at the top; honest connection-refused hints for
+  API-only admin commands.
+
+### Developer
+
+- A predictable window-placement layer + `apps/desktop/scripts/shot.sh` let the
+  desktop app be driven and screenshotted deterministically for tests.
+
 ## [0.2.19] - 2026-07-08
 
 The bluebird takes over every surface — and fixed a real chat bug on
