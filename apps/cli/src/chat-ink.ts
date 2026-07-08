@@ -9,7 +9,7 @@
  * Render-free logic lives in `chat-ink-core.ts` and is unit-tested.
  */
 
-import { Box, Static, Text, useApp, useCursor, useInput } from "ink";
+import { Box, Static, Text, useApp, useCursor, useInput, useStdout } from "ink";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { trimConversationMessages, type ConversationTrimOptions, type DroppedContextSummarizer } from "@muse/memory";
@@ -19,6 +19,7 @@ import {
   chatHelp,
   cursorCoords,
   emptyInput,
+  homeInputCursorY,
   extractAttachmentPaths,
   imageMimeForPath,
   formatCompactPreview,
@@ -218,6 +219,16 @@ export function MuseChatApp(props: {
 }): React.ReactElement {
   const app = useApp();
   const { setCursorPosition } = useCursor();
+  const { stdout } = useStdout();
+  // Full-screen layout needs the live terminal height; re-render on resize so
+  // the canvas/HUD reflow (Ink doesn't force a re-render on SIGWINCH by itself).
+  const [, bumpResize] = useState(0);
+  useEffect(() => {
+    if (!stdout || typeof stdout.on !== "function") return undefined;
+    const onResize = (): void => bumpResize((n) => n + 1);
+    stdout.on("resize", onResize);
+    return () => { stdout.off?.("resize", onResize); };
+  }, [stdout]);
   const [turns, setTurns] = useState<readonly DisplayTurn[]>(
     props.recap ? [{ role: props.recapRole ?? "system", text: props.recap }] : []
   );
@@ -729,14 +740,37 @@ export function MuseChatApp(props: {
     setInputState(result.state);
   });
 
-  // Place the REAL terminal cursor at the input column INSIDE the box so a
-  // CJK IME composes there (same technique as the official Ink cursor-ime
-  // example and claude-code). Called in the render body — `useCursor` stores
-  // it in a ref and applies it during commit via useInsertionEffect, so a
-  // post-commit useEffect would lag a frame and reset the cursor. Idle: the
-  // box is the first dynamic block, input row at y=1. Busy: hide it.
+  // Layout: HOME (no turns yet) fills the terminal — banner at top, a flexGrow
+  // canvas, then the input box pinned near the bottom with the HUD at the very
+  // bottom (the Claude-Code feel). Once a turn exists the past turns scroll into
+  // <Static> scrollback and the live region is a compact stack (streaming →
+  // approval → input → menu → hint → HUD) sitting just under the transcript, so
+  // the input stays at the bottom of the live area while answers scroll up.
+  const rows = stdout?.rows ?? 24;
+  const isHome = turns.length === 0;
+  const placeholder = "Ask me anything";
+  const lines = inputState.value.length > 0 ? inputState.value.split("\n") : [""];
+  const menuRows = slashMenu.length > 0
+    ? slashMenu.length
+    : agentMenu.length > 0
+      ? agentMenu.length
+      : modelMenu.length > 0
+        ? Math.min(modelMenu.length, 8)
+        : 0;
+
+  // Place the REAL terminal cursor at the input column INSIDE the box so a CJK
+  // IME composes there (same technique as the official Ink cursor-ime example
+  // and claude-code). Called in the render body — `useCursor` stores it in a ref
+  // and applies it during commit via useInsertionEffect, so a post-commit
+  // useEffect would lag a frame and reset the cursor. HOME anchors the cursor
+  // from the BOTTOM of the full-height region (banner + canvas heights above are
+  // decided by flex layout and can't be counted from the top); ACTIVE keeps the
+  // input as the first live block, content row y=1. Busy: hide it.
   const caret = cursorCoords(inputState);
-  setCursorPosition(busy || exiting ? undefined : { x: INPUT_COL_OFFSET + caret.col, y: 1 + caret.line });
+  const cursorY = isHome
+    ? homeInputCursorY({ rows, inputLines: lines.length, caretLine: caret.line, menuRows, hasNotice: commandNotice !== undefined })
+    : 1 + caret.line;
+  setCursorPosition(busy || exiting ? undefined : { x: INPUT_COL_OFFSET + caret.col, y: cursorY });
 
   const transcript = h(Static, {
     children: (item: unknown, index: number) => {
@@ -764,7 +798,10 @@ export function MuseChatApp(props: {
       return h(Box, { key: index, marginBottom: 1, paddingLeft: 2 },
         turn.role === "system" ? h(Text, { dimColor: true }, turn.text) : renderMarkdown(turn.text));
     },
-    items: [props.banner, ...turns]
+    // On the HOME screen the banner lives in the (full-height) live region;
+    // it only moves into scrollback once real turns exist, so it never renders
+    // twice.
+    items: isHome ? [] : [props.banner, ...turns]
   });
 
   // Teardown frame: leave only the transcript so the input box and its
@@ -773,8 +810,87 @@ export function MuseChatApp(props: {
     return h(Box, { flexDirection: "column" }, transcript);
   }
 
-  const placeholder = "Ask me anything";
-  const lines = inputState.value.length > 0 ? inputState.value.split("\n") : [""];
+  const inputBox = h(Box, { borderColor: busy ? "gray" : "cyan", borderStyle: "round", flexDirection: "column", paddingX: 1 },
+    ...lines.map((ln, i) => h(Box, { key: i },
+      h(Text, { color: "cyan" }, i === 0 ? "› " : "  "),
+      inputState.value.length === 0
+        ? h(Text, { dimColor: true }, placeholder)
+        : h(Text, null, ln))));
+
+  // At most one picker is open at a time (slash → agent → model, mutually
+  // exclusive upstream); its height is reflected in `menuRows` for the cursor.
+  const menuElement = slashMenu.length > 0
+    ? h(Box, { flexDirection: "column", marginTop: 1, paddingLeft: 2 },
+        ...slashMenu.map((command, i) => {
+          const on = i === menuSel;
+          return h(Box, { key: command.cmd },
+            h(Text, { color: on ? "cyan" : "gray" }, `${on ? "▸ " : "  "}/${command.cmd}`),
+            h(Text, { dimColor: !on }, `  — ${command.desc}`));
+        }),
+        h(Text, { dimColor: true }, "  ↑↓ select · Tab complete · ⏎ run"))
+    : agentMenu.length > 0
+      ? h(Box, { flexDirection: "column", marginTop: 1, paddingLeft: 2 },
+          ...agentMenu.map((name, i) => {
+            const on = i === menuSel;
+            const def = props.agents.find((a) => a.name === name);
+            return h(Box, { key: name },
+              h(Text, { color: on ? "yellow" : "gray" }, `${on ? "▸ " : "  "}${name}`),
+              h(Text, { dimColor: !on }, def ? `  — ${def.description}` : ""));
+          }),
+          h(Text, { dimColor: true }, "  ↑↓ select · Tab complete · ⏎ switch"))
+      : modelMenu.length > 0
+        ? h(Box, { flexDirection: "column", marginTop: 1, paddingLeft: 2 },
+            ...modelMenu.slice(0, 8).map((name, i) => {
+              const on = i === menuSel;
+              return h(Box, { key: name },
+                h(Text, { color: on ? "cyan" : "gray" }, `${on ? "▸ " : "  "}${name}`),
+                name === currentModel ? h(Text, { color: "green" }, "  ✓ current") : null);
+            }),
+            h(Text, { dimColor: true }, "  ↑↓ select · Tab complete · ⏎ switch"))
+        : null;
+
+  // Command feedback (from a slash command), transient — cleared on next input.
+  const noticeElement = commandNotice
+    ? h(Box, { marginTop: 1, paddingLeft: 2 }, h(Text, { color: "cyan" }, commandNotice))
+    : null;
+
+  const hintElement = h(Box, { marginTop: 1 },
+    ctrlCArmed
+      ? h(Text, { color: "yellow" }, "Press ctrl-c again to quit")
+      : busy
+        ? h(Text, { dimColor: true }, "esc to stop · ctrl-c×2 quit")
+        : h(Text, { dimColor: true }, "⏎ send · shift+⏎ newline · @file · /help · ctrl-c×2 quit"));
+
+  // HUD: single-line status bar at the very bottom — model, privacy posture,
+  // proactive mode, agent, tools, skills, tokens.
+  const hudElement = h(Box, null,
+    h(Text, { color: "magenta" }, "♪ "),
+    h(Text, { color: "cyan" }, currentModel),
+    h(Text, { dimColor: true }, "  ·  "),
+    h(Text, { color: props.localOnly ? "green" : "yellow" }, props.localOnly ? "🔒 local" : "⚠ cloud"),
+    h(Text, { dimColor: true }, "  ·  proactive "),
+    h(Text, { color: props.proactiveOn ? "green" : "gray" }, props.proactiveOn ? "on" : "off"),
+    h(Text, { dimColor: true }, `  ·  agent `),
+    h(Text, { color: activeAgent ? "yellow" : "gray" }, activeAgent ? activeAgent.name : "default"),
+    h(Text, { dimColor: true }, "  ·  tools "),
+    h(Text, { color: toolsOn ? "green" : "gray" }, toolsOn ? "on" : "off"),
+    h(Text, { dimColor: true }, `  ·  skills ${props.skills.length.toString()}`),
+    sessionTokens > 0 ? h(Text, { dimColor: true }, `  ·  ${formatTokens(sessionTokens)} tok`) : null);
+
+  // HOME: full-height canvas with the input pinned near the bottom. The banner
+  // and the flexGrow spacer sit above the input; nothing sits between the spacer
+  // and the input, so `homeInputCursorY` counts only the fixed bottom stack.
+  if (isHome) {
+    return h(Box, { flexDirection: "column", height: Math.max(1, rows - 1) },
+      transcript,
+      h(Box, { marginBottom: 1 }, h(Text, null, props.banner)),
+      h(Box, { flexGrow: 1 }),
+      inputBox,
+      menuElement,
+      noticeElement,
+      hintElement,
+      hudElement);
+  }
 
   return h(Box, { flexDirection: "column" },
     transcript,
@@ -794,73 +910,9 @@ export function MuseChatApp(props: {
           h(Text, { dimColor: true },
             `${pendingApproval.kind === "outbound" ? "Send this?" : "Run this?"}  y = approve  ·  any other key = cancel`))
       : null,
-    // The input BOX. When idle it is the first dynamic block, so its
-    // content row is y=1 — where useCursor placed the real cursor.
-    h(Box, { borderColor: busy ? "gray" : "cyan", borderStyle: "round", flexDirection: "column", paddingX: 1 },
-      ...lines.map((ln, i) => h(Box, { key: i },
-        h(Text, { color: "cyan" }, i === 0 ? "› " : "  "),
-        inputState.value.length === 0
-          ? h(Text, { dimColor: true }, placeholder)
-          : h(Text, null, ln)))),
-    // Slash-command menu: ↑/↓ select, Tab completes, Enter runs.
-    slashMenu.length > 0
-      ? h(Box, { flexDirection: "column", marginTop: 1, paddingLeft: 2 },
-          ...slashMenu.map((command, i) => {
-            const on = i === menuSel;
-            return h(Box, { key: command.cmd },
-              h(Text, { color: on ? "cyan" : "gray" }, `${on ? "▸ " : "  "}/${command.cmd}`),
-              h(Text, { dimColor: !on }, `  — ${command.desc}`));
-          }),
-          h(Text, { dimColor: true }, "  ↑↓ select · Tab complete · ⏎ run"))
-      : null,
-    // Agent-name picker while typing `/agent <partial>`.
-    agentMenu.length > 0
-      ? h(Box, { flexDirection: "column", marginTop: 1, paddingLeft: 2 },
-          ...agentMenu.map((name, i) => {
-            const on = i === menuSel;
-            const def = props.agents.find((a) => a.name === name);
-            return h(Box, { key: name },
-              h(Text, { color: on ? "yellow" : "gray" }, `${on ? "▸ " : "  "}${name}`),
-              h(Text, { dimColor: !on }, def ? `  — ${def.description}` : ""));
-          }),
-          h(Text, { dimColor: true }, "  ↑↓ select · Tab complete · ⏎ switch"))
-      : null,
-    // Model picker while typing `/model <partial>`.
-    modelMenu.length > 0
-      ? h(Box, { flexDirection: "column", marginTop: 1, paddingLeft: 2 },
-          ...modelMenu.slice(0, 8).map((name, i) => {
-            const on = i === menuSel;
-            return h(Box, { key: name },
-              h(Text, { color: on ? "cyan" : "gray" }, `${on ? "▸ " : "  "}${name}`),
-              name === currentModel ? h(Text, { color: "green" }, "  ✓ current") : null);
-          }),
-          h(Text, { dimColor: true }, "  ↑↓ select · Tab complete · ⏎ switch"))
-      : null,
-    // Command feedback (from a slash command) shows here in the bottom area,
-    // transient — cleared on the next input.
-    commandNotice
-      ? h(Box, { marginTop: 1, paddingLeft: 2 }, h(Text, { color: "cyan" }, commandNotice))
-      : null,
-    // Breathing room above the hint, plus the two-press ctrl-c affordance.
-    h(Box, { marginTop: 1 },
-      ctrlCArmed
-        ? h(Text, { color: "yellow" }, "Press ctrl-c again to quit")
-        : busy
-          ? h(Text, { dimColor: true }, "esc to stop · ctrl-c×2 quit")
-          : h(Text, { dimColor: true }, "⏎ send · shift+⏎ newline · @file · /help · ctrl-c×2 quit")),
-    // HUD: persistent status — model, proactive (speaks-first) mode, skills.
-    h(Box, null,
-      h(Text, { color: "magenta" }, "♪ "),
-      h(Text, { color: "cyan" }, currentModel),
-      h(Text, { dimColor: true }, "  ·  "),
-      h(Text, { color: props.localOnly ? "green" : "yellow" }, props.localOnly ? "🔒 local" : "⚠ cloud"),
-      h(Text, { dimColor: true }, "  ·  proactive "),
-      h(Text, { color: props.proactiveOn ? "green" : "gray" }, props.proactiveOn ? "on" : "off"),
-      h(Text, { dimColor: true }, `  ·  agent `),
-      h(Text, { color: activeAgent ? "yellow" : "gray" }, activeAgent ? activeAgent.name : "default"),
-      h(Text, { dimColor: true }, "  ·  tools "),
-      h(Text, { color: toolsOn ? "green" : "gray" }, toolsOn ? "on" : "off"),
-      h(Text, { dimColor: true }, `  ·  skills ${props.skills.length.toString()}`),
-      sessionTokens > 0 ? h(Text, { dimColor: true }, `  ·  ${formatTokens(sessionTokens)} tok`) : null)
-  );
+    inputBox,
+    menuElement,
+    noticeElement,
+    hintElement,
+    hudElement);
 }

@@ -285,6 +285,42 @@ export function cursorCoords(state: InputState): { line: number; col: number } {
   return { col, line };
 }
 
+/**
+ * Absolute row (0-based, from the top of Ink's live/non-static region) where
+ * the real terminal cursor must sit for a CJK IME to compose on the input's
+ * cursor line — for the FULL-HEIGHT HOME layout (banner → flexGrow canvas →
+ * input box → menu? → notice? → hint → HUD, all inside a `height = rows-1`
+ * box). Because the banner + canvas spacer heights above the input are decided
+ * by Ink's flex layout (and vary with terminal size), we anchor from the BOTTOM
+ * instead: the input's cursor row is a KNOWN number of rows above the bottom
+ * edge of the `rows-1` live region, and every block below it has a fixed height.
+ *
+ * Rows strictly below the cursor's content line:
+ *  - input box: remaining content lines below the cursor line + the bottom
+ *    border → `inputLines - caretLine`
+ *  - menu (slash/agent/model), when open: marginTop(1) + `menuRows` + footer(1)
+ *  - command notice, when shown: marginTop(1) + 1 line
+ *  - hint line: marginTop(1) + 1 line
+ *  - HUD line: 1
+ * The live region is `rows-1` tall so its bottom row index is `rows-2`; the
+ * cursor row is `rows-2 - below`. Clamped to ≥ 0 for degenerate tiny terminals.
+ */
+export function homeInputCursorY(opts: {
+  readonly rows: number;
+  readonly inputLines: number;
+  readonly caretLine: number;
+  readonly menuRows: number;
+  readonly hasNotice: boolean;
+}): number {
+  const inputBelow = opts.inputLines - opts.caretLine;
+  const menuBelow = opts.menuRows > 0 ? opts.menuRows + 2 : 0;
+  const noticeBelow = opts.hasNotice ? 2 : 0;
+  const hintBelow = 2;
+  const hudBelow = 1;
+  const below = inputBelow + menuBelow + noticeBelow + hintBelow + hudBelow;
+  return Math.max(0, opts.rows - 2 - below);
+}
+
 export interface ChatTurnMessage {
   readonly role: "system" | "user" | "assistant";
   readonly content: string;

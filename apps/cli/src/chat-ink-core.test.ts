@@ -10,6 +10,7 @@ import {
   resolveChatHistoryWindow,
   chatHelp,
   cursorCoords,
+  homeInputCursorY,
   displayWidth,
   emptyInput,
   extractAttachmentPaths,
@@ -156,6 +157,38 @@ describe("cursorCoords", () => {
   it("reports line + wide-aware column", () => {
     expect(cursorCoords(at("안녕", 2))).toEqual({ col: 4, line: 0 }); // 2 wide chars
     expect(cursorCoords(at("ab\ncd", 4))).toEqual({ col: 1, line: 1 });
+  });
+});
+
+describe("homeInputCursorY (full-height home cursor anchoring)", () => {
+  // The full-height live region is `rows-1` tall (bottom row index rows-2).
+  // The cursor row is that bottom row minus every fixed row below the cursor's
+  // input line: input-bottom-border + hint(margin+line) + HUD.
+  it("anchors a single empty input line from the bottom", () => {
+    // below = inputBelow(1) + hint(2) + hud(1) = 4 → rows-2-4
+    expect(homeInputCursorY({ rows: 40, inputLines: 1, caretLine: 0, menuRows: 0, hasNotice: false })).toBe(34);
+    expect(homeInputCursorY({ rows: 24, inputLines: 1, caretLine: 0, menuRows: 0, hasNotice: false })).toBe(18);
+  });
+
+  it("an open picker pushes the cursor further up by (menuRows + marginTop + footer)", () => {
+    // menuBelow = menuRows(5) + 2 = 7 → below = 1+7+2+1 = 11 → 40-2-11 = 27
+    expect(homeInputCursorY({ rows: 40, inputLines: 1, caretLine: 0, menuRows: 5, hasNotice: false })).toBe(27);
+  });
+
+  it("a command notice adds two rows (marginTop + line) below the input", () => {
+    // below = 1 + notice(2) + 2 + 1 = 6 → 40-2-6 = 32
+    expect(homeInputCursorY({ rows: 40, inputLines: 1, caretLine: 0, menuRows: 0, hasNotice: true })).toBe(32);
+  });
+
+  it("a multi-line input keeps the cursor on its own line (rows below shrink as caret descends)", () => {
+    // 3 input lines. caret on line 0: inputBelow = 3-0 = 3 → below = 3+2+1 = 6 → 40-2-6 = 32
+    expect(homeInputCursorY({ rows: 40, inputLines: 3, caretLine: 0, menuRows: 0, hasNotice: false })).toBe(32);
+    // caret on line 2 (last): inputBelow = 3-2 = 1 → below = 1+2+1 = 4 → 40-2-4 = 34
+    expect(homeInputCursorY({ rows: 40, inputLines: 3, caretLine: 2, menuRows: 0, hasNotice: false })).toBe(34);
+  });
+
+  it("clamps to 0 on a terminal too small to fit the bottom stack", () => {
+    expect(homeInputCursorY({ rows: 4, inputLines: 1, caretLine: 0, menuRows: 0, hasNotice: false })).toBe(0);
   });
 });
 
