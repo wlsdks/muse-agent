@@ -19,14 +19,20 @@ function greetingKey(): StringKey {
 export function timeUntil(iso: string, t: Translate): string {
   const ms = new Date(iso).getTime() - Date.now();
   if (Number.isNaN(ms)) return "";
-  const min = Math.round(ms / 60_000);
-  // Past OR rounds to <1 minute ⇒ "now": "in 0m" is a nonsense label for an
-  // event that is here or seconds away.
-  if (ms < 0 || min === 0) return t("rel.now");
-  if (min < 60) return t("rel.inMinutes", { n: min });
-  const hr = Math.round(min / 60);
-  if (hr < 24) return t("rel.inHours", { n: hr });
-  return t("rel.inDays", { n: Math.round(hr / 24) });
+  // Within a near-instant window either side of now ⇒ "now": "in 0m" (or
+  // "0m overdue") is a nonsense label for an event that's here or seconds away.
+  if (Math.abs(ms) < 60_000) return t("rel.now");
+  const overdue = ms < 0;
+  const absMin = Math.round(Math.abs(ms) / 60_000);
+  if (absMin < 60) return t(overdue ? "rel.overdueMinutes" : "rel.inMinutes", { n: absMin });
+  const hr = Math.round(absMin / 60);
+  if (hr < 24) return t(overdue ? "rel.overdueHours" : "rel.inHours", { n: hr });
+  return t(overdue ? "rel.overdueDays" : "rel.inDays", { n: Math.round(hr / 24) });
+}
+
+function isOverdue(iso: string): boolean {
+  const ms = new Date(iso).getTime() - Date.now();
+  return !Number.isNaN(ms) && ms < -60_000;
 }
 
 export function TodayView({ client, onNavigate }: { client: ApiClient; onNavigate?: (view: string) => void }) {
@@ -107,7 +113,9 @@ export function TodayView({ client, onNavigate }: { client: ApiClient; onNavigat
                   <div className="row-title">{e.title}</div>
                   <div className="row-meta">{safeDateTime(e.startsAtIso, locale)}</div>
                 </div>
-                <span className="subtle mono">{timeUntil(e.startsAtIso, t)}</span>
+                <span className="subtle mono" style={isOverdue(e.startsAtIso) ? { color: "var(--warn)" } : undefined}>
+                  {timeUntil(e.startsAtIso, t)}
+                </span>
               </div>
             ))}
           </AsyncBlock>
@@ -132,7 +140,9 @@ export function TodayView({ client, onNavigate }: { client: ApiClient; onNavigat
                 <div className="row-main">
                   <div className="row-title">{r.text}</div>
                 </div>
-                <span className="subtle mono">{timeUntil(r.dueAt, t)}</span>
+                <span className="subtle mono" style={isOverdue(r.dueAt) ? { color: "var(--warn)" } : undefined}>
+                  {timeUntil(r.dueAt, t)}
+                </span>
               </div>
             ))}
           </AsyncBlock>

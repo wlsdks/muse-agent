@@ -73,6 +73,9 @@ const en = {
   "rel.inMinutes": "in {n}m",
   "rel.inHours": "in {n}h",
   "rel.inDays": "in {n}d",
+  "rel.overdueMinutes": "{n}m overdue",
+  "rel.overdueHours": "{n}h overdue",
+  "rel.overdueDays": "{n}d overdue",
 
   "tasks.title": "Tasks",
   "tasks.placeholder": "Add a task and press Enter…",
@@ -335,6 +338,9 @@ const ko: Strings = {
   "rel.inMinutes": "{n}분 후",
   "rel.inHours": "{n}시간 후",
   "rel.inDays": "{n}일 후",
+  "rel.overdueMinutes": "{n}분 지남",
+  "rel.overdueHours": "{n}시간 지남",
+  "rel.overdueDays": "{n}일 지남",
 
   "tasks.title": "할 일",
   "tasks.placeholder": "할 일을 입력하고 Enter…",

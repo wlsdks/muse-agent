@@ -260,7 +260,7 @@ function Console() {
 
         <div className="sidebar-foot">
           <LangToggle lang={lang} onChange={setLang} />
-          <ConnectionBadge connected={connected} loading={health.isLoading} t={t} />
+          <ConnectionBadge connected={connected} loading={health.isLoading} t={t} title={apiUrl} />
         </div>
       </aside>
 
@@ -272,7 +272,6 @@ function Console() {
             <span>{t("cmd.search")}</span>
             <kbd>⌘K</kbd>
           </button>
-          <ConnectionBadge connected={connected} loading={health.isLoading} t={t} title={apiUrl} />
         </header>
         <section className="content">
           <div className="view" key={view}>
