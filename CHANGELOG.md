@@ -8,6 +8,25 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+## [0.2.31] - 2026-07-09
+
+Three real bugs, found by running the app against a real store instead of an empty one.
+
+### Fixed
+
+- **The sidebar subtitle could blurt a raw fact from memory.** It rendered "DR. KIM" —
+  the name of a dentist stored in memory. A tagline was only checked for *grounding*
+  ("is every word backed by a fact?"), which a bare echo of a fact trivially passes. It
+  must now also be *well-formed* — framed the way the templates are ("커피 담당", "On
+  coffee duty") — and clear person names are no longer used as material. Fabrication=0
+  is unchanged; this composes on top of it.
+- **Overdue items said "now".** Every past due-time collapsed to "지금 / now", so a
+  reminder a month late looked due this minute. Past times now read as overdue with the
+  elapsed magnitude ("31일 지남" / "31d overdue") and carry the warning tint; "now" is
+  reserved for a genuine ±60-second window.
+- **The connection status badge appeared twice** (header and sidebar). It now shows
+  once, in the sidebar, with the server address still available as a tooltip.
+
 ## [0.2.30] - 2026-07-09
 
 ### Added
