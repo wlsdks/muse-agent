@@ -27,6 +27,7 @@ import {
   pickReindexModel,
   refreshStaleNotesIndexForChat,
   resolveGroundingMinScore,
+  retrieveChatGrounding,
   shortCitationRef,
   stripFabricatedCitations,
   stripTruncatedCitation,
@@ -534,6 +535,22 @@ describe("groundChatTurn", () => {
       searchRecall: throwingRecall
     })).toBe("");
     expect(called).toBe(true); // the throw came from retrieval, not a short-circuit
+  });
+});
+
+describe("retrieveChatGrounding — stale-vs-current demotion (the ANSWER-evidence seam, not just the related-footer)", () => {
+  const stale = hit({ ref: "rent_old.md", score: 0.95, snippet: "예전에 월세 120만원이었는데 지금은 아니다." });
+  const current = hit({ ref: "rent_new.md", score: 0.7, snippet: "월세 125만원" });
+
+  it("ranks the current entry above the higher-scoring but stale one in both the block and the matches", async () => {
+    const grounding = await retrieveChatGrounding("월세 얼마야?", {
+      searchRecall: async () => [stale, current]
+    });
+    const blockOrder = [grounding.block.indexOf("125만원"), grounding.block.indexOf("120만원")];
+    expect(blockOrder[0]).toBeGreaterThanOrEqual(0);
+    expect(blockOrder[0]!).toBeLessThan(blockOrder[1]!);
+    expect(grounding.matches[0]?.source).toBe("rent_new.md");
+    expect(grounding.matches.map((m) => m.source)).toContain("rent_old.md"); // demoted, never dropped
   });
 });
 

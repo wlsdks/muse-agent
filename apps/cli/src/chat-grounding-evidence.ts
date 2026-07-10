@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 
 import { type KnowledgeMatch } from "@muse/agent-core";
+import { demoteStaleHits } from "@muse/recall";
 
 import { defaultNotesIndexFile, searchRecall, type RecallHit } from "./commands-recall.js";
 import { DEFAULT_EMBED_MODEL, resolveIndexModel } from "./embed-model-default.js";
@@ -287,7 +288,11 @@ export async function retrieveChatGrounding(
       embedModel,
       env
     });
-    return { block: formatChatGroundingBlock(hits, opts.minScore ?? resolveGroundingMinScore(env, embedModel)), matches: hitsToMatches(hits) };
+    // A note explicitly marked superseded ("used to …", "예전에 …") must not
+    // outrank its current counterpart in what the model is shown or what the
+    // citation gate matches against — demote it below, never drop it.
+    const ranked = demoteStaleHits(hits);
+    return { block: formatChatGroundingBlock(ranked, opts.minScore ?? resolveGroundingMinScore(env, embedModel)), matches: hitsToMatches(ranked) };
   } catch {
     return { block: "", matches: [] };
   }

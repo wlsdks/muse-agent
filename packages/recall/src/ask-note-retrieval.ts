@@ -11,6 +11,7 @@
 
 import { classifyRetrievalConfidence, resolveRecallConfidentAt, splitCompoundQuery } from "@muse/agent-core";
 import { diversifyAskChunks, secondHopAugmentChunks, shouldSecondHop, type FileEntry, type IndexChunk } from "./chunks.js";
+import { demoteStale } from "./conflict.js";
 import { filterNotesByScope, relativizeNoteSource } from "./present.js";
 import { existsSync } from "node:fs";
 
@@ -139,5 +140,9 @@ export async function retrieveAndRankNotes(params: {
     );
   }
 
-  return { notesUnavailable, preGapScored, queryVec, scored, splitClauses, subqueryEmbeddings };
+  // A note that explicitly marks itself superseded ("used to …", "예전에 …")
+  // must not outrank its current counterpart in the answer evidence — demote it
+  // below, never drop it. Confidence classification reads `preGapScored`
+  // (untouched), so this only reorders which chunk the model sees/cites first.
+  return { notesUnavailable, preGapScored, queryVec, scored: demoteStale(scored, (s) => s.chunk.text), splitClauses, subqueryEmbeddings };
 }

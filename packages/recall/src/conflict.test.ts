@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { conflictCueFromMatches, demoteStaleHits, detectSourceConflict, detectStaleMarker, formatSourceConflictWarning, groundingConflictCue } from "./conflict.js";
+import { conflictCueFromMatches, demoteStale, demoteStaleHits, detectSourceConflict, detectStaleMarker, formatSourceConflictWarning, groundingConflictCue } from "./conflict.js";
 import type { RecallHit } from "./hit.js";
 
 const hit = (ref: string, snippet: string, score = 0.7): RecallHit => ({ ref, score, snippet, source: "notes" });
@@ -38,6 +38,13 @@ describe("detectStaleMarker — explicit past/superseded cue (FORGETS on the ret
     const b = hit("b", "fresh two", 0.7);
     const s = hit("s", "used to be true", 0.95);
     expect(demoteStaleHits([s, a, b]).map((h) => h.ref)).toEqual(["a", "b", "s"]);
+  });
+
+  it("demoteStale is the generic form demoteStaleHits delegates to — works over ANY shape given a text accessor", () => {
+    const stale = { id: "old", text: "예전에는 서울에 살았었다. 지금은 아니다." };
+    const current = { id: "new", text: "지금 내가 사는 도시는 부산이다." };
+    const out = demoteStale([stale, current], (item) => item.text);
+    expect(out.map((item) => item.id)).toEqual(["new", "old"]);
   });
 });
 

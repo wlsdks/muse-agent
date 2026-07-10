@@ -44,7 +44,7 @@ import { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource } 
 export { shouldSuggestRepair, shouldWarnStrippedCitations, suggestOptInSource };
 import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy } from "@muse/recall";
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
-import { dedupNearDuplicateChunks, diversifyAskChunks, notesGroundingFraming } from "@muse/recall";
+import { dedupNearDuplicateChunks, demoteStale, diversifyAskChunks, notesGroundingFraming } from "@muse/recall";
 import { groundedSourceSummary } from "@muse/recall";
 
 export { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
@@ -822,7 +822,11 @@ Examples:
       // near-duplicates first-wins (highest-ranked survives); fail-open on any
       // chunk without a comparable embedding (e.g. --file ad-hoc passages).
       scored = dedupNearDuplicateChunks(scored, cosine);
-      const contextChunks = reorderForLongContext(scored);
+      // reorderForLongContext re-sorts by raw cosine score, which would put a
+      // higher-scoring but explicitly-superseded chunk back ahead of its current
+      // counterpart — so the stale demotion (already applied once inside
+      // retrieveAndRankNotes) must run again on its output, not before it.
+      const contextChunks = demoteStale(reorderForLongContext(scored), (c) => c.chunk.text);
       // Externally-ingested (untrusted) note paths — hoisted here so BOTH the
       // note-context block's conflict marker (below) AND the grounding-evidence
       // tagging (further down) read the same set: a conflict pitting an ingested

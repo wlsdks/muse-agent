@@ -199,14 +199,21 @@ export function detectStaleMarker(text: string): boolean {
 }
 
 /**
- * Stable partition that pushes stale-marked hits BELOW non-stale ones while
+ * Stable partition that pushes stale-marked items BELOW non-stale ones while
  * preserving each group's relative order (so scores/ranking are otherwise
  * untouched). When a current and a stale entry about the same subject are both
- * retrieved, the current one becomes top-1. Pure; returns a new array.
+ * retrieved, the current one becomes top-1. Generic over the retrieval shape
+ * (`RecallHit`'s `snippet`, or a notes pipeline's `ScoredChunk.chunk.text`) so
+ * every answer-evidence seam reuses this ONE detector instead of re-implementing
+ * the partition against its own hit type. Pure; returns a new array.
  */
-export function demoteStaleHits(hits: readonly RecallHit[]): RecallHit[] {
-  const fresh: RecallHit[] = [];
-  const stale: RecallHit[] = [];
-  for (const hit of hits) (detectStaleMarker(hit.snippet) ? stale : fresh).push(hit);
+export function demoteStale<T>(items: readonly T[], textOf: (item: T) => string): T[] {
+  const fresh: T[] = [];
+  const stale: T[] = [];
+  for (const item of items) (detectStaleMarker(textOf(item)) ? stale : fresh).push(item);
   return [...fresh, ...stale];
+}
+
+export function demoteStaleHits(hits: readonly RecallHit[]): RecallHit[] {
+  return demoteStale(hits, (hit) => hit.snippet);
 }
