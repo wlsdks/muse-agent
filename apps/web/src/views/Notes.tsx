@@ -122,12 +122,12 @@ export function NotesView({ client }: { client: ApiClient }) {
   });
   const search = useQuery({
     enabled: query.trim().length > 1,
-    queryFn: () => client.get<NotesSearchResponse>(`/api/notes/search?q=${encodeURIComponent(query.trim())}`),
+    queryFn: () => client.get<NotesSearchResponse>(`/api/notes/search?query=${encodeURIComponent(query.trim())}`),
     queryKey: ["notes-search", client.baseUrl, query.trim()]
   });
   const reading = useQuery({
     enabled: active !== null && !editing,
-    queryFn: () => client.get<NotesReadResponse>(`/api/notes/read?name=${encodeURIComponent(active ?? "")}`),
+    queryFn: () => client.get<NotesReadResponse>(`/api/notes/read?path=${encodeURIComponent(active ?? "")}`),
     queryKey: ["notes-read", client.baseUrl, active]
   });
 
@@ -195,22 +195,22 @@ export function NotesView({ client }: { client: ApiClient }) {
       </div>
 
       <div className="grid grid-2">
-        <Card title={searching ? t("notes.results") : t("notes.files")} count={searching ? search.data?.hits.length ?? 0 : files.length}>
+        <Card title={searching ? t("notes.results") : t("notes.files")} count={searching ? search.data?.matches.length ?? 0 : files.length}>
           {searching ? (
-            <AsyncBlock loading={search.isLoading} error={search.error} empty={(search.data?.hits.length ?? 0) === 0}>
-              {(search.data?.hits ?? []).map((h, i) => (
+            <AsyncBlock loading={search.isLoading} error={search.error} empty={(search.data?.matches.length ?? 0) === 0}>
+              {(search.data?.matches ?? []).map((h, i) => (
                 <button
-                  key={`${h.file}-${i}`}
+                  key={`${h.path}-${i}`}
                   className="row note-row"
                   onClick={() => {
                     setEditing(false);
-                    setActive(h.file);
+                    setActive(h.path);
                   }}
                 >
                   <div className="row-main">
-                    <div className="row-title">{h.file}</div>
+                    <div className="row-title">{h.path}</div>
                     <div className="row-meta mono">
-                      :{h.line} {h.text.trim().slice(0, 80)}
+                      :{h.line} {h.snippet.trim().slice(0, 80)}
                     </div>
                   </div>
                 </button>

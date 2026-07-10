@@ -94,17 +94,17 @@ export interface NotesListResponse {
   readonly truncated: boolean;
 }
 export interface NotesReadResponse {
-  readonly name: string;
+  readonly path: string;
   readonly content: string;
 }
-interface NotesSearchHit {
-  readonly file: string;
+interface NotesSearchMatch {
+  readonly path: string;
   readonly line: number;
-  readonly text: string;
+  readonly snippet: string;
 }
 export interface NotesSearchResponse {
-  readonly query: string;
-  readonly hits: readonly NotesSearchHit[];
+  readonly matches: readonly NotesSearchMatch[];
+  readonly mode: string;
 }
 
 /** `POST /api/ask`'s grounded-recall verdict — mirrors `GroundedRecallResult["verdict"]`
