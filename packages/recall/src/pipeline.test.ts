@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { NOTES_INDEX_SCHEMA_VERSION } from "./notes-index.js";
-import { runGroundedRecall, type GroundedRecallInput } from "./pipeline.js";
+import { runGroundedRecall, type GroundedRecallInput, type ScoredChunk } from "./pipeline.js";
 
 const EMBED_MODEL = "test-embedder";
 
@@ -251,6 +251,86 @@ describe("runGroundedRecall — extras (the ask→seam retrofit enabling slice)"
     expect(freshIdx).toBeGreaterThan(-1);
     expect(staleIdx).toBeGreaterThan(-1);
     expect(freshIdx).toBeLessThan(staleIdx);
+  });
+
+  it("the result exposes the raw scored chunks a caller needs for its own downstream verdict/receipts", async () => {
+    const result = await runGroundedRecall(input("Your VPN MTU is 1380. [from vpn.md]"));
+    expect(result.scored).toHaveLength(1);
+    expect(result.scored[0]!.file).toContain("vpn.md");
+  });
+
+  it("preRefusalStrippedCitations is the FIRST-pass-only set — a citation valid pre-refusal but stripped by the refusal pass is NOT counted twice", async () => {
+    // "vpn.md" IS an allowed note, so the first (buffered) gate pass leaves it
+    // untouched; only the unconditional refusal re-strip (which allows NO
+    // notes) removes it. preRefusalStrippedCitations must stay empty while the
+    // refusal-inclusive strippedCitations picks it up.
+    const result = await runGroundedRecall(input("I'm not sure — your notes don't say. [from vpn.md]"));
+    expect(result.refusal).toBe(true);
+    expect(result.preRefusalStrippedCitations).toEqual([]);
+    expect(result.strippedCitations).toContain("vpn.md");
+  });
+
+  it("extraChunks absent/empty is byte-identical to today (no ad-hoc grounding folded in)", async () => {
+    const bare = await runGroundedRecall(input("Your VPN MTU is 1380. [from vpn.md]"));
+    const withEmpty = await runGroundedRecall({ ...input("Your VPN MTU is 1380. [from vpn.md]"), extras: { extraChunks: [] } });
+    expect(withEmpty).toEqual(bare);
+  });
+
+  it("extraChunks folds an ad-hoc (--file-style) passage in as note-class evidence, citable exactly like a retrieved note", async () => {
+    const adHocChunk: ScoredChunk = {
+      chunk: { chunkIndex: 0, embedding: [], file: "/tmp/report.pdf", text: "Q3 revenue was 4.2M." },
+      file: "/tmp/report.pdf",
+      score: 1
+    };
+    const result = await runGroundedRecall({
+      ...input("Q3 revenue was 4.2M. [from report.pdf]", "what was Q3 revenue?"),
+      extras: { extraChunks: [adHocChunk] }
+    });
+    expect(result.answer).toContain("[from report.pdf]");
+    expect(result.citations).toContain("report.pdf");
+    expect(result.strippedCitations).not.toContain("report.pdf");
+    expect(result.notesUnavailable).toBe(false);
+  });
+
+  it("composeSystemPrompt absent uses the built-in builder (byte-identical to today)", async () => {
+    const bare = await runGroundedRecall(input("ok"));
+    const withUndefinedHook = await runGroundedRecall({ ...input("ok"), extras: { composeSystemPrompt: undefined } });
+    expect(withUndefinedHook).toEqual(bare);
+  });
+
+  it("composeSystemPrompt fully overrides the prompt text a caller's own builder needs (e.g. a persona preamble)", async () => {
+    let seenSystem = "";
+    await runGroundedRecall({
+      ...input("ok"),
+      extras: {
+        composeSystemPrompt: (args) => `CUSTOM PREAMBLE\n${args.framing.header}\n${args.contextBlock}`
+      },
+      runtime: {
+        embedFn: fakeEmbed,
+        generateAnswer: async ({ system }) => {
+          seenSystem = system;
+          return "ok";
+        }
+      }
+    });
+    expect(seenSystem).toContain("CUSTOM PREAMBLE");
+    expect(seenSystem).not.toContain("You are Muse, the user's personal AI. Answer the user's question ONLY from the context below.");
+    expect(seenSystem).toContain("WireGuard VPN MTU is 1380");
+  });
+
+  it("normalizeAnswer absent is a no-op (byte-identical to today)", async () => {
+    const bare = await runGroundedRecall(input("Your VPN MTU is 1380. [from vpn.md]"));
+    const withUndefinedHook = await runGroundedRecall({ ...input("Your VPN MTU is 1380. [from vpn.md]"), extras: { normalizeAnswer: undefined } });
+    expect(withUndefinedHook).toEqual(bare);
+  });
+
+  it("normalizeAnswer runs BEFORE the citation gate — a rewrite into a valid bracket survives, an unrewritten one would have been stripped", async () => {
+    const result = await runGroundedRecall({
+      ...input("Your VPN MTU is 1380. [from vpn 1]"),
+      extras: { normalizeAnswer: (text) => text.replace("[from vpn 1]", "[from vpn.md]") }
+    });
+    expect(result.answer).toContain("[from vpn.md]");
+    expect(result.strippedCitations).toEqual([]);
   });
 
   it("untrustedNoteSources reaches buildNoteContextBlock's conflict marker (trust-aware, not neutral)", async () => {

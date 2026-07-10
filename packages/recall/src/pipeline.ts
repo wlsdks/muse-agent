@@ -27,6 +27,7 @@ import { CITATION_INSTRUCTION_LINES } from "./ask-prompt-constants.js";
 import { createCitationStreamFilter } from "./citation-stream.js";
 import { retrieveAndRankNotes } from "./ask-note-retrieval.js";
 import { dedupNearDuplicateChunks, notesGroundingFraming, type ScoredChunk } from "./chunks.js";
+export type { ScoredChunk } from "./chunks.js";
 import { demoteStale } from "./conflict.js";
 import { cosine, loadIndex, type ReindexSummary } from "./notes-index.js";
 import { buildNoteContextBlock, formatSourceReceipts, groundingSectionLines, relativizeNoteSource } from "./present.js";
@@ -110,6 +111,38 @@ export interface GroundedRecallExtras {
   /** Forwarded to `buildNoteContextBlock`'s conflict marker so a conflict
    *  against an externally-ingested note reads as untrusted, not neutral. */
   readonly untrustedNoteSources?: ReadonlySet<string>;
+  /**
+   * Extra note-class chunks folded into the retrieved set BEFORE dedup —
+   * for a caller-side ad-hoc grounding source (a `--file`/`--url`/clipboard
+   * passage) that must be cited exactly like a retrieved note, not rendered
+   * as a separate labelled section. Absent/empty ⇒ byte-identical to today
+   * (only the index's own retrieval feeds the notes block).
+   */
+  readonly extraChunks?: readonly ScoredChunk[];
+  /**
+   * Full override of the system-prompt string, given the SAME framing +
+   * contextBlock + extraSections `buildSystemPrompt` would otherwise use —
+   * lets a caller with its own richer prompt shape (persona, path-specific
+   * instructions, a stable-prefix ordering for KV-cache reuse) reuse the
+   * seam's retrieval/dedup/context-block work without inheriting this
+   * module's generic wording. Absent ⇒ the built-in `buildSystemPrompt`
+   * (byte-identical to today).
+   */
+  readonly composeSystemPrompt?: (args: {
+    readonly framing: { readonly header: string; readonly guidance?: string };
+    readonly contextBlock: string;
+    readonly extraSections: readonly GroundedRecallExtraSection[];
+  }) => string;
+  /**
+   * Applied to the raw answer AFTER `stripEchoedCiteAs` and BEFORE the
+   * citation gate (in both the buffered result and the live stream's final
+   * `result` event — never the per-delta live text, which stays gate-only so
+   * a normalization pass never runs on a split-mid-token fragment). Lets a
+   * caller fold its own pre-gate citation-shape rewrites (e.g. normalizing a
+   * slot/contact/memory reference into the canonical bracket form the gate
+   * validates) in ahead of the fabrication check. Absent ⇒ no-op (byte-identical).
+   */
+  readonly normalizeAnswer?: (text: string) => string;
 }
 
 export interface GroundedRecallInput {
@@ -131,6 +164,14 @@ export interface GroundedRecallResult {
   readonly citations: readonly string[];
   /** Fabricated citations the gate stripped — non-empty means the model invented a source. */
   readonly strippedCitations: readonly string[];
+  /**
+   * The same stripped-citation set BEFORE the refusal pass runs (a refusal
+   * strips again, unconditionally, over ALL categories). A caller that
+   * surfaces "N citation(s) removed" as a warning on the FIRST pass only
+   * (suppressing the message on a refusal, which asserts no claim) needs
+   * this narrower count/list rather than the refusal-inclusive `strippedCitations`.
+   */
+  readonly preRefusalStrippedCitations: readonly string[];
   /** "from your note of …" receipt block, when the answer cited something. */
   readonly receipts?: string;
   /** True when the answer is an honest abstention (carries no citation by construction). */
@@ -139,6 +180,10 @@ export interface GroundedRecallResult {
   readonly notesUnavailable: boolean;
   /** How many corpus chunks were in the prompt window (grounding breadth signal). */
   readonly groundedChunkCount: number;
+  /** The chunks actually in the prompt window — a caller that needs the raw
+   *  file/text/score (receipts, a follow-up verdict pass, a grounded-source
+   *  summary banner) doesn't have to re-retrieve. */
+  readonly scored: readonly ScoredChunk[];
 }
 
 /**
@@ -189,6 +234,10 @@ export type GroundedRecallEvent =
     readonly groundedChunkCount: number;
     readonly verdict: "confident" | "ambiguous" | "none";
     readonly notesUnavailable: boolean;
+    /** Same array `GroundedRecallResult.scored` carries — exposed here too so a
+     *  streaming caller can render a pre-generation "grounded on …" summary
+     *  before the model has produced a single token. */
+    readonly scored: readonly ScoredChunk[];
   }
   | { readonly type: "answer-delta"; readonly text: string }
   | { readonly type: "result"; readonly result: GroundedRecallResult };
@@ -219,13 +268,20 @@ async function prepareRecall(input: GroundedRecallInput): Promise<PreparedRecall
     topK
   });
 
+  // Ad-hoc/caller-supplied chunks (a --file/--url/clipboard-style passage)
+  // fold into the retrieved set BEFORE dedup, exactly like a real retrieval
+  // hit — they must be cited as note-class evidence, not a separate section.
+  // Absent/empty ⇒ `rawScored` is the exact `retrieval.scored` reference.
+  const extraChunks = input.extras?.extraChunks ?? [];
+  const rawScored = extraChunks.length > 0 ? [...retrieval.scored, ...extraChunks] : retrieval.scored;
+
   // Drop provable near-duplicates first (highest-ranked survives) before the
   // confidence framing reads the set — mirrors the CLI's `commands-ask.ts`
   // composition. Off by default so an extras-free caller's framing input is
   // the exact `retrieval.scored` it always was.
   const dedupedScored = input.extras?.refineChunks
-    ? dedupNearDuplicateChunks(retrieval.scored, cosine)
-    : retrieval.scored;
+    ? dedupNearDuplicateChunks(rawScored, cosine)
+    : rawScored;
   const framing = notesGroundingFraming(dedupedScored, query, retrieval.preGapScored, embedModel);
   // `reorderForLongContext` re-sorts by raw cosine score, which would put a
   // higher-scoring but explicitly-superseded chunk back ahead of its current
@@ -239,12 +295,15 @@ async function prepareRecall(input: GroundedRecallInput): Promise<PreparedRecall
     (text) => runtime.embedFn(text, embedModel ?? "")
   ).catch(() => [] as const);
   const contextBlock = buildNoteContextBlock(contextChunks, contradictions, sources.notesDir, input.extras?.untrustedNoteSources);
+  const extraSections = input.extras?.contextSections ?? [];
 
   return {
     allowedNotes: [...new Set(contextChunks.map((s) => relativizeNoteSource(s.file, sources.notesDir)))],
-    notesUnavailable: retrieval.notesUnavailable,
+    // Ad-hoc chunks are note-class evidence found THIS turn — notes are no
+    // longer "unavailable" once any (index retrieval OR ad-hoc) contributed.
+    notesUnavailable: retrieval.notesUnavailable && extraChunks.length === 0,
     scored: contextChunks,
-    systemPrompt: buildSystemPrompt({ contextBlock, extraSections: input.extras?.contextSections, framing }),
+    systemPrompt: (input.extras?.composeSystemPrompt ?? buildSystemPrompt)({ contextBlock, extraSections, framing }),
     verdict: framing.verdict
   };
 }
@@ -255,11 +314,14 @@ function finalizeRecall(raw: string, prepared: PreparedRecall, input: GroundedRe
   // an undeclared category falls back to `enforceAnswerCitations`'s own `?? []`,
   // so a citation in it is stripped exactly like a fabricated note citation.
   const allowedCitations: AllowedCitations = { notes: [...prepared.allowedNotes], ...input.extras?.allowedCitations };
-  const enforced = enforceAnswerCitations(stripEchoedCiteAs(raw), allowedCitations);
+  const stripped = stripEchoedCiteAs(raw);
+  const normalized = input.extras?.normalizeAnswer ? input.extras.normalizeAnswer(stripped) : stripped;
+  const enforced = enforceAnswerCitations(normalized, allowedCitations);
   // Every sentence can be dropped as un-groundable (the citation-gate clause-leak
   // fix) — an empty string there would read as a silent bug, not an honest
   // abstention, so surface the SAME fixed hedge every other refusal uses.
   let answer = withUngroundableFallback(enforced).trim();
+  const preRefusalStrippedCitations = [...enforced.stripped];
   const strippedCitations = [...enforced.stripped];
 
   // An honest abstention must not carry a citation — a model that says
@@ -288,8 +350,10 @@ function finalizeRecall(raw: string, prepared: PreparedRecall, input: GroundedRe
     citations,
     groundedChunkCount: prepared.scored.length,
     notesUnavailable: prepared.notesUnavailable,
+    preRefusalStrippedCitations,
     ...(receipts !== undefined ? { receipts } : {}),
     refusal,
+    scored: prepared.scored,
     strippedCitations,
     verdict: prepared.verdict
   };
@@ -308,6 +372,7 @@ export async function* streamGroundedRecall(input: GroundedRecallInput): AsyncGe
   yield {
     groundedChunkCount: prepared.scored.length,
     notesUnavailable: prepared.notesUnavailable,
+    scored: prepared.scored,
     type: "retrieval",
     verdict: prepared.verdict
   };

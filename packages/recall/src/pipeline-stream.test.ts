@@ -71,6 +71,10 @@ describe("streamGroundedRecall — the live-gated event stream", () => {
       streamAnswer: () => chunked(["Your VPN MTU is 1380. ", "[from vpn.md]"])
     })));
     expect(events[0]).toMatchObject({ type: "retrieval", groundedChunkCount: 1, verdict: "confident" });
+    if (events[0]!.type === "retrieval") {
+      expect(events[0]!.scored).toHaveLength(1);
+      expect(events[0]!.scored[0]!.file).toContain("vpn.md");
+    }
     const deltas = events.filter((e) => e.type === "answer-delta").map((e) => e.text).join("");
     expect(deltas).toContain("[from vpn.md]");
     const last = events[events.length - 1]!;

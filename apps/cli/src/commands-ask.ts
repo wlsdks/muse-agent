@@ -46,6 +46,7 @@ import { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingAction
 export { augmentNoteEvidenceWithCited, selectFilePassages, selectGroundingActions, selectPlaybookSection, selectProbationSuggestion, topAppliedStrategy };
 import { dedupNearDuplicateChunks, demoteStale, diversifyAskChunks, notesGroundingFraming } from "@muse/recall";
 import { groundedSourceSummary } from "@muse/recall";
+import { streamGroundedRecall, type GroundedRecallExtras, type ScoredChunk } from "@muse/recall";
 
 export { citationPrecisionNotice, citationRecallNotice, untrustedOnlyGroundingNotice } from "@muse/recall";
 export { diversifyAskChunks, notesGroundingFraming };
@@ -80,7 +81,6 @@ import { cosine, isNotesIndexStale, reindexNotes } from "./commands-notes-rag.js
 import { filterLiveNoteIndexFiles } from "./commands-recall.js";
 import { embed } from "./embed.js";
 import { rankPlaybookEntriesByRelevance } from "./playbook-embed-rank.js";
-import { createCitationStreamFilter } from "./citation-stream.js";
 import { buildAskRunLog, resolvePersona, writeRunLog } from "./program-helpers.js";
 import { buildMusePersona } from "./muse-persona.js";
 import { readPipedStdin } from "./chat-repl.js";
@@ -572,6 +572,12 @@ Examples:
       // real URL for a `--url` answer (openable), or `null` for an ephemeral
       // `--clipboard` answer (nothing to open). Notes / files keep their local path.
       const adHocVerifyTargets = new Map<string, string | null>();
+      // `applyAdHocGrounding` pushes into `scored` IN PLACE (the array `retrieval.scored`
+      // and `scored` share the same reference) — snapshot the pre-push length so the
+      // plain-path seam call below can isolate just the newly-pushed ad-hoc entries as
+      // `extras.extraChunks` instead of double-counting the real retrieval hits (the
+      // seam re-retrieves those itself).
+      const preAdHocChunkCount = scored.length;
 
       const adHoc = await applyAdHocGrounding({
         adHocVerifyTargets,
@@ -813,20 +819,6 @@ Examples:
       const { loadActivePersonaPreamble } = await import("./persona-store.js");
       const personaTemplatePreamble = await loadActivePersonaPreamble();
 
-      // Compose RAG context block. Edge-place the chunks (most relevant at
-      // the start + end, least in the middle) per "Lost in the Middle" so the
-      // small local model actually attends to the strongest grounding.
-      // Graph-link + second-hop AUGMENT chunks are appended after MMR and
-      // bypass it, so a near-identical chunk (same fact across two notes, or a
-      // bridge near a seed) can pad the small model's context. Drop provable
-      // near-duplicates first-wins (highest-ranked survives); fail-open on any
-      // chunk without a comparable embedding (e.g. --file ad-hoc passages).
-      scored = dedupNearDuplicateChunks(scored, cosine);
-      // reorderForLongContext re-sorts by raw cosine score, which would put a
-      // higher-scoring but explicitly-superseded chunk back ahead of its current
-      // counterpart — so the stale demotion (already applied once inside
-      // retrieveAndRankNotes) must run again on its output, not before it.
-      const contextChunks = demoteStale(reorderForLongContext(scored), (c) => c.chunk.text);
       // Externally-ingested (untrusted) note paths — hoisted here so BOTH the
       // note-context block's conflict marker (below) AND the grounding-evidence
       // tagging (further down) read the same set: a conflict pitting an ingested
@@ -835,30 +827,56 @@ Examples:
       const untrustedNoteSources = untrustedNotePaths(
         await readNoteProvenance(resolveNoteProvenanceFile(process.env as MuseEnvironment))
       );
-      // CRAG: grade the notes' retrieval confidence so a weak near-miss isn't
-      // presented to the small model as something to cite as fact.
-      const notesFraming = notesGroundingFraming(scored, query, preGapScored.length > 0 ? preGapScored : undefined, embedModel);
-      // Detect value-conflicts between retrieved notes (arXiv:2504.19413) so
-      // reconciliation arrives as DATA, not a fragile prompt instruction.
-      // Fail-open: any embed error → no annotations → today's behaviour.
-      const noteContradictions: readonly ContradictionPair[] = notesUnavailable || contextChunks.length < 2
-        ? []
-        : await detectEvidenceContradictions(
-            contextChunks.map((r) => ({ score: r.score, source: relativizeNoteSource(r.file, notesDir), text: r.chunk.text })),
-            (t) => embed(t, embedModel)
-          ).catch(() => []);
-      const contextBlock = notesUnavailable
-        ? "(notes search unavailable this turn — answer from the other grounding sources)"
-        : contextChunks.length === 0
-          ? "(no relevant notes found)"
-          // The trailing `[from FILE]` is a COPY-READY token: a small local
-          // model (qwen3:8b) parrots placeholders ("FILENAME") and even fake
-          // example paths verbatim, so don't ask it to substitute — hand it the
-          // exact real bracket to copy. NO "cite as:" label before it: qwen
-          // copies the whole line, leaking the label into the answer ("…1380.
-          // cite as: [from vpn.md]") — visible on the demo. The source is shown
-          // relative to the notes dir (clean + locatable), not the absolute path.
-          : buildNoteContextBlock(contextChunks, noteContradictions, notesDir, untrustedNoteSources);
+      // `muse ask --with-tools` builds its own context block + system prompt
+      // inline (it feeds `assembly.agentRuntime.run`, not the seam's generate
+      // callback below). The plain chat-only path composes the SAME
+      // retrieval→dedup→reorder→demoteStale→context-block→system-prompt work
+      // through `runGroundedRecall`'s seam (`streamGroundedRecall`, further
+      // down) so it stays byte-identical to the API/MCP callers of that
+      // pipeline instead of a second hand-maintained copy.
+      let systemPrompt = "";
+      let notesFraming: { readonly verdict: "confident" | "ambiguous" | "none"; readonly header: string; readonly guidance?: string } = { header: "", verdict: "none" };
+      let contextBlock = "";
+      if (options.withTools) {
+        // Compose RAG context block. Edge-place the chunks (most relevant at
+        // the start + end, least in the middle) per "Lost in the Middle" so the
+        // small local model actually attends to the strongest grounding.
+        // Graph-link + second-hop AUGMENT chunks are appended after MMR and
+        // bypass it, so a near-identical chunk (same fact across two notes, or a
+        // bridge near a seed) can pad the small model's context. Drop provable
+        // near-duplicates first-wins (highest-ranked survives); fail-open on any
+        // chunk without a comparable embedding (e.g. --file ad-hoc passages).
+        scored = dedupNearDuplicateChunks(scored, cosine);
+        // reorderForLongContext re-sorts by raw cosine score, which would put a
+        // higher-scoring but explicitly-superseded chunk back ahead of its current
+        // counterpart — so the stale demotion (already applied once inside
+        // retrieveAndRankNotes) must run again on its output, not before it.
+        const contextChunks = demoteStale(reorderForLongContext(scored), (c) => c.chunk.text);
+        // CRAG: grade the notes' retrieval confidence so a weak near-miss isn't
+        // presented to the small model as something to cite as fact.
+        notesFraming = notesGroundingFraming(scored, query, preGapScored.length > 0 ? preGapScored : undefined, embedModel);
+        // Detect value-conflicts between retrieved notes (arXiv:2504.19413) so
+        // reconciliation arrives as DATA, not a fragile prompt instruction.
+        // Fail-open: any embed error → no annotations → today's behaviour.
+        const noteContradictions: readonly ContradictionPair[] = notesUnavailable || contextChunks.length < 2
+          ? []
+          : await detectEvidenceContradictions(
+              contextChunks.map((r) => ({ score: r.score, source: relativizeNoteSource(r.file, notesDir), text: r.chunk.text })),
+              (t) => embed(t, embedModel)
+            ).catch(() => []);
+        contextBlock = notesUnavailable
+          ? "(notes search unavailable this turn — answer from the other grounding sources)"
+          : contextChunks.length === 0
+            ? "(no relevant notes found)"
+            // The trailing `[from FILE]` is a COPY-READY token: a small local
+            // model (qwen3:8b) parrots placeholders ("FILENAME") and even fake
+            // example paths verbatim, so don't ask it to substitute — hand it the
+            // exact real bracket to copy. NO "cite as:" label before it: qwen
+            // copies the whole line, leaking the label into the answer ("…1380.
+            // cite as: [from vpn.md]") — visible on the demo. The source is shown
+            // relative to the notes dir (clean + locatable), not the absolute path.
+            : buildNoteContextBlock(contextChunks, noteContradictions, notesDir, untrustedNoteSources);
+      }
 
       // Personal-store grounding — open tasks / upcoming calendar / pending
       // reminders / matching contacts. Each gated by its flag (default-on),
@@ -991,69 +1009,56 @@ Examples:
         probationSuggestion = undefined;
       }
 
-      const systemPrompt = buildAskSystemPrompt({
-        actionBlock,
-        calendarBlock,
-        contactBlock,
-        contextBlock,
-        browsingBlock,
-        browsingHits,
-        episodeBlock,
-        episodeHits,
-        feedBlock,
-        feedHeadlines,
-        gitBlock,
-        matchedActions,
-        matchedCommands,
-        matchedCommits,
-        matchedContacts,
-        matchedMemories,
-        memoryBlock,
-        notesFraming,
-        openTasks,
-        pendingReminders,
-        personaPrompt,
-        personaTemplatePreamble,
-        reflectionBlock,
-        reflectionLines,
-        reminderBlock,
-        shellBlock,
-        taskBlock,
-        upcomingEvents,
-        withTools: options.withTools === true
-      });
-
       // Show citation header before streaming the answer so the user
-      // sees what's being grounded against, then the model output.
-      const notesConf = notesFraming.verdict === "ambiguous" ? " ⚠ LOW confidence — verify, may not be in your notes" : "";
-      const groundedParts = groundedSourceSummary({
-        notesPart: scored.length > 0 ? `${scored.length.toString()} note chunk(s) — ${scored.map((r) => r.file.split("/").pop()).join(", ")}${notesConf}` : null,
-        openTasks: openTasks.length,
-        upcomingEvents: upcomingEvents.length,
-        pendingReminders: pendingReminders.length,
-        contacts: matchedContacts.length,
-        memories: matchedMemories.length,
-        shellCommands: matchedCommands.length,
-        gitCommits: matchedCommits.length,
-        loggedActions: matchedActions.length,
-        pastSessions: episodeHits.length,
-        feedHeadlines: feedHeadlines.length,
-        browsingVisits: browsingHits.length
-      });
-      // Grounding diagnostic goes to stderr so `muse ask "?" > answer.txt`
-      // and `| jq` style pipelines get a clean stdout. Same convention
-      // as the auto-reindex banner above. The blank line separating
-      // header from answer body stays out of stdout entirely.
-      // Suppressed for an ACTION request (`--with-tools "set a reminder…"`): the
-      // user wants Muse to DO something, so a "grounded on lease.md ⚠ LOW
-      // confidence" recall banner on the action confirmation is just noise.
-      if (!classifyActionRequest(query)) {
-        if (groundedParts.length > 0) {
-          io.stderr(`(grounded on ${groundedParts.join("; ")})\n`);
-        } else {
-          io.stderr("(no matching notes, tasks, events, or reminders — answering from persona + general knowledge)\n");
+      // sees what's being grounded against, then the model output. Shared by
+      // both paths — the plain path calls it from the seam's pre-generation
+      // `retrieval` event so the ordering (banner → "generating…" → tokens)
+      // matches the --with-tools path exactly.
+      const printGroundedBanner = (scoredForBanner: readonly ScoredChunk[], verdictForBanner: "confident" | "ambiguous" | "none"): void => {
+        const notesConf = verdictForBanner === "ambiguous" ? " ⚠ LOW confidence — verify, may not be in your notes" : "";
+        const groundedParts = groundedSourceSummary({
+          notesPart: scoredForBanner.length > 0 ? `${scoredForBanner.length.toString()} note chunk(s) — ${scoredForBanner.map((r) => r.file.split("/").pop()).join(", ")}${notesConf}` : null,
+          openTasks: openTasks.length,
+          upcomingEvents: upcomingEvents.length,
+          pendingReminders: pendingReminders.length,
+          contacts: matchedContacts.length,
+          memories: matchedMemories.length,
+          shellCommands: matchedCommands.length,
+          gitCommits: matchedCommits.length,
+          loggedActions: matchedActions.length,
+          pastSessions: episodeHits.length,
+          feedHeadlines: feedHeadlines.length,
+          browsingVisits: browsingHits.length
+        });
+        // Grounding diagnostic goes to stderr so `muse ask "?" > answer.txt`
+        // and `| jq` style pipelines get a clean stdout. Same convention
+        // as the auto-reindex banner above. The blank line separating
+        // header from answer body stays out of stdout entirely.
+        // Suppressed for an ACTION request (`--with-tools "set a reminder…"`): the
+        // user wants Muse to DO something, so a "grounded on lease.md ⚠ LOW
+        // confidence" recall banner on the action confirmation is just noise.
+        if (!classifyActionRequest(query)) {
+          if (groundedParts.length > 0) {
+            io.stderr(`(grounded on ${groundedParts.join("; ")})\n`);
+          } else {
+            io.stderr("(no matching notes, tasks, events, or reminders — answering from persona + general knowledge)\n");
+          }
         }
-      }
+      };
+      // Same ordering rationale as the banner: shared so a caller can announce
+      // right when ITS retrieval/prep phase actually finished.
+      const announceGenerating = (): void => {
+        if (options.json) return;
+        // Name the ACTUAL backend — a privacy-first user must never read "local
+        // model" while the answer is being generated on a cloud provider.
+        const providerId = assembly.modelProvider?.id;
+        const where = providerId === "codex"
+          ? "via Codex (your ChatGPT subscription)"
+          : providerId === "ollama" || providerId === "lmstudio" || providerId === "diagnostic"
+            ? "on the local model"
+            : "on the cloud model";
+        io.stderr(`💭 generating your answer ${where}…\n`);
+      };
 
       // --notes-only hard-disables native web_search (the adapters
       // honour enabled:false and skip the upstream tool request)
@@ -1065,6 +1070,13 @@ Examples:
       let collectedAnswer = "";
       let answerLogprobs: AskStreamResult["logprobs"];
       let toolsUsed: readonly string[] = [];
+      // Populated at the end of EITHER branch below — the notes citation
+      // allowlist, the full (notes + every other source) citation allowlist,
+      // and the FIRST-pass-only stripped-citation list (pre-refusal-strip;
+      // what the --json `strippedCitations` field and the stderr warning use).
+      let allowedNotes: readonly string[] = [];
+      let citationAllowed: Parameters<typeof enforceAnswerCitations>[1] = {};
+      let preRefusalStrippedCitations: readonly string[] = [];
       // One run id shared across the runtime input, token-usage attribution, the
       // checkpoints, AND the run-log filename — so per-run cost works and `muse
       // trace <id>` links a run to its steps (they were unrelated ids).
@@ -1080,26 +1092,93 @@ Examples:
       // line so the wait reads as working, not frozen (latency-honest: it
       // names the actual local-model step, invents nothing).
       askStages.mark("retrievalMs");
-      if (!options.json) {
-        // Name the ACTUAL backend — a privacy-first user must never read "local
-        // model" while the answer is being generated on a cloud provider.
-        const providerId = assembly.modelProvider?.id;
-        const where = providerId === "codex"
-          ? "via Codex (your ChatGPT subscription)"
-          : providerId === "ollama" || providerId === "lmstudio" || providerId === "diagnostic"
-            ? "on the local model"
-            : "on the cloud model";
-        io.stderr(`💭 generating your answer ${where}…\n`);
-      }
       // Hold the Ollama lease while we use the local model so the background
       // self-learning daemon defers instead of contending for it. Best-effort
       // (fail-soft): if the lease write fails we still answer, and process
       // exit frees it (the daemon ignores a dead-pid lease).
       const leaseFile = resolveOllamaLeaseFile(process.env as Record<string, string | undefined>);
-      try {
-        await acquireOllamaLease(leaseFile, process.pid, Date.now());
-      } catch { /* best-effort */ }
+      const acquireLease = async (): Promise<void> => {
+        try {
+          await acquireOllamaLease(leaseFile, process.pid, Date.now());
+        } catch { /* best-effort */ }
+      };
+      // Shared by both branches below: the non-notes half of the citation
+      // allowlist (the notes half depends on each branch's own retrieval —
+      // withTools's live corpus scan vs. the seam's `scored`), and the
+      // full-prompt builder (each branch supplies its own contextBlock +
+      // notesFraming — withTools's own manual pipeline above, or the seam's).
+      const nonNoteCitations = {
+        actions: matchedActions.map((a) => a.what),
+        browsing: browsingHits.map((h) => h.host),
+        commands: matchedCommands,
+        commits: matchedCommits.map((c) => c.subject),
+        contacts: matchedContacts.map((c) => c.name),
+        events: upcomingEvents.map((e) => e.title),
+        feeds: feedHeadlines.map((h) => h.feedName),
+        memories: allMemoryFacts.map(renderMemoryFact),
+        reminders: pendingReminders.map((r) => r.text),
+        sessions: episodeHits.map((e) => e.summary),
+        tasks: openTasks.map((t) => t.title)
+      };
+      const buildFullSystemPrompt = (args: { readonly contextBlock: string; readonly notesFraming: { readonly guidance?: string; readonly header: string } }): string =>
+        buildAskSystemPrompt({
+          actionBlock,
+          calendarBlock,
+          contactBlock,
+          contextBlock: args.contextBlock,
+          browsingBlock,
+          browsingHits,
+          episodeBlock,
+          episodeHits,
+          feedBlock,
+          feedHeadlines,
+          gitBlock,
+          matchedActions,
+          matchedCommands,
+          matchedCommits,
+          matchedContacts,
+          matchedMemories,
+          memoryBlock,
+          notesFraming: args.notesFraming,
+          openTasks,
+          pendingReminders,
+          personaPrompt,
+          personaTemplatePreamble,
+          reflectionBlock,
+          reflectionLines,
+          reminderBlock,
+          shellBlock,
+          taskBlock,
+          upcomingEvents,
+          withTools: options.withTools === true
+        });
+      // Same 4-pass citation-normalization sequence BOTH branches need: the
+      // model's raw structured-slot/contact/memory citation forms rewritten
+      // into the canonical bracket the gate validates, then the grounding
+      // scaffolding's fence markers scrubbed. Shared so it's written once.
+      const normalizeAskCitations = (text: string): string => {
+        let out = normalizeFromPrefixedCitations(text);
+        out = normalizeSlotCitations(out, {
+          action: matchedActions.map((a) => a.what),
+          browsing: browsingHits.map((h) => h.host),
+          command: matchedCommands,
+          commit: matchedCommits.map((c) => c.subject),
+          contact: matchedContacts.map((c) => c.name),
+          event: upcomingEvents.map((e) => e.title),
+          feed: feedHeadlines.map((h) => h.feedName),
+          reminder: pendingReminders.map((r) => r.text),
+          session: episodeHits.map((e) => e.summary),
+          task: openTasks.map((t) => t.title)
+        });
+        out = normalizeContactCitations(out, matchedContacts.map((c) => ({ id: c.id, name: c.name })));
+        out = normalizeMemoryCitations(out, allMemoryFacts.map((f) => f.key));
+        return stripGroundingFences(out);
+      };
       if (options.withTools) {
+        systemPrompt = buildFullSystemPrompt({ contextBlock, notesFraming });
+        printGroundedBanner(scored, notesFraming.verdict);
+        announceGenerating();
+        await acquireLease();
         // Agent-runtime path — tools (muse.search, muse.notes.*,
         // muse.tasks.*, etc.) are exposed to the model and tool calls
         // get full round-trip execution. Slower (every tool round is
@@ -1200,60 +1279,140 @@ Examples:
         // The answer is printed AFTER the citation gate below, so a fabricated
         // citation is stripped before the user sees it (this path buffers; the
         // chat-only path streams live and is warned post-hoc instead).
+
+        // Strip a "cite as:" label the small model echoed from the note marker
+        // before it reaches the gate, the receipts, and the buffered display.
+        collectedAnswer = stripEchoedCiteAs(collectedAnswer);
+
+        // Output-side grounding gate — the recall WEDGE's code-not-model half:
+        // strip any citation the answer makes — a note, feed, task, event,
+        // reminder, or session — that is NOT among the real sources, so a
+        // fabricated citation can never reach the user (mirrors parseReflections
+        // / parseCouncilAnswer for recall). The agent can pull MORE notes via
+        // knowledge_search, so its allowed notes are the whole live corpus —
+        // any real note file is fair, only a non-existent one is invented.
+        allowedNotes = index ? filterLiveNoteIndexFiles(index.files, existsSync).map((f) => relativizeNoteSource(f.path, notesDir)) : [];
+        collectedAnswer = normalizeAskCitations(collectedAnswer);
+        citationAllowed = { ...nonNoteCitations, notes: allowedNotes };
+        const citationGate = enforceAnswerCitations(collectedAnswer, citationAllowed);
+        // Every sentence can be dropped as un-groundable (the citation-gate
+        // clause-leak fix) — an empty string there would read as a silent bug, not
+        // an honest abstention, so surface the SAME fixed hedge every other refusal
+        // uses instead of a blank answer.
+        collectedAnswer = withUngroundableFallback(citationGate);
+        preRefusalStrippedCitations = citationGate.stripped;
       } else {
-        // Chat-only fast path — direct modelProvider.stream, no tool
-        // registry. Suitable for "explain this", "summarise that"
-        // queries that don't need fresh external data.
-        // withSigintAbort so Ctrl-C exits 130 instead of leaving
-        // the stream pump dangling on the adapter side.
-        let streamError: string | undefined;
-        // Stream-time citation gate: hold each `[…]` span and drop a fabricated
-        // citation BEFORE it flashes on screen — the buffered gate at line ~2816
-        // runs too late for the live stream. Uses the SAME resolution as that
-        // gate, over the sources shown to this (chat-only) path.
-        const streamAllowed = {
-          actions: matchedActions.map((a) => a.what),
-          browsing: browsingHits.map((h) => h.host),
-          commands: matchedCommands,
-          commits: matchedCommits.map((c) => c.subject),
-          contacts: matchedContacts.map((c) => c.name),
-          events: upcomingEvents.map((e) => e.title),
-          feeds: feedHeadlines.map((h) => h.feedName),
-          memories: allMemoryFacts.map(renderMemoryFact),
-          notes: scored.map((r) => relativizeNoteSource(r.file, notesDir)),
-          reminders: pendingReminders.map((r) => r.text),
-          sessions: episodeHits.map((e) => e.summary),
-          tasks: openTasks.map((t) => t.title)
+        // Chat-only fast path, now routed through `runGroundedRecall`'s seam
+        // (`streamGroundedRecall`) — the SAME retrieval→dedup→reorder→context-
+        // block→prompt→generate→citation-gate pipeline the API/MCP callers use.
+        // `extras` reproduces this path's own prompt shape via `composeSystemPrompt`
+        // (`buildFullSystemPrompt` above), its citation-normalization passes via
+        // `normalizeAnswer` (`normalizeAskCitations` above), and folds any ad-hoc
+        // (--file/--url/--clipboard) passage in as `extraChunks` so it cites
+        // exactly like a retrieved note.
+        const adHocChunks: readonly ScoredChunk[] = scored.slice(preAdHocChunkCount);
+        const extras: GroundedRecallExtras = {
+          allowedCitations: nonNoteCitations,
+          // Captured into the outer `systemPrompt` too — `runGroundingVerdict`'s
+          // --repair/--best-of regeneration reads it to redraft with the SAME
+          // context a plain re-ask would have used.
+          composeSystemPrompt: (args) => {
+            systemPrompt = buildFullSystemPrompt({ contextBlock: args.contextBlock, notesFraming: args.framing });
+            return systemPrompt;
+          },
+          extraChunks: adHocChunks,
+          normalizeAnswer: normalizeAskCitations,
+          refineChunks: true,
+          untrustedNoteSources
         };
-        const streamCiteFilter = createCitationStreamFilter((span) => enforceAnswerCitations(span, streamAllowed).text);
+
+        let streamError: string | undefined;
+        let logprobsCapture: AskStreamResult["logprobs"];
+        // withSigintAbort so Ctrl-C exits 130 instead of leaving the stream
+        // pump dangling on the adapter side; the seam's live citation filter
+        // covers the SAME "never flash a fabricated source" guarantee
+        // `streamCiteFilter` used to provide inline.
         await withSigintAbort(async (signal) => {
-          const res = await consumeAskStream(
-            assembly.modelProvider!.stream({
-              messages: [
-                { content: composeChatSystemContent(systemPrompt, playbookSection), role: "system" },
-                { content: query, role: "user", ...(imageAttachments.length > 0 ? { attachments: imageAttachments } : {}) }
-              ],
-              // Observational confidence instrumentation (frontier F1): opt-in,
-              // never alters decoding; summarized onto the run-log trace below.
-              ...(process.env.MUSE_LOGPROBS === "1" || process.env.MUSE_LOGPROBS === "true" ? { logprobs: true } : {}),
-              ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
-              model,
-              // Ctrl-C aborts the in-flight HTTP call itself (Ollama stops
-              // generating), not just the client-side chunk loop.
-              signal,
-              // Grounding-first answer temperature, set explicitly so the
-              // direct (no-tools) stream doesn't inherit the model's high
-              // Ollama default (gemma4 ships 1.0).
-              temperature: resolveAnswerTemperature(process.env as MuseEnvironment)
-            }) as AsyncIterable<AskStreamEvent>,
-            (text) => { if (!options.json) io.stdout(stripGroundingFences(streamCiteFilter.push(text))); },
-            () => signal.aborted
-          );
-          if (!options.json) io.stdout(streamCiteFilter.flush());
-          collectedAnswer = res.answer;
-          streamError = res.error;
-          answerLogprobs = res.logprobs;
+          try {
+            const events = streamGroundedRecall({
+              extras,
+              options: {
+                answerModel: model,
+                embedModel,
+                scope: options.scope?.trim(),
+                temperature: resolveAnswerTemperature(process.env as MuseEnvironment),
+                topK
+              },
+              query,
+              runtime: {
+                embedFn: (text, embedM) => embed(text, embedM),
+                // Only reached when the provider has no streaming path — the
+                // seam's documented single-shot degrade.
+                generateAnswer: async (args) => {
+                  const res = await assembly.modelProvider!.generate({
+                    messages: [
+                      { content: composeChatSystemContent(args.system, playbookSection), role: "system" },
+                      { content: args.user, role: "user", ...(imageAttachments.length > 0 ? { attachments: imageAttachments } : {}) }
+                    ],
+                    model: args.model,
+                    ...(args.temperature !== undefined ? { temperature: args.temperature } : {})
+                  });
+                  return res.output ?? "";
+                },
+                streamAnswer: async function* (args) {
+                  for await (const event of assembly.modelProvider!.stream({
+                    messages: [
+                      { content: composeChatSystemContent(args.system, playbookSection), role: "system" },
+                      { content: args.user, role: "user", ...(imageAttachments.length > 0 ? { attachments: imageAttachments } : {}) }
+                    ],
+                    // Observational confidence instrumentation (frontier F1): opt-in,
+                    // never alters decoding; summarized onto the run-log trace below.
+                    ...(process.env.MUSE_LOGPROBS === "1" || process.env.MUSE_LOGPROBS === "true" ? { logprobs: true } : {}),
+                    ...(webSearchPolicy ? { metadata: { webSearchPolicy } } : {}),
+                    model: args.model,
+                    // Ctrl-C aborts the in-flight HTTP call itself (Ollama stops
+                    // generating), not just the client-side chunk loop.
+                    signal,
+                    ...(args.temperature !== undefined ? { temperature: args.temperature } : {})
+                  }) as AsyncIterable<AskStreamEvent>) {
+                    if (signal.aborted) return;
+                    if (event.type === "error") {
+                      throw new Error(event.error?.message ?? "model request failed");
+                    }
+                    if (event.type === "text-delta" && typeof event.text === "string") {
+                      yield event.text;
+                    }
+                    if (event.type === "done" && event.response?.logprobs && event.response.logprobs.length > 0) {
+                      logprobsCapture = event.response.logprobs;
+                    }
+                  }
+                }
+              },
+              sources: { notesDir, notesIndexFile: notesIndexPath() }
+            });
+            for await (const event of events) {
+              if (signal.aborted) break;
+              if (event.type === "retrieval") {
+                // Fires BEFORE generation — same ordering as --with-tools
+                // (banner → "generating…" → tokens).
+                scored = [...event.scored];
+                printGroundedBanner(scored, event.verdict);
+                announceGenerating();
+                await acquireLease();
+              } else if (event.type === "answer-delta") {
+                if (!options.json) io.stdout(event.text);
+              } else if (event.type === "result") {
+                collectedAnswer = event.result.answer;
+                allowedNotes = [...new Set(event.result.scored.map((r) => relativizeNoteSource(r.file, notesDir)))];
+                citationAllowed = { ...nonNoteCitations, notes: allowedNotes };
+                preRefusalStrippedCitations = event.result.preRefusalStrippedCitations;
+              }
+            }
+          } catch (cause) {
+            streamError = cause instanceof Error ? cause.message : String(cause);
+          }
         }, { onSigint: () => { if (!options.json) io.stderr("\n(Ctrl-C — aborting…)\n"); } });
+        answerLogprobs = logprobsCapture;
         if (streamError !== undefined) {
           const rendered = renderAskStreamError({
             answer: collectedAnswer,
@@ -1270,84 +1429,7 @@ Examples:
         }
       }
 
-      // Strip a "cite as:" label the small model echoed from the note marker
-      // before it reaches the gate, the receipts, and the buffered display.
-      collectedAnswer = stripEchoedCiteAs(collectedAnswer);
-
-      // Output-side grounding gate — the recall WEDGE's code-not-model half:
-      // strip any citation the answer makes — a note, feed, task, event,
-      // reminder, or session — that is NOT among the real sources, so a
-      // fabricated citation can never reach the user (mirrors parseReflections
-      // / parseCouncilAnswer for recall). Applies to BOTH paths: chat-only
-      // notes are exactly what we showed (`scored`); the --with-tools agent can
-      // pull MORE via knowledge_search, so its allowed notes are the whole live
-      // corpus — any real note file is fair, only a non-existent one is invented.
-      const allowedNotes = options.withTools
-        ? (index ? filterLiveNoteIndexFiles(index.files, existsSync).map((f) => relativizeNoteSource(f.path, notesDir)) : [])
-        : scored.map((r) => relativizeNoteSource(r.file, notesDir));
-      // The model often prepends the note verb "from " to a STRUCTURED citation
-      // (`[from commit: …]`, `[from task: …]`) — the note regex then mis-catches it
-      // and false-strips a TRUE structured citation. Drop the redundant "from "
-      // before a known class so it reads as the canonical `[commit: …]` the gate
-      // validates by class. Runs first so the contact/memory passes below see the
-      // already-de-prefixed form.
-      collectedAnswer = normalizeFromPrefixedCitations(collectedAnswer);
-      // The grounding markers are slot-numbered (`<<session N — id>>`), so the
-      // model often cites a structured source by slot (`[from session 1]`) — the
-      // note regex then false-strips a TRUE recall. Rewrite `[from <class> N]` to
-      // the canonical `[<class>: <slot N's content>]` using the SAME ordered lists
-      // the markers were built from + the gate validates against.
-      collectedAnswer = normalizeSlotCitations(collectedAnswer, {
-        action: matchedActions.map((a) => a.what),
-        browsing: browsingHits.map((h) => h.host),
-        command: matchedCommands,
-        commit: matchedCommits.map((c) => c.subject),
-        contact: matchedContacts.map((c) => c.name),
-        event: upcomingEvents.map((e) => e.title),
-        feed: feedHeadlines.map((h) => h.feedName),
-        reminder: pendingReminders.map((r) => r.text),
-        session: episodeHits.map((e) => e.summary),
-        task: openTasks.map((t) => t.title)
-      });
-      // The local model cites a contact with the note verb / by slot or id
-      // (`[from contact 1]`, `[contact: mina]`) because `<<contact N — id>>`
-      // mirrors the note wrapper; rewrite those to the canonical
-      // `[contact: <name>]` BY CODE so a grounded answer about the user's own
-      // address book isn't false-stripped by the exact-match note gate below.
-      collectedAnswer = normalizeContactCitations(
-        collectedAnswer,
-        matchedContacts.map((c) => ({ id: c.id, name: c.name }))
-      );
-      // Same fix for remembered facts: the model (esp. in Korean, where the query
-      // doesn't lexically match the English fact key, so the [memory:] hint block
-      // isn't injected) cites a persona-known fact as `[from car_license_plate]`.
-      // Rewrite a `[from <key>]` whose key is a known memory fact to `[memory: …]`.
-      collectedAnswer = normalizeMemoryCitations(collectedAnswer, allMemoryFacts.map((f) => f.key));
       askStages.mark("generationMs");
-      const citationAllowed = {
-        actions: matchedActions.map((a) => a.what),
-        browsing: browsingHits.map((h) => h.host),
-        commands: matchedCommands,
-        commits: matchedCommits.map((c) => c.subject),
-        contacts: matchedContacts.map((c) => c.name),
-        events: upcomingEvents.map((e) => e.title),
-        feeds: feedHeadlines.map((h) => h.feedName),
-        memories: allMemoryFacts.map(renderMemoryFact),
-        notes: allowedNotes,
-        reminders: pendingReminders.map((r) => r.text),
-        sessions: episodeHits.map((e) => e.summary),
-        tasks: openTasks.map((t) => t.title)
-      };
-      // Scrub any grounding-block fence tags (<<memory N>>, <<end>>, …) the
-      // model echoed from its prompt context before the citation gate — the
-      // recall scaffolding must never surface in the persisted/displayed answer.
-      collectedAnswer = stripGroundingFences(collectedAnswer);
-      const citationGate = enforceAnswerCitations(collectedAnswer, citationAllowed);
-      // Every sentence can be dropped as un-groundable (the citation-gate
-      // clause-leak fix) — an empty string there would read as a silent bug, not
-      // an honest abstention, so surface the SAME fixed hedge every other refusal
-      // uses instead of a blank answer.
-      collectedAnswer = withUngroundableFallback(citationGate);
       const refusalAnswer = answerIsRefusal(collectedAnswer);
       // The stripping always runs; the WARNING is suppressed for (a) an action
       // request, where the model citing the tool name (`muse.reminders.add`) as a
@@ -1356,8 +1438,8 @@ Examples:
       // unverified" is nonsensical when the answer is "I don't have that" (and the
       // spurious citation is dropped anyway by the refusal guard below). The text
       // is still cleaned either way — the spurious token never reaches the user.
-      if (shouldWarnStrippedCitations({ isActionRequest: classifyActionRequest(query), isRefusal: refusalAnswer, json: Boolean(options.json), strippedCount: citationGate.stripped.length })) {
-        io.stderr(`\n⚠️  Removed ${citationGate.stripped.length.toString()} citation(s) to source(s) you don't have (${citationGate.stripped.join(", ")}) — treat those claims as unverified.\n`);
+      if (shouldWarnStrippedCitations({ isActionRequest: classifyActionRequest(query), isRefusal: refusalAnswer, json: Boolean(options.json), strippedCount: preRefusalStrippedCitations.length })) {
+        io.stderr(`\n⚠️  Removed ${preRefusalStrippedCitations.length.toString()} citation(s) to source(s) you don't have (${preRefusalStrippedCitations.join(", ")}) — treat those claims as unverified.\n`);
       }
       // Refusal guard: a refusal asserts no grounded fact, so any citation the
       // model tacked on is spurious — strip ALL of them (and thus the Sources
@@ -1445,7 +1527,7 @@ Examples:
         askRetrieval,
         askRunId,
         askStages,
-        citationGate,
+        citationGate: { stripped: preRefusalStrippedCitations },
         collectedAnswer,
         decompositionSignals,
         embedModel,
