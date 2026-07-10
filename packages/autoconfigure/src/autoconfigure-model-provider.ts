@@ -204,15 +204,23 @@ function providerIdFromPrefix(modelSpec: string): string | undefined {
   return undefined;
 }
 
-export function createModelProvider(env: MuseEnvironment): ModelProvider | undefined {
-  const defaultModel = resolveDefaultModel(env);
-  const baseUrl = parseOptionalString(env.MUSE_MODEL_BASE_URL);
+export function createModelProvider(env: MuseEnvironment, modelOverride?: string): ModelProvider | undefined {
+  const defaultModel = modelOverride ?? resolveDefaultModel(env);
 
   if (!defaultModel) {
     return undefined;
   }
 
-  const explicitProviderId = parseOptionalString(env.MUSE_MODEL_PROVIDER_ID);
+  // `modelOverride` builds a provider for a SPECIFIC model string rather than
+  // the session's resolved default (privacy-tiered routing: constructing the
+  // cloud provider for a context-free turn). In that case the session's own
+  // `MUSE_MODEL_BASE_URL` / `MUSE_MODEL_PROVIDER_ID` pins (e.g. the local
+  // Ollama base URL, or `providerId: "ollama"` set for the session's LOCAL
+  // model) must NOT leak into the override's provider resolution — the
+  // override model's own prefix (`gemini/…`, `anthropic/…`) decides its
+  // provider instead.
+  const baseUrl = modelOverride ? undefined : parseOptionalString(env.MUSE_MODEL_BASE_URL);
+  const explicitProviderId = modelOverride ? undefined : parseOptionalString(env.MUSE_MODEL_PROVIDER_ID);
   const providerId = explicitProviderId
     ?? (baseUrl ? "openai-compatible" : parseModelName(defaultModel).providerId)
     ?? (baseUrl ? "openai-compatible" : providerIdFromPrefix(defaultModel))
@@ -350,4 +358,22 @@ export function createModelProvider(env: MuseEnvironment): ModelProvider | undef
         models
       });
   }
+}
+
+/**
+ * Build a `ModelProvider` for an EXPLICIT model string, independent of the
+ * caller's own session default — privacy-tiered routing's cloud leg (see
+ * `resolvePrivacyRoutedModel` in `@muse/policy`): a context-free turn is
+ * routed to `MUSE_CLOUD_MODEL`, which needs its OWN provider instance
+ * distinct from the session's (usually local) `modelProvider`. Thin wrapper
+ * over `createModelProvider`'s override branch — kept as a named export so
+ * call sites read as "build the cloud provider", not
+ * "createModelProvider with a mystery second argument". Still runs the
+ * `MUSE_LOCAL_ONLY` gate inside `createModelProvider` (throws
+ * `LocalOnlyViolationError` for a cloud model under local-only) — a second,
+ * defense-in-depth enforcement layer beyond the policy check that decided to
+ * route here in the first place.
+ */
+export function createModelProviderFor(model: string, env: MuseEnvironment): ModelProvider | undefined {
+  return createModelProvider(env, model);
 }

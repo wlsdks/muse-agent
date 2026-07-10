@@ -20,10 +20,12 @@
 
 import type { Readable } from "node:stream";
 
-import { createMuseRuntimeAssembly, resolveTasksFile } from "@muse/autoconfigure";
+import { createModelProviderFor, createMuseRuntimeAssembly, resolveAnswerTemperature, resolveTasksFile } from "@muse/autoconfigure";
 import type { Command } from "commander";
 
-import { classifyCasualPrompt, isUnbackedActionClaim, runResistingFalseDone, type KnowledgeMatch } from "@muse/agent-core";
+import { classifyCasualPrompt, isUnbackedActionClaim, runResistingFalseDone, type AgentRunResult, type KnowledgeMatch } from "@muse/agent-core";
+import type { ModelProvider, ModelRequest } from "@muse/model";
+import { findPii, resolvePrivacyRoutedModel, type PrivacyRoutedModelResult } from "@muse/policy";
 import type { AskTimeNudge, WeaknessEntry } from "@muse/stores";
 
 import { buildQueryRewritePrompt, chatTraceOutcome, chatWeaknessAxis, defaultChatConflictEmbedder, factKeysToInject, finalizeGatedChatAnswer, isChatAbstention, isChatGroundedSuccess, needsContextualRewrite, parseQueryRewrite, QUERY_REWRITE_RESPONSE_FORMAT, QUERY_REWRITE_SYSTEM_PROMPT, retrieveChatGrounding, type ChatWeaknessAxis } from "./chat-grounding.js";
@@ -237,6 +239,83 @@ export function filterFactsToKeys(facts: Readonly<Record<string, string>>, keys:
   return Object.fromEntries(Object.entries(facts).filter(([key]) => allow.has(key)));
 }
 
+/**
+ * Whether THIS turn's local payload counts as "personal context" for
+ * privacy-tiered routing (`resolvePrivacyRoutedModel`): a persona block was
+ * built (durable memory facts injected) or grounding retrieval actually
+ * matched something in the user's notes/episodes. Conversation history is
+ * deliberately NOT folded in here — `buildCloudTurnRequest` below never
+ * forwards `priorHistory` to a cloud-routed request regardless of its
+ * content, so there is nothing about history to classify.
+ */
+export function chatHasPersonalContext(userMemoryBlock: string, groundingBlock: string): boolean {
+  return userMemoryBlock.length > 0 || groundingBlock.length > 0;
+}
+
+/**
+ * Resolve THIS chat turn's privacy route — wraps `resolvePrivacyRoutedModel`
+ * with the exact local/cloud signal `runLocalChat` computes: persona/
+ * grounding presence, a PII hit in the raw message (`findPii`), and whether
+ * the message references a remembered fact BY VALUE (a contact's name, not
+ * just its key — `matchedMemoryValue` inside the policy needs values).
+ */
+export function resolveChatRouting(args: {
+  readonly message: string;
+  readonly userMemoryBlock: string;
+  readonly groundingBlock: string;
+  readonly memoryFacts?: Readonly<Record<string, string>>;
+  readonly defaultModel: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+}): PrivacyRoutedModelResult {
+  return resolvePrivacyRoutedModel({
+    defaultModel: args.defaultModel,
+    env: args.env,
+    hasPersonalContext: chatHasPersonalContext(args.userMemoryBlock, args.groundingBlock),
+    memoryValues: args.memoryFacts ? Object.values(args.memoryFacts) : undefined,
+    piiDetected: findPii(args.message).length > 0,
+    query: args.message
+  });
+}
+
+/**
+ * The model request for a CLOUD-routed turn — deliberately narrow: no
+ * parameter accepts persona text, grounding evidence, or prior turns, so it
+ * is structurally impossible for this function to forward them. Only the
+ * raw message plus a non-personal system line (reply-language directive +
+ * the current clock/timezone, the same line every chat surface always sends
+ * regardless of routing) goes out.
+ */
+export function buildCloudTurnRequest(
+  message: string,
+  model: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  now: Date = new Date()
+): ModelRequest {
+  const korean = /[가-힣]/u.test(message);
+  const languageDirective = korean
+    ? "사용자는 한국어를 씁니다. 사용자에게 보이는 텍스트 답변만 한국어로 작성하세요."
+    : "";
+  const system = [languageDirective, formatCurrentContextLine(now)].filter((part) => part.length > 0).join("\n\n");
+  return {
+    messages: [
+      { content: system, role: "system" },
+      { content: message, role: "user" }
+    ],
+    model,
+    temperature: resolveAnswerTemperature(env)
+  };
+}
+
+/**
+ * Display-only marker on a cloud-routed answer — "Muse shows its work": the
+ * user can always tell a context-free reply left the device, and which model
+ * answered it. Never persisted to history (matches every other display-only
+ * cue `finalizeGatedChatAnswer` / the weakness nudge appends in this file).
+ */
+export function formatCloudRouteMarker(korean: boolean, model: string): string {
+  return korean ? `\n\n☁️ 클라우드 (개인 정보 없음) — ${model}` : `\n\n☁️ cloud (context-free) — ${model}`;
+}
+
 export async function runLocalChat(
   io: ProgramIO,
   message: string,
@@ -247,6 +326,12 @@ export async function runLocalChat(
     readonly priorHistory?: readonly { readonly role: "user" | "assistant"; readonly content: string }[];
     /** Inline image attachments (gemma4 vision) for `muse chat --image`. */
     readonly imageAttachments?: ReadonlyArray<{ readonly mimeType: string; readonly dataBase64: string }>;
+    /**
+     * Test seam for privacy-tiered routing's cloud leg — production defaults
+     * to `createModelProviderFor`. Injected so a test can assert what a
+     * cloud-routed turn actually SENDS without a live API key/network.
+     */
+    readonly cloudProviderFactory?: (model: string, env: Readonly<Record<string, string | undefined>>) => ModelProvider | undefined;
   } = {}
 ) {
   // NFC-normalize the message. macOS/Swift passes CLI arguments in NFD (Hangul
@@ -393,52 +478,89 @@ export async function runLocalChat(
   const systemContent = [personaPreamble, userMemoryBlock, formatCurrentContextLine(), languageDirective]
     .filter((part) => part.length > 0)
     .join("\n\n") + groundingBlock;
-  const messages = [
-    { content: systemContent, role: "system" as const },
-    ...(options.priorHistory ?? []),
-    { content: message, role: "user" as const, ...(options.imageAttachments && options.imageAttachments.length > 0 ? { attachments: options.imageAttachments } : {}) }
-  ];
-  let result = await assembly.agentRuntime.run({
-    messages,
-    ...(hasMetadata ? { metadata } : {}),
-    model: model ?? assembly.defaultModel ?? "default"
-  });
 
-  // qwen3:8b deterministically returns a BLANK completion (no text, no tool
-  // call) for some "[time] [noun] 보여줘" phrasings — "오늘 할 일 보여줘" is empty
-  // 8/8 while "할 일 보여줘" / "오늘 할 일 알려줘" answer fine. Re-asking with a
-  // NEWLINE-led nudge breaks the degenerate stop (a space-join / punctuation
-  // does NOT — only a newline). Recovers most; the empty-answer fallback floors
-  // the rest. The retry's prompt is nudged but the answer is still gated against
-  // the ORIGINAL message.
-  if (result.response.output.trim().length === 0) {
-    const nudge = /[가-힣]/u.test(message) ? "간단히 답해줘." : "Please answer briefly.";
-    const retry = await assembly.agentRuntime.run({
-      messages: [{ content: systemContent, role: "system" as const }, ...(options.priorHistory ?? []), { content: `${message}\n${nudge}`, role: "user" as const }],
-      ...(hasMetadata ? { metadata } : {}),
-      model: model ?? assembly.defaultModel ?? "default"
-    });
-    if (retry.response.output.trim().length > 0) result = retry;
+  // Privacy-tiered routing (off by default): a request carrying NO persona,
+  // grounding, or PII signal MAY be routed to `MUSE_CLOUD_MODEL` instead of
+  // the local default; any personal signal keeps it local, unconditionally.
+  // `buildCloudTurnRequest` cannot forward `systemContent` (persona +
+  // grounding) or `options.priorHistory` — a cloud-routed turn sees only the
+  // raw message, structurally, not by a runtime check.
+  const routingDefaultModel = model ?? assembly.defaultModel ?? "default";
+  const routing = resolveChatRouting({
+    defaultModel: routingDefaultModel,
+    env: process.env,
+    groundingBlock,
+    memoryFacts: userMemory?.facts,
+    message,
+    userMemoryBlock
+  });
+  const cloudProviderFactory = options.cloudProviderFactory ?? createModelProviderFor;
+
+  let result: AgentRunResult | undefined;
+  if (routing.route === "cloud") {
+    try {
+      const cloudProvider = cloudProviderFactory(routing.model, process.env);
+      if (cloudProvider) {
+        const response = await cloudProvider.generate(buildCloudTurnRequest(message, routing.model, process.env));
+        result = { response, runId: response.id };
+      }
+    } catch {
+      // Cloud provider construction / generation failed (no key, network down,
+      // MUSE_LOCAL_ONLY raced in). Fall through to the ordinary local path
+      // below — degrading to "stay local" is always the safe direction, and
+      // this must never surface as a chat-facing error.
+    }
   }
+  const cloudRouted = result !== undefined;
 
-  // Honesty backstop — the continuous-session false "done". The model claims it
-  // performed the action ("…일정이 추가되었습니다") but NO action tool ran. In a
-  // running session, prior assistant turns that CLAIMED a done action poison the
-  // history: the model reads them as "already done" and skips the tool while
-  // still saying it acted (measured 1/8 real adds with a poisoned history vs 8/8
-  // with a clean one). Re-run the action turn with NO prior history to clear the
-  // poisoning, and keep the retry only when it ACTUALLY acted — never let an
-  // unbacked "done" stand.
-  const agentRuntime = assembly.agentRuntime;
-  result = await runResistingFalseDone({
-    query: message,
-    firstResult: result,
-    retry: () => agentRuntime.run({
-      messages: [{ content: systemContent, role: "system" as const }, { content: message, role: "user" as const }],
+  if (!result) {
+    const messages = [
+      { content: systemContent, role: "system" as const },
+      ...(options.priorHistory ?? []),
+      { content: message, role: "user" as const, ...(options.imageAttachments && options.imageAttachments.length > 0 ? { attachments: options.imageAttachments } : {}) }
+    ];
+    result = await assembly.agentRuntime.run({
+      messages,
       ...(hasMetadata ? { metadata } : {}),
-      model: model ?? assembly.defaultModel ?? "default"
-    })
-  });
+      model: routingDefaultModel
+    });
+
+    // qwen3:8b deterministically returns a BLANK completion (no text, no tool
+    // call) for some "[time] [noun] 보여줘" phrasings — "오늘 할 일 보여줘" is empty
+    // 8/8 while "할 일 보여줘" / "오늘 할 일 알려줘" answer fine. Re-asking with a
+    // NEWLINE-led nudge breaks the degenerate stop (a space-join / punctuation
+    // does NOT — only a newline). Recovers most; the empty-answer fallback floors
+    // the rest. The retry's prompt is nudged but the answer is still gated against
+    // the ORIGINAL message.
+    if (result.response.output.trim().length === 0) {
+      const nudge = /[가-힣]/u.test(message) ? "간단히 답해줘." : "Please answer briefly.";
+      const retry = await assembly.agentRuntime.run({
+        messages: [{ content: systemContent, role: "system" as const }, ...(options.priorHistory ?? []), { content: `${message}\n${nudge}`, role: "user" as const }],
+        ...(hasMetadata ? { metadata } : {}),
+        model: routingDefaultModel
+      });
+      if (retry.response.output.trim().length > 0) result = retry;
+    }
+
+    // Honesty backstop — the continuous-session false "done". The model claims it
+    // performed the action ("…일정이 추가되었습니다") but NO action tool ran. In a
+    // running session, prior assistant turns that CLAIMED a done action poison the
+    // history: the model reads them as "already done" and skips the tool while
+    // still saying it acted (measured 1/8 real adds with a poisoned history vs 8/8
+    // with a clean one). Re-run the action turn with NO prior history to clear the
+    // poisoning, and keep the retry only when it ACTUALLY acted — never let an
+    // unbacked "done" stand.
+    const agentRuntime = assembly.agentRuntime;
+    result = await runResistingFalseDone({
+      query: message,
+      firstResult: result,
+      retry: () => agentRuntime.run({
+        messages: [{ content: systemContent, role: "system" as const }, { content: message, role: "user" as const }],
+        ...(hasMetadata ? { metadata } : {}),
+        model: routingDefaultModel
+      })
+    });
+  }
 
   // Deterministic anti-fabrication gate: for a recall of the user's OWN data,
   // refuse honestly when the answer isn't grounded in the evidence (retrieved
@@ -556,6 +678,13 @@ export async function runLocalChat(
     // shared helper so chat/ask wording can't drift.
     const nudge = await chatRepeatWeaknessNudge(message);
     if (nudge) finalResponse += nudge;
+  }
+
+  // "Shows its work" for a cloud-routed turn — display-only (never persisted
+  // to `finalResponseForHistory`, matching every other cue above) so the next
+  // session's `priorHistory` never carries the marker as if it were content.
+  if (cloudRouted) {
+    finalResponse += formatCloudRouteMarker(/[가-힣]/u.test(message), routing.model);
   }
 
   return {

@@ -7,6 +7,7 @@ import {
   messagingConfigCheck,
   notesIndexHealth,
   permissionModeDriftCheck,
+  privacyRoutingCheck,
   readSensitiveFileModes,
   recallCalibrationCheck,
   TOOL_OUTPUT_CAP_ADVISORY_FLOOR_CHARS,
@@ -14,6 +15,32 @@ import {
   voiceSetupChecks,
   volatileMountCheck
 } from "./commands-doctor-checks.js";
+
+describe("privacyRoutingCheck — mirrors resolvePrivacyRoutedModel's own precedence", () => {
+  it("off by default (no env set)", () => {
+    const check = privacyRoutingCheck({});
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("off");
+  });
+
+  it("on but MUSE_CLOUD_MODEL missing → warn (every turn still stays local)", () => {
+    const check = privacyRoutingCheck({ MUSE_PRIVACY_ROUTING: "true" });
+    expect(check.status).toBe("warn");
+    expect(check.detail).toContain("MUSE_CLOUD_MODEL is not set");
+  });
+
+  it("on with a configured cloud model → ok, names the model", () => {
+    const check = privacyRoutingCheck({ MUSE_CLOUD_MODEL: "gemini/gemini-2.5-flash", MUSE_PRIVACY_ROUTING: "true" });
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("gemini/gemini-2.5-flash");
+  });
+
+  it("MUSE_LOCAL_ONLY wins even with routing fully configured — forced local", () => {
+    const check = privacyRoutingCheck({ MUSE_CLOUD_MODEL: "gemini/gemini-2.5-flash", MUSE_LOCAL_ONLY: "true", MUSE_PRIVACY_ROUTING: "true" });
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("forced local");
+  });
+});
 
 describe("focusShortcutsCheck — Focus/DND shortcut presence", () => {
   it("both convention shortcuts present → ok", () => {

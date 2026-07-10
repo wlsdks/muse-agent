@@ -168,6 +168,13 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
 
   const provider = assembly.modelProvider;
   type ChatStream = AsyncIterable<{ type: string; text?: string; error?: unknown; name?: string; response?: { usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } } }>;
+  // NOT privacy-tiered-routed (unlike `runLocalChat` in chat-repl.ts): `system`
+  // (persona + grounding) is assembled inside the MuseChatApp component in
+  // chat-ink.ts BEFORE `stream`/`streamWithTools` are ever called, so a
+  // per-turn local/cloud provider swap would need the routing decision to move
+  // into the component (ahead of the persona/grounding build), plus a second
+  // provider instance threaded through here. Left unwired — this Ink surface
+  // always stays local even with `MUSE_PRIVACY_ROUTING=true`.
   const stream = (messages: readonly ChatTurnMessage[], useModel: string): ChatStream =>
     provider.stream({ messages: messages as { role: "system" | "user" | "assistant"; content: string; attachments?: ReadonlyArray<{ mimeType: string; dataBase64: string }> }[], model: useModel });
 

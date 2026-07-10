@@ -15,7 +15,7 @@ import { existsSync, promises as fs } from "node:fs";
 import { formatRelativeTime } from "./human-formatters.js";
 import { parseAlpha, runCalibrationDoctor } from "./commands-doctor-calibration.js";
 export { buildCalibrationReport, formatCalibration, parseAlpha } from "./commands-doctor-calibration.js";
-import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
+import { backgroundProcessCheck, cloudSyncFolderCheck, episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, permissionModeDriftCheck, privacyRoutingCheck, readMuseSpeedEnv, readOllamaPerfEnv, readSensitiveFileModes, schedulerPauseCheck, secretSourcesCheck, selfLearningCheck, type SensitiveFileTarget, toolResultCapAdvisoryCheck, visionModelCheck, voiceSetupChecks, volatileMountCheck, weaknessFuelCheck, webEgressCheck, type LocalCheck } from "./commands-doctor-checks.js";
 import { backgroundStoreFile } from "./commands-background.js";
 import { readProactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
 export { heartbeatStatusToCheckStatus, proactiveHeartbeatCheck } from "./commands-doctor-heartbeat.js";
@@ -27,7 +27,7 @@ export { embedModelCheck } from "./commands-doctor-checks.js";
 export { parseNotesIndexEmbedModel } from "./commands-doctor-checks.js";
 export { findOllamaModelTag } from "./commands-doctor-ollama.js";
 export type { OllamaTagsEntry } from "./commands-doctor-ollama.js";
-export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, selfLearningCheck, weaknessFuelCheck } from "./commands-doctor-checks.js";
+export { episodeIndexHealth, localOnlyCheck, messagingConfigCheck, modelEnvCheck, museSpeedEnvCheck, notesIndexHealth, ollamaPerfPostureCheck, privacyRoutingCheck, selfLearningCheck, weaknessFuelCheck } from "./commands-doctor-checks.js";
 export type { LocalCheck } from "./commands-doctor-checks.js";
 import { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
 export { classifyHomeAlertsConfig, classifyMcpServersField, classifyWebWatchConfig, resolveDoctorWatchIntervalMs, resolveMuseEnvPath } from "./commands-doctor-config.js";
@@ -344,6 +344,7 @@ async function runLocalDoctor(): Promise<LocalDoctorReport> {
 
   checks.push(localOnlyCheck(env));
   checks.push(webEgressCheck(env));
+  checks.push(privacyRoutingCheck(env));
   checks.push(ollamaPerfPostureCheck(await readOllamaPerfEnv(env)));
   checks.push(museSpeedEnvCheck(readMuseSpeedEnv(env)));
 

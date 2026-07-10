@@ -165,6 +165,9 @@ importers:
       '@muse/multi-agent':
         specifier: workspace:*
         version: link:../../packages/multi-agent
+      '@muse/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
       '@muse/proactivity':
         specifier: workspace:*
         version: link:../../packages/proactivity

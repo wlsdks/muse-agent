@@ -31,6 +31,7 @@
     "@muse/messaging": "workspace:*",
     "@muse/model": "workspace:*",
     "@muse/multi-agent": "workspace:*",
+    "@muse/policy": "workspace:*",
     "@muse/proactivity": "workspace:*",
     "@muse/prompts": "workspace:*",
     "@muse/recall": "workspace:*",

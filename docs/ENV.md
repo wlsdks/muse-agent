@@ -112,7 +112,7 @@ Total: **504** variables.
 | `MUSE_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | packages/autoconfigure |
 | `MUSE_CIRCUIT_BREAKER_RESET_TIMEOUT_MS` | packages/autoconfigure |
 | `MUSE_CLI_VERSION` | apps/cli |
-| `MUSE_CLOUD_MODEL` | packages/policy |
+| `MUSE_CLOUD_MODEL` | apps/cli, packages/autoconfigure, packages/policy |
 | `MUSE_COMPACTION_IMPORTANCE_THRESHOLD` | packages/autoconfigure |
 | `MUSE_COMPACTION_STRATEGY` | packages/autoconfigure |
 | `MUSE_COMPANION_NO_MODEL` | apps/cli |
@@ -333,7 +333,7 @@ Total: **504** variables.
 | `MUSE_PLAYBOOK_INJECTIONS_FILE` | apps/cli |
 | `MUSE_PLAYBOOK_INJECT_TOPK` | apps/cli |
 | `MUSE_PREFERENCE_AUTOINFER_ENABLED` | apps/cli |
-| `MUSE_PRIVACY_ROUTING` | packages/policy |
+| `MUSE_PRIVACY_ROUTING` | apps/cli, packages/policy |
 | `MUSE_PROACTIVE_` | apps/cli |
 | `MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS` | apps/api |
 | `MUSE_PROACTIVE_AGENT_TURN` | apps/api, packages/autoconfigure |

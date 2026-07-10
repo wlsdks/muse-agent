@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createModelProvider, LOCAL_FIRST_DEFAULT_MODEL, LOCAL_FIRST_VISION_MODEL, resolveDefaultModel, resolveVisionModel } from "./autoconfigure-model-provider.js";
+import { createModelProvider, createModelProviderFor, LOCAL_FIRST_DEFAULT_MODEL, LOCAL_FIRST_VISION_MODEL, resolveDefaultModel, resolveVisionModel } from "./autoconfigure-model-provider.js";
 
 // The vision-model knob (MUSE_VISION_MODEL) + measured local default. Pure so the
 // swap policy AND the fail-soft path (optional model not pulled → fall back to the
@@ -140,5 +140,46 @@ describe("createModelProvider — MUSE_MODEL_EXTRA_HEADERS (LAN gateway auth hea
       MUSE_MODEL_BASE_URL: "http://127.0.0.1:4000/v1"
     });
     expect(headers).toEqual({ "content-type": "application/json" });
+  });
+});
+
+// createModelProviderFor — privacy-tiered routing's cloud leg: build a SECOND
+// provider instance for an explicit model string, isolated from whatever the
+// session's own default-model env carries (a local Ollama session pins
+// MUSE_MODEL_PROVIDER_ID=ollama + MUSE_MODEL_BASE_URL for ITS model; the cloud
+// override must resolve its provider from its OWN prefix, never inherit those).
+describe("createModelProviderFor — isolated from the session's local provider pins", () => {
+  it("builds a gemini provider for an explicit cloud model", () => {
+    const p = createModelProviderFor("gemini/gemini-2.5-flash", { GEMINI_API_KEY: "k" } as never);
+    expect(p?.id).toBe("gemini");
+  });
+
+  it("ignores a session MUSE_MODEL_PROVIDER_ID=ollama pin when building the cloud override", () => {
+    const p = createModelProviderFor("gemini/gemini-2.5-flash", {
+      GEMINI_API_KEY: "k",
+      MUSE_MODEL: "ollama/gemma4:12b",
+      MUSE_MODEL_PROVIDER_ID: "ollama"
+    } as never);
+    expect(p?.id).toBe("gemini");
+  });
+
+  it("ignores a session MUSE_MODEL_BASE_URL pin (a local Ollama base URL) when building the cloud override", () => {
+    const p = createModelProviderFor("anthropic/claude-haiku-4-5-20251001", {
+      ANTHROPIC_API_KEY: "k",
+      MUSE_MODEL_BASE_URL: "http://127.0.0.1:11434/v1"
+    } as never);
+    expect(p?.id).toBe("anthropic");
+  });
+
+  it("still fails closed under MUSE_LOCAL_ONLY (second enforcement layer)", () => {
+    expect(() => createModelProviderFor("anthropic/claude-haiku-4-5-20251001", {
+      ANTHROPIC_API_KEY: "k",
+      MUSE_LOCAL_ONLY: "true"
+    } as never)).toThrowError(/LocalOnly|local-only|local only/i);
+  });
+
+  it("a local model override still builds (createModelProviderFor isn't cloud-only)", () => {
+    const p = createModelProviderFor("ollama/gemma4:12b", {} as never);
+    expect(p?.id).toBe("ollama");
   });
 });

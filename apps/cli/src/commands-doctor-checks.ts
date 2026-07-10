@@ -180,6 +180,32 @@ export function webEgressCheck(env: Record<string, string | undefined>): LocalCh
 }
 
 /**
+ * Report privacy-tiered routing's posture on the chat surface — off by
+ * default (every turn local), opt-in cloud leg for context-free turns only,
+ * or forced-local by `MUSE_LOCAL_ONLY` (which always wins). Mirrors
+ * `resolvePrivacyRoutedModel`'s own precedence (`@muse/policy`) so this line
+ * can never disagree with what a chat turn actually does.
+ */
+export function privacyRoutingCheck(env: Record<string, string | undefined>): LocalCheck {
+  const name = "privacy routing";
+  if (parseBoolean(env.MUSE_LOCAL_ONLY, false)) {
+    return { detail: "forced local — MUSE_LOCAL_ONLY overrides privacy routing; a cloud model is never attempted", name, status: "ok" };
+  }
+  if (!parseBoolean(env.MUSE_PRIVACY_ROUTING, false)) {
+    return { detail: "off — every chat turn stays local (opt in with MUSE_PRIVACY_ROUTING=true + MUSE_CLOUD_MODEL)", name, status: "ok" };
+  }
+  const cloudModel = env.MUSE_CLOUD_MODEL?.trim();
+  if (!cloudModel) {
+    return { detail: "on but MUSE_CLOUD_MODEL is not set — every turn still stays local", name, status: "warn" };
+  }
+  return {
+    detail: `on — a context-free turn may route to ${cloudModel}; any personal signal (persona, grounding, PII, possessive marker, remembered fact) keeps it local`,
+    name,
+    status: "ok"
+  };
+}
+
+/**
  * Report whether background self-learning (B1) is actually running — the
  * verifiable-autonomy check (Slice 7). Pure of IO so it's directly testable;
  * the caller resolves `enabled` / `paused` / `installed`.

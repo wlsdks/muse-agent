@@ -53,6 +53,9 @@
       "path": "../../packages/multi-agent"
     },
     {
+      "path": "../../packages/policy"
+    },
+    {
       "path": "../../packages/prompts"
     },
     {
