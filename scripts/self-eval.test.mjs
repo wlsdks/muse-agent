@@ -146,6 +146,31 @@ test("countEgressGuards also counts the voice local-only cloud-key-ignore guard"
   assert.deepEqual(detectRegressions(prev, curr), ["egressGuards: 6→5"]);
 });
 
+test("countEgressGuards also counts the privacy-routing router's local-only fail-close", () => {
+  // packages/policy/src/privacy-routing.ts checks `if (localOnly)` before it will
+  // ever consider routing to MUSE_CLOUD_MODEL — an egress guard distinct from the
+  // model-router throw site.
+  const routerGuard = "  const localOnly = parseEnvBoolean(args.env.MUSE_LOCAL_ONLY, false);\n  if (localOnly) {\n    return local;\n  }";
+  assert.equal(countEgressGuards(routerGuard), 1);
+  // combined with policy + router + voice: 4 cloud ids + 1 throw + 1 voice + 1 privacy-routing = 7
+  const combined = [
+    'const CLOUD_PROVIDER_IDS = new Set(["openai", "anthropic", "gemini", "openrouter"]);',
+    "throw new LocalOnlyViolationError(providerId, baseUrl);",
+    "  const openAiKey = parseBoolean(env.MUSE_LOCAL_ONLY, true)\n    ? undefined\n    : env.OPENAI_API_KEY;",
+    routerGuard
+  ].join("\n");
+  assert.equal(countEgressGuards(combined), 7);
+  // deleting the privacy-routing guard is a numeric regression
+  const withoutPrivacyRouting = [
+    'const CLOUD_PROVIDER_IDS = new Set(["openai", "anthropic", "gemini", "openrouter"]);',
+    "throw new LocalOnlyViolationError(providerId, baseUrl);",
+    "  const openAiKey = parseBoolean(env.MUSE_LOCAL_ONLY, true)\n    ? undefined\n    : env.OPENAI_API_KEY;"
+  ].join("\n");
+  const prev = { gates: { egressGuards: { status: "pass", value: countEgressGuards(combined) } } };
+  const curr = { gates: { egressGuards: { status: "pass", value: countEgressGuards(withoutPrivacyRouting) } } };
+  assert.deepEqual(detectRegressions(prev, curr), ["egressGuards: 7→6"]);
+});
+
 test("countDifferentiationBatteries counts the marker-bearing proof batteries (a deleted one regresses)", () => {
   const sources = [
     "// Differentiation proof battery — local-by-construction\nimport x;",

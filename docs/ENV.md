@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **502** variables.
+Total: **504** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -112,6 +112,7 @@ Total: **502** variables.
 | `MUSE_CIRCUIT_BREAKER_FAILURE_THRESHOLD` | packages/autoconfigure |
 | `MUSE_CIRCUIT_BREAKER_RESET_TIMEOUT_MS` | packages/autoconfigure |
 | `MUSE_CLI_VERSION` | apps/cli |
+| `MUSE_CLOUD_MODEL` | packages/policy |
 | `MUSE_COMPACTION_IMPORTANCE_THRESHOLD` | packages/autoconfigure |
 | `MUSE_COMPACTION_STRATEGY` | packages/autoconfigure |
 | `MUSE_COMPANION_NO_MODEL` | apps/cli |
@@ -231,7 +232,7 @@ Total: **502** variables.
 | `MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS` | packages/autoconfigure |
 | `MUSE_LLM_MAX_OUTPUT_TOKENS` | packages/autoconfigure |
 | `MUSE_LLM_WORKING_BUDGET_TOKENS` | packages/autoconfigure |
-| `MUSE_LOCAL_ONLY` | apps/cli, packages/autoconfigure, packages/model |
+| `MUSE_LOCAL_ONLY` | apps/cli, packages/autoconfigure, packages/model, packages/policy |
 | `MUSE_LOGPROBS` | apps/cli |
 | `MUSE_LOOPBACK_FETCH_HOSTS` | packages/autoconfigure |
 | `MUSE_LOOPBACK_FS_ROOTS` | packages/autoconfigure |
@@ -332,6 +333,7 @@ Total: **502** variables.
 | `MUSE_PLAYBOOK_INJECTIONS_FILE` | apps/cli |
 | `MUSE_PLAYBOOK_INJECT_TOPK` | apps/cli |
 | `MUSE_PREFERENCE_AUTOINFER_ENABLED` | apps/cli |
+| `MUSE_PRIVACY_ROUTING` | packages/policy |
 | `MUSE_PROACTIVE_` | apps/cli |
 | `MUSE_PROACTIVE_ACTIVE_SESSION_WINDOW_MS` | apps/api |
 | `MUSE_PROACTIVE_AGENT_TURN` | apps/api, packages/autoconfigure |

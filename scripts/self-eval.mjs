@@ -97,17 +97,21 @@ export function countPromptCases(batterySource) {
  * countGroundedSurfaces. Rivals whose default is cloud cannot ship such a gate —
  * it would block their own product.
  *
- * Three stable markers, one per egress surface: gated cloud provider ids
+ * Four stable markers, one per egress surface: gated cloud provider ids
  * (the model router), `throw new LocalOnlyViolationError` (router enforcement),
- * and the voice registry forcing the OpenAI key to undefined under
- * MUSE_LOCAL_ONLY (so mic audio can never reach a cloud STT/TTS API).
+ * the voice registry forcing the OpenAI key to undefined under
+ * MUSE_LOCAL_ONLY (so mic audio can never reach a cloud STT/TTS API), and the
+ * privacy-tiered request router's `if (localOnly)` fail-close (so a personal
+ * or unclassified request can never be routed to MUSE_CLOUD_MODEL while
+ * local-only is set — see packages/policy/src/privacy-routing.ts).
  */
 export function countEgressGuards(combinedSource) {
   const gatedIds = combinedSource.match(/CLOUD_PROVIDER_IDS[^=]*=\s*new Set\(\[([^\]]*)\]/u);
   const ids = gatedIds ? (gatedIds[1].match(/"[^"]+"/gu) ?? []).length : 0;
   const throwSites = (combinedSource.match(/throw new LocalOnlyViolationError\(/gu) ?? []).length;
   const voiceGuards = (combinedSource.match(/parseBoolean\(env\.MUSE_LOCAL_ONLY,\s*true\)\s*\?\s*undefined/gu) ?? []).length;
-  return ids + throwSites + voiceGuards;
+  const privacyRoutingGuards = (combinedSource.match(/if\s*\(localOnly\)\s*\{/gu) ?? []).length;
+  return ids + throwSites + voiceGuards + privacyRoutingGuards;
 }
 
 /**
@@ -238,7 +242,8 @@ function main() {
     // createOllamaEmbedder's LocalOnlyViolationError guard moved here from
     // context-engineering-builders.ts (codebase-quality cohere) — keep its
     // throw-site counted so the egressGuards ratchet follows the guard.
-    "packages/autoconfigure/src/embedder-base.ts"
+    "packages/autoconfigure/src/embedder-base.ts",
+    "packages/policy/src/privacy-routing.ts"
   ]
     .map((rel) => join(ROOT, rel))
     .filter((p) => existsSync(p))
