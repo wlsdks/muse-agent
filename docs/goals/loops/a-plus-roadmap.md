@@ -281,7 +281,7 @@ ratchet: 로드맵 잔여 [ ] = 27/63(무변, 슬라이스 없음) · self-eval 
 - 리스크: 낮음. foreign src(secret-patterns.ts) 편집이나 committed lint 수리(피처 로직 무접촉)+트리 clean이라 충돌 위험 낮음. 동시 루프가 같은 줄 재수정 시 git merge. 다음 = D4-S2e(Apple 연락처 draft-first) — baseline green 회복됐으니 재개.
 - lesson: repo-wide 게이트(lint/envInventory) FOREIGN-fail이 지속되면 내 슬라이스 게이트도 막히므로 baseline-repair fire로 일회 수리(피처 로직 무접촉 트리비얼 수리+생성물 sync만) — 단 foreign 활성-churn src는 여전히 회피, committed-정적 에러만.
 
-## fire 34 · 2026-07-12 · skill v2.x · <commit-pending>
+## fire 34 · 2026-07-12 · skill v2.x · 5d642a982
 meta: slice=JUDGE-DRILL+D4-S2e · wave=W3 · pkg=@muse/macos+apps/cli · kind=judge-drill+contacts-write-draftfirst · verdict=PASS · firesSinceDrill=0(리셋) · ★D4-S2 완주
 ratchet: 로드맵 잔여 [ ] = 26/63 · self-eval pass · fabrication 0 · macos +6·cli-gate +3 test · toolCases 371→374(eval:tools 골든)
 - 무엇: ①기준선 green(fire33 repair 유지). ②JUDGE-DRILL: 고의결함 D4-S2e contacts-write(approvalGate 호출하나 decision.approved 무시=fail-open write+deny/no-effect 미테스트) 주입→독립 Opus ④b가 정확 FAIL(라인47-51 decision 버림·happy-path-only). ③롤백→진짜 fix D4-S2e: mac_contacts_write draft-first 강제(message-send sendMessageWithApproval 미러: gate throw→deny·`if(!approved) return` osascript 전·deny/throw→write 0 spy 검증·action-log·escapeAppleScript). buildContactsApprovalGate non-interactive fail-close+등록+armed-lockstep. eval:tools 골든3.
