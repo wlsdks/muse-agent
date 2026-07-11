@@ -612,6 +612,36 @@ describe("mac_system_set — Tier 1 volume / mute / display sleep", () => {
     const tool = createMacSystemSetTool({ networksetup: async () => ok("Hardware Port: Ethernet\nDevice: en1\n") });
     expect(await tool.execute({ setting: "wifi_on" }, ctx)).toMatchObject({ set: false });
   });
+
+  it("quits the named app via osascript `tell application ... to quit`", async () => {
+    let script = "";
+    const tool = createMacSystemSetTool({ osascript: async (s) => { script = s; return ok(""); } });
+    expect(await tool.execute({ setting: "quit_app", app: "Safari" }, ctx)).toEqual({ app: "Safari", set: true, setting: "quit_app" });
+    expect(script).toBe('tell application "Safari" to quit');
+  });
+
+  it("escapes an injected app name so it cannot break out of the AppleScript string literal", async () => {
+    let script = "";
+    const tool = createMacSystemSetTool({ osascript: async (s) => { script = s; return ok(""); } });
+    const app = 'Safari" to (do shell script "rm -rf ~")';
+    expect(await tool.execute({ setting: "quit_app", app }, ctx)).toMatchObject({ set: true });
+    expect(script).toContain('\\"');
+    expect(script).not.toContain('" to (do shell script "rm -rf ~")" to quit');
+    expect(script).toBe(`tell application "Safari\\" to (do shell script \\"rm -rf ~\\")" to quit`);
+  });
+
+  it("fails closed on a missing or blank app without calling osascript", async () => {
+    let called = false;
+    const tool = createMacSystemSetTool({ osascript: async () => { called = true; return ok(""); } });
+    expect(await tool.execute({ setting: "quit_app" }, ctx)).toMatchObject({ set: false, reason: expect.stringContaining("app") });
+    expect(await tool.execute({ setting: "quit_app", app: "  " }, ctx)).toMatchObject({ set: false, reason: expect.stringContaining("app") });
+    expect(called).toBe(false);
+  });
+
+  it("surfaces a non-zero osascript exit as a failure", async () => {
+    const tool = createMacSystemSetTool({ osascript: async () => fail("execution error: not authorised") });
+    expect(await tool.execute({ setting: "quit_app", app: "Safari" }, ctx)).toMatchObject({ set: false });
+  });
 });
 
 describe("mac_say — Tier 1 text-to-speech", () => {

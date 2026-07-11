@@ -245,3 +245,12 @@ ratchet: 로드맵 잔여 [ ] = 27/60(D4-S2a 체크·VQ-21 추가) · self-eval 
 - 리뷰지점: Opus 8축 PASS — injection-safe(argv 불변, 후-필터)·isImagePath 정확(진짜 확장자·case-insensitive·no-ext false·dir 오탐 없음)·default byte-identical·mutation-RED(필터 제거→.txt/.pdf leak RED 재현)·no 혼동툴·total/cap 순서 정확.
 - 리스크: 낮음. eval:tools 6m40s timeout(무거운 로컬셋 미완)이나 변경 가산적(photo 키워드+optional 플래그, 리네임/혼동툴 없음)이라 selection 회귀 위험 near-zero — 결정론게이트(build/test/mutation/lint/Opus)로 판정, timeout≠fail 정직 표기. Photos.app 딥 라이브러리는 VQ-21. 다음 = D4-S2b(mac_system_set enum 확장: 앱종료).
 - lesson: 제약("신규툴 금지")이 자연스러운 신규 capability와 충돌하면, 기존 툴의 안전한 확장(후-필터·optional 플래그)으로 제약-준수판을 배송하고 딥 버전은 VQ로 표면화 — 조용히 쉬운 걸로 안 내려가되 제약도 안 어김.
+
+## fire 30 · 2026-07-12 · skill v2.x · <commit-pending>
+meta: slice=D4-S2b · wave=W3 · pkg=@muse/macos · kind=mac-quit-app · verdict=PASS · firesSinceDrill=4
+ratchet: 로드맵 잔여 [ ] = 28/62(D4-S2 b/c/d 별개 체크박스 분할 +2, b 체크 -1) · self-eval pass · fabrication 0 · macos +4 test(quit_app)
+- 무엇: macOS 앱종료. mac_system_set에 quit_app enum+app param(optional, volume value 선례) 추가. osascript `tell application "<escapeAppleScript(app)>" to quit` — 공유 escaper로 앱-이름 임베드(인젝션-safe). 빈/공백 app→fail-close(osascript 미호출). 신규툴 0(제약 준수).
+- 왜: D4-S2 mac 커버리지의 앱종료 조각. mac_app_open은 /usr/bin/open(열기만)이라 quit 안 맞고 mac_system_set이 execute-risk 로컬액션 홈. 앱-이름이 AppleScript 문자열에 들어가 인젝션 표면 → 기존 escapeAppleScript 재사용이 정답.
+- 리뷰지점: Opus 위협모델 PASS — escaper backslash-first 순서가 escaper-escape 우회 방지(`\`+`"`→`\\`+`\"`=리터럴), newline→space, breakout 구성 불가 확인·blank fail-close(called flag)·두 mutation 독립 재현(escaper 제거→breakout RED, guard 제거→osascript 호출 RED)·additionalProperties 유지·mac_app_open과 무혼동(quit vs open 키워드 분리).
+- 리스크: 낮음. quit=graceful(저장 프롬프트 가능, force-kill 아님)·로컬이라 draft-first 불요. eval:tools 로컬셋 heavy timeout(가산 enum+키워드라 selection 회귀 near-zero, Opus가 무혼동 확인). 다음 = D4-S2c(다크모드: dark_mode_on/off parameterless osascript enum).
+- lesson: 사용자/모델-제공 문자열을 osascript에 임베드할 땐 항상 공유 escapeAppleScript(backslash-first)를 통과 — ad-hoc 이스케이프 금지, 기존 tested escaper 재사용이 인젝션 표면의 정답.

@@ -10,6 +10,10 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Ask Muse to quit a Mac app.** "quit Safari", "사파리 종료해줘" now closes the
+  named app (a normal quit — it can still prompt you to save). The app name is
+  handled safely so a weird name can't run anything else.
+
 - **Find your photos, not just any file.** Muse's Mac file search can now be
   narrowed to photos and images — ask it to "find my photos of the beach" and it
   returns just the image files, not documents. It returns the files' locations,
