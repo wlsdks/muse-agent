@@ -4,9 +4,20 @@ import { buildWebhookNotify, resolveWebhookDueAt } from "./commands-webhook.js";
 
 const FIXED_NOW = (): Date => new Date("2026-05-18T09:00:00Z");
 
+// The resolver's documented default lands a bare day phrase at 09:00 SERVER-LOCAL
+// (loopback-relative-time.ts header), so the expected instant must be computed
+// with the same local-clock APIs — a hardcoded Z-rendering only holds in one TZ.
+const localNineAm = (daysFromNow: number): string => {
+  const d = new Date(FIXED_NOW());
+  d.setDate(d.getDate() + daysFromNow);
+  d.setHours(9, 0, 0, 0);
+  return d.toISOString();
+};
+
+
 describe("resolveWebhookDueAt — a present-but-unparseable dueAt is surfaced, not dropped", () => {
   it("returns the parsed dueAt for an understood hint", () => {
-    expect(resolveWebhookDueAt("next monday", FIXED_NOW)).toEqual({ dueAt: "2026-05-25T00:00:00.000Z" });
+    expect(resolveWebhookDueAt("next monday", FIXED_NOW)).toEqual({ dueAt: localNineAm(7) });
   });
 
   it("flags a typo'd hint as unparsed instead of silently yielding no due date", () => {
@@ -24,7 +35,7 @@ describe("buildWebhookNotify — normalise a notify payload (title/notice/task f
   it("builds the notice from a JSON payload and parses a valid dueAt", () => {
     const r = buildWebhookNotify({ title: "Q3 memo", text: "ship it", dueAt: "next monday" }, FIXED_NOW);
     expect(r).toMatchObject({
-      ok: true, title: "Q3 memo", notice: "📥 Q3 memo: ship it", dueAt: "2026-05-25T00:00:00.000Z"
+      ok: true, title: "Q3 memo", notice: "📥 Q3 memo: ship it", dueAt: localNineAm(7)
     });
     expect((r as { dueAtUnparsed?: string }).dueAtUnparsed).toBeUndefined();
   });

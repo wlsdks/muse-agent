@@ -238,11 +238,6 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           }
           return;
         }
-        if (plat !== "darwin") {
-          io.stderr("daemon autostart install is supported on macOS (LaunchAgent) and Windows (schtasks) — on this platform run `muse daemon` under your init system directly.\n");
-          process.exitCode = 1;
-          return;
-        }
         const plistFile = resolveLaunchAgentFile(e);
         const home = e.HOME?.trim()?.length ? e.HOME.trim() : homedir();
         const logDir = join(home, ".muse", "logs");

@@ -43,7 +43,7 @@ describe("discord-after-store", () => {
 
   it("writes the cursor sidecar with 0600 permissions (it names every channel the bot polls)", async () => {
     await writeDiscordAfter(file, "chan-1", "1");
-    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(file)).mode & 0o777).toBe(0o600);
   });
 
   it("treats a corrupt file, a missing 'after' key, or a non-string value as 'no cursor' (graceful)", async () => {

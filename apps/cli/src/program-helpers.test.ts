@@ -387,7 +387,7 @@ describe("readConfigStore / writeConfigStore — atomic write + unreadable-path 
 
       expect(readdirSync(dir).some((n) => n.includes(".tmp-"))).toBe(false); // temp file renamed away, not left behind
       const mode = statSync(join(dir, "config.json")).mode & 0o777;
-      expect(mode).toBe(0o600);
+      if (process.platform !== "win32") expect(mode).toBe(0o600);
     } finally {
       rmSync(dir, { force: true, recursive: true });
     }
