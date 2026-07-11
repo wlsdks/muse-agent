@@ -62,7 +62,7 @@ ratchet: 로드맵 잔여 [ ] = 25/34 · self-eval FOREIGN-fail(envInventory=MUS
 - 리뷰지점: Opus 독립 검증(reused-PID no-kill 직접 구동·truth table empty-string edge·throwing reader는 spawnSync가 안 던져 unreachable+fail-safe)·mutation-RED 양방향. messaging 0편집(동시 Matrix 루프 충돌 회피)·env 0.
 - 리스크: 동시 Matrix 루프가 트리 대량 오염(api/web/autoconfigure/messaging)+envInventory FOREIGN-fail(MUSE_MATRIX_POLL_ENABLED). 내 5파일(stores 4+cli 1)만 격리 커밋. stop의 reader-throw는 try/catch 없으나 프로덕션 spawnSync는 미발현.
 
-## fire 8 · 2026-07-11 · skill v2.x · <commit-pending>
+## fire 8 · 2026-07-11 · skill v2.x · 8ed66e2b3
 meta: slice=D1-S3 · wave=W2 · pkg=@muse/memory+agent-core+cli · kind=compaction-quality · verdict=PASS · firesSinceDrill=8(≥8→다음 judge-drill)
 ratchet: 로드맵 잔여 [ ] = 24/34 · self-eval pass · fabrication 0 · memory 18 test 신규 · ★W2 착수
 - 무엇: 단계적 요약. summarizeDroppedContextInStages+chunkDroppedOnToolPairs(memory 순수). dropped를 tool-pair 경계로 청크(role:"tool" 앞 분할금지)→청크별 summarizeDroppedContext 재사용(각 FAIL-OPEN)→생존청크 병합·maxChars 캡. 식별자 VERBATIM 지시를 SUMMARIZER_SYSTEM_PROMPT에. agent-runtime:578+chat-ink-core:941 배선.
