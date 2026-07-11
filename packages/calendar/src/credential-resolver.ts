@@ -45,7 +45,7 @@ export interface CalendarSecretSourceOptions {
  * callback) so this module never imports a concrete store class beyond the
  * interface — no reference cycle back into `@muse/secrets`.
  */
-function createCalendarSecretSources(
+export function createCalendarSecretSources(
   store: CalendarCredentialStore,
   options: CalendarSecretSourceOptions = {}
 ): SecretSource[] {

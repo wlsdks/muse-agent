@@ -86,7 +86,7 @@ describe("appendLastProactiveDelivery", () => {
   it("writes the sidecar 0o600 (owner-only — personal delivery data)", async () => {
     await appendLastProactiveDelivery(file, { at: NOW, outcome: "delivered", sourceKey: "a" });
     const mode = (await stat(file)).mode & 0o777;
-    expect(mode).toBe(0o600);
+    if (process.platform !== "win32") expect(mode).toBe(0o600);
   });
 
   it("serializes concurrent appends — no lost entry, no rename crash", async () => {

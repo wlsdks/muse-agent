@@ -6,6 +6,9 @@ import { defineConfig } from "vitest/config";
 // compiled output. Restore the exclude.
 export default defineConfig({
   test: {
-    exclude: ["**/node_modules/**", "**/dist/**"]
+    exclude: ["**/node_modules/**", "**/dist/**"],
+    // The windows-latest runner is 3-6x slower than a dev Mac (fsync, spawn,
+    // Add-Type); the 5s default turns ordinarily-fast suites into flakes there.
+    ...(process.platform === "win32" ? { testTimeout: 30_000 } : {})
   }
 });

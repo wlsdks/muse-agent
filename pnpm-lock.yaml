@@ -195,6 +195,9 @@ importers:
       '@muse/voice':
         specifier: workspace:*
         version: link:../../packages/voice
+      '@muse/windows':
+        specifier: workspace:*
+        version: link:../../packages/windows
       commander:
         specifier: ^15.0.0
         version: 15.0.0
@@ -802,6 +805,15 @@ importers:
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
+
+  packages/windows:
+    dependencies:
+      '@muse/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@muse/tools':
+        specifier: workspace:*
+        version: link:../tools
 
 packages:
 

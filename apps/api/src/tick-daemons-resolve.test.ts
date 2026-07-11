@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { homedir } from "node:os";
 
 import type { AgentRuntime } from "@muse/agent-core";
@@ -44,10 +45,10 @@ describe("resolveInterruptionBudgetWiring", () => {
     const wiring = resolveInterruptionBudgetWiring({});
     expect(wiring).toEqual({
       dailyCap: 6,
-      digestFile: "/tmp/fakehome/.muse/digest-queue.json",
+      digestFile: join("/tmp/fakehome", ".muse", "digest-queue.json"),
       hourlyCap: 2,
-      lastDeliveryFile: "/tmp/fakehome/.muse/last-proactive-delivery.json",
-      ledgerFile: "/tmp/fakehome/.muse/interruption-ledger.json",
+      lastDeliveryFile: join("/tmp/fakehome", ".muse", "last-proactive-delivery.json"),
+      ledgerFile: join("/tmp/fakehome", ".muse", "interruption-ledger.json"),
       trustLedgerFile: "/tmp/fakehome/.muse/proactive-trust.json"
     });
   });

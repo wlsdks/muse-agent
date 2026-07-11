@@ -76,7 +76,7 @@ describe("proposed-action store under concurrency — draft-first proposals must
     expect(executed).toEqual(["x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"]);
   });
 
-  it("persists every concurrently-proposed action (no lost draft over 50 parallel writers)", async () => {
+  it("persists every concurrently-proposed action (no lost draft over 50 parallel writers)", { timeout: 60_000 }, async () => {
     const file = join(dir, "propose.json");
     const input = (i: number) => ({ destination: "C1", providerId: "slack", reason: "r", summary: `s${i}`, text: `t${i}`, userId: "u" });
     const results = await Promise.allSettled(Array.from({ length: 50 }, (_v, i) => proposeMessageAction(file, input(i))));

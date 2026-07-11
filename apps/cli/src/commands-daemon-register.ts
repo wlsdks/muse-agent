@@ -49,7 +49,7 @@ import { FileUserMemoryStore } from "@muse/memory";
 import type { PatternMatch } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, readEpisodes, resolveLearnQueueFile, decayStalePlaybookRewards, isLearningPaused, queryActionLog, queryPlaybook, readReminders, readTasks, recordPlaybookStrategy, removePlaybookStrategy, readProactiveHistory, readRecallHits, writeFadedMemoryKeys } from "@muse/stores";
-import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, runDueBackgroundExitNotices, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, runDueReminders, runDigestFlushIfDue, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
+import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, WindowsActiveWindowSource, runDueBackgroundExitNotices, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, runDueReminders, runDigestFlushIfDue, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, GmailEmailProvider, type EmailProvider, runDueSituationalBriefing, selectUpcomingConflicts } from "@muse/domain-tools";
 import { BROWSING_SYNC_LIMIT, locateChromeHistoryFile, shouldAutoSyncBrowsing, syncBrowsingHistory } from "@muse/recall";
 import { execFile } from "node:child_process";
@@ -90,9 +90,11 @@ const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
  * `resolveProactiveTrustFile`.
  */
 export function resolveProactiveTrustFile(e: NodeJS.ProcessEnv): string {
-  return e.MUSE_PROACTIVE_TRUST_FILE?.trim()?.length
-    ? e.MUSE_PROACTIVE_TRUST_FILE.trim()
-    : join(homedir(), ".muse", "proactive-trust.json");
+  if (e.MUSE_PROACTIVE_TRUST_FILE?.trim()?.length) return e.MUSE_PROACTIVE_TRUST_FILE.trim();
+  // HOME-first: os.homedir() ignores $HOME on win32 (USERPROFILE), breaking
+  // HOME-based isolation and drifting from the api tick's resolver.
+  const home = e.HOME?.trim() || process.env.HOME?.trim();
+  return join(home && home.length > 0 ? home : homedir(), ".muse", "proactive-trust.json");
 }
 
 /**
@@ -395,6 +397,8 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           // the file source an external OS helper writes.
           const useMacos = e.MUSE_AMBIENT_SOURCE?.trim() === "macos"
             && (helpers.ambientMacosRun !== undefined || process.platform === "darwin");
+          const useWindows = e.MUSE_AMBIENT_SOURCE?.trim() === "windows"
+            && (helpers.ambientMacosRun !== undefined || process.platform === "win32");
           let ambientSource;
           if (useMacos) {
             ambientSource = new MacOsActiveWindowSource({
@@ -402,6 +406,12 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
               ...(helpers.ambientMacosRun ? { run: helpers.ambientMacosRun } : {})
             });
             io.stdout(`  ambient source: macOS active window\n`);
+          } else if (useWindows) {
+            ambientSource = new WindowsActiveWindowSource({
+              includeClipboard: parseBoolean(e.MUSE_AMBIENT_CLIPBOARD, false),
+              ...(helpers.ambientMacosRun ? { run: helpers.ambientMacosRun } : {})
+            });
+            io.stdout(`  ambient source: Windows active window\n`);
           } else {
             const ambientFile = e.MUSE_AMBIENT_FILE?.trim()?.length
               ? e.MUSE_AMBIENT_FILE.trim()

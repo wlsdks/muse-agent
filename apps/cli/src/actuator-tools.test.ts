@@ -201,6 +201,34 @@ describe("macOS actuators — opt-in via MUSE_MACOS_ACTUATORS", () => {
   });
 });
 
+describe("Windows actuators — opt-in via MUSE_WINDOWS_ACTUATORS", () => {
+  it("are DARK by default — no win_* tool is built or armed without the flag", () => {
+    const e = env();
+    const built = buildActuatorTools({ confirmAction: async () => true, env: e, io: fakeIo(), userId: "stark" }).map((t) => t.definition.name);
+    expect(built.some((n) => n.startsWith("win_"))).toBe(false);
+    expect(summarizeActuators(e).armed.some((n) => n.startsWith("win_"))).toBe(false);
+  });
+
+  it("arm all seven when the flag is set, and stay in lockstep (armed == built)", () => {
+    const e = env({ MUSE_WINDOWS_ACTUATORS: "1" });
+    const built = buildActuatorTools({ confirmAction: async () => true, env: e, io: fakeIo(), userId: "stark" })
+      .map((t) => t.definition.name).filter((n) => n.startsWith("win_"));
+    expect(built).toEqual(expect.arrayContaining(["win_app_open", "win_app_read", "win_screenshot", "win_system_set"]));
+    expect(built).toHaveLength(7);
+    const armed = summarizeActuators(e).armed.filter((n) => n.startsWith("win_"));
+    expect([...armed].sort()).toEqual([...built].sort());
+  });
+
+  it("classify risk correctly: the read is read-risk, openers are execute, the rest write", () => {
+    const tools = buildActuatorTools({ confirmAction: async () => true, env: env({ MUSE_WINDOWS_ACTUATORS: "true" }), io: fakeIo(), userId: "stark" });
+    const byName = new Map(tools.map((t) => [t.definition.name, t.definition.risk]));
+    expect(byName.get("win_app_read")).toBe("read");
+    expect(byName.get("win_app_open")).toBe("execute");
+    expect(byName.get("win_clipboard_set")).toBe("write");
+    expect(byName.get("win_screenshot")).toBe("write");
+  });
+});
+
 describe("buildActuatorTools — the agent invokes a wired tool through its clack-confirm gate", () => {
   const publicLookup = async () => [{ address: "93.184.216.34", family: 4 }];
   function runWebAction(confirmAction: () => Promise<boolean>, fetchImpl: typeof fetch) {

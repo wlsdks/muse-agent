@@ -47,7 +47,7 @@ describe("recordConsent — cross-process file lock", () => {
     expect(await readConsents(file)).toHaveLength(1);
   }, 10_000);
 
-  it("keeps every concurrently-recorded consent (no lost grant over 50 parallel writers)", async () => {
+  it("keeps every concurrently-recorded consent (no lost grant over 50 parallel writers)", { timeout: 60_000 }, async () => {
     await Promise.all(Array.from({ length: 50 }, (_unused, i) => recordConsent(file, consent(`c${i.toString()}`))));
     const all = await readConsents(file);
     expect(all).toHaveLength(50);

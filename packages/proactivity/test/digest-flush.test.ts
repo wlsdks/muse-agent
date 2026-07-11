@@ -259,7 +259,7 @@ describe("runDigestFlushIfDue", () => {
     expect(remaining[0]).toMatchObject({ source: "mid-flush" });
   });
 
-  it("overflow FIFO drain: the folded (NEWEST) items survive the flush — the queue is truthfully non-empty for the next flush", async () => {
+  it("overflow FIFO drain: the folded (NEWEST) items survive the flush — the queue is truthfully non-empty for the next flush", { timeout: 60_000 }, async () => {
     // Seed enough items to exceed the compiler's default safe length (~1800
     // chars) so this flush genuinely overflows with the real constant, not a
     // test-only shortcut.

@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -13,11 +14,11 @@ describe("resolveInterruptionBudgetWiring (muse daemon) — channel-veto fields"
     process.env.HOME = "/tmp/fakehome";
     expect(resolveInterruptionBudgetWiring({})).toEqual({
       dailyCap: 6,
-      digestFile: "/tmp/fakehome/.muse/digest-queue.json",
+      digestFile: join("/tmp/fakehome", ".muse", "digest-queue.json"),
       hourlyCap: 2,
-      lastDeliveryFile: "/tmp/fakehome/.muse/last-proactive-delivery.json",
-      ledgerFile: "/tmp/fakehome/.muse/interruption-ledger.json",
-      trustLedgerFile: "/tmp/fakehome/.muse/proactive-trust.json"
+      lastDeliveryFile: join("/tmp/fakehome", ".muse", "last-proactive-delivery.json"),
+      ledgerFile: join("/tmp/fakehome", ".muse", "interruption-ledger.json"),
+      trustLedgerFile: join("/tmp/fakehome", ".muse", "proactive-trust.json")
     });
   });
 
@@ -38,6 +39,6 @@ describe("resolveInterruptionBudgetWiring (muse daemon) — channel-veto fields"
     const wiring = resolveInterruptionBudgetWiring({});
     expect(wiring.trustLedgerFile.startsWith(homedir())).toBe(true);
     expect(wiring.trustLedgerFile.startsWith("/.muse")).toBe(false);
-    expect(wiring.lastDeliveryFile.endsWith("/.muse/last-proactive-delivery.json")).toBe(true);
+    expect(wiring.lastDeliveryFile.replaceAll("\\", "/").endsWith("/.muse/last-proactive-delivery.json")).toBe(true);
   });
 });
