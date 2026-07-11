@@ -18,7 +18,7 @@ describe("resolveInterruptionBudgetWiring (muse daemon) — channel-veto fields"
       hourlyCap: 2,
       lastDeliveryFile: join("/tmp/fakehome", ".muse", "last-proactive-delivery.json"),
       ledgerFile: join("/tmp/fakehome", ".muse", "interruption-ledger.json"),
-      trustLedgerFile: "/tmp/fakehome/.muse/proactive-trust.json"
+      trustLedgerFile: join("/tmp/fakehome", ".muse", "proactive-trust.json")
     });
   });
 

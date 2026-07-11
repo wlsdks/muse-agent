@@ -90,9 +90,11 @@ const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
  * `resolveProactiveTrustFile`.
  */
 export function resolveProactiveTrustFile(e: NodeJS.ProcessEnv): string {
-  return e.MUSE_PROACTIVE_TRUST_FILE?.trim()?.length
-    ? e.MUSE_PROACTIVE_TRUST_FILE.trim()
-    : join(homedir(), ".muse", "proactive-trust.json");
+  if (e.MUSE_PROACTIVE_TRUST_FILE?.trim()?.length) return e.MUSE_PROACTIVE_TRUST_FILE.trim();
+  // HOME-first: os.homedir() ignores $HOME on win32 (USERPROFILE), breaking
+  // HOME-based isolation and drifting from the api tick's resolver.
+  const home = e.HOME?.trim() || process.env.HOME?.trim();
+  return join(home && home.length > 0 ? home : homedir(), ".muse", "proactive-trust.json");
 }
 
 /**
