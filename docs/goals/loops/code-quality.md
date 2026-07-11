@@ -9,7 +9,7 @@
 | 영역 | 최근 fire | 상태 |
 |---|---|---|
 | packages/agent-core | – | 미방문 |
-| packages/model | – | 미방문 |
+| packages/model | fire 1 | 방문 |
 | packages/cli (apps/cli) | – | 미방문 |
 | packages/memory | – | 미방문 |
 | packages/recall | – | 미방문 |
@@ -23,7 +23,12 @@
 
 (분석에서 나왔지만 아직 집행 안 된 발견)
 
+- packages/model/adapter-ollama.ts 707줄 — OllamaProvider / schema 정규화 / context-window 프로브 3책임 혼재 → 분리 후보 (fire 1 haiku 발견)
+- packages/model/adapter-ollama.ts `safeParseToolArgs` — provider-shared `recoverToolArgsJson`의 얇은 래퍼 → 통합 후보
+- 기각된 오탐 기록: gemini/anthropic stream() "중복"은 이미 synthesizeStreamEventsFromResponse 공유 헬퍼 위임이라 비중복 (재제안 금지)
+
 ## Fire 로그
 
 | # | 대상 | 출하 | 검증 |
 |---|---|---|---|
+| 1 | packages/model | provider-openai.ts 546줄 → Chat(324줄) + provider-openai-responses.ts(234줄) 행위-보존 분리, 공개 API 불변; 미사용 import 제거 + goal-마커 테스트 제목 정리 | @muse/model build ✓ · 457 tests ✓ · lint 0 ✓ (fable 재검증) |
