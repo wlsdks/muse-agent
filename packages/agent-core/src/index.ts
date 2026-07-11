@@ -278,6 +278,15 @@ export {
 } from "./attributed-repair.js";
 export { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, isUnbackedActionClaim, requestsToolAction, type CasualPromptKind } from "./casual-prompt.js";
 export { casualResponseFor } from "./casual-prompt-responses.js";
+export {
+  buildRegisterBrevityLayer,
+  classifyCasualTurn,
+  detectKoreanRegister,
+  REGISTER_BREVITY_LAYER_ID,
+  REGISTER_BREVITY_LAYER_PRIORITY,
+  type PersonaRegister,
+  type RegisterBrevityLayerInput
+} from "./conversational-register.js";
 export { calibrateAbstention, calibrateAbstentionByGroup, conformalThreshold, empiricalCoverage, type CalibrationResult, type GroupCalibrationResult, type GroupedScore } from "./conformal.js";
 export { runResistingFalseDone, type RunWithOutput } from "./false-done-reprompt.js";
 export { guardAgainstUnbackedActionClaim, unbackedActionNoticeFor } from "./honest-action-guard.js";

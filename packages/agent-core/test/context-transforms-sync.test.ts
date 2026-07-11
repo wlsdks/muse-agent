@@ -96,4 +96,68 @@ describe("applyPromptLayers", () => {
     expect(result.input.messages[0]!.content).toContain("<!-- muse:prompt-layers -->");
     expect(result.input.metadata?.promptLayerIds).toEqual(["L1", "L2"]);
   });
+
+  describe("register-mirroring + brevity layer (docs/strategy/prompt-architecture.md §4 D2)", () => {
+    it("a 반말 turn produces a system prompt mirroring 반말, with identity still first", () => {
+      const result = applyPromptLayers(
+        context([{ role: "user", content: "야 오늘 뭐하지" }]),
+        "openai",
+        "gpt-4",
+        undefined,
+      );
+      const content = result.input.messages[0]!.content;
+      const identityIndex = content.indexOf(MUSE_IDENTITY_CORE);
+      expect(identityIndex).toBeGreaterThanOrEqual(0);
+      // Identity is the FIRST content the "<!-- muse:prompt-layers -->" marker
+      // wraps — only the marker + one newline precede it.
+      expect(content.slice(0, identityIndex).trim()).toBe("<!-- muse:prompt-layers -->");
+      expect(identityIndex).toBeLessThan(content.indexOf("반말"));
+    });
+
+    it("a 존댓말 turn produces a system prompt instructing 존댓말", () => {
+      const result = applyPromptLayers(
+        context([{ role: "user", content: "오늘 일정 알려주세요" }]),
+        "openai",
+        "gpt-4",
+        undefined,
+      );
+      expect(result.input.messages[0]!.content).toContain("존댓말을 유지하라");
+    });
+
+    it("does NOT pollute promptLayerIds metadata (that stays scoped to registry layers)", () => {
+      const result = applyPromptLayers(
+        context([{ role: "user", content: "야 오늘 뭐하지" }]),
+        "openai",
+        "gpt-4",
+        registryReturning([{ id: "L1", content: "Rule one", section: "stable" }]),
+      );
+      expect(result.input.metadata?.promptLayerIds).toEqual(["L1"]);
+    });
+
+    it("an explicit personaRegister WINS over a conflicting detected register", () => {
+      const result = applyPromptLayers(
+        context([{ role: "user", content: "오늘 일정 알려주세요" }]),
+        "openai",
+        "gpt-4",
+        undefined,
+        "반말",
+      );
+      const content = result.input.messages[0]!.content;
+      expect(content).toContain("반말");
+      expect(content).not.toContain("존댓말을 유지하라");
+    });
+
+    it("a non-Korean, non-casual turn adds no register/brevity content and stays byte-compatible", () => {
+      const result = applyPromptLayers(
+        context([{ role: "user", content: "Please provide a comprehensive analysis of quantum computing algorithms." }]),
+        "openai",
+        "gpt-4",
+        undefined,
+      );
+      const content = result.input.messages[0]!.content;
+      expect(content).not.toContain("반말");
+      expect(content).not.toContain("존댓말");
+      expect(content).not.toContain("1~2문장");
+    });
+  });
 });
