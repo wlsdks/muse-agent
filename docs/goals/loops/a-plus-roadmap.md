@@ -128,7 +128,7 @@ ratchet: 로드맵 잔여 [ ] = 19/39 · self-eval pass · fabrication 0 · cli 
 - 리뷰지점: Opus가 파싱테이블(0/-1/2.5/abc→3 floor1)·countRunningJobs 실 jsonl fixture 충실성(running만)·wiring(at-cap spy 미호출+exitCode1+stderr, under-cap 시작)·mutation-RED 양방향 검증.
 - 리스크: 없음. 새 env→docs:env 갱신(워커 proactive). 다음 D3-S4b=boardTaskPrompt 헤드룸 요약예산+스필(복잡).
 
-## fire 16 · 2026-07-11 · skill v2.x · <commit-pending>
+## fire 16 · 2026-07-11 · skill v2.x · c5ec0240c
 meta: slice=D3-S4b · wave=W2 · pkg=apps/cli · kind=synthesis-budget · verdict=PASS · firesSinceDrill=7
 ratchet: 로드맵 잔여 [ ] = 18/39 · self-eval pass · fabrication 0 · cli 41 test(+board-synthesis-budget) · 2 env
 - 무엇: 보드 합성 헤드룸 요약예산+파일스필. 순수 perChildSynthesisBudget(max(2000,floor(h×0.5/n))) + budgetAndSpillOutputs(초과 truncate + FULL 원본을 ~/.muse/board-spill/ 스필, 세그먼트에 경로 명시) + makeAgentExecutor 배선(실fs·답변 note). boardTaskPrompt 순수 유지. D3-S4 완료.
