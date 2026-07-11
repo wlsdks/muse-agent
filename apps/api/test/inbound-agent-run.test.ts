@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { casualResponseFor, UNGROUNDABLE_ANSWER_NOTICE, unbackedActionNoticeFor } from "@muse/agent-core";
 import { LogMessagingProvider, MessagingProviderRegistry, recordPendingApproval } from "@muse/messaging";
+import { appendLastProactiveDelivery, avoidedSourceKeys, readTrustLedger } from "@muse/stores";
 import { describe, expect, it } from "vitest";
 
 import { createInboundAgentRun } from "../src/inbound-agent-run.js";
@@ -366,6 +367,126 @@ describe("createInboundAgentRun conversation-scope: shared (group) chat safety",
     expect(agentCalls).toHaveLength(1);
     expect(reply).toContain("answer");
     expect(reply.toLowerCase()).not.toContain("muse approvals approve");
+  });
+});
+
+// Channel-veto reply ("그만"/"stop"): the one-touch off-switch for
+// proactivity. Runs AFTER the pairing + approval-reply gates, BEFORE the
+// casual fast-path — a match records a vetoed trust-ledger entry and the
+// agent never runs; anything else falls through untouched.
+describe("createInboundAgentRun channel-veto reply", () => {
+  function buildVeto(dir: string, agentCalls: string[], extraEnv: Record<string, string> = {}) {
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = {
+      run: async () => {
+        agentCalls.push("run");
+        return { groundingSources: [{ source: "/x/notes/a.md", text: "ok" }], response: { output: "answer [from a.md]." } };
+      }
+    };
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_LAST_PROACTIVE_FILE: join(dir, "last-delivery.json"),
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json"),
+      MUSE_PROACTIVE_TRUST_FILE: join(dir, "trust.json"),
+      ...extraEnv
+    };
+    return { env, run: createInboundAgentRun({ agentRuntime, env, model: "default", registry }) };
+  }
+
+  it("a matching veto phrase with a recent delivery on record silences it, and the agent never runs", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-veto-"));
+    const agentCalls: string[] = [];
+    const { env, run } = buildVeto(dir, agentCalls);
+    await appendLastProactiveDelivery(env.MUSE_LAST_PROACTIVE_FILE, {
+      at: NOW(),
+      outcome: "delivered",
+      sourceKey: "pattern-firing:pat-1",
+      title: "your Tuesday journal habit"
+    });
+    const reply = await run({ messages: [{ content: "그만", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toContain("your Tuesday journal habit");
+    expect(agentCalls).toHaveLength(0);
+    const avoided = avoidedSourceKeys(await readTrustLedger(env.MUSE_PROACTIVE_TRUST_FILE));
+    expect(avoided.has("pattern-firing:pat-1")).toBe(true);
+  });
+
+  it("no delivery on record → falls through to the normal agent turn", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-veto-"));
+    const agentCalls: string[] = [];
+    const { run } = buildVeto(dir, agentCalls);
+    const reply = await run({ messages: [{ content: "그만", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(agentCalls).toHaveLength(1);
+    expect(reply).toContain("answer");
+  });
+
+  it("shared (group) scope: a veto phrase never silences anything, even with a fresh delivery on record", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-veto-"));
+    const agentCalls: string[] = [];
+    const { env, run } = buildVeto(dir, agentCalls, { MUSE_CHANNEL_ALLOWED_CHATS: "log:-100999", MUSE_CHANNEL_GROUP_ENABLED: "true" });
+    await appendLastProactiveDelivery(env.MUSE_LAST_PROACTIVE_FILE, {
+      at: NOW(), outcome: "delivered", sourceKey: "pattern-firing:pat-1"
+    });
+    const reply = await run({ messages: [{ content: "그만", role: "user" }], providerId: "log", scope: "shared", source: "-100999" });
+    expect(agentCalls).toHaveLength(1); // fell through to the agent, not the veto handler
+    expect(reply).toContain("answer");
+    const avoided = avoidedSourceKeys(await readTrustLedger(env.MUSE_PROACTIVE_TRUST_FILE));
+    expect(avoided.size).toBe(0); // nothing recorded
+  });
+
+  it("gate ordering: an unpaired stranger's veto phrase still gets the pairing refusal, not a veto confirmation", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-veto-"));
+    const agentCalls: string[] = [];
+    const { env, run } = buildVeto(dir, agentCalls);
+    await run({ messages: [{ content: "what is my rent?", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" }); // adopts owner
+    await appendLastProactiveDelivery(env.MUSE_LAST_PROACTIVE_FILE, {
+      at: NOW(), outcome: "delivered", sourceKey: "pattern-firing:pat-1"
+    });
+    const strangerReply = await run({ messages: [{ content: "그만", role: "user" }], providerId: "log", scope: "direct", source: "stranger-9" });
+    expect(strangerReply).toBe("This bot is a private personal assistant and only talks to its paired owner.");
+    const avoided = avoidedSourceKeys(await readTrustLedger(env.MUSE_PROACTIVE_TRUST_FILE));
+    expect(avoided.size).toBe(0); // the stranger's "그만" never reached the veto handler
+  });
+
+  it("gate ordering: a pure approval word with a pending approval resolves as the approval ack, never a veto", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-veto-"));
+    const agentCalls: string[] = [];
+    const { env, run } = buildVeto(dir, agentCalls);
+    await recordPendingApproval(env.MUSE_PENDING_APPROVALS_FILE, {
+      arguments: { url: "http://x.test/book" },
+      createdAt: NOW().toISOString(),
+      draft: "POST http://x.test/book",
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      id: "pending-1",
+      providerId: "log",
+      risk: "execute",
+      source: "owner-1",
+      tool: "web_action"
+    });
+    await appendLastProactiveDelivery(env.MUSE_LAST_PROACTIVE_FILE, {
+      at: NOW(), outcome: "delivered", sourceKey: "pattern-firing:pat-1"
+    });
+    const reply = await run({ messages: [{ content: "ok", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).toContain("muse approvals approve pending-1");
+    expect(agentCalls).toHaveLength(0);
+    const avoided = avoidedSourceKeys(await readTrustLedger(env.MUSE_PROACTIVE_TRUST_FILE));
+    expect(avoided.size).toBe(0); // "ok" is not a veto phrase — approval handling took it first
+  });
+
+  it("a matched EN veto phrase returns the veto confirmation, not a casual reply or the full agent", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-veto-"));
+    const agentCalls: string[] = [];
+    const { env, run } = buildVeto(dir, agentCalls);
+    await appendLastProactiveDelivery(env.MUSE_LAST_PROACTIVE_FILE, {
+      at: NOW(), outcome: "delivered", sourceKey: "pattern-firing:pat-1", title: "journal habit"
+    });
+    const reply = await run({ messages: [{ content: "stop", role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+    expect(reply).not.toBe(casualResponseFor("greeting"));
+    expect(reply).toContain("journal habit");
+    expect(agentCalls).toHaveLength(0);
   });
 });
 

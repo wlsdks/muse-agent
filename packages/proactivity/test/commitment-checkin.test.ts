@@ -336,6 +336,45 @@ describe("runDueCheckins", () => {
       expect(await readLastProactiveDeliveries(lastDeliveryFile)).toHaveLength(0);
     });
 
+    it("a veto keyed on the RECURRING sourceKey (not the one-shot id) survives re-detection under a fresh id", async () => {
+      // Same commitment, re-detected later → scheduleCheckins gives it a NEW
+      // `id` but the SAME normalised `sourceKey` ("renew my passport").
+      const file = tmpFile();
+      const firstOccurrence: PersistedCheckin = {
+        commitment: "renew my passport", createdAt: NOW.toISOString(),
+        dueAtIso: new Date("2026-04-20T10:00:00Z").toISOString(), // already fired earlier
+        id: "chk_old", question: "q-old", sourceKey: "renew my passport", status: "fired", userId: "stark"
+      };
+      const reDetected: PersistedCheckin = {
+        commitment: "renew my passport", createdAt: NOW.toISOString(),
+        dueAtIso: new Date("2026-05-02T10:00:00Z").toISOString(),
+        id: "chk_new", question: "q-new", sourceKey: "renew my passport", status: "scheduled", userId: "stark"
+      };
+      await writeCheckins(file, [firstOccurrence, reDetected]);
+      const budgetDir = tmpBudgetDir();
+      const ledgerFile = join(budgetDir, "ledger.json");
+      const digestFile = join(budgetDir, "digest.json");
+      const trustLedgerFile = join(budgetDir, "trust.json");
+      const now = new Date("2026-05-02T10:05:00Z");
+      // The veto was recorded against the OLD occurrence's ledger sourceKey —
+      // which is the recurring commitment text, not `chk_old`.
+      await recordOutcome(trustLedgerFile, "commitment-checkin:renew my passport", "vetoed", now.getTime());
+
+      const { registry, sent } = recordingRegistry();
+      const res = await runDueCheckins({
+        destination: "me",
+        file,
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, ledgerFile, trustLedgerFile },
+        now: () => now,
+        providerId: "log",
+        registry
+      });
+      // The NEW occurrence (fresh id `chk_new`) is still silenced.
+      expect(sent).toEqual([]);
+      expect(res.delivered).toBe(0);
+      expect((await readCheckins(file)).find((c) => c.id === "chk_new")?.status).toBe("fired");
+    });
+
     it("wired lastDeliveryFile records the check-in's sourceKey + commitment as title", async () => {
       const file = tmpFile();
       await writeCheckins(file, [mkDue("a")]);

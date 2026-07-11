@@ -127,6 +127,43 @@ describe("runDuePatternNotices — interruption budget (opt-in)", () => {
     expect(published[0]!.notice.kind).toBe("pattern");
   });
 
+  it("a channel-vetoed pattern also silences the broker (veto is stronger than a budget digest)", async () => {
+    const discoverySent: OutboundMessage[] = [];
+    const discovery = await runDuePatternNotices({
+      destination: "555",
+      now: () => NOW,
+      patternsFiredFile: join(dir, "discovery2-patterns-fired.json"),
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(discoverySent)]),
+      signals: { notesDir, now: () => NOW.getTime() }
+    });
+    const patternId = discovery.fired[0]!.id;
+
+    const trustLedgerFile = join(dir, "trust2.json");
+    await recordOutcome(trustLedgerFile, `pattern-firing:${patternId}`, "vetoed", NOW.getTime());
+
+    const sent: OutboundMessage[] = [];
+    const published: Array<{ userId: string; notice: { kind: string; text: string; sourceId?: string } }> = [];
+    const summary = await runDuePatternNotices({
+      agentInitiatedNoticeBroker: {
+        publish: (userId, notice) => {
+          published.push({ notice, userId });
+        }
+      },
+      agentInitiatedNoticeUserId: "u1",
+      destination: "555",
+      interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, ledgerFile, trustLedgerFile },
+      now: () => NOW,
+      patternsFiredFile,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      signals: { notesDir, now: () => NOW.getTime() }
+    });
+    expect(sent).toEqual([]);
+    expect(summary.delivered).toBe(0);
+    expect(published).toEqual([]); // the broker did NOT publish — veto silences it too
+  });
+
   it("a corrupt ledger file fails OPEN — the suggestion still sends", async () => {
     const sent: OutboundMessage[] = [];
     await writeFile(ledgerFile, "{ not valid json", "utf8");

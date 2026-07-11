@@ -134,7 +134,7 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
         destination: options.destination,
         text
       }).then(() => undefined);
-      let digested = false;
+      let outcome: "delivered" | "digested" | "skipped" = "delivered";
       if (options.interruptionBudget) {
         const budget = options.interruptionBudget;
         const result = await applyInterruptionBudget({
@@ -152,7 +152,7 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
           text,
           title: text
         });
-        digested = result.outcome !== "delivered";
+        outcome = result.outcome;
       } else {
         await deliver();
       }
@@ -161,14 +161,16 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
       // itself next tick just because it never actually reached the user.
       await recordPatternFired(options.patternsFiredFile, match.id, now().getTime());
       fired.push(match);
-      if (!digested) {
+      if (outcome === "delivered") {
         delivered += 1;
       }
       // The broker feeds an already-open live stream (an engaged user watching
-      // /api/agent-notices/stream) — publish regardless of the budget outcome.
-      // The interruption budget governs push channels (messaging send) only;
-      // suppressing ambient visibility too would defeat the point of the live feed.
-      if (options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
+      // /api/agent-notices/stream) — publish regardless of a budget DIGEST
+      // (the budget governs push channels only; suppressing ambient
+      // visibility too would defeat the point of the live feed). A VETO is
+      // different: the user explicitly said "stop these", a stronger signal
+      // than the frequency budget, so it silences the live stream too.
+      if (outcome !== "skipped" && options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
         try {
           options.agentInitiatedNoticeBroker.publish(options.agentInitiatedNoticeUserId, {
             generatedAt: now().toISOString(),

@@ -19,4 +19,5 @@ export * from "./reminder-firing-loop.js";
 export * from "./run-outcome-analysis.js";
 export * from "./situational-briefing.js";
 export * from "./undo-action.js";
+export * from "./veto-key.js";
 export * from "./web-watch.js";

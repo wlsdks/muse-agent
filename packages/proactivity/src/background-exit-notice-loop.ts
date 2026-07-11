@@ -33,6 +33,7 @@ import { avoidedSourceKeys, readBackgroundProcesses, readTrustLedger, type Backg
 
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
+import { isVetoed } from "./veto-key.js";
 
 /** Terminal states that warrant a heads-up. `killed` is user-initiated
  *  (they ran `muse bg stop`) so it is deliberately excluded — the user
@@ -172,10 +173,16 @@ export async function runDueBackgroundExitNotices(
 
     const text = redactSecretsInText(backgroundExitNoticeText(record));
     const generatedAt = now().toISOString();
+    const sourceKey = `background-exit:${record.id}`;
+    // A veto is stronger than the interruption budget's digest fallback (the
+    // user explicitly said "stop these"), so it silences the broker's
+    // live-stream fan-out too — not just the messaging leg the budget
+    // otherwise gates alone.
+    const vetoed = isVetoed(avoidedSources, sourceKey);
     try {
       let anySink = false;
       let digested = false;
-      if (options.broker && options.brokerUserId) {
+      if (options.broker && options.brokerUserId && !vetoed) {
         options.broker.publish(options.brokerUserId, {
           generatedAt,
           kind: "background_process_exited",
@@ -202,7 +209,7 @@ export async function runDueBackgroundExitNotices(
             now: now(),
             source: "background-exit",
             sourceId: record.id,
-            sourceKey: `background-exit:${record.id}`,
+            sourceKey,
             text,
             title: backgroundJobLabel(record)
           });
@@ -221,7 +228,7 @@ export async function runDueBackgroundExitNotices(
       }
       if (anySink) {
         delivered += 1;
-      } else if (!digested) {
+      } else if (!digested && !vetoed) {
         errors.push(`${record.id}: no delivery sink configured`);
       }
     } catch (cause) {

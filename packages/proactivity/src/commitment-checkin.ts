@@ -360,10 +360,14 @@ export async function runDueCheckins(options: RunDueCheckinsOptions): Promise<Ru
           now: at,
           source: "commitment-checkin",
           sourceId: checkin.id,
-          // `checkin.id` (unique per check-in) — NOT `checkin.sourceKey`
-          // (that field is the normalised-commitment DEDUPE key the scheduler
-          // uses to avoid re-scheduling the same open loop; a different concern).
-          sourceKey: `commitment-checkin:${checkin.id}`,
+          // `checkin.sourceKey` (the normalised-commitment DEDUPE key the
+          // scheduler uses to avoid re-scheduling the same open loop) — NOT
+          // `checkin.id` (unique per check-in OCCURRENCE, a different
+          // concern): the ledger sourceKey must be STABLE across
+          // re-detections of the same commitment so a channel-veto survives
+          // — a fresh check-in scheduled later for the same open loop gets a
+          // new `id` but the SAME `sourceKey`, so the earlier veto still matches.
+          sourceKey: `commitment-checkin:${checkin.sourceKey}`,
           text: checkin.question,
           title: checkin.commitment
         });

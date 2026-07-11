@@ -3,6 +3,7 @@ import {
   parseBoolean,
   resolveActionLogFile,
   resolveContactsFile,
+  resolveLastProactiveDeliveryFile,
   resolvePendingApprovalsFile,
   type MuseEnvironment
 } from "@muse/autoconfigure";
@@ -23,6 +24,8 @@ import { adoptChannelOwner, parseAllowedChats, readChannelOwner, resolveChannelO
 import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
 import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
 import { handleInboundApprovalReply } from "./inbound-approval-handler.js";
+import { handleInboundVetoReply } from "./inbound-veto-handler.js";
+import { resolveProactiveTrustFile } from "./tick-daemons.js";
 
 /**
  * Structural slice of AgentRuntime.run — `apps/api` wires the real runtime in;
@@ -133,6 +136,23 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
         });
     if (approvalAck !== undefined) {
       return approvalAck;
+    }
+    // Channel-veto reply ("그만"/"stop these"): the one-touch off-switch for
+    // proactivity. Owner 1:1 only — a shared/group chat's "그만" must never
+    // silence the owner's own notices, so this is skipped entirely for
+    // scope==="shared" (same posture as the approval-reply hijack guard
+    // above, for the same reason: shared-chat state must never mutate
+    // 1:1-scoped learned avoidance).
+    const vetoAck = scope === "shared"
+      ? undefined
+      : await handleInboundVetoReply({
+          lastDeliveryFile: resolveLastProactiveDeliveryFile(env),
+          now: new Date(),
+          text: latestUserText,
+          trustLedgerFile: resolveProactiveTrustFile(env)
+        });
+    if (vetoAck !== undefined) {
+      return vetoAck;
     }
     // Deterministic casual fast-path (parity with `muse ask`): a bare
     // greeting/thanks/farewell is not a question about the user's notes, so

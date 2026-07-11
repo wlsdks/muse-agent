@@ -10,7 +10,10 @@
  * `avoidedSources` is the channel-veto skip: a source the trust ledger
  * recorded as `vetoed` never sends AND never digests — no `deliver()` call,
  * no digest-queue append, complete silence (checked before the budget lookup,
- * so a vetoed source doesn't even spend budget capacity). Callers resolve
+ * so a vetoed source doesn't even spend budget capacity). The match is exact
+ * OR kind-level (`isVetoed`, `./veto-key.js`) — a veto recorded at just the
+ * kind (e.g. "followup", for a one-shot id that never recurs) silences every
+ * future notice from that loop, not only the exact instance. Callers resolve
  * this Set from `proactive-trust-ledger`'s `avoidedSourceKeys` fresh per tick;
  * this module stays a pure consumer of the already-resolved Set, matching its
  * existing job (interruption-budget + digest I/O only).
@@ -41,6 +44,8 @@ import {
   withinInterruptionBudget,
   type InterruptionBudgetCaps
 } from "@muse/stores";
+
+import { isVetoed } from "./veto-key.js";
 
 /** The opt-in wiring shape every gated loop's options carry. Absent → the
  *  loop's send is ungated (back-compat, byte-identical to pre-budget behavior). */
@@ -107,7 +112,7 @@ export async function applyInterruptionBudget(
 ): Promise<ApplyInterruptionBudgetResult> {
   const key = options.sourceKey ?? options.source;
 
-  if (options.avoidedSources?.has(key)) {
+  if (isVetoed(options.avoidedSources, key)) {
     return { outcome: "skipped" };
   }
 

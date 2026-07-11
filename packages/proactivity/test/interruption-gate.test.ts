@@ -220,6 +220,29 @@ describe("applyInterruptionBudget", () => {
     expect(await readDigestQueue(digestFile)).toHaveLength(0);
   });
 
+  it("a KIND-level veto (no ':id') also skips — the followup/background-exit veto shape", async () => {
+    const dir = tmpDir();
+    const ledgerFile = join(dir, "ledger.json");
+    const digestFile = join(dir, "digest.json");
+    let delivers = 0;
+    const result = await applyInterruptionBudget({
+      avoidedSources: new Set(["followup"]),
+      caps: { dailyCap: 6, hourlyCap: 2 },
+      deliver: async () => {
+        delivers += 1;
+      },
+      digestFile,
+      ledgerFile,
+      now: NOW,
+      source: "followup",
+      sourceId: "fu-1",
+      sourceKey: "followup:fu-1",
+      text: "kind-level vetoed"
+    });
+    expect(result.outcome).toBe("skipped");
+    expect(delivers).toBe(0);
+  });
+
   it("avoidedSources checks the resolved sourceKey, not a bare sourceId or source-only match", async () => {
     const dir = tmpDir();
     const ledgerFile = join(dir, "ledger.json");
