@@ -7,22 +7,20 @@
  *
  * Lives in `@muse/recall`, not `@muse/prompts`, because it needs BOTH the
  * `PromptLayer` shape (from `@muse/prompts`) and the deterministic injection
- * scan (`neutralizeInjectionSpans` from `@muse/agent-core`,
- * `escapeSystemPromptMarkers` from this package's own `prompt-escape.ts`) —
- * and `@muse/agent-core` already depends on `@muse/prompts`, so putting this
- * file IN `@muse/prompts` would create a dependency cycle
- * (prompts -> agent-core -> prompts). `@muse/recall` already sits above both
- * in the build graph, so it is the acyclic home for the load-time scan.
+ * scan (`neutralizeInjectionSpans` + `escapeSystemPromptMarkers`, both from
+ * `@muse/agent-core`) — and `@muse/agent-core` already depends on
+ * `@muse/prompts`, so putting this file IN `@muse/prompts` would create a
+ * dependency cycle (prompts -> agent-core -> prompts). `@muse/recall`
+ * already sits above both in the build graph, so it is the acyclic home
+ * for the load-time scan.
  */
 
 import { promises as fs, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 
-import { neutralizeInjectionSpans } from "@muse/agent-core";
+import { escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/agent-core";
 import type { PromptLayer } from "@muse/prompts";
-
-import { escapeSystemPromptMarkers } from "./prompt-escape.js";
 
 export type PersonaRegister = "존댓말" | "반말";
 

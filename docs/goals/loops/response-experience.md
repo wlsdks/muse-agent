@@ -46,3 +46,11 @@ ratchet: testFiles +0(기존 테스트파일 확장 5케이스) · fabrication 0
 왜: 약속 원문만으론 "언제 한 약속인지"가 없음 — 가치⑤ 마지막 몫.
 리뷰지점: 지연 배달 시 나이가 downtime만큼 하향-오차(판정: bounded 근사, fabrication 아님) — 절대날짜 절 후속 ◦ 큐잉.
 리스크: 낮음 — runDueCheckins·게이트 무접촉.
+
+## fire 6 · 2026-07-12 · skill v2.x · (sha pending)
+meta: value-class=security-hardening · pkg=@muse/proactivity+agent-core+recall · kind=security-review · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles +1(prompt-escape 이동) · fabrication 0 · eval N/A(ack 경로 무접촉)
+무엇: digest 렌더 시점 injection-span 중화 — 단일 렌더 함수(formatDigestItemLine)가 flush·CLI 양표면 커버, recap과 동일 조합(escapeSystemPromptMarkers∘neutralizeInjectionSpans); 저장은 verbatim 유지(감사성). prompt-escape 헬퍼 recall→agent-core 이동(의존 방향 정리, byte-동일+re-export 무파손).
+왜: 조사 결과 사용자-저장 텍스트(패턴 제안·약속 원문·ambient enrich)가 실제로 큐를 탐 — 중화 필요가 실재.
+리뷰지점: --json은 raw 덤프(로컬 read-only, 수용); 5개 루프의 직접-전송 경로는 기존 관례대로 미중화(backlog에 명시 유지).
+리스크: 낮음 — 중화는 subtractive, clean text byte-동일 pin.

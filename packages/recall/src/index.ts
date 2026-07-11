@@ -9,8 +9,16 @@ export * from "./hit.js";
 export * from "./history-search.js";
 export * from "./history-search-tool.js";
 export * from "./conflict.js";
-export { MEMORY_INJECTION_PATTERNS, isMemoryInjection, defangMemoryInjection, neutralizeInjectionSpans, stripInjectionEvasionChars } from "@muse/agent-core";
-export * from "./prompt-escape.js";
+export {
+  MEMORY_INJECTION_PATTERNS,
+  isMemoryInjection,
+  defangMemoryInjection,
+  neutralizeInjectionSpans,
+  stripInjectionEvasionChars,
+  escapeSystemPromptMarkers,
+  stripGroundingFences,
+  sanitizeFenceLabel
+} from "@muse/agent-core";
 export * from "./grounding-notices.js";
 export * from "./embed.js";
 export * from "./mime.js";

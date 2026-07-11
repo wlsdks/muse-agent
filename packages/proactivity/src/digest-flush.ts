@@ -1,9 +1,13 @@
 /**
  * Daily digest flush — the counterpart to `interruption-gate.ts`'s suppressed
  * path. Once a day, at `digestHour` local time, compiles whatever landed in
- * the digest queue into ONE message and sends it; the compile is a verbatim
+ * the digest queue into ONE message and sends it; the compile is a
  * concatenation of each item's already-gated text (no LLM — same "no new
- * fabrication surface" invariant the queue itself documents).
+ * fabrication surface" invariant the queue itself documents), with each
+ * item's text passed through `safeDigestText` (`formatDigestItemLine`) —
+ * the same injection-span + grounding-marker neutralization the evening
+ * recap applies — since several queue producers compile from user-stored
+ * text before this compiled message rides a messaging channel off-box.
  *
  * SNAPSHOT DRAIN: `readDigestQueue` is read exactly once (the snapshot);
  * the compiled message is built from that snapshot; on a successful send the
@@ -20,6 +24,7 @@
  * the queue is preserved for the next tick.
  */
 
+import { escapeSystemPromptMarkers, neutralizeInjectionSpans } from "@muse/agent-core";
 import { errorMessage } from "@muse/shared";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import {
@@ -40,12 +45,23 @@ export const DEFAULT_DIGEST_HOUR = 18;
 // handled here, one whole line at a time, before that clamp would ever bite.
 const DIGEST_SAFE_LENGTH = 1800;
 
+/** Neutralize the SAME attacker-influenceable-text class `safeRecapText` (the
+ *  evening recap) defends: several queue producers compile from USER-STORED
+ *  text (a note/task title behind a pattern suggestion, a chat-derived
+ *  commitment, a knowledge-corpus line an ambient rule enriches with) that a
+ *  poisoned value could use to forge an instruction or a grounding-wrapper
+ *  break-out once this line rides the digest off-box over a messaging
+ *  channel. Applied at RENDER time (not on store write) so the queue stays
+ *  verbatim for audit while every reader — the flush AND `muse digest list`
+ *  — shares one neutralized seam. Byte-identical no-op on clean text. */
+const safeDigestText = (text: string): string => escapeSystemPromptMarkers(neutralizeInjectionSpans(text));
+
 /** One digest line — reused by `muse digest list` so the CLI preview matches the flush verbatim. */
 export function formatDigestItemLine(item: DigestQueueItem): string {
   const at = new Date(item.at);
   const hh = at.getHours().toString().padStart(2, "0");
   const mm = at.getMinutes().toString().padStart(2, "0");
-  return `· [${item.source}] ${hh}:${mm} ${item.text}`;
+  return `· [${item.source}] ${hh}:${mm} ${safeDigestText(item.text)}`;
 }
 
 export interface CompiledDigest {

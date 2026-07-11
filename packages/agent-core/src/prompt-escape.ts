@@ -28,6 +28,12 @@
  * real wrapper boundary or citation. Apply it to untrusted CONTENT fields only —
  * NEVER to the source/name fields, whose `[from <src>]` receipt must stay
  * copy-exact for the citation gate. Pure + idempotent.
+ *
+ * Lives in `@muse/agent-core` (not `@muse/recall`, whose grounding-prompt
+ * wrapper this defends) so a low-level, non-grounding consumer — e.g. a
+ * channel-delivered digest compiling stored notice text — can reuse it
+ * without pulling in recall's heavier document/embedding dependencies.
+ * `@muse/recall` re-exports these from here for its own call sites.
  */
 
 const MARKER_KEYWORDS = "note|feed|session|task|event|reminder|contact|memory|command|commit|action";

@@ -1,6 +1,5 @@
-import { chunkText, cosineSimilarity, defangMemoryInjection, lexicalOverlap, lexicalTokens, neutralizeInjectionSpans, rankPlaybookStrategies, renderPlaybookSection, type KnowledgeMatch } from "@muse/agent-core";
+import { chunkText, cosineSimilarity, defangMemoryInjection, escapeSystemPromptMarkers, lexicalOverlap, lexicalTokens, neutralizeInjectionSpans, rankPlaybookStrategies, renderPlaybookSection, sanitizeFenceLabel, type KnowledgeMatch } from "@muse/agent-core";
 
-import { escapeSystemPromptMarkers, sanitizeFenceLabel } from "./prompt-escape.js";
 import type { ActionLogEntry, Contact } from "@muse/stores";
 
 const EPISODE_IMPORTANCE_WEIGHT = 0.15;
