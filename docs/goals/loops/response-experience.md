@@ -39,7 +39,7 @@ ratchet: testFiles +0(기존 3파일 갱신+핀 추가) · fabrication 0 · eval
 리스크: 낮음.
 lesson: ★NEVER-stash 위반 2회째(fire 1에 이어) — 워커 지시의 금지 문구만으론 재발함. 다음 fire부터 워커 프롬프트에 "RED 증거는 cp 백업→편집→복원으로만, git stash는 어떤 형태(--keep-index 포함)로도 금지"를 절차로 명시(금지가 아니라 대체 절차를 지시).
 
-## fire 5 · 2026-07-12 · skill v2.x · (sha pending)
+## fire 5 · 2026-07-12 · skill v2.x · cbbe29a82
 meta: value-class=new-capability · pkg=@muse/proactivity · kind=rationale-source · verdict=PASS · firesSinceDrill=5
 ratchet: testFiles +0(기존 테스트파일 확장 5케이스) · fabrication 0 · eval N/A(채널 답장 경로 무접촉)
 무엇: 체크인 질문에 "(N일 전 남기신 약속)"/"(made N days ago)" 결정론 나이 절 — createdAt→due 기준 스케줄 시점 bake, <1일·무효·미래 타임스탬프는 무절(fail-closed). 근거 3부작(pattern·ambient·commitment) 완성.
