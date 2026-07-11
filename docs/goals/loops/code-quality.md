@@ -57,7 +57,7 @@
 - 🔒 보안성 후보 (fire 15, 동작 변경이라 루프 밖 — 진안 확인 권장): ①mcp redactMcpSecrets가 Bearer만 가림 (Basic/X-API-Key/token= 쿼리 미커버) ②manager.ts:216 fingerprint 검증 반환 null-가드 부재
 - mcp McpManager 730줄 (lifecycle+health+catalog+audit 혼재) → 클래스 분리 후보 (대형, 신중)
 - ⚠ repo 공유 stash 잔존: stash@{0} autostash (context-aux-summary 작업 사본 — main에 8ed66e2b3로 이미 안착 확인, 팝 안 된 잔여물). 이 루프는 건드리지 않음 — 드랍은 진안 판단
-- stores 대형 파일 분해 후보: personal-episodes-store 554줄(저장+분석 혼재), weakness-ledger 485줄, playbook-store 413줄(저장+리워드 엔진)
+- stores 대형 파일 분해 후보 (잔여): weakness-ledger 485줄, playbook-store 413줄(저장+리워드 엔진) — episodes는 fire 20 완료
 - stores 동시성 스트레스 테스트 3파일(consent/veto/objectives-concurrent)은 머신 부하시 false-timeout — 알려진 클래스, 부하 낮으면 green (fire 13 확인)
 - autoconfigure buildLoopbackTools 207줄·buildRuntimeToolRegistry 279줄 → runtime-assembly와 같은 패턴 분해 후보
 - packages/shared index.ts 고아 docstring (truncateErrorBody 설명이 함수와 144줄 분리) → 이동 후보 (소형)
@@ -96,3 +96,4 @@
 | 17 | packages/proactivity | proactive-notice-loop.ts 899→621줄: 수집/포맷을 notice-imminent.ts(168줄), 합성/그라운딩을 notice-synthesis.ts(152줄)로 순수 이동, 이동 공개심볼 재export로 소비자(cli 데몬·api tick·테스트) 무변경; @muse/stores 4중 import 통합 | proactivity 113/113 ✓ · cli+api build ✓ · api notice 3파일 6/6 ✓ · lint 0 ✓ (fable 재검증) |
 | 18 | apps/web | SSE 프레임 파싱 3벌 통합(sse-frames.ts — chat/notice의 last-data-line 인라인 파서를 ask의 join-all 헬퍼로; 실트래픽 JSON 단일라인이라 관찰-동일, 잠재 divergence 제거) + readToken 2벌 → lib/token-storage.ts; 레이아웃/JSX 무변경이라 브라우저 검증 불요 | web vitest 39파일 249/249 ✓ · tsc+vite build ✓ · lint 0 ✓ |
 | 19 | apps/api (큐 집행) | tick-daemons.ts 719→664줄: 범용 factory 기각(투기적 추상화) 후 정직한 3헬퍼 — stopOnClose ×10 · optionalNumber ×23 · resolveMessagingTarget ×9(registry 동반 반환으로 타입-내로잉 보존); 다른 semantics 사이트(daily-cap 0-폴백, ?? "90")는 의도적 보존 | api build ✓ · 데몬 테스트 9파일 31/31 ✓ · lint 0 ✓ (fable 재검증) |
+| 20 | packages/stores (큐 집행) | personal-episodes-store.ts 554→286줄: 분석 계층(retention/themes/absence/consolidation, 275줄)을 episode-analytics.ts로 순수 이동 — vacuum→analytics 단방향 value import, 역참조는 type-only(런타임 순환 0), 재export로 소비자 무변경; 떠돌던 vacuum docstring 제자리 복귀 | stores build ✓ · episode 스위트 29/29 ✓ · mcp 7/7·proactivity·cli build ✓ · lint 0 ✓ |
