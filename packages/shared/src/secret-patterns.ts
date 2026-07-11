@@ -133,7 +133,7 @@ export function findSecrets(text: string): readonly SecretMatch[] {
 export const GUARD_ONLY_PATTERNS: ReadonlyArray<{ readonly name: string; readonly regex: RegExp }> = [
   {
     name: "credential-label",
-    regex: /(?:(?<![A-Za-z])(?:password|passphrase|api[ _-]?key|secret|token)(?![A-Za-z])|비밀번호|암호|패스워드|비번|토큰|시크릿)\s*(?:은|는|이|가|을|를)?\s*(?:is|are|[:=])?\s*["'`]?((?=[A-Za-z0-9!@#$%^&*()_+.\/-]*[\d!@#$%^&*()_+.\/])[A-Za-z0-9!@#$%^&*()_+.\/-]{3,})["'`]?/giu
+    regex: /(?:(?<![A-Za-z])(?:password|passphrase|api[ _-]?key|secret|token)(?![A-Za-z])|비밀번호|암호|패스워드|비번|토큰|시크릿)\s*(?:은|는|이|가|을|를)?\s*(?:is|are|[:=])?\s*["'`]?((?=[A-Za-z0-9!@#$%^&*()_+./-]*[\d!@#$%^&*()_+./])[A-Za-z0-9!@#$%^&*()_+./-]{3,})["'`]?/giu
   }
 ];
 

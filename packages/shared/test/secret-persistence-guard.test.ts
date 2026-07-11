@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { SECRET_PATTERNS, findSecrets, findSecretsForGuard, guardSecretPersistence } from "../src/index.js";
+import { SECRET_PATTERNS, findSecretsForGuard, guardSecretPersistence } from "../src/index.js";
 
 describe("findSecrets / guardSecretPersistence — deterministic secret detection", () => {
   it("detects an explicit KO password label bound to a value (the live-probe repro)", () => {
