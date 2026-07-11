@@ -10,6 +10,9 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Toggle Mac Dark Mode by asking.** "turn on dark mode" / "다크모드 켜줘" now
+  switches macOS between dark and light appearance.
+
 - **Ask Muse to quit a Mac app.** "quit Safari", "사파리 종료해줘" now closes the
   named app (a normal quit — it can still prompt you to save). The app name is
   handled safely so a weird name can't run anything else.

@@ -254,3 +254,11 @@ ratchet: 로드맵 잔여 [ ] = 28/62(D4-S2 b/c/d 별개 체크박스 분할 +2,
 - 리뷰지점: Opus 위협모델 PASS — escaper backslash-first 순서가 escaper-escape 우회 방지(`\`+`"`→`\\`+`\"`=리터럴), newline→space, breakout 구성 불가 확인·blank fail-close(called flag)·두 mutation 독립 재현(escaper 제거→breakout RED, guard 제거→osascript 호출 RED)·additionalProperties 유지·mac_app_open과 무혼동(quit vs open 키워드 분리).
 - 리스크: 낮음. quit=graceful(저장 프롬프트 가능, force-kill 아님)·로컬이라 draft-first 불요. eval:tools 로컬셋 heavy timeout(가산 enum+키워드라 selection 회귀 near-zero, Opus가 무혼동 확인). 다음 = D4-S2c(다크모드: dark_mode_on/off parameterless osascript enum).
 - lesson: 사용자/모델-제공 문자열을 osascript에 임베드할 땐 항상 공유 escapeAppleScript(backslash-first)를 통과 — ad-hoc 이스케이프 금지, 기존 tested escaper 재사용이 인젝션 표면의 정답.
+
+## fire 31 · 2026-07-12 · skill v2.x · <commit-pending>
+meta: slice=D4-S2c · wave=W3 · pkg=@muse/macos · kind=mac-dark-mode · verdict=PASS · firesSinceDrill=5
+ratchet: 로드맵 잔여 [ ] = 27/62 · self-eval pass · fabrication 0 · macos +3 test(dark_mode)
+- 무엇: macOS 다크모드. mac_system_set에 dark_mode_on/dark_mode_off parameterless enum 추가. 고정 osascript(System Events appearance preferences set dark mode to true/false) — 유저입력 無이라 인젝션 표면 0, 이스케이프 불요(quit_app과 대비). on→true/off→false.
+- 왜: D4-S2 mac 커버리지의 다크모드 조각. parameterless 토글이라 mac_system_set에 자연스럽게 붙음(mute 브랜치 패턴).
+- 리뷰지점: Opus PASS — on/off→true/false 매핑 정확(inverted 아님)·고정 스크립트 인젝션 無·테스트가 captured 스크립트의 true/false를 pin(shape-only 아님)·ternary flip mutation이 off-test를 kill(독립 재현)·무관 브랜치(volume/mute/wifi/focus/sleep/quit_app) 무변·additionalProperties 유지.
+- 리스크: 낮음. 고정 스크립트라 인젝션·escape 불요. eval:tools 로컬셋 heavy timeout(가산 enum, selection 회귀 near-zero). 다음 = D4-S2d(블루투스/밝기 — Shortcuts 경로 focus 패턴, 클린 CLI 부재+MUSE_*_SHORTCUT env override). D4-S2d 완료 시 D4-S2 mac 커버리지 배치 완주(a·b·c·d, e는 Contacts write 별도).

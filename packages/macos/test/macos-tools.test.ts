@@ -642,6 +642,25 @@ describe("mac_system_set — Tier 1 volume / mute / display sleep", () => {
     const tool = createMacSystemSetTool({ osascript: async () => fail("execution error: not authorised") });
     expect(await tool.execute({ setting: "quit_app", app: "Safari" }, ctx)).toMatchObject({ set: false });
   });
+
+  it("turns dark mode on via System Events appearance preferences", async () => {
+    let script = "";
+    const tool = createMacSystemSetTool({ osascript: async (s) => { script = s; return ok(""); } });
+    expect(await tool.execute({ setting: "dark_mode_on" }, ctx)).toEqual({ set: true, setting: "dark_mode_on" });
+    expect(script).toBe('tell application "System Events" to tell appearance preferences to set dark mode to true');
+  });
+
+  it("turns dark mode off via System Events appearance preferences", async () => {
+    let script = "";
+    const tool = createMacSystemSetTool({ osascript: async (s) => { script = s; return ok(""); } });
+    expect(await tool.execute({ setting: "dark_mode_off" }, ctx)).toEqual({ set: true, setting: "dark_mode_off" });
+    expect(script.endsWith("set dark mode to false")).toBe(true);
+  });
+
+  it("surfaces a non-zero osascript exit as a failure for dark mode", async () => {
+    const tool = createMacSystemSetTool({ osascript: async () => fail("execution error: not authorised") });
+    expect(await tool.execute({ setting: "dark_mode_off" }, ctx)).toMatchObject({ set: false });
+  });
 });
 
 describe("mac_say — Tier 1 text-to-speech", () => {

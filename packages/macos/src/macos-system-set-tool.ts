@@ -6,7 +6,7 @@ import { defaultShortcutsRunner, type ShortcutsRunner } from "./macos-shortcut-t
 
 // ── Tier 1: mac_system_set (volume / mute / sleep / Wi-Fi / Focus / quit app) ─────
 
-const SYSTEM_SETTINGS = ["volume", "mute", "unmute", "display_sleep", "sleep", "wifi_on", "wifi_off", "focus_on", "focus_off", "quit_app"] as const;
+const SYSTEM_SETTINGS = ["volume", "mute", "unmute", "display_sleep", "sleep", "wifi_on", "wifi_off", "focus_on", "focus_off", "quit_app", "dark_mode_on", "dark_mode_off"] as const;
 type SystemSetting = (typeof SYSTEM_SETTINGS)[number];
 
 /**
@@ -61,13 +61,16 @@ export function createMacSystemSetTool(deps: MacSystemSetToolDeps = {}): MuseToo
       description:
         "Change a Mac system setting: `setting` is 'volume' (needs `value` 0–100), 'mute', 'unmute', " +
         "'display_sleep' (screen off now), 'sleep' (put the whole Mac to sleep), 'wifi_on', 'wifi_off', " +
-        "'focus_on' (turn ON Do Not Disturb / a Focus mode), 'focus_off' (turn it OFF), or " +
-        "'quit_app' (quit an app — needs `app`). " +
+        "'focus_on' (turn ON Do Not Disturb / a Focus mode), 'focus_off' (turn it OFF), " +
+        "'quit_app' (quit an app — needs `app`), or 'dark_mode_on' / 'dark_mode_off' " +
+        "(turn macOS Dark Mode on/off). " +
         "Use when the user asks to set/raise/lower the volume, mute/unmute, sleep the screen or the Mac, " +
-        "turn Wi-Fi on/off, turn Do Not Disturb / Focus on or off, or quit/close a named app — e.g. " +
+        "turn Wi-Fi on/off, turn Do Not Disturb / Focus on or off, quit/close a named app, or switch " +
+        "Dark Mode / Light Mode / appearance on or off — e.g. " +
         "'set the volume to 30', 'mute the sound', 'turn off wifi', 'turn on do not disturb', " +
-        "'enable focus mode', 'quit Safari', '볼륨 50으로 해줘', '와이파이 꺼줘', '방해금지 켜줘', " +
-        "'집중모드 꺼줘', 'Safari 종료해줘', '메모장 닫아줘'. Do NOT use it to control music " +
+        "'enable focus mode', 'quit Safari', 'turn on dark mode', 'switch to light mode', " +
+        "'볼륨 50으로 해줘', '와이파이 꺼줘', '방해금지 켜줘', " +
+        "'집중모드 꺼줘', 'Safari 종료해줘', '메모장 닫아줘', '다크모드 켜줘', '화면 어둡게 해줘'. Do NOT use it to control music " +
         "playback (that is mac_media_control) or to run a user-named Shortcut (that is mac_shortcut_run).",
       domain: "system",
       groundedArgs: ["value"],
@@ -95,7 +98,8 @@ export function createMacSystemSetTool(deps: MacSystemSetToolDeps = {}): MuseToo
         "volume", "볼륨", "소리", "mute", "음소거", "unmute", "sound", "display", "화면", "screen", "절전",
         "sleep", "잠자기", "잠들", "wifi", "wi-fi", "와이파이", "네트워크",
         "focus", "집중", "집중모드", "방해금지", "방해 금지", "dnd", "do not disturb",
-        "quit", "종료", "닫아", "close app"
+        "quit", "종료", "닫아", "close app",
+        "dark mode", "다크모드", "다크 모드", "어둡게", "light mode", "라이트모드", "appearance"
       ],
       name: "mac_system_set",
       risk: "execute"
@@ -174,6 +178,24 @@ export function createMacSystemSetTool(deps: MacSystemSetToolDeps = {}): MuseToo
           return { reason: `osascript failed: ${result.stderr.trim().slice(0, 300)}`, set: false };
         }
         return { app, set: true, setting };
+      }
+      if (setting === "dark_mode_on" || setting === "dark_mode_off") {
+        const on = setting === "dark_mode_on";
+        // Fixed script, no user input — no escaping needed (unlike quit_app's app name above).
+        const script = `tell application "System Events" to tell appearance preferences to set dark mode to ${on ? "true" : "false"}`;
+        let result: MacCommandResult;
+        try {
+          result = await osascript(script);
+        } catch (cause) {
+          return { reason: `osascript spawn failed: ${cause instanceof Error ? cause.message : String(cause)}`, set: false };
+        }
+        if (result.timedOut) {
+          return { reason: `osascript timed out after ${OSASCRIPT_TIMEOUT_MS.toString()}ms`, set: false };
+        }
+        if (result.exitCode !== 0) {
+          return { reason: `osascript failed: ${result.stderr.trim().slice(0, 300)}`, set: false };
+        }
+        return { set: true, setting };
       }
       let script: string;
       let echoValue: number | undefined;
