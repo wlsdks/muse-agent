@@ -218,6 +218,53 @@ B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올
 5. **경쟁사 코드는 이해용 참조.** 열어서 메커니즘 이해 후 Muse 패턴/네이밍으로
    재설계. 상수는 로컬 12B·단일 GPU에 재보정하고 근거를 테스트에 남길 것.
 
+### 6.0.1 ★ Round 1 적대적 검증 결과 (2026-07-11, 5-Haiku + Fable 재검증) — 워커 필독
+
+계획의 모든 "Muse 현재/갭" 주장을 실코드로 반증 시도했다. **false-gap 5건(계획이
+"없다"고 했으나 실재 → 삭제), 정련 4건.** 워커는 아래 삭제 슬라이스를 절대 짓지
+말 것(no-op이거나 기존 안전결정 위반).
+
+**삭제 (⏭️ 실재 확인 — 짓지 말 것):**
+- **D1-S4 (preflight 컴팩션)**: `workingBudgetTokens`가 이미 배선됨 —
+  `runtime-wiring.ts:126-129`(`maxContextWindowTokens × DEFAULT_WORKING_BUDGET_RATIO`,
+  env `MUSE_LLM_WORKING_BUDGET_TOKENS`) + `chat-ink-core.ts:905`. 창 사용률 %-임계
+  사전 컴팩션이 **기본 on**. 잔여(선택): 컴팩션 발생을 유저에게 표기하는지만 확인.
+- **D4-S5 (history-search 툴)**: `history_search` MuseTool이 이미 존재
+  (`packages/recall/src/history-search-tool.ts:20/40`, risk:read). 코어+툴 완결.
+- **D3-S5 (background_process start/stop 툴)**: `background_list`(read-only)는 이미
+  에이전트-facing(`domain-tools/src/background-list-tool.ts:20`), start/stop/logs는
+  **의도적 CLI-전용**("state-changing exec must stay user-initiated" — outbound-
+  safety). 에이전트 노출은 기존 안전결정 위반이라 **하지 말 것**.
+- **D7-S2 (doctor fix-steps)**: 각 체크가 이미 "run `muse X`" 수리단계 반환
+  (`commands-doctor-checks.ts:61/64/79/220/226`). 완비.
+- **D-KO-S2 (CJK 검색)**: `recall-lexical.ts:44-53`가 이미 Hangul/Han/Hiragana/
+  Katakana 음절-레벨 토큰 + NFC·전각→반각 정규화. `searchHistory`가 이걸 사용. 완비.
+
+**정련 (실-갭이나 범위 축소):**
+- **D3-S2 (하트비트)**: stale-detection 레지스트리(heartbeat/detectStalled/
+  markStalledAsTimedOut, `subagent-run-registry.ts:100/174/185`)는 이미 존재하나
+  **호출부가 orchestrator worker-settle 1곳뿐**(`orchestrator.ts:347`). 실-갭은
+  딱 하나: **단일 장기 run**(챗/ask 주경로, 멀티워커 아님)이 run 중 heartbeat 미방출.
+  → 슬라이스 = 기존 detectStalled **재사용** + agent-runtime 툴루프가 tool-start마다
+  heartbeat 호출(신규 감지기 짓지 말 것).
+- **D5-S3 (toolCalling 폴백)**: 단순 "미배선"이 아니라 **死코드** —
+  `canUseNativeTools`(`packages/model/src/index.ts:292`)가 정의됐으나 **호출부 0**.
+  계약(architecture.md:38)만 있고 런타임 미배선. 슬라이스는 그 함수를 실제
+  게이트로 배선.
+- **D-KO-S1 (UTF-16)**: safe 패턴이 이미 `truncateErrorBody`(`shared/src/index.ts:257-260`)에
+  존재 → 그걸 공유 헬퍼로 추출 + **정확한 미안전 3곳 배선**: `history-search.ts:206/213`
+  (스니펫), `tool-definition-helpers.ts:108`(툴 설명), `knowledge-corpus.ts:365`(요약).
+- **D2-S6 (write-approval 스테이징)**: `pending-approval-store.ts`가 **채널 경로엔
+  이미 존재**(`~/.muse/pending-approvals.json`, `{id,tool,arguments,draft,expiresAt}`).
+  CLI 로컬 쓰기만 동기(`actuator-tools.ts:262`). → 기존 스토어 **재사용**해 CLI 경로 확장.
+
+**전량 확정(짓기 정당) — 특히 D2 보안 7슬라이스 전부 false-gap 0**: runner OS
+샌드박스 부재(`crates/runner/src/main.rs`: env_clear+timeout+cap만)·DS-2에 NFKC/ANSI/
+홈경로 부재·토폴로지 AST 부재·run_command 시크릿 미-redaction(`runner.ts:88-103`,
+실제 유출 확인)·승인 span 하이라이트 부재·calendar 평문(`calendar/src/local-provider.ts:202`).
+나머지 D1(S1/S2/S3/S5/S6/S7)·D3(S1/S3/S4/S6)·D4(S1/S2/S3/S4)·D5(S1/S2/S4/S5)·
+D6·D7(S1/S3/S4)도 실-갭 확정.
+
 ### D1 — Agent loop (B+ → A+)
 
 > **Muse 현재**: maxToolCalls 10·wallclock 300s(`agent-runtime.ts:284-288`).
@@ -241,10 +288,9 @@ B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올
   1회 요약(600자)→초과 시 통째 실패. tool-pair 경계 청크→청크별 aux 요약→병합,
   전단계 FAIL-OPEN, **"불투명 식별자(UUID/경로/URL/숫자) 원문 보존" 지시 명문화**
   (grounding 강화 겸). 수용: 경계 유닛+부분실패 보존+mutation·기존 CMP-2 무수정.
-- **D1-S4. 컴팩션 preflight 트리거 (M).** 참조: hermes `context_compressor.py:953`
-  (≥50%·소형창75%·퇴화85%). Muse는 reactive만. `prepareModelRequest`에 사용률
-  기반 사전결정(창크기별 테이블, gemma4 262K DS-21 재사용), 발생을 1줄 표기.
-  수용: 임계경계 유닛·byte-identical-below-threshold.
+- **D1-S4. ⏭️ 삭제(FALSE-GAP).** 컴팩션 preflight는 `workingBudgetTokens`로 이미
+  기본 배선(§6.0.1). 잔여(선택, 최소): 컴팩션 발생을 유저에게 1줄 표기하는지 확인,
+  없으면 display-only 티끌 슬라이스.
 - **D1-S5. 이터레이션 예산 재설계 + 가시화 (M).** 참조: hermes `iteration_budget.py`
   (부모90/서브50·PTC 환불). Muse maxToolCalls=10(호출수만). (a) PTC 플랜스텝 계상
   규칙 명문화(프로그래매틱=1). (b) 서브에이전트(보드)는 별도 하위예산. (c) 소진
@@ -297,12 +343,14 @@ B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올
 - **D2-S5. 암호화-at-rest 잔여 calendar (S).** backlog "LAST encryption item".
   reflections/belief-provenance 검증 템플릿 재사용. 수용: 라운드트립 3종+format-
   preserving.
-- **D2-S6. exec 승인 span 하이라이트 + write-approval 스테이징 (M).** 참조: openclaw
-  `exec-approval.ts`(위험부위 span+타임아웃)+hermes `write_approval.py`(pending 디스크
-  스테이징). (a) 승인프롬프트에서 위험 토큰(파괴 플래그·민감경로) 하이라이트(DS-2
-  분류기 재사용·시크릿 마스킹 유지), (b) 자율/데몬 쓰기를 `~/.muse/pending/` 비차단
-  스테이징→`muse pending`/챗 나중승인. 수용: 하이라이트 위치·스테이징 no-external-
-  effect 계약(승인 전 절대 미실행)·mutation.
+- **D2-S6. exec 승인 span 하이라이트 + write-approval 스테이징 (M, 정련됨).** 참조:
+  openclaw `exec-approval.ts`(위험부위 span)+hermes `write_approval.py`. (a) 승인
+  프롬프트에서 위험 토큰(파괴 플래그·민감경로) 하이라이트 — 현 `summarizeToolArgs`
+  (`chat-ink-core.ts`)는 clip+redact만, 하이라이트 없음(§6.0.1). DS-2 분류기 재사용·
+  시크릿 마스킹 유지. (b) 스테이징은 **기존 `pending-approval-store.ts` 재사용** —
+  채널 경로엔 이미 존재(`~/.muse/pending-approvals.json`), CLI 로컬 쓰기만 동기
+  (`actuator-tools.ts:262`)이므로 그 스토어를 CLI 경로로 확장(신규 스토어 금지).
+  수용: 하이라이트 위치·스테이징 no-external-effect 계약(승인 전 절대 미실행)·mutation.
 - **D2-S7. eval:adversarial 확대 16→24+ (M).** 신규: 샌드박스 탈출3·토폴로지 우회3·
   난독화2 — 전부 **결정론 가드가 막는 걸 코드로 검증**(모델 거부 의존 금지).
 
@@ -319,10 +367,13 @@ B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올
   태스크에 depth 필드·`MUSE_BOARD_MAX_DEPTH`기본1, 도달 시 expand 거부, executor
   read-only 게이트에 부모 deny 상속(구조·프롬프트 아님). 수용: 깊이경계·상속 유닛+
   mutation(강등제거→RED).
-- **D3-S2. 런타임 하트비트 스테일 감지 (M).** 참조: hermes `_heartbeat_loop`(30s·idle
-  450s/in-tool1200s). Muse는 보드 30분 reclaim만(사후). agent-core run에 activity
-  tracker+`staleAfterMs`(in-tool 600s 기본, 개별 툴 타임아웃과 별개 총합 가드),
-  스테일→abort+사유. 수용: fake-clock 유닛+정상 장기스트림 비오탐.
+- **D3-S2. 런타임 하트비트 — 단일-run 배선 (S, 정련됨).** 참조: hermes
+  `_heartbeat_loop`. **주의(§6.0.1)**: stale-detection 레지스트리(heartbeat/
+  detectStalled/markStalledAsTimedOut)는 이미 존재하나 호출부가 orchestrator
+  worker-settle 1곳뿐. 실-갭 = **단일 장기 run**이 run 중 heartbeat 미방출. 신규
+  감지기 금지 — **기존 detectStalled 재사용** + agent-runtime 툴루프가 tool-start/
+  delta마다 `heartbeat(runId)` 호출(in-tool 스테일→abort+사유). 수용: fake-clock
+  유닛(단일 run 스테일 감지)+정상 장기스트림 비오탐.
 - **D3-S3. 완료-이벤트 idle-드레인 계약 핀 (S).** 참조: hermes async_delegation
   (완료 큐→idle 윈도우만 드레인·교대/캐시 보존). Muse jobCompletions/proactive
   폴링이 사실상 이 패턴 — "생성 중 삽입 불가" **계약 테스트 부재**, verify-first 후
@@ -332,10 +383,9 @@ B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올
   산식 없음. (a) job 동시상한(기본3·초과 명시거부), (b) `boardTaskPrompt` 합성에
   헤드룸비례 per-child 예산+`~/.muse/board-spill/` 스필+답변에 경로 명시. 수용:
   상한거부·예산경계 유닛+스필 왕복.
-- **D3-S5. X-3 완결 — agent-facing background_process 툴 (M).** backlog 잔여 S5b.
-  단일 툴(start/stop/logs/list enum·tool-calling.md 규칙)·classifyDangerousCommand
-  가드·시작은 execute승인. watch-pattern은 제외(스코프 절제). 수용: eval:tools 4+
-  STABLE 3/3 로컬 라이브.
+- **D3-S5. ⏭️ 삭제(FALSE-GAP + 안전결정 위반).** `background_list`(read-only)는
+  이미 에이전트-facing, start/stop/logs는 **의도적 CLI-전용**(outbound-safety —
+  §6.0.1). 에이전트에 start/stop 노출은 기존 결정 위반이라 **하지 말 것**.
 - **D3-S6. eval:orchestration 래칫 (S).** D3-S1~S4 라이브 케이스 편입 pass^3, MAST
   상위 실패모드(스텝반복·종료미인지) 2+ 포함.
 
@@ -359,8 +409,9 @@ B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올
 - **D4-S4. computer-control 신뢰성 — file_edit 결정론 리페어 (M).** eval:computer-
   task ~50-66% 주범이 multi-step 편집. 실패 시 결정론 재정렬/재시도 1회(모델 재추론
   금지). 수용: 베이스라인 +10%p·pass^3.
-- **D4-S5. 히스토리-검색 툴 완결 (S).** `searchHistory` 코어(완료) 에이전트 노출+
-  eval:tools. hermes session_search(FTS5·앵커±윈도우·bookend) 참조, Muse BM25 재사용.
+- **D4-S5. ⏭️ 삭제(FALSE-GAP).** `history_search` MuseTool이 이미 존재
+  (`history-search-tool.ts:20`, risk:read — §6.0.1). 잔여(선택): hermes session_search의
+  앵커±윈도우/bookend 스크롤을 기존 툴에 옵션으로 더할지 — 저우선.
 
 ### D5 — Model posture (B+ → A+)
 
@@ -377,9 +428,12 @@ B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올
   리졸버(하위호환), 태스크 compaction/vision/rewrite/judge/embedding-rescue,
   **로컬-우선 불변**(aux도 privacy 게이트 통과·개인컨텍스트 태스크는 클라우드 금지).
   수용: 리졸버·하위호환·local-only 게이트 유닛.
-- **D5-S3. capability-선언 자동우회 (S).** 참조: openclaw compat 플래그(비전없음→
-  라우팅). Muse `resolveVisionModel` 폴백 보유·toolCalling=false 처리는 계약만 —
-  verify-first 실배선, 빠졌으면 배선. 수용: 케이퍼빌리티 부재 모델 계약(mocked).
+- **D5-S3. capability 死코드 배선 (S, 정련됨).** 참조: openclaw compat 플래그.
+  **주의(§6.0.1)**: `canUseNativeTools`(`model/src/index.ts:292`)가 정의됐으나
+  **호출부 0 = 死코드**. 계약(architecture.md:38 "네이티브 툴콜 불가→텍스트 프로토콜")만
+  있고 런타임 미배선 → toolCalling=false 모델은 조용히 실패. 그 함수를 실제 게이트로
+  배선(false→텍스트 툴 프로토콜 폴백 또는 명시적 미지원 에러). 수용: 케이퍼빌리티
+  부재 모델 계약(mocked)+死코드 호출부 생김 확인.
 - **D5-S4. 명시적 fallback chain (M).** 참조: openclaw allowlist+fallback(오타 조기
   거부). Muse 원칙("숨은 재시도 금지"): 폴백은 **명시 설정**(`MUSE_MODEL_FALLBACKS`)
   일 때만·각 폴백도 privacy/local-only 게이트·발생을 답변 1줄 표기. 수용: 체인워크·
@@ -416,9 +470,8 @@ B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올
   단독(commander CLI와 분리). hermes COMMAND_REGISTRY처럼 name·desc·category·aliases·
   platform-gate 1-엔트리가 CLI help·챗 autocomplete·(미래)채널 구동. 수용: 레지스트리
   유닛+양쪽 반영+중복제거 증명.
-- **D7-S2. `muse doctor` fix-steps 강화 (S).** 참조: hermes doctor. 각 실패에
-  플랫폼별 복사가능 수리단계 번호목록. 각 실패에 actionable fix 붙었는지 verify-
-  first. 수용: fix-step 렌더 유닛.
+- **D7-S2. ⏭️ 삭제(FALSE-GAP).** doctor 체크가 이미 "run `muse X`" 수리단계 반환
+  (§6.0.1). 완비.
 - **D7-S3. 스마트-테일 터미널 출력 (S).** 참조: hermes terminal-output(마운트 하단
   점프·하단근처만 tailing·위로읽으면 방해없음). 웹 콘솔 스트리밍 뷰에 적용. 수용:
   스크롤 로직 유닛+실브라우저 측정(testing.md UI 규칙).
@@ -431,16 +484,16 @@ B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올
 > openclaw가 UTF-16 버그를 3주간 12모듈에서 잡는 중(반면교사). hermes 2200자
 > 메모리 한계는 CJK에 특히 치명(한글 1자=여러 토큰).
 
-- **D-KO-S1. UTF-16 안전 슬라이스/절단 헬퍼 (S) ★.** 참조: openclaw
-  `normalization-core/utf16-slice.ts`(surrogate-pair 경계안전). Muse는 툴-arg
-  sanitization 한 곳만 surrogate-aware(TCR-3), **범용 헬퍼가 @muse/shared에 없음**
-  → 답변/요약/노트/TTS 절단이 한글·이모지 깨뜨릴 수 있음. 의존성0 헬퍼 추가+절단
-  호출부(TTS cap·요약 maxChars·citation 스니펫) 배선. 수용: 한글/이모지/조합문자
-  경계 유닛+기존 절단 byte-identical-when-safe.
-- **D-KO-S2. CJK-aware 세션/히스토리 검색 (S).** D4-S5에 CJK 토크나이제이션 확인.
-  Muse는 cross-lingual recall(nomic-v2-moe prefix)·CJK lexical 보유 — hermes
-  session_search FTS5 CJK trigram 대비 **Muse BM25 코어가 CJK를 trigram/음절로
-  다루는지 verify-first**, 약하면 보강. 수용: KO질의→KO/EN 히스토리 hit@1 골든셋.
+- **D-KO-S1. UTF-16 안전 절단 헬퍼 추출 + 미안전 3곳 배선 (S) ★ (정련됨).** 참조:
+  openclaw `utf16-slice.ts`. **주의(§6.0.1)**: safe 패턴이 이미
+  `truncateErrorBody`(`shared/src/index.ts:257-260`, lone high-surrogate 드롭)에 존재.
+  그걸 `truncateUtf16Safe`로 **추출**(중복 제거) + **정확한 미안전 3곳 배선**:
+  `recall/src/history-search.ts:206/213`(citation 스니펫), `tools/src/tool-definition-
+  helpers.ts:108`(툴 설명), `autoconfigure/src/knowledge-corpus.ts:365`(요약). TTS
+  cap도 확인. 수용: 한글/이모지/조합문자 경계 유닛+3곳 byte-identical-when-safe.
+- **D-KO-S2. ⏭️ 삭제(FALSE-GAP).** `recall-lexical.ts:44-53`가 이미 Hangul/Han/
+  Hiragana/Katakana 음절-레벨 토큰+NFC·전각→반각 정규화. `searchHistory` 사용(§6.0.1).
+  cross-lingual recall(ask-cross-lingual.ts, v2-moe prefix)도 배선 완료. 완비.
 - **D-KO-S3. i18n 정적 메시지 카탈로그 (M, 저우선).** 현재 KO/EN이 `/[가-힣]/`
   인라인 분기 다수. dotted-key 카탈로그 중앙화는 유지보수↑지만 **저우선**(인라인이
   동작하고 진안 언어 KO 고정이라 다국어 압력 낮음·리팩터 리스크>이득 가능).
@@ -451,11 +504,11 @@ B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올
 
 | 웨이브 | 슬라이스 | 이유 |
 |---|---|---|
-| **W1 (원칙 갭)** | D2-S1 seatbelt → D2-S2 토폴로지 → D1-S1/S2 루프가드 → D2-S6 승인 span | 자기-원칙(결정론 가드) 유일 미달 + 루프이탈 12B 최빈사고. **경쟁사 공통 최대 약점(보안·신뢰성)이 Muse 강점 축** — 여기가 해자 |
-| **W2 (신뢰성)** | D1-S3/S4/S5 → D3-S1/S2/S4 → D1-S7 브라우저 | 컴팩션·예산·서브에이전트 안전망 + 소형모델 브라우저 신뢰성 — eval:computer-task 상승 토대 |
-| **W3 (능력·UX)** | D4-S4 → D4-S1 → D3-S5 → D4-S2/S5 → D7-S1 슬래시·D2-S6b 스테이징 | 신뢰성 위 커버리지 + 마찰 제거 — 각각 eval 래칫 동반 |
-| **W4 (라우팅·KO)** | D5-S1~S4 → D1-S6 → D2-S3/S4/S5 → D-KO-S1 UTF-16·D-KO-S2 CJK | 모델 천장 우회 완성 + 한국어-우선 마감(hermes 2200자 반면교사) |
-| **W5 (기억·마감)** | D6-S1~S4 → D3-S3/S6 → D2-S7 → D7-S2/S3/S4 | 연료·consolidation·무결성·래칫·UX 마감 |
+| **W1 (원칙 갭)** | D2-S1 seatbelt → D2-S2 토폴로지 → D1-S1/S2 루프가드 → D2-S6 승인 span+스테이징 | 자기-원칙(결정론 가드) 유일 미달 + 루프이탈 12B 최빈사고. **경쟁사 공통 최대 약점(보안·신뢰성)이 Muse 강점 축** — 여기가 해자 |
+| **W2 (신뢰성)** | D1-S3/S5 → D3-S1/S2/S4 → D1-S7 브라우저 | 컴팩션·예산·서브에이전트 안전망 + 소형모델 브라우저 신뢰성 — eval:computer-task 상승 토대 (D1-S4 삭제됨) |
+| **W3 (능력·UX)** | D4-S4 → D4-S1 → D4-S2 → D7-S1 슬래시 | 신뢰성 위 커버리지 + 마찰 제거 — 각각 eval 래칫 동반 (D3-S5·D4-S5 삭제됨) |
+| **W4 (라우팅·KO)** | D5-S1~S4 → D1-S6 → D2-S3/S4/S5 → D-KO-S1 UTF-16 | 모델 천장 우회 완성 + 한국어-우선 마감 (D-KO-S2 삭제됨) |
+| **W5 (기억·마감)** | D6-S1~S4 → D3-S3/S6 → D2-S7 → D7-S3/S4 | 연료·consolidation·무결성·래칫·UX 마감 (D7-S2 삭제됨) |
 
 각 웨이브 종료 = `pnpm self-eval` green + 해당 eval 래칫 수치 상승 + CHANGELOG
 [Unreleased] 갱신. 슬라이스당 1 커밋(Conventional Commits).
