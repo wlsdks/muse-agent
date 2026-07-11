@@ -18,6 +18,7 @@
 import {
   patchObjective,
   readObjectives,
+  withProcessLock,
   type StandingObjective
 } from "@muse/stores";
 import type { EvidenceRecord } from "./objective-evidence.js";
@@ -63,6 +64,10 @@ export interface RunDueObjectivesSummary {
   /** ids backed-off for a later tick. */
   readonly retried: readonly string[];
   readonly errors: readonly string[];
+  /** Set only when another daemon held the firing lock for this tick — no
+   *  objective was read, evaluated, acted, or marked at all. Absent on
+   *  every other path. */
+  readonly outcome?: "lock-held";
 }
 
 const DEFAULT_MAX_PER_TICK = 5;
@@ -70,7 +75,44 @@ const DEFAULT_MAX_ATTEMPTS = 6;
 const DEFAULT_BACKOFF_BASE_MS = 60_000;
 const DEFAULT_BACKOFF_MAX_MS = 6 * 60 * 60_000;
 
+/**
+ * Re-evaluate due objectives. The whole select→evaluate→act→mark section
+ * runs under the cross-process `withProcessLock` (`${options.file}.firing.lock`,
+ * the same generalized lock the reminder/checkin/followup ticks use —
+ * `@muse/stores/digest-lock.ts`) because the api daemon's tick
+ * (`apps/api/src/objectives-tick.ts`) and the CLI daemon's tick
+ * (`commands-daemon-register.ts`) read the SAME objectives file:
+ * `patchObjective` is atomic per-item, not mutual exclusion, so without a
+ * real lock both can read an objective as due and both evaluate/act on it
+ * before either marks it done/escalated/retried. Same shape and worst-case
+ * latency as the followup/checkin locks it mirrors — per due objective this
+ * also runs one model call (`evaluate`, capped output) plus a store-backed
+ * `act`, under the same default `maxPerTick` (5) — so the existing 5-minute
+ * stale window is left unchanged rather than widened for this loop
+ * specifically. A LIVE held lock returns `outcome: "lock-held"` immediately
+ * with nothing evaluated or sent; a broken lock (non-contention fs error)
+ * fails OPEN — the tick still runs unlocked rather than silently skipping
+ * objectives.
+ */
 export async function runDueObjectives(options: RunDueObjectivesOptions): Promise<RunDueObjectivesSummary> {
+  const lockPath = `${options.file}.firing.lock`;
+  const lockOutcome = await withProcessLock(lockPath, () => runDueObjectivesUnderLock(options));
+  if (lockOutcome.kind === "lock-held") {
+    return { due: 0, errors: [], escalated: [], fired: [], outcome: "lock-held", retried: [] };
+  }
+  if (lockOutcome.lockError !== undefined) {
+    // Fail-open on a BROKEN lock (not contention): the tick still ran,
+    // unlocked, so this degrades to the pre-lock duplicate-evaluation risk
+    // rather than silencing objectives.
+    return {
+      ...lockOutcome.value,
+      errors: [`objectives-tick: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
+    };
+  }
+  return lockOutcome.value;
+}
+
+async function runDueObjectivesUnderLock(options: RunDueObjectivesOptions): Promise<RunDueObjectivesSummary> {
   const now = options.now ?? (() => new Date());
   // `??` does NOT catch NaN/Infinity: a non-numeric env knob
   // (MUSE_OBJECTIVES_MAX_PER_TICK="5x" → Number(...) → NaN) would make

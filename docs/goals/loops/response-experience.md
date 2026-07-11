@@ -122,3 +122,11 @@ ratchet: testFiles +1(followup-firing-lock) · fabrication 0 · eval N/A
 왜: 잔여 레이스 4곳의 첫째 — 템플릿 반복으로 소형화.
 리뷰지점: 없음(패턴 확립됨). 잔여: objectives·pattern-notices·proactive-notices.
 리스크: 낮음.
+
+## fire 15 · 2026-07-12 · skill v2.x · (sha pending)
+meta: value-class=reliability · pkg=@muse/proactivity · kind=concurrency · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles +1(objective-evaluation-lock) · fabrication 0 · eval N/A
+무엇: objectives 이중 평가/전송 봉합 — 락 템플릿 4번째(42줄 순수 추가, byte-동일 추출), staleMs 5분 유지(평가기=200토큰 1콜 무재시도, followup 선례와 동일 지연 클래스 — 판정자 사실검증).
+왜: 잔여 레이스 둘째.
+리뷰지점: FLAG — 모든 firing-lock 공통의 무하트비트 5분 창 vs 최악 파일업 근접(횡단 보강 ◦ 큐잉, 개별 발산 금지).
+리스크: 낮음. fire 16은 (proactivity,concurrency) 금지(8-윈도 6 도달) — pattern/proactive-notices 락은 이후로, 다음은 ack 카피 또는 배터리 강건화.
