@@ -46,3 +46,19 @@ ratchet: testFiles +0(기존 테스트파일 확장 5케이스) · fabrication 0
 왜: 약속 원문만으론 "언제 한 약속인지"가 없음 — 가치⑤ 마지막 몫.
 리뷰지점: 지연 배달 시 나이가 downtime만큼 하향-오차(판정: bounded 근사, fabrication 아님) — 절대날짜 절 후속 ◦ 큐잉.
 리스크: 낮음 — runDueCheckins·게이트 무접촉.
+
+## fire 6 · 2026-07-12 · skill v2.x · 191ef7bb7
+meta: value-class=security-hardening · pkg=@muse/proactivity+agent-core+recall · kind=security-review · verdict=PASS · firesSinceDrill=6
+ratchet: testFiles +1(prompt-escape 이동) · fabrication 0 · eval N/A(ack 경로 무접촉)
+무엇: digest 렌더 시점 injection-span 중화 — 단일 렌더 함수(formatDigestItemLine)가 flush·CLI 양표면 커버, recap과 동일 조합(escapeSystemPromptMarkers∘neutralizeInjectionSpans); 저장은 verbatim 유지(감사성). prompt-escape 헬퍼 recall→agent-core 이동(의존 방향 정리, byte-동일+re-export 무파손).
+왜: 조사 결과 사용자-저장 텍스트(패턴 제안·약속 원문·ambient enrich)가 실제로 큐를 탐 — 중화 필요가 실재.
+리뷰지점: --json은 raw 덤프(로컬 read-only, 수용); 5개 루프의 직접-전송 경로는 기존 관례대로 미중화(backlog에 명시 유지).
+리스크: 낮음 — 중화는 subtractive, clean text byte-동일 pin.
+
+## fire 7 · 2026-07-12 · skill v2.x · ccc729af6
+meta: value-class=refinement · pkg=@muse/proactivity · kind=rationale-refinement · verdict=PASS · firesSinceDrill=7
+ratchet: testFiles +0(6 테스트 재작성+2 pin) · fabrication 0 · eval N/A
+무엇: 체크인 절을 "(N일 전)"→"(7/5에 남기신 약속)" 절대날짜로 — 지연 배달 하향-오차 클래스 제거, 이전-연도는 연도 포함, 클럭-스큐에도 잘못된 연도 embellishment 없음(판정자 프로브 확인).
+왜: fire 5 판정자 권고 — 절대날짜는 구조적으로 stale 불가.
+리뷰지점: 미래-createdAt 가드 제거는 유일 콜사이트에서 도달 불가(판정 확인); 외부-소스 createdAt 콜러가 생기면 가드 복원(비게이팅 권고).
+리스크: 낮음.

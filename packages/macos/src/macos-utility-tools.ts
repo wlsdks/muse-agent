@@ -67,6 +67,18 @@ export function createMacClipboardSetTool(deps: MacClipboardSetToolDeps = {}): M
 const SPOTLIGHT_TIMEOUT_MS = 15_000;
 const SPOTLIGHT_MAX_RESULTS = 25;
 
+// Extensions checked in code (never built into the mdfind predicate) so
+// `imagesOnly` stays an injection-safe post-hoc filter on returned paths.
+const IMAGE_EXTENSIONS = new Set([
+  "jpg", "jpeg", "png", "heic", "heif", "gif", "tiff", "tif", "webp", "bmp", "raw", "dng", "cr2", "nef", "arw"
+]);
+
+function isImagePath(path: string): boolean {
+  const dot = path.lastIndexOf(".");
+  if (dot < 0) return false;
+  return IMAGE_EXTENSIONS.has(path.slice(dot + 1).toLowerCase());
+}
+
 export interface MacSpotlightSearchToolDeps {
   readonly runner?: (args: readonly string[]) => Promise<MacCommandResult>;
 }
@@ -76,24 +88,34 @@ export function createMacSpotlightSearchTool(deps: MacSpotlightSearchToolDeps = 
   return {
     definition: {
       description:
-        "Find FILES on the Mac by name (or content) using Spotlight, returning their PATHS on disk. Use " +
-        "when the user wants to LOCATE a file, document, or app on their computer — e.g. 'find the file " +
-        "called budget.xlsx', 'where is my résumé PDF', '내 컴퓨터에서 발표자료 파일 찾아줘'. Set " +
-        "`nameOnly` true to match the filename only (the default also matches content). This searches the " +
-        "FILESYSTEM and returns paths — it is NOT knowledge_search (which recalls what you NOTED or " +
-        "discussed) and NOT web_search (the public web).",
+        "Find FILES on the Mac by name (or content) using Spotlight, returning their PATHS on disk — " +
+        "including PHOTOS and other images. Use when the user wants to LOCATE a file, document, photo, or " +
+        "app on their computer — e.g. 'find the file called budget.xlsx', 'where is my résumé PDF', " +
+        "'find my photos of the beach', '내 컴퓨터에서 발표자료 파일 찾아줘', '사진 찾아줘'. Set `nameOnly` " +
+        "true to match the filename only (the default also matches content). Set `imagesOnly` true to " +
+        "return only photo/image files. This searches the FILESYSTEM and returns paths — it is NOT " +
+        "knowledge_search (which recalls what you NOTED or discussed) and NOT web_search (the public web).",
       domain: "system",
       groundedArgs: ["query"],
       inputSchema: {
         additionalProperties: false,
         properties: {
+          imagesOnly: {
+            description:
+              "true to return only PHOTOS / image files (jpg, png, heic, …). Use for 'find my photos of " +
+              "…', '사진 찾아줘'.",
+            type: "boolean"
+          },
           nameOnly: { description: "true to match the file NAME only (default matches content too).", type: "boolean" },
           query: { description: "Filename or text to find on disk, e.g. 'budget.xlsx' or 'tax return'.", type: "string" }
         },
         required: ["query"],
         type: "object"
       },
-      keywords: ["file", "파일", "파일명", "spotlight", "disk", "folder", "폴더", "document", "pdf", "locate", "컴퓨터"],
+      keywords: [
+        "file", "파일", "파일명", "spotlight", "disk", "folder", "폴더", "document", "pdf", "locate", "컴퓨터",
+        "photo", "사진", "image", "이미지"
+      ],
       name: "mac_spotlight_search",
       risk: "read"
     },
@@ -103,6 +125,9 @@ export function createMacSpotlightSearchTool(deps: MacSpotlightSearchToolDeps = 
         return { error: "mac_spotlight_search requires a non-empty 'query'" };
       }
       const nameOnly = args["nameOnly"] === true;
+      const imagesOnly = args["imagesOnly"] === true;
+      // Same mdfind argv regardless of imagesOnly — the query is never turned into a
+      // predicate string; image filtering happens on the returned paths, in code.
       const argv = nameOnly ? ["-name", query] : [query];
       let result: MacCommandResult;
       try {
@@ -117,11 +142,13 @@ export function createMacSpotlightSearchTool(deps: MacSpotlightSearchToolDeps = 
         return { error: `mdfind failed: ${result.stderr.trim().slice(0, 200)}` };
       }
       const all = result.stdout.split(/\r?\n/u).map((line) => line.trim()).filter((line) => line.length > 0);
+      const matched = imagesOnly ? all.filter(isImagePath) : all;
       return {
-        paths: all.slice(0, SPOTLIGHT_MAX_RESULTS) as unknown as JsonValue,
+        paths: matched.slice(0, SPOTLIGHT_MAX_RESULTS) as unknown as JsonValue,
         query,
-        total: all.length,
-        ...(all.length > SPOTLIGHT_MAX_RESULTS ? { truncated: true } : {})
+        total: matched.length,
+        ...(imagesOnly ? { imagesOnly: true } : {}),
+        ...(matched.length > SPOTLIGHT_MAX_RESULTS ? { truncated: true } : {})
       };
     }
   };

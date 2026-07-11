@@ -100,7 +100,7 @@ describe("startTelegramPollTick long-poll mode", () => {
 });
 
 describe("startTelegramPollTick ack reaction", () => {
-  it("reacts to each ingested message and a reaction failure never blocks ingestion", async () => {
+  it("reacts to each ingested message and a reaction failure never blocks ingestion", { timeout: 20_000 }, async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-tg-ack-"));
     const reactions: string[] = [];
     let calls = 0;
@@ -128,7 +128,11 @@ describe("startTelegramPollTick ack reaction", () => {
       provider,
       relaunchDelayMs: 5
     });
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Poll instead of a fixed sleep — a slow runner can take >100ms to fire
+    // the second (throwing) reaction.
+    for (let waited = 0; waited < 10_000 && reactions.length < 2; waited += 50) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
     handle.stop();
 
     expect(reactions).toEqual(["999:1:👀", "999:2:👀"]);

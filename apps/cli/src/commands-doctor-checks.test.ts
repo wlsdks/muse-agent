@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  bluetoothShortcutsCheck,
   cloudSyncFolderCheck,
   episodeIndexHealth,
   focusShortcutsCheck,
@@ -71,6 +72,36 @@ describe("focusShortcutsCheck — Focus/DND shortcut presence", () => {
     const warn = focusShortcutsCheck(env, ["집중 켜기"]);
     expect(warn.status).toBe("warn");
     expect(warn.detail).toContain("집중 끄기");
+  });
+});
+
+describe("bluetoothShortcutsCheck — Bluetooth shortcut presence", () => {
+  it("both convention shortcuts present → ok", () => {
+    const check = bluetoothShortcutsCheck({}, ["Muse Bluetooth On", "Muse Bluetooth Off"]);
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("Muse Bluetooth On");
+  });
+
+  it("a missing shortcut → warn naming which one + the Set Bluetooth setup", () => {
+    const check = bluetoothShortcutsCheck({}, ["Muse Bluetooth On"]);
+    expect(check.status).toBe("warn");
+    expect(check.detail).toContain("Muse Bluetooth Off");
+    expect(check.detail).toContain("Set Bluetooth");
+  });
+
+  it("can't enumerate shortcuts (undefined) → warn 'couldn't list'", () => {
+    const check = bluetoothShortcutsCheck({}, undefined);
+    expect(check.status).toBe("warn");
+    expect(check.detail).toContain("couldn't list");
+  });
+
+  it("honors MUSE_BLUETOOTH_{ON,OFF}_SHORTCUT overrides", () => {
+    const env = { MUSE_BLUETOOTH_OFF_SHORTCUT: "BT Off", MUSE_BLUETOOTH_ON_SHORTCUT: "BT On" };
+    const ok = bluetoothShortcutsCheck(env, ["BT On", "BT Off"]);
+    expect(ok.status).toBe("ok");
+    const warn = bluetoothShortcutsCheck(env, ["BT On"]);
+    expect(warn.status).toBe("warn");
+    expect(warn.detail).toContain("BT Off");
   });
 });
 
@@ -365,7 +396,8 @@ describe("platformPostureCheck", () => {
     expect(check.status).toBe("ok");
     expect(check.detail).toContain("audio=powershell");
     expect(check.detail).toContain("autostart=schtasks");
-    expect(check.detail).toContain("os-integrations=none");
+    expect(check.detail).toContain("os-integrations=windows");
+    expect(check.detail).toContain("MUSE_WINDOWS_ACTUATORS");
     expect(check.detail).toContain("CI-verified only");
   });
 });

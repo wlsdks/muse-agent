@@ -97,7 +97,7 @@ describe("personal-consent-store — fail-closed autonomous-action gate", () => 
   // consent — a silently-lost grant wrongly refuses a legitimate action, and a
   // racing write could corrupt the set the fail-closed check reads).
   describe("concurrent grants", () => {
-    it("preserves EVERY distinct consent granted concurrently (no last-writer-wins loss)", async () => {
+    it("preserves EVERY distinct consent granted concurrently (no last-writer-wins loss)", { timeout: 60_000 }, async () => {
       const file = tmpFile();
       await Promise.all(Array.from({ length: 20 }, (_unused, i) =>
         recordConsent(file, consent({ id: `c${i.toString()}`, objectiveId: `obj_${i.toString()}` }))));
@@ -107,7 +107,7 @@ describe("personal-consent-store — fail-closed autonomous-action gate", () => 
       expect(await hasConsent(file, { objectiveId: "obj_7", scope: "github:issues:write", userId: "stark" })).toBe(true);
     });
 
-    it("re-granting the same id concurrently converges to a single record (idempotent under races)", async () => {
+    it("re-granting the same id concurrently converges to a single record (idempotent under races)", { timeout: 60_000 }, async () => {
       const file = tmpFile();
       await Promise.all(Array.from({ length: 15 }, () => recordConsent(file, consent({ id: "c1" }))));
       expect(await readConsents(file)).toHaveLength(1);

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { guardSecretPersistence, type JsonObject, type JsonValue } from "@muse/shared";
 
 import type { LoopbackMcpServer } from "@muse/mcp";
 import { readString, readStringArray, errorMessage } from "@muse/mcp";
@@ -90,6 +90,10 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           }
           const notes = readString(args, "notes") ?? undefined;
           const tags = readStringArray(args, "tags") ?? undefined;
+          const guard = guardSecretPersistence([title, notes].filter((part): part is string => Boolean(part)).join("\n"));
+          if (!guard.safe) {
+            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+          }
           const urgent = args["urgent"] === true;
           const dueAtRaw = readString(args, "dueAt")?.trim();
           let dueAt: string | undefined;
@@ -270,6 +274,10 @@ export function createTasksMcpServer(options: TasksMcpServerOptions): LoopbackMc
           const hasUrgent = typeof args["urgent"] === "boolean";
           if ((title === undefined || title.length === 0) && notesArg === undefined && dueArg === undefined && !hasUrgent) {
             return { error: "provide at least one of: dueAt, title, urgent, notes" };
+          }
+          const guard = guardSecretPersistence([title, notesArg].filter((part): part is string => Boolean(part)).join("\n"));
+          if (!guard.safe) {
+            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }
           // Build the field-level DELTA (which fields to set / clear), not a whole
           // stale snapshot — then re-apply it to the FRESH task inside the write queue

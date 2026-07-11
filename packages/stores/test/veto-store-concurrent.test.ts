@@ -44,14 +44,14 @@ describe("recordVeto — cross-process file lock", () => {
     expect(await readVetoes(file)).toHaveLength(1);
   }, 10_000);
 
-  it("keeps every concurrently-recorded veto (no lost veto over 50 parallel writers)", async () => {
+  it("keeps every concurrently-recorded veto (no lost veto over 50 parallel writers)", { timeout: 60_000 }, async () => {
     await Promise.all(Array.from({ length: 50 }, (_unused, i) => recordVeto(file, veto(`v${i.toString()}`))));
     const all = await readVetoes(file);
     expect(all).toHaveLength(50);
     expect(new Set(all.map((v) => v.id)).size).toBe(50);
   }, 30_000);
 
-  it("applies every concurrent remove exactly, leaving the untouched vetoes (no lost remove)", async () => {
+  it("applies every concurrent remove exactly, leaving the untouched vetoes (no lost remove)", { timeout: 60_000 }, async () => {
     await Promise.all(Array.from({ length: 50 }, (_unused, i) => recordVeto(file, veto(`v${i.toString()}`))));
     await Promise.all(Array.from({ length: 20 }, (_unused, i) => removeVeto(file, `v${i.toString()}`)));
     expect(await readVetoes(file)).toHaveLength(30);

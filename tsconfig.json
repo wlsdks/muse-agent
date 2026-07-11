@@ -108,6 +108,9 @@
     },
     {
       "path": "./packages/voice"
+    },
+    {
+      "path": "./packages/windows"
     }
   ]
 }

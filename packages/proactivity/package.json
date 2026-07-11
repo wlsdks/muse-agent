@@ -8,6 +8,7 @@
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "scripts": { "build": "tsc -b", "test": "vitest run", "typecheck": "tsc -p tsconfig.json --noEmit" },
   "dependencies": {
+    "@muse/agent-core": "workspace:*",
     "@muse/calendar": "workspace:*",
     "@muse/mcp-shared": "workspace:*",
     "@muse/memory": "workspace:*",

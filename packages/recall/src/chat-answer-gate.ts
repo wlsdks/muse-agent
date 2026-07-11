@@ -15,13 +15,13 @@
 
 import {
   enforceAnswerCitations,
+  stripGroundingFences,
   verifyGrounding,
   withUngroundableFallback,
   type GroundingVerdict,
   type KnowledgeMatch
 } from "@muse/agent-core";
 
-import { stripGroundingFences } from "./prompt-escape.js";
 import { stripEchoedCiteAs } from "./text.js";
 
 /** One piece of evidence the runtime turn actually produced — a read-tool output

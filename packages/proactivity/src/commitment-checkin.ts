@@ -41,30 +41,43 @@ export interface PersistedCheckin {
 }
 
 const HANGUL = /[가-힣]/u;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const EN_MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
- * Full days elapsed between `createdAt` and `now`, or undefined when either
- * is missing, `createdAt` doesn't parse, or `createdAt` is AFTER `now`
- * (clock skew) — the caller must never assert an age it can't ground.
+ * Absolute local-calendar date `createdAt` names — KO "M/D" (e.g. "7/5"), EN
+ * "MMM D" (e.g. "Jul 5") — or undefined when `createdAt` is missing/doesn't
+ * parse (fail-closed: never assert a date we can't ground in the persisted
+ * timestamp). Unlike a relative "N days ago", an absolute date is never wrong
+ * regardless of delivery delay, so it's shown whenever `createdAt` is valid —
+ * including a same-day commitment. The year is added only when `createdAt`'s
+ * local year predates `now`'s local year (disambiguates a stale year-old
+ * promise); `now` missing just omits the year, it never withholds the date.
  */
-function checkinAgeDays(createdAt: string | undefined, now: Date | undefined): number | undefined {
-  if (!createdAt || !now) return undefined;
+function formatCheckinDateClause(createdAt: string | undefined, isKorean: boolean, now: Date | undefined): string | undefined {
+  if (!createdAt) return undefined;
   const createdMs = Date.parse(createdAt);
   if (!Number.isFinite(createdMs)) return undefined;
-  const diffMs = now.getTime() - createdMs;
-  return diffMs >= 0 ? Math.floor(diffMs / MS_PER_DAY) : undefined;
+  const created = new Date(createdMs);
+  const year = created.getFullYear();
+  const month = created.getMonth() + 1;
+  const day = created.getDate();
+  const includeYear = now !== undefined && year < now.getFullYear();
+  if (isKorean) {
+    const datePart = includeYear ? `${year.toString()}/${month.toString()}/${day.toString()}` : `${month.toString()}/${day.toString()}`;
+    return `(${datePart}에 남기신 약속)`;
+  }
+  const monthName = EN_MONTH_ABBR[month - 1];
+  const datePart = includeYear ? `${monthName} ${day.toString()}, ${year.toString()}` : `${monthName} ${day.toString()}`;
+  return `(made on ${datePart})`;
 }
 
 /**
  * Templated, language-matched check-in question. Deterministic — no model.
- * `createdAt` + `now` are optional: when given and at least one full day has
- * elapsed, a trailing clause names how long ago the commitment was made
- * ("(3일 전 남기신 약속)" / "(made 3 days ago)") — the evidence the user needs
- * to place WHICH promise this is about. Same-day (0 full days) omits the
- * clause: "made today" states nothing the question doesn't already imply.
- * A missing/unparseable/future `createdAt` also omits it — never a claim we
- * can't ground in the persisted timestamp.
+ * `createdAt` is optional: when given and parseable, a trailing clause names
+ * the ABSOLUTE date the commitment was made ("(7/5에 남기신 약속)" / "(made on
+ * Jul 5)") — the evidence the user needs to place WHICH promise this is
+ * about. `now` is only consulted to decide whether the year needs stating
+ * (a promise from a previous year); it never gates the clause itself.
  */
 export function buildCheckinQuestion(commitment: string, createdAt?: string, now?: Date): string {
   const c = commitment.trim().replace(/\s+/gu, " ");
@@ -72,10 +85,8 @@ export function buildCheckinQuestion(commitment: string, createdAt?: string, now
   const base = isKorean
     ? `요전에 "${c}" 하신다고 하셨는데, 어떻게 됐어요?`
     : `Following up — you mentioned you'd "${c}". How did it go?`;
-  const days = checkinAgeDays(createdAt, now);
-  if (days === undefined || days < 1) return base;
-  const clause = isKorean ? `(${days.toString()}일 전 남기신 약속)` : `(made ${days.toString()} day${days === 1 ? "" : "s"} ago)`;
-  return `${base} ${clause}`;
+  const clause = formatCheckinDateClause(createdAt, isKorean, now);
+  return clause ? `${base} ${clause}` : base;
 }
 
 function normaliseKey(text: string): string {
@@ -147,9 +158,9 @@ export function scheduleCheckins(
       createdAt,
       dueAtIso: due.toISOString(),
       id: idFactory(),
-      // Age clause dated against `due` (the moment this question is actually
-      // asked), not the live clock at delivery — deterministic and knowable
-      // right here, and it survives a delayed/retried send unchanged.
+      // The clause names the ABSOLUTE date the commitment was made — never
+      // stale, so it survives a delayed/retried send unchanged. `due` is
+      // passed only so a previous-year promise gets its year stated.
       question: buildCheckinQuestion(commitment, createdAt, due),
       sourceKey,
       status: "scheduled",

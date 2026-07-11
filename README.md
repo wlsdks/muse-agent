@@ -235,12 +235,19 @@ Deliberate product boundaries, enforced in code — not TODOs:
 Muse core runs on Windows: the CLI, the API server, grounded recall, and the
 local Ollama model ([Ollama for Windows](https://ollama.com/download/windows)).
 Platform behavior is gated in CI on `windows-latest`; macOS-only integrations
-(Apple Notes/Reminders mirrors, Contacts import, ambient window source, the
-desktop companion) are disabled automatically — `muse doctor` shows the exact
-posture for your OS.
+(Apple Notes/Reminders mirrors, Contacts import, the desktop companion) are
+disabled automatically — `muse doctor` shows the exact posture for your OS.
 
+- Native actuators: set `MUSE_WINDOWS_ACTUATORS=true` to arm the PowerShell
+  tool set — open apps/URLs, read battery/wifi/storage/frontmost window, set
+  the clipboard, speak text, take screenshots, control media, and change
+  volume / display sleep. Dark by default, like the macOS actuators.
+- Ambient awareness: `MUSE_AMBIENT_SOURCE=windows` feeds the proactive daemon
+  the frontmost window (clipboard strictly opt-in).
 - Autostart: `muse daemon --install` registers a `schtasks` logon task
   (LaunchAgent on macOS).
+- Media/volume key events are CI-verified only (no observable state on a
+  runner) — report anything odd via issues.
 - Voice output uses PowerShell's wav player; recording needs
   [sox for Windows](https://sourceforge.net/projects/sox/) on PATH.
 - Windows paths are CI-verified; report anything odd via issues.

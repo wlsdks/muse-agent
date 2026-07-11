@@ -236,3 +236,38 @@ ratchet: 로드맵 잔여 [ ] = 27/59 · self-eval pass · fabrication 0 · mcp:
 - 리뷰지점: Opus 라이브 재실행 PASS — 실 subprocess("listening on stdio (6 tools)" stderr)·InMemory 아님·seed 데이터 round-trip data-sensitive(mutation seed 1개→count RED exit 1, 데이터 민감 재현)·skip=spawn실패만/assertion실패=exit 1(정직)·MCP_SERVE_INSTRUCTIONS 정확+정직(propose_action park qualify)·cleanup leak-free(client.close→subprocess kill·temp rm).
 - 리스크: 낮음. 계약 스크립트라 CI서 dist 빌드 필요(pnpm mcp:stdio-contract가 build 선행). ENV.md MUSE_CALENDAR_FILE에 apps/cli reader 추가(내 c1/c3가 참조)=docs:env 내 슬라이스 포함. 다음 = D4-S2a(macOS Photos 검색/내보내기, mac_photos actuator 확장).
 - lesson: 실-wire 계약 테스트는 seed된 알려진 데이터를 round-trip 어서(count·title)하면 데이터 민감=tautology 아님이 구조적으로 보장(연결됨만 확인하는 약한 테스트 회피).
+
+## fire 29 · 2026-07-12 · skill v2.x · 140c9ffef
+meta: slice=D4-S2a · wave=W3 · pkg=@muse/macos · kind=mac-photo-search · verdict=PASS · firesSinceDrill=3
+ratchet: 로드맵 잔여 [ ] = 27/60(D4-S2a 체크·VQ-21 추가) · self-eval pass · fabrication 0 · macos +3 test(imagesOnly)
+- 무엇: macOS 사진 검색. "신규툴 신설 금지" 제약 준수해 기존 mac_spotlight_search에 imagesOnly 플래그 확장(신규 툴 0). mdfind ARGV 불변(query→predicate 안 함=injection-safe), imagesOnly면 반환 경로를 이미지 확장자로 코드 후-필터(cap 필터 후, total=필터 카운트, imagesOnly:true echo). 반환 경로=export 핸들. default byte-identical.
+- 왜: hermes/openclaw급 mac 커버리지의 Photos 조각. 제약 충돌(Photos는 자연스러운 신규툴)→기존 파일-파인더 확장으로 "사진 찾기" 제공(혼동쌍 회피). Photos.app 관리-라이브러리 딥 export는 자동화 권한+툴-home 포크라 VQ-21.
+- 리뷰지점: Opus 8축 PASS — injection-safe(argv 불변, 후-필터)·isImagePath 정확(진짜 확장자·case-insensitive·no-ext false·dir 오탐 없음)·default byte-identical·mutation-RED(필터 제거→.txt/.pdf leak RED 재현)·no 혼동툴·total/cap 순서 정확.
+- 리스크: 낮음. eval:tools 6m40s timeout(무거운 로컬셋 미완)이나 변경 가산적(photo 키워드+optional 플래그, 리네임/혼동툴 없음)이라 selection 회귀 위험 near-zero — 결정론게이트(build/test/mutation/lint/Opus)로 판정, timeout≠fail 정직 표기. Photos.app 딥 라이브러리는 VQ-21. 다음 = D4-S2b(mac_system_set enum 확장: 앱종료).
+- lesson: 제약("신규툴 금지")이 자연스러운 신규 capability와 충돌하면, 기존 툴의 안전한 확장(후-필터·optional 플래그)으로 제약-준수판을 배송하고 딥 버전은 VQ로 표면화 — 조용히 쉬운 걸로 안 내려가되 제약도 안 어김.
+
+## fire 30 · 2026-07-12 · skill v2.x · 41d0ce2ae
+meta: slice=D4-S2b · wave=W3 · pkg=@muse/macos · kind=mac-quit-app · verdict=PASS · firesSinceDrill=4
+ratchet: 로드맵 잔여 [ ] = 28/62(D4-S2 b/c/d 별개 체크박스 분할 +2, b 체크 -1) · self-eval pass · fabrication 0 · macos +4 test(quit_app)
+- 무엇: macOS 앱종료. mac_system_set에 quit_app enum+app param(optional, volume value 선례) 추가. osascript `tell application "<escapeAppleScript(app)>" to quit` — 공유 escaper로 앱-이름 임베드(인젝션-safe). 빈/공백 app→fail-close(osascript 미호출). 신규툴 0(제약 준수).
+- 왜: D4-S2 mac 커버리지의 앱종료 조각. mac_app_open은 /usr/bin/open(열기만)이라 quit 안 맞고 mac_system_set이 execute-risk 로컬액션 홈. 앱-이름이 AppleScript 문자열에 들어가 인젝션 표면 → 기존 escapeAppleScript 재사용이 정답.
+- 리뷰지점: Opus 위협모델 PASS — escaper backslash-first 순서가 escaper-escape 우회 방지(`\`+`"`→`\\`+`\"`=리터럴), newline→space, breakout 구성 불가 확인·blank fail-close(called flag)·두 mutation 독립 재현(escaper 제거→breakout RED, guard 제거→osascript 호출 RED)·additionalProperties 유지·mac_app_open과 무혼동(quit vs open 키워드 분리).
+- 리스크: 낮음. quit=graceful(저장 프롬프트 가능, force-kill 아님)·로컬이라 draft-first 불요. eval:tools 로컬셋 heavy timeout(가산 enum+키워드라 selection 회귀 near-zero, Opus가 무혼동 확인). 다음 = D4-S2c(다크모드: dark_mode_on/off parameterless osascript enum).
+- lesson: 사용자/모델-제공 문자열을 osascript에 임베드할 땐 항상 공유 escapeAppleScript(backslash-first)를 통과 — ad-hoc 이스케이프 금지, 기존 tested escaper 재사용이 인젝션 표면의 정답.
+
+## fire 31 · 2026-07-12 · skill v2.x · 5a9e4598a
+meta: slice=D4-S2c · wave=W3 · pkg=@muse/macos · kind=mac-dark-mode · verdict=PASS · firesSinceDrill=5
+ratchet: 로드맵 잔여 [ ] = 27/62 · self-eval pass · fabrication 0 · macos +3 test(dark_mode)
+- 무엇: macOS 다크모드. mac_system_set에 dark_mode_on/dark_mode_off parameterless enum 추가. 고정 osascript(System Events appearance preferences set dark mode to true/false) — 유저입력 無이라 인젝션 표면 0, 이스케이프 불요(quit_app과 대비). on→true/off→false.
+- 왜: D4-S2 mac 커버리지의 다크모드 조각. parameterless 토글이라 mac_system_set에 자연스럽게 붙음(mute 브랜치 패턴).
+- 리뷰지점: Opus PASS — on/off→true/false 매핑 정확(inverted 아님)·고정 스크립트 인젝션 無·테스트가 captured 스크립트의 true/false를 pin(shape-only 아님)·ternary flip mutation이 off-test를 kill(독립 재현)·무관 브랜치(volume/mute/wifi/focus/sleep/quit_app) 무변·additionalProperties 유지.
+- 리스크: 낮음. 고정 스크립트라 인젝션·escape 불요. eval:tools 로컬셋 heavy timeout(가산 enum, selection 회귀 near-zero). 다음 = D4-S2d(블루투스/밝기 — Shortcuts 경로 focus 패턴, 클린 CLI 부재+MUSE_*_SHORTCUT env override). D4-S2d 완료 시 D4-S2 mac 커버리지 배치 완주(a·b·c·d, e는 Contacts write 별도).
+
+## fire 32 · 2026-07-12 · skill v2.x · c6ab1ef8c
+meta: slice=D4-S2d · wave=W3 · pkg=@muse/macos+apps/cli · kind=mac-bluetooth · verdict=PASS · firesSinceDrill=6
+ratchet: 로드맵 잔여 [ ] = 27/63(D4-S2d 밝기 분리 +1, d 체크 -1) · self-eval pass · fabrication 0 · macos +5·cli doctor +4 test · env MUSE_BLUETOOTH_*_SHORTCUT
+- 무엇: macOS 블루투스. mac_system_set에 bluetooth_on/off enum(focus 패턴 exact 미러: named Shortcut `shortcuts run` argv, 클린 Bluetooth CLI 부재). MUSE_BLUETOOTH_ON/OFF_SHORTCUT env override+bluetoothShortcutSetupMessage(missing→"Set Bluetooth" 안내)+doctor check. 밝기(value→Shortcut-input)는 D4-S2d2 분리.
+- 왜: D4-S2 mac 배치의 블루투스 조각. focus와 동일하게 macOS가 클린 CLI 없어 named user Shortcut이 정책-안전 경로. 오케스트레이터가 워커의 미배선 bluetoothShortcutsCheck(dead code)를 runLocalDoctor에 완전 배선+4 행동테스트로 마감(드릴 교훈: 미배선 함수 안 남김).
+- 리뷰지점: Opus PASS — 이름 해소 정확(bluetooth_off→off shortcut, override 우선)·setup message가 focus 아닌 Bluetooth·shortcut argv라 shell 인젝션 없음·doctor check 완전 배선(focus 옆 별개 check, focus test 무영향)+ok/warn/undefined/override 테스트·mutation-RED(이름 무력화→override/off RED)·additionalProperties 유지·docs:env.
+- 리스크: 낮음. eval:tools 로컬셋 heavy timeout(가산 enum). 다음 = D4-S2e(Apple 연락처 '쓰기' draft-first 게이트 — 이건 write toward 사람 아닌 로컬 store지만 outbound-safety 근접이라 신중).
+- lesson: 서브에이전트가 "off-scope 파일 회피"로 함수만 만들고 미배선 남기면 dead code=드릴 결함 클래스 → 오케스트레이터가 배선+테스트로 마감. 별개 함수를 별개 check로 배선하면 기존 pinned test 무영향(확장이 아니라 병렬 추가).

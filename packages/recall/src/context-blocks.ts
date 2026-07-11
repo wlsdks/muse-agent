@@ -2,8 +2,7 @@
  * The `<<kind N>>` grounding-block builders for the `muse ask` prompt —
  * split out of present.ts so that file stays navigable as the surface grows.
  */
-import { neutralizeInjectionSpans, type ContradictionPair } from "@muse/agent-core";
-import { escapeSystemPromptMarkers } from "./prompt-escape.js";
+import { escapeSystemPromptMarkers, neutralizeInjectionSpans, type ContradictionPair } from "@muse/agent-core";
 import { formatDueLocal } from "@muse/mcp-shared";
 import { type PersistedReminder, type PersistedTask } from "@muse/stores";
 import { relativizeNoteSource, type BrowsingHit } from "./present.js";

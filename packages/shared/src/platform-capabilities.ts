@@ -12,7 +12,7 @@ export interface PlatformCapabilities {
   readonly secretsChain: readonly ("env" | "keychain" | "store")[];
   readonly audioPlayer: "afplay" | "powershell" | "aplay" | null;
   readonly daemonAutostart: "launchd" | "schtasks" | "none";
-  readonly osIntegrations: "macos" | "none";
+  readonly osIntegrations: "macos" | "windows" | "none";
 }
 
 export function resolvePlatformCapabilities(
@@ -32,7 +32,7 @@ export function resolvePlatformCapabilities(
       audioPlayer: "powershell",
       daemonAutostart: "schtasks",
       os: "win32",
-      osIntegrations: "none",
+      osIntegrations: "windows",
       secretsChain: ["env", "store"]
     };
   }

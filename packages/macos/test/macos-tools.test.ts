@@ -612,6 +612,55 @@ describe("mac_system_set — Tier 1 volume / mute / display sleep", () => {
     const tool = createMacSystemSetTool({ networksetup: async () => ok("Hardware Port: Ethernet\nDevice: en1\n") });
     expect(await tool.execute({ setting: "wifi_on" }, ctx)).toMatchObject({ set: false });
   });
+
+  it("quits the named app via osascript `tell application ... to quit`", async () => {
+    let script = "";
+    const tool = createMacSystemSetTool({ osascript: async (s) => { script = s; return ok(""); } });
+    expect(await tool.execute({ setting: "quit_app", app: "Safari" }, ctx)).toEqual({ app: "Safari", set: true, setting: "quit_app" });
+    expect(script).toBe('tell application "Safari" to quit');
+  });
+
+  it("escapes an injected app name so it cannot break out of the AppleScript string literal", async () => {
+    let script = "";
+    const tool = createMacSystemSetTool({ osascript: async (s) => { script = s; return ok(""); } });
+    const app = 'Safari" to (do shell script "rm -rf ~")';
+    expect(await tool.execute({ setting: "quit_app", app }, ctx)).toMatchObject({ set: true });
+    expect(script).toContain('\\"');
+    expect(script).not.toContain('" to (do shell script "rm -rf ~")" to quit');
+    expect(script).toBe(`tell application "Safari\\" to (do shell script \\"rm -rf ~\\")" to quit`);
+  });
+
+  it("fails closed on a missing or blank app without calling osascript", async () => {
+    let called = false;
+    const tool = createMacSystemSetTool({ osascript: async () => { called = true; return ok(""); } });
+    expect(await tool.execute({ setting: "quit_app" }, ctx)).toMatchObject({ set: false, reason: expect.stringContaining("app") });
+    expect(await tool.execute({ setting: "quit_app", app: "  " }, ctx)).toMatchObject({ set: false, reason: expect.stringContaining("app") });
+    expect(called).toBe(false);
+  });
+
+  it("surfaces a non-zero osascript exit as a failure", async () => {
+    const tool = createMacSystemSetTool({ osascript: async () => fail("execution error: not authorised") });
+    expect(await tool.execute({ setting: "quit_app", app: "Safari" }, ctx)).toMatchObject({ set: false });
+  });
+
+  it("turns dark mode on via System Events appearance preferences", async () => {
+    let script = "";
+    const tool = createMacSystemSetTool({ osascript: async (s) => { script = s; return ok(""); } });
+    expect(await tool.execute({ setting: "dark_mode_on" }, ctx)).toEqual({ set: true, setting: "dark_mode_on" });
+    expect(script).toBe('tell application "System Events" to tell appearance preferences to set dark mode to true');
+  });
+
+  it("turns dark mode off via System Events appearance preferences", async () => {
+    let script = "";
+    const tool = createMacSystemSetTool({ osascript: async (s) => { script = s; return ok(""); } });
+    expect(await tool.execute({ setting: "dark_mode_off" }, ctx)).toEqual({ set: true, setting: "dark_mode_off" });
+    expect(script.endsWith("set dark mode to false")).toBe(true);
+  });
+
+  it("surfaces a non-zero osascript exit as a failure for dark mode", async () => {
+    const tool = createMacSystemSetTool({ osascript: async () => fail("execution error: not authorised") });
+    expect(await tool.execute({ setting: "dark_mode_off" }, ctx)).toMatchObject({ set: false });
+  });
 });
 
 describe("mac_say — Tier 1 text-to-speech", () => {
@@ -784,6 +833,41 @@ describe("mac_spotlight_search — Tier 0 find files", () => {
     expect(out.paths).toHaveLength(25);
     expect(out.total).toBe(40);
     expect(out.truncated).toBe(true);
+  });
+
+  const mixedFiles = "/u/beach.jpg\n/u/notes.txt\n/u/pic.HEIC\n/u/report.pdf\n/u/cat.png\n";
+
+  it("imagesOnly filters the returned paths to image files in code (post-hoc, not an mdfind predicate)", async () => {
+    const tool = createMacSpotlightSearchTool({ runner: async () => ok(mixedFiles) });
+    const out = await tool.execute({ imagesOnly: true, query: "x" }, ctx);
+    expect(out).toEqual({
+      imagesOnly: true,
+      paths: ["/u/beach.jpg", "/u/pic.HEIC", "/u/cat.png"],
+      query: "x",
+      total: 3
+    });
+  });
+
+  it("without imagesOnly the same mixed results are returned unfiltered (default path unchanged)", async () => {
+    const tool = createMacSpotlightSearchTool({ runner: async () => ok(mixedFiles) });
+    const out = await tool.execute({ query: "x" }, ctx);
+    expect(out).toEqual({
+      paths: ["/u/beach.jpg", "/u/notes.txt", "/u/pic.HEIC", "/u/report.pdf", "/u/cat.png"],
+      query: "x",
+      total: 5
+    });
+    expect(out).not.toHaveProperty("imagesOnly");
+  });
+
+  it("mdfind argv is identical whether or not imagesOnly is set (filter is post-hoc, never an injected predicate)", async () => {
+    let argvWithFlag: readonly string[] = [];
+    let argvWithoutFlag: readonly string[] = [];
+    const toolWith = createMacSpotlightSearchTool({ runner: async (a) => { argvWithFlag = a; return ok(mixedFiles); } });
+    const toolWithout = createMacSpotlightSearchTool({ runner: async (a) => { argvWithoutFlag = a; return ok(mixedFiles); } });
+    await toolWith.execute({ imagesOnly: true, query: "x" }, ctx);
+    await toolWithout.execute({ query: "x" }, ctx);
+    expect(argvWithFlag).toEqual(["x"]);
+    expect(argvWithoutFlag).toEqual(["x"]);
   });
 });
 

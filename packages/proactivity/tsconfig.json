@@ -3,5 +3,5 @@
   "compilerOptions": { "outDir": "dist", "rootDir": "src", "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo", "composite": true },
   "include": ["src/**/*.ts"],
   "exclude": ["dist"],
-  "references": [ {"path":"../calendar"}, {"path":"../mcp-shared"}, {"path":"../memory"}, {"path":"../messaging"}, {"path":"../prompts"}, {"path":"../shared"}, {"path":"../stores"} ]
+  "references": [ {"path":"../agent-core"}, {"path":"../calendar"}, {"path":"../mcp-shared"}, {"path":"../memory"}, {"path":"../messaging"}, {"path":"../prompts"}, {"path":"../shared"}, {"path":"../stores"} ]
 }

@@ -10,6 +10,23 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Turn Bluetooth on or off by asking.** "turn on bluetooth" / "블루투스 꺼줘"
+  now toggles Bluetooth. Because macOS has no built-in command for it, this runs
+  a small Shortcut you set up once (Muse tells you exactly how if it's missing),
+  and `muse doctor` flags whether it's ready.
+
+- **Toggle Mac Dark Mode by asking.** "turn on dark mode" / "다크모드 켜줘" now
+  switches macOS between dark and light appearance.
+
+- **Ask Muse to quit a Mac app.** "quit Safari", "사파리 종료해줘" now closes the
+  named app (a normal quit — it can still prompt you to save). The app name is
+  handled safely so a weird name can't run anything else.
+
+- **Find your photos, not just any file.** Muse's Mac file search can now be
+  narrowed to photos and images — ask it to "find my photos of the beach" and it
+  returns just the image files, not documents. It returns the files' locations,
+  so you can open or copy them.
+
 - **A connected tool now gets an accurate description of what Muse offers.**
   When another app connects to Muse's MCP server, the summary it receives now
   lists all of Muse's tools correctly (recall, note search, your model, calendar,
