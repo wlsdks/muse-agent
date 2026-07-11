@@ -221,7 +221,7 @@ describe("onConnected hot-start hook", () => {
 });
 
 describe("POST /api/messaging/setup/:providerId/test-send", () => {
-  function buildWithOwner(options: { readonly owner?: string } = {}) {
+  function buildWithOwner() {
     const dir = mkdtempSync(join(tmpdir(), "muse-testsend-"));
     const sent: { destination: string; text: string }[] = [];
     const registry = new MessagingProviderRegistry([{
