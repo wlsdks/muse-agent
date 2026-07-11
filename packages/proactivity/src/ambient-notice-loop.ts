@@ -89,10 +89,26 @@ export function knowledgeAmbientQuery(signal: AmbientSignal | undefined): string
 const MATCH_FIELDS = ["app", "window", "selected", "clipboard", "notifications"] as const;
 
 /**
+ * Deterministic "why this fired" clause built ONLY from the rule's own
+ * matched field/pattern pairs — the same evidence the match check just used,
+ * verbatim, never model-invented text. Up to 2 pairs are named directly;
+ * further pairs fold into a trailing "외 N개" count so a rule with many
+ * match fields still yields a short clause.
+ */
+function formatMatchRationale(pairs: readonly (readonly [string, string])[]): string {
+  const shown = pairs.slice(0, 2).map(([field, pattern]) => `${field}에 '${pattern}'`);
+  const extra = pairs.length > 2 ? ` 외 ${(pairs.length - 2).toString()}개` : "";
+  return `(${shown.join(", ")}${extra} 포함되어 매칭)`;
+}
+
+/**
  * Notices for every rule whose match patterns ALL appear (as
  * case-insensitive substrings) in the corresponding signal fields. A
  * rule with no patterns never fires (it must not match everything),
- * and a missing signal field never matches.
+ * and a missing signal field never matches. A firing notice's text
+ * carries a rationale clause naming the matched field/pattern
+ * pair(s) — never omitted for a firing rule since a match always has
+ * at least one pattern, but guarded rather than assumed.
  */
 export function deriveAmbientNotices(
   signal: AmbientSignal | undefined,
@@ -115,7 +131,8 @@ export function deriveAmbientNotices(
       return typeof value === "string" && value.toLowerCase().includes(pattern.toLowerCase());
     });
     if (matched) {
-      out.push({ kind: "ambient", ruleId: rule.id, text: rule.message, title: rule.title });
+      const text = patterns.length > 0 ? `${rule.message} ${formatMatchRationale(patterns)}` : rule.message;
+      out.push({ kind: "ambient", ruleId: rule.id, text, title: rule.title });
     }
   }
   return out;

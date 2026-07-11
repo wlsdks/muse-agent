@@ -13,7 +13,11 @@ describe("deriveAmbientNotices", () => {
   it("fires when the rule's field pattern is a substring of the signal", () => {
     const notices = deriveAmbientNotices({ app: "Calendar", window: "Team Standup — 14:00" }, [standupRule]);
     expect(notices).toHaveLength(1);
-    expect(notices[0]).toMatchObject({ kind: "ambient", ruleId: "standup-notes", text: "Standup at 14:00 — open your notes." });
+    expect(notices[0]).toMatchObject({
+      kind: "ambient",
+      ruleId: "standup-notes",
+      text: "Standup at 14:00 — open your notes. (window에 'standup' 포함되어 매칭)"
+    });
   });
 
   it("requires ALL named match fields to match (not just one)", () => {
@@ -28,6 +32,26 @@ describe("deriveAmbientNotices", () => {
     expect(deriveAmbientNotices({ app: "X" }, [{ id: "empty", match: {}, message: "m", title: "t" }])).toEqual([]);
     expect(deriveAmbientNotices({ app: "Calendar" }, [standupRule])).toEqual([]); // no window field
     expect(deriveAmbientNotices(undefined, [standupRule])).toEqual([]);
+  });
+
+  it("appends a rationale clause naming both matched field/pattern pairs when two fields matter", () => {
+    const rule: AmbientNoticeRule = { id: "r", match: { app: "Slack", window: "standup" }, message: "Heads up.", title: "t" };
+    const notices = deriveAmbientNotices({ app: "Slack for Mac", window: "Daily standup" }, [rule]);
+    expect(notices[0]!.text).toBe("Heads up. (app에 'Slack', window에 'standup' 포함되어 매칭)");
+  });
+
+  it("folds a third-and-beyond matched pair into a trailing count instead of listing every pair", () => {
+    const rule: AmbientNoticeRule = {
+      id: "r",
+      match: { app: "Slack", clipboard: "invoice", window: "standup" },
+      message: "Heads up.",
+      title: "t"
+    };
+    const notices = deriveAmbientNotices(
+      { app: "Slack for Mac", clipboard: "invoice #42", window: "Daily standup" },
+      [rule]
+    );
+    expect(notices[0]!.text).toBe("Heads up. (app에 'Slack', window에 'standup' 외 1개 포함되어 매칭)");
   });
 });
 
