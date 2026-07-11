@@ -145,7 +145,7 @@ ratchet: 로드맵 잔여 [ ] = 17/39 · self-eval pass · fabrication 0 · brow
 - 리스크: 낮음. numeric-index 충돌(다른요소가 옛 index 물려받음)은 tool-boundary 가드 밖=VQ-19(실브라우저 D1-S7d 인접). 포맷 무변경이라 eval:computer-task/browser-agent 계약 무손상. 다음 = D1-S7b(step-budget+timeout 주입, actions_used N/M).
 - note: fire 18은 JUDGE-DRILL 강제(firesSinceDrill=8·연속 allPASS=8≥8) — 고의 나쁜슬라이스 주입→④b FAIL 확인→롤백→진짜 fix, 카운터 리셋.
 
-## fire 18 · 2026-07-11 · skill v2.x · <commit-pending>
+## fire 18 · 2026-07-11 · skill v2.x · 7036af77d
 meta: slice=JUDGE-DRILL+D1-S7b1 · wave=W2 · pkg=@muse/agent-core · kind=judge-drill+action-budget-core · verdict=PASS · firesSinceDrill=0(리셋)
 ratchet: 로드맵 잔여 [ ] = 17/40(D1-S7b→b1/b2 분해로 +1, b1 체크로 -1 net 0 → 17) · self-eval pass · fabrication 0 · agent-core +5 test(action-budget) · baseline ENV repair(foreign)
 - 무엇: ①기준선 envInventory FOREIGN-fail(prompt-lab merge가 Total 522→526 미갱신)→docs:env resync 커밋(0b6360cfe). ②JUDGE-DRILL: 고의결함 D1-S7b step-budget 주입(off-by-one `used>max`+선언-only 테스트+미배선)→독립 Opus ④b가 4개 구체위반으로 FAIL(off-by-one·경계 mutation-GREEN·행동검증無·미배선+기존중복) rubber-stamp 없이. ③롤백→진짜 fix D1-S7b1: 순수 액션-예산 결정코어(guardBrowserAction, `used>=max` 경계정확, near-cap, actions_used N/M). D1-S7b를 b1(코어)/b2(배선)로 분해.
