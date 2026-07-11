@@ -80,3 +80,12 @@ ratchet: 드릴 성공 — 판정자 보정 확인 · fabrication 0
 리뷰지점: 판정자가 backlog 스펙("원자적 마킹")과 diff의 괴리까지 짚음 — 요건을 backlog ◦에 정밀화해 반영.
 리스크: 없음(주입분 전량 롤백, 저널/backlog만 커밋).
 lesson: 결정론 스위트가 green이어도 pin 반전은 diff-리뷰만 잡는다 — judge의 "테스트 변경 정밀 심사" 단계가 실효 방어선임이 실측됨.
+
+## fire 10 · 2026-07-12 · skill v2.x · (sha pending)
+meta: value-class=reliability · pkg=@muse/stores+proactivity · kind=concurrency · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles +1(digest-lock) · fabrication 0 · eval N/A
+무엇: digest-sent 레이스 진짜 수정 — withDigestLock(O_EXCL wx+nonce+5min stale-break+no-spin, 락 오류는 fail-open으로 오늘 동작에 강등), 임계구역 check→send→drain→mark 전체 잠금, mark-after-send 불변식 유지, 두-데몬 Promise.all 시뮬레이션 pin(정확히 1건 전송, 3/3 안정).
+왜: fire 9 드릴이 정밀화한 스펙의 실구현 — 드릴→진짜 fix 사이클 완결.
+리뷰지점: TOCTOU 잔여(>5min+정밀 인터리브, 최악이 중복 전송=fail-open 방향)·EACCES 코너는 수용(관례 미러), 후자는 ◦ 기록.
+리스크: 낮음.
+lesson: 형제-감사가 동일 클래스 레이스 2건(리마인더·체크인 이중 전송) 발굴 — send-결정이 락 밖인 패턴은 store-락만으론 이중 배달을 못 막는다.

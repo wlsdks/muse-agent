@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -295,5 +295,128 @@ describe("runDigestFlushIfDue", () => {
       // oldest one that was individually rendered and drained.
       expect(idx).toBeGreaterThanOrEqual(renderedCount);
     }
+  });
+});
+
+async function lockFileExists(): Promise<boolean> {
+  try {
+    await stat(`${sentFile}.lock`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+describe("runDigestFlushIfDue — cross-process digest lock (two daemons, same files)", () => {
+  it("TWO CONCURRENT daemons racing the same digest-hour tick: exactly one send, one 'sent' + one 'lock-held', queue drained once, sidecar marked once", async () => {
+    await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
+    const sent: OutboundMessage[] = [];
+    let concurrentSends = 0;
+    let maxConcurrentSends = 0;
+    const registry = new MessagingProviderRegistry([
+      {
+        describe: () => ({ description: "t", displayName: "T", id: "telegram" }),
+        id: "telegram",
+        async send(message: OutboundMessage): Promise<OutboundReceipt> {
+          concurrentSends += 1;
+          maxConcurrentSends = Math.max(maxConcurrentSends, concurrentSends);
+          // Slow provider — widens the race window a real double-send bug needs.
+          await new Promise((resolve) => setTimeout(resolve, 40));
+          concurrentSends -= 1;
+          sent.push(message);
+          return { destination: message.destination, messageId: "m1", providerId: "telegram" };
+        }
+      }
+    ]);
+    const runTick = () => runDigestFlushIfDue({ destination: "555", digestFile, now: () => DIGEST_HOUR_NOW, providerId: "telegram", registry, sentFile });
+
+    const [a, b] = await Promise.all([runTick(), runTick()]);
+
+    const outcomes = [a.outcome, b.outcome].sort();
+    expect(outcomes).toEqual(["lock-held", "sent"]);
+    expect(sent).toHaveLength(1);
+    expect(maxConcurrentSends).toBe(1);
+    expect(await readDigestQueue(digestFile)).toHaveLength(0);
+    expect(await readDigestSentDate(sentFile)).toBe("2026-07-12");
+  });
+
+  it("releases the lock after a SUCCESSFUL flush — a later tick is not blocked", async () => {
+    await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
+    const sent: OutboundMessage[] = [];
+    const summary = await runDigestFlushIfDue({
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      sentFile
+    });
+    expect(summary.outcome).toBe("sent");
+    expect(await lockFileExists()).toBe(false);
+  });
+
+  it("releases the lock after a FAILED send — the next tick can retry rather than being permanently blocked", async () => {
+    await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
+    const sent: OutboundMessage[] = [];
+    const summary = await runDigestFlushIfDue({
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent, { failWith: new Error("upstream 500") })]),
+      sentFile
+    });
+    expect(summary.outcome).toBe("send-failed");
+    expect(await lockFileExists()).toBe(false);
+
+    // A retry tick immediately after is not blocked by a stuck lock.
+    const retry = await runDigestFlushIfDue({
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      sentFile
+    });
+    expect(retry.outcome).toBe("sent");
+  });
+
+  it("a STALE lock left behind by a crashed daemon does not permanently block the digest — the flush proceeds", async () => {
+    await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
+    // A crashed daemon's lock, far older than the staleness window.
+    await writeFile(`${sentFile}.lock`, "crashed-daemon-pid", "utf8");
+    const oldMtime = new Date(2026, 6, 1);
+    await utimes(`${sentFile}.lock`, oldMtime, oldMtime);
+
+    const sent: OutboundMessage[] = [];
+    const summary = await runDigestFlushIfDue({
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      sentFile
+    });
+    expect(summary.outcome).toBe("sent");
+    expect(sent).toHaveLength(1);
+    expect(await lockFileExists()).toBe(false);
+  });
+
+  it("a LIVE lock (another daemon actively flushing) short-circuits to 'lock-held' with no send attempted", async () => {
+    await appendDigestItem(digestFile, { at: new Date(2026, 6, 12, 9, 0, 0), source: "pattern-firing", text: "notice one" });
+    await writeFile(`${sentFile}.lock`, "other-daemon-pid", "utf8"); // fresh mtime — live
+
+    const sent: OutboundMessage[] = [];
+    const summary = await runDigestFlushIfDue({
+      destination: "555",
+      digestFile,
+      now: () => DIGEST_HOUR_NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      sentFile
+    });
+    expect(summary.outcome).toBe("lock-held");
+    expect(sent).toEqual([]);
+    expect(await readDigestQueue(digestFile)).toHaveLength(1); // untouched
   });
 });
