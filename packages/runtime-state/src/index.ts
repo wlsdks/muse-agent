@@ -207,5 +207,7 @@ export type {
 } from "./kysely-stores.js";
 export * from "./debug-replay.js";
 export * from "./run-history.js";
+export * from "./run-history-in-memory.js";
+export * from "./run-history-kysely.js";
 export * from "./session-tags.js";
 export { FileCheckpointStore, type FileCheckpointStoreOptions } from "./file-checkpoint-store.js";
