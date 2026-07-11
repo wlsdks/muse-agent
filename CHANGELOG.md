@@ -20,6 +20,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Fixed
 
+- **A web page can't push Muse into confirming or submitting on its own.** If a
+  page pops up a confirmation ("OK to delete?") or a text prompt while Muse is
+  browsing, Muse now cancels it by default instead of blindly clicking OK or
+  submitting text — approving a click was never approval to answer whatever the
+  page asks next. The dialog is still reported back so you know it appeared.
+  Plain alerts and leave-page prompts are handled as before.
+
 - **Muse's browser won't act on an element that isn't really on the page.**
   If the model refers to a page element by a number that the current view
   doesn't contain — a stale reference left over from a page that changed, or one

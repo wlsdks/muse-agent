@@ -35,6 +35,7 @@ import {
   type WaitCondition,
   type WaitOutcome
 } from "./controller.js";
+import { planDialogResponse, settleDialog } from "./dialog-policy.js";
 import { looksUnsettled, matchOption } from "./matcher.js";
 
 export interface PuppeteerBrowserControllerOptions {
@@ -163,29 +164,22 @@ export class PuppeteerBrowserController implements BrowserController {
 
   /**
    * A JS dialog (alert/confirm/prompt/beforeunload) BLOCKS the page until it's
-   * answered — with no handler, the next click/goto hangs to the timeout. The act
-   * that triggers it was already draft-first approved by the human upstream
-   * (outbound-safety), so we ACCEPT to complete that intent, and RECORD the dialog
-   * so the result stays transparent. Registered once per page.
-   *
-   * A `prompt` is accepted with the dialog's OWN `defaultValue` — not the bare
-   * `accept()` empty string — because `dialog.accept()` with no argument submits
-   * "", discarding the page's intended pre-fill. So "Enter coupon code"
-   * (default "SAVE10") would receive blank and the page proceeds with garbage.
-   * We never invent text; we submit what the PAGE proposed, and record it in
-   * `response` so the model can see (and flag) what was sent.
+   * answered — with no handler, the next click/goto hangs to the timeout. The
+   * page is an UNTRUSTED channel: approving a click does not approve answering
+   * whatever `confirm`/`prompt` the page then raises, so we fail-close — a
+   * page-initiated confirm/prompt is DISMISSED, never auto-approved. Only
+   * `alert` (informational, one button) and `beforeunload` (so an already
+   * user-approved navigation isn't wedged) are accepted. The disposition is
+   * decided by `dialog-policy.ts` (pure, unit-tested); this method just wires
+   * it to the live `Dialog`. RECORDED either way so the result stays
+   * transparent. Registered once per page.
    */
   private registerDialogHandler(page: Page): void {
     if (page.listenerCount("dialog") > 0) return;
     page.on("dialog", (dialog) => {
-      const isPrompt = dialog.type() === "prompt";
-      const response = isPrompt ? dialog.defaultValue() : undefined;
-      this.lastDialog = {
-        message: dialog.message(),
-        type: dialog.type(),
-        ...(isPrompt ? { response } : {})
-      };
-      dialog.accept(isPrompt ? response : undefined).catch(() => { /* already handled / page gone */ });
+      const plan = planDialogResponse(dialog.type(), dialog.message(), dialog.defaultValue());
+      this.lastDialog = plan.record;
+      settleDialog(dialog, plan).catch(() => { /* already handled / page gone */ });
     });
   }
 
@@ -428,8 +422,8 @@ export class PuppeteerBrowserController implements BrowserController {
       return out;
     }, BROWSER_ELEMENT_CEILING, BROWSER_MAX_NAME)) as SnapshotElement[];
     this.lastElements = new Map(elements.map((element) => [element.ref, element]));
-    // Surface a dialog that fired since the last observation (auto-accepted), then
-    // clear it so it's reported exactly once.
+    // Surface a dialog that fired since the last observation (handled per
+    // dialog-policy), then clear it so it's reported exactly once.
     const dialog = this.lastDialog;
     this.lastDialog = undefined;
     // Read the navigation's HTTP status (set by open/back). NOT cleared here:
