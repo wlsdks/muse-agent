@@ -7,8 +7,10 @@ import {
   type ResponseCache
 } from "@muse/cache";
 import {
+  canUseNativeTools,
   ModelProviderRegistry,
   parseModelName,
+  type ModelInfo,
   type ModelMessage,
   type ModelProvider,
   type ModelRequest,
@@ -89,7 +91,7 @@ import type { PlaybookProvider } from "./playbook.js";
 import type { PlanCacheProvider } from "./plan-cache.js";
 import { applyClarifyDirective as applyClarifyDirectiveFn } from "./clarify-directive.js";
 import type { EpisodicRecallProvider } from "./episodic-recall.js";
-import { ModelRoutingError } from "./errors.js";
+import { ModelRoutingError, ModelToolCallingUnsupportedError } from "./errors.js";
 import {
   applyOutputGuards as applyOutputGuardsFn,
   applyResponseFilters as applyResponseFiltersFn,
@@ -259,6 +261,7 @@ export class AgentRuntime {
   private readonly telemetryAggregator?: TelemetryAggregator;
   private readonly toolApprovalGate?: ToolApprovalGate;
   private readonly defaults: AgentRuntimeOptions["defaults"];
+  private readonly toolCapabilityCache = new Map<string, boolean>();
 
   constructor(options: AgentRuntimeOptions) {
     this.modelProvider = options.modelProvider;
@@ -530,6 +533,7 @@ export class AgentRuntime {
     // prompt, which the system-section transforms never mutate) so the
     // tool-exemplar few-shot and the model request advertise the identical set.
     const tools = this.modelTools(layeredContext);
+    await this.assertModelCanUseTools(selected, tools.length);
 
     const memoryAppliedInput = await applyUserMemoryFn(layeredContext, this.userMemoryProvider, this.userMemoryMaxEntries);
     const clarifyAppliedInput = applyClarifyDirectiveFn({ ...layeredContext, input: memoryAppliedInput });
@@ -742,6 +746,38 @@ export class AgentRuntime {
       model,
       provider: this.modelProvider ?? failMissingProvider()
     };
+  }
+
+  // Send an explicit error instead of silently advertising tools to a model
+  // that will never call them (native tool-calling + structured output both
+  // required). A model we can't classify (unknown modelId, listModels
+  // failure) fails OPEN — this is a positive-confirmation gate, not a
+  // default-deny one.
+  private async assertModelCanUseTools(
+    selected: { readonly provider: ModelProvider; readonly model: string },
+    toolCount: number
+  ): Promise<void> {
+    if (toolCount === 0) {
+      return;
+    }
+    const key = `${selected.provider.id}/${selected.model}`;
+    let capable = this.toolCapabilityCache.get(key);
+    if (capable === undefined) {
+      let info: ModelInfo | undefined;
+      try {
+        info = (await selected.provider.listModels()).find((m) => m.modelId === selected.model);
+      } catch {
+        return;
+      }
+      if (info === undefined) {
+        return;
+      }
+      capable = canUseNativeTools(info);
+      this.toolCapabilityCache.set(key, capable);
+    }
+    if (!capable) {
+      throw new ModelToolCallingUnsupportedError(selected.model);
+    }
   }
 
   private prepareModelRequest(

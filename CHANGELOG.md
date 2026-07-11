@@ -31,6 +31,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   local model. Colloquial Korean possessives like "내꺼 일정", "제꺼 노트" are
   now correctly treated as personal, so they stay local when routing is on.
 
+- **A clear error when a model can't use tools.** If you point Muse at a model
+  that doesn't support tool calling and then try to do something that needs a
+  tool, you now get an explicit "this model can't call tools" message instead
+  of a silent no-op. The default local model is unaffected — it supports tools.
+
 - **Toggle Mac Dark Mode by asking.** "turn on dark mode" / "다크모드 켜줘" now
   switches macOS between dark and light appearance.
 
