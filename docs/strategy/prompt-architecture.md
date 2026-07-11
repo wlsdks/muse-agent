@@ -69,3 +69,23 @@ shared-scope channels force neutral register and scope-filter D1 out.
 Future personalization blocks (tone-from-corrections, time-of-day brevity,
 반말/존댓말 register) each land as: registry.register(layer) + snapshot +
 one eval case. Zero new hardcoded identity strings, ever.
+
+## S3 — user-manageable prompt surface (admin/web, 진안 2026-07-11)
+
+The user-editable half gets first-class management + experimentation:
+
+1. **Persona editor** (web console view): edit `~/.config/muse/persona.md`
+   (frontmatter register/maxWords/language + body) with Zod validation and
+   the injection scan running at SAVE time; invalid ⇒ rejected with the
+   reason, never silently defaulted.
+2. **Composed-prompt preview**: read-only view of the EFFECTIVE system
+   prompt per surface (layer-colored: identity / personality / role / rules
+   / boundary / dynamic) — transparency for trust and the starting point of
+   every experiment. Identity-core renders read-only (system layer; the
+   identity battery is its guard).
+3. **A/B experiment runner**: one question → current persona vs draft
+   persona side-by-side against the local model; save the winner. The
+   12-probe identity battery is runnable from the UI (local-only).
+4. API: GET/PUT /api/prompt/persona (scan-on-save), GET
+   /api/prompt/preview?surface=…, POST /api/prompt/experiment (two-variant
+   run). All local; no cloud egress.
