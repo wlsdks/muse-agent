@@ -42,7 +42,8 @@
 - ~~시한폭탄 패턴 저장소-폭 스캔~~ → fire 7에서 완료: 실시계 seam 전수(캘린더 리졸버·CalDAV/macOS 창·routine/api cutoff·recency-decay) 역추적 결과 **추가 폭탄 0** — now-주입/fake-timers 규율이 전반적으로 건강 (fire 6 건이 유일했음)
 - 침묵-실패(버린 execute) 99사이트 전수 분류 완료 (fire 7): 94 안전 / 5 수리 — 남은 잔여 위험 낮음. 새 테스트 작성 시 규칙: execute 결과를 버리고 부정 단언만 하지 말 것
 - multi-agent orchestration-fan-in buildOrchestrationResponse 144줄 — lead-worker와 같은 패턴으로 분해 후보
-- multi-agent orchestrator.ts runSequential/runParallel ~70% 중복 → runWorkerStep 공유 후보
+- ~~orchestrator runSequential/runParallel 중복~~ → fire 16 집행 완료 (runWorkerStep 통합)
+- 기각 (fire 16): tools workspaceHints/mutationTargetHints 병합 — sonnet의 전제-검증이 "완전 부분집합" 판정을 **반증** (실파싱: mutation 고유 14개 존재 → 병합=게이트 확장=동작 변경). 두 상수는 의도적 별도 어휘일 가능성 — 재제안 금지. 교훈: 상수 집합 비교는 regex가 아니라 실파서로 (내 검증 오류를 워커가 잡음)
 - multi-agent worker-result.ts:99 parseHandoffPart가 검증은 trimmed로 하고 반환은 원본 — validateWorkerHandoff와 불일치. 동작 변경이라 루프 범위 밖, 별도 fix 후보 (하류가 trim 의존하는지 조사 필요)
 - apps/api tick-daemons.ts 10개 데몬 동일 보일러플레이트 (~200줄 절감 가능) → factory 추출 후보 (행위-보존 신중 요구)
 - apps/api multi-agent-routes.ts 불리언 필드 파싱 4벌 중복 → parseOptionalBoolean 헬퍼 후보
@@ -87,3 +88,4 @@
 | 13 | packages/stores | 15벌 토큰-동일 quarantineCorruptStore를 store-quarantine.ts 한 벌로 통합(파일 15개 수정, fs 죽은 import 3건 동반 제거) + 직접 단위테스트 4건; 부수리 main발 lint error(messaging-setup-routes 죽은 매개변수) 제거 | stores build ✓ · quarantine 4/4 ✓ · messaging 15/15 ✓ · 동시성 3파일 저부하 8/8 ✓(고부하 flake=알려진 클래스) · lint 0 ✓ |
 | 14 | multi-agent (큐 집행) + 머지 | ①recall-hits RMW race NO-SHIP(오탐 — 이미 직렬화 완비) ②main 충돌 해소(messaging-setup-routes lint 수정 경합 — main측 _options 채택, 분기 최소화) ③buildOrchestrationResponse 144→48줄: 4 헬퍼(projectWorkerOutputs/buildCompletedParts/synthesizeAndVerify/detectFanInIssues) 순수 재배치 + indexOf O(n²)→O(n) | multi-agent 334/334 ✓ · lint 0 ✓ (fable 재검증) |
 | 15 | packages/mcp | toErrorMessage 3벌(manager/transport/index) → error-utils.ts 통합 + index.ts 408→343줄(createMcpMuseTool·redactMcpSecrets를 mcp-tool-factory.ts로 순수 이동, 재export로 공개 표면 불변); 보안성 발견 2건은 동작 변경이라 큐로 | mcp build ✓ · 779/779 ✓ · lint 0 ✓ (fable 재검증) |
+| 16 | tools 스캔 → multi-agent (큐 집행) | tools 힌트 병합은 워커 전제-검증이 반증해 NO-SHIP(위 기각 기록); 대체로 orchestrator runSequential(38)·runParallel(26)의 worker당 중복 흐름을 runWorkerStep 헬퍼(33줄)로 통합 — publish fire-safe 자세·에러 구분(원본 vs new Error(reason)) 보존, 소비부가 errorMessage만 쓰므로 non-Error 래핑도 문자열-동일 | multi-agent 334/334 ✓ · build ✓ · lint 0 ✓ (fable 재검증) |
