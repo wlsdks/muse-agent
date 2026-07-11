@@ -34,6 +34,15 @@ export interface RespondToInboundOptions {
   /** `${providerId}:${messageId}` keys already answered — skipped. */
   readonly alreadyHandled?: ReadonlySet<string>;
   /**
+   * `${providerId}:${messageId}` keys whose delegation ack has already
+   * been DELIVERED (see `acked` below) — for these, `notify` is not
+   * wired into the runner at all, so a retry of the final reply (e.g.
+   * after a transient `registry.send` failure) never composes or sends
+   * a second ack. A message not yet acked still gets `notify` wired
+   * every retry, same as today.
+   */
+  readonly ackAlreadySent?: ReadonlySet<string>;
+  /**
    * Re-fire cadence for the typing indicator while the agent thinks.
    * Telegram's typing presence expires after ~5s, so a slow local
    * model needs periodic keepalives or the chat looks dead mid-turn.
@@ -46,6 +55,16 @@ const DEFAULT_TYPING_INTERVAL_MS = 4_000;
 export interface RespondToInboundResult {
   /** Keys answered (agent ran) this batch — caller persists these. */
   readonly handled: readonly string[];
+  /**
+   * Keys whose delegation ack was actually DELIVERED this batch (the
+   * wrapped `notify` reached `registry.send` without throwing) —
+   * caller persists these the same way as `handled`, into
+   * `ackAlreadySent` for the next call. Independent of `handled`: an
+   * ack can deliver even when the final reply send then fails and the
+   * message stays unhandled (retried), and that retry must not
+   * re-send the ack.
+   */
+  readonly acked: readonly string[];
   /** How many non-empty replies were actually dispatched. */
   readonly replied: number;
   readonly errors: readonly string[];
@@ -67,7 +86,9 @@ export async function respondToInbound(
   options: RespondToInboundOptions
 ): Promise<RespondToInboundResult> {
   const already = options.alreadyHandled ?? new Set<string>();
+  const ackAlreadySent = options.ackAlreadySent ?? new Set<string>();
   const handled: string[] = [];
+  const acked: string[] = [];
   const errors: string[] = [];
   let replied = 0;
 
@@ -100,17 +121,30 @@ export async function respondToInbound(
           providerId: message.providerId,
           source: message.source,
           text: message.text,
-          notify: async (text) => {
-            try {
-              await options.registry.send(message.providerId, {
-                destination: message.source,
-                text
-              });
-            } catch {
-              // Ack delivery is cosmetic — a failed notify must never
-              // fail the run or affect handled-marking.
-            }
-          },
+          // An already-DELIVERED ack for this key gets no notify seam at
+          // all — the runner then sees `notify === undefined` and never
+          // composes or sends a second one on a retried run.
+          ...(ackAlreadySent.has(key)
+            ? {}
+            : {
+                notify: async (text: string) => {
+                  try {
+                    await options.registry.send(message.providerId, {
+                      destination: message.source,
+                      text
+                    });
+                    if (!acked.includes(key)) {
+                      acked.push(key);
+                    }
+                  } catch {
+                    // Ack delivery is cosmetic — a failed notify must never
+                    // fail the run or affect handled-marking. Not recording
+                    // it here means a genuinely lost ack CAN retry next
+                    // pass — acceptable: this is at-most-once per
+                    // DELIVERED ack, i.e. what the user actually sees.
+                  }
+                }
+              }),
           ...(message.scope ? { scope: message.scope } : {})
         })
       ).trim();
@@ -139,5 +173,5 @@ export async function respondToInbound(
     }
   }
 
-  return { errors, handled, replied };
+  return { acked, errors, handled, replied };
 }

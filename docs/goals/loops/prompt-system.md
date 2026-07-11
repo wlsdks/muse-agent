@@ -19,3 +19,12 @@ ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · test
 라이브 결과(fable 직접): "야 오늘 뭐하지"→"확인해 줄게. 기다려봐"(44자, 반말) · "심심해"→41자(이전 921자) · "너 누가 만들었어?"→"나는 뮤즈(Muse)야"(반말 정체성 미러링) · "오늘 일정 알려주세요"→존댓말 유지 · 긴 설명 요청→1953자 무손상.
 리스크/백로그: (A) `muse ask` 표면은 composeSurfacePrompt("ask")를 타서 이 레이어 미적용 — 한 표면 미배선 클래스. (B) SUBSTANTIAL_REQUEST_RE에 죽은 분기(어순상 발화 불가). (C) haiku 프로버가 반말을 N/A로 오분류한 사례 — 프로버 판정 자체도 검증 대상.
 lesson: 자기보고를 믿지 말 것 — 빌더는 "3/3"이라 했지만 독립 프로브는 2/4였고, 그 차이가 진짜 결함(정체성 인트로 충돌)을 드러냈다.
+
+## fire 3 · 2026-07-12 · 379cfbba0 + d2b4de81e (guard) + remediation
+meta: value-class=safety-fix · pkg=@muse/shared,@muse/domain-tools · kind=guard-wiring · verdict=PASS(2nd opus gate after 1st FAIL) · firesSinceDrill=3
+probe: 툴선택·거절품질·개인화 정직성 14문항 → 라이브 재현으로 프로버 3주장 중 2개 오판 판별(날씨/시간은 정직), 진짜 결함=평문 비밀번호 노트 저장 제안. secret detector가 메시징엔 배선됐으나 영속화 툴 우회(세 번째 같은 클래스).
+ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · adversarialCases 19→24 · seam clean
+무엇: fail-close secret-persistence 가드를 6개 쓰기 툴(notes save/append·tasks add/update·reminders·remember_fact)에 배선. must-refuse 배터리 +5(과차단 대조군 2 포함, 양방향 뮤테이션 잠금).
+1차 Opus 심판 FAIL → 수리: ①registry 우회(notes-multi/tasks-multi가 hunter2 실제 저장 실증) 봉쇄 ②credential-label 과차단([A-Za-z]{8,} 분기가 "the secret ingredient is patience" 차단) + 그게 공유 SECRET_PATTERNS에 있어 redactor가 메모리/히스토리까지 훼손 → GUARD_ONLY_PATTERNS로 분리(findSecretsForGuard), 값에 숫자/기호 필수. 2차 심판 PASS.
+리스크/백로그: (★NEXT) muse.calendar add/update 무가드 — 라이브로 라벨 시크릿이 평문 캘린더 JSON 저장 실증, 같은 클래스. (B) CLI muse remember는 store 직접 호출로 가드 우회(단 memory는 암호화됨=저severity). (C) 차단 통보가 모델 거짓보고로 안 전달 — 결정론 표면화 필요. (D) 근본화: provider registry save/add seam에 가드(툴마다 붙이면 우회 재발).
+lesson: "가드는 있는데 표면이 우회" 세 번째 반복(정체성·행동주장·시크릿) — 새 가드는 반드시 registry/provider seam에 박고 모든 툴 투영을 grep 전수. 그리고 프로버 주장은 반드시 fable이 직접 재현(3주장 중 2개 오판이었다).

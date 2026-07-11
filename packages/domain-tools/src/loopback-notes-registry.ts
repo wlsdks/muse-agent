@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { guardSecretPersistence, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -193,6 +193,10 @@ export function createNotesRegistryMcpServer(options: NotesRegistryMcpServerOpti
           if (id && !providerId) {
             return { error: "providerId is required to update an existing note" };
           }
+          const guard = guardSecretPersistence(`${title}\n${body}`);
+          if (!guard.safe) {
+            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+          }
           const folder = readString(args, "folder");
           const overwrite = args["overwrite"] === true;
           const input: NotesSaveInput = {
@@ -237,6 +241,10 @@ export function createNotesRegistryMcpServer(options: NotesRegistryMcpServerOpti
           }
           if (body === undefined) {
             return { error: "body is required" };
+          }
+          const guard = guardSecretPersistence(body);
+          if (!guard.safe) {
+            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }
           const input: NotesAppendInput = { body, id };
           try {

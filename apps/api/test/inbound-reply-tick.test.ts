@@ -115,4 +115,62 @@ describe("startInboundReplyTick", () => {
       handle.stop();
     }
   });
+
+  it("persists an acked key across ticks so a retried final send never re-sends the delegation ack", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-inbound-reply-ack-"));
+    const inboxFile = join(dir, "telegram-inbox.json");
+    const cursorFile = join(dir, "telegram-inbox.json.reply-cursor.json");
+    await appendInbound(inboxFile, message("m1", "chat-1", "book a flight"));
+
+    const sent: OutboundMessage[] = [];
+    let failFinalSend = true;
+    const provider = {
+      describe: () => ({ configured: true, displayName: "telegram", id: "telegram" }),
+      id: "telegram",
+      send: async (m: OutboundMessage) => {
+        if (m.text.startsWith("final:") && failFinalSend) {
+          throw new Error("429 Too Many Requests");
+        }
+        sent.push(m);
+        return { destination: m.destination, messageId: "tg-out", providerId: "telegram" };
+      }
+    } as unknown as MessagingProvider;
+    const registry = new MessagingProviderRegistry([provider]);
+    let notifyWireCount = 0;
+    const runner: InboundAgentRunner = {
+      run: async ({ text, notify }) => {
+        if (notify) {
+          notifyWireCount += 1;
+        }
+        await notify?.("ack: on it");
+        return `final: ${text}`;
+      }
+    };
+
+    const handle = startInboundReplyTick({ cursorFile, inboxFile, registry, runner });
+    try {
+      // Tick 1: ack delivers, final send fails — message stays unhandled (retried).
+      await handle.tickOnce();
+      expect(sent).toEqual([{ destination: "chat-1", text: "ack: on it" }]);
+
+      // Tick 2: same still-unanswered message. The ack sidecar (persisted from
+      // tick 1) means notify is never re-wired, so composeAck is never even
+      // asked again; this time the final send succeeds.
+      failFinalSend = false;
+      await handle.tickOnce();
+
+      expect(sent).toEqual([
+        { destination: "chat-1", text: "ack: on it" },
+        { destination: "chat-1", text: "final: book a flight" }
+      ]);
+      expect(notifyWireCount).toBe(1);
+
+      const cursor = JSON.parse(readFileSync(cursorFile, "utf8")) as { handled: string[] };
+      expect(cursor.handled).toEqual(["telegram:m1"]);
+      const ackCursor = JSON.parse(readFileSync(`${cursorFile}.acked.json`, "utf8")) as { acked: string[] };
+      expect(ackCursor.acked).toEqual(["telegram:m1"]);
+    } finally {
+      handle.stop();
+    }
+  });
 });

@@ -10,7 +10,7 @@
  */
 
 import { normalizeMemoryKey } from "@muse/memory";
-import type { JsonObject } from "@muse/shared";
+import { guardSecretPersistence, type JsonObject, type JsonValue } from "@muse/shared";
 import type { MuseTool, MuseToolContext } from "@muse/tools";
 
 /** Minimal structural store — matches @muse/memory's UserMemoryStore writers. */
@@ -57,6 +57,14 @@ export function createRememberFactTool(options: { readonly store: RememberFactSt
       const value = readString(args, "value");
       if (!key || !value) {
         return { error: "remember_fact needs both `key` and `value`" };
+      }
+      // Check `key` + `value` COMBINED: the tool splits a natural-language
+      // "remember my password is X" into separate structured params, so the
+      // label ("password"/"비밀번호") often lands in `key` while the secret
+      // itself lands in `value` — checking `value` alone would miss it.
+      const guard = guardSecretPersistence(`${key} ${value}`);
+      if (!guard.safe) {
+        return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
       }
       const kind = readString(args, "kind") === "preference" ? "preference" : "fact";
       const userId = resolveUserId(context);

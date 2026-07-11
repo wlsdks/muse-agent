@@ -209,4 +209,119 @@ describe("respondToInbound", () => {
     expect(result.handled).toEqual(["telegram:m1"]);
     expect(result.errors).toEqual([]);
   });
+
+  it("records the key in `acked` once the wrapped notify actually delivers the ack", async () => {
+    const { provider, sent } = makeProvider("telegram");
+    const registry = new MessagingProviderRegistry([provider]);
+    const runner: InboundAgentRunner = {
+      run: async ({ text, notify }) => {
+        await notify?.("on it");
+        return `final: ${text}`;
+      }
+    };
+
+    const result = await respondToInbound({
+      messages: [inbound({ messageId: "m1", text: "book a flight" })],
+      registry,
+      runner
+    });
+
+    expect(sent).toEqual([
+      { destination: "chat-1", text: "on it" },
+      { destination: "chat-1", text: "final: book a flight" }
+    ]);
+    expect(result.acked).toEqual(["telegram:m1"]);
+    expect(result.handled).toEqual(["telegram:m1"]);
+  });
+
+  it("delivers the ack but the final send fails: key IS acked but NOT handled (retried next pass)", async () => {
+    const sent: OutboundMessage[] = [];
+    const provider: MessagingProvider = {
+      describe: () => ({ configured: true, displayName: "telegram", id: "telegram" as MessagingProvider["id"] }),
+      id: "telegram" as MessagingProvider["id"],
+      send: async (message) => {
+        if (message.text.startsWith("final:")) {
+          throw new Error("429 Too Many Requests");
+        }
+        sent.push(message);
+        return { destination: message.destination, messageId: "telegram-out", providerId: "telegram" as MessagingProvider["id"] };
+      }
+    };
+    const registry = new MessagingProviderRegistry([provider]);
+    const runner: InboundAgentRunner = {
+      run: async ({ text, notify }) => {
+        await notify?.("on it");
+        return `final: ${text}`;
+      }
+    };
+
+    const result = await respondToInbound({
+      messages: [inbound({ messageId: "m1", text: "book a flight" })],
+      registry,
+      runner
+    });
+
+    expect(sent).toEqual([{ destination: "chat-1", text: "on it" }]);
+    expect(result.acked).toEqual(["telegram:m1"]);
+    expect(result.handled).toEqual([]);
+    expect(result.errors).toEqual(["telegram:m1: 429 Too Many Requests"]);
+  });
+
+  it("re-running the SAME message with its key in ackAlreadySent wires no notify seam at all", async () => {
+    const { provider, sent } = makeProvider("telegram");
+    const registry = new MessagingProviderRegistry([provider]);
+    const seenNotify: (((text: string) => Promise<void>) | undefined)[] = [];
+    const runner: InboundAgentRunner = {
+      run: async ({ text, notify }) => {
+        seenNotify.push(notify);
+        return `final: ${text}`;
+      }
+    };
+
+    const result = await respondToInbound({
+      ackAlreadySent: new Set(["telegram:m1"]),
+      messages: [inbound({ messageId: "m1", text: "book a flight" })],
+      registry,
+      runner
+    });
+
+    // notify was never wired for this run at all — a fake runner can
+    // observe this directly, proving composeAck is never even invoked.
+    expect(seenNotify).toEqual([undefined]);
+    expect(sent).toEqual([{ destination: "chat-1", text: "final: book a flight" }]);
+    expect(result.acked).toEqual([]);
+    expect(result.handled).toEqual(["telegram:m1"]);
+  });
+
+  it("does not record `acked` when the ack send itself throws", async () => {
+    const sent: OutboundMessage[] = [];
+    const provider: MessagingProvider = {
+      describe: () => ({ configured: true, displayName: "telegram", id: "telegram" as MessagingProvider["id"] }),
+      id: "telegram" as MessagingProvider["id"],
+      send: async (message) => {
+        if (message.text === "ack: on it") {
+          throw new Error("rate limited");
+        }
+        sent.push(message);
+        return { destination: message.destination, messageId: "telegram-out", providerId: "telegram" as MessagingProvider["id"] };
+      }
+    };
+    const registry = new MessagingProviderRegistry([provider]);
+    const runner: InboundAgentRunner = {
+      run: async ({ text, notify }) => {
+        await notify?.("ack: on it");
+        return `final: ${text}`;
+      }
+    };
+
+    const result = await respondToInbound({
+      messages: [inbound({ messageId: "m1", text: "book a flight" })],
+      registry,
+      runner
+    });
+
+    expect(sent).toEqual([{ destination: "chat-1", text: "final: book a flight" }]);
+    expect(result.acked).toEqual([]);
+    expect(result.handled).toEqual(["telegram:m1"]);
+  });
 });
