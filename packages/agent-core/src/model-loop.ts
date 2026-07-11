@@ -61,6 +61,7 @@ import { ToolFailureStreakTracker } from "./tool-failure-streak.js";
 import { buildPingPongSignature, PingPongLoopGuard } from "./tool-loop-pingpong.js";
 import { ToolLoopProgressTracker } from "./tool-loop-progress.js";
 import { REVERIFY_NUDGE, ReverifyNudgeTracker, hasRunVerifyIntent, toolsIncludeExecute } from "./reverify-nudge.js";
+import { BudgetExhaustionTracker, budgetExhaustionNotice } from "./budget-exhaustion-notice.js";
 import type { AgentRunContext } from "./types.js";
 
 export interface ModelLoopRunner {
@@ -549,6 +550,7 @@ export async function executeModelLoop(
   const failureStreak = new ToolFailureStreakTracker();
   const shellPhase = new GeneralShellPhaseGate((request.tools ?? []).map((tool) => tool.name));
   const reverify = new ReverifyNudgeTracker();
+  const budgetExhaustion = new BudgetExhaustionTracker();
   const postCompactionGuard = new PostCompactionLoopGuard();
   if (runner.compactionOccurred) postCompactionGuard.arm();
   const pingPong = new PingPongLoopGuard();
@@ -579,6 +581,16 @@ export async function executeModelLoop(
     const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled())
       ? request.tools?.filter((t) => !failureStreak.tripped(t.name) && !shellPhase.withholds(t.name))
       : [];
+    // Budget-exhaustion notice: gated strictly on toolCallCount having hit
+    // maxToolCalls (never on wallclock/stall, which also empty activeTools) so
+    // the upcoming no-tools turn TELLS the model why instead of it silently
+    // producing a truncated answer or describing calls it can no longer make.
+    // Fired BEFORE the call it applies to (not after, like the reverify nudge)
+    // — there is no tool left to re-enable, so there's nothing to gain from
+    // discarding an already-good answer and asking for a second one.
+    if (toolCallCount >= runner.maxToolCalls && budgetExhaustion.consumeNotice()) {
+      messages = [...messages, { content: budgetExhaustionNotice(toolCallCount, runner.maxToolCalls), role: "user" }];
+    }
     // Stale-observation masking (The Complexity Trap arXiv:2508.21433 +
     // ACON arXiv:2510.00615): rewrite PRIOR turns' tool outputs to a
     // re-fetchable placeholder so multi-turn context stops growing —
@@ -675,6 +687,7 @@ export async function* executeStreamingModelLoop(
   const failureStreak = new ToolFailureStreakTracker();
   const shellPhase = new GeneralShellPhaseGate((request.tools ?? []).map((tool) => tool.name));
   const reverify = new ReverifyNudgeTracker();
+  const budgetExhaustion = new BudgetExhaustionTracker();
   const postCompactionGuard = new PostCompactionLoopGuard();
   if (runner.compactionOccurred) postCompactionGuard.arm();
   const pingPong = new PingPongLoopGuard();
@@ -697,6 +710,12 @@ export async function* executeStreamingModelLoop(
     const activeTools = (!wallclockExceeded && toolCallCount < runner.maxToolCalls && !progress.stalled())
       ? request.tools?.filter((t) => !failureStreak.tripped(t.name) && !shellPhase.withholds(t.name))
       : [];
+    // Budget-exhaustion notice — see executeModelLoop. Same one-shot gate,
+    // strictly on toolCallCount hitting maxToolCalls, fired BEFORE the
+    // no-tools call it applies to.
+    if (toolCallCount >= runner.maxToolCalls && budgetExhaustion.consumeNotice()) {
+      messages = [...messages, { content: budgetExhaustionNotice(toolCallCount, runner.maxToolCalls), role: "user" }];
+    }
     // Stale-observation masking — see executeModelLoop. Same growing-
     // `messages` pattern in the streaming path, same fix.
     messages = maskStaleToolObservations(messages, {

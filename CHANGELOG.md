@@ -34,6 +34,14 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   automatic downgrade for any future unattended/trusted-run path is tracked as
   a follow-up.)
 
+- **Muse says when it's out of its step budget instead of stopping short.**
+  A task is capped at a fixed number of tool actions so it can't spin forever.
+  When Muse reaches that cap, it now explicitly tells itself it has used all of
+  its steps and answers with what it has gathered — rather than quietly running
+  out and possibly returning a half-finished reply as if it were done. (Only
+  the "ran out of steps" case is affected; a task that finishes on its own, or
+  stops for time/no-progress reasons, is unchanged.)
+
 - **Better recaps when a long conversation gets compressed.** When Muse has to
   drop older turns to stay within its context window, it now summarizes them in
   chunks (splitting on tool-call boundaries) and stitches the pieces together,

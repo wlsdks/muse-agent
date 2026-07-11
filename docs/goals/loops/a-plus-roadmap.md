@@ -70,3 +70,12 @@ ratchet: 로드맵 잔여 [ ] = 24/34 · self-eval pass · fabrication 0 · memo
 - 리뷰지점: 기존 summarizeDroppedContext byte-identical(additions-only 확인)·부분실패=생존 보존 vs 전실패=floor·단일청크 등가·mutation-RED 양방향. Opus 독립 검증.
 - 리스크: ★★동시 Matrix 루프가 평가 중 **공유 main에서 git rebase(b2e4bd55a) 실행→auto-stash가 내 미커밋 슬라이스 orphan**. 무손실 복구(워킹트리 온전+stash@{0} 중복)했으나 최악 사고 근접. 내 6파일만 격리 커밋.
 lesson: ★동시 루프가 공유 main 워크트리서 `git rebase`/`pull --rebase` 실행 시 auto-stash가 타 루프 미커밋 작업을 orphan시킴 — 이 루프는 **worker→evaluator 창의 미커밋 노출을 최소화**하려 슬라이스를 최대한 빨리 커밋, 그리고 **이 루프를 격리 /tmp 워크트리로 옮기는 것이 근본 해결**(진안 결정 필요).
+
+## fire 9 · 2026-07-11 · skill v2.x · d9c5732dc · ★JUDGE-DRILL + D1-S5a
+meta: slice=D1-S5a · wave=W2 · pkg=@muse/agent-core · kind=budget-visibility · verdict=PASS · firesSinceDrill=0(리셋) · drill=PASS
+ratchet: 로드맵 잔여 [ ] = 23/35 · self-eval pass · fabrication 0 · agent-core 62 test(신규 budget)
+- ★JUDGE-DRILL(연속allPASS=8 도달, 미루기불가): 고의 결함 슬라이스 주입(redactCreditCards — 구분자 카드형식 유출 버그 + 선언-only 테스트 + mutation 미검증)→Opus 평가자가 **FAIL** 판정(구분자/space/Amex 유출 직접 프로브·선언-only 지적·return text; mutation 독립실행)→**게이트 신뢰성 증명**(rubber-stamp 없음)→드릴 완전 롤백(트리 클린·foreign 미접촉). maker≠judge 자기검증 통과.
+- 진짜 fix D1-S5a: 도구 예산 소진 시 "N/M 툴콜 소진, 최선의 최종답" one-shot notice를 최종합성 前 주입(proactive, budget-only 엄격게이트, wallclock/stall 제외). 순수 budgetExhaustionNotice+Tracker(REVERIFY_NUDGE 미러), 양쪽 루프.
+- 왜: 기존엔 toolCallCount≥maxToolCalls면 activeTools=[]로 조용히 도구 사라짐→모델이 예산소진 모른 채 truncated 답 가능. hermes iteration_budget 참조. 침묵중단 금지.
+- 리뷰지점: Opus가 설계편차(reactive→proactive: 정상종료 cap-딱맞음 시 낭비 round-trip 회피) 정당성·엄격 budget게이트·종료보장·기존 agent-runtime 테스트 tightening(loosening 아님)·one-shot 구조적-inert 정직주장 확인. mutation-RED 양방향.
+lesson: ★워커도 공유 main서 `git stash`를 씀(D1-S3 작업 쓸림→무손실 복구, 이미 커밋됨) — worker 브리핑에 "git stash 절대 금지, cp/git-apply로 격리" 명시 필요. proactive 주입이 reactive+continue보다 나음(정상종료 낭비 round-trip 회피). 이 루프의 격리 워크트리 이전이 근본해결(진안 결정 대기).

@@ -2768,11 +2768,16 @@ describe("AgentRuntime", () => {
       { response: { output: "The current invoice total is 42 credits." }, type: "done" }
     ]);
     expect(streamedRequests).toHaveLength(2);
+    // maxToolCalls: 1 means this second (tools-empty) request is ALSO the exact
+    // turn the budget-exhaustion notice fires on — the trailing "user" message
+    // is that notice, injected before this call so the model knows why its
+    // tools just disappeared instead of silently finishing.
     expect(streamedRequests[1]?.messages.map((message) => message.role)).toEqual([
       "system",
       "user",
       "assistant",
-      "tool"
+      "tool",
+      "user"
     ]);
     expect(historyStore.listToolCalls("run-stream-react")).toEqual([
       expect.objectContaining({
