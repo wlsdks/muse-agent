@@ -26,6 +26,7 @@
 | packages/proactivity | fire 17 | 방문 |
 | packages/fs·calendar·scheduler | fire 22 | 방문 |
 | packages/voice·browser·skills | fire 23 | 방문 (browser 슬라이스는 큐) |
+| packages/observability·policy·a2a·mcp-shared | fire 25 | 방문 (a2a CLEAN) |
 | 기타 packages/* | – | 미방문 잔여: messaging(main 활발 — 보류)·voice·browser·skills·macos·소형 유틸들 |
 
 ## 대기 발견 큐
@@ -69,6 +70,7 @@
 - ~~browser approval-gate 패턴~~ → fire 24 완료: haiku 조사로 게이트-증명 테스트(5사이트 전부 deny=controller호출0 spy 단언) 확인 후, 판정 공통분모만 resolveGateDecision 헬퍼로 추출 — 도구별 반환 shape·key의 부재-semantics·게이트 전후 로직 전부 불변. 잔여: 12 도구 팩토리 자체의 응답 봉투 보일러플레이트 (후속 후보, 저가치)
 - browser puppeteer-controller captureSnapshot 116줄 → 성능-크리티컬 경로, 불가침 판정 (재제안 금지)
 - skills AuthoredSkillStore.consolidate() 106줄 다중 관심사 → 코어 큐레이터 연산이라 신중 후보
+- mcp-shared loopback-relative-time.ts 645줄 파서 → tool-calling 크리티컬 seam(시간 해석)이라 분리는 저가치·고위험 — 보류 판정
 - stores 동시성 스트레스 테스트 3파일(consent/veto/objectives-concurrent)은 머신 부하시 false-timeout — 알려진 클래스, 부하 낮으면 green (fire 13 확인)
 - autoconfigure buildLoopbackTools 207줄·buildRuntimeToolRegistry 279줄 → runtime-assembly와 같은 패턴 분해 후보
 - packages/shared index.ts 고아 docstring (truncateErrorBody 설명이 함수와 144줄 분리) → 이동 후보 (소형)
@@ -112,3 +114,4 @@
 | 22 | fs·calendar·scheduler (2회차) + 머지 | fs-write-tools 748→533줄: 순수 텍스트-편집 엔진(fuzzy 매칭·유니코드 폴딩·적용, 224줄)을 fs-edit-engine.ts로 이동(바이트-동일 diff 확인, 재export로 임포터 무변경) + calendar 죽은 공개 export 축소; scheduler delay는 워커 전제-검증이 실사용 발견해 미착수 (위 기각 기록) | fs 184/184 ✓ · calendar 164/164 ✓ · scheduler 117/117(무변경 확인) ✓ · autoconfigure build ✓ · lint 0 ✓ |
 | 23 | voice·browser·skills | authored-skill-store 740→563줄: 독립 유틸 계층(리스크 스캔·유사도·eviction 랭킹·잡 참조, 216줄)을 skill-analysis.ts로 순수 이동(데이터-흐름 기준 경계 조정 — 클래스 전용 타입/상수/IO는 잔류), 재export로 소비자 무변경 + voice safeReadText 2벌(바이트-동일 확인) → http-utils.ts | skills 85/85 ✓ · voice 145/145 ✓ · autoconfigure build ✓ · lint 0 ✓ (fable 재검증) |
 | 24 | browser (신중-큐 집행) | 게이트-증명 테스트 존재를 haiku 조사로 선확인(5사이트 deny=spy 0효과) 후 approval-gate 판정 공통분모만 resolveGateDecision으로 추출(문자열 바이트-동일, shape·부재-semantics·전후 로직 불변); 게이트-증명 테스트 무수정 green이 행위-보존의 증거 | browser 120/120 ✓ (테스트 diff 0) · build ✓ · lint 0 ✓ |
+| 25 | observability·policy (+a2a·mcp-shared 스캔) | policy toGlobal 토큰-동일 3벌(injection/pii/sanitizer — 보안 결정론 코드의 desync 위험) → regex-utils.ts 한 벌 + 직접 테스트 5; observability index.ts 457→297줄(FollowupSuggestionStore·StartupDoctor 구현체를 별도 모듈로, 인터페이스 계약은 index 잔류, 기존 type-only 역참조 패턴 준수) | policy 170/170 ✓ · observability 141/141(+2skip) ✓ · autoconfigure build ✓ · lint 0 ✓ |

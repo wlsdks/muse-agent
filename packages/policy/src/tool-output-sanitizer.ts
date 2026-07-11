@@ -1,4 +1,5 @@
 import { normalizeForInjectionDetection, sharedInjectionPatterns, type InjectionFinding } from "./injection-patterns.js";
+import { toGlobal } from "./regex-utils.js";
 
 export interface SanitizedToolOutput {
   readonly content: string;
@@ -103,11 +104,6 @@ export function unwrapToolData(text: string): string {
     payloadStart += 1;
   }
   return lines.slice(payloadStart, end).join("\n");
-}
-
-function toGlobal(regex: RegExp): RegExp {
-  const flags = regex.flags.includes("g") ? regex.flags : `${regex.flags}g`;
-  return new RegExp(regex.source, flags);
 }
 
 function stripDanglingJsonEscape(value: string): string {
