@@ -131,7 +131,7 @@ ratchet: testFiles +1(objective-evaluation-lock) · fabrication 0 · eval N/A
 리뷰지점: FLAG — 모든 firing-lock 공통의 무하트비트 5분 창 vs 최악 파일업 근접(횡단 보강 ◦ 큐잉, 개별 발산 금지).
 리스크: 낮음. fire 16은 (proactivity,concurrency) 금지(8-윈도 6 도달) — pattern/proactive-notices 락은 이후로, 다음은 ack 카피 또는 배터리 강건화.
 
-## fire 16 · 2026-07-12 · skill v2.x · (sha pending)
+## fire 16 · 2026-07-12 · skill v2.x · 7a2a014fb
 meta: value-class=ux-copy · pkg=@muse/api · kind=prompt-tuning · verdict=PASS · firesSinceDrill=7
 ratchet: eval:channel-rhythm 14/14(재실행; 1회 13/14는 stochastic null, 게이트 통과) · 신규 closing-promise 스코어러 판별력 옛11/20→새20/20 · fabrication 0
 무엇: ack 카피 튜닝 — 실측 결함(격식 preamble·마무리 약속 불일치·KO 존댓말 상담원 톤) 진단 후 프롬프트 재작성; 가드 무변경(판정자 byte-검증). 예: "…요청이시군요. 확인 후 바로 말씀드리겠습니다"(55자) → "다음 주 일정 확인해서 겹치는 부분 바로 알려줄게. 다 되면 말해줄게."(39자).
