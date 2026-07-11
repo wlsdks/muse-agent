@@ -36,7 +36,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import { errorMessage } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
-import { isPatternDismissed, isPatternOnCooldown, readPatternsFired, recordPatternFired } from "@muse/stores";
+import { avoidedSourceKeys, isPatternDismissed, isPatternOnCooldown, readPatternsFired, readTrustLedger, recordPatternFired } from "@muse/stores";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
 
@@ -99,6 +99,13 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
   const fired: PatternMatch[] = [];
   let delivered = 0;
 
+  // Read once per tick (not per notice) — a veto recorded mid-tick still
+  // waits for the NEXT tick, matching the cooldown sidecar's own tick-
+  // granularity freshness.
+  const avoidedSources = options.interruptionBudget?.trustLedgerFile
+    ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
+    : undefined;
+
   // The orchestrator already filtered cooldown ones out, but a
   // pathological caller passing stale fired-records could let one
   // through. Double-check inline so a buggy caller cannot
@@ -131,17 +138,21 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
       if (options.interruptionBudget) {
         const budget = options.interruptionBudget;
         const result = await applyInterruptionBudget({
+          avoidedSources,
           caps: resolveInterruptionBudgetCaps(budget),
           deliver,
           digestFile: budget.digestFile,
           errorLogger: (message) => errors.push(`${match.id}: ${message}`),
+          ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
           ledgerFile: budget.ledgerFile,
           now: now(),
           source: "pattern-firing",
           sourceId: match.id,
-          text
+          sourceKey: `pattern-firing:${match.id}`,
+          text,
+          title: text
         });
-        digested = result.outcome === "digested";
+        digested = result.outcome !== "delivered";
       } else {
         await deliver();
       }

@@ -67,6 +67,7 @@ export {
   resolveInterruptionLedgerFile,
   resolveDigestQueueFile,
   resolveDigestSentFile,
+  resolveLastProactiveDeliveryFile,
   resolvePatternsFiredFile,
   resolveRecallHitsFile,
   resolveCheckinsFile,

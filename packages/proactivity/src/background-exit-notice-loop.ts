@@ -29,7 +29,7 @@ import { promises as fs } from "node:fs";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { sendWithRetry } from "@muse/mcp-shared";
 import { redactSecretsInText } from "@muse/shared";
-import { readBackgroundProcesses, type BackgroundProcessRecord } from "@muse/stores";
+import { avoidedSourceKeys, readBackgroundProcesses, readTrustLedger, type BackgroundProcessRecord } from "@muse/stores";
 
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
@@ -151,6 +151,10 @@ export async function runDueBackgroundExitNotices(
   const errors: string[] = [];
   let delivered = 0;
 
+  const avoidedSources = options.interruptionBudget?.trustLedgerFile
+    ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
+    : undefined;
+
   for (const record of pending) {
     // Fail-closed one-shot: mark BEFORE delivery and persist immediately, so
     // a crash before the next write cannot re-fire this exit on restart.
@@ -188,20 +192,27 @@ export async function runDueBackgroundExitNotices(
         if (options.interruptionBudget) {
           const budget = options.interruptionBudget;
           const result = await applyInterruptionBudget({
+            avoidedSources,
             caps: resolveInterruptionBudgetCaps(budget),
             deliver,
             digestFile: budget.digestFile,
             errorLogger: (message) => errors.push(`${record.id}: ${message}`),
+            ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
             ledgerFile: budget.ledgerFile,
             now: now(),
             source: "background-exit",
             sourceId: record.id,
-            text
+            sourceKey: `background-exit:${record.id}`,
+            text,
+            title: backgroundJobLabel(record)
           });
-          if (result.outcome === "digested") {
-            digested = true;
-          } else {
+          // "digested" and "skipped" both mean the messaging leg did NOT
+          // reach the user — neither is the misconfiguration the fallback
+          // error below reports, so both are folded into the same flag.
+          if (result.outcome === "delivered") {
             anySink = true;
+          } else {
+            digested = true;
           }
         } else {
           await deliver();

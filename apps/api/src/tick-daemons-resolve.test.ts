@@ -38,15 +38,29 @@ describe("resolveAmbientSignalFile / resolveProactiveTrustFile", () => {
 });
 
 describe("resolveInterruptionBudgetWiring", () => {
-  it("defaults to hourlyCap=2 / dailyCap=6 and the ~/.muse ledger + digest paths", () => {
+  it("defaults to hourlyCap=2 / dailyCap=6 and the ~/.muse ledger + digest + trust + last-delivery paths", () => {
     process.env.HOME = "/tmp/fakehome";
     const wiring = resolveInterruptionBudgetWiring({});
     expect(wiring).toEqual({
       dailyCap: 6,
       digestFile: "/tmp/fakehome/.muse/digest-queue.json",
       hourlyCap: 2,
-      ledgerFile: "/tmp/fakehome/.muse/interruption-ledger.json"
+      lastDeliveryFile: "/tmp/fakehome/.muse/last-proactive-delivery.json",
+      ledgerFile: "/tmp/fakehome/.muse/interruption-ledger.json",
+      trustLedgerFile: "/tmp/fakehome/.muse/proactive-trust.json"
     });
+  });
+
+  it("trustLedgerFile matches resolveProactiveTrustFile — a single source of truth shared with the proactive-notice loop", () => {
+    process.env.HOME = "/tmp/fakehome";
+    expect(resolveInterruptionBudgetWiring({}).trustLedgerFile).toBe(resolveProactiveTrustFile({}));
+    expect(resolveInterruptionBudgetWiring({ MUSE_PROACTIVE_TRUST_FILE: "/tmp/x/tr.json" }).trustLedgerFile)
+      .toBe(resolveProactiveTrustFile({ MUSE_PROACTIVE_TRUST_FILE: "/tmp/x/tr.json" }));
+  });
+
+  it("honors an explicit MUSE_LAST_PROACTIVE_FILE override for lastDeliveryFile", () => {
+    expect(resolveInterruptionBudgetWiring({ MUSE_LAST_PROACTIVE_FILE: "/tmp/x/last.json" }))
+      .toMatchObject({ lastDeliveryFile: "/tmp/x/last.json" });
   });
 
   it("honors MUSE_INTERRUPTION_*_CAP overrides, including an explicit 0 (unlimited)", () => {

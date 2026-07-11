@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { appendInterruptionDelivery, readDigestQueue, readFollowups, readInterruptionLedger, upsertFollowup } from "@muse/stores";
+import { appendInterruptionDelivery, readDigestQueue, readFollowups, readInterruptionLedger, readLastProactiveDeliveries, recordOutcome, upsertFollowup } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runDueFollowups } from "../src/followup-firing-loop.js";
@@ -120,5 +120,52 @@ describe("runDueFollowups — interruption budget (opt-in)", () => {
     });
     expect(summary.delivered).toBe(1);
     expect(sent).toHaveLength(1);
+  });
+
+  it("a channel-vetoed followup (trust ledger) is fully silent: no send, no digest, still marked fired", async () => {
+    const trustLedgerFile = join(dir, "trust.json");
+    await recordOutcome(trustLedgerFile, "followup:f1", "vetoed", NOW.getTime());
+
+    const sent: OutboundMessage[] = [];
+    const lastDeliveryFile = join(dir, "last-delivery.json");
+    const summary = await runDueFollowups({
+      destination: "555",
+      file: followupsFile,
+      interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, lastDeliveryFile, ledgerFile, trustLedgerFile },
+      model: "test-model",
+      modelProvider: fakeModel,
+      now: () => NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)])
+    });
+    expect(sent).toEqual([]);
+    expect(summary.delivered).toBe(0);
+    expect((await readFollowups(followupsFile))[0]!.status).toBe("fired");
+    expect(await readDigestQueue(digestFile)).toHaveLength(0);
+    expect(await readInterruptionLedger(ledgerFile)).toHaveLength(0);
+    expect(await readLastProactiveDeliveries(lastDeliveryFile)).toHaveLength(0);
+  });
+
+  it("wired lastDeliveryFile records the followup's sourceKey + committed summary as title", async () => {
+    const sent: OutboundMessage[] = [];
+    const lastDeliveryFile = join(dir, "last-delivery.json");
+    const summary = await runDueFollowups({
+      destination: "555",
+      file: followupsFile,
+      interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, lastDeliveryFile, ledgerFile },
+      model: "test-model",
+      modelProvider: fakeModel,
+      now: () => NOW,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)])
+    });
+    expect(summary.delivered).toBe(1);
+    const entries = await readLastProactiveDeliveries(lastDeliveryFile);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      outcome: "delivered",
+      sourceKey: "followup:f1",
+      title: "check whether you sent the email"
+    });
   });
 });

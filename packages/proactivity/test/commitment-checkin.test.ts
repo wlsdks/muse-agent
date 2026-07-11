@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { appendInterruptionDelivery, readDigestQueue, readInterruptionLedger } from "@muse/stores";
+import { appendInterruptionDelivery, readDigestQueue, readInterruptionLedger, readLastProactiveDeliveries, recordOutcome } from "@muse/stores";
 
 import {
   appendCheckins,
@@ -306,6 +306,59 @@ describe("runDueCheckins", () => {
       });
       expect(res.delivered).toBe(1);
       expect(sent).toEqual(["q-a"]);
+    });
+
+    it("a channel-vetoed check-in (trust ledger) is fully silent: no send, no digest, still marked fired", async () => {
+      const file = tmpFile();
+      await writeCheckins(file, [mkDue("a")]);
+      const budgetDir = tmpBudgetDir();
+      const ledgerFile = join(budgetDir, "ledger.json");
+      const digestFile = join(budgetDir, "digest.json");
+      const trustLedgerFile = join(budgetDir, "trust.json");
+      const lastDeliveryFile = join(budgetDir, "last-delivery.json");
+      const now = new Date("2026-05-02T10:05:00Z");
+      await recordOutcome(trustLedgerFile, "commitment-checkin:a", "vetoed", now.getTime());
+
+      const { registry, sent } = recordingRegistry();
+      const res = await runDueCheckins({
+        destination: "me",
+        file,
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, lastDeliveryFile, ledgerFile, trustLedgerFile },
+        now: () => now,
+        providerId: "log",
+        registry
+      });
+      expect(sent).toEqual([]);
+      expect(res.delivered).toBe(0);
+      expect((await readCheckins(file))[0]!.status).toBe("fired");
+      expect(await readDigestQueue(digestFile)).toHaveLength(0);
+      expect(await readInterruptionLedger(ledgerFile)).toHaveLength(0);
+      expect(await readLastProactiveDeliveries(lastDeliveryFile)).toHaveLength(0);
+    });
+
+    it("wired lastDeliveryFile records the check-in's sourceKey + commitment as title", async () => {
+      const file = tmpFile();
+      await writeCheckins(file, [mkDue("a")]);
+      const budgetDir = tmpBudgetDir();
+      const ledgerFile = join(budgetDir, "ledger.json");
+      const digestFile = join(budgetDir, "digest.json");
+      const lastDeliveryFile = join(budgetDir, "last-delivery.json");
+      const now = new Date("2026-05-02T10:05:00Z");
+
+      const { registry, sent } = recordingRegistry();
+      const res = await runDueCheckins({
+        destination: "me",
+        file,
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, lastDeliveryFile, ledgerFile },
+        now: () => now,
+        providerId: "log",
+        registry
+      });
+      expect(res.delivered).toBe(1);
+      expect(sent).toEqual(["q-a"]);
+      const entries = await readLastProactiveDeliveries(lastDeliveryFile);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({ outcome: "delivered", sourceKey: "commitment-checkin:a", title: "a" });
     });
   });
 });

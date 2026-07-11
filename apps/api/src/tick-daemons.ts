@@ -19,7 +19,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveInterruptionLedgerFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveInterruptionLedgerFile, resolveLastProactiveDeliveryFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
 import type { FastifyInstance } from "fastify";
 
@@ -721,23 +721,34 @@ const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
 
 /**
  * The shared interruption budget every UNASKED notice daemon (pattern /
- * ambient / followup) opts into. Always returned (never gated behind its
- * own enabled flag) so a delivery is ledgered even when both caps are
- * disabled (`<= 0` → unlimited, per `withinInterruptionBudget`) — the
- * ledger stays the single source of truth for "what did Muse actually
- * push, unasked" regardless of whether the cap is currently enforcing.
+ * ambient / followup / background-exit / checkins) opts into. Always
+ * returned (never gated behind its own enabled flag) so a delivery is
+ * ledgered even when both caps are disabled (`<= 0` → unlimited, per
+ * `withinInterruptionBudget`) — the ledger stays the single source of truth
+ * for "what did Muse actually push, unasked" regardless of whether the cap
+ * is currently enforcing.
+ *
+ * `trustLedgerFile` + `lastDeliveryFile` complete the channel-veto loop: each
+ * loop re-reads `trustLedgerFile`'s avoided-source set once per tick (fresh —
+ * a veto recorded mid-run takes effect on the very next tick, no restart),
+ * and a delivered/digested notice's sourceKey is recorded to
+ * `lastDeliveryFile` so a later "stop"/"그만" reply can resolve what to veto.
  */
 export function resolveInterruptionBudgetWiring(env: NodeJS.ProcessEnv): {
   readonly ledgerFile: string;
   readonly digestFile: string;
   readonly hourlyCap: number;
   readonly dailyCap: number;
+  readonly trustLedgerFile: string;
+  readonly lastDeliveryFile: string;
 } {
   return {
     dailyCap: parseNonNegativeInteger(env.MUSE_INTERRUPTION_DAILY_CAP, DEFAULT_INTERRUPTION_DAILY_CAP),
     digestFile: resolveDigestQueueFile(env),
     hourlyCap: parseNonNegativeInteger(env.MUSE_INTERRUPTION_HOURLY_CAP, DEFAULT_INTERRUPTION_HOURLY_CAP),
-    ledgerFile: resolveInterruptionLedgerFile(env)
+    lastDeliveryFile: resolveLastProactiveDeliveryFile(env),
+    ledgerFile: resolveInterruptionLedgerFile(env),
+    trustLedgerFile: resolveProactiveTrustFile(env)
   };
 }
 

@@ -13,6 +13,8 @@ export { ageCutoffMs, pruneByAge } from "./retention.js";
 export type { PruneByAgeOptions, PruneByAgeResult } from "./retention.js";
 export { appendInterruptionDelivery, readInterruptionLedger, withinInterruptionBudget } from "./interruption-budget.js";
 export type { InterruptionBudgetCaps, InterruptionDeliveryEntry } from "./interruption-budget.js";
+export { appendLastProactiveDelivery, readLastProactiveDeliveries } from "./last-proactive-delivery-store.js";
+export type { LastProactiveDeliveryEntry, LastProactiveDeliveryOutcome } from "./last-proactive-delivery-store.js";
 export { DEFAULT_JOURNEY_LIMIT, factRecordsFromProvenance, mergeJourneyEvents, resolveJourneyForgetTarget } from "./journey-timeline.js";
 export type { JourneyEvent, JourneyEventKind, JourneyFactRecord, JourneyFactValueStep, JourneyForgetTarget, JourneySkillRecord, JourneyStoreKind, JourneyStrategyRecord, MergeJourneyEventsInput } from "./journey-timeline.js";
 export { enqueueLearnEvent, markLearnEventsDone, pruneLearnQueueByAge, readPendingLearnEvents, resolveLearnQueueFile } from "./learn-queue.js";

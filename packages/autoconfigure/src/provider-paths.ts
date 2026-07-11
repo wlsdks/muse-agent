@@ -201,6 +201,13 @@ export function resolveDigestSentFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_DIGEST_SENT_FILE", "digest-sent.json");
 }
 
+/** The sidecar recording each UNASKED loop's most recent delivered/digested
+ *  notice, read by the channel-veto reply handler to resolve "what did Muse
+ *  just send me" (`packages/stores/last-proactive-delivery-store.ts`). */
+export function resolveLastProactiveDeliveryFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_LAST_PROACTIVE_FILE", "last-proactive-delivery.json");
+}
+
 export function resolveLineInboxFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_LINE_INBOX_FILE", "line-inbox.json");
 }
