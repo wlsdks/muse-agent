@@ -58,6 +58,71 @@ describe("synthesizePatternSuggestion", () => {
   });
 });
 
+describe("synthesizePatternSuggestion — evidence-clause preservation (fire 13)", () => {
+  const timeOfDayInput: PatternSuggestionInput = {
+    category: "time-of-day-action",
+    confidence: 0.9,
+    fallbackSuggestion:
+      "You usually edit project notes around 9-12 on Mondays (3 edits across 2 days). Want me to surface the most recent one?",
+    groundedFacts: "recurring action: Monday 9-12, area \"project\"; 3× over 2 days"
+  };
+  const weeklyTaskInput: PatternSuggestionInput = {
+    category: "weekly-task",
+    confidence: 0.85,
+    fallbackSuggestion: "\"Weekly report\" — you usually create this on Mondays (4 times across 3 weeks).",
+    groundedFacts: "weekly recurring task on Monday; recent: Weekly report; 4× over 3 weeks"
+  };
+
+  it("appends the deterministic evidence clause verbatim when composed prose omits the counts", async () => {
+    const out = await synthesizePatternSuggestion(timeOfDayInput, {
+      model: "m",
+      modelProvider: fakeProvider("월요일 오전마다 프로젝트 노트를 손보시던데, 지금 열어드릴까요?")
+    });
+    expect(out).toBe("월요일 오전마다 프로젝트 노트를 손보시던데, 지금 열어드릴까요? (3 edits across 2 days)");
+  });
+
+  it("appends the weekly-task clause (times/weeks wording) the same way", async () => {
+    const out = await synthesizePatternSuggestion(weeklyTaskInput, {
+      model: "m",
+      modelProvider: fakeProvider("월요일마다 주간 보고서를 챙기시던데, 이번 주도 만들어둘까요?")
+    });
+    expect(out).toBe("월요일마다 주간 보고서를 챙기시던데, 이번 주도 만들어둘까요? (4 times across 3 weeks)");
+  });
+
+  it("leaves composed prose unchanged when both counts are already present (no double clause)", async () => {
+    const out = await synthesizePatternSuggestion(timeOfDayInput, {
+      model: "m",
+      modelProvider: fakeProvider("최근 2일 동안 3번이나 프로젝트 노트를 손보셨던데, 지금 열어드릴까요?")
+    });
+    expect(out).toBe("최근 2일 동안 3번이나 프로젝트 노트를 손보셨던데, 지금 열어드릴까요?");
+  });
+
+  it("still appends the clause when only ONE of the two counts is echoed (partial evidence)", async () => {
+    const out = await synthesizePatternSuggestion(timeOfDayInput, {
+      model: "m",
+      modelProvider: fakeProvider("최근 2일 동안 프로젝트 노트를 손보시던데, 지금 열어드릴까요?")
+    });
+    expect(out).toBe("최근 2일 동안 프로젝트 노트를 손보시던데, 지금 열어드릴까요? (3 edits across 2 days)");
+  });
+
+  it("the anti-fabrication guard still fires FIRST — a fabricated number is dropped, clause is never reached", async () => {
+    // "5pm" is not in timeOfDayInput's facts (3, 2 only) — must return
+    // undefined, not a clause-appended fabrication.
+    const out = await synthesizePatternSuggestion(timeOfDayInput, {
+      model: "m",
+      modelProvider: fakeProvider("오후 5시 전에 프로젝트 노트를 열어드릴까요?")
+    });
+    expect(out).toBeUndefined();
+  });
+
+  it("does nothing when the fallback carries no evidence clause (hand-authored fallback, unaffected)", async () => {
+    // The base `input` fixture's fallbackSuggestion has no "(N x across M y)"
+    // shape — no clause to preserve, output passes through untouched.
+    const out = await synthesizePatternSuggestion(input, { model: "m", modelProvider: fakeProvider("초안 잡아둘까요?") });
+    expect(out).toBe("초안 잡아둘까요?");
+  });
+});
+
 function capturing() {
   const sink: { request?: { messages: { role: string; content: string }[]; temperature?: number; maxOutputTokens?: number; model: string } } = {};
   const modelProvider = {

@@ -105,3 +105,20 @@ ratchet: testFiles +1(checkin-lock) · fabrication 0 · eval N/A
 왜: fire 10 형제 마무리 — 범용화 덕에 소형 슬라이스.
 리뷰지점: 형제 스윕이 동일 클래스 4곳+잠재 1곳 추가 발굴(큐잉) — select-then-send 패턴의 전면 감사가 사실상 완료됨.
 리스크: 낮음. fire 13은 KIND 규칙상 concurrency 금지(10-12 3연속) — Phase-D 절 보존 또는 ack 카피로 강제 전환.
+
+## fire 13 · 2026-07-12 · skill v2.x · 11c7397a5
+meta: value-class=grounding-hardening · pkg=@muse/agent-core · kind=synthesis-guard · verdict=PASS · firesSinceDrill=4
+ratchet: testFiles +0(기존 파일 7케이스) · fabrication 0(강화) · eval:self-improving pattern-suggestion PASS(라이브)
+무엇: Phase-D 합성문 근거 절 보존 — factNums 가드 통과 후 카운트 미포함이면 fallback의 결정론 절을 verbatim 부착(재구성 없음), digit-경계 안전 매치. fire 2 잔여 갭 봉합.
+왜: 유창한 패러프레이즈가 why-now 증거를 통째로 떨굴 수 있었음 — 근거 4부작 완결(결정론 3 + 합성 가드 1).
+리뷰지점: 날짜/시각 숫자 우연 일치로 절 생략 가능(low — factNums상 존재 숫자는 전부 참이라 fabrication 없음, 판정자 수용).
+리스크: 낮음.
+lesson: misgrounding 배터리 transient 헛-FAIL 2번째 관측(fire 1과 동일 클래스, 베이스라인 3회 재실행 전부 그린 + 구조 격리 증명) — 배터리 부하-강건화를 ◦로 승급.
+
+## fire 14 · 2026-07-12 · skill v2.x · (sha pending)
+meta: value-class=reliability · pkg=@muse/proactivity · kind=concurrency · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles +1(followup-firing-lock) · fabrication 0 · eval N/A
+무엇: followup 이중 전송 봉합 — 락 템플릿 3번째 채택(byte-동일 추출, 판정자 diff 확인), 두-데몬 시뮬레이션 5/5 안정 2회.
+왜: 잔여 레이스 4곳의 첫째 — 템플릿 반복으로 소형화.
+리뷰지점: 없음(패턴 확립됨). 잔여: objectives·pattern-notices·proactive-notices.
+리스크: 낮음.

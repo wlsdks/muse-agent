@@ -34,6 +34,7 @@ import {
   markFollowupFired,
   readFollowups,
   readTrustLedger,
+  withProcessLock,
   type PersistedFollowup
 } from "@muse/stores";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
@@ -69,6 +70,9 @@ export interface RunDueFollowupsSummary {
   readonly due: number;
   readonly errors: readonly string[];
   readonly fired: readonly PersistedFollowup[];
+  /** Set only when another daemon held the firing lock for this tick — no
+   *  read, send, or mark was attempted at all. Absent on every other path. */
+  readonly outcome?: "lock-held";
 }
 
 const DEFAULT_MAX_PER_TICK = 5;
@@ -88,7 +92,37 @@ send (one or two sentences, ≤ 240 chars):
 No emojis, no markdown, no lists, no JSON. Plain text only.`
 );
 
+/**
+ * Fire due followups. The whole select→send→mark section runs under the
+ * cross-process `withProcessLock` (`${options.file}.firing.lock`, the same
+ * generalized lock reminder + checkin firing use — `@muse/stores/digest-lock.ts`)
+ * because the api daemon's tick (`followup-tick.ts`) and the CLI daemon's tick
+ * (`commands-daemon-register.ts`) read the SAME followups file: `markFollowupFired`
+ * is atomic per-item, not mutual exclusion, so without a real lock both can read a
+ * followup as due and both deliver it before either marks it fired. A LIVE held
+ * lock returns `outcome: "lock-held"` immediately with no send attempted; a broken
+ * lock (non-contention fs error) fails OPEN — the tick still runs unlocked rather
+ * than silently skipping followups.
+ */
 export async function runDueFollowups(options: RunDueFollowupsOptions): Promise<RunDueFollowupsSummary> {
+  const lockPath = `${options.file}.firing.lock`;
+  const lockOutcome = await withProcessLock(lockPath, () => runDueFollowupsUnderLock(options));
+  if (lockOutcome.kind === "lock-held") {
+    return { delivered: 0, due: 0, errors: [], fired: [], outcome: "lock-held" };
+  }
+  if (lockOutcome.lockError !== undefined) {
+    // Fail-open on a BROKEN lock (not contention): the tick still ran,
+    // unlocked, so this degrades to the pre-lock duplicate-delivery risk
+    // rather than silencing followups.
+    return {
+      ...lockOutcome.value,
+      errors: [`followup-tick: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
+    };
+  }
+  return lockOutcome.value;
+}
+
+async function runDueFollowupsUnderLock(options: RunDueFollowupsOptions): Promise<RunDueFollowupsSummary> {
   const now = options.now ?? (() => new Date());
   // `??` does NOT catch NaN/Infinity: a non-numeric env knob
   // (MUSE_FOLLOWUP_MAX_PER_TICK="5x" → Number(...) → NaN) would make

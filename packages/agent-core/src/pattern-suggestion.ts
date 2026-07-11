@@ -39,6 +39,15 @@ export interface SynthesizePatternSuggestionOptions {
 
 const SUGGESTION_SYSTEM_PROMPT = composeSurfacePrompt("patternSuggestion", {});
 
+// The detector's fallback suggestion always carries a "(N edits across M
+// days)" / "(N times across M weeks)" why-now clause (pattern-detector.ts's
+// buildMatch / buildWeeklyTaskMatch) — the two counts that ground the offer.
+const EVIDENCE_CLAUSE_PATTERN = /\((\d+) (?:edits|times) across (\d+) (?:days|weeks)\)/u;
+
+function containsCount(text: string, count: string): boolean {
+  return new RegExp(`(?<!\\d)${count}(?!\\d)`, "u").test(text);
+}
+
 export async function synthesizePatternSuggestion(
   input: PatternSuggestionInput,
   options: SynthesizePatternSuggestionOptions
@@ -78,6 +87,19 @@ export async function synthesizePatternSuggestion(
   const factNums = new Set(redact(input.groundedFacts).match(/\d+/gu) ?? []);
   if ((output.match(/\d+/gu) ?? []).some((n) => !factNums.has(n))) {
     return undefined;
+  }
+  // Anti-fabrication only guards WRONG numbers, not a MISSING why-now clause
+  // — a fluent paraphrase can drop the evidence entirely. Never reject the
+  // synthesis for that; append the fallback's own clause verbatim (the exact
+  // numbers, no re-derivation) when the composed prose doesn't already carry
+  // both counts.
+  const evidenceClause = input.fallbackSuggestion.match(EVIDENCE_CLAUSE_PATTERN);
+  if (evidenceClause) {
+    const [clause, editCount, dayCount] = evidenceClause;
+    const hasEvidence = containsCount(output, editCount!) && containsCount(output, dayCount!);
+    if (!hasEvidence) {
+      return `${output} ${clause}`;
+    }
   }
   return output;
 }
