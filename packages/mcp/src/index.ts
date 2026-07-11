@@ -285,10 +285,10 @@ export {
   type OsvEcosystem
 } from "./osv-check.js";
 
-// createMcpMuseTool (+ its private redactMcpSecrets helper) lives in
-// `./mcp-tool-factory.ts`. Re-exported so external call-sites stay
-// byte-identical.
-export { createMcpMuseTool } from "./mcp-tool-factory.js";
+// createMcpMuseTool (+ its redactMcpSecrets helper, exported for direct
+// unit-test coverage) lives in `./mcp-tool-factory.ts`. Re-exported so
+// external call-sites stay byte-identical.
+export { createMcpMuseTool, redactMcpSecrets } from "./mcp-tool-factory.js";
 
 // Row builders + mappers live in `./server-stores.ts`.
 export {

@@ -65,6 +65,33 @@ export function createMcpMuseTool(
   };
 }
 
-function redactMcpSecrets(message: string): string {
-  return message.replace(/Bearer\s+\S+/giu, "Bearer [redacted]");
+/**
+ * Redact credential-shaped substrings from an MCP error message before it
+ * reaches the model or a log. Bias is strictly toward over-redaction: a
+ * regex that masks a non-secret word is an acceptable cost, a regex that
+ * misses a real credential is not — so every pattern below is intentionally
+ * broad rather than tightly scoped to one exact header shape.
+ *
+ * Exported for direct unit-test coverage (see `test/redact-secrets.test.ts`).
+ */
+export function redactMcpSecrets(message: string): string {
+  return message
+    .replace(/Bearer\s+\S+/giu, "Bearer [redacted]")
+    // `Basic <base64>` — HTTP Basic auth. Requires 8+ base64-alphabet chars
+    // after "Basic " so ordinary phrases ("Basic auth", "Basic usage") with
+    // short words fall through untouched.
+    .replace(/\bBasic\s+[A-Za-z0-9+/]{8,}=*/gu, "Basic [redacted]")
+    // Any OTHER `Authorization:` scheme (Digest, AWS4-HMAC-SHA256, a custom
+    // scheme, or a bare token with no scheme word) — Bearer/Basic are
+    // already handled above and excluded here so their redaction isn't
+    // re-masked into a less specific label. Consumes to end of line/string
+    // since a signature-style Authorization value can hold several
+    // space-separated key=value segments, not just one token.
+    .replace(/Authorization:\s*(?!Bearer\b)(?!Basic\b)\S[^\n\r]*/giu, "Authorization: [redacted]")
+    // API-key style headers: `X-API-Key: ...`, `api-key: ...`, `apikey: ...`.
+    .replace(/\b((?:x[-_])?api[-_]?key)\s*:\s*\S+/giu, "$1: [redacted]")
+    // Query / form params carrying a token value: `token=`, `api_key=`,
+    // `apikey=`, `access_token=`. Requires the literal `=` so ordinary text
+    // ("token bucket") never matches.
+    .replace(/\b(access_token|api_key|apikey|token)=([^&\s"'<>]+)/giu, "$1=[redacted]");
 }
