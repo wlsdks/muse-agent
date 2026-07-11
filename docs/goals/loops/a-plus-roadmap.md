@@ -246,7 +246,7 @@ ratchet: 로드맵 잔여 [ ] = 27/60(D4-S2a 체크·VQ-21 추가) · self-eval 
 - 리스크: 낮음. eval:tools 6m40s timeout(무거운 로컬셋 미완)이나 변경 가산적(photo 키워드+optional 플래그, 리네임/혼동툴 없음)이라 selection 회귀 위험 near-zero — 결정론게이트(build/test/mutation/lint/Opus)로 판정, timeout≠fail 정직 표기. Photos.app 딥 라이브러리는 VQ-21. 다음 = D4-S2b(mac_system_set enum 확장: 앱종료).
 - lesson: 제약("신규툴 금지")이 자연스러운 신규 capability와 충돌하면, 기존 툴의 안전한 확장(후-필터·optional 플래그)으로 제약-준수판을 배송하고 딥 버전은 VQ로 표면화 — 조용히 쉬운 걸로 안 내려가되 제약도 안 어김.
 
-## fire 30 · 2026-07-12 · skill v2.x · <commit-pending>
+## fire 30 · 2026-07-12 · skill v2.x · 41d0ce2ae
 meta: slice=D4-S2b · wave=W3 · pkg=@muse/macos · kind=mac-quit-app · verdict=PASS · firesSinceDrill=4
 ratchet: 로드맵 잔여 [ ] = 28/62(D4-S2 b/c/d 별개 체크박스 분할 +2, b 체크 -1) · self-eval pass · fabrication 0 · macos +4 test(quit_app)
 - 무엇: macOS 앱종료. mac_system_set에 quit_app enum+app param(optional, volume value 선례) 추가. osascript `tell application "<escapeAppleScript(app)>" to quit` — 공유 escaper로 앱-이름 임베드(인젝션-safe). 빈/공백 app→fail-close(osascript 미호출). 신규툴 0(제약 준수).
