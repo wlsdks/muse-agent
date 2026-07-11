@@ -137,7 +137,7 @@ describe("P5 audit — register → restart → tick(backoff) → restart → ti
           throw new Error(outcome.reason);
         }
       },
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: EVIDENCE, outcome: "met" }),
       file: objectivesFile,
       now: () => new Date("2026-05-19T12:00:00.000Z")
     });

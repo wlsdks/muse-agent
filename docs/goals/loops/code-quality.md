@@ -27,12 +27,14 @@
 | packages/fs·calendar·scheduler | fire 22 | 방문 |
 | packages/voice·browser·skills | fire 23 | 방문 (browser 슬라이스는 큐) |
 | packages/observability·policy·a2a·mcp-shared | fire 25 | 방문 (a2a CLEAN) |
+| 잔소형 8종 (secrets·cache·resilience·runtime-*·db·auth·prompts) | fire 28 | 방문 (5 CLEAN) — **1차 전수 순회 완성** (messaging만 의도 보류) |
 | 기타 packages/* | – | 미방문 잔여: messaging(main 활발 — 보류)·voice·browser·skills·macos·소형 유틸들 |
 
 ## 대기 발견 큐
 
 - ~~🚨 mcp red 7건~~ → fire 27 해결. 판별: 제품 결함 아님 — main 4eccd9971(evidence-gated met, 그라운딩 강화로 정당)의 새 fail-close 백스톱(무증거 met→unmet 강등)이 seam 테스트들의 증거-없는 met 스텁을 삼킨 것. 수리: main 자체-테스트 패턴대로 evidence 픽스처 주입 — **원래 증명하던 게이트(consent/veto/refusal-log)가 다시 실제로 시험되도록** 복원, 외부효과-0 spy 단언 무약화
-- 소형 후보 (fire 27 워커 발견): p5-seam 2번째 케이스 등 2건이 "우연히 통과" — evidence-없는 met 스텁이라 consent 게이트가 아니라 evidence 게이트로도 통과함 (메커니즘 모호). 명시적 evidence 주입으로 consent 게이트 특정성 복원 후보
+- ~~consent 게이트 특정성~~ → fire 28 완료 (실조사 결과 잔존 1건뿐 — p5-seam 2번째 케이스; 나머지는 fire 27이 이미 커버)
+- 소형 조직화 잔여 후보 (fire 28 스캔): cache 메트릭 3클래스 분리, resilience fallback-strategy 분리, runtime-state 두 구현 분리 — 전부 저가치 barrel 정리, 큐 최하단
 - 모듈화 감사 노트 (fire 26): prod 의존 그래프 비순환 ✓ (기존 순환 진단은 내 스크립트가 devDeps 합산한 과장), phantom 의존 0 ✓, 벤더 SDK 누출 검사 필요(다음 감사 fire), domain-tools↔mcp dev-순환은 통합테스트 설계상 잔존(pnpm 경고) — 해소하려면 통합테스트 별도 패키지 분리 (대형, 저긴급)
 
 (분석에서 나왔지만 아직 집행 안 된 발견)
@@ -121,3 +123,4 @@
 | 25 | observability·policy (+a2a·mcp-shared 스캔) | policy toGlobal 토큰-동일 3벌(injection/pii/sanitizer — 보안 결정론 코드의 desync 위험) → regex-utils.ts 한 벌 + 직접 테스트 5; observability index.ts 457→297줄(FollowupSuggestionStore·StartupDoctor 구현체를 별도 모듈로, 인터페이스 계약은 index 잔류, 기존 type-only 역참조 패턴 준수) | policy 170/170 ✓ · observability 141/141(+2skip) ✓ · autoconfigure build ✓ · lint 0 ✓ |
 | 26 | 모듈화 감사 (진안 지시) | 전 워크스페이스 기계 감사(순환·phantom·tsconfig 정합) → mcp-split 잔재 오배치 테스트(mcp/src의 messaging-retry.test가 mcp-shared 모듈을 테스트) mcp-shared/test/messaging-retry-ladder.test.ts로 이전(5케이스, 기존 4케이스와 상호보완 확인); 진단 정정 2건(prod 그래프는 이미 비순환 — 스크립트 과장 / deps는 이미 devDeps) + 🚨 mcp red 7건 신규 발견(위 큐) | mcp 788/795(red 7=사전존재, baseline worktree로 동일재현 확증) · mcp-shared 73/73 ✓ · domain-tools build ✓ · lint 0 ✓ |
 | 27 | mcp seam 테스트 (🚨 큐 집행) | evidence-gate 회귀 7건 수리: main 4eccd9971의 무증거-met→unmet 백스톱이 seam 테스트의 met 스텁을 선점 — evidence 픽스처 주입으로 원래 게이트(consent fail-close·veto 지속·refusal 로깅)가 다시 실제 시험되게 복원, 제품 코드 diff 0, 안전 단언 무약화 (p6/undo는 tick2까지 고쳐 veto 경로가 가면 아닌 실경로로) | 5파일 22/22 ✓ · mcp 전체 795/795 완전 green 복귀 ✓ · lint 0 ✓ (fable 재검증) |
+| 28 | prompts + mcp (잔소형 마감) | 잔소형 8패키지 스캔(5 CLEAN, 정합성 버그 0)으로 1차 전수 순회 완성; prompts index.ts 609→405줄(exemplar retriever 계층 210줄 분리, regex 이스케이프 바이트-보존 확인) + p5-seam 잔존 1케이스 consent-게이트 특정성 복원(evidence 주입, 단언 무변경) | prompts 41/41 ✓ · mcp seam 4파일 14/14 ✓ · agent-core build ✓ · lint 0 ✓ |
