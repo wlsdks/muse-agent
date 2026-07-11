@@ -76,6 +76,36 @@ describe("createMacSystemSetTool", () => {
     expect(result.reason).toContain("Shortcuts.app");
   });
 
+  it("exposes bluetooth_on / bluetooth_off in the setting enum", () => {
+    const tool = createMacSystemSetTool();
+    const en = (tool.definition.inputSchema as { properties: { setting: { enum: string[] } } }).properties.setting.enum;
+    expect(en).toContain("bluetooth_on");
+    expect(en).toContain("bluetooth_off");
+  });
+
+  it("bluetooth_on runs the default 'Muse Bluetooth On' shortcut via the shortcuts runner", async () => {
+    let argv: readonly string[] = [];
+    const tool = createMacSystemSetTool({ shortcuts: async (a) => { argv = a; return ok(""); } });
+    expect(await tool.execute({ setting: "bluetooth_on" }, ctx)).toEqual({ set: true, setting: "bluetooth_on", shortcut: "Muse Bluetooth On" });
+    expect(argv).toEqual(["run", "Muse Bluetooth On", "--output-path", "-"]);
+  });
+
+  it("bluetooth_off + deps override runs the overridden shortcut name", async () => {
+    let argv: readonly string[] = [];
+    const tool = createMacSystemSetTool({ bluetoothOffShortcut: "My BT Off", shortcuts: async (a) => { argv = a; return ok(""); } });
+    expect(await tool.execute({ setting: "bluetooth_off" }, ctx)).toEqual({ set: true, setting: "bluetooth_off", shortcut: "My BT Off" });
+    expect(argv).toEqual(["run", "My BT Off", "--output-path", "-"]);
+  });
+
+  it("a missing Bluetooth shortcut (REAL error) returns the actionable setup message", async () => {
+    const tool = createMacSystemSetTool({ shortcuts: async () => fail(REAL_MISSING) });
+    const result = await tool.execute({ setting: "bluetooth_on" }, ctx) as { set: boolean; reason: string };
+    expect(result.set).toBe(false);
+    expect(result.reason).toContain("Muse Bluetooth On");
+    expect(result.reason).toContain("Set Bluetooth");
+    expect(result.reason).toContain("Shortcuts.app");
+  });
+
   it("a NON-missing shortcuts failure surfaces the raw stderr, not the setup message", async () => {
     const tool = createMacSystemSetTool({ shortcuts: async () => fail("Error: some other failure") });
     const result = await tool.execute({ setting: "focus_off" }, ctx) as { set: boolean; reason: string };

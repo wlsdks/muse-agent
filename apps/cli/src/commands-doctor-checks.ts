@@ -1,7 +1,7 @@
 import { isCalibratedEmbedder, resolveRecallConfidentAt } from "@muse/agent-core";
 import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel, resolveVisionModel } from "@muse/autoconfigure";
 import { resolvePlatformCapabilities } from "@muse/shared";
-import { DEFAULT_FOCUS_OFF_SHORTCUT, DEFAULT_FOCUS_ON_SHORTCUT } from "@muse/macos";
+import { DEFAULT_BLUETOOTH_OFF_SHORTCUT, DEFAULT_BLUETOOTH_ON_SHORTCUT, DEFAULT_FOCUS_OFF_SHORTCUT, DEFAULT_FOCUS_ON_SHORTCUT } from "@muse/macos";
 import type { DevFixableWeakness } from "@muse/stores";
 import { promises as fs } from "node:fs";
 import { DEFAULT_EMBED_MODEL } from "./commands-notes-rag.js";
@@ -48,6 +48,33 @@ export function focusShortcutsCheck(
   }
   return {
     detail: `missing ${missing.map((name) => `"${name}"`).join(" + ")} — create in Shortcuts.app with the "Set Focus" action (On/Off), or point MUSE_FOCUS_ON_SHORTCUT / MUSE_FOCUS_OFF_SHORTCUT at existing ones`,
+    status: "warn"
+  };
+}
+
+/**
+ * Whether the two named Bluetooth shortcuts (`mac_system_set`
+ * bluetooth_on/bluetooth_off) exist — mirrors `focusShortcutsCheck` exactly:
+ * macOS has no Bluetooth CLI either, so the toggle runs a user Shortcut
+ * carrying Apple's "Set Bluetooth" action. Only surfaced when the macOS
+ * actuators are enabled.
+ */
+export function bluetoothShortcutsCheck(
+  env: Record<string, string | undefined>,
+  listOutput: readonly string[] | undefined
+): { readonly detail: string; readonly status: "ok" | "warn" } {
+  const on = env.MUSE_BLUETOOTH_ON_SHORTCUT?.trim() || DEFAULT_BLUETOOTH_ON_SHORTCUT;
+  const off = env.MUSE_BLUETOOTH_OFF_SHORTCUT?.trim() || DEFAULT_BLUETOOTH_OFF_SHORTCUT;
+  if (listOutput === undefined) {
+    return { detail: `couldn't list Shortcuts — grant Shortcuts access, then create "${on}" + "${off}" (each with the "Set Bluetooth" action) to enable Bluetooth toggling`, status: "warn" };
+  }
+  const names = new Set(listOutput);
+  const missing = [on, off].filter((name) => !names.has(name));
+  if (missing.length === 0) {
+    return { detail: `both Bluetooth shortcuts present ("${on}", "${off}") — bluetooth_on/bluetooth_off ready`, status: "ok" };
+  }
+  return {
+    detail: `missing ${missing.map((name) => `"${name}"`).join(" + ")} — create in Shortcuts.app with the "Set Bluetooth" action (On/Off), or point MUSE_BLUETOOTH_ON_SHORTCUT / MUSE_BLUETOOTH_OFF_SHORTCUT at existing ones`,
     status: "warn"
   };
 }

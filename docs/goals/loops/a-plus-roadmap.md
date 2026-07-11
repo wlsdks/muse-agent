@@ -262,3 +262,12 @@ ratchet: 로드맵 잔여 [ ] = 27/62 · self-eval pass · fabrication 0 · maco
 - 왜: D4-S2 mac 커버리지의 다크모드 조각. parameterless 토글이라 mac_system_set에 자연스럽게 붙음(mute 브랜치 패턴).
 - 리뷰지점: Opus PASS — on/off→true/false 매핑 정확(inverted 아님)·고정 스크립트 인젝션 無·테스트가 captured 스크립트의 true/false를 pin(shape-only 아님)·ternary flip mutation이 off-test를 kill(독립 재현)·무관 브랜치(volume/mute/wifi/focus/sleep/quit_app) 무변·additionalProperties 유지.
 - 리스크: 낮음. 고정 스크립트라 인젝션·escape 불요. eval:tools 로컬셋 heavy timeout(가산 enum, selection 회귀 near-zero). 다음 = D4-S2d(블루투스/밝기 — Shortcuts 경로 focus 패턴, 클린 CLI 부재+MUSE_*_SHORTCUT env override). D4-S2d 완료 시 D4-S2 mac 커버리지 배치 완주(a·b·c·d, e는 Contacts write 별도).
+
+## fire 32 · 2026-07-12 · skill v2.x · <commit-pending>
+meta: slice=D4-S2d · wave=W3 · pkg=@muse/macos+apps/cli · kind=mac-bluetooth · verdict=PASS · firesSinceDrill=6
+ratchet: 로드맵 잔여 [ ] = 27/63(D4-S2d 밝기 분리 +1, d 체크 -1) · self-eval pass · fabrication 0 · macos +5·cli doctor +4 test · env MUSE_BLUETOOTH_*_SHORTCUT
+- 무엇: macOS 블루투스. mac_system_set에 bluetooth_on/off enum(focus 패턴 exact 미러: named Shortcut `shortcuts run` argv, 클린 Bluetooth CLI 부재). MUSE_BLUETOOTH_ON/OFF_SHORTCUT env override+bluetoothShortcutSetupMessage(missing→"Set Bluetooth" 안내)+doctor check. 밝기(value→Shortcut-input)는 D4-S2d2 분리.
+- 왜: D4-S2 mac 배치의 블루투스 조각. focus와 동일하게 macOS가 클린 CLI 없어 named user Shortcut이 정책-안전 경로. 오케스트레이터가 워커의 미배선 bluetoothShortcutsCheck(dead code)를 runLocalDoctor에 완전 배선+4 행동테스트로 마감(드릴 교훈: 미배선 함수 안 남김).
+- 리뷰지점: Opus PASS — 이름 해소 정확(bluetooth_off→off shortcut, override 우선)·setup message가 focus 아닌 Bluetooth·shortcut argv라 shell 인젝션 없음·doctor check 완전 배선(focus 옆 별개 check, focus test 무영향)+ok/warn/undefined/override 테스트·mutation-RED(이름 무력화→override/off RED)·additionalProperties 유지·docs:env.
+- 리스크: 낮음. eval:tools 로컬셋 heavy timeout(가산 enum). 다음 = D4-S2e(Apple 연락처 '쓰기' draft-first 게이트 — 이건 write toward 사람 아닌 로컬 store지만 outbound-safety 근접이라 신중).
+- lesson: 서브에이전트가 "off-scope 파일 회피"로 함수만 만들고 미배선 남기면 dead code=드릴 결함 클래스 → 오케스트레이터가 배선+테스트로 마감. 별개 함수를 별개 check로 배선하면 기존 pinned test 무영향(확장이 아니라 병렬 추가).

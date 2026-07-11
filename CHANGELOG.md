@@ -10,6 +10,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Turn Bluetooth on or off by asking.** "turn on bluetooth" / "블루투스 꺼줘"
+  now toggles Bluetooth. Because macOS has no built-in command for it, this runs
+  a small Shortcut you set up once (Muse tells you exactly how if it's missing),
+  and `muse doctor` flags whether it's ready.
+
 - **Toggle Mac Dark Mode by asking.** "turn on dark mode" / "다크모드 켜줘" now
   switches macOS between dark and light appearance.
 

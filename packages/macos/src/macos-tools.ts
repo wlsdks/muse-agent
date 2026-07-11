@@ -93,8 +93,11 @@ export {
 
 export {
   createMacSystemSetTool,
+  DEFAULT_BLUETOOTH_OFF_SHORTCUT,
+  DEFAULT_BLUETOOTH_ON_SHORTCUT,
   DEFAULT_FOCUS_OFF_SHORTCUT,
   DEFAULT_FOCUS_ON_SHORTCUT,
+  bluetoothShortcutSetupMessage,
   focusShortcutSetupMessage,
   isMissingShortcutError,
   type MacSystemSetToolDeps

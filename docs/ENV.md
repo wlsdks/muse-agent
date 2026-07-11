@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **537** variables.
+Total: **539** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -65,6 +65,8 @@ Total: **537** variables.
 | `MUSE_BIRD_ANSI` | apps/cli |
 | `MUSE_BIRD_BLINK_ANSI` | apps/cli |
 | `MUSE_BIRD_ROWS` | apps/cli |
+| `MUSE_BLUETOOTH_OFF_SHORTCUT` | apps/cli, packages/macos |
+| `MUSE_BLUETOOTH_ON_SHORTCUT` | apps/cli, packages/macos |
 | `MUSE_BOARD_FILE` | packages/multi-agent |
 | `MUSE_BOARD_MAX_DEPTH` | packages/multi-agent |
 | `MUSE_BOARD_SPILL_DIR` | apps/cli |

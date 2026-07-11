@@ -6,7 +6,7 @@ import { defaultShortcutsRunner, type ShortcutsRunner } from "./macos-shortcut-t
 
 // ── Tier 1: mac_system_set (volume / mute / sleep / Wi-Fi / Focus / quit app) ─────
 
-const SYSTEM_SETTINGS = ["volume", "mute", "unmute", "display_sleep", "sleep", "wifi_on", "wifi_off", "focus_on", "focus_off", "quit_app", "dark_mode_on", "dark_mode_off"] as const;
+const SYSTEM_SETTINGS = ["volume", "mute", "unmute", "display_sleep", "sleep", "wifi_on", "wifi_off", "focus_on", "focus_off", "bluetooth_on", "bluetooth_off", "quit_app", "dark_mode_on", "dark_mode_off"] as const;
 type SystemSetting = (typeof SYSTEM_SETTINGS)[number];
 
 /**
@@ -18,6 +18,15 @@ type SystemSetting = (typeof SYSTEM_SETTINGS)[number];
  */
 export const DEFAULT_FOCUS_ON_SHORTCUT = "Muse Focus On";
 export const DEFAULT_FOCUS_OFF_SHORTCUT = "Muse Focus Off";
+
+/**
+ * macOS also has NO official CLI to toggle Bluetooth power, so this mirrors
+ * the Focus shortcut fallback exactly: a NAMED user Shortcut carrying
+ * Apple's own "Set Bluetooth" action. Overridable via MUSE_BLUETOOTH_ON_SHORTCUT
+ * / MUSE_BLUETOOTH_OFF_SHORTCUT.
+ */
+export const DEFAULT_BLUETOOTH_ON_SHORTCUT = "Muse Bluetooth On";
+export const DEFAULT_BLUETOOTH_OFF_SHORTCUT = "Muse Bluetooth Off";
 
 /**
  * True when a `shortcuts run` stderr says the named shortcut doesn't exist. The
@@ -40,6 +49,16 @@ export function focusShortcutSetupMessage(name: string, on: boolean): string {
   );
 }
 
+/** Actionable one-time setup message shown when a Bluetooth shortcut is missing. */
+export function bluetoothShortcutSetupMessage(name: string, on: boolean): string {
+  const envVar = on ? "MUSE_BLUETOOTH_ON_SHORTCUT" : "MUSE_BLUETOOTH_OFF_SHORTCUT";
+  return (
+    `Shortcut "${name}" not found. Create it once: open Shortcuts.app → New Shortcut → ` +
+    `name it exactly "${name}" → add the "Set Bluetooth" action → set it ${on ? "On" : "Off"}. ` +
+    `(Or point ${envVar} at a shortcut you already have.)`
+  );
+}
+
 export interface MacSystemSetToolDeps {
   readonly osascript?: MacOsascriptRunner;
   readonly pmset?: (args: readonly string[]) => Promise<MacCommandResult>;
@@ -47,6 +66,8 @@ export interface MacSystemSetToolDeps {
   readonly shortcuts?: ShortcutsRunner;
   readonly focusOnShortcut?: string;
   readonly focusOffShortcut?: string;
+  readonly bluetoothOnShortcut?: string;
+  readonly bluetoothOffShortcut?: string;
 }
 
 export function createMacSystemSetTool(deps: MacSystemSetToolDeps = {}): MuseTool {
@@ -56,21 +77,25 @@ export function createMacSystemSetTool(deps: MacSystemSetToolDeps = {}): MuseToo
   const shortcuts = deps.shortcuts ?? defaultShortcutsRunner;
   const focusOnShortcut = deps.focusOnShortcut?.trim() || DEFAULT_FOCUS_ON_SHORTCUT;
   const focusOffShortcut = deps.focusOffShortcut?.trim() || DEFAULT_FOCUS_OFF_SHORTCUT;
+  const bluetoothOnShortcut = deps.bluetoothOnShortcut?.trim() || DEFAULT_BLUETOOTH_ON_SHORTCUT;
+  const bluetoothOffShortcut = deps.bluetoothOffShortcut?.trim() || DEFAULT_BLUETOOTH_OFF_SHORTCUT;
   return {
     definition: {
       description:
         "Change a Mac system setting: `setting` is 'volume' (needs `value` 0–100), 'mute', 'unmute', " +
         "'display_sleep' (screen off now), 'sleep' (put the whole Mac to sleep), 'wifi_on', 'wifi_off', " +
         "'focus_on' (turn ON Do Not Disturb / a Focus mode), 'focus_off' (turn it OFF), " +
+        "'bluetooth_on' (turn ON Bluetooth), 'bluetooth_off' (turn it OFF), " +
         "'quit_app' (quit an app — needs `app`), or 'dark_mode_on' / 'dark_mode_off' " +
         "(turn macOS Dark Mode on/off). " +
         "Use when the user asks to set/raise/lower the volume, mute/unmute, sleep the screen or the Mac, " +
-        "turn Wi-Fi on/off, turn Do Not Disturb / Focus on or off, quit/close a named app, or switch " +
-        "Dark Mode / Light Mode / appearance on or off — e.g. " +
+        "turn Wi-Fi on/off, turn Do Not Disturb / Focus on or off, turn Bluetooth on or off, quit/close a " +
+        "named app, or switch Dark Mode / Light Mode / appearance on or off — e.g. " +
         "'set the volume to 30', 'mute the sound', 'turn off wifi', 'turn on do not disturb', " +
-        "'enable focus mode', 'quit Safari', 'turn on dark mode', 'switch to light mode', " +
+        "'enable focus mode', 'turn on bluetooth', 'turn off bluetooth', 'quit Safari', 'turn on dark mode', " +
+        "'switch to light mode', " +
         "'볼륨 50으로 해줘', '와이파이 꺼줘', '방해금지 켜줘', " +
-        "'집중모드 꺼줘', 'Safari 종료해줘', '메모장 닫아줘', '다크모드 켜줘', '화면 어둡게 해줘'. Do NOT use it to control music " +
+        "'집중모드 꺼줘', '블루투스 켜줘', '블투 꺼줘', 'Safari 종료해줘', '메모장 닫아줘', '다크모드 켜줘', '화면 어둡게 해줘'. Do NOT use it to control music " +
         "playback (that is mac_media_control) or to run a user-named Shortcut (that is mac_shortcut_run).",
       domain: "system",
       groundedArgs: ["value"],
@@ -98,6 +123,7 @@ export function createMacSystemSetTool(deps: MacSystemSetToolDeps = {}): MuseToo
         "volume", "볼륨", "소리", "mute", "음소거", "unmute", "sound", "display", "화면", "screen", "절전",
         "sleep", "잠자기", "잠들", "wifi", "wi-fi", "와이파이", "네트워크",
         "focus", "집중", "집중모드", "방해금지", "방해 금지", "dnd", "do not disturb",
+        "bluetooth", "블루투스", "블투",
         "quit", "종료", "닫아", "close app",
         "dark mode", "다크모드", "다크 모드", "어둡게", "light mode", "라이트모드", "appearance"
       ],
@@ -126,6 +152,29 @@ export function createMacSystemSetTool(deps: MacSystemSetToolDeps = {}): MuseToo
           return {
             reason: isMissingShortcutError(stderr)
               ? focusShortcutSetupMessage(name, on)
+              : stderr.length > 0 ? stderr.slice(0, 500) : `shortcuts exited with code ${result.exitCode?.toString() ?? "null"}`,
+            set: false
+          };
+        }
+        return { set: true, setting, shortcut: name };
+      }
+      if (setting === "bluetooth_on" || setting === "bluetooth_off") {
+        const on = setting === "bluetooth_on";
+        const name = on ? bluetoothOnShortcut : bluetoothOffShortcut;
+        let result: MacCommandResult;
+        try {
+          result = await shortcuts(["run", name, "--output-path", "-"]);
+        } catch (cause) {
+          return { reason: `shortcuts spawn failed: ${cause instanceof Error ? cause.message : String(cause)}`, set: false };
+        }
+        if (result.timedOut) {
+          return { reason: "shortcuts run timed out", set: false };
+        }
+        if (result.exitCode !== 0) {
+          const stderr = result.stderr.trim();
+          return {
+            reason: isMissingShortcutError(stderr)
+              ? bluetoothShortcutSetupMessage(name, on)
               : stderr.length > 0 ? stderr.slice(0, 500) : `shortcuts exited with code ${result.exitCode?.toString() ?? "null"}`,
             set: false
           };
