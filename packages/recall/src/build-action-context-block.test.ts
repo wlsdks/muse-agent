@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildActionContextBlock } from "./present.js";
+import { buildActionContextBlock } from "./context-blocks.js";
 
 describe("buildActionContextBlock — <<action N>> grounding block", () => {
   it("empty → placeholder", () => {

@@ -7,7 +7,7 @@
  */
 
 import { lexicalTokens } from "@muse/agent-core";
-import { buildActionContextBlock, buildGitContextBlock, buildShellContextBlock } from "./present.js";
+import { buildActionContextBlock, buildGitContextBlock, buildShellContextBlock } from "./context-blocks.js";
 import { selectGroundingActions } from "./select.js";
 import { redactSecretsInText } from "@muse/shared";
 import { readActionLog, type ActionLogEntry } from "@muse/stores";

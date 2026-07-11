@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildFeedContextBlock, recentFeedHeadlines, selectFeedHeadlinesForQuery } from "./present.js";
+import { buildFeedContextBlock } from "./context-blocks.js";
+import { recentFeedHeadlines, selectFeedHeadlinesForQuery } from "./present.js";
 
 interface TestEntry { title: string; publishedAt: string; summary: string; embedding?: readonly number[] }
 const entry = (title: string, publishedAt: string, summary = "", embedding?: readonly number[]): TestEntry =>
