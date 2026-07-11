@@ -388,6 +388,16 @@ D6·D7(S1/S3/S4)도 실-갭 확정.
   §6.0.1). 에이전트에 start/stop 노출은 기존 결정 위반이라 **하지 말 것**.
 - **D3-S6. eval:orchestration 래칫 (S).** D3-S1~S4 라이브 케이스 편입 pass^3, MAST
   상위 실패모드(스텝반복·종료미인지) 2+ 포함.
+- **D3-S7. X-3 PID-재사용 kill 가드 (S) ★ (Round3 발견 — 실 안전 갭).** 참조: hermes
+  `process_registry.py`(커널 start-time로 PID 재사용 검증 후 kill). **검증됨(§9 #18)**:
+  Muse `stopBackgroundProcess`는 `kill(record.pid)`를 재사용 검증 없이 실행
+  (`background-process-spawn.ts:104`), `reconcileBackgroundProcesses`도 `isAlive(pid)`만
+  봄(:128) → 원 프로세스가 죽고 PID가 재활용되면 **무관한 유저 프로세스를 SIGTERM**.
+  record엔 `startedAt`(:64) 있으나 OS start-time과 미대조. 구현: spawn 시 OS
+  프로세스 start-time 캡처(macOS `ps -o lstart=`/Linux `/proc/<pid>/stat`), kill/
+  reconcile 전 대조 — 불일치면 kill 금지+record `exited` 마킹(fail-close, 결정론
+  가드). 수용: 재사용-시뮬 유닛(start-time 불일치→kill 안 함)+mutation. Muse
+  "위험 실행은 결정론 가드" 정신 정합.
 
 ### D4 — Tools (B → A+, 단일사용자 스코프의 A+)
 
@@ -509,7 +519,7 @@ D6·D7(S1/S3/S4)도 실-갭 확정.
 
 | 웨이브 | 슬라이스 | 이유 |
 |---|---|---|
-| **W1 (원칙 갭)** | D2-S1 seatbelt → D2-S2 토폴로지 → D1-S1/S2 루프가드 → D2-S6 승인 span+스테이징 | 자기-원칙(결정론 가드) 유일 미달 + 루프이탈 12B 최빈사고. **경쟁사 공통 최대 약점(보안·신뢰성)이 Muse 강점 축** — 여기가 해자 |
+| **W1 (원칙 갭)** | D2-S1 seatbelt → D2-S2 토폴로지 → D1-S1/S2 루프가드 → D2-S6 승인 span+스테이징 → D3-S7 PID-가드 | 자기-원칙(결정론 가드) 유일 미달 + 루프이탈 12B 최빈사고 + PID-재사용 kill 안전갭. **경쟁사 공통 최대 약점(보안·신뢰성)이 Muse 강점 축** — 여기가 해자 |
 | **W2 (신뢰성)** | D1-S3/S5 → D3-S1/S2/S4 → D1-S7 브라우저 | 컴팩션·예산·서브에이전트 안전망 + 소형모델 브라우저 신뢰성 — eval:computer-task 상승 토대 (D1-S4 삭제됨) |
 | **W3 (능력·UX)** | D4-S4 → D4-S1 → D4-S2 → D7-S1 슬래시 | 신뢰성 위 커버리지 + 마찰 제거 — 각각 eval 래칫 동반 (D3-S5·D4-S5 삭제됨) |
 | **W4 (라우팅·KO)** | D5-S1~S4 → D1-S6 → D2-S3/S4/S5 → D-KO-S1 UTF-16 | 모델 천장 우회 완성 + 한국어-우선 마감 (D-KO-S2 삭제됨) |
@@ -570,9 +580,13 @@ D6·D7(S1/S3/S4)도 실-갭 확정.
   → (a) pre-push 훅을 **eval:agent 핵심 subset**까지 확장(Ollama 있을 때, 시간 예산
   내 — precheck-grounding처럼 skip-if-unreachable), (b) self-eval 회귀 fail-close를
   **커밋 시** 자동 확인(tracked count 하락→차단), (c) GitHub CI에는 Ollama 없으니
-  **결정론 부분**(eval 하네스 자체 유닛, 스코어보드 파싱, 케이스 스키마)만 배선. 이건
-  "검증 규율" 성적표를 A→A+로 되돌리는 유일한 실-작업. 수용: 훅이 실제 차단함을
-  증명(나쁜 케이스 주입→push 거부)+skip-if-no-Ollama 계약.
+  **결정론 부분**(eval 하네스 자체 유닛, 스코어보드 파싱, 케이스 스키마)만 배선.
+  **(d) Tier-0 오염 필터(Round3, openclaw character-eval 참조)**: 배터리 실행 전
+  transcript에 "backend error"/"tool failed"/"model unsupported"/"timeout" 누출
+  정규식 스캔 → 인프라 실패를 **behavior 실패로 오인 말고 배제**(현 skip-if-Ollama-
+  unreachable보다 세밀). 이건 "검증 규율" 성적표를 A→A+로 되돌리는 유일한 실-작업.
+  수용: 훅이 실제 차단함을 증명(나쁜 케이스 주입→push 거부)+Tier-0 오염 배제 유닛+
+  skip-if-no-Ollama 계약.
 
 ### 8.5.3 정련된 참조 (기존 슬라이스 강화)
 
@@ -604,6 +618,51 @@ AND·모순탐지; Muse는 이미 contradiction-detection 보유라 ROI 낮음.
 
 ---
 
+## 8.6 Round 3 통합 — 최종 스윕 (5-Haiku + Fable 재검증)
+
+코어 잔여(eval 내부·도메인 액추에이터·내구성/마이그레이션·성능·전체 completeness
+critic)를 판 최종 바퀴. **신규 실-슬라이스 1(D3-S7 안전) + 정련 2 + Muse 강점 3
+확증 + 저가치 향상 다수.**
+
+### 8.6.1 확증된 Muse 강점 (경쟁사 대비 앞섬 — 재구축·과투자 금지)
+
+- **도메인 액추에이터 = 해자, 갭 아님.** Muse 캘린더/리마인더/연락처/홈은
+  approval-gate(no-target 거부 포함)+id-idempotency(재-add→병합, 중복 0)+타임존
+  **서버 위임**(phrase 그대로, DST 안전, local 표시)+soft-fail 미러(Apple Reminders
+  실패해도 Muse write 성공)+구조화 에러(candidates 제시, 절대 추측 안 함)로 **두
+  경쟁사보다 명백히 견고**(둘 다 메시징-중심, idempotency·approval·구조화 피드백 부재).
+- **내구성 = 완비.** atomicWriteFile+부모dir fsync·withFileMutationQueue(파일별
+  직렬화)·backupVersionMismatchedStore 전부 출하. D6-S3은 **JSON 유지**가 정답
+  (SQLite 도입 불필요 — hermes WAL+fallback은 SQLite 쓸 때만). 잔여 소소: 암호화
+  스토어가 **키-재암호화 마이그레이션 전 백업 미생성** → `.plaintext-backup-<ts>`
+  권장(키 분실 복구용, D2 암호화 경로).
+- **성능 기반 = 있음.** V8 컴파일캐시·prompt stablePrefix·keep-alive·KV-quant·
+  working-budget 컴팩션 전부 보유. 하트비트 캐시-웜은 **클라우드 prompt-cache용**
+  이라 로컬-우선 Muse엔 저가치(스킵).
+
+### 8.6.2 정련 (기존 슬라이스 강화)
+
+- **D-E1 ← Tier-0 오염 필터**(openclaw character-eval). §8.5.2 갱신됨.
+- **D3-S3 ← poll-vs-consumed 이중 dedup**(hermes process_registry #3): 백그라운드
+  프로세스 상태를 **poll(관찰)**한 것이 자율 완료-알림을 억제하면 안 됨(관찰≠소비).
+  idle-drain 계약 테스트에 이 구분 추가.
+- **D6-S3 ← hermes memory_tool drift+`.bak`**(#8): 재직렬화 round-trip 불일치→쓰기
+  차단+백업이 정확한 참조 구현. §6 D6-S3 그대로 유효.
+
+### 8.6.3 저가치 향상 (별도 backlog, 저우선 — grounding 엣지 훼손 금지)
+
+completeness critic 10건 중 Muse-적합·미커버지만 코어 아님: (a) **orphaned-pipe
+드레인**(hermes #5 — 자식 종료해도 손자가 파이프 열면 poll이 영원히 running; X-3
+verify-first), (b) **connection-epoch 무효화**(openclaw #6 — 재연결 후 stale async
+결과 폐기; 웹콘솔/SSE verify-first), (c) **request coalescing**(openclaw #1 — 동일
+리소스 동시 fetch dedupe; 웹콘솔), (d) **parallel-tool-call 유도 프롬프트**+cold-start
+poll 지수백오프(성능 소형). **이미-커버**: frozen-snapshot+live-mutation(#7 =
+Muse chat-ink `memoryHolder`), external-drift(#8 = D6-S3). **skip**: watch-pattern
+strike-window(Muse는 watch-pattern 미채택), device-fingerprint·idempotency-dual-key
+(단일사용자 저가치).
+
+---
+
 ## 9. 부록 — 근거 검증 로그 (Fable 직접 스팟체크, 2026-07-11)
 
 | # | 주장(스윕) | 검증 |
@@ -625,6 +684,10 @@ AND·모순탐지; Muse는 이미 contradiction-detection 보유라 ROI 낮음.
 | 15 | 경쟁사 grounding 게이트 부재(citation 표시만) | ✅ openclaw `tools.citations.ts`(표시)·`external-content.ts`(래핑); hermes citation 브랜치 미머지; 검증 게이트 0 |
 | 16 | Ollama 스키마 새니타이저 존재 | ✅ `adapter-ollama.ts:611` sanitizeOllamaToolSchema(:501 배선) → 신규 아님 |
 | 17 | 프롬프트 제어문자 strip 광범위 배선 | ✅ stripUntrustedTerminalChars 7+ 진입점·escapeSystemPromptMarkers(recall/present.ts:845) |
+| 18 | X-3 kill/reconcile가 PID-재사용 미검증(안전갭) | ✅ `background-process-spawn.ts:104`(kill 무검증)·:128(isAlive만) → D3-S7 정당 |
+| 19 | Muse 도메인 액추에이터가 경쟁사보다 견고 | ✅ approval-gate+id-idempotency+타임존서버위임+soft-fail미러(loopback-calendar/contacts/reminders 테스트) — 갭 아님 |
+| 20 | Muse 내구성 완비(atomic+queue+backup) | ✅ atomic-file-store.ts(dir fsync)·withFileMutationQueue·store-version-backup.ts — D6-S3 JSON 유지 |
+| 21 | eval Tier-0 오염필터 부재(D-E1 세부) | ✅ eval-harness.mjs에 인프라-오염 사전배제 없음 → D-E1 (d) 정당 |
 
 **Muse-측 확정 팩트**: runner `env_clear()`+timeout-only(`crates/runner/src/main.rs:101`),
 `maxToolCalls=10`/`maxRunWallclockMs=300s`(`agent-runtime.ts:284-288`), no-progress
