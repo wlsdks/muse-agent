@@ -136,7 +136,7 @@ ratchet: 로드맵 잔여 [ ] = 18/39 · self-eval pass · fabrication 0 · cli 
 - 리뷰지점: Opus가 예산공식 edge(div0/NaN/Inf→2000)·경계(<=)·round-trip(스필===원본·경로 정확 일치·데이터손실 없음)·executor 실fs·boardTaskPrompt 순수·mutation-RED 양방향 검증.
 - 리스크: 없음. 새 env 2개→docs:env(워커 proactive). 다음 D1-S7a=브라우저 스냅샷 AX-tree refs(다른 축 W2 브라우저).
 
-## fire 17 · 2026-07-11 · skill v2.x · <commit-pending>
+## fire 17 · 2026-07-11 · skill v2.x · 61ca1e65c
 meta: slice=D1-S7a · wave=W2 · pkg=@muse/browser · kind=browser-ref-guard · verdict=PASS · firesSinceDrill=8
 ratchet: 로드맵 잔여 [ ] = 17/39 · self-eval pass · fabrication 0 · browser +3 test(ghost-ref) · env 0
 - 무엇: 브라우저 ref 안정성 fail-close. `resolveTarget`(browser-tools.ts) 숫자-ref 분기가 `describeElement(ref)`=undefined(현재 스냅샷에 없는 stale/ghost/환각 ref)를 그대로 통과시켜 유령 요소로 click/type/hover/upload 하던 구멍을 거부로 닫음("call browser_read"). resolveTarget이 4 act-tool 단일 해소점이라 형제 일괄. 3 행동테스트(valid proceed·ghost click/type 거부, calls 무기록=부분부작용 0).
