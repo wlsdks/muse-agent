@@ -237,7 +237,7 @@ ratchet: 로드맵 잔여 [ ] = 27/59 · self-eval pass · fabrication 0 · mcp:
 - 리스크: 낮음. 계약 스크립트라 CI서 dist 빌드 필요(pnpm mcp:stdio-contract가 build 선행). ENV.md MUSE_CALENDAR_FILE에 apps/cli reader 추가(내 c1/c3가 참조)=docs:env 내 슬라이스 포함. 다음 = D4-S2a(macOS Photos 검색/내보내기, mac_photos actuator 확장).
 - lesson: 실-wire 계약 테스트는 seed된 알려진 데이터를 round-trip 어서(count·title)하면 데이터 민감=tautology 아님이 구조적으로 보장(연결됨만 확인하는 약한 테스트 회피).
 
-## fire 29 · 2026-07-12 · skill v2.x · <commit-pending>
+## fire 29 · 2026-07-12 · skill v2.x · 140c9ffef
 meta: slice=D4-S2a · wave=W3 · pkg=@muse/macos · kind=mac-photo-search · verdict=PASS · firesSinceDrill=3
 ratchet: 로드맵 잔여 [ ] = 27/60(D4-S2a 체크·VQ-21 추가) · self-eval pass · fabrication 0 · macos +3 test(imagesOnly)
 - 무엇: macOS 사진 검색. "신규툴 신설 금지" 제약 준수해 기존 mac_spotlight_search에 imagesOnly 플래그 확장(신규 툴 0). mdfind ARGV 불변(query→predicate 안 함=injection-safe), imagesOnly면 반환 경로를 이미지 확장자로 코드 후-필터(cap 필터 후, total=필터 카운트, imagesOnly:true echo). 반환 경로=export 핸들. default byte-identical.
