@@ -1,4 +1,4 @@
-import type { AgentRuntime } from "@muse/agent-core";
+import { guardAgainstUnbackedActionClaim, type AgentRuntime } from "@muse/agent-core";
 import { gateChatAnswerGrounding, type ChatGroundingSource } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
@@ -80,6 +80,7 @@ export async function* toSseStream(
   // the accepted streaming shape). No question wired ⇒ no gate (byte-identical stream).
   let assembled = "";
   const evidence: ChatGroundingSource[] = [];
+  const toolNames = new Set<string>();
   for await (const event of events) {
     if (event.type === "text-delta") {
       assembled += event.text;
@@ -88,6 +89,7 @@ export async function* toSseStream(
     }
 
     if (event.type === "tool-call") {
+      toolNames.add(event.toolCall.name);
       if (responseMode === "compat") {
         yield `event: tool_start\ndata: ${sseData(event.toolCall.name)}\n\n`;
         continue;
@@ -98,6 +100,7 @@ export async function* toSseStream(
     }
 
     if (event.type === "tool-result") {
+      toolNames.add(event.toolCall.name);
       if (event.grounding) {
         evidence.push({ source: event.grounding.source, text: event.grounding.text });
       }
@@ -159,9 +162,19 @@ export async function* toSseStream(
         evidence,
         question: grounding.question
       });
+      // Honest-action gate (parity with the buffered `/api/chat` path and the
+      // channel reply — `honest-action-guard.ts`): the assembled answer can
+      // CLAIM a completed state-changing action while no actuator tool ran
+      // this turn. No retry here — the stream has already finished, so this
+      // is a deterministic downgrade only (documented stream limitation: an
+      // in-flight re-prompt would require re-streaming the whole turn).
+      const honest = await guardAgainstUnbackedActionClaim({
+        firstResult: { response: { output: gate.answer }, toolsUsed: [...toolNames] },
+        query: grounding.question
+      });
       yield `event: grounding\ndata: ${sseData(JSON.stringify({
-        answer: gate.answer,
-        gated: gate.gated,
+        answer: honest.response.output,
+        gated: gate.gated || honest.response.output !== gate.answer,
         strippedCitations: gate.strippedCitations,
         verdict: gate.groundingVerdict
       }))}\n\n`;
