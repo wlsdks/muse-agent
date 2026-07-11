@@ -10,6 +10,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Find your photos, not just any file.** Muse's Mac file search can now be
+  narrowed to photos and images — ask it to "find my photos of the beach" and it
+  returns just the image files, not documents. It returns the files' locations,
+  so you can open or copy them.
+
 - **A connected tool now gets an accurate description of what Muse offers.**
   When another app connects to Muse's MCP server, the summary it receives now
   lists all of Muse's tools correctly (recall, note search, your model, calendar,

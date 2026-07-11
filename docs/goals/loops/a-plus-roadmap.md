@@ -236,3 +236,12 @@ ratchet: 로드맵 잔여 [ ] = 27/59 · self-eval pass · fabrication 0 · mcp:
 - 리뷰지점: Opus 라이브 재실행 PASS — 실 subprocess("listening on stdio (6 tools)" stderr)·InMemory 아님·seed 데이터 round-trip data-sensitive(mutation seed 1개→count RED exit 1, 데이터 민감 재현)·skip=spawn실패만/assertion실패=exit 1(정직)·MCP_SERVE_INSTRUCTIONS 정확+정직(propose_action park qualify)·cleanup leak-free(client.close→subprocess kill·temp rm).
 - 리스크: 낮음. 계약 스크립트라 CI서 dist 빌드 필요(pnpm mcp:stdio-contract가 build 선행). ENV.md MUSE_CALENDAR_FILE에 apps/cli reader 추가(내 c1/c3가 참조)=docs:env 내 슬라이스 포함. 다음 = D4-S2a(macOS Photos 검색/내보내기, mac_photos actuator 확장).
 - lesson: 실-wire 계약 테스트는 seed된 알려진 데이터를 round-trip 어서(count·title)하면 데이터 민감=tautology 아님이 구조적으로 보장(연결됨만 확인하는 약한 테스트 회피).
+
+## fire 29 · 2026-07-12 · skill v2.x · <commit-pending>
+meta: slice=D4-S2a · wave=W3 · pkg=@muse/macos · kind=mac-photo-search · verdict=PASS · firesSinceDrill=3
+ratchet: 로드맵 잔여 [ ] = 27/60(D4-S2a 체크·VQ-21 추가) · self-eval pass · fabrication 0 · macos +3 test(imagesOnly)
+- 무엇: macOS 사진 검색. "신규툴 신설 금지" 제약 준수해 기존 mac_spotlight_search에 imagesOnly 플래그 확장(신규 툴 0). mdfind ARGV 불변(query→predicate 안 함=injection-safe), imagesOnly면 반환 경로를 이미지 확장자로 코드 후-필터(cap 필터 후, total=필터 카운트, imagesOnly:true echo). 반환 경로=export 핸들. default byte-identical.
+- 왜: hermes/openclaw급 mac 커버리지의 Photos 조각. 제약 충돌(Photos는 자연스러운 신규툴)→기존 파일-파인더 확장으로 "사진 찾기" 제공(혼동쌍 회피). Photos.app 관리-라이브러리 딥 export는 자동화 권한+툴-home 포크라 VQ-21.
+- 리뷰지점: Opus 8축 PASS — injection-safe(argv 불변, 후-필터)·isImagePath 정확(진짜 확장자·case-insensitive·no-ext false·dir 오탐 없음)·default byte-identical·mutation-RED(필터 제거→.txt/.pdf leak RED 재현)·no 혼동툴·total/cap 순서 정확.
+- 리스크: 낮음. eval:tools 6m40s timeout(무거운 로컬셋 미완)이나 변경 가산적(photo 키워드+optional 플래그, 리네임/혼동툴 없음)이라 selection 회귀 위험 near-zero — 결정론게이트(build/test/mutation/lint/Opus)로 판정, timeout≠fail 정직 표기. Photos.app 딥 라이브러리는 VQ-21. 다음 = D4-S2b(mac_system_set enum 확장: 앱종료).
+- lesson: 제약("신규툴 금지")이 자연스러운 신규 capability와 충돌하면, 기존 툴의 안전한 확장(후-필터·optional 플래그)으로 제약-준수판을 배송하고 딥 버전은 VQ로 표면화 — 조용히 쉬운 걸로 안 내려가되 제약도 안 어김.

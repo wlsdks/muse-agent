@@ -785,6 +785,41 @@ describe("mac_spotlight_search — Tier 0 find files", () => {
     expect(out.total).toBe(40);
     expect(out.truncated).toBe(true);
   });
+
+  const mixedFiles = "/u/beach.jpg\n/u/notes.txt\n/u/pic.HEIC\n/u/report.pdf\n/u/cat.png\n";
+
+  it("imagesOnly filters the returned paths to image files in code (post-hoc, not an mdfind predicate)", async () => {
+    const tool = createMacSpotlightSearchTool({ runner: async () => ok(mixedFiles) });
+    const out = await tool.execute({ imagesOnly: true, query: "x" }, ctx);
+    expect(out).toEqual({
+      imagesOnly: true,
+      paths: ["/u/beach.jpg", "/u/pic.HEIC", "/u/cat.png"],
+      query: "x",
+      total: 3
+    });
+  });
+
+  it("without imagesOnly the same mixed results are returned unfiltered (default path unchanged)", async () => {
+    const tool = createMacSpotlightSearchTool({ runner: async () => ok(mixedFiles) });
+    const out = await tool.execute({ query: "x" }, ctx);
+    expect(out).toEqual({
+      paths: ["/u/beach.jpg", "/u/notes.txt", "/u/pic.HEIC", "/u/report.pdf", "/u/cat.png"],
+      query: "x",
+      total: 5
+    });
+    expect(out).not.toHaveProperty("imagesOnly");
+  });
+
+  it("mdfind argv is identical whether or not imagesOnly is set (filter is post-hoc, never an injected predicate)", async () => {
+    let argvWithFlag: readonly string[] = [];
+    let argvWithoutFlag: readonly string[] = [];
+    const toolWith = createMacSpotlightSearchTool({ runner: async (a) => { argvWithFlag = a; return ok(mixedFiles); } });
+    const toolWithout = createMacSpotlightSearchTool({ runner: async (a) => { argvWithoutFlag = a; return ok(mixedFiles); } });
+    await toolWith.execute({ imagesOnly: true, query: "x" }, ctx);
+    await toolWithout.execute({ query: "x" }, ctx);
+    expect(argvWithFlag).toEqual(["x"]);
+    expect(argvWithoutFlag).toEqual(["x"]);
+  });
 });
 
 describe("mac_message_send — Tier 2 draft-first, fail-closed (outbound-safety)", () => {
