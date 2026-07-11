@@ -199,6 +199,9 @@ async function synthesizeReminderText(
     dueLine
   ].join("\n");
   const result = await options.agentRuntime.run({
+    // Machine-authored fact sheet, not a human turn — keeps the
+    // register/brevity personalization layer off (it would truncate this).
+    metadata: { internalTurn: true },
     messages: [
       { content: REMINDER_PHASE_D_SYSTEM_PROMPT, role: "system" },
       { content: factSheet, role: "user" }

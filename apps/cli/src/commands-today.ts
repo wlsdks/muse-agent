@@ -485,6 +485,8 @@ async function runLocalBrief(
     ? `${personaPreamble}\n\n${BRIEF_SYSTEM_PROMPT}`
     : BRIEF_SYSTEM_PROMPT;
   const result = await assembly.agentRuntime.run({
+    // Machine-authored brief input — not a conversational turn.
+    metadata: { internalTurn: true },
     messages: [
       { content: systemContent, role: "system" },
       { content: userMessage, role: "user" }

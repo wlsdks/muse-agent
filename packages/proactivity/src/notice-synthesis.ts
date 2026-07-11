@@ -23,6 +23,8 @@ export interface ProactiveAgentRuntimeLike {
   run(input: {
     readonly model: string;
     readonly messages: readonly { readonly role: "system" | "user" | "assistant"; readonly content: string }[];
+    /** Marks a machine-authored run so conversational layers (register/brevity) stay off. */
+    readonly metadata?: Readonly<Record<string, unknown>>;
   }): Promise<{ readonly response: { readonly output: string } }>;
 }
 
@@ -106,7 +108,8 @@ export async function synthesizeNoticeText(
     });
     reply = result.output.trim();
   } else if (options.agentRuntime) {
-    const result = await options.agentRuntime.run({ messages, model: options.agentModel });
+    // Machine-authored synthesis input — not a human conversational turn.
+    const result = await options.agentRuntime.run({ messages, metadata: { internalTurn: true }, model: options.agentModel });
     reply = result.response.output.trim();
   } else {
     return item.text;

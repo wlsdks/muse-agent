@@ -131,3 +131,19 @@ describe("buildRegisterBrevityLayer", () => {
     expect(layer?.content).not.toContain("1~2문장");
   });
 });
+
+describe("해체 endings (-해/-줘/-돼/-봐) are 반말 — the adversarial gate found these missing", () => {
+  const banmal = ["심심해", "사랑해", "그거 해줘", "이거 왜 안 돼?", "한번 봐줘", "빨리 와", "이거 좀 도와줘"];
+  for (const text of banmal) {
+    it(`detects 반말 in "${text}"`, () => {
+      expect(detectKoreanRegister(text)).toBe("반말");
+    });
+  }
+
+  it("does NOT swallow 존댓말 that contains the same stems", () => {
+    expect(detectKoreanRegister("이거 해주세요")).toBe("존댓말");
+    expect(detectKoreanRegister("한번 봐주시겠어요?")).toBe("존댓말");
+    expect(detectKoreanRegister("도와주실 수 있나요?")).toBe("존댓말");
+    expect(detectKoreanRegister("안 됩니다")).toBe("존댓말");
+  });
+});

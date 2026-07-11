@@ -30,7 +30,7 @@ const JONDAEMAL_ENDING_RE =
 // list above has already missed, so this never intercepts a "...습니다" /
 // "...세요" tail.
 const BANMAL_ENDING_RE =
-  /(?:거든|잖아|더라|텐데|는군|구나|랬|했어|했지|했냐|했니|했자|었어|았어|할래|ㄹ래|을래|래|워|야|지|니|자|게|까|네|다|음|재|랴|어|아)$/u;
+  /(?:거든|잖아|더라|텐데|는군|구나|랬|했어|했지|했냐|했니|했자|었어|았어|할래|ㄹ래|을래|래|해줘|줘|해|돼|봐|워|와|야|지|니|자|게|까|네|다|음|재|랴|어|아)$/u;
 
 const BANMAL_VOCATIVE_RE = /^(?:너|당신|자네)?\s*(?:야|어이|인마|얌마)\b/u;
 

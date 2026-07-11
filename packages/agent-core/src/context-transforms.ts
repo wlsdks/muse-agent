@@ -497,10 +497,18 @@ export function applyPromptLayers(
     providerId
   };
   const registryLayers: readonly PromptLayer[] = registry ? registry.resolve(resolveContext) : [];
-  const registerBrevityLayer = buildRegisterBrevityLayer({
-    personaRegister,
-    userText: latestUserPrompt(context.input.messages)
-  });
+  // Register-mirroring and brevity are HUMAN-conversation features. Internal
+  // runs (today-brief, reminder/notice synthesis, multi-agent workers) pass a
+  // machine-authored fact sheet as the "user" message; a casual-looking one
+  // would inject "1~2문장으로 짧게" and truncate that synthesis. Callers mark
+  // those runs with `metadata.internalTurn`.
+  const isInternalTurn = context.input.metadata?.["internalTurn"] === true;
+  const registerBrevityLayer = isInternalTurn
+    ? undefined
+    : buildRegisterBrevityLayer({
+        personaRegister,
+        userText: latestUserPrompt(context.input.messages)
+      });
   const composedLayers: readonly PromptLayer[] = registerBrevityLayer
     ? [...registryLayers, registerBrevityLayer]
     : registryLayers;

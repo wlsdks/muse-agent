@@ -155,9 +155,44 @@ describe("applyPromptLayers", () => {
         undefined,
       );
       const content = result.input.messages[0]!.content;
-      expect(content).not.toContain("반말");
-      expect(content).not.toContain("존댓말");
+      expect(content).not.toContain("사용자가 반말을 썼다");
+      expect(content).not.toContain("존댓말을 유지하라");
       expect(content).not.toContain("1~2문장");
     });
+  });
+});
+
+describe("register/brevity layer is a HUMAN-turn feature (machine-authored runs must not be truncated)", () => {
+  it("does not attach the layer when the run is marked as an internal/machine turn", () => {
+    // The adversarial gate found the layer riding along on today-brief /
+    // reminder-synthesis / multi-agent worker runs, whose "user" message is a
+    // machine-authored Korean fact sheet — a casual-looking one would inject
+    // "1~2문장으로 짧게" and truncate an internal synthesis step.
+    const context = {
+      input: {
+        messages: [{ content: "오늘 일정: 회의 3건, 리마인더 2건. 요약해.", role: "user" as const }],
+        metadata: { internalTurn: true },
+        model: "ollama/gemma4:12b"
+      }
+    } as unknown as Parameters<typeof applyPromptLayers>[0];
+
+    const out = applyPromptLayers(context, "ollama", "gemma4:12b", undefined);
+    const system = out.input.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    expect(system).not.toContain("사용자가 반말을 썼다");
+    expect(system).not.toContain("1~2문장");
+  });
+
+  it("still attaches the layer for a real user turn (no metadata flag)", () => {
+    const context = {
+      input: {
+        messages: [{ content: "야 오늘 뭐하지", role: "user" as const }],
+        metadata: {},
+        model: "ollama/gemma4:12b"
+      }
+    } as unknown as Parameters<typeof applyPromptLayers>[0];
+
+    const out = applyPromptLayers(context, "ollama", "gemma4:12b", undefined);
+    const system = out.input.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    expect(system).toContain("사용자가 반말을 썼다");
   });
 });
