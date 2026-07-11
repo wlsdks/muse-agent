@@ -228,7 +228,7 @@ ratchet: 로드맵 잔여 [ ] = 28/59 · self-eval pass · fabrication 0 · cli 
 - 리뷰지점: Opus PASS — status pass-through(fake가 정확 "done"/"all" 받음, "open" 하드코딩 아님)·invalid fail-close(spy로 source 미호출)·OUTCOME 채점(status 정확·태스크 round-trip ISO)·두 mutation 독립 재현(하드코딩→pass-through RED, 가드 제거→fail-close RED)·barrel export benign(기존 Task 타입 노출, no 신규심볼)·read-only.
 - 리스크: 낮음. read-only(태스크 변경 없음). completedAt ISO 직렬화는 테스트 미직접(calendar endsAt이 동일 패턴 커버, coverage nit). eval:tools N/A(outbound MCP). 다음 = D4-S1c3(실 stdio subprocess 왕복 계약 — spawn muse mcp serve→JSON-RPC, InMemory 아닌 실프로세스). D4-S1c3 완료 시 D4-S1(mcp serve 확장) 전체 완주.
 
-## fire 28 · 2026-07-12 · skill v2.x · <commit-pending>
+## fire 28 · 2026-07-12 · skill v2.x · f97f43515
 meta: slice=D4-S1c3 · wave=W3 · pkg=apps/cli(scripts) · kind=mcp-stdio-contract · verdict=PASS · firesSinceDrill=2 · ★D4-S1 완주
 ratchet: 로드맵 잔여 [ ] = 27/59 · self-eval pass · fabrication 0 · mcp:stdio-contract 신규(실 subprocess 라이브 PASS)·ENV.md MUSE_CALENDAR_FILE apps/cli reader
 - 무엇: MCP 실 stdio subprocess 왕복 계약. verify-mcp-stdio-contract.mjs(pnpm mcp:stdio-contract, 모델-free): 실 muse mcp serve를 StdioClientTransport(process.execPath+dist)로 spawn→initialize→tools/list(6툴)→tasks_read로 seed된 2 태스크 round-trip(count·title)+status open→1. InMemory 아닌 실 stdio wire 실증. 형제 MCP_SERVE_INSTRUCTIONS stale("3 tools"→정확한 6툴, propose_action=park-not-execute) 수정. D4-S1(mcp serve 확장) 전체 완주(a·b·c1·c2·c3).
