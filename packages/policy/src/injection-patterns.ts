@@ -131,7 +131,14 @@ export const sharedInjectionPatterns: readonly InjectionPattern[] = [
   { name: "meta_question", regex: /(너의|당신의|네)\s*(제약|제한|규칙|지침|시스템 프롬프트).{0,20}(알려|출력|나열|보여|말해|설명)/ },
   { name: "indirect_prompt_extraction", regex: /(이전|과거|처음|첫).{0,15}(받은|전달받은|주어진|있는).{0,15}(instructions?|지시|지침|내용|메시지).{0,15}(반복|알려|보여|출력|말해)/is },
   { name: "secrecy_probe", regex: /what.{0,10}(were you|are you).{0,10}(told|instructed|programmed|trained).{0,10}(not to|never)/is },
-  { name: "credential_extraction", regex: /(비밀번호|패스워드|password|비번|암호|api\s*key|api\s*키|secret|토큰|token|인증\s*키).{0,15}(알려|보여|출력|공개|말해|tell|show|reveal|give)/is },
+  // The credential word must sit near a verb that reads out its VALUE, not a
+  // benign advice-noun (관리/팁/안전/만드는 법/정책/…). "비밀번호 관리 팁 알려줘"
+  // is defensive education; the old `.{0,15}` window flagged it as extraction
+  // and hard-blocked the turn. The tempered gap `(?:(?!<benign>).){0,15}?`
+  // fails the moment an advice-noun appears between the credential word and the
+  // verb, so "reveal the stored password" still fires while "tell me password
+  // hygiene tips" no longer does.
+  { name: "credential_extraction", regex: /(비밀번호|패스워드|password|비번|암호|api\s*key|api\s*키|secret|토큰|token|인증\s*키)(?:(?!관리(?!자)|팁|방법|정책|규칙|습관|강도|추천|안전|보안|만드|만들|생성|설정|변경|재설정|초기화|바꾸|바꿔|저장|매니저|manage|manager|management|tip|hygiene|practice|policy|habit|strength|secure|security|create|store|storage|reset|change|best).){0,15}?(알려|보여|출력|공개|말해|tell|show|reveal|give)/is },
   { name: "environment_extraction", regex: /(환경\s*변수|env|environment).{0,15}(값|value|확인|알려|보여|출력|조회|read|print|echo|get)/is },
   // Require a command VERB (curl/wget/fetch), not a bare "http://" — otherwise
   // a user naming a legitimate dev-server URL ("open http://localhost:3000 in

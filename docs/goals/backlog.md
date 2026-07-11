@@ -3327,3 +3327,6 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 - ✓ D7-S1b 2026-07-12 — 레지스트리 `cli` 태그를 실제 CLI surface(COMMAND_STUBS 매니페스트)와 cross-check해 drift 락킹; 발견 jobs·pref·reflect 3개 오태깅→cliName? 추가(reflect→reflections)·jobs·pref chat-only 정정; drift-lock 4 test(실 매니페스트 대조·투영·chat 27 불변)·mutation-RED 양방향·Opus PASS. 비차단: cli 투영 소비자 미배선. **D7-S1 완주(a·b)**. 다음 = D4-S2d2(밝기, top-to-bottom 첫 미체크)
 - ✓ D4-S2d2 2026-07-12 — macOS 밝기(mac_system_set `brightness` enum, value-passing): value 0–100 clamp+round→named Shortcut에 stdin input 전달(`--input-path -`, mac_shortcut_run 선례); MUSE_BRIGHTNESS_SHORTCUT env+setupMessage+doctor check(단일 shortcut 미러). 9+4 test·mutation-RED 양방향·Opus PASS(stdin 값전달 실검증·argv-not-shell). **D4-S2 완전 종료(a·b·c·d·d2·e)**. 다음 = D5-S1(privacy routing follow-ups)
 - ✓ D5-S1 2026-07-12 — privacy routing follow-ups(3파트, additive·20 계약 무수정): (b) usesTools 결정론 신호(툴-요청→로컬 고정, 정책층 codification·route-flip 유닛) (c) personaPreamble nuance 문서화 (d) KO 내꺼/제꺼 토큰(오탐 제거/안내 방어)+`muse setup cloud` privacy-routing 안내단계(action stdout 실배선). policy +12·cli +3 유닛·mutation-RED·Opus PASS. 다음 = D5-S2(resolveAuxiliaryModel 통합 리졸버)
+
+- ✓ credential_extraction 인젝션 오탐(비밀번호 관리 팁 차단) 수정 — prompt-system fire 6
+- ◦ 언어 미러링: 영어 입력에 한국어 응답 — 영어턴만 미러링하는 dynamic PromptLayer (prompt-system 발굴)
