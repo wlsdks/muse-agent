@@ -110,6 +110,92 @@ export function resolveVisionModel(params: {
   return desired;
 }
 
+export type AuxiliaryTask = "compaction" | "vision" | "rewrite" | "judge" | "embedding-rescue";
+
+export interface AuxiliaryModelResolution {
+  readonly model: string;
+  readonly source: "task-env" | "legacy-env" | "session";
+  readonly route: "local" | "cloud";
+  readonly keptLocalForPrivacy: boolean;
+}
+
+const LEGACY_AUXILIARY_ENV_KEY: Record<AuxiliaryTask, keyof MuseEnvironment | undefined> = {
+  compaction: undefined,
+  "embedding-rescue": "MUSE_RECALL_EMBED_MODEL",
+  judge: undefined,
+  rewrite: undefined,
+  vision: "MUSE_VISION_MODEL"
+};
+
+function auxiliaryTaskEnvKey(task: AuxiliaryTask): string {
+  return `MUSE_AUX_${task.toUpperCase().replace(/-/gu, "_")}_MODEL`;
+}
+
+function classifyModelRoute(model: string): "local" | "cloud" {
+  const providerId = parseModelName(model).providerId ?? providerIdFromPrefix(model) ?? "openai-compatible";
+  return classifyProviderLocality(providerId, undefined);
+}
+
+/**
+ * One resolver for every auxiliary (non-chat) task Muse's runtime spins up a
+ * model for — compaction, vision, rewrite, judge, embedding-rescue — instead
+ * of each task growing its own ad-hoc env knob. Precedence, first non-empty
+ * wins:
+ *
+ *  1. The generalized per-task knob `MUSE_AUX_<TASK>_MODEL`: `MUSE_AUX_COMPACTION_MODEL`,
+ *     `MUSE_AUX_VISION_MODEL`, `MUSE_AUX_REWRITE_MODEL`, `MUSE_AUX_JUDGE_MODEL`,
+ *     `MUSE_AUX_EMBEDDING_RESCUE_MODEL`.
+ *  2. The task's LEGACY knob, where one exists (`MUSE_VISION_MODEL`,
+ *     `MUSE_RECALL_EMBED_MODEL`) — kept so an existing deployment's env
+ *     doesn't silently stop working when this resolver lands. Compaction,
+ *     rewrite, and judge never had a dedicated model knob, so they fall
+ *     straight through to the session model.
+ *  3. The session model.
+ *
+ * LOCAL-FIRST invariant (fail-close): an auxiliary knob can select a model
+ * for a task the operator doesn't think of as "the chat model", so it is an
+ * easy place to accidentally leak a personal-context task to the cloud
+ * (e.g. `MUSE_AUX_VISION_MODEL=gemini/...` on a photo of a private document).
+ * When the resolved model routes to "cloud" AND the caller says this task is
+ * personal-context (`isPersonalContext: true`) OR the whole runtime is under
+ * `MUSE_LOCAL_ONLY`, the override is REFUSED and the session model is used
+ * instead (`keptLocalForPrivacy: true`) — an aux knob can never escalate a
+ * personal or local-only task to the cloud, only a deliberate explicit
+ * session/chat model choice can.
+ */
+export function resolveAuxiliaryModel(params: {
+  readonly task: AuxiliaryTask;
+  readonly env: MuseEnvironment;
+  readonly sessionModel: string;
+  readonly isPersonalContext?: boolean;
+}): AuxiliaryModelResolution {
+  const { task, env, sessionModel, isPersonalContext } = params;
+
+  const taskEnvValue = parseOptionalString(env[auxiliaryTaskEnvKey(task)]);
+  const legacyEnvKey = LEGACY_AUXILIARY_ENV_KEY[task];
+  const legacyEnvValue = legacyEnvKey ? parseOptionalString(env[legacyEnvKey]) : undefined;
+
+  const chosen = taskEnvValue ?? legacyEnvValue ?? sessionModel;
+  const source: AuxiliaryModelResolution["source"] = taskEnvValue !== undefined
+    ? "task-env"
+    : legacyEnvValue !== undefined
+      ? "legacy-env"
+      : "session";
+
+  const route = classifyModelRoute(chosen);
+  const mustStayLocal = isPersonalContext === true || parseBoolean(env.MUSE_LOCAL_ONLY, false);
+  if (route === "cloud" && mustStayLocal) {
+    return {
+      keptLocalForPrivacy: true,
+      model: sessionModel,
+      route: classifyModelRoute(sessionModel),
+      source: "session"
+    };
+  }
+
+  return { keptLocalForPrivacy: false, model: chosen, route, source };
+}
+
 /**
  * Resolve the default model identifier the runtime should use.
  *
