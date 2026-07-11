@@ -3253,3 +3253,4 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 
 ## RUNNER SEATBELT (roadmap W1 D2-S1)
 - ✓ D2-S1b+c 2026-07-11 — MUSE_RUNNER_SANDBOX=seatbelt 배선(canonicalize 필수·/dev/null allowance 실기기 발견), 탈출3종 실프로세스 계약+mutation-RED, doctor 포스처; 다음 = D2-S1d(eval:adversarial 샌드박스-탈출 케이스, D2-S7 합류 가능)
+- ✓ D2-S1d 2026-07-11 — eval:adversarial 결정론 sandbox-탈출 3종(실 바이너리 spawn·OS거부 코드채점·adversarialCases 16→19); 다음 = D2-S2(셸 토폴로지 fail-close)

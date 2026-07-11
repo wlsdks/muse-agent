@@ -19,7 +19,10 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   a legitimate build/git flow succeeds while write-escape, home-dir, and
   network attempts are denied by the OS. Unset, behavior is byte-identical to
   before (the sandbox is strictly opt-in); on non-macOS the runner warns and
-  runs unsandboxed. `muse doctor` now reports the sandbox posture.
+  runs unsandboxed. `muse doctor` now reports the sandbox posture. The safety
+  eval battery also gains three sandbox-escape checks that confirm the OS
+  itself blocks each escape, so a regression that weakened the confinement
+  would be caught automatically.
 
 - **Post-compaction loop guard.** When the agent's context is compacted
   mid-run (old turns summarized away), a stuck small model could keep
