@@ -98,6 +98,16 @@ export interface AgentRuntimeOptions {
    */
   readonly streamIdleTimeoutMs?: number;
   /**
+   * Liveness ping for an EXTERNAL stale-run registry: called at each
+   * stream/tool progress point of a single run (`ModelLoopRunner.heartbeat`
+   * — a text-delta, a tool-call event, and once per genuinely executed tool
+   * call), so an in-tool/in-stream stall is visible while the run is still
+   * going. `agent-core` never imports a registry; whichever assembly layer
+   * ALSO owns one (e.g. `@muse/multi-agent`'s `SubAgentRunRegistry`) wires
+   * its `heartbeat(runId)` method in here. Unset = no-op, byte-identical.
+   */
+  readonly heartbeat?: (runId: string) => void;
+  /**
    * Per-tool-result character cap (Context Engineering step 1.b).
    * When set and a tool returns more than `maxChars` characters,
    * the message-bound copy is truncated head+tail with an explicit

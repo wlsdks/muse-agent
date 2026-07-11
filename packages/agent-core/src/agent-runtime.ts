@@ -219,6 +219,7 @@ export class AgentRuntime {
   private readonly systemPromptTokenBudget?: number;
   private readonly maxRunWallclockMs: number;
   private readonly streamIdleTimeoutMs?: number;
+  private readonly heartbeat?: (runId: string) => void;
   private readonly maxToolOutputChars: number;
   private readonly toolCallMiddleware?: readonly ToolCallMiddleware[];
   private readonly contextReferenceStore?: ContextReferenceStore;
@@ -295,6 +296,7 @@ export class AgentRuntime {
       && options.streamIdleTimeoutMs > 0
       ? Math.trunc(options.streamIdleTimeoutMs)
       : undefined;
+    this.heartbeat = options.heartbeat;
     this.maxToolOutputChars = Math.max(0, options.maxToolOutputChars ?? 0);
     this.toolCallMiddleware = options.toolCallMiddleware;
     if (options.contextReferenceStore) {
@@ -975,6 +977,7 @@ export class AgentRuntime {
       generateWithTracing: (context, provider, request) => this.generateWithTracing(context, provider, request),
       maxRunWallclockMs: this.maxRunWallclockMs,
       ...(this.streamIdleTimeoutMs !== undefined ? { streamIdleTimeoutMs: this.streamIdleTimeoutMs } : {}),
+      ...(this.heartbeat ? { heartbeat: this.heartbeat } : {}),
       maxToolCalls: this.maxToolCalls,
       maxToolOutputChars: this.maxToolOutputChars,
       ...(this.toolCallMiddleware ? { toolCallMiddleware: this.toolCallMiddleware } : {}),
