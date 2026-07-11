@@ -8,7 +8,7 @@
  */
 
 import { fetchWithRetry, type RetryOptions } from "@muse/mcp-shared";
-import { resolveRelativeTimePhrase } from "@muse/mcp-shared";
+import { resolveRelativeTimePhrase, startOfLocalDay } from "@muse/mcp-shared";
 
 export { fetchWithRetry, isRetriableStatus, parseRetryAfterMs, type RetryOptions } from "@muse/mcp-shared";
 
@@ -23,6 +23,12 @@ export function isoInZone(instant: Date, timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", { day: "2-digit", month: "2-digit", timeZone, year: "numeric" }).formatToParts(instant);
   const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** Add whole days to a YYYY-MM-DD calendar date via UTC arithmetic (no zone drift). */
+export function addDaysToIsoDate(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d! + days)).toISOString().slice(0, 10);
 }
 
 /** A forecast target: an explicit calendar date, or a relative phrase to resolve in the location's zone. */
@@ -340,7 +346,17 @@ export async function resolveForecastLine(
       if (!instant) {
         return undefined;
       }
-      targetDateIso = location.timezone ? isoInZone(instant, location.timezone) : isoInZone(instant, "UTC");
+      // resolveRelativeTimePhrase thinks in the SERVER's local days, so rendering
+      // its instant in the location's zone mixes two timezones (a UTC server made
+      // "tomorrow in Seoul" land on Seoul's today). Take the phrase's DAY OFFSET
+      // in server terms — invariant across server zones — and apply it to the
+      // location's local today.
+      const reference = target.now();
+      const offsetDays = Math.round(
+        (startOfLocalDay(instant).getTime() - startOfLocalDay(reference).getTime()) / 86_400_000
+      );
+      const locationToday = isoInZone(reference, location.timezone ?? "UTC");
+      targetDateIso = addDaysToIsoDate(locationToday, offsetDays);
     }
     const days = await provider.dailyForecast(location, { days: 16 });
     const match = days.find((day) => day.dateIso === targetDateIso);

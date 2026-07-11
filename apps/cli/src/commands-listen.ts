@@ -28,7 +28,7 @@ import type { Command } from "commander";
 
 import { parseBoundedInt } from "./parse-bounded-int.js";
 import type { ProgramIO } from "./program.js";
-import { parseAudioFormat, synthesizeAndPlay } from "./voice-playback.js";
+import { parseAudioFormat, resolveAudioPlayerInvocation, synthesizeAndPlay } from "./voice-playback.js";
 
 export interface ListenShells {
   /** Returns the absolute path to a binary on PATH, or undefined when missing. */
@@ -276,14 +276,14 @@ interface ListenOptions {
 export function defaultShells(): ListenShells {
   return {
     playAudio: (filePath) => new Promise<void>((resolve, reject) => {
-      const player = platform === "darwin" ? "afplay" : "aplay";
-      const child = spawn(player, [filePath], { stdio: ["ignore", "ignore", "pipe"] });
+      const { cmd, args } = resolveAudioPlayerInvocation(platform, filePath);
+      const child = spawn(cmd, [...args], { stdio: ["ignore", "ignore", "pipe"] });
       child.once("error", reject);
       child.once("close", (code) => {
         if (code === 0) {
           resolve();
         } else {
-          reject(new Error(`${player} exited with code ${code ?? "unknown"}`));
+          reject(new Error(`${cmd} exited with code ${code ?? "unknown"}`));
         }
       });
     }),

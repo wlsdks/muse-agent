@@ -105,7 +105,7 @@ describe("appendThreadTurns — persist + bound + per-channel isolation", () => 
     const file = freshFile();
     await appendThreadTurns(file, "tg:c1", [userTurn("hi")]);
     const mode = statSync(file).mode & 0o777;
-    expect(mode).toBe(0o600);
+    if (process.platform !== "win32") expect(mode).toBe(0o600);
   });
 
   it("serialises concurrent appendThreadTurns calls per file — two channels arriving at the same instant both land instead of one clobbering the other (pre-fix the unserialised read-modify-write lost the first caller's update when a Telegram inbound and a Discord inbound fired in the same tick)", async () => {

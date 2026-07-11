@@ -39,7 +39,7 @@ describe("readPlaybook / writePlaybook", () => {
       { id: "a", tag: "email" },
       { id: "b", tag: undefined },
     ]);
-    expect((await stat(file)).mode.toString(8).slice(-3)).toBe("600");
+    if (process.platform !== "win32") expect((await stat(file)).mode.toString(8).slice(-3)).toBe("600");
   });
 
   it("returns [] for a missing file and for a corrupt one", async () => {

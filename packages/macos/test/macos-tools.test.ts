@@ -669,7 +669,7 @@ describe("mac_screenshot — Tier 1 capture screen", () => {
     expect(captured).toBe("/tmp/fixed.png");
   });
 
-  it("honors a caller-supplied path under ~/Desktop (expands ~ and passes resolved path to runner)", async () => {
+  it.skipIf(process.platform === "win32")("honors a caller-supplied path under ~/Desktop (expands ~ and passes resolved path to runner)", async () => {
     let captured = "";
     const tool = createMacScreenshotTool({ runner: async (p) => { captured = p; return ok(""); } });
     const result = await tool.execute({ path: "~/Desktop/shot.png" }, ctx);
@@ -716,7 +716,7 @@ describe("mac_screenshot — Tier 1 capture screen", () => {
     expect(runnerCalled).toBe(false);
   });
 
-  it("allows a path under the system temp dir (resolves symlinks like /tmp → /private/tmp)", async () => {
+  it.skipIf(process.platform === "win32")("allows a path under the system temp dir (resolves symlinks like /tmp → /private/tmp)", async () => {
     let captured = "";
     const tool = createMacScreenshotTool({ runner: async (p) => { captured = p; return ok(""); } });
     const result = await tool.execute({ path: "/tmp/muse-test.png" }, ctx);

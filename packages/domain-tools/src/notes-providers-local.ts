@@ -20,6 +20,7 @@
  */
 
 import { Buffer } from "node:buffer";
+import { resolve as resolveNativePath, sep as nativeSep } from "node:path";
 
 import {
   NotesProviderError,
@@ -46,7 +47,9 @@ export class LocalDirNotesProvider implements NotesProvider {
   private readonly maxListEntries: number;
 
   constructor(options: LocalDirNotesProviderOptions) {
-    this.notesDir = options.notesDir;
+    // Normalize once: a mixed-separator or trailing-sep notesDir would defeat
+    // the prefix containment check in resolveSafe on win32.
+    this.notesDir = resolveNativePath(options.notesDir);
     this.maxFileBytes = Math.max(1_024, Math.trunc(options.maxFileBytes ?? 1_048_576));
     this.maxListEntries = Math.max(1, Math.trunc(options.maxListEntries ?? 500));
   }
@@ -282,7 +285,8 @@ export class LocalDirNotesProvider implements NotesProvider {
     if (absolute !== this.notesDir && !absolute.startsWith(this.notesDir + sep)) {
       return "path escapes the notes directory";
     }
-    const relative = absolute === this.notesDir ? "" : absolute.slice(this.notesDir.length + 1);
+    // Note ids are portable: always forward-slash, whatever the OS separator.
+    const relative = absolute === this.notesDir ? "" : absolute.slice(this.notesDir.length + 1).split(sep).join("/");
     return { absolute, relative };
   }
 
@@ -312,7 +316,7 @@ export class LocalDirNotesProvider implements NotesProvider {
       if (entry.isDirectory()) {
         await this.walk(childAbs, accept, visited, readdir, resolve, sep);
       } else if (entry.isFile() && /\.(md|markdown|txt)$/iu.test(entry.name)) {
-        accept(childAbs.slice(this.notesDir.length + 1));
+        accept(childAbs.slice(this.notesDir.length + 1).split(nativeSep).join("/"));
       }
     }
   }

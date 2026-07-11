@@ -34,8 +34,6 @@ function objective(overrides: Partial<StandingObjective> = {}): StandingObjectiv
   };
 }
 
-const EVIDENCE = [{ source: "test:store", text: "resolved evidence" }] as const;
-
 describe("P5 audit — register → restart → tick(backoff) → restart → tick(met → consented action) composes", () => {
   it("a durable objective survives restarts and is carried to a real consented external action", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-p5-seam-"));
@@ -101,7 +99,7 @@ describe("P5 audit — register → restart → tick(backoff) → restart → ti
     const T2 = new Date(Date.parse(afterTick1.nextEvalAt!) + 1);
     const t2 = await runDueObjectives({
       act: consentedAct,
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: EVIDENCE, outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => T2
     });
@@ -137,7 +135,7 @@ describe("P5 audit — register → restart → tick(backoff) → restart → ti
           throw new Error(outcome.reason);
         }
       },
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: EVIDENCE, outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => new Date("2026-05-19T12:00:00.000Z")
     });

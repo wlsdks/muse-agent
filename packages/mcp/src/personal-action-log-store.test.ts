@@ -31,7 +31,6 @@ function objective(overrides: Partial<StandingObjective> = {}): StandingObjectiv
 }
 
 const NOW = new Date("2026-05-19T12:00:00.000Z");
-const EVIDENCE = [{ source: "test:store", text: "resolved evidence" }] as const;
 
 describe("personal-action-log-store — P6-b1 reviewable autonomous-action log", () => {
   it("append-only: prior entries are preserved, even on a duplicate id (the log records attempts)", async () => {
@@ -146,7 +145,7 @@ describe("personal-action-log-store — P6-b1 reviewable autonomous-action log",
           throw new Error(outcome.reason);
         }
       },
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: EVIDENCE, outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => NOW
     });
@@ -196,7 +195,7 @@ describe("personal-action-log-store — P6-b1 reviewable autonomous-action log",
           throw new Error(outcome.reason);
         }
       },
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: EVIDENCE, outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => NOW
     });

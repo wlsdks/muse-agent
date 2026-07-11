@@ -11,7 +11,7 @@ describe("resolveDaemonConfigFile", () => {
   });
 
   it("falls back to HOME/.config/muse/daemon.json", () => {
-    expect(resolveDaemonConfigFile({ HOME: "/home/me" } as NodeJS.ProcessEnv)).toBe("/home/me/.config/muse/daemon.json");
+    expect(resolveDaemonConfigFile({ HOME: "/home/me" } as NodeJS.ProcessEnv)).toBe(join("/home/me", ".config", "muse", "daemon.json"));
   });
 });
 

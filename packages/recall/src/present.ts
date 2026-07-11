@@ -1,5 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { isAbsolute, join, relative, basename, sep } from "node:path";
 
 import { citedSourcesIn, cosineSimilarity, lexicalOverlap, lexicalTokens, quorumVerdict } from "@muse/agent-core";
 import type { BrowsingVisit } from "./browsing-store.js";
@@ -191,7 +191,7 @@ export function formatSourcesFooter(answer: string, notesDir: string): string | 
   if (citedNotes.length === 0) {
     return undefined;
   }
-  const lines = citedNotes.map((src) => `   ${isAbsolute(src) ? src : join(notesDir, src)}`);
+  const lines = citedNotes.map((src) => `   ${(isAbsolute(src) ? src : join(notesDir, src)).split(sep).join("/")}`);
   return `\n📎 Sources (open to verify):\n${lines.join("\n")}\n`;
 }
 
@@ -312,7 +312,8 @@ export function formatSourceReceipts(
     const target = override !== undefined
       ? override ?? undefined
       : hit && isAbsolute(hit.file) ? hit.file : isAbsolute(note) ? note : join(notesDir, note);
-    return `   • ${lead}${snippet ? ` — "${snippet}"` : driftNote}${target ? `\n     ${target}` : ""}`;
+    const shownTarget = target?.split(sep).join("/");
+    return `   • ${lead}${snippet ? ` — "${snippet}"` : driftNote}${shownTarget ? `\n     ${shownTarget}` : ""}`;
   });
   return `\n📎 From your notes (open to verify):\n${blocks.join("\n")}${corroborationReceiptLine(cited)}\n`;
 }
@@ -746,7 +747,9 @@ export function relativizeNoteSource(file: string, notesDir: string): string {
   // that ESCAPES it (an ad-hoc `--file ~/work/RUNBOOK.md`) would otherwise cite
   // as `[from ../../../work/RUNBOOK.md]` — show the basename instead; the receipt
   // resolves the real openable path from the matched chunk's absolute file.
-  return rel.startsWith("..") ? (file.split("/").pop() ?? rel) : rel;
+  // Receipts render forward-slash on every OS (portable, matches note ids).
+  // Cross-drive on win32: relative() returns the absolute target (no ".." prefix) — also outside.
+  return rel.startsWith("..") || isAbsolute(rel) ? basename(file) : rel.split(sep).join("/");
 }
 
 /**

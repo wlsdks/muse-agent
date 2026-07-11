@@ -19,6 +19,7 @@ import type { CalendarRange } from "../src/types.js";
 
 const dir = mkdtempSync(join(tmpdir(), "muse-macos-"));
 let seq = 0;
+// win32 can't spawn a shebang shell script — and the macOS provider never runs there.
 const fakeOsascript = (sh: string): string => {
   const path = join(dir, `fake-${(seq++).toString()}.sh`);
   writeFileSync(path, `#!/bin/sh\n${sh}\n`);
@@ -29,7 +30,7 @@ const RANGE: CalendarRange = { from: new Date("2026-05-30T00:00:00Z"), to: new D
 const provider = (osascriptPath: string, timeoutMs?: number) =>
   new MacOsCalendarProvider({ osascriptPath, ...(timeoutMs ? { timeoutMs } : {}) });
 
-describe("MacOsCalendarProvider — listEvents output parsing", () => {
+describe.skipIf(process.platform === "win32")("MacOsCalendarProvider — listEvents output parsing", () => {
   it("parses the tab-separated lines into events (allDay from the 6th field, optional location)", async () => {
     // Z-suffixed ISO keeps the date assertions timezone-independent.
     const bin = fakeOsascript(
@@ -56,7 +57,7 @@ describe("MacOsCalendarProvider — listEvents output parsing", () => {
   });
 });
 
-describe("MacOsCalendarProvider — error classification", () => {
+describe.skipIf(process.platform === "win32")("MacOsCalendarProvider — error classification", () => {
   it("maps a permission-denied stderr to EVENT_PERMISSION", async () => {
     const bin = fakeOsascript('cat >/dev/null\necho "Calendar is not allowed to access your calendars" >&2\nexit 1');
     await expect(provider(bin).listEvents(RANGE)).rejects.toMatchObject({ code: "EVENT_PERMISSION" });
@@ -84,7 +85,7 @@ describe("MacOsCalendarProvider — error classification", () => {
   });
 });
 
-describe("MacOsCalendarProvider — writes", () => {
+describe.skipIf(process.platform === "win32")("MacOsCalendarProvider — writes", () => {
   it("createEvent returns the uid printed by the script + the input fields", async () => {
     const bin = fakeOsascript("cat >/dev/null\nprintf 'new-uid-123'");
     const created = await provider(bin).createEvent({ endsAt: new Date("2026-06-01T11:00:00Z"), location: "Z", startsAt: new Date("2026-06-01T10:00:00Z"), title: "New" });

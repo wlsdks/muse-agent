@@ -41,6 +41,7 @@ import { detectCalendarConflicts } from "@muse/domain-tools";
 import { projectRecentlyLearned } from "@muse/memory";
 
 import { briefFocusBeat } from "./calendar-focus.js";
+import { playInvocationWithWatchdog, resolveAudioPlayerInvocation } from "./voice-playback.js";
 import { collectDatedNotes, formatOnThisDayBrief, selectOnThisDay } from "./on-this-day.js";
 import { formatBriefConflicts } from "./brief-conflicts.js";
 import { formatBriefFeedLines, selectBriefFeedHeadlines } from "./brief-feeds.js";
@@ -151,8 +152,11 @@ export async function playSynthesizedAudio(
   try {
     const audioFile = pathJoin(dir, `brief.${format}`);
     writeFileSync(audioFile, audio);
-    const player = options.playerCommand ?? (platform() === "darwin" ? "afplay" : "aplay");
-    await playAudioFile(player, audioFile, options.playerSpawn);
+    if (options.playerCommand) {
+      await playAudioFile(options.playerCommand, audioFile, options.playerSpawn);
+    } else {
+      await playInvocationWithWatchdog(resolveAudioPlayerInvocation(platform(), audioFile), options.playerSpawn);
+    }
     return { dir };
   } finally {
     try { rmSync(dir, { recursive: true, force: true }); } catch { /* best-effort cleanup */ }

@@ -31,7 +31,10 @@ function resolveDotMusePath(env: MuseEnvironment, envKey: string, defaultName: s
   if (override && override.length > 0) {
     return expandLeadingTilde(override);
   }
-  return pathJoin(homedir(), ".muse", defaultName);
+  // HOME-first like @muse/shared resolveHomeDir: os.homedir() ignores $HOME on
+  // win32 (USERPROFILE), which would break HOME-based isolation (tests, muse demo).
+  const home = env.HOME?.trim();
+  return pathJoin(home && home.length > 0 ? home : homedir(), ".muse", defaultName);
 }
 
 export function resolveNotesDir(env: MuseEnvironment): string {

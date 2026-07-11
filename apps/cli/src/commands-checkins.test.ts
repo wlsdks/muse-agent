@@ -209,7 +209,7 @@ describe("checkins scan — numeric option validation (parity with calendar/feed
 describe("checkinsFile", () => {
   it("honours MUSE_CHECKINS_FILE, else defaults under ~/.muse/checkins.json", () => {
     expect(checkinsFile({ MUSE_CHECKINS_FILE: "/tmp/c.json" } as NodeJS.ProcessEnv)).toBe("/tmp/c.json");
-    expect(checkinsFile({} as NodeJS.ProcessEnv).endsWith("/.muse/checkins.json")).toBe(true);
+    expect(checkinsFile({} as NodeJS.ProcessEnv).replaceAll("\\", "/").endsWith("/.muse/checkins.json")).toBe(true);
   });
 });
 

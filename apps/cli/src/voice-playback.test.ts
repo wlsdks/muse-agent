@@ -195,3 +195,25 @@ describe("synthesizeAndPlay — `mkdtemp` cleanup so a long-running `muse listen
     expect(leaked).toEqual([]);
   });
 });
+
+describe("resolveAudioPlayerInvocation", () => {
+  it("darwin → afplay <file> (unchanged)", async () => {
+    const { resolveAudioPlayerInvocation } = await import("./voice-playback.js");
+    expect(resolveAudioPlayerInvocation("darwin", "/tmp/a.mp3")).toEqual({ args: ["/tmp/a.mp3"], cmd: "afplay" });
+  });
+
+  it("win32 → powershell SoundPlayer with the path single-quote-escaped", async () => {
+    const { resolveAudioPlayerInvocation } = await import("./voice-playback.js");
+    const inv = resolveAudioPlayerInvocation("win32", "C:\\Users\\o'brien\\out.wav");
+    expect(inv.cmd).toBe("powershell");
+    expect(inv.args[0]).toBe("-NoProfile");
+    expect(inv.args[1]).toBe("-Command");
+    expect(inv.args[2]).toContain("Media.SoundPlayer 'C:\\Users\\o''brien\\out.wav'");
+    expect(inv.args[2]).toContain("PlaySync()");
+  });
+
+  it("linux → aplay <file> (unchanged)", async () => {
+    const { resolveAudioPlayerInvocation } = await import("./voice-playback.js");
+    expect(resolveAudioPlayerInvocation("linux", "/tmp/a.wav")).toEqual({ args: ["/tmp/a.wav"], cmd: "aplay" });
+  });
+});

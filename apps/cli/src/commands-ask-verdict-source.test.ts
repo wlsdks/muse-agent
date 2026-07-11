@@ -12,7 +12,7 @@ describe("relativizeNoteSource — gate, verdict, and receipt cite the SAME sour
     // citation against the RAW absolute path and falsely flagged a correct
     // answer "treat as unverified". This is the form it must use instead.
     expect(relativizeNoteSource(join(notesDir, "q3.md"), notesDir)).toBe("q3.md");
-    expect(relativizeNoteSource(join(notesDir, "projects", "vpn.md"), notesDir)).toBe(join("projects", "vpn.md"));
+    expect(relativizeNoteSource(join(notesDir, "projects", "vpn.md"), notesDir)).toBe("projects/vpn.md");
   });
 
   it("leaves an already-relative source untouched (test corpora pass short names)", () => {
@@ -30,6 +30,6 @@ describe("relativizeNoteSource — gate, verdict, and receipt cite the SAME sour
     expect(relativizeNoteSource("/home/u/work/RUNBOOK.md", notesDir)).toBe("RUNBOOK.md");
     expect(relativizeNoteSource("/tmp/docs/spec.md", notesDir)).toBe("spec.md");
     // …but an in-corpus nested note still keeps its disambiguating relative path.
-    expect(relativizeNoteSource(join(notesDir, "a", "notes.md"), notesDir)).toBe(join("a", "notes.md"));
+    expect(relativizeNoteSource(join(notesDir, "a", "notes.md"), notesDir)).toBe("a/notes.md");
   });
 });

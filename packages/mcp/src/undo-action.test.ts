@@ -35,7 +35,6 @@ function objective(overrides: Partial<StandingObjective> = {}): StandingObjectiv
 
 const T = new Date("2026-05-19T12:00:00.000Z");
 const SCOPE = "github:issues:write";
-const EVIDENCE = [{ source: "test:store", text: "resolved evidence" }] as const;
 
 describe("undoLoggedAction — P6-b2 act → undo → veto → no longer auto-acts", () => {
   it("a veto recorded by an undo overrides prior consent and blocks the same trigger from recurring", async () => {
@@ -71,7 +70,7 @@ describe("undoLoggedAction — P6-b2 act → undo → veto → no longer auto-ac
     };
     const first = await runDueObjectives({
       act,
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: EVIDENCE, outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: f.objectivesFile,
       now: () => T
     });
@@ -111,7 +110,7 @@ describe("undoLoggedAction — P6-b2 act → undo → veto → no longer auto-ac
     await addObjective(f.objectivesFile, objective());
     const second = await runDueObjectives({
       act,
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: EVIDENCE, outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: f.objectivesFile,
       now: () => new Date("2026-05-19T14:00:00.000Z")
     });

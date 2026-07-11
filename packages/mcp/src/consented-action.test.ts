@@ -25,7 +25,6 @@ function objective(overrides: Partial<StandingObjective> = {}): StandingObjectiv
 }
 
 const NOW = new Date("2026-05-19T12:00:00.000Z");
-const EVIDENCE = [{ source: "test:store", text: "resolved evidence" }] as const;
 
 describe("performConsentedAction — P5-b3 act-as-the-user under recorded consent", () => {
   it("fail-closed: no recorded consent ⇒ no HTTP call, no credential use", async () => {
@@ -225,7 +224,7 @@ describe("performConsentedAction — P5-b3 act-as-the-user under recorded consen
           throw new Error(outcome.reason);
         }
       },
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: EVIDENCE, outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => NOW
     });
@@ -260,7 +259,7 @@ describe("performConsentedAction — P5-b3 act-as-the-user under recorded consen
           throw new Error(outcome.reason);
         }
       },
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: EVIDENCE, outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => NOW
     });

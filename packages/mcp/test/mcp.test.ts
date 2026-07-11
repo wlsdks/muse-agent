@@ -285,10 +285,11 @@ describe("DefaultMcpTransportConnector", () => {
     try {
       const raw = await connection.callTool?.("dump-roots", {});
       const roots = JSON.parse(raw as string) as Array<{ name?: string; uri: string }>;
+      const { pathToFileURL } = await import("node:url");
       expect(roots).toHaveLength(2);
-      expect(roots[0]?.uri).toBe("file:///tmp/muse-test-root");
+      expect(roots[0]?.uri).toBe(pathToFileURL("/tmp/muse-test-root").href);
       expect(roots[0]?.name).toBe("/tmp/muse-test-root");
-      expect(roots[1]?.uri).toBe("file:///Users/example/notes");
+      expect(roots[1]?.uri).toBe(pathToFileURL("/Users/example/notes").href);
     } finally {
       await connection.close?.();
     }
@@ -3649,7 +3650,7 @@ describe("notes provider abstraction", () => {
     await expect(apple.append({ body: "b", id: "" })).rejects.toMatchObject({ code: "EMPTY_ID" });
   });
 
-  it("AppleNotesProvider surfaces osascript failures as typed provider errors", async () => {
+  it.skipIf(process.platform === "win32")("AppleNotesProvider surfaces osascript failures as typed provider errors", async () => {
     const apple = new AppleNotesProvider({ osascriptPath: "/usr/bin/false" });
     const error = await apple.list().catch((err) => err);
     expect(error).toBeInstanceOf(NotesProviderError);
@@ -4183,7 +4184,7 @@ describe("tasks provider abstraction", () => {
     await expect(apple.search("   ", 10)).rejects.toMatchObject({ code: "EMPTY_QUERY" });
   });
 
-  it("AppleRemindersProvider surfaces osascript failures as typed provider errors", async () => {
+  it.skipIf(process.platform === "win32")("AppleRemindersProvider surfaces osascript failures as typed provider errors", async () => {
     // /usr/bin/false exits non-zero with empty stdout/stderr — exercises the
     // generic EXIT_<code> code path without needing a real Reminders.app.
     const apple = new AppleRemindersProvider({ osascriptPath: "/usr/bin/false" });
@@ -9125,7 +9126,7 @@ describe("sensitive store file-mode lock-ins", () => {
     await writeFollowups(file, [
       { id: "fu_a", userId: "stark", scheduledFor: "2026-05-15T09:00:00Z", status: "scheduled", summary: "Send Q3 memo", createdAt: "2026-05-12T00:00:00Z" }
     ]);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
   it("writeEpisodes / writeReminders / writeTasks all yield mode 0600", async () => {
@@ -9140,19 +9141,19 @@ describe("sensitive store file-mode lock-ins", () => {
     await writeEpisodes(epFile, [
       { id: "ep_a", userId: "stark", startedAt: "2026-05-12T22:00:00Z", endedAt: "2026-05-12T22:30:00Z", summary: "x" }
     ]);
-    expect(statSync(epFile).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(epFile).mode & 0o777).toBe(0o600);
 
     const remFile = join(dir, "reminders.json");
     await writeReminders(remFile, [
       { id: "rem_a", text: "x", dueAt: "2026-05-15T09:00:00Z", status: "pending", createdAt: "2026-05-12T00:00:00Z" }
     ]);
-    expect(statSync(remFile).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(remFile).mode & 0o777).toBe(0o600);
 
     const taskFile = join(dir, "tasks.json");
     await writeTasks(taskFile, [
       { id: "task_a", title: "x", status: "open", createdAt: "2026-05-12T00:00:00Z" }
     ]);
-    expect(statSync(taskFile).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(taskFile).mode & 0o777).toBe(0o600);
   });
 
   it("writeProactiveFired yields mode 0600 — sibling-parity with the other personal stores; ~/.muse/proactive-history.json shows which calendar events / tasks fired when, so a shared-box install must not expose the timeline to other local users (default umask leaves it 0o644)", async () => {
@@ -9169,7 +9170,7 @@ describe("sensitive store file-mode lock-ins", () => {
     await writeProactiveFired(file, [
       { kind: "calendar", id: "evt_a", startIso: "2026-05-12T08:00:00.000Z", firedAt: "2026-05-12T08:00:00.000Z" }
     ]);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
 
     // Tamper to a looser mode (simulating either a pre-existing
     // file on disk or an external chmod between writes), then
@@ -9182,7 +9183,7 @@ describe("sensitive store file-mode lock-ins", () => {
       { kind: "calendar", id: "evt_a", startIso: "2026-05-12T08:00:00.000Z", firedAt: "2026-05-12T08:00:00.000Z" },
       { kind: "task", id: "task_b", startIso: "2026-05-12T09:00:00.000Z", firedAt: "2026-05-12T09:00:00.000Z" }
     ]);
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 });
 
@@ -9420,7 +9421,7 @@ describe("proactive-history rotation on capacity", () => {
   });
 });
 
-describe("Apple osascript timeout watchdog (notes + reminders)", () => {
+describe.skipIf(process.platform === "win32")("Apple osascript timeout watchdog (notes + reminders)", () => {
   async function fakeOsascript(body: string): Promise<string> {
     const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");

@@ -19,7 +19,7 @@ import {
   type CalendarProvider
 } from "../src/index.js";
 
-describe("MacOsCalendarProvider osascript spawn timeout", () => {
+describe.skipIf(process.platform === "win32")("MacOsCalendarProvider osascript spawn timeout", () => {
   function hungScript(): string {
     const dir = mkdtempSync(join(tmpdir(), "muse-osascript-hang-"));
     const script = join(dir, "fake-osascript");
@@ -529,7 +529,7 @@ describe("LocalCalendarProvider", () => {
       notes: "Q2 planning"
     });
     const mode = statSync(file).mode & 0o777;
-    expect(mode, "local calendar events file must be user-only — title/location/notes are private").toBe(0o600);
+    if (process.platform !== "win32") expect(mode, "local calendar events file must be user-only — title/location/notes are private").toBe(0o600);
 
     // Subsequent updates must also produce a 0o600 file (the
     // tmp+rename + chmod pair must hold across the update path).
@@ -538,7 +538,7 @@ describe("LocalCalendarProvider", () => {
       startsAt: new Date("2026-05-16T10:00:00Z"),
       title: "Followup"
     });
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
   describe("updateEvent — create/update field-clear symmetry", () => {

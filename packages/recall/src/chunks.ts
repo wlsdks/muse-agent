@@ -210,12 +210,17 @@ export function shouldSecondHop(verdict: RetrievalConfidence): boolean {
  * absolute one (or vice versa). Shared by every source-receipt / disk-verify
  * path that resolves a citation back to its indexed chunk.
  */
+/** Last path segment, separator-agnostic (chunk files are native paths, note ids are "/"). */
+function lastPathSegment(p: string): string | undefined {
+  return p.split(/[\\/]/u).pop();
+}
+
 export function findChunkByNote<T extends { readonly file: string }>(
   note: string,
   chunks: ReadonlyArray<T>
 ): T | undefined {
-  const base = note.split("/").pop();
-  return chunks.find((c) => c.file === note || c.file.split("/").pop() === base);
+  const base = lastPathSegment(note);
+  return chunks.find((c) => c.file === note || lastPathSegment(c.file) === base);
 }
 
 /**

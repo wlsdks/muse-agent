@@ -17,7 +17,7 @@ import {
   type SpawnLike
 } from "./codex-cli.js";
 
-describe("detectCodexReadiness — CLI on PATH + logged-in probe", () => {
+describe.skipIf(process.platform === "win32")("detectCodexReadiness — CLI on PATH + logged-in probe", () => {
   it("ready when codex resolves on PATH AND auth.json exists", async () => {
     const readiness = await detectCodexReadiness({
       fileExists: (p) => p.endsWith(join(".codex", "auth.json")),

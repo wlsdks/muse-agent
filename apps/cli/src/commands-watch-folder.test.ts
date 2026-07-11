@@ -4,6 +4,16 @@ import { buildInboxNotice, extractDueHint, resolveInboxDueAt, watchIngestNoteId 
 
 const FIXED_NOW = (): Date => new Date("2026-05-18T09:00:00Z");
 
+// The resolver's documented default lands a bare day phrase at 09:00 SERVER-LOCAL
+// (loopback-relative-time.ts header), so the expected instant must be computed
+// with the same local-clock APIs — a hardcoded Z-rendering only holds in one TZ.
+const localNineAm = (daysFromNow: number): string => {
+  const d = new Date(FIXED_NOW());
+  d.setDate(d.getDate() + daysFromNow);
+  d.setHours(9, 0, 0, 0);
+  return d.toISOString();
+};
+
 describe("watchIngestNoteId — corpus note id for an ingested watched file", () => {
   it("is <prefix>/<basename-no-ext>.md so the note is indexable by `muse ask`", () => {
     expect(watchIngestNoteId("garage.txt", "inbox")).toBe("inbox/garage.md");
@@ -87,10 +97,10 @@ describe("buildInboxNotice — text preview vs binary blob (no mojibake notices)
 describe("resolveInboxDueAt (watch-folder --as-task dueAt resolution)", () => {
   it("uses the parsed hint when the due: line is understood", () => {
     expect(resolveInboxDueAt("due: next monday", 60, FIXED_NOW)).toEqual({
-      dueAt: "2026-05-25T00:00:00.000Z"
+      dueAt: localNineAm(7)
     });
     expect(resolveInboxDueAt("마감: 내일", 60, FIXED_NOW)).toEqual({
-      dueAt: "2026-05-19T00:00:00.000Z"
+      dueAt: localNineAm(1)
     });
   });
 

@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 
 import { createAgentRuntime, groundToolArguments } from "@muse/agent-core";
 import { createContactsAddTool } from "@muse/domain-tools";
@@ -322,11 +322,11 @@ describe("fs-write approval gate — non-interactive staging (no-external-effect
 
     const entries = await readPendingApprovals(pending);
     expect(entries).toHaveLength(1);
-    expect(entries[0]).toMatchObject({
-      arguments: { action: "write", path: target },
-      risk: "write",
-      tool: "file_write"
-    });
+    expect(entries[0]).toMatchObject({ risk: "write", tool: "file_write" });
+    const staged = entries[0]!.arguments as { action?: string; path?: string };
+    expect(staged.action).toBe("write");
+    // Canonical form differs across win32 8.3/long names — the leaf is the contract.
+    expect(basename(staged.path ?? "")).toBe("notes.md");
     expect(entries[0]!.draft.length).toBeGreaterThan(0);
   });
 

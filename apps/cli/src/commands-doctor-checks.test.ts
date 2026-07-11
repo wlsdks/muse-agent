@@ -12,6 +12,7 @@ import {
   recallCalibrationCheck,
   runnerSandboxPostureCheck,
   TOOL_OUTPUT_CAP_ADVISORY_FLOOR_CHARS,
+  platformPostureCheck,
   toolResultCapAdvisoryCheck,
   voiceSetupChecks,
   volatileMountCheck
@@ -347,5 +348,24 @@ describe("runnerSandboxPostureCheck — MUSE_RUNNER_SANDBOX=seatbelt posture", (
     const r = runnerSandboxPostureCheck({ MUSE_RUNNER_SANDBOX: "bogus" }, "darwin");
     expect(r.status).toBe("ok");
     expect(r.detail).toContain("off");
+  });
+});
+
+describe("platformPostureCheck", () => {
+  it("darwin reports full posture as ok", () => {
+    const check = platformPostureCheck("darwin");
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("audio=afplay");
+    expect(check.detail).toContain("autostart=launchd");
+    expect(check.detail).toContain("os-integrations=macos");
+  });
+
+  it("win32 reports the reduced posture honestly, still ok (fail-soft, not broken)", () => {
+    const check = platformPostureCheck("win32");
+    expect(check.status).toBe("ok");
+    expect(check.detail).toContain("audio=powershell");
+    expect(check.detail).toContain("autostart=schtasks");
+    expect(check.detail).toContain("os-integrations=none");
+    expect(check.detail).toContain("CI-verified only");
   });
 });

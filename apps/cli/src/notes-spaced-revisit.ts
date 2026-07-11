@@ -5,7 +5,7 @@
  * Ollama. The CLI wiring lives in `commands-notes-rag.ts`.
  */
 
-import { relative as pathRelative } from "node:path";
+import { relative as pathRelative, sep } from "node:path";
 
 import { pluralize } from "./pluralize.js";
 import { walkMarkdown } from "./notes-index.js";
@@ -91,7 +91,7 @@ export function formatRecentNotes(
     return "No notes yet. Capture one with `muse note <thought>` or `muse notes save`.\n";
   }
   const nowMs = now.getTime();
-  const lines = entries.map((entry) => `  ${formatRelativeAge(nowMs - entry.mtimeMs)} — ${pathRelative(notesDir, entry.path)}`);
+  const lines = entries.map((entry) => `  ${formatRelativeAge(nowMs - entry.mtimeMs)} — ${pathRelative(notesDir, entry.path).split(sep).join("/")}`);
   return `📝 Recently edited:\n${lines.join("\n")}\n`;
 }
 

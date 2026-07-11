@@ -1,4 +1,5 @@
 import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -98,7 +99,7 @@ describe("resolveDefaultWhisperModelPath (multilingual default + backward-compat
   it("no env + NEITHER file on disk → the MULTILINGUAL default path (no advisory)", () => {
     const warn = vi.fn();
     const resolved = resolveDefaultWhisperModelPath({ exists: () => false, home: "/home/u", warn });
-    expect(resolved).toBe(`/home/u/.muse/whisper-models/${MULTILINGUAL_DEFAULT_MODEL_FILE}`);
+    expect(resolved).toBe(join("/home/u", ".muse", "whisper-models", MULTILINGUAL_DEFAULT_MODEL_FILE));
     expect(resolved.endsWith("ggml-base.bin")).toBe(true);
     expect(warn).not.toHaveBeenCalled();
   });
@@ -119,7 +120,7 @@ describe("resolveDefaultWhisperModelPath (multilingual default + backward-compat
     const onlyLegacy = (p: string): boolean => p.endsWith(LEGACY_ENGLISH_DEFAULT_MODEL_FILE);
 
     const first = resolveDefaultWhisperModelPath({ exists: onlyLegacy, home: "/home/u", warn });
-    expect(first).toBe(`/home/u/.muse/whisper-models/${LEGACY_ENGLISH_DEFAULT_MODEL_FILE}`);
+    expect(first).toBe(join("/home/u", ".muse", "whisper-models", LEGACY_ENGLISH_DEFAULT_MODEL_FILE));
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]![0]).toContain(MULTILINGUAL_DEFAULT_MODEL_FILE); // recommends the multilingual model
 

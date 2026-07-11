@@ -16,7 +16,7 @@ import { extractPublicHttpUrls } from "./web-url-guard.js";
 
 const IMAGE_EXT_RE = /\.(?:png|jpe?g|gif|webp|bmp|svg|heic)(?:[?#]\S*)?$/iu;
 const LOCAL_IMAGE_PATH_RE =
-  /(?:^|\s)((?:~|\.{0,2})\/[^\s'"<>]*?\.(?:png|jpe?g|gif|webp|bmp|svg|heic))(?=$|[\s'"<>)])/giu;
+  /(?:^|\s)((?:(?:~|\.{0,2})\/|[A-Za-z]:[\\/])[^\s'"<>]*?\.(?:png|jpe?g|gif|webp|bmp|svg|heic))(?=$|[\s'"<>)])/giu;
 
 export interface ImageSources {
   readonly urls: readonly string[];

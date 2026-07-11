@@ -208,7 +208,7 @@ describe("walkDocuments + extractDirectoryDocuments — `--file <dir>` grounding
   afterEach(async () => { await rm(dir, { recursive: true, force: true }); });
 
   it("walks the supported text/PDF/prose extensions, recursively, skipping dotfiles + unsupported", async () => {
-    const found = (await walkDocuments(dir)).map((p) => p.replace(`${dir}/`, ""));
+    const found = (await walkDocuments(dir)).map((p) => p.slice(dir.length + 1).replaceAll("\\", "/"));
     expect(found).toContain("budget.txt");
     expect(found).toContain("launch.md");
     expect(found).toContain("sub/notes.log");
@@ -223,7 +223,7 @@ describe("walkDocuments + extractDirectoryDocuments — `--file <dir>` grounding
 
   it("extracts text from every readable doc (incl. .org/.rst/.adoc/.mdx) and SKIPS the binary one", async () => {
     const { documents: docs } = await extractDirectoryDocuments(dir);
-    const byName = Object.fromEntries(docs.map((d) => [d.path.replace(`${dir}/`, ""), d.text]));
+    const byName = Object.fromEntries(docs.map((d) => [d.path.slice(dir.length + 1).replaceAll("\\", "/"), d.text]));
     expect(byName["budget.txt"]).toContain("$42,000");
     expect(byName["launch.md"]).toContain("August 14");
     expect(byName["sub/notes.log"]).toContain("nested log");

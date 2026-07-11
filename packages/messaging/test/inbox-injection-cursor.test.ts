@@ -41,11 +41,11 @@ describe("inbox-injection-cursor", () => {
     // through `writePersisted`, so testing one entry-point is
     // sufficient to pin the chmod posture.
     await writeInboxInjectionCursor(cursorFile, { C1: { ids: [], iso: "2026-05-11T08:00:00.000Z" } });
-    expect(statSync(cursorFile).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(cursorFile).mode & 0o777).toBe(0o600);
     // advance() rewrites the file too — verify the mode survives
     // the rename + the second writePersisted call.
     await advanceInboxInjectionCursor(cursorFile, { C1: { ids: [], iso: "2026-05-11T09:00:00.000Z" } });
-    expect(statSync(cursorFile).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(cursorFile).mode & 0o777).toBe(0o600);
   });
 
   it("advance keeps newest ISO per source", async () => {

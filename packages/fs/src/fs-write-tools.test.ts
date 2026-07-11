@@ -204,7 +204,7 @@ describe("file_write / file_edit / file_multi_edit — gated writes", () => {
       }
     });
 
-    it("refuses to write through a DANGLING symlink leaf (audit #1 — no write to the escaped target)", async () => {
+    it.skipIf(process.platform === "win32")("refuses to write through a DANGLING symlink leaf (audit #1 — no write to the escaped target)", async () => {
       const outside = await mkdtemp(join(tmpdir(), "muse-fs-out-"));
       try {
         // Leaf is a symlink whose target does NOT exist yet — realpath can't
@@ -219,7 +219,7 @@ describe("file_write / file_edit / file_multi_edit — gated writes", () => {
       }
     });
 
-    it("refuses a symlink swapped in during the approval gate (audit #2 — TOCTOU)", async () => {
+    it.skipIf(process.platform === "win32")("refuses a symlink swapped in during the approval gate (audit #2 — TOCTOU)", async () => {
       const outside = await mkdtemp(join(tmpdir(), "muse-fs-out-"));
       try {
         const racingGate: FsWriteApprovalGate = async () => {
