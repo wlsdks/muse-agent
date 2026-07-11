@@ -162,7 +162,7 @@ ratchet: 로드맵 잔여 [ ] = 16/40 · self-eval pass · fabrication 0 · agen
 - 리뷰지점: Opus 8축 PASS — fail-close가 controller/resolveTarget 전, tracker per-task(run당 1회, execute마다 재생성 아님), 산술 무오류(cap N→정확히 N 후 거부·used() 캡 불초과), byte-identical when absent(기존 81 test 무변), 두 mutation 독립 재현(가드제거→controller 도달 RED, 소진체크 제거→cap RED). @muse/browser는 agent-core 미의존(구조타입).
 - 리스크: 낮음. 소진을 approval/검증 전 최상단서 consume=attempts 바운드(fail-close 방향, refuse-more만). 기본30은 정상 태스크(<30)엔 무해라 eval:browser-agent 회귀 by-construction 안전. 형제 미배선(upload/key/open counting)=backlog ◦. 다음 = D1-S7c(pending dialog 스냅샷 필드+auto-dismiss).
 
-## fire 20 · 2026-07-11 · skill v2.x · <commit-pending>
+## fire 20 · 2026-07-11 · skill v2.x · 36fc9811a
 meta: slice=D1-S7c · wave=W2 · pkg=@muse/browser · kind=dialog-failclose · verdict=PASS · firesSinceDrill=2
 ratchet: 로드맵 잔여 [ ] = 15/40 · self-eval pass · fabrication 0 · browser +12 test(dialog-policy) · baseline ENV repair(foreign MUSE_CHANNEL_ACK)
 - 무엇: 브라우저 JS-dialog 처분을 fail-close로. registerDialogHandler가 모든 dialog auto-ACCEPT(confirm OK·prompt 텍스트 제출)하던 fail-open을 순수 dialog-policy.ts로 교체: decideDialogDisposition(confirm/prompt/unknown→dismiss, alert/beforeunload→accept)+planDialogResponse(dismiss는 response無)+settleDialog(fake spy로 accept/dismiss 실호출 검증). 스냅샷 surface는 유지, controller.ts+puppeteer:425 stale doc 동반수정.
