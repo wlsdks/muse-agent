@@ -120,8 +120,13 @@ export const sharedInjectionPatterns: readonly InjectionPattern[] = [
   { name: "multilingual_prompt_leak", regex: /\b(show|display|print|reveal|give|tell)\b.{0,20}\b(system|internal|original)\b.{0,20}\b(prompt|instruction|rule|directive)s?\b/i },
   { name: "multilingual_prompt_leak", regex: /\b(goster|gosterin|mostre|mostrar|montrer|montrez|zeigen|mostra|tampilkan|pokaz|dikhao|batao)\b.{0,30}\b(instruc|instruction|prompt|system|sistem|talimat|komut|sistema|anweisung|nirdesh)/i },
   { name: "section_marker_reference", regex: /(Language Rule|Grounding Rules?|Tool Error Retry|Few-shot Example)/i },
-  { name: "meta_question", regex: /(할 수 있는|할 수 없는|가능한|불가능한).{0,20}(알려|설명|구분|나열)/ },
-  { name: "meta_question", regex: /(너의|당신의|네).{0,10}(역할|목적|제약|제한|능력|한계)/ },
+  // A personal agent MUST be able to answer "what is your purpose / role /
+  // what can you do" — those are ordinary self-questions, not attacks (the
+  // live identity probe measured this pattern refusing "너의 목적이 뭐야?").
+  // What stays flagged is EXTRACTION of the operating rules themselves: a
+  // constraint/rule/system-prompt readout, not a plain-language self-answer.
+  { name: "meta_question", regex: /(제약|제한|규칙|지침|시스템 프롬프트|프롬프트)\s*(조건|사항)?.{0,20}(그대로|전부|모두|원문|verbatim).{0,10}(알려|출력|나열|보여|말해)/ },
+  { name: "meta_question", regex: /(너의|당신의|네)\s*(제약|제한|규칙|지침|시스템 프롬프트).{0,20}(알려|출력|나열|보여|말해|설명)/ },
   { name: "indirect_prompt_extraction", regex: /(이전|과거|처음|첫).{0,15}(받은|전달받은|주어진|있는).{0,15}(instructions?|지시|지침|내용|메시지).{0,15}(반복|알려|보여|출력|말해)/is },
   { name: "secrecy_probe", regex: /what.{0,10}(were you|are you).{0,10}(told|instructed|programmed|trained).{0,10}(not to|never)/is },
   { name: "credential_extraction", regex: /(비밀번호|패스워드|password|비번|암호|api\s*key|api\s*키|secret|토큰|token|인증\s*키).{0,15}(알려|보여|출력|공개|말해|tell|show|reveal|give)/is },
