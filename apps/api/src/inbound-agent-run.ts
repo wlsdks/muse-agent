@@ -1,4 +1,4 @@
-import { casualResponseFor, classifyCasualPrompt } from "@muse/agent-core";
+import { casualResponseFor, classifyCasualPrompt, guardAgainstUnbackedActionClaim } from "@muse/agent-core";
 import {
   parseBoolean,
   resolveActionLogFile,
@@ -37,6 +37,7 @@ interface InboundAgentRuntime {
   }): Promise<{
     readonly response?: { readonly output?: string };
     readonly groundingSources?: readonly { readonly source: string; readonly text: string }[];
+    readonly toolsUsed?: readonly string[];
   }>;
 }
 
@@ -201,6 +202,16 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
       evidence: [...(result.groundingSources ?? [])],
       question: latestUserText
     });
-    return gate.answer;
+    // Honest-action gate (parity with the API /chat surface —
+    // `honest-action-guard.ts`): a channel reply can CLAIM a completed
+    // state-changing action ("일정을 등록했습니다") while no actuator tool ran.
+    // No retry here — a Telegram/Matrix turn already left the runtime, so
+    // (like the streamed /chat final frame) this is a deterministic
+    // downgrade only.
+    const honest = await guardAgainstUnbackedActionClaim({
+      firstResult: { response: { output: gate.answer }, toolsUsed: result.toolsUsed ?? [] },
+      query: latestUserText
+    });
+    return honest.response.output;
   };
 }

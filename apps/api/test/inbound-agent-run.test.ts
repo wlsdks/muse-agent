@@ -2,7 +2,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { casualResponseFor, UNGROUNDABLE_ANSWER_NOTICE } from "@muse/agent-core";
+import { casualResponseFor, UNGROUNDABLE_ANSWER_NOTICE, unbackedActionNoticeFor } from "@muse/agent-core";
 import { LogMessagingProvider, MessagingProviderRegistry, recordPendingApproval } from "@muse/messaging";
 import { describe, expect, it } from "vitest";
 
@@ -19,6 +19,7 @@ const NOW = () => new Date("2026-07-11T09:00:00.000Z");
 function buildRun(result: {
   readonly output: string;
   readonly groundingSources?: readonly { readonly source: string; readonly text: string }[];
+  readonly toolsUsed?: readonly string[];
 }) {
   const dir = mkdtempSync(join(tmpdir(), "muse-inbound-gate-"));
   const registry = new MessagingProviderRegistry([
@@ -27,7 +28,8 @@ function buildRun(result: {
   const agentRuntime = {
     run: async () => ({
       response: { output: result.output },
-      ...(result.groundingSources ? { groundingSources: result.groundingSources } : {})
+      ...(result.groundingSources ? { groundingSources: result.groundingSources } : {}),
+      ...(result.toolsUsed ? { toolsUsed: result.toolsUsed } : {})
     })
   };
   const env = {
@@ -75,6 +77,51 @@ describe("createInboundAgentRun grounding gate (channel-reply parity with /chat)
       source: "42"
     });
     expect(reply).toBe("");
+  });
+});
+
+// The honest-action gate (`honest-action-guard.ts`): a channel reply can
+// CLAIM a completed state-changing action ("일정을 등록했습니다") while NO
+// actuator tool ran this turn — the same false-completion class the API
+// /chat surface is gated against. A live probe against the real server
+// found exactly this: `toolCalls: null` paired with a confident "등록했습니다".
+const KO_QUERY = "내일 오후 3시에 치과 예약 잡아줘";
+const KO_CLAIM = "내일 오후 3시에 '치과 예약'을 등록했습니다.";
+
+describe("createInboundAgentRun honest-action gate (channel-reply parity with /chat)", () => {
+  it("downgrades an unbacked completion claim to the honest notice — a reply must not lie", async () => {
+    const run = buildRun({ output: KO_CLAIM, toolsUsed: [] });
+    const reply = await run({
+      messages: [{ content: KO_QUERY, role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "42"
+    });
+    expect(reply).not.toContain("등록했습니다");
+    expect(reply).toBe(unbackedActionNoticeFor(KO_QUERY));
+  });
+
+  it("passes a BACKED completion claim through unchanged (a real actuator ran)", async () => {
+    const run = buildRun({ output: KO_CLAIM, toolsUsed: ["calendar.create"] });
+    const reply = await run({
+      messages: [{ content: KO_QUERY, role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "42"
+    });
+    expect(reply).toBe(KO_CLAIM);
+  });
+
+  it("passes an answer with no completion claim through unchanged (a plain question)", async () => {
+    const answer = "아직 예약되지 않았어요.";
+    const run = buildRun({ output: answer, toolsUsed: [] });
+    const reply = await run({
+      messages: [{ content: "치과 예약 잡혔어?", role: "user" }],
+      providerId: "log",
+      scope: "direct",
+      source: "42"
+    });
+    expect(reply).toBe(answer);
   });
 });
 
