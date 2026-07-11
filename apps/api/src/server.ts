@@ -10,7 +10,6 @@ import {
   resolveContactsFile,
   resolveNotesIndexFile,
   resolveObjectivesFile,
-  resolvePendingApprovalsFile,
   resolveVetoesFile,
   resolvePlaybookFile,
   resolveWeaknessesFile,
@@ -18,9 +17,6 @@ import {
   resolveReflectionsFile,
   resolveSkillRewardsFile
 } from "@muse/autoconfigure";
-import { queryContacts } from "@muse/stores";
-import { runActuatorByName } from "@muse/domain-tools";
-import type { JsonObject } from "@muse/shared";
 import { InMemoryRuntimeSettingsStore, RuntimeSettings } from "@muse/runtime-settings";
 import Fastify, { type FastifyInstance } from "fastify";
 
@@ -54,12 +50,10 @@ import {
 import { warmUpModelIfConfigured } from "./model-warmup.js";
 import { parseSlackPollChannels, startSlackPollTick } from "./slack-poll-tick.js";
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
+import { createInboundAgentRun } from "./inbound-agent-run.js";
 import { startInboundReplyTick } from "./inbound-reply-tick.js";
-import { createChannelApprovalGate, createThreadedInboundRunner, type InboundAgentRunner } from "@muse/messaging";
+import { createThreadedInboundRunner, type InboundAgentRunner } from "@muse/messaging";
 
-import { createChannelPendingRecorder } from "./channel-pending-recorder.js";
-import { createChannelRefusalRecorder } from "./channel-refusal-recorder.js";
-import { handleInboundApprovalReply } from "./inbound-approval-handler.js";
 import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
 import { registerAccountabilityRoutes } from "./accountability-routes.js";
@@ -513,67 +507,13 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     && options.messaging
     && options.agentRuntime
   ) {
-    const agentRuntime = options.agentRuntime;
-    const replyModel = options.defaultModel ?? "default";
-    const inboundRegistry = options.messaging;
     const runner: InboundAgentRunner = createThreadedInboundRunner({
-      run: async ({ messages, providerId, source }) => {
-        // A bare "yes" approving a pending channel refusal gets a
-        // deterministic ack pointing at `muse approvals approve` rather
-        // than a confused agent turn on the word "yes".
-        const latestUserText = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
-        const approvalAck = await handleInboundApprovalReply({
-          pendingFile: resolvePendingApprovalsFile(env),
-          providerId,
-          source,
-          text: latestUserText,
-          // Opt-in (default off): an inbound "yes" re-runs the pending
-          // tool in-chat. The reply is the explicit confirm of the draft
-          // the gate already posted, so the re-run uses an auto-approve
-          // gate. Off by default, so completion stays on the deliberate
-          // CLI confirm unless the user turns this on.
-          ...(parseBoolean(env.MUSE_INBOUND_AUTO_APPROVE, false)
-            ? {
-                autoRun: (entry) => runActuatorByName(entry.tool, entry.arguments as JsonObject, {
-                  actionLogFile: resolveActionLogFile(env),
-                  contacts: () => queryContacts(resolveContactsFile(env)),
-                  emailApprovalGate: () => ({ approved: true }),
-                  ...(env.MUSE_GMAIL_TOKEN?.trim() ? { gmailToken: env.MUSE_GMAIL_TOKEN.trim() } : {}),
-                  ...(env.MUSE_HOMEASSISTANT_URL?.trim() ? { homeAssistantBaseUrl: env.MUSE_HOMEASSISTANT_URL.trim() } : {}),
-                  ...(env.MUSE_HOMEASSISTANT_TOKEN?.trim() ? { homeAssistantToken: env.MUSE_HOMEASSISTANT_TOKEN.trim() } : {}),
-                  userId: `${providerId}:${source}`,
-                  webApprovalGate: () => ({ approved: true })
-                })
-              }
-            : {})
-        });
-        if (approvalAck !== undefined) {
-          return approvalAck;
-        }
-        const result = await agentRuntime.run({
-          messages,
-          // The channel identity is the user-memory scope for this
-          // chat, so the auto-extract hook grows the knows-you model
-          // from channel conversations (without a userId the hook
-          // no-ops — a channel chat that never learns the user).
-          metadata: { userId: `${providerId}:${source}` },
-          model: replyModel,
-          toolApprovalGate: createChannelApprovalGate({
-            providerId,
-            recordRefusal: async (refusal) => {
-              // Both the audit log and the pending worklist must capture
-              // the refusal; run them independently so one failing store
-              // doesn't drop the other (the gate's deny holds regardless).
-              const logIt = createChannelRefusalRecorder({ actionLogFile: resolveActionLogFile(env), providerId, source });
-              const queueIt = createChannelPendingRecorder({ pendingFile: resolvePendingApprovalsFile(env), providerId, source });
-              await Promise.allSettled([logIt(refusal), queueIt(refusal)]);
-            },
-            registry: inboundRegistry,
-            source
-          })
-        } as Parameters<typeof agentRuntime.run>[0]);
-        return result.response?.output ?? "";
-      },
+      run: createInboundAgentRun({
+        agentRuntime: options.agentRuntime,
+        env,
+        model: options.defaultModel ?? "default",
+        registry: options.messaging
+      }),
       threadFile: `${options.telegramInboxFile}.threads.json`
     });
     const replyMsRaw = process.env.MUSE_INBOUND_REPLY_INTERVAL_MS
