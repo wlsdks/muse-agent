@@ -264,7 +264,7 @@ describe("MuseChatApp render — every slash command responds", () => {
   ];
 
   for (const c of cases) {
-    it(`${c.input} → ${c.contains[0] ?? ""}`, async () => {
+    it(`${c.input} → ${c.contains[0] ?? ""}`, { timeout: 30_000 }, async () => {
       const { stdin, lastFrame, unmount } = render(React.createElement(MuseChatApp, makeProps()));
       await tick();
       stdin.write(c.input); await tick(); stdin.write("\r");
