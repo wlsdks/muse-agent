@@ -38,6 +38,7 @@ import {
   formatJobsList,
   formatMemoryView,
   formatTrust,
+  formatUndoNotice,
   friendlyError,
   matchAgentNames,
   matchModelNames,
@@ -45,9 +46,11 @@ import {
   normalizeChatInput,
   parseRememberArg,
   parseSlashCommand,
+  parseUndoArg,
   reduceInput,
   resolveForgetKey,
   runFocusedCompaction,
+  undoExchanges,
   type ChatTurnMessage,
   type InkKeyEvent,
   type InputState,
@@ -88,6 +91,7 @@ const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[]
   { cmd: "persona", desc: "show the active persona slot" },
   { cmd: "history", desc: "how many turns are in context" },
   { cmd: "compact", desc: "preview compaction (no arg), or /compact <topic> to compact now, focused on that topic" },
+  { cmd: "undo", desc: "roll back the last exchange — /undo <N> to roll back N (1-20)" },
   { cmd: "save", desc: "save the last reply to a note file" },
   { cmd: "copy", desc: "copy the last reply to the clipboard" },
   { cmd: "cost", desc: "show this session's token usage" },
@@ -571,6 +575,17 @@ export function MuseChatApp(props: {
         historyRef.current = [...messages];
         note(outcome);
         setCommandNotice(undefined);
+        return;
+      }
+      if (slash.cmd === "undo") {
+        const parsed = parseUndoArg(slash.arg);
+        if (parsed.kind === "invalid") {
+          note(`"${parsed.raw}" isn't a valid turn count — /undo <N> takes a whole number from 1 to 20 (e.g. /undo 2).`);
+          return;
+        }
+        const result = undoExchanges(historyRef.current, parsed.count);
+        historyRef.current = [...result.history];
+        note(formatUndoNotice(result));
         return;
       }
       if (slash.cmd === "recall") {

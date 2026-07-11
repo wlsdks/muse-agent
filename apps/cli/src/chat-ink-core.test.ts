@@ -50,6 +50,9 @@ import {
   resolveForgetKey,
   runFocusedCompaction,
   summarizeToolArgs,
+  formatUndoNotice,
+  parseUndoArg,
+  undoExchanges,
   type InputState
 } from "./chat-ink-core.js";
 
@@ -1133,5 +1136,126 @@ describe("turnSeparator — per-exchange scannable rule", () => {
   it("clamps the rule width to a sane band for tiny / huge terminals", () => {
     expect(displayWidth(turnSeparator([U, A, U], 2, { plain: false, width: 4 }))).toBe(12);
     expect(displayWidth(turnSeparator([U, A, U], 2, { plain: false, width: 500 }))).toBe(120);
+  });
+});
+
+function exchange(n: number): ChatTurnMessage[] {
+  return [
+    { content: `question ${n.toString()}`, role: "user" },
+    { content: `answer ${n.toString()}`, role: "assistant" }
+  ];
+}
+
+describe("parseUndoArg — /undo [N] argument parsing (strict integer, clamped 1-20)", () => {
+  it("defaults to 1 for a bare /undo", () => {
+    expect(parseUndoArg("")).toEqual({ count: 1, kind: "ok" });
+    expect(parseUndoArg("   ")).toEqual({ count: 1, kind: "ok" });
+  });
+
+  it("parses a plain integer", () => {
+    expect(parseUndoArg("3")).toEqual({ count: 3, kind: "ok" });
+  });
+
+  it("clamps an in-bounds-but-large integer to 20", () => {
+    expect(parseUndoArg("100")).toEqual({ count: 20, kind: "ok" });
+  });
+
+  it("clamps zero / negative integers up to 1", () => {
+    expect(parseUndoArg("0")).toEqual({ count: 1, kind: "ok" });
+    expect(parseUndoArg("-5")).toEqual({ count: 1, kind: "ok" });
+  });
+
+  it("rejects a non-integer like '2x'", () => {
+    expect(parseUndoArg("2x")).toEqual({ kind: "invalid", raw: "2x" });
+  });
+
+  it("rejects a decimal", () => {
+    expect(parseUndoArg("2.5")).toEqual({ kind: "invalid", raw: "2.5" });
+  });
+
+  it("rejects non-numeric garbage", () => {
+    expect(parseUndoArg("all")).toEqual({ kind: "invalid", raw: "all" });
+  });
+});
+
+describe("undoExchanges — roll back the last N user/assistant exchanges", () => {
+  it("removes the last exchange (count=1)", () => {
+    const history = [...exchange(1), ...exchange(2), ...exchange(3)];
+    const result = undoExchanges(history, 1);
+    expect(result.removedExchanges).toBe(1);
+    expect(result.remainingExchanges).toBe(2);
+    expect(result.history).toEqual([...exchange(1), ...exchange(2)]);
+  });
+
+  it("removes the last N exchanges", () => {
+    const history = [...exchange(1), ...exchange(2), ...exchange(3), ...exchange(4)];
+    const result = undoExchanges(history, 3);
+    expect(result.removedExchanges).toBe(3);
+    expect(result.remainingExchanges).toBe(1);
+    expect(result.history).toEqual([...exchange(1)]);
+  });
+
+  it("clamps count to the number of exchanges actually present", () => {
+    const history = [...exchange(1), ...exchange(2)];
+    const result = undoExchanges(history, 20);
+    expect(result.removedExchanges).toBe(2);
+    expect(result.remainingExchanges).toBe(0);
+    expect(result.history).toEqual([]);
+  });
+
+  it("empty history is a no-op", () => {
+    const result = undoExchanges([], 1);
+    expect(result.removedExchanges).toBe(0);
+    expect(result.remainingExchanges).toBe(0);
+    expect(result.history).toEqual([]);
+  });
+
+  it("a trailing un-answered user message counts as one exchange and is removed cleanly", () => {
+    const history: ChatTurnMessage[] = [...exchange(1), { content: "dangling question", role: "user" }];
+    const result = undoExchanges(history, 1);
+    expect(result.removedExchanges).toBe(1);
+    expect(result.history).toEqual([...exchange(1)]);
+    // no dangling assistant is ever left behind by the removal itself
+    expect(result.history.every((m, i, arr) => m.role !== "assistant" || arr[i - 1]?.role === "user")).toBe(true);
+  });
+
+  it("removes everything between two user turns, including non-final entries (tool calls/results)", () => {
+    const history: ChatTurnMessage[] = [
+      ...exchange(1),
+      { content: "question 2", role: "user" },
+      { content: "tool call: web_search(query=x)", role: "assistant" },
+      { content: "tool result: [...]", role: "system" },
+      { content: "final answer using the tool result", role: "assistant" }
+    ];
+    const result = undoExchanges(history, 1);
+    expect(result.removedExchanges).toBe(1);
+    expect(result.history).toEqual([...exchange(1)]);
+  });
+
+  it("never mutates the input array", () => {
+    const history = [...exchange(1), ...exchange(2)];
+    const snapshot = history.map((m) => ({ ...m }));
+    undoExchanges(history, 1);
+    expect(history).toEqual(snapshot);
+  });
+});
+
+describe("formatUndoNotice", () => {
+  it("reports how many exchanges were removed and how many remain", () => {
+    expect(formatUndoNotice({ history: [], remainingExchanges: 2, removedExchanges: 1 })).toBe(
+      "Removed the last 1 exchange — 2 remaining."
+    );
+  });
+
+  it("pluralizes for more than one removed", () => {
+    expect(formatUndoNotice({ history: [], remainingExchanges: 0, removedExchanges: 3 })).toBe(
+      "Removed the last 3 exchanges — 0 remaining."
+    );
+  });
+
+  it("says there's nothing to undo and changes nothing when removedExchanges is 0", () => {
+    expect(formatUndoNotice({ history: [], remainingExchanges: 0, removedExchanges: 0 })).toBe(
+      "Nothing to undo yet."
+    );
   });
 });
