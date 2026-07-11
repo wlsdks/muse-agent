@@ -94,6 +94,12 @@
 - packages/memory pattern-detector.ts 412줄 (time-of-day + weekly-task 두 신호) → 분리 후보
 - packages/memory 두 store의 upsert 파이프라인(collectFactSupersessions/appendFactHistory 흐름)도 유사 반복 → forget 통합과 같은 패턴으로 후속 후보
 
+## S2 (시즌2: main-유입 감시 + CLI 분해 — 2026-07-12, PR#53 main 안착 후)
+
+| # | A파트 (유입 감시) | B파트 (CLI 분해) | 검증 |
+|---|---|---|---|
+| 33 | PR#53 후 유입 점검: api related 38-fail은 회귀 아닌 **대형 머지 후 stale dist** (agent-core·stores·proactivity·autoconfigure 리빌드로 전부 해소 — 커밋 불요); main의 honest-action guard·MCP 액션파킹 건강 유입 확인, main이 우리 fs 리팩터에 자체 정렬한 커밋도 확인 | commands-ask.ts 1557→1328줄: 옵션 체인 30개→ask-command-options.ts(189줄, applyAskOptions+AskOptions) + 입력-조합 단계→ask-input.ts(84줄, composeAskInput — stdin first-byte 계약 무수정, exitCode는 핸들러 잔류); NOTES_ONLY 상수는 핸들러 전용이라 억지 이동 배제 | cli related 55파일 784/784 ✓ · build ✓ · lint 0 ✓ |
+
 ## Fire 로그
 
 | # | 대상 | 출하 | 검증 |
