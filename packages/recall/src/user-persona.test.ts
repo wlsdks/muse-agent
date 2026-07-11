@@ -267,7 +267,7 @@ describe("renderPersonaMarkdown / writePersonaFile round-trip", () => {
     await writePersonaFile(file, { register: "반말" }, "Keep it light.");
     const { stat } = await import("node:fs/promises");
     const info = await stat(file);
-    expect(info.mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(info.mode & 0o777).toBe(0o600);
     const result = await loadUserPersona(file);
     expect(result.exists).toBe(true);
     if (result.exists && result.ok) {

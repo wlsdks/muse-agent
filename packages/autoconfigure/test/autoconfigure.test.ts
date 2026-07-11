@@ -422,13 +422,12 @@ describe("autoconfigure", () => {
 
   it("wires working-budget compaction into the AgentRuntime by default", async () => {
     // autoconfigure wires workingBudgetTokens on ConversationTrimOptions,
-    // computing it as 40% of nominal by default. We verify the soft
-    // trigger by setting a tiny
-    // nominal context window (200 tokens) so the working budget
-    // (40% = 80 tokens) is easy to exceed with a few-message
-    // conversation. The hard cap (200) is still well above what
-    // these messages need, so a "hard_limit" trigger would mean we
-    // mis-wired the field.
+    // computing it as 40% of nominal by default. The composed layered
+    // system prompt (identity core + surface role, ~500 tokens) now rides
+    // in the compaction estimate, so the nominal window is sized to 1000:
+    // the working budget (40% = 400) is exceeded by prompt+messages
+    // (~650) while the hard cap (990 after the output reserve) is not —
+    // a "hard_limit" trigger would mean we mis-wired the field.
     const assembly = createMuseRuntimeAssembly({
       env: {
         // Disable the Context Engineering Phase 1 system-prompt
@@ -438,7 +437,7 @@ describe("autoconfigure", () => {
         // `[Active Context]` block alone, which isn't what this
         // test is exercising.
         MUSE_ACTIVE_CONTEXT_ENABLED: "false",
-        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "200",
+        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "1000",
         MUSE_LLM_MAX_OUTPUT_TOKENS: "10",
         MUSE_MODEL: "diagnostic/smoke",
         MUSE_MODEL_PROVIDER_ID: "diagnostic"
@@ -481,7 +480,7 @@ describe("autoconfigure", () => {
         // the prompt past the 200-token hard cap, flipping this test's
         // `hard_limit` vs `none` assertion depending on machine state.
         MUSE_ACTIVE_CONTEXT_ENABLED: "false",
-        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "200",
+        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "1000",
         MUSE_LLM_MAX_OUTPUT_TOKENS: "10",
         MUSE_LLM_WORKING_BUDGET_TOKENS: "0",
         MUSE_MODEL: "diagnostic/smoke",
