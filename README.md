@@ -230,6 +230,21 @@ Deliberate product boundaries, enforced in code — not TODOs:
 
 ---
 
+## 🪟 Windows
+
+Muse core runs on Windows: the CLI, the API server, grounded recall, and the
+local Ollama model ([Ollama for Windows](https://ollama.com/download/windows)).
+Platform behavior is gated in CI on `windows-latest`; macOS-only integrations
+(Apple Notes/Reminders mirrors, Contacts import, ambient window source, the
+desktop companion) are disabled automatically — `muse doctor` shows the exact
+posture for your OS.
+
+- Autostart: `muse daemon --install` registers a `schtasks` logon task
+  (LaunchAgent on macOS).
+- Voice output uses PowerShell's wav player; recording needs
+  [sox for Windows](https://sourceforge.net/projects/sox/) on PATH.
+- Windows paths are CI-verified; report anything odd via issues.
+
 ## 🧩 Providers & configuration
 
 Pick a model at runtime via env:
