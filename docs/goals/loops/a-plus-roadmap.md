@@ -104,7 +104,7 @@ ratchet: 로드맵 잔여 [ ] = 21/37 · self-eval pass · fabrication 0 · mult
 - 리뷰지점: Opus가 ceiling 경계(depth==maxDepth 거부·1 아래 허용)·parent+1·back-compat(depth無=0)·파싱테이블(0/-1/abc/1.5→1 floor)·wiring·mutation-RED 양방향 검증. depth 필드 omit-when-0로 기존 보드 JSON 무마이그레이션.
 - 리스크: 없음(옵셔널 필드·back-compat). 새 env MUSE_BOARD_MAX_DEPTH→docs:env 갱신(워커가 proactive 처리, envInventory 게이트 회피). 다음 D3-S1b=부모 tool-deny 상속(executor 게이트).
 
-## fire 13 · 2026-07-11 · skill v2.x · <commit-pending>
+## fire 13 · 2026-07-11 · skill v2.x · e4633c5a3
 meta: slice=D3-S1b · wave=W2 · pkg=@muse/multi-agent+apps/cli · kind=defense-in-depth · verdict=PASS · firesSinceDrill=4
 ratchet: 로드맵 잔여 [ ] = 20/38 · self-eval pass · fabrication 0 · multi-agent 8 test 신규
 - 무엇: 부모 tool-deny 상속. 순수 inheritParentToolDeny(child⊆parent 교집합) + ask-decompose 워커에 구조적 클램프(워커 allowedToolNames = 부모 교집합, args.metadata 무mutation, planner/synthesize 미클램프). D3-S1 완료.
