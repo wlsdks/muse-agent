@@ -39,8 +39,4 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Temporarily --no-bail while triaging Windows: one run enumerates EVERY
-      # failing package instead of stopping at the first. Restore `pnpm check`
-      # once green.
-      - run: pnpm build
-      - run: pnpm -r --no-bail test
+      - run: pnpm check
