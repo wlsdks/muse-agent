@@ -90,7 +90,7 @@ ratchet: testFiles +1(digest-lock) · fabrication 0 · eval N/A
 리스크: 낮음.
 lesson: 형제-감사가 동일 클래스 레이스 2건(리마인더·체크인 이중 전송) 발굴 — send-결정이 락 밖인 패턴은 store-락만으론 이중 배달을 못 막는다.
 
-## fire 11 · 2026-07-12 · skill v2.x · (sha pending)
+## fire 11 · 2026-07-12 · skill v2.x · 03e0f2d1e
 meta: value-class=reliability · pkg=@muse/stores+proactivity · kind=concurrency · verdict=PASS · firesSinceDrill=2
 ratchet: testFiles +1(reminder-firing-lock) · fabrication 0 · eval N/A
 무엇: 리마인더 이중 전송 레이스 봉합 — fire 10 락을 withProcessLock으로 범용화(fire 10 테스트 무수정 green), runDueReminders select→send→mark 전체를 `${file}.firing.lock`으로 잠금(추출만, 재배열 없음 — byte-diff 확인), 두-데몬 시뮬레이션 5/5 안정.
