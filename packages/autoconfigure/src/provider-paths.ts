@@ -33,7 +33,9 @@ function resolveDotMusePath(env: MuseEnvironment, envKey: string, defaultName: s
   }
   // HOME-first like @muse/shared resolveHomeDir: os.homedir() ignores $HOME on
   // win32 (USERPROFILE), which would break HOME-based isolation (tests, muse demo).
-  const home = env.HOME?.trim();
+  // Ambient process.env.HOME backs a caller-scoped env that omits HOME, matching
+  // the api tick resolvers' convention.
+  const home = env.HOME?.trim() || process.env.HOME?.trim();
   return pathJoin(home && home.length > 0 ? home : homedir(), ".muse", defaultName);
 }
 

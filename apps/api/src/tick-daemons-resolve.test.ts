@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { homedir } from "node:os";
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
@@ -43,9 +44,9 @@ describe("resolveInterruptionBudgetWiring", () => {
     const wiring = resolveInterruptionBudgetWiring({});
     expect(wiring).toEqual({
       dailyCap: 6,
-      digestFile: "/tmp/fakehome/.muse/digest-queue.json",
+      digestFile: join("/tmp/fakehome", ".muse", "digest-queue.json"),
       hourlyCap: 2,
-      ledgerFile: "/tmp/fakehome/.muse/interruption-ledger.json"
+      ledgerFile: join("/tmp/fakehome", ".muse", "interruption-ledger.json")
     });
   });
 
