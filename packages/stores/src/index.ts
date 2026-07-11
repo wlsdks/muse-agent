@@ -16,8 +16,8 @@ export { detectUncleanShutdown, markSessionCleanExit, markSessionStart } from ".
 export type { SessionStartInfo } from "./session-crash-marker.js";
 export { capBackgroundProcesses, defaultBackgroundProcessesFile, getBackgroundProcess, pruneTerminalBackgroundProcesses, readBackgroundProcesses, registerBackgroundProcess, removeBackgroundProcess, updateBackgroundProcess } from "./background-process-store.js";
 export type { BackgroundProcessRecord } from "./background-process-store.js";
-export { reconcileBackgroundProcesses, spawnBackgroundProcess, stopBackgroundProcess } from "./background-process-spawn.js";
-export type { BackgroundSpawner, SpawnedChild } from "./background-process-spawn.js";
+export { pidIdentityMatches, reconcileBackgroundProcesses, spawnBackgroundProcess, stopBackgroundProcess } from "./background-process-spawn.js";
+export type { BackgroundSpawner, SpawnedChild, StopBackgroundResult } from "./background-process-spawn.js";
 export { createNodeBackgroundSpawner } from "./node-background-spawner.js";
 export { classifyProactiveHeartbeat, defaultProactiveHeartbeatDir, readProactiveHeartbeat, recordProactiveHeartbeat } from "./proactive-heartbeat.js";
 export type { ProactiveHeartbeat, ProactiveHeartbeatMark, ProactiveHeartbeatSignal, ProactiveHeartbeatStatus, ProactiveHeartbeatThresholds, ProactiveHeartbeatVerdict } from "./proactive-heartbeat.js";
