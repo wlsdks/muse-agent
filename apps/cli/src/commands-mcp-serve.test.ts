@@ -41,10 +41,14 @@ describe("muse mcp serve (in-process e2e)", () => {
       },
       embedModel: "nomic-embed-text-v2-moe",
       modelProvider: undefined,
+      newId: () => "test-fixed-id",
       notesDir,
       notesIndexFile: join(notesDir, "..", "notes-index.json"),
       notesProvider: new LocalDirNotesProvider({ notesDir }),
       now: () => new Date(),
+      stagePendingApproval: async () => {
+        throw new Error("stagePendingApproval not exercised by this e2e test");
+      },
       userId: "test-user",
       userMemoryStore
     };
@@ -63,7 +67,7 @@ describe("muse mcp serve (in-process e2e)", () => {
     await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
 
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name).sort()).toEqual(["knowledge_search", "muse_recall", "user_model_read"]);
+    expect(tools.map((tool) => tool.name).sort()).toEqual(["knowledge_search", "muse_recall", "propose_action", "user_model_read"]);
 
     const searchResult = await client.callTool({ arguments: { query: "embedder model" }, name: "knowledge_search" });
     expect(searchResult.isError).not.toBe(true);

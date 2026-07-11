@@ -193,3 +193,11 @@ ratchet: 로드맵 잔여 [ ] = 28/55 · self-eval pass · fabrication 0 · fs +
 - 왜: eval:multifile-fix/computer-task의 잔여 실패에 12B가 들여쓰기·escape를 미세하게 틀려 exact match 실패→fuzzy가 매칭해도 모델 들여쓰기로 교체해 파일 오염. hermes 9-전략 fuzzy의 indent 전략 참조.
 - 리뷰지점: Opus PASS — re-indent 정확(consistent-base 케이스 trace)·보수적(edge서도 기존 verbatim splice보다 strictly-better)·exact/trailing-ws byte-identical(no-op 보장)·fail-close(유니크 매칭 gated, wrong-place 없음)·두 mutation 독립 재현(re-indent 무력화→indent 오염 RED, unescapeQuotes 제거→`\"` RED)·OUTCOME 채점(결과 라인 들여쓰기 검증). eval:computer-task 3/3 회귀無.
 - 리스크: 낮음. +10%p pass^3는 stochastic north-star라 per-fire 확증 불가(회귀-STABLE 3/3로 게이트, 메커니즘이 지향). 조합 drift(newline+quote 동시)는 1-shot 미수리이나 fail-CLOSED(refuse, 오염 아님). 미추가 형제(whitespace-collapse·first/last 앵커링)=backlog, case-insensitive는 영구 제외. 다음 = D4-S1(muse mcp serve 확대: read 다수+write draft-first 프록시+grounded-recall 노출).
+
+## fire 24 · 2026-07-12 · skill v2.x · <commit-pending>
+meta: slice=D4-S1a · wave=W3 · pkg=apps/cli · kind=mcp-write-proxy · verdict=PASS · firesSinceDrill=6
+ratchet: 로드맵 잔여 [ ] = 29/57(D4-S1→a/b/c 분해로 +2) · self-eval pass · fabrication 0 · cli mcp-serve +? test(16)·★W3 착수
+- 무엇: `muse mcp serve` write draft-first 프록시. propose_action MCP 툴(buildMcpServeTools 4번째): 외부 클라이언트가 action+draft(+arguments) 제안→기존 PendingApproval 큐(recordPendingApproval 재사용, muse approvals 동일 파일)에 파킹(source "mcp-serve"), "승인 대기" 반환, 실행경로 0. D4-S1을 a(write프록시)/b(grounded surface 등록 📈)/c(read 확대)로 분해.
+- 왜: hermes mcp_serve(자신을 MCP 서버로)의 write는 Muse에선 outbound-safety 수출이어야 — 외부 요청은 자동실행 불가, 승인큐 파킹만. 클릭 승인≠외부 요청 자동실행. 신규 스토어 금지(기존 재사용).
+- 리뷰지점: Opus outbound-safety 위협모델 PASS — execute에 실행 브랜치 0(action/arguments는 파킹 데이터, dispatch 안 됨)·blank fail-close(stage 전 throw)·stage reject→staged:true 아님·no-external-effect 실검증(temp round-trip + notesDir 무변)·두 mutation 독립 재현(stage 제거→round-trip RED, blank검증→RED)·provenance 구분(source "mcp-serve" vs cli). 헤더 doc "three tools" stale도 수정.
+- 리스크: 낮음. 외부가 draft/arguments 완전 제어→muse approvals raw 표시 spoofing 표면(VQ-20)이나 파킹=no-effect+승인=사람확인+fail-close라 계약 위반 아님(기존 CLI-write 경로와 동일 표면, 악화 아님). eval:tools는 N/A(outbound MCP 툴, Muse 로컬모델 선택셋 아님). 다음 = D4-S1b(grounded-recall을 grounded surface로 등록, verify-*.mjs 배터리→groundedSurfaces +1).

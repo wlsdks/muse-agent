@@ -10,6 +10,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Other AI tools can ask Muse to do something, but only you can approve it.**
+  When Muse runs as an MCP server, a connected agent can now propose an action
+  for you (write a note, add a reminder, draft a message) — Muse parks it in
+  your approval queue and never carries it out on its own. You review and
+  approve pending items with `muse approvals`; nothing an outside tool proposes
+  happens until you say so.
+
 - **Edits keep your file's indentation even when the model's snippet is off.**
   When Muse edits a file and the text it's matching differs only by
   indentation (a common slip for the local model), the change now lands with

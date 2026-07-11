@@ -1,6 +1,9 @@
 /**
- * The three read-only tools `muse mcp serve` exposes, and the self-contained
- * dependency bootstrap they run on (no API server, no `createMuseRuntimeAssembly`
+ * The tools `muse mcp serve` exposes — three read-only (grounded recall,
+ * knowledge search, user-model read) plus one write-proxy (`propose_action`,
+ * which only PARKS a proposed action in the approval queue, never executes it)
+ * — and the self-contained dependency bootstrap they run on (no API server, no
+ * `createMuseRuntimeAssembly`
  * — mirrors how `commands-ask.ts` / `ask-routes.ts` wire the grounded-recall
  * seam directly against env-resolved paths + an injected model provider).
  *
@@ -9,6 +12,8 @@
  * inject fakes (a failing model provider, a fixed clock, a temp notes dir)
  * without touching `process.env` or a live Ollama.
  */
+
+import { randomUUID } from "node:crypto";
 
 import { effectiveConfidence, FileUserMemoryStore, type UserMemoryStore } from "@muse/memory";
 import { LocalDirNotesProvider, type NotesProvider } from "@muse/domain-tools";
@@ -20,8 +25,10 @@ import {
   resolveDefaultModel,
   resolveNotesDir,
   resolveNotesIndexFile,
+  resolvePendingApprovalsFile,
   type MuseEnvironment
 } from "@muse/autoconfigure";
+import { recordPendingApproval, type PendingApproval } from "@muse/messaging";
 import {
   allUserMemoryFacts,
   isNotesIndexStale,
@@ -54,6 +61,8 @@ export interface McpServeDependencies {
   readonly answerModel?: string;
   readonly answerTemperature: number;
   readonly now: () => Date;
+  readonly stagePendingApproval: (entry: PendingApproval) => Promise<void>;
+  readonly newId: () => string;
 }
 
 /**
@@ -75,10 +84,12 @@ export function resolveMcpServeDependencies(rawEnv: MuseEnvironment = process.en
     embedFn: (text, model) => embed(text, model),
     embedModel: DEFAULT_EMBED_MODEL,
     modelProvider: createModelProvider(env),
+    newId: () => randomUUID(),
     notesDir,
     notesIndexFile: resolveNotesIndexFile(env),
     notesProvider: new LocalDirNotesProvider({ notesDir }),
     now: () => new Date(),
+    stagePendingApproval: (entry) => recordPendingApproval(resolvePendingApprovalsFile(env), entry),
     userId: resolveMcpUserId(env),
     userMemoryStore: new FileUserMemoryStore(env.MUSE_USER_MEMORY_FILE ? { file: env.MUSE_USER_MEMORY_FILE } : {})
   };
@@ -326,6 +337,76 @@ function buildUserModelReadTool(deps: McpServeDependencies): MuseTool {
   };
 }
 
+// Mirrors PENDING_APPROVAL_TTL_MS in actuator-tools.ts (buildCliPendingApprovalStager) —
+// a proposed action parks for a week before it's stale, same as a refused CLI write.
+const PROPOSE_ACTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function buildProposeActionTool(deps: McpServeDependencies): MuseTool {
+  return {
+    definition: {
+      description:
+        "Propose an action for the user to review and approve — it is PARKED in the user's approval queue and NEVER executed automatically; the user must approve it via `muse approvals`. Use when a connected agent wants Muse to DO something on the user's behalf (write a note, add a reminder, draft a message). Do NOT use for reads (use knowledge_search / muse_recall) and do NOT expect the action to happen until the user confirms.",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          action: {
+            description: "The proposed action or tool name, e.g. 'add_reminder' or 'send_message'.",
+            type: "string"
+          },
+          arguments: {
+            description: "Structured payload for the action, e.g. { \"at\": \"15:00\" }. Optional — omit if the draft alone is enough context.",
+            type: "object"
+          },
+          draft: {
+            description: "The exact human-readable content the user will review, e.g. 'Remind me to call the dentist at 3pm'.",
+            type: "string"
+          }
+        },
+        required: ["action", "draft"],
+        type: "object"
+      },
+      name: "propose_action",
+      risk: "write"
+    },
+    execute: async (args) => {
+      const rawAction = (args as { action?: unknown }).action;
+      const rawDraft = (args as { draft?: unknown }).draft;
+      if (typeof rawAction !== "string" || rawAction.trim().length === 0) {
+        throw new Error("propose_action: 'action' must be a non-empty string — refusing to park a blank action.");
+      }
+      if (typeof rawDraft !== "string" || rawDraft.trim().length === 0) {
+        throw new Error("propose_action: 'draft' must be a non-empty string — refusing to park an action with no reviewable content.");
+      }
+      const rawArguments = (args as { arguments?: unknown }).arguments;
+      const argumentsPayload = rawArguments && typeof rawArguments === "object" && !Array.isArray(rawArguments)
+        ? rawArguments as Record<string, unknown>
+        : {};
+
+      const createdAt = deps.now();
+      const entry: PendingApproval = {
+        arguments: argumentsPayload,
+        createdAt: createdAt.toISOString(),
+        draft: rawDraft,
+        expiresAt: new Date(createdAt.getTime() + PROPOSE_ACTION_TTL_MS).toISOString(),
+        id: deps.newId(),
+        providerId: "mcp",
+        risk: "write",
+        source: "mcp-serve",
+        tool: rawAction,
+        userId: deps.userId
+      };
+
+      await deps.stagePendingApproval(entry);
+
+      return {
+        id: entry.id,
+        message: "Parked for your approval — nothing was executed. Run `muse approvals` to review and approve.",
+        staged: true
+      };
+    }
+  };
+}
+
 export function buildMcpServeTools(deps: McpServeDependencies): readonly MuseTool[] {
-  return [buildMuseRecallTool(deps), buildKnowledgeSearchTool(deps), buildUserModelReadTool(deps)];
+  return [buildMuseRecallTool(deps), buildKnowledgeSearchTool(deps), buildUserModelReadTool(deps), buildProposeActionTool(deps)];
 }
