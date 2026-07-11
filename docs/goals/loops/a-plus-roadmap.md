@@ -37,7 +37,7 @@ ratchet: 로드맵 잔여 [ ] = 28/32 · self-eval pass · fabrication 0 · agen
 - 리스크: eval:computer-task가 ambient GEMINI_API_KEY로 Gemini 하이재킹(VQ-17, eval 정책위반) → MUSE_LOCAL_ONLY=true로 local-forced 재실행 시 PASS(1/1, add-works·multiply-intact·no-collateral, 실 다단계작업이 가드 하에 false-abort 없이 완료). 가드는 10-deep A↔B에서만 abort라 정당작업 불발현.
 lesson: "LOCAL OLLAMA ONLY" eval이 실제로 로컬 강제를 안 하면 ambient 클라우드 키에 하이재킹됨 — eval 스크립트는 MUSE_LOCAL_ONLY/MUSE_DEFAULT_MODEL을 명시 강제해야(VQ-17).
 
-## fire 5 · 2026-07-11 · skill v2.x · <commit-pending>
+## fire 5 · 2026-07-11 · skill v2.x · c338f66c5
 meta: slice=D2-S6a · wave=W1 · pkg=@muse/tools+apps/cli · kind=security-ux · verdict=PASS · firesSinceDrill=5
 ratchet: 로드맵 잔여 [ ] = 27/33 · self-eval pass · fabrication 0 · risky-token 13 test 신규
 - 무엇: 승인 프롬프트 위험-토큰 하이라이트. 순수 identifyRiskyTokens(파괴 플래그·민감경로·명령위치 파괴동사, DS-2 위험어휘 재사용, 토큰-레벨)+emphasizeRiskyTokens(TRUSTED ANSI bold-red)를 chatToolApprovalGate detail에 배선(summarizeToolArgs redact+strip 뒤에만).
