@@ -353,7 +353,9 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
 
   it("--once fires a MET standing objective through the same launcher + sink", async () => {
     const env = tmpEnv();
-    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
+      tasks: [{ createdAt: "2026-01-01T00:00:00Z", id: "t1", status: "open", title: "build went green" }]
+    }), "utf8");
     await writeObjectives(env.MUSE_OBJECTIVES_FILE!, [
       { attempts: 0, createdAt: "2026-01-01T00:00:00Z", id: "obj1", kind: "watch", spec: "ping me when the build is green", status: "active", userId: "stark" }
     ]);
@@ -361,7 +363,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
     const metModel: DaemonHelpers["resolveFollowupModel"] = async () => ({
       model: "test-model",
-      modelProvider: { generate: async () => ({ output: '{"outcome":"met"}' }) } as never
+      modelProvider: { generate: async () => ({ output: '{"store":"tasks","keywords":["green"]}' }) } as never
     });
 
     const res = await runDaemon(
@@ -373,11 +375,14 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     expect(res.stdout).toMatch(/objectives: 1 fired/);
     expect(sent).toHaveLength(1);
     expect(sent[0]!.text).toContain("Objective met: ping me when the build is green");
+    expect(sent[0]!.text).toContain("evidence: task:build went green");
   });
 
   it("--once with MUSE_OBJECTIVES_PROPOSE proposes a met objective instead of sending it", async () => {
     const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_OBJECTIVES_PROPOSE: "true" };
-    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({ tasks: [] }), "utf8");
+    writeFileSync(env.MUSE_TASKS_FILE!, JSON.stringify({
+      tasks: [{ createdAt: "2026-01-01T00:00:00Z", id: "t1", status: "open", title: "build went green" }]
+    }), "utf8");
     await writeObjectives(env.MUSE_OBJECTIVES_FILE!, [
       { attempts: 0, createdAt: "2026-01-01T00:00:00Z", id: "obj1", kind: "watch", spec: "ping me when the build is green", status: "active", userId: "stark" }
     ]);
@@ -385,7 +390,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
     const metModel: DaemonHelpers["resolveFollowupModel"] = async () => ({
       model: "test-model",
-      modelProvider: { generate: async () => ({ output: '{"outcome":"met"}' }) } as never
+      modelProvider: { generate: async () => ({ output: '{"store":"tasks","keywords":["green"]}' }) } as never
     });
 
     const res = await runDaemon(
@@ -528,12 +533,16 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const sent: OutboundMessage[] = [];
     const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
     // One model serves both followup synthesis (prose) and the objectives
-    // verdict (JSON) — branch on the evaluator prompt's "outcome" token.
+    // evidence proposal (JSON) — branch on the evaluator prompt's "store"
+    // token. The proposed tasks query matches the "Ship the memo" fixture
+    // already seeded above for the proactive tick.
     const smartModel: DaemonHelpers["resolveFollowupModel"] = async () => ({
       model: "test-model",
       modelProvider: { generate: async (req: { messages?: unknown }) => {
         const blob = JSON.stringify(req.messages ?? "");
-        return blob.includes("outcome") ? { output: '{"outcome":"met"}' } : { output: "Quick follow-up on the memo." };
+        return blob.includes("windowDays")
+          ? { output: '{"store":"tasks","keywords":["memo"]}' }
+          : { output: "Quick follow-up on the memo." };
       } } as never
     });
     const fetchImpl = (async () => new Response("Status: SOLD OUT", { status: 200 })) as unknown as typeof globalThis.fetch;

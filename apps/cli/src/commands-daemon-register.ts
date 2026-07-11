@@ -25,6 +25,7 @@ import {
   resolveEpisodesFile,
   resolveFollowupsFile,
   resolveLearningPauseFile,
+  resolveActionLogFile,
   resolveNotesDir,
   resolveObjectivesFile,
   resolvePatternsFiredFile,
@@ -42,7 +43,7 @@ import { clusterByTextSimilarity, mergePlaybookStrategies, PLAYBOOK_AVOID_BELOW,
 import { FileUserMemoryStore } from "@muse/memory";
 import type { PatternMatch } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import { formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, readEpisodes, resolveLearnQueueFile, decayStalePlaybookRewards, isLearningPaused, queryPlaybook, recordPlaybookStrategy, removePlaybookStrategy, readProactiveHistory, readRecallHits, writeFadedMemoryKeys } from "@muse/stores";
+import { formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, readEpisodes, resolveLearnQueueFile, decayStalePlaybookRewards, isLearningPaused, queryActionLog, queryPlaybook, readReminders, readTasks, recordPlaybookStrategy, removePlaybookStrategy, readProactiveHistory, readRecallHits, writeFadedMemoryKeys } from "@muse/stores";
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, runDueBackgroundExitNotices, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, runDueReminders, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, GmailEmailProvider, type EmailProvider, runDueSituationalBriefing, selectUpcomingConflicts } from "@muse/domain-tools";
 import { BROWSING_SYNC_LIMIT, locateChromeHistoryFile, shouldAutoSyncBrowsing, syncBrowsingHistory } from "@muse/recall";
@@ -380,8 +381,24 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         : parseBoolean(e.MUSE_OBJECTIVES_PROPOSE, false)
           ? createProposingObjectiveActuator({ destination, providerId: provider, proposedActionsFile })
           : createMessagingObjectiveActuator({ destination, providerId: provider, registry: messagingRegistry });
+      const objectivesActionLogFile = resolveActionLogFile(e);
       const objectivesEvaluate = followupModel
-        ? createModelObjectiveEvaluator({ model: followupModel.model, modelProvider: followupModel.modelProvider })
+        ? createModelObjectiveEvaluator({
+            evidenceDeps: {
+              ...(calendarRegistry.list().length > 0
+                ? { listCalendarEvents: (range: { readonly from: Date; readonly to: Date }) => calendarRegistry.listEvents(range) }
+                : {}),
+              // `notes` has no synchronous, keyword-searchable local store
+              // wired to this call site (notes search is embedding-index-
+              // backed in @muse/recall) — resolving to [] fails closed to
+              // "unmet" rather than wiring a heavier async path here.
+              queryActionLog: () => queryActionLog(objectivesActionLogFile, {}),
+              readReminders: () => readReminders(remindersFile),
+              readTasks: () => readTasks(tasksFile)
+            },
+            model: followupModel.model,
+            modelProvider: followupModel.modelProvider
+          })
         : undefined;
 
       if (options.status) {

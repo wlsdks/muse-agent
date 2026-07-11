@@ -27,7 +27,7 @@ import { CalendarProviderRegistry, type CalendarEvent } from "@muse/calendar";
 import { createGateEmbedder, createOllamaEmbedder } from "./embedder-base.js";
 import type { JsonObject } from "@muse/shared";
 import { readFadedMemoryKeys, readReminders, readVetoes, queryPlaybook, queryPlanCache, readRecallHits, recordPlanTemplate, recordRecallHits } from "@muse/stores";
-import type { ConversationSummaryStore, TaskMemoryStore, UserMemoryStore } from "@muse/memory";
+import { hashQuery, type ConversationSummaryStore, type TaskMemoryStore, type UserMemoryStore } from "@muse/memory";
 import { FileBackedInboxContextProvider, type InboxSourceConfig } from "@muse/messaging";
 
 import {
@@ -273,9 +273,10 @@ export function withRecallHitRecording(
   return {
     async resolve(query: string, userId?: string) {
       const snapshot = await provider.resolve(query, userId);
+      const queryHash = hashQuery(query);
       const entries = (snapshot?.matches ?? [])
         .filter((match) => typeof match.sessionId === "string" && match.sessionId.length > 0)
-        .map((match) => ({ key: match.sessionId, summary: match.narrative }));
+        .map((match) => ({ key: match.sessionId, queryHash, summary: match.narrative }));
       if (entries.length > 0) {
         void recordRecallHits(hitsFile, entries, Date.now()).catch(() => undefined);
       }

@@ -186,6 +186,7 @@ export class SlackProvider implements MessagingProvider {
         providerId: this.id,
         raw: message,
         receivedAtIso: tsToIso(message.ts),
+        scope: slackChannelScope(channel),
         ...(senderId ? { sender: senderId } : {}),
         source: channel,
         text: message.text
@@ -229,6 +230,16 @@ export class SlackProvider implements MessagingProvider {
       raw: parsed
     };
   }
+}
+
+/**
+ * Slack channel-id prefixes are a stable, documented convention: `D` is
+ * always a 1:1 DM conversation; `C` (public) and `G` (private/MPIM) are
+ * multi-person. Cheaper and more reliable than an extra
+ * `conversations.info` call per message.
+ */
+function slackChannelScope(channelId: string): "direct" | "shared" {
+  return channelId.startsWith("D") ? "direct" : "shared";
 }
 
 /**

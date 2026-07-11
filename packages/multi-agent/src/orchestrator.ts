@@ -14,6 +14,7 @@ import type {
   HandoffDecision,
   MultiAgentOrchestrationResult,
   MultiAgentRunResult,
+  OrchestrationMode,
   OrchestrationRunOptions,
   OrchestrationStepResult,
   SupervisorOptions
@@ -21,6 +22,7 @@ import type {
 import { parseWorkerResult, validateWorkerHandoff } from "./worker-result.js";
 import { type AgentWorker, NoAgentWorkerError } from "./workers.js";
 import type { SubAgentRunRegistry } from "./subagent-run-registry.js";
+import type { BackgroundOrchestrationHandle, BackgroundOrchestrationStore } from "./background-orchestration.js";
 
 export class SupervisorAgent {
   private readonly workers: readonly AgentWorker[];
@@ -196,10 +198,73 @@ export class MultiAgentOrchestrator {
     const runId = input.runId ?? this.idFactory();
     const startedAt = this.clock();
     this.registerParentRun(runId);
-    let selectedWorkers: readonly AgentWorker[];
+    const selectedWorkers = this.selectWorkersOrRecordFailure(runId, mode, startedAt, options.workerIds, options.maxWorkers);
+    return this.dispatchAndFinalize(runId, mode, selectedWorkers, { ...input, runId }, options, startedAt);
+  }
 
+  /**
+   * Non-blocking twin of {@link run}: decompose + dispatch happen the same
+   * way (selection, per-worker deadline, run registry), but the caller gets
+   * a {@link BackgroundOrchestrationHandle} back SYNCHRONOUSLY — before any
+   * worker has even started resolving — instead of awaiting the whole
+   * fan-out. The consolidated result (the SAME fan-in shape `run` produces,
+   * via the identical `dispatchAndFinalize` → `buildOrchestrationResponse`
+   * path) is recorded to `store` exactly once, when the LAST worker settles.
+   * A worker failure or a total-failure orchestration is captured as a
+   * `"failed"` record — never a dangling, unobserved promise (MAST
+   * "information withholding" / "unaware of termination").
+   */
+  runBackground(
+    input: AgentRunInput,
+    options: OrchestrationRunOptions = {},
+    store?: BackgroundOrchestrationStore
+  ): BackgroundOrchestrationHandle {
+    const mode = options.mode ?? "sequential";
+    const runId = input.runId ?? this.idFactory();
+    const startedAt = this.clock();
+    this.registerParentRun(runId);
+    const selectedWorkers = this.selectWorkersOrRecordFailure(runId, mode, startedAt, options.workerIds, options.maxWorkers);
+    const subtaskCount = selectedWorkers.length;
+    const workerIds = selectedWorkers.map((worker) => worker.id);
+
+    void this.dispatchAndFinalize(runId, mode, selectedWorkers, { ...input, runId }, options, startedAt)
+      .then((result) => {
+        store?.complete({
+          finishedAt: this.clock(),
+          orchestrationId: runId,
+          response: result.response,
+          results: result.results,
+          status: "completed",
+          subtaskCount,
+          workerIds
+        });
+      })
+      .catch((error: unknown) => {
+        store?.complete({
+          error: errorMessage(error),
+          finishedAt: this.clock(),
+          orchestrationId: runId,
+          status: "failed",
+          subtaskCount,
+          workerIds
+        });
+      });
+
+    return { orchestrationId: runId, subtaskCount };
+  }
+
+  /** Selection errors are recorded the same way for both the blocking and
+   *  background paths — a bad `workerIds`/`maxWorkers` fails fast, before
+   *  any dispatch, and is never silently absorbed into the background run. */
+  private selectWorkersOrRecordFailure(
+    runId: string,
+    mode: OrchestrationMode,
+    startedAt: Date,
+    workerIds: readonly string[] | undefined,
+    maxWorkers: number | undefined
+  ): readonly AgentWorker[] {
     try {
-      selectedWorkers = this.selectWorkers(options.workerIds, options.maxWorkers);
+      return this.selectWorkers(workerIds, maxWorkers);
     } catch (error) {
       this.runRegistry?.fail(runId, error instanceof Error ? error.message : "selection failed");
       this.recordHistory({
@@ -215,16 +280,28 @@ export class MultiAgentOrchestrator {
       });
       throw error;
     }
+  }
 
+  /** Dispatch the selected workers and build the consolidated response — the
+   *  ONE fan-out/fan-in body shared by `run` (awaited) and `runBackground`
+   *  (chained off a detached promise). */
+  private async dispatchAndFinalize(
+    runId: string,
+    mode: OrchestrationMode,
+    selectedWorkers: readonly AgentWorker[],
+    input: AgentRunInput,
+    options: OrchestrationRunOptions,
+    startedAt: Date
+  ): Promise<MultiAgentOrchestrationResult> {
     let results: readonly OrchestrationStepResult[];
     try {
       if (mode === "parallel") {
-        results = await this.runParallel({ ...input, runId }, selectedWorkers);
+        results = await this.runParallel(input, selectedWorkers);
       } else if (mode === "race") {
         // parked: resolves to sequential (see OrchestrationMode docs)
-        results = await this.runSequential({ ...input, runId }, selectedWorkers);
+        results = await this.runSequential(input, selectedWorkers);
       } else {
-        results = await this.runSequential({ ...input, runId }, selectedWorkers);
+        results = await this.runSequential(input, selectedWorkers);
       }
     } catch (error) {
       this.runRegistry?.fail(runId, error instanceof Error ? error.message : "orchestration failed");

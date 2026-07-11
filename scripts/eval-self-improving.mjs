@@ -60,7 +60,8 @@ const BATTERIES = [
   { axis: "★ WEDGE: browsing cited recall (local history under the citation gate)", file: "apps/cli/scripts/verify-browsing-recall.mjs", name: "browsing-recall" },
   { axis: "★ WEDGE: cross-lingual feed rescue (KO query → EN headline out of the recency window)", file: "apps/cli/scripts/verify-feed-crosslingual.mjs", name: "feed-crosslingual" },
   { axis: "★ WEDGE: muse mcp serve grounding gate (muse_recall over the real MCP wire)", file: "apps/cli/scripts/verify-mcp-serve-grounding.mjs", name: "mcp-serve-grounding" },
-  { axis: "★ WEDGE: compaction-preservation (fail-close post-compaction quality gate)", file: "apps/cli/scripts/verify-compaction-preservation.mjs", name: "compaction-preservation" }
+  { axis: "★ WEDGE: compaction-preservation (fail-close post-compaction quality gate)", file: "apps/cli/scripts/verify-compaction-preservation.mjs", name: "compaction-preservation" },
+  { axis: "★ WEDGE: evidence-gated objective completion (done = proven, never model say-so)", file: "apps/cli/scripts/verify-objective-completion.mjs", name: "objective-completion" }
 ];
 
 async function ollamaReachable() {

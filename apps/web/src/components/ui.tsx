@@ -320,5 +320,13 @@ export const Icon = {
         <path d="M12 3l9 16H3z" />
         <path d="M12 10v4M12 17v.5" />
       </>
+    ),
+  clock: (p: IconProps) =>
+    base(
+      p,
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l4 2" />
+      </>
     )
 };

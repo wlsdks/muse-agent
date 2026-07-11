@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **517** variables.
+Total: **518** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -98,6 +98,7 @@ Total: **517** variables.
 | `MUSE_CALENDAR_PROVIDERS` | apps/cli, packages/autoconfigure |
 | `MUSE_CANARY` | packages/policy |
 | `MUSE_CHANNEL_ALLOWED_CHATS` | apps/api |
+| `MUSE_CHANNEL_GROUP_ENABLED` | apps/api |
 | `MUSE_CHANNEL_OWNERS_FILE` | apps/api |
 | `MUSE_CHAT_AUTO_REINDEX` | apps/cli |
 | `MUSE_CHAT_GROUNDING` | apps/cli |

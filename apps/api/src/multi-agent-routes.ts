@@ -56,6 +56,14 @@ interface OrchestrateBody {
   readonly synthesize?: boolean;
   readonly verify?: boolean;
   readonly tiered?: boolean;
+  /**
+   * Dispatch the sub-agents without waiting for them — the handler returns
+   * `202` with `{ orchestrationId, subtaskCount }` immediately instead of
+   * blocking on the full fan-out. The consolidated result lands in
+   * `historyStore` (same shape as the blocking path) the moment the last
+   * worker settles; poll `GET /api/multi-agent/orchestrations/:runId`.
+   */
+  readonly background?: boolean;
 }
 
 type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: ApiError };
@@ -192,6 +200,23 @@ export function registerMultiAgentRoutes(server: FastifyInstance, options: Multi
     }
 
     const { messageBus, input, orchestrator, orchestrationOptions } = prepared;
+
+    if (parsed.value.background === true) {
+      try {
+        const handle = orchestrator.runBackground(input, orchestrationOptions);
+        return reply.status(202).send({
+          background: true,
+          orchestrationId: handle.orchestrationId,
+          subtaskCount: handle.subtaskCount
+        });
+      } catch (error) {
+        reply.log.error({ err: error }, "multi-agent background orchestration dispatch failed");
+        return reply.status(500).send({
+          code: "MULTI_AGENT_ORCHESTRATION_FAILED",
+          message: "multi-agent orchestration failed"
+        } satisfies ApiError);
+      }
+    }
 
     try {
       const orchestration = await orchestrator.run(input, orchestrationOptions);
@@ -738,6 +763,13 @@ function parseOrchestrateBody(value: unknown): ParseResult<OrchestrateBody> {
     return invalid("INVALID_ORCHESTRATE_REQUEST", "tiered must be a boolean");
   }
 
+  let background: boolean | undefined;
+  if (typeof body.background === "boolean") {
+    background = body.background;
+  } else if (body.background !== undefined) {
+    return invalid("INVALID_ORCHESTRATE_REQUEST", "background must be a boolean");
+  }
+
   return {
     ok: true,
     value: {
@@ -750,7 +782,8 @@ function parseOrchestrateBody(value: unknown): ParseResult<OrchestrateBody> {
       ...(summarize !== undefined ? { summarize } : {}),
       ...(synthesize !== undefined ? { synthesize } : {}),
       ...(verify !== undefined ? { verify } : {}),
-      ...(tiered !== undefined ? { tiered } : {})
+      ...(tiered !== undefined ? { tiered } : {}),
+      ...(background !== undefined ? { background } : {})
     }
   };
 }

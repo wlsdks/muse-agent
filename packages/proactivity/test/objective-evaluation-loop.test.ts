@@ -20,6 +20,8 @@ afterEach(async () => {
   await rm(dir, { force: true, recursive: true });
 });
 
+const EVIDENCE = [{ source: "test:store", text: "resolved evidence" }] as const;
+
 const obj = (over: Partial<StandingObjective> = {}): StandingObjective => ({
   createdAt: "2026-05-01T00:00:00Z",
   id: "o1",
@@ -43,10 +45,29 @@ describe("runDueObjectives — standing-objective re-evaluation engine", () => {
   it("MET: fires the action exactly once and flips the objective to done (durable)", async () => {
     await addObjective(file, obj());
     let acted = 0;
-    const summary = await run({ act: async () => { acted += 1; }, evaluate: async () => ({ outcome: "met" }) });
+    const summary = await run({ act: async () => { acted += 1; }, evaluate: async () => ({ evidence: EVIDENCE, outcome: "met" }) });
     expect(summary.fired).toEqual(["o1"]);
     expect(acted).toBe(1);
     expect(await byId("o1")).toMatchObject({ resolution: "condition met", status: "done" });
+  });
+
+  it("MET but the evaluator supplies NO evidence ⇒ fail-close backstop treats it as unmet — no act, no completion", async () => {
+    await addObjective(file, obj());
+    let acted = 0;
+    const summary = await run({ act: async () => { acted += 1; }, evaluate: async () => ({ outcome: "met" }) });
+    expect(summary.fired).toEqual([]);
+    expect(summary.retried).toEqual(["o1"]);
+    expect(acted).toBe(0);
+    expect(await byId("o1")).toMatchObject({ status: "active" });
+  });
+
+  it("MET with an EMPTY evidence array ⇒ also backstopped to unmet (an empty array is not evidence)", async () => {
+    await addObjective(file, obj());
+    let acted = 0;
+    const summary = await run({ act: async () => { acted += 1; }, evaluate: async () => ({ evidence: [], outcome: "met" }) });
+    expect(summary.fired).toEqual([]);
+    expect(acted).toBe(0);
+    expect(await byId("o1")).toMatchObject({ status: "active" });
   });
 
   it("UNMEETABLE: escalates with the reason and flips to escalated (never silently dropped)", async () => {
@@ -117,14 +138,14 @@ describe("runDueObjectives — standing-objective re-evaluation engine", () => {
     await addObjective(file, obj({ id: "done", status: "done" }));
     await addObjective(file, obj({ id: "future", nextEvalAt: new Date(nowMs + 60_000).toISOString() }));
     await addObjective(file, obj({ id: "past-due", nextEvalAt: new Date(nowMs - 60_000).toISOString() }));
-    const summary = await run({ evaluate: async () => ({ outcome: "met" }), act: async () => undefined });
+    const summary = await run({ evaluate: async () => ({ evidence: EVIDENCE, outcome: "met" }), act: async () => undefined });
     expect(summary.fired.sort()).toEqual(["active-due", "past-due"]);
     expect(summary.due).toBe(2);
   });
 
   it("caps the objectives processed per tick (a backlog can't burst)", async () => {
     for (let i = 0; i < 5; i += 1) await addObjective(file, obj({ id: `o${i.toString()}` }));
-    const summary = await run({ evaluate: async () => ({ outcome: "met" }), maxPerTick: 2 });
+    const summary = await run({ evaluate: async () => ({ evidence: EVIDENCE, outcome: "met" }), maxPerTick: 2 });
     expect(summary.due).toBe(2);
     expect(summary.fired).toHaveLength(2);
   });
@@ -133,7 +154,7 @@ describe("runDueObjectives — standing-objective re-evaluation engine", () => {
     await addObjective(file, obj({ id: "boom" }));
     await addObjective(file, obj({ id: "ok" }));
     const summary = await run({
-      evaluate: async (o) => { if (o.id === "boom") throw new Error("evaluator crashed"); return { outcome: "met" }; }
+      evaluate: async (o) => { if (o.id === "boom") throw new Error("evaluator crashed"); return { evidence: EVIDENCE, outcome: "met" }; }
     });
     expect(summary.errors.some((e) => e.includes("boom") && e.includes("evaluator crashed"))).toBe(true);
     expect(summary.fired).toContain("ok"); // sibling still processed
@@ -144,7 +165,7 @@ describe("runDueObjectives — standing-objective re-evaluation engine", () => {
     await addObjective(file, obj());
     const summary = await run({
       act: async () => { throw new Error("messenger down"); },
-      evaluate: async () => ({ outcome: "met" })
+      evaluate: async () => ({ evidence: EVIDENCE, outcome: "met" })
     });
     expect(summary.fired).toEqual([]); // the action failed → not counted as fired
     expect(summary.errors.some((e) => e.includes("messenger down"))).toBe(true);

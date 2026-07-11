@@ -670,4 +670,8 @@ export {
 // what to surface, and every item cites its recorded supersession.
 export { formatLearnedConfirmation, projectRecentlyLearned, renderRecentlyLearnedLines, selectNewSupersessions, summarizeRecentlyLearned, type RecentlyLearnedItem } from "./recently-learned.js";
 
+// Bounded deterministic query identifier for the recall-hits sidecar — fuels
+// selectPromotableMemories's minUniqueQueries gate.
+export { hashQuery, normalizeQueryForHash } from "./query-hash.js";
+
 

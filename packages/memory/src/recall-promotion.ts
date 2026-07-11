@@ -19,6 +19,13 @@ export interface RecallHitLike {
   readonly lastHitMs: number;
   /** Epoch-ms of recent accesses (chronological), for ACT-R activation ranking. Optional — legacy records have only lastHitMs. */
   readonly recentAccessMs?: readonly number[];
+  /**
+   * Deterministic hash (see `@muse/memory`'s `hashQuery`) of each recall
+   * access's query text, chronological. Fuels the query-diversity promotion
+   * gate (`minUniqueQueries`) — optional because a record written before this
+   * field existed has none.
+   */
+  readonly queryHashes?: readonly string[];
 }
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -35,6 +42,18 @@ const DEFAULT_MAX_PROMOTED = 3;
  * is promoted as before. Default 2.
  */
 const DEFAULT_MIN_DISTINCT_ACCESS_DAYS = 2;
+/**
+ * Distinct query-hashes a memory must have been recalled by before it can be
+ * PROMOTED — openclaw's dreaming gate requires minScore ∧ minRecallCount ∧
+ * minUniqueQueries. Without this, one query repeated N times (a user re-asking
+ * the same thing, or a retry loop) clears the hit floor exactly like N
+ * genuinely different questions would, self-reinforcing a memory that hasn't
+ * actually proven broadly useful. Only applies when `queryHashes` was
+ * recorded for at least one access; a record with NONE recorded (it predates
+ * this field) is promoted as before — the gate can't retroactively judge data
+ * the ledger never captured. Default 2.
+ */
+const DEFAULT_MIN_UNIQUE_QUERIES = 2;
 
 /** Count the distinct UTC calendar days present in a list of epoch-ms accesses. */
 function distinctAccessDays(accessMs: readonly number[]): number {
@@ -85,6 +104,13 @@ export interface SelectPromotableOptions {
    */
   readonly minDistinctAccessDays?: number;
   /**
+   * A memory with recorded `queryHashes` must span at least this many DISTINCT
+   * hashes to be promoted — see the constant doc above. Records with no
+   * `queryHashes` at all skip the guard (pre-feature data, legacy-promoted).
+   * Default 2.
+   */
+  readonly minUniqueQueries?: number;
+  /**
    * When true, rank by ACT-R base-level activation (frequency×spacing) instead
    * of the plain recency-weighted score. The eligibility FILTER is unchanged —
    * only sort order.
@@ -117,9 +143,12 @@ export function selectPromotableMemories(
   const minDistinctAccessDays = Number.isFinite(options.minDistinctAccessDays)
     ? Math.max(1, Math.trunc(options.minDistinctAccessDays!))
     : DEFAULT_MIN_DISTINCT_ACCESS_DAYS;
+  const minUniqueQueries = Number.isFinite(options.minUniqueQueries)
+    ? Math.max(1, Math.trunc(options.minUniqueQueries!))
+    : DEFAULT_MIN_UNIQUE_QUERIES;
   const nowMs = options.nowMs;
   const useActr = options.useActrRanking === true;
-  type WithActr = PromotedMemory & { readonly activation: number; readonly spacedOk: boolean };
+  type WithActr = PromotedMemory & { readonly activation: number; readonly spacedOk: boolean; readonly diverseOk: boolean };
   const mapped = records
     .filter((record) => Number.isFinite(record.hits) && record.hits >= minHits)
     .map((record): WithActr => ({
@@ -130,9 +159,14 @@ export function selectPromotableMemories(
       // Spacing guard: a record WITH per-access history must span ≥ N distinct
       // days; one without history (legacy) is never blocked on this signal.
       spacedOk: !record.recentAccessMs || record.recentAccessMs.length === 0
-        || distinctAccessDays(record.recentAccessMs) >= minDistinctAccessDays
+        || distinctAccessDays(record.recentAccessMs) >= minDistinctAccessDays,
+      // Query-diversity guard: a record WITH query hashes must span ≥ N
+      // distinct ones; a record with NONE (predates the field) is never
+      // blocked — see DEFAULT_MIN_UNIQUE_QUERIES doc.
+      diverseOk: !record.queryHashes || record.queryHashes.length === 0
+        || new Set(record.queryHashes).size >= minUniqueQueries
     }))
-    .filter((promoted) => promoted.score >= minScore && promoted.spacedOk);
+    .filter((promoted) => promoted.score >= minScore && promoted.spacedOk && promoted.diverseOk);
   if (useActr) {
     mapped.sort((left, right) => right.activation - left.activation || right.score - left.score);
   } else {

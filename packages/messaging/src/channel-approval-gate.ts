@@ -92,6 +92,14 @@ export function createChannelApprovalGate(options: {
   readonly providerId: string;
   readonly source: string;
   readonly recordRefusal?: (refusal: ChannelApprovalRefusal) => Promise<void>;
+  /**
+   * Conversation scope (see `conversation-scope.ts`). Omitted / "direct"
+   * keeps today's draft-first approval-prompt flow. "shared" (a
+   * group/channel chat) denies OUTRIGHT with a different notice — no
+   * approval round-trip is offered, because any member of that chat
+   * could "yes" it, not just the paired owner.
+   */
+  readonly scope?: "direct" | "shared";
 }): ChannelApprovalGate {
   return async ({ toolCall, risk, userId }) => {
     if (risk === "read") {
@@ -106,10 +114,14 @@ export function createChannelApprovalGate(options: {
         // decision — a wedged disk can't let a risky tool through.
       }
     }
-    const text =
-      `🔒 Muse wanted to run "${toolCall.name}" (${risk})`
-      + (draft ? ` — ${draft}` : "")
-      + ". It was NOT executed — Muse won't run a state-changing action from a chat message on its own. It needs your explicit approval and has been logged for your review.";
+    const isShared = options.scope === "shared";
+    const text = isShared
+      ? `🔒 Muse wanted to run "${toolCall.name}" (${risk})`
+        + (draft ? ` — ${draft}` : "")
+        + ". Write/execute actions are not available in group chats — this was NOT executed. Ask Muse directly in your 1:1 chat if you want this done."
+      : `🔒 Muse wanted to run "${toolCall.name}" (${risk})`
+        + (draft ? ` — ${draft}` : "")
+        + ". It was NOT executed — Muse won't run a state-changing action from a chat message on its own. It needs your explicit approval and has been logged for your review.";
     try {
       await options.registry.send(options.providerId, { destination: options.source, text });
     } catch {
@@ -118,7 +130,9 @@ export function createChannelApprovalGate(options: {
     }
     return {
       allowed: false,
-      reason: `awaiting in-chat approval for "${toolCall.name}" (${risk})`
+      reason: isShared
+        ? `write/execute tool "${toolCall.name}" (${risk}) is unavailable in a group chat`
+        : `awaiting in-chat approval for "${toolCall.name}" (${risk})`
     };
   };
 }

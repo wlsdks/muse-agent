@@ -343,6 +343,19 @@ export interface SkillsResponse {
   entries: SkillView[];
 }
 
+export interface JourneyEventView {
+  at: string;
+  storeKind: "fact" | "skill" | "strategy";
+  eventKind: "learned" | "updated" | "superseded" | "forgotten" | "skill" | "strategy";
+  content: string;
+  ref?: string;
+}
+
+export interface JourneyResponse {
+  total: number;
+  events: JourneyEventView[];
+}
+
 export interface UserMemoryResponse {
   readonly facts?: Record<string, string>;
   readonly preferences?: Record<string, string>;

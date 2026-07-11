@@ -8,6 +8,7 @@ export * from "./macos-ambient-source.js";
 export * from "./note-family-absence.js";
 export * from "./objective-evaluation-loop.js";
 export * from "./objective-evaluator.js";
+export * from "./objective-evidence.js";
 export * from "./pattern-firing-loop.js";
 export * from "./proactive-notice-loop.js";
 export * from "./proposed-action-confirm.js";

@@ -47,6 +47,8 @@ export {
 
 export { isApprovalReply } from "./is-approval-reply.js";
 
+export { effectiveScope, type ConversationScope } from "./conversation-scope.js";
+
 export {
   FileMessagingCredentialStore,
   type MessagingCredentialStore,

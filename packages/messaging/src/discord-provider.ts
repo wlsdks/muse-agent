@@ -181,6 +181,11 @@ export class DiscordProvider implements MessagingProvider {
         providerId: this.id,
         raw: message,
         receivedAtIso: message.timestamp ?? new Date().toISOString(),
+        // `scope` intentionally omitted: the REST `/channels/:id/messages`
+        // response carries no DM-vs-guild-channel signal (that lives on
+        // the separate `GET /channels/:id` object, `type` 1 = DM, which
+        // this per-message poll never fetches). Absent resolves to
+        // "shared" via `effectiveScope` — fail-close, never guessed as 1:1.
         ...(senderName ? { sender: senderName } : {}),
         source: message.channel_id ?? channelId,
         text: message.content

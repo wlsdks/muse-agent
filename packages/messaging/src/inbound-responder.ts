@@ -11,6 +11,13 @@ export interface InboundAgentRunner {
     readonly text: string;
     readonly source: string;
     readonly providerId: string;
+    /**
+     * Conversation-scope hint carried straight through from
+     * `InboundMessage.scope` (see `conversation-scope.ts`). Threaded
+     * unmodified so the caller can gate pairing / memory / risky-tool
+     * approval on it — `respondToInbound` itself stays scope-agnostic.
+     */
+    readonly scope?: string;
   }): Promise<string>;
 }
 
@@ -86,7 +93,8 @@ export async function respondToInbound(
         await options.runner.run({
           providerId: message.providerId,
           source: message.source,
-          text: message.text
+          text: message.text,
+          ...(message.scope ? { scope: message.scope } : {})
         })
       ).trim();
       if (reply.length === 0) {

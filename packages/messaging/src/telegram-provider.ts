@@ -67,8 +67,21 @@ interface TelegramMessageObject {
   readonly message_id: number;
   readonly date: number;
   readonly text?: string;
-  readonly chat: { readonly id: number; readonly username?: string; readonly title?: string };
+  readonly chat: { readonly id: number; readonly username?: string; readonly title?: string; readonly type?: string };
   readonly from?: { readonly id: number; readonly username?: string; readonly first_name?: string };
+}
+
+/**
+ * Telegram's `chat.type` is the authoritative DM/group signal when
+ * present ("private" = 1:1). Falling back to the id sign covers older
+ * payload shapes that omit `type`: a positive chat id is always a
+ * private 1:1 chat, negative is group/supergroup, per the Bot API.
+ */
+function telegramChatScope(chat: { readonly id: number; readonly type?: string }): "direct" | "shared" {
+  if (chat.type) {
+    return chat.type === "private" ? "direct" : "shared";
+  }
+  return chat.id > 0 ? "direct" : "shared";
 }
 
 interface TelegramGetUpdatesResponse {
@@ -180,6 +193,7 @@ export class TelegramProvider implements MessagingProvider {
         providerId: this.id,
         raw: update,
         receivedAtIso: new Date(message.date * 1000).toISOString(),
+        scope: telegramChatScope(message.chat),
         ...(senderName ? { sender: senderName } : {}),
         source: String(message.chat.id),
         text: message.text

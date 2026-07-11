@@ -19,7 +19,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, resolveContactsFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, resolveActionLogFile, resolveContactsFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
 import type { FastifyInstance } from "fastify";
 
@@ -36,7 +36,7 @@ import { distillQueuedCorrections } from "./distill-queue.js";
 import { isModelResidentLive } from "./model-resident.js";
 import { osIdleMs } from "./os-idle.js";
 import { isOnAcPower } from "./power-state.js";
-import { readTasks, resolveTasksDueLine, formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, isOllamaLeaseHeldByOther, resolveOllamaLeaseFile, resolveLearnQueueFile, decayStalePlaybookRewards } from "@muse/stores";
+import { readTasks, readReminders, queryActionLog, resolveTasksDueLine, formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, isOllamaLeaseHeldByOther, resolveOllamaLeaseFile, resolveLearnQueueFile, decayStalePlaybookRewards } from "@muse/stores";
 import { createMessagingObjectiveActuator, createModelObjectiveEvaluator, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, MacOsActiveWindowSource, resolveDayShapeLine, parseAmbientNoticeRules, webWatchesFromConfig, type BriefingImminent } from "@muse/proactivity";
 import { createNotesInvestigator, extractEmailAddress, GmailEmailProvider, LocalDirNotesProvider, LocalFileTasksProvider, OpenMeteoWeatherProvider, homeWatchesFromConfig, parseHomeAlertChecks, resolveHomeAlertLine } from "@muse/domain-tools";
 import { startAmbientTick } from "./ambient-tick.js";
@@ -390,7 +390,20 @@ export function startObjectivesDaemonIfConfigured(
   const maxPerTickRaw = env.MUSE_OBJECTIVES_MAX_PER_TICK ? Number(env.MUSE_OBJECTIVES_MAX_PER_TICK) : undefined;
   const objectivesQuietHours = parseQuietHours(env.MUSE_OBJECTIVES_QUIET_HOURS)
     ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const objectivesActionLogFile = options.actionLogFile ?? resolveActionLogFile(env);
   const evaluate = createModelObjectiveEvaluator({
+    evidenceDeps: {
+      ...(options.tasksFile ? { readTasks: () => readTasks(options.tasksFile!) } : {}),
+      ...(options.remindersFile ? { readReminders: () => readReminders(options.remindersFile!) } : {}),
+      // `notes` has no synchronous, keyword-searchable local store wired to
+      // this call site (notes search is embedding-index-backed in
+      // @muse/recall) — resolving to [] fails closed to "unmet" rather than
+      // wiring a heavier async path here.
+      ...(options.calendar
+        ? { listCalendarEvents: (range: { readonly from: Date; readonly to: Date }) => options.calendar!.listEvents(range) }
+        : {}),
+      queryActionLog: () => queryActionLog(objectivesActionLogFile, {})
+    },
     model: options.defaultModel,
     modelProvider: options.modelProvider
   });

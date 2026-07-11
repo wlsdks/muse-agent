@@ -62,4 +62,22 @@ describe("withRecallHitRecording", () => {
     await flush();
     expect(await readRecallHits(file)).toEqual([]);
   });
+
+  it("records the query's hash on every hit, so repeated identical queries don't fake diversity (query-diversity gate fuel)", async () => {
+    const snapshot: EpisodicRecallSnapshot = {
+      matches: [{ narrative: "we planned the Q3 budget", sessionId: "sess-a", similarity: 0.8 }]
+    };
+    const wrapped = withRecallHitRecording(fakeProvider(snapshot), file);
+    await wrapped.resolve("What's the Q3 budget?", "stark");
+    await wrapped.resolve("what's the q3 budget?", "stark"); // same query, different case — should hash the SAME
+    let hit: Awaited<ReturnType<typeof readRecallHits>>[number] | undefined;
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      hit = (await readRecallHits(file)).find((h) => h.key === "sess-a");
+      if ((hit?.hits ?? 0) >= 2) break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(hit?.hits).toBe(2);
+    expect(hit?.queryHashes).toHaveLength(2);
+    expect(hit?.queryHashes?.[0]).toBe(hit?.queryHashes?.[1]);
+  });
 });

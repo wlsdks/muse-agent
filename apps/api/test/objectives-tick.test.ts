@@ -24,7 +24,10 @@ function objective(overrides: Partial<StandingObjective> = {}): StandingObjectiv
   };
 }
 
-const met = async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" });
+const met = async (): Promise<ObjectiveEvaluation> => ({
+  evidence: [{ source: "tasks", text: "release tagged", whenIso: "2026-05-19T00:00:00.000Z" }],
+  outcome: "met"
+});
 
 describe("startObjectivesTick — P9-b1 the objectives daemon rider drives runDueObjectives", () => {
   it("a tick fires runDueObjectives on a due objective: acted + durably marked done", async () => {
@@ -93,7 +96,10 @@ describe("startObjectivesTick — P9-b1 the objectives daemon rider drives runDu
           throwOnce = false;
           throw new Error("condition source down");
         }
-        return { outcome: "met" };
+        return {
+          evidence: [{ source: "tasks", text: "release tagged", whenIso: "2026-05-19T00:00:00.000Z" }],
+          outcome: "met"
+        };
       },
       objectivesFile: file,
       now: () => new Date("2026-05-19T12:00:00.000Z")

@@ -58,11 +58,34 @@ interface MatrixTimelineEvent {
   readonly content?: { readonly msgtype?: string; readonly body?: unknown };
 }
 
+interface MatrixRoomSummary {
+  /** MSC688 room summary — the joined-member headcount for the room. */
+  readonly "m.joined_member_count"?: number;
+}
+
 interface MatrixSyncResponse extends MatrixErrorBody {
   readonly next_batch?: string;
   readonly rooms?: {
-    readonly join?: Record<string, { readonly timeline?: { readonly events?: readonly MatrixTimelineEvent[] } }>;
+    readonly join?: Record<string, {
+      readonly summary?: MatrixRoomSummary;
+      readonly timeline?: { readonly events?: readonly MatrixTimelineEvent[] };
+    }>;
   };
+}
+
+/**
+ * A DM in Matrix is just a room with exactly the two participants (no
+ * separate "DM" room type exists at the protocol level) — the
+ * `m.joined_member_count` summary field is the closest signal. Absent
+ * when the homeserver doesn't return room summaries for this sync
+ * (older servers / certain filters); left undetermined rather than
+ * guessed, per `effectiveScope`'s fail-close default.
+ */
+function matrixRoomScope(joinedMemberCount: number | undefined): "direct" | "shared" | undefined {
+  if (joinedMemberCount === undefined) {
+    return undefined;
+  }
+  return joinedMemberCount <= 2 ? "direct" : "shared";
 }
 
 /**
@@ -191,10 +214,11 @@ export class MatrixProvider implements MessagingProvider {
       );
     }
     const joined = parsed.rooms?.join ?? {};
-    const events: { readonly roomId: string; readonly event: MatrixTimelineEvent }[] = [];
+    const events: { readonly roomId: string; readonly event: MatrixTimelineEvent; readonly joinedMemberCount: number | undefined }[] = [];
     for (const [roomId, room] of Object.entries(joined)) {
+      const joinedMemberCount = room.summary?.["m.joined_member_count"];
       for (const event of room.timeline?.events ?? []) {
-        events.push({ event, roomId });
+        events.push({ event, joinedMemberCount, roomId });
       }
     }
     const candidates = events.filter(({ event }) =>
@@ -212,10 +236,11 @@ export class MatrixProvider implements MessagingProvider {
     if (this.sinceFile) {
       await writeMatrixSince(this.sinceFile, parsed.next_batch);
     }
-    return candidates.flatMap(({ event, roomId }): readonly InboundMessage[] => {
+    return candidates.flatMap(({ event, roomId, joinedMemberCount }): readonly InboundMessage[] => {
       if (event.sender === ownUserId) {
         return [];
       }
+      const scope = matrixRoomScope(joinedMemberCount);
       return [{
         messageId: event.event_id!,
         providerId: this.id,
@@ -223,6 +248,7 @@ export class MatrixProvider implements MessagingProvider {
         receivedAtIso: typeof event.origin_server_ts === "number"
           ? new Date(event.origin_server_ts).toISOString()
           : new Date().toISOString(),
+        ...(scope ? { scope } : {}),
         ...(event.sender ? { sender: event.sender } : {}),
         source: roomId,
         text: event.content!.body as string

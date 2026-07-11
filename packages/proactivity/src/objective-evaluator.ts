@@ -1,16 +1,24 @@
 /**
  * Concrete production wiring for `runDueObjectives`'s injected
- * `evaluate` / `act` / `escalate` seams (P9-b2):
+ * `evaluate` / `act` / `escalate` seams (P9-b2), now evidence-gated
+ * (roadmap D): the model no longer asserts `met` on its own say-so.
  *
- *  - `createModelObjectiveEvaluator` asks the model whether a
- *    standing objective's condition currently holds and parses a
- *    strict JSON verdict. Conservative safe default: anything that
- *    is not an unambiguous `met` / `unmeetable` ⇒ `unmet` (retry
- *    next tick) — never crash, never a false `met`, never a false
- *    `unmeetable`.
+ *  - `createModelObjectiveEvaluator` runs propose → resolve → check:
+ *    the model PROPOSES which local store would evidence the
+ *    objective (`objective-evidence.ts`'s closed `EvidenceStore`
+ *    enum) plus the keywords/window/count that would prove it; code
+ *    RESOLVES that query against the injected store readers; code
+ *    CHECKS the resolved records deterministically. `met` is reachable
+ *    ONLY through a non-empty resolved evidence set — never a bare
+ *    model assertion. `{"store":"none"}` is the honest terminal for an
+ *    objective no local store could ever evidence (never `met`).
+ *    Conservative safe default throughout: anything unparseable ⇒
+ *    `unmet` (retry next tick) — never crash, never a false `met`,
+ *    never a false `unmeetable`.
  *  - `createMessagingObjectiveActuator` delivers the met /
  *    escalated notice over the messaging registry (zero-LLM,
- *    reuses the proven retry-send path).
+ *    reuses the proven retry-send path), citing the resolved
+ *    evidence in both the notice and the action-log entry.
  */
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
@@ -21,21 +29,55 @@ import type { ObjectiveEvaluation } from "./objective-evaluation-loop.js";
 import type { StandingObjective } from "@muse/stores";
 import { proposeMessageAction } from "@muse/stores";
 import type { ProactiveModelProviderLike } from "./proactive-notice-loop.js";
+import {
+  checkObjectiveMet,
+  resolveObjectiveEvidence,
+  type EvidenceQuery,
+  type EvidenceRecord,
+  type EvidenceStore,
+  type ObjectiveEvidenceDeps
+} from "./objective-evidence.js";
 
-const SYSTEM_PROMPT =
-  `You decide whether a standing objective's condition is currently `
-  + `satisfied, given only the objective text and the current time. `
-  + `Respond with ONE JSON object and nothing else:\n`
-  + `{"outcome":"met"|"unmet"|"unmeetable","reason":"<short, only for unmeetable>"}\n`
-  + `- met: the condition is now true.\n`
-  + `- unmet: not true yet, but it could still become true later.\n`
-  + `- unmeetable: it can never be satisfied (the thing it depends `
-  + `on no longer exists / is logically impossible).\n`
-  + `When unsure, answer "unmet". No prose, no markdown.`;
+const EVIDENCE_STORES: readonly EvidenceStore[] = ["actionLog", "calendar", "notes", "reminders", "tasks"];
+
+const PROPOSAL_SYSTEM_PROMPT =
+  `You decide HOW to check whether a standing objective is currently `
+  + `satisfied — using only Muse's own local stores as evidence, never `
+  + `your own belief. Given the objective text and the current time, `
+  + `respond with ONE JSON object and nothing else.\n\n`
+  + `When a local store COULD evidence it:\n`
+  + `{"store":"tasks"|"reminders"|"calendar"|"notes"|"actionLog","keywords":["..."],"windowDays":N,"expectedCount":N}\n`
+  + `- keywords: the concrete words to look for (required, at least one).\n`
+  + `- windowDays: how many days back (optional; omit for unbounded).\n`
+  + `- expectedCount: how many matching records prove it (optional; omit for "at least one").\n\n`
+  + `{"store":"none"} — the DEFAULT for anything outside Muse's own local `
+  + `data: the news, the weather, a sports score, a space mission, someone `
+  + `else's mood. Use this even when the event is real and WILL eventually `
+  + `happen — Muse just has no local record to confirm it with, so it stays `
+  + `unmet forever rather than guessing.\n\n`
+  + `{"store":"none","unmeetable":true,"reason":"<short reason>"} — ONLY `
+  + `when the OBJECTIVE ITSELF is now impossible, not merely hard to `
+  + `observe: the repo/task it depended on was deleted, the meeting was `
+  + `cancelled, the person left. Never use this just because Muse can't `
+  + `watch for something locally — that is plain {"store":"none"}.\n\n`
+  + `Examples:\n`
+  + `objective: "log the workout 3 times this week"\n`
+  + `{"store":"tasks","keywords":["workout"],"windowDays":7,"expectedCount":3}\n`
+  + `objective: "remind me to call mom"\n`
+  + `{"store":"reminders","keywords":["call","mom"]}\n`
+  + `objective: "tell me when the team standup happens"\n`
+  + `{"store":"calendar","keywords":["standup"],"windowDays":7}\n`
+  + `objective: "let me know the moment a crewed mission lands on the moon again"\n`
+  + `{"store":"none"}\n`
+  + `objective: "watch the acme-widgets repo until it's archived"\n`
+  + `{"store":"none","unmeetable":true,"reason":"the acme-widgets repo no longer exists"}\n\n`
+  + `No prose, no markdown, JSON only.`;
 
 export interface ModelObjectiveEvaluatorOptions {
   readonly modelProvider: ProactiveModelProviderLike;
   readonly model: string;
+  /** Injected store readers the resolved evidence query fetches from. */
+  readonly evidenceDeps?: ObjectiveEvidenceDeps;
   readonly now?: () => Date;
 }
 
@@ -43,13 +85,14 @@ export function createModelObjectiveEvaluator(
   options: ModelObjectiveEvaluatorOptions
 ): (objective: StandingObjective) => Promise<ObjectiveEvaluation> {
   const now = options.now ?? (() => new Date());
+  const evidenceDeps = options.evidenceDeps ?? {};
   return async (objective) => {
     let output: string;
     try {
       const result = await options.modelProvider.generate({
-        maxOutputTokens: 120,
+        maxOutputTokens: 200,
         messages: [
-          { content: SYSTEM_PROMPT, role: "system" },
+          { content: PROPOSAL_SYSTEM_PROMPT, role: "system" },
           {
             content:
               `objective (${objective.kind}): ${objective.spec}\n`
@@ -65,7 +108,22 @@ export function createModelObjectiveEvaluator(
       // A model/transport error must not crash the tick — defer.
       return { outcome: "unmet" };
     }
-    return parseObjectiveVerdict(output);
+    const proposal = parseObjectiveProposal(output);
+    if (proposal.store === "none") {
+      if (proposal.unmeetable) {
+        return { outcome: "unmeetable", reason: proposal.reason };
+      }
+      return { outcome: "unmet" };
+    }
+    const query: EvidenceQuery = {
+      keywords: proposal.keywords,
+      store: proposal.store,
+      ...(proposal.windowDays !== undefined ? { windowDays: proposal.windowDays } : {}),
+      ...(proposal.expectedCount !== undefined ? { expectedCount: proposal.expectedCount } : {})
+    };
+    const records = await resolveObjectiveEvidence(query, evidenceDeps);
+    const { evidence, met } = checkObjectiveMet(records, query);
+    return met ? { evidence, outcome: "met" } : { outcome: "unmet" };
   };
 }
 
@@ -98,10 +156,10 @@ function balancedJsonCandidates(text: string): string[] {
         if (depth === 0) {
           out.push(text.slice(i, j + 1));
           // Skip the consumed span so a NESTED object is NOT re-extracted as its
-          // own candidate — otherwise `{"plan":{"outcome":"met"},"note":"not yet"}`
-          // leaks an inner `{"outcome":"met"}` and parseObjectiveVerdict returns a
-          // FALSE `met` (an autonomous false completion). Only TOP-LEVEL objects
-          // are verdict candidates; a nested-only outcome is ambiguous ⇒ unmet.
+          // own candidate — otherwise `{"plan":{"store":"tasks"},"note":"not yet"}`
+          // leaks an inner proposal and parseObjectiveProposal resolves a store the
+          // model didn't actually mean at the top level. Only TOP-LEVEL objects are
+          // proposal candidates; a nested-only shape is ambiguous ⇒ store:"none".
           i = j;
           break;
         }
@@ -112,15 +170,15 @@ function balancedJsonCandidates(text: string): string[] {
 }
 
 /**
- * Provider-agnostic, unattended-safe verdict parse. The objectives
- * daemon runs autonomously across 7 model families, so the verdict
+ * Provider-agnostic, unattended-safe proposal parse. The objectives
+ * daemon runs autonomously across 7 model families, so the proposal
  * can arrive fenced (```json…```), reasoning-wrapped
  * (`<think>…</think>`), or with prose either side. Strip the
  * wrappers, scan ALL balanced JSON objects, and take the LAST one
- * that parses with a recognised `outcome` — a model that "thinks"
- * then answers puts the real verdict last. Anything ambiguous ⇒
- * the conservative `unmet` safe default (never crash, never a
- * false `met`/`unmeetable`).
+ * that parses into a recognised shape — a model that "thinks" then
+ * answers puts the real proposal last. Anything ambiguous ⇒ the
+ * conservative `{"store":"none"}` safe default (never crash, never a
+ * false `met`, never a false `unmeetable`).
  */
 // Replace each complete <think>…</think> block with a space. A global lazy
 // regex (`/<think>[\s\S]*?<\/think>/g`) is O(n²) on input with many unclosed
@@ -146,29 +204,72 @@ function stripThinkBlocks(text: string): string {
   }
 }
 
-export function parseObjectiveVerdict(raw: string): ObjectiveEvaluation {
+export type ObjectiveProposal =
+  | { readonly store: "none"; readonly unmeetable?: false }
+  | { readonly store: "none"; readonly unmeetable: true; readonly reason: string }
+  | {
+      readonly store: EvidenceStore;
+      readonly keywords: readonly string[];
+      readonly windowDays?: number;
+      readonly expectedCount?: number;
+    };
+
+interface RawProposalShape {
+  readonly store?: unknown;
+  readonly keywords?: unknown;
+  readonly windowDays?: unknown;
+  readonly expectedCount?: unknown;
+  readonly unmeetable?: unknown;
+  readonly reason?: unknown;
+}
+
+export function parseObjectiveProposal(raw: string): ObjectiveProposal {
   const cleaned = stripThinkBlocks(raw)
     .replace(/```[a-zA-Z]*\n?|```/gu, " ");
-  let verdict: ObjectiveEvaluation = { outcome: "unmet" };
+  let proposal: ObjectiveProposal = { store: "none" };
   for (const candidate of balancedJsonCandidates(cleaned)) {
-    let parsed: { outcome?: unknown; reason?: unknown };
+    let parsed: RawProposalShape;
     try {
-      parsed = JSON.parse(candidate) as { outcome?: unknown; reason?: unknown };
+      parsed = JSON.parse(candidate) as RawProposalShape;
     } catch {
       continue;
     }
-    if (parsed.outcome === "met") {
-      verdict = { outcome: "met" };
-    } else if (parsed.outcome === "unmeetable") {
-      const reason = typeof parsed.reason === "string" && parsed.reason.trim().length > 0
-        ? parsed.reason.trim()
-        : "model deemed the objective unmeetable";
-      verdict = { outcome: "unmeetable", reason };
-    } else if (parsed.outcome === "unmet") {
-      verdict = { outcome: "unmet" };
+    if (parsed.store === "none") {
+      if (parsed.unmeetable === true) {
+        const reason = typeof parsed.reason === "string" && parsed.reason.trim().length > 0
+          ? parsed.reason.trim()
+          : "model deemed the objective unmeetable";
+        proposal = { reason, store: "none", unmeetable: true };
+      } else {
+        proposal = { store: "none" };
+      }
+      continue;
+    }
+    if (
+      typeof parsed.store === "string"
+      && (EVIDENCE_STORES as readonly string[]).includes(parsed.store)
+      && Array.isArray(parsed.keywords)
+      && parsed.keywords.every((k): k is string => typeof k === "string")
+    ) {
+      const keywords = parsed.keywords.map((k) => k.trim()).filter((k) => k.length > 0);
+      // No usable keyword ⇒ not a recognised proposal (a store query
+      // needs something to look for) — skip, keep the prior candidate.
+      if (keywords.length === 0) continue;
+      const windowDays = typeof parsed.windowDays === "number" && Number.isFinite(parsed.windowDays)
+        ? parsed.windowDays
+        : undefined;
+      const expectedCount = typeof parsed.expectedCount === "number" && Number.isFinite(parsed.expectedCount)
+        ? parsed.expectedCount
+        : undefined;
+      proposal = {
+        keywords,
+        store: parsed.store as EvidenceStore,
+        ...(windowDays !== undefined ? { windowDays } : {}),
+        ...(expectedCount !== undefined ? { expectedCount } : {})
+      };
     }
   }
-  return verdict;
+  return proposal;
 }
 
 export interface MessagingObjectiveActuatorOptions {
@@ -187,8 +288,23 @@ export interface MessagingObjectiveActuatorOptions {
   readonly now?: () => Date;
 }
 
+/**
+ * Render up to 3 resolved evidence records as a compact citation
+ * suffix — "" when there is no evidence (an escalate, or an actuator
+ * invoked directly without evidence) so the met notice's wording is
+ * unchanged in that case.
+ */
+function evidenceCitation(evidence: readonly EvidenceRecord[]): string {
+  if (evidence.length === 0) return "";
+  const cited = evidence
+    .slice(0, 3)
+    .map((e) => `${e.source} (${e.whenIso ?? "no timestamp"})`)
+    .join(", ");
+  return ` — evidence: ${cited}`;
+}
+
 export function createMessagingObjectiveActuator(options: MessagingObjectiveActuatorOptions): {
-  readonly act: (objective: StandingObjective) => Promise<void>;
+  readonly act: (objective: StandingObjective, evidence?: readonly EvidenceRecord[]) => Promise<void>;
   readonly escalate: (objective: StandingObjective, reason: string) => Promise<void>;
 } {
   const now = options.now ?? (() => new Date());
@@ -221,9 +337,10 @@ export function createMessagingObjectiveActuator(options: MessagingObjectiveActu
     }
   };
   return {
-    act: async (objective) => {
-      await send(`✅ Objective met: ${objective.spec}`);
-      await record(objective, "objective met — user notified", "messaging notice delivered");
+    act: async (objective, evidence = []) => {
+      const citation = evidenceCitation(evidence);
+      await send(`✅ Objective met: ${objective.spec}${citation}`);
+      await record(objective, "objective met — user notified", `messaging notice delivered${citation}`);
     },
     escalate: async (objective, reason) => {
       await send(`⚠ Objective needs you: ${objective.spec} — ${reason}`);

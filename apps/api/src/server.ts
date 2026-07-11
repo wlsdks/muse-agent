@@ -18,6 +18,7 @@ import {
   resolveReflectionsFile,
   resolveSkillRewardsFile
 } from "@muse/autoconfigure";
+import { defaultBeliefProvenanceFile } from "@muse/memory";
 import { InMemoryRuntimeSettingsStore, RuntimeSettings } from "@muse/runtime-settings";
 import Fastify, { type FastifyInstance } from "fastify";
 
@@ -63,6 +64,7 @@ import { DiscordProvider, MatrixProvider, SlackProvider, TelegramProvider } from
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
 import { registerAccountabilityRoutes } from "./accountability-routes.js";
 import { registerSelfImprovementRoutes } from "./self-improvement-routes.js";
+import { registerJourneyRoutes } from "./journey-routes.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
 import { registerIdentityTaglineRoutes } from "./identity-tagline-routes.js";
@@ -433,6 +435,16 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authoredSkillsDir: options.authoredSkillsDir ?? resolveAuthoredSkillsDir(process.env),
     skillRewardsFile: options.skillRewardsFile ?? resolveSkillRewardsFile(process.env),
     reflectionsFile: options.reflectionsFile ?? resolveReflectionsFile(process.env)
+  });
+
+  // One merged "what Muse learned about you" timeline (facts + skills +
+  // strategies) for the web console's Journey view — same stores as above,
+  // read-only, no new state-changing surface.
+  registerJourneyRoutes(server, {
+    authService,
+    beliefProvenanceFile: options.beliefProvenanceFile ?? defaultBeliefProvenanceFile(),
+    playbookFile: options.playbookFile ?? resolvePlaybookFile(process.env),
+    authoredSkillsDir: options.authoredSkillsDir ?? resolveAuthoredSkillsDir(process.env)
   });
 
   registerSettingsRoutes(server, {

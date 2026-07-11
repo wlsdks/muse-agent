@@ -80,6 +80,16 @@ export interface InboundMessage {
   readonly receivedAtIso: string;
   /** Plain-text body. Rich payloads (entities, media) are reserved for a future iter. */
   readonly text: string;
+  /**
+   * Conversation-scope hint the provider stamped when the payload made it
+   * determinable ("direct" = 1:1 DM, "shared" = group/channel with other
+   * humans present). Absent when the provider's fetch shape can't tell
+   * (e.g. Discord's REST channel-messages endpoint). Consumers MUST run
+   * this through `effectiveScope` (conversation-scope.ts) rather than
+   * branch on the raw string — only the exact literal "direct" is 1:1;
+   * everything else, including absent, is the safer "shared" default.
+   */
+  readonly scope?: "direct" | "shared";
   /** Raw provider payload for debugging. Advisory — not part of the contract. */
   readonly raw?: unknown;
 }

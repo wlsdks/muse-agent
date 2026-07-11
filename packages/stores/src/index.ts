@@ -7,6 +7,8 @@ export { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 export { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest } from "./encrypted-file.js";
 export { ageCutoffMs, pruneByAge } from "./retention.js";
 export type { PruneByAgeOptions, PruneByAgeResult } from "./retention.js";
+export { DEFAULT_JOURNEY_LIMIT, factRecordsFromProvenance, mergeJourneyEvents, resolveJourneyForgetTarget } from "./journey-timeline.js";
+export type { JourneyEvent, JourneyEventKind, JourneyFactRecord, JourneyFactValueStep, JourneyForgetTarget, JourneySkillRecord, JourneyStoreKind, JourneyStrategyRecord, MergeJourneyEventsInput } from "./journey-timeline.js";
 export { enqueueLearnEvent, markLearnEventsDone, pruneLearnQueueByAge, readPendingLearnEvents, resolveLearnQueueFile } from "./learn-queue.js";
 export type { LearnCorrectionEvent } from "./learn-queue.js";
 export { isLearningPaused, setLearningPaused } from "./learning-pause-store.js";

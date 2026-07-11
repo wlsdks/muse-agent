@@ -134,6 +134,14 @@ export const COMMAND_LOADERS: readonly LazyCommandLoader[] = [
     },
   },
   {
+    id: "journey",
+    names: ["journey"],
+    load: async (program, io, _deps) => {
+      const m = await import("./commands-journey.js");
+    m.registerJourneyCommands(program, io);
+    },
+  },
+  {
     id: "propose",
     names: ["propose"],
     load: async (program, io, _deps) => {

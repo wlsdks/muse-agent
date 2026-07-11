@@ -957,6 +957,70 @@ export async function runFocusedCompaction(
   return { messages: toChatTurnMessages(messages), note };
 }
 
+export type ParsedUndoArg =
+  | { readonly kind: "ok"; readonly count: number }
+  | { readonly kind: "invalid"; readonly raw: string };
+
+/**
+ * Parse `/undo [N]`'s argument. Empty ⇒ 1 (undo the last exchange). A
+ * strict integer only — "2x" / "2.5" / "all" are rejected outright (never
+ * silently coerced, so a typo doesn't undo the wrong number of turns); a
+ * valid integer outside 1-20 is clamped into range rather than rejected,
+ * since the intent ("undo a lot" / "undo everything") is unambiguous.
+ */
+export function parseUndoArg(arg: string): ParsedUndoArg {
+  const trimmed = arg.trim();
+  if (trimmed.length === 0) return { count: 1, kind: "ok" };
+  if (!/^-?\d+$/u.test(trimmed)) return { kind: "invalid", raw: trimmed };
+  const parsed = Number.parseInt(trimmed, 10);
+  return { count: clamp(parsed, 1, 20), kind: "ok" };
+}
+
+export interface UndoResult {
+  /** The history with the removed exchanges dropped — never mutates the input. */
+  readonly history: readonly ChatTurnMessage[];
+  readonly removedExchanges: number;
+  readonly remainingExchanges: number;
+}
+
+/**
+ * Roll back the last `count` user/assistant exchanges from the in-session
+ * history. An "exchange" is everything from one `user` message up to (but
+ * excluding) the next `user` message — so a tool call/result recorded
+ * between two user turns is removed along with the exchange it belongs to,
+ * and a trailing un-answered user message (no assistant reply yet) still
+ * counts as one whole exchange rather than being left dangling. `count` is
+ * clamped to the number of exchanges actually present, so `/undo 20` on a
+ * 2-exchange conversation clears it without erroring.
+ */
+export function undoExchanges(history: readonly ChatTurnMessage[], count: number): UndoResult {
+  const total = history.filter((m) => m.role === "user").length;
+  const toRemove = Math.max(0, Math.min(count, total));
+  if (toRemove === 0) {
+    return { history, remainingExchanges: total, removedExchanges: 0 };
+  }
+  const keepUserCount = total - toRemove;
+  let userSeen = 0;
+  let cutIndex = history.length;
+  for (let i = 0; i < history.length; i++) {
+    if (history[i]?.role === "user") {
+      userSeen += 1;
+      if (userSeen === keepUserCount + 1) {
+        cutIndex = i;
+        break;
+      }
+    }
+  }
+  return { history: history.slice(0, cutIndex), remainingExchanges: keepUserCount, removedExchanges: toRemove };
+}
+
+/** Feedback line for `/undo` — how many exchanges came off and how many remain. */
+export function formatUndoNotice(result: UndoResult): string {
+  if (result.removedExchanges === 0) return "Nothing to undo yet.";
+  const plural = result.removedExchanges === 1 ? "" : "s";
+  return `Removed the last ${result.removedExchanges.toString()} exchange${plural} — ${result.remainingExchanges.toString()} remaining.`;
+}
+
 export type ForgetResolution =
   | { readonly kind: "exact"; readonly key: string }
   | { readonly kind: "unique"; readonly key: string }

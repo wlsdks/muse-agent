@@ -41,7 +41,7 @@ function objective(overrides: Partial<StandingObjective> = {}): StandingObjectiv
   };
 }
 
-function wire(verdict: string, posts: { text: string }[]) {
+function wire(verdict: string, posts: { text: string }[], readTasks?: () => Promise<readonly { title: string; completedAt?: string }[]>) {
   const registry = new MessagingProviderRegistry([
     new TelegramProvider({
       baseUrl: "https://tg.test",
@@ -53,8 +53,10 @@ function wire(verdict: string, posts: { text: string }[]) {
     })
   ]);
   const evaluate = createModelObjectiveEvaluator({
+    ...(readTasks ? { evidenceDeps: { now: () => new Date("2026-05-19T12:00:00.000Z"), readTasks } } : {}),
     model: "qwen3:8b",
-    modelProvider: { generate: async () => ({ output: verdict }) }
+    modelProvider: { generate: async () => ({ output: verdict }) },
+    now: () => new Date("2026-05-19T12:00:00.000Z")
   });
   const { act, escalate } = createMessagingObjectiveActuator({
     destination: "555",
@@ -69,7 +71,11 @@ describe("P9 audit — daemon-wired model evaluator → rider → real channel +
     const file = join(mkdtempSync(join(tmpdir(), "muse-p9-seam-")), "objectives.json");
     await addObjective(file, objective());
     const posts: { text: string }[] = [];
-    const { act, escalate, evaluate } = wire('{"outcome":"met"}', posts);
+    const { act, escalate, evaluate } = wire(
+      '{"store":"tasks","keywords":["release"],"windowDays":7,"expectedCount":1}',
+      posts,
+      async () => [{ completedAt: "2026-05-19T09:00:00.000Z", title: "release was tagged" }]
+    );
     const handle = startObjectivesTick({
       act,
       escalate,
@@ -82,7 +88,9 @@ describe("P9 audit — daemon-wired model evaluator → rider → real channel +
     } finally {
       handle.stop();
     }
-    expect(posts).toEqual([{ text: "✅ Objective met: tell me once the release is tagged" }]);
+    expect(posts).toHaveLength(1);
+    expect(posts[0]?.text).toContain("✅ Objective met: tell me once the release is tagged");
+    expect(posts[0]?.text).toContain("evidence:");
     expect((await readObjectives(file))[0]?.status).toBe("done");
   });
 
@@ -90,7 +98,7 @@ describe("P9 audit — daemon-wired model evaluator → rider → real channel +
     const file = join(mkdtempSync(join(tmpdir(), "muse-p9-seam-unmet-")), "objectives.json");
     await addObjective(file, objective());
     const posts: { text: string }[] = [];
-    const { act, escalate, evaluate } = wire('{"outcome":"unmet"}', posts);
+    const { act, escalate, evaluate } = wire('{"store":"none"}', posts);
     const handle = startObjectivesTick({
       act,
       escalate,
@@ -114,7 +122,7 @@ describe("P9 audit — daemon-wired model evaluator → rider → real channel +
     const file = join(mkdtempSync(join(tmpdir(), "muse-p9-seam-esc-")), "objectives.json");
     await addObjective(file, objective());
     const posts: { text: string }[] = [];
-    const { act, escalate, evaluate } = wire('{"outcome":"unmeetable","reason":"release was cancelled"}', posts);
+    const { act, escalate, evaluate } = wire('{"store":"none","unmeetable":true,"reason":"release was cancelled"}', posts);
     const handle = startObjectivesTick({
       act,
       escalate,

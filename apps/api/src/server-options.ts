@@ -149,6 +149,8 @@ export interface ServerOptions {
   readonly authoredSkillsDir?: string;
   readonly skillRewardsFile?: string;
   readonly reflectionsFile?: string;
+  /** Path to the belief-provenance log (default ~/.muse/belief-provenance.json), the source `GET /api/journey` reads facts' learn/change/forget timestamps from. */
+  readonly beliefProvenanceFile?: string;
   readonly briefingSidecarFile?: string;
   /**
    * Path to the reviewable autonomous-action log (default

@@ -176,3 +176,41 @@ export function jobCompletionItems(jobs: readonly JobDoneInput[], sinceIso: stri
     .filter((job) => (job.status === "done" || job.status === "error") && job.finishedAt !== undefined && job.finishedAt > sinceIso)
     .map((job) => ({ id: `job:${job.id}`, text: jobDoneNoticeText(job), ...(job.finishedAt ? { dueAt: job.finishedAt } : {}) }));
 }
+
+export interface OrchestrationDoneInput {
+  readonly id: string;
+  readonly status: "completed" | "failed";
+  readonly subtaskCount: number;
+  readonly workerIds: readonly string[];
+  readonly summary?: string;
+  readonly finishedAt: string;
+}
+
+/** The line Muse speaks unprompted when a `/orchestrate` background fan-out
+ *  finishes — ONE consolidated line per orchestration, never one per worker. */
+export function orchestrationDoneNoticeText(item: OrchestrationDoneInput): string {
+  const label = `${item.subtaskCount.toString()} sub-agent${item.subtaskCount === 1 ? "" : "s"}`;
+  if (item.status === "failed") {
+    const reason = item.summary
+      ? stripUntrustedTerminalChars(item.summary).replace(/\s+/gu, " ").trim().slice(0, 100)
+      : "unknown error";
+    return `✗ Background orchestration failed (${label}): ${reason}`;
+  }
+  const result = item.summary
+    ? ` — ${stripUntrustedTerminalChars(item.summary).replace(/\s+/gu, " ").trim().slice(0, 160)}`
+    : "";
+  return `✓ Background orchestration done (${label}: ${item.workerIds.join(", ")})${result}`;
+}
+
+/**
+ * Background orchestrations that finished AFTER the chat opened (`sinceIso`),
+ * as pre-phrased proactive items — the re-entry seam a chat surface polls to
+ * deliver the consolidated fan-in result through the SAME mechanism `/job`
+ * completions use (`jobCompletionItems`'s sibling). One item per
+ * orchestration, never one per dispatched worker.
+ */
+export function orchestrationCompletionItems(items: readonly OrchestrationDoneInput[], sinceIso: string): ProactiveItem[] {
+  return items
+    .filter((item) => item.finishedAt > sinceIso)
+    .map((item) => ({ dueAt: item.finishedAt, id: `orchestration:${item.id}`, text: orchestrationDoneNoticeText(item) }));
+}

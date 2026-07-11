@@ -20,9 +20,18 @@ import {
   readObjectives,
   type StandingObjective
 } from "@muse/stores";
+import type { EvidenceRecord } from "./objective-evidence.js";
 
 export type ObjectiveEvaluation =
-  | { readonly outcome: "met" }
+  /**
+   * `evidence` is the resolved-store proof behind a `met` verdict
+   * (`checkObjectiveMet`'s output). It is optional at the TYPE level
+   * because a hand-written `evaluate` in a test may not compute one,
+   * but `runDueObjectives` fail-closes an evidence-less `met` to
+   * `unmet` below — a buggy evaluator can never complete an objective
+   * without resolved evidence backing it.
+   */
+  | { readonly outcome: "met"; readonly evidence?: readonly EvidenceRecord[] }
   | { readonly outcome: "unmet" }
   | { readonly outcome: "unmeetable"; readonly reason: string };
 
@@ -30,8 +39,8 @@ export interface RunDueObjectivesOptions {
   readonly file: string;
   /** Decide whether the objective's condition currently holds. */
   readonly evaluate: (objective: StandingObjective) => Promise<ObjectiveEvaluation>;
-  /** Fired exactly once when the condition is met (before `done`). */
-  readonly act: (objective: StandingObjective) => Promise<void>;
+  /** Fired exactly once when the condition is met (before `done`), given the evidence that proved it. */
+  readonly act: (objective: StandingObjective, evidence: readonly EvidenceRecord[]) => Promise<void>;
   /** Optional escalation sink (e.g. message the user it gave up). */
   readonly escalate?: (objective: StandingObjective, reason: string) => Promise<void>;
   readonly now?: () => Date;
@@ -103,11 +112,20 @@ export async function runDueObjectives(options: RunDueObjectivesOptions): Promis
 
   for (const objective of due) {
     try {
-      const evaluation = await options.evaluate(objective);
+      const rawEvaluation = await options.evaluate(objective);
+      // Fail-close backstop (roadmap D): `met` reaches this loop ONLY
+      // when it carries resolved evidence. A buggy or over-eager
+      // evaluator that returns `met` with no evidence — bypassing
+      // `checkObjectiveMet` — can never complete an objective; it is
+      // treated exactly like `unmet` and backs off for a later tick.
+      const evaluation: ObjectiveEvaluation =
+        rawEvaluation.outcome === "met" && (!rawEvaluation.evidence || rawEvaluation.evidence.length === 0)
+          ? { outcome: "unmet" }
+          : rawEvaluation;
       const nowIso = now().toISOString();
 
       if (evaluation.outcome === "met") {
-        await options.act(objective);
+        await options.act(objective, evaluation.evidence ?? []);
         await patchObjective(options.file, objective.id, {
           lastEvaluatedAt: nowIso,
           resolution: "condition met",

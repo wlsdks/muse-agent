@@ -38,6 +38,7 @@ import {
   formatJobsList,
   formatMemoryView,
   formatTrust,
+  formatUndoNotice,
   friendlyError,
   matchAgentNames,
   matchModelNames,
@@ -45,9 +46,11 @@ import {
   normalizeChatInput,
   parseRememberArg,
   parseSlashCommand,
+  parseUndoArg,
   reduceInput,
   resolveForgetKey,
   runFocusedCompaction,
+  undoExchanges,
   type ChatTurnMessage,
   type InkKeyEvent,
   type InputState,
@@ -78,6 +81,7 @@ const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[]
   { cmd: "tools", desc: "toggle tools (reads run; writes/actions ask first)" },
   { cmd: "job", desc: "run a long task in the background — /job <prompt>" },
   { cmd: "jobs", desc: "show recent background jobs + status" },
+  { cmd: "orchestrate", desc: "fan out to background sub-agents — /orchestrate <prompt>" },
   { cmd: "memory", desc: "show what Muse remembers about you" },
   { cmd: "remember", desc: "teach a fact — /remember <key>=<value>" },
   { cmd: "pref", desc: "set a preference — /pref <key>=<value>" },
@@ -88,6 +92,7 @@ const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[]
   { cmd: "persona", desc: "show the active persona slot" },
   { cmd: "history", desc: "how many turns are in context" },
   { cmd: "compact", desc: "preview compaction (no arg), or /compact <topic> to compact now, focused on that topic" },
+  { cmd: "undo", desc: "roll back the last exchange — /undo <N> to roll back N (1-20)" },
   { cmd: "save", desc: "save the last reply to a note file" },
   { cmd: "copy", desc: "copy the last reply to the clipboard" },
   { cmd: "cost", desc: "show this session's token usage" },
@@ -267,6 +272,10 @@ export function MuseChatApp(props: {
   readonly onUntrustedAnswer?: () => void;
   readonly proactiveCheck?: () => Promise<readonly ProactiveItem[]>;
   readonly jobCompletions?: () => Promise<readonly ProactiveItem[]>;
+  /** Consolidated results of `/orchestrate` background fan-outs that finished
+   *  since this chat opened — surfaced through the SAME poll/dedup path as
+   *  `jobCompletions`, one entry per orchestration (never per sub-agent). */
+  readonly orchestrationCompletions?: () => Promise<readonly ProactiveItem[]>;
   /** Non-windowed nudges (due check-ins + fireable pattern suggestions), each surfaced once verbatim. */
   readonly proactiveNudges?: () => Promise<readonly ProactiveItem[]>;
   readonly recapRole?: "system" | "command";
@@ -286,6 +295,10 @@ export function MuseChatApp(props: {
   readonly todayBrief: () => Promise<string>;
   readonly startJob: (prompt: string) => string;
   readonly jobsOverview: () => Promise<readonly JobListItem[]>;
+  /** Dispatches a background sub-agent fan-out and returns immediately —
+   *  never awaits a worker (hermes-parity: a slow local 12B never blocks
+   *  the calling turn). */
+  readonly startOrchestration?: (prompt: string) => { readonly orchestrationId: string; readonly subtaskCount: number };
   readonly recap: string;
 }): React.ReactElement {
   const app = useApp();
@@ -365,16 +378,23 @@ export function MuseChatApp(props: {
   useEffect(() => {
     const check = props.proactiveCheck;
     const jobsDone = props.jobCompletions;
+    const orchestrationsDone = props.orchestrationCompletions;
     const nudge = props.proactiveNudges;
-    if (!check && !jobsDone && !nudge) return undefined;
+    if (!check && !jobsDone && !orchestrationsDone && !nudge) return undefined;
     let active = true;
     const tick = async (): Promise<void> => {
       if (!idleRef.current) return;
       const now = Date.now();
       const items = check ? await check().catch(() => [] as readonly ProactiveItem[]) : [];
-      // Background jobs that finished since the chat opened are surfaced once
-      // each (their own pre-phrased line), not via the reminder time-window.
-      const completed = jobsDone ? await jobsDone().catch(() => [] as readonly ProactiveItem[]) : [];
+      // Background jobs + `/orchestrate` fan-outs that finished since the chat
+      // opened are surfaced once each (their own pre-phrased line — ONE entry
+      // per orchestration, never one per sub-agent), not via the reminder
+      // time-window.
+      const completedJobs = jobsDone ? await jobsDone().catch(() => [] as readonly ProactiveItem[]) : [];
+      const completedOrchestrations = orchestrationsDone
+        ? await orchestrationsDone().catch(() => [] as readonly ProactiveItem[])
+        : [];
+      const completed = [...completedJobs, ...completedOrchestrations];
       // Due check-ins + fireable pattern suggestions — already-phrased nudges
       // the daemon would push to the channel; surface them in-chat once each,
       // verbatim (not the imminent time-window — a check-in due hours ago and an
@@ -573,6 +593,17 @@ export function MuseChatApp(props: {
         setCommandNotice(undefined);
         return;
       }
+      if (slash.cmd === "undo") {
+        const parsed = parseUndoArg(slash.arg);
+        if (parsed.kind === "invalid") {
+          note(`"${parsed.raw}" isn't a valid turn count — /undo <N> takes a whole number from 1 to 20 (e.g. /undo 2).`);
+          return;
+        }
+        const result = undoExchanges(historyRef.current, parsed.count);
+        historyRef.current = [...result.history];
+        note(formatUndoNotice(result));
+        return;
+      }
       if (slash.cmd === "recall") {
         progress("Searching memory…");
         note(await props.recallSearch(slash.arg));
@@ -590,6 +621,14 @@ export function MuseChatApp(props: {
         progress("Checking jobs…");
         note(formatJobsList(await props.jobsOverview()));
         setCommandNotice(undefined);
+        return;
+      }
+      if (slash.cmd === "orchestrate") {
+        const prompt = slash.arg.trim();
+        if (prompt.length === 0) { note("What should the sub-agents work on? — /orchestrate <prompt>"); return; }
+        if (!props.startOrchestration) { note("Orchestration isn't available in this session."); return; }
+        const { subtaskCount } = props.startOrchestration(prompt);
+        note(`${subtaskCount.toString()} subtasks dispatched in the background — I'll surface the merged result when the last one finishes.`);
         return;
       }
       if (slash.cmd === "forget") {

@@ -277,6 +277,16 @@ const en = {
   "si.support": "reinforced {n}×",
   "si.sources": "{n} sources",
 
+  "nav.journey": "Journey",
+  "journey.title": "Your journey with Muse",
+  "journey.subtitle": "{n} things Muse has learned about you, newest first.",
+  "journey.empty": "No learning events recorded yet.",
+  "journey.filterAll": "All",
+  "journey.filterFact": "Facts",
+  "journey.filterSkill": "Skills",
+  "journey.filterStrategy": "Strategies",
+  "journey.footer": "Playbook decay events aren't shown — the playbook tracks a running decay count per strategy, not a per-event timestamp.",
+
   "nav.integrations": "Integrations",
   "int.subtitle": "Connect Muse to the chat apps you already live in. Paste a bot token once — Muse verifies it live, stores it on this machine only, and the channel becomes a Muse session.",
   "int.how": "How connecting works",
@@ -632,6 +642,16 @@ const ko: Strings = {
   "si.reflectionsSubtitle": "Muse가 당신의 활동에서 정제한 통찰. 총 {n}개, {g}개는 출처에 근거.",
   "si.support": "{n}회 강화",
   "si.sources": "출처 {n}개",
+
+  "nav.journey": "여정",
+  "journey.title": "Muse와 함께한 여정",
+  "journey.subtitle": "Muse가 당신에 대해 배운 {n}가지, 최신순.",
+  "journey.empty": "아직 기록된 학습 이벤트가 없습니다.",
+  "journey.filterAll": "전체",
+  "journey.filterFact": "사실",
+  "journey.filterSkill": "스킬",
+  "journey.filterStrategy": "전략",
+  "journey.footer": "플레이북 감쇠 이벤트는 표시되지 않습니다 — 플레이북은 전략별 감쇠를 개별 타임스탬프가 아닌 누적 횟수로만 기록합니다.",
 
   "nav.integrations": "연동",
   "int.subtitle": "이미 쓰고 있는 메신저에 Muse를 연결하세요. 봇 토큰을 한 번 붙여넣으면 — Muse가 라이브로 검증하고, 이 컴퓨터에만 저장하며, 그 채널이 곧 Muse 세션이 됩니다.",

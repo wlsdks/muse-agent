@@ -422,6 +422,15 @@ export const COMMAND_STUBS: readonly CommandStub[] = [
     ]
   },
   {
+    "name": "journey",
+    "description": "One chronological timeline of what Muse has learned about you — facts, skills, strategies",
+    "argsTerm": "",
+    "hasOptions": true,
+    "subcommands": [
+      "forget"
+    ]
+  },
+  {
     "name": "learned",
     "description": "Show what Muse has learned about working with you — trusted/avoided strategies & skills + recent reflections",
     "argsTerm": "",
