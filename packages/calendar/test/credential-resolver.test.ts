@@ -7,7 +7,7 @@ import { clearSecretRegistryForTests, redactSecrets } from "@muse/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { FileCalendarCredentialStore } from "../src/credential-store.js";
-import { resolveCalendarSecret } from "../src/credential-resolver.js";
+import { createCalendarSecretSources, resolveCalendarSecret } from "../src/credential-resolver.js";
 
 describe("resolveCalendarSecret — vault-first, legacy store as fallback", () => {
   let dir: string;
@@ -71,5 +71,39 @@ describe("resolveCalendarSecret — vault-first, legacy store as fallback", () =
       useKeychain: false
     });
     expect(value).toBeUndefined();
+  });
+});
+
+describe("createCalendarSecretSources platform gating", () => {
+  let dir: string;
+  let store: FileCalendarCredentialStore;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "muse-cal-platform-"));
+    store = new FileCalendarCredentialStore(join(dir, "credentials.json"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("darwin chain is env → keychain → store (unchanged)", () => {
+    const ids = createCalendarSecretSources(store, { platform: "darwin" }).map((s) => s.id);
+    expect(ids).toEqual(["env", "keychain", "calendar-store"]);
+  });
+
+  it("win32 chain omits the keychain source (no /usr/bin/security to spawn)", () => {
+    const ids = createCalendarSecretSources(store, { platform: "win32" }).map((s) => s.id);
+    expect(ids).toEqual(["env", "calendar-store"]);
+  });
+
+  it("linux chain omits the keychain source too", () => {
+    const ids = createCalendarSecretSources(store, { platform: "linux" }).map((s) => s.id);
+    expect(ids).toEqual(["env", "calendar-store"]);
+  });
+
+  it("explicit useKeychain: true includes it regardless of platform", () => {
+    const ids = createCalendarSecretSources(store, { platform: "win32", useKeychain: true }).map((s) => s.id);
+    expect(ids).toContain("keychain");
   });
 });
