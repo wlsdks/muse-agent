@@ -18,7 +18,7 @@
  */
 
 import { promises as fs } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, basename } from "node:path";
 
 import type { JsonObject } from "@muse/shared";
 
@@ -116,7 +116,7 @@ export async function writeFollowups(file: string, followups: readonly Persisted
  */
 export async function cleanupFollowupTempFiles(file: string): Promise<readonly string[]> {
   const dir = dirname(file);
-  const base = file.split("/").pop() ?? file;
+  const base = basename(file);
   let entries: readonly { readonly name: string }[];
   try {
     entries = (await fs.readdir(dir, { withFileTypes: true }));

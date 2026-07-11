@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -40,8 +40,10 @@ describe("path sandbox", () => {
   });
 
   it("names the allowed roots in an outside_roots refusal so the model can self-correct", async () => {
+    // The unique tmp-dir leaf survives the 8.3-shortname vs realpath long-form
+    // difference on the windows runner; the full prefix does not.
     await expect(resolveSafePath(join(outside, "x.txt"), opts())).rejects.toMatchObject({
-      message: expect.stringContaining(root),
+      message: expect.stringContaining(basename(root)),
       reason: "outside_roots"
     });
     // The actionable retry guidance must be present, not just the bare refusal.

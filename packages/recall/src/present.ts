@@ -193,7 +193,7 @@ export function formatSourcesFooter(answer: string, notesDir: string): string | 
   if (citedNotes.length === 0) {
     return undefined;
   }
-  const lines = citedNotes.map((src) => `   ${isAbsolute(src) ? src : join(notesDir, src)}`);
+  const lines = citedNotes.map((src) => `   ${(isAbsolute(src) ? src : join(notesDir, src)).split(sep).join("/")}`);
   return `\n📎 Sources (open to verify):\n${lines.join("\n")}\n`;
 }
 
@@ -317,7 +317,8 @@ export function formatSourceReceipts(
     const target = override !== undefined
       ? override ?? undefined
       : hit && isAbsolute(hit.file) ? hit.file : isAbsolute(note) ? note : join(notesDir, note);
-    return `   • ${lead}${snippet ? ` — "${snippet}"` : driftNote}${target ? `\n     ${target}` : ""}`;
+    const shownTarget = target?.split(sep).join("/");
+    return `   • ${lead}${snippet ? ` — "${snippet}"` : driftNote}${shownTarget ? `\n     ${shownTarget}` : ""}`;
   });
   return `\n📎 From your notes (open to verify):\n${blocks.join("\n")}${corroborationReceiptLine(cited)}\n`;
 }
@@ -759,7 +760,8 @@ export function relativizeNoteSource(file: string, notesDir: string): string {
   // as `[from ../../../work/RUNBOOK.md]` — show the basename instead; the receipt
   // resolves the real openable path from the matched chunk's absolute file.
   // Receipts render forward-slash on every OS (portable, matches note ids).
-  return rel.startsWith("..") ? basename(file) : rel.split(sep).join("/");
+  // Cross-drive on win32: relative() returns the absolute target (no ".." prefix) — also outside.
+  return rel.startsWith("..") || isAbsolute(rel) ? basename(file) : rel.split(sep).join("/");
 }
 
 /**

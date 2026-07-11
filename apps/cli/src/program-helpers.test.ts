@@ -191,7 +191,7 @@ describe("defaultConfigPath", () => {
   it("FAILS LOUD when HOME and os.homedir() both resolve to empty — config.json must NOT silently land at /.config/muse/... at the filesystem root", () => {
     vi.stubEnv("HOME", "");
     try {
-      const resolved = defaultConfigPath();
+      const resolved = defaultConfigPath().replaceAll("\\", "/");
       expect(resolved).not.toMatch(/^\/\.config\/muse/u);
       expect(resolved).toMatch(/\/.config\/muse\/config\.json$/u);
     } catch (cause) {

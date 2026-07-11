@@ -525,7 +525,7 @@ describe("cli program", () => {
         configPath: path.join(configDir, "config.json"),
         credentialPath: path.join(configDir, "credentials.json"),
         mode: "remote",
-        workspaceRunsPath: `${process.cwd()}/.muse/runs`
+        workspaceRunsPath: path.join(process.cwd(), ".muse", "runs")
       })
     ]);
   });

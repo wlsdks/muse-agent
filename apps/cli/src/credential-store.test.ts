@@ -30,17 +30,17 @@ describe("defaultCredentialPath", () => {
   });
 
   it("uses HOME when set, rooting the credentials file under ~/.config/muse", () => {
-    expect(defaultCredentialPath()).toBe(path.join("/u/jinan", ".config", "muse", "credentials.json"));
+    expect(defaultCredentialPath()).toBe("/u/jinan/.config/muse/credentials.json");
   });
 
   it("honours an explicit non-empty `home` argument over HOME (trimmed)", () => {
-    expect(defaultCredentialPath("/elsewhere")).toBe(path.join("/elsewhere", ".config", "muse", "credentials.json"));
-    expect(defaultCredentialPath("  /trimmed  ")).toBe(path.join("/trimmed", ".config", "muse", "credentials.json"));
+    expect(defaultCredentialPath("/elsewhere")).toBe("/elsewhere/.config/muse/credentials.json");
+    expect(defaultCredentialPath("  /trimmed  ")).toBe("/trimmed/.config/muse/credentials.json");
   });
 
   it("treats an empty / whitespace-only explicit `home` argument as unset and falls through to HOME", () => {
-    expect(defaultCredentialPath("")).toBe(path.join("/u/jinan", ".config", "muse", "credentials.json"));
-    expect(defaultCredentialPath("   ")).toBe(path.join("/u/jinan", ".config", "muse", "credentials.json"));
+    expect(defaultCredentialPath("")).toBe("/u/jinan/.config/muse/credentials.json");
+    expect(defaultCredentialPath("   ")).toBe("/u/jinan/.config/muse/credentials.json");
   });
 
   it("FAILS LOUD when HOME and os.homedir() both resolve to empty — credentials must NOT silently land at /.config/muse/... at the filesystem root", () => {

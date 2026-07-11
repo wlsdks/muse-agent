@@ -69,9 +69,10 @@ describe("lastChatHistoryPath / activityLogPath — empty-HOME fall-through (goa
         expect(r.message, `${tag} threw — must be the 'Cannot resolve home directory' error, not anything else`).toMatch(/Cannot resolve home directory/u);
         continue;
       }
-      expect(r.value, `${tag} resolved path must NOT start with whitespace`).not.toMatch(/^\s/u);
-      expect(r.value, `${tag} resolved path must NOT be a bare relative .muse/`).not.toMatch(/^\.muse\//u);
-      expect(r.value).toMatch(new RegExp(`/.muse/${suffix.replace(/\./gu, "\\.")}$`, "u"));
+      const value = r.value.replaceAll("\\", "/");
+      expect(value, `${tag} resolved path must NOT start with whitespace`).not.toMatch(/^\s/u);
+      expect(value, `${tag} resolved path must NOT be a bare relative .muse/`).not.toMatch(/^\.muse\//u);
+      expect(value).toMatch(new RegExp(`/.muse/${suffix.replace(/\./gu, "\\.")}$`, "u"));
     }
   });
 });
