@@ -42,17 +42,28 @@ export interface RecallHitRecord {
    * back fine.
    */
   readonly recentAccessMs?: readonly number[];
+  /**
+   * Deterministic hash (`@muse/memory`'s `hashQuery`) of each recall access's
+   * query text, chronological, capped at MAX_QUERY_HASHES. Fuels the
+   * query-diversity promotion gate (`selectPromotableMemories`'s
+   * `minUniqueQueries`) — optional so pre-existing records (written before
+   * this field) read back fine and are exempt from the gate.
+   */
+  readonly queryHashes?: readonly string[];
 }
 
-/** One memory surfaced by a recall: its stable key + (optionally) its narrative. */
+/** One memory surfaced by a recall: its stable key + (optionally) its narrative + the query's hash. */
 export interface RecallHitInput {
   readonly key: string;
   readonly summary?: string;
+  /** Deterministic hash of the recall query that surfaced this key — see `RecallHitRecord.queryHashes`. */
+  readonly queryHash?: string;
 }
 
 const MAX_RECALL_HIT_ENTRIES = 5_000;
 const MAX_SUMMARY_CHARS = 160;
 const MAX_RECENT_ACCESS = 20;
+const MAX_QUERY_HASHES = 20;
 
 export async function readRecallHits(file: string): Promise<readonly RecallHitRecord[]> {
   let raw: string;
@@ -121,12 +132,17 @@ export async function recordRecallHits(file: string, entries: readonly RecallHit
       const priorRecord = byKey.get(key);
       const summary = input.summary?.replace(/\s+/gu, " ").trim().slice(0, MAX_SUMMARY_CHARS) || priorRecord?.summary;
       const recentAccessMs = [...(priorRecord?.recentAccessMs ?? []), atMs].slice(-MAX_RECENT_ACCESS);
+      const queryHash = input.queryHash?.trim();
+      const queryHashes = queryHash
+        ? [...(priorRecord?.queryHashes ?? []), queryHash].slice(-MAX_QUERY_HASHES)
+        : priorRecord?.queryHashes;
       byKey.set(key, {
         hits: (priorRecord?.hits ?? 0) + 1,
         key,
         lastHitMs: atMs,
         recentAccessMs,
-        ...(summary ? { summary } : {})
+        ...(summary ? { summary } : {}),
+        ...(queryHashes && queryHashes.length > 0 ? { queryHashes } : {})
       });
     }
     await writeRecallHits(file, [...byKey.values()]);
@@ -175,6 +191,10 @@ export async function readFadedMemoryKeys(file: string): Promise<ReadonlySet<str
 }
 
 function normalizeRecord(record: RecallHitRecord): RecallHitRecord {
+  return normalizeQueryHashes(normalizeRecentAccessMs(record));
+}
+
+function normalizeRecentAccessMs(record: RecallHitRecord): RecallHitRecord {
   const raw = (record as { recentAccessMs?: unknown }).recentAccessMs;
   if (!Array.isArray(raw)) return record;
   const cleaned = (raw as unknown[]).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
@@ -183,6 +203,17 @@ function normalizeRecord(record: RecallHitRecord): RecallHitRecord {
     return out;
   }
   return { ...record, recentAccessMs: cleaned.slice(-MAX_RECENT_ACCESS) };
+}
+
+function normalizeQueryHashes(record: RecallHitRecord): RecallHitRecord {
+  const raw = (record as { queryHashes?: unknown }).queryHashes;
+  if (!Array.isArray(raw)) return record;
+  const cleaned = (raw as unknown[]).filter((v): v is string => typeof v === "string" && v.length > 0);
+  if (cleaned.length === 0) {
+    const { queryHashes: _omit, ...out } = record;
+    return out;
+  }
+  return { ...record, queryHashes: cleaned.slice(-MAX_QUERY_HASHES) };
 }
 
 function isRecallHitRecord(value: unknown): value is RecallHitRecord {

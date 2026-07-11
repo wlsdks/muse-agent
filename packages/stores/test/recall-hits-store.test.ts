@@ -162,4 +162,59 @@ describe("recall-hits store", () => {
       expect(dirty?.recentAccessMs).toEqual([5, 7]);
     });
   });
+
+  describe("queryHashes — the query-diversity gate's fuel (recall-promotion's minUniqueQueries)", () => {
+    it("accumulates a queryHash per access, across successive hits", async () => {
+      await recordRecallHits(file, [{ key: "s1", queryHash: "aaaa1111" }], 1_000);
+      await recordRecallHits(file, [{ key: "s1", queryHash: "bbbb2222" }], 2_000);
+      const s1 = (await readRecallHits(file)).find((r) => r.key === "s1");
+      expect(s1?.queryHashes).toEqual(["aaaa1111", "bbbb2222"]);
+    });
+
+    it("an access with no queryHash leaves the array unchanged (legacy-compatible, no placeholder entry)", async () => {
+      await recordRecallHits(file, [{ key: "s1", queryHash: "aaaa1111" }], 1_000);
+      await recordRecallHits(file, [{ key: "s1" }], 2_000);
+      const s1 = (await readRecallHits(file)).find((r) => r.key === "s1");
+      expect(s1?.hits).toBe(2);
+      expect(s1?.queryHashes).toEqual(["aaaa1111"]);
+    });
+
+    it("a record with NO queryHash ever recorded has queryHashes undefined (true legacy exemption)", async () => {
+      await recordRecallHits(file, [{ key: "s1" }], 1_000);
+      const s1 = (await readRecallHits(file)).find((r) => r.key === "s1");
+      expect(s1?.queryHashes).toBeUndefined();
+    });
+
+    it("trims to the last 20 when more than 20 hashed accesses are recorded", async () => {
+      for (let i = 1; i <= 25; i++) {
+        await recordRecallHits(file, [{ key: "s2", queryHash: `h${i.toString().padStart(2, "0")}` }], i * 100);
+      }
+      const s2 = (await readRecallHits(file)).find((r) => r.key === "s2");
+      expect(s2?.queryHashes?.length).toBe(20);
+      expect(s2?.queryHashes?.[0]).toBe("h06");
+      expect(s2?.queryHashes?.[19]).toBe("h25");
+    });
+
+    it("tolerates old records without queryHashes (no crash, field stays absent until a hashed hit arrives)", async () => {
+      await writeFile(file, JSON.stringify({ hits: [{ key: "old", hits: 2, lastHitMs: 500 }] }), "utf8");
+      await recordRecallHits(file, [{ key: "old" }], 600);
+      const old = (await readRecallHits(file)).find((r) => r.key === "old");
+      expect(old?.hits).toBe(3);
+      expect(old?.queryHashes).toBeUndefined();
+
+      await recordRecallHits(file, [{ key: "old", queryHash: "cccc3333" }], 700);
+      const after = (await readRecallHits(file)).find((r) => r.key === "old");
+      expect(after?.queryHashes).toEqual(["cccc3333"]);
+    });
+
+    it("sanitizes garbage entries in queryHashes, keeping only non-empty strings", async () => {
+      await writeFile(
+        file,
+        JSON.stringify({ hits: [{ key: "dirty", hits: 1, lastHitMs: 10, queryHashes: ["ok1", null, "", 5, "ok2"] }] }),
+        "utf8",
+      );
+      const dirty = (await readRecallHits(file)).find((r) => r.key === "dirty");
+      expect(dirty?.queryHashes).toEqual(["ok1", "ok2"]);
+    });
+  });
 });

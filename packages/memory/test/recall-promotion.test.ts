@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { consolidationPlan, recallActivation, scoreRecallHit, selectForgettable, selectPromotableMemories, type RecallHitLike } from "../src/index.js";
+import { consolidationPlan, hashQuery, recallActivation, scoreRecallHit, selectForgettable, selectPromotableMemories, type RecallHitLike } from "../src/index.js";
 
 const NOW = Date.UTC(2026, 4, 1, 0, 0, 0);
 const daysAgo = (d: number): number => NOW - d * 24 * 60 * 60_000;
@@ -105,6 +105,43 @@ describe("selectPromotableMemories", () => {
     const out = selectPromotableMemories(recs, { maxPromoted: 2, nowMs: NOW });
     expect(out.map((p) => p.key)).toEqual(["top", "mid"]); // "low" dropped by the cap, order by score
     expect(out[0]!.score).toBeGreaterThan(out[1]!.score);
+  });
+});
+
+describe("query-diversity gate (minUniqueQueries) — openclaw-parity self-reinforcement guard", () => {
+  const hSame = hashQuery("what's on my calendar today");
+  const hSameLoud = hashQuery("WHAT'S ON MY   CALENDAR TODAY");
+  const hOther = hashQuery("what's the weather this weekend");
+
+  it("blocks a memory whose hits all come from ONE repeated (even reworded-but-same) query", () => {
+    const repeated: RecallHitLike = { key: "repeated", hits: 5, lastHitMs: NOW, queryHashes: [hSame, hSameLoud, hSame, hSame, hSame] };
+    expect(selectPromotableMemories([repeated], { nowMs: NOW }).map((p) => p.key)).toEqual([]);
+  });
+
+  it("promotes a memory recalled by ≥2 genuinely DISTINCT queries", () => {
+    const diverse: RecallHitLike = { key: "diverse", hits: 5, lastHitMs: NOW, queryHashes: [hSame, hOther, hSame] };
+    expect(selectPromotableMemories([diverse], { nowMs: NOW }).map((p) => p.key)).toEqual(["diverse"]);
+  });
+
+  it("legacy record with NO query hashes recorded at all keeps the old behavior (not retroactively frozen)", () => {
+    const legacy: RecallHitLike = { key: "legacy", hits: 5, lastHitMs: NOW };
+    expect(selectPromotableMemories([legacy], { nowMs: NOW }).map((p) => p.key)).toEqual(["legacy"]);
+  });
+
+  it("a MIX of hashed + unhashed accesses still applies the gate over the KNOWN hashes (not a full legacy exemption)", () => {
+    const mixed: RecallHitLike = { key: "mixed", hits: 5, lastHitMs: NOW, queryHashes: [hSame] };
+    expect(selectPromotableMemories([mixed], { nowMs: NOW }).map((p) => p.key)).toEqual([]);
+  });
+
+  it("minUniqueQueries is configurable — 1 disables the gate, 3 raises the bar", () => {
+    const twoQueries: RecallHitLike = { key: "two-q", hits: 5, lastHitMs: NOW, queryHashes: [hSame, hOther] };
+    expect(selectPromotableMemories([twoQueries], { minUniqueQueries: 1, nowMs: NOW }).map((p) => p.key)).toEqual(["two-q"]);
+    expect(selectPromotableMemories([twoQueries], { minUniqueQueries: 3, nowMs: NOW }).map((p) => p.key)).toEqual([]);
+  });
+
+  it("an empty queryHashes array is treated the same as absent (legacy behavior)", () => {
+    const emptyArr: RecallHitLike = { key: "empty-arr", hits: 5, lastHitMs: NOW, queryHashes: [] };
+    expect(selectPromotableMemories([emptyArr], { nowMs: NOW }).map((p) => p.key)).toEqual(["empty-arr"]);
   });
 });
 
