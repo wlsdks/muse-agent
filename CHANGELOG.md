@@ -20,6 +20,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Fixed
 
+- **A web page can't smuggle instructions into Muse.** Text Muse reads from a
+  page is now fenced off as untrusted data before it reaches the model, and the
+  classic hijack patterns — "ignore all previous instructions", hidden
+  data-exfiltration links/images — are neutralized in code, not left to the
+  model to resist. Normal page text is unaffected. (End-to-end proof against a
+  real browser lands next.)
+
 - **A web page can't push Muse into confirming or submitting on its own.** If a
   page pops up a confirmation ("OK to delete?") or a text prompt while Muse is
   browsing, Muse now cancels it by default instead of blindly clicking OK or

@@ -17,6 +17,7 @@ import type { MuseTool } from "@muse/tools";
 
 import { BROWSER_KEYS, BROWSER_MAX_ELEMENTS, type BrowserController, type BrowserKey, type PageSnapshot } from "./controller.js";
 import { filterElements, matchElementResult, type MatchIntent } from "./matcher.js";
+import { defangElementName, wrapPageContent } from "./page-content-guard.js";
 
 export interface BrowserActionDraft {
   readonly action: "click" | "type" | "key" | "fill" | "upload";
@@ -46,7 +47,7 @@ export type BrowserApprovalGate = (draft: BrowserActionDraft) => Promise<Browser
 
 function elementsJson(elements: readonly PageSnapshot["elements"][number][]): JsonValue {
   return elements.map((element) => ({
-    name: element.name,
+    name: defangElementName(element.name),
     ref: element.ref,
     role: element.role,
     ...(element.url ? { url: element.url } : {})
@@ -67,7 +68,7 @@ function snapshotToJson(snapshot: PageSnapshot, offset = 0): JsonObject {
   const linkCount = snapshot.elements.filter((element) => element.role === "link").length;
   return {
     elements: elementsJson(page),
-    text: snapshot.text,
+    text: wrapPageContent(snapshot.text),
     title: snapshot.title,
     total,
     ...(linkCount > 0 ? { linkCount } : {}),

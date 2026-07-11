@@ -169,3 +169,11 @@ ratchet: 로드맵 잔여 [ ] = 15/40 · self-eval pass · fabrication 0 · brow
 - 왜: Muse #1 "Guards are fail-close" + 브라우저=untrusted 최대통로. 페이지-발 confirm("계정삭제?")/prompt를 auto-accept는 클릭 승인≠dialog 응답 승인이라 over-consent. 로드맵 "auto-dismiss" 문자 정합.
 - 리뷰지점: Opus PASS — fail-close 방향(confirm/prompt/unknown dismiss), settleDialog가 fake spy로 dismiss/accept 실호출 검증(enum-only 아님), 배선에 accept fall-through 없음, prompt 미제출, 두 mutation 독립 재현(confirm→accept·ternary flip), 기존 153 test green, 불변식 tighten-only(accept 집합 축소). controller.ts:425 stale nit도 지적→수정.
 - 리스크: 트레이드 — 승인된 "click Submit→page confirm" 흐름이 dismiss로 미완(fail-safe, 스냅샷서 surface). beforeunload=accept 유지(승인된 네비 진행). eval:browser-agent dialog 미사용이라 회귀無. 다음 = D1-S7d(page 콘텐츠 <page> 래핑+미디어 defang, 실 e2e — VQ-10 e2e 하네스 신규작성 필요).
+
+## fire 21 · 2026-07-12 · skill v2.x · <commit-pending>
+meta: slice=D1-S7d1 · wave=W2 · pkg=@muse/browser · kind=injection-guard · verdict=PASS · firesSinceDrill=3
+ratchet: 로드맵 잔여 [ ] = 15/41(D1-S7d→d1/d2 분해 +1, d1 체크 -1 → 15) · self-eval pass · fabrication 0 · browser +13 test(page-content-guard)
+- 무엇: 🔒 브라우저 page text(untrusted 최대통로) 인젝션 결정론 guard. 순수 page-content-guard.ts(자립): defangPageText(`</page>`/`<page>` break-out→fullwidth escape · `](` 중화로 markdown 이미지/링크 엑스필 차단 · instruction-override 정규식→`[defanged-directive]`, bounded=ReDoS-safe)+wrapPageContent(escape-then-wrap)+defangElementName. snapshotToJson text 래핑·elementsJson name defang → 전 snapshot-툴 조립경로 커버. D1-S7d를 d1(guard)/d2(실 e2e)로 분해.
+- 왜: 브라우저 page text가 이스케이핑 0으로 모델에 도달 → 인젝션("ignore all previous instructions")·미디어 엑스필·`</page>` break-out 가능. Muse #1 "가드는 결정론 코드, 프롬프트 아님". hermes `<page>` 인라인·openclaw page defang 참조.
+- 리뷰지점: Opus 위협모델 PASS — escape가 wrap 전(order 정확), `](` 실제 exfil 차단, instruction 정규식 ReDoS-safe(170KB 7.5ms)+정직 positioning(defense-in-depth atop 구조적 wrap, oversell 안 함), 조립경로 실증(fake controller 악성 text→툴출력 defanged, OUTCOME 채점), 두 mutation 독립 재현(6/4 RED). 자립(no @muse/recall dep).
+- 리스크: 낮음. defang은 clean prose byte-identical(idempotent). 미커버 벡터(reference-link·bare URL·adaptive rephrasing)는 out-of-scope 정직 명시(모델은 JSON 소비, auto-fetch 안 함). instruction-override 정규식 false-positive(보안기사) 있으나 advisory·readable 보존. 다음 = D1-S7d2(실 detached-Chrome e2e — 악성 HTML http serve→open→defanged 확인, eval:browser-agent 하네스 재사용, VQ-10 실행). D1-S7d2 완료 시 D1-S7 전체 완주.
