@@ -25,6 +25,7 @@
  */
 
 import type { MessagingProviderRegistry } from "@muse/messaging";
+import { composeIdentityPrompt } from "@muse/prompts";
 
 import { sendWithRetry } from "@muse/mcp-shared";
 import {
@@ -61,8 +62,8 @@ export interface RunDueFollowupsSummary {
 
 const DEFAULT_MAX_PER_TICK = 5;
 
-const FOLLOWUP_SYSTEM_PROMPT =
-  `You are Muse, the user's JARVIS-style assistant. Earlier you told
+export const FOLLOWUP_SYSTEM_PROMPT = composeIdentityPrompt(
+  `Earlier you told
 the user you would follow up at a specific time, and that time has
 now arrived. Compose the single short message you said you would
 send (one or two sentences, ≤ 240 chars):
@@ -73,7 +74,8 @@ send (one or two sentences, ≤ 240 chars):
   check-in concrete — pick the most useful thing to actually say
   given the summary, don't echo the vagueness.
 
-No emojis, no markdown, no lists, no JSON. Plain text only.`;
+No emojis, no markdown, no lists, no JSON. Plain text only.`
+);
 
 export async function runDueFollowups(options: RunDueFollowupsOptions): Promise<RunDueFollowupsSummary> {
   const now = options.now ?? (() => new Date());

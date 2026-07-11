@@ -1,3 +1,4 @@
+import { MUSE_IDENTITY_CORE } from "@muse/prompts";
 import { describe, expect, it } from "vitest";
 
 import { synthesizePatternSuggestion, type PatternSuggestionInput } from "../src/pattern-suggestion.js";
@@ -115,5 +116,14 @@ describe("synthesizePatternSuggestion — prompt body + request wiring", () => {
     await synthesizePatternSuggestion(input, { model: "m", modelProvider, redact: (t) => `<<${t}>>` });
     const body = sink.request?.messages.find((m) => m.role === "user")?.content ?? "";
     expect(body).toContain("facts: <<weekday=Monday; recurring task ~ 'weekly report'; seen 4 of last 5 weeks>>");
+  });
+
+  it("carries the shared identity core in the system message, plus its own offer-writing task", async () => {
+    const { modelProvider, sink } = capturing();
+    await synthesizePatternSuggestion(input, { model: "m", modelProvider });
+    const system = sink.request?.messages.find((m) => m.role === "system")?.content ?? "";
+    expect(system).toContain(MUSE_IDENTITY_CORE);
+    expect(system).toContain("RECURRING");
+    expect(system).toContain("Invent NOTHING");
   });
 });

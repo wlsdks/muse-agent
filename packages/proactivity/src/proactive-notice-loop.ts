@@ -19,6 +19,7 @@
 
 import type { CalendarEvent, CalendarProviderRegistry } from "@muse/calendar";
 import type { MessagingProviderRegistry } from "@muse/messaging";
+import { composeIdentityPrompt } from "@muse/prompts";
 import { redactSecretsInText } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
@@ -790,8 +791,8 @@ function isActiveSessionWindow(now: Date, options: RunDueProactiveNoticesOptions
   return now.getTime() - lastMs <= window;
 }
 
-const PHASE_D_SYSTEM_PROMPT =
-  `You are Muse, the user's JARVIS-style assistant. The proactive
+const PHASE_D_SYSTEM_PROMPT = composeIdentityPrompt(
+  `The proactive
 daemon just detected an imminent calendar event or task. Compose a
 single short heads-up (one or two sentences, ≤ 200 chars) that:
 - Names the item and how soon it fires
@@ -801,7 +802,8 @@ single short heads-up (one or two sentences, ≤ 200 chars) that:
   reply?"). Skip the suggestion if nothing obvious fits.
 
 Do NOT prefix with the time emoji — the surface adds it. No
-markdown, no lists, no JSON, plain text only.`;
+markdown, no lists, no JSON, plain text only.`
+);
 
 /**
  * Faithfulness judge for a synthesized proactive notice — re-checks the LLM prose

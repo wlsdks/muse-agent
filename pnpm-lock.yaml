@@ -83,6 +83,9 @@ importers:
       '@muse/proactivity':
         specifier: workspace:*
         version: link:../../packages/proactivity
+      '@muse/prompts':
+        specifier: workspace:*
+        version: link:../../packages/prompts
       '@muse/recall':
         specifier: workspace:*
         version: link:../../packages/recall
@@ -359,6 +362,9 @@ importers:
       '@muse/proactivity':
         specifier: workspace:*
         version: link:../proactivity
+      '@muse/prompts':
+        specifier: workspace:*
+        version: link:../prompts
       '@muse/recall':
         specifier: workspace:*
         version: link:../recall
@@ -647,6 +653,9 @@ importers:
       '@muse/messaging':
         specifier: workspace:*
         version: link:../messaging
+      '@muse/prompts':
+        specifier: workspace:*
+        version: link:../prompts
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared
@@ -667,6 +676,9 @@ importers:
       '@muse/mcp-shared':
         specifier: workspace:*
         version: link:../mcp-shared
+      '@muse/prompts':
+        specifier: workspace:*
+        version: link:../prompts
       '@muse/shared':
         specifier: workspace:*
         version: link:../shared

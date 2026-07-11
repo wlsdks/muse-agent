@@ -1,3 +1,4 @@
+import { MUSE_IDENTITY_CORE } from "@muse/prompts";
 import { describe, expect, it } from "vitest";
 
 import { buildMusePersona, formatCurrentContextLine, personaEntryCap } from "./muse-persona.js";
@@ -29,7 +30,7 @@ describe("buildMusePersona", () => {
     ).toBeUndefined();
   });
 
-  it("renders a JARVIS-style system prompt with facts + preferences", () => {
+  it("renders the shared identity core with facts + preferences", () => {
     const prompt = buildMusePersona(
       {
         facts: { name: "Stark", city: "Seoul" },
@@ -37,7 +38,7 @@ describe("buildMusePersona", () => {
       },
       "stark"
     );
-    expect(prompt).toContain("JARVIS-style");
+    expect(prompt).toContain(MUSE_IDENTITY_CORE);
     expect(prompt).toContain("stark");
     expect(prompt).toContain("name: Stark");
     expect(prompt).toContain("city: Seoul");

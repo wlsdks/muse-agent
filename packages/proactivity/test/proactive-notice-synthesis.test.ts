@@ -1,3 +1,4 @@
+import { MUSE_IDENTITY_CORE } from "@muse/prompts";
 import { describe, expect, it, vi } from "vitest";
 
 import { synthesizeNoticeText, type NoticeGroundingReverify } from "../src/proactive-notice-loop.js";
@@ -40,5 +41,16 @@ describe("synthesizeNoticeText — faithfulness gate on the proactive notice (un
   it("back-compat: no reverify → delivers the synthesized prose unverified (existing behavior preserved)", async () => {
     const out = await synthesizeNoticeText(baseItem, { agentModel: "m", modelProvider: provider("Standup soon in Room B") });
     expect(out).toContain("Room B");
+  });
+
+  it("carries the shared identity core in the system message, plus its own heads-up task", async () => {
+    const sink: { request?: { messages: { role: string; content: string }[] } } = {};
+    await synthesizeNoticeText(baseItem, {
+      agentModel: "m",
+      modelProvider: { generate: async (request: typeof sink.request) => { sink.request = request; return { output: "x" }; } }
+    });
+    const system = sink.request?.messages.find((m) => m.role === "system")?.content ?? "";
+    expect(system).toContain(MUSE_IDENTITY_CORE);
+    expect(system).toContain("imminent calendar event or task");
   });
 });

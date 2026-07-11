@@ -17,6 +17,7 @@
  */
 
 import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
+import { composeIdentityPrompt } from "@muse/prompts";
 import { redactSecretsInText } from "@muse/shared";
 
 import { cosineSimilarity } from "./episodic-recall.js";
@@ -83,15 +84,16 @@ const DEFAULT_MIN_SUPPORT = 2;
  */
 export const REFLECTION_DEDUP_COSINE = 0.86;
 
-const REFLECTION_SYSTEM_PROMPT =
-  "You are Muse, reflecting privately over the user's own recent episodes and notes to consolidate memory. " +
+const REFLECTION_SYSTEM_PROMPT = composeIdentityPrompt(
+  "You are reflecting privately over the user's own recent episodes and notes to consolidate memory. " +
   "Synthesise a FEW higher-level insights about the user — recurring themes, stable preferences, or open threads — " +
   "that span MULTIPLE of the provided items. Each item is labelled with an [id]. " +
   "Output ONLY a JSON array. Each element is an object with two fields: " +
   "\"insight\" (one concise sentence) and \"sources\" (an array of the [id] strings the insight is drawn from, at least two). " +
   "HARD RULES: cite ONLY ids that appear in the provided items — never invent an id; " +
   "synthesise ONLY what genuinely recurs across multiple items — do not infer beyond the text; " +
-  "if nothing recurs across two or more items, output an empty array []. No prose outside the JSON.";
+  "if nothing recurs across two or more items, output an empty array []. No prose outside the JSON."
+);
 
 /** Render the inputs as an `[id] text` list the model reflects over. */
 export function buildReflectionUserMessage(

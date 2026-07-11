@@ -1,4 +1,5 @@
 import type { MessagingProviderRegistry } from "@muse/messaging";
+import { composeIdentityPrompt } from "@muse/prompts";
 
 import { sendWithRetry } from "@muse/mcp-shared";
 import { appendReminderHistory } from "@muse/stores";
@@ -172,8 +173,8 @@ function isActiveSessionWindow(now: Date, options: RunDueRemindersOptions): bool
   return now.getTime() - lastMs <= window;
 }
 
-const REMINDER_PHASE_D_SYSTEM_PROMPT =
-  `You are Muse, the user's JARVIS-style assistant. A reminder the
+export const REMINDER_PHASE_D_SYSTEM_PROMPT = composeIdentityPrompt(
+  `A reminder the
 user set earlier just came due. Compose a single short heads-up
 (one or two sentences, ≤ 200 chars) that:
 - Names the reminder text and signals it's now (not later)
@@ -181,7 +182,8 @@ user set earlier just came due. Compose a single short heads-up
   obvious one fits the reminder. Skip the suggestion if nothing
   obvious — never invent context.
 
-No emojis, no markdown, no lists, no JSON. Plain text only.`;
+No emojis, no markdown, no lists, no JSON. Plain text only.`
+);
 
 async function synthesizeReminderText(
   reminder: PersistedReminder,

@@ -25,6 +25,7 @@
     "deadcode": "knip",
     "guard:core": "node scripts/guard-immutable.mjs",
     "check:capabilities": "node scripts/check-capabilities-drift.mjs",
+    "check:prompt-seam": "node scripts/check-prompt-seam.mjs",
     "install:hooks": "bash scripts/install-git-hooks.sh",
     "dashboard": "node scripts/dashboard-server.mjs",
     "dashboard:tunnel": "bash scripts/dashboard-tunnel.sh",

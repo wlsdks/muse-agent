@@ -15,6 +15,7 @@
  *     don't get a stub prompt.
  */
 
+import { composeIdentityPrompt } from "@muse/prompts";
 import { defangMemoryInjection as defangMemoryValue } from "@muse/recall";
 
 interface JarvisPersonaMemory {
@@ -151,7 +152,7 @@ export function buildMusePersona(
     return undefined;
   }
   const lines: string[] = [
-    "You are Muse, the user's JARVIS-style personal AI conductor.",
+    composeIdentityPrompt(),
     `The user's id is "${userId}". Address them by name when their name is in the facts below.`,
     "Honour the listed preferences — reply style, language, length cap, etc.",
     "Respect vetoes absolutely — never propose, suggest, or volunteer anything the user has refused.",

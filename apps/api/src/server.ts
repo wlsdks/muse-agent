@@ -68,6 +68,7 @@ import { registerJourneyRoutes } from "./journey-routes.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
 import { registerIdentityTaglineRoutes } from "./identity-tagline-routes.js";
+import { registerPromptRoutes } from "./prompt-routes.js";
 import { registerAgentNoticesRoutes } from "./agent-notices-routes.js";
 import { registerSetupRoutes } from "./setup-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
@@ -391,6 +392,13 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     authService,
     ...(options.userMemoryStore ? { userMemoryStore: options.userMemoryStore } : {}),
     ...(taglineModel ? { model: taglineModel } : {})
+  });
+  registerPromptRoutes(server, {
+    authService,
+    ...(options.personaFilePath ? { personaFilePath: options.personaFilePath } : {}),
+    ...(options.promptLayerRegistry ? { promptLayerRegistry: options.promptLayerRegistry } : {}),
+    ...(options.modelProvider ? { modelProvider: options.modelProvider } : {}),
+    ...(options.defaultModel ? { defaultModel: options.defaultModel } : {})
   });
   if (options.agentInitiatedNoticeBroker) {
     registerAgentNoticesRoutes(server, {

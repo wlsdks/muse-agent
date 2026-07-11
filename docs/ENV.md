@@ -88,7 +88,7 @@ Total: **522** variables.
 | `MUSE_BUDGET_MONTHLY_LIMIT_USD` | packages/autoconfigure |
 | `MUSE_BUDGET_WARNING_PERCENT` | packages/autoconfigure |
 | `MUSE_CACHE_BOUNDARY` | packages/prompts |
-| `MUSE_CACHE_BOUNDARY_MARKER` | packages/prompts |
+| `MUSE_CACHE_BOUNDARY_MARKER` | apps/api, packages/prompts |
 | `MUSE_CACHE_ENABLED` | packages/autoconfigure |
 | `MUSE_CACHE_MAX_SIZE` | packages/autoconfigure |
 | `MUSE_CACHE_TTL_MS` | packages/autoconfigure |
@@ -217,6 +217,8 @@ Total: **522** variables.
 | `MUSE_HOOK_TRACE_MAX_ENTRIES` | packages/autoconfigure |
 | `MUSE_HUD` | apps/cli |
 | `MUSE_HUD_SEGMENTS` | apps/cli |
+| `MUSE_IDENTITY_CORE` | apps/api, packages/prompts |
+| `MUSE_IDENTITY_VERIFY_ROUNDS` | apps/api |
 | `MUSE_IDLE_LEARNING_ENABLED` | apps/cli |
 | `MUSE_INBOUND_AUTO_APPROVE` | apps/api |
 | `MUSE_INBOUND_REPLY_ENABLED` | apps/api, apps/web |
@@ -270,6 +272,7 @@ Total: **522** variables.
 | `MUSE_MCP_RECONNECT_MAX_DELAY_MS` | packages/autoconfigure |
 | `MUSE_MCP_REQUEST_TIMEOUT_MS` | packages/autoconfigure |
 | `MUSE_MEMORY_KEY` | apps/cli, packages/memory, packages/stores |
+| `MUSE_MENTION` | apps/api |
 | `MUSE_MESSAGING_CREDENTIALS_FILE` | packages/autoconfigure |
 | `MUSE_MESSAGING_LIBNOTIFY_ENABLED` | packages/autoconfigure, packages/messaging |
 | `MUSE_MESSAGING_LIBNOTIFY_TITLE` | packages/autoconfigure |
@@ -335,6 +338,7 @@ Total: **522** variables.
 | `MUSE_PERSONA` | apps/cli |
 | `MUSE_PERSONA_FILE` | apps/cli |
 | `MUSE_PERSONA_MAX_ENTRIES` | apps/cli |
+| `MUSE_PERSONA_MD_FILE` | packages/autoconfigure, packages/recall |
 | `MUSE_PIPER_PATH` | packages/autoconfigure |
 | `MUSE_PIPER_VOICE` | apps/cli, packages/autoconfigure |
 | `MUSE_PLAN_CACHE` | packages/autoconfigure |

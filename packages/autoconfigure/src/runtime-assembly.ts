@@ -68,6 +68,8 @@ import {
   type TokenUsageSink
 } from "@muse/observability";
 
+import { resolvePersonaFilePath, resolveRuntimePersonaLayerSync } from "@muse/recall";
+import { InMemoryPromptLayerRegistry } from "@muse/prompts";
 import { CircuitBreakerRegistry } from "@muse/resilience";
 import { RuntimeSettings } from "@muse/runtime-settings";
 import {
@@ -239,6 +241,17 @@ export interface MuseRuntimeAssembly {
     readonly store: ScheduledJobStore;
   };
   readonly toolRegistry: ToolRegistry;
+  /**
+   * The SAME registry instance `agentRuntime` resolves its L1 personality
+   * layer from (docs/strategy/prompt-architecture.md, decision D2 + S3).
+   * Seeded at startup from `~/.config/muse/persona.md` (or
+   * `MUSE_PERSONA_MD_FILE`); the prompt-persona API routes mutate THIS
+   * instance on save so a hot-applied persona.md changes the very next
+   * turn without a restart.
+   */
+  readonly promptLayerRegistry: InMemoryPromptLayerRegistry;
+  /** The resolved persona.md path this assembly loaded at startup. */
+  readonly personaFilePath: string;
   readonly calendar: CalendarProviderRegistry;
   readonly notesProviderRegistry?: NotesProviderRegistry;
   readonly tasksProviderRegistry?: TasksProviderRegistry;
@@ -314,6 +327,15 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   const env = mergeModelKeysFromFile(options.env ?? process.env);
   const db = options.db;
   const authService = createAuthService(env, db);
+  // Sync read: createMuseRuntimeAssembly is called synchronously from dozens
+  // of CLI command sites, so the startup persona load can't await. A broken
+  // or absent persona.md is fail-open here — see resolveRuntimePersonaLayerSync.
+  const personaFilePath = resolvePersonaFilePath(env);
+  const promptLayerRegistry = new InMemoryPromptLayerRegistry();
+  const startupPersonaLayer = resolveRuntimePersonaLayerSync(personaFilePath);
+  if (startupPersonaLayer) {
+    promptLayerRegistry.register(startupPersonaLayer);
+  }
   // Seed default orchestration workers into a fresh in-memory registry so
   // `orchestrate` works out of the box (empty registry → NoAgentWorkerError).
   // DB-backed deployments are operator-managed — not auto-seeded. Opt out with
@@ -587,6 +609,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
         : {}),
       metrics: runtimeAgentMetrics,
       modelProvider,
+      promptLayerRegistry,
       // Grounding-first answer temperature, set explicitly so the runtime
       // doesn't inherit the model's Ollama Modelfile default (gemma4 ships 1.0).
       defaults: { temperature: resolveAnswerTemperature(env) },
@@ -663,6 +686,8 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
       statsStore: cacheStatsStore
     },
     defaultModel,
+    personaFilePath,
+    promptLayerRegistry,
     historyStore,
     hookTraceStore,
     mcp,
