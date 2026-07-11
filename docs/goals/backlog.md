@@ -3262,3 +3262,4 @@ Each fire analyzed openclaw+hermes for the next convergence gap (both-have ∩ M
 - ✓ D2-S6b 2026-07-11 — write-approval 스테이징(CLI fs-write 비대화형 거부→기존 pending-approval-store 기록, messaging src 미수정, no-external-effect e2e); 다음 = D3-S7(PID-재사용 kill 가드). VQ-18: CLI-write 재실행(content) 미배선
 - ✓ D3-S7 2026-07-11 — PID-재사용 kill 가드(osStartTime 캡처+pidIdentityMatches, 불일치→kill 금지 fail-close, CLI ps 배선); W1 완주. 다음 = W2 D1-S3(단계적 요약)
 - ✓ D1-S3 2026-07-11 — 단계적 요약(tool-pair 경계 청크→청크별 FAIL-OPEN→병합, 부분실패 생존 보존, 식별자 VERBATIM 지시); 기존 CMP-2 무수정. 다음 = D1-S5(이터레이션 예산 재설계)
+- ✓ D1-S5a 2026-07-11 — 예산 소진 명시 notice(침묵중단 금지, budget-only 게이트, proactive 주입); maxToolCalls 불변. 다음 = D1-S5b(PTC 계상+서브에이전트 하위예산)
