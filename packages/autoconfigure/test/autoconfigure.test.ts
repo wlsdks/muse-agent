@@ -428,22 +428,25 @@ describe("autoconfigure", () => {
   it("wires working-budget compaction into the AgentRuntime by default", async () => {
     // autoconfigure wires workingBudgetTokens on ConversationTrimOptions,
     // computing it as 40% of nominal by default. We verify the soft
-    // trigger by setting a tiny
-    // nominal context window (200 tokens) so the working budget
-    // (40% = 80 tokens) is easy to exceed with a few-message
-    // conversation. The hard cap (200) is still well above what
-    // these messages need, so a "hard_limit" trigger would mean we
-    // mis-wired the field.
+    // trigger by setting a small nominal context window (1000 tokens) so
+    // the working budget (40% = 400 tokens) is easy to exceed with a
+    // few-message conversation. The hard cap (1000) is still well above
+    // what these messages need, so a "hard_limit" trigger would mean we
+    // mis-wired the field. The window floor was raised from 200 to 1000
+    // once `applyPromptLayers` started composing the always-on identity
+    // core (docs/strategy/prompt-architecture.md) on every run — that
+    // block alone is ~300 tokens, which used to blow a 200-token hard cap
+    // by itself regardless of the conversation messages.
     const assembly = createMuseRuntimeAssembly({
       env: {
         // Disable the Context Engineering Phase 1 system-prompt
         // injection so the budget math is dominated by the
         // conversation messages this test ships — otherwise the
-        // ~80-token nominal budget tips into `hard_limit` from the
+        // nominal budget tips into `hard_limit` from the
         // `[Active Context]` block alone, which isn't what this
         // test is exercising.
         MUSE_ACTIVE_CONTEXT_ENABLED: "false",
-        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "200",
+        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "1000",
         MUSE_LLM_MAX_OUTPUT_TOKENS: "10",
         MUSE_MODEL: "diagnostic/smoke",
         MUSE_MODEL_PROVIDER_ID: "diagnostic"
@@ -474,19 +477,18 @@ describe("autoconfigure", () => {
   it("respects MUSE_LLM_WORKING_BUDGET_TOKENS=0 to disable proactive compaction", async () => {
     // Same scenario as above but with the user explicitly opting
     // out via 0. The trim should NOT fire because the hard cap is
-    // unreached and proactive compaction is disabled.
+    // unreached and proactive compaction is disabled. Same 1000-token
+    // floor as the sibling test above (see its comment) — with it
+    // on, the [Active Context] block's reminders/user-memory
+    // resolvers default to the real `~/.muse/reminders.json` and
+    // `~/.muse/user-memory.json` when no env override is given —
+    // on a lived-in dev box those files are non-empty and inflate
+    // the prompt past a too-tight hard cap, flipping this test's
+    // `hard_limit` vs `none` assertion depending on machine state.
     const assembly = createMuseRuntimeAssembly({
       env: {
-        // Disable the Context Engineering Phase 1 system-prompt
-        // injection (same reason as the sibling test above): with it
-        // on, the [Active Context] block's reminders/user-memory
-        // resolvers default to the real `~/.muse/reminders.json` and
-        // `~/.muse/user-memory.json` when no env override is given —
-        // on a lived-in dev box those files are non-empty and inflate
-        // the prompt past the 200-token hard cap, flipping this test's
-        // `hard_limit` vs `none` assertion depending on machine state.
         MUSE_ACTIVE_CONTEXT_ENABLED: "false",
-        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "200",
+        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "1000",
         MUSE_LLM_MAX_OUTPUT_TOKENS: "10",
         MUSE_LLM_WORKING_BUDGET_TOKENS: "0",
         MUSE_MODEL: "diagnostic/smoke",

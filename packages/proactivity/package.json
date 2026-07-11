@@ -12,6 +12,7 @@
     "@muse/mcp-shared": "workspace:*",
     "@muse/memory": "workspace:*",
     "@muse/messaging": "workspace:*",
+    "@muse/prompts": "workspace:*",
     "@muse/shared": "workspace:*",
     "@muse/stores": "workspace:*"
   }

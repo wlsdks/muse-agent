@@ -127,3 +127,20 @@ ratchet: 로드맵 잔여 [ ] = 19/39 · self-eval pass · fabrication 0 · cli 
 - 왜: muse job run이 무제한 백그라운드 spawn 가능(verify-first)→자원 고갈. hermes cap3 초과 async 거부 참조.
 - 리뷰지점: Opus가 파싱테이블(0/-1/2.5/abc→3 floor1)·countRunningJobs 실 jsonl fixture 충실성(running만)·wiring(at-cap spy 미호출+exitCode1+stderr, under-cap 시작)·mutation-RED 양방향 검증.
 - 리스크: 없음. 새 env→docs:env 갱신(워커 proactive). 다음 D3-S4b=boardTaskPrompt 헤드룸 요약예산+스필(복잡).
+
+## fire 16 · 2026-07-11 · skill v2.x · c5ec0240c
+meta: slice=D3-S4b · wave=W2 · pkg=apps/cli · kind=synthesis-budget · verdict=PASS · firesSinceDrill=7
+ratchet: 로드맵 잔여 [ ] = 18/39 · self-eval pass · fabrication 0 · cli 41 test(+board-synthesis-budget) · 2 env
+- 무엇: 보드 합성 헤드룸 요약예산+파일스필. 순수 perChildSynthesisBudget(max(2000,floor(h×0.5/n))) + budgetAndSpillOutputs(초과 truncate + FULL 원본을 ~/.muse/board-spill/ 스필, 세그먼트에 경로 명시) + makeAgentExecutor 배선(실fs·답변 note). boardTaskPrompt 순수 유지. D3-S4 완료.
+- 왜: boardTaskPrompt가 자식 출력을 verbatim 임베드 → N 대형 자식이면 컨텍스트 폭발. hermes headroom×0.5/n·floor2000·파일스필 참조.
+- 리뷰지점: Opus가 예산공식 edge(div0/NaN/Inf→2000)·경계(<=)·round-trip(스필===원본·경로 정확 일치·데이터손실 없음)·executor 실fs·boardTaskPrompt 순수·mutation-RED 양방향 검증.
+- 리스크: 없음. 새 env 2개→docs:env(워커 proactive). 다음 D1-S7a=브라우저 스냅샷 AX-tree refs(다른 축 W2 브라우저).
+
+## fire 17 · 2026-07-11 · skill v2.x · 61ca1e65c
+meta: slice=D1-S7a · wave=W2 · pkg=@muse/browser · kind=browser-ref-guard · verdict=PASS · firesSinceDrill=8
+ratchet: 로드맵 잔여 [ ] = 17/39 · self-eval pass · fabrication 0 · browser +3 test(ghost-ref) · env 0
+- 무엇: 브라우저 ref 안정성 fail-close. `resolveTarget`(browser-tools.ts) 숫자-ref 분기가 `describeElement(ref)`=undefined(현재 스냅샷에 없는 stale/ghost/환각 ref)를 그대로 통과시켜 유령 요소로 click/type/hover/upload 하던 구멍을 거부로 닫음("call browser_read"). resolveTarget이 4 act-tool 단일 해소점이라 형제 일괄. 3 행동테스트(valid proceed·ghost click/type 거부, calls 무기록=부분부작용 0).
+- 왜: 12B가 무효/stale ref를 넘기면 실제 요소 없이 행동 → 근거없는 조작. roadmap D1-S7a "refs 안정성 유닛". refs는 이미 numeric index+CSS셀렉터 모델노출 없음이라 (a) 숫자인덱스 요건은 기충족, 안정성이 실델타.
+- 리뷰지점: Opus 독립 평가자가 mutation-RED 재현(가드제거→라인542/551 2 RED)·행동어서(shape아님)·legit flow(target분기·multi-field·describeElement populate)·포맷 무변경(grep @e=0)·스레트모델 검증 → PASS.
+- 리스크: 낮음. numeric-index 충돌(다른요소가 옛 index 물려받음)은 tool-boundary 가드 밖=VQ-19(실브라우저 D1-S7d 인접). 포맷 무변경이라 eval:computer-task/browser-agent 계약 무손상. 다음 = D1-S7b(step-budget+timeout 주입, actions_used N/M).
+- note: fire 18은 JUDGE-DRILL 강제(firesSinceDrill=8·연속 allPASS=8≥8) — 고의 나쁜슬라이스 주입→④b FAIL 확인→롤백→진짜 fix, 카운터 리셋.

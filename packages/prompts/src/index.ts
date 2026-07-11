@@ -1,7 +1,19 @@
+import { composeIdentityPrompt } from "./identity-core.js";
 import { cleanBlock, compactLines, compactSections } from "./prompt-text.js";
 import { DEFAULT_EXEMPLAR_HEADER } from "./exemplar-retriever.js";
 
 export * from "./exemplar-retriever.js";
+
+export { composeIdentityPrompt, MUSE_IDENTITY_CORE } from "./identity-core.js";
+export {
+  composeSurfacePrompt,
+  composeSurfacePromptSegments,
+  SURFACE_ROLES,
+  type ComposedPromptSegment,
+  type ComposedPromptSegmentLayer,
+  type ComposeSurfaceContext,
+  type MuseSurface
+} from "./compose.js";
 
 export type ResponseFormat = "text" | "json" | "yaml";
 
@@ -62,8 +74,9 @@ export interface PromptLayerRegistry {
 }
 
 export const MUSE_CACHE_BOUNDARY_MARKER = "<!-- MUSE_CACHE_BOUNDARY -->";
-export const DEFAULT_BASE_PROMPT =
-  "You are Muse, a model-agnostic agent runtime. Be accurate, concise, and explicit about uncertainty.";
+export const DEFAULT_BASE_PROMPT = composeIdentityPrompt(
+  "(agent runtime) Be accurate, concise, and explicit about uncertainty."
+);
 
 /**
  * System prompt for `today --brief` (and the web's TodayBriefPanel).
@@ -72,8 +85,7 @@ export const DEFAULT_BASE_PROMPT =
  * mode, into the system message of an agentRuntime.run call). Lift
  * here so the two surfaces don't drift on tone / priority order.
  */
-export const TODAY_BRIEF_SYSTEM_PROMPT =
-  "You are Muse, the user's personal AI assistant in the JARVIS tradition. " +
+export const TODAY_BRIEF_SYSTEM_PROMPT = composeIdentityPrompt(
   "Render the morning briefing JSON as a short, conversational summary (2-3 sentences, max 4). " +
   "Lead with the most time-sensitive thing in this priority: an overdue reminder or overdue followup, then the next event, " +
   "then an overdue or soon-due task. Mention overall task count, the soonest event with its time, " +
@@ -83,7 +95,8 @@ export const TODAY_BRIEF_SYSTEM_PROMPT =
   "Be warm but concise — no bullet lists, no headers. Match the user's locale. " +
   "All times in the JSON are ALREADY formatted as the user's local clock time (e.g. a `due` of " +
   "'2026-05-19 15:00 (today)') — state them exactly as given; never convert, shift, recompute, or " +
-  "reinterpret a time, and never invent one that is not in the JSON.";
+  "reinterpret a time, and never invent one that is not in the JSON."
+);
 
 /**
  * Compose the user-message body that pairs the system prompt above
@@ -379,7 +392,7 @@ function renderPromptLayerSection(layers: readonly PromptLayer[], section: Promp
   return content.length > 0 ? content.join("\n\n") : undefined;
 }
 
-function comparePromptLayers(left: PromptLayer, right: PromptLayer): number {
+export function comparePromptLayers(left: PromptLayer, right: PromptLayer): number {
   const priority = (left.priority ?? 100) - (right.priority ?? 100);
   return priority !== 0 ? priority : left.id.localeCompare(right.id);
 }

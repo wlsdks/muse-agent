@@ -1,3 +1,4 @@
+import { casualResponseFor, classifyCasualPrompt } from "@muse/agent-core";
 import {
   parseBoolean,
   resolveActionLogFile,
@@ -44,6 +45,11 @@ export interface InboundAgentRunOptions {
   readonly env: MuseEnvironment;
   readonly model: string;
   readonly registry: MessagingProviderRegistry;
+  /**
+   * Delegation-ack composer (S2, `MUSE_CHANNEL_ACK`). Optional — a caller
+   * that omits it simply never sends an ack, same as the flag being off.
+   */
+  readonly composeAck?: (input: { readonly latestUserText: string }) => Promise<string | null>;
 }
 
 /**
@@ -62,8 +68,8 @@ const UNPAIRED_CHAT_NOTICE =
   "This bot is a private personal assistant and only talks to its paired owner.";
 
 export function createInboundAgentRun(options: InboundAgentRunOptions): ThreadedAgentRun {
-  const { agentRuntime, env, model, registry } = options;
-  return async ({ messages, providerId, source, scope: rawScope }) => {
+  const { agentRuntime, composeAck, env, model, registry } = options;
+  return async ({ messages, providerId, source, scope: rawScope, notify }) => {
     // Conversation-scope capability profile (P7-3, the sequel to TOFU
     // pairing): a group/shared chat gets a STRICTLY narrower posture than
     // a 1:1 — never TOFU-adopted as owner, never the owner's memory scope,
@@ -126,6 +132,29 @@ export function createInboundAgentRun(options: InboundAgentRunOptions): Threaded
         });
     if (approvalAck !== undefined) {
       return approvalAck;
+    }
+    // Deterministic casual fast-path (parity with `muse ask`): a bare
+    // greeting/thanks/farewell is not a question about the user's notes, so
+    // answer it conversationally and skip the agent run + grounding gate
+    // entirely — nothing here is a factual claim that needs a citation.
+    const casualKind = classifyCasualPrompt(latestUserText);
+    if (casualKind) {
+      return casualResponseFor(casualKind);
+    }
+    // Delegation ack (S2, "the assistant rhythm"): a non-casual request is a
+    // delegation, so restate it as an early second-channel confirmation
+    // BEFORE the (possibly slow) agent run, then stay quiet until the real
+    // answer. Cosmetic — sequential (same local model box, no parallel
+    // inference) and any failure here must never affect the run below.
+    if (parseBoolean(env.MUSE_CHANNEL_ACK, true) && composeAck && notify) {
+      // Fail-open: a composer error/timeout/rejection means no ack, never a
+      // failed run — `composeAck` itself already fails open, but a caller's
+      // implementation is not trusted to.
+      const ack = await composeAck({ latestUserText }).catch(() => null);
+      if (ack !== null) {
+        // Ack delivery is cosmetic — a failed send must never fail the run.
+        await notify(ack).catch(() => undefined);
+      }
     }
     const result = await agentRuntime.run({
       messages,

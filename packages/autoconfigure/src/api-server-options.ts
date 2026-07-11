@@ -113,6 +113,8 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
       serverStore: assembly.mcp.serverStore
     },
     modelProvider: assembly.modelProvider,
+    promptLayerRegistry: assembly.promptLayerRegistry,
+    personaFilePath: assembly.personaFilePath,
     requireAuth: assembly.requireAuth,
     runtimeSettings: assembly.runtimeSettings,
     scheduler: assembly.scheduler,

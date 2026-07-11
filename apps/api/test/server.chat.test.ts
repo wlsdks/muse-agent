@@ -328,7 +328,12 @@ describe("api server: chat / SSE / multipart", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(capturedMessages).toEqual([
+    const sent = capturedMessages as readonly { role: string; content: string }[];
+    // The runtime now always prepends the composed system prompt (identity
+    // core first) — the tool-call turns must survive UNDER it, unchanged.
+    expect(sent[0]?.role).toBe("system");
+    expect(sent[0]?.content).toContain("뮤즈");
+    expect(sent.filter((message) => message.role !== "system")).toEqual([
       { content: "Read the file", name: undefined, role: "user", toolCallId: undefined, toolCalls: undefined },
       {
         content: "",

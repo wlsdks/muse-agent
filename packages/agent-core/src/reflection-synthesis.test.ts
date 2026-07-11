@@ -1,3 +1,4 @@
+import { MUSE_IDENTITY_CORE } from "@muse/prompts";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -99,5 +100,19 @@ describe("synthesizeReflections — model-driven", () => {
       modelProvider: { generate: async () => { throw new Error("model down"); } } as never
     });
     expect(out).toEqual([]);
+  });
+
+  it("carries the shared identity core in the system message, plus its own reflection task", async () => {
+    const sink: { request?: { messages: { role: string; content: string }[] } } = {};
+    await synthesizeReflections(inputs, {
+      model: "m",
+      modelProvider: {
+        generate: async (request: typeof sink.request) => { sink.request = request; return { output: "[]" }; }
+      } as never
+    });
+    const system = sink.request?.messages.find((m) => m.role === "system")?.content ?? "";
+    expect(system).toContain(MUSE_IDENTITY_CORE);
+    expect(system).toContain("consolidate memory");
+    expect(system).toContain("HARD RULES");
   });
 });

@@ -83,6 +83,9 @@
       "path": "../proactivity"
     },
     {
+      "path": "../prompts"
+    },
+    {
       "path": "../recall"
     }
   ]

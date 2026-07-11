@@ -425,3 +425,40 @@ export interface ReflectionsResponse {
   total: number;
   entries: ReflectionView[];
 }
+
+export interface PromptPersonaFrontmatter {
+  readonly register?: string;
+  readonly maxWords?: number;
+  readonly language?: string;
+}
+
+export interface PromptPersonaResponse {
+  readonly defaultInEffect: boolean;
+  readonly frontmatter: PromptPersonaFrontmatter;
+  readonly raw: string;
+  readonly parseError?: string;
+}
+
+export interface PromptPersonaSaveResponse {
+  readonly frontmatter: PromptPersonaFrontmatter;
+  readonly raw: string;
+  readonly sanitized: boolean;
+}
+
+export interface PromptPreviewSegment {
+  readonly layer: string;
+  readonly text: string;
+  readonly section: "stable" | "dynamic";
+  readonly readOnly?: boolean;
+}
+
+export interface PromptPreviewResponse {
+  readonly layers: readonly PromptPreviewSegment[];
+  readonly prompt: string;
+  readonly surface: string;
+}
+
+export interface PromptExperimentResponse {
+  readonly current: { readonly answer: string };
+  readonly draft: { readonly answer: string };
+}

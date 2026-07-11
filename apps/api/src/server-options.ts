@@ -14,6 +14,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import type { ConversationSummaryStore, TaskMemoryMaintenance, UserMemoryStore } from "@muse/memory";
 import type { ModelProvider } from "@muse/model";
 import type { MuseObservabilitySnapshot, LatencyQuery, TokenCostQuery } from "@muse/observability";
+import type { InMemoryPromptLayerRegistry } from "@muse/prompts";
 import type { RuntimeSettings } from "@muse/runtime-settings";
 import type {
   AgentRunHistoryStore,
@@ -51,6 +52,14 @@ export interface ServerOptions {
   readonly mcp?: McpRouteMcp;
   readonly modelProvider?: ModelProvider;
   readonly defaultModel?: string;
+  /**
+   * The live registry `agentRuntime` resolves its L1 personality layer
+   * from. When set, the API registers the persona editor / composed-prompt
+   * preview / A/B experiment routes (`prompt-routes.ts`).
+   */
+  readonly promptLayerRegistry?: InMemoryPromptLayerRegistry;
+  /** The persona.md path `promptLayerRegistry` was seeded from at startup. */
+  readonly personaFilePath?: string;
   readonly requireAuth?: boolean;
   readonly runtimeSettings?: RuntimeSettings;
   readonly scheduler?: SchedulerRouteScheduler;

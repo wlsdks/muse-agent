@@ -13,6 +13,8 @@ export type ThreadedAgentRun = (input: {
   readonly providerId: string;
   /** Conversation-scope hint threaded from `InboundMessage.scope` (see `conversation-scope.ts`). */
   readonly scope?: string;
+  /** Delegation-ack notify seam, threaded through unmodified — see `InboundAgentRunner`. */
+  readonly notify?: (text: string) => Promise<void>;
 }) => Promise<string>;
 
 /**
@@ -27,15 +29,18 @@ export function createThreadedInboundRunner(options: {
   readonly threadFile: string;
 }): InboundAgentRunner {
   return {
-    run: async ({ text, source, providerId, scope }) => {
+    run: async ({ text, source, providerId, scope, notify }) => {
       const key = `${providerId}:${source}`;
       const prior = await readThread(options.threadFile, key);
       const reply = await options.run({
         messages: [...prior, { content: text, role: "user" }],
         providerId,
         source,
-        ...(scope ? { scope } : {})
+        ...(scope ? { scope } : {}),
+        ...(notify ? { notify } : {})
       });
+      // Only the user turn + the final reply are persisted — the ack (if
+      // any) is a cosmetic aside, not part of the conversation history.
       await appendThreadTurns(options.threadFile, key, [
         { content: text, role: "user" },
         { content: reply, role: "assistant" }

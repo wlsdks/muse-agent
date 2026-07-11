@@ -526,6 +526,34 @@ describe("browser_click — deterministic target grounding + draft-first", () =>
   });
 });
 
+describe("browser_click / browser_type — ghost ref (not in current snapshot) is refused, never acted on", () => {
+  it("a ref that IS in the current snapshot proceeds (click:3 recorded)", async () => {
+    const c = new FakeController();
+    const tool = createBrowserClickTool({ approvalGate: allow, controller: c });
+    const out = await tool.execute({ ref: 3 }, ctx) as { clicked: boolean };
+    expect(out.clicked).toBe(true);
+    expect(c.calls).toEqual(["click:3"]);
+  });
+
+  it("a ref NOT in the current snapshot is refused — no click, no partial side-effect", async () => {
+    const c = new FakeController();
+    const tool = createBrowserClickTool({ approvalGate: allow, controller: c });
+    const out = await tool.execute({ ref: 999 }, ctx) as { clicked: boolean; reason?: string };
+    expect(out.clicked).toBe(false);
+    expect(String(out.reason)).toMatch(/re-read|browser_read|current page/i);
+    expect(c.calls.some((call) => call.startsWith("click:"))).toBe(false);
+  });
+
+  it("browser_type with a ghost ref is equally refused — no type, no partial side-effect", async () => {
+    const c = new FakeController();
+    const tool = createBrowserTypeTool({ approvalGate: allow, controller: c });
+    const out = await tool.execute({ ref: 999, text: "hello" }, ctx) as { typed: boolean; reason?: string };
+    expect(out.typed).toBe(false);
+    expect(String(out.reason)).toMatch(/re-read|browser_read|current page/i);
+    expect(c.calls.some((call) => call.startsWith("type:"))).toBe(false);
+  });
+});
+
 describe("browser_click — ambiguous target is refused (fail-close), never a silent first-pick", () => {
   const twinSnap: PageSnapshot = {
     elements: [

@@ -56,6 +56,7 @@ import { startTelegramPollTick } from "./telegram-poll-tick.js";
 import { startMatrixSyncTick } from "./matrix-sync-tick.js";
 import { createChannelDaemonSupervisor } from "./channel-daemon-supervisor.js";
 import { readDaemonSettingsSync, resolveDaemonSettingsFile } from "./daemon-settings-store.js";
+import { createComposeAck } from "./inbound-ack.js";
 import { createInboundAgentRun } from "./inbound-agent-run.js";
 import { startInboundReplyTick } from "./inbound-reply-tick.js";
 import { createThreadedInboundRunner, type InboundAgentRunner } from "@muse/messaging";
@@ -68,6 +69,7 @@ import { registerJourneyRoutes } from "./journey-routes.js";
 import { registerSettingsRoutes } from "./settings-routes.js";
 import { registerActiveContextRoutes } from "./active-context-routes.js";
 import { registerIdentityTaglineRoutes } from "./identity-tagline-routes.js";
+import { registerPromptRoutes } from "./prompt-routes.js";
 import { registerAgentNoticesRoutes } from "./agent-notices-routes.js";
 import { registerSetupRoutes } from "./setup-routes.js";
 import { registerTodayRoutes } from "./today-routes.js";
@@ -392,6 +394,13 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     ...(options.userMemoryStore ? { userMemoryStore: options.userMemoryStore } : {}),
     ...(taglineModel ? { model: taglineModel } : {})
   });
+  registerPromptRoutes(server, {
+    authService,
+    ...(options.personaFilePath ? { personaFilePath: options.personaFilePath } : {}),
+    ...(options.promptLayerRegistry ? { promptLayerRegistry: options.promptLayerRegistry } : {}),
+    ...(options.modelProvider ? { modelProvider: options.modelProvider } : {}),
+    ...(options.defaultModel ? { defaultModel: options.defaultModel } : {})
+  });
   if (options.agentInitiatedNoticeBroker) {
     registerAgentNoticesRoutes(server, {
       agentInitiatedNoticeBroker: options.agentInitiatedNoticeBroker,
@@ -607,11 +616,15 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const messaging = options.messaging;
     const agentRuntime = options.agentRuntime;
     replyStarters.telegram = () => {
+      const ackModel = options.defaultModel ?? "default";
       const runner: InboundAgentRunner = createThreadedInboundRunner({
         run: createInboundAgentRun({
           agentRuntime,
+          ...(options.modelProvider
+            ? { composeAck: createComposeAck({ model: ackModel, modelProvider: options.modelProvider }) }
+            : {}),
           env,
-          model: options.defaultModel ?? "default",
+          model: ackModel,
           registry: messaging
         }),
         threadFile: `${telegramInboxFile}.threads.json`
@@ -694,11 +707,15 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     const messaging = options.messaging;
     const agentRuntime = options.agentRuntime;
     replyStarters.matrix = () => {
+      const ackModel = options.defaultModel ?? "default";
       const matrixRunner: InboundAgentRunner = createThreadedInboundRunner({
         run: createInboundAgentRun({
           agentRuntime,
+          ...(options.modelProvider
+            ? { composeAck: createComposeAck({ model: ackModel, modelProvider: options.modelProvider }) }
+            : {}),
           env,
-          model: options.defaultModel ?? "default",
+          model: ackModel,
           registry: messaging
         }),
         threadFile: `${matrixInboxFile}.threads.json`

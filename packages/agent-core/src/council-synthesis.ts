@@ -18,6 +18,7 @@
  */
 
 import type { ModelMessage, ModelProvider, ModelRequest } from "@muse/model";
+import { composeIdentityPrompt } from "@muse/prompts";
 import { redactSecretsInText } from "@muse/shared";
 
 import {
@@ -76,10 +77,11 @@ export interface CouncilModelOptions {
   readonly embed?: (text: string) => Promise<readonly number[]>;
 }
 
-const REASONING_SYSTEM_PROMPT =
+const REASONING_SYSTEM_PROMPT = composeIdentityPrompt(
   "You are one member of a council of AI assistants reasoning about a shared question. " +
   "Give your concise reasoning and recommendation in 2-4 sentences — your perspective, not a final verdict. " +
-  "Do NOT include any personal data, names, or private specifics; reason in general terms. Plain text only.";
+  "Do NOT include any personal data, names, or private specifics; reason in general terms. Plain text only."
+);
 
 export interface CouncilAbstentionOptions {
   /** Absolute-cosine bar a member's corpus must clear to weigh in. Default `DEFAULT_CONFIDENT_AT`. */
@@ -157,12 +159,13 @@ export async function produceCouncilReasoning(question: string, options: Council
   }
 }
 
-const SYNTHESIS_SYSTEM_PROMPT =
-  "You are Muse, synthesising a council of AI members' reasoning into one answer for the user. " +
+const SYNTHESIS_SYSTEM_PROMPT = composeIdentityPrompt(
+  "You are synthesising a council of AI members' reasoning into one answer for the user. " +
   "Each member is labelled with its [id]. Use ONLY the members' reasoning below — do not add facts none of them raised. " +
   "Output ONLY a JSON object: {\"answer\": \"<2-4 sentence synthesis>\", \"contributors\": [\"<id>\", …]} " +
   "where contributors lists the member [id]s whose reasoning you actually used. " +
-  "Never invent a member id that is not provided. No prose outside the JSON.";
+  "Never invent a member id that is not provided. No prose outside the JSON."
+);
 
 /** Render the council reasoning as an `[id] reasoning` list for the synthesiser. */
 export function buildCouncilPrompt(question: string, utterances: readonly CouncilUtterance[]): string {

@@ -277,6 +277,7 @@ export {
   type AttributedRepairResult
 } from "./attributed-repair.js";
 export { actionToolRan, answerClaimsAction, answerPromisesAction, classifyActionRequest, classifyCasualPrompt, classifyContactLookup, classifyCorpusOverview, classifyMetaPrompt, classifyReminderListQuery, classifyTaskListQuery, isUnbackedActionClaim, requestsToolAction, type CasualPromptKind } from "./casual-prompt.js";
+export { casualResponseFor } from "./casual-prompt-responses.js";
 export { calibrateAbstention, calibrateAbstentionByGroup, conformalThreshold, empiricalCoverage, type CalibrationResult, type GroupCalibrationResult, type GroupedScore } from "./conformal.js";
 export { runResistingFalseDone, type RunWithOutput } from "./false-done-reprompt.js";
 export { DEFAULT_QUORUM, independentWitnessCount, quorumVerdict, type QuorumVerdict } from "./quorum.js";

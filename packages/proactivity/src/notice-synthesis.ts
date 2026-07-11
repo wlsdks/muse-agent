@@ -1,6 +1,8 @@
 // Proactive-notice synthesis — one-shot LLM prose over an imminent item's
 // factSheet, gated by an optional faithfulness reverify before delivery.
 
+import { composeIdentityPrompt } from "@muse/prompts";
+
 import type { ImminentItem } from "./notice-imminent.js";
 import type { RunDueProactiveNoticesOptions } from "./proactive-notice-loop.js";
 
@@ -43,8 +45,8 @@ export interface ProactiveModelProviderLike {
   }): Promise<{ readonly output: string }>;
 }
 
-const PHASE_D_SYSTEM_PROMPT =
-  `You are Muse, the user's JARVIS-style assistant. The proactive
+const PHASE_D_SYSTEM_PROMPT = composeIdentityPrompt(
+  `The proactive
 daemon just detected an imminent calendar event or task. Compose a
 single short heads-up (one or two sentences, ≤ 200 chars) that:
 - Names the item and how soon it fires
@@ -54,7 +56,8 @@ single short heads-up (one or two sentences, ≤ 200 chars) that:
   reply?"). Skip the suggestion if nothing obvious fits.
 
 Do NOT prefix with the time emoji — the surface adds it. No
-markdown, no lists, no JSON, plain text only.`;
+markdown, no lists, no JSON, plain text only.`
+);
 
 /**
  * Faithfulness judge for a synthesized proactive notice — re-checks the LLM prose

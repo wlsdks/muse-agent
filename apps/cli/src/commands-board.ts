@@ -8,6 +8,9 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 
 import type { ToolApprovalGate } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolveObjectivesFile } from "@muse/autoconfigure";
@@ -15,6 +18,8 @@ import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, Fi
 import { readObjectives } from "@muse/stores";
 import type { Command } from "commander";
 
+import { budgetAndSpillOutputs, formatSpillNote } from "./board-synthesis-budget.js";
+import { firstNonEmpty } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
 const OUTBOUND_RE = /\b(send|email|e-mail|reply|forward|post|dm|message|text|publish|submit|book|order|tweet|slack)\b/iu;
@@ -108,6 +113,17 @@ export function boardTaskPrompt(title: string, ctx: { readonly retryReason?: str
   return title;
 }
 
+/** Default character headroom for the synthesis prompt — `MUSE_BOARD_SYNTHESIS_HEADROOM` override. */
+export function resolveBoardSynthesisHeadroom(env: Record<string, string | undefined>): number {
+  const raw = Number(env.MUSE_BOARD_SYNTHESIS_HEADROOM);
+  return Number.isFinite(raw) && raw > 0 ? raw : 24000;
+}
+
+/** Where over-budget child outputs are spilled in full — `MUSE_BOARD_SPILL_DIR` override. */
+export function boardSpillDir(env: Record<string, string | undefined>): string {
+  return firstNonEmpty(env.MUSE_BOARD_SPILL_DIR) ?? join(homedir(), ".muse", "board-spill");
+}
+
 function makeAgentExecutor(io: ProgramIO): TaskExecutor {
   return async (task, ctx) => {
     const assembly = createMuseRuntimeAssembly();
@@ -116,20 +132,37 @@ function makeAgentExecutor(io: ProgramIO): TaskExecutor {
     // never looks hung during the wait — the user sees which task is in flight.
     io.stderr(`▸ running: ${task.title}…\n`);
     try {
+      // A synthesis container's dependencyOutputs can be arbitrarily large (N full sub-task
+      // answers) — bound each child to its share of the headroom and spill the rest to disk
+      // so the prompt stays sized for the model but nothing the sub-tasks produced is lost.
+      let spillNote = "";
+      let dependencyOutputs = ctx.dependencyOutputs;
+      if (dependencyOutputs && dependencyOutputs.length > 0) {
+        const spillDir = boardSpillDir(process.env);
+        const { segments, spills } = budgetAndSpillOutputs(dependencyOutputs, {
+          headroom: resolveBoardSynthesisHeadroom(process.env),
+          makeName: (i) => `${task.id}-${i.toString()}.txt`,
+          spillDir,
+          writeSpill: (path, content) => { mkdirSync(spillDir, { recursive: true }); writeFileSync(path, content, "utf8"); }
+        });
+        dependencyOutputs = segments;
+        spillNote = formatSpillNote(spills.length, spillDir);
+      }
       const result = await assembly.agentRuntime.run({
-        messages: [{ content: boardTaskPrompt(task.title, ctx), role: "user" }],
+        messages: [{ content: boardTaskPrompt(task.title, { ...ctx, dependencyOutputs }), role: "user" }],
         model: assembly.defaultModel,
         runId: `board-${randomUUID()}`,
         toolApprovalGate: boardToolApprovalGate
       });
       const out = (result.response.output ?? "").trim();
       if (out.length === 0) return { reason: "empty answer", status: "failed" };
-      io.stdout(`\n${out}\n`);
+      const finalOut = `${out}${spillNote}`;
+      io.stdout(`\n${finalOut}\n`);
       const tools = result.toolsUsed ?? [];
       if (tools.length > 0) io.stderr(`(tools used: ${tools.join(", ")})\n`);
       // Draft-first: an outbound task is drafted above but PARKED for approval, not sent. The
       // output is returned so a synthesis container can later combine the sub-task answers.
-      return taskNeedsReview(task.title) ? { needsReview: true, output: out, status: "completed" } : { output: out, status: "completed" };
+      return taskNeedsReview(task.title) ? { needsReview: true, output: finalOut, status: "completed" } : { output: finalOut, status: "completed" };
     } catch (cause) {
       return { reason: cause instanceof Error ? cause.message : String(cause), status: "failed" };
     }

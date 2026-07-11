@@ -18,6 +18,12 @@ export interface InboundAgentRunner {
      * approval on it — `respondToInbound` itself stays scope-agnostic.
      */
     readonly scope?: string;
+    /**
+     * Second-channel send toward the SAME destination as the eventual
+     * reply, for a delegation acknowledgment sent before the agent run
+     * completes. Cosmetic — a failed notify must never fail the run.
+     */
+    readonly notify?: (text: string) => Promise<void>;
   }): Promise<string>;
 }
 
@@ -94,6 +100,17 @@ export async function respondToInbound(
           providerId: message.providerId,
           source: message.source,
           text: message.text,
+          notify: async (text) => {
+            try {
+              await options.registry.send(message.providerId, {
+                destination: message.source,
+                text
+              });
+            } catch {
+              // Ack delivery is cosmetic — a failed notify must never
+              // fail the run or affect handled-marking.
+            }
+          },
           ...(message.scope ? { scope: message.scope } : {})
         })
       ).trim();

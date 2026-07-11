@@ -8,6 +8,15 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Muse's browser won't act on an element that isn't really on the page.**
+  If the model refers to a page element by a number that the current view
+  doesn't contain — a stale reference left over from a page that changed, or one
+  it simply made up — Muse now stops and asks itself to re-read the page instead
+  of clicking, typing, hovering, or uploading against a phantom element. Real,
+  visible elements work exactly as before.
+
 ### Added
 
 - **Opt-in macOS sandbox for local command execution.** Set
@@ -33,6 +42,13 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   legitimate one still runs once you approve; nothing is auto-refused. (Fuller
   automatic downgrade for any future unattended/trusted-run path is tracked as
   a follow-up.)
+
+- **Combining sub-task answers won't overflow — long ones are saved to a file.**
+  When Muse merges several finished sub-tasks into one answer, each piece now
+  gets a fair share of the space; a piece that's too long is trimmed in the
+  prompt and its full text is written to a file under your `~/.muse` folder,
+  with the path shown — so a big result is never silently dropped and the merge
+  step can't blow past the model's limit.
 
 - **A limit on how many background jobs run at once.** `muse job run` no longer
   starts an unlimited number of background jobs — if you already have the cap's

@@ -17,6 +17,7 @@ import { IntegrationsView } from "../views/Integrations.js";
 import { JourneyView } from "../views/Journey.js";
 import { MessagingView } from "../views/Messaging.js";
 import { NotesView } from "../views/Notes.js";
+import { PromptLab } from "../views/PromptLab.js";
 import { RemindersView } from "../views/Reminders.js";
 import { SettingsView } from "../views/Settings.js";
 import { TasksView } from "../views/Tasks.js";
@@ -56,6 +57,7 @@ type ViewId =
   | "mcp"
   | "self-improvement"
   | "skills"
+  | "prompt-lab"
   | "settings";
 type GroupKey = "group.workspace" | "group.knowledge" | "group.system";
 
@@ -87,6 +89,7 @@ export const NAV: readonly NavEntry[] = [
   { Component: McpServersView, group: "group.system", icon: Icon.plug, id: "mcp", key: "p", labelKey: "nav.mcp" },
   { Component: SelfImprovementView, group: "group.system", icon: Icon.brain, id: "self-improvement", key: "w", labelKey: "nav.selfImprovement" },
   { Component: SkillsView, group: "group.system", icon: Icon.tool, id: "skills", key: "j", labelKey: "nav.skills" },
+  { Component: PromptLab, group: "group.system", icon: Icon.tool, id: "prompt-lab", key: "f", labelKey: "nav.promptLab" },
   { Component: SettingsView, group: "group.system", icon: Icon.settings, id: "settings", key: "s", labelKey: "nav.settings" }
 ];
 

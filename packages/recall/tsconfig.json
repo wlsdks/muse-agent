@@ -23,6 +23,9 @@
       "path": "../mcp-shared"
     },
     {
+      "path": "../prompts"
+    },
+    {
       "path": "../shared"
     },
     {
