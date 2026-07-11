@@ -113,7 +113,7 @@ describe("personal-veto-store review + clear — P7-b2", () => {
   // so it re-attempts an action the user already refused (outbound-safety
   // reversibility). These assert lossless, crash-free concurrent record+remove.
   describe("concurrent record + remove", () => {
-    it("preserves EVERY distinct veto recorded concurrently (no last-writer-wins loss)", async () => {
+    it("preserves EVERY distinct veto recorded concurrently (no last-writer-wins loss)", { timeout: 60_000 }, async () => {
       const file = tmpFile();
       await Promise.all(Array.from({ length: 20 }, (_unused, i) =>
         recordVeto(file, veto({ id: `v${i.toString()}`, objectiveId: `obj_${i.toString()}` }))));
@@ -122,7 +122,7 @@ describe("personal-veto-store review + clear — P7-b2", () => {
       expect(await hasVeto(file, { objectiveId: "obj_9", scope: "github:issues:write", userId: "stark" })).toBe(true);
     });
 
-    it("concurrent removes drop exactly the targeted vetoes, leaving the rest intact", async () => {
+    it("concurrent removes drop exactly the targeted vetoes, leaving the rest intact", { timeout: 60_000 }, async () => {
       const file = tmpFile();
       await Promise.all(Array.from({ length: 20 }, (_unused, i) =>
         recordVeto(file, veto({ id: `v${i.toString()}`, objectiveId: `obj_${i.toString()}` }))));

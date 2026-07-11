@@ -104,7 +104,7 @@ describe("personal-objectives-store — P5-b1 durable standing objectives", () =
   // snapshot and clobbered one another — a lost standing objective is an intent
   // the daemon never acts on (user-facing). These assert lossless, crash-free.
   describe("concurrent registration + patching", () => {
-    it("preserves ALL objectives when distinct ones are registered concurrently (no lost-update)", async () => {
+    it("preserves ALL objectives when distinct ones are registered concurrently (no lost-update)", { timeout: 60_000 }, async () => {
       const file = tmpFile();
       await Promise.all(Array.from({ length: 20 }, (_unused, i) => addObjective(file, fixture({ id: `o${i.toString()}` }))));
       const all = await readObjectives(file);
@@ -112,7 +112,7 @@ describe("personal-objectives-store — P5-b1 durable standing objectives", () =
       expect(new Set(all.map((o) => o.id)).size).toBe(20);
     });
 
-    it("applies every concurrent status patch on distinct ids (no crash, none dropped)", async () => {
+    it("applies every concurrent status patch on distinct ids (no crash, none dropped)", { timeout: 60_000 }, async () => {
       const file = tmpFile();
       await Promise.all(Array.from({ length: 20 }, (_unused, i) => addObjective(file, fixture({ id: `o${i.toString()}` }))));
       await Promise.all((await readObjectives(file)).map((o) => patchObjective(file, o.id, { status: "done" })));

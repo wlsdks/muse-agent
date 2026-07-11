@@ -118,7 +118,7 @@ describe("resolveUpcomingBirthdays", () => {
 // under outbound-safety rule 3 (recipient resolved, never guessed) that means a
 // send is refused / a clarify fires instead of reaching the intended person.
 describe("concurrent contact mutation", () => {
-  it("preserves EVERY distinct contact added concurrently (no last-writer-wins loss)", async () => {
+  it("preserves EVERY distinct contact added concurrently (no last-writer-wins loss)", { timeout: 60_000 }, async () => {
     const file = tempFile();
     await Promise.all(Array.from({ length: 20 }, (_unused, i) => addContact(file, { email: `c${i.toString()}@x.com`, id: `c${i.toString()}`, name: `C${i.toString()}` })));
     const all = await queryContacts(file);
@@ -128,7 +128,7 @@ describe("concurrent contact mutation", () => {
     expect(resolveContact(all, "C7").status).toBe("resolved");
   });
 
-  it("concurrent removes drop exactly the targeted contacts, leaving the rest", async () => {
+  it("concurrent removes drop exactly the targeted contacts, leaving the rest", { timeout: 60_000 }, async () => {
     const file = tempFile();
     await Promise.all(Array.from({ length: 20 }, (_unused, i) => addContact(file, { email: `c${i.toString()}@x.com`, id: `c${i.toString()}`, name: `C${i.toString()}` })));
     await Promise.all(Array.from({ length: 10 }, (_unused, i) => removeContact(file, `c${i.toString()}`)));

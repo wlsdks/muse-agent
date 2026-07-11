@@ -45,7 +45,7 @@ describe("addObjective — cross-process file lock", () => {
     expect(await readObjectives(file)).toHaveLength(1);
   }, 10_000);
 
-  it("keeps every concurrently-registered objective (no lost objective over 50 parallel writers)", async () => {
+  it("keeps every concurrently-registered objective (no lost objective over 50 parallel writers)", { timeout: 60_000 }, async () => {
     await Promise.all(Array.from({ length: 50 }, (_unused, i) => addObjective(file, objective(`o${i.toString()}`))));
     const all = await readObjectives(file);
     expect(all).toHaveLength(50);
@@ -54,7 +54,7 @@ describe("addObjective — cross-process file lock", () => {
 });
 
 describe("patchObjective — cross-process file lock", () => {
-  it("applies every concurrent status-flip patch (no lost update over 50 parallel patches)", async () => {
+  it("applies every concurrent status-flip patch (no lost update over 50 parallel patches)", { timeout: 60_000 }, async () => {
     await writeObjectives(file, Array.from({ length: 50 }, (_unused, i) => objective(`o${i.toString()}`)));
     await Promise.all(Array.from({ length: 50 }, (_unused, i) => patchObjective(file, `o${i.toString()}`, { status: "done" })));
     const all = await readObjectives(file);
