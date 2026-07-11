@@ -89,7 +89,22 @@ export async function runChat(
       query: question,
       retry: () => agentRuntime.run({ ...runInput, messages: cleanRetryMessages(runInput.messages) })
     });
-    return responseMode === "compat" ? toCompatChatResponse(honest, gate) : toExtendedChatResponse(honest, gate);
+    // A RECOVERED retry produces text the first gate never saw, so it must
+    // re-enter the citation gate — otherwise the retry is a hole straight
+    // through fabrication=0. Unchanged answers keep the original verdict.
+    const finalGate = honest === grounded
+      ? gate
+      : gateChatAnswerGrounding({
+          answer: honest.response.output,
+          evidence: [...(honest.groundingSources ?? [])],
+          question
+        });
+    const finalResult = finalGate.gated && finalGate.answer !== honest.response.output
+      ? { ...honest, response: { ...honest.response, output: finalGate.answer } }
+      : honest;
+    return responseMode === "compat"
+      ? toCompatChatResponse(finalResult, finalGate)
+      : toExtendedChatResponse(finalResult, finalGate);
   } catch (error) {
     return sendAgentError(reply, error, responseMode);
   }

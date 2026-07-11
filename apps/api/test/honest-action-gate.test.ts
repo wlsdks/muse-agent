@@ -163,3 +163,42 @@ async function streamToString(stream: Readable): Promise<string> {
   }
   return out;
 }
+
+describe("honest-action retry re-enters the grounding gate (fabrication=0 must not be bypassed)", () => {
+  it("a RECOVERED retry answer is still citation-gated — a fabricated citation in the retry never reaches the user", async () => {
+    let call = 0;
+    const runtime = {
+      run: async () => {
+        call += 1;
+        // Turn 1: claims completion with no tool → triggers the honest-action retry.
+        if (call === 1) {
+          return {
+            groundingSources: [],
+            response: { citations: [], model: "qwen3:8b", output: KO_CLAIM, usage: { inputTokens: 3, outputTokens: 5, totalTokens: 8 } },
+            runId: "run-1",
+            toolsUsed: []
+          };
+        }
+        // Retry: the actuator DID run, but the answer smuggles a fabricated
+        // citation — the grounding gate must still strip it.
+        return {
+          groundingSources: [],
+          response: {
+            citations: [],
+            model: "qwen3:8b",
+            output: "예약을 등록했습니다. 진료비는 12만원입니다 [from notes/fake-clinic.md].",
+            usage: { inputTokens: 3, outputTokens: 5, totalTokens: 8 }
+          },
+          runId: "run-2",
+          toolsUsed: ["muse.calendar.add"]
+        };
+      }
+    };
+    const { reply } = fakeReply();
+    const result = (await runChat({ message: "내일 오후 3시에 치과 예약 잡아줘" }, reply, options(runtime), "compat")) as Record<string, unknown>;
+
+    const content = String(result["content"] ?? "");
+    expect(content).not.toContain("fake-clinic.md");
+    expect(content).not.toContain("12만원");
+  });
+});
