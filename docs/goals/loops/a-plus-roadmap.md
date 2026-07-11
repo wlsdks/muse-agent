@@ -177,3 +177,11 @@ ratchet: 로드맵 잔여 [ ] = 15/41(D1-S7d→d1/d2 분해 +1, d1 체크 -1 →
 - 왜: 브라우저 page text가 이스케이핑 0으로 모델에 도달 → 인젝션("ignore all previous instructions")·미디어 엑스필·`</page>` break-out 가능. Muse #1 "가드는 결정론 코드, 프롬프트 아님". hermes `<page>` 인라인·openclaw page defang 참조.
 - 리뷰지점: Opus 위협모델 PASS — escape가 wrap 전(order 정확), `](` 실제 exfil 차단, instruction 정규식 ReDoS-safe(170KB 7.5ms)+정직 positioning(defense-in-depth atop 구조적 wrap, oversell 안 함), 조립경로 실증(fake controller 악성 text→툴출력 defanged, OUTCOME 채점), 두 mutation 독립 재현(6/4 RED). 자립(no @muse/recall dep).
 - 리스크: 낮음. defang은 clean prose byte-identical(idempotent). 미커버 벡터(reference-link·bare URL·adaptive rephrasing)는 out-of-scope 정직 명시(모델은 JSON 소비, auto-fetch 안 함). instruction-override 정규식 false-positive(보안기사) 있으나 advisory·readable 보존. 다음 = D1-S7d2(실 detached-Chrome e2e — 악성 HTML http serve→open→defanged 확인, eval:browser-agent 하네스 재사용, VQ-10 실행). D1-S7d2 완료 시 D1-S7 전체 완주.
+
+## fire 22 · 2026-07-12 · skill v2.x · <commit-pending>
+meta: slice=D1-S7d2 · wave=W2 · pkg=scripts+package.json · kind=browser-injection-e2e · verdict=PASS · firesSinceDrill=4 · ★D1-S7 완주
+ratchet: 로드맵 잔여 [ ] = 29/55(전체 §10.3 정확재계수; 이전 저널 tail 누락 정정) · self-eval pass · fabrication 0 · eval:browser-injection 신규(9/9 라이브)
+- 무엇: D1-S7d1 인젝션 guard의 실 headless-Chrome e2e. scripts/eval-browser-injection.mjs(모델-free, Chrome만): 악성 HTML(ignore-above·`![](exfil)`·HTML-escaped `&lt;/page&gt;`·인젝션 anchor)를 loopback http serve→실 PuppeteerBrowserController.open→browser_open/read 툴출력이 `<page>` 래핑+defanged 9/9 assertion(OUTCOME). VQ-10 "e2e 하네스 신규작성" 실행+체크. D1-S7 전체(a·b1·b2·c·d1·d2) 완주.
+- 왜: "browser는 실 e2e 필요(조립경로 몰면 거짓 — 교훈)". FakeController 유닛만으론 실 page→innerText→snapshot→툴출력 경로 미실증. 실 Chrome로 조립경로 증명.
+- 리뷰지점: Opus PASS(실 controller+실 Chrome 라이브 PASS·skip 아님·OUTCOME 채점·mutation-kill 7/9 flip 재현·cleanup 견고). Opus 지적 2건 즉시 수정: (1) boundary 어서션이 원 픽스처선 tautological(브라우저가 `<page>` 태그를 빈 요소로 파싱→innerText 미도달)→`&lt;/page&gt;` HTML-escape로 리터럴 도달시켜 genuine화(재검증: guard 무력화 시 boundary도 count=2 FAIL flip 확인), (2) 헤더 슬라이스마커 제거.
+- 리스크: 낮음. 테스트/eval-infra only(프로덕션 코드 0). Chrome 없으면만 skip(이 머신은 설치됨→라이브). eval:browser-injection은 CI서 Chrome 있어야 RUN(없으면 skip=pass 아님, 명시). 다음 = D4-S4(📈 file_edit 결정론 리페어, eval:computer-task +10%p pass^3). ※카운트 정정: 이전 저널이 §10.3 tail(D6-*/D3-S3,S6/D2-S7/D7-*/D-KO-S3/D-E1/암호화백업 ~14개)을 누락→실제 잔여 29(체크26).
