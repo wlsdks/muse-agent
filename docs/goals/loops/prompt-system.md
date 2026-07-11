@@ -38,3 +38,14 @@ ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · adversarialCases 2
 리뷰지점: Opus 7기준 PASS(리팩터 무약화 뮤테이션 2툴 RED, 드리프트가드 진짜 발화, 라이브 calendar.add 강제 후 가드 발화 확인).
 리스크/백로그: (A) 드리프트 감지기가 readString(args,"listed-name") 컨벤션만 커버 — 직접 args["x"] 접근이나 새 필드명(description/memo/address)은 놓침. (B) credential-label 값-먼저 순서 미탐(이론적, 실 호출부 전부 라벨-먼저). (C) 차단된 쓰기에 모델이 "추가했어" 서술(보안불변식은 지켜짐, 서술만 부정직).
 lesson: 재발 클래스는 개별 수리 5번보다 드리프트 CI 게이트 1개가 종결한다 — "다음 표면이 반드시 합류해야 하는 행동 레지스트리"가 정답.
+
+## fire 5 · 2026-07-12 · 15585a644
+meta: value-class=prompt-quality · pkg=@muse/agent-core · kind=prompt-layer · verdict=PASS(opus, haiku-REFUTE overturned) · firesSinceDrill=5
+probe: 장황함 정량화 12문항 → 단순팩트 중앙값 233자(이상 120), 명시적 "한 줄로만/짧게" 요청조차 57-96% 초과(지시 무시). 자세히-요청은 3307자 유지(회귀 확인용).
+ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · seam clean · adversarialCases 26 유지
+무엇: register/brevity 레이어 3단계 강도 확장 — detail-request(자세히/단계별/예제)→간결 전면 억제(anti-truncation), brief-request(한 줄로만/짧게)→STRONG ≤120자, 평범 팩트→LIGHT lead-with-answer 넛지, 정체성/sycophancy 턴→넛지를 정체성 코어에 양보.
+왜: 다양성 RATCHET(직전 4 fire가 domain-tools/guard 였음 → prompt-quality/agent-core로 전환). 사용자 명시 지시("한 줄로만") 무시는 개인화 에이전트 결함.
+라이브: 233→84자, "한 줄로만" 0/2 위반, 데코레이터 2347자·리액트 2314자·쿠버 2356자 무손상, 심심해 39자, 정체성 "나는 뮤즈야"(반말 미러링).
+리뷰지점: 빌더가 lead-with-answer 넛지의 정체성 회귀를 스스로 잡고 cede-to-core로 근본수정(배터리 3/3 회복). Opus 뮤테이션(detail 감지기 무력화→5 RED)로 anti-truncation 잠금 확인.
+리스크/백로그: (A) detail-guard 부정형 무시("자세히 보지 말고 한 줄로"→간결 안 붙음, 단 장황할 뿐 절단無=안전방향). (B) 콜론 없는 "한 줄로 답해" 미검출. (C) 프로버 오판 재발: haiku가 좀비서버 37개 부하로 인한 타임아웃을 "truncation 회귀"로 오판 → fable이 좀비 정리+격리 재현으로 반박, Opus도 격리서버서 2314/2356자 확인.
+lesson: 프로버의 TIMEOUT을 회귀로 받지 말 것 — 동시 서버가 같은 로컬 gemma4를 두드리면 부하 타임아웃. fire 끝마다 좀비 API 서버(pkill dist/index.js)를 반드시 정리.
