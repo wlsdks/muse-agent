@@ -290,7 +290,7 @@ ratchet: 로드맵 잔여 [ ] = 26/63 · self-eval pass · fabrication 0 · maco
 - 리스크: 낮음. 로컬 store write(3rd-party send 아님)이나 로드맵대로 draft-first 적용. eval:tools 골든 추가했으나 로컬셋 heavy timeout(결정론+Opus 판정). 다음 = D7-S1(슬래시 명령 단일소스 레지스트리). 밝기 D4-S2d2 잔여.
 - lesson: JUDGE-DRILL 진짜-fix가 outbound-safety면 "gate 강제(deny→no-effect)+spy 테스트"가 message-send seam 미러로 구조 보장. Opus가 형제-parity 갭(CLI 게이트 테스트) 지적하면 오케스트레이터가 기존 형제(messaging) 테스트 미러로 즉시 마감.
 
-## fire 35 · 2026-07-12 · skill v2.x · <commit-pending>
+## fire 35 · 2026-07-12 · skill v2.x · 1373cb8ca
 meta: slice=D7-S1a · wave=W3 · pkg=apps/cli · kind=slash-registry · verdict=PASS · firesSinceDrill=1
 ratchet: 로드맵 잔여 [ ] = 26/64(D7-S1→a/b 분해 +1, a 체크 -1) · self-eval pass · fabrication 0 · cli +6 test(slash-command-registry)
 - 무엇: 슬래시 명령 단일소스 레지스트리. chat-ink 로컬 SLASH_COMMANDS(27개 `{cmd,desc}`)를 slash-command-registry.ts 1-엔트리(name·desc·category·aliases?·platforms)로 추출, chat이 slashCommandsForPlatform("chat")로 파생(하드코딩 배열 제거=단일소스). desc byte-identical·순서 보존(autocomplete 불변). platforms 게이트: 세션계열 15=chat-only, list/show 12=chat+cli(미래 CLI/채널 seam). D7-S1을 a(레지스트리+chat)/b(CLI help 반영)로 분해.
