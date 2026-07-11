@@ -138,7 +138,7 @@ describe("muse job list --json", () => {
   });
 });
 
-describe("jobsDir — MUSE_JOBS_DIR empty-env-shadow defence (goal-532/539 sibling)", () => {
+describe("jobsDir — MUSE_JOBS_DIR empty-env-shadow defence", () => {
   it("uses the env value when MUSE_JOBS_DIR is set non-empty", () => {
     const prev = process.env.MUSE_JOBS_DIR;
     process.env.MUSE_JOBS_DIR = "/tmp/custom-jobs";

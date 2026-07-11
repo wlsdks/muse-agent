@@ -64,7 +64,7 @@ describe("computeRoutine", () => {
   });
 });
 
-describe("activityPath — empty MUSE_ACTIVITY_FILE= no longer shadows the default (goal-478/481/482/483 sibling)", () => {
+describe("activityPath — empty MUSE_ACTIVITY_FILE= no longer shadows the default", () => {
   beforeEach(() => {
     vi.stubEnv("MUSE_ACTIVITY_FILE", "");
   });

@@ -550,9 +550,9 @@ Examples:
       // down — degrade to "no notes grounding" and still answer
       // from tasks + calendar + memory + general knowledge.
       // Notes RAG core: embed → rank/MMR → graph-augment → second-hop. See
-      // ask-note-retrieval.ts. `scored`/`notesUnavailable` stay reassignable — P7
-      // (ad-hoc) and P13 (dedup) mutate `scored`, and ad-hoc grounding clears
-      // `notesUnavailable`.
+      // ask-note-retrieval.ts. `scored`/`notesUnavailable` stay reassignable —
+      // ad-hoc grounding and contact dedup both mutate `scored`, and ad-hoc
+      // grounding clears `notesUnavailable`.
       const askStages = createStageTimer();
       const retrieval = await retrieveAndRankNotes({
         embedModel,

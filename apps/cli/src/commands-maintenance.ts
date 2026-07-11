@@ -178,7 +178,7 @@ export function registerMaintenanceCommand(program: Command, io: ProgramIO): voi
 
   maintenance
     .command("compact")
-    .description("Rotate goal-079 archive sidecars (proactive-history.json.<n>, …) into ~/.muse/archive/*.gz")
+    .description("Rotate numbered archive sidecars (proactive-history.json.<n>, …) into ~/.muse/archive/*.gz")
     .option("--keep-days <n>", "Only compact archives older than N days (default: compact every numbered archive)")
     .option("--dry-run", "Print the plan without touching disk")
     .option("--json", "Emit a structured summary instead of a formatted list")

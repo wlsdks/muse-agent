@@ -319,7 +319,7 @@ describe("reindexNotes — a corrupt document is skipped VISIBLY, not silently (
   });
 });
 
-describe("defaultIndexPath — empty-HOME fall-through (goal-547 sibling)", () => {
+describe("defaultIndexPath — empty-HOME fall-through", () => {
   it("roots notes-index.json under HOME when HOME is set", () => {
     const prev = process.env.HOME;
     process.env.HOME = "/u/jinan";

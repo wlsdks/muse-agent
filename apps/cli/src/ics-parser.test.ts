@@ -107,7 +107,7 @@ describe("parseIcsEvents", () => {
     expect(ev?.startsAt.toISOString()).toBe("2026-01-18T09:00:00.000Z");
   });
 
-  it("drops an impossible calendar date instead of silently rolling it over (goal-440 sibling)", () => {
+  it("drops an impossible calendar date instead of silently rolling it over", () => {
     // Date.UTC(2026, 1, 30) rolls Feb 30 → Mar 2; an importer must
     // not put the event on the wrong day. Both forms must reject.
     for (const dtstart of [

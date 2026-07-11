@@ -1,5 +1,5 @@
 /**
- * P17 conversational actuation: expose the gated email send as an
+ * Conversational actuation: expose the gated email send as an
  * AGENT tool so Muse can act on "email Bob the summary" mid-turn — not
  * only via `muse email send`. Execution routes through the proven
  * fail-closed `sendEmailWithApproval` (recipient resolved via

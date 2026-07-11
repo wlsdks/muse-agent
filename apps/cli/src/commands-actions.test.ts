@@ -46,7 +46,7 @@ function entry(overrides: Partial<ActionLogEntry> = {}): ActionLogEntry {
   };
 }
 
-describe("muse actions — the P6 accountability read surface", () => {
+describe("muse actions — the accountability read surface", () => {
   it("lists recorded autonomous actions newest-first with rationale", async () => {
     const file = logFile();
     await appendActionLog(file, entry({ id: "old", when: "2026-05-19T10:00:00.000Z" }));

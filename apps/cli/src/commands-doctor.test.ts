@@ -391,7 +391,7 @@ describe("classifyHomeAlertsConfig — surface silently-dropped home-alert entri
   });
 });
 
-describe("resolveMuseEnvPath (goal-478/481/482 sibling, doctor surface)", () => {
+describe("resolveMuseEnvPath (doctor surface)", () => {
   it("falls back to the documented default when env is unset", () => {
     expect(resolveMuseEnvPath(undefined, "/home/u/.muse")).toBe("/home/u/.muse");
   });

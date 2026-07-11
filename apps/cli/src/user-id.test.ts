@@ -15,7 +15,7 @@ describe("resolveDefaultUserKey", () => {
     expect(resolveDefaultUserKey({ env: { USER: "jinan" } })).toBe("jinan");
   });
 
-  it("treats an empty / whitespace-only MUSE_USER_ID as unset (the goal-478/481 sibling)", () => {
+  it("treats an empty / whitespace-only MUSE_USER_ID as unset", () => {
     expect(resolveDefaultUserKey({ env: { MUSE_USER_ID: "", USER: "fallback" } })).toBe("fallback");
     expect(resolveDefaultUserKey({ env: { MUSE_USER_ID: "   ", USER: "fallback" } })).toBe("fallback");
     expect(resolveDefaultUserKey({ env: { MUSE_USER_ID: "" } })).toBe("default");

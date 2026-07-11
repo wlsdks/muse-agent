@@ -1,5 +1,5 @@
 /**
- * P17 conversational actuation: expose the gated Home Assistant
+ * Conversational actuation: expose the gated Home Assistant
  * smart-home control as an AGENT tool so Muse can act on "turn off the
  * living-room lights" mid-turn — not only via `muse home call`.
  * Execution routes through the proven fail-closed

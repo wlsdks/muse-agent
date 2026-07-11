@@ -1,5 +1,5 @@
 /**
- * P17 conversational actuation: expose the gated web action (submit /
+ * Conversational actuation: expose the gated web action (submit /
  * book) as an AGENT tool so Muse can act on "book a table at X for 7pm"
  * mid-turn — not only via `muse web-action`. Execution routes through
  * the proven fail-closed `performWebActionWithApproval` (draft-first

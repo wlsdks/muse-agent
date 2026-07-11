@@ -35,7 +35,7 @@ describe("capContentForSummary (chat-history compaction surrogate-cap)", () => {
   });
 });
 
-describe("lastChatHistoryPath / activityLogPath — empty-HOME fall-through (goal-495/505 sibling)", () => {
+describe("lastChatHistoryPath / activityLogPath — empty-HOME fall-through", () => {
   beforeEach(() => {
     vi.stubEnv("HOME", "/u/jinan");
   });
