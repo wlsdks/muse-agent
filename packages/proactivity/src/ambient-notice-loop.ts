@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 
+import { avoidedSourceKeys, readTrustLedger } from "@muse/stores";
+
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { ProactiveNoticeSink } from "./proactive-notice-loop.js";
 
@@ -281,7 +283,8 @@ export function createAmbientNoticeRunner(options: {
   // site's own catch keeps its existing "don't consume the edge" behavior.
   const deliverGated = async (
     notice: { readonly kind: string; readonly text: string; readonly title: string },
-    sourceId: string
+    sourceId: string,
+    avoidedSources: ReadonlySet<string> | undefined
   ): Promise<{ readonly digested: boolean }> => {
     if (!options.interruptionBudget) {
       await options.sink.deliver(notice);
@@ -289,18 +292,22 @@ export function createAmbientNoticeRunner(options: {
     }
     const budget = options.interruptionBudget;
     const result = await applyInterruptionBudget({
+      avoidedSources,
       caps: resolveInterruptionBudgetCaps(budget),
       deliver: async () => {
         await options.sink.deliver(notice);
       },
       digestFile: budget.digestFile,
+      ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
       ledgerFile: budget.ledgerFile,
       now: now(),
       source: "ambient-notice",
       sourceId,
-      text: notice.text
+      sourceKey: `ambient-notice:${sourceId}`,
+      text: notice.text,
+      title: notice.title
     });
-    return { digested: result.outcome === "digested" };
+    return { digested: result.outcome !== "delivered" };
   };
   return {
     async tick(): Promise<RunAmbientNoticeTickSummary> {
@@ -333,11 +340,17 @@ export function createAmbientNoticeRunner(options: {
           nextMatched.add(id);
         }
       }
+      // Read once per tick — a veto recorded mid-tick still waits for the
+      // NEXT tick, matching the edge-trigger state's own tick granularity.
+      const avoidedSources = options.interruptionBudget?.trustLedgerFile
+        ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
+        : undefined;
+
       let ruleDelivered = 0;
       for (const notice of toFire) {
         const text = related && related.trim().length > 0 ? `${notice.text} — Related: ${related}` : notice.text;
         try {
-          const { digested } = await deliverGated({ kind: notice.kind, text, title: notice.title }, notice.ruleId);
+          const { digested } = await deliverGated({ kind: notice.kind, text, title: notice.title }, notice.ruleId, avoidedSources);
           if (!digested) ruleDelivered += 1;
           newlyFired.push(notice.ruleId);
           // Mark fired ONLY after a successful send OR a budget-suppressed
@@ -375,7 +388,8 @@ export function createAmbientNoticeRunner(options: {
                   text: related,
                   title: options.knowledgeTrigger.title ?? DEFAULT_KNOWLEDGE_TRIGGER_TITLE
                 },
-                "knowledge-trigger"
+                "knowledge-trigger",
+                avoidedSources
               );
               if (!digested) knowledgeDelivered = 1;
               // Mark deduped after a successful send OR a budget-suppressed

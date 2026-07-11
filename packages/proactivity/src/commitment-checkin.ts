@@ -18,7 +18,7 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { withFileMutationQueue } from "@muse/stores";
+import { avoidedSourceKeys, readTrustLedger, withFileMutationQueue } from "@muse/stores";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";
 
@@ -337,6 +337,11 @@ export async function runDueCheckins(options: RunDueCheckinsOptions): Promise<Ru
   const fired: PersistedCheckin[] = [];
   const errors: string[] = [];
   let delivered = 0;
+
+  const avoidedSources = options.interruptionBudget?.trustLedgerFile
+    ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
+    : undefined;
+
   for (const checkin of due) {
     try {
       const deliver = (): Promise<void> =>
@@ -345,17 +350,28 @@ export async function runDueCheckins(options: RunDueCheckinsOptions): Promise<Ru
       if (options.interruptionBudget) {
         const budget = options.interruptionBudget;
         const result = await applyInterruptionBudget({
+          avoidedSources,
           caps: resolveInterruptionBudgetCaps(budget),
           deliver,
           digestFile: budget.digestFile,
           errorLogger: (message) => errors.push(`${checkin.id}: ${message}`),
+          ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
           ledgerFile: budget.ledgerFile,
           now: at,
           source: "commitment-checkin",
           sourceId: checkin.id,
-          text: checkin.question
+          // `checkin.sourceKey` (the normalised-commitment DEDUPE key the
+          // scheduler uses to avoid re-scheduling the same open loop) — NOT
+          // `checkin.id` (unique per check-in OCCURRENCE, a different
+          // concern): the ledger sourceKey must be STABLE across
+          // re-detections of the same commitment so a channel-veto survives
+          // — a fresh check-in scheduled later for the same open loop gets a
+          // new `id` but the SAME `sourceKey`, so the earlier veto still matches.
+          sourceKey: `commitment-checkin:${checkin.sourceKey}`,
+          text: checkin.question,
+          title: checkin.commitment
         });
-        digested = result.outcome === "digested";
+        digested = result.outcome !== "delivered";
       } else {
         await deliver();
       }

@@ -36,7 +36,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import { errorMessage } from "@muse/shared";
 
 import { sendWithRetry } from "@muse/mcp-shared";
-import { isPatternDismissed, isPatternOnCooldown, readPatternsFired, recordPatternFired } from "@muse/stores";
+import { avoidedSourceKeys, isPatternDismissed, isPatternOnCooldown, readPatternsFired, readTrustLedger, recordPatternFired } from "@muse/stores";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
 
@@ -99,6 +99,13 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
   const fired: PatternMatch[] = [];
   let delivered = 0;
 
+  // Read once per tick (not per notice) — a veto recorded mid-tick still
+  // waits for the NEXT tick, matching the cooldown sidecar's own tick-
+  // granularity freshness.
+  const avoidedSources = options.interruptionBudget?.trustLedgerFile
+    ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
+    : undefined;
+
   // The orchestrator already filtered cooldown ones out, but a
   // pathological caller passing stale fired-records could let one
   // through. Double-check inline so a buggy caller cannot
@@ -127,21 +134,25 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
         destination: options.destination,
         text
       }).then(() => undefined);
-      let digested = false;
+      let outcome: "delivered" | "digested" | "skipped" = "delivered";
       if (options.interruptionBudget) {
         const budget = options.interruptionBudget;
         const result = await applyInterruptionBudget({
+          avoidedSources,
           caps: resolveInterruptionBudgetCaps(budget),
           deliver,
           digestFile: budget.digestFile,
           errorLogger: (message) => errors.push(`${match.id}: ${message}`),
+          ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
           ledgerFile: budget.ledgerFile,
           now: now(),
           source: "pattern-firing",
           sourceId: match.id,
-          text
+          sourceKey: `pattern-firing:${match.id}`,
+          text,
+          title: text
         });
-        digested = result.outcome === "digested";
+        outcome = result.outcome;
       } else {
         await deliver();
       }
@@ -150,14 +161,16 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
       // itself next tick just because it never actually reached the user.
       await recordPatternFired(options.patternsFiredFile, match.id, now().getTime());
       fired.push(match);
-      if (!digested) {
+      if (outcome === "delivered") {
         delivered += 1;
       }
       // The broker feeds an already-open live stream (an engaged user watching
-      // /api/agent-notices/stream) — publish regardless of the budget outcome.
-      // The interruption budget governs push channels (messaging send) only;
-      // suppressing ambient visibility too would defeat the point of the live feed.
-      if (options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
+      // /api/agent-notices/stream) — publish regardless of a budget DIGEST
+      // (the budget governs push channels only; suppressing ambient
+      // visibility too would defeat the point of the live feed). A VETO is
+      // different: the user explicitly said "stop these", a stronger signal
+      // than the frequency budget, so it silences the live stream too.
+      if (outcome !== "skipped" && options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
         try {
           options.agentInitiatedNoticeBroker.publish(options.agentInitiatedNoticeUserId, {
             generatedAt: now().toISOString(),

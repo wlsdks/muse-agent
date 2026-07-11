@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { appendInterruptionDelivery, readDigestQueue, readInterruptionLedger, readPatternsFired } from "@muse/stores";
+import { appendInterruptionDelivery, readDigestQueue, readInterruptionLedger, readLastProactiveDeliveries, readPatternsFired, recordOutcome } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runDuePatternNotices } from "../src/pattern-firing-loop.js";
@@ -127,6 +127,43 @@ describe("runDuePatternNotices — interruption budget (opt-in)", () => {
     expect(published[0]!.notice.kind).toBe("pattern");
   });
 
+  it("a channel-vetoed pattern also silences the broker (veto is stronger than a budget digest)", async () => {
+    const discoverySent: OutboundMessage[] = [];
+    const discovery = await runDuePatternNotices({
+      destination: "555",
+      now: () => NOW,
+      patternsFiredFile: join(dir, "discovery2-patterns-fired.json"),
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(discoverySent)]),
+      signals: { notesDir, now: () => NOW.getTime() }
+    });
+    const patternId = discovery.fired[0]!.id;
+
+    const trustLedgerFile = join(dir, "trust2.json");
+    await recordOutcome(trustLedgerFile, `pattern-firing:${patternId}`, "vetoed", NOW.getTime());
+
+    const sent: OutboundMessage[] = [];
+    const published: Array<{ userId: string; notice: { kind: string; text: string; sourceId?: string } }> = [];
+    const summary = await runDuePatternNotices({
+      agentInitiatedNoticeBroker: {
+        publish: (userId, notice) => {
+          published.push({ notice, userId });
+        }
+      },
+      agentInitiatedNoticeUserId: "u1",
+      destination: "555",
+      interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, ledgerFile, trustLedgerFile },
+      now: () => NOW,
+      patternsFiredFile,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      signals: { notesDir, now: () => NOW.getTime() }
+    });
+    expect(sent).toEqual([]);
+    expect(summary.delivered).toBe(0);
+    expect(published).toEqual([]); // the broker did NOT publish — veto silences it too
+  });
+
   it("a corrupt ledger file fails OPEN — the suggestion still sends", async () => {
     const sent: OutboundMessage[] = [];
     await writeFile(ledgerFile, "{ not valid json", "utf8");
@@ -141,5 +178,62 @@ describe("runDuePatternNotices — interruption budget (opt-in)", () => {
     });
     expect(summary.delivered).toBe(1);
     expect(sent).toHaveLength(1);
+  });
+
+  it("a channel-vetoed pattern (trust ledger) is fully silent: no send, no digest, cooldown still advances", async () => {
+    // Discover this pattern's deterministic id via a throwaway run (separate
+    // sidecars — its cooldown state must not leak into the tested run below).
+    const discoverySent: OutboundMessage[] = [];
+    const discovery = await runDuePatternNotices({
+      destination: "555",
+      now: () => NOW,
+      patternsFiredFile: join(dir, "discovery-patterns-fired.json"),
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(discoverySent)]),
+      signals: { notesDir, now: () => NOW.getTime() }
+    });
+    expect(discovery.fired).toHaveLength(1);
+    const patternId = discovery.fired[0]!.id;
+
+    const trustLedgerFile = join(dir, "trust.json");
+    await recordOutcome(trustLedgerFile, `pattern-firing:${patternId}`, "vetoed", NOW.getTime());
+
+    const sent: OutboundMessage[] = [];
+    const lastDeliveryFile = join(dir, "last-delivery.json");
+    const summary = await runDuePatternNotices({
+      destination: "555",
+      interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, lastDeliveryFile, ledgerFile, trustLedgerFile },
+      now: () => NOW,
+      patternsFiredFile,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      signals: { notesDir, now: () => NOW.getTime() }
+    });
+    expect(sent).toEqual([]);
+    expect(summary.delivered).toBe(0);
+    expect(await readDigestQueue(digestFile)).toHaveLength(0);
+    expect(await readInterruptionLedger(ledgerFile)).toHaveLength(0);
+    expect(await readLastProactiveDeliveries(lastDeliveryFile)).toHaveLength(0);
+    // The cooldown sidecar still advances — a vetoed match doesn't re-offer next tick either.
+    expect((await readPatternsFired(patternsFiredFile)).length).toBeGreaterThan(0);
+  });
+
+  it("wired lastDeliveryFile records the pattern's sourceKey + delivered outcome", async () => {
+    const sent: OutboundMessage[] = [];
+    const lastDeliveryFile = join(dir, "last-delivery.json");
+    const summary = await runDuePatternNotices({
+      destination: "555",
+      interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, lastDeliveryFile, ledgerFile },
+      now: () => NOW,
+      patternsFiredFile,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      signals: { notesDir, now: () => NOW.getTime() }
+    });
+    expect(summary.delivered).toBe(1);
+    const patternId = summary.fired[0]!.id;
+    const entries = await readLastProactiveDeliveries(lastDeliveryFile);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({ outcome: "delivered", sourceKey: `pattern-firing:${patternId}` });
   });
 });

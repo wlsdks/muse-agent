@@ -1,7 +1,8 @@
 /**
- * The tools `muse mcp serve` exposes — three read-only (grounded recall,
- * knowledge search, user-model read) plus one write-proxy (`propose_action`,
- * which only PARKS a proposed action in the approval queue, never executes it)
+ * The tools `muse mcp serve` exposes — five read-only (grounded recall,
+ * knowledge search, user-model read, calendar read, tasks read) plus one write-proxy
+ * (`propose_action`, which only PARKS a proposed action in the approval
+ * queue, never executes it)
  * — and the self-contained dependency bootstrap they run on (no API server, no
  * `createMuseRuntimeAssembly`
  * — mirrors how `commands-ask.ts` / `ask-routes.ts` wire the grounded-recall
@@ -16,16 +17,19 @@
 import { randomUUID } from "node:crypto";
 
 import { effectiveConfidence, FileUserMemoryStore, type UserMemoryStore } from "@muse/memory";
-import { LocalDirNotesProvider, type NotesProvider } from "@muse/domain-tools";
+import { LocalDirNotesProvider, LocalFileTasksProvider, type NotesProvider, type Task } from "@muse/domain-tools";
+import { LocalCalendarProvider, type CalendarEvent } from "@muse/calendar";
 import {
   assembleKnowledgeCorpus,
   createModelProvider,
   mergeModelKeysFromFile,
   resolveAnswerTemperature,
   resolveDefaultModel,
+  resolveLocalCalendarFile,
   resolveNotesDir,
   resolveNotesIndexFile,
   resolvePendingApprovalsFile,
+  resolveTasksFile,
   type MuseEnvironment
 } from "@muse/autoconfigure";
 import { recordPendingApproval, type PendingApproval } from "@muse/messaging";
@@ -63,6 +67,8 @@ export interface McpServeDependencies {
   readonly now: () => Date;
   readonly stagePendingApproval: (entry: PendingApproval) => Promise<void>;
   readonly newId: () => string;
+  readonly listCalendarEvents: (range: { readonly from: Date; readonly to: Date }) => Promise<readonly CalendarEvent[]>;
+  readonly listTasks: (status: "open" | "done" | "all") => Promise<readonly Task[]>;
 }
 
 /**
@@ -78,11 +84,15 @@ function resolveMcpUserId(env: MuseEnvironment): string {
 export function resolveMcpServeDependencies(rawEnv: MuseEnvironment = process.env): McpServeDependencies {
   const env = mergeModelKeysFromFile(rawEnv);
   const notesDir = resolveNotesDir(env);
+  const calendar = new LocalCalendarProvider({ file: resolveLocalCalendarFile(env) });
+  const tasks = new LocalFileTasksProvider({ file: resolveTasksFile(env) });
   return {
     answerModel: resolveDefaultModel(env),
     answerTemperature: resolveAnswerTemperature(env),
     embedFn: (text, model) => embed(text, model),
     embedModel: DEFAULT_EMBED_MODEL,
+    listCalendarEvents: (range) => calendar.listEvents(range),
+    listTasks: (status) => tasks.list(status),
     modelProvider: createModelProvider(env),
     newId: () => randomUUID(),
     notesDir,
@@ -337,6 +347,133 @@ function buildUserModelReadTool(deps: McpServeDependencies): MuseTool {
   };
 }
 
+function serializeCalendarEvent(event: CalendarEvent): JsonObject {
+  return {
+    endsAt: event.endsAt.toISOString(),
+    id: event.id,
+    startsAt: event.startsAt.toISOString(),
+    title: event.title,
+    ...(event.location ? { location: event.location } : {})
+  };
+}
+
+function buildCalendarReadTool(deps: McpServeDependencies): MuseTool {
+  return {
+    definition: {
+      description:
+        "Read the user's calendar events between two timestamps. Use when a connected agent needs to know what's on the user's schedule in a specific window (e.g. today, this week). Provide the window explicitly as `from` and `to` ISO timestamps. Do NOT use to CREATE or change events (read-only); do NOT guess the window — pass the exact from/to.",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          from: {
+            description: "Start of the window (inclusive), ISO 8601 timestamp. Example: '2026-07-12T00:00:00Z'.",
+            type: "string"
+          },
+          to: {
+            description: "End of the window (inclusive), ISO 8601 timestamp. Example: '2026-07-13T00:00:00Z'.",
+            type: "string"
+          }
+        },
+        required: ["from", "to"],
+        type: "object"
+      },
+      name: "calendar_read",
+      risk: "read"
+    },
+    execute: async (args) => {
+      const rawFrom = (args as { from?: unknown }).from;
+      const rawTo = (args as { to?: unknown }).to;
+      if (typeof rawFrom !== "string" || rawFrom.trim().length === 0) {
+        throw new Error("calendar_read: 'from' must be a non-empty ISO timestamp string.");
+      }
+      if (typeof rawTo !== "string" || rawTo.trim().length === 0) {
+        throw new Error("calendar_read: 'to' must be a non-empty ISO timestamp string.");
+      }
+
+      const from = new Date(rawFrom);
+      const to = new Date(rawTo);
+      if (Number.isNaN(from.getTime())) {
+        throw new Error(`calendar_read: 'from' is not a valid timestamp: '${rawFrom}'`);
+      }
+      if (Number.isNaN(to.getTime())) {
+        throw new Error(`calendar_read: 'to' is not a valid timestamp: '${rawTo}'`);
+      }
+      // Fail-close BEFORE ever calling the source: an inverted or zero-width
+      // window must never silently pass through and leak an unbounded read.
+      if (to.getTime() <= from.getTime()) {
+        throw new Error(`calendar_read: 'to' (${rawTo}) must be strictly after 'from' (${rawFrom}).`);
+      }
+
+      const events = await deps.listCalendarEvents({ from, to });
+
+      return {
+        count: events.length,
+        events: events.map(serializeCalendarEvent),
+        from: rawFrom,
+        to: rawTo
+      };
+    }
+  };
+}
+
+const TASKS_READ_STATUSES = ["open", "done", "all"] as const;
+type TasksReadStatus = (typeof TASKS_READ_STATUSES)[number];
+
+function isTasksReadStatus(value: unknown): value is TasksReadStatus {
+  return typeof value === "string" && (TASKS_READ_STATUSES as readonly string[]).includes(value);
+}
+
+function serializeTask(task: Task): JsonObject {
+  return {
+    createdAt: task.createdAt.toISOString(),
+    id: task.id,
+    status: task.status,
+    title: task.title,
+    ...(task.completedAt ? { completedAt: task.completedAt.toISOString() } : {}),
+    ...(task.notes ? { notes: task.notes } : {}),
+    ...(task.tags && task.tags.length > 0 ? { tags: [...task.tags] } : {})
+  };
+}
+
+function buildTasksReadTool(deps: McpServeDependencies): MuseTool {
+  return {
+    definition: {
+      description:
+        "Read the user's to-do tasks, optionally filtered by status. Use when a connected agent needs to know what the user has to do (their open tasks) or what they've finished. Do NOT use to CREATE / complete / change tasks (read-only).",
+      inputSchema: {
+        additionalProperties: false,
+        properties: {
+          status: {
+            description: "Which tasks to return: 'open', 'done', or 'all' — default 'open'. Example: 'done'.",
+            enum: [...TASKS_READ_STATUSES],
+            type: "string"
+          }
+        },
+        type: "object"
+      },
+      name: "tasks_read",
+      risk: "read"
+    },
+    execute: async (args) => {
+      const rawStatus = (args as { status?: unknown }).status;
+      // Fail-close BEFORE ever calling the source: a garbage filter must never
+      // be silently coerced to "open" and quietly return the wrong slice.
+      if (rawStatus !== undefined && !isTasksReadStatus(rawStatus)) {
+        throw new Error(`tasks_read: 'status' must be one of ${TASKS_READ_STATUSES.join(", ")}, got '${String(rawStatus)}'`);
+      }
+      const status: TasksReadStatus = isTasksReadStatus(rawStatus) ? rawStatus : "open";
+
+      const tasks = await deps.listTasks(status);
+
+      return {
+        count: tasks.length,
+        status,
+        tasks: tasks.map(serializeTask)
+      };
+    }
+  };
+}
+
 // Mirrors PENDING_APPROVAL_TTL_MS in actuator-tools.ts (buildCliPendingApprovalStager) —
 // a proposed action parks for a week before it's stale, same as a refused CLI write.
 const PROPOSE_ACTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -408,5 +545,12 @@ function buildProposeActionTool(deps: McpServeDependencies): MuseTool {
 }
 
 export function buildMcpServeTools(deps: McpServeDependencies): readonly MuseTool[] {
-  return [buildMuseRecallTool(deps), buildKnowledgeSearchTool(deps), buildUserModelReadTool(deps), buildProposeActionTool(deps)];
+  return [
+    buildMuseRecallTool(deps),
+    buildKnowledgeSearchTool(deps),
+    buildUserModelReadTool(deps),
+    buildCalendarReadTool(deps),
+    buildTasksReadTool(deps),
+    buildProposeActionTool(deps)
+  ];
 }

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { MessagingProviderRegistry, type MessagingProvider, type OutboundMessage, type OutboundReceipt } from "@muse/messaging";
-import { appendInterruptionDelivery, readDigestQueue, readInterruptionLedger, registerBackgroundProcess, updateBackgroundProcess, type BackgroundProcessRecord } from "@muse/stores";
+import { appendInterruptionDelivery, readDigestQueue, readInterruptionLedger, readLastProactiveDeliveries, recordOutcome, registerBackgroundProcess, updateBackgroundProcess, type BackgroundProcessRecord } from "@muse/stores";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -227,6 +227,82 @@ describe("runDueBackgroundExitNotices — one-shot on-exit notice", () => {
       }));
       expect(summary.notified).toBe(1);
       expect(sent).toHaveLength(1);
+    });
+
+    it("a channel-vetoed job (trust ledger) is fully silent: no send, no digest, no broker publish, still notified (one-shot)", async () => {
+      await seedExited({ id: "p1", status: "exited", exitCode: 0 });
+      const sent: OutboundMessage[] = [];
+      const { broker, sent: published } = fakeBroker();
+      const ledgerFile = join(dir, "ledger.json");
+      const digestFile = join(dir, "digest.json");
+      const trustLedgerFile = join(dir, "trust.json");
+      const lastDeliveryFile = join(dir, "last-delivery.json");
+      const now = new Date("2026-07-01T10:05:00.000Z");
+      await recordOutcome(trustLedgerFile, "background-exit:p1", "vetoed", now.getTime());
+
+      const summary = await runDueBackgroundExitNotices(opts({
+        broker,
+        brokerUserId: "u1",
+        destination: "555",
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, lastDeliveryFile, ledgerFile, trustLedgerFile },
+        messagingRegistry: new MessagingProviderRegistry([capturingProvider(sent)]),
+        now: () => now,
+        providerId: "telegram"
+      }));
+      expect(sent).toEqual([]);
+      expect(published).toEqual([]); // the broker did NOT publish either — veto is stronger than the budget
+      expect(summary.notified).toBe(0);
+      expect(summary.errors).toEqual([]);
+      expect(await readDigestQueue(digestFile)).toHaveLength(0);
+      expect(await readInterruptionLedger(ledgerFile)).toHaveLength(0);
+      expect(await readLastProactiveDeliveries(lastDeliveryFile)).toHaveLength(0);
+      expect((await readBackgroundExitNotified(notifiedFile)).has("p1")).toBe(true);
+    });
+
+    it("a budget-DIGESTED (not vetoed) job still publishes to the broker — the budget gates the messaging leg only", async () => {
+      await seedExited({ id: "p1", status: "exited", exitCode: 0 });
+      const sent: OutboundMessage[] = [];
+      const { broker, sent: published } = fakeBroker();
+      const ledgerFile = join(dir, "ledger.json");
+      const digestFile = join(dir, "digest.json");
+      const now = new Date("2026-07-01T10:05:00.000Z");
+      await appendInterruptionDelivery(ledgerFile, { at: now, source: "background-exit" });
+
+      const summary = await runDueBackgroundExitNotices(opts({
+        broker,
+        brokerUserId: "u1",
+        destination: "555",
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 1, ledgerFile },
+        messagingRegistry: new MessagingProviderRegistry([capturingProvider(sent)]),
+        now: () => now,
+        providerId: "telegram"
+      }));
+      expect(sent).toEqual([]);
+      expect(published).toHaveLength(1); // broker unaffected by the (non-veto) digest suppression
+      expect(summary.notified).toBe(1); // the broker leg counts as a sink
+      const queued = await readDigestQueue(digestFile);
+      expect(queued).toHaveLength(1);
+    });
+
+    it("wired lastDeliveryFile records the job's sourceKey + job label as title", async () => {
+      await seedExited({ id: "p1", status: "exited", exitCode: 0, command: "pnpm build" });
+      const sent: OutboundMessage[] = [];
+      const ledgerFile = join(dir, "ledger.json");
+      const digestFile = join(dir, "digest.json");
+      const lastDeliveryFile = join(dir, "last-delivery.json");
+      const now = new Date("2026-07-01T10:05:00.000Z");
+
+      const summary = await runDueBackgroundExitNotices(opts({
+        destination: "555",
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, lastDeliveryFile, ledgerFile },
+        messagingRegistry: new MessagingProviderRegistry([capturingProvider(sent)]),
+        now: () => now,
+        providerId: "telegram"
+      }));
+      expect(summary.notified).toBe(1);
+      const entries = await readLastProactiveDeliveries(lastDeliveryFile);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({ outcome: "delivered", sourceKey: "background-exit:p1", title: "pnpm build" });
     });
   });
 });

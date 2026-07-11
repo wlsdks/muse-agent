@@ -29,10 +29,11 @@ import { promises as fs } from "node:fs";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { sendWithRetry } from "@muse/mcp-shared";
 import { redactSecretsInText } from "@muse/shared";
-import { readBackgroundProcesses, type BackgroundProcessRecord } from "@muse/stores";
+import { avoidedSourceKeys, readBackgroundProcesses, readTrustLedger, type BackgroundProcessRecord } from "@muse/stores";
 
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import type { AgentInitiatedNoticeBrokerLike } from "./proactive-notice-loop.js";
+import { isVetoed } from "./veto-key.js";
 
 /** Terminal states that warrant a heads-up. `killed` is user-initiated
  *  (they ran `muse bg stop`) so it is deliberately excluded — the user
@@ -151,6 +152,10 @@ export async function runDueBackgroundExitNotices(
   const errors: string[] = [];
   let delivered = 0;
 
+  const avoidedSources = options.interruptionBudget?.trustLedgerFile
+    ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
+    : undefined;
+
   for (const record of pending) {
     // Fail-closed one-shot: mark BEFORE delivery and persist immediately, so
     // a crash before the next write cannot re-fire this exit on restart.
@@ -168,10 +173,16 @@ export async function runDueBackgroundExitNotices(
 
     const text = redactSecretsInText(backgroundExitNoticeText(record));
     const generatedAt = now().toISOString();
+    const sourceKey = `background-exit:${record.id}`;
+    // A veto is stronger than the interruption budget's digest fallback (the
+    // user explicitly said "stop these"), so it silences the broker's
+    // live-stream fan-out too — not just the messaging leg the budget
+    // otherwise gates alone.
+    const vetoed = isVetoed(avoidedSources, sourceKey);
     try {
       let anySink = false;
       let digested = false;
-      if (options.broker && options.brokerUserId) {
+      if (options.broker && options.brokerUserId && !vetoed) {
         options.broker.publish(options.brokerUserId, {
           generatedAt,
           kind: "background_process_exited",
@@ -188,20 +199,27 @@ export async function runDueBackgroundExitNotices(
         if (options.interruptionBudget) {
           const budget = options.interruptionBudget;
           const result = await applyInterruptionBudget({
+            avoidedSources,
             caps: resolveInterruptionBudgetCaps(budget),
             deliver,
             digestFile: budget.digestFile,
             errorLogger: (message) => errors.push(`${record.id}: ${message}`),
+            ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
             ledgerFile: budget.ledgerFile,
             now: now(),
             source: "background-exit",
             sourceId: record.id,
-            text
+            sourceKey,
+            text,
+            title: backgroundJobLabel(record)
           });
-          if (result.outcome === "digested") {
-            digested = true;
-          } else {
+          // "digested" and "skipped" both mean the messaging leg did NOT
+          // reach the user — neither is the misconfiguration the fallback
+          // error below reports, so both are folded into the same flag.
+          if (result.outcome === "delivered") {
             anySink = true;
+          } else {
+            digested = true;
           }
         } else {
           await deliver();
@@ -210,7 +228,7 @@ export async function runDueBackgroundExitNotices(
       }
       if (anySink) {
         delivered += 1;
-      } else if (!digested) {
+      } else if (!digested && !vetoed) {
         errors.push(`${record.id}: no delivery sink configured`);
       }
     } catch (cause) {

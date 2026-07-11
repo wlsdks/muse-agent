@@ -59,6 +59,42 @@ describe("avoidedSourceKeys / isSourceAvoided — learned avoidance", () => {
     expect(isSourceAvoided(entries, "calendar", "k1")).toBe(false);
     expect(isSourceAvoided(entries, "calendar", "never-seen")).toBe(false);
   });
+
+  // LATEST-OUTCOME-WINS (not any-vetoed-ever-wins): a source vetoed once and
+  // later kept must stop being avoided — this is what makes `muse proactive
+  // keep` a real un-veto instead of a promise that does nothing.
+  it("a later 'kept' outcome reverses an earlier veto on the same sourceKey", () => {
+    const reversed = [
+      { ...entry("r1", NOW - 2_000, "vetoed"), outcomeAtMs: NOW - 2_000 },
+      { ...entry("r1", NOW, "kept"), outcomeAtMs: NOW }
+    ];
+    expect(avoidedSourceKeys(reversed).has("calendar:r1")).toBe(false);
+    expect(isSourceAvoided(reversed, "calendar", "r1")).toBe(false);
+  });
+
+  it("a later 'vetoed' outcome re-silences a source that was previously kept", () => {
+    const revetoed = [
+      { ...entry("r2", NOW - 2_000, "kept"), outcomeAtMs: NOW - 2_000 },
+      { ...entry("r2", NOW, "vetoed"), outcomeAtMs: NOW }
+    ];
+    expect(avoidedSourceKeys(revetoed).has("calendar:r2")).toBe(true);
+  });
+
+  it("ties on outcomeAtMs fall back to file/append order — the later entry wins", () => {
+    const tied = [
+      { ...entry("r3", NOW, "vetoed"), outcomeAtMs: NOW },
+      { ...entry("r3", NOW, "kept"), outcomeAtMs: NOW }
+    ];
+    expect(avoidedSourceKeys(tied).has("calendar:r3")).toBe(false);
+  });
+
+  it("outcome-less (unrated) entries never override an earlier rated entry", () => {
+    const withUnrated = [
+      { ...entry("r4", NOW - 1_000, "vetoed"), outcomeAtMs: NOW - 1_000 },
+      entry("r4", NOW) // re-surfaced, not yet rated
+    ];
+    expect(avoidedSourceKeys(withUnrated).has("calendar:r4")).toBe(true);
+  });
 });
 
 describe("appendSurfaced", () => {

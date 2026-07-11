@@ -146,8 +146,12 @@ export async function appendSurfaced(
 
 /**
  * Record the user's verdict on a source. Sets the outcome on its most-recent
- * surfaced-but-unrated entry; if the source was never surfaced (a pre-emptive
- * veto), appends a minimal entry so the avoidance is still remembered.
+ * surfaced-but-unrated entry when one exists; otherwise APPENDS a minimal
+ * entry carrying the new outcome. That append path covers two cases: a
+ * source never surfaced (a pre-emptive veto), AND a source whose only entry
+ * is already rated — e.g. `muse proactive keep <source>` after an earlier
+ * `veto`, which is a real reversal (`avoidedSourceKeys` is latest-outcome-
+ * wins per sourceKey, so the newly-appended entry decides going forward).
  * Returns the resolved title for caller feedback.
  */
 export async function recordOutcome(
@@ -205,10 +209,26 @@ export function computeTrustScore(entries: readonly TrustLedgerEntry[]): TrustSc
   };
 }
 
-/** Sources the user has vetoed — learned avoidance. */
+/**
+ * Sources the user has vetoed — learned avoidance, LATEST-OUTCOME-WINS per
+ * sourceKey. A source can be re-rated (a `muse proactive keep` after an
+ * earlier veto is a real reversal, not a no-op): only the most recent
+ * outcome-bearing entry decides avoidance, not "any entry ever vetoed it".
+ * Ranked by `outcomeAtMs` (every outcome-bearing entry sets it); entries
+ * with an equal timestamp fall back to file/append order (later wins), and
+ * outcome-less (surfaced-but-unrated) entries are ignored entirely.
+ */
 export function avoidedSourceKeys(entries: readonly TrustLedgerEntry[]): ReadonlySet<string> {
-  const avoided = new Set<string>();
+  const latestByKey = new Map<string, TrustLedgerEntry>();
   for (const entry of entries) {
+    if (entry.outcome === undefined) continue;
+    const current = latestByKey.get(entry.sourceKey);
+    if (!current || (entry.outcomeAtMs ?? 0) >= (current.outcomeAtMs ?? 0)) {
+      latestByKey.set(entry.sourceKey, entry);
+    }
+  }
+  const avoided = new Set<string>();
+  for (const entry of latestByKey.values()) {
     if (entry.outcome === "vetoed") avoided.add(entry.sourceKey);
   }
   return avoided;

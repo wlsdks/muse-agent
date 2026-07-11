@@ -29,9 +29,11 @@ import { composeIdentityPrompt } from "@muse/prompts";
 
 import { sendWithRetry } from "@muse/mcp-shared";
 import {
+  avoidedSourceKeys,
   compareFollowupsByScheduledFor,
   markFollowupFired,
   readFollowups,
+  readTrustLedger,
   type PersistedFollowup
 } from "@muse/stores";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
@@ -113,6 +115,10 @@ export async function runDueFollowups(options: RunDueFollowupsOptions): Promise<
   const fired: PersistedFollowup[] = [];
   let delivered = 0;
 
+  const avoidedSources = options.interruptionBudget?.trustLedgerFile
+    ? avoidedSourceKeys(await readTrustLedger(options.interruptionBudget.trustLedgerFile).catch(() => []))
+    : undefined;
+
   for (const followup of due) {
     try {
       const text = await synthesizeFollowupText(followup, options);
@@ -130,17 +136,21 @@ export async function runDueFollowups(options: RunDueFollowupsOptions): Promise<
       if (options.interruptionBudget) {
         const budget = options.interruptionBudget;
         const result = await applyInterruptionBudget({
+          avoidedSources,
           caps: resolveInterruptionBudgetCaps(budget),
           deliver,
           digestFile: budget.digestFile,
           errorLogger: (message) => errors.push(`${followup.id}: ${message}`),
+          ...(budget.lastDeliveryFile ? { lastDeliveryFile: budget.lastDeliveryFile } : {}),
           ledgerFile: budget.ledgerFile,
           now: now(),
           source: "followup",
           sourceId: followup.id,
-          text
+          sourceKey: `followup:${followup.id}`,
+          text,
+          title: followup.summary
         });
-        digested = result.outcome === "digested";
+        digested = result.outcome !== "delivered";
       } else {
         await deliver();
       }

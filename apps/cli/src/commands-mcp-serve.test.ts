@@ -40,6 +40,8 @@ describe("muse mcp serve (in-process e2e)", () => {
         throw new Error("no local Ollama in this test");
       },
       embedModel: "nomic-embed-text-v2-moe",
+      listCalendarEvents: async () => [],
+      listTasks: async () => [],
       modelProvider: undefined,
       newId: () => "test-fixed-id",
       notesDir,
@@ -67,7 +69,7 @@ describe("muse mcp serve (in-process e2e)", () => {
     await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
 
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name).sort()).toEqual(["knowledge_search", "muse_recall", "propose_action", "user_model_read"]);
+    expect(tools.map((tool) => tool.name).sort()).toEqual(["calendar_read", "knowledge_search", "muse_recall", "propose_action", "tasks_read", "user_model_read"]);
 
     const searchResult = await client.callTool({ arguments: { query: "embedder model" }, name: "knowledge_search" });
     expect(searchResult.isError).not.toBe(true);

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { appendInterruptionDelivery, readDigestQueue, readInterruptionLedger } from "@muse/stores";
+import { appendInterruptionDelivery, readDigestQueue, readInterruptionLedger, readLastProactiveDeliveries, recordOutcome } from "@muse/stores";
 
 import {
   appendCheckins,
@@ -306,6 +306,98 @@ describe("runDueCheckins", () => {
       });
       expect(res.delivered).toBe(1);
       expect(sent).toEqual(["q-a"]);
+    });
+
+    it("a channel-vetoed check-in (trust ledger) is fully silent: no send, no digest, still marked fired", async () => {
+      const file = tmpFile();
+      await writeCheckins(file, [mkDue("a")]);
+      const budgetDir = tmpBudgetDir();
+      const ledgerFile = join(budgetDir, "ledger.json");
+      const digestFile = join(budgetDir, "digest.json");
+      const trustLedgerFile = join(budgetDir, "trust.json");
+      const lastDeliveryFile = join(budgetDir, "last-delivery.json");
+      const now = new Date("2026-05-02T10:05:00Z");
+      await recordOutcome(trustLedgerFile, "commitment-checkin:a", "vetoed", now.getTime());
+
+      const { registry, sent } = recordingRegistry();
+      const res = await runDueCheckins({
+        destination: "me",
+        file,
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, lastDeliveryFile, ledgerFile, trustLedgerFile },
+        now: () => now,
+        providerId: "log",
+        registry
+      });
+      expect(sent).toEqual([]);
+      expect(res.delivered).toBe(0);
+      expect((await readCheckins(file))[0]!.status).toBe("fired");
+      expect(await readDigestQueue(digestFile)).toHaveLength(0);
+      expect(await readInterruptionLedger(ledgerFile)).toHaveLength(0);
+      expect(await readLastProactiveDeliveries(lastDeliveryFile)).toHaveLength(0);
+    });
+
+    it("a veto keyed on the RECURRING sourceKey (not the one-shot id) survives re-detection under a fresh id", async () => {
+      // Same commitment, re-detected later → scheduleCheckins gives it a NEW
+      // `id` but the SAME normalised `sourceKey` ("renew my passport").
+      const file = tmpFile();
+      const firstOccurrence: PersistedCheckin = {
+        commitment: "renew my passport", createdAt: NOW.toISOString(),
+        dueAtIso: new Date("2026-04-20T10:00:00Z").toISOString(), // already fired earlier
+        id: "chk_old", question: "q-old", sourceKey: "renew my passport", status: "fired", userId: "stark"
+      };
+      const reDetected: PersistedCheckin = {
+        commitment: "renew my passport", createdAt: NOW.toISOString(),
+        dueAtIso: new Date("2026-05-02T10:00:00Z").toISOString(),
+        id: "chk_new", question: "q-new", sourceKey: "renew my passport", status: "scheduled", userId: "stark"
+      };
+      await writeCheckins(file, [firstOccurrence, reDetected]);
+      const budgetDir = tmpBudgetDir();
+      const ledgerFile = join(budgetDir, "ledger.json");
+      const digestFile = join(budgetDir, "digest.json");
+      const trustLedgerFile = join(budgetDir, "trust.json");
+      const now = new Date("2026-05-02T10:05:00Z");
+      // The veto was recorded against the OLD occurrence's ledger sourceKey —
+      // which is the recurring commitment text, not `chk_old`.
+      await recordOutcome(trustLedgerFile, "commitment-checkin:renew my passport", "vetoed", now.getTime());
+
+      const { registry, sent } = recordingRegistry();
+      const res = await runDueCheckins({
+        destination: "me",
+        file,
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, ledgerFile, trustLedgerFile },
+        now: () => now,
+        providerId: "log",
+        registry
+      });
+      // The NEW occurrence (fresh id `chk_new`) is still silenced.
+      expect(sent).toEqual([]);
+      expect(res.delivered).toBe(0);
+      expect((await readCheckins(file)).find((c) => c.id === "chk_new")?.status).toBe("fired");
+    });
+
+    it("wired lastDeliveryFile records the check-in's sourceKey + commitment as title", async () => {
+      const file = tmpFile();
+      await writeCheckins(file, [mkDue("a")]);
+      const budgetDir = tmpBudgetDir();
+      const ledgerFile = join(budgetDir, "ledger.json");
+      const digestFile = join(budgetDir, "digest.json");
+      const lastDeliveryFile = join(budgetDir, "last-delivery.json");
+      const now = new Date("2026-05-02T10:05:00Z");
+
+      const { registry, sent } = recordingRegistry();
+      const res = await runDueCheckins({
+        destination: "me",
+        file,
+        interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 2, lastDeliveryFile, ledgerFile },
+        now: () => now,
+        providerId: "log",
+        registry
+      });
+      expect(res.delivered).toBe(1);
+      expect(sent).toEqual(["q-a"]);
+      const entries = await readLastProactiveDeliveries(lastDeliveryFile);
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({ outcome: "delivered", sourceKey: "commitment-checkin:a", title: "a" });
     });
   });
 });

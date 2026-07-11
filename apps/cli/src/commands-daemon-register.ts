@@ -28,6 +28,7 @@ import {
   resolveEpisodesFile,
   resolveFollowupsFile,
   resolveInterruptionLedgerFile,
+  resolveLastProactiveDeliveryFile,
   resolveLearningPauseFile,
   resolveActionLogFile,
   resolveNotesDir,
@@ -82,19 +83,40 @@ const DEFAULT_INTERRUPTION_HOURLY_CAP = 2;
 const DEFAULT_INTERRUPTION_DAILY_CAP = 6;
 
 /**
+ * The proactive-trust ledger file — shared by the proactive-notice tick's
+ * daily cap AND the channel-veto avoided-source check every UNASKED loop
+ * consults (`resolveInterruptionBudgetWiring` below). One resolver, one
+ * source of truth, mirroring `apps/api/src/tick-daemons.ts`'s
+ * `resolveProactiveTrustFile`.
+ */
+export function resolveProactiveTrustFile(e: NodeJS.ProcessEnv): string {
+  return e.MUSE_PROACTIVE_TRUST_FILE?.trim()?.length
+    ? e.MUSE_PROACTIVE_TRUST_FILE.trim()
+    : join(homedir(), ".muse", "proactive-trust.json");
+}
+
+/**
  * The shared interruption budget every UNASKED notice tick (pattern /
  * ambient / followup / background-exit / checkins) opts into. Always
  * returned (never gated behind its own flag) so a delivery is ledgered
  * even when both caps are disabled (`<= 0` → unlimited, per
  * `withinInterruptionBudget`) — see `apps/api/src/tick-daemons.ts`'s
- * identical resolver for the server-side counterpart.
+ * matching resolver for the server-side counterpart.
+ *
+ * `trustLedgerFile` + `lastDeliveryFile` complete the channel-veto loop: each
+ * loop re-reads `trustLedgerFile`'s avoided-source set once per tick (fresh —
+ * a veto recorded mid-run takes effect on the very next tick, no restart),
+ * and a delivered/digested notice's sourceKey is recorded to
+ * `lastDeliveryFile` so a later "stop"/"그만" reply can resolve what to veto.
  */
-function resolveInterruptionBudgetWiring(e: NodeJS.ProcessEnv): InterruptionBudgetWiring {
+export function resolveInterruptionBudgetWiring(e: NodeJS.ProcessEnv): InterruptionBudgetWiring {
   return {
     dailyCap: parseNonNegativeInteger(e.MUSE_INTERRUPTION_DAILY_CAP, DEFAULT_INTERRUPTION_DAILY_CAP),
     digestFile: resolveDigestQueueFile(e),
     hourlyCap: parseNonNegativeInteger(e.MUSE_INTERRUPTION_HOURLY_CAP, DEFAULT_INTERRUPTION_HOURLY_CAP),
-    ledgerFile: resolveInterruptionLedgerFile(e)
+    lastDeliveryFile: resolveLastProactiveDeliveryFile(e),
+    ledgerFile: resolveInterruptionLedgerFile(e),
+    trustLedgerFile: resolveProactiveTrustFile(e)
   };
 }
 
@@ -305,10 +327,14 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
           })
         : baseMessagingRegistry;
 
+      const trustLedgerFile = resolveProactiveTrustFile(e);
+
       // Shared budget across the 5 UNASKED notice ticks (pattern / ambient /
       // followup / background-exit / checkins) — reminders and the
       // user-scheduled proactive imminent-item tick are EXEMPT (the user
       // asked for those; the budget only caps what Muse initiates itself).
+      // `trustLedgerFile` + `lastDeliveryFile` complete the channel-veto loop
+      // (see `resolveInterruptionBudgetWiring`'s doc comment).
       const interruptionBudget = resolveInterruptionBudgetWiring(e);
 
       const calendarRegistry = buildCalendarRegistry(e);
@@ -317,9 +343,6 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       const sidecarFile = e.MUSE_PROACTIVE_SIDECAR_FILE?.trim()?.length
         ? e.MUSE_PROACTIVE_SIDECAR_FILE.trim()
         : join(homedir(), ".muse", "proactive-fired.json");
-      const trustLedgerFile = e.MUSE_PROACTIVE_TRUST_FILE?.trim()?.length
-        ? e.MUSE_PROACTIVE_TRUST_FILE.trim()
-        : join(homedir(), ".muse", "proactive-trust.json");
       const backgroundExitNotifiedFile = (): string => join(homedir(), ".muse", "bg-exit-notified.json");
       const dailyCapRaw = e.MUSE_PROACTIVE_DAILY_CAP ? Number(e.MUSE_PROACTIVE_DAILY_CAP) : 0;
       const dailyCap = Number.isFinite(dailyCapRaw) && dailyCapRaw > 0 ? Math.trunc(dailyCapRaw) : 0;

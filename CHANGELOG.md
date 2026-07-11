@@ -10,6 +10,17 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Connected tools can read your to-do list.** An agent connected to Muse's
+  MCP server can now see your tasks — open ones by default, or finished ones, or
+  all — without being able to add, complete, or change anything. An unrecognized
+  status filter is refused rather than guessed.
+
+- **Connected tools can read your calendar for a specific window.** When Muse
+  runs as an MCP server, an agent can ask what's on your calendar between two
+  times and gets exactly that window's events — a request for "today" never
+  bleeds in next week's. Read-only, and a malformed or backwards time range is
+  refused rather than guessed.
+
 - **Other AI tools can ask Muse to do something, but only you can approve it.**
   When Muse runs as an MCP server, a connected agent can now propose an action
   for you (write a note, add a reminder, draft a message) — Muse parks it in

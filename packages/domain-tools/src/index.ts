@@ -67,7 +67,7 @@ export { runDueSituationalBriefing } from "./situational-briefing-loop.js";
 export { listHomeAssistantStates, parseHomeAlertChecks, performHomeActionWithApproval, readHomeAssistantState, resolveHomeAlertLine } from "./smart-home.js";
 export { createHomeActionTool, createHomeEntitiesTool, createHomeStateTool } from "./smart-home-tool.js";
 export { TasksProviderError, TasksProviderRegistry, TasksValidationError } from "./tasks-providers.js";
-export type { TasksProvider } from "./tasks-providers.js";
+export type { Task, TasksProvider } from "./tasks-providers.js";
 export { AppleRemindersProvider } from "./tasks-providers-apple.js";
 export { LocalFileTasksProvider } from "./tasks-providers-local-file.js";
 export { NotionTasksProvider } from "./tasks-providers-notion.js";

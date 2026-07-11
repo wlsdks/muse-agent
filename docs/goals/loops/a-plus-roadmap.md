@@ -210,3 +210,20 @@ ratchet: 로드맵 잔여 [ ] = 28/57 · self-eval pass · fabrication 0 · grou
 - 리뷰지점: Opus 정직-accounting 검증 PASS — 등록됨(countGroundedSurfaces 정규식 매치=38, mcp-serve entry counted true)·행동검증(실 SDK Client·initialize→tools/call·모든 인용 실 seed resolve·refusal 무-날조, "tool responded" 아님)·라이브 4/4(skip 아님)·D4-S1b 특정 acceptance에 gap 없음(stdio subprocess·read 확대는 D4-S1c로 분리). 코드없이 [x]가 정직한 행동임 확인.
 - 리스크: 없음(코드 0). 교훈: decompose 전에 기존 verify-*.mjs/배터리 존재를 먼저 확인해야 redundant sub-slice 안 만듦. 다음 = D4-S1c(read 확대: 캘린더·태스크 read 툴 + 실 stdio 왕복 계약).
 - lesson: 새 grounded surface 슬라이스 전에 `ls apps/*/scripts/verify-*.mjs` + eval-self-improving.mjs BATTERIES를 grep해 이미 등록된 표면인지 확인 — 이미 있으면 라이브 실증+정직 마킹, 중복 날조 금지(ratchet=count-inflation 가드).
+
+## fire 26 · 2026-07-12 · skill v2.x · 2244aca88
+meta: slice=JUDGE-DRILL+D4-S1c1 · wave=W3 · pkg=apps/cli · kind=judge-drill+mcp-calendar-read · verdict=PASS · firesSinceDrill=0(리셋)
+ratchet: 로드맵 잔여 [ ] = 29/59(D4-S1c→c1/c2/c3 분해 +2, c1 체크 -1) · self-eval pass · fabrication 0 · cli mcp-serve +3 test(calendar_read)·baseline ENV repair(foreign 8 env)
+- 무엇: ①기준선 envInventory FOREIGN-fail(digest/interruption 8 env merge, docs:env 없이)→resync 커밋(3a7e73737). ②JUDGE-DRILL: 고의결함 D4-S1c(캘린더 윈도우 필터가 `toIso` 상한 무시+shape/sort-only 테스트) 주입→독립 Opus ④b가 empirical probe(`["a","b","c"]` leak)로 구체 FAIL. ③롤백→진짜 fix D4-S1c1: calendar_read MCP 툴(from/to 독립파싱→LocalCalendarProvider.listEvents 위임, 양-bound pass-through 구조적 보장). D4-S1c를 c1/c2/c3 분해.
+- 왜: 하드-카운터(firesSinceDrill=8, 마지막 드릴 fire18 이후 정확히 8 fire) 도달로 게이트 재검증 필수. 드릴로 maker≠judge 살아있음 확인 후, 결함의 올바른 버전(provider가 윈도우 필터, 툴은 양-bound 정확 전달)을 진짜-fix로 배송.
+- 리뷰지점: 드릴 judge와 c1 judge는 별개 Opus 인스턴스. 드릴 judge가 심은 결함(상한 무시·hollow test)을 empirical probe까지 돌려 잡음(rubber-stamp 아닌 적응형). c1 judge가 양-bound pass-through 구조·fail-close spy(source 미호출)·OUTCOME 채점·두 mutation 독립 재현·read-only 확인 PASS.
+- 리스크: 낮음. calendar_read는 read-only(이벤트 생성/변경 없음)·이벤트 내용서 실행 안 함. 윈도우 필터는 provider 위임이라 툴은 양-bound 전달만(drop 구조적 불가). eval:tools N/A(outbound MCP). 다음 = D4-S1c2(태스크 read)·c3(실 stdio 왕복).
+- lesson: JUDGE-DRILL "진짜 fix"는 드릴 결함의 *구조적으로 불가능한* 버전이 이상적 — ignore-upper-bound를 "from/to 독립파싱해 한 콜에 둘 다 전달"로 재설계하면 그 결함 클래스가 재발 불가(테스트 의존 아닌 구조 보장).
+
+## fire 27 · 2026-07-12 · skill v2.x · 5dcfa0b49
+meta: slice=D4-S1c2 · wave=W3 · pkg=apps/cli · kind=mcp-tasks-read · verdict=PASS · firesSinceDrill=1
+ratchet: 로드맵 잔여 [ ] = 28/59 · self-eval pass · fabrication 0 · cli mcp-serve +4 test(tasks_read)
+- 무엇: `muse mcp serve` tasks_read 툴(c1 calendar_read 대칭). status enum(open 기본/done/all)→기존 LocalFileTasksProvider.list(status) 위임, 태스크 구조화 반환(createdAt/completedAt ISO). status pass-through(정확 전달, 하드코딩 아님)·invalid status→throw+source 미호출(fail-close). McpServeDependencies에 injectable listTasks. Task 타입 domain-tools barrel 1줄 export.
+- 왜: D4-S1c(read 확대)의 태스크 조각. hermes mcp_serve read 계열 확대(recall/notes·캘린더·태스크). 외부 에이전트가 유저 to-do를 read(생성/완료/변경 불가=read-only).
+- 리뷰지점: Opus PASS — status pass-through(fake가 정확 "done"/"all" 받음, "open" 하드코딩 아님)·invalid fail-close(spy로 source 미호출)·OUTCOME 채점(status 정확·태스크 round-trip ISO)·두 mutation 독립 재현(하드코딩→pass-through RED, 가드 제거→fail-close RED)·barrel export benign(기존 Task 타입 노출, no 신규심볼)·read-only.
+- 리스크: 낮음. read-only(태스크 변경 없음). completedAt ISO 직렬화는 테스트 미직접(calendar endsAt이 동일 패턴 커버, coverage nit). eval:tools N/A(outbound MCP). 다음 = D4-S1c3(실 stdio subprocess 왕복 계약 — spawn muse mcp serve→JSON-RPC, InMemory 아닌 실프로세스). D4-S1c3 완료 시 D4-S1(mcp serve 확장) 전체 완주.
