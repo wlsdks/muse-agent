@@ -63,7 +63,7 @@ ratchet: testFiles +0(6 테스트 재작성+2 pin) · fabrication 0 · eval N/A
 리뷰지점: 미래-createdAt 가드 제거는 유일 콜사이트에서 도달 불가(판정 확인); 외부-소스 createdAt 콜러가 생기면 가드 복원(비게이팅 권고).
 리스크: 낮음.
 
-## fire 8 · 2026-07-12 · skill v2.x · (sha pending)
+## fire 8 · 2026-07-12 · skill v2.x · acfa5f6f9
 meta: value-class=baseline-restore · pkg=@muse/shared · kind=regression-fix · verdict=PASS · firesSinceDrill=8
 ratchet: 기준선 lint+envInventory 복구 · fabrication 0 · eval N/A
 무엇: 타 루프 머지發 회귀 2건 복구 — secret-patterns 정규식 불필요 이스케이프(의미보존 프로브 6입력 동일) + 미사용 import + ENV.md 재생성(MUSE_WINDOWS_ACTUATORS 추가).
