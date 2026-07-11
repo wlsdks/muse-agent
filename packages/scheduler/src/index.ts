@@ -244,3 +244,26 @@ export {
 
 export { DynamicScheduler, createSchedulerTools } from "./dynamic-scheduler.js";
 export { ActiveRunTracker, type DrainOutcome } from "./active-run-tracker.js";
+
+export {
+  createNodeOnExitSpawner,
+  defaultOnExitKillGraceMs,
+  InMemoryOnExitWatchStore,
+  maxOnExitPollMs,
+  maxOnExitTimeoutMs,
+  minOnExitPollMs,
+  minOnExitTimeoutMs,
+  OnExitScheduler,
+  OnExitWatcher,
+  validateOnExitTrigger,
+  type OnExitArmedRecord,
+  type OnExitFireHandler,
+  type OnExitSchedulerOptions,
+  type OnExitSpawnedChild,
+  type OnExitSpawner,
+  type OnExitTrigger,
+  type OnExitWatcherOptions,
+  type OnExitWatchOutcome,
+  type OnExitWatchStatus,
+  type OnExitWatchStore
+} from "./on-exit-schedule.js";
