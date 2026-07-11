@@ -3,8 +3,9 @@
 - ★ RESPONSE-EXPERIENCE (2026-07-12, 진안 직접 요청 — 20m 자율루프 `response-experience`의 전용 큐; 어시스턴트 응답 경험을 계속 더 좋게. 기반: 채널 대화 리듬(잡담 fast-path·복창 ack·인용 완료보고)·개입 예산+다이제스트·원터치 veto, 전부 main 머지됨):
   - ✓ 캔드 casual 응답 한국어 패리티 — response-experience fire 1 (CASUAL_RESPONSES_KO + containsHangul, CLI·채널 양표면)
   - ✓ 프로액티브 알림 근거 한 줄 — pattern-firing 몫: `pattern-detector.ts`의 `buildMatch`/`buildWeeklyTaskMatch`가 이미 근거절을 결정론으로 내장(`(N edits across M days)` / `(N times across M weeks)`, bucket.matches/distinctDays·distinctWeeks에서 verbatim 도출, 모델 호출 없음) — response-experience fire 2에서 확인, mutation-first pin 테스트로 못박음(packages/memory/test/pattern-detector.test.ts 2개 + packages/proactivity/test/pattern-firing-compose.test.ts 1개 강화). ambient/commitment는 미착수 — 아래 두 줄로 이관.
-  - ◦ 프로액티브 알림 근거 한 줄 — ambient 몫: `ambient-notice-loop.ts`의 `deriveAmbientNotices`는 룰 저자가 쓴 `message`를 그대로 보내 "왜 지금"이 없음; 매칭에 실제 쓰인 필드+패턴(예: `rule.match.app`에서 매칭에 실제 관여한 `[field, pattern]` 목록, 이미 함수 내부에 존재)으로 "(app에 'Slack' 포함되어 매칭)" 같은 절 결정론 생성해 `notice.text`에 덧붙임 — 저장 규칙 데이터 verbatim만, 새 판단/추론 금지.
-  - ◦ 프로액티브 알림 근거 한 줄 — commitment-checkin 몫: `buildCheckinQuestion`은 이미 약속 원문을 인용하지만 "언제 남긴 약속인지"가 없음; `PersistedCheckin.createdAt`과 발화 시각(now) 차이를 일수로 계산해 "(N일 전 남기신 약속)" 절을 결정론으로 추가 — 새 필드 fabrication 없이 기존 createdAt만 사용.
+  - ✓ 프로액티브 알림 근거 한 줄 — ambient 몫 — response-experience fire 4 (매칭 [field,pattern] verbatim 절, knowledge-trigger는 의도적 무절)
+  - ✓ 프로액티브 알림 근거 한 줄 — commitment-checkin 몫 — response-experience fire 5 (createdAt→due 기준 결정론 나이 절; 근거 3부작 pattern·ambient·commitment 완성)
+  - ◦ 체크인 나이 절을 절대 날짜로 — "(N일 전)"은 데몬 지연 배달 시 하향-오차 staleness; "(7/5에 남기신 약속)"/"(made on Jul 5)"로 교체하면 지연 불변(fire 5 판정자 권고). buildCheckinQuestion 절만 교체+테스트.
   - ◦ pattern 알림 LLM-합성(Phase-D) 경로에 근거 절 보존 요구 — 합성 프롬프트가 "(N…across M…)" 절을 유지하도록(수치 fabrication 가드는 이미 있음, 절 존재는 미보장; fire 2 판정자 발굴) 재검증 게이트 또는 프롬프트 제약 + 테스트.
   - ✓ 위임 ack 중복 억제 — response-experience fire 3 (ackAlreadySent 사이드카, at-most-once delivered ack)
   - ◦ digest 라인 injection-span 중화 검토 — digest 컴파일 라인에 recap.ts `safeRecapText`류 중화 적용 여부 결정+구현(소스 루프 컨벤션과 일관성 유지하며; 신뢰불가 텍스트가 큐를 타는 경로가 실재하는지 먼저 조사).

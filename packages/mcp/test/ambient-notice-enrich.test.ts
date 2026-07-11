@@ -18,19 +18,19 @@ describe("createAmbientNoticeRunner — knowledge enrichment", () => {
     const { delivered, runner } = setup((query) => { askedFor = query; return "[notes/acme.md] bring the Q3 deck"; });
     await runner.tick();
     expect(askedFor).toBe("Acme — Q3 Strategy — Google Docs"); // keyed on the window
-    expect(delivered[0]!.text).toBe("On the Acme doc. — Related: [notes/acme.md] bring the Q3 deck");
+    expect(delivered[0]!.text).toBe("On the Acme doc. (window에 'acme' 포함되어 매칭) — Related: [notes/acme.md] bring the Q3 deck");
   });
 
-  it("leaves the notice unchanged when the enricher finds nothing", async () => {
+  it("leaves the notice unchanged (besides its own match rationale) when the enricher finds nothing", async () => {
     const { delivered, runner } = setup(() => undefined);
     await runner.tick();
-    expect(delivered[0]!.text).toBe("On the Acme doc.");
+    expect(delivered[0]!.text).toBe("On the Acme doc. (window에 'acme' 포함되어 매칭)");
   });
 
   it("fail-soft: a throwing enricher still delivers the notice without a Related line", async () => {
     const { delivered, runner } = setup(() => { throw new Error("corpus down"); });
     await runner.tick();
     expect(delivered).toHaveLength(1);
-    expect(delivered[0]!.text).toBe("On the Acme doc.");
+    expect(delivered[0]!.text).toBe("On the Acme doc. (window에 'acme' 포함되어 매칭)");
   });
 });

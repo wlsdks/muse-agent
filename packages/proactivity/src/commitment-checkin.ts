@@ -41,13 +41,41 @@ export interface PersistedCheckin {
 }
 
 const HANGUL = /[가-힣]/u;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/** Templated, language-matched check-in question. Deterministic — no model. */
-export function buildCheckinQuestion(commitment: string): string {
+/**
+ * Full days elapsed between `createdAt` and `now`, or undefined when either
+ * is missing, `createdAt` doesn't parse, or `createdAt` is AFTER `now`
+ * (clock skew) — the caller must never assert an age it can't ground.
+ */
+function checkinAgeDays(createdAt: string | undefined, now: Date | undefined): number | undefined {
+  if (!createdAt || !now) return undefined;
+  const createdMs = Date.parse(createdAt);
+  if (!Number.isFinite(createdMs)) return undefined;
+  const diffMs = now.getTime() - createdMs;
+  return diffMs >= 0 ? Math.floor(diffMs / MS_PER_DAY) : undefined;
+}
+
+/**
+ * Templated, language-matched check-in question. Deterministic — no model.
+ * `createdAt` + `now` are optional: when given and at least one full day has
+ * elapsed, a trailing clause names how long ago the commitment was made
+ * ("(3일 전 남기신 약속)" / "(made 3 days ago)") — the evidence the user needs
+ * to place WHICH promise this is about. Same-day (0 full days) omits the
+ * clause: "made today" states nothing the question doesn't already imply.
+ * A missing/unparseable/future `createdAt` also omits it — never a claim we
+ * can't ground in the persisted timestamp.
+ */
+export function buildCheckinQuestion(commitment: string, createdAt?: string, now?: Date): string {
   const c = commitment.trim().replace(/\s+/gu, " ");
-  return HANGUL.test(c)
+  const isKorean = HANGUL.test(c);
+  const base = isKorean
     ? `요전에 "${c}" 하신다고 하셨는데, 어떻게 됐어요?`
     : `Following up — you mentioned you'd "${c}". How did it go?`;
+  const days = checkinAgeDays(createdAt, now);
+  if (days === undefined || days < 1) return base;
+  const clause = isKorean ? `(${days.toString()}일 전 남기신 약속)` : `(made ${days.toString()} day${days === 1 ? "" : "s"} ago)`;
+  return `${base} ${clause}`;
 }
 
 function normaliseKey(text: string): string {
@@ -119,7 +147,10 @@ export function scheduleCheckins(
       createdAt,
       dueAtIso: due.toISOString(),
       id: idFactory(),
-      question: buildCheckinQuestion(commitment),
+      // Age clause dated against `due` (the moment this question is actually
+      // asked), not the live clock at delivery — deterministic and knowable
+      // right here, and it survives a delayed/retried send unchanged.
+      question: buildCheckinQuestion(commitment, createdAt, due),
       sourceKey,
       status: "scheduled",
       userId: options.userId
