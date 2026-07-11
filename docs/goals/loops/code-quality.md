@@ -54,10 +54,14 @@
 - 같은 클래스 의심: resolveDotMusePath 폴백(~/.muse)을 기본으로 읽는 다른 "빈 env" 테스트가 더 있는지 스캔 후보 (autoconfigure/api 전반)
 - ~~recall-hits RMW race~~ → fire 14 검증 결과 **오탐** (recordRecallHits는 이미 recordQueues per-file 직렬화 완비, prior.then(op,op) 패턴). 재제안 금지
 - ~~multi-agent buildOrchestrationResponse 144줄 분해~~ → fire 14 집행 완료 (indexOf O(n²) 제거 보너스 포함)
-- 🔒 보안성 후보 (fire 15, 동작 변경이라 루프 밖 — 진안 확인 권장): ①mcp redactMcpSecrets가 Bearer만 가림 (Basic/X-API-Key/token= 쿼리 미커버) ②manager.ts:216 fingerprint 검증 반환 null-가드 부재
-- mcp McpManager 730줄 (lifecycle+health+catalog+audit 혼재) → 클래스 분리 후보 (대형, 신중)
+- ~~🔒 mcp 보안성 2건~~ → fire 21(배치)에서 처리: ①redactMcpSecrets 확장 출하 (Basic/Authorization 일반형/api-key 헤더/token= 파라미터, 과잉가림 허용·누출 불허 + 직접 테스트 10) ②fingerprint null-가드는 **전제 오탐** — 시그니처 non-optional + 전 반환경로 리터럴 + fs 전부 try/catch라 undefined 불가능, 죽은 가드 미추가 (재제안 금지)
+- ~~McpManager 클래스 분리~~ → fire 21에서 **opus 자문으로 기각**: 4개 Map(statuses/connections/health/tools)이 단일 name 키스페이스의 한 상태머신이라 어떤 클래스 분리도 가변 별칭 공유로 귀결. 최소안(순수 계산기 3개 추출+직접 테스트 12)만 출하, 상태 전이 코어 불가침 (재제안 금지 — 다시 오면 이 사유)
 - ⚠ repo 공유 stash 잔존: stash@{0} autostash (context-aux-summary 작업 사본 — main에 8ed66e2b3로 이미 안착 확인, 팝 안 된 잔여물). 이 루프는 건드리지 않음 — 드랍은 진안 판단
-- stores 대형 파일 분해 후보 (잔여): weakness-ledger 485줄, playbook-store 413줄(저장+리워드 엔진) — episodes는 fire 20 완료
+- ~~stores 대형 파일 분해~~ → fire 21 완료 (weakness 485→251+analytics 270 / playbook 413→337+rewards 88; adjustPlaybookReward·decay는 I/O라 저장 파일 잔류 — 워커의 원칙적 deviation, 순환 value-의존 회피)
+- ~~minutesUntil 5벌~~ → fire 21 완료 (situational-briefing의 private 중복 정의 삭제 포함)
+- ~~web i18n 고아 키~~ → fire 21 완료: 실측 고아 3개만 제거 (~151 주장은 동적 접근 오인 — 동적 prefix 4종 보호)
+- ~~shared 고아 docstring~~ → fire 21 완료
+- fire 21 부가 발견·수리: main 커밋 0477d981이 macos-contacts-import.ts에 raw 제어바이트(RS/US/GS) 반입 → shared 바이트-위생 게이트 red였음 → \uXXXX 이스케이프로 수리 (문자열 값 바이트-동일)
 - stores 동시성 스트레스 테스트 3파일(consent/veto/objectives-concurrent)은 머신 부하시 false-timeout — 알려진 클래스, 부하 낮으면 green (fire 13 확인)
 - autoconfigure buildLoopbackTools 207줄·buildRuntimeToolRegistry 279줄 → runtime-assembly와 같은 패턴 분해 후보
 - packages/shared index.ts 고아 docstring (truncateErrorBody 설명이 함수와 144줄 분리) → 이동 후보 (소형)
@@ -97,3 +101,4 @@
 | 18 | apps/web | SSE 프레임 파싱 3벌 통합(sse-frames.ts — chat/notice의 last-data-line 인라인 파서를 ask의 join-all 헬퍼로; 실트래픽 JSON 단일라인이라 관찰-동일, 잠재 divergence 제거) + readToken 2벌 → lib/token-storage.ts; 레이아웃/JSX 무변경이라 브라우저 검증 불요 | web vitest 39파일 249/249 ✓ · tsc+vite build ✓ · lint 0 ✓ |
 | 19 | apps/api (큐 집행) | tick-daemons.ts 719→664줄: 범용 factory 기각(투기적 추상화) 후 정직한 3헬퍼 — stopOnClose ×10 · optionalNumber ×23 · resolveMessagingTarget ×9(registry 동반 반환으로 타입-내로잉 보존); 다른 semantics 사이트(daily-cap 0-폴백, ?? "90")는 의도적 보존 | api build ✓ · 데몬 테스트 9파일 31/31 ✓ · lint 0 ✓ (fable 재검증) |
 | 20 | packages/stores (큐 집행) | personal-episodes-store.ts 554→286줄: 분석 계층(retention/themes/absence/consolidation, 275줄)을 episode-analytics.ts로 순수 이동 — vacuum→analytics 단방향 value import, 역참조는 type-only(런타임 순환 0), 재export로 소비자 무변경; 떠돌던 vacuum docstring 제자리 복귀 | stores build ✓ · episode 스위트 29/29 ✓ · mcp 7/7·proactivity·cli build ✓ · lint 0 ✓ |
+| 21 | 배치 (진안 지시 "큐 한번에") | sonnet 4병렬(stores 2분해·mcp 보안·proactivity+shared 소형·web i18n) + opus 설계자문(McpManager — 분리 기각·최소안) + sonnet 구현 + fable 직접수리(macos raw 제어바이트). 오탐 2건 추가 기각(fingerprint·i18n 151), 원칙적 deviation 1건 승인(playbook I/O 잔류) | stores 116/116(격리)+flake 트리오 8/8 ✓ · mcp 800/800 ✓ · proactivity 113/113 ✓ · shared 47/47 ✓(위생 게이트 복구) · web 249/249 ✓ · macos 215/215 ✓ · lint 0 ✓ |
