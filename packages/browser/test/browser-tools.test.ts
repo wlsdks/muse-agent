@@ -949,3 +949,70 @@ describe("browser_fill_form — multi-field, ONE draft-first approval, fail-clos
     expect(c.calls).toEqual([]);
   });
 });
+
+describe("browser action budget — bounds click/type/fill so a task cannot run away (D1-S7b2)", () => {
+  const exhausted = { allowed: false as const, label: "actions_used 3/3", refusal: "budget exhausted (cap 3)" };
+  const allowedFirst = { allowed: true as const, label: "actions_used 1/3" };
+  const allowedWithWarning = { allowed: true as const, label: "actions_used 2/3", warning: "wrap up soon" };
+
+  it("browser_click refuses once the budget is exhausted, WITHOUT calling the controller", async () => {
+    const c = new FakeController();
+    const tool = createBrowserClickTool({ actionBudget: { tryConsume: () => exhausted }, approvalGate: allow, controller: c });
+    const out = await tool.execute({ target: "Sign in" }, ctx) as { clicked: boolean; reason?: string; actionsUsed?: string };
+    expect(out.clicked).toBe(false);
+    expect(String(out.reason)).toMatch(/exhaust|cap/i);
+    expect(out.actionsUsed).toBe("actions_used 3/3");
+    expect(c.calls.some((call) => call.startsWith("click:"))).toBe(false);
+  });
+
+  it("browser_type refuses once the budget is exhausted, WITHOUT calling the controller", async () => {
+    const c = new FakeController();
+    const tool = createBrowserTypeTool({ actionBudget: { tryConsume: () => exhausted }, approvalGate: allow, controller: c });
+    const out = await tool.execute({ target: "Email", text: "hi" }, ctx) as { typed: boolean; reason?: string; actionsUsed?: string };
+    expect(out.typed).toBe(false);
+    expect(String(out.reason)).toMatch(/exhaust|cap/i);
+    expect(out.actionsUsed).toBe("actions_used 3/3");
+    expect(c.calls.some((call) => call.startsWith("type:"))).toBe(false);
+  });
+
+  it("browser_fill_form refuses once the budget is exhausted, WITHOUT calling the controller", async () => {
+    const c = new FakeController();
+    const tool = createBrowserFillFormTool({ actionBudget: { tryConsume: () => exhausted }, approvalGate: allow, controller: c });
+    const out = await tool.execute({ fields: [{ target: "Email", value: "a@b.com" }, { target: "Password", value: "hunter2" }] }, ctx) as {
+      filled: boolean; reason?: string; actionsUsed?: string;
+    };
+    expect(out.filled).toBe(false);
+    expect(String(out.reason)).toMatch(/exhaust|cap/i);
+    expect(out.actionsUsed).toBe("actions_used 3/3");
+    expect(c.calls.some((call) => call.startsWith("type:"))).toBe(false);
+  });
+
+  it("browser_click proceeds when allowed, and attaches the actionsUsed label", async () => {
+    const c = new FakeController();
+    const tool = createBrowserClickTool({ actionBudget: { tryConsume: () => allowedFirst }, approvalGate: allow, controller: c });
+    const out = await tool.execute({ target: "Sign in" }, ctx) as { clicked: boolean; actionsUsed?: string };
+    expect(out.clicked).toBe(true);
+    expect(out.actionsUsed).toBe("actions_used 1/3");
+    expect(c.calls.some((call) => call.startsWith("click:"))).toBe(true);
+  });
+
+  it("browser_click surfaces a near-cap budgetWarning when the guard reports one", async () => {
+    const c = new FakeController();
+    const tool = createBrowserClickTool({ actionBudget: { tryConsume: () => allowedWithWarning }, approvalGate: allow, controller: c });
+    const out = await tool.execute({ target: "Sign in" }, ctx) as { clicked: boolean; budgetWarning?: string };
+    expect(out.clicked).toBe(true);
+    expect(out.budgetWarning).toBe("wrap up soon");
+  });
+
+  it("with NO actionBudget wired, click/type/fill behave byte-identically to before (no actionsUsed field, no budgetWarning)", async () => {
+    const c = new FakeController();
+    const clickOut = await createBrowserClickTool({ approvalGate: allow, controller: c }).execute({ target: "Sign in" }, ctx) as Record<string, unknown>;
+    expect("actionsUsed" in clickOut).toBe(false);
+    expect("budgetWarning" in clickOut).toBe(false);
+
+    const c2 = new FakeController();
+    const typeOut = await createBrowserTypeTool({ approvalGate: allow, controller: c2 }).execute({ target: "Email", text: "hi" }, ctx) as Record<string, unknown>;
+    expect("actionsUsed" in typeOut).toBe(false);
+    expect("budgetWarning" in typeOut).toBe(false);
+  });
+});

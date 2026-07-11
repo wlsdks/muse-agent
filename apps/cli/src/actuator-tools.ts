@@ -12,6 +12,7 @@
 
 import { randomUUID } from "node:crypto";
 
+import { createBrowserActionTracker } from "@muse/agent-core";
 import type { MuseEnvironment } from "@muse/autoconfigure";
 import { resolveActionLogFile, resolveContactsFile } from "@muse/autoconfigure";
 import { recordPendingApproval } from "@muse/messaging";
@@ -52,6 +53,7 @@ import {
 import type { MuseTool } from "@muse/tools";
 import { confirm, isCancel } from "@clack/prompts";
 
+import { resolveBrowserMaxActions } from "./browser-action-budget-config.js";
 import type { ProgramIO } from "./program.js";
 
 export interface ActuatorSummary {
@@ -332,6 +334,8 @@ export interface BrowserToolsDeps {
   readonly onController?: (controller: BrowserController) => void;
   /** Local vision callback for browser_look (bound by the CLI to the assembly's model). Absent ⇒ browser_look is omitted. */
   readonly describeImage?: (input: { readonly imageBase64: string; readonly mimeType: string; readonly question?: string }) => Promise<{ readonly ok: boolean; readonly text?: string; readonly error?: string }>;
+  /** Source of MUSE_BROWSER_MAX_ACTIONS for the per-task action budget. Defaults to process.env. */
+  readonly env?: Record<string, string | undefined>;
 }
 
 /**
@@ -359,6 +363,9 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
   // through the SAME allowlist + symlink guard file_read uses (Downloads /
   // Desktop / Documents). The validator is injected, never an allow-all read.
   const validatePath = createAllowlistPathValidator({ roots: defaultFileReadRoots() });
+  // A single shared per-task budget across click/type/fill — an 8B model
+  // stuck in a retry loop is bounded rather than free to act indefinitely.
+  const actionBudget = createBrowserActionTracker(resolveBrowserMaxActions(deps.env ?? process.env));
   return [
     createBrowserOpenTool({ controller }),
     createBrowserReadTool({ controller }),
@@ -367,9 +374,9 @@ export function buildBrowserTools(deps: BrowserToolsDeps): MuseTool[] {
     createBrowserWaitTool({ controller }),
     createBrowserHoverTool({ controller }),
     createBrowserKeyTool({ approvalGate: gate, controller }),
-    createBrowserClickTool({ approvalGate: gate, controller }),
-    createBrowserTypeTool({ approvalGate: gate, controller }),
-    createBrowserFillFormTool({ approvalGate: gate, controller }),
+    createBrowserClickTool({ actionBudget, approvalGate: gate, controller }),
+    createBrowserTypeTool({ actionBudget, approvalGate: gate, controller }),
+    createBrowserFillFormTool({ actionBudget, approvalGate: gate, controller }),
     createBrowserUploadTool({ approvalGate: gate, controller, validatePath }),
     // browser_look (vision over the page) only when a vision callback is wired.
     ...(deps.describeImage ? [createBrowserLookTool({ controller, describeImage: deps.describeImage })] : [])

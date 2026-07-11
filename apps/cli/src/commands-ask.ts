@@ -635,6 +635,7 @@ Examples:
       if (options.withTools === true) {
         const actuatorMod = await import("./actuator-tools.js");
         const browserTools = actuatorMod.buildBrowserTools({
+          env: process.env,
           io,
           onController: (controller) => { browserControllerToRelease = controller; },
           // browser_look reads the page visually via the same local vision the
