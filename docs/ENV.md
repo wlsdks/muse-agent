@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **541** variables.
+Total: **547** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -54,7 +54,13 @@ Total: **541** variables.
 | `MUSE_AUTH_JWT_SECRET` | apps/cli, packages/autoconfigure |
 | `MUSE_AUTH_MAX_USERS` | packages/autoconfigure |
 | `MUSE_AUTH_SECRETS_FILE` | apps/cli, packages/autoconfigure |
+| `MUSE_AUX_` | packages/autoconfigure |
 | `MUSE_AUX_COMPACTION` | packages/autoconfigure |
+| `MUSE_AUX_COMPACTION_MODEL` | packages/autoconfigure |
+| `MUSE_AUX_EMBEDDING_RESCUE_MODEL` | packages/autoconfigure |
+| `MUSE_AUX_JUDGE_MODEL` | packages/autoconfigure |
+| `MUSE_AUX_REWRITE_MODEL` | packages/autoconfigure |
+| `MUSE_AUX_VISION_MODEL` | packages/autoconfigure |
 | `MUSE_BACKGROUND_PROCESSES_FILE` | packages/stores |
 | `MUSE_BACKGROUND_REVIEW_ENABLED` | apps/api, apps/cli, packages/autoconfigure |
 | `MUSE_BACKGROUND_REVIEW_MEMORY_TURNS` | apps/cli, packages/autoconfigure |
@@ -396,7 +402,7 @@ Total: **541** variables.
 | `MUSE_RATE_LIMIT_CHAT_DISABLED` | apps/api |
 | `MUSE_RATE_LIMIT_CHAT_PER_MINUTE` | apps/api |
 | `MUSE_RECALL_BM25` | packages/autoconfigure |
-| `MUSE_RECALL_EMBED_MODEL` | apps/cli |
+| `MUSE_RECALL_EMBED_MODEL` | apps/cli, packages/autoconfigure |
 | `MUSE_RECALL_HITS_FILE` | packages/autoconfigure |
 | `MUSE_RECALL_SECOND_HOP` | packages/autoconfigure, packages/recall |
 | `MUSE_RECALL_TEST_QUERY_EMBEDDING` | apps/cli |

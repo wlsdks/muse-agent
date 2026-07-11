@@ -164,7 +164,18 @@ export { describeOfficialMcpPosture, type OfficialMcpPresetPosture } from "./off
  * runs `node apps/api/dist/index.js` should get a working chat
  * endpoint without having to also set `MUSE_MODEL`.
  */
-export { createModelProvider, createModelProviderFor, LOCAL_FIRST_DEFAULT_MODEL, LOCAL_FIRST_VISION_MODEL, resolveAnswerTemperature, resolveDefaultModel, resolveVisionModel } from "./autoconfigure-model-provider.js";
+export {
+  createModelProvider,
+  createModelProviderFor,
+  LOCAL_FIRST_DEFAULT_MODEL,
+  LOCAL_FIRST_VISION_MODEL,
+  resolveAnswerTemperature,
+  resolveAuxiliaryModel,
+  resolveDefaultModel,
+  resolveVisionModel,
+  type AuxiliaryModelResolution,
+  type AuxiliaryTask
+} from "./autoconfigure-model-provider.js";
 
 export {
   parseBoolean,
