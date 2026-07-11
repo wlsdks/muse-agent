@@ -36,31 +36,44 @@ describe("buildCheckinQuestion", () => {
     expect(buildCheckinQuestion("finish the slides")).toBe('Following up — you mentioned you\'d "finish the slides". How did it go?');
   });
 
-  it("appends an N-day age clause (KO) when createdAt/now are given and full days elapsed", () => {
-    const q = buildCheckinQuestion("내일 면접 준비", "2026-05-01T09:00:00.000Z", new Date("2026-05-04T09:30:00.000Z"));
-    expect(q).toBe('요전에 "내일 면접 준비" 하신다고 하셨는데, 어떻게 됐어요? (3일 전 남기신 약속)');
+  it("appends an ABSOLUTE-date clause (KO), no year when createdAt's year matches `now`'s", () => {
+    const createdAt = new Date(2026, 6, 5, 9, 0, 0).toISOString(); // Jul 5 2026, local
+    const q = buildCheckinQuestion("내일 면접 준비", createdAt, new Date(2026, 6, 8, 9, 0, 0));
+    expect(q).toBe('요전에 "내일 면접 준비" 하신다고 하셨는데, 어떻게 됐어요? (7/5에 남기신 약속)');
   });
 
-  it("appends an N-day age clause (EN), singular 'day' for exactly one day", () => {
-    const q5 = buildCheckinQuestion("finish the slides", "2026-05-01T09:00:00.000Z", new Date("2026-05-06T09:00:00.000Z"));
-    expect(q5).toBe('Following up — you mentioned you\'d "finish the slides". How did it go? (made 5 days ago)');
-    const q1 = buildCheckinQuestion("finish the slides", "2026-05-01T09:00:00.000Z", new Date("2026-05-02T09:00:00.000Z"));
-    expect(q1).toBe('Following up — you mentioned you\'d "finish the slides". How did it go? (made 1 day ago)');
+  it("appends an ABSOLUTE-date clause (EN), no year when createdAt's year matches `now`'s", () => {
+    const createdAt = new Date(2026, 6, 5, 9, 0, 0).toISOString(); // Jul 5 2026, local
+    const q = buildCheckinQuestion("finish the slides", createdAt, new Date(2026, 6, 8, 9, 0, 0));
+    expect(q).toBe('Following up — you mentioned you\'d "finish the slides". How did it go? (made on Jul 5)');
   });
 
-  it("omits the clause on the SAME calendar-relative day (0 full days elapsed) — 'made today' adds no information", () => {
-    const q = buildCheckinQuestion("내일 면접 준비", "2026-05-01T09:00:00.000Z", new Date("2026-05-01T20:00:00.000Z"));
-    expect(q).toBe('요전에 "내일 면접 준비" 하신다고 하셨는데, 어떻게 됐어요?');
+  it("shows the absolute date even for a SAME-day commitment — unlike a relative clause, a date is never wrong", () => {
+    const createdAt = new Date(2026, 6, 5, 9, 0, 0).toISOString();
+    const q = buildCheckinQuestion("내일 면접 준비", createdAt, new Date(2026, 6, 5, 20, 0, 0));
+    expect(q).toBe('요전에 "내일 면접 준비" 하신다고 하셨는데, 어떻게 됐어요? (7/5에 남기신 약속)');
   });
 
-  it("omits the clause, fail-closed, when createdAt is missing, invalid, or in the future relative to now", () => {
-    const now = new Date("2026-05-04T09:00:00.000Z");
+  it("includes the YEAR (KO + EN) when createdAt's local year predates `now`'s local year", () => {
+    const createdAt = new Date(2025, 6, 5, 9, 0, 0).toISOString(); // Jul 5 2025
+    const now = new Date(2026, 4, 1, 9, 0, 0); // May 2026
+    const qKo = buildCheckinQuestion("내일 면접 준비", createdAt, now);
+    expect(qKo).toBe('요전에 "내일 면접 준비" 하신다고 하셨는데, 어떻게 됐어요? (2025/7/5에 남기신 약속)');
+    const qEn = buildCheckinQuestion("finish the slides", createdAt, now);
+    expect(qEn).toBe('Following up — you mentioned you\'d "finish the slides". How did it go? (made on Jul 5, 2025)');
+  });
+
+  it("omits the clause, fail-closed, ONLY when createdAt is missing or unparseable", () => {
+    const now = new Date(2026, 4, 4, 9, 0, 0);
     const base = '요전에 "내일 면접 준비" 하신다고 하셨는데, 어떻게 됐어요?';
     expect(buildCheckinQuestion("내일 면접 준비", undefined, now)).toBe(base);
     expect(buildCheckinQuestion("내일 면접 준비", "not-a-date", now)).toBe(base);
-    expect(buildCheckinQuestion("내일 면접 준비", "2026-05-01T09:00:00.000Z", undefined)).toBe(base);
-    // createdAt AFTER now — clock skew, never assert a claim we can't ground.
-    expect(buildCheckinQuestion("내일 면접 준비", "2026-05-10T09:00:00.000Z", now)).toBe(base);
+  });
+
+  it("still shows the date (without a year) when `now` is omitted — `now` only disambiguates the year, it never gates the date itself", () => {
+    const createdAt = new Date(2026, 4, 1, 9, 0, 0).toISOString(); // May 1
+    const q = buildCheckinQuestion("내일 면접 준비", createdAt, undefined);
+    expect(q).toBe('요전에 "내일 면접 준비" 하신다고 하셨는데, 어떻게 됐어요? (5/1에 남기신 약속)');
   });
 });
 
@@ -194,10 +207,9 @@ describe("scheduleCheckins", () => {
     expect(out[2]!.dueAtIso).toBe(new Date(2026, 4, 9, 10, 0, 0).toISOString());
   });
 
-  it("bakes the age-at-due clause into the persisted question, computed from createdAt vs the check-in's own due time", () => {
+  it("bakes the ABSOLUTE createdAt date into the persisted question — stays correct even if delivery is delayed", () => {
     const out = scheduleCheckins(["여권 갱신 다음 주에 해야 해"], { now: NOW, userId: "stark", slotHour: 10 });
-    // offset +8 days from NOW → the question, asked at `due`, names ~8 days having elapsed.
-    expect(out[0]!.question).toMatch(/\(\d일 전 남기신 약속\)$/u);
+    expect(out[0]!.question).toMatch(/\(\d{1,2}\/\d{1,2}에 남기신 약속\)$/u);
     expect(out[0]!.question).toContain("어떻게 됐어요?");
   });
 
