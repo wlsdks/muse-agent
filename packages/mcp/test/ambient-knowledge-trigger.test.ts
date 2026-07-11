@@ -103,6 +103,14 @@ describe("createAmbientNoticeRunner — knowledge-triggered (no rule needed)", (
     expect(calls).toBe(2);
   });
 
+  it("delivers the enrich() result verbatim — no rule-match rationale clause (no field/pattern evidence exists to build one from)", async () => {
+    const { delivered, runner, set } = setup((q) =>
+      q.toLowerCase().includes("q3 budget") ? "[notes/finance.md] Q3 ad spend capped at 12k" : undefined);
+    set({ window: "Q3 budget — Notion" });
+    await runner.tick();
+    expect(delivered[0]?.text).toBe("[notes/finance.md] Q3 ad spend capped at 12k");
+  });
+
   it("uses the configured title", async () => {
     let current: AmbientSignal | undefined = { window: "Q3 budget" };
     const delivered: { title: string }[] = [];
