@@ -10,6 +10,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **Save a new contact — with your confirmation.** "save Ada's number as a
+  contact" now adds the person to your Apple Contacts, but only after you
+  confirm the exact name, phone, and email. If you decline (or Muse can't ask
+  you), nothing is written.
+
 - **Turn Bluetooth on or off by asking.** "turn on bluetooth" / "블루투스 꺼줘"
   now toggles Bluetooth. Because macOS has no built-in command for it, this runs
   a small Shortcut you set up once (Muse tells you exactly how if it's missing),

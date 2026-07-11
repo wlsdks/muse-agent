@@ -1264,7 +1264,7 @@ async function buildFileWriteScenario() {
 }
 
 // The macOS native-app actuator family (mac_shortcut_run / mac_app_read /
-// mac_message_send) exposed ALONGSIDE its nearest confusables: web_action (act
+// mac_message_send / mac_contacts_write) exposed ALONGSIDE its nearest confusables: web_action (act
 // on a web page) and knowledge_search (recall over notes). The local model must
 // route a "run my shortcut" to mac_shortcut_run (not web_action), a "what's
 // playing / clipboard" read to mac_app_read (not knowledge_search), and a "text
@@ -1287,6 +1287,7 @@ async function buildMacActuatorScenario() {
       mac.createMacSpotlightSearchTool(),
       mac.createMacSayTool(),
       mac.createMacMessageSendTool({ approvalGate: {}, actionLog: async () => {}, userId: "eval" }),
+      mac.createMacContactsWriteTool({ approvalGate: {}, actionLog: async () => {}, userId: "eval" }),
       mcp.createWebActionTool({ fetchImpl: fetch, approvalGate: {}, actionLogFile: "/tmp/eval-mac.json", userId: "eval" }),
       ac.createNotesKnowledgeSearchTool({})
     ];
@@ -1301,6 +1302,8 @@ async function buildMacActuatorScenario() {
       { prompt: "What does the error dialog on my screen say?", expectTool: "mac_screen_read", note: "EN read an on-screen error → mac_screen_read (NOT mac_screenshot/knowledge_search)" },
       { prompt: "Text jane@icloud.com that I'll be 10 minutes late.", expectTool: "mac_message_send", requireArgs: ["to", "body"], note: "EN iMessage send → mac_message_send (NOT web_action/email)" },
       { prompt: "+14155551212로 회의 5분 늦는다고 문자 보내줘.", expectTool: "mac_message_send", requireArgs: ["to", "body"], note: "KO iMessage send → mac_message_send (user's language)" },
+      { prompt: "Save Ada's number +1 555 0100 as a contact.", expectTool: "mac_contacts_write", requireArgs: ["name"], note: "EN save a new contact → mac_contacts_write (NOT mac_message_send — no message being sent)" },
+      { prompt: "지안 번호 010-1234-5678 연락처에 저장해줘.", expectTool: "mac_contacts_write", requireArgs: ["name"], note: "KO save a new contact → mac_contacts_write (user's language)" },
       { prompt: "Open Safari.", expectTool: "mac_app_open", requireArgs: ["target"], note: "EN open an app → mac_app_open (NOT shortcut_run)" },
       { prompt: "이 링크 좀 열어줘: https://news.example.com", expectTool: "mac_app_open", requireArgs: ["target"], note: "KO open a URL → mac_app_open (NOT web_action)" },
       { prompt: "Pause the music.", expectTool: "mac_media_control", requireArgs: ["action"], note: "EN pause playback → mac_media_control (NOT mac_app_read)" },
@@ -1346,7 +1349,8 @@ async function buildMacActuatorScenario() {
       // person (same risk class as email_send). And a COMMENT about media must not
       // fire the mac_media_control actuator (pause/skip).
       { prompt: "Bob한테 문자 보낼까 말까 고민 중이야.", expectNoTool: true, note: "KO 'I'm debating whether to text Bob' → NO tool (deliberation, NOT mac_message_send — outbound)" },
-      { prompt: "이 플레이리스트 진짜 잘 만들었다.", expectNoTool: true, note: "KO 'this playlist is really well made' → NO tool (a comment, NOT mac_media_control — no pause/skip command)" }
+      { prompt: "이 플레이리스트 진짜 잘 만들었다.", expectNoTool: true, note: "KO 'this playlist is really well made' → NO tool (a comment, NOT mac_media_control — no pause/skip command)" },
+      { prompt: "I should probably add Jane to my contacts at some point.", expectNoTool: true, note: "EN musing about a future intent, no name/number given → NO mac_contacts_write (nothing concrete to draft yet)" }
     ];
     return { label: "macos-actuators (mac_* confusable set)", tools, cases: cases.filter((c) => c.expectNoTool || byName.has(c.expectTool)) };
   } catch (error) {

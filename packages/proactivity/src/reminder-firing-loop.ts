@@ -2,7 +2,7 @@ import type { MessagingProviderRegistry } from "@muse/messaging";
 import { composeIdentityPrompt } from "@muse/prompts";
 
 import { sendWithRetry } from "@muse/mcp-shared";
-import { appendReminderHistory } from "@muse/stores";
+import { appendReminderHistory, withProcessLock } from "@muse/stores";
 import {
   filterReminders,
   fireReminder,
@@ -28,6 +28,16 @@ import type {
  * The function is data-only — `registry` and `now` are injected so
  * tests can supply fakes without touching env or the real
  * messenger APIs.
+ *
+ * The whole select→send→mark section runs under the cross-process
+ * `withProcessLock` (`${options.file}.firing.lock`, generalized from the
+ * digest flush's `withDigestLock` — `@muse/stores/digest-lock.ts`) because the
+ * api daemon's tick and the CLI daemon's tick read the SAME reminders
+ * file: without a real lock both can read a reminder as due and both
+ * deliver it before either marks it fired. A LIVE held lock returns
+ * `outcome: "lock-held"` immediately with no send attempted; a broken
+ * lock (non-contention fs error) fails OPEN — the tick still runs
+ * unlocked rather than silently skipping reminders.
  */
 
 export interface RunDueRemindersOptions {
@@ -67,9 +77,30 @@ export interface RunDueRemindersSummary {
   readonly due: number;
   readonly errors: readonly string[];
   readonly fired: readonly PersistedReminder[];
+  /** Set only when another daemon held the firing lock for this tick — no
+   *  read, send, or mark was attempted at all. Absent on every other path. */
+  readonly outcome?: "lock-held";
 }
 
 export async function runDueReminders(options: RunDueRemindersOptions): Promise<RunDueRemindersSummary> {
+  const lockPath = `${options.file}.firing.lock`;
+  const lockOutcome = await withProcessLock(lockPath, () => runDueRemindersUnderLock(options));
+  if (lockOutcome.kind === "lock-held") {
+    return { delivered: 0, due: 0, errors: [], fired: [], outcome: "lock-held" };
+  }
+  if (lockOutcome.lockError !== undefined) {
+    // Fail-open on a BROKEN lock (not contention): the tick still ran,
+    // unlocked, so this degrades to the pre-lock duplicate-delivery risk
+    // rather than silencing reminders.
+    return {
+      ...lockOutcome.value,
+      errors: [`reminder-tick: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
+    };
+  }
+  return lockOutcome.value;
+}
+
+async function runDueRemindersUnderLock(options: RunDueRemindersOptions): Promise<RunDueRemindersSummary> {
   const now = options.now ?? (() => new Date());
   const all = await readReminders(options.file);
   const due = filterReminders(all, "due", now);

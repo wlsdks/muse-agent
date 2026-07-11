@@ -28,3 +28,13 @@ ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · adversarialCases 1
 1차 Opus 심판 FAIL → 수리: ①registry 우회(notes-multi/tasks-multi가 hunter2 실제 저장 실증) 봉쇄 ②credential-label 과차단([A-Za-z]{8,} 분기가 "the secret ingredient is patience" 차단) + 그게 공유 SECRET_PATTERNS에 있어 redactor가 메모리/히스토리까지 훼손 → GUARD_ONLY_PATTERNS로 분리(findSecretsForGuard), 값에 숫자/기호 필수. 2차 심판 PASS.
 리스크/백로그: (★NEXT) muse.calendar add/update 무가드 — 라이브로 라벨 시크릿이 평문 캘린더 JSON 저장 실증, 같은 클래스. (B) CLI muse remember는 store 직접 호출로 가드 우회(단 memory는 암호화됨=저severity). (C) 차단 통보가 모델 거짓보고로 안 전달 — 결정론 표면화 필요. (D) 근본화: provider registry save/add seam에 가드(툴마다 붙이면 우회 재발).
 lesson: "가드는 있는데 표면이 우회" 세 번째 반복(정체성·행동주장·시크릿) — 새 가드는 반드시 registry/provider seam에 박고 모든 툴 투영을 grep 전수. 그리고 프로버 주장은 반드시 fable이 직접 재현(3주장 중 2개 오판이었다).
+
+## fire 4 · 2026-07-12 · bd694c292
+meta: value-class=safety-fix+refactor · pkg=@muse/shared,@muse/domain-tools · kind=root-cause-guard · verdict=PASS(opus) · firesSinceDrill=4
+probe: 멀티턴 문맥·숫자/날짜추론·코드스위칭·압박하 환각·과잉거절·공감간결 10축 → 전부 GOOD(회귀 0). 앞선 4 fire 수정 안정 확인. 유일 tightening=기술질문 장황(별 축, 백로그).
+ratchet: identity 12/12 ×2 · MODEL_LEAK 0 · SYCOPHANT 0 · adversarialCases 24→26 · seam clean · secret-guard-coverage clean
+무엇: calendar add/update 시크릿 가드(Opus가 지정한 next, 라이브 실증됐던 평문 저장 구멍) + **근본 해결**: assertNoSecretInPersistedFields(fields) 공유 헬퍼로 9개 영속화 툴 통합 + check:secret-guard-coverage 드리프트 가드(risk:"write" 툴이 가드 없이 자유텍스트 저장하면 CI 실패). 감사 중 contacts.relationship·followups.reason 미가드 2개 추가 발견·수리.
+왜: "가드는 있는데 표면이 우회" 5번째 → 개별 배선이 아니라 구조로 종결(단일 헬퍼 + 드리프트 CI). 빌더가 자기 리팩터의 필드순서 버그(Object.values 순서)를 스스로 잡고 회귀 테스트로 고정.
+리뷰지점: Opus 7기준 PASS(리팩터 무약화 뮤테이션 2툴 RED, 드리프트가드 진짜 발화, 라이브 calendar.add 강제 후 가드 발화 확인).
+리스크/백로그: (A) 드리프트 감지기가 readString(args,"listed-name") 컨벤션만 커버 — 직접 args["x"] 접근이나 새 필드명(description/memo/address)은 놓침. (B) credential-label 값-먼저 순서 미탐(이론적, 실 호출부 전부 라벨-먼저). (C) 차단된 쓰기에 모델이 "추가했어" 서술(보안불변식은 지켜짐, 서술만 부정직).
+lesson: 재발 클래스는 개별 수리 5번보다 드리프트 CI 게이트 1개가 종결한다 — "다음 표면이 반드시 합류해야 하는 행동 레지스트리"가 정답.

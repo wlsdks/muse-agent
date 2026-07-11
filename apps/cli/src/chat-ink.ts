@@ -59,6 +59,7 @@ import {
   type RecurringThread
 } from "./chat-ink-core.js";
 import { isQuiet } from "./cli-context.js";
+import { slashCommandsForPlatform } from "./slash-command-registry.js";
 import { parseAnswerMarkdown, type MdBlock, type MdListItem, type MdSpan } from "./chat-markdown.js";
 import { type AgentDef } from "./commands-agents.js";
 import { type ChatGrounding } from "./chat-grounding.js";
@@ -69,35 +70,7 @@ export { runChatInk } from "./chat-ink-run.js";
 
 const h = React.createElement;
 
-const SLASH_COMMANDS: readonly { readonly cmd: string; readonly desc: string }[] = [
-  { cmd: "help", desc: "show command help" },
-  { cmd: "new", desc: "new conversation (clear context)" },
-  { cmd: "clear", desc: "clear the screen (keep context)" },
-  { cmd: "model", desc: "show the current model" },
-  { cmd: "agents", desc: "list defined agents" },
-  { cmd: "agent", desc: "switch agent — /agent <name> (default to clear)" },
-  { cmd: "skills", desc: "list installed skills + how to add" },
-  { cmd: "today", desc: "morning briefing — tasks, calendar, weather, headlines" },
-  { cmd: "tools", desc: "toggle tools (reads run; writes/actions ask first)" },
-  { cmd: "job", desc: "run a long task in the background — /job <prompt>" },
-  { cmd: "jobs", desc: "show recent background jobs + status" },
-  { cmd: "orchestrate", desc: "fan out to background sub-agents — /orchestrate <prompt>" },
-  { cmd: "memory", desc: "show what Muse remembers about you" },
-  { cmd: "remember", desc: "teach a fact — /remember <key>=<value>" },
-  { cmd: "pref", desc: "set a preference — /pref <key>=<value>" },
-  { cmd: "recall", desc: "search past notes + episodes — /recall <query>" },
-  { cmd: "reflect", desc: "reflect on patterns across your past sessions" },
-  { cmd: "forget", desc: "forget one thing — /forget <key> (or --all)" },
-  { cmd: "trust", desc: "show this user's trusted + blocked tools" },
-  { cmd: "persona", desc: "show the active persona slot" },
-  { cmd: "history", desc: "how many turns are in context" },
-  { cmd: "compact", desc: "preview compaction (no arg), or /compact <topic> to compact now, focused on that topic" },
-  { cmd: "undo", desc: "roll back the last exchange — /undo <N> to roll back N (1-20)" },
-  { cmd: "save", desc: "save the last reply to a note file" },
-  { cmd: "copy", desc: "copy the last reply to the clipboard" },
-  { cmd: "cost", desc: "show this session's token usage" },
-  { cmd: "exit", desc: "quit Muse (ctrl-c)" }
-];
+const SLASH_COMMANDS = slashCommandsForPlatform("chat");
 
 // Third-party-outbound actuators: in chat these reach the fail-closed
 // approval gate, which flags them louder ("Outbound action") and never sends

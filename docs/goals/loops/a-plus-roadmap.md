@@ -271,3 +271,30 @@ ratchet: 로드맵 잔여 [ ] = 27/63(D4-S2d 밝기 분리 +1, d 체크 -1) · s
 - 리뷰지점: Opus PASS — 이름 해소 정확(bluetooth_off→off shortcut, override 우선)·setup message가 focus 아닌 Bluetooth·shortcut argv라 shell 인젝션 없음·doctor check 완전 배선(focus 옆 별개 check, focus test 무영향)+ok/warn/undefined/override 테스트·mutation-RED(이름 무력화→override/off RED)·additionalProperties 유지·docs:env.
 - 리스크: 낮음. eval:tools 로컬셋 heavy timeout(가산 enum). 다음 = D4-S2e(Apple 연락처 '쓰기' draft-first 게이트 — 이건 write toward 사람 아닌 로컬 store지만 outbound-safety 근접이라 신중).
 - lesson: 서브에이전트가 "off-scope 파일 회피"로 함수만 만들고 미배선 남기면 dead code=드릴 결함 클래스 → 오케스트레이터가 배선+테스트로 마감. 별개 함수를 별개 check로 배선하면 기존 pinned test 무영향(확장이 아니라 병렬 추가).
+
+## fire 33 · 2026-07-12 · skill v2.x · c5e6dab25
+meta: slice=BASELINE-REPAIR(foreign) · wave=W3 · pkg=@muse/shared+docs · kind=baseline-repair · verdict=PASS · firesSinceDrill=7
+ratchet: 로드맵 잔여 [ ] = 27/63(무변, 슬라이스 없음) · self-eval 회복(lint+envInventory FOREIGN-fail→green) · fabrication 0
+- 무엇: ① 기준선 non-zero(lint:fail+envInventory:fail 둘 다 FOREIGN) → 규칙대로 회귀 수리가 이번 fire 전부(새 슬라이스 금지). (1) 동시 secret-detection 루프가 secret-patterns.ts에 char-class 내 불필요 `\/` escape 3개+test unused findSecrets import 커밋(no-useless-escape/no-unused-vars) → `\/`→`/`(char class서 동일)·import 제거, secret 72 test green(동작 불변). (2) Windows 루프가 MUSE_WINDOWS_ACTUATORS를 docs:env 없이 추가 → docs:env resync.
+- 왜: 두 회귀가 repo-wide lint(0/0)+envInventory 게이트를 막아 내 진행도 차단(공유 baseline). 트리 clean(미커밋 foreign 0)이라 committed 에러 수리 안전. ①이 "non-zero면 회귀 수리가 fire 전부" 명시.
+- 리뷰지점: regex 동작 불변(char class 내 `\/`≡`/`) 72 test로 확인·docs:env는 생성물·내 파일 3개만 격리 커밋. Opus 게이트 불요(피처 변경 0, 결정론 수리).
+- 리스크: 낮음. foreign src(secret-patterns.ts) 편집이나 committed lint 수리(피처 로직 무접촉)+트리 clean이라 충돌 위험 낮음. 동시 루프가 같은 줄 재수정 시 git merge. 다음 = D4-S2e(Apple 연락처 draft-first) — baseline green 회복됐으니 재개.
+- lesson: repo-wide 게이트(lint/envInventory) FOREIGN-fail이 지속되면 내 슬라이스 게이트도 막히므로 baseline-repair fire로 일회 수리(피처 로직 무접촉 트리비얼 수리+생성물 sync만) — 단 foreign 활성-churn src는 여전히 회피, committed-정적 에러만.
+
+## fire 34 · 2026-07-12 · skill v2.x · 5d642a982
+meta: slice=JUDGE-DRILL+D4-S2e · wave=W3 · pkg=@muse/macos+apps/cli · kind=judge-drill+contacts-write-draftfirst · verdict=PASS · firesSinceDrill=0(리셋) · ★D4-S2 완주
+ratchet: 로드맵 잔여 [ ] = 26/63 · self-eval pass · fabrication 0 · macos +6·cli-gate +3 test · toolCases 371→374(eval:tools 골든)
+- 무엇: ①기준선 green(fire33 repair 유지). ②JUDGE-DRILL: 고의결함 D4-S2e contacts-write(approvalGate 호출하나 decision.approved 무시=fail-open write+deny/no-effect 미테스트) 주입→독립 Opus ④b가 정확 FAIL(라인47-51 decision 버림·happy-path-only). ③롤백→진짜 fix D4-S2e: mac_contacts_write draft-first 강제(message-send sendMessageWithApproval 미러: gate throw→deny·`if(!approved) return` osascript 전·deny/throw→write 0 spy 검증·action-log·escapeAppleScript). buildContactsApprovalGate non-interactive fail-close+등록+armed-lockstep. eval:tools 골든3.
+- 왜: 하드-카운터(firesSinceDrill=8, 마지막 드릴 fire26 이후 정확히 8) 도달. 드릴로 outbound-safety 게이트(deny→no-effect) 신뢰성 재검증 후 결함의 올바른 버전 배송. 로드맵 "draft-first 게이트" 명시.
+- 리뷰지점: 드릴 judge와 실 judge 별개 Opus. 드릴 judge가 심은 결함(decision.approved 무시)을 라인 지목·probe로 FAIL. 실 judge가 gate 강제(deny/throw→osascript 0 spy)·deny 테스트·두 mutation 독립 재현·CLI 게이트 non-interactive fail-close·escape·armed-lockstep PASS. Opus 지적 형제-parity(CLI 게이트 non-interactive 테스트 없음)→오케스트레이터가 messaging 미러 3 테스트 추가로 마감.
+- 리스크: 낮음. 로컬 store write(3rd-party send 아님)이나 로드맵대로 draft-first 적용. eval:tools 골든 추가했으나 로컬셋 heavy timeout(결정론+Opus 판정). 다음 = D7-S1(슬래시 명령 단일소스 레지스트리). 밝기 D4-S2d2 잔여.
+- lesson: JUDGE-DRILL 진짜-fix가 outbound-safety면 "gate 강제(deny→no-effect)+spy 테스트"가 message-send seam 미러로 구조 보장. Opus가 형제-parity 갭(CLI 게이트 테스트) 지적하면 오케스트레이터가 기존 형제(messaging) 테스트 미러로 즉시 마감.
+
+## fire 35 · 2026-07-12 · skill v2.x · 1373cb8ca
+meta: slice=D7-S1a · wave=W3 · pkg=apps/cli · kind=slash-registry · verdict=PASS · firesSinceDrill=1
+ratchet: 로드맵 잔여 [ ] = 26/64(D7-S1→a/b 분해 +1, a 체크 -1) · self-eval pass · fabrication 0 · cli +6 test(slash-command-registry)
+- 무엇: 슬래시 명령 단일소스 레지스트리. chat-ink 로컬 SLASH_COMMANDS(27개 `{cmd,desc}`)를 slash-command-registry.ts 1-엔트리(name·desc·category·aliases?·platforms)로 추출, chat이 slashCommandsForPlatform("chat")로 파생(하드코딩 배열 제거=단일소스). desc byte-identical·순서 보존(autocomplete 불변). platforms 게이트: 세션계열 15=chat-only, list/show 12=chat+cli(미래 CLI/채널 seam). D7-S1을 a(레지스트리+chat)/b(CLI help 반영)로 분해.
+- 왜: hermes COMMAND_REGISTRY처럼 1-엔트리가 여러 표면 구동→drift 제거. 기존 chat/CLI 겹치는 명령 desc가 각각 정의돼 drift 가능하던 걸 단일소스로.
+- 리뷰지점: Opus PASS — 옛 27-배열 완전 제거(git diff -31, 잔존 하드코딩 0)·chat byte-identical(순서보존, /메뉴 불변)·dedup이 real Set-uniqueness+name/alias 충돌스캔(shallow 아님)·두 mutation 독립 재현(dup→RED, 게이트 무력화→RED)·플랫폼게이트 정확(in-session /undo·/compact·/cost는 cli 미마킹)·chat-core 154/154.
+- 리스크: 낮음. 리팩터라 유저-가시 0(CHANGELOG 생략). CLI-help 실반영(commander)은 D7-S1b. Opus doc-nit(로드맵 "28개"→27) 정정. 다음 = D7-S1b(commander CLI desc를 레지스트리와 cross-check, 겹치는 명령 drift 방지 증명).
+- lesson: chat/CLI 겹치는 메타데이터는 단일 레지스트리+platforms 게이트로; 파생 함수(slashCommandsForPlatform)가 하드코딩 배열을 대체하면 drift 구조적 불가, dedup은 Set-uniqueness로 증명.

@@ -80,3 +80,28 @@ ratchet: 드릴 성공 — 판정자 보정 확인 · fabrication 0
 리뷰지점: 판정자가 backlog 스펙("원자적 마킹")과 diff의 괴리까지 짚음 — 요건을 backlog ◦에 정밀화해 반영.
 리스크: 없음(주입분 전량 롤백, 저널/backlog만 커밋).
 lesson: 결정론 스위트가 green이어도 pin 반전은 diff-리뷰만 잡는다 — judge의 "테스트 변경 정밀 심사" 단계가 실효 방어선임이 실측됨.
+
+## fire 10 · 2026-07-12 · skill v2.x · 68d4b37de
+meta: value-class=reliability · pkg=@muse/stores+proactivity · kind=concurrency · verdict=PASS · firesSinceDrill=1
+ratchet: testFiles +1(digest-lock) · fabrication 0 · eval N/A
+무엇: digest-sent 레이스 진짜 수정 — withDigestLock(O_EXCL wx+nonce+5min stale-break+no-spin, 락 오류는 fail-open으로 오늘 동작에 강등), 임계구역 check→send→drain→mark 전체 잠금, mark-after-send 불변식 유지, 두-데몬 Promise.all 시뮬레이션 pin(정확히 1건 전송, 3/3 안정).
+왜: fire 9 드릴이 정밀화한 스펙의 실구현 — 드릴→진짜 fix 사이클 완결.
+리뷰지점: TOCTOU 잔여(>5min+정밀 인터리브, 최악이 중복 전송=fail-open 방향)·EACCES 코너는 수용(관례 미러), 후자는 ◦ 기록.
+리스크: 낮음.
+lesson: 형제-감사가 동일 클래스 레이스 2건(리마인더·체크인 이중 전송) 발굴 — send-결정이 락 밖인 패턴은 store-락만으론 이중 배달을 못 막는다.
+
+## fire 11 · 2026-07-12 · skill v2.x · 03e0f2d1e
+meta: value-class=reliability · pkg=@muse/stores+proactivity · kind=concurrency · verdict=PASS · firesSinceDrill=2
+ratchet: testFiles +1(reminder-firing-lock) · fabrication 0 · eval N/A
+무엇: 리마인더 이중 전송 레이스 봉합 — fire 10 락을 withProcessLock으로 범용화(fire 10 테스트 무수정 green), runDueReminders select→send→mark 전체를 `${file}.firing.lock`으로 잠금(추출만, 재배열 없음 — byte-diff 확인), 두-데몬 시뮬레이션 5/5 안정.
+왜: fire 10 형제-감사 발굴 — store-락만으론 send 결정을 못 지킴.
+리뷰지점: FLAG — 5분 stale-break vs pathological 긴 틱(다수 due×재시도 30s 캡)에서 in-flight 1건 중복 가능(pre-fix보다 엄격히 나음, 비차단); 체크인 몫은 이제 withProcessLock 3줄 채택.
+리스크: 낮음.
+
+## fire 12 · 2026-07-12 · skill v2.x · 26e8fba79
+meta: value-class=reliability · pkg=@muse/proactivity · kind=concurrency · verdict=PASS · firesSinceDrill=3
+ratchet: testFiles +1(checkin-lock) · fabrication 0 · eval N/A
+무엇: 체크인 이중 전송 봉합 — fire 11 템플릿 1:1(byte-동일 추출, 판정자 diff 확인), 두-데몬 시뮬레이션 5/5 안정 2회. 이중-전송 3부작(digest·리마인더·체크인) 완결.
+왜: fire 10 형제 마무리 — 범용화 덕에 소형 슬라이스.
+리뷰지점: 형제 스윕이 동일 클래스 4곳+잠재 1곳 추가 발굴(큐잉) — select-then-send 패턴의 전면 감사가 사실상 완료됨.
+리스크: 낮음. fire 13은 KIND 규칙상 concurrency 금지(10-12 3연속) — Phase-D 절 보존 또는 ack 카피로 강제 전환.

@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { errorMessage, readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -104,6 +104,10 @@ export function createFollowupsMcpServer(options: FollowupsMcpServerOptions): Lo
           }
           const id = resolution.followup.id;
           const reason = readString(args, "reason")?.trim() || "agent-cancelled";
+          const guard = assertNoSecretInPersistedFields({ reason });
+          if (!guard.safe) {
+            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+          }
           try {
             const patched = await cancelFollowup(file, id, reason);
             if (!patched) {

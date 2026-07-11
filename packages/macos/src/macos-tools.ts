@@ -5,7 +5,7 @@
  * plumbing are cleanly separated, and it depends only on `@muse/tools` +
  * `@muse/shared`.
  *
- * Nine tools across three risk tiers (per `.claude/rules/tool-calling.md`:
+ * Ten tools across three risk tiers (per `.claude/rules/tool-calling.md`:
  * small, single-purpose, non-confusable):
  *
  *   - Tier 0 (read): `mac_app_read` (clipboard / Music / frontmost window /
@@ -13,11 +13,12 @@
  *   - Tier 1 (execute, local): `mac_shortcut_run` (the KEYSTONE — runs any
  *     user Shortcut), `mac_app_open`, `mac_media_control`, `mac_system_set`,
  *     `mac_screenshot`, `mac_clipboard_set`.
- *   - Tier 2 (execute, outbound): `mac_message_send` — iMessage, governed by
+ *   - Tier 2 (execute, outbound): `mac_message_send` (iMessage) and
+ *     `mac_contacts_write` (add a person to Contacts), governed by
  *     `.claude/rules/outbound-safety.md`: draft-first approval gate, fail-closed
- *     (deny / timeout / throw ⇒ no send), action-logged. The gate + logger are
+ *     (deny / timeout / throw ⇒ no send/write), action-logged. The gate + logger are
  *     INJECTED so the outbound-safety wiring lives at the CLI boundary and the
- *     contract test asserts the gate WITHOUT firing a real message.
+ *     contract test asserts the gate WITHOUT firing a real message/write.
  *
  * Permissions: the first call to a given app triggers the system Automation
  * consent prompt; until granted, osascript fails — mapped to a typed permission
@@ -334,3 +335,16 @@ export {
   type MacScreenReadToolDeps,
   type MacScreenshotToolDeps
 } from "./macos-screen-tools.js";
+
+// ── Tier 2: mac_contacts_write (draft-first, fail-closed) ─────────────
+
+export {
+  createMacContactsWriteTool,
+  type ContactApprovalDecision,
+  type ContactApprovalGate,
+  type ContactDraft,
+  type MacContactsActionLogEntry,
+  type MacContactsActionLogger,
+  type MacContactsActionResult,
+  type MacContactsWriteToolDeps
+} from "./macos-contacts-write.js";

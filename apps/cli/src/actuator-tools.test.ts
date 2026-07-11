@@ -11,7 +11,7 @@ import type { JsonObject } from "@muse/shared";
 import { ToolRegistry } from "@muse/tools";
 import { describe, expect, it } from "vitest";
 
-import { buildActuatorTools, buildCliPendingApprovalStager, buildEmailApprovalGate, buildFsWriteApprovalGate, buildMessagingApprovalGate, buildWebApprovalGate, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
+import { buildActuatorTools, buildCliPendingApprovalStager, buildContactsApprovalGate, buildEmailApprovalGate, buildFsWriteApprovalGate, buildMessagingApprovalGate, buildWebApprovalGate, formatActuatorBanner, summarizeActuators } from "./actuator-tools.js";
 import type { ProgramIO } from "./program.js";
 
 describe("buildMessagingApprovalGate — draft-first, fail-closed in non-TTY", () => {
@@ -29,6 +29,25 @@ describe("buildMessagingApprovalGate — draft-first, fail-closed in non-TTY", (
 
   it("DENIES when interactive but the user declines", async () => {
     const gate = buildMessagingApprovalGate({ confirmAction: async () => false, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => true });
+    expect(await gate(draft)).toMatchObject({ approved: false });
+  });
+});
+
+describe("buildContactsApprovalGate — draft-first, fail-closed in non-TTY", () => {
+  const draft = { email: "a@b.test", name: "Ada Lovelace", phone: "+1 555 0100" };
+
+  it("DENIES (fail-closed) in a NON-interactive context — the confirm can't be delivered, so the contact must not be written", async () => {
+    const gate = buildContactsApprovalGate({ confirmAction: async () => true, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => false });
+    expect(await gate(draft)).toMatchObject({ approved: false });
+  });
+
+  it("APPROVES when interactive AND the user confirms", async () => {
+    const gate = buildContactsApprovalGate({ confirmAction: async () => true, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => true });
+    expect(await gate(draft)).toMatchObject({ approved: true });
+  });
+
+  it("DENIES when interactive but the user declines", async () => {
+    const gate = buildContactsApprovalGate({ confirmAction: async () => false, io: { stderr: () => {}, stdout: () => {} }, isInteractive: () => true });
     expect(await gate(draft)).toMatchObject({ approved: false });
   });
 });

@@ -24,6 +24,7 @@ import {
   createMacAppOpenTool,
   createMacAppReadTool,
   createMacClipboardSetTool,
+  createMacContactsWriteTool,
   createMacMediaControlTool,
   createMacMessageSendTool,
   createMacSayTool,
@@ -31,7 +32,8 @@ import {
   createMacScreenshotTool,
   createMacShortcutRunTool,
   createMacSpotlightSearchTool,
-  createMacSystemSetTool
+  createMacSystemSetTool,
+  type ContactApprovalGate
 } from "@muse/macos";
 import {
   createWinAppOpenTool,
@@ -104,7 +106,7 @@ export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
   if (macActuatorsEnabled(env)) {
     armed.push(
       "mac_shortcut_run", "mac_screen_read", "mac_app_read", "mac_app_open", "mac_media_control", "mac_system_set",
-      "mac_screenshot", "mac_clipboard_set", "mac_spotlight_search", "mac_say", "mac_message_send"
+      "mac_screenshot", "mac_clipboard_set", "mac_spotlight_search", "mac_say", "mac_message_send", "mac_contacts_write"
     );
   }
 
@@ -186,6 +188,35 @@ export function buildMessagingApprovalGate(deps: {
     }
     deps.io.stdout(`\nSend to ${draft.providerId} → ${draft.destination}:\n${draft.text}\n\n`);
     return (await deps.confirmAction("Send this message?"))
+      ? { approved: true }
+      : { approved: false, reason: "user did not confirm" };
+  };
+}
+
+/**
+ * Draft-first approval gate for `mac_contacts_write`. Mirrors
+ * `buildMessagingApprovalGate` exactly: shows the EXACT {name, phone, email}
+ * about to be created and fires ONLY on explicit confirm; a non-interactive
+ * context (no TTY → the confirm can't be delivered) denies, never writes.
+ */
+export function buildContactsApprovalGate(deps: {
+  readonly io: ProgramIO;
+  readonly confirmAction: (message: string) => Promise<boolean>;
+  readonly isInteractive?: () => boolean;
+}): ContactApprovalGate {
+  const interactive = deps.isInteractive ?? (() => Boolean(process.stdout.isTTY && process.stdin.isTTY));
+  return async (draft) => {
+    if (!interactive()) {
+      return { approved: false, reason: "non-interactive — review and add via Contacts.app directly" };
+    }
+    const lines = [
+      `\nAdd contact:\n  Name: ${draft.name}`,
+      draft.phone ? `  Phone: ${draft.phone}` : undefined,
+      draft.email ? `  Email: ${draft.email}` : undefined,
+      "\n"
+    ].filter((line): line is string => line !== undefined);
+    deps.io.stdout(lines.join("\n"));
+    return (await deps.confirmAction("Add this contact?"))
       ? { approved: true }
       : { approved: false, reason: "user did not confirm" };
   };
@@ -522,6 +553,15 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
           const recipient = resolution.contact.phone ?? resolution.contact.email;
           return recipient ? { name: resolution.contact.name, recipient, status: "resolved" } : { status: "unknown" };
         },
+        userId
+      }),
+      createMacContactsWriteTool({
+        actionLog: (entry) => appendActionLog(actionLogFile, entry),
+        approvalGate: buildContactsApprovalGate({
+          confirmAction,
+          io,
+          ...(deps.isInteractive ? { isInteractive: deps.isInteractive } : {})
+        }),
         userId
       })
     );

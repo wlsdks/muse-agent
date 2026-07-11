@@ -53,3 +53,36 @@ export function guardSecretPersistence(text: string): SecretPersistenceGuardResu
     safe: false
   };
 }
+
+/**
+ * Single call site for a persistence tool with SEVERAL free-text fields
+ * (title + notes + location, key + value, ...). Every guarded write tool
+ * used to hand-concatenate its own fields before calling
+ * `guardSecretPersistence` — a pattern that is easy to just forget on a
+ * new surface (that is exactly how the calendar `add`/`update` tools
+ * shipped with no guard at all). Passing the NAMED fields here instead
+ * makes "did this tool call the guard?" a single greppable call, and the
+ * concatenation logic can't drift between call sites.
+ *
+ * Joins with newlines (not spaces) — `\s` in `GUARD_ONLY_PATTERNS` already
+ * matches a newline, so a label in one field and its value in the next
+ * still binds (title: "reset router", notes: "비밀번호는 hunter2").
+ * Undefined / empty fields are dropped before joining.
+ *
+ * ORDER MATTERS: fields are joined in the order they appear on `fields`
+ * (JS object literals preserve string-key insertion order). The
+ * `GUARD_ONLY_PATTERNS` credential-label pattern only matches
+ * label-THEN-value, so when a user's label and value land in two
+ * separate params (label in `title`, value in `notes`), the call site
+ * MUST list them in the same left-to-right order the user spoke them —
+ * `{ title, notes, location }`, never `{ notes, title, location }` —
+ * or a split label/value pair silently stops matching.
+ */
+export function assertNoSecretInPersistedFields(
+  fields: Record<string, string | undefined>
+): SecretPersistenceGuardResult {
+  const combined = Object.values(fields)
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join("\n");
+  return guardSecretPersistence(combined);
+}

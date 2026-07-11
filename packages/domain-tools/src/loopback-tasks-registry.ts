@@ -13,7 +13,7 @@
  * overhead.
  */
 
-import { guardSecretPersistence, type JsonObject, type JsonValue } from "@muse/shared";
+import { assertNoSecretInPersistedFields, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { readString, readStringArray } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -108,7 +108,7 @@ export function createTasksRegistryMcpServer(options: TasksRegistryMcpServerOpti
             return { error: "title is required" };
           }
           const notes = readString(args, "notes") ?? undefined;
-          const guard = guardSecretPersistence([title, notes].filter((part): part is string => Boolean(part)).join("\n"));
+          const guard = assertNoSecretInPersistedFields({ title, notes });
           if (!guard.safe) {
             return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }

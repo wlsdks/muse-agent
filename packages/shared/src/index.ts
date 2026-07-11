@@ -15,6 +15,7 @@ export { findSecrets, findSecretsForGuard, SECRET_PATTERNS, GUARD_ONLY_PATTERNS,
 
 export {
   guardSecretPersistence,
+  assertNoSecretInPersistedFields,
   SECRET_PERSISTENCE_NOTICE,
   type SecretPersistenceGuardResult
 } from "./secret-persistence-guard.js";

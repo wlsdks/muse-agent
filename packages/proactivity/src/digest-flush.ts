@@ -32,6 +32,7 @@ import {
   drainDigestQueue,
   markDigestSent,
   readDigestQueue,
+  withDigestLock,
   type DigestQueueItem
 } from "@muse/stores";
 
@@ -134,7 +135,7 @@ export interface RunDigestFlushOptions {
   readonly now?: () => Date;
 }
 
-export type RunDigestFlushOutcome = "not-due" | "already-sent-today" | "empty" | "sent" | "send-failed";
+export type RunDigestFlushOutcome = "not-due" | "already-sent-today" | "empty" | "sent" | "send-failed" | "lock-held";
 
 export interface RunDigestFlushSummary {
   readonly outcome: RunDigestFlushOutcome;
@@ -154,6 +155,25 @@ export async function runDigestFlushIfDue(options: RunDigestFlushOptions): Promi
     return { errors: [], itemCount: 0, outcome: "not-due" };
   }
 
+  // The check→send→drain→mark critical section runs under the cross-process
+  // digest lock (`withDigestLock`, `${sentFile}.lock`) so the api daemon and
+  // the CLI daemon can't both pass `digestAlreadySentToday` before either
+  // marks — see digest-lock.ts. A LIVE held lock (the other daemon owns this
+  // tick) short-circuits to "lock-held" with no send attempted at all.
+  const lockOutcome = await withDigestLock(options.sentFile, () => runFlushUnderLock(options, now));
+  if (lockOutcome.kind === "lock-held") {
+    return { errors: [], itemCount: 0, outcome: "lock-held" };
+  }
+  if (lockOutcome.lockError !== undefined) {
+    // Fail-open on a BROKEN lock (not contention — a weird fs error): the
+    // flush still ran, unlocked, so this degrades to the pre-lock duplicate-
+    // send risk rather than silencing the digest.
+    return { ...lockOutcome.value, errors: [`digest-flush: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors] };
+  }
+  return lockOutcome.value;
+}
+
+async function runFlushUnderLock(options: RunDigestFlushOptions, now: Date): Promise<RunDigestFlushSummary> {
   // Fail-open on a corrupt/unreadable sidecar: never let a broken "already
   // sent" marker permanently silence the daily flush (§4 of the plan).
   let alreadySent: boolean;

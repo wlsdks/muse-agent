@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { SECRET_PATTERNS, findSecretsForGuard, guardSecretPersistence } from "../src/index.js";
+import { SECRET_PATTERNS, findSecretsForGuard, guardSecretPersistence, assertNoSecretInPersistedFields } from "../src/index.js";
 
 describe("findSecrets / guardSecretPersistence — deterministic secret detection", () => {
   it("detects an explicit KO password label bound to a value (the live-probe repro)", () => {
@@ -84,5 +84,47 @@ describe("credential-label over-block regression (adversarial gate FAIL #2/#3)",
 
   it("the fuzzy credential-label pattern is NOT in the shared masker list (redactor must stay high-precision)", () => {
     expect(SECRET_PATTERNS.some((p) => p.name === "credential-label")).toBe(false);
+  });
+});
+
+describe("assertNoSecretInPersistedFields — one call site for every multi-field persistence tool", () => {
+  it("blocks when the label lands in one field and the value in another (title/notes split)", () => {
+    const result = assertNoSecretInPersistedFields({ title: "reset router", notes: "비밀번호는 hunter2" });
+    expect(result.safe).toBe(false);
+    if (!result.safe) {
+      expect(result.kinds).toContain("credential-label");
+      expect(result.notice).toContain("암호화");
+    }
+  });
+
+  it("blocks when label + value are combined across separate params (remember_fact key/value)", () => {
+    expect(assertNoSecretInPersistedFields({ key: "wifi_password", value: "hunter2" }).safe).toBe(false);
+  });
+
+  it("is safe when every field is ordinary text", () => {
+    const result = assertNoSecretInPersistedFields({ title: "우유 사기", notes: "6pm 전에" });
+    expect(result.safe).toBe(true);
+  });
+
+  it("ignores undefined / empty fields without throwing", () => {
+    expect(assertNoSecretInPersistedFields({ title: "회의실 4", notes: undefined, location: "" }).safe).toBe(true);
+  });
+
+  it("is safe on an empty field map", () => {
+    expect(assertNoSecretInPersistedFields({}).safe).toBe(true);
+  });
+
+  it("still catches a vendor-shaped secret confined to a single field", () => {
+    const result = assertNoSecretInPersistedFields({ title: "rotate key", notes: "sk-proj-abcdefghijklmnopqrstuvwxyz" });
+    expect(result.safe).toBe(false);
+  });
+
+  it("ORDER-SENSITIVITY regression: a label-only field followed by a value-only field still blocks", () => {
+    // The credential-label pattern is label-THEN-value; if a caller lists
+    // fields in the wrong order (value field before the label field) this
+    // silently stops matching — this pins the correct (label-first) order.
+    expect(assertNoSecretInPersistedFields({ title: "비밀번호", notes: "hunter2" }).safe).toBe(false);
+    // the reversed field order is the actual regression this guards against
+    expect(assertNoSecretInPersistedFields({ notes: "hunter2", title: "비밀번호" }).safe).toBe(true);
   });
 });

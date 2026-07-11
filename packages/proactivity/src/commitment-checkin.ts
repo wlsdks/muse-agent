@@ -18,7 +18,7 @@
 import { promises as fs } from "node:fs";
 import { dirname } from "node:path";
 
-import { avoidedSourceKeys, readTrustLedger, withFileMutationQueue } from "@muse/stores";
+import { avoidedSourceKeys, readTrustLedger, withFileMutationQueue, withProcessLock } from "@muse/stores";
 import { applyInterruptionBudget, resolveInterruptionBudgetCaps, type InterruptionBudgetWiring } from "./interruption-gate.js";
 import { isQuietHour, type QuietHourRange } from "./quiet-hours.js";
 
@@ -339,6 +339,9 @@ export interface RunDueCheckinsSummary {
   readonly due: number;
   readonly errors: readonly string[];
   readonly fired: readonly PersistedCheckin[];
+  /** Set only when another daemon held the firing lock for this tick — no
+   *  read, send, or mark was attempted at all. Absent on every other path. */
+  readonly outcome?: "lock-held";
 }
 
 /**
@@ -357,13 +360,35 @@ export function selectDueCheckins(checkins: readonly PersistedCheckin[], nowMs: 
 }
 
 /**
- * Deliver due check-ins to the user's channel. Quiet-hours holds the whole
- * tick (they fire once the window passes — the edge isn't consumed). Fires at
- * most `maxPerTick` (default 5). Marks each fired; a send failure leaves it
- * scheduled to retry next tick. Reply-to-user channel only — never a
- * third-party send.
+ * Deliver due check-ins to the user's channel. The whole select→send→mark
+ * section runs under the cross-process `withProcessLock`
+ * (`${options.file}.firing.lock`, the same generalized lock reminder firing
+ * uses — `@muse/stores/digest-lock.ts`) because the api daemon's tick and the
+ * CLI daemon's tick can read the SAME checkins file: without a real lock both
+ * can read a check-in as due and both deliver it before either marks it
+ * fired. A LIVE held lock returns `outcome: "lock-held"` immediately with no
+ * send attempted; a broken lock (non-contention fs error) fails OPEN — the
+ * tick still runs unlocked rather than silently skipping check-ins.
  */
 export async function runDueCheckins(options: RunDueCheckinsOptions): Promise<RunDueCheckinsSummary> {
+  const lockPath = `${options.file}.firing.lock`;
+  const lockOutcome = await withProcessLock(lockPath, () => runDueCheckinsUnderLock(options));
+  if (lockOutcome.kind === "lock-held") {
+    return { delivered: 0, due: 0, errors: [], fired: [], outcome: "lock-held" };
+  }
+  if (lockOutcome.lockError !== undefined) {
+    // Fail-open on a BROKEN lock (not contention): the tick still ran,
+    // unlocked, so this degrades to the pre-lock duplicate-delivery risk
+    // rather than silencing check-ins.
+    return {
+      ...lockOutcome.value,
+      errors: [`checkin-tick: lock acquisition failed, proceeding without lock: ${lockOutcome.lockError}`, ...lockOutcome.value.errors]
+    };
+  }
+  return lockOutcome.value;
+}
+
+async function runDueCheckinsUnderLock(options: RunDueCheckinsOptions): Promise<RunDueCheckinsSummary> {
   const now = options.now ?? ((): Date => new Date());
   const at = now();
   if (options.quietHours && isQuietHour(at.getHours(), options.quietHours)) {
