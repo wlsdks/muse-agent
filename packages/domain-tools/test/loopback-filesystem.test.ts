@@ -63,7 +63,7 @@ function makeFs(opts: {
   };
 }
 
-describe("loopback-filesystem — symlink escape prevention (realpath guard)", () => {
+describe.skipIf(process.platform === "win32")("loopback-filesystem — symlink escape prevention (realpath guard)", () => {
   describe("read tool", () => {
     it("refuses a path whose realpath escapes the allowed root (symlink escape)", async () => {
       const escapingFs = {

@@ -151,7 +151,7 @@ describe("CalDAVCalendarProvider WRITE — contract-faithful HTTP fake (not read
   });
 });
 
-describe("MacOsCalendarProvider WRITE — contract-faithful osascript fake (not read-only)", () => {
+describe.skipIf(process.platform === "win32")("MacOsCalendarProvider WRITE — contract-faithful osascript fake (not read-only)", () => {
   function fakeOsascript(captureFile: string): string {
     const dir = mkdtempSync(join(tmpdir(), "muse-osa-write-"));
     const script = join(dir, "fake-osascript");

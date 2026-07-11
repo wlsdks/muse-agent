@@ -525,7 +525,7 @@ describe("cli program", () => {
         configPath: path.join(configDir, "config.json"),
         credentialPath: path.join(configDir, "credentials.json"),
         mode: "remote",
-        workspaceRunsPath: `${process.cwd()}/.muse/runs`
+        workspaceRunsPath: path.join(process.cwd(), ".muse", "runs")
       })
     ]);
   });
@@ -6866,7 +6866,7 @@ describe("cli program", () => {
     // Fresh create → 0o600.
     const fresh = path.join(root, "bundle.tar.gz.cleartext.tmp");
     await reserveCleartextTemp(fresh);
-    expect((await fsp.stat(fresh)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await fsp.stat(fresh)).mode & 0o777).toBe(0o600);
 
     // A stale world-readable temp from a hard-killed run is tightened
     // (writeFile's `mode` is ignored when the file already exists, so
@@ -6874,7 +6874,7 @@ describe("cli program", () => {
     const stale = path.join(root, "stale.cleartext.tmp");
     await fsp.writeFile(stale, "leftover secrets", { mode: 0o666 });
     await reserveCleartextTemp(stale);
-    expect((await fsp.stat(stale)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await fsp.stat(stale)).mode & 0o777).toBe(0o600);
     expect(await fsp.readFile(stale, "utf8")).toBe("");
   });
 

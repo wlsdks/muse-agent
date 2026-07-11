@@ -1,5 +1,6 @@
 import { isCalibratedEmbedder, resolveRecallConfidentAt } from "@muse/agent-core";
 import { evaluateLocalOnlyPosture, evaluateWebEgressStatus, LOCAL_FIRST_DEFAULT_MODEL, parseBoolean, resolveDefaultModel, resolveVisionModel } from "@muse/autoconfigure";
+import { resolvePlatformCapabilities } from "@muse/shared";
 import { DEFAULT_FOCUS_OFF_SHORTCUT, DEFAULT_FOCUS_ON_SHORTCUT } from "@muse/macos";
 import type { DevFixableWeakness } from "@muse/stores";
 import { promises as fs } from "node:fs";
@@ -88,6 +89,24 @@ export interface LocalCheck {
   readonly name: string;
   readonly status: "ok" | "warn" | "fail";
   readonly detail: string;
+}
+
+/**
+ * Report which platform-dependent surfaces are active on this OS — the honesty
+ * line for a non-mac box: absent integrations are DISABLED by design, not
+ * broken. Windows support is proven by CI, not by a live machine — say so.
+ */
+export function platformPostureCheck(platform: NodeJS.Platform = process.platform): LocalCheck {
+  const caps = resolvePlatformCapabilities(platform);
+  const integrations = caps.osIntegrations === "macos"
+    ? "os-integrations=macos (Notes/Reminders/Contacts mirrors available)"
+    : "os-integrations=none (macOS-only mirrors disabled on this OS)";
+  const provenance = caps.os === "win32" ? " — Windows paths are CI-verified only" : "";
+  return {
+    detail: `platform=${caps.os}: audio=${caps.audioPlayer ?? "none"}, autostart=${caps.daemonAutostart}, ${integrations}${provenance}`,
+    name: "platform posture",
+    status: "ok"
+  };
 }
 
 /**

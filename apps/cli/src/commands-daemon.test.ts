@@ -47,7 +47,7 @@ function fakeFollowupModel(): NonNullable<Awaited<ReturnType<NonNullable<DaemonH
 
 async function runDaemon(
   args: string[],
-  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"] }
+  opts: { env: NodeJS.ProcessEnv; registry: MessagingProviderRegistry; resolveFollowupModel?: DaemonHelpers["resolveFollowupModel"]; fetchImpl?: typeof globalThis.fetch; ambientMacosRun?: DaemonHelpers["ambientMacosRun"]; chromeConnection?: DaemonHelpers["chromeConnection"]; knowledgeEnrich?: DaemonHelpers["knowledgeEnrich"]; briefingCalendarLister?: DaemonHelpers["briefingCalendarLister"]; selfLearnDistill?: DaemonHelpers["selfLearnDistill"]; contradictionClassify?: DaemonHelpers["contradictionClassify"]; emailSyncProvider?: DaemonHelpers["emailSyncProvider"]; messagingPoll?: DaemonHelpers["messagingPoll"]; consolidateMerge?: DaemonHelpers["consolidateMerge"]; consolidateValidate?: DaemonHelpers["consolidateValidate"]; conflictWatchCalendarLister?: DaemonHelpers["conflictWatchCalendarLister"]; browsingSync?: DaemonHelpers["browsingSync"]; schtasksRun?: DaemonHelpers["schtasksRun"]; platform?: DaemonHelpers["platform"] }
 ): Promise<{ stdout: string; stderr: string; exitCode: number | undefined }> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -73,6 +73,8 @@ async function runDaemon(
       ...(opts.consolidateValidate ? { consolidateValidate: opts.consolidateValidate } : {}),
       ...(opts.conflictWatchCalendarLister ? { conflictWatchCalendarLister: opts.conflictWatchCalendarLister } : {}),
       ...(opts.browsingSync ? { browsingSync: opts.browsingSync } : {}),
+      ...(opts.schtasksRun ? { schtasksRun: opts.schtasksRun } : {}),
+      ...(opts.platform ? { platform: opts.platform } : {}),
       // Default: followup tick disabled (no model) so proactive cases stay hermetic.
       resolveFollowupModel: opts.resolveFollowupModel ?? (async () => undefined)
     });
@@ -444,14 +446,14 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
 
     const notInstalled = await runDaemon(
       ["--status", "--provider", "telegram", "--destination", "555"],
-      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, registry }
+      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, platform: "darwin", registry }
     );
     expect(notInstalled.stdout).toMatch(/autostart:\s+not installed/);
 
     writeFileSync(plistFile, "<plist/>", "utf8");
     const installed = await runDaemon(
       ["--status", "--provider", "telegram", "--destination", "555"],
-      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, registry }
+      { env: { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile }, platform: "darwin", registry }
     );
     expect(installed.stdout).toMatch(/autostart:\s+installed/);
   });
@@ -589,7 +591,7 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     const sent: OutboundMessage[] = [];
     const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
 
-    const res = await runDaemon(["--install", "--provider", "telegram", "--destination", "555"], { env, registry });
+    const res = await runDaemon(["--install", "--provider", "telegram", "--destination", "555"], { env, platform: "darwin", registry });
 
     expect(res.exitCode).toBeUndefined();
     expect(res.stdout).toContain("LaunchAgent written");
@@ -599,6 +601,60 @@ describe("muse daemon — one-process launcher fires real ticks", () => {
     if (process.platform === "darwin") {
       expect(() => execFileSync("plutil", ["-lint", plistFile], { encoding: "utf8" })).not.toThrow();
     }
+  });
+
+  it("--install on win32 registers a schtasks ONLOGON task and writes NO plist", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-install-win-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+    const sent: OutboundMessage[] = [];
+    const registry = new MessagingProviderRegistry([capturingProvider(sent)]);
+    const calls: (readonly string[])[] = [];
+    const schtasksRun = async (args: readonly string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> => {
+      calls.push(args);
+      return { exitCode: 0, stderr: "", stdout: "SUCCESS" };
+    };
+
+    const res = await runDaemon(["--install"], { env, platform: "win32", registry, schtasksRun });
+
+    expect(res.exitCode).toBeUndefined();
+    expect(res.stdout).toContain("registered as scheduled task 'MuseDaemon'");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.slice(0, 6)).toEqual(["/Create", "/F", "/SC", "ONLOGON", "/TN", "MuseDaemon"]);
+    expect(calls[0]![6]).toBe("/TR");
+    expect(calls[0]![7]).toContain("daemon");
+    expect(existsSync(plistFile)).toBe(false);
+  });
+
+  it("--install on win32 with a failing schtasks exits 1 and writes NOTHING", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-install-win-fail-"));
+    const plistFile = join(dir, "com.muse.daemon.plist");
+    const env: NodeJS.ProcessEnv = { ...tmpEnv(), MUSE_DAEMON_PLIST_FILE: plistFile };
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const schtasksRun = async (): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
+      ({ exitCode: 1, stderr: "ERROR: Access is denied.", stdout: "" });
+
+    const res = await runDaemon(["--install"], { env, platform: "win32", registry, schtasksRun });
+
+    expect(res.exitCode).toBe(1);
+    expect(res.stderr).toContain("Access is denied");
+    expect(existsSync(plistFile)).toBe(false);
+  });
+
+  it("--status on win32 reports schtasks autostart state from the query", async () => {
+    const env: NodeJS.ProcessEnv = tmpEnv();
+    const registry = new MessagingProviderRegistry([capturingProvider([])]);
+    const installed = await runDaemon(["--status", "--provider", "telegram"], {
+      env, platform: "win32", registry,
+      schtasksRun: async () => ({ exitCode: 0, stderr: "", stdout: "MuseDaemon" })
+    });
+    expect(installed.stdout).toMatch(/autostart:\s+installed \(scheduled task MuseDaemon\)/);
+
+    const missing = await runDaemon(["--status", "--provider", "telegram"], {
+      env, platform: "win32", registry,
+      schtasksRun: async () => ({ exitCode: 1, stderr: "ERROR: The system cannot find the file specified.", stdout: "" })
+    });
+    expect(missing.stdout).toMatch(/autostart:\s+not installed/);
   });
 
   it("--once delivers a situational briefing when MUSE_BRIEFING_ENABLED and something is imminent", async () => {

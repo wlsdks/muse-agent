@@ -155,7 +155,7 @@ describe("jobsDir — MUSE_JOBS_DIR empty-env-shadow defence (goal-532/539 sibli
     process.env.MUSE_JOBS_DIR = "   ";
     try {
       const path = jobsDir();
-      expect(path).toMatch(/\/\.muse\/jobs$/u);
+      expect(path.replaceAll("\\", "/")).toMatch(/\/\.muse\/jobs$/u);
       expect(path, "whitespace-only env must NOT leak through as the resolved path").not.toBe("");
       expect(path).not.toBe("   ");
     } finally {

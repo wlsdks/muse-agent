@@ -47,10 +47,12 @@ import { formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, readE
 import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, runDueBackgroundExitNotices, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, runDueReminders, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, GmailEmailProvider, type EmailProvider, runDueSituationalBriefing, selectUpcomingConflicts } from "@muse/domain-tools";
 import { BROWSING_SYNC_LIMIT, locateChromeHistoryFile, shouldAutoSyncBrowsing, syncBrowsingHistory } from "@muse/recall";
+import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { backgroundStoreFile } from "./commands-background.js";
 import { buildLaunchAgentPlist, LAUNCH_AGENT_LABEL, resolveLaunchAgentFile } from "./commands-daemon-launchagent.js";
+import { buildSchtasksCreateArgs, buildSchtasksQueryArgs, SCHTASKS_TASK_NAME } from "./commands-daemon-schtasks.js";
 import { readDaemonConfig, resolveDaemonConfigFile, writeDaemonConfig } from "./commands-daemon-config.js";
 import { dirname, join } from "node:path";
 
@@ -159,7 +161,20 @@ export interface DaemonHelpers {
    * is never called proves the gate held. Absent → the real locate + sync.
    */
   readonly browsingSync?: (args: { readonly env: NodeJS.ProcessEnv; readonly storeFile: string; readonly limit: number }) => Promise<{ readonly synced: number; readonly total: number }>;
+  /** Test seam — runs `schtasks` with an argv array on the win32 --install/--status branches. */
+  readonly schtasksRun?: (args: readonly string[]) => Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }>;
+  /** Test seam — platform override for the --install / --status autostart branches. */
+  readonly platform?: NodeJS.Platform;
 }
+
+const defaultSchtasksRun = (args: readonly string[]): Promise<{ exitCode: number; stdout: string; stderr: string }> =>
+  new Promise((resolve) => {
+    execFile("schtasks", [...args], { timeout: 15_000 }, (error, stdout, stderr) => {
+      const rawCode = (error as { code?: number | string } | null)?.code;
+      const exitCode = error ? (typeof rawCode === "number" ? rawCode : 1) : 0;
+      resolve({ exitCode, stderr: stderr.toString(), stdout: stdout.toString() });
+    });
+  });
 
 export function registerDaemonCommands(program: Command, io: ProgramIO, helpers: DaemonHelpers = {}): void {
   const env = () => helpers.env?.() ?? process.env;
@@ -206,12 +221,27 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
       }
 
       if (options.install) {
+        const plat = helpers.platform ?? process.platform;
+        // argv[1] is the muse CLI entry at runtime; node + that path
+        // gives launchd/schtasks an absolute, login-shell-independent command.
+        const cliEntry = process.argv[1] ?? "muse";
+        if (plat === "win32") {
+          const run = helpers.schtasksRun ?? defaultSchtasksRun;
+          const result = await run(buildSchtasksCreateArgs({
+            programArguments: [process.execPath, cliEntry, "daemon"],
+            taskName: SCHTASKS_TASK_NAME
+          }));
+          if (result.exitCode === 0) {
+            io.stdout(`muse daemon registered as scheduled task '${SCHTASKS_TASK_NAME}' (runs at logon)\n  remove with:  schtasks /Delete /F /TN ${SCHTASKS_TASK_NAME}\n`);
+          } else {
+            io.stderr(`schtasks failed (exit ${result.exitCode.toString()}): ${result.stderr.trim() || result.stdout.trim()}\n`);
+            process.exitCode = 1;
+          }
+          return;
+        }
         const plistFile = resolveLaunchAgentFile(e);
         const home = e.HOME?.trim()?.length ? e.HOME.trim() : homedir();
         const logDir = join(home, ".muse", "logs");
-        // argv[1] is the muse CLI entry at runtime; node + that path
-        // gives launchd an absolute, login-shell-independent command.
-        const cliEntry = process.argv[1] ?? "muse";
         const plist = buildLaunchAgentPlist({
           label: LAUNCH_AGENT_LABEL,
           programArguments: [process.execPath, cliEntry, "daemon"],
@@ -425,11 +455,20 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`  reminders:  ${remindersFile}\n`);
         io.stdout(`  followups:  ${followupsFile}\n`);
         io.stdout(`  objectives: ${objectivesFile}\n`);
-        // Will it come back after a reboot? (launchd install)
-        const plistFile = resolveLaunchAgentFile(e);
-        io.stdout(existsSync(plistFile)
-          ? `autostart:    installed (${plistFile})\n`
-          : `autostart:    not installed (run \`muse daemon --install\`)\n`);
+        // Will it come back after a reboot? (launchd / schtasks install)
+        const plat = helpers.platform ?? process.platform;
+        if (plat === "win32") {
+          const run = helpers.schtasksRun ?? defaultSchtasksRun;
+          const query = await run(buildSchtasksQueryArgs(SCHTASKS_TASK_NAME));
+          io.stdout(query.exitCode === 0
+            ? `autostart:    installed (scheduled task ${SCHTASKS_TASK_NAME})\n`
+            : `autostart:    not installed (run \`muse daemon --install\`)\n`);
+        } else {
+          const plistFile = resolveLaunchAgentFile(e);
+          io.stdout(existsSync(plistFile)
+            ? `autostart:    installed (${plistFile})\n`
+            : `autostart:    not installed (run \`muse daemon --install\`)\n`);
+        }
         return;
       }
 

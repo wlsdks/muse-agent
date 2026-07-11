@@ -151,7 +151,7 @@ describe("resolveExternalMcpConfigFile", () => {
 
   it("defaults to ~/.muse/mcp.json when MUSE_MCP_CONFIG is unset", () => {
     const path = resolveExternalMcpConfigFile({});
-    expect(path.endsWith("/.muse/mcp.json")).toBe(true);
+    expect(path.replaceAll("\\", "/").endsWith("/.muse/mcp.json")).toBe(true);
   });
 });
 

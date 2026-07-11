@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { activityLogPath, capContentForSummary, lastChatHistoryPath } from "./chat-history.js";
@@ -45,8 +46,8 @@ describe("lastChatHistoryPath / activityLogPath — empty-HOME fall-through (goa
   });
 
   it("roots both files under HOME/.muse when HOME is set", () => {
-    expect(lastChatHistoryPath()).toBe("/u/jinan/.muse/last-chat.jsonl");
-    expect(activityLogPath()).toBe("/u/jinan/.muse/activity.jsonl");
+    expect(lastChatHistoryPath()).toBe(join("/u/jinan", ".muse", "last-chat.jsonl"));
+    expect(activityLogPath()).toBe(join("/u/jinan", ".muse", "activity.jsonl"));
   });
 
   it("falls back to os.homedir() when HOME is whitespace-only — does NOT produce a path with leading whitespace or relative '.muse/...' under CWD", () => {
@@ -68,9 +69,10 @@ describe("lastChatHistoryPath / activityLogPath — empty-HOME fall-through (goa
         expect(r.message, `${tag} threw — must be the 'Cannot resolve home directory' error, not anything else`).toMatch(/Cannot resolve home directory/u);
         continue;
       }
-      expect(r.value, `${tag} resolved path must NOT start with whitespace`).not.toMatch(/^\s/u);
-      expect(r.value, `${tag} resolved path must NOT be a bare relative .muse/`).not.toMatch(/^\.muse\//u);
-      expect(r.value).toMatch(new RegExp(`/.muse/${suffix.replace(/\./gu, "\\.")}$`, "u"));
+      const value = r.value.replaceAll("\\", "/");
+      expect(value, `${tag} resolved path must NOT start with whitespace`).not.toMatch(/^\s/u);
+      expect(value, `${tag} resolved path must NOT be a bare relative .muse/`).not.toMatch(/^\.muse\//u);
+      expect(value).toMatch(new RegExp(`/.muse/${suffix.replace(/\./gu, "\\.")}$`, "u"));
     }
   });
 });

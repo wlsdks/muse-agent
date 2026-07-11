@@ -134,7 +134,8 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
     if (absolute !== root && !absolute.startsWith(root + nodePathSep)) {
       return "path escapes the notes directory";
     }
-    const relative = absolute === root ? "" : absolute.slice(root.length + 1);
+    // Note paths are portable: forward-slash on every OS (matches the provider convention).
+    const relative = absolute === root ? "" : absolute.slice(root.length + 1).split(nodePathSep).join("/");
     return { absolute, relative };
   }
 
@@ -583,7 +584,7 @@ async function walkMarkdownFrom(
     if (entry.isDirectory()) {
       await walkMarkdownFrom(root, childAbs, accept, visited);
     } else if (entry.isFile() && /\.(md|markdown|txt)$/iu.test(entry.name)) {
-      accept(childAbs.slice(root.length + 1));
+      accept(childAbs.slice(root.length + 1).split(nodePathSep).join("/"));
     }
   }
 }

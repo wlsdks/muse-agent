@@ -1,3 +1,5 @@
+import { resolve } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { createAllowlistPathValidator } from "./upload-path-validator.js";
@@ -6,7 +8,7 @@ describe("createAllowlistPathValidator — allowlist + symlink-escape guard", ()
   it("allows a path inside a root and returns its real (canonical) path", async () => {
     const validate = createAllowlistPathValidator({ roots: ["/dl"], realpath: async (p) => p });
     const result = await validate("/dl/resume.pdf");
-    expect(result).toEqual({ allowed: true, resolvedPath: "/dl/resume.pdf" });
+    expect(result).toEqual({ allowed: true, resolvedPath: resolve("/dl/resume.pdf") });
   });
 
   it("refuses a path lexically OUTSIDE every root (no realpath needed)", async () => {
@@ -19,7 +21,7 @@ describe("createAllowlistPathValidator — allowlist + symlink-escape guard", ()
   it("refuses a symlink that lexically sits inside a root but RESOLVES outside it (symlink escape)", async () => {
     // /dl/link → /etc/passwd: lexically under /dl, but realpath escapes the root.
     const validate = createAllowlistPathValidator({
-      realpath: async (p) => (p === "/dl/link" ? "/etc/passwd" : p),
+      realpath: async (p) => (p === resolve("/dl/link") ? resolve("/etc/passwd") : p),
       roots: ["/dl"]
     });
     const result = await validate("/dl/link");
@@ -28,9 +30,9 @@ describe("createAllowlistPathValidator — allowlist + symlink-escape guard", ()
   });
 
   it("expands a leading ~ to the home dir before the roots check", async () => {
-    const validate = createAllowlistPathValidator({ home: "/home/u", realpath: async (p) => p, roots: ["/home/u/Downloads"] });
+    const validate = createAllowlistPathValidator({ home: resolve("/home/u"), realpath: async (p) => p, roots: [resolve("/home/u/Downloads")] });
     const result = await validate("~/Downloads/cv.pdf");
-    expect(result).toEqual({ allowed: true, resolvedPath: "/home/u/Downloads/cv.pdf" });
+    expect(result).toEqual({ allowed: true, resolvedPath: resolve("/home/u/Downloads/cv.pdf") });
   });
 
   it("refuses an empty path", async () => {
@@ -52,10 +54,10 @@ describe("createAllowlistPathValidator — allowlist + symlink-escape guard", ()
     // /dl/alias → /dl/real.pdf: still inside the root, so allowed, and the
     // canonical path is what gets returned (so the upload reads the real file).
     const validate = createAllowlistPathValidator({
-      realpath: async (p) => (p === "/dl/alias" ? "/dl/real.pdf" : p),
+      realpath: async (p) => (p === resolve("/dl/alias") ? resolve("/dl/real.pdf") : p),
       roots: ["/dl"]
     });
     const result = await validate("/dl/alias");
-    expect(result).toEqual({ allowed: true, resolvedPath: "/dl/real.pdf" });
+    expect(result).toEqual({ allowed: true, resolvedPath: resolve("/dl/real.pdf") });
   });
 });

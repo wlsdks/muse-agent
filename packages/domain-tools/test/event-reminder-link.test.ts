@@ -72,6 +72,18 @@ describe("rescheduleRemindersForEvent", () => {
 
 describe("loopback calendar update/delete sync the linked reminders (the orphan fix)", () => {
   it("delete removes the linked reminder; update reschedules it; unknown id touches nothing", async () => {
+    // Anchored to the REAL clock (unlike the pure-function cases above): the
+    // update/delete tools resolve events via a now()-relative listing window,
+    // so a fixed past NOW silently ages out of it and the test time-bombs.
+    const NOW = Date.now();
+    const reminder = (over: Partial<PersistedReminder>): PersistedReminder => ({
+      createdAt: new Date(NOW - 3_600_000).toISOString(),
+      dueAt: new Date(NOW + 1_800_000).toISOString(),
+      id: "r1",
+      status: "pending",
+      text: "dentist heads-up",
+      ...over
+    });
     const dir = mkdtempSync(join(tmpdir(), "muse-evlink-"));
     const remindersFile = join(dir, "reminders.json");
     const calendarFile = join(dir, "calendar.json");

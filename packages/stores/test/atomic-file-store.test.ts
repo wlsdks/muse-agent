@@ -47,10 +47,10 @@ describe("atomicWriteFile", () => {
   it("writes with 0600 permissions by default and honours an explicit mode", async () => {
     const a = join(dir, "a");
     await atomicWriteFile(a, "x");
-    expect((await stat(a)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(a)).mode & 0o777).toBe(0o600);
     const b = join(dir, "b");
     await atomicWriteFile(b, "x", { mode: 0o644 });
-    expect((await stat(b)).mode & 0o777).toBe(0o644);
+    if (process.platform !== "win32") expect((await stat(b)).mode & 0o777).toBe(0o644);
   });
 
   it("overwrites an existing file atomically", async () => {

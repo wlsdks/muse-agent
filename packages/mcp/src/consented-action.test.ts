@@ -224,7 +224,7 @@ describe("performConsentedAction — P5-b3 act-as-the-user under recorded consen
           throw new Error(outcome.reason);
         }
       },
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => NOW
     });
@@ -259,7 +259,7 @@ describe("performConsentedAction — P5-b3 act-as-the-user under recorded consen
           throw new Error(outcome.reason);
         }
       },
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => NOW
     });

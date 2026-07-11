@@ -3,7 +3,7 @@
  *
  * Instead of reading a calendar credential field straight from the legacy
  * single-file store, we resolve it through the ordered SecretSource chain:
- *   env  →  macOS keychain  →  legacy store (FALLBACK)
+ *   env  →  macOS keychain (darwin only)  →  legacy store (FALLBACK)
  *
  * The legacy `FileCalendarCredentialStore` is the LAST source, so when no vault
  * is configured the chain falls through to it and behavior is UNCHANGED (zero
@@ -33,8 +33,10 @@ export interface CalendarSecretSourceOptions {
   readonly env?: NodeJS.ProcessEnv;
   /** Override the keychain source (tests inject a mock runner via createKeychainSource). */
   readonly keychain?: SecretSource;
-  /** Include the OS keychain source in the chain. Default true. */
+  /** Include the OS keychain source in the chain. Default: only on darwin (`/usr/bin/security` exists nowhere else). */
   readonly useKeychain?: boolean;
+  /** Test seam. */
+  readonly platform?: NodeJS.Platform;
 }
 
 /**
@@ -49,7 +51,11 @@ export function createCalendarSecretSources(
 ): SecretSource[] {
   const sources: SecretSource[] = [createEnvSource(options.env)];
 
-  if (options.useKeychain !== false) {
+  // An explicitly injected keychain source is always honored (the caller
+  // already built it); otherwise default inclusion is darwin-only.
+  const includeKeychain = options.useKeychain
+    ?? (options.keychain !== undefined || (options.platform ?? process.platform) === "darwin");
+  if (includeKeychain) {
     sources.push(
       options.keychain ?? createKeychainSource({ service: () => CALENDAR_KEYCHAIN_SERVICE })
     );

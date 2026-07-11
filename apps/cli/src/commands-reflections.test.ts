@@ -9,7 +9,7 @@ describe("resolveReflectionsFile", () => {
   });
 
   it("defaults to ~/.muse/reflections.json when env key is absent", () => {
-    expect(resolveReflectionsFile({}).endsWith("/.muse/reflections.json")).toBe(true);
+    expect(resolveReflectionsFile({}).replaceAll("\\", "/").endsWith("/.muse/reflections.json")).toBe(true);
   });
 });
 

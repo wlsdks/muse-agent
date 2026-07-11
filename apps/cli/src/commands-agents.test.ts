@@ -9,7 +9,7 @@ import { buildAgentScaffold, isSafeAgentName, loadAgents, resolveAgentsDir } fro
 describe("resolveAgentsDir", () => {
   it("honours MUSE_AGENTS_DIR, else defaults under ~/.muse/agents", () => {
     expect(resolveAgentsDir({ MUSE_AGENTS_DIR: "/tmp/a" } as NodeJS.ProcessEnv)).toBe("/tmp/a");
-    expect(resolveAgentsDir({} as NodeJS.ProcessEnv).endsWith("/.muse/agents")).toBe(true);
+    expect(resolveAgentsDir({} as NodeJS.ProcessEnv).replaceAll("\\", "/").endsWith("/.muse/agents")).toBe(true);
   });
 });
 

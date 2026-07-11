@@ -79,7 +79,7 @@ export async function isFileEncryptedAtRest(file: string): Promise<boolean> {
 
 const LOCK_STALE_MS = 30_000;
 const LOCK_RETRY_MS = 50;
-const LOCK_MAX_ATTEMPTS = 60; // ~3s before giving up on a live holder
+const LOCK_MAX_ATTEMPTS = 240; // ~12s before giving up on a live holder — 50 parallel writers on a slow runner exceed 3s
 
 async function lockIsStale(lockPath: string): Promise<boolean> {
   try {

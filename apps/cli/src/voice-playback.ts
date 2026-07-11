@@ -39,10 +39,14 @@ export async function synthesizeAndPlay(
   options: SynthesizeAndPlayOptions,
   shells: SpeakerShells = defaultSpeakerShells()
 ): Promise<void> {
+  // win32 playback goes through PowerShell's Media.SoundPlayer, which is
+  // wav-only — so an unspecified format requests wav there, mp3 elsewhere.
   const synth = await tts.synthesize({
     text: options.text,
     ...(options.voice ? { voice: options.voice } : {}),
-    ...(options.format ? { format: options.format } : {})
+    ...(options.format
+      ? { format: options.format }
+      : platform === "win32" ? { format: "wav" } : {})
   });
   const dir = mkdtempSync(pathJoin(tmpdir(), "muse-speak-"));
   try {
@@ -100,13 +104,48 @@ const STDERR_CAP_CHARS = 4096;
 // sequence mid-character at the truncation boundary.
 const STDERR_CAP_BYTES = STDERR_CAP_CHARS * 4;
 
+export interface PlayerInvocation {
+  readonly cmd: string;
+  readonly args: readonly string[];
+}
+
+export function resolveAudioPlayerInvocation(plat: NodeJS.Platform, filePath: string): PlayerInvocation {
+  if (plat === "darwin") return { args: [filePath], cmd: "afplay" };
+  if (plat === "win32") {
+    // SoundPlayer is the only dependency-free synchronous player on a stock
+    // Windows box; it is wav-only, which is why synthesizeAndPlay requests
+    // wav on win32. Single quotes in a PS single-quoted string escape as ''.
+    const escaped = filePath.replace(/'/g, "''");
+    return {
+      args: ["-NoProfile", "-Command", `(New-Object Media.SoundPlayer '${escaped}').PlaySync()`],
+      cmd: "powershell"
+    };
+  }
+  return { args: [filePath], cmd: "aplay" };
+}
+
+export function playInvocationWithWatchdog(
+  invocation: PlayerInvocation,
+  spawnFn: typeof spawn = spawn
+): Promise<void> {
+  return runPlayerWithWatchdog(invocation.cmd, invocation.args, spawnFn);
+}
+
 export async function playAudioWithWatchdog(
   player: string,
   filePath: string,
   spawnFn: typeof spawn = spawn
 ): Promise<void> {
+  return runPlayerWithWatchdog(player, [filePath], spawnFn);
+}
+
+async function runPlayerWithWatchdog(
+  player: string,
+  args: readonly string[],
+  spawnFn: typeof spawn = spawn
+): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const child = spawnFn(player, [filePath], { stdio: ["ignore", "ignore", "pipe"] });
+    const child = spawnFn(player, [...args], { stdio: ["ignore", "ignore", "pipe"] });
     let settled = false;
     const finish = (action: () => void): void => {
       if (settled) return;
@@ -161,6 +200,6 @@ export async function playAudioWithWatchdog(
 
 function defaultSpeakerShells(): SpeakerShells {
   return {
-    playAudio: (filePath) => playAudioWithWatchdog(platform === "darwin" ? "afplay" : "aplay", filePath)
+    playAudio: (filePath) => playInvocationWithWatchdog(resolveAudioPlayerInvocation(platform, filePath))
   };
 }

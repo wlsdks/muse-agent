@@ -92,7 +92,7 @@ describe("P6 audit — see → undo → teach correction loop composes and survi
     // 1. Autonomous action performs and is logged (b1).
     const first = await runDueObjectives({
       act,
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => new Date("2026-05-19T12:00:00.000Z")
     });
@@ -128,7 +128,7 @@ describe("P6 audit — see → undo → teach correction loop composes and survi
     tickNowIso = "2026-05-19T14:00:00.000Z";
     const second = await runDueObjectives({
       act,
-      evaluate: async (): Promise<ObjectiveEvaluation> => ({ outcome: "met" }),
+      evaluate: async (): Promise<ObjectiveEvaluation> => ({ evidence: [{ source: "test:seam", text: "objective condition observed in the fake store" }], outcome: "met" }),
       file: objectivesFile,
       now: () => new Date("2026-05-19T14:00:00.000Z")
     });

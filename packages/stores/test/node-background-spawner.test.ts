@@ -13,7 +13,7 @@ function tmpLog(): string {
 const exitPromise = (child: { onExit(l: (c: number | null) => void): void }): Promise<number | null> =>
   new Promise((resolve) => child.onExit(resolve));
 
-describe("createNodeBackgroundSpawner (X-3 slice 4 — real detached spawn)", () => {
+describe.skipIf(process.platform === "win32")("createNodeBackgroundSpawner (X-3 slice 4 — real detached spawn)", () => {
   it("spawns a real process, returns a pid, and fires onExit with the code", async () => {
     const spawner = createNodeBackgroundSpawner();
     const child = spawner.spawn(`"${process.execPath}" -e "process.exit(0)"`, { logFile: tmpLog() });

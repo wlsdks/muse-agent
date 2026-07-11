@@ -422,13 +422,12 @@ describe("autoconfigure", () => {
 
   it("wires working-budget compaction into the AgentRuntime by default", async () => {
     // autoconfigure wires workingBudgetTokens on ConversationTrimOptions,
-    // computing it as 40% of nominal by default. We verify the soft
-    // trigger by setting a tiny
-    // nominal context window (200 tokens) so the working budget
-    // (40% = 80 tokens) is easy to exceed with a few-message
-    // conversation. The hard cap (200) is still well above what
-    // these messages need, so a "hard_limit" trigger would mean we
-    // mis-wired the field.
+    // computing it as 40% of nominal by default. The composed layered
+    // system prompt (identity core + surface role, ~500 tokens) now rides
+    // in the compaction estimate, so the nominal window is sized to 1000:
+    // the working budget (40% = 400) is exceeded by prompt+messages
+    // (~650) while the hard cap (990 after the output reserve) is not —
+    // a "hard_limit" trigger would mean we mis-wired the field.
     const assembly = createMuseRuntimeAssembly({
       env: {
         // Disable the Context Engineering Phase 1 system-prompt
@@ -438,7 +437,7 @@ describe("autoconfigure", () => {
         // `[Active Context]` block alone, which isn't what this
         // test is exercising.
         MUSE_ACTIVE_CONTEXT_ENABLED: "false",
-        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "200",
+        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "1000",
         MUSE_LLM_MAX_OUTPUT_TOKENS: "10",
         MUSE_MODEL: "diagnostic/smoke",
         MUSE_MODEL_PROVIDER_ID: "diagnostic"
@@ -481,7 +480,7 @@ describe("autoconfigure", () => {
         // the prompt past the 200-token hard cap, flipping this test's
         // `hard_limit` vs `none` assertion depending on machine state.
         MUSE_ACTIVE_CONTEXT_ENABLED: "false",
-        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "200",
+        MUSE_LLM_MAX_CONTEXT_WINDOW_TOKENS: "1000",
         MUSE_LLM_MAX_OUTPUT_TOKENS: "10",
         MUSE_LLM_WORKING_BUDGET_TOKENS: "0",
         MUSE_MODEL: "diagnostic/smoke",
@@ -907,8 +906,8 @@ describe("autoconfigure", () => {
     expect(resolveSlackInboxFile({ MUSE_SLACK_INBOX_FILE: "/tmp/sin.json" })).toBe("/tmp/sin.json");
 
     // Empty / whitespace-only override → falls back to default.
-    expect(resolveTasksFile({ MUSE_TASKS_FILE: "" }).endsWith("/.muse/tasks.json")).toBe(true);
-    expect(resolveTasksFile({ MUSE_TASKS_FILE: "   " }).endsWith("/.muse/tasks.json")).toBe(true);
+    expect(resolveTasksFile({ MUSE_TASKS_FILE: "" }).replaceAll("\\", "/").endsWith("/.muse/tasks.json")).toBe(true);
+    expect(resolveTasksFile({ MUSE_TASKS_FILE: "   " }).replaceAll("\\", "/").endsWith("/.muse/tasks.json")).toBe(true);
 
     // A leading `~` in the override is expanded to the home dir
     // (systemd / Docker / .env / quoted-shell never expand it, and
@@ -922,19 +921,19 @@ describe("autoconfigure", () => {
     expect(resolveTasksFile({ MUSE_TASKS_FILE: "~bob/t.json" })).toBe("~bob/t.json");
 
     // Default path branch — each resolver picks its own filename.
-    expect(resolveTasksFile({}).endsWith("/.muse/tasks.json")).toBe(true);
-    expect(resolveNotesDir({}).endsWith("/.muse/notes")).toBe(true);
-    expect(resolveRemindersFile({}).endsWith("/.muse/reminders.json")).toBe(true);
-    expect(resolveLocalCalendarFile({}).endsWith("/.muse/calendar.json")).toBe(true);
-    expect(resolveMessagingCredentialsFile({}).endsWith("/.muse/messaging.json")).toBe(true);
-    expect(resolveModelKeysFile({}).endsWith("/.muse/models.json")).toBe(true);
-    expect(resolveLineInboxFile({}).endsWith("/.muse/line-inbox.json")).toBe(true);
-    expect(resolveTelegramOffsetFile({}).endsWith("/.muse/telegram-offset.json")).toBe(true);
-    expect(resolveTelegramInboxFile({}).endsWith("/.muse/telegram-inbox.json")).toBe(true);
-    expect(resolveDiscordAfterFile({}).endsWith("/.muse/discord-after.json")).toBe(true);
-    expect(resolveDiscordInboxFile({}).endsWith("/.muse/discord-inbox.json")).toBe(true);
-    expect(resolveSlackAfterFile({}).endsWith("/.muse/slack-after.json")).toBe(true);
-    expect(resolveSlackInboxFile({}).endsWith("/.muse/slack-inbox.json")).toBe(true);
+    expect(resolveTasksFile({}).replaceAll("\\", "/").endsWith("/.muse/tasks.json")).toBe(true);
+    expect(resolveNotesDir({}).replaceAll("\\", "/").endsWith("/.muse/notes")).toBe(true);
+    expect(resolveRemindersFile({}).replaceAll("\\", "/").endsWith("/.muse/reminders.json")).toBe(true);
+    expect(resolveLocalCalendarFile({}).replaceAll("\\", "/").endsWith("/.muse/calendar.json")).toBe(true);
+    expect(resolveMessagingCredentialsFile({}).replaceAll("\\", "/").endsWith("/.muse/messaging.json")).toBe(true);
+    expect(resolveModelKeysFile({}).replaceAll("\\", "/").endsWith("/.muse/models.json")).toBe(true);
+    expect(resolveLineInboxFile({}).replaceAll("\\", "/").endsWith("/.muse/line-inbox.json")).toBe(true);
+    expect(resolveTelegramOffsetFile({}).replaceAll("\\", "/").endsWith("/.muse/telegram-offset.json")).toBe(true);
+    expect(resolveTelegramInboxFile({}).replaceAll("\\", "/").endsWith("/.muse/telegram-inbox.json")).toBe(true);
+    expect(resolveDiscordAfterFile({}).replaceAll("\\", "/").endsWith("/.muse/discord-after.json")).toBe(true);
+    expect(resolveDiscordInboxFile({}).replaceAll("\\", "/").endsWith("/.muse/discord-inbox.json")).toBe(true);
+    expect(resolveSlackAfterFile({}).replaceAll("\\", "/").endsWith("/.muse/slack-after.json")).toBe(true);
+    expect(resolveSlackInboxFile({}).replaceAll("\\", "/").endsWith("/.muse/slack-inbox.json")).toBe(true);
   });
 
   it("resolveWorkspaceSkillsDir expands a leading `~` like the sibling resolvers — sibling-parity so MUSE_WORKSPACE_SKILLS_DIR=~/work/skills doesn't land literally and make the user's workspace-skills directory invisible to FileSystemSkillLoader", () => {

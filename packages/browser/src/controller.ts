@@ -35,11 +35,13 @@ export interface PageSnapshot {
   /** Interactive elements the model can act on, capped. */
   readonly elements: readonly SnapshotElement[];
   /**
-   * A JS dialog (alert/confirm/prompt) that fired and was auto-accepted, if any.
-   * For a `prompt`, `response` is the text submitted to the page — the dialog's
-   * own `defaultValue` (the page's intended pre-fill), NOT a blank string, so a
-   * "Enter coupon code"/"Enter quantity" prompt doesn't silently receive empty
-   * input. Surfaced so the model can REPORT what was sent (and flag a blank one).
+   * A JS dialog (alert/confirm/prompt/beforeunload) that fired, with how Muse
+   * answered it (`dialog-policy.ts`). Fail-close: a page-initiated `confirm` /
+   * `prompt` is DISMISSED (the page can't drive Muse into confirming or
+   * submitting), so it carries no `response`; only `alert` / `beforeunload` are
+   * accepted. `response` is present only when a prompt was accepted (submitting
+   * the page's own pre-fill, never invented text) — not the case under the
+   * current policy. Surfaced so the model can REPORT that a dialog appeared.
    */
   readonly dialog?: { readonly type: string; readonly message: string; readonly response?: string };
   /**

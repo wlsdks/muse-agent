@@ -10,6 +10,12 @@ export {
   registerSecretValue
 } from "./secret-redaction.js";
 
+export {
+  resolvePlatformCapabilities,
+  type PlatformCapabilities,
+  type PlatformOs
+} from "./platform-capabilities.js";
+
 export type JsonPrimitive = string | number | boolean | null;
 
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];

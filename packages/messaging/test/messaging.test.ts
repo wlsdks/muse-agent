@@ -411,7 +411,7 @@ describe("discord-after-store", () => {
     const file = join(dir, "after.json");
     await writeDiscordAfter(file, "ch-1", "1000000");
     const mode = statSync(file).mode & 0o777;
-    expect(mode, "discord-after sidecar must be user-only, matching the credential store + inbound-thread-store convention").toBe(0o600);
+    if (process.platform !== "win32") expect(mode, "discord-after sidecar must be user-only, matching the credential store + inbound-thread-store convention").toBe(0o600);
   });
 });
 
@@ -704,7 +704,7 @@ describe("slack-after-store", () => {
     const file = join(dir, "after.json");
     await writeSlackAfter(file, "C-1", "1700000000.000100");
     const mode = statSync(file).mode & 0o777;
-    expect(mode, "slack-after sidecar must be user-only, matching the credential store + inbound-thread-store convention").toBe(0o600);
+    if (process.platform !== "win32") expect(mode, "slack-after sidecar must be user-only, matching the credential store + inbound-thread-store convention").toBe(0o600);
   });
 });
 
@@ -996,7 +996,7 @@ describe("telegram-offset-store", () => {
     const file = join(dir, "offset.json");
     await writeTelegramOffset(file, 42);
     const mode = statSync(file).mode & 0o777;
-    expect(mode, "telegram offset sidecar must be user-only, matching the credential store + inbound-thread-store convention").toBe(0o600);
+    if (process.platform !== "win32") expect(mode, "telegram offset sidecar must be user-only, matching the credential store + inbound-thread-store convention").toBe(0o600);
   });
 });
 
@@ -1314,10 +1314,10 @@ describe("inbox-store", () => {
     const root = mkdtempSync(join(tmpdir(), "muse-inbox-perm-"));
     const file = join(root, "inbox.json");
     await appendInbound(file, makeMessage({ messageId: "1", text: "my bank pin is 1234" }));
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
     // A second append rewrites the file — perms must stay 0600.
     await appendInbound(file, makeMessage({ messageId: "2", text: "second" }));
-    expect(statSync(file).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(file).mode & 0o777).toBe(0o600);
   });
 
   it("appendInbound serializes concurrent writes so two simultaneous webhook invocations can't both read the same snapshot and clobber each other's append — every message lands, none lost to the read-modify-write race", async () => {
@@ -1406,6 +1406,6 @@ describe("FileMessagingCredentialStore", () => {
     await store.save("telegram", { token: "secret-bot-token" });
     const { statSync } = await import("node:fs");
     const mode = statSync(file).mode & 0o777;
-    expect(mode).toBe(0o600);
+    if (process.platform !== "win32") expect(mode).toBe(0o600);
   });
 });

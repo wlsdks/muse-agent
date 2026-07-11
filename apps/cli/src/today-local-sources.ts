@@ -5,7 +5,7 @@
  */
 
 import { promises as fs } from "node:fs";
-import { join, resolve as resolvePath } from "node:path";
+import { join, resolve as resolvePath, sep } from "node:path";
 
 import {
   resolveContactsFile,
@@ -185,7 +185,7 @@ async function readRecentNotes(notesDir: string): Promise<readonly string[]> {
   return collected
     .sort((left, right) => right.mtime - left.mtime)
     .slice(0, MAX_RECENT_NOTES)
-    .map((entry) => entry.name);
+    .map((entry) => entry.name.split(sep).join("/"));
 }
 
 export async function collectNotesRecursive(

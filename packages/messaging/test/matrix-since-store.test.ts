@@ -37,6 +37,6 @@ describe("matrix-since-store", () => {
     await expect(writeMatrixSince(file, "")).rejects.toThrow(/non-empty/u);
     await writeMatrixSince(file, "s1");
     const stat = await fs.stat(file);
-    expect(stat.mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(stat.mode & 0o777).toBe(0o600);
   });
 });

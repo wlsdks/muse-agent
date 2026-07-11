@@ -656,7 +656,9 @@ function readCommandPath(config: unknown): string | undefined {
  * binary never silently passes the pin.
  */
 function resolveExecutablePath(command: string): string | undefined {
-  if (command.includes("/")) {
+  // A win32 absolute/relative path carries backslashes and no "/" — it is
+  // still a PATH-bypassing direct path, not a bare command name.
+  if (command.includes("/") || command.includes("\\")) {
     return isRegularFile(command) ? command : undefined;
   }
   const pathEnv = process.env.PATH ?? "";

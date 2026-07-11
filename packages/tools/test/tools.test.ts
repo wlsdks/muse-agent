@@ -753,7 +753,7 @@ describe("tool utilities", () => {
   });
 });
 
-describe("Rust runner watchdog", () => {
+describe.skipIf(process.platform === "win32")("Rust runner watchdog", () => {
   it("runnerWatchdogMs = request timeout + grace, or a default when no timeout", () => {
     expect(runnerWatchdogMs({ command: "x" })).toBe(120_000);
     expect(runnerWatchdogMs({ command: "x", timeoutMs: 1_000 })).toBe(6_000);
@@ -869,7 +869,7 @@ describe("Rust runner watchdog", () => {
 // stdout and coerces it via parseRunnerResponse — driven here against a
 // contract-faithful fake runner that emits a chosen payload (real spawn + stdin
 // write + stdout read + parse), not a stubbed bridge.
-describe("invokeRustRunner — runner output trust boundary", () => {
+describe.skipIf(process.platform === "win32")("invokeRustRunner — runner output trust boundary", () => {
   async function fakeRunner(payload: string): Promise<string> {
     const { mkdtempSync, writeFileSync, chmodSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");

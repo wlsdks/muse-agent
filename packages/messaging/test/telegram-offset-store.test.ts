@@ -50,7 +50,7 @@ describe("telegram-offset-store", () => {
 
   it("writes the offset sidecar with 0600 permissions (it reveals the bot's polling cadence + chat ids)", async () => {
     await writeTelegramOffset(file, 1);
-    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect((await stat(file)).mode & 0o777).toBe(0o600);
   });
 
   it("treats a corrupt file, a missing offset, or a non-number/non-finite offset as 'no offset'", async () => {

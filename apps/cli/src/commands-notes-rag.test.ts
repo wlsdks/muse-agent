@@ -324,7 +324,7 @@ describe("defaultIndexPath — empty-HOME fall-through (goal-547 sibling)", () =
     const prev = process.env.HOME;
     process.env.HOME = "/u/jinan";
     try {
-      expect(defaultIndexPath()).toBe("/u/jinan/.muse/notes-index.json");
+      expect(defaultIndexPath()).toBe(join("/u/jinan", ".muse", "notes-index.json"));
     } finally {
       if (prev === undefined) delete process.env.HOME;
       else process.env.HOME = prev;
@@ -338,7 +338,7 @@ describe("defaultIndexPath — empty-HOME fall-through (goal-547 sibling)", () =
       const resolved = defaultIndexPath();
       expect(resolved, "no leading whitespace in resolved path").not.toMatch(/^\s/u);
       expect(resolved, "no bare relative .muse/").not.toMatch(/^\.muse\//u);
-      expect(resolved).toMatch(/\/.muse\/notes-index\.json$/u);
+      expect(resolved.replaceAll("\\", "/")).toMatch(/\/.muse\/notes-index\.json$/u);
     } catch (cause) {
       expect((cause as Error).message).toMatch(/Cannot resolve home directory/u);
     } finally {

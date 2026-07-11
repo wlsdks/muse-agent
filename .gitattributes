@@ -1,0 +1,4 @@
+# Checkout must be LF everywhere — the repo is authored LF-only and the
+# byte-hygiene gate (packages/shared test/repo-byte-hygiene.test.ts) forbids
+# raw CR bytes, so a CRLF checkout on a Windows runner would flag every line.
+* text=auto eol=lf
