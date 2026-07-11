@@ -170,7 +170,7 @@ ratchet: 로드맵 잔여 [ ] = 15/40 · self-eval pass · fabrication 0 · brow
 - 리뷰지점: Opus PASS — fail-close 방향(confirm/prompt/unknown dismiss), settleDialog가 fake spy로 dismiss/accept 실호출 검증(enum-only 아님), 배선에 accept fall-through 없음, prompt 미제출, 두 mutation 독립 재현(confirm→accept·ternary flip), 기존 153 test green, 불변식 tighten-only(accept 집합 축소). controller.ts:425 stale nit도 지적→수정.
 - 리스크: 트레이드 — 승인된 "click Submit→page confirm" 흐름이 dismiss로 미완(fail-safe, 스냅샷서 surface). beforeunload=accept 유지(승인된 네비 진행). eval:browser-agent dialog 미사용이라 회귀無. 다음 = D1-S7d(page 콘텐츠 <page> 래핑+미디어 defang, 실 e2e — VQ-10 e2e 하네스 신규작성 필요).
 
-## fire 21 · 2026-07-12 · skill v2.x · <commit-pending>
+## fire 21 · 2026-07-12 · skill v2.x · 3793cbd6b
 meta: slice=D1-S7d1 · wave=W2 · pkg=@muse/browser · kind=injection-guard · verdict=PASS · firesSinceDrill=3
 ratchet: 로드맵 잔여 [ ] = 15/41(D1-S7d→d1/d2 분해 +1, d1 체크 -1 → 15) · self-eval pass · fabrication 0 · browser +13 test(page-content-guard)
 - 무엇: 🔒 브라우저 page text(untrusted 최대통로) 인젝션 결정론 guard. 순수 page-content-guard.ts(자립): defangPageText(`</page>`/`<page>` break-out→fullwidth escape · `](` 중화로 markdown 이미지/링크 엑스필 차단 · instruction-override 정규식→`[defanged-directive]`, bounded=ReDoS-safe)+wrapPageContent(escape-then-wrap)+defangElementName. snapshotToJson text 래핑·elementsJson name defang → 전 snapshot-툴 조립경로 커버. D1-S7d를 d1(guard)/d2(실 e2e)로 분해.
