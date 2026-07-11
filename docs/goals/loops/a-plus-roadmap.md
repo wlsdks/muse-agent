@@ -144,3 +144,12 @@ ratchet: 로드맵 잔여 [ ] = 17/39 · self-eval pass · fabrication 0 · brow
 - 리뷰지점: Opus 독립 평가자가 mutation-RED 재현(가드제거→라인542/551 2 RED)·행동어서(shape아님)·legit flow(target분기·multi-field·describeElement populate)·포맷 무변경(grep @e=0)·스레트모델 검증 → PASS.
 - 리스크: 낮음. numeric-index 충돌(다른요소가 옛 index 물려받음)은 tool-boundary 가드 밖=VQ-19(실브라우저 D1-S7d 인접). 포맷 무변경이라 eval:computer-task/browser-agent 계약 무손상. 다음 = D1-S7b(step-budget+timeout 주입, actions_used N/M).
 - note: fire 18은 JUDGE-DRILL 강제(firesSinceDrill=8·연속 allPASS=8≥8) — 고의 나쁜슬라이스 주입→④b FAIL 확인→롤백→진짜 fix, 카운터 리셋.
+
+## fire 18 · 2026-07-11 · skill v2.x · <commit-pending>
+meta: slice=JUDGE-DRILL+D1-S7b1 · wave=W2 · pkg=@muse/agent-core · kind=judge-drill+action-budget-core · verdict=PASS · firesSinceDrill=0(리셋)
+ratchet: 로드맵 잔여 [ ] = 17/40(D1-S7b→b1/b2 분해로 +1, b1 체크로 -1 net 0 → 17) · self-eval pass · fabrication 0 · agent-core +5 test(action-budget) · baseline ENV repair(foreign)
+- 무엇: ①기준선 envInventory FOREIGN-fail(prompt-lab merge가 Total 522→526 미갱신)→docs:env resync 커밋(0b6360cfe). ②JUDGE-DRILL: 고의결함 D1-S7b step-budget 주입(off-by-one `used>max`+선언-only 테스트+미배선)→독립 Opus ④b가 4개 구체위반으로 FAIL(off-by-one·경계 mutation-GREEN·행동검증無·미배선+기존중복) rubber-stamp 없이. ③롤백→진짜 fix D1-S7b1: 순수 액션-예산 결정코어(guardBrowserAction, `used>=max` 경계정확, near-cap, actions_used N/M). D1-S7b를 b1(코어)/b2(배선)로 분해.
+- 왜: 하드-카운터(firesSinceDrill=8·연속 allPASS=8) 도달로 게이트 신뢰성 재검증 필수. 드릴로 maker≠judge가 살아있음 확인 후, 그 결함의 올바른 버전을 진짜-fix로 배송(off-by-one·hollow-test를 정확히 rebut).
+- 리뷰지점: 드릴 judge와 b1 judge는 별개 Opus 인스턴스(fresh context). b1 judge가 두 mutation 독립 재현(`>=`→`>` 2 RED, near-cap 1 RED)·행동 시퀀스·결정 일관성·순수성 확인 PASS. 드릴 judge는 심은 결함(off-by-one·선언-only) + 추가 발견(미배선·step-budget.ts 중복)까지 잡음.
+- 리스크: 낮음. b1은 미배선 코어라 유저-가시 0(CHANGELOG b2에서). 기존 step-budget.ts=토큰예산이라 액션-카운트는 별개 정당. 배선(b2)이 실 bounded-task 효과의 관문. 다음 = D1-S7b2(buildBrowserTools 공유 인스턴스+각 act-tool fail-close+출력 표면화).
+- lesson: JUDGE-DRILL은 "롤백→진짜 fix" 시 드릴 결함의 *올바른 버전*을 배송하면 드릴이 곧 실슬라이스 스펙이 됨(토큰 효율). 드릴 judge가 심은 결함 외에 미배선·기존모듈 중복까지 자율 발견 → 게이트가 체크리스트 재생 아닌 적응형 추론임 확증.
