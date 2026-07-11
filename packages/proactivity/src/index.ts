@@ -5,6 +5,7 @@ export * from "./commitment-checkin.js";
 export * from "./consented-action.js";
 export * from "./followup-firing-loop.js";
 export * from "./macos-ambient-source.js";
+export * from "./windows-ambient-source.js";
 export * from "./note-family-absence.js";
 export * from "./objective-evaluation-loop.js";
 export * from "./objective-evaluator.js";
