@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { resolve as nodePathResolve, sep as nodePathSep } from "node:path";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { guardSecretPersistence, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { readString } from "@muse/mcp";
 import type { LoopbackMcpServer } from "@muse/mcp";
@@ -395,6 +395,10 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           if (content === undefined) {
             return { error: "content is required" };
           }
+          const guard = guardSecretPersistence(content);
+          if (!guard.safe) {
+            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
+          }
           if (Buffer.byteLength(content, "utf8") > maxFileBytes) {
             return { error: `content exceeds maxFileBytes ${maxFileBytes}` };
           }
@@ -474,6 +478,10 @@ export function createNotesMcpServer(options: NotesMcpServerOptions): LoopbackMc
           }
           if (content === undefined) {
             return { error: "content is required" };
+          }
+          const guard = guardSecretPersistence(content);
+          if (!guard.safe) {
+            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }
           const safe = resolveSafe(path);
           if (typeof safe === "string") {

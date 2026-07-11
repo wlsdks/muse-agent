@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { JsonObject, JsonValue } from "@muse/shared";
+import { guardSecretPersistence, type JsonObject, type JsonValue } from "@muse/shared";
 
 import { errorMessage, readString } from "@muse/mcp";
 import { hasTimeComponent, isTimeOnlyPhrase, isUtcMidnight, recurrenceFromPhrase, startOfLocalDay, withTimeOfDay } from "@muse/mcp-shared";
@@ -153,6 +153,10 @@ export function createRemindersMcpServer(options: RemindersMcpServerOptions): Lo
           const text = readString(args, "text")?.trim();
           if (!text) {
             return { error: "text is required" };
+          }
+          const guard = guardSecretPersistence(text);
+          if (!guard.safe) {
+            return { blocked: true, error: guard.notice, kinds: guard.kinds as JsonValue };
           }
           const dueAtRaw = readString(args, "dueAt")?.trim();
           if (!dueAtRaw) {
