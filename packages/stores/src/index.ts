@@ -6,6 +6,8 @@
 export { atomicWriteFile, withFileMutationQueue } from "./atomic-file-store.js";
 export { appendDigestItem, drainDigestQueue, readDigestQueue } from "./digest-queue.js";
 export type { DigestQueueItem } from "./digest-queue.js";
+export { digestAlreadySentToday, localDateKey, markDigestSent, readDigestSentDate } from "./digest-sent-store.js";
+export type { DigestSentState } from "./digest-sent-store.js";
 export { decryptFileAtRest, encryptFileAtRest, isFileEncryptedAtRest } from "./encrypted-file.js";
 export { ageCutoffMs, pruneByAge } from "./retention.js";
 export type { PruneByAgeOptions, PruneByAgeResult } from "./retention.js";

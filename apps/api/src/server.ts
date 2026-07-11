@@ -41,6 +41,7 @@ import { createFileBackedActivityTracker, createInMemoryActivityTracker } from "
 import {
   startAmbientDaemonIfConfigured,
   startConsolidateDaemonIfConfigured,
+  startDigestDaemonIfConfigured,
   startFollowupDaemonIfConfigured,
   startPatternDaemonIfConfigured,
   startObjectivesDaemonIfConfigured,
@@ -542,6 +543,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   startAmbientDaemonIfConfigured(env, server, options);
   startWebWatchDaemonIfConfigured(env, server, options);
   startHomeWatchDaemonIfConfigured(env, server, options);
+  startDigestDaemonIfConfigured(env, server, options);
   warmUpModelIfConfigured(env, options);
 
   // Optional daemon: ingest Telegram messages into telegramInboxFile.

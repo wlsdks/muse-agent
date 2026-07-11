@@ -19,7 +19,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveContactsFile, resolveDigestQueueFile, resolveInterruptionLedgerFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
+import { createGateEmbedder, createKnowledgeEnricher, createOllamaEmbedder, parseBoolean, parseNonNegativeInteger, resolveActionLogFile, resolveContactsFile, resolveDigestQueueFile, resolveDigestSentFile, resolveInterruptionLedgerFile, resolveLearningPauseFile, resolvePlaybookFile, resolveSuppressedLessonsFile } from "@muse/autoconfigure";
 import { createCachingEmbedder } from "@muse/agent-core";
 import type { FastifyInstance } from "fastify";
 
@@ -41,6 +41,7 @@ import { createMessagingObjectiveActuator, createModelObjectiveEvaluator, derive
 import { createNotesInvestigator, extractEmailAddress, GmailEmailProvider, LocalDirNotesProvider, LocalFileTasksProvider, OpenMeteoWeatherProvider, homeWatchesFromConfig, parseHomeAlertChecks, resolveHomeAlertLine } from "@muse/domain-tools";
 import { startAmbientTick } from "./ambient-tick.js";
 import { startWebWatchTick } from "./web-watch-tick.js";
+import { startDigestTick } from "./digest-tick.js";
 import { startFollowupTick } from "./followup-tick.js";
 import { startObjectivesTick } from "./objectives-tick.js";
 import { startPatternTick } from "./pattern-tick.js";
@@ -182,6 +183,52 @@ export function startProactiveDaemonIfConfigured(
     ...(proactiveDailyCap > 0 ? { dailyCap: proactiveDailyCap } : {})
   });
   stopOnClose(server, proactiveHandle);
+}
+
+/**
+ * The daily digest-flush daemon. Rides the SAME configured channel as the
+ * proactive daemon (`MUSE_PROACTIVE_PROVIDER`/`MUSE_PROACTIVE_DESTINATION`)
+ * — this is the delivery counterpart to the interruption budget every
+ * UNASKED loop opts into, so it only needs to activate where those loops
+ * already deliver. Gated separately by `MUSE_DIGEST_ENABLED` (default true)
+ * so an operator can turn the daily rollup off without disabling proactive
+ * notices themselves.
+ */
+export function startDigestDaemonIfConfigured(
+  env: NodeJS.ProcessEnv,
+  server: FastifyInstance,
+  options: ServerOptions
+): void {
+  const digestProvider = env.MUSE_PROACTIVE_PROVIDER?.trim();
+  const digestDestination = env.MUSE_PROACTIVE_DESTINATION?.trim();
+  if (
+    !parseBoolean(env.MUSE_DIGEST_ENABLED, true)
+    || !digestProvider || digestProvider.length === 0
+    || !digestDestination || digestDestination.length === 0
+    || !options.messaging
+    || !options.messaging.has(digestProvider)
+  ) {
+    return;
+  }
+  const tickMsRaw = env.MUSE_DIGEST_TICK_MS ? Number(env.MUSE_DIGEST_TICK_MS) : undefined;
+  const digestHourRaw = env.MUSE_DIGEST_HOUR ? Number(env.MUSE_DIGEST_HOUR) : undefined;
+  const digestQuietHours = parseQuietHours(env.MUSE_PROACTIVE_QUIET_HOURS)
+    ?? parseQuietHours(env.MUSE_REMINDER_QUIET_HOURS);
+  const digestHandle = startDigestTick({
+    destination: digestDestination,
+    digestFile: resolveDigestQueueFile(env),
+    ...(digestHourRaw !== undefined ? { digestHour: digestHourRaw } : {}),
+    errorLogger: (message) => server.log.warn(message),
+    ...(tickMsRaw !== undefined ? { intervalMs: tickMsRaw } : {}),
+    logger: (message) => server.log.info(message),
+    providerId: digestProvider,
+    ...(digestQuietHours ? { quietHours: digestQuietHours } : {}),
+    registry: options.messaging,
+    sentFile: resolveDigestSentFile(env)
+  });
+  server.addHook("onClose", async () => {
+    digestHandle.stop();
+  });
 }
 
 export function startFollowupDaemonIfConfigured(

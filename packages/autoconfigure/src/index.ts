@@ -43,6 +43,7 @@ export {
   resolveFollowupsFile,
   resolveInterruptionLedgerFile,
   resolveDigestQueueFile,
+  resolveDigestSentFile,
   resolvePatternsFiredFile,
   resolveRecallHitsFile,
   resolveCheckinsFile,

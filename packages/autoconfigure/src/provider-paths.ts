@@ -195,6 +195,12 @@ export function resolveDigestQueueFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_DIGEST_QUEUE_FILE", "digest-queue.json");
 }
 
+/** The once-per-day "already sent" sidecar the digest flush dedupes against
+ *  (`packages/stores/digest-sent-store.ts`). */
+export function resolveDigestSentFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_DIGEST_SENT_FILE", "digest-sent.json");
+}
+
 export function resolveLineInboxFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_LINE_INBOX_FILE", "line-inbox.json");
 }

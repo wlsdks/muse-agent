@@ -3,6 +3,7 @@ export * from "./background-exit-notice-loop.js";
 export * from "./briefing-imminent.js";
 export * from "./commitment-checkin.js";
 export * from "./consented-action.js";
+export * from "./digest-flush.js";
 export * from "./followup-firing-loop.js";
 export * from "./interruption-gate.js";
 export * from "./macos-ambient-source.js";

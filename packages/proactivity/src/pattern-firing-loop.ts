@@ -152,17 +152,21 @@ export async function runDuePatternNotices(options: RunDuePatternNoticesOptions)
       fired.push(match);
       if (!digested) {
         delivered += 1;
-        if (options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
-          try {
-            options.agentInitiatedNoticeBroker.publish(options.agentInitiatedNoticeUserId, {
-              generatedAt: now().toISOString(),
-              kind: "pattern",
-              sourceId: match.id,
-              text
-            });
-          } catch (cause) {
-            errors.push(`${match.id} broker: ${errorMessage(cause)}`);
-          }
+      }
+      // The broker feeds an already-open live stream (an engaged user watching
+      // /api/agent-notices/stream) — publish regardless of the budget outcome.
+      // The interruption budget governs push channels (messaging send) only;
+      // suppressing ambient visibility too would defeat the point of the live feed.
+      if (options.agentInitiatedNoticeBroker && options.agentInitiatedNoticeUserId) {
+        try {
+          options.agentInitiatedNoticeBroker.publish(options.agentInitiatedNoticeUserId, {
+            generatedAt: now().toISOString(),
+            kind: "pattern",
+            sourceId: match.id,
+            text
+          });
+        } catch (cause) {
+          errors.push(`${match.id} broker: ${errorMessage(cause)}`);
         }
       }
     } catch (cause) {

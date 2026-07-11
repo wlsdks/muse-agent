@@ -99,6 +99,34 @@ describe("runDuePatternNotices — interruption budget (opt-in)", () => {
     expect(sent).toHaveLength(1);
   });
 
+  it("cap reached: no registry.send, but the broker still publishes (ambient stream is not budget-gated)", async () => {
+    const sent: OutboundMessage[] = [];
+    const published: Array<{ userId: string; notice: { kind: string; text: string; sourceId?: string } }> = [];
+    await appendInterruptionDelivery(ledgerFile, { at: NOW, source: "pattern-firing" });
+
+    const summary = await runDuePatternNotices({
+      agentInitiatedNoticeBroker: {
+        publish: (userId, notice) => {
+          published.push({ notice, userId });
+        }
+      },
+      agentInitiatedNoticeUserId: "u1",
+      destination: "555",
+      interruptionBudget: { dailyCap: 6, digestFile, hourlyCap: 1, ledgerFile },
+      now: () => NOW,
+      patternsFiredFile,
+      providerId: "telegram",
+      registry: new MessagingProviderRegistry([capturingProvider(sent)]),
+      signals: { notesDir, now: () => NOW.getTime() }
+    });
+    expect(summary.delivered).toBe(0);
+    expect(sent).toEqual([]);
+    expect(await readDigestQueue(digestFile)).toHaveLength(1);
+    expect(published).toHaveLength(1);
+    expect(published[0]!.userId).toBe("u1");
+    expect(published[0]!.notice.kind).toBe("pattern");
+  });
+
   it("a corrupt ledger file fails OPEN — the suggestion still sends", async () => {
     const sent: OutboundMessage[] = [];
     await writeFile(ledgerFile, "{ not valid json", "utf8");

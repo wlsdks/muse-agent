@@ -24,6 +24,7 @@ import {
   parseNonNegativeInteger,
   resolveContactsFile,
   resolveDigestQueueFile,
+  resolveDigestSentFile,
   resolveEpisodesFile,
   resolveFollowupsFile,
   resolveInterruptionLedgerFile,
@@ -47,7 +48,7 @@ import { FileUserMemoryStore } from "@muse/memory";
 import type { PatternMatch } from "@muse/memory";
 import type { MessagingProviderRegistry } from "@muse/messaging";
 import { formatBirthdayBriefLine, queryContacts, resolveUpcomingBirthdays, readEpisodes, resolveLearnQueueFile, decayStalePlaybookRewards, isLearningPaused, queryActionLog, queryPlaybook, readReminders, readTasks, recordPlaybookStrategy, removePlaybookStrategy, readProactiveHistory, readRecallHits, writeFadedMemoryKeys } from "@muse/stores";
-import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, runDueBackgroundExitNotices, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, runDueReminders, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
+import { createAmbientNoticeRunner, createMessagingObjectiveActuator, createModelObjectiveEvaluator, createProposingObjectiveActuator, createWebWatchRunner, deriveBriefingImminent, deriveCalendarBriefingImminent, FileAmbientSignalSource, gateProactiveNoticeSink, isQuietHour, parseQuietHours, MacOsActiveWindowSource, parseAmbientNoticeRules, runDueBackgroundExitNotices, runDueCheckins, runDueFollowups, runDueObjectives, runDuePatternNotices, runDueProactiveNotices, runDueReminders, runDigestFlushIfDue, webWatchesFromConfig, type AmbientNoticeRunner, type BriefingCalendarLister, type ChromeSnapshotConnection, type InterruptionBudgetWiring, type ProactiveNoticeSink, type WebWatchRunner } from "@muse/proactivity";
 import { homeWatchesFromConfig, GmailEmailProvider, type EmailProvider, runDueSituationalBriefing, selectUpcomingConflicts } from "@muse/domain-tools";
 import { BROWSING_SYNC_LIMIT, locateChromeHistoryFile, shouldAutoSyncBrowsing, syncBrowsingHistory } from "@muse/recall";
 import { execFile } from "node:child_process";
@@ -473,6 +474,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         io.stdout(`  briefing:   ${parseBoolean(e.MUSE_BRIEFING_ENABLED, false) ? "enabled" : "disabled (set MUSE_BRIEFING_ENABLED)"}\n`);
         io.stdout(`  self-learn: ${parseBoolean(e.MUSE_SELFLEARN_ENABLED, false) && followupModel ? "enabled (distill + decay + consolidate)" : "disabled (set MUSE_SELFLEARN_ENABLED + a model)"}\n`);
         io.stdout(`  recap:      ${parseBoolean(e.MUSE_RECAP_ENABLED, false) ? `enabled (evening, after ${(e.MUSE_RECAP_HOUR ?? "21").toString()}:00)` : "disabled (set MUSE_RECAP_ENABLED)"}\n`);
+        io.stdout(`  digest:     ${parseBoolean(e.MUSE_DIGEST_ENABLED, true) ? `enabled (daily, at ${(e.MUSE_DIGEST_HOUR ?? "18").toString()}:00 local)` : "disabled (set MUSE_DIGEST_ENABLED=false to keep off)"}\n`);
         io.stdout(`  email-sync: ${parseBoolean(e.MUSE_EMAIL_SYNC_ENABLED, false) && e.MUSE_GMAIL_TOKEN?.trim() ? "enabled (recent emails → recall)" : "disabled (set MUSE_EMAIL_SYNC_ENABLED + MUSE_GMAIL_TOKEN)"}\n`);
         io.stdout(`  msg-poll:   ${parseBoolean(e.MUSE_MESSAGING_POLL_ENABLED, false) ? "enabled (new inbound → recallable)" : "disabled (set MUSE_MESSAGING_POLL_ENABLED)"}\n`);
         io.stdout(`  conflicts:  ${parseBoolean(e.MUSE_CONFLICT_WATCH_ENABLED, false) ? `enabled (warns of upcoming double-bookings, next ${(e.MUSE_CONFLICT_WATCH_WITHIN_DAYS ?? "7").toString()}d)` : "disabled (set MUSE_CONFLICT_WATCH_ENABLED)"}\n`);
@@ -1055,6 +1057,41 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         } catch { /* fail-soft — the recap is a daily nicety, never break the daemon */ }
       };
 
+      // Daily digest flush — the delivery half of the interruption budget
+      // (`interruptionBudget` above): whatever the 5 unasked loops suppressed
+      // into the digest queue over the day goes out as ONE compiled message.
+      // On by default (MUSE_DIGEST_ENABLED); mirrors apps/api's digest-tick
+      // so the CLI daemon (which runs several loops the API daemon doesn't
+      // duplicate) never leaves its own suppressed notices stranded.
+      const digestEnabled = parseBoolean(e.MUSE_DIGEST_ENABLED, true);
+      const digestHourRaw = e.MUSE_DIGEST_HOUR ? Number(e.MUSE_DIGEST_HOUR) : undefined;
+      const digestQueueFile = resolveDigestQueueFile(e);
+      const digestSentFile = resolveDigestSentFile(e);
+      const digestFlushTick = async (): Promise<void> => {
+        if (!digestEnabled) return;
+        if (quietHours && isQuietHour(new Date().getHours(), quietHours)) return;
+        try {
+          const summary = await runDigestFlushIfDue({
+            destination,
+            digestFile: digestQueueFile,
+            ...(digestHourRaw !== undefined && Number.isFinite(digestHourRaw) ? { digestHour: digestHourRaw } : {}),
+            now: () => new Date(),
+            providerId: provider,
+            registry: messagingRegistry,
+            sentFile: digestSentFile
+          });
+          if (summary.outcome === "sent" || summary.errors.length > 0) {
+            const tag = `[${new Date().toISOString()}]`;
+            io.stdout(`${tag} digest: ${summary.outcome} (${summary.itemCount.toString()} item(s))`);
+            if (summary.errors.length > 0) {
+              io.stdout(`, ${summary.errors.length.toString()} error(s)`);
+              for (const error of summary.errors) io.stdout(`\n  ! ${error}`);
+            }
+            io.stdout("\n");
+          }
+        } catch { /* fail-soft — the daily digest is a nicety, never break the daemon */ }
+      };
+
       // Continuous messaging ingestion — pull new inbound (Telegram / Discord /
       // Slack) into the inbox on a throttle; the inbox-injection cursor then
       // makes it recallable via `muse ask` WITHOUT a manual `muse messaging
@@ -1209,6 +1246,7 @@ export function registerDaemonCommands(program: Command, io: ProgramIO, helpers:
         await playbookConsolidateTick();
         await memoryConsolidateTick();
         await recapTick();
+        await digestFlushTick();
         await messagingPollTick();
         await conflictWatchTick();
         await browsingAutoSyncTick();

@@ -66,6 +66,7 @@ export {
   resolveInboxInjectionCursorFile,
   resolveInterruptionLedgerFile,
   resolveDigestQueueFile,
+  resolveDigestSentFile,
   resolvePatternsFiredFile,
   resolveRecallHitsFile,
   resolveCheckinsFile,
