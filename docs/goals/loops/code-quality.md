@@ -17,7 +17,7 @@
 | packages/multi-agent | fire 8 | 방문 |
 | packages/shared | – | 미방문 |
 | apps/api | fire 9 | 방문 |
-| apps/web | – | 미방문 |
+| apps/web | fire 18 | 방문 |
 | packages/autoconfigure | fire 11 | 방문 |
 | packages/shared | fire 11 | 방문 (사실상 CLEAN — 고아 docstring 1건만 큐) |
 | packages/stores | fire 13 | 방문 |
@@ -61,6 +61,8 @@
 - stores 동시성 스트레스 테스트 3파일(consent/veto/objectives-concurrent)은 머신 부하시 false-timeout — 알려진 클래스, 부하 낮으면 green (fire 13 확인)
 - autoconfigure buildLoopbackTools 207줄·buildRuntimeToolRegistry 279줄 → runtime-assembly와 같은 패턴 분해 후보
 - packages/shared index.ts 고아 docstring (truncateErrorBody 설명이 함수와 144줄 분리) → 이동 후보 (소형)
+- apps/web 후속 후보 (fire 18 스캔): i18n strings 고아 키 ~151개 의심(동적 lookup 오탐 위험 — 실파서 검증 필수), Notes/Integrations 뷰 훅 밀도(브라우저 검증 필요), ui.tsx 아이콘 상수 분리
+- 루프 운영: haiku 스캔 에이전트가 워크트리에 잔여 파일(i18n_keys.txt 등)을 흘림 — 스캔 프롬프트에 "파일 생성 금지(스크래치는 /tmp)" 명시할 것 (fire 18에서 정리함)
 - 루프 운영: sonnet 워커 stash 금지 위반 2회째 (fire 11) — 잔여물은 없었으나 프롬프트에 대안(git show HEAD:path) 강제 + "stash 사용시 보고서에 사유 명시" 요구 추가할 것
 - ~~apps/api 사전존재 red 2파일~~ → fire 10에서 해결. 정정: 플레이크가 아니라 **낡은 테스트** — src 진화(데몬 플래그 6→8, 텔레그램 typing 표시 추가)를 테스트가 못 따라간 것. 교훈: main의 full-suite red가 방치되고 있었음 — 기능 커밋이 관련 테스트 갱신 없이 들어옴
 - 루프 운영 교훈: sonnet 워커 프롬프트에 "git stash 금지" 명시할 것 (fire 2 워커가 사전존재 확인에 stash 사용 — 잔여물 없이 끝났지만 규칙 위반; fire 3부터 명시 적용됨)
@@ -92,3 +94,4 @@
 | 15 | packages/mcp | toErrorMessage 3벌(manager/transport/index) → error-utils.ts 통합 + index.ts 408→343줄(createMcpMuseTool·redactMcpSecrets를 mcp-tool-factory.ts로 순수 이동, 재export로 공개 표면 불변); 보안성 발견 2건은 동작 변경이라 큐로 | mcp build ✓ · 779/779 ✓ · lint 0 ✓ (fable 재검증) |
 | 16 | tools 스캔 → multi-agent (큐 집행) | tools 힌트 병합은 워커 전제-검증이 반증해 NO-SHIP(위 기각 기록); 대체로 orchestrator runSequential(38)·runParallel(26)의 worker당 중복 흐름을 runWorkerStep 헬퍼(33줄)로 통합 — publish fire-safe 자세·에러 구분(원본 vs new Error(reason)) 보존, 소비부가 errorMessage만 쓰므로 non-Error 래핑도 문자열-동일 | multi-agent 334/334 ✓ · build ✓ · lint 0 ✓ (fable 재검증) |
 | 17 | packages/proactivity | proactive-notice-loop.ts 899→621줄: 수집/포맷을 notice-imminent.ts(168줄), 합성/그라운딩을 notice-synthesis.ts(152줄)로 순수 이동, 이동 공개심볼 재export로 소비자(cli 데몬·api tick·테스트) 무변경; @muse/stores 4중 import 통합 | proactivity 113/113 ✓ · cli+api build ✓ · api notice 3파일 6/6 ✓ · lint 0 ✓ (fable 재검증) |
+| 18 | apps/web | SSE 프레임 파싱 3벌 통합(sse-frames.ts — chat/notice의 last-data-line 인라인 파서를 ask의 join-all 헬퍼로; 실트래픽 JSON 단일라인이라 관찰-동일, 잠재 divergence 제거) + readToken 2벌 → lib/token-storage.ts; 레이아웃/JSX 무변경이라 브라우저 검증 불요 | web vitest 39파일 249/249 ✓ · tsc+vite build ✓ · lint 0 ✓ |

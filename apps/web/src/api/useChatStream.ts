@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { parseSseFrame, splitSseFrames } from "./sse-frames.js";
+
 import type { ChatResponse, Citation } from "./types.js";
 
 export interface ChatTurn {
@@ -116,23 +118,15 @@ export function useChatStream(baseUrl: string, token: string) {
             break;
           }
           buffer += decoder.decode(value, { stream: true });
-          const parts = buffer.split("\n\n");
-          buffer = parts.pop() ?? "";
+          const { frames, rest } = splitSseFrames(buffer);
+          buffer = rest;
 
-          for (const part of parts) {
-            let eventName = "message";
-            let dataLine = "";
-            for (const line of part.split("\n")) {
-              if (line.startsWith("event: ")) {
-                eventName = line.slice(7).trim();
-              } else if (line.startsWith("data: ")) {
-                dataLine = line.slice(6);
-              }
-            }
-            if (!dataLine) {
+          for (const frame of frames) {
+            const { data, eventName } = parseSseFrame(frame);
+            if (!data) {
               continue;
             }
-            handleEvent(eventName, dataLine, commit, setActiveTool);
+            handleEvent(eventName, data, commit, setActiveTool);
           }
         }
       } catch (cause) {

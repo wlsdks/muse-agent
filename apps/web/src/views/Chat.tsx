@@ -6,18 +6,11 @@ import { DeskPet } from "../components/DeskPet.js";
 import { Markdown } from "../components/markdown.js";
 import { Button, Icon } from "../components/ui.js";
 import { useI18n } from "../i18n/index.js";
+import { readToken } from "../lib/token-storage.js";
 
 import type { ApiClient } from "../api/client.js";
 import type { StringKey, Translate } from "../i18n/index.js";
 import type { RefObject } from "react";
-
-function readToken(): string {
-  try {
-    return window.localStorage.getItem("muse.token") ?? "";
-  } catch {
-    return "";
-  }
-}
 
 /** Starter prompts grounded in Muse's real capabilities (tasks, calendar,
  * notes, and a meta "what can you do" — see `chat.askSub`). Each entry pairs
