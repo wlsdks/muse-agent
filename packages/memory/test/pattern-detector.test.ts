@@ -69,6 +69,22 @@ describe("detectTimeOfDayPatterns", () => {
     expect(journalMatch!.id).toMatch(/^[a-f0-9]{12}$/u);
   });
 
+  it("suggestion's rationale clause echoes the bucket's own counts verbatim (why-it-fired, no fabrication)", () => {
+    const signals = makeSignals([
+      localEdit("/n/journal/a.md", "journal", 2026, 4, 14, 21, 10),
+      localEdit("/n/journal/b.md", "journal", 2026, 4, 21, 21, 20),
+      localEdit("/n/journal/c.md", "journal", 2026, 4, 28, 21, 30),
+      localEdit("/n/journal/d.md", "journal", 2026, 5, 5, 21, 40)
+    ]);
+    const matches = detectTimeOfDayPatterns(new Date(2026, 4, 13, 21, 0), signals);
+    const match = matches[0]!;
+    // The clause's numbers MUST equal the bucket's own matches/distinctDays —
+    // never a separately-computed or model-invented figure.
+    expect(match.suggestion).toContain(
+      `(${match.bucket.matches.toString()} edits across ${match.bucket.distinctDays.toString()} days)`
+    );
+  });
+
   it("uses a stable sha256-derived id keyed off weekday + band + family", () => {
     const a = makeSignals([
       localEdit("/n/journal/a.md", "journal", 2026, 4, 14, 21, 10),
@@ -173,6 +189,11 @@ describe("detectWeeklyTaskPatterns", () => {
     expect(match.bucket.matches).toBe(3);
     expect(match.bucket.distinctWeeks).toBe(3);
     expect(match.missingThisWeek).toBe(false);
+    // The rationale clause's numbers MUST equal the bucket's own
+    // matches/distinctWeeks — never a separately-computed figure.
+    expect(match.suggestion).toContain(
+      `(${match.bucket.matches.toString()} times across ${match.bucket.distinctWeeks.toString()} weeks)`
+    );
 
     // Now drop the in-week entry — should flip missingThisWeek=true.
     const signalsMissing = makeSignals([], [
