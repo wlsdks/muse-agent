@@ -1,7 +1,7 @@
 # Muse dev backlog — the living ledger
 
 - ★ RESPONSE-EXPERIENCE (2026-07-12, 진안 직접 요청 — 20m 자율루프 `response-experience`의 전용 큐; 어시스턴트 응답 경험을 계속 더 좋게. 기반: 채널 대화 리듬(잡담 fast-path·복창 ack·인용 완료보고)·개입 예산+다이제스트·원터치 veto, 전부 main 머지됨):
-  - ◦ 캔드 casual 응답 한국어 패리티 — `casualResponseFor`(agent-core)가 영어 고정이라 한국어 인사("안녕~")에 영어 캔드 응답이 감; 사용자 언어(입력에 한글 존재) 감지해 KO 카피 셋 추가, CLI/채널 양쪽 파리티, 기존 EN 테스트 무변경 green 유지.
+  - ✓ 캔드 casual 응답 한국어 패리티 — response-experience fire 1 (CASUAL_RESPONSES_KO + containsHangul, CLI·채널 양표면)
   - ◦ 프로액티브 알림 근거 한 줄 — pattern/ambient/commitment 알림 본문에 "왜 지금 이걸 말하는지"(감지된 패턴·규칙·약속의 근거) 명시; 근거는 저장된 사실의 verbatim/결정론 조합만(새 fabrication 표면 금지), factSheet/rule 데이터에서 도출. 리서치 근거: 근거 없는 초개인화=감시감(가치⑤).
   - ◦ 위임 ack 중복 억제 — 최종 전송 실패→다음 틱 재시도 시 복창 ack가 한 번 더 가는 수용된 엣지를 실제로 닫기(예: inbound별 ack-sent 마킹을 handled-키와 별도 사이드카로, ack는 1회만).
   - ◦ digest 라인 injection-span 중화 검토 — digest 컴파일 라인에 recap.ts `safeRecapText`류 중화 적용 여부 결정+구현(소스 루프 컨벤션과 일관성 유지하며; 신뢰불가 텍스트가 큐를 타는 경로가 실재하는지 먼저 조사).
