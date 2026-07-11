@@ -35,7 +35,8 @@
 - agent-core는 미머지 agent-core-enhance 브랜치(~22슬라이스)와 충돌 위험 → 그 브랜치가 정리될 때까지 이 루프에서 보류
 - packages/domain-tools loopback-notes.ts 736줄 (6도구+judge+walk 혼재) / loopback-calendar.ts 576줄 / loopback-reminders.ts 509줄 → 분리 후보
 - ~~사전존재 red: event-reminder-link.test.ts~~ → fire 6에서 해결. 정정: TZ-의존이 아니라 **시한폭탄 테스트**였음 (절대날짜 픽스처 2026-06-10이 리졸버의 now-30d 창을 07-10에 벗어남; update가 event-not-found 에러를 반환하는데 테스트가 미단언 → 하류 assert에서 엉뚱하게 실패)
-- 같은 시한폭탄 패턴 스캔 후보: 절대날짜 픽스처 + 실시계 창(resolveEventForAction류)을 함께 쓰는 다른 테스트가 있는지 저장소-폭 grep (다음 fire 후보)
+- ~~시한폭탄 패턴 저장소-폭 스캔~~ → fire 7에서 완료: 실시계 seam 전수(캘린더 리졸버·CalDAV/macOS 창·routine/api cutoff·recency-decay) 역추적 결과 **추가 폭탄 0** — now-주입/fake-timers 규율이 전반적으로 건강 (fire 6 건이 유일했음)
+- 침묵-실패(버린 execute) 99사이트 전수 분류 완료 (fire 7): 94 안전 / 5 수리 — 남은 잔여 위험 낮음. 새 테스트 작성 시 규칙: execute 결과를 버리고 부정 단언만 하지 말 것
 - 루프 운영 교훈: sonnet 워커 프롬프트에 "git stash 금지" 명시할 것 (fire 2 워커가 사전존재 확인에 stash 사용 — 잔여물 없이 끝났지만 규칙 위반; fire 3부터 명시 적용됨)
 - packages/recall present.ts:23 date-sort가 feeds-store의 compareFeedEntriesNewestFirst와 불일치 (unparseable date를 0 취급) → 동작 변경이라 이 루프 범위 밖, 별도 버그픽스 후보로 기록
 - packages/recall select.ts 514줄 (memory/contacts/evidence 혼재) → 분리 후보
@@ -54,3 +55,4 @@
 | 4 | packages/memory | in-memory/file 두 store가 중복하던 forget() 결정 로직(키 canonicalize 해석+kind 네임스페이스 스코핑)을 순수 헬퍼 resolveForgetTarget로 통합, WHY 주석 한 벌화 + 직접 단위테스트 8건 | memory build ✓ · 685/685 ✓ · lint 0 ✓ (fable 재검증) |
 | 5 | apps/cli + domain-tools | 이력-마커 sweep 34건(goal/P-번호, 테스트 제목·docstring·--help 텍스트) — WHY 보존 재작성, 파일 rename 2건(p11-email-contacts-seam→email-contacts-seam, p8-seam→situational-briefing-seam); 외부 업스트림 레퍼런스(ollama#13337/PR#6279)와 ReConcile round 시맨틱은 정당 판정 유지 | cli build ✓ · dt build ✓ · cli 1019/1019 ✓ · dt 451/452(red=알려진 TZ flake) · lint 0 ✓ |
 | 6 | domain-tools (큐 집행) | 시한폭탄 테스트 해체: event-reminder-link 통합 케이스가 절대날짜 픽스처로 리졸버 창(now-30d)을 벗어나 침묵 실패 — Date-only fake timer로 고정 + update/delete 반환값 단언 3곳 보강 (제품 코드 불변) | UTC/KST/NY 3-TZ 5/5 ✓ · domain-tools 전체 791/791 최초 완전 green ✓ · lint 0 ✓ |
+| 7 | 저장소-폭 결함클래스 감사 | fire-6 결함의 두 클래스를 전수 감사: ①시한폭탄(절대날짜×실시계 seam) 추가 0 확인 ②침묵-실패(버린 execute+부정 단언=가짜통과) 99사이트 분류→5건 수리(notes-save-mirror 2·contacts-tool 1·fs-read-tools 2, 결과 캡처+에러 단언) + mutation 드릴로 새 단언이 RED 됨을 증명 | 터치 스위트 34+64 green ✓ · 드릴 RED→원복 green ✓ · lint 0 ✓ |

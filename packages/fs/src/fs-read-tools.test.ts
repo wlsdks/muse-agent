@@ -125,7 +125,9 @@ describe("file_read / file_list / file_grep", () => {
 
       const partial: string[] = [];
       const partialTool = createFileReadTool({ ...opts(), onFullRead: (p) => partial.push(p) });
-      await partialTool.execute({ limit: 2, path: join(root, "n.txt") }, ctx);
+      const partialOut = (await partialTool.execute({ limit: 2, path: join(root, "n.txt") }, ctx)) as JsonObject;
+      expect(partialOut["text"]).toBe("a\nb");
+      expect(partialOut["truncated"]).toBe(true);
       expect(partial).toHaveLength(0);
 
       // An OFFSET-skipped read sees the TAIL only (truncated=false but lines
@@ -456,7 +458,8 @@ describe("file_read / file_list / file_grep", () => {
       await writeFile(join(root, "z.md"), "alpha\nbeta dentist\ngamma");
       const seen: string[] = [];
       const tool = createFileGrepTool({ ...opts(), onPathRead: (p) => seen.push(p) });
-      await tool.execute({ mode: "files", path: root, pattern: "dentist" }, ctx);
+      const out = (await tool.execute({ mode: "files", path: root, pattern: "dentist" }, ctx)) as JsonObject;
+      expect((out["files"] as string[]).some((p) => p.endsWith("z.md"))).toBe(true);
       expect(seen).toHaveLength(0);
     });
 
