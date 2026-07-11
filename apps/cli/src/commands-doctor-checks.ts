@@ -100,7 +100,9 @@ export function platformPostureCheck(platform: NodeJS.Platform = process.platfor
   const caps = resolvePlatformCapabilities(platform);
   const integrations = caps.osIntegrations === "macos"
     ? "os-integrations=macos (Notes/Reminders/Contacts mirrors available)"
-    : "os-integrations=none (macOS-only mirrors disabled on this OS)";
+    : caps.osIntegrations === "windows"
+      ? "os-integrations=windows (PowerShell actuators; arm with MUSE_WINDOWS_ACTUATORS=true)"
+      : "os-integrations=none (native integrations unavailable on this OS)";
   const provenance = caps.os === "win32" ? " — Windows paths are CI-verified only" : "";
   return {
     detail: `platform=${caps.os}: audio=${caps.audioPlayer ?? "none"}, autostart=${caps.daemonAutostart}, ${integrations}${provenance}`,

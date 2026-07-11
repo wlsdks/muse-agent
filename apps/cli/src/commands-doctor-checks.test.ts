@@ -365,7 +365,8 @@ describe("platformPostureCheck", () => {
     expect(check.status).toBe("ok");
     expect(check.detail).toContain("audio=powershell");
     expect(check.detail).toContain("autostart=schtasks");
-    expect(check.detail).toContain("os-integrations=none");
+    expect(check.detail).toContain("os-integrations=windows");
+    expect(check.detail).toContain("MUSE_WINDOWS_ACTUATORS");
     expect(check.detail).toContain("CI-verified only");
   });
 });

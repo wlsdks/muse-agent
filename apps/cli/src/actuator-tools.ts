@@ -34,6 +34,15 @@ import {
   createMacSystemSetTool
 } from "@muse/macos";
 import {
+  createWinAppOpenTool,
+  createWinAppReadTool,
+  createWinClipboardSetTool,
+  createWinMediaControlTool,
+  createWinSayTool,
+  createWinScreenshotTool,
+  createWinSystemSetTool
+} from "@muse/windows";
+import {
   PuppeteerBrowserController,
   createBrowserBackTool,
   createBrowserLookTool,
@@ -99,6 +108,13 @@ export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
     );
   }
 
+  if (windowsActuatorsEnabled(env)) {
+    armed.push(
+      "win_app_open", "win_app_read", "win_clipboard_set", "win_say", "win_screenshot",
+      "win_media_control", "win_system_set"
+    );
+  }
+
   return { armed, unavailable };
 }
 
@@ -109,6 +125,12 @@ export function summarizeActuators(env: MuseEnvironment): ActuatorSummary {
  */
 function macActuatorsEnabled(env: MuseEnvironment): boolean {
   const value = env.MUSE_MACOS_ACTUATORS?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+/** The Windows-actuator opt-in — same dark-by-default posture as macOS. */
+function windowsActuatorsEnabled(env: MuseEnvironment): boolean {
+  const value = env.MUSE_WINDOWS_ACTUATORS?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
@@ -500,6 +522,20 @@ export function buildActuatorTools(deps: ActuatorToolsDeps): MuseTool[] {
         },
         userId
       })
+    );
+  }
+
+  if (windowsActuatorsEnabled(env)) {
+    // All seven are local-effect only (no outbound-to-human path), so they ride
+    // the runtime's execute/localMode gating with no bespoke per-call confirm.
+    tools.push(
+      createWinAppOpenTool(),
+      createWinAppReadTool(),
+      createWinClipboardSetTool(),
+      createWinSayTool(),
+      createWinScreenshotTool(),
+      createWinMediaControlTool(),
+      createWinSystemSetTool()
     );
   }
 

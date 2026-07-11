@@ -13,12 +13,12 @@ describe("resolvePlatformCapabilities", () => {
     });
   });
 
-  it("win32 gets powershell audio, schtasks autostart, no keychain, no macOS integrations", () => {
+  it("win32 gets powershell audio, schtasks autostart, no keychain, and the PowerShell integration surface", () => {
     expect(resolvePlatformCapabilities("win32")).toEqual({
       audioPlayer: "powershell",
       daemonAutostart: "schtasks",
       os: "win32",
-      osIntegrations: "none",
+      osIntegrations: "windows",
       secretsChain: ["env", "store"]
     });
   });
