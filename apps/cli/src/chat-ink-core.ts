@@ -24,6 +24,7 @@ import {
 import { type FrameName } from "@muse/mascot";
 import { classifyProviderLocality, type ProviderLocality } from "@muse/model";
 import { clamp, redactSecretsInText, stripUntrustedTerminalChars } from "@muse/shared";
+import { classifyCommandTopology } from "@muse/tools";
 
 import { needsContextualRewrite, type ChatGrounding } from "./chat-grounding.js";
 import { MUSE_TAGLINE } from "./muse-identity.js";
@@ -562,15 +563,34 @@ export interface ApprovalGateDecision {
  * blocks it with a reason, so a state-changing call never proceeds on the
  * gate's own judgement (outbound-safety.md rules 1 & 2). `kind` is `outbound`
  * for the third-party actuators so the prompt can flag them louder.
+ *
+ * `run_command` gets one extra check: a shell construct like `$(...)` or a
+ * heredoc hides the REAL command from the string-level dangerous-command
+ * guard (`classifyCommandTopology`). An un-analyzable command must never
+ * take the silent `read` fast-path — a mis-set or spoofed `risk` must not
+ * let it bypass confirmation — and the human is shown WHY it needs a closer
+ * look before deciding.
  */
 export function chatToolApprovalGate(
   outbound: readonly string[],
   ask: (name: string, detail: string, kind: ApprovalKind) => Promise<boolean>
 ): (input: ApprovalGateCall) => Promise<ApprovalGateDecision> {
   return async ({ toolCall, risk }) => {
-    if (risk === "read") return { allowed: true };
+    const isRunCommand = toolCall.name === "run_command";
+    const command = typeof toolCall.arguments.command === "string" ? toolCall.arguments.command : "";
+    const args = Array.isArray(toolCall.arguments.args)
+      ? toolCall.arguments.args.filter((entry): entry is string => typeof entry === "string")
+      : undefined;
+    const topology = isRunCommand ? classifyCommandTopology(command, args) : undefined;
+
+    if (risk === "read" && (topology === undefined || topology.analyzable)) return { allowed: true };
+
     const kind: ApprovalKind = outbound.includes(toolCall.name) ? "outbound" : "tool";
-    const approved = await ask(toolCall.name, summarizeToolArgs(toolCall.arguments), kind);
+    const detail =
+      topology && !topology.analyzable
+        ? `⚠ un-inspectable shell construction (${topology.construct ?? "un-analyzable"}) — its real command can't be checked automatically. ${summarizeToolArgs(toolCall.arguments)}`
+        : summarizeToolArgs(toolCall.arguments);
+    const approved = await ask(toolCall.name, detail, kind);
     if (approved) return { allowed: true };
     return { allowed: false, reason: `user declined the ${kind === "outbound" ? "outbound action" : "tool call"}` };
   };

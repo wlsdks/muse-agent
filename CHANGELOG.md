@@ -24,12 +24,15 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   itself blocks each escape, so a regression that weakened the confinement
   would be caught automatically.
 
-- **Groundwork (not yet wired):** a shell-topology check that recognizes when
-  a command hides its real work behind a shell construction the existing
-  catastrophic-command guard can't read — command substitution, process
-  substitution, a heredoc, or `eval`. On its own it changes nothing yet; a
-  follow-up will use it to route such a command to explicit approval instead
-  of letting an unattended/auto-approve path run something un-inspectable.
+- **Clearer confirmation when a shell command hides its real work.** When a
+  command Muse wants to run buries what it actually does behind a shell
+  construction the safety check can't read through — command substitution
+  (`$(…)` / backticks), process substitution, a heredoc, or `eval` — the
+  confirmation prompt now flags that plainly so you approve it with eyes open,
+  and such a command can never slip through on a mis-labeled "read" risk. A
+  legitimate one still runs once you approve; nothing is auto-refused. (Fuller
+  automatic downgrade for any future unattended/trusted-run path is tracked as
+  a follow-up.)
 
 - **Post-compaction loop guard.** When the agent's context is compacted
   mid-run (old turns summarized away), a stuck small model could keep
