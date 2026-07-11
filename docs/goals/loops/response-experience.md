@@ -38,3 +38,11 @@ ratchet: testFiles +0(기존 3파일 갱신+핀 추가) · fabrication 0 · eval
 리뷰지점: 룰 패턴(소유자 저작)이 verbatim으로 알림에 흐름 — 자기-주입만 가능(기존 rule.message와 동일 신뢰경계, backlog의 중화-검토 ◦가 일반론 커버).
 리스크: 낮음.
 lesson: ★NEVER-stash 위반 2회째(fire 1에 이어) — 워커 지시의 금지 문구만으론 재발함. 다음 fire부터 워커 프롬프트에 "RED 증거는 cp 백업→편집→복원으로만, git stash는 어떤 형태(--keep-index 포함)로도 금지"를 절차로 명시(금지가 아니라 대체 절차를 지시).
+
+## fire 5 · 2026-07-12 · skill v2.x · cbbe29a82
+meta: value-class=new-capability · pkg=@muse/proactivity · kind=rationale-source · verdict=PASS · firesSinceDrill=5
+ratchet: testFiles +0(기존 테스트파일 확장 5케이스) · fabrication 0 · eval N/A(채널 답장 경로 무접촉)
+무엇: 체크인 질문에 "(N일 전 남기신 약속)"/"(made N days ago)" 결정론 나이 절 — createdAt→due 기준 스케줄 시점 bake, <1일·무효·미래 타임스탬프는 무절(fail-closed). 근거 3부작(pattern·ambient·commitment) 완성.
+왜: 약속 원문만으론 "언제 한 약속인지"가 없음 — 가치⑤ 마지막 몫.
+리뷰지점: 지연 배달 시 나이가 downtime만큼 하향-오차(판정: bounded 근사, fabrication 아님) — 절대날짜 절 후속 ◦ 큐잉.
+리스크: 낮음 — runDueCheckins·게이트 무접촉.
