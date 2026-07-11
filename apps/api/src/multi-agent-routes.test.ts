@@ -114,6 +114,64 @@ describe("multi-agent /runs — live registry through the HTTP route (A7)", () =
   }, 5000);
 });
 
+describe("multi-agent /orchestrate background=true — non-blocking dispatch", () => {
+  it("returns 202 with orchestrationId + subtaskCount immediately, without waiting for workers", async () => {
+    const registry = new SubAgentRunRegistry();
+    let releaseWorkers!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseWorkers = resolve; });
+    server = await buildServer({
+      registry,
+      runtime: fakeRuntime(async (_name, input) => {
+        await gate;
+        return okRun(input);
+      })
+    });
+
+    const orchestrate = await server.inject({
+      method: "POST",
+      url: "/api/multi-agent/orchestrate",
+      payload: { message: "plan the launch", background: true }
+    });
+
+    expect(orchestrate.statusCode).toBe(202);
+    const body = orchestrate.json() as { background: boolean; orchestrationId: string; subtaskCount: number };
+    expect(body.background).toBe(true);
+    expect(body.subtaskCount).toBe(2); // default Generalist + Critic workers
+    expect(typeof body.orchestrationId).toBe("string");
+
+    // Nothing has settled yet — the run is genuinely still in flight.
+    const runsBeforeRelease = (await server.inject({ method: "GET", url: "/api/multi-agent/runs" })).json() as {
+      activeCount: number;
+    };
+    expect(runsBeforeRelease.activeCount).toBeGreaterThan(0);
+
+    releaseWorkers();
+    // Poll history until the consolidated entry lands (same store the blocking path uses).
+    let entry: { runId: string; status: string } | undefined;
+    for (let i = 0; i < 40 && !entry; i++) {
+      const list = (await server.inject({ method: "GET", url: "/api/multi-agent/orchestrations" })).json() as {
+        entries: { runId: string; status: string }[];
+      };
+      entry = list.entries.find((e) => e.runId === body.orchestrationId);
+      if (!entry) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(entry?.status).toBe("completed");
+  });
+
+  it("a background dispatch failure (bad workerIds) returns 500, never hangs", async () => {
+    const registry = new SubAgentRunRegistry();
+    server = await buildServer({ registry, runtime: fakeRuntime((_name, input) => okRun(input)) });
+
+    const orchestrate = await server.inject({
+      method: "POST",
+      url: "/api/multi-agent/orchestrate",
+      payload: { message: "plan the launch", background: true, workerIds: ["NoSuchWorker"] }
+    });
+
+    expect(orchestrate.statusCode).toBe(409); // no matching agent specs — same as the blocking path's selection guard
+  });
+});
+
 describe("resolveWorkerTimeoutMs — strict positive-integer env parse", () => {
   it("returns the parsed ms for a valid positive integer", () => {
     expect(resolveWorkerTimeoutMs({ MUSE_MULTI_AGENT_WORKER_TIMEOUT_MS: "30000" })).toBe(30000);

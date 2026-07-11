@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { calendarEventItems, checkinItems, dueTaskItems, groupProactiveNotice, imminentItems, jobCompletionItems, jobDoneNoticeText, patternSuggestionItems, pickUnseen, proactiveNoticeText, relativeWhen } from "./chat-proactive.js";
+import { calendarEventItems, checkinItems, dueTaskItems, groupProactiveNotice, imminentItems, jobCompletionItems, jobDoneNoticeText, orchestrationCompletionItems, orchestrationDoneNoticeText, patternSuggestionItems, pickUnseen, proactiveNoticeText, relativeWhen } from "./chat-proactive.js";
 
 const now = Date.UTC(2026, 4, 24, 12, 0, 0);
 const iso = (minFromNow: number): string => new Date(now + minFromNow * 60_000).toISOString();
@@ -62,6 +62,52 @@ describe("jobCompletionItems", () => {
     ], since);
     expect(items.map((i) => i.id)).toEqual(["job:fresh"]);
     expect(items[0]?.text).toBe("✓ Background job done: fresh — ok");
+  });
+});
+
+describe("orchestrationDoneNoticeText", () => {
+  it("phrases a completed run with the sub-agent count + worker ids + a trimmed summary", () => {
+    expect(orchestrationDoneNoticeText({
+      finishedAt: "2026-05-24T12:05:00.000Z",
+      id: "orch-1",
+      status: "completed",
+      subtaskCount: 2,
+      summary: "  the launch plan looks solid  ",
+      workerIds: ["direct", "critic"]
+    })).toBe("✓ Background orchestration done (2 sub-agents: direct, critic) — the launch plan looks solid");
+  });
+
+  it("phrases a failed run distinctly, without a worker-id list", () => {
+    expect(orchestrationDoneNoticeText({
+      finishedAt: "2026-05-24T12:05:00.000Z",
+      id: "orch-2",
+      status: "failed",
+      subtaskCount: 2,
+      summary: "every worker threw",
+      workerIds: ["direct", "critic"]
+    })).toBe("✗ Background orchestration failed (2 sub-agents): every worker threw");
+  });
+
+  it("singularizes a 1-subtask run", () => {
+    expect(orchestrationDoneNoticeText({
+      finishedAt: "2026-05-24T12:05:00.000Z",
+      id: "orch-3",
+      status: "completed",
+      subtaskCount: 1,
+      workerIds: ["direct"]
+    })).toBe("✓ Background orchestration done (1 sub-agent: direct)");
+  });
+});
+
+describe("orchestrationCompletionItems", () => {
+  const since = "2026-05-24T12:00:00.000Z";
+  it("keeps only runs finished after `since`, ONE item per orchestration (never per worker), pre-phrased with an orchestration: id", () => {
+    const items = orchestrationCompletionItems([
+      { finishedAt: "2026-05-24T11:00:00.000Z", id: "old", status: "completed", subtaskCount: 2, summary: "old", workerIds: ["a", "b"] },
+      { finishedAt: "2026-05-24T12:05:00.000Z", id: "fresh", status: "completed", subtaskCount: 3, summary: "done", workerIds: ["a", "b", "c"] }
+    ], since);
+    expect(items.map((i) => i.id)).toEqual(["orchestration:fresh"]);
+    expect(items[0]?.text).toBe("✓ Background orchestration done (3 sub-agents: a, b, c) — done");
   });
 });
 

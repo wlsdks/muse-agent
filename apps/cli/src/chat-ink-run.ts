@@ -61,6 +61,7 @@ import { appendPlaybookInjection, forwardRecordingInjections } from "./playbook-
 import { applyTurnLearnings, extractMemoryFromTurn, shouldAutoExtract, type AutoMemoryProvider } from "./chat-auto-memory.js";
 import { buildModelGroundingReverify, formatReflection, synthesizeReflection, type ReflectionProvider } from "./chat-reflection.js";
 import { listRecentJobIds, readJobSummary, startBackgroundJob } from "./commands-jobs.js";
+import { createChatOrchestration, orchestrationCompletionsFrom } from "./chat-orchestrate.js";
 import { buildLocalTodayText, parseLookaheadHours, readDueFollowups, readDueReminders } from "./commands-today.js";
 import { calendarEventItems, checkinItems, dueTaskItems, jobCompletionItems, patternSuggestionItems, type ProactiveItem } from "./chat-proactive.js";
 import { checkinsFile } from "./commands-checkins.js";
@@ -457,6 +458,16 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     );
   };
 
+  // /orchestrate — a background sub-agent fan-out (direct-answer + risk-critic,
+  // both on the SAME provider/model this chat already runs) that never blocks
+  // the calling turn; the consolidated result surfaces through the SAME
+  // proactive-item poll `/job` completions use, one entry per orchestration.
+  const chatOrchestration = createChatOrchestration(provider, model);
+  const startOrchestration = (prompt: string): { orchestrationId: string; subtaskCount: number } =>
+    chatOrchestration.startOrchestration(prompt);
+  const orchestrationCompletions = async (): Promise<readonly ProactiveItem[]> =>
+    orchestrationCompletionsFrom(chatOrchestration.listRecords(), chatStartedIso);
+
   // Launch recap — "where we left off": the most recent episode summary plus
   // open-commitment counts. Only when resuming a continuous session; fail-soft
   // to no recap if any store is missing/unreadable.
@@ -709,6 +720,8 @@ export async function runChatInk(options: RunChatInkOptions = {}): Promise<void>
     startJob,
     jobsOverview,
     jobCompletions,
+    startOrchestration,
+    orchestrationCompletions,
     recap,
     recapRole,
     inputHistorySeed,

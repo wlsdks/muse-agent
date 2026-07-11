@@ -50,6 +50,12 @@ export type { AgentWorker } from "./workers.js";
 export { NoAgentWorkerError, RuleBasedAgentWorker, RuntimeAgentWorker } from "./workers.js";
 export { MultiAgentOrchestrator, SupervisorAgent } from "./orchestrator.js";
 export { buildOrchestrationResponse } from "./orchestration-fan-in.js";
+export type {
+  BackgroundOrchestrationHandle,
+  BackgroundOrchestrationRecord,
+  BackgroundOrchestrationStore
+} from "./background-orchestration.js";
+export { InMemoryBackgroundOrchestrationStore } from "./background-orchestration.js";
 
 export interface HandoffDecision {
   readonly from?: string;
