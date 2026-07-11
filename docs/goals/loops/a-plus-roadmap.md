@@ -111,3 +111,19 @@ ratchet: 로드맵 잔여 [ ] = 20/38 · self-eval pass · fabrication 0 · mult
 - 왜: 서브에이전트가 부모에 없는 도구를 못 쓰게 구조 강제(openclaw subagent-capabilities). 현 워커는 metadata verbatim으로 이미 상속하나 unenforced convention → 클램프를 실 enforcement point에 사전배치.
 - 리뷰지점: Opus가 순수 helper 정확성(교집합·dedup·empty clamp·무mutation)·wiring·mutation-RED 양방향 + **명시적 유의미성 판정**(진짜 defense-in-depth vs no-op락) 검증.
 lesson: ⚠tool-deny 상속은 현 프로덕션에서 이미 verbatim으로 성립(broader-set 미전달)이라 클램프는 프로덕션 no-op — 테스트-only seam으로 검증. defense-in-depth 락이나 라이브 버그 수정은 아님. 유저-가시 변화 0이라 CHANGELOG 정직 생략. 이런 "이미 성립하는 불변식 락" 슬라이스는 seam을 정직히 disclose하고 Opus 유의미성 판정으로 통과.
+
+## fire 14 · 2026-07-11 · skill v2.x · 820d5e425
+meta: slice=D3-S2 · wave=W2 · pkg=@muse/agent-core+multi-agent · kind=liveness-seam · verdict=PASS · firesSinceDrill=5
+ratchet: 로드맵 잔여 [ ] = 19/38 · self-eval pass · fabrication 0 · agent-core+multi-agent 6 test 신규
+- 무엇: 단일-run heartbeat emission seam. ModelLoopRunner.heartbeat 주입(agent-core 미의존 multi-agent) + model-loop 3 emission(streamModelTurn text-delta·tool-call·runToolBatch genuine-exec) + emitHeartbeat try/catch. 기존 detectStalled 재사용(신규 감지기 0). fake-clock 유닛으로 단일-run 스테일 감지+정상스트림 비오탐.
+- 왜: stale-detection 레지스트리 존재하나 호출부 orchestrator 1곳뿐 → 단일 장기 run이 heartbeat 미방출로 in-tool 스테일 미감지. hermes _heartbeat_loop 참조. VQ-1이 배선점 확정(model-loop 스트리밍).
+- 리뷰지점: Opus가 emission gating(genuine-exec만, progress 트래커와 동일)·throw-safe·미배선 byte-identical·두 테스트 행동적·mutation-RED 양방향·deferral 정당성 검증.
+lesson: ⚠라이브 레지스트리 피딩은 autoconfigure→multi-agent 의존 or apps/api 생성순서 재배치라는 아키텍처 결정 필요 → seam+emission+fake-clock 유닛까지만 이 슬라이스, 피딩+stall-abort 폴러는 backlog deferred. 정직히 disclose하고 Opus가 legitimate seam+test로 판정. 유저-가시 변화 0이라 CHANGELOG 생략.
+
+## fire 15 · 2026-07-11 · skill v2.x · 9c69928e9
+meta: slice=D3-S4a · wave=W2 · pkg=apps/cli · kind=capacity-cap · verdict=PASS · firesSinceDrill=6
+ratchet: 로드맵 잔여 [ ] = 19/39 · self-eval pass · fabrication 0 · cli 27 test(+job-concurrency) · MUSE_JOBS_MAX_CONCURRENT env
+- 무엇: job 동시상한. 순수 resolveJobsMaxConcurrent(기본3·≥1)+jobConcurrencyRefusal(>=cap 거부) + countRunningJobs(기존 jobSummary 재사용) + startBackgroundJobOrRefuse 배선(at-cap→명시거부+exitCode1, start 미호출; inline 무변경).
+- 왜: muse job run이 무제한 백그라운드 spawn 가능(verify-first)→자원 고갈. hermes cap3 초과 async 거부 참조.
+- 리뷰지점: Opus가 파싱테이블(0/-1/2.5/abc→3 floor1)·countRunningJobs 실 jsonl fixture 충실성(running만)·wiring(at-cap spy 미호출+exitCode1+stderr, under-cap 시작)·mutation-RED 양방향 검증.
+- 리스크: 없음. 새 env→docs:env 갱신(워커 proactive). 다음 D3-S4b=boardTaskPrompt 헤드룸 요약예산+스필(복잡).

@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **519** variables.
+Total: **520** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -227,6 +227,7 @@ Total: **519** variables.
 | `MUSE_INPUT_GUARD_PII_ENABLED` | packages/autoconfigure |
 | `MUSE_INPUT_HISTORY_FILE` | apps/cli |
 | `MUSE_JOBS_DIR` | apps/cli |
+| `MUSE_JOBS_MAX_CONCURRENT` | apps/cli |
 | `MUSE_KNOWLEDGE_SEARCH_EMBED_MODEL` | apps/api, apps/cli, packages/autoconfigure |
 | `MUSE_KNOWLEDGE_SEARCH_ENABLED` | apps/api, packages/autoconfigure |
 | `MUSE_LEARNING_PAUSE_FILE` | packages/autoconfigure |

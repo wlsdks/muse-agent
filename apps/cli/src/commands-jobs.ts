@@ -32,6 +32,7 @@ import type { Command } from "commander";
 
 import { closestCommandName } from "./closest-command.js";
 import { resolveJobIdByPrefix } from "./job-id-prefix.js";
+import { jobConcurrencyRefusal, resolveJobsMaxConcurrent } from "./job-concurrency.js";
 import { firstNonEmpty, resolvePersona } from "./program-helpers.js";
 import type { ProgramIO } from "./program.js";
 
@@ -182,6 +183,29 @@ function jobSummary(events: readonly JobEvent[]): {
 }
 
 /**
+ * Count jobs whose latest event marks them `"running"` — the concurrency
+ * cap's input. Synchronous (mirrors `job tail`'s `readFileSync` use) so the
+ * `job run` action can check it before deciding whether to spawn.
+ */
+export function countRunningJobs(dir: string): number {
+  if (!existsSync(dir)) return 0;
+  let running = 0;
+  for (const name of readdirSync(dir)) {
+    if (!name.endsWith(".jsonl")) continue;
+    const events: JobEvent[] = [];
+    try {
+      const raw = readFileSync(pathJoin(dir, name), "utf8");
+      for (const line of raw.split("\n")) {
+        if (line.trim().length === 0) continue;
+        try { events.push(JSON.parse(line) as JobEvent); } catch { /* skip */ }
+      }
+    } catch { continue; }
+    if (jobSummary(events).status === "running") running += 1;
+  }
+  return running;
+}
+
+/**
  * Find background jobs whose id starts with `prefix`, each paired with
  * a summary record (status / prompt / timings). Lets the generic
  * `muse open <id>` lookup reach into the jobs store without owning any
@@ -251,6 +275,35 @@ export function startBackgroundJob(prompt: string, opts: JobRunOptions = {}): { 
   return { file, id };
 }
 
+/**
+ * Guarded entry point for `muse job run` (background mode): refuses to spawn
+ * once `countRunningJobs` is at/over `resolveJobsMaxConcurrent`'s cap instead
+ * of exhausting the machine with unbounded detached workers. `deps` lets
+ * tests inject a fake jobs dir / env / `start` without touching the real
+ * filesystem or spawning a real process.
+ */
+export function startBackgroundJobOrRefuse(
+  prompt: string,
+  opts: JobRunOptions,
+  io: ProgramIO,
+  deps: {
+    readonly jobsDirPath?: string;
+    readonly env?: Record<string, string | undefined>;
+    readonly start?: (prompt: string, opts: JobRunOptions) => { id: string; file: string };
+  } = {}
+): { id: string; file: string } | undefined {
+  const jobsDirPath = deps.jobsDirPath ?? jobsDir();
+  const cap = resolveJobsMaxConcurrent(deps.env ?? process.env);
+  const running = countRunningJobs(jobsDirPath);
+  const refusal = jobConcurrencyRefusal(running, cap);
+  if (refusal !== undefined) {
+    io.stderr(`${refusal}\n`);
+    process.exitCode = 1;
+    return undefined;
+  }
+  return (deps.start ?? startBackgroundJob)(prompt, opts);
+}
+
 /** Latest status snapshot for a job id, or undefined when it has no events yet. */
 export async function readJobSummary(id: string): Promise<(JobSummaryView & { id: string; events: number }) | undefined> {
   const events = await readJobLines(jobPath(id));
@@ -302,8 +355,9 @@ export function registerJobCommands(program: Command, io: ProgramIO): void {
         return;
       }
 
-      const { id, file } = startBackgroundJob(prompt, runOpts);
-      io.stdout(`Started ${id}\n  log: ${file}\n  status: muse job status ${id}\n`);
+      const started = startBackgroundJobOrRefuse(prompt, runOpts, io);
+      if (started === undefined) return;
+      io.stdout(`Started ${started.id}\n  log: ${started.file}\n  status: muse job status ${started.id}\n`);
     });
 
   job

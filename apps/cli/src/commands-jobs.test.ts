@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Command } from "commander";
 import { describe, expect, it } from "vitest";
 
-import { JOB_STATUS_FILTER_VALUES, jobsDir, parseJobListLimit, registerJobCommands, resolveJobStatusFilter } from "./commands-jobs.js";
+import { countRunningJobs, JOB_STATUS_FILTER_VALUES, jobsDir, parseJobListLimit, registerJobCommands, resolveJobStatusFilter, startBackgroundJobOrRefuse } from "./commands-jobs.js";
 
 describe("parseJobListLimit", () => {
   it("defaults to 20 when blank", () => {
@@ -162,6 +162,77 @@ describe("jobsDir — MUSE_JOBS_DIR empty-env-shadow defence", () => {
       if (prev === undefined) delete process.env.MUSE_JOBS_DIR;
       else process.env.MUSE_JOBS_DIR = prev;
     }
+  });
+});
+
+describe("countRunningJobs", () => {
+  function seed(dir: string, id: string, events: ReadonlyArray<Record<string, unknown>>): void {
+    writeFileSync(join(dir, `${id}.jsonl`), events.map((ev) => JSON.stringify(ev)).join("\n"), "utf8");
+  }
+
+  it("counts only jobs whose latest event is 'running' (started, no done/error yet)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-job-count-running-"));
+    seed(dir, "job_running_1", [{ prompt: "a", tsIso: "2026-05-15T10:00:00Z", type: "started" }]);
+    seed(dir, "job_running_2", [{ prompt: "b", tsIso: "2026-05-15T10:00:00Z", type: "started" }]);
+    seed(dir, "job_done_1", [
+      { prompt: "c", tsIso: "2026-05-15T10:00:00Z", type: "started" },
+      { tsIso: "2026-05-15T10:01:00Z", type: "done" }
+    ]);
+    seed(dir, "job_error_1", [
+      { prompt: "d", tsIso: "2026-05-15T10:00:00Z", type: "started" },
+      { text: "boom", tsIso: "2026-05-15T10:01:00Z", type: "error" }
+    ]);
+    expect(countRunningJobs(dir)).toBe(2);
+  });
+
+  it("returns 0 for a dir that doesn't exist yet", () => {
+    const dir = join(tmpdir(), `muse-job-count-missing-${Date.now().toString()}`);
+    expect(countRunningJobs(dir)).toBe(0);
+  });
+});
+
+describe("startBackgroundJobOrRefuse", () => {
+  function makeIo(): { io: { stdout: (m: string) => void; stderr: (m: string) => void }; stdout: string[]; stderr: string[] } {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    return { io: { stderr: (m) => stderr.push(m), stdout: (m) => stdout.push(m) }, stderr, stdout };
+  }
+  function seed(dir: string, id: string, events: ReadonlyArray<Record<string, unknown>>): void {
+    writeFileSync(join(dir, `${id}.jsonl`), events.map((ev) => JSON.stringify(ev)).join("\n"), "utf8");
+  }
+
+  it("refuses and does NOT call start when running count is at the cap", () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-job-cap-at-"));
+    seed(dir, "job_r1", [{ tsIso: "2026-05-15T10:00:00Z", type: "started" }]);
+    seed(dir, "job_r2", [{ tsIso: "2026-05-15T10:00:00Z", type: "started" }]);
+    seed(dir, "job_r3", [{ tsIso: "2026-05-15T10:00:00Z", type: "started" }]);
+    const { io, stderr } = makeIo();
+    let calls = 0;
+    const result = startBackgroundJobOrRefuse("do a thing", {}, io, {
+      env: { MUSE_JOBS_MAX_CONCURRENT: "3" },
+      jobsDirPath: dir,
+      start: () => { calls += 1; return { file: "x", id: "x" }; }
+    });
+    expect(result).toBeUndefined();
+    expect(calls).toBe(0);
+    expect(process.exitCode).toBe(1);
+    expect(stderr.join("")).toMatch(/limit/iu);
+    process.exitCode = 0;
+  });
+
+  it("starts the job when running count is under the cap", () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-job-cap-under-"));
+    seed(dir, "job_r1", [{ tsIso: "2026-05-15T10:00:00Z", type: "started" }]);
+    const { io, stderr } = makeIo();
+    let calls = 0;
+    const result = startBackgroundJobOrRefuse("do a thing", {}, io, {
+      env: { MUSE_JOBS_MAX_CONCURRENT: "3" },
+      jobsDirPath: dir,
+      start: () => { calls += 1; return { file: "log.jsonl", id: "new-job" }; }
+    });
+    expect(result).toEqual({ file: "log.jsonl", id: "new-job" });
+    expect(calls).toBe(1);
+    expect(stderr.join("")).toBe("");
   });
 });
 

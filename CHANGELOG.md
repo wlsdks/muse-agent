@@ -34,6 +34,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   automatic downgrade for any future unattended/trusted-run path is tracked as
   a follow-up.)
 
+- **A limit on how many background jobs run at once.** `muse job run` no longer
+  starts an unlimited number of background jobs — if you already have the cap's
+  worth running (three by default, set `MUSE_JOBS_MAX_CONCURRENT` to change it),
+  Muse declines to start another and tells you, instead of piling on work until
+  the machine grinds.
+
 - **Task board won't spiral into endless re-splitting.** When Muse breaks a
   request into sub-tasks on its task board, a sub-task can no longer be broken
   down again without bound — decomposition now stops at a set depth (one level

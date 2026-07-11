@@ -132,6 +132,17 @@ export interface ModelLoopRunner {
    * run with no compaction is byte-identical to before this guard existed.
    */
   readonly compactionOccurred?: boolean;
+  /**
+   * Liveness ping for a stale-run detector: called at each stream/tool
+   * progress point during a SINGLE run (a text-delta, a tool-call event, and
+   * once per genuinely executed tool call) so an in-tool or in-stream stall
+   * is visible WHILE the run is still going, not only after it settles.
+   * agent-core stays dependency-neutral — this is a plain injected callback;
+   * the assembly layer that also owns a run registry (e.g. `@muse/multi-agent`'s
+   * `SubAgentRunRegistry.heartbeat`) wires it in. Undefined leaves the loop
+   * byte-identical to before this seam existed.
+   */
+  readonly heartbeat?: (runId: string) => void;
   generateWithTracing(
     context: AgentRunContext,
     provider: ModelProvider,
@@ -166,6 +177,18 @@ const REPEAT_TOOL_CALL_NUDGE =
 
 function withRepetitionNudge(content: string, isDuplicate: boolean): string {
   return isDuplicate ? `${content}${REPEAT_TOOL_CALL_NUDGE}` : content;
+}
+
+/**
+ * Best-effort liveness ping — a throwing callback (a bug in whatever registry
+ * it's wired to) must never break the model loop it's only observing.
+ */
+function emitHeartbeat(runner: ModelLoopRunner, runId: string): void {
+  try {
+    runner.heartbeat?.(runId);
+  } catch {
+    // liveness is best-effort only
+  }
 }
 
 /**
@@ -427,6 +450,7 @@ async function* runToolBatch(
     // the batch, replicating the old sequential stop-the-batch semantic.
     for (const plan of planned) {
       if (plan.canRun && plan.memoResult === undefined && !plan.intraSegmentDuplicate) {
+        emitHeartbeat(runner, context.runId);
         plan.promise = executeToolCallWithSpan(runner, context, plan.toolCall, activeTools ?? []);
       }
     }
@@ -904,6 +928,7 @@ async function* streamModelTurn(
     for await (const event of withStreamIdleTimeout(provider.stream(flaggedRequest), idleMs, provider.id)) {
       if (event.type === "text-delta") {
         streamedOutput += event.text;
+        emitHeartbeat(runner, context.runId);
         if (options.forwardTextDeltas) {
           yield { ...event, runId: context.runId };
         }
@@ -912,6 +937,7 @@ async function* streamModelTurn(
 
       if (event.type === "tool-call") {
         toolCalls.set(event.toolCall.id, event.toolCall);
+        emitHeartbeat(runner, context.runId);
         yield { ...event, runId: context.runId };
         continue;
       }
