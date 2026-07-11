@@ -45,6 +45,15 @@ export function IntegrationsView({ client }: { client: ApiClient }) {
   const daemonFlags = (daemons.data?.flags ?? []).filter((flag) =>
     (DAEMON_KEYS as readonly string[]).includes(flag.key)
   );
+  const [restartNote, setRestartNote] = useState<string | null>(null);
+  const toggleDaemon = useMutation({
+    mutationFn: (input: { key: string; enabled: boolean }) =>
+      client.patch<{ appliedLive: boolean }>("/api/settings/daemon-flags", { enabled: input.enabled, key: input.key }),
+    onSuccess: (result, input) => {
+      setRestartNote(result.appliedLive ? null : input.key);
+      void queryClient.invalidateQueries({ queryKey: ["daemon-flags", client.baseUrl] });
+    }
+  });
 
   return (
     <div className="content-narrow">
@@ -98,9 +107,22 @@ export function IntegrationsView({ client }: { client: ApiClient }) {
                   )}
                   {flag.lastError && <div className="row-meta" style={{ color: "var(--danger)" }}>{t("int.daemon.lastError", { error: flag.lastError })}</div>}
                 </div>
-                <Tooltip tip={t(daemonBadge(flag).tone === "warn" ? "int.tip.daemon.notRunning" : "int.tip.daemon.state")}>
-                  <Badge tone={daemonBadge(flag).tone}>{t(daemonBadge(flag).labelKey)}</Badge>
-                </Tooltip>
+                <div style={{ alignItems: "center", display: "flex", gap: 8 }}>
+                  {restartNote === flag.key && <span className="subtle" style={{ fontSize: 12 }}>{t("int.daemon.appliedRestart")}</span>}
+                  <Tooltip tip={t(daemonBadge(flag).tone === "warn" ? "int.tip.daemon.notRunning" : "int.tip.daemon.state")}>
+                    <Badge tone={daemonBadge(flag).tone}>{t(daemonBadge(flag).labelKey)}</Badge>
+                  </Tooltip>
+                  <Tooltip tip={t("int.tip.daemon.toggle")}>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={toggleDaemon.isPending}
+                      onClick={() => toggleDaemon.mutate({ enabled: !flag.enabled, key: flag.key })}
+                    >
+                      {t(flag.enabled ? "int.daemon.turnOff" : "int.daemon.turnOn")}
+                    </Button>
+                  </Tooltip>
+                </div>
               </div>
             ))}
           </AsyncBlock>
@@ -150,6 +172,14 @@ function ProviderCard({
   });
   const testSend = useMutation({
     mutationFn: () => client.post<{ ok: boolean; destination: string }>(`/api/messaging/setup/${provider.id}/test-send`)
+  });
+  const [pairingReset, setPairingReset] = useState(false);
+  const resetPairing = useMutation({
+    mutationFn: () => client.del(`/api/messaging/setup/${provider.id}/pairing`),
+    onSuccess: () => {
+      setPairingReset(true);
+      onChanged();
+    }
   });
 
   const stepCount = GUIDE_STEPS[provider.id] ?? 0;
@@ -242,6 +272,27 @@ function ProviderCard({
           </div>
         )}
         {testSend.error && <div className="banner err">{(testSend.error as Error).message}</div>}
+
+        {provider.configured && (
+          <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <Tooltip tip={t("int.tip.pairing")}>
+              <span className="subtle" style={{ fontSize: 12 }}>
+                {provider.pairedOwner
+                  ? t("int.pairing.owner", { owner: provider.pairedOwner })
+                  : t("int.pairing.none")}
+              </span>
+            </Tooltip>
+            {provider.pairedOwner && (
+              <Tooltip tip={t("int.tip.pairingReset")}>
+                <Button variant="ghost" size="sm" disabled={resetPairing.isPending} onClick={() => resetPairing.mutate()}>
+                  {t("int.pairing.reset")}
+                </Button>
+              </Tooltip>
+            )}
+          </div>
+        )}
+        {pairingReset && !provider.pairedOwner && <div className="banner">{t("int.pairing.resetDone")}</div>}
+        {resetPairing.error && <div className="banner err">{(resetPairing.error as Error).message}</div>}
         {provider.configured && (
           <div>
             {canDisconnect(provider) ? (

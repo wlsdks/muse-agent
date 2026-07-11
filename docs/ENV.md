@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **516** variables.
+Total: **517** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -134,6 +134,7 @@ Total: **516** variables.
 | `MUSE_CROSS_LINGUAL_COSINE_FLOOR` | packages/recall |
 | `MUSE_DAEMON_CONFIG_FILE` | apps/cli |
 | `MUSE_DAEMON_PLIST_FILE` | apps/cli |
+| `MUSE_DAEMON_SETTINGS_FILE` | apps/api |
 | `MUSE_DEFAULT_MODEL` | apps/api, apps/cli, packages/autoconfigure |
 | `MUSE_DEFAULT_TIMEZONE` | packages/autoconfigure |
 | `MUSE_DELTA_AT` | apps/cli |

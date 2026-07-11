@@ -23,7 +23,7 @@ import {
   type TokenVerification
 } from "@muse/messaging";
 
-import { readChannelOwner, resolveChannelOwnersFile } from "./channel-owner-store.js";
+import { readChannelOwner, removeChannelOwner, resolveChannelOwnersFile } from "./channel-owner-store.js";
 import { requireAuthenticated } from "./server-helpers.js";
 
 import type { ServerOptions } from "./server.js";
@@ -117,12 +117,18 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
       return reply;
     }
     const fromFile = new Set(await store.list());
+    const ownersFile = resolveChannelOwnersFile(gate.env);
+    const owners = Object.fromEntries(
+      await Promise.all(CONNECTABLE.map(async (provider) => [provider.id, await readChannelOwner(ownersFile, provider.id)]))
+    ) as Record<string, string | undefined>;
     return {
       providers: CONNECTABLE.map((provider) => {
         const envToken = gate.env[provider.envKey]?.trim();
         const source = envToken ? "env" : fromFile.has(provider.id) ? "file" : null;
+        const pairedOwner = owners[provider.id];
         return {
           configured: source !== null,
+          ...(pairedOwner ? { pairedOwner } : {}),
           displayName: provider.displayName,
           docsUrl: provider.docsUrl,
           id: provider.id,
@@ -160,6 +166,21 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     gate.registry.register(buildProvider(provider.id, token, gate.env, provider.requiresHomeserverUrl ? homeserverUrl : undefined));
     gate.onConnected?.(provider.id);
     return { ok: true, ...(verdict.account ? { account: verdict.account } : {}) };
+  });
+
+  server.delete("/api/messaging/setup/:providerId/pairing", async (request, reply) => {
+    if (!authed(request, reply)) {
+      return reply;
+    }
+    const providerId = (request.params as { providerId: string }).providerId;
+    const provider = CONNECTABLE.find((entry) => entry.id === providerId);
+    if (!provider) {
+      return reply.status(404).send({ reason: `unknown messaging provider "${providerId}"` });
+    }
+    // TOFU reset: the very next chat to message the bot becomes the new
+    // owner — the UI tells the user to message it themselves immediately.
+    await removeChannelOwner(resolveChannelOwnersFile(gate.env), provider.id);
+    return { ok: true };
   });
 
   server.post("/api/messaging/setup/:providerId/test-send", async (request, reply) => {

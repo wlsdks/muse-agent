@@ -54,6 +54,7 @@ import { parseSlackPollChannels, startSlackPollTick } from "./slack-poll-tick.js
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
 import { startMatrixSyncTick } from "./matrix-sync-tick.js";
 import { createChannelDaemonSupervisor } from "./channel-daemon-supervisor.js";
+import { readDaemonSettingsSync, resolveDaemonSettingsFile } from "./daemon-settings-store.js";
 import { createInboundAgentRun } from "./inbound-agent-run.js";
 import { startInboundReplyTick } from "./inbound-reply-tick.js";
 import { createThreadedInboundRunner, type InboundAgentRunner } from "@muse/messaging";
@@ -333,6 +334,8 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     channelDaemons.stopAll();
   });
   const ingestStarters: { telegram?: () => void; matrix?: () => void } = {};
+  const replyStarters: { telegram?: () => void; matrix?: () => void } = {};
+  const daemonSettingsFile = resolveDaemonSettingsFile(process.env);
 
   if (options.messaging) {
     registerMessagingRoutes(server, {
@@ -432,7 +435,42 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     reflectionsFile: options.reflectionsFile ?? resolveReflectionsFile(process.env)
   });
 
-  registerSettingsRoutes(server, { authService, daemonStatus: () => channelDaemons.status() });
+  registerSettingsRoutes(server, {
+    applyDaemonToggle: (key, enabled) => {
+      switch (key) {
+        case "MUSE_TELEGRAM_POLL_ENABLED":
+          if (!enabled) {
+            channelDaemons.stop("telegram-poll");
+            return true;
+          }
+          ingestStarters.telegram?.();
+          return channelDaemons.isRunning("telegram-poll");
+        case "MUSE_MATRIX_POLL_ENABLED":
+          if (!enabled) {
+            channelDaemons.stop("matrix-sync");
+            return true;
+          }
+          ingestStarters.matrix?.();
+          return channelDaemons.isRunning("matrix-sync");
+        case "MUSE_INBOUND_REPLY_ENABLED":
+          if (!enabled) {
+            channelDaemons.stop("inbound-reply");
+            channelDaemons.stop("matrix-inbound-reply");
+            return true;
+          }
+          replyStarters.telegram?.();
+          replyStarters.matrix?.();
+          return channelDaemons.isRunning("inbound-reply") || channelDaemons.isRunning("matrix-inbound-reply");
+        default:
+          // Non-channel daemons read their flag at boot only — the
+          // persisted toggle applies on the next restart.
+          return false;
+      }
+    },
+    authService,
+    daemonSettingsFile,
+    daemonStatus: () => channelDaemons.status()
+  });
 
   // Optional Phase B daemon: every MUSE_REMINDER_TICK_MS (default
   // 60s) call runDueReminders. Activates only when the user has
@@ -493,8 +531,10 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // Holder so the poll daemon can trigger the reply daemon (created
   // below) the instant something is ingested.
   const inboundReplyTick: { current: (() => Promise<void>) | undefined } = { current: undefined };
-  const pollEnabled = isMuseDaemonEnabled(process.env.MUSE_TELEGRAM_POLL_ENABLED);
-  if (pollEnabled && options.telegramInboxFile && options.messaging) {
+  const bootDaemonSettings = readDaemonSettingsSync(daemonSettingsFile);
+  const pollEnabled = bootDaemonSettings.MUSE_TELEGRAM_POLL_ENABLED
+    ?? isMuseDaemonEnabled(process.env.MUSE_TELEGRAM_POLL_ENABLED);
+  if (options.telegramInboxFile && options.messaging) {
     const telegramInboxFile = options.telegramInboxFile;
     const messaging = options.messaging;
     // Callable at boot AND from the setup route's onConnected, so a UI
@@ -538,7 +578,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         provider: telegram
       }));
     };
-    ingestStarters.telegram();
+    if (pollEnabled) {
+      ingestStarters.telegram();
+    }
   }
 
   // Optional conversational reply daemon: answer
@@ -546,36 +588,40 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // replying on the originating channel — "the chat IS a Muse
   // session". Reuses the telegram inbox the poll daemon fills.
   // Off unless MUSE_INBOUND_REPLY_ENABLED=1.
-  const inboundReplyEnabled = isMuseDaemonEnabled(process.env.MUSE_INBOUND_REPLY_ENABLED);
-  if (
-    inboundReplyEnabled
-    && options.telegramInboxFile
-    && options.messaging
-    && options.agentRuntime
-  ) {
-    const runner: InboundAgentRunner = createThreadedInboundRunner({
-      run: createInboundAgentRun({
-        agentRuntime: options.agentRuntime,
-        env,
-        model: options.defaultModel ?? "default",
-        registry: options.messaging
-      }),
-      threadFile: `${options.telegramInboxFile}.threads.json`
-    });
-    const replyMsRaw = process.env.MUSE_INBOUND_REPLY_INTERVAL_MS
-      ? Number(process.env.MUSE_INBOUND_REPLY_INTERVAL_MS)
-      : undefined;
-    const replyHandle = startInboundReplyTick({
-      cursorFile: `${options.telegramInboxFile}.reply-cursor.json`,
-      errorLogger: (message) => server.log.warn(message),
-      inboxFile: options.telegramInboxFile,
-      ...(replyMsRaw !== undefined ? { intervalMs: replyMsRaw } : {}),
-      logger: (message) => server.log.info(message),
-      registry: options.messaging,
-      runner
-    });
-    inboundReplyTick.current = () => replyHandle.tickOnce();
-    channelDaemons.adopt("inbound-reply", replyHandle);
+  const inboundReplyEnabled = bootDaemonSettings.MUSE_INBOUND_REPLY_ENABLED
+    ?? isMuseDaemonEnabled(process.env.MUSE_INBOUND_REPLY_ENABLED);
+  if (options.telegramInboxFile && options.messaging && options.agentRuntime) {
+    const telegramInboxFile = options.telegramInboxFile;
+    const messaging = options.messaging;
+    const agentRuntime = options.agentRuntime;
+    replyStarters.telegram = () => {
+      const runner: InboundAgentRunner = createThreadedInboundRunner({
+        run: createInboundAgentRun({
+          agentRuntime,
+          env,
+          model: options.defaultModel ?? "default",
+          registry: messaging
+        }),
+        threadFile: `${telegramInboxFile}.threads.json`
+      });
+      const replyMsRaw = process.env.MUSE_INBOUND_REPLY_INTERVAL_MS
+        ? Number(process.env.MUSE_INBOUND_REPLY_INTERVAL_MS)
+        : undefined;
+      const replyHandle = startInboundReplyTick({
+        cursorFile: `${telegramInboxFile}.reply-cursor.json`,
+        errorLogger: (message) => server.log.warn(message),
+        inboxFile: telegramInboxFile,
+        ...(replyMsRaw !== undefined ? { intervalMs: replyMsRaw } : {}),
+        logger: (message) => server.log.info(message),
+        registry: messaging,
+        runner
+      });
+      inboundReplyTick.current = () => replyHandle.tickOnce();
+      channelDaemons.adopt("inbound-reply", replyHandle);
+    };
+    if (inboundReplyEnabled) {
+      replyStarters.telegram();
+    }
   }
 
   // Optional daemon: ingest Matrix room messages into matrixInboxFile
@@ -583,8 +629,9 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   // default 25). Off unless MUSE_MATRIX_POLL_ENABLED=1 — same opt-in
   // posture as the Telegram daemon.
   const matrixReplyTick: { current: (() => Promise<void>) | undefined } = { current: undefined };
-  const matrixPollEnabled = isMuseDaemonEnabled(process.env.MUSE_MATRIX_POLL_ENABLED);
-  if (matrixPollEnabled && options.matrixInboxFile && options.messaging) {
+  const matrixPollEnabled = bootDaemonSettings.MUSE_MATRIX_POLL_ENABLED
+    ?? isMuseDaemonEnabled(process.env.MUSE_MATRIX_POLL_ENABLED);
+  if (options.matrixInboxFile && options.messaging) {
     const matrixInboxFile = options.matrixInboxFile;
     const messaging = options.messaging;
     // Same boot-or-hot-start shape as the Telegram starter above.
@@ -621,42 +668,47 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
         provider: matrix
       }));
     };
-    ingestStarters.matrix();
+    if (matrixPollEnabled) {
+      ingestStarters.matrix();
+    }
   }
 
   // Second inbound reply daemon over the Matrix inbox — same
   // MUSE_INBOUND_REPLY_ENABLED flag and the same createInboundAgentRun
   // runner factory as the Telegram one; only the inbox/cursor/thread
   // files differ, so a Matrix room message IS a Muse session too.
-  if (
-    inboundReplyEnabled
-    && options.matrixInboxFile
-    && options.messaging
-    && options.agentRuntime
-  ) {
-    const matrixRunner: InboundAgentRunner = createThreadedInboundRunner({
-      run: createInboundAgentRun({
-        agentRuntime: options.agentRuntime,
-        env,
-        model: options.defaultModel ?? "default",
-        registry: options.messaging
-      }),
-      threadFile: `${options.matrixInboxFile}.threads.json`
-    });
-    const matrixReplyMsRaw = process.env.MUSE_INBOUND_REPLY_INTERVAL_MS
-      ? Number(process.env.MUSE_INBOUND_REPLY_INTERVAL_MS)
-      : undefined;
-    const matrixReplyHandle = startInboundReplyTick({
-      cursorFile: `${options.matrixInboxFile}.reply-cursor.json`,
-      errorLogger: (message) => server.log.warn(message),
-      inboxFile: options.matrixInboxFile,
-      ...(matrixReplyMsRaw !== undefined ? { intervalMs: matrixReplyMsRaw } : {}),
-      logger: (message) => server.log.info(message),
-      registry: options.messaging,
-      runner: matrixRunner
-    });
-    matrixReplyTick.current = () => matrixReplyHandle.tickOnce();
-    channelDaemons.adopt("matrix-inbound-reply", matrixReplyHandle);
+  if (options.matrixInboxFile && options.messaging && options.agentRuntime) {
+    const matrixInboxFile = options.matrixInboxFile;
+    const messaging = options.messaging;
+    const agentRuntime = options.agentRuntime;
+    replyStarters.matrix = () => {
+      const matrixRunner: InboundAgentRunner = createThreadedInboundRunner({
+        run: createInboundAgentRun({
+          agentRuntime,
+          env,
+          model: options.defaultModel ?? "default",
+          registry: messaging
+        }),
+        threadFile: `${matrixInboxFile}.threads.json`
+      });
+      const matrixReplyMsRaw = process.env.MUSE_INBOUND_REPLY_INTERVAL_MS
+        ? Number(process.env.MUSE_INBOUND_REPLY_INTERVAL_MS)
+        : undefined;
+      const matrixReplyHandle = startInboundReplyTick({
+        cursorFile: `${matrixInboxFile}.reply-cursor.json`,
+        errorLogger: (message) => server.log.warn(message),
+        inboxFile: matrixInboxFile,
+        ...(matrixReplyMsRaw !== undefined ? { intervalMs: matrixReplyMsRaw } : {}),
+        logger: (message) => server.log.info(message),
+        registry: messaging,
+        runner: matrixRunner
+      });
+      matrixReplyTick.current = () => matrixReplyHandle.tickOnce();
+      channelDaemons.adopt("matrix-inbound-reply", matrixReplyHandle);
+    };
+    if (inboundReplyEnabled) {
+      replyStarters.matrix();
+    }
   }
 
   // Optional daemon: poll a user-configured list of

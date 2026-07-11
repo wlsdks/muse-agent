@@ -50,3 +50,61 @@ describe("shapeDaemonFlags status detail passthrough", () => {
     });
   });
 });
+
+describe("PATCH /api/settings/daemon-flags", () => {
+  async function buildPatchServer() {
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const Fastify = (await import("fastify")).default;
+    const { registerSettingsRoutes } = await import("../src/settings-routes.js");
+    const dir = mkdtempSync(join(tmpdir(), "muse-dpatch-"));
+    const settingsFile = join(dir, "daemon-settings.json");
+    const applied: { key: string; enabled: boolean }[] = [];
+    const server = Fastify({ logger: false });
+    registerSettingsRoutes(server, {
+      applyDaemonToggle: (key, enabled) => {
+        applied.push({ enabled, key });
+        return key !== "MUSE_HOME_WATCH_ENABLED";
+      },
+      authService: undefined,
+      daemonSettingsFile: settingsFile
+    });
+    return { applied, server, settingsFile };
+  }
+
+  it("persists the toggle and reports live application for channel daemons", async () => {
+    const { applied, server, settingsFile } = await buildPatchServer();
+    const response = await server.inject({
+      method: "PATCH",
+      payload: { enabled: false, key: "MUSE_TELEGRAM_POLL_ENABLED" },
+      url: "/api/settings/daemon-flags"
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ appliedLive: true, enabled: false, key: "MUSE_TELEGRAM_POLL_ENABLED" });
+    expect(applied).toEqual([{ enabled: false, key: "MUSE_TELEGRAM_POLL_ENABLED" }]);
+    const { readDaemonSettingsSync } = await import("../src/daemon-settings-store.js");
+    expect(readDaemonSettingsSync(settingsFile)).toEqual({ MUSE_TELEGRAM_POLL_ENABLED: false });
+  });
+
+  it("a restart-only daemon persists but reports appliedLive=false", async () => {
+    const { server } = await buildPatchServer();
+    const response = await server.inject({
+      method: "PATCH",
+      payload: { enabled: true, key: "MUSE_HOME_WATCH_ENABLED" },
+      url: "/api/settings/daemon-flags"
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ appliedLive: false, enabled: true });
+  });
+
+  it("rejects an unknown flag key (no arbitrary env writes)", async () => {
+    const { server } = await buildPatchServer();
+    const response = await server.inject({
+      method: "PATCH",
+      payload: { enabled: true, key: "MUSE_TOTALLY_MADE_UP" },
+      url: "/api/settings/daemon-flags"
+    });
+    expect(response.statusCode).toBe(404);
+  });
+});

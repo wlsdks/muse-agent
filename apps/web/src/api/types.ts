@@ -367,6 +367,7 @@ export interface MessagingSetupProvider {
   readonly configured: boolean;
   readonly registered: boolean;
   readonly source: "env" | "file" | null;
+  readonly pairedOwner?: string;
 }
 export interface MessagingSetupResponse {
   readonly providers: readonly MessagingSetupProvider[];

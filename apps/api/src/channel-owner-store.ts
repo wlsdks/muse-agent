@@ -47,6 +47,20 @@ export async function adoptChannelOwner(file: string, providerId: string, source
   return source;
 }
 
+/** Clear the provider's owner so the NEXT chat to talk re-pairs (TOFU reset). */
+export async function removeChannelOwner(file: string, providerId: string): Promise<void> {
+  const owners = await readAll(file);
+  if (!(providerId in owners)) {
+    return;
+  }
+  const { [providerId]: _dropped, ...rest } = owners;
+  const next: PersistedShape = { owners: rest, version: 1 };
+  await fs.mkdir(dirname(file), { recursive: true });
+  const tmp = `${file}.tmp-${process.pid.toString()}`;
+  await fs.writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  await fs.rename(tmp, file);
+}
+
 /** Parse `provider:source` pairs from MUSE_CHANNEL_ALLOWED_CHATS ("telegram:123,matrix:!r:hs"). */
 export function parseAllowedChats(raw: string | undefined): ReadonlySet<string> {
   if (!raw) {

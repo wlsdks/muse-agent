@@ -1,4 +1,6 @@
 import { parseBoolean } from "@muse/autoconfigure";
+
+import { readDaemonSettingsSync, writeDaemonSetting, type DaemonSettings } from "./daemon-settings-store.js";
 import type { FastifyInstance } from "fastify";
 
 import { requireAuthenticated } from "./server-helpers.js";
@@ -39,13 +41,17 @@ export type DaemonStatusSource = () => Readonly<Record<string, {
   readonly lastError?: string;
 }>>;
 
-export function shapeDaemonFlags(env: NodeJS.ProcessEnv, daemonStatus?: DaemonStatusSource): DaemonFlagsResponse {
+export function shapeDaemonFlags(
+  env: NodeJS.ProcessEnv,
+  daemonStatus?: DaemonStatusSource,
+  settings: DaemonSettings = {}
+): DaemonFlagsResponse {
   const status = daemonStatus?.();
   return {
     flags: DAEMON_FLAGS.map(([key, label, dflt, supervisorName]) => ({
       key,
       label,
-      enabled: parseBoolean(env[key], dflt),
+      enabled: settings[key] ?? parseBoolean(env[key], dflt),
       ...(status && supervisorName ? { running: status[supervisorName]?.running ?? false } : {}),
       ...(status?.[supervisorName ?? ""]?.lastIngestAtIso ? { lastIngestAtIso: status[supervisorName ?? ""]?.lastIngestAtIso } : {}),
       ...(status?.[supervisorName ?? ""]?.lastError ? { lastError: status[supervisorName ?? ""]?.lastError } : {})
@@ -56,6 +62,10 @@ export function shapeDaemonFlags(env: NodeJS.ProcessEnv, daemonStatus?: DaemonSt
 export interface SettingsRoutesGate {
   readonly authService: ServerOptions["authService"];
   readonly daemonStatus?: DaemonStatusSource;
+  /** Where PATCHed toggles persist; enables the PATCH route when set. */
+  readonly daemonSettingsFile?: string;
+  /** Applies a toggle to the RUNNING process (start/stop the daemon); returns whether it took effect live. */
+  readonly applyDaemonToggle?: (key: string, enabled: boolean) => boolean;
 }
 
 export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRoutesGate): void {
@@ -66,6 +76,30 @@ export function registerSettingsRoutes(server: FastifyInstance, gate: SettingsRo
     if (!authed(request, reply)) {
       return reply;
     }
-    return shapeDaemonFlags(process.env, gate.daemonStatus);
+    return shapeDaemonFlags(
+      process.env,
+      gate.daemonStatus,
+      gate.daemonSettingsFile ? readDaemonSettingsSync(gate.daemonSettingsFile) : {}
+    );
   });
+
+  if (gate.daemonSettingsFile) {
+    const settingsFile = gate.daemonSettingsFile;
+    server.patch("/api/settings/daemon-flags", async (request, reply) => {
+      if (!authed(request, reply)) {
+        return reply;
+      }
+      const body = (request.body ?? {}) as { key?: string; enabled?: boolean };
+      const key = typeof body.key === "string" ? body.key : "";
+      if (!DAEMON_FLAGS.some(([known]) => known === key)) {
+        return reply.status(404).send({ reason: `unknown daemon flag "${key}"` });
+      }
+      if (typeof body.enabled !== "boolean") {
+        return reply.status(400).send({ reason: "enabled must be a boolean" });
+      }
+      await writeDaemonSetting(settingsFile, key, body.enabled);
+      const appliedLive = gate.applyDaemonToggle?.(key, body.enabled) ?? false;
+      return { appliedLive, enabled: body.enabled, key };
+    });
+  }
 }

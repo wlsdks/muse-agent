@@ -8,6 +8,7 @@ export interface ApiClient {
   readonly get: <T>(path: string) => Promise<T>;
   readonly post: <T>(path: string, body?: Record<string, unknown>) => Promise<T>;
   readonly put: <T>(path: string, body?: Record<string, unknown>) => Promise<T>;
+  readonly patch: <T>(path: string, body?: Record<string, unknown>) => Promise<T>;
   readonly del: <T>(path: string) => Promise<T>;
 }
 
@@ -16,6 +17,7 @@ export function createApiClient(baseUrl: string, token: string): ApiClient {
     baseUrl,
     del: (path) => request(baseUrl, token, path, undefined, "DELETE"),
     get: (path) => request(baseUrl, token, path, undefined, "GET"),
+    patch: (path, body) => request(baseUrl, token, path, body, "PATCH"),
     post: (path, body) => request(baseUrl, token, path, body, "POST"),
     put: (path, body) => request(baseUrl, token, path, body, "PUT")
   };
@@ -26,7 +28,7 @@ async function request<T>(
   token: string,
   path: string,
   body: Record<string, unknown> | undefined,
-  method: "GET" | "POST" | "PUT" | "DELETE"
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE"
 ): Promise<T> {
   const response = await fetch(new URL(path, baseUrl).toString(), {
     body: body ? JSON.stringify(body) : undefined,
