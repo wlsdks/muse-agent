@@ -22,7 +22,9 @@
 | packages/shared | fire 11 | 방문 (사실상 CLEAN — 고아 docstring 1건만 큐) |
 | packages/stores | fire 13 | 방문 |
 | packages/mcp | fire 15 | 방문 |
-| 기타 packages/* | – | 미방문 (tools/messaging/proactivity 등) |
+| packages/tools | fire 16 | 방문 (병합 후보는 기각) |
+| packages/proactivity | fire 17 | 방문 |
+| 기타 packages/* | – | 미방문 (messaging은 main 활발 — 충돌 회피로 보류) |
 
 ## 대기 발견 큐
 
@@ -89,3 +91,4 @@
 | 14 | multi-agent (큐 집행) + 머지 | ①recall-hits RMW race NO-SHIP(오탐 — 이미 직렬화 완비) ②main 충돌 해소(messaging-setup-routes lint 수정 경합 — main측 _options 채택, 분기 최소화) ③buildOrchestrationResponse 144→48줄: 4 헬퍼(projectWorkerOutputs/buildCompletedParts/synthesizeAndVerify/detectFanInIssues) 순수 재배치 + indexOf O(n²)→O(n) | multi-agent 334/334 ✓ · lint 0 ✓ (fable 재검증) |
 | 15 | packages/mcp | toErrorMessage 3벌(manager/transport/index) → error-utils.ts 통합 + index.ts 408→343줄(createMcpMuseTool·redactMcpSecrets를 mcp-tool-factory.ts로 순수 이동, 재export로 공개 표면 불변); 보안성 발견 2건은 동작 변경이라 큐로 | mcp build ✓ · 779/779 ✓ · lint 0 ✓ (fable 재검증) |
 | 16 | tools 스캔 → multi-agent (큐 집행) | tools 힌트 병합은 워커 전제-검증이 반증해 NO-SHIP(위 기각 기록); 대체로 orchestrator runSequential(38)·runParallel(26)의 worker당 중복 흐름을 runWorkerStep 헬퍼(33줄)로 통합 — publish fire-safe 자세·에러 구분(원본 vs new Error(reason)) 보존, 소비부가 errorMessage만 쓰므로 non-Error 래핑도 문자열-동일 | multi-agent 334/334 ✓ · build ✓ · lint 0 ✓ (fable 재검증) |
+| 17 | packages/proactivity | proactive-notice-loop.ts 899→621줄: 수집/포맷을 notice-imminent.ts(168줄), 합성/그라운딩을 notice-synthesis.ts(152줄)로 순수 이동, 이동 공개심볼 재export로 소비자(cli 데몬·api tick·테스트) 무변경; @muse/stores 4중 import 통합 | proactivity 113/113 ✓ · cli+api build ✓ · api notice 3파일 6/6 ✓ · lint 0 ✓ (fable 재검증) |
