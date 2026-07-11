@@ -558,9 +558,21 @@ export function createBrowserHoverTool(deps: BrowserReadToolDeps): MuseTool {
   };
 }
 
+/**
+ * Minimal structural seam for a per-task browser-action cap. `@muse/browser`
+ * must not depend on `@muse/agent-core` — the CLI boundary wires in the real
+ * tracker (`createBrowserActionTracker`); tests can fake this trivially.
+ */
+export interface BrowserActionGuard {
+  /** Consume one action from the per-task budget; refuses (allowed:false) once the cap is hit. */
+  tryConsume(): { readonly allowed: boolean; readonly refusal?: string; readonly warning?: string; readonly label: string };
+}
+
 export interface BrowserActToolDeps {
   readonly controller: BrowserController;
   readonly approvalGate: BrowserApprovalGate;
+  /** Optional per-task action budget shared across click/type/fill. Absent ⇒ unbounded (byte-identical to pre-budget behavior). */
+  readonly actionBudget?: BrowserActionGuard;
 }
 
 export function createBrowserClickTool(deps: BrowserActToolDeps): MuseTool {
@@ -588,6 +600,10 @@ export function createBrowserClickTool(deps: BrowserActToolDeps): MuseTool {
       risk: "execute"
     },
     execute: async (args): Promise<JsonObject> => {
+      const budget = deps.actionBudget?.tryConsume();
+      if (budget && !budget.allowed) {
+        return { clicked: false, reason: budget.refusal ?? "browser action budget for this task is exhausted", actionsUsed: budget.label };
+      }
       let resolved: ResolveResult;
       try {
         resolved = await resolveTarget(deps.controller, args, "click");
@@ -609,7 +625,12 @@ export function createBrowserClickTool(deps: BrowserActToolDeps): MuseTool {
       }
       try {
         const snapshot = await deps.controller.click(resolved.ref);
-        return { clicked: true, ...snapshotToJson(snapshot), ...statusFields(snapshot) };
+        return {
+          clicked: true,
+          ...snapshotToJson(snapshot),
+          ...statusFields(snapshot),
+          ...(budget ? { actionsUsed: budget.label, ...(budget.warning ? { budgetWarning: budget.warning } : {}) } : {})
+        };
       } catch (cause) {
         return { clicked: false, ...errorResult(cause) };
       }
@@ -646,6 +667,10 @@ export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {
       risk: "execute"
     },
     execute: async (args): Promise<JsonObject> => {
+      const budget = deps.actionBudget?.tryConsume();
+      if (budget && !budget.allowed) {
+        return { reason: budget.refusal ?? "browser action budget for this task is exhausted", typed: false, actionsUsed: budget.label };
+      }
       const text = typeof args["text"] === "string" ? args["text"] : "";
       if (text.length === 0) {
         return { reason: "browser_type requires non-empty 'text'", typed: false };
@@ -677,7 +702,12 @@ export function createBrowserTypeTool(deps: BrowserActToolDeps): MuseTool {
       }
       try {
         const snapshot = await deps.controller.type(resolved.ref, text, submit);
-        return { typed: true, ...snapshotToJson(snapshot), ...statusFields(snapshot) };
+        return {
+          typed: true,
+          ...snapshotToJson(snapshot),
+          ...statusFields(snapshot),
+          ...(budget ? { actionsUsed: budget.label, ...(budget.warning ? { budgetWarning: budget.warning } : {}) } : {})
+        };
       } catch (cause) {
         return { typed: false, ...errorResult(cause) };
       }
@@ -759,6 +789,10 @@ export function createBrowserFillFormTool(deps: BrowserActToolDeps): MuseTool {
       risk: "execute"
     },
     execute: async (args): Promise<JsonObject> => {
+      const budget = deps.actionBudget?.tryConsume();
+      if (budget && !budget.allowed) {
+        return { filled: false, reason: budget.refusal ?? "browser action budget for this task is exhausted", actionsUsed: budget.label };
+      }
       const parsed = parseFillFields(args["fields"]);
       if ("error" in parsed) {
         return { filled: false, ...parsed.error };
@@ -811,7 +845,12 @@ export function createBrowserFillFormTool(deps: BrowserActToolDeps): MuseTool {
       } catch (cause) {
         return { filled: false, ...errorResult(cause) };
       }
-      return { filled: true, fields: resolved.length, ...(snapshot ? { ...snapshotToJson(snapshot), ...statusFields(snapshot) } : {}) };
+      return {
+        filled: true,
+        fields: resolved.length,
+        ...(snapshot ? { ...snapshotToJson(snapshot), ...statusFields(snapshot) } : {}),
+        ...(budget ? { actionsUsed: budget.label, ...(budget.warning ? { budgetWarning: budget.warning } : {}) } : {})
+      };
     }
   };
 }

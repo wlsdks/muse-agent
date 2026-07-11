@@ -8,6 +8,16 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+### Added
+
+- **Browser tasks now have an action budget so they can't run away.** When Muse
+  is driving a web page, the number of state-changing actions it takes (clicks,
+  typing, form fills) is capped per task. Once the cap is reached Muse stops
+  acting and tells you, instead of clicking forever, and each action reports how
+  many it has used (`actions_used N/M`) with a heads-up as it nears the limit.
+  The default is generous (30 actions); raise or lower it with
+  `MUSE_BROWSER_MAX_ACTIONS`.
+
 ### Fixed
 
 - **Muse's browser won't act on an element that isn't really on the page.**
