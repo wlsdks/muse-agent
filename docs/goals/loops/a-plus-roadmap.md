@@ -120,7 +120,7 @@ ratchet: 로드맵 잔여 [ ] = 19/38 · self-eval pass · fabrication 0 · agen
 - 리뷰지점: Opus가 emission gating(genuine-exec만, progress 트래커와 동일)·throw-safe·미배선 byte-identical·두 테스트 행동적·mutation-RED 양방향·deferral 정당성 검증.
 lesson: ⚠라이브 레지스트리 피딩은 autoconfigure→multi-agent 의존 or apps/api 생성순서 재배치라는 아키텍처 결정 필요 → seam+emission+fake-clock 유닛까지만 이 슬라이스, 피딩+stall-abort 폴러는 backlog deferred. 정직히 disclose하고 Opus가 legitimate seam+test로 판정. 유저-가시 변화 0이라 CHANGELOG 생략.
 
-## fire 15 · 2026-07-11 · skill v2.x · <commit-pending>
+## fire 15 · 2026-07-11 · skill v2.x · 9c69928e9
 meta: slice=D3-S4a · wave=W2 · pkg=apps/cli · kind=capacity-cap · verdict=PASS · firesSinceDrill=6
 ratchet: 로드맵 잔여 [ ] = 19/39 · self-eval pass · fabrication 0 · cli 27 test(+job-concurrency) · MUSE_JOBS_MAX_CONCURRENT env
 - 무엇: job 동시상한. 순수 resolveJobsMaxConcurrent(기본3·≥1)+jobConcurrencyRefusal(>=cap 거부) + countRunningJobs(기존 jobSummary 재사용) + startBackgroundJobOrRefuse 배선(at-cap→명시거부+exitCode1, start 미호출; inline 무변경).
