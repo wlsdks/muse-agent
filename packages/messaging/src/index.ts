@@ -73,6 +73,7 @@ export { TelegramProvider, clampForTelegram, escapeForTelegramParseMode, type Te
 export { DiscordProvider, type DiscordProviderOptions } from "./discord-provider.js";
 export { SlackProvider, escapeSlackText, type SlackProviderOptions } from "./slack-provider.js";
 export { LineProvider, type LineProviderOptions } from "./line-provider.js";
+export { MatrixProvider, type MatrixProviderOptions } from "./matrix-provider.js";
 export { LogMessagingProvider, type LogMessagingProviderOptions } from "./log-provider.js";
 export {
   MacosNotificationProvider,
@@ -107,6 +108,11 @@ export {
   readDiscordAfter,
   writeDiscordAfter
 } from "./discord-after-store.js";
+
+export {
+  readMatrixSince,
+  writeMatrixSince
+} from "./matrix-since-store.js";
 
 export {
   readSlackAfter,

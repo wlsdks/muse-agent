@@ -284,6 +284,8 @@ const en = {
   "int.explain.safety": "Every reply passes the same grounding + citation gate as the rest of Muse (a claim without a real source is dropped by code), and any risky action a chat message asks for is refused pending your explicit approval — draft-first, never autonomous.",
   "int.token": "Bot token",
   "int.tokenPlaceholder": "Paste the bot token here",
+  "int.homeserver": "Homeserver URL",
+  "int.homeserverPlaceholder": "https://matrix.org",
   "int.connect": "Connect",
   "int.connecting": "Verifying…",
   "int.disconnect": "Disconnect",
@@ -327,7 +329,11 @@ const en = {
   "int.step.slack.4": "Copy the Bot User OAuth Token (xoxb-…) and paste it here.",
   "int.step.line.1": "In the LINE Developers console, create a Messaging API channel.",
   "int.step.line.2": "Issue a channel access token (long-lived).",
-  "int.step.line.3": "Paste the token here; point the channel's webhook at your Muse server to receive messages."
+  "int.step.line.3": "Paste the token here; point the channel's webhook at your Muse server to receive messages.",
+  "int.desc.matrix": "Chat with Muse over Matrix — open, self-hostable messaging. Messages in rooms your account joined become Muse turns (plaintext rooms only; end-to-end-encrypted rooms are not supported).",
+  "int.step.matrix.1": "Create an account on any Matrix homeserver (e.g. matrix.org) — a dedicated bot account keeps your own messages separate.",
+  "int.step.matrix.2": "In Element, open Settings → Help & About → Advanced → Access Token and copy it.",
+  "int.step.matrix.3": "Paste the homeserver URL (e.g. https://matrix.org) and the access token here."
 } as const;
 
 export type StringKey = keyof typeof en;
@@ -611,6 +617,8 @@ const ko: Strings = {
   "int.explain.safety": "모든 답변은 Muse의 다른 표면과 동일한 grounding+인용 게이트를 통과하며(실제 출처 없는 주장은 코드가 차단), 채팅으로 들어온 위험한 액션 요청은 명시적 승인 전까지 거부됩니다 — draft-first, 자율 실행 없음.",
   "int.token": "봇 토큰",
   "int.tokenPlaceholder": "봇 토큰을 여기에 붙여넣으세요",
+  "int.homeserver": "홈서버 URL",
+  "int.homeserverPlaceholder": "https://matrix.org",
   "int.connect": "연결",
   "int.connecting": "검증 중…",
   "int.disconnect": "연결 해제",
@@ -654,7 +662,11 @@ const ko: Strings = {
   "int.step.slack.4": "Bot User OAuth Token(xoxb-…)을 복사해 여기에 붙여넣으세요.",
   "int.step.line.1": "LINE Developers 콘솔에서 Messaging API 채널을 만듭니다.",
   "int.step.line.2": "채널 액세스 토큰(장기)을 발급합니다.",
-  "int.step.line.3": "토큰을 여기에 붙여넣고, 메시지 수신을 위해 채널 웹훅을 Muse 서버로 지정하세요."
+  "int.step.line.3": "토큰을 여기에 붙여넣고, 메시지 수신을 위해 채널 웹훅을 Muse 서버로 지정하세요.",
+  "int.desc.matrix": "오픈소스·자가호스팅 메신저 Matrix로 Muse와 대화하세요. 계정이 참여한 방의 메시지가 Muse 턴이 됩니다(일반 텍스트 방만 지원, 종단간 암호화 방은 미지원).",
+  "int.step.matrix.1": "아무 Matrix 홈서버(예: matrix.org)에 계정을 만드세요 — 전용 봇 계정을 쓰면 내 메시지와 분리됩니다.",
+  "int.step.matrix.2": "Element에서 설정 → Help & About → Advanced → Access Token 을 열어 복사하세요.",
+  "int.step.matrix.3": "홈서버 URL(예: https://matrix.org)과 액세스 토큰을 여기에 붙여넣으세요."
 };
 
 export const DICTIONARIES: Record<Lang, Strings> = { en, ko };

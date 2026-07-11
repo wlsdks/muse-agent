@@ -47,6 +47,8 @@ export {
   resolveInboxInjectionCursorFile,
   resolveLineInboxFile,
   resolveLocalCalendarFile,
+  resolveMatrixInboxFile,
+  resolveMatrixSinceFile,
   resolveMessagingCredentialsFile,
   resolveModelKeysFile,
   resolveNotesDir,

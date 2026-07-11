@@ -25,3 +25,12 @@ export function providerStatus(provider: MessagingSetupProvider): ProviderStatus
 export function canDisconnect(provider: MessagingSetupProvider): boolean {
   return provider.configured && provider.source === "file";
 }
+
+/**
+ * Matrix has no fixed API host — the user picks a homeserver — so
+ * its card needs a homeserver-URL input alongside the token and the
+ * connect POST must carry both.
+ */
+export function requiresHomeserver(providerId: string): boolean {
+  return providerId === "matrix";
+}

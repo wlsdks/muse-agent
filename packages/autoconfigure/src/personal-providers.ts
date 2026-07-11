@@ -69,6 +69,8 @@ export {
   resolveCheckinsFile,
   resolveLineInboxFile,
   resolveLocalCalendarFile,
+  resolveMatrixInboxFile,
+  resolveMatrixSinceFile,
   resolveMessagingCredentialsFile,
   resolveModelKeysFile,
   resolveNotesDir,

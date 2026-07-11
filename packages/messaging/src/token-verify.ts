@@ -7,6 +7,11 @@ export type TokenVerification =
 export interface VerifyTokenOptions {
   readonly fetchImpl?: typeof globalThis.fetch;
   readonly timeoutMs?: number;
+  /**
+   * Required for providers whose identity endpoint lives on a
+   * user-chosen host (matrix). Ignored by the fixed-host providers.
+   */
+  readonly homeserverUrl?: string;
 }
 
 const VERIFY_TIMEOUT_MS = 10_000;
@@ -82,6 +87,23 @@ export async function verifyMessagingToken(
         }
         const account = body?.basicId ?? body?.displayName;
         return { ok: true, ...(account ? { account } : {}) };
+      }
+      case "matrix": {
+        const homeserver = options.homeserverUrl?.trim().replace(/\/+$/u, "");
+        if (!homeserver) {
+          return { ok: false, reason: "matrix requires a homeserver URL (e.g. https://matrix.org)" };
+        }
+        const response = await fetchWithTimeout(
+          fetchImpl,
+          `${homeserver}/_matrix/client/v3/account/whoami`,
+          { headers: { authorization: `Bearer ${token}` }, method: "GET" },
+          timeoutMs
+        );
+        const body = tryParseJson<{ user_id?: string; error?: string }>(await response.text());
+        if (!response.ok || typeof body?.user_id !== "string") {
+          return { ok: false, reason: body?.error ?? `Matrix whoami failed (HTTP ${response.status.toString()})` };
+        }
+        return { account: body.user_id, ok: true };
       }
       default:
         return { ok: false, reason: `unknown messaging provider "${providerId}"` };

@@ -18,7 +18,7 @@ import type { TokenVerification } from "@muse/messaging";
 
 function build(options: {
   readonly env?: Record<string, string>;
-  readonly verify?: (providerId: string, token: string) => TokenVerification;
+  readonly verify?: (providerId: string, token: string, verifyOptions?: { readonly homeserverUrl?: string }) => TokenVerification;
 }) {
   const dir = mkdtempSync(join(tmpdir(), "muse-setup-routes-"));
   const credentialsFile = join(dir, "messaging.json");
@@ -29,18 +29,20 @@ function build(options: {
     credentialsFile,
     env,
     registry,
-    ...(options.verify ? { verifyToken: async (providerId, token) => options.verify!(providerId, token) } : {})
+    ...(options.verify
+      ? { verifyToken: async (providerId, token, verifyOptions) => options.verify!(providerId, token, verifyOptions) }
+      : {})
   });
   return { credentialsFile, registry, server };
 }
 
 describe("/api/messaging/setup", () => {
-  it("GET lists the four connectable providers, unconfigured on a fresh box", async () => {
+  it("GET lists the five connectable providers, unconfigured on a fresh box", async () => {
     const { server } = build({});
     const response = await server.inject({ method: "GET", url: "/api/messaging/setup" });
     expect(response.statusCode).toBe(200);
     const body = response.json() as { providers: { id: string; configured: boolean; source: string | null }[] };
-    expect(body.providers.map((p) => p.id)).toEqual(["telegram", "discord", "slack", "line"]);
+    expect(body.providers.map((p) => p.id)).toEqual(["telegram", "discord", "slack", "line", "matrix"]);
     expect(body.providers.every((p) => !p.configured && p.source === null)).toBe(true);
   });
 
@@ -112,6 +114,60 @@ describe("/api/messaging/setup", () => {
       url: "/api/messaging/setup/smoke-signals"
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("POST matrix verifies with the homeserver URL, persists BOTH fields, and hot-registers", async () => {
+    const seen: { providerId: string; token: string; homeserverUrl?: string }[] = [];
+    const { credentialsFile, registry, server } = build({
+      verify: (providerId, token, verifyOptions) => {
+        seen.push({ providerId, token, ...(verifyOptions?.homeserverUrl ? { homeserverUrl: verifyOptions.homeserverUrl } : {}) });
+        return { account: "@muse:hs.test", ok: true };
+      }
+    });
+    const response = await server.inject({
+      method: "POST",
+      payload: { homeserverUrl: "https://hs.test", token: "syt_tok" },
+      url: "/api/messaging/setup/matrix"
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ account: "@muse:hs.test", ok: true });
+    expect(seen).toEqual([{ homeserverUrl: "https://hs.test", providerId: "matrix", token: "syt_tok" }]);
+    expect(registry.has("matrix")).toBe(true);
+    const store = new FileMessagingCredentialStore(credentialsFile);
+    expect(await store.load("matrix")).toEqual({ homeserverUrl: "https://hs.test", token: "syt_tok" });
+  });
+
+  it("POST matrix without a homeserver URL 400s fail-close: no verify, no save, no register", async () => {
+    const { credentialsFile, registry, server } = build({
+      verify: () => {
+        throw new Error("must not verify");
+      }
+    });
+    const response = await server.inject({
+      method: "POST",
+      payload: { token: "syt_tok" },
+      url: "/api/messaging/setup/matrix"
+    });
+    expect(response.statusCode).toBe(400);
+    expect((response.json() as { reason?: string }).reason).toContain("homeserver");
+    expect(registry.has("matrix")).toBe(false);
+    const store = new FileMessagingCredentialStore(credentialsFile);
+    expect(await store.load("matrix")).toBeUndefined();
+  });
+
+  it("POST matrix with a failing verification saves NOTHING (fail-close)", async () => {
+    const { credentialsFile, registry, server } = build({
+      verify: () => ({ ok: false, reason: "Invalid access token" })
+    });
+    const response = await server.inject({
+      method: "POST",
+      payload: { homeserverUrl: "https://hs.test", token: "bad" },
+      url: "/api/messaging/setup/matrix"
+    });
+    expect(response.statusCode).toBe(400);
+    expect(registry.has("matrix")).toBe(false);
+    const store = new FileMessagingCredentialStore(credentialsFile);
+    expect(await store.load("matrix")).toBeUndefined();
   });
 
   it("DELETE removes a file-sourced credential and unregisters the live provider", async () => {

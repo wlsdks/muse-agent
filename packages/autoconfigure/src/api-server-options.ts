@@ -11,6 +11,7 @@ import {
   resolveEpisodesFile,
   resolveFollowupsFile,
   resolveLineInboxFile,
+  resolveMatrixInboxFile,
   resolveNotesDir,
   resolveObjectivesFile,
   resolvePatternsFiredFile,
@@ -142,6 +143,7 @@ export function createApiServerOptions(options: ApiServerAssemblyOptions = {}) {
     patternsFiredFile: resolvePatternsFiredFile(env),
     episodesFile: resolveEpisodesFile(env),
     lineInboxFile: resolveLineInboxFile(env),
+    matrixInboxFile: resolveMatrixInboxFile(env),
     telegramInboxFile: resolveTelegramInboxFile(env),
     discordInboxFile: resolveDiscordInboxFile(env),
     slackInboxFile: resolveSlackInboxFile(env)

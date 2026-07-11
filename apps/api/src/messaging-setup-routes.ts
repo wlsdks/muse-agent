@@ -2,6 +2,8 @@ import {
   resolveDiscordAfterFile,
   resolveDiscordInboxFile,
   resolveLineInboxFile,
+  resolveMatrixInboxFile,
+  resolveMatrixSinceFile,
   resolveSlackAfterFile,
   resolveSlackInboxFile,
   resolveTelegramInboxFile,
@@ -12,6 +14,7 @@ import {
   DiscordProvider,
   FileMessagingCredentialStore,
   LineProvider,
+  MatrixProvider,
   SlackProvider,
   TelegramProvider,
   verifyMessagingToken,
@@ -38,17 +41,20 @@ import type { FastifyInstance } from "fastify";
  */
 
 interface ConnectableProvider {
-  readonly id: "telegram" | "discord" | "slack" | "line";
+  readonly id: "telegram" | "discord" | "slack" | "line" | "matrix";
   readonly displayName: string;
   readonly envKey: string;
   readonly docsUrl: string;
+  /** Providers on a user-chosen host need a homeserver URL alongside the token. */
+  readonly requiresHomeserverUrl?: boolean;
 }
 
 const CONNECTABLE: readonly ConnectableProvider[] = [
   { displayName: "Telegram", docsUrl: "https://core.telegram.org/bots#botfather", envKey: "MUSE_TELEGRAM_BOT_TOKEN", id: "telegram" },
   { displayName: "Discord", docsUrl: "https://discord.com/developers/applications", envKey: "MUSE_DISCORD_BOT_TOKEN", id: "discord" },
   { displayName: "Slack", docsUrl: "https://api.slack.com/apps", envKey: "MUSE_SLACK_BOT_TOKEN", id: "slack" },
-  { displayName: "LINE", docsUrl: "https://developers.line.biz/console/", envKey: "MUSE_LINE_CHANNEL_ACCESS_TOKEN", id: "line" }
+  { displayName: "LINE", docsUrl: "https://developers.line.biz/console/", envKey: "MUSE_LINE_CHANNEL_ACCESS_TOKEN", id: "line" },
+  { displayName: "Matrix", docsUrl: "https://spec.matrix.org/latest/client-server-api/", envKey: "MUSE_MATRIX_ACCESS_TOKEN", id: "matrix", requiresHomeserverUrl: true }
 ];
 
 export interface MessagingSetupGate {
@@ -57,10 +63,19 @@ export interface MessagingSetupGate {
   readonly credentialsFile: string;
   readonly env: MuseEnvironment;
   /** Injectable for tests; defaults to the live per-provider identity check. */
-  readonly verifyToken?: (providerId: string, token: string) => Promise<TokenVerification>;
+  readonly verifyToken?: (
+    providerId: string,
+    token: string,
+    options?: { readonly homeserverUrl?: string }
+  ) => Promise<TokenVerification>;
 }
 
-function buildProvider(id: ConnectableProvider["id"], token: string, env: MuseEnvironment): MessagingProvider {
+function buildProvider(
+  id: ConnectableProvider["id"],
+  token: string,
+  env: MuseEnvironment,
+  homeserverUrl?: string
+): MessagingProvider {
   switch (id) {
     case "telegram":
       return new TelegramProvider({ inboxFile: resolveTelegramInboxFile(env), offsetFile: resolveTelegramOffsetFile(env), token });
@@ -70,12 +85,23 @@ function buildProvider(id: ConnectableProvider["id"], token: string, env: MuseEn
       return new SlackProvider({ afterFile: resolveSlackAfterFile(env), inboxFile: resolveSlackInboxFile(env), token });
     case "line":
       return new LineProvider({ inboxFile: resolveLineInboxFile(env), token });
+    case "matrix":
+      // The route rejects a matrix POST without a homeserver URL
+      // before reaching here, so the fallback never fires in practice.
+      return new MatrixProvider({
+        accessToken: token,
+        homeserverUrl: homeserverUrl ?? "",
+        inboxFile: resolveMatrixInboxFile(env),
+        sinceFile: resolveMatrixSinceFile(env)
+      });
   }
 }
 
 export function registerMessagingSetupRoutes(server: FastifyInstance, gate: MessagingSetupGate): void {
   const store = new FileMessagingCredentialStore(gate.credentialsFile);
-  const verify = gate.verifyToken ?? ((providerId: string, token: string) => verifyMessagingToken(providerId, token));
+  const verify = gate.verifyToken
+    ?? ((providerId: string, token: string, options?: { readonly homeserverUrl?: string }) =>
+      verifyMessagingToken(providerId, token, options ?? {}));
   const authed = (request: Parameters<typeof requireAuthenticated>[0], reply: Parameters<typeof requireAuthenticated>[1]) =>
     requireAuthenticated(request, reply, Boolean(gate.authService));
 
@@ -109,16 +135,22 @@ export function registerMessagingSetupRoutes(server: FastifyInstance, gate: Mess
     if (!provider) {
       return reply.status(404).send({ reason: `unknown messaging provider "${providerId}"` });
     }
-    const token = ((request.body as { token?: string } | undefined)?.token ?? "").trim();
+    const body = request.body as { token?: string; homeserverUrl?: string } | undefined;
+    const token = (body?.token ?? "").trim();
     if (token.length === 0) {
       return reply.status(400).send({ message: "token is required", reason: "token is required" });
     }
-    const verdict = await verify(provider.id, token);
+    const homeserverUrl = (body?.homeserverUrl ?? "").trim();
+    if (provider.requiresHomeserverUrl && homeserverUrl.length === 0) {
+      const reason = "homeserverUrl is required (e.g. https://matrix.org)";
+      return reply.status(400).send({ message: reason, reason });
+    }
+    const verdict = await verify(provider.id, token, provider.requiresHomeserverUrl ? { homeserverUrl } : {});
     if (!verdict.ok) {
       return reply.status(400).send({ message: verdict.reason, ok: false, reason: verdict.reason });
     }
-    await store.save(provider.id, { token });
-    gate.registry.register(buildProvider(provider.id, token, gate.env));
+    await store.save(provider.id, { token, ...(provider.requiresHomeserverUrl ? { homeserverUrl } : {}) });
+    gate.registry.register(buildProvider(provider.id, token, gate.env, provider.requiresHomeserverUrl ? homeserverUrl : undefined));
     return { ok: true, ...(verdict.account ? { account: verdict.account } : {}) };
   });
 

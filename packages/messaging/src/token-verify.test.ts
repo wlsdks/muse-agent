@@ -65,6 +65,43 @@ describe("verifyMessagingToken", () => {
     expect(result).toEqual({ account: "@muse", ok: true });
   });
 
+  it("matrix: whoami sends the Bearer header against the given homeserver and resolves user_id", async () => {
+    let auth = "";
+    const result = await verifyMessagingToken("matrix", "syt_tok", {
+      fetchImpl: fakeFetch((url, init) => {
+        auth = new Headers(init?.headers).get("authorization") ?? "";
+        expect(url).toBe("https://hs.test/_matrix/client/v3/account/whoami");
+        return { body: { user_id: "@muse:hs.test" }, status: 200 };
+      }),
+      homeserverUrl: "https://hs.test/"
+    });
+    expect(result).toEqual({ account: "@muse:hs.test", ok: true });
+    expect(auth).toBe("Bearer syt_tok");
+  });
+
+  it("matrix: fails closed without a homeserver URL and never fetches", async () => {
+    const result = await verifyMessagingToken("matrix", "syt_tok", {
+      fetchImpl: fakeFetch(() => {
+        throw new Error("must not fetch");
+      })
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain("homeserver");
+    }
+  });
+
+  it("matrix: 401 unknown token fails closed with the API's error message", async () => {
+    const result = await verifyMessagingToken("matrix", "bad", {
+      fetchImpl: fakeFetch(() => ({ body: { errcode: "M_UNKNOWN_TOKEN", error: "Invalid access token" }, status: 401 })),
+      homeserverUrl: "https://hs.test"
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain("Invalid access token");
+    }
+  });
+
   it("unknown provider fails closed without any network call", async () => {
     const result = await verifyMessagingToken("smoke-signals", "t", {
       fetchImpl: fakeFetch(() => {

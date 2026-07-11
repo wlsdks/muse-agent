@@ -207,6 +207,12 @@ export interface ServerOptions {
    */
   readonly slackInboxFile?: string;
   /**
+   * Path to the persisted Matrix inbox (default
+   * ~/.muse/matrix-inbox.json). The Matrix sync daemon writes here
+   * on each tick; the inbound reply daemon consumes it.
+   */
+  readonly matrixInboxFile?: string;
+  /**
    * When set, `GET /api/admin/security/injection-counts`
    * exposes the snapshot for the ops dashboard. The guard layer
    * is responsible for bumping the counter on every firing

@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **507** variables.
+Total: **516** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -97,6 +97,8 @@ Total: **507** variables.
 | `MUSE_CALENDAR_ICS_FILE` | packages/autoconfigure |
 | `MUSE_CALENDAR_PROVIDERS` | apps/cli, packages/autoconfigure |
 | `MUSE_CANARY` | packages/policy |
+| `MUSE_CHANNEL_ALLOWED_CHATS` | apps/api |
+| `MUSE_CHANNEL_OWNERS_FILE` | apps/api |
 | `MUSE_CHAT_AUTO_REINDEX` | apps/cli |
 | `MUSE_CHAT_GROUNDING` | apps/cli |
 | `MUSE_CHAT_HISTORY_WINDOW` | apps/cli |
@@ -240,6 +242,13 @@ Total: **507** variables.
 | `MUSE_MACOS_ACTUATORS` | apps/cli |
 | `MUSE_MACOS_CALENDAR_NAME` | packages/autoconfigure |
 | `MUSE_MATH_ENABLED` | packages/autoconfigure |
+| `MUSE_MATRIX_ACCESS_TOKEN` | apps/api, packages/autoconfigure |
+| `MUSE_MATRIX_HOMESERVER_URL` | packages/autoconfigure |
+| `MUSE_MATRIX_INBOX_FILE` | packages/autoconfigure |
+| `MUSE_MATRIX_LONG_POLL_SECONDS` | apps/api |
+| `MUSE_MATRIX_POLL_ENABLED` | apps/api |
+| `MUSE_MATRIX_POLL_INTERVAL_MS` | apps/api |
+| `MUSE_MATRIX_SINCE_FILE` | packages/autoconfigure |
 | `MUSE_MAX_TOOL_OUTPUT_CHARS` | apps/cli, packages/autoconfigure |
 | `MUSE_MCP_ALLOWED_SERVERS` | packages/autoconfigure |
 | `MUSE_MCP_ALLOWED_STDIO_COMMANDS` | packages/autoconfigure |

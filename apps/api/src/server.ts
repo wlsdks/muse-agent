@@ -52,11 +52,12 @@ import {
 import { warmUpModelIfConfigured } from "./model-warmup.js";
 import { parseSlackPollChannels, startSlackPollTick } from "./slack-poll-tick.js";
 import { startTelegramPollTick } from "./telegram-poll-tick.js";
+import { startMatrixSyncTick } from "./matrix-sync-tick.js";
 import { createInboundAgentRun } from "./inbound-agent-run.js";
 import { startInboundReplyTick } from "./inbound-reply-tick.js";
 import { createThreadedInboundRunner, type InboundAgentRunner } from "@muse/messaging";
 
-import { DiscordProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
+import { DiscordProvider, MatrixProvider, SlackProvider, TelegramProvider } from "@muse/messaging";
 import { registerSchedulerRoutes } from "./scheduler-routes.js";
 import { registerAccountabilityRoutes } from "./accountability-routes.js";
 import { registerSelfImprovementRoutes } from "./self-improvement-routes.js";
@@ -554,6 +555,83 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
     inboundReplyTick.current = () => replyHandle.tickOnce();
     server.addHook("onClose", async () => {
       replyHandle.stop();
+    });
+  }
+
+  // Optional daemon: ingest Matrix room messages into matrixInboxFile
+  // via a continuous `/sync` long-poll (MUSE_MATRIX_LONG_POLL_SECONDS,
+  // default 25). Off unless MUSE_MATRIX_POLL_ENABLED=1 — same opt-in
+  // posture as the Telegram daemon.
+  const matrixReplyTick: { current: (() => Promise<void>) | undefined } = { current: undefined };
+  const matrixPollEnabled = isMuseDaemonEnabled(process.env.MUSE_MATRIX_POLL_ENABLED);
+  if (
+    matrixPollEnabled
+    && options.matrixInboxFile
+    && options.messaging
+    && options.messaging.has("matrix")
+  ) {
+    // The daemon walks the Client-Server API directly, so it needs
+    // the concrete MatrixProvider (with since-token persistence)
+    // rather than the registry's generic fetchInbound.
+    const matrix = options.messaging.require("matrix");
+    if (matrix instanceof MatrixProvider) {
+      const pollMsRaw = process.env.MUSE_MATRIX_POLL_INTERVAL_MS
+        ? Number(process.env.MUSE_MATRIX_POLL_INTERVAL_MS)
+        : undefined;
+      const longPollRaw = process.env.MUSE_MATRIX_LONG_POLL_SECONDS
+        ? Number(process.env.MUSE_MATRIX_LONG_POLL_SECONDS)
+        : undefined;
+      const syncHandle = startMatrixSyncTick({
+        errorLogger: (message) => server.log.warn(message),
+        inboxFile: options.matrixInboxFile,
+        ...(pollMsRaw !== undefined ? { intervalMs: pollMsRaw } : {}),
+        ...(longPollRaw !== undefined && Number.isFinite(longPollRaw) ? { longPollSeconds: longPollRaw } : {}),
+        logger: (message) => server.log.info(message),
+        onIngested: () => {
+          void matrixReplyTick.current?.();
+        },
+        provider: matrix
+      });
+      server.addHook("onClose", async () => {
+        syncHandle.stop();
+      });
+    }
+  }
+
+  // Second inbound reply daemon over the Matrix inbox — same
+  // MUSE_INBOUND_REPLY_ENABLED flag and the same createInboundAgentRun
+  // runner factory as the Telegram one; only the inbox/cursor/thread
+  // files differ, so a Matrix room message IS a Muse session too.
+  if (
+    inboundReplyEnabled
+    && options.matrixInboxFile
+    && options.messaging
+    && options.agentRuntime
+  ) {
+    const matrixRunner: InboundAgentRunner = createThreadedInboundRunner({
+      run: createInboundAgentRun({
+        agentRuntime: options.agentRuntime,
+        env,
+        model: options.defaultModel ?? "default",
+        registry: options.messaging
+      }),
+      threadFile: `${options.matrixInboxFile}.threads.json`
+    });
+    const matrixReplyMsRaw = process.env.MUSE_INBOUND_REPLY_INTERVAL_MS
+      ? Number(process.env.MUSE_INBOUND_REPLY_INTERVAL_MS)
+      : undefined;
+    const matrixReplyHandle = startInboundReplyTick({
+      cursorFile: `${options.matrixInboxFile}.reply-cursor.json`,
+      errorLogger: (message) => server.log.warn(message),
+      inboxFile: options.matrixInboxFile,
+      ...(matrixReplyMsRaw !== undefined ? { intervalMs: matrixReplyMsRaw } : {}),
+      logger: (message) => server.log.info(message),
+      registry: options.messaging,
+      runner: matrixRunner
+    });
+    matrixReplyTick.current = () => matrixReplyHandle.tickOnce();
+    server.addHook("onClose", async () => {
+      matrixReplyHandle.stop();
     });
   }
 

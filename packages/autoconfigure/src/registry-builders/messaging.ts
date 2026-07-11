@@ -12,6 +12,7 @@ import {
   LinuxLibnotifyProvider,
   LogMessagingProvider,
   MacosNotificationProvider,
+  MatrixProvider,
   MessagingProviderRegistry,
   SlackProvider,
   TelegramProvider
@@ -22,6 +23,8 @@ import {
   resolveDiscordAfterFile,
   resolveDiscordInboxFile,
   resolveLineInboxFile,
+  resolveMatrixInboxFile,
+  resolveMatrixSinceFile,
   resolveMessagingCredentialsFile,
   resolveSlackAfterFile,
   resolveSlackInboxFile,
@@ -79,6 +82,22 @@ export function buildMessagingRegistry(env: MuseEnvironment): MessagingProviderR
       afterFile: resolveSlackAfterFile(env),
       inboxFile: resolveSlackInboxFile(env),
       token: slackToken
+    }));
+  }
+  const matrixToken = tokenFor("MUSE_MATRIX_ACCESS_TOKEN", "matrix");
+  const matrixHomeserver = env.MUSE_MATRIX_HOMESERVER_URL?.trim() || stringField(file["matrix"], "homeserverUrl");
+  // Fail-close: matrix needs BOTH the token and a homeserver URL —
+  // there is no fixed default host to guess against.
+  if (matrixToken && matrixHomeserver) {
+    // sinceFile drives pollUpdates' next_batch cursor. inboxFile
+    // makes fetchInbound serve the daemon-fed store. Both files are
+    // wired unconditionally; the provider only touches them on
+    // demand, so an absent file is fine.
+    registry.register(new MatrixProvider({
+      accessToken: matrixToken,
+      homeserverUrl: matrixHomeserver,
+      inboxFile: resolveMatrixInboxFile(env),
+      sinceFile: resolveMatrixSinceFile(env)
     }));
   }
   const lineToken = tokenFor("MUSE_LINE_CHANNEL_ACCESS_TOKEN", "line");

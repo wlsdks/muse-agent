@@ -192,6 +192,14 @@ export function resolveTelegramInboxFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_TELEGRAM_INBOX_FILE", "telegram-inbox.json");
 }
 
+export function resolveMatrixSinceFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_MATRIX_SINCE_FILE", "matrix-since.json");
+}
+
+export function resolveMatrixInboxFile(env: MuseEnvironment): string {
+  return resolveDotMusePath(env, "MUSE_MATRIX_INBOX_FILE", "matrix-inbox.json");
+}
+
 export function resolveDiscordAfterFile(env: MuseEnvironment): string {
   return resolveDotMusePath(env, "MUSE_DISCORD_AFTER_FILE", "discord-after.json");
 }
