@@ -122,7 +122,11 @@ export async function withFileLock<T>(file: string, fn: () => Promise<T>): Promi
       await handle.writeFile(nonce, "utf8");
       acquired = true;
     } catch (cause) {
-      if (!(cause instanceof Error) || (cause as NodeJS.ErrnoException).code !== "EEXIST") {
+      // win32 surfaces a concurrent unlink-vs-open race on the lock file as
+      // EPERM/EACCES/EBUSY rather than EEXIST — same meaning: contended, retry.
+      const code = (cause as NodeJS.ErrnoException).code;
+      const contended = code === "EEXIST" || code === "EPERM" || code === "EACCES" || code === "EBUSY";
+      if (!(cause instanceof Error) || !contended) {
         throw cause;
       }
       if (await lockIsStale(lockPath)) {
