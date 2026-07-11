@@ -765,7 +765,8 @@ delta-scout 주기에.
 #### W2 — 신뢰성 (컴팩션·예산·서브에이전트·브라우저)
 - [x] **D1-S3** ✅ 2026-07-11 단계적 요약 — `summarizeDroppedContextInStages`+`chunkDroppedOnToolPairs`(@muse/memory, 순수): dropped를 tool-pair 경계로 청크(`role:"tool"` 앞 분할 절대금지, 오버사이즈 pair는 1청크)→청크별 summarizeDroppedContext 재사용(각 FAIL-OPEN, fallback:"")→비어있지않은 것만 병합·maxChars 캡. **부분실패=생존청크 보존**, 전실패=결정론 floor. 기존 `summarizeDroppedContext` byte-identical(additions-only). 식별자-보존 지시(UUID/경로/URL/숫자 VERBATIM)를 SUMMARIZER_SYSTEM_PROMPT에 명문화(grounding 강화). agent-runtime:578+chat-ink-core:941 양쪽 배선(1청크=단일샷 등가). 18 test(경계·부분실패·단일청크등가·mutation-RED 양방향)·Opus 평가자 PASS
 - [x] **D1-S5a** ✅ 2026-07-11 예산 소진 명시(침묵중단 금지) — 도구 예산 소진(toolCallCount≥maxToolCalls) 시 최종 합성 전에 "N/M 툴콜 소진, 최선의 최종답 지금" one-shot notice를 messages에 주입(proactive: 빈-도구 호출 前, budget에만·wallclock/stall 제외 엄격 게이트). 순수 `budgetExhaustionNotice`+`BudgetExhaustionTracker`(REVERIFY_NUDGE 패턴), 양쪽 루프. 정상종료·stall·wallclock은 미주입. maxToolCalls=10 불변. 62 test·mutation-RED(게이트제거→정상종료 오탐 RED, injection제거→미주입 RED)·Opus 평가자 PASS(설계편차 proactive 정당·기존 테스트 tightening 확인)
-- [ ] **D1-S5b** PTC 플랜스텝 계상 규칙(프로그래매틱=1) + 서브에이전트(보드) 별도 하위예산 + 유닛
+- [x] **D1-S5b1** ✅ 2026-07-11 PTC 플랜스텝 계상 규칙 명문화(프로그래매틱=1) — run_tool_plan 1콜=1 예산슬롯(내부 N스텝 무관)이 이미 동작이나 암묵적 → agent-runtime PTC 인터셉트에 WHY주석 + 회귀락 테스트(3스텝 플랜 실행됨=effects[a,b,c] ∧ 예산 1슬롯=toolsUsed["run_tool_plan"]). 계상 동작 무변경(주석+테스트만). mutation-RED(스텝을 각 예산으로 세면 toolsUsed 길이3 RED)·Opus 평가자 PASS(행동락·주석정확성 확인). 유저-가시 변화 없어 CHANGELOG 생략
+- [ ] **D1-S5b2** 서브에이전트(보드) 별도 하위예산 — lead-worker 워커에 부모와 분리된 tool-call 예산 + 유닛
 - [ ] **D3-S1** 서브에이전트 depth 강등 + 부모 tool-deny 상속 + mutation
 - [ ] **D3-S2** 단일-run heartbeat 배선(기존 detectStalled 재사용) + fake-clock 유닛 (→ VQ-1 배선점)
 - [ ] **D3-S4** 용량 거부(job 동시상한3) + 부모-헤드룸 요약예산+스필 + 유닛

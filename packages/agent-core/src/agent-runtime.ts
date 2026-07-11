@@ -1026,6 +1026,11 @@ export class AgentRuntime {
     // it. knownTools excludes run_tool_plan itself, so a nested PTC plan is an unknown-tool parse
     // error (no recursion). A parse error / blocked step becomes a normal blocked tool result —
     // never a throw that crashes the model loop.
+    //
+    // Budget invariant: a run_tool_plan call costs exactly ONE tool-call budget slot no matter how
+    // many steps its plan runs — programmatic tool calling is one budget action, not N. The model
+    // loop's toolCallCount is advanced once, for this single call, before this method ever runs; the
+    // plan's steps execute inside runToolPlanTool below and never re-enter the loop's counter.
     if (toolCall.name === RUN_TOOL_PLAN_TOOL_NAME) {
       return this.runToolPlanTool(context, toolCall, activeTools);
     }

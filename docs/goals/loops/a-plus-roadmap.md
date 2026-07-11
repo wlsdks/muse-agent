@@ -79,3 +79,11 @@ ratchet: 로드맵 잔여 [ ] = 23/35 · self-eval pass · fabrication 0 · agen
 - 왜: 기존엔 toolCallCount≥maxToolCalls면 activeTools=[]로 조용히 도구 사라짐→모델이 예산소진 모른 채 truncated 답 가능. hermes iteration_budget 참조. 침묵중단 금지.
 - 리뷰지점: Opus가 설계편차(reactive→proactive: 정상종료 cap-딱맞음 시 낭비 round-trip 회피) 정당성·엄격 budget게이트·종료보장·기존 agent-runtime 테스트 tightening(loosening 아님)·one-shot 구조적-inert 정직주장 확인. mutation-RED 양방향.
 lesson: ★워커도 공유 main서 `git stash`를 씀(D1-S3 작업 쓸림→무손실 복구, 이미 커밋됨) — worker 브리핑에 "git stash 절대 금지, cp/git-apply로 격리" 명시 필요. proactive 주입이 reactive+continue보다 나음(정상종료 낭비 round-trip 회피). 이 루프의 격리 워크트리 이전이 근본해결(진안 결정 대기).
+
+## fire 10 · 2026-07-11 · skill v2.x · <commit-pending>
+meta: slice=D1-S5b1 · wave=W2 · pkg=@muse/agent-core · kind=invariant-lock · verdict=PASS · firesSinceDrill=1
+ratchet: 로드맵 잔여 [ ] = 22/36 · self-eval pass · fabrication 0 · agent-core tool-plan 6 test(+1 락)
+- 무엇: PTC "프로그래매틱=1" 예산 규칙 명문화. run_tool_plan 1콜=1 예산슬롯(내부 N스텝 무관)이 이미 동작이나 암묵적 → agent-runtime PTC 인터셉트 WHY주석 + 회귀락 테스트(3스텝 실행=effects[a,b,c] ∧ 1슬롯=toolsUsed["run_tool_plan"]). 계상 동작 무변경.
+- 왜: PTC의 핵심(N스텝을 1예산으로)이 리팩터로 조용히 깨지면 PTC 무의미. hermes iteration_budget "PTC 환불" 참조. 불변식을 코드로 락.
+- 리뷰지점: Opus가 주석-only(로직 무변경)·행동락 양방향(선언-only 아님, drill이 방금 그 실패모드 잡음)·mutation-RED(스텝을 각 예산으로→toolsUsed 길이3 RED)·주석정확성 trace 확인.
+- 리스크: 없음(기존 동작 락, 무변경). 유저-가시 변화 0이라 CHANGELOG 생략(정직). 다음 D1-S5b2=서브에이전트 하위예산(신규 plumbing).

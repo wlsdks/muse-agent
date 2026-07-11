@@ -118,6 +118,36 @@ describe("PTC Phase 3 — run_tool_plan tool, intercepted + grounded", () => {
     expect(result.toolsUsed).toEqual(["run_tool_plan"]);
   });
 
+  it("budget lock: a 3-step plan runs all 3 steps but costs exactly ONE tool-call budget slot", async () => {
+    const effects: Effect[] = [];
+    const runtime = createAgentRuntime({
+      modelProvider: sequenceProvider([
+        turn("planning", [planCall({
+          result: "$c",
+          steps: [
+            { args: { value: "seed" }, as: "a", tool: "a" },
+            { args: { value: "$a" }, as: "b", tool: "b" },
+            { args: { value: "$b" }, as: "c", tool: "c" }
+          ]
+        })]),
+        turn("final answer")
+      ]),
+      toolRegistry: registry([
+        tool("a", effects, (args) => `${String(args["value"])}-a`),
+        tool("b", effects, (args) => `${String(args["value"])}-b`),
+        tool("c", effects, (args) => `${String(args["value"])}-c`)
+      ])
+    });
+
+    const result = await runtime.run(runInput("chain a, b, then c", ["a", "b", "c"]));
+
+    // The plan actually did N work — all 3 steps ran, in order.
+    expect(effects.map((e) => e.tool)).toEqual(["a", "b", "c"]);
+    // …yet the run's tool-call budget only saw ONE call: run_tool_plan itself. The step tools never
+    // re-enter the model loop's toolCallCount, so they must not appear in toolsUsed.
+    expect(result.toolsUsed).toEqual(["run_tool_plan"]);
+  });
+
   it("fabrication ⇒ dropped: the REAL grounding gate flags a claim the PTC result does not support, keeps a supported one", async () => {
     const effects: Effect[] = [];
     const runtime = createAgentRuntime({
