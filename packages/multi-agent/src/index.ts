@@ -1,6 +1,6 @@
 import type { AgentRunResult } from "@muse/agent-core";
 export { createWorkerResult, parseHandoffPart, parseWorkerResult, validateWorkerHandoff } from "./worker-result.js";
-export { addTask, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, removeTask, retryTask, staleInProgressTasks, taskDepsMet, tasksFromSubtasks, transitionTask, type AgentTask, type TaskRun, type TaskStatus } from "./task-board.js";
+export { addTask, DEFAULT_BOARD_MAX_DEPTH, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, removeTask, resolveBoardMaxDepth, retryTask, staleInProgressTasks, taskDepsMet, tasksFromSubtasks, transitionTask, type AgentTask, type TaskRun, type TaskStatus } from "./task-board.js";
 export { parallelDecomposePrompt, parseParallelPlan, planParallelSubtasks, type ParallelDecomposeDeps } from "./parallel-decompose.js";
 export { defaultBoardFile, FileAgentTaskBoard, readBoard, writeBoard } from "./board-store.js";
 export { dispatchNextTask, resolveReview, type DispatchResult, type TaskExecutionResult, type TaskExecutor } from "./dispatch-board.js";
@@ -46,6 +46,7 @@ export type {
 } from "./lead-worker.js";
 export { dedupeSubtasks, detectFanInConflicts, detectFanInRedundancy, detectSubtaskConflicts, detectSubtaskRedundancies, runLeadWorkerTask, verifySequencedDependencyUse, verifySynthesisCoverage } from "./lead-worker.js";
 export { resolveSubAgentToolBudget, SUB_AGENT_BUDGET_RATIO, SUB_AGENT_MIN_BUDGET, SUB_AGENT_UNCAPPED_DEFAULT } from "./sub-agent-budget.js";
+export { inheritParentToolDeny } from "./sub-agent-tools.js";
 
 export type { AgentWorker } from "./workers.js";
 export { NoAgentWorkerError, RuleBasedAgentWorker, RuntimeAgentWorker } from "./workers.js";

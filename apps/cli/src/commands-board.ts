@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 
 import type { ToolApprovalGate } from "@muse/agent-core";
 import { createMuseRuntimeAssembly, resolveObjectivesFile } from "@muse/autoconfigure";
-import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, FileAgentTaskBoard, latestOutput, planParallelSubtasks, reclaimStaleTasks, removeTask, resolveReview, retryTask, staleInProgressTasks, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
+import { addTask, decomposeRequest, dispatchNextTask, expandTaskIntoSubtasks, FileAgentTaskBoard, latestOutput, planParallelSubtasks, reclaimStaleTasks, removeTask, resolveBoardMaxDepth, resolveReview, retryTask, staleInProgressTasks, transitionTask, type AgentTask, type TaskExecutor, type TaskStatus } from "@muse/multi-agent";
 import { readObjectives } from "@muse/stores";
 import type { Command } from "commander";
 
@@ -209,7 +209,7 @@ export function registerBoardCommand(program: Command, io: ProgramIO): void {
       }
 
       if (subs.length < 2) { io.stdout(`"${parent.title}" isn't decomposable into multiple steps — leaving it as a single task.\n`); return; }
-      await store.mutate((tasks) => expandTaskIntoSubtasks(tasks, parent.id, subs, new Date().toISOString(), mode));
+      await store.mutate((tasks) => expandTaskIntoSubtasks(tasks, parent.id, subs, new Date().toISOString(), mode, resolveBoardMaxDepth(process.env as Record<string, string | undefined>)));
       io.stdout(`Expanded ${parent.id.slice(0, 8)} into ${subs.length.toString()} ${mode} sub-tasks${mode === "parallel" ? " (combined by a synthesis step when done)" : ""}:\n${subs.map((s, i) => `  ${(i + 1).toString()}. ${s.title}`).join("\n")}\n`);
     });
 

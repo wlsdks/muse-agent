@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { addTask, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, removeTask, retryTask, staleInProgressTasks, taskDepsMet, transitionTask, type AgentTask } from "../src/task-board.js";
+import { addTask, DEFAULT_BOARD_MAX_DEPTH, expandTaskIntoSubtasks, lastFailureReason, latestOutput, nextReadyTask, reclaimStaleTasks, recordTaskRun, removeTask, resolveBoardMaxDepth, retryTask, staleInProgressTasks, taskDepsMet, transitionTask, type AgentTask } from "../src/task-board.js";
 
 const task = (over: Partial<AgentTask> & { id: string }): AgentTask => ({
   createdAt: "2026-06-28T00:00:00Z",
@@ -96,6 +96,61 @@ describe("expandTaskIntoSubtasks — board-as-handoff (a complex task → sub-ta
     expect(expandTaskIntoSubtasks(base, "p", [{ id: "only", title: "one" }], "t1")).toEqual(base);
     const once = expandTaskIntoSubtasks(base, "p", subs, "t1");
     expect(expandTaskIntoSubtasks(once, "p", [{ id: "x1", title: "a" }, { id: "x2", title: "b" }], "t2")).toEqual(once); // already decomposed
+  });
+});
+
+describe("expandTaskIntoSubtasks — depth ceiling (bounded recursive decomposition)", () => {
+  const subs = [{ id: "s1", title: "step one" }, { id: "s2", title: "step two" }];
+  it("a fresh depth-0 parent gets depth-1 sub-tasks, and is decomposed", () => {
+    const board = expandTaskIntoSubtasks(addTask([], { id: "p", title: "big goal" }, "t0"), "p", subs, "t1");
+    expect(board.find((t) => t.id === "s1")!.depth).toBe(1);
+    expect(board.find((t) => t.id === "s2")!.depth).toBe(1);
+    expect(board.find((t) => t.id === "p")!.decomposed).toBe(true);
+  });
+  it("a task without a `depth` field is treated as depth 0 (back-compat)", () => {
+    const parentNoDepth: AgentTask = task({ id: "p", title: "legacy task" });
+    const board = expandTaskIntoSubtasks([parentNoDepth], "p", subs, "t1");
+    expect(board.find((t) => t.id === "p")!.decomposed).toBe(true);
+    expect(board.find((t) => t.id === "s1")!.depth).toBe(1);
+  });
+  it("a task AT maxDepth cannot expand — the board is unchanged, no sub-tasks added, parent not decomposed", () => {
+    const atCeiling: AgentTask = { ...task({ id: "p", title: "already a sub-task" }), depth: 1 };
+    const board = [atCeiling];
+    const out = expandTaskIntoSubtasks(board, "p", subs, "t1", "sequential", 1);
+    expect(out).toEqual(board);
+    expect(out.find((t) => t.id === "s1")).toBeUndefined();
+    expect(out.find((t) => t.id === "p")!.decomposed).toBeUndefined();
+  });
+  it("a depth-0 task expands fine with maxDepth 1 (the default ceiling only blocks depth ≥ 1)", () => {
+    const parent: AgentTask = task({ id: "p", title: "top level" });
+    const out = expandTaskIntoSubtasks([parent], "p", subs, "t1", "sequential", 1);
+    expect(out.find((t) => t.id === "p")!.decomposed).toBe(true);
+    expect(out.find((t) => t.id === "s1")!.depth).toBe(1);
+  });
+  it("a higher maxDepth (2) lets a depth-1 task expand into depth-2 sub-tasks", () => {
+    const depthOneParent: AgentTask = { ...task({ id: "p", title: "a sub-task" }), depth: 1 };
+    const out = expandTaskIntoSubtasks([depthOneParent], "p", subs, "t1", "sequential", 2);
+    expect(out.find((t) => t.id === "p")!.decomposed).toBe(true);
+    expect(out.find((t) => t.id === "s1")!.depth).toBe(2);
+  });
+  it("DEFAULT_BOARD_MAX_DEPTH is 1", () => {
+    expect(DEFAULT_BOARD_MAX_DEPTH).toBe(1);
+  });
+});
+
+describe("resolveBoardMaxDepth — MUSE_BOARD_MAX_DEPTH env parsing", () => {
+  it("defaults to 1 when absent", () => {
+    expect(resolveBoardMaxDepth({})).toBe(1);
+  });
+  it("MUSE_BOARD_MAX_DEPTH=2 → 2", () => {
+    expect(resolveBoardMaxDepth({ MUSE_BOARD_MAX_DEPTH: "2" })).toBe(2);
+  });
+  it("MUSE_BOARD_MAX_DEPTH=0 floors to 1 (0 would forbid ALL decomposition)", () => {
+    expect(resolveBoardMaxDepth({ MUSE_BOARD_MAX_DEPTH: "0" })).toBe(1);
+  });
+  it("a negative or non-integer value falls back to 1", () => {
+    expect(resolveBoardMaxDepth({ MUSE_BOARD_MAX_DEPTH: "-1" })).toBe(1);
+    expect(resolveBoardMaxDepth({ MUSE_BOARD_MAX_DEPTH: "abc" })).toBe(1);
   });
 });
 

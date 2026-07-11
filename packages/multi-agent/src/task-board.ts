@@ -10,6 +10,16 @@
 
 export type TaskStatus = "todo" | "in_progress" | "review" | "blocked" | "done" | "failed";
 
+/**
+ * Default ceiling on `expandTaskIntoSubtasks` recursion: a task may be decomposed into
+ * sub-tasks, and each of THOSE sub-tasks may be decomposed once more (depth 0 → 1), but a
+ * depth-1 sub-task is a leaf — it cannot itself be expanded. Matches hermes'
+ * `max_spawn_depth=1` / openclaw's subagent depth ceiling: unbounded recursive
+ * decomposition is a real failure mode (a sub-task is a plain task with no marker
+ * distinguishing it from a top-level one), not a hypothetical one.
+ */
+export const DEFAULT_BOARD_MAX_DEPTH = 1;
+
 /** One execution attempt of a task — the history a retry reads to avoid repeating a failure. */
 export interface TaskRun {
   /** ISO timestamp of the attempt's conclusion. */
@@ -49,6 +59,14 @@ export interface AgentTask {
   readonly synthesize?: boolean;
   /** The agent's answer from this task's last completed run (kept for a container to synthesize). */
   readonly result?: string;
+  /**
+   * How many `expandTaskIntoSubtasks` hops separate this task from the top-level task it
+   * descends from (0 = top-level). Omitted (not `0`) for a top-level task, matching this
+   * file's convention of leaving out a field when it carries no information beyond the
+   * default — and letting an EXISTING stored task with no `depth` read back as depth 0
+   * (back-compat, no migration needed).
+   */
+  readonly depth?: number;
 }
 
 /** True when EVERY task this one depends on is `done` (a missing/incomplete dep ⇒ not met). */
@@ -118,7 +136,13 @@ export function retryTask(tasks: readonly AgentTask[], id: string, nowIso: strin
 /** Append a new task to the board (immutable). The caller supplies a unique id + clock. */
 export function addTask(
   tasks: readonly AgentTask[],
-  spec: { readonly id: string; readonly title: string; readonly description?: string; readonly dependsOn?: readonly string[] },
+  spec: {
+    readonly id: string;
+    readonly title: string;
+    readonly description?: string;
+    readonly dependsOn?: readonly string[];
+    readonly depth?: number;
+  },
   nowIso: string
 ): AgentTask[] {
   return [
@@ -131,7 +155,8 @@ export function addTask(
       status: "todo",
       title: spec.title,
       updatedAt: nowIso,
-      ...(spec.description !== undefined ? { description: spec.description } : {})
+      ...(spec.description !== undefined ? { description: spec.description } : {}),
+      ...(spec.depth ? { depth: spec.depth } : {})
     }
   ];
 }
@@ -161,22 +186,27 @@ export function tasksFromSubtasks(
  *   work that doesn't need ordering ("research A / research B / research C"). With cloud
  *   providers these run truly concurrently; on one local model they still run, just serially.
  *
- * A no-op if the parent is missing, already decomposed, or there's nothing to expand into
- * (<2 sub-tasks isn't a decomposition). The caller supplies sub-task ids + the clock.
+ * A no-op if the parent is missing, already decomposed, there's nothing to expand into
+ * (<2 sub-tasks isn't a decomposition), or the parent is already AT `maxDepth` (openclaw
+ * subagent-capabilities / hermes `max_spawn_depth`: a task at the ceiling is a leaf — this
+ * is what stops a sub-task from being expanded again into grandchildren without bound).
+ * The caller supplies sub-task ids + the clock.
  */
 export function expandTaskIntoSubtasks(
   tasks: readonly AgentTask[],
   parentId: string,
   subtasks: readonly { readonly id: string; readonly title: string }[],
   nowIso: string,
-  mode: "sequential" | "parallel" = "sequential"
+  mode: "sequential" | "parallel" = "sequential",
+  maxDepth: number = DEFAULT_BOARD_MAX_DEPTH
 ): AgentTask[] {
   const parent = tasks.find((t) => t.id === parentId);
-  if (!parent || parent.decomposed || subtasks.length < 2) return [...tasks];
+  const parentDepth = parent?.depth ?? 0;
+  if (!parent || parent.decomposed || subtasks.length < 2 || parentDepth >= maxDepth) return [...tasks];
   let board: AgentTask[] = [...tasks];
   subtasks.forEach((sub, i) => {
     const dependsOn = mode === "sequential" && i > 0 ? [subtasks[i - 1]!.id] : [];
-    board = addTask(board, { dependsOn, id: sub.id, title: sub.title }, nowIso);
+    board = addTask(board, { depth: parentDepth + 1, dependsOn, id: sub.id, title: sub.title }, nowIso);
   });
   const subIds = subtasks.map((s) => s.id);
   return board.map((t) =>
@@ -245,4 +275,18 @@ export function lastFailureReason(task: AgentTask): string | undefined {
     if (run.status === "failed") return run.reason;
   }
   return undefined;
+}
+
+/**
+ * The board's decomposition depth ceiling from `MUSE_BOARD_MAX_DEPTH`. Unlike
+ * `resolveAskMaxTools`'s `0`/`"off"` escape hatch, a max-depth of 0 would forbid ALL
+ * decomposition (a top-level task could never expand), which isn't what an operator
+ * asking for a lower ceiling wants — so this floors at 1 instead of treating 0 as
+ * "disabled". Absent, non-integer, or non-positive → `DEFAULT_BOARD_MAX_DEPTH`.
+ */
+export function resolveBoardMaxDepth(env: Record<string, string | undefined>): number {
+  const raw = env.MUSE_BOARD_MAX_DEPTH?.trim();
+  const parsed = Number(raw);
+  if (raw && Number.isInteger(parsed) && parsed > 0) return parsed;
+  return DEFAULT_BOARD_MAX_DEPTH;
 }

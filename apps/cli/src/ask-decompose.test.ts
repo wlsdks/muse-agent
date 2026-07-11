@@ -288,6 +288,54 @@ describe("runDecomposedAgentAsk — worker sub-agents get their OWN smaller tool
   });
 });
 
+describe("runDecomposedAgentAsk — a worker sub-agent's tools are STRUCTURALLY clamped to the parent's allowlist", () => {
+  const listQuery = "다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록";
+
+  it("clamps a worker handed a BROADER tool set than the parent down to the parent's set (the demotion)", async () => {
+    const seenAllowedToolNames: Array<readonly string[] | undefined> = [];
+    const runner = {
+      run: vi.fn(async (input: AgentRunInput): Promise<AskAgentRunResult> => {
+        const content = userContentOf(input);
+        const metadata = input.metadata as { allowedToolNames?: readonly string[] } | undefined;
+        seenAllowedToolNames.push(metadata?.allowedToolNames);
+        if (content.startsWith("사용자 요청:")) return { response: { output: "SYNTH" } };
+        return { response: { output: `done:${content}` } };
+      })
+    };
+    const metadata = { allowedToolNames: ["a", "b"] };
+    await runDecomposedAgentAsk({
+      ...baseArgs,
+      metadata,
+      query: listQuery,
+      runner,
+      workerAllowedToolNames: ["a", "b", "c"] // a future path handing a worker a BROADER set
+    });
+
+    // 3 worker runs clamped to the parent's ["a","b"] ("c" dropped), then 1 synthesis
+    // run that is NOT clamped (lead-level, keeps the parent's set untouched).
+    expect(seenAllowedToolNames.slice(0, 3)).toEqual([["a", "b"], ["a", "b"], ["a", "b"]]);
+    expect(seenAllowedToolNames[3]).toEqual(["a", "b"]);
+    expect(metadata.allowedToolNames).toEqual(["a", "b"]); // the caller's metadata object was never mutated
+  });
+
+  it("clamps an unrestricted worker override down to the parent's set", async () => {
+    const seenAllowedToolNames: Array<readonly string[] | undefined> = [];
+    const runner = {
+      run: vi.fn(async (input: AgentRunInput): Promise<AskAgentRunResult> => {
+        const content = userContentOf(input);
+        const metadata = input.metadata as { allowedToolNames?: readonly string[] } | undefined;
+        seenAllowedToolNames.push(metadata?.allowedToolNames);
+        if (content.startsWith("사용자 요청:")) return { response: { output: "SYNTH" } };
+        return { response: { output: `done:${content}` } };
+      })
+    };
+    const metadata = { allowedToolNames: ["a", "b"] };
+    await runDecomposedAgentAsk({ ...baseArgs, metadata, query: listQuery, runner });
+
+    expect(seenAllowedToolNames.slice(0, 3)).toEqual([["a", "b"], ["a", "b"], ["a", "b"]]);
+  });
+});
+
 describe("runDecomposedAgentAsk — surfaces a sequenced step that ignored its upstream (MAST FM-2.6, live wiring)", () => {
   const seqQuery = "먼저 회의록을 요약하고 그 다음 그 요약에서 액션아이템을 추출해줘";
   it("a sequenced downstream step whose output ignores the upstream result populates reasoningActionGaps", async () => {

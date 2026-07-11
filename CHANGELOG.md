@@ -34,6 +34,11 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   automatic downgrade for any future unattended/trusted-run path is tracked as
   a follow-up.)
 
+- **Task board won't spiral into endless re-splitting.** When Muse breaks a
+  request into sub-tasks on its task board, a sub-task can no longer be broken
+  down again without bound — decomposition now stops at a set depth (one level
+  by default, adjustable), so a request can't recursively fan out forever.
+
 - **Each helper in a split task gets its own smaller step budget.** When Muse
   breaks a request into sub-tasks and works them with separate helper agents,
   each helper now runs with a smaller step allowance of its own instead of

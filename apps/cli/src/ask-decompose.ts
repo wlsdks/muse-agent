@@ -1,5 +1,5 @@
 import type { AgentRunInput } from "@muse/agent-core";
-import { detectSubtaskConflicts, detectSubtaskRedundancies, resolveSubAgentToolBudget, runLeadWorkerTask, verifySynthesisCoverage, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
+import { detectSubtaskConflicts, detectSubtaskRedundancies, inheritParentToolDeny, resolveSubAgentToolBudget, runLeadWorkerTask, verifySynthesisCoverage, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
 import { answerIsRefusal } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
@@ -26,6 +26,15 @@ export interface DecomposedAskArgs {
   readonly metadata: JsonObject;
   /** Embed fn for the fan-in cross-subtask conflict check. Omitted ⇒ no conflict check. */
   readonly embed?: (text: string) => Promise<readonly number[]>;
+  /**
+   * Test-only seam standing in for a future worker path that hands a sub-task
+   * a BROADER tool set than the parent's `metadata.allowedToolNames` — real
+   * callers never set this (it defaults to the parent's own set, i.e. no
+   * broadening). Whatever value it carries, `inheritParentToolDeny` still
+   * clamps the worker's effective allowlist to the parent's — this field only
+   * proves the clamp holds even when handed a wider set.
+   */
+  readonly workerAllowedToolNames?: readonly string[];
 }
 
 export interface DecomposedAskResult {
@@ -114,13 +123,27 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
   const mergedTools = new Set<string>();
   let synthesisSourceNames: readonly string[] = [];
 
-  const runSubtaskMessage = async (userContent: string, maxToolsOverride?: number): Promise<AskAgentRunResult> => {
+  // A worker sub-task run may pass an explicit clamp for `allowedToolNames` (never
+  // for the lead-level planner/synthesis calls, which pass neither override and so
+  // keep the parent's `args.metadata` untouched).
+  const runSubtaskMessage = async (
+    userContent: string,
+    maxToolsOverride?: number,
+    allowedToolNamesOverride?: readonly string[]
+  ): Promise<AskAgentRunResult> => {
+    const metadata = maxToolsOverride === undefined && allowedToolNamesOverride === undefined
+      ? args.metadata
+      : {
+        ...args.metadata,
+        ...(maxToolsOverride === undefined ? {} : { maxTools: maxToolsOverride }),
+        ...(allowedToolNamesOverride === undefined ? {} : { allowedToolNames: [...allowedToolNamesOverride] })
+      };
     const result = await args.runner.run({
       messages: [
         { content: args.systemPrompt, role: "system" },
         { content: userContent, role: "user" }
       ],
-      metadata: maxToolsOverride === undefined ? args.metadata : { ...args.metadata, maxTools: maxToolsOverride },
+      metadata,
       model: args.model
     } satisfies AgentRunInput);
     for (const s of result.groundingSources ?? []) sourceByName.set(s.source, s);
@@ -141,7 +164,18 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
       // limit). Synthesis/planner below stay on the parent budget — they're lead-level
       // fan-in/planning, not fanned-out workers.
       const parentMaxTools = typeof args.metadata.maxTools === "number" ? args.metadata.maxTools : undefined;
-      const result = await runSubtaskMessage(userContent, resolveSubAgentToolBudget(parentMaxTools));
+      const parentAllowedToolNames = Array.isArray(args.metadata.allowedToolNames)
+        ? (args.metadata.allowedToolNames as readonly string[])
+        : undefined;
+      // Structural clamp: a worker sub-agent's effective allowlist is NEVER broader than
+      // the parent's — even if a future path handed it one — so a sub-agent can never
+      // reach a tool the parent was denied (openclaw subagent-capabilities: a sub-agent
+      // inherits the parent's deny).
+      const workerAllowedToolNames = inheritParentToolDeny(
+        parentAllowedToolNames,
+        args.workerAllowedToolNames ?? parentAllowedToolNames
+      );
+      const result = await runSubtaskMessage(userContent, resolveSubAgentToolBudget(parentMaxTools), workerAllowedToolNames);
       return {
         output: result.response.output ?? "",
         sources: (result.groundingSources ?? []).map((s) => s.source)
