@@ -592,9 +592,16 @@ describe("AgentRuntime", () => {
       model: "provider/model"
     });
 
+    // The chat base-prompt seam (applyPromptLayers → composeSurfacePrompt("chat"))
+    // runs before trimming and always injects an identity system message now —
+    // trimming still only removes the old user/assistant turns, so the system
+    // message and "latest" both survive.
     expect(onGenerate).toHaveBeenCalledWith(
       expect.objectContaining({
-        messages: [{ content: "latest", role: "user" }]
+        messages: [
+          { content: expect.stringContaining("Muse"), role: "system" },
+          { content: "latest", role: "user" }
+        ]
       })
     );
     expect(result.contextWindow).toMatchObject({
@@ -623,10 +630,16 @@ describe("AgentRuntime", () => {
       model: "provider/model"
     });
 
+    // The agent-spec system prompt lands first (applyAgentSpec runs before
+    // prepareInvocation); applyPromptLayers's chat base prompt merges into
+    // the SAME system message (appendSystemSection), so it stays one message.
     expect(onGenerate).toHaveBeenCalledWith(
       expect.objectContaining({
         messages: [
-          { content: "Use verifiable sources.", role: "system" },
+          {
+            content: expect.stringMatching(/^Use verifiable sources\.[\s\S]*Muse/u),
+            role: "system"
+          },
           { content: "Research this with sources", role: "user" }
         ],
         metadata: expect.objectContaining({
@@ -2632,7 +2645,10 @@ describe("AgentRuntime", () => {
       tokenUsage: { inputTokens: 4, outputTokens: 2 },
       userId: "user-1"
     });
+    // "system" now leads every recorded run — applyPromptLayers always injects
+    // the chat base/identity prompt (docs/strategy/prompt-architecture.md Phase 1).
     expect(historyStore.listMessages("run-history").map((message) => message.role)).toEqual([
+      "system",
       "user",
       "assistant"
     ]);

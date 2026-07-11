@@ -62,7 +62,7 @@ const BATTERIES = [
   { axis: "★ WEDGE: muse mcp serve grounding gate (muse_recall over the real MCP wire)", file: "apps/cli/scripts/verify-mcp-serve-grounding.mjs", name: "mcp-serve-grounding" },
   { axis: "★ WEDGE: compaction-preservation (fail-close post-compaction quality gate)", file: "apps/cli/scripts/verify-compaction-preservation.mjs", name: "compaction-preservation" },
   { axis: "★ WEDGE: evidence-gated objective completion (done = proven, never model say-so)", file: "apps/cli/scripts/verify-objective-completion.mjs", name: "objective-completion" },
-  { axis: "★ IDENTITY: Muse persona holds on the local engine (no vendor leak, no sycophancy)", file: "apps/cli/scripts/verify-identity.mjs", name: "identity" }
+  { axis: "★ IDENTITY: Muse persona holds on the local engine (no vendor leak, no sycophancy) — real /api/chat HTTP surface", file: "apps/api/scripts/verify-identity.mjs", name: "identity" }
 ];
 
 async function ollamaReachable() {

@@ -215,7 +215,7 @@ Total: **521** variables.
 | `MUSE_HUD` | apps/cli |
 | `MUSE_HUD_SEGMENTS` | apps/cli |
 | `MUSE_IDENTITY_CORE` | packages/prompts |
-| `MUSE_IDENTITY_VERIFY_ROUNDS` | apps/cli |
+| `MUSE_IDENTITY_VERIFY_ROUNDS` | apps/api |
 | `MUSE_IDLE_LEARNING_ENABLED` | apps/cli |
 | `MUSE_INBOUND_AUTO_APPROVE` | apps/api |
 | `MUSE_INBOUND_REPLY_ENABLED` | apps/api, apps/web |
@@ -268,7 +268,7 @@ Total: **521** variables.
 | `MUSE_MCP_RECONNECT_MAX_DELAY_MS` | packages/autoconfigure |
 | `MUSE_MCP_REQUEST_TIMEOUT_MS` | packages/autoconfigure |
 | `MUSE_MEMORY_KEY` | apps/cli, packages/memory, packages/stores |
-| `MUSE_MENTION` | apps/cli |
+| `MUSE_MENTION` | apps/api |
 | `MUSE_MESSAGING_CREDENTIALS_FILE` | packages/autoconfigure |
 | `MUSE_MESSAGING_LIBNOTIFY_ENABLED` | packages/autoconfigure, packages/messaging |
 | `MUSE_MESSAGING_LIBNOTIFY_TITLE` | packages/autoconfigure |

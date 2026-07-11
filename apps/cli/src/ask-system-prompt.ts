@@ -8,7 +8,7 @@
  * side effects; reads only the pre-computed blocks + counts it is handed.
  */
 
-import { composeIdentityPrompt } from "@muse/prompts";
+import { composeSurfacePrompt } from "@muse/prompts";
 import { groundingSectionLines, optionalGroundingRelevance, optionalGroundingSections } from "@muse/recall";
 
 import { CITATION_INSTRUCTION_LINES, REASONING_PRINCIPLE_LINES } from "./ask-prompt-constants.js";
@@ -56,7 +56,7 @@ export function buildAskSystemPrompt(params: {
   return [
         ...(personaTemplatePreamble.length > 0 ? [personaTemplatePreamble, ""] : []),
         ...(personaPrompt ? [personaPrompt, ""] : []),
-        composeIdentityPrompt(),
+        composeSurfacePrompt("ask", {}),
         // The chat-only path is context-locked; the --with-tools path must NOT
         // be, or the lock wins over the armed tools and the model never calls
         // them (observed live: browser_open 0 calls under the ONLY phrasing).

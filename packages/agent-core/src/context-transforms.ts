@@ -20,9 +20,11 @@ import {
 } from "@muse/memory";
 import type { ModelMessage } from "@muse/model";
 import {
-  buildLayeredSystemPrompt,
+  composeSurfacePrompt,
   renderExemplarContext,
   type ExemplarRetriever,
+  type PromptLayer,
+  type PromptLayerContext,
   type PromptLayerRegistry
 } from "@muse/prompts";
 
@@ -460,28 +462,32 @@ export async function persistConversationSummaryFromRequest(
   }
 }
 
+/**
+ * Base-prompt resolution for the "chat" surface (docs/strategy/
+ * prompt-architecture.md Phase 1) — the FIRST system-prompt transform
+ * AgentRuntime runs, so it fires on every run regardless of surface (CLI
+ * chat, /api/chat, channel replies all share this one seam). It used to
+ * early-return with no system prompt at all when no `PromptLayerRegistry`
+ * was configured or it resolved zero layers — since nothing in this
+ * codebase wires a registry, that made the identity anchor dead code on
+ * the real HTTP path (a fresh /api/chat request with no client-supplied
+ * `systemPrompt` reached the model with none). `composeSurfacePrompt`
+ * always runs now; registry layers, when present, ADD on top of it.
+ */
 export function applyPromptLayers(
   context: AgentRunContext,
   providerId: string,
   model: string,
   registry: PromptLayerRegistry | undefined
 ): AgentRunContext {
-  if (!registry) {
-    return context;
-  }
-
-  const layers = registry.resolve({
+  const resolveContext: PromptLayerContext = {
     model,
     personaId: metadataString(context.input.metadata, "personaId"),
     promptTemplateId: metadataString(context.input.metadata, "promptTemplateId"),
     providerId
-  });
-
-  if (layers.length === 0) {
-    return context;
-  }
-
-  const systemPrompt = buildLayeredSystemPrompt({}, layers);
+  };
+  const layers: readonly PromptLayer[] = registry ? registry.resolve(resolveContext) : [];
+  const systemPrompt = composeSurfacePrompt("chat", {}, { ...resolveContext, layers });
 
   return {
     ...context,
@@ -490,7 +496,7 @@ export function applyPromptLayers(
       messages: appendSystemSection(context.input.messages, systemPrompt, "prompt-layers"),
       metadata: {
         ...context.input.metadata,
-        promptLayerIds: layers.map((layer) => layer.id)
+        ...(layers.length > 0 ? { promptLayerIds: layers.map((layer) => layer.id) } : {})
       }
     }
   };

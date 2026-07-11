@@ -1,4 +1,4 @@
-import type { PromptLayer, PromptLayerContext, PromptLayerRegistry } from "@muse/prompts";
+import { MUSE_IDENTITY_CORE, type PromptLayer, type PromptLayerContext, type PromptLayerRegistry } from "@muse/prompts";
 import { describe, expect, it } from "vitest";
 
 import { applyActiveContext, applyPromptLayers } from "../src/context-transforms.js";
@@ -55,14 +55,20 @@ describe("applyPromptLayers", () => {
     },
   });
 
-  it("returns the context unchanged when no registry is configured", () => {
-    const ctx = context();
-    expect(applyPromptLayers(ctx, "openai", "gpt", undefined)).toBe(ctx);
+  it("still injects the chat identity/base prompt when no registry is configured (regression: HTTP surfaces with no registered layers must not ship with no system prompt)", () => {
+    const ctx = context([{ role: "user", content: "hi" }]);
+    const result = applyPromptLayers(ctx, "openai", "gpt", undefined);
+    expect(result).not.toBe(ctx);
+    expect(result.input.messages[0]).toMatchObject({ role: "system" });
+    expect(result.input.messages[0]!.content).toContain(MUSE_IDENTITY_CORE);
+    expect(result.input.metadata?.promptLayerIds).toBeUndefined();
   });
 
-  it("returns the context unchanged when the registry resolves no layers", () => {
+  it("still injects the chat identity/base prompt when the registry resolves no layers", () => {
     const ctx = context([{ role: "user", content: "hi" }]);
-    expect(applyPromptLayers(ctx, "openai", "gpt", registryReturning([]))).toBe(ctx);
+    const result = applyPromptLayers(ctx, "openai", "gpt", registryReturning([]));
+    expect(result.input.messages[0]!.content).toContain(MUSE_IDENTITY_CORE);
+    expect(result.input.metadata?.promptLayerIds).toBeUndefined();
   });
 
   it("passes the provider/model/persona/template selectors to the registry", () => {

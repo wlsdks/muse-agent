@@ -1,18 +1,22 @@
 /**
  * LIVE identity battery — proves the single-source identity core
- * (`packages/prompts/src/identity-core.ts`) actually holds up on the REAL
- * agent runtime, not just in a unit test. Baseline (no identity core): 10/17
- * probes leaked base-model identity ("저는 구글에서 만든 대규모 언어 모델입니다"),
- * 2 sycophancy.
+ * (`packages/prompts/src/identity-core.ts`, cascaded through the
+ * `composeSurfacePrompt("chat")` seam in `packages/agent-core/src/
+ * context-transforms.ts`) actually holds up on the REAL /api/chat HTTP
+ * surface, not a hand-assembled approximation of it.
  *
- * Drives `assembly.agentRuntime.run` chat-shaped, exactly the way
- * `apps/api/src/server-helpers.ts`'s `runChat` composes a request when a
- * caller supplies a `systemPrompt`: `[{ role: "system", content: systemPrompt
- * }, ...userMessages]`. The system prompt itself is NOT handrolled here — it
- * is `buildSystemPrompt()` from `@muse/prompts` with no override, i.e. the
- * runtime's own `DEFAULT_BASE_PROMPT` (now `composeIdentityPrompt(...)`).
+ * A prior version of this battery built its own `systemPrompt` and
+ * prepended it to `agentRuntime.run`'s messages directly — a DIFFERENT
+ * call path than a real client hitting `/api/chat` with just `{ message }`
+ * and no `systemPrompt`. That mismatch let a real regression (the base
+ * chat prompt seam only fired when an external `PromptLayerRegistry` was
+ * configured — nothing in this codebase wires one, so a fresh /api/chat
+ * request carried NO identity at all) pass this battery while the actual
+ * HTTP surface leaked vendor identity on 13/17 manual probes. This version
+ * boots the real Fastify server (`buildServer`) and drives every probe
+ * through `server.inject` on `POST /api/chat`, exactly what a client sends.
  *
- *   node apps/cli/scripts/verify-identity.mjs        (ollama/gemma4:12b)
+ *   node apps/api/scripts/verify-identity.mjs        (ollama/gemma4:12b)
  *
  * Exit 0 if every probe passes; skip (exit 0) if Ollama is unreachable.
  * LOCAL OLLAMA ONLY.
@@ -22,7 +26,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { createMuseRuntimeAssembly } from "@muse/autoconfigure";
-import { buildSystemPrompt } from "@muse/prompts";
+
+import { buildServer } from "../dist/server.js";
 
 const model = process.argv[2] ?? "ollama/gemma4:12b";
 if (!model.startsWith("ollama/")) { console.error("LOCAL OLLAMA ONLY"); process.exit(2); }
@@ -89,20 +94,29 @@ async function runRound(roundLabel) {
     console.error("FAIL: no agentRuntime (model provider not configured)");
     process.exit(2);
   }
-  const systemPrompt = buildSystemPrompt();
+  // Real server, real route registration — no hand-assembled system prompt.
+  // Every probe below sends ONLY `{ message, model }`, exactly what a client
+  // posts to /api/chat; if the base-prompt seam regresses to being
+  // conditional again, this reproduces the leak the coordinator measured.
+  const server = buildServer({ agentRuntime: assembly.agentRuntime, logger: false });
 
   let failures = 0;
   const results = [];
   for (const probe of PROBES) {
-    const result = await assembly.agentRuntime.run({
-      messages: [
-        { content: systemPrompt, role: "system" },
-        { content: probe.prompt, role: "user" }
-      ],
-      metadata: { userId: "verify-identity" },
-      model
+    const reply = await server.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: { message: probe.prompt, model }
     });
-    const output = result.response?.output ?? "";
+    const body = reply.statusCode === 200 ? reply.json() : undefined;
+    const output = body?.content ?? "";
+    if (reply.statusCode !== 200) {
+      failures += 1;
+      results.push({ ...probe, ok: false, output: "", reason: `HTTP ${reply.statusCode}: ${reply.body}` });
+      console.log(`FAIL — [${roundLabel}] ${probe.name}: "${probe.prompt}"`);
+      console.log(`   reason: HTTP ${reply.statusCode}`);
+      continue;
+    }
     const verdict = score(probe, output);
     if (!verdict.ok) failures += 1;
     results.push({ ...probe, ok: verdict.ok, output, reason: verdict.reason });
@@ -112,6 +126,7 @@ async function runRound(roundLabel) {
       console.log(`   out: ${JSON.stringify(output)}`);
     }
   }
+  await server.close();
   return { failures, results };
 }
 
@@ -120,7 +135,7 @@ let totalFailures = 0;
 for (let i = 1; i <= rounds; i++) {
   const { failures } = await runRound(rounds > 1 ? `run ${i}/${rounds}` : "run");
   totalFailures += failures;
-  console.log(failures === 0 ? `\n[run ${i}] ALL PASS (${PROBES.length}) on ${model}` : `\n[run ${i}] ${failures}/${PROBES.length} FAILED on ${model}`);
+  console.log(failures === 0 ? `\n[run ${i}] ALL PASS (${PROBES.length}) on ${model} (real /api/chat)` : `\n[run ${i}] ${failures}/${PROBES.length} FAILED on ${model} (real /api/chat)`);
 }
 
 process.exit(totalFailures === 0 ? 0 : 1);

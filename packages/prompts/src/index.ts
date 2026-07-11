@@ -2,6 +2,7 @@ import { composeIdentityPrompt } from "./identity-core.js";
 import { cleanBlock, compactLines, compactSections } from "./prompt-text.js";
 
 export { composeIdentityPrompt, MUSE_IDENTITY_CORE } from "./identity-core.js";
+export { composeSurfacePrompt, SURFACE_ROLES, type ComposeSurfaceContext, type MuseSurface } from "./compose.js";
 
 export type ResponseFormat = "text" | "json" | "yaml";
 
