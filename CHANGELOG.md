@@ -8,6 +8,15 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ## [Unreleased]
 
+### Fixed
+
+- **Muse's browser won't act on an element that isn't really on the page.**
+  If the model refers to a page element by a number that the current view
+  doesn't contain — a stale reference left over from a page that changed, or one
+  it simply made up — Muse now stops and asks itself to re-read the page instead
+  of clicking, typing, hovering, or uploading against a phantom element. Real,
+  visible elements work exactly as before.
+
 ### Added
 
 - **Opt-in macOS sandbox for local command execution.** Set

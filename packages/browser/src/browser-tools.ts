@@ -181,7 +181,10 @@ async function resolveTarget(controller: BrowserController, args: JsonObject, in
   }
   if (Number.isInteger(refArg) && refArg >= 0) {
     const element = controller.describeElement(refArg);
-    return { label: element ? `${element.role} "${element.name}"` : `element ref ${refArg.toString()}`, ref: refArg };
+    if (!element) {
+      return { error: { reason: `ref ${refArg.toString()} isn't on the current page — call browser_read to get fresh element refs, then act on one of those.` } };
+    }
+    return { label: `${element.role} "${element.name}"`, ref: refArg };
   }
   return { error: { reason: "needs a 'target' — what to act on, e.g. 'Sign in button' or 'search box'" } };
 }
