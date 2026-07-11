@@ -423,3 +423,231 @@ describe("createInboundAgentRun casual fast-path", () => {
     expect(parsed.pending?.some((entry) => entry.id === "pending-1")).toBe(true);
   });
 });
+
+// Delegation ack (S2, "the assistant rhythm"): a non-casual, non-approval,
+// paired-chat request gets an early second-channel acknowledgment BEFORE the
+// (possibly slow) agent run — sequential, fail-open, and gated to fire ONLY
+// on the genuine delegation path (every earlier gate still wins first).
+describe("createInboundAgentRun delegation ack (S2)", () => {
+  function buildAck(
+    dir: string,
+    opts: {
+      readonly composeAck?: (input: { readonly latestUserText: string }) => Promise<string | null>;
+      readonly extraEnv?: Record<string, string>;
+    } = {}
+  ) {
+    const calls: string[] = [];
+    const registry = new MessagingProviderRegistry([
+      new LogMessagingProvider({ file: join(dir, "notice.log"), id: "log", now: NOW })
+    ]);
+    const agentRuntime = {
+      run: async () => {
+        calls.push("run");
+        return { groundingSources: [{ source: "/x/notes/a.md", text: "ok" }], response: { output: "answer [from a.md]." } };
+      }
+    };
+    const env = {
+      MUSE_ACTION_LOG_FILE: join(dir, "action-log.json"),
+      MUSE_CHANNEL_OWNERS_FILE: join(dir, "channel-owners.json"),
+      MUSE_CONTACTS_FILE: join(dir, "contacts.json"),
+      MUSE_PENDING_APPROVALS_FILE: join(dir, "pending.json"),
+      ...opts.extraEnv
+    };
+    const composeAck = opts.composeAck
+      ? async (input: { readonly latestUserText: string }) => {
+          calls.push(`composeAck:${input.latestUserText}`);
+          return opts.composeAck!(input);
+        }
+      : undefined;
+    const run = createInboundAgentRun({
+      agentRuntime,
+      ...(composeAck ? { composeAck } : {}),
+      env,
+      model: "default",
+      registry
+    });
+    return { calls, run };
+  }
+
+  it("ordering: composeAck is called, then notify with its result, then agentRuntime.run", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, { composeAck: async () => "on it — I'll report back" });
+    const notified: string[] = [];
+    const reply = await run({
+      messages: [{ content: "book a flight for me", role: "user" }],
+      notify: async (text) => {
+        calls.push(`notify:${text}`);
+        notified.push(text);
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(calls).toEqual([
+      "composeAck:book a flight for me",
+      "notify:on it — I'll report back",
+      "run"
+    ]);
+    expect(notified).toEqual(["on it — I'll report back"]);
+    expect(reply).toContain("answer");
+  });
+
+  it("composeAck throwing → no notify, run still proceeds", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, {
+      composeAck: async () => {
+        throw new Error("model unavailable");
+      }
+    });
+    let notifyCalls = 0;
+    const reply = await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async () => {
+        notifyCalls += 1;
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(notifyCalls).toBe(0);
+    expect(calls).toEqual(["composeAck:book a flight", "run"]);
+    expect(reply).toContain("answer");
+  });
+
+  it("composeAck returning null → no notify, run still proceeds", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, { composeAck: async () => null });
+    let notifyCalls = 0;
+    const reply = await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async () => {
+        notifyCalls += 1;
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(notifyCalls).toBe(0);
+    expect(calls).toEqual(["composeAck:book a flight", "run"]);
+    expect(reply).toContain("answer");
+  });
+
+  it("MUSE_CHANNEL_ACK=false → composeAck is never invoked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, {
+      composeAck: async () => "should never run",
+      extraEnv: { MUSE_CHANNEL_ACK: "false" }
+    });
+    const reply = await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async () => {
+        throw new Error("notify should never be called");
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(calls).toEqual(["run"]);
+    expect(reply).toContain("answer");
+  });
+
+  it("MUSE_CHANNEL_ACK=0 (parseBoolean's other falsy spelling) → composeAck is never invoked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, {
+      composeAck: async () => "should never run",
+      extraEnv: { MUSE_CHANNEL_ACK: "0" }
+    });
+    const reply = await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async () => {
+        throw new Error("notify should never be called");
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(calls).toEqual(["run"]);
+    expect(reply).toContain("answer");
+  });
+
+  it("unpaired chat → composeAck never invoked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, { composeAck: async () => "should never run" });
+    // First chat adopts as owner (this turn's ack fires as expected).
+    await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async (text) => calls.push(`notify:${text}`),
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+    calls.length = 0;
+
+    const strangerReply = await run({
+      messages: [{ content: "book a flight", role: "user" }],
+      notify: async () => {
+        throw new Error("notify should never be called for a stranger");
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "stranger-9"
+    });
+
+    expect(strangerReply).toBe("This bot is a private personal assistant and only talks to its paired owner.");
+    expect(calls).toEqual([]);
+  });
+
+  it("approval-reply 'ok' path → composeAck never invoked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const pendingFile = join(dir, "pending.json");
+    await recordPendingApproval(pendingFile, {
+      arguments: { url: "http://x.test/book" },
+      createdAt: NOW().toISOString(),
+      draft: "POST http://x.test/book",
+      expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      id: "pending-1",
+      providerId: "log",
+      risk: "execute",
+      source: "owner-1",
+      tool: "web_action"
+    });
+    const { calls, run } = buildAck(dir, {
+      composeAck: async () => "should never run",
+      extraEnv: { MUSE_PENDING_APPROVALS_FILE: pendingFile }
+    });
+    const reply = await run({
+      messages: [{ content: "ok", role: "user" }],
+      notify: async () => {
+        throw new Error("notify should never be called");
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(reply).toContain("muse approvals approve pending-1");
+    expect(calls).toEqual([]);
+  });
+
+  it("casual 'hi' → composeAck never invoked", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-ack-"));
+    const { calls, run } = buildAck(dir, { composeAck: async () => "should never run" });
+    const reply = await run({
+      messages: [{ content: "hi", role: "user" }],
+      notify: async () => {
+        throw new Error("notify should never be called");
+      },
+      providerId: "log",
+      scope: "direct",
+      source: "owner-1"
+    });
+
+    expect(reply).toBe(casualResponseFor("greeting"));
+    expect(calls).toEqual([]);
+  });
+});

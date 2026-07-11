@@ -41,4 +41,34 @@ describe("createThreadedInboundRunner — multi-turn inbound retains context", (
     await runner.run({ providerId: "slack", source: "chat-1", text: "yo" });
     expect(seen[3]).toEqual([{ content: "yo", role: "user" }]);
   });
+
+  it("threads notify through to the wrapped run unmodified, but never persists the ack as a thread turn", async () => {
+    const threadFile = join(mkdtempSync(join(tmpdir(), "muse-thread-")), "threads.json");
+    const notified: string[] = [];
+    const notify = async (text: string) => {
+      notified.push(text);
+    };
+    const seen: ThreadTurn[][] = [];
+    const runner = createThreadedInboundRunner({
+      run: async ({ messages, notify: passedNotify }) => {
+        seen.push([...messages]);
+        await passedNotify?.("on it — I'll let you know");
+        return "final reply";
+      },
+      threadFile
+    });
+
+    const reply = await runner.run({ notify, providerId: "telegram", source: "chat-1", text: "book a flight" });
+    expect(reply).toBe("final reply");
+    expect(notified).toEqual(["on it — I'll let you know"]);
+
+    // Second turn: only the user message + the FINAL reply are in history —
+    // the ack text sent via notify is nowhere in it.
+    await runner.run({ providerId: "telegram", source: "chat-1", text: "did it work?" });
+    expect(seen[1]).toEqual([
+      { content: "book a flight", role: "user" },
+      { content: "final reply", role: "assistant" },
+      { content: "did it work?", role: "user" }
+    ]);
+  });
 });
