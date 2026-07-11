@@ -134,14 +134,22 @@ export class TelegramProvider implements MessagingProvider {
    * Telegram caps `getUpdates` at 100 results per call regardless of
    * `limit`; we surface that ceiling rather than silently truncate.
    */
-  async pollUpdates(options?: InboundFetchOptions): Promise<readonly InboundMessage[]> {
+  async pollUpdates(options?: InboundFetchOptions & { readonly longPollSeconds?: number }): Promise<readonly InboundMessage[]> {
     const limit = clampInboundLimit(options?.limit);
     const offsetParam = this.offsetFile ? await readTelegramOffset(this.offsetFile) : undefined;
-    // `timeout=0` keeps the call short — the long-poll modes are for
-    // the daemon, not this snapshot fetch.
-    const url = `${this.baseUrl}/bot${this.token}/getUpdates?limit=${limit.toString()}&timeout=0`
+    // `timeout=0` is the short snapshot; a daemon passes
+    // `longPollSeconds` so Telegram HOLDS the request and returns the
+    // instant a message arrives — the Bot API's real-time mechanism
+    // (no websocket exists; webhook needs a public HTTPS endpoint).
+    const longPoll = clampLongPollSeconds(options?.longPollSeconds);
+    const url = `${this.baseUrl}/bot${this.token}/getUpdates?limit=${limit.toString()}&timeout=${longPoll.toString()}`
       + (offsetParam !== undefined ? `&offset=${offsetParam.toString()}` : "");
-    const response = await fetchReadWithRetry(this.fetchImpl, url, { method: "GET" }, { timeoutMs: this.timeoutMs });
+    // The HTTP timeout must outlive the held long poll or every idle
+    // poll aborts as a spurious network error.
+    const readTimeoutMs = longPoll > 0
+      ? Math.max(this.timeoutMs ?? 30_000, (longPoll + 15) * 1000)
+      : this.timeoutMs;
+    const response = await fetchReadWithRetry(this.fetchImpl, url, { method: "GET" }, { timeoutMs: readTimeoutMs });
     const text = await response.text();
     const parsed = tryParseJson<TelegramGetUpdatesResponse>(text);
     if (!response.ok || !parsed?.ok) {
@@ -177,6 +185,24 @@ export class TelegramProvider implements MessagingProvider {
         text: message.text
       }];
     });
+  }
+
+  async sendTyping(destination: string): Promise<void> {
+    const response = await fetchWithTimeout(this.fetchImpl, `${this.baseUrl}/bot${this.token}/sendChatAction`, {
+      body: JSON.stringify({ action: "typing", chat_id: destination }),
+      headers: { "content-type": "application/json" },
+      method: "POST"
+    }, this.timeoutMs);
+    const text = await response.text();
+    const parsed = tryParseJson<TelegramSendResponse>(text);
+    if (!response.ok || !parsed?.ok) {
+      throw new MessagingProviderError(
+        this.id,
+        "UPSTREAM_FAILED",
+        `Telegram sendChatAction failed: ${parsed?.description ?? (truncateErrorBody(text) || response.statusText)}`,
+        response.status
+      );
+    }
   }
 
   async send(message: OutboundMessage): Promise<OutboundReceipt> {
@@ -241,6 +267,14 @@ export function escapeForTelegramParseMode(
 }
 
 const TELEGRAM_MAX_TEXT = 4096;
+
+/** Telegram accepts 0–50s; out-of-range/invalid values collapse to a snapshot poll. */
+function clampLongPollSeconds(raw: number | undefined): number {
+  if (raw === undefined || !Number.isFinite(raw)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(50, Math.trunc(raw)));
+}
 
 /**
  * Clamp the SOURCE text so the escaped form Telegram receives never

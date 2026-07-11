@@ -1,11 +1,22 @@
 /**
  * Telegram polling daemon (Phase 2.a.3 + 2.a.4 per docs/design/messaging.md).
  *
- * Calls `provider.pollUpdates()` on a setInterval cadence and
- * appends each returned `InboundMessage` to a JSON inbox file via
+ * Calls `provider.pollUpdates()` and appends each returned
+ * `InboundMessage` to a JSON inbox file via
  * `@muse/messaging/appendInbound`. `pollUpdates` already advances
  * the persisted offset (Phase 2.a.1+2), so each tick walks the
  * queue rather than reprocessing.
+ *
+ * Two cadence modes:
+ *   - **Long poll** (`longPollSeconds` > 0, the default wiring): a
+ *     continuous self-scheduling loop. Each `getUpdates` call is HELD
+ *     by Telegram for up to that many seconds and returns the moment
+ *     a message arrives — near-real-time delivery without a public
+ *     webhook endpoint. The loop re-launches immediately after each
+ *     poll (`relaunchDelayMs` breather), and backs off to
+ *     `intervalMs` after an error so a dead network can't hot-loop.
+ *   - **Interval snapshot** (`longPollSeconds` absent/0): the legacy
+ *     setInterval cadence (`intervalMs`, default 30s, clamped [5s, 1h]).
  *
  * Why `provider` and not `registry`: the daemon is the Bot-API-side
  * ingestion path. The user-facing `registry.fetchInbound` reads
@@ -17,10 +28,6 @@
  *   - `MUSE_TELEGRAM_POLL_ENABLED === "1"`, and
  *   - the messaging registry has the `telegram` provider, and
  *   - `inboxFile` is configured.
- *
- * Same single-flight + unref + injectable-logger shape as
- * `reminder-tick.ts`. Tick cadence is `MUSE_TELEGRAM_POLL_INTERVAL_MS`
- * (default 30_000); clamped to [5s, 1h].
  */
 
 import { appendInbound, type TelegramProvider } from "@muse/messaging";
@@ -30,6 +37,12 @@ export interface TelegramPollOptions {
   readonly inboxFile: string;
   readonly intervalMs?: number;
   readonly fetchLimit?: number;
+  /** > 0 switches to the continuous long-poll loop (seconds Telegram holds each getUpdates). */
+  readonly longPollSeconds?: number;
+  /** Breather between long polls (default 250ms; tests shrink it). */
+  readonly relaunchDelayMs?: number;
+  /** Fires after a poll that ingested >0 messages — lets the reply daemon run immediately. */
+  readonly onIngested?: (count: number) => void;
   readonly logger?: (message: string) => void;
   readonly errorLogger?: (message: string) => void;
 }
@@ -42,34 +55,73 @@ export interface TelegramPollHandle {
 const DEFAULT_INTERVAL_MS = 30_000;
 const MIN_INTERVAL_MS = 5_000;
 const MAX_INTERVAL_MS = 60 * 60_000;
+const DEFAULT_RELAUNCH_DELAY_MS = 250;
 
 export function startTelegramPollTick(options: TelegramPollOptions): TelegramPollHandle {
   const intervalMs = clampInterval(options.intervalMs ?? DEFAULT_INTERVAL_MS);
+  const longPollSeconds = options.longPollSeconds ?? 0;
   let polling = false;
 
-  const tickOnce = async (): Promise<void> => {
+  const tickOnce = async (): Promise<boolean> => {
     if (polling) {
-      return;
+      return false;
     }
     polling = true;
     try {
-      const inbound = await options.provider.pollUpdates(
-        options.fetchLimit !== undefined ? { limit: options.fetchLimit } : undefined
-      );
+      const inbound = await options.provider.pollUpdates({
+        ...(options.fetchLimit !== undefined ? { limit: options.fetchLimit } : {}),
+        ...(longPollSeconds > 0 ? { longPollSeconds } : {})
+      });
       if (inbound.length === 0) {
-        return;
+        return true;
       }
       for (const message of inbound) {
         await appendInbound(options.inboxFile, message);
       }
       options.logger?.(`telegram-poll: ingested ${inbound.length.toString()} message(s)`);
+      options.onIngested?.(inbound.length);
+      return true;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       options.errorLogger?.(`telegram-poll: ${message}`);
+      return false;
     } finally {
       polling = false;
     }
   };
+
+  if (longPollSeconds > 0) {
+    const relaunchDelayMs = options.relaunchDelayMs ?? DEFAULT_RELAUNCH_DELAY_MS;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const loop = async (): Promise<void> => {
+      if (stopped) {
+        return;
+      }
+      const ok = await tickOnce();
+      if (stopped) {
+        return;
+      }
+      timer = setTimeout(() => {
+        void loop();
+      }, ok ? relaunchDelayMs : intervalMs);
+      if (typeof timer.unref === "function") {
+        timer.unref();
+      }
+    };
+    void loop();
+    return {
+      stop: () => {
+        stopped = true;
+        if (timer) {
+          clearTimeout(timer);
+        }
+      },
+      tickOnce: async () => {
+        await tickOnce();
+      }
+    };
+  }
 
   const handle = setInterval(() => {
     void tickOnce();
@@ -80,7 +132,9 @@ export function startTelegramPollTick(options: TelegramPollOptions): TelegramPol
 
   return {
     stop: () => clearInterval(handle),
-    tickOnce
+    tickOnce: async () => {
+      await tickOnce();
+    }
   };
 }
 

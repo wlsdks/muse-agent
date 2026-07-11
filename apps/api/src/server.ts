@@ -470,10 +470,14 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
   startHomeWatchDaemonIfConfigured(env, server, options);
   warmUpModelIfConfigured(env, options);
 
-  // Optional daemon: poll Telegram every
-  // MUSE_TELEGRAM_POLL_INTERVAL_MS (default 30s) and persist each
-  // new InboundMessage into telegramInboxFile. Off unless the user
-  // sets MUSE_TELEGRAM_POLL_ENABLED=1 — keeps fresh installs quiet.
+  // Optional daemon: ingest Telegram messages into telegramInboxFile.
+  // Long-polls by default (MUSE_TELEGRAM_LONG_POLL_SECONDS, default 25,
+  // 0 = legacy MUSE_TELEGRAM_POLL_INTERVAL_MS snapshot cadence) so a
+  // message lands the moment it is sent. Off unless the user sets
+  // MUSE_TELEGRAM_POLL_ENABLED=1 — keeps fresh installs quiet.
+  // Holder so the poll daemon can trigger the reply daemon (created
+  // below) the instant something is ingested.
+  const inboundReplyTick: { current: (() => Promise<void>) | undefined } = { current: undefined };
   const pollEnabled = isMuseDaemonEnabled(process.env.MUSE_TELEGRAM_POLL_ENABLED);
   if (
     pollEnabled
@@ -490,11 +494,18 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       const pollMsRaw = process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS
         ? Number(process.env.MUSE_TELEGRAM_POLL_INTERVAL_MS)
         : undefined;
+      const longPollRaw = process.env.MUSE_TELEGRAM_LONG_POLL_SECONDS
+        ? Number(process.env.MUSE_TELEGRAM_LONG_POLL_SECONDS)
+        : undefined;
       const pollHandle = startTelegramPollTick({
         errorLogger: (message) => server.log.warn(message),
         inboxFile: options.telegramInboxFile,
         ...(pollMsRaw !== undefined ? { intervalMs: pollMsRaw } : {}),
+        longPollSeconds: longPollRaw !== undefined && Number.isFinite(longPollRaw) ? longPollRaw : 25,
         logger: (message) => server.log.info(message),
+        onIngested: () => {
+          void inboundReplyTick.current?.();
+        },
         provider: telegram
       });
       server.addHook("onClose", async () => {
@@ -536,6 +547,7 @@ export function buildServer(options: ServerOptions = {}): FastifyInstance {
       registry: options.messaging,
       runner
     });
+    inboundReplyTick.current = () => replyHandle.tickOnce();
     server.addHook("onClose", async () => {
       replyHandle.stop();
     });

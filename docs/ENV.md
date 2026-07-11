@@ -7,7 +7,7 @@ tests excluded) is listed with the workspaces that read it. Descriptions and
 value contracts are curated incrementally in code (`.claude/rules/` /
 per-module docs); this inventory is the discoverability + drift floor.
 
-Total: **505** variables.
+Total: **506** variables.
 
 | Variable | Read by |
 | --- | --- |
@@ -469,6 +469,7 @@ Total: **505** variables.
 | `MUSE_TASK_MEMORY_RETENTION_MS` | packages/autoconfigure |
 | `MUSE_TELEGRAM_BOT_TOKEN` | apps/api, apps/cli, packages/autoconfigure, packages/domain-tools |
 | `MUSE_TELEGRAM_INBOX_FILE` | packages/autoconfigure |
+| `MUSE_TELEGRAM_LONG_POLL_SECONDS` | apps/api |
 | `MUSE_TELEGRAM_OFFSET_FILE` | packages/autoconfigure |
 | `MUSE_TELEGRAM_POLL_ENABLED` | apps/api, apps/web |
 | `MUSE_TELEGRAM_POLL_INTERVAL_MS` | apps/api, apps/web |

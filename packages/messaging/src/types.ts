@@ -95,4 +95,10 @@ export interface MessagingProvider {
    * than crashing.
    */
   fetchInbound?(options?: InboundFetchOptions): Promise<readonly InboundMessage[]>;
+  /**
+   * Optional "is typing…" presence signal shown while the agent
+   * composes a reply. Cosmetic — callers must treat a failure as
+   * ignorable, never as a reason to drop the reply itself.
+   */
+  sendTyping?(destination: string): Promise<void>;
 }

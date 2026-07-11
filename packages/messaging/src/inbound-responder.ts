@@ -56,6 +56,16 @@ export async function respondToInbound(
       continue;
     }
     try {
+      // "typing…" presence while the agent composes — cosmetic, so a
+      // failure (unsupported provider, dead chat) never blocks the reply.
+      try {
+        const provider = options.registry.require(message.providerId);
+        if (provider.sendTyping) {
+          await provider.sendTyping(message.source);
+        }
+      } catch {
+        // ignore: presence is best-effort
+      }
       const reply = (
         await options.runner.run({
           providerId: message.providerId,
