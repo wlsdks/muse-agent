@@ -8,6 +8,7 @@ import {
 import { runActuatorByName } from "@muse/domain-tools";
 import {
   createChannelApprovalGate,
+  effectiveScope,
   type ChannelApprovalGate,
   type MessagingProviderRegistry,
   type ThreadedAgentRun,
@@ -62,67 +63,99 @@ const UNPAIRED_CHAT_NOTICE =
 
 export function createInboundAgentRun(options: InboundAgentRunOptions): ThreadedAgentRun {
   const { agentRuntime, env, model, registry } = options;
-  return async ({ messages, providerId, source }) => {
-    // Pairing gate FIRST — a public bot handle is discoverable by
-    // anyone, so an un-paired chat is refused deterministically before
-    // any approval handling or agent turn can touch personal state.
+  return async ({ messages, providerId, source, scope: rawScope }) => {
+    // Conversation-scope capability profile (P7-3, the sequel to TOFU
+    // pairing): a group/shared chat gets a STRICTLY narrower posture than
+    // a 1:1 — never TOFU-adopted as owner, never the owner's memory scope,
+    // never a risky-tool approval round-trip a random group member could
+    // "yes". `effectiveScope` fails closed — absent/unknown scope is
+    // "shared", never silently the safer-looking "direct".
+    const scope = effectiveScope(rawScope);
     const ownersFile = resolveChannelOwnersFile(env);
-    const owner = (await readChannelOwner(ownersFile, providerId))
-      ?? (await adoptChannelOwner(ownersFile, providerId, source));
-    if (source !== owner && !parseAllowedChats(env.MUSE_CHANNEL_ALLOWED_CHATS).has(`${providerId}:${source}`)) {
-      return UNPAIRED_CHAT_NOTICE;
+    if (scope === "shared") {
+      // NEVER adopt a group/channel chat as the TOFU owner — that would
+      // let the first random group message claim ownership of the agent.
+      const groupAllowed = parseBoolean(env.MUSE_CHANNEL_GROUP_ENABLED, false)
+        && parseAllowedChats(env.MUSE_CHANNEL_ALLOWED_CHATS).has(`${providerId}:${source}`);
+      if (!groupAllowed) {
+        return UNPAIRED_CHAT_NOTICE;
+      }
+    } else {
+      // Pairing gate — a public bot handle is discoverable by anyone, so
+      // an un-paired 1:1 chat is refused deterministically before any
+      // approval handling or agent turn can touch personal state.
+      const owner = (await readChannelOwner(ownersFile, providerId))
+        ?? (await adoptChannelOwner(ownersFile, providerId, source));
+      if (source !== owner && !parseAllowedChats(env.MUSE_CHANNEL_ALLOWED_CHATS).has(`${providerId}:${source}`)) {
+        return UNPAIRED_CHAT_NOTICE;
+      }
     }
-    // A bare "yes" approving a pending channel refusal gets a
-    // deterministic ack pointing at `muse approvals approve` rather
-    // than a confused agent turn on the word "yes".
     const latestUserText = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
-    const approvalAck = await handleInboundApprovalReply({
-      pendingFile: resolvePendingApprovalsFile(env),
-      providerId,
-      source,
-      text: latestUserText,
-      // Opt-in (default off): an inbound "yes" re-runs the pending
-      // tool in-chat. The reply is the explicit confirm of the draft
-      // the gate already posted, so the re-run uses an auto-approve
-      // gate. Off by default, so completion stays on the deliberate
-      // CLI confirm unless the user turns this on.
-      ...(parseBoolean(env.MUSE_INBOUND_AUTO_APPROVE, false)
-        ? {
-            autoRun: (entry) => runActuatorByName(entry.tool, entry.arguments as JsonObject, {
-              actionLogFile: resolveActionLogFile(env),
-              contacts: () => queryContacts(resolveContactsFile(env)),
-              emailApprovalGate: () => ({ approved: true }),
-              ...(env.MUSE_GMAIL_TOKEN?.trim() ? { gmailToken: env.MUSE_GMAIL_TOKEN.trim() } : {}),
-              ...(env.MUSE_HOMEASSISTANT_URL?.trim() ? { homeAssistantBaseUrl: env.MUSE_HOMEASSISTANT_URL.trim() } : {}),
-              ...(env.MUSE_HOMEASSISTANT_TOKEN?.trim() ? { homeAssistantToken: env.MUSE_HOMEASSISTANT_TOKEN.trim() } : {}),
-              userId: `${providerId}:${source}`,
-              webApprovalGate: () => ({ approved: true })
-            })
-          }
-        : {})
-    });
+    // Approval-reply hijack guard: a pending approval is 1:1-scoped state
+    // (outbound-safety — only the paired owner may confirm a draft), so a
+    // "yes" from a group/shared chat must NEVER be interpreted as a
+    // confirmation, even if a pending entry happens to exist for this
+    // providerId+source. Skipping the lookup entirely (rather than
+    // filtering results) makes the hijack path structurally impossible.
+    const approvalAck = scope === "shared"
+      ? undefined
+      : await handleInboundApprovalReply({
+          pendingFile: resolvePendingApprovalsFile(env),
+          providerId,
+          source,
+          text: latestUserText,
+          // Opt-in (default off): an inbound "yes" re-runs the pending
+          // tool in-chat. The reply is the explicit confirm of the draft
+          // the gate already posted, so the re-run uses an auto-approve
+          // gate. Off by default, so completion stays on the deliberate
+          // CLI confirm unless the user turns this on.
+          ...(parseBoolean(env.MUSE_INBOUND_AUTO_APPROVE, false)
+            ? {
+                autoRun: (entry) => runActuatorByName(entry.tool, entry.arguments as JsonObject, {
+                  actionLogFile: resolveActionLogFile(env),
+                  contacts: () => queryContacts(resolveContactsFile(env)),
+                  emailApprovalGate: () => ({ approved: true }),
+                  ...(env.MUSE_GMAIL_TOKEN?.trim() ? { gmailToken: env.MUSE_GMAIL_TOKEN.trim() } : {}),
+                  ...(env.MUSE_HOMEASSISTANT_URL?.trim() ? { homeAssistantBaseUrl: env.MUSE_HOMEASSISTANT_URL.trim() } : {}),
+                  ...(env.MUSE_HOMEASSISTANT_TOKEN?.trim() ? { homeAssistantToken: env.MUSE_HOMEASSISTANT_TOKEN.trim() } : {}),
+                  userId: `${providerId}:${source}`,
+                  webApprovalGate: () => ({ approved: true })
+                })
+              }
+            : {})
+        });
     if (approvalAck !== undefined) {
       return approvalAck;
     }
     const result = await agentRuntime.run({
       messages,
-      // The channel identity is the user-memory scope for this
-      // chat, so the auto-extract hook grows the knows-you model
-      // from channel conversations (without a userId the hook
-      // no-ops — a channel chat that never learns the user).
-      metadata: { userId: `${providerId}:${source}` },
+      // The channel identity is the user-memory scope for this chat, so
+      // the auto-extract hook grows the knows-you model from channel
+      // conversations. A SHARED chat gets a DISTINCT scope
+      // (`{providerId}:shared:{source}`), never the owner's own
+      // `{providerId}:{source}` id: personal facts must never inject into
+      // a group turn, and group chatter must never pollute the owner's
+      // user model.
+      metadata: { userId: scope === "shared" ? `${providerId}:shared:${source}` : `${providerId}:${source}` },
       model,
       toolApprovalGate: createChannelApprovalGate({
         providerId,
         recordRefusal: async (refusal) => {
-          // Both the audit log and the pending worklist must capture
-          // the refusal; run them independently so one failing store
-          // doesn't drop the other (the gate's deny holds regardless).
+          // The audit log always captures the refusal (outbound-safety:
+          // every action, sent OR refused, leaves a trail). The
+          // re-runnable PENDING-approval queue is 1:1 only — queuing it
+          // for a shared chat would make a group "yes" a viable re-run
+          // path, defeating the outright-deny above.
           const logIt = createChannelRefusalRecorder({ actionLogFile: resolveActionLogFile(env), providerId, source });
+          if (scope === "shared") {
+            await logIt(refusal);
+            return;
+          }
           const queueIt = createChannelPendingRecorder({ pendingFile: resolvePendingApprovalsFile(env), providerId, source });
           await Promise.allSettled([logIt(refusal), queueIt(refusal)]);
         },
         registry,
+        scope,
         source
       })
     });

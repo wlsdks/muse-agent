@@ -11,6 +11,8 @@ export type ThreadedAgentRun = (input: {
   readonly messages: readonly ThreadTurn[];
   readonly source: string;
   readonly providerId: string;
+  /** Conversation-scope hint threaded from `InboundMessage.scope` (see `conversation-scope.ts`). */
+  readonly scope?: string;
 }) => Promise<string>;
 
 /**
@@ -25,13 +27,14 @@ export function createThreadedInboundRunner(options: {
   readonly threadFile: string;
 }): InboundAgentRunner {
   return {
-    run: async ({ text, source, providerId }) => {
+    run: async ({ text, source, providerId, scope }) => {
       const key = `${providerId}:${source}`;
       const prior = await readThread(options.threadFile, key);
       const reply = await options.run({
         messages: [...prior, { content: text, role: "user" }],
         providerId,
-        source
+        source,
+        ...(scope ? { scope } : {})
       });
       await appendThreadTurns(options.threadFile, key, [
         { content: text, role: "user" },
