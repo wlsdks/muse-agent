@@ -51,7 +51,7 @@ B-차원(agent loop·security·orchestration·tools·model posture)을 A+로 올
 | 오케스트레이션 | B | **A** | A- | openclaw SQLite task-flow·서브에이전트 레지스트리·crond. hermes delegate 3.4k-LOC·비동기 위임·하트비트. Muse Kanban+병렬분해+합성 — 개인 스코프엔 완결이나 단일 GPU라 병렬은 환상 |
 | **Grounding·정직성** | **A+** | D | D+ | **비교 불가 격차.** Muse 35개 표면 결정론 게이트·fabrication=0 릴리스 게이트·GROUNDED≠TRUE 완화. openclaw 프롬프트 경고뿐(프로파일러: "가장 계측 안 된 차원"). hermes X-search 한 곳의 citation 체크가 전부 |
 | 보안 | B+ | A- | **A** | hermes tirith 외부검증 바이너리+hardline+상시 security 드럼비트. openclaw 감사엔진 90파일+CodeQL+opt-in Docker 샌드박스. Muse fail-close draft-first·인젝션 배터리·egress 게이트는 원칙 준수하나 **runner가 env_clear+timeout+출력캡뿐, OS 샌드박스 없음** |
-| **검증 규율** | **A+** | A- | B+ | Muse만 **라이브 모델 eval이 릴리스를 게이트**(41 eval 스크립트, pass^k, 뮤테이션 문화). openclaw 6.9k 테스트+71 live+mantis 시나리오. hermes 33.5k 테스트지만 **전부 mock — 라이브 품질 게이트 부재** |
+| **검증 규율** | **A** | A- | B+ | (Round2 정정) Muse만 **라이브 fabrication=0 tripwire를 매 push 게이트**(pre-push 훅 `precheck:grounding`, Ollama-의존·없으면 skip) + 최고 인프라(pass^k·LLM-judge+meta-eval·MAST seam·41 eval). **정직한 한계**: 집계 `eval:agent`는 GitHub CI 미배선(클라우드엔 로컬 Ollama 없음), ci.yml=lint+build+test뿐 → 자동 강제는 grounding subset만. openclaw QA-Lab character-eval(LLM-judge)은 **advisory·override 가능**(비-게이트). hermes 33.5k 테스트 **전부 mock·에이전트 eval 0**. Muse 우위(유일 라이브 게이트+최고 인프라)는 유지하나 A+→A로 하향(집계 미강제) |
 | 모델 포스처 | B+ | A | A | 둘 다 성숙한 멀티모델 라우터. Muse 로컬 gemma4:12b 기본+BYO 클라우드+**프라이버시-계층 라우팅(경쟁사 둘 다 이 축 자체가 없음)** |
 
 **종합**: Muse ≈ **B+** (범용), 선택 엣지 **A+**. openclaw ≈ 멀티채널 게이트웨이
@@ -408,7 +408,12 @@ D6·D7(S1/S3/S4)도 실-갭 확정.
   seam parity.
 - **D4-S4. computer-control 신뢰성 — file_edit 결정론 리페어 (M).** eval:computer-
   task ~50-66% 주범이 multi-step 편집. 실패 시 결정론 재정렬/재시도 1회(모델 재추론
-  금지). 수용: 베이스라인 +10%p·pass^3.
+  금지). **참조(Round2)**: hermes `fuzzy_match.py`의 **9-전략 체인**(exact→line-trimmed
+  →whitespace-norm→indent-flex→escape-norm→trimmed-boundary→block-anchor→context-aware
+  →unicode-norm) + escape-drift 가드(모델이 넣은 spurious `\'`/`\"` 감지) + indent
+  리페어(대체문자열 들여쓰기를 파일 실제에 맞춤). Muse는 자체 결정론 매칭으로 재설계
+  (LLM 편집이 공백/이스케이프/들여쓰기 흔들림 → 단일 exact-match 50%+ 실패). 수용:
+  베이스라인 +10%p·pass^3 + fuzzy 전략별 유닛.
 - **D4-S5. ⏭️ 삭제(FALSE-GAP).** `history_search` MuseTool이 이미 존재
   (`history-search-tool.ts:20`, risk:read — §6.0.1). 잔여(선택): hermes session_search의
   앵커±윈도우/bookend 스크롤을 기존 툴에 옵션으로 더할지 — 저우선.
@@ -508,7 +513,7 @@ D6·D7(S1/S3/S4)도 실-갭 확정.
 | **W2 (신뢰성)** | D1-S3/S5 → D3-S1/S2/S4 → D1-S7 브라우저 | 컴팩션·예산·서브에이전트 안전망 + 소형모델 브라우저 신뢰성 — eval:computer-task 상승 토대 (D1-S4 삭제됨) |
 | **W3 (능력·UX)** | D4-S4 → D4-S1 → D4-S2 → D7-S1 슬래시 | 신뢰성 위 커버리지 + 마찰 제거 — 각각 eval 래칫 동반 (D3-S5·D4-S5 삭제됨) |
 | **W4 (라우팅·KO)** | D5-S1~S4 → D1-S6 → D2-S3/S4/S5 → D-KO-S1 UTF-16 | 모델 천장 우회 완성 + 한국어-우선 마감 (D-KO-S2 삭제됨) |
-| **W5 (기억·마감)** | D6-S1~S4 → D3-S3/S6 → D2-S7 → D7-S3/S4 | 연료·consolidation·무결성·래칫·UX 마감 (D7-S2 삭제됨) |
+| **W5 (기억·마감)** | D-E1 eval-게이트 강제 → D6-S1~S4 → D3-S3/S6 → D2-S7 → D7-S3/S4 | 연료·consolidation·무결성·래칫·UX 마감. **D-E1이 검증규율 A→A+ 복원**(§8.5.2) (D7-S2 삭제됨) |
 
 각 웨이브 종료 = `pnpm self-eval` green + 해당 eval 래칫 수치 상승 + CHANGELOG
 [Unreleased] 갱신. 슬라이스당 1 커밋(Conventional Commits).
@@ -532,6 +537,73 @@ D6·D7(S1/S3/S4)도 실-갭 확정.
 
 ---
 
+## 8.5 ★ Round 2 통합 — 경쟁사 소스 재분석 (8-Haiku + Fable 재검증)
+
+미-스윕 영역(eval 방법론·grounding 공정사냥·프라이버시 실구현·프로액티비티·RAG
+내부·로컬모델 툴콜·config/온보딩·정체성+completeness critic)을 판 결과. **포지셔닝
+3중 재검증(전부 유지, 정직 정정 1건) + 신규 슬라이스 1 + 정련 참조 + false-gap 3.**
+
+### 8.5.1 포지셔닝 적대적 재검증 결과
+
+- **프라이버시(로컬-우선) — 검증 통과 ✅✅.** 둘 다 로컬-only **강제 전무**(hermes
+  config에 `redact_pii`만·`MUSE_LOCAL_ONLY` 등가물 0; openclaw도 클라우드-우선),
+  메모리/트랜스크립트/시크릿 **평문 저장**, 개인 컨텍스트가 기본으로 클라우드 모델에
+  주입. Muse의 fail-close egress 게이트는 **적대적 검증에서도 유일**.
+- **grounding — 검증 통과 (정직 뉘앙스) ✅.** answer-verification 게이트·abstain·
+  fabrication 측정 **여전히 0**. 단 공정하게: hermes에 **미머지** `feat/web-grounding-
+  citations` 브랜치(프롬프트 수준 citation 지시, 게이트 아님), openclaw에 citation
+  **표시**(`tools.citations.ts`, MEMORY.md#L5-L7 소스 위치)+untrusted-content 래핑
+  (`external-content.ts`, 인젝션 방어 — **Muse도 escapeSystemPromptMarkers로 보유**).
+  결론: 둘 다 citation 표시+인젝션 래핑은 있으나 **claim↔source 검증 게이트는 없음**.
+  Muse 결정론 게이트는 무경쟁. (경쟁사가 프롬프트-citation으로 이동 중이므로 Muse는
+  결정론 우위를 계속 벌려야 함.)
+- **eval — 내 주장 정정(성적표 A+→A).** §2 참조. Muse의 pre-push fabrication
+  tripwire는 유일 라이브 게이트지만 **로컬 Ollama 의존 + 집계 eval:agent는 CI
+  미배선**. 경쟁사 대비 우위는 유지되나 "라이브 eval이 릴리스를 게이트"는
+  **부분적으로만** 참. → 신규 슬라이스 D-E1.
+
+### 8.5.2 신규 슬라이스
+
+- **D-E1. eval 집계 게이트 실-강제 (M) ★.** 현 상태: `precheck:grounding`(fabrication
+  subset)만 pre-push 훅. `eval:agent`(tool-selection·judge·adversarial·plan-quality·
+  orchestration…)는 스크립트지만 자동 강제 없음. self-eval 회귀도 수동/루프-top.
+  → (a) pre-push 훅을 **eval:agent 핵심 subset**까지 확장(Ollama 있을 때, 시간 예산
+  내 — precheck-grounding처럼 skip-if-unreachable), (b) self-eval 회귀 fail-close를
+  **커밋 시** 자동 확인(tracked count 하락→차단), (c) GitHub CI에는 Ollama 없으니
+  **결정론 부분**(eval 하네스 자체 유닛, 스코어보드 파싱, 케이스 스키마)만 배선. 이건
+  "검증 규율" 성적표를 A→A+로 되돌리는 유일한 실-작업. 수용: 훅이 실제 차단함을
+  증명(나쁜 케이스 주입→push 거부)+skip-if-no-Ollama 계약.
+
+### 8.5.3 정련된 참조 (기존 슬라이스 강화)
+
+- **D4-S4 ← hermes 9-전략 fuzzy_match**(escape-drift 가드·indent 리페어). §6 D4-S4 갱신됨.
+- **D1-S1 ← openclaw unknown-tool 감지**(`extractUnknownToolName` 정규식·
+  UNKNOWN_TOOL_THRESHOLD 10·circuit-breaker 30). 존재하지-않는 툴 반복 호출 감지를
+  ping-pong 슬라이스에 병합.
+
+### 8.5.4 false-gap (Round2 — 짓지 말 것)
+
+- **Ollama 스키마 새니타이제이션**: `sanitizeOllamaToolSchema`가 이미 존재
+  (`adapter-ollama.ts:611`, sanitizeGeminiSchema의 Ollama 아날로그, :501 배선). 완비.
+- **프롬프트 제어문자 strip**: `stripUntrustedTerminalChars`가 이미 전 untrusted
+  진입점(active/ambient/attachment/episodic/inbox/skills/feeds)+`escapeSystemPromptMarkers`+
+  `neutralizeInjectionSpans`(recall/present.ts)에 광범위 배선. 완비.
+- **doctor fix-steps**: (Round1과 동일) 이미 "run `muse X`" 수리단계 반환.
+
+### 8.5.5 선택적 향상 (저우선 — 별도 backlog, grounding 엣지 훼손 금지)
+
+경쟁사에 있고 Muse에 없으나 코어 아님. 채택 시 반드시 grounding-surface·fabrication=0
+불변 유지: (a) **HyDE**(가설-문서 확장 후 임베딩, openclaw qmd) — recall 향상 가능,
+단 Muse RAG-Fusion과 중복 검토. (b) **concept-tag 파생 + 의미 dedup**(openclaw
+short-term-promotion) — faceted recall. (c) **active-hours 이진탐색 seeking**(openclaw
+heartbeat) — quiet-hours가 틱을 버리지 않고 다음 활성창으로 skip(현 Muse는 틱 버림).
+(d) **config loud-fail**(openclaw 원칙: 파손 config→침묵 default 금지, doctor
+migration으로 명시 복구; hermes 침묵-fallback은 안티패턴). Muse config 파싱실패가
+loud한지 verify-first. (e) **HRR 조합 대수 검색**(hermes holographic) — 다중-엔티티
+AND·모순탐지; Muse는 이미 contradiction-detection 보유라 ROI 낮음.
+
+---
+
 ## 9. 부록 — 근거 검증 로그 (Fable 직접 스팟체크, 2026-07-11)
 
 | # | 주장(스윕) | 검증 |
@@ -548,6 +620,11 @@ D6·D7(S1/S3/S4)도 실-갭 확정.
 | 10 | Muse UTF-16 범용 헬퍼 부재(툴-arg만) | ✅ shared surrogate 언급 1곳(:255)·범용 slice 없음 → D-KO-S1 정당 |
 | 11 | Muse SLASH_COMMANDS chat-ink 단독 | ✅ `chat-ink.ts:69`만 정의 → D7-S1 정당 |
 | 12 | 라이선스 MIT×2 | ✅ hermes `LICENSE`(Nous 2025)·openclaw `LICENSE`(Foundation 2026) |
+| 13 | Muse pre-push fabrication tripwire 존재·CI 미배선 | ✅ `.git/hooks/pre-push`→`precheck:grounding`(`install-git-hooks.sh:46`); ci.yml=lint+lint:comments+check만(eval 호출 0) |
+| 14 | 경쟁사 로컬-only 강제 부재 | ✅ hermes config `redact_pii`만·openclaw 클라우드-우선, 평문 저장(양 repo) |
+| 15 | 경쟁사 grounding 게이트 부재(citation 표시만) | ✅ openclaw `tools.citations.ts`(표시)·`external-content.ts`(래핑); hermes citation 브랜치 미머지; 검증 게이트 0 |
+| 16 | Ollama 스키마 새니타이저 존재 | ✅ `adapter-ollama.ts:611` sanitizeOllamaToolSchema(:501 배선) → 신규 아님 |
+| 17 | 프롬프트 제어문자 strip 광범위 배선 | ✅ stripUntrustedTerminalChars 7+ 진입점·escapeSystemPromptMarkers(recall/present.ts:845) |
 
 **Muse-측 확정 팩트**: runner `env_clear()`+timeout-only(`crates/runner/src/main.rs:101`),
 `maxToolCalls=10`/`maxRunWallclockMs=300s`(`agent-runtime.ts:284-288`), no-progress
