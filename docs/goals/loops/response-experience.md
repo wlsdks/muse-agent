@@ -21,7 +21,7 @@ ratchet: 근거절 mutation-pin 3건(이전엔 소실돼도 0 테스트 실패) 
 리뷰지점: 판정자 발굴 잔여 갭 — LLM-합성 경로는 절 존재 미보장(신규 ◦로 큐잉).
 리스크: 없음(테스트+docs만).
 
-## fire 3 · 2026-07-12 · skill v2.x · (sha pending)
+## fire 3 · 2026-07-12 · skill v2.x · 57dabb905
 meta: value-class=reliability+regression-fix · pkg=@muse/messaging+api+proactivity · kind=retry-dedupe+type-contract · verdict=PASS · firesSinceDrill=3
 ratchet: testFiles +2 · fabrication 0 · eval N/A(composeAck 무접촉)
 무엇: (A) 위임 ack가 재시도에도 최대 1회만 배달 — ackAlreadySent 사이드카(500 bound, fail-open), notify 자체를 미배선해 composeAck 호출도 절약. (B) 베이스라인 tsc 회귀 수정 — ProactiveAgentRuntimeLike.metadata를 JsonObject 정확-매치로(반변 위치 variance 트랩), 양성 컴파일 pin 추가.

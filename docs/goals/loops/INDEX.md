@@ -33,6 +33,6 @@
 | `desktop-enhance` | macOS desktop app 강화 + 뮤즈 캐릭터 상호작용 (번들 web 포함; ④c 브라우저 실측 검증) (worktree `/tmp/muse-desktop-enhance`, branch `loop/desktop-enhance`, Tier2 push + draft PR) | [desktop-enhance.md](desktop-enhance.md) | 14 | (pending) | v2.1.0 | active (cron `d7012104`, session-only 20m) |
 | `capability-parity` | hermes/openclaw 급 순수 에이전트 역량 parity — 4 갭(history-search · skill curator · dreaming/inert 배선 · sub-agent 오케스트레이션 내구성) 결정론-우선 (worktree `/tmp/muse-capability-parity`, branch `loop/capability-parity`, Tier1 local-commit only) | [capability-parity.md](capability-parity.md) | 9 | `e49e9e99c` | v2.0.0 | active (cron, session-only 20m) |
 
-| `response-experience` | 어시스턴트 응답 경험 지속 개선 (worktree `/tmp/muse-response-loop`, branch `response-loop`, verified-fire → main FF push opt-in) | [response-experience.md](response-experience.md) | 2 | `6f5d70a73` | v2.x | active (cron `513db0d4`, session-only 20m) |
+| `response-experience` | 어시스턴트 응답 경험 지속 개선 (worktree `/tmp/muse-response-loop`, branch `response-loop`, verified-fire → main FF push opt-in) | [response-experience.md](response-experience.md) | 3 | `57dabb905` | v2.x | active (cron `513db0d4`, session-only 20m) |
 
 <!-- New loops: add a row here on first registration; update your own row's last-fire/commit each fire. -->
