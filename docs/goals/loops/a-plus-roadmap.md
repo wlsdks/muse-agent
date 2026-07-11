@@ -87,3 +87,11 @@ ratchet: 로드맵 잔여 [ ] = 22/36 · self-eval pass · fabrication 0 · agen
 - 왜: PTC의 핵심(N스텝을 1예산으로)이 리팩터로 조용히 깨지면 PTC 무의미. hermes iteration_budget "PTC 환불" 참조. 불변식을 코드로 락.
 - 리뷰지점: Opus가 주석-only(로직 무변경)·행동락 양방향(선언-only 아님, drill이 방금 그 실패모드 잡음)·mutation-RED(스텝을 각 예산으로→toolsUsed 길이3 RED)·주석정확성 trace 확인.
 - 리스크: 없음(기존 동작 락, 무변경). 유저-가시 변화 0이라 CHANGELOG 생략(정직). 다음 D1-S5b2=서브에이전트 하위예산(신규 plumbing).
+
+## fire 11 · 2026-07-11 · skill v2.x · <commit-pending>
+meta: slice=D1-S5b2 · wave=W2 · pkg=@muse/multi-agent+apps/cli · kind=budget-isolation · verdict=PASS · firesSinceDrill=2
+ratchet: 로드맵 잔여 [ ] = 21/36 · self-eval pass · fabrication 0 · multi-agent+cli 29 test(신규+배선)
+- 무엇: 서브에이전트 별도 하위예산. 순수 resolveSubAgentToolBudget(부모→max(3,floor(부모×0.5)), uncapped→5, 워커 항상 cap) + ask-decompose 워커 execute에 shallow-override 배선(부모 상속 대신 sub-budget). synthesize/planner는 부모예산 유지. D1-S5 완료(b1+b2).
+- 왜: 워커가 부모 metadata.maxTools 전액 상속 → fan-out N워커면 N×부모 예산 가능. hermes parent90/sub50 참조. 워커는 focused 서브태스크라 작은 예산으로 충분.
+- 리뷰지점: Opus가 순수 규칙 가드 전수(0/neg/NaN/Inf/frac→항상 양의정수≥3)·행동 배선(워커=[5,5,5]·synthesis=10·args.metadata 무mutation)·부모추출 안전(uncapped→5)·mutation-RED 양방향·형제-감사 진실성 확인.
+- 리스크: orchestrator.ts(SupervisorAgent)·commands-board도 부모 metadata 상속(같은 클래스)이나 서버측·maxTools 관례 부재로 backlog follow-up(◦). 다음 D3-S1이 서브에이전트 depth 강등이라 인접.

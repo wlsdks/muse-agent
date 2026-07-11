@@ -34,6 +34,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
   automatic downgrade for any future unattended/trusted-run path is tracked as
   a follow-up.)
 
+- **Each helper in a split task gets its own smaller step budget.** When Muse
+  breaks a request into sub-tasks and works them with separate helper agents,
+  each helper now runs with a smaller step allowance of its own instead of
+  inheriting the whole task's budget — so several helpers running together can't
+  collectively balloon past the intended limit, keeping a split task bounded.
+
 - **Muse says when it's out of its step budget instead of stopping short.**
   A task is capped at a fixed number of tool actions so it can't spin forever.
   When Muse reaches that cap, it now explicitly tells itself it has used all of

@@ -264,6 +264,30 @@ describe("runDecomposedAgentAsk — failure handling (no partial-answer fabricat
   });
 });
 
+describe("runDecomposedAgentAsk — worker sub-agents get their OWN smaller tool-call budget", () => {
+  const listQuery = "다음 3개 해줘: 1. 회의록 요약 2. 액션아이템 추출 3. 일정 등록";
+
+  it("each WORKER run receives the halved sub-budget, not the parent's, and the parent metadata object is never mutated", async () => {
+    const seenMaxTools: Array<number | undefined> = [];
+    const runner = {
+      run: vi.fn(async (input: AgentRunInput): Promise<AskAgentRunResult> => {
+        const content = userContentOf(input);
+        const metadata = input.metadata as { maxTools?: number } | undefined;
+        seenMaxTools.push(metadata?.maxTools);
+        if (content.startsWith("사용자 요청:")) return { response: { output: "SYNTH" } };
+        return { response: { output: `done:${content}` } };
+      })
+    };
+    const metadata = { maxTools: 10 };
+    await runDecomposedAgentAsk({ ...baseArgs, metadata, query: listQuery, runner });
+
+    // 3 worker runs at the sub-budget (5), then 1 synthesis run at the parent budget (10).
+    expect(seenMaxTools.slice(0, 3)).toEqual([5, 5, 5]);
+    expect(seenMaxTools[3]).toBe(10);
+    expect(metadata.maxTools).toBe(10); // the caller's metadata object was never mutated
+  });
+});
+
 describe("runDecomposedAgentAsk — surfaces a sequenced step that ignored its upstream (MAST FM-2.6, live wiring)", () => {
   const seqQuery = "먼저 회의록을 요약하고 그 다음 그 요약에서 액션아이템을 추출해줘";
   it("a sequenced downstream step whose output ignores the upstream result populates reasoningActionGaps", async () => {

@@ -1,5 +1,5 @@
 import type { AgentRunInput } from "@muse/agent-core";
-import { detectSubtaskConflicts, detectSubtaskRedundancies, runLeadWorkerTask, verifySynthesisCoverage, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
+import { detectSubtaskConflicts, detectSubtaskRedundancies, resolveSubAgentToolBudget, runLeadWorkerTask, verifySynthesisCoverage, type LeadWorkerDeps, type SubtaskExecution } from "@muse/multi-agent";
 import { answerIsRefusal } from "@muse/recall";
 import type { JsonObject } from "@muse/shared";
 
@@ -114,13 +114,13 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
   const mergedTools = new Set<string>();
   let synthesisSourceNames: readonly string[] = [];
 
-  const runSubtaskMessage = async (userContent: string): Promise<AskAgentRunResult> => {
+  const runSubtaskMessage = async (userContent: string, maxToolsOverride?: number): Promise<AskAgentRunResult> => {
     const result = await args.runner.run({
       messages: [
         { content: args.systemPrompt, role: "system" },
         { content: userContent, role: "user" }
       ],
-      metadata: args.metadata,
+      metadata: maxToolsOverride === undefined ? args.metadata : { ...args.metadata, maxTools: maxToolsOverride },
       model: args.model
     } satisfies AgentRunInput);
     for (const s of result.groundingSources ?? []) sourceByName.set(s.source, s);
@@ -136,7 +136,12 @@ export async function runDecomposedAgentAsk(args: DecomposedAskArgs): Promise<De
       const userContent = priorContext && priorContext.length > 0
         ? `이전 단계 결과:\n${priorContext.join("\n\n")}\n\n이어서 처리: ${subtask.text}`
         : subtask.text;
-      const result = await runSubtaskMessage(userContent);
+      // A worker handles ONE focused sub-task — give it its own smaller budget so a
+      // fan-out of N workers doesn't each spend the full parent cap (N× the intended
+      // limit). Synthesis/planner below stay on the parent budget — they're lead-level
+      // fan-in/planning, not fanned-out workers.
+      const parentMaxTools = typeof args.metadata.maxTools === "number" ? args.metadata.maxTools : undefined;
+      const result = await runSubtaskMessage(userContent, resolveSubAgentToolBudget(parentMaxTools));
       return {
         output: result.response.output ?? "",
         sources: (result.groundingSources ?? []).map((s) => s.source)
