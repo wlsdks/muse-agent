@@ -750,7 +750,7 @@ delta-scout 주기에.
 쌍 테스트 필수), 🔒=fail-close 안전 슬라이스, 📈=eval 래칫 동반.
 
 #### W1 — 원칙 갭 (보안·루프이탈·PID)
-- [ ] **D2-S1a** 🔒 seatbelt 프로파일 생성기(cwd 삽입·이스케이프검증, Rust 순수함수) + 유닛
+- [x] **D2-S1a** ✅ 2026-07-11 seatbelt SBPL 프로파일 생성기(`build_seatbelt_profile`+`escape_sbpl_string`, 순수·미배선) — deny-default·file-read* broad·write는 cwd/$TMPDIR/pnpm·npm·cache만·network opt-in; 인젝션 이스케이프 Fable 검증. 26 test(12신규)·clippy clean. ⏭️b에서 배선
 - [ ] **D2-S1b** 🔒 runner `MUSE_RUNNER_SANDBOX=seatbelt` 배선 + 실프로세스 탈출 3종 계약 테스트 ⚠(정당명령 오탐 목록 → VQ-9)
 - [ ] **D2-S1c** 🔒 비-macOS "unsupported+경고" 폴백 + `muse doctor` 포스처 체크
 - [ ] **D2-S1d** 📈 eval:adversarial에 sandbox-탈출 케이스 추가(→ D2-S7과 합류 가능)

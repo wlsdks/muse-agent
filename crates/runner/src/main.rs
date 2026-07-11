@@ -305,6 +305,93 @@ fn describe_timeout(timeout_ms: u128) -> String {
     format!("command timed out after {timeout_ms}ms and was killed — it may be hanging; retry with a larger timeoutMs or a more targeted command.")
 }
 
+// --- macOS seatbelt sandbox profile (SBPL) generation ---
+//
+// D2-S1a builds ONLY the pure profile-string generator; wiring it into
+// `run_request`'s spawn path (via `sandbox-exec -p`) is sub-step D2-S1b, so
+// nothing below is called yet. `#[allow(dead_code)]` on each item is the
+// narrowest suppression for that gap rather than disabling the lint repo-wide.
+
+// Confirmed by prior investigation: the caches a normal build/test/tool
+// command legitimately writes into, relative to `$HOME`.
+const RW_CACHE_HOME_SUBPATHS: &[&str] = &["Library/pnpm/store", ".npm", ".cache"];
+
+#[allow(dead_code)] // wired into run_request in sub-step D2-S1b
+#[derive(Debug, Clone, Copy)]
+struct SeatbeltSpec<'a> {
+    cwd: Option<&'a str>,
+    tmpdir: &'a str,
+    home: Option<&'a str>,
+    allow_network: bool,
+}
+
+// SBPL double-quoted strings are a security boundary: an unescaped `"` in a
+// cwd/tmpdir/home path could close the string early and splice attacker-
+// controlled SBPL into the profile. Escape backslash and quote, and strip
+// control characters (a raw newline would otherwise break a rule onto its
+// own malformed line, which is just as dangerous as an unescaped quote).
+#[allow(dead_code)] // wired into run_request in sub-step D2-S1b
+fn escape_sbpl_string(path: &str) -> String {
+    let mut escaped = String::with_capacity(path.len());
+    for ch in path.chars() {
+        match ch {
+            '\\' => escaped.push_str("\\\\"),
+            '"' => escaped.push_str("\\\""),
+            c if c.is_control() => {}
+            c => escaped.push(c),
+        }
+    }
+    escaped
+}
+
+#[allow(dead_code)] // wired into run_request in sub-step D2-S1b
+fn build_seatbelt_profile(spec: &SeatbeltSpec) -> String {
+    let mut profile = String::new();
+    profile.push_str("(version 1)\n");
+    profile.push_str("(deny default)\n\n");
+
+    // Minimal process-launch allowances a spawned program needs to actually
+    // run under the sandbox at all — without these the child can't fork,
+    // exec, signal itself, or look up its own mach services, so it would
+    // fail before doing anything the sandbox is meant to gate.
+    profile.push_str("(allow process-fork)\n");
+    profile.push_str("(allow process-exec*)\n");
+    profile.push_str("(allow signal (target self))\n");
+    profile.push_str("(allow sysctl-read)\n");
+    profile.push_str("(allow mach-lookup)\n\n");
+
+    // Reading the filesystem is not the threat this sandbox gates — destructive
+    // writes and network exfiltration are. So reads stay broadly allowed and
+    // only writes/network get the deny-by-default treatment below.
+    profile.push_str("(allow file-read*)\n\n");
+
+    if let Some(cwd) = spec.cwd {
+        profile.push_str(&format!("(allow file-write* (subpath \"{}\"))\n", escape_sbpl_string(cwd)));
+    }
+    profile.push_str(&format!("(allow file-write* (subpath \"{}\"))\n", escape_sbpl_string(spec.tmpdir)));
+
+    if let Some(home) = spec.home {
+        let home = home.trim_end_matches('/');
+        for suffix in RW_CACHE_HOME_SUBPATHS {
+            let path = format!("{home}/{suffix}");
+            profile.push_str(&format!("(allow file-write* (subpath \"{}\"))\n", escape_sbpl_string(&path)));
+        }
+    }
+    // `home: None` omits the cache rules entirely rather than emitting a
+    // literal "~" — SBPL does not expand tildes, so a literal one would just
+    // be a dead, wrong rule.
+
+    if spec.allow_network {
+        profile.push('\n');
+        profile.push_str("(allow network*)\n");
+    }
+    // allow_network == false: no explicit network rule — `(deny default)`
+    // above already denies it, and adding a redundant `(deny network*)` would
+    // just be noise.
+
+    profile
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -518,6 +605,147 @@ mod tests {
         assert_eq!(effective_max_output_bytes(Some(5_000_000_000)), MAX_OUTPUT_BYTES);
         assert_eq!(effective_max_output_bytes(Some(1024)), 1024);
         assert_eq!(effective_max_output_bytes(None), DEFAULT_MAX_OUTPUT_BYTES);
+    }
+
+    #[test]
+    fn seatbelt_profile_has_the_version_header_and_denies_by_default() {
+        let spec = SeatbeltSpec { cwd: None, tmpdir: "/tmp", home: None, allow_network: false };
+        let profile = build_seatbelt_profile(&spec);
+        assert!(profile.starts_with("(version 1)\n"), "version header must lead the profile: {profile}");
+        assert!(profile.contains("(deny default)"), "profile must deny by default: {profile}");
+    }
+
+    #[test]
+    fn seatbelt_profile_allows_file_reads_broadly() {
+        let spec = SeatbeltSpec { cwd: None, tmpdir: "/tmp", home: None, allow_network: false };
+        let profile = build_seatbelt_profile(&spec);
+        assert!(profile.contains("(allow file-read*)"), "reads are not the gated threat: {profile}");
+    }
+
+    #[test]
+    fn seatbelt_profile_allows_write_under_cwd_when_present() {
+        let spec = SeatbeltSpec { cwd: Some("/tmp/work"), tmpdir: "/var/tmp", home: None, allow_network: false };
+        let profile = build_seatbelt_profile(&spec);
+        assert!(
+            profile.contains("(allow file-write* (subpath \"/tmp/work\"))"),
+            "cwd must get a write rule: {profile}"
+        );
+    }
+
+    #[test]
+    fn seatbelt_profile_has_no_cwd_write_rule_when_cwd_absent() {
+        let spec = SeatbeltSpec { cwd: None, tmpdir: "/var/tmp", home: None, allow_network: false };
+        let profile = build_seatbelt_profile(&spec);
+        // Only the tmpdir write rule should be present — no other subpath rule.
+        let write_rule_count = profile.matches("(allow file-write*").count();
+        assert_eq!(write_rule_count, 1, "only the tmpdir write rule, no cwd rule: {profile}");
+    }
+
+    #[test]
+    fn seatbelt_profile_always_allows_write_under_tmpdir() {
+        let spec = SeatbeltSpec { cwd: None, tmpdir: "/private/var/tmp", home: None, allow_network: false };
+        let profile = build_seatbelt_profile(&spec);
+        assert!(
+            profile.contains("(allow file-write* (subpath \"/private/var/tmp\"))"),
+            "tmpdir must always get a write rule: {profile}"
+        );
+    }
+
+    #[test]
+    fn seatbelt_profile_denies_network_by_default_and_allows_when_requested() {
+        let denied = build_seatbelt_profile(&SeatbeltSpec { cwd: None, tmpdir: "/tmp", home: None, allow_network: false });
+        assert!(!denied.contains("(allow network*)"), "network must not be allowed by default: {denied}");
+
+        let allowed = build_seatbelt_profile(&SeatbeltSpec { cwd: None, tmpdir: "/tmp", home: None, allow_network: true });
+        assert_eq!(
+            allowed.matches("(allow network*)").count(),
+            1,
+            "exactly one network allowance when opted in: {allowed}"
+        );
+    }
+
+    #[test]
+    fn seatbelt_profile_expands_home_into_absolute_cache_write_rules() {
+        let spec = SeatbeltSpec { cwd: None, tmpdir: "/tmp", home: Some("/Users/x"), allow_network: false };
+        let profile = build_seatbelt_profile(&spec);
+        assert!(profile.contains("(allow file-write* (subpath \"/Users/x/Library/pnpm/store\"))"), "{profile}");
+        assert!(profile.contains("(allow file-write* (subpath \"/Users/x/.npm\"))"), "{profile}");
+        assert!(profile.contains("(allow file-write* (subpath \"/Users/x/.cache\"))"), "{profile}");
+        assert!(!profile.contains('~'), "no literal tilde — SBPL never expands it: {profile}");
+    }
+
+    #[test]
+    fn seatbelt_profile_omits_cache_write_rules_when_home_is_absent() {
+        let spec = SeatbeltSpec { cwd: None, tmpdir: "/tmp", home: None, allow_network: false };
+        let profile = build_seatbelt_profile(&spec);
+        assert!(!profile.contains("pnpm/store"), "no pnpm cache rule without a home: {profile}");
+        assert!(!profile.contains(".npm"), "no npm cache rule without a home: {profile}");
+        assert!(!profile.contains(".cache"), "no generic cache rule without a home: {profile}");
+        assert!(!profile.contains('~'), "no literal tilde stand-in either: {profile}");
+    }
+
+    #[test]
+    fn seatbelt_profile_end_to_end_example_matches_expected_shape() {
+        let spec = SeatbeltSpec {
+            cwd: Some("/tmp/work"),
+            tmpdir: "/var/tmp",
+            home: Some("/Users/x"),
+            allow_network: false,
+        };
+        let profile = build_seatbelt_profile(&spec);
+        assert!(profile.starts_with("(version 1)\n(deny default)\n"));
+        assert!(profile.contains("(allow process-exec*)"));
+        assert!(profile.contains("(allow file-read*)"));
+        assert!(profile.contains("(allow file-write* (subpath \"/tmp/work\"))"));
+        assert!(profile.contains("(allow file-write* (subpath \"/var/tmp\"))"));
+        assert!(profile.contains("(allow file-write* (subpath \"/Users/x/Library/pnpm/store\"))"));
+        assert!(!profile.contains("(allow network*)"));
+    }
+
+    #[test]
+    fn escape_sbpl_string_escapes_quotes_and_backslashes_so_no_unescaped_quote_survives() {
+        let raw = r#"/tmp/evil"))(allow network*)(dummy "path\end"#;
+        let escaped = escape_sbpl_string(raw);
+        assert_eq!(
+            escaped,
+            r#"/tmp/evil\"))(allow network*)(dummy \"path\\end"#,
+            "every quote and backslash must be escaped exactly: {escaped}"
+        );
+        // Splicing the escaped form into a double-quoted SBPL literal must not
+        // let an unescaped `"` close the string early.
+        assert!(!would_close_early(&escaped), "no unescaped quote should close the SBPL string early: {escaped}");
+    }
+
+    #[test]
+    fn escape_sbpl_string_strips_control_characters() {
+        let raw = "/tmp/evil\n(allow network*)\t\r";
+        let escaped = escape_sbpl_string(raw);
+        assert_eq!(escaped, "/tmp/evil(allow network*)", "control chars are stripped, not passed through: {escaped}");
+        assert!(!escaped.contains('\n') && !escaped.contains('\t') && !escaped.contains('\r'));
+    }
+
+    // Helper for the escaping test: walks the (already-escaped) inner content
+    // and confirms no `"` appears without a preceding odd number of `\`s
+    // (i.e. every `"` is escaped, so none of them could close the profile's
+    // enclosing string early).
+    fn would_close_early(escaped_inner: &str) -> bool {
+        let chars: Vec<char> = escaped_inner.chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            if chars[i] == '"' {
+                let mut backslashes = 0;
+                let mut j = i;
+                while j > 0 && chars[j - 1] == '\\' {
+                    backslashes += 1;
+                    j -= 1;
+                }
+                if backslashes % 2 == 0 {
+                    return true;
+                }
+            }
+            i += 1;
+        }
+        false
     }
 }
 
