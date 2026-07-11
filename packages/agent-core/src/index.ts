@@ -280,6 +280,7 @@ export { actionToolRan, answerClaimsAction, answerPromisesAction, classifyAction
 export { casualResponseFor } from "./casual-prompt-responses.js";
 export { calibrateAbstention, calibrateAbstentionByGroup, conformalThreshold, empiricalCoverage, type CalibrationResult, type GroupCalibrationResult, type GroupedScore } from "./conformal.js";
 export { runResistingFalseDone, type RunWithOutput } from "./false-done-reprompt.js";
+export { guardAgainstUnbackedActionClaim, unbackedActionNoticeFor } from "./honest-action-guard.js";
 export { DEFAULT_QUORUM, independentWitnessCount, quorumVerdict, type QuorumVerdict } from "./quorum.js";
 export { overdueContacts, type ContactInteractions, type OverdueContact, type OverdueOptions } from "./relationship-decay.js";
 export { selectEarnedThemes, type EarnedProactivityOptions, type EarnedTheme, type ThemeOccurrence, type ThemeSignal } from "./earned-proactivity.js";

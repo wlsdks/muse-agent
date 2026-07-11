@@ -18,6 +18,7 @@
 import { Readable } from "node:stream";
 import {
   buildModelRequestWithWebSearch,
+  guardAgainstUnbackedActionClaim,
   type AgentRunInput
 } from "@muse/agent-core";
 import { gateChatAnswerGrounding } from "@muse/recall";
@@ -54,6 +55,7 @@ export async function runChat(
     });
   }
 
+  const agentRuntime = options.agentRuntime;
   const parsed = parseAgentRunInput(body, options.defaultModel ?? "default", authUserId);
 
   if (!parsed.ok) {
@@ -63,23 +65,43 @@ export async function runChat(
   const runInput = await applyWebSearchPolicy(parsed.value, body, options);
 
   try {
-    const result = await options.agentRuntime.run(runInput);
+    const result = await agentRuntime.run(runInput);
     // Grounding parity with the CLI chat surface: gate the raw agent output before
     // it leaves, so a fabricated/uncited claim is dropped by code (fabrication=0)
     // while a properly grounded answer passes UNCHANGED. Evidence is what THIS turn
     // produced — the read-tool outputs / injected inbox in `groundingSources`.
+    const question = lastUserQuestion(runInput.messages);
     const gate = gateChatAnswerGrounding({
       answer: result.response.output,
       evidence: [...(result.groundingSources ?? [])],
-      question: lastUserQuestion(runInput.messages)
+      question
     });
     const grounded = gate.gated
       ? { ...result, response: { ...result.response, output: gate.answer } }
       : result;
-    return responseMode === "compat" ? toCompatChatResponse(grounded, gate) : toExtendedChatResponse(grounded, gate);
+    // Honest-action gate (channel-reply parity, `honest-action-guard.ts`): the
+    // model can claim a completed state-changing action ("일정을 등록했습니다")
+    // while NO actuator tool ran. Bound to one clean-history retry (mirrors the
+    // CLI's `runResistingFalseDone`); if the retry also fails to act, the claim
+    // is replaced with a short honest notice rather than reaching the user.
+    const honest = await guardAgainstUnbackedActionClaim({
+      firstResult: grounded,
+      query: question,
+      retry: () => agentRuntime.run({ ...runInput, messages: cleanRetryMessages(runInput.messages) })
+    });
+    return responseMode === "compat" ? toCompatChatResponse(honest, gate) : toExtendedChatResponse(honest, gate);
   } catch (error) {
     return sendAgentError(reply, error, responseMode);
   }
+}
+
+/** A CLEAN-history retry payload — system message(s) + only the latest user
+ *  turn — so a poisoned prior "done" claim in history can't make the model
+ *  skip the tool again (mirrors the CLI's `runResistingFalseDone` retry). */
+function cleanRetryMessages(messages: AgentRunInput["messages"]): AgentRunInput["messages"] {
+  const systemMessages = messages.filter((message) => message.role === "system");
+  const lastUser = [...messages].reverse().find((message) => message.role === "user");
+  return lastUser ? [...systemMessages, lastUser] : messages;
 }
 
 /** The user's own last turn — the question the grounding gate scores the answer
