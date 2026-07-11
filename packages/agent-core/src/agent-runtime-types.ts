@@ -21,6 +21,7 @@ import type { AgentMetrics, MuseTracer, TokenUsageSink } from "@muse/observabili
 import type { ExemplarRetriever, PromptLayerRegistry } from "@muse/prompts";
 
 import type { ToolCallMiddleware } from "./tool-call-middleware.js";
+import type { PersonaRegister } from "./conversational-register.js";
 import type { CircuitBreaker, FallbackStrategy, RetryOptions } from "@muse/resilience";
 import type {
   AgentRunHistoryStore,
@@ -173,6 +174,14 @@ export interface AgentRuntimeOptions {
   readonly toolExemplarBank?: readonly ToolExemplar[];
   readonly toolExemplarTopK?: number;
   readonly promptLayerRegistry?: PromptLayerRegistry;
+  /**
+   * The `persona.md` `register` frontmatter setting (docs/strategy/
+   * prompt-architecture.md §4), read once at startup alongside the
+   * personality `PromptLayer`. WINS over per-turn 반말/존댓말 detection —
+   * the user configured it deliberately. Undefined ⇒ detection alone
+   * decides the register mirrored in `applyPromptLayers`.
+   */
+  readonly personaRegister?: PersonaRegister;
   /**
    * Context Engineering Phase 1: pull current time / timezone /
    * working-hours / active task and inject as a `[Active Context]`

@@ -96,4 +96,103 @@ describe("applyPromptLayers", () => {
     expect(result.input.messages[0]!.content).toContain("<!-- muse:prompt-layers -->");
     expect(result.input.metadata?.promptLayerIds).toEqual(["L1", "L2"]);
   });
+
+  describe("register-mirroring + brevity layer (docs/strategy/prompt-architecture.md §4 D2)", () => {
+    it("a 반말 turn produces a system prompt mirroring 반말, with identity still first", () => {
+      const result = applyPromptLayers(
+        context([{ role: "user", content: "야 오늘 뭐하지" }]),
+        "openai",
+        "gpt-4",
+        undefined,
+      );
+      const content = result.input.messages[0]!.content;
+      const identityIndex = content.indexOf(MUSE_IDENTITY_CORE);
+      expect(identityIndex).toBeGreaterThanOrEqual(0);
+      // Identity is the FIRST content the "<!-- muse:prompt-layers -->" marker
+      // wraps — only the marker + one newline precede it.
+      expect(content.slice(0, identityIndex).trim()).toBe("<!-- muse:prompt-layers -->");
+      expect(identityIndex).toBeLessThan(content.indexOf("반말"));
+    });
+
+    it("a 존댓말 turn produces a system prompt instructing 존댓말", () => {
+      const result = applyPromptLayers(
+        context([{ role: "user", content: "오늘 일정 알려주세요" }]),
+        "openai",
+        "gpt-4",
+        undefined,
+      );
+      expect(result.input.messages[0]!.content).toContain("존댓말을 유지하라");
+    });
+
+    it("does NOT pollute promptLayerIds metadata (that stays scoped to registry layers)", () => {
+      const result = applyPromptLayers(
+        context([{ role: "user", content: "야 오늘 뭐하지" }]),
+        "openai",
+        "gpt-4",
+        registryReturning([{ id: "L1", content: "Rule one", section: "stable" }]),
+      );
+      expect(result.input.metadata?.promptLayerIds).toEqual(["L1"]);
+    });
+
+    it("an explicit personaRegister WINS over a conflicting detected register", () => {
+      const result = applyPromptLayers(
+        context([{ role: "user", content: "오늘 일정 알려주세요" }]),
+        "openai",
+        "gpt-4",
+        undefined,
+        "반말",
+      );
+      const content = result.input.messages[0]!.content;
+      expect(content).toContain("반말");
+      expect(content).not.toContain("존댓말을 유지하라");
+    });
+
+    it("a non-Korean, non-casual turn adds no register/brevity content and stays byte-compatible", () => {
+      const result = applyPromptLayers(
+        context([{ role: "user", content: "Please provide a comprehensive analysis of quantum computing algorithms." }]),
+        "openai",
+        "gpt-4",
+        undefined,
+      );
+      const content = result.input.messages[0]!.content;
+      expect(content).not.toContain("사용자가 반말을 썼다");
+      expect(content).not.toContain("존댓말을 유지하라");
+      expect(content).not.toContain("1~2문장");
+    });
+  });
+});
+
+describe("register/brevity layer is a HUMAN-turn feature (machine-authored runs must not be truncated)", () => {
+  it("does not attach the layer when the run is marked as an internal/machine turn", () => {
+    // The adversarial gate found the layer riding along on today-brief /
+    // reminder-synthesis / multi-agent worker runs, whose "user" message is a
+    // machine-authored Korean fact sheet — a casual-looking one would inject
+    // "1~2문장으로 짧게" and truncate an internal synthesis step.
+    const context = {
+      input: {
+        messages: [{ content: "오늘 일정: 회의 3건, 리마인더 2건. 요약해.", role: "user" as const }],
+        metadata: { internalTurn: true },
+        model: "ollama/gemma4:12b"
+      }
+    } as unknown as Parameters<typeof applyPromptLayers>[0];
+
+    const out = applyPromptLayers(context, "ollama", "gemma4:12b", undefined);
+    const system = out.input.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    expect(system).not.toContain("사용자가 반말을 썼다");
+    expect(system).not.toContain("1~2문장");
+  });
+
+  it("still attaches the layer for a real user turn (no metadata flag)", () => {
+    const context = {
+      input: {
+        messages: [{ content: "야 오늘 뭐하지", role: "user" as const }],
+        metadata: {},
+        model: "ollama/gemma4:12b"
+      }
+    } as unknown as Parameters<typeof applyPromptLayers>[0];
+
+    const out = applyPromptLayers(context, "ollama", "gemma4:12b", undefined);
+    const system = out.input.messages.filter((m) => m.role === "system").map((m) => m.content).join("\n");
+    expect(system).toContain("사용자가 반말을 썼다");
+  });
 });

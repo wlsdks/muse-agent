@@ -227,3 +227,12 @@ ratchet: 로드맵 잔여 [ ] = 28/59 · self-eval pass · fabrication 0 · cli 
 - 왜: D4-S1c(read 확대)의 태스크 조각. hermes mcp_serve read 계열 확대(recall/notes·캘린더·태스크). 외부 에이전트가 유저 to-do를 read(생성/완료/변경 불가=read-only).
 - 리뷰지점: Opus PASS — status pass-through(fake가 정확 "done"/"all" 받음, "open" 하드코딩 아님)·invalid fail-close(spy로 source 미호출)·OUTCOME 채점(status 정확·태스크 round-trip ISO)·두 mutation 독립 재현(하드코딩→pass-through RED, 가드 제거→fail-close RED)·barrel export benign(기존 Task 타입 노출, no 신규심볼)·read-only.
 - 리스크: 낮음. read-only(태스크 변경 없음). completedAt ISO 직렬화는 테스트 미직접(calendar endsAt이 동일 패턴 커버, coverage nit). eval:tools N/A(outbound MCP). 다음 = D4-S1c3(실 stdio subprocess 왕복 계약 — spawn muse mcp serve→JSON-RPC, InMemory 아닌 실프로세스). D4-S1c3 완료 시 D4-S1(mcp serve 확장) 전체 완주.
+
+## fire 28 · 2026-07-12 · skill v2.x · f97f43515
+meta: slice=D4-S1c3 · wave=W3 · pkg=apps/cli(scripts) · kind=mcp-stdio-contract · verdict=PASS · firesSinceDrill=2 · ★D4-S1 완주
+ratchet: 로드맵 잔여 [ ] = 27/59 · self-eval pass · fabrication 0 · mcp:stdio-contract 신규(실 subprocess 라이브 PASS)·ENV.md MUSE_CALENDAR_FILE apps/cli reader
+- 무엇: MCP 실 stdio subprocess 왕복 계약. verify-mcp-stdio-contract.mjs(pnpm mcp:stdio-contract, 모델-free): 실 muse mcp serve를 StdioClientTransport(process.execPath+dist)로 spawn→initialize→tools/list(6툴)→tasks_read로 seed된 2 태스크 round-trip(count·title)+status open→1. InMemory 아닌 실 stdio wire 실증. 형제 MCP_SERVE_INSTRUCTIONS stale("3 tools"→정확한 6툴, propose_action=park-not-execute) 수정. D4-S1(mcp serve 확장) 전체 완주(a·b·c1·c2·c3).
+- 왜: 기존 verify-mcp-serve-grounding은 InMemoryTransport(in-process 프로토콜)라 실 subprocess spawn+stdio framing 미실증. hermes mcp_serve "자신을 MCP 서버로"의 실 계약(stdio 왕복) 요건. "조립경로 몰면 거짓" 교훈 정합(실 wire).
+- 리뷰지점: Opus 라이브 재실행 PASS — 실 subprocess("listening on stdio (6 tools)" stderr)·InMemory 아님·seed 데이터 round-trip data-sensitive(mutation seed 1개→count RED exit 1, 데이터 민감 재현)·skip=spawn실패만/assertion실패=exit 1(정직)·MCP_SERVE_INSTRUCTIONS 정확+정직(propose_action park qualify)·cleanup leak-free(client.close→subprocess kill·temp rm).
+- 리스크: 낮음. 계약 스크립트라 CI서 dist 빌드 필요(pnpm mcp:stdio-contract가 build 선행). ENV.md MUSE_CALENDAR_FILE에 apps/cli reader 추가(내 c1/c3가 참조)=docs:env 내 슬라이스 포함. 다음 = D4-S2a(macOS Photos 검색/내보내기, mac_photos actuator 확장).
+- lesson: 실-wire 계약 테스트는 seed된 알려진 데이터를 round-trip 어서(count·title)하면 데이터 민감=tautology 아님이 구조적으로 보장(연결됨만 확인하는 약한 테스트 회피).

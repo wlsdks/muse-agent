@@ -1,7 +1,8 @@
 import { homedir } from "node:os";
 
+import type { AgentRuntime } from "@muse/agent-core";
 import type { MessagingProviderRegistry } from "@muse/messaging";
-import type { RunDueProactiveNoticesOptions, RunDueRemindersOptions } from "@muse/proactivity";
+import type { ProactiveAgentRuntimeLike, RunDueProactiveNoticesOptions, RunDueRemindersOptions } from "@muse/proactivity";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { resolveAmbientSignalFile, resolveInterruptionBudgetWiring, resolveProactiveTrustFile } from "./tick-daemons.js";
@@ -110,6 +111,19 @@ describe("interruption-budget exemption pin — reminders + calendar/task-immine
       providerId: "x",
       sidecarFile: "x"
     };
+    expect(pin).toBeDefined();
+  });
+});
+
+describe("AgentRuntime satisfies ProactiveAgentRuntimeLike (compile-time pin, checked by `tsc -b`)", () => {
+  it("the real agent-core AgentRuntime is assignable where startReminderTick/startProactiveTick pass options.agentRuntime through", () => {
+    // If this stops compiling, the two structural duck-types (this file's
+    // `ProactiveAgentRuntimeLike` and agent-core's `AgentRunInput`) have
+    // drifted apart again — exactly the tick-daemons.ts:98/155 regression
+    // this pin exists to catch, without apps/api needing a full clean
+    // `tsc -b` run to notice (narrow per-edit builds skip it otherwise).
+    const runtime = {} as AgentRuntime;
+    const pin: ProactiveAgentRuntimeLike = runtime;
     expect(pin).toBeDefined();
   });
 });

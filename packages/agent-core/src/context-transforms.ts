@@ -29,6 +29,7 @@ import {
 } from "@muse/prompts";
 
 import { renderActiveContextSection, type ActiveContextProvider, type ActiveContextSnapshot } from "./active-context.js";
+import { buildRegisterBrevityLayer, type PersonaRegister } from "./conversational-register.js";
 import {
   renderEpisodicSection,
   type EpisodicRecallProvider,
@@ -473,12 +474,21 @@ export async function persistConversationSummaryFromRequest(
  * the real HTTP path (a fresh /api/chat request with no client-supplied
  * `systemPrompt` reached the model with none). `composeSurfacePrompt`
  * always runs now; registry layers, when present, ADD on top of it.
+ *
+ * `personaRegister` is the explicit `persona.md` `register` setting
+ * (undefined when unconfigured) — it and the current turn's user text feed
+ * `buildRegisterBrevityLayer` (docs/strategy/prompt-architecture.md §4 D2),
+ * a dynamic layer that mirrors the user's 반말/존댓말 register and, on a
+ * casual turn, caps the reply to 1-2 sentences. This layer is composed into
+ * the system prompt but deliberately kept OUT of `promptLayerIds` metadata,
+ * which stays scoped to registry-resolved layers (its existing contract).
  */
 export function applyPromptLayers(
   context: AgentRunContext,
   providerId: string,
   model: string,
-  registry: PromptLayerRegistry | undefined
+  registry: PromptLayerRegistry | undefined,
+  personaRegister?: PersonaRegister
 ): AgentRunContext {
   const resolveContext: PromptLayerContext = {
     model,
@@ -486,8 +496,23 @@ export function applyPromptLayers(
     promptTemplateId: metadataString(context.input.metadata, "promptTemplateId"),
     providerId
   };
-  const layers: readonly PromptLayer[] = registry ? registry.resolve(resolveContext) : [];
-  const systemPrompt = composeSurfacePrompt("chat", {}, { ...resolveContext, layers });
+  const registryLayers: readonly PromptLayer[] = registry ? registry.resolve(resolveContext) : [];
+  // Register-mirroring and brevity are HUMAN-conversation features. Internal
+  // runs (today-brief, reminder/notice synthesis, multi-agent workers) pass a
+  // machine-authored fact sheet as the "user" message; a casual-looking one
+  // would inject "1~2문장으로 짧게" and truncate that synthesis. Callers mark
+  // those runs with `metadata.internalTurn`.
+  const isInternalTurn = context.input.metadata?.["internalTurn"] === true;
+  const registerBrevityLayer = isInternalTurn
+    ? undefined
+    : buildRegisterBrevityLayer({
+        personaRegister,
+        userText: latestUserPrompt(context.input.messages)
+      });
+  const composedLayers: readonly PromptLayer[] = registerBrevityLayer
+    ? [...registryLayers, registerBrevityLayer]
+    : registryLayers;
+  const systemPrompt = composeSurfacePrompt("chat", {}, { ...resolveContext, layers: composedLayers });
 
   return {
     ...context,
@@ -496,7 +521,7 @@ export function applyPromptLayers(
       messages: appendSystemSection(context.input.messages, systemPrompt, "prompt-layers"),
       metadata: {
         ...context.input.metadata,
-        ...(layers.length > 0 ? { promptLayerIds: layers.map((layer) => layer.id) } : {})
+        ...(registryLayers.length > 0 ? { promptLayerIds: registryLayers.map((layer) => layer.id) } : {})
       }
     }
   };

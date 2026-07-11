@@ -22,7 +22,8 @@ import {
   type AgentInitiatedNoticeBroker,
   type AgentRuntime,
   type CapturedFollowup,
-  type HookStage
+  type HookStage,
+  type PersonaRegister
 } from "@muse/agent-core";
 import {
   DEFAULT_AGENT_SPECS,
@@ -68,7 +69,7 @@ import {
   type TokenUsageSink
 } from "@muse/observability";
 
-import { resolvePersonaFilePath, resolveRuntimePersonaLayerSync } from "@muse/recall";
+import { loadUserPersonaSync, resolvePersonaFilePath, resolveRuntimePersonaLayerSync } from "@muse/recall";
 import { InMemoryPromptLayerRegistry } from "@muse/prompts";
 import { CircuitBreakerRegistry } from "@muse/resilience";
 import { RuntimeSettings } from "@muse/runtime-settings";
@@ -335,6 +336,14 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
   if (startupPersonaLayer) {
     promptLayerRegistry.register(startupPersonaLayer);
   }
+  // The explicit persona.md `register` setting (docs/strategy/
+  // prompt-architecture.md §4) — WINS over per-turn 반말/존댓말 detection in
+  // applyPromptLayers. Same fail-open posture as the layer load above: an
+  // absent/invalid file just yields undefined (detection alone decides).
+  const startupPersonaLoad = loadUserPersonaSync(personaFilePath);
+  const personaRegister = startupPersonaLoad.exists && startupPersonaLoad.ok
+    ? startupPersonaLoad.frontmatter.register
+    : undefined;
 
   const observability = buildObservabilityStack(env, db);
   const {
@@ -452,6 +461,7 @@ export function createMuseRuntimeAssembly(options: ApiServerAssemblyOptions = {}
     historyStore,
     hookTraceStore,
     modelProvider,
+    personaRegister,
     playbookProvider,
     planCacheProvider,
     promptLayerRegistry,
@@ -984,6 +994,7 @@ function buildAgentRuntime(params: {
   readonly skillRegistryPromise: ReturnType<typeof createSkillRuntime>["skillRegistryPromise"];
   readonly telemetryAggregator: ReturnType<typeof buildTelemetryAggregator>;
   readonly promptLayerRegistry: InMemoryPromptLayerRegistry;
+  readonly personaRegister: PersonaRegister | undefined;
   readonly responseCache: InMemoryResponseCache;
 }): AgentRuntime | undefined {
   const {
@@ -1013,6 +1024,7 @@ function buildAgentRuntime(params: {
     skillRegistryPromise,
     telemetryAggregator,
     promptLayerRegistry,
+    personaRegister,
     responseCache
   } = params;
 
@@ -1060,6 +1072,7 @@ function buildAgentRuntime(params: {
       metrics: runtimeAgentMetrics,
       modelProvider,
       promptLayerRegistry,
+      ...(personaRegister ? { personaRegister } : {}),
       // Grounding-first answer temperature, set explicitly so the runtime
       // doesn't inherit the model's Ollama Modelfile default (gemma4 ships 1.0).
       defaults: { temperature: resolveAnswerTemperature(env) },

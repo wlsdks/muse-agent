@@ -62,6 +62,21 @@ describe("composeSurfacePrompt — chat", () => {
     expect(layerIndex).toBeGreaterThan(identityIndex);
     expect(roleIndex).toBeGreaterThan(layerIndex);
   });
+
+  it("a DYNAMIC caller layer (e.g. personalization/register-brevity) lands after the cache boundary, identity stays at position 0, exactly one boundary marker", () => {
+    const prompt = composeSurfacePrompt("chat", {}, {
+      layers: [
+        { content: "CALLER_STABLE_TEXT", id: "personality", section: "stable" },
+        { content: "REGISTER_BREVITY_DYNAMIC_TEXT", id: "personalization/register-brevity", section: "dynamic" }
+      ]
+    });
+    expect(prompt.startsWith(MUSE_IDENTITY_CORE)).toBe(true);
+    const boundary = prompt.indexOf(MUSE_CACHE_BOUNDARY_MARKER);
+    expect(boundary).toBeGreaterThan(-1);
+    expect(prompt.split(MUSE_CACHE_BOUNDARY_MARKER).length - 1).toBe(1);
+    expect(prompt.indexOf("CALLER_STABLE_TEXT")).toBeLessThan(boundary);
+    expect(prompt.indexOf("REGISTER_BREVITY_DYNAMIC_TEXT")).toBeGreaterThan(boundary);
+  });
 });
 
 describe("composeSurfacePrompt — ask", () => {

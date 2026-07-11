@@ -524,6 +524,19 @@ describe("createInboundAgentRun casual fast-path", () => {
     expect(agentCalls).toHaveLength(0);
   });
 
+  it("a Korean casual greeting/thanks/farewell answers in Korean, not the English canned reply", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "muse-casual-ko-"));
+    const agentCalls: string[] = [];
+    const run = buildCasual(dir, agentCalls);
+    for (const [content, kind] of [["안녕~", "greeting"], ["고마워", "thanks"], ["잘자", "farewell"]] as const) {
+      const reply = await run({ messages: [{ content, role: "user" }], providerId: "log", scope: "direct", source: "owner-1" });
+      expect(reply, content).toBe(casualResponseFor(kind, true));
+      expect(reply, content).not.toBe(casualResponseFor(kind));
+      expect(reply, content).toMatch(/[가-힣]/u);
+    }
+    expect(agentCalls).toHaveLength(0);
+  });
+
   it("a real question still runs the full agent exactly as before", async () => {
     const dir = mkdtempSync(join(tmpdir(), "muse-casual-"));
     const agentCalls: string[] = [];

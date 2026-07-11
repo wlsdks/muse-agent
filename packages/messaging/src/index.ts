@@ -17,6 +17,8 @@ export {
 
 export { appendReplyCursor, readReplyCursor } from "./inbox-reply-cursor.js";
 
+export { appendAckCursor, readAckCursor } from "./inbox-ack-cursor.js";
+
 export {
   appendThreadTurns,
   readThread,

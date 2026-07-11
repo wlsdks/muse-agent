@@ -10,6 +10,12 @@ move from `Unreleased` to dated/versioned headings. Version policy:
 
 ### Added
 
+- **A connected tool now gets an accurate description of what Muse offers.**
+  When another app connects to Muse's MCP server, the summary it receives now
+  lists all of Muse's tools correctly (recall, note search, your model, calendar,
+  and tasks — read-only — plus proposing an action for your approval), instead of
+  an outdated list of three.
+
 - **Connected tools can read your to-do list.** An agent connected to Muse's
   MCP server can now see your tasks — open ones by default, or finished ones, or
   all — without being able to add, complete, or change anything. An unrecognized

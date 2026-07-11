@@ -25,6 +25,7 @@ import {
   type TokenUsageSink
 } from "@muse/observability";
 import type { ExemplarRetriever, PromptLayerRegistry } from "@muse/prompts";
+import type { PersonaRegister } from "./conversational-register.js";
 import type { CircuitBreaker, FallbackStrategy, RetryOptions } from "@muse/resilience";
 import type {
   AgentRunHistoryStore,
@@ -245,6 +246,7 @@ export class AgentRuntime {
   private readonly toolExemplarBank?: readonly ToolExemplar[];
   private readonly toolExemplarTopK: number;
   private readonly promptLayerRegistry?: PromptLayerRegistry;
+  private readonly personaRegister?: PersonaRegister;
   private readonly activeContextProvider?: ActiveContextProvider;
   private readonly ambientSnapshotProvider?: AmbientSnapshotProvider;
   private readonly vetoAvoidanceProvider?: VetoAvoidanceProvider;
@@ -324,6 +326,7 @@ export class AgentRuntime {
     this.toolExemplarBank = options.toolExemplarBank;
     this.toolExemplarTopK = Math.max(1, options.toolExemplarTopK ?? 3);
     this.promptLayerRegistry = options.promptLayerRegistry;
+    this.personaRegister = options.personaRegister;
     this.activeContextProvider = options.activeContextProvider;
     this.ambientSnapshotProvider = options.ambientSnapshotProvider;
     this.vetoAvoidanceProvider = options.vetoAvoidanceProvider;
@@ -517,7 +520,7 @@ export class AgentRuntime {
     const selected = this.resolveProvider(context.input.model);
     runSpan.setAttribute("model.selected", selected.model);
     const layeredContext = await applyPromptExemplarsFn(
-      applyPromptLayersFn(context, selected.provider.id, selected.model, this.promptLayerRegistry),
+      applyPromptLayersFn(context, selected.provider.id, selected.model, this.promptLayerRegistry, this.personaRegister),
       this.exemplarRetriever,
       this.exemplarTopK
     );

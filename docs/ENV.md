@@ -97,7 +97,7 @@ Total: **537** variables.
 | `MUSE_CALDAV_URL` | packages/autoconfigure |
 | `MUSE_CALDAV_USERNAME` | packages/autoconfigure |
 | `MUSE_CALENDAR_ENABLED` | packages/autoconfigure |
-| `MUSE_CALENDAR_FILE` | packages/autoconfigure, packages/mcp |
+| `MUSE_CALENDAR_FILE` | apps/cli, packages/autoconfigure, packages/mcp |
 | `MUSE_CALENDAR_ICS_FILE` | packages/autoconfigure |
 | `MUSE_CALENDAR_PROVIDERS` | apps/cli, packages/autoconfigure |
 | `MUSE_CANARY` | packages/policy |

@@ -15,7 +15,9 @@
  */
 
 import {
+  appendAckCursor,
   appendReplyCursor,
+  readAckCursor,
   readInbox,
   readReplyCursor,
   respondToInbound,
@@ -26,6 +28,13 @@ import {
 export interface InboundReplyOptions {
   readonly inboxFile: string;
   readonly cursorFile: string;
+  /**
+   * Sidecar recording delegation-ack delivery, so a re-run after a
+   * transient final-send failure never sends a second ack for the
+   * same message. Optional — defaults to `${cursorFile}.acked.json`,
+   * same co-location convention as the reply cursor next to the inbox.
+   */
+  readonly ackCursorFile?: string;
   readonly runner: InboundAgentRunner;
   readonly registry: MessagingProviderRegistry;
   readonly intervalMs?: number;
@@ -57,8 +66,11 @@ export function startInboundReplyTick(options: InboundReplyOptions): InboundRepl
       if (messages.length === 0) {
         return;
       }
+      const ackCursorFile = options.ackCursorFile ?? `${options.cursorFile}.acked.json`;
       const alreadyHandled = await readReplyCursor(options.cursorFile);
+      const ackAlreadySent = await readAckCursor(ackCursorFile);
       const result = await respondToInbound({
+        ackAlreadySent,
         alreadyHandled,
         messages,
         registry: options.registry,
@@ -66,6 +78,9 @@ export function startInboundReplyTick(options: InboundReplyOptions): InboundRepl
       });
       if (result.handled.length > 0) {
         await appendReplyCursor(options.cursorFile, result.handled);
+      }
+      if (result.acked.length > 0) {
+        await appendAckCursor(ackCursorFile, result.acked);
       }
       if (result.replied > 0 || result.errors.length > 0) {
         options.logger?.(

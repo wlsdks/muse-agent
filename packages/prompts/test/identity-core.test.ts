@@ -64,3 +64,25 @@ describe("composeIdentityPrompt", () => {
     expect(composeIdentityPrompt("  role text  ")).toBe(`${MUSE_IDENTITY_CORE}\n\nrole text`);
   });
 });
+
+describe("identity core does not force a 존댓말 self-intro onto every turn", () => {
+  it("scopes the name-first rule to questions ABOUT Muse, not every answer", () => {
+    // The live probe found the model prefixing "저는 뮤즈(Muse)예요" to
+    // unrelated casual turns ("밥 뭐 먹을까?") and forcing a 존댓말 intro
+    // into 반말 turns — the register-mirroring layer could not win against
+    // an unconditional 존댓말 template.
+    expect(MUSE_IDENTITY_CORE).not.toContain("자신에 대해 답할 때는 항상 먼저");
+    expect(MUSE_IDENTITY_CORE).toMatch(/너에 대해 물으면|정체성.*질문|누가 만들었는지/u);
+    expect(MUSE_IDENTITY_CORE).toMatch(/그 외의 일반 질문에는 자기소개를 붙이지 말고/u);
+  });
+
+  it("still anchors the name and the never-claim rules", () => {
+    expect(MUSE_IDENTITY_CORE).toContain("뮤즈");
+    expect(MUSE_IDENTITY_CORE).toContain("Muse");
+    expect(MUSE_IDENTITY_CORE).toMatch(/구글|Google/u);
+  });
+
+  it("tells the model to match the user's register in its self-answer too", () => {
+    expect(MUSE_IDENTITY_CORE).toMatch(/반말이면|사용자의 말투에 맞춰/u);
+  });
+});

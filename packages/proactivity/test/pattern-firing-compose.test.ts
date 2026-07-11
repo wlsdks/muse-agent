@@ -67,6 +67,9 @@ describe("runDuePatternNotices — composeSuggestion (LLM synthesis, fail-soft f
       signals: { notesDir, now: () => NOW.getTime() }
     });
     expect(summary.delivered).toBe(1);
-    expect(sent[0]!.text.length).toBeGreaterThan(0); // the verbatim match.suggestion, not empty
+    // The verbatim match.suggestion — including its deterministic why-it-
+    // fired clause (real counts from the detector, never model-invented) —
+    // passes through the firing loop unstripped.
+    expect(sent[0]!.text).toMatch(/\(\d+ edits across \d+ days\)/u);
   });
 });
