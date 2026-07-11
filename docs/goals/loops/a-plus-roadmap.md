@@ -263,7 +263,7 @@ ratchet: 로드맵 잔여 [ ] = 27/62 · self-eval pass · fabrication 0 · maco
 - 리뷰지점: Opus PASS — on/off→true/false 매핑 정확(inverted 아님)·고정 스크립트 인젝션 無·테스트가 captured 스크립트의 true/false를 pin(shape-only 아님)·ternary flip mutation이 off-test를 kill(독립 재현)·무관 브랜치(volume/mute/wifi/focus/sleep/quit_app) 무변·additionalProperties 유지.
 - 리스크: 낮음. 고정 스크립트라 인젝션·escape 불요. eval:tools 로컬셋 heavy timeout(가산 enum, selection 회귀 near-zero). 다음 = D4-S2d(블루투스/밝기 — Shortcuts 경로 focus 패턴, 클린 CLI 부재+MUSE_*_SHORTCUT env override). D4-S2d 완료 시 D4-S2 mac 커버리지 배치 완주(a·b·c·d, e는 Contacts write 별도).
 
-## fire 32 · 2026-07-12 · skill v2.x · <commit-pending>
+## fire 32 · 2026-07-12 · skill v2.x · c6ab1ef8c
 meta: slice=D4-S2d · wave=W3 · pkg=@muse/macos+apps/cli · kind=mac-bluetooth · verdict=PASS · firesSinceDrill=6
 ratchet: 로드맵 잔여 [ ] = 27/63(D4-S2d 밝기 분리 +1, d 체크 -1) · self-eval pass · fabrication 0 · macos +5·cli doctor +4 test · env MUSE_BLUETOOTH_*_SHORTCUT
 - 무엇: macOS 블루투스. mac_system_set에 bluetooth_on/off enum(focus 패턴 exact 미러: named Shortcut `shortcuts run` argv, 클린 Bluetooth CLI 부재). MUSE_BLUETOOTH_ON/OFF_SHORTCUT env override+bluetoothShortcutSetupMessage(missing→"Set Bluetooth" 안내)+doctor check. 밝기(value→Shortcut-input)는 D4-S2d2 분리.
